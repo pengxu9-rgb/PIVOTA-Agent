@@ -1,0 +1,257 @@
+{
+  "generated_at": "2026-05-28T10:02:32.687Z",
+  "options": {
+    "market": "US",
+    "includeAttached": true,
+    "domain": "biossance.com",
+    "externalProductIds": [],
+    "limit": 20000,
+    "sampleLimit": 10,
+    "checkpointDir": null,
+    "checkpointMode": "domain",
+    "resume": false,
+    "force": false,
+    "continueOnError": true,
+    "pageSize": 500,
+    "format": "json",
+    "chunkByDomain": false
+  },
+  "warnings": [],
+  "summary": {
+    "scanned": 1,
+    "by_market": {
+      "US": 1
+    },
+    "by_domain": [
+      {
+        "key": "biossance.com",
+        "count": 1
+      }
+    ],
+    "by_product_family": [
+      {
+        "key": "single_formula",
+        "count": 1
+      }
+    ],
+    "coverage": {
+      "missing_inci": 0,
+      "missing_active_raw": 0,
+      "missing_details": 0,
+      "missing_how_to": 0,
+      "missing_faq": 1
+    },
+    "pivota_insights": {
+      "direct": {
+        "displayable": 1,
+        "high_quality_ready": 0,
+        "missing_kb": 0,
+        "not_displayable": 0
+      },
+      "effective": {
+        "displayable": 1,
+        "high_quality_ready": 0,
+        "missing_kb": 0,
+        "not_displayable": 0,
+        "borrowed_from_sibling": 0
+      },
+      "effective_issues": [
+        {
+          "key": "empty_watchouts",
+          "count": 1
+        },
+        {
+          "key": "missing_card_highlight",
+          "count": 1
+        },
+        {
+          "key": "quality_eligible",
+          "count": 1
+        }
+      ],
+      "effective_issue_domains": [
+        {
+          "key": "biossance.com::empty_watchouts",
+          "count": 1
+        },
+        {
+          "key": "biossance.com::missing_card_highlight",
+          "count": 1
+        },
+        {
+          "key": "biossance.com::quality_eligible",
+          "count": 1
+        }
+      ],
+      "quality_state": [
+        {
+          "key": "eligible",
+          "count": 1
+        }
+      ],
+      "evidence_profile": [
+        {
+          "key": "seller_plus_formula",
+          "count": 1
+        }
+      ],
+      "samples": {
+        "missing_card_highlight": [
+          {
+            "external_product_id": "ext_c2ce069d1c2d4b78196097e6",
+            "domain": "biossance.com",
+            "title": "Squalane + Omega Repair Cream",
+            "used_product_id": "ext_c2ce069d1c2d4b78196097e6",
+            "quality_state": "eligible",
+            "evidence_profile": "seller_plus_formula"
+          }
+        ]
+      }
+    },
+    "active_ingredients": {
+      "regulatory_expected": 0,
+      "hero_expected": 1,
+      "any_active_items": 1,
+      "status": [
+        {
+          "key": "ready_hero",
+          "count": 1
+        }
+      ],
+      "issues": [],
+      "issue_domains": [],
+      "source_origin": [
+        {
+          "key": "pdp_section",
+          "count": 1
+        }
+      ],
+      "samples": {}
+    },
+    "variants": {
+      "status": [
+        {
+          "key": "ready",
+          "count": 1
+        }
+      ],
+      "issues": [],
+      "issue_domains": [],
+      "samples": {}
+    }
+  },
+  "rows": [
+    {
+      "seed_id": "eps_0b5aa003eb4fd388496b8e25",
+      "external_product_id": "ext_c2ce069d1c2d4b78196097e6",
+      "market": "US",
+      "domain": "biossance.com",
+      "title": "Squalane + Omega Repair Cream",
+      "canonical_url": "https://www.biossance.com/p/squalane-and-omega-repair-cream/12766625/",
+      "product_family": "single_formula",
+      "product_line_id": "pl_32e46c4ba85c4f5764ae141f",
+      "identity_variant_axes": {
+        "shade": "squalane plus omega repair cream",
+        "multi_variant": true
+      },
+      "pivota_insights": {
+        "direct": {
+          "product_id": "ext_c2ce069d1c2d4b78196097e6",
+          "kb_key": "product:ext_c2ce069d1c2d4b78196097e6",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": false,
+          "human_reviewed": true,
+          "issues": [
+            "missing_card_highlight",
+            "empty_watchouts",
+            "quality_eligible"
+          ],
+          "blocking_issues": [
+            "missing_card_highlight"
+          ],
+          "quality_state": "eligible",
+          "evidence_profile": "seller_plus_formula",
+          "has_card_highlight": false
+        },
+        "effective": {
+          "product_id": "ext_c2ce069d1c2d4b78196097e6",
+          "kb_key": "product:ext_c2ce069d1c2d4b78196097e6",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": false,
+          "human_reviewed": true,
+          "issues": [
+            "missing_card_highlight",
+            "empty_watchouts",
+            "quality_eligible"
+          ],
+          "blocking_issues": [
+            "missing_card_highlight"
+          ],
+          "quality_state": "eligible",
+          "evidence_profile": "seller_plus_formula",
+          "has_card_highlight": false
+        },
+        "product_line_id": "pl_32e46c4ba85c4f5764ae141f",
+        "borrowed_from_sibling": false
+      },
+      "active_ingredients": {
+        "status": "ready_hero",
+        "issues": [],
+        "regulatory_expected": false,
+        "hero_expected": true,
+        "active_items": [
+          "Squalane",
+          "Ceramide NP",
+          "Hyaluronic acid"
+        ],
+        "source_origin": "pdp_section",
+        "source_quality_status": "captured",
+        "coverage": {
+          "details_sections_count": 6,
+          "faq_count": 0,
+          "how_to_chars": 245,
+          "inci_chars": 1322,
+          "active_ingredients_chars": 48,
+          "inci_applicability_status": "",
+          "ingredient_review_status": "",
+          "ingredient_remediation_action": "",
+          "bundle_component_refs_count": 0,
+          "effective_inci_chars": 1322,
+          "inci_borrowed_from_product_id": ""
+        },
+        "invalid_fragments": [],
+        "suppressed_reason": null
+      },
+      "variants": {
+        "status": "ready",
+        "issues": [],
+        "visible_variant_rows": 1,
+        "examples": {
+          "identity_option_visible": [],
+          "wrong_axis_for_category": [],
+          "makeup_shade_missing_visual": [],
+          "size_value_generic_axis": [],
+          "default_option_size_evidence_missing_axis": [],
+          "identity_default_title_axis": []
+        }
+      },
+      "coverage": {
+        "details_sections_count": 6,
+        "faq_count": 0,
+        "how_to_chars": 245,
+        "inci_chars": 1322,
+        "active_ingredients_chars": 48,
+        "inci_applicability_status": "",
+        "ingredient_review_status": "",
+        "ingredient_remediation_action": "",
+        "bundle_component_refs_count": 0,
+        "effective_inci_chars": 1322,
+        "inci_borrowed_from_product_id": ""
+      }
+    }
+  ]
+}

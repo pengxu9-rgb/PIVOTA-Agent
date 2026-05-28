@@ -1,0 +1,1018 @@
+{
+  "generated_at": "2026-05-28T10:01:25.870Z",
+  "options": {
+    "market": "US",
+    "includeAttached": true,
+    "domain": "intoyoucosmetics.com",
+    "externalProductIds": [],
+    "limit": 20000,
+    "sampleLimit": 10,
+    "checkpointDir": null,
+    "checkpointMode": "domain",
+    "resume": false,
+    "force": false,
+    "continueOnError": true,
+    "pageSize": 500,
+    "format": "json",
+    "chunkByDomain": false
+  },
+  "warnings": [],
+  "summary": {
+    "scanned": 9,
+    "by_market": {
+      "US": 9
+    },
+    "by_domain": [
+      {
+        "key": "intoyoucosmetics.com",
+        "count": 9
+      }
+    ],
+    "by_product_family": [
+      {
+        "key": "single_formula",
+        "count": 9
+      }
+    ],
+    "coverage": {
+      "missing_inci": 9,
+      "missing_active_raw": 9,
+      "missing_details": 0,
+      "missing_how_to": 9,
+      "missing_faq": 2
+    },
+    "pivota_insights": {
+      "direct": {
+        "displayable": 8,
+        "high_quality_ready": 6,
+        "missing_kb": 1,
+        "not_displayable": 0
+      },
+      "effective": {
+        "displayable": 8,
+        "high_quality_ready": 6,
+        "missing_kb": 1,
+        "not_displayable": 0,
+        "borrowed_from_sibling": 0
+      },
+      "effective_issues": [
+        {
+          "key": "seller_only_evidence",
+          "count": 2
+        },
+        {
+          "key": "missing_kb",
+          "count": 1
+        }
+      ],
+      "effective_issue_domains": [
+        {
+          "key": "intoyoucosmetics.com::seller_only_evidence",
+          "count": 2
+        },
+        {
+          "key": "intoyoucosmetics.com::missing_kb",
+          "count": 1
+        }
+      ],
+      "quality_state": [
+        {
+          "key": "reviewed",
+          "count": 8
+        },
+        {
+          "key": "missing",
+          "count": 1
+        }
+      ],
+      "evidence_profile": [
+        {
+          "key": "official_pdp_reviewed_line",
+          "count": 5
+        },
+        {
+          "key": "seller_only",
+          "count": 2
+        },
+        {
+          "key": "missing",
+          "count": 1
+        },
+        {
+          "key": "seller_plus_formula",
+          "count": 1
+        }
+      ],
+      "samples": {
+        "seller_only_evidence": [
+          {
+            "external_product_id": "ext_0e45d0874a4b34180e0747df",
+            "domain": "intoyoucosmetics.com",
+            "title": "INTO YOU Watery Lip Matt - Custom Shade W725",
+            "used_product_id": "ext_0e45d0874a4b34180e0747df",
+            "quality_state": "reviewed",
+            "evidence_profile": "seller_only"
+          },
+          {
+            "external_product_id": "ext_e0a185b77e19838284a2f05b",
+            "domain": "intoyoucosmetics.com",
+            "title": "INTO YOU Tinted Repair Lip Serum - Custom Shade TR88",
+            "used_product_id": "ext_e0a185b77e19838284a2f05b",
+            "quality_state": "reviewed",
+            "evidence_profile": "seller_only"
+          }
+        ],
+        "missing_kb": [
+          {
+            "external_product_id": "ext_46c7212838c83d7ab2202fde",
+            "domain": "intoyoucosmetics.com",
+            "title": "INTO YOU Aqua Burst Lip Glaze",
+            "used_product_id": "ext_46c7212838c83d7ab2202fde",
+            "quality_state": "missing",
+            "evidence_profile": "missing"
+          }
+        ]
+      }
+    },
+    "active_ingredients": {
+      "regulatory_expected": 0,
+      "hero_expected": 0,
+      "any_active_items": 0,
+      "status": [
+        {
+          "key": "not_expected_missing",
+          "count": 9
+        }
+      ],
+      "issues": [],
+      "issue_domains": [],
+      "source_origin": [
+        {
+          "key": "none",
+          "count": 9
+        }
+      ],
+      "samples": {}
+    },
+    "variants": {
+      "status": [
+        {
+          "key": "ready",
+          "count": 9
+        }
+      ],
+      "issues": [],
+      "issue_domains": [],
+      "samples": {}
+    }
+  },
+  "rows": [
+    {
+      "seed_id": "eps_1e05102e8636332c123aba8c",
+      "external_product_id": "ext_0e45d0874a4b34180e0747df",
+      "market": "US",
+      "domain": "intoyoucosmetics.com",
+      "title": "INTO YOU Watery Lip Matt - Custom Shade W725",
+      "canonical_url": "https://www.intoyoucosmetics.com/products/into-you-watery-lip-matt-custom-shade-w725",
+      "product_family": "single_formula",
+      "product_line_id": "pl_6a3bad16fc2ddaf877ac0a29",
+      "identity_variant_axes": {
+        "color": "w725",
+        "shade": "w725",
+        "multi_variant": false
+      },
+      "pivota_insights": {
+        "direct": {
+          "product_id": "ext_0e45d0874a4b34180e0747df",
+          "kb_key": "product:ext_0e45d0874a4b34180e0747df",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": false,
+          "human_reviewed": true,
+          "issues": [
+            "seller_only_evidence"
+          ],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "seller_only",
+          "has_card_highlight": true
+        },
+        "effective": {
+          "product_id": "ext_0e45d0874a4b34180e0747df",
+          "kb_key": "product:ext_0e45d0874a4b34180e0747df",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": false,
+          "human_reviewed": true,
+          "issues": [
+            "seller_only_evidence"
+          ],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "seller_only",
+          "has_card_highlight": true
+        },
+        "product_line_id": "pl_6a3bad16fc2ddaf877ac0a29",
+        "borrowed_from_sibling": false
+      },
+      "active_ingredients": {
+        "status": "not_expected_missing",
+        "issues": [],
+        "regulatory_expected": false,
+        "hero_expected": false,
+        "active_items": [],
+        "source_origin": "none",
+        "source_quality_status": "blocked",
+        "coverage": {
+          "details_sections_count": 2,
+          "faq_count": 0,
+          "how_to_chars": 0,
+          "inci_chars": 0,
+          "active_ingredients_chars": 0,
+          "inci_applicability_status": "",
+          "ingredient_review_status": "",
+          "ingredient_remediation_action": "",
+          "bundle_component_refs_count": 0,
+          "effective_inci_chars": 0,
+          "inci_borrowed_from_product_id": ""
+        },
+        "invalid_fragments": [],
+        "suppressed_reason": "no_authoritative_source"
+      },
+      "variants": {
+        "status": "ready",
+        "issues": [],
+        "visible_variant_rows": 1,
+        "examples": {
+          "identity_option_visible": [],
+          "wrong_axis_for_category": [],
+          "makeup_shade_missing_visual": [],
+          "size_value_generic_axis": [],
+          "default_option_size_evidence_missing_axis": [],
+          "identity_default_title_axis": []
+        }
+      },
+      "coverage": {
+        "details_sections_count": 2,
+        "faq_count": 0,
+        "how_to_chars": 0,
+        "inci_chars": 0,
+        "active_ingredients_chars": 0,
+        "inci_applicability_status": "",
+        "ingredient_review_status": "",
+        "ingredient_remediation_action": "",
+        "bundle_component_refs_count": 0,
+        "effective_inci_chars": 0,
+        "inci_borrowed_from_product_id": ""
+      }
+    },
+    {
+      "seed_id": "eps_53b61b62e9134d9b8d51079d",
+      "external_product_id": "ext_2201bce05162b80c06453f99",
+      "market": "US",
+      "domain": "intoyoucosmetics.com",
+      "title": "INTO YOU Aqua Burst Lip Glaze",
+      "canonical_url": "https://www.intoyoucosmetics.com/products/into-you-aqua-burst-lip-glaze",
+      "product_family": "single_formula",
+      "product_line_id": null,
+      "pivota_insights": {
+        "direct": {
+          "product_id": "ext_2201bce05162b80c06453f99",
+          "kb_key": "product:ext_2201bce05162b80c06453f99",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "seller_plus_formula",
+          "has_card_highlight": true
+        },
+        "effective": {
+          "product_id": "ext_2201bce05162b80c06453f99",
+          "kb_key": "product:ext_2201bce05162b80c06453f99",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "seller_plus_formula",
+          "has_card_highlight": true
+        },
+        "product_line_id": null,
+        "borrowed_from_sibling": false
+      },
+      "active_ingredients": {
+        "status": "not_expected_missing",
+        "issues": [],
+        "regulatory_expected": false,
+        "hero_expected": false,
+        "active_items": [],
+        "source_origin": "none",
+        "source_quality_status": "blocked",
+        "coverage": {
+          "details_sections_count": 4,
+          "faq_count": 4,
+          "how_to_chars": 0,
+          "inci_chars": 0,
+          "active_ingredients_chars": 0,
+          "inci_applicability_status": "",
+          "ingredient_review_status": "",
+          "ingredient_remediation_action": "",
+          "bundle_component_refs_count": 0,
+          "effective_inci_chars": 0,
+          "inci_borrowed_from_product_id": ""
+        },
+        "invalid_fragments": [],
+        "suppressed_reason": "no_authoritative_source"
+      },
+      "variants": {
+        "status": "ready",
+        "issues": [],
+        "visible_variant_rows": 6,
+        "examples": {
+          "identity_option_visible": [],
+          "wrong_axis_for_category": [],
+          "makeup_shade_missing_visual": [],
+          "size_value_generic_axis": [],
+          "default_option_size_evidence_missing_axis": [],
+          "identity_default_title_axis": []
+        }
+      },
+      "coverage": {
+        "details_sections_count": 4,
+        "faq_count": 4,
+        "how_to_chars": 0,
+        "inci_chars": 0,
+        "active_ingredients_chars": 0,
+        "inci_applicability_status": "",
+        "ingredient_review_status": "",
+        "ingredient_remediation_action": "",
+        "bundle_component_refs_count": 0,
+        "effective_inci_chars": 0,
+        "inci_borrowed_from_product_id": ""
+      }
+    },
+    {
+      "seed_id": "epsv_7ab164f115771235010c268c",
+      "external_product_id": "ext_46c7212838c83d7ab2202fde",
+      "market": "US",
+      "domain": "intoyoucosmetics.com",
+      "title": "INTO YOU Aqua Burst Lip Glaze",
+      "canonical_url": "https://www.intoyoucosmetics.com/products/into-you-aqua-burst-lip-glaze",
+      "product_family": "single_formula",
+      "product_line_id": "pl_624ea6201791fb30a1a6ac20",
+      "identity_variant_axes": {
+        "multi_variant": false
+      },
+      "pivota_insights": {
+        "direct": {
+          "product_id": "ext_46c7212838c83d7ab2202fde",
+          "kb_key": null,
+          "status": "missing_kb",
+          "kb_exists": false,
+          "displayable": false,
+          "high_quality_ready": false,
+          "issues": [
+            "missing_kb"
+          ],
+          "quality_state": "missing",
+          "evidence_profile": "missing"
+        },
+        "effective": {
+          "product_id": "ext_46c7212838c83d7ab2202fde",
+          "kb_key": null,
+          "status": "missing_kb",
+          "kb_exists": false,
+          "displayable": false,
+          "high_quality_ready": false,
+          "issues": [
+            "missing_kb"
+          ],
+          "quality_state": "missing",
+          "evidence_profile": "missing"
+        },
+        "product_line_id": "pl_624ea6201791fb30a1a6ac20",
+        "borrowed_from_sibling": false
+      },
+      "active_ingredients": {
+        "status": "not_expected_missing",
+        "issues": [],
+        "regulatory_expected": false,
+        "hero_expected": false,
+        "active_items": [],
+        "source_origin": "none",
+        "source_quality_status": "blocked",
+        "coverage": {
+          "details_sections_count": 4,
+          "faq_count": 4,
+          "how_to_chars": 0,
+          "inci_chars": 0,
+          "active_ingredients_chars": 0,
+          "inci_applicability_status": "",
+          "ingredient_review_status": "",
+          "ingredient_remediation_action": "",
+          "bundle_component_refs_count": 0,
+          "effective_inci_chars": 0,
+          "inci_borrowed_from_product_id": ""
+        },
+        "invalid_fragments": [],
+        "suppressed_reason": "no_authoritative_source"
+      },
+      "variants": {
+        "status": "ready",
+        "issues": [],
+        "visible_variant_rows": 6,
+        "examples": {
+          "identity_option_visible": [],
+          "wrong_axis_for_category": [],
+          "makeup_shade_missing_visual": [],
+          "size_value_generic_axis": [],
+          "default_option_size_evidence_missing_axis": [],
+          "identity_default_title_axis": []
+        }
+      },
+      "coverage": {
+        "details_sections_count": 4,
+        "faq_count": 4,
+        "how_to_chars": 0,
+        "inci_chars": 0,
+        "active_ingredients_chars": 0,
+        "inci_applicability_status": "",
+        "ingredient_review_status": "",
+        "ingredient_remediation_action": "",
+        "bundle_component_refs_count": 0,
+        "effective_inci_chars": 0,
+        "inci_borrowed_from_product_id": ""
+      }
+    },
+    {
+      "seed_id": "epsv_74ad73b922d1d611b7814778",
+      "external_product_id": "ext_74cd8d46b227d189f49f68e4",
+      "market": "US",
+      "domain": "intoyoucosmetics.com",
+      "title": "INTO YOU Aqua Burst Lip Glaze",
+      "canonical_url": "https://www.intoyoucosmetics.com/products/into-you-aqua-burst-lip-glaze",
+      "product_family": "single_formula",
+      "product_line_id": null,
+      "pivota_insights": {
+        "direct": {
+          "product_id": "ext_74cd8d46b227d189f49f68e4",
+          "kb_key": "product:ext_74cd8d46b227d189f49f68e4",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "official_pdp_reviewed_line",
+          "has_card_highlight": true
+        },
+        "effective": {
+          "product_id": "ext_74cd8d46b227d189f49f68e4",
+          "kb_key": "product:ext_74cd8d46b227d189f49f68e4",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "official_pdp_reviewed_line",
+          "has_card_highlight": true
+        },
+        "product_line_id": null,
+        "borrowed_from_sibling": false
+      },
+      "active_ingredients": {
+        "status": "not_expected_missing",
+        "issues": [],
+        "regulatory_expected": false,
+        "hero_expected": false,
+        "active_items": [],
+        "source_origin": "none",
+        "source_quality_status": "blocked",
+        "coverage": {
+          "details_sections_count": 4,
+          "faq_count": 4,
+          "how_to_chars": 0,
+          "inci_chars": 0,
+          "active_ingredients_chars": 0,
+          "inci_applicability_status": "",
+          "ingredient_review_status": "",
+          "ingredient_remediation_action": "",
+          "bundle_component_refs_count": 0,
+          "effective_inci_chars": 0,
+          "inci_borrowed_from_product_id": ""
+        },
+        "invalid_fragments": [],
+        "suppressed_reason": "no_authoritative_source"
+      },
+      "variants": {
+        "status": "ready",
+        "issues": [],
+        "visible_variant_rows": 1,
+        "examples": {
+          "identity_option_visible": [],
+          "wrong_axis_for_category": [],
+          "makeup_shade_missing_visual": [],
+          "size_value_generic_axis": [],
+          "default_option_size_evidence_missing_axis": [],
+          "identity_default_title_axis": []
+        }
+      },
+      "coverage": {
+        "details_sections_count": 4,
+        "faq_count": 4,
+        "how_to_chars": 0,
+        "inci_chars": 0,
+        "active_ingredients_chars": 0,
+        "inci_applicability_status": "",
+        "ingredient_review_status": "",
+        "ingredient_remediation_action": "",
+        "bundle_component_refs_count": 0,
+        "effective_inci_chars": 0,
+        "inci_borrowed_from_product_id": ""
+      }
+    },
+    {
+      "seed_id": "epsv_1c737670a36cb038f1a862ee",
+      "external_product_id": "ext_9b152916f4280aff2d280ec1",
+      "market": "US",
+      "domain": "intoyoucosmetics.com",
+      "title": "INTO YOU Aqua Burst Lip Glaze",
+      "canonical_url": "https://www.intoyoucosmetics.com/products/into-you-aqua-burst-lip-glaze",
+      "product_family": "single_formula",
+      "product_line_id": null,
+      "pivota_insights": {
+        "direct": {
+          "product_id": "ext_9b152916f4280aff2d280ec1",
+          "kb_key": "product:ext_9b152916f4280aff2d280ec1",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "official_pdp_reviewed_line",
+          "has_card_highlight": true
+        },
+        "effective": {
+          "product_id": "ext_9b152916f4280aff2d280ec1",
+          "kb_key": "product:ext_9b152916f4280aff2d280ec1",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "official_pdp_reviewed_line",
+          "has_card_highlight": true
+        },
+        "product_line_id": null,
+        "borrowed_from_sibling": false
+      },
+      "active_ingredients": {
+        "status": "not_expected_missing",
+        "issues": [],
+        "regulatory_expected": false,
+        "hero_expected": false,
+        "active_items": [],
+        "source_origin": "none",
+        "source_quality_status": "blocked",
+        "coverage": {
+          "details_sections_count": 4,
+          "faq_count": 4,
+          "how_to_chars": 0,
+          "inci_chars": 0,
+          "active_ingredients_chars": 0,
+          "inci_applicability_status": "",
+          "ingredient_review_status": "",
+          "ingredient_remediation_action": "",
+          "bundle_component_refs_count": 0,
+          "effective_inci_chars": 0,
+          "inci_borrowed_from_product_id": ""
+        },
+        "invalid_fragments": [],
+        "suppressed_reason": "no_authoritative_source"
+      },
+      "variants": {
+        "status": "ready",
+        "issues": [],
+        "visible_variant_rows": 1,
+        "examples": {
+          "identity_option_visible": [],
+          "wrong_axis_for_category": [],
+          "makeup_shade_missing_visual": [],
+          "size_value_generic_axis": [],
+          "default_option_size_evidence_missing_axis": [],
+          "identity_default_title_axis": []
+        }
+      },
+      "coverage": {
+        "details_sections_count": 4,
+        "faq_count": 4,
+        "how_to_chars": 0,
+        "inci_chars": 0,
+        "active_ingredients_chars": 0,
+        "inci_applicability_status": "",
+        "ingredient_review_status": "",
+        "ingredient_remediation_action": "",
+        "bundle_component_refs_count": 0,
+        "effective_inci_chars": 0,
+        "inci_borrowed_from_product_id": ""
+      }
+    },
+    {
+      "seed_id": "epsv_adcfa642483a977fee32fa09",
+      "external_product_id": "ext_ab35f3574af6ed7dfab2051a",
+      "market": "US",
+      "domain": "intoyoucosmetics.com",
+      "title": "INTO YOU Aqua Burst Lip Glaze",
+      "canonical_url": "https://www.intoyoucosmetics.com/products/into-you-aqua-burst-lip-glaze",
+      "product_family": "single_formula",
+      "product_line_id": null,
+      "pivota_insights": {
+        "direct": {
+          "product_id": "ext_ab35f3574af6ed7dfab2051a",
+          "kb_key": "product:ext_ab35f3574af6ed7dfab2051a",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "official_pdp_reviewed_line",
+          "has_card_highlight": true
+        },
+        "effective": {
+          "product_id": "ext_ab35f3574af6ed7dfab2051a",
+          "kb_key": "product:ext_ab35f3574af6ed7dfab2051a",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "official_pdp_reviewed_line",
+          "has_card_highlight": true
+        },
+        "product_line_id": null,
+        "borrowed_from_sibling": false
+      },
+      "active_ingredients": {
+        "status": "not_expected_missing",
+        "issues": [],
+        "regulatory_expected": false,
+        "hero_expected": false,
+        "active_items": [],
+        "source_origin": "none",
+        "source_quality_status": "blocked",
+        "coverage": {
+          "details_sections_count": 4,
+          "faq_count": 4,
+          "how_to_chars": 0,
+          "inci_chars": 0,
+          "active_ingredients_chars": 0,
+          "inci_applicability_status": "",
+          "ingredient_review_status": "",
+          "ingredient_remediation_action": "",
+          "bundle_component_refs_count": 0,
+          "effective_inci_chars": 0,
+          "inci_borrowed_from_product_id": ""
+        },
+        "invalid_fragments": [],
+        "suppressed_reason": "no_authoritative_source"
+      },
+      "variants": {
+        "status": "ready",
+        "issues": [],
+        "visible_variant_rows": 1,
+        "examples": {
+          "identity_option_visible": [],
+          "wrong_axis_for_category": [],
+          "makeup_shade_missing_visual": [],
+          "size_value_generic_axis": [],
+          "default_option_size_evidence_missing_axis": [],
+          "identity_default_title_axis": []
+        }
+      },
+      "coverage": {
+        "details_sections_count": 4,
+        "faq_count": 4,
+        "how_to_chars": 0,
+        "inci_chars": 0,
+        "active_ingredients_chars": 0,
+        "inci_applicability_status": "",
+        "ingredient_review_status": "",
+        "ingredient_remediation_action": "",
+        "bundle_component_refs_count": 0,
+        "effective_inci_chars": 0,
+        "inci_borrowed_from_product_id": ""
+      }
+    },
+    {
+      "seed_id": "epsv_8bb4e6da452bdee413b0a9e9",
+      "external_product_id": "ext_b4e1aabb2ce6450b86e0567b",
+      "market": "US",
+      "domain": "intoyoucosmetics.com",
+      "title": "INTO YOU Aqua Burst Lip Glaze",
+      "canonical_url": "https://www.intoyoucosmetics.com/products/into-you-aqua-burst-lip-glaze",
+      "product_family": "single_formula",
+      "product_line_id": null,
+      "pivota_insights": {
+        "direct": {
+          "product_id": "ext_b4e1aabb2ce6450b86e0567b",
+          "kb_key": "product:ext_b4e1aabb2ce6450b86e0567b",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "official_pdp_reviewed_line",
+          "has_card_highlight": true
+        },
+        "effective": {
+          "product_id": "ext_b4e1aabb2ce6450b86e0567b",
+          "kb_key": "product:ext_b4e1aabb2ce6450b86e0567b",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "official_pdp_reviewed_line",
+          "has_card_highlight": true
+        },
+        "product_line_id": null,
+        "borrowed_from_sibling": false
+      },
+      "active_ingredients": {
+        "status": "not_expected_missing",
+        "issues": [],
+        "regulatory_expected": false,
+        "hero_expected": false,
+        "active_items": [],
+        "source_origin": "none",
+        "source_quality_status": "blocked",
+        "coverage": {
+          "details_sections_count": 4,
+          "faq_count": 4,
+          "how_to_chars": 0,
+          "inci_chars": 0,
+          "active_ingredients_chars": 0,
+          "inci_applicability_status": "",
+          "ingredient_review_status": "",
+          "ingredient_remediation_action": "",
+          "bundle_component_refs_count": 0,
+          "effective_inci_chars": 0,
+          "inci_borrowed_from_product_id": ""
+        },
+        "invalid_fragments": [],
+        "suppressed_reason": "no_authoritative_source"
+      },
+      "variants": {
+        "status": "ready",
+        "issues": [],
+        "visible_variant_rows": 1,
+        "examples": {
+          "identity_option_visible": [],
+          "wrong_axis_for_category": [],
+          "makeup_shade_missing_visual": [],
+          "size_value_generic_axis": [],
+          "default_option_size_evidence_missing_axis": [],
+          "identity_default_title_axis": []
+        }
+      },
+      "coverage": {
+        "details_sections_count": 4,
+        "faq_count": 4,
+        "how_to_chars": 0,
+        "inci_chars": 0,
+        "active_ingredients_chars": 0,
+        "inci_applicability_status": "",
+        "ingredient_review_status": "",
+        "ingredient_remediation_action": "",
+        "bundle_component_refs_count": 0,
+        "effective_inci_chars": 0,
+        "inci_borrowed_from_product_id": ""
+      }
+    },
+    {
+      "seed_id": "eps_cfbf5f0a39bd3ed9d453f556",
+      "external_product_id": "ext_e0a185b77e19838284a2f05b",
+      "market": "US",
+      "domain": "intoyoucosmetics.com",
+      "title": "INTO YOU Tinted Repair Lip Serum - Custom Shade TR88",
+      "canonical_url": "https://www.intoyoucosmetics.com/products/into-you-tinted-repair-lip-serum-custom-shade-tr88",
+      "product_family": "single_formula",
+      "product_line_id": "pl_3f2b810ddd7b45f77396efe6",
+      "identity_variant_axes": {
+        "color": "tr88",
+        "shade": "tr88",
+        "multi_variant": false
+      },
+      "pivota_insights": {
+        "direct": {
+          "product_id": "ext_e0a185b77e19838284a2f05b",
+          "kb_key": "product:ext_e0a185b77e19838284a2f05b",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": false,
+          "human_reviewed": true,
+          "issues": [
+            "seller_only_evidence"
+          ],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "seller_only",
+          "has_card_highlight": true
+        },
+        "effective": {
+          "product_id": "ext_e0a185b77e19838284a2f05b",
+          "kb_key": "product:ext_e0a185b77e19838284a2f05b",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": false,
+          "human_reviewed": true,
+          "issues": [
+            "seller_only_evidence"
+          ],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "seller_only",
+          "has_card_highlight": true
+        },
+        "product_line_id": "pl_3f2b810ddd7b45f77396efe6",
+        "borrowed_from_sibling": false
+      },
+      "active_ingredients": {
+        "status": "not_expected_missing",
+        "issues": [],
+        "regulatory_expected": false,
+        "hero_expected": false,
+        "active_items": [],
+        "source_origin": "none",
+        "source_quality_status": "blocked",
+        "coverage": {
+          "details_sections_count": 2,
+          "faq_count": 0,
+          "how_to_chars": 0,
+          "inci_chars": 0,
+          "active_ingredients_chars": 0,
+          "inci_applicability_status": "",
+          "ingredient_review_status": "",
+          "ingredient_remediation_action": "",
+          "bundle_component_refs_count": 0,
+          "effective_inci_chars": 0,
+          "inci_borrowed_from_product_id": ""
+        },
+        "invalid_fragments": [],
+        "suppressed_reason": "no_authoritative_source"
+      },
+      "variants": {
+        "status": "ready",
+        "issues": [],
+        "visible_variant_rows": 1,
+        "examples": {
+          "identity_option_visible": [],
+          "wrong_axis_for_category": [],
+          "makeup_shade_missing_visual": [],
+          "size_value_generic_axis": [],
+          "default_option_size_evidence_missing_axis": [],
+          "identity_default_title_axis": []
+        }
+      },
+      "coverage": {
+        "details_sections_count": 2,
+        "faq_count": 0,
+        "how_to_chars": 0,
+        "inci_chars": 0,
+        "active_ingredients_chars": 0,
+        "inci_applicability_status": "",
+        "ingredient_review_status": "",
+        "ingredient_remediation_action": "",
+        "bundle_component_refs_count": 0,
+        "effective_inci_chars": 0,
+        "inci_borrowed_from_product_id": ""
+      }
+    },
+    {
+      "seed_id": "epsv_4418168788ca806db6a806aa",
+      "external_product_id": "ext_eb5f5e1a44508b3b59ffa449",
+      "market": "US",
+      "domain": "intoyoucosmetics.com",
+      "title": "INTO YOU Aqua Burst Lip Glaze",
+      "canonical_url": "https://www.intoyoucosmetics.com/products/into-you-aqua-burst-lip-glaze",
+      "product_family": "single_formula",
+      "product_line_id": null,
+      "pivota_insights": {
+        "direct": {
+          "product_id": "ext_eb5f5e1a44508b3b59ffa449",
+          "kb_key": "product:ext_eb5f5e1a44508b3b59ffa449",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "official_pdp_reviewed_line",
+          "has_card_highlight": true
+        },
+        "effective": {
+          "product_id": "ext_eb5f5e1a44508b3b59ffa449",
+          "kb_key": "product:ext_eb5f5e1a44508b3b59ffa449",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "official_pdp_reviewed_line",
+          "has_card_highlight": true
+        },
+        "product_line_id": null,
+        "borrowed_from_sibling": false
+      },
+      "active_ingredients": {
+        "status": "not_expected_missing",
+        "issues": [],
+        "regulatory_expected": false,
+        "hero_expected": false,
+        "active_items": [],
+        "source_origin": "none",
+        "source_quality_status": "blocked",
+        "coverage": {
+          "details_sections_count": 4,
+          "faq_count": 4,
+          "how_to_chars": 0,
+          "inci_chars": 0,
+          "active_ingredients_chars": 0,
+          "inci_applicability_status": "",
+          "ingredient_review_status": "",
+          "ingredient_remediation_action": "",
+          "bundle_component_refs_count": 0,
+          "effective_inci_chars": 0,
+          "inci_borrowed_from_product_id": ""
+        },
+        "invalid_fragments": [],
+        "suppressed_reason": "no_authoritative_source"
+      },
+      "variants": {
+        "status": "ready",
+        "issues": [],
+        "visible_variant_rows": 1,
+        "examples": {
+          "identity_option_visible": [],
+          "wrong_axis_for_category": [],
+          "makeup_shade_missing_visual": [],
+          "size_value_generic_axis": [],
+          "default_option_size_evidence_missing_axis": [],
+          "identity_default_title_axis": []
+        }
+      },
+      "coverage": {
+        "details_sections_count": 4,
+        "faq_count": 4,
+        "how_to_chars": 0,
+        "inci_chars": 0,
+        "active_ingredients_chars": 0,
+        "inci_applicability_status": "",
+        "ingredient_review_status": "",
+        "ingredient_remediation_action": "",
+        "bundle_component_refs_count": 0,
+        "effective_inci_chars": 0,
+        "inci_borrowed_from_product_id": ""
+      }
+    }
+  ]
+}

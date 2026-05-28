@@ -1,0 +1,1762 @@
+{
+  "generated_at": "2026-05-28T10:41:06.793Z",
+  "market": "US",
+  "include_non_public": false,
+  "docs_built": 31,
+  "source_build_failures": [],
+  "docs": [
+    {
+      "doc_id": "sellable:sig_a7d1d1766fc4bb355bedd0ee",
+      "sellable_item_group_id": "sig_a7d1d1766fc4bb355bedd0ee",
+      "product_line_id": "pl_f62352159f07ced6a5aaa98b",
+      "review_family_id": "rf_f62352159f07ced6a5aaa98b",
+      "brand_name": "Catkin",
+      "category_paths": [
+        "Mascara"
+      ],
+      "market": "US",
+      "availability_state": "available",
+      "publish_state": "public",
+      "title": "CATKIN Black Chic Luxury Mascara",
+      "subtitle": "What It Is:\n\nA high-performance mascara designed to create fuller, longer, and beautifully defined lashes with an elegant black finish. The lightweight formula delivers dramatic eye-enhancing effects while maintaining a comfortable, smudge-resistant wear.\n\nHow It Works:\n\nThe precision brush coats each lash evenly from root to tip, helping lift, lengthen, and separate lashes without clumping. The waterproof and long-lasting formula keeps lashes looking fresh and curled throughout the day.\n\nWhat's Special:\n\nFuller & Longer Lashes - Instantly enhances lash volume and length.\n\nWaterproof & Smudge-Proof - Resists sweat, humidity, and daily wear.\n\nLightweight Formula - Comfortable on lashes without heaviness.\n\nSmooth Application - Builds effortlessly without clumping or flaking.\n\nWhy You'll Love It:\n\nWhether for natural everyday makeup or bold glam looks, this mascara delivers long-lasting curl, definition, and luxurious black intensity for effortlessly captivating eyes.",
+      "variant_axes": {
+        "color": "c01 black",
+        "shade": "c01 black",
+        "multi_variant": false
+      },
+      "size": null,
+      "shade": null,
+      "pack": null,
+      "hero_media": {
+        "url": "https://cdn.shopify.com/s/files/1/0396/2660/4700/files/1_4c00067b-2a55-4cdf-ab10-9fe2f20a31d0.jpg?v=1778464196",
+        "source_kind": "catalog",
+        "source_tier": "catalog"
+      },
+      "preview_media": [
+        "https://cdn.shopify.com/s/files/1/0396/2660/4700/files/1_4c00067b-2a55-4cdf-ab10-9fe2f20a31d0.jpg?v=1778464196",
+        "https://cdn.shopify.com/s/files/1/0396/2660/4700/files/3_12e027de-7ffe-4253-990c-c3bd92155692.jpg?v=1778464195",
+        "https://cdn.shopify.com/s/files/1/0396/2660/4700/files/4_5472ffac-7851-4bd3-95aa-eef4203c30a1.jpg?v=1778464195",
+        "https://cdn.shopify.com/s/files/1/0396/2660/4700/files/6_cd810554-5b20-45d9-b0dc-83affb5adf41.jpg?v=1778464195",
+        "https://cdn.shopify.com/s/files/1/0396/2660/4700/files/7_06f833b5-f7c9-4175-8964-2611d1442535.jpg?v=1778464195",
+        "https://cdn.shopify.com/s/files/1/0396/2660/4700/files/9_71db375b-47df-4f4d-a0f1-9b6fb669bf07.jpg?v=1778464195",
+        "https://cdn.shopify.com/s/files/1/0396/2660/4700/files/5_e9c2ff1e-c29e-4b7b-aae8-b41f1a4342c3.jpg?v=1778464195",
+        "https://cdn.shopify.com/s/files/1/0396/2660/4700/files/10_75a61279-51cb-4b8a-875b-3ac4115ffeca.jpg?v=1778464195"
+      ],
+      "price_min": 16.99,
+      "price_max": 16.99,
+      "default_offer_id": "external_seed:ext_03ad2bbe708c54ce6330d3c2",
+      "internal_offer_exists": false,
+      "external_offer_exists": true,
+      "pivota_insight_status": "available",
+      "pivota_insight_summary": "CATKIN Black Chic Luxury Mascara is an eye makeup product from Catkin in C01 Black, with source-backed cues around multi-shade color selection.",
+      "quality_score": null,
+      "browse_score": null,
+      "facet_tokens": [
+        "Catkin",
+        "Mascara"
+      ],
+      "sort_keys": {
+        "price_min": 16.99,
+        "price_max": 16.99,
+        "updated_at": null
+      },
+      "updated_at": null,
+      "source_refs": [
+        "external_seed:ext_03ad2bbe708c54ce6330d3c2"
+      ]
+    },
+    {
+      "doc_id": "sellable:sig_737ea98f390d146781b6dc41",
+      "sellable_item_group_id": "sig_737ea98f390d146781b6dc41",
+      "product_line_id": "pl_3f2b810ddd7b45f77396efe6",
+      "review_family_id": "rf_3f2b810ddd7b45f77396efe6",
+      "brand_name": "INTO YOU",
+      "category_paths": [
+        "Lip Makeup"
+      ],
+      "market": "US",
+      "availability_state": "available",
+      "publish_state": "public",
+      "title": "INTO YOU Tinted Repair Lip Serum - Custom Shade TR88",
+      "subtitle": "A nourishing tinted lip serum that combines color and care. TR88, created with ZHANG HAO, delivers a sheer wash of color while helping smooth and repair dry lips. Glossy, lightweight, and comfortable for a healthy, naturally radiant look.",
+      "variant_axes": {
+        "color": "tr88",
+        "shade": "tr88",
+        "multi_variant": false
+      },
+      "size": null,
+      "shade": null,
+      "pack": null,
+      "hero_media": {
+        "url": "https://www.intoyoucosmetics.com/cdn/shop/files/1f59b58c5b9569874ae49eb3947f9996_8ddd849f-71e7-4338-8f07-f581027dad4a.webp?v=1776499293",
+        "source_kind": "catalog",
+        "source_tier": "catalog"
+      },
+      "preview_media": [
+        "https://www.intoyoucosmetics.com/cdn/shop/files/1f59b58c5b9569874ae49eb3947f9996_8ddd849f-71e7-4338-8f07-f581027dad4a.webp?v=1776499293",
+        "https://www.intoyoucosmetics.com/cdn/shop/files/2_e672f5d8-9929-417b-81c2-fdab9112d18e.webp?v=1776499293",
+        "https://www.intoyoucosmetics.com/cdn/shop/files/1_2305b7db-5aff-4a25-899f-b63646976676.webp?v=1776498306",
+        "https://www.intoyoucosmetics.com/cdn/shop/files/3_97d5524d-12af-4215-ae27-31aee736a8d7.webp?v=1776498062",
+        "https://www.intoyoucosmetics.com/cdn/shop/files/4_8e252b3d-975a-46d7-b02f-9d05b48d4e97.webp?v=1776498062",
+        "https://www.intoyoucosmetics.com/cdn/shop/files/20260417-083024.jpg?v=1776575737"
+      ],
+      "price_min": 13.99,
+      "price_max": 13.99,
+      "default_offer_id": "external_seed:ext_e0a185b77e19838284a2f05b",
+      "internal_offer_exists": false,
+      "external_offer_exists": true,
+      "pivota_insight_status": "available",
+      "pivota_insight_summary": "INTO YOU Tinted Repair Lip Serum - Custom Shade TR88 is a lip treatment from INTO YOU in TR88, with source-backed cues around shine finish and shade clarity.",
+      "quality_score": null,
+      "browse_score": null,
+      "facet_tokens": [
+        "INTO YOU",
+        "Lip Makeup"
+      ],
+      "sort_keys": {
+        "price_min": 13.99,
+        "price_max": 13.99,
+        "updated_at": null
+      },
+      "updated_at": null,
+      "source_refs": [
+        "external_seed:ext_e0a185b77e19838284a2f05b"
+      ]
+    },
+    {
+      "doc_id": "sellable:sig_1a310126e75795655997ed9e",
+      "sellable_item_group_id": "sig_1a310126e75795655997ed9e",
+      "product_line_id": "pl_6a3bad16fc2ddaf877ac0a29",
+      "review_family_id": "rf_6a3bad16fc2ddaf877ac0a29",
+      "brand_name": "INTO YOU",
+      "category_paths": [
+        "Lip Makeup"
+      ],
+      "market": "US",
+      "availability_state": "available",
+      "publish_state": "public",
+      "title": "INTO YOU Watery Lip Matt - Custom Shade W725",
+      "subtitle": "A fresh, lightweight lip matt with a breathable watery feel. W725, created with ZHANG HAO, delivers a soft-focus matte look with sheer buildable color that enhances your natural tone. Comfortable to wear, non-sticky, and perfect for everyday effortless makeup.",
+      "variant_axes": {
+        "color": "w725",
+        "shade": "w725",
+        "multi_variant": false
+      },
+      "size": null,
+      "shade": null,
+      "pack": null,
+      "hero_media": {
+        "url": "https://www.intoyoucosmetics.com/cdn/shop/files/a66bc1c00444a2259f39f6a34e0dfb19_1688ae78-f7a5-4c57-bd27-2a6600813462.webp?v=1776499310",
+        "source_kind": "catalog",
+        "source_tier": "catalog"
+      },
+      "preview_media": [
+        "https://www.intoyoucosmetics.com/cdn/shop/files/a66bc1c00444a2259f39f6a34e0dfb19_1688ae78-f7a5-4c57-bd27-2a6600813462.webp?v=1776499310",
+        "https://www.intoyoucosmetics.com/cdn/shop/files/2_cddaad01-d40c-4ec9-91f4-3726f4257456.webp?v=1776499310",
+        "https://www.intoyoucosmetics.com/cdn/shop/files/20260417-083024.jpg?v=1776575737",
+        "https://www.intoyoucosmetics.com/cdn/shop/files/1_32bf28bd-1864-420f-be48-2262fa0de853.webp?v=1776575737",
+        "https://www.intoyoucosmetics.com/cdn/shop/files/3_0e081420-f8ae-4849-a5d1-7b3fb0710b1e.webp?v=1776575737",
+        "https://www.intoyoucosmetics.com/cdn/shop/files/4_950fff0b-4808-4b53-b393-bbf6c0c02422.webp?v=1776575737"
+      ],
+      "price_min": 13.99,
+      "price_max": 13.99,
+      "default_offer_id": "external_seed:ext_0e45d0874a4b34180e0747df",
+      "internal_offer_exists": false,
+      "external_offer_exists": true,
+      "pivota_insight_status": "available",
+      "pivota_insight_summary": "INTO YOU Watery Lip Matt - Custom Shade W725 is a beauty product from INTO YOU.",
+      "quality_score": null,
+      "browse_score": null,
+      "facet_tokens": [
+        "INTO YOU",
+        "Lip Makeup"
+      ],
+      "sort_keys": {
+        "price_min": 13.99,
+        "price_max": 13.99,
+        "updated_at": null
+      },
+      "updated_at": null,
+      "source_refs": [
+        "external_seed:ext_0e45d0874a4b34180e0747df"
+      ]
+    },
+    {
+      "doc_id": "sellable:sig_a3945cb0a3586fbac5724ba8",
+      "sellable_item_group_id": "sig_a3945cb0a3586fbac5724ba8",
+      "product_line_id": "pl_624ea6201791fb30a1a6ac20",
+      "review_family_id": "rf_624ea6201791fb30a1a6ac20",
+      "brand_name": "INTO YOU",
+      "category_paths": [
+        "Essence"
+      ],
+      "market": "US",
+      "availability_state": "available",
+      "publish_state": "public",
+      "title": "INTO YOU Aqua Burst Lip Glaze",
+      "subtitle": "INTO YOU Aqua Burst Lip Glaze (2.0)\n\nCrystal Clear Shine. Glass-Like Lips.\n\nFinish & Effect\n\nLight-reflective, ultra-glossy shine that creates a plump, glass-lip look with a juicy, translucent glow.\n\nShades\n\nAB04 Crushed Diamond Berry (HOT)\n\nCool-toned strawberry with blue shimmer, juicy and sparkling (Soobin's shade)\n\nAB01 Fizzy Apricot (HOT)\n\nA soft apricot nude with a radiant, translucent glow\n\nAB03 Moonlight Persimmon (HOT)\n\nA sweet, juicy persimmon tone with a hint of warmth\n\nAB02 Water Peach\n\nDesigned to complement olive and neutral skin tones\n\nAB05 Tea Mambo\n\nA refined iced-tea shade with an effortless chic vibe\n\nAB06 Amber Brown\n\nA modern amber brown, perfect for deeper lips & skin tones\n\nHydrating Essence Formula\n\n89% Essence Complex\n\nMulti-dimensional lip care that helps:\n\nsoothe and hydrate\n\nsmooth the look of lip lines\n\nkeep lips soft and nourished\n\n24H moisture comfort\n\nLightweight, non-greasy texture with a fresh, juicy feel\n\nShine & Color Technology\n\nCrystal High-Refraction Tech\n\nCreates a 3D high-shine \"bouncy lip\" effect\n\nBuildable color payoff\n\nsheer but visible in one swipe\n\nenhanced pigment for deeper lips\n\n💡 How to Choose\n\nQ: 2.0 vs 1.0?\n\n2.0: richer pigment, fuller glossy finish → best for deeper lips or bold shine\n\n1.0: more sheer, natural MLBB effect → ideal for light lips\n\nQ: Finish difference?\n\n2.0: more saturated, plump glossy look\n\n1.0: more transparent, watery shine\n\n📦 Product Details\n\nNet Weight: 3g / 0.11 oz",
+      "variant_axes": {
+        "multi_variant": false
+      },
+      "size": null,
+      "shade": null,
+      "pack": null,
+      "hero_media": {
+        "url": "https://cdn.shopify.com/s/files/1/0548/9147/9125/files/SKU-AB06.webp?v=1777520218",
+        "source_kind": "catalog",
+        "source_tier": "catalog"
+      },
+      "preview_media": [
+        "https://cdn.shopify.com/s/files/1/0548/9147/9125/files/SKU-AB06.webp?v=1777520218",
+        "https://www.intoyoucosmetics.com/cdn/shop/files/2.0.webp?v=1777520237",
+        "https://www.intoyoucosmetics.com/cdn/shop/files/1-_1.webp?v=1777520239",
+        "https://www.intoyoucosmetics.com/cdn/shop/files/2-_2.webp?v=1777520239",
+        "https://www.intoyoucosmetics.com/cdn/shop/files/3-_-AB01.webp?v=1777520239",
+        "https://www.intoyoucosmetics.com/cdn/shop/files/SKU-AB04.webp?v=1777520218",
+        "https://www.intoyoucosmetics.com/cdn/shop/files/20260430-041147.jpg?v=1777536741",
+        "https://www.intoyoucosmetics.com/cdn/shop/files/5-_-AB04.webp?v=1777520239"
+      ],
+      "price_min": 13.99,
+      "price_max": 13.99,
+      "default_offer_id": "external_seed:ext_46c7212838c83d7ab2202fde",
+      "internal_offer_exists": false,
+      "external_offer_exists": true,
+      "pivota_insight_status": "available",
+      "pivota_insight_summary": "INTO YOU Aqua Burst Lip Glaze is a lip gloss from INTO YOU in AB04, with source-backed cues around shine finish, shade clarity and comfort-oriented lip care.",
+      "quality_score": null,
+      "browse_score": null,
+      "facet_tokens": [
+        "INTO YOU",
+        "Essence"
+      ],
+      "sort_keys": {
+        "price_min": 13.99,
+        "price_max": 13.99,
+        "updated_at": null
+      },
+      "updated_at": null,
+      "source_refs": [
+        "external_seed:ext_46c7212838c83d7ab2202fde"
+      ]
+    },
+    {
+      "doc_id": "sellable:sig_6d12dcb11d6432e4eb1e59bf",
+      "sellable_item_group_id": "sig_6d12dcb11d6432e4eb1e59bf",
+      "product_line_id": "pl_8f2de3d80d5811421451cfe9",
+      "review_family_id": "rf_8f2de3d80d5811421451cfe9",
+      "brand_name": "Catkin",
+      "category_paths": [
+        "lip"
+      ],
+      "market": "US",
+      "availability_state": "available",
+      "publish_state": "public",
+      "title": "CATKIN Tinted Glossy Lip Balm",
+      "subtitle": "CATKIN Glossy Lip Balm would change your impression of solid lip balms. It effortlessly creates a lightweight, non-sticky glossy lip finish. Enhanced texture and application experience: effortlessly buildable with multiple layers, maintaining a radiant, smooth finish.",
+      "variant_axes": {
+        "color": "c01 anthurium",
+        "shade": "c01 anthurium",
+        "multi_variant": false
+      },
+      "size": null,
+      "shade": null,
+      "pack": null,
+      "hero_media": {
+        "url": "https://cdn.shopify.com/s/files/1/0396/2660/4700/files/C01_0e926594-b7b6-4390-84aa-6022729f73ba.jpg?v=1754558460",
+        "source_kind": "catalog",
+        "source_tier": "catalog"
+      },
+      "preview_media": [
+        "https://cdn.shopify.com/s/files/1/0396/2660/4700/files/C01_0e926594-b7b6-4390-84aa-6022729f73ba.jpg?v=1754558460",
+        "https://cdn.shopify.com/s/files/1/0396/2660/4700/files/2_89d6b5c0-8ae5-4e10-b85c-5b17d1047b16.jpg?v=1754558460",
+        "https://cdn.shopify.com/s/files/1/0396/2660/4700/files/C01_8acca4b3-b55b-422c-9e09-dd5024d0ce5f.jpg?v=1754558460",
+        "https://cdn.shopify.com/s/files/1/0396/2660/4700/files/C02_dad8c8e5-6737-4952-8c87-482702029b72.jpg?v=1754558460",
+        "https://cdn.shopify.com/s/files/1/0396/2660/4700/files/C02_da4f5747-4891-406a-9969-452a402f88cf.jpg?v=1754558460",
+        "https://cdn.shopify.com/s/files/1/0396/2660/4700/files/C03_e99a309b-9243-4e10-b66c-3a30d36782e4.jpg?v=1754558460",
+        "https://cdn.shopify.com/s/files/1/0396/2660/4700/files/C03_222a176e-1b29-4e69-9c12-4072d2bf70ae.jpg?v=1754558460",
+        "https://cdn.shopify.com/s/files/1/0396/2660/4700/files/C04_fe4f3b30-5c70-41f7-a865-d3c3dfdfe103.jpg?v=1754558460"
+      ],
+      "price_min": 19.99,
+      "price_max": 19.99,
+      "default_offer_id": "external_seed:ext_2612d5b85415a73f1b2d5635",
+      "internal_offer_exists": false,
+      "external_offer_exists": true,
+      "pivota_insight_status": "available",
+      "pivota_insight_summary": "CATKIN Tinted Glossy Lip Balm is a tinted lip balm from Catkin in C01 ANTHURIUM, with source-backed cues around shine finish, shade clarity and comfort-oriented lip care.",
+      "quality_score": null,
+      "browse_score": null,
+      "facet_tokens": [
+        "Catkin",
+        "lip"
+      ],
+      "sort_keys": {
+        "price_min": 19.99,
+        "price_max": 19.99,
+        "updated_at": null
+      },
+      "updated_at": null,
+      "source_refs": [
+        "external_seed:ext_2612d5b85415a73f1b2d5635"
+      ]
+    },
+    {
+      "doc_id": "sellable:sig_adaa43baf09eb82f519632e72ef9386f",
+      "sellable_item_group_id": "sig_adaa43baf09eb82f519632e72ef9386f",
+      "product_line_id": "pl_7d288cbc7f4f350c9ea4d369",
+      "review_family_id": "rf_7d288cbc7f4f350c9ea4d369",
+      "brand_name": "fenty beauty",
+      "category_paths": [
+        "Makeup Brush"
+      ],
+      "market": "US",
+      "availability_state": "available",
+      "publish_state": "public",
+      "title": "Precise Definition Eyeshadow Brush 220",
+      "subtitle": "A precision eyeshadow brush featuring a unique flattened tapered tip perfect for effortless smudging.",
+      "variant_axes": {
+        "shade": "220",
+        "multi_variant": false
+      },
+      "size": null,
+      "shade": null,
+      "pack": null,
+      "hero_media": {
+        "url": "https://cdn.shopify.com/s/files/1/0341/3458/9485/products/42156.jpg?v=1762198252",
+        "source_kind": "catalog",
+        "source_tier": "catalog"
+      },
+      "preview_media": [
+        "https://cdn.shopify.com/s/files/1/0341/3458/9485/products/42156.jpg?v=1762198252",
+        "https://cdn.shopify.com/s/files/1/0341/3458/9485/products/42156_alt1.jpg?v=1615087732",
+        "https://cdn.shopify.com/s/files/1/0341/3458/9485/products/42156_alt2.jpg?v=1615087732"
+      ],
+      "price_min": 24,
+      "price_max": 24,
+      "default_offer_id": "external_seed:ext_d9f973c170ea40e9a5e5fd3a",
+      "internal_offer_exists": false,
+      "external_offer_exists": true,
+      "pivota_insight_status": "available",
+      "pivota_insight_summary": "Precise Definition Eyeshadow Brush 220 is a makeup brush from Fenty Beauty, with source-backed cues around synthetic bristles, controlled product placement and targeted application area.",
+      "quality_score": null,
+      "browse_score": null,
+      "facet_tokens": [
+        "fenty beauty",
+        "Makeup Brush"
+      ],
+      "sort_keys": {
+        "price_min": 24,
+        "price_max": 24,
+        "updated_at": null
+      },
+      "updated_at": null,
+      "source_refs": [
+        "external_seed:ext_d9f973c170ea40e9a5e5fd3a"
+      ]
+    },
+    {
+      "doc_id": "sellable:sig_42c5be387e5cc0b6a4590ec9",
+      "sellable_item_group_id": "sig_42c5be387e5cc0b6a4590ec9",
+      "product_line_id": "pl_c99d358f4fa50a19387a8d25",
+      "review_family_id": "rf_c99d358f4fa50a19387a8d25",
+      "brand_name": "Miss Nella",
+      "category_paths": [
+        "Lip Balm"
+      ],
+      "market": "US",
+      "availability_state": "available",
+      "publish_state": "public",
+      "title": "Lip Balm",
+      "subtitle": "Perfect for everyday use, the Miss Nella Lip Balm is a must-have for little ones who love a touch of self-care. Whether it's a chilly day or just time for a bit of pampering, this balm glides on effortlessly, leaving lips feeling soft, protected, and nourished. With its gentle formula and charming design, it's the ideal companion for keeping those smiles sweet and happy! 💕",
+      "variant_axes": {
+        "color": "butter cheeks",
+        "multi_variant": true
+      },
+      "size": null,
+      "shade": null,
+      "pack": null,
+      "hero_media": {
+        "url": "https://cdn.shopify.com/s/files/1/2219/3831/files/MissNellaListinglipBalmButter-Cheeks.jpg?v=1761208886",
+        "source_kind": "catalog",
+        "source_tier": "catalog"
+      },
+      "preview_media": [
+        "https://cdn.shopify.com/s/files/1/2219/3831/files/MissNellaListinglipBalmButter-Cheeks.jpg?v=1761208886",
+        "https://cdn.shopify.com/s/files/1/2219/3831/files/MN-Model-Photo-Lip-Balm-00003-WEB.jpg?v=1771857398",
+        "https://cdn.shopify.com/s/files/1/2219/3831/files/Miss_Nella-Listing_Images-Lip-Balm-Butter_Cheeks.jpg?v=1770657927",
+        "https://cdn.shopify.com/s/files/1/2219/3831/files/MissNellaListinglipBalmCutiePie.jpg?v=1761147608",
+        "https://cdn.shopify.com/s/files/1/2219/3831/files/MissNella-ListingImages-Lip-Balm-CutiePie-AMAZON.jpg?v=1772193651",
+        "https://cdn.shopify.com/s/files/1/2219/3831/files/MissNellaListinglipBalmhoney-bunny.jpg?v=1761147651",
+        "https://cdn.shopify.com/s/files/1/2219/3831/files/MissNella-ListingImages-Lip-Balm-HoneyBunny-WEB.jpg?v=1772192515",
+        "https://cdn.shopify.com/s/files/1/2219/3831/files/MissNellaListinglipBalmluvvywuvvyy.jpg?v=1761147716"
+      ],
+      "price_min": 4.49,
+      "price_max": 4.49,
+      "default_offer_id": "external_seed:ext_cf0f60c66afa3fb09944df4d",
+      "internal_offer_exists": false,
+      "external_offer_exists": true,
+      "pivota_insight_status": "available",
+      "pivota_insight_summary": "Lip Balm is a lip balm from Miss Nella, with source-backed cues around comfort-oriented lip care.",
+      "quality_score": null,
+      "browse_score": null,
+      "facet_tokens": [
+        "Miss Nella",
+        "Lip Balm"
+      ],
+      "sort_keys": {
+        "price_min": 4.49,
+        "price_max": 4.49,
+        "updated_at": null
+      },
+      "updated_at": null,
+      "source_refs": [
+        "external_seed:ext_cf0f60c66afa3fb09944df4d"
+      ]
+    },
+    {
+      "doc_id": "sellable:sig_07147f32bbd1a55efb6892a6",
+      "sellable_item_group_id": "sig_07147f32bbd1a55efb6892a6",
+      "product_line_id": "pl_b76efa536278ed22598c79ab",
+      "review_family_id": "rf_b76efa536278ed22598c79ab",
+      "brand_name": "Miss Nella",
+      "category_paths": [
+        "Nail Stickers"
+      ],
+      "market": "US",
+      "availability_state": "available",
+      "publish_state": "public",
+      "title": "Nail Stickers",
+      "subtitle": "Get salon-perfect nails in minutes! Each pack comes with 60 adorable stickers that are long-lasting, easy to apply, and perfect for every mood and occasion. Stick, style, and shine with Miss Nella!",
+      "variant_axes": {
+        "multi_variant": true
+      },
+      "size": null,
+      "shade": null,
+      "pack": null,
+      "hero_media": {
+        "url": "https://cdn.shopify.com/s/files/1/2219/3831/files/MN-NailStickersAll-Listing-001.jpg?v=1774017143",
+        "source_kind": "catalog",
+        "source_tier": "catalog"
+      },
+      "preview_media": [
+        "https://cdn.shopify.com/s/files/1/2219/3831/files/MN-NailStickersAll-Listing-001.jpg?v=1774017143",
+        "https://cdn.shopify.com/s/files/1/2219/3831/files/MissNellalistingNailstickershover.jpg?v=1774017143",
+        "https://cdn.shopify.com/s/files/1/2219/3831/files/MissNellalistingNailstickersOnceupon-anail.jpg?v=1774017143",
+        "https://cdn.shopify.com/s/files/1/2219/3831/files/MissNellalistingNailstickers2.jpg?v=1774017143",
+        "https://cdn.shopify.com/s/files/1/2219/3831/files/MissNellalistingNailstickersSnowCute.jpg?v=1774017143",
+        "https://cdn.shopify.com/s/files/1/2219/3831/files/MissNellalistingNailstickers3.jpg?v=1774017143",
+        "https://cdn.shopify.com/s/files/1/2219/3831/files/MN-Listing-Photos-Pretty-Pop-003copy2-WEB.jpg?v=1774017186",
+        "https://cdn.shopify.com/s/files/1/2219/3831/files/MN-Once-Upon-A-Nail-Lifestyle-001copy.jpg?v=1774018620"
+      ],
+      "price_min": 13.5,
+      "price_max": 13.5,
+      "default_offer_id": "external_seed:ext_b575a7ed71f0a4602a68c461",
+      "internal_offer_exists": false,
+      "external_offer_exists": true,
+      "pivota_insight_status": "available",
+      "pivota_insight_summary": "Nail Stickers is a beauty accessory from Miss Nella. Get salon-perfect nails in minutes!",
+      "quality_score": null,
+      "browse_score": null,
+      "facet_tokens": [
+        "Miss Nella",
+        "Nail Stickers"
+      ],
+      "sort_keys": {
+        "price_min": 13.5,
+        "price_max": 13.5,
+        "updated_at": null
+      },
+      "updated_at": null,
+      "source_refs": [
+        "external_seed:ext_b575a7ed71f0a4602a68c461"
+      ]
+    },
+    {
+      "doc_id": "sellable:sig_f22910f1eb7e392ea0af7dac",
+      "sellable_item_group_id": "sig_f22910f1eb7e392ea0af7dac",
+      "product_line_id": "pl_113929ddfd7cc66371d2d234",
+      "review_family_id": "rf_113929ddfd7cc66371d2d234",
+      "brand_name": "kylie cosmetics",
+      "category_paths": [],
+      "market": "US",
+      "availability_state": "available",
+      "publish_state": "public",
+      "title": "Skin Tint Blurring Elixir & Brush Duo",
+      "subtitle": "my skin tint blurring elixir & skin tint brush duo is perfect for your everyday makeup routine. the fluid tint offers light to medium coverage with a longwearing, second-skin finish. made with ultra-soft brush hairs, the brush blends and builds the formula seamlessly, leaving an airbrushed, streak-free result.",
+      "variant_axes": {
+        "pack": "2pack",
+        "multi_variant": false
+      },
+      "size": null,
+      "shade": null,
+      "pack": null,
+      "hero_media": {
+        "url": "https://cdn.shopify.com/s/files/1/0662/4598/4498/files/v1b_Skin-Tint_Bundle-1._46cae4b4-303a-418f-aba1-ec9b20073f69.jpg?v=1721752623",
+        "source_kind": "catalog",
+        "source_tier": "catalog"
+      },
+      "preview_media": [
+        "https://cdn.shopify.com/s/files/1/0662/4598/4498/files/v1b_Skin-Tint_Bundle-1._46cae4b4-303a-418f-aba1-ec9b20073f69.jpg?v=1721752623",
+        "https://cdn.shopify.com/s/files/1/0662/4598/4498/files/KJC_SKT_24_ShadeGroups_Fair_93d75b28-fee0-4665-ba63-7c2cef4d72af.jpg?v=1721752623",
+        "https://cdn.shopify.com/s/files/1/0662/4598/4498/files/KJC_SKT_24_ShadeGroups_Light_6881fb91-9e1d-4e4f-ac5d-6bb175847fa4.jpg?v=1721752623",
+        "https://cdn.shopify.com/s/files/1/0662/4598/4498/files/KJC_SKT_24_ShadeGroups_Medium_317ff474-ed3a-46df-a360-d627bca749dd.jpg?v=1721752623",
+        "https://cdn.shopify.com/s/files/1/0662/4598/4498/files/KJC_SKT_24_ShadeGroups_Tan_de817b83-9770-457a-9b5b-23b3d23b7bcb.jpg?v=1721752623",
+        "https://cdn.shopify.com/s/files/1/0662/4598/4498/files/KJC_SKT_24_ShadeGroups_Deep_fa7af8ab-5554-4cb2-b102-d0aabfa57b7b.jpg?v=1721752623",
+        "https://cdn.shopify.com/s/files/1/0662/4598/4498/files/skin_tint_arm_swatch_db7a9aca-b6b4-499d-b34d-6f1a38431909.jpg?v=1721752624",
+        "https://cdn.shopify.com/s/files/1/0662/4598/4498/files/KJC_SKT_24_Model_110_WS_67cffc04-2b85-496e-9e16-fb4043e1cc45.jpg?v=1721752623"
+      ],
+      "price_min": 56.7,
+      "price_max": 56.7,
+      "default_offer_id": "external_seed:ext_cea66b1d52bd3bbaf87429c1",
+      "internal_offer_exists": false,
+      "external_offer_exists": true,
+      "pivota_insight_status": "available",
+      "pivota_insight_summary": "Skin Tint Blurring Elixir & Brush Duo is a makeup brush from Kylie Cosmetics, with source-backed cues around controlled product placement.",
+      "quality_score": null,
+      "browse_score": null,
+      "facet_tokens": [
+        "kylie cosmetics"
+      ],
+      "sort_keys": {
+        "price_min": 56.7,
+        "price_max": 56.7,
+        "updated_at": null
+      },
+      "updated_at": null,
+      "source_refs": [
+        "external_seed:ext_cea66b1d52bd3bbaf87429c1"
+      ]
+    },
+    {
+      "doc_id": "sellable:sig_f664e67bc10a05c363e21285",
+      "sellable_item_group_id": "sig_f664e67bc10a05c363e21285",
+      "product_line_id": "pl_bb38740ee229e71c15da56f8",
+      "review_family_id": "rf_bb38740ee229e71c15da56f8",
+      "brand_name": "kylie cosmetics",
+      "category_paths": [
+        "Makeup Brush"
+      ],
+      "market": "US",
+      "availability_state": "available",
+      "publish_state": "public",
+      "title": "Makeup Brush Collection",
+      "subtitle": "my makeup brush bundle includes everything you need to achieve a smooth, airbrushed complexion and soft, diffused eye look. made with vegan, cruelty-free, ultra-soft bristles, each brush delivers seamless application and is tailored to the contours of the face or the shape of the eye.",
+      "variant_axes": {
+        "multi_variant": false
+      },
+      "size": null,
+      "shade": null,
+      "pack": null,
+      "hero_media": {
+        "url": "https://cdn.shopify.com/s/files/1/0662/4598/4498/files/v1_makeup-brush-collection_bundle.jpg?v=1759783174",
+        "source_kind": "catalog",
+        "source_tier": "catalog"
+      },
+      "preview_media": [
+        "https://cdn.shopify.com/s/files/1/0662/4598/4498/files/v1_makeup-brush-collection_bundle.jpg?v=1759783174",
+        "https://cdn.shopify.com/s/files/1/0662/4598/4498/files/KJC_CORESOCIAL_25_AllBrushes_CP_1153_Hero_WS.jpg?v=1759783174",
+        "https://cdn.shopify.com/s/files/1/0662/4598/4498/files/KJC_EYEB_25_7Brushes_CP_1059_Hero_WS_ebba8cf6-9e29-44ad-a39d-a0784e32517e.jpg?v=1759783174",
+        "https://cdn.shopify.com/s/files/1/0662/4598/4498/files/KJC_EYEB_25_4Brushes_LayingDownWEyeshadowPalettes_CP_1173_Hero_WS_f711c6c3-ead3-40b5-b1f6-c920acb1c64b.jpg?v=1759783174",
+        "http://kyliecosmetics.com/cdn/shop/files/v1_makeup-brush-collection_bundle.jpg?crop=center&v=1759783174",
+        "http://kyliecosmetics.com/cdn/shop/files/KJC_CORESOCIAL_25_AllBrushes_CP_1153_Hero_WS.jpg?crop=center&v=1759783174",
+        "http://kyliecosmetics.com/cdn/shop/files/KJC_EYEB_25_7Brushes_CP_1059_Hero_WS_ebba8cf6-9e29-44ad-a39d-a0784e32517e.jpg?crop=center&v=1759783174",
+        "https://kyliecosmetics.com/cdn/shop/files/KJC_LL_PRP_26_Lip_Butter_Butter_Cake_1_Pencil_Lip_Brush_Tips_Only_Yellow_BG_CP_496_WS.jpg?crop=center&v=1772484754"
+      ],
+      "price_min": 177.3,
+      "price_max": 177.3,
+      "default_offer_id": "external_seed:ext_088b7dd1679758b246b0f765",
+      "internal_offer_exists": false,
+      "external_offer_exists": true,
+      "pivota_insight_status": "available",
+      "pivota_insight_summary": "Makeup Brush Collection is a makeup brush from Kylie Cosmetics, with source-backed cues around targeted application area.",
+      "quality_score": null,
+      "browse_score": null,
+      "facet_tokens": [
+        "kylie cosmetics",
+        "Makeup Brush"
+      ],
+      "sort_keys": {
+        "price_min": 177.3,
+        "price_max": 177.3,
+        "updated_at": null
+      },
+      "updated_at": null,
+      "source_refs": [
+        "external_seed:ext_088b7dd1679758b246b0f765"
+      ]
+    },
+    {
+      "doc_id": "sellable:sig_4a381cd4d6fd7bfcc8747be5",
+      "sellable_item_group_id": "sig_4a381cd4d6fd7bfcc8747be5",
+      "product_line_id": "pl_c0838d555be3f2364d610ee0",
+      "review_family_id": "rf_c0838d555be3f2364d610ee0",
+      "brand_name": "kylie cosmetics",
+      "category_paths": [
+        "Makeup Brush"
+      ],
+      "market": "US",
+      "availability_state": "available",
+      "publish_state": "public",
+      "title": "Blush Brush 04",
+      "subtitle": "my blush brush 04 is a vegan and cruelty-free brush designed to effortlessly apply and blend powder, liquid, cream, and hybrid blush formulas. the ultra-soft, medium dense bristles provide a gentle bounce, while the slightly angled brush head fits the contours of your face for a cheek-hugging, seamless pop of color with a lifted, flushed blush look.",
+      "variant_axes": {
+        "multi_variant": false
+      },
+      "size": null,
+      "shade": null,
+      "pack": null,
+      "hero_media": {
+        "url": "https://cdn.shopify.com/s/files/1/0662/4598/4498/files/KJC_BB_26_Stylized.jpg?v=1759763935",
+        "source_kind": "catalog",
+        "source_tier": "catalog"
+      },
+      "preview_media": [
+        "https://cdn.shopify.com/s/files/1/0662/4598/4498/files/KJC_BB_26_Stylized.jpg?v=1759763935",
+        "https://cdn.shopify.com/s/files/1/0662/4598/4498/files/KJC_HYBBLS_25_Textures_WinterKissed20_PalePinkGreyBackground_CP_981_Hero_WS.jpg?v=1759847921",
+        "https://cdn.shopify.com/s/files/1/0662/4598/4498/files/KJC_CORESOCIAL_25_LadyBugHybridBlush_4BlushBrush_CP_051_Hero_WS.jpg?v=1759847921",
+        "http://kyliecosmetics.com/cdn/shop/files/KJC_CORESOCIAL_25_LadyBugHybridBlush_4BlushBrush_CP_051_Hero_WS.jpg?crop=center&v=1759847921",
+        "https://kyliecosmetics.com/cdn/shop/files/KJC_LL_PRP_26_Lip_Butter_Butter_Cake_1_Pencil_Lip_Brush_Tips_Only_Yellow_BG_CP_496_WS.jpg?crop=center&v=1772484754"
+      ],
+      "price_min": 25,
+      "price_max": 25,
+      "default_offer_id": "external_seed:ext_2f2e812e576dc5621c97f9ac",
+      "internal_offer_exists": false,
+      "external_offer_exists": true,
+      "pivota_insight_status": "available",
+      "pivota_insight_summary": "Blush Brush 04 is a makeup brush from Kylie Cosmetics, with source-backed cues around controlled product placement and targeted application area.",
+      "quality_score": null,
+      "browse_score": null,
+      "facet_tokens": [
+        "kylie cosmetics",
+        "Makeup Brush"
+      ],
+      "sort_keys": {
+        "price_min": 25,
+        "price_max": 25,
+        "updated_at": null
+      },
+      "updated_at": null,
+      "source_refs": [
+        "external_seed:ext_2f2e812e576dc5621c97f9ac"
+      ]
+    },
+    {
+      "doc_id": "sellable:sig_e47b36a7fa7771a20c420e2f",
+      "sellable_item_group_id": "sig_e47b36a7fa7771a20c420e2f",
+      "product_line_id": "pl_1944d49f63f69cadb4ac1341",
+      "review_family_id": "rf_1944d49f63f69cadb4ac1341",
+      "brand_name": "kylie cosmetics",
+      "category_paths": [
+        "Makeup Brush"
+      ],
+      "market": "US",
+      "availability_state": "available",
+      "publish_state": "public",
+      "title": "Concealer Brush 02",
+      "subtitle": "my Concealer Brush 02 is a vegan and cruelty-free makeup brush that seamlessly blends cream and liquid formulas to an airbrushed finish. designed in a tapered shape, it offers precise application and easily fits in hard-to-reach areas while the soft, silky brush hairs deliver a streak-free, flawless result.",
+      "variant_axes": {
+        "multi_variant": false
+      },
+      "size": null,
+      "shade": null,
+      "pack": null,
+      "hero_media": {
+        "url": "https://cdn.shopify.com/s/files/1/0662/4598/4498/files/StylizedConcealerBrush.jpg?v=1721681290",
+        "source_kind": "catalog",
+        "source_tier": "catalog"
+      },
+      "preview_media": [
+        "https://cdn.shopify.com/s/files/1/0662/4598/4498/files/StylizedConcealerBrush.jpg?v=1721681290",
+        "https://cdn.shopify.com/s/files/1/0662/4598/4498/files/KJC_PPCONCEALER_23_Infographic_ConcealerBrush.jpg?v=1721681290",
+        "https://cdn.shopify.com/s/files/1/0662/4598/4498/files/PhotoJun152023_113839AM.jpg?v=1721681290",
+        "http://kyliecosmetics.com/cdn/shop/files/StylizedConcealerBrush.jpg?crop=center&v=1721681290",
+        "http://kyliecosmetics.com/cdn/shop/files/KJC_PPCONCEALER_23_Infographic_ConcealerBrush.jpg?crop=center&v=1721681290",
+        "https://kyliecosmetics.com/cdn/shop/files/KJC_LL_PRP_26_Lip_Butter_Butter_Cake_1_Pencil_Lip_Brush_Tips_Only_Yellow_BG_CP_496_WS.jpg?crop=center&v=1772484754"
+      ],
+      "price_min": 23,
+      "price_max": 23,
+      "default_offer_id": "external_seed:ext_a69210e7e4fb16d94821f93a",
+      "internal_offer_exists": false,
+      "external_offer_exists": true,
+      "pivota_insight_status": "available",
+      "pivota_insight_summary": "Concealer Brush 02 is a makeup brush from Kylie Cosmetics, with source-backed cues around controlled product placement and targeted application area.",
+      "quality_score": null,
+      "browse_score": null,
+      "facet_tokens": [
+        "kylie cosmetics",
+        "Makeup Brush"
+      ],
+      "sort_keys": {
+        "price_min": 23,
+        "price_max": 23,
+        "updated_at": null
+      },
+      "updated_at": null,
+      "source_refs": [
+        "external_seed:ext_a69210e7e4fb16d94821f93a"
+      ]
+    },
+    {
+      "doc_id": "sellable:sig_c1f47b71334a387284e9acb7",
+      "sellable_item_group_id": "sig_c1f47b71334a387284e9acb7",
+      "product_line_id": "pl_76a1b989c31534d0146bcb8b",
+      "review_family_id": "rf_76a1b989c31534d0146bcb8b",
+      "brand_name": "kylie cosmetics",
+      "category_paths": [
+        "Makeup Brush"
+      ],
+      "market": "US",
+      "availability_state": "available",
+      "publish_state": "public",
+      "title": "Foundation Brush 01",
+      "subtitle": "my foundation brush 01 is a vegan and cruelty-free brush that seamlessly blends and builds liquid or cream foundation, blush, bronzer, and highlighter. Designed in a slightly angled shape, the ultra-soft, densely packed bristles offer easy application and fit the contours of your face for a smooth, flawless finish.",
+      "variant_axes": {
+        "multi_variant": false
+      },
+      "size": null,
+      "shade": null,
+      "pack": null,
+      "hero_media": {
+        "url": "https://cdn.shopify.com/s/files/1/0662/4598/4498/files/KJC_FNDPBP_24_Stylized_b82747d1-310b-4d7c-a9ab-e64abfad1429.jpg?v=1705447407",
+        "source_kind": "catalog",
+        "source_tier": "catalog"
+      },
+      "preview_media": [
+        "https://cdn.shopify.com/s/files/1/0662/4598/4498/files/KJC_FNDPBP_24_Stylized_b82747d1-310b-4d7c-a9ab-e64abfad1429.jpg?v=1705447407",
+        "https://cdn.shopify.com/s/files/1/0662/4598/4498/files/PhotoNov022023_24433PM-2copy.jpg?v=1705447407",
+        "https://cdn.shopify.com/s/files/1/0662/4598/4498/files/KJC_FDNBPB_24_Infographic_MainClaims.jpg?v=1705447408",
+        "https://kyliecosmetics.com/cdn/shop/files/KJC_LL_PRP_26_Lip_Butter_Butter_Cake_1_Pencil_Lip_Brush_Tips_Only_Yellow_BG_CP_496_WS.jpg?crop=center&v=1772484754"
+      ],
+      "price_min": 32,
+      "price_max": 32,
+      "default_offer_id": "external_seed:ext_8a7e86531f12be78d40e34b0",
+      "internal_offer_exists": false,
+      "external_offer_exists": true,
+      "pivota_insight_status": "available",
+      "pivota_insight_summary": "Foundation Brush 01 is a makeup brush from Kylie Cosmetics, with source-backed cues around controlled product placement and targeted application area.",
+      "quality_score": null,
+      "browse_score": null,
+      "facet_tokens": [
+        "kylie cosmetics",
+        "Makeup Brush"
+      ],
+      "sort_keys": {
+        "price_min": 32,
+        "price_max": 32,
+        "updated_at": null
+      },
+      "updated_at": null,
+      "source_refs": [
+        "external_seed:ext_8a7e86531f12be78d40e34b0"
+      ]
+    },
+    {
+      "doc_id": "sellable:sig_38e472c21e2b03b7468e32cb",
+      "sellable_item_group_id": "sig_38e472c21e2b03b7468e32cb",
+      "product_line_id": "pl_a7c48450698247d49eafe1e8",
+      "review_family_id": "rf_a7c48450698247d49eafe1e8",
+      "brand_name": "kylie cosmetics",
+      "category_paths": [
+        "Makeup Brush"
+      ],
+      "market": "US",
+      "availability_state": "available",
+      "publish_state": "public",
+      "title": "Concealer & Foundation Brush Duo",
+      "subtitle": "my vegan and cruelty-free concealer & foundation brush duo is exactly what you need to complete your full face makeup look. use the foundation brush 01 to seamlessly blend and build liquid or cream foundation, blush, bronzer or highlighter, and apply your concealer with the concealer brush 02, which is perfect for blending hard-to-reach areas.",
+      "variant_axes": {
+        "pack": "2pack",
+        "multi_variant": false
+      },
+      "size": null,
+      "shade": null,
+      "pack": null,
+      "hero_media": {
+        "url": "https://cdn.shopify.com/s/files/1/0662/4598/4498/files/011724_FoundationBundles_Concealer_FoundationBrushDuo.jpg?v=1705447551",
+        "source_kind": "catalog",
+        "source_tier": "catalog"
+      },
+      "preview_media": [
+        "https://cdn.shopify.com/s/files/1/0662/4598/4498/files/011724_FoundationBundles_Concealer_FoundationBrushDuo.jpg?v=1705447551",
+        "https://cdn.shopify.com/s/files/1/0662/4598/4498/files/KJC_FDNBPB_24_Infographic_MainClaims_737b34df-7a82-4b26-b849-cbb31592b481.jpg?v=1705447551",
+        "https://cdn.shopify.com/s/files/1/0662/4598/4498/files/KJC_PPCONCEALER_23_Infographic_ConcealerBrush_ffe4abf7-0be1-4ffd-b0e4-a0cb6bb76ecd.jpg?v=1705447552",
+        "http://kyliecosmetics.com/cdn/shop/files/011724_FoundationBundles_Concealer_FoundationBrushDuo.jpg?crop=center&v=1705447551",
+        "http://kyliecosmetics.com/cdn/shop/files/KJC_PPCONCEALER_23_Infographic_ConcealerBrush_ffe4abf7-0be1-4ffd-b0e4-a0cb6bb76ecd.jpg?crop=center&v=1705447552",
+        "https://kyliecosmetics.com/cdn/shop/files/KJC_LL_PRP_26_Lip_Butter_Butter_Cake_1_Pencil_Lip_Brush_Tips_Only_Yellow_BG_CP_496_WS.jpg?crop=center&v=1772484754"
+      ],
+      "price_min": 49.5,
+      "price_max": 49.5,
+      "default_offer_id": "external_seed:ext_184fb0fb417ee502968f6561",
+      "internal_offer_exists": false,
+      "external_offer_exists": true,
+      "pivota_insight_status": "available",
+      "pivota_insight_summary": "Concealer & Foundation Brush Duo is a makeup brush from Kylie Cosmetics, with source-backed cues around controlled product placement and targeted application area.",
+      "quality_score": null,
+      "browse_score": null,
+      "facet_tokens": [
+        "kylie cosmetics",
+        "Makeup Brush"
+      ],
+      "sort_keys": {
+        "price_min": 49.5,
+        "price_max": 49.5,
+        "updated_at": null
+      },
+      "updated_at": null,
+      "source_refs": [
+        "external_seed:ext_184fb0fb417ee502968f6561"
+      ]
+    },
+    {
+      "doc_id": "sellable:sig_82158fc0fa0440a0f07c3858",
+      "sellable_item_group_id": "sig_82158fc0fa0440a0f07c3858",
+      "product_line_id": "pl_33bf43f30edaaef0e7207949",
+      "review_family_id": "rf_33bf43f30edaaef0e7207949",
+      "brand_name": "kylie cosmetics",
+      "category_paths": [
+        "Foundation"
+      ],
+      "market": "US",
+      "availability_state": "available",
+      "publish_state": "public",
+      "title": "Power Plush Foundation & Brush Duo",
+      "subtitle": "this duo features my power plush longwear foundation and foundation brush 01, which together create a smooth and flawless makeup finish. the foundation provides medium, buildable coverage and up to 12 hours of wear while the ultra-soft, densely packed brush delivers streak-free results.",
+      "variant_axes": {
+        "pack": "2pack",
+        "multi_variant": false
+      },
+      "size": null,
+      "shade": null,
+      "pack": null,
+      "hero_media": {
+        "url": "https://cdn.shopify.com/s/files/1/0662/4598/4498/files/011724_FoundationBundles_PowerPlushFoundationDuo_77c12b81-be40-4fa1-bbdc-99087172118d.jpg?v=1705447453",
+        "source_kind": "catalog",
+        "source_tier": "catalog"
+      },
+      "preview_media": [
+        "https://cdn.shopify.com/s/files/1/0662/4598/4498/files/011724_FoundationBundles_PowerPlushFoundationDuo_77c12b81-be40-4fa1-bbdc-99087172118d.jpg?v=1705447453",
+        "https://cdn.shopify.com/s/files/1/0662/4598/4498/files/KJC_PPFOUNDATION_24_ShadeGroup_FairShades_1_6bcf6507-0735-499a-b60d-9f9211feda08.jpg?v=1705447453",
+        "https://cdn.shopify.com/s/files/1/0662/4598/4498/files/KJC_PPFOUNDATION_24_ShadeGroup_LightShades_1_e4fc6a90-687e-48d2-9540-d0935e2b649d.jpg?v=1705447454",
+        "https://cdn.shopify.com/s/files/1/0662/4598/4498/files/KJC_PPFOUNDATION_24_ShadeGroup_MediumShades_1_325bd1dd-83bf-4561-8d8b-f16457f98673.jpg?v=1705447452",
+        "https://cdn.shopify.com/s/files/1/0662/4598/4498/files/KJC_PPFOUNDATION_24_ShadeGroup_TanShades_1_421d08c6-30bf-40a7-b61f-d26a2ec12e76.jpg?v=1705447452",
+        "https://cdn.shopify.com/s/files/1/0662/4598/4498/files/KJC_PPFOUNDATION_24_ShadeGroup_DeepShades_1_f07046e3-6cf6-4e60-9aa9-4c6a998a356a.jpg?v=1705447453",
+        "https://cdn.shopify.com/s/files/1/0662/4598/4498/files/KJC_FDN_24_PP_Armswatch_384b3a86-afaf-45b4-8716-a275c8d52bb8.jpg?v=1705447454",
+        "https://cdn.shopify.com/s/files/1/0662/4598/4498/files/PhotoNov022023_24433PM-2copy_da6fa8b6-562a-485f-9386-49c445f978cf.jpg?v=1705447453"
+      ],
+      "price_min": 63,
+      "price_max": 63,
+      "default_offer_id": "external_seed:ext_e690d3ff632751047e15af4f",
+      "internal_offer_exists": false,
+      "external_offer_exists": true,
+      "pivota_insight_status": "available",
+      "pivota_insight_summary": "Power Plush Foundation & Brush Duo is a makeup brush from Kylie Cosmetics, with source-backed cues around controlled product placement.",
+      "quality_score": null,
+      "browse_score": null,
+      "facet_tokens": [
+        "kylie cosmetics",
+        "Foundation"
+      ],
+      "sort_keys": {
+        "price_min": 63,
+        "price_max": 63,
+        "updated_at": null
+      },
+      "updated_at": null,
+      "source_refs": [
+        "external_seed:ext_e690d3ff632751047e15af4f"
+      ]
+    },
+    {
+      "doc_id": "sellable:sig_efdcc353af02670ffc75539a",
+      "sellable_item_group_id": "sig_efdcc353af02670ffc75539a",
+      "product_line_id": "pl_3f92a76f53a8333ceaf49851",
+      "review_family_id": "rf_3f92a76f53a8333ceaf49851",
+      "brand_name": "kylie cosmetics",
+      "category_paths": [
+        "Makeup Brush"
+      ],
+      "market": "US",
+      "availability_state": "available",
+      "publish_state": "public",
+      "title": "Eyeshadow Shader Brush 06",
+      "subtitle": "my eyeshadow shader brush 06 is a vegan and cruelty-free flat brush with short and dense bristles designed to buff, shade, and pack on color. with precise application and seamless blending, it's perfect for creating a soft eyeliner effect with eyeshadows. versatile enough to work with cream and powder formulas, it delivers controlled, buildable payoff.",
+      "variant_axes": {
+        "multi_variant": false
+      },
+      "size": null,
+      "shade": null,
+      "pack": null,
+      "hero_media": {
+        "url": "https://cdn.shopify.com/s/files/1/0662/4598/4498/files/eyeshadow-shader-brush_c432861a-dc07-43ba-bf2d-f82d2b73349b.jpg?v=1755632537",
+        "source_kind": "catalog",
+        "source_tier": "catalog"
+      },
+      "preview_media": [
+        "https://cdn.shopify.com/s/files/1/0662/4598/4498/files/eyeshadow-shader-brush_c432861a-dc07-43ba-bf2d-f82d2b73349b.jpg?v=1755632537",
+        "https://cdn.shopify.com/s/files/1/0662/4598/4498/files/v1_Single-Eyeshadow-Brushe_ecomm_1ce325c3-aef0-496c-b014-a5985d0d9cdc.jpg?v=1755632537",
+        "https://cdn.shopify.com/s/files/1/0662/4598/4498/files/KJC_EYEB_25_Brush6_Eyeshadow_Sable_CP_859_Hero_WS_1261742c-6c86-4c52-87fa-5d2abf0ed6c0.jpg?v=1755632537",
+        "http://kyliecosmetics.com/cdn/shop/files/eyeshadow-shader-brush_c432861a-dc07-43ba-bf2d-f82d2b73349b.jpg?crop=center&v=1755632537",
+        "http://kyliecosmetics.com/cdn/shop/files/v1_Single-Eyeshadow-Brushe_ecomm_1ce325c3-aef0-496c-b014-a5985d0d9cdc.jpg?crop=center&v=1755632537",
+        "http://kyliecosmetics.com/cdn/shop/files/KJC_EYEB_25_Brush6_Eyeshadow_Sable_CP_859_Hero_WS_1261742c-6c86-4c52-87fa-5d2abf0ed6c0.jpg?crop=center&v=1755632537",
+        "https://kyliecosmetics.com/cdn/shop/files/KJC_LL_PRP_26_Lip_Butter_Butter_Cake_1_Pencil_Lip_Brush_Tips_Only_Yellow_BG_CP_496_WS.jpg?crop=center&v=1772484754"
+      ],
+      "price_min": 22,
+      "price_max": 22,
+      "default_offer_id": "external_seed:ext_09a1e569c6ad048bab07bd9f",
+      "internal_offer_exists": false,
+      "external_offer_exists": true,
+      "pivota_insight_status": "available",
+      "pivota_insight_summary": "Eyeshadow Shader Brush 06 is a makeup brush from Kylie Cosmetics, with source-backed cues around controlled product placement.",
+      "quality_score": null,
+      "browse_score": null,
+      "facet_tokens": [
+        "kylie cosmetics",
+        "Makeup Brush"
+      ],
+      "sort_keys": {
+        "price_min": 22,
+        "price_max": 22,
+        "updated_at": null
+      },
+      "updated_at": null,
+      "source_refs": [
+        "external_seed:ext_09a1e569c6ad048bab07bd9f"
+      ]
+    },
+    {
+      "doc_id": "sellable:sig_942d9c8b6a054f12c9f7362b",
+      "sellable_item_group_id": "sig_942d9c8b6a054f12c9f7362b",
+      "product_line_id": "pl_a4d0abb1f2aa3f6605671bb9",
+      "review_family_id": "rf_a4d0abb1f2aa3f6605671bb9",
+      "brand_name": "kylie cosmetics",
+      "category_paths": [
+        "Makeup Brush"
+      ],
+      "market": "US",
+      "availability_state": "available",
+      "publish_state": "public",
+      "title": "Face Brush Trio",
+      "subtitle": "my vegan and cruelty-free face brush trio seamlessly blends any liquid or cream makeup to an airbrushed finish. use the foundation brush 01 for foundation, blush, bronzer, or highlighter. use the concealer brush 02 to spot conceal or blend hard-to-reach areas. and use the skin tint brush 03 for a more natural finish and easy clean-up around the brows and lips.",
+      "variant_axes": {
+        "pack": "3pack",
+        "multi_variant": false
+      },
+      "size": null,
+      "shade": null,
+      "pack": null,
+      "hero_media": {
+        "url": "https://cdn.shopify.com/s/files/1/0662/4598/4498/files/KJC_SKTBrushBUNDLE_24_Stylized-2_aeed8ac7-f6de-4e4d-95ae-bdcc0a8dc004.jpg?v=1721752647",
+        "source_kind": "catalog",
+        "source_tier": "catalog"
+      },
+      "preview_media": [
+        "https://cdn.shopify.com/s/files/1/0662/4598/4498/files/KJC_SKTBrushBUNDLE_24_Stylized-2_aeed8ac7-f6de-4e4d-95ae-bdcc0a8dc004.jpg?v=1721752647",
+        "https://cdn.shopify.com/s/files/1/0662/4598/4498/files/v1_foundation-brush_66c458c8-8d07-4750-bbee-0deb5c1c361d.jpg?v=1721752646",
+        "https://cdn.shopify.com/s/files/1/0662/4598/4498/files/v1_skin--tint_brush_b15eb2dc-8212-4308-98e7-3c253ba6e274.jpg?v=1721752646",
+        "https://cdn.shopify.com/s/files/1/0662/4598/4498/files/v1_Concealer-Brush_ee3fa129-097d-40ec-a25b-bcc5f39aa606.jpg?v=1721752647",
+        "http://kyliecosmetics.com/cdn/shop/files/KJC_SKTBrushBUNDLE_24_Stylized-2_aeed8ac7-f6de-4e4d-95ae-bdcc0a8dc004.jpg?crop=center&v=1721752647",
+        "http://kyliecosmetics.com/cdn/shop/files/v1_foundation-brush_66c458c8-8d07-4750-bbee-0deb5c1c361d.jpg?crop=center&v=1721752646",
+        "http://kyliecosmetics.com/cdn/shop/files/v1_skin--tint_brush_b15eb2dc-8212-4308-98e7-3c253ba6e274.jpg?crop=center&v=1721752646",
+        "https://kyliecosmetics.com/cdn/shop/files/KJC_LL_PRP_26_Lip_Butter_Butter_Cake_1_Pencil_Lip_Brush_Tips_Only_Yellow_BG_CP_496_WS.jpg?crop=center&v=1772484754"
+      ],
+      "price_min": 75.6,
+      "price_max": 75.6,
+      "default_offer_id": "external_seed:ext_5033183a38a7012d67c399e7",
+      "internal_offer_exists": false,
+      "external_offer_exists": true,
+      "pivota_insight_status": "available",
+      "pivota_insight_summary": "Face Brush Trio is a makeup brush from Kylie Cosmetics, with source-backed cues around controlled product placement and targeted application area.",
+      "quality_score": null,
+      "browse_score": null,
+      "facet_tokens": [
+        "kylie cosmetics",
+        "Makeup Brush"
+      ],
+      "sort_keys": {
+        "price_min": 75.6,
+        "price_max": 75.6,
+        "updated_at": null
+      },
+      "updated_at": null,
+      "source_refs": [
+        "external_seed:ext_5033183a38a7012d67c399e7"
+      ]
+    },
+    {
+      "doc_id": "sellable:sig_501b9a55c2342893600bd310",
+      "sellable_item_group_id": "sig_501b9a55c2342893600bd310",
+      "product_line_id": "pl_ca5bcfa8335d289102f96b8a",
+      "review_family_id": "rf_ca5bcfa8335d289102f96b8a",
+      "brand_name": "kylie cosmetics",
+      "category_paths": [
+        "Makeup Brush"
+      ],
+      "market": "US",
+      "availability_state": "available",
+      "publish_state": "public",
+      "title": "Skin Tint Brush 03",
+      "subtitle": "my skin tint brush 03 is a vegan and cruelty-free makeup brush that effortlessly blends and builds liquid or cream formulas. designed in a tapered shape, its ultra-soft and densely packed bristles offer precise application and an airbrushed, streak-free result.",
+      "variant_axes": {
+        "shade": "one piece",
+        "multi_variant": false
+      },
+      "size": null,
+      "shade": null,
+      "pack": null,
+      "hero_media": {
+        "url": "https://cdn.shopify.com/s/files/1/0662/4598/4498/files/skin_tint_brush_e76f5c38-613d-4cbb-b688-26ffe65c8eef.jpg?v=1721749335",
+        "source_kind": "catalog",
+        "source_tier": "catalog"
+      },
+      "preview_media": [
+        "https://cdn.shopify.com/s/files/1/0662/4598/4498/files/skin_tint_brush_e76f5c38-613d-4cbb-b688-26ffe65c8eef.jpg?v=1721749335",
+        "https://cdn.shopify.com/s/files/1/0662/4598/4498/files/KJC_SKT_24_Model_153_WS_630ff9c1-f1ac-4b34-9c43-03716577aaf4.jpg?v=1721749335",
+        "https://cdn.shopify.com/s/files/1/0662/4598/4498/files/KJC_SKTBrush_24_Infographic_MainClaims_4f1d26c7-735b-4e07-84ef-071cdfe58c4a.jpg?v=1721749335",
+        "http://kyliecosmetics.com/cdn/shop/files/skin_tint_brush_e76f5c38-613d-4cbb-b688-26ffe65c8eef.jpg?crop=center&v=1721749335",
+        "http://kyliecosmetics.com/cdn/shop/files/KJC_SKTBrush_24_Infographic_MainClaims_4f1d26c7-735b-4e07-84ef-071cdfe58c4a.jpg?crop=center&v=1721749335",
+        "https://kyliecosmetics.com/cdn/shop/files/KJC_LL_PRP_26_Lip_Butter_Butter_Cake_1_Pencil_Lip_Brush_Tips_Only_Yellow_BG_CP_496_WS.jpg?crop=center&v=1772484754"
+      ],
+      "price_min": 29,
+      "price_max": 29,
+      "default_offer_id": "external_seed:ext_fd19e1a7d0699620fe0eabc2",
+      "internal_offer_exists": false,
+      "external_offer_exists": true,
+      "pivota_insight_status": "available",
+      "pivota_insight_summary": "Skin Tint Brush 03 is a makeup brush from Kylie Cosmetics, with source-backed cues around controlled product placement and targeted application area.",
+      "quality_score": null,
+      "browse_score": null,
+      "facet_tokens": [
+        "kylie cosmetics",
+        "Makeup Brush"
+      ],
+      "sort_keys": {
+        "price_min": 29,
+        "price_max": 29,
+        "updated_at": null
+      },
+      "updated_at": null,
+      "source_refs": [
+        "external_seed:ext_fd19e1a7d0699620fe0eabc2"
+      ]
+    },
+    {
+      "doc_id": "sellable:sig_064393022d73e98a8186908d",
+      "sellable_item_group_id": "sig_064393022d73e98a8186908d",
+      "product_line_id": "pl_a2e157146f37e7d2696f91fd",
+      "review_family_id": "rf_a2e157146f37e7d2696f91fd",
+      "brand_name": "kylie cosmetics",
+      "category_paths": [
+        "Makeup Brush"
+      ],
+      "market": "US",
+      "availability_state": "available",
+      "publish_state": "public",
+      "title": "Eyeshadow Crease Blending Brush 08",
+      "subtitle": "my eyeshadow crease blending brush 08 is a vegan and cruelty-free brush that blends and builds color in the crease with ease. its slightly dense bristles and rounded, tapered shape fit the eye, allowing for detailed shading, precise sculpting, and soft definition. ideal for creating sheer washes of color to contoured looks, it leaves a diffused finish without any patches or streaks.",
+      "variant_axes": {
+        "multi_variant": false
+      },
+      "size": null,
+      "shade": null,
+      "pack": null,
+      "hero_media": {
+        "url": "https://cdn.shopify.com/s/files/1/0662/4598/4498/files/eyeshadow-crease-blending-brush_15131e27-290b-4eab-a582-c874291b284d.jpg?v=1755632186",
+        "source_kind": "catalog",
+        "source_tier": "catalog"
+      },
+      "preview_media": [
+        "https://cdn.shopify.com/s/files/1/0662/4598/4498/files/eyeshadow-crease-blending-brush_15131e27-290b-4eab-a582-c874291b284d.jpg?v=1755632186",
+        "https://cdn.shopify.com/s/files/1/0662/4598/4498/files/v3_Single-Eyeshadow-Brushe_ecomm_bfef91e6-01a0-4cca-8f5b-5a199f1b153a.jpg?v=1755632186",
+        "https://cdn.shopify.com/s/files/1/0662/4598/4498/files/KJC_EYEB_25_Brush8_HalfBrushAngle_Umber_CP_819_Hero_WS_57bfb351-0956-4510-bb73-2842681fddf1.jpg?v=1755632186",
+        "http://kyliecosmetics.com/cdn/shop/files/eyeshadow-crease-blending-brush_15131e27-290b-4eab-a582-c874291b284d.jpg?crop=center&v=1755632186",
+        "http://kyliecosmetics.com/cdn/shop/files/v3_Single-Eyeshadow-Brushe_ecomm_bfef91e6-01a0-4cca-8f5b-5a199f1b153a.jpg?crop=center&v=1755632186",
+        "http://kyliecosmetics.com/cdn/shop/files/KJC_EYEB_25_Brush8_HalfBrushAngle_Umber_CP_819_Hero_WS_57bfb351-0956-4510-bb73-2842681fddf1.jpg?crop=center&v=1755632186",
+        "https://kyliecosmetics.com/cdn/shop/files/KJC_LL_PRP_26_Lip_Butter_Butter_Cake_1_Pencil_Lip_Brush_Tips_Only_Yellow_BG_CP_496_WS.jpg?crop=center&v=1772484754"
+      ],
+      "price_min": 22,
+      "price_max": 22,
+      "default_offer_id": "external_seed:ext_2596e8c667fab6de082050bb",
+      "internal_offer_exists": false,
+      "external_offer_exists": true,
+      "pivota_insight_status": "available",
+      "pivota_insight_summary": "Eyeshadow Crease Blending Brush 08 is a makeup brush from Kylie Cosmetics, with source-backed cues around controlled product placement and targeted application area.",
+      "quality_score": null,
+      "browse_score": null,
+      "facet_tokens": [
+        "kylie cosmetics",
+        "Makeup Brush"
+      ],
+      "sort_keys": {
+        "price_min": 22,
+        "price_max": 22,
+        "updated_at": null
+      },
+      "updated_at": null,
+      "source_refs": [
+        "external_seed:ext_2596e8c667fab6de082050bb"
+      ]
+    },
+    {
+      "doc_id": "sellable:sig_9d2eeea282dcdf2cfa9242d3",
+      "sellable_item_group_id": "sig_9d2eeea282dcdf2cfa9242d3",
+      "product_line_id": "pl_f2fee036c915a45deece2fa6",
+      "review_family_id": "rf_f2fee036c915a45deece2fa6",
+      "brand_name": "kylie cosmetics",
+      "category_paths": [
+        "Makeup Brush"
+      ],
+      "market": "US",
+      "availability_state": "available",
+      "publish_state": "public",
+      "title": "Eyeshadow Packing Brush 09",
+      "subtitle": "my eyeshadow packing brush 09 is a vegan and cruelty-free rounded flat brush that packs on eyeshadow with control and ease. its dense yet flexible bristles conform to the eyelid’s shape, offering medium to intense color payoff. great with powder, cream, or shimmer formulas and for all-over application, cut-crease looks, or adding detail to the brow bone and lash line.",
+      "variant_axes": {
+        "multi_variant": false
+      },
+      "size": null,
+      "shade": null,
+      "pack": null,
+      "hero_media": {
+        "url": "https://cdn.shopify.com/s/files/1/0662/4598/4498/files/eyeshadow-packing-brush_ac8451db-07eb-44da-b583-b717991ab3b2.jpg?v=1755632674",
+        "source_kind": "catalog",
+        "source_tier": "catalog"
+      },
+      "preview_media": [
+        "https://cdn.shopify.com/s/files/1/0662/4598/4498/files/eyeshadow-packing-brush_ac8451db-07eb-44da-b583-b717991ab3b2.jpg?v=1755632674",
+        "https://cdn.shopify.com/s/files/1/0662/4598/4498/files/v4_Single-Eyeshadow-Brushe_ecomm_c66d7c2d-43f9-495d-9189-5128f48aeb4c.jpg?v=1755632674",
+        "https://cdn.shopify.com/s/files/1/0662/4598/4498/files/KJC_EYEB_25_Brush9_SparklyEyeshadow_GlowingThroughIt_CP_728_Hero_WS_daa682cf-93f1-49b7-8ef8-fbda37369257.jpg?v=1755632674",
+        "http://kyliecosmetics.com/cdn/shop/files/eyeshadow-packing-brush_ac8451db-07eb-44da-b583-b717991ab3b2.jpg?crop=center&v=1755632674",
+        "http://kyliecosmetics.com/cdn/shop/files/v4_Single-Eyeshadow-Brushe_ecomm_c66d7c2d-43f9-495d-9189-5128f48aeb4c.jpg?crop=center&v=1755632674",
+        "http://kyliecosmetics.com/cdn/shop/files/KJC_EYEB_25_Brush9_SparklyEyeshadow_GlowingThroughIt_CP_728_Hero_WS_daa682cf-93f1-49b7-8ef8-fbda37369257.jpg?crop=center&v=1755632674",
+        "https://kyliecosmetics.com/cdn/shop/files/KJC_LL_PRP_26_Lip_Butter_Butter_Cake_1_Pencil_Lip_Brush_Tips_Only_Yellow_BG_CP_496_WS.jpg?crop=center&v=1772484754"
+      ],
+      "price_min": 22,
+      "price_max": 22,
+      "default_offer_id": "external_seed:ext_043c5402552d38d9cdf16259",
+      "internal_offer_exists": false,
+      "external_offer_exists": true,
+      "pivota_insight_status": "available",
+      "pivota_insight_summary": "Eyeshadow Packing Brush 09 is a makeup brush from Kylie Cosmetics, with source-backed cues around controlled product placement and targeted application area.",
+      "quality_score": null,
+      "browse_score": null,
+      "facet_tokens": [
+        "kylie cosmetics",
+        "Makeup Brush"
+      ],
+      "sort_keys": {
+        "price_min": 22,
+        "price_max": 22,
+        "updated_at": null
+      },
+      "updated_at": null,
+      "source_refs": [
+        "external_seed:ext_043c5402552d38d9cdf16259"
+      ]
+    },
+    {
+      "doc_id": "sellable:sig_817c1f0c5d65d0752ad19622",
+      "sellable_item_group_id": "sig_817c1f0c5d65d0752ad19622",
+      "product_line_id": "pl_6fa13ddc813521a4adf641c6",
+      "review_family_id": "rf_6fa13ddc813521a4adf641c6",
+      "brand_name": "kylie cosmetics",
+      "category_paths": [
+        "Makeup Bundle"
+      ],
+      "market": "US",
+      "availability_state": "available",
+      "publish_state": "public",
+      "title": "Power Plush Concealer & Brush Duo",
+      "subtitle": "this duo is perfect for getting a flawless, streak-free finish. the power plush longwear concealer brightens, blurs, and smooths with medium, buildable coverage and up to 12 hour wear while the concealer brush 02 provides a seamless blend, and precise application in hard-to-reach areas.",
+      "variant_axes": {
+        "pack": "2pack",
+        "multi_variant": false
+      },
+      "size": null,
+      "shade": null,
+      "pack": null,
+      "hero_media": {
+        "url": "https://cdn.shopify.com/s/files/1/0662/4598/4498/files/011724_FoundationBundles_PowerPlushConcealerDuo2_9ea2c1de-c37a-4296-83d1-fb0a90f43c7e.jpg?v=1705447525",
+        "source_kind": "catalog",
+        "source_tier": "catalog"
+      },
+      "preview_media": [
+        "https://cdn.shopify.com/s/files/1/0662/4598/4498/files/011724_FoundationBundles_PowerPlushConcealerDuo2_9ea2c1de-c37a-4296-83d1-fb0a90f43c7e.jpg?v=1705447525",
+        "https://cdn.shopify.com/s/files/1/0662/4598/4498/files/KJC_PPCONCEALER_23_ShadeGroup_LightShades_1_d7c2f46a-ea42-4b6d-a986-f13d57caaff0.jpg?v=1705447527",
+        "https://cdn.shopify.com/s/files/1/0662/4598/4498/files/KJC_PPCONCEALER_23_ShadeGroup_FairShades_1_a9ce2323-e54c-4ddc-95bc-05381b5bab5b.jpg?v=1705447525",
+        "https://cdn.shopify.com/s/files/1/0662/4598/4498/files/KJC_PPCONCEALER_23_ShadeGroup_MediumShades_1_499fae47-5840-4569-bd91-e3a67b678867.jpg?v=1705447526",
+        "https://cdn.shopify.com/s/files/1/0662/4598/4498/files/KJC_PPCONCEALER_23_ShadeGroup_TanShades_1_1e6abed9-eac7-44df-a02c-1c40f3609672.jpg?v=1705447525",
+        "https://cdn.shopify.com/s/files/1/0662/4598/4498/files/KJC_PPCONCEALER_23_ShadeGroup_DeepShades_1_0958cba4-5678-408f-a648-fdf5465e346c.jpg?v=1705447526",
+        "https://cdn.shopify.com/s/files/1/0662/4598/4498/files/KJC_CC_23_PP_Armswatch_V2_140f2d9d-bbab-43c8-a176-d7d79019e212.jpg?v=1705447525",
+        "https://cdn.shopify.com/s/files/1/0662/4598/4498/files/KJC_PPCONCEALER_23_Infographic_MainClaims_f4b9d220-cde1-443f-9922-41c1f624028c.jpg?v=1705454333"
+      ],
+      "price_min": 45.9,
+      "price_max": 45.9,
+      "default_offer_id": "external_seed:ext_842f29ce261ffa123edab3d1",
+      "internal_offer_exists": false,
+      "external_offer_exists": true,
+      "pivota_insight_status": "available",
+      "pivota_insight_summary": "Power Plush Concealer & Brush Duo is a makeup brush from Kylie Cosmetics, with source-backed cues around controlled product placement.",
+      "quality_score": null,
+      "browse_score": null,
+      "facet_tokens": [
+        "kylie cosmetics",
+        "Makeup Bundle"
+      ],
+      "sort_keys": {
+        "price_min": 45.9,
+        "price_max": 45.9,
+        "updated_at": null
+      },
+      "updated_at": null,
+      "source_refs": [
+        "external_seed:ext_842f29ce261ffa123edab3d1"
+      ]
+    },
+    {
+      "doc_id": "sellable:sig_ee66d547ea0f2a6e3b8de872",
+      "sellable_item_group_id": "sig_ee66d547ea0f2a6e3b8de872",
+      "product_line_id": "pl_1e7bf29f001dca7f0deae2c9",
+      "review_family_id": "rf_1e7bf29f001dca7f0deae2c9",
+      "brand_name": "kylie cosmetics",
+      "category_paths": [
+        "Lip Balm"
+      ],
+      "market": "US",
+      "availability_state": "available",
+      "publish_state": "public",
+      "title": "Kylie's Met Gala Look 2025 Bundle",
+      "subtitle": "recreate my met gala 2025 look featuring my best-selling skin tint blurring elixir and the matte palette. skin tint delivers smooth, your-skin-but-better coverage while the matte palette provides the perfect eye. complete the look with my other full glam must-haves.",
+      "variant_axes": {
+        "multi_variant": false
+      },
+      "size": null,
+      "shade": null,
+      "pack": null,
+      "hero_media": {
+        "url": "https://cdn.shopify.com/s/files/1/0662/4598/4498/files/v1_Met-Gala_2025_2500x2500_558c78ab-8c4f-47c4-a240-994a155fc660.jpg?v=1746502495",
+        "source_kind": "catalog",
+        "source_tier": "catalog"
+      },
+      "preview_media": [
+        "https://cdn.shopify.com/s/files/1/0662/4598/4498/files/v1_Met-Gala_2025_2500x2500_558c78ab-8c4f-47c4-a240-994a155fc660.jpg?v=1746502495",
+        "https://cdn.shopify.com/s/files/1/0662/4598/4498/files/v6_Met-Gala_2025_1x1_ratio.jpg?v=1746560011",
+        "https://cdn.shopify.com/s/files/1/0662/4598/4498/files/KJC_SKT_24_US_Stylized_5N_73f437e5-a04f-4300-aeb8-7f823d9ed82c.jpg?v=1746560011",
+        "https://cdn.shopify.com/s/files/1/0662/4598/4498/files/KJC_KSHAD_MKPAL_23_Stylized_a0ff87d7-ee5c-4506-96f7-1261ce24a7fa.jpg?v=1772832653",
+        "https://cdn.shopify.com/s/files/1/0662/4598/4498/files/KJC_GLB_24_Feelings_Neutral_Stylized_985a5869-e865-4616-aab2-bdbaf7b85c62.jpg?v=1772832653",
+        "https://cdn.shopify.com/s/files/1/0662/4598/4498/files/KJC_LLPRP_23_Cinnamon_Stylized_ae48a431-38cb-4a1e-a577-ace0e05fd6cb.jpg?v=1772832653",
+        "https://cdn.shopify.com/s/files/1/0662/4598/4498/files/4.5WN_e6e052bf-05ba-4793-9197-ac93018a0885_1.jpg?v=1772832653",
+        "https://cdn.shopify.com/s/files/1/0662/4598/4498/files/KJC_HOLIDAY_24_GlossDrip_Stylized_SwipeSwatch_Underestimated_4a628536-1be3-41a1-8c6b-c1df1cdb731d.jpg?v=1772832653"
+      ],
+      "price_min": 131.4,
+      "price_max": 131.4,
+      "default_offer_id": "external_seed:ext_9a28f11622360634a2a78ffc",
+      "internal_offer_exists": false,
+      "external_offer_exists": true,
+      "pivota_insight_status": "available",
+      "pivota_insight_summary": "Kylie's Met Gala Look 2025 Bundle is a beauty product from Kylie Cosmetics.",
+      "quality_score": null,
+      "browse_score": null,
+      "facet_tokens": [
+        "kylie cosmetics",
+        "Lip Balm"
+      ],
+      "sort_keys": {
+        "price_min": 131.4,
+        "price_max": 131.4,
+        "updated_at": null
+      },
+      "updated_at": null,
+      "source_refs": [
+        "external_seed:ext_9a28f11622360634a2a78ffc"
+      ]
+    },
+    {
+      "doc_id": "sellable:sig_2cb93c14cf0813af663f5f0d",
+      "sellable_item_group_id": "sig_2cb93c14cf0813af663f5f0d",
+      "product_line_id": "pl_e7946b75641af216be7708c2",
+      "review_family_id": "rf_e7946b75641af216be7708c2",
+      "brand_name": "kylie cosmetics",
+      "category_paths": [
+        "Eyeshadow"
+      ],
+      "market": "US",
+      "availability_state": "available",
+      "publish_state": "public",
+      "title": "Eyeshadow Brush Bundle",
+      "subtitle": "my eyeshadow brush bundle has everything you need to create soft, diffused eye looks. featuring four shapes with different densities, these vegan, cruelty-free, ultra-soft brushes seamlessly shade, pack, and blend product without any harsh lines or edges.",
+      "variant_axes": {
+        "multi_variant": false
+      },
+      "size": null,
+      "shade": null,
+      "pack": null,
+      "hero_media": {
+        "url": "https://cdn.shopify.com/s/files/1/0662/4598/4498/files/v1_Single-Eyeshadow-Brushes_MLS_Bundlel_1_f3266ae1-3df7-4ffe-8ea7-677403c32ea3.jpg?v=1755632883",
+        "source_kind": "catalog",
+        "source_tier": "catalog"
+      },
+      "preview_media": [
+        "https://cdn.shopify.com/s/files/1/0662/4598/4498/files/v1_Single-Eyeshadow-Brushes_MLS_Bundlel_1_f3266ae1-3df7-4ffe-8ea7-677403c32ea3.jpg?v=1755632883",
+        "https://cdn.shopify.com/s/files/1/0662/4598/4498/files/KJC_EYEB_25_4Brushes_StandingUp_CP_030_Hero_WS_389db6b4-c10f-4a49-8526-c8aca488f1aa.jpg?v=1755632885",
+        "https://cdn.shopify.com/s/files/1/0662/4598/4498/files/KJC_EYEB_25_4Brushes_LayingDownWEyeshadowPalettes_CP_1173_Hero_WS_82606da4-8d25-4cad-90a2-8d1b6a66d753.jpg?v=1755632886",
+        "http://kyliecosmetics.com/cdn/shop/files/v1_Single-Eyeshadow-Brushes_MLS_Bundlel_1_f3266ae1-3df7-4ffe-8ea7-677403c32ea3.jpg?crop=center&v=1755632883",
+        "http://kyliecosmetics.com/cdn/shop/files/KJC_EYEB_25_4Brushes_LayingDownWEyeshadowPalettes_CP_1173_Hero_WS_82606da4-8d25-4cad-90a2-8d1b6a66d753.jpg?crop=center&v=1755632886",
+        "http://kyliecosmetics.com/cdn/shop/files/KJC_EYEB_25_4Brushes_StandingUp_CP_030_Hero_WS_389db6b4-c10f-4a49-8526-c8aca488f1aa.jpg?crop=center&v=1755632885",
+        "https://kyliecosmetics.com/cdn/shop/files/KJC_LL_PRP_26_Lip_Butter_Butter_Cake_1_Pencil_Lip_Brush_Tips_Only_Yellow_BG_CP_496_WS.jpg?crop=center&v=1772484754"
+      ],
+      "price_min": 79.2,
+      "price_max": 79.2,
+      "default_offer_id": "external_seed:ext_99d10d571ba5641ae48144c4",
+      "internal_offer_exists": false,
+      "external_offer_exists": true,
+      "pivota_insight_status": "available",
+      "pivota_insight_summary": "Eyeshadow Brush Bundle is a makeup brush from Kylie Cosmetics, with source-backed cues around controlled product placement and targeted application area.",
+      "quality_score": null,
+      "browse_score": null,
+      "facet_tokens": [
+        "kylie cosmetics",
+        "Eyeshadow"
+      ],
+      "sort_keys": {
+        "price_min": 79.2,
+        "price_max": 79.2,
+        "updated_at": null
+      },
+      "updated_at": null,
+      "source_refs": [
+        "external_seed:ext_99d10d571ba5641ae48144c4"
+      ]
+    },
+    {
+      "doc_id": "sellable:sig_75b9c5f72b6db6fe7521204c",
+      "sellable_item_group_id": "sig_75b9c5f72b6db6fe7521204c",
+      "product_line_id": "pl_9c640d58ea3a0bc3fe27535c",
+      "review_family_id": "rf_9c640d58ea3a0bc3fe27535c",
+      "brand_name": "kylie cosmetics",
+      "category_paths": [
+        "Makeup Brush"
+      ],
+      "market": "US",
+      "availability_state": "available",
+      "publish_state": "public",
+      "title": "Eyeshadow All-Over Blending Brush 07",
+      "subtitle": "my eyeshadow all-over blending brush 07 is a vegan and cruelty-free brush designed to seamlessly blend, build, and soften color for a diffused finish without any harsh lines or edges. its fluffy, flexible, and ultra-soft hairs make it ideal for applying transition shades or blending across the entire lid. use it to create both natural and bold eye looks.",
+      "variant_axes": {
+        "multi_variant": false
+      },
+      "size": null,
+      "shade": null,
+      "pack": null,
+      "hero_media": {
+        "url": "https://cdn.shopify.com/s/files/1/0662/4598/4498/files/eyeshadow-all-over-blending-brush_61cd3a41-14da-4448-b8af-5bc9310d0699.jpg?v=1755632078",
+        "source_kind": "catalog",
+        "source_tier": "catalog"
+      },
+      "preview_media": [
+        "https://cdn.shopify.com/s/files/1/0662/4598/4498/files/eyeshadow-all-over-blending-brush_61cd3a41-14da-4448-b8af-5bc9310d0699.jpg?v=1755632078",
+        "https://cdn.shopify.com/s/files/1/0662/4598/4498/files/v2_Single-Eyeshadow-Brushe_ecomm_c3eb2362-c66c-4733-a89c-222fb8e8bcd8.jpg?v=1755632078",
+        "https://cdn.shopify.com/s/files/1/0662/4598/4498/files/KJC_EYEB_25_Brush7_NextToEyeshadow_CP_1300_Hero_WS_63854265-380d-4599-b4ef-f1bf692de3b9.jpg?v=1755632080",
+        "http://kyliecosmetics.com/cdn/shop/files/eyeshadow-all-over-blending-brush_61cd3a41-14da-4448-b8af-5bc9310d0699.jpg?crop=center&v=1755632078",
+        "http://kyliecosmetics.com/cdn/shop/files/v2_Single-Eyeshadow-Brushe_ecomm_c3eb2362-c66c-4733-a89c-222fb8e8bcd8.jpg?crop=center&v=1755632078",
+        "http://kyliecosmetics.com/cdn/shop/files/KJC_EYEB_25_Brush7_NextToEyeshadow_CP_1300_Hero_WS_63854265-380d-4599-b4ef-f1bf692de3b9.jpg?crop=center&v=1755632080",
+        "https://kyliecosmetics.com/cdn/shop/files/KJC_LL_PRP_26_Lip_Butter_Butter_Cake_1_Pencil_Lip_Brush_Tips_Only_Yellow_BG_CP_496_WS.jpg?crop=center&v=1772484754"
+      ],
+      "price_min": 22,
+      "price_max": 22,
+      "default_offer_id": "external_seed:ext_07f8a852a6a1f9d98719ce26",
+      "internal_offer_exists": false,
+      "external_offer_exists": true,
+      "pivota_insight_status": "available",
+      "pivota_insight_summary": "Eyeshadow All-Over Blending Brush 07 is a makeup brush from Kylie Cosmetics, with source-backed cues around controlled product placement and targeted application area.",
+      "quality_score": null,
+      "browse_score": null,
+      "facet_tokens": [
+        "kylie cosmetics",
+        "Makeup Brush"
+      ],
+      "sort_keys": {
+        "price_min": 22,
+        "price_max": 22,
+        "updated_at": null
+      },
+      "updated_at": null,
+      "source_refs": [
+        "external_seed:ext_07f8a852a6a1f9d98719ce26"
+      ]
+    },
+    {
+      "doc_id": "sellable:sig_7ab0f76cddcd13166e45abed",
+      "sellable_item_group_id": "sig_7ab0f76cddcd13166e45abed",
+      "product_line_id": "pl_031200ddb782a06c8f7a1fd1",
+      "review_family_id": "rf_031200ddb782a06c8f7a1fd1",
+      "brand_name": "PIXI BEAUTY",
+      "category_paths": [
+        "Accessory"
+      ],
+      "market": "US",
+      "availability_state": "out_of_stock",
+      "publish_state": "eligible",
+      "title": "Pixi Essential Bucket Hat",
+      "subtitle": "Limited-edition bucket hat that will be your go-to for keeping your face in the shade all year long!",
+      "variant_axes": {
+        "multi_variant": false
+      },
+      "size": null,
+      "shade": null,
+      "pack": null,
+      "hero_media": {
+        "url": "https://pivota-agent-production.up.railway.app/catalog-image-cache/cd/cd69a2f8c967071b2d1698da08d9b168aa2cc5a5009afd162c47ea5e41fceef7.jpg",
+        "source_kind": "catalog",
+        "source_tier": "catalog"
+      },
+      "preview_media": [
+        "https://pivota-agent-production.up.railway.app/catalog-image-cache/cd/cd69a2f8c967071b2d1698da08d9b168aa2cc5a5009afd162c47ea5e41fceef7.jpg",
+        "https://pivota-agent-production.up.railway.app/catalog-image-cache/81/8177be3e169c1320d839ba8aaa160a0b03352ac4099a7f692e589db44de959aa.webp",
+        "https://pivota-agent-production.up.railway.app/catalog-image-cache/b1/b13c450ccddac29846ce6b8c486421e95d066ff7881d63eb97ac27025d396772.webp",
+        "https://pivota-agent-production.up.railway.app/catalog-image-cache/57/57fa01a062623e92b854ff8b869c257db34f3478b295d4eff26e16baee6f632d.webp",
+        "https://pivota-agent-production.up.railway.app/catalog-image-cache/b4/b4ebe82e27203ed36c865005bacfd8aa81a283263e3fdd92d0e1eccbd315e5c5.webp",
+        "https://pivota-agent-production.up.railway.app/catalog-image-cache/4b/4b707438d7d94d87c172ed7f28def0b02fb49ef9adcecdac90c3d14c4a96e7d9.webp",
+        "https://pivota-agent-production.up.railway.app/catalog-image-cache/ba/ba49a8f7d98856988a14cf0074f1ac087831d45da75353a3cca35c47ea846155.avif",
+        "https://pivota-agent-production.up.railway.app/catalog-image-cache/dd/dd754a5c99f41d25aada7474f79d7c2715607d8a2912a37cc70136af3531ee77.avif"
+      ],
+      "price_min": null,
+      "price_max": null,
+      "default_offer_id": null,
+      "internal_offer_exists": false,
+      "external_offer_exists": true,
+      "pivota_insight_status": "available",
+      "pivota_insight_summary": "Pixi Essential Bucket Hat is a beauty product from Pixi.",
+      "quality_score": null,
+      "browse_score": null,
+      "facet_tokens": [
+        "PIXI BEAUTY",
+        "Accessory"
+      ],
+      "sort_keys": {
+        "price_min": null,
+        "price_max": null,
+        "updated_at": null
+      },
+      "updated_at": null,
+      "source_refs": [
+        "external_seed:ext_8e9120fb126f0e0da491a8fc"
+      ]
+    },
+    {
+      "doc_id": "sellable:sig_969909653c2e25024307dc5c",
+      "sellable_item_group_id": "sig_969909653c2e25024307dc5c",
+      "product_line_id": "pl_169c2d7754adc0fbaa3acf18",
+      "review_family_id": "rf_169c2d7754adc0fbaa3acf18",
+      "brand_name": "rare beauty",
+      "category_paths": [
+        "Eyeshadow"
+      ],
+      "market": "US",
+      "availability_state": "available",
+      "publish_state": "public",
+      "title": "Stay Vulnerable All-Over Eyeshadow Brush",
+      "subtitle": "An eyeshadow brush for easy, all-over blending, with a unique dense, angled shape that mimics your fingertip for max control.",
+      "variant_axes": {
+        "multi_variant": false
+      },
+      "size": null,
+      "shade": null,
+      "pack": null,
+      "hero_media": {
+        "url": "https://cdn.shopify.com/s/files/1/0314/1143/7703/products/Liquid-Eyeshadow-Brush-SKU.jpg?v=1762269513",
+        "source_kind": "catalog",
+        "source_tier": "catalog"
+      },
+      "preview_media": [
+        "https://cdn.shopify.com/s/files/1/0314/1143/7703/products/Liquid-Eyeshadow-Brush-SKU.jpg?v=1762269513",
+        "https://cdn.shopify.com/s/files/1/0314/1143/7703/products/Liquid-Eyeshadow-Brush-Alt-SKU.jpg?v=1608570437"
+      ],
+      "price_min": 15,
+      "price_max": 15,
+      "default_offer_id": "external_seed:ext_eb45f43663e390e9e556b8f6",
+      "internal_offer_exists": false,
+      "external_offer_exists": true,
+      "pivota_insight_status": "available",
+      "pivota_insight_summary": "Stay Vulnerable All-Over Eyeshadow Brush is a makeup brush from rare beauty, with source-backed cues around controlled product placement and targeted application area.",
+      "quality_score": null,
+      "browse_score": null,
+      "facet_tokens": [
+        "rare beauty",
+        "Eyeshadow"
+      ],
+      "sort_keys": {
+        "price_min": 15,
+        "price_max": 15,
+        "updated_at": null
+      },
+      "updated_at": null,
+      "source_refs": [
+        "external_seed:ext_eb45f43663e390e9e556b8f6"
+      ]
+    },
+    {
+      "doc_id": "sellable:sig_7a48908c794d2937b93a7976",
+      "sellable_item_group_id": "sig_7a48908c794d2937b93a7976",
+      "product_line_id": "pl_334862dd431b33d6d3ee3cc3",
+      "review_family_id": "rf_334862dd431b33d6d3ee3cc3",
+      "brand_name": "rare beauty",
+      "category_paths": [
+        "Makeup Brush"
+      ],
+      "market": "US",
+      "availability_state": "available",
+      "publish_state": "public",
+      "title": "Angled Powder Brush",
+      "subtitle": "A multiuse powder brush with soft, synthetic bristles and a uniquely angled shape - perfect for seamlessly blending bronzer, blush, setting powder, and more.",
+      "variant_axes": {
+        "multi_variant": false
+      },
+      "size": null,
+      "shade": null,
+      "pack": null,
+      "hero_media": {
+        "url": "https://cdn.shopify.com/s/files/1/0314/1143/7703/files/CAMPAIGN-SELENA-WW-POWDER-BRONZER-WARMED-UP-APPLICATION.jpg?v=1771633423",
+        "source_kind": "catalog",
+        "source_tier": "catalog"
+      },
+      "preview_media": [
+        "https://cdn.shopify.com/s/files/1/0314/1143/7703/files/CAMPAIGN-SELENA-WW-POWDER-BRONZER-WARMED-UP-APPLICATION.jpg?v=1771633423"
+      ],
+      "price_min": 30,
+      "price_max": 30,
+      "default_offer_id": "external_seed:ext_66cc5a505975c04c2d097d06",
+      "internal_offer_exists": false,
+      "external_offer_exists": true,
+      "pivota_insight_status": "available",
+      "pivota_insight_summary": "Angled Powder Brush is a makeup brush from rare beauty, with source-backed cues around synthetic bristles, controlled product placement and targeted application area.",
+      "quality_score": null,
+      "browse_score": null,
+      "facet_tokens": [
+        "rare beauty",
+        "Makeup Brush"
+      ],
+      "sort_keys": {
+        "price_min": 30,
+        "price_max": 30,
+        "updated_at": null
+      },
+      "updated_at": null,
+      "source_refs": [
+        "external_seed:ext_66cc5a505975c04c2d097d06"
+      ]
+    },
+    {
+      "doc_id": "sellable:sig_956db490a08a283c35d8b778",
+      "sellable_item_group_id": "sig_956db490a08a283c35d8b778",
+      "product_line_id": "pl_448eb9aa7d4f54f0f5d03a98",
+      "review_family_id": "rf_448eb9aa7d4f54f0f5d03a98",
+      "brand_name": "NUXE",
+      "category_paths": [
+        "Hand Cream"
+      ],
+      "market": "US",
+      "availability_state": "available",
+      "publish_state": "public",
+      "title": "Huile Prodigieuse® Or 50 ml",
+      "subtitle": "Discover the iconic Huile Prodigieuse® cocktail of 7 precious 100% botanical origin oils in a golden Or version.\n\nThis shimmering dry oil with natural-origin golden pearly particles infuses all skin types and skin tones with an irresistible iridescent glow.\n\nIt gives a satin feel and illuminates the face, body and hair and moisturizes the skin in a single step. Your skin looks more beautiful, soft and silky, with no oily finish.\n\nIts effectiveness is proven: it offers long-lasting hydration, leaves skin satiny smooth and luminous for 100% of users⁽¹⁾.\n\nIts texture with an inimitable dry touch is available in a spray bottle. It releases an irresistible scent of sunshine and warm sand that will infuse your skin with radiant sensuality.\n\nTo create its Huile Prodigieuse®, NUXE selected 7 precious 100% botanical origin oils: Tsubaki, Argan, Macadamia, Borage, Camellia, Hazelnut, Sweet Almond.\n\n⁽¹⁾Usage test - 20 volunteers. Satisfaction % immediately after the 1st application.",
+      "variant_axes": {
+        "volume": "50ml",
+        "multi_variant": false
+      },
+      "size": null,
+      "shade": null,
+      "pack": null,
+      "hero_media": {
+        "url": "https://cdn.shopify.com/s/files/1/0651/8449/7835/files/3264680009785-VN043002-VIEW_2-HP-OR_50ML_PACKSHOT_2000x2000_544232b3-1219-4e0a-b42b-14258cbdc593.jpg?v=1718290572",
+        "source_kind": "catalog",
+        "source_tier": "catalog"
+      },
+      "preview_media": [
+        "https://cdn.shopify.com/s/files/1/0651/8449/7835/files/3264680009785-VN043002-VIEW_2-HP-OR_50ML_PACKSHOT_2000x2000_544232b3-1219-4e0a-b42b-14258cbdc593.jpg?v=1718290572",
+        "https://cdn.shopify.com/s/files/1/0651/8449/7835/files/3264680009785-VN043002-VIEW_4-HP-OR_50ML_TEXTURE_2000x2000_2e81a3a5-b6ea-4a07-9ab7-cb069749218a.jpg?v=1718290572"
+      ],
+      "price_min": 34,
+      "price_max": 34,
+      "default_offer_id": "external_seed:ext_c91ab31c682ea1af6f74d6f7",
+      "internal_offer_exists": false,
+      "external_offer_exists": true,
+      "pivota_insight_status": "available",
+      "pivota_insight_summary": "Huile Prodigieuse® Or 50 ml is a brow product from Nuxe in 50ml, with source-backed cues around hydration.",
+      "quality_score": null,
+      "browse_score": null,
+      "facet_tokens": [
+        "NUXE",
+        "Hand Cream"
+      ],
+      "sort_keys": {
+        "price_min": 34,
+        "price_max": 34,
+        "updated_at": null
+      },
+      "updated_at": null,
+      "source_refs": [
+        "external_seed:ext_c91ab31c682ea1af6f74d6f7"
+      ]
+    },
+    {
+      "doc_id": "sellable:sig_7cd0b4db1741d14ba0e2c622",
+      "sellable_item_group_id": "sig_7cd0b4db1741d14ba0e2c622",
+      "product_line_id": "pl_28aa9c04577f0e3deca41cd2",
+      "review_family_id": "rf_28aa9c04577f0e3deca41cd2",
+      "brand_name": "NUXE",
+      "category_paths": [
+        "Hand Cream"
+      ],
+      "market": "US",
+      "availability_state": "available",
+      "publish_state": "public",
+      "title": "Huile Prodigieuse® Or 100 ml",
+      "subtitle": "Discover the iconic Huile Prodigieuse® cocktail of 7 precious 100% botanical origin oils in a golden Or version.\n\nThis shimmering dry oil with natural-origin golden pearly particles infuses all skin types and skin tones with an irresistible iridescent glow.\n\nIt moisturizes, gives a satin feel and illuminates the face, body and hair and moisturizes the skin in a single step.\n\nYour skin looks more beautiful, soft and silky, with no oily finish. Its effectiveness is proven: it offers long-lasting hydration, leaves skin satiny smooth and luminous for 100% of users⁽¹⁾.\n\nIts texture with an inimitable dry touch is available in a spray bottle. Each spray releases an irresistible scent of sunshine and warm sand that will infuse your skin with radiant sensuality.\n\nTo create its Huile Prodigieuse®, NUXE selected 7 precious 100% botanical origin oils: Tsubaki, Argan, Macadamia, Borage, Camellia, Hazelnut, Sweet Almond.\n\n⁽¹⁾ Usage test - 20 volunteers. Satisfaction % immediately after the 1st application.",
+      "variant_axes": {
+        "volume": "100ml",
+        "multi_variant": false
+      },
+      "size": null,
+      "shade": null,
+      "pack": null,
+      "hero_media": {
+        "url": "https://cdn.shopify.com/s/files/1/0651/8449/7835/files/3264680009778-VN043001-VIEW_2-HP-OR_100ML_PACKSHOT_2000x2000_fcb0049d-d503-4ad5-9018-31763eb27723.jpg?v=1718290558",
+        "source_kind": "catalog",
+        "source_tier": "catalog"
+      },
+      "preview_media": [
+        "https://cdn.shopify.com/s/files/1/0651/8449/7835/files/3264680009778-VN043001-VIEW_2-HP-OR_100ML_PACKSHOT_2000x2000_fcb0049d-d503-4ad5-9018-31763eb27723.jpg?v=1718290558",
+        "https://cdn.shopify.com/s/files/1/0651/8449/7835/files/3264680009778-VN043001-VIEW_4-HP-OR_100ML_TEXTURE_2000x2000_4c6e5500-796e-4c77-9eb8-94c9b1cff60a.jpg?v=1718290565"
+      ],
+      "price_min": 49.5,
+      "price_max": 49.5,
+      "default_offer_id": "external_seed:ext_f38b20aa9ffda93998f19551",
+      "internal_offer_exists": false,
+      "external_offer_exists": true,
+      "pivota_insight_status": "available",
+      "pivota_insight_summary": "Huile Prodigieuse® Or 100 ml is a brow product from Nuxe in 100ml, with source-backed cues around hydration.",
+      "quality_score": null,
+      "browse_score": null,
+      "facet_tokens": [
+        "NUXE",
+        "Hand Cream"
+      ],
+      "sort_keys": {
+        "price_min": 49.5,
+        "price_max": 49.5,
+        "updated_at": null
+      },
+      "updated_at": null,
+      "source_refs": [
+        "external_seed:ext_f38b20aa9ffda93998f19551"
+      ]
+    },
+    {
+      "doc_id": "sellable:sig_a8d1edef1525227d07914145",
+      "sellable_item_group_id": "sig_a8d1edef1525227d07914145",
+      "product_line_id": "pl_1d9adf125c0c47ce20cce3e8",
+      "review_family_id": "rf_1d9adf125c0c47ce20cce3e8",
+      "brand_name": "NUXE",
+      "category_paths": [
+        "Serum"
+      ],
+      "market": "US",
+      "availability_state": "available",
+      "publish_state": "public",
+      "title": "Duo Day-Night & Eyes, Merveillance Lift",
+      "subtitle": "Discover the Day & Night & Eye Duo for beautiful, smooth and radiant skin.This duo contains:- 1 Eye Lighter Serum, Merveillance Lift 12 ml- 1 Exceptional Day & Night Cream, Merveillance Lift 75 mlTreat yourself to a moment of luxury and pampering with this complete routine, designed to reveal visibly younger and more radiant skin. Thanks to the effectiveness of ultra-corrective Micro-Algae Oil, each drop concentrates the power of 4 billion active cells to smooth wrinkles, firm the skin and brighten the complexion. Ideal for all skin types, this routine accompanies you day and night for a rested look and revitalised skin.Products are delivered separately.Non-contractual image.",
+      "variant_axes": {
+        "pack": "2pack",
+        "multi_variant": false
+      },
+      "size": null,
+      "shade": null,
+      "pack": null,
+      "hero_media": {
+        "url": "https://cdn.shopify.com/s/files/1/0651/8449/7835/files/BU00408US_-_Duo_Jour-Nuit_Yeux_Merveillance_Lift.jpg?v=1768983057",
+        "source_kind": "catalog",
+        "source_tier": "catalog"
+      },
+      "preview_media": [
+        "https://cdn.shopify.com/s/files/1/0651/8449/7835/files/BU00408US_-_Duo_Jour-Nuit_Yeux_Merveillance_Lift.jpg?v=1768983057",
+        "https://us.nuxe.com/cdn/shop/files/BU00408US_-_Duo_Jour-Nuit_Yeux_Merveillance_Lift.jpg?crop=center&v=1768983057"
+      ],
+      "price_min": 125,
+      "price_max": 125,
+      "default_offer_id": "external_seed:ext_76f431168134c95664952700",
+      "internal_offer_exists": false,
+      "external_offer_exists": true,
+      "pivota_insight_status": "available",
+      "pivota_insight_summary": "Duo Day-Night & Eyes, Merveillance Lift is a treatment serum from Nuxe in Duo.",
+      "quality_score": null,
+      "browse_score": null,
+      "facet_tokens": [
+        "NUXE",
+        "Serum"
+      ],
+      "sort_keys": {
+        "price_min": 125,
+        "price_max": 125,
+        "updated_at": null
+      },
+      "updated_at": null,
+      "source_refs": [
+        "external_seed:ext_76f431168134c95664952700"
+      ]
+    },
+    {
+      "doc_id": "sellable:sig_bef849ea1028122d6c979981",
+      "sellable_item_group_id": "sig_bef849ea1028122d6c979981",
+      "product_line_id": "pl_f204442abb1c7c6b856abdcf",
+      "review_family_id": "rf_f204442abb1c7c6b856abdcf",
+      "brand_name": "NUXE",
+      "category_paths": [
+        "Hand Cream"
+      ],
+      "market": "US",
+      "availability_state": "available",
+      "publish_state": "public",
+      "title": "Huile Prodigieuse® Or Florale",
+      "subtitle": "Discover the iconic Huile Prodigieuse® Florale cocktail of 7 precious 100% botanical origin oils in a golden ‘ Or ’ version. \n\nThis shimmering dry oil with natural-origin pearly particles infuses all skin types and skin tones with an irresistible iridescent pink-gold glow. \n\nIt moisturizes, gives a satin feel and illuminates the face, body and hair in a single step. Your skin looks more beautiful, soft and silky, with no oily finish. \n\nIts effectiveness is proven: after the 1st application, skin feels satiny smooth and looks more beautiful for 95% of users⁽¹⁾. \nIts texture with an inimitable dry touch is available in a dropper bottle. With each application, the uplifting floral notes of this oil will enchant your senses with its sparkling and luminous waves.\n\n⁽¹⁾ Usage test - 21 volunteers. Satisfaction % immediately after the 1st application",
+      "variant_axes": {
+        "size": "50 mL",
+        "multi_variant": false
+      },
+      "size": null,
+      "shade": null,
+      "pack": null,
+      "hero_media": {
+        "url": "https://cdn.shopify.com/s/files/1/0651/8449/7835/files/3264680039867_TN065501-VIEW_2-HPOF-50ML_PACKSHOT_2000x2000_1_2e33c286-bd10-4d3d-9ccc-215efecdadc3.jpg?v=1718290515",
+        "source_kind": "catalog",
+        "source_tier": "catalog"
+      },
+      "preview_media": [
+        "https://cdn.shopify.com/s/files/1/0651/8449/7835/files/3264680039867_TN065501-VIEW_2-HPOF-50ML_PACKSHOT_2000x2000_1_2e33c286-bd10-4d3d-9ccc-215efecdadc3.jpg?v=1718290515",
+        "https://cdn.shopify.com/s/files/1/0651/8449/7835/files/3264680039867_TN065501-VIEW_4-HPOF-50ML_TEXTURE_2000x2000_1_7eda799f-1ccd-4aaf-94b7-7b8b1b4ba7b6.jpg?v=1718290521",
+        "https://us.nuxe.com/cdn/shop/files/BU00294US_-_Huile_Prodigieuse_-_sa_bougie_parfumee.jpg?v=1768984154",
+        "https://us.nuxe.com/cdn/shop/files/BU0002US-Huile_-Prodigieuse_-_Forever_Set.jpg?v=1768984245"
+      ],
+      "price_min": 34,
+      "price_max": 34,
+      "default_offer_id": "external_seed:ext_d29f15152e6dbdf1a43e53aa",
+      "internal_offer_exists": false,
+      "external_offer_exists": true,
+      "pivota_insight_status": "available",
+      "pivota_insight_summary": "Huile Prodigieuse® Or Florale is a brow product from Nuxe in 50 mL, with source-backed cues around hydration.",
+      "quality_score": null,
+      "browse_score": null,
+      "facet_tokens": [
+        "NUXE",
+        "Hand Cream"
+      ],
+      "sort_keys": {
+        "price_min": 34,
+        "price_max": 34,
+        "updated_at": null
+      },
+      "updated_at": null,
+      "source_refs": [
+        "external_seed:ext_d29f15152e6dbdf1a43e53aa"
+      ]
+    }
+  ]
+}

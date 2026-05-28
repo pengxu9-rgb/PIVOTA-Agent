@@ -1,0 +1,1751 @@
+{
+  "generated_at": "2026-05-28T10:01:03.656Z",
+  "options": {
+    "market": "US",
+    "includeAttached": true,
+    "domain": "nativeatlas.com",
+    "externalProductIds": [],
+    "limit": 20000,
+    "sampleLimit": 10,
+    "checkpointDir": null,
+    "checkpointMode": "domain",
+    "resume": false,
+    "force": false,
+    "continueOnError": true,
+    "pageSize": 500,
+    "format": "json",
+    "chunkByDomain": false
+  },
+  "warnings": [],
+  "summary": {
+    "scanned": 15,
+    "by_market": {
+      "US": 15
+    },
+    "by_domain": [
+      {
+        "key": "nativeatlas.com",
+        "count": 15
+      }
+    ],
+    "by_product_family": [
+      {
+        "key": "single_formula",
+        "count": 12
+      },
+      {
+        "key": "unknown_product",
+        "count": 2
+      },
+      {
+        "key": "accessory",
+        "count": 1
+      }
+    ],
+    "coverage": {
+      "missing_inci": 3,
+      "missing_active_raw": 14,
+      "missing_details": 12,
+      "missing_how_to": 11,
+      "missing_faq": 6
+    },
+    "pivota_insights": {
+      "direct": {
+        "displayable": 15,
+        "high_quality_ready": 15,
+        "missing_kb": 0,
+        "not_displayable": 0
+      },
+      "effective": {
+        "displayable": 15,
+        "high_quality_ready": 15,
+        "missing_kb": 0,
+        "not_displayable": 0,
+        "borrowed_from_sibling": 0
+      },
+      "effective_issues": [],
+      "effective_issue_domains": [],
+      "quality_state": [
+        {
+          "key": "reviewed",
+          "count": 15
+        }
+      ],
+      "evidence_profile": [
+        {
+          "key": "official_pdp_seed",
+          "count": 10
+        },
+        {
+          "key": "seller_plus_formula",
+          "count": 5
+        }
+      ],
+      "samples": {}
+    },
+    "active_ingredients": {
+      "regulatory_expected": 0,
+      "hero_expected": 7,
+      "any_active_items": 1,
+      "status": [
+        {
+          "key": "not_expected_missing",
+          "count": 7
+        },
+        {
+          "key": "missing_hero",
+          "count": 6
+        },
+        {
+          "key": "not_applicable_product_family",
+          "count": 1
+        },
+        {
+          "key": "ready_hero",
+          "count": 1
+        }
+      ],
+      "issues": [
+        {
+          "key": "missing_hero",
+          "count": 6
+        }
+      ],
+      "issue_domains": [
+        {
+          "key": "nativeatlas.com::missing_hero",
+          "count": 6
+        }
+      ],
+      "source_origin": [
+        {
+          "key": "none",
+          "count": 8
+        },
+        {
+          "key": "pdp_section",
+          "count": 7
+        }
+      ],
+      "samples": {
+        "missing_hero": [
+          {
+            "external_product_id": "ext_2045f52c2d498d2b8c3bdf58",
+            "domain": "nativeatlas.com",
+            "title": "LIVING BEAUTY Facial Cream",
+            "status": "missing_hero",
+            "active_items": [],
+            "source_origin": "pdp_section"
+          },
+          {
+            "external_product_id": "ext_3d6627e8c1dc6b2827416e5f",
+            "domain": "nativeatlas.com",
+            "title": "Serum Water AHA",
+            "status": "missing_hero",
+            "active_items": [],
+            "source_origin": "pdp_section"
+          },
+          {
+            "external_product_id": "ext_87f88a6d1efd2a4d91b09b15",
+            "domain": "nativeatlas.com",
+            "title": "Strong Body Gel",
+            "status": "missing_hero",
+            "active_items": [],
+            "source_origin": "none"
+          },
+          {
+            "external_product_id": "ext_98abef01f3004f9c22c14d1c",
+            "domain": "nativeatlas.com",
+            "title": "Volume Cream",
+            "status": "missing_hero",
+            "active_items": [],
+            "source_origin": "none"
+          },
+          {
+            "external_product_id": "ext_afcabd338d72f532c1c7a1e9",
+            "domain": "nativeatlas.com",
+            "title": "MOVEMENT OIL",
+            "status": "missing_hero",
+            "active_items": [],
+            "source_origin": "none"
+          },
+          {
+            "external_product_id": "ext_fe823be4386548be651e2905",
+            "domain": "nativeatlas.com",
+            "title": "ANTIOXIDANT Rose Toning Mist",
+            "status": "missing_hero",
+            "active_items": [],
+            "source_origin": "pdp_section"
+          }
+        ]
+      }
+    },
+    "variants": {
+      "status": [
+        {
+          "key": "flagged",
+          "count": 6
+        },
+        {
+          "key": "ready",
+          "count": 6
+        },
+        {
+          "key": "no_visible_variant_axis",
+          "count": 3
+        }
+      ],
+      "issues": [
+        {
+          "key": "default_option_size_evidence_missing_axis",
+          "count": 6
+        }
+      ],
+      "issue_domains": [
+        {
+          "key": "nativeatlas.com::default_option_size_evidence_missing_axis",
+          "count": 6
+        }
+      ],
+      "samples": {
+        "default_option_size_evidence_missing_axis": [
+          {
+            "external_product_id": "ext_04f175344e976ae32c16abad",
+            "domain": "nativeatlas.com",
+            "title": "RESTORING Cleansing Oil",
+            "status": "flagged",
+            "examples": [
+              {
+                "axis_name": "default",
+                "axis_kind": "volume",
+                "value": "4 oz",
+                "visual": false
+              }
+            ]
+          },
+          {
+            "external_product_id": "ext_500f523eacd9e24af157e583",
+            "domain": "nativeatlas.com",
+            "title": "LIVING BEAUTY Facial Oil",
+            "status": "flagged",
+            "examples": [
+              {
+                "axis_name": "default",
+                "axis_kind": "volume",
+                "value": "1 oz",
+                "visual": false
+              }
+            ]
+          },
+          {
+            "external_product_id": "ext_83b5a197a66e1f91cdfba5c0",
+            "domain": "nativeatlas.com",
+            "title": "OMNIS Universal Oil",
+            "status": "flagged",
+            "examples": [
+              {
+                "axis_name": "default",
+                "axis_kind": "volume",
+                "value": "4 oz",
+                "visual": false
+              }
+            ]
+          },
+          {
+            "external_product_id": "ext_d92d9a9043e26d72a447e5a3",
+            "domain": "nativeatlas.com",
+            "title": "NAIROBI Universal Oil",
+            "status": "flagged",
+            "examples": [
+              {
+                "axis_name": "default",
+                "axis_kind": "volume",
+                "value": "4 oz",
+                "visual": false
+              }
+            ]
+          },
+          {
+            "external_product_id": "ext_fe823be4386548be651e2905",
+            "domain": "nativeatlas.com",
+            "title": "ANTIOXIDANT Rose Toning Mist",
+            "status": "flagged",
+            "examples": [
+              {
+                "axis_name": "default",
+                "axis_kind": "volume",
+                "value": "4oz",
+                "visual": false
+              }
+            ]
+          },
+          {
+            "external_product_id": "ext_ffb41c05e51afae033ad1e1a",
+            "domain": "nativeatlas.com",
+            "title": "CIRCULATION SOAK 16oz",
+            "status": "flagged",
+            "examples": [
+              {
+                "axis_name": "default",
+                "axis_kind": "volume",
+                "value": "CIRCULATION SOAK 16oz",
+                "visual": false
+              }
+            ]
+          }
+        ]
+      }
+    }
+  },
+  "rows": [
+    {
+      "seed_id": "eps_14fe05dcb5efc606477aa2bb",
+      "external_product_id": "ext_04f175344e976ae32c16abad",
+      "market": "US",
+      "domain": "nativeatlas.com",
+      "title": "RESTORING Cleansing Oil",
+      "canonical_url": "https://nativeatlas.com/products/mimea-restoring-cleansing-oil",
+      "product_family": "single_formula",
+      "product_line_id": null,
+      "pivota_insights": {
+        "direct": {
+          "product_id": "ext_04f175344e976ae32c16abad",
+          "kb_key": "product:ext_04f175344e976ae32c16abad",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "official_pdp_seed",
+          "has_card_highlight": true
+        },
+        "effective": {
+          "product_id": "ext_04f175344e976ae32c16abad",
+          "kb_key": "product:ext_04f175344e976ae32c16abad",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "official_pdp_seed",
+          "has_card_highlight": true
+        },
+        "product_line_id": null,
+        "borrowed_from_sibling": false
+      },
+      "active_ingredients": {
+        "status": "not_expected_missing",
+        "issues": [],
+        "regulatory_expected": false,
+        "hero_expected": false,
+        "active_items": [],
+        "source_origin": "pdp_section",
+        "source_quality_status": "blocked",
+        "coverage": {
+          "details_sections_count": 0,
+          "faq_count": 0,
+          "how_to_chars": 228,
+          "inci_chars": 1055,
+          "active_ingredients_chars": 0,
+          "inci_applicability_status": "",
+          "ingredient_review_status": "",
+          "ingredient_remediation_action": "",
+          "bundle_component_refs_count": 0,
+          "effective_inci_chars": 1055,
+          "inci_borrowed_from_product_id": ""
+        },
+        "invalid_fragments": [],
+        "suppressed_reason": null
+      },
+      "variants": {
+        "status": "flagged",
+        "issues": [
+          "default_option_size_evidence_missing_axis"
+        ],
+        "visible_variant_rows": 0,
+        "examples": {
+          "identity_option_visible": [],
+          "wrong_axis_for_category": [],
+          "makeup_shade_missing_visual": [],
+          "size_value_generic_axis": [],
+          "default_option_size_evidence_missing_axis": [
+            {
+              "axis_name": "default",
+              "axis_kind": "volume",
+              "value": "4 oz",
+              "visual": false
+            }
+          ],
+          "identity_default_title_axis": []
+        }
+      },
+      "coverage": {
+        "details_sections_count": 0,
+        "faq_count": 0,
+        "how_to_chars": 228,
+        "inci_chars": 1055,
+        "active_ingredients_chars": 0,
+        "inci_applicability_status": "",
+        "ingredient_review_status": "",
+        "ingredient_remediation_action": "",
+        "bundle_component_refs_count": 0,
+        "effective_inci_chars": 1055,
+        "inci_borrowed_from_product_id": ""
+      }
+    },
+    {
+      "seed_id": "eps_4ba9a1e38b7df716ba988d6f",
+      "external_product_id": "ext_11422649c555f5fa22e34f78",
+      "market": "US",
+      "domain": "nativeatlas.com",
+      "title": "Noir Intensive - 1% Retinol Liposome",
+      "canonical_url": "https://nativeatlas.com/products/noir-intensive-1-retinol-liposome",
+      "product_family": "single_formula",
+      "product_line_id": null,
+      "pivota_insights": {
+        "direct": {
+          "product_id": "ext_11422649c555f5fa22e34f78",
+          "kb_key": "product:ext_11422649c555f5fa22e34f78",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "seller_plus_formula",
+          "has_card_highlight": true
+        },
+        "effective": {
+          "product_id": "ext_11422649c555f5fa22e34f78",
+          "kb_key": "product:ext_11422649c555f5fa22e34f78",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "seller_plus_formula",
+          "has_card_highlight": true
+        },
+        "product_line_id": null,
+        "borrowed_from_sibling": false
+      },
+      "active_ingredients": {
+        "status": "ready_hero",
+        "issues": [],
+        "regulatory_expected": false,
+        "hero_expected": true,
+        "active_items": [
+          "Retinol",
+          "Squalane"
+        ],
+        "source_origin": "pdp_section",
+        "source_quality_status": "captured",
+        "coverage": {
+          "details_sections_count": 0,
+          "faq_count": 2,
+          "how_to_chars": 342,
+          "inci_chars": 617,
+          "active_ingredients_chars": 0,
+          "inci_applicability_status": "",
+          "ingredient_review_status": "",
+          "ingredient_remediation_action": "",
+          "bundle_component_refs_count": 0,
+          "effective_inci_chars": 617,
+          "inci_borrowed_from_product_id": ""
+        },
+        "invalid_fragments": [],
+        "suppressed_reason": null
+      },
+      "variants": {
+        "status": "no_visible_variant_axis",
+        "issues": [],
+        "visible_variant_rows": 0,
+        "examples": {
+          "identity_option_visible": [],
+          "wrong_axis_for_category": [],
+          "makeup_shade_missing_visual": [],
+          "size_value_generic_axis": [],
+          "default_option_size_evidence_missing_axis": [],
+          "identity_default_title_axis": []
+        }
+      },
+      "coverage": {
+        "details_sections_count": 0,
+        "faq_count": 2,
+        "how_to_chars": 342,
+        "inci_chars": 617,
+        "active_ingredients_chars": 0,
+        "inci_applicability_status": "",
+        "ingredient_review_status": "",
+        "ingredient_remediation_action": "",
+        "bundle_component_refs_count": 0,
+        "effective_inci_chars": 617,
+        "inci_borrowed_from_product_id": ""
+      }
+    },
+    {
+      "seed_id": "eps_8c4c46c0552eda7c7ca10d95",
+      "external_product_id": "ext_2045f52c2d498d2b8c3bdf58",
+      "market": "US",
+      "domain": "nativeatlas.com",
+      "title": "LIVING BEAUTY Facial Cream",
+      "canonical_url": "https://nativeatlas.com/products/up-tight-cream",
+      "product_family": "single_formula",
+      "product_line_id": null,
+      "pivota_insights": {
+        "direct": {
+          "product_id": "ext_2045f52c2d498d2b8c3bdf58",
+          "kb_key": "product:ext_2045f52c2d498d2b8c3bdf58",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "seller_plus_formula",
+          "has_card_highlight": true
+        },
+        "effective": {
+          "product_id": "ext_2045f52c2d498d2b8c3bdf58",
+          "kb_key": "product:ext_2045f52c2d498d2b8c3bdf58",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "seller_plus_formula",
+          "has_card_highlight": true
+        },
+        "product_line_id": null,
+        "borrowed_from_sibling": false
+      },
+      "active_ingredients": {
+        "status": "missing_hero",
+        "issues": [
+          "missing_hero"
+        ],
+        "regulatory_expected": false,
+        "hero_expected": true,
+        "active_items": [],
+        "source_origin": "pdp_section",
+        "source_quality_status": "blocked",
+        "coverage": {
+          "details_sections_count": 0,
+          "faq_count": 2,
+          "how_to_chars": 0,
+          "inci_chars": 795,
+          "active_ingredients_chars": 0,
+          "inci_applicability_status": "",
+          "ingredient_review_status": "",
+          "ingredient_remediation_action": "",
+          "bundle_component_refs_count": 0,
+          "effective_inci_chars": 795,
+          "inci_borrowed_from_product_id": ""
+        },
+        "invalid_fragments": [],
+        "suppressed_reason": null
+      },
+      "variants": {
+        "status": "ready",
+        "issues": [],
+        "visible_variant_rows": 1,
+        "examples": {
+          "identity_option_visible": [],
+          "wrong_axis_for_category": [],
+          "makeup_shade_missing_visual": [],
+          "size_value_generic_axis": [],
+          "default_option_size_evidence_missing_axis": [],
+          "identity_default_title_axis": []
+        }
+      },
+      "coverage": {
+        "details_sections_count": 0,
+        "faq_count": 2,
+        "how_to_chars": 0,
+        "inci_chars": 795,
+        "active_ingredients_chars": 0,
+        "inci_applicability_status": "",
+        "ingredient_review_status": "",
+        "ingredient_remediation_action": "",
+        "bundle_component_refs_count": 0,
+        "effective_inci_chars": 795,
+        "inci_borrowed_from_product_id": ""
+      }
+    },
+    {
+      "seed_id": "eps_493c4c070d77bce86b5a162f",
+      "external_product_id": "ext_3d6627e8c1dc6b2827416e5f",
+      "market": "US",
+      "domain": "nativeatlas.com",
+      "title": "Serum Water AHA",
+      "canonical_url": "https://nativeatlas.com/products/serum-water-aha",
+      "product_family": "single_formula",
+      "product_line_id": null,
+      "pivota_insights": {
+        "direct": {
+          "product_id": "ext_3d6627e8c1dc6b2827416e5f",
+          "kb_key": "product:ext_3d6627e8c1dc6b2827416e5f",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "seller_plus_formula",
+          "has_card_highlight": true
+        },
+        "effective": {
+          "product_id": "ext_3d6627e8c1dc6b2827416e5f",
+          "kb_key": "product:ext_3d6627e8c1dc6b2827416e5f",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "seller_plus_formula",
+          "has_card_highlight": true
+        },
+        "product_line_id": null,
+        "borrowed_from_sibling": false
+      },
+      "active_ingredients": {
+        "status": "missing_hero",
+        "issues": [
+          "missing_hero"
+        ],
+        "regulatory_expected": false,
+        "hero_expected": true,
+        "active_items": [],
+        "source_origin": "pdp_section",
+        "source_quality_status": "blocked",
+        "coverage": {
+          "details_sections_count": 0,
+          "faq_count": 2,
+          "how_to_chars": 467,
+          "inci_chars": 459,
+          "active_ingredients_chars": 0,
+          "inci_applicability_status": "",
+          "ingredient_review_status": "",
+          "ingredient_remediation_action": "",
+          "bundle_component_refs_count": 0,
+          "effective_inci_chars": 459,
+          "inci_borrowed_from_product_id": ""
+        },
+        "invalid_fragments": [],
+        "suppressed_reason": "active_items_not_displayable"
+      },
+      "variants": {
+        "status": "ready",
+        "issues": [],
+        "visible_variant_rows": 1,
+        "examples": {
+          "identity_option_visible": [],
+          "wrong_axis_for_category": [],
+          "makeup_shade_missing_visual": [],
+          "size_value_generic_axis": [],
+          "default_option_size_evidence_missing_axis": [],
+          "identity_default_title_axis": []
+        }
+      },
+      "coverage": {
+        "details_sections_count": 0,
+        "faq_count": 2,
+        "how_to_chars": 467,
+        "inci_chars": 459,
+        "active_ingredients_chars": 0,
+        "inci_applicability_status": "",
+        "ingredient_review_status": "",
+        "ingredient_remediation_action": "",
+        "bundle_component_refs_count": 0,
+        "effective_inci_chars": 459,
+        "inci_borrowed_from_product_id": ""
+      }
+    },
+    {
+      "seed_id": "eps_b015d76e7df45d9e20f26abf",
+      "external_product_id": "ext_415744252d86ebf058d120d5",
+      "market": "US",
+      "domain": "nativeatlas.com",
+      "title": "RECOVER BODY BALM",
+      "canonical_url": "https://nativeatlas.com/products/muscle-rub",
+      "product_family": "single_formula",
+      "product_line_id": null,
+      "pivota_insights": {
+        "direct": {
+          "product_id": "ext_415744252d86ebf058d120d5",
+          "kb_key": "product:ext_415744252d86ebf058d120d5",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "official_pdp_seed",
+          "has_card_highlight": true
+        },
+        "effective": {
+          "product_id": "ext_415744252d86ebf058d120d5",
+          "kb_key": "product:ext_415744252d86ebf058d120d5",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "official_pdp_seed",
+          "has_card_highlight": true
+        },
+        "product_line_id": null,
+        "borrowed_from_sibling": false
+      },
+      "active_ingredients": {
+        "status": "not_expected_missing",
+        "issues": [],
+        "regulatory_expected": false,
+        "hero_expected": false,
+        "active_items": [],
+        "source_origin": "none",
+        "source_quality_status": "blocked",
+        "coverage": {
+          "details_sections_count": 0,
+          "faq_count": 0,
+          "how_to_chars": 0,
+          "inci_chars": 607,
+          "active_ingredients_chars": 0,
+          "inci_applicability_status": "",
+          "ingredient_review_status": "",
+          "ingredient_remediation_action": "",
+          "bundle_component_refs_count": 0,
+          "effective_inci_chars": 607,
+          "inci_borrowed_from_product_id": ""
+        },
+        "invalid_fragments": [],
+        "suppressed_reason": "no_authoritative_source"
+      },
+      "variants": {
+        "status": "ready",
+        "issues": [],
+        "visible_variant_rows": 1,
+        "examples": {
+          "identity_option_visible": [],
+          "wrong_axis_for_category": [],
+          "makeup_shade_missing_visual": [],
+          "size_value_generic_axis": [],
+          "default_option_size_evidence_missing_axis": [],
+          "identity_default_title_axis": []
+        }
+      },
+      "coverage": {
+        "details_sections_count": 0,
+        "faq_count": 0,
+        "how_to_chars": 0,
+        "inci_chars": 607,
+        "active_ingredients_chars": 0,
+        "inci_applicability_status": "",
+        "ingredient_review_status": "",
+        "ingredient_remediation_action": "",
+        "bundle_component_refs_count": 0,
+        "effective_inci_chars": 607,
+        "inci_borrowed_from_product_id": ""
+      }
+    },
+    {
+      "seed_id": "eps_e07c8ac5594caa9dacfa9655",
+      "external_product_id": "ext_500f523eacd9e24af157e583",
+      "market": "US",
+      "domain": "nativeatlas.com",
+      "title": "LIVING BEAUTY Facial Oil",
+      "canonical_url": "https://nativeatlas.com/products/living-beauty-oil",
+      "product_family": "single_formula",
+      "product_line_id": null,
+      "pivota_insights": {
+        "direct": {
+          "product_id": "ext_500f523eacd9e24af157e583",
+          "kb_key": "product:ext_500f523eacd9e24af157e583",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "seller_plus_formula",
+          "has_card_highlight": true
+        },
+        "effective": {
+          "product_id": "ext_500f523eacd9e24af157e583",
+          "kb_key": "product:ext_500f523eacd9e24af157e583",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "seller_plus_formula",
+          "has_card_highlight": true
+        },
+        "product_line_id": null,
+        "borrowed_from_sibling": false
+      },
+      "active_ingredients": {
+        "status": "not_expected_missing",
+        "issues": [],
+        "regulatory_expected": false,
+        "hero_expected": false,
+        "active_items": [],
+        "source_origin": "pdp_section",
+        "source_quality_status": "blocked",
+        "coverage": {
+          "details_sections_count": 0,
+          "faq_count": 0,
+          "how_to_chars": 0,
+          "inci_chars": 639,
+          "active_ingredients_chars": 0,
+          "inci_applicability_status": "",
+          "ingredient_review_status": "",
+          "ingredient_remediation_action": "",
+          "bundle_component_refs_count": 0,
+          "effective_inci_chars": 639,
+          "inci_borrowed_from_product_id": ""
+        },
+        "invalid_fragments": [],
+        "suppressed_reason": null
+      },
+      "variants": {
+        "status": "flagged",
+        "issues": [
+          "default_option_size_evidence_missing_axis"
+        ],
+        "visible_variant_rows": 0,
+        "examples": {
+          "identity_option_visible": [],
+          "wrong_axis_for_category": [],
+          "makeup_shade_missing_visual": [],
+          "size_value_generic_axis": [],
+          "default_option_size_evidence_missing_axis": [
+            {
+              "axis_name": "default",
+              "axis_kind": "volume",
+              "value": "1 oz",
+              "visual": false
+            }
+          ],
+          "identity_default_title_axis": []
+        }
+      },
+      "coverage": {
+        "details_sections_count": 0,
+        "faq_count": 0,
+        "how_to_chars": 0,
+        "inci_chars": 639,
+        "active_ingredients_chars": 0,
+        "inci_applicability_status": "",
+        "ingredient_review_status": "",
+        "ingredient_remediation_action": "",
+        "bundle_component_refs_count": 0,
+        "effective_inci_chars": 639,
+        "inci_borrowed_from_product_id": ""
+      }
+    },
+    {
+      "seed_id": "eps_f98967392015bbf8cf564105",
+      "external_product_id": "ext_83b5a197a66e1f91cdfba5c0",
+      "market": "US",
+      "domain": "nativeatlas.com",
+      "title": "OMNIS Universal Oil",
+      "canonical_url": "https://nativeatlas.com/products/omnis-body-oil",
+      "product_family": "single_formula",
+      "product_line_id": null,
+      "pivota_insights": {
+        "direct": {
+          "product_id": "ext_83b5a197a66e1f91cdfba5c0",
+          "kb_key": "product:ext_83b5a197a66e1f91cdfba5c0",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "official_pdp_seed",
+          "has_card_highlight": true
+        },
+        "effective": {
+          "product_id": "ext_83b5a197a66e1f91cdfba5c0",
+          "kb_key": "product:ext_83b5a197a66e1f91cdfba5c0",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "official_pdp_seed",
+          "has_card_highlight": true
+        },
+        "product_line_id": null,
+        "borrowed_from_sibling": false
+      },
+      "active_ingredients": {
+        "status": "not_expected_missing",
+        "issues": [],
+        "regulatory_expected": false,
+        "hero_expected": false,
+        "active_items": [],
+        "source_origin": "none",
+        "source_quality_status": "blocked",
+        "coverage": {
+          "details_sections_count": 0,
+          "faq_count": 0,
+          "how_to_chars": 0,
+          "inci_chars": 607,
+          "active_ingredients_chars": 0,
+          "inci_applicability_status": "",
+          "ingredient_review_status": "",
+          "ingredient_remediation_action": "",
+          "bundle_component_refs_count": 0,
+          "effective_inci_chars": 607,
+          "inci_borrowed_from_product_id": ""
+        },
+        "invalid_fragments": [],
+        "suppressed_reason": "no_authoritative_source"
+      },
+      "variants": {
+        "status": "flagged",
+        "issues": [
+          "default_option_size_evidence_missing_axis"
+        ],
+        "visible_variant_rows": 0,
+        "examples": {
+          "identity_option_visible": [],
+          "wrong_axis_for_category": [],
+          "makeup_shade_missing_visual": [],
+          "size_value_generic_axis": [],
+          "default_option_size_evidence_missing_axis": [
+            {
+              "axis_name": "default",
+              "axis_kind": "volume",
+              "value": "4 oz",
+              "visual": false
+            }
+          ],
+          "identity_default_title_axis": []
+        }
+      },
+      "coverage": {
+        "details_sections_count": 0,
+        "faq_count": 0,
+        "how_to_chars": 0,
+        "inci_chars": 607,
+        "active_ingredients_chars": 0,
+        "inci_applicability_status": "",
+        "ingredient_review_status": "",
+        "ingredient_remediation_action": "",
+        "bundle_component_refs_count": 0,
+        "effective_inci_chars": 607,
+        "inci_borrowed_from_product_id": ""
+      }
+    },
+    {
+      "seed_id": "eps_8b88782cebdc4c4496650bf9",
+      "external_product_id": "ext_87f88a6d1efd2a4d91b09b15",
+      "market": "US",
+      "domain": "nativeatlas.com",
+      "title": "Strong Body Gel",
+      "canonical_url": "https://nativeatlas.com/products/strong-body-gel",
+      "product_family": "single_formula",
+      "product_line_id": null,
+      "pivota_insights": {
+        "direct": {
+          "product_id": "ext_87f88a6d1efd2a4d91b09b15",
+          "kb_key": "product:ext_87f88a6d1efd2a4d91b09b15",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "official_pdp_seed",
+          "has_card_highlight": true
+        },
+        "effective": {
+          "product_id": "ext_87f88a6d1efd2a4d91b09b15",
+          "kb_key": "product:ext_87f88a6d1efd2a4d91b09b15",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "official_pdp_seed",
+          "has_card_highlight": true
+        },
+        "product_line_id": null,
+        "borrowed_from_sibling": false
+      },
+      "active_ingredients": {
+        "status": "missing_hero",
+        "issues": [
+          "missing_hero"
+        ],
+        "regulatory_expected": false,
+        "hero_expected": true,
+        "active_items": [],
+        "source_origin": "none",
+        "source_quality_status": "blocked",
+        "coverage": {
+          "details_sections_count": 0,
+          "faq_count": 2,
+          "how_to_chars": 0,
+          "inci_chars": 1556,
+          "active_ingredients_chars": 0,
+          "inci_applicability_status": "",
+          "ingredient_review_status": "",
+          "ingredient_remediation_action": "",
+          "bundle_component_refs_count": 0,
+          "effective_inci_chars": 1556,
+          "inci_borrowed_from_product_id": ""
+        },
+        "invalid_fragments": [],
+        "suppressed_reason": "no_authoritative_source"
+      },
+      "variants": {
+        "status": "no_visible_variant_axis",
+        "issues": [],
+        "visible_variant_rows": 0,
+        "examples": {
+          "identity_option_visible": [],
+          "wrong_axis_for_category": [],
+          "makeup_shade_missing_visual": [],
+          "size_value_generic_axis": [],
+          "default_option_size_evidence_missing_axis": [],
+          "identity_default_title_axis": []
+        }
+      },
+      "coverage": {
+        "details_sections_count": 0,
+        "faq_count": 2,
+        "how_to_chars": 0,
+        "inci_chars": 1556,
+        "active_ingredients_chars": 0,
+        "inci_applicability_status": "",
+        "ingredient_review_status": "",
+        "ingredient_remediation_action": "",
+        "bundle_component_refs_count": 0,
+        "effective_inci_chars": 1556,
+        "inci_borrowed_from_product_id": ""
+      }
+    },
+    {
+      "seed_id": "eps_ac70628c0903c852e8d2680d",
+      "external_product_id": "ext_98abef01f3004f9c22c14d1c",
+      "market": "US",
+      "domain": "nativeatlas.com",
+      "title": "Volume Cream",
+      "canonical_url": "https://nativeatlas.com/products/volume-cream",
+      "product_family": "single_formula",
+      "product_line_id": null,
+      "pivota_insights": {
+        "direct": {
+          "product_id": "ext_98abef01f3004f9c22c14d1c",
+          "kb_key": "product:ext_98abef01f3004f9c22c14d1c",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "official_pdp_seed",
+          "has_card_highlight": true
+        },
+        "effective": {
+          "product_id": "ext_98abef01f3004f9c22c14d1c",
+          "kb_key": "product:ext_98abef01f3004f9c22c14d1c",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "official_pdp_seed",
+          "has_card_highlight": true
+        },
+        "product_line_id": null,
+        "borrowed_from_sibling": false
+      },
+      "active_ingredients": {
+        "status": "missing_hero",
+        "issues": [
+          "missing_hero"
+        ],
+        "regulatory_expected": false,
+        "hero_expected": true,
+        "active_items": [],
+        "source_origin": "none",
+        "source_quality_status": "blocked",
+        "coverage": {
+          "details_sections_count": 0,
+          "faq_count": 2,
+          "how_to_chars": 0,
+          "inci_chars": 1556,
+          "active_ingredients_chars": 0,
+          "inci_applicability_status": "",
+          "ingredient_review_status": "",
+          "ingredient_remediation_action": "",
+          "bundle_component_refs_count": 0,
+          "effective_inci_chars": 1556,
+          "inci_borrowed_from_product_id": ""
+        },
+        "invalid_fragments": [],
+        "suppressed_reason": "no_authoritative_source"
+      },
+      "variants": {
+        "status": "no_visible_variant_axis",
+        "issues": [],
+        "visible_variant_rows": 0,
+        "examples": {
+          "identity_option_visible": [],
+          "wrong_axis_for_category": [],
+          "makeup_shade_missing_visual": [],
+          "size_value_generic_axis": [],
+          "default_option_size_evidence_missing_axis": [],
+          "identity_default_title_axis": []
+        }
+      },
+      "coverage": {
+        "details_sections_count": 0,
+        "faq_count": 2,
+        "how_to_chars": 0,
+        "inci_chars": 1556,
+        "active_ingredients_chars": 0,
+        "inci_applicability_status": "",
+        "ingredient_review_status": "",
+        "ingredient_remediation_action": "",
+        "bundle_component_refs_count": 0,
+        "effective_inci_chars": 1556,
+        "inci_borrowed_from_product_id": ""
+      }
+    },
+    {
+      "seed_id": "eps_e151d2dc203623433e9e0489",
+      "external_product_id": "ext_9a36f1b3f62841282ed40400",
+      "market": "US",
+      "domain": "nativeatlas.com",
+      "title": "CIRCULATION SOAK 8oz",
+      "canonical_url": "https://nativeatlas.com/products/bath-soak",
+      "product_family": "unknown_product",
+      "product_line_id": null,
+      "pivota_insights": {
+        "direct": {
+          "product_id": "ext_9a36f1b3f62841282ed40400",
+          "kb_key": "product:ext_9a36f1b3f62841282ed40400",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "official_pdp_seed",
+          "has_card_highlight": true
+        },
+        "effective": {
+          "product_id": "ext_9a36f1b3f62841282ed40400",
+          "kb_key": "product:ext_9a36f1b3f62841282ed40400",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "official_pdp_seed",
+          "has_card_highlight": true
+        },
+        "product_line_id": null,
+        "borrowed_from_sibling": false
+      },
+      "active_ingredients": {
+        "status": "not_expected_missing",
+        "issues": [],
+        "regulatory_expected": false,
+        "hero_expected": false,
+        "active_items": [],
+        "source_origin": "none",
+        "source_quality_status": "blocked",
+        "coverage": {
+          "details_sections_count": 0,
+          "faq_count": 2,
+          "how_to_chars": 0,
+          "inci_chars": 0,
+          "active_ingredients_chars": 0,
+          "inci_applicability_status": "",
+          "ingredient_review_status": "",
+          "ingredient_remediation_action": "",
+          "bundle_component_refs_count": 0,
+          "effective_inci_chars": 0,
+          "inci_borrowed_from_product_id": ""
+        },
+        "invalid_fragments": [],
+        "suppressed_reason": "no_authoritative_source"
+      },
+      "variants": {
+        "status": "ready",
+        "issues": [],
+        "visible_variant_rows": 1,
+        "examples": {
+          "identity_option_visible": [],
+          "wrong_axis_for_category": [],
+          "makeup_shade_missing_visual": [],
+          "size_value_generic_axis": [],
+          "default_option_size_evidence_missing_axis": [],
+          "identity_default_title_axis": []
+        }
+      },
+      "coverage": {
+        "details_sections_count": 0,
+        "faq_count": 2,
+        "how_to_chars": 0,
+        "inci_chars": 0,
+        "active_ingredients_chars": 0,
+        "inci_applicability_status": "",
+        "ingredient_review_status": "",
+        "ingredient_remediation_action": "",
+        "bundle_component_refs_count": 0,
+        "effective_inci_chars": 0,
+        "inci_borrowed_from_product_id": ""
+      }
+    },
+    {
+      "seed_id": "eps_82b874ad6ac28b033f6bdb9d",
+      "external_product_id": "ext_9af00410efc63f81b1498f71",
+      "market": "US",
+      "domain": "nativeatlas.com",
+      "title": "NAIROBI FRAGRANCE ROLLER",
+      "canonical_url": "https://nativeatlas.com/products/nairobi-fragrance-roller",
+      "product_family": "accessory",
+      "product_line_id": null,
+      "pivota_insights": {
+        "direct": {
+          "product_id": "ext_9af00410efc63f81b1498f71",
+          "kb_key": "product:ext_9af00410efc63f81b1498f71",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "official_pdp_seed",
+          "has_card_highlight": true
+        },
+        "effective": {
+          "product_id": "ext_9af00410efc63f81b1498f71",
+          "kb_key": "product:ext_9af00410efc63f81b1498f71",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "official_pdp_seed",
+          "has_card_highlight": true
+        },
+        "product_line_id": null,
+        "borrowed_from_sibling": false
+      },
+      "active_ingredients": {
+        "status": "not_applicable_product_family",
+        "issues": [],
+        "regulatory_expected": false,
+        "hero_expected": false,
+        "active_items": [],
+        "source_origin": "none",
+        "source_quality_status": "blocked",
+        "coverage": {
+          "details_sections_count": 0,
+          "faq_count": 2,
+          "how_to_chars": 0,
+          "inci_chars": 0,
+          "active_ingredients_chars": 0,
+          "inci_applicability_status": "",
+          "ingredient_review_status": "",
+          "ingredient_remediation_action": "",
+          "bundle_component_refs_count": 0,
+          "effective_inci_chars": 0,
+          "inci_borrowed_from_product_id": ""
+        },
+        "invalid_fragments": [],
+        "suppressed_reason": "accessory"
+      },
+      "variants": {
+        "status": "ready",
+        "issues": [],
+        "visible_variant_rows": 1,
+        "examples": {
+          "identity_option_visible": [],
+          "wrong_axis_for_category": [],
+          "makeup_shade_missing_visual": [],
+          "size_value_generic_axis": [],
+          "default_option_size_evidence_missing_axis": [],
+          "identity_default_title_axis": []
+        }
+      },
+      "coverage": {
+        "details_sections_count": 0,
+        "faq_count": 2,
+        "how_to_chars": 0,
+        "inci_chars": 0,
+        "active_ingredients_chars": 0,
+        "inci_applicability_status": "",
+        "ingredient_review_status": "",
+        "ingredient_remediation_action": "",
+        "bundle_component_refs_count": 0,
+        "effective_inci_chars": 0,
+        "inci_borrowed_from_product_id": ""
+      }
+    },
+    {
+      "seed_id": "eps_3d18a95a8694beab034e6959",
+      "external_product_id": "ext_afcabd338d72f532c1c7a1e9",
+      "market": "US",
+      "domain": "nativeatlas.com",
+      "title": "MOVEMENT OIL",
+      "canonical_url": "https://nativeatlas.com/products/movement-oil",
+      "product_family": "single_formula",
+      "product_line_id": null,
+      "pivota_insights": {
+        "direct": {
+          "product_id": "ext_afcabd338d72f532c1c7a1e9",
+          "kb_key": "product:ext_afcabd338d72f532c1c7a1e9",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "official_pdp_seed",
+          "has_card_highlight": true
+        },
+        "effective": {
+          "product_id": "ext_afcabd338d72f532c1c7a1e9",
+          "kb_key": "product:ext_afcabd338d72f532c1c7a1e9",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "official_pdp_seed",
+          "has_card_highlight": true
+        },
+        "product_line_id": null,
+        "borrowed_from_sibling": false
+      },
+      "active_ingredients": {
+        "status": "missing_hero",
+        "issues": [
+          "missing_hero"
+        ],
+        "regulatory_expected": false,
+        "hero_expected": true,
+        "active_items": [],
+        "source_origin": "none",
+        "source_quality_status": "blocked",
+        "coverage": {
+          "details_sections_count": 2,
+          "faq_count": 0,
+          "how_to_chars": 0,
+          "inci_chars": 816,
+          "active_ingredients_chars": 0,
+          "inci_applicability_status": "",
+          "ingredient_review_status": "",
+          "ingredient_remediation_action": "",
+          "bundle_component_refs_count": 0,
+          "effective_inci_chars": 816,
+          "inci_borrowed_from_product_id": ""
+        },
+        "invalid_fragments": [],
+        "suppressed_reason": "no_authoritative_source"
+      },
+      "variants": {
+        "status": "ready",
+        "issues": [],
+        "visible_variant_rows": 1,
+        "examples": {
+          "identity_option_visible": [],
+          "wrong_axis_for_category": [],
+          "makeup_shade_missing_visual": [],
+          "size_value_generic_axis": [],
+          "default_option_size_evidence_missing_axis": [],
+          "identity_default_title_axis": []
+        }
+      },
+      "coverage": {
+        "details_sections_count": 2,
+        "faq_count": 0,
+        "how_to_chars": 0,
+        "inci_chars": 816,
+        "active_ingredients_chars": 0,
+        "inci_applicability_status": "",
+        "ingredient_review_status": "",
+        "ingredient_remediation_action": "",
+        "bundle_component_refs_count": 0,
+        "effective_inci_chars": 816,
+        "inci_borrowed_from_product_id": ""
+      }
+    },
+    {
+      "seed_id": "eps_4ff384dccb59ca0c854779d1",
+      "external_product_id": "ext_d92d9a9043e26d72a447e5a3",
+      "market": "US",
+      "domain": "nativeatlas.com",
+      "title": "NAIROBI Universal Oil",
+      "canonical_url": "https://nativeatlas.com/products/nairobi-universal-oil",
+      "product_family": "single_formula",
+      "product_line_id": null,
+      "pivota_insights": {
+        "direct": {
+          "product_id": "ext_d92d9a9043e26d72a447e5a3",
+          "kb_key": "product:ext_d92d9a9043e26d72a447e5a3",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "official_pdp_seed",
+          "has_card_highlight": true
+        },
+        "effective": {
+          "product_id": "ext_d92d9a9043e26d72a447e5a3",
+          "kb_key": "product:ext_d92d9a9043e26d72a447e5a3",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "official_pdp_seed",
+          "has_card_highlight": true
+        },
+        "product_line_id": null,
+        "borrowed_from_sibling": false
+      },
+      "active_ingredients": {
+        "status": "not_expected_missing",
+        "issues": [],
+        "regulatory_expected": false,
+        "hero_expected": false,
+        "active_items": [],
+        "source_origin": "pdp_section",
+        "source_quality_status": "blocked",
+        "coverage": {
+          "details_sections_count": 2,
+          "faq_count": 0,
+          "how_to_chars": 0,
+          "inci_chars": 1267,
+          "active_ingredients_chars": 0,
+          "inci_applicability_status": "",
+          "ingredient_review_status": "",
+          "ingredient_remediation_action": "",
+          "bundle_component_refs_count": 0,
+          "effective_inci_chars": 1267,
+          "inci_borrowed_from_product_id": ""
+        },
+        "invalid_fragments": [],
+        "suppressed_reason": null
+      },
+      "variants": {
+        "status": "flagged",
+        "issues": [
+          "default_option_size_evidence_missing_axis"
+        ],
+        "visible_variant_rows": 0,
+        "examples": {
+          "identity_option_visible": [],
+          "wrong_axis_for_category": [],
+          "makeup_shade_missing_visual": [],
+          "size_value_generic_axis": [],
+          "default_option_size_evidence_missing_axis": [
+            {
+              "axis_name": "default",
+              "axis_kind": "volume",
+              "value": "4 oz",
+              "visual": false
+            }
+          ],
+          "identity_default_title_axis": []
+        }
+      },
+      "coverage": {
+        "details_sections_count": 2,
+        "faq_count": 0,
+        "how_to_chars": 0,
+        "inci_chars": 1267,
+        "active_ingredients_chars": 0,
+        "inci_applicability_status": "",
+        "ingredient_review_status": "",
+        "ingredient_remediation_action": "",
+        "bundle_component_refs_count": 0,
+        "effective_inci_chars": 1267,
+        "inci_borrowed_from_product_id": ""
+      }
+    },
+    {
+      "seed_id": "eps_4fa95a7e6b57e02fdf4bae53",
+      "external_product_id": "ext_fe823be4386548be651e2905",
+      "market": "US",
+      "domain": "nativeatlas.com",
+      "title": "ANTIOXIDANT Rose Toning Mist",
+      "canonical_url": "https://nativeatlas.com/products/virdis-antioxidant-toner",
+      "product_family": "single_formula",
+      "product_line_id": null,
+      "pivota_insights": {
+        "direct": {
+          "product_id": "ext_fe823be4386548be651e2905",
+          "kb_key": "product:ext_fe823be4386548be651e2905",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "seller_plus_formula",
+          "has_card_highlight": true
+        },
+        "effective": {
+          "product_id": "ext_fe823be4386548be651e2905",
+          "kb_key": "product:ext_fe823be4386548be651e2905",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "seller_plus_formula",
+          "has_card_highlight": true
+        },
+        "product_line_id": null,
+        "borrowed_from_sibling": false
+      },
+      "active_ingredients": {
+        "status": "missing_hero",
+        "issues": [
+          "missing_hero"
+        ],
+        "regulatory_expected": false,
+        "hero_expected": true,
+        "active_items": [],
+        "source_origin": "pdp_section",
+        "source_quality_status": "blocked",
+        "coverage": {
+          "details_sections_count": 4,
+          "faq_count": 2,
+          "how_to_chars": 331,
+          "inci_chars": 722,
+          "active_ingredients_chars": 0,
+          "inci_applicability_status": "",
+          "ingredient_review_status": "",
+          "ingredient_remediation_action": "",
+          "bundle_component_refs_count": 0,
+          "effective_inci_chars": 722,
+          "inci_borrowed_from_product_id": ""
+        },
+        "invalid_fragments": [],
+        "suppressed_reason": null
+      },
+      "variants": {
+        "status": "flagged",
+        "issues": [
+          "default_option_size_evidence_missing_axis"
+        ],
+        "visible_variant_rows": 0,
+        "examples": {
+          "identity_option_visible": [],
+          "wrong_axis_for_category": [],
+          "makeup_shade_missing_visual": [],
+          "size_value_generic_axis": [],
+          "default_option_size_evidence_missing_axis": [
+            {
+              "axis_name": "default",
+              "axis_kind": "volume",
+              "value": "4oz",
+              "visual": false
+            }
+          ],
+          "identity_default_title_axis": []
+        }
+      },
+      "coverage": {
+        "details_sections_count": 4,
+        "faq_count": 2,
+        "how_to_chars": 331,
+        "inci_chars": 722,
+        "active_ingredients_chars": 0,
+        "inci_applicability_status": "",
+        "ingredient_review_status": "",
+        "ingredient_remediation_action": "",
+        "bundle_component_refs_count": 0,
+        "effective_inci_chars": 722,
+        "inci_borrowed_from_product_id": ""
+      }
+    },
+    {
+      "seed_id": "eps_25df2f24594a9569fe429a8f",
+      "external_product_id": "ext_ffb41c05e51afae033ad1e1a",
+      "market": "US",
+      "domain": "nativeatlas.com",
+      "title": "CIRCULATION SOAK 16oz",
+      "canonical_url": "https://nativeatlas.com/products/circulation-soak-jar",
+      "product_family": "unknown_product",
+      "product_line_id": null,
+      "pivota_insights": {
+        "direct": {
+          "product_id": "ext_ffb41c05e51afae033ad1e1a",
+          "kb_key": "product:ext_ffb41c05e51afae033ad1e1a",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "official_pdp_seed",
+          "has_card_highlight": true
+        },
+        "effective": {
+          "product_id": "ext_ffb41c05e51afae033ad1e1a",
+          "kb_key": "product:ext_ffb41c05e51afae033ad1e1a",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "official_pdp_seed",
+          "has_card_highlight": true
+        },
+        "product_line_id": null,
+        "borrowed_from_sibling": false
+      },
+      "active_ingredients": {
+        "status": "not_expected_missing",
+        "issues": [],
+        "regulatory_expected": false,
+        "hero_expected": false,
+        "active_items": [],
+        "source_origin": "none",
+        "source_quality_status": "blocked",
+        "coverage": {
+          "details_sections_count": 0,
+          "faq_count": 2,
+          "how_to_chars": 0,
+          "inci_chars": 0,
+          "active_ingredients_chars": 0,
+          "inci_applicability_status": "",
+          "ingredient_review_status": "",
+          "ingredient_remediation_action": "",
+          "bundle_component_refs_count": 0,
+          "effective_inci_chars": 0,
+          "inci_borrowed_from_product_id": ""
+        },
+        "invalid_fragments": [],
+        "suppressed_reason": "no_authoritative_source"
+      },
+      "variants": {
+        "status": "flagged",
+        "issues": [
+          "default_option_size_evidence_missing_axis"
+        ],
+        "visible_variant_rows": 0,
+        "examples": {
+          "identity_option_visible": [],
+          "wrong_axis_for_category": [],
+          "makeup_shade_missing_visual": [],
+          "size_value_generic_axis": [],
+          "default_option_size_evidence_missing_axis": [
+            {
+              "axis_name": "default",
+              "axis_kind": "volume",
+              "value": "CIRCULATION SOAK 16oz",
+              "visual": false
+            }
+          ],
+          "identity_default_title_axis": []
+        }
+      },
+      "coverage": {
+        "details_sections_count": 0,
+        "faq_count": 2,
+        "how_to_chars": 0,
+        "inci_chars": 0,
+        "active_ingredients_chars": 0,
+        "inci_applicability_status": "",
+        "ingredient_review_status": "",
+        "ingredient_remediation_action": "",
+        "bundle_component_refs_count": 0,
+        "effective_inci_chars": 0,
+        "inci_borrowed_from_product_id": ""
+      }
+    }
+  ]
+}

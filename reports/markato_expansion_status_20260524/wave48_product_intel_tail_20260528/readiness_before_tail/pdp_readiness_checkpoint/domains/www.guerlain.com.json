@@ -1,0 +1,4144 @@
+{
+  "generated_at": "2026-05-28T10:00:34.759Z",
+  "options": {
+    "market": "US",
+    "includeAttached": true,
+    "domain": "www.guerlain.com",
+    "externalProductIds": [],
+    "limit": 20000,
+    "sampleLimit": 10,
+    "checkpointDir": null,
+    "checkpointMode": "domain",
+    "resume": false,
+    "force": false,
+    "continueOnError": true,
+    "pageSize": 500,
+    "format": "json",
+    "chunkByDomain": false
+  },
+  "warnings": [],
+  "summary": {
+    "scanned": 39,
+    "by_market": {
+      "US": 39
+    },
+    "by_domain": [
+      {
+        "key": "www.guerlain.com",
+        "count": 39
+      }
+    ],
+    "by_product_family": [
+      {
+        "key": "single_formula",
+        "count": 34
+      },
+      {
+        "key": "unknown_product",
+        "count": 3
+      },
+      {
+        "key": "accessory",
+        "count": 1
+      },
+      {
+        "key": "set_or_collection",
+        "count": 1
+      }
+    ],
+    "coverage": {
+      "missing_inci": 0,
+      "missing_active_raw": 32,
+      "missing_details": 0,
+      "missing_how_to": 0,
+      "missing_faq": 35
+    },
+    "pivota_insights": {
+      "direct": {
+        "displayable": 39,
+        "high_quality_ready": 35,
+        "missing_kb": 0,
+        "not_displayable": 0
+      },
+      "effective": {
+        "displayable": 39,
+        "high_quality_ready": 35,
+        "missing_kb": 0,
+        "not_displayable": 0,
+        "borrowed_from_sibling": 0
+      },
+      "effective_issues": [
+        {
+          "key": "public_truncated_copy",
+          "count": 4
+        },
+        {
+          "key": "public_generic_marketing_copy",
+          "count": 2
+        }
+      ],
+      "effective_issue_domains": [
+        {
+          "key": "www.guerlain.com::public_truncated_copy",
+          "count": 4
+        },
+        {
+          "key": "www.guerlain.com::public_generic_marketing_copy",
+          "count": 2
+        }
+      ],
+      "quality_state": [
+        {
+          "key": "reviewed",
+          "count": 39
+        }
+      ],
+      "evidence_profile": [
+        {
+          "key": "official_pdp_reviewed_line",
+          "count": 28
+        },
+        {
+          "key": "official_pdp_reviewed_key_ingredients_and_usage",
+          "count": 5
+        },
+        {
+          "key": "seller_plus_external_review",
+          "count": 5
+        },
+        {
+          "key": "official_pdp_reviewed_formula_and_usage",
+          "count": 1
+        }
+      ],
+      "samples": {
+        "public_truncated_copy": [
+          {
+            "external_product_id": "ext_41f7f2155ba136c3a37dc7a3",
+            "domain": "www.guerlain.com",
+            "title": "Abeille Royale YOUTH WATERY OIL SERUM",
+            "used_product_id": "ext_41f7f2155ba136c3a37dc7a3",
+            "quality_state": "reviewed",
+            "evidence_profile": "official_pdp_reviewed_key_ingredients_and_usage"
+          },
+          {
+            "external_product_id": "ext_b361fbdd0bc0fa335a1038d1",
+            "domain": "www.guerlain.com",
+            "title": "Abeille Royale YOUTH WATERY OIL SERUM",
+            "used_product_id": "ext_b361fbdd0bc0fa335a1038d1",
+            "quality_state": "reviewed",
+            "evidence_profile": "official_pdp_reviewed_key_ingredients_and_usage"
+          },
+          {
+            "external_product_id": "ext_dbf232b0c403893b604b1245",
+            "domain": "www.guerlain.com",
+            "title": "Abeille Royale YOUTH WATERY OIL SERUM",
+            "used_product_id": "ext_dbf232b0c403893b604b1245",
+            "quality_state": "reviewed",
+            "evidence_profile": "official_pdp_reviewed_key_ingredients_and_usage"
+          },
+          {
+            "external_product_id": "ext_e0394506a3ce54c7d4683fe5",
+            "domain": "www.guerlain.com",
+            "title": "Abeille Royale YOUTH WATERY OIL SERUM",
+            "used_product_id": "ext_e0394506a3ce54c7d4683fe5",
+            "quality_state": "reviewed",
+            "evidence_profile": "official_pdp_reviewed_key_ingredients_and_usage"
+          }
+        ],
+        "public_generic_marketing_copy": [
+          {
+            "external_product_id": "ext_41f7f2155ba136c3a37dc7a3",
+            "domain": "www.guerlain.com",
+            "title": "Abeille Royale YOUTH WATERY OIL SERUM",
+            "used_product_id": "ext_41f7f2155ba136c3a37dc7a3",
+            "quality_state": "reviewed",
+            "evidence_profile": "official_pdp_reviewed_key_ingredients_and_usage"
+          },
+          {
+            "external_product_id": "ext_b361fbdd0bc0fa335a1038d1",
+            "domain": "www.guerlain.com",
+            "title": "Abeille Royale YOUTH WATERY OIL SERUM",
+            "used_product_id": "ext_b361fbdd0bc0fa335a1038d1",
+            "quality_state": "reviewed",
+            "evidence_profile": "official_pdp_reviewed_key_ingredients_and_usage"
+          }
+        ]
+      }
+    },
+    "active_ingredients": {
+      "regulatory_expected": 0,
+      "hero_expected": 7,
+      "any_active_items": 0,
+      "status": [
+        {
+          "key": "not_expected_missing",
+          "count": 30
+        },
+        {
+          "key": "missing_hero",
+          "count": 7
+        },
+        {
+          "key": "not_applicable_product_family",
+          "count": 2
+        }
+      ],
+      "issues": [
+        {
+          "key": "missing_hero",
+          "count": 7
+        },
+        {
+          "key": "active_raw_may_be_full_inci",
+          "count": 2
+        },
+        {
+          "key": "active_raw_too_long",
+          "count": 2
+        }
+      ],
+      "issue_domains": [
+        {
+          "key": "www.guerlain.com::missing_hero",
+          "count": 7
+        },
+        {
+          "key": "www.guerlain.com::active_raw_may_be_full_inci",
+          "count": 2
+        },
+        {
+          "key": "www.guerlain.com::active_raw_too_long",
+          "count": 2
+        }
+      ],
+      "source_origin": [
+        {
+          "key": "pdp_section",
+          "count": 37
+        },
+        {
+          "key": "none",
+          "count": 2
+        }
+      ],
+      "samples": {
+        "missing_hero": [
+          {
+            "external_product_id": "ext_41f7f2155ba136c3a37dc7a3",
+            "domain": "www.guerlain.com",
+            "title": "Abeille Royale YOUTH WATERY OIL SERUM",
+            "status": "missing_hero",
+            "active_items": [],
+            "source_origin": "pdp_section"
+          },
+          {
+            "external_product_id": "ext_721aa5c9d9e71a28b9d4fef3",
+            "domain": "www.guerlain.com",
+            "title": "ORCHIDÉE IMPÉRIALE THE LONGEVITY LIGHT CREAM",
+            "status": "missing_hero",
+            "active_items": [],
+            "source_origin": "pdp_section"
+          },
+          {
+            "external_product_id": "ext_b361fbdd0bc0fa335a1038d1",
+            "domain": "www.guerlain.com",
+            "title": "Abeille Royale YOUTH WATERY OIL SERUM",
+            "status": "missing_hero",
+            "active_items": [],
+            "source_origin": "pdp_section"
+          },
+          {
+            "external_product_id": "ext_c6b96c732b2a0e2c1b508ad2",
+            "domain": "www.guerlain.com",
+            "title": "ORCHIDÉE IMPÉRIALE THE LONGEVITY LIGHT CREAM",
+            "status": "missing_hero",
+            "active_items": [],
+            "source_origin": "pdp_section"
+          },
+          {
+            "external_product_id": "ext_dbf232b0c403893b604b1245",
+            "domain": "www.guerlain.com",
+            "title": "Abeille Royale YOUTH WATERY OIL SERUM",
+            "status": "missing_hero",
+            "active_items": [],
+            "source_origin": "pdp_section"
+          },
+          {
+            "external_product_id": "ext_dfe4c10ed6a41b4745c18bd5",
+            "domain": "www.guerlain.com",
+            "title": "ABEILLE ROYALE YOUTH REPAIR EYE CARE 15 ML / 0.50 OZ",
+            "status": "missing_hero",
+            "active_items": [],
+            "source_origin": "pdp_section"
+          },
+          {
+            "external_product_id": "ext_e0394506a3ce54c7d4683fe5",
+            "domain": "www.guerlain.com",
+            "title": "Abeille Royale YOUTH WATERY OIL SERUM",
+            "status": "missing_hero",
+            "active_items": [],
+            "source_origin": "pdp_section"
+          }
+        ],
+        "active_raw_too_long": [
+          {
+            "external_product_id": "ext_41f7f2155ba136c3a37dc7a3",
+            "domain": "www.guerlain.com",
+            "title": "Abeille Royale YOUTH WATERY OIL SERUM",
+            "status": "missing_hero",
+            "active_items": [],
+            "source_origin": "pdp_section"
+          },
+          {
+            "external_product_id": "ext_b361fbdd0bc0fa335a1038d1",
+            "domain": "www.guerlain.com",
+            "title": "Abeille Royale YOUTH WATERY OIL SERUM",
+            "status": "missing_hero",
+            "active_items": [],
+            "source_origin": "pdp_section"
+          }
+        ],
+        "active_raw_may_be_full_inci": [
+          {
+            "external_product_id": "ext_41f7f2155ba136c3a37dc7a3",
+            "domain": "www.guerlain.com",
+            "title": "Abeille Royale YOUTH WATERY OIL SERUM",
+            "status": "missing_hero",
+            "active_items": [],
+            "source_origin": "pdp_section"
+          },
+          {
+            "external_product_id": "ext_b361fbdd0bc0fa335a1038d1",
+            "domain": "www.guerlain.com",
+            "title": "Abeille Royale YOUTH WATERY OIL SERUM",
+            "status": "missing_hero",
+            "active_items": [],
+            "source_origin": "pdp_section"
+          }
+        ]
+      }
+    },
+    "variants": {
+      "status": [
+        {
+          "key": "ready",
+          "count": 39
+        }
+      ],
+      "issues": [],
+      "issue_domains": [],
+      "samples": {}
+    }
+  },
+  "rows": [
+    {
+      "seed_id": "eps_c1a7fc19d84546ab8bba0e4b",
+      "external_product_id": "ext_0f81c32bc5ed9ee976fb96a0",
+      "market": "US",
+      "domain": "www.guerlain.com",
+      "title": "L'Art & La Matière VANILLE PLANIFOLIA EXTRAIT 21 – EXTRACT 50 ML / 1.69 OZ",
+      "canonical_url": "https://www.guerlain.com/us/en-us/p/lart-la-matiere-vanille-planifolia-extrait-21-extract-P014754.html",
+      "product_family": "unknown_product",
+      "product_line_id": "pl_9f79a31d3ca44e666694f234",
+      "identity_variant_axes": {
+        "shade": "g014754",
+        "volume": "50ml",
+        "multi_variant": false
+      },
+      "pivota_insights": {
+        "direct": {
+          "product_id": "ext_0f81c32bc5ed9ee976fb96a0",
+          "kb_key": "product:ext_0f81c32bc5ed9ee976fb96a0",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "seller_plus_external_review",
+          "has_card_highlight": true
+        },
+        "effective": {
+          "product_id": "ext_0f81c32bc5ed9ee976fb96a0",
+          "kb_key": "product:ext_0f81c32bc5ed9ee976fb96a0",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "seller_plus_external_review",
+          "has_card_highlight": true
+        },
+        "product_line_id": "pl_9f79a31d3ca44e666694f234",
+        "borrowed_from_sibling": false
+      },
+      "active_ingredients": {
+        "status": "not_expected_missing",
+        "issues": [],
+        "regulatory_expected": false,
+        "hero_expected": false,
+        "active_items": [],
+        "source_origin": "pdp_section",
+        "source_quality_status": "blocked",
+        "coverage": {
+          "details_sections_count": 4,
+          "faq_count": 0,
+          "how_to_chars": 104,
+          "inci_chars": 403,
+          "active_ingredients_chars": 0,
+          "inci_applicability_status": "",
+          "ingredient_review_status": "",
+          "ingredient_remediation_action": "",
+          "bundle_component_refs_count": 0,
+          "effective_inci_chars": 403,
+          "inci_borrowed_from_product_id": ""
+        },
+        "invalid_fragments": [],
+        "suppressed_reason": null
+      },
+      "variants": {
+        "status": "ready",
+        "issues": [],
+        "visible_variant_rows": 1,
+        "examples": {
+          "identity_option_visible": [],
+          "wrong_axis_for_category": [],
+          "makeup_shade_missing_visual": [],
+          "size_value_generic_axis": [],
+          "default_option_size_evidence_missing_axis": [],
+          "identity_default_title_axis": []
+        }
+      },
+      "coverage": {
+        "details_sections_count": 4,
+        "faq_count": 0,
+        "how_to_chars": 104,
+        "inci_chars": 403,
+        "active_ingredients_chars": 0,
+        "inci_applicability_status": "",
+        "ingredient_review_status": "",
+        "ingredient_remediation_action": "",
+        "bundle_component_refs_count": 0,
+        "effective_inci_chars": 403,
+        "inci_borrowed_from_product_id": ""
+      }
+    },
+    {
+      "seed_id": "eps_d293dcbb907d462488bd9c3f",
+      "external_product_id": "ext_2252928db50ba8800843a039",
+      "market": "US",
+      "domain": "www.guerlain.com",
+      "title": "CONTOUR G LIP PENCIL",
+      "canonical_url": "https://www.guerlain.com/us/en-us/p/contour-g-lip-pencil-P043986.html",
+      "product_family": "single_formula",
+      "product_line_id": "pl_fd60750189be492e8518d1d4",
+      "identity_variant_axes": {
+        "shade": "05 le rouge rubis",
+        "multi_variant": true
+      },
+      "pivota_insights": {
+        "direct": {
+          "product_id": "ext_2252928db50ba8800843a039",
+          "kb_key": "product:ext_2252928db50ba8800843a039",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "official_pdp_reviewed_line",
+          "has_card_highlight": true
+        },
+        "effective": {
+          "product_id": "ext_2252928db50ba8800843a039",
+          "kb_key": "product:ext_2252928db50ba8800843a039",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "official_pdp_reviewed_line",
+          "has_card_highlight": true
+        },
+        "product_line_id": "pl_fd60750189be492e8518d1d4",
+        "borrowed_from_sibling": false
+      },
+      "active_ingredients": {
+        "status": "not_expected_missing",
+        "issues": [],
+        "regulatory_expected": false,
+        "hero_expected": false,
+        "active_items": [],
+        "source_origin": "pdp_section",
+        "source_quality_status": "blocked",
+        "coverage": {
+          "details_sections_count": 4,
+          "faq_count": 0,
+          "how_to_chars": 234,
+          "inci_chars": 375,
+          "active_ingredients_chars": 0,
+          "inci_applicability_status": "",
+          "ingredient_review_status": "",
+          "ingredient_remediation_action": "",
+          "bundle_component_refs_count": 0,
+          "effective_inci_chars": 375,
+          "inci_borrowed_from_product_id": ""
+        },
+        "invalid_fragments": [],
+        "suppressed_reason": null
+      },
+      "variants": {
+        "status": "ready",
+        "issues": [],
+        "visible_variant_rows": 6,
+        "examples": {
+          "identity_option_visible": [],
+          "wrong_axis_for_category": [],
+          "makeup_shade_missing_visual": [],
+          "size_value_generic_axis": [],
+          "default_option_size_evidence_missing_axis": [],
+          "identity_default_title_axis": []
+        }
+      },
+      "coverage": {
+        "details_sections_count": 4,
+        "faq_count": 0,
+        "how_to_chars": 234,
+        "inci_chars": 375,
+        "active_ingredients_chars": 0,
+        "inci_applicability_status": "",
+        "ingredient_review_status": "",
+        "ingredient_remediation_action": "",
+        "bundle_component_refs_count": 0,
+        "effective_inci_chars": 375,
+        "inci_borrowed_from_product_id": ""
+      }
+    },
+    {
+      "seed_id": "eps_96aedba3bf1d4fce97a32004",
+      "external_product_id": "ext_229e21acf38e2b3de8a63b06",
+      "market": "US",
+      "domain": "www.guerlain.com",
+      "title": "KISSKISS BEE GLOW 98% naturally-derived¹ honey tint balm",
+      "canonical_url": "https://www.guerlain.com/us/en-us/p/kisskiss-bee-glow-98-naturally-derived%C2%B9-honey-tint-balm-P043570.html",
+      "product_family": "single_formula",
+      "product_line_id": "pl_b6fa89679db5a23f9c7d0fd4",
+      "identity_variant_axes": {
+        "shade": "775 poppy glow",
+        "multi_variant": true
+      },
+      "pivota_insights": {
+        "direct": {
+          "product_id": "ext_229e21acf38e2b3de8a63b06",
+          "kb_key": "product:ext_229e21acf38e2b3de8a63b06",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "official_pdp_reviewed_line",
+          "has_card_highlight": true
+        },
+        "effective": {
+          "product_id": "ext_229e21acf38e2b3de8a63b06",
+          "kb_key": "product:ext_229e21acf38e2b3de8a63b06",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "official_pdp_reviewed_line",
+          "has_card_highlight": true
+        },
+        "product_line_id": "pl_b6fa89679db5a23f9c7d0fd4",
+        "borrowed_from_sibling": false
+      },
+      "active_ingredients": {
+        "status": "not_expected_missing",
+        "issues": [],
+        "regulatory_expected": false,
+        "hero_expected": false,
+        "active_items": [],
+        "source_origin": "pdp_section",
+        "source_quality_status": "blocked",
+        "coverage": {
+          "details_sections_count": 10,
+          "faq_count": 0,
+          "how_to_chars": 110,
+          "inci_chars": 1381,
+          "active_ingredients_chars": 0,
+          "inci_applicability_status": "",
+          "ingredient_review_status": "",
+          "ingredient_remediation_action": "",
+          "bundle_component_refs_count": 0,
+          "effective_inci_chars": 1381,
+          "inci_borrowed_from_product_id": ""
+        },
+        "invalid_fragments": [],
+        "suppressed_reason": null
+      },
+      "variants": {
+        "status": "ready",
+        "issues": [],
+        "visible_variant_rows": 8,
+        "examples": {
+          "identity_option_visible": [],
+          "wrong_axis_for_category": [],
+          "makeup_shade_missing_visual": [],
+          "size_value_generic_axis": [],
+          "default_option_size_evidence_missing_axis": [],
+          "identity_default_title_axis": []
+        }
+      },
+      "coverage": {
+        "details_sections_count": 10,
+        "faq_count": 0,
+        "how_to_chars": 110,
+        "inci_chars": 1381,
+        "active_ingredients_chars": 0,
+        "inci_applicability_status": "",
+        "ingredient_review_status": "",
+        "ingredient_remediation_action": "",
+        "bundle_component_refs_count": 0,
+        "effective_inci_chars": 1381,
+        "inci_borrowed_from_product_id": ""
+      }
+    },
+    {
+      "seed_id": "eps_af163ffb7aec4231b74a66cc",
+      "external_product_id": "ext_232c7fd9a3ff4dbf55e3fe90",
+      "market": "US",
+      "domain": "www.guerlain.com",
+      "title": "TERRACOTTA LIGHT THE SUN-KISSED NATURAL HEALTHY GLOW POWDER - 96% NATURALLY-DERIVED INGREDIENTS",
+      "canonical_url": "https://www.guerlain.com/us/en-us/p/terracotta-light-the-sun-kissed-natural-healthy-glow-powder---96-naturally-derived-ingredients-P062484.html",
+      "product_family": "single_formula",
+      "product_line_id": "pl_79539028889986cf32c0f34b",
+      "identity_variant_axes": {
+        "shade": "red zagora case",
+        "multi_variant": true
+      },
+      "pivota_insights": {
+        "direct": {
+          "product_id": "ext_232c7fd9a3ff4dbf55e3fe90",
+          "kb_key": "product:ext_232c7fd9a3ff4dbf55e3fe90",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "official_pdp_reviewed_line",
+          "has_card_highlight": true
+        },
+        "effective": {
+          "product_id": "ext_232c7fd9a3ff4dbf55e3fe90",
+          "kb_key": "product:ext_232c7fd9a3ff4dbf55e3fe90",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "official_pdp_reviewed_line",
+          "has_card_highlight": true
+        },
+        "product_line_id": "pl_79539028889986cf32c0f34b",
+        "borrowed_from_sibling": false
+      },
+      "active_ingredients": {
+        "status": "not_expected_missing",
+        "issues": [],
+        "regulatory_expected": false,
+        "hero_expected": false,
+        "active_items": [],
+        "source_origin": "pdp_section",
+        "source_quality_status": "blocked",
+        "coverage": {
+          "details_sections_count": 2,
+          "faq_count": 0,
+          "how_to_chars": 527,
+          "inci_chars": 1074,
+          "active_ingredients_chars": 0,
+          "inci_applicability_status": "",
+          "ingredient_review_status": "",
+          "ingredient_remediation_action": "",
+          "bundle_component_refs_count": 0,
+          "effective_inci_chars": 1074,
+          "inci_borrowed_from_product_id": ""
+        },
+        "invalid_fragments": [],
+        "suppressed_reason": null
+      },
+      "variants": {
+        "status": "ready",
+        "issues": [],
+        "visible_variant_rows": 3,
+        "examples": {
+          "identity_option_visible": [],
+          "wrong_axis_for_category": [],
+          "makeup_shade_missing_visual": [],
+          "size_value_generic_axis": [],
+          "default_option_size_evidence_missing_axis": [],
+          "identity_default_title_axis": []
+        }
+      },
+      "coverage": {
+        "details_sections_count": 2,
+        "faq_count": 0,
+        "how_to_chars": 527,
+        "inci_chars": 1074,
+        "active_ingredients_chars": 0,
+        "inci_applicability_status": "",
+        "ingredient_review_status": "",
+        "ingredient_remediation_action": "",
+        "bundle_component_refs_count": 0,
+        "effective_inci_chars": 1074,
+        "inci_borrowed_from_product_id": ""
+      }
+    },
+    {
+      "seed_id": "eps_9fe13e389c314333a71aa110",
+      "external_product_id": "ext_2ba8b5cca33caf8eab8537d8",
+      "market": "US",
+      "domain": "www.guerlain.com",
+      "title": "TERRACOTTA LIGHT THE SUN-KISSED NATURAL HEALTHY GLOW POWDER - 96% NATURALLY-DERIVED INGREDIENTS",
+      "canonical_url": "https://www.guerlain.com/us/en-us/p/terracotta-light-the-sun-kissed-natural-healthy-glow-powder---96-naturally-derived-ingredients-P062484.html",
+      "product_family": "single_formula",
+      "product_line_id": "pl_79539028889986cf32c0f34b",
+      "identity_variant_axes": {
+        "shade": "red zagora case",
+        "multi_variant": true
+      },
+      "pivota_insights": {
+        "direct": {
+          "product_id": "ext_2ba8b5cca33caf8eab8537d8",
+          "kb_key": "product:ext_2ba8b5cca33caf8eab8537d8",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "official_pdp_reviewed_line",
+          "has_card_highlight": true
+        },
+        "effective": {
+          "product_id": "ext_2ba8b5cca33caf8eab8537d8",
+          "kb_key": "product:ext_2ba8b5cca33caf8eab8537d8",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "official_pdp_reviewed_line",
+          "has_card_highlight": true
+        },
+        "product_line_id": "pl_79539028889986cf32c0f34b",
+        "borrowed_from_sibling": false
+      },
+      "active_ingredients": {
+        "status": "not_expected_missing",
+        "issues": [],
+        "regulatory_expected": false,
+        "hero_expected": false,
+        "active_items": [],
+        "source_origin": "pdp_section",
+        "source_quality_status": "blocked",
+        "coverage": {
+          "details_sections_count": 2,
+          "faq_count": 0,
+          "how_to_chars": 527,
+          "inci_chars": 1074,
+          "active_ingredients_chars": 0,
+          "inci_applicability_status": "",
+          "ingredient_review_status": "",
+          "ingredient_remediation_action": "",
+          "bundle_component_refs_count": 0,
+          "effective_inci_chars": 1074,
+          "inci_borrowed_from_product_id": ""
+        },
+        "invalid_fragments": [],
+        "suppressed_reason": null
+      },
+      "variants": {
+        "status": "ready",
+        "issues": [],
+        "visible_variant_rows": 3,
+        "examples": {
+          "identity_option_visible": [],
+          "wrong_axis_for_category": [],
+          "makeup_shade_missing_visual": [],
+          "size_value_generic_axis": [],
+          "default_option_size_evidence_missing_axis": [],
+          "identity_default_title_axis": []
+        }
+      },
+      "coverage": {
+        "details_sections_count": 2,
+        "faq_count": 0,
+        "how_to_chars": 527,
+        "inci_chars": 1074,
+        "active_ingredients_chars": 0,
+        "inci_applicability_status": "",
+        "ingredient_review_status": "",
+        "ingredient_remediation_action": "",
+        "bundle_component_refs_count": 0,
+        "effective_inci_chars": 1074,
+        "inci_borrowed_from_product_id": ""
+      }
+    },
+    {
+      "seed_id": "eps_f413912aa0364c0295fe5d99",
+      "external_product_id": "ext_2fa9481b07f8384748c3e7e0",
+      "market": "US",
+      "domain": "www.guerlain.com",
+      "title": "CONTOUR G LIP PENCIL",
+      "canonical_url": "https://www.guerlain.com/us/en-us/p/contour-g-lip-pencil-P043986.html",
+      "product_family": "single_formula",
+      "product_line_id": "pl_fd60750189be492e8518d1d4",
+      "identity_variant_axes": {
+        "shade": "05 le rouge rubis",
+        "multi_variant": true
+      },
+      "pivota_insights": {
+        "direct": {
+          "product_id": "ext_2fa9481b07f8384748c3e7e0",
+          "kb_key": "product:ext_2fa9481b07f8384748c3e7e0",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "official_pdp_reviewed_line",
+          "has_card_highlight": true
+        },
+        "effective": {
+          "product_id": "ext_2fa9481b07f8384748c3e7e0",
+          "kb_key": "product:ext_2fa9481b07f8384748c3e7e0",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "official_pdp_reviewed_line",
+          "has_card_highlight": true
+        },
+        "product_line_id": "pl_fd60750189be492e8518d1d4",
+        "borrowed_from_sibling": false
+      },
+      "active_ingredients": {
+        "status": "not_expected_missing",
+        "issues": [],
+        "regulatory_expected": false,
+        "hero_expected": false,
+        "active_items": [],
+        "source_origin": "pdp_section",
+        "source_quality_status": "blocked",
+        "coverage": {
+          "details_sections_count": 4,
+          "faq_count": 0,
+          "how_to_chars": 234,
+          "inci_chars": 375,
+          "active_ingredients_chars": 0,
+          "inci_applicability_status": "",
+          "ingredient_review_status": "",
+          "ingredient_remediation_action": "",
+          "bundle_component_refs_count": 0,
+          "effective_inci_chars": 375,
+          "inci_borrowed_from_product_id": ""
+        },
+        "invalid_fragments": [],
+        "suppressed_reason": null
+      },
+      "variants": {
+        "status": "ready",
+        "issues": [],
+        "visible_variant_rows": 6,
+        "examples": {
+          "identity_option_visible": [],
+          "wrong_axis_for_category": [],
+          "makeup_shade_missing_visual": [],
+          "size_value_generic_axis": [],
+          "default_option_size_evidence_missing_axis": [],
+          "identity_default_title_axis": []
+        }
+      },
+      "coverage": {
+        "details_sections_count": 4,
+        "faq_count": 0,
+        "how_to_chars": 234,
+        "inci_chars": 375,
+        "active_ingredients_chars": 0,
+        "inci_applicability_status": "",
+        "ingredient_review_status": "",
+        "ingredient_remediation_action": "",
+        "bundle_component_refs_count": 0,
+        "effective_inci_chars": 375,
+        "inci_borrowed_from_product_id": ""
+      }
+    },
+    {
+      "seed_id": "eps_41efcea32979459b88bfe281",
+      "external_product_id": "ext_385b43904fb335dfdf36ff77",
+      "market": "US",
+      "domain": "www.guerlain.com",
+      "title": "L'Art & La Matière Spiritueuse Double Vanille – Eau de Parfum",
+      "canonical_url": "https://www.guerlain.com/us/en-us/p/lart-la-matiere-spiritueuse-double-vanille-eau-de-parfum-P017906.html",
+      "product_family": "single_formula",
+      "product_line_id": "pl_21f6d362ad25d62663596c4a",
+      "identity_variant_axes": {
+        "volume": "200ml",
+        "multi_variant": true
+      },
+      "pivota_insights": {
+        "direct": {
+          "product_id": "ext_385b43904fb335dfdf36ff77",
+          "kb_key": "product:ext_385b43904fb335dfdf36ff77",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "seller_plus_external_review",
+          "has_card_highlight": true
+        },
+        "effective": {
+          "product_id": "ext_385b43904fb335dfdf36ff77",
+          "kb_key": "product:ext_385b43904fb335dfdf36ff77",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "seller_plus_external_review",
+          "has_card_highlight": true
+        },
+        "product_line_id": "pl_21f6d362ad25d62663596c4a",
+        "borrowed_from_sibling": false
+      },
+      "active_ingredients": {
+        "status": "not_expected_missing",
+        "issues": [],
+        "regulatory_expected": false,
+        "hero_expected": false,
+        "active_items": [],
+        "source_origin": "pdp_section",
+        "source_quality_status": "blocked",
+        "coverage": {
+          "details_sections_count": 4,
+          "faq_count": 0,
+          "how_to_chars": 49,
+          "inci_chars": 404,
+          "active_ingredients_chars": 0,
+          "inci_applicability_status": "",
+          "ingredient_review_status": "",
+          "ingredient_remediation_action": "",
+          "bundle_component_refs_count": 0,
+          "effective_inci_chars": 404,
+          "inci_borrowed_from_product_id": ""
+        },
+        "invalid_fragments": [],
+        "suppressed_reason": null
+      },
+      "variants": {
+        "status": "ready",
+        "issues": [],
+        "visible_variant_rows": 3,
+        "examples": {
+          "identity_option_visible": [],
+          "wrong_axis_for_category": [],
+          "makeup_shade_missing_visual": [],
+          "size_value_generic_axis": [],
+          "default_option_size_evidence_missing_axis": [],
+          "identity_default_title_axis": []
+        }
+      },
+      "coverage": {
+        "details_sections_count": 4,
+        "faq_count": 0,
+        "how_to_chars": 49,
+        "inci_chars": 404,
+        "active_ingredients_chars": 0,
+        "inci_applicability_status": "",
+        "ingredient_review_status": "",
+        "ingredient_remediation_action": "",
+        "bundle_component_refs_count": 0,
+        "effective_inci_chars": 404,
+        "inci_borrowed_from_product_id": ""
+      }
+    },
+    {
+      "seed_id": "eps_48dc00583a3a48069c712a48",
+      "external_product_id": "ext_41f7f2155ba136c3a37dc7a3",
+      "market": "US",
+      "domain": "www.guerlain.com",
+      "title": "Abeille Royale YOUTH WATERY OIL SERUM",
+      "canonical_url": "https://www.guerlain.com/us/en-us/p/abeille-royale-youth-watery-oil-serum-P062033.html",
+      "product_family": "single_formula",
+      "product_line_id": "pl_d4d342ac0697eadcffc6c62c",
+      "identity_variant_axes": {
+        "volume": "30ml",
+        "multi_variant": true
+      },
+      "pivota_insights": {
+        "direct": {
+          "product_id": "ext_41f7f2155ba136c3a37dc7a3",
+          "kb_key": "product:ext_41f7f2155ba136c3a37dc7a3",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": false,
+          "human_reviewed": true,
+          "issues": [
+            "public_truncated_copy",
+            "public_generic_marketing_copy"
+          ],
+          "blocking_issues": [
+            "public_truncated_copy",
+            "public_generic_marketing_copy"
+          ],
+          "quality_state": "reviewed",
+          "evidence_profile": "official_pdp_reviewed_key_ingredients_and_usage",
+          "has_card_highlight": true
+        },
+        "effective": {
+          "product_id": "ext_41f7f2155ba136c3a37dc7a3",
+          "kb_key": "product:ext_41f7f2155ba136c3a37dc7a3",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": false,
+          "human_reviewed": true,
+          "issues": [
+            "public_truncated_copy",
+            "public_generic_marketing_copy"
+          ],
+          "blocking_issues": [
+            "public_truncated_copy",
+            "public_generic_marketing_copy"
+          ],
+          "quality_state": "reviewed",
+          "evidence_profile": "official_pdp_reviewed_key_ingredients_and_usage",
+          "has_card_highlight": true
+        },
+        "product_line_id": "pl_d4d342ac0697eadcffc6c62c",
+        "borrowed_from_sibling": false
+      },
+      "active_ingredients": {
+        "status": "missing_hero",
+        "issues": [
+          "missing_hero",
+          "active_raw_too_long",
+          "active_raw_may_be_full_inci"
+        ],
+        "regulatory_expected": false,
+        "hero_expected": true,
+        "active_items": [],
+        "source_origin": "pdp_section",
+        "source_quality_status": "blocked",
+        "coverage": {
+          "details_sections_count": 8,
+          "faq_count": 0,
+          "how_to_chars": 113,
+          "inci_chars": 1042,
+          "active_ingredients_chars": 4787,
+          "inci_applicability_status": "",
+          "ingredient_review_status": "",
+          "ingredient_remediation_action": "",
+          "bundle_component_refs_count": 0,
+          "effective_inci_chars": 1042,
+          "inci_borrowed_from_product_id": ""
+        },
+        "invalid_fragments": [],
+        "suppressed_reason": "active_items_not_displayable"
+      },
+      "variants": {
+        "status": "ready",
+        "issues": [],
+        "visible_variant_rows": 4,
+        "examples": {
+          "identity_option_visible": [],
+          "wrong_axis_for_category": [],
+          "makeup_shade_missing_visual": [],
+          "size_value_generic_axis": [],
+          "default_option_size_evidence_missing_axis": [],
+          "identity_default_title_axis": []
+        }
+      },
+      "coverage": {
+        "details_sections_count": 8,
+        "faq_count": 0,
+        "how_to_chars": 113,
+        "inci_chars": 1042,
+        "active_ingredients_chars": 4787,
+        "inci_applicability_status": "",
+        "ingredient_review_status": "",
+        "ingredient_remediation_action": "",
+        "bundle_component_refs_count": 0,
+        "effective_inci_chars": 1042,
+        "inci_borrowed_from_product_id": ""
+      }
+    },
+    {
+      "seed_id": "eps_0cddfe9ecd4340ae8769348f",
+      "external_product_id": "ext_445ae587cfe825bf170bb2b9",
+      "market": "US",
+      "domain": "www.guerlain.com",
+      "title": "KISSKISS BEE GLOW 98% naturally-derived¹ honey tint balm",
+      "canonical_url": "https://www.guerlain.com/us/en-us/p/kisskiss-bee-glow-98-naturally-derived%C2%B9-honey-tint-balm-P043570.html",
+      "product_family": "single_formula",
+      "product_line_id": "pl_b6fa89679db5a23f9c7d0fd4",
+      "identity_variant_axes": {
+        "shade": "775 poppy glow",
+        "multi_variant": true
+      },
+      "pivota_insights": {
+        "direct": {
+          "product_id": "ext_445ae587cfe825bf170bb2b9",
+          "kb_key": "product:ext_445ae587cfe825bf170bb2b9",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "official_pdp_reviewed_line",
+          "has_card_highlight": true
+        },
+        "effective": {
+          "product_id": "ext_445ae587cfe825bf170bb2b9",
+          "kb_key": "product:ext_445ae587cfe825bf170bb2b9",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "official_pdp_reviewed_line",
+          "has_card_highlight": true
+        },
+        "product_line_id": "pl_b6fa89679db5a23f9c7d0fd4",
+        "borrowed_from_sibling": false
+      },
+      "active_ingredients": {
+        "status": "not_expected_missing",
+        "issues": [],
+        "regulatory_expected": false,
+        "hero_expected": false,
+        "active_items": [],
+        "source_origin": "pdp_section",
+        "source_quality_status": "blocked",
+        "coverage": {
+          "details_sections_count": 10,
+          "faq_count": 0,
+          "how_to_chars": 110,
+          "inci_chars": 1381,
+          "active_ingredients_chars": 0,
+          "inci_applicability_status": "",
+          "ingredient_review_status": "",
+          "ingredient_remediation_action": "",
+          "bundle_component_refs_count": 0,
+          "effective_inci_chars": 1381,
+          "inci_borrowed_from_product_id": ""
+        },
+        "invalid_fragments": [],
+        "suppressed_reason": null
+      },
+      "variants": {
+        "status": "ready",
+        "issues": [],
+        "visible_variant_rows": 8,
+        "examples": {
+          "identity_option_visible": [],
+          "wrong_axis_for_category": [],
+          "makeup_shade_missing_visual": [],
+          "size_value_generic_axis": [],
+          "default_option_size_evidence_missing_axis": [],
+          "identity_default_title_axis": []
+        }
+      },
+      "coverage": {
+        "details_sections_count": 10,
+        "faq_count": 0,
+        "how_to_chars": 110,
+        "inci_chars": 1381,
+        "active_ingredients_chars": 0,
+        "inci_applicability_status": "",
+        "ingredient_review_status": "",
+        "ingredient_remediation_action": "",
+        "bundle_component_refs_count": 0,
+        "effective_inci_chars": 1381,
+        "inci_borrowed_from_product_id": ""
+      }
+    },
+    {
+      "seed_id": "eps_e560851c39eb4dc7bea8ddfd",
+      "external_product_id": "ext_5afc9c9cd09ed3315faf8aa8",
+      "market": "US",
+      "domain": "www.guerlain.com",
+      "title": "KISSKISS BEE GLOW 98% naturally-derived¹ honey tint balm",
+      "canonical_url": "https://www.guerlain.com/us/en-us/p/kisskiss-bee-glow-98-naturally-derived%C2%B9-honey-tint-balm-P043570.html",
+      "product_family": "single_formula",
+      "product_line_id": "pl_b6fa89679db5a23f9c7d0fd4",
+      "identity_variant_axes": {
+        "shade": "775 poppy glow",
+        "multi_variant": true
+      },
+      "pivota_insights": {
+        "direct": {
+          "product_id": "ext_5afc9c9cd09ed3315faf8aa8",
+          "kb_key": "product:ext_5afc9c9cd09ed3315faf8aa8",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "official_pdp_reviewed_line",
+          "has_card_highlight": true
+        },
+        "effective": {
+          "product_id": "ext_5afc9c9cd09ed3315faf8aa8",
+          "kb_key": "product:ext_5afc9c9cd09ed3315faf8aa8",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "official_pdp_reviewed_line",
+          "has_card_highlight": true
+        },
+        "product_line_id": "pl_b6fa89679db5a23f9c7d0fd4",
+        "borrowed_from_sibling": false
+      },
+      "active_ingredients": {
+        "status": "not_expected_missing",
+        "issues": [],
+        "regulatory_expected": false,
+        "hero_expected": false,
+        "active_items": [],
+        "source_origin": "pdp_section",
+        "source_quality_status": "blocked",
+        "coverage": {
+          "details_sections_count": 10,
+          "faq_count": 0,
+          "how_to_chars": 110,
+          "inci_chars": 1381,
+          "active_ingredients_chars": 0,
+          "inci_applicability_status": "",
+          "ingredient_review_status": "",
+          "ingredient_remediation_action": "",
+          "bundle_component_refs_count": 0,
+          "effective_inci_chars": 1381,
+          "inci_borrowed_from_product_id": ""
+        },
+        "invalid_fragments": [],
+        "suppressed_reason": null
+      },
+      "variants": {
+        "status": "ready",
+        "issues": [],
+        "visible_variant_rows": 8,
+        "examples": {
+          "identity_option_visible": [],
+          "wrong_axis_for_category": [],
+          "makeup_shade_missing_visual": [],
+          "size_value_generic_axis": [],
+          "default_option_size_evidence_missing_axis": [],
+          "identity_default_title_axis": []
+        }
+      },
+      "coverage": {
+        "details_sections_count": 10,
+        "faq_count": 0,
+        "how_to_chars": 110,
+        "inci_chars": 1381,
+        "active_ingredients_chars": 0,
+        "inci_applicability_status": "",
+        "ingredient_review_status": "",
+        "ingredient_remediation_action": "",
+        "bundle_component_refs_count": 0,
+        "effective_inci_chars": 1381,
+        "inci_borrowed_from_product_id": ""
+      }
+    },
+    {
+      "seed_id": "eps_2423b651346e4c669212e434",
+      "external_product_id": "ext_62a32bcd27e021cbbc57532a",
+      "market": "US",
+      "domain": "www.guerlain.com",
+      "title": "CONTOUR G LIP PENCIL",
+      "canonical_url": "https://www.guerlain.com/us/en-us/p/contour-g-lip-pencil-P043986.html",
+      "product_family": "single_formula",
+      "product_line_id": "pl_fd60750189be492e8518d1d4",
+      "identity_variant_axes": {
+        "shade": "05 le rouge rubis",
+        "multi_variant": true
+      },
+      "pivota_insights": {
+        "direct": {
+          "product_id": "ext_62a32bcd27e021cbbc57532a",
+          "kb_key": "product:ext_62a32bcd27e021cbbc57532a",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "official_pdp_reviewed_line",
+          "has_card_highlight": true
+        },
+        "effective": {
+          "product_id": "ext_62a32bcd27e021cbbc57532a",
+          "kb_key": "product:ext_62a32bcd27e021cbbc57532a",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "official_pdp_reviewed_line",
+          "has_card_highlight": true
+        },
+        "product_line_id": "pl_fd60750189be492e8518d1d4",
+        "borrowed_from_sibling": false
+      },
+      "active_ingredients": {
+        "status": "not_expected_missing",
+        "issues": [],
+        "regulatory_expected": false,
+        "hero_expected": false,
+        "active_items": [],
+        "source_origin": "pdp_section",
+        "source_quality_status": "blocked",
+        "coverage": {
+          "details_sections_count": 4,
+          "faq_count": 0,
+          "how_to_chars": 234,
+          "inci_chars": 375,
+          "active_ingredients_chars": 0,
+          "inci_applicability_status": "",
+          "ingredient_review_status": "",
+          "ingredient_remediation_action": "",
+          "bundle_component_refs_count": 0,
+          "effective_inci_chars": 375,
+          "inci_borrowed_from_product_id": ""
+        },
+        "invalid_fragments": [],
+        "suppressed_reason": null
+      },
+      "variants": {
+        "status": "ready",
+        "issues": [],
+        "visible_variant_rows": 6,
+        "examples": {
+          "identity_option_visible": [],
+          "wrong_axis_for_category": [],
+          "makeup_shade_missing_visual": [],
+          "size_value_generic_axis": [],
+          "default_option_size_evidence_missing_axis": [],
+          "identity_default_title_axis": []
+        }
+      },
+      "coverage": {
+        "details_sections_count": 4,
+        "faq_count": 0,
+        "how_to_chars": 234,
+        "inci_chars": 375,
+        "active_ingredients_chars": 0,
+        "inci_applicability_status": "",
+        "ingredient_review_status": "",
+        "ingredient_remediation_action": "",
+        "bundle_component_refs_count": 0,
+        "effective_inci_chars": 375,
+        "inci_borrowed_from_product_id": ""
+      }
+    },
+    {
+      "seed_id": "eps_a3fab42f160742c584b6ef23",
+      "external_product_id": "ext_68ffcd382f55a1cf8fdc5197",
+      "market": "US",
+      "domain": "www.guerlain.com",
+      "title": "KISSKISS BEE GLOW 98% naturally-derived¹ honey tint balm",
+      "canonical_url": "https://www.guerlain.com/us/en-us/p/kisskiss-bee-glow-98-naturally-derived%C2%B9-honey-tint-balm-P043570.html",
+      "product_family": "single_formula",
+      "product_line_id": "pl_b6fa89679db5a23f9c7d0fd4",
+      "identity_variant_axes": {
+        "shade": "775 poppy glow",
+        "multi_variant": true
+      },
+      "pivota_insights": {
+        "direct": {
+          "product_id": "ext_68ffcd382f55a1cf8fdc5197",
+          "kb_key": "product:ext_68ffcd382f55a1cf8fdc5197",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "official_pdp_reviewed_line",
+          "has_card_highlight": true
+        },
+        "effective": {
+          "product_id": "ext_68ffcd382f55a1cf8fdc5197",
+          "kb_key": "product:ext_68ffcd382f55a1cf8fdc5197",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "official_pdp_reviewed_line",
+          "has_card_highlight": true
+        },
+        "product_line_id": "pl_b6fa89679db5a23f9c7d0fd4",
+        "borrowed_from_sibling": false
+      },
+      "active_ingredients": {
+        "status": "not_expected_missing",
+        "issues": [],
+        "regulatory_expected": false,
+        "hero_expected": false,
+        "active_items": [],
+        "source_origin": "pdp_section",
+        "source_quality_status": "blocked",
+        "coverage": {
+          "details_sections_count": 10,
+          "faq_count": 0,
+          "how_to_chars": 110,
+          "inci_chars": 1381,
+          "active_ingredients_chars": 0,
+          "inci_applicability_status": "",
+          "ingredient_review_status": "",
+          "ingredient_remediation_action": "",
+          "bundle_component_refs_count": 0,
+          "effective_inci_chars": 1381,
+          "inci_borrowed_from_product_id": ""
+        },
+        "invalid_fragments": [],
+        "suppressed_reason": null
+      },
+      "variants": {
+        "status": "ready",
+        "issues": [],
+        "visible_variant_rows": 8,
+        "examples": {
+          "identity_option_visible": [],
+          "wrong_axis_for_category": [],
+          "makeup_shade_missing_visual": [],
+          "size_value_generic_axis": [],
+          "default_option_size_evidence_missing_axis": [],
+          "identity_default_title_axis": []
+        }
+      },
+      "coverage": {
+        "details_sections_count": 10,
+        "faq_count": 0,
+        "how_to_chars": 110,
+        "inci_chars": 1381,
+        "active_ingredients_chars": 0,
+        "inci_applicability_status": "",
+        "ingredient_review_status": "",
+        "ingredient_remediation_action": "",
+        "bundle_component_refs_count": 0,
+        "effective_inci_chars": 1381,
+        "inci_borrowed_from_product_id": ""
+      }
+    },
+    {
+      "seed_id": "eps_0debd2958b1e43b19422c0bd",
+      "external_product_id": "ext_6b3ca4ce51c16dae564ceb7d",
+      "market": "US",
+      "domain": "www.guerlain.com",
+      "title": "CONTOUR G LIP PENCIL",
+      "canonical_url": "https://www.guerlain.com/us/en-us/p/contour-g-lip-pencil-P043986.html",
+      "product_family": "single_formula",
+      "product_line_id": "pl_fd60750189be492e8518d1d4",
+      "identity_variant_axes": {
+        "shade": "05 le rouge rubis",
+        "multi_variant": true
+      },
+      "pivota_insights": {
+        "direct": {
+          "product_id": "ext_6b3ca4ce51c16dae564ceb7d",
+          "kb_key": "product:ext_6b3ca4ce51c16dae564ceb7d",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "official_pdp_reviewed_line",
+          "has_card_highlight": true
+        },
+        "effective": {
+          "product_id": "ext_6b3ca4ce51c16dae564ceb7d",
+          "kb_key": "product:ext_6b3ca4ce51c16dae564ceb7d",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "official_pdp_reviewed_line",
+          "has_card_highlight": true
+        },
+        "product_line_id": "pl_fd60750189be492e8518d1d4",
+        "borrowed_from_sibling": false
+      },
+      "active_ingredients": {
+        "status": "not_expected_missing",
+        "issues": [],
+        "regulatory_expected": false,
+        "hero_expected": false,
+        "active_items": [],
+        "source_origin": "pdp_section",
+        "source_quality_status": "blocked",
+        "coverage": {
+          "details_sections_count": 4,
+          "faq_count": 0,
+          "how_to_chars": 234,
+          "inci_chars": 375,
+          "active_ingredients_chars": 0,
+          "inci_applicability_status": "",
+          "ingredient_review_status": "",
+          "ingredient_remediation_action": "",
+          "bundle_component_refs_count": 0,
+          "effective_inci_chars": 375,
+          "inci_borrowed_from_product_id": ""
+        },
+        "invalid_fragments": [],
+        "suppressed_reason": null
+      },
+      "variants": {
+        "status": "ready",
+        "issues": [],
+        "visible_variant_rows": 6,
+        "examples": {
+          "identity_option_visible": [],
+          "wrong_axis_for_category": [],
+          "makeup_shade_missing_visual": [],
+          "size_value_generic_axis": [],
+          "default_option_size_evidence_missing_axis": [],
+          "identity_default_title_axis": []
+        }
+      },
+      "coverage": {
+        "details_sections_count": 4,
+        "faq_count": 0,
+        "how_to_chars": 234,
+        "inci_chars": 375,
+        "active_ingredients_chars": 0,
+        "inci_applicability_status": "",
+        "ingredient_review_status": "",
+        "ingredient_remediation_action": "",
+        "bundle_component_refs_count": 0,
+        "effective_inci_chars": 375,
+        "inci_borrowed_from_product_id": ""
+      }
+    },
+    {
+      "seed_id": "eps_f1009b898bcd4e7bbb40aa58",
+      "external_product_id": "ext_721aa5c9d9e71a28b9d4fef3",
+      "market": "US",
+      "domain": "www.guerlain.com",
+      "title": "ORCHIDÉE IMPÉRIALE THE LONGEVITY LIGHT CREAM",
+      "canonical_url": "https://www.guerlain.com/us/en-us/p/orchidee-imperiale-the-longevity-light-cream-P062025.html",
+      "product_family": "single_formula",
+      "product_line_id": "pl_67044eb1cfd5253da139e362",
+      "identity_variant_axes": {
+        "volume": "50ml",
+        "multi_variant": true
+      },
+      "pivota_insights": {
+        "direct": {
+          "product_id": "ext_721aa5c9d9e71a28b9d4fef3",
+          "kb_key": "product:ext_721aa5c9d9e71a28b9d4fef3",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "official_pdp_reviewed_line",
+          "has_card_highlight": true
+        },
+        "effective": {
+          "product_id": "ext_721aa5c9d9e71a28b9d4fef3",
+          "kb_key": "product:ext_721aa5c9d9e71a28b9d4fef3",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "official_pdp_reviewed_line",
+          "has_card_highlight": true
+        },
+        "product_line_id": "pl_67044eb1cfd5253da139e362",
+        "borrowed_from_sibling": false
+      },
+      "active_ingredients": {
+        "status": "missing_hero",
+        "issues": [
+          "missing_hero"
+        ],
+        "regulatory_expected": false,
+        "hero_expected": true,
+        "active_items": [],
+        "source_origin": "pdp_section",
+        "source_quality_status": "blocked",
+        "coverage": {
+          "details_sections_count": 4,
+          "faq_count": 8,
+          "how_to_chars": 110,
+          "inci_chars": 1427,
+          "active_ingredients_chars": 0,
+          "inci_applicability_status": "",
+          "ingredient_review_status": "",
+          "ingredient_remediation_action": "",
+          "bundle_component_refs_count": 0,
+          "effective_inci_chars": 1427,
+          "inci_borrowed_from_product_id": ""
+        },
+        "invalid_fragments": [],
+        "suppressed_reason": null
+      },
+      "variants": {
+        "status": "ready",
+        "issues": [],
+        "visible_variant_rows": 2,
+        "examples": {
+          "identity_option_visible": [],
+          "wrong_axis_for_category": [],
+          "makeup_shade_missing_visual": [],
+          "size_value_generic_axis": [],
+          "default_option_size_evidence_missing_axis": [],
+          "identity_default_title_axis": []
+        }
+      },
+      "coverage": {
+        "details_sections_count": 4,
+        "faq_count": 8,
+        "how_to_chars": 110,
+        "inci_chars": 1427,
+        "active_ingredients_chars": 0,
+        "inci_applicability_status": "",
+        "ingredient_review_status": "",
+        "ingredient_remediation_action": "",
+        "bundle_component_refs_count": 0,
+        "effective_inci_chars": 1427,
+        "inci_borrowed_from_product_id": ""
+      }
+    },
+    {
+      "seed_id": "eps_0b051c3d798d45b2a1160ee3",
+      "external_product_id": "ext_8185e760985d23d77dedcd34",
+      "market": "US",
+      "domain": "www.guerlain.com",
+      "title": "BROW G BROW PENCIL",
+      "canonical_url": "https://www.guerlain.com/us/en-us/p/brow-g-brow-pencil-P043971.html",
+      "product_family": "single_formula",
+      "product_line_id": "pl_fde15b19515781b319f0cd13",
+      "identity_variant_axes": {
+        "shade": "02 auburn",
+        "multi_variant": true
+      },
+      "pivota_insights": {
+        "direct": {
+          "product_id": "ext_8185e760985d23d77dedcd34",
+          "kb_key": "product:ext_8185e760985d23d77dedcd34",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "official_pdp_reviewed_line",
+          "has_card_highlight": true
+        },
+        "effective": {
+          "product_id": "ext_8185e760985d23d77dedcd34",
+          "kb_key": "product:ext_8185e760985d23d77dedcd34",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "official_pdp_reviewed_line",
+          "has_card_highlight": true
+        },
+        "product_line_id": "pl_fde15b19515781b319f0cd13",
+        "borrowed_from_sibling": false
+      },
+      "active_ingredients": {
+        "status": "not_expected_missing",
+        "issues": [],
+        "regulatory_expected": false,
+        "hero_expected": false,
+        "active_items": [],
+        "source_origin": "pdp_section",
+        "source_quality_status": "blocked",
+        "coverage": {
+          "details_sections_count": 2,
+          "faq_count": 0,
+          "how_to_chars": 120,
+          "inci_chars": 373,
+          "active_ingredients_chars": 0,
+          "inci_applicability_status": "",
+          "ingredient_review_status": "",
+          "ingredient_remediation_action": "",
+          "bundle_component_refs_count": 0,
+          "effective_inci_chars": 373,
+          "inci_borrowed_from_product_id": ""
+        },
+        "invalid_fragments": [],
+        "suppressed_reason": null
+      },
+      "variants": {
+        "status": "ready",
+        "issues": [],
+        "visible_variant_rows": 2,
+        "examples": {
+          "identity_option_visible": [],
+          "wrong_axis_for_category": [],
+          "makeup_shade_missing_visual": [],
+          "size_value_generic_axis": [],
+          "default_option_size_evidence_missing_axis": [],
+          "identity_default_title_axis": []
+        }
+      },
+      "coverage": {
+        "details_sections_count": 2,
+        "faq_count": 0,
+        "how_to_chars": 120,
+        "inci_chars": 373,
+        "active_ingredients_chars": 0,
+        "inci_applicability_status": "",
+        "ingredient_review_status": "",
+        "ingredient_remediation_action": "",
+        "bundle_component_refs_count": 0,
+        "effective_inci_chars": 373,
+        "inci_borrowed_from_product_id": ""
+      }
+    },
+    {
+      "seed_id": "eps_b3d60a26424749538c357cac",
+      "external_product_id": "ext_8a3286d1295151af95c7c597",
+      "market": "US",
+      "domain": "www.guerlain.com",
+      "title": "CONTOUR G LIP PENCIL",
+      "canonical_url": "https://www.guerlain.com/us/en-us/p/contour-g-lip-pencil-P043986.html",
+      "product_family": "single_formula",
+      "product_line_id": "pl_fd60750189be492e8518d1d4",
+      "identity_variant_axes": {
+        "shade": "05 le rouge rubis",
+        "multi_variant": true
+      },
+      "pivota_insights": {
+        "direct": {
+          "product_id": "ext_8a3286d1295151af95c7c597",
+          "kb_key": "product:ext_8a3286d1295151af95c7c597",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "official_pdp_reviewed_line",
+          "has_card_highlight": true
+        },
+        "effective": {
+          "product_id": "ext_8a3286d1295151af95c7c597",
+          "kb_key": "product:ext_8a3286d1295151af95c7c597",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "official_pdp_reviewed_line",
+          "has_card_highlight": true
+        },
+        "product_line_id": "pl_fd60750189be492e8518d1d4",
+        "borrowed_from_sibling": false
+      },
+      "active_ingredients": {
+        "status": "not_expected_missing",
+        "issues": [],
+        "regulatory_expected": false,
+        "hero_expected": false,
+        "active_items": [],
+        "source_origin": "pdp_section",
+        "source_quality_status": "blocked",
+        "coverage": {
+          "details_sections_count": 4,
+          "faq_count": 0,
+          "how_to_chars": 234,
+          "inci_chars": 375,
+          "active_ingredients_chars": 0,
+          "inci_applicability_status": "",
+          "ingredient_review_status": "",
+          "ingredient_remediation_action": "",
+          "bundle_component_refs_count": 0,
+          "effective_inci_chars": 375,
+          "inci_borrowed_from_product_id": ""
+        },
+        "invalid_fragments": [],
+        "suppressed_reason": null
+      },
+      "variants": {
+        "status": "ready",
+        "issues": [],
+        "visible_variant_rows": 6,
+        "examples": {
+          "identity_option_visible": [],
+          "wrong_axis_for_category": [],
+          "makeup_shade_missing_visual": [],
+          "size_value_generic_axis": [],
+          "default_option_size_evidence_missing_axis": [],
+          "identity_default_title_axis": []
+        }
+      },
+      "coverage": {
+        "details_sections_count": 4,
+        "faq_count": 0,
+        "how_to_chars": 234,
+        "inci_chars": 375,
+        "active_ingredients_chars": 0,
+        "inci_applicability_status": "",
+        "ingredient_review_status": "",
+        "ingredient_remediation_action": "",
+        "bundle_component_refs_count": 0,
+        "effective_inci_chars": 375,
+        "inci_borrowed_from_product_id": ""
+      }
+    },
+    {
+      "seed_id": "eps_42fdb9dcfbed414fa4f35301",
+      "external_product_id": "ext_9048f4e2df53ee1d70001730",
+      "market": "US",
+      "domain": "www.guerlain.com",
+      "title": "KISSKISS BEE GLOW 98% naturally-derived¹ honey tint balm",
+      "canonical_url": "https://www.guerlain.com/us/en-us/p/kisskiss-bee-glow-98-naturally-derived%C2%B9-honey-tint-balm-P043570.html",
+      "product_family": "single_formula",
+      "product_line_id": "pl_b6fa89679db5a23f9c7d0fd4",
+      "identity_variant_axes": {
+        "shade": "775 poppy glow",
+        "multi_variant": true
+      },
+      "pivota_insights": {
+        "direct": {
+          "product_id": "ext_9048f4e2df53ee1d70001730",
+          "kb_key": "product:ext_9048f4e2df53ee1d70001730",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "official_pdp_reviewed_line",
+          "has_card_highlight": true
+        },
+        "effective": {
+          "product_id": "ext_9048f4e2df53ee1d70001730",
+          "kb_key": "product:ext_9048f4e2df53ee1d70001730",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "official_pdp_reviewed_line",
+          "has_card_highlight": true
+        },
+        "product_line_id": "pl_b6fa89679db5a23f9c7d0fd4",
+        "borrowed_from_sibling": false
+      },
+      "active_ingredients": {
+        "status": "not_expected_missing",
+        "issues": [],
+        "regulatory_expected": false,
+        "hero_expected": false,
+        "active_items": [],
+        "source_origin": "pdp_section",
+        "source_quality_status": "blocked",
+        "coverage": {
+          "details_sections_count": 10,
+          "faq_count": 0,
+          "how_to_chars": 110,
+          "inci_chars": 1381,
+          "active_ingredients_chars": 0,
+          "inci_applicability_status": "",
+          "ingredient_review_status": "",
+          "ingredient_remediation_action": "",
+          "bundle_component_refs_count": 0,
+          "effective_inci_chars": 1381,
+          "inci_borrowed_from_product_id": ""
+        },
+        "invalid_fragments": [],
+        "suppressed_reason": null
+      },
+      "variants": {
+        "status": "ready",
+        "issues": [],
+        "visible_variant_rows": 8,
+        "examples": {
+          "identity_option_visible": [],
+          "wrong_axis_for_category": [],
+          "makeup_shade_missing_visual": [],
+          "size_value_generic_axis": [],
+          "default_option_size_evidence_missing_axis": [],
+          "identity_default_title_axis": []
+        }
+      },
+      "coverage": {
+        "details_sections_count": 10,
+        "faq_count": 0,
+        "how_to_chars": 110,
+        "inci_chars": 1381,
+        "active_ingredients_chars": 0,
+        "inci_applicability_status": "",
+        "ingredient_review_status": "",
+        "ingredient_remediation_action": "",
+        "bundle_component_refs_count": 0,
+        "effective_inci_chars": 1381,
+        "inci_borrowed_from_product_id": ""
+      }
+    },
+    {
+      "seed_id": "eps_5ab06b7b79874226bb0a9168",
+      "external_product_id": "ext_93dffaabfe274c8f1b348649",
+      "market": "US",
+      "domain": "www.guerlain.com",
+      "title": "KISSKISS BEE GLOW 98% naturally-derived¹ honey tint balm",
+      "canonical_url": "https://www.guerlain.com/us/en-us/p/kisskiss-bee-glow-98-naturally-derived%C2%B9-honey-tint-balm-P043570.html",
+      "product_family": "single_formula",
+      "product_line_id": "pl_b6fa89679db5a23f9c7d0fd4",
+      "identity_variant_axes": {
+        "shade": "775 poppy glow",
+        "multi_variant": true
+      },
+      "pivota_insights": {
+        "direct": {
+          "product_id": "ext_93dffaabfe274c8f1b348649",
+          "kb_key": "product:ext_93dffaabfe274c8f1b348649",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "official_pdp_reviewed_line",
+          "has_card_highlight": true
+        },
+        "effective": {
+          "product_id": "ext_93dffaabfe274c8f1b348649",
+          "kb_key": "product:ext_93dffaabfe274c8f1b348649",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "official_pdp_reviewed_line",
+          "has_card_highlight": true
+        },
+        "product_line_id": "pl_b6fa89679db5a23f9c7d0fd4",
+        "borrowed_from_sibling": false
+      },
+      "active_ingredients": {
+        "status": "not_expected_missing",
+        "issues": [],
+        "regulatory_expected": false,
+        "hero_expected": false,
+        "active_items": [],
+        "source_origin": "pdp_section",
+        "source_quality_status": "blocked",
+        "coverage": {
+          "details_sections_count": 10,
+          "faq_count": 0,
+          "how_to_chars": 110,
+          "inci_chars": 1381,
+          "active_ingredients_chars": 0,
+          "inci_applicability_status": "",
+          "ingredient_review_status": "",
+          "ingredient_remediation_action": "",
+          "bundle_component_refs_count": 0,
+          "effective_inci_chars": 1381,
+          "inci_borrowed_from_product_id": ""
+        },
+        "invalid_fragments": [],
+        "suppressed_reason": null
+      },
+      "variants": {
+        "status": "ready",
+        "issues": [],
+        "visible_variant_rows": 8,
+        "examples": {
+          "identity_option_visible": [],
+          "wrong_axis_for_category": [],
+          "makeup_shade_missing_visual": [],
+          "size_value_generic_axis": [],
+          "default_option_size_evidence_missing_axis": [],
+          "identity_default_title_axis": []
+        }
+      },
+      "coverage": {
+        "details_sections_count": 10,
+        "faq_count": 0,
+        "how_to_chars": 110,
+        "inci_chars": 1381,
+        "active_ingredients_chars": 0,
+        "inci_applicability_status": "",
+        "ingredient_review_status": "",
+        "ingredient_remediation_action": "",
+        "bundle_component_refs_count": 0,
+        "effective_inci_chars": 1381,
+        "inci_borrowed_from_product_id": ""
+      }
+    },
+    {
+      "seed_id": "eps_11176df355e34b4fa6067323",
+      "external_product_id": "ext_97700a82ce0548b19f2aae29",
+      "market": "US",
+      "domain": "www.guerlain.com",
+      "title": "L'Art & La Matière Spiritueuse Double Vanille – Eau de Parfum",
+      "canonical_url": "https://www.guerlain.com/us/en-us/p/lart-la-matiere-spiritueuse-double-vanille-eau-de-parfum-P017906.html",
+      "product_family": "single_formula",
+      "product_line_id": "pl_21f6d362ad25d62663596c4a",
+      "identity_variant_axes": {
+        "volume": "200ml",
+        "multi_variant": true
+      },
+      "pivota_insights": {
+        "direct": {
+          "product_id": "ext_97700a82ce0548b19f2aae29",
+          "kb_key": "product:ext_97700a82ce0548b19f2aae29",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "seller_plus_external_review",
+          "has_card_highlight": true
+        },
+        "effective": {
+          "product_id": "ext_97700a82ce0548b19f2aae29",
+          "kb_key": "product:ext_97700a82ce0548b19f2aae29",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "seller_plus_external_review",
+          "has_card_highlight": true
+        },
+        "product_line_id": "pl_21f6d362ad25d62663596c4a",
+        "borrowed_from_sibling": false
+      },
+      "active_ingredients": {
+        "status": "not_expected_missing",
+        "issues": [],
+        "regulatory_expected": false,
+        "hero_expected": false,
+        "active_items": [],
+        "source_origin": "pdp_section",
+        "source_quality_status": "blocked",
+        "coverage": {
+          "details_sections_count": 4,
+          "faq_count": 0,
+          "how_to_chars": 49,
+          "inci_chars": 404,
+          "active_ingredients_chars": 0,
+          "inci_applicability_status": "",
+          "ingredient_review_status": "",
+          "ingredient_remediation_action": "",
+          "bundle_component_refs_count": 0,
+          "effective_inci_chars": 404,
+          "inci_borrowed_from_product_id": ""
+        },
+        "invalid_fragments": [],
+        "suppressed_reason": null
+      },
+      "variants": {
+        "status": "ready",
+        "issues": [],
+        "visible_variant_rows": 3,
+        "examples": {
+          "identity_option_visible": [],
+          "wrong_axis_for_category": [],
+          "makeup_shade_missing_visual": [],
+          "size_value_generic_axis": [],
+          "default_option_size_evidence_missing_axis": [],
+          "identity_default_title_axis": []
+        }
+      },
+      "coverage": {
+        "details_sections_count": 4,
+        "faq_count": 0,
+        "how_to_chars": 49,
+        "inci_chars": 404,
+        "active_ingredients_chars": 0,
+        "inci_applicability_status": "",
+        "ingredient_review_status": "",
+        "ingredient_remediation_action": "",
+        "bundle_component_refs_count": 0,
+        "effective_inci_chars": 404,
+        "inci_borrowed_from_product_id": ""
+      }
+    },
+    {
+      "seed_id": "eps_d289e1daa2c148ffaa674149",
+      "external_product_id": "ext_a3f78e027338948889af3568",
+      "market": "US",
+      "domain": "www.guerlain.com",
+      "title": "L'Art & La Matière Spiritueuse Double Vanille – Eau de Parfum",
+      "canonical_url": "https://www.guerlain.com/us/en-us/p/lart-la-matiere-spiritueuse-double-vanille-eau-de-parfum-P017906.html",
+      "product_family": "single_formula",
+      "product_line_id": "pl_21f6d362ad25d62663596c4a",
+      "identity_variant_axes": {
+        "volume": "200ml",
+        "multi_variant": true
+      },
+      "pivota_insights": {
+        "direct": {
+          "product_id": "ext_a3f78e027338948889af3568",
+          "kb_key": "product:ext_a3f78e027338948889af3568",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "seller_plus_external_review",
+          "has_card_highlight": true
+        },
+        "effective": {
+          "product_id": "ext_a3f78e027338948889af3568",
+          "kb_key": "product:ext_a3f78e027338948889af3568",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "seller_plus_external_review",
+          "has_card_highlight": true
+        },
+        "product_line_id": "pl_21f6d362ad25d62663596c4a",
+        "borrowed_from_sibling": false
+      },
+      "active_ingredients": {
+        "status": "not_expected_missing",
+        "issues": [],
+        "regulatory_expected": false,
+        "hero_expected": false,
+        "active_items": [],
+        "source_origin": "pdp_section",
+        "source_quality_status": "blocked",
+        "coverage": {
+          "details_sections_count": 4,
+          "faq_count": 0,
+          "how_to_chars": 49,
+          "inci_chars": 404,
+          "active_ingredients_chars": 0,
+          "inci_applicability_status": "",
+          "ingredient_review_status": "",
+          "ingredient_remediation_action": "",
+          "bundle_component_refs_count": 0,
+          "effective_inci_chars": 404,
+          "inci_borrowed_from_product_id": ""
+        },
+        "invalid_fragments": [],
+        "suppressed_reason": null
+      },
+      "variants": {
+        "status": "ready",
+        "issues": [],
+        "visible_variant_rows": 3,
+        "examples": {
+          "identity_option_visible": [],
+          "wrong_axis_for_category": [],
+          "makeup_shade_missing_visual": [],
+          "size_value_generic_axis": [],
+          "default_option_size_evidence_missing_axis": [],
+          "identity_default_title_axis": []
+        }
+      },
+      "coverage": {
+        "details_sections_count": 4,
+        "faq_count": 0,
+        "how_to_chars": 49,
+        "inci_chars": 404,
+        "active_ingredients_chars": 0,
+        "inci_applicability_status": "",
+        "ingredient_review_status": "",
+        "ingredient_remediation_action": "",
+        "bundle_component_refs_count": 0,
+        "effective_inci_chars": 404,
+        "inci_borrowed_from_product_id": ""
+      }
+    },
+    {
+      "seed_id": "eps_43de3fd4ca3b4a2c89c978dc",
+      "external_product_id": "ext_a808c15060dd5d2b48d07e85",
+      "market": "US",
+      "domain": "www.guerlain.com",
+      "title": "KISSKISS BEE GLOW 98% naturally-derived¹ honey tint balm",
+      "canonical_url": "https://www.guerlain.com/us/en-us/p/kisskiss-bee-glow-98-naturally-derived%C2%B9-honey-tint-balm-P043570.html",
+      "product_family": "single_formula",
+      "product_line_id": "pl_b6fa89679db5a23f9c7d0fd4",
+      "identity_variant_axes": {
+        "shade": "775 poppy glow",
+        "multi_variant": true
+      },
+      "pivota_insights": {
+        "direct": {
+          "product_id": "ext_a808c15060dd5d2b48d07e85",
+          "kb_key": "product:ext_a808c15060dd5d2b48d07e85",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "official_pdp_reviewed_line",
+          "has_card_highlight": true
+        },
+        "effective": {
+          "product_id": "ext_a808c15060dd5d2b48d07e85",
+          "kb_key": "product:ext_a808c15060dd5d2b48d07e85",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "official_pdp_reviewed_line",
+          "has_card_highlight": true
+        },
+        "product_line_id": "pl_b6fa89679db5a23f9c7d0fd4",
+        "borrowed_from_sibling": false
+      },
+      "active_ingredients": {
+        "status": "not_expected_missing",
+        "issues": [],
+        "regulatory_expected": false,
+        "hero_expected": false,
+        "active_items": [],
+        "source_origin": "pdp_section",
+        "source_quality_status": "blocked",
+        "coverage": {
+          "details_sections_count": 10,
+          "faq_count": 0,
+          "how_to_chars": 110,
+          "inci_chars": 1381,
+          "active_ingredients_chars": 0,
+          "inci_applicability_status": "",
+          "ingredient_review_status": "",
+          "ingredient_remediation_action": "",
+          "bundle_component_refs_count": 0,
+          "effective_inci_chars": 1381,
+          "inci_borrowed_from_product_id": ""
+        },
+        "invalid_fragments": [],
+        "suppressed_reason": null
+      },
+      "variants": {
+        "status": "ready",
+        "issues": [],
+        "visible_variant_rows": 8,
+        "examples": {
+          "identity_option_visible": [],
+          "wrong_axis_for_category": [],
+          "makeup_shade_missing_visual": [],
+          "size_value_generic_axis": [],
+          "default_option_size_evidence_missing_axis": [],
+          "identity_default_title_axis": []
+        }
+      },
+      "coverage": {
+        "details_sections_count": 10,
+        "faq_count": 0,
+        "how_to_chars": 110,
+        "inci_chars": 1381,
+        "active_ingredients_chars": 0,
+        "inci_applicability_status": "",
+        "ingredient_review_status": "",
+        "ingredient_remediation_action": "",
+        "bundle_component_refs_count": 0,
+        "effective_inci_chars": 1381,
+        "inci_borrowed_from_product_id": ""
+      }
+    },
+    {
+      "seed_id": "eps_a97675f9cae546f2adccea88",
+      "external_product_id": "ext_b361fbdd0bc0fa335a1038d1",
+      "market": "US",
+      "domain": "www.guerlain.com",
+      "title": "Abeille Royale YOUTH WATERY OIL SERUM",
+      "canonical_url": "https://www.guerlain.com/us/en-us/p/abeille-royale-youth-watery-oil-serum-P062033.html",
+      "product_family": "single_formula",
+      "product_line_id": "pl_d4d342ac0697eadcffc6c62c",
+      "identity_variant_axes": {
+        "volume": "30ml",
+        "multi_variant": true
+      },
+      "pivota_insights": {
+        "direct": {
+          "product_id": "ext_b361fbdd0bc0fa335a1038d1",
+          "kb_key": "product:ext_b361fbdd0bc0fa335a1038d1",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": false,
+          "human_reviewed": true,
+          "issues": [
+            "public_truncated_copy",
+            "public_generic_marketing_copy"
+          ],
+          "blocking_issues": [
+            "public_truncated_copy",
+            "public_generic_marketing_copy"
+          ],
+          "quality_state": "reviewed",
+          "evidence_profile": "official_pdp_reviewed_key_ingredients_and_usage",
+          "has_card_highlight": true
+        },
+        "effective": {
+          "product_id": "ext_b361fbdd0bc0fa335a1038d1",
+          "kb_key": "product:ext_b361fbdd0bc0fa335a1038d1",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": false,
+          "human_reviewed": true,
+          "issues": [
+            "public_truncated_copy",
+            "public_generic_marketing_copy"
+          ],
+          "blocking_issues": [
+            "public_truncated_copy",
+            "public_generic_marketing_copy"
+          ],
+          "quality_state": "reviewed",
+          "evidence_profile": "official_pdp_reviewed_key_ingredients_and_usage",
+          "has_card_highlight": true
+        },
+        "product_line_id": "pl_d4d342ac0697eadcffc6c62c",
+        "borrowed_from_sibling": false
+      },
+      "active_ingredients": {
+        "status": "missing_hero",
+        "issues": [
+          "missing_hero",
+          "active_raw_too_long",
+          "active_raw_may_be_full_inci"
+        ],
+        "regulatory_expected": false,
+        "hero_expected": true,
+        "active_items": [],
+        "source_origin": "pdp_section",
+        "source_quality_status": "blocked",
+        "coverage": {
+          "details_sections_count": 4,
+          "faq_count": 0,
+          "how_to_chars": 192,
+          "inci_chars": 1042,
+          "active_ingredients_chars": 4787,
+          "inci_applicability_status": "",
+          "ingredient_review_status": "",
+          "ingredient_remediation_action": "",
+          "bundle_component_refs_count": 0,
+          "effective_inci_chars": 1042,
+          "inci_borrowed_from_product_id": ""
+        },
+        "invalid_fragments": [],
+        "suppressed_reason": "active_items_not_displayable"
+      },
+      "variants": {
+        "status": "ready",
+        "issues": [],
+        "visible_variant_rows": 4,
+        "examples": {
+          "identity_option_visible": [],
+          "wrong_axis_for_category": [],
+          "makeup_shade_missing_visual": [],
+          "size_value_generic_axis": [],
+          "default_option_size_evidence_missing_axis": [],
+          "identity_default_title_axis": []
+        }
+      },
+      "coverage": {
+        "details_sections_count": 4,
+        "faq_count": 0,
+        "how_to_chars": 192,
+        "inci_chars": 1042,
+        "active_ingredients_chars": 4787,
+        "inci_applicability_status": "",
+        "ingredient_review_status": "",
+        "ingredient_remediation_action": "",
+        "bundle_component_refs_count": 0,
+        "effective_inci_chars": 1042,
+        "inci_borrowed_from_product_id": ""
+      }
+    },
+    {
+      "seed_id": "eps_0f998757dde74914b399bda7",
+      "external_product_id": "ext_b746e92220b128bb2f834ae0",
+      "market": "US",
+      "domain": "www.guerlain.com",
+      "title": "L’ART & LA MATIÈRE DISCOVERY SET – EAUX DE PARFUM 2 ML / 0.06 OZ",
+      "canonical_url": "https://www.guerlain.com/us/en-us/p/l%E2%80%99art-la-matiere-discovery-set-eaux-de-parfum-P062288.html",
+      "product_family": "set_or_collection",
+      "product_line_id": "pl_5a12e1d8145364f3f6c03cf7",
+      "identity_variant_axes": {
+        "shade": "g062288",
+        "volume": "2ml",
+        "multi_variant": false
+      },
+      "pivota_insights": {
+        "direct": {
+          "product_id": "ext_b746e92220b128bb2f834ae0",
+          "kb_key": "product:ext_b746e92220b128bb2f834ae0",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "official_pdp_reviewed_line",
+          "has_card_highlight": true
+        },
+        "effective": {
+          "product_id": "ext_b746e92220b128bb2f834ae0",
+          "kb_key": "product:ext_b746e92220b128bb2f834ae0",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "official_pdp_reviewed_line",
+          "has_card_highlight": true
+        },
+        "product_line_id": "pl_5a12e1d8145364f3f6c03cf7",
+        "borrowed_from_sibling": false
+      },
+      "active_ingredients": {
+        "status": "not_applicable_product_family",
+        "issues": [],
+        "regulatory_expected": false,
+        "hero_expected": false,
+        "active_items": [],
+        "source_origin": "none",
+        "source_quality_status": "blocked",
+        "coverage": {
+          "details_sections_count": 4,
+          "faq_count": 0,
+          "how_to_chars": 104,
+          "inci_chars": 339,
+          "active_ingredients_chars": 0,
+          "inci_applicability_status": "",
+          "ingredient_review_status": "",
+          "ingredient_remediation_action": "",
+          "bundle_component_refs_count": 0,
+          "effective_inci_chars": 339,
+          "inci_borrowed_from_product_id": ""
+        },
+        "invalid_fragments": [],
+        "suppressed_reason": "set_or_collection"
+      },
+      "variants": {
+        "status": "ready",
+        "issues": [],
+        "visible_variant_rows": 1,
+        "examples": {
+          "identity_option_visible": [],
+          "wrong_axis_for_category": [],
+          "makeup_shade_missing_visual": [],
+          "size_value_generic_axis": [],
+          "default_option_size_evidence_missing_axis": [],
+          "identity_default_title_axis": []
+        }
+      },
+      "coverage": {
+        "details_sections_count": 4,
+        "faq_count": 0,
+        "how_to_chars": 104,
+        "inci_chars": 339,
+        "active_ingredients_chars": 0,
+        "inci_applicability_status": "",
+        "ingredient_review_status": "",
+        "ingredient_remediation_action": "",
+        "bundle_component_refs_count": 0,
+        "effective_inci_chars": 339,
+        "inci_borrowed_from_product_id": ""
+      }
+    },
+    {
+      "seed_id": "eps_9cf3bccf5d494317a006a3bf",
+      "external_product_id": "ext_be76ad4c1e89a5bfaaba08d3",
+      "market": "US",
+      "domain": "www.guerlain.com",
+      "title": "ROUGE G THE CUSTOMIZABLE ULTRA-CARE LIPSTICK",
+      "canonical_url": "https://www.guerlain.com/us/en-us/p/rouge-g-the-customizable-ultra-care-lipstick-S000070.html",
+      "product_family": "single_formula",
+      "product_line_id": "pl_ec76c85d22c8f318c5ce449d",
+      "identity_variant_axes": {
+        "shade": "g044110",
+        "multi_variant": false
+      },
+      "pivota_insights": {
+        "direct": {
+          "product_id": "ext_be76ad4c1e89a5bfaaba08d3",
+          "kb_key": "product:ext_be76ad4c1e89a5bfaaba08d3",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "official_pdp_reviewed_line",
+          "has_card_highlight": true
+        },
+        "effective": {
+          "product_id": "ext_be76ad4c1e89a5bfaaba08d3",
+          "kb_key": "product:ext_be76ad4c1e89a5bfaaba08d3",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "official_pdp_reviewed_line",
+          "has_card_highlight": true
+        },
+        "product_line_id": "pl_ec76c85d22c8f318c5ce449d",
+        "borrowed_from_sibling": false
+      },
+      "active_ingredients": {
+        "status": "not_expected_missing",
+        "issues": [],
+        "regulatory_expected": false,
+        "hero_expected": false,
+        "active_items": [],
+        "source_origin": "pdp_section",
+        "source_quality_status": "blocked",
+        "coverage": {
+          "details_sections_count": 2,
+          "faq_count": 0,
+          "how_to_chars": 86,
+          "inci_chars": 971,
+          "active_ingredients_chars": 0,
+          "inci_applicability_status": "",
+          "ingredient_review_status": "",
+          "ingredient_remediation_action": "",
+          "bundle_component_refs_count": 0,
+          "effective_inci_chars": 971,
+          "inci_borrowed_from_product_id": ""
+        },
+        "invalid_fragments": [],
+        "suppressed_reason": null
+      },
+      "variants": {
+        "status": "ready",
+        "issues": [],
+        "visible_variant_rows": 1,
+        "examples": {
+          "identity_option_visible": [],
+          "wrong_axis_for_category": [],
+          "makeup_shade_missing_visual": [],
+          "size_value_generic_axis": [],
+          "default_option_size_evidence_missing_axis": [],
+          "identity_default_title_axis": []
+        }
+      },
+      "coverage": {
+        "details_sections_count": 2,
+        "faq_count": 0,
+        "how_to_chars": 86,
+        "inci_chars": 971,
+        "active_ingredients_chars": 0,
+        "inci_applicability_status": "",
+        "ingredient_review_status": "",
+        "ingredient_remediation_action": "",
+        "bundle_component_refs_count": 0,
+        "effective_inci_chars": 971,
+        "inci_borrowed_from_product_id": ""
+      }
+    },
+    {
+      "seed_id": "eps_10f4fd14686c4abd91919079",
+      "external_product_id": "ext_c0ae88b265459781aa743815",
+      "market": "US",
+      "domain": "www.guerlain.com",
+      "title": "CONTOUR G LIP PENCIL",
+      "canonical_url": "https://www.guerlain.com/us/en-us/p/contour-g-lip-pencil-P043986.html",
+      "product_family": "single_formula",
+      "product_line_id": "pl_fd60750189be492e8518d1d4",
+      "identity_variant_axes": {
+        "shade": "05 le rouge rubis",
+        "multi_variant": true
+      },
+      "pivota_insights": {
+        "direct": {
+          "product_id": "ext_c0ae88b265459781aa743815",
+          "kb_key": "product:ext_c0ae88b265459781aa743815",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "official_pdp_reviewed_line",
+          "has_card_highlight": true
+        },
+        "effective": {
+          "product_id": "ext_c0ae88b265459781aa743815",
+          "kb_key": "product:ext_c0ae88b265459781aa743815",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "official_pdp_reviewed_line",
+          "has_card_highlight": true
+        },
+        "product_line_id": "pl_fd60750189be492e8518d1d4",
+        "borrowed_from_sibling": false
+      },
+      "active_ingredients": {
+        "status": "not_expected_missing",
+        "issues": [],
+        "regulatory_expected": false,
+        "hero_expected": false,
+        "active_items": [],
+        "source_origin": "pdp_section",
+        "source_quality_status": "blocked",
+        "coverage": {
+          "details_sections_count": 4,
+          "faq_count": 0,
+          "how_to_chars": 234,
+          "inci_chars": 375,
+          "active_ingredients_chars": 0,
+          "inci_applicability_status": "",
+          "ingredient_review_status": "",
+          "ingredient_remediation_action": "",
+          "bundle_component_refs_count": 0,
+          "effective_inci_chars": 375,
+          "inci_borrowed_from_product_id": ""
+        },
+        "invalid_fragments": [],
+        "suppressed_reason": null
+      },
+      "variants": {
+        "status": "ready",
+        "issues": [],
+        "visible_variant_rows": 6,
+        "examples": {
+          "identity_option_visible": [],
+          "wrong_axis_for_category": [],
+          "makeup_shade_missing_visual": [],
+          "size_value_generic_axis": [],
+          "default_option_size_evidence_missing_axis": [],
+          "identity_default_title_axis": []
+        }
+      },
+      "coverage": {
+        "details_sections_count": 4,
+        "faq_count": 0,
+        "how_to_chars": 234,
+        "inci_chars": 375,
+        "active_ingredients_chars": 0,
+        "inci_applicability_status": "",
+        "ingredient_review_status": "",
+        "ingredient_remediation_action": "",
+        "bundle_component_refs_count": 0,
+        "effective_inci_chars": 375,
+        "inci_borrowed_from_product_id": ""
+      }
+    },
+    {
+      "seed_id": "eps_461c64a601f54874b49c52b7",
+      "external_product_id": "ext_c1bccfd93f24c0048028fac0",
+      "market": "US",
+      "domain": "www.guerlain.com",
+      "title": "TERRACOTTA LIGHT THE SUN-KISSED NATURAL HEALTHY GLOW POWDER - 96% NATURALLY-DERIVED INGREDIENTS",
+      "canonical_url": "https://www.guerlain.com/us/en-us/p/terracotta-light-the-sun-kissed-natural-healthy-glow-powder---96-naturally-derived-ingredients-P062484.html",
+      "product_family": "single_formula",
+      "product_line_id": "pl_79539028889986cf32c0f34b",
+      "identity_variant_axes": {
+        "shade": "red zagora case",
+        "multi_variant": true
+      },
+      "pivota_insights": {
+        "direct": {
+          "product_id": "ext_c1bccfd93f24c0048028fac0",
+          "kb_key": "product:ext_c1bccfd93f24c0048028fac0",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "official_pdp_reviewed_line",
+          "has_card_highlight": true
+        },
+        "effective": {
+          "product_id": "ext_c1bccfd93f24c0048028fac0",
+          "kb_key": "product:ext_c1bccfd93f24c0048028fac0",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "official_pdp_reviewed_line",
+          "has_card_highlight": true
+        },
+        "product_line_id": "pl_79539028889986cf32c0f34b",
+        "borrowed_from_sibling": false
+      },
+      "active_ingredients": {
+        "status": "not_expected_missing",
+        "issues": [],
+        "regulatory_expected": false,
+        "hero_expected": false,
+        "active_items": [],
+        "source_origin": "pdp_section",
+        "source_quality_status": "blocked",
+        "coverage": {
+          "details_sections_count": 2,
+          "faq_count": 0,
+          "how_to_chars": 527,
+          "inci_chars": 1074,
+          "active_ingredients_chars": 0,
+          "inci_applicability_status": "",
+          "ingredient_review_status": "",
+          "ingredient_remediation_action": "",
+          "bundle_component_refs_count": 0,
+          "effective_inci_chars": 1074,
+          "inci_borrowed_from_product_id": ""
+        },
+        "invalid_fragments": [],
+        "suppressed_reason": null
+      },
+      "variants": {
+        "status": "ready",
+        "issues": [],
+        "visible_variant_rows": 3,
+        "examples": {
+          "identity_option_visible": [],
+          "wrong_axis_for_category": [],
+          "makeup_shade_missing_visual": [],
+          "size_value_generic_axis": [],
+          "default_option_size_evidence_missing_axis": [],
+          "identity_default_title_axis": []
+        }
+      },
+      "coverage": {
+        "details_sections_count": 2,
+        "faq_count": 0,
+        "how_to_chars": 527,
+        "inci_chars": 1074,
+        "active_ingredients_chars": 0,
+        "inci_applicability_status": "",
+        "ingredient_review_status": "",
+        "ingredient_remediation_action": "",
+        "bundle_component_refs_count": 0,
+        "effective_inci_chars": 1074,
+        "inci_borrowed_from_product_id": ""
+      }
+    },
+    {
+      "seed_id": "eps_8b688b5a192846e686713ac5",
+      "external_product_id": "ext_c6b96c732b2a0e2c1b508ad2",
+      "market": "US",
+      "domain": "www.guerlain.com",
+      "title": "ORCHIDÉE IMPÉRIALE THE LONGEVITY LIGHT CREAM",
+      "canonical_url": "https://www.guerlain.com/us/en-us/p/orchidee-imperiale-the-longevity-light-cream-P062025.html",
+      "product_family": "single_formula",
+      "product_line_id": "pl_67044eb1cfd5253da139e362",
+      "identity_variant_axes": {
+        "volume": "50ml",
+        "multi_variant": true
+      },
+      "pivota_insights": {
+        "direct": {
+          "product_id": "ext_c6b96c732b2a0e2c1b508ad2",
+          "kb_key": "product:ext_c6b96c732b2a0e2c1b508ad2",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "official_pdp_reviewed_line",
+          "has_card_highlight": true
+        },
+        "effective": {
+          "product_id": "ext_c6b96c732b2a0e2c1b508ad2",
+          "kb_key": "product:ext_c6b96c732b2a0e2c1b508ad2",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "official_pdp_reviewed_line",
+          "has_card_highlight": true
+        },
+        "product_line_id": "pl_67044eb1cfd5253da139e362",
+        "borrowed_from_sibling": false
+      },
+      "active_ingredients": {
+        "status": "missing_hero",
+        "issues": [
+          "missing_hero"
+        ],
+        "regulatory_expected": false,
+        "hero_expected": true,
+        "active_items": [],
+        "source_origin": "pdp_section",
+        "source_quality_status": "blocked",
+        "coverage": {
+          "details_sections_count": 4,
+          "faq_count": 8,
+          "how_to_chars": 67,
+          "inci_chars": 1427,
+          "active_ingredients_chars": 0,
+          "inci_applicability_status": "",
+          "ingredient_review_status": "",
+          "ingredient_remediation_action": "",
+          "bundle_component_refs_count": 0,
+          "effective_inci_chars": 1427,
+          "inci_borrowed_from_product_id": ""
+        },
+        "invalid_fragments": [],
+        "suppressed_reason": null
+      },
+      "variants": {
+        "status": "ready",
+        "issues": [],
+        "visible_variant_rows": 2,
+        "examples": {
+          "identity_option_visible": [],
+          "wrong_axis_for_category": [],
+          "makeup_shade_missing_visual": [],
+          "size_value_generic_axis": [],
+          "default_option_size_evidence_missing_axis": [],
+          "identity_default_title_axis": []
+        }
+      },
+      "coverage": {
+        "details_sections_count": 4,
+        "faq_count": 8,
+        "how_to_chars": 67,
+        "inci_chars": 1427,
+        "active_ingredients_chars": 0,
+        "inci_applicability_status": "",
+        "ingredient_review_status": "",
+        "ingredient_remediation_action": "",
+        "bundle_component_refs_count": 0,
+        "effective_inci_chars": 1427,
+        "inci_borrowed_from_product_id": ""
+      }
+    },
+    {
+      "seed_id": "eps_992646703be34f00a19b31be",
+      "external_product_id": "ext_cccdeedaa2f3666c2722adb7",
+      "market": "US",
+      "domain": "www.guerlain.com",
+      "title": "BROW G BROW PENCIL",
+      "canonical_url": "https://www.guerlain.com/us/en-us/p/brow-g-brow-pencil-P043971.html",
+      "product_family": "single_formula",
+      "product_line_id": "pl_fde15b19515781b319f0cd13",
+      "identity_variant_axes": {
+        "shade": "02 auburn",
+        "multi_variant": true
+      },
+      "pivota_insights": {
+        "direct": {
+          "product_id": "ext_cccdeedaa2f3666c2722adb7",
+          "kb_key": "product:ext_cccdeedaa2f3666c2722adb7",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "official_pdp_reviewed_line",
+          "has_card_highlight": true
+        },
+        "effective": {
+          "product_id": "ext_cccdeedaa2f3666c2722adb7",
+          "kb_key": "product:ext_cccdeedaa2f3666c2722adb7",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "official_pdp_reviewed_line",
+          "has_card_highlight": true
+        },
+        "product_line_id": "pl_fde15b19515781b319f0cd13",
+        "borrowed_from_sibling": false
+      },
+      "active_ingredients": {
+        "status": "not_expected_missing",
+        "issues": [],
+        "regulatory_expected": false,
+        "hero_expected": false,
+        "active_items": [],
+        "source_origin": "pdp_section",
+        "source_quality_status": "blocked",
+        "coverage": {
+          "details_sections_count": 2,
+          "faq_count": 0,
+          "how_to_chars": 120,
+          "inci_chars": 373,
+          "active_ingredients_chars": 0,
+          "inci_applicability_status": "",
+          "ingredient_review_status": "",
+          "ingredient_remediation_action": "",
+          "bundle_component_refs_count": 0,
+          "effective_inci_chars": 373,
+          "inci_borrowed_from_product_id": ""
+        },
+        "invalid_fragments": [],
+        "suppressed_reason": null
+      },
+      "variants": {
+        "status": "ready",
+        "issues": [],
+        "visible_variant_rows": 2,
+        "examples": {
+          "identity_option_visible": [],
+          "wrong_axis_for_category": [],
+          "makeup_shade_missing_visual": [],
+          "size_value_generic_axis": [],
+          "default_option_size_evidence_missing_axis": [],
+          "identity_default_title_axis": []
+        }
+      },
+      "coverage": {
+        "details_sections_count": 2,
+        "faq_count": 0,
+        "how_to_chars": 120,
+        "inci_chars": 373,
+        "active_ingredients_chars": 0,
+        "inci_applicability_status": "",
+        "ingredient_review_status": "",
+        "ingredient_remediation_action": "",
+        "bundle_component_refs_count": 0,
+        "effective_inci_chars": 373,
+        "inci_borrowed_from_product_id": ""
+      }
+    },
+    {
+      "seed_id": "eps_78060ca4c93b41fda477a27b",
+      "external_product_id": "ext_cedb632443eca062978bc18e",
+      "market": "US",
+      "domain": "www.guerlain.com",
+      "title": "ABSOLUS ALLEGORIA Tabac Sahara - Eau de Parfum",
+      "canonical_url": "https://www.guerlain.com/us/en-us/p/absolus-allegoria-tabac-sahara---eau-de-parfum-P062386.html",
+      "product_family": "single_formula",
+      "product_line_id": "pl_4b2271c4c69e260c005d6ff8",
+      "identity_variant_axes": {
+        "shade": "g062386",
+        "multi_variant": false
+      },
+      "pivota_insights": {
+        "direct": {
+          "product_id": "ext_cedb632443eca062978bc18e",
+          "kb_key": "product:ext_cedb632443eca062978bc18e",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "seller_plus_external_review",
+          "has_card_highlight": true
+        },
+        "effective": {
+          "product_id": "ext_cedb632443eca062978bc18e",
+          "kb_key": "product:ext_cedb632443eca062978bc18e",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "seller_plus_external_review",
+          "has_card_highlight": true
+        },
+        "product_line_id": "pl_4b2271c4c69e260c005d6ff8",
+        "borrowed_from_sibling": false
+      },
+      "active_ingredients": {
+        "status": "not_expected_missing",
+        "issues": [],
+        "regulatory_expected": false,
+        "hero_expected": false,
+        "active_items": [],
+        "source_origin": "pdp_section",
+        "source_quality_status": "blocked",
+        "coverage": {
+          "details_sections_count": 4,
+          "faq_count": 0,
+          "how_to_chars": 68,
+          "inci_chars": 524,
+          "active_ingredients_chars": 0,
+          "inci_applicability_status": "",
+          "ingredient_review_status": "",
+          "ingredient_remediation_action": "",
+          "bundle_component_refs_count": 0,
+          "effective_inci_chars": 524,
+          "inci_borrowed_from_product_id": ""
+        },
+        "invalid_fragments": [],
+        "suppressed_reason": null
+      },
+      "variants": {
+        "status": "ready",
+        "issues": [],
+        "visible_variant_rows": 1,
+        "examples": {
+          "identity_option_visible": [],
+          "wrong_axis_for_category": [],
+          "makeup_shade_missing_visual": [],
+          "size_value_generic_axis": [],
+          "default_option_size_evidence_missing_axis": [],
+          "identity_default_title_axis": []
+        }
+      },
+      "coverage": {
+        "details_sections_count": 4,
+        "faq_count": 0,
+        "how_to_chars": 68,
+        "inci_chars": 524,
+        "active_ingredients_chars": 0,
+        "inci_applicability_status": "",
+        "ingredient_review_status": "",
+        "ingredient_remediation_action": "",
+        "bundle_component_refs_count": 0,
+        "effective_inci_chars": 524,
+        "inci_borrowed_from_product_id": ""
+      }
+    },
+    {
+      "seed_id": "eps_193f2445bbe44b8da00f1d2e",
+      "external_product_id": "ext_dbf232b0c403893b604b1245",
+      "market": "US",
+      "domain": "www.guerlain.com",
+      "title": "Abeille Royale YOUTH WATERY OIL SERUM",
+      "canonical_url": "https://www.guerlain.com/us/en-us/p/abeille-royale-youth-watery-oil-serum-P062033.html",
+      "product_family": "single_formula",
+      "product_line_id": "pl_d4d342ac0697eadcffc6c62c",
+      "identity_variant_axes": {
+        "volume": "30ml",
+        "multi_variant": true
+      },
+      "pivota_insights": {
+        "direct": {
+          "product_id": "ext_dbf232b0c403893b604b1245",
+          "kb_key": "product:ext_dbf232b0c403893b604b1245",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": false,
+          "human_reviewed": true,
+          "issues": [
+            "public_truncated_copy"
+          ],
+          "blocking_issues": [
+            "public_truncated_copy"
+          ],
+          "quality_state": "reviewed",
+          "evidence_profile": "official_pdp_reviewed_key_ingredients_and_usage",
+          "has_card_highlight": true
+        },
+        "effective": {
+          "product_id": "ext_dbf232b0c403893b604b1245",
+          "kb_key": "product:ext_dbf232b0c403893b604b1245",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": false,
+          "human_reviewed": true,
+          "issues": [
+            "public_truncated_copy"
+          ],
+          "blocking_issues": [
+            "public_truncated_copy"
+          ],
+          "quality_state": "reviewed",
+          "evidence_profile": "official_pdp_reviewed_key_ingredients_and_usage",
+          "has_card_highlight": true
+        },
+        "product_line_id": "pl_d4d342ac0697eadcffc6c62c",
+        "borrowed_from_sibling": false
+      },
+      "active_ingredients": {
+        "status": "missing_hero",
+        "issues": [
+          "missing_hero"
+        ],
+        "regulatory_expected": false,
+        "hero_expected": true,
+        "active_items": [],
+        "source_origin": "pdp_section",
+        "source_quality_status": "blocked",
+        "coverage": {
+          "details_sections_count": 4,
+          "faq_count": 0,
+          "how_to_chars": 192,
+          "inci_chars": 1042,
+          "active_ingredients_chars": 15,
+          "inci_applicability_status": "",
+          "ingredient_review_status": "",
+          "ingredient_remediation_action": "",
+          "bundle_component_refs_count": 0,
+          "effective_inci_chars": 1042,
+          "inci_borrowed_from_product_id": ""
+        },
+        "invalid_fragments": [],
+        "suppressed_reason": "active_items_not_displayable"
+      },
+      "variants": {
+        "status": "ready",
+        "issues": [],
+        "visible_variant_rows": 4,
+        "examples": {
+          "identity_option_visible": [],
+          "wrong_axis_for_category": [],
+          "makeup_shade_missing_visual": [],
+          "size_value_generic_axis": [],
+          "default_option_size_evidence_missing_axis": [],
+          "identity_default_title_axis": []
+        }
+      },
+      "coverage": {
+        "details_sections_count": 4,
+        "faq_count": 0,
+        "how_to_chars": 192,
+        "inci_chars": 1042,
+        "active_ingredients_chars": 15,
+        "inci_applicability_status": "",
+        "ingredient_review_status": "",
+        "ingredient_remediation_action": "",
+        "bundle_component_refs_count": 0,
+        "effective_inci_chars": 1042,
+        "inci_borrowed_from_product_id": ""
+      }
+    },
+    {
+      "seed_id": "eps_2b7dabc0632f44c28e766132",
+      "external_product_id": "ext_dc290a89c2c5daa2a5eab5cf",
+      "market": "US",
+      "domain": "www.guerlain.com",
+      "title": "ROUGE G THE CUSTOMIZABLE ULTRA-CARE LIPSTICK",
+      "canonical_url": "https://www.guerlain.com/us/en-us/p/rouge-g-the-customizable-ultra-care-lipstick-S000050.html",
+      "product_family": "single_formula",
+      "product_line_id": "pl_a64661bebd6658b6432bb85f",
+      "identity_variant_axes": {
+        "shade": "g044301",
+        "multi_variant": false
+      },
+      "pivota_insights": {
+        "direct": {
+          "product_id": "ext_dc290a89c2c5daa2a5eab5cf",
+          "kb_key": "product:ext_dc290a89c2c5daa2a5eab5cf",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "official_pdp_reviewed_formula_and_usage",
+          "has_card_highlight": true
+        },
+        "effective": {
+          "product_id": "ext_dc290a89c2c5daa2a5eab5cf",
+          "kb_key": "product:ext_dc290a89c2c5daa2a5eab5cf",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "official_pdp_reviewed_formula_and_usage",
+          "has_card_highlight": true
+        },
+        "product_line_id": "pl_a64661bebd6658b6432bb85f",
+        "borrowed_from_sibling": false
+      },
+      "active_ingredients": {
+        "status": "not_expected_missing",
+        "issues": [],
+        "regulatory_expected": false,
+        "hero_expected": false,
+        "active_items": [],
+        "source_origin": "pdp_section",
+        "source_quality_status": "blocked",
+        "coverage": {
+          "details_sections_count": 2,
+          "faq_count": 0,
+          "how_to_chars": 86,
+          "inci_chars": 971,
+          "active_ingredients_chars": 0,
+          "inci_applicability_status": "",
+          "ingredient_review_status": "",
+          "ingredient_remediation_action": "",
+          "bundle_component_refs_count": 0,
+          "effective_inci_chars": 971,
+          "inci_borrowed_from_product_id": ""
+        },
+        "invalid_fragments": [],
+        "suppressed_reason": null
+      },
+      "variants": {
+        "status": "ready",
+        "issues": [],
+        "visible_variant_rows": 1,
+        "examples": {
+          "identity_option_visible": [],
+          "wrong_axis_for_category": [],
+          "makeup_shade_missing_visual": [],
+          "size_value_generic_axis": [],
+          "default_option_size_evidence_missing_axis": [],
+          "identity_default_title_axis": []
+        }
+      },
+      "coverage": {
+        "details_sections_count": 2,
+        "faq_count": 0,
+        "how_to_chars": 86,
+        "inci_chars": 971,
+        "active_ingredients_chars": 0,
+        "inci_applicability_status": "",
+        "ingredient_review_status": "",
+        "ingredient_remediation_action": "",
+        "bundle_component_refs_count": 0,
+        "effective_inci_chars": 971,
+        "inci_borrowed_from_product_id": ""
+      }
+    },
+    {
+      "seed_id": "eps_34996586602d44a4890efc4d",
+      "external_product_id": "ext_dfe4c10ed6a41b4745c18bd5",
+      "market": "US",
+      "domain": "www.guerlain.com",
+      "title": "ABEILLE ROYALE YOUTH REPAIR EYE CARE 15 ML / 0.50 OZ",
+      "canonical_url": "https://www.guerlain.com/us/en-us/p/abeille-royale-youth-repair-eye-care-P062209.html",
+      "product_family": "unknown_product",
+      "product_line_id": "pl_3039021bf73d258eeb1d4147",
+      "identity_variant_axes": {
+        "shade": "g062209",
+        "volume": "15ml",
+        "multi_variant": false
+      },
+      "pivota_insights": {
+        "direct": {
+          "product_id": "ext_dfe4c10ed6a41b4745c18bd5",
+          "kb_key": "product:ext_dfe4c10ed6a41b4745c18bd5",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "official_pdp_reviewed_key_ingredients_and_usage",
+          "has_card_highlight": true
+        },
+        "effective": {
+          "product_id": "ext_dfe4c10ed6a41b4745c18bd5",
+          "kb_key": "product:ext_dfe4c10ed6a41b4745c18bd5",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "official_pdp_reviewed_key_ingredients_and_usage",
+          "has_card_highlight": true
+        },
+        "product_line_id": "pl_3039021bf73d258eeb1d4147",
+        "borrowed_from_sibling": false
+      },
+      "active_ingredients": {
+        "status": "missing_hero",
+        "issues": [
+          "missing_hero"
+        ],
+        "regulatory_expected": false,
+        "hero_expected": true,
+        "active_items": [],
+        "source_origin": "pdp_section",
+        "source_quality_status": "blocked",
+        "coverage": {
+          "details_sections_count": 2,
+          "faq_count": 8,
+          "how_to_chars": 155,
+          "inci_chars": 1098,
+          "active_ingredients_chars": 116,
+          "inci_applicability_status": "",
+          "ingredient_review_status": "",
+          "ingredient_remediation_action": "",
+          "bundle_component_refs_count": 0,
+          "effective_inci_chars": 1098,
+          "inci_borrowed_from_product_id": ""
+        },
+        "invalid_fragments": [],
+        "suppressed_reason": "active_items_not_displayable"
+      },
+      "variants": {
+        "status": "ready",
+        "issues": [],
+        "visible_variant_rows": 1,
+        "examples": {
+          "identity_option_visible": [],
+          "wrong_axis_for_category": [],
+          "makeup_shade_missing_visual": [],
+          "size_value_generic_axis": [],
+          "default_option_size_evidence_missing_axis": [],
+          "identity_default_title_axis": []
+        }
+      },
+      "coverage": {
+        "details_sections_count": 2,
+        "faq_count": 8,
+        "how_to_chars": 155,
+        "inci_chars": 1098,
+        "active_ingredients_chars": 116,
+        "inci_applicability_status": "",
+        "ingredient_review_status": "",
+        "ingredient_remediation_action": "",
+        "bundle_component_refs_count": 0,
+        "effective_inci_chars": 1098,
+        "inci_borrowed_from_product_id": ""
+      }
+    },
+    {
+      "seed_id": "eps_e395b27d93064abb97a297d4",
+      "external_product_id": "ext_e0394506a3ce54c7d4683fe5",
+      "market": "US",
+      "domain": "www.guerlain.com",
+      "title": "Abeille Royale YOUTH WATERY OIL SERUM",
+      "canonical_url": "https://www.guerlain.com/us/en-us/p/abeille-royale-youth-watery-oil-serum-P062033.html",
+      "product_family": "single_formula",
+      "product_line_id": "pl_d4d342ac0697eadcffc6c62c",
+      "identity_variant_axes": {
+        "volume": "30ml",
+        "multi_variant": true
+      },
+      "pivota_insights": {
+        "direct": {
+          "product_id": "ext_e0394506a3ce54c7d4683fe5",
+          "kb_key": "product:ext_e0394506a3ce54c7d4683fe5",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": false,
+          "human_reviewed": true,
+          "issues": [
+            "public_truncated_copy"
+          ],
+          "blocking_issues": [
+            "public_truncated_copy"
+          ],
+          "quality_state": "reviewed",
+          "evidence_profile": "official_pdp_reviewed_key_ingredients_and_usage",
+          "has_card_highlight": true
+        },
+        "effective": {
+          "product_id": "ext_e0394506a3ce54c7d4683fe5",
+          "kb_key": "product:ext_e0394506a3ce54c7d4683fe5",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": false,
+          "human_reviewed": true,
+          "issues": [
+            "public_truncated_copy"
+          ],
+          "blocking_issues": [
+            "public_truncated_copy"
+          ],
+          "quality_state": "reviewed",
+          "evidence_profile": "official_pdp_reviewed_key_ingredients_and_usage",
+          "has_card_highlight": true
+        },
+        "product_line_id": "pl_d4d342ac0697eadcffc6c62c",
+        "borrowed_from_sibling": false
+      },
+      "active_ingredients": {
+        "status": "missing_hero",
+        "issues": [
+          "missing_hero"
+        ],
+        "regulatory_expected": false,
+        "hero_expected": true,
+        "active_items": [],
+        "source_origin": "pdp_section",
+        "source_quality_status": "blocked",
+        "coverage": {
+          "details_sections_count": 4,
+          "faq_count": 0,
+          "how_to_chars": 192,
+          "inci_chars": 1042,
+          "active_ingredients_chars": 15,
+          "inci_applicability_status": "",
+          "ingredient_review_status": "",
+          "ingredient_remediation_action": "",
+          "bundle_component_refs_count": 0,
+          "effective_inci_chars": 1042,
+          "inci_borrowed_from_product_id": ""
+        },
+        "invalid_fragments": [],
+        "suppressed_reason": "active_items_not_displayable"
+      },
+      "variants": {
+        "status": "ready",
+        "issues": [],
+        "visible_variant_rows": 4,
+        "examples": {
+          "identity_option_visible": [],
+          "wrong_axis_for_category": [],
+          "makeup_shade_missing_visual": [],
+          "size_value_generic_axis": [],
+          "default_option_size_evidence_missing_axis": [],
+          "identity_default_title_axis": []
+        }
+      },
+      "coverage": {
+        "details_sections_count": 4,
+        "faq_count": 0,
+        "how_to_chars": 192,
+        "inci_chars": 1042,
+        "active_ingredients_chars": 15,
+        "inci_applicability_status": "",
+        "ingredient_review_status": "",
+        "ingredient_remediation_action": "",
+        "bundle_component_refs_count": 0,
+        "effective_inci_chars": 1042,
+        "inci_borrowed_from_product_id": ""
+      }
+    },
+    {
+      "seed_id": "eps_7fbd63addab94c848baba5e9",
+      "external_product_id": "ext_e3d4365481cd9dbecaed0640",
+      "market": "US",
+      "domain": "www.guerlain.com",
+      "title": "KISSKISS BEE GLOW 98% naturally-derived¹ honey tint balm",
+      "canonical_url": "https://www.guerlain.com/us/en-us/p/kisskiss-bee-glow-98-naturally-derived%C2%B9-honey-tint-balm-P043570.html",
+      "product_family": "single_formula",
+      "product_line_id": "pl_b6fa89679db5a23f9c7d0fd4",
+      "identity_variant_axes": {
+        "shade": "775 poppy glow",
+        "multi_variant": true
+      },
+      "pivota_insights": {
+        "direct": {
+          "product_id": "ext_e3d4365481cd9dbecaed0640",
+          "kb_key": "product:ext_e3d4365481cd9dbecaed0640",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "official_pdp_reviewed_line",
+          "has_card_highlight": true
+        },
+        "effective": {
+          "product_id": "ext_e3d4365481cd9dbecaed0640",
+          "kb_key": "product:ext_e3d4365481cd9dbecaed0640",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "official_pdp_reviewed_line",
+          "has_card_highlight": true
+        },
+        "product_line_id": "pl_b6fa89679db5a23f9c7d0fd4",
+        "borrowed_from_sibling": false
+      },
+      "active_ingredients": {
+        "status": "not_expected_missing",
+        "issues": [],
+        "regulatory_expected": false,
+        "hero_expected": false,
+        "active_items": [],
+        "source_origin": "pdp_section",
+        "source_quality_status": "blocked",
+        "coverage": {
+          "details_sections_count": 10,
+          "faq_count": 0,
+          "how_to_chars": 110,
+          "inci_chars": 1381,
+          "active_ingredients_chars": 0,
+          "inci_applicability_status": "",
+          "ingredient_review_status": "",
+          "ingredient_remediation_action": "",
+          "bundle_component_refs_count": 0,
+          "effective_inci_chars": 1381,
+          "inci_borrowed_from_product_id": ""
+        },
+        "invalid_fragments": [],
+        "suppressed_reason": null
+      },
+      "variants": {
+        "status": "ready",
+        "issues": [],
+        "visible_variant_rows": 8,
+        "examples": {
+          "identity_option_visible": [],
+          "wrong_axis_for_category": [],
+          "makeup_shade_missing_visual": [],
+          "size_value_generic_axis": [],
+          "default_option_size_evidence_missing_axis": [],
+          "identity_default_title_axis": []
+        }
+      },
+      "coverage": {
+        "details_sections_count": 10,
+        "faq_count": 0,
+        "how_to_chars": 110,
+        "inci_chars": 1381,
+        "active_ingredients_chars": 0,
+        "inci_applicability_status": "",
+        "ingredient_review_status": "",
+        "ingredient_remediation_action": "",
+        "bundle_component_refs_count": 0,
+        "effective_inci_chars": 1381,
+        "inci_borrowed_from_product_id": ""
+      }
+    },
+    {
+      "seed_id": "eps_373197e011364301a8f0e9f1",
+      "external_product_id": "ext_efb23ae72bc3a9af3c81b1a0",
+      "market": "US",
+      "domain": "www.guerlain.com",
+      "title": "EXCEPTIONAL RENDEZVOUS CHERRY BLOSSOM 155 ML / 5.24 OZ",
+      "canonical_url": "https://www.guerlain.com/us/en-us/p/exceptional-rendezvous-cherry-blossom-P062280.html",
+      "product_family": "unknown_product",
+      "product_line_id": "pl_1cd16060e037515d2e251cdc",
+      "identity_variant_axes": {
+        "shade": "g062280",
+        "volume": "155ml",
+        "multi_variant": false
+      },
+      "pivota_insights": {
+        "direct": {
+          "product_id": "ext_efb23ae72bc3a9af3c81b1a0",
+          "kb_key": "product:ext_efb23ae72bc3a9af3c81b1a0",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "official_pdp_reviewed_line",
+          "has_card_highlight": true
+        },
+        "effective": {
+          "product_id": "ext_efb23ae72bc3a9af3c81b1a0",
+          "kb_key": "product:ext_efb23ae72bc3a9af3c81b1a0",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "official_pdp_reviewed_line",
+          "has_card_highlight": true
+        },
+        "product_line_id": "pl_1cd16060e037515d2e251cdc",
+        "borrowed_from_sibling": false
+      },
+      "active_ingredients": {
+        "status": "not_expected_missing",
+        "issues": [],
+        "regulatory_expected": false,
+        "hero_expected": false,
+        "active_items": [],
+        "source_origin": "pdp_section",
+        "source_quality_status": "blocked",
+        "coverage": {
+          "details_sections_count": 2,
+          "faq_count": 0,
+          "how_to_chars": 104,
+          "inci_chars": 783,
+          "active_ingredients_chars": 0,
+          "inci_applicability_status": "",
+          "ingredient_review_status": "",
+          "ingredient_remediation_action": "",
+          "bundle_component_refs_count": 0,
+          "effective_inci_chars": 783,
+          "inci_borrowed_from_product_id": ""
+        },
+        "invalid_fragments": [],
+        "suppressed_reason": null
+      },
+      "variants": {
+        "status": "ready",
+        "issues": [],
+        "visible_variant_rows": 1,
+        "examples": {
+          "identity_option_visible": [],
+          "wrong_axis_for_category": [],
+          "makeup_shade_missing_visual": [],
+          "size_value_generic_axis": [],
+          "default_option_size_evidence_missing_axis": [],
+          "identity_default_title_axis": []
+        }
+      },
+      "coverage": {
+        "details_sections_count": 2,
+        "faq_count": 0,
+        "how_to_chars": 104,
+        "inci_chars": 783,
+        "active_ingredients_chars": 0,
+        "inci_applicability_status": "",
+        "ingredient_review_status": "",
+        "ingredient_remediation_action": "",
+        "bundle_component_refs_count": 0,
+        "effective_inci_chars": 783,
+        "inci_borrowed_from_product_id": ""
+      }
+    },
+    {
+      "seed_id": "eps_fc0afc13cc104687adf42ef4",
+      "external_product_id": "ext_f036949ec5d8218bc686d082",
+      "market": "US",
+      "domain": "www.guerlain.com",
+      "title": "BROW G BROW PENCIL",
+      "canonical_url": "https://www.guerlain.com/us/en-us/p/brow-g-brow-pencil-P043971.html",
+      "product_family": "single_formula",
+      "product_line_id": "pl_fde15b19515781b319f0cd13",
+      "identity_variant_axes": {
+        "shade": "02 auburn",
+        "multi_variant": true
+      },
+      "pivota_insights": {
+        "direct": {
+          "product_id": "ext_f036949ec5d8218bc686d082",
+          "kb_key": "product:ext_f036949ec5d8218bc686d082",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "official_pdp_reviewed_line",
+          "has_card_highlight": true
+        },
+        "effective": {
+          "product_id": "ext_f036949ec5d8218bc686d082",
+          "kb_key": "product:ext_f036949ec5d8218bc686d082",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "official_pdp_reviewed_line",
+          "has_card_highlight": true
+        },
+        "product_line_id": "pl_fde15b19515781b319f0cd13",
+        "borrowed_from_sibling": false
+      },
+      "active_ingredients": {
+        "status": "not_expected_missing",
+        "issues": [],
+        "regulatory_expected": false,
+        "hero_expected": false,
+        "active_items": [],
+        "source_origin": "pdp_section",
+        "source_quality_status": "blocked",
+        "coverage": {
+          "details_sections_count": 2,
+          "faq_count": 0,
+          "how_to_chars": 120,
+          "inci_chars": 373,
+          "active_ingredients_chars": 0,
+          "inci_applicability_status": "",
+          "ingredient_review_status": "",
+          "ingredient_remediation_action": "",
+          "bundle_component_refs_count": 0,
+          "effective_inci_chars": 373,
+          "inci_borrowed_from_product_id": ""
+        },
+        "invalid_fragments": [],
+        "suppressed_reason": null
+      },
+      "variants": {
+        "status": "ready",
+        "issues": [],
+        "visible_variant_rows": 2,
+        "examples": {
+          "identity_option_visible": [],
+          "wrong_axis_for_category": [],
+          "makeup_shade_missing_visual": [],
+          "size_value_generic_axis": [],
+          "default_option_size_evidence_missing_axis": [],
+          "identity_default_title_axis": []
+        }
+      },
+      "coverage": {
+        "details_sections_count": 2,
+        "faq_count": 0,
+        "how_to_chars": 120,
+        "inci_chars": 373,
+        "active_ingredients_chars": 0,
+        "inci_applicability_status": "",
+        "ingredient_review_status": "",
+        "ingredient_remediation_action": "",
+        "bundle_component_refs_count": 0,
+        "effective_inci_chars": 373,
+        "inci_borrowed_from_product_id": ""
+      }
+    },
+    {
+      "seed_id": "eps_48d680c682da4c0cafc25998",
+      "external_product_id": "ext_f3bca5a5f941c618dbbabb0d",
+      "market": "US",
+      "domain": "www.guerlain.com",
+      "title": "L’ART & LA MATIÈRE CUSTOMIZABLE SCENTED CANDLE",
+      "canonical_url": "https://www.guerlain.com/us/en-us/p/l%E2%80%99art-la-matiere-customizable-scented-candle-B000003.html",
+      "product_family": "accessory",
+      "product_line_id": "pl_21baca81186994daeb8a9117",
+      "identity_variant_axes": {
+        "jar": "mahogany brown",
+        "scent": "tonka sarrapia 220g",
+        "multi_variant": false
+      },
+      "pivota_insights": {
+        "direct": {
+          "product_id": "ext_f3bca5a5f941c618dbbabb0d",
+          "kb_key": "product:ext_f3bca5a5f941c618dbbabb0d",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "official_pdp_reviewed_line",
+          "has_card_highlight": true
+        },
+        "effective": {
+          "product_id": "ext_f3bca5a5f941c618dbbabb0d",
+          "kb_key": "product:ext_f3bca5a5f941c618dbbabb0d",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "official_pdp_reviewed_line",
+          "has_card_highlight": true
+        },
+        "product_line_id": "pl_21baca81186994daeb8a9117",
+        "borrowed_from_sibling": false
+      },
+      "active_ingredients": {
+        "status": "not_applicable_product_family",
+        "issues": [],
+        "regulatory_expected": false,
+        "hero_expected": false,
+        "active_items": [],
+        "source_origin": "none",
+        "source_quality_status": "blocked",
+        "coverage": {
+          "details_sections_count": 6,
+          "faq_count": 0,
+          "how_to_chars": 220,
+          "inci_chars": 0,
+          "active_ingredients_chars": 0,
+          "inci_applicability_status": "not_applicable",
+          "ingredient_review_status": "",
+          "ingredient_remediation_action": "mark_inci_not_applicable",
+          "bundle_component_refs_count": 0,
+          "effective_inci_chars": 0,
+          "inci_borrowed_from_product_id": ""
+        },
+        "invalid_fragments": [],
+        "suppressed_reason": "accessory"
+      },
+      "variants": {
+        "status": "ready",
+        "issues": [],
+        "visible_variant_rows": 2,
+        "examples": {
+          "identity_option_visible": [],
+          "wrong_axis_for_category": [],
+          "makeup_shade_missing_visual": [],
+          "size_value_generic_axis": [],
+          "default_option_size_evidence_missing_axis": [],
+          "identity_default_title_axis": []
+        }
+      },
+      "coverage": {
+        "details_sections_count": 6,
+        "faq_count": 0,
+        "how_to_chars": 220,
+        "inci_chars": 0,
+        "active_ingredients_chars": 0,
+        "inci_applicability_status": "not_applicable",
+        "ingredient_review_status": "",
+        "ingredient_remediation_action": "mark_inci_not_applicable",
+        "bundle_component_refs_count": 0,
+        "effective_inci_chars": 0,
+        "inci_borrowed_from_product_id": ""
+      }
+    },
+    {
+      "seed_id": "eps_aba3f992e3f2443aada4ccbd",
+      "external_product_id": "ext_f62900c5f9c885cd0d26f031",
+      "market": "US",
+      "domain": "www.guerlain.com",
+      "title": "KISSKISS BEE LIFT Beautifying lip care primer, 95% natural origin Universal shade",
+      "canonical_url": "https://www.guerlain.com/us/en-us/p/kisskiss-bee-lift-beautifying-lip-care-primer-95-natural-origin-P044087.html",
+      "product_family": "single_formula",
+      "product_line_id": "pl_bfcd60c7703b1be9c9115a7d",
+      "identity_variant_axes": {
+        "shade": "g044087",
+        "multi_variant": false
+      },
+      "pivota_insights": {
+        "direct": {
+          "product_id": "ext_f62900c5f9c885cd0d26f031",
+          "kb_key": "product:ext_f62900c5f9c885cd0d26f031",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "official_pdp_reviewed_line",
+          "has_card_highlight": true
+        },
+        "effective": {
+          "product_id": "ext_f62900c5f9c885cd0d26f031",
+          "kb_key": "product:ext_f62900c5f9c885cd0d26f031",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "official_pdp_reviewed_line",
+          "has_card_highlight": true
+        },
+        "product_line_id": "pl_bfcd60c7703b1be9c9115a7d",
+        "borrowed_from_sibling": false
+      },
+      "active_ingredients": {
+        "status": "not_expected_missing",
+        "issues": [],
+        "regulatory_expected": false,
+        "hero_expected": false,
+        "active_items": [],
+        "source_origin": "pdp_section",
+        "source_quality_status": "blocked",
+        "coverage": {
+          "details_sections_count": 4,
+          "faq_count": 0,
+          "how_to_chars": 559,
+          "inci_chars": 1325,
+          "active_ingredients_chars": 0,
+          "inci_applicability_status": "",
+          "ingredient_review_status": "",
+          "ingredient_remediation_action": "",
+          "bundle_component_refs_count": 0,
+          "effective_inci_chars": 1325,
+          "inci_borrowed_from_product_id": ""
+        },
+        "invalid_fragments": [],
+        "suppressed_reason": null
+      },
+      "variants": {
+        "status": "ready",
+        "issues": [],
+        "visible_variant_rows": 1,
+        "examples": {
+          "identity_option_visible": [],
+          "wrong_axis_for_category": [],
+          "makeup_shade_missing_visual": [],
+          "size_value_generic_axis": [],
+          "default_option_size_evidence_missing_axis": [],
+          "identity_default_title_axis": []
+        }
+      },
+      "coverage": {
+        "details_sections_count": 4,
+        "faq_count": 0,
+        "how_to_chars": 559,
+        "inci_chars": 1325,
+        "active_ingredients_chars": 0,
+        "inci_applicability_status": "",
+        "ingredient_review_status": "",
+        "ingredient_remediation_action": "",
+        "bundle_component_refs_count": 0,
+        "effective_inci_chars": 1325,
+        "inci_borrowed_from_product_id": ""
+      }
+    },
+    {
+      "seed_id": "eps_d012158fa3e3421c864f935f",
+      "external_product_id": "ext_fcc3acdfd39492888e5df3e5",
+      "market": "US",
+      "domain": "www.guerlain.com",
+      "title": "AQUA ALLEGORIA PERLE Florabloom Perle - Eau de Parfum 125 ML / 4.22 OZ",
+      "canonical_url": "https://www.guerlain.com/us/en-us/p/aqua-allegoria-perle-florabloom-perle---eau-de-parfum-P062203.html",
+      "product_family": "single_formula",
+      "product_line_id": "pl_b658af2b321e4c986d83c3f9",
+      "identity_variant_axes": {
+        "shade": "g062203",
+        "volume": "125ml",
+        "multi_variant": false
+      },
+      "pivota_insights": {
+        "direct": {
+          "product_id": "ext_fcc3acdfd39492888e5df3e5",
+          "kb_key": "product:ext_fcc3acdfd39492888e5df3e5",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "official_pdp_reviewed_line",
+          "has_card_highlight": true
+        },
+        "effective": {
+          "product_id": "ext_fcc3acdfd39492888e5df3e5",
+          "kb_key": "product:ext_fcc3acdfd39492888e5df3e5",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "official_pdp_reviewed_line",
+          "has_card_highlight": true
+        },
+        "product_line_id": "pl_b658af2b321e4c986d83c3f9",
+        "borrowed_from_sibling": false
+      },
+      "active_ingredients": {
+        "status": "not_expected_missing",
+        "issues": [],
+        "regulatory_expected": false,
+        "hero_expected": false,
+        "active_items": [],
+        "source_origin": "pdp_section",
+        "source_quality_status": "blocked",
+        "coverage": {
+          "details_sections_count": 4,
+          "faq_count": 10,
+          "how_to_chars": 104,
+          "inci_chars": 1209,
+          "active_ingredients_chars": 0,
+          "inci_applicability_status": "",
+          "ingredient_review_status": "",
+          "ingredient_remediation_action": "",
+          "bundle_component_refs_count": 0,
+          "effective_inci_chars": 1209,
+          "inci_borrowed_from_product_id": ""
+        },
+        "invalid_fragments": [],
+        "suppressed_reason": null
+      },
+      "variants": {
+        "status": "ready",
+        "issues": [],
+        "visible_variant_rows": 1,
+        "examples": {
+          "identity_option_visible": [],
+          "wrong_axis_for_category": [],
+          "makeup_shade_missing_visual": [],
+          "size_value_generic_axis": [],
+          "default_option_size_evidence_missing_axis": [],
+          "identity_default_title_axis": []
+        }
+      },
+      "coverage": {
+        "details_sections_count": 4,
+        "faq_count": 10,
+        "how_to_chars": 104,
+        "inci_chars": 1209,
+        "active_ingredients_chars": 0,
+        "inci_applicability_status": "",
+        "ingredient_review_status": "",
+        "ingredient_remediation_action": "",
+        "bundle_component_refs_count": 0,
+        "effective_inci_chars": 1209,
+        "inci_borrowed_from_product_id": ""
+      }
+    }
+  ]
+}

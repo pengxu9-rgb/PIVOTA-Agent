@@ -1,0 +1,1117 @@
+{
+  "generated_at": "2026-05-28T10:01:35.794Z",
+  "options": {
+    "market": "US",
+    "includeAttached": true,
+    "domain": "glossier.com",
+    "externalProductIds": [],
+    "limit": 20000,
+    "sampleLimit": 10,
+    "checkpointDir": null,
+    "checkpointMode": "domain",
+    "resume": false,
+    "force": false,
+    "continueOnError": true,
+    "pageSize": 500,
+    "format": "json",
+    "chunkByDomain": false
+  },
+  "warnings": [],
+  "summary": {
+    "scanned": 8,
+    "by_market": {
+      "US": 8
+    },
+    "by_domain": [
+      {
+        "key": "glossier.com",
+        "count": 8
+      }
+    ],
+    "by_product_family": [
+      {
+        "key": "single_formula",
+        "count": 4
+      },
+      {
+        "key": "accessory",
+        "count": 2
+      },
+      {
+        "key": "set_or_collection",
+        "count": 1
+      },
+      {
+        "key": "unknown_product",
+        "count": 1
+      }
+    ],
+    "coverage": {
+      "missing_inci": 4,
+      "missing_active_raw": 2,
+      "missing_details": 3,
+      "missing_how_to": 0,
+      "missing_faq": 8
+    },
+    "pivota_insights": {
+      "direct": {
+        "displayable": 5,
+        "high_quality_ready": 2,
+        "missing_kb": 0,
+        "not_displayable": 3
+      },
+      "effective": {
+        "displayable": 5,
+        "high_quality_ready": 2,
+        "missing_kb": 0,
+        "not_displayable": 3,
+        "borrowed_from_sibling": 0
+      },
+      "effective_issues": [
+        {
+          "key": "empty_watchouts",
+          "count": 5
+        },
+        {
+          "key": "missing_card_highlight",
+          "count": 3
+        },
+        {
+          "key": "quality_eligible",
+          "count": 3
+        },
+        {
+          "key": "quality_limited",
+          "count": 3
+        },
+        {
+          "key": "reviewed_not_displayable",
+          "count": 3
+        },
+        {
+          "key": "seller_only_evidence",
+          "count": 3
+        }
+      ],
+      "effective_issue_domains": [
+        {
+          "key": "glossier.com::empty_watchouts",
+          "count": 5
+        },
+        {
+          "key": "glossier.com::missing_card_highlight",
+          "count": 3
+        },
+        {
+          "key": "glossier.com::quality_eligible",
+          "count": 3
+        },
+        {
+          "key": "glossier.com::quality_limited",
+          "count": 3
+        },
+        {
+          "key": "glossier.com::reviewed_not_displayable",
+          "count": 3
+        },
+        {
+          "key": "glossier.com::seller_only_evidence",
+          "count": 3
+        }
+      ],
+      "quality_state": [
+        {
+          "key": "eligible",
+          "count": 3
+        },
+        {
+          "key": "limited",
+          "count": 3
+        },
+        {
+          "key": "verified",
+          "count": 2
+        }
+      ],
+      "evidence_profile": [
+        {
+          "key": "seller_plus_formula",
+          "count": 5
+        },
+        {
+          "key": "seller_only",
+          "count": 3
+        }
+      ],
+      "samples": {
+        "reviewed_not_displayable": [
+          {
+            "external_product_id": "ext_2273710b1035419e684b16f3",
+            "domain": "glossier.com",
+            "title": "Bandana",
+            "used_product_id": "ext_2273710b1035419e684b16f3",
+            "quality_state": "limited",
+            "evidence_profile": "seller_only"
+          },
+          {
+            "external_product_id": "ext_8d8a448a842e97ae74d27234",
+            "domain": "glossier.com",
+            "title": "Hair Comb",
+            "used_product_id": "ext_8d8a448a842e97ae74d27234",
+            "quality_state": "limited",
+            "evidence_profile": "seller_only"
+          },
+          {
+            "external_product_id": "ext_b579adb5fa141ceaa076b44d",
+            "domain": "glossier.com",
+            "title": "Claw Clip",
+            "used_product_id": "ext_b579adb5fa141ceaa076b44d",
+            "quality_state": "limited",
+            "evidence_profile": "seller_only"
+          }
+        ],
+        "seller_only_evidence": [
+          {
+            "external_product_id": "ext_2273710b1035419e684b16f3",
+            "domain": "glossier.com",
+            "title": "Bandana",
+            "used_product_id": "ext_2273710b1035419e684b16f3",
+            "quality_state": "limited",
+            "evidence_profile": "seller_only"
+          },
+          {
+            "external_product_id": "ext_8d8a448a842e97ae74d27234",
+            "domain": "glossier.com",
+            "title": "Hair Comb",
+            "used_product_id": "ext_8d8a448a842e97ae74d27234",
+            "quality_state": "limited",
+            "evidence_profile": "seller_only"
+          },
+          {
+            "external_product_id": "ext_b579adb5fa141ceaa076b44d",
+            "domain": "glossier.com",
+            "title": "Claw Clip",
+            "used_product_id": "ext_b579adb5fa141ceaa076b44d",
+            "quality_state": "limited",
+            "evidence_profile": "seller_only"
+          }
+        ],
+        "missing_card_highlight": [
+          {
+            "external_product_id": "ext_7c86e18015daec38a2ece7bd",
+            "domain": "glossier.com",
+            "title": "Super Bounce",
+            "used_product_id": "ext_7c86e18015daec38a2ece7bd",
+            "quality_state": "eligible",
+            "evidence_profile": "seller_plus_formula"
+          },
+          {
+            "external_product_id": "ext_88116793a61719bab3c4f041",
+            "domain": "glossier.com",
+            "title": "Super Pure",
+            "used_product_id": "ext_88116793a61719bab3c4f041",
+            "quality_state": "eligible",
+            "evidence_profile": "seller_plus_formula"
+          },
+          {
+            "external_product_id": "ext_d2bdad1c4290a2eaf559a79b",
+            "domain": "glossier.com",
+            "title": "Super Glow",
+            "used_product_id": "ext_d2bdad1c4290a2eaf559a79b",
+            "quality_state": "eligible",
+            "evidence_profile": "seller_plus_formula"
+          }
+        ]
+      }
+    },
+    "active_ingredients": {
+      "regulatory_expected": 0,
+      "hero_expected": 3,
+      "any_active_items": 3,
+      "status": [
+        {
+          "key": "not_applicable_product_family",
+          "count": 3
+        },
+        {
+          "key": "ready_hero",
+          "count": 3
+        },
+        {
+          "key": "not_expected_missing",
+          "count": 2
+        }
+      ],
+      "issues": [],
+      "issue_domains": [],
+      "source_origin": [
+        {
+          "key": "none",
+          "count": 5
+        },
+        {
+          "key": "active_block",
+          "count": 3
+        }
+      ],
+      "samples": {}
+    },
+    "variants": {
+      "status": [
+        {
+          "key": "ready",
+          "count": 8
+        }
+      ],
+      "issues": [],
+      "issue_domains": [],
+      "samples": {}
+    }
+  },
+  "rows": [
+    {
+      "seed_id": "eps_0e57578a473e5f885c48934d",
+      "external_product_id": "ext_2273710b1035419e684b16f3",
+      "market": "US",
+      "domain": "glossier.com",
+      "title": "Bandana",
+      "canonical_url": "https://www.glossier.com/products/bandana",
+      "product_family": "unknown_product",
+      "product_line_id": "pl_7cf3330a3aae2cdcd0f615e7",
+      "identity_variant_axes": {
+        "multi_variant": false
+      },
+      "pivota_insights": {
+        "direct": {
+          "product_id": "ext_2273710b1035419e684b16f3",
+          "kb_key": "product:ext_2273710b1035419e684b16f3",
+          "status": "not_displayable",
+          "kb_exists": true,
+          "displayable": false,
+          "high_quality_ready": false,
+          "human_reviewed": true,
+          "issues": [
+            "reviewed_not_displayable",
+            "quality_limited",
+            "seller_only_evidence"
+          ],
+          "blocking_issues": [
+            "reviewed_not_displayable"
+          ],
+          "quality_state": "limited",
+          "evidence_profile": "seller_only",
+          "has_card_highlight": true
+        },
+        "effective": {
+          "product_id": "ext_2273710b1035419e684b16f3",
+          "kb_key": "product:ext_2273710b1035419e684b16f3",
+          "status": "not_displayable",
+          "kb_exists": true,
+          "displayable": false,
+          "high_quality_ready": false,
+          "human_reviewed": true,
+          "issues": [
+            "reviewed_not_displayable",
+            "quality_limited",
+            "seller_only_evidence"
+          ],
+          "blocking_issues": [
+            "reviewed_not_displayable"
+          ],
+          "quality_state": "limited",
+          "evidence_profile": "seller_only",
+          "has_card_highlight": true
+        },
+        "product_line_id": "pl_7cf3330a3aae2cdcd0f615e7",
+        "borrowed_from_sibling": false
+      },
+      "active_ingredients": {
+        "status": "not_expected_missing",
+        "issues": [],
+        "regulatory_expected": false,
+        "hero_expected": false,
+        "active_items": [],
+        "source_origin": "none",
+        "source_quality_status": "blocked",
+        "coverage": {
+          "details_sections_count": 0,
+          "faq_count": 0,
+          "how_to_chars": 109,
+          "inci_chars": 0,
+          "active_ingredients_chars": 0,
+          "inci_applicability_status": "",
+          "ingredient_review_status": "",
+          "ingredient_remediation_action": "",
+          "bundle_component_refs_count": 0,
+          "effective_inci_chars": 0,
+          "inci_borrowed_from_product_id": ""
+        },
+        "invalid_fragments": [],
+        "suppressed_reason": "no_authoritative_source"
+      },
+      "variants": {
+        "status": "ready",
+        "issues": [],
+        "visible_variant_rows": 1,
+        "examples": {
+          "identity_option_visible": [],
+          "wrong_axis_for_category": [],
+          "makeup_shade_missing_visual": [],
+          "size_value_generic_axis": [],
+          "default_option_size_evidence_missing_axis": [],
+          "identity_default_title_axis": []
+        }
+      },
+      "coverage": {
+        "details_sections_count": 0,
+        "faq_count": 0,
+        "how_to_chars": 109,
+        "inci_chars": 0,
+        "active_ingredients_chars": 0,
+        "inci_applicability_status": "",
+        "ingredient_review_status": "",
+        "ingredient_remediation_action": "",
+        "bundle_component_refs_count": 0,
+        "effective_inci_chars": 0,
+        "inci_borrowed_from_product_id": ""
+      }
+    },
+    {
+      "seed_id": "eps_15ff53fe6187520980e016a7",
+      "external_product_id": "ext_41689a4f7b40ea28fdffd0ca",
+      "market": "US",
+      "domain": "glossier.com",
+      "title": "Spring Pinks",
+      "canonical_url": "https://www.glossier.com/products/spring-pinks",
+      "product_family": "single_formula",
+      "product_line_id": null,
+      "pivota_insights": {
+        "direct": {
+          "product_id": "ext_41689a4f7b40ea28fdffd0ca",
+          "kb_key": "product:ext_41689a4f7b40ea28fdffd0ca",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [
+            "empty_watchouts"
+          ],
+          "blocking_issues": [],
+          "quality_state": "verified",
+          "evidence_profile": "seller_plus_formula",
+          "has_card_highlight": true
+        },
+        "effective": {
+          "product_id": "ext_41689a4f7b40ea28fdffd0ca",
+          "kb_key": "product:ext_41689a4f7b40ea28fdffd0ca",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [
+            "empty_watchouts"
+          ],
+          "blocking_issues": [],
+          "quality_state": "verified",
+          "evidence_profile": "seller_plus_formula",
+          "has_card_highlight": true
+        },
+        "product_line_id": null,
+        "borrowed_from_sibling": false
+      },
+      "active_ingredients": {
+        "status": "not_expected_missing",
+        "issues": [],
+        "regulatory_expected": false,
+        "hero_expected": false,
+        "active_items": [],
+        "source_origin": "none",
+        "source_quality_status": "blocked",
+        "coverage": {
+          "details_sections_count": 4,
+          "faq_count": 0,
+          "how_to_chars": 109,
+          "inci_chars": 290,
+          "active_ingredients_chars": 0,
+          "inci_applicability_status": "",
+          "ingredient_review_status": "",
+          "ingredient_remediation_action": "",
+          "bundle_component_refs_count": 0,
+          "effective_inci_chars": 290,
+          "inci_borrowed_from_product_id": ""
+        },
+        "invalid_fragments": [],
+        "suppressed_reason": "no_authoritative_source"
+      },
+      "variants": {
+        "status": "ready",
+        "issues": [],
+        "visible_variant_rows": 1,
+        "examples": {
+          "identity_option_visible": [],
+          "wrong_axis_for_category": [],
+          "makeup_shade_missing_visual": [],
+          "size_value_generic_axis": [],
+          "default_option_size_evidence_missing_axis": [],
+          "identity_default_title_axis": []
+        }
+      },
+      "coverage": {
+        "details_sections_count": 4,
+        "faq_count": 0,
+        "how_to_chars": 109,
+        "inci_chars": 290,
+        "active_ingredients_chars": 0,
+        "inci_applicability_status": "",
+        "ingredient_review_status": "",
+        "ingredient_remediation_action": "",
+        "bundle_component_refs_count": 0,
+        "effective_inci_chars": 290,
+        "inci_borrowed_from_product_id": ""
+      }
+    },
+    {
+      "seed_id": "eps_669b69300488b6da24f20220",
+      "external_product_id": "ext_68b2c1348124fd14034288b4",
+      "market": "US",
+      "domain": "glossier.com",
+      "title": "The Super Pack",
+      "canonical_url": "https://www.glossier.com/products/super-pack",
+      "product_family": "set_or_collection",
+      "product_line_id": "pl_99a448cd5b42a82c7465951d",
+      "identity_variant_axes": {
+        "multi_variant": false
+      },
+      "pivota_insights": {
+        "direct": {
+          "product_id": "ext_68b2c1348124fd14034288b4",
+          "kb_key": "product:ext_68b2c1348124fd14034288b4",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [
+            "empty_watchouts"
+          ],
+          "blocking_issues": [],
+          "quality_state": "verified",
+          "evidence_profile": "seller_plus_formula",
+          "has_card_highlight": true
+        },
+        "effective": {
+          "product_id": "ext_68b2c1348124fd14034288b4",
+          "kb_key": "product:ext_68b2c1348124fd14034288b4",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [
+            "empty_watchouts"
+          ],
+          "blocking_issues": [],
+          "quality_state": "verified",
+          "evidence_profile": "seller_plus_formula",
+          "has_card_highlight": true
+        },
+        "product_line_id": "pl_99a448cd5b42a82c7465951d",
+        "borrowed_from_sibling": false
+      },
+      "active_ingredients": {
+        "status": "not_applicable_product_family",
+        "issues": [],
+        "regulatory_expected": false,
+        "hero_expected": false,
+        "active_items": [],
+        "source_origin": "none",
+        "source_quality_status": "blocked",
+        "coverage": {
+          "details_sections_count": 4,
+          "faq_count": 0,
+          "how_to_chars": 155,
+          "inci_chars": 0,
+          "active_ingredients_chars": 0,
+          "inci_applicability_status": "",
+          "ingredient_review_status": "",
+          "ingredient_remediation_action": "",
+          "bundle_component_refs_count": 0,
+          "effective_inci_chars": 0,
+          "inci_borrowed_from_product_id": ""
+        },
+        "invalid_fragments": [],
+        "suppressed_reason": "set_or_collection"
+      },
+      "variants": {
+        "status": "ready",
+        "issues": [],
+        "visible_variant_rows": 1,
+        "examples": {
+          "identity_option_visible": [],
+          "wrong_axis_for_category": [],
+          "makeup_shade_missing_visual": [],
+          "size_value_generic_axis": [],
+          "default_option_size_evidence_missing_axis": [],
+          "identity_default_title_axis": []
+        }
+      },
+      "coverage": {
+        "details_sections_count": 4,
+        "faq_count": 0,
+        "how_to_chars": 155,
+        "inci_chars": 0,
+        "active_ingredients_chars": 0,
+        "inci_applicability_status": "",
+        "ingredient_review_status": "",
+        "ingredient_remediation_action": "",
+        "bundle_component_refs_count": 0,
+        "effective_inci_chars": 0,
+        "inci_borrowed_from_product_id": ""
+      }
+    },
+    {
+      "seed_id": "eps_af9f6358daf309c70a3145d3",
+      "external_product_id": "ext_7c86e18015daec38a2ece7bd",
+      "market": "US",
+      "domain": "glossier.com",
+      "title": "Super Bounce",
+      "canonical_url": "https://www.glossier.com/products/super-bounce",
+      "product_family": "single_formula",
+      "product_line_id": "pl_097d24e8b773f60a14e3edfd",
+      "identity_variant_axes": {
+        "multi_variant": false
+      },
+      "pivota_insights": {
+        "direct": {
+          "product_id": "ext_7c86e18015daec38a2ece7bd",
+          "kb_key": "product:ext_7c86e18015daec38a2ece7bd",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": false,
+          "human_reviewed": true,
+          "issues": [
+            "missing_card_highlight",
+            "empty_watchouts",
+            "quality_eligible"
+          ],
+          "blocking_issues": [
+            "missing_card_highlight"
+          ],
+          "quality_state": "eligible",
+          "evidence_profile": "seller_plus_formula",
+          "has_card_highlight": false
+        },
+        "effective": {
+          "product_id": "ext_7c86e18015daec38a2ece7bd",
+          "kb_key": "product:ext_7c86e18015daec38a2ece7bd",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": false,
+          "human_reviewed": true,
+          "issues": [
+            "missing_card_highlight",
+            "empty_watchouts",
+            "quality_eligible"
+          ],
+          "blocking_issues": [
+            "missing_card_highlight"
+          ],
+          "quality_state": "eligible",
+          "evidence_profile": "seller_plus_formula",
+          "has_card_highlight": false
+        },
+        "product_line_id": "pl_097d24e8b773f60a14e3edfd",
+        "borrowed_from_sibling": false
+      },
+      "active_ingredients": {
+        "status": "ready_hero",
+        "issues": [],
+        "regulatory_expected": false,
+        "hero_expected": true,
+        "active_items": [
+          "Panthenol (B5)",
+          "Hyaluronic acid"
+        ],
+        "source_origin": "active_block",
+        "source_quality_status": "captured",
+        "coverage": {
+          "details_sections_count": 2,
+          "faq_count": 0,
+          "how_to_chars": 155,
+          "inci_chars": 1107,
+          "active_ingredients_chars": 31,
+          "inci_applicability_status": "",
+          "ingredient_review_status": "",
+          "ingredient_remediation_action": "",
+          "bundle_component_refs_count": 0,
+          "effective_inci_chars": 1107,
+          "inci_borrowed_from_product_id": ""
+        },
+        "invalid_fragments": [],
+        "suppressed_reason": "full_inci_low_purity"
+      },
+      "variants": {
+        "status": "ready",
+        "issues": [],
+        "visible_variant_rows": 1,
+        "examples": {
+          "identity_option_visible": [],
+          "wrong_axis_for_category": [],
+          "makeup_shade_missing_visual": [],
+          "size_value_generic_axis": [],
+          "default_option_size_evidence_missing_axis": [],
+          "identity_default_title_axis": []
+        }
+      },
+      "coverage": {
+        "details_sections_count": 2,
+        "faq_count": 0,
+        "how_to_chars": 155,
+        "inci_chars": 1107,
+        "active_ingredients_chars": 31,
+        "inci_applicability_status": "",
+        "ingredient_review_status": "",
+        "ingredient_remediation_action": "",
+        "bundle_component_refs_count": 0,
+        "effective_inci_chars": 1107,
+        "inci_borrowed_from_product_id": ""
+      }
+    },
+    {
+      "seed_id": "eps_fd4db153e7d07950607d013c",
+      "external_product_id": "ext_88116793a61719bab3c4f041",
+      "market": "US",
+      "domain": "glossier.com",
+      "title": "Super Pure",
+      "canonical_url": "https://www.glossier.com/products/super-pure",
+      "product_family": "single_formula",
+      "product_line_id": "pl_762574c429844f343d23dfce",
+      "identity_variant_axes": {
+        "multi_variant": false
+      },
+      "pivota_insights": {
+        "direct": {
+          "product_id": "ext_88116793a61719bab3c4f041",
+          "kb_key": "product:ext_88116793a61719bab3c4f041",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": false,
+          "human_reviewed": true,
+          "issues": [
+            "missing_card_highlight",
+            "empty_watchouts",
+            "quality_eligible"
+          ],
+          "blocking_issues": [
+            "missing_card_highlight"
+          ],
+          "quality_state": "eligible",
+          "evidence_profile": "seller_plus_formula",
+          "has_card_highlight": false
+        },
+        "effective": {
+          "product_id": "ext_88116793a61719bab3c4f041",
+          "kb_key": "product:ext_88116793a61719bab3c4f041",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": false,
+          "human_reviewed": true,
+          "issues": [
+            "missing_card_highlight",
+            "empty_watchouts",
+            "quality_eligible"
+          ],
+          "blocking_issues": [
+            "missing_card_highlight"
+          ],
+          "quality_state": "eligible",
+          "evidence_profile": "seller_plus_formula",
+          "has_card_highlight": false
+        },
+        "product_line_id": "pl_762574c429844f343d23dfce",
+        "borrowed_from_sibling": false
+      },
+      "active_ingredients": {
+        "status": "ready_hero",
+        "issues": [],
+        "regulatory_expected": false,
+        "hero_expected": true,
+        "active_items": [
+          "Niacinamide",
+          "Zinc PCA"
+        ],
+        "source_origin": "active_block",
+        "source_quality_status": "captured",
+        "coverage": {
+          "details_sections_count": 2,
+          "faq_count": 0,
+          "how_to_chars": 155,
+          "inci_chars": 1341,
+          "active_ingredients_chars": 21,
+          "inci_applicability_status": "",
+          "ingredient_review_status": "",
+          "ingredient_remediation_action": "",
+          "bundle_component_refs_count": 0,
+          "effective_inci_chars": 1341,
+          "inci_borrowed_from_product_id": ""
+        },
+        "invalid_fragments": [],
+        "suppressed_reason": "full_inci_low_purity"
+      },
+      "variants": {
+        "status": "ready",
+        "issues": [],
+        "visible_variant_rows": 1,
+        "examples": {
+          "identity_option_visible": [],
+          "wrong_axis_for_category": [],
+          "makeup_shade_missing_visual": [],
+          "size_value_generic_axis": [],
+          "default_option_size_evidence_missing_axis": [],
+          "identity_default_title_axis": []
+        }
+      },
+      "coverage": {
+        "details_sections_count": 2,
+        "faq_count": 0,
+        "how_to_chars": 155,
+        "inci_chars": 1341,
+        "active_ingredients_chars": 21,
+        "inci_applicability_status": "",
+        "ingredient_review_status": "",
+        "ingredient_remediation_action": "",
+        "bundle_component_refs_count": 0,
+        "effective_inci_chars": 1341,
+        "inci_borrowed_from_product_id": ""
+      }
+    },
+    {
+      "seed_id": "eps_e3c69a8bc982933daa681424",
+      "external_product_id": "ext_8d8a448a842e97ae74d27234",
+      "market": "US",
+      "domain": "glossier.com",
+      "title": "Hair Comb",
+      "canonical_url": "https://www.glossier.com/products/hair-comb",
+      "product_family": "accessory",
+      "product_line_id": null,
+      "pivota_insights": {
+        "direct": {
+          "product_id": "ext_8d8a448a842e97ae74d27234",
+          "kb_key": "product:ext_8d8a448a842e97ae74d27234",
+          "status": "not_displayable",
+          "kb_exists": true,
+          "displayable": false,
+          "high_quality_ready": false,
+          "human_reviewed": true,
+          "issues": [
+            "reviewed_not_displayable",
+            "quality_limited",
+            "seller_only_evidence"
+          ],
+          "blocking_issues": [
+            "reviewed_not_displayable"
+          ],
+          "quality_state": "limited",
+          "evidence_profile": "seller_only",
+          "has_card_highlight": true
+        },
+        "effective": {
+          "product_id": "ext_8d8a448a842e97ae74d27234",
+          "kb_key": "product:ext_8d8a448a842e97ae74d27234",
+          "status": "not_displayable",
+          "kb_exists": true,
+          "displayable": false,
+          "high_quality_ready": false,
+          "human_reviewed": true,
+          "issues": [
+            "reviewed_not_displayable",
+            "quality_limited",
+            "seller_only_evidence"
+          ],
+          "blocking_issues": [
+            "reviewed_not_displayable"
+          ],
+          "quality_state": "limited",
+          "evidence_profile": "seller_only",
+          "has_card_highlight": true
+        },
+        "product_line_id": null,
+        "borrowed_from_sibling": false
+      },
+      "active_ingredients": {
+        "status": "not_applicable_product_family",
+        "issues": [],
+        "regulatory_expected": false,
+        "hero_expected": false,
+        "active_items": [],
+        "source_origin": "none",
+        "source_quality_status": "blocked",
+        "coverage": {
+          "details_sections_count": 0,
+          "faq_count": 0,
+          "how_to_chars": 104,
+          "inci_chars": 0,
+          "active_ingredients_chars": 0,
+          "inci_applicability_status": "",
+          "ingredient_review_status": "",
+          "ingredient_remediation_action": "",
+          "bundle_component_refs_count": 0,
+          "effective_inci_chars": 0,
+          "inci_borrowed_from_product_id": ""
+        },
+        "invalid_fragments": [],
+        "suppressed_reason": "accessory"
+      },
+      "variants": {
+        "status": "ready",
+        "issues": [],
+        "visible_variant_rows": 1,
+        "examples": {
+          "identity_option_visible": [],
+          "wrong_axis_for_category": [],
+          "makeup_shade_missing_visual": [],
+          "size_value_generic_axis": [],
+          "default_option_size_evidence_missing_axis": [],
+          "identity_default_title_axis": []
+        }
+      },
+      "coverage": {
+        "details_sections_count": 0,
+        "faq_count": 0,
+        "how_to_chars": 104,
+        "inci_chars": 0,
+        "active_ingredients_chars": 0,
+        "inci_applicability_status": "",
+        "ingredient_review_status": "",
+        "ingredient_remediation_action": "",
+        "bundle_component_refs_count": 0,
+        "effective_inci_chars": 0,
+        "inci_borrowed_from_product_id": ""
+      }
+    },
+    {
+      "seed_id": "eps_dae064f65dd40e5f802ed7b8",
+      "external_product_id": "ext_b579adb5fa141ceaa076b44d",
+      "market": "US",
+      "domain": "glossier.com",
+      "title": "Claw Clip",
+      "canonical_url": "https://www.glossier.com/products/claw-clip",
+      "product_family": "accessory",
+      "product_line_id": "pl_d424aa7e05f0f5cf3b012ae7",
+      "identity_variant_axes": {
+        "multi_variant": false
+      },
+      "pivota_insights": {
+        "direct": {
+          "product_id": "ext_b579adb5fa141ceaa076b44d",
+          "kb_key": "product:ext_b579adb5fa141ceaa076b44d",
+          "status": "not_displayable",
+          "kb_exists": true,
+          "displayable": false,
+          "high_quality_ready": false,
+          "human_reviewed": true,
+          "issues": [
+            "reviewed_not_displayable",
+            "quality_limited",
+            "seller_only_evidence"
+          ],
+          "blocking_issues": [
+            "reviewed_not_displayable"
+          ],
+          "quality_state": "limited",
+          "evidence_profile": "seller_only",
+          "has_card_highlight": true
+        },
+        "effective": {
+          "product_id": "ext_b579adb5fa141ceaa076b44d",
+          "kb_key": "product:ext_b579adb5fa141ceaa076b44d",
+          "status": "not_displayable",
+          "kb_exists": true,
+          "displayable": false,
+          "high_quality_ready": false,
+          "human_reviewed": true,
+          "issues": [
+            "reviewed_not_displayable",
+            "quality_limited",
+            "seller_only_evidence"
+          ],
+          "blocking_issues": [
+            "reviewed_not_displayable"
+          ],
+          "quality_state": "limited",
+          "evidence_profile": "seller_only",
+          "has_card_highlight": true
+        },
+        "product_line_id": "pl_d424aa7e05f0f5cf3b012ae7",
+        "borrowed_from_sibling": false
+      },
+      "active_ingredients": {
+        "status": "not_applicable_product_family",
+        "issues": [],
+        "regulatory_expected": false,
+        "hero_expected": false,
+        "active_items": [],
+        "source_origin": "none",
+        "source_quality_status": "blocked",
+        "coverage": {
+          "details_sections_count": 0,
+          "faq_count": 0,
+          "how_to_chars": 104,
+          "inci_chars": 0,
+          "active_ingredients_chars": 0,
+          "inci_applicability_status": "",
+          "ingredient_review_status": "",
+          "ingredient_remediation_action": "",
+          "bundle_component_refs_count": 0,
+          "effective_inci_chars": 0,
+          "inci_borrowed_from_product_id": ""
+        },
+        "invalid_fragments": [],
+        "suppressed_reason": "accessory"
+      },
+      "variants": {
+        "status": "ready",
+        "issues": [],
+        "visible_variant_rows": 1,
+        "examples": {
+          "identity_option_visible": [],
+          "wrong_axis_for_category": [],
+          "makeup_shade_missing_visual": [],
+          "size_value_generic_axis": [],
+          "default_option_size_evidence_missing_axis": [],
+          "identity_default_title_axis": []
+        }
+      },
+      "coverage": {
+        "details_sections_count": 0,
+        "faq_count": 0,
+        "how_to_chars": 104,
+        "inci_chars": 0,
+        "active_ingredients_chars": 0,
+        "inci_applicability_status": "",
+        "ingredient_review_status": "",
+        "ingredient_remediation_action": "",
+        "bundle_component_refs_count": 0,
+        "effective_inci_chars": 0,
+        "inci_borrowed_from_product_id": ""
+      }
+    },
+    {
+      "seed_id": "eps_cd88b53bb51de51211bb9378",
+      "external_product_id": "ext_d2bdad1c4290a2eaf559a79b",
+      "market": "US",
+      "domain": "glossier.com",
+      "title": "Super Glow",
+      "canonical_url": "https://www.glossier.com/products/super-glow",
+      "product_family": "single_formula",
+      "product_line_id": "pl_4efbe312fff1bc48e6d8fcd4",
+      "identity_variant_axes": {
+        "multi_variant": false
+      },
+      "pivota_insights": {
+        "direct": {
+          "product_id": "ext_d2bdad1c4290a2eaf559a79b",
+          "kb_key": "product:ext_d2bdad1c4290a2eaf559a79b",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": false,
+          "human_reviewed": true,
+          "issues": [
+            "missing_card_highlight",
+            "empty_watchouts",
+            "quality_eligible"
+          ],
+          "blocking_issues": [
+            "missing_card_highlight"
+          ],
+          "quality_state": "eligible",
+          "evidence_profile": "seller_plus_formula",
+          "has_card_highlight": false
+        },
+        "effective": {
+          "product_id": "ext_d2bdad1c4290a2eaf559a79b",
+          "kb_key": "product:ext_d2bdad1c4290a2eaf559a79b",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": false,
+          "human_reviewed": true,
+          "issues": [
+            "missing_card_highlight",
+            "empty_watchouts",
+            "quality_eligible"
+          ],
+          "blocking_issues": [
+            "missing_card_highlight"
+          ],
+          "quality_state": "eligible",
+          "evidence_profile": "seller_plus_formula",
+          "has_card_highlight": false
+        },
+        "product_line_id": "pl_4efbe312fff1bc48e6d8fcd4",
+        "borrowed_from_sibling": false
+      },
+      "active_ingredients": {
+        "status": "ready_hero",
+        "issues": [],
+        "regulatory_expected": false,
+        "hero_expected": true,
+        "active_items": [
+          "Panthenol (B5)",
+          "Vitamin C (Ascorbic acid)",
+          "Hyaluronic acid"
+        ],
+        "source_origin": "active_block",
+        "source_quality_status": "captured",
+        "coverage": {
+          "details_sections_count": 2,
+          "faq_count": 0,
+          "how_to_chars": 155,
+          "inci_chars": 1069,
+          "active_ingredients_chars": 58,
+          "inci_applicability_status": "",
+          "ingredient_review_status": "",
+          "ingredient_remediation_action": "",
+          "bundle_component_refs_count": 0,
+          "effective_inci_chars": 1069,
+          "inci_borrowed_from_product_id": ""
+        },
+        "invalid_fragments": [],
+        "suppressed_reason": "full_inci_low_purity"
+      },
+      "variants": {
+        "status": "ready",
+        "issues": [],
+        "visible_variant_rows": 1,
+        "examples": {
+          "identity_option_visible": [],
+          "wrong_axis_for_category": [],
+          "makeup_shade_missing_visual": [],
+          "size_value_generic_axis": [],
+          "default_option_size_evidence_missing_axis": [],
+          "identity_default_title_axis": []
+        }
+      },
+      "coverage": {
+        "details_sections_count": 2,
+        "faq_count": 0,
+        "how_to_chars": 155,
+        "inci_chars": 1069,
+        "active_ingredients_chars": 58,
+        "inci_applicability_status": "",
+        "ingredient_review_status": "",
+        "ingredient_remediation_action": "",
+        "bundle_component_refs_count": 0,
+        "effective_inci_chars": 1069,
+        "inci_borrowed_from_product_id": ""
+      }
+    }
+  ]
+}

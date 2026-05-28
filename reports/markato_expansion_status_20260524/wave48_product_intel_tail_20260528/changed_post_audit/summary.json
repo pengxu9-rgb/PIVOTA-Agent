@@ -1,0 +1,93 @@
+{
+  "generated_at": "2026-05-28T10:11:38.126Z",
+  "market_counts": [
+    {
+      "market": "US",
+      "active_external_seed_rows": 5771
+    },
+    {
+      "market": "EU-DE",
+      "active_external_seed_rows": 50
+    },
+    {
+      "market": "KR",
+      "active_external_seed_rows": 12
+    },
+    {
+      "market": "JP",
+      "active_external_seed_rows": 10
+    }
+  ],
+  "scanned_rows": 85,
+  "terminal_hold_rows": 5,
+  "action_required_rows": 51,
+  "db_serving_ready_rows": 29,
+  "db_serving_ready_rate": 0.3412,
+  "public_index_ready_rows": 29,
+  "public_index_ready_rate": 0.3412,
+  "db_serving_ready_rate_excluding_terminal_holds": 0.3625,
+  "public_index_ready_rate_excluding_terminal_holds": 0.3625,
+  "blocker_breakdown": [
+    {
+      "key": "identity_blocked",
+      "count": 49
+    },
+    {
+      "key": "db_serving_ready",
+      "count": 29
+    },
+    {
+      "key": "terminal_hold",
+      "count": 5
+    },
+    {
+      "key": "seed_content_blocked",
+      "count": 2
+    }
+  ],
+  "lane_breakdown": [
+    {
+      "key": "lane_1_identity_index",
+      "count": 49
+    },
+    {
+      "key": "ready_no_action",
+      "count": 29
+    },
+    {
+      "key": "terminal_hold_no_action",
+      "count": 5
+    },
+    {
+      "key": "lane_2_seed_commerce_facts",
+      "count": 2
+    }
+  ],
+  "kb": {
+    "direct_displayable": 85,
+    "direct_high_quality_ready": 84,
+    "direct_seller_only_or_limited": 0,
+    "missing_or_no_direct_kb": 0
+  },
+  "identity": {
+    "identity_rows_joined": 85,
+    "identity_ready_rows": 34
+  },
+  "commerce_index": {
+    "db_serving_ready_rows": 29,
+    "external_index_published_rows": 0,
+    "public_doc_groups_built_dry_run": 31,
+    "rows_with_public_doc": 30,
+    "rows_with_public_doc_and_insight_summary": 30,
+    "index_config": {
+      "base_url": "",
+      "index_name": "catalog_public_v1",
+      "api_key": null,
+      "shadow_read_enabled": false,
+      "enabled": false
+    },
+    "external_index_required_for_db_serving_ready": false
+  },
+  "source_build_failures": [],
+  "warnings": []
+}

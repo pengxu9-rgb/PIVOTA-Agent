@@ -1,0 +1,832 @@
+{
+  "generated_at": "2026-05-28T10:02:00.283Z",
+  "options": {
+    "market": "US",
+    "includeAttached": true,
+    "domain": "patyka.com",
+    "externalProductIds": [],
+    "limit": 20000,
+    "sampleLimit": 10,
+    "checkpointDir": null,
+    "checkpointMode": "domain",
+    "resume": false,
+    "force": false,
+    "continueOnError": true,
+    "pageSize": 500,
+    "format": "json",
+    "chunkByDomain": false
+  },
+  "warnings": [],
+  "summary": {
+    "scanned": 5,
+    "by_market": {
+      "US": 5
+    },
+    "by_domain": [
+      {
+        "key": "patyka.com",
+        "count": 5
+      }
+    ],
+    "by_product_family": [
+      {
+        "key": "set_or_collection",
+        "count": 2
+      },
+      {
+        "key": "single_formula",
+        "count": 2
+      },
+      {
+        "key": "unknown_product",
+        "count": 1
+      }
+    ],
+    "coverage": {
+      "missing_inci": 5,
+      "missing_active_raw": 3,
+      "missing_details": 1,
+      "missing_how_to": 0,
+      "missing_faq": 5
+    },
+    "pivota_insights": {
+      "direct": {
+        "displayable": 0,
+        "high_quality_ready": 0,
+        "missing_kb": 0,
+        "not_displayable": 5
+      },
+      "effective": {
+        "displayable": 0,
+        "high_quality_ready": 0,
+        "missing_kb": 0,
+        "not_displayable": 5,
+        "borrowed_from_sibling": 0
+      },
+      "effective_issues": [
+        {
+          "key": "quality_limited",
+          "count": 5
+        },
+        {
+          "key": "reviewed_not_displayable",
+          "count": 5
+        },
+        {
+          "key": "seller_only_evidence",
+          "count": 5
+        },
+        {
+          "key": "empty_watchouts",
+          "count": 3
+        },
+        {
+          "key": "missing_card_highlight",
+          "count": 3
+        }
+      ],
+      "effective_issue_domains": [
+        {
+          "key": "patyka.com::quality_limited",
+          "count": 5
+        },
+        {
+          "key": "patyka.com::reviewed_not_displayable",
+          "count": 5
+        },
+        {
+          "key": "patyka.com::seller_only_evidence",
+          "count": 5
+        },
+        {
+          "key": "patyka.com::empty_watchouts",
+          "count": 3
+        },
+        {
+          "key": "patyka.com::missing_card_highlight",
+          "count": 3
+        }
+      ],
+      "quality_state": [
+        {
+          "key": "limited",
+          "count": 5
+        }
+      ],
+      "evidence_profile": [
+        {
+          "key": "seller_only",
+          "count": 5
+        }
+      ],
+      "samples": {
+        "reviewed_not_displayable": [
+          {
+            "external_product_id": "ext_0f87d7eb4337a438703b1bb7",
+            "domain": "patyka.com",
+            "title": "Patchs Lift Regard 360°",
+            "used_product_id": "ext_0f87d7eb4337a438703b1bb7",
+            "quality_state": "limited",
+            "evidence_profile": "seller_only"
+          },
+          {
+            "external_product_id": "ext_3c77eca4553ceddfb830556f",
+            "domain": "patyka.com",
+            "title": "Programme Intensif Lift Regard 360°",
+            "used_product_id": "ext_3c77eca4553ceddfb830556f",
+            "quality_state": "limited",
+            "evidence_profile": "seller_only"
+          },
+          {
+            "external_product_id": "ext_4f20928b5196ca346548cfed",
+            "domain": "patyka.com",
+            "title": "BODY  RELAX - Soin Corps Relaxant 50 minutes [Cabine]",
+            "used_product_id": "ext_4f20928b5196ca346548cfed",
+            "quality_state": "limited",
+            "evidence_profile": "seller_only"
+          },
+          {
+            "external_product_id": "ext_9afe700d963979054cbd575d",
+            "domain": "patyka.com",
+            "title": "Repulpant Lèvres Hyaluronic",
+            "used_product_id": "ext_9afe700d963979054cbd575d",
+            "quality_state": "limited",
+            "evidence_profile": "seller_only"
+          },
+          {
+            "external_product_id": "ext_c223975349d2c4b3b18db555",
+            "domain": "patyka.com",
+            "title": "Duo démaquillant, lissant, défroissant",
+            "used_product_id": "ext_c223975349d2c4b3b18db555",
+            "quality_state": "limited",
+            "evidence_profile": "seller_only"
+          }
+        ],
+        "missing_card_highlight": [
+          {
+            "external_product_id": "ext_0f87d7eb4337a438703b1bb7",
+            "domain": "patyka.com",
+            "title": "Patchs Lift Regard 360°",
+            "used_product_id": "ext_0f87d7eb4337a438703b1bb7",
+            "quality_state": "limited",
+            "evidence_profile": "seller_only"
+          },
+          {
+            "external_product_id": "ext_3c77eca4553ceddfb830556f",
+            "domain": "patyka.com",
+            "title": "Programme Intensif Lift Regard 360°",
+            "used_product_id": "ext_3c77eca4553ceddfb830556f",
+            "quality_state": "limited",
+            "evidence_profile": "seller_only"
+          },
+          {
+            "external_product_id": "ext_9afe700d963979054cbd575d",
+            "domain": "patyka.com",
+            "title": "Repulpant Lèvres Hyaluronic",
+            "used_product_id": "ext_9afe700d963979054cbd575d",
+            "quality_state": "limited",
+            "evidence_profile": "seller_only"
+          }
+        ],
+        "seller_only_evidence": [
+          {
+            "external_product_id": "ext_0f87d7eb4337a438703b1bb7",
+            "domain": "patyka.com",
+            "title": "Patchs Lift Regard 360°",
+            "used_product_id": "ext_0f87d7eb4337a438703b1bb7",
+            "quality_state": "limited",
+            "evidence_profile": "seller_only"
+          },
+          {
+            "external_product_id": "ext_3c77eca4553ceddfb830556f",
+            "domain": "patyka.com",
+            "title": "Programme Intensif Lift Regard 360°",
+            "used_product_id": "ext_3c77eca4553ceddfb830556f",
+            "quality_state": "limited",
+            "evidence_profile": "seller_only"
+          },
+          {
+            "external_product_id": "ext_4f20928b5196ca346548cfed",
+            "domain": "patyka.com",
+            "title": "BODY  RELAX - Soin Corps Relaxant 50 minutes [Cabine]",
+            "used_product_id": "ext_4f20928b5196ca346548cfed",
+            "quality_state": "limited",
+            "evidence_profile": "seller_only"
+          },
+          {
+            "external_product_id": "ext_9afe700d963979054cbd575d",
+            "domain": "patyka.com",
+            "title": "Repulpant Lèvres Hyaluronic",
+            "used_product_id": "ext_9afe700d963979054cbd575d",
+            "quality_state": "limited",
+            "evidence_profile": "seller_only"
+          },
+          {
+            "external_product_id": "ext_c223975349d2c4b3b18db555",
+            "domain": "patyka.com",
+            "title": "Duo démaquillant, lissant, défroissant",
+            "used_product_id": "ext_c223975349d2c4b3b18db555",
+            "quality_state": "limited",
+            "evidence_profile": "seller_only"
+          }
+        ]
+      }
+    },
+    "active_ingredients": {
+      "regulatory_expected": 0,
+      "hero_expected": 0,
+      "any_active_items": 0,
+      "status": [
+        {
+          "key": "not_expected_missing",
+          "count": 3
+        },
+        {
+          "key": "not_applicable_product_family",
+          "count": 2
+        }
+      ],
+      "issues": [],
+      "issue_domains": [],
+      "source_origin": [
+        {
+          "key": "none",
+          "count": 5
+        }
+      ],
+      "samples": {}
+    },
+    "variants": {
+      "status": [
+        {
+          "key": "ready",
+          "count": 5
+        }
+      ],
+      "issues": [],
+      "issue_domains": [],
+      "samples": {}
+    }
+  },
+  "rows": [
+    {
+      "seed_id": "eps_9981a3a01fa347cd993cdd29",
+      "external_product_id": "ext_0f87d7eb4337a438703b1bb7",
+      "market": "US",
+      "domain": "patyka.com",
+      "title": "Patchs Lift Regard 360°",
+      "canonical_url": "https://patyka.com/products/patch-lift-regard-360",
+      "product_family": "single_formula",
+      "product_line_id": "pl_7962aceeb54d0fb6418ca281",
+      "identity_variant_axes": {
+        "shade": "p0035",
+        "multi_variant": false
+      },
+      "pivota_insights": {
+        "direct": {
+          "product_id": "ext_0f87d7eb4337a438703b1bb7",
+          "kb_key": "product:ext_0f87d7eb4337a438703b1bb7",
+          "status": "not_displayable",
+          "kb_exists": true,
+          "displayable": false,
+          "high_quality_ready": false,
+          "human_reviewed": true,
+          "issues": [
+            "reviewed_not_displayable",
+            "missing_card_highlight",
+            "empty_watchouts",
+            "quality_limited",
+            "seller_only_evidence"
+          ],
+          "blocking_issues": [
+            "reviewed_not_displayable",
+            "missing_card_highlight"
+          ],
+          "quality_state": "limited",
+          "evidence_profile": "seller_only",
+          "has_card_highlight": false
+        },
+        "effective": {
+          "product_id": "ext_0f87d7eb4337a438703b1bb7",
+          "kb_key": "product:ext_0f87d7eb4337a438703b1bb7",
+          "status": "not_displayable",
+          "kb_exists": true,
+          "displayable": false,
+          "high_quality_ready": false,
+          "human_reviewed": true,
+          "issues": [
+            "reviewed_not_displayable",
+            "missing_card_highlight",
+            "empty_watchouts",
+            "quality_limited",
+            "seller_only_evidence"
+          ],
+          "blocking_issues": [
+            "reviewed_not_displayable",
+            "missing_card_highlight"
+          ],
+          "quality_state": "limited",
+          "evidence_profile": "seller_only",
+          "has_card_highlight": false
+        },
+        "product_line_id": "pl_7962aceeb54d0fb6418ca281",
+        "borrowed_from_sibling": false
+      },
+      "active_ingredients": {
+        "status": "not_expected_missing",
+        "issues": [],
+        "regulatory_expected": false,
+        "hero_expected": false,
+        "active_items": [],
+        "source_origin": "none",
+        "source_quality_status": "blocked",
+        "coverage": {
+          "details_sections_count": 2,
+          "faq_count": 0,
+          "how_to_chars": 104,
+          "inci_chars": 0,
+          "active_ingredients_chars": 0,
+          "inci_applicability_status": "",
+          "ingredient_review_status": "",
+          "ingredient_remediation_action": "",
+          "bundle_component_refs_count": 0,
+          "effective_inci_chars": 0,
+          "inci_borrowed_from_product_id": ""
+        },
+        "invalid_fragments": [],
+        "suppressed_reason": "no_authoritative_source"
+      },
+      "variants": {
+        "status": "ready",
+        "issues": [],
+        "visible_variant_rows": 1,
+        "examples": {
+          "identity_option_visible": [],
+          "wrong_axis_for_category": [],
+          "makeup_shade_missing_visual": [],
+          "size_value_generic_axis": [],
+          "default_option_size_evidence_missing_axis": [],
+          "identity_default_title_axis": []
+        }
+      },
+      "coverage": {
+        "details_sections_count": 2,
+        "faq_count": 0,
+        "how_to_chars": 104,
+        "inci_chars": 0,
+        "active_ingredients_chars": 0,
+        "inci_applicability_status": "",
+        "ingredient_review_status": "",
+        "ingredient_remediation_action": "",
+        "bundle_component_refs_count": 0,
+        "effective_inci_chars": 0,
+        "inci_borrowed_from_product_id": ""
+      }
+    },
+    {
+      "seed_id": "eps_b8b6c392a37d4cd18559050b",
+      "external_product_id": "ext_3c77eca4553ceddfb830556f",
+      "market": "US",
+      "domain": "patyka.com",
+      "title": "Programme Intensif Lift Regard 360°",
+      "canonical_url": "https://patyka.com/products/programme-intensif-lift-regard-360",
+      "product_family": "set_or_collection",
+      "product_line_id": "pl_09dca58d0d8c5f9d60f0d8ba",
+      "identity_variant_axes": {
+        "shade": "p0035 p0035 p0035 p0035",
+        "multi_variant": false
+      },
+      "pivota_insights": {
+        "direct": {
+          "product_id": "ext_3c77eca4553ceddfb830556f",
+          "kb_key": "product:ext_3c77eca4553ceddfb830556f",
+          "status": "not_displayable",
+          "kb_exists": true,
+          "displayable": false,
+          "high_quality_ready": false,
+          "human_reviewed": true,
+          "issues": [
+            "reviewed_not_displayable",
+            "missing_card_highlight",
+            "empty_watchouts",
+            "quality_limited",
+            "seller_only_evidence"
+          ],
+          "blocking_issues": [
+            "reviewed_not_displayable",
+            "missing_card_highlight"
+          ],
+          "quality_state": "limited",
+          "evidence_profile": "seller_only",
+          "has_card_highlight": false
+        },
+        "effective": {
+          "product_id": "ext_3c77eca4553ceddfb830556f",
+          "kb_key": "product:ext_3c77eca4553ceddfb830556f",
+          "status": "not_displayable",
+          "kb_exists": true,
+          "displayable": false,
+          "high_quality_ready": false,
+          "human_reviewed": true,
+          "issues": [
+            "reviewed_not_displayable",
+            "missing_card_highlight",
+            "empty_watchouts",
+            "quality_limited",
+            "seller_only_evidence"
+          ],
+          "blocking_issues": [
+            "reviewed_not_displayable",
+            "missing_card_highlight"
+          ],
+          "quality_state": "limited",
+          "evidence_profile": "seller_only",
+          "has_card_highlight": false
+        },
+        "product_line_id": "pl_09dca58d0d8c5f9d60f0d8ba",
+        "borrowed_from_sibling": false
+      },
+      "active_ingredients": {
+        "status": "not_applicable_product_family",
+        "issues": [],
+        "regulatory_expected": false,
+        "hero_expected": false,
+        "active_items": [],
+        "source_origin": "none",
+        "source_quality_status": "blocked",
+        "coverage": {
+          "details_sections_count": 2,
+          "faq_count": 0,
+          "how_to_chars": 109,
+          "inci_chars": 0,
+          "active_ingredients_chars": 0,
+          "inci_applicability_status": "",
+          "ingredient_review_status": "",
+          "ingredient_remediation_action": "",
+          "bundle_component_refs_count": 1,
+          "effective_inci_chars": 0,
+          "inci_borrowed_from_product_id": ""
+        },
+        "invalid_fragments": [],
+        "suppressed_reason": "set_or_collection"
+      },
+      "variants": {
+        "status": "ready",
+        "issues": [],
+        "visible_variant_rows": 1,
+        "examples": {
+          "identity_option_visible": [],
+          "wrong_axis_for_category": [],
+          "makeup_shade_missing_visual": [],
+          "size_value_generic_axis": [],
+          "default_option_size_evidence_missing_axis": [],
+          "identity_default_title_axis": []
+        }
+      },
+      "coverage": {
+        "details_sections_count": 2,
+        "faq_count": 0,
+        "how_to_chars": 109,
+        "inci_chars": 0,
+        "active_ingredients_chars": 0,
+        "inci_applicability_status": "",
+        "ingredient_review_status": "",
+        "ingredient_remediation_action": "",
+        "bundle_component_refs_count": 1,
+        "effective_inci_chars": 0,
+        "inci_borrowed_from_product_id": ""
+      }
+    },
+    {
+      "seed_id": "eps_ca8eb0abad694391922b4fe0",
+      "external_product_id": "ext_4f20928b5196ca346548cfed",
+      "market": "US",
+      "domain": "patyka.com",
+      "title": "BODY  RELAX - Soin Corps Relaxant 50 minutes [Cabine]",
+      "canonical_url": "https://patyka.com/products/body-relax",
+      "product_family": "unknown_product",
+      "product_line_id": "pl_d816065afbdff3c7888a8368",
+      "identity_variant_axes": {
+        "shade": "scec050002",
+        "multi_variant": false
+      },
+      "pivota_insights": {
+        "direct": {
+          "product_id": "ext_4f20928b5196ca346548cfed",
+          "kb_key": "product:ext_4f20928b5196ca346548cfed",
+          "status": "not_displayable",
+          "kb_exists": true,
+          "displayable": false,
+          "high_quality_ready": false,
+          "human_reviewed": true,
+          "issues": [
+            "reviewed_not_displayable",
+            "quality_limited",
+            "seller_only_evidence"
+          ],
+          "blocking_issues": [
+            "reviewed_not_displayable"
+          ],
+          "quality_state": "limited",
+          "evidence_profile": "seller_only",
+          "has_card_highlight": true
+        },
+        "effective": {
+          "product_id": "ext_4f20928b5196ca346548cfed",
+          "kb_key": "product:ext_4f20928b5196ca346548cfed",
+          "status": "not_displayable",
+          "kb_exists": true,
+          "displayable": false,
+          "high_quality_ready": false,
+          "human_reviewed": true,
+          "issues": [
+            "reviewed_not_displayable",
+            "quality_limited",
+            "seller_only_evidence"
+          ],
+          "blocking_issues": [
+            "reviewed_not_displayable"
+          ],
+          "quality_state": "limited",
+          "evidence_profile": "seller_only",
+          "has_card_highlight": true
+        },
+        "product_line_id": "pl_d816065afbdff3c7888a8368",
+        "borrowed_from_sibling": false
+      },
+      "active_ingredients": {
+        "status": "not_expected_missing",
+        "issues": [],
+        "regulatory_expected": false,
+        "hero_expected": false,
+        "active_items": [],
+        "source_origin": "none",
+        "source_quality_status": "blocked",
+        "coverage": {
+          "details_sections_count": 2,
+          "faq_count": 0,
+          "how_to_chars": 109,
+          "inci_chars": 0,
+          "active_ingredients_chars": 0,
+          "inci_applicability_status": "",
+          "ingredient_review_status": "",
+          "ingredient_remediation_action": "",
+          "bundle_component_refs_count": 0,
+          "effective_inci_chars": 0,
+          "inci_borrowed_from_product_id": ""
+        },
+        "invalid_fragments": [],
+        "suppressed_reason": "no_authoritative_source"
+      },
+      "variants": {
+        "status": "ready",
+        "issues": [],
+        "visible_variant_rows": 1,
+        "examples": {
+          "identity_option_visible": [],
+          "wrong_axis_for_category": [],
+          "makeup_shade_missing_visual": [],
+          "size_value_generic_axis": [],
+          "default_option_size_evidence_missing_axis": [],
+          "identity_default_title_axis": []
+        }
+      },
+      "coverage": {
+        "details_sections_count": 2,
+        "faq_count": 0,
+        "how_to_chars": 109,
+        "inci_chars": 0,
+        "active_ingredients_chars": 0,
+        "inci_applicability_status": "",
+        "ingredient_review_status": "",
+        "ingredient_remediation_action": "",
+        "bundle_component_refs_count": 0,
+        "effective_inci_chars": 0,
+        "inci_borrowed_from_product_id": ""
+      }
+    },
+    {
+      "seed_id": "eps_f808e67f19de4d39a3bc50b8",
+      "external_product_id": "ext_9afe700d963979054cbd575d",
+      "market": "US",
+      "domain": "patyka.com",
+      "title": "Repulpant Lèvres Hyaluronic",
+      "canonical_url": "https://patyka.com/products/repulpant-levres-hyaluronic",
+      "product_family": "single_formula",
+      "product_line_id": "pl_c094d8774e6acea9c8ad7c88",
+      "identity_variant_axes": {
+        "shade": "p0034",
+        "multi_variant": false
+      },
+      "pivota_insights": {
+        "direct": {
+          "product_id": "ext_9afe700d963979054cbd575d",
+          "kb_key": "product:ext_9afe700d963979054cbd575d",
+          "status": "not_displayable",
+          "kb_exists": true,
+          "displayable": false,
+          "high_quality_ready": false,
+          "human_reviewed": true,
+          "issues": [
+            "reviewed_not_displayable",
+            "missing_card_highlight",
+            "empty_watchouts",
+            "quality_limited",
+            "seller_only_evidence"
+          ],
+          "blocking_issues": [
+            "reviewed_not_displayable",
+            "missing_card_highlight"
+          ],
+          "quality_state": "limited",
+          "evidence_profile": "seller_only",
+          "has_card_highlight": false
+        },
+        "effective": {
+          "product_id": "ext_9afe700d963979054cbd575d",
+          "kb_key": "product:ext_9afe700d963979054cbd575d",
+          "status": "not_displayable",
+          "kb_exists": true,
+          "displayable": false,
+          "high_quality_ready": false,
+          "human_reviewed": true,
+          "issues": [
+            "reviewed_not_displayable",
+            "missing_card_highlight",
+            "empty_watchouts",
+            "quality_limited",
+            "seller_only_evidence"
+          ],
+          "blocking_issues": [
+            "reviewed_not_displayable",
+            "missing_card_highlight"
+          ],
+          "quality_state": "limited",
+          "evidence_profile": "seller_only",
+          "has_card_highlight": false
+        },
+        "product_line_id": "pl_c094d8774e6acea9c8ad7c88",
+        "borrowed_from_sibling": false
+      },
+      "active_ingredients": {
+        "status": "not_expected_missing",
+        "issues": [],
+        "regulatory_expected": false,
+        "hero_expected": false,
+        "active_items": [],
+        "source_origin": "none",
+        "source_quality_status": "blocked",
+        "coverage": {
+          "details_sections_count": 2,
+          "faq_count": 0,
+          "how_to_chars": 109,
+          "inci_chars": 0,
+          "active_ingredients_chars": 0,
+          "inci_applicability_status": "",
+          "ingredient_review_status": "",
+          "ingredient_remediation_action": "",
+          "bundle_component_refs_count": 0,
+          "effective_inci_chars": 0,
+          "inci_borrowed_from_product_id": ""
+        },
+        "invalid_fragments": [],
+        "suppressed_reason": "no_authoritative_source"
+      },
+      "variants": {
+        "status": "ready",
+        "issues": [],
+        "visible_variant_rows": 1,
+        "examples": {
+          "identity_option_visible": [],
+          "wrong_axis_for_category": [],
+          "makeup_shade_missing_visual": [],
+          "size_value_generic_axis": [],
+          "default_option_size_evidence_missing_axis": [],
+          "identity_default_title_axis": []
+        }
+      },
+      "coverage": {
+        "details_sections_count": 2,
+        "faq_count": 0,
+        "how_to_chars": 109,
+        "inci_chars": 0,
+        "active_ingredients_chars": 0,
+        "inci_applicability_status": "",
+        "ingredient_review_status": "",
+        "ingredient_remediation_action": "",
+        "bundle_component_refs_count": 0,
+        "effective_inci_chars": 0,
+        "inci_borrowed_from_product_id": ""
+      }
+    },
+    {
+      "seed_id": "eps_a7d934c062e6417f990d78ad",
+      "external_product_id": "ext_c223975349d2c4b3b18db555",
+      "market": "US",
+      "domain": "patyka.com",
+      "title": "Duo démaquillant, lissant, défroissant",
+      "canonical_url": "https://patyka.com/en-us/products/makeup-removing-smoothing-wrinkle-relaxing-duo",
+      "product_family": "set_or_collection",
+      "product_line_id": "pl_1301c3d7c4f094a6147c5018",
+      "identity_variant_axes": {
+        "pack": "2pack",
+        "shade": "p0070 p0072",
+        "multi_variant": false
+      },
+      "pivota_insights": {
+        "direct": {
+          "product_id": "ext_c223975349d2c4b3b18db555",
+          "kb_key": "product:ext_c223975349d2c4b3b18db555",
+          "status": "not_displayable",
+          "kb_exists": true,
+          "displayable": false,
+          "high_quality_ready": false,
+          "human_reviewed": true,
+          "issues": [
+            "reviewed_not_displayable",
+            "quality_limited",
+            "seller_only_evidence"
+          ],
+          "blocking_issues": [
+            "reviewed_not_displayable"
+          ],
+          "quality_state": "limited",
+          "evidence_profile": "seller_only",
+          "has_card_highlight": true
+        },
+        "effective": {
+          "product_id": "ext_c223975349d2c4b3b18db555",
+          "kb_key": "product:ext_c223975349d2c4b3b18db555",
+          "status": "not_displayable",
+          "kb_exists": true,
+          "displayable": false,
+          "high_quality_ready": false,
+          "human_reviewed": true,
+          "issues": [
+            "reviewed_not_displayable",
+            "quality_limited",
+            "seller_only_evidence"
+          ],
+          "blocking_issues": [
+            "reviewed_not_displayable"
+          ],
+          "quality_state": "limited",
+          "evidence_profile": "seller_only",
+          "has_card_highlight": true
+        },
+        "product_line_id": "pl_1301c3d7c4f094a6147c5018",
+        "borrowed_from_sibling": false
+      },
+      "active_ingredients": {
+        "status": "not_applicable_product_family",
+        "issues": [],
+        "regulatory_expected": false,
+        "hero_expected": false,
+        "active_items": [],
+        "source_origin": "none",
+        "source_quality_status": "blocked",
+        "coverage": {
+          "details_sections_count": 0,
+          "faq_count": 0,
+          "how_to_chars": 109,
+          "inci_chars": 0,
+          "active_ingredients_chars": 0,
+          "inci_applicability_status": "",
+          "ingredient_review_status": "",
+          "ingredient_remediation_action": "",
+          "bundle_component_refs_count": 0,
+          "effective_inci_chars": 0,
+          "inci_borrowed_from_product_id": ""
+        },
+        "invalid_fragments": [],
+        "suppressed_reason": "set_or_collection"
+      },
+      "variants": {
+        "status": "ready",
+        "issues": [],
+        "visible_variant_rows": 1,
+        "examples": {
+          "identity_option_visible": [],
+          "wrong_axis_for_category": [],
+          "makeup_shade_missing_visual": [],
+          "size_value_generic_axis": [],
+          "default_option_size_evidence_missing_axis": [],
+          "identity_default_title_axis": []
+        }
+      },
+      "coverage": {
+        "details_sections_count": 0,
+        "faq_count": 0,
+        "how_to_chars": 109,
+        "inci_chars": 0,
+        "active_ingredients_chars": 0,
+        "inci_applicability_status": "",
+        "ingredient_review_status": "",
+        "ingredient_remediation_action": "",
+        "bundle_component_refs_count": 0,
+        "effective_inci_chars": 0,
+        "inci_borrowed_from_product_id": ""
+      }
+    }
+  ]
+}

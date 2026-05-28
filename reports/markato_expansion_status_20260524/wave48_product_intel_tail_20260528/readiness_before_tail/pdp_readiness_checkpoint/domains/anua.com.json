@@ -1,0 +1,5573 @@
+{
+  "generated_at": "2026-05-28T10:00:19.306Z",
+  "options": {
+    "market": "US",
+    "includeAttached": true,
+    "domain": "anua.com",
+    "externalProductIds": [],
+    "limit": 20000,
+    "sampleLimit": 10,
+    "checkpointDir": null,
+    "checkpointMode": "domain",
+    "resume": false,
+    "force": false,
+    "continueOnError": true,
+    "pageSize": 500,
+    "format": "json",
+    "chunkByDomain": false
+  },
+  "warnings": [],
+  "summary": {
+    "scanned": 54,
+    "by_market": {
+      "US": 54
+    },
+    "by_domain": [
+      {
+        "key": "anua.com",
+        "count": 54
+      }
+    ],
+    "by_product_family": [
+      {
+        "key": "single_formula",
+        "count": 50
+      },
+      {
+        "key": "set_or_collection",
+        "count": 2
+      },
+      {
+        "key": "unknown_product",
+        "count": 2
+      }
+    ],
+    "coverage": {
+      "missing_inci": 0,
+      "missing_active_raw": 5,
+      "missing_details": 0,
+      "missing_how_to": 0,
+      "missing_faq": 50
+    },
+    "pivota_insights": {
+      "direct": {
+        "displayable": 54,
+        "high_quality_ready": 54,
+        "missing_kb": 0,
+        "not_displayable": 0
+      },
+      "effective": {
+        "displayable": 54,
+        "high_quality_ready": 54,
+        "missing_kb": 0,
+        "not_displayable": 0,
+        "borrowed_from_sibling": 0
+      },
+      "effective_issues": [],
+      "effective_issue_domains": [],
+      "quality_state": [
+        {
+          "key": "reviewed",
+          "count": 54
+        }
+      ],
+      "evidence_profile": [
+        {
+          "key": "seller_plus_formula",
+          "count": 51
+        },
+        {
+          "key": "seller_plus_external_review",
+          "count": 2
+        },
+        {
+          "key": "community_supported",
+          "count": 1
+        }
+      ],
+      "samples": {}
+    },
+    "active_ingredients": {
+      "regulatory_expected": 2,
+      "hero_expected": 50,
+      "any_active_items": 46,
+      "status": [
+        {
+          "key": "ready_hero",
+          "count": 41
+        },
+        {
+          "key": "missing_hero",
+          "count": 5
+        },
+        {
+          "key": "not_applicable_product_family",
+          "count": 2
+        },
+        {
+          "key": "possibly_inci_guess",
+          "count": 2
+        },
+        {
+          "key": "ready_regulatory",
+          "count": 2
+        },
+        {
+          "key": "not_expected_missing",
+          "count": 1
+        },
+        {
+          "key": "ready_other",
+          "count": 1
+        }
+      ],
+      "issues": [
+        {
+          "key": "missing_hero",
+          "count": 5
+        },
+        {
+          "key": "possibly_inci_guess",
+          "count": 2
+        }
+      ],
+      "issue_domains": [
+        {
+          "key": "anua.com::missing_hero",
+          "count": 5
+        },
+        {
+          "key": "anua.com::possibly_inci_guess",
+          "count": 2
+        }
+      ],
+      "source_origin": [
+        {
+          "key": "pdp_section",
+          "count": 50
+        },
+        {
+          "key": "none",
+          "count": 2
+        },
+        {
+          "key": "reviewed_source_backed_pdp_content_patch",
+          "count": 2
+        }
+      ],
+      "samples": {
+        "missing_hero": [
+          {
+            "external_product_id": "ext_14121288bed65ffe8cdad174",
+            "domain": "anua.com",
+            "title": "Rice 70 Intensive Moisturizing Milk",
+            "status": "missing_hero",
+            "active_items": [],
+            "source_origin": "pdp_section"
+          },
+          {
+            "external_product_id": "ext_1a41891405f4b4dc8eca5fd4",
+            "domain": "anua.com",
+            "title": "PDRN Hyaluronic Acid 100 Moisturizing Cream",
+            "status": "missing_hero",
+            "active_items": [],
+            "source_origin": "pdp_section"
+          },
+          {
+            "external_product_id": "ext_89a90a404a7ec1d4ef1cf02c",
+            "domain": "anua.com",
+            "title": "PDRN Lip Serum",
+            "status": "missing_hero",
+            "active_items": [],
+            "source_origin": "pdp_section"
+          },
+          {
+            "external_product_id": "ext_9b69ff3a05127e9e55ab3517",
+            "domain": "anua.com",
+            "title": "Heartleaf Pore Cleansing Oil Mild",
+            "status": "missing_hero",
+            "active_items": [],
+            "source_origin": "pdp_section"
+          },
+          {
+            "external_product_id": "ext_d17f12785bf623c22e277f1b",
+            "domain": "anua.com",
+            "title": "Heartleaf Pore Control Cleansing Oil",
+            "status": "missing_hero",
+            "active_items": [],
+            "source_origin": "pdp_section"
+          }
+        ],
+        "possibly_inci_guess": [
+          {
+            "external_product_id": "ext_1c600e33a3349e3d26a5d3da",
+            "domain": "anua.com",
+            "title": "PDRN Collagen Melting Patch For Neck 4ea",
+            "status": "possibly_inci_guess",
+            "active_items": [
+              "PDRN (Salmon DNA)",
+              "Collagen"
+            ],
+            "source_origin": "reviewed_source_backed_pdp_content_patch"
+          },
+          {
+            "external_product_id": "ext_7a5d69bfafd20e86b2559140",
+            "domain": "anua.com",
+            "title": "PDRN Collagen Melting Patch For Glass Skin 4ea",
+            "status": "possibly_inci_guess",
+            "active_items": [
+              "PDRN (Salmon DNA)",
+              "Collagen"
+            ],
+            "source_origin": "reviewed_source_backed_pdp_content_patch"
+          }
+        ]
+      }
+    },
+    "variants": {
+      "status": [
+        {
+          "key": "ready",
+          "count": 54
+        }
+      ],
+      "issues": [],
+      "issue_domains": [],
+      "samples": {}
+    }
+  },
+  "rows": [
+    {
+      "seed_id": "eps_410df4f1268766ff0cf13027",
+      "external_product_id": "ext_076d45d16c43f766c348487d",
+      "market": "US",
+      "domain": "anua.com",
+      "title": "PDRN Hyaluronic Acid Moisturizing Cleansing Foam",
+      "canonical_url": "https://anua.com/products/pdrn-hyaluronic-acid-moisturizing-cleansing-foam",
+      "product_family": "single_formula",
+      "product_line_id": "pl_c5dcc54cb385fb344e17bd65",
+      "identity_variant_axes": {
+        "multi_variant": false
+      },
+      "pivota_insights": {
+        "direct": {
+          "product_id": "ext_076d45d16c43f766c348487d",
+          "kb_key": "product:ext_076d45d16c43f766c348487d",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "seller_plus_formula",
+          "has_card_highlight": true
+        },
+        "effective": {
+          "product_id": "ext_076d45d16c43f766c348487d",
+          "kb_key": "product:ext_076d45d16c43f766c348487d",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "seller_plus_formula",
+          "has_card_highlight": true
+        },
+        "product_line_id": "pl_c5dcc54cb385fb344e17bd65",
+        "borrowed_from_sibling": false
+      },
+      "active_ingredients": {
+        "status": "ready_hero",
+        "issues": [],
+        "regulatory_expected": false,
+        "hero_expected": true,
+        "active_items": [
+          "Hyaluronic acid"
+        ],
+        "source_origin": "pdp_section",
+        "source_quality_status": "captured",
+        "coverage": {
+          "details_sections_count": 14,
+          "faq_count": 0,
+          "how_to_chars": 143,
+          "inci_chars": 1126,
+          "active_ingredients_chars": 234,
+          "inci_applicability_status": "",
+          "ingredient_review_status": "manual_source_review_required",
+          "ingredient_remediation_action": "manual_source_review_required",
+          "bundle_component_refs_count": 0,
+          "effective_inci_chars": 1126,
+          "inci_borrowed_from_product_id": ""
+        },
+        "invalid_fragments": [],
+        "suppressed_reason": null
+      },
+      "variants": {
+        "status": "ready",
+        "issues": [],
+        "visible_variant_rows": 1,
+        "examples": {
+          "identity_option_visible": [],
+          "wrong_axis_for_category": [],
+          "makeup_shade_missing_visual": [],
+          "size_value_generic_axis": [],
+          "default_option_size_evidence_missing_axis": [],
+          "identity_default_title_axis": []
+        }
+      },
+      "coverage": {
+        "details_sections_count": 14,
+        "faq_count": 0,
+        "how_to_chars": 143,
+        "inci_chars": 1126,
+        "active_ingredients_chars": 234,
+        "inci_applicability_status": "",
+        "ingredient_review_status": "manual_source_review_required",
+        "ingredient_remediation_action": "manual_source_review_required",
+        "bundle_component_refs_count": 0,
+        "effective_inci_chars": 1126,
+        "inci_borrowed_from_product_id": ""
+      }
+    },
+    {
+      "seed_id": "eps_ffc7b1258e086dc6c20f6cc7",
+      "external_product_id": "ext_0af78f23fe7ec6cb8fc71b19",
+      "market": "US",
+      "domain": "anua.com",
+      "title": "Ultra-Thin Spot Cover Patch",
+      "canonical_url": "https://anua.com/products/ultra-thin-spot-cover-patch",
+      "product_family": "single_formula",
+      "product_line_id": "pl_75be7df213e697396d7eb075",
+      "identity_variant_axes": {
+        "multi_variant": false
+      },
+      "pivota_insights": {
+        "direct": {
+          "product_id": "ext_0af78f23fe7ec6cb8fc71b19",
+          "kb_key": "product:ext_0af78f23fe7ec6cb8fc71b19",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "seller_plus_formula",
+          "has_card_highlight": true
+        },
+        "effective": {
+          "product_id": "ext_0af78f23fe7ec6cb8fc71b19",
+          "kb_key": "product:ext_0af78f23fe7ec6cb8fc71b19",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "seller_plus_formula",
+          "has_card_highlight": true
+        },
+        "product_line_id": "pl_75be7df213e697396d7eb075",
+        "borrowed_from_sibling": false
+      },
+      "active_ingredients": {
+        "status": "ready_hero",
+        "issues": [],
+        "regulatory_expected": false,
+        "hero_expected": true,
+        "active_items": [
+          "Hydrocolloid Patch Base",
+          "Aloe Barbadensis Leaf Extract",
+          "Centella Asiatica Extract",
+          "Ceramide NP",
+          "Cholesterol",
+          "Madecassoside"
+        ],
+        "source_origin": "pdp_section",
+        "source_quality_status": "captured",
+        "coverage": {
+          "details_sections_count": 16,
+          "faq_count": 0,
+          "how_to_chars": 169,
+          "inci_chars": 231,
+          "active_ingredients_chars": 122,
+          "inci_applicability_status": "",
+          "ingredient_review_status": "manual_source_review_required",
+          "ingredient_remediation_action": "manual_source_review_required",
+          "bundle_component_refs_count": 0,
+          "effective_inci_chars": 231,
+          "inci_borrowed_from_product_id": ""
+        },
+        "invalid_fragments": [],
+        "suppressed_reason": null
+      },
+      "variants": {
+        "status": "ready",
+        "issues": [],
+        "visible_variant_rows": 1,
+        "examples": {
+          "identity_option_visible": [],
+          "wrong_axis_for_category": [],
+          "makeup_shade_missing_visual": [],
+          "size_value_generic_axis": [],
+          "default_option_size_evidence_missing_axis": [],
+          "identity_default_title_axis": []
+        }
+      },
+      "coverage": {
+        "details_sections_count": 16,
+        "faq_count": 0,
+        "how_to_chars": 169,
+        "inci_chars": 231,
+        "active_ingredients_chars": 122,
+        "inci_applicability_status": "",
+        "ingredient_review_status": "manual_source_review_required",
+        "ingredient_remediation_action": "manual_source_review_required",
+        "bundle_component_refs_count": 0,
+        "effective_inci_chars": 231,
+        "inci_borrowed_from_product_id": ""
+      }
+    },
+    {
+      "seed_id": "eps_fbb40188c8e38b4ec53a8bfe",
+      "external_product_id": "ext_0e5e8e565796b0c3c048ca99",
+      "market": "US",
+      "domain": "anua.com",
+      "title": "Rice 70 Glow Collagen Mask",
+      "canonical_url": "https://anua.com/products/rice-70-glow-collagen-mask",
+      "product_family": "single_formula",
+      "product_line_id": "pl_172f5ac84fe480d2162ffb2a",
+      "identity_variant_axes": {
+        "multi_variant": false
+      },
+      "pivota_insights": {
+        "direct": {
+          "product_id": "ext_0e5e8e565796b0c3c048ca99",
+          "kb_key": "product:ext_0e5e8e565796b0c3c048ca99",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "seller_plus_formula",
+          "has_card_highlight": true
+        },
+        "effective": {
+          "product_id": "ext_0e5e8e565796b0c3c048ca99",
+          "kb_key": "product:ext_0e5e8e565796b0c3c048ca99",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "seller_plus_formula",
+          "has_card_highlight": true
+        },
+        "product_line_id": "pl_172f5ac84fe480d2162ffb2a",
+        "borrowed_from_sibling": false
+      },
+      "active_ingredients": {
+        "status": "ready_hero",
+        "issues": [],
+        "regulatory_expected": false,
+        "hero_expected": true,
+        "active_items": [
+          "Ceramide"
+        ],
+        "source_origin": "pdp_section",
+        "source_quality_status": "captured",
+        "coverage": {
+          "details_sections_count": 16,
+          "faq_count": 0,
+          "how_to_chars": 186,
+          "inci_chars": 864,
+          "active_ingredients_chars": 8,
+          "inci_applicability_status": "",
+          "ingredient_review_status": "",
+          "ingredient_remediation_action": "",
+          "bundle_component_refs_count": 0,
+          "effective_inci_chars": 864,
+          "inci_borrowed_from_product_id": ""
+        },
+        "invalid_fragments": [],
+        "suppressed_reason": null
+      },
+      "variants": {
+        "status": "ready",
+        "issues": [],
+        "visible_variant_rows": 1,
+        "examples": {
+          "identity_option_visible": [],
+          "wrong_axis_for_category": [],
+          "makeup_shade_missing_visual": [],
+          "size_value_generic_axis": [],
+          "default_option_size_evidence_missing_axis": [],
+          "identity_default_title_axis": []
+        }
+      },
+      "coverage": {
+        "details_sections_count": 16,
+        "faq_count": 0,
+        "how_to_chars": 186,
+        "inci_chars": 864,
+        "active_ingredients_chars": 8,
+        "inci_applicability_status": "",
+        "ingredient_review_status": "",
+        "ingredient_remediation_action": "",
+        "bundle_component_refs_count": 0,
+        "effective_inci_chars": 864,
+        "inci_borrowed_from_product_id": ""
+      }
+    },
+    {
+      "seed_id": "eps_d1f7bc6f0b86db6185fd4bec",
+      "external_product_id": "ext_14121288bed65ffe8cdad174",
+      "market": "US",
+      "domain": "anua.com",
+      "title": "Rice 70 Intensive Moisturizing Milk",
+      "canonical_url": "https://anua.com/products/rice-70-intensive-moisturizing-milk",
+      "product_family": "single_formula",
+      "product_line_id": "pl_1ef214147669241321cade42",
+      "identity_variant_axes": {
+        "volume": "150ml",
+        "multi_variant": false
+      },
+      "pivota_insights": {
+        "direct": {
+          "product_id": "ext_14121288bed65ffe8cdad174",
+          "kb_key": "product:ext_14121288bed65ffe8cdad174",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "seller_plus_formula",
+          "has_card_highlight": true
+        },
+        "effective": {
+          "product_id": "ext_14121288bed65ffe8cdad174",
+          "kb_key": "product:ext_14121288bed65ffe8cdad174",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "seller_plus_formula",
+          "has_card_highlight": true
+        },
+        "product_line_id": "pl_1ef214147669241321cade42",
+        "borrowed_from_sibling": false
+      },
+      "active_ingredients": {
+        "status": "missing_hero",
+        "issues": [
+          "missing_hero"
+        ],
+        "regulatory_expected": false,
+        "hero_expected": true,
+        "active_items": [],
+        "source_origin": "pdp_section",
+        "source_quality_status": "blocked",
+        "coverage": {
+          "details_sections_count": 2,
+          "faq_count": 0,
+          "how_to_chars": 110,
+          "inci_chars": 1106,
+          "active_ingredients_chars": 170,
+          "inci_applicability_status": "",
+          "ingredient_review_status": "manual_source_review_required",
+          "ingredient_remediation_action": "manual_source_review_required",
+          "bundle_component_refs_count": 0,
+          "effective_inci_chars": 1106,
+          "inci_borrowed_from_product_id": ""
+        },
+        "invalid_fragments": [],
+        "suppressed_reason": "active_items_not_displayable"
+      },
+      "variants": {
+        "status": "ready",
+        "issues": [],
+        "visible_variant_rows": 1,
+        "examples": {
+          "identity_option_visible": [],
+          "wrong_axis_for_category": [],
+          "makeup_shade_missing_visual": [],
+          "size_value_generic_axis": [],
+          "default_option_size_evidence_missing_axis": [],
+          "identity_default_title_axis": []
+        }
+      },
+      "coverage": {
+        "details_sections_count": 2,
+        "faq_count": 0,
+        "how_to_chars": 110,
+        "inci_chars": 1106,
+        "active_ingredients_chars": 170,
+        "inci_applicability_status": "",
+        "ingredient_review_status": "manual_source_review_required",
+        "ingredient_remediation_action": "manual_source_review_required",
+        "bundle_component_refs_count": 0,
+        "effective_inci_chars": 1106,
+        "inci_borrowed_from_product_id": ""
+      }
+    },
+    {
+      "seed_id": "eps_2bdebfb407cf208a04c6b778",
+      "external_product_id": "ext_1a41891405f4b4dc8eca5fd4",
+      "market": "US",
+      "domain": "anua.com",
+      "title": "PDRN Hyaluronic Acid 100 Moisturizing Cream",
+      "canonical_url": "https://anua.com/products/pdrn-hyaluronic-acid-100-moisturizing-cream",
+      "product_family": "single_formula",
+      "product_line_id": "pl_2df51b982699cbaa9d55fe5f",
+      "identity_variant_axes": {
+        "multi_variant": false
+      },
+      "pivota_insights": {
+        "direct": {
+          "product_id": "ext_1a41891405f4b4dc8eca5fd4",
+          "kb_key": "product:ext_1a41891405f4b4dc8eca5fd4",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "seller_plus_formula",
+          "has_card_highlight": true
+        },
+        "effective": {
+          "product_id": "ext_1a41891405f4b4dc8eca5fd4",
+          "kb_key": "product:ext_1a41891405f4b4dc8eca5fd4",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "seller_plus_formula",
+          "has_card_highlight": true
+        },
+        "product_line_id": "pl_2df51b982699cbaa9d55fe5f",
+        "borrowed_from_sibling": false
+      },
+      "active_ingredients": {
+        "status": "missing_hero",
+        "issues": [
+          "missing_hero"
+        ],
+        "regulatory_expected": false,
+        "hero_expected": true,
+        "active_items": [],
+        "source_origin": "pdp_section",
+        "source_quality_status": "blocked",
+        "coverage": {
+          "details_sections_count": 4,
+          "faq_count": 0,
+          "how_to_chars": 155,
+          "inci_chars": 1171,
+          "active_ingredients_chars": 237,
+          "inci_applicability_status": "",
+          "ingredient_review_status": "manual_source_review_required",
+          "ingredient_remediation_action": "manual_source_review_required",
+          "bundle_component_refs_count": 0,
+          "effective_inci_chars": 1171,
+          "inci_borrowed_from_product_id": ""
+        },
+        "invalid_fragments": [],
+        "suppressed_reason": "active_items_not_displayable"
+      },
+      "variants": {
+        "status": "ready",
+        "issues": [],
+        "visible_variant_rows": 1,
+        "examples": {
+          "identity_option_visible": [],
+          "wrong_axis_for_category": [],
+          "makeup_shade_missing_visual": [],
+          "size_value_generic_axis": [],
+          "default_option_size_evidence_missing_axis": [],
+          "identity_default_title_axis": []
+        }
+      },
+      "coverage": {
+        "details_sections_count": 4,
+        "faq_count": 0,
+        "how_to_chars": 155,
+        "inci_chars": 1171,
+        "active_ingredients_chars": 237,
+        "inci_applicability_status": "",
+        "ingredient_review_status": "manual_source_review_required",
+        "ingredient_remediation_action": "manual_source_review_required",
+        "bundle_component_refs_count": 0,
+        "effective_inci_chars": 1171,
+        "inci_borrowed_from_product_id": ""
+      }
+    },
+    {
+      "seed_id": "eps_521d5d135d830ff23cd72994",
+      "external_product_id": "ext_1c600e33a3349e3d26a5d3da",
+      "market": "US",
+      "domain": "anua.com",
+      "title": "PDRN Collagen Melting Patch For Neck 4ea",
+      "canonical_url": "https://anua.com/products/pdrn-collagen-melting-patch-for-neck-4ea",
+      "product_family": "single_formula",
+      "product_line_id": "pl_27cabf4373a931154f0d9e87",
+      "identity_variant_axes": {
+        "multi_variant": false
+      },
+      "pivota_insights": {
+        "direct": {
+          "product_id": "ext_1c600e33a3349e3d26a5d3da",
+          "kb_key": "product:ext_1c600e33a3349e3d26a5d3da",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "community_supported",
+          "has_card_highlight": true
+        },
+        "effective": {
+          "product_id": "ext_1c600e33a3349e3d26a5d3da",
+          "kb_key": "product:ext_1c600e33a3349e3d26a5d3da",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "community_supported",
+          "has_card_highlight": true
+        },
+        "product_line_id": "pl_27cabf4373a931154f0d9e87",
+        "borrowed_from_sibling": false
+      },
+      "active_ingredients": {
+        "status": "possibly_inci_guess",
+        "issues": [
+          "possibly_inci_guess"
+        ],
+        "regulatory_expected": false,
+        "hero_expected": true,
+        "active_items": [
+          "PDRN (Salmon DNA)",
+          "Collagen"
+        ],
+        "source_origin": "reviewed_source_backed_pdp_content_patch",
+        "source_quality_status": "blocked",
+        "coverage": {
+          "details_sections_count": 14,
+          "faq_count": 0,
+          "how_to_chars": 272,
+          "inci_chars": 84,
+          "active_ingredients_chars": 27,
+          "inci_applicability_status": "",
+          "ingredient_review_status": "manual_source_review_required",
+          "ingredient_remediation_action": "manual_source_review_required",
+          "bundle_component_refs_count": 0,
+          "effective_inci_chars": 84,
+          "inci_borrowed_from_product_id": ""
+        },
+        "invalid_fragments": [],
+        "suppressed_reason": null
+      },
+      "variants": {
+        "status": "ready",
+        "issues": [],
+        "visible_variant_rows": 1,
+        "examples": {
+          "identity_option_visible": [],
+          "wrong_axis_for_category": [],
+          "makeup_shade_missing_visual": [],
+          "size_value_generic_axis": [],
+          "default_option_size_evidence_missing_axis": [],
+          "identity_default_title_axis": []
+        }
+      },
+      "coverage": {
+        "details_sections_count": 14,
+        "faq_count": 0,
+        "how_to_chars": 272,
+        "inci_chars": 84,
+        "active_ingredients_chars": 27,
+        "inci_applicability_status": "",
+        "ingredient_review_status": "manual_source_review_required",
+        "ingredient_remediation_action": "manual_source_review_required",
+        "bundle_component_refs_count": 0,
+        "effective_inci_chars": 84,
+        "inci_borrowed_from_product_id": ""
+      }
+    },
+    {
+      "seed_id": "eps_dab05cbf13a19ae260a9a1c8",
+      "external_product_id": "ext_1ef745c0f3b1262f6e107f08",
+      "market": "US",
+      "domain": "anua.com",
+      "title": "PDRN Hyaluronic Acid Capsule 100 Serum",
+      "canonical_url": "https://anua.com/products/pdrn-hyaluronic-acid-capsule-100-serum",
+      "product_family": "single_formula",
+      "product_line_id": "pl_69405782420015f6ca00c487",
+      "identity_variant_axes": {
+        "multi_variant": false
+      },
+      "pivota_insights": {
+        "direct": {
+          "product_id": "ext_1ef745c0f3b1262f6e107f08",
+          "kb_key": "product:ext_1ef745c0f3b1262f6e107f08",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "seller_plus_formula",
+          "has_card_highlight": true
+        },
+        "effective": {
+          "product_id": "ext_1ef745c0f3b1262f6e107f08",
+          "kb_key": "product:ext_1ef745c0f3b1262f6e107f08",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "seller_plus_formula",
+          "has_card_highlight": true
+        },
+        "product_line_id": "pl_69405782420015f6ca00c487",
+        "borrowed_from_sibling": false
+      },
+      "active_ingredients": {
+        "status": "ready_hero",
+        "issues": [],
+        "regulatory_expected": false,
+        "hero_expected": true,
+        "active_items": [
+          "Hyaluronic Acid"
+        ],
+        "source_origin": "pdp_section",
+        "source_quality_status": "captured",
+        "coverage": {
+          "details_sections_count": 18,
+          "faq_count": 0,
+          "how_to_chars": 198,
+          "inci_chars": 769,
+          "active_ingredients_chars": 15,
+          "inci_applicability_status": "",
+          "ingredient_review_status": "",
+          "ingredient_remediation_action": "",
+          "bundle_component_refs_count": 0,
+          "effective_inci_chars": 769,
+          "inci_borrowed_from_product_id": ""
+        },
+        "invalid_fragments": [],
+        "suppressed_reason": null
+      },
+      "variants": {
+        "status": "ready",
+        "issues": [],
+        "visible_variant_rows": 1,
+        "examples": {
+          "identity_option_visible": [],
+          "wrong_axis_for_category": [],
+          "makeup_shade_missing_visual": [],
+          "size_value_generic_axis": [],
+          "default_option_size_evidence_missing_axis": [],
+          "identity_default_title_axis": []
+        }
+      },
+      "coverage": {
+        "details_sections_count": 18,
+        "faq_count": 0,
+        "how_to_chars": 198,
+        "inci_chars": 769,
+        "active_ingredients_chars": 15,
+        "inci_applicability_status": "",
+        "ingredient_review_status": "",
+        "ingredient_remediation_action": "",
+        "bundle_component_refs_count": 0,
+        "effective_inci_chars": 769,
+        "inci_borrowed_from_product_id": ""
+      }
+    },
+    {
+      "seed_id": "eps_9e34ede752d54e9855bfb953",
+      "external_product_id": "ext_26b54c008d2308d09cf2d100",
+      "market": "US",
+      "domain": "anua.com",
+      "title": "8 Hyaluronic Acid Moisturizing Gentle Gel Cleanser",
+      "canonical_url": "https://anua.com/products/8-hyaluronic-acid-moisturizing-gentle-gel-cleanser",
+      "product_family": "single_formula",
+      "product_line_id": "pl_b033ef06f3c42aaac8b523d9",
+      "identity_variant_axes": {
+        "volume": "150ml",
+        "multi_variant": false
+      },
+      "pivota_insights": {
+        "direct": {
+          "product_id": "ext_26b54c008d2308d09cf2d100",
+          "kb_key": "product:ext_26b54c008d2308d09cf2d100",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "seller_plus_formula",
+          "has_card_highlight": true
+        },
+        "effective": {
+          "product_id": "ext_26b54c008d2308d09cf2d100",
+          "kb_key": "product:ext_26b54c008d2308d09cf2d100",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "seller_plus_formula",
+          "has_card_highlight": true
+        },
+        "product_line_id": "pl_b033ef06f3c42aaac8b523d9",
+        "borrowed_from_sibling": false
+      },
+      "active_ingredients": {
+        "status": "ready_hero",
+        "issues": [],
+        "regulatory_expected": false,
+        "hero_expected": true,
+        "active_items": [
+          "while cleansing impurites",
+          "Ectoin",
+          "keeping the skin smooth and soft"
+        ],
+        "source_origin": "pdp_section",
+        "source_quality_status": "captured",
+        "coverage": {
+          "details_sections_count": 16,
+          "faq_count": 0,
+          "how_to_chars": 263,
+          "inci_chars": 591,
+          "active_ingredients_chars": 365,
+          "inci_applicability_status": "",
+          "ingredient_review_status": "",
+          "ingredient_remediation_action": "",
+          "bundle_component_refs_count": 0,
+          "effective_inci_chars": 591,
+          "inci_borrowed_from_product_id": ""
+        },
+        "invalid_fragments": [],
+        "suppressed_reason": null
+      },
+      "variants": {
+        "status": "ready",
+        "issues": [],
+        "visible_variant_rows": 1,
+        "examples": {
+          "identity_option_visible": [],
+          "wrong_axis_for_category": [],
+          "makeup_shade_missing_visual": [],
+          "size_value_generic_axis": [],
+          "default_option_size_evidence_missing_axis": [],
+          "identity_default_title_axis": []
+        }
+      },
+      "coverage": {
+        "details_sections_count": 16,
+        "faq_count": 0,
+        "how_to_chars": 263,
+        "inci_chars": 591,
+        "active_ingredients_chars": 365,
+        "inci_applicability_status": "",
+        "ingredient_review_status": "",
+        "ingredient_remediation_action": "",
+        "bundle_component_refs_count": 0,
+        "effective_inci_chars": 591,
+        "inci_borrowed_from_product_id": ""
+      }
+    },
+    {
+      "seed_id": "eps_bddb09709d7c441a2015a717",
+      "external_product_id": "ext_26d1eef8f1f9b601e14b025b",
+      "market": "US",
+      "domain": "anua.com",
+      "title": "Rice Enzyme Brightening Cleansing Powder",
+      "canonical_url": "https://anua.com/products/rice-enzyme-brightening-cleansing-powder",
+      "product_family": "single_formula",
+      "product_line_id": "pl_1e9bb460cf938edebdb7ed23",
+      "identity_variant_axes": {
+        "volume": "41oz",
+        "multi_variant": false
+      },
+      "pivota_insights": {
+        "direct": {
+          "product_id": "ext_26d1eef8f1f9b601e14b025b",
+          "kb_key": "product:ext_26d1eef8f1f9b601e14b025b",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "seller_plus_formula",
+          "has_card_highlight": true
+        },
+        "effective": {
+          "product_id": "ext_26d1eef8f1f9b601e14b025b",
+          "kb_key": "product:ext_26d1eef8f1f9b601e14b025b",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "seller_plus_formula",
+          "has_card_highlight": true
+        },
+        "product_line_id": "pl_1e9bb460cf938edebdb7ed23",
+        "borrowed_from_sibling": false
+      },
+      "active_ingredients": {
+        "status": "ready_hero",
+        "issues": [],
+        "regulatory_expected": false,
+        "hero_expected": true,
+        "active_items": [
+          "Ceramide"
+        ],
+        "source_origin": "pdp_section",
+        "source_quality_status": "captured",
+        "coverage": {
+          "details_sections_count": 16,
+          "faq_count": 2,
+          "how_to_chars": 350,
+          "inci_chars": 550,
+          "active_ingredients_chars": 8,
+          "inci_applicability_status": "",
+          "ingredient_review_status": "",
+          "ingredient_remediation_action": "",
+          "bundle_component_refs_count": 0,
+          "effective_inci_chars": 550,
+          "inci_borrowed_from_product_id": ""
+        },
+        "invalid_fragments": [],
+        "suppressed_reason": null
+      },
+      "variants": {
+        "status": "ready",
+        "issues": [],
+        "visible_variant_rows": 1,
+        "examples": {
+          "identity_option_visible": [],
+          "wrong_axis_for_category": [],
+          "makeup_shade_missing_visual": [],
+          "size_value_generic_axis": [],
+          "default_option_size_evidence_missing_axis": [],
+          "identity_default_title_axis": []
+        }
+      },
+      "coverage": {
+        "details_sections_count": 16,
+        "faq_count": 2,
+        "how_to_chars": 350,
+        "inci_chars": 550,
+        "active_ingredients_chars": 8,
+        "inci_applicability_status": "",
+        "ingredient_review_status": "",
+        "ingredient_remediation_action": "",
+        "bundle_component_refs_count": 0,
+        "effective_inci_chars": 550,
+        "inci_borrowed_from_product_id": ""
+      }
+    },
+    {
+      "seed_id": "eps_e34755a0d49e5365e1cce3d1",
+      "external_product_id": "ext_334b307f86ce27f32b0974f3",
+      "market": "US",
+      "domain": "anua.com",
+      "title": "Nano Retinol™ 0.3% + Niacin Renewing Serum",
+      "canonical_url": "https://anua.com/products/nano-retinol-0-3-niacin-renewing-serum",
+      "product_family": "set_or_collection",
+      "product_line_id": "pl_14ea26cab60aabce142356a0",
+      "identity_variant_axes": {
+        "volume": "30ml",
+        "multi_variant": false
+      },
+      "pivota_insights": {
+        "direct": {
+          "product_id": "ext_334b307f86ce27f32b0974f3",
+          "kb_key": "product:ext_334b307f86ce27f32b0974f3",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "seller_plus_formula",
+          "has_card_highlight": true
+        },
+        "effective": {
+          "product_id": "ext_334b307f86ce27f32b0974f3",
+          "kb_key": "product:ext_334b307f86ce27f32b0974f3",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "seller_plus_formula",
+          "has_card_highlight": true
+        },
+        "product_line_id": "pl_14ea26cab60aabce142356a0",
+        "borrowed_from_sibling": false
+      },
+      "active_ingredients": {
+        "status": "not_applicable_product_family",
+        "issues": [],
+        "regulatory_expected": false,
+        "hero_expected": false,
+        "active_items": [],
+        "source_origin": "none",
+        "source_quality_status": "blocked",
+        "coverage": {
+          "details_sections_count": 10,
+          "faq_count": 0,
+          "how_to_chars": 183,
+          "inci_chars": 2112,
+          "active_ingredients_chars": 89,
+          "inci_applicability_status": "",
+          "ingredient_review_status": "",
+          "ingredient_remediation_action": "",
+          "bundle_component_refs_count": 0,
+          "effective_inci_chars": 2112,
+          "inci_borrowed_from_product_id": ""
+        },
+        "invalid_fragments": [],
+        "suppressed_reason": "set_or_collection"
+      },
+      "variants": {
+        "status": "ready",
+        "issues": [],
+        "visible_variant_rows": 1,
+        "examples": {
+          "identity_option_visible": [],
+          "wrong_axis_for_category": [],
+          "makeup_shade_missing_visual": [],
+          "size_value_generic_axis": [],
+          "default_option_size_evidence_missing_axis": [],
+          "identity_default_title_axis": []
+        }
+      },
+      "coverage": {
+        "details_sections_count": 10,
+        "faq_count": 0,
+        "how_to_chars": 183,
+        "inci_chars": 2112,
+        "active_ingredients_chars": 89,
+        "inci_applicability_status": "",
+        "ingredient_review_status": "",
+        "ingredient_remediation_action": "",
+        "bundle_component_refs_count": 0,
+        "effective_inci_chars": 2112,
+        "inci_borrowed_from_product_id": ""
+      }
+    },
+    {
+      "seed_id": "eps_c760abf13080690323f15365",
+      "external_product_id": "ext_33939578156b0fcad15d25d8",
+      "market": "US",
+      "domain": "anua.com",
+      "title": "8 Hyaluronic Acid Hydrating Gentle Foaming Cleanser",
+      "canonical_url": "https://anua.com/products/8-hyaluronic-acid-hydrating-gentle-foaming-cleanser",
+      "product_family": "single_formula",
+      "product_line_id": "pl_c2a3a78a7f32162c5f8e8ab3",
+      "identity_variant_axes": {
+        "volume": "150ml",
+        "multi_variant": false
+      },
+      "pivota_insights": {
+        "direct": {
+          "product_id": "ext_33939578156b0fcad15d25d8",
+          "kb_key": "product:ext_33939578156b0fcad15d25d8",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "seller_plus_formula",
+          "has_card_highlight": true
+        },
+        "effective": {
+          "product_id": "ext_33939578156b0fcad15d25d8",
+          "kb_key": "product:ext_33939578156b0fcad15d25d8",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "seller_plus_formula",
+          "has_card_highlight": true
+        },
+        "product_line_id": "pl_c2a3a78a7f32162c5f8e8ab3",
+        "borrowed_from_sibling": false
+      },
+      "active_ingredients": {
+        "status": "ready_hero",
+        "issues": [],
+        "regulatory_expected": false,
+        "hero_expected": true,
+        "active_items": [
+          "Hyaluronic Acid",
+          "Panthenol"
+        ],
+        "source_origin": "pdp_section",
+        "source_quality_status": "captured",
+        "coverage": {
+          "details_sections_count": 16,
+          "faq_count": 0,
+          "how_to_chars": 264,
+          "inci_chars": 682,
+          "active_ingredients_chars": 26,
+          "inci_applicability_status": "",
+          "ingredient_review_status": "",
+          "ingredient_remediation_action": "",
+          "bundle_component_refs_count": 0,
+          "effective_inci_chars": 682,
+          "inci_borrowed_from_product_id": ""
+        },
+        "invalid_fragments": [],
+        "suppressed_reason": null
+      },
+      "variants": {
+        "status": "ready",
+        "issues": [],
+        "visible_variant_rows": 1,
+        "examples": {
+          "identity_option_visible": [],
+          "wrong_axis_for_category": [],
+          "makeup_shade_missing_visual": [],
+          "size_value_generic_axis": [],
+          "default_option_size_evidence_missing_axis": [],
+          "identity_default_title_axis": []
+        }
+      },
+      "coverage": {
+        "details_sections_count": 16,
+        "faq_count": 0,
+        "how_to_chars": 264,
+        "inci_chars": 682,
+        "active_ingredients_chars": 26,
+        "inci_applicability_status": "",
+        "ingredient_review_status": "",
+        "ingredient_remediation_action": "",
+        "bundle_component_refs_count": 0,
+        "effective_inci_chars": 682,
+        "inci_borrowed_from_product_id": ""
+      }
+    },
+    {
+      "seed_id": "eps_8eb928611fcd3955c4b8c87a",
+      "external_product_id": "ext_39175b184857700d86fc824f",
+      "market": "US",
+      "domain": "anua.com",
+      "title": "Peach 77 Niacin Conditioning Milk",
+      "canonical_url": "https://anua.com/products/peach-77-niacin-conditioning-milk-1-1",
+      "product_family": "unknown_product",
+      "product_line_id": "pl_ccfc90ecda5b78a343b48c46",
+      "identity_variant_axes": {
+        "volume": "150ml",
+        "multi_variant": false
+      },
+      "pivota_insights": {
+        "direct": {
+          "product_id": "ext_39175b184857700d86fc824f",
+          "kb_key": "product:ext_39175b184857700d86fc824f",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "seller_plus_formula",
+          "has_card_highlight": true
+        },
+        "effective": {
+          "product_id": "ext_39175b184857700d86fc824f",
+          "kb_key": "product:ext_39175b184857700d86fc824f",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "seller_plus_formula",
+          "has_card_highlight": true
+        },
+        "product_line_id": "pl_ccfc90ecda5b78a343b48c46",
+        "borrowed_from_sibling": false
+      },
+      "active_ingredients": {
+        "status": "ready_hero",
+        "issues": [],
+        "regulatory_expected": false,
+        "hero_expected": true,
+        "active_items": [
+          "Niacinamide",
+          "Hyaluronic Acid",
+          "Panthenol",
+          "Ceramide"
+        ],
+        "source_origin": "pdp_section",
+        "source_quality_status": "captured",
+        "coverage": {
+          "details_sections_count": 12,
+          "faq_count": 0,
+          "how_to_chars": 278,
+          "inci_chars": 769,
+          "active_ingredients_chars": 49,
+          "inci_applicability_status": "",
+          "ingredient_review_status": "manual_source_review_required",
+          "ingredient_remediation_action": "manual_source_review_required",
+          "bundle_component_refs_count": 0,
+          "effective_inci_chars": 769,
+          "inci_borrowed_from_product_id": ""
+        },
+        "invalid_fragments": [],
+        "suppressed_reason": null
+      },
+      "variants": {
+        "status": "ready",
+        "issues": [],
+        "visible_variant_rows": 1,
+        "examples": {
+          "identity_option_visible": [],
+          "wrong_axis_for_category": [],
+          "makeup_shade_missing_visual": [],
+          "size_value_generic_axis": [],
+          "default_option_size_evidence_missing_axis": [],
+          "identity_default_title_axis": []
+        }
+      },
+      "coverage": {
+        "details_sections_count": 12,
+        "faq_count": 0,
+        "how_to_chars": 278,
+        "inci_chars": 769,
+        "active_ingredients_chars": 49,
+        "inci_applicability_status": "",
+        "ingredient_review_status": "manual_source_review_required",
+        "ingredient_remediation_action": "manual_source_review_required",
+        "bundle_component_refs_count": 0,
+        "effective_inci_chars": 769,
+        "inci_borrowed_from_product_id": ""
+      }
+    },
+    {
+      "seed_id": "eps_7bc2213bc5bc8a08a09c6706",
+      "external_product_id": "ext_3c937cc0c4e26a198df810dc",
+      "market": "US",
+      "domain": "anua.com",
+      "title": "Heartleaf 70 Soothing Collagen Mask",
+      "canonical_url": "https://anua.com/products/heartleaf-70-soothing-collagen-mask",
+      "product_family": "single_formula",
+      "product_line_id": "pl_bbe518a8241fd700d89a3cec",
+      "identity_variant_axes": {
+        "multi_variant": false
+      },
+      "pivota_insights": {
+        "direct": {
+          "product_id": "ext_3c937cc0c4e26a198df810dc",
+          "kb_key": "product:ext_3c937cc0c4e26a198df810dc",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "seller_plus_formula",
+          "has_card_highlight": true
+        },
+        "effective": {
+          "product_id": "ext_3c937cc0c4e26a198df810dc",
+          "kb_key": "product:ext_3c937cc0c4e26a198df810dc",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "seller_plus_formula",
+          "has_card_highlight": true
+        },
+        "product_line_id": "pl_bbe518a8241fd700d89a3cec",
+        "borrowed_from_sibling": false
+      },
+      "active_ingredients": {
+        "status": "ready_hero",
+        "issues": [],
+        "regulatory_expected": false,
+        "hero_expected": true,
+        "active_items": [
+          "Hyaluronic Acid"
+        ],
+        "source_origin": "pdp_section",
+        "source_quality_status": "captured",
+        "coverage": {
+          "details_sections_count": 16,
+          "faq_count": 0,
+          "how_to_chars": 322,
+          "inci_chars": 710,
+          "active_ingredients_chars": 15,
+          "inci_applicability_status": "",
+          "ingredient_review_status": "",
+          "ingredient_remediation_action": "",
+          "bundle_component_refs_count": 0,
+          "effective_inci_chars": 710,
+          "inci_borrowed_from_product_id": ""
+        },
+        "invalid_fragments": [],
+        "suppressed_reason": null
+      },
+      "variants": {
+        "status": "ready",
+        "issues": [],
+        "visible_variant_rows": 1,
+        "examples": {
+          "identity_option_visible": [],
+          "wrong_axis_for_category": [],
+          "makeup_shade_missing_visual": [],
+          "size_value_generic_axis": [],
+          "default_option_size_evidence_missing_axis": [],
+          "identity_default_title_axis": []
+        }
+      },
+      "coverage": {
+        "details_sections_count": 16,
+        "faq_count": 0,
+        "how_to_chars": 322,
+        "inci_chars": 710,
+        "active_ingredients_chars": 15,
+        "inci_applicability_status": "",
+        "ingredient_review_status": "",
+        "ingredient_remediation_action": "",
+        "bundle_component_refs_count": 0,
+        "effective_inci_chars": 710,
+        "inci_borrowed_from_product_id": ""
+      }
+    },
+    {
+      "seed_id": "eps_24e4822fd27cc8fb1f291ccb",
+      "external_product_id": "ext_3f62f2f7e7ca3794676df840",
+      "market": "US",
+      "domain": "anua.com",
+      "title": "Rumi Ultra-thin Spot Cover Patch with Case (28ea)",
+      "canonical_url": "https://anua.com/products/rumi-ultra-thin-spot-cover-patch-with-case-28ea",
+      "product_family": "single_formula",
+      "product_line_id": null,
+      "pivota_insights": {
+        "direct": {
+          "product_id": "ext_3f62f2f7e7ca3794676df840",
+          "kb_key": "product:ext_3f62f2f7e7ca3794676df840",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "seller_plus_formula",
+          "has_card_highlight": true
+        },
+        "effective": {
+          "product_id": "ext_3f62f2f7e7ca3794676df840",
+          "kb_key": "product:ext_3f62f2f7e7ca3794676df840",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "seller_plus_formula",
+          "has_card_highlight": true
+        },
+        "product_line_id": null,
+        "borrowed_from_sibling": false
+      },
+      "active_ingredients": {
+        "status": "ready_hero",
+        "issues": [],
+        "regulatory_expected": false,
+        "hero_expected": true,
+        "active_items": [
+          "Hydrocolloid",
+          "Centella Asiatica Extract",
+          "Ceramide NP",
+          "Madecassoside"
+        ],
+        "source_origin": "pdp_section",
+        "source_quality_status": "captured",
+        "coverage": {
+          "details_sections_count": 8,
+          "faq_count": 0,
+          "how_to_chars": 168,
+          "inci_chars": 231,
+          "active_ingredients_chars": 67,
+          "inci_applicability_status": "not_applicable",
+          "ingredient_review_status": "",
+          "ingredient_remediation_action": "mark_inci_not_applicable",
+          "bundle_component_refs_count": 0,
+          "effective_inci_chars": 231,
+          "inci_borrowed_from_product_id": ""
+        },
+        "invalid_fragments": [],
+        "suppressed_reason": null
+      },
+      "variants": {
+        "status": "ready",
+        "issues": [],
+        "visible_variant_rows": 1,
+        "examples": {
+          "identity_option_visible": [],
+          "wrong_axis_for_category": [],
+          "makeup_shade_missing_visual": [],
+          "size_value_generic_axis": [],
+          "default_option_size_evidence_missing_axis": [],
+          "identity_default_title_axis": []
+        }
+      },
+      "coverage": {
+        "details_sections_count": 8,
+        "faq_count": 0,
+        "how_to_chars": 168,
+        "inci_chars": 231,
+        "active_ingredients_chars": 67,
+        "inci_applicability_status": "not_applicable",
+        "ingredient_review_status": "",
+        "ingredient_remediation_action": "mark_inci_not_applicable",
+        "bundle_component_refs_count": 0,
+        "effective_inci_chars": 231,
+        "inci_borrowed_from_product_id": ""
+      }
+    },
+    {
+      "seed_id": "eps_3ea628c37a3108b6493b4e20",
+      "external_product_id": "ext_3fadc275b3d9cadc429b75d1",
+      "market": "US",
+      "domain": "anua.com",
+      "title": "Heartleaf Quercetinol Pore Deep Cleansing Foam",
+      "canonical_url": "https://anua.com/products/heartleaf-quercetinol-pore-deep-cleansing-foam",
+      "product_family": "single_formula",
+      "product_line_id": "pl_4ffd3bec655799eaa4cf4f4a",
+      "identity_variant_axes": {
+        "volume": "150ml",
+        "multi_variant": false
+      },
+      "pivota_insights": {
+        "direct": {
+          "product_id": "ext_3fadc275b3d9cadc429b75d1",
+          "kb_key": "product:ext_3fadc275b3d9cadc429b75d1",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "seller_plus_formula",
+          "has_card_highlight": true
+        },
+        "effective": {
+          "product_id": "ext_3fadc275b3d9cadc429b75d1",
+          "kb_key": "product:ext_3fadc275b3d9cadc429b75d1",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "seller_plus_formula",
+          "has_card_highlight": true
+        },
+        "product_line_id": "pl_4ffd3bec655799eaa4cf4f4a",
+        "borrowed_from_sibling": false
+      },
+      "active_ingredients": {
+        "status": "ready_hero",
+        "issues": [],
+        "regulatory_expected": false,
+        "hero_expected": true,
+        "active_items": [
+          "Hyaluronic Acid"
+        ],
+        "source_origin": "pdp_section",
+        "source_quality_status": "captured",
+        "coverage": {
+          "details_sections_count": 10,
+          "faq_count": 0,
+          "how_to_chars": 267,
+          "inci_chars": 945,
+          "active_ingredients_chars": 15,
+          "inci_applicability_status": "",
+          "ingredient_review_status": "manual_source_review_required",
+          "ingredient_remediation_action": "manual_source_review_required",
+          "bundle_component_refs_count": 0,
+          "effective_inci_chars": 945,
+          "inci_borrowed_from_product_id": ""
+        },
+        "invalid_fragments": [],
+        "suppressed_reason": null
+      },
+      "variants": {
+        "status": "ready",
+        "issues": [],
+        "visible_variant_rows": 1,
+        "examples": {
+          "identity_option_visible": [],
+          "wrong_axis_for_category": [],
+          "makeup_shade_missing_visual": [],
+          "size_value_generic_axis": [],
+          "default_option_size_evidence_missing_axis": [],
+          "identity_default_title_axis": []
+        }
+      },
+      "coverage": {
+        "details_sections_count": 10,
+        "faq_count": 0,
+        "how_to_chars": 267,
+        "inci_chars": 945,
+        "active_ingredients_chars": 15,
+        "inci_applicability_status": "",
+        "ingredient_review_status": "manual_source_review_required",
+        "ingredient_remediation_action": "manual_source_review_required",
+        "bundle_component_refs_count": 0,
+        "effective_inci_chars": 945,
+        "inci_borrowed_from_product_id": ""
+      }
+    },
+    {
+      "seed_id": "eps_02800f5cb4f49c277183ae6b",
+      "external_product_id": "ext_4853855767b9353fe7743a14",
+      "market": "US",
+      "domain": "anua.com",
+      "title": "Niacinamide 10 TXA 4 Serum for Brightening and Dark Spots",
+      "canonical_url": "https://anua.com/products/niacinamide-10-txa-4-serum-2",
+      "product_family": "single_formula",
+      "product_line_id": null,
+      "pivota_insights": {
+        "direct": {
+          "product_id": "ext_4853855767b9353fe7743a14",
+          "kb_key": "product:ext_4853855767b9353fe7743a14",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "seller_plus_formula",
+          "has_card_highlight": true
+        },
+        "effective": {
+          "product_id": "ext_4853855767b9353fe7743a14",
+          "kb_key": "product:ext_4853855767b9353fe7743a14",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "seller_plus_formula",
+          "has_card_highlight": true
+        },
+        "product_line_id": null,
+        "borrowed_from_sibling": false
+      },
+      "active_ingredients": {
+        "status": "ready_hero",
+        "issues": [],
+        "regulatory_expected": false,
+        "hero_expected": true,
+        "active_items": [
+          "10% Niacinamide",
+          "4% Tranexamic Acid",
+          "Niacinamide",
+          "Tranexamic Acid"
+        ],
+        "source_origin": "pdp_section",
+        "source_quality_status": "captured",
+        "coverage": {
+          "details_sections_count": 8,
+          "faq_count": 0,
+          "how_to_chars": 375,
+          "inci_chars": 1182,
+          "active_ingredients_chars": 207,
+          "inci_applicability_status": "",
+          "ingredient_review_status": "",
+          "ingredient_remediation_action": "manual_source_review_required",
+          "bundle_component_refs_count": 0,
+          "effective_inci_chars": 1182,
+          "inci_borrowed_from_product_id": ""
+        },
+        "invalid_fragments": [],
+        "suppressed_reason": null
+      },
+      "variants": {
+        "status": "ready",
+        "issues": [],
+        "visible_variant_rows": 1,
+        "examples": {
+          "identity_option_visible": [],
+          "wrong_axis_for_category": [],
+          "makeup_shade_missing_visual": [],
+          "size_value_generic_axis": [],
+          "default_option_size_evidence_missing_axis": [],
+          "identity_default_title_axis": []
+        }
+      },
+      "coverage": {
+        "details_sections_count": 8,
+        "faq_count": 0,
+        "how_to_chars": 375,
+        "inci_chars": 1182,
+        "active_ingredients_chars": 207,
+        "inci_applicability_status": "",
+        "ingredient_review_status": "",
+        "ingredient_remediation_action": "manual_source_review_required",
+        "bundle_component_refs_count": 0,
+        "effective_inci_chars": 1182,
+        "inci_borrowed_from_product_id": ""
+      }
+    },
+    {
+      "seed_id": "eps_a3c33f03cb9144e7320a41cf",
+      "external_product_id": "ext_57b7e6502742f6915f42e89e",
+      "market": "US",
+      "domain": "anua.com",
+      "title": "Heartleaf 80% Moisture Soothing Ampoule",
+      "canonical_url": "https://anua.global/products/heartleaf-80-moisture-soothing-ampoule",
+      "product_family": "single_formula",
+      "product_line_id": "pl_78bb6d5b679668c86cab5780",
+      "identity_variant_axes": {
+        "volume": "30ml",
+        "multi_variant": false
+      },
+      "pivota_insights": {
+        "direct": {
+          "product_id": "ext_57b7e6502742f6915f42e89e",
+          "kb_key": "product:ext_57b7e6502742f6915f42e89e",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "seller_plus_formula",
+          "has_card_highlight": true
+        },
+        "effective": {
+          "product_id": "ext_57b7e6502742f6915f42e89e",
+          "kb_key": "product:ext_57b7e6502742f6915f42e89e",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "seller_plus_formula",
+          "has_card_highlight": true
+        },
+        "product_line_id": "pl_78bb6d5b679668c86cab5780",
+        "borrowed_from_sibling": false
+      },
+      "active_ingredients": {
+        "status": "ready_hero",
+        "issues": [],
+        "regulatory_expected": false,
+        "hero_expected": true,
+        "active_items": [
+          "Panthenol (B5)"
+        ],
+        "source_origin": "pdp_section",
+        "source_quality_status": "captured",
+        "coverage": {
+          "details_sections_count": 8,
+          "faq_count": 0,
+          "how_to_chars": 177,
+          "inci_chars": 206,
+          "active_ingredients_chars": 0,
+          "inci_applicability_status": "",
+          "ingredient_review_status": "",
+          "ingredient_remediation_action": "",
+          "bundle_component_refs_count": 0,
+          "effective_inci_chars": 206,
+          "inci_borrowed_from_product_id": ""
+        },
+        "invalid_fragments": [],
+        "suppressed_reason": null
+      },
+      "variants": {
+        "status": "ready",
+        "issues": [],
+        "visible_variant_rows": 1,
+        "examples": {
+          "identity_option_visible": [],
+          "wrong_axis_for_category": [],
+          "makeup_shade_missing_visual": [],
+          "size_value_generic_axis": [],
+          "default_option_size_evidence_missing_axis": [],
+          "identity_default_title_axis": []
+        }
+      },
+      "coverage": {
+        "details_sections_count": 8,
+        "faq_count": 0,
+        "how_to_chars": 177,
+        "inci_chars": 206,
+        "active_ingredients_chars": 0,
+        "inci_applicability_status": "",
+        "ingredient_review_status": "",
+        "ingredient_remediation_action": "",
+        "bundle_component_refs_count": 0,
+        "effective_inci_chars": 206,
+        "inci_borrowed_from_product_id": ""
+      }
+    },
+    {
+      "seed_id": "eps_e1f65194ab66cfeac2522c7b",
+      "external_product_id": "ext_5c304195f3b4d622943869ed",
+      "market": "US",
+      "domain": "anua.com",
+      "title": "Zero-cast Moisturizing Finish Sunscreen",
+      "canonical_url": "https://anua.com/products/zero-cast-moisturizing-finish-sunscreen",
+      "product_family": "single_formula",
+      "product_line_id": "pl_17c561431f91c8ffc98889e0",
+      "identity_variant_axes": {
+        "volume": "50ml",
+        "multi_variant": false
+      },
+      "pivota_insights": {
+        "direct": {
+          "product_id": "ext_5c304195f3b4d622943869ed",
+          "kb_key": "product:ext_5c304195f3b4d622943869ed",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "seller_plus_formula",
+          "has_card_highlight": true
+        },
+        "effective": {
+          "product_id": "ext_5c304195f3b4d622943869ed",
+          "kb_key": "product:ext_5c304195f3b4d622943869ed",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "seller_plus_formula",
+          "has_card_highlight": true
+        },
+        "product_line_id": "pl_17c561431f91c8ffc98889e0",
+        "borrowed_from_sibling": false
+      },
+      "active_ingredients": {
+        "status": "ready_regulatory",
+        "issues": [],
+        "regulatory_expected": true,
+        "hero_expected": true,
+        "active_items": [
+          "Panthenol (B5)",
+          "Niacinamide",
+          "Avobenzone",
+          "Octocrylene",
+          "Octisalate",
+          "Homosalate"
+        ],
+        "source_origin": "pdp_section",
+        "source_quality_status": "regulatory_active",
+        "coverage": {
+          "details_sections_count": 16,
+          "faq_count": 0,
+          "how_to_chars": 270,
+          "inci_chars": 430,
+          "active_ingredients_chars": 255,
+          "inci_applicability_status": "",
+          "ingredient_review_status": "",
+          "ingredient_remediation_action": "",
+          "bundle_component_refs_count": 0,
+          "effective_inci_chars": 430,
+          "inci_borrowed_from_product_id": ""
+        },
+        "invalid_fragments": [],
+        "suppressed_reason": null
+      },
+      "variants": {
+        "status": "ready",
+        "issues": [],
+        "visible_variant_rows": 1,
+        "examples": {
+          "identity_option_visible": [],
+          "wrong_axis_for_category": [],
+          "makeup_shade_missing_visual": [],
+          "size_value_generic_axis": [],
+          "default_option_size_evidence_missing_axis": [],
+          "identity_default_title_axis": []
+        }
+      },
+      "coverage": {
+        "details_sections_count": 16,
+        "faq_count": 0,
+        "how_to_chars": 270,
+        "inci_chars": 430,
+        "active_ingredients_chars": 255,
+        "inci_applicability_status": "",
+        "ingredient_review_status": "",
+        "ingredient_remediation_action": "",
+        "bundle_component_refs_count": 0,
+        "effective_inci_chars": 430,
+        "inci_borrowed_from_product_id": ""
+      }
+    },
+    {
+      "seed_id": "eps_9ca325f265da0859dd25de9b",
+      "external_product_id": "ext_5c769cd47d23585abe937b12",
+      "market": "US",
+      "domain": "anua.com",
+      "title": "Collagen Retinol Refining Gua Sha Cream",
+      "canonical_url": "https://anua.com/products/collagen-retinol-refining-gua-sha-cream",
+      "product_family": "single_formula",
+      "product_line_id": "pl_a2fc6e807334425072c6901e",
+      "identity_variant_axes": {
+        "multi_variant": false
+      },
+      "pivota_insights": {
+        "direct": {
+          "product_id": "ext_5c769cd47d23585abe937b12",
+          "kb_key": "product:ext_5c769cd47d23585abe937b12",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "seller_plus_formula",
+          "has_card_highlight": true
+        },
+        "effective": {
+          "product_id": "ext_5c769cd47d23585abe937b12",
+          "kb_key": "product:ext_5c769cd47d23585abe937b12",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "seller_plus_formula",
+          "has_card_highlight": true
+        },
+        "product_line_id": "pl_a2fc6e807334425072c6901e",
+        "borrowed_from_sibling": false
+      },
+      "active_ingredients": {
+        "status": "ready_hero",
+        "issues": [],
+        "regulatory_expected": false,
+        "hero_expected": true,
+        "active_items": [
+          "Retinol",
+          "Collagen",
+          "Peptide",
+          "Niacinamide",
+          "Panthenol"
+        ],
+        "source_origin": "pdp_section",
+        "source_quality_status": "captured",
+        "coverage": {
+          "details_sections_count": 4,
+          "faq_count": 0,
+          "how_to_chars": 187,
+          "inci_chars": 990,
+          "active_ingredients_chars": 50,
+          "inci_applicability_status": "not_applicable",
+          "ingredient_review_status": "",
+          "ingredient_remediation_action": "mark_inci_not_applicable",
+          "bundle_component_refs_count": 0,
+          "effective_inci_chars": 990,
+          "inci_borrowed_from_product_id": ""
+        },
+        "invalid_fragments": [],
+        "suppressed_reason": null
+      },
+      "variants": {
+        "status": "ready",
+        "issues": [],
+        "visible_variant_rows": 1,
+        "examples": {
+          "identity_option_visible": [],
+          "wrong_axis_for_category": [],
+          "makeup_shade_missing_visual": [],
+          "size_value_generic_axis": [],
+          "default_option_size_evidence_missing_axis": [],
+          "identity_default_title_axis": []
+        }
+      },
+      "coverage": {
+        "details_sections_count": 4,
+        "faq_count": 0,
+        "how_to_chars": 187,
+        "inci_chars": 990,
+        "active_ingredients_chars": 50,
+        "inci_applicability_status": "not_applicable",
+        "ingredient_review_status": "",
+        "ingredient_remediation_action": "mark_inci_not_applicable",
+        "bundle_component_refs_count": 0,
+        "effective_inci_chars": 990,
+        "inci_borrowed_from_product_id": ""
+      }
+    },
+    {
+      "seed_id": "eps_c6305ed9505eae8cd99046bc",
+      "external_product_id": "ext_5ef10c1a174dd9b512db50de",
+      "market": "US",
+      "domain": "anua.com",
+      "title": "Heartleaf 70 Daily Lotion",
+      "canonical_url": "https://anua.com/products/heartleaf-70-daily-lotion-copy-1",
+      "product_family": "single_formula",
+      "product_line_id": "pl_88dbcc3c9130f019325813e9",
+      "identity_variant_axes": {
+        "volume": "200ml",
+        "multi_variant": false
+      },
+      "pivota_insights": {
+        "direct": {
+          "product_id": "ext_5ef10c1a174dd9b512db50de",
+          "kb_key": "product:ext_5ef10c1a174dd9b512db50de",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "seller_plus_formula",
+          "has_card_highlight": true
+        },
+        "effective": {
+          "product_id": "ext_5ef10c1a174dd9b512db50de",
+          "kb_key": "product:ext_5ef10c1a174dd9b512db50de",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "seller_plus_formula",
+          "has_card_highlight": true
+        },
+        "product_line_id": "pl_88dbcc3c9130f019325813e9",
+        "borrowed_from_sibling": false
+      },
+      "active_ingredients": {
+        "status": "ready_hero",
+        "issues": [],
+        "regulatory_expected": false,
+        "hero_expected": true,
+        "active_items": [
+          "Hyaluronic Acid"
+        ],
+        "source_origin": "pdp_section",
+        "source_quality_status": "captured",
+        "coverage": {
+          "details_sections_count": 12,
+          "faq_count": 0,
+          "how_to_chars": 236,
+          "inci_chars": 609,
+          "active_ingredients_chars": 15,
+          "inci_applicability_status": "",
+          "ingredient_review_status": "manual_source_review_required",
+          "ingredient_remediation_action": "manual_source_review_required",
+          "bundle_component_refs_count": 0,
+          "effective_inci_chars": 609,
+          "inci_borrowed_from_product_id": ""
+        },
+        "invalid_fragments": [],
+        "suppressed_reason": null
+      },
+      "variants": {
+        "status": "ready",
+        "issues": [],
+        "visible_variant_rows": 1,
+        "examples": {
+          "identity_option_visible": [],
+          "wrong_axis_for_category": [],
+          "makeup_shade_missing_visual": [],
+          "size_value_generic_axis": [],
+          "default_option_size_evidence_missing_axis": [],
+          "identity_default_title_axis": []
+        }
+      },
+      "coverage": {
+        "details_sections_count": 12,
+        "faq_count": 0,
+        "how_to_chars": 236,
+        "inci_chars": 609,
+        "active_ingredients_chars": 15,
+        "inci_applicability_status": "",
+        "ingredient_review_status": "manual_source_review_required",
+        "ingredient_remediation_action": "manual_source_review_required",
+        "bundle_component_refs_count": 0,
+        "effective_inci_chars": 609,
+        "inci_borrowed_from_product_id": ""
+      }
+    },
+    {
+      "seed_id": "eps_e27b5e09d287f9706496f3b2",
+      "external_product_id": "ext_665d09ada34981323fefd42f",
+      "market": "US",
+      "domain": "anua.com",
+      "title": "BHA 2% Gentle Exfoliating Toner",
+      "canonical_url": "https://anua.com/products/bha-2-gentle-exfoliating-toner-copy",
+      "product_family": "single_formula",
+      "product_line_id": "pl_cca537c0704013716556f7ba",
+      "identity_variant_axes": {
+        "volume": "150ml",
+        "multi_variant": false
+      },
+      "pivota_insights": {
+        "direct": {
+          "product_id": "ext_665d09ada34981323fefd42f",
+          "kb_key": "product:ext_665d09ada34981323fefd42f",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "seller_plus_formula",
+          "has_card_highlight": true
+        },
+        "effective": {
+          "product_id": "ext_665d09ada34981323fefd42f",
+          "kb_key": "product:ext_665d09ada34981323fefd42f",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "seller_plus_formula",
+          "has_card_highlight": true
+        },
+        "product_line_id": "pl_cca537c0704013716556f7ba",
+        "borrowed_from_sibling": false
+      },
+      "active_ingredients": {
+        "status": "ready_hero",
+        "issues": [],
+        "regulatory_expected": false,
+        "hero_expected": true,
+        "active_items": [
+          "Salicylic Acid",
+          "Panthenol"
+        ],
+        "source_origin": "pdp_section",
+        "source_quality_status": "captured",
+        "coverage": {
+          "details_sections_count": 6,
+          "faq_count": 0,
+          "how_to_chars": 89,
+          "inci_chars": 1322,
+          "active_ingredients_chars": 25,
+          "inci_applicability_status": "",
+          "ingredient_review_status": "manual_source_review_required",
+          "ingredient_remediation_action": "manual_source_review_required",
+          "bundle_component_refs_count": 0,
+          "effective_inci_chars": 1322,
+          "inci_borrowed_from_product_id": ""
+        },
+        "invalid_fragments": [],
+        "suppressed_reason": null
+      },
+      "variants": {
+        "status": "ready",
+        "issues": [],
+        "visible_variant_rows": 1,
+        "examples": {
+          "identity_option_visible": [],
+          "wrong_axis_for_category": [],
+          "makeup_shade_missing_visual": [],
+          "size_value_generic_axis": [],
+          "default_option_size_evidence_missing_axis": [],
+          "identity_default_title_axis": []
+        }
+      },
+      "coverage": {
+        "details_sections_count": 6,
+        "faq_count": 0,
+        "how_to_chars": 89,
+        "inci_chars": 1322,
+        "active_ingredients_chars": 25,
+        "inci_applicability_status": "",
+        "ingredient_review_status": "manual_source_review_required",
+        "ingredient_remediation_action": "manual_source_review_required",
+        "bundle_component_refs_count": 0,
+        "effective_inci_chars": 1322,
+        "inci_borrowed_from_product_id": ""
+      }
+    },
+    {
+      "seed_id": "eps_73d98fb0d16af93106ab5a88",
+      "external_product_id": "ext_6f2f4dd50fe52e8768e8c831",
+      "market": "US",
+      "domain": "anua.com",
+      "title": "Triple Acid Spot Care Microdart Patch",
+      "canonical_url": "https://anua.com/products/triple-acid-spot-care-microdart-patch",
+      "product_family": "single_formula",
+      "product_line_id": "pl_3b78cb9cc63007ec47829136",
+      "identity_variant_axes": {
+        "multi_variant": false
+      },
+      "pivota_insights": {
+        "direct": {
+          "product_id": "ext_6f2f4dd50fe52e8768e8c831",
+          "kb_key": "product:ext_6f2f4dd50fe52e8768e8c831",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "seller_plus_formula",
+          "has_card_highlight": true
+        },
+        "effective": {
+          "product_id": "ext_6f2f4dd50fe52e8768e8c831",
+          "kb_key": "product:ext_6f2f4dd50fe52e8768e8c831",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "seller_plus_formula",
+          "has_card_highlight": true
+        },
+        "product_line_id": "pl_3b78cb9cc63007ec47829136",
+        "borrowed_from_sibling": false
+      },
+      "active_ingredients": {
+        "status": "ready_hero",
+        "issues": [],
+        "regulatory_expected": false,
+        "hero_expected": true,
+        "active_items": [
+          "Glycolic Acid",
+          "Lactic Acid",
+          "Salicylic Acid",
+          "Gluconolactone",
+          "Zinc Lactate",
+          "Succinic Acid",
+          "Sodium Hyaluronate",
+          "Centella Asiatica Extract"
+        ],
+        "source_origin": "pdp_section",
+        "source_quality_status": "captured",
+        "coverage": {
+          "details_sections_count": 16,
+          "faq_count": 0,
+          "how_to_chars": 177,
+          "inci_chars": 254,
+          "active_ingredients_chars": 134,
+          "inci_applicability_status": "",
+          "ingredient_review_status": "manual_source_review_required",
+          "ingredient_remediation_action": "manual_source_review_required",
+          "bundle_component_refs_count": 0,
+          "effective_inci_chars": 254,
+          "inci_borrowed_from_product_id": ""
+        },
+        "invalid_fragments": [],
+        "suppressed_reason": null
+      },
+      "variants": {
+        "status": "ready",
+        "issues": [],
+        "visible_variant_rows": 1,
+        "examples": {
+          "identity_option_visible": [],
+          "wrong_axis_for_category": [],
+          "makeup_shade_missing_visual": [],
+          "size_value_generic_axis": [],
+          "default_option_size_evidence_missing_axis": [],
+          "identity_default_title_axis": []
+        }
+      },
+      "coverage": {
+        "details_sections_count": 16,
+        "faq_count": 0,
+        "how_to_chars": 177,
+        "inci_chars": 254,
+        "active_ingredients_chars": 134,
+        "inci_applicability_status": "",
+        "ingredient_review_status": "manual_source_review_required",
+        "ingredient_remediation_action": "manual_source_review_required",
+        "bundle_component_refs_count": 0,
+        "effective_inci_chars": 254,
+        "inci_borrowed_from_product_id": ""
+      }
+    },
+    {
+      "seed_id": "eps_48c5698c10464872efe19e8d",
+      "external_product_id": "ext_7066212be143dc14967cf757",
+      "market": "US",
+      "domain": "anua.com",
+      "title": "PDRN 100 Hyaluronic Acid Glow Pad",
+      "canonical_url": "https://anua.com/products/pdrn-100-hyaluronic-acid-glow-pad",
+      "product_family": "single_formula",
+      "product_line_id": "pl_534edbffc452cec99e2872ec",
+      "identity_variant_axes": {
+        "multi_variant": false
+      },
+      "pivota_insights": {
+        "direct": {
+          "product_id": "ext_7066212be143dc14967cf757",
+          "kb_key": "product:ext_7066212be143dc14967cf757",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "seller_plus_formula",
+          "has_card_highlight": true
+        },
+        "effective": {
+          "product_id": "ext_7066212be143dc14967cf757",
+          "kb_key": "product:ext_7066212be143dc14967cf757",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "seller_plus_formula",
+          "has_card_highlight": true
+        },
+        "product_line_id": "pl_534edbffc452cec99e2872ec",
+        "borrowed_from_sibling": false
+      },
+      "active_ingredients": {
+        "status": "ready_hero",
+        "issues": [],
+        "regulatory_expected": false,
+        "hero_expected": true,
+        "active_items": [
+          "Hyaluronic acid",
+          "Niacinamide",
+          "Peptides"
+        ],
+        "source_origin": "pdp_section",
+        "source_quality_status": "captured",
+        "coverage": {
+          "details_sections_count": 16,
+          "faq_count": 0,
+          "how_to_chars": 335,
+          "inci_chars": 960,
+          "active_ingredients_chars": 216,
+          "inci_applicability_status": "",
+          "ingredient_review_status": "",
+          "ingredient_remediation_action": "",
+          "bundle_component_refs_count": 0,
+          "effective_inci_chars": 960,
+          "inci_borrowed_from_product_id": ""
+        },
+        "invalid_fragments": [],
+        "suppressed_reason": null
+      },
+      "variants": {
+        "status": "ready",
+        "issues": [],
+        "visible_variant_rows": 1,
+        "examples": {
+          "identity_option_visible": [],
+          "wrong_axis_for_category": [],
+          "makeup_shade_missing_visual": [],
+          "size_value_generic_axis": [],
+          "default_option_size_evidence_missing_axis": [],
+          "identity_default_title_axis": []
+        }
+      },
+      "coverage": {
+        "details_sections_count": 16,
+        "faq_count": 0,
+        "how_to_chars": 335,
+        "inci_chars": 960,
+        "active_ingredients_chars": 216,
+        "inci_applicability_status": "",
+        "ingredient_review_status": "",
+        "ingredient_remediation_action": "",
+        "bundle_component_refs_count": 0,
+        "effective_inci_chars": 960,
+        "inci_borrowed_from_product_id": ""
+      }
+    },
+    {
+      "seed_id": "eps_99fdbd45bdd9857653bf0f9c",
+      "external_product_id": "ext_74c97b6ba7db4f88e6f8bd85",
+      "market": "US",
+      "domain": "anua.com",
+      "title": "Retinol 0.1 Caffeine Revitalizing Eye Cream",
+      "canonical_url": "https://anua.com/products/retinol-0-1-caffeine-revitalizing-eye-cream",
+      "product_family": "single_formula",
+      "product_line_id": "pl_a65f20ffa9640166319f0273",
+      "identity_variant_axes": {
+        "multi_variant": false
+      },
+      "pivota_insights": {
+        "direct": {
+          "product_id": "ext_74c97b6ba7db4f88e6f8bd85",
+          "kb_key": "product:ext_74c97b6ba7db4f88e6f8bd85",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "seller_plus_formula",
+          "has_card_highlight": true
+        },
+        "effective": {
+          "product_id": "ext_74c97b6ba7db4f88e6f8bd85",
+          "kb_key": "product:ext_74c97b6ba7db4f88e6f8bd85",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "seller_plus_formula",
+          "has_card_highlight": true
+        },
+        "product_line_id": "pl_a65f20ffa9640166319f0273",
+        "borrowed_from_sibling": false
+      },
+      "active_ingredients": {
+        "status": "ready_hero",
+        "issues": [],
+        "regulatory_expected": false,
+        "hero_expected": true,
+        "active_items": [
+          "Retinol",
+          "Caffeine"
+        ],
+        "source_origin": "pdp_section",
+        "source_quality_status": "captured",
+        "coverage": {
+          "details_sections_count": 14,
+          "faq_count": 0,
+          "how_to_chars": 160,
+          "inci_chars": 1736,
+          "active_ingredients_chars": 239,
+          "inci_applicability_status": "",
+          "ingredient_review_status": "",
+          "ingredient_remediation_action": "",
+          "bundle_component_refs_count": 0,
+          "effective_inci_chars": 1736,
+          "inci_borrowed_from_product_id": ""
+        },
+        "invalid_fragments": [],
+        "suppressed_reason": null
+      },
+      "variants": {
+        "status": "ready",
+        "issues": [],
+        "visible_variant_rows": 1,
+        "examples": {
+          "identity_option_visible": [],
+          "wrong_axis_for_category": [],
+          "makeup_shade_missing_visual": [],
+          "size_value_generic_axis": [],
+          "default_option_size_evidence_missing_axis": [],
+          "identity_default_title_axis": []
+        }
+      },
+      "coverage": {
+        "details_sections_count": 14,
+        "faq_count": 0,
+        "how_to_chars": 160,
+        "inci_chars": 1736,
+        "active_ingredients_chars": 239,
+        "inci_applicability_status": "",
+        "ingredient_review_status": "",
+        "ingredient_remediation_action": "",
+        "bundle_component_refs_count": 0,
+        "effective_inci_chars": 1736,
+        "inci_borrowed_from_product_id": ""
+      }
+    },
+    {
+      "seed_id": "eps_ab2edc3322af0cc141de2dc7",
+      "external_product_id": "ext_7a5d69bfafd20e86b2559140",
+      "market": "US",
+      "domain": "anua.com",
+      "title": "PDRN Collagen Melting Patch For Glass Skin 4ea",
+      "canonical_url": "https://anua.com/products/pdrn-collagen-melting-patch-for-glass-skin-4ea",
+      "product_family": "single_formula",
+      "product_line_id": "pl_050e784336cec9034c1783e0",
+      "identity_variant_axes": {
+        "multi_variant": false
+      },
+      "pivota_insights": {
+        "direct": {
+          "product_id": "ext_7a5d69bfafd20e86b2559140",
+          "kb_key": "product:ext_7a5d69bfafd20e86b2559140",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "seller_plus_formula",
+          "has_card_highlight": true
+        },
+        "effective": {
+          "product_id": "ext_7a5d69bfafd20e86b2559140",
+          "kb_key": "product:ext_7a5d69bfafd20e86b2559140",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "seller_plus_formula",
+          "has_card_highlight": true
+        },
+        "product_line_id": "pl_050e784336cec9034c1783e0",
+        "borrowed_from_sibling": false
+      },
+      "active_ingredients": {
+        "status": "possibly_inci_guess",
+        "issues": [
+          "possibly_inci_guess"
+        ],
+        "regulatory_expected": false,
+        "hero_expected": true,
+        "active_items": [
+          "PDRN (Salmon DNA)",
+          "Collagen"
+        ],
+        "source_origin": "reviewed_source_backed_pdp_content_patch",
+        "source_quality_status": "blocked",
+        "coverage": {
+          "details_sections_count": 14,
+          "faq_count": 0,
+          "how_to_chars": 284,
+          "inci_chars": 84,
+          "active_ingredients_chars": 27,
+          "inci_applicability_status": "",
+          "ingredient_review_status": "manual_source_review_required",
+          "ingredient_remediation_action": "manual_source_review_required",
+          "bundle_component_refs_count": 0,
+          "effective_inci_chars": 84,
+          "inci_borrowed_from_product_id": ""
+        },
+        "invalid_fragments": [],
+        "suppressed_reason": null
+      },
+      "variants": {
+        "status": "ready",
+        "issues": [],
+        "visible_variant_rows": 1,
+        "examples": {
+          "identity_option_visible": [],
+          "wrong_axis_for_category": [],
+          "makeup_shade_missing_visual": [],
+          "size_value_generic_axis": [],
+          "default_option_size_evidence_missing_axis": [],
+          "identity_default_title_axis": []
+        }
+      },
+      "coverage": {
+        "details_sections_count": 14,
+        "faq_count": 0,
+        "how_to_chars": 284,
+        "inci_chars": 84,
+        "active_ingredients_chars": 27,
+        "inci_applicability_status": "",
+        "ingredient_review_status": "manual_source_review_required",
+        "ingredient_remediation_action": "manual_source_review_required",
+        "bundle_component_refs_count": 0,
+        "effective_inci_chars": 84,
+        "inci_borrowed_from_product_id": ""
+      }
+    },
+    {
+      "seed_id": "eps_6f8dc2461c350b82c5635c25",
+      "external_product_id": "ext_7e2a84aa6239ccd16452816a",
+      "market": "US",
+      "domain": "anua.com",
+      "title": "Niacinamide Tranexamic Acid Brightening Booster Toner",
+      "canonical_url": "https://anua.com/products/niacinamide-tranexamic-acid-brightening-booster-toner",
+      "product_family": "single_formula",
+      "product_line_id": "pl_591a1706ece4b88831414f35",
+      "identity_variant_axes": {
+        "multi_variant": false
+      },
+      "pivota_insights": {
+        "direct": {
+          "product_id": "ext_7e2a84aa6239ccd16452816a",
+          "kb_key": "product:ext_7e2a84aa6239ccd16452816a",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "seller_plus_formula",
+          "has_card_highlight": true
+        },
+        "effective": {
+          "product_id": "ext_7e2a84aa6239ccd16452816a",
+          "kb_key": "product:ext_7e2a84aa6239ccd16452816a",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "seller_plus_formula",
+          "has_card_highlight": true
+        },
+        "product_line_id": "pl_591a1706ece4b88831414f35",
+        "borrowed_from_sibling": false
+      },
+      "active_ingredients": {
+        "status": "ready_hero",
+        "issues": [],
+        "regulatory_expected": false,
+        "hero_expected": true,
+        "active_items": [
+          "Niacinamide",
+          "Tranexamic Acid",
+          "Vitamin B",
+          "Kojic Acid",
+          "Glutathione"
+        ],
+        "source_origin": "pdp_section",
+        "source_quality_status": "captured",
+        "coverage": {
+          "details_sections_count": 12,
+          "faq_count": 0,
+          "how_to_chars": 217,
+          "inci_chars": 668,
+          "active_ingredients_chars": 64,
+          "inci_applicability_status": "",
+          "ingredient_review_status": "manual_source_review_required",
+          "ingredient_remediation_action": "manual_source_review_required",
+          "bundle_component_refs_count": 0,
+          "effective_inci_chars": 668,
+          "inci_borrowed_from_product_id": ""
+        },
+        "invalid_fragments": [],
+        "suppressed_reason": null
+      },
+      "variants": {
+        "status": "ready",
+        "issues": [],
+        "visible_variant_rows": 1,
+        "examples": {
+          "identity_option_visible": [],
+          "wrong_axis_for_category": [],
+          "makeup_shade_missing_visual": [],
+          "size_value_generic_axis": [],
+          "default_option_size_evidence_missing_axis": [],
+          "identity_default_title_axis": []
+        }
+      },
+      "coverage": {
+        "details_sections_count": 12,
+        "faq_count": 0,
+        "how_to_chars": 217,
+        "inci_chars": 668,
+        "active_ingredients_chars": 64,
+        "inci_applicability_status": "",
+        "ingredient_review_status": "manual_source_review_required",
+        "ingredient_remediation_action": "manual_source_review_required",
+        "bundle_component_refs_count": 0,
+        "effective_inci_chars": 668,
+        "inci_borrowed_from_product_id": ""
+      }
+    },
+    {
+      "seed_id": "eps_98cf17607f58f0aa121bb60b",
+      "external_product_id": "ext_81d3882e68c275747ef88b3f",
+      "market": "US",
+      "domain": "anua.com",
+      "title": "Golden Honmoon Barrier Collagen Mask 4ea",
+      "canonical_url": "https://anua.com/products/golden-honmoon-barrier-collagen-mask-4ea",
+      "product_family": "single_formula",
+      "product_line_id": null,
+      "pivota_insights": {
+        "direct": {
+          "product_id": "ext_81d3882e68c275747ef88b3f",
+          "kb_key": "product:ext_81d3882e68c275747ef88b3f",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "seller_plus_formula",
+          "has_card_highlight": true
+        },
+        "effective": {
+          "product_id": "ext_81d3882e68c275747ef88b3f",
+          "kb_key": "product:ext_81d3882e68c275747ef88b3f",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "seller_plus_formula",
+          "has_card_highlight": true
+        },
+        "product_line_id": null,
+        "borrowed_from_sibling": false
+      },
+      "active_ingredients": {
+        "status": "ready_hero",
+        "issues": [],
+        "regulatory_expected": false,
+        "hero_expected": true,
+        "active_items": [
+          "Collagen",
+          "Ceramide NP",
+          "Panthenol",
+          "Niacinamide"
+        ],
+        "source_origin": "pdp_section",
+        "source_quality_status": "captured",
+        "coverage": {
+          "details_sections_count": 6,
+          "faq_count": 0,
+          "how_to_chars": 180,
+          "inci_chars": 621,
+          "active_ingredients_chars": 45,
+          "inci_applicability_status": "",
+          "ingredient_review_status": "manual_source_review_required",
+          "ingredient_remediation_action": "manual_source_review_required",
+          "bundle_component_refs_count": 0,
+          "effective_inci_chars": 621,
+          "inci_borrowed_from_product_id": ""
+        },
+        "invalid_fragments": [],
+        "suppressed_reason": null
+      },
+      "variants": {
+        "status": "ready",
+        "issues": [],
+        "visible_variant_rows": 1,
+        "examples": {
+          "identity_option_visible": [],
+          "wrong_axis_for_category": [],
+          "makeup_shade_missing_visual": [],
+          "size_value_generic_axis": [],
+          "default_option_size_evidence_missing_axis": [],
+          "identity_default_title_axis": []
+        }
+      },
+      "coverage": {
+        "details_sections_count": 6,
+        "faq_count": 0,
+        "how_to_chars": 180,
+        "inci_chars": 621,
+        "active_ingredients_chars": 45,
+        "inci_applicability_status": "",
+        "ingredient_review_status": "manual_source_review_required",
+        "ingredient_remediation_action": "manual_source_review_required",
+        "bundle_component_refs_count": 0,
+        "effective_inci_chars": 621,
+        "inci_borrowed_from_product_id": ""
+      }
+    },
+    {
+      "seed_id": "eps_41597caba9912523db7672ce",
+      "external_product_id": "ext_89a90a404a7ec1d4ef1cf02c",
+      "market": "US",
+      "domain": "anua.com",
+      "title": "PDRN Lip Serum",
+      "canonical_url": "https://anua.com/products/pdrn-lip-serum",
+      "product_family": "single_formula",
+      "product_line_id": "pl_62f5be412f3fe3fe8f5e2f02",
+      "identity_variant_axes": {
+        "multi_variant": false
+      },
+      "pivota_insights": {
+        "direct": {
+          "product_id": "ext_89a90a404a7ec1d4ef1cf02c",
+          "kb_key": "product:ext_89a90a404a7ec1d4ef1cf02c",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "seller_plus_formula",
+          "has_card_highlight": true
+        },
+        "effective": {
+          "product_id": "ext_89a90a404a7ec1d4ef1cf02c",
+          "kb_key": "product:ext_89a90a404a7ec1d4ef1cf02c",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "seller_plus_formula",
+          "has_card_highlight": true
+        },
+        "product_line_id": "pl_62f5be412f3fe3fe8f5e2f02",
+        "borrowed_from_sibling": false
+      },
+      "active_ingredients": {
+        "status": "missing_hero",
+        "issues": [
+          "missing_hero"
+        ],
+        "regulatory_expected": false,
+        "hero_expected": true,
+        "active_items": [],
+        "source_origin": "pdp_section",
+        "source_quality_status": "blocked",
+        "coverage": {
+          "details_sections_count": 10,
+          "faq_count": 0,
+          "how_to_chars": 105,
+          "inci_chars": 833,
+          "active_ingredients_chars": 238,
+          "inci_applicability_status": "",
+          "ingredient_review_status": "manual_source_review_required",
+          "ingredient_remediation_action": "manual_source_review_required",
+          "bundle_component_refs_count": 0,
+          "effective_inci_chars": 833,
+          "inci_borrowed_from_product_id": ""
+        },
+        "invalid_fragments": [],
+        "suppressed_reason": "active_items_not_displayable"
+      },
+      "variants": {
+        "status": "ready",
+        "issues": [],
+        "visible_variant_rows": 1,
+        "examples": {
+          "identity_option_visible": [],
+          "wrong_axis_for_category": [],
+          "makeup_shade_missing_visual": [],
+          "size_value_generic_axis": [],
+          "default_option_size_evidence_missing_axis": [],
+          "identity_default_title_axis": []
+        }
+      },
+      "coverage": {
+        "details_sections_count": 10,
+        "faq_count": 0,
+        "how_to_chars": 105,
+        "inci_chars": 833,
+        "active_ingredients_chars": 238,
+        "inci_applicability_status": "",
+        "ingredient_review_status": "manual_source_review_required",
+        "ingredient_remediation_action": "manual_source_review_required",
+        "bundle_component_refs_count": 0,
+        "effective_inci_chars": 833,
+        "inci_borrowed_from_product_id": ""
+      }
+    },
+    {
+      "seed_id": "eps_6995ab53ff014e9ad6ca564e",
+      "external_product_id": "ext_90449ff5d4f1744641462e22",
+      "market": "US",
+      "domain": "anua.com",
+      "title": "Rice 70 Glow Milky Toner",
+      "canonical_url": "https://anua.com/products/rice-70-glow-milky-toner",
+      "product_family": "single_formula",
+      "product_line_id": "pl_ba88e28bcb01fb5916f964ed",
+      "identity_variant_axes": {
+        "volume": "250ml",
+        "multi_variant": false
+      },
+      "pivota_insights": {
+        "direct": {
+          "product_id": "ext_90449ff5d4f1744641462e22",
+          "kb_key": "product:ext_90449ff5d4f1744641462e22",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "seller_plus_formula",
+          "has_card_highlight": true
+        },
+        "effective": {
+          "product_id": "ext_90449ff5d4f1744641462e22",
+          "kb_key": "product:ext_90449ff5d4f1744641462e22",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "seller_plus_formula",
+          "has_card_highlight": true
+        },
+        "product_line_id": "pl_ba88e28bcb01fb5916f964ed",
+        "borrowed_from_sibling": false
+      },
+      "active_ingredients": {
+        "status": "ready_hero",
+        "issues": [],
+        "regulatory_expected": false,
+        "hero_expected": true,
+        "active_items": [
+          "Niacinamide"
+        ],
+        "source_origin": "pdp_section",
+        "source_quality_status": "captured",
+        "coverage": {
+          "details_sections_count": 4,
+          "faq_count": 0,
+          "how_to_chars": 89,
+          "inci_chars": 692,
+          "active_ingredients_chars": 181,
+          "inci_applicability_status": "",
+          "ingredient_review_status": "",
+          "ingredient_remediation_action": "",
+          "bundle_component_refs_count": 0,
+          "effective_inci_chars": 692,
+          "inci_borrowed_from_product_id": ""
+        },
+        "invalid_fragments": [],
+        "suppressed_reason": null
+      },
+      "variants": {
+        "status": "ready",
+        "issues": [],
+        "visible_variant_rows": 1,
+        "examples": {
+          "identity_option_visible": [],
+          "wrong_axis_for_category": [],
+          "makeup_shade_missing_visual": [],
+          "size_value_generic_axis": [],
+          "default_option_size_evidence_missing_axis": [],
+          "identity_default_title_axis": []
+        }
+      },
+      "coverage": {
+        "details_sections_count": 4,
+        "faq_count": 0,
+        "how_to_chars": 89,
+        "inci_chars": 692,
+        "active_ingredients_chars": 181,
+        "inci_applicability_status": "",
+        "ingredient_review_status": "",
+        "ingredient_remediation_action": "",
+        "bundle_component_refs_count": 0,
+        "effective_inci_chars": 692,
+        "inci_borrowed_from_product_id": ""
+      }
+    },
+    {
+      "seed_id": "eps_e0dcaf01ddffe31f4c574eba",
+      "external_product_id": "ext_9b69ff3a05127e9e55ab3517",
+      "market": "US",
+      "domain": "anua.com",
+      "title": "Heartleaf Pore Cleansing Oil Mild",
+      "canonical_url": "https://anua.com/products/heartleaf-pore-cleansing-oil-mild",
+      "product_family": "single_formula",
+      "product_line_id": "pl_c3dba386cf226b4b0795e8fc",
+      "identity_variant_axes": {
+        "volume": "200ml",
+        "multi_variant": false
+      },
+      "pivota_insights": {
+        "direct": {
+          "product_id": "ext_9b69ff3a05127e9e55ab3517",
+          "kb_key": "product:ext_9b69ff3a05127e9e55ab3517",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "seller_plus_formula",
+          "has_card_highlight": true
+        },
+        "effective": {
+          "product_id": "ext_9b69ff3a05127e9e55ab3517",
+          "kb_key": "product:ext_9b69ff3a05127e9e55ab3517",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "seller_plus_formula",
+          "has_card_highlight": true
+        },
+        "product_line_id": "pl_c3dba386cf226b4b0795e8fc",
+        "borrowed_from_sibling": false
+      },
+      "active_ingredients": {
+        "status": "missing_hero",
+        "issues": [
+          "missing_hero"
+        ],
+        "regulatory_expected": false,
+        "hero_expected": true,
+        "active_items": [],
+        "source_origin": "pdp_section",
+        "source_quality_status": "blocked",
+        "coverage": {
+          "details_sections_count": 20,
+          "faq_count": 0,
+          "how_to_chars": 260,
+          "inci_chars": 281,
+          "active_ingredients_chars": 0,
+          "inci_applicability_status": "",
+          "ingredient_review_status": "",
+          "ingredient_remediation_action": "",
+          "bundle_component_refs_count": 0,
+          "effective_inci_chars": 281,
+          "inci_borrowed_from_product_id": ""
+        },
+        "invalid_fragments": [],
+        "suppressed_reason": "active_items_not_displayable"
+      },
+      "variants": {
+        "status": "ready",
+        "issues": [],
+        "visible_variant_rows": 1,
+        "examples": {
+          "identity_option_visible": [],
+          "wrong_axis_for_category": [],
+          "makeup_shade_missing_visual": [],
+          "size_value_generic_axis": [],
+          "default_option_size_evidence_missing_axis": [],
+          "identity_default_title_axis": []
+        }
+      },
+      "coverage": {
+        "details_sections_count": 20,
+        "faq_count": 0,
+        "how_to_chars": 260,
+        "inci_chars": 281,
+        "active_ingredients_chars": 0,
+        "inci_applicability_status": "",
+        "ingredient_review_status": "",
+        "ingredient_remediation_action": "",
+        "bundle_component_refs_count": 0,
+        "effective_inci_chars": 281,
+        "inci_borrowed_from_product_id": ""
+      }
+    },
+    {
+      "seed_id": "eps_ccb8d1d86c78b208e1caaf1d",
+      "external_product_id": "ext_a2f1e96902d6ae12e88a2113",
+      "market": "US",
+      "domain": "anua.com",
+      "title": "Zero-Cast Moisturizing Sunscreen SPF 50",
+      "canonical_url": "https://anua.com/products/zero-cast-moisturizing-sunscreen-spf-50",
+      "product_family": "single_formula",
+      "product_line_id": null,
+      "pivota_insights": {
+        "direct": {
+          "product_id": "ext_a2f1e96902d6ae12e88a2113",
+          "kb_key": "product:ext_a2f1e96902d6ae12e88a2113",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "seller_plus_formula",
+          "has_card_highlight": true
+        },
+        "effective": {
+          "product_id": "ext_a2f1e96902d6ae12e88a2113",
+          "kb_key": "product:ext_a2f1e96902d6ae12e88a2113",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "seller_plus_formula",
+          "has_card_highlight": true
+        },
+        "product_line_id": null,
+        "borrowed_from_sibling": false
+      },
+      "active_ingredients": {
+        "status": "ready_regulatory",
+        "issues": [],
+        "regulatory_expected": true,
+        "hero_expected": true,
+        "active_items": [
+          "Avobenzone",
+          "Octocrylene",
+          "Octisalate",
+          "Homosalate"
+        ],
+        "source_origin": "pdp_section",
+        "source_quality_status": "regulatory_active",
+        "coverage": {
+          "details_sections_count": 6,
+          "faq_count": 0,
+          "how_to_chars": 177,
+          "inci_chars": 430,
+          "active_ingredients_chars": 255,
+          "inci_applicability_status": "",
+          "ingredient_review_status": "manual_source_review_required",
+          "ingredient_remediation_action": "manual_source_review_required",
+          "bundle_component_refs_count": 0,
+          "effective_inci_chars": 430,
+          "inci_borrowed_from_product_id": ""
+        },
+        "invalid_fragments": [],
+        "suppressed_reason": null
+      },
+      "variants": {
+        "status": "ready",
+        "issues": [],
+        "visible_variant_rows": 1,
+        "examples": {
+          "identity_option_visible": [],
+          "wrong_axis_for_category": [],
+          "makeup_shade_missing_visual": [],
+          "size_value_generic_axis": [],
+          "default_option_size_evidence_missing_axis": [],
+          "identity_default_title_axis": []
+        }
+      },
+      "coverage": {
+        "details_sections_count": 6,
+        "faq_count": 0,
+        "how_to_chars": 177,
+        "inci_chars": 430,
+        "active_ingredients_chars": 255,
+        "inci_applicability_status": "",
+        "ingredient_review_status": "manual_source_review_required",
+        "ingredient_remediation_action": "manual_source_review_required",
+        "bundle_component_refs_count": 0,
+        "effective_inci_chars": 430,
+        "inci_borrowed_from_product_id": ""
+      }
+    },
+    {
+      "seed_id": "eps_bdb487a661d37d4ba7ab2ad2",
+      "external_product_id": "ext_a3ff031ecfa88381b40ace3a",
+      "market": "US",
+      "domain": "anua.com",
+      "title": "Heartleaf 77 Clear Pad",
+      "canonical_url": "https://anua.com/products/heartleaf-77-toner-pad-160ml",
+      "product_family": "single_formula",
+      "product_line_id": null,
+      "pivota_insights": {
+        "direct": {
+          "product_id": "ext_a3ff031ecfa88381b40ace3a",
+          "kb_key": "product:ext_a3ff031ecfa88381b40ace3a",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "seller_plus_formula",
+          "has_card_highlight": true
+        },
+        "effective": {
+          "product_id": "ext_a3ff031ecfa88381b40ace3a",
+          "kb_key": "product:ext_a3ff031ecfa88381b40ace3a",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "seller_plus_formula",
+          "has_card_highlight": true
+        },
+        "product_line_id": null,
+        "borrowed_from_sibling": false
+      },
+      "active_ingredients": {
+        "status": "not_expected_missing",
+        "issues": [],
+        "regulatory_expected": false,
+        "hero_expected": false,
+        "active_items": [],
+        "source_origin": "pdp_section",
+        "source_quality_status": "blocked",
+        "coverage": {
+          "details_sections_count": 4,
+          "faq_count": 0,
+          "how_to_chars": 146,
+          "inci_chars": 527,
+          "active_ingredients_chars": 267,
+          "inci_applicability_status": "",
+          "ingredient_review_status": "",
+          "ingredient_remediation_action": "manual_source_review_required",
+          "bundle_component_refs_count": 0,
+          "effective_inci_chars": 527,
+          "inci_borrowed_from_product_id": ""
+        },
+        "invalid_fragments": [],
+        "suppressed_reason": "active_items_not_displayable"
+      },
+      "variants": {
+        "status": "ready",
+        "issues": [],
+        "visible_variant_rows": 1,
+        "examples": {
+          "identity_option_visible": [],
+          "wrong_axis_for_category": [],
+          "makeup_shade_missing_visual": [],
+          "size_value_generic_axis": [],
+          "default_option_size_evidence_missing_axis": [],
+          "identity_default_title_axis": []
+        }
+      },
+      "coverage": {
+        "details_sections_count": 4,
+        "faq_count": 0,
+        "how_to_chars": 146,
+        "inci_chars": 527,
+        "active_ingredients_chars": 267,
+        "inci_applicability_status": "",
+        "ingredient_review_status": "",
+        "ingredient_remediation_action": "manual_source_review_required",
+        "bundle_component_refs_count": 0,
+        "effective_inci_chars": 527,
+        "inci_borrowed_from_product_id": ""
+      }
+    },
+    {
+      "seed_id": "eps_e647180c3482a70e59bdeccc",
+      "external_product_id": "ext_a406636157366f31879c4cbe",
+      "market": "US",
+      "domain": "anua.com",
+      "title": "Rumi Ultra-thin Spot Cover Patch (55ea)",
+      "canonical_url": "https://anua.com/products/rumi-ultra-thin-spot-cover-patch-55ea",
+      "product_family": "single_formula",
+      "product_line_id": null,
+      "pivota_insights": {
+        "direct": {
+          "product_id": "ext_a406636157366f31879c4cbe",
+          "kb_key": "product:ext_a406636157366f31879c4cbe",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "seller_plus_formula",
+          "has_card_highlight": true
+        },
+        "effective": {
+          "product_id": "ext_a406636157366f31879c4cbe",
+          "kb_key": "product:ext_a406636157366f31879c4cbe",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "seller_plus_formula",
+          "has_card_highlight": true
+        },
+        "product_line_id": null,
+        "borrowed_from_sibling": false
+      },
+      "active_ingredients": {
+        "status": "ready_hero",
+        "issues": [],
+        "regulatory_expected": false,
+        "hero_expected": true,
+        "active_items": [
+          "Hydrocolloid",
+          "Centella Asiatica Extract",
+          "Ceramide NP",
+          "Madecassoside"
+        ],
+        "source_origin": "pdp_section",
+        "source_quality_status": "captured",
+        "coverage": {
+          "details_sections_count": 4,
+          "faq_count": 0,
+          "how_to_chars": 170,
+          "inci_chars": 231,
+          "active_ingredients_chars": 67,
+          "inci_applicability_status": "",
+          "ingredient_review_status": "manual_source_review_required",
+          "ingredient_remediation_action": "manual_source_review_required",
+          "bundle_component_refs_count": 0,
+          "effective_inci_chars": 231,
+          "inci_borrowed_from_product_id": ""
+        },
+        "invalid_fragments": [],
+        "suppressed_reason": null
+      },
+      "variants": {
+        "status": "ready",
+        "issues": [],
+        "visible_variant_rows": 1,
+        "examples": {
+          "identity_option_visible": [],
+          "wrong_axis_for_category": [],
+          "makeup_shade_missing_visual": [],
+          "size_value_generic_axis": [],
+          "default_option_size_evidence_missing_axis": [],
+          "identity_default_title_axis": []
+        }
+      },
+      "coverage": {
+        "details_sections_count": 4,
+        "faq_count": 0,
+        "how_to_chars": 170,
+        "inci_chars": 231,
+        "active_ingredients_chars": 67,
+        "inci_applicability_status": "",
+        "ingredient_review_status": "manual_source_review_required",
+        "ingredient_remediation_action": "manual_source_review_required",
+        "bundle_component_refs_count": 0,
+        "effective_inci_chars": 231,
+        "inci_borrowed_from_product_id": ""
+      }
+    },
+    {
+      "seed_id": "eps_4ac445148549b14fd74bfba4",
+      "external_product_id": "ext_a8f35e2b8144176eca2d707b",
+      "market": "US",
+      "domain": "anua.com",
+      "title": "Heartleaf 70% Intense Calming Cream",
+      "canonical_url": "https://anua.global/products/heartleaf-70-intense-calming-cream",
+      "product_family": "single_formula",
+      "product_line_id": "pl_b47f04dc9a2a83311e1c4303",
+      "identity_variant_axes": {
+        "volume": "50ml",
+        "multi_variant": false
+      },
+      "pivota_insights": {
+        "direct": {
+          "product_id": "ext_a8f35e2b8144176eca2d707b",
+          "kb_key": "product:ext_a8f35e2b8144176eca2d707b",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "seller_plus_formula",
+          "has_card_highlight": true
+        },
+        "effective": {
+          "product_id": "ext_a8f35e2b8144176eca2d707b",
+          "kb_key": "product:ext_a8f35e2b8144176eca2d707b",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "seller_plus_formula",
+          "has_card_highlight": true
+        },
+        "product_line_id": "pl_b47f04dc9a2a83311e1c4303",
+        "borrowed_from_sibling": false
+      },
+      "active_ingredients": {
+        "status": "ready_hero",
+        "issues": [],
+        "regulatory_expected": false,
+        "hero_expected": true,
+        "active_items": [
+          "Ceramide NP",
+          "Panthenol (B5)"
+        ],
+        "source_origin": "pdp_section",
+        "source_quality_status": "captured",
+        "coverage": {
+          "details_sections_count": 6,
+          "faq_count": 0,
+          "how_to_chars": 134,
+          "inci_chars": 509,
+          "active_ingredients_chars": 0,
+          "inci_applicability_status": "",
+          "ingredient_review_status": "",
+          "ingredient_remediation_action": "",
+          "bundle_component_refs_count": 0,
+          "effective_inci_chars": 509,
+          "inci_borrowed_from_product_id": ""
+        },
+        "invalid_fragments": [],
+        "suppressed_reason": null
+      },
+      "variants": {
+        "status": "ready",
+        "issues": [],
+        "visible_variant_rows": 1,
+        "examples": {
+          "identity_option_visible": [],
+          "wrong_axis_for_category": [],
+          "makeup_shade_missing_visual": [],
+          "size_value_generic_axis": [],
+          "default_option_size_evidence_missing_axis": [],
+          "identity_default_title_axis": []
+        }
+      },
+      "coverage": {
+        "details_sections_count": 6,
+        "faq_count": 0,
+        "how_to_chars": 134,
+        "inci_chars": 509,
+        "active_ingredients_chars": 0,
+        "inci_applicability_status": "",
+        "ingredient_review_status": "",
+        "ingredient_remediation_action": "",
+        "bundle_component_refs_count": 0,
+        "effective_inci_chars": 509,
+        "inci_borrowed_from_product_id": ""
+      }
+    },
+    {
+      "seed_id": "eps_4f96fc236eb0e4e1ff615d68",
+      "external_product_id": "ext_afd80b796bd42b2bccb347e8",
+      "market": "US",
+      "domain": "anua.com",
+      "title": "Heartleaf 77 Soothing Toner",
+      "canonical_url": "https://anua.com/products/heartleaf-77-soothing-toner",
+      "product_family": "single_formula",
+      "product_line_id": "pl_de9051d571f592bd05f6babb",
+      "identity_variant_axes": {
+        "size": "250 ml",
+        "volume": "250ml",
+        "multi_variant": true
+      },
+      "pivota_insights": {
+        "direct": {
+          "product_id": "ext_afd80b796bd42b2bccb347e8",
+          "kb_key": "product:ext_afd80b796bd42b2bccb347e8",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "seller_plus_external_review",
+          "has_card_highlight": true
+        },
+        "effective": {
+          "product_id": "ext_afd80b796bd42b2bccb347e8",
+          "kb_key": "product:ext_afd80b796bd42b2bccb347e8",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "seller_plus_external_review",
+          "has_card_highlight": true
+        },
+        "product_line_id": "pl_de9051d571f592bd05f6babb",
+        "borrowed_from_sibling": false
+      },
+      "active_ingredients": {
+        "status": "ready_hero",
+        "issues": [],
+        "regulatory_expected": false,
+        "hero_expected": true,
+        "active_items": [
+          "Panthenol (B5)",
+          "Hyaluronic acid",
+          "Centella asiatica"
+        ],
+        "source_origin": "pdp_section",
+        "source_quality_status": "captured",
+        "coverage": {
+          "details_sections_count": 16,
+          "faq_count": 8,
+          "how_to_chars": 175,
+          "inci_chars": 576,
+          "active_ingredients_chars": 0,
+          "inci_applicability_status": "",
+          "ingredient_review_status": "",
+          "ingredient_remediation_action": "",
+          "bundle_component_refs_count": 0,
+          "effective_inci_chars": 576,
+          "inci_borrowed_from_product_id": ""
+        },
+        "invalid_fragments": [],
+        "suppressed_reason": null
+      },
+      "variants": {
+        "status": "ready",
+        "issues": [],
+        "visible_variant_rows": 2,
+        "examples": {
+          "identity_option_visible": [],
+          "wrong_axis_for_category": [],
+          "makeup_shade_missing_visual": [],
+          "size_value_generic_axis": [],
+          "default_option_size_evidence_missing_axis": [],
+          "identity_default_title_axis": []
+        }
+      },
+      "coverage": {
+        "details_sections_count": 16,
+        "faq_count": 8,
+        "how_to_chars": 175,
+        "inci_chars": 576,
+        "active_ingredients_chars": 0,
+        "inci_applicability_status": "",
+        "ingredient_review_status": "",
+        "ingredient_remediation_action": "",
+        "bundle_component_refs_count": 0,
+        "effective_inci_chars": 576,
+        "inci_borrowed_from_product_id": ""
+      }
+    },
+    {
+      "seed_id": "eps_f6eddb3cbef994a6b3006b61",
+      "external_product_id": "ext_b12c1e4982b04f2d60523d16",
+      "market": "US",
+      "domain": "anua.com",
+      "title": "Azelaic Acid 10 Hyaluron Redness Soothing Serum",
+      "canonical_url": "https://anua.com/products/azelaic-acid-10-hyaluron-redness-soothing-serum",
+      "product_family": "single_formula",
+      "product_line_id": "pl_1dc57b395b3d6910a278c559",
+      "identity_variant_axes": {
+        "multi_variant": false
+      },
+      "pivota_insights": {
+        "direct": {
+          "product_id": "ext_b12c1e4982b04f2d60523d16",
+          "kb_key": "product:ext_b12c1e4982b04f2d60523d16",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "seller_plus_formula",
+          "has_card_highlight": true
+        },
+        "effective": {
+          "product_id": "ext_b12c1e4982b04f2d60523d16",
+          "kb_key": "product:ext_b12c1e4982b04f2d60523d16",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "seller_plus_formula",
+          "has_card_highlight": true
+        },
+        "product_line_id": "pl_1dc57b395b3d6910a278c559",
+        "borrowed_from_sibling": false
+      },
+      "active_ingredients": {
+        "status": "ready_hero",
+        "issues": [],
+        "regulatory_expected": false,
+        "hero_expected": true,
+        "active_items": [
+          "Hyaluronic Acid",
+          "Azelaic Acid"
+        ],
+        "source_origin": "pdp_section",
+        "source_quality_status": "captured",
+        "coverage": {
+          "details_sections_count": 16,
+          "faq_count": 4,
+          "how_to_chars": 267,
+          "inci_chars": 674,
+          "active_ingredients_chars": 29,
+          "inci_applicability_status": "",
+          "ingredient_review_status": "",
+          "ingredient_remediation_action": "",
+          "bundle_component_refs_count": 0,
+          "effective_inci_chars": 674,
+          "inci_borrowed_from_product_id": ""
+        },
+        "invalid_fragments": [],
+        "suppressed_reason": null
+      },
+      "variants": {
+        "status": "ready",
+        "issues": [],
+        "visible_variant_rows": 1,
+        "examples": {
+          "identity_option_visible": [],
+          "wrong_axis_for_category": [],
+          "makeup_shade_missing_visual": [],
+          "size_value_generic_axis": [],
+          "default_option_size_evidence_missing_axis": [],
+          "identity_default_title_axis": []
+        }
+      },
+      "coverage": {
+        "details_sections_count": 16,
+        "faq_count": 4,
+        "how_to_chars": 267,
+        "inci_chars": 674,
+        "active_ingredients_chars": 29,
+        "inci_applicability_status": "",
+        "ingredient_review_status": "",
+        "ingredient_remediation_action": "",
+        "bundle_component_refs_count": 0,
+        "effective_inci_chars": 674,
+        "inci_borrowed_from_product_id": ""
+      }
+    },
+    {
+      "seed_id": "eps_15a9b7417bbcab6ccdbb2065",
+      "external_product_id": "ext_b16fd69f9a86ba825c0706ba",
+      "market": "US",
+      "domain": "anua.com",
+      "title": "8 Hyaluronic Acid Catechin Calming Pad",
+      "canonical_url": "https://anua.com/products/8-hyaluronic-acid-catechin-calming-pad",
+      "product_family": "single_formula",
+      "product_line_id": "pl_f9f2083133f48567fa4d324d",
+      "identity_variant_axes": {
+        "multi_variant": false
+      },
+      "pivota_insights": {
+        "direct": {
+          "product_id": "ext_b16fd69f9a86ba825c0706ba",
+          "kb_key": "product:ext_b16fd69f9a86ba825c0706ba",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "seller_plus_formula",
+          "has_card_highlight": true
+        },
+        "effective": {
+          "product_id": "ext_b16fd69f9a86ba825c0706ba",
+          "kb_key": "product:ext_b16fd69f9a86ba825c0706ba",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "seller_plus_formula",
+          "has_card_highlight": true
+        },
+        "product_line_id": "pl_f9f2083133f48567fa4d324d",
+        "borrowed_from_sibling": false
+      },
+      "active_ingredients": {
+        "status": "ready_hero",
+        "issues": [],
+        "regulatory_expected": false,
+        "hero_expected": true,
+        "active_items": [
+          "Green Tea Catechin",
+          "Tannic Acid",
+          "Caffeine",
+          "Ascorbic Acid",
+          "Hyaluronic Acid",
+          "Panthenol"
+        ],
+        "source_origin": "pdp_section",
+        "source_quality_status": "captured",
+        "coverage": {
+          "details_sections_count": 16,
+          "faq_count": 0,
+          "how_to_chars": 171,
+          "inci_chars": 1119,
+          "active_ingredients_chars": 84,
+          "inci_applicability_status": "",
+          "ingredient_review_status": "",
+          "ingredient_remediation_action": "",
+          "bundle_component_refs_count": 0,
+          "effective_inci_chars": 1119,
+          "inci_borrowed_from_product_id": ""
+        },
+        "invalid_fragments": [],
+        "suppressed_reason": null
+      },
+      "variants": {
+        "status": "ready",
+        "issues": [],
+        "visible_variant_rows": 1,
+        "examples": {
+          "identity_option_visible": [],
+          "wrong_axis_for_category": [],
+          "makeup_shade_missing_visual": [],
+          "size_value_generic_axis": [],
+          "default_option_size_evidence_missing_axis": [],
+          "identity_default_title_axis": []
+        }
+      },
+      "coverage": {
+        "details_sections_count": 16,
+        "faq_count": 0,
+        "how_to_chars": 171,
+        "inci_chars": 1119,
+        "active_ingredients_chars": 84,
+        "inci_applicability_status": "",
+        "ingredient_review_status": "",
+        "ingredient_remediation_action": "",
+        "bundle_component_refs_count": 0,
+        "effective_inci_chars": 1119,
+        "inci_borrowed_from_product_id": ""
+      }
+    },
+    {
+      "seed_id": "eps_b35a15d7199b60334adeb027",
+      "external_product_id": "ext_b6f494fde207dc3437d53b36",
+      "market": "US",
+      "domain": "anua.com",
+      "title": "PDRN Collagen Glow Facial Serum Spray",
+      "canonical_url": "https://anua.com/products/pdrn-100-hyaluronic-acid-hydrating-capsule-mist-100ml",
+      "product_family": "single_formula",
+      "product_line_id": "pl_5dcc1c153dd39a01a51f5cd6",
+      "identity_variant_axes": {
+        "volume": "100ml",
+        "multi_variant": false
+      },
+      "pivota_insights": {
+        "direct": {
+          "product_id": "ext_b6f494fde207dc3437d53b36",
+          "kb_key": "product:ext_b6f494fde207dc3437d53b36",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "seller_plus_formula",
+          "has_card_highlight": true
+        },
+        "effective": {
+          "product_id": "ext_b6f494fde207dc3437d53b36",
+          "kb_key": "product:ext_b6f494fde207dc3437d53b36",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "seller_plus_formula",
+          "has_card_highlight": true
+        },
+        "product_line_id": "pl_5dcc1c153dd39a01a51f5cd6",
+        "borrowed_from_sibling": false
+      },
+      "active_ingredients": {
+        "status": "ready_hero",
+        "issues": [],
+        "regulatory_expected": false,
+        "hero_expected": true,
+        "active_items": [
+          "Sodium DNA/PDRN",
+          "Hyaluronic Acid",
+          "Hydrolyzed Collagen",
+          "Panthenol",
+          "Allantoin",
+          "Ceramide NP"
+        ],
+        "source_origin": "pdp_section",
+        "source_quality_status": "captured",
+        "coverage": {
+          "details_sections_count": 14,
+          "faq_count": 0,
+          "how_to_chars": 142,
+          "inci_chars": 1712,
+          "active_ingredients_chars": 88,
+          "inci_applicability_status": "",
+          "ingredient_review_status": "manual_source_review_required",
+          "ingredient_remediation_action": "manual_source_review_required",
+          "bundle_component_refs_count": 0,
+          "effective_inci_chars": 1712,
+          "inci_borrowed_from_product_id": ""
+        },
+        "invalid_fragments": [],
+        "suppressed_reason": null
+      },
+      "variants": {
+        "status": "ready",
+        "issues": [],
+        "visible_variant_rows": 1,
+        "examples": {
+          "identity_option_visible": [],
+          "wrong_axis_for_category": [],
+          "makeup_shade_missing_visual": [],
+          "size_value_generic_axis": [],
+          "default_option_size_evidence_missing_axis": [],
+          "identity_default_title_axis": []
+        }
+      },
+      "coverage": {
+        "details_sections_count": 14,
+        "faq_count": 0,
+        "how_to_chars": 142,
+        "inci_chars": 1712,
+        "active_ingredients_chars": 88,
+        "inci_applicability_status": "",
+        "ingredient_review_status": "manual_source_review_required",
+        "ingredient_remediation_action": "manual_source_review_required",
+        "bundle_component_refs_count": 0,
+        "effective_inci_chars": 1712,
+        "inci_borrowed_from_product_id": ""
+      }
+    },
+    {
+      "seed_id": "eps_f1709b1614818a71f33ca1cb",
+      "external_product_id": "ext_bef0de79c945f6b223b1ae3d",
+      "market": "US",
+      "domain": "anua.com",
+      "title": "Nano Retinol™ 0.3% + Niacin Renewing Serum",
+      "canonical_url": "https://anua.com/products/nano-retinol-0-3-niacin-renewing-serum",
+      "product_family": "set_or_collection",
+      "product_line_id": "pl_14ea26cab60aabce142356a0",
+      "identity_variant_axes": {
+        "volume": "30ml",
+        "multi_variant": false
+      },
+      "pivota_insights": {
+        "direct": {
+          "product_id": "ext_bef0de79c945f6b223b1ae3d",
+          "kb_key": "product:ext_bef0de79c945f6b223b1ae3d",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "seller_plus_formula",
+          "has_card_highlight": true
+        },
+        "effective": {
+          "product_id": "ext_bef0de79c945f6b223b1ae3d",
+          "kb_key": "product:ext_bef0de79c945f6b223b1ae3d",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "seller_plus_formula",
+          "has_card_highlight": true
+        },
+        "product_line_id": "pl_14ea26cab60aabce142356a0",
+        "borrowed_from_sibling": false
+      },
+      "active_ingredients": {
+        "status": "not_applicable_product_family",
+        "issues": [],
+        "regulatory_expected": false,
+        "hero_expected": false,
+        "active_items": [],
+        "source_origin": "none",
+        "source_quality_status": "blocked",
+        "coverage": {
+          "details_sections_count": 10,
+          "faq_count": 0,
+          "how_to_chars": 183,
+          "inci_chars": 2112,
+          "active_ingredients_chars": 89,
+          "inci_applicability_status": "",
+          "ingredient_review_status": "",
+          "ingredient_remediation_action": "",
+          "bundle_component_refs_count": 0,
+          "effective_inci_chars": 2112,
+          "inci_borrowed_from_product_id": ""
+        },
+        "invalid_fragments": [],
+        "suppressed_reason": "set_or_collection"
+      },
+      "variants": {
+        "status": "ready",
+        "issues": [],
+        "visible_variant_rows": 1,
+        "examples": {
+          "identity_option_visible": [],
+          "wrong_axis_for_category": [],
+          "makeup_shade_missing_visual": [],
+          "size_value_generic_axis": [],
+          "default_option_size_evidence_missing_axis": [],
+          "identity_default_title_axis": []
+        }
+      },
+      "coverage": {
+        "details_sections_count": 10,
+        "faq_count": 0,
+        "how_to_chars": 183,
+        "inci_chars": 2112,
+        "active_ingredients_chars": 89,
+        "inci_applicability_status": "",
+        "ingredient_review_status": "",
+        "ingredient_remediation_action": "",
+        "bundle_component_refs_count": 0,
+        "effective_inci_chars": 2112,
+        "inci_borrowed_from_product_id": ""
+      }
+    },
+    {
+      "seed_id": "eps_3ce5a006be057a82ba9f48bd",
+      "external_product_id": "ext_c0f9f6ed3aaf31bc4f938c77",
+      "market": "US",
+      "domain": "anua.com",
+      "title": "Azelaic 10 Hyaluron Redness Soothing Pad",
+      "canonical_url": "https://anua.com/products/azelaic-10-hyaluron-redness-soothing-pad",
+      "product_family": "single_formula",
+      "product_line_id": "pl_48659eeb38e7e756800fcd00",
+      "identity_variant_axes": {
+        "multi_variant": false
+      },
+      "pivota_insights": {
+        "direct": {
+          "product_id": "ext_c0f9f6ed3aaf31bc4f938c77",
+          "kb_key": "product:ext_c0f9f6ed3aaf31bc4f938c77",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "seller_plus_formula",
+          "has_card_highlight": true
+        },
+        "effective": {
+          "product_id": "ext_c0f9f6ed3aaf31bc4f938c77",
+          "kb_key": "product:ext_c0f9f6ed3aaf31bc4f938c77",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "seller_plus_formula",
+          "has_card_highlight": true
+        },
+        "product_line_id": "pl_48659eeb38e7e756800fcd00",
+        "borrowed_from_sibling": false
+      },
+      "active_ingredients": {
+        "status": "ready_hero",
+        "issues": [],
+        "regulatory_expected": false,
+        "hero_expected": true,
+        "active_items": [
+          "Hyaluronic Acid",
+          "Azelaic Acid"
+        ],
+        "source_origin": "pdp_section",
+        "source_quality_status": "captured",
+        "coverage": {
+          "details_sections_count": 16,
+          "faq_count": 0,
+          "how_to_chars": 213,
+          "inci_chars": 1119,
+          "active_ingredients_chars": 29,
+          "inci_applicability_status": "",
+          "ingredient_review_status": "",
+          "ingredient_remediation_action": "",
+          "bundle_component_refs_count": 0,
+          "effective_inci_chars": 1119,
+          "inci_borrowed_from_product_id": ""
+        },
+        "invalid_fragments": [],
+        "suppressed_reason": null
+      },
+      "variants": {
+        "status": "ready",
+        "issues": [],
+        "visible_variant_rows": 1,
+        "examples": {
+          "identity_option_visible": [],
+          "wrong_axis_for_category": [],
+          "makeup_shade_missing_visual": [],
+          "size_value_generic_axis": [],
+          "default_option_size_evidence_missing_axis": [],
+          "identity_default_title_axis": []
+        }
+      },
+      "coverage": {
+        "details_sections_count": 16,
+        "faq_count": 0,
+        "how_to_chars": 213,
+        "inci_chars": 1119,
+        "active_ingredients_chars": 29,
+        "inci_applicability_status": "",
+        "ingredient_review_status": "",
+        "ingredient_remediation_action": "",
+        "bundle_component_refs_count": 0,
+        "effective_inci_chars": 1119,
+        "inci_borrowed_from_product_id": ""
+      }
+    },
+    {
+      "seed_id": "eps_d7cc8242b9e39841f2508569",
+      "external_product_id": "ext_d17f12785bf623c22e277f1b",
+      "market": "US",
+      "domain": "anua.com",
+      "title": "Heartleaf Pore Control Cleansing Oil",
+      "canonical_url": "https://anua.com/products/heartleaf-pore-control-cleansing-oil-200ml",
+      "product_family": "single_formula",
+      "product_line_id": "pl_b60f8a90a1aad4fbebb35e13",
+      "identity_variant_axes": {
+        "volume": "200ml",
+        "multi_variant": false
+      },
+      "pivota_insights": {
+        "direct": {
+          "product_id": "ext_d17f12785bf623c22e277f1b",
+          "kb_key": "product:ext_d17f12785bf623c22e277f1b",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "seller_plus_external_review",
+          "has_card_highlight": true
+        },
+        "effective": {
+          "product_id": "ext_d17f12785bf623c22e277f1b",
+          "kb_key": "product:ext_d17f12785bf623c22e277f1b",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "seller_plus_external_review",
+          "has_card_highlight": true
+        },
+        "product_line_id": "pl_b60f8a90a1aad4fbebb35e13",
+        "borrowed_from_sibling": false
+      },
+      "active_ingredients": {
+        "status": "missing_hero",
+        "issues": [
+          "missing_hero"
+        ],
+        "regulatory_expected": false,
+        "hero_expected": true,
+        "active_items": [],
+        "source_origin": "pdp_section",
+        "source_quality_status": "blocked",
+        "coverage": {
+          "details_sections_count": 18,
+          "faq_count": 6,
+          "how_to_chars": 234,
+          "inci_chars": 603,
+          "active_ingredients_chars": 0,
+          "inci_applicability_status": "",
+          "ingredient_review_status": "",
+          "ingredient_remediation_action": "",
+          "bundle_component_refs_count": 0,
+          "effective_inci_chars": 603,
+          "inci_borrowed_from_product_id": ""
+        },
+        "invalid_fragments": [],
+        "suppressed_reason": "active_items_not_displayable"
+      },
+      "variants": {
+        "status": "ready",
+        "issues": [],
+        "visible_variant_rows": 1,
+        "examples": {
+          "identity_option_visible": [],
+          "wrong_axis_for_category": [],
+          "makeup_shade_missing_visual": [],
+          "size_value_generic_axis": [],
+          "default_option_size_evidence_missing_axis": [],
+          "identity_default_title_axis": []
+        }
+      },
+      "coverage": {
+        "details_sections_count": 18,
+        "faq_count": 6,
+        "how_to_chars": 234,
+        "inci_chars": 603,
+        "active_ingredients_chars": 0,
+        "inci_applicability_status": "",
+        "ingredient_review_status": "",
+        "ingredient_remediation_action": "",
+        "bundle_component_refs_count": 0,
+        "effective_inci_chars": 603,
+        "inci_borrowed_from_product_id": ""
+      }
+    },
+    {
+      "seed_id": "eps_18aff3009d66f41af619e359",
+      "external_product_id": "ext_da5fd18ee97d6bc260336563",
+      "market": "US",
+      "domain": "anua.com",
+      "title": "Niacinamide 5 TXA Brightening Pad",
+      "canonical_url": "https://anua.com/products/niacinamide-5-txa-brightening-pad",
+      "product_family": "single_formula",
+      "product_line_id": "pl_ad7b5e446f8d309b3ce8fb56",
+      "identity_variant_axes": {
+        "multi_variant": false
+      },
+      "pivota_insights": {
+        "direct": {
+          "product_id": "ext_da5fd18ee97d6bc260336563",
+          "kb_key": "product:ext_da5fd18ee97d6bc260336563",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "seller_plus_formula",
+          "has_card_highlight": true
+        },
+        "effective": {
+          "product_id": "ext_da5fd18ee97d6bc260336563",
+          "kb_key": "product:ext_da5fd18ee97d6bc260336563",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "seller_plus_formula",
+          "has_card_highlight": true
+        },
+        "product_line_id": "pl_ad7b5e446f8d309b3ce8fb56",
+        "borrowed_from_sibling": false
+      },
+      "active_ingredients": {
+        "status": "ready_hero",
+        "issues": [],
+        "regulatory_expected": false,
+        "hero_expected": true,
+        "active_items": [
+          "Niacinamide"
+        ],
+        "source_origin": "pdp_section",
+        "source_quality_status": "captured",
+        "coverage": {
+          "details_sections_count": 18,
+          "faq_count": 0,
+          "how_to_chars": 213,
+          "inci_chars": 959,
+          "active_ingredients_chars": 11,
+          "inci_applicability_status": "",
+          "ingredient_review_status": "",
+          "ingredient_remediation_action": "",
+          "bundle_component_refs_count": 0,
+          "effective_inci_chars": 959,
+          "inci_borrowed_from_product_id": ""
+        },
+        "invalid_fragments": [],
+        "suppressed_reason": null
+      },
+      "variants": {
+        "status": "ready",
+        "issues": [],
+        "visible_variant_rows": 1,
+        "examples": {
+          "identity_option_visible": [],
+          "wrong_axis_for_category": [],
+          "makeup_shade_missing_visual": [],
+          "size_value_generic_axis": [],
+          "default_option_size_evidence_missing_axis": [],
+          "identity_default_title_axis": []
+        }
+      },
+      "coverage": {
+        "details_sections_count": 18,
+        "faq_count": 0,
+        "how_to_chars": 213,
+        "inci_chars": 959,
+        "active_ingredients_chars": 11,
+        "inci_applicability_status": "",
+        "ingredient_review_status": "",
+        "ingredient_remediation_action": "",
+        "bundle_component_refs_count": 0,
+        "effective_inci_chars": 959,
+        "inci_borrowed_from_product_id": ""
+      }
+    },
+    {
+      "seed_id": "eps_19088609cf2c0d7d64eefbb4",
+      "external_product_id": "ext_db88dbed2befc1ea2a92f811",
+      "market": "US",
+      "domain": "anua.com",
+      "title": "Peach 70 Niacin Brightening Collagen Mask",
+      "canonical_url": "https://anua.com/products/peach-70-niacin-brightening-collagen-mask",
+      "product_family": "single_formula",
+      "product_line_id": "pl_8bba6dcbf425929599ebd30e",
+      "identity_variant_axes": {
+        "multi_variant": false
+      },
+      "pivota_insights": {
+        "direct": {
+          "product_id": "ext_db88dbed2befc1ea2a92f811",
+          "kb_key": "product:ext_db88dbed2befc1ea2a92f811",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "seller_plus_formula",
+          "has_card_highlight": true
+        },
+        "effective": {
+          "product_id": "ext_db88dbed2befc1ea2a92f811",
+          "kb_key": "product:ext_db88dbed2befc1ea2a92f811",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "seller_plus_formula",
+          "has_card_highlight": true
+        },
+        "product_line_id": "pl_8bba6dcbf425929599ebd30e",
+        "borrowed_from_sibling": false
+      },
+      "active_ingredients": {
+        "status": "ready_hero",
+        "issues": [],
+        "regulatory_expected": false,
+        "hero_expected": true,
+        "active_items": [
+          "Niacinamide"
+        ],
+        "source_origin": "pdp_section",
+        "source_quality_status": "captured",
+        "coverage": {
+          "details_sections_count": 16,
+          "faq_count": 0,
+          "how_to_chars": 186,
+          "inci_chars": 946,
+          "active_ingredients_chars": 11,
+          "inci_applicability_status": "",
+          "ingredient_review_status": "",
+          "ingredient_remediation_action": "",
+          "bundle_component_refs_count": 0,
+          "effective_inci_chars": 946,
+          "inci_borrowed_from_product_id": ""
+        },
+        "invalid_fragments": [],
+        "suppressed_reason": null
+      },
+      "variants": {
+        "status": "ready",
+        "issues": [],
+        "visible_variant_rows": 1,
+        "examples": {
+          "identity_option_visible": [],
+          "wrong_axis_for_category": [],
+          "makeup_shade_missing_visual": [],
+          "size_value_generic_axis": [],
+          "default_option_size_evidence_missing_axis": [],
+          "identity_default_title_axis": []
+        }
+      },
+      "coverage": {
+        "details_sections_count": 16,
+        "faq_count": 0,
+        "how_to_chars": 186,
+        "inci_chars": 946,
+        "active_ingredients_chars": 11,
+        "inci_applicability_status": "",
+        "ingredient_review_status": "",
+        "ingredient_remediation_action": "",
+        "bundle_component_refs_count": 0,
+        "effective_inci_chars": 946,
+        "inci_borrowed_from_product_id": ""
+      }
+    },
+    {
+      "seed_id": "eps_41f6d49c8b0158d0d23304cb",
+      "external_product_id": "ext_dd413eecb0550e8275844c88",
+      "market": "US",
+      "domain": "anua.com",
+      "title": "Heartleaf Low pH Deep Cleansing Water",
+      "canonical_url": "https://anua.com/products/heartleaf-low-ph-deep-cleansing-water",
+      "product_family": "single_formula",
+      "product_line_id": "pl_4f0452fba03b43422f3404b0",
+      "identity_variant_axes": {
+        "volume": "63oz",
+        "multi_variant": false
+      },
+      "pivota_insights": {
+        "direct": {
+          "product_id": "ext_dd413eecb0550e8275844c88",
+          "kb_key": "product:ext_dd413eecb0550e8275844c88",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "seller_plus_formula",
+          "has_card_highlight": true
+        },
+        "effective": {
+          "product_id": "ext_dd413eecb0550e8275844c88",
+          "kb_key": "product:ext_dd413eecb0550e8275844c88",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "seller_plus_formula",
+          "has_card_highlight": true
+        },
+        "product_line_id": "pl_4f0452fba03b43422f3404b0",
+        "borrowed_from_sibling": false
+      },
+      "active_ingredients": {
+        "status": "ready_hero",
+        "issues": [],
+        "regulatory_expected": false,
+        "hero_expected": true,
+        "active_items": [
+          "Panthenol"
+        ],
+        "source_origin": "pdp_section",
+        "source_quality_status": "captured",
+        "coverage": {
+          "details_sections_count": 10,
+          "faq_count": 0,
+          "how_to_chars": 212,
+          "inci_chars": 188,
+          "active_ingredients_chars": 9,
+          "inci_applicability_status": "",
+          "ingredient_review_status": "manual_source_review_required",
+          "ingredient_remediation_action": "manual_source_review_required",
+          "bundle_component_refs_count": 0,
+          "effective_inci_chars": 188,
+          "inci_borrowed_from_product_id": ""
+        },
+        "invalid_fragments": [],
+        "suppressed_reason": null
+      },
+      "variants": {
+        "status": "ready",
+        "issues": [],
+        "visible_variant_rows": 1,
+        "examples": {
+          "identity_option_visible": [],
+          "wrong_axis_for_category": [],
+          "makeup_shade_missing_visual": [],
+          "size_value_generic_axis": [],
+          "default_option_size_evidence_missing_axis": [],
+          "identity_default_title_axis": []
+        }
+      },
+      "coverage": {
+        "details_sections_count": 10,
+        "faq_count": 0,
+        "how_to_chars": 212,
+        "inci_chars": 188,
+        "active_ingredients_chars": 9,
+        "inci_applicability_status": "",
+        "ingredient_review_status": "manual_source_review_required",
+        "ingredient_remediation_action": "manual_source_review_required",
+        "bundle_component_refs_count": 0,
+        "effective_inci_chars": 188,
+        "inci_borrowed_from_product_id": ""
+      }
+    },
+    {
+      "seed_id": "eps_f736a88bf16d7ae2071661a2",
+      "external_product_id": "ext_df4d56308c3375c430514d29",
+      "market": "US",
+      "domain": "anua.com",
+      "title": "Peach 70% Niacinamide Serum",
+      "canonical_url": "https://anua.com/products/peach-70-niacinamide-serum-30ml",
+      "product_family": "single_formula",
+      "product_line_id": null,
+      "pivota_insights": {
+        "direct": {
+          "product_id": "ext_df4d56308c3375c430514d29",
+          "kb_key": "product:ext_df4d56308c3375c430514d29",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "seller_plus_formula",
+          "has_card_highlight": true
+        },
+        "effective": {
+          "product_id": "ext_df4d56308c3375c430514d29",
+          "kb_key": "product:ext_df4d56308c3375c430514d29",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "seller_plus_formula",
+          "has_card_highlight": true
+        },
+        "product_line_id": null,
+        "borrowed_from_sibling": false
+      },
+      "active_ingredients": {
+        "status": "ready_hero",
+        "issues": [],
+        "regulatory_expected": false,
+        "hero_expected": true,
+        "active_items": [
+          "Peach fruit extract",
+          "Niacinamide",
+          "Alpha-Arbutin",
+          "Sodium Hyaluronate",
+          "Panthenol",
+          "Ceramide NP"
+        ],
+        "source_origin": "pdp_section",
+        "source_quality_status": "captured",
+        "coverage": {
+          "details_sections_count": 4,
+          "faq_count": 0,
+          "how_to_chars": 191,
+          "inci_chars": 1005,
+          "active_ingredients_chars": 91,
+          "inci_applicability_status": "",
+          "ingredient_review_status": "",
+          "ingredient_remediation_action": "manual_source_review_required",
+          "bundle_component_refs_count": 0,
+          "effective_inci_chars": 1005,
+          "inci_borrowed_from_product_id": ""
+        },
+        "invalid_fragments": [],
+        "suppressed_reason": null
+      },
+      "variants": {
+        "status": "ready",
+        "issues": [],
+        "visible_variant_rows": 1,
+        "examples": {
+          "identity_option_visible": [],
+          "wrong_axis_for_category": [],
+          "makeup_shade_missing_visual": [],
+          "size_value_generic_axis": [],
+          "default_option_size_evidence_missing_axis": [],
+          "identity_default_title_axis": []
+        }
+      },
+      "coverage": {
+        "details_sections_count": 4,
+        "faq_count": 0,
+        "how_to_chars": 191,
+        "inci_chars": 1005,
+        "active_ingredients_chars": 91,
+        "inci_applicability_status": "",
+        "ingredient_review_status": "",
+        "ingredient_remediation_action": "manual_source_review_required",
+        "bundle_component_refs_count": 0,
+        "effective_inci_chars": 1005,
+        "inci_borrowed_from_product_id": ""
+      }
+    },
+    {
+      "seed_id": "eps_0464aeddb4c5390b61ec2a4a",
+      "external_product_id": "ext_e99eaa64c53b8ba6b16db8b0",
+      "market": "US",
+      "domain": "anua.com",
+      "title": "3 Ceramide Panthenol Moisture Barrier Cream",
+      "canonical_url": "https://anua.com/products/3-ceramide-panthenol-moisture-barrier-cream",
+      "product_family": "single_formula",
+      "product_line_id": "pl_41805da114e8095703ad9fe3",
+      "identity_variant_axes": {
+        "volume": "100ml",
+        "multi_variant": false
+      },
+      "pivota_insights": {
+        "direct": {
+          "product_id": "ext_e99eaa64c53b8ba6b16db8b0",
+          "kb_key": "product:ext_e99eaa64c53b8ba6b16db8b0",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "seller_plus_formula",
+          "has_card_highlight": true
+        },
+        "effective": {
+          "product_id": "ext_e99eaa64c53b8ba6b16db8b0",
+          "kb_key": "product:ext_e99eaa64c53b8ba6b16db8b0",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "seller_plus_formula",
+          "has_card_highlight": true
+        },
+        "product_line_id": "pl_41805da114e8095703ad9fe3",
+        "borrowed_from_sibling": false
+      },
+      "active_ingredients": {
+        "status": "ready_hero",
+        "issues": [],
+        "regulatory_expected": false,
+        "hero_expected": true,
+        "active_items": [
+          "Hyaluronic Acid",
+          "Panthenol",
+          "Ceramide",
+          "Centella Asiatica Extract"
+        ],
+        "source_origin": "pdp_section",
+        "source_quality_status": "captured",
+        "coverage": {
+          "details_sections_count": 16,
+          "faq_count": 0,
+          "how_to_chars": 184,
+          "inci_chars": 1267,
+          "active_ingredients_chars": 63,
+          "inci_applicability_status": "",
+          "ingredient_review_status": "",
+          "ingredient_remediation_action": "",
+          "bundle_component_refs_count": 0,
+          "effective_inci_chars": 1267,
+          "inci_borrowed_from_product_id": ""
+        },
+        "invalid_fragments": [],
+        "suppressed_reason": null
+      },
+      "variants": {
+        "status": "ready",
+        "issues": [],
+        "visible_variant_rows": 1,
+        "examples": {
+          "identity_option_visible": [],
+          "wrong_axis_for_category": [],
+          "makeup_shade_missing_visual": [],
+          "size_value_generic_axis": [],
+          "default_option_size_evidence_missing_axis": [],
+          "identity_default_title_axis": []
+        }
+      },
+      "coverage": {
+        "details_sections_count": 16,
+        "faq_count": 0,
+        "how_to_chars": 184,
+        "inci_chars": 1267,
+        "active_ingredients_chars": 63,
+        "inci_applicability_status": "",
+        "ingredient_review_status": "",
+        "ingredient_remediation_action": "",
+        "bundle_component_refs_count": 0,
+        "effective_inci_chars": 1267,
+        "inci_borrowed_from_product_id": ""
+      }
+    },
+    {
+      "seed_id": "eps_40c97180119c54e3bc76ac30",
+      "external_product_id": "ext_ee5fc0906e7b14f737275a8c",
+      "market": "US",
+      "domain": "anua.com",
+      "title": "Azelaic Acid CICA Skin Soothing Moisturizer",
+      "canonical_url": "https://anua.com/products/azelaic-acid-cica-skin-soothing-moisturizer",
+      "product_family": "single_formula",
+      "product_line_id": "pl_64da0912c6fb5fa5a3d16ee4",
+      "identity_variant_axes": {
+        "multi_variant": false
+      },
+      "pivota_insights": {
+        "direct": {
+          "product_id": "ext_ee5fc0906e7b14f737275a8c",
+          "kb_key": "product:ext_ee5fc0906e7b14f737275a8c",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "seller_plus_formula",
+          "has_card_highlight": true
+        },
+        "effective": {
+          "product_id": "ext_ee5fc0906e7b14f737275a8c",
+          "kb_key": "product:ext_ee5fc0906e7b14f737275a8c",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "seller_plus_formula",
+          "has_card_highlight": true
+        },
+        "product_line_id": "pl_64da0912c6fb5fa5a3d16ee4",
+        "borrowed_from_sibling": false
+      },
+      "active_ingredients": {
+        "status": "ready_hero",
+        "issues": [],
+        "regulatory_expected": false,
+        "hero_expected": true,
+        "active_items": [
+          "Azelaic Acid"
+        ],
+        "source_origin": "pdp_section",
+        "source_quality_status": "captured",
+        "coverage": {
+          "details_sections_count": 10,
+          "faq_count": 0,
+          "how_to_chars": 229,
+          "inci_chars": 1126,
+          "active_ingredients_chars": 12,
+          "inci_applicability_status": "",
+          "ingredient_review_status": "manual_source_review_required",
+          "ingredient_remediation_action": "manual_source_review_required",
+          "bundle_component_refs_count": 0,
+          "effective_inci_chars": 1126,
+          "inci_borrowed_from_product_id": ""
+        },
+        "invalid_fragments": [],
+        "suppressed_reason": null
+      },
+      "variants": {
+        "status": "ready",
+        "issues": [],
+        "visible_variant_rows": 1,
+        "examples": {
+          "identity_option_visible": [],
+          "wrong_axis_for_category": [],
+          "makeup_shade_missing_visual": [],
+          "size_value_generic_axis": [],
+          "default_option_size_evidence_missing_axis": [],
+          "identity_default_title_axis": []
+        }
+      },
+      "coverage": {
+        "details_sections_count": 10,
+        "faq_count": 0,
+        "how_to_chars": 229,
+        "inci_chars": 1126,
+        "active_ingredients_chars": 12,
+        "inci_applicability_status": "",
+        "ingredient_review_status": "manual_source_review_required",
+        "ingredient_remediation_action": "manual_source_review_required",
+        "bundle_component_refs_count": 0,
+        "effective_inci_chars": 1126,
+        "inci_borrowed_from_product_id": ""
+      }
+    },
+    {
+      "seed_id": "eps_7c71a714a3e40066f3dbe81e",
+      "external_product_id": "ext_eeaa60fdc9e5d58f427289cc",
+      "market": "US",
+      "domain": "anua.com",
+      "title": "Peach 77 Niacin Essence Toner",
+      "canonical_url": "https://anua.com/products/peach-77-niacin-essence-toner-1",
+      "product_family": "single_formula",
+      "product_line_id": null,
+      "pivota_insights": {
+        "direct": {
+          "product_id": "ext_eeaa60fdc9e5d58f427289cc",
+          "kb_key": "product:ext_eeaa60fdc9e5d58f427289cc",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "seller_plus_formula",
+          "has_card_highlight": true
+        },
+        "effective": {
+          "product_id": "ext_eeaa60fdc9e5d58f427289cc",
+          "kb_key": "product:ext_eeaa60fdc9e5d58f427289cc",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "seller_plus_formula",
+          "has_card_highlight": true
+        },
+        "product_line_id": null,
+        "borrowed_from_sibling": false
+      },
+      "active_ingredients": {
+        "status": "ready_hero",
+        "issues": [],
+        "regulatory_expected": false,
+        "hero_expected": true,
+        "active_items": [
+          "Peach Fruit Water",
+          "Niacinamide",
+          "Alpha-Arbutin",
+          "Panthenol",
+          "Ceramide NP",
+          "Sodium Hyaluronate",
+          "Ferment Extracts"
+        ],
+        "source_origin": "pdp_section",
+        "source_quality_status": "captured",
+        "coverage": {
+          "details_sections_count": 8,
+          "faq_count": 0,
+          "how_to_chars": 139,
+          "inci_chars": 1219,
+          "active_ingredients_chars": 107,
+          "inci_applicability_status": "",
+          "ingredient_review_status": "",
+          "ingredient_remediation_action": "manual_source_review_required",
+          "bundle_component_refs_count": 0,
+          "effective_inci_chars": 1219,
+          "inci_borrowed_from_product_id": ""
+        },
+        "invalid_fragments": [],
+        "suppressed_reason": null
+      },
+      "variants": {
+        "status": "ready",
+        "issues": [],
+        "visible_variant_rows": 1,
+        "examples": {
+          "identity_option_visible": [],
+          "wrong_axis_for_category": [],
+          "makeup_shade_missing_visual": [],
+          "size_value_generic_axis": [],
+          "default_option_size_evidence_missing_axis": [],
+          "identity_default_title_axis": []
+        }
+      },
+      "coverage": {
+        "details_sections_count": 8,
+        "faq_count": 0,
+        "how_to_chars": 139,
+        "inci_chars": 1219,
+        "active_ingredients_chars": 107,
+        "inci_applicability_status": "",
+        "ingredient_review_status": "",
+        "ingredient_remediation_action": "manual_source_review_required",
+        "bundle_component_refs_count": 0,
+        "effective_inci_chars": 1219,
+        "inci_borrowed_from_product_id": ""
+      }
+    },
+    {
+      "seed_id": "eps_fb74e6e6d615d4946a15cbf1",
+      "external_product_id": "ext_f11409f7ce9eea409f42ddef",
+      "market": "US",
+      "domain": "anua.com",
+      "title": "Peach 77 Niacin Enriched Cream",
+      "canonical_url": "https://anua.com/products/peach-77-niacin-enriched-cream",
+      "product_family": "single_formula",
+      "product_line_id": "pl_8b5a9d34ee625acc65396051",
+      "identity_variant_axes": {
+        "volume": "50ml",
+        "multi_variant": false
+      },
+      "pivota_insights": {
+        "direct": {
+          "product_id": "ext_f11409f7ce9eea409f42ddef",
+          "kb_key": "product:ext_f11409f7ce9eea409f42ddef",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "seller_plus_formula",
+          "has_card_highlight": true
+        },
+        "effective": {
+          "product_id": "ext_f11409f7ce9eea409f42ddef",
+          "kb_key": "product:ext_f11409f7ce9eea409f42ddef",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "seller_plus_formula",
+          "has_card_highlight": true
+        },
+        "product_line_id": "pl_8b5a9d34ee625acc65396051",
+        "borrowed_from_sibling": false
+      },
+      "active_ingredients": {
+        "status": "ready_hero",
+        "issues": [],
+        "regulatory_expected": false,
+        "hero_expected": true,
+        "active_items": [
+          "Ceramide NP",
+          "Panthenol (B5)",
+          "Niacinamide"
+        ],
+        "source_origin": "pdp_section",
+        "source_quality_status": "captured",
+        "coverage": {
+          "details_sections_count": 16,
+          "faq_count": 0,
+          "how_to_chars": 165,
+          "inci_chars": 826,
+          "active_ingredients_chars": 284,
+          "inci_applicability_status": "",
+          "ingredient_review_status": "",
+          "ingredient_remediation_action": "",
+          "bundle_component_refs_count": 0,
+          "effective_inci_chars": 826,
+          "inci_borrowed_from_product_id": ""
+        },
+        "invalid_fragments": [],
+        "suppressed_reason": null
+      },
+      "variants": {
+        "status": "ready",
+        "issues": [],
+        "visible_variant_rows": 1,
+        "examples": {
+          "identity_option_visible": [],
+          "wrong_axis_for_category": [],
+          "makeup_shade_missing_visual": [],
+          "size_value_generic_axis": [],
+          "default_option_size_evidence_missing_axis": [],
+          "identity_default_title_axis": []
+        }
+      },
+      "coverage": {
+        "details_sections_count": 16,
+        "faq_count": 0,
+        "how_to_chars": 165,
+        "inci_chars": 826,
+        "active_ingredients_chars": 284,
+        "inci_applicability_status": "",
+        "ingredient_review_status": "",
+        "ingredient_remediation_action": "",
+        "bundle_component_refs_count": 0,
+        "effective_inci_chars": 826,
+        "inci_borrowed_from_product_id": ""
+      }
+    },
+    {
+      "seed_id": "eps_176eee2e27bd7c03e0fbe94d",
+      "external_product_id": "ext_f20e51d2e8b7a6b8879bf4b7",
+      "market": "US",
+      "domain": "anua.com",
+      "title": "Heartleaf Centella Red Spot Cream",
+      "canonical_url": "https://anua.com/products/heartleaf-centella-red-spot-cream",
+      "product_family": "single_formula",
+      "product_line_id": "pl_a63af660a3516925bc168cea",
+      "identity_variant_axes": {
+        "volume": "30g",
+        "multi_variant": false
+      },
+      "pivota_insights": {
+        "direct": {
+          "product_id": "ext_f20e51d2e8b7a6b8879bf4b7",
+          "kb_key": "product:ext_f20e51d2e8b7a6b8879bf4b7",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "seller_plus_formula",
+          "has_card_highlight": true
+        },
+        "effective": {
+          "product_id": "ext_f20e51d2e8b7a6b8879bf4b7",
+          "kb_key": "product:ext_f20e51d2e8b7a6b8879bf4b7",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "seller_plus_formula",
+          "has_card_highlight": true
+        },
+        "product_line_id": "pl_a63af660a3516925bc168cea",
+        "borrowed_from_sibling": false
+      },
+      "active_ingredients": {
+        "status": "ready_hero",
+        "issues": [],
+        "regulatory_expected": false,
+        "hero_expected": true,
+        "active_items": [
+          "Heartleaf water",
+          "Centellica complex",
+          "Panthenol",
+          "Sorbitol",
+          "Niacinamide",
+          "Ceramide NP"
+        ],
+        "source_origin": "pdp_section",
+        "source_quality_status": "captured",
+        "coverage": {
+          "details_sections_count": 4,
+          "faq_count": 0,
+          "how_to_chars": 177,
+          "inci_chars": 1487,
+          "active_ingredients_chars": 82,
+          "inci_applicability_status": "",
+          "ingredient_review_status": "",
+          "ingredient_remediation_action": "",
+          "bundle_component_refs_count": 0,
+          "effective_inci_chars": 1487,
+          "inci_borrowed_from_product_id": ""
+        },
+        "invalid_fragments": [],
+        "suppressed_reason": null
+      },
+      "variants": {
+        "status": "ready",
+        "issues": [],
+        "visible_variant_rows": 1,
+        "examples": {
+          "identity_option_visible": [],
+          "wrong_axis_for_category": [],
+          "makeup_shade_missing_visual": [],
+          "size_value_generic_axis": [],
+          "default_option_size_evidence_missing_axis": [],
+          "identity_default_title_axis": []
+        }
+      },
+      "coverage": {
+        "details_sections_count": 4,
+        "faq_count": 0,
+        "how_to_chars": 177,
+        "inci_chars": 1487,
+        "active_ingredients_chars": 82,
+        "inci_applicability_status": "",
+        "ingredient_review_status": "",
+        "ingredient_remediation_action": "",
+        "bundle_component_refs_count": 0,
+        "effective_inci_chars": 1487,
+        "inci_borrowed_from_product_id": ""
+      }
+    },
+    {
+      "seed_id": "eps_04ad5665c3a1321ad967b623",
+      "external_product_id": "ext_f373e262cb0c5dbcc244ea9a",
+      "market": "US",
+      "domain": "anua.com",
+      "title": "Azelaic 3 Cica Skin Clarifying Toner",
+      "canonical_url": "https://anua.com/products/azelaic-3-cica-skin-clarifying-toner",
+      "product_family": "single_formula",
+      "product_line_id": "pl_a7bbfc876ea0dfa05f55c227",
+      "identity_variant_axes": {
+        "multi_variant": false
+      },
+      "pivota_insights": {
+        "direct": {
+          "product_id": "ext_f373e262cb0c5dbcc244ea9a",
+          "kb_key": "product:ext_f373e262cb0c5dbcc244ea9a",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "seller_plus_formula",
+          "has_card_highlight": true
+        },
+        "effective": {
+          "product_id": "ext_f373e262cb0c5dbcc244ea9a",
+          "kb_key": "product:ext_f373e262cb0c5dbcc244ea9a",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "seller_plus_formula",
+          "has_card_highlight": true
+        },
+        "product_line_id": "pl_a7bbfc876ea0dfa05f55c227",
+        "borrowed_from_sibling": false
+      },
+      "active_ingredients": {
+        "status": "ready_hero",
+        "issues": [],
+        "regulatory_expected": false,
+        "hero_expected": true,
+        "active_items": [
+          "Azelaic Acid",
+          "Centella Asiatica Extract"
+        ],
+        "source_origin": "pdp_section",
+        "source_quality_status": "captured",
+        "coverage": {
+          "details_sections_count": 16,
+          "faq_count": 0,
+          "how_to_chars": 124,
+          "inci_chars": 1054,
+          "active_ingredients_chars": 39,
+          "inci_applicability_status": "",
+          "ingredient_review_status": "",
+          "ingredient_remediation_action": "",
+          "bundle_component_refs_count": 0,
+          "effective_inci_chars": 1054,
+          "inci_borrowed_from_product_id": ""
+        },
+        "invalid_fragments": [],
+        "suppressed_reason": null
+      },
+      "variants": {
+        "status": "ready",
+        "issues": [],
+        "visible_variant_rows": 1,
+        "examples": {
+          "identity_option_visible": [],
+          "wrong_axis_for_category": [],
+          "makeup_shade_missing_visual": [],
+          "size_value_generic_axis": [],
+          "default_option_size_evidence_missing_axis": [],
+          "identity_default_title_axis": []
+        }
+      },
+      "coverage": {
+        "details_sections_count": 16,
+        "faq_count": 0,
+        "how_to_chars": 124,
+        "inci_chars": 1054,
+        "active_ingredients_chars": 39,
+        "inci_applicability_status": "",
+        "ingredient_review_status": "",
+        "ingredient_remediation_action": "",
+        "bundle_component_refs_count": 0,
+        "effective_inci_chars": 1054,
+        "inci_borrowed_from_product_id": ""
+      }
+    },
+    {
+      "seed_id": "eps_fa5d849dd489d324f14fa387",
+      "external_product_id": "ext_fc2542ed5d2be9c87342756e",
+      "market": "US",
+      "domain": "anua.com",
+      "title": "Heartleaf LHA Moisture Peeling Gel",
+      "canonical_url": "https://anua.com/products/heartleaf-lha-moisture-peeling-gel",
+      "product_family": "unknown_product",
+      "product_line_id": "pl_d597d3f86a50e0c28ee66122",
+      "identity_variant_axes": {
+        "volume": "200ml",
+        "multi_variant": false
+      },
+      "pivota_insights": {
+        "direct": {
+          "product_id": "ext_fc2542ed5d2be9c87342756e",
+          "kb_key": "product:ext_fc2542ed5d2be9c87342756e",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "seller_plus_formula",
+          "has_card_highlight": true
+        },
+        "effective": {
+          "product_id": "ext_fc2542ed5d2be9c87342756e",
+          "kb_key": "product:ext_fc2542ed5d2be9c87342756e",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "seller_plus_formula",
+          "has_card_highlight": true
+        },
+        "product_line_id": "pl_d597d3f86a50e0c28ee66122",
+        "borrowed_from_sibling": false
+      },
+      "active_ingredients": {
+        "status": "ready_other",
+        "issues": [],
+        "regulatory_expected": false,
+        "hero_expected": false,
+        "active_items": [
+          "LHA",
+          "Cellulose",
+          "Heartleaf extract",
+          "Hyaluronic Acid",
+          "Allantoin"
+        ],
+        "source_origin": "pdp_section",
+        "source_quality_status": "captured",
+        "coverage": {
+          "details_sections_count": 4,
+          "faq_count": 0,
+          "how_to_chars": 242,
+          "inci_chars": 507,
+          "active_ingredients_chars": 61,
+          "inci_applicability_status": "",
+          "ingredient_review_status": "manual_source_review_required",
+          "ingredient_remediation_action": "manual_source_review_required",
+          "bundle_component_refs_count": 0,
+          "effective_inci_chars": 507,
+          "inci_borrowed_from_product_id": ""
+        },
+        "invalid_fragments": [],
+        "suppressed_reason": null
+      },
+      "variants": {
+        "status": "ready",
+        "issues": [],
+        "visible_variant_rows": 1,
+        "examples": {
+          "identity_option_visible": [],
+          "wrong_axis_for_category": [],
+          "makeup_shade_missing_visual": [],
+          "size_value_generic_axis": [],
+          "default_option_size_evidence_missing_axis": [],
+          "identity_default_title_axis": []
+        }
+      },
+      "coverage": {
+        "details_sections_count": 4,
+        "faq_count": 0,
+        "how_to_chars": 242,
+        "inci_chars": 507,
+        "active_ingredients_chars": 61,
+        "inci_applicability_status": "",
+        "ingredient_review_status": "manual_source_review_required",
+        "ingredient_remediation_action": "manual_source_review_required",
+        "bundle_component_refs_count": 0,
+        "effective_inci_chars": 507,
+        "inci_borrowed_from_product_id": ""
+      }
+    },
+    {
+      "seed_id": "eps_dc115678a1a4224f2fb90203",
+      "external_product_id": "ext_fd45a6076b7a525c45c56f14",
+      "market": "US",
+      "domain": "anua.com",
+      "title": "PDRN 100 Hyaluronic Acid Booster Toner",
+      "canonical_url": "https://anua.com/products/pdrn-100-hyaluronic-acid-booster-toner",
+      "product_family": "single_formula",
+      "product_line_id": "pl_d60e9ae97216476daf1c5688",
+      "identity_variant_axes": {
+        "multi_variant": false
+      },
+      "pivota_insights": {
+        "direct": {
+          "product_id": "ext_fd45a6076b7a525c45c56f14",
+          "kb_key": "product:ext_fd45a6076b7a525c45c56f14",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "seller_plus_formula",
+          "has_card_highlight": true
+        },
+        "effective": {
+          "product_id": "ext_fd45a6076b7a525c45c56f14",
+          "kb_key": "product:ext_fd45a6076b7a525c45c56f14",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "seller_plus_formula",
+          "has_card_highlight": true
+        },
+        "product_line_id": "pl_d60e9ae97216476daf1c5688",
+        "borrowed_from_sibling": false
+      },
+      "active_ingredients": {
+        "status": "ready_hero",
+        "issues": [],
+        "regulatory_expected": false,
+        "hero_expected": true,
+        "active_items": [
+          "Hyaluronic Acid"
+        ],
+        "source_origin": "pdp_section",
+        "source_quality_status": "captured",
+        "coverage": {
+          "details_sections_count": 12,
+          "faq_count": 0,
+          "how_to_chars": 155,
+          "inci_chars": 838,
+          "active_ingredients_chars": 15,
+          "inci_applicability_status": "",
+          "ingredient_review_status": "manual_source_review_required",
+          "ingredient_remediation_action": "manual_source_review_required",
+          "bundle_component_refs_count": 0,
+          "effective_inci_chars": 838,
+          "inci_borrowed_from_product_id": ""
+        },
+        "invalid_fragments": [],
+        "suppressed_reason": null
+      },
+      "variants": {
+        "status": "ready",
+        "issues": [],
+        "visible_variant_rows": 1,
+        "examples": {
+          "identity_option_visible": [],
+          "wrong_axis_for_category": [],
+          "makeup_shade_missing_visual": [],
+          "size_value_generic_axis": [],
+          "default_option_size_evidence_missing_axis": [],
+          "identity_default_title_axis": []
+        }
+      },
+      "coverage": {
+        "details_sections_count": 12,
+        "faq_count": 0,
+        "how_to_chars": 155,
+        "inci_chars": 838,
+        "active_ingredients_chars": 15,
+        "inci_applicability_status": "",
+        "ingredient_review_status": "manual_source_review_required",
+        "ingredient_remediation_action": "manual_source_review_required",
+        "bundle_component_refs_count": 0,
+        "effective_inci_chars": 838,
+        "inci_borrowed_from_product_id": ""
+      }
+    },
+    {
+      "seed_id": "eps_6078bb64866b37a2ac2856b0",
+      "external_product_id": "ext_fe3edb02864662a5e0866278",
+      "market": "US",
+      "domain": "anua.com",
+      "title": "Rice Ceramide 7 Hydrating Barrier Serum",
+      "canonical_url": "https://anua.com/products/rice-ceramide-7-hydrating-barrier-serum",
+      "product_family": "single_formula",
+      "product_line_id": "pl_de3966030e5ec91e86b0f578",
+      "identity_variant_axes": {
+        "volume": "50ml",
+        "multi_variant": false
+      },
+      "pivota_insights": {
+        "direct": {
+          "product_id": "ext_fe3edb02864662a5e0866278",
+          "kb_key": "product:ext_fe3edb02864662a5e0866278",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "seller_plus_formula",
+          "has_card_highlight": true
+        },
+        "effective": {
+          "product_id": "ext_fe3edb02864662a5e0866278",
+          "kb_key": "product:ext_fe3edb02864662a5e0866278",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "seller_plus_formula",
+          "has_card_highlight": true
+        },
+        "product_line_id": "pl_de3966030e5ec91e86b0f578",
+        "borrowed_from_sibling": false
+      },
+      "active_ingredients": {
+        "status": "ready_hero",
+        "issues": [],
+        "regulatory_expected": false,
+        "hero_expected": true,
+        "active_items": [
+          "Hyaluronic Acid",
+          "Panthenol",
+          "Ceramide"
+        ],
+        "source_origin": "pdp_section",
+        "source_quality_status": "captured",
+        "coverage": {
+          "details_sections_count": 16,
+          "faq_count": 0,
+          "how_to_chars": 193,
+          "inci_chars": 853,
+          "active_ingredients_chars": 36,
+          "inci_applicability_status": "",
+          "ingredient_review_status": "",
+          "ingredient_remediation_action": "",
+          "bundle_component_refs_count": 0,
+          "effective_inci_chars": 853,
+          "inci_borrowed_from_product_id": ""
+        },
+        "invalid_fragments": [],
+        "suppressed_reason": null
+      },
+      "variants": {
+        "status": "ready",
+        "issues": [],
+        "visible_variant_rows": 1,
+        "examples": {
+          "identity_option_visible": [],
+          "wrong_axis_for_category": [],
+          "makeup_shade_missing_visual": [],
+          "size_value_generic_axis": [],
+          "default_option_size_evidence_missing_axis": [],
+          "identity_default_title_axis": []
+        }
+      },
+      "coverage": {
+        "details_sections_count": 16,
+        "faq_count": 0,
+        "how_to_chars": 193,
+        "inci_chars": 853,
+        "active_ingredients_chars": 36,
+        "inci_applicability_status": "",
+        "ingredient_review_status": "",
+        "ingredient_remediation_action": "",
+        "bundle_component_refs_count": 0,
+        "effective_inci_chars": 853,
+        "inci_borrowed_from_product_id": ""
+      }
+    }
+  ]
+}

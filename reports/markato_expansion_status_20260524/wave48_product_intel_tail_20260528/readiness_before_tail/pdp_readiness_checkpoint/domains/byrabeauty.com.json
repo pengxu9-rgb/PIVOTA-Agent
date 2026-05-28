@@ -1,0 +1,1652 @@
+{
+  "generated_at": "2026-05-28T10:01:09.465Z",
+  "options": {
+    "market": "US",
+    "includeAttached": true,
+    "domain": "byrabeauty.com",
+    "externalProductIds": [],
+    "limit": 20000,
+    "sampleLimit": 10,
+    "checkpointDir": null,
+    "checkpointMode": "domain",
+    "resume": false,
+    "force": false,
+    "continueOnError": true,
+    "pageSize": 500,
+    "format": "json",
+    "chunkByDomain": false
+  },
+  "warnings": [],
+  "summary": {
+    "scanned": 14,
+    "by_market": {
+      "US": 14
+    },
+    "by_domain": [
+      {
+        "key": "byrabeauty.com",
+        "count": 14
+      }
+    ],
+    "by_product_family": [
+      {
+        "key": "single_formula",
+        "count": 8
+      },
+      {
+        "key": "set_or_collection",
+        "count": 3
+      },
+      {
+        "key": "unknown_product",
+        "count": 2
+      },
+      {
+        "key": "accessory",
+        "count": 1
+      }
+    ],
+    "coverage": {
+      "missing_inci": 14,
+      "missing_active_raw": 10,
+      "missing_details": 14,
+      "missing_how_to": 14,
+      "missing_faq": 14
+    },
+    "pivota_insights": {
+      "direct": {
+        "displayable": 13,
+        "high_quality_ready": 12,
+        "missing_kb": 1,
+        "not_displayable": 0
+      },
+      "effective": {
+        "displayable": 13,
+        "high_quality_ready": 12,
+        "missing_kb": 1,
+        "not_displayable": 0,
+        "borrowed_from_sibling": 0
+      },
+      "effective_issues": [
+        {
+          "key": "ellipsis_or_truncated",
+          "count": 1
+        },
+        {
+          "key": "missing_kb",
+          "count": 1
+        },
+        {
+          "key": "public_truncated_copy",
+          "count": 1
+        },
+        {
+          "key": "quality_limited",
+          "count": 1
+        },
+        {
+          "key": "seller_only_evidence",
+          "count": 1
+        }
+      ],
+      "effective_issue_domains": [
+        {
+          "key": "byrabeauty.com::ellipsis_or_truncated",
+          "count": 1
+        },
+        {
+          "key": "byrabeauty.com::missing_kb",
+          "count": 1
+        },
+        {
+          "key": "byrabeauty.com::public_truncated_copy",
+          "count": 1
+        },
+        {
+          "key": "byrabeauty.com::quality_limited",
+          "count": 1
+        },
+        {
+          "key": "byrabeauty.com::seller_only_evidence",
+          "count": 1
+        }
+      ],
+      "quality_state": [
+        {
+          "key": "reviewed",
+          "count": 12
+        },
+        {
+          "key": "limited",
+          "count": 1
+        },
+        {
+          "key": "missing",
+          "count": 1
+        }
+      ],
+      "evidence_profile": [
+        {
+          "key": "official_pdp_reviewed_limited",
+          "count": 12
+        },
+        {
+          "key": "missing",
+          "count": 1
+        },
+        {
+          "key": "seller_only",
+          "count": 1
+        }
+      ],
+      "samples": {
+        "missing_kb": [
+          {
+            "external_product_id": "ext_a146f7010622206ee2796574",
+            "domain": "byrabeauty.com",
+            "title": "Je Suis Tote Bag (pure cotton, thick 22oz)",
+            "used_product_id": "ext_a146f7010622206ee2796574",
+            "quality_state": "missing",
+            "evidence_profile": "missing"
+          }
+        ],
+        "ellipsis_or_truncated": [
+          {
+            "external_product_id": "ext_c015b81bbdd329d51a5430fd",
+            "domain": "byrabeauty.com",
+            "title": "Naked Skin Nutrition: Feed Your Glow (Hardcover)",
+            "used_product_id": "ext_c015b81bbdd329d51a5430fd",
+            "quality_state": "limited",
+            "evidence_profile": "seller_only"
+          }
+        ],
+        "public_truncated_copy": [
+          {
+            "external_product_id": "ext_c015b81bbdd329d51a5430fd",
+            "domain": "byrabeauty.com",
+            "title": "Naked Skin Nutrition: Feed Your Glow (Hardcover)",
+            "used_product_id": "ext_c015b81bbdd329d51a5430fd",
+            "quality_state": "limited",
+            "evidence_profile": "seller_only"
+          }
+        ],
+        "seller_only_evidence": [
+          {
+            "external_product_id": "ext_c015b81bbdd329d51a5430fd",
+            "domain": "byrabeauty.com",
+            "title": "Naked Skin Nutrition: Feed Your Glow (Hardcover)",
+            "used_product_id": "ext_c015b81bbdd329d51a5430fd",
+            "quality_state": "limited",
+            "evidence_profile": "seller_only"
+          }
+        ]
+      }
+    },
+    "active_ingredients": {
+      "regulatory_expected": 0,
+      "hero_expected": 7,
+      "any_active_items": 0,
+      "status": [
+        {
+          "key": "missing_hero",
+          "count": 7
+        },
+        {
+          "key": "not_applicable_product_family",
+          "count": 4
+        },
+        {
+          "key": "not_expected_missing",
+          "count": 3
+        }
+      ],
+      "issues": [
+        {
+          "key": "missing_hero",
+          "count": 7
+        }
+      ],
+      "issue_domains": [
+        {
+          "key": "byrabeauty.com::missing_hero",
+          "count": 7
+        }
+      ],
+      "source_origin": [
+        {
+          "key": "none",
+          "count": 14
+        }
+      ],
+      "samples": {
+        "missing_hero": [
+          {
+            "external_product_id": "ext_1a0538d5cde6bee407083bd0",
+            "domain": "byrabeauty.com",
+            "title": "SATURATE Nutri-Moisturiser",
+            "status": "missing_hero",
+            "active_items": [],
+            "source_origin": "none"
+          },
+          {
+            "external_product_id": "ext_3d78ee9a97fa29cbc4d22b67",
+            "domain": "byrabeauty.com",
+            "title": "Beauty Flight Pack by Byra & Anaya",
+            "status": "missing_hero",
+            "active_items": [],
+            "source_origin": "none"
+          },
+          {
+            "external_product_id": "ext_60e8d58a4992f033747967f5",
+            "domain": "byrabeauty.com",
+            "title": "REJUVENATE Nutri-Serum Concentrate",
+            "status": "missing_hero",
+            "active_items": [],
+            "source_origin": "none"
+          },
+          {
+            "external_product_id": "ext_9820a5ae58feea4c66c19cef",
+            "domain": "byrabeauty.com",
+            "title": "MERACLE Nutri-Essence Treatment Enhancer",
+            "status": "missing_hero",
+            "active_items": [],
+            "source_origin": "none"
+          },
+          {
+            "external_product_id": "ext_9940e0166e797a4b3d334815",
+            "domain": "byrabeauty.com",
+            "title": "Trigona Propolis Oil 20ml",
+            "status": "missing_hero",
+            "active_items": [],
+            "source_origin": "none"
+          },
+          {
+            "external_product_id": "ext_9b1044e6e0e376f6e31754df",
+            "domain": "byrabeauty.com",
+            "title": "ILLUMINATE Nutri-Serum Concentrate",
+            "status": "missing_hero",
+            "active_items": [],
+            "source_origin": "none"
+          },
+          {
+            "external_product_id": "ext_effcc5f6c49a6774850db282",
+            "domain": "byrabeauty.com",
+            "title": "Glow & Renewal Serum Combo",
+            "status": "missing_hero",
+            "active_items": [],
+            "source_origin": "none"
+          }
+        ]
+      }
+    },
+    "variants": {
+      "status": [
+        {
+          "key": "no_visible_variant_axis",
+          "count": 10
+        },
+        {
+          "key": "ready",
+          "count": 4
+        }
+      ],
+      "issues": [],
+      "issue_domains": [],
+      "samples": {}
+    }
+  },
+  "rows": [
+    {
+      "seed_id": "eps_929e48cf48c62864e20e761c",
+      "external_product_id": "ext_1a0538d5cde6bee407083bd0",
+      "market": "US",
+      "domain": "byrabeauty.com",
+      "title": "SATURATE Nutri-Moisturiser",
+      "canonical_url": "https://byrabeauty.com/products/saturate-nutri-moisturiser",
+      "product_family": "single_formula",
+      "product_line_id": "pl_d9c8fde39797a6872bc4752c",
+      "identity_variant_axes": {
+        "multi_variant": false
+      },
+      "pivota_insights": {
+        "direct": {
+          "product_id": "ext_1a0538d5cde6bee407083bd0",
+          "kb_key": "product:ext_1a0538d5cde6bee407083bd0",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "official_pdp_reviewed_limited",
+          "has_card_highlight": true
+        },
+        "effective": {
+          "product_id": "ext_1a0538d5cde6bee407083bd0",
+          "kb_key": "product:ext_1a0538d5cde6bee407083bd0",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "official_pdp_reviewed_limited",
+          "has_card_highlight": true
+        },
+        "product_line_id": "pl_d9c8fde39797a6872bc4752c",
+        "borrowed_from_sibling": false
+      },
+      "active_ingredients": {
+        "status": "missing_hero",
+        "issues": [
+          "missing_hero"
+        ],
+        "regulatory_expected": false,
+        "hero_expected": true,
+        "active_items": [],
+        "source_origin": "none",
+        "source_quality_status": "blocked",
+        "coverage": {
+          "details_sections_count": 0,
+          "faq_count": 0,
+          "how_to_chars": 0,
+          "inci_chars": 0,
+          "active_ingredients_chars": 0,
+          "inci_applicability_status": "",
+          "ingredient_review_status": "",
+          "ingredient_remediation_action": "",
+          "bundle_component_refs_count": 0,
+          "effective_inci_chars": 0,
+          "inci_borrowed_from_product_id": ""
+        },
+        "invalid_fragments": [],
+        "suppressed_reason": "no_authoritative_source"
+      },
+      "variants": {
+        "status": "no_visible_variant_axis",
+        "issues": [],
+        "visible_variant_rows": 0,
+        "examples": {
+          "identity_option_visible": [],
+          "wrong_axis_for_category": [],
+          "makeup_shade_missing_visual": [],
+          "size_value_generic_axis": [],
+          "default_option_size_evidence_missing_axis": [],
+          "identity_default_title_axis": []
+        }
+      },
+      "coverage": {
+        "details_sections_count": 0,
+        "faq_count": 0,
+        "how_to_chars": 0,
+        "inci_chars": 0,
+        "active_ingredients_chars": 0,
+        "inci_applicability_status": "",
+        "ingredient_review_status": "",
+        "ingredient_remediation_action": "",
+        "bundle_component_refs_count": 0,
+        "effective_inci_chars": 0,
+        "inci_borrowed_from_product_id": ""
+      }
+    },
+    {
+      "seed_id": "eps_2388ffde450549e37a2a89d8",
+      "external_product_id": "ext_3d78ee9a97fa29cbc4d22b67",
+      "market": "US",
+      "domain": "byrabeauty.com",
+      "title": "Beauty Flight Pack by Byra & Anaya",
+      "canonical_url": "https://byrabeauty.com/products/beauty-flight-pack",
+      "product_family": "unknown_product",
+      "product_line_id": "pl_eefa6d7e8858c2ea2622ce7c",
+      "identity_variant_axes": {
+        "multi_variant": false
+      },
+      "pivota_insights": {
+        "direct": {
+          "product_id": "ext_3d78ee9a97fa29cbc4d22b67",
+          "kb_key": "product:ext_3d78ee9a97fa29cbc4d22b67",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "official_pdp_reviewed_limited",
+          "has_card_highlight": true
+        },
+        "effective": {
+          "product_id": "ext_3d78ee9a97fa29cbc4d22b67",
+          "kb_key": "product:ext_3d78ee9a97fa29cbc4d22b67",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "official_pdp_reviewed_limited",
+          "has_card_highlight": true
+        },
+        "product_line_id": "pl_eefa6d7e8858c2ea2622ce7c",
+        "borrowed_from_sibling": false
+      },
+      "active_ingredients": {
+        "status": "missing_hero",
+        "issues": [
+          "missing_hero"
+        ],
+        "regulatory_expected": false,
+        "hero_expected": true,
+        "active_items": [],
+        "source_origin": "none",
+        "source_quality_status": "blocked",
+        "coverage": {
+          "details_sections_count": 0,
+          "faq_count": 0,
+          "how_to_chars": 0,
+          "inci_chars": 0,
+          "active_ingredients_chars": 0,
+          "inci_applicability_status": "",
+          "ingredient_review_status": "",
+          "ingredient_remediation_action": "",
+          "bundle_component_refs_count": 0,
+          "effective_inci_chars": 0,
+          "inci_borrowed_from_product_id": ""
+        },
+        "invalid_fragments": [],
+        "suppressed_reason": "no_authoritative_source"
+      },
+      "variants": {
+        "status": "ready",
+        "issues": [],
+        "visible_variant_rows": 1,
+        "examples": {
+          "identity_option_visible": [],
+          "wrong_axis_for_category": [],
+          "makeup_shade_missing_visual": [],
+          "size_value_generic_axis": [],
+          "default_option_size_evidence_missing_axis": [],
+          "identity_default_title_axis": []
+        }
+      },
+      "coverage": {
+        "details_sections_count": 0,
+        "faq_count": 0,
+        "how_to_chars": 0,
+        "inci_chars": 0,
+        "active_ingredients_chars": 0,
+        "inci_applicability_status": "",
+        "ingredient_review_status": "",
+        "ingredient_remediation_action": "",
+        "bundle_component_refs_count": 0,
+        "effective_inci_chars": 0,
+        "inci_borrowed_from_product_id": ""
+      }
+    },
+    {
+      "seed_id": "eps_8c3c9104a4f3392f29aa861a",
+      "external_product_id": "ext_475ee6b7d783d597bb021546",
+      "market": "US",
+      "domain": "byrabeauty.com",
+      "title": "Byra - Skin Brightening Trio",
+      "canonical_url": "https://byrabeauty.com/products/byra-skin-brightening-trio",
+      "product_family": "set_or_collection",
+      "product_line_id": null,
+      "pivota_insights": {
+        "direct": {
+          "product_id": "ext_475ee6b7d783d597bb021546",
+          "kb_key": "product:ext_475ee6b7d783d597bb021546",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "official_pdp_reviewed_limited",
+          "has_card_highlight": true
+        },
+        "effective": {
+          "product_id": "ext_475ee6b7d783d597bb021546",
+          "kb_key": "product:ext_475ee6b7d783d597bb021546",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "official_pdp_reviewed_limited",
+          "has_card_highlight": true
+        },
+        "product_line_id": null,
+        "borrowed_from_sibling": false
+      },
+      "active_ingredients": {
+        "status": "not_applicable_product_family",
+        "issues": [],
+        "regulatory_expected": false,
+        "hero_expected": false,
+        "active_items": [],
+        "source_origin": "none",
+        "source_quality_status": "blocked",
+        "coverage": {
+          "details_sections_count": 0,
+          "faq_count": 0,
+          "how_to_chars": 0,
+          "inci_chars": 0,
+          "active_ingredients_chars": 0,
+          "inci_applicability_status": "",
+          "ingredient_review_status": "",
+          "ingredient_remediation_action": "",
+          "bundle_component_refs_count": 3,
+          "effective_inci_chars": 0,
+          "inci_borrowed_from_product_id": ""
+        },
+        "invalid_fragments": [],
+        "suppressed_reason": "set_or_collection"
+      },
+      "variants": {
+        "status": "no_visible_variant_axis",
+        "issues": [],
+        "visible_variant_rows": 0,
+        "examples": {
+          "identity_option_visible": [],
+          "wrong_axis_for_category": [],
+          "makeup_shade_missing_visual": [],
+          "size_value_generic_axis": [],
+          "default_option_size_evidence_missing_axis": [],
+          "identity_default_title_axis": []
+        }
+      },
+      "coverage": {
+        "details_sections_count": 0,
+        "faq_count": 0,
+        "how_to_chars": 0,
+        "inci_chars": 0,
+        "active_ingredients_chars": 0,
+        "inci_applicability_status": "",
+        "ingredient_review_status": "",
+        "ingredient_remediation_action": "",
+        "bundle_component_refs_count": 3,
+        "effective_inci_chars": 0,
+        "inci_borrowed_from_product_id": ""
+      }
+    },
+    {
+      "seed_id": "eps_351e533985d732093009ff74",
+      "external_product_id": "ext_60e8d58a4992f033747967f5",
+      "market": "US",
+      "domain": "byrabeauty.com",
+      "title": "REJUVENATE Nutri-Serum Concentrate",
+      "canonical_url": "https://byrabeauty.com/products/rejuvenate-nutri-serum-concentrate",
+      "product_family": "single_formula",
+      "product_line_id": "pl_34ed194c137b2ac240cdcb7b",
+      "identity_variant_axes": {
+        "multi_variant": false
+      },
+      "pivota_insights": {
+        "direct": {
+          "product_id": "ext_60e8d58a4992f033747967f5",
+          "kb_key": "product:ext_60e8d58a4992f033747967f5",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "official_pdp_reviewed_limited",
+          "has_card_highlight": true
+        },
+        "effective": {
+          "product_id": "ext_60e8d58a4992f033747967f5",
+          "kb_key": "product:ext_60e8d58a4992f033747967f5",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "official_pdp_reviewed_limited",
+          "has_card_highlight": true
+        },
+        "product_line_id": "pl_34ed194c137b2ac240cdcb7b",
+        "borrowed_from_sibling": false
+      },
+      "active_ingredients": {
+        "status": "missing_hero",
+        "issues": [
+          "missing_hero"
+        ],
+        "regulatory_expected": false,
+        "hero_expected": true,
+        "active_items": [],
+        "source_origin": "none",
+        "source_quality_status": "blocked",
+        "coverage": {
+          "details_sections_count": 0,
+          "faq_count": 0,
+          "how_to_chars": 0,
+          "inci_chars": 0,
+          "active_ingredients_chars": 0,
+          "inci_applicability_status": "",
+          "ingredient_review_status": "",
+          "ingredient_remediation_action": "",
+          "bundle_component_refs_count": 0,
+          "effective_inci_chars": 0,
+          "inci_borrowed_from_product_id": ""
+        },
+        "invalid_fragments": [],
+        "suppressed_reason": "no_authoritative_source"
+      },
+      "variants": {
+        "status": "no_visible_variant_axis",
+        "issues": [],
+        "visible_variant_rows": 0,
+        "examples": {
+          "identity_option_visible": [],
+          "wrong_axis_for_category": [],
+          "makeup_shade_missing_visual": [],
+          "size_value_generic_axis": [],
+          "default_option_size_evidence_missing_axis": [],
+          "identity_default_title_axis": []
+        }
+      },
+      "coverage": {
+        "details_sections_count": 0,
+        "faq_count": 0,
+        "how_to_chars": 0,
+        "inci_chars": 0,
+        "active_ingredients_chars": 0,
+        "inci_applicability_status": "",
+        "ingredient_review_status": "",
+        "ingredient_remediation_action": "",
+        "bundle_component_refs_count": 0,
+        "effective_inci_chars": 0,
+        "inci_borrowed_from_product_id": ""
+      }
+    },
+    {
+      "seed_id": "eps_a59dbb773bd6b0e00441871a",
+      "external_product_id": "ext_936878eeb9a3b577ef32f8a6",
+      "market": "US",
+      "domain": "byrabeauty.com",
+      "title": "Byra - Complete Skin Transformation Set",
+      "canonical_url": "https://byrabeauty.com/products/byra-complete-skin-transformation-set",
+      "product_family": "set_or_collection",
+      "product_line_id": null,
+      "pivota_insights": {
+        "direct": {
+          "product_id": "ext_936878eeb9a3b577ef32f8a6",
+          "kb_key": "product:ext_936878eeb9a3b577ef32f8a6",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "official_pdp_reviewed_limited",
+          "has_card_highlight": true
+        },
+        "effective": {
+          "product_id": "ext_936878eeb9a3b577ef32f8a6",
+          "kb_key": "product:ext_936878eeb9a3b577ef32f8a6",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "official_pdp_reviewed_limited",
+          "has_card_highlight": true
+        },
+        "product_line_id": null,
+        "borrowed_from_sibling": false
+      },
+      "active_ingredients": {
+        "status": "not_applicable_product_family",
+        "issues": [],
+        "regulatory_expected": false,
+        "hero_expected": false,
+        "active_items": [],
+        "source_origin": "none",
+        "source_quality_status": "blocked",
+        "coverage": {
+          "details_sections_count": 0,
+          "faq_count": 0,
+          "how_to_chars": 0,
+          "inci_chars": 0,
+          "active_ingredients_chars": 0,
+          "inci_applicability_status": "",
+          "ingredient_review_status": "",
+          "ingredient_remediation_action": "",
+          "bundle_component_refs_count": 4,
+          "effective_inci_chars": 0,
+          "inci_borrowed_from_product_id": ""
+        },
+        "invalid_fragments": [],
+        "suppressed_reason": "set_or_collection"
+      },
+      "variants": {
+        "status": "no_visible_variant_axis",
+        "issues": [],
+        "visible_variant_rows": 0,
+        "examples": {
+          "identity_option_visible": [],
+          "wrong_axis_for_category": [],
+          "makeup_shade_missing_visual": [],
+          "size_value_generic_axis": [],
+          "default_option_size_evidence_missing_axis": [],
+          "identity_default_title_axis": []
+        }
+      },
+      "coverage": {
+        "details_sections_count": 0,
+        "faq_count": 0,
+        "how_to_chars": 0,
+        "inci_chars": 0,
+        "active_ingredients_chars": 0,
+        "inci_applicability_status": "",
+        "ingredient_review_status": "",
+        "ingredient_remediation_action": "",
+        "bundle_component_refs_count": 4,
+        "effective_inci_chars": 0,
+        "inci_borrowed_from_product_id": ""
+      }
+    },
+    {
+      "seed_id": "eps_19dfd73c6382f642c0b61212",
+      "external_product_id": "ext_9820a5ae58feea4c66c19cef",
+      "market": "US",
+      "domain": "byrabeauty.com",
+      "title": "MERACLE Nutri-Essence Treatment Enhancer",
+      "canonical_url": "https://byrabeauty.com/products/nutri-essence-aha-bha",
+      "product_family": "single_formula",
+      "product_line_id": "pl_a2bfd0237e9c80369d14509a",
+      "identity_variant_axes": {
+        "multi_variant": false
+      },
+      "pivota_insights": {
+        "direct": {
+          "product_id": "ext_9820a5ae58feea4c66c19cef",
+          "kb_key": "product:ext_9820a5ae58feea4c66c19cef",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "official_pdp_reviewed_limited",
+          "has_card_highlight": true
+        },
+        "effective": {
+          "product_id": "ext_9820a5ae58feea4c66c19cef",
+          "kb_key": "product:ext_9820a5ae58feea4c66c19cef",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "official_pdp_reviewed_limited",
+          "has_card_highlight": true
+        },
+        "product_line_id": "pl_a2bfd0237e9c80369d14509a",
+        "borrowed_from_sibling": false
+      },
+      "active_ingredients": {
+        "status": "missing_hero",
+        "issues": [
+          "missing_hero"
+        ],
+        "regulatory_expected": false,
+        "hero_expected": true,
+        "active_items": [],
+        "source_origin": "none",
+        "source_quality_status": "blocked",
+        "coverage": {
+          "details_sections_count": 0,
+          "faq_count": 0,
+          "how_to_chars": 0,
+          "inci_chars": 0,
+          "active_ingredients_chars": 0,
+          "inci_applicability_status": "",
+          "ingredient_review_status": "",
+          "ingredient_remediation_action": "",
+          "bundle_component_refs_count": 0,
+          "effective_inci_chars": 0,
+          "inci_borrowed_from_product_id": ""
+        },
+        "invalid_fragments": [],
+        "suppressed_reason": "no_authoritative_source"
+      },
+      "variants": {
+        "status": "no_visible_variant_axis",
+        "issues": [],
+        "visible_variant_rows": 0,
+        "examples": {
+          "identity_option_visible": [],
+          "wrong_axis_for_category": [],
+          "makeup_shade_missing_visual": [],
+          "size_value_generic_axis": [],
+          "default_option_size_evidence_missing_axis": [],
+          "identity_default_title_axis": []
+        }
+      },
+      "coverage": {
+        "details_sections_count": 0,
+        "faq_count": 0,
+        "how_to_chars": 0,
+        "inci_chars": 0,
+        "active_ingredients_chars": 0,
+        "inci_applicability_status": "",
+        "ingredient_review_status": "",
+        "ingredient_remediation_action": "",
+        "bundle_component_refs_count": 0,
+        "effective_inci_chars": 0,
+        "inci_borrowed_from_product_id": ""
+      }
+    },
+    {
+      "seed_id": "eps_d640f946908731c8cf648b0d",
+      "external_product_id": "ext_9940e0166e797a4b3d334815",
+      "market": "US",
+      "domain": "byrabeauty.com",
+      "title": "Trigona Propolis Oil 20ml",
+      "canonical_url": "https://byrabeauty.com/products/propolis-oil-20ml",
+      "product_family": "single_formula",
+      "product_line_id": "pl_2cb2d265ca620d168aa02baa",
+      "identity_variant_axes": {
+        "volume": "20ml",
+        "multi_variant": false
+      },
+      "pivota_insights": {
+        "direct": {
+          "product_id": "ext_9940e0166e797a4b3d334815",
+          "kb_key": "product:ext_9940e0166e797a4b3d334815",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "official_pdp_reviewed_limited",
+          "has_card_highlight": true
+        },
+        "effective": {
+          "product_id": "ext_9940e0166e797a4b3d334815",
+          "kb_key": "product:ext_9940e0166e797a4b3d334815",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "official_pdp_reviewed_limited",
+          "has_card_highlight": true
+        },
+        "product_line_id": "pl_2cb2d265ca620d168aa02baa",
+        "borrowed_from_sibling": false
+      },
+      "active_ingredients": {
+        "status": "missing_hero",
+        "issues": [
+          "missing_hero"
+        ],
+        "regulatory_expected": false,
+        "hero_expected": true,
+        "active_items": [],
+        "source_origin": "none",
+        "source_quality_status": "blocked",
+        "coverage": {
+          "details_sections_count": 0,
+          "faq_count": 0,
+          "how_to_chars": 0,
+          "inci_chars": 0,
+          "active_ingredients_chars": 0,
+          "inci_applicability_status": "",
+          "ingredient_review_status": "",
+          "ingredient_remediation_action": "",
+          "bundle_component_refs_count": 0,
+          "effective_inci_chars": 0,
+          "inci_borrowed_from_product_id": ""
+        },
+        "invalid_fragments": [],
+        "suppressed_reason": "no_authoritative_source"
+      },
+      "variants": {
+        "status": "ready",
+        "issues": [],
+        "visible_variant_rows": 1,
+        "examples": {
+          "identity_option_visible": [],
+          "wrong_axis_for_category": [],
+          "makeup_shade_missing_visual": [],
+          "size_value_generic_axis": [],
+          "default_option_size_evidence_missing_axis": [],
+          "identity_default_title_axis": []
+        }
+      },
+      "coverage": {
+        "details_sections_count": 0,
+        "faq_count": 0,
+        "how_to_chars": 0,
+        "inci_chars": 0,
+        "active_ingredients_chars": 0,
+        "inci_applicability_status": "",
+        "ingredient_review_status": "",
+        "ingredient_remediation_action": "",
+        "bundle_component_refs_count": 0,
+        "effective_inci_chars": 0,
+        "inci_borrowed_from_product_id": ""
+      }
+    },
+    {
+      "seed_id": "eps_d8117120bf9cc44604c605f3",
+      "external_product_id": "ext_9b1044e6e0e376f6e31754df",
+      "market": "US",
+      "domain": "byrabeauty.com",
+      "title": "ILLUMINATE Nutri-Serum Concentrate",
+      "canonical_url": "https://byrabeauty.com/products/illuminate-nutri-serum-concentrate",
+      "product_family": "single_formula",
+      "product_line_id": "pl_729b243e5b9a34a97acf5269",
+      "identity_variant_axes": {
+        "multi_variant": false
+      },
+      "pivota_insights": {
+        "direct": {
+          "product_id": "ext_9b1044e6e0e376f6e31754df",
+          "kb_key": "product:ext_9b1044e6e0e376f6e31754df",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "official_pdp_reviewed_limited",
+          "has_card_highlight": true
+        },
+        "effective": {
+          "product_id": "ext_9b1044e6e0e376f6e31754df",
+          "kb_key": "product:ext_9b1044e6e0e376f6e31754df",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "official_pdp_reviewed_limited",
+          "has_card_highlight": true
+        },
+        "product_line_id": "pl_729b243e5b9a34a97acf5269",
+        "borrowed_from_sibling": false
+      },
+      "active_ingredients": {
+        "status": "missing_hero",
+        "issues": [
+          "missing_hero"
+        ],
+        "regulatory_expected": false,
+        "hero_expected": true,
+        "active_items": [],
+        "source_origin": "none",
+        "source_quality_status": "blocked",
+        "coverage": {
+          "details_sections_count": 0,
+          "faq_count": 0,
+          "how_to_chars": 0,
+          "inci_chars": 0,
+          "active_ingredients_chars": 0,
+          "inci_applicability_status": "",
+          "ingredient_review_status": "",
+          "ingredient_remediation_action": "",
+          "bundle_component_refs_count": 0,
+          "effective_inci_chars": 0,
+          "inci_borrowed_from_product_id": ""
+        },
+        "invalid_fragments": [],
+        "suppressed_reason": "no_authoritative_source"
+      },
+      "variants": {
+        "status": "no_visible_variant_axis",
+        "issues": [],
+        "visible_variant_rows": 0,
+        "examples": {
+          "identity_option_visible": [],
+          "wrong_axis_for_category": [],
+          "makeup_shade_missing_visual": [],
+          "size_value_generic_axis": [],
+          "default_option_size_evidence_missing_axis": [],
+          "identity_default_title_axis": []
+        }
+      },
+      "coverage": {
+        "details_sections_count": 0,
+        "faq_count": 0,
+        "how_to_chars": 0,
+        "inci_chars": 0,
+        "active_ingredients_chars": 0,
+        "inci_applicability_status": "",
+        "ingredient_review_status": "",
+        "ingredient_remediation_action": "",
+        "bundle_component_refs_count": 0,
+        "effective_inci_chars": 0,
+        "inci_borrowed_from_product_id": ""
+      }
+    },
+    {
+      "seed_id": "eps_78e7cfc2a950fe26235fbfaa",
+      "external_product_id": "ext_a146f7010622206ee2796574",
+      "market": "US",
+      "domain": "byrabeauty.com",
+      "title": "Je Suis Tote Bag (pure cotton, thick 22oz)",
+      "canonical_url": "https://byrabeauty.com/products/je-suis-comme-je-suis-tote-bag-pure-cotton-thick-22oz",
+      "product_family": "accessory",
+      "product_line_id": "pl_dba6809337a9169fb6ddd59f",
+      "identity_variant_axes": {
+        "volume": "22oz",
+        "multi_variant": false
+      },
+      "pivota_insights": {
+        "direct": {
+          "product_id": "ext_a146f7010622206ee2796574",
+          "kb_key": null,
+          "status": "missing_kb",
+          "kb_exists": false,
+          "displayable": false,
+          "high_quality_ready": false,
+          "issues": [
+            "missing_kb"
+          ],
+          "quality_state": "missing",
+          "evidence_profile": "missing"
+        },
+        "effective": {
+          "product_id": "ext_a146f7010622206ee2796574",
+          "kb_key": null,
+          "status": "missing_kb",
+          "kb_exists": false,
+          "displayable": false,
+          "high_quality_ready": false,
+          "issues": [
+            "missing_kb"
+          ],
+          "quality_state": "missing",
+          "evidence_profile": "missing"
+        },
+        "product_line_id": "pl_dba6809337a9169fb6ddd59f",
+        "borrowed_from_sibling": false
+      },
+      "active_ingredients": {
+        "status": "not_applicable_product_family",
+        "issues": [],
+        "regulatory_expected": false,
+        "hero_expected": false,
+        "active_items": [],
+        "source_origin": "none",
+        "source_quality_status": "blocked",
+        "coverage": {
+          "details_sections_count": 0,
+          "faq_count": 0,
+          "how_to_chars": 0,
+          "inci_chars": 0,
+          "active_ingredients_chars": 0,
+          "inci_applicability_status": "",
+          "ingredient_review_status": "",
+          "ingredient_remediation_action": "",
+          "bundle_component_refs_count": 0,
+          "effective_inci_chars": 0,
+          "inci_borrowed_from_product_id": ""
+        },
+        "invalid_fragments": [],
+        "suppressed_reason": "accessory"
+      },
+      "variants": {
+        "status": "ready",
+        "issues": [],
+        "visible_variant_rows": 1,
+        "examples": {
+          "identity_option_visible": [],
+          "wrong_axis_for_category": [],
+          "makeup_shade_missing_visual": [],
+          "size_value_generic_axis": [],
+          "default_option_size_evidence_missing_axis": [],
+          "identity_default_title_axis": []
+        }
+      },
+      "coverage": {
+        "details_sections_count": 0,
+        "faq_count": 0,
+        "how_to_chars": 0,
+        "inci_chars": 0,
+        "active_ingredients_chars": 0,
+        "inci_applicability_status": "",
+        "ingredient_review_status": "",
+        "ingredient_remediation_action": "",
+        "bundle_component_refs_count": 0,
+        "effective_inci_chars": 0,
+        "inci_borrowed_from_product_id": ""
+      }
+    },
+    {
+      "seed_id": "eps_ce422b1c8c76c3a11f059e60",
+      "external_product_id": "ext_a92dc3f3178447692d4cac69",
+      "market": "US",
+      "domain": "byrabeauty.com",
+      "title": "PURIFY Biotic Cleanser",
+      "canonical_url": "https://byrabeauty.com/products/purify-biotic-cleanser-1",
+      "product_family": "single_formula",
+      "product_line_id": "pl_d09090831025f4a237f5d0ca",
+      "identity_variant_axes": {
+        "multi_variant": false
+      },
+      "pivota_insights": {
+        "direct": {
+          "product_id": "ext_a92dc3f3178447692d4cac69",
+          "kb_key": "product:ext_a92dc3f3178447692d4cac69",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "official_pdp_reviewed_limited",
+          "has_card_highlight": true
+        },
+        "effective": {
+          "product_id": "ext_a92dc3f3178447692d4cac69",
+          "kb_key": "product:ext_a92dc3f3178447692d4cac69",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "official_pdp_reviewed_limited",
+          "has_card_highlight": true
+        },
+        "product_line_id": "pl_d09090831025f4a237f5d0ca",
+        "borrowed_from_sibling": false
+      },
+      "active_ingredients": {
+        "status": "not_expected_missing",
+        "issues": [],
+        "regulatory_expected": false,
+        "hero_expected": false,
+        "active_items": [],
+        "source_origin": "none",
+        "source_quality_status": "blocked",
+        "coverage": {
+          "details_sections_count": 0,
+          "faq_count": 0,
+          "how_to_chars": 0,
+          "inci_chars": 0,
+          "active_ingredients_chars": 0,
+          "inci_applicability_status": "",
+          "ingredient_review_status": "",
+          "ingredient_remediation_action": "",
+          "bundle_component_refs_count": 0,
+          "effective_inci_chars": 0,
+          "inci_borrowed_from_product_id": ""
+        },
+        "invalid_fragments": [],
+        "suppressed_reason": "no_authoritative_source"
+      },
+      "variants": {
+        "status": "no_visible_variant_axis",
+        "issues": [],
+        "visible_variant_rows": 0,
+        "examples": {
+          "identity_option_visible": [],
+          "wrong_axis_for_category": [],
+          "makeup_shade_missing_visual": [],
+          "size_value_generic_axis": [],
+          "default_option_size_evidence_missing_axis": [],
+          "identity_default_title_axis": []
+        }
+      },
+      "coverage": {
+        "details_sections_count": 0,
+        "faq_count": 0,
+        "how_to_chars": 0,
+        "inci_chars": 0,
+        "active_ingredients_chars": 0,
+        "inci_applicability_status": "",
+        "ingredient_review_status": "",
+        "ingredient_remediation_action": "",
+        "bundle_component_refs_count": 0,
+        "effective_inci_chars": 0,
+        "inci_borrowed_from_product_id": ""
+      }
+    },
+    {
+      "seed_id": "eps_e1b8fac24619dc4e5fff535e",
+      "external_product_id": "ext_c015b81bbdd329d51a5430fd",
+      "market": "US",
+      "domain": "byrabeauty.com",
+      "title": "Naked Skin Nutrition: Feed Your Glow (Hardcover)",
+      "canonical_url": "https://byrabeauty.com/products/naked-skin-nutrition-feed-your-glow-hardcover",
+      "product_family": "unknown_product",
+      "product_line_id": "pl_35245f93eaa7af5c4c6c6bac",
+      "identity_variant_axes": {
+        "multi_variant": false
+      },
+      "pivota_insights": {
+        "direct": {
+          "product_id": "ext_c015b81bbdd329d51a5430fd",
+          "kb_key": "product:ext_c015b81bbdd329d51a5430fd",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": false,
+          "human_reviewed": true,
+          "issues": [
+            "ellipsis_or_truncated",
+            "public_truncated_copy",
+            "quality_limited",
+            "seller_only_evidence"
+          ],
+          "blocking_issues": [
+            "ellipsis_or_truncated",
+            "public_truncated_copy"
+          ],
+          "quality_state": "limited",
+          "evidence_profile": "seller_only",
+          "has_card_highlight": true
+        },
+        "effective": {
+          "product_id": "ext_c015b81bbdd329d51a5430fd",
+          "kb_key": "product:ext_c015b81bbdd329d51a5430fd",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": false,
+          "human_reviewed": true,
+          "issues": [
+            "ellipsis_or_truncated",
+            "public_truncated_copy",
+            "quality_limited",
+            "seller_only_evidence"
+          ],
+          "blocking_issues": [
+            "ellipsis_or_truncated",
+            "public_truncated_copy"
+          ],
+          "quality_state": "limited",
+          "evidence_profile": "seller_only",
+          "has_card_highlight": true
+        },
+        "product_line_id": "pl_35245f93eaa7af5c4c6c6bac",
+        "borrowed_from_sibling": false
+      },
+      "active_ingredients": {
+        "status": "not_expected_missing",
+        "issues": [],
+        "regulatory_expected": false,
+        "hero_expected": false,
+        "active_items": [],
+        "source_origin": "none",
+        "source_quality_status": "blocked",
+        "coverage": {
+          "details_sections_count": 0,
+          "faq_count": 0,
+          "how_to_chars": 0,
+          "inci_chars": 0,
+          "active_ingredients_chars": 0,
+          "inci_applicability_status": "",
+          "ingredient_review_status": "",
+          "ingredient_remediation_action": "",
+          "bundle_component_refs_count": 0,
+          "effective_inci_chars": 0,
+          "inci_borrowed_from_product_id": ""
+        },
+        "invalid_fragments": [],
+        "suppressed_reason": "no_authoritative_source"
+      },
+      "variants": {
+        "status": "no_visible_variant_axis",
+        "issues": [],
+        "visible_variant_rows": 0,
+        "examples": {
+          "identity_option_visible": [],
+          "wrong_axis_for_category": [],
+          "makeup_shade_missing_visual": [],
+          "size_value_generic_axis": [],
+          "default_option_size_evidence_missing_axis": [],
+          "identity_default_title_axis": []
+        }
+      },
+      "coverage": {
+        "details_sections_count": 0,
+        "faq_count": 0,
+        "how_to_chars": 0,
+        "inci_chars": 0,
+        "active_ingredients_chars": 0,
+        "inci_applicability_status": "",
+        "ingredient_review_status": "",
+        "ingredient_remediation_action": "",
+        "bundle_component_refs_count": 0,
+        "effective_inci_chars": 0,
+        "inci_borrowed_from_product_id": ""
+      }
+    },
+    {
+      "seed_id": "eps_48546e3741581389be18f723",
+      "external_product_id": "ext_d2be72abe173e52d5baa6879",
+      "market": "US",
+      "domain": "byrabeauty.com",
+      "title": "Deep Calm - Eau De Parfum 30ml",
+      "canonical_url": "https://byrabeauty.com/products/deep-calm-eau-de-parfum-30ml",
+      "product_family": "single_formula",
+      "product_line_id": "pl_60eaa28bf397a409d97b9b28",
+      "identity_variant_axes": {
+        "volume": "30ml",
+        "multi_variant": false
+      },
+      "pivota_insights": {
+        "direct": {
+          "product_id": "ext_d2be72abe173e52d5baa6879",
+          "kb_key": "product:ext_d2be72abe173e52d5baa6879",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "official_pdp_reviewed_limited",
+          "has_card_highlight": true
+        },
+        "effective": {
+          "product_id": "ext_d2be72abe173e52d5baa6879",
+          "kb_key": "product:ext_d2be72abe173e52d5baa6879",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "official_pdp_reviewed_limited",
+          "has_card_highlight": true
+        },
+        "product_line_id": "pl_60eaa28bf397a409d97b9b28",
+        "borrowed_from_sibling": false
+      },
+      "active_ingredients": {
+        "status": "not_expected_missing",
+        "issues": [],
+        "regulatory_expected": false,
+        "hero_expected": false,
+        "active_items": [],
+        "source_origin": "none",
+        "source_quality_status": "blocked",
+        "coverage": {
+          "details_sections_count": 0,
+          "faq_count": 0,
+          "how_to_chars": 0,
+          "inci_chars": 0,
+          "active_ingredients_chars": 0,
+          "inci_applicability_status": "",
+          "ingredient_review_status": "",
+          "ingredient_remediation_action": "",
+          "bundle_component_refs_count": 0,
+          "effective_inci_chars": 0,
+          "inci_borrowed_from_product_id": ""
+        },
+        "invalid_fragments": [],
+        "suppressed_reason": "no_authoritative_source"
+      },
+      "variants": {
+        "status": "ready",
+        "issues": [],
+        "visible_variant_rows": 1,
+        "examples": {
+          "identity_option_visible": [],
+          "wrong_axis_for_category": [],
+          "makeup_shade_missing_visual": [],
+          "size_value_generic_axis": [],
+          "default_option_size_evidence_missing_axis": [],
+          "identity_default_title_axis": []
+        }
+      },
+      "coverage": {
+        "details_sections_count": 0,
+        "faq_count": 0,
+        "how_to_chars": 0,
+        "inci_chars": 0,
+        "active_ingredients_chars": 0,
+        "inci_applicability_status": "",
+        "ingredient_review_status": "",
+        "ingredient_remediation_action": "",
+        "bundle_component_refs_count": 0,
+        "effective_inci_chars": 0,
+        "inci_borrowed_from_product_id": ""
+      }
+    },
+    {
+      "seed_id": "eps_c619f547baf77d2f4d8b5eb6",
+      "external_product_id": "ext_d70d0668aa2e18fed1d2086d",
+      "market": "US",
+      "domain": "byrabeauty.com",
+      "title": "Byra - Skin Firming Trio",
+      "canonical_url": "https://byrabeauty.com/products/byra-skin-firming-trio",
+      "product_family": "set_or_collection",
+      "product_line_id": null,
+      "pivota_insights": {
+        "direct": {
+          "product_id": "ext_d70d0668aa2e18fed1d2086d",
+          "kb_key": "product:ext_d70d0668aa2e18fed1d2086d",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "official_pdp_reviewed_limited",
+          "has_card_highlight": true
+        },
+        "effective": {
+          "product_id": "ext_d70d0668aa2e18fed1d2086d",
+          "kb_key": "product:ext_d70d0668aa2e18fed1d2086d",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "official_pdp_reviewed_limited",
+          "has_card_highlight": true
+        },
+        "product_line_id": null,
+        "borrowed_from_sibling": false
+      },
+      "active_ingredients": {
+        "status": "not_applicable_product_family",
+        "issues": [],
+        "regulatory_expected": false,
+        "hero_expected": false,
+        "active_items": [],
+        "source_origin": "none",
+        "source_quality_status": "blocked",
+        "coverage": {
+          "details_sections_count": 0,
+          "faq_count": 0,
+          "how_to_chars": 0,
+          "inci_chars": 0,
+          "active_ingredients_chars": 0,
+          "inci_applicability_status": "",
+          "ingredient_review_status": "",
+          "ingredient_remediation_action": "",
+          "bundle_component_refs_count": 3,
+          "effective_inci_chars": 0,
+          "inci_borrowed_from_product_id": ""
+        },
+        "invalid_fragments": [],
+        "suppressed_reason": "set_or_collection"
+      },
+      "variants": {
+        "status": "no_visible_variant_axis",
+        "issues": [],
+        "visible_variant_rows": 0,
+        "examples": {
+          "identity_option_visible": [],
+          "wrong_axis_for_category": [],
+          "makeup_shade_missing_visual": [],
+          "size_value_generic_axis": [],
+          "default_option_size_evidence_missing_axis": [],
+          "identity_default_title_axis": []
+        }
+      },
+      "coverage": {
+        "details_sections_count": 0,
+        "faq_count": 0,
+        "how_to_chars": 0,
+        "inci_chars": 0,
+        "active_ingredients_chars": 0,
+        "inci_applicability_status": "",
+        "ingredient_review_status": "",
+        "ingredient_remediation_action": "",
+        "bundle_component_refs_count": 3,
+        "effective_inci_chars": 0,
+        "inci_borrowed_from_product_id": ""
+      }
+    },
+    {
+      "seed_id": "eps_f4f9d6aaba33dc661cc030b2",
+      "external_product_id": "ext_effcc5f6c49a6774850db282",
+      "market": "US",
+      "domain": "byrabeauty.com",
+      "title": "Glow & Renewal Serum Combo",
+      "canonical_url": "https://byrabeauty.com/products/glow-renewal-serum-combo",
+      "product_family": "single_formula",
+      "product_line_id": "pl_b9a0ab3eb191cda0b99d31a7",
+      "identity_variant_axes": {
+        "multi_variant": false
+      },
+      "pivota_insights": {
+        "direct": {
+          "product_id": "ext_effcc5f6c49a6774850db282",
+          "kb_key": "product:ext_effcc5f6c49a6774850db282",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "official_pdp_reviewed_limited",
+          "has_card_highlight": true
+        },
+        "effective": {
+          "product_id": "ext_effcc5f6c49a6774850db282",
+          "kb_key": "product:ext_effcc5f6c49a6774850db282",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "official_pdp_reviewed_limited",
+          "has_card_highlight": true
+        },
+        "product_line_id": "pl_b9a0ab3eb191cda0b99d31a7",
+        "borrowed_from_sibling": false
+      },
+      "active_ingredients": {
+        "status": "missing_hero",
+        "issues": [
+          "missing_hero"
+        ],
+        "regulatory_expected": false,
+        "hero_expected": true,
+        "active_items": [],
+        "source_origin": "none",
+        "source_quality_status": "blocked",
+        "coverage": {
+          "details_sections_count": 0,
+          "faq_count": 0,
+          "how_to_chars": 0,
+          "inci_chars": 0,
+          "active_ingredients_chars": 0,
+          "inci_applicability_status": "",
+          "ingredient_review_status": "",
+          "ingredient_remediation_action": "",
+          "bundle_component_refs_count": 0,
+          "effective_inci_chars": 0,
+          "inci_borrowed_from_product_id": ""
+        },
+        "invalid_fragments": [],
+        "suppressed_reason": "no_authoritative_source"
+      },
+      "variants": {
+        "status": "no_visible_variant_axis",
+        "issues": [],
+        "visible_variant_rows": 0,
+        "examples": {
+          "identity_option_visible": [],
+          "wrong_axis_for_category": [],
+          "makeup_shade_missing_visual": [],
+          "size_value_generic_axis": [],
+          "default_option_size_evidence_missing_axis": [],
+          "identity_default_title_axis": []
+        }
+      },
+      "coverage": {
+        "details_sections_count": 0,
+        "faq_count": 0,
+        "how_to_chars": 0,
+        "inci_chars": 0,
+        "active_ingredients_chars": 0,
+        "inci_applicability_status": "",
+        "ingredient_review_status": "",
+        "ingredient_remediation_action": "",
+        "bundle_component_refs_count": 0,
+        "effective_inci_chars": 0,
+        "inci_borrowed_from_product_id": ""
+      }
+    }
+  ]
+}

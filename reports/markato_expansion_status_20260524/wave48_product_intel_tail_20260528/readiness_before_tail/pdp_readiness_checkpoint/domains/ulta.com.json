@@ -1,0 +1,4212 @@
+{
+  "generated_at": "2026-05-28T10:00:29.902Z",
+  "options": {
+    "market": "US",
+    "includeAttached": true,
+    "domain": "ulta.com",
+    "externalProductIds": [],
+    "limit": 20000,
+    "sampleLimit": 10,
+    "checkpointDir": null,
+    "checkpointMode": "domain",
+    "resume": false,
+    "force": false,
+    "continueOnError": true,
+    "pageSize": 500,
+    "format": "json",
+    "chunkByDomain": false
+  },
+  "warnings": [],
+  "summary": {
+    "scanned": 40,
+    "by_market": {
+      "US": 40
+    },
+    "by_domain": [
+      {
+        "key": "ulta.com",
+        "count": 40
+      }
+    ],
+    "by_product_family": [
+      {
+        "key": "single_formula",
+        "count": 39
+      },
+      {
+        "key": "set_or_collection",
+        "count": 1
+      }
+    ],
+    "coverage": {
+      "missing_inci": 0,
+      "missing_active_raw": 18,
+      "missing_details": 0,
+      "missing_how_to": 0,
+      "missing_faq": 26
+    },
+    "pivota_insights": {
+      "direct": {
+        "displayable": 38,
+        "high_quality_ready": 37,
+        "missing_kb": 2,
+        "not_displayable": 0
+      },
+      "effective": {
+        "displayable": 40,
+        "high_quality_ready": 39,
+        "missing_kb": 0,
+        "not_displayable": 0,
+        "borrowed_from_sibling": 2
+      },
+      "effective_issues": [
+        {
+          "key": "empty_watchouts",
+          "count": 1
+        },
+        {
+          "key": "missing_card_highlight",
+          "count": 1
+        },
+        {
+          "key": "quality_eligible",
+          "count": 1
+        }
+      ],
+      "effective_issue_domains": [
+        {
+          "key": "ulta.com::empty_watchouts",
+          "count": 1
+        },
+        {
+          "key": "ulta.com::missing_card_highlight",
+          "count": 1
+        },
+        {
+          "key": "ulta.com::quality_eligible",
+          "count": 1
+        }
+      ],
+      "quality_state": [
+        {
+          "key": "reviewed",
+          "count": 39
+        },
+        {
+          "key": "eligible",
+          "count": 1
+        }
+      ],
+      "evidence_profile": [
+        {
+          "key": "community_supported",
+          "count": 38
+        },
+        {
+          "key": "seller_plus_formula",
+          "count": 2
+        }
+      ],
+      "samples": {
+        "borrowed_from_sibling": [
+          {
+            "external_product_id": "ext_469ea0709c02f6687b9d2fa5",
+            "domain": "ulta.com",
+            "title": "Glycolic Acid 7% Exfoliating and Brightening Daily Toner - 8.0 oz",
+            "used_product_id": "ext_9c4e18524e509dd477c9b226",
+            "quality_state": "reviewed",
+            "evidence_profile": "seller_plus_formula"
+          },
+          {
+            "external_product_id": "ext_d5140f8a5b815c4420716c3b",
+            "domain": "ulta.com",
+            "title": "Multi-Peptide Eye Serum for Wrinkles and Crow's Feet",
+            "used_product_id": "ext_dfcfc5b215fcff69897f2c92",
+            "quality_state": "reviewed",
+            "evidence_profile": "seller_plus_formula"
+          }
+        ],
+        "missing_card_highlight": [
+          {
+            "external_product_id": "ext_481e9177b05830c3620f0cde",
+            "domain": "ulta.com",
+            "title": "Anthelios AOX Daily Antioxidant Face Serum SPF 50",
+            "used_product_id": "ext_481e9177b05830c3620f0cde",
+            "quality_state": "eligible",
+            "evidence_profile": "community_supported"
+          }
+        ]
+      }
+    },
+    "active_ingredients": {
+      "regulatory_expected": 3,
+      "hero_expected": 33,
+      "any_active_items": 28,
+      "status": [
+        {
+          "key": "ready_hero",
+          "count": 24
+        },
+        {
+          "key": "missing_hero",
+          "count": 4
+        },
+        {
+          "key": "not_expected_missing",
+          "count": 4
+        },
+        {
+          "key": "low_signal_active",
+          "count": 2
+        },
+        {
+          "key": "missing_regulatory",
+          "count": 2
+        },
+        {
+          "key": "ready_other",
+          "count": 2
+        },
+        {
+          "key": "not_applicable_product_family",
+          "count": 1
+        },
+        {
+          "key": "ready_regulatory",
+          "count": 1
+        }
+      ],
+      "issues": [
+        {
+          "key": "missing_hero",
+          "count": 4
+        },
+        {
+          "key": "low_signal_active",
+          "count": 2
+        },
+        {
+          "key": "missing_regulatory",
+          "count": 2
+        }
+      ],
+      "issue_domains": [
+        {
+          "key": "ulta.com::missing_hero",
+          "count": 4
+        },
+        {
+          "key": "ulta.com::low_signal_active",
+          "count": 2
+        },
+        {
+          "key": "ulta.com::missing_regulatory",
+          "count": 2
+        }
+      ],
+      "source_origin": [
+        {
+          "key": "active_block",
+          "count": 26
+        },
+        {
+          "key": "none",
+          "count": 12
+        },
+        {
+          "key": "pdp_section",
+          "count": 2
+        }
+      ],
+      "samples": {
+        "low_signal_active": [
+          {
+            "external_product_id": "ext_2dabb435e294c21fc4953580",
+            "domain": "ulta.com",
+            "title": "Multi-Active Delivery Essence for Hydration",
+            "status": "low_signal_active",
+            "active_items": [],
+            "source_origin": "none"
+          },
+          {
+            "external_product_id": "ext_3b44ffb943fb8d113504cd5d",
+            "domain": "ulta.com",
+            "title": "PHA 5% Exfoliating Lip Serum",
+            "status": "low_signal_active",
+            "active_items": [],
+            "source_origin": "none"
+          }
+        ],
+        "missing_regulatory": [
+          {
+            "external_product_id": "ext_481e9177b05830c3620f0cde",
+            "domain": "ulta.com",
+            "title": "Anthelios AOX Daily Antioxidant Face Serum SPF 50",
+            "status": "missing_regulatory",
+            "active_items": [],
+            "source_origin": "none"
+          },
+          {
+            "external_product_id": "ext_ca5545ea3b490b54bc663f9a",
+            "domain": "ulta.com",
+            "title": "UV Filters SPF 45 Serum",
+            "status": "missing_regulatory",
+            "active_items": [
+              "Ceramide NP"
+            ],
+            "source_origin": "active_block"
+          }
+        ],
+        "missing_hero": [
+          {
+            "external_product_id": "ext_8d1ef8a7e492c407c7f509d5",
+            "domain": "ulta.com",
+            "title": "Natural Moisturizing Factors + Beta Glucan Lightweight Gel Moisturizer",
+            "status": "missing_hero",
+            "active_items": [],
+            "source_origin": "none"
+          },
+          {
+            "external_product_id": "ext_a05c680a34c895fe68085a4b",
+            "domain": "ulta.com",
+            "title": "Natural Moisturizing Factors + Inulin Body Lotion",
+            "status": "missing_hero",
+            "active_items": [],
+            "source_origin": "none"
+          },
+          {
+            "external_product_id": "ext_e4911314994c80ab73a292ea",
+            "domain": "ulta.com",
+            "title": "Balancing & Clarifying Serum for Oily Skin and Pore Refinement",
+            "status": "missing_hero",
+            "active_items": [],
+            "source_origin": "none"
+          },
+          {
+            "external_product_id": "ext_eab16261b96c459ea14639da",
+            "domain": "ulta.com",
+            "title": "Natural Moisturizing Factors + PhytoCeramides Rich Moisturizer",
+            "status": "missing_hero",
+            "active_items": [],
+            "source_origin": "none"
+          }
+        ]
+      }
+    },
+    "variants": {
+      "status": [
+        {
+          "key": "ready",
+          "count": 21
+        },
+        {
+          "key": "no_visible_variant_axis",
+          "count": 19
+        }
+      ],
+      "issues": [],
+      "issue_domains": [],
+      "samples": {}
+    }
+  },
+  "rows": [
+    {
+      "seed_id": "eps_c3bfc84a48e903f503a3fd46",
+      "external_product_id": "ext_0140ac20b86f49f756a25c82",
+      "market": "US",
+      "domain": "ulta.com",
+      "title": "Lactic Acid 10% + HA 2% High-Strength Exfoliating Serum for Uneven Texture",
+      "canonical_url": "https://www.ulta.com/p/lactic-acid-10-ha-2-high-strength-exfoliating-serum-uneven-texture-pimprod2007103?sku=2551156",
+      "product_family": "single_formula",
+      "product_line_id": "pl_d2dc751ecce5ccee5bf377e8",
+      "identity_variant_axes": {
+        "multi_variant": false
+      },
+      "pivota_insights": {
+        "direct": {
+          "product_id": "ext_0140ac20b86f49f756a25c82",
+          "kb_key": "product:ext_0140ac20b86f49f756a25c82",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "community_supported",
+          "has_card_highlight": true
+        },
+        "effective": {
+          "product_id": "ext_0140ac20b86f49f756a25c82",
+          "kb_key": "product:ext_0140ac20b86f49f756a25c82",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "community_supported",
+          "has_card_highlight": true
+        },
+        "product_line_id": "pl_d2dc751ecce5ccee5bf377e8",
+        "borrowed_from_sibling": false
+      },
+      "active_ingredients": {
+        "status": "ready_hero",
+        "issues": [],
+        "regulatory_expected": false,
+        "hero_expected": true,
+        "active_items": [
+          "Lactic acid"
+        ],
+        "source_origin": "active_block",
+        "source_quality_status": "captured",
+        "coverage": {
+          "details_sections_count": 12,
+          "faq_count": 0,
+          "how_to_chars": 10,
+          "inci_chars": 17,
+          "active_ingredients_chars": 0,
+          "inci_applicability_status": "",
+          "ingredient_review_status": "",
+          "ingredient_remediation_action": "",
+          "bundle_component_refs_count": 0,
+          "effective_inci_chars": 17,
+          "inci_borrowed_from_product_id": ""
+        },
+        "invalid_fragments": [],
+        "suppressed_reason": "full_inci_low_purity"
+      },
+      "variants": {
+        "status": "ready",
+        "issues": [],
+        "visible_variant_rows": 1,
+        "examples": {
+          "identity_option_visible": [],
+          "wrong_axis_for_category": [],
+          "makeup_shade_missing_visual": [],
+          "size_value_generic_axis": [],
+          "default_option_size_evidence_missing_axis": [],
+          "identity_default_title_axis": []
+        }
+      },
+      "coverage": {
+        "details_sections_count": 12,
+        "faq_count": 0,
+        "how_to_chars": 10,
+        "inci_chars": 17,
+        "active_ingredients_chars": 0,
+        "inci_applicability_status": "",
+        "ingredient_review_status": "",
+        "ingredient_remediation_action": "",
+        "bundle_component_refs_count": 0,
+        "effective_inci_chars": 17,
+        "inci_borrowed_from_product_id": ""
+      }
+    },
+    {
+      "seed_id": "eps_7a26bded6f6506768fdfa3b8",
+      "external_product_id": "ext_03f17d2497c42c4b759281f6",
+      "market": "US",
+      "domain": "ulta.com",
+      "title": "Squalane Cleanser Hydrating Makeup Remover - 1.7 oz",
+      "canonical_url": "https://www.ulta.com/p/squalane-cleanser-hydrating-makeup-remover-pimprod2007098?sku=2551159",
+      "product_family": "single_formula",
+      "product_line_id": "pl_01f69abc3f3a93ec759649bf",
+      "identity_variant_axes": {
+        "shade": "2551159 cm",
+        "volume": "7oz",
+        "multi_variant": false
+      },
+      "pivota_insights": {
+        "direct": {
+          "product_id": "ext_03f17d2497c42c4b759281f6",
+          "kb_key": "product:ext_03f17d2497c42c4b759281f6",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "community_supported",
+          "has_card_highlight": true
+        },
+        "effective": {
+          "product_id": "ext_03f17d2497c42c4b759281f6",
+          "kb_key": "product:ext_03f17d2497c42c4b759281f6",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "community_supported",
+          "has_card_highlight": true
+        },
+        "product_line_id": "pl_01f69abc3f3a93ec759649bf",
+        "borrowed_from_sibling": false
+      },
+      "active_ingredients": {
+        "status": "ready_hero",
+        "issues": [],
+        "regulatory_expected": false,
+        "hero_expected": true,
+        "active_items": [
+          "Squalane"
+        ],
+        "source_origin": "active_block",
+        "source_quality_status": "captured",
+        "coverage": {
+          "details_sections_count": 12,
+          "faq_count": 0,
+          "how_to_chars": 10,
+          "inci_chars": 17,
+          "active_ingredients_chars": 8,
+          "inci_applicability_status": "",
+          "ingredient_review_status": "",
+          "ingredient_remediation_action": "",
+          "bundle_component_refs_count": 0,
+          "effective_inci_chars": 17,
+          "inci_borrowed_from_product_id": ""
+        },
+        "invalid_fragments": [],
+        "suppressed_reason": "full_inci_low_purity"
+      },
+      "variants": {
+        "status": "ready",
+        "issues": [],
+        "visible_variant_rows": 1,
+        "examples": {
+          "identity_option_visible": [],
+          "wrong_axis_for_category": [],
+          "makeup_shade_missing_visual": [],
+          "size_value_generic_axis": [],
+          "default_option_size_evidence_missing_axis": [],
+          "identity_default_title_axis": []
+        }
+      },
+      "coverage": {
+        "details_sections_count": 12,
+        "faq_count": 0,
+        "how_to_chars": 10,
+        "inci_chars": 17,
+        "active_ingredients_chars": 8,
+        "inci_applicability_status": "",
+        "ingredient_review_status": "",
+        "ingredient_remediation_action": "",
+        "bundle_component_refs_count": 0,
+        "effective_inci_chars": 17,
+        "inci_borrowed_from_product_id": ""
+      }
+    },
+    {
+      "seed_id": "eps_d3741e33333eeff0daf49d77",
+      "external_product_id": "ext_047b6a2db6822623ac34eeb2",
+      "market": "US",
+      "domain": "ulta.com",
+      "title": "Multi-Peptide Lash and Brow Serum for Thicker, Fuller Looking Lashes & Brows",
+      "canonical_url": "https://www.ulta.com/p/multi-peptide-lash-brow-serum-thicker-fuller-looking-lashes-brows-pimprod2033455?sku=2592847",
+      "product_family": "single_formula",
+      "product_line_id": "pl_4a5c2a74e7c66644575e597d",
+      "identity_variant_axes": {
+        "shade": "2592847 cm",
+        "multi_variant": false
+      },
+      "pivota_insights": {
+        "direct": {
+          "product_id": "ext_047b6a2db6822623ac34eeb2",
+          "kb_key": "product:ext_047b6a2db6822623ac34eeb2",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "community_supported",
+          "has_card_highlight": true
+        },
+        "effective": {
+          "product_id": "ext_047b6a2db6822623ac34eeb2",
+          "kb_key": "product:ext_047b6a2db6822623ac34eeb2",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "community_supported",
+          "has_card_highlight": true
+        },
+        "product_line_id": "pl_4a5c2a74e7c66644575e597d",
+        "borrowed_from_sibling": false
+      },
+      "active_ingredients": {
+        "status": "ready_hero",
+        "issues": [],
+        "regulatory_expected": false,
+        "hero_expected": true,
+        "active_items": [
+          "Peptides"
+        ],
+        "source_origin": "active_block",
+        "source_quality_status": "captured",
+        "coverage": {
+          "details_sections_count": 14,
+          "faq_count": 12,
+          "how_to_chars": 10,
+          "inci_chars": 17,
+          "active_ingredients_chars": 0,
+          "inci_applicability_status": "",
+          "ingredient_review_status": "",
+          "ingredient_remediation_action": "",
+          "bundle_component_refs_count": 0,
+          "effective_inci_chars": 17,
+          "inci_borrowed_from_product_id": ""
+        },
+        "invalid_fragments": [],
+        "suppressed_reason": "full_inci_low_purity"
+      },
+      "variants": {
+        "status": "ready",
+        "issues": [],
+        "visible_variant_rows": 1,
+        "examples": {
+          "identity_option_visible": [],
+          "wrong_axis_for_category": [],
+          "makeup_shade_missing_visual": [],
+          "size_value_generic_axis": [],
+          "default_option_size_evidence_missing_axis": [],
+          "identity_default_title_axis": []
+        }
+      },
+      "coverage": {
+        "details_sections_count": 14,
+        "faq_count": 12,
+        "how_to_chars": 10,
+        "inci_chars": 17,
+        "active_ingredients_chars": 0,
+        "inci_applicability_status": "",
+        "ingredient_review_status": "",
+        "ingredient_remediation_action": "",
+        "bundle_component_refs_count": 0,
+        "effective_inci_chars": 17,
+        "inci_borrowed_from_product_id": ""
+      }
+    },
+    {
+      "seed_id": "eps_20179ce89a174a6dbebc804b",
+      "external_product_id": "ext_096ca97f62c5ac465279b217",
+      "market": "US",
+      "domain": "ulta.com",
+      "title": "Salicylic Acid 2% Solution, Exfoliating Serum for Acne",
+      "canonical_url": "https://www.ulta.com/p/salicylic-acid-2-solution-exfoliating-serum-acne-pimprod2034186?sku=2600087",
+      "product_family": "single_formula",
+      "product_line_id": "pl_e48d89be92a1c75b5ea623b3",
+      "identity_variant_axes": {
+        "multi_variant": false
+      },
+      "pivota_insights": {
+        "direct": {
+          "product_id": "ext_096ca97f62c5ac465279b217",
+          "kb_key": "product:ext_096ca97f62c5ac465279b217",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "community_supported",
+          "has_card_highlight": true
+        },
+        "effective": {
+          "product_id": "ext_096ca97f62c5ac465279b217",
+          "kb_key": "product:ext_096ca97f62c5ac465279b217",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "community_supported",
+          "has_card_highlight": true
+        },
+        "product_line_id": "pl_e48d89be92a1c75b5ea623b3",
+        "borrowed_from_sibling": false
+      },
+      "active_ingredients": {
+        "status": "ready_regulatory",
+        "issues": [],
+        "regulatory_expected": true,
+        "hero_expected": false,
+        "active_items": [
+          "Salicylic acid"
+        ],
+        "source_origin": "active_block",
+        "source_quality_status": "regulatory_active",
+        "coverage": {
+          "details_sections_count": 14,
+          "faq_count": 10,
+          "how_to_chars": 10,
+          "inci_chars": 17,
+          "active_ingredients_chars": 14,
+          "inci_applicability_status": "",
+          "ingredient_review_status": "",
+          "ingredient_remediation_action": "",
+          "bundle_component_refs_count": 0,
+          "effective_inci_chars": 17,
+          "inci_borrowed_from_product_id": ""
+        },
+        "invalid_fragments": [],
+        "suppressed_reason": "full_inci_low_purity"
+      },
+      "variants": {
+        "status": "ready",
+        "issues": [],
+        "visible_variant_rows": 1,
+        "examples": {
+          "identity_option_visible": [],
+          "wrong_axis_for_category": [],
+          "makeup_shade_missing_visual": [],
+          "size_value_generic_axis": [],
+          "default_option_size_evidence_missing_axis": [],
+          "identity_default_title_axis": []
+        }
+      },
+      "coverage": {
+        "details_sections_count": 14,
+        "faq_count": 10,
+        "how_to_chars": 10,
+        "inci_chars": 17,
+        "active_ingredients_chars": 14,
+        "inci_applicability_status": "",
+        "ingredient_review_status": "",
+        "ingredient_remediation_action": "",
+        "bundle_component_refs_count": 0,
+        "effective_inci_chars": 17,
+        "inci_borrowed_from_product_id": ""
+      }
+    },
+    {
+      "seed_id": "eps_136677b984341a695c3dc700",
+      "external_product_id": "ext_0be8588a56d3d363dc9b0647",
+      "market": "US",
+      "domain": "ulta.com",
+      "title": "Hyaluronic Acid 2% + B5 Hydrating Serum with Ceramides - Hydrating Serum 1.0 oz",
+      "canonical_url": "https://www.ulta.com/p/hyaluronic-acid-2-b5-hydrating-serum-with-ceramides-pimprod2043525?sku=2618749",
+      "product_family": "single_formula",
+      "product_line_id": "pl_bddb76c3e99ae9e348acbddd",
+      "identity_variant_axes": {
+        "multi_variant": false
+      },
+      "pivota_insights": {
+        "direct": {
+          "product_id": "ext_0be8588a56d3d363dc9b0647",
+          "kb_key": "product:ext_0be8588a56d3d363dc9b0647",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "community_supported",
+          "has_card_highlight": true
+        },
+        "effective": {
+          "product_id": "ext_0be8588a56d3d363dc9b0647",
+          "kb_key": "product:ext_0be8588a56d3d363dc9b0647",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "community_supported",
+          "has_card_highlight": true
+        },
+        "product_line_id": "pl_bddb76c3e99ae9e348acbddd",
+        "borrowed_from_sibling": false
+      },
+      "active_ingredients": {
+        "status": "ready_hero",
+        "issues": [],
+        "regulatory_expected": false,
+        "hero_expected": true,
+        "active_items": [
+          "Squalane",
+          "Peptides"
+        ],
+        "source_origin": "pdp_section",
+        "source_quality_status": "captured",
+        "coverage": {
+          "details_sections_count": 20,
+          "faq_count": 10,
+          "how_to_chars": 10,
+          "inci_chars": 165,
+          "active_ingredients_chars": 79,
+          "inci_applicability_status": "",
+          "ingredient_review_status": "",
+          "ingredient_remediation_action": "",
+          "bundle_component_refs_count": 0,
+          "effective_inci_chars": 165,
+          "inci_borrowed_from_product_id": ""
+        },
+        "invalid_fragments": [],
+        "suppressed_reason": null
+      },
+      "variants": {
+        "status": "ready",
+        "issues": [],
+        "visible_variant_rows": 1,
+        "examples": {
+          "identity_option_visible": [],
+          "wrong_axis_for_category": [],
+          "makeup_shade_missing_visual": [],
+          "size_value_generic_axis": [],
+          "default_option_size_evidence_missing_axis": [],
+          "identity_default_title_axis": []
+        }
+      },
+      "coverage": {
+        "details_sections_count": 20,
+        "faq_count": 10,
+        "how_to_chars": 10,
+        "inci_chars": 165,
+        "active_ingredients_chars": 79,
+        "inci_applicability_status": "",
+        "ingredient_review_status": "",
+        "ingredient_remediation_action": "",
+        "bundle_component_refs_count": 0,
+        "effective_inci_chars": 165,
+        "inci_borrowed_from_product_id": ""
+      }
+    },
+    {
+      "seed_id": "eps_1d2ee1e33c988943a6741b13",
+      "external_product_id": "ext_1439f8f9dccacebd8b050495",
+      "market": "US",
+      "domain": "ulta.com",
+      "title": "Niacinamide 5% Face and Body Emulsion for Dark Spots & Uneven Tone",
+      "canonical_url": "https://www.ulta.com/p/niacinamide-5-face-body-emulsion-dark-spots-uneven-tone-pimprod2046887?sku=2630449",
+      "product_family": "single_formula",
+      "product_line_id": "pl_5829d085fbee37ee10abff9a",
+      "identity_variant_axes": {
+        "multi_variant": false
+      },
+      "pivota_insights": {
+        "direct": {
+          "product_id": "ext_1439f8f9dccacebd8b050495",
+          "kb_key": "product:ext_1439f8f9dccacebd8b050495",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "community_supported",
+          "has_card_highlight": true
+        },
+        "effective": {
+          "product_id": "ext_1439f8f9dccacebd8b050495",
+          "kb_key": "product:ext_1439f8f9dccacebd8b050495",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "community_supported",
+          "has_card_highlight": true
+        },
+        "product_line_id": "pl_5829d085fbee37ee10abff9a",
+        "borrowed_from_sibling": false
+      },
+      "active_ingredients": {
+        "status": "ready_hero",
+        "issues": [],
+        "regulatory_expected": false,
+        "hero_expected": true,
+        "active_items": [
+          "Niacinamide"
+        ],
+        "source_origin": "active_block",
+        "source_quality_status": "captured",
+        "coverage": {
+          "details_sections_count": 12,
+          "faq_count": 0,
+          "how_to_chars": 10,
+          "inci_chars": 17,
+          "active_ingredients_chars": 11,
+          "inci_applicability_status": "",
+          "ingredient_review_status": "",
+          "ingredient_remediation_action": "",
+          "bundle_component_refs_count": 0,
+          "effective_inci_chars": 17,
+          "inci_borrowed_from_product_id": ""
+        },
+        "invalid_fragments": [],
+        "suppressed_reason": "full_inci_low_purity"
+      },
+      "variants": {
+        "status": "no_visible_variant_axis",
+        "issues": [],
+        "visible_variant_rows": 0,
+        "examples": {
+          "identity_option_visible": [],
+          "wrong_axis_for_category": [],
+          "makeup_shade_missing_visual": [],
+          "size_value_generic_axis": [],
+          "default_option_size_evidence_missing_axis": [],
+          "identity_default_title_axis": []
+        }
+      },
+      "coverage": {
+        "details_sections_count": 12,
+        "faq_count": 0,
+        "how_to_chars": 10,
+        "inci_chars": 17,
+        "active_ingredients_chars": 11,
+        "inci_applicability_status": "",
+        "ingredient_review_status": "",
+        "ingredient_remediation_action": "",
+        "bundle_component_refs_count": 0,
+        "effective_inci_chars": 17,
+        "inci_borrowed_from_product_id": ""
+      }
+    },
+    {
+      "seed_id": "eps_c41d4af7442ed9167a100076",
+      "external_product_id": "ext_2dabb435e294c21fc4953580",
+      "market": "US",
+      "domain": "ulta.com",
+      "title": "Multi-Active Delivery Essence for Hydration",
+      "canonical_url": "https://www.ulta.com/p/multi-active-delivery-essence-hydration-pimprod2050415?sku=2637074",
+      "product_family": "single_formula",
+      "product_line_id": "pl_a6de93ab9305b60c00f31444",
+      "identity_variant_axes": {
+        "multi_variant": false
+      },
+      "pivota_insights": {
+        "direct": {
+          "product_id": "ext_2dabb435e294c21fc4953580",
+          "kb_key": "product:ext_2dabb435e294c21fc4953580",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "community_supported",
+          "has_card_highlight": true
+        },
+        "effective": {
+          "product_id": "ext_2dabb435e294c21fc4953580",
+          "kb_key": "product:ext_2dabb435e294c21fc4953580",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "community_supported",
+          "has_card_highlight": true
+        },
+        "product_line_id": "pl_a6de93ab9305b60c00f31444",
+        "borrowed_from_sibling": false
+      },
+      "active_ingredients": {
+        "status": "low_signal_active",
+        "issues": [
+          "low_signal_active"
+        ],
+        "regulatory_expected": false,
+        "hero_expected": true,
+        "active_items": [],
+        "source_origin": "none",
+        "source_quality_status": "blocked",
+        "coverage": {
+          "details_sections_count": 12,
+          "faq_count": 0,
+          "how_to_chars": 10,
+          "inci_chars": 17,
+          "active_ingredients_chars": 8,
+          "inci_applicability_status": "",
+          "ingredient_review_status": "",
+          "ingredient_remediation_action": "",
+          "bundle_component_refs_count": 0,
+          "effective_inci_chars": 17,
+          "inci_borrowed_from_product_id": ""
+        },
+        "invalid_fragments": [],
+        "suppressed_reason": "active_items_low_signal"
+      },
+      "variants": {
+        "status": "no_visible_variant_axis",
+        "issues": [],
+        "visible_variant_rows": 0,
+        "examples": {
+          "identity_option_visible": [],
+          "wrong_axis_for_category": [],
+          "makeup_shade_missing_visual": [],
+          "size_value_generic_axis": [],
+          "default_option_size_evidence_missing_axis": [],
+          "identity_default_title_axis": []
+        }
+      },
+      "coverage": {
+        "details_sections_count": 12,
+        "faq_count": 0,
+        "how_to_chars": 10,
+        "inci_chars": 17,
+        "active_ingredients_chars": 8,
+        "inci_applicability_status": "",
+        "ingredient_review_status": "",
+        "ingredient_remediation_action": "",
+        "bundle_component_refs_count": 0,
+        "effective_inci_chars": 17,
+        "inci_borrowed_from_product_id": ""
+      }
+    },
+    {
+      "seed_id": "eps_125b5f1ec6471b071c99b221",
+      "external_product_id": "ext_3699838289f1b5bb5343f606",
+      "market": "US",
+      "domain": "ulta.com",
+      "title": "GF 15% Serum for Visible Skin Repair and Wrinkles",
+      "canonical_url": "https://www.ulta.com/p/gf-15-serum-visible-skin-repair-wrinkles-pimprod2050414?sku=2637073",
+      "product_family": "single_formula",
+      "product_line_id": "pl_a13674aca7bd9f90c7a68c80",
+      "identity_variant_axes": {
+        "multi_variant": false
+      },
+      "pivota_insights": {
+        "direct": {
+          "product_id": "ext_3699838289f1b5bb5343f606",
+          "kb_key": "product:ext_3699838289f1b5bb5343f606",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "community_supported",
+          "has_card_highlight": true
+        },
+        "effective": {
+          "product_id": "ext_3699838289f1b5bb5343f606",
+          "kb_key": "product:ext_3699838289f1b5bb5343f606",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "community_supported",
+          "has_card_highlight": true
+        },
+        "product_line_id": "pl_a13674aca7bd9f90c7a68c80",
+        "borrowed_from_sibling": false
+      },
+      "active_ingredients": {
+        "status": "not_expected_missing",
+        "issues": [],
+        "regulatory_expected": false,
+        "hero_expected": false,
+        "active_items": [],
+        "source_origin": "none",
+        "source_quality_status": "blocked",
+        "coverage": {
+          "details_sections_count": 12,
+          "faq_count": 0,
+          "how_to_chars": 10,
+          "inci_chars": 17,
+          "active_ingredients_chars": 0,
+          "inci_applicability_status": "",
+          "ingredient_review_status": "",
+          "ingredient_remediation_action": "",
+          "bundle_component_refs_count": 0,
+          "effective_inci_chars": 17,
+          "inci_borrowed_from_product_id": ""
+        },
+        "invalid_fragments": [],
+        "suppressed_reason": "no_authoritative_source"
+      },
+      "variants": {
+        "status": "no_visible_variant_axis",
+        "issues": [],
+        "visible_variant_rows": 0,
+        "examples": {
+          "identity_option_visible": [],
+          "wrong_axis_for_category": [],
+          "makeup_shade_missing_visual": [],
+          "size_value_generic_axis": [],
+          "default_option_size_evidence_missing_axis": [],
+          "identity_default_title_axis": []
+        }
+      },
+      "coverage": {
+        "details_sections_count": 12,
+        "faq_count": 0,
+        "how_to_chars": 10,
+        "inci_chars": 17,
+        "active_ingredients_chars": 0,
+        "inci_applicability_status": "",
+        "ingredient_review_status": "",
+        "ingredient_remediation_action": "",
+        "bundle_component_refs_count": 0,
+        "effective_inci_chars": 17,
+        "inci_borrowed_from_product_id": ""
+      }
+    },
+    {
+      "seed_id": "eps_fd1b8bdf715b5593e2d16de0",
+      "external_product_id": "ext_3b44ffb943fb8d113504cd5d",
+      "market": "US",
+      "domain": "ulta.com",
+      "title": "PHA 5% Exfoliating Lip Serum",
+      "canonical_url": "https://www.ulta.com/p/pha-5-exfoliating-lip-serum-pimprod2054313?sku=2645081",
+      "product_family": "single_formula",
+      "product_line_id": "pl_c4c79cdeda5a3c2868cf849e",
+      "identity_variant_axes": {
+        "multi_variant": false
+      },
+      "pivota_insights": {
+        "direct": {
+          "product_id": "ext_3b44ffb943fb8d113504cd5d",
+          "kb_key": "product:ext_3b44ffb943fb8d113504cd5d",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "community_supported",
+          "has_card_highlight": true
+        },
+        "effective": {
+          "product_id": "ext_3b44ffb943fb8d113504cd5d",
+          "kb_key": "product:ext_3b44ffb943fb8d113504cd5d",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "community_supported",
+          "has_card_highlight": true
+        },
+        "product_line_id": "pl_c4c79cdeda5a3c2868cf849e",
+        "borrowed_from_sibling": false
+      },
+      "active_ingredients": {
+        "status": "low_signal_active",
+        "issues": [
+          "low_signal_active"
+        ],
+        "regulatory_expected": false,
+        "hero_expected": true,
+        "active_items": [],
+        "source_origin": "none",
+        "source_quality_status": "blocked",
+        "coverage": {
+          "details_sections_count": 14,
+          "faq_count": 10,
+          "how_to_chars": 10,
+          "inci_chars": 17,
+          "active_ingredients_chars": 8,
+          "inci_applicability_status": "",
+          "ingredient_review_status": "",
+          "ingredient_remediation_action": "",
+          "bundle_component_refs_count": 0,
+          "effective_inci_chars": 17,
+          "inci_borrowed_from_product_id": ""
+        },
+        "invalid_fragments": [],
+        "suppressed_reason": "active_items_low_signal"
+      },
+      "variants": {
+        "status": "no_visible_variant_axis",
+        "issues": [],
+        "visible_variant_rows": 0,
+        "examples": {
+          "identity_option_visible": [],
+          "wrong_axis_for_category": [],
+          "makeup_shade_missing_visual": [],
+          "size_value_generic_axis": [],
+          "default_option_size_evidence_missing_axis": [],
+          "identity_default_title_axis": []
+        }
+      },
+      "coverage": {
+        "details_sections_count": 14,
+        "faq_count": 10,
+        "how_to_chars": 10,
+        "inci_chars": 17,
+        "active_ingredients_chars": 8,
+        "inci_applicability_status": "",
+        "ingredient_review_status": "",
+        "ingredient_remediation_action": "",
+        "bundle_component_refs_count": 0,
+        "effective_inci_chars": 17,
+        "inci_borrowed_from_product_id": ""
+      }
+    },
+    {
+      "seed_id": "eps_879e51cc96b62e7b5281e7b1",
+      "external_product_id": "ext_3d00f4fe137b403a2af5837f",
+      "market": "US",
+      "domain": "ulta.com",
+      "title": "Saccharomyces Ferment 30% Milky Toner for Gentle Exfoliation and Hydration",
+      "canonical_url": "https://www.ulta.com/p/saccharomyces-ferment-30-milky-toner-gentle-exfoliation-hydration-pimprod2045245?sku=2623549",
+      "product_family": "single_formula",
+      "product_line_id": "pl_1a87f4fdf6b6a8a916e3f82b",
+      "identity_variant_axes": {
+        "multi_variant": false
+      },
+      "pivota_insights": {
+        "direct": {
+          "product_id": "ext_3d00f4fe137b403a2af5837f",
+          "kb_key": "product:ext_3d00f4fe137b403a2af5837f",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "community_supported",
+          "has_card_highlight": true
+        },
+        "effective": {
+          "product_id": "ext_3d00f4fe137b403a2af5837f",
+          "kb_key": "product:ext_3d00f4fe137b403a2af5837f",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "community_supported",
+          "has_card_highlight": true
+        },
+        "product_line_id": "pl_1a87f4fdf6b6a8a916e3f82b",
+        "borrowed_from_sibling": false
+      },
+      "active_ingredients": {
+        "status": "not_expected_missing",
+        "issues": [],
+        "regulatory_expected": false,
+        "hero_expected": false,
+        "active_items": [],
+        "source_origin": "none",
+        "source_quality_status": "blocked",
+        "coverage": {
+          "details_sections_count": 12,
+          "faq_count": 0,
+          "how_to_chars": 10,
+          "inci_chars": 17,
+          "active_ingredients_chars": 0,
+          "inci_applicability_status": "",
+          "ingredient_review_status": "",
+          "ingredient_remediation_action": "",
+          "bundle_component_refs_count": 0,
+          "effective_inci_chars": 17,
+          "inci_borrowed_from_product_id": ""
+        },
+        "invalid_fragments": [],
+        "suppressed_reason": "no_authoritative_source"
+      },
+      "variants": {
+        "status": "no_visible_variant_axis",
+        "issues": [],
+        "visible_variant_rows": 0,
+        "examples": {
+          "identity_option_visible": [],
+          "wrong_axis_for_category": [],
+          "makeup_shade_missing_visual": [],
+          "size_value_generic_axis": [],
+          "default_option_size_evidence_missing_axis": [],
+          "identity_default_title_axis": []
+        }
+      },
+      "coverage": {
+        "details_sections_count": 12,
+        "faq_count": 0,
+        "how_to_chars": 10,
+        "inci_chars": 17,
+        "active_ingredients_chars": 0,
+        "inci_applicability_status": "",
+        "ingredient_review_status": "",
+        "ingredient_remediation_action": "",
+        "bundle_component_refs_count": 0,
+        "effective_inci_chars": 17,
+        "inci_borrowed_from_product_id": ""
+      }
+    },
+    {
+      "seed_id": "eps_d6a69d18656c967296b247b9",
+      "external_product_id": "ext_462858a23ba0323b45eb528b",
+      "market": "US",
+      "domain": "ulta.com",
+      "title": "Multi-Antioxidant Radiance Serum with Vitamin C and Ginseng",
+      "canonical_url": "https://www.ulta.com/p/multi-antioxidant-radiance-serum-with-vitamin-c-ginseng-pimprod2051185?sku=2637075",
+      "product_family": "single_formula",
+      "product_line_id": "pl_840fa61bf28daddeefa694d4",
+      "identity_variant_axes": {
+        "multi_variant": false
+      },
+      "pivota_insights": {
+        "direct": {
+          "product_id": "ext_462858a23ba0323b45eb528b",
+          "kb_key": "product:ext_462858a23ba0323b45eb528b",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "community_supported",
+          "has_card_highlight": true
+        },
+        "effective": {
+          "product_id": "ext_462858a23ba0323b45eb528b",
+          "kb_key": "product:ext_462858a23ba0323b45eb528b",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "community_supported",
+          "has_card_highlight": true
+        },
+        "product_line_id": "pl_840fa61bf28daddeefa694d4",
+        "borrowed_from_sibling": false
+      },
+      "active_ingredients": {
+        "status": "ready_hero",
+        "issues": [],
+        "regulatory_expected": false,
+        "hero_expected": true,
+        "active_items": [
+          "Vitamin C (Ascorbic acid)",
+          "Peptides"
+        ],
+        "source_origin": "active_block",
+        "source_quality_status": "captured",
+        "coverage": {
+          "details_sections_count": 12,
+          "faq_count": 0,
+          "how_to_chars": 10,
+          "inci_chars": 17,
+          "active_ingredients_chars": 35,
+          "inci_applicability_status": "",
+          "ingredient_review_status": "",
+          "ingredient_remediation_action": "",
+          "bundle_component_refs_count": 0,
+          "effective_inci_chars": 17,
+          "inci_borrowed_from_product_id": ""
+        },
+        "invalid_fragments": [],
+        "suppressed_reason": "full_inci_low_purity"
+      },
+      "variants": {
+        "status": "no_visible_variant_axis",
+        "issues": [],
+        "visible_variant_rows": 0,
+        "examples": {
+          "identity_option_visible": [],
+          "wrong_axis_for_category": [],
+          "makeup_shade_missing_visual": [],
+          "size_value_generic_axis": [],
+          "default_option_size_evidence_missing_axis": [],
+          "identity_default_title_axis": []
+        }
+      },
+      "coverage": {
+        "details_sections_count": 12,
+        "faq_count": 0,
+        "how_to_chars": 10,
+        "inci_chars": 17,
+        "active_ingredients_chars": 35,
+        "inci_applicability_status": "",
+        "ingredient_review_status": "",
+        "ingredient_remediation_action": "",
+        "bundle_component_refs_count": 0,
+        "effective_inci_chars": 17,
+        "inci_borrowed_from_product_id": ""
+      }
+    },
+    {
+      "seed_id": "eps_e819321c32020902161566d5",
+      "external_product_id": "ext_469ea0709c02f6687b9d2fa5",
+      "market": "US",
+      "domain": "ulta.com",
+      "title": "Glycolic Acid 7% Exfoliating and Brightening Daily Toner - 8.0 oz",
+      "canonical_url": "https://www.ulta.com/p/glycolic-acid-7-exfoliating-brightening-daily-toner-pimprod2007097?sku=2551155",
+      "product_family": "single_formula",
+      "product_line_id": "pl_6c55fc897d9ffad648b7bc21",
+      "identity_variant_axes": {
+        "multi_variant": false
+      },
+      "pivota_insights": {
+        "direct": {
+          "product_id": "ext_469ea0709c02f6687b9d2fa5",
+          "kb_key": null,
+          "status": "missing_kb",
+          "kb_exists": false,
+          "displayable": false,
+          "high_quality_ready": false,
+          "issues": [
+            "missing_kb"
+          ],
+          "quality_state": "missing",
+          "evidence_profile": "missing"
+        },
+        "effective": {
+          "product_id": "ext_9c4e18524e509dd477c9b226",
+          "kb_key": "product:ext_9c4e18524e509dd477c9b226",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "seller_plus_formula",
+          "has_card_highlight": true
+        },
+        "product_line_id": "pl_6c55fc897d9ffad648b7bc21",
+        "borrowed_from_sibling": true
+      },
+      "active_ingredients": {
+        "status": "ready_hero",
+        "issues": [],
+        "regulatory_expected": false,
+        "hero_expected": true,
+        "active_items": [
+          "Glycolic acid"
+        ],
+        "source_origin": "active_block",
+        "source_quality_status": "captured",
+        "coverage": {
+          "details_sections_count": 12,
+          "faq_count": 10,
+          "how_to_chars": 10,
+          "inci_chars": 17,
+          "active_ingredients_chars": 13,
+          "inci_applicability_status": "",
+          "ingredient_review_status": "",
+          "ingredient_remediation_action": "",
+          "bundle_component_refs_count": 0,
+          "effective_inci_chars": 17,
+          "inci_borrowed_from_product_id": ""
+        },
+        "invalid_fragments": [],
+        "suppressed_reason": "full_inci_low_purity"
+      },
+      "variants": {
+        "status": "ready",
+        "issues": [],
+        "visible_variant_rows": 1,
+        "examples": {
+          "identity_option_visible": [],
+          "wrong_axis_for_category": [],
+          "makeup_shade_missing_visual": [],
+          "size_value_generic_axis": [],
+          "default_option_size_evidence_missing_axis": [],
+          "identity_default_title_axis": []
+        }
+      },
+      "coverage": {
+        "details_sections_count": 12,
+        "faq_count": 10,
+        "how_to_chars": 10,
+        "inci_chars": 17,
+        "active_ingredients_chars": 13,
+        "inci_applicability_status": "",
+        "ingredient_review_status": "",
+        "ingredient_remediation_action": "",
+        "bundle_component_refs_count": 0,
+        "effective_inci_chars": 17,
+        "inci_borrowed_from_product_id": ""
+      }
+    },
+    {
+      "seed_id": "eps_1bbf919f3f56b1d02256e584",
+      "external_product_id": "ext_481e9177b05830c3620f0cde",
+      "market": "US",
+      "domain": "ulta.com",
+      "title": "Anthelios AOX Daily Antioxidant Face Serum SPF 50",
+      "canonical_url": "https://www.ulta.com/p/anthelios-aox-daily-antioxidant-face-serum-spf-50-xlsImpprod12101063?sku=2285142",
+      "product_family": "single_formula",
+      "product_line_id": "pl_0f2caf4acfc0cf2689f4cebf",
+      "identity_variant_axes": {
+        "shade": "2285142",
+        "multi_variant": false
+      },
+      "pivota_insights": {
+        "direct": {
+          "product_id": "ext_481e9177b05830c3620f0cde",
+          "kb_key": "product:ext_481e9177b05830c3620f0cde",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": false,
+          "human_reviewed": true,
+          "issues": [
+            "missing_card_highlight",
+            "quality_eligible"
+          ],
+          "blocking_issues": [
+            "missing_card_highlight"
+          ],
+          "quality_state": "eligible",
+          "evidence_profile": "community_supported",
+          "has_card_highlight": false
+        },
+        "effective": {
+          "product_id": "ext_481e9177b05830c3620f0cde",
+          "kb_key": "product:ext_481e9177b05830c3620f0cde",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": false,
+          "human_reviewed": true,
+          "issues": [
+            "missing_card_highlight",
+            "quality_eligible"
+          ],
+          "blocking_issues": [
+            "missing_card_highlight"
+          ],
+          "quality_state": "eligible",
+          "evidence_profile": "community_supported",
+          "has_card_highlight": false
+        },
+        "product_line_id": "pl_0f2caf4acfc0cf2689f4cebf",
+        "borrowed_from_sibling": false
+      },
+      "active_ingredients": {
+        "status": "missing_regulatory",
+        "issues": [
+          "missing_regulatory"
+        ],
+        "regulatory_expected": true,
+        "hero_expected": true,
+        "active_items": [],
+        "source_origin": "none",
+        "source_quality_status": "blocked",
+        "coverage": {
+          "details_sections_count": 12,
+          "faq_count": 0,
+          "how_to_chars": 10,
+          "inci_chars": 11,
+          "active_ingredients_chars": 10,
+          "inci_applicability_status": "",
+          "ingredient_review_status": "",
+          "ingredient_remediation_action": "",
+          "bundle_component_refs_count": 0,
+          "effective_inci_chars": 11,
+          "inci_borrowed_from_product_id": ""
+        },
+        "invalid_fragments": [],
+        "suppressed_reason": "active_items_not_displayable"
+      },
+      "variants": {
+        "status": "ready",
+        "issues": [],
+        "visible_variant_rows": 1,
+        "examples": {
+          "identity_option_visible": [],
+          "wrong_axis_for_category": [],
+          "makeup_shade_missing_visual": [],
+          "size_value_generic_axis": [],
+          "default_option_size_evidence_missing_axis": [],
+          "identity_default_title_axis": []
+        }
+      },
+      "coverage": {
+        "details_sections_count": 12,
+        "faq_count": 0,
+        "how_to_chars": 10,
+        "inci_chars": 11,
+        "active_ingredients_chars": 10,
+        "inci_applicability_status": "",
+        "ingredient_review_status": "",
+        "ingredient_remediation_action": "",
+        "bundle_component_refs_count": 0,
+        "effective_inci_chars": 11,
+        "inci_borrowed_from_product_id": ""
+      }
+    },
+    {
+      "seed_id": "eps_50ea72f8160c2719eacbe24b",
+      "external_product_id": "ext_4d943744054031d3578ecff6",
+      "market": "US",
+      "domain": "ulta.com",
+      "title": "Amino Acids + B5 Hydration Serum",
+      "canonical_url": "https://www.ulta.com/p/amino-acids-b5-hydration-serum-pimprod2031531?sku=2595969",
+      "product_family": "single_formula",
+      "product_line_id": "pl_66aef9d65c6d5da6a2490664",
+      "identity_variant_axes": {
+        "multi_variant": false
+      },
+      "pivota_insights": {
+        "direct": {
+          "product_id": "ext_4d943744054031d3578ecff6",
+          "kb_key": "product:ext_4d943744054031d3578ecff6",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "community_supported",
+          "has_card_highlight": true
+        },
+        "effective": {
+          "product_id": "ext_4d943744054031d3578ecff6",
+          "kb_key": "product:ext_4d943744054031d3578ecff6",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "community_supported",
+          "has_card_highlight": true
+        },
+        "product_line_id": "pl_66aef9d65c6d5da6a2490664",
+        "borrowed_from_sibling": false
+      },
+      "active_ingredients": {
+        "status": "ready_other",
+        "issues": [],
+        "regulatory_expected": false,
+        "hero_expected": false,
+        "active_items": [
+          "Panthenol (B5)"
+        ],
+        "source_origin": "active_block",
+        "source_quality_status": "captured",
+        "coverage": {
+          "details_sections_count": 12,
+          "faq_count": 0,
+          "how_to_chars": 10,
+          "inci_chars": 17,
+          "active_ingredients_chars": 14,
+          "inci_applicability_status": "",
+          "ingredient_review_status": "",
+          "ingredient_remediation_action": "",
+          "bundle_component_refs_count": 0,
+          "effective_inci_chars": 17,
+          "inci_borrowed_from_product_id": ""
+        },
+        "invalid_fragments": [],
+        "suppressed_reason": "full_inci_low_purity"
+      },
+      "variants": {
+        "status": "ready",
+        "issues": [],
+        "visible_variant_rows": 1,
+        "examples": {
+          "identity_option_visible": [],
+          "wrong_axis_for_category": [],
+          "makeup_shade_missing_visual": [],
+          "size_value_generic_axis": [],
+          "default_option_size_evidence_missing_axis": [],
+          "identity_default_title_axis": []
+        }
+      },
+      "coverage": {
+        "details_sections_count": 12,
+        "faq_count": 0,
+        "how_to_chars": 10,
+        "inci_chars": 17,
+        "active_ingredients_chars": 14,
+        "inci_applicability_status": "",
+        "ingredient_review_status": "",
+        "ingredient_remediation_action": "",
+        "bundle_component_refs_count": 0,
+        "effective_inci_chars": 17,
+        "inci_borrowed_from_product_id": ""
+      }
+    },
+    {
+      "seed_id": "eps_8c8494e69b82265af501a161",
+      "external_product_id": "ext_54622d272663a9941ba758ae",
+      "market": "US",
+      "domain": "ulta.com",
+      "title": "Soothing & Barrier Support Serum for Sensitive Skin & Hydration",
+      "canonical_url": "https://www.ulta.com/p/soothing-barrier-support-serum-sensitive-skin-hydration-pimprod2041026?sku=2615437",
+      "product_family": "single_formula",
+      "product_line_id": "pl_faffd20136d4a9cdccc53721",
+      "identity_variant_axes": {
+        "multi_variant": false
+      },
+      "pivota_insights": {
+        "direct": {
+          "product_id": "ext_54622d272663a9941ba758ae",
+          "kb_key": "product:ext_54622d272663a9941ba758ae",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "community_supported",
+          "has_card_highlight": true
+        },
+        "effective": {
+          "product_id": "ext_54622d272663a9941ba758ae",
+          "kb_key": "product:ext_54622d272663a9941ba758ae",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "community_supported",
+          "has_card_highlight": true
+        },
+        "product_line_id": "pl_faffd20136d4a9cdccc53721",
+        "borrowed_from_sibling": false
+      },
+      "active_ingredients": {
+        "status": "ready_hero",
+        "issues": [],
+        "regulatory_expected": false,
+        "hero_expected": true,
+        "active_items": [
+          "Ceramide NP",
+          "Niacinamide",
+          "Centella asiatica"
+        ],
+        "source_origin": "active_block",
+        "source_quality_status": "captured",
+        "coverage": {
+          "details_sections_count": 18,
+          "faq_count": 12,
+          "how_to_chars": 10,
+          "inci_chars": 17,
+          "active_ingredients_chars": 43,
+          "inci_applicability_status": "",
+          "ingredient_review_status": "",
+          "ingredient_remediation_action": "",
+          "bundle_component_refs_count": 0,
+          "effective_inci_chars": 17,
+          "inci_borrowed_from_product_id": ""
+        },
+        "invalid_fragments": [],
+        "suppressed_reason": "full_inci_low_purity"
+      },
+      "variants": {
+        "status": "ready",
+        "issues": [],
+        "visible_variant_rows": 1,
+        "examples": {
+          "identity_option_visible": [],
+          "wrong_axis_for_category": [],
+          "makeup_shade_missing_visual": [],
+          "size_value_generic_axis": [],
+          "default_option_size_evidence_missing_axis": [],
+          "identity_default_title_axis": []
+        }
+      },
+      "coverage": {
+        "details_sections_count": 18,
+        "faq_count": 12,
+        "how_to_chars": 10,
+        "inci_chars": 17,
+        "active_ingredients_chars": 43,
+        "inci_applicability_status": "",
+        "ingredient_review_status": "",
+        "ingredient_remediation_action": "",
+        "bundle_component_refs_count": 0,
+        "effective_inci_chars": 17,
+        "inci_borrowed_from_product_id": ""
+      }
+    },
+    {
+      "seed_id": "eps_5272a6c8b1bed6631473d05b",
+      "external_product_id": "ext_58e62e14a040b9bcdd84c2e8",
+      "market": "US",
+      "domain": "ulta.com",
+      "title": "Multi-Peptide + Copper Peptides 1% for Wrinkles and Skin Elasticity",
+      "canonical_url": "https://www.ulta.com/p/multi-peptide-copper-peptides-1-wrinkles-skin-elasticity-pimprod2039725?sku=2611370",
+      "product_family": "single_formula",
+      "product_line_id": "pl_79446eda0768dc4d6f1af5d9",
+      "identity_variant_axes": {
+        "multi_variant": false
+      },
+      "pivota_insights": {
+        "direct": {
+          "product_id": "ext_58e62e14a040b9bcdd84c2e8",
+          "kb_key": "product:ext_58e62e14a040b9bcdd84c2e8",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "community_supported",
+          "has_card_highlight": true
+        },
+        "effective": {
+          "product_id": "ext_58e62e14a040b9bcdd84c2e8",
+          "kb_key": "product:ext_58e62e14a040b9bcdd84c2e8",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "community_supported",
+          "has_card_highlight": true
+        },
+        "product_line_id": "pl_79446eda0768dc4d6f1af5d9",
+        "borrowed_from_sibling": false
+      },
+      "active_ingredients": {
+        "status": "ready_hero",
+        "issues": [],
+        "regulatory_expected": false,
+        "hero_expected": true,
+        "active_items": [
+          "Peptides",
+          "Hyaluronic acid"
+        ],
+        "source_origin": "active_block",
+        "source_quality_status": "captured",
+        "coverage": {
+          "details_sections_count": 12,
+          "faq_count": 0,
+          "how_to_chars": 10,
+          "inci_chars": 184,
+          "active_ingredients_chars": 25,
+          "inci_applicability_status": "",
+          "ingredient_review_status": "",
+          "ingredient_remediation_action": "",
+          "bundle_component_refs_count": 0,
+          "effective_inci_chars": 184,
+          "inci_borrowed_from_product_id": ""
+        },
+        "invalid_fragments": [],
+        "suppressed_reason": "full_inci_low_purity"
+      },
+      "variants": {
+        "status": "no_visible_variant_axis",
+        "issues": [],
+        "visible_variant_rows": 0,
+        "examples": {
+          "identity_option_visible": [],
+          "wrong_axis_for_category": [],
+          "makeup_shade_missing_visual": [],
+          "size_value_generic_axis": [],
+          "default_option_size_evidence_missing_axis": [],
+          "identity_default_title_axis": []
+        }
+      },
+      "coverage": {
+        "details_sections_count": 12,
+        "faq_count": 0,
+        "how_to_chars": 10,
+        "inci_chars": 184,
+        "active_ingredients_chars": 25,
+        "inci_applicability_status": "",
+        "ingredient_review_status": "",
+        "ingredient_remediation_action": "",
+        "bundle_component_refs_count": 0,
+        "effective_inci_chars": 184,
+        "inci_borrowed_from_product_id": ""
+      }
+    },
+    {
+      "seed_id": "eps_01240a1132950f110d49add3",
+      "external_product_id": "ext_5ff739fc22b4b170f1fa47d4",
+      "market": "US",
+      "domain": "ulta.com",
+      "title": "Volufiline 92% + Pal-Isoleucine 1% Plumping Serum",
+      "canonical_url": "https://www.ulta.com/p/volufiline-92-pal-isoleucine-1-plumping-serum-pimprod2055836?sku=2645079",
+      "product_family": "single_formula",
+      "product_line_id": "pl_54453957408b7336db3a559a",
+      "identity_variant_axes": {
+        "multi_variant": false
+      },
+      "pivota_insights": {
+        "direct": {
+          "product_id": "ext_5ff739fc22b4b170f1fa47d4",
+          "kb_key": "product:ext_5ff739fc22b4b170f1fa47d4",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "community_supported",
+          "has_card_highlight": true
+        },
+        "effective": {
+          "product_id": "ext_5ff739fc22b4b170f1fa47d4",
+          "kb_key": "product:ext_5ff739fc22b4b170f1fa47d4",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "community_supported",
+          "has_card_highlight": true
+        },
+        "product_line_id": "pl_54453957408b7336db3a559a",
+        "borrowed_from_sibling": false
+      },
+      "active_ingredients": {
+        "status": "not_expected_missing",
+        "issues": [],
+        "regulatory_expected": false,
+        "hero_expected": false,
+        "active_items": [],
+        "source_origin": "none",
+        "source_quality_status": "blocked",
+        "coverage": {
+          "details_sections_count": 10,
+          "faq_count": 0,
+          "how_to_chars": 10,
+          "inci_chars": 17,
+          "active_ingredients_chars": 0,
+          "inci_applicability_status": "",
+          "ingredient_review_status": "",
+          "ingredient_remediation_action": "",
+          "bundle_component_refs_count": 0,
+          "effective_inci_chars": 17,
+          "inci_borrowed_from_product_id": ""
+        },
+        "invalid_fragments": [],
+        "suppressed_reason": "no_authoritative_source"
+      },
+      "variants": {
+        "status": "no_visible_variant_axis",
+        "issues": [],
+        "visible_variant_rows": 0,
+        "examples": {
+          "identity_option_visible": [],
+          "wrong_axis_for_category": [],
+          "makeup_shade_missing_visual": [],
+          "size_value_generic_axis": [],
+          "default_option_size_evidence_missing_axis": [],
+          "identity_default_title_axis": []
+        }
+      },
+      "coverage": {
+        "details_sections_count": 10,
+        "faq_count": 0,
+        "how_to_chars": 10,
+        "inci_chars": 17,
+        "active_ingredients_chars": 0,
+        "inci_applicability_status": "",
+        "ingredient_review_status": "",
+        "ingredient_remediation_action": "",
+        "bundle_component_refs_count": 0,
+        "effective_inci_chars": 17,
+        "inci_borrowed_from_product_id": ""
+      }
+    },
+    {
+      "seed_id": "eps_826b817bbd9e3db96fbb67b8",
+      "external_product_id": "ext_6111540c341e84e75edba91c",
+      "market": "US",
+      "domain": "ulta.com",
+      "title": "Lash Curl Finisher",
+      "canonical_url": "https://www.ulta.com/p/lash-curl-finisher-pimprod2055986?sku=2645082",
+      "product_family": "single_formula",
+      "product_line_id": "pl_175e9fb6eb2530b12ccfe47b",
+      "identity_variant_axes": {
+        "multi_variant": false
+      },
+      "pivota_insights": {
+        "direct": {
+          "product_id": "ext_6111540c341e84e75edba91c",
+          "kb_key": "product:ext_6111540c341e84e75edba91c",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "community_supported",
+          "has_card_highlight": true
+        },
+        "effective": {
+          "product_id": "ext_6111540c341e84e75edba91c",
+          "kb_key": "product:ext_6111540c341e84e75edba91c",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "community_supported",
+          "has_card_highlight": true
+        },
+        "product_line_id": "pl_175e9fb6eb2530b12ccfe47b",
+        "borrowed_from_sibling": false
+      },
+      "active_ingredients": {
+        "status": "ready_hero",
+        "issues": [],
+        "regulatory_expected": false,
+        "hero_expected": true,
+        "active_items": [
+          "Squalane"
+        ],
+        "source_origin": "active_block",
+        "source_quality_status": "captured",
+        "coverage": {
+          "details_sections_count": 12,
+          "faq_count": 0,
+          "how_to_chars": 10,
+          "inci_chars": 17,
+          "active_ingredients_chars": 8,
+          "inci_applicability_status": "",
+          "ingredient_review_status": "",
+          "ingredient_remediation_action": "",
+          "bundle_component_refs_count": 0,
+          "effective_inci_chars": 17,
+          "inci_borrowed_from_product_id": ""
+        },
+        "invalid_fragments": [],
+        "suppressed_reason": "full_inci_low_purity"
+      },
+      "variants": {
+        "status": "no_visible_variant_axis",
+        "issues": [],
+        "visible_variant_rows": 0,
+        "examples": {
+          "identity_option_visible": [],
+          "wrong_axis_for_category": [],
+          "makeup_shade_missing_visual": [],
+          "size_value_generic_axis": [],
+          "default_option_size_evidence_missing_axis": [],
+          "identity_default_title_axis": []
+        }
+      },
+      "coverage": {
+        "details_sections_count": 12,
+        "faq_count": 0,
+        "how_to_chars": 10,
+        "inci_chars": 17,
+        "active_ingredients_chars": 8,
+        "inci_applicability_status": "",
+        "ingredient_review_status": "",
+        "ingredient_remediation_action": "",
+        "bundle_component_refs_count": 0,
+        "effective_inci_chars": 17,
+        "inci_borrowed_from_product_id": ""
+      }
+    },
+    {
+      "seed_id": "eps_981d2334fc4e4644f3f51ed5",
+      "external_product_id": "ext_68b787f5e7935b228b79321d",
+      "market": "US",
+      "domain": "ulta.com",
+      "title": "Niacinamide 10% + Zinc 1% Serum for Oily Skin - 1.0 oz",
+      "canonical_url": "https://www.ulta.com/p/niacinamide-10-zinc-1-serum-oily-skin-pimprod2007111?sku=2551167",
+      "product_family": "single_formula",
+      "product_line_id": "pl_16b53526208dc4c75313e844",
+      "identity_variant_axes": {
+        "multi_variant": false
+      },
+      "pivota_insights": {
+        "direct": {
+          "product_id": "ext_68b787f5e7935b228b79321d",
+          "kb_key": "product:ext_68b787f5e7935b228b79321d",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "community_supported",
+          "has_card_highlight": true
+        },
+        "effective": {
+          "product_id": "ext_68b787f5e7935b228b79321d",
+          "kb_key": "product:ext_68b787f5e7935b228b79321d",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "community_supported",
+          "has_card_highlight": true
+        },
+        "product_line_id": "pl_16b53526208dc4c75313e844",
+        "borrowed_from_sibling": false
+      },
+      "active_ingredients": {
+        "status": "ready_hero",
+        "issues": [],
+        "regulatory_expected": false,
+        "hero_expected": true,
+        "active_items": [
+          "Niacinamide"
+        ],
+        "source_origin": "active_block",
+        "source_quality_status": "captured",
+        "coverage": {
+          "details_sections_count": 14,
+          "faq_count": 10,
+          "how_to_chars": 10,
+          "inci_chars": 17,
+          "active_ingredients_chars": 0,
+          "inci_applicability_status": "",
+          "ingredient_review_status": "",
+          "ingredient_remediation_action": "",
+          "bundle_component_refs_count": 0,
+          "effective_inci_chars": 17,
+          "inci_borrowed_from_product_id": ""
+        },
+        "invalid_fragments": [],
+        "suppressed_reason": "full_inci_low_purity"
+      },
+      "variants": {
+        "status": "ready",
+        "issues": [],
+        "visible_variant_rows": 1,
+        "examples": {
+          "identity_option_visible": [],
+          "wrong_axis_for_category": [],
+          "makeup_shade_missing_visual": [],
+          "size_value_generic_axis": [],
+          "default_option_size_evidence_missing_axis": [],
+          "identity_default_title_axis": []
+        }
+      },
+      "coverage": {
+        "details_sections_count": 14,
+        "faq_count": 10,
+        "how_to_chars": 10,
+        "inci_chars": 17,
+        "active_ingredients_chars": 0,
+        "inci_applicability_status": "",
+        "ingredient_review_status": "",
+        "ingredient_remediation_action": "",
+        "bundle_component_refs_count": 0,
+        "effective_inci_chars": 17,
+        "inci_borrowed_from_product_id": ""
+      }
+    },
+    {
+      "seed_id": "eps_041023fa95a54babfb40abc4",
+      "external_product_id": "ext_7db487fb062d3a8dc8fb330d",
+      "market": "US",
+      "domain": "ulta.com",
+      "title": "Salicylic Acid 2% Anhydrous Solution, Gentle Exfoliating Serum for Blemishes",
+      "canonical_url": "https://www.ulta.com/p/salicylic-acid-2-anhydrous-solution-gentle-exfoliating-serum-blemishes-pimprod2029951?sku=2590731",
+      "product_family": "single_formula",
+      "product_line_id": "pl_e9aa6872e5f4576430178ea0",
+      "identity_variant_axes": {
+        "multi_variant": false
+      },
+      "pivota_insights": {
+        "direct": {
+          "product_id": "ext_7db487fb062d3a8dc8fb330d",
+          "kb_key": "product:ext_7db487fb062d3a8dc8fb330d",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "community_supported",
+          "has_card_highlight": true
+        },
+        "effective": {
+          "product_id": "ext_7db487fb062d3a8dc8fb330d",
+          "kb_key": "product:ext_7db487fb062d3a8dc8fb330d",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "community_supported",
+          "has_card_highlight": true
+        },
+        "product_line_id": "pl_e9aa6872e5f4576430178ea0",
+        "borrowed_from_sibling": false
+      },
+      "active_ingredients": {
+        "status": "ready_other",
+        "issues": [],
+        "regulatory_expected": false,
+        "hero_expected": true,
+        "active_items": [
+          "Salicylic acid"
+        ],
+        "source_origin": "active_block",
+        "source_quality_status": "captured",
+        "coverage": {
+          "details_sections_count": 12,
+          "faq_count": 0,
+          "how_to_chars": 10,
+          "inci_chars": 17,
+          "active_ingredients_chars": 14,
+          "inci_applicability_status": "",
+          "ingredient_review_status": "",
+          "ingredient_remediation_action": "",
+          "bundle_component_refs_count": 0,
+          "effective_inci_chars": 17,
+          "inci_borrowed_from_product_id": ""
+        },
+        "invalid_fragments": [],
+        "suppressed_reason": "full_inci_low_purity"
+      },
+      "variants": {
+        "status": "ready",
+        "issues": [],
+        "visible_variant_rows": 1,
+        "examples": {
+          "identity_option_visible": [],
+          "wrong_axis_for_category": [],
+          "makeup_shade_missing_visual": [],
+          "size_value_generic_axis": [],
+          "default_option_size_evidence_missing_axis": [],
+          "identity_default_title_axis": []
+        }
+      },
+      "coverage": {
+        "details_sections_count": 12,
+        "faq_count": 0,
+        "how_to_chars": 10,
+        "inci_chars": 17,
+        "active_ingredients_chars": 14,
+        "inci_applicability_status": "",
+        "ingredient_review_status": "",
+        "ingredient_remediation_action": "",
+        "bundle_component_refs_count": 0,
+        "effective_inci_chars": 17,
+        "inci_borrowed_from_product_id": ""
+      }
+    },
+    {
+      "seed_id": "eps_511160d877e3522e587946a9",
+      "external_product_id": "ext_815300f8d511fb93b5ae29d8",
+      "market": "US",
+      "domain": "ulta.com",
+      "title": "Retinol 0.5% in Squalane, Intermediate Retinol Serum",
+      "canonical_url": "https://www.ulta.com/p/retinol-05-in-squalane-intermediate-retinol-serum-pimprod2007127?sku=2551172",
+      "product_family": "single_formula",
+      "product_line_id": "pl_1e3aa067387b394b8fc20092",
+      "identity_variant_axes": {
+        "multi_variant": false
+      },
+      "pivota_insights": {
+        "direct": {
+          "product_id": "ext_815300f8d511fb93b5ae29d8",
+          "kb_key": "product:ext_815300f8d511fb93b5ae29d8",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "community_supported",
+          "has_card_highlight": true
+        },
+        "effective": {
+          "product_id": "ext_815300f8d511fb93b5ae29d8",
+          "kb_key": "product:ext_815300f8d511fb93b5ae29d8",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "community_supported",
+          "has_card_highlight": true
+        },
+        "product_line_id": "pl_1e3aa067387b394b8fc20092",
+        "borrowed_from_sibling": false
+      },
+      "active_ingredients": {
+        "status": "ready_hero",
+        "issues": [],
+        "regulatory_expected": false,
+        "hero_expected": true,
+        "active_items": [
+          "Retinol"
+        ],
+        "source_origin": "active_block",
+        "source_quality_status": "captured",
+        "coverage": {
+          "details_sections_count": 10,
+          "faq_count": 0,
+          "how_to_chars": 10,
+          "inci_chars": 17,
+          "active_ingredients_chars": 0,
+          "inci_applicability_status": "",
+          "ingredient_review_status": "",
+          "ingredient_remediation_action": "",
+          "bundle_component_refs_count": 0,
+          "effective_inci_chars": 17,
+          "inci_borrowed_from_product_id": ""
+        },
+        "invalid_fragments": [],
+        "suppressed_reason": "full_inci_low_purity"
+      },
+      "variants": {
+        "status": "ready",
+        "issues": [],
+        "visible_variant_rows": 1,
+        "examples": {
+          "identity_option_visible": [],
+          "wrong_axis_for_category": [],
+          "makeup_shade_missing_visual": [],
+          "size_value_generic_axis": [],
+          "default_option_size_evidence_missing_axis": [],
+          "identity_default_title_axis": []
+        }
+      },
+      "coverage": {
+        "details_sections_count": 10,
+        "faq_count": 0,
+        "how_to_chars": 10,
+        "inci_chars": 17,
+        "active_ingredients_chars": 0,
+        "inci_applicability_status": "",
+        "ingredient_review_status": "",
+        "ingredient_remediation_action": "",
+        "bundle_component_refs_count": 0,
+        "effective_inci_chars": 17,
+        "inci_borrowed_from_product_id": ""
+      }
+    },
+    {
+      "seed_id": "eps_b2be1818c666865a91262027",
+      "external_product_id": "ext_87738191ec2d9e2ab17afe42",
+      "market": "US",
+      "domain": "ulta.com",
+      "title": "Glycolipid Cream Cleanser for Dry Skin and Makeup Removal",
+      "canonical_url": "https://www.ulta.com/p/glycolipid-cream-cleanser-dry-skin-makeup-removal-pimprod2038843?sku=2609861",
+      "product_family": "set_or_collection",
+      "product_line_id": "pl_cd3232e0638dbdceba4d7738",
+      "identity_variant_axes": {
+        "multi_variant": false
+      },
+      "pivota_insights": {
+        "direct": {
+          "product_id": "ext_87738191ec2d9e2ab17afe42",
+          "kb_key": "product:ext_87738191ec2d9e2ab17afe42",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "community_supported",
+          "has_card_highlight": true
+        },
+        "effective": {
+          "product_id": "ext_87738191ec2d9e2ab17afe42",
+          "kb_key": "product:ext_87738191ec2d9e2ab17afe42",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "community_supported",
+          "has_card_highlight": true
+        },
+        "product_line_id": "pl_cd3232e0638dbdceba4d7738",
+        "borrowed_from_sibling": false
+      },
+      "active_ingredients": {
+        "status": "not_applicable_product_family",
+        "issues": [],
+        "regulatory_expected": false,
+        "hero_expected": false,
+        "active_items": [],
+        "source_origin": "none",
+        "source_quality_status": "blocked",
+        "coverage": {
+          "details_sections_count": 8,
+          "faq_count": 0,
+          "how_to_chars": 10,
+          "inci_chars": 17,
+          "active_ingredients_chars": 0,
+          "inci_applicability_status": "",
+          "ingredient_review_status": "",
+          "ingredient_remediation_action": "",
+          "bundle_component_refs_count": 0,
+          "effective_inci_chars": 17,
+          "inci_borrowed_from_product_id": ""
+        },
+        "invalid_fragments": [],
+        "suppressed_reason": "set_or_collection"
+      },
+      "variants": {
+        "status": "no_visible_variant_axis",
+        "issues": [],
+        "visible_variant_rows": 0,
+        "examples": {
+          "identity_option_visible": [],
+          "wrong_axis_for_category": [],
+          "makeup_shade_missing_visual": [],
+          "size_value_generic_axis": [],
+          "default_option_size_evidence_missing_axis": [],
+          "identity_default_title_axis": []
+        }
+      },
+      "coverage": {
+        "details_sections_count": 8,
+        "faq_count": 0,
+        "how_to_chars": 10,
+        "inci_chars": 17,
+        "active_ingredients_chars": 0,
+        "inci_applicability_status": "",
+        "ingredient_review_status": "",
+        "ingredient_remediation_action": "",
+        "bundle_component_refs_count": 0,
+        "effective_inci_chars": 17,
+        "inci_borrowed_from_product_id": ""
+      }
+    },
+    {
+      "seed_id": "eps_b31ced371e7bb21ba69cb7e7",
+      "external_product_id": "ext_87c17d40ab706edc9065f597",
+      "market": "US",
+      "domain": "ulta.com",
+      "title": "Retinal 0.2% Emulsion High-Strength Retinoid Nighttime Treatment",
+      "canonical_url": "https://www.ulta.com/p/retinal-02-emulsion-high-strength-retinoid-nighttime-treatment-pimprod2044942?sku=2623548",
+      "product_family": "single_formula",
+      "product_line_id": "pl_aa6acd259e93df0a0a494421",
+      "identity_variant_axes": {
+        "multi_variant": false
+      },
+      "pivota_insights": {
+        "direct": {
+          "product_id": "ext_87c17d40ab706edc9065f597",
+          "kb_key": "product:ext_87c17d40ab706edc9065f597",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "community_supported",
+          "has_card_highlight": true
+        },
+        "effective": {
+          "product_id": "ext_87c17d40ab706edc9065f597",
+          "kb_key": "product:ext_87c17d40ab706edc9065f597",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "community_supported",
+          "has_card_highlight": true
+        },
+        "product_line_id": "pl_aa6acd259e93df0a0a494421",
+        "borrowed_from_sibling": false
+      },
+      "active_ingredients": {
+        "status": "ready_hero",
+        "issues": [],
+        "regulatory_expected": false,
+        "hero_expected": true,
+        "active_items": [
+          "Retinol"
+        ],
+        "source_origin": "active_block",
+        "source_quality_status": "captured",
+        "coverage": {
+          "details_sections_count": 12,
+          "faq_count": 0,
+          "how_to_chars": 10,
+          "inci_chars": 17,
+          "active_ingredients_chars": 0,
+          "inci_applicability_status": "",
+          "ingredient_review_status": "",
+          "ingredient_remediation_action": "",
+          "bundle_component_refs_count": 0,
+          "effective_inci_chars": 17,
+          "inci_borrowed_from_product_id": ""
+        },
+        "invalid_fragments": [],
+        "suppressed_reason": "full_inci_low_purity"
+      },
+      "variants": {
+        "status": "ready",
+        "issues": [],
+        "visible_variant_rows": 1,
+        "examples": {
+          "identity_option_visible": [],
+          "wrong_axis_for_category": [],
+          "makeup_shade_missing_visual": [],
+          "size_value_generic_axis": [],
+          "default_option_size_evidence_missing_axis": [],
+          "identity_default_title_axis": []
+        }
+      },
+      "coverage": {
+        "details_sections_count": 12,
+        "faq_count": 0,
+        "how_to_chars": 10,
+        "inci_chars": 17,
+        "active_ingredients_chars": 0,
+        "inci_applicability_status": "",
+        "ingredient_review_status": "",
+        "ingredient_remediation_action": "",
+        "bundle_component_refs_count": 0,
+        "effective_inci_chars": 17,
+        "inci_borrowed_from_product_id": ""
+      }
+    },
+    {
+      "seed_id": "eps_b67f9eccd0c0f6b849a7ba1a",
+      "external_product_id": "ext_8d16335196302c1b56f9d21e",
+      "market": "US",
+      "domain": "ulta.com",
+      "title": "Mandelic Acid 10% + HA Gentle Facial Exfoliating Serum for Hydration",
+      "canonical_url": "https://www.ulta.com/p/mandelic-acid-10-ha-gentle-facial-exfoliating-serum-hydration-pimprod2009251?sku=2552293",
+      "product_family": "single_formula",
+      "product_line_id": "pl_846300a931e0a95f9ee65cf6",
+      "identity_variant_axes": {
+        "multi_variant": false
+      },
+      "pivota_insights": {
+        "direct": {
+          "product_id": "ext_8d16335196302c1b56f9d21e",
+          "kb_key": "product:ext_8d16335196302c1b56f9d21e",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "community_supported",
+          "has_card_highlight": true
+        },
+        "effective": {
+          "product_id": "ext_8d16335196302c1b56f9d21e",
+          "kb_key": "product:ext_8d16335196302c1b56f9d21e",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "community_supported",
+          "has_card_highlight": true
+        },
+        "product_line_id": "pl_846300a931e0a95f9ee65cf6",
+        "borrowed_from_sibling": false
+      },
+      "active_ingredients": {
+        "status": "ready_hero",
+        "issues": [],
+        "regulatory_expected": false,
+        "hero_expected": true,
+        "active_items": [
+          "Mandelic acid"
+        ],
+        "source_origin": "active_block",
+        "source_quality_status": "captured",
+        "coverage": {
+          "details_sections_count": 10,
+          "faq_count": 0,
+          "how_to_chars": 10,
+          "inci_chars": 17,
+          "active_ingredients_chars": 0,
+          "inci_applicability_status": "",
+          "ingredient_review_status": "",
+          "ingredient_remediation_action": "",
+          "bundle_component_refs_count": 0,
+          "effective_inci_chars": 17,
+          "inci_borrowed_from_product_id": ""
+        },
+        "invalid_fragments": [],
+        "suppressed_reason": "full_inci_low_purity"
+      },
+      "variants": {
+        "status": "ready",
+        "issues": [],
+        "visible_variant_rows": 1,
+        "examples": {
+          "identity_option_visible": [],
+          "wrong_axis_for_category": [],
+          "makeup_shade_missing_visual": [],
+          "size_value_generic_axis": [],
+          "default_option_size_evidence_missing_axis": [],
+          "identity_default_title_axis": []
+        }
+      },
+      "coverage": {
+        "details_sections_count": 10,
+        "faq_count": 0,
+        "how_to_chars": 10,
+        "inci_chars": 17,
+        "active_ingredients_chars": 0,
+        "inci_applicability_status": "",
+        "ingredient_review_status": "",
+        "ingredient_remediation_action": "",
+        "bundle_component_refs_count": 0,
+        "effective_inci_chars": 17,
+        "inci_borrowed_from_product_id": ""
+      }
+    },
+    {
+      "seed_id": "eps_9ddaee9b2e7893266cebcae2",
+      "external_product_id": "ext_8d1ef8a7e492c407c7f509d5",
+      "market": "US",
+      "domain": "ulta.com",
+      "title": "Natural Moisturizing Factors + Beta Glucan Lightweight Gel Moisturizer",
+      "canonical_url": "https://www.ulta.com/p/natural-moisturizing-factors-beta-glucan-lightweight-gel-moisturizer-pimprod2039174?sku=2609860",
+      "product_family": "single_formula",
+      "product_line_id": "pl_f0cd5d2c00d735efe6316640",
+      "identity_variant_axes": {
+        "multi_variant": false
+      },
+      "pivota_insights": {
+        "direct": {
+          "product_id": "ext_8d1ef8a7e492c407c7f509d5",
+          "kb_key": "product:ext_8d1ef8a7e492c407c7f509d5",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "community_supported",
+          "has_card_highlight": true
+        },
+        "effective": {
+          "product_id": "ext_8d1ef8a7e492c407c7f509d5",
+          "kb_key": "product:ext_8d1ef8a7e492c407c7f509d5",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "community_supported",
+          "has_card_highlight": true
+        },
+        "product_line_id": "pl_f0cd5d2c00d735efe6316640",
+        "borrowed_from_sibling": false
+      },
+      "active_ingredients": {
+        "status": "missing_hero",
+        "issues": [
+          "missing_hero"
+        ],
+        "regulatory_expected": false,
+        "hero_expected": true,
+        "active_items": [],
+        "source_origin": "none",
+        "source_quality_status": "blocked",
+        "coverage": {
+          "details_sections_count": 12,
+          "faq_count": 0,
+          "how_to_chars": 10,
+          "inci_chars": 17,
+          "active_ingredients_chars": 0,
+          "inci_applicability_status": "",
+          "ingredient_review_status": "",
+          "ingredient_remediation_action": "",
+          "bundle_component_refs_count": 0,
+          "effective_inci_chars": 17,
+          "inci_borrowed_from_product_id": ""
+        },
+        "invalid_fragments": [],
+        "suppressed_reason": "no_authoritative_source"
+      },
+      "variants": {
+        "status": "no_visible_variant_axis",
+        "issues": [],
+        "visible_variant_rows": 0,
+        "examples": {
+          "identity_option_visible": [],
+          "wrong_axis_for_category": [],
+          "makeup_shade_missing_visual": [],
+          "size_value_generic_axis": [],
+          "default_option_size_evidence_missing_axis": [],
+          "identity_default_title_axis": []
+        }
+      },
+      "coverage": {
+        "details_sections_count": 12,
+        "faq_count": 0,
+        "how_to_chars": 10,
+        "inci_chars": 17,
+        "active_ingredients_chars": 0,
+        "inci_applicability_status": "",
+        "ingredient_review_status": "",
+        "ingredient_remediation_action": "",
+        "bundle_component_refs_count": 0,
+        "effective_inci_chars": 17,
+        "inci_borrowed_from_product_id": ""
+      }
+    },
+    {
+      "seed_id": "eps_6b5a04e520440579ceef2da8",
+      "external_product_id": "ext_a05c680a34c895fe68085a4b",
+      "market": "US",
+      "domain": "ulta.com",
+      "title": "Natural Moisturizing Factors + Inulin Body Lotion",
+      "canonical_url": "https://www.ulta.com/p/natural-moisturizing-factors-inulin-body-lotion-pimprod2048767?sku=2631999",
+      "product_family": "single_formula",
+      "product_line_id": "pl_d0edd7d95692d45bd385a67d",
+      "identity_variant_axes": {
+        "multi_variant": false
+      },
+      "pivota_insights": {
+        "direct": {
+          "product_id": "ext_a05c680a34c895fe68085a4b",
+          "kb_key": "product:ext_a05c680a34c895fe68085a4b",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "community_supported",
+          "has_card_highlight": true
+        },
+        "effective": {
+          "product_id": "ext_a05c680a34c895fe68085a4b",
+          "kb_key": "product:ext_a05c680a34c895fe68085a4b",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "community_supported",
+          "has_card_highlight": true
+        },
+        "product_line_id": "pl_d0edd7d95692d45bd385a67d",
+        "borrowed_from_sibling": false
+      },
+      "active_ingredients": {
+        "status": "missing_hero",
+        "issues": [
+          "missing_hero"
+        ],
+        "regulatory_expected": false,
+        "hero_expected": true,
+        "active_items": [],
+        "source_origin": "none",
+        "source_quality_status": "blocked",
+        "coverage": {
+          "details_sections_count": 14,
+          "faq_count": 0,
+          "how_to_chars": 10,
+          "inci_chars": 17,
+          "active_ingredients_chars": 0,
+          "inci_applicability_status": "",
+          "ingredient_review_status": "",
+          "ingredient_remediation_action": "",
+          "bundle_component_refs_count": 0,
+          "effective_inci_chars": 17,
+          "inci_borrowed_from_product_id": ""
+        },
+        "invalid_fragments": [],
+        "suppressed_reason": "no_authoritative_source"
+      },
+      "variants": {
+        "status": "no_visible_variant_axis",
+        "issues": [],
+        "visible_variant_rows": 0,
+        "examples": {
+          "identity_option_visible": [],
+          "wrong_axis_for_category": [],
+          "makeup_shade_missing_visual": [],
+          "size_value_generic_axis": [],
+          "default_option_size_evidence_missing_axis": [],
+          "identity_default_title_axis": []
+        }
+      },
+      "coverage": {
+        "details_sections_count": 14,
+        "faq_count": 0,
+        "how_to_chars": 10,
+        "inci_chars": 17,
+        "active_ingredients_chars": 0,
+        "inci_applicability_status": "",
+        "ingredient_review_status": "",
+        "ingredient_remediation_action": "",
+        "bundle_component_refs_count": 0,
+        "effective_inci_chars": 17,
+        "inci_borrowed_from_product_id": ""
+      }
+    },
+    {
+      "seed_id": "eps_86c15fd8111d84bfe9380d39",
+      "external_product_id": "ext_a956cf87c13fd5f8cbca2c15",
+      "market": "US",
+      "domain": "ulta.com",
+      "title": "Natural Moisturizing Factors + Hyaluronic Acid Daily Moisturizer - 3.3 oz",
+      "canonical_url": "https://www.ulta.com/p/natural-moisturizing-factors-hyaluronic-acid-daily-moisturizer-pimprod2007113?sku=2551163",
+      "product_family": "single_formula",
+      "product_line_id": "pl_329eee7da15026184d7bee32",
+      "identity_variant_axes": {
+        "volume": "3oz",
+        "multi_variant": false
+      },
+      "pivota_insights": {
+        "direct": {
+          "product_id": "ext_a956cf87c13fd5f8cbca2c15",
+          "kb_key": "product:ext_a956cf87c13fd5f8cbca2c15",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "community_supported",
+          "has_card_highlight": true
+        },
+        "effective": {
+          "product_id": "ext_a956cf87c13fd5f8cbca2c15",
+          "kb_key": "product:ext_a956cf87c13fd5f8cbca2c15",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "community_supported",
+          "has_card_highlight": true
+        },
+        "product_line_id": "pl_329eee7da15026184d7bee32",
+        "borrowed_from_sibling": false
+      },
+      "active_ingredients": {
+        "status": "ready_hero",
+        "issues": [],
+        "regulatory_expected": false,
+        "hero_expected": true,
+        "active_items": [
+          "Hyaluronic acid"
+        ],
+        "source_origin": "active_block",
+        "source_quality_status": "captured",
+        "coverage": {
+          "details_sections_count": 14,
+          "faq_count": 8,
+          "how_to_chars": 10,
+          "inci_chars": 17,
+          "active_ingredients_chars": 0,
+          "inci_applicability_status": "",
+          "ingredient_review_status": "",
+          "ingredient_remediation_action": "",
+          "bundle_component_refs_count": 0,
+          "effective_inci_chars": 17,
+          "inci_borrowed_from_product_id": ""
+        },
+        "invalid_fragments": [],
+        "suppressed_reason": "full_inci_low_purity"
+      },
+      "variants": {
+        "status": "ready",
+        "issues": [],
+        "visible_variant_rows": 1,
+        "examples": {
+          "identity_option_visible": [],
+          "wrong_axis_for_category": [],
+          "makeup_shade_missing_visual": [],
+          "size_value_generic_axis": [],
+          "default_option_size_evidence_missing_axis": [],
+          "identity_default_title_axis": []
+        }
+      },
+      "coverage": {
+        "details_sections_count": 14,
+        "faq_count": 8,
+        "how_to_chars": 10,
+        "inci_chars": 17,
+        "active_ingredients_chars": 0,
+        "inci_applicability_status": "",
+        "ingredient_review_status": "",
+        "ingredient_remediation_action": "",
+        "bundle_component_refs_count": 0,
+        "effective_inci_chars": 17,
+        "inci_borrowed_from_product_id": ""
+      }
+    },
+    {
+      "seed_id": "eps_331b1f3318cc1b38d27d1266",
+      "external_product_id": "ext_bc9f3b97a72232a9545750e9",
+      "market": "US",
+      "domain": "ulta.com",
+      "title": "Squalane + Amino Acids Hydrating Lip Balm for Lips, Elbows, and Cuticles",
+      "canonical_url": "https://www.ulta.com/p/squalane-amino-acids-hydrating-lip-balm-lips-elbows-cuticles-pimprod2045568?sku=2626327",
+      "product_family": "single_formula",
+      "product_line_id": "pl_c972009d7ddb67d958c663c8",
+      "identity_variant_axes": {
+        "multi_variant": false
+      },
+      "pivota_insights": {
+        "direct": {
+          "product_id": "ext_bc9f3b97a72232a9545750e9",
+          "kb_key": "product:ext_bc9f3b97a72232a9545750e9",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "community_supported",
+          "has_card_highlight": true
+        },
+        "effective": {
+          "product_id": "ext_bc9f3b97a72232a9545750e9",
+          "kb_key": "product:ext_bc9f3b97a72232a9545750e9",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "community_supported",
+          "has_card_highlight": true
+        },
+        "product_line_id": "pl_c972009d7ddb67d958c663c8",
+        "borrowed_from_sibling": false
+      },
+      "active_ingredients": {
+        "status": "ready_hero",
+        "issues": [],
+        "regulatory_expected": false,
+        "hero_expected": true,
+        "active_items": [
+          "Squalane"
+        ],
+        "source_origin": "active_block",
+        "source_quality_status": "captured",
+        "coverage": {
+          "details_sections_count": 14,
+          "faq_count": 8,
+          "how_to_chars": 10,
+          "inci_chars": 17,
+          "active_ingredients_chars": 0,
+          "inci_applicability_status": "",
+          "ingredient_review_status": "",
+          "ingredient_remediation_action": "",
+          "bundle_component_refs_count": 0,
+          "effective_inci_chars": 17,
+          "inci_borrowed_from_product_id": ""
+        },
+        "invalid_fragments": [],
+        "suppressed_reason": "full_inci_low_purity"
+      },
+      "variants": {
+        "status": "no_visible_variant_axis",
+        "issues": [],
+        "visible_variant_rows": 0,
+        "examples": {
+          "identity_option_visible": [],
+          "wrong_axis_for_category": [],
+          "makeup_shade_missing_visual": [],
+          "size_value_generic_axis": [],
+          "default_option_size_evidence_missing_axis": [],
+          "identity_default_title_axis": []
+        }
+      },
+      "coverage": {
+        "details_sections_count": 14,
+        "faq_count": 8,
+        "how_to_chars": 10,
+        "inci_chars": 17,
+        "active_ingredients_chars": 0,
+        "inci_applicability_status": "",
+        "ingredient_review_status": "",
+        "ingredient_remediation_action": "",
+        "bundle_component_refs_count": 0,
+        "effective_inci_chars": 17,
+        "inci_borrowed_from_product_id": ""
+      }
+    },
+    {
+      "seed_id": "eps_bc3fcbd07bf6a30ae6cc5e72",
+      "external_product_id": "ext_ca5545ea3b490b54bc663f9a",
+      "market": "US",
+      "domain": "ulta.com",
+      "title": "UV Filters SPF 45 Serum",
+      "canonical_url": "https://www.ulta.com/p/uv-filters-spf-45-serum-pimprod2051384?sku=2637168",
+      "product_family": "single_formula",
+      "product_line_id": "pl_fa49ff6c3106d9a015201d49",
+      "identity_variant_axes": {
+        "multi_variant": false
+      },
+      "pivota_insights": {
+        "direct": {
+          "product_id": "ext_ca5545ea3b490b54bc663f9a",
+          "kb_key": "product:ext_ca5545ea3b490b54bc663f9a",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "community_supported",
+          "has_card_highlight": true
+        },
+        "effective": {
+          "product_id": "ext_ca5545ea3b490b54bc663f9a",
+          "kb_key": "product:ext_ca5545ea3b490b54bc663f9a",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "community_supported",
+          "has_card_highlight": true
+        },
+        "product_line_id": "pl_fa49ff6c3106d9a015201d49",
+        "borrowed_from_sibling": false
+      },
+      "active_ingredients": {
+        "status": "missing_regulatory",
+        "issues": [
+          "missing_regulatory"
+        ],
+        "regulatory_expected": true,
+        "hero_expected": true,
+        "active_items": [
+          "Ceramide NP"
+        ],
+        "source_origin": "active_block",
+        "source_quality_status": "blocked",
+        "coverage": {
+          "details_sections_count": 12,
+          "faq_count": 10,
+          "how_to_chars": 10,
+          "inci_chars": 17,
+          "active_ingredients_chars": 23,
+          "inci_applicability_status": "",
+          "ingredient_review_status": "",
+          "ingredient_remediation_action": "",
+          "bundle_component_refs_count": 0,
+          "effective_inci_chars": 17,
+          "inci_borrowed_from_product_id": ""
+        },
+        "invalid_fragments": [],
+        "suppressed_reason": "full_inci_low_purity"
+      },
+      "variants": {
+        "status": "no_visible_variant_axis",
+        "issues": [],
+        "visible_variant_rows": 0,
+        "examples": {
+          "identity_option_visible": [],
+          "wrong_axis_for_category": [],
+          "makeup_shade_missing_visual": [],
+          "size_value_generic_axis": [],
+          "default_option_size_evidence_missing_axis": [],
+          "identity_default_title_axis": []
+        }
+      },
+      "coverage": {
+        "details_sections_count": 12,
+        "faq_count": 10,
+        "how_to_chars": 10,
+        "inci_chars": 17,
+        "active_ingredients_chars": 23,
+        "inci_applicability_status": "",
+        "ingredient_review_status": "",
+        "ingredient_remediation_action": "",
+        "bundle_component_refs_count": 0,
+        "effective_inci_chars": 17,
+        "inci_borrowed_from_product_id": ""
+      }
+    },
+    {
+      "seed_id": "eps_3bb34e4d5d6257b4d03e87d8",
+      "external_product_id": "ext_d5140f8a5b815c4420716c3b",
+      "market": "US",
+      "domain": "ulta.com",
+      "title": "Multi-Peptide Eye Serum for Wrinkles and Crow's Feet",
+      "canonical_url": "https://www.ulta.com/p/multi-peptide-eye-serum-wrinkles-crows-feet-pimprod2036916?sku=2606218",
+      "product_family": "single_formula",
+      "product_line_id": "pl_38518d1d00f6e56f01157541",
+      "identity_variant_axes": {
+        "multi_variant": false
+      },
+      "pivota_insights": {
+        "direct": {
+          "product_id": "ext_d5140f8a5b815c4420716c3b",
+          "kb_key": null,
+          "status": "missing_kb",
+          "kb_exists": false,
+          "displayable": false,
+          "high_quality_ready": false,
+          "issues": [
+            "missing_kb"
+          ],
+          "quality_state": "missing",
+          "evidence_profile": "missing"
+        },
+        "effective": {
+          "product_id": "ext_dfcfc5b215fcff69897f2c92",
+          "kb_key": "product:ext_dfcfc5b215fcff69897f2c92",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [
+            "empty_watchouts"
+          ],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "seller_plus_formula",
+          "has_card_highlight": true
+        },
+        "product_line_id": "pl_38518d1d00f6e56f01157541",
+        "borrowed_from_sibling": true
+      },
+      "active_ingredients": {
+        "status": "ready_hero",
+        "issues": [],
+        "regulatory_expected": false,
+        "hero_expected": true,
+        "active_items": [
+          "Peptides"
+        ],
+        "source_origin": "active_block",
+        "source_quality_status": "captured",
+        "coverage": {
+          "details_sections_count": 16,
+          "faq_count": 10,
+          "how_to_chars": 10,
+          "inci_chars": 17,
+          "active_ingredients_chars": 8,
+          "inci_applicability_status": "",
+          "ingredient_review_status": "",
+          "ingredient_remediation_action": "",
+          "bundle_component_refs_count": 0,
+          "effective_inci_chars": 17,
+          "inci_borrowed_from_product_id": ""
+        },
+        "invalid_fragments": [],
+        "suppressed_reason": "full_inci_low_purity"
+      },
+      "variants": {
+        "status": "no_visible_variant_axis",
+        "issues": [],
+        "visible_variant_rows": 0,
+        "examples": {
+          "identity_option_visible": [],
+          "wrong_axis_for_category": [],
+          "makeup_shade_missing_visual": [],
+          "size_value_generic_axis": [],
+          "default_option_size_evidence_missing_axis": [],
+          "identity_default_title_axis": []
+        }
+      },
+      "coverage": {
+        "details_sections_count": 16,
+        "faq_count": 10,
+        "how_to_chars": 10,
+        "inci_chars": 17,
+        "active_ingredients_chars": 8,
+        "inci_applicability_status": "",
+        "ingredient_review_status": "",
+        "ingredient_remediation_action": "",
+        "bundle_component_refs_count": 0,
+        "effective_inci_chars": 17,
+        "inci_borrowed_from_product_id": ""
+      }
+    },
+    {
+      "seed_id": "eps_60ee552773dd0ad3cd186867",
+      "external_product_id": "ext_d60e9219685d624c709918e8",
+      "market": "US",
+      "domain": "ulta.com",
+      "title": "Multi-Peptide + Hyaluronic Acid Serum for Firmness and Elasticity",
+      "canonical_url": "https://www.ulta.com/p/multi-peptide-hyaluronic-acid-serum-firmness-elasticity-pimprod2035079?sku=2600597",
+      "product_family": "single_formula",
+      "product_line_id": "pl_2a0af43e4147270d2d597305",
+      "identity_variant_axes": {
+        "multi_variant": false
+      },
+      "pivota_insights": {
+        "direct": {
+          "product_id": "ext_d60e9219685d624c709918e8",
+          "kb_key": "product:ext_d60e9219685d624c709918e8",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "community_supported",
+          "has_card_highlight": true
+        },
+        "effective": {
+          "product_id": "ext_d60e9219685d624c709918e8",
+          "kb_key": "product:ext_d60e9219685d624c709918e8",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "community_supported",
+          "has_card_highlight": true
+        },
+        "product_line_id": "pl_2a0af43e4147270d2d597305",
+        "borrowed_from_sibling": false
+      },
+      "active_ingredients": {
+        "status": "ready_hero",
+        "issues": [],
+        "regulatory_expected": false,
+        "hero_expected": true,
+        "active_items": [
+          "vitamin C",
+          "resveratrol",
+          "ferulic acid",
+          "salicylic acid",
+          "or other active ingredients"
+        ],
+        "source_origin": "pdp_section",
+        "source_quality_status": "captured",
+        "coverage": {
+          "details_sections_count": 16,
+          "faq_count": 10,
+          "how_to_chars": 10,
+          "inci_chars": 172,
+          "active_ingredients_chars": 172,
+          "inci_applicability_status": "",
+          "ingredient_review_status": "",
+          "ingredient_remediation_action": "",
+          "bundle_component_refs_count": 0,
+          "effective_inci_chars": 172,
+          "inci_borrowed_from_product_id": ""
+        },
+        "invalid_fragments": [],
+        "suppressed_reason": null
+      },
+      "variants": {
+        "status": "ready",
+        "issues": [],
+        "visible_variant_rows": 1,
+        "examples": {
+          "identity_option_visible": [],
+          "wrong_axis_for_category": [],
+          "makeup_shade_missing_visual": [],
+          "size_value_generic_axis": [],
+          "default_option_size_evidence_missing_axis": [],
+          "identity_default_title_axis": []
+        }
+      },
+      "coverage": {
+        "details_sections_count": 16,
+        "faq_count": 10,
+        "how_to_chars": 10,
+        "inci_chars": 172,
+        "active_ingredients_chars": 172,
+        "inci_applicability_status": "",
+        "ingredient_review_status": "",
+        "ingredient_remediation_action": "",
+        "bundle_component_refs_count": 0,
+        "effective_inci_chars": 172,
+        "inci_borrowed_from_product_id": ""
+      }
+    },
+    {
+      "seed_id": "eps_18fdf659bbf7dc522a4242bb",
+      "external_product_id": "ext_ddff91fa12a7ff107ec45336",
+      "market": "US",
+      "domain": "ulta.com",
+      "title": "Natural Moisturizing Factors + Hyaluronic Acid Scalp Serum",
+      "canonical_url": "https://www.ulta.com/p/natural-moisturizing-factors-hyaluronic-acid-scalp-serum-pimprod2034187?sku=2592846",
+      "product_family": "single_formula",
+      "product_line_id": "pl_c8a0b04bc15494919c5c64d1",
+      "identity_variant_axes": {
+        "multi_variant": false
+      },
+      "pivota_insights": {
+        "direct": {
+          "product_id": "ext_ddff91fa12a7ff107ec45336",
+          "kb_key": "product:ext_ddff91fa12a7ff107ec45336",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "community_supported",
+          "has_card_highlight": true
+        },
+        "effective": {
+          "product_id": "ext_ddff91fa12a7ff107ec45336",
+          "kb_key": "product:ext_ddff91fa12a7ff107ec45336",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "community_supported",
+          "has_card_highlight": true
+        },
+        "product_line_id": "pl_c8a0b04bc15494919c5c64d1",
+        "borrowed_from_sibling": false
+      },
+      "active_ingredients": {
+        "status": "ready_hero",
+        "issues": [],
+        "regulatory_expected": false,
+        "hero_expected": true,
+        "active_items": [
+          "Hyaluronic acid"
+        ],
+        "source_origin": "active_block",
+        "source_quality_status": "captured",
+        "coverage": {
+          "details_sections_count": 12,
+          "faq_count": 0,
+          "how_to_chars": 10,
+          "inci_chars": 17,
+          "active_ingredients_chars": 15,
+          "inci_applicability_status": "",
+          "ingredient_review_status": "",
+          "ingredient_remediation_action": "",
+          "bundle_component_refs_count": 0,
+          "effective_inci_chars": 17,
+          "inci_borrowed_from_product_id": ""
+        },
+        "invalid_fragments": [],
+        "suppressed_reason": "full_inci_low_purity"
+      },
+      "variants": {
+        "status": "ready",
+        "issues": [],
+        "visible_variant_rows": 1,
+        "examples": {
+          "identity_option_visible": [],
+          "wrong_axis_for_category": [],
+          "makeup_shade_missing_visual": [],
+          "size_value_generic_axis": [],
+          "default_option_size_evidence_missing_axis": [],
+          "identity_default_title_axis": []
+        }
+      },
+      "coverage": {
+        "details_sections_count": 12,
+        "faq_count": 0,
+        "how_to_chars": 10,
+        "inci_chars": 17,
+        "active_ingredients_chars": 15,
+        "inci_applicability_status": "",
+        "ingredient_review_status": "",
+        "ingredient_remediation_action": "",
+        "bundle_component_refs_count": 0,
+        "effective_inci_chars": 17,
+        "inci_borrowed_from_product_id": ""
+      }
+    },
+    {
+      "seed_id": "eps_7b4142de3a0bc3c449326866",
+      "external_product_id": "ext_e4911314994c80ab73a292ea",
+      "market": "US",
+      "domain": "ulta.com",
+      "title": "Balancing & Clarifying Serum for Oily Skin and Pore Refinement",
+      "canonical_url": "https://www.ulta.com/p/balancing-clarifying-serum-oily-skin-pore-refinement-pimprod2045572?sku=2626328",
+      "product_family": "single_formula",
+      "product_line_id": "pl_6fcbacdfab55db5d131a9ce9",
+      "identity_variant_axes": {
+        "multi_variant": false
+      },
+      "pivota_insights": {
+        "direct": {
+          "product_id": "ext_e4911314994c80ab73a292ea",
+          "kb_key": "product:ext_e4911314994c80ab73a292ea",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "community_supported",
+          "has_card_highlight": true
+        },
+        "effective": {
+          "product_id": "ext_e4911314994c80ab73a292ea",
+          "kb_key": "product:ext_e4911314994c80ab73a292ea",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "community_supported",
+          "has_card_highlight": true
+        },
+        "product_line_id": "pl_6fcbacdfab55db5d131a9ce9",
+        "borrowed_from_sibling": false
+      },
+      "active_ingredients": {
+        "status": "missing_hero",
+        "issues": [
+          "missing_hero"
+        ],
+        "regulatory_expected": false,
+        "hero_expected": true,
+        "active_items": [],
+        "source_origin": "none",
+        "source_quality_status": "blocked",
+        "coverage": {
+          "details_sections_count": 12,
+          "faq_count": 0,
+          "how_to_chars": 10,
+          "inci_chars": 17,
+          "active_ingredients_chars": 0,
+          "inci_applicability_status": "",
+          "ingredient_review_status": "",
+          "ingredient_remediation_action": "",
+          "bundle_component_refs_count": 0,
+          "effective_inci_chars": 17,
+          "inci_borrowed_from_product_id": ""
+        },
+        "invalid_fragments": [],
+        "suppressed_reason": "no_authoritative_source"
+      },
+      "variants": {
+        "status": "no_visible_variant_axis",
+        "issues": [],
+        "visible_variant_rows": 0,
+        "examples": {
+          "identity_option_visible": [],
+          "wrong_axis_for_category": [],
+          "makeup_shade_missing_visual": [],
+          "size_value_generic_axis": [],
+          "default_option_size_evidence_missing_axis": [],
+          "identity_default_title_axis": []
+        }
+      },
+      "coverage": {
+        "details_sections_count": 12,
+        "faq_count": 0,
+        "how_to_chars": 10,
+        "inci_chars": 17,
+        "active_ingredients_chars": 0,
+        "inci_applicability_status": "",
+        "ingredient_review_status": "",
+        "ingredient_remediation_action": "",
+        "bundle_component_refs_count": 0,
+        "effective_inci_chars": 17,
+        "inci_borrowed_from_product_id": ""
+      }
+    },
+    {
+      "seed_id": "eps_4311fd83fce4eeea0f80de02",
+      "external_product_id": "ext_e5ddd1bb1412618c0a5727db",
+      "market": "US",
+      "domain": "ulta.com",
+      "title": "Azelaic Acid Suspension 10% Cream for Redness and Blemish-Prone Skin",
+      "canonical_url": "https://www.ulta.com/p/azelaic-acid-suspension-10-cream-redness-blemish-prone-skin-pimprod2007104?sku=2551154",
+      "product_family": "single_formula",
+      "product_line_id": "pl_8d0ef59aa8f183c9bdb2c3c2",
+      "identity_variant_axes": {
+        "multi_variant": false
+      },
+      "pivota_insights": {
+        "direct": {
+          "product_id": "ext_e5ddd1bb1412618c0a5727db",
+          "kb_key": "product:ext_e5ddd1bb1412618c0a5727db",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "community_supported",
+          "has_card_highlight": true
+        },
+        "effective": {
+          "product_id": "ext_e5ddd1bb1412618c0a5727db",
+          "kb_key": "product:ext_e5ddd1bb1412618c0a5727db",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "community_supported",
+          "has_card_highlight": true
+        },
+        "product_line_id": "pl_8d0ef59aa8f183c9bdb2c3c2",
+        "borrowed_from_sibling": false
+      },
+      "active_ingredients": {
+        "status": "ready_hero",
+        "issues": [],
+        "regulatory_expected": false,
+        "hero_expected": true,
+        "active_items": [
+          "Azelaic acid"
+        ],
+        "source_origin": "active_block",
+        "source_quality_status": "captured",
+        "coverage": {
+          "details_sections_count": 10,
+          "faq_count": 10,
+          "how_to_chars": 10,
+          "inci_chars": 17,
+          "active_ingredients_chars": 0,
+          "inci_applicability_status": "",
+          "ingredient_review_status": "",
+          "ingredient_remediation_action": "",
+          "bundle_component_refs_count": 0,
+          "effective_inci_chars": 17,
+          "inci_borrowed_from_product_id": ""
+        },
+        "invalid_fragments": [],
+        "suppressed_reason": "full_inci_low_purity"
+      },
+      "variants": {
+        "status": "ready",
+        "issues": [],
+        "visible_variant_rows": 1,
+        "examples": {
+          "identity_option_visible": [],
+          "wrong_axis_for_category": [],
+          "makeup_shade_missing_visual": [],
+          "size_value_generic_axis": [],
+          "default_option_size_evidence_missing_axis": [],
+          "identity_default_title_axis": []
+        }
+      },
+      "coverage": {
+        "details_sections_count": 10,
+        "faq_count": 10,
+        "how_to_chars": 10,
+        "inci_chars": 17,
+        "active_ingredients_chars": 0,
+        "inci_applicability_status": "",
+        "ingredient_review_status": "",
+        "ingredient_remediation_action": "",
+        "bundle_component_refs_count": 0,
+        "effective_inci_chars": 17,
+        "inci_borrowed_from_product_id": ""
+      }
+    },
+    {
+      "seed_id": "eps_57ef7e41f7ef8ab6a1d3566e",
+      "external_product_id": "ext_e862612f5d0fb9cffc1f5526",
+      "market": "US",
+      "domain": "ulta.com",
+      "title": "Aloe 2% + NAG 2% Solution for Post-Acne Marks",
+      "canonical_url": "https://www.ulta.com/p/aloe-2-nag-2-solution-post-acne-marks-pimprod2039172?sku=2609862",
+      "product_family": "single_formula",
+      "product_line_id": "pl_867d77b17d961bfad5c26b00",
+      "identity_variant_axes": {
+        "multi_variant": false
+      },
+      "pivota_insights": {
+        "direct": {
+          "product_id": "ext_e862612f5d0fb9cffc1f5526",
+          "kb_key": "product:ext_e862612f5d0fb9cffc1f5526",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "community_supported",
+          "has_card_highlight": true
+        },
+        "effective": {
+          "product_id": "ext_e862612f5d0fb9cffc1f5526",
+          "kb_key": "product:ext_e862612f5d0fb9cffc1f5526",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "community_supported",
+          "has_card_highlight": true
+        },
+        "product_line_id": "pl_867d77b17d961bfad5c26b00",
+        "borrowed_from_sibling": false
+      },
+      "active_ingredients": {
+        "status": "ready_hero",
+        "issues": [],
+        "regulatory_expected": false,
+        "hero_expected": true,
+        "active_items": [
+          "Peptides"
+        ],
+        "source_origin": "active_block",
+        "source_quality_status": "captured",
+        "coverage": {
+          "details_sections_count": 12,
+          "faq_count": 0,
+          "how_to_chars": 10,
+          "inci_chars": 17,
+          "active_ingredients_chars": 8,
+          "inci_applicability_status": "",
+          "ingredient_review_status": "",
+          "ingredient_remediation_action": "",
+          "bundle_component_refs_count": 0,
+          "effective_inci_chars": 17,
+          "inci_borrowed_from_product_id": ""
+        },
+        "invalid_fragments": [],
+        "suppressed_reason": "full_inci_low_purity"
+      },
+      "variants": {
+        "status": "no_visible_variant_axis",
+        "issues": [],
+        "visible_variant_rows": 0,
+        "examples": {
+          "identity_option_visible": [],
+          "wrong_axis_for_category": [],
+          "makeup_shade_missing_visual": [],
+          "size_value_generic_axis": [],
+          "default_option_size_evidence_missing_axis": [],
+          "identity_default_title_axis": []
+        }
+      },
+      "coverage": {
+        "details_sections_count": 12,
+        "faq_count": 0,
+        "how_to_chars": 10,
+        "inci_chars": 17,
+        "active_ingredients_chars": 8,
+        "inci_applicability_status": "",
+        "ingredient_review_status": "",
+        "ingredient_remediation_action": "",
+        "bundle_component_refs_count": 0,
+        "effective_inci_chars": 17,
+        "inci_borrowed_from_product_id": ""
+      }
+    },
+    {
+      "seed_id": "eps_558d5c9c8467e110c5535cbd",
+      "external_product_id": "ext_e969a347d5447c03a859154a",
+      "market": "US",
+      "domain": "ulta.com",
+      "title": "Alpha Arbutin 2% + Hyaluronic Acid for Hyperpigmentation",
+      "canonical_url": "https://www.ulta.com/p/alpha-arbutin-2-hyaluronic-acid-hyperpigmentation-pimprod2007108?sku=2551165",
+      "product_family": "single_formula",
+      "product_line_id": "pl_321bcb0010e765f27485d159",
+      "identity_variant_axes": {
+        "size": "1.0 oz",
+        "axis_kind": "volume",
+        "multi_variant": false
+      },
+      "pivota_insights": {
+        "direct": {
+          "product_id": "ext_e969a347d5447c03a859154a",
+          "kb_key": "product:ext_e969a347d5447c03a859154a",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "community_supported",
+          "has_card_highlight": true
+        },
+        "effective": {
+          "product_id": "ext_e969a347d5447c03a859154a",
+          "kb_key": "product:ext_e969a347d5447c03a859154a",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "community_supported",
+          "has_card_highlight": true
+        },
+        "product_line_id": "pl_321bcb0010e765f27485d159",
+        "borrowed_from_sibling": false
+      },
+      "active_ingredients": {
+        "status": "ready_hero",
+        "issues": [],
+        "regulatory_expected": false,
+        "hero_expected": true,
+        "active_items": [
+          "Alpha Arbutin"
+        ],
+        "source_origin": "active_block",
+        "source_quality_status": "captured",
+        "coverage": {
+          "details_sections_count": 12,
+          "faq_count": 0,
+          "how_to_chars": 10,
+          "inci_chars": 17,
+          "active_ingredients_chars": 0,
+          "inci_applicability_status": "",
+          "ingredient_review_status": "",
+          "ingredient_remediation_action": "",
+          "bundle_component_refs_count": 0,
+          "effective_inci_chars": 17,
+          "inci_borrowed_from_product_id": ""
+        },
+        "invalid_fragments": [],
+        "suppressed_reason": "full_inci_low_purity"
+      },
+      "variants": {
+        "status": "ready",
+        "issues": [],
+        "visible_variant_rows": 1,
+        "examples": {
+          "identity_option_visible": [],
+          "wrong_axis_for_category": [],
+          "makeup_shade_missing_visual": [],
+          "size_value_generic_axis": [],
+          "default_option_size_evidence_missing_axis": [],
+          "identity_default_title_axis": []
+        }
+      },
+      "coverage": {
+        "details_sections_count": 12,
+        "faq_count": 0,
+        "how_to_chars": 10,
+        "inci_chars": 17,
+        "active_ingredients_chars": 0,
+        "inci_applicability_status": "",
+        "ingredient_review_status": "",
+        "ingredient_remediation_action": "",
+        "bundle_component_refs_count": 0,
+        "effective_inci_chars": 17,
+        "inci_borrowed_from_product_id": ""
+      }
+    },
+    {
+      "seed_id": "eps_a3119d2d7fde1a52371f9266",
+      "external_product_id": "ext_eab16261b96c459ea14639da",
+      "market": "US",
+      "domain": "ulta.com",
+      "title": "Natural Moisturizing Factors + PhytoCeramides Rich Moisturizer",
+      "canonical_url": "https://www.ulta.com/p/natural-moisturizing-factors-phytoceramides-rich-moisturizer-pimprod2037765?sku=2606219",
+      "product_family": "single_formula",
+      "product_line_id": "pl_9a0a7cecbfde8d4ad39f48f6",
+      "identity_variant_axes": {
+        "multi_variant": false
+      },
+      "pivota_insights": {
+        "direct": {
+          "product_id": "ext_eab16261b96c459ea14639da",
+          "kb_key": "product:ext_eab16261b96c459ea14639da",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "community_supported",
+          "has_card_highlight": true
+        },
+        "effective": {
+          "product_id": "ext_eab16261b96c459ea14639da",
+          "kb_key": "product:ext_eab16261b96c459ea14639da",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "community_supported",
+          "has_card_highlight": true
+        },
+        "product_line_id": "pl_9a0a7cecbfde8d4ad39f48f6",
+        "borrowed_from_sibling": false
+      },
+      "active_ingredients": {
+        "status": "missing_hero",
+        "issues": [
+          "missing_hero"
+        ],
+        "regulatory_expected": false,
+        "hero_expected": true,
+        "active_items": [],
+        "source_origin": "none",
+        "source_quality_status": "blocked",
+        "coverage": {
+          "details_sections_count": 16,
+          "faq_count": 8,
+          "how_to_chars": 10,
+          "inci_chars": 17,
+          "active_ingredients_chars": 0,
+          "inci_applicability_status": "",
+          "ingredient_review_status": "",
+          "ingredient_remediation_action": "",
+          "bundle_component_refs_count": 0,
+          "effective_inci_chars": 17,
+          "inci_borrowed_from_product_id": ""
+        },
+        "invalid_fragments": [],
+        "suppressed_reason": "no_authoritative_source"
+      },
+      "variants": {
+        "status": "no_visible_variant_axis",
+        "issues": [],
+        "visible_variant_rows": 0,
+        "examples": {
+          "identity_option_visible": [],
+          "wrong_axis_for_category": [],
+          "makeup_shade_missing_visual": [],
+          "size_value_generic_axis": [],
+          "default_option_size_evidence_missing_axis": [],
+          "identity_default_title_axis": []
+        }
+      },
+      "coverage": {
+        "details_sections_count": 16,
+        "faq_count": 8,
+        "how_to_chars": 10,
+        "inci_chars": 17,
+        "active_ingredients_chars": 0,
+        "inci_applicability_status": "",
+        "ingredient_review_status": "",
+        "ingredient_remediation_action": "",
+        "bundle_component_refs_count": 0,
+        "effective_inci_chars": 17,
+        "inci_borrowed_from_product_id": ""
+      }
+    },
+    {
+      "seed_id": "eps_77cde8459c2a26f347a50b2b",
+      "external_product_id": "ext_ed28f0eddf6d92397b668a71",
+      "market": "US",
+      "domain": "ulta.com",
+      "title": "Granactive Retinoid 2% Emulsion for Wrinkles and Uneven Texture",
+      "canonical_url": "https://www.ulta.com/p/granactive-retinoid-2-emulsion-wrinkles-uneven-texture-pimprod2007125?sku=2551170",
+      "product_family": "single_formula",
+      "product_line_id": "pl_009a0c43be51ba024dc83676",
+      "identity_variant_axes": {
+        "multi_variant": false
+      },
+      "pivota_insights": {
+        "direct": {
+          "product_id": "ext_ed28f0eddf6d92397b668a71",
+          "kb_key": "product:ext_ed28f0eddf6d92397b668a71",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "community_supported",
+          "has_card_highlight": true
+        },
+        "effective": {
+          "product_id": "ext_ed28f0eddf6d92397b668a71",
+          "kb_key": "product:ext_ed28f0eddf6d92397b668a71",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "community_supported",
+          "has_card_highlight": true
+        },
+        "product_line_id": "pl_009a0c43be51ba024dc83676",
+        "borrowed_from_sibling": false
+      },
+      "active_ingredients": {
+        "status": "ready_hero",
+        "issues": [],
+        "regulatory_expected": false,
+        "hero_expected": true,
+        "active_items": [
+          "Retinol"
+        ],
+        "source_origin": "active_block",
+        "source_quality_status": "captured",
+        "coverage": {
+          "details_sections_count": 12,
+          "faq_count": 0,
+          "how_to_chars": 10,
+          "inci_chars": 17,
+          "active_ingredients_chars": 7,
+          "inci_applicability_status": "",
+          "ingredient_review_status": "",
+          "ingredient_remediation_action": "",
+          "bundle_component_refs_count": 0,
+          "effective_inci_chars": 17,
+          "inci_borrowed_from_product_id": ""
+        },
+        "invalid_fragments": [],
+        "suppressed_reason": "full_inci_low_purity"
+      },
+      "variants": {
+        "status": "ready",
+        "issues": [],
+        "visible_variant_rows": 1,
+        "examples": {
+          "identity_option_visible": [],
+          "wrong_axis_for_category": [],
+          "makeup_shade_missing_visual": [],
+          "size_value_generic_axis": [],
+          "default_option_size_evidence_missing_axis": [],
+          "identity_default_title_axis": []
+        }
+      },
+      "coverage": {
+        "details_sections_count": 12,
+        "faq_count": 0,
+        "how_to_chars": 10,
+        "inci_chars": 17,
+        "active_ingredients_chars": 7,
+        "inci_applicability_status": "",
+        "ingredient_review_status": "",
+        "ingredient_remediation_action": "",
+        "bundle_component_refs_count": 0,
+        "effective_inci_chars": 17,
+        "inci_borrowed_from_product_id": ""
+      }
+    },
+    {
+      "seed_id": "eps_9ef097f4b725731ce3886555",
+      "external_product_id": "ext_f0f6d2784dfebe4fc9b07e79",
+      "market": "US",
+      "domain": "ulta.com",
+      "title": "Sulfur 10% Powder-to-Cream Concentrate",
+      "canonical_url": "https://www.ulta.com/p/sulfur-10-powder-cream-concentrate-pimprod2054312?sku=2645080",
+      "product_family": "single_formula",
+      "product_line_id": "pl_372d5748dca0e990ad00a179",
+      "identity_variant_axes": {
+        "multi_variant": false
+      },
+      "pivota_insights": {
+        "direct": {
+          "product_id": "ext_f0f6d2784dfebe4fc9b07e79",
+          "kb_key": "product:ext_f0f6d2784dfebe4fc9b07e79",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "community_supported",
+          "has_card_highlight": true
+        },
+        "effective": {
+          "product_id": "ext_f0f6d2784dfebe4fc9b07e79",
+          "kb_key": "product:ext_f0f6d2784dfebe4fc9b07e79",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "community_supported",
+          "has_card_highlight": true
+        },
+        "product_line_id": "pl_372d5748dca0e990ad00a179",
+        "borrowed_from_sibling": false
+      },
+      "active_ingredients": {
+        "status": "not_expected_missing",
+        "issues": [],
+        "regulatory_expected": false,
+        "hero_expected": false,
+        "active_items": [],
+        "source_origin": "none",
+        "source_quality_status": "blocked",
+        "coverage": {
+          "details_sections_count": 12,
+          "faq_count": 0,
+          "how_to_chars": 10,
+          "inci_chars": 17,
+          "active_ingredients_chars": 0,
+          "inci_applicability_status": "",
+          "ingredient_review_status": "",
+          "ingredient_remediation_action": "",
+          "bundle_component_refs_count": 0,
+          "effective_inci_chars": 17,
+          "inci_borrowed_from_product_id": ""
+        },
+        "invalid_fragments": [],
+        "suppressed_reason": "no_authoritative_source"
+      },
+      "variants": {
+        "status": "no_visible_variant_axis",
+        "issues": [],
+        "visible_variant_rows": 0,
+        "examples": {
+          "identity_option_visible": [],
+          "wrong_axis_for_category": [],
+          "makeup_shade_missing_visual": [],
+          "size_value_generic_axis": [],
+          "default_option_size_evidence_missing_axis": [],
+          "identity_default_title_axis": []
+        }
+      },
+      "coverage": {
+        "details_sections_count": 12,
+        "faq_count": 0,
+        "how_to_chars": 10,
+        "inci_chars": 17,
+        "active_ingredients_chars": 0,
+        "inci_applicability_status": "",
+        "ingredient_review_status": "",
+        "ingredient_remediation_action": "",
+        "bundle_component_refs_count": 0,
+        "effective_inci_chars": 17,
+        "inci_borrowed_from_product_id": ""
+      }
+    },
+    {
+      "seed_id": "eps_c47e6a3e3c0263b909d453ea",
+      "external_product_id": "ext_fcbbd654511305a7d4291fa8",
+      "market": "US",
+      "domain": "ulta.com",
+      "title": "100% Plant-Derived Squalane for Skin and Hair Hydration",
+      "canonical_url": "https://www.ulta.com/p/100-plant-derived-squalane-skin-hair-hydration-pimprod2007112?sku=2551177",
+      "product_family": "single_formula",
+      "product_line_id": "pl_500379ba60c4eaf591e222fc",
+      "identity_variant_axes": {
+        "multi_variant": false
+      },
+      "pivota_insights": {
+        "direct": {
+          "product_id": "ext_fcbbd654511305a7d4291fa8",
+          "kb_key": "product:ext_fcbbd654511305a7d4291fa8",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "community_supported",
+          "has_card_highlight": true
+        },
+        "effective": {
+          "product_id": "ext_fcbbd654511305a7d4291fa8",
+          "kb_key": "product:ext_fcbbd654511305a7d4291fa8",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "community_supported",
+          "has_card_highlight": true
+        },
+        "product_line_id": "pl_500379ba60c4eaf591e222fc",
+        "borrowed_from_sibling": false
+      },
+      "active_ingredients": {
+        "status": "ready_hero",
+        "issues": [],
+        "regulatory_expected": false,
+        "hero_expected": true,
+        "active_items": [
+          "Squalane"
+        ],
+        "source_origin": "active_block",
+        "source_quality_status": "captured",
+        "coverage": {
+          "details_sections_count": 12,
+          "faq_count": 0,
+          "how_to_chars": 10,
+          "inci_chars": 17,
+          "active_ingredients_chars": 8,
+          "inci_applicability_status": "",
+          "ingredient_review_status": "",
+          "ingredient_remediation_action": "",
+          "bundle_component_refs_count": 0,
+          "effective_inci_chars": 17,
+          "inci_borrowed_from_product_id": ""
+        },
+        "invalid_fragments": [],
+        "suppressed_reason": "full_inci_low_purity"
+      },
+      "variants": {
+        "status": "ready",
+        "issues": [],
+        "visible_variant_rows": 1,
+        "examples": {
+          "identity_option_visible": [],
+          "wrong_axis_for_category": [],
+          "makeup_shade_missing_visual": [],
+          "size_value_generic_axis": [],
+          "default_option_size_evidence_missing_axis": [],
+          "identity_default_title_axis": []
+        }
+      },
+      "coverage": {
+        "details_sections_count": 12,
+        "faq_count": 0,
+        "how_to_chars": 10,
+        "inci_chars": 17,
+        "active_ingredients_chars": 8,
+        "inci_applicability_status": "",
+        "ingredient_review_status": "",
+        "ingredient_remediation_action": "",
+        "bundle_component_refs_count": 0,
+        "effective_inci_chars": 17,
+        "inci_borrowed_from_product_id": ""
+      }
+    }
+  ]
+}

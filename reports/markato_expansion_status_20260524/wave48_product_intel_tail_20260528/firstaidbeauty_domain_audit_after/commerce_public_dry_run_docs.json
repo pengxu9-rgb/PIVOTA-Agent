@@ -1,0 +1,2463 @@
+{
+  "generated_at": "2026-05-28T10:52:32.553Z",
+  "market": "US",
+  "include_non_public": false,
+  "docs_built": 42,
+  "source_build_failures": [],
+  "docs": [
+    {
+      "doc_id": "sellable:sig_6c861516fbf75bf9d82104f0",
+      "sellable_item_group_id": "sig_6c861516fbf75bf9d82104f0",
+      "product_line_id": "pl_89f7d3eecea04348f3444b61",
+      "review_family_id": "rf_89f7d3eecea04348f3444b61",
+      "brand_name": "First Aid Beauty",
+      "category_paths": [
+        "Moisturizer"
+      ],
+      "market": "US",
+      "availability_state": "available",
+      "publish_state": "public",
+      "title": "KP Smoothing + Brightening Body Lotion Fresh Peach",
+      "subtitle": "Contains 10% Lactic Acid (AHA) to resurface the top layer of skin, helping to reduce the appearance of hard, rough bumps associated with Keratosis Pilaris.\n\nWith Urea, Colloidal Oatmeal, Ceramides, + juicy peach scent, the hydrating formula reveals skin that is healthier-looking, supple and silky smooth\n\nVegan, Gluten-Free, Paraben-Free, Oil-Free, Sulfate-Free",
+      "variant_axes": {
+        "multi_variant": false
+      },
+      "size": null,
+      "shade": null,
+      "pack": null,
+      "hero_media": {
+        "url": "https://cdn.shopify.com/s/files/1/0615/7352/9653/files/00_KPPeachLotion_AltImage_2000x2000_4c80446d-9cc0-459f-951b-6d38c928a7e3.jpg?v=1762444157",
+        "source_kind": "catalog",
+        "source_tier": "catalog"
+      },
+      "preview_media": [
+        "https://cdn.shopify.com/s/files/1/0615/7352/9653/files/00_KPPeachLotion_AltImage_2000x2000_4c80446d-9cc0-459f-951b-6d38c928a7e3.jpg?v=1762444157",
+        "https://cdn.shopify.com/s/files/1/0615/7352/9653/files/02_KPPeachLotion_AltImage_2000x2000_85cdc7c8-499a-4507-9b0d-e2b5a77464aa.jpg?v=1751997100",
+        "https://cdn.shopify.com/s/files/1/0615/7352/9653/files/03_KPPeachLotion_AltImage_2000x2000_908d7ec5-e3f5-42c6-a5e0-aa2adafe6932.png?v=1751997100",
+        "https://cdn.shopify.com/s/files/1/0615/7352/9653/files/04_KPPeachLotion_AltImage_2000x2000_82607adf-9c05-4ce6-8fec-cb9aa3015c0c.jpg?v=1751997100",
+        "https://cdn.shopify.com/s/files/1/0615/7352/9653/files/05_KPPeachLotion_AltImage_2000x2000_f87e711f-2f9c-4d93-bbbb-c912128c75e3.jpg?v=1751997100",
+        "https://cdn.shopify.com/s/files/1/0615/7352/9653/files/06_KPPeachLotion_AltImage_2000x2000_ceee3f16-4662-4e33-b4b1-9916a0d2680e.jpg?v=1751997100",
+        "https://cdn.shopify.com/s/files/1/0615/7352/9653/files/07_KPPeachLotion_AltImage_2000x2000_86b3e25c-a195-49ab-b98b-e429b2ef55f7.jpg?v=1751997100",
+        "https://cdn.shopify.com/s/files/1/0615/7352/9653/files/08_KPPeachLotion_AltImage_2000x2000_9f6cda70-a0f7-47e4-9a01-be93c7e9703d.jpg?v=1751997100"
+      ],
+      "price_min": 36,
+      "price_max": 36,
+      "default_offer_id": "external_seed:ext_08a4a4bfddf769bc8b3d7944",
+      "internal_offer_exists": false,
+      "external_offer_exists": true,
+      "pivota_insight_status": "missing",
+      "pivota_insight_summary": null,
+      "quality_score": null,
+      "browse_score": null,
+      "facet_tokens": [
+        "First Aid Beauty",
+        "Moisturizer"
+      ],
+      "sort_keys": {
+        "price_min": 36,
+        "price_max": 36,
+        "updated_at": null
+      },
+      "updated_at": null,
+      "source_refs": [
+        "external_seed:ext_08a4a4bfddf769bc8b3d7944"
+      ]
+    },
+    {
+      "doc_id": "sellable:sig_31c6611dea85ff019b482d3c",
+      "sellable_item_group_id": "sig_31c6611dea85ff019b482d3c",
+      "product_line_id": "pl_a80d6da04342241e73cbf239",
+      "review_family_id": "rf_a80d6da04342241e73cbf239",
+      "brand_name": "First Aid Beauty",
+      "category_paths": [
+        "Serum"
+      ],
+      "market": "US",
+      "availability_state": "available",
+      "publish_state": "public",
+      "title": "Bronze + Glow Drops with Niacinamide",
+      "subtitle": "With 5% Niacinamide, this non-comedogenic serum hydrates to strengthen the skin's moisture barrier and gives a visibly healthy, golden glow.\n\nUltra-thin texture blends to feel invisible on skin\nLayers well with other skincare and makeup\nBronze + glow your own way in one step\n\nAllergen-Free, Vegan, Non-Comedogenic, Gluten-Free, Soy-Free, Nano-Free, Parthenolide-Free, Silicone-Free",
+      "variant_axes": {
+        "multi_variant": false
+      },
+      "size": null,
+      "shade": null,
+      "pack": null,
+      "hero_media": {
+        "url": "https://cdn.shopify.com/s/files/1/0615/7352/9653/files/Bronze_GlowDrops_Lead_2000x2000_77de68ff-18c1-4b19-a42b-84052740a2e2.jpg?v=1762439903",
+        "source_kind": "catalog",
+        "source_tier": "catalog"
+      },
+      "preview_media": [
+        "https://cdn.shopify.com/s/files/1/0615/7352/9653/files/Bronze_GlowDrops_Lead_2000x2000_77de68ff-18c1-4b19-a42b-84052740a2e2.jpg?v=1762439903",
+        "https://cdn.shopify.com/s/files/1/0615/7352/9653/files/01_Bronze_GlowDrops_AltImage_2000x2000_4261d969-548b-46f5-8fa0-b91cead837f3.jpg?v=1773764690",
+        "https://cdn.shopify.com/s/files/1/0615/7352/9653/files/02_Bronze_GlowDrops_AltImage_2000x2000_ea498874-edce-4af0-9e5c-aecae7f2d5af.jpg?v=1716410788",
+        "https://cdn.shopify.com/s/files/1/0615/7352/9653/files/06_Bronze_GlowDrops_AltImage_2000x2000_ae80bcc5-31e4-4972-8201-91c2945235a7.jpg?v=1716410788",
+        "https://cdn.shopify.com/s/files/1/0615/7352/9653/files/03_Bronze_GlowDrops_AltImage_2000x2000_67775ccb-04f0-4b79-90c7-af3a4449ede9.jpg?v=1773764690",
+        "https://cdn.shopify.com/s/files/1/0615/7352/9653/files/05_Bronze_GlowDrops_AltImage_2000x2000_4c89996b-f241-4002-b49a-578492514d2d.jpg?v=1716410788",
+        "https://cdn.shopify.com/s/files/1/0615/7352/9653/files/04_Bronze_GlowDrops_AltImage_2000x2000_57130a86-0b41-4e75-b06f-1bea149fca4f.jpg?v=1773764690",
+        "https://cdn.shopify.com/s/files/1/0615/7352/9653/files/07_Bronze_GlowDrops_AltImage_2000x2000_1ab65a42-0c3c-432a-b54a-d212a120a003.jpg?v=1768486368"
+      ],
+      "price_min": 28,
+      "price_max": 28,
+      "default_offer_id": "external_seed:ext_0ace092e3cb5d4cc0e714a7b",
+      "internal_offer_exists": false,
+      "external_offer_exists": true,
+      "pivota_insight_status": "missing",
+      "pivota_insight_summary": null,
+      "quality_score": null,
+      "browse_score": null,
+      "facet_tokens": [
+        "First Aid Beauty",
+        "Serum"
+      ],
+      "sort_keys": {
+        "price_min": 28,
+        "price_max": 28,
+        "updated_at": null
+      },
+      "updated_at": null,
+      "source_refs": [
+        "external_seed:ext_0ace092e3cb5d4cc0e714a7b"
+      ]
+    },
+    {
+      "doc_id": "sellable:sig_d4f08b3f258bc12e003165d2",
+      "sellable_item_group_id": "sig_d4f08b3f258bc12e003165d2",
+      "product_line_id": "pl_653bc33691e1c6fe5b4b2a80",
+      "review_family_id": "rf_653bc33691e1c6fe5b4b2a80",
+      "brand_name": "First Aid Beauty",
+      "category_paths": [
+        "Cleanser"
+      ],
+      "market": "US",
+      "availability_state": "available",
+      "publish_state": "public",
+      "title": "Ultra Gentle Cream-to-Foam Face Cleanser with Colloidal Oatmeal + Glycerin",
+      "subtitle": "A daily cleanser that's gentle enough for sensitive and blemish-prone skin and effectively removes makeup, dirt, and SPF, leaving skin soft and supple.\n\nThis daily cleanser is non-stripping and pH balanced to effectively cleanse the face and maintain the skin's natural acidity to keep sensitive skin happy. Its creamy lather leaves skin feeling soft and supple , not dry or tight .\n\nAllergen-Free, Vegan, Gluten-Free, Soy-Free, Nut-Free, Nano-Free, Parthenolide-Free, Silicone-Free",
+      "variant_axes": {
+        "volume": "6oz",
+        "multi_variant": true
+      },
+      "size": null,
+      "shade": null,
+      "pack": null,
+      "hero_media": {
+        "url": "https://cdn.shopify.com/s/files/1/0615/7352/9653/files/Ultra-Repair-Cleanser_2026-Refresh-Lead-6oz-FAB_3.webp?v=1774467153",
+        "source_kind": "catalog",
+        "source_tier": "catalog"
+      },
+      "preview_media": [
+        "https://cdn.shopify.com/s/files/1/0615/7352/9653/files/Ultra-Repair-Cleanser_2026-Refresh-Lead-6oz-FAB_3.webp?v=1774467153",
+        "https://cdn.shopify.com/s/files/1/0615/7352/9653/files/Cream-To-Foam_Face_Cleanser_Alt_1.webp?v=1774467153",
+        "https://cdn.shopify.com/s/files/1/0615/7352/9653/files/Cream-To-Foam_Face_Cleanser_Alt_2.webp?v=1774468613",
+        "https://cdn.shopify.com/s/files/1/0615/7352/9653/files/Cream-To-Foam_Face_Cleanser_Alt_3.webp?v=1774468613",
+        "https://cdn.shopify.com/s/files/1/0615/7352/9653/files/Cream-To-Foam_Face_Cleanser_Alt_4.webp?v=1774468613",
+        "https://cdn.shopify.com/s/files/1/0615/7352/9653/files/Cream-To-Foam_Face_Cleanser_Alt_5.webp?v=1774468613",
+        "https://cdn.shopify.com/s/files/1/0615/7352/9653/files/Cream-To-Foam_Face_Cleanser_Alt_6.webp?v=1774468613",
+        "https://cdn.shopify.com/s/files/1/0615/7352/9653/files/Cream-To-Foam_Face_Cleanser_Alt_7.webp?v=1774468613"
+      ],
+      "price_min": 27,
+      "price_max": 27,
+      "default_offer_id": "external_seed:ext_11963457ee34178a22a33486",
+      "internal_offer_exists": false,
+      "external_offer_exists": true,
+      "pivota_insight_status": "missing",
+      "pivota_insight_summary": null,
+      "quality_score": null,
+      "browse_score": null,
+      "facet_tokens": [
+        "First Aid Beauty",
+        "Cleanser"
+      ],
+      "sort_keys": {
+        "price_min": 27,
+        "price_max": 27,
+        "updated_at": null
+      },
+      "updated_at": null,
+      "source_refs": [
+        "external_seed:ext_11963457ee34178a22a33486"
+      ]
+    },
+    {
+      "doc_id": "sellable:sig_d76694f078649c0b53798dcb",
+      "sellable_item_group_id": "sig_d76694f078649c0b53798dcb",
+      "product_line_id": "pl_9730317f63d1c91984db3d09",
+      "review_family_id": "rf_9730317f63d1c91984db3d09",
+      "brand_name": "First Aid Beauty",
+      "category_paths": [
+        "Exfoliant"
+      ],
+      "market": "US",
+      "availability_state": "available",
+      "publish_state": "public",
+      "title": "Brighten + Glow Facial Radiance Pads with Glycolic + Lactic Acids 90 Count",
+      "subtitle": "Sensitive skin-friendly & gentle face exfoliating pads with a blend of AHAs designed for daily use to help brighten, smooth and prep skin for makeup.\nBrighten + Glow Facial Radiance Pads combine Glycolic + Lactic acids to gently exfoliate the face, neck and decollete and refine the look of pores for a smoother, brighter complexion that is the perfect base for makeup. Designed to be gentle enough for daily use on sensitive skin.\n\nWith regular use, this gentle exfoliator for sensitive skin also helps refine look of pores and texture for smoother skin that's ready for flawless makeup application\n\nDermatologist Tested, Gluten-Free, Nano-Free, Nut-Free, Parthenolide Free, Silicone Free, Soy-Free, Suitable for Sensitive Skin, Vegan",
+      "variant_axes": {
+        "pack": "90pack",
+        "multi_variant": false
+      },
+      "size": null,
+      "shade": null,
+      "pack": null,
+      "hero_media": {
+        "url": "https://cdn.shopify.com/s/files/1/0615/7352/9653/files/Facial-Radiance-Pads_2026-Refresh_Sephora_Lead_90ct_FAB_1.webp?v=1773777911",
+        "source_kind": "catalog",
+        "source_tier": "catalog"
+      },
+      "preview_media": [
+        "https://cdn.shopify.com/s/files/1/0615/7352/9653/files/Facial-Radiance-Pads_2026-Refresh_Sephora_Lead_90ct_FAB_1.webp?v=1773777911",
+        "https://cdn.shopify.com/s/files/1/0615/7352/9653/files/Alt-Blue-Facial-Radiance-Pads_2026-02_600010ca-e900-40fc-be31-6df9dbf000a7.webp?v=1773777913",
+        "https://cdn.shopify.com/s/files/1/0615/7352/9653/files/Alt-Blue-Facial-Radiance-Pads_2026-03_b7e8cd41-cab0-494b-a228-7dfdce98073a.webp?v=1773777916",
+        "https://cdn.shopify.com/s/files/1/0615/7352/9653/files/Alt-Blue-Facial-Radiance-Pads_2026-05_2d08368d-d95d-4eef-b716-98835d73f3b5.webp?v=1773777920",
+        "https://cdn.shopify.com/s/files/1/0615/7352/9653/files/Alt-Blue-Facial-Radiance-Pads_2026-06_09ba0ba6-6cb2-4954-86ee-a07dd9851f8a.webp?v=1773777922",
+        "https://cdn.shopify.com/s/files/1/0615/7352/9653/files/Alt-Blue-Facial-Radiance-Pads_2026-07_92005523-3d37-436d-bacb-8d28c067d101.webp?v=1773777925",
+        "https://cdn.shopify.com/s/files/1/0615/7352/9653/files/Alt-Blue-Facial-Radiance-Pads_2026-08_3bf5efde-a0cd-4ed0-a7e6-cdbff823f812.webp?v=1773777927",
+        "https://cdn.shopify.com/s/files/1/0615/7352/9653/files/Alt-Blue-Facial-Radiance-Pads_2026-09_e3969b54-147d-4ee5-9691-9993a0a6144e.webp?v=1773777932"
+      ],
+      "price_min": 56,
+      "price_max": 56,
+      "default_offer_id": "external_seed:ext_1b35e9b9464058f6b641c8e3",
+      "internal_offer_exists": false,
+      "external_offer_exists": true,
+      "pivota_insight_status": "missing",
+      "pivota_insight_summary": null,
+      "quality_score": null,
+      "browse_score": null,
+      "facet_tokens": [
+        "First Aid Beauty",
+        "Exfoliant"
+      ],
+      "sort_keys": {
+        "price_min": 56,
+        "price_max": 56,
+        "updated_at": null
+      },
+      "updated_at": null,
+      "source_refs": [
+        "external_seed:ext_1b35e9b9464058f6b641c8e3"
+      ]
+    },
+    {
+      "doc_id": "sellable:sig_ae0bfd46e02b75c94dfae8da",
+      "sellable_item_group_id": "sig_ae0bfd46e02b75c94dfae8da",
+      "product_line_id": "pl_9054f61128d0fc212e427277",
+      "review_family_id": "rf_9054f61128d0fc212e427277",
+      "brand_name": "First Aid Beauty",
+      "category_paths": [
+        "Treatment"
+      ],
+      "market": "US",
+      "availability_state": "available",
+      "publish_state": "public",
+      "title": "Ingrown Hair Pads with BHA + AHA Travel Size",
+      "subtitle": "Gentle daily ingrown treatment pads that exfoliate the dead skin cells that trap hairs and help prevent the creation of razor bumps + ingrown hairs.\nThese pads are soaked in a concentrated formula with BHA + AHA to exfoliate away the dead skin cells that trap hairs and cause ingrown hairs and razor bumps. Designed for sensitive skin, these pads are gentle on delicate skin post-shave.\n\nThe formula with Witch Hazel and Aloe leaves skin soft and smooth, not stripped\n\nAllergen-Free, Vegan, Gluten-Free, Soy-Free, Nut-Free, Nano-Free, Parthenolide-Free, Silicone-Free",
+      "variant_axes": {
+        "size": "travel size",
+        "multi_variant": false
+      },
+      "size": null,
+      "shade": null,
+      "pack": null,
+      "hero_media": {
+        "url": "https://cdn.shopify.com/s/files/1/0615/7352/9653/files/Ingrown-Hair-Pads_FAB_28ct_leads_672c6875-6965-4636-be3c-170f2f38ae6e.webp?v=1773773694",
+        "source_kind": "catalog",
+        "source_tier": "catalog"
+      },
+      "preview_media": [
+        "https://cdn.shopify.com/s/files/1/0615/7352/9653/files/Ingrown-Hair-Pads_FAB_28ct_leads_672c6875-6965-4636-be3c-170f2f38ae6e.webp?v=1773773694",
+        "https://cdn.shopify.com/s/files/1/0615/7352/9653/files/40013_01.webp?v=1773773698",
+        "https://cdn.shopify.com/s/files/1/0615/7352/9653/files/40013_02_7c359c35-092c-432b-8fa7-7ee8d5d97381.webp?v=1773773700",
+        "https://cdn.shopify.com/s/files/1/0615/7352/9653/files/40013_03_a8bc31ef-9cd7-4a1f-9338-f18db31cef1f.webp?v=1773773703",
+        "https://cdn.shopify.com/s/files/1/0615/7352/9653/files/40013_04.webp?v=1773773705",
+        "https://cdn.shopify.com/s/files/1/0615/7352/9653/files/40013_05_592aeb65-84b0-42d4-858a-6aa84a768c2f.webp?v=1773773706",
+        "https://cdn.shopify.com/s/files/1/0615/7352/9653/files/40013_06_3e489891-6886-41c3-9992-2c59c8c34292.webp?v=1773773708",
+        "https://cdn.shopify.com/s/files/1/0615/7352/9653/files/40013_07.webp?v=1773773710"
+      ],
+      "price_min": 20,
+      "price_max": 20,
+      "default_offer_id": "external_seed:ext_1ccec8358c11ec3397c03abf",
+      "internal_offer_exists": false,
+      "external_offer_exists": true,
+      "pivota_insight_status": "available",
+      "pivota_insight_summary": "Pre-soaked AHA/BHA treatment pads built around humectants such as glycerin/propanediol for swipe-on exfoliation, ingrown-hair care, or texture-smoothing routines.",
+      "quality_score": null,
+      "browse_score": null,
+      "facet_tokens": [
+        "First Aid Beauty",
+        "Treatment"
+      ],
+      "sort_keys": {
+        "price_min": 20,
+        "price_max": 20,
+        "updated_at": null
+      },
+      "updated_at": null,
+      "source_refs": [
+        "external_seed:ext_1ccec8358c11ec3397c03abf"
+      ]
+    },
+    {
+      "doc_id": "sellable:sig_3420cc9a872ea018e01f3917",
+      "sellable_item_group_id": "sig_3420cc9a872ea018e01f3917",
+      "product_line_id": "pl_df494c0b9dceb0c9cec233bd",
+      "review_family_id": "rf_df494c0b9dceb0c9cec233bd",
+      "brand_name": "First Aid Beauty",
+      "category_paths": [
+        "Moisturizer"
+      ],
+      "market": "US",
+      "availability_state": "available",
+      "publish_state": "public",
+      "title": "Daily Resurfacing Lotion with 2% Niacinamide",
+      "subtitle": "Lightweight lotion perfect for blemish -prone skin. Formula with Niacinamide to visibly fade post-acne marks, and Glycerin and Ceramides to provid e 24-hour hydration + supporting the skin barrier . It gives the perfect level of hydration, leaving skin feeling nourished without clogging pores.",
+      "variant_axes": {
+        "volume": "1oz",
+        "multi_variant": false
+      },
+      "size": null,
+      "shade": null,
+      "pack": null,
+      "hero_media": {
+        "url": "https://cdn.shopify.com/s/files/1/0615/7352/9653/files/AcneLotion_Gray_2000x2000_a436534e-a217-49ef-b6c4-be6ae94ef16a.jpg?v=1762445080",
+        "source_kind": "catalog",
+        "source_tier": "catalog"
+      },
+      "preview_media": [
+        "https://cdn.shopify.com/s/files/1/0615/7352/9653/files/AcneLotion_Gray_2000x2000_a436534e-a217-49ef-b6c4-be6ae94ef16a.jpg?v=1762445080",
+        "https://cdn.shopify.com/s/files/1/0615/7352/9653/files/01_AcneLotion_AltImage_2000x2000_c13aac84-bffe-4919-a57c-5034029a08a9.jpg?v=1751472075",
+        "https://cdn.shopify.com/s/files/1/0615/7352/9653/files/02_AcneLotion_AltImage_2000x2000_5a22c706-7d99-4ad8-97f8-f02f9504fa95.jpg?v=1751472075",
+        "https://cdn.shopify.com/s/files/1/0615/7352/9653/files/03_AcneLotion_AltImage_2000x2000_13cfdc59-697b-41ea-a56a-721538d2c853.jpg?v=1751472075",
+        "https://cdn.shopify.com/s/files/1/0615/7352/9653/files/04_AcneLotion_AltImage_2000x2000_697116b8-d127-4a48-ac04-26ed1f873405.jpg?v=1751472075",
+        "https://cdn.shopify.com/s/files/1/0615/7352/9653/files/05_AcneLotion_AltImage_2000x2000_d78ae137-785f-4e2d-b071-376cffb5fad5.jpg?v=1751472075",
+        "https://cdn.shopify.com/s/files/1/0615/7352/9653/files/06_AcneLotion_AltImage_2000x2000_00d292ba-b2bf-40c5-8d3f-9d56569b4567.jpg?v=1751472075",
+        "https://cdn.shopify.com/s/files/1/0615/7352/9653/files/07_AcneLotion_AltImage_2000x2000_646d6019-e23e-4f3c-a9f6-048ec204101b.jpg?v=1751472075"
+      ],
+      "price_min": 30,
+      "price_max": 30,
+      "default_offer_id": "external_seed:ext_1d9e01e4c3a8800a0c22b175",
+      "internal_offer_exists": false,
+      "external_offer_exists": true,
+      "pivota_insight_status": "missing",
+      "pivota_insight_summary": null,
+      "quality_score": null,
+      "browse_score": null,
+      "facet_tokens": [
+        "First Aid Beauty",
+        "Moisturizer"
+      ],
+      "sort_keys": {
+        "price_min": 30,
+        "price_max": 30,
+        "updated_at": null
+      },
+      "updated_at": null,
+      "source_refs": [
+        "external_seed:ext_1d9e01e4c3a8800a0c22b175"
+      ]
+    },
+    {
+      "doc_id": "sellable:sig_40b2ae3fe9fb71bf7ee5a9f15104954d",
+      "sellable_item_group_id": "sig_40b2ae3fe9fb71bf7ee5a9f15104954d",
+      "product_line_id": "pl_7223347e882740c6b88aca4e",
+      "review_family_id": "rf_7223347e882740c6b88aca4e",
+      "brand_name": "First Aid Beauty",
+      "category_paths": [
+        "Body Oil"
+      ],
+      "market": "US",
+      "availability_state": "available",
+      "publish_state": "public",
+      "title": "After-Shower Nourishing Body Oil",
+      "subtitle": "Nourishing hydration to lock in skin's moisture post-shower and strengthens the skin's moisture barrier for a healthy glow.\n\nContains skin-loving lipids + 7 botanical oils\n\nDoes not clog pores\n\nFormulated with scentsitivity, but no artificial fragrance, the oils impart a crisp tangerine aroma\n\nAllergen-Free, Vegan, Non-Comedogenic, Gluten-Free, Soy-Free, Nut-Free, Nano-Free, Parthenolide-Free, Silicone-Free",
+      "variant_axes": {
+        "multi_variant": false
+      },
+      "size": null,
+      "shade": null,
+      "pack": null,
+      "hero_media": {
+        "url": "https://cdn.shopify.com/s/files/1/0615/7352/9653/files/LEAD_After-Shower_Body_Oil.jpg?v=1762439896",
+        "source_kind": "catalog",
+        "source_tier": "catalog"
+      },
+      "preview_media": [
+        "https://cdn.shopify.com/s/files/1/0615/7352/9653/files/LEAD_After-Shower_Body_Oil.jpg?v=1762439896",
+        "https://cdn.shopify.com/s/files/1/0615/7352/9653/files/04_NourishingBodyOil_AltImage_2000x2000_2eac4c60-8277-4d8a-ab78-ea926f5d5fbf.jpg?v=1773766783",
+        "https://cdn.shopify.com/s/files/1/0615/7352/9653/files/01_NourishingBodyOil_AltImage_2000x2000_0cf4ebe7-29a4-42ce-b4b3-7bb94c908d6a.jpg?v=1716239290",
+        "https://cdn.shopify.com/s/files/1/0615/7352/9653/files/02_NourishingBodyOil_AltImage_2000x2000_662eccf5-e7cd-43fa-ae03-11d1b8326236.jpg?v=1773766783",
+        "https://cdn.shopify.com/s/files/1/0615/7352/9653/files/03_NourishingBodyOil_AltImage_2000x2000_538174f2-1fe9-469b-bc12-3395b7917ad5.jpg?v=1773766783",
+        "https://cdn.shopify.com/s/files/1/0615/7352/9653/files/05_NourishingBodyOil_AltImage_2000x2000_1721d92a-6d8b-4626-8f35-af03907700c0.jpg?v=1716239289",
+        "https://cdn.shopify.com/s/files/1/0615/7352/9653/files/07_NourishingBodyOil_AltImage_2000x2000_107578b8-d5f8-4a47-b7f9-2669e8aca4ae.jpg?v=1716239290",
+        "https://cdn.shopify.com/s/files/1/0615/7352/9653/files/06_NourishingBodyOil_AltImage_2000x2000_c69e1dd0-fb8b-4466-bfcc-e2d30723aa19.jpg?v=1716239290"
+      ],
+      "price_min": 36,
+      "price_max": 36,
+      "default_offer_id": "external_seed:ext_27541ddaefa99c1185fd9677",
+      "internal_offer_exists": false,
+      "external_offer_exists": true,
+      "pivota_insight_status": "available",
+      "pivota_insight_summary": "A First Aid Beauty body oil listed on the brand source page as After-Shower Nourishing Body Oil. The source description identifies: Nourishing hydration to lock in skin's moisture post-shower and strengthens the skin's moisture barrier for a healthy glow.",
+      "quality_score": null,
+      "browse_score": null,
+      "facet_tokens": [
+        "First Aid Beauty",
+        "Body Oil"
+      ],
+      "sort_keys": {
+        "price_min": 36,
+        "price_max": 36,
+        "updated_at": null
+      },
+      "updated_at": null,
+      "source_refs": [
+        "external_seed:ext_27541ddaefa99c1185fd9677"
+      ]
+    },
+    {
+      "doc_id": "sellable:sig_01f4484aaf4f2117ecee6852",
+      "sellable_item_group_id": "sig_01f4484aaf4f2117ecee6852",
+      "product_line_id": "pl_624bbcc2dc9dff4c115b496a",
+      "review_family_id": "rf_624bbcc2dc9dff4c115b496a",
+      "brand_name": "First Aid Beauty",
+      "category_paths": [
+        "Exfoliant"
+      ],
+      "market": "US",
+      "availability_state": "available",
+      "publish_state": "public",
+      "title": "KP Bump Eraser Body Scrub 10% AHA Fresh Peach",
+      "subtitle": "A body scrub with a juicy, peach scent that exfoliates away uneven skin texture associated with K P to reveal exceptionally smooth + touchable skin after just one use .\n\nDesigned for sensitive skin, this scrub is formulated with pumice + 10% AHA, a combination of chemical and physical exfoliants to effectively exfoliate dead skin, uneven texture and rough bumps on the body without irritation.\n\nNow with juicy, peach scent to refresh the shower routine and still safe for sensitive skin\n\nFormulated with SCENTsitivity and no artificial fragrance\n\nDermatologist Tested, Gluten-Free, Nano-Free, Nut-Free, Parthenolide Free, Silicone Free, Soy-Free, Suitable for Sensitive Skin, Vegan",
+      "variant_axes": {
+        "volume": "8oz",
+        "multi_variant": true
+      },
+      "size": null,
+      "shade": null,
+      "pack": null,
+      "hero_media": {
+        "url": "https://cdn.shopify.com/s/files/1/0615/7352/9653/files/KP-Bump-Eraser-Peach_FAB_8oz_leads_1.jpg?v=1772819845",
+        "source_kind": "catalog",
+        "source_tier": "catalog"
+      },
+      "preview_media": [
+        "https://cdn.shopify.com/s/files/1/0615/7352/9653/files/KP-Bump-Eraser-Peach_FAB_8oz_leads_1.jpg?v=1772819845",
+        "https://cdn.shopify.com/s/files/1/0615/7352/9653/files/40020_01.jpg?v=1772819845",
+        "https://cdn.shopify.com/s/files/1/0615/7352/9653/files/40020_02.jpg?v=1772819845",
+        "https://cdn.shopify.com/s/files/1/0615/7352/9653/files/40020_03.jpg?v=1772819845",
+        "https://cdn.shopify.com/s/files/1/0615/7352/9653/files/40020_04.jpg?v=1772819845",
+        "https://cdn.shopify.com/s/files/1/0615/7352/9653/files/40020_05.jpg?v=1772819845",
+        "https://cdn.shopify.com/s/files/1/0615/7352/9653/files/40020_06.jpg?v=1772819845",
+        "https://cdn.shopify.com/s/files/1/0615/7352/9653/files/40020_08.jpg?v=1772819845"
+      ],
+      "price_min": 30,
+      "price_max": 30,
+      "default_offer_id": "external_seed:ext_3a8ab0e88713143fd1df39ed",
+      "internal_offer_exists": false,
+      "external_offer_exists": true,
+      "pivota_insight_status": "available",
+      "pivota_insight_summary": "A First Aid Beauty body scrub listed on the brand source page as KP Bump Eraser Body Scrub 10% AHA Fresh Peach. The source description identifies: A body scrub with a juicy, peach scent that exfoliates away uneven skin texture associated with K P to reveal exceptionally smooth + touchable skin after just one use.",
+      "quality_score": null,
+      "browse_score": null,
+      "facet_tokens": [
+        "First Aid Beauty",
+        "Exfoliant"
+      ],
+      "sort_keys": {
+        "price_min": 30,
+        "price_max": 30,
+        "updated_at": null
+      },
+      "updated_at": null,
+      "source_refs": [
+        "external_seed:ext_3a8ab0e88713143fd1df39ed"
+      ]
+    },
+    {
+      "doc_id": "sellable:sig_694a354ae83cb101ddfd0693",
+      "sellable_item_group_id": "sig_694a354ae83cb101ddfd0693",
+      "product_line_id": "pl_8b88c26fa9350f45dfa05761",
+      "review_family_id": "rf_8b88c26fa9350f45dfa05761",
+      "brand_name": "First Aid Beauty",
+      "category_paths": [
+        "Eye Cream"
+      ],
+      "market": "US",
+      "availability_state": "available",
+      "publish_state": "public",
+      "title": "Ultra Repair Retinol Eye Cream with Retinol, Squalane + Ceramides",
+      "subtitle": "This eye cream features a slow-release encapsulated retinol technology that allows it to visibly smooth the delicate skin in the under-eye area with minimal redness and irritation, making it ideal for sensitive skin.\n\nFeatures Encapsulated Retinol Technology with a slow-release delivery system to visibly smooth the eye area with less redness + irritation\nContains Squalane + Ceramides to hydrate, calm, soothe + strengthen the moisture barrier\n\nGluten-Free, Nut-Free, Nano-Free, Parthenolide-Free",
+      "variant_axes": {
+        "size": "0.5 oz",
+        "multi_variant": false
+      },
+      "size": null,
+      "shade": null,
+      "pack": null,
+      "hero_media": {
+        "url": "https://cdn.shopify.com/s/files/1/0615/7352/9653/files/UR-Retinol-Cream_FAB_0.5oz_leads_1.jpg?v=1773779684",
+        "source_kind": "catalog",
+        "source_tier": "catalog"
+      },
+      "preview_media": [
+        "https://cdn.shopify.com/s/files/1/0615/7352/9653/files/UR-Retinol-Cream_FAB_0.5oz_leads_1.jpg?v=1773779684",
+        "https://cdn.shopify.com/s/files/1/0615/7352/9653/files/40026_01.jpg?v=1773779684",
+        "https://cdn.shopify.com/s/files/1/0615/7352/9653/files/40026_02.jpg?v=1773779684",
+        "https://cdn.shopify.com/s/files/1/0615/7352/9653/files/40026_03.jpg?v=1773779684",
+        "https://cdn.shopify.com/s/files/1/0615/7352/9653/files/40026_04.jpg?v=1773779684",
+        "https://cdn.shopify.com/s/files/1/0615/7352/9653/files/40026_05.jpg?v=1773779684",
+        "https://cdn.shopify.com/s/files/1/0615/7352/9653/files/40026_06.jpg?v=1773779684",
+        "https://cdn.shopify.com/s/files/1/0615/7352/9653/files/40026_07.jpg?v=1773779684"
+      ],
+      "price_min": 45,
+      "price_max": 45,
+      "default_offer_id": "external_seed:ext_3c794804d01f461caa12a3a3",
+      "internal_offer_exists": false,
+      "external_offer_exists": true,
+      "pivota_insight_status": "missing",
+      "pivota_insight_summary": null,
+      "quality_score": null,
+      "browse_score": null,
+      "facet_tokens": [
+        "First Aid Beauty",
+        "Eye Cream"
+      ],
+      "sort_keys": {
+        "price_min": 45,
+        "price_max": 45,
+        "updated_at": null
+      },
+      "updated_at": null,
+      "source_refs": [
+        "external_seed:ext_3c794804d01f461caa12a3a3"
+      ]
+    },
+    {
+      "doc_id": "sellable:sig_f93d4e4f096acac1d386dc49",
+      "sellable_item_group_id": "sig_f93d4e4f096acac1d386dc49",
+      "product_line_id": "pl_c2e51d8059b23b77ba00ff89",
+      "review_family_id": "rf_c2e51d8059b23b77ba00ff89",
+      "brand_name": "First Aid Beauty",
+      "category_paths": [
+        "Treatment"
+      ],
+      "market": "US",
+      "availability_state": "available",
+      "publish_state": "public",
+      "title": "Ultra Repair Rescue Barrier Balm with Dimethicone",
+      "subtitle": "Help rescue red + irritated, cracked, chapped skin with a breathable, non-pore-clogging layer.\n\nFormula strengthens skin's moisture barrier to improve resilience\nIdeal for use after damage caused by environmental exposure or drying side effects of prescription-strength acne and retinoid treatments\nDermatologist Tested, Nano-Free, Parthenolide Free, Suitable for Sensitive Skin, Vegan",
+      "variant_axes": {
+        "size": "2 25 oz",
+        "volume": "25oz",
+        "multi_variant": true
+      },
+      "size": null,
+      "shade": null,
+      "pack": null,
+      "hero_media": {
+        "url": "https://cdn.shopify.com/s/files/1/0615/7352/9653/files/UltraRepairRescueBarrierBalm_2.25oz_Lead_2000x2000_6ea4d000-bfd4-41a6-9f6d-c10a80ac6d08.jpg?v=1762443859",
+        "source_kind": "catalog",
+        "source_tier": "catalog"
+      },
+      "preview_media": [
+        "https://cdn.shopify.com/s/files/1/0615/7352/9653/files/UltraRepairRescueBarrierBalm_2.25oz_Lead_2000x2000_6ea4d000-bfd4-41a6-9f6d-c10a80ac6d08.jpg?v=1762443859",
+        "https://cdn.shopify.com/s/files/1/0615/7352/9653/files/01_URRescueBarrierBalm_US_AltImage_2000x2000_1479de80-e639-4e4a-8fb1-738ebf328c0f.jpg?v=1736368592",
+        "https://cdn.shopify.com/s/files/1/0615/7352/9653/files/02_URRescueBarrierBalm_US_AltImage_2000x2000_1ecc4048-82b9-4f6f-8a8e-27f7d8da2c70.jpg?v=1751998691",
+        "https://cdn.shopify.com/s/files/1/0615/7352/9653/files/03_URRescueBarrierBalm_US_AltImage_2000x2000_4e2f124f-9d56-4f9b-9b62-ebeb6beb90fc.jpg?v=1772816305",
+        "https://cdn.shopify.com/s/files/1/0615/7352/9653/files/04_URRescueBarrierBalm_US_AltImage_2000x2000_4b51ef31-310f-4ebc-9700-72cc2c252be9.jpg?v=1772816305",
+        "https://cdn.shopify.com/s/files/1/0615/7352/9653/files/05_URRescueBarrierBalm_US_AltImage_2000x2000_e177e4b5-5ce9-4ea1-b797-a1a6b3b5311c.jpg?v=1751998731",
+        "https://cdn.shopify.com/s/files/1/0615/7352/9653/files/06_URRescueBarrierBalm_GLB_AltImage_2000x2000_2f957201-c670-4c61-a5b1-7c87687405bc.jpg?v=1772816305",
+        "https://cdn.shopify.com/s/files/1/0615/7352/9653/files/07_URRescueBarrierBalm_US_AltImage_2000x2000_a71b4b9b-a0b3-45a4-9c7a-21886e35f3b8.jpg?v=1751998731"
+      ],
+      "price_min": 36,
+      "price_max": 36,
+      "default_offer_id": "external_seed:ext_509af4ff581a6ee8211c5b18",
+      "internal_offer_exists": false,
+      "external_offer_exists": true,
+      "pivota_insight_status": "missing",
+      "pivota_insight_summary": null,
+      "quality_score": null,
+      "browse_score": null,
+      "facet_tokens": [
+        "First Aid Beauty",
+        "Treatment"
+      ],
+      "sort_keys": {
+        "price_min": 36,
+        "price_max": 36,
+        "updated_at": null
+      },
+      "updated_at": null,
+      "source_refs": [
+        "external_seed:ext_509af4ff581a6ee8211c5b18"
+      ]
+    },
+    {
+      "doc_id": "sellable:sig_9424af22dd39287cdad0bd06",
+      "sellable_item_group_id": "sig_9424af22dd39287cdad0bd06",
+      "product_line_id": "pl_de88505b20faece70354b28f",
+      "review_family_id": "rf_de88505b20faece70354b28f",
+      "brand_name": "First Aid Beauty",
+      "category_paths": [
+        "Exfoliant"
+      ],
+      "market": "US",
+      "availability_state": "available",
+      "publish_state": "public",
+      "title": "KP Bump Eraser Body Scrub 10% AHA Travel Size",
+      "subtitle": "A body scrub that exfoliates away uneven skin texture associated with Keratosis Pilaris to reveal exceptionally smooth + touchable skin.\nDesigned for sensitive skin, this scrub is formulated with pumice + 10% AHA, a combination of chemical and physical exfoliants to effectively exfoliate dead skin, uneven texture and rough bumps on the body without the irritation.\n\nAllergen-Free, Vegan, Gluten-Free, Soy-Free, Nut-Free, Nano-Free, Parthenolide-Free\nHelps improve skin's texture and smooth away bumps, roughness, and scaly areas, also known as chicken skin + buttne\nSafe for sensitive skin",
+      "variant_axes": {
+        "size": "travel size",
+        "multi_variant": false
+      },
+      "size": null,
+      "shade": null,
+      "pack": null,
+      "hero_media": {
+        "url": "https://cdn.shopify.com/s/files/1/0615/7352/9653/files/KP-Bump-Eraser_FAB_2oz_leads_allureseal.webp?v=1773773177",
+        "source_kind": "catalog",
+        "source_tier": "catalog"
+      },
+      "preview_media": [
+        "https://cdn.shopify.com/s/files/1/0615/7352/9653/files/KP-Bump-Eraser_FAB_2oz_leads_allureseal.webp?v=1773773177",
+        "https://cdn.shopify.com/s/files/1/0615/7352/9653/files/40015_01_1_343ae125-b62a-472c-bfbb-c3bb4b5cdc40.webp?v=1773773193",
+        "https://cdn.shopify.com/s/files/1/0615/7352/9653/files/40015_02_1_813a239c-69d5-45a9-a35f-fd6762ae9ee6.webp?v=1773773196",
+        "https://cdn.shopify.com/s/files/1/0615/7352/9653/files/40015_03_1_48036ea7-ddc2-4dd4-8bb3-4479411845f3.webp?v=1773773198",
+        "https://cdn.shopify.com/s/files/1/0615/7352/9653/files/40015_04_1_dce2da89-802d-4664-9941-27f586e9f332.webp?v=1773773200",
+        "https://cdn.shopify.com/s/files/1/0615/7352/9653/files/40015_05_1_5b5ca0f0-a950-428f-b2f2-34b21878fd2f.webp?v=1773773202",
+        "https://cdn.shopify.com/s/files/1/0615/7352/9653/files/40015_06_1_83838938-f94f-4422-8a57-8c7b891ddb72.webp?v=1773773204",
+        "https://cdn.shopify.com/s/files/1/0615/7352/9653/files/40015_07_1.webp?v=1773773206"
+      ],
+      "price_min": 12,
+      "price_max": 12,
+      "default_offer_id": "external_seed:ext_5a941eb383f5c65705b4b130",
+      "internal_offer_exists": false,
+      "external_offer_exists": true,
+      "pivota_insight_status": "available",
+      "pivota_insight_summary": "A First Aid Beauty body scrub listed on the brand source page as KP Bump Eraser Body Scrub 10% AHA Travel Size. The source description identifies: A body scrub that exfoliates away uneven skin texture associated with Keratosis Pilaris to reveal exceptionally smooth + touchable skin.",
+      "quality_score": null,
+      "browse_score": null,
+      "facet_tokens": [
+        "First Aid Beauty",
+        "Exfoliant"
+      ],
+      "sort_keys": {
+        "price_min": 12,
+        "price_max": 12,
+        "updated_at": null
+      },
+      "updated_at": null,
+      "source_refs": [
+        "external_seed:ext_5a941eb383f5c65705b4b130"
+      ]
+    },
+    {
+      "doc_id": "sellable:sig_7a314bf1e42826e61bc742cc",
+      "sellable_item_group_id": "sig_7a314bf1e42826e61bc742cc",
+      "product_line_id": "pl_fca82a88291571974eb4c24a",
+      "review_family_id": "rf_fca82a88291571974eb4c24a",
+      "brand_name": "First Aid Beauty",
+      "category_paths": [
+        "Moisturizer"
+      ],
+      "market": "US",
+      "availability_state": "available",
+      "publish_state": "public",
+      "title": "Ultra Repair Firming Day Cream with Peptides, Niacinamide + Collagen",
+      "subtitle": "Ultra Repair Firming Day Cream is a rich, luxe daily cream infused with hardworking ingredients to help skin look bouncy and youthful.\n\nSkin starts to lose Collagen at age 25\n\nPeptides, Niacinamide + Collagen help smooth the appearance of fine lines and combat visible signs of aging.\n\nAllergen-Free, Non-Comedogenic, Gluten-Free, Soy-Free, Nut-Free, Nano-Free, Parthenolide-Free",
+      "variant_axes": {
+        "multi_variant": false
+      },
+      "size": null,
+      "shade": null,
+      "pack": null,
+      "hero_media": {
+        "url": "https://cdn.shopify.com/s/files/1/0615/7352/9653/files/FirmingDayCream_Leads_2000x2000_FABDTC.jpg?v=1773775207",
+        "source_kind": "catalog",
+        "source_tier": "catalog"
+      },
+      "preview_media": [
+        "https://cdn.shopify.com/s/files/1/0615/7352/9653/files/FirmingDayCream_Leads_2000x2000_FABDTC.jpg?v=1773775207",
+        "https://cdn.shopify.com/s/files/1/0615/7352/9653/files/40027_01.jpg?v=1773776234",
+        "https://cdn.shopify.com/s/files/1/0615/7352/9653/files/40027_02.jpg?v=1773776234",
+        "https://cdn.shopify.com/s/files/1/0615/7352/9653/files/40027_03.jpg?v=1773776234",
+        "https://cdn.shopify.com/s/files/1/0615/7352/9653/files/40027_04.jpg?v=1773776234",
+        "https://cdn.shopify.com/s/files/1/0615/7352/9653/files/40027_05.jpg?v=1773776234",
+        "https://cdn.shopify.com/s/files/1/0615/7352/9653/files/40027_06.jpg?v=1773776234",
+        "https://cdn.shopify.com/s/files/1/0615/7352/9653/files/40027_07.jpg?v=1773776234"
+      ],
+      "price_min": 49,
+      "price_max": 49,
+      "default_offer_id": "external_seed:ext_62685854dfc71d2634e828e6",
+      "internal_offer_exists": false,
+      "external_offer_exists": true,
+      "pivota_insight_status": "missing",
+      "pivota_insight_summary": null,
+      "quality_score": null,
+      "browse_score": null,
+      "facet_tokens": [
+        "First Aid Beauty",
+        "Moisturizer"
+      ],
+      "sort_keys": {
+        "price_min": 49,
+        "price_max": 49,
+        "updated_at": null
+      },
+      "updated_at": null,
+      "source_refs": [
+        "external_seed:ext_62685854dfc71d2634e828e6"
+      ]
+    },
+    {
+      "doc_id": "sellable:sig_5b115b1e437cf11bdd013bc6",
+      "sellable_item_group_id": "sig_5b115b1e437cf11bdd013bc6",
+      "product_line_id": "pl_9ac985dec1f894211ce8aaa6",
+      "review_family_id": "rf_9ac985dec1f894211ce8aaa6",
+      "brand_name": "First Aid Beauty",
+      "category_paths": [
+        "Exfoliant"
+      ],
+      "market": "US",
+      "availability_state": "available",
+      "publish_state": "public",
+      "title": "KP Bump Eraser Body Scrub 10% AHA Toasted Coconut",
+      "subtitle": "A body scrub with our NEW warm coconut scent that exfoliates away uneven skin texture associated with KP to reveal exceptionally smooth + touchable skin.\n\nDesigned for sensitive skin, this scrub is formulated with pumice + 10% AHA, a combination of chemical and physical exfoliants to effectively exfoliate dead skin, uneven texture and rough bumps on the body without irritation.\n\nDermatologist Tested, Gluten-Free, Nano-Free, Nut-Free, Parthenolide Free, Silicone Free, Soy-Free, Suitable for Sensitive Skin, Vegan\n\nHelps improve skin's texture and smooth away bumps, roughness, and scaly areas, also known as chicken skin + buttne\n\nSafe for sensitive skin",
+      "variant_axes": {
+        "volume": "8oz",
+        "multi_variant": true
+      },
+      "size": null,
+      "shade": null,
+      "pack": null,
+      "hero_media": {
+        "url": "https://cdn.shopify.com/s/files/1/0615/7352/9653/files/KP-Bump-Eraser-Coconut_FAB_8oz_leads.jpg?v=1770750121",
+        "source_kind": "catalog",
+        "source_tier": "catalog"
+      },
+      "preview_media": [
+        "https://cdn.shopify.com/s/files/1/0615/7352/9653/files/KP-Bump-Eraser-Coconut_FAB_8oz_leads.jpg?v=1770750121",
+        "https://cdn.shopify.com/s/files/1/0615/7352/9653/files/40036_01.jpg?v=1770750121",
+        "https://cdn.shopify.com/s/files/1/0615/7352/9653/files/40036_02.jpg?v=1770750121",
+        "https://cdn.shopify.com/s/files/1/0615/7352/9653/files/40036_03.jpg?v=1770750121",
+        "https://cdn.shopify.com/s/files/1/0615/7352/9653/files/40036_04.jpg?v=1770750121",
+        "https://cdn.shopify.com/s/files/1/0615/7352/9653/files/40036_05.jpg?v=1770750121",
+        "https://cdn.shopify.com/s/files/1/0615/7352/9653/files/40036_06.jpg?v=1770750121",
+        "https://cdn.shopify.com/s/files/1/0615/7352/9653/files/40036_07.jpg?v=1770750121"
+      ],
+      "price_min": 30,
+      "price_max": 30,
+      "default_offer_id": "external_seed:ext_67275a9b74b688eca7eefe38",
+      "internal_offer_exists": false,
+      "external_offer_exists": true,
+      "pivota_insight_status": "missing",
+      "pivota_insight_summary": null,
+      "quality_score": null,
+      "browse_score": null,
+      "facet_tokens": [
+        "First Aid Beauty",
+        "Exfoliant"
+      ],
+      "sort_keys": {
+        "price_min": 30,
+        "price_max": 30,
+        "updated_at": null
+      },
+      "updated_at": null,
+      "source_refs": [
+        "external_seed:ext_67275a9b74b688eca7eefe38"
+      ]
+    },
+    {
+      "doc_id": "sellable:sig_639c0acb5f107e6fce18d23b",
+      "sellable_item_group_id": "sig_639c0acb5f107e6fce18d23b",
+      "product_line_id": "pl_87bc1bb3b132f22c81297bd0",
+      "review_family_id": "rf_87bc1bb3b132f22c81297bd0",
+      "brand_name": "First Aid Beauty",
+      "category_paths": [
+        "Exfoliant"
+      ],
+      "market": "US",
+      "availability_state": "available",
+      "publish_state": "public",
+      "title": "KP Bump Eraser Body Scrub 10% AHA Fresh Strawberry",
+      "subtitle": "A body scrub with a juicy, strawberry scent that exfoliates away uneven skin texture associated with K P to reveal exceptionally smooth + touchable skin after just one use .\n\nDesigned for sensitive skin, t his scrub is formulated with pumice + 10% AHA, a combination of chemical and physical exfoliants to effectively exfoliate dead skin, uneven texture and rough bumps on the body without irritation .\n\nFruity, strawberry scent to refresh the shower routine and still safe for sensitive skin\n\nFormulated with SCENTsitivity and no artificial fragrance\n\nDermatologist Tested, Gluten-Free, Nano-Free, Nut-Free, Parthenolide Free, Silicone Free, Soy-Free, Suitable for Sensitive Skin, Vegan",
+      "variant_axes": {
+        "volume": "8oz",
+        "multi_variant": true
+      },
+      "size": null,
+      "shade": null,
+      "pack": null,
+      "hero_media": {
+        "url": "https://www.firstaidbeauty.com/cdn/shop/files/KPSCRUBStrawberry-Amazon-Lead-8oz-US-FAB.png?v=1777662586",
+        "source_kind": "catalog",
+        "source_tier": "catalog"
+      },
+      "preview_media": [
+        "https://www.firstaidbeauty.com/cdn/shop/files/KPSCRUBStrawberry-Amazon-Lead-8oz-US-FAB.png?v=1777662586",
+        "https://www.firstaidbeauty.com/cdn/shop/files/40018_01.jpg?v=1772825362",
+        "https://www.firstaidbeauty.com/cdn/shop/files/40018_02.jpg?v=1772825373",
+        "https://www.firstaidbeauty.com/cdn/shop/files/40018_03.jpg?v=1772825388",
+        "https://www.firstaidbeauty.com/cdn/shop/files/40018_04.jpg?v=1772825388",
+        "https://www.firstaidbeauty.com/cdn/shop/files/40018_05.jpg?v=1772825388",
+        "https://www.firstaidbeauty.com/cdn/shop/files/40018_06.jpg?v=1772825388",
+        "https://www.firstaidbeauty.com/cdn/shop/files/40018_07.jpg?v=1772825388"
+      ],
+      "price_min": 30,
+      "price_max": 30,
+      "default_offer_id": "external_seed:ext_684ef08faa23d138a2222481",
+      "internal_offer_exists": false,
+      "external_offer_exists": true,
+      "pivota_insight_status": "available",
+      "pivota_insight_summary": "A First Aid Beauty body scrub listed on the brand source page as KP Bump Eraser Body Scrub 10% AHA Fresh Strawberry.",
+      "quality_score": null,
+      "browse_score": null,
+      "facet_tokens": [
+        "First Aid Beauty",
+        "Exfoliant"
+      ],
+      "sort_keys": {
+        "price_min": 30,
+        "price_max": 30,
+        "updated_at": null
+      },
+      "updated_at": null,
+      "source_refs": [
+        "external_seed:ext_684ef08faa23d138a2222481"
+      ]
+    },
+    {
+      "doc_id": "sellable:sig_279362093239bdacf0de0329",
+      "sellable_item_group_id": "sig_279362093239bdacf0de0329",
+      "product_line_id": "pl_df788f481ba3164dc00b2d6f",
+      "review_family_id": "rf_df788f481ba3164dc00b2d6f",
+      "brand_name": "First Aid Beauty",
+      "category_paths": [
+        "Deodorant"
+      ],
+      "market": "US",
+      "availability_state": "available",
+      "publish_state": "public",
+      "title": "Whole Body Deodorant Cream",
+      "subtitle": "Sweat-activated cream with odor-fighting AHA's targets odor at the source where you experience unwanted body odor.\n\nFormula has a Fresh Citrus scent and is aluminum free to be gentle on skin and keep you smelling fresh all day\nFree of Aluminum, Dyes, Parabens and Phthalates\nDermatologist + Gynecologist tested\n\nVegan, Non-Comedogenic, Gluten-Free, Nano-Free, Parthenolide-Free",
+      "variant_axes": {
+        "multi_variant": false
+      },
+      "size": null,
+      "shade": null,
+      "pack": null,
+      "hero_media": {
+        "url": "https://cdn.shopify.com/s/files/1/0615/7352/9653/files/Whole_Body_Deo.jpg?v=1762439900",
+        "source_kind": "catalog",
+        "source_tier": "catalog"
+      },
+      "preview_media": [
+        "https://cdn.shopify.com/s/files/1/0615/7352/9653/files/Whole_Body_Deo.jpg?v=1762439900",
+        "https://cdn.shopify.com/s/files/1/0615/7352/9653/files/09_BodyDeo_AltImage_2000x2000_db6f5fc7-b242-4989-b076-b611828ef7ca.jpg?v=1745440040",
+        "https://cdn.shopify.com/s/files/1/0615/7352/9653/files/02_BodyDeo_AltImage_2000x2000_6303506d-f7a6-49ac-b2e9-295cb28b3915.jpg?v=1720044165",
+        "https://cdn.shopify.com/s/files/1/0615/7352/9653/files/03_BodyDeo_AltImage_2000x2000_7c5c5032-225d-4d1f-adcf-eb9117ef9b33.jpg?v=1773766319",
+        "https://cdn.shopify.com/s/files/1/0615/7352/9653/files/05_BodyDeo_AltImage_2000x2000_b021a991-7d63-485c-b5ce-7dfca53318b4.jpg?v=1720044165",
+        "https://cdn.shopify.com/s/files/1/0615/7352/9653/files/01_BodyDeo_AltImage_2000x2000_23aea20a-f4a8-4abe-bfda-f88db3defa45.jpg?v=1773766319",
+        "https://cdn.shopify.com/s/files/1/0615/7352/9653/files/06_BodyDeo_AltImage_2000x2000_86744d11-7081-4725-8d87-3ef74f17238c.jpg?v=1773766319",
+        "https://cdn.shopify.com/s/files/1/0615/7352/9653/files/07_BodyDeo_AltImage_2000x2000_35c74789-792f-4f8b-9b32-5aaee44b7d30.jpg?v=1745440040"
+      ],
+      "price_min": 20,
+      "price_max": 20,
+      "default_offer_id": "external_seed:ext_6c2feb5d6e43c9362d6a2254",
+      "internal_offer_exists": false,
+      "external_offer_exists": true,
+      "pivota_insight_status": "available",
+      "pivota_insight_summary": "A First Aid Beauty deodorant listed on the brand source page as Whole Body Deodorant Cream. The source description identifies: Sweat-activated cream with odor-fighting AHA's targets odor at the source where you experience unwanted body odor.",
+      "quality_score": null,
+      "browse_score": null,
+      "facet_tokens": [
+        "First Aid Beauty",
+        "Deodorant"
+      ],
+      "sort_keys": {
+        "price_min": 20,
+        "price_max": 20,
+        "updated_at": null
+      },
+      "updated_at": null,
+      "source_refs": [
+        "external_seed:ext_6c2feb5d6e43c9362d6a2254"
+      ]
+    },
+    {
+      "doc_id": "sellable:sig_a682d7bcd5569b429f9d29c2741f4c3d",
+      "sellable_item_group_id": "sig_a682d7bcd5569b429f9d29c2741f4c3d",
+      "product_line_id": "pl_393503aed1b3b30cc3077daa",
+      "review_family_id": "rf_393503aed1b3b30cc3077daa",
+      "brand_name": "First Aid Beauty",
+      "category_paths": [
+        "Eye Cream"
+      ],
+      "market": "US",
+      "availability_state": "out_of_stock",
+      "publish_state": "public",
+      "title": "Brighten + Glow Eye Cream with Niacinamide",
+      "subtitle": "Peach Micro-Pearls help the eye area appear instantly dewy and revitalized, while Niacinamide hydrates to smooth and brighten skin.\n\nInstantly glow + gradually brighten under eyes.\nMassage into the under eye and extend to the upper cheek for a seamless glow on bare skin or under makeup\n\nAllergen-Free, Vegan, Gluten-Free, Nut-Free, Nano-Free, Parthenolide-Free",
+      "variant_axes": {
+        "multi_variant": false
+      },
+      "size": null,
+      "shade": null,
+      "pack": null,
+      "hero_media": {
+        "url": "https://cdn.shopify.com/s/files/1/0615/7352/9653/files/LEAD_brighten_Glow_Eye_Cream.jpg?v=1762439891",
+        "source_kind": "catalog",
+        "source_tier": "catalog"
+      },
+      "preview_media": [
+        "https://cdn.shopify.com/s/files/1/0615/7352/9653/files/LEAD_brighten_Glow_Eye_Cream.jpg?v=1762439891",
+        "https://cdn.shopify.com/s/files/1/0615/7352/9653/files/Brighten_GlowEyeCream_AltImagery_2000x2000_2.jpg?v=1773764690",
+        "https://cdn.shopify.com/s/files/1/0615/7352/9653/files/Brighten_GlowEyeCream_AltImagery_2000x2000_4.jpg?v=1718135399",
+        "https://cdn.shopify.com/s/files/1/0615/7352/9653/files/Brighten_GlowEyeCream_AltImagery_2000x2000_3.jpg?v=1773764690",
+        "https://cdn.shopify.com/s/files/1/0615/7352/9653/files/Brighten_GlowEyeCream_AltImagery_2000x2000_5.jpg?v=1773764690",
+        "https://cdn.shopify.com/s/files/1/0615/7352/9653/files/Brighten_GlowEyeCream_AltImagery_2000x2000_6.jpg?v=1745440482",
+        "https://cdn.shopify.com/s/files/1/0615/7352/9653/files/Brighten_GlowEyeCream_AltImagery_2000x2000_7.jpg?v=1718135399"
+      ],
+      "price_min": 36,
+      "price_max": 36,
+      "default_offer_id": "external_seed:ext_77c5474a61c7c179242465d2",
+      "internal_offer_exists": false,
+      "external_offer_exists": true,
+      "pivota_insight_status": "missing",
+      "pivota_insight_summary": null,
+      "quality_score": null,
+      "browse_score": null,
+      "facet_tokens": [
+        "First Aid Beauty",
+        "Eye Cream"
+      ],
+      "sort_keys": {
+        "price_min": 36,
+        "price_max": 36,
+        "updated_at": null
+      },
+      "updated_at": null,
+      "source_refs": [
+        "external_seed:ext_77c5474a61c7c179242465d2"
+      ]
+    },
+    {
+      "doc_id": "sellable:sig_35dcece492d5902364725c7bb6d4fbfd",
+      "sellable_item_group_id": "sig_35dcece492d5902364725c7bb6d4fbfd",
+      "product_line_id": "pl_0a25e75ba595dd8a56ab62dc",
+      "review_family_id": "rf_0a25e75ba595dd8a56ab62dc",
+      "brand_name": "First Aid Beauty",
+      "category_paths": [
+        "Treatment"
+      ],
+      "market": "US",
+      "availability_state": "available",
+      "publish_state": "public",
+      "title": "Acne Clearing Pads with 2% Salicylic Acid",
+      "subtitle": "Gentle facial acne treatment pads formulated with Salicylic Acid to treat active breakouts and help prevent new breakouts from forming. These pads are formulated to remove surface oil and minimize the appearance of pores while visibly improving skin's overall texture without over-drying the skin.",
+      "variant_axes": {
+        "shade": "60 pads",
+        "multi_variant": false
+      },
+      "size": null,
+      "shade": null,
+      "pack": null,
+      "hero_media": {
+        "url": "https://cdn.shopify.com/s/files/1/0615/7352/9653/files/AcnePads_Lead_2000x2000-Fab.jpg?v=1769436270",
+        "source_kind": "catalog",
+        "source_tier": "catalog"
+      },
+      "preview_media": [
+        "https://cdn.shopify.com/s/files/1/0615/7352/9653/files/AcnePads_Lead_2000x2000-Fab.jpg?v=1769436270",
+        "https://cdn.shopify.com/s/files/1/0615/7352/9653/files/01_AcnePads_AltImage_2000x2000_82c893e4-4108-4834-ad8f-3021745dc9c5.webp?v=1769436270",
+        "https://cdn.shopify.com/s/files/1/0615/7352/9653/files/02_AcnePads_AltImage_2000x2000_57a1d0a0-61fd-4fa6-bed1-b4ca00d22e6b.webp?v=1769436270",
+        "https://cdn.shopify.com/s/files/1/0615/7352/9653/files/03_AcnePads_AltImage_2000x2000_df7a4166-cdaa-418b-8d6a-59f467816f0d.webp?v=1769436270",
+        "https://cdn.shopify.com/s/files/1/0615/7352/9653/files/04_AcnePads_AltImage_2000x2000_a229b2aa-097d-4335-ab5d-423450f6ada4.webp?v=1769436270",
+        "https://cdn.shopify.com/s/files/1/0615/7352/9653/files/05_AcnePads_AltImage_2000x2000_1.jpg?v=1769436270",
+        "https://cdn.shopify.com/s/files/1/0615/7352/9653/files/06_AcnePads_AltImage_2000x2000_403f215c-49ac-4e55-956e-99dc134100d8.webp?v=1769436270",
+        "https://cdn.shopify.com/s/files/1/0615/7352/9653/files/07_AcnePads_AltImage_2000x2000_c02ca074-0de4-4da6-85f9-d9eac4e816e1.jpg?v=1769436270"
+      ],
+      "price_min": 39,
+      "price_max": 39,
+      "default_offer_id": "external_seed:ext_7c0d0d81dcfbc946791b6280",
+      "internal_offer_exists": false,
+      "external_offer_exists": true,
+      "pivota_insight_status": "missing",
+      "pivota_insight_summary": null,
+      "quality_score": null,
+      "browse_score": null,
+      "facet_tokens": [
+        "First Aid Beauty",
+        "Treatment"
+      ],
+      "sort_keys": {
+        "price_min": 39,
+        "price_max": 39,
+        "updated_at": null
+      },
+      "updated_at": null,
+      "source_refs": [
+        "external_seed:ext_7c0d0d81dcfbc946791b6280"
+      ]
+    },
+    {
+      "doc_id": "sellable:sig_17be71a5c6eab6de4b2f30f4",
+      "sellable_item_group_id": "sig_17be71a5c6eab6de4b2f30f4",
+      "product_line_id": "pl_fe6d32d65977cb77f76df0fc",
+      "review_family_id": "rf_fe6d32d65977cb77f76df0fc",
+      "brand_name": "First Aid Beauty",
+      "category_paths": [
+        "Serum"
+      ],
+      "market": "US",
+      "availability_state": "available",
+      "publish_state": "public",
+      "title": "Dark Spot Serum with Niacinamide",
+      "subtitle": "Effective formula helps visibly even skin's tone with powerhouse Niacinamide.\n\nReveal a more uniform, healthy-looking complexion\n\nAllergen-Free, Vegan, Non-Comedogenic, Gluten-Free, Nut-Free, Nano-Free, Parthenolide-Free, Silicone-Free",
+      "variant_axes": {
+        "multi_variant": false
+      },
+      "size": null,
+      "shade": null,
+      "pack": null,
+      "hero_media": {
+        "url": "https://cdn.shopify.com/s/files/1/0615/7352/9653/files/DarkSpotSerum_Lead_2000x2000_223a156b-d6b1-4773-8a0e-d6cb79443ba8.jpg?v=1762439905",
+        "source_kind": "catalog",
+        "source_tier": "catalog"
+      },
+      "preview_media": [
+        "https://cdn.shopify.com/s/files/1/0615/7352/9653/files/DarkSpotSerum_Lead_2000x2000_223a156b-d6b1-4773-8a0e-d6cb79443ba8.jpg?v=1762439905",
+        "https://cdn.shopify.com/s/files/1/0615/7352/9653/files/01_DarkSpotSerum_AltImage_2000x2000_e8cdad6e-63fd-445a-a45c-669d59230aef.jpg?v=1716404211",
+        "https://cdn.shopify.com/s/files/1/0615/7352/9653/files/02_DarkSpotSerum_AltImage_2000x2000_b44ab64c-d3a0-415d-bdb8-e3dcbb6aa25f.jpg?v=1716404218",
+        "https://cdn.shopify.com/s/files/1/0615/7352/9653/files/03_DarkSpotSerum_AltImage_2000x2000_559911a7-0eae-48ac-9613-e260225fc5dc.jpg?v=1716404227",
+        "https://cdn.shopify.com/s/files/1/0615/7352/9653/files/04_DarkSpotSerum_AltImage_2000x2000_a3da4dc2-0a89-4c10-9304-112324cad53a.jpg?v=1716404235",
+        "https://cdn.shopify.com/s/files/1/0615/7352/9653/files/06_DarkSpotSerum_AltImage_2000x2000_42ca6a62-52f9-43b3-8dae-64aaba4ff539.jpg?v=1716404255",
+        "https://cdn.shopify.com/s/files/1/0615/7352/9653/files/05_DarkSpotSerum_AltImage_2000x2000_e84b95e5-512c-4524-ad49-2c5a618fe958.jpg?v=1716404242",
+        "https://cdn.shopify.com/s/files/1/0615/7352/9653/files/07_DarkSpotSerum_AltImage_2000x2000_b68adfec-285b-489d-a0b8-c6f40c4ddc33.jpg?v=1716404265"
+      ],
+      "price_min": 42,
+      "price_max": 42,
+      "default_offer_id": "external_seed:ext_7c4b0a2885131b08d1cda84a",
+      "internal_offer_exists": false,
+      "external_offer_exists": true,
+      "pivota_insight_status": "available",
+      "pivota_insight_summary": "Niacinamide-led serum for dark spots and uneven tone.",
+      "quality_score": null,
+      "browse_score": null,
+      "facet_tokens": [
+        "First Aid Beauty",
+        "Serum"
+      ],
+      "sort_keys": {
+        "price_min": 42,
+        "price_max": 42,
+        "updated_at": null
+      },
+      "updated_at": null,
+      "source_refs": [
+        "external_seed:ext_7c4b0a2885131b08d1cda84a"
+      ]
+    },
+    {
+      "doc_id": "sellable:sig_9338dd2b6714f99532a380bf",
+      "sellable_item_group_id": "sig_9338dd2b6714f99532a380bf",
+      "product_line_id": "pl_e1ac9a41491009c3a2fd39dc",
+      "review_family_id": "rf_e1ac9a41491009c3a2fd39dc",
+      "brand_name": "First Aid Beauty",
+      "category_paths": [
+        "Cleanser"
+      ],
+      "market": "US",
+      "availability_state": "available",
+      "publish_state": "public",
+      "title": "Ultra Gentle Cream-to-Foam Face Cleanser with Colloidal Oatmeal + Glycerin Travel Size",
+      "subtitle": "A daily cleanser that's gentle enough for sensitive and blemish-prone skin and effectively removes makeup, dirt, and SPF, leaving skin soft and supple.\n\nThis daily cleanser is non-stripping and pH balanced to effectively cleanse the face and maintain the skin's natural acidity to keep sensitive skin happy. Its creamy lather leaves skin feeling soft and supple , not dry or tight .\n\n2 oz Travel size\n\nAllergen-Free, Vegan, Gluten-Free, Soy-Free, Nut-Free, Nano-Free, Parthenolide-Free, Silicone-Free",
+      "variant_axes": {
+        "size": "travel size",
+        "multi_variant": false
+      },
+      "size": null,
+      "shade": null,
+      "pack": null,
+      "hero_media": {
+        "url": "https://cdn.shopify.com/s/files/1/0615/7352/9653/files/Ultra-Repair-Cleanser_2026-Refresh-Lead-2oz-FAB_2_e16d42ab-0607-4593-b7dc-7383e7277eff.jpg?v=1773772776",
+        "source_kind": "catalog",
+        "source_tier": "catalog"
+      },
+      "preview_media": [
+        "https://cdn.shopify.com/s/files/1/0615/7352/9653/files/Ultra-Repair-Cleanser_2026-Refresh-Lead-2oz-FAB_2_e16d42ab-0607-4593-b7dc-7383e7277eff.jpg?v=1773772776",
+        "https://cdn.shopify.com/s/files/1/0615/7352/9653/files/FABDotcom_Alt-Blue-Ultra-Repair-Cleanser_2026-03_1.jpg?v=1773772900",
+        "https://cdn.shopify.com/s/files/1/0615/7352/9653/files/FABDotcom_Alt-Blue-Ultra-Repair-Cleanser_2026-04_1.jpg?v=1773772898",
+        "https://cdn.shopify.com/s/files/1/0615/7352/9653/files/FABDotcom_Alt-Blue-Ultra-Repair-Cleanser_2026-05_1.jpg?v=1773772900",
+        "https://cdn.shopify.com/s/files/1/0615/7352/9653/files/FABDotcom_Alt-Blue-Ultra-Repair-Cleanser_2026-06_1.jpg?v=1773772899",
+        "https://cdn.shopify.com/s/files/1/0615/7352/9653/files/FABDotcom_Alt-Blue-Ultra-Repair-Cleanser_2026-07_1.jpg?v=1773772900",
+        "https://cdn.shopify.com/s/files/1/0615/7352/9653/files/FABDotcom_Alt-Blue-Ultra-Repair-Cleanser_2026-08_1.jpg?v=1773772899",
+        "https://cdn.shopify.com/s/files/1/0615/7352/9653/files/FABDotcom_Alt-Blue-Ultra-Repair-Cleanser_2026-09_1.jpg?v=1773772900"
+      ],
+      "price_min": 12,
+      "price_max": 12,
+      "default_offer_id": "external_seed:ext_84593a93fbe72818eb9f87d3",
+      "internal_offer_exists": false,
+      "external_offer_exists": true,
+      "pivota_insight_status": "available",
+      "pivota_insight_summary": "A First Aid Beauty cleanser listed on the brand source page as Ultra Gentle Cream-to-Foam Face Cleanser with Colloidal Oatmeal + Glycerin Travel Size.",
+      "quality_score": null,
+      "browse_score": null,
+      "facet_tokens": [
+        "First Aid Beauty",
+        "Cleanser"
+      ],
+      "sort_keys": {
+        "price_min": 12,
+        "price_max": 12,
+        "updated_at": null
+      },
+      "updated_at": null,
+      "source_refs": [
+        "external_seed:ext_84593a93fbe72818eb9f87d3"
+      ]
+    },
+    {
+      "doc_id": "sellable:sig_fda3d239d442df73d74dfdd8",
+      "sellable_item_group_id": "sig_fda3d239d442df73d74dfdd8",
+      "product_line_id": "pl_50764d03690dfc11cd81618a",
+      "review_family_id": "rf_50764d03690dfc11cd81618a",
+      "brand_name": "First Aid Beauty",
+      "category_paths": [
+        "Fragrance"
+      ],
+      "market": "US",
+      "availability_state": "available",
+      "publish_state": "public",
+      "title": "Anti-Chafe Stick with Shea Butter + Colloidal Oatmeal",
+      "subtitle": "Glide easily with less friction + discomfort with this non-sticky, no-mess formula that creates a sweat-resistant shield over delicate skin on inner thighs, underarms or wherever you experience chafing.\n\nWith Shea Butter + Colloidal Oatmeal, it's fragrance-free, alcohol-free + safe for sensitive skin\nAllergen-Free, Vegan, Gluten-Free, Soy-Free, Nut-Free, Nano-Free, Parthenolide-Free",
+      "variant_axes": {
+        "size": "1 7 oz",
+        "volume": "7oz",
+        "multi_variant": false
+      },
+      "size": null,
+      "shade": null,
+      "pack": null,
+      "hero_media": {
+        "url": "https://cdn.shopify.com/s/files/1/0615/7352/9653/files/AntiChafeStick_1.7oz_Lead_2000x2000_1dc6d248-7e1c-433d-9ce9-fd68bfca9bab.jpg?v=1762439884",
+        "source_kind": "catalog",
+        "source_tier": "catalog"
+      },
+      "preview_media": [
+        "https://cdn.shopify.com/s/files/1/0615/7352/9653/files/AntiChafeStick_1.7oz_Lead_2000x2000_1dc6d248-7e1c-433d-9ce9-fd68bfca9bab.jpg?v=1762439884",
+        "https://cdn.shopify.com/s/files/1/0615/7352/9653/files/AntiChafeStick_PDP_AltImages_2000x2000_1.jpg?v=1773766319",
+        "https://cdn.shopify.com/s/files/1/0615/7352/9653/files/AntiChafeStick_PDP_AltImages_2000x2000_3.jpg?v=1773766319",
+        "https://cdn.shopify.com/s/files/1/0615/7352/9653/files/AntiChafeStick_PDP_AltImages_2000x2000_4.jpg?v=1773766319",
+        "https://cdn.shopify.com/s/files/1/0615/7352/9653/files/AntiChafeStick_PDP_AltImages_2000x2000_5.jpg?v=1716308572",
+        "https://cdn.shopify.com/s/files/1/0615/7352/9653/files/AntiChafeStick_PDP_AltImages_2000x2000_6.jpg?v=1716308572",
+        "https://cdn.shopify.com/s/files/1/0615/7352/9653/files/AntiChafeStick_PDP_AltImages_2000x2000_2.jpg?v=1716308573"
+      ],
+      "price_min": 20,
+      "price_max": 20,
+      "default_offer_id": "external_seed:ext_8753278741a1169f5466840f",
+      "internal_offer_exists": false,
+      "external_offer_exists": true,
+      "pivota_insight_status": "available",
+      "pivota_insight_summary": "A First Aid Beauty beauty product listed on the brand source page as Anti-Chafe Stick with Shea Butter + Colloidal Oatmeal.",
+      "quality_score": null,
+      "browse_score": null,
+      "facet_tokens": [
+        "First Aid Beauty",
+        "Fragrance"
+      ],
+      "sort_keys": {
+        "price_min": 20,
+        "price_max": 20,
+        "updated_at": null
+      },
+      "updated_at": null,
+      "source_refs": [
+        "external_seed:ext_8753278741a1169f5466840f"
+      ]
+    },
+    {
+      "doc_id": "sellable:sig_2b0b5a51150245dd2101f988",
+      "sellable_item_group_id": "sig_2b0b5a51150245dd2101f988",
+      "product_line_id": "pl_696825950c4eeeba588ad751",
+      "review_family_id": "rf_696825950c4eeeba588ad751",
+      "brand_name": "First Aid Beauty",
+      "category_paths": [
+        "Moisturizer"
+      ],
+      "market": "US",
+      "availability_state": "available",
+      "publish_state": "public",
+      "title": "Ultra Repair Cream Intense Hydration",
+      "subtitle": "An award-winning moisturizer that instantly relieves dry, distressed skin and eczema, plus strengthens skin's moisture barrier. Recognized by the National Eczema Association, National Psoriasis Foundation and National Rosacea Society with the seal of acceptance.\n\nThe barrier-building fast - absorbing formula provides 24-hr hydration and is made with Ceramides and skin protectant 0.5% Colloidal Oatmeal that treats eczema. Designed for sensitive skin and good for use on face + body .\n\nAllergen-Free, Vegan, Gluten-Free, Soy-Free, Nut-Free, Nano-Free, Parthenolide-Free\n\nSafe for sensitive skin",
+      "variant_axes": {
+        "volume": "6oz",
+        "multi_variant": true
+      },
+      "size": null,
+      "shade": null,
+      "pack": null,
+      "hero_media": {
+        "url": "https://cdn.shopify.com/s/files/1/0615/7352/9653/files/Ultra-Repair-Cream_2026-Refresh_FAB_Lead_6oz_Fab_3.webp?v=1765900779",
+        "source_kind": "catalog",
+        "source_tier": "catalog"
+      },
+      "preview_media": [
+        "https://cdn.shopify.com/s/files/1/0615/7352/9653/files/Ultra-Repair-Cream_2026-Refresh_FAB_Lead_6oz_Fab_3.webp?v=1765900779",
+        "https://cdn.shopify.com/s/files/1/0615/7352/9653/files/Ultra-Repair-Cream_2026-Refresh_FAB_Alt-02_9a0cafe7-0dae-4d6a-a0c0-eeac2342e12c.webp?v=1773680844",
+        "https://cdn.shopify.com/s/files/1/0615/7352/9653/files/Ultra-Repair-Cream_2026-Refresh_FAB_Alt-03_c834c0a8-7d05-4c7f-98c9-4555713244bc.webp?v=1773680844",
+        "https://cdn.shopify.com/s/files/1/0615/7352/9653/files/Ultra-Repair-Cream_2026-Refresh_FAB_Alt-04_28d51d69-853f-46c7-9a17-99125741053f.webp?v=1773680844",
+        "https://cdn.shopify.com/s/files/1/0615/7352/9653/files/Ultra-Repair-Cream_2026-Refresh_FAB_Alt-05_be9e692e-2a3e-489a-9029-217baa88b35b.webp?v=1773680844",
+        "https://cdn.shopify.com/s/files/1/0615/7352/9653/files/Ultra-Repair-Cream_2026-Refresh_FAB_Alt-06_229e9c6d-29a7-410e-9aa3-8fe0258c92e4.webp?v=1773680844",
+        "https://cdn.shopify.com/s/files/1/0615/7352/9653/files/Ultra-Repair-Cream_2026-Refresh_FAB_Alt-07_aa3e1aab-fa3a-4ccc-8651-a145fd0f0ada.webp?v=1773680844",
+        "https://cdn.shopify.com/s/files/1/0615/7352/9653/files/Ultra-Repair-Cream_2026-Refresh_FAB_Alt-08_113b206b-7c4c-4a91-b08a-93bd0db5eaa8.webp?v=1773680844"
+      ],
+      "price_min": 42,
+      "price_max": 42,
+      "default_offer_id": "external_seed:ext_8a021870d9ebe7c3dd0cb802",
+      "internal_offer_exists": false,
+      "external_offer_exists": true,
+      "pivota_insight_status": "missing",
+      "pivota_insight_summary": null,
+      "quality_score": null,
+      "browse_score": null,
+      "facet_tokens": [
+        "First Aid Beauty",
+        "Moisturizer"
+      ],
+      "sort_keys": {
+        "price_min": 42,
+        "price_max": 42,
+        "updated_at": null
+      },
+      "updated_at": null,
+      "source_refs": [
+        "external_seed:ext_8a021870d9ebe7c3dd0cb802"
+      ]
+    },
+    {
+      "doc_id": "sellable:sig_0880816a4286272a8eca3b73",
+      "sellable_item_group_id": "sig_0880816a4286272a8eca3b73",
+      "product_line_id": "pl_dd1940661c1786771c3ab775",
+      "review_family_id": "rf_dd1940661c1786771c3ab775",
+      "brand_name": "First Aid Beauty",
+      "category_paths": [
+        "Cleanser"
+      ],
+      "market": "US",
+      "availability_state": "available",
+      "publish_state": "public",
+      "title": "Ultra Gentle Cream-to-Foam Face Cleanser Jumbo",
+      "subtitle": "A daily cleanser that's gentle enough for sensitive and blemish-prone skin and effectively removes makeup, dirt, and SPF, leaving skin soft and supple.\n\nThis daily cleanser is non-stripping and pH balanced to effectively cleanse the face and maintain the skin's natural acidity to keep sensitive skin happy. Its creamy lather leaves skin feeling soft and supple , not dry or tight .\n\nAllergen-Free, Vegan, Gluten-Free, Soy-Free, Nut-Free, Nano-Free, Parthenolide-Free, Silicone-Free",
+      "variant_axes": {
+        "size": "jumbo",
+        "multi_variant": false
+      },
+      "size": null,
+      "shade": null,
+      "pack": null,
+      "hero_media": {
+        "url": "https://cdn.shopify.com/s/files/1/0615/7352/9653/files/Ultra-Repair-Cleanser_2026-Refresh-Lead-10oz-FAB_3_2c95f4a4-e87d-4a61-84c3-4d39f4a42385.jpg?v=1774468613",
+        "source_kind": "catalog",
+        "source_tier": "catalog"
+      },
+      "preview_media": [
+        "https://cdn.shopify.com/s/files/1/0615/7352/9653/files/Ultra-Repair-Cleanser_2026-Refresh-Lead-10oz-FAB_3_2c95f4a4-e87d-4a61-84c3-4d39f4a42385.jpg?v=1774468613",
+        "https://cdn.shopify.com/s/files/1/0615/7352/9653/files/Cream-To-Foam_Face_Cleanser_Alt_2.webp?v=1774468613",
+        "https://cdn.shopify.com/s/files/1/0615/7352/9653/files/Cream-To-Foam_Face_Cleanser_Alt_3.webp?v=1774468613",
+        "https://cdn.shopify.com/s/files/1/0615/7352/9653/files/Cream-To-Foam_Face_Cleanser_Alt_4.webp?v=1774468613",
+        "https://cdn.shopify.com/s/files/1/0615/7352/9653/files/Cream-To-Foam_Face_Cleanser_Alt_5.webp?v=1774468613",
+        "https://cdn.shopify.com/s/files/1/0615/7352/9653/files/Cream-To-Foam_Face_Cleanser_Alt_6.webp?v=1774468613",
+        "https://cdn.shopify.com/s/files/1/0615/7352/9653/files/Cream-To-Foam_Face_Cleanser_Alt_7.webp?v=1774468613",
+        "https://cdn.shopify.com/s/files/1/0615/7352/9653/files/Cream-To-Foam_Face_Cleanser_Alt_8.webp?v=1774468613"
+      ],
+      "price_min": 42,
+      "price_max": 42,
+      "default_offer_id": "external_seed:ext_8e21eb216b27854ddea6e0fa",
+      "internal_offer_exists": false,
+      "external_offer_exists": true,
+      "pivota_insight_status": "available",
+      "pivota_insight_summary": "A First Aid Beauty cleanser listed on the brand source page as Ultra Gentle Cream-to-Foam Face Cleanser Jumbo. The source description identifies: A daily cleanser that's gentle enough for sensitive and blemish-prone skin and effectively removes makeup, dirt, and SPF, leaving skin soft and supple.",
+      "quality_score": null,
+      "browse_score": null,
+      "facet_tokens": [
+        "First Aid Beauty",
+        "Cleanser"
+      ],
+      "sort_keys": {
+        "price_min": 42,
+        "price_max": 42,
+        "updated_at": null
+      },
+      "updated_at": null,
+      "source_refs": [
+        "external_seed:ext_8e21eb216b27854ddea6e0fa"
+      ]
+    },
+    {
+      "doc_id": "sellable:sig_f7f8615f0e9a7ece06f246cf",
+      "sellable_item_group_id": "sig_f7f8615f0e9a7ece06f246cf",
+      "product_line_id": "pl_53ba3cb631449623b1d06cc3",
+      "review_family_id": "rf_53ba3cb631449623b1d06cc3",
+      "brand_name": "First Aid Beauty",
+      "category_paths": [
+        "Moisturizer"
+      ],
+      "market": "US",
+      "availability_state": "available",
+      "publish_state": "public",
+      "title": "Smooth Shave Cream",
+      "subtitle": "The First Aid Beauty Smooth Shaving Cream is a fragrance-free, skin-loving shaving cream that provides a protective layer of glide while you shave.\n\nHELPS PROTECT: Shaving cream provides a protective layer of glide while you shave\nSOFT + SMOOTH SKIN: Leaves your skin feeling smooth and soft\nLUXURIOUS FORMULA: Luxurious, creamy and gentle formula",
+      "variant_axes": {
+        "multi_variant": false
+      },
+      "size": null,
+      "shade": null,
+      "pack": null,
+      "hero_media": {
+        "url": "https://cdn.shopify.com/s/files/1/0615/7352/9653/files/ShaveCream.jpg?v=1762444199",
+        "source_kind": "catalog",
+        "source_tier": "catalog"
+      },
+      "preview_media": [
+        "https://cdn.shopify.com/s/files/1/0615/7352/9653/files/ShaveCream.jpg?v=1762444199",
+        "https://cdn.shopify.com/s/files/1/0615/7352/9653/files/2_19f31a6c-5924-4341-b900-ee3335729246.jpg?v=1743193757",
+        "https://cdn.shopify.com/s/files/1/0615/7352/9653/files/FABxGillette_Shave_Care_2000x2000_1_copy.jpg?v=1741958243",
+        "https://cdn.shopify.com/s/files/1/0615/7352/9653/files/ShaveCream_4.jpg?v=1741958348",
+        "https://cdn.shopify.com/s/files/1/0615/7352/9653/files/FABxGillette_Shave_Care_2000x2000_4.png?v=1743193757"
+      ],
+      "price_min": 36,
+      "price_max": 36,
+      "default_offer_id": "external_seed:ext_92987efc90e7844dfa9d1899",
+      "internal_offer_exists": false,
+      "external_offer_exists": true,
+      "pivota_insight_status": "available",
+      "pivota_insight_summary": "A First Aid Beauty skincare product listed on the brand source page as Smooth Shave Cream.",
+      "quality_score": null,
+      "browse_score": null,
+      "facet_tokens": [
+        "First Aid Beauty",
+        "Moisturizer"
+      ],
+      "sort_keys": {
+        "price_min": 36,
+        "price_max": 36,
+        "updated_at": null
+      },
+      "updated_at": null,
+      "source_refs": [
+        "external_seed:ext_92987efc90e7844dfa9d1899"
+      ]
+    },
+    {
+      "doc_id": "sellable:sig_32ec09f261187cda90611537",
+      "sellable_item_group_id": "sig_32ec09f261187cda90611537",
+      "product_line_id": "pl_995056e295a6e96e1440e78e",
+      "review_family_id": "rf_995056e295a6e96e1440e78e",
+      "brand_name": "First Aid Beauty",
+      "category_paths": [
+        "Treatment"
+      ],
+      "market": "US",
+      "availability_state": "available",
+      "publish_state": "public",
+      "title": "Ingrown Hair Pads with BHA + AHA 60 count",
+      "subtitle": "Gentle daily ingrown treatment pads that exfoliate the dead skin cells that trap hairs and help prevent the creation of razor bumps + ingrown hairs.\nThese pads are soaked in a concentrated formula with BHA + AHA to exfoliate away the dead skin cells that trap hairs and cause ingrown hairs and razor bumps. Designed for sensitive skin, these pads are gentle on delicate skin post-shave.\n\nThe formula with Witch Hazel and Aloe leaves skin soft and smooth, not stripped\n\nAllergen-Free, Vegan, Gluten-Free, Soy-Free, Nut-Free, Nano-Free, Parthenolide-Free, Silicone-Free",
+      "variant_axes": {
+        "pack": "60pack",
+        "multi_variant": false
+      },
+      "size": null,
+      "shade": null,
+      "pack": null,
+      "hero_media": {
+        "url": "https://cdn.shopify.com/s/files/1/0615/7352/9653/files/Ingrown-Hair-Pads_FAB_60ct_leads.webp?v=1773774112",
+        "source_kind": "catalog",
+        "source_tier": "catalog"
+      },
+      "preview_media": [
+        "https://cdn.shopify.com/s/files/1/0615/7352/9653/files/Ingrown-Hair-Pads_FAB_60ct_leads.webp?v=1773774112",
+        "https://cdn.shopify.com/s/files/1/0615/7352/9653/files/40013_01_91520461-78d7-4bdd-988f-4a9f2569f40b.webp?v=1773774122",
+        "https://cdn.shopify.com/s/files/1/0615/7352/9653/files/40013_02_c2219119-9101-491c-9168-7200752a2853.webp?v=1773774125",
+        "https://cdn.shopify.com/s/files/1/0615/7352/9653/files/40013_03_4556237b-f9ac-4691-830f-8719d2021c9c.webp?v=1773774128",
+        "https://cdn.shopify.com/s/files/1/0615/7352/9653/files/40013_04_765871eb-cacb-4b14-bb50-ade7d04d0681.webp?v=1773774130",
+        "https://cdn.shopify.com/s/files/1/0615/7352/9653/files/40013_05_57c11089-30a5-42dd-bc48-516981154b85.webp?v=1773774133",
+        "https://cdn.shopify.com/s/files/1/0615/7352/9653/files/40013_06_02771fa5-9b64-47af-bfb2-499a5fd9e81c.webp?v=1773774135",
+        "https://cdn.shopify.com/s/files/1/0615/7352/9653/files/40013_07_a7cadc32-081d-40a4-9f15-df35301d418b.webp?v=1773774137"
+      ],
+      "price_min": 36,
+      "price_max": 36,
+      "default_offer_id": "external_seed:ext_9383dd326e07694ef444ca7c",
+      "internal_offer_exists": false,
+      "external_offer_exists": true,
+      "pivota_insight_status": "available",
+      "pivota_insight_summary": "A First Aid Beauty serum listed on the brand source page as Ingrown Hair Pads with BHA + AHA 60 count. The source description identifies: Gentle daily ingrown treatment pads that exfoliate the dead skin cells that trap hairs and help prevent the creation of razor bumps + ingrown hairs.",
+      "quality_score": null,
+      "browse_score": null,
+      "facet_tokens": [
+        "First Aid Beauty",
+        "Treatment"
+      ],
+      "sort_keys": {
+        "price_min": 36,
+        "price_max": 36,
+        "updated_at": null
+      },
+      "updated_at": null,
+      "source_refs": [
+        "external_seed:ext_9383dd326e07694ef444ca7c"
+      ]
+    },
+    {
+      "doc_id": "sellable:sig_8404a39cab777fd3359769139904f31d",
+      "sellable_item_group_id": "sig_8404a39cab777fd3359769139904f31d",
+      "product_line_id": "pl_bc5422212ecbfd2bbb0d85e9",
+      "review_family_id": "rf_bc5422212ecbfd2bbb0d85e9",
+      "brand_name": "First Aid Beauty",
+      "category_paths": [
+        "Sunscreen"
+      ],
+      "market": "US",
+      "availability_state": "available",
+      "publish_state": "public",
+      "title": "Ultra Light Liquid Mineral Sunscreen with Zinc Oxide SPF 30",
+      "subtitle": "This silky liquid formula provides weightless sun protection with SPF 30. The elegant, barely-there texture delivers a soft blur effect for the perfect \"no-makeup makeup\" look. It also layers well and doesn't pill under makeup. It's non-comedogenic so won't clog pores and is safe for sensitive skin.\n\nLayers well and doesn't pill under makeup\nNon-comedogenic so won't clog pores\nSafe for sensitive skin\nHawaii-compliant\n\nVegan, Non-Comedogenic, Gluten-Free, Nano-Free, Parthenolide-Free, Silicone-Free",
+      "variant_axes": {
+        "multi_variant": false
+      },
+      "size": null,
+      "shade": null,
+      "pack": null,
+      "hero_media": {
+        "url": "https://cdn.shopify.com/s/files/1/0615/7352/9653/files/Lead_Gray.jpg?v=1762439887",
+        "source_kind": "catalog",
+        "source_tier": "catalog"
+      },
+      "preview_media": [
+        "https://cdn.shopify.com/s/files/1/0615/7352/9653/files/Lead_Gray.jpg?v=1762439887",
+        "https://cdn.shopify.com/s/files/1/0615/7352/9653/files/01_UltraLightLiquidMineralSPF_AltImage_2000x2000_78e4f719-16bb-4c49-ab75-72a90cff921d.jpg?v=1752000385",
+        "https://cdn.shopify.com/s/files/1/0615/7352/9653/files/02_UltraLightLiquidMineralSPF_AltImage_2000x2000_b033628d-3aea-4ac2-a9a4-eaed058bc10b.jpg?v=1752000385",
+        "https://cdn.shopify.com/s/files/1/0615/7352/9653/files/03_UltraLightLiquidMineralSPF_AltImage_2000x2000_1adea89a-9328-4410-93c7-3c112dbdf894.jpg?v=1752000385",
+        "https://cdn.shopify.com/s/files/1/0615/7352/9653/files/04_UltraLightLiquidMineralSPF_AltImage_2000x2000_d2283a1e-ea5a-4d39-a1d2-96d57018bef8.jpg?v=1752000385",
+        "https://cdn.shopify.com/s/files/1/0615/7352/9653/files/05_UltraLightLiquidMineralSPF_AltImage_2000x2000_ec30df0f-774c-4ce0-a0f5-4a7bc651d233.jpg?v=1752000385",
+        "https://cdn.shopify.com/s/files/1/0615/7352/9653/files/06_UltraLightLiquidMineralSPF_AltImage_2000x2000_dedfc181-e958-4177-93c2-348838c9749f.jpg?v=1752000385",
+        "https://cdn.shopify.com/s/files/1/0615/7352/9653/files/07_UltraLightLiquidMineralSPF_AltImage_2000x2000_b4907925-2aca-4129-93a9-e759be13246d.jpg?v=1752000385"
+      ],
+      "price_min": 36,
+      "price_max": 36,
+      "default_offer_id": "external_seed:ext_9452ba1fbc20ef7afc51e8a4",
+      "internal_offer_exists": false,
+      "external_offer_exists": true,
+      "pivota_insight_status": "available",
+      "pivota_insight_summary": "A First Aid Beauty sunscreen listed on the brand source page as Ultra Light Liquid Mineral Sunscreen with Zinc Oxide SPF 30. The source description identifies: This silky liquid formula provides weightless sun protection with SPF 30.",
+      "quality_score": null,
+      "browse_score": null,
+      "facet_tokens": [
+        "First Aid Beauty",
+        "Sunscreen"
+      ],
+      "sort_keys": {
+        "price_min": 36,
+        "price_max": 36,
+        "updated_at": null
+      },
+      "updated_at": null,
+      "source_refs": [
+        "external_seed:ext_9452ba1fbc20ef7afc51e8a4"
+      ]
+    },
+    {
+      "doc_id": "sellable:sig_e39267c1db99ca532809575fb52fab13",
+      "sellable_item_group_id": "sig_e39267c1db99ca532809575fb52fab13",
+      "product_line_id": "pl_39c3ac1e4929a07c8351200a",
+      "review_family_id": "rf_39c3ac1e4929a07c8351200a",
+      "brand_name": "First Aid Beauty",
+      "category_paths": [
+        "Sunscreen"
+      ],
+      "market": "US",
+      "availability_state": "available",
+      "publish_state": "public",
+      "title": "Hydrating Sunscreen Milk with Colloidal Oatmeal Broad Spectrum SPF 45",
+      "subtitle": "This ultra-light, non-comedogenic SPF leaves skin hydrated and nourished without clogging pores and provides a dewy finish without feeling oily or greasy.\n\nCreated with organic UV filters, Colloidal Oatmeal and Glycerin\nMilky formula delivers 24-hour hydration\n\nOur highest sun protection yet\n\nDermatologist Tested, Nano-Free, Parthenolide Free, Silicone Free, Suitable for Sensitive Skin, Vegan",
+      "variant_axes": {
+        "size": "1.7 oz",
+        "multi_variant": false
+      },
+      "size": null,
+      "shade": null,
+      "pack": null,
+      "hero_media": {
+        "url": "https://cdn.shopify.com/s/files/1/0615/7352/9653/files/SPFMilk_Lead_2000x2000_28e78314-0a4d-4034-98fa-994f29245224.jpg?v=1762444102",
+        "source_kind": "catalog",
+        "source_tier": "catalog"
+      },
+      "preview_media": [
+        "https://cdn.shopify.com/s/files/1/0615/7352/9653/files/SPFMilk_Lead_2000x2000_28e78314-0a4d-4034-98fa-994f29245224.jpg?v=1762444102",
+        "https://cdn.shopify.com/s/files/1/0615/7352/9653/files/01_HydratingSunscreenMilk_AltImage_2000x2000_f3dab050-6ae7-48a4-8e5f-8cc119589937.jpg?v=1751998251",
+        "https://cdn.shopify.com/s/files/1/0615/7352/9653/files/02_HydratingSunscreenMilk_AltImage_2000x2000_8168e2c8-f337-44a5-9323-57292361601f.jpg?v=1751998288",
+        "https://cdn.shopify.com/s/files/1/0615/7352/9653/files/03_HydratingSunscreenMilk_AltImage_2000x2000_aa3e83be-6cba-44e2-bfbb-8094f38bcb58.jpg?v=1751998288",
+        "https://cdn.shopify.com/s/files/1/0615/7352/9653/files/04_HydratingSunscreenMilk_AltImage_2000x2000_934646eb-9037-4856-ac47-1ae411ae2486.jpg?v=1751998288",
+        "https://cdn.shopify.com/s/files/1/0615/7352/9653/files/05_HydratingSunscreenMilk_AltImage_2000x2000_666cab17-2fa9-4068-9722-3dd69e8a2b45.jpg?v=1751998288",
+        "https://cdn.shopify.com/s/files/1/0615/7352/9653/files/06_HydratingSunscreenMilk_AltImage_2000x2000_be69fb28-abbc-4fe1-aa0e-5d69fe29b690.jpg?v=1751998288",
+        "https://cdn.shopify.com/s/files/1/0615/7352/9653/files/07_HydratingSunscreenMilk_AltImage_2000x2000_925bf9b8-9986-43b4-8fb9-a317c10e1bc4.jpg?v=1751998288"
+      ],
+      "price_min": 36,
+      "price_max": 36,
+      "default_offer_id": "external_seed:ext_94c4c0eb238cedb76438f01d",
+      "internal_offer_exists": false,
+      "external_offer_exists": true,
+      "pivota_insight_status": "missing",
+      "pivota_insight_summary": null,
+      "quality_score": null,
+      "browse_score": null,
+      "facet_tokens": [
+        "First Aid Beauty",
+        "Sunscreen"
+      ],
+      "sort_keys": {
+        "price_min": 36,
+        "price_max": 36,
+        "updated_at": null
+      },
+      "updated_at": null,
+      "source_refs": [
+        "external_seed:ext_94c4c0eb238cedb76438f01d"
+      ]
+    },
+    {
+      "doc_id": "sellable:sig_35161d2f395b9b4ce52e4f2f",
+      "sellable_item_group_id": "sig_35161d2f395b9b4ce52e4f2f",
+      "product_line_id": "pl_0969159928d9698b293f1598",
+      "review_family_id": "rf_0969159928d9698b293f1598",
+      "brand_name": "First Aid Beauty",
+      "category_paths": [
+        "Exfoliant"
+      ],
+      "market": "US",
+      "availability_state": "available",
+      "publish_state": "public",
+      "title": "KP Bump Eraser Body Scrub 10% AHA Toasted Coconut 10 oz",
+      "subtitle": "A body scrub with our NEW warm coconut scent that exfoliates away uneven skin texture associated with KP to reveal exceptionally smooth + touchable skin.\n\nDesigned for sensitive skin, this scrub is formulated with pumice + 10% AHA, a combination of chemical and physical exfoliants to effectively exfoliate dead skin, uneven texture and rough bumps on the body without irritation.\n\nNew 10 oz Jar\n\nDermatologist Tested, Gluten-Free, Nano-Free, Nut-Free, Parthenolide Free, Silicone Free, Soy-Free, Suitable for Sensitive Skin, Vegan\n\nHelps improve skin's texture and smooth away bumps, roughness, and scaly areas, also known as chicken skin + buttne\n\nSafe for sensitive skin",
+      "variant_axes": {
+        "volume": "10oz",
+        "multi_variant": false
+      },
+      "size": null,
+      "shade": null,
+      "pack": null,
+      "hero_media": {
+        "url": "https://cdn.shopify.com/s/files/1/0615/7352/9653/files/KP-Bump-Eraser_FAB_10oz_leads.webp?v=1773776734",
+        "source_kind": "catalog",
+        "source_tier": "catalog"
+      },
+      "preview_media": [
+        "https://cdn.shopify.com/s/files/1/0615/7352/9653/files/KP-Bump-Eraser_FAB_10oz_leads.webp?v=1773776734",
+        "https://cdn.shopify.com/s/files/1/0615/7352/9653/files/40036_01.webp?v=1773776745",
+        "https://cdn.shopify.com/s/files/1/0615/7352/9653/files/40036_03.webp?v=1773776748",
+        "https://cdn.shopify.com/s/files/1/0615/7352/9653/files/40036_07.webp?v=1773776720",
+        "https://cdn.shopify.com/s/files/1/0615/7352/9653/files/40036_04.webp?v=1773776750",
+        "https://cdn.shopify.com/s/files/1/0615/7352/9653/files/40036_05.webp?v=1773776752",
+        "https://cdn.shopify.com/s/files/1/0615/7352/9653/files/40036_06.webp?v=1773776755",
+        "https://www.firstaidbeauty.com/cdn/shop/files/KP_Scrub_BEFORE.jpg?v=1717701529"
+      ],
+      "price_min": 36,
+      "price_max": 36,
+      "default_offer_id": "external_seed:ext_952deaf9f4973b64bff92585",
+      "internal_offer_exists": false,
+      "external_offer_exists": true,
+      "pivota_insight_status": "missing",
+      "pivota_insight_summary": null,
+      "quality_score": null,
+      "browse_score": null,
+      "facet_tokens": [
+        "First Aid Beauty",
+        "Exfoliant"
+      ],
+      "sort_keys": {
+        "price_min": 36,
+        "price_max": 36,
+        "updated_at": null
+      },
+      "updated_at": null,
+      "source_refs": [
+        "external_seed:ext_952deaf9f4973b64bff92585"
+      ]
+    },
+    {
+      "doc_id": "sellable:sig_a79c17e14d5f2801a17f6eea",
+      "sellable_item_group_id": "sig_a79c17e14d5f2801a17f6eea",
+      "product_line_id": "pl_0f14e2cf22a61730a45ccb62",
+      "review_family_id": "rf_0f14e2cf22a61730a45ccb62",
+      "brand_name": "First Aid Beauty",
+      "category_paths": [
+        "Moisturizer"
+      ],
+      "market": "US",
+      "availability_state": "out_of_stock",
+      "publish_state": "public",
+      "title": "Ultra Repair Oil-Control Moisturizer",
+      "subtitle": "Lightweight mattifying face cream hydrates and reduces excess oil.\n\nUltra-light formula provides optimal hydration for oily skin without leaving a greasy afterfeel\nOil-controlling ingredients deliver a powder soft finish, help minimize the appearance of pores and keep skin shine-free all day\nVegan, Non-Comedogenic, Gluten-Free, Nut-Free, Nano-Free, Parthenolide-Free",
+      "variant_axes": {
+        "multi_variant": false
+      },
+      "size": null,
+      "shade": null,
+      "pack": null,
+      "hero_media": {
+        "url": "https://cdn.shopify.com/s/files/1/0615/7352/9653/files/Oil-ControlMoisturizer_Lead_2000x200_4bd0566e-f39a-4ae7-bc23-1838fb920041.jpg?v=1762439873",
+        "source_kind": "catalog",
+        "source_tier": "catalog"
+      },
+      "preview_media": [
+        "https://cdn.shopify.com/s/files/1/0615/7352/9653/files/Oil-ControlMoisturizer_Lead_2000x200_4bd0566e-f39a-4ae7-bc23-1838fb920041.jpg?v=1762439873",
+        "https://cdn.shopify.com/s/files/1/0615/7352/9653/files/4.PACK.jpg?v=1716319425",
+        "https://cdn.shopify.com/s/files/1/0615/7352/9653/files/2.TEXTUREONFACE_1.jpg?v=1716319416",
+        "https://cdn.shopify.com/s/files/1/0615/7352/9653/files/3.INGREDIENT.jpg?v=1716319421",
+        "https://cdn.shopify.com/s/files/1/0615/7352/9653/files/5.SCALE.jpg?v=1716319429",
+        "https://cdn.shopify.com/s/files/1/0615/7352/9653/files/6.EXTRA.jpg?v=1716319433"
+      ],
+      "price_min": 36,
+      "price_max": 36,
+      "default_offer_id": "external_seed:ext_95582fd1ed491684223018bb",
+      "internal_offer_exists": false,
+      "external_offer_exists": true,
+      "pivota_insight_status": "missing",
+      "pivota_insight_summary": null,
+      "quality_score": null,
+      "browse_score": null,
+      "facet_tokens": [
+        "First Aid Beauty",
+        "Moisturizer"
+      ],
+      "sort_keys": {
+        "price_min": 36,
+        "price_max": 36,
+        "updated_at": null
+      },
+      "updated_at": null,
+      "source_refs": [
+        "external_seed:ext_95582fd1ed491684223018bb"
+      ]
+    },
+    {
+      "doc_id": "sellable:sig_d12a9b81a5fa854b0baa1fcc",
+      "sellable_item_group_id": "sig_d12a9b81a5fa854b0baa1fcc",
+      "product_line_id": "pl_7ef922e654d96b9aa6fed717",
+      "review_family_id": "rf_7ef922e654d96b9aa6fed717",
+      "brand_name": "First Aid Beauty",
+      "category_paths": [
+        "Moisturizer"
+      ],
+      "market": "US",
+      "availability_state": "available",
+      "publish_state": "public",
+      "title": "Ultra Repair Face Lotion with Colloidal Oatmeal",
+      "subtitle": "This lightweight + quick-absorbing moisturizer provides instant hydration with a velvety finish. Formula with Colloidal Oatmeal helps the skin appear smooth + soothed, while providing support to skin's moisture barrier.\n\nColloidal Oatmeal, Shea Butter and Avocado Oil soften & nourish skin while Ceramides help support skin's protective barrier\nSkin appears beautifully smooth & perfectly prepped for makeup or no makeup days\nAllergen-Free, Vegan, Non-Comedogenic, Gluten-Free, Soy-Free, Nut-Free, Nano-Free, Parthenolide-Free",
+      "variant_axes": {
+        "multi_variant": false
+      },
+      "size": null,
+      "shade": null,
+      "pack": null,
+      "hero_media": {
+        "url": "https://cdn.shopify.com/s/files/1/0615/7352/9653/files/Face-Lotion_2026-Refresh_FAB_Alt-01_1.jpg?v=1773768156",
+        "source_kind": "catalog",
+        "source_tier": "catalog"
+      },
+      "preview_media": [
+        "https://cdn.shopify.com/s/files/1/0615/7352/9653/files/Face-Lotion_2026-Refresh_FAB_Alt-01_1.jpg?v=1773768156",
+        "https://cdn.shopify.com/s/files/1/0615/7352/9653/files/Face-Lotion_2026-Refresh_FAB_Alt-02.jpg?v=1773768156",
+        "https://cdn.shopify.com/s/files/1/0615/7352/9653/files/Face-Lotion_2026-Refresh_FAB_Alt-03.jpg?v=1773768156",
+        "https://cdn.shopify.com/s/files/1/0615/7352/9653/files/Face-Lotion_2026-Refresh_FAB_Alt-04.jpg?v=1773768156",
+        "https://cdn.shopify.com/s/files/1/0615/7352/9653/files/Face-Lotion_2026-Refresh_FAB_Alt-05.jpg?v=1773768156",
+        "https://cdn.shopify.com/s/files/1/0615/7352/9653/files/Face-Lotion_2026-Refresh_FAB_Alt-06.jpg?v=1773768156",
+        "https://cdn.shopify.com/s/files/1/0615/7352/9653/files/Face-Lotion_2026-Refresh_FAB_Alt-07.jpg?v=1773768156",
+        "https://cdn.shopify.com/s/files/1/0615/7352/9653/files/Face-Lotion_2026-Refresh_FAB_Alt-08.jpg?v=1773768156"
+      ],
+      "price_min": 28,
+      "price_max": 28,
+      "default_offer_id": "external_seed:ext_9bc7ff02d709cc5383cc78ec",
+      "internal_offer_exists": false,
+      "external_offer_exists": true,
+      "pivota_insight_status": "missing",
+      "pivota_insight_summary": null,
+      "quality_score": null,
+      "browse_score": null,
+      "facet_tokens": [
+        "First Aid Beauty",
+        "Moisturizer"
+      ],
+      "sort_keys": {
+        "price_min": 28,
+        "price_max": 28,
+        "updated_at": null
+      },
+      "updated_at": null,
+      "source_refs": [
+        "external_seed:ext_9bc7ff02d709cc5383cc78ec"
+      ]
+    },
+    {
+      "doc_id": "sellable:sig_bab8b1a5b74866eb82b1dfe4",
+      "sellable_item_group_id": "sig_bab8b1a5b74866eb82b1dfe4",
+      "product_line_id": "pl_b772084601fb8da2658d78df",
+      "review_family_id": "rf_b772084601fb8da2658d78df",
+      "brand_name": "First Aid Beauty",
+      "category_paths": [
+        "Treatment"
+      ],
+      "market": "US",
+      "availability_state": "available",
+      "publish_state": "public",
+      "title": "Body Acne Clearing Mist with 2% Salicylic Acid",
+      "subtitle": "This fine , quick-drying body mist is a maximum strength treatment spray for use to treat body acne on the back, chest, butt and shoulders, and help prevent new ones from forming. The non- sticky and alcohol-free formula provides soothing hydration and feels weightless on skin once dry.",
+      "variant_axes": {
+        "volume": "3oz",
+        "multi_variant": false
+      },
+      "size": null,
+      "shade": null,
+      "pack": null,
+      "hero_media": {
+        "url": "https://cdn.shopify.com/s/files/1/0615/7352/9653/files/US_Acne_Mist_Lead_Fab_seals-FAB.jpg?v=1763676667",
+        "source_kind": "catalog",
+        "source_tier": "catalog"
+      },
+      "preview_media": [
+        "https://cdn.shopify.com/s/files/1/0615/7352/9653/files/US_Acne_Mist_Lead_Fab_seals-FAB.jpg?v=1763676667",
+        "https://cdn.shopify.com/s/files/1/0615/7352/9653/files/7fd52b06-67ef-494a-b0d8-36095e973690.jpg?v=1763676667",
+        "https://cdn.shopify.com/s/files/1/0615/7352/9653/files/02_AcneMist_AltImage_2000x2000_312d53d2-bf16-4d6b-91de-4b96b9f515a3.jpg?v=1763676667",
+        "https://cdn.shopify.com/s/files/1/0615/7352/9653/files/03_AcneMist_AltImage_2000x2000_c4d2e11b-966b-47d9-95d4-5a140a509598.jpg?v=1763676667",
+        "https://cdn.shopify.com/s/files/1/0615/7352/9653/files/04_AcneMist_AltImage_2000x2000_533708db-27d0-464d-9db4-c419b342df20.jpg?v=1763676667",
+        "https://cdn.shopify.com/s/files/1/0615/7352/9653/files/05_AcneMist_AltImage_2000x2000_70f95703-dd44-43b6-9f3c-6af18997f33d.jpg?v=1763676667",
+        "https://cdn.shopify.com/s/files/1/0615/7352/9653/files/06_AcneMist_AltImage_2000x2000_40eaf43c-84e3-4646-9524-3439b04d2f89.jpg?v=1763676667",
+        "https://cdn.shopify.com/s/files/1/0615/7352/9653/files/07_AcneMist_AltImage_2000x2000_dd34f6ea-85ca-495a-8ba5-0e7aa7f1aef8.jpg?v=1763676667"
+      ],
+      "price_min": 28,
+      "price_max": 28,
+      "default_offer_id": "external_seed:ext_a18b2d9e55d6b0dfd8c117be",
+      "internal_offer_exists": false,
+      "external_offer_exists": true,
+      "pivota_insight_status": "available",
+      "pivota_insight_summary": "A First Aid Beauty serum listed on the brand source page as Body Acne Clearing Mist with 2% Salicylic Acid.",
+      "quality_score": null,
+      "browse_score": null,
+      "facet_tokens": [
+        "First Aid Beauty",
+        "Treatment"
+      ],
+      "sort_keys": {
+        "price_min": 28,
+        "price_max": 28,
+        "updated_at": null
+      },
+      "updated_at": null,
+      "source_refs": [
+        "external_seed:ext_a18b2d9e55d6b0dfd8c117be"
+      ]
+    },
+    {
+      "doc_id": "sellable:sig_5d6f9b1bd5061286b3ac1c50",
+      "sellable_item_group_id": "sig_5d6f9b1bd5061286b3ac1c50",
+      "product_line_id": "pl_06f343406987eca61e55f527",
+      "review_family_id": "rf_06f343406987eca61e55f527",
+      "brand_name": "First Aid Beauty",
+      "category_paths": [
+        "Moisturizer"
+      ],
+      "market": "US",
+      "availability_state": "available",
+      "publish_state": "public",
+      "title": "Hydrating Dewy Gel Cream Moisturizer with Hyaluronic Acid + Ceramides",
+      "subtitle": "Perfect for oily and combo skin, the ultra-sheer, non-comedogenic formula soothes, boosts skin's moisture and locks it in all day with a lightweight, breathable feel.\n\nFormulated with gold-standard ingredients Hyaluronic Acid, Ceramides, Squalane and Niacinamide\nStrengthens skin's moisture barrier\n\nDermatologist Tested, Non-Comedogenic, Nano-Free, Nut-Free, Parthenolide Free, Suitable for Sensitive Skin, Vegan",
+      "variant_axes": {
+        "multi_variant": false
+      },
+      "size": null,
+      "shade": null,
+      "pack": null,
+      "hero_media": {
+        "url": "https://cdn.shopify.com/s/files/1/0615/7352/9653/files/HydratingDewyGelCream_Lead_2000x2000_1.jpg?v=1762444092",
+        "source_kind": "catalog",
+        "source_tier": "catalog"
+      },
+      "preview_media": [
+        "https://cdn.shopify.com/s/files/1/0615/7352/9653/files/HydratingDewyGelCream_Lead_2000x2000_1.jpg?v=1762444092",
+        "https://cdn.shopify.com/s/files/1/0615/7352/9653/files/01_HydratingDewyGelCream_AltImage_2000x2000_7e2aaa38-8418-42e5-89bc-a8acea2792c0.jpg?v=1738275632",
+        "https://cdn.shopify.com/s/files/1/0615/7352/9653/files/02_HydratingDewyGelCream_AltImage_2000x2000_d9a8514d-5079-4a97-a917-00b6610186dd.jpg?v=1738275632",
+        "https://cdn.shopify.com/s/files/1/0615/7352/9653/files/05_HydratingDewyGelCream_AltImage_2000x2000_2e8333f8-eafd-4e5d-9a63-d4ffb34eed6e.jpg?v=1738275690",
+        "https://cdn.shopify.com/s/files/1/0615/7352/9653/files/03_HydratingDewyGelCream_AltImage_2000x2000_065e9ae7-8bdf-43a9-8332-7255d16be30c.jpg?v=1738275690",
+        "https://cdn.shopify.com/s/files/1/0615/7352/9653/files/07_HydratingDewyGelCream_AltImage_2000x2000_3f526249-9a86-4b79-8015-d011885eb3e1.jpg?v=1738275690",
+        "https://cdn.shopify.com/s/files/1/0615/7352/9653/files/04_HydratingDewyGelCream_AltImage_2000x2000_8e89b20e-97cf-4d57-ac78-94b246ea00bf.jpg?v=1738275690",
+        "https://cdn.shopify.com/s/files/1/0615/7352/9653/files/06_HydratingDewyGelCream_AltImage_2000x2000_5fffeb57-1b9f-4e13-bb20-dde96807679f.jpg?v=1738275690"
+      ],
+      "price_min": 38,
+      "price_max": 38,
+      "default_offer_id": "external_seed:ext_a29393bd005135c81f47dade",
+      "internal_offer_exists": false,
+      "external_offer_exists": true,
+      "pivota_insight_status": "missing",
+      "pivota_insight_summary": null,
+      "quality_score": null,
+      "browse_score": null,
+      "facet_tokens": [
+        "First Aid Beauty",
+        "Moisturizer"
+      ],
+      "sort_keys": {
+        "price_min": 38,
+        "price_max": 38,
+        "updated_at": null
+      },
+      "updated_at": null,
+      "source_refs": [
+        "external_seed:ext_a29393bd005135c81f47dade"
+      ]
+    },
+    {
+      "doc_id": "sellable:sig_7616b53852f461efc3c464cbd381463f",
+      "sellable_item_group_id": "sig_7616b53852f461efc3c464cbd381463f",
+      "product_line_id": "pl_509ce9ce6c600eae9a32c0d9",
+      "review_family_id": "rf_509ce9ce6c600eae9a32c0d9",
+      "brand_name": "First Aid Beauty",
+      "category_paths": [
+        "Moisturizer"
+      ],
+      "market": "US",
+      "availability_state": "available",
+      "publish_state": "public",
+      "title": "Hello FAB Coconut Skin Smoothie Priming Moisturizer",
+      "subtitle": "Luminizing 2-in-1 face moisturizer and primer hydrates and preps skin for makeup.\n\nMakeup meets skincare with this 2-in-1 moisturizer and primer\nLight-reflecting micro-pearls give a luminous, dewy glow\nCan be worn alone for a natural look or used as a prep step to lock makeup in place\nVegan, Non-Comedogenic, Gluten-Free, Nut-Free, Nano-Free, Parthenolide-Free",
+      "variant_axes": {
+        "multi_variant": false
+      },
+      "size": null,
+      "shade": null,
+      "pack": null,
+      "hero_media": {
+        "url": "https://cdn.shopify.com/s/files/1/0615/7352/9653/files/HelloFABCocoSmoothiePrimer.jpg?v=1762439876",
+        "source_kind": "catalog",
+        "source_tier": "catalog"
+      },
+      "preview_media": [
+        "https://cdn.shopify.com/s/files/1/0615/7352/9653/files/HelloFABCocoSmoothiePrimer.jpg?v=1762439876",
+        "https://cdn.shopify.com/s/files/1/0615/7352/9653/files/5.SCALE_1.jpg?v=1717166959",
+        "https://cdn.shopify.com/s/files/1/0615/7352/9653/files/4.PACK_1.jpg?v=1717166959",
+        "https://cdn.shopify.com/s/files/1/0615/7352/9653/files/2.TEXTUREONBODY.jpg?v=1717166959",
+        "https://cdn.shopify.com/s/files/1/0615/7352/9653/files/3.INGREDIENT_1.jpg?v=1717166959"
+      ],
+      "price_min": 32,
+      "price_max": 32,
+      "default_offer_id": "external_seed:ext_abbbbbffd4a23a6efba0afe5",
+      "internal_offer_exists": false,
+      "external_offer_exists": true,
+      "pivota_insight_status": "missing",
+      "pivota_insight_summary": null,
+      "quality_score": null,
+      "browse_score": null,
+      "facet_tokens": [
+        "First Aid Beauty",
+        "Moisturizer"
+      ],
+      "sort_keys": {
+        "price_min": 32,
+        "price_max": 32,
+        "updated_at": null
+      },
+      "updated_at": null,
+      "source_refs": [
+        "external_seed:ext_abbbbbffd4a23a6efba0afe5"
+      ]
+    },
+    {
+      "doc_id": "sellable:sig_411d0a6f8b7cf972b1fe481a",
+      "sellable_item_group_id": "sig_411d0a6f8b7cf972b1fe481a",
+      "product_line_id": "pl_43e2260d95db5ba173483cef",
+      "review_family_id": "rf_43e2260d95db5ba173483cef",
+      "brand_name": "First Aid Beauty",
+      "category_paths": [
+        "Toner"
+      ],
+      "market": "US",
+      "availability_state": "available",
+      "publish_state": "public",
+      "title": "Hydrating Toner with Squalane + Oats",
+      "subtitle": "Hydrating and soothing alcohol-free toner preps skin for serums or moisturizers.\n\nUse after cleansing to hydrate and balance your skin\nOat milk, colloidal oatmeal and wild oats are combined with Honey and Hyaluronic Acid to help soothe, relieve redness and hydrate\nSkin is left plump and prepped to absorb oils, serums or moisturizers\n\nNon-Comedogenic, Gluten-Free, Soy-Free, Nut-Free, Nano-Free, Parthenolide-Free, Silicone-Free",
+      "variant_axes": {
+        "multi_variant": false
+      },
+      "size": null,
+      "shade": null,
+      "pack": null,
+      "hero_media": {
+        "url": "https://cdn.shopify.com/s/files/1/0615/7352/9653/files/HydratingToner_Lead_2000x2000_e406e73d-9c88-4163-b80e-0755f26a858f.jpg?v=1762439862",
+        "source_kind": "catalog",
+        "source_tier": "catalog"
+      },
+      "preview_media": [
+        "https://cdn.shopify.com/s/files/1/0615/7352/9653/files/HydratingToner_Lead_2000x2000_e406e73d-9c88-4163-b80e-0755f26a858f.jpg?v=1762439862",
+        "https://cdn.shopify.com/s/files/1/0615/7352/9653/files/Repack_HydratingToner_AltImagery_2000x2000_Ingredient.jpg?v=1716396079",
+        "https://cdn.shopify.com/s/files/1/0615/7352/9653/files/Repack_HydratingToner_AltImagery_2000x2000_Product.jpg?v=1716396185",
+        "https://cdn.shopify.com/s/files/1/0615/7352/9653/files/Repack_HydratingToner_AltImagery_2000x2000_InUse.jpg?v=1716396089",
+        "https://cdn.shopify.com/s/files/1/0615/7352/9653/files/Repack_HydratingToner_AltImagery_2000x2000_Model_1.jpg?v=1716396145",
+        "https://cdn.shopify.com/s/files/1/0615/7352/9653/files/Repack_HydratingToner_AltImagery_2000x2000_Texture.jpg?v=1716396208"
+      ],
+      "price_min": 24,
+      "price_max": 24,
+      "default_offer_id": "external_seed:ext_d0dc914cc0408d97ee5e6e7c",
+      "internal_offer_exists": false,
+      "external_offer_exists": true,
+      "pivota_insight_status": "missing",
+      "pivota_insight_summary": null,
+      "quality_score": null,
+      "browse_score": null,
+      "facet_tokens": [
+        "First Aid Beauty",
+        "Toner"
+      ],
+      "sort_keys": {
+        "price_min": 24,
+        "price_max": 24,
+        "updated_at": null
+      },
+      "updated_at": null,
+      "source_refs": [
+        "external_seed:ext_d0dc914cc0408d97ee5e6e7c"
+      ]
+    },
+    {
+      "doc_id": "sellable:sig_6c96ead15700fcadf08d359d",
+      "sellable_item_group_id": "sig_6c96ead15700fcadf08d359d",
+      "product_line_id": "pl_51005a4ee9989dc8045a77a2",
+      "review_family_id": "rf_51005a4ee9989dc8045a77a2",
+      "brand_name": "First Aid Beauty",
+      "category_paths": [
+        "Exfoliant"
+      ],
+      "market": "US",
+      "availability_state": "available",
+      "publish_state": "public",
+      "title": "KP Bump Eraser Body Scrub 10% AHA",
+      "subtitle": "A body scrub that exfoliates away uneven skin texture associated with Keratosis Pilaris to reveal exceptionally smooth + touchable skin.\n\nDesigned for sensitive skin, t his scrub is formulated with pumice + 10% AHA, a combination of chemical and physical exfoliants to effectively exfoliate dead skin, uneven texture and rough bumps on the body without the irritation .\n\nAllergen-Free, Vegan, Gluten-Free, Soy-Free, Nut-Free, Nano-Free, Parthenolide-Free\n\nHelps improve skin's texture and smooth away bumps, roughness, and scaly areas, also known as chicken skin + buttne\n\nSafe for sensitive skin",
+      "variant_axes": {
+        "volume": "8oz",
+        "multi_variant": true
+      },
+      "size": null,
+      "shade": null,
+      "pack": null,
+      "hero_media": {
+        "url": "https://cdn.shopify.com/s/files/1/0615/7352/9653/files/KP-Bump-Eraser_FAB_8oz_leads_allureseal.jpg?v=1771078300",
+        "source_kind": "catalog",
+        "source_tier": "catalog"
+      },
+      "preview_media": [
+        "https://cdn.shopify.com/s/files/1/0615/7352/9653/files/KP-Bump-Eraser_FAB_8oz_leads_allureseal.jpg?v=1771078300",
+        "https://cdn.shopify.com/s/files/1/0615/7352/9653/files/40015_01_1.jpg?v=1771078300",
+        "https://cdn.shopify.com/s/files/1/0615/7352/9653/files/40015_02_1.jpg?v=1771078300",
+        "https://cdn.shopify.com/s/files/1/0615/7352/9653/files/40015_03_1.jpg?v=1771078300",
+        "https://cdn.shopify.com/s/files/1/0615/7352/9653/files/40015_04_1.jpg?v=1771078300",
+        "https://cdn.shopify.com/s/files/1/0615/7352/9653/files/40015_05_1.jpg?v=1771078300",
+        "https://cdn.shopify.com/s/files/1/0615/7352/9653/files/40015_06_1.jpg?v=1771078300",
+        "https://cdn.shopify.com/s/files/1/0615/7352/9653/files/40015_07_1.jpg?v=1771078300"
+      ],
+      "price_min": 30,
+      "price_max": 30,
+      "default_offer_id": "external_seed:ext_d59af8ba842e1f34de6a6d82",
+      "internal_offer_exists": false,
+      "external_offer_exists": true,
+      "pivota_insight_status": "missing",
+      "pivota_insight_summary": null,
+      "quality_score": null,
+      "browse_score": null,
+      "facet_tokens": [
+        "First Aid Beauty",
+        "Exfoliant"
+      ],
+      "sort_keys": {
+        "price_min": 30,
+        "price_max": 30,
+        "updated_at": null
+      },
+      "updated_at": null,
+      "source_refs": [
+        "external_seed:ext_d59af8ba842e1f34de6a6d82"
+      ]
+    },
+    {
+      "doc_id": "sellable:sig_a8517cad70fdf37e896af3ae",
+      "sellable_item_group_id": "sig_a8517cad70fdf37e896af3ae",
+      "product_line_id": "pl_f463a1ce13e926477c42a7cb",
+      "review_family_id": "rf_f463a1ce13e926477c42a7cb",
+      "brand_name": "First Aid Beauty",
+      "category_paths": [
+        "Exfoliant"
+      ],
+      "market": "US",
+      "availability_state": "available",
+      "publish_state": "public",
+      "title": "Brightening Micro Powder Exfoliant",
+      "subtitle": "An ultra-fine powder-to-foam exfoliant that gently polishes dull skin, revealing a brighter, healthier complexion for all skin types.\nThis micro powder exfoliant transforms into a creamy foam upon contact with water, providing a gentle yet effective way to polish away dullness and promote a radiant complexion. Formulated with Vitamin C, it helps brighten the skin while removing dead skin cells and surface debris, revealing a smoother and more even texture. The inclusion of jojoba esters ensures a gentle exfoliation, making it suitable for all skin types, including sensitive skin.",
+      "variant_axes": {
+        "multi_variant": false
+      },
+      "size": null,
+      "shade": null,
+      "pack": null,
+      "hero_media": {
+        "url": "https://cdn.shopify.com/s/files/1/0615/7352/9653/files/000_BrighteningMicroPowderExfoliant_AltImage_2000x200022_3593360f-3104-4f50-b300-f92993fd1c3f.jpg?v=1756908982",
+        "source_kind": "catalog",
+        "source_tier": "catalog"
+      },
+      "preview_media": [
+        "https://cdn.shopify.com/s/files/1/0615/7352/9653/files/000_BrighteningMicroPowderExfoliant_AltImage_2000x200022_3593360f-3104-4f50-b300-f92993fd1c3f.jpg?v=1756908982",
+        "https://cdn.shopify.com/s/files/1/0615/7352/9653/files/04_BrighteningMicroPowderExfoliant_AltImage_2000x2000_17afe9d8-d81e-4676-a654-5567b011ea30.jpg?v=1756908982",
+        "https://cdn.shopify.com/s/files/1/0615/7352/9653/files/07_BrighteningMicroPowderExfoliant_AltImage_2000x2000_eb9d114b-e239-45d0-a2f9-9161b45d06a7.jpg?v=1756908982",
+        "https://cdn.shopify.com/s/files/1/0615/7352/9653/files/03_BrighteningMicroPowderExfoliant_AltImage_2000x2000_5c55477f-2cb4-4b35-8f5f-74b7ec50defb.jpg?v=1756908982",
+        "https://cdn.shopify.com/s/files/1/0615/7352/9653/files/06_BrighteningMicroPowderExfoliant_AltImage_2000x2000_a13fb285-dfcc-49a5-886a-a65c20a5aef6.jpg?v=1756908982",
+        "https://cdn.shopify.com/s/files/1/0615/7352/9653/files/05_BrighteningMicroPowderExfoliant_AltImage_2000x2000_4cdfd48b-ff8c-4af1-a43e-bfbe742057c2.jpg?v=1756908982",
+        "https://cdn.shopify.com/s/files/1/0615/7352/9653/files/02_BrighteningMicroPowderExfoliant_AltImage_2000x2000_6e1f9413-3e48-4ec9-8507-9cbc71c4f482.jpg?v=1756908982",
+        "https://cdn.shopify.com/s/files/1/0615/7352/9653/files/01_BrighteningMicroPowderExfoliant_AltImage_2000x2000_e27c5694-bcc1-4fd8-b2d7-86b6ca0bdaab.jpg?v=1756908982"
+      ],
+      "price_min": 32,
+      "price_max": 32,
+      "default_offer_id": "external_seed:ext_d63e3e92d65dd0408dc7a5d5",
+      "internal_offer_exists": false,
+      "external_offer_exists": true,
+      "pivota_insight_status": "missing",
+      "pivota_insight_summary": null,
+      "quality_score": null,
+      "browse_score": null,
+      "facet_tokens": [
+        "First Aid Beauty",
+        "Exfoliant"
+      ],
+      "sort_keys": {
+        "price_min": 32,
+        "price_max": 32,
+        "updated_at": null
+      },
+      "updated_at": null,
+      "source_refs": [
+        "external_seed:ext_d63e3e92d65dd0408dc7a5d5"
+      ]
+    },
+    {
+      "doc_id": "sellable:sig_187528fd3f120503b8bc22c1",
+      "sellable_item_group_id": "sig_187528fd3f120503b8bc22c1",
+      "product_line_id": "pl_ac65ffefb10d7797bd814fba",
+      "review_family_id": "rf_ac65ffefb10d7797bd814fba",
+      "brand_name": "First Aid Beauty",
+      "category_paths": [
+        "Cleanser"
+      ],
+      "market": "US",
+      "availability_state": "available",
+      "publish_state": "public",
+      "title": "Facial Radiance Pads with Glycolic + Lactic Acids Travel Size",
+      "subtitle": "Sensitive skin-friendly & gentle face exfoliating pads with a blend of AHAs designed for daily use to help brighten, smooth and prep skin for makeup.\nBrighten + Glow Facial Radiance Pads combine Glycolic + Lactic acids to gently exfoliate the face, neck and decollete and refine the look of pores for a smoother, brighter complexion that is the perfect base for makeup. Designed to be gentle enough for daily use on sensitive skin.\n\nWith regular use, this gentle exfoliator for sensitive skin also helps refine look of pores and texture for smoother skin that's ready for flawless makeup application\n\nDermatologist Tested, Gluten-Free, Nano-Free, Nut-Free, Parthenolide Free, Silicone Free, Soy-Free, Suitable for Sensitive Skin, Vegan",
+      "variant_axes": {
+        "size": "travel size",
+        "shade": "28 pads",
+        "multi_variant": false
+      },
+      "size": null,
+      "shade": null,
+      "pack": null,
+      "hero_media": {
+        "url": "https://cdn.shopify.com/s/files/1/0615/7352/9653/files/Facial-Radiance-Pads_2026-Refresh_FABdtc_Lead_28ct_FAB__2.jpg?v=1772829524",
+        "source_kind": "catalog",
+        "source_tier": "catalog"
+      },
+      "preview_media": [
+        "https://cdn.shopify.com/s/files/1/0615/7352/9653/files/Facial-Radiance-Pads_2026-Refresh_FABdtc_Lead_28ct_FAB__2.jpg?v=1772829524",
+        "https://cdn.shopify.com/s/files/1/0615/7352/9653/files/Alt-Blue-Facial-Radiance-Pads_2026-02_d9c69c93-8f80-4085-b7a3-d412188583ba.webp?v=1772829524",
+        "https://cdn.shopify.com/s/files/1/0615/7352/9653/files/Alt-Blue-Facial-Radiance-Pads_2026-03_24e3d5f7-d27f-4f9f-8c0b-31ce70550108.webp?v=1772829524",
+        "https://cdn.shopify.com/s/files/1/0615/7352/9653/files/Alt-Blue-Facial-Radiance-Pads_2026-04.webp?v=1772829524",
+        "https://cdn.shopify.com/s/files/1/0615/7352/9653/files/Alt-Blue-Facial-Radiance-Pads_2026-05_98686a87-f5d9-41eb-9646-a4b1fd526f3b.webp?v=1772829524",
+        "https://cdn.shopify.com/s/files/1/0615/7352/9653/files/Alt-Blue-Facial-Radiance-Pads_2026-06.webp?v=1772829524",
+        "https://cdn.shopify.com/s/files/1/0615/7352/9653/files/Alt-Blue-Facial-Radiance-Pads_2026-07_52458fbc-e01e-42fe-bd0c-418456a99fb5.webp?v=1772829524",
+        "https://cdn.shopify.com/s/files/1/0615/7352/9653/files/Alt-Blue-Facial-Radiance-Pads_2026-08_851027af-4148-4ba3-b668-5b2cf537dcc4.webp?v=1772829524"
+      ],
+      "price_min": 24,
+      "price_max": 24,
+      "default_offer_id": "external_seed:ext_da2a42e85f3684796734f2d0",
+      "internal_offer_exists": false,
+      "external_offer_exists": true,
+      "pivota_insight_status": "available",
+      "pivota_insight_summary": "A First Aid Beauty serum listed on the brand source page as Facial Radiance Pads with Glycolic + Lactic Acids Travel Size. The source description identifies: Sensitive skin-friendly & gentle face exfoliating pads with a blend of AHAs designed for daily use to help brighten, smooth and prep skin for makeup.",
+      "quality_score": null,
+      "browse_score": null,
+      "facet_tokens": [
+        "First Aid Beauty",
+        "Cleanser"
+      ],
+      "sort_keys": {
+        "price_min": 24,
+        "price_max": 24,
+        "updated_at": null
+      },
+      "updated_at": null,
+      "source_refs": [
+        "external_seed:ext_da2a42e85f3684796734f2d0"
+      ]
+    },
+    {
+      "doc_id": "sellable:sig_f1edf6c3a2eb2eee25fcb043",
+      "sellable_item_group_id": "sig_f1edf6c3a2eb2eee25fcb043",
+      "product_line_id": "pl_6671cb89aefa696a9da8f7c7",
+      "review_family_id": "rf_6671cb89aefa696a9da8f7c7",
+      "brand_name": "First Aid Beauty",
+      "category_paths": [
+        "Serum"
+      ],
+      "market": "US",
+      "availability_state": "available",
+      "publish_state": "public",
+      "title": "Ultra Repair Hydration Boost Serum with Colloidal Oatmeal + Hyaluronic Acid",
+      "subtitle": "A lightweight serum formula that infuses skin with hydration and visibly plumps to make skin appear healthier.\nThis lightweight and breathable serum formula sinks into skin immediately without clogging pores. Formulated with Colloidal Oatmeal and Hyaluronic Acid, this serum instantly hydrates and works to plump the skin and give it a dewy finish.\n\nLightweight, layers well + won't clog pores\nDoesn't leave skin sticky or tacky\nFormula hydrates with Hyaluronic Acid, Squalane + Colloidal Oatmeal\n\nDermatologist Tested, Gluten-Free, Nano-Free, Nut-Free, Parthenolide Free, Silicone Free, Soy-Free, Suitable for Sensitive Skin, Vegan",
+      "variant_axes": {
+        "size": "1 oz",
+        "multi_variant": false
+      },
+      "size": null,
+      "shade": null,
+      "pack": null,
+      "hero_media": {
+        "url": "https://cdn.shopify.com/s/files/1/0615/7352/9653/files/UR-Serum_FAB_1oz_leads.jpg?v=1772830407",
+        "source_kind": "catalog",
+        "source_tier": "catalog"
+      },
+      "preview_media": [
+        "https://cdn.shopify.com/s/files/1/0615/7352/9653/files/UR-Serum_FAB_1oz_leads.jpg?v=1772830407",
+        "https://cdn.shopify.com/s/files/1/0615/7352/9653/files/40023_01.jpg?v=1772830407",
+        "https://cdn.shopify.com/s/files/1/0615/7352/9653/files/40023_02.jpg?v=1772830407",
+        "https://cdn.shopify.com/s/files/1/0615/7352/9653/files/40023_03.jpg?v=1772830407",
+        "https://cdn.shopify.com/s/files/1/0615/7352/9653/files/40023_04.jpg?v=1772830407",
+        "https://cdn.shopify.com/s/files/1/0615/7352/9653/files/40023_05.jpg?v=1772830407",
+        "https://cdn.shopify.com/s/files/1/0615/7352/9653/files/40023_06.jpg?v=1772830407",
+        "https://cdn.shopify.com/s/files/1/0615/7352/9653/files/40023_07.jpg?v=1772830407"
+      ],
+      "price_min": 39,
+      "price_max": 39,
+      "default_offer_id": "external_seed:ext_dd99eb925b11be4706652959",
+      "internal_offer_exists": false,
+      "external_offer_exists": true,
+      "pivota_insight_status": "missing",
+      "pivota_insight_summary": null,
+      "quality_score": null,
+      "browse_score": null,
+      "facet_tokens": [
+        "First Aid Beauty",
+        "Serum"
+      ],
+      "sort_keys": {
+        "price_min": 39,
+        "price_max": 39,
+        "updated_at": null
+      },
+      "updated_at": null,
+      "source_refs": [
+        "external_seed:ext_dd99eb925b11be4706652959"
+      ]
+    },
+    {
+      "doc_id": "sellable:sig_76f8a22d8b9c68b53927aadd",
+      "sellable_item_group_id": "sig_76f8a22d8b9c68b53927aadd",
+      "product_line_id": "pl_3dbd2e08f932e240f115a255",
+      "review_family_id": "rf_3dbd2e08f932e240f115a255",
+      "brand_name": "First Aid Beauty",
+      "category_paths": [
+        "Exfoliant"
+      ],
+      "market": "US",
+      "availability_state": "out_of_stock",
+      "publish_state": "public",
+      "title": "KP Bump Eraser Body Scrub Mini",
+      "subtitle": "A body scrub that sweeps away dry, rough bumps associated with KP, strawberry skin and booty bumps to reveal healthier looking skin that feels exceptionally smooth.\n\nSafe for sensitive skin\nFast-acting body scrub uses Glycolic & Lactic acids, at a combined level of 10% AHAs, to help resurface skin's top layer + Pumice to physically exfoliate\nHelps improve skin's texture and smooth away bumps, roughness, and scaly areas, also known as chicken skin + buttne\nAllergen-Free, Vegan, Gluten-Free, Soy-Free, Nut-Free, Nano-Free, Parthenolide-Free",
+      "variant_axes": {
+        "size": "mini",
+        "multi_variant": false
+      },
+      "size": null,
+      "shade": null,
+      "pack": null,
+      "hero_media": {
+        "url": "https://cdn.shopify.com/s/files/1/0615/7352/9653/files/KPBumpEraserBodyScrub_2oz_Lead_2000x2000_07a3f6f5-0472-4525-85b3-b185a1eca6e3.jpg?v=1762439884",
+        "source_kind": "catalog",
+        "source_tier": "catalog"
+      },
+      "preview_media": [
+        "https://cdn.shopify.com/s/files/1/0615/7352/9653/files/KPBumpEraserBodyScrub_2oz_Lead_2000x2000_07a3f6f5-0472-4525-85b3-b185a1eca6e3.jpg?v=1762439884",
+        "https://cdn.shopify.com/s/files/1/0615/7352/9653/files/KP-PDP-ALT-01-One_Use.jpg?v=1773764392",
+        "https://cdn.shopify.com/s/files/1/0615/7352/9653/files/KP-PDP-ALT-02-B_A.jpg?v=1716309162",
+        "https://cdn.shopify.com/s/files/1/0615/7352/9653/files/KP-PDP-ALT-06_EDU.jpg?v=1773764392",
+        "https://cdn.shopify.com/s/files/1/0615/7352/9653/files/KP-PDP-ALT-03-Benefit.jpg?v=1773764392",
+        "https://cdn.shopify.com/s/files/1/0615/7352/9653/files/KP-PDP-ALT-04-INGREDIENTS.jpg?v=1756843470",
+        "https://www.firstaidbeauty.com/cdn/shop/files/KP_Scrub_BEFORE.jpg?v=1717701529",
+        "https://www.firstaidbeauty.com/cdn/shop/files/KP_Scrub_AFTER.jpg?v=1717701531"
+      ],
+      "price_min": 12,
+      "price_max": 12,
+      "default_offer_id": "external_seed:ext_de126466f82d6c2961c18986",
+      "internal_offer_exists": false,
+      "external_offer_exists": true,
+      "pivota_insight_status": "available",
+      "pivota_insight_summary": "A First Aid Beauty body scrub listed on the brand source page as KP Bump Eraser Body Scrub Mini. The source description identifies: A body scrub that sweeps away dry, rough bumps associated with KP, strawberry skin and booty bumps to reveal healthier looking skin that feels exceptionally smooth.",
+      "quality_score": null,
+      "browse_score": null,
+      "facet_tokens": [
+        "First Aid Beauty",
+        "Exfoliant"
+      ],
+      "sort_keys": {
+        "price_min": 12,
+        "price_max": 12,
+        "updated_at": null
+      },
+      "updated_at": null,
+      "source_refs": [
+        "external_seed:ext_de126466f82d6c2961c18986"
+      ]
+    },
+    {
+      "doc_id": "sellable:sig_2729c32ffa968fe507623c8c",
+      "sellable_item_group_id": "sig_2729c32ffa968fe507623c8c",
+      "product_line_id": "pl_edd290e942d4cd5ea4291c7c",
+      "review_family_id": "rf_edd290e942d4cd5ea4291c7c",
+      "brand_name": "First Aid Beauty",
+      "category_paths": [
+        "Moisturizer"
+      ],
+      "market": "US",
+      "availability_state": "available",
+      "publish_state": "public",
+      "title": "Ultra Repair Cream Intense Hydration Jumbo",
+      "subtitle": "An award-winning moisturizer that instantly relieves dry, distressed skin and eczema, plus strengthens skin's moisture barrier. Recognized by the National Eczema Association, National Psoriasis Foundation and National Rosacea Society with the seal of acceptance.\n\nThe barrier-building fast - absorbing formula provides 24-hr hydration and is made with Ceramides and skin protectant 0.5% Colloidal Oatmeal that treats eczema. Designed for sensitive skin and good for use on face + body .",
+      "variant_axes": {
+        "size": "jumbo",
+        "volume": "12oz",
+        "multi_variant": false
+      },
+      "size": null,
+      "shade": null,
+      "pack": null,
+      "hero_media": {
+        "url": "https://cdn.shopify.com/s/files/1/0615/7352/9653/files/URC_FAB_12oz_lead_2000x2000_9001600b-af7c-4cad-b04a-62a280854a6f.jpg?v=1771623732",
+        "source_kind": "catalog",
+        "source_tier": "catalog"
+      },
+      "preview_media": [
+        "https://cdn.shopify.com/s/files/1/0615/7352/9653/files/URC_FAB_12oz_lead_2000x2000_9001600b-af7c-4cad-b04a-62a280854a6f.jpg?v=1771623732",
+        "https://cdn.shopify.com/s/files/1/0615/7352/9653/files/Ultra-Repair-Cream_2026-Refresh_FAB_Alt-02_1a590ebc-b101-4928-a1da-1688103e5031.webp?v=1771623631",
+        "https://cdn.shopify.com/s/files/1/0615/7352/9653/files/Ultra-Repair-Cream_2026-Refresh_FAB_Alt-03_d0e1a7b6-b6cb-4838-bcf8-c57b1aa43bfd.webp?v=1771623635",
+        "https://cdn.shopify.com/s/files/1/0615/7352/9653/files/Ultra-Repair-Cream_2026-Refresh_FAB_Alt-04_08078dcf-5261-4c9f-b687-5c778af69738.webp?v=1771623637",
+        "https://cdn.shopify.com/s/files/1/0615/7352/9653/files/Ultra-Repair-Cream_2026-Refresh_FAB_Alt-05_81e10398-8423-4b5e-b0cf-3bbe68893d71.webp?v=1771623639",
+        "https://cdn.shopify.com/s/files/1/0615/7352/9653/files/Ultra-Repair-Cream_2026-Refresh_FAB_Alt-06_ea248c40-36b7-42fc-b863-55c6eeed3c3c.webp?v=1771623641",
+        "https://cdn.shopify.com/s/files/1/0615/7352/9653/files/Ultra-Repair-Cream_2026-Refresh_FAB_Alt-07_887e5fa9-06b1-4f5d-bf24-bbd100a67042.webp?v=1771623643",
+        "https://cdn.shopify.com/s/files/1/0615/7352/9653/files/Ultra-Repair-Cream_2026-Refresh_FAB_Alt-08_f7b95158-096e-4033-9e3c-ab939a4f5974.webp?v=1771623645"
+      ],
+      "price_min": 66,
+      "price_max": 66,
+      "default_offer_id": "external_seed:ext_df3aa47a3d320882d6fe3ae3",
+      "internal_offer_exists": false,
+      "external_offer_exists": true,
+      "pivota_insight_status": "missing",
+      "pivota_insight_summary": null,
+      "quality_score": null,
+      "browse_score": null,
+      "facet_tokens": [
+        "First Aid Beauty",
+        "Moisturizer"
+      ],
+      "sort_keys": {
+        "price_min": 66,
+        "price_max": 66,
+        "updated_at": null
+      },
+      "updated_at": null,
+      "source_refs": [
+        "external_seed:ext_df3aa47a3d320882d6fe3ae3"
+      ]
+    },
+    {
+      "doc_id": "sellable:sig_0ff6286dd9d9a480c544417b",
+      "sellable_item_group_id": "sig_0ff6286dd9d9a480c544417b",
+      "product_line_id": "pl_d750912c740a6f49d1e24e4f",
+      "review_family_id": "rf_d750912c740a6f49d1e24e4f",
+      "brand_name": "First Aid Beauty",
+      "category_paths": [
+        "Eye Cream"
+      ],
+      "market": "US",
+      "availability_state": "available",
+      "publish_state": "public",
+      "title": "Ultra Repair Hydrate + De-Puff Eye Cream with Hyaluronic Acid",
+      "subtitle": "A gentle, nourishing daily eye cream that provides the under-eye area with all day hydration.\nThis lightweight, hydrating eye cream is powered by Hyaluronic Acid and helps to smooth the look of fine lines + wrinkles while reducing puffiness.\n\nRich, nourishing cream texture absorbs instantly\nHelps to reduce puffiness when massaged into under-eye\n\nFormulated with Hyaluronic Acid, Colloidal Oatmeal, Caffeine, and Cucumber Extract\nDermatologist Tested, Gluten-Free, Nano-Free, Nut-Free, Parthenolide Free, Silicone Free, Soy-Free, Suitable for Sensitive Skin, Vegan",
+      "variant_axes": {
+        "size": "0.5 oz",
+        "multi_variant": false
+      },
+      "size": null,
+      "shade": null,
+      "pack": null,
+      "hero_media": {
+        "url": "https://cdn.shopify.com/s/files/1/0615/7352/9653/files/UR-DePuff-Cream_FAB_0.5oz_leads.jpg?v=1772831414",
+        "source_kind": "catalog",
+        "source_tier": "catalog"
+      },
+      "preview_media": [
+        "https://cdn.shopify.com/s/files/1/0615/7352/9653/files/UR-DePuff-Cream_FAB_0.5oz_leads.jpg?v=1772831414",
+        "https://cdn.shopify.com/s/files/1/0615/7352/9653/files/40052_01.jpg?v=1772831414",
+        "https://cdn.shopify.com/s/files/1/0615/7352/9653/files/40052_02.jpg?v=1772831414",
+        "https://cdn.shopify.com/s/files/1/0615/7352/9653/files/40052_03.jpg?v=1772831414",
+        "https://cdn.shopify.com/s/files/1/0615/7352/9653/files/40052_04.jpg?v=1772831414",
+        "https://cdn.shopify.com/s/files/1/0615/7352/9653/files/40052_05.jpg?v=1772831414",
+        "https://cdn.shopify.com/s/files/1/0615/7352/9653/files/40052_06.jpg?v=1772831414",
+        "https://cdn.shopify.com/s/files/1/0615/7352/9653/files/40052_07.jpg?v=1772831414"
+      ],
+      "price_min": 34,
+      "price_max": 34,
+      "default_offer_id": "external_seed:ext_e70bc7facdbab2633ead692c",
+      "internal_offer_exists": false,
+      "external_offer_exists": true,
+      "pivota_insight_status": "missing",
+      "pivota_insight_summary": null,
+      "quality_score": null,
+      "browse_score": null,
+      "facet_tokens": [
+        "First Aid Beauty",
+        "Eye Cream"
+      ],
+      "sort_keys": {
+        "price_min": 34,
+        "price_max": 34,
+        "updated_at": null
+      },
+      "updated_at": null,
+      "source_refs": [
+        "external_seed:ext_e70bc7facdbab2633ead692c"
+      ]
+    },
+    {
+      "doc_id": "sellable:sig_cdf492d14b72e05c03fcdb12",
+      "sellable_item_group_id": "sig_cdf492d14b72e05c03fcdb12",
+      "product_line_id": "pl_c350edb309a5fd78f5cecfb2",
+      "review_family_id": "rf_c350edb309a5fd78f5cecfb2",
+      "brand_name": "First Aid Beauty",
+      "category_paths": [
+        "Serum"
+      ],
+      "market": "US",
+      "availability_state": "available",
+      "publish_state": "public",
+      "title": "Ultra Repair Retinol Serum with 0.3% Retinol Complex + Peptides",
+      "subtitle": "This skin-transforming formula was crafted with a blend of Retinol + Retinol Propionate to minimize irritation without sacrificing results. It absorbs deep into the skin's surface to aid cell turnover and help skin appear smoother, firmer + more youthful while providing 24-hr hydration.\n\nGentle retinol delivers anti-aging benefits with less irritation than traditional retinol\nProvides 24-hour hydration to keep skin soft and plump\nAllergen-Free, Vegan, Non-Comedogenic, Soy-Free, Nano-Free, Parthenolide-Free, Silicone-Free",
+      "variant_axes": {
+        "size": "1 oz",
+        "multi_variant": false
+      },
+      "size": null,
+      "shade": null,
+      "pack": null,
+      "hero_media": {
+        "url": "https://cdn.shopify.com/s/files/1/0615/7352/9653/files/UR-Retinol-Serum_Ulta_1oz_leads.jpg?v=1773942792",
+        "source_kind": "catalog",
+        "source_tier": "catalog"
+      },
+      "preview_media": [
+        "https://cdn.shopify.com/s/files/1/0615/7352/9653/files/UR-Retinol-Serum_Ulta_1oz_leads.jpg?v=1773942792",
+        "https://cdn.shopify.com/s/files/1/0615/7352/9653/files/40025_01.jpg?v=1773942996",
+        "https://cdn.shopify.com/s/files/1/0615/7352/9653/files/40025_02.jpg?v=1773942996",
+        "https://cdn.shopify.com/s/files/1/0615/7352/9653/files/40025_03.jpg?v=1773942996",
+        "https://cdn.shopify.com/s/files/1/0615/7352/9653/files/40025_04.jpg?v=1773942996",
+        "https://cdn.shopify.com/s/files/1/0615/7352/9653/files/40025_05.jpg?v=1773942996",
+        "https://cdn.shopify.com/s/files/1/0615/7352/9653/files/40025_06.jpg?v=1773942996",
+        "https://cdn.shopify.com/s/files/1/0615/7352/9653/files/40025_07.jpg?v=1773942996"
+      ],
+      "price_min": 49,
+      "price_max": 49,
+      "default_offer_id": "external_seed:ext_e9d42aa08ddca5c07e6d7585",
+      "internal_offer_exists": false,
+      "external_offer_exists": true,
+      "pivota_insight_status": "missing",
+      "pivota_insight_summary": null,
+      "quality_score": null,
+      "browse_score": null,
+      "facet_tokens": [
+        "First Aid Beauty",
+        "Serum"
+      ],
+      "sort_keys": {
+        "price_min": 49,
+        "price_max": 49,
+        "updated_at": null
+      },
+      "updated_at": null,
+      "source_refs": [
+        "external_seed:ext_e9d42aa08ddca5c07e6d7585"
+      ]
+    },
+    {
+      "doc_id": "sellable:sig_e409dfa534a9a6f72e401f97",
+      "sellable_item_group_id": "sig_e409dfa534a9a6f72e401f97",
+      "product_line_id": "pl_7cae1e4dd21a63cbb68c477e",
+      "review_family_id": "rf_7cae1e4dd21a63cbb68c477e",
+      "brand_name": "First Aid Beauty",
+      "category_paths": [
+        "Moisturizer"
+      ],
+      "market": "US",
+      "availability_state": "available",
+      "publish_state": "public",
+      "title": "Ultra Repair Firming Night Cream with Colloidal Oatmeal + Niacinamide",
+      "subtitle": "A rich + buttery night cream that deeply nourishes the skin and helps combat the visible signs of aging during the skin's nightly repair phase.\nThis rich, buttery, deeply nourishing cream intensely hydrates skin with Colloidal Oatmeal and Niacinamide to visibly improve fine lines, wrinkles and the visible signs of aging each night so you can wake up looking refreshed.\n\nColloidal Oatmeal, Butters + Waxes help hydrate so you can wake up to a moisturized complexion with a firmer and smoother appearance\n\nDermatologist Tested, Gluten-Free, Nano-Free, Nut-Free, Parthenolide Free, Silicone Free, Soy-Free, Suitable for Sensitive Skin, Vegan",
+      "variant_axes": {
+        "multi_variant": false
+      },
+      "size": null,
+      "shade": null,
+      "pack": null,
+      "hero_media": {
+        "url": "https://cdn.shopify.com/s/files/1/0615/7352/9653/files/FirmingNightCream_Leads_2000x2000_AmazonFABDTC.jpg?v=1772823203",
+        "source_kind": "catalog",
+        "source_tier": "catalog"
+      },
+      "preview_media": [
+        "https://cdn.shopify.com/s/files/1/0615/7352/9653/files/FirmingNightCream_Leads_2000x2000_AmazonFABDTC.jpg?v=1772823203",
+        "https://cdn.shopify.com/s/files/1/0615/7352/9653/files/40047_01.jpg?v=1772823310",
+        "https://cdn.shopify.com/s/files/1/0615/7352/9653/files/40047_02.jpg?v=1772823559",
+        "https://cdn.shopify.com/s/files/1/0615/7352/9653/files/40047_03.jpg?v=1772823559",
+        "https://cdn.shopify.com/s/files/1/0615/7352/9653/files/40047_04.jpg?v=1772823559",
+        "https://cdn.shopify.com/s/files/1/0615/7352/9653/files/40047_05.jpg?v=1772823559",
+        "https://cdn.shopify.com/s/files/1/0615/7352/9653/files/40047_06.jpg?v=1772823559",
+        "https://cdn.shopify.com/s/files/1/0615/7352/9653/files/40047_07.jpg?v=1772823559"
+      ],
+      "price_min": 49,
+      "price_max": 49,
+      "default_offer_id": "external_seed:ext_f22e924478be64d4c3a1b918",
+      "internal_offer_exists": false,
+      "external_offer_exists": true,
+      "pivota_insight_status": "missing",
+      "pivota_insight_summary": null,
+      "quality_score": null,
+      "browse_score": null,
+      "facet_tokens": [
+        "First Aid Beauty",
+        "Moisturizer"
+      ],
+      "sort_keys": {
+        "price_min": 49,
+        "price_max": 49,
+        "updated_at": null
+      },
+      "updated_at": null,
+      "source_refs": [
+        "external_seed:ext_f22e924478be64d4c3a1b918"
+      ]
+    }
+  ]
+}

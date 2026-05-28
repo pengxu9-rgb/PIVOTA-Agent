@@ -1,0 +1,38 @@
+{
+  "status": "ok",
+  "mode": "dry_run_validate_replacements",
+  "report": "/private/tmp/pivota-agent-product-intel-tail-20260528/reports/markato_expansion_status_20260524/wave48_product_intel_tail_20260528/firstaidbeauty_official_seed_report/firstaidbeauty_product_intel_report_filtered.json",
+  "rows": [
+    "live_ext_27541ddaefa99c1185fd9677",
+    "live_ext_3a8ab0e88713143fd1df39ed",
+    "live_ext_5a941eb383f5c65705b4b130",
+    "live_ext_684ef08faa23d138a2222481",
+    "live_ext_6c2feb5d6e43c9362d6a2254",
+    "live_ext_84593a93fbe72818eb9f87d3",
+    "live_ext_8753278741a1169f5466840f",
+    "live_ext_8e21eb216b27854ddea6e0fa",
+    "live_ext_92987efc90e7844dfa9d1899",
+    "live_ext_9383dd326e07694ef444ca7c",
+    "live_ext_9452ba1fbc20ef7afc51e8a4",
+    "live_ext_a18b2d9e55d6b0dfd8c117be",
+    "live_ext_da2a42e85f3684796734f2d0",
+    "live_ext_de126466f82d6c2961c18986"
+  ],
+  "entries": [
+    "product:ext_27541ddaefa99c1185fd9677",
+    "product:ext_3a8ab0e88713143fd1df39ed",
+    "product:ext_5a941eb383f5c65705b4b130",
+    "product:ext_684ef08faa23d138a2222481",
+    "product:ext_6c2feb5d6e43c9362d6a2254",
+    "product:ext_84593a93fbe72818eb9f87d3",
+    "product:ext_8753278741a1169f5466840f",
+    "product:ext_8e21eb216b27854ddea6e0fa",
+    "product:ext_92987efc90e7844dfa9d1899",
+    "product:ext_9383dd326e07694ef444ca7c",
+    "product:ext_9452ba1fbc20ef7afc51e8a4",
+    "product:ext_a18b2d9e55d6b0dfd8c117be",
+    "product:ext_da2a42e85f3684796734f2d0",
+    "product:ext_de126466f82d6c2961c18986"
+  ],
+  "skipped_rows": []
+}

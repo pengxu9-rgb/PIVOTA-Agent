@@ -1,0 +1,535 @@
+{
+  "generated_at": "2026-05-28T10:02:12.725Z",
+  "options": {
+    "market": "US",
+    "includeAttached": true,
+    "domain": "hellobubble.com",
+    "externalProductIds": [],
+    "limit": 20000,
+    "sampleLimit": 10,
+    "checkpointDir": null,
+    "checkpointMode": "domain",
+    "resume": false,
+    "force": false,
+    "continueOnError": true,
+    "pageSize": 500,
+    "format": "json",
+    "chunkByDomain": false
+  },
+  "warnings": [],
+  "summary": {
+    "scanned": 3,
+    "by_market": {
+      "US": 3
+    },
+    "by_domain": [
+      {
+        "key": "hellobubble.com",
+        "count": 3
+      }
+    ],
+    "by_product_family": [
+      {
+        "key": "single_formula",
+        "count": 2
+      },
+      {
+        "key": "unknown_product",
+        "count": 1
+      }
+    ],
+    "coverage": {
+      "missing_inci": 2,
+      "missing_active_raw": 3,
+      "missing_details": 2,
+      "missing_how_to": 0,
+      "missing_faq": 3
+    },
+    "pivota_insights": {
+      "direct": {
+        "displayable": 0,
+        "high_quality_ready": 0,
+        "missing_kb": 0,
+        "not_displayable": 3
+      },
+      "effective": {
+        "displayable": 0,
+        "high_quality_ready": 0,
+        "missing_kb": 0,
+        "not_displayable": 3,
+        "borrowed_from_sibling": 0
+      },
+      "effective_issues": [
+        {
+          "key": "quality_limited",
+          "count": 3
+        },
+        {
+          "key": "reviewed_not_displayable",
+          "count": 3
+        },
+        {
+          "key": "seller_only_evidence",
+          "count": 3
+        }
+      ],
+      "effective_issue_domains": [
+        {
+          "key": "hellobubble.com::quality_limited",
+          "count": 3
+        },
+        {
+          "key": "hellobubble.com::reviewed_not_displayable",
+          "count": 3
+        },
+        {
+          "key": "hellobubble.com::seller_only_evidence",
+          "count": 3
+        }
+      ],
+      "quality_state": [
+        {
+          "key": "limited",
+          "count": 3
+        }
+      ],
+      "evidence_profile": [
+        {
+          "key": "seller_only",
+          "count": 3
+        }
+      ],
+      "samples": {
+        "reviewed_not_displayable": [
+          {
+            "external_product_id": "ext_388a843d09de85aa9c4e581f",
+            "domain": "hellobubble.com",
+            "title": "Level Up",
+            "used_product_id": "ext_388a843d09de85aa9c4e581f",
+            "quality_state": "limited",
+            "evidence_profile": "seller_only"
+          },
+          {
+            "external_product_id": "ext_477329c7424a365aa73fa64d",
+            "domain": "hellobubble.com",
+            "title": "Cloud Surf",
+            "used_product_id": "ext_477329c7424a365aa73fa64d",
+            "quality_state": "limited",
+            "evidence_profile": "seller_only"
+          },
+          {
+            "external_product_id": "ext_6c0c12cdc2d51f5dabf9a6ea",
+            "domain": "hellobubble.com",
+            "title": "Slam Dunk",
+            "used_product_id": "ext_6c0c12cdc2d51f5dabf9a6ea",
+            "quality_state": "limited",
+            "evidence_profile": "seller_only"
+          }
+        ],
+        "seller_only_evidence": [
+          {
+            "external_product_id": "ext_388a843d09de85aa9c4e581f",
+            "domain": "hellobubble.com",
+            "title": "Level Up",
+            "used_product_id": "ext_388a843d09de85aa9c4e581f",
+            "quality_state": "limited",
+            "evidence_profile": "seller_only"
+          },
+          {
+            "external_product_id": "ext_477329c7424a365aa73fa64d",
+            "domain": "hellobubble.com",
+            "title": "Cloud Surf",
+            "used_product_id": "ext_477329c7424a365aa73fa64d",
+            "quality_state": "limited",
+            "evidence_profile": "seller_only"
+          },
+          {
+            "external_product_id": "ext_6c0c12cdc2d51f5dabf9a6ea",
+            "domain": "hellobubble.com",
+            "title": "Slam Dunk",
+            "used_product_id": "ext_6c0c12cdc2d51f5dabf9a6ea",
+            "quality_state": "limited",
+            "evidence_profile": "seller_only"
+          }
+        ]
+      }
+    },
+    "active_ingredients": {
+      "regulatory_expected": 0,
+      "hero_expected": 0,
+      "any_active_items": 0,
+      "status": [
+        {
+          "key": "not_expected_missing",
+          "count": 2
+        },
+        {
+          "key": "low_signal_active",
+          "count": 1
+        }
+      ],
+      "issues": [
+        {
+          "key": "low_signal_active",
+          "count": 1
+        }
+      ],
+      "issue_domains": [
+        {
+          "key": "hellobubble.com::low_signal_active",
+          "count": 1
+        }
+      ],
+      "source_origin": [
+        {
+          "key": "none",
+          "count": 3
+        }
+      ],
+      "samples": {
+        "low_signal_active": [
+          {
+            "external_product_id": "ext_6c0c12cdc2d51f5dabf9a6ea",
+            "domain": "hellobubble.com",
+            "title": "Slam Dunk",
+            "status": "low_signal_active",
+            "active_items": [],
+            "source_origin": "none"
+          }
+        ]
+      }
+    },
+    "variants": {
+      "status": [
+        {
+          "key": "ready",
+          "count": 3
+        }
+      ],
+      "issues": [],
+      "issue_domains": [],
+      "samples": {}
+    }
+  },
+  "rows": [
+    {
+      "seed_id": "eps_76249796d31a9fc9b86811ab",
+      "external_product_id": "ext_388a843d09de85aa9c4e581f",
+      "market": "US",
+      "domain": "hellobubble.com",
+      "title": "Level Up",
+      "canonical_url": "https://hellobubble.com/products/level-up-balancing-moisturizer",
+      "product_family": "single_formula",
+      "product_line_id": null,
+      "pivota_insights": {
+        "direct": {
+          "product_id": "ext_388a843d09de85aa9c4e581f",
+          "kb_key": "product:ext_388a843d09de85aa9c4e581f",
+          "status": "not_displayable",
+          "kb_exists": true,
+          "displayable": false,
+          "high_quality_ready": false,
+          "human_reviewed": true,
+          "issues": [
+            "reviewed_not_displayable",
+            "quality_limited",
+            "seller_only_evidence"
+          ],
+          "blocking_issues": [
+            "reviewed_not_displayable"
+          ],
+          "quality_state": "limited",
+          "evidence_profile": "seller_only",
+          "has_card_highlight": true
+        },
+        "effective": {
+          "product_id": "ext_388a843d09de85aa9c4e581f",
+          "kb_key": "product:ext_388a843d09de85aa9c4e581f",
+          "status": "not_displayable",
+          "kb_exists": true,
+          "displayable": false,
+          "high_quality_ready": false,
+          "human_reviewed": true,
+          "issues": [
+            "reviewed_not_displayable",
+            "quality_limited",
+            "seller_only_evidence"
+          ],
+          "blocking_issues": [
+            "reviewed_not_displayable"
+          ],
+          "quality_state": "limited",
+          "evidence_profile": "seller_only",
+          "has_card_highlight": true
+        },
+        "product_line_id": null,
+        "borrowed_from_sibling": false
+      },
+      "active_ingredients": {
+        "status": "not_expected_missing",
+        "issues": [],
+        "regulatory_expected": false,
+        "hero_expected": false,
+        "active_items": [],
+        "source_origin": "none",
+        "source_quality_status": "blocked",
+        "coverage": {
+          "details_sections_count": 0,
+          "faq_count": 0,
+          "how_to_chars": 110,
+          "inci_chars": 0,
+          "active_ingredients_chars": 0,
+          "inci_applicability_status": "",
+          "ingredient_review_status": "",
+          "ingredient_remediation_action": "",
+          "bundle_component_refs_count": 0,
+          "effective_inci_chars": 0,
+          "inci_borrowed_from_product_id": ""
+        },
+        "invalid_fragments": [],
+        "suppressed_reason": "no_authoritative_source"
+      },
+      "variants": {
+        "status": "ready",
+        "issues": [],
+        "visible_variant_rows": 1,
+        "examples": {
+          "identity_option_visible": [],
+          "wrong_axis_for_category": [],
+          "makeup_shade_missing_visual": [],
+          "size_value_generic_axis": [],
+          "default_option_size_evidence_missing_axis": [],
+          "identity_default_title_axis": []
+        }
+      },
+      "coverage": {
+        "details_sections_count": 0,
+        "faq_count": 0,
+        "how_to_chars": 110,
+        "inci_chars": 0,
+        "active_ingredients_chars": 0,
+        "inci_applicability_status": "",
+        "ingredient_review_status": "",
+        "ingredient_remediation_action": "",
+        "bundle_component_refs_count": 0,
+        "effective_inci_chars": 0,
+        "inci_borrowed_from_product_id": ""
+      }
+    },
+    {
+      "seed_id": "eps_be24491ae8afe3e0fae7b5da",
+      "external_product_id": "ext_477329c7424a365aa73fa64d",
+      "market": "US",
+      "domain": "hellobubble.com",
+      "title": "Cloud Surf",
+      "canonical_url": "https://hellobubble.com/products/cloud-surf",
+      "product_family": "unknown_product",
+      "product_line_id": null,
+      "pivota_insights": {
+        "direct": {
+          "product_id": "ext_477329c7424a365aa73fa64d",
+          "kb_key": "product:ext_477329c7424a365aa73fa64d",
+          "status": "not_displayable",
+          "kb_exists": true,
+          "displayable": false,
+          "high_quality_ready": false,
+          "human_reviewed": true,
+          "issues": [
+            "reviewed_not_displayable",
+            "quality_limited",
+            "seller_only_evidence"
+          ],
+          "blocking_issues": [
+            "reviewed_not_displayable"
+          ],
+          "quality_state": "limited",
+          "evidence_profile": "seller_only",
+          "has_card_highlight": true
+        },
+        "effective": {
+          "product_id": "ext_477329c7424a365aa73fa64d",
+          "kb_key": "product:ext_477329c7424a365aa73fa64d",
+          "status": "not_displayable",
+          "kb_exists": true,
+          "displayable": false,
+          "high_quality_ready": false,
+          "human_reviewed": true,
+          "issues": [
+            "reviewed_not_displayable",
+            "quality_limited",
+            "seller_only_evidence"
+          ],
+          "blocking_issues": [
+            "reviewed_not_displayable"
+          ],
+          "quality_state": "limited",
+          "evidence_profile": "seller_only",
+          "has_card_highlight": true
+        },
+        "product_line_id": null,
+        "borrowed_from_sibling": false
+      },
+      "active_ingredients": {
+        "status": "not_expected_missing",
+        "issues": [],
+        "regulatory_expected": false,
+        "hero_expected": false,
+        "active_items": [],
+        "source_origin": "none",
+        "source_quality_status": "blocked",
+        "coverage": {
+          "details_sections_count": 0,
+          "faq_count": 0,
+          "how_to_chars": 110,
+          "inci_chars": 0,
+          "active_ingredients_chars": 0,
+          "inci_applicability_status": "",
+          "ingredient_review_status": "",
+          "ingredient_remediation_action": "",
+          "bundle_component_refs_count": 0,
+          "effective_inci_chars": 0,
+          "inci_borrowed_from_product_id": ""
+        },
+        "invalid_fragments": [],
+        "suppressed_reason": "no_authoritative_source"
+      },
+      "variants": {
+        "status": "ready",
+        "issues": [],
+        "visible_variant_rows": 1,
+        "examples": {
+          "identity_option_visible": [],
+          "wrong_axis_for_category": [],
+          "makeup_shade_missing_visual": [],
+          "size_value_generic_axis": [],
+          "default_option_size_evidence_missing_axis": [],
+          "identity_default_title_axis": []
+        }
+      },
+      "coverage": {
+        "details_sections_count": 0,
+        "faq_count": 0,
+        "how_to_chars": 110,
+        "inci_chars": 0,
+        "active_ingredients_chars": 0,
+        "inci_applicability_status": "",
+        "ingredient_review_status": "",
+        "ingredient_remediation_action": "",
+        "bundle_component_refs_count": 0,
+        "effective_inci_chars": 0,
+        "inci_borrowed_from_product_id": ""
+      }
+    },
+    {
+      "seed_id": "eps_7a85a444a75b4964cae6d034",
+      "external_product_id": "ext_6c0c12cdc2d51f5dabf9a6ea",
+      "market": "US",
+      "domain": "hellobubble.com",
+      "title": "Slam Dunk",
+      "canonical_url": "https://hellobubble.com/products/slam-dunk-hydrating-moisturizer",
+      "product_family": "single_formula",
+      "product_line_id": "pl_b5175451f673c373831fdb53",
+      "identity_variant_axes": {
+        "size": "full 1 7 fl oz",
+        "volume": "7floz",
+        "multi_variant": true
+      },
+      "pivota_insights": {
+        "direct": {
+          "product_id": "ext_6c0c12cdc2d51f5dabf9a6ea",
+          "kb_key": "product:ext_6c0c12cdc2d51f5dabf9a6ea",
+          "status": "not_displayable",
+          "kb_exists": true,
+          "displayable": false,
+          "high_quality_ready": false,
+          "human_reviewed": true,
+          "issues": [
+            "reviewed_not_displayable",
+            "quality_limited",
+            "seller_only_evidence"
+          ],
+          "blocking_issues": [
+            "reviewed_not_displayable"
+          ],
+          "quality_state": "limited",
+          "evidence_profile": "seller_only",
+          "has_card_highlight": true
+        },
+        "effective": {
+          "product_id": "ext_6c0c12cdc2d51f5dabf9a6ea",
+          "kb_key": "product:ext_6c0c12cdc2d51f5dabf9a6ea",
+          "status": "not_displayable",
+          "kb_exists": true,
+          "displayable": false,
+          "high_quality_ready": false,
+          "human_reviewed": true,
+          "issues": [
+            "reviewed_not_displayable",
+            "quality_limited",
+            "seller_only_evidence"
+          ],
+          "blocking_issues": [
+            "reviewed_not_displayable"
+          ],
+          "quality_state": "limited",
+          "evidence_profile": "seller_only",
+          "has_card_highlight": true
+        },
+        "product_line_id": "pl_b5175451f673c373831fdb53",
+        "borrowed_from_sibling": false
+      },
+      "active_ingredients": {
+        "status": "low_signal_active",
+        "issues": [
+          "low_signal_active"
+        ],
+        "regulatory_expected": false,
+        "hero_expected": false,
+        "active_items": [],
+        "source_origin": "none",
+        "source_quality_status": "blocked",
+        "coverage": {
+          "details_sections_count": 6,
+          "faq_count": 0,
+          "how_to_chars": 87,
+          "inci_chars": 11,
+          "active_ingredients_chars": 0,
+          "inci_applicability_status": "",
+          "ingredient_review_status": "",
+          "ingredient_remediation_action": "",
+          "bundle_component_refs_count": 0,
+          "effective_inci_chars": 11,
+          "inci_borrowed_from_product_id": ""
+        },
+        "invalid_fragments": [],
+        "suppressed_reason": "active_items_low_signal"
+      },
+      "variants": {
+        "status": "ready",
+        "issues": [],
+        "visible_variant_rows": 2,
+        "examples": {
+          "identity_option_visible": [],
+          "wrong_axis_for_category": [],
+          "makeup_shade_missing_visual": [],
+          "size_value_generic_axis": [],
+          "default_option_size_evidence_missing_axis": [],
+          "identity_default_title_axis": []
+        }
+      },
+      "coverage": {
+        "details_sections_count": 6,
+        "faq_count": 0,
+        "how_to_chars": 87,
+        "inci_chars": 11,
+        "active_ingredients_chars": 0,
+        "inci_applicability_status": "",
+        "ingredient_review_status": "",
+        "ingredient_remediation_action": "",
+        "bundle_component_refs_count": 0,
+        "effective_inci_chars": 11,
+        "inci_borrowed_from_product_id": ""
+      }
+    }
+  ]
+}

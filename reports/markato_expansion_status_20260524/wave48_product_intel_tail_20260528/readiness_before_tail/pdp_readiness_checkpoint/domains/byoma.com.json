@@ -1,0 +1,1622 @@
+{
+  "generated_at": "2026-05-28T10:01:20.173Z",
+  "options": {
+    "market": "US",
+    "includeAttached": true,
+    "domain": "byoma.com",
+    "externalProductIds": [],
+    "limit": 20000,
+    "sampleLimit": 10,
+    "checkpointDir": null,
+    "checkpointMode": "domain",
+    "resume": false,
+    "force": false,
+    "continueOnError": true,
+    "pageSize": 500,
+    "format": "json",
+    "chunkByDomain": false
+  },
+  "warnings": [],
+  "summary": {
+    "scanned": 10,
+    "by_market": {
+      "US": 10
+    },
+    "by_domain": [
+      {
+        "key": "byoma.com",
+        "count": 10
+      }
+    ],
+    "by_product_family": [
+      {
+        "key": "single_formula",
+        "count": 9
+      },
+      {
+        "key": "unknown_product",
+        "count": 1
+      }
+    ],
+    "coverage": {
+      "missing_inci": 0,
+      "missing_active_raw": 8,
+      "missing_details": 0,
+      "missing_how_to": 0,
+      "missing_faq": 10
+    },
+    "pivota_insights": {
+      "direct": {
+        "displayable": 5,
+        "high_quality_ready": 0,
+        "missing_kb": 0,
+        "not_displayable": 5
+      },
+      "effective": {
+        "displayable": 5,
+        "high_quality_ready": 0,
+        "missing_kb": 0,
+        "not_displayable": 5,
+        "borrowed_from_sibling": 0
+      },
+      "effective_issues": [
+        {
+          "key": "missing_card_highlight",
+          "count": 10
+        },
+        {
+          "key": "not_displayable_gate",
+          "count": 5
+        },
+        {
+          "key": "not_reviewed",
+          "count": 5
+        },
+        {
+          "key": "quality_eligible",
+          "count": 5
+        },
+        {
+          "key": "quality_limited",
+          "count": 5
+        },
+        {
+          "key": "seller_only_evidence",
+          "count": 5
+        },
+        {
+          "key": "empty_watchouts",
+          "count": 2
+        },
+        {
+          "key": "public_sensitive_claim",
+          "count": 1
+        }
+      ],
+      "effective_issue_domains": [
+        {
+          "key": "byoma.com::missing_card_highlight",
+          "count": 10
+        },
+        {
+          "key": "byoma.com::not_displayable_gate",
+          "count": 5
+        },
+        {
+          "key": "byoma.com::not_reviewed",
+          "count": 5
+        },
+        {
+          "key": "byoma.com::quality_eligible",
+          "count": 5
+        },
+        {
+          "key": "byoma.com::quality_limited",
+          "count": 5
+        },
+        {
+          "key": "byoma.com::seller_only_evidence",
+          "count": 5
+        },
+        {
+          "key": "byoma.com::empty_watchouts",
+          "count": 2
+        },
+        {
+          "key": "byoma.com::public_sensitive_claim",
+          "count": 1
+        }
+      ],
+      "quality_state": [
+        {
+          "key": "eligible",
+          "count": 5
+        },
+        {
+          "key": "limited",
+          "count": 5
+        }
+      ],
+      "evidence_profile": [
+        {
+          "key": "seller_only",
+          "count": 5
+        },
+        {
+          "key": "seller_plus_formula",
+          "count": 5
+        }
+      ],
+      "samples": {
+        "not_reviewed": [
+          {
+            "external_product_id": "ext_161b26bf56e2ddee4a9ae6cb",
+            "domain": "byoma.com",
+            "title": "Hydrating Recovery Oil",
+            "used_product_id": "ext_161b26bf56e2ddee4a9ae6cb",
+            "quality_state": "limited",
+            "evidence_profile": "seller_only"
+          },
+          {
+            "external_product_id": "ext_2935aafbdb707cb9627bb12a",
+            "domain": "byoma.com",
+            "title": "Moisturising Gel Cream",
+            "used_product_id": "ext_2935aafbdb707cb9627bb12a",
+            "quality_state": "limited",
+            "evidence_profile": "seller_only"
+          },
+          {
+            "external_product_id": "ext_55918c0d97c7f4b0ba286493",
+            "domain": "byoma.com",
+            "title": "Moisturising Rich Cream",
+            "used_product_id": "ext_55918c0d97c7f4b0ba286493",
+            "quality_state": "limited",
+            "evidence_profile": "seller_only"
+          },
+          {
+            "external_product_id": "ext_5e65eb4c70993dcdd5d3ea3b",
+            "domain": "byoma.com",
+            "title": "Hydrating Serum",
+            "used_product_id": "ext_5e65eb4c70993dcdd5d3ea3b",
+            "quality_state": "limited",
+            "evidence_profile": "seller_only"
+          },
+          {
+            "external_product_id": "ext_cc01e1770b6a534313ecb9a3",
+            "domain": "byoma.com",
+            "title": "Phyto-Mucin Glow Serum",
+            "used_product_id": "ext_cc01e1770b6a534313ecb9a3",
+            "quality_state": "limited",
+            "evidence_profile": "seller_only"
+          }
+        ],
+        "not_displayable_gate": [
+          {
+            "external_product_id": "ext_161b26bf56e2ddee4a9ae6cb",
+            "domain": "byoma.com",
+            "title": "Hydrating Recovery Oil",
+            "used_product_id": "ext_161b26bf56e2ddee4a9ae6cb",
+            "quality_state": "limited",
+            "evidence_profile": "seller_only"
+          },
+          {
+            "external_product_id": "ext_2935aafbdb707cb9627bb12a",
+            "domain": "byoma.com",
+            "title": "Moisturising Gel Cream",
+            "used_product_id": "ext_2935aafbdb707cb9627bb12a",
+            "quality_state": "limited",
+            "evidence_profile": "seller_only"
+          },
+          {
+            "external_product_id": "ext_55918c0d97c7f4b0ba286493",
+            "domain": "byoma.com",
+            "title": "Moisturising Rich Cream",
+            "used_product_id": "ext_55918c0d97c7f4b0ba286493",
+            "quality_state": "limited",
+            "evidence_profile": "seller_only"
+          },
+          {
+            "external_product_id": "ext_5e65eb4c70993dcdd5d3ea3b",
+            "domain": "byoma.com",
+            "title": "Hydrating Serum",
+            "used_product_id": "ext_5e65eb4c70993dcdd5d3ea3b",
+            "quality_state": "limited",
+            "evidence_profile": "seller_only"
+          },
+          {
+            "external_product_id": "ext_cc01e1770b6a534313ecb9a3",
+            "domain": "byoma.com",
+            "title": "Phyto-Mucin Glow Serum",
+            "used_product_id": "ext_cc01e1770b6a534313ecb9a3",
+            "quality_state": "limited",
+            "evidence_profile": "seller_only"
+          }
+        ],
+        "missing_card_highlight": [
+          {
+            "external_product_id": "ext_161b26bf56e2ddee4a9ae6cb",
+            "domain": "byoma.com",
+            "title": "Hydrating Recovery Oil",
+            "used_product_id": "ext_161b26bf56e2ddee4a9ae6cb",
+            "quality_state": "limited",
+            "evidence_profile": "seller_only"
+          },
+          {
+            "external_product_id": "ext_2935aafbdb707cb9627bb12a",
+            "domain": "byoma.com",
+            "title": "Moisturising Gel Cream",
+            "used_product_id": "ext_2935aafbdb707cb9627bb12a",
+            "quality_state": "limited",
+            "evidence_profile": "seller_only"
+          },
+          {
+            "external_product_id": "ext_55918c0d97c7f4b0ba286493",
+            "domain": "byoma.com",
+            "title": "Moisturising Rich Cream",
+            "used_product_id": "ext_55918c0d97c7f4b0ba286493",
+            "quality_state": "limited",
+            "evidence_profile": "seller_only"
+          },
+          {
+            "external_product_id": "ext_5e65eb4c70993dcdd5d3ea3b",
+            "domain": "byoma.com",
+            "title": "Hydrating Serum",
+            "used_product_id": "ext_5e65eb4c70993dcdd5d3ea3b",
+            "quality_state": "limited",
+            "evidence_profile": "seller_only"
+          },
+          {
+            "external_product_id": "ext_79c93b12b00ba7c6af024479",
+            "domain": "byoma.com",
+            "title": "Balancing Face Mist",
+            "used_product_id": "ext_79c93b12b00ba7c6af024479",
+            "quality_state": "eligible",
+            "evidence_profile": "seller_plus_formula"
+          },
+          {
+            "external_product_id": "ext_88df3569cc31030b7bd4f347",
+            "domain": "byoma.com",
+            "title": "Barrier Repair Eye Cream",
+            "used_product_id": "ext_88df3569cc31030b7bd4f347",
+            "quality_state": "eligible",
+            "evidence_profile": "seller_plus_formula"
+          },
+          {
+            "external_product_id": "ext_becda03ff4336b5ea4a8cfdf",
+            "domain": "byoma.com",
+            "title": "Bio-Collagen Radiance Facial Mask",
+            "used_product_id": "ext_becda03ff4336b5ea4a8cfdf",
+            "quality_state": "eligible",
+            "evidence_profile": "seller_plus_formula"
+          },
+          {
+            "external_product_id": "ext_cc01e1770b6a534313ecb9a3",
+            "domain": "byoma.com",
+            "title": "Phyto-Mucin Glow Serum",
+            "used_product_id": "ext_cc01e1770b6a534313ecb9a3",
+            "quality_state": "limited",
+            "evidence_profile": "seller_only"
+          },
+          {
+            "external_product_id": "ext_cd345dcee05cd81ef6d49f29",
+            "domain": "byoma.com",
+            "title": "Milky Moisture Cleanser",
+            "used_product_id": "ext_cd345dcee05cd81ef6d49f29",
+            "quality_state": "eligible",
+            "evidence_profile": "seller_plus_formula"
+          },
+          {
+            "external_product_id": "ext_d96f7273b58db8f12f591088",
+            "domain": "byoma.com",
+            "title": "Brightening Toner",
+            "used_product_id": "ext_d96f7273b58db8f12f591088",
+            "quality_state": "eligible",
+            "evidence_profile": "seller_plus_formula"
+          }
+        ],
+        "seller_only_evidence": [
+          {
+            "external_product_id": "ext_161b26bf56e2ddee4a9ae6cb",
+            "domain": "byoma.com",
+            "title": "Hydrating Recovery Oil",
+            "used_product_id": "ext_161b26bf56e2ddee4a9ae6cb",
+            "quality_state": "limited",
+            "evidence_profile": "seller_only"
+          },
+          {
+            "external_product_id": "ext_2935aafbdb707cb9627bb12a",
+            "domain": "byoma.com",
+            "title": "Moisturising Gel Cream",
+            "used_product_id": "ext_2935aafbdb707cb9627bb12a",
+            "quality_state": "limited",
+            "evidence_profile": "seller_only"
+          },
+          {
+            "external_product_id": "ext_55918c0d97c7f4b0ba286493",
+            "domain": "byoma.com",
+            "title": "Moisturising Rich Cream",
+            "used_product_id": "ext_55918c0d97c7f4b0ba286493",
+            "quality_state": "limited",
+            "evidence_profile": "seller_only"
+          },
+          {
+            "external_product_id": "ext_5e65eb4c70993dcdd5d3ea3b",
+            "domain": "byoma.com",
+            "title": "Hydrating Serum",
+            "used_product_id": "ext_5e65eb4c70993dcdd5d3ea3b",
+            "quality_state": "limited",
+            "evidence_profile": "seller_only"
+          },
+          {
+            "external_product_id": "ext_cc01e1770b6a534313ecb9a3",
+            "domain": "byoma.com",
+            "title": "Phyto-Mucin Glow Serum",
+            "used_product_id": "ext_cc01e1770b6a534313ecb9a3",
+            "quality_state": "limited",
+            "evidence_profile": "seller_only"
+          }
+        ],
+        "public_sensitive_claim": [
+          {
+            "external_product_id": "ext_88df3569cc31030b7bd4f347",
+            "domain": "byoma.com",
+            "title": "Barrier Repair Eye Cream",
+            "used_product_id": "ext_88df3569cc31030b7bd4f347",
+            "quality_state": "eligible",
+            "evidence_profile": "seller_plus_formula"
+          }
+        ]
+      }
+    },
+    "active_ingredients": {
+      "regulatory_expected": 0,
+      "hero_expected": 10,
+      "any_active_items": 10,
+      "status": [
+        {
+          "key": "ready_hero",
+          "count": 10
+        }
+      ],
+      "issues": [
+        {
+          "key": "active_raw_may_be_full_inci",
+          "count": 2
+        },
+        {
+          "key": "active_raw_too_long",
+          "count": 2
+        }
+      ],
+      "issue_domains": [
+        {
+          "key": "byoma.com::active_raw_may_be_full_inci",
+          "count": 2
+        },
+        {
+          "key": "byoma.com::active_raw_too_long",
+          "count": 2
+        }
+      ],
+      "source_origin": [
+        {
+          "key": "pdp_section",
+          "count": 8
+        },
+        {
+          "key": "active_block",
+          "count": 2
+        }
+      ],
+      "samples": {
+        "active_raw_too_long": [
+          {
+            "external_product_id": "ext_becda03ff4336b5ea4a8cfdf",
+            "domain": "byoma.com",
+            "title": "Bio-Collagen Radiance Facial Mask",
+            "status": "ready_hero",
+            "active_items": [
+              "Ceramide NP",
+              "Centella asiatica"
+            ],
+            "source_origin": "active_block"
+          },
+          {
+            "external_product_id": "ext_cd345dcee05cd81ef6d49f29",
+            "domain": "byoma.com",
+            "title": "Milky Moisture Cleanser",
+            "status": "ready_hero",
+            "active_items": [
+              "Ceramide NP",
+              "Panthenol (B5)"
+            ],
+            "source_origin": "active_block"
+          }
+        ],
+        "active_raw_may_be_full_inci": [
+          {
+            "external_product_id": "ext_becda03ff4336b5ea4a8cfdf",
+            "domain": "byoma.com",
+            "title": "Bio-Collagen Radiance Facial Mask",
+            "status": "ready_hero",
+            "active_items": [
+              "Ceramide NP",
+              "Centella asiatica"
+            ],
+            "source_origin": "active_block"
+          },
+          {
+            "external_product_id": "ext_cd345dcee05cd81ef6d49f29",
+            "domain": "byoma.com",
+            "title": "Milky Moisture Cleanser",
+            "status": "ready_hero",
+            "active_items": [
+              "Ceramide NP",
+              "Panthenol (B5)"
+            ],
+            "source_origin": "active_block"
+          }
+        ]
+      }
+    },
+    "variants": {
+      "status": [
+        {
+          "key": "ready",
+          "count": 10
+        }
+      ],
+      "issues": [],
+      "issue_domains": [],
+      "samples": {}
+    }
+  },
+  "rows": [
+    {
+      "seed_id": "eps_5a9219f6effb004642226649",
+      "external_product_id": "ext_161b26bf56e2ddee4a9ae6cb",
+      "market": "US",
+      "domain": "byoma.com",
+      "title": "Hydrating Recovery Oil",
+      "canonical_url": "https://byoma.com/products/hydrating-recovery-oil",
+      "product_family": "single_formula",
+      "product_line_id": "pl_1da40fe1aa6e0cdf0c92e804",
+      "identity_variant_axes": {
+        "multi_variant": false
+      },
+      "pivota_insights": {
+        "direct": {
+          "product_id": "ext_161b26bf56e2ddee4a9ae6cb",
+          "kb_key": "product:ext_161b26bf56e2ddee4a9ae6cb",
+          "status": "not_displayable",
+          "kb_exists": true,
+          "displayable": false,
+          "high_quality_ready": false,
+          "human_reviewed": false,
+          "issues": [
+            "not_reviewed",
+            "not_displayable_gate",
+            "missing_card_highlight",
+            "quality_limited",
+            "seller_only_evidence"
+          ],
+          "blocking_issues": [
+            "not_reviewed",
+            "not_displayable_gate",
+            "missing_card_highlight"
+          ],
+          "quality_state": "limited",
+          "evidence_profile": "seller_only",
+          "has_card_highlight": false
+        },
+        "effective": {
+          "product_id": "ext_161b26bf56e2ddee4a9ae6cb",
+          "kb_key": "product:ext_161b26bf56e2ddee4a9ae6cb",
+          "status": "not_displayable",
+          "kb_exists": true,
+          "displayable": false,
+          "high_quality_ready": false,
+          "human_reviewed": false,
+          "issues": [
+            "not_reviewed",
+            "not_displayable_gate",
+            "missing_card_highlight",
+            "quality_limited",
+            "seller_only_evidence"
+          ],
+          "blocking_issues": [
+            "not_reviewed",
+            "not_displayable_gate",
+            "missing_card_highlight"
+          ],
+          "quality_state": "limited",
+          "evidence_profile": "seller_only",
+          "has_card_highlight": false
+        },
+        "product_line_id": "pl_1da40fe1aa6e0cdf0c92e804",
+        "borrowed_from_sibling": false
+      },
+      "active_ingredients": {
+        "status": "ready_hero",
+        "issues": [],
+        "regulatory_expected": false,
+        "hero_expected": true,
+        "active_items": [
+          "Ceramide NP",
+          "Squalane"
+        ],
+        "source_origin": "pdp_section",
+        "source_quality_status": "captured",
+        "coverage": {
+          "details_sections_count": 6,
+          "faq_count": 0,
+          "how_to_chars": 241,
+          "inci_chars": 460,
+          "active_ingredients_chars": 0,
+          "inci_applicability_status": "",
+          "ingredient_review_status": "",
+          "ingredient_remediation_action": "",
+          "bundle_component_refs_count": 0,
+          "effective_inci_chars": 460,
+          "inci_borrowed_from_product_id": ""
+        },
+        "invalid_fragments": [],
+        "suppressed_reason": null
+      },
+      "variants": {
+        "status": "ready",
+        "issues": [],
+        "visible_variant_rows": 1,
+        "examples": {
+          "identity_option_visible": [],
+          "wrong_axis_for_category": [],
+          "makeup_shade_missing_visual": [],
+          "size_value_generic_axis": [],
+          "default_option_size_evidence_missing_axis": [],
+          "identity_default_title_axis": []
+        }
+      },
+      "coverage": {
+        "details_sections_count": 6,
+        "faq_count": 0,
+        "how_to_chars": 241,
+        "inci_chars": 460,
+        "active_ingredients_chars": 0,
+        "inci_applicability_status": "",
+        "ingredient_review_status": "",
+        "ingredient_remediation_action": "",
+        "bundle_component_refs_count": 0,
+        "effective_inci_chars": 460,
+        "inci_borrowed_from_product_id": ""
+      }
+    },
+    {
+      "seed_id": "eps_a273edca5dfa9f473e09c135",
+      "external_product_id": "ext_2935aafbdb707cb9627bb12a",
+      "market": "US",
+      "domain": "byoma.com",
+      "title": "Moisturising Gel Cream",
+      "canonical_url": "https://byoma.com/products/moisturizing-gel-cream",
+      "product_family": "single_formula",
+      "product_line_id": "pl_8928eff82e6ba4262b305eed",
+      "identity_variant_axes": {
+        "multi_variant": false
+      },
+      "pivota_insights": {
+        "direct": {
+          "product_id": "ext_2935aafbdb707cb9627bb12a",
+          "kb_key": "product:ext_2935aafbdb707cb9627bb12a",
+          "status": "not_displayable",
+          "kb_exists": true,
+          "displayable": false,
+          "high_quality_ready": false,
+          "human_reviewed": false,
+          "issues": [
+            "not_reviewed",
+            "not_displayable_gate",
+            "missing_card_highlight",
+            "quality_limited",
+            "seller_only_evidence"
+          ],
+          "blocking_issues": [
+            "not_reviewed",
+            "not_displayable_gate",
+            "missing_card_highlight"
+          ],
+          "quality_state": "limited",
+          "evidence_profile": "seller_only",
+          "has_card_highlight": false
+        },
+        "effective": {
+          "product_id": "ext_2935aafbdb707cb9627bb12a",
+          "kb_key": "product:ext_2935aafbdb707cb9627bb12a",
+          "status": "not_displayable",
+          "kb_exists": true,
+          "displayable": false,
+          "high_quality_ready": false,
+          "human_reviewed": false,
+          "issues": [
+            "not_reviewed",
+            "not_displayable_gate",
+            "missing_card_highlight",
+            "quality_limited",
+            "seller_only_evidence"
+          ],
+          "blocking_issues": [
+            "not_reviewed",
+            "not_displayable_gate",
+            "missing_card_highlight"
+          ],
+          "quality_state": "limited",
+          "evidence_profile": "seller_only",
+          "has_card_highlight": false
+        },
+        "product_line_id": "pl_8928eff82e6ba4262b305eed",
+        "borrowed_from_sibling": false
+      },
+      "active_ingredients": {
+        "status": "ready_hero",
+        "issues": [],
+        "regulatory_expected": false,
+        "hero_expected": true,
+        "active_items": [
+          "Ceramide NP",
+          "Niacinamide"
+        ],
+        "source_origin": "pdp_section",
+        "source_quality_status": "captured",
+        "coverage": {
+          "details_sections_count": 8,
+          "faq_count": 0,
+          "how_to_chars": 198,
+          "inci_chars": 446,
+          "active_ingredients_chars": 0,
+          "inci_applicability_status": "",
+          "ingredient_review_status": "",
+          "ingredient_remediation_action": "",
+          "bundle_component_refs_count": 0,
+          "effective_inci_chars": 446,
+          "inci_borrowed_from_product_id": ""
+        },
+        "invalid_fragments": [],
+        "suppressed_reason": null
+      },
+      "variants": {
+        "status": "ready",
+        "issues": [],
+        "visible_variant_rows": 1,
+        "examples": {
+          "identity_option_visible": [],
+          "wrong_axis_for_category": [],
+          "makeup_shade_missing_visual": [],
+          "size_value_generic_axis": [],
+          "default_option_size_evidence_missing_axis": [],
+          "identity_default_title_axis": []
+        }
+      },
+      "coverage": {
+        "details_sections_count": 8,
+        "faq_count": 0,
+        "how_to_chars": 198,
+        "inci_chars": 446,
+        "active_ingredients_chars": 0,
+        "inci_applicability_status": "",
+        "ingredient_review_status": "",
+        "ingredient_remediation_action": "",
+        "bundle_component_refs_count": 0,
+        "effective_inci_chars": 446,
+        "inci_borrowed_from_product_id": ""
+      }
+    },
+    {
+      "seed_id": "eps_c5f55344272de1ee1d05bab1",
+      "external_product_id": "ext_55918c0d97c7f4b0ba286493",
+      "market": "US",
+      "domain": "byoma.com",
+      "title": "Moisturising Rich Cream",
+      "canonical_url": "https://byoma.com/products/moisturizing-rich-cream",
+      "product_family": "single_formula",
+      "product_line_id": "pl_c207e97350b2cfb2f28dcd3e",
+      "identity_variant_axes": {
+        "multi_variant": false
+      },
+      "pivota_insights": {
+        "direct": {
+          "product_id": "ext_55918c0d97c7f4b0ba286493",
+          "kb_key": "product:ext_55918c0d97c7f4b0ba286493",
+          "status": "not_displayable",
+          "kb_exists": true,
+          "displayable": false,
+          "high_quality_ready": false,
+          "human_reviewed": false,
+          "issues": [
+            "not_reviewed",
+            "not_displayable_gate",
+            "missing_card_highlight",
+            "quality_limited",
+            "seller_only_evidence"
+          ],
+          "blocking_issues": [
+            "not_reviewed",
+            "not_displayable_gate",
+            "missing_card_highlight"
+          ],
+          "quality_state": "limited",
+          "evidence_profile": "seller_only",
+          "has_card_highlight": false
+        },
+        "effective": {
+          "product_id": "ext_55918c0d97c7f4b0ba286493",
+          "kb_key": "product:ext_55918c0d97c7f4b0ba286493",
+          "status": "not_displayable",
+          "kb_exists": true,
+          "displayable": false,
+          "high_quality_ready": false,
+          "human_reviewed": false,
+          "issues": [
+            "not_reviewed",
+            "not_displayable_gate",
+            "missing_card_highlight",
+            "quality_limited",
+            "seller_only_evidence"
+          ],
+          "blocking_issues": [
+            "not_reviewed",
+            "not_displayable_gate",
+            "missing_card_highlight"
+          ],
+          "quality_state": "limited",
+          "evidence_profile": "seller_only",
+          "has_card_highlight": false
+        },
+        "product_line_id": "pl_c207e97350b2cfb2f28dcd3e",
+        "borrowed_from_sibling": false
+      },
+      "active_ingredients": {
+        "status": "ready_hero",
+        "issues": [],
+        "regulatory_expected": false,
+        "hero_expected": true,
+        "active_items": [
+          "Ceramide NP"
+        ],
+        "source_origin": "pdp_section",
+        "source_quality_status": "captured",
+        "coverage": {
+          "details_sections_count": 8,
+          "faq_count": 0,
+          "how_to_chars": 198,
+          "inci_chars": 717,
+          "active_ingredients_chars": 0,
+          "inci_applicability_status": "",
+          "ingredient_review_status": "",
+          "ingredient_remediation_action": "",
+          "bundle_component_refs_count": 0,
+          "effective_inci_chars": 717,
+          "inci_borrowed_from_product_id": ""
+        },
+        "invalid_fragments": [],
+        "suppressed_reason": null
+      },
+      "variants": {
+        "status": "ready",
+        "issues": [],
+        "visible_variant_rows": 1,
+        "examples": {
+          "identity_option_visible": [],
+          "wrong_axis_for_category": [],
+          "makeup_shade_missing_visual": [],
+          "size_value_generic_axis": [],
+          "default_option_size_evidence_missing_axis": [],
+          "identity_default_title_axis": []
+        }
+      },
+      "coverage": {
+        "details_sections_count": 8,
+        "faq_count": 0,
+        "how_to_chars": 198,
+        "inci_chars": 717,
+        "active_ingredients_chars": 0,
+        "inci_applicability_status": "",
+        "ingredient_review_status": "",
+        "ingredient_remediation_action": "",
+        "bundle_component_refs_count": 0,
+        "effective_inci_chars": 717,
+        "inci_borrowed_from_product_id": ""
+      }
+    },
+    {
+      "seed_id": "eps_f7ef468c19e673dd5575b4db",
+      "external_product_id": "ext_5e65eb4c70993dcdd5d3ea3b",
+      "market": "US",
+      "domain": "byoma.com",
+      "title": "Hydrating Serum",
+      "canonical_url": "https://byoma.com/products/hydrating-serum",
+      "product_family": "single_formula",
+      "product_line_id": "pl_255fb56e8943ce359960e025",
+      "identity_variant_axes": {
+        "multi_variant": false
+      },
+      "pivota_insights": {
+        "direct": {
+          "product_id": "ext_5e65eb4c70993dcdd5d3ea3b",
+          "kb_key": "product:ext_5e65eb4c70993dcdd5d3ea3b",
+          "status": "not_displayable",
+          "kb_exists": true,
+          "displayable": false,
+          "high_quality_ready": false,
+          "human_reviewed": false,
+          "issues": [
+            "not_reviewed",
+            "not_displayable_gate",
+            "missing_card_highlight",
+            "quality_limited",
+            "seller_only_evidence"
+          ],
+          "blocking_issues": [
+            "not_reviewed",
+            "not_displayable_gate",
+            "missing_card_highlight"
+          ],
+          "quality_state": "limited",
+          "evidence_profile": "seller_only",
+          "has_card_highlight": false
+        },
+        "effective": {
+          "product_id": "ext_5e65eb4c70993dcdd5d3ea3b",
+          "kb_key": "product:ext_5e65eb4c70993dcdd5d3ea3b",
+          "status": "not_displayable",
+          "kb_exists": true,
+          "displayable": false,
+          "high_quality_ready": false,
+          "human_reviewed": false,
+          "issues": [
+            "not_reviewed",
+            "not_displayable_gate",
+            "missing_card_highlight",
+            "quality_limited",
+            "seller_only_evidence"
+          ],
+          "blocking_issues": [
+            "not_reviewed",
+            "not_displayable_gate",
+            "missing_card_highlight"
+          ],
+          "quality_state": "limited",
+          "evidence_profile": "seller_only",
+          "has_card_highlight": false
+        },
+        "product_line_id": "pl_255fb56e8943ce359960e025",
+        "borrowed_from_sibling": false
+      },
+      "active_ingredients": {
+        "status": "ready_hero",
+        "issues": [],
+        "regulatory_expected": false,
+        "hero_expected": true,
+        "active_items": [
+          "Ceramide NP",
+          "Squalane"
+        ],
+        "source_origin": "pdp_section",
+        "source_quality_status": "captured",
+        "coverage": {
+          "details_sections_count": 8,
+          "faq_count": 0,
+          "how_to_chars": 280,
+          "inci_chars": 703,
+          "active_ingredients_chars": 0,
+          "inci_applicability_status": "",
+          "ingredient_review_status": "",
+          "ingredient_remediation_action": "",
+          "bundle_component_refs_count": 0,
+          "effective_inci_chars": 703,
+          "inci_borrowed_from_product_id": ""
+        },
+        "invalid_fragments": [],
+        "suppressed_reason": null
+      },
+      "variants": {
+        "status": "ready",
+        "issues": [],
+        "visible_variant_rows": 1,
+        "examples": {
+          "identity_option_visible": [],
+          "wrong_axis_for_category": [],
+          "makeup_shade_missing_visual": [],
+          "size_value_generic_axis": [],
+          "default_option_size_evidence_missing_axis": [],
+          "identity_default_title_axis": []
+        }
+      },
+      "coverage": {
+        "details_sections_count": 8,
+        "faq_count": 0,
+        "how_to_chars": 280,
+        "inci_chars": 703,
+        "active_ingredients_chars": 0,
+        "inci_applicability_status": "",
+        "ingredient_review_status": "",
+        "ingredient_remediation_action": "",
+        "bundle_component_refs_count": 0,
+        "effective_inci_chars": 703,
+        "inci_borrowed_from_product_id": ""
+      }
+    },
+    {
+      "seed_id": "eps_a4aa81eab1540ad6bb8bc097",
+      "external_product_id": "ext_79c93b12b00ba7c6af024479",
+      "market": "US",
+      "domain": "byoma.com",
+      "title": "Balancing Face Mist",
+      "canonical_url": "https://byoma.com/products/balancing-face-mist",
+      "product_family": "unknown_product",
+      "product_line_id": "pl_aa6484a31ffd9b945ad3604d",
+      "identity_variant_axes": {
+        "multi_variant": false
+      },
+      "pivota_insights": {
+        "direct": {
+          "product_id": "ext_79c93b12b00ba7c6af024479",
+          "kb_key": "product:ext_79c93b12b00ba7c6af024479",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": false,
+          "human_reviewed": true,
+          "issues": [
+            "missing_card_highlight",
+            "quality_eligible"
+          ],
+          "blocking_issues": [
+            "missing_card_highlight"
+          ],
+          "quality_state": "eligible",
+          "evidence_profile": "seller_plus_formula",
+          "has_card_highlight": false
+        },
+        "effective": {
+          "product_id": "ext_79c93b12b00ba7c6af024479",
+          "kb_key": "product:ext_79c93b12b00ba7c6af024479",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": false,
+          "human_reviewed": true,
+          "issues": [
+            "missing_card_highlight",
+            "quality_eligible"
+          ],
+          "blocking_issues": [
+            "missing_card_highlight"
+          ],
+          "quality_state": "eligible",
+          "evidence_profile": "seller_plus_formula",
+          "has_card_highlight": false
+        },
+        "product_line_id": "pl_aa6484a31ffd9b945ad3604d",
+        "borrowed_from_sibling": false
+      },
+      "active_ingredients": {
+        "status": "ready_hero",
+        "issues": [],
+        "regulatory_expected": false,
+        "hero_expected": true,
+        "active_items": [
+          "Ceramide NP",
+          "Panthenol (B5)"
+        ],
+        "source_origin": "pdp_section",
+        "source_quality_status": "captured",
+        "coverage": {
+          "details_sections_count": 6,
+          "faq_count": 0,
+          "how_to_chars": 298,
+          "inci_chars": 401,
+          "active_ingredients_chars": 0,
+          "inci_applicability_status": "",
+          "ingredient_review_status": "",
+          "ingredient_remediation_action": "",
+          "bundle_component_refs_count": 0,
+          "effective_inci_chars": 401,
+          "inci_borrowed_from_product_id": ""
+        },
+        "invalid_fragments": [],
+        "suppressed_reason": null
+      },
+      "variants": {
+        "status": "ready",
+        "issues": [],
+        "visible_variant_rows": 1,
+        "examples": {
+          "identity_option_visible": [],
+          "wrong_axis_for_category": [],
+          "makeup_shade_missing_visual": [],
+          "size_value_generic_axis": [],
+          "default_option_size_evidence_missing_axis": [],
+          "identity_default_title_axis": []
+        }
+      },
+      "coverage": {
+        "details_sections_count": 6,
+        "faq_count": 0,
+        "how_to_chars": 298,
+        "inci_chars": 401,
+        "active_ingredients_chars": 0,
+        "inci_applicability_status": "",
+        "ingredient_review_status": "",
+        "ingredient_remediation_action": "",
+        "bundle_component_refs_count": 0,
+        "effective_inci_chars": 401,
+        "inci_borrowed_from_product_id": ""
+      }
+    },
+    {
+      "seed_id": "eps_d9b68741ea6c8a59e2040555",
+      "external_product_id": "ext_88df3569cc31030b7bd4f347",
+      "market": "US",
+      "domain": "byoma.com",
+      "title": "Barrier Repair Eye Cream",
+      "canonical_url": "https://byoma.com/products/barrier-repair-eye-cream",
+      "product_family": "single_formula",
+      "product_line_id": "pl_647126df47203df01777b4cf",
+      "identity_variant_axes": {
+        "multi_variant": false
+      },
+      "pivota_insights": {
+        "direct": {
+          "product_id": "ext_88df3569cc31030b7bd4f347",
+          "kb_key": "product:ext_88df3569cc31030b7bd4f347",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": false,
+          "human_reviewed": true,
+          "issues": [
+            "missing_card_highlight",
+            "public_sensitive_claim",
+            "quality_eligible"
+          ],
+          "blocking_issues": [
+            "missing_card_highlight",
+            "public_sensitive_claim"
+          ],
+          "quality_state": "eligible",
+          "evidence_profile": "seller_plus_formula",
+          "has_card_highlight": false
+        },
+        "effective": {
+          "product_id": "ext_88df3569cc31030b7bd4f347",
+          "kb_key": "product:ext_88df3569cc31030b7bd4f347",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": false,
+          "human_reviewed": true,
+          "issues": [
+            "missing_card_highlight",
+            "public_sensitive_claim",
+            "quality_eligible"
+          ],
+          "blocking_issues": [
+            "missing_card_highlight",
+            "public_sensitive_claim"
+          ],
+          "quality_state": "eligible",
+          "evidence_profile": "seller_plus_formula",
+          "has_card_highlight": false
+        },
+        "product_line_id": "pl_647126df47203df01777b4cf",
+        "borrowed_from_sibling": false
+      },
+      "active_ingredients": {
+        "status": "ready_hero",
+        "issues": [],
+        "regulatory_expected": false,
+        "hero_expected": true,
+        "active_items": [
+          "Ceramide NP",
+          "Hyaluronic acid",
+          "Peptides"
+        ],
+        "source_origin": "pdp_section",
+        "source_quality_status": "captured",
+        "coverage": {
+          "details_sections_count": 8,
+          "faq_count": 0,
+          "how_to_chars": 160,
+          "inci_chars": 862,
+          "active_ingredients_chars": 0,
+          "inci_applicability_status": "",
+          "ingredient_review_status": "",
+          "ingredient_remediation_action": "",
+          "bundle_component_refs_count": 0,
+          "effective_inci_chars": 862,
+          "inci_borrowed_from_product_id": ""
+        },
+        "invalid_fragments": [],
+        "suppressed_reason": null
+      },
+      "variants": {
+        "status": "ready",
+        "issues": [],
+        "visible_variant_rows": 1,
+        "examples": {
+          "identity_option_visible": [],
+          "wrong_axis_for_category": [],
+          "makeup_shade_missing_visual": [],
+          "size_value_generic_axis": [],
+          "default_option_size_evidence_missing_axis": [],
+          "identity_default_title_axis": []
+        }
+      },
+      "coverage": {
+        "details_sections_count": 8,
+        "faq_count": 0,
+        "how_to_chars": 160,
+        "inci_chars": 862,
+        "active_ingredients_chars": 0,
+        "inci_applicability_status": "",
+        "ingredient_review_status": "",
+        "ingredient_remediation_action": "",
+        "bundle_component_refs_count": 0,
+        "effective_inci_chars": 862,
+        "inci_borrowed_from_product_id": ""
+      }
+    },
+    {
+      "seed_id": "eps_b3545b6a648151153190acf3",
+      "external_product_id": "ext_becda03ff4336b5ea4a8cfdf",
+      "market": "US",
+      "domain": "byoma.com",
+      "title": "Bio-Collagen Radiance Facial Mask",
+      "canonical_url": "https://byoma.com/products/bio-collagen-mask",
+      "product_family": "single_formula",
+      "product_line_id": "pl_ba46b8bd181ffedafe5be22d",
+      "identity_variant_axes": {
+        "multi_variant": false
+      },
+      "pivota_insights": {
+        "direct": {
+          "product_id": "ext_becda03ff4336b5ea4a8cfdf",
+          "kb_key": "product:ext_becda03ff4336b5ea4a8cfdf",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": false,
+          "human_reviewed": true,
+          "issues": [
+            "missing_card_highlight",
+            "empty_watchouts",
+            "quality_eligible"
+          ],
+          "blocking_issues": [
+            "missing_card_highlight"
+          ],
+          "quality_state": "eligible",
+          "evidence_profile": "seller_plus_formula",
+          "has_card_highlight": false
+        },
+        "effective": {
+          "product_id": "ext_becda03ff4336b5ea4a8cfdf",
+          "kb_key": "product:ext_becda03ff4336b5ea4a8cfdf",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": false,
+          "human_reviewed": true,
+          "issues": [
+            "missing_card_highlight",
+            "empty_watchouts",
+            "quality_eligible"
+          ],
+          "blocking_issues": [
+            "missing_card_highlight"
+          ],
+          "quality_state": "eligible",
+          "evidence_profile": "seller_plus_formula",
+          "has_card_highlight": false
+        },
+        "product_line_id": "pl_ba46b8bd181ffedafe5be22d",
+        "borrowed_from_sibling": false
+      },
+      "active_ingredients": {
+        "status": "ready_hero",
+        "issues": [
+          "active_raw_too_long",
+          "active_raw_may_be_full_inci"
+        ],
+        "regulatory_expected": false,
+        "hero_expected": true,
+        "active_items": [
+          "Ceramide NP",
+          "Centella asiatica"
+        ],
+        "source_origin": "active_block",
+        "source_quality_status": "captured",
+        "coverage": {
+          "details_sections_count": 6,
+          "faq_count": 0,
+          "how_to_chars": 241,
+          "inci_chars": 716,
+          "active_ingredients_chars": 716,
+          "inci_applicability_status": "",
+          "ingredient_review_status": "",
+          "ingredient_remediation_action": "",
+          "bundle_component_refs_count": 0,
+          "effective_inci_chars": 716,
+          "inci_borrowed_from_product_id": ""
+        },
+        "invalid_fragments": [],
+        "suppressed_reason": "full_inci_low_purity"
+      },
+      "variants": {
+        "status": "ready",
+        "issues": [],
+        "visible_variant_rows": 1,
+        "examples": {
+          "identity_option_visible": [],
+          "wrong_axis_for_category": [],
+          "makeup_shade_missing_visual": [],
+          "size_value_generic_axis": [],
+          "default_option_size_evidence_missing_axis": [],
+          "identity_default_title_axis": []
+        }
+      },
+      "coverage": {
+        "details_sections_count": 6,
+        "faq_count": 0,
+        "how_to_chars": 241,
+        "inci_chars": 716,
+        "active_ingredients_chars": 716,
+        "inci_applicability_status": "",
+        "ingredient_review_status": "",
+        "ingredient_remediation_action": "",
+        "bundle_component_refs_count": 0,
+        "effective_inci_chars": 716,
+        "inci_borrowed_from_product_id": ""
+      }
+    },
+    {
+      "seed_id": "eps_7a15371825d94dc5e1fa29a0",
+      "external_product_id": "ext_cc01e1770b6a534313ecb9a3",
+      "market": "US",
+      "domain": "byoma.com",
+      "title": "Phyto-Mucin Glow Serum",
+      "canonical_url": "https://byoma.com/products/phyto-mucin-glow-serum",
+      "product_family": "single_formula",
+      "product_line_id": "pl_3fb092e1b1f7fa9668346f11",
+      "identity_variant_axes": {
+        "multi_variant": false
+      },
+      "pivota_insights": {
+        "direct": {
+          "product_id": "ext_cc01e1770b6a534313ecb9a3",
+          "kb_key": "product:ext_cc01e1770b6a534313ecb9a3",
+          "status": "not_displayable",
+          "kb_exists": true,
+          "displayable": false,
+          "high_quality_ready": false,
+          "human_reviewed": false,
+          "issues": [
+            "not_reviewed",
+            "not_displayable_gate",
+            "missing_card_highlight",
+            "quality_limited",
+            "seller_only_evidence"
+          ],
+          "blocking_issues": [
+            "not_reviewed",
+            "not_displayable_gate",
+            "missing_card_highlight"
+          ],
+          "quality_state": "limited",
+          "evidence_profile": "seller_only",
+          "has_card_highlight": false
+        },
+        "effective": {
+          "product_id": "ext_cc01e1770b6a534313ecb9a3",
+          "kb_key": "product:ext_cc01e1770b6a534313ecb9a3",
+          "status": "not_displayable",
+          "kb_exists": true,
+          "displayable": false,
+          "high_quality_ready": false,
+          "human_reviewed": false,
+          "issues": [
+            "not_reviewed",
+            "not_displayable_gate",
+            "missing_card_highlight",
+            "quality_limited",
+            "seller_only_evidence"
+          ],
+          "blocking_issues": [
+            "not_reviewed",
+            "not_displayable_gate",
+            "missing_card_highlight"
+          ],
+          "quality_state": "limited",
+          "evidence_profile": "seller_only",
+          "has_card_highlight": false
+        },
+        "product_line_id": "pl_3fb092e1b1f7fa9668346f11",
+        "borrowed_from_sibling": false
+      },
+      "active_ingredients": {
+        "status": "ready_hero",
+        "issues": [],
+        "regulatory_expected": false,
+        "hero_expected": true,
+        "active_items": [
+          "Ceramide NP",
+          "Panthenol (B5)",
+          "Hyaluronic acid",
+          "Peptides"
+        ],
+        "source_origin": "pdp_section",
+        "source_quality_status": "captured",
+        "coverage": {
+          "details_sections_count": 6,
+          "faq_count": 0,
+          "how_to_chars": 125,
+          "inci_chars": 834,
+          "active_ingredients_chars": 0,
+          "inci_applicability_status": "",
+          "ingredient_review_status": "",
+          "ingredient_remediation_action": "",
+          "bundle_component_refs_count": 0,
+          "effective_inci_chars": 834,
+          "inci_borrowed_from_product_id": ""
+        },
+        "invalid_fragments": [],
+        "suppressed_reason": null
+      },
+      "variants": {
+        "status": "ready",
+        "issues": [],
+        "visible_variant_rows": 1,
+        "examples": {
+          "identity_option_visible": [],
+          "wrong_axis_for_category": [],
+          "makeup_shade_missing_visual": [],
+          "size_value_generic_axis": [],
+          "default_option_size_evidence_missing_axis": [],
+          "identity_default_title_axis": []
+        }
+      },
+      "coverage": {
+        "details_sections_count": 6,
+        "faq_count": 0,
+        "how_to_chars": 125,
+        "inci_chars": 834,
+        "active_ingredients_chars": 0,
+        "inci_applicability_status": "",
+        "ingredient_review_status": "",
+        "ingredient_remediation_action": "",
+        "bundle_component_refs_count": 0,
+        "effective_inci_chars": 834,
+        "inci_borrowed_from_product_id": ""
+      }
+    },
+    {
+      "seed_id": "eps_da1d525215ac1d3fb991a983",
+      "external_product_id": "ext_cd345dcee05cd81ef6d49f29",
+      "market": "US",
+      "domain": "byoma.com",
+      "title": "Milky Moisture Cleanser",
+      "canonical_url": "https://byoma.com/products/milky-moisture-cleanser",
+      "product_family": "single_formula",
+      "product_line_id": "pl_8918e25bb6e7a32942d57d7b",
+      "identity_variant_axes": {
+        "multi_variant": false
+      },
+      "pivota_insights": {
+        "direct": {
+          "product_id": "ext_cd345dcee05cd81ef6d49f29",
+          "kb_key": "product:ext_cd345dcee05cd81ef6d49f29",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": false,
+          "human_reviewed": true,
+          "issues": [
+            "missing_card_highlight",
+            "empty_watchouts",
+            "quality_eligible"
+          ],
+          "blocking_issues": [
+            "missing_card_highlight"
+          ],
+          "quality_state": "eligible",
+          "evidence_profile": "seller_plus_formula",
+          "has_card_highlight": false
+        },
+        "effective": {
+          "product_id": "ext_cd345dcee05cd81ef6d49f29",
+          "kb_key": "product:ext_cd345dcee05cd81ef6d49f29",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": false,
+          "human_reviewed": true,
+          "issues": [
+            "missing_card_highlight",
+            "empty_watchouts",
+            "quality_eligible"
+          ],
+          "blocking_issues": [
+            "missing_card_highlight"
+          ],
+          "quality_state": "eligible",
+          "evidence_profile": "seller_plus_formula",
+          "has_card_highlight": false
+        },
+        "product_line_id": "pl_8918e25bb6e7a32942d57d7b",
+        "borrowed_from_sibling": false
+      },
+      "active_ingredients": {
+        "status": "ready_hero",
+        "issues": [
+          "active_raw_too_long",
+          "active_raw_may_be_full_inci"
+        ],
+        "regulatory_expected": false,
+        "hero_expected": true,
+        "active_items": [
+          "Ceramide NP",
+          "Panthenol (B5)"
+        ],
+        "source_origin": "active_block",
+        "source_quality_status": "captured",
+        "coverage": {
+          "details_sections_count": 8,
+          "faq_count": 0,
+          "how_to_chars": 225,
+          "inci_chars": 979,
+          "active_ingredients_chars": 979,
+          "inci_applicability_status": "",
+          "ingredient_review_status": "",
+          "ingredient_remediation_action": "",
+          "bundle_component_refs_count": 0,
+          "effective_inci_chars": 979,
+          "inci_borrowed_from_product_id": ""
+        },
+        "invalid_fragments": [],
+        "suppressed_reason": "full_inci_low_purity"
+      },
+      "variants": {
+        "status": "ready",
+        "issues": [],
+        "visible_variant_rows": 1,
+        "examples": {
+          "identity_option_visible": [],
+          "wrong_axis_for_category": [],
+          "makeup_shade_missing_visual": [],
+          "size_value_generic_axis": [],
+          "default_option_size_evidence_missing_axis": [],
+          "identity_default_title_axis": []
+        }
+      },
+      "coverage": {
+        "details_sections_count": 8,
+        "faq_count": 0,
+        "how_to_chars": 225,
+        "inci_chars": 979,
+        "active_ingredients_chars": 979,
+        "inci_applicability_status": "",
+        "ingredient_review_status": "",
+        "ingredient_remediation_action": "",
+        "bundle_component_refs_count": 0,
+        "effective_inci_chars": 979,
+        "inci_borrowed_from_product_id": ""
+      }
+    },
+    {
+      "seed_id": "eps_8d5c4c66ad03b3ec40137e32",
+      "external_product_id": "ext_d96f7273b58db8f12f591088",
+      "market": "US",
+      "domain": "byoma.com",
+      "title": "Brightening Toner",
+      "canonical_url": "https://byoma.com/products/brightening-toner",
+      "product_family": "single_formula",
+      "product_line_id": "pl_62f1e2fb4693107185190040",
+      "identity_variant_axes": {
+        "multi_variant": false
+      },
+      "pivota_insights": {
+        "direct": {
+          "product_id": "ext_d96f7273b58db8f12f591088",
+          "kb_key": "product:ext_d96f7273b58db8f12f591088",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": false,
+          "human_reviewed": true,
+          "issues": [
+            "missing_card_highlight",
+            "quality_eligible"
+          ],
+          "blocking_issues": [
+            "missing_card_highlight"
+          ],
+          "quality_state": "eligible",
+          "evidence_profile": "seller_plus_formula",
+          "has_card_highlight": false
+        },
+        "effective": {
+          "product_id": "ext_d96f7273b58db8f12f591088",
+          "kb_key": "product:ext_d96f7273b58db8f12f591088",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": false,
+          "human_reviewed": true,
+          "issues": [
+            "missing_card_highlight",
+            "quality_eligible"
+          ],
+          "blocking_issues": [
+            "missing_card_highlight"
+          ],
+          "quality_state": "eligible",
+          "evidence_profile": "seller_plus_formula",
+          "has_card_highlight": false
+        },
+        "product_line_id": "pl_62f1e2fb4693107185190040",
+        "borrowed_from_sibling": false
+      },
+      "active_ingredients": {
+        "status": "ready_hero",
+        "issues": [],
+        "regulatory_expected": false,
+        "hero_expected": true,
+        "active_items": [
+          "Ceramide NP",
+          "Mandelic acid"
+        ],
+        "source_origin": "pdp_section",
+        "source_quality_status": "captured",
+        "coverage": {
+          "details_sections_count": 6,
+          "faq_count": 0,
+          "how_to_chars": 239,
+          "inci_chars": 394,
+          "active_ingredients_chars": 0,
+          "inci_applicability_status": "",
+          "ingredient_review_status": "",
+          "ingredient_remediation_action": "",
+          "bundle_component_refs_count": 0,
+          "effective_inci_chars": 394,
+          "inci_borrowed_from_product_id": ""
+        },
+        "invalid_fragments": [],
+        "suppressed_reason": null
+      },
+      "variants": {
+        "status": "ready",
+        "issues": [],
+        "visible_variant_rows": 1,
+        "examples": {
+          "identity_option_visible": [],
+          "wrong_axis_for_category": [],
+          "makeup_shade_missing_visual": [],
+          "size_value_generic_axis": [],
+          "default_option_size_evidence_missing_axis": [],
+          "identity_default_title_axis": []
+        }
+      },
+      "coverage": {
+        "details_sections_count": 6,
+        "faq_count": 0,
+        "how_to_chars": 239,
+        "inci_chars": 394,
+        "active_ingredients_chars": 0,
+        "inci_applicability_status": "",
+        "ingredient_review_status": "",
+        "ingredient_remediation_action": "",
+        "bundle_component_refs_count": 0,
+        "effective_inci_chars": 394,
+        "inci_borrowed_from_product_id": ""
+      }
+    }
+  ]
+}

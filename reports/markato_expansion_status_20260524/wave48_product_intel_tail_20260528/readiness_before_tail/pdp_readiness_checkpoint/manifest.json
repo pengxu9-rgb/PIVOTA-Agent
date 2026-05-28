@@ -1,0 +1,3486 @@
+{
+  "generated_at": "2026-05-28T09:56:58.466Z",
+  "checkpoint_dir": "/private/tmp/pivota-agent-product-intel-tail-20260528/reports/markato_expansion_status_20260524/wave48_product_intel_tail_20260528/readiness_before_tail/pdp_readiness_checkpoint",
+  "options": {
+    "market": "US",
+    "includeAttached": true,
+    "domain": null,
+    "externalProductIds": [],
+    "limit": 20000,
+    "sampleLimit": 10,
+    "checkpointDir": "/private/tmp/pivota-agent-product-intel-tail-20260528/reports/markato_expansion_status_20260524/wave48_product_intel_tail_20260528/readiness_before_tail/pdp_readiness_checkpoint",
+    "checkpointMode": "domain",
+    "resume": false,
+    "force": false,
+    "continueOnError": true,
+    "pageSize": 500,
+    "format": "json"
+  },
+  "domain_count": 124,
+  "completed_domains": [
+    {
+      "domain": "fentybeauty.com",
+      "rows": 860,
+      "file": "/private/tmp/pivota-agent-product-intel-tail-20260528/reports/markato_expansion_status_20260524/wave48_product_intel_tail_20260528/readiness_before_tail/pdp_readiness_checkpoint/domains/fentybeauty.com.json"
+    },
+    {
+      "domain": "www.tomfordbeauty.com",
+      "rows": 464,
+      "file": "/private/tmp/pivota-agent-product-intel-tail-20260528/reports/markato_expansion_status_20260524/wave48_product_intel_tail_20260528/readiness_before_tail/pdp_readiness_checkpoint/domains/www.tomfordbeauty.com.json"
+    },
+    {
+      "domain": "pixibeauty.com",
+      "rows": 351,
+      "file": "/private/tmp/pivota-agent-product-intel-tail-20260528/reports/markato_expansion_status_20260524/wave48_product_intel_tail_20260528/readiness_before_tail/pdp_readiness_checkpoint/domains/pixibeauty.com.json"
+    },
+    {
+      "domain": "sigmabeauty.com",
+      "rows": 232,
+      "file": "/private/tmp/pivota-agent-product-intel-tail-20260528/reports/markato_expansion_status_20260524/wave48_product_intel_tail_20260528/readiness_before_tail/pdp_readiness_checkpoint/domains/sigmabeauty.com.json"
+    },
+    {
+      "domain": "kyliecosmetics.com",
+      "rows": 226,
+      "file": "/private/tmp/pivota-agent-product-intel-tail-20260528/reports/markato_expansion_status_20260524/wave48_product_intel_tail_20260528/readiness_before_tail/pdp_readiness_checkpoint/domains/kyliecosmetics.com.json"
+    },
+    {
+      "domain": "palmofferonia.com",
+      "rows": 199,
+      "file": "/private/tmp/pivota-agent-product-intel-tail-20260528/reports/markato_expansion_status_20260524/wave48_product_intel_tail_20260528/readiness_before_tail/pdp_readiness_checkpoint/domains/palmofferonia.com.json"
+    },
+    {
+      "domain": "missnella.com",
+      "rows": 198,
+      "file": "/private/tmp/pivota-agent-product-intel-tail-20260528/reports/markato_expansion_status_20260524/wave48_product_intel_tail_20260528/readiness_before_tail/pdp_readiness_checkpoint/domains/missnella.com.json"
+    },
+    {
+      "domain": "wholesale.publicgoods.com",
+      "rows": 181,
+      "file": "/private/tmp/pivota-agent-product-intel-tail-20260528/reports/markato_expansion_status_20260524/wave48_product_intel_tail_20260528/readiness_before_tail/pdp_readiness_checkpoint/domains/wholesale.publicgoods.com.json"
+    },
+    {
+      "domain": "intelligentchange.com",
+      "rows": 163,
+      "file": "/private/tmp/pivota-agent-product-intel-tail-20260528/reports/markato_expansion_status_20260524/wave48_product_intel_tail_20260528/readiness_before_tail/pdp_readiness_checkpoint/domains/intelligentchange.com.json"
+    },
+    {
+      "domain": "lizush.com",
+      "rows": 125,
+      "file": "/private/tmp/pivota-agent-product-intel-tail-20260528/reports/markato_expansion_status_20260524/wave48_product_intel_tail_20260528/readiness_before_tail/pdp_readiness_checkpoint/domains/lizush.com.json"
+    },
+    {
+      "domain": "skin1004.com",
+      "rows": 113,
+      "file": "/private/tmp/pivota-agent-product-intel-tail-20260528/reports/markato_expansion_status_20260524/wave48_product_intel_tail_20260528/readiness_before_tail/pdp_readiness_checkpoint/domains/skin1004.com.json"
+    },
+    {
+      "domain": "rarebeauty.com",
+      "rows": 110,
+      "file": "/private/tmp/pivota-agent-product-intel-tail-20260528/reports/markato_expansion_status_20260524/wave48_product_intel_tail_20260528/readiness_before_tail/pdp_readiness_checkpoint/domains/rarebeauty.com.json"
+    },
+    {
+      "domain": "naturium.com",
+      "rows": 106,
+      "file": "/private/tmp/pivota-agent-product-intel-tail-20260528/reports/markato_expansion_status_20260524/wave48_product_intel_tail_20260528/readiness_before_tail/pdp_readiness_checkpoint/domains/naturium.com.json"
+    },
+    {
+      "domain": "upcirclebeauty.com",
+      "rows": 103,
+      "file": "/private/tmp/pivota-agent-product-intel-tail-20260528/reports/markato_expansion_status_20260524/wave48_product_intel_tail_20260528/readiness_before_tail/pdp_readiness_checkpoint/domains/upcirclebeauty.com.json"
+    },
+    {
+      "domain": "us.nuxe.com",
+      "rows": 103,
+      "file": "/private/tmp/pivota-agent-product-intel-tail-20260528/reports/markato_expansion_status_20260524/wave48_product_intel_tail_20260528/readiness_before_tail/pdp_readiness_checkpoint/domains/us.nuxe.com.json"
+    },
+    {
+      "domain": "beekman1802.com",
+      "rows": 102,
+      "file": "/private/tmp/pivota-agent-product-intel-tail-20260528/reports/markato_expansion_status_20260524/wave48_product_intel_tail_20260528/readiness_before_tail/pdp_readiness_checkpoint/domains/beekman1802.com.json"
+    },
+    {
+      "domain": "cosrx.com",
+      "rows": 101,
+      "file": "/private/tmp/pivota-agent-product-intel-tail-20260528/reports/markato_expansion_status_20260524/wave48_product_intel_tail_20260528/readiness_before_tail/pdp_readiness_checkpoint/domains/cosrx.com.json"
+    },
+    {
+      "domain": "www.jurlique.com",
+      "rows": 99,
+      "file": "/private/tmp/pivota-agent-product-intel-tail-20260528/reports/markato_expansion_status_20260524/wave48_product_intel_tail_20260528/readiness_before_tail/pdp_readiness_checkpoint/domains/www.jurlique.com.json"
+    },
+    {
+      "domain": "lav-kids.com",
+      "rows": 91,
+      "file": "/private/tmp/pivota-agent-product-intel-tail-20260528/reports/markato_expansion_status_20260524/wave48_product_intel_tail_20260528/readiness_before_tail/pdp_readiness_checkpoint/domains/lav-kids.com.json"
+    },
+    {
+      "domain": "dearbarber.co.uk",
+      "rows": 89,
+      "file": "/private/tmp/pivota-agent-product-intel-tail-20260528/reports/markato_expansion_status_20260524/wave48_product_intel_tail_20260528/readiness_before_tail/pdp_readiness_checkpoint/domains/dearbarber.co.uk.json"
+    },
+    {
+      "domain": "roundlab.com",
+      "rows": 79,
+      "file": "/private/tmp/pivota-agent-product-intel-tail-20260528/reports/markato_expansion_status_20260524/wave48_product_intel_tail_20260528/readiness_before_tail/pdp_readiness_checkpoint/domains/roundlab.com.json"
+    },
+    {
+      "domain": "murad.com",
+      "rows": 76,
+      "file": "/private/tmp/pivota-agent-product-intel-tail-20260528/reports/markato_expansion_status_20260524/wave48_product_intel_tail_20260528/readiness_before_tail/pdp_readiness_checkpoint/domains/murad.com.json"
+    },
+    {
+      "domain": "olehenriksen.com",
+      "rows": 74,
+      "file": "/private/tmp/pivota-agent-product-intel-tail-20260528/reports/markato_expansion_status_20260524/wave48_product_intel_tail_20260528/readiness_before_tail/pdp_readiness_checkpoint/domains/olehenriksen.com.json"
+    },
+    {
+      "domain": "bijin-shop.com",
+      "rows": 69,
+      "file": "/private/tmp/pivota-agent-product-intel-tail-20260528/reports/markato_expansion_status_20260524/wave48_product_intel_tail_20260528/readiness_before_tail/pdp_readiness_checkpoint/domains/bijin-shop.com.json"
+    },
+    {
+      "domain": "reddane.co.za",
+      "rows": 69,
+      "file": "/private/tmp/pivota-agent-product-intel-tail-20260528/reports/markato_expansion_status_20260524/wave48_product_intel_tail_20260528/readiness_before_tail/pdp_readiness_checkpoint/domains/reddane.co.za.json"
+    },
+    {
+      "domain": "tirtir.global",
+      "rows": 68,
+      "file": "/private/tmp/pivota-agent-product-intel-tail-20260528/reports/markato_expansion_status_20260524/wave48_product_intel_tail_20260528/readiness_before_tail/pdp_readiness_checkpoint/domains/tirtir.global.json"
+    },
+    {
+      "domain": "theordinary.com",
+      "rows": 66,
+      "file": "/private/tmp/pivota-agent-product-intel-tail-20260528/reports/markato_expansion_status_20260524/wave48_product_intel_tail_20260528/readiness_before_tail/pdp_readiness_checkpoint/domains/theordinary.com.json"
+    },
+    {
+      "domain": "us.embryolisse.com",
+      "rows": 65,
+      "file": "/private/tmp/pivota-agent-product-intel-tail-20260528/reports/markato_expansion_status_20260524/wave48_product_intel_tail_20260528/readiness_before_tail/pdp_readiness_checkpoint/domains/us.embryolisse.com.json"
+    },
+    {
+      "domain": "innbeautyproject.com",
+      "rows": 64,
+      "file": "/private/tmp/pivota-agent-product-intel-tail-20260528/reports/markato_expansion_status_20260524/wave48_product_intel_tail_20260528/readiness_before_tail/pdp_readiness_checkpoint/domains/innbeautyproject.com.json"
+    },
+    {
+      "domain": "lasavonneriedupilonduroy.com",
+      "rows": 57,
+      "file": "/private/tmp/pivota-agent-product-intel-tail-20260528/reports/markato_expansion_status_20260524/wave48_product_intel_tail_20260528/readiness_before_tail/pdp_readiness_checkpoint/domains/lasavonneriedupilonduroy.com.json"
+    },
+    {
+      "domain": "anua.com",
+      "rows": 54,
+      "file": "/private/tmp/pivota-agent-product-intel-tail-20260528/reports/markato_expansion_status_20260524/wave48_product_intel_tail_20260528/readiness_before_tail/pdp_readiness_checkpoint/domains/anua.com.json"
+    },
+    {
+      "domain": "blindbarber.com",
+      "rows": 54,
+      "file": "/private/tmp/pivota-agent-product-intel-tail-20260528/reports/markato_expansion_status_20260524/wave48_product_intel_tail_20260528/readiness_before_tail/pdp_readiness_checkpoint/domains/blindbarber.com.json"
+    },
+    {
+      "domain": "786cosmetics.com",
+      "rows": 51,
+      "file": "/private/tmp/pivota-agent-product-intel-tail-20260528/reports/markato_expansion_status_20260524/wave48_product_intel_tail_20260528/readiness_before_tail/pdp_readiness_checkpoint/domains/786cosmetics.com.json"
+    },
+    {
+      "domain": "beautyofjoseon.com",
+      "rows": 46,
+      "file": "/private/tmp/pivota-agent-product-intel-tail-20260528/reports/markato_expansion_status_20260524/wave48_product_intel_tail_20260528/readiness_before_tail/pdp_readiness_checkpoint/domains/beautyofjoseon.com.json"
+    },
+    {
+      "domain": "firstaidbeauty.com",
+      "rows": 45,
+      "file": "/private/tmp/pivota-agent-product-intel-tail-20260528/reports/markato_expansion_status_20260524/wave48_product_intel_tail_20260528/readiness_before_tail/pdp_readiness_checkpoint/domains/firstaidbeauty.com.json"
+    },
+    {
+      "domain": "ulta.com",
+      "rows": 40,
+      "file": "/private/tmp/pivota-agent-product-intel-tail-20260528/reports/markato_expansion_status_20260524/wave48_product_intel_tail_20260528/readiness_before_tail/pdp_readiness_checkpoint/domains/ulta.com.json"
+    },
+    {
+      "domain": "supergoop.com",
+      "rows": 39,
+      "file": "/private/tmp/pivota-agent-product-intel-tail-20260528/reports/markato_expansion_status_20260524/wave48_product_intel_tail_20260528/readiness_before_tail/pdp_readiness_checkpoint/domains/supergoop.com.json"
+    },
+    {
+      "domain": "www.guerlain.com",
+      "rows": 39,
+      "file": "/private/tmp/pivota-agent-product-intel-tail-20260528/reports/markato_expansion_status_20260524/wave48_product_intel_tail_20260528/readiness_before_tail/pdp_readiness_checkpoint/domains/www.guerlain.com.json"
+    },
+    {
+      "domain": "catkin.com",
+      "rows": 36,
+      "file": "/private/tmp/pivota-agent-product-intel-tail-20260528/reports/markato_expansion_status_20260524/wave48_product_intel_tail_20260528/readiness_before_tail/pdp_readiness_checkpoint/domains/catkin.com.json"
+    },
+    {
+      "domain": "kravebeauty.com",
+      "rows": 35,
+      "file": "/private/tmp/pivota-agent-product-intel-tail-20260528/reports/markato_expansion_status_20260524/wave48_product_intel_tail_20260528/readiness_before_tail/pdp_readiness_checkpoint/domains/kravebeauty.com.json"
+    },
+    {
+      "domain": "torriden.us",
+      "rows": 35,
+      "file": "/private/tmp/pivota-agent-product-intel-tail-20260528/reports/markato_expansion_status_20260524/wave48_product_intel_tail_20260528/readiness_before_tail/pdp_readiness_checkpoint/domains/torriden.us.json"
+    },
+    {
+      "domain": "haruharuwonder.com",
+      "rows": 31,
+      "file": "/private/tmp/pivota-agent-product-intel-tail-20260528/reports/markato_expansion_status_20260524/wave48_product_intel_tail_20260528/readiness_before_tail/pdp_readiness_checkpoint/domains/haruharuwonder.com.json"
+    },
+    {
+      "domain": "us.laneige.com",
+      "rows": 27,
+      "file": "/private/tmp/pivota-agent-product-intel-tail-20260528/reports/markato_expansion_status_20260524/wave48_product_intel_tail_20260528/readiness_before_tail/pdp_readiness_checkpoint/domains/us.laneige.com.json"
+    },
+    {
+      "domain": "nourwish.com",
+      "rows": 26,
+      "file": "/private/tmp/pivota-agent-product-intel-tail-20260528/reports/markato_expansion_status_20260524/wave48_product_intel_tail_20260528/readiness_before_tail/pdp_readiness_checkpoint/domains/nourwish.com.json"
+    },
+    {
+      "domain": "terraandco.com",
+      "rows": 24,
+      "file": "/private/tmp/pivota-agent-product-intel-tail-20260528/reports/markato_expansion_status_20260524/wave48_product_intel_tail_20260528/readiness_before_tail/pdp_readiness_checkpoint/domains/terraandco.com.json"
+    },
+    {
+      "domain": "joocyee.com",
+      "rows": 18,
+      "file": "/private/tmp/pivota-agent-product-intel-tail-20260528/reports/markato_expansion_status_20260524/wave48_product_intel_tail_20260528/readiness_before_tail/pdp_readiness_checkpoint/domains/joocyee.com.json"
+    },
+    {
+      "domain": "dermalogica.com",
+      "rows": 17,
+      "file": "/private/tmp/pivota-agent-product-intel-tail-20260528/reports/markato_expansion_status_20260524/wave48_product_intel_tail_20260528/readiness_before_tail/pdp_readiness_checkpoint/domains/dermalogica.com.json"
+    },
+    {
+      "domain": "judydoll.com",
+      "rows": 17,
+      "file": "/private/tmp/pivota-agent-product-intel-tail-20260528/reports/markato_expansion_status_20260524/wave48_product_intel_tail_20260528/readiness_before_tail/pdp_readiness_checkpoint/domains/judydoll.com.json"
+    },
+    {
+      "domain": "medicube.us",
+      "rows": 17,
+      "file": "/private/tmp/pivota-agent-product-intel-tail-20260528/reports/markato_expansion_status_20260524/wave48_product_intel_tail_20260528/readiness_before_tail/pdp_readiness_checkpoint/domains/medicube.us.json"
+    },
+    {
+      "domain": "mossnoor.com",
+      "rows": 16,
+      "file": "/private/tmp/pivota-agent-product-intel-tail-20260528/reports/markato_expansion_status_20260524/wave48_product_intel_tail_20260528/readiness_before_tail/pdp_readiness_checkpoint/domains/mossnoor.com.json"
+    },
+    {
+      "domain": "nativeatlas.com",
+      "rows": 15,
+      "file": "/private/tmp/pivota-agent-product-intel-tail-20260528/reports/markato_expansion_status_20260524/wave48_product_intel_tail_20260528/readiness_before_tail/pdp_readiness_checkpoint/domains/nativeatlas.com.json"
+    },
+    {
+      "domain": "skintific.com",
+      "rows": 15,
+      "file": "/private/tmp/pivota-agent-product-intel-tail-20260528/reports/markato_expansion_status_20260524/wave48_product_intel_tail_20260528/readiness_before_tail/pdp_readiness_checkpoint/domains/skintific.com.json"
+    },
+    {
+      "domain": "sokoglam.com",
+      "rows": 15,
+      "file": "/private/tmp/pivota-agent-product-intel-tail-20260528/reports/markato_expansion_status_20260524/wave48_product_intel_tail_20260528/readiness_before_tail/pdp_readiness_checkpoint/domains/sokoglam.com.json"
+    },
+    {
+      "domain": "biologique-recherche.com",
+      "rows": 14,
+      "file": "/private/tmp/pivota-agent-product-intel-tail-20260528/reports/markato_expansion_status_20260524/wave48_product_intel_tail_20260528/readiness_before_tail/pdp_readiness_checkpoint/domains/biologique-recherche.com.json"
+    },
+    {
+      "domain": "byrabeauty.com",
+      "rows": 14,
+      "file": "/private/tmp/pivota-agent-product-intel-tail-20260528/reports/markato_expansion_status_20260524/wave48_product_intel_tail_20260528/readiness_before_tail/pdp_readiness_checkpoint/domains/byrabeauty.com.json"
+    },
+    {
+      "domain": "ohlolly.com",
+      "rows": 14,
+      "file": "/private/tmp/pivota-agent-product-intel-tail-20260528/reports/markato_expansion_status_20260524/wave48_product_intel_tail_20260528/readiness_before_tail/pdp_readiness_checkpoint/domains/ohlolly.com.json"
+    },
+    {
+      "domain": "rhodeskin.com",
+      "rows": 14,
+      "file": "/private/tmp/pivota-agent-product-intel-tail-20260528/reports/markato_expansion_status_20260524/wave48_product_intel_tail_20260528/readiness_before_tail/pdp_readiness_checkpoint/domains/rhodeskin.com.json"
+    },
+    {
+      "domain": "aya-skincare.com.au",
+      "rows": 12,
+      "file": "/private/tmp/pivota-agent-product-intel-tail-20260528/reports/markato_expansion_status_20260524/wave48_product_intel_tail_20260528/readiness_before_tail/pdp_readiness_checkpoint/domains/aya-skincare.com.au.json"
+    },
+    {
+      "domain": "baiebotanique.com",
+      "rows": 12,
+      "file": "/private/tmp/pivota-agent-product-intel-tail-20260528/reports/markato_expansion_status_20260524/wave48_product_intel_tail_20260528/readiness_before_tail/pdp_readiness_checkpoint/domains/baiebotanique.com.json"
+    },
+    {
+      "domain": "joujoubotanicals.com",
+      "rows": 11,
+      "file": "/private/tmp/pivota-agent-product-intel-tail-20260528/reports/markato_expansion_status_20260524/wave48_product_intel_tail_20260528/readiness_before_tail/pdp_readiness_checkpoint/domains/joujoubotanicals.com.json"
+    },
+    {
+      "domain": "lunanectar.com",
+      "rows": 11,
+      "file": "/private/tmp/pivota-agent-product-intel-tail-20260528/reports/markato_expansion_status_20260524/wave48_product_intel_tail_20260528/readiness_before_tail/pdp_readiness_checkpoint/domains/lunanectar.com.json"
+    },
+    {
+      "domain": "byoma.com",
+      "rows": 10,
+      "file": "/private/tmp/pivota-agent-product-intel-tail-20260528/reports/markato_expansion_status_20260524/wave48_product_intel_tail_20260528/readiness_before_tail/pdp_readiness_checkpoint/domains/byoma.com.json"
+    },
+    {
+      "domain": "delicatedaisys.com",
+      "rows": 10,
+      "file": "/private/tmp/pivota-agent-product-intel-tail-20260528/reports/markato_expansion_status_20260524/wave48_product_intel_tail_20260528/readiness_before_tail/pdp_readiness_checkpoint/domains/delicatedaisys.com.json"
+    },
+    {
+      "domain": "nalacare.com",
+      "rows": 10,
+      "file": "/private/tmp/pivota-agent-product-intel-tail-20260528/reports/markato_expansion_status_20260524/wave48_product_intel_tail_20260528/readiness_before_tail/pdp_readiness_checkpoint/domains/nalacare.com.json"
+    },
+    {
+      "domain": "nubest.com",
+      "rows": 10,
+      "file": "/private/tmp/pivota-agent-product-intel-tail-20260528/reports/markato_expansion_status_20260524/wave48_product_intel_tail_20260528/readiness_before_tail/pdp_readiness_checkpoint/domains/nubest.com.json"
+    },
+    {
+      "domain": "intoyoucosmetics.com",
+      "rows": 9,
+      "file": "/private/tmp/pivota-agent-product-intel-tail-20260528/reports/markato_expansion_status_20260524/wave48_product_intel_tail_20260528/readiness_before_tail/pdp_readiness_checkpoint/domains/intoyoucosmetics.com.json"
+    },
+    {
+      "domain": "paulaschoice.com",
+      "rows": 9,
+      "file": "/private/tmp/pivota-agent-product-intel-tail-20260528/reports/markato_expansion_status_20260524/wave48_product_intel_tail_20260528/readiness_before_tail/pdp_readiness_checkpoint/domains/paulaschoice.com.json"
+    },
+    {
+      "domain": "rmsbeauty.com",
+      "rows": 9,
+      "file": "/private/tmp/pivota-agent-product-intel-tail-20260528/reports/markato_expansion_status_20260524/wave48_product_intel_tail_20260528/readiness_before_tail/pdp_readiness_checkpoint/domains/rmsbeauty.com.json"
+    },
+    {
+      "domain": "theinkeylist.com",
+      "rows": 9,
+      "file": "/private/tmp/pivota-agent-product-intel-tail-20260528/reports/markato_expansion_status_20260524/wave48_product_intel_tail_20260528/readiness_before_tail/pdp_readiness_checkpoint/domains/theinkeylist.com.json"
+    },
+    {
+      "domain": "activedrip.com",
+      "rows": 8,
+      "file": "/private/tmp/pivota-agent-product-intel-tail-20260528/reports/markato_expansion_status_20260524/wave48_product_intel_tail_20260528/readiness_before_tail/pdp_readiness_checkpoint/domains/activedrip.com.json"
+    },
+    {
+      "domain": "glossier.com",
+      "rows": 8,
+      "file": "/private/tmp/pivota-agent-product-intel-tail-20260528/reports/markato_expansion_status_20260524/wave48_product_intel_tail_20260528/readiness_before_tail/pdp_readiness_checkpoint/domains/glossier.com.json"
+    },
+    {
+      "domain": "khus-khus.com",
+      "rows": 8,
+      "file": "/private/tmp/pivota-agent-product-intel-tail-20260528/reports/markato_expansion_status_20260524/wave48_product_intel_tail_20260528/readiness_before_tail/pdp_readiness_checkpoint/domains/khus-khus.com.json"
+    },
+    {
+      "domain": "linhart.nyc",
+      "rows": 8,
+      "file": "/private/tmp/pivota-agent-product-intel-tail-20260528/reports/markato_expansion_status_20260524/wave48_product_intel_tail_20260528/readiness_before_tail/pdp_readiness_checkpoint/domains/linhart.nyc.json"
+    },
+    {
+      "domain": "norrenordic.com",
+      "rows": 8,
+      "file": "/private/tmp/pivota-agent-product-intel-tail-20260528/reports/markato_expansion_status_20260524/wave48_product_intel_tail_20260528/readiness_before_tail/pdp_readiness_checkpoint/domains/norrenordic.com.json"
+    },
+    {
+      "domain": "coconutmatter.com",
+      "rows": 7,
+      "file": "/private/tmp/pivota-agent-product-intel-tail-20260528/reports/markato_expansion_status_20260524/wave48_product_intel_tail_20260528/readiness_before_tail/pdp_readiness_checkpoint/domains/coconutmatter.com.json"
+    },
+    {
+      "domain": "flowerknows.co",
+      "rows": 7,
+      "file": "/private/tmp/pivota-agent-product-intel-tail-20260528/reports/markato_expansion_status_20260524/wave48_product_intel_tail_20260528/readiness_before_tail/pdp_readiness_checkpoint/domains/flowerknows.co.json"
+    },
+    {
+      "domain": "abyssianhaircare.com",
+      "rows": 6,
+      "file": "/private/tmp/pivota-agent-product-intel-tail-20260528/reports/markato_expansion_status_20260524/wave48_product_intel_tail_20260528/readiness_before_tail/pdp_readiness_checkpoint/domains/abyssianhaircare.com.json"
+    },
+    {
+      "domain": "lhamour.com",
+      "rows": 6,
+      "file": "/private/tmp/pivota-agent-product-intel-tail-20260528/reports/markato_expansion_status_20260524/wave48_product_intel_tail_20260528/readiness_before_tail/pdp_readiness_checkpoint/domains/lhamour.com.json"
+    },
+    {
+      "domain": "us.oiolab.co",
+      "rows": 6,
+      "file": "/private/tmp/pivota-agent-product-intel-tail-20260528/reports/markato_expansion_status_20260524/wave48_product_intel_tail_20260528/readiness_before_tail/pdp_readiness_checkpoint/domains/us.oiolab.co.json"
+    },
+    {
+      "domain": "7journeys.com",
+      "rows": 5,
+      "file": "/private/tmp/pivota-agent-product-intel-tail-20260528/reports/markato_expansion_status_20260524/wave48_product_intel_tail_20260528/readiness_before_tail/pdp_readiness_checkpoint/domains/7journeys.com.json"
+    },
+    {
+      "domain": "apiceuticals.com",
+      "rows": 5,
+      "file": "/private/tmp/pivota-agent-product-intel-tail-20260528/reports/markato_expansion_status_20260524/wave48_product_intel_tail_20260528/readiness_before_tail/pdp_readiness_checkpoint/domains/apiceuticals.com.json"
+    },
+    {
+      "domain": "lucamarskincare.com",
+      "rows": 5,
+      "file": "/private/tmp/pivota-agent-product-intel-tail-20260528/reports/markato_expansion_status_20260524/wave48_product_intel_tail_20260528/readiness_before_tail/pdp_readiness_checkpoint/domains/lucamarskincare.com.json"
+    },
+    {
+      "domain": "oiluj.com",
+      "rows": 5,
+      "file": "/private/tmp/pivota-agent-product-intel-tail-20260528/reports/markato_expansion_status_20260524/wave48_product_intel_tail_20260528/readiness_before_tail/pdp_readiness_checkpoint/domains/oiluj.com.json"
+    },
+    {
+      "domain": "patyka.com",
+      "rows": 5,
+      "file": "/private/tmp/pivota-agent-product-intel-tail-20260528/reports/markato_expansion_status_20260524/wave48_product_intel_tail_20260528/readiness_before_tail/pdp_readiness_checkpoint/domains/patyka.com.json"
+    },
+    {
+      "domain": "wishtrend.com",
+      "rows": 5,
+      "file": "/private/tmp/pivota-agent-product-intel-tail-20260528/reports/markato_expansion_status_20260524/wave48_product_intel_tail_20260528/readiness_before_tail/pdp_readiness_checkpoint/domains/wishtrend.com.json"
+    },
+    {
+      "domain": "drjart.com",
+      "rows": 4,
+      "file": "/private/tmp/pivota-agent-product-intel-tail-20260528/reports/markato_expansion_status_20260524/wave48_product_intel_tail_20260528/readiness_before_tail/pdp_readiness_checkpoint/domains/drjart.com.json"
+    },
+    {
+      "domain": "glowrecipe.com",
+      "rows": 4,
+      "file": "/private/tmp/pivota-agent-product-intel-tail-20260528/reports/markato_expansion_status_20260524/wave48_product_intel_tail_20260528/readiness_before_tail/pdp_readiness_checkpoint/domains/glowrecipe.com.json"
+    },
+    {
+      "domain": "lovemasami.com",
+      "rows": 4,
+      "file": "/private/tmp/pivota-agent-product-intel-tail-20260528/reports/markato_expansion_status_20260524/wave48_product_intel_tail_20260528/readiness_before_tail/pdp_readiness_checkpoint/domains/lovemasami.com.json"
+    },
+    {
+      "domain": "moroccanoil.com",
+      "rows": 4,
+      "file": "/private/tmp/pivota-agent-product-intel-tail-20260528/reports/markato_expansion_status_20260524/wave48_product_intel_tail_20260528/readiness_before_tail/pdp_readiness_checkpoint/domains/moroccanoil.com.json"
+    },
+    {
+      "domain": "peaceoutskincare.com",
+      "rows": 4,
+      "file": "/private/tmp/pivota-agent-product-intel-tail-20260528/reports/markato_expansion_status_20260524/wave48_product_intel_tail_20260528/readiness_before_tail/pdp_readiness_checkpoint/domains/peaceoutskincare.com.json"
+    },
+    {
+      "domain": "seresilk.com.au",
+      "rows": 4,
+      "file": "/private/tmp/pivota-agent-product-intel-tail-20260528/reports/markato_expansion_status_20260524/wave48_product_intel_tail_20260528/readiness_before_tail/pdp_readiness_checkpoint/domains/seresilk.com.au.json"
+    },
+    {
+      "domain": "hellobubble.com",
+      "rows": 3,
+      "file": "/private/tmp/pivota-agent-product-intel-tail-20260528/reports/markato_expansion_status_20260524/wave48_product_intel_tail_20260528/readiness_before_tail/pdp_readiness_checkpoint/domains/hellobubble.com.json"
+    },
+    {
+      "domain": "lamaxime.com",
+      "rows": 3,
+      "file": "/private/tmp/pivota-agent-product-intel-tail-20260528/reports/markato_expansion_status_20260524/wave48_product_intel_tail_20260528/readiness_before_tail/pdp_readiness_checkpoint/domains/lamaxime.com.json"
+    },
+    {
+      "domain": "neutrogena.com",
+      "rows": 3,
+      "file": "/private/tmp/pivota-agent-product-intel-tail-20260528/reports/markato_expansion_status_20260524/wave48_product_intel_tail_20260528/readiness_before_tail/pdp_readiness_checkpoint/domains/neutrogena.com.json"
+    },
+    {
+      "domain": "purito-seoul.com",
+      "rows": 3,
+      "file": "/private/tmp/pivota-agent-product-intel-tail-20260528/reports/markato_expansion_status_20260524/wave48_product_intel_tail_20260528/readiness_before_tail/pdp_readiness_checkpoint/domains/purito-seoul.com.json"
+    },
+    {
+      "domain": "reapandglow.com",
+      "rows": 3,
+      "file": "/private/tmp/pivota-agent-product-intel-tail-20260528/reports/markato_expansion_status_20260524/wave48_product_intel_tail_20260528/readiness_before_tail/pdp_readiness_checkpoint/domains/reapandglow.com.json"
+    },
+    {
+      "domain": "us.sulwhasoo.com",
+      "rows": 3,
+      "file": "/private/tmp/pivota-agent-product-intel-tail-20260528/reports/markato_expansion_status_20260524/wave48_product_intel_tail_20260528/readiness_before_tail/pdp_readiness_checkpoint/domains/us.sulwhasoo.com.json"
+    },
+    {
+      "domain": "daebyskin.com",
+      "rows": 2,
+      "file": "/private/tmp/pivota-agent-product-intel-tail-20260528/reports/markato_expansion_status_20260524/wave48_product_intel_tail_20260528/readiness_before_tail/pdp_readiness_checkpoint/domains/daebyskin.com.json"
+    },
+    {
+      "domain": "dermstore.com",
+      "rows": 2,
+      "file": "/private/tmp/pivota-agent-product-intel-tail-20260528/reports/markato_expansion_status_20260524/wave48_product_intel_tail_20260528/readiness_before_tail/pdp_readiness_checkpoint/domains/dermstore.com.json"
+    },
+    {
+      "domain": "en.limecosmetic.com",
+      "rows": 2,
+      "file": "/private/tmp/pivota-agent-product-intel-tail-20260528/reports/markato_expansion_status_20260524/wave48_product_intel_tail_20260528/readiness_before_tail/pdp_readiness_checkpoint/domains/en.limecosmetic.com.json"
+    },
+    {
+      "domain": "fableandmane.com",
+      "rows": 2,
+      "file": "/private/tmp/pivota-agent-product-intel-tail-20260528/reports/markato_expansion_status_20260524/wave48_product_intel_tail_20260528/readiness_before_tail/pdp_readiness_checkpoint/domains/fableandmane.com.json"
+    },
+    {
+      "domain": "loaskin.com",
+      "rows": 2,
+      "file": "/private/tmp/pivota-agent-product-intel-tail-20260528/reports/markato_expansion_status_20260524/wave48_product_intel_tail_20260528/readiness_before_tail/pdp_readiness_checkpoint/domains/loaskin.com.json"
+    },
+    {
+      "domain": "olay.com",
+      "rows": 2,
+      "file": "/private/tmp/pivota-agent-product-intel-tail-20260528/reports/markato_expansion_status_20260524/wave48_product_intel_tail_20260528/readiness_before_tail/pdp_readiness_checkpoint/domains/olay.com.json"
+    },
+    {
+      "domain": "rohrremedy.com",
+      "rows": 2,
+      "file": "/private/tmp/pivota-agent-product-intel-tail-20260528/reports/markato_expansion_status_20260524/wave48_product_intel_tail_20260528/readiness_before_tail/pdp_readiness_checkpoint/domains/rohrremedy.com.json"
+    },
+    {
+      "domain": "aetasofficial.com",
+      "rows": 1,
+      "file": "/private/tmp/pivota-agent-product-intel-tail-20260528/reports/markato_expansion_status_20260524/wave48_product_intel_tail_20260528/readiness_before_tail/pdp_readiness_checkpoint/domains/aetasofficial.com.json"
+    },
+    {
+      "domain": "aveeno.com",
+      "rows": 1,
+      "file": "/private/tmp/pivota-agent-product-intel-tail-20260528/reports/markato_expansion_status_20260524/wave48_product_intel_tail_20260528/readiness_before_tail/pdp_readiness_checkpoint/domains/aveeno.com.json"
+    },
+    {
+      "domain": "bioderma.us",
+      "rows": 1,
+      "file": "/private/tmp/pivota-agent-product-intel-tail-20260528/reports/markato_expansion_status_20260524/wave48_product_intel_tail_20260528/readiness_before_tail/pdp_readiness_checkpoint/domains/bioderma.us.json"
+    },
+    {
+      "domain": "biossance.com",
+      "rows": 1,
+      "file": "/private/tmp/pivota-agent-product-intel-tail-20260528/reports/markato_expansion_status_20260524/wave48_product_intel_tail_20260528/readiness_before_tail/pdp_readiness_checkpoint/domains/biossance.com.json"
+    },
+    {
+      "domain": "daehair.com",
+      "rows": 1,
+      "file": "/private/tmp/pivota-agent-product-intel-tail-20260528/reports/markato_expansion_status_20260524/wave48_product_intel_tail_20260528/readiness_before_tail/pdp_readiness_checkpoint/domains/daehair.com.json"
+    },
+    {
+      "domain": "dalba.com",
+      "rows": 1,
+      "file": "/private/tmp/pivota-agent-product-intel-tail-20260528/reports/markato_expansion_status_20260524/wave48_product_intel_tail_20260528/readiness_before_tail/pdp_readiness_checkpoint/domains/dalba.com.json"
+    },
+    {
+      "domain": "dieuxskin.com",
+      "rows": 1,
+      "file": "/private/tmp/pivota-agent-product-intel-tail-20260528/reports/markato_expansion_status_20260524/wave48_product_intel_tail_20260528/readiness_before_tail/pdp_readiness_checkpoint/domains/dieuxskin.com.json"
+    },
+    {
+      "domain": "gisou.com",
+      "rows": 1,
+      "file": "/private/tmp/pivota-agent-product-intel-tail-20260528/reports/markato_expansion_status_20260524/wave48_product_intel_tail_20260528/readiness_before_tail/pdp_readiness_checkpoint/domains/gisou.com.json"
+    },
+    {
+      "domain": "jvnhair.com",
+      "rows": 1,
+      "file": "/private/tmp/pivota-agent-product-intel-tail-20260528/reports/markato_expansion_status_20260524/wave48_product_intel_tail_20260528/readiness_before_tail/pdp_readiness_checkpoint/domains/jvnhair.com.json"
+    },
+    {
+      "domain": "livingproof.com",
+      "rows": 1,
+      "file": "/private/tmp/pivota-agent-product-intel-tail-20260528/reports/markato_expansion_status_20260524/wave48_product_intel_tail_20260528/readiness_before_tail/pdp_readiness_checkpoint/domains/livingproof.com.json"
+    },
+    {
+      "domain": "patternbeauty.com",
+      "rows": 1,
+      "file": "/private/tmp/pivota-agent-product-intel-tail-20260528/reports/markato_expansion_status_20260524/wave48_product_intel_tail_20260528/readiness_before_tail/pdp_readiness_checkpoint/domains/patternbeauty.com.json"
+    },
+    {
+      "domain": "peachandlily.com",
+      "rows": 1,
+      "file": "/private/tmp/pivota-agent-product-intel-tail-20260528/reports/markato_expansion_status_20260524/wave48_product_intel_tail_20260528/readiness_before_tail/pdp_readiness_checkpoint/domains/peachandlily.com.json"
+    },
+    {
+      "domain": "randco.com",
+      "rows": 1,
+      "file": "/private/tmp/pivota-agent-product-intel-tail-20260528/reports/markato_expansion_status_20260524/wave48_product_intel_tail_20260528/readiness_before_tail/pdp_readiness_checkpoint/domains/randco.com.json"
+    },
+    {
+      "domain": "skinfix.com",
+      "rows": 1,
+      "file": "/private/tmp/pivota-agent-product-intel-tail-20260528/reports/markato_expansion_status_20260524/wave48_product_intel_tail_20260528/readiness_before_tail/pdp_readiness_checkpoint/domains/skinfix.com.json"
+    },
+    {
+      "domain": "sofiepavittface.com",
+      "rows": 1,
+      "file": "/private/tmp/pivota-agent-product-intel-tail-20260528/reports/markato_expansion_status_20260524/wave48_product_intel_tail_20260528/readiness_before_tail/pdp_readiness_checkpoint/domains/sofiepavittface.com.json"
+    },
+    {
+      "domain": "thenimetyou.com",
+      "rows": 1,
+      "file": "/private/tmp/pivota-agent-product-intel-tail-20260528/reports/markato_expansion_status_20260524/wave48_product_intel_tail_20260528/readiness_before_tail/pdp_readiness_checkpoint/domains/thenimetyou.com.json"
+    },
+    {
+      "domain": "us.innisfree.com",
+      "rows": 1,
+      "file": "/private/tmp/pivota-agent-product-intel-tail-20260528/reports/markato_expansion_status_20260524/wave48_product_intel_tail_20260528/readiness_before_tail/pdp_readiness_checkpoint/domains/us.innisfree.com.json"
+    },
+    {
+      "domain": "v1.goodmolecules.com",
+      "rows": 1,
+      "file": "/private/tmp/pivota-agent-product-intel-tail-20260528/reports/markato_expansion_status_20260524/wave48_product_intel_tail_20260528/readiness_before_tail/pdp_readiness_checkpoint/domains/v1.goodmolecules.com.json"
+    },
+    {
+      "domain": "vanicream.com",
+      "rows": 1,
+      "file": "/private/tmp/pivota-agent-product-intel-tail-20260528/reports/markato_expansion_status_20260524/wave48_product_intel_tail_20260528/readiness_before_tail/pdp_readiness_checkpoint/domains/vanicream.com.json"
+    },
+    {
+      "domain": "www.cocokind.com",
+      "rows": 1,
+      "file": "/private/tmp/pivota-agent-product-intel-tail-20260528/reports/markato_expansion_status_20260524/wave48_product_intel_tail_20260528/readiness_before_tail/pdp_readiness_checkpoint/domains/www.cocokind.com.json"
+    }
+  ],
+  "skipped_domains": [],
+  "failed_domains": [],
+  "summary": {
+    "scanned": 5771,
+    "by_market": {
+      "US": 5771
+    },
+    "by_domain": [
+      {
+        "key": "fentybeauty.com",
+        "count": 860
+      },
+      {
+        "key": "www.tomfordbeauty.com",
+        "count": 464
+      },
+      {
+        "key": "pixibeauty.com",
+        "count": 351
+      },
+      {
+        "key": "sigmabeauty.com",
+        "count": 232
+      },
+      {
+        "key": "kyliecosmetics.com",
+        "count": 226
+      },
+      {
+        "key": "palmofferonia.com",
+        "count": 199
+      },
+      {
+        "key": "missnella.com",
+        "count": 198
+      },
+      {
+        "key": "wholesale.publicgoods.com",
+        "count": 181
+      },
+      {
+        "key": "intelligentchange.com",
+        "count": 163
+      },
+      {
+        "key": "lizush.com",
+        "count": 125
+      },
+      {
+        "key": "skin1004.com",
+        "count": 113
+      },
+      {
+        "key": "rarebeauty.com",
+        "count": 110
+      },
+      {
+        "key": "naturium.com",
+        "count": 106
+      },
+      {
+        "key": "upcirclebeauty.com",
+        "count": 103
+      },
+      {
+        "key": "us.nuxe.com",
+        "count": 103
+      },
+      {
+        "key": "beekman1802.com",
+        "count": 102
+      },
+      {
+        "key": "cosrx.com",
+        "count": 101
+      },
+      {
+        "key": "www.jurlique.com",
+        "count": 99
+      },
+      {
+        "key": "lav-kids.com",
+        "count": 91
+      },
+      {
+        "key": "dearbarber.co.uk",
+        "count": 89
+      },
+      {
+        "key": "roundlab.com",
+        "count": 79
+      },
+      {
+        "key": "murad.com",
+        "count": 76
+      },
+      {
+        "key": "olehenriksen.com",
+        "count": 74
+      },
+      {
+        "key": "bijin-shop.com",
+        "count": 69
+      },
+      {
+        "key": "reddane.co.za",
+        "count": 69
+      }
+    ],
+    "by_product_family": [
+      {
+        "key": "single_formula",
+        "count": 3317
+      },
+      {
+        "key": "set_or_collection",
+        "count": 965
+      },
+      {
+        "key": "unknown_product",
+        "count": 882
+      },
+      {
+        "key": "accessory",
+        "count": 500
+      },
+      {
+        "key": "non_merch",
+        "count": 74
+      },
+      {
+        "key": "sample",
+        "count": 33
+      }
+    ],
+    "coverage": {
+      "missing_inci": 2089,
+      "missing_active_raw": 2972,
+      "missing_details": 1814,
+      "missing_how_to": 1606,
+      "missing_faq": 5241
+    },
+    "pivota_insights": {
+      "direct": {
+        "displayable": 4940,
+        "high_quality_ready": 4070,
+        "missing_kb": 552,
+        "not_displayable": 279
+      },
+      "effective": {
+        "displayable": 4945,
+        "high_quality_ready": 4104,
+        "missing_kb": 548,
+        "not_displayable": 278,
+        "borrowed_from_sibling": 34
+      },
+      "effective_issues": [
+        {
+          "key": "seller_only_evidence",
+          "count": 812
+        },
+        {
+          "key": "quality_limited",
+          "count": 785
+        },
+        {
+          "key": "empty_watchouts",
+          "count": 714
+        },
+        {
+          "key": "missing_kb",
+          "count": 548
+        },
+        {
+          "key": "quality_eligible",
+          "count": 479
+        },
+        {
+          "key": "missing_card_highlight",
+          "count": 197
+        },
+        {
+          "key": "reviewed_not_displayable",
+          "count": 172
+        },
+        {
+          "key": "public_truncated_copy",
+          "count": 157
+        },
+        {
+          "key": "ellipsis_or_truncated",
+          "count": 145
+        },
+        {
+          "key": "public_generic_marketing_copy",
+          "count": 139
+        },
+        {
+          "key": "not_displayable_gate",
+          "count": 106
+        },
+        {
+          "key": "not_reviewed",
+          "count": 106
+        },
+        {
+          "key": "generic_copy_signal",
+          "count": 65
+        },
+        {
+          "key": "public_sensitive_claim",
+          "count": 34
+        },
+        {
+          "key": "public_promo_availability_copy",
+          "count": 5
+        },
+        {
+          "key": "public_category_mismatch",
+          "count": 2
+        }
+      ],
+      "effective_issue_domains": [
+        {
+          "key": "fentybeauty.com::quality_eligible",
+          "count": 291
+        },
+        {
+          "key": "fentybeauty.com::empty_watchouts",
+          "count": 238
+        },
+        {
+          "key": "palmofferonia.com::missing_kb",
+          "count": 176
+        },
+        {
+          "key": "intelligentchange.com::quality_limited",
+          "count": 111
+        },
+        {
+          "key": "intelligentchange.com::seller_only_evidence",
+          "count": 111
+        },
+        {
+          "key": "wholesale.publicgoods.com::missing_kb",
+          "count": 107
+        },
+        {
+          "key": "intelligentchange.com::empty_watchouts",
+          "count": 96
+        },
+        {
+          "key": "lav-kids.com::quality_limited",
+          "count": 80
+        },
+        {
+          "key": "lav-kids.com::seller_only_evidence",
+          "count": 80
+        },
+        {
+          "key": "wholesale.publicgoods.com::quality_limited",
+          "count": 74
+        },
+        {
+          "key": "wholesale.publicgoods.com::seller_only_evidence",
+          "count": 74
+        },
+        {
+          "key": "bijin-shop.com::missing_kb",
+          "count": 68
+        },
+        {
+          "key": "reddane.co.za::quality_limited",
+          "count": 66
+        },
+        {
+          "key": "reddane.co.za::seller_only_evidence",
+          "count": 66
+        },
+        {
+          "key": "us.embryolisse.com::seller_only_evidence",
+          "count": 53
+        },
+        {
+          "key": "intelligentchange.com::missing_kb",
+          "count": 52
+        },
+        {
+          "key": "us.embryolisse.com::quality_limited",
+          "count": 51
+        },
+        {
+          "key": "fentybeauty.com::generic_copy_signal",
+          "count": 48
+        },
+        {
+          "key": "missnella.com::quality_limited",
+          "count": 48
+        },
+        {
+          "key": "missnella.com::seller_only_evidence",
+          "count": 48
+        },
+        {
+          "key": "dearbarber.co.uk::missing_kb",
+          "count": 47
+        },
+        {
+          "key": "dearbarber.co.uk::quality_limited",
+          "count": 42
+        },
+        {
+          "key": "dearbarber.co.uk::seller_only_evidence",
+          "count": 42
+        },
+        {
+          "key": "us.embryolisse.com::empty_watchouts",
+          "count": 41
+        },
+        {
+          "key": "lasavonneriedupilonduroy.com::quality_limited",
+          "count": 40
+        },
+        {
+          "key": "lasavonneriedupilonduroy.com::seller_only_evidence",
+          "count": 40
+        },
+        {
+          "key": "reddane.co.za::ellipsis_or_truncated",
+          "count": 37
+        },
+        {
+          "key": "reddane.co.za::public_truncated_copy",
+          "count": 37
+        },
+        {
+          "key": "skin1004.com::empty_watchouts",
+          "count": 37
+        },
+        {
+          "key": "missnella.com::missing_kb",
+          "count": 36
+        }
+      ],
+      "quality_state": [
+        {
+          "key": "reviewed",
+          "count": 3806
+        },
+        {
+          "key": "limited",
+          "count": 785
+        },
+        {
+          "key": "missing",
+          "count": 548
+        },
+        {
+          "key": "eligible",
+          "count": 479
+        },
+        {
+          "key": "verified",
+          "count": 153
+        }
+      ],
+      "evidence_profile": [
+        {
+          "key": "official_pdp_reviewed_formula_and_usage",
+          "count": 1320
+        },
+        {
+          "key": "seller_plus_formula",
+          "count": 1049
+        },
+        {
+          "key": "seller_only",
+          "count": 812
+        },
+        {
+          "key": "missing",
+          "count": 548
+        },
+        {
+          "key": "official_pdp_reviewed_key_ingredients_and_usage",
+          "count": 441
+        },
+        {
+          "key": "official_pdp_reviewed_line",
+          "count": 400
+        },
+        {
+          "key": "community_supported",
+          "count": 384
+        },
+        {
+          "key": "official_pdp_reviewed_limited",
+          "count": 277
+        },
+        {
+          "key": "official_pdp_seed",
+          "count": 267
+        },
+        {
+          "key": "seller_plus_formula_reviews",
+          "count": 74
+        },
+        {
+          "key": "official_pdp_reviewed",
+          "count": 56
+        },
+        {
+          "key": "pivota_reviewed",
+          "count": 30
+        },
+        {
+          "key": "seller_plus_external_review",
+          "count": 27
+        },
+        {
+          "key": "seller_plus_reviews",
+          "count": 22
+        },
+        {
+          "key": "seller_plus_component",
+          "count": 17
+        },
+        {
+          "key": "official_pdp_reviewed_key_ingredients",
+          "count": 16
+        },
+        {
+          "key": "mixed",
+          "count": 7
+        },
+        {
+          "key": "seller_plus_accessory",
+          "count": 7
+        },
+        {
+          "key": "official_pdp_reviewed_formula",
+          "count": 5
+        },
+        {
+          "key": "seller_plus_refill",
+          "count": 5
+        }
+      ],
+      "samples": {
+        "generic_copy_signal": [
+          {
+            "external_product_id": "ext_01cf12c0485b2af36d755fdc",
+            "domain": "fentybeauty.com",
+            "title": "The Fenty Skin Soap Dish",
+            "used_product_id": "ext_01cf12c0485b2af36d755fdc",
+            "quality_state": "eligible",
+            "evidence_profile": "community_supported"
+          },
+          {
+            "external_product_id": "ext_07a5bb87de5f33a3da0b5bf5",
+            "domain": "fentybeauty.com",
+            "title": "Mushroom Clips 2-Piece Smurf Hair Clip Set",
+            "used_product_id": "ext_07a5bb87de5f33a3da0b5bf5",
+            "quality_state": "eligible",
+            "evidence_profile": "community_supported"
+          },
+          {
+            "external_product_id": "ext_0d1c5ae124190cdf0a6ac4de",
+            "domain": "fentybeauty.com",
+            "title": "Hella Thicc Volumizing Mascara — Elec'Trip Blue",
+            "used_product_id": "ext_0d1c5ae124190cdf0a6ac4de",
+            "quality_state": "eligible",
+            "evidence_profile": "community_supported"
+          },
+          {
+            "external_product_id": "ext_0f1fc832d6e34e1cc1484be4",
+            "domain": "fentybeauty.com",
+            "title": "Fenty Hair Satin Scarf",
+            "used_product_id": "ext_0f1fc832d6e34e1cc1484be4",
+            "quality_state": "eligible",
+            "evidence_profile": "community_supported"
+          },
+          {
+            "external_product_id": "ext_0fd89090a01c0857dd0cd2d2",
+            "domain": "fentybeauty.com",
+            "title": "Powder Puff Setting Brush 170",
+            "used_product_id": "ext_0fd89090a01c0857dd0cd2d2",
+            "quality_state": "eligible",
+            "evidence_profile": "community_supported"
+          },
+          {
+            "external_product_id": "ext_12b41bc29384df75672ff4d8",
+            "domain": "fentybeauty.com",
+            "title": "Teddy Travel Bag",
+            "used_product_id": "ext_12b41bc29384df75672ff4d8",
+            "quality_state": "reviewed",
+            "evidence_profile": "seller_only"
+          },
+          {
+            "external_product_id": "ext_12c1ccbf0d12cb95f9479f62",
+            "domain": "fentybeauty.com",
+            "title": "Fenty Skin Embossed Bag",
+            "used_product_id": "ext_12c1ccbf0d12cb95f9479f62",
+            "quality_state": "reviewed",
+            "evidence_profile": "seller_only"
+          },
+          {
+            "external_product_id": "ext_1477bacbc8079cab54fbfa03",
+            "domain": "fentybeauty.com",
+            "title": "Velvet Nightz Travel Bag",
+            "used_product_id": "ext_1477bacbc8079cab54fbfa03",
+            "quality_state": "reviewed",
+            "evidence_profile": "seller_only"
+          },
+          {
+            "external_product_id": "ext_18193fc436243beda23a58e2",
+            "domain": "fentybeauty.com",
+            "title": "CLF Makeup Bag",
+            "used_product_id": "ext_18193fc436243beda23a58e2",
+            "quality_state": "reviewed",
+            "evidence_profile": "seller_only"
+          },
+          {
+            "external_product_id": "ext_18253607a90c4a8b79bc7e19",
+            "domain": "fentybeauty.com",
+            "title": "Fairy Bomb Smurfette Daisy Flower Shimmer Puff — Smurf'Sugar",
+            "used_product_id": "ext_18253607a90c4a8b79bc7e19",
+            "quality_state": "eligible",
+            "evidence_profile": "community_supported"
+          }
+        ],
+        "borrowed_from_sibling": [
+          {
+            "external_product_id": "ext_0bbb7552ca29e448fddfdb20",
+            "domain": "fentybeauty.com",
+            "title": "Poutsicle Hydrating Lip Stain — Zesty Bestie",
+            "used_product_id": "ext_78cc24c07a26e2f21c99ff2e",
+            "quality_state": "reviewed",
+            "evidence_profile": "official_pdp_reviewed_formula_and_usage"
+          },
+          {
+            "external_product_id": "ext_165caf0aa9993ced5b6abcbc",
+            "domain": "fentybeauty.com",
+            "title": "Poutsicle Hydrating Lip Stain — Berry Banger",
+            "used_product_id": "ext_78cc24c07a26e2f21c99ff2e",
+            "quality_state": "reviewed",
+            "evidence_profile": "official_pdp_reviewed_formula_and_usage"
+          },
+          {
+            "external_product_id": "ext_2294f00278b8a92bd23094b8",
+            "domain": "fentybeauty.com",
+            "title": "Bright Fix Instant Brightening + Blurring Powder — Pumpkin",
+            "used_product_id": "ext_46bfff9e55fd856d769ad93f",
+            "quality_state": "reviewed",
+            "evidence_profile": "official_pdp_reviewed_formula_and_usage"
+          },
+          {
+            "external_product_id": "ext_312620e1e8b7a98f91378ded",
+            "domain": "fentybeauty.com",
+            "title": "Body Sauce Body Luminizing Tint — Pearl Swirl",
+            "used_product_id": "ext_4630e2857882ce6a14a49dc2",
+            "quality_state": "reviewed",
+            "evidence_profile": "official_pdp_reviewed_formula_and_usage"
+          },
+          {
+            "external_product_id": "ext_38670c24ab8c507d0fc31313",
+            "domain": "fentybeauty.com",
+            "title": "Pro Filt'r Instant Retouch Setting Powder — Coffee",
+            "used_product_id": "ext_f4746cba0fa88201df61616b",
+            "quality_state": "reviewed",
+            "evidence_profile": "official_pdp_reviewed_formula_and_usage"
+          },
+          {
+            "external_product_id": "ext_5625d2c5bed8406079e16e41",
+            "domain": "fentybeauty.com",
+            "title": "Set it Down Superfine Blurring Setting Powder — Cinnamon",
+            "used_product_id": "ext_d4870d2f3583d97c4d598688",
+            "quality_state": "reviewed",
+            "evidence_profile": "official_pdp_reviewed_formula_and_usage"
+          },
+          {
+            "external_product_id": "ext_598127e50c61ac3543700fe2",
+            "domain": "fentybeauty.com",
+            "title": "Pro Filt'r Instant Retouch Setting Powder — Lavender",
+            "used_product_id": "ext_f4746cba0fa88201df61616b",
+            "quality_state": "reviewed",
+            "evidence_profile": "official_pdp_reviewed_formula_and_usage"
+          },
+          {
+            "external_product_id": "ext_5bc78e18ab81924dd2d5daf7",
+            "domain": "fentybeauty.com",
+            "title": "Gloss Bomb Oil Luminizing Lip Oil 'N Gloss — Miss Jellyfish",
+            "used_product_id": "ext_10ba9963730c71bf08a9828a",
+            "quality_state": "reviewed",
+            "evidence_profile": "official_pdp_reviewed_formula_and_usage"
+          },
+          {
+            "external_product_id": "ext_5e771ad2150a56ebcef06f8b",
+            "domain": "fentybeauty.com",
+            "title": "Set it Down Superfine Blurring Setting Powder — Lavender",
+            "used_product_id": "ext_d4870d2f3583d97c4d598688",
+            "quality_state": "reviewed",
+            "evidence_profile": "official_pdp_reviewed_formula_and_usage"
+          },
+          {
+            "external_product_id": "ext_5f20adff8dc310a07572ee05",
+            "domain": "fentybeauty.com",
+            "title": "Gloss Bomb Oil Luminizing Lip Oil 'N Gloss — Razzberry Jamz",
+            "used_product_id": "ext_10ba9963730c71bf08a9828a",
+            "quality_state": "reviewed",
+            "evidence_profile": "official_pdp_reviewed_formula_and_usage"
+          }
+        ],
+        "seller_only_evidence": [
+          {
+            "external_product_id": "ext_12b41bc29384df75672ff4d8",
+            "domain": "fentybeauty.com",
+            "title": "Teddy Travel Bag",
+            "used_product_id": "ext_12b41bc29384df75672ff4d8",
+            "quality_state": "reviewed",
+            "evidence_profile": "seller_only"
+          },
+          {
+            "external_product_id": "ext_12c1ccbf0d12cb95f9479f62",
+            "domain": "fentybeauty.com",
+            "title": "Fenty Skin Embossed Bag",
+            "used_product_id": "ext_12c1ccbf0d12cb95f9479f62",
+            "quality_state": "reviewed",
+            "evidence_profile": "seller_only"
+          },
+          {
+            "external_product_id": "ext_1477bacbc8079cab54fbfa03",
+            "domain": "fentybeauty.com",
+            "title": "Velvet Nightz Travel Bag",
+            "used_product_id": "ext_1477bacbc8079cab54fbfa03",
+            "quality_state": "reviewed",
+            "evidence_profile": "seller_only"
+          },
+          {
+            "external_product_id": "ext_18193fc436243beda23a58e2",
+            "domain": "fentybeauty.com",
+            "title": "CLF Makeup Bag",
+            "used_product_id": "ext_18193fc436243beda23a58e2",
+            "quality_state": "reviewed",
+            "evidence_profile": "seller_only"
+          },
+          {
+            "external_product_id": "ext_21086ff62f84b5f84006f0fc",
+            "domain": "fentybeauty.com",
+            "title": "CLF Flat-Lay Makeup Bag",
+            "used_product_id": "ext_21086ff62f84b5f84006f0fc",
+            "quality_state": "reviewed",
+            "evidence_profile": "seller_only"
+          },
+          {
+            "external_product_id": "ext_2be8b6157982861c032b4c24",
+            "domain": "fentybeauty.com",
+            "title": "Fenty Beauty Mesh Tote",
+            "used_product_id": "ext_2be8b6157982861c032b4c24",
+            "quality_state": "reviewed",
+            "evidence_profile": "seller_only"
+          },
+          {
+            "external_product_id": "ext_30f6abdf1357222073503f95",
+            "domain": "fentybeauty.com",
+            "title": "Dew N Plump Hydrating Nectar Serum Packette",
+            "used_product_id": "ext_30f6abdf1357222073503f95",
+            "quality_state": "reviewed",
+            "evidence_profile": "seller_only"
+          },
+          {
+            "external_product_id": "ext_5568eea2f6111e6814e87c9b",
+            "domain": "fentybeauty.com",
+            "title": "Fenty Skin Jelly Cherry Bag",
+            "used_product_id": "ext_5568eea2f6111e6814e87c9b",
+            "quality_state": "reviewed",
+            "evidence_profile": "seller_only"
+          },
+          {
+            "external_product_id": "ext_6091fcc906b01c33f0e8c0a8",
+            "domain": "fentybeauty.com",
+            "title": "Fenty Beauty E-Gift Cards",
+            "used_product_id": "ext_6091fcc906b01c33f0e8c0a8",
+            "quality_state": "limited",
+            "evidence_profile": "seller_only"
+          },
+          {
+            "external_product_id": "ext_816f80d9437e75483a197bbb",
+            "domain": "fentybeauty.com",
+            "title": "Shipping Protection",
+            "used_product_id": "ext_816f80d9437e75483a197bbb",
+            "quality_state": "limited",
+            "evidence_profile": "seller_only"
+          }
+        ],
+        "public_sensitive_claim": [
+          {
+            "external_product_id": "ext_2108d2549e71e1359866463e",
+            "domain": "fentybeauty.com",
+            "title": "Invisimatte Instant Setting + Blotting Powder",
+            "used_product_id": "ext_2108d2549e71e1359866463e",
+            "quality_state": "reviewed",
+            "evidence_profile": "community_supported"
+          },
+          {
+            "external_product_id": "ext_2d0f63bc28f27e6fcb704b5f",
+            "domain": "fentybeauty.com",
+            "title": "Fenty Eau De Parfum Travel Set + Refills",
+            "used_product_id": "ext_2d0f63bc28f27e6fcb704b5f",
+            "quality_state": "reviewed",
+            "evidence_profile": "official_pdp_reviewed_formula"
+          },
+          {
+            "external_product_id": "ext_68f54cb97689f84e81809010",
+            "domain": "sigmabeauty.com",
+            "title": "Renew Lip Oil",
+            "used_product_id": "ext_68f54cb97689f84e81809010",
+            "quality_state": "reviewed",
+            "evidence_profile": "seller_plus_formula"
+          },
+          {
+            "external_product_id": "ext_043c5402552d38d9cdf16259",
+            "domain": "kyliecosmetics.com",
+            "title": "Eyeshadow Packing Brush 09",
+            "used_product_id": "ext_043c5402552d38d9cdf16259",
+            "quality_state": "reviewed",
+            "evidence_profile": "official_pdp_seed"
+          },
+          {
+            "external_product_id": "ext_07f8a852a6a1f9d98719ce26",
+            "domain": "kyliecosmetics.com",
+            "title": "Eyeshadow All-Over Blending Brush 07",
+            "used_product_id": "ext_07f8a852a6a1f9d98719ce26",
+            "quality_state": "reviewed",
+            "evidence_profile": "official_pdp_seed"
+          },
+          {
+            "external_product_id": "ext_09a1e569c6ad048bab07bd9f",
+            "domain": "kyliecosmetics.com",
+            "title": "Eyeshadow Shader Brush 06",
+            "used_product_id": "ext_09a1e569c6ad048bab07bd9f",
+            "quality_state": "reviewed",
+            "evidence_profile": "official_pdp_seed"
+          },
+          {
+            "external_product_id": "ext_184fb0fb417ee502968f6561",
+            "domain": "kyliecosmetics.com",
+            "title": "Concealer & Foundation Brush Duo",
+            "used_product_id": "ext_184fb0fb417ee502968f6561",
+            "quality_state": "reviewed",
+            "evidence_profile": "official_pdp_seed"
+          },
+          {
+            "external_product_id": "ext_2596e8c667fab6de082050bb",
+            "domain": "kyliecosmetics.com",
+            "title": "Eyeshadow Crease Blending Brush 08",
+            "used_product_id": "ext_2596e8c667fab6de082050bb",
+            "quality_state": "reviewed",
+            "evidence_profile": "official_pdp_seed"
+          },
+          {
+            "external_product_id": "ext_2f2e812e576dc5621c97f9ac",
+            "domain": "kyliecosmetics.com",
+            "title": "Blush Brush 04",
+            "used_product_id": "ext_2f2e812e576dc5621c97f9ac",
+            "quality_state": "reviewed",
+            "evidence_profile": "official_pdp_seed"
+          },
+          {
+            "external_product_id": "ext_5033183a38a7012d67c399e7",
+            "domain": "kyliecosmetics.com",
+            "title": "Face Brush Trio",
+            "used_product_id": "ext_5033183a38a7012d67c399e7",
+            "quality_state": "reviewed",
+            "evidence_profile": "official_pdp_seed"
+          }
+        ],
+        "public_category_mismatch": [
+          {
+            "external_product_id": "ext_3ff703103b7f661eb38df3a3",
+            "domain": "fentybeauty.com",
+            "title": "Fenty Skin Cleansing Cuffs",
+            "used_product_id": "ext_3ff703103b7f661eb38df3a3",
+            "quality_state": "eligible",
+            "evidence_profile": "community_supported"
+          },
+          {
+            "external_product_id": "ext_5837040829d6e6e8b5e72bde",
+            "domain": "fentybeauty.com",
+            "title": "Big On Hydration: Milky Toner, Face Mask + Lip Mask Trio",
+            "used_product_id": "ext_5837040829d6e6e8b5e72bde",
+            "quality_state": "reviewed",
+            "evidence_profile": "seller_plus_formula"
+          }
+        ],
+        "reviewed_not_displayable": [
+          {
+            "external_product_id": "ext_6091fcc906b01c33f0e8c0a8",
+            "domain": "fentybeauty.com",
+            "title": "Fenty Beauty E-Gift Cards",
+            "used_product_id": "ext_6091fcc906b01c33f0e8c0a8",
+            "quality_state": "limited",
+            "evidence_profile": "seller_only"
+          },
+          {
+            "external_product_id": "ext_816f80d9437e75483a197bbb",
+            "domain": "fentybeauty.com",
+            "title": "Shipping Protection",
+            "used_product_id": "ext_816f80d9437e75483a197bbb",
+            "quality_state": "limited",
+            "evidence_profile": "seller_only"
+          },
+          {
+            "external_product_id": "ext_8e78084dca165cf7b0449f5b",
+            "domain": "fentybeauty.com",
+            "title": "Donate To The Clara Lionel Foundation",
+            "used_product_id": "ext_8e78084dca165cf7b0449f5b",
+            "quality_state": "limited",
+            "evidence_profile": "seller_only"
+          },
+          {
+            "external_product_id": "ext_186d4a3a41cf35cebbc1b78e",
+            "domain": "pixibeauty.com",
+            "title": "Pixi E-Gift Card 75",
+            "used_product_id": "ext_186d4a3a41cf35cebbc1b78e",
+            "quality_state": "limited",
+            "evidence_profile": "seller_only"
+          },
+          {
+            "external_product_id": "ext_24d2b57872b82f8097d593f2",
+            "domain": "pixibeauty.com",
+            "title": "Pixi E-Gift Card 150",
+            "used_product_id": "ext_24d2b57872b82f8097d593f2",
+            "quality_state": "limited",
+            "evidence_profile": "seller_only"
+          },
+          {
+            "external_product_id": "ext_37fcc007a4cdf799993d6273",
+            "domain": "pixibeauty.com",
+            "title": "Pixi E-Gift Card 25",
+            "used_product_id": "ext_37fcc007a4cdf799993d6273",
+            "quality_state": "limited",
+            "evidence_profile": "seller_only"
+          },
+          {
+            "external_product_id": "ext_615660f58a34195fc5523f10",
+            "domain": "pixibeauty.com",
+            "title": "Pixi E-Gift Card 50",
+            "used_product_id": "ext_615660f58a34195fc5523f10",
+            "quality_state": "limited",
+            "evidence_profile": "seller_only"
+          },
+          {
+            "external_product_id": "ext_8d1a6de76767d41b266674d2",
+            "domain": "pixibeauty.com",
+            "title": "Pixi E-Gift Card 100",
+            "used_product_id": "ext_8d1a6de76767d41b266674d2",
+            "quality_state": "limited",
+            "evidence_profile": "seller_only"
+          },
+          {
+            "external_product_id": "ext_8e9120fb126f0e0da491a8fc",
+            "domain": "pixibeauty.com",
+            "title": "Pixi Essential Bucket Hat",
+            "used_product_id": "ext_8e9120fb126f0e0da491a8fc",
+            "quality_state": "limited",
+            "evidence_profile": "seller_only"
+          },
+          {
+            "external_product_id": "ext_9430200ebbe0c42831b37b6d",
+            "domain": "pixibeauty.com",
+            "title": "Mystery Eye-conic Duo - Product 1",
+            "used_product_id": "ext_9430200ebbe0c42831b37b6d",
+            "quality_state": "limited",
+            "evidence_profile": "seller_only"
+          }
+        ],
+        "public_generic_marketing_copy": [
+          {
+            "external_product_id": "ext_8e78084dca165cf7b0449f5b",
+            "domain": "fentybeauty.com",
+            "title": "Donate To The Clara Lionel Foundation",
+            "used_product_id": "ext_8e78084dca165cf7b0449f5b",
+            "quality_state": "limited",
+            "evidence_profile": "seller_only"
+          },
+          {
+            "external_product_id": "ext_d9f973c170ea40e9a5e5fd3a",
+            "domain": "fentybeauty.com",
+            "title": "Precise Definition Eyeshadow Brush 220",
+            "used_product_id": "ext_d9f973c170ea40e9a5e5fd3a",
+            "quality_state": "reviewed",
+            "evidence_profile": "official_pdp_seed"
+          },
+          {
+            "external_product_id": "ext_8e9120fb126f0e0da491a8fc",
+            "domain": "pixibeauty.com",
+            "title": "Pixi Essential Bucket Hat",
+            "used_product_id": "ext_8e9120fb126f0e0da491a8fc",
+            "quality_state": "limited",
+            "evidence_profile": "seller_only"
+          },
+          {
+            "external_product_id": "ext_a13978756fd71db7c7e86c2e",
+            "domain": "pixibeauty.com",
+            "title": "Pixi Ultimate Starter Kit",
+            "used_product_id": "ext_a13978756fd71db7c7e86c2e",
+            "quality_state": "eligible",
+            "evidence_profile": "seller_plus_formula"
+          },
+          {
+            "external_product_id": "ext_b608b51bc66708d27e81473e",
+            "domain": "pixibeauty.com",
+            "title": "Complexion Collection",
+            "used_product_id": "ext_b608b51bc66708d27e81473e",
+            "quality_state": "reviewed",
+            "evidence_profile": "seller_plus_formula"
+          },
+          {
+            "external_product_id": "ext_ce06dc6cf523109b638508e1",
+            "domain": "pixibeauty.com",
+            "title": "Ultimate BASE Bundle",
+            "used_product_id": "ext_ce06dc6cf523109b638508e1",
+            "quality_state": "reviewed",
+            "evidence_profile": "seller_plus_formula"
+          },
+          {
+            "external_product_id": "ext_e36414c7892f92c40d7f6026",
+            "domain": "pixibeauty.com",
+            "title": "Ultimate Complexion Besties",
+            "used_product_id": "ext_e36414c7892f92c40d7f6026",
+            "quality_state": "reviewed",
+            "evidence_profile": "seller_plus_formula"
+          },
+          {
+            "external_product_id": "ext_04d58dae990499187f5b6aa2",
+            "domain": "sigmabeauty.com",
+            "title": "Flawless Finish Brush Set",
+            "used_product_id": "ext_04d58dae990499187f5b6aa2",
+            "quality_state": "reviewed",
+            "evidence_profile": "official_pdp_seed"
+          },
+          {
+            "external_product_id": "ext_1387a75e559c494b5880e82f",
+            "domain": "sigmabeauty.com",
+            "title": "Bonbon Eyeshadow Quad",
+            "used_product_id": "ext_1387a75e559c494b5880e82f",
+            "quality_state": "reviewed",
+            "evidence_profile": "seller_plus_formula"
+          },
+          {
+            "external_product_id": "ext_20396d956232fc08a1d08c5d",
+            "domain": "sigmabeauty.com",
+            "title": "Best-Selling Face Brush Trio",
+            "used_product_id": "ext_20396d956232fc08a1d08c5d",
+            "quality_state": "reviewed",
+            "evidence_profile": "official_pdp_seed"
+          }
+        ],
+        "missing_card_highlight": [
+          {
+            "external_product_id": "ext_8e9120fb126f0e0da491a8fc",
+            "domain": "pixibeauty.com",
+            "title": "Pixi Essential Bucket Hat",
+            "used_product_id": "ext_8e9120fb126f0e0da491a8fc",
+            "quality_state": "limited",
+            "evidence_profile": "seller_only"
+          },
+          {
+            "external_product_id": "ext_a13978756fd71db7c7e86c2e",
+            "domain": "pixibeauty.com",
+            "title": "Pixi Ultimate Starter Kit",
+            "used_product_id": "ext_a13978756fd71db7c7e86c2e",
+            "quality_state": "eligible",
+            "evidence_profile": "seller_plus_formula"
+          },
+          {
+            "external_product_id": "ext_1fd25be86bcd023064514e97",
+            "domain": "sigmabeauty.com",
+            "title": "Makeup & Brush Bundle ($118 Value)",
+            "used_product_id": "ext_1fd25be86bcd023064514e97",
+            "quality_state": "limited",
+            "evidence_profile": "seller_only"
+          },
+          {
+            "external_product_id": "ext_2ca414b4196efb94d49ca952",
+            "domain": "sigmabeauty.com",
+            "title": "The Face Essentials Brush Set",
+            "used_product_id": "ext_2ca414b4196efb94d49ca952",
+            "quality_state": "limited",
+            "evidence_profile": "seller_only"
+          },
+          {
+            "external_product_id": "ext_37eb94839d7512d2cea7199a",
+            "domain": "sigmabeauty.com",
+            "title": "The Eye Essentials Brush Set",
+            "used_product_id": "ext_37eb94839d7512d2cea7199a",
+            "quality_state": "limited",
+            "evidence_profile": "seller_only"
+          },
+          {
+            "external_product_id": "ext_481d30ae02934d89b2bffa21",
+            "domain": "sigmabeauty.com",
+            "title": "The Signature Brush Care Set",
+            "used_product_id": "ext_481d30ae02934d89b2bffa21",
+            "quality_state": "limited",
+            "evidence_profile": "seller_only"
+          },
+          {
+            "external_product_id": "ext_5b466212fa98b4e43c8ffd26",
+            "domain": "sigmabeauty.com",
+            "title": "Makeup & Brush Bundle ($118 Value)",
+            "used_product_id": "ext_5b466212fa98b4e43c8ffd26",
+            "quality_state": "limited",
+            "evidence_profile": "seller_only"
+          },
+          {
+            "external_product_id": "ext_87de4f5062d485957d0ad993",
+            "domain": "sigmabeauty.com",
+            "title": "The On-the-Go Brush Care Set",
+            "used_product_id": "ext_87de4f5062d485957d0ad993",
+            "quality_state": "limited",
+            "evidence_profile": "seller_only"
+          },
+          {
+            "external_product_id": "ext_9036d0b6d9ee6815c030e3c8",
+            "domain": "sigmabeauty.com",
+            "title": "The Complete Artistry Brush Set",
+            "used_product_id": "ext_9036d0b6d9ee6815c030e3c8",
+            "quality_state": "limited",
+            "evidence_profile": "seller_only"
+          },
+          {
+            "external_product_id": "ext_b1dfbc732b8411d6121534d0",
+            "domain": "sigmabeauty.com",
+            "title": "Complete Makeup Brush Set",
+            "used_product_id": "ext_b1dfbc732b8411d6121534d0",
+            "quality_state": "limited",
+            "evidence_profile": "seller_only"
+          }
+        ],
+        "public_truncated_copy": [
+          {
+            "external_product_id": "ext_b608b51bc66708d27e81473e",
+            "domain": "pixibeauty.com",
+            "title": "Complexion Collection",
+            "used_product_id": "ext_b608b51bc66708d27e81473e",
+            "quality_state": "reviewed",
+            "evidence_profile": "seller_plus_formula"
+          },
+          {
+            "external_product_id": "ext_ce06dc6cf523109b638508e1",
+            "domain": "pixibeauty.com",
+            "title": "Ultimate BASE Bundle",
+            "used_product_id": "ext_ce06dc6cf523109b638508e1",
+            "quality_state": "reviewed",
+            "evidence_profile": "seller_plus_formula"
+          },
+          {
+            "external_product_id": "ext_e36414c7892f92c40d7f6026",
+            "domain": "pixibeauty.com",
+            "title": "Ultimate Complexion Besties",
+            "used_product_id": "ext_e36414c7892f92c40d7f6026",
+            "quality_state": "reviewed",
+            "evidence_profile": "seller_plus_formula"
+          },
+          {
+            "external_product_id": "ext_004cee0de715f9ca71be44c3",
+            "domain": "missnella.com",
+            "title": "WH | Miss Nella Top 10 Best Seller Nail Polish Display Pack",
+            "used_product_id": "ext_004cee0de715f9ca71be44c3",
+            "quality_state": "limited",
+            "evidence_profile": "seller_only"
+          },
+          {
+            "external_product_id": "ext_2a889fa63a066eb6b5215821",
+            "domain": "missnella.com",
+            "title": "WH | Aqua Headband",
+            "used_product_id": "ext_2a889fa63a066eb6b5215821",
+            "quality_state": "limited",
+            "evidence_profile": "seller_only"
+          },
+          {
+            "external_product_id": "ext_6c451222b1807fc062b1f7b2",
+            "domain": "missnella.com",
+            "title": "WH | Pretty in Pink Headband",
+            "used_product_id": "ext_6c451222b1807fc062b1f7b2",
+            "quality_state": "limited",
+            "evidence_profile": "seller_only"
+          },
+          {
+            "external_product_id": "ext_76f1492fc13b92a396dc2bb4",
+            "domain": "missnella.com",
+            "title": "WH | Pink Lavender Bubble Headband",
+            "used_product_id": "ext_76f1492fc13b92a396dc2bb4",
+            "quality_state": "limited",
+            "evidence_profile": "seller_only"
+          },
+          {
+            "external_product_id": "ext_7f34e6fd3999652a1a776e30",
+            "domain": "missnella.com",
+            "title": "WH | Miss Nella Make Up Discovery Pack *Complete Make Up Display*",
+            "used_product_id": "ext_7f34e6fd3999652a1a776e30",
+            "quality_state": "limited",
+            "evidence_profile": "seller_only"
+          },
+          {
+            "external_product_id": "ext_87ee65ae1025783eb3de3dda",
+            "domain": "missnella.com",
+            "title": "WH | Lemon Sorbet Bubble Headband",
+            "used_product_id": "ext_87ee65ae1025783eb3de3dda",
+            "quality_state": "limited",
+            "evidence_profile": "seller_only"
+          },
+          {
+            "external_product_id": "ext_be28e46db16ce822c908d4c0",
+            "domain": "missnella.com",
+            "title": "WH | Macaron Magic Eye & Cheek Duo Palette",
+            "used_product_id": "ext_be28e46db16ce822c908d4c0",
+            "quality_state": "limited",
+            "evidence_profile": "seller_only"
+          }
+        ],
+        "missing_kb": [
+          {
+            "external_product_id": "ext_68ea3cb774f7f98371f48a96",
+            "domain": "sigmabeauty.com",
+            "title": "Surprise Gift ($200+ Value)",
+            "used_product_id": "ext_68ea3cb774f7f98371f48a96",
+            "quality_state": "missing",
+            "evidence_profile": "missing"
+          },
+          {
+            "external_product_id": "ext_0573ebe73717150999615072",
+            "domain": "palmofferonia.com",
+            "title": "Renewal 6 - Indian Agate Spiral Necklace",
+            "used_product_id": "ext_0573ebe73717150999615072",
+            "quality_state": "missing",
+            "evidence_profile": "missing"
+          },
+          {
+            "external_product_id": "ext_0873c872f0962ff68d67c7ce",
+            "domain": "palmofferonia.com",
+            "title": "Orbit Charm – Yellow Aventurine & Bloodstone",
+            "used_product_id": "ext_0873c872f0962ff68d67c7ce",
+            "quality_state": "missing",
+            "evidence_profile": "missing"
+          },
+          {
+            "external_product_id": "ext_0e30163df190edeac705d33c",
+            "domain": "palmofferonia.com",
+            "title": "Fragment 14 - Mother of Pearl & Antique Coral Necklace",
+            "used_product_id": "ext_0e30163df190edeac705d33c",
+            "quality_state": "missing",
+            "evidence_profile": "missing"
+          },
+          {
+            "external_product_id": "ext_1219ef78123b206ae7dbc1b4",
+            "domain": "palmofferonia.com",
+            "title": "Counter 1- Pearl & Citrine Anklet",
+            "used_product_id": "ext_1219ef78123b206ae7dbc1b4",
+            "quality_state": "missing",
+            "evidence_profile": "missing"
+          },
+          {
+            "external_product_id": "ext_1591afb3fe8fa28abb8d5bbc",
+            "domain": "palmofferonia.com",
+            "title": "Spiral Stud Vintage Leather Bag / Piece 29",
+            "used_product_id": "ext_1591afb3fe8fa28abb8d5bbc",
+            "quality_state": "missing",
+            "evidence_profile": "missing"
+          },
+          {
+            "external_product_id": "ext_16e9b77f467da0c1cf97eb8f",
+            "domain": "palmofferonia.com",
+            "title": "Groundwork 3 - Onyx & Clear Quartz Necklace",
+            "used_product_id": "ext_16e9b77f467da0c1cf97eb8f",
+            "quality_state": "missing",
+            "evidence_profile": "missing"
+          },
+          {
+            "external_product_id": "ext_1772a4069b145330553fe92d",
+            "domain": "palmofferonia.com",
+            "title": "Drift 5 - Indian Agate & Beryl Necklace",
+            "used_product_id": "ext_1772a4069b145330553fe92d",
+            "quality_state": "missing",
+            "evidence_profile": "missing"
+          },
+          {
+            "external_product_id": "ext_17bfd8f3503dc0df1f0258e2",
+            "domain": "palmofferonia.com",
+            "title": "Red Jasper Heavy Heirloom Necklace",
+            "used_product_id": "ext_17bfd8f3503dc0df1f0258e2",
+            "quality_state": "missing",
+            "evidence_profile": "missing"
+          },
+          {
+            "external_product_id": "ext_18da9e9e12e72579c31f248a",
+            "domain": "palmofferonia.com",
+            "title": "Renewal 4 - Rose Quartz Spiral Necklace",
+            "used_product_id": "ext_18da9e9e12e72579c31f248a",
+            "quality_state": "missing",
+            "evidence_profile": "missing"
+          }
+        ],
+        "ellipsis_or_truncated": [
+          {
+            "external_product_id": "ext_004cee0de715f9ca71be44c3",
+            "domain": "missnella.com",
+            "title": "WH | Miss Nella Top 10 Best Seller Nail Polish Display Pack",
+            "used_product_id": "ext_004cee0de715f9ca71be44c3",
+            "quality_state": "limited",
+            "evidence_profile": "seller_only"
+          },
+          {
+            "external_product_id": "ext_2a889fa63a066eb6b5215821",
+            "domain": "missnella.com",
+            "title": "WH | Aqua Headband",
+            "used_product_id": "ext_2a889fa63a066eb6b5215821",
+            "quality_state": "limited",
+            "evidence_profile": "seller_only"
+          },
+          {
+            "external_product_id": "ext_6c451222b1807fc062b1f7b2",
+            "domain": "missnella.com",
+            "title": "WH | Pretty in Pink Headband",
+            "used_product_id": "ext_6c451222b1807fc062b1f7b2",
+            "quality_state": "limited",
+            "evidence_profile": "seller_only"
+          },
+          {
+            "external_product_id": "ext_76f1492fc13b92a396dc2bb4",
+            "domain": "missnella.com",
+            "title": "WH | Pink Lavender Bubble Headband",
+            "used_product_id": "ext_76f1492fc13b92a396dc2bb4",
+            "quality_state": "limited",
+            "evidence_profile": "seller_only"
+          },
+          {
+            "external_product_id": "ext_7f34e6fd3999652a1a776e30",
+            "domain": "missnella.com",
+            "title": "WH | Miss Nella Make Up Discovery Pack *Complete Make Up Display*",
+            "used_product_id": "ext_7f34e6fd3999652a1a776e30",
+            "quality_state": "limited",
+            "evidence_profile": "seller_only"
+          },
+          {
+            "external_product_id": "ext_87ee65ae1025783eb3de3dda",
+            "domain": "missnella.com",
+            "title": "WH | Lemon Sorbet Bubble Headband",
+            "used_product_id": "ext_87ee65ae1025783eb3de3dda",
+            "quality_state": "limited",
+            "evidence_profile": "seller_only"
+          },
+          {
+            "external_product_id": "ext_be28e46db16ce822c908d4c0",
+            "domain": "missnella.com",
+            "title": "WH | Macaron Magic Eye & Cheek Duo Palette",
+            "used_product_id": "ext_be28e46db16ce822c908d4c0",
+            "quality_state": "limited",
+            "evidence_profile": "seller_only"
+          },
+          {
+            "external_product_id": "ext_3fba175fcb8d516b6ab748de",
+            "domain": "wholesale.publicgoods.com",
+            "title": "Body Wash 12 fl oz (Case of 12)",
+            "used_product_id": "ext_3fba175fcb8d516b6ab748de",
+            "quality_state": "limited",
+            "evidence_profile": "seller_only"
+          },
+          {
+            "external_product_id": "ext_40e7ea071ed71797abf4913d",
+            "domain": "wholesale.publicgoods.com",
+            "title": "Double Bottle Holder Adhesive Mounting Kit 3-Pack",
+            "used_product_id": "ext_40e7ea071ed71797abf4913d",
+            "quality_state": "limited",
+            "evidence_profile": "seller_only"
+          },
+          {
+            "external_product_id": "ext_4612c43966341c2c0e7f6298",
+            "domain": "wholesale.publicgoods.com",
+            "title": "3 Locking Bottle Holders with Hand Soap & Lotion Bottles & Mounting Kit",
+            "used_product_id": "ext_4612c43966341c2c0e7f6298",
+            "quality_state": "limited",
+            "evidence_profile": "seller_only"
+          }
+        ],
+        "not_reviewed": [
+          {
+            "external_product_id": "ext_a829645eb15c360e5b75db28",
+            "domain": "us.nuxe.com",
+            "title": "Prodigieux® shower oil 1.01 fl.oz.",
+            "used_product_id": "ext_a829645eb15c360e5b75db28",
+            "quality_state": "limited",
+            "evidence_profile": "seller_only"
+          },
+          {
+            "external_product_id": "ext_c91ab31c682ea1af6f74d6f7",
+            "domain": "us.nuxe.com",
+            "title": "Huile Prodigieuse® Or 50 ml",
+            "used_product_id": "ext_c91ab31c682ea1af6f74d6f7",
+            "quality_state": "limited",
+            "evidence_profile": "seller_only"
+          },
+          {
+            "external_product_id": "ext_d29f15152e6dbdf1a43e53aa",
+            "domain": "us.nuxe.com",
+            "title": "Huile Prodigieuse® Or Florale",
+            "used_product_id": "ext_d29f15152e6dbdf1a43e53aa",
+            "quality_state": "limited",
+            "evidence_profile": "seller_only"
+          },
+          {
+            "external_product_id": "ext_f38b20aa9ffda93998f19551",
+            "domain": "us.nuxe.com",
+            "title": "Huile Prodigieuse® Or 100 ml",
+            "used_product_id": "ext_f38b20aa9ffda93998f19551",
+            "quality_state": "limited",
+            "evidence_profile": "seller_only"
+          },
+          {
+            "external_product_id": "ext_27ecddfd70b28613b9cdd8a7",
+            "domain": "olehenriksen.com",
+            "title": "Pore-Balance Facial Sauna Scrub",
+            "used_product_id": "ext_27ecddfd70b28613b9cdd8a7",
+            "quality_state": "limited",
+            "evidence_profile": "seller_only"
+          },
+          {
+            "external_product_id": "ext_4e4902ad12294f63294bebb0",
+            "domain": "olehenriksen.com",
+            "title": "Touch Nourishing Body Lotion",
+            "used_product_id": "ext_4e4902ad12294f63294bebb0",
+            "quality_state": "limited",
+            "evidence_profile": "seller_only"
+          },
+          {
+            "external_product_id": "ext_3ddd25b09118f4eb30df093a",
+            "domain": "theordinary.com",
+            "title": "The Multi-Peptide Collection",
+            "used_product_id": "ext_3ddd25b09118f4eb30df093a",
+            "quality_state": "limited",
+            "evidence_profile": "seller_only"
+          },
+          {
+            "external_product_id": "ext_40d86163d7cbfc82039b5a24",
+            "domain": "theordinary.com",
+            "title": "The Mini Icons Set",
+            "used_product_id": "ext_40d86163d7cbfc82039b5a24",
+            "quality_state": "limited",
+            "evidence_profile": "seller_only"
+          },
+          {
+            "external_product_id": "ext_55ff62b10fbdb4f186bebeff",
+            "domain": "theordinary.com",
+            "title": "The Winter Skin Set",
+            "used_product_id": "ext_55ff62b10fbdb4f186bebeff",
+            "quality_state": "limited",
+            "evidence_profile": "seller_only"
+          },
+          {
+            "external_product_id": "ext_58694a9cfa8eb580c53ab5d5",
+            "domain": "theordinary.com",
+            "title": "Digital Gift Card",
+            "used_product_id": "ext_58694a9cfa8eb580c53ab5d5",
+            "quality_state": "limited",
+            "evidence_profile": "seller_only"
+          }
+        ],
+        "not_displayable_gate": [
+          {
+            "external_product_id": "ext_a829645eb15c360e5b75db28",
+            "domain": "us.nuxe.com",
+            "title": "Prodigieux® shower oil 1.01 fl.oz.",
+            "used_product_id": "ext_a829645eb15c360e5b75db28",
+            "quality_state": "limited",
+            "evidence_profile": "seller_only"
+          },
+          {
+            "external_product_id": "ext_c91ab31c682ea1af6f74d6f7",
+            "domain": "us.nuxe.com",
+            "title": "Huile Prodigieuse® Or 50 ml",
+            "used_product_id": "ext_c91ab31c682ea1af6f74d6f7",
+            "quality_state": "limited",
+            "evidence_profile": "seller_only"
+          },
+          {
+            "external_product_id": "ext_d29f15152e6dbdf1a43e53aa",
+            "domain": "us.nuxe.com",
+            "title": "Huile Prodigieuse® Or Florale",
+            "used_product_id": "ext_d29f15152e6dbdf1a43e53aa",
+            "quality_state": "limited",
+            "evidence_profile": "seller_only"
+          },
+          {
+            "external_product_id": "ext_f38b20aa9ffda93998f19551",
+            "domain": "us.nuxe.com",
+            "title": "Huile Prodigieuse® Or 100 ml",
+            "used_product_id": "ext_f38b20aa9ffda93998f19551",
+            "quality_state": "limited",
+            "evidence_profile": "seller_only"
+          },
+          {
+            "external_product_id": "ext_27ecddfd70b28613b9cdd8a7",
+            "domain": "olehenriksen.com",
+            "title": "Pore-Balance Facial Sauna Scrub",
+            "used_product_id": "ext_27ecddfd70b28613b9cdd8a7",
+            "quality_state": "limited",
+            "evidence_profile": "seller_only"
+          },
+          {
+            "external_product_id": "ext_4e4902ad12294f63294bebb0",
+            "domain": "olehenriksen.com",
+            "title": "Touch Nourishing Body Lotion",
+            "used_product_id": "ext_4e4902ad12294f63294bebb0",
+            "quality_state": "limited",
+            "evidence_profile": "seller_only"
+          },
+          {
+            "external_product_id": "ext_3ddd25b09118f4eb30df093a",
+            "domain": "theordinary.com",
+            "title": "The Multi-Peptide Collection",
+            "used_product_id": "ext_3ddd25b09118f4eb30df093a",
+            "quality_state": "limited",
+            "evidence_profile": "seller_only"
+          },
+          {
+            "external_product_id": "ext_40d86163d7cbfc82039b5a24",
+            "domain": "theordinary.com",
+            "title": "The Mini Icons Set",
+            "used_product_id": "ext_40d86163d7cbfc82039b5a24",
+            "quality_state": "limited",
+            "evidence_profile": "seller_only"
+          },
+          {
+            "external_product_id": "ext_55ff62b10fbdb4f186bebeff",
+            "domain": "theordinary.com",
+            "title": "The Winter Skin Set",
+            "used_product_id": "ext_55ff62b10fbdb4f186bebeff",
+            "quality_state": "limited",
+            "evidence_profile": "seller_only"
+          },
+          {
+            "external_product_id": "ext_58694a9cfa8eb580c53ab5d5",
+            "domain": "theordinary.com",
+            "title": "Digital Gift Card",
+            "used_product_id": "ext_58694a9cfa8eb580c53ab5d5",
+            "quality_state": "limited",
+            "evidence_profile": "seller_only"
+          }
+        ],
+        "public_promo_availability_copy": [
+          {
+            "external_product_id": "ext_13d1e7bc87a49618d8283bc5",
+            "domain": "tirtir.global",
+            "title": "Centella Foam Cleansing",
+            "used_product_id": "ext_13d1e7bc87a49618d8283bc5",
+            "quality_state": "verified",
+            "evidence_profile": "seller_plus_formula"
+          },
+          {
+            "external_product_id": "ext_35a4000d4e494c516a37642c",
+            "domain": "tirtir.global",
+            "title": "Mask Fit Red Cushion Refill",
+            "used_product_id": "ext_35a4000d4e494c516a37642c",
+            "quality_state": "reviewed",
+            "evidence_profile": "mixed"
+          },
+          {
+            "external_product_id": "ext_a51a2dcca329114e7b6ea6a6",
+            "domain": "tirtir.global",
+            "title": "Mask Fit Red Cushion (Clearance)",
+            "used_product_id": "ext_a51a2dcca329114e7b6ea6a6",
+            "quality_state": "reviewed",
+            "evidence_profile": "mixed"
+          },
+          {
+            "external_product_id": "ext_ad2d369fee7656d7ef63beba",
+            "domain": "tirtir.global",
+            "title": "My Glow Holiday Edition",
+            "used_product_id": "ext_ad2d369fee7656d7ef63beba",
+            "quality_state": "reviewed",
+            "evidence_profile": "seller_plus_reviews"
+          },
+          {
+            "external_product_id": "ext_322e6282831ebd8a41b48e20",
+            "domain": "theordinary.com",
+            "title": "Serum Foundation",
+            "used_product_id": "ext_322e6282831ebd8a41b48e20",
+            "quality_state": "reviewed",
+            "evidence_profile": "seller_plus_formula"
+          }
+        ]
+      }
+    },
+    "active_ingredients": {
+      "regulatory_expected": 215,
+      "hero_expected": 1979,
+      "any_active_items": 1629,
+      "status": [
+        {
+          "key": "not_expected_missing",
+          "count": 1782
+        },
+        {
+          "key": "not_applicable_product_family",
+          "count": 1539
+        },
+        {
+          "key": "ready_hero",
+          "count": 1276
+        },
+        {
+          "key": "missing_hero",
+          "count": 417
+        },
+        {
+          "key": "low_signal_active",
+          "count": 384
+        },
+        {
+          "key": "ready_regulatory",
+          "count": 163
+        },
+        {
+          "key": "ready_other",
+          "count": 125
+        },
+        {
+          "key": "missing_regulatory",
+          "count": 52
+        },
+        {
+          "key": "possibly_inci_guess",
+          "count": 32
+        },
+        {
+          "key": "invalid_token_in_active",
+          "count": 1
+        }
+      ],
+      "issues": [
+        {
+          "key": "missing_hero",
+          "count": 417
+        },
+        {
+          "key": "low_signal_active",
+          "count": 384
+        },
+        {
+          "key": "active_raw_may_be_full_inci",
+          "count": 72
+        },
+        {
+          "key": "missing_regulatory",
+          "count": 52
+        },
+        {
+          "key": "possibly_inci_guess",
+          "count": 32
+        },
+        {
+          "key": "active_raw_too_long",
+          "count": 24
+        },
+        {
+          "key": "invalid_token_in_active",
+          "count": 1
+        }
+      ],
+      "issue_domains": [
+        {
+          "key": "fentybeauty.com::low_signal_active",
+          "count": 208
+        },
+        {
+          "key": "fentybeauty.com::missing_hero",
+          "count": 87
+        },
+        {
+          "key": "www.tomfordbeauty.com::missing_hero",
+          "count": 39
+        },
+        {
+          "key": "www.jurlique.com::low_signal_active",
+          "count": 35
+        },
+        {
+          "key": "beekman1802.com::low_signal_active",
+          "count": 31
+        },
+        {
+          "key": "catkin.com::missing_hero",
+          "count": 23
+        },
+        {
+          "key": "us.nuxe.com::low_signal_active",
+          "count": 23
+        },
+        {
+          "key": "pixibeauty.com::active_raw_may_be_full_inci",
+          "count": 21
+        },
+        {
+          "key": "reddane.co.za::missing_hero",
+          "count": 18
+        },
+        {
+          "key": "firstaidbeauty.com::low_signal_active",
+          "count": 14
+        },
+        {
+          "key": "kyliecosmetics.com::missing_hero",
+          "count": 14
+        },
+        {
+          "key": "innbeautyproject.com::active_raw_may_be_full_inci",
+          "count": 13
+        },
+        {
+          "key": "pixibeauty.com::missing_hero",
+          "count": 13
+        },
+        {
+          "key": "us.embryolisse.com::low_signal_active",
+          "count": 12
+        },
+        {
+          "key": "lasavonneriedupilonduroy.com::missing_hero",
+          "count": 11
+        },
+        {
+          "key": "aya-skincare.com.au::missing_hero",
+          "count": 9
+        },
+        {
+          "key": "innbeautyproject.com::missing_regulatory",
+          "count": 8
+        },
+        {
+          "key": "joujoubotanicals.com::missing_hero",
+          "count": 8
+        },
+        {
+          "key": "khus-khus.com::missing_hero",
+          "count": 8
+        },
+        {
+          "key": "murad.com::missing_hero",
+          "count": 8
+        },
+        {
+          "key": "upcirclebeauty.com::missing_hero",
+          "count": 8
+        },
+        {
+          "key": "byrabeauty.com::missing_hero",
+          "count": 7
+        },
+        {
+          "key": "fentybeauty.com::active_raw_may_be_full_inci",
+          "count": 7
+        },
+        {
+          "key": "naturium.com::missing_regulatory",
+          "count": 7
+        },
+        {
+          "key": "rarebeauty.com::low_signal_active",
+          "count": 7
+        },
+        {
+          "key": "tirtir.global::possibly_inci_guess",
+          "count": 7
+        },
+        {
+          "key": "us.embryolisse.com::active_raw_too_long",
+          "count": 7
+        },
+        {
+          "key": "www.guerlain.com::missing_hero",
+          "count": 7
+        },
+        {
+          "key": "blindbarber.com::missing_hero",
+          "count": 6
+        },
+        {
+          "key": "lhamour.com::missing_hero",
+          "count": 6
+        }
+      ],
+      "source_origin": [
+        {
+          "key": "none",
+          "count": 2744
+        },
+        {
+          "key": "pdp_section",
+          "count": 2682
+        },
+        {
+          "key": "active_block",
+          "count": 301
+        },
+        {
+          "key": "reviewed_source_backed_pdp_content_patch",
+          "count": 37
+        },
+        {
+          "key": "official_pdp",
+          "count": 5
+        },
+        {
+          "key": "official_pdp_manual_review",
+          "count": 2
+        }
+      ],
+      "samples": {
+        "low_signal_active": [
+          {
+            "external_product_id": "ext_00c2d3f548c90c9bc9bf42ec",
+            "domain": "fentybeauty.com",
+            "title": "Soft'lit Naturally Luminous Longwear Foundation — 235",
+            "status": "low_signal_active",
+            "active_items": [],
+            "source_origin": "pdp_section"
+          },
+          {
+            "external_product_id": "ext_01a70c326c5c9997959572f7",
+            "domain": "fentybeauty.com",
+            "title": "Soft'lit Naturally Luminous Longwear Foundation — 230",
+            "status": "low_signal_active",
+            "active_items": [],
+            "source_origin": "pdp_section"
+          },
+          {
+            "external_product_id": "ext_0493af4ca3a6d484f5c6a057",
+            "domain": "fentybeauty.com",
+            "title": "Butta Drop Whipped Oil Body Cream with Tropical Oils + Shea Butter — Fenty Fresh Shimmering",
+            "status": "low_signal_active",
+            "active_items": [],
+            "source_origin": "pdp_section"
+          },
+          {
+            "external_product_id": "ext_04fae652c1d70a897a1dfb99",
+            "domain": "fentybeauty.com",
+            "title": "Soft'lit Naturally Luminous Longwear Foundation — 440",
+            "status": "low_signal_active",
+            "active_items": [],
+            "source_origin": "pdp_section"
+          },
+          {
+            "external_product_id": "ext_056fab39df7b786e8ed9aab9",
+            "domain": "fentybeauty.com",
+            "title": "Soft'lit Naturally Luminous Longwear Foundation — 310",
+            "status": "low_signal_active",
+            "active_items": [],
+            "source_origin": "pdp_section"
+          },
+          {
+            "external_product_id": "ext_0579bae8eee7be3fc4de8fbe",
+            "domain": "fentybeauty.com",
+            "title": "Soft'lit Naturally Luminous Longwear Foundation — 185",
+            "status": "low_signal_active",
+            "active_items": [],
+            "source_origin": "pdp_section"
+          },
+          {
+            "external_product_id": "ext_05d16110ceb90b650a354760",
+            "domain": "fentybeauty.com",
+            "title": "Soft'lit Naturally Luminous Longwear Foundation — 190",
+            "status": "low_signal_active",
+            "active_items": [],
+            "source_origin": "pdp_section"
+          },
+          {
+            "external_product_id": "ext_061c2002db8d00b783c0badc",
+            "domain": "fentybeauty.com",
+            "title": "Soft'lit Naturally Luminous Longwear Foundation — 315",
+            "status": "low_signal_active",
+            "active_items": [],
+            "source_origin": "pdp_section"
+          },
+          {
+            "external_product_id": "ext_06625b5fc86f3aae4481ef28",
+            "domain": "fentybeauty.com",
+            "title": "Soft'lit Naturally Luminous Longwear Foundation — 485",
+            "status": "low_signal_active",
+            "active_items": [],
+            "source_origin": "pdp_section"
+          },
+          {
+            "external_product_id": "ext_06822551a824293d859b48fd",
+            "domain": "fentybeauty.com",
+            "title": "Pro Filt'r Soft Matte Longwear Foundation — #350",
+            "status": "low_signal_active",
+            "active_items": [],
+            "source_origin": "pdp_section"
+          }
+        ],
+        "missing_hero": [
+          {
+            "external_product_id": "ext_035b2c42e4149dea10d306fc",
+            "domain": "fentybeauty.com",
+            "title": "Shadowstix Longwear Eyeshadow Stick — Brownie Badd'r",
+            "status": "missing_hero",
+            "active_items": [],
+            "source_origin": "pdp_section"
+          },
+          {
+            "external_product_id": "ext_037a46e14f488c9ae4ed669f",
+            "domain": "fentybeauty.com",
+            "title": "Cheeks Out Freestyle Cream Blush — Riri",
+            "status": "missing_hero",
+            "active_items": [],
+            "source_origin": "pdp_section"
+          },
+          {
+            "external_product_id": "ext_046ea94d4378d5d41877cae7",
+            "domain": "fentybeauty.com",
+            "title": "Shadowstix Longwear Eyeshadow Stick — Diamond Veil Champ'ion",
+            "status": "missing_hero",
+            "active_items": [],
+            "source_origin": "pdp_section"
+          },
+          {
+            "external_product_id": "ext_07e64afa07eab76d84b85352",
+            "domain": "fentybeauty.com",
+            "title": "Match Stix Correcting Skinstick — Pumpkin",
+            "status": "missing_hero",
+            "active_items": [],
+            "source_origin": "pdp_section"
+          },
+          {
+            "external_product_id": "ext_094c8fdb449ad7b1e2f86644",
+            "domain": "fentybeauty.com",
+            "title": "Cheeks Out Freestyle Cream Blush — Raisin Standardz",
+            "status": "missing_hero",
+            "active_items": [],
+            "source_origin": "pdp_section"
+          },
+          {
+            "external_product_id": "ext_0d1c5ae124190cdf0a6ac4de",
+            "domain": "fentybeauty.com",
+            "title": "Hella Thicc Volumizing Mascara — Elec'Trip Blue",
+            "status": "missing_hero",
+            "active_items": [],
+            "source_origin": "pdp_section"
+          },
+          {
+            "external_product_id": "ext_0d4fe6e82d752957706734bb",
+            "domain": "fentybeauty.com",
+            "title": "Slick-Back Styling Essentials",
+            "status": "missing_hero",
+            "active_items": [],
+            "source_origin": "pdp_section"
+          },
+          {
+            "external_product_id": "ext_0ea87bfe1cd271cd5032e1a0",
+            "domain": "fentybeauty.com",
+            "title": "Fine Linez Lash Line-Enhancing Eyeliner — The Navy",
+            "status": "missing_hero",
+            "active_items": [],
+            "source_origin": "pdp_section"
+          },
+          {
+            "external_product_id": "ext_0f07ef83ac73535fdd52ca95",
+            "domain": "fentybeauty.com",
+            "title": "Shadowstix Longwear Eyeshadow Stick — Fizzy Frosé",
+            "status": "missing_hero",
+            "active_items": [],
+            "source_origin": "pdp_section"
+          },
+          {
+            "external_product_id": "ext_1001d1c4b3e0036d99b8cbef",
+            "domain": "fentybeauty.com",
+            "title": "Match Stix Correcting Skinstick — Peach",
+            "status": "missing_hero",
+            "active_items": [],
+            "source_origin": "pdp_section"
+          }
+        ],
+        "active_raw_may_be_full_inci": [
+          {
+            "external_product_id": "ext_11457750930db1a559baa9f5",
+            "domain": "fentybeauty.com",
+            "title": "Butta Drop Hydrating Body Milk — Vanilla Dream",
+            "status": "missing_hero",
+            "active_items": [],
+            "source_origin": "none"
+          },
+          {
+            "external_product_id": "ext_39bce67555d6d6a42e982368",
+            "domain": "fentybeauty.com",
+            "title": "Plush Puddin' Intensive Recovery Lip Mask — Barbados Cherry",
+            "status": "missing_hero",
+            "active_items": [],
+            "source_origin": "pdp_section"
+          },
+          {
+            "external_product_id": "ext_3e86834353c8f26ab22dac3b",
+            "domain": "fentybeauty.com",
+            "title": "Plush Puddin' Intensive Recovery Lip Mask — Vanilla",
+            "status": "missing_hero",
+            "active_items": [],
+            "source_origin": "pdp_section"
+          },
+          {
+            "external_product_id": "ext_59477def4f6368d521f546f3",
+            "domain": "fentybeauty.com",
+            "title": "Cookies N Clean Whipped Clay Intensive Pore + Blackhead Face Scrub",
+            "status": "ready_other",
+            "active_items": [
+              "Salicylic acid"
+            ],
+            "source_origin": "active_block"
+          },
+          {
+            "external_product_id": "ext_7b97df3e7581efc1b2b73d06",
+            "domain": "fentybeauty.com",
+            "title": "Plush Puddin' Intensive Recovery Lip Mask — Salted Caramel",
+            "status": "missing_hero",
+            "active_items": [],
+            "source_origin": "pdp_section"
+          },
+          {
+            "external_product_id": "ext_a6baa7b8da0425da60075a4f",
+            "domain": "fentybeauty.com",
+            "title": "Plush Puddin' Intensive Recovery Lip Mask — Cacao",
+            "status": "missing_hero",
+            "active_items": [],
+            "source_origin": "pdp_section"
+          },
+          {
+            "external_product_id": "ext_dc028727177ad7d0d13a4e99",
+            "domain": "fentybeauty.com",
+            "title": "Watch Ya Tone Niacinamide Dark Spot Serum",
+            "status": "ready_hero",
+            "active_items": [
+              "Niacinamide",
+              "Vitamin C (Ascorbic acid)"
+            ],
+            "source_origin": "active_block"
+          },
+          {
+            "external_product_id": "ext_01544075bd86e17e38196b4a",
+            "domain": "pixibeauty.com",
+            "title": "LipPatch",
+            "status": "ready_hero",
+            "active_items": [
+              "Rose Ceramide LipPatch",
+              "Vitamin C",
+              "Peptides plump & revitalise"
+            ],
+            "source_origin": "active_block"
+          },
+          {
+            "external_product_id": "ext_0d3e3b647746cfe9a14b1b8a",
+            "domain": "pixibeauty.com",
+            "title": "Best of Pixi - Holiday Edition",
+            "status": "ready_hero",
+            "active_items": [
+              "Propolis Extract has Antioxidant properties",
+              "Vitamin C"
+            ],
+            "source_origin": "active_block"
+          },
+          {
+            "external_product_id": "ext_1ae88415a92bf0640cb9c397",
+            "domain": "pixibeauty.com",
+            "title": "Retinol CapsuleCare",
+            "status": "ready_hero",
+            "active_items": [
+              "Retinol"
+            ],
+            "source_origin": "active_block"
+          }
+        ],
+        "missing_regulatory": [
+          {
+            "external_product_id": "ext_2e22a9a87c00a838ccc3af7d",
+            "domain": "fentybeauty.com",
+            "title": "Hydra Vizor Invisible Moisturizer SPF 30 with Niacinamide + Kalahari Melon — EU",
+            "status": "missing_regulatory",
+            "active_items": [
+              "Hyaluronic acid"
+            ],
+            "source_origin": "active_block"
+          },
+          {
+            "external_product_id": "ext_6917a6b0e9a2eed57ad0a413",
+            "domain": "fentybeauty.com",
+            "title": "Hydra Vizor Refill Invisible Moisturizer SPF 30 with Niacinamide + Kalahari Melon — EU",
+            "status": "missing_regulatory",
+            "active_items": [
+              "Hyaluronic acid"
+            ],
+            "source_origin": "active_block"
+          },
+          {
+            "external_product_id": "ext_7bf8b2e398177c40d768230c",
+            "domain": "pixibeauty.com",
+            "title": "On-the-Glow SHIELD SPF 50",
+            "status": "missing_regulatory",
+            "active_items": [
+              "Hyaluronic Acid hydrating"
+            ],
+            "source_origin": "active_block"
+          },
+          {
+            "external_product_id": "ext_ead5ec8bda8626bc6fc7adee",
+            "domain": "missnella.com",
+            "title": "LavKids Skincare by Miss Nella SPF 50 Mineral Sunscreen",
+            "status": "missing_regulatory",
+            "active_items": [],
+            "source_origin": "none"
+          },
+          {
+            "external_product_id": "ext_9a36a9d64c31a2af3e1c1ac9",
+            "domain": "rarebeauty.com",
+            "title": "Positive Light Tinted Moisturizer SPF 20",
+            "status": "missing_regulatory",
+            "active_items": [],
+            "source_origin": "none"
+          },
+          {
+            "external_product_id": "ext_0d657e9a48960fb8c9112f53",
+            "domain": "naturium.com",
+            "title": "Dew-Glow Moisturizer SPF 50",
+            "status": "missing_regulatory",
+            "active_items": [
+              "Niacinamide",
+              "Azelaic acid",
+              "Vitamin C (Ascorbic acid)",
+              "Retinol",
+              "Hyaluronic acid",
+              "Alpha Arbutin",
+              "Squalane",
+              "Tranexamic acid"
+            ],
+            "source_origin": "active_block"
+          },
+          {
+            "external_product_id": "ext_2040df46d1c7c3621eaa0786",
+            "domain": "naturium.com",
+            "title": "Dew-Glow Moisturizer SPF 50 - Travel Size",
+            "status": "missing_regulatory",
+            "active_items": [
+              "Niacinamide",
+              "Azelaic acid",
+              "Vitamin C (Ascorbic acid)",
+              "Retinol",
+              "Hyaluronic acid",
+              "Alpha Arbutin",
+              "Squalane",
+              "Tranexamic acid"
+            ],
+            "source_origin": "active_block"
+          },
+          {
+            "external_product_id": "ext_275d0032b7ac158f9d9ab79a",
+            "domain": "naturium.com",
+            "title": "Phyto-Glow Lip Balm SPF 45 Getaway",
+            "status": "missing_regulatory",
+            "active_items": [
+              "Niacinamide",
+              "Azelaic acid",
+              "Retinol",
+              "Hyaluronic acid",
+              "Alpha Arbutin",
+              "Squalane",
+              "Tranexamic acid",
+              "Peptides"
+            ],
+            "source_origin": "active_block"
+          },
+          {
+            "external_product_id": "ext_36e5f666f2ac8d197c235e3e",
+            "domain": "naturium.com",
+            "title": "Phyto-Glow Lip Balm SPF 45 Clear",
+            "status": "missing_regulatory",
+            "active_items": [
+              "Niacinamide",
+              "Azelaic acid",
+              "Retinol",
+              "Hyaluronic acid",
+              "Alpha Arbutin",
+              "Squalane",
+              "Tranexamic acid",
+              "Peptides"
+            ],
+            "source_origin": "active_block"
+          },
+          {
+            "external_product_id": "ext_63cdd204a675f7c79a6f67ab",
+            "domain": "naturium.com",
+            "title": "Phyto-Glow Lip Balm SPF 45 Oasis",
+            "status": "missing_regulatory",
+            "active_items": [
+              "Niacinamide",
+              "Azelaic acid",
+              "Retinol",
+              "Hyaluronic acid",
+              "Alpha Arbutin",
+              "Squalane",
+              "Tranexamic acid",
+              "Peptides"
+            ],
+            "source_origin": "active_block"
+          }
+        ],
+        "possibly_inci_guess": [
+          {
+            "external_product_id": "ext_bcfc49c06e49e3cf28766ad3",
+            "domain": "fentybeauty.com",
+            "title": "Cherry Dub BHA Toner with Salicylic Acid + Aloe Juice",
+            "status": "possibly_inci_guess",
+            "active_items": [
+              "Aloe"
+            ],
+            "source_origin": "pdp_section"
+          },
+          {
+            "external_product_id": "ext_6815bee1060ef71d9a99ce5b",
+            "domain": "upcirclebeauty.com",
+            "title": "Cleansing Face Milk with Oat Powder + Aloe Vera",
+            "status": "possibly_inci_guess",
+            "active_items": [
+              "Aloe"
+            ],
+            "source_origin": "pdp_section"
+          },
+          {
+            "external_product_id": "ext_4731a16e4da7e7e8b27d4f4c",
+            "domain": "cosrx.com",
+            "title": "Low pH Good Morning Gel Cleanser",
+            "status": "possibly_inci_guess",
+            "active_items": [
+              "Betaine Salicylate",
+              "Tea Tree Oil",
+              "Melaleuca Alternifolia (Tea Tree) Leaf Oil"
+            ],
+            "source_origin": "reviewed_source_backed_pdp_content_patch"
+          },
+          {
+            "external_product_id": "ext_5b6e20f91a6470f348875903",
+            "domain": "cosrx.com",
+            "title": "The AHA 2 BHA 2 Blemish Treatment Serum",
+            "status": "possibly_inci_guess",
+            "active_items": [
+              "Zinc PCA"
+            ],
+            "source_origin": "pdp_section"
+          },
+          {
+            "external_product_id": "ext_218ac2ea5a9b179e1ca0fdcf",
+            "domain": "www.jurlique.com",
+            "title": "Revitalising Cleansing Gel",
+            "status": "possibly_inci_guess",
+            "active_items": [
+              "Calendula",
+              "Spilanthes",
+              "Yarrow"
+            ],
+            "source_origin": "pdp_section"
+          },
+          {
+            "external_product_id": "ext_ad9b9019f5e1cb34573c1185",
+            "domain": "www.jurlique.com",
+            "title": "Herbal Recovery Eye Cream",
+            "status": "possibly_inci_guess",
+            "active_items": [
+              "Citrus Unshiu Peel",
+              "Silk Tree Extract",
+              "Japanese Cedar Bud"
+            ],
+            "source_origin": "pdp_section"
+          },
+          {
+            "external_product_id": "ext_debe0a46f08fa17c3ac415fc",
+            "domain": "www.jurlique.com",
+            "title": "Radiant Skin Foaming Cleanser",
+            "status": "possibly_inci_guess",
+            "active_items": [
+              "Calendula",
+              "Spilanthes",
+              "Lemon Balm"
+            ],
+            "source_origin": "pdp_section"
+          },
+          {
+            "external_product_id": "ext_4db5bc081173014edf761523",
+            "domain": "roundlab.com",
+            "title": "1025 Dokdo Cleansing Balm 50ml",
+            "status": "possibly_inci_guess",
+            "active_items": [
+              "Protease",
+              "Tocopherol (Vitamin E)",
+              "Bergamot Fruit Oil",
+              "Sage Oil"
+            ],
+            "source_origin": "pdp_section"
+          },
+          {
+            "external_product_id": "ext_2ed925c42fe7f2dfd73f98db",
+            "domain": "tirtir.global",
+            "title": "Matcha Tea Pads",
+            "status": "possibly_inci_guess",
+            "active_items": [
+              "PDRN"
+            ],
+            "source_origin": "pdp_section"
+          },
+          {
+            "external_product_id": "ext_3c3ac84e9d03506a86f35239",
+            "domain": "tirtir.global",
+            "title": "Post Essay Hand Lotion",
+            "status": "possibly_inci_guess",
+            "active_items": [
+              "Shea Butter",
+              "Sunflower Seed Oil",
+              "Grape Seed Oil",
+              "Jojoba Seed Oil",
+              "Oatmeal Oil",
+              "Sweet Almond Oil",
+              "Argan Kernel Oil"
+            ],
+            "source_origin": "pdp_section"
+          }
+        ],
+        "active_raw_too_long": [
+          {
+            "external_product_id": "ext_de5e72578fb609c79f8c0d7b",
+            "domain": "pixibeauty.com",
+            "title": "Antioxidant Essentials",
+            "status": "ready_hero",
+            "active_items": [
+              "Ceramide NP – Provides time-release moisture"
+            ],
+            "source_origin": "active_block"
+          },
+          {
+            "external_product_id": "ext_2f931a2786872571f02cec05",
+            "domain": "sigmabeauty.com",
+            "title": "Hydro Melt Lip Mask",
+            "status": "ready_hero",
+            "active_items": [
+              "Hyaluronic acid"
+            ],
+            "source_origin": "pdp_section"
+          },
+          {
+            "external_product_id": "ext_68f54cb97689f84e81809010",
+            "domain": "sigmabeauty.com",
+            "title": "Renew Lip Oil",
+            "status": "not_expected_missing",
+            "active_items": [],
+            "source_origin": "pdp_section"
+          },
+          {
+            "external_product_id": "ext_b1fe5e9733616db524b5d898",
+            "domain": "sigmabeauty.com",
+            "title": "Dewy Moisturizing Lip Balm",
+            "status": "invalid_token_in_active",
+            "active_items": [
+              "Titanium Dioxide",
+              "chapped or sunburned lips Vitamin E Protects skin",
+              "restores damaged skin cells",
+              "chapped",
+              "Triethylhexanoin",
+              "Dipentaerythrityl Hexahydroxystearate/ Hexastearate/Hexarosinate",
+              "Polybutene",
+              "Polyethylene"
+            ],
+            "source_origin": "pdp_section"
+          },
+          {
+            "external_product_id": "ext_be9448f23bea15e17cc7e024",
+            "domain": "sigmabeauty.com",
+            "title": "Silken Lip Conditioning Mask",
+            "status": "ready_hero",
+            "active_items": [
+              "Hyaluronic acid"
+            ],
+            "source_origin": "pdp_section"
+          },
+          {
+            "external_product_id": "ext_322d2d4e126f4b3689dbf8f8",
+            "domain": "us.nuxe.com",
+            "title": "Super Serum [10] Eyes, The Universal Age-Defying Eye Concentrate",
+            "status": "ready_hero",
+            "active_items": [
+              "96% of natural origin*",
+              "Niacinamide",
+              "cell culture in the laboratory",
+              "Botanical Caffeine",
+              "Biomimetic Peptide *According to ISO 16128"
+            ],
+            "source_origin": "pdp_section"
+          },
+          {
+            "external_product_id": "ext_4cd032256df4123537658f40",
+            "domain": "us.nuxe.com",
+            "title": "Instant Fatigue-Fighter Moisturizer",
+            "status": "ready_hero",
+            "active_items": [
+              "Niacinamide"
+            ],
+            "source_origin": "pdp_section"
+          },
+          {
+            "external_product_id": "ext_a9f35e3b9ac4b24df195045f",
+            "domain": "us.nuxe.com",
+            "title": "Deliciously Nourishing Body Scrub",
+            "status": "ready_hero",
+            "active_items": [
+              "Honey",
+              "Sugar Crystals",
+              "Ground Rice Grains",
+              "precious botanical Oils (Sunflower, Argan, Borage)",
+              "Shea Butter",
+              "HELIANTHUS ANNUUS (SUNFLOWER) SEED OIL",
+              "ORYZA SATIVA (RICE) POWDER",
+              "PHENYL TRIMETHICONE"
+            ],
+            "source_origin": "pdp_section"
+          },
+          {
+            "external_product_id": "ext_e32879c1e3fbc362f8888daa",
+            "domain": "us.nuxe.com",
+            "title": "Eye Lighter Serum",
+            "status": "ready_hero",
+            "active_items": [
+              "Niacinamide",
+              "Hyaluronic acid",
+              "Squalane"
+            ],
+            "source_origin": "pdp_section"
+          },
+          {
+            "external_product_id": "ext_0801cd8e99f67e194bf0139e",
+            "domain": "murad.com",
+            "title": "Retinol Youth Renewal Face Oil Drops",
+            "status": "ready_hero",
+            "active_items": [
+              "Retinol"
+            ],
+            "source_origin": "pdp_section"
+          }
+        ],
+        "invalid_token_in_active": [
+          {
+            "external_product_id": "ext_b1fe5e9733616db524b5d898",
+            "domain": "sigmabeauty.com",
+            "title": "Dewy Moisturizing Lip Balm",
+            "status": "invalid_token_in_active",
+            "active_items": [
+              "Titanium Dioxide",
+              "chapped or sunburned lips Vitamin E Protects skin",
+              "restores damaged skin cells",
+              "chapped",
+              "Triethylhexanoin",
+              "Dipentaerythrityl Hexahydroxystearate/ Hexastearate/Hexarosinate",
+              "Polybutene",
+              "Polyethylene"
+            ],
+            "source_origin": "pdp_section"
+          }
+        ]
+      }
+    },
+    "variants": {
+      "status": [
+        {
+          "key": "ready",
+          "count": 4771
+        },
+        {
+          "key": "no_visible_variant_axis",
+          "count": 931
+        },
+        {
+          "key": "flagged",
+          "count": 69
+        }
+      ],
+      "issues": [
+        {
+          "key": "default_option_size_evidence_missing_axis",
+          "count": 48
+        },
+        {
+          "key": "wrong_axis_for_category",
+          "count": 21
+        }
+      ],
+      "issue_domains": [
+        {
+          "key": "upcirclebeauty.com::default_option_size_evidence_missing_axis",
+          "count": 26
+        },
+        {
+          "key": "nativeatlas.com::default_option_size_evidence_missing_axis",
+          "count": 6
+        },
+        {
+          "key": "fentybeauty.com::wrong_axis_for_category",
+          "count": 4
+        },
+        {
+          "key": "joocyee.com::default_option_size_evidence_missing_axis",
+          "count": 4
+        },
+        {
+          "key": "supergoop.com::wrong_axis_for_category",
+          "count": 4
+        },
+        {
+          "key": "us.laneige.com::wrong_axis_for_category",
+          "count": 3
+        },
+        {
+          "key": "bijin-shop.com::default_option_size_evidence_missing_axis",
+          "count": 2
+        },
+        {
+          "key": "innbeautyproject.com::wrong_axis_for_category",
+          "count": 2
+        },
+        {
+          "key": "lav-kids.com::default_option_size_evidence_missing_axis",
+          "count": 2
+        },
+        {
+          "key": "olehenriksen.com::wrong_axis_for_category",
+          "count": 2
+        },
+        {
+          "key": "aetasofficial.com::wrong_axis_for_category",
+          "count": 1
+        },
+        {
+          "key": "baiebotanique.com::default_option_size_evidence_missing_axis",
+          "count": 1
+        },
+        {
+          "key": "blindbarber.com::default_option_size_evidence_missing_axis",
+          "count": 1
+        },
+        {
+          "key": "cosrx.com::default_option_size_evidence_missing_axis",
+          "count": 1
+        },
+        {
+          "key": "intelligentchange.com::default_option_size_evidence_missing_axis",
+          "count": 1
+        },
+        {
+          "key": "missnella.com::wrong_axis_for_category",
+          "count": 1
+        },
+        {
+          "key": "naturium.com::wrong_axis_for_category",
+          "count": 1
+        },
+        {
+          "key": "pixibeauty.com::default_option_size_evidence_missing_axis",
+          "count": 1
+        },
+        {
+          "key": "pixibeauty.com::wrong_axis_for_category",
+          "count": 1
+        },
+        {
+          "key": "rarebeauty.com::default_option_size_evidence_missing_axis",
+          "count": 1
+        },
+        {
+          "key": "rmsbeauty.com::default_option_size_evidence_missing_axis",
+          "count": 1
+        },
+        {
+          "key": "rmsbeauty.com::wrong_axis_for_category",
+          "count": 1
+        },
+        {
+          "key": "us.nuxe.com::wrong_axis_for_category",
+          "count": 1
+        },
+        {
+          "key": "wholesale.publicgoods.com::default_option_size_evidence_missing_axis",
+          "count": 1
+        }
+      ],
+      "samples": {
+        "wrong_axis_for_category": [
+          {
+            "external_product_id": "ext_2e22a9a87c00a838ccc3af7d",
+            "domain": "fentybeauty.com",
+            "title": "Hydra Vizor Invisible Moisturizer SPF 30 with Niacinamide + Kalahari Melon — EU",
+            "status": "flagged",
+            "examples": [
+              {
+                "axis_name": "shade",
+                "axis_kind": "shade",
+                "value": "eu",
+                "visual": true
+              }
+            ]
+          },
+          {
+            "external_product_id": "ext_4307fabe1beb25ed76a73295",
+            "domain": "fentybeauty.com",
+            "title": "Fenty Skin Travel-Size Start'r Set with Mineral SPF - EU",
+            "status": "flagged",
+            "examples": [
+              {
+                "axis_name": "shade",
+                "axis_kind": "shade",
+                "value": "eu",
+                "visual": true
+              }
+            ]
+          },
+          {
+            "external_product_id": "ext_4e8b7997c11bbfeb7dc0b42d",
+            "domain": "fentybeauty.com",
+            "title": "Hydra Vizor Broad Spectrum Mineral SPF 30 Sunscreen Moisturizer - EU",
+            "status": "flagged",
+            "examples": [
+              {
+                "axis_name": "shade",
+                "axis_kind": "shade",
+                "value": "eu",
+                "visual": true
+              }
+            ]
+          },
+          {
+            "external_product_id": "ext_adf25e198f06ab1df43d1549",
+            "domain": "fentybeauty.com",
+            "title": "Fenty Skin Travel-Size Start'r Set with Mineral SPF: Dry Skin Edition - EU",
+            "status": "flagged",
+            "examples": [
+              {
+                "axis_name": "shade",
+                "axis_kind": "shade",
+                "value": "eu",
+                "visual": true
+              }
+            ]
+          },
+          {
+            "external_product_id": "ext_fe3bf539f651e8b9efac056c",
+            "domain": "pixibeauty.com",
+            "title": "Beauty Balm",
+            "status": "flagged",
+            "examples": [
+              {
+                "axis_name": "shade",
+                "axis_kind": "shade",
+                "value": "cream",
+                "visual": true
+              },
+              {
+                "axis_name": "shade",
+                "axis_kind": "shade",
+                "value": "nude",
+                "visual": true
+              },
+              {
+                "axis_name": "shade",
+                "axis_kind": "shade",
+                "value": "warm",
+                "visual": true
+              },
+              {
+                "axis_name": "shade",
+                "axis_kind": "shade",
+                "value": "caramel",
+                "visual": true
+              }
+            ]
+          },
+          {
+            "external_product_id": "ext_a5db9f38648006711e4b690f",
+            "domain": "missnella.com",
+            "title": "Miss Nella Lips & Tips Duo",
+            "status": "flagged",
+            "examples": [
+              {
+                "axis_name": "color",
+                "axis_kind": "color",
+                "value": "pink honey bunny",
+                "visual": true
+              },
+              {
+                "axis_name": "color",
+                "axis_kind": "color",
+                "value": "peach butter cheeks",
+                "visual": true
+              },
+              {
+                "axis_name": "color",
+                "axis_kind": "color",
+                "value": "hot pink sugar plum",
+                "visual": true
+              },
+              {
+                "axis_name": "color",
+                "axis_kind": "color",
+                "value": "red luvvy wuvvy",
+                "visual": true
+              }
+            ]
+          },
+          {
+            "external_product_id": "ext_610dadaf916d7cff4dbe48da",
+            "domain": "naturium.com",
+            "title": "Vitamin Bright Illuminating Eye Cream",
+            "status": "flagged",
+            "examples": [
+              {
+                "axis_name": "shade",
+                "axis_kind": "shade",
+                "value": "light/medium",
+                "visual": true
+              },
+              {
+                "axis_name": "shade",
+                "axis_kind": "shade",
+                "value": "medium/deep",
+                "visual": true
+              }
+            ]
+          },
+          {
+            "external_product_id": "ext_2bb0bd4acc91ef87fc990e51",
+            "domain": "us.nuxe.com",
+            "title": "Nuxuriance Ultra Alfa [3R] - The Exceptional Day & Night Cream",
+            "status": "flagged",
+            "examples": [
+              {
+                "axis_name": "shade",
+                "axis_kind": "shade",
+                "value": "the exceptional day & night cream",
+                "visual": true
+              }
+            ]
+          },
+          {
+            "external_product_id": "ext_123d26f91740b0e100715451",
+            "domain": "olehenriksen.com",
+            "title": "Pout Preserve Peptide Lip Treatment Glimmers",
+            "status": "flagged",
+            "examples": [
+              {
+                "axis_name": "shade",
+                "axis_kind": "shade",
+                "value": "cocoa crème glimmer",
+                "visual": true
+              },
+              {
+                "axis_name": "shade",
+                "axis_kind": "shade",
+                "value": "strawberry sorbet glimmer",
+                "visual": true
+              },
+              {
+                "axis_name": "shade",
+                "axis_kind": "shade",
+                "value": "citrus sunshine glimmer",
+                "visual": true
+              },
+              {
+                "axis_name": "shade",
+                "axis_kind": "shade",
+                "value": "crème brûlée glimmer",
+                "visual": true
+              }
+            ]
+          },
+          {
+            "external_product_id": "ext_d711519e2337ab545c05a005",
+            "domain": "olehenriksen.com",
+            "title": "Pout Preserve Peptide Lip Treatment Grape Fizz",
+            "status": "flagged",
+            "examples": [
+              {
+                "axis_name": "shade",
+                "axis_kind": "shade",
+                "value": "grape fizz",
+                "visual": true
+              }
+            ]
+          }
+        ],
+        "default_option_size_evidence_missing_axis": [
+          {
+            "external_product_id": "ext_a60b4cd8b8316b22fea02e1c",
+            "domain": "pixibeauty.com",
+            "title": "Glow Tonic Mini Size",
+            "status": "flagged",
+            "examples": [
+              {
+                "axis_name": "default",
+                "axis_kind": "volume",
+                "value": "https://pixibeauty.com/products/glow-tonic-40ml",
+                "visual": false
+              }
+            ]
+          },
+          {
+            "external_product_id": "ext_9400f4c8f5eaf77c836f5b75",
+            "domain": "wholesale.publicgoods.com",
+            "title": "Organic Maple Syrup",
+            "status": "flagged",
+            "examples": [
+              {
+                "axis_name": "default",
+                "axis_kind": "volume",
+                "value": "12 fl oz / Non-member",
+                "visual": false
+              }
+            ]
+          },
+          {
+            "external_product_id": "ext_ec464ac89f68f6a55357206f",
+            "domain": "intelligentchange.com",
+            "title": "Productivity Planner Cards Refill Pack",
+            "status": "flagged",
+            "examples": [
+              {
+                "axis_name": "default",
+                "axis_kind": "volume",
+                "value": "Productivity Planner Cards Refill Pack",
+                "visual": false
+              }
+            ]
+          },
+          {
+            "external_product_id": "ext_c55bce5f8c663cfb248e2ee5",
+            "domain": "rarebeauty.com",
+            "title": "Positive Light Liquid Luminizer Mini",
+            "status": "flagged",
+            "examples": [
+              {
+                "axis_name": "default",
+                "axis_kind": "volume",
+                "value": "Positive Light Liquid Luminizer Mini",
+                "visual": false
+              }
+            ]
+          },
+          {
+            "external_product_id": "ext_081591c7477c5396a90e5c80",
+            "domain": "upcirclebeauty.com",
+            "title": "1x Deodorant Refill Tester with Macadamia + Bergamot",
+            "status": "flagged",
+            "examples": [
+              {
+                "axis_name": "default",
+                "axis_kind": "volume",
+                "value": "1x Deodorant Refill Tester with Macadamia + Bergamot",
+                "visual": false
+              }
+            ]
+          },
+          {
+            "external_product_id": "ext_1c1a83ed89b2220318be382f",
+            "domain": "upcirclebeauty.com",
+            "title": "Face Moisturiser with Vitamin E - Travel Size",
+            "status": "flagged",
+            "examples": [
+              {
+                "axis_name": "default",
+                "axis_kind": "volume",
+                "value": "Face Moisturiser with Vitamin E - Travel Size",
+                "visual": false
+              }
+            ]
+          },
+          {
+            "external_product_id": "ext_219985ff370b463d1b4c8f4e",
+            "domain": "upcirclebeauty.com",
+            "title": "Peptide Serum with Custard Apple + Blood Orange - Travel Size",
+            "status": "flagged",
+            "examples": [
+              {
+                "axis_name": "default",
+                "axis_kind": "volume",
+                "value": "Peptide Serum with Custard Apple + Blood Orange - Travel Size",
+                "visual": false
+              }
+            ]
+          },
+          {
+            "external_product_id": "ext_2ff357b37e8ab09643b84e5f",
+            "domain": "upcirclebeauty.com",
+            "title": "RETURN + REFILL Face Moisturiser with Vitamin E - ON PAUSE",
+            "status": "flagged",
+            "examples": [
+              {
+                "axis_name": "default",
+                "axis_kind": "volume",
+                "value": "RETURN + REFILL Face Moisturiser with Vitamin E - ON PAUSE",
+                "visual": false
+              }
+            ]
+          },
+          {
+            "external_product_id": "ext_30f8ad46a88ee763b7e38d70",
+            "domain": "upcirclebeauty.com",
+            "title": "3x Deodorant Refills with Macadamia + Bergamot",
+            "status": "flagged",
+            "examples": [
+              {
+                "axis_name": "default",
+                "axis_kind": "volume",
+                "value": "https://upcirclebeauty.com/products/deodorant-refill",
+                "visual": false
+              }
+            ]
+          },
+          {
+            "external_product_id": "ext_332e2b4327ca2222e6a6cb63",
+            "domain": "upcirclebeauty.com",
+            "title": "Flaura Eau De Parfum Sample Vial",
+            "status": "flagged",
+            "examples": [
+              {
+                "axis_name": "default",
+                "axis_kind": "volume",
+                "value": "https://upcirclebeauty.com/products/floral-mini-perfume",
+                "visual": false
+              }
+            ]
+          }
+        ]
+      }
+    }
+  }
+}

@@ -1,0 +1,1812 @@
+{
+  "meta": {
+    "generated_at": "2026-05-28T10:47:35.150Z",
+    "source": "reviewed_official_seed_product_intel_report",
+    "batch_name": "wave48_rhode_product_intel_tail_20260528",
+    "inventory": "reports/markato_expansion_status_20260524/wave48_product_intel_tail_20260528/rhode_domain_audit_before/commerce_index_kb_readiness_inventory.json",
+    "selected_cases": 7,
+    "reviewer": "codex_quality_reviewer_owner_delegated",
+    "reviewer_kind": "assistant",
+    "candidate_quality_summary": {
+      "public_ready": 7,
+      "high_quality_ready": 7,
+      "evidence_profile": {
+        "seller_plus_formula": 7
+      }
+    }
+  },
+  "rows": [
+    {
+      "case_id": "live_ext_1042d177a365881339fa11a9",
+      "review_status": "completed",
+      "review_decision": "rewrite",
+      "reviewer": "codex_quality_reviewer_owner_delegated",
+      "reviewer_kind": "assistant",
+      "reviewed_at": "2026-05-28T10:47:35.150Z",
+      "notes": "Approved official-PDP-seed rewrite for peptide lip treatment strawberry glaze; evidence_profile=seller_plus_formula; source_url=https://www.rhodeskin.com/products/peptide-lip-treatment-strawberry-glaze",
+      "owner_delegated_review": {
+        "contract_version": "pivota.owner_delegated_review.v1",
+        "delegated_to": "codex_quality_reviewer_owner_delegated",
+        "reviewer_kind": "assistant",
+        "owner_instruction": "User delegated Codex to perform high-quality human review for Pivota Insights quality improvement.",
+        "guardrails": [
+          "Do not overwrite good content with lower-quality content.",
+          "No commerce-state claims in Pivota Insights.",
+          "Use official source facts only; keep evidence confidence explicit."
+        ]
+      },
+      "quality_improvement_review": {
+        "decision": "approved_replacement",
+        "reviewer_kind": "assistant",
+        "owner_delegated": true,
+        "reason": "Owner-delegated assistant review confirms the replacement uses official PDP seed facts, avoids commerce and unsupported evidence claims, and explicitly marks evidence gaps instead of inventing claims."
+      },
+      "baseline": {
+        "canonical_product_ref": {
+          "merchant_id": "external_seed",
+          "product_id": "ext_1042d177a365881339fa11a9",
+          "platform": "external_seed"
+        }
+      },
+      "selected": {
+        "selected_mode": "manual_reviewed_rewrite",
+        "selected_field_count": 7,
+        "field_sources": {
+          "what_it_is": "official_seed_description",
+          "best_for": "reviewed_category_and_official_title",
+          "why_it_stands_out": "official_seed_description_and_formula",
+          "routine_fit": "reviewed_category_and_official_title",
+          "watchouts": "owner_delegated_assistant_review",
+          "texture_finish": "reviewed_category_and_official_title",
+          "source_coverage": "official_pdp_seed_snapshot",
+          "community_signals": "not_collected"
+        },
+        "bundle": {
+          "contract_version": "pivota.product_intel.v1",
+          "display_name": "Pivota Insights",
+          "canonical_product_ref": {
+            "merchant_id": "external_seed",
+            "product_id": "ext_1042d177a365881339fa11a9",
+            "platform": "external_seed"
+          },
+          "product_group_id": "sig_c50e8f24976407e8128c117a",
+          "product_intel_core": {
+            "display_name": "Pivota Insights",
+            "what_it_is": {
+              "headline": "Lip product identity",
+              "body": "A Rhode lip product listed on the brand source page as peptide lip treatment strawberry glaze. The source description identifies: Lip care is skin care. Peptide Lip Treatment is a nourishing formula that hydrates and replenishes lips while leaving a glossy, high-shine finish."
+            },
+            "best_for": [
+              {
+                "tag": "lip_shoppers",
+                "label": "Lip product shoppers",
+                "confidence": "moderate"
+              },
+              {
+                "tag": "official_source_comparison",
+                "label": "Official-source comparison",
+                "confidence": "moderate"
+              }
+            ],
+            "why_it_stands_out": [
+              {
+                "headline": "Source-backed product detail",
+                "body": "Lip care is skin care. Peptide Lip Treatment is a nourishing formula that hydrates and replenishes lips while leaving a glossy, high-shine finish.",
+                "evidence_strength": "seller_plus_formula"
+              },
+              {
+                "headline": "Formula context captured",
+                "body": "Captured formula fields include Hydrogenated Polyisobutene, Diisostearyl Malate, Butyrospermum Parkii (Shea) Butter, Polybutene, Microcrystalline Wax (Cera Microcristallina) (Cire Microcristalline). Agents should keep composition claims within those source fields.",
+                "evidence_strength": "seller_plus_formula"
+              }
+            ],
+            "routine_fit": {
+              "step": "lip_color",
+              "am_pm": [
+                "as_needed"
+              ],
+              "pairing_notes": [
+                "Use within the lip product context; avoid inferring benefits not present in the source fields."
+              ]
+            },
+            "watchouts": [
+              {
+                "type": "formula_scope",
+                "label": "Formula details are source-derived; avoid medical, safety, or suitability claims not present in the source.",
+                "severity": "medium"
+              },
+              {
+                "type": "evidence_gap",
+                "label": "No independent review or community evidence was approved for this row; keep public copy source-bound.",
+                "severity": "medium"
+              },
+              {
+                "type": "scope_guardrail",
+                "label": "Use the commerce mainline for offer facts; keep this insight focused on source-backed product identity.",
+                "severity": "medium"
+              }
+            ],
+            "confidence": {
+              "overall": "moderate",
+              "fields": {
+                "what_it_is": "high",
+                "best_for": "moderate",
+                "why_it_stands_out": "moderate",
+                "routine_fit": "moderate",
+                "watchouts": "moderate"
+              }
+            },
+            "freshness": {
+              "generated_at": "2026-05-28T10:47:35.150Z",
+              "source_version": "wave48_rhode_product_intel_tail_20260528"
+            },
+            "quality_state": "reviewed",
+            "evidence_profile": "seller_plus_formula",
+            "source_coverage": {
+              "seller": {
+                "available": true,
+                "source_url": "https://www.rhodeskin.com/products/peptide-lip-treatment-strawberry-glaze"
+              },
+              "formula": {
+                "available": true,
+                "ingredient_count": 30,
+                "source_url": "https://www.rhodeskin.com/products/peptide-lip-treatment-strawberry-glaze"
+              },
+              "reviews": {
+                "available": false,
+                "count": 0
+              },
+              "creator": {
+                "available": false,
+                "count": 0
+              },
+              "editorial": {
+                "available": false,
+                "count": 0
+              }
+            }
+          },
+          "texture_finish": {
+            "finish": "lip product",
+            "texture": "lip",
+            "source": "reviewed_category_and_official_title"
+          },
+          "community_signals": {
+            "status": "unavailable",
+            "reason": "not_collected_for_this_review_batch"
+          },
+          "recommendation_intents": {
+            "similar": [],
+            "complementary": [],
+            "routine_pairing": [],
+            "underfill_reason": null,
+            "confidence": "low"
+          },
+          "market_signal_badges": [],
+          "external_highlight_signals": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "seller_plus_formula",
+          "source_coverage": {
+            "seller": {
+              "available": true,
+              "source_url": "https://www.rhodeskin.com/products/peptide-lip-treatment-strawberry-glaze"
+            },
+            "formula": {
+              "available": true,
+              "ingredient_count": 30,
+              "source_url": "https://www.rhodeskin.com/products/peptide-lip-treatment-strawberry-glaze"
+            },
+            "reviews": {
+              "available": false,
+              "count": 0
+            },
+            "creator": {
+              "available": false,
+              "count": 0
+            },
+            "editorial": {
+              "available": false,
+              "count": 0
+            }
+          },
+          "confidence": {
+            "overall": "moderate",
+            "fields": {
+              "what_it_is": "high",
+              "best_for": "moderate",
+              "why_it_stands_out": "moderate",
+              "routine_fit": "moderate",
+              "watchouts": "moderate"
+            }
+          },
+          "freshness": {
+            "generated_at": "2026-05-28T10:47:35.150Z",
+            "source_version": "wave48_rhode_product_intel_tail_20260528"
+          },
+          "offer_pointers": {
+            "offers_count": 0,
+            "default_offer_id": null,
+            "best_price_offer_id": null,
+            "commerce_modes": []
+          },
+          "provenance": {
+            "source": "owner_delegated_official_seed_rewrite",
+            "generator": "owner_delegated_assistant_reviewed_rewrite",
+            "selection_strategy": "official_pdp_seed_guarded_manual_review",
+            "field_sources": {
+              "what_it_is": "official_seed_description",
+              "best_for": "reviewed_category_and_official_title",
+              "why_it_stands_out": "official_seed_description_and_formula",
+              "routine_fit": "reviewed_category_and_official_title",
+              "watchouts": "owner_delegated_assistant_review",
+              "texture_finish": "reviewed_category_and_official_title",
+              "source_coverage": "official_pdp_seed_snapshot",
+              "community_signals": "not_collected"
+            },
+            "review_status": "completed",
+            "review_decision": "rewrite",
+            "reviewer": "codex_quality_reviewer_owner_delegated",
+            "reviewer_kind": "assistant",
+            "reviewed_at": "2026-05-28T10:47:35.150Z",
+            "external_highlight_review_status": "rewrite",
+            "external_review_batch": "wave48_rhode_product_intel_tail_20260528",
+            "official_source_url": "https://www.rhodeskin.com/products/peptide-lip-treatment-strawberry-glaze",
+            "official_source_ingredient_count": 30,
+            "rewrite_reason": "Owner-delegated assistant review: official PDP seed rewrite; no commerce-state, community, medical, or unsupported safety claims added."
+          },
+          "shopping_card": {
+            "contract_version": "pivota.shopping_card.v1",
+            "title": "peptide lip treatment strawberry glaze",
+            "subtitle": "Lip Product",
+            "highlight": "Shine lip formula detail",
+            "intro": "A Rhode lip product listed on the brand source page as peptide lip treatment strawberry glaze. The source description identifies: Lip care is skin care. Peptide Lip Treatment is a nourishing formula that hydrates and replenishes lips while leaving a glossy, high-shine finish.",
+            "evidence_profile": "seller_plus_formula"
+          },
+          "search_card": {
+            "title_candidate": "peptide lip treatment strawberry glaze",
+            "compact_candidate": "Lip Product",
+            "highlight_candidate": "Shine lip formula detail",
+            "intro_candidate": "A Rhode lip product listed on the brand source page as peptide lip treatment strawberry glaze. The source description identifies: Lip care is skin care. Peptide Lip Treatment is a nourishing formula that hydrates and replenishes lips while leaving a glossy, high-shine finish.",
+            "proof_badge_candidate": ""
+          }
+        }
+      }
+    },
+    {
+      "case_id": "live_ext_2a9f633e57e1bd8131d024f8",
+      "review_status": "completed",
+      "review_decision": "rewrite",
+      "reviewer": "codex_quality_reviewer_owner_delegated",
+      "reviewer_kind": "assistant",
+      "reviewed_at": "2026-05-28T10:47:35.150Z",
+      "notes": "Approved official-PDP-seed rewrite for pineapple refresh; evidence_profile=seller_plus_formula; source_url=https://www.rhodeskin.com/products/pineapple-refresh-cleanser",
+      "owner_delegated_review": {
+        "contract_version": "pivota.owner_delegated_review.v1",
+        "delegated_to": "codex_quality_reviewer_owner_delegated",
+        "reviewer_kind": "assistant",
+        "owner_instruction": "User delegated Codex to perform high-quality human review for Pivota Insights quality improvement.",
+        "guardrails": [
+          "Do not overwrite good content with lower-quality content.",
+          "No commerce-state claims in Pivota Insights.",
+          "Use official source facts only; keep evidence confidence explicit."
+        ]
+      },
+      "quality_improvement_review": {
+        "decision": "approved_replacement",
+        "reviewer_kind": "assistant",
+        "owner_delegated": true,
+        "reason": "Owner-delegated assistant review confirms the replacement uses official PDP seed facts, avoids commerce and unsupported evidence claims, and explicitly marks evidence gaps instead of inventing claims."
+      },
+      "baseline": {
+        "canonical_product_ref": {
+          "merchant_id": "external_seed",
+          "product_id": "ext_2a9f633e57e1bd8131d024f8",
+          "platform": "external_seed"
+        }
+      },
+      "selected": {
+        "selected_mode": "manual_reviewed_rewrite",
+        "selected_field_count": 7,
+        "field_sources": {
+          "what_it_is": "official_seed_description",
+          "best_for": "reviewed_category_and_official_title",
+          "why_it_stands_out": "official_seed_description_and_formula",
+          "routine_fit": "reviewed_category_and_official_title",
+          "watchouts": "owner_delegated_assistant_review",
+          "texture_finish": "reviewed_category_and_official_title",
+          "source_coverage": "official_pdp_seed_snapshot",
+          "community_signals": "not_collected"
+        },
+        "bundle": {
+          "contract_version": "pivota.product_intel.v1",
+          "display_name": "Pivota Insights",
+          "canonical_product_ref": {
+            "merchant_id": "external_seed",
+            "product_id": "ext_2a9f633e57e1bd8131d024f8",
+            "platform": "external_seed"
+          },
+          "product_group_id": "sig_6ed3011f75eae8da7c0ac023",
+          "product_intel_core": {
+            "display_name": "Pivota Insights",
+            "what_it_is": {
+              "headline": "Cleanser identity",
+              "body": "A Rhode cleanser listed on the brand source page as pineapple refresh. The source description identifies: Hailey Bieber's first step in the rhode skincare routine."
+            },
+            "best_for": [
+              {
+                "tag": "cleanser_shoppers",
+                "label": "Cleanser shoppers",
+                "confidence": "moderate"
+              },
+              {
+                "tag": "official_source_comparison",
+                "label": "Official-source comparison",
+                "confidence": "moderate"
+              }
+            ],
+            "why_it_stands_out": [
+              {
+                "headline": "Source-backed product detail",
+                "body": "Hailey Bieber's first step in the rhode skincare routine.",
+                "evidence_strength": "seller_plus_formula"
+              },
+              {
+                "headline": "Formula context captured",
+                "body": "Captured formula fields include Click an ingredient to learn more about it. water (aqua) (eau), glycerin, acrylates copolymer, potassium cocoyl glycinate, lauramidopropyl betaine. Agents should keep composition claims within those source fields.",
+                "evidence_strength": "seller_plus_formula"
+              }
+            ],
+            "routine_fit": {
+              "step": "cleanse",
+              "am_pm": [
+                "as_needed"
+              ],
+              "pairing_notes": [
+                "Use within the cleanser context; avoid inferring benefits not present in the source fields."
+              ]
+            },
+            "watchouts": [
+              {
+                "type": "formula_scope",
+                "label": "Formula details are source-derived; avoid medical, safety, or suitability claims not present in the source.",
+                "severity": "medium"
+              },
+              {
+                "type": "evidence_gap",
+                "label": "No independent review or community evidence was approved for this row; keep public copy source-bound.",
+                "severity": "medium"
+              },
+              {
+                "type": "scope_guardrail",
+                "label": "Use the commerce mainline for offer facts; keep this insight focused on source-backed product identity.",
+                "severity": "medium"
+              }
+            ],
+            "confidence": {
+              "overall": "moderate",
+              "fields": {
+                "what_it_is": "high",
+                "best_for": "moderate",
+                "why_it_stands_out": "moderate",
+                "routine_fit": "moderate",
+                "watchouts": "moderate"
+              }
+            },
+            "freshness": {
+              "generated_at": "2026-05-28T10:47:35.150Z",
+              "source_version": "wave48_rhode_product_intel_tail_20260528"
+            },
+            "quality_state": "reviewed",
+            "evidence_profile": "seller_plus_formula",
+            "source_coverage": {
+              "seller": {
+                "available": true,
+                "source_url": "https://www.rhodeskin.com/products/pineapple-refresh-cleanser"
+              },
+              "formula": {
+                "available": true,
+                "ingredient_count": 29,
+                "source_url": "https://www.rhodeskin.com/products/pineapple-refresh-cleanser"
+              },
+              "reviews": {
+                "available": false,
+                "count": 0
+              },
+              "creator": {
+                "available": false,
+                "count": 0
+              },
+              "editorial": {
+                "available": false,
+                "count": 0
+              }
+            }
+          },
+          "texture_finish": {
+            "finish": "cleanser",
+            "texture": "cleanser",
+            "source": "reviewed_category_and_official_title"
+          },
+          "community_signals": {
+            "status": "unavailable",
+            "reason": "not_collected_for_this_review_batch"
+          },
+          "recommendation_intents": {
+            "similar": [],
+            "complementary": [],
+            "routine_pairing": [],
+            "underfill_reason": null,
+            "confidence": "low"
+          },
+          "market_signal_badges": [],
+          "external_highlight_signals": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "seller_plus_formula",
+          "source_coverage": {
+            "seller": {
+              "available": true,
+              "source_url": "https://www.rhodeskin.com/products/pineapple-refresh-cleanser"
+            },
+            "formula": {
+              "available": true,
+              "ingredient_count": 29,
+              "source_url": "https://www.rhodeskin.com/products/pineapple-refresh-cleanser"
+            },
+            "reviews": {
+              "available": false,
+              "count": 0
+            },
+            "creator": {
+              "available": false,
+              "count": 0
+            },
+            "editorial": {
+              "available": false,
+              "count": 0
+            }
+          },
+          "confidence": {
+            "overall": "moderate",
+            "fields": {
+              "what_it_is": "high",
+              "best_for": "moderate",
+              "why_it_stands_out": "moderate",
+              "routine_fit": "moderate",
+              "watchouts": "moderate"
+            }
+          },
+          "freshness": {
+            "generated_at": "2026-05-28T10:47:35.150Z",
+            "source_version": "wave48_rhode_product_intel_tail_20260528"
+          },
+          "offer_pointers": {
+            "offers_count": 0,
+            "default_offer_id": null,
+            "best_price_offer_id": null,
+            "commerce_modes": []
+          },
+          "provenance": {
+            "source": "owner_delegated_official_seed_rewrite",
+            "generator": "owner_delegated_assistant_reviewed_rewrite",
+            "selection_strategy": "official_pdp_seed_guarded_manual_review",
+            "field_sources": {
+              "what_it_is": "official_seed_description",
+              "best_for": "reviewed_category_and_official_title",
+              "why_it_stands_out": "official_seed_description_and_formula",
+              "routine_fit": "reviewed_category_and_official_title",
+              "watchouts": "owner_delegated_assistant_review",
+              "texture_finish": "reviewed_category_and_official_title",
+              "source_coverage": "official_pdp_seed_snapshot",
+              "community_signals": "not_collected"
+            },
+            "review_status": "completed",
+            "review_decision": "rewrite",
+            "reviewer": "codex_quality_reviewer_owner_delegated",
+            "reviewer_kind": "assistant",
+            "reviewed_at": "2026-05-28T10:47:35.150Z",
+            "external_highlight_review_status": "rewrite",
+            "external_review_batch": "wave48_rhode_product_intel_tail_20260528",
+            "official_source_url": "https://www.rhodeskin.com/products/pineapple-refresh-cleanser",
+            "official_source_ingredient_count": 29,
+            "rewrite_reason": "Owner-delegated assistant review: official PDP seed rewrite; no commerce-state, community, medical, or unsupported safety claims added."
+          },
+          "shopping_card": {
+            "contract_version": "pivota.shopping_card.v1",
+            "title": "pineapple refresh",
+            "subtitle": "Cleanser",
+            "highlight": "Cleanser formula detail",
+            "intro": "A Rhode cleanser listed on the brand source page as pineapple refresh. The source description identifies: Hailey Bieber's first step in the rhode skincare routine.",
+            "evidence_profile": "seller_plus_formula"
+          },
+          "search_card": {
+            "title_candidate": "pineapple refresh",
+            "compact_candidate": "Cleanser",
+            "highlight_candidate": "Cleanser formula detail",
+            "intro_candidate": "A Rhode cleanser listed on the brand source page as pineapple refresh. The source description identifies: Hailey Bieber's first step in the rhode skincare routine.",
+            "proof_badge_candidate": ""
+          }
+        }
+      }
+    },
+    {
+      "case_id": "live_ext_4d65feee5bf1b7dc8b0b41f4",
+      "review_status": "completed",
+      "review_decision": "rewrite",
+      "reviewer": "codex_quality_reviewer_owner_delegated",
+      "reviewer_kind": "assistant",
+      "reviewed_at": "2026-05-28T10:47:35.150Z",
+      "notes": "Approved official-PDP-seed rewrite for peptide lip boost sugarmint; evidence_profile=seller_plus_formula; source_url=https://www.rhodeskin.com/products/peptide-lip-boost-sugarmint",
+      "owner_delegated_review": {
+        "contract_version": "pivota.owner_delegated_review.v1",
+        "delegated_to": "codex_quality_reviewer_owner_delegated",
+        "reviewer_kind": "assistant",
+        "owner_instruction": "User delegated Codex to perform high-quality human review for Pivota Insights quality improvement.",
+        "guardrails": [
+          "Do not overwrite good content with lower-quality content.",
+          "No commerce-state claims in Pivota Insights.",
+          "Use official source facts only; keep evidence confidence explicit."
+        ]
+      },
+      "quality_improvement_review": {
+        "decision": "approved_replacement",
+        "reviewer_kind": "assistant",
+        "owner_delegated": true,
+        "reason": "Owner-delegated assistant review confirms the replacement uses official PDP seed facts, avoids commerce and unsupported evidence claims, and explicitly marks evidence gaps instead of inventing claims."
+      },
+      "baseline": {
+        "canonical_product_ref": {
+          "merchant_id": "external_seed",
+          "product_id": "ext_4d65feee5bf1b7dc8b0b41f4",
+          "platform": "external_seed"
+        }
+      },
+      "selected": {
+        "selected_mode": "manual_reviewed_rewrite",
+        "selected_field_count": 7,
+        "field_sources": {
+          "what_it_is": "official_seed_description",
+          "best_for": "reviewed_category_and_official_title",
+          "why_it_stands_out": "official_seed_description_and_formula",
+          "routine_fit": "reviewed_category_and_official_title",
+          "watchouts": "owner_delegated_assistant_review",
+          "texture_finish": "reviewed_category_and_official_title",
+          "source_coverage": "official_pdp_seed_snapshot",
+          "community_signals": "not_collected"
+        },
+        "bundle": {
+          "contract_version": "pivota.product_intel.v1",
+          "display_name": "Pivota Insights",
+          "canonical_product_ref": {
+            "merchant_id": "external_seed",
+            "product_id": "ext_4d65feee5bf1b7dc8b0b41f4",
+            "platform": "external_seed"
+          },
+          "product_group_id": "sig_cf50a742af543978e5c90890",
+          "product_intel_core": {
+            "display_name": "Pivota Insights",
+            "what_it_is": {
+              "headline": "Lip product identity",
+              "body": "A Rhode lip product listed on the brand source page as peptide lip boost sugarmint. The source description identifies: A plumping lip mask that enhances volume instantly and over time."
+            },
+            "best_for": [
+              {
+                "tag": "lip_shoppers",
+                "label": "Lip product shoppers",
+                "confidence": "moderate"
+              },
+              {
+                "tag": "official_source_comparison",
+                "label": "Official-source comparison",
+                "confidence": "moderate"
+              }
+            ],
+            "why_it_stands_out": [
+              {
+                "headline": "Source-backed product detail",
+                "body": "A plumping lip mask that enhances volume instantly and over time.",
+                "evidence_strength": "seller_plus_formula"
+              },
+              {
+                "headline": "Formula context captured",
+                "body": "Captured formula fields include Polybutene, Hydrogenated Polyisobutene, Caprylic/Capric Triglyceride, Bis-Diglyceryl Polyacyladipate-2, Polyethylene. Agents should keep composition claims within those source fields.",
+                "evidence_strength": "seller_plus_formula"
+              }
+            ],
+            "routine_fit": {
+              "step": "lip_color",
+              "am_pm": [
+                "as_needed"
+              ],
+              "pairing_notes": [
+                "Use within the lip product context; avoid inferring benefits not present in the source fields."
+              ]
+            },
+            "watchouts": [
+              {
+                "type": "formula_scope",
+                "label": "Formula details are source-derived; avoid medical, safety, or suitability claims not present in the source.",
+                "severity": "medium"
+              },
+              {
+                "type": "evidence_gap",
+                "label": "No independent review or community evidence was approved for this row; keep public copy source-bound.",
+                "severity": "medium"
+              },
+              {
+                "type": "scope_guardrail",
+                "label": "Use the commerce mainline for offer facts; keep this insight focused on source-backed product identity.",
+                "severity": "medium"
+              }
+            ],
+            "confidence": {
+              "overall": "moderate",
+              "fields": {
+                "what_it_is": "high",
+                "best_for": "moderate",
+                "why_it_stands_out": "moderate",
+                "routine_fit": "moderate",
+                "watchouts": "moderate"
+              }
+            },
+            "freshness": {
+              "generated_at": "2026-05-28T10:47:35.150Z",
+              "source_version": "wave48_rhode_product_intel_tail_20260528"
+            },
+            "quality_state": "reviewed",
+            "evidence_profile": "seller_plus_formula",
+            "source_coverage": {
+              "seller": {
+                "available": true,
+                "source_url": "https://www.rhodeskin.com/products/peptide-lip-boost-sugarmint"
+              },
+              "formula": {
+                "available": true,
+                "ingredient_count": 48,
+                "source_url": "https://www.rhodeskin.com/products/peptide-lip-boost-sugarmint"
+              },
+              "reviews": {
+                "available": false,
+                "count": 0
+              },
+              "creator": {
+                "available": false,
+                "count": 0
+              },
+              "editorial": {
+                "available": false,
+                "count": 0
+              }
+            }
+          },
+          "texture_finish": {
+            "finish": "lip product",
+            "texture": "lip",
+            "source": "reviewed_category_and_official_title"
+          },
+          "community_signals": {
+            "status": "unavailable",
+            "reason": "not_collected_for_this_review_batch"
+          },
+          "recommendation_intents": {
+            "similar": [],
+            "complementary": [],
+            "routine_pairing": [],
+            "underfill_reason": null,
+            "confidence": "low"
+          },
+          "market_signal_badges": [],
+          "external_highlight_signals": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "seller_plus_formula",
+          "source_coverage": {
+            "seller": {
+              "available": true,
+              "source_url": "https://www.rhodeskin.com/products/peptide-lip-boost-sugarmint"
+            },
+            "formula": {
+              "available": true,
+              "ingredient_count": 48,
+              "source_url": "https://www.rhodeskin.com/products/peptide-lip-boost-sugarmint"
+            },
+            "reviews": {
+              "available": false,
+              "count": 0
+            },
+            "creator": {
+              "available": false,
+              "count": 0
+            },
+            "editorial": {
+              "available": false,
+              "count": 0
+            }
+          },
+          "confidence": {
+            "overall": "moderate",
+            "fields": {
+              "what_it_is": "high",
+              "best_for": "moderate",
+              "why_it_stands_out": "moderate",
+              "routine_fit": "moderate",
+              "watchouts": "moderate"
+            }
+          },
+          "freshness": {
+            "generated_at": "2026-05-28T10:47:35.150Z",
+            "source_version": "wave48_rhode_product_intel_tail_20260528"
+          },
+          "offer_pointers": {
+            "offers_count": 0,
+            "default_offer_id": null,
+            "best_price_offer_id": null,
+            "commerce_modes": []
+          },
+          "provenance": {
+            "source": "owner_delegated_official_seed_rewrite",
+            "generator": "owner_delegated_assistant_reviewed_rewrite",
+            "selection_strategy": "official_pdp_seed_guarded_manual_review",
+            "field_sources": {
+              "what_it_is": "official_seed_description",
+              "best_for": "reviewed_category_and_official_title",
+              "why_it_stands_out": "official_seed_description_and_formula",
+              "routine_fit": "reviewed_category_and_official_title",
+              "watchouts": "owner_delegated_assistant_review",
+              "texture_finish": "reviewed_category_and_official_title",
+              "source_coverage": "official_pdp_seed_snapshot",
+              "community_signals": "not_collected"
+            },
+            "review_status": "completed",
+            "review_decision": "rewrite",
+            "reviewer": "codex_quality_reviewer_owner_delegated",
+            "reviewer_kind": "assistant",
+            "reviewed_at": "2026-05-28T10:47:35.150Z",
+            "external_highlight_review_status": "rewrite",
+            "external_review_batch": "wave48_rhode_product_intel_tail_20260528",
+            "official_source_url": "https://www.rhodeskin.com/products/peptide-lip-boost-sugarmint",
+            "official_source_ingredient_count": 48,
+            "rewrite_reason": "Owner-delegated assistant review: official PDP seed rewrite; no commerce-state, community, medical, or unsupported safety claims added."
+          },
+          "shopping_card": {
+            "contract_version": "pivota.shopping_card.v1",
+            "title": "peptide lip boost sugarmint",
+            "subtitle": "Lip Product",
+            "highlight": "Creamy lip formula detail",
+            "intro": "A Rhode lip product listed on the brand source page as peptide lip boost sugarmint. The source description identifies: A plumping lip mask that enhances volume instantly and over time.",
+            "evidence_profile": "seller_plus_formula"
+          },
+          "search_card": {
+            "title_candidate": "peptide lip boost sugarmint",
+            "compact_candidate": "Lip Product",
+            "highlight_candidate": "Creamy lip formula detail",
+            "intro_candidate": "A Rhode lip product listed on the brand source page as peptide lip boost sugarmint. The source description identifies: A plumping lip mask that enhances volume instantly and over time.",
+            "proof_badge_candidate": ""
+          }
+        }
+      }
+    },
+    {
+      "case_id": "live_ext_9261891ed91656b4b5fc305d",
+      "review_status": "completed",
+      "review_decision": "rewrite",
+      "reviewer": "codex_quality_reviewer_owner_delegated",
+      "reviewer_kind": "assistant",
+      "reviewed_at": "2026-05-28T10:47:35.150Z",
+      "notes": "Approved official-PDP-seed rewrite for peptide lip treatment unscented; evidence_profile=seller_plus_formula; source_url=https://www.rhodeskin.com/products/peptide-lip-treatment",
+      "owner_delegated_review": {
+        "contract_version": "pivota.owner_delegated_review.v1",
+        "delegated_to": "codex_quality_reviewer_owner_delegated",
+        "reviewer_kind": "assistant",
+        "owner_instruction": "User delegated Codex to perform high-quality human review for Pivota Insights quality improvement.",
+        "guardrails": [
+          "Do not overwrite good content with lower-quality content.",
+          "No commerce-state claims in Pivota Insights.",
+          "Use official source facts only; keep evidence confidence explicit."
+        ]
+      },
+      "quality_improvement_review": {
+        "decision": "approved_replacement",
+        "reviewer_kind": "assistant",
+        "owner_delegated": true,
+        "reason": "Owner-delegated assistant review confirms the replacement uses official PDP seed facts, avoids commerce and unsupported evidence claims, and explicitly marks evidence gaps instead of inventing claims."
+      },
+      "baseline": {
+        "canonical_product_ref": {
+          "merchant_id": "external_seed",
+          "product_id": "ext_9261891ed91656b4b5fc305d",
+          "platform": "external_seed"
+        }
+      },
+      "selected": {
+        "selected_mode": "manual_reviewed_rewrite",
+        "selected_field_count": 7,
+        "field_sources": {
+          "what_it_is": "official_seed_description",
+          "best_for": "reviewed_category_and_official_title",
+          "why_it_stands_out": "official_seed_description_and_formula",
+          "routine_fit": "reviewed_category_and_official_title",
+          "watchouts": "owner_delegated_assistant_review",
+          "texture_finish": "reviewed_category_and_official_title",
+          "source_coverage": "official_pdp_seed_snapshot",
+          "community_signals": "not_collected"
+        },
+        "bundle": {
+          "contract_version": "pivota.product_intel.v1",
+          "display_name": "Pivota Insights",
+          "canonical_product_ref": {
+            "merchant_id": "external_seed",
+            "product_id": "ext_9261891ed91656b4b5fc305d",
+            "platform": "external_seed"
+          },
+          "product_group_id": "sig_442b48716de0d041f98e6e49",
+          "product_intel_core": {
+            "display_name": "Pivota Insights",
+            "what_it_is": {
+              "headline": "Lip product identity",
+              "body": "A Rhode lip product listed on the brand source page as peptide lip treatment unscented. The source description identifies: A nourishing fragrance-free treat for visibly plump, pillowy-soft lips — day or night."
+            },
+            "best_for": [
+              {
+                "tag": "lip_shoppers",
+                "label": "Lip product shoppers",
+                "confidence": "moderate"
+              },
+              {
+                "tag": "official_source_comparison",
+                "label": "Official-source comparison",
+                "confidence": "moderate"
+              }
+            ],
+            "why_it_stands_out": [
+              {
+                "headline": "Source-backed product detail",
+                "body": "A nourishing fragrance-free treat for visibly plump, pillowy-soft lips — day or night.",
+                "evidence_strength": "seller_plus_formula"
+              },
+              {
+                "headline": "Formula context captured",
+                "body": "Captured formula fields include Click an ingredient to learn more about it. Hydrogenated Polyisobutene, Diisostearyl Malate, Butyrospermum Parkii (Shea) Butter, Polybutene, Microcrystalline Wax (Cera Microcristallina) (Cire Microcristalline). Agents should keep composition claims within those source fields.",
+                "evidence_strength": "seller_plus_formula"
+              }
+            ],
+            "routine_fit": {
+              "step": "lip_color",
+              "am_pm": [
+                "as_needed"
+              ],
+              "pairing_notes": [
+                "Use within the lip product context; avoid inferring benefits not present in the source fields."
+              ]
+            },
+            "watchouts": [
+              {
+                "type": "formula_scope",
+                "label": "Formula details are source-derived; avoid medical, safety, or suitability claims not present in the source.",
+                "severity": "medium"
+              },
+              {
+                "type": "evidence_gap",
+                "label": "No independent review or community evidence was approved for this row; keep public copy source-bound.",
+                "severity": "medium"
+              },
+              {
+                "type": "scope_guardrail",
+                "label": "Use the commerce mainline for offer facts; keep this insight focused on source-backed product identity.",
+                "severity": "medium"
+              }
+            ],
+            "confidence": {
+              "overall": "moderate",
+              "fields": {
+                "what_it_is": "high",
+                "best_for": "moderate",
+                "why_it_stands_out": "moderate",
+                "routine_fit": "moderate",
+                "watchouts": "moderate"
+              }
+            },
+            "freshness": {
+              "generated_at": "2026-05-28T10:47:35.150Z",
+              "source_version": "wave48_rhode_product_intel_tail_20260528"
+            },
+            "quality_state": "reviewed",
+            "evidence_profile": "seller_plus_formula",
+            "source_coverage": {
+              "seller": {
+                "available": true,
+                "source_url": "https://www.rhodeskin.com/products/peptide-lip-treatment"
+              },
+              "formula": {
+                "available": true,
+                "ingredient_count": 28,
+                "source_url": "https://www.rhodeskin.com/products/peptide-lip-treatment"
+              },
+              "reviews": {
+                "available": false,
+                "count": 0
+              },
+              "creator": {
+                "available": false,
+                "count": 0
+              },
+              "editorial": {
+                "available": false,
+                "count": 0
+              }
+            }
+          },
+          "texture_finish": {
+            "finish": "lip product",
+            "texture": "lip",
+            "source": "reviewed_category_and_official_title"
+          },
+          "community_signals": {
+            "status": "unavailable",
+            "reason": "not_collected_for_this_review_batch"
+          },
+          "recommendation_intents": {
+            "similar": [],
+            "complementary": [],
+            "routine_pairing": [],
+            "underfill_reason": null,
+            "confidence": "low"
+          },
+          "market_signal_badges": [],
+          "external_highlight_signals": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "seller_plus_formula",
+          "source_coverage": {
+            "seller": {
+              "available": true,
+              "source_url": "https://www.rhodeskin.com/products/peptide-lip-treatment"
+            },
+            "formula": {
+              "available": true,
+              "ingredient_count": 28,
+              "source_url": "https://www.rhodeskin.com/products/peptide-lip-treatment"
+            },
+            "reviews": {
+              "available": false,
+              "count": 0
+            },
+            "creator": {
+              "available": false,
+              "count": 0
+            },
+            "editorial": {
+              "available": false,
+              "count": 0
+            }
+          },
+          "confidence": {
+            "overall": "moderate",
+            "fields": {
+              "what_it_is": "high",
+              "best_for": "moderate",
+              "why_it_stands_out": "moderate",
+              "routine_fit": "moderate",
+              "watchouts": "moderate"
+            }
+          },
+          "freshness": {
+            "generated_at": "2026-05-28T10:47:35.150Z",
+            "source_version": "wave48_rhode_product_intel_tail_20260528"
+          },
+          "offer_pointers": {
+            "offers_count": 0,
+            "default_offer_id": null,
+            "best_price_offer_id": null,
+            "commerce_modes": []
+          },
+          "provenance": {
+            "source": "owner_delegated_official_seed_rewrite",
+            "generator": "owner_delegated_assistant_reviewed_rewrite",
+            "selection_strategy": "official_pdp_seed_guarded_manual_review",
+            "field_sources": {
+              "what_it_is": "official_seed_description",
+              "best_for": "reviewed_category_and_official_title",
+              "why_it_stands_out": "official_seed_description_and_formula",
+              "routine_fit": "reviewed_category_and_official_title",
+              "watchouts": "owner_delegated_assistant_review",
+              "texture_finish": "reviewed_category_and_official_title",
+              "source_coverage": "official_pdp_seed_snapshot",
+              "community_signals": "not_collected"
+            },
+            "review_status": "completed",
+            "review_decision": "rewrite",
+            "reviewer": "codex_quality_reviewer_owner_delegated",
+            "reviewer_kind": "assistant",
+            "reviewed_at": "2026-05-28T10:47:35.150Z",
+            "external_highlight_review_status": "rewrite",
+            "external_review_batch": "wave48_rhode_product_intel_tail_20260528",
+            "official_source_url": "https://www.rhodeskin.com/products/peptide-lip-treatment",
+            "official_source_ingredient_count": 28,
+            "rewrite_reason": "Owner-delegated assistant review: official PDP seed rewrite; no commerce-state, community, medical, or unsupported safety claims added."
+          },
+          "shopping_card": {
+            "contract_version": "pivota.shopping_card.v1",
+            "title": "peptide lip treatment unscented",
+            "subtitle": "Lip Product",
+            "highlight": "Shine lip formula detail",
+            "intro": "A Rhode lip product listed on the brand source page as peptide lip treatment unscented. The source description identifies: A nourishing fragrance-free treat for visibly plump, pillowy-soft lips — day or night.",
+            "evidence_profile": "seller_plus_formula"
+          },
+          "search_card": {
+            "title_candidate": "peptide lip treatment unscented",
+            "compact_candidate": "Lip Product",
+            "highlight_candidate": "Shine lip formula detail",
+            "intro_candidate": "A Rhode lip product listed on the brand source page as peptide lip treatment unscented. The source description identifies: A nourishing fragrance-free treat for visibly plump, pillowy-soft lips — day or night.",
+            "proof_badge_candidate": ""
+          }
+        }
+      }
+    },
+    {
+      "case_id": "live_ext_a138fbf50be4e0a1397d8360",
+      "review_status": "completed",
+      "review_decision": "rewrite",
+      "reviewer": "codex_quality_reviewer_owner_delegated",
+      "reviewer_kind": "assistant",
+      "reviewed_at": "2026-05-28T10:47:35.150Z",
+      "notes": "Approved official-PDP-seed rewrite for peptide glazing fluid; evidence_profile=seller_plus_formula; source_url=https://www.rhodeskin.com/products/peptide-glazing-fluid",
+      "owner_delegated_review": {
+        "contract_version": "pivota.owner_delegated_review.v1",
+        "delegated_to": "codex_quality_reviewer_owner_delegated",
+        "reviewer_kind": "assistant",
+        "owner_instruction": "User delegated Codex to perform high-quality human review for Pivota Insights quality improvement.",
+        "guardrails": [
+          "Do not overwrite good content with lower-quality content.",
+          "No commerce-state claims in Pivota Insights.",
+          "Use official source facts only; keep evidence confidence explicit."
+        ]
+      },
+      "quality_improvement_review": {
+        "decision": "approved_replacement",
+        "reviewer_kind": "assistant",
+        "owner_delegated": true,
+        "reason": "Owner-delegated assistant review confirms the replacement uses official PDP seed facts, avoids commerce and unsupported evidence claims, and explicitly marks evidence gaps instead of inventing claims."
+      },
+      "baseline": {
+        "canonical_product_ref": {
+          "merchant_id": "external_seed",
+          "product_id": "ext_a138fbf50be4e0a1397d8360",
+          "platform": "external_seed"
+        }
+      },
+      "selected": {
+        "selected_mode": "manual_reviewed_rewrite",
+        "selected_field_count": 7,
+        "field_sources": {
+          "what_it_is": "official_seed_description",
+          "best_for": "reviewed_category_and_official_title",
+          "why_it_stands_out": "official_seed_description_and_formula",
+          "routine_fit": "reviewed_category_and_official_title",
+          "watchouts": "owner_delegated_assistant_review",
+          "texture_finish": "reviewed_category_and_official_title",
+          "source_coverage": "official_pdp_seed_snapshot",
+          "community_signals": "not_collected"
+        },
+        "bundle": {
+          "contract_version": "pivota.product_intel.v1",
+          "display_name": "Pivota Insights",
+          "canonical_product_ref": {
+            "merchant_id": "external_seed",
+            "product_id": "ext_a138fbf50be4e0a1397d8360",
+            "platform": "external_seed"
+          },
+          "product_group_id": "sig_67b3b01276b4532b89a9813e",
+          "product_intel_core": {
+            "display_name": "Pivota Insights",
+            "what_it_is": {
+              "headline": "Serum identity",
+              "body": "A Rhode serum listed on the brand source page as peptide glazing fluid. The source description identifies: Hailey Bieber's signature step to dewy, glazed skin."
+            },
+            "best_for": [
+              {
+                "tag": "serum_shoppers",
+                "label": "Serum shoppers",
+                "confidence": "moderate"
+              },
+              {
+                "tag": "official_source_comparison",
+                "label": "Official-source comparison",
+                "confidence": "moderate"
+              }
+            ],
+            "why_it_stands_out": [
+              {
+                "headline": "Source-backed product detail",
+                "body": "Hailey Bieber's signature step to dewy, glazed skin.",
+                "evidence_strength": "seller_plus_formula"
+              },
+              {
+                "headline": "Formula context captured",
+                "body": "Captured formula fields include Click an ingredient to learn more about it. water (aqua) (eau), glycerin, butylene glycol, sclerocarya birrea seed oil, niacinamide. Agents should keep composition claims within those source fields.",
+                "evidence_strength": "seller_plus_formula"
+              }
+            ],
+            "routine_fit": {
+              "step": "skin_care",
+              "am_pm": [
+                "as_needed"
+              ],
+              "pairing_notes": [
+                "Use within the serum context; avoid inferring benefits not present in the source fields."
+              ]
+            },
+            "watchouts": [
+              {
+                "type": "formula_scope",
+                "label": "Formula details are source-derived; avoid medical, safety, or suitability claims not present in the source.",
+                "severity": "medium"
+              },
+              {
+                "type": "evidence_gap",
+                "label": "No independent review or community evidence was approved for this row; keep public copy source-bound.",
+                "severity": "medium"
+              },
+              {
+                "type": "scope_guardrail",
+                "label": "Use the commerce mainline for offer facts; keep this insight focused on source-backed product identity.",
+                "severity": "medium"
+              }
+            ],
+            "confidence": {
+              "overall": "moderate",
+              "fields": {
+                "what_it_is": "high",
+                "best_for": "moderate",
+                "why_it_stands_out": "moderate",
+                "routine_fit": "moderate",
+                "watchouts": "moderate"
+              }
+            },
+            "freshness": {
+              "generated_at": "2026-05-28T10:47:35.150Z",
+              "source_version": "wave48_rhode_product_intel_tail_20260528"
+            },
+            "quality_state": "reviewed",
+            "evidence_profile": "seller_plus_formula",
+            "source_coverage": {
+              "seller": {
+                "available": true,
+                "source_url": "https://www.rhodeskin.com/products/peptide-glazing-fluid"
+              },
+              "formula": {
+                "available": true,
+                "ingredient_count": 23,
+                "source_url": "https://www.rhodeskin.com/products/peptide-glazing-fluid"
+              },
+              "reviews": {
+                "available": false,
+                "count": 0
+              },
+              "creator": {
+                "available": false,
+                "count": 0
+              },
+              "editorial": {
+                "available": false,
+                "count": 0
+              }
+            }
+          },
+          "texture_finish": {
+            "finish": "serum",
+            "texture": "serum",
+            "source": "reviewed_category_and_official_title"
+          },
+          "community_signals": {
+            "status": "unavailable",
+            "reason": "not_collected_for_this_review_batch"
+          },
+          "recommendation_intents": {
+            "similar": [],
+            "complementary": [],
+            "routine_pairing": [],
+            "underfill_reason": null,
+            "confidence": "low"
+          },
+          "market_signal_badges": [],
+          "external_highlight_signals": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "seller_plus_formula",
+          "source_coverage": {
+            "seller": {
+              "available": true,
+              "source_url": "https://www.rhodeskin.com/products/peptide-glazing-fluid"
+            },
+            "formula": {
+              "available": true,
+              "ingredient_count": 23,
+              "source_url": "https://www.rhodeskin.com/products/peptide-glazing-fluid"
+            },
+            "reviews": {
+              "available": false,
+              "count": 0
+            },
+            "creator": {
+              "available": false,
+              "count": 0
+            },
+            "editorial": {
+              "available": false,
+              "count": 0
+            }
+          },
+          "confidence": {
+            "overall": "moderate",
+            "fields": {
+              "what_it_is": "high",
+              "best_for": "moderate",
+              "why_it_stands_out": "moderate",
+              "routine_fit": "moderate",
+              "watchouts": "moderate"
+            }
+          },
+          "freshness": {
+            "generated_at": "2026-05-28T10:47:35.150Z",
+            "source_version": "wave48_rhode_product_intel_tail_20260528"
+          },
+          "offer_pointers": {
+            "offers_count": 0,
+            "default_offer_id": null,
+            "best_price_offer_id": null,
+            "commerce_modes": []
+          },
+          "provenance": {
+            "source": "owner_delegated_official_seed_rewrite",
+            "generator": "owner_delegated_assistant_reviewed_rewrite",
+            "selection_strategy": "official_pdp_seed_guarded_manual_review",
+            "field_sources": {
+              "what_it_is": "official_seed_description",
+              "best_for": "reviewed_category_and_official_title",
+              "why_it_stands_out": "official_seed_description_and_formula",
+              "routine_fit": "reviewed_category_and_official_title",
+              "watchouts": "owner_delegated_assistant_review",
+              "texture_finish": "reviewed_category_and_official_title",
+              "source_coverage": "official_pdp_seed_snapshot",
+              "community_signals": "not_collected"
+            },
+            "review_status": "completed",
+            "review_decision": "rewrite",
+            "reviewer": "codex_quality_reviewer_owner_delegated",
+            "reviewer_kind": "assistant",
+            "reviewed_at": "2026-05-28T10:47:35.150Z",
+            "external_highlight_review_status": "rewrite",
+            "external_review_batch": "wave48_rhode_product_intel_tail_20260528",
+            "official_source_url": "https://www.rhodeskin.com/products/peptide-glazing-fluid",
+            "official_source_ingredient_count": 23,
+            "rewrite_reason": "Owner-delegated assistant review: official PDP seed rewrite; no commerce-state, community, medical, or unsupported safety claims added."
+          },
+          "shopping_card": {
+            "contract_version": "pivota.shopping_card.v1",
+            "title": "peptide glazing fluid",
+            "subtitle": "Serum",
+            "highlight": "Peptide serum detail",
+            "intro": "A Rhode serum listed on the brand source page as peptide glazing fluid. The source description identifies: Hailey Bieber's signature step to dewy, glazed skin.",
+            "evidence_profile": "seller_plus_formula"
+          },
+          "search_card": {
+            "title_candidate": "peptide glazing fluid",
+            "compact_candidate": "Serum",
+            "highlight_candidate": "Peptide serum detail",
+            "intro_candidate": "A Rhode serum listed on the brand source page as peptide glazing fluid. The source description identifies: Hailey Bieber's signature step to dewy, glazed skin.",
+            "proof_badge_candidate": ""
+          }
+        }
+      }
+    },
+    {
+      "case_id": "live_ext_a3fe088697c9d38c775bb787",
+      "review_status": "completed",
+      "review_decision": "rewrite",
+      "reviewer": "codex_quality_reviewer_owner_delegated",
+      "reviewer_kind": "assistant",
+      "reviewed_at": "2026-05-28T10:47:35.150Z",
+      "notes": "Approved official-PDP-seed rewrite for peptide lip tint sweet pea; evidence_profile=seller_plus_formula; source_url=https://www.rhodeskin.com/products/peptide-lip-tint-sweet-pea",
+      "owner_delegated_review": {
+        "contract_version": "pivota.owner_delegated_review.v1",
+        "delegated_to": "codex_quality_reviewer_owner_delegated",
+        "reviewer_kind": "assistant",
+        "owner_instruction": "User delegated Codex to perform high-quality human review for Pivota Insights quality improvement.",
+        "guardrails": [
+          "Do not overwrite good content with lower-quality content.",
+          "No commerce-state claims in Pivota Insights.",
+          "Use official source facts only; keep evidence confidence explicit."
+        ]
+      },
+      "quality_improvement_review": {
+        "decision": "approved_replacement",
+        "reviewer_kind": "assistant",
+        "owner_delegated": true,
+        "reason": "Owner-delegated assistant review confirms the replacement uses official PDP seed facts, avoids commerce and unsupported evidence claims, and explicitly marks evidence gaps instead of inventing claims."
+      },
+      "baseline": {
+        "canonical_product_ref": {
+          "merchant_id": "external_seed",
+          "product_id": "ext_a3fe088697c9d38c775bb787",
+          "platform": "external_seed"
+        }
+      },
+      "selected": {
+        "selected_mode": "manual_reviewed_rewrite",
+        "selected_field_count": 7,
+        "field_sources": {
+          "what_it_is": "official_seed_description",
+          "best_for": "reviewed_category_and_official_title",
+          "why_it_stands_out": "official_seed_description_and_formula",
+          "routine_fit": "reviewed_category_and_official_title",
+          "watchouts": "owner_delegated_assistant_review",
+          "texture_finish": "reviewed_category_and_official_title",
+          "source_coverage": "official_pdp_seed_snapshot",
+          "community_signals": "not_collected"
+        },
+        "bundle": {
+          "contract_version": "pivota.product_intel.v1",
+          "display_name": "Pivota Insights",
+          "canonical_product_ref": {
+            "merchant_id": "external_seed",
+            "product_id": "ext_a3fe088697c9d38c775bb787",
+            "platform": "external_seed"
+          },
+          "product_group_id": "sig_12e484e507229cdfa07363a7",
+          "product_intel_core": {
+            "display_name": "Pivota Insights",
+            "what_it_is": {
+              "headline": "Lip product identity",
+              "body": "A Rhode lip product listed on the brand source page as peptide lip tint sweet pea. The source description identifies: Meet Peptide Lip Tint in Sweet Pea, a seasonal shade made in collaboration with our community."
+            },
+            "best_for": [
+              {
+                "tag": "lip_shoppers",
+                "label": "Lip product shoppers",
+                "confidence": "moderate"
+              },
+              {
+                "tag": "official_source_comparison",
+                "label": "Official-source comparison",
+                "confidence": "moderate"
+              }
+            ],
+            "why_it_stands_out": [
+              {
+                "headline": "Source-backed product detail",
+                "body": "Meet Peptide Lip Tint in Sweet Pea, a seasonal shade made in collaboration with our community.",
+                "evidence_strength": "seller_plus_formula"
+              },
+              {
+                "headline": "Formula context captured",
+                "body": "Captured formula fields include Hydrogenated Polyisobutene, Diisostearyl Malate, Butyrospermum Parkii (Shea) Butter, Polybutene, Microcrystalline Wax (Cera Microcristallina) (Cire Microcristalline). Agents should keep composition claims within those source fields.",
+                "evidence_strength": "seller_plus_formula"
+              }
+            ],
+            "routine_fit": {
+              "step": "lip_color",
+              "am_pm": [
+                "as_needed"
+              ],
+              "pairing_notes": [
+                "Use within the lip product context; avoid inferring benefits not present in the source fields."
+              ]
+            },
+            "watchouts": [
+              {
+                "type": "formula_scope",
+                "label": "Formula details are source-derived; avoid medical, safety, or suitability claims not present in the source.",
+                "severity": "medium"
+              },
+              {
+                "type": "evidence_gap",
+                "label": "No independent review or community evidence was approved for this row; keep public copy source-bound.",
+                "severity": "medium"
+              },
+              {
+                "type": "scope_guardrail",
+                "label": "Use the commerce mainline for offer facts; keep this insight focused on source-backed product identity.",
+                "severity": "medium"
+              }
+            ],
+            "confidence": {
+              "overall": "moderate",
+              "fields": {
+                "what_it_is": "high",
+                "best_for": "moderate",
+                "why_it_stands_out": "moderate",
+                "routine_fit": "moderate",
+                "watchouts": "moderate"
+              }
+            },
+            "freshness": {
+              "generated_at": "2026-05-28T10:47:35.150Z",
+              "source_version": "wave48_rhode_product_intel_tail_20260528"
+            },
+            "quality_state": "reviewed",
+            "evidence_profile": "seller_plus_formula",
+            "source_coverage": {
+              "seller": {
+                "available": true,
+                "source_url": "https://www.rhodeskin.com/products/peptide-lip-tint-sweet-pea"
+              },
+              "formula": {
+                "available": true,
+                "ingredient_count": 36,
+                "source_url": "https://www.rhodeskin.com/products/peptide-lip-tint-sweet-pea"
+              },
+              "reviews": {
+                "available": false,
+                "count": 0
+              },
+              "creator": {
+                "available": false,
+                "count": 0
+              },
+              "editorial": {
+                "available": false,
+                "count": 0
+              }
+            }
+          },
+          "texture_finish": {
+            "finish": "lip product",
+            "texture": "lip",
+            "source": "reviewed_category_and_official_title"
+          },
+          "community_signals": {
+            "status": "unavailable",
+            "reason": "not_collected_for_this_review_batch"
+          },
+          "recommendation_intents": {
+            "similar": [],
+            "complementary": [],
+            "routine_pairing": [],
+            "underfill_reason": null,
+            "confidence": "low"
+          },
+          "market_signal_badges": [],
+          "external_highlight_signals": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "seller_plus_formula",
+          "source_coverage": {
+            "seller": {
+              "available": true,
+              "source_url": "https://www.rhodeskin.com/products/peptide-lip-tint-sweet-pea"
+            },
+            "formula": {
+              "available": true,
+              "ingredient_count": 36,
+              "source_url": "https://www.rhodeskin.com/products/peptide-lip-tint-sweet-pea"
+            },
+            "reviews": {
+              "available": false,
+              "count": 0
+            },
+            "creator": {
+              "available": false,
+              "count": 0
+            },
+            "editorial": {
+              "available": false,
+              "count": 0
+            }
+          },
+          "confidence": {
+            "overall": "moderate",
+            "fields": {
+              "what_it_is": "high",
+              "best_for": "moderate",
+              "why_it_stands_out": "moderate",
+              "routine_fit": "moderate",
+              "watchouts": "moderate"
+            }
+          },
+          "freshness": {
+            "generated_at": "2026-05-28T10:47:35.150Z",
+            "source_version": "wave48_rhode_product_intel_tail_20260528"
+          },
+          "offer_pointers": {
+            "offers_count": 0,
+            "default_offer_id": null,
+            "best_price_offer_id": null,
+            "commerce_modes": []
+          },
+          "provenance": {
+            "source": "owner_delegated_official_seed_rewrite",
+            "generator": "owner_delegated_assistant_reviewed_rewrite",
+            "selection_strategy": "official_pdp_seed_guarded_manual_review",
+            "field_sources": {
+              "what_it_is": "official_seed_description",
+              "best_for": "reviewed_category_and_official_title",
+              "why_it_stands_out": "official_seed_description_and_formula",
+              "routine_fit": "reviewed_category_and_official_title",
+              "watchouts": "owner_delegated_assistant_review",
+              "texture_finish": "reviewed_category_and_official_title",
+              "source_coverage": "official_pdp_seed_snapshot",
+              "community_signals": "not_collected"
+            },
+            "review_status": "completed",
+            "review_decision": "rewrite",
+            "reviewer": "codex_quality_reviewer_owner_delegated",
+            "reviewer_kind": "assistant",
+            "reviewed_at": "2026-05-28T10:47:35.150Z",
+            "external_highlight_review_status": "rewrite",
+            "external_review_batch": "wave48_rhode_product_intel_tail_20260528",
+            "official_source_url": "https://www.rhodeskin.com/products/peptide-lip-tint-sweet-pea",
+            "official_source_ingredient_count": 36,
+            "rewrite_reason": "Owner-delegated assistant review: official PDP seed rewrite; no commerce-state, community, medical, or unsupported safety claims added."
+          },
+          "shopping_card": {
+            "contract_version": "pivota.shopping_card.v1",
+            "title": "peptide lip tint sweet pea",
+            "subtitle": "Lip Product",
+            "highlight": "Lip tint format detail",
+            "intro": "A Rhode lip product listed on the brand source page as peptide lip tint sweet pea. The source description identifies: Meet Peptide Lip Tint in Sweet Pea, a seasonal shade made in collaboration with our community.",
+            "evidence_profile": "seller_plus_formula"
+          },
+          "search_card": {
+            "title_candidate": "peptide lip tint sweet pea",
+            "compact_candidate": "Lip Product",
+            "highlight_candidate": "Lip tint format detail",
+            "intro_candidate": "A Rhode lip product listed on the brand source page as peptide lip tint sweet pea. The source description identifies: Meet Peptide Lip Tint in Sweet Pea, a seasonal shade made in collaboration with our community.",
+            "proof_badge_candidate": ""
+          }
+        }
+      }
+    },
+    {
+      "case_id": "live_ext_c9b3a9db13e9dca2fd5311de",
+      "review_status": "completed",
+      "review_decision": "rewrite",
+      "reviewer": "codex_quality_reviewer_owner_delegated",
+      "reviewer_kind": "assistant",
+      "reviewed_at": "2026-05-28T10:47:35.150Z",
+      "notes": "Approved official-PDP-seed rewrite for peptide lip boost unscented; evidence_profile=seller_plus_formula; source_url=https://www.rhodeskin.com/products/peptide-lip-boost-unscented",
+      "owner_delegated_review": {
+        "contract_version": "pivota.owner_delegated_review.v1",
+        "delegated_to": "codex_quality_reviewer_owner_delegated",
+        "reviewer_kind": "assistant",
+        "owner_instruction": "User delegated Codex to perform high-quality human review for Pivota Insights quality improvement.",
+        "guardrails": [
+          "Do not overwrite good content with lower-quality content.",
+          "No commerce-state claims in Pivota Insights.",
+          "Use official source facts only; keep evidence confidence explicit."
+        ]
+      },
+      "quality_improvement_review": {
+        "decision": "approved_replacement",
+        "reviewer_kind": "assistant",
+        "owner_delegated": true,
+        "reason": "Owner-delegated assistant review confirms the replacement uses official PDP seed facts, avoids commerce and unsupported evidence claims, and explicitly marks evidence gaps instead of inventing claims."
+      },
+      "baseline": {
+        "canonical_product_ref": {
+          "merchant_id": "external_seed",
+          "product_id": "ext_c9b3a9db13e9dca2fd5311de",
+          "platform": "external_seed"
+        }
+      },
+      "selected": {
+        "selected_mode": "manual_reviewed_rewrite",
+        "selected_field_count": 7,
+        "field_sources": {
+          "what_it_is": "official_seed_description",
+          "best_for": "reviewed_category_and_official_title",
+          "why_it_stands_out": "official_seed_description_and_formula",
+          "routine_fit": "reviewed_category_and_official_title",
+          "watchouts": "owner_delegated_assistant_review",
+          "texture_finish": "reviewed_category_and_official_title",
+          "source_coverage": "official_pdp_seed_snapshot",
+          "community_signals": "not_collected"
+        },
+        "bundle": {
+          "contract_version": "pivota.product_intel.v1",
+          "display_name": "Pivota Insights",
+          "canonical_product_ref": {
+            "merchant_id": "external_seed",
+            "product_id": "ext_c9b3a9db13e9dca2fd5311de",
+            "platform": "external_seed"
+          },
+          "product_group_id": "sig_b9992fa69eb014ca19488a4e",
+          "product_intel_core": {
+            "display_name": "Pivota Insights",
+            "what_it_is": {
+              "headline": "Lip product identity",
+              "body": "A Rhode lip product listed on the brand source page as peptide lip boost unscented. The source description identifies: A plumping lip mask that enhances volume instantly and over time."
+            },
+            "best_for": [
+              {
+                "tag": "lip_shoppers",
+                "label": "Lip product shoppers",
+                "confidence": "moderate"
+              },
+              {
+                "tag": "official_source_comparison",
+                "label": "Official-source comparison",
+                "confidence": "moderate"
+              }
+            ],
+            "why_it_stands_out": [
+              {
+                "headline": "Source-backed product detail",
+                "body": "A plumping lip mask that enhances volume instantly and over time.",
+                "evidence_strength": "seller_plus_formula"
+              },
+              {
+                "headline": "Formula context captured",
+                "body": "Captured formula fields include Polybutene, Hydrogenated Polyisobutene, Caprylic/Capric Triglyceride, Bis-Diglyceryl Polyacyladipate-2, Polyethylene. Agents should keep composition claims within those source fields.",
+                "evidence_strength": "seller_plus_formula"
+              }
+            ],
+            "routine_fit": {
+              "step": "lip_color",
+              "am_pm": [
+                "as_needed"
+              ],
+              "pairing_notes": [
+                "Use within the lip product context; avoid inferring benefits not present in the source fields."
+              ]
+            },
+            "watchouts": [
+              {
+                "type": "formula_scope",
+                "label": "Formula details are source-derived; avoid medical, safety, or suitability claims not present in the source.",
+                "severity": "medium"
+              },
+              {
+                "type": "evidence_gap",
+                "label": "No independent review or community evidence was approved for this row; keep public copy source-bound.",
+                "severity": "medium"
+              },
+              {
+                "type": "scope_guardrail",
+                "label": "Use the commerce mainline for offer facts; keep this insight focused on source-backed product identity.",
+                "severity": "medium"
+              }
+            ],
+            "confidence": {
+              "overall": "moderate",
+              "fields": {
+                "what_it_is": "high",
+                "best_for": "moderate",
+                "why_it_stands_out": "moderate",
+                "routine_fit": "moderate",
+                "watchouts": "moderate"
+              }
+            },
+            "freshness": {
+              "generated_at": "2026-05-28T10:47:35.150Z",
+              "source_version": "wave48_rhode_product_intel_tail_20260528"
+            },
+            "quality_state": "reviewed",
+            "evidence_profile": "seller_plus_formula",
+            "source_coverage": {
+              "seller": {
+                "available": true,
+                "source_url": "https://www.rhodeskin.com/products/peptide-lip-boost-unscented"
+              },
+              "formula": {
+                "available": true,
+                "ingredient_count": 40,
+                "source_url": "https://www.rhodeskin.com/products/peptide-lip-boost-unscented"
+              },
+              "reviews": {
+                "available": false,
+                "count": 0
+              },
+              "creator": {
+                "available": false,
+                "count": 0
+              },
+              "editorial": {
+                "available": false,
+                "count": 0
+              }
+            }
+          },
+          "texture_finish": {
+            "finish": "lip product",
+            "texture": "lip",
+            "source": "reviewed_category_and_official_title"
+          },
+          "community_signals": {
+            "status": "unavailable",
+            "reason": "not_collected_for_this_review_batch"
+          },
+          "recommendation_intents": {
+            "similar": [],
+            "complementary": [],
+            "routine_pairing": [],
+            "underfill_reason": null,
+            "confidence": "low"
+          },
+          "market_signal_badges": [],
+          "external_highlight_signals": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "seller_plus_formula",
+          "source_coverage": {
+            "seller": {
+              "available": true,
+              "source_url": "https://www.rhodeskin.com/products/peptide-lip-boost-unscented"
+            },
+            "formula": {
+              "available": true,
+              "ingredient_count": 40,
+              "source_url": "https://www.rhodeskin.com/products/peptide-lip-boost-unscented"
+            },
+            "reviews": {
+              "available": false,
+              "count": 0
+            },
+            "creator": {
+              "available": false,
+              "count": 0
+            },
+            "editorial": {
+              "available": false,
+              "count": 0
+            }
+          },
+          "confidence": {
+            "overall": "moderate",
+            "fields": {
+              "what_it_is": "high",
+              "best_for": "moderate",
+              "why_it_stands_out": "moderate",
+              "routine_fit": "moderate",
+              "watchouts": "moderate"
+            }
+          },
+          "freshness": {
+            "generated_at": "2026-05-28T10:47:35.150Z",
+            "source_version": "wave48_rhode_product_intel_tail_20260528"
+          },
+          "offer_pointers": {
+            "offers_count": 0,
+            "default_offer_id": null,
+            "best_price_offer_id": null,
+            "commerce_modes": []
+          },
+          "provenance": {
+            "source": "owner_delegated_official_seed_rewrite",
+            "generator": "owner_delegated_assistant_reviewed_rewrite",
+            "selection_strategy": "official_pdp_seed_guarded_manual_review",
+            "field_sources": {
+              "what_it_is": "official_seed_description",
+              "best_for": "reviewed_category_and_official_title",
+              "why_it_stands_out": "official_seed_description_and_formula",
+              "routine_fit": "reviewed_category_and_official_title",
+              "watchouts": "owner_delegated_assistant_review",
+              "texture_finish": "reviewed_category_and_official_title",
+              "source_coverage": "official_pdp_seed_snapshot",
+              "community_signals": "not_collected"
+            },
+            "review_status": "completed",
+            "review_decision": "rewrite",
+            "reviewer": "codex_quality_reviewer_owner_delegated",
+            "reviewer_kind": "assistant",
+            "reviewed_at": "2026-05-28T10:47:35.150Z",
+            "external_highlight_review_status": "rewrite",
+            "external_review_batch": "wave48_rhode_product_intel_tail_20260528",
+            "official_source_url": "https://www.rhodeskin.com/products/peptide-lip-boost-unscented",
+            "official_source_ingredient_count": 40,
+            "rewrite_reason": "Owner-delegated assistant review: official PDP seed rewrite; no commerce-state, community, medical, or unsupported safety claims added."
+          },
+          "shopping_card": {
+            "contract_version": "pivota.shopping_card.v1",
+            "title": "peptide lip boost unscented",
+            "subtitle": "Lip Product",
+            "highlight": "Creamy lip formula detail",
+            "intro": "A Rhode lip product listed on the brand source page as peptide lip boost unscented. The source description identifies: A plumping lip mask that enhances volume instantly and over time.",
+            "evidence_profile": "seller_plus_formula"
+          },
+          "search_card": {
+            "title_candidate": "peptide lip boost unscented",
+            "compact_candidate": "Lip Product",
+            "highlight_candidate": "Creamy lip formula detail",
+            "intro_candidate": "A Rhode lip product listed on the brand source page as peptide lip boost unscented. The source description identifies: A plumping lip mask that enhances volume instantly and over time.",
+            "proof_badge_candidate": ""
+          }
+        }
+      }
+    }
+  ]
+}

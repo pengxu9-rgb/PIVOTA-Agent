@@ -1,0 +1,12 @@
+{
+  "status": "ok",
+  "mode": "write",
+  "report": "/private/tmp/pivota-agent-product-intel-tail-20260528/reports/markato_expansion_status_20260524/wave48_product_intel_tail_20260528/theinkeylist_official_seed_report/theinkeylist_product_intel_report_filtered.json",
+  "rows": [
+    "live_ext_fe0c55a05a505ad59ddd7f0c"
+  ],
+  "entries": [
+    "product:ext_fe0c55a05a505ad59ddd7f0c"
+  ],
+  "skipped_rows": []
+}

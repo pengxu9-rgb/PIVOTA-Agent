@@ -1,0 +1,3516 @@
+{
+  "generated_at": "2026-05-28T10:00:47.786Z",
+  "options": {
+    "market": "US",
+    "includeAttached": true,
+    "domain": "haruharuwonder.com",
+    "externalProductIds": [],
+    "limit": 20000,
+    "sampleLimit": 10,
+    "checkpointDir": null,
+    "checkpointMode": "domain",
+    "resume": false,
+    "force": false,
+    "continueOnError": true,
+    "pageSize": 500,
+    "format": "json",
+    "chunkByDomain": false
+  },
+  "warnings": [],
+  "summary": {
+    "scanned": 31,
+    "by_market": {
+      "US": 31
+    },
+    "by_domain": [
+      {
+        "key": "haruharuwonder.com",
+        "count": 31
+      }
+    ],
+    "by_product_family": [
+      {
+        "key": "single_formula",
+        "count": 26
+      },
+      {
+        "key": "set_or_collection",
+        "count": 5
+      }
+    ],
+    "coverage": {
+      "missing_inci": 1,
+      "missing_active_raw": 20,
+      "missing_details": 0,
+      "missing_how_to": 0,
+      "missing_faq": 1
+    },
+    "pivota_insights": {
+      "direct": {
+        "displayable": 31,
+        "high_quality_ready": 31,
+        "missing_kb": 0,
+        "not_displayable": 0
+      },
+      "effective": {
+        "displayable": 31,
+        "high_quality_ready": 31,
+        "missing_kb": 0,
+        "not_displayable": 0,
+        "borrowed_from_sibling": 0
+      },
+      "effective_issues": [
+        {
+          "key": "empty_watchouts",
+          "count": 23
+        }
+      ],
+      "effective_issue_domains": [
+        {
+          "key": "haruharuwonder.com::empty_watchouts",
+          "count": 23
+        }
+      ],
+      "quality_state": [
+        {
+          "key": "reviewed",
+          "count": 31
+        }
+      ],
+      "evidence_profile": [
+        {
+          "key": "seller_plus_formula",
+          "count": 31
+        }
+      ],
+      "samples": {}
+    },
+    "active_ingredients": {
+      "regulatory_expected": 4,
+      "hero_expected": 25,
+      "any_active_items": 22,
+      "status": [
+        {
+          "key": "ready_hero",
+          "count": 18
+        },
+        {
+          "key": "not_applicable_product_family",
+          "count": 5
+        },
+        {
+          "key": "missing_hero",
+          "count": 3
+        },
+        {
+          "key": "missing_regulatory",
+          "count": 3
+        },
+        {
+          "key": "not_expected_missing",
+          "count": 1
+        },
+        {
+          "key": "ready_regulatory",
+          "count": 1
+        }
+      ],
+      "issues": [
+        {
+          "key": "missing_hero",
+          "count": 3
+        },
+        {
+          "key": "missing_regulatory",
+          "count": 3
+        },
+        {
+          "key": "active_raw_may_be_full_inci",
+          "count": 2
+        },
+        {
+          "key": "active_raw_too_long",
+          "count": 1
+        }
+      ],
+      "issue_domains": [
+        {
+          "key": "haruharuwonder.com::missing_hero",
+          "count": 3
+        },
+        {
+          "key": "haruharuwonder.com::missing_regulatory",
+          "count": 3
+        },
+        {
+          "key": "haruharuwonder.com::active_raw_may_be_full_inci",
+          "count": 2
+        },
+        {
+          "key": "haruharuwonder.com::active_raw_too_long",
+          "count": 1
+        }
+      ],
+      "source_origin": [
+        {
+          "key": "pdp_section",
+          "count": 21
+        },
+        {
+          "key": "none",
+          "count": 5
+        },
+        {
+          "key": "reviewed_source_backed_pdp_content_patch",
+          "count": 4
+        },
+        {
+          "key": "official_pdp_manual_review",
+          "count": 1
+        }
+      ],
+      "samples": {
+        "missing_regulatory": [
+          {
+            "external_product_id": "ext_12f1b1cb96647a81fb237ab0",
+            "domain": "haruharuwonder.com",
+            "title": "Top-to-Toe SPF Veil SPF 50+/PA++++",
+            "status": "missing_regulatory",
+            "active_items": [
+              "Panthenol (B5)",
+              "Vitamin C (Ascorbic acid)",
+              "Hyaluronic acid",
+              "Squalane",
+              "Ethylhexyl Triazone",
+              "Diethylamino Hydroxybenzoyl Hexyl Benzoate",
+              "Bis-Ethylhexyloxyphenol Methoxyphenyl Triazine"
+            ],
+            "source_origin": "pdp_section"
+          },
+          {
+            "external_product_id": "ext_6caa0a0e7a6095fec92b93b6",
+            "domain": "haruharuwonder.com",
+            "title": "Moisture Airyfit Daily Sunscreen SPF50+/PA++++ / Unscented",
+            "status": "missing_regulatory",
+            "active_items": [
+              "Diethylamino Hydroxybenzoyl Hexyl Benzoate",
+              "Bis-Ethylhexyloxyphenol Methoxyphenyl Triazine",
+              "Ethylhexyl Triazone",
+              "Niacinamide",
+              "Adenosine",
+              "Oryza Sativa (Rice) Bran Oil",
+              "Houttuynia Cordata Extract",
+              "Ceramide NP"
+            ],
+            "source_origin": "reviewed_source_backed_pdp_content_patch"
+          },
+          {
+            "external_product_id": "ext_d4b52c2dad8f0c8ac77ff7ac",
+            "domain": "haruharuwonder.com",
+            "title": "Daily Soothing Sun Shield SPF50+ PA++++",
+            "status": "missing_regulatory",
+            "active_items": [
+              "Niacinamide"
+            ],
+            "source_origin": "pdp_section"
+          }
+        ],
+        "missing_hero": [
+          {
+            "external_product_id": "ext_24207964fc597f712cafd769",
+            "domain": "haruharuwonder.com",
+            "title": "Facial Oil",
+            "status": "missing_hero",
+            "active_items": [],
+            "source_origin": "pdp_section"
+          },
+          {
+            "external_product_id": "ext_646762579da1a0fb7a6ba1db",
+            "domain": "haruharuwonder.com",
+            "title": "Moisture Cleansing Oil / Unscented",
+            "status": "missing_hero",
+            "active_items": [],
+            "source_origin": "pdp_section"
+          },
+          {
+            "external_product_id": "ext_7bd5d5c4d1df72e9ac25a6c4",
+            "domain": "haruharuwonder.com",
+            "title": "Phyto & 5 Peptide Concentrate Cream",
+            "status": "missing_hero",
+            "active_items": [],
+            "source_origin": "pdp_section"
+          }
+        ],
+        "active_raw_too_long": [
+          {
+            "external_product_id": "ext_9985a0ff75f8e767fa25cef4",
+            "domain": "haruharuwonder.com",
+            "title": "Hyaluronic Essence",
+            "status": "ready_hero",
+            "active_items": [
+              "Fermented Oryza Sativa (Rice) Extract",
+              "Moisturizes / Smoothes / Controls oil-water balance Beta-glucan"
+            ],
+            "source_origin": "official_pdp_manual_review"
+          }
+        ],
+        "active_raw_may_be_full_inci": [
+          {
+            "external_product_id": "ext_9985a0ff75f8e767fa25cef4",
+            "domain": "haruharuwonder.com",
+            "title": "Hyaluronic Essence",
+            "status": "ready_hero",
+            "active_items": [
+              "Fermented Oryza Sativa (Rice) Extract",
+              "Moisturizes / Smoothes / Controls oil-water balance Beta-glucan"
+            ],
+            "source_origin": "official_pdp_manual_review"
+          },
+          {
+            "external_product_id": "ext_f0a1dd59c785fdee1499a3e0",
+            "domain": "haruharuwonder.com",
+            "title": "3% PHA Gentle Liquid Exfoliating Serum",
+            "status": "ready_hero",
+            "active_items": [
+              "Gluconoractone (PHA)",
+              "Exfoliates / Moisturizes COSMOS-certified Organic Orange Water (100,000 ppm)",
+              "Moisturizes / Reinforces skin health",
+              "PHA"
+            ],
+            "source_origin": "pdp_section"
+          }
+        ]
+      }
+    },
+    "variants": {
+      "status": [
+        {
+          "key": "ready",
+          "count": 31
+        }
+      ],
+      "issues": [],
+      "issue_domains": [],
+      "samples": {}
+    }
+  },
+  "rows": [
+    {
+      "seed_id": "eps_cf6e7549cff5923aaf625637",
+      "external_product_id": "ext_12f1b1cb96647a81fb237ab0",
+      "market": "US",
+      "domain": "haruharuwonder.com",
+      "title": "Top-to-Toe SPF Veil SPF 50+/PA++++",
+      "canonical_url": "https://haruharuwonder.com/products/haruharuwonder-black-bamboo-top-to-toe-spf-veil-100ml",
+      "product_family": "single_formula",
+      "product_line_id": "pl_659ee58889cc0900d1e646ce",
+      "identity_variant_axes": {
+        "size": "100ml",
+        "volume": "100ml",
+        "multi_variant": false
+      },
+      "pivota_insights": {
+        "direct": {
+          "product_id": "ext_12f1b1cb96647a81fb237ab0",
+          "kb_key": "product:ext_12f1b1cb96647a81fb237ab0",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "seller_plus_formula",
+          "has_card_highlight": true
+        },
+        "effective": {
+          "product_id": "ext_12f1b1cb96647a81fb237ab0",
+          "kb_key": "product:ext_12f1b1cb96647a81fb237ab0",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "seller_plus_formula",
+          "has_card_highlight": true
+        },
+        "product_line_id": "pl_659ee58889cc0900d1e646ce",
+        "borrowed_from_sibling": false
+      },
+      "active_ingredients": {
+        "status": "missing_regulatory",
+        "issues": [
+          "missing_regulatory"
+        ],
+        "regulatory_expected": true,
+        "hero_expected": true,
+        "active_items": [
+          "Panthenol (B5)",
+          "Vitamin C (Ascorbic acid)",
+          "Hyaluronic acid",
+          "Squalane",
+          "Ethylhexyl Triazone",
+          "Diethylamino Hydroxybenzoyl Hexyl Benzoate",
+          "Bis-Ethylhexyloxyphenol Methoxyphenyl Triazine"
+        ],
+        "source_origin": "pdp_section",
+        "source_quality_status": "blocked",
+        "coverage": {
+          "details_sections_count": 14,
+          "faq_count": 2,
+          "how_to_chars": 301,
+          "inci_chars": 1287,
+          "active_ingredients_chars": 0,
+          "inci_applicability_status": "",
+          "ingredient_review_status": "",
+          "ingredient_remediation_action": "",
+          "bundle_component_refs_count": 0,
+          "effective_inci_chars": 1287,
+          "inci_borrowed_from_product_id": ""
+        },
+        "invalid_fragments": [],
+        "suppressed_reason": null
+      },
+      "variants": {
+        "status": "ready",
+        "issues": [],
+        "visible_variant_rows": 1,
+        "examples": {
+          "identity_option_visible": [],
+          "wrong_axis_for_category": [],
+          "makeup_shade_missing_visual": [],
+          "size_value_generic_axis": [],
+          "default_option_size_evidence_missing_axis": [],
+          "identity_default_title_axis": []
+        }
+      },
+      "coverage": {
+        "details_sections_count": 14,
+        "faq_count": 2,
+        "how_to_chars": 301,
+        "inci_chars": 1287,
+        "active_ingredients_chars": 0,
+        "inci_applicability_status": "",
+        "ingredient_review_status": "",
+        "ingredient_remediation_action": "",
+        "bundle_component_refs_count": 0,
+        "effective_inci_chars": 1287,
+        "inci_borrowed_from_product_id": ""
+      }
+    },
+    {
+      "seed_id": "eps_7ef4a7571f2f5b3d166bafde",
+      "external_product_id": "ext_20ac8be4f5ff72e567abb0fe",
+      "market": "US",
+      "domain": "haruharuwonder.com",
+      "title": "4% TXA Gel Serum / Unscented",
+      "canonical_url": "https://haruharuwonder.com/products/haruharuwonder-centella-4-txa-gel-serum-30ml",
+      "product_family": "single_formula",
+      "product_line_id": "pl_166d3d093c22c7a05aec922e",
+      "identity_variant_axes": {
+        "size": "30ml",
+        "volume": "30ml",
+        "multi_variant": false
+      },
+      "pivota_insights": {
+        "direct": {
+          "product_id": "ext_20ac8be4f5ff72e567abb0fe",
+          "kb_key": "product:ext_20ac8be4f5ff72e567abb0fe",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [
+            "empty_watchouts"
+          ],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "seller_plus_formula",
+          "has_card_highlight": true
+        },
+        "effective": {
+          "product_id": "ext_20ac8be4f5ff72e567abb0fe",
+          "kb_key": "product:ext_20ac8be4f5ff72e567abb0fe",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [
+            "empty_watchouts"
+          ],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "seller_plus_formula",
+          "has_card_highlight": true
+        },
+        "product_line_id": "pl_166d3d093c22c7a05aec922e",
+        "borrowed_from_sibling": false
+      },
+      "active_ingredients": {
+        "status": "ready_hero",
+        "issues": [],
+        "regulatory_expected": false,
+        "hero_expected": true,
+        "active_items": [
+          "Niacinamide",
+          "Vitamin C (Ascorbic acid)",
+          "Centella asiatica",
+          "Tranexamic acid"
+        ],
+        "source_origin": "pdp_section",
+        "source_quality_status": "captured",
+        "coverage": {
+          "details_sections_count": 12,
+          "faq_count": 2,
+          "how_to_chars": 237,
+          "inci_chars": 375,
+          "active_ingredients_chars": 0,
+          "inci_applicability_status": "",
+          "ingredient_review_status": "",
+          "ingredient_remediation_action": "",
+          "bundle_component_refs_count": 0,
+          "effective_inci_chars": 375,
+          "inci_borrowed_from_product_id": ""
+        },
+        "invalid_fragments": [],
+        "suppressed_reason": null
+      },
+      "variants": {
+        "status": "ready",
+        "issues": [],
+        "visible_variant_rows": 1,
+        "examples": {
+          "identity_option_visible": [],
+          "wrong_axis_for_category": [],
+          "makeup_shade_missing_visual": [],
+          "size_value_generic_axis": [],
+          "default_option_size_evidence_missing_axis": [],
+          "identity_default_title_axis": []
+        }
+      },
+      "coverage": {
+        "details_sections_count": 12,
+        "faq_count": 2,
+        "how_to_chars": 237,
+        "inci_chars": 375,
+        "active_ingredients_chars": 0,
+        "inci_applicability_status": "",
+        "ingredient_review_status": "",
+        "ingredient_remediation_action": "",
+        "bundle_component_refs_count": 0,
+        "effective_inci_chars": 375,
+        "inci_borrowed_from_product_id": ""
+      }
+    },
+    {
+      "seed_id": "eps_4d45c3291634e1b05f85e165",
+      "external_product_id": "ext_24207964fc597f712cafd769",
+      "market": "US",
+      "domain": "haruharuwonder.com",
+      "title": "Facial Oil",
+      "canonical_url": "https://haruharuwonder.com/products/haruharuwonder-black-rice-facial-oil",
+      "product_family": "single_formula",
+      "product_line_id": "pl_d15a9878b1c941ed536534ff",
+      "identity_variant_axes": {
+        "size": "30ml",
+        "volume": "30ml",
+        "multi_variant": true
+      },
+      "pivota_insights": {
+        "direct": {
+          "product_id": "ext_24207964fc597f712cafd769",
+          "kb_key": "product:ext_24207964fc597f712cafd769",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [
+            "empty_watchouts"
+          ],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "seller_plus_formula",
+          "has_card_highlight": true
+        },
+        "effective": {
+          "product_id": "ext_24207964fc597f712cafd769",
+          "kb_key": "product:ext_24207964fc597f712cafd769",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [
+            "empty_watchouts"
+          ],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "seller_plus_formula",
+          "has_card_highlight": true
+        },
+        "product_line_id": "pl_d15a9878b1c941ed536534ff",
+        "borrowed_from_sibling": false
+      },
+      "active_ingredients": {
+        "status": "missing_hero",
+        "issues": [
+          "missing_hero"
+        ],
+        "regulatory_expected": false,
+        "hero_expected": true,
+        "active_items": [],
+        "source_origin": "pdp_section",
+        "source_quality_status": "blocked",
+        "coverage": {
+          "details_sections_count": 14,
+          "faq_count": 2,
+          "how_to_chars": 472,
+          "inci_chars": 300,
+          "active_ingredients_chars": 0,
+          "inci_applicability_status": "",
+          "ingredient_review_status": "",
+          "ingredient_remediation_action": "",
+          "bundle_component_refs_count": 0,
+          "effective_inci_chars": 300,
+          "inci_borrowed_from_product_id": ""
+        },
+        "invalid_fragments": [],
+        "suppressed_reason": null
+      },
+      "variants": {
+        "status": "ready",
+        "issues": [],
+        "visible_variant_rows": 2,
+        "examples": {
+          "identity_option_visible": [],
+          "wrong_axis_for_category": [],
+          "makeup_shade_missing_visual": [],
+          "size_value_generic_axis": [],
+          "default_option_size_evidence_missing_axis": [],
+          "identity_default_title_axis": []
+        }
+      },
+      "coverage": {
+        "details_sections_count": 14,
+        "faq_count": 2,
+        "how_to_chars": 472,
+        "inci_chars": 300,
+        "active_ingredients_chars": 0,
+        "inci_applicability_status": "",
+        "ingredient_review_status": "",
+        "ingredient_remediation_action": "",
+        "bundle_component_refs_count": 0,
+        "effective_inci_chars": 300,
+        "inci_borrowed_from_product_id": ""
+      }
+    },
+    {
+      "seed_id": "eps_305ec82965c5d997cd3d13e0",
+      "external_product_id": "ext_273d8e1b82e1c7a6e18e8a69",
+      "market": "US",
+      "domain": "haruharuwonder.com",
+      "title": "10 Hyaluronic Cream",
+      "canonical_url": "https://haruharuwonder.com/products/haruharuwonder-black-rice-10-hyaluronic-cream",
+      "product_family": "single_formula",
+      "product_line_id": "pl_3897867a92dc34acd51a4eeb",
+      "identity_variant_axes": {
+        "size": "50ml",
+        "volume": "50ml",
+        "multi_variant": true
+      },
+      "pivota_insights": {
+        "direct": {
+          "product_id": "ext_273d8e1b82e1c7a6e18e8a69",
+          "kb_key": "product:ext_273d8e1b82e1c7a6e18e8a69",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [
+            "empty_watchouts"
+          ],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "seller_plus_formula",
+          "has_card_highlight": true
+        },
+        "effective": {
+          "product_id": "ext_273d8e1b82e1c7a6e18e8a69",
+          "kb_key": "product:ext_273d8e1b82e1c7a6e18e8a69",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [
+            "empty_watchouts"
+          ],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "seller_plus_formula",
+          "has_card_highlight": true
+        },
+        "product_line_id": "pl_3897867a92dc34acd51a4eeb",
+        "borrowed_from_sibling": false
+      },
+      "active_ingredients": {
+        "status": "ready_hero",
+        "issues": [],
+        "regulatory_expected": false,
+        "hero_expected": true,
+        "active_items": [
+          "Hyaluronic acid"
+        ],
+        "source_origin": "pdp_section",
+        "source_quality_status": "captured",
+        "coverage": {
+          "details_sections_count": 14,
+          "faq_count": 2,
+          "how_to_chars": 109,
+          "inci_chars": 620,
+          "active_ingredients_chars": 0,
+          "inci_applicability_status": "",
+          "ingredient_review_status": "",
+          "ingredient_remediation_action": "",
+          "bundle_component_refs_count": 0,
+          "effective_inci_chars": 620,
+          "inci_borrowed_from_product_id": ""
+        },
+        "invalid_fragments": [],
+        "suppressed_reason": null
+      },
+      "variants": {
+        "status": "ready",
+        "issues": [],
+        "visible_variant_rows": 2,
+        "examples": {
+          "identity_option_visible": [],
+          "wrong_axis_for_category": [],
+          "makeup_shade_missing_visual": [],
+          "size_value_generic_axis": [],
+          "default_option_size_evidence_missing_axis": [],
+          "identity_default_title_axis": []
+        }
+      },
+      "coverage": {
+        "details_sections_count": 14,
+        "faq_count": 2,
+        "how_to_chars": 109,
+        "inci_chars": 620,
+        "active_ingredients_chars": 0,
+        "inci_applicability_status": "",
+        "ingredient_review_status": "",
+        "ingredient_remediation_action": "",
+        "bundle_component_refs_count": 0,
+        "effective_inci_chars": 620,
+        "inci_borrowed_from_product_id": ""
+      }
+    },
+    {
+      "seed_id": "eps_342887c9e5659ce15564682c",
+      "external_product_id": "ext_325c41ee8df9a27a0a3fcb55",
+      "market": "US",
+      "domain": "haruharuwonder.com",
+      "title": "Firming Serum (with Retinal 0.1%)",
+      "canonical_url": "https://haruharuwonder.com/products/haruharuwonder-rose-pdrn-firming-serum-30ml",
+      "product_family": "set_or_collection",
+      "product_line_id": "pl_d9cce1efec8298edb6ce69a9",
+      "identity_variant_axes": {
+        "size": "30ml",
+        "volume": "30ml",
+        "multi_variant": false
+      },
+      "pivota_insights": {
+        "direct": {
+          "product_id": "ext_325c41ee8df9a27a0a3fcb55",
+          "kb_key": "product:ext_325c41ee8df9a27a0a3fcb55",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "seller_plus_formula",
+          "has_card_highlight": true
+        },
+        "effective": {
+          "product_id": "ext_325c41ee8df9a27a0a3fcb55",
+          "kb_key": "product:ext_325c41ee8df9a27a0a3fcb55",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "seller_plus_formula",
+          "has_card_highlight": true
+        },
+        "product_line_id": "pl_d9cce1efec8298edb6ce69a9",
+        "borrowed_from_sibling": false
+      },
+      "active_ingredients": {
+        "status": "not_applicable_product_family",
+        "issues": [],
+        "regulatory_expected": false,
+        "hero_expected": false,
+        "active_items": [],
+        "source_origin": "none",
+        "source_quality_status": "blocked",
+        "coverage": {
+          "details_sections_count": 4,
+          "faq_count": 2,
+          "how_to_chars": 770,
+          "inci_chars": 822,
+          "active_ingredients_chars": 0,
+          "inci_applicability_status": "",
+          "ingredient_review_status": "resolved_by_official_source",
+          "ingredient_remediation_action": "source_recovered",
+          "bundle_component_refs_count": 0,
+          "effective_inci_chars": 822,
+          "inci_borrowed_from_product_id": ""
+        },
+        "invalid_fragments": [],
+        "suppressed_reason": "set_or_collection"
+      },
+      "variants": {
+        "status": "ready",
+        "issues": [],
+        "visible_variant_rows": 1,
+        "examples": {
+          "identity_option_visible": [],
+          "wrong_axis_for_category": [],
+          "makeup_shade_missing_visual": [],
+          "size_value_generic_axis": [],
+          "default_option_size_evidence_missing_axis": [],
+          "identity_default_title_axis": []
+        }
+      },
+      "coverage": {
+        "details_sections_count": 4,
+        "faq_count": 2,
+        "how_to_chars": 770,
+        "inci_chars": 822,
+        "active_ingredients_chars": 0,
+        "inci_applicability_status": "",
+        "ingredient_review_status": "resolved_by_official_source",
+        "ingredient_remediation_action": "source_recovered",
+        "bundle_component_refs_count": 0,
+        "effective_inci_chars": 822,
+        "inci_borrowed_from_product_id": ""
+      }
+    },
+    {
+      "seed_id": "eps_7627dfa3ae6446978d3e1bb8",
+      "external_product_id": "ext_46d03792241b2eb743cdcaa3",
+      "market": "US",
+      "domain": "haruharuwonder.com",
+      "title": "Night Knight Retinol Serum / Unscented",
+      "canonical_url": "https://haruharuwonder.com/products/haruharuwonder-black-rice-night-knight-retinol-serum-20ml",
+      "product_family": "single_formula",
+      "product_line_id": "pl_12f0bfb86bac64a0f13c1cc9",
+      "identity_variant_axes": {
+        "size": "20ml",
+        "volume": "20ml",
+        "multi_variant": false
+      },
+      "pivota_insights": {
+        "direct": {
+          "product_id": "ext_46d03792241b2eb743cdcaa3",
+          "kb_key": "product:ext_46d03792241b2eb743cdcaa3",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "seller_plus_formula",
+          "has_card_highlight": true
+        },
+        "effective": {
+          "product_id": "ext_46d03792241b2eb743cdcaa3",
+          "kb_key": "product:ext_46d03792241b2eb743cdcaa3",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "seller_plus_formula",
+          "has_card_highlight": true
+        },
+        "product_line_id": "pl_12f0bfb86bac64a0f13c1cc9",
+        "borrowed_from_sibling": false
+      },
+      "active_ingredients": {
+        "status": "ready_hero",
+        "issues": [],
+        "regulatory_expected": false,
+        "hero_expected": true,
+        "active_items": [
+          "Retinol",
+          "Ceramide NP"
+        ],
+        "source_origin": "pdp_section",
+        "source_quality_status": "captured",
+        "coverage": {
+          "details_sections_count": 10,
+          "faq_count": 2,
+          "how_to_chars": 283,
+          "inci_chars": 706,
+          "active_ingredients_chars": 0,
+          "inci_applicability_status": "",
+          "ingredient_review_status": "",
+          "ingredient_remediation_action": "",
+          "bundle_component_refs_count": 0,
+          "effective_inci_chars": 706,
+          "inci_borrowed_from_product_id": ""
+        },
+        "invalid_fragments": [],
+        "suppressed_reason": null
+      },
+      "variants": {
+        "status": "ready",
+        "issues": [],
+        "visible_variant_rows": 1,
+        "examples": {
+          "identity_option_visible": [],
+          "wrong_axis_for_category": [],
+          "makeup_shade_missing_visual": [],
+          "size_value_generic_axis": [],
+          "default_option_size_evidence_missing_axis": [],
+          "identity_default_title_axis": []
+        }
+      },
+      "coverage": {
+        "details_sections_count": 10,
+        "faq_count": 2,
+        "how_to_chars": 283,
+        "inci_chars": 706,
+        "active_ingredients_chars": 0,
+        "inci_applicability_status": "",
+        "ingredient_review_status": "",
+        "ingredient_remediation_action": "",
+        "bundle_component_refs_count": 0,
+        "effective_inci_chars": 706,
+        "inci_borrowed_from_product_id": ""
+      }
+    },
+    {
+      "seed_id": "eps_3d4ed90543426f2a22106631",
+      "external_product_id": "ext_558d4f8e0977c829fcd4522c",
+      "market": "US",
+      "domain": "haruharuwonder.com",
+      "title": "Sunflower Makeup-Melting Cleansing Balm",
+      "canonical_url": "https://haruharuwonder.com/products/haruharuwonder-haruharu-wonder-centella-sunflower-makeup-melting-cleansing-balm-100g",
+      "product_family": "single_formula",
+      "product_line_id": "pl_54210ad2ffd1141756483f51",
+      "identity_variant_axes": {
+        "size": "100g",
+        "volume": "100g",
+        "multi_variant": false
+      },
+      "pivota_insights": {
+        "direct": {
+          "product_id": "ext_558d4f8e0977c829fcd4522c",
+          "kb_key": "product:ext_558d4f8e0977c829fcd4522c",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [
+            "empty_watchouts"
+          ],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "seller_plus_formula",
+          "has_card_highlight": true
+        },
+        "effective": {
+          "product_id": "ext_558d4f8e0977c829fcd4522c",
+          "kb_key": "product:ext_558d4f8e0977c829fcd4522c",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [
+            "empty_watchouts"
+          ],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "seller_plus_formula",
+          "has_card_highlight": true
+        },
+        "product_line_id": "pl_54210ad2ffd1141756483f51",
+        "borrowed_from_sibling": false
+      },
+      "active_ingredients": {
+        "status": "ready_hero",
+        "issues": [],
+        "regulatory_expected": false,
+        "hero_expected": true,
+        "active_items": [
+          "Squalane",
+          "Centella asiatica"
+        ],
+        "source_origin": "pdp_section",
+        "source_quality_status": "captured",
+        "coverage": {
+          "details_sections_count": 14,
+          "faq_count": 2,
+          "how_to_chars": 253,
+          "inci_chars": 498,
+          "active_ingredients_chars": 0,
+          "inci_applicability_status": "",
+          "ingredient_review_status": "",
+          "ingredient_remediation_action": "",
+          "bundle_component_refs_count": 0,
+          "effective_inci_chars": 498,
+          "inci_borrowed_from_product_id": ""
+        },
+        "invalid_fragments": [],
+        "suppressed_reason": null
+      },
+      "variants": {
+        "status": "ready",
+        "issues": [],
+        "visible_variant_rows": 1,
+        "examples": {
+          "identity_option_visible": [],
+          "wrong_axis_for_category": [],
+          "makeup_shade_missing_visual": [],
+          "size_value_generic_axis": [],
+          "default_option_size_evidence_missing_axis": [],
+          "identity_default_title_axis": []
+        }
+      },
+      "coverage": {
+        "details_sections_count": 14,
+        "faq_count": 2,
+        "how_to_chars": 253,
+        "inci_chars": 498,
+        "active_ingredients_chars": 0,
+        "inci_applicability_status": "",
+        "ingredient_review_status": "",
+        "ingredient_remediation_action": "",
+        "bundle_component_refs_count": 0,
+        "effective_inci_chars": 498,
+        "inci_borrowed_from_product_id": ""
+      }
+    },
+    {
+      "seed_id": "eps_11a335f00e4f38113fe3807c",
+      "external_product_id": "ext_5608cae08244cafe1b6ff9c2",
+      "market": "US",
+      "domain": "haruharuwonder.com",
+      "title": "Probiotics Barrier 2% NAD + Serum Mist",
+      "canonical_url": "https://haruharuwonder.com/products/haruharuwonder-black-rice-probiotics-barrier-2-nad-serum-mist-80ml",
+      "product_family": "single_formula",
+      "product_line_id": "pl_cb2d28b90fe00d58cfe0de3e",
+      "identity_variant_axes": {
+        "size": "80ml",
+        "volume": "80ml",
+        "multi_variant": false
+      },
+      "pivota_insights": {
+        "direct": {
+          "product_id": "ext_5608cae08244cafe1b6ff9c2",
+          "kb_key": "product:ext_5608cae08244cafe1b6ff9c2",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [
+            "empty_watchouts"
+          ],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "seller_plus_formula",
+          "has_card_highlight": true
+        },
+        "effective": {
+          "product_id": "ext_5608cae08244cafe1b6ff9c2",
+          "kb_key": "product:ext_5608cae08244cafe1b6ff9c2",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [
+            "empty_watchouts"
+          ],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "seller_plus_formula",
+          "has_card_highlight": true
+        },
+        "product_line_id": "pl_cb2d28b90fe00d58cfe0de3e",
+        "borrowed_from_sibling": false
+      },
+      "active_ingredients": {
+        "status": "ready_hero",
+        "issues": [],
+        "regulatory_expected": false,
+        "hero_expected": true,
+        "active_items": [
+          "Ceramide NP",
+          "Panthenol (B5)",
+          "Squalane"
+        ],
+        "source_origin": "pdp_section",
+        "source_quality_status": "captured",
+        "coverage": {
+          "details_sections_count": 10,
+          "faq_count": 2,
+          "how_to_chars": 427,
+          "inci_chars": 912,
+          "active_ingredients_chars": 0,
+          "inci_applicability_status": "",
+          "ingredient_review_status": "",
+          "ingredient_remediation_action": "",
+          "bundle_component_refs_count": 0,
+          "effective_inci_chars": 912,
+          "inci_borrowed_from_product_id": ""
+        },
+        "invalid_fragments": [],
+        "suppressed_reason": null
+      },
+      "variants": {
+        "status": "ready",
+        "issues": [],
+        "visible_variant_rows": 1,
+        "examples": {
+          "identity_option_visible": [],
+          "wrong_axis_for_category": [],
+          "makeup_shade_missing_visual": [],
+          "size_value_generic_axis": [],
+          "default_option_size_evidence_missing_axis": [],
+          "identity_default_title_axis": []
+        }
+      },
+      "coverage": {
+        "details_sections_count": 10,
+        "faq_count": 2,
+        "how_to_chars": 427,
+        "inci_chars": 912,
+        "active_ingredients_chars": 0,
+        "inci_applicability_status": "",
+        "ingredient_review_status": "",
+        "ingredient_remediation_action": "",
+        "bundle_component_refs_count": 0,
+        "effective_inci_chars": 912,
+        "inci_borrowed_from_product_id": ""
+      }
+    },
+    {
+      "seed_id": "eps_bbcf8f6f43437c65fa59159f",
+      "external_product_id": "ext_62bd1b4ed080e232d040db05",
+      "market": "US",
+      "domain": "haruharuwonder.com",
+      "title": "Triple AHA Gentle Cleansing Gel / Unscented",
+      "canonical_url": "https://haruharuwonder.com/products/haruharuwonder-black-rice-triple-aha-gentle-cleansing-gel-unscented-100ml",
+      "product_family": "set_or_collection",
+      "product_line_id": "pl_c38ccdd9ecee7d6dc91b5ea6",
+      "identity_variant_axes": {
+        "size": "100ml",
+        "volume": "100ml",
+        "multi_variant": false
+      },
+      "pivota_insights": {
+        "direct": {
+          "product_id": "ext_62bd1b4ed080e232d040db05",
+          "kb_key": "product:ext_62bd1b4ed080e232d040db05",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "seller_plus_formula",
+          "has_card_highlight": true
+        },
+        "effective": {
+          "product_id": "ext_62bd1b4ed080e232d040db05",
+          "kb_key": "product:ext_62bd1b4ed080e232d040db05",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "seller_plus_formula",
+          "has_card_highlight": true
+        },
+        "product_line_id": "pl_c38ccdd9ecee7d6dc91b5ea6",
+        "borrowed_from_sibling": false
+      },
+      "active_ingredients": {
+        "status": "not_applicable_product_family",
+        "issues": [],
+        "regulatory_expected": false,
+        "hero_expected": false,
+        "active_items": [],
+        "source_origin": "none",
+        "source_quality_status": "blocked",
+        "coverage": {
+          "details_sections_count": 6,
+          "faq_count": 2,
+          "how_to_chars": 214,
+          "inci_chars": 0,
+          "active_ingredients_chars": 0,
+          "inci_applicability_status": "",
+          "ingredient_review_status": "manual_source_review_required",
+          "ingredient_remediation_action": "manual_source_review_required",
+          "bundle_component_refs_count": 0,
+          "effective_inci_chars": 0,
+          "inci_borrowed_from_product_id": ""
+        },
+        "invalid_fragments": [],
+        "suppressed_reason": "set_or_collection"
+      },
+      "variants": {
+        "status": "ready",
+        "issues": [],
+        "visible_variant_rows": 1,
+        "examples": {
+          "identity_option_visible": [],
+          "wrong_axis_for_category": [],
+          "makeup_shade_missing_visual": [],
+          "size_value_generic_axis": [],
+          "default_option_size_evidence_missing_axis": [],
+          "identity_default_title_axis": []
+        }
+      },
+      "coverage": {
+        "details_sections_count": 6,
+        "faq_count": 2,
+        "how_to_chars": 214,
+        "inci_chars": 0,
+        "active_ingredients_chars": 0,
+        "inci_applicability_status": "",
+        "ingredient_review_status": "manual_source_review_required",
+        "ingredient_remediation_action": "manual_source_review_required",
+        "bundle_component_refs_count": 0,
+        "effective_inci_chars": 0,
+        "inci_borrowed_from_product_id": ""
+      }
+    },
+    {
+      "seed_id": "eps_8f5c91cfa64b13ca0b0b0eca",
+      "external_product_id": "ext_646762579da1a0fb7a6ba1db",
+      "market": "US",
+      "domain": "haruharuwonder.com",
+      "title": "Moisture Cleansing Oil / Unscented",
+      "canonical_url": "https://haruharuwonder.com/products/haruharuwonder-black-rice-moisture-cleansing-oil",
+      "product_family": "single_formula",
+      "product_line_id": "pl_5da4b09583bcd07ff029608c",
+      "identity_variant_axes": {
+        "size": "150ml",
+        "volume": "150ml",
+        "multi_variant": true
+      },
+      "pivota_insights": {
+        "direct": {
+          "product_id": "ext_646762579da1a0fb7a6ba1db",
+          "kb_key": "product:ext_646762579da1a0fb7a6ba1db",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [
+            "empty_watchouts"
+          ],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "seller_plus_formula",
+          "has_card_highlight": true
+        },
+        "effective": {
+          "product_id": "ext_646762579da1a0fb7a6ba1db",
+          "kb_key": "product:ext_646762579da1a0fb7a6ba1db",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [
+            "empty_watchouts"
+          ],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "seller_plus_formula",
+          "has_card_highlight": true
+        },
+        "product_line_id": "pl_5da4b09583bcd07ff029608c",
+        "borrowed_from_sibling": false
+      },
+      "active_ingredients": {
+        "status": "missing_hero",
+        "issues": [
+          "missing_hero"
+        ],
+        "regulatory_expected": false,
+        "hero_expected": true,
+        "active_items": [],
+        "source_origin": "pdp_section",
+        "source_quality_status": "blocked",
+        "coverage": {
+          "details_sections_count": 16,
+          "faq_count": 2,
+          "how_to_chars": 325,
+          "inci_chars": 260,
+          "active_ingredients_chars": 0,
+          "inci_applicability_status": "",
+          "ingredient_review_status": "",
+          "ingredient_remediation_action": "",
+          "bundle_component_refs_count": 0,
+          "effective_inci_chars": 260,
+          "inci_borrowed_from_product_id": ""
+        },
+        "invalid_fragments": [],
+        "suppressed_reason": null
+      },
+      "variants": {
+        "status": "ready",
+        "issues": [],
+        "visible_variant_rows": 2,
+        "examples": {
+          "identity_option_visible": [],
+          "wrong_axis_for_category": [],
+          "makeup_shade_missing_visual": [],
+          "size_value_generic_axis": [],
+          "default_option_size_evidence_missing_axis": [],
+          "identity_default_title_axis": []
+        }
+      },
+      "coverage": {
+        "details_sections_count": 16,
+        "faq_count": 2,
+        "how_to_chars": 325,
+        "inci_chars": 260,
+        "active_ingredients_chars": 0,
+        "inci_applicability_status": "",
+        "ingredient_review_status": "",
+        "ingredient_remediation_action": "",
+        "bundle_component_refs_count": 0,
+        "effective_inci_chars": 260,
+        "inci_borrowed_from_product_id": ""
+      }
+    },
+    {
+      "seed_id": "eps_fec033b71771dd9c640dd9b5",
+      "external_product_id": "ext_6caa0a0e7a6095fec92b93b6",
+      "market": "US",
+      "domain": "haruharuwonder.com",
+      "title": "Moisture Airyfit Daily Sunscreen SPF50+/PA++++ / Unscented",
+      "canonical_url": "https://haruharuwonder.com/products/haruharuwonder-black-rice-moisture-airyfit-daily-sunscreen-unscented-spf50-50ml",
+      "product_family": "single_formula",
+      "product_line_id": "pl_60097b65850ec8fd6845ba72",
+      "identity_variant_axes": {
+        "size": "50ml",
+        "volume": "50ml",
+        "multi_variant": false
+      },
+      "pivota_insights": {
+        "direct": {
+          "product_id": "ext_6caa0a0e7a6095fec92b93b6",
+          "kb_key": "product:ext_6caa0a0e7a6095fec92b93b6",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "seller_plus_formula",
+          "has_card_highlight": true
+        },
+        "effective": {
+          "product_id": "ext_6caa0a0e7a6095fec92b93b6",
+          "kb_key": "product:ext_6caa0a0e7a6095fec92b93b6",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "seller_plus_formula",
+          "has_card_highlight": true
+        },
+        "product_line_id": "pl_60097b65850ec8fd6845ba72",
+        "borrowed_from_sibling": false
+      },
+      "active_ingredients": {
+        "status": "missing_regulatory",
+        "issues": [
+          "missing_regulatory"
+        ],
+        "regulatory_expected": true,
+        "hero_expected": true,
+        "active_items": [
+          "Diethylamino Hydroxybenzoyl Hexyl Benzoate",
+          "Bis-Ethylhexyloxyphenol Methoxyphenyl Triazine",
+          "Ethylhexyl Triazone",
+          "Niacinamide",
+          "Adenosine",
+          "Oryza Sativa (Rice) Bran Oil",
+          "Houttuynia Cordata Extract",
+          "Ceramide NP"
+        ],
+        "source_origin": "reviewed_source_backed_pdp_content_patch",
+        "source_quality_status": "blocked",
+        "coverage": {
+          "details_sections_count": 16,
+          "faq_count": 2,
+          "how_to_chars": 329,
+          "inci_chars": 872,
+          "active_ingredients_chars": 206,
+          "inci_applicability_status": "",
+          "ingredient_review_status": "manual_source_review_required",
+          "ingredient_remediation_action": "manual_source_review_required",
+          "bundle_component_refs_count": 0,
+          "effective_inci_chars": 872,
+          "inci_borrowed_from_product_id": ""
+        },
+        "invalid_fragments": [],
+        "suppressed_reason": null
+      },
+      "variants": {
+        "status": "ready",
+        "issues": [],
+        "visible_variant_rows": 1,
+        "examples": {
+          "identity_option_visible": [],
+          "wrong_axis_for_category": [],
+          "makeup_shade_missing_visual": [],
+          "size_value_generic_axis": [],
+          "default_option_size_evidence_missing_axis": [],
+          "identity_default_title_axis": []
+        }
+      },
+      "coverage": {
+        "details_sections_count": 16,
+        "faq_count": 2,
+        "how_to_chars": 329,
+        "inci_chars": 872,
+        "active_ingredients_chars": 206,
+        "inci_applicability_status": "",
+        "ingredient_review_status": "manual_source_review_required",
+        "ingredient_remediation_action": "manual_source_review_required",
+        "bundle_component_refs_count": 0,
+        "effective_inci_chars": 872,
+        "inci_borrowed_from_product_id": ""
+      }
+    },
+    {
+      "seed_id": "eps_dc3091927ed0845085a21fa6",
+      "external_product_id": "ext_6f25677c2060830312544cce",
+      "market": "US",
+      "domain": "haruharuwonder.com",
+      "title": "5 Ceramide Barrier Moisturizing Cream / Unscented",
+      "canonical_url": "https://haruharuwonder.com/products/haruharuwonder-black-rice-5-ceramide-barrier-moisturizing-cream-50ml",
+      "product_family": "set_or_collection",
+      "product_line_id": "pl_ba277f3d46121efd3abd7694",
+      "identity_variant_axes": {
+        "size": "50ml",
+        "volume": "50ml",
+        "multi_variant": false
+      },
+      "pivota_insights": {
+        "direct": {
+          "product_id": "ext_6f25677c2060830312544cce",
+          "kb_key": "product:ext_6f25677c2060830312544cce",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [
+            "empty_watchouts"
+          ],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "seller_plus_formula",
+          "has_card_highlight": true
+        },
+        "effective": {
+          "product_id": "ext_6f25677c2060830312544cce",
+          "kb_key": "product:ext_6f25677c2060830312544cce",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [
+            "empty_watchouts"
+          ],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "seller_plus_formula",
+          "has_card_highlight": true
+        },
+        "product_line_id": "pl_ba277f3d46121efd3abd7694",
+        "borrowed_from_sibling": false
+      },
+      "active_ingredients": {
+        "status": "not_applicable_product_family",
+        "issues": [],
+        "regulatory_expected": false,
+        "hero_expected": false,
+        "active_items": [],
+        "source_origin": "none",
+        "source_quality_status": "blocked",
+        "coverage": {
+          "details_sections_count": 6,
+          "faq_count": 2,
+          "how_to_chars": 428,
+          "inci_chars": 918,
+          "active_ingredients_chars": 8,
+          "inci_applicability_status": "",
+          "ingredient_review_status": "manual_source_review_required",
+          "ingredient_remediation_action": "manual_source_review_required",
+          "bundle_component_refs_count": 0,
+          "effective_inci_chars": 918,
+          "inci_borrowed_from_product_id": ""
+        },
+        "invalid_fragments": [],
+        "suppressed_reason": "set_or_collection"
+      },
+      "variants": {
+        "status": "ready",
+        "issues": [],
+        "visible_variant_rows": 1,
+        "examples": {
+          "identity_option_visible": [],
+          "wrong_axis_for_category": [],
+          "makeup_shade_missing_visual": [],
+          "size_value_generic_axis": [],
+          "default_option_size_evidence_missing_axis": [],
+          "identity_default_title_axis": []
+        }
+      },
+      "coverage": {
+        "details_sections_count": 6,
+        "faq_count": 2,
+        "how_to_chars": 428,
+        "inci_chars": 918,
+        "active_ingredients_chars": 8,
+        "inci_applicability_status": "",
+        "ingredient_review_status": "manual_source_review_required",
+        "ingredient_remediation_action": "manual_source_review_required",
+        "bundle_component_refs_count": 0,
+        "effective_inci_chars": 918,
+        "inci_borrowed_from_product_id": ""
+      }
+    },
+    {
+      "seed_id": "eps_d5eebb9f25e197482d3ae1ac",
+      "external_product_id": "ext_7731f99b32ebe69a4cd5680d",
+      "market": "US",
+      "domain": "haruharuwonder.com",
+      "title": "Botanical 2GF Wonderful Ampoule",
+      "canonical_url": "https://haruharuwonder.com/products/haruharuwonder-black-rice-hyaluronic-botanical-2gf-wonderful-ampuole-30ml",
+      "product_family": "single_formula",
+      "product_line_id": "pl_0a663ed8ff85377941ee39e5",
+      "identity_variant_axes": {
+        "size": "30ml",
+        "volume": "30ml",
+        "multi_variant": false
+      },
+      "pivota_insights": {
+        "direct": {
+          "product_id": "ext_7731f99b32ebe69a4cd5680d",
+          "kb_key": "product:ext_7731f99b32ebe69a4cd5680d",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [
+            "empty_watchouts"
+          ],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "seller_plus_formula",
+          "has_card_highlight": true
+        },
+        "effective": {
+          "product_id": "ext_7731f99b32ebe69a4cd5680d",
+          "kb_key": "product:ext_7731f99b32ebe69a4cd5680d",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [
+            "empty_watchouts"
+          ],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "seller_plus_formula",
+          "has_card_highlight": true
+        },
+        "product_line_id": "pl_0a663ed8ff85377941ee39e5",
+        "borrowed_from_sibling": false
+      },
+      "active_ingredients": {
+        "status": "ready_hero",
+        "issues": [],
+        "regulatory_expected": false,
+        "hero_expected": true,
+        "active_items": [
+          "Oryza Sativa (Rice) Extract",
+          "Phyllostachys Pubescens Shoot Bark Extract",
+          "Rice sh-Polypeptide-1",
+          "Rice sh-Oligopeptide-1",
+          "Madecassoside",
+          "Adenosine",
+          "Sodium Hyaluronate"
+        ],
+        "source_origin": "reviewed_source_backed_pdp_content_patch",
+        "source_quality_status": "captured",
+        "coverage": {
+          "details_sections_count": 14,
+          "faq_count": 2,
+          "how_to_chars": 209,
+          "inci_chars": 599,
+          "active_ingredients_chars": 164,
+          "inci_applicability_status": "",
+          "ingredient_review_status": "manual_source_review_required",
+          "ingredient_remediation_action": "manual_source_review_required",
+          "bundle_component_refs_count": 0,
+          "effective_inci_chars": 599,
+          "inci_borrowed_from_product_id": ""
+        },
+        "invalid_fragments": [],
+        "suppressed_reason": null
+      },
+      "variants": {
+        "status": "ready",
+        "issues": [],
+        "visible_variant_rows": 1,
+        "examples": {
+          "identity_option_visible": [],
+          "wrong_axis_for_category": [],
+          "makeup_shade_missing_visual": [],
+          "size_value_generic_axis": [],
+          "default_option_size_evidence_missing_axis": [],
+          "identity_default_title_axis": []
+        }
+      },
+      "coverage": {
+        "details_sections_count": 14,
+        "faq_count": 2,
+        "how_to_chars": 209,
+        "inci_chars": 599,
+        "active_ingredients_chars": 164,
+        "inci_applicability_status": "",
+        "ingredient_review_status": "manual_source_review_required",
+        "ingredient_remediation_action": "manual_source_review_required",
+        "bundle_component_refs_count": 0,
+        "effective_inci_chars": 599,
+        "inci_borrowed_from_product_id": ""
+      }
+    },
+    {
+      "seed_id": "eps_bf0506ba794e0d04d7216cba",
+      "external_product_id": "ext_7bd5d5c4d1df72e9ac25a6c4",
+      "market": "US",
+      "domain": "haruharuwonder.com",
+      "title": "Phyto & 5 Peptide Concentrate Cream",
+      "canonical_url": "https://haruharuwonder.com/products/haruharuwonder-centella-phyto-5-peptide-concentrate-cream",
+      "product_family": "single_formula",
+      "product_line_id": "pl_fdfa66b58a948163acbf75cd",
+      "identity_variant_axes": {
+        "size": "30ml",
+        "volume": "30ml",
+        "multi_variant": true
+      },
+      "pivota_insights": {
+        "direct": {
+          "product_id": "ext_7bd5d5c4d1df72e9ac25a6c4",
+          "kb_key": "product:ext_7bd5d5c4d1df72e9ac25a6c4",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [
+            "empty_watchouts"
+          ],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "seller_plus_formula",
+          "has_card_highlight": true
+        },
+        "effective": {
+          "product_id": "ext_7bd5d5c4d1df72e9ac25a6c4",
+          "kb_key": "product:ext_7bd5d5c4d1df72e9ac25a6c4",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [
+            "empty_watchouts"
+          ],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "seller_plus_formula",
+          "has_card_highlight": true
+        },
+        "product_line_id": "pl_fdfa66b58a948163acbf75cd",
+        "borrowed_from_sibling": false
+      },
+      "active_ingredients": {
+        "status": "missing_hero",
+        "issues": [
+          "missing_hero"
+        ],
+        "regulatory_expected": false,
+        "hero_expected": true,
+        "active_items": [],
+        "source_origin": "pdp_section",
+        "source_quality_status": "blocked",
+        "coverage": {
+          "details_sections_count": 16,
+          "faq_count": 2,
+          "how_to_chars": 263,
+          "inci_chars": 464,
+          "active_ingredients_chars": 0,
+          "inci_applicability_status": "",
+          "ingredient_review_status": "",
+          "ingredient_remediation_action": "",
+          "bundle_component_refs_count": 0,
+          "effective_inci_chars": 464,
+          "inci_borrowed_from_product_id": ""
+        },
+        "invalid_fragments": [],
+        "suppressed_reason": "active_items_not_displayable"
+      },
+      "variants": {
+        "status": "ready",
+        "issues": [],
+        "visible_variant_rows": 3,
+        "examples": {
+          "identity_option_visible": [],
+          "wrong_axis_for_category": [],
+          "makeup_shade_missing_visual": [],
+          "size_value_generic_axis": [],
+          "default_option_size_evidence_missing_axis": [],
+          "identity_default_title_axis": []
+        }
+      },
+      "coverage": {
+        "details_sections_count": 16,
+        "faq_count": 2,
+        "how_to_chars": 263,
+        "inci_chars": 464,
+        "active_ingredients_chars": 0,
+        "inci_applicability_status": "",
+        "ingredient_review_status": "",
+        "ingredient_remediation_action": "",
+        "bundle_component_refs_count": 0,
+        "effective_inci_chars": 464,
+        "inci_borrowed_from_product_id": ""
+      }
+    },
+    {
+      "seed_id": "eps_777fa7fb4e7443840535b3e8",
+      "external_product_id": "ext_8738f6f1d413c692912ce486",
+      "market": "US",
+      "domain": "haruharuwonder.com",
+      "title": "Soothing Serum",
+      "canonical_url": "https://haruharuwonder.com/products/haruharuwonder-rose-pdrn-soothing-serum-30ml",
+      "product_family": "set_or_collection",
+      "product_line_id": "pl_7c216dd19d6ea654324b91d2",
+      "identity_variant_axes": {
+        "size": "30ml",
+        "volume": "30ml",
+        "multi_variant": false
+      },
+      "pivota_insights": {
+        "direct": {
+          "product_id": "ext_8738f6f1d413c692912ce486",
+          "kb_key": "product:ext_8738f6f1d413c692912ce486",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [
+            "empty_watchouts"
+          ],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "seller_plus_formula",
+          "has_card_highlight": true
+        },
+        "effective": {
+          "product_id": "ext_8738f6f1d413c692912ce486",
+          "kb_key": "product:ext_8738f6f1d413c692912ce486",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [
+            "empty_watchouts"
+          ],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "seller_plus_formula",
+          "has_card_highlight": true
+        },
+        "product_line_id": "pl_7c216dd19d6ea654324b91d2",
+        "borrowed_from_sibling": false
+      },
+      "active_ingredients": {
+        "status": "not_applicable_product_family",
+        "issues": [],
+        "regulatory_expected": false,
+        "hero_expected": false,
+        "active_items": [],
+        "source_origin": "none",
+        "source_quality_status": "blocked",
+        "coverage": {
+          "details_sections_count": 6,
+          "faq_count": 2,
+          "how_to_chars": 776,
+          "inci_chars": 821,
+          "active_ingredients_chars": 23,
+          "inci_applicability_status": "",
+          "ingredient_review_status": "manual_source_review_required",
+          "ingredient_remediation_action": "manual_source_review_required",
+          "bundle_component_refs_count": 0,
+          "effective_inci_chars": 821,
+          "inci_borrowed_from_product_id": ""
+        },
+        "invalid_fragments": [],
+        "suppressed_reason": "set_or_collection"
+      },
+      "variants": {
+        "status": "ready",
+        "issues": [],
+        "visible_variant_rows": 1,
+        "examples": {
+          "identity_option_visible": [],
+          "wrong_axis_for_category": [],
+          "makeup_shade_missing_visual": [],
+          "size_value_generic_axis": [],
+          "default_option_size_evidence_missing_axis": [],
+          "identity_default_title_axis": []
+        }
+      },
+      "coverage": {
+        "details_sections_count": 6,
+        "faq_count": 2,
+        "how_to_chars": 776,
+        "inci_chars": 821,
+        "active_ingredients_chars": 23,
+        "inci_applicability_status": "",
+        "ingredient_review_status": "manual_source_review_required",
+        "ingredient_remediation_action": "manual_source_review_required",
+        "bundle_component_refs_count": 0,
+        "effective_inci_chars": 821,
+        "inci_borrowed_from_product_id": ""
+      }
+    },
+    {
+      "seed_id": "eps_13976a6134f1e40c44b3ba3d",
+      "external_product_id": "ext_88bcfd89d63fcb3f765993a2",
+      "market": "US",
+      "domain": "haruharuwonder.com",
+      "title": "Daily Smoothing Body Oil",
+      "canonical_url": "https://haruharuwonder.com/products/haruharuwonder-black-bamboo-daily-smoothing-body-oil-200ml",
+      "product_family": "single_formula",
+      "product_line_id": "pl_c7b14501ee5a6962a0e79890",
+      "identity_variant_axes": {
+        "size": "200ml",
+        "volume": "200ml",
+        "multi_variant": false
+      },
+      "pivota_insights": {
+        "direct": {
+          "product_id": "ext_88bcfd89d63fcb3f765993a2",
+          "kb_key": "product:ext_88bcfd89d63fcb3f765993a2",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [
+            "empty_watchouts"
+          ],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "seller_plus_formula",
+          "has_card_highlight": true
+        },
+        "effective": {
+          "product_id": "ext_88bcfd89d63fcb3f765993a2",
+          "kb_key": "product:ext_88bcfd89d63fcb3f765993a2",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [
+            "empty_watchouts"
+          ],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "seller_plus_formula",
+          "has_card_highlight": true
+        },
+        "product_line_id": "pl_c7b14501ee5a6962a0e79890",
+        "borrowed_from_sibling": false
+      },
+      "active_ingredients": {
+        "status": "ready_hero",
+        "issues": [],
+        "regulatory_expected": false,
+        "hero_expected": true,
+        "active_items": [
+          "Squalane",
+          "Mandelic acid"
+        ],
+        "source_origin": "pdp_section",
+        "source_quality_status": "captured",
+        "coverage": {
+          "details_sections_count": 12,
+          "faq_count": 2,
+          "how_to_chars": 412,
+          "inci_chars": 835,
+          "active_ingredients_chars": 0,
+          "inci_applicability_status": "",
+          "ingredient_review_status": "",
+          "ingredient_remediation_action": "",
+          "bundle_component_refs_count": 0,
+          "effective_inci_chars": 835,
+          "inci_borrowed_from_product_id": ""
+        },
+        "invalid_fragments": [],
+        "suppressed_reason": null
+      },
+      "variants": {
+        "status": "ready",
+        "issues": [],
+        "visible_variant_rows": 1,
+        "examples": {
+          "identity_option_visible": [],
+          "wrong_axis_for_category": [],
+          "makeup_shade_missing_visual": [],
+          "size_value_generic_axis": [],
+          "default_option_size_evidence_missing_axis": [],
+          "identity_default_title_axis": []
+        }
+      },
+      "coverage": {
+        "details_sections_count": 12,
+        "faq_count": 2,
+        "how_to_chars": 412,
+        "inci_chars": 835,
+        "active_ingredients_chars": 0,
+        "inci_applicability_status": "",
+        "ingredient_review_status": "",
+        "ingredient_remediation_action": "",
+        "bundle_component_refs_count": 0,
+        "effective_inci_chars": 835,
+        "inci_borrowed_from_product_id": ""
+      }
+    },
+    {
+      "seed_id": "eps_7efc0475dd6ce3c458a6f007",
+      "external_product_id": "ext_9985a0ff75f8e767fa25cef4",
+      "market": "US",
+      "domain": "haruharuwonder.com",
+      "title": "Hyaluronic Essence",
+      "canonical_url": "https://haruharuwonder.com/products/haruharuwonder-black-rice-hyaluronic-essence-50ml",
+      "product_family": "single_formula",
+      "product_line_id": "pl_9e0c415cdd814a02d51766bb",
+      "identity_variant_axes": {
+        "size": "50ml",
+        "volume": "50ml",
+        "multi_variant": false
+      },
+      "pivota_insights": {
+        "direct": {
+          "product_id": "ext_9985a0ff75f8e767fa25cef4",
+          "kb_key": "product:ext_9985a0ff75f8e767fa25cef4",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [
+            "empty_watchouts"
+          ],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "seller_plus_formula",
+          "has_card_highlight": true
+        },
+        "effective": {
+          "product_id": "ext_9985a0ff75f8e767fa25cef4",
+          "kb_key": "product:ext_9985a0ff75f8e767fa25cef4",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [
+            "empty_watchouts"
+          ],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "seller_plus_formula",
+          "has_card_highlight": true
+        },
+        "product_line_id": "pl_9e0c415cdd814a02d51766bb",
+        "borrowed_from_sibling": false
+      },
+      "active_ingredients": {
+        "status": "ready_hero",
+        "issues": [
+          "active_raw_too_long",
+          "active_raw_may_be_full_inci"
+        ],
+        "regulatory_expected": false,
+        "hero_expected": true,
+        "active_items": [
+          "Fermented Oryza Sativa (Rice) Extract",
+          "Moisturizes / Smoothes / Controls oil-water balance Beta-glucan"
+        ],
+        "source_origin": "official_pdp_manual_review",
+        "source_quality_status": "captured",
+        "coverage": {
+          "details_sections_count": 6,
+          "faq_count": 2,
+          "how_to_chars": 284,
+          "inci_chars": 521,
+          "active_ingredients_chars": 706,
+          "inci_applicability_status": "",
+          "ingredient_review_status": "",
+          "ingredient_remediation_action": "",
+          "bundle_component_refs_count": 0,
+          "effective_inci_chars": 521,
+          "inci_borrowed_from_product_id": ""
+        },
+        "invalid_fragments": [],
+        "suppressed_reason": null
+      },
+      "variants": {
+        "status": "ready",
+        "issues": [],
+        "visible_variant_rows": 1,
+        "examples": {
+          "identity_option_visible": [],
+          "wrong_axis_for_category": [],
+          "makeup_shade_missing_visual": [],
+          "size_value_generic_axis": [],
+          "default_option_size_evidence_missing_axis": [],
+          "identity_default_title_axis": []
+        }
+      },
+      "coverage": {
+        "details_sections_count": 6,
+        "faq_count": 2,
+        "how_to_chars": 284,
+        "inci_chars": 521,
+        "active_ingredients_chars": 706,
+        "inci_applicability_status": "",
+        "ingredient_review_status": "",
+        "ingredient_remediation_action": "",
+        "bundle_component_refs_count": 0,
+        "effective_inci_chars": 521,
+        "inci_borrowed_from_product_id": ""
+      }
+    },
+    {
+      "seed_id": "eps_ab1eb6b84cf199a95cdd4382",
+      "external_product_id": "ext_ac8e55c3778eeb2ce81284ab",
+      "market": "US",
+      "domain": "haruharuwonder.com",
+      "title": "Black Rice Hyaluronic Toner",
+      "canonical_url": "https://haruharuwonder.com/products/haruharuwonder-black-rice-hyaluronic-toner",
+      "product_family": "single_formula",
+      "product_line_id": "pl_7a8290530289bd520302f088",
+      "identity_variant_axes": {
+        "size": "150ml",
+        "volume": "150ml",
+        "multi_variant": true
+      },
+      "pivota_insights": {
+        "direct": {
+          "product_id": "ext_ac8e55c3778eeb2ce81284ab",
+          "kb_key": "product:ext_ac8e55c3778eeb2ce81284ab",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [
+            "empty_watchouts"
+          ],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "seller_plus_formula",
+          "has_card_highlight": true
+        },
+        "effective": {
+          "product_id": "ext_ac8e55c3778eeb2ce81284ab",
+          "kb_key": "product:ext_ac8e55c3778eeb2ce81284ab",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [
+            "empty_watchouts"
+          ],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "seller_plus_formula",
+          "has_card_highlight": true
+        },
+        "product_line_id": "pl_7a8290530289bd520302f088",
+        "borrowed_from_sibling": false
+      },
+      "active_ingredients": {
+        "status": "ready_hero",
+        "issues": [],
+        "regulatory_expected": false,
+        "hero_expected": true,
+        "active_items": [
+          "Hyaluronic acid"
+        ],
+        "source_origin": "pdp_section",
+        "source_quality_status": "captured",
+        "coverage": {
+          "details_sections_count": 16,
+          "faq_count": 2,
+          "how_to_chars": 114,
+          "inci_chars": 572,
+          "active_ingredients_chars": 0,
+          "inci_applicability_status": "",
+          "ingredient_review_status": "",
+          "ingredient_remediation_action": "",
+          "bundle_component_refs_count": 0,
+          "effective_inci_chars": 572,
+          "inci_borrowed_from_product_id": ""
+        },
+        "invalid_fragments": [],
+        "suppressed_reason": null
+      },
+      "variants": {
+        "status": "ready",
+        "issues": [],
+        "visible_variant_rows": 3,
+        "examples": {
+          "identity_option_visible": [],
+          "wrong_axis_for_category": [],
+          "makeup_shade_missing_visual": [],
+          "size_value_generic_axis": [],
+          "default_option_size_evidence_missing_axis": [],
+          "identity_default_title_axis": []
+        }
+      },
+      "coverage": {
+        "details_sections_count": 16,
+        "faq_count": 2,
+        "how_to_chars": 114,
+        "inci_chars": 572,
+        "active_ingredients_chars": 0,
+        "inci_applicability_status": "",
+        "ingredient_review_status": "",
+        "ingredient_remediation_action": "",
+        "bundle_component_refs_count": 0,
+        "effective_inci_chars": 572,
+        "inci_borrowed_from_product_id": ""
+      }
+    },
+    {
+      "seed_id": "eps_3dc9ed1a7e6f7a73eb4db841",
+      "external_product_id": "ext_c72a4eb40e754beaa43a39d0",
+      "market": "US",
+      "domain": "haruharuwonder.com",
+      "title": "Moisture Pure Mineral Relief Sunscreen SPF50+/PA++++ /Unscented",
+      "canonical_url": "https://haruharuwonder.com/products/haruharuwonder-black-rice-pure-mineral-relief-daily-sunscreen-unscented-spf50-50ml",
+      "product_family": "single_formula",
+      "product_line_id": "pl_8039ef621147e447d280f6a1",
+      "identity_variant_axes": {
+        "size": "50ml",
+        "volume": "50ml",
+        "multi_variant": false
+      },
+      "pivota_insights": {
+        "direct": {
+          "product_id": "ext_c72a4eb40e754beaa43a39d0",
+          "kb_key": "product:ext_c72a4eb40e754beaa43a39d0",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "seller_plus_formula",
+          "has_card_highlight": true
+        },
+        "effective": {
+          "product_id": "ext_c72a4eb40e754beaa43a39d0",
+          "kb_key": "product:ext_c72a4eb40e754beaa43a39d0",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "seller_plus_formula",
+          "has_card_highlight": true
+        },
+        "product_line_id": "pl_8039ef621147e447d280f6a1",
+        "borrowed_from_sibling": false
+      },
+      "active_ingredients": {
+        "status": "ready_regulatory",
+        "issues": [],
+        "regulatory_expected": true,
+        "hero_expected": true,
+        "active_items": [
+          "Niacinamide",
+          "Zinc Oxide"
+        ],
+        "source_origin": "pdp_section",
+        "source_quality_status": "regulatory_active",
+        "coverage": {
+          "details_sections_count": 16,
+          "faq_count": 2,
+          "how_to_chars": 305,
+          "inci_chars": 973,
+          "active_ingredients_chars": 0,
+          "inci_applicability_status": "",
+          "ingredient_review_status": "resolved_by_official_source",
+          "ingredient_remediation_action": "source_recovered",
+          "bundle_component_refs_count": 0,
+          "effective_inci_chars": 973,
+          "inci_borrowed_from_product_id": ""
+        },
+        "invalid_fragments": [],
+        "suppressed_reason": null
+      },
+      "variants": {
+        "status": "ready",
+        "issues": [],
+        "visible_variant_rows": 1,
+        "examples": {
+          "identity_option_visible": [],
+          "wrong_axis_for_category": [],
+          "makeup_shade_missing_visual": [],
+          "size_value_generic_axis": [],
+          "default_option_size_evidence_missing_axis": [],
+          "identity_default_title_axis": []
+        }
+      },
+      "coverage": {
+        "details_sections_count": 16,
+        "faq_count": 2,
+        "how_to_chars": 305,
+        "inci_chars": 973,
+        "active_ingredients_chars": 0,
+        "inci_applicability_status": "",
+        "ingredient_review_status": "resolved_by_official_source",
+        "ingredient_remediation_action": "source_recovered",
+        "bundle_component_refs_count": 0,
+        "effective_inci_chars": 973,
+        "inci_borrowed_from_product_id": ""
+      }
+    },
+    {
+      "seed_id": "eps_dcd9d3aa66d2cb0b0420c3b2",
+      "external_product_id": "ext_c77c0794a910bcf9efa4f542",
+      "market": "US",
+      "domain": "haruharuwonder.com",
+      "title": "10 Hyaluronic Cream (Unscented)",
+      "canonical_url": "https://haruharuwonder.com/products/haruharuwonder-black-rice-10-hyaluronic-cream-50ml-unscented",
+      "product_family": "single_formula",
+      "product_line_id": "pl_1231bea30949bb6504b0819d",
+      "identity_variant_axes": {
+        "size": "50ml",
+        "volume": "50ml",
+        "multi_variant": false
+      },
+      "pivota_insights": {
+        "direct": {
+          "product_id": "ext_c77c0794a910bcf9efa4f542",
+          "kb_key": "product:ext_c77c0794a910bcf9efa4f542",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [
+            "empty_watchouts"
+          ],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "seller_plus_formula",
+          "has_card_highlight": true
+        },
+        "effective": {
+          "product_id": "ext_c77c0794a910bcf9efa4f542",
+          "kb_key": "product:ext_c77c0794a910bcf9efa4f542",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [
+            "empty_watchouts"
+          ],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "seller_plus_formula",
+          "has_card_highlight": true
+        },
+        "product_line_id": "pl_1231bea30949bb6504b0819d",
+        "borrowed_from_sibling": false
+      },
+      "active_ingredients": {
+        "status": "ready_hero",
+        "issues": [],
+        "regulatory_expected": false,
+        "hero_expected": true,
+        "active_items": [
+          "Hyaluronic acid"
+        ],
+        "source_origin": "pdp_section",
+        "source_quality_status": "captured",
+        "coverage": {
+          "details_sections_count": 4,
+          "faq_count": 0,
+          "how_to_chars": 109,
+          "inci_chars": 250,
+          "active_ingredients_chars": 0,
+          "inci_applicability_status": "",
+          "ingredient_review_status": "",
+          "ingredient_remediation_action": "",
+          "bundle_component_refs_count": 0,
+          "effective_inci_chars": 250,
+          "inci_borrowed_from_product_id": ""
+        },
+        "invalid_fragments": [],
+        "suppressed_reason": null
+      },
+      "variants": {
+        "status": "ready",
+        "issues": [],
+        "visible_variant_rows": 1,
+        "examples": {
+          "identity_option_visible": [],
+          "wrong_axis_for_category": [],
+          "makeup_shade_missing_visual": [],
+          "size_value_generic_axis": [],
+          "default_option_size_evidence_missing_axis": [],
+          "identity_default_title_axis": []
+        }
+      },
+      "coverage": {
+        "details_sections_count": 4,
+        "faq_count": 0,
+        "how_to_chars": 109,
+        "inci_chars": 250,
+        "active_ingredients_chars": 0,
+        "inci_applicability_status": "",
+        "ingredient_review_status": "",
+        "ingredient_remediation_action": "",
+        "bundle_component_refs_count": 0,
+        "effective_inci_chars": 250,
+        "inci_borrowed_from_product_id": ""
+      }
+    },
+    {
+      "seed_id": "eps_cea05f2edeb362f8d3a5c3cc",
+      "external_product_id": "ext_cdcf72462dce7e097e9fe3b0",
+      "market": "US",
+      "domain": "haruharuwonder.com",
+      "title": "Mist",
+      "canonical_url": "https://haruharuwonder.com/products/haruharuwonder-black-bamboo-mist",
+      "product_family": "single_formula",
+      "product_line_id": "pl_e68dbc7398214ab9f110971b",
+      "identity_variant_axes": {
+        "size": "150ml",
+        "volume": "150ml",
+        "multi_variant": true
+      },
+      "pivota_insights": {
+        "direct": {
+          "product_id": "ext_cdcf72462dce7e097e9fe3b0",
+          "kb_key": "product:ext_cdcf72462dce7e097e9fe3b0",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [
+            "empty_watchouts"
+          ],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "seller_plus_formula",
+          "has_card_highlight": true
+        },
+        "effective": {
+          "product_id": "ext_cdcf72462dce7e097e9fe3b0",
+          "kb_key": "product:ext_cdcf72462dce7e097e9fe3b0",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [
+            "empty_watchouts"
+          ],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "seller_plus_formula",
+          "has_card_highlight": true
+        },
+        "product_line_id": "pl_e68dbc7398214ab9f110971b",
+        "borrowed_from_sibling": false
+      },
+      "active_ingredients": {
+        "status": "not_expected_missing",
+        "issues": [],
+        "regulatory_expected": false,
+        "hero_expected": false,
+        "active_items": [],
+        "source_origin": "pdp_section",
+        "source_quality_status": "blocked",
+        "coverage": {
+          "details_sections_count": 12,
+          "faq_count": 2,
+          "how_to_chars": 266,
+          "inci_chars": 392,
+          "active_ingredients_chars": 0,
+          "inci_applicability_status": "",
+          "ingredient_review_status": "",
+          "ingredient_remediation_action": "",
+          "bundle_component_refs_count": 0,
+          "effective_inci_chars": 392,
+          "inci_borrowed_from_product_id": ""
+        },
+        "invalid_fragments": [],
+        "suppressed_reason": null
+      },
+      "variants": {
+        "status": "ready",
+        "issues": [],
+        "visible_variant_rows": 2,
+        "examples": {
+          "identity_option_visible": [],
+          "wrong_axis_for_category": [],
+          "makeup_shade_missing_visual": [],
+          "size_value_generic_axis": [],
+          "default_option_size_evidence_missing_axis": [],
+          "identity_default_title_axis": []
+        }
+      },
+      "coverage": {
+        "details_sections_count": 12,
+        "faq_count": 2,
+        "how_to_chars": 266,
+        "inci_chars": 392,
+        "active_ingredients_chars": 0,
+        "inci_applicability_status": "",
+        "ingredient_review_status": "",
+        "ingredient_remediation_action": "",
+        "bundle_component_refs_count": 0,
+        "effective_inci_chars": 392,
+        "inci_borrowed_from_product_id": ""
+      }
+    },
+    {
+      "seed_id": "eps_7daab7e576ca7408f1042587",
+      "external_product_id": "ext_d043caf470268e768e9650a4",
+      "market": "US",
+      "domain": "haruharuwonder.com",
+      "title": "Nourishing Calming Hand & Nail Cream",
+      "canonical_url": "https://haruharuwonder.com/products/haruharuwonder-black-bamboo-nourishing-calming-hand-nail-cream-50ml",
+      "product_family": "single_formula",
+      "product_line_id": "pl_89ac7b64d5e6170b348fab3f",
+      "identity_variant_axes": {
+        "size": "50ml",
+        "volume": "50ml",
+        "multi_variant": false
+      },
+      "pivota_insights": {
+        "direct": {
+          "product_id": "ext_d043caf470268e768e9650a4",
+          "kb_key": "product:ext_d043caf470268e768e9650a4",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [
+            "empty_watchouts"
+          ],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "seller_plus_formula",
+          "has_card_highlight": true
+        },
+        "effective": {
+          "product_id": "ext_d043caf470268e768e9650a4",
+          "kb_key": "product:ext_d043caf470268e768e9650a4",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [
+            "empty_watchouts"
+          ],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "seller_plus_formula",
+          "has_card_highlight": true
+        },
+        "product_line_id": "pl_89ac7b64d5e6170b348fab3f",
+        "borrowed_from_sibling": false
+      },
+      "active_ingredients": {
+        "status": "ready_hero",
+        "issues": [],
+        "regulatory_expected": false,
+        "hero_expected": true,
+        "active_items": [
+          "Panthenol (B5)"
+        ],
+        "source_origin": "pdp_section",
+        "source_quality_status": "captured",
+        "coverage": {
+          "details_sections_count": 12,
+          "faq_count": 2,
+          "how_to_chars": 508,
+          "inci_chars": 826,
+          "active_ingredients_chars": 0,
+          "inci_applicability_status": "",
+          "ingredient_review_status": "",
+          "ingredient_remediation_action": "",
+          "bundle_component_refs_count": 0,
+          "effective_inci_chars": 826,
+          "inci_borrowed_from_product_id": ""
+        },
+        "invalid_fragments": [],
+        "suppressed_reason": null
+      },
+      "variants": {
+        "status": "ready",
+        "issues": [],
+        "visible_variant_rows": 1,
+        "examples": {
+          "identity_option_visible": [],
+          "wrong_axis_for_category": [],
+          "makeup_shade_missing_visual": [],
+          "size_value_generic_axis": [],
+          "default_option_size_evidence_missing_axis": [],
+          "identity_default_title_axis": []
+        }
+      },
+      "coverage": {
+        "details_sections_count": 12,
+        "faq_count": 2,
+        "how_to_chars": 508,
+        "inci_chars": 826,
+        "active_ingredients_chars": 0,
+        "inci_applicability_status": "",
+        "ingredient_review_status": "",
+        "ingredient_remediation_action": "",
+        "bundle_component_refs_count": 0,
+        "effective_inci_chars": 826,
+        "inci_borrowed_from_product_id": ""
+      }
+    },
+    {
+      "seed_id": "eps_854aa2f8fd80e3637c2ced83",
+      "external_product_id": "ext_d3e400f7ba05232d31646ca8",
+      "market": "US",
+      "domain": "haruharuwonder.com",
+      "title": "Hyaluronic Anti-wrinkle Serum",
+      "canonical_url": "https://haruharuwonder.com/products/haruharuwonder-black-rice-hyaluronic-anti-wrinkle-serum-50ml",
+      "product_family": "single_formula",
+      "product_line_id": "pl_9411024ce23802601c72a19e",
+      "identity_variant_axes": {
+        "size": "50ml",
+        "volume": "50ml",
+        "multi_variant": false
+      },
+      "pivota_insights": {
+        "direct": {
+          "product_id": "ext_d3e400f7ba05232d31646ca8",
+          "kb_key": "product:ext_d3e400f7ba05232d31646ca8",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [
+            "empty_watchouts"
+          ],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "seller_plus_formula",
+          "has_card_highlight": true
+        },
+        "effective": {
+          "product_id": "ext_d3e400f7ba05232d31646ca8",
+          "kb_key": "product:ext_d3e400f7ba05232d31646ca8",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [
+            "empty_watchouts"
+          ],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "seller_plus_formula",
+          "has_card_highlight": true
+        },
+        "product_line_id": "pl_9411024ce23802601c72a19e",
+        "borrowed_from_sibling": false
+      },
+      "active_ingredients": {
+        "status": "ready_hero",
+        "issues": [],
+        "regulatory_expected": false,
+        "hero_expected": true,
+        "active_items": [
+          "Hyaluronic acid"
+        ],
+        "source_origin": "pdp_section",
+        "source_quality_status": "captured",
+        "coverage": {
+          "details_sections_count": 14,
+          "faq_count": 2,
+          "how_to_chars": 176,
+          "inci_chars": 734,
+          "active_ingredients_chars": 0,
+          "inci_applicability_status": "",
+          "ingredient_review_status": "",
+          "ingredient_remediation_action": "",
+          "bundle_component_refs_count": 0,
+          "effective_inci_chars": 734,
+          "inci_borrowed_from_product_id": ""
+        },
+        "invalid_fragments": [],
+        "suppressed_reason": null
+      },
+      "variants": {
+        "status": "ready",
+        "issues": [],
+        "visible_variant_rows": 1,
+        "examples": {
+          "identity_option_visible": [],
+          "wrong_axis_for_category": [],
+          "makeup_shade_missing_visual": [],
+          "size_value_generic_axis": [],
+          "default_option_size_evidence_missing_axis": [],
+          "identity_default_title_axis": []
+        }
+      },
+      "coverage": {
+        "details_sections_count": 14,
+        "faq_count": 2,
+        "how_to_chars": 176,
+        "inci_chars": 734,
+        "active_ingredients_chars": 0,
+        "inci_applicability_status": "",
+        "ingredient_review_status": "",
+        "ingredient_remediation_action": "",
+        "bundle_component_refs_count": 0,
+        "effective_inci_chars": 734,
+        "inci_borrowed_from_product_id": ""
+      }
+    },
+    {
+      "seed_id": "eps_fb9af65c9fd6b5e339b0e87c",
+      "external_product_id": "ext_d4b52c2dad8f0c8ac77ff7ac",
+      "market": "US",
+      "domain": "haruharuwonder.com",
+      "title": "Daily Soothing Sun Shield SPF50+ PA++++",
+      "canonical_url": "https://haruharuwonder.com/products/haruharuwonder-black-bamboo-daily-soothing-sun-shield-spf50-pa-20g",
+      "product_family": "single_formula",
+      "product_line_id": "pl_5e49d102cacdc71ee34fa45c",
+      "identity_variant_axes": {
+        "size": "20g",
+        "volume": "20g",
+        "multi_variant": false
+      },
+      "pivota_insights": {
+        "direct": {
+          "product_id": "ext_d4b52c2dad8f0c8ac77ff7ac",
+          "kb_key": "product:ext_d4b52c2dad8f0c8ac77ff7ac",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "seller_plus_formula",
+          "has_card_highlight": true
+        },
+        "effective": {
+          "product_id": "ext_d4b52c2dad8f0c8ac77ff7ac",
+          "kb_key": "product:ext_d4b52c2dad8f0c8ac77ff7ac",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "seller_plus_formula",
+          "has_card_highlight": true
+        },
+        "product_line_id": "pl_5e49d102cacdc71ee34fa45c",
+        "borrowed_from_sibling": false
+      },
+      "active_ingredients": {
+        "status": "missing_regulatory",
+        "issues": [
+          "missing_regulatory"
+        ],
+        "regulatory_expected": true,
+        "hero_expected": true,
+        "active_items": [
+          "Niacinamide"
+        ],
+        "source_origin": "pdp_section",
+        "source_quality_status": "blocked",
+        "coverage": {
+          "details_sections_count": 16,
+          "faq_count": 2,
+          "how_to_chars": 273,
+          "inci_chars": 940,
+          "active_ingredients_chars": 0,
+          "inci_applicability_status": "",
+          "ingredient_review_status": "",
+          "ingredient_remediation_action": "",
+          "bundle_component_refs_count": 0,
+          "effective_inci_chars": 940,
+          "inci_borrowed_from_product_id": ""
+        },
+        "invalid_fragments": [],
+        "suppressed_reason": null
+      },
+      "variants": {
+        "status": "ready",
+        "issues": [],
+        "visible_variant_rows": 1,
+        "examples": {
+          "identity_option_visible": [],
+          "wrong_axis_for_category": [],
+          "makeup_shade_missing_visual": [],
+          "size_value_generic_axis": [],
+          "default_option_size_evidence_missing_axis": [],
+          "identity_default_title_axis": []
+        }
+      },
+      "coverage": {
+        "details_sections_count": 16,
+        "faq_count": 2,
+        "how_to_chars": 273,
+        "inci_chars": 940,
+        "active_ingredients_chars": 0,
+        "inci_applicability_status": "",
+        "ingredient_review_status": "",
+        "ingredient_remediation_action": "",
+        "bundle_component_refs_count": 0,
+        "effective_inci_chars": 940,
+        "inci_borrowed_from_product_id": ""
+      }
+    },
+    {
+      "seed_id": "eps_170d2e428d8dff0fe6713d09",
+      "external_product_id": "ext_d6716f08ba30aa68ed0120db",
+      "market": "US",
+      "domain": "haruharuwonder.com",
+      "title": "5% Niacinamide Radiance Gel Cream / Unscented 40g",
+      "canonical_url": "https://haruharuwonder.com/products/haruharuwonder-centella-5-niacinamide-radiance-gel-cream-40g",
+      "product_family": "single_formula",
+      "product_line_id": "pl_f1c6e739c634d29899c40b3a",
+      "identity_variant_axes": {
+        "size": "40g",
+        "volume": "40g",
+        "multi_variant": false
+      },
+      "pivota_insights": {
+        "direct": {
+          "product_id": "ext_d6716f08ba30aa68ed0120db",
+          "kb_key": "product:ext_d6716f08ba30aa68ed0120db",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [
+            "empty_watchouts"
+          ],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "seller_plus_formula",
+          "has_card_highlight": true
+        },
+        "effective": {
+          "product_id": "ext_d6716f08ba30aa68ed0120db",
+          "kb_key": "product:ext_d6716f08ba30aa68ed0120db",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [
+            "empty_watchouts"
+          ],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "seller_plus_formula",
+          "has_card_highlight": true
+        },
+        "product_line_id": "pl_f1c6e739c634d29899c40b3a",
+        "borrowed_from_sibling": false
+      },
+      "active_ingredients": {
+        "status": "ready_hero",
+        "issues": [],
+        "regulatory_expected": false,
+        "hero_expected": true,
+        "active_items": [
+          "Niacinamide",
+          "Panthenol (B5)",
+          "Vitamin C (Ascorbic acid)",
+          "Squalane",
+          "Centella asiatica"
+        ],
+        "source_origin": "pdp_section",
+        "source_quality_status": "captured",
+        "coverage": {
+          "details_sections_count": 12,
+          "faq_count": 2,
+          "how_to_chars": 452,
+          "inci_chars": 427,
+          "active_ingredients_chars": 0,
+          "inci_applicability_status": "",
+          "ingredient_review_status": "",
+          "ingredient_remediation_action": "",
+          "bundle_component_refs_count": 0,
+          "effective_inci_chars": 427,
+          "inci_borrowed_from_product_id": ""
+        },
+        "invalid_fragments": [],
+        "suppressed_reason": null
+      },
+      "variants": {
+        "status": "ready",
+        "issues": [],
+        "visible_variant_rows": 1,
+        "examples": {
+          "identity_option_visible": [],
+          "wrong_axis_for_category": [],
+          "makeup_shade_missing_visual": [],
+          "size_value_generic_axis": [],
+          "default_option_size_evidence_missing_axis": [],
+          "identity_default_title_axis": []
+        }
+      },
+      "coverage": {
+        "details_sections_count": 12,
+        "faq_count": 2,
+        "how_to_chars": 452,
+        "inci_chars": 427,
+        "active_ingredients_chars": 0,
+        "inci_applicability_status": "",
+        "ingredient_review_status": "",
+        "ingredient_remediation_action": "",
+        "bundle_component_refs_count": 0,
+        "effective_inci_chars": 427,
+        "inci_borrowed_from_product_id": ""
+      }
+    },
+    {
+      "seed_id": "eps_862728e94c8a65e6588bc5ae",
+      "external_product_id": "ext_dfaad303689ed648f619b073",
+      "market": "US",
+      "domain": "haruharuwonder.com",
+      "title": "Moisture 5.5 Soft Cleansing Gel / Unscented",
+      "canonical_url": "https://haruharuwonder.com/products/haruharuwonder-black-rice-moisture-5-5-soft-cleansing-gel-100ml",
+      "product_family": "set_or_collection",
+      "product_line_id": "pl_3c9aa439bea13c28738266ae",
+      "identity_variant_axes": {
+        "size": "100ml",
+        "volume": "100ml",
+        "multi_variant": false
+      },
+      "pivota_insights": {
+        "direct": {
+          "product_id": "ext_dfaad303689ed648f619b073",
+          "kb_key": "product:ext_dfaad303689ed648f619b073",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [
+            "empty_watchouts"
+          ],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "seller_plus_formula",
+          "has_card_highlight": true
+        },
+        "effective": {
+          "product_id": "ext_dfaad303689ed648f619b073",
+          "kb_key": "product:ext_dfaad303689ed648f619b073",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [
+            "empty_watchouts"
+          ],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "seller_plus_formula",
+          "has_card_highlight": true
+        },
+        "product_line_id": "pl_3c9aa439bea13c28738266ae",
+        "borrowed_from_sibling": false
+      },
+      "active_ingredients": {
+        "status": "not_applicable_product_family",
+        "issues": [],
+        "regulatory_expected": false,
+        "hero_expected": false,
+        "active_items": [],
+        "source_origin": "none",
+        "source_quality_status": "blocked",
+        "coverage": {
+          "details_sections_count": 8,
+          "faq_count": 2,
+          "how_to_chars": 224,
+          "inci_chars": 500,
+          "active_ingredients_chars": 0,
+          "inci_applicability_status": "",
+          "ingredient_review_status": "manual_source_review_required",
+          "ingredient_remediation_action": "manual_source_review_required",
+          "bundle_component_refs_count": 0,
+          "effective_inci_chars": 500,
+          "inci_borrowed_from_product_id": ""
+        },
+        "invalid_fragments": [],
+        "suppressed_reason": "set_or_collection"
+      },
+      "variants": {
+        "status": "ready",
+        "issues": [],
+        "visible_variant_rows": 1,
+        "examples": {
+          "identity_option_visible": [],
+          "wrong_axis_for_category": [],
+          "makeup_shade_missing_visual": [],
+          "size_value_generic_axis": [],
+          "default_option_size_evidence_missing_axis": [],
+          "identity_default_title_axis": []
+        }
+      },
+      "coverage": {
+        "details_sections_count": 8,
+        "faq_count": 2,
+        "how_to_chars": 224,
+        "inci_chars": 500,
+        "active_ingredients_chars": 0,
+        "inci_applicability_status": "",
+        "ingredient_review_status": "manual_source_review_required",
+        "ingredient_remediation_action": "manual_source_review_required",
+        "bundle_component_refs_count": 0,
+        "effective_inci_chars": 500,
+        "inci_borrowed_from_product_id": ""
+      }
+    },
+    {
+      "seed_id": "eps_7b59b8d7deecb6ff11bbdd72",
+      "external_product_id": "ext_e0221b1333bf64e7c738376c",
+      "market": "US",
+      "domain": "haruharuwonder.com",
+      "title": "Bakuchiol Eye Cream / Unscented",
+      "canonical_url": "https://haruharuwonder.com/products/haruharuwonder-black-rice-bakuchiol-eye-cream-20ml",
+      "product_family": "single_formula",
+      "product_line_id": "pl_2266d16c82a904ad13e2835e",
+      "identity_variant_axes": {
+        "size": "20ml",
+        "volume": "20ml",
+        "multi_variant": false
+      },
+      "pivota_insights": {
+        "direct": {
+          "product_id": "ext_e0221b1333bf64e7c738376c",
+          "kb_key": "product:ext_e0221b1333bf64e7c738376c",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [
+            "empty_watchouts"
+          ],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "seller_plus_formula",
+          "has_card_highlight": true
+        },
+        "effective": {
+          "product_id": "ext_e0221b1333bf64e7c738376c",
+          "kb_key": "product:ext_e0221b1333bf64e7c738376c",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [
+            "empty_watchouts"
+          ],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "seller_plus_formula",
+          "has_card_highlight": true
+        },
+        "product_line_id": "pl_2266d16c82a904ad13e2835e",
+        "borrowed_from_sibling": false
+      },
+      "active_ingredients": {
+        "status": "ready_hero",
+        "issues": [],
+        "regulatory_expected": false,
+        "hero_expected": true,
+        "active_items": [
+          "Bakuchiol",
+          "Oryza Sativa (Rice) Extract",
+          "Phyllostachys Pubescens Shoot Bark Extract",
+          "Sodium Hyaluronate",
+          "Madecassoside",
+          "Natto Gum"
+        ],
+        "source_origin": "reviewed_source_backed_pdp_content_patch",
+        "source_quality_status": "captured",
+        "coverage": {
+          "details_sections_count": 16,
+          "faq_count": 2,
+          "how_to_chars": 235,
+          "inci_chars": 662,
+          "active_ingredients_chars": 128,
+          "inci_applicability_status": "",
+          "ingredient_review_status": "manual_source_review_required",
+          "ingredient_remediation_action": "manual_source_review_required",
+          "bundle_component_refs_count": 0,
+          "effective_inci_chars": 662,
+          "inci_borrowed_from_product_id": ""
+        },
+        "invalid_fragments": [],
+        "suppressed_reason": null
+      },
+      "variants": {
+        "status": "ready",
+        "issues": [],
+        "visible_variant_rows": 1,
+        "examples": {
+          "identity_option_visible": [],
+          "wrong_axis_for_category": [],
+          "makeup_shade_missing_visual": [],
+          "size_value_generic_axis": [],
+          "default_option_size_evidence_missing_axis": [],
+          "identity_default_title_axis": []
+        }
+      },
+      "coverage": {
+        "details_sections_count": 16,
+        "faq_count": 2,
+        "how_to_chars": 235,
+        "inci_chars": 662,
+        "active_ingredients_chars": 128,
+        "inci_applicability_status": "",
+        "ingredient_review_status": "manual_source_review_required",
+        "ingredient_remediation_action": "manual_source_review_required",
+        "bundle_component_refs_count": 0,
+        "effective_inci_chars": 662,
+        "inci_borrowed_from_product_id": ""
+      }
+    },
+    {
+      "seed_id": "eps_9092f561ef5eded969765b2c",
+      "external_product_id": "ext_e703e9fd8af228189d2caa0a",
+      "market": "US",
+      "domain": "haruharuwonder.com",
+      "title": "Peptide Glowy Balm",
+      "canonical_url": "https://haruharuwonder.com/products/peptide-glowy-balm",
+      "product_family": "single_formula",
+      "product_line_id": "pl_fcf66013f3054d5627f67d95",
+      "identity_variant_axes": {
+        "size": "10ml",
+        "volume": "10ml",
+        "multi_variant": false
+      },
+      "pivota_insights": {
+        "direct": {
+          "product_id": "ext_e703e9fd8af228189d2caa0a",
+          "kb_key": "product:ext_e703e9fd8af228189d2caa0a",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [
+            "empty_watchouts"
+          ],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "seller_plus_formula",
+          "has_card_highlight": true
+        },
+        "effective": {
+          "product_id": "ext_e703e9fd8af228189d2caa0a",
+          "kb_key": "product:ext_e703e9fd8af228189d2caa0a",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [
+            "empty_watchouts"
+          ],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "seller_plus_formula",
+          "has_card_highlight": true
+        },
+        "product_line_id": "pl_fcf66013f3054d5627f67d95",
+        "borrowed_from_sibling": false
+      },
+      "active_ingredients": {
+        "status": "ready_hero",
+        "issues": [],
+        "regulatory_expected": false,
+        "hero_expected": true,
+        "active_items": [
+          "Sodium DNA",
+          "Dipeptide-15",
+          "Acetyl Hexapeptide-8",
+          "Copper Tripeptide-1",
+          "Tripeptide-1",
+          "Palmitoyl Tetrapeptide-7",
+          "Palmitoyl Tripeptide-1",
+          "Palmitoyl Pentapeptide-4",
+          "Hexapeptide-9",
+          "Butyrospermum Parkii (Shea) Butter",
+          "Simmondsia Chinensis (Jojoba) Seed Oil",
+          "Ceramide NP"
+        ],
+        "source_origin": "reviewed_source_backed_pdp_content_patch",
+        "source_quality_status": "captured",
+        "coverage": {
+          "details_sections_count": 14,
+          "faq_count": 2,
+          "how_to_chars": 266,
+          "inci_chars": 1936,
+          "active_ingredients_chars": 261,
+          "inci_applicability_status": "",
+          "ingredient_review_status": "manual_source_review_required",
+          "ingredient_remediation_action": "manual_source_review_required",
+          "bundle_component_refs_count": 0,
+          "effective_inci_chars": 1936,
+          "inci_borrowed_from_product_id": ""
+        },
+        "invalid_fragments": [],
+        "suppressed_reason": null
+      },
+      "variants": {
+        "status": "ready",
+        "issues": [],
+        "visible_variant_rows": 1,
+        "examples": {
+          "identity_option_visible": [],
+          "wrong_axis_for_category": [],
+          "makeup_shade_missing_visual": [],
+          "size_value_generic_axis": [],
+          "default_option_size_evidence_missing_axis": [],
+          "identity_default_title_axis": []
+        }
+      },
+      "coverage": {
+        "details_sections_count": 14,
+        "faq_count": 2,
+        "how_to_chars": 266,
+        "inci_chars": 1936,
+        "active_ingredients_chars": 261,
+        "inci_applicability_status": "",
+        "ingredient_review_status": "manual_source_review_required",
+        "ingredient_remediation_action": "manual_source_review_required",
+        "bundle_component_refs_count": 0,
+        "effective_inci_chars": 1936,
+        "inci_borrowed_from_product_id": ""
+      }
+    },
+    {
+      "seed_id": "eps_0d891ede8e769ca47ee2ddd5",
+      "external_product_id": "ext_ea93a3fd2c60e0a45b8d53cd",
+      "market": "US",
+      "domain": "haruharuwonder.com",
+      "title": "Probiotics Barrier Essence / Unscented",
+      "canonical_url": "https://haruharuwonder.com/products/haruharuwonder-black-rice-probiotics-barrier-essence",
+      "product_family": "single_formula",
+      "product_line_id": "pl_e058549132de23dd8a0f55fd",
+      "identity_variant_axes": {
+        "size": "120ml",
+        "volume": "120ml",
+        "multi_variant": true
+      },
+      "pivota_insights": {
+        "direct": {
+          "product_id": "ext_ea93a3fd2c60e0a45b8d53cd",
+          "kb_key": "product:ext_ea93a3fd2c60e0a45b8d53cd",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [
+            "empty_watchouts"
+          ],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "seller_plus_formula",
+          "has_card_highlight": true
+        },
+        "effective": {
+          "product_id": "ext_ea93a3fd2c60e0a45b8d53cd",
+          "kb_key": "product:ext_ea93a3fd2c60e0a45b8d53cd",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [
+            "empty_watchouts"
+          ],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "seller_plus_formula",
+          "has_card_highlight": true
+        },
+        "product_line_id": "pl_e058549132de23dd8a0f55fd",
+        "borrowed_from_sibling": false
+      },
+      "active_ingredients": {
+        "status": "ready_hero",
+        "issues": [],
+        "regulatory_expected": false,
+        "hero_expected": true,
+        "active_items": [
+          "Ceramide NP",
+          "Panthenol (B5)"
+        ],
+        "source_origin": "pdp_section",
+        "source_quality_status": "captured",
+        "coverage": {
+          "details_sections_count": 14,
+          "faq_count": 2,
+          "how_to_chars": 261,
+          "inci_chars": 1085,
+          "active_ingredients_chars": 0,
+          "inci_applicability_status": "",
+          "ingredient_review_status": "",
+          "ingredient_remediation_action": "",
+          "bundle_component_refs_count": 0,
+          "effective_inci_chars": 1085,
+          "inci_borrowed_from_product_id": ""
+        },
+        "invalid_fragments": [],
+        "suppressed_reason": null
+      },
+      "variants": {
+        "status": "ready",
+        "issues": [],
+        "visible_variant_rows": 2,
+        "examples": {
+          "identity_option_visible": [],
+          "wrong_axis_for_category": [],
+          "makeup_shade_missing_visual": [],
+          "size_value_generic_axis": [],
+          "default_option_size_evidence_missing_axis": [],
+          "identity_default_title_axis": []
+        }
+      },
+      "coverage": {
+        "details_sections_count": 14,
+        "faq_count": 2,
+        "how_to_chars": 261,
+        "inci_chars": 1085,
+        "active_ingredients_chars": 0,
+        "inci_applicability_status": "",
+        "ingredient_review_status": "",
+        "ingredient_remediation_action": "",
+        "bundle_component_refs_count": 0,
+        "effective_inci_chars": 1085,
+        "inci_borrowed_from_product_id": ""
+      }
+    },
+    {
+      "seed_id": "eps_fd3f91515b2ceefe483ee568",
+      "external_product_id": "ext_f0a1dd59c785fdee1499a3e0",
+      "market": "US",
+      "domain": "haruharuwonder.com",
+      "title": "3% PHA Gentle Liquid Exfoliating Serum",
+      "canonical_url": "https://haruharuwonder.com/products/haruharu-wonder-centella-3-pha-gentle-liquid-exfoliating-serum-120ml",
+      "product_family": "single_formula",
+      "product_line_id": "pl_27d36619102244f63bc0855e",
+      "identity_variant_axes": {
+        "size": "120ml",
+        "volume": "120ml",
+        "multi_variant": false
+      },
+      "pivota_insights": {
+        "direct": {
+          "product_id": "ext_f0a1dd59c785fdee1499a3e0",
+          "kb_key": "product:ext_f0a1dd59c785fdee1499a3e0",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "seller_plus_formula",
+          "has_card_highlight": true
+        },
+        "effective": {
+          "product_id": "ext_f0a1dd59c785fdee1499a3e0",
+          "kb_key": "product:ext_f0a1dd59c785fdee1499a3e0",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "seller_plus_formula",
+          "has_card_highlight": true
+        },
+        "product_line_id": "pl_27d36619102244f63bc0855e",
+        "borrowed_from_sibling": false
+      },
+      "active_ingredients": {
+        "status": "ready_hero",
+        "issues": [
+          "active_raw_may_be_full_inci"
+        ],
+        "regulatory_expected": false,
+        "hero_expected": true,
+        "active_items": [
+          "Gluconoractone (PHA)",
+          "Exfoliates / Moisturizes COSMOS-certified Organic Orange Water (100,000 ppm)",
+          "Moisturizes / Reinforces skin health",
+          "PHA"
+        ],
+        "source_origin": "pdp_section",
+        "source_quality_status": "captured",
+        "coverage": {
+          "details_sections_count": 12,
+          "faq_count": 2,
+          "how_to_chars": 299,
+          "inci_chars": 464,
+          "active_ingredients_chars": 379,
+          "inci_applicability_status": "",
+          "ingredient_review_status": "",
+          "ingredient_remediation_action": "",
+          "bundle_component_refs_count": 0,
+          "effective_inci_chars": 464,
+          "inci_borrowed_from_product_id": ""
+        },
+        "invalid_fragments": [],
+        "suppressed_reason": null
+      },
+      "variants": {
+        "status": "ready",
+        "issues": [],
+        "visible_variant_rows": 1,
+        "examples": {
+          "identity_option_visible": [],
+          "wrong_axis_for_category": [],
+          "makeup_shade_missing_visual": [],
+          "size_value_generic_axis": [],
+          "default_option_size_evidence_missing_axis": [],
+          "identity_default_title_axis": []
+        }
+      },
+      "coverage": {
+        "details_sections_count": 12,
+        "faq_count": 2,
+        "how_to_chars": 299,
+        "inci_chars": 464,
+        "active_ingredients_chars": 379,
+        "inci_applicability_status": "",
+        "ingredient_review_status": "",
+        "ingredient_remediation_action": "",
+        "bundle_component_refs_count": 0,
+        "effective_inci_chars": 464,
+        "inci_borrowed_from_product_id": ""
+      }
+    },
+    {
+      "seed_id": "eps_6886c1458426d2081e4b0918",
+      "external_product_id": "ext_f2f0f159377aa5d2a9613e32",
+      "market": "US",
+      "domain": "haruharuwonder.com",
+      "title": "5% Niacinamide Radiance Gel Cream / Unscented",
+      "canonical_url": "https://haruharuwonder.com/products/haruharuwonder-centella-5-niacinamide-radiance-gel-cream",
+      "product_family": "single_formula",
+      "product_line_id": "pl_5f447144f216abc0fdaeadfa",
+      "identity_variant_axes": {
+        "size": "90g",
+        "volume": "90g",
+        "multi_variant": true
+      },
+      "pivota_insights": {
+        "direct": {
+          "product_id": "ext_f2f0f159377aa5d2a9613e32",
+          "kb_key": "product:ext_f2f0f159377aa5d2a9613e32",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [
+            "empty_watchouts"
+          ],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "seller_plus_formula",
+          "has_card_highlight": true
+        },
+        "effective": {
+          "product_id": "ext_f2f0f159377aa5d2a9613e32",
+          "kb_key": "product:ext_f2f0f159377aa5d2a9613e32",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [
+            "empty_watchouts"
+          ],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "seller_plus_formula",
+          "has_card_highlight": true
+        },
+        "product_line_id": "pl_5f447144f216abc0fdaeadfa",
+        "borrowed_from_sibling": false
+      },
+      "active_ingredients": {
+        "status": "ready_hero",
+        "issues": [],
+        "regulatory_expected": false,
+        "hero_expected": true,
+        "active_items": [
+          "Niacinamide",
+          "Panthenol (B5)",
+          "Vitamin C (Ascorbic acid)",
+          "Squalane",
+          "Centella asiatica"
+        ],
+        "source_origin": "pdp_section",
+        "source_quality_status": "captured",
+        "coverage": {
+          "details_sections_count": 12,
+          "faq_count": 2,
+          "how_to_chars": 452,
+          "inci_chars": 427,
+          "active_ingredients_chars": 0,
+          "inci_applicability_status": "",
+          "ingredient_review_status": "",
+          "ingredient_remediation_action": "",
+          "bundle_component_refs_count": 0,
+          "effective_inci_chars": 427,
+          "inci_borrowed_from_product_id": ""
+        },
+        "invalid_fragments": [],
+        "suppressed_reason": null
+      },
+      "variants": {
+        "status": "ready",
+        "issues": [],
+        "visible_variant_rows": 2,
+        "examples": {
+          "identity_option_visible": [],
+          "wrong_axis_for_category": [],
+          "makeup_shade_missing_visual": [],
+          "size_value_generic_axis": [],
+          "default_option_size_evidence_missing_axis": [],
+          "identity_default_title_axis": []
+        }
+      },
+      "coverage": {
+        "details_sections_count": 12,
+        "faq_count": 2,
+        "how_to_chars": 452,
+        "inci_chars": 427,
+        "active_ingredients_chars": 0,
+        "inci_applicability_status": "",
+        "ingredient_review_status": "",
+        "ingredient_remediation_action": "",
+        "bundle_component_refs_count": 0,
+        "effective_inci_chars": 427,
+        "inci_borrowed_from_product_id": ""
+      }
+    }
+  ]
+}
