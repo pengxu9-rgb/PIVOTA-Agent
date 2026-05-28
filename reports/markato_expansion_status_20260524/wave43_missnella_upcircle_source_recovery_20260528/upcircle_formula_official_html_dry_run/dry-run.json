@@ -1,0 +1,326 @@
+{
+  "generated_at": "2026-05-28T03:36:25.807Z",
+  "dry_run": true,
+  "market": "US",
+  "summary": {
+    "scanned": 11,
+    "dry_run": 11,
+    "updated": 0,
+    "skipped": 0,
+    "failed": 0,
+    "by_field": {
+      "pdp_ingredients_raw": 11,
+      "pdp_how_to_use_raw": 10,
+      "pdp_details_sections": 11
+    }
+  },
+  "results": [
+    {
+      "external_product_id": "ext_664b859ce2599a57c3f1f7ce",
+      "title": "Body Oil with Passion Fruit Oil",
+      "domain": "upcirclebeauty.com",
+      "url": "https://upcirclebeauty.com/products/natural-body-oil",
+      "host": "upcirclebeauty.com",
+      "status": "dry_run",
+      "patch_keys": [
+        "pdp_ingredients_raw",
+        "pdp_how_to_use_raw",
+        "pdp_details_sections"
+      ],
+      "http_status": 200,
+      "final_url": "https://upcirclebeauty.com/products/natural-body-oil",
+      "extracted_summary": {
+        "ingredients_chars": 367,
+        "how_to_chars": 143,
+        "details_sections_count": 3,
+        "variant_count": 0,
+        "review_count": 0,
+        "rating": 0,
+        "review_preview_count": 0,
+        "review_preview_samples": []
+      },
+      "serving_mirror_sync": {
+        "planned": true
+      }
+    },
+    {
+      "external_product_id": "ext_23ae4c5d9d8f2a8be363f2cc",
+      "title": "Body Scrub with Coffee + Lemongrass",
+      "domain": "upcirclebeauty.com",
+      "url": "https://upcirclebeauty.com/products/coffee-body-scrub-with-lemongrass-200ml",
+      "host": "upcirclebeauty.com",
+      "status": "dry_run",
+      "patch_keys": [
+        "pdp_ingredients_raw",
+        "pdp_how_to_use_raw",
+        "pdp_details_sections"
+      ],
+      "http_status": 200,
+      "final_url": "https://upcirclebeauty.com/products/coffee-body-scrub-with-lemongrass-200ml",
+      "extracted_summary": {
+        "ingredients_chars": 400,
+        "how_to_chars": 228,
+        "details_sections_count": 3,
+        "variant_count": 0,
+        "review_count": 0,
+        "rating": 0,
+        "review_preview_count": 0,
+        "review_preview_samples": []
+      },
+      "serving_mirror_sync": {
+        "planned": true
+      }
+    },
+    {
+      "external_product_id": "ext_f1f3ce59fac13141b98a911f",
+      "title": "Cinnamon + Ginger Chai Cleansing Bar",
+      "domain": "upcirclebeauty.com",
+      "url": "https://upcirclebeauty.com/products/cinnamon-ginger-chai-soap-bar",
+      "host": "upcirclebeauty.com",
+      "status": "dry_run",
+      "patch_keys": [
+        "pdp_ingredients_raw",
+        "pdp_how_to_use_raw",
+        "pdp_details_sections"
+      ],
+      "http_status": 200,
+      "final_url": "https://upcirclebeauty.com/products/cinnamon-ginger-chai-soap-bar",
+      "extracted_summary": {
+        "ingredients_chars": 608,
+        "how_to_chars": 156,
+        "details_sections_count": 3,
+        "variant_count": 0,
+        "review_count": 0,
+        "rating": 0,
+        "review_preview_count": 0,
+        "review_preview_samples": []
+      },
+      "serving_mirror_sync": {
+        "planned": true
+      }
+    },
+    {
+      "external_product_id": "ext_6815bee1060ef71d9a99ce5b",
+      "title": "Cleansing Face Milk with Oat Powder + Aloe Vera",
+      "domain": "upcirclebeauty.com",
+      "url": "https://upcirclebeauty.com/products/oat-face-cleanser",
+      "host": "upcirclebeauty.com",
+      "status": "dry_run",
+      "patch_keys": [
+        "pdp_ingredients_raw",
+        "pdp_how_to_use_raw",
+        "pdp_details_sections"
+      ],
+      "http_status": 200,
+      "final_url": "https://upcirclebeauty.com/products/oat-face-cleanser",
+      "extracted_summary": {
+        "ingredients_chars": 654,
+        "how_to_chars": 98,
+        "details_sections_count": 3,
+        "variant_count": 0,
+        "review_count": 0,
+        "rating": 0,
+        "review_preview_count": 0,
+        "review_preview_samples": []
+      },
+      "serving_mirror_sync": {
+        "planned": true
+      }
+    },
+    {
+      "external_product_id": "ext_4a83a2638c6cb6ca3c3df9e2",
+      "title": "Fennel + Cardamom Chai Cleansing Bar",
+      "domain": "upcirclebeauty.com",
+      "url": "https://upcirclebeauty.com/products/fennel-cardamom-chai-soap-bar",
+      "host": "upcirclebeauty.com",
+      "status": "dry_run",
+      "patch_keys": [
+        "pdp_ingredients_raw",
+        "pdp_how_to_use_raw",
+        "pdp_details_sections"
+      ],
+      "http_status": 200,
+      "final_url": "https://upcirclebeauty.com/products/fennel-cardamom-chai-soap-bar",
+      "extracted_summary": {
+        "ingredients_chars": 661,
+        "how_to_chars": 156,
+        "details_sections_count": 3,
+        "variant_count": 0,
+        "review_count": 0,
+        "rating": 0,
+        "review_preview_count": 0,
+        "review_preview_samples": []
+      },
+      "serving_mirror_sync": {
+        "planned": true
+      }
+    },
+    {
+      "external_product_id": "ext_5f63056adbcee15d15e2aba1",
+      "title": "Hand + Body Lotion with Bergamot Water",
+      "domain": "upcirclebeauty.com",
+      "url": "https://upcirclebeauty.com/products/hand-body-lotion-with-bergamot-water",
+      "host": "upcirclebeauty.com",
+      "status": "dry_run",
+      "patch_keys": [
+        "pdp_ingredients_raw",
+        "pdp_how_to_use_raw",
+        "pdp_details_sections"
+      ],
+      "http_status": 200,
+      "final_url": "https://upcirclebeauty.com/products/hand-body-lotion-with-bergamot-water",
+      "extracted_summary": {
+        "ingredients_chars": 613,
+        "how_to_chars": 164,
+        "details_sections_count": 3,
+        "variant_count": 0,
+        "review_count": 0,
+        "rating": 0,
+        "review_preview_count": 0,
+        "review_preview_samples": []
+      },
+      "serving_mirror_sync": {
+        "planned": true
+      }
+    },
+    {
+      "external_product_id": "ext_719fa01081b88bf7472f06e1",
+      "title": "RETURN + REFILL Eye Cream with Hyaluronic Acid + Coffee - ON PAUSE",
+      "domain": "upcirclebeauty.com",
+      "url": "https://upcirclebeauty.com/products/eye-cream-refill",
+      "host": "upcirclebeauty.com",
+      "status": "dry_run",
+      "patch_keys": [
+        "pdp_ingredients_raw",
+        "pdp_details_sections"
+      ],
+      "http_status": 200,
+      "final_url": "https://upcirclebeauty.com/products/eye-cream-refill",
+      "extracted_summary": {
+        "ingredients_chars": 609,
+        "how_to_chars": 0,
+        "details_sections_count": 2,
+        "variant_count": 0,
+        "review_count": 0,
+        "rating": 0,
+        "review_preview_count": 0,
+        "review_preview_samples": []
+      },
+      "serving_mirror_sync": {
+        "planned": true
+      }
+    },
+    {
+      "external_product_id": "ext_96484ace25be03a8f8cb595d",
+      "title": "RETURN + REFILL Night Cream with Hyaluronic Acid + Niacinamide - ON PAUSE",
+      "domain": "upcirclebeauty.com",
+      "url": "https://upcirclebeauty.com/products/night-cream-refill",
+      "host": "upcirclebeauty.com",
+      "status": "dry_run",
+      "patch_keys": [
+        "pdp_ingredients_raw",
+        "pdp_how_to_use_raw",
+        "pdp_details_sections"
+      ],
+      "http_status": 200,
+      "final_url": "https://upcirclebeauty.com/products/night-cream-refill",
+      "extracted_summary": {
+        "ingredients_chars": 463,
+        "how_to_chars": 108,
+        "details_sections_count": 3,
+        "variant_count": 0,
+        "review_count": 0,
+        "rating": 0,
+        "review_preview_count": 0,
+        "review_preview_samples": []
+      },
+      "serving_mirror_sync": {
+        "planned": true
+      }
+    },
+    {
+      "external_product_id": "ext_714399863bd72a30bcc6259c",
+      "title": "RETURN + REFILL Organic Face Oil with Coffee Extract - ON PAUSE",
+      "domain": "upcirclebeauty.com",
+      "url": "https://upcirclebeauty.com/products/face-oil-refill",
+      "host": "upcirclebeauty.com",
+      "status": "dry_run",
+      "patch_keys": [
+        "pdp_ingredients_raw",
+        "pdp_how_to_use_raw",
+        "pdp_details_sections"
+      ],
+      "http_status": 200,
+      "final_url": "https://upcirclebeauty.com/products/face-oil-refill",
+      "extracted_summary": {
+        "ingredients_chars": 707,
+        "how_to_chars": 240,
+        "details_sections_count": 3,
+        "variant_count": 0,
+        "review_count": 0,
+        "rating": 0,
+        "review_preview_count": 0,
+        "review_preview_samples": []
+      },
+      "serving_mirror_sync": {
+        "planned": true
+      }
+    },
+    {
+      "external_product_id": "ext_3584983333bdd1568bd59312",
+      "title": "RETURN + REFILL Peptide Serum with Custard Apple + Blood Orange - ON PAUSE",
+      "domain": "upcirclebeauty.com",
+      "url": "https://upcirclebeauty.com/products/peptide-serum-refill",
+      "host": "upcirclebeauty.com",
+      "status": "dry_run",
+      "patch_keys": [
+        "pdp_ingredients_raw",
+        "pdp_how_to_use_raw",
+        "pdp_details_sections"
+      ],
+      "http_status": 200,
+      "final_url": "https://upcirclebeauty.com/products/peptide-serum-refill",
+      "extracted_summary": {
+        "ingredients_chars": 344,
+        "how_to_chars": 203,
+        "details_sections_count": 3,
+        "variant_count": 0,
+        "review_count": 0,
+        "rating": 0,
+        "review_preview_count": 0,
+        "review_preview_samples": []
+      },
+      "serving_mirror_sync": {
+        "planned": true
+      }
+    },
+    {
+      "external_product_id": "ext_c384be41af865ac0aecd06ed",
+      "title": "RETURN + REFILL Shampoo Crème with Pink Berry - ON PAUSE",
+      "domain": "upcirclebeauty.com",
+      "url": "https://upcirclebeauty.com/products/shampoo-creme-refill",
+      "host": "upcirclebeauty.com",
+      "status": "dry_run",
+      "patch_keys": [
+        "pdp_ingredients_raw",
+        "pdp_how_to_use_raw",
+        "pdp_details_sections"
+      ],
+      "http_status": 200,
+      "final_url": "https://upcirclebeauty.com/products/shampoo-creme-refill",
+      "extracted_summary": {
+        "ingredients_chars": 531,
+        "how_to_chars": 294,
+        "details_sections_count": 3,
+        "variant_count": 0,
+        "review_count": 0,
+        "rating": 0,
+        "review_preview_count": 0,
+        "review_preview_samples": []
+      },
+      "serving_mirror_sync": {
+        "planned": true
+      }
+    }
+  ]
+}

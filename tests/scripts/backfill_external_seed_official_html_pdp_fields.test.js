@@ -511,6 +511,66 @@ describe('backfill-external-seed-official-html-pdp-fields TIRTIR sheet matching'
     expect(fields.pdp_ingredients_raw).not.toContain('Tag Section');
   });
 
+  test('extracts UpCircle official QA group ingredients and how-to', () => {
+    const fullInci =
+      'Sesamum Indicum Seed Oil, Brassica Campestris Seed Oil, Vitis Vinifera Seed Oil, Squalane, ' +
+      'Rosa Canina Fruit Oil, Passiflora Edulis Seed Oil, Hippophae Rhamnoides Fruit Oil, Tocopherol, ' +
+      'Rosmarinus Officinalis Leaf Extract, Citrus Aurantium Dulcis Peel Oil, Limonene, Linalool';
+    const html = `
+      <meta property="og:title" content="Body Oil with Passion Fruit Oil">
+      <div class="s_qa_group">
+        <div class="qa_group_flip"><h3 class="qa_group_title">DETAILS</h3></div>
+        <div class="upcircle_content"><p>An award-winning body oil made for dry skin.</p></div>
+      </div>
+      <div class="s_qa_group">
+        <div class="qa_group_flip"><h3 class="qa_group_title">INGREDIENTS</h3></div>
+        <div class="upcircle_content"><p><strong>99% NATURAL INGREDIENTS</strong>: ${fullInci}</p></div>
+      </div>
+      <div class="s_qa_group">
+        <div class="qa_group_flip"><h3 class="qa_group_title">HOW TO USE</h3></div>
+        <div class="upcircle_content"><div>Dab a small amount onto clean skin and massage until absorbed.</div></div>
+      </div>
+    `;
+
+    const fields = extractGenericOfficialShopifyFields(html, {
+      productTitle: 'Body Oil with Passion Fruit Oil',
+    });
+
+    expect(fields.pdp_ingredients_raw).toBe(fullInci);
+    expect(fields.pdp_how_to_use_raw).toContain('Dab a small amount');
+    expect(fields.pdp_details_sections).toEqual(
+      expect.arrayContaining([expect.objectContaining({ heading: 'How To Use' })]),
+    );
+  });
+
+  test('extracts Miss Nella official details accordion ingredients and how-to', () => {
+    const fullInci =
+      'Water, Polyurethane-61, Silica, Styrene/Acrylates Copolymer, Mica, Glycerin, ' +
+      'Bentonite, Phenoxyethanol, Sodium Dehydroacetate, Calcium Sodium Borosilicate, ' +
+      'Tin Oxide, Titanium Dioxide, CI 19140, CI 42090';
+    const html = `
+      <meta property="og:title" content="Alien Poo: Chrome Green Peel Off Nail Polish">
+      <details class="cc-accordion-item">
+        <summary class="cc-accordion-item__title"><h3>How to use?</h3></summary>
+        <div class="cc-accordion-item__panel">
+          <p><strong>Peel-Off Nail Polish</strong></p>
+          <p>Apply the nail polish to clean nails and let it dry. Peel it off gently when ready to remove.</p>
+        </div>
+      </details>
+      <details class="cc-accordion-item">
+        <summary class="cc-accordion-item__title"><h3>Ingredients</h3></summary>
+        <div class="cc-accordion-item__panel"><p>${fullInci}</p></div>
+      </details>
+    `;
+
+    const fields = extractGenericOfficialShopifyFields(html, {
+      productTitle: 'Alien Poo: Chrome Green Peel Off Nail Polish',
+    });
+
+    expect(fields.pdp_ingredients_raw).toBe(fullInci);
+    expect(fields.pdp_how_to_use_raw).toContain('Apply the nail polish');
+  });
+
   test('extracts short official balm ingredient lists from Shopify description labels', () => {
     const product = {
       title: 'Lucamar Baalm 50g',

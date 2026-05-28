@@ -1,0 +1,2459 @@
+{
+  "generated_at": "2026-05-28T03:52:52.250Z",
+  "mode": "apply",
+  "batch_size": null,
+  "bootstrap_reviewed_identity_live_read": false,
+  "requested_ids": 11,
+  "fetched_rows": 11,
+  "mirror_rows": 11,
+  "planned_sku_rows": 15,
+  "planned_offer_rows": 15,
+  "planned_index_state_rows": 11,
+  "missing_ids": [],
+  "skipped": [],
+  "applied": {
+    "mode": "apply",
+    "existing_before": {
+      "catalog_products": 11,
+      "catalog_skus": 15,
+      "catalog_offers": 15,
+      "product_group_members": 11
+    },
+    "stale_delete_preview": {
+      "current_sku_rows": 15,
+      "current_offer_rows": 15,
+      "planned_stale_sku_deletes": 0,
+      "planned_stale_offer_deletes": 0,
+      "sample_stale_skus": [],
+      "sample_stale_offers": []
+    },
+    "batch_size": null,
+    "batches": 1,
+    "audit_reasons": {
+      "no_strong_identifier": 15
+    },
+    "product_upserts": 11,
+    "sku_upserts": 15,
+    "offer_upserts": 15,
+    "group_member_upserts": 11,
+    "group_member_preserved_existing_merges": 0,
+    "seed_attachment_updates": 0,
+    "index_state_upserts": 11,
+    "identity_live_read_updates": 0,
+    "catalog_row_trust_upserts": 11,
+    "stale_offer_deletes": 0,
+    "stale_sku_deletes": 0
+  },
+  "sample": [
+    {
+      "external_product_id": "ext_664b859ce2599a57c3f1f7ce",
+      "product_key": "prod::external_seed::external_seed::ext_664b859ce2599a57c3f1f7ce",
+      "product_group_id": "sig_e434b90902740f110390a11d",
+      "title": "Body Oil with Passion Fruit Oil",
+      "brand": "UpCircle Beauty",
+      "product_type": "Body Oil",
+      "category": "Body Oil",
+      "category_path": "beauty/bodycare/body-oil",
+      "canonical_url": "https://upcirclebeauty.com/products/natural-body-oil",
+      "pivota_signature_id": "sig_e434b90902740f110390a11d",
+      "sku_rows": 2,
+      "first_sku": {
+        "sku_key": "prod::external_seed::external_seed::ext_664b859ce2599a57c3f1f7ce::sku_fe9ed30fdffaa85a9bc7",
+        "product_key": "prod::external_seed::external_seed::ext_664b859ce2599a57c3f1f7ce",
+        "merchant_id": "external_seed",
+        "platform": "external_seed",
+        "source_product_id": "ext_664b859ce2599a57c3f1f7ce",
+        "source_variant_id": "ext_664b859ce2599a57c3f1f7ce:56886172123519",
+        "source_domain": "upcirclebeauty.com",
+        "sku": "BOPF",
+        "barcode": null,
+        "title": "Body Oil with Passion Fruit Oil",
+        "currency": "USD",
+        "image_url": "https://cdn.shopify.com/s/files/1/0023/6316/2681/files/BodyOil_Bottle_Web_Readycopy.jpg?v=1713265892",
+        "visible_attributes": {
+          "Choose": "Dropper"
+        },
+        "visible_option_labels": {
+          "Choose": "Dropper"
+        },
+        "ingredient_ids": [],
+        "sku_payload": {
+          "source": "external_product_seeds_mirror_v1",
+          "external_product_id": "ext_664b859ce2599a57c3f1f7ce",
+          "raw_variant_id": "56886172123519",
+          "source_variant_id": "ext_664b859ce2599a57c3f1f7ce:56886172123519",
+          "variant_sku": "BOPF",
+          "barcode": null,
+          "strong_identifier_kind": null,
+          "source_url": "https://upcirclebeauty.com/products/natural-body-oil",
+          "external_redirect_url": "https://upcirclebeauty.com/products/natural-body-oil",
+          "price": "21",
+          "price_amount": 21,
+          "currency": "USD",
+          "availability": "in_stock",
+          "image_url": "https://cdn.shopify.com/s/files/1/0023/6316/2681/files/BodyOil_Bottle_Web_Readycopy.jpg?v=1713265892",
+          "swatch_image_url": null,
+          "label_image_url": null,
+          "options": {
+            "Choose": "Dropper"
+          },
+          "raw_variant": {
+            "sku": "BOPF",
+            "url": "https://upcirclebeauty.com/products/natural-body-oil",
+            "price": "21",
+            "stock": "In Stock",
+            "currency": "USD",
+            "image_url": "https://cdn.shopify.com/s/files/1/0023/6316/2681/files/BodyOil_Bottle_Web_Readycopy.jpg?v=1713265892",
+            "image_urls": [
+              "https://cdn.shopify.com/s/files/1/0023/6316/2681/files/BodyOil_Bottle_Web_Readycopy.jpg?v=1713265892",
+              "https://cdn.shopify.com/s/files/1/0023/6316/2681/files/BodyOil_Packaging_Web_Readycopy.jpg?v=1713265892",
+              "https://cdn.shopify.com/s/files/1/0023/6316/2681/files/Press_BOPF.png?v=1729177732",
+              "https://cdn.shopify.com/s/files/1/0023/6316/2681/files/Body_Oil_78efc463-07d3-46e6-add8-d68b43c0062f.png?v=1729590751",
+              "https://cdn.shopify.com/s/files/1/0023/6316/2681/files/CALLOUTSIMAGES11.jpg?v=1731335664",
+              "https://cdn.shopify.com/s/files/1/0023/6316/2681/files/Texture_Awards_Body_Oil.png?v=1729590735",
+              "https://cdn.shopify.com/s/files/1/0023/6316/2681/files/Lifestyle-2_BodyOil_Square_LR.jpg?v=1724320420",
+              "https://cdn.shopify.com/s/files/1/0023/6316/2681/files/Hateseeingads_1.jpg?v=1724320420",
+              "https://cdn.shopify.com/s/files/1/0023/6316/2681/files/Hateseeingads.jpg?v=1724320420",
+              "https://cdn.shopify.com/s/files/1/0023/6316/2681/files/Body_Oil.png?v=1729173905",
+              "https://cdn.shopify.com/s/files/1/0023/6316/2681/files/Us_V_Them_Body_Oil.png?v=1731604665"
+            ],
+            "variant_id": "56886172123519",
+            "description": "This award-winning Body Oil is formulated with luxurious upcycled ingredients, such as natural passion fruit, tangerine, and kumquat oil to help hydrate and nourish the skin. After use, this non-greasy body oil's quick-absorbing characteristics allow it to enhance skin softness and radiance.\n\nInspiring, upcycling, uplifting: This Body Oil is made with upcycled Passion Fruit Oil to nourish and hydrate the skin.\n\nThe UpCircle Promise \nNatural, sustainable, vegan &amp; cruelty-free. Housed in refillable packaging.",
+            "option_name": "Choose",
+            "option_value": "Dropper"
+          }
+        },
+        "readiness_tier": "referral_only"
+      },
+      "first_offer": {
+        "offer_id": "offer:external_seed:5f65038b0d069afa2ca3b44ae170dd3c",
+        "sku_key": "prod::external_seed::external_seed::ext_664b859ce2599a57c3f1f7ce::sku_fe9ed30fdffaa85a9bc7",
+        "product_key": "prod::external_seed::external_seed::ext_664b859ce2599a57c3f1f7ce",
+        "merchant_id": "external_seed",
+        "catalog_track": "external_referral",
+        "truth_tier": "observed",
+        "readiness_tier": "referral_only",
+        "offer_mode": "redirect",
+        "channel": "external_referral",
+        "availability": "in_stock",
+        "currency": "USD",
+        "list_price": 21,
+        "merchant_effective_price": 21,
+        "estimated_best_price": 21,
+        "price_confidence": 1,
+        "source_system": "external_product_seeds_mirror_v1",
+        "source_ref": "eps_cf3ed51499e5db55536e1ce7",
+        "source_domain": "upcirclebeauty.com",
+        "offer_payload": {
+          "source": "external_product_seeds_mirror_v1",
+          "external_seed_id": "eps_cf3ed51499e5db55536e1ce7",
+          "external_product_id": "ext_664b859ce2599a57c3f1f7ce",
+          "domain": "upcirclebeauty.com",
+          "market": "US",
+          "product_title": "Body Oil with Passion Fruit Oil",
+          "variant_title": "Body Oil with Passion Fruit Oil",
+          "variant_sku": "BOPF",
+          "raw_variant_id": "56886172123519",
+          "url": "https://upcirclebeauty.com/products/natural-body-oil",
+          "offer_url": "https://upcirclebeauty.com/products/natural-body-oil",
+          "canonical_url": "https://upcirclebeauty.com/products/natural-body-oil",
+          "destination_url": "https://upcirclebeauty.com/products/natural-body-oil",
+          "external_redirect_url": "https://upcirclebeauty.com/products/natural-body-oil",
+          "merchant_display_name": "UpCircle Beauty",
+          "price": "21",
+          "price_amount": 21,
+          "price_currency": "USD",
+          "availability": "in_stock",
+          "commerce_facts_v1": {
+            "contract_version": "commerce_facts.v1",
+            "market_id": "US",
+            "country": "US",
+            "currency_target": "USD",
+            "source_authority": "catalog_extract_v2",
+            "captured_at": "2026-05-18T05:00:41.932Z",
+            "evidence_url": "https://upcirclebeauty.com/products/natural-body-oil",
+            "sellable_region": {
+              "status": "unknown",
+              "countries": [],
+              "evidence_source": "catalog_extract_v2",
+              "confidence": "unknown",
+              "checked_at": "2026-05-18T05:00:41.932Z",
+              "reason_codes": [
+                "shipping_destination_not_verified"
+              ],
+              "evidence_url": "https://upcirclebeauty.com/products/natural-body-oil"
+            },
+            "regional_price": {
+              "amount": 21,
+              "currency": "USD",
+              "display_raw": null,
+              "price_type": "unknown",
+              "compare_at_amount": null,
+              "compare_at_currency": null,
+              "compare_at_display_raw": null,
+              "tax_included": "unknown",
+              "confidence": "medium",
+              "market_switch_status": "ok",
+              "observed_currency": "USD",
+              "source_url": "https://upcirclebeauty.com/products/natural-body-oil",
+              "captured_at": "2026-05-18T05:00:41.932Z"
+            },
+            "availability": {
+              "status": "in_stock",
+              "source": "catalog_extract_v2",
+              "confidence": "medium",
+              "captured_at": "2026-05-18T05:00:41.932Z"
+            },
+            "shipping": {
+              "status": "unknown",
+              "source": "catalog_extract_v2",
+              "confidence": "unknown",
+              "reason_codes": [
+                "external_checkout_not_queried"
+              ],
+              "checked_at": "2026-05-18T05:00:41.932Z"
+            },
+            "promotions": [],
+            "returns": {
+              "status": "unknown",
+              "source": "catalog_extract_v2",
+              "confidence": "unknown",
+              "reason_codes": [
+                "external_returns_not_extracted"
+              ],
+              "checked_at": "2026-05-18T05:00:41.932Z"
+            }
+          },
+          "agent_safe_commerce_facts": {
+            "contract_version": "commerce_facts.v1",
+            "market_id": "US",
+            "price": {
+              "amount": 21,
+              "currency": "USD",
+              "display_raw": null,
+              "price_type": "unknown",
+              "compare_at_amount": null,
+              "compare_at_currency": null,
+              "compare_at_display_raw": null,
+              "tax_included": "unknown",
+              "confidence": "medium",
+              "market_switch_status": "ok",
+              "observed_currency": "USD",
+              "source_url": "https://upcirclebeauty.com/products/natural-body-oil",
+              "captured_at": "2026-05-18T05:00:41.932Z"
+            },
+            "availability": {
+              "status": "in_stock",
+              "source": "catalog_extract_v2",
+              "confidence": "medium",
+              "captured_at": "2026-05-18T05:00:41.932Z"
+            },
+            "shipping": {
+              "status": "unknown",
+              "reason": "verify_at_checkout"
+            },
+            "promotions": [],
+            "checkout_note": "Shipping and promotions are not verified for this external offer; verify at merchant checkout."
+          }
+        }
+      },
+      "serving_readiness": {
+        "servingEligible": true,
+        "contentQualityScore": 90,
+        "blockerCode": "none",
+        "blockerDetail": null,
+        "identityResolved": true,
+        "identityLiveReadResolved": true,
+        "identityBootstrapEligible": false,
+        "hasImage": true,
+        "hasPrice": true,
+        "descriptionLength": 516
+      }
+    },
+    {
+      "external_product_id": "ext_23ae4c5d9d8f2a8be363f2cc",
+      "product_key": "prod::external_seed::external_seed::ext_23ae4c5d9d8f2a8be363f2cc",
+      "product_group_id": "sig_82b28455d7df7a1f79243cc8",
+      "title": "Body Scrub with Coffee + Lemongrass",
+      "brand": "UpCircle Beauty",
+      "product_type": "Body Scrub",
+      "category": "Body Scrub",
+      "category_path": "beauty/bodycare/body-scrub",
+      "canonical_url": "https://upcirclebeauty.com/products/coffee-body-scrub-with-lemongrass-200ml",
+      "pivota_signature_id": "sig_82b28455d7df7a1f79243cc8",
+      "sku_rows": 2,
+      "first_sku": {
+        "sku_key": "prod::external_seed::external_seed::ext_23ae4c5d9d8f2a8be363f2cc::sku_01acb18e97a8b98c7d8a",
+        "product_key": "prod::external_seed::external_seed::ext_23ae4c5d9d8f2a8be363f2cc",
+        "merchant_id": "external_seed",
+        "platform": "external_seed",
+        "source_product_id": "ext_23ae4c5d9d8f2a8be363f2cc",
+        "source_variant_id": "ext_23ae4c5d9d8f2a8be363f2cc:39412822802598",
+        "source_domain": "upcirclebeauty.com",
+        "sku": "BSL",
+        "barcode": null,
+        "title": "Body Scrub with Coffee + Lemongrass",
+        "currency": "USD",
+        "image_url": "https://cdn.shopify.com/s/files/1/0023/6316/2681/files/FSCClosed_2.jpg?v=1760975135",
+        "visible_attributes": {
+          "Choose": "Lemongrass Body Scrub"
+        },
+        "visible_option_labels": {
+          "Choose": "Lemongrass Body Scrub"
+        },
+        "ingredient_ids": [],
+        "sku_payload": {
+          "source": "external_product_seeds_mirror_v1",
+          "external_product_id": "ext_23ae4c5d9d8f2a8be363f2cc",
+          "raw_variant_id": "39412822802598",
+          "source_variant_id": "ext_23ae4c5d9d8f2a8be363f2cc:39412822802598",
+          "variant_sku": "BSL",
+          "barcode": null,
+          "strong_identifier_kind": null,
+          "source_url": "https://upcirclebeauty.com/products/coffee-body-scrub-with-lemongrass-200ml",
+          "external_redirect_url": "https://upcirclebeauty.com/products/coffee-body-scrub-with-lemongrass-200ml",
+          "price": "26",
+          "price_amount": 26,
+          "currency": "USD",
+          "availability": "in_stock",
+          "image_url": "https://cdn.shopify.com/s/files/1/0023/6316/2681/files/FSCClosed_2.jpg?v=1760975135",
+          "swatch_image_url": null,
+          "label_image_url": null,
+          "options": {
+            "Choose": "Lemongrass Body Scrub"
+          },
+          "raw_variant": {
+            "sku": "BSL",
+            "url": "https://upcirclebeauty.com/products/coffee-body-scrub-with-lemongrass-200ml",
+            "price": "26",
+            "stock": "In Stock",
+            "currency": "USD",
+            "image_url": "https://cdn.shopify.com/s/files/1/0023/6316/2681/files/FSCClosed_2.jpg?v=1760975135",
+            "image_urls": [
+              "https://cdn.shopify.com/s/files/1/0023/6316/2681/files/FSCClosed_2.jpg?v=1760975135",
+              "https://cdn.shopify.com/s/files/1/0023/6316/2681/files/BodyScrubwithCoffee_SheaButter-Updatedwebsite_1.jpg?v=1760975135",
+              "https://cdn.shopify.com/s/files/1/0023/6316/2681/files/PressBSL_1.png?v=1760975135",
+              "https://cdn.shopify.com/s/files/1/0023/6316/2681/files/Body_Scrub_4378b04e-e045-41e9-90f5-608e44cfce35.png?v=1760975135",
+              "https://cdn.shopify.com/s/files/1/0023/6316/2681/files/CALLOUTSIMAGES.jpg?v=1760975135",
+              "https://cdn.shopify.com/s/files/1/0023/6316/2681/files/BodyScrubBeforeandAfterComplexion_d8ba5075-0ddf-4dd6-81bb-1f669ed9f5f5.jpg?v=1760975135",
+              "https://cdn.shopify.com/s/files/1/0023/6316/2681/files/Slide1_87f0c23f-a3d1-45bf-961a-a6d749b45781.jpg?v=1760975135",
+              "https://cdn.shopify.com/s/files/1/0023/6316/2681/files/Texture_Awards_Lemongrass_Body_Scrub.png?v=1760975135",
+              "https://cdn.shopify.com/s/files/1/0023/6316/2681/files/Slide6_6a61e876-ce53-4e17-8a42-23710f5ae725.jpg?v=1760975135",
+              "https://cdn.shopify.com/s/files/1/0023/6316/2681/files/Body_Scrub_1.png?v=1760975135",
+              "https://cdn.shopify.com/s/files/1/0023/6316/2681/files/Slide4_afee28f1-de31-4d4f-bdbf-f2d0c374499e.jpg?v=1760975135"
+            ],
+            "variant_id": "39412822802598",
+            "description": "Body scrub with upcycled coffee, lemongrass, sea salt, lime and coconut oil.\n\nBuff away dry, dead cells to leave you feeling soft, smooth and refreshed. Blended with shea butter to moisturise the skin post-scrub.\n\nInspiring, upcycling, uplifting: This coffee body scrub is made with top-quality Arabica coffee grounds sourced from artisan coffee shops.\n\nThe UpCircle Promise \nNatural, sustainable, vegan &amp; cruelty-free. Housed in 100% plastic-free packaging.",
+            "option_name": "Choose",
+            "option_value": "Lemongrass Body Scrub"
+          }
+        },
+        "readiness_tier": "referral_only"
+      },
+      "first_offer": {
+        "offer_id": "offer:external_seed:8add6e9be142d4e1425bbe182789e31b",
+        "sku_key": "prod::external_seed::external_seed::ext_23ae4c5d9d8f2a8be363f2cc::sku_01acb18e97a8b98c7d8a",
+        "product_key": "prod::external_seed::external_seed::ext_23ae4c5d9d8f2a8be363f2cc",
+        "merchant_id": "external_seed",
+        "catalog_track": "external_referral",
+        "truth_tier": "observed",
+        "readiness_tier": "referral_only",
+        "offer_mode": "redirect",
+        "channel": "external_referral",
+        "availability": "in_stock",
+        "currency": "USD",
+        "list_price": 26,
+        "merchant_effective_price": 26,
+        "estimated_best_price": 26,
+        "price_confidence": 1,
+        "source_system": "external_product_seeds_mirror_v1",
+        "source_ref": "eps_8ecfa7102bfdc978accaca76",
+        "source_domain": "upcirclebeauty.com",
+        "offer_payload": {
+          "source": "external_product_seeds_mirror_v1",
+          "external_seed_id": "eps_8ecfa7102bfdc978accaca76",
+          "external_product_id": "ext_23ae4c5d9d8f2a8be363f2cc",
+          "domain": "upcirclebeauty.com",
+          "market": "US",
+          "product_title": "Body Scrub with Coffee + Lemongrass",
+          "variant_title": "Body Scrub with Coffee + Lemongrass",
+          "variant_sku": "BSL",
+          "raw_variant_id": "39412822802598",
+          "url": "https://upcirclebeauty.com/products/coffee-body-scrub-with-lemongrass-200ml",
+          "offer_url": "https://upcirclebeauty.com/products/coffee-body-scrub-with-lemongrass-200ml",
+          "canonical_url": "https://upcirclebeauty.com/products/coffee-body-scrub-with-lemongrass-200ml",
+          "destination_url": "https://upcirclebeauty.com/products/coffee-body-scrub-with-lemongrass-200ml",
+          "external_redirect_url": "https://upcirclebeauty.com/products/coffee-body-scrub-with-lemongrass-200ml",
+          "merchant_display_name": "UpCircle Beauty",
+          "price": "26",
+          "price_amount": 26,
+          "price_currency": "USD",
+          "availability": "in_stock",
+          "commerce_facts_v1": {
+            "contract_version": "commerce_facts.v1",
+            "market_id": "US",
+            "country": "US",
+            "currency_target": "USD",
+            "source_authority": "catalog_extract_v2",
+            "captured_at": "2026-05-18T05:00:41.943Z",
+            "evidence_url": "https://upcirclebeauty.com/products/coffee-body-scrub-with-lemongrass-200ml",
+            "sellable_region": {
+              "status": "unknown",
+              "countries": [],
+              "evidence_source": "catalog_extract_v2",
+              "confidence": "unknown",
+              "checked_at": "2026-05-18T05:00:41.943Z",
+              "reason_codes": [
+                "shipping_destination_not_verified"
+              ],
+              "evidence_url": "https://upcirclebeauty.com/products/coffee-body-scrub-with-lemongrass-200ml"
+            },
+            "regional_price": {
+              "amount": 26,
+              "currency": "USD",
+              "display_raw": null,
+              "price_type": "unknown",
+              "compare_at_amount": null,
+              "compare_at_currency": null,
+              "compare_at_display_raw": null,
+              "tax_included": "unknown",
+              "confidence": "medium",
+              "market_switch_status": "ok",
+              "observed_currency": "USD",
+              "source_url": "https://upcirclebeauty.com/products/coffee-body-scrub-with-lemongrass-200ml",
+              "captured_at": "2026-05-18T05:00:41.943Z"
+            },
+            "availability": {
+              "status": "in_stock",
+              "source": "catalog_extract_v2",
+              "confidence": "medium",
+              "captured_at": "2026-05-18T05:00:41.943Z"
+            },
+            "shipping": {
+              "status": "unknown",
+              "source": "catalog_extract_v2",
+              "confidence": "unknown",
+              "reason_codes": [
+                "external_checkout_not_queried"
+              ],
+              "checked_at": "2026-05-18T05:00:41.943Z"
+            },
+            "promotions": [],
+            "returns": {
+              "status": "unknown",
+              "source": "catalog_extract_v2",
+              "confidence": "unknown",
+              "reason_codes": [
+                "external_returns_not_extracted"
+              ],
+              "checked_at": "2026-05-18T05:00:41.943Z"
+            }
+          },
+          "agent_safe_commerce_facts": {
+            "contract_version": "commerce_facts.v1",
+            "market_id": "US",
+            "price": {
+              "amount": 26,
+              "currency": "USD",
+              "display_raw": null,
+              "price_type": "unknown",
+              "compare_at_amount": null,
+              "compare_at_currency": null,
+              "compare_at_display_raw": null,
+              "tax_included": "unknown",
+              "confidence": "medium",
+              "market_switch_status": "ok",
+              "observed_currency": "USD",
+              "source_url": "https://upcirclebeauty.com/products/coffee-body-scrub-with-lemongrass-200ml",
+              "captured_at": "2026-05-18T05:00:41.943Z"
+            },
+            "availability": {
+              "status": "in_stock",
+              "source": "catalog_extract_v2",
+              "confidence": "medium",
+              "captured_at": "2026-05-18T05:00:41.943Z"
+            },
+            "shipping": {
+              "status": "unknown",
+              "reason": "verify_at_checkout"
+            },
+            "promotions": [],
+            "checkout_note": "Shipping and promotions are not verified for this external offer; verify at merchant checkout."
+          }
+        }
+      },
+      "serving_readiness": {
+        "servingEligible": true,
+        "contentQualityScore": 90,
+        "blockerCode": "none",
+        "blockerDetail": null,
+        "identityResolved": true,
+        "identityLiveReadResolved": true,
+        "identityBootstrapEligible": false,
+        "hasImage": true,
+        "hasPrice": true,
+        "descriptionLength": 462
+      }
+    },
+    {
+      "external_product_id": "ext_f1f3ce59fac13141b98a911f",
+      "product_key": "prod::external_seed::external_seed::ext_f1f3ce59fac13141b98a911f",
+      "product_group_id": "sig_226946a6ba84e4cda0525ac6",
+      "title": "Cinnamon + Ginger Chai Cleansing Bar",
+      "brand": "UpCircle Beauty",
+      "product_type": "Cleansing Bar",
+      "category": "Cleansing Bar",
+      "category_path": "beauty/bodycare/soap",
+      "canonical_url": "https://upcirclebeauty.com/products/cinnamon-ginger-chai-soap-bar",
+      "pivota_signature_id": "sig_226946a6ba84e4cda0525ac6",
+      "sku_rows": 1,
+      "first_sku": {
+        "sku_key": "prod::external_seed::external_seed::ext_f1f3ce59fac13141b98a911f::sku_094121f105a57ee3cca6",
+        "product_key": "prod::external_seed::external_seed::ext_f1f3ce59fac13141b98a911f",
+        "merchant_id": "external_seed",
+        "platform": "external_seed",
+        "source_product_id": "ext_f1f3ce59fac13141b98a911f",
+        "source_variant_id": "ext_f1f3ce59fac13141b98a911f:17690347864121",
+        "source_domain": "upcirclebeauty.com",
+        "sku": "SBCG",
+        "barcode": null,
+        "title": "Cinnamon + Ginger Chai Cleansing Bar",
+        "currency": "USD",
+        "image_url": "https://cdn.shopify.com/s/files/1/0023/6316/2681/files/CleansingSoapBarwithCinnamon_Ginger1_c8e97ccb-40fc-4c29-bbc9-17ac20a3b034.jpg?v=1745309772",
+        "visible_attributes": {},
+        "visible_option_labels": {},
+        "ingredient_ids": [],
+        "sku_payload": {
+          "source": "external_product_seeds_mirror_v1",
+          "external_product_id": "ext_f1f3ce59fac13141b98a911f",
+          "raw_variant_id": "17690347864121",
+          "source_variant_id": "ext_f1f3ce59fac13141b98a911f:17690347864121",
+          "variant_sku": "SBCG",
+          "barcode": null,
+          "strong_identifier_kind": null,
+          "source_url": "https://upcirclebeauty.com/products/cinnamon-ginger-chai-soap-bar",
+          "external_redirect_url": "https://upcirclebeauty.com/products/cinnamon-ginger-chai-soap-bar",
+          "price": "10",
+          "price_amount": 10,
+          "currency": "USD",
+          "availability": "in_stock",
+          "image_url": "https://cdn.shopify.com/s/files/1/0023/6316/2681/files/CleansingSoapBarwithCinnamon_Ginger1_c8e97ccb-40fc-4c29-bbc9-17ac20a3b034.jpg?v=1745309772",
+          "swatch_image_url": null,
+          "label_image_url": null,
+          "options": {},
+          "raw_variant": {
+            "sku": "SBCG",
+            "url": "https://upcirclebeauty.com/products/cinnamon-ginger-chai-soap-bar",
+            "price": "10",
+            "stock": "In Stock",
+            "currency": "USD",
+            "image_url": "https://cdn.shopify.com/s/files/1/0023/6316/2681/files/CleansingSoapBarwithCinnamon_Ginger1_c8e97ccb-40fc-4c29-bbc9-17ac20a3b034.jpg?v=1745309772",
+            "image_urls": [
+              "https://cdn.shopify.com/s/files/1/0023/6316/2681/files/CleansingSoapBarwithCinnamon_Ginger1_c8e97ccb-40fc-4c29-bbc9-17ac20a3b034.jpg?v=1745309772",
+              "https://cdn.shopify.com/s/files/1/0023/6316/2681/files/CleansingSoapBarwithCinnamon_Ginger_032f42a2-13c9-4fc7-82ac-8fd6321779a3.jpg?v=1745309772",
+              "https://cdn.shopify.com/s/files/1/0023/6316/2681/files/37.jpg?v=1745309772",
+              "https://cdn.shopify.com/s/files/1/0023/6316/2681/files/Cleansing_Bar_Cin_Gin_2.png?v=1745309772",
+              "https://cdn.shopify.com/s/files/1/0023/6316/2681/files/CALLOUTSIMAGES3.jpg?v=1745309772",
+              "https://cdn.shopify.com/s/files/1/0023/6316/2681/files/Slide6_19287b9f-bebe-4078-8ebc-5eb50c951281.jpg?v=1745309772",
+              "https://cdn.shopify.com/s/files/1/0023/6316/2681/files/28_12a9200a-af43-491c-af32-4df7a3c1863d.jpg?v=1745309772",
+              "https://cdn.shopify.com/s/files/1/0023/6316/2681/files/CleansingSoapBarwithCinnamon_Ginger2.jpg?v=1745309772",
+              "https://cdn.shopify.com/s/files/1/0023/6316/2681/files/CleansingBarBeforeandAfterAcne_44306ff9-8751-4581-90ce-a22f8512e910.jpg?v=1745309772",
+              "https://cdn.shopify.com/s/files/1/0023/6316/2681/files/CleansingBarBeforeandAfterClearSkin_20de2d7f-4c81-411e-8739-b25a883cf4cf.jpg?v=1745309772",
+              "https://cdn.shopify.com/s/files/1/0023/6316/2681/files/CleansingBarBeforeandAfterComplexion_e7f81443-0bfd-45fa-a6ed-d114aec67775.jpg?v=1745309772",
+              "https://cdn.shopify.com/s/files/1/0023/6316/2681/files/CleansingBarBeforeandAfterSoothing_02035d9c-e4d2-4b8d-9947-615014b1e518.jpg?v=1745309772"
+            ],
+            "variant_id": "17690347864121",
+            "description": "An award-winning gently exfoliating cleansing bar to purify and energise. Pink clay reduces redness and irritation, whilst organic cinnamon and ginger oils give skin a reviving energy boost. Glycerin hydrates and moisturises the skin.\n\nPerfect for use on both face and body.\n\nInspiring, upcycling, uplifting: This cinnamon + ginger cleansing soap is made with residual chai spices used to create chai syrups.\n\nWinner in the Beauty Shortlist Awards 2021.\n\nThe UpCircle Promise \nCertified Organic with Soil Association, 100% natural, vegan, palm oil-free, sustainable and cruelty-free. Made in UK.",
+            "option_name": "Title",
+            "option_value": "Default Title"
+          }
+        },
+        "readiness_tier": "referral_only"
+      },
+      "first_offer": {
+        "offer_id": "offer:external_seed:06aa53950f18b7870d99209f85969cfe",
+        "sku_key": "prod::external_seed::external_seed::ext_f1f3ce59fac13141b98a911f::sku_094121f105a57ee3cca6",
+        "product_key": "prod::external_seed::external_seed::ext_f1f3ce59fac13141b98a911f",
+        "merchant_id": "external_seed",
+        "catalog_track": "external_referral",
+        "truth_tier": "observed",
+        "readiness_tier": "referral_only",
+        "offer_mode": "redirect",
+        "channel": "external_referral",
+        "availability": "in_stock",
+        "currency": "USD",
+        "list_price": 10,
+        "merchant_effective_price": 10,
+        "estimated_best_price": 10,
+        "price_confidence": 1,
+        "source_system": "external_product_seeds_mirror_v1",
+        "source_ref": "eps_1bc6f7bd7c0610d438bb1e7f",
+        "source_domain": "upcirclebeauty.com",
+        "offer_payload": {
+          "source": "external_product_seeds_mirror_v1",
+          "external_seed_id": "eps_1bc6f7bd7c0610d438bb1e7f",
+          "external_product_id": "ext_f1f3ce59fac13141b98a911f",
+          "domain": "upcirclebeauty.com",
+          "market": "US",
+          "product_title": "Cinnamon + Ginger Chai Cleansing Bar",
+          "variant_title": "Cinnamon + Ginger Chai Cleansing Bar",
+          "variant_sku": "SBCG",
+          "raw_variant_id": "17690347864121",
+          "url": "https://upcirclebeauty.com/products/cinnamon-ginger-chai-soap-bar",
+          "offer_url": "https://upcirclebeauty.com/products/cinnamon-ginger-chai-soap-bar",
+          "canonical_url": "https://upcirclebeauty.com/products/cinnamon-ginger-chai-soap-bar",
+          "destination_url": "https://upcirclebeauty.com/products/cinnamon-ginger-chai-soap-bar",
+          "external_redirect_url": "https://upcirclebeauty.com/products/cinnamon-ginger-chai-soap-bar",
+          "merchant_display_name": "UpCircle Beauty",
+          "price": "10",
+          "price_amount": 10,
+          "price_currency": "USD",
+          "availability": "in_stock",
+          "commerce_facts_v1": {
+            "contract_version": "commerce_facts.v1",
+            "market_id": "US",
+            "country": "US",
+            "currency_target": "USD",
+            "source_authority": "catalog_extract_v2",
+            "captured_at": "2026-05-18T05:00:41.941Z",
+            "evidence_url": "https://upcirclebeauty.com/products/cinnamon-ginger-chai-soap-bar",
+            "sellable_region": {
+              "status": "unknown",
+              "countries": [],
+              "evidence_source": "catalog_extract_v2",
+              "confidence": "unknown",
+              "checked_at": "2026-05-18T05:00:41.941Z",
+              "reason_codes": [
+                "shipping_destination_not_verified"
+              ],
+              "evidence_url": "https://upcirclebeauty.com/products/cinnamon-ginger-chai-soap-bar"
+            },
+            "regional_price": {
+              "amount": 10,
+              "currency": "USD",
+              "display_raw": null,
+              "price_type": "unknown",
+              "compare_at_amount": null,
+              "compare_at_currency": null,
+              "compare_at_display_raw": null,
+              "tax_included": "unknown",
+              "confidence": "medium",
+              "market_switch_status": "ok",
+              "observed_currency": "USD",
+              "source_url": "https://upcirclebeauty.com/products/cinnamon-ginger-chai-soap-bar",
+              "captured_at": "2026-05-18T05:00:41.941Z"
+            },
+            "availability": {
+              "status": "in_stock",
+              "source": "catalog_extract_v2",
+              "confidence": "medium",
+              "captured_at": "2026-05-18T05:00:41.941Z"
+            },
+            "shipping": {
+              "status": "unknown",
+              "source": "catalog_extract_v2",
+              "confidence": "unknown",
+              "reason_codes": [
+                "external_checkout_not_queried"
+              ],
+              "checked_at": "2026-05-18T05:00:41.941Z"
+            },
+            "promotions": [],
+            "returns": {
+              "status": "unknown",
+              "source": "catalog_extract_v2",
+              "confidence": "unknown",
+              "reason_codes": [
+                "external_returns_not_extracted"
+              ],
+              "checked_at": "2026-05-18T05:00:41.941Z"
+            }
+          },
+          "agent_safe_commerce_facts": {
+            "contract_version": "commerce_facts.v1",
+            "market_id": "US",
+            "price": {
+              "amount": 10,
+              "currency": "USD",
+              "display_raw": null,
+              "price_type": "unknown",
+              "compare_at_amount": null,
+              "compare_at_currency": null,
+              "compare_at_display_raw": null,
+              "tax_included": "unknown",
+              "confidence": "medium",
+              "market_switch_status": "ok",
+              "observed_currency": "USD",
+              "source_url": "https://upcirclebeauty.com/products/cinnamon-ginger-chai-soap-bar",
+              "captured_at": "2026-05-18T05:00:41.941Z"
+            },
+            "availability": {
+              "status": "in_stock",
+              "source": "catalog_extract_v2",
+              "confidence": "medium",
+              "captured_at": "2026-05-18T05:00:41.941Z"
+            },
+            "shipping": {
+              "status": "unknown",
+              "reason": "verify_at_checkout"
+            },
+            "promotions": [],
+            "checkout_note": "Shipping and promotions are not verified for this external offer; verify at merchant checkout."
+          }
+        }
+      },
+      "serving_readiness": {
+        "servingEligible": true,
+        "contentQualityScore": 90,
+        "blockerCode": "none",
+        "blockerDetail": null,
+        "identityResolved": true,
+        "identityLiveReadResolved": true,
+        "identityBootstrapEligible": false,
+        "hasImage": true,
+        "hasPrice": true,
+        "descriptionLength": 595
+      }
+    },
+    {
+      "external_product_id": "ext_6815bee1060ef71d9a99ce5b",
+      "product_key": "prod::external_seed::external_seed::ext_6815bee1060ef71d9a99ce5b",
+      "product_group_id": "sig_69612c2d0788a9296c85e6ef",
+      "title": "Cleansing Face Milk with Oat Powder + Aloe Vera",
+      "brand": "UpCircle Beauty",
+      "product_type": "Cleanser",
+      "category": "Cleanser",
+      "category_path": "beauty/skincare/cleanser",
+      "canonical_url": "https://upcirclebeauty.com/products/oat-face-cleanser",
+      "pivota_signature_id": "sig_69612c2d0788a9296c85e6ef",
+      "sku_rows": 2,
+      "first_sku": {
+        "sku_key": "prod::external_seed::external_seed::ext_6815bee1060ef71d9a99ce5b::sku_e18fccf3ed221d0b1327",
+        "product_key": "prod::external_seed::external_seed::ext_6815bee1060ef71d9a99ce5b",
+        "merchant_id": "external_seed",
+        "platform": "external_seed",
+        "source_product_id": "ext_6815bee1060ef71d9a99ce5b",
+        "source_variant_id": "ext_6815bee1060ef71d9a99ce5b:45491164774566",
+        "source_domain": "upcirclebeauty.com",
+        "sku": "FCOP",
+        "barcode": null,
+        "title": "Cleansing Face Milk with Oat Powder + Aloe Vera",
+        "currency": "USD",
+        "image_url": "https://cdn.shopify.com/s/files/1/0023/6316/2681/files/2605_cleanser_i.jpg?v=1777646655",
+        "visible_attributes": {
+          "Choose": "Pump"
+        },
+        "visible_option_labels": {
+          "Choose": "Pump"
+        },
+        "ingredient_ids": [],
+        "sku_payload": {
+          "source": "external_product_seeds_mirror_v1",
+          "external_product_id": "ext_6815bee1060ef71d9a99ce5b",
+          "raw_variant_id": "45491164774566",
+          "source_variant_id": "ext_6815bee1060ef71d9a99ce5b:45491164774566",
+          "variant_sku": "FCOP",
+          "barcode": null,
+          "strong_identifier_kind": null,
+          "source_url": "https://upcirclebeauty.com/products/oat-face-cleanser",
+          "external_redirect_url": "https://upcirclebeauty.com/products/oat-face-cleanser",
+          "price": "28",
+          "price_amount": 28,
+          "currency": "USD",
+          "availability": "in_stock",
+          "image_url": "https://cdn.shopify.com/s/files/1/0023/6316/2681/files/2605_cleanser_i.jpg?v=1777646655",
+          "swatch_image_url": null,
+          "label_image_url": null,
+          "options": {
+            "Choose": "Pump"
+          },
+          "raw_variant": {
+            "sku": "FCOP",
+            "url": "https://upcirclebeauty.com/products/oat-face-cleanser",
+            "price": "28",
+            "stock": "In Stock",
+            "currency": "USD",
+            "image_url": "https://cdn.shopify.com/s/files/1/0023/6316/2681/files/2605_cleanser_i.jpg?v=1777646655",
+            "image_urls": [
+              "https://cdn.shopify.com/s/files/1/0023/6316/2681/files/2605_cleanser_i.jpg?v=1777646655",
+              "https://cdn.shopify.com/s/files/1/0023/6316/2681/files/2605_cleanser_outer.jpg?v=1777646655",
+              "https://cdn.shopify.com/s/files/1/0023/6316/2681/files/Press_FCOP.png?v=1745047593",
+              "https://cdn.shopify.com/s/files/1/0023/6316/2681/files/Cleansing_Milk_94bf72a3-856c-4530-9898-44737717840b.png?v=1745047593",
+              "https://cdn.shopify.com/s/files/1/0023/6316/2681/files/CALLOUTS_IMAGES24.jpg?v=1745047593",
+              "https://cdn.shopify.com/s/files/1/0023/6316/2681/files/Texture_Awards_Cleansing_Milk_1.png?v=1745047593",
+              "https://cdn.shopify.com/s/files/1/0023/6316/2681/files/119_40e81619-2efc-46e6-b5e1-c28df2dc9506.jpg?v=1745047593",
+              "https://cdn.shopify.com/s/files/1/0023/6316/2681/files/73.jpg?v=1745047593",
+              "https://cdn.shopify.com/s/files/1/0023/6316/2681/files/CleansingFaceMilkBeforeandAfterClearSkin_cf944df0-8257-4f83-a7dd-bf2638c97651.jpg?v=1745047593",
+              "https://cdn.shopify.com/s/files/1/0023/6316/2681/files/CleansingFaceMilkBeforeandAfterRosacea.jpg?v=1745047593",
+              "https://cdn.shopify.com/s/files/1/0023/6316/2681/files/Cleansing_Milk_d359d172-31c8-4575-a021-f8aacc84ff34.png?v=1778767833",
+              "https://cdn.shopify.com/s/files/1/0023/6316/2681/files/ProductCompareCleansers.png?v=1745103477"
+            ],
+            "variant_id": "45491164774566",
+            "description": "When applied to the face, this creamy oat powder repairs and restores the skin’s moisture barrier. This multi-award winning oat cleanser has a milky, creamy formula that hydrates and nourishes the skin. You can think of the oat powder as the oat milk to your latte and the other ingredients as the skin-loving syrup shots. Suitable for all skin types, this everyday vegan facial cleanser leaves skin buttery soft.\n\nInspiring, upcycling, uplifting: Our gentle cleansing face milk is made with oat powder upcycled from the food and drink industry. Dermatologically approved for use on sensitive skin. Suitable for use on babies and children.",
+            "option_name": "Choose",
+            "option_value": "Pump"
+          }
+        },
+        "readiness_tier": "referral_only"
+      },
+      "first_offer": {
+        "offer_id": "offer:external_seed:cd2ecdd8fa328450e5fae43444c97339",
+        "sku_key": "prod::external_seed::external_seed::ext_6815bee1060ef71d9a99ce5b::sku_e18fccf3ed221d0b1327",
+        "product_key": "prod::external_seed::external_seed::ext_6815bee1060ef71d9a99ce5b",
+        "merchant_id": "external_seed",
+        "catalog_track": "external_referral",
+        "truth_tier": "observed",
+        "readiness_tier": "referral_only",
+        "offer_mode": "redirect",
+        "channel": "external_referral",
+        "availability": "in_stock",
+        "currency": "USD",
+        "list_price": 28,
+        "merchant_effective_price": 28,
+        "estimated_best_price": 28,
+        "price_confidence": 1,
+        "source_system": "external_product_seeds_mirror_v1",
+        "source_ref": "eps_103c92b2eafaefa2e894f041",
+        "source_domain": "upcirclebeauty.com",
+        "offer_payload": {
+          "source": "external_product_seeds_mirror_v1",
+          "external_seed_id": "eps_103c92b2eafaefa2e894f041",
+          "external_product_id": "ext_6815bee1060ef71d9a99ce5b",
+          "domain": "upcirclebeauty.com",
+          "market": "US",
+          "product_title": "Cleansing Face Milk with Oat Powder + Aloe Vera",
+          "variant_title": "Cleansing Face Milk with Oat Powder + Aloe Vera",
+          "variant_sku": "FCOP",
+          "raw_variant_id": "45491164774566",
+          "url": "https://upcirclebeauty.com/products/oat-face-cleanser",
+          "offer_url": "https://upcirclebeauty.com/products/oat-face-cleanser",
+          "canonical_url": "https://upcirclebeauty.com/products/oat-face-cleanser",
+          "destination_url": "https://upcirclebeauty.com/products/oat-face-cleanser",
+          "external_redirect_url": "https://upcirclebeauty.com/products/oat-face-cleanser",
+          "merchant_display_name": "UpCircle Beauty",
+          "price": "28",
+          "price_amount": 28,
+          "price_currency": "USD",
+          "availability": "in_stock",
+          "commerce_facts_v1": {
+            "contract_version": "commerce_facts.v1",
+            "market_id": "US",
+            "country": "US",
+            "currency_target": "USD",
+            "source_authority": "catalog_extract_v2",
+            "captured_at": "2026-05-18T05:00:41.936Z",
+            "evidence_url": "https://upcirclebeauty.com/products/oat-face-cleanser",
+            "sellable_region": {
+              "status": "unknown",
+              "countries": [],
+              "evidence_source": "catalog_extract_v2",
+              "confidence": "unknown",
+              "checked_at": "2026-05-18T05:00:41.936Z",
+              "reason_codes": [
+                "shipping_destination_not_verified"
+              ],
+              "evidence_url": "https://upcirclebeauty.com/products/oat-face-cleanser"
+            },
+            "regional_price": {
+              "amount": 28,
+              "currency": "USD",
+              "display_raw": null,
+              "price_type": "unknown",
+              "compare_at_amount": null,
+              "compare_at_currency": null,
+              "compare_at_display_raw": null,
+              "tax_included": "unknown",
+              "confidence": "medium",
+              "market_switch_status": "ok",
+              "observed_currency": "USD",
+              "source_url": "https://upcirclebeauty.com/products/oat-face-cleanser",
+              "captured_at": "2026-05-18T05:00:41.936Z"
+            },
+            "availability": {
+              "status": "in_stock",
+              "source": "catalog_extract_v2",
+              "confidence": "medium",
+              "captured_at": "2026-05-18T05:00:41.936Z"
+            },
+            "shipping": {
+              "status": "unknown",
+              "source": "catalog_extract_v2",
+              "confidence": "unknown",
+              "reason_codes": [
+                "external_checkout_not_queried"
+              ],
+              "checked_at": "2026-05-18T05:00:41.936Z"
+            },
+            "promotions": [],
+            "returns": {
+              "status": "unknown",
+              "source": "catalog_extract_v2",
+              "confidence": "unknown",
+              "reason_codes": [
+                "external_returns_not_extracted"
+              ],
+              "checked_at": "2026-05-18T05:00:41.936Z"
+            }
+          },
+          "agent_safe_commerce_facts": {
+            "contract_version": "commerce_facts.v1",
+            "market_id": "US",
+            "price": {
+              "amount": 28,
+              "currency": "USD",
+              "display_raw": null,
+              "price_type": "unknown",
+              "compare_at_amount": null,
+              "compare_at_currency": null,
+              "compare_at_display_raw": null,
+              "tax_included": "unknown",
+              "confidence": "medium",
+              "market_switch_status": "ok",
+              "observed_currency": "USD",
+              "source_url": "https://upcirclebeauty.com/products/oat-face-cleanser",
+              "captured_at": "2026-05-18T05:00:41.936Z"
+            },
+            "availability": {
+              "status": "in_stock",
+              "source": "catalog_extract_v2",
+              "confidence": "medium",
+              "captured_at": "2026-05-18T05:00:41.936Z"
+            },
+            "shipping": {
+              "status": "unknown",
+              "reason": "verify_at_checkout"
+            },
+            "promotions": [],
+            "checkout_note": "Shipping and promotions are not verified for this external offer; verify at merchant checkout."
+          }
+        }
+      },
+      "serving_readiness": {
+        "servingEligible": true,
+        "contentQualityScore": 90,
+        "blockerCode": "none",
+        "blockerDetail": null,
+        "identityResolved": true,
+        "identityLiveReadResolved": true,
+        "identityBootstrapEligible": false,
+        "hasImage": true,
+        "hasPrice": true,
+        "descriptionLength": 639
+      }
+    },
+    {
+      "external_product_id": "ext_4a83a2638c6cb6ca3c3df9e2",
+      "product_key": "prod::external_seed::external_seed::ext_4a83a2638c6cb6ca3c3df9e2",
+      "product_group_id": "sig_6b4903ed828a444bad275d15",
+      "title": "Fennel + Cardamom Chai Cleansing Bar",
+      "brand": "UpCircle Beauty",
+      "product_type": "Cleansing Bar",
+      "category": "Cleansing Bar",
+      "category_path": "beauty/bodycare/soap",
+      "canonical_url": "https://upcirclebeauty.com/products/fennel-cardamom-chai-soap-bar",
+      "pivota_signature_id": "sig_6b4903ed828a444bad275d15",
+      "sku_rows": 1,
+      "first_sku": {
+        "sku_key": "prod::external_seed::external_seed::ext_4a83a2638c6cb6ca3c3df9e2::sku_85792b13c1bccb67819b",
+        "product_key": "prod::external_seed::external_seed::ext_4a83a2638c6cb6ca3c3df9e2",
+        "merchant_id": "external_seed",
+        "platform": "external_seed",
+        "source_product_id": "ext_4a83a2638c6cb6ca3c3df9e2",
+        "source_variant_id": "ext_4a83a2638c6cb6ca3c3df9e2:18007487873081",
+        "source_domain": "upcirclebeauty.com",
+        "sku": "SBFC",
+        "barcode": null,
+        "title": "Fennel + Cardamom Chai Cleansing Bar",
+        "currency": "USD",
+        "image_url": "https://cdn.shopify.com/s/files/1/0023/6316/2681/files/CleansingSoapBarwithFennel_Cardamom1_9859ff0a-30b2-46c7-8069-2e2ca1f6beea.jpg?v=1745188570",
+        "visible_attributes": {},
+        "visible_option_labels": {},
+        "ingredient_ids": [],
+        "sku_payload": {
+          "source": "external_product_seeds_mirror_v1",
+          "external_product_id": "ext_4a83a2638c6cb6ca3c3df9e2",
+          "raw_variant_id": "18007487873081",
+          "source_variant_id": "ext_4a83a2638c6cb6ca3c3df9e2:18007487873081",
+          "variant_sku": "SBFC",
+          "barcode": null,
+          "strong_identifier_kind": null,
+          "source_url": "https://upcirclebeauty.com/products/fennel-cardamom-chai-soap-bar",
+          "external_redirect_url": "https://upcirclebeauty.com/products/fennel-cardamom-chai-soap-bar",
+          "price": "10",
+          "price_amount": 10,
+          "currency": "USD",
+          "availability": "in_stock",
+          "image_url": "https://cdn.shopify.com/s/files/1/0023/6316/2681/files/CleansingSoapBarwithFennel_Cardamom1_9859ff0a-30b2-46c7-8069-2e2ca1f6beea.jpg?v=1745188570",
+          "swatch_image_url": null,
+          "label_image_url": null,
+          "options": {},
+          "raw_variant": {
+            "sku": "SBFC",
+            "url": "https://upcirclebeauty.com/products/fennel-cardamom-chai-soap-bar",
+            "price": "10",
+            "stock": "In Stock",
+            "currency": "USD",
+            "image_url": "https://cdn.shopify.com/s/files/1/0023/6316/2681/files/CleansingSoapBarwithFennel_Cardamom1_9859ff0a-30b2-46c7-8069-2e2ca1f6beea.jpg?v=1745188570",
+            "image_urls": [
+              "https://cdn.shopify.com/s/files/1/0023/6316/2681/files/CleansingSoapBarwithFennel_Cardamom1_9859ff0a-30b2-46c7-8069-2e2ca1f6beea.jpg?v=1745188570",
+              "https://cdn.shopify.com/s/files/1/0023/6316/2681/files/CleansingSoapBarwithFennel_Cardamom_4fa84c97-4fb1-491e-ad2b-67015db80475.jpg?v=1745188570",
+              "https://cdn.shopify.com/s/files/1/0023/6316/2681/files/38.jpg?v=1745188570",
+              "https://cdn.shopify.com/s/files/1/0023/6316/2681/files/Cleansing_Bar_Fen_Car.png?v=1745188570",
+              "https://cdn.shopify.com/s/files/1/0023/6316/2681/files/CALLOUTSIMAGES3.jpg?v=1745309772",
+              "https://cdn.shopify.com/s/files/1/0023/6316/2681/files/Texture_Awards_Fen_Car.png?v=1745188570",
+              "https://cdn.shopify.com/s/files/1/0023/6316/2681/files/28_04940c5c-9a99-4a01-944b-17c7b0e70334.jpg?v=1745188570",
+              "https://cdn.shopify.com/s/files/1/0023/6316/2681/files/CleansingBarBeforeandAfterSoothing_66cf1dd6-84b0-4748-af00-ef6c3311146c.jpg?v=1745188570",
+              "https://cdn.shopify.com/s/files/1/0023/6316/2681/files/CleansingBarBeforeandAfterAcne_ec937cad-cd7e-4885-bfee-52e0644fefa0.jpg?v=1745188570",
+              "https://cdn.shopify.com/s/files/1/0023/6316/2681/files/CleansingBarBeforeandAfterClearSkin_2e512875-3962-4100-9647-0adbe5a0110e.jpg?v=1745188570",
+              "https://cdn.shopify.com/s/files/1/0023/6316/2681/files/Cleansing_Bar.png?v=1745188570",
+              "https://cdn.shopify.com/s/files/1/0023/6316/2681/files/Cleansing_Bar-Body_1.png?v=1745188570"
+            ],
+            "variant_id": "18007487873081",
+            "description": "Gently exfoliating cardamom &amp; fennel chai cleansing bar to cleanse and moisturise. Green clay draws toxins from pores, helping combat acne and breakouts. While shea butter leaves skin hydrated and smooth. Glycerin helps to keep skin hydrated and nourished. \n\nOur chai cleansing soap bar is suitable for use on face and body.\n\nInspiring, upcycling, uplifting: This soap is made with residual chai spices used to create chai syrups.\n\nThe UpCircle Promise\nCertified Organic with Soil Association, 100% natural, vegan, palm oil-free, sustainable and cruelty-free. Made in UK.",
+            "option_name": "Title",
+            "option_value": "Default Title"
+          }
+        },
+        "readiness_tier": "referral_only"
+      },
+      "first_offer": {
+        "offer_id": "offer:external_seed:0168b00e8657c997761871ced060a738",
+        "sku_key": "prod::external_seed::external_seed::ext_4a83a2638c6cb6ca3c3df9e2::sku_85792b13c1bccb67819b",
+        "product_key": "prod::external_seed::external_seed::ext_4a83a2638c6cb6ca3c3df9e2",
+        "merchant_id": "external_seed",
+        "catalog_track": "external_referral",
+        "truth_tier": "observed",
+        "readiness_tier": "referral_only",
+        "offer_mode": "redirect",
+        "channel": "external_referral",
+        "availability": "in_stock",
+        "currency": "USD",
+        "list_price": 10,
+        "merchant_effective_price": 10,
+        "estimated_best_price": 10,
+        "price_confidence": 1,
+        "source_system": "external_product_seeds_mirror_v1",
+        "source_ref": "eps_9cceb54862b0ebca219849c7",
+        "source_domain": "upcirclebeauty.com",
+        "offer_payload": {
+          "source": "external_product_seeds_mirror_v1",
+          "external_seed_id": "eps_9cceb54862b0ebca219849c7",
+          "external_product_id": "ext_4a83a2638c6cb6ca3c3df9e2",
+          "domain": "upcirclebeauty.com",
+          "market": "US",
+          "product_title": "Fennel + Cardamom Chai Cleansing Bar",
+          "variant_title": "Fennel + Cardamom Chai Cleansing Bar",
+          "variant_sku": "SBFC",
+          "raw_variant_id": "18007487873081",
+          "url": "https://upcirclebeauty.com/products/fennel-cardamom-chai-soap-bar",
+          "offer_url": "https://upcirclebeauty.com/products/fennel-cardamom-chai-soap-bar",
+          "canonical_url": "https://upcirclebeauty.com/products/fennel-cardamom-chai-soap-bar",
+          "destination_url": "https://upcirclebeauty.com/products/fennel-cardamom-chai-soap-bar",
+          "external_redirect_url": "https://upcirclebeauty.com/products/fennel-cardamom-chai-soap-bar",
+          "merchant_display_name": "UpCircle Beauty",
+          "price": "10",
+          "price_amount": 10,
+          "price_currency": "USD",
+          "availability": "in_stock",
+          "commerce_facts_v1": {
+            "contract_version": "commerce_facts.v1",
+            "market_id": "US",
+            "country": "US",
+            "currency_target": "USD",
+            "source_authority": "catalog_extract_v2",
+            "captured_at": "2026-05-18T05:00:41.941Z",
+            "evidence_url": "https://upcirclebeauty.com/products/fennel-cardamom-chai-soap-bar",
+            "sellable_region": {
+              "status": "unknown",
+              "countries": [],
+              "evidence_source": "catalog_extract_v2",
+              "confidence": "unknown",
+              "checked_at": "2026-05-18T05:00:41.941Z",
+              "reason_codes": [
+                "shipping_destination_not_verified"
+              ],
+              "evidence_url": "https://upcirclebeauty.com/products/fennel-cardamom-chai-soap-bar"
+            },
+            "regional_price": {
+              "amount": 10,
+              "currency": "USD",
+              "display_raw": null,
+              "price_type": "unknown",
+              "compare_at_amount": null,
+              "compare_at_currency": null,
+              "compare_at_display_raw": null,
+              "tax_included": "unknown",
+              "confidence": "medium",
+              "market_switch_status": "ok",
+              "observed_currency": "USD",
+              "source_url": "https://upcirclebeauty.com/products/fennel-cardamom-chai-soap-bar",
+              "captured_at": "2026-05-18T05:00:41.941Z"
+            },
+            "availability": {
+              "status": "in_stock",
+              "source": "catalog_extract_v2",
+              "confidence": "medium",
+              "captured_at": "2026-05-18T05:00:41.941Z"
+            },
+            "shipping": {
+              "status": "unknown",
+              "source": "catalog_extract_v2",
+              "confidence": "unknown",
+              "reason_codes": [
+                "external_checkout_not_queried"
+              ],
+              "checked_at": "2026-05-18T05:00:41.941Z"
+            },
+            "promotions": [],
+            "returns": {
+              "status": "unknown",
+              "source": "catalog_extract_v2",
+              "confidence": "unknown",
+              "reason_codes": [
+                "external_returns_not_extracted"
+              ],
+              "checked_at": "2026-05-18T05:00:41.941Z"
+            }
+          },
+          "agent_safe_commerce_facts": {
+            "contract_version": "commerce_facts.v1",
+            "market_id": "US",
+            "price": {
+              "amount": 10,
+              "currency": "USD",
+              "display_raw": null,
+              "price_type": "unknown",
+              "compare_at_amount": null,
+              "compare_at_currency": null,
+              "compare_at_display_raw": null,
+              "tax_included": "unknown",
+              "confidence": "medium",
+              "market_switch_status": "ok",
+              "observed_currency": "USD",
+              "source_url": "https://upcirclebeauty.com/products/fennel-cardamom-chai-soap-bar",
+              "captured_at": "2026-05-18T05:00:41.941Z"
+            },
+            "availability": {
+              "status": "in_stock",
+              "source": "catalog_extract_v2",
+              "confidence": "medium",
+              "captured_at": "2026-05-18T05:00:41.941Z"
+            },
+            "shipping": {
+              "status": "unknown",
+              "reason": "verify_at_checkout"
+            },
+            "promotions": [],
+            "checkout_note": "Shipping and promotions are not verified for this external offer; verify at merchant checkout."
+          }
+        }
+      },
+      "serving_readiness": {
+        "servingEligible": true,
+        "contentQualityScore": 90,
+        "blockerCode": "none",
+        "blockerDetail": null,
+        "identityResolved": true,
+        "identityLiveReadResolved": true,
+        "identityBootstrapEligible": false,
+        "hasImage": true,
+        "hasPrice": true,
+        "descriptionLength": 575
+      }
+    },
+    {
+      "external_product_id": "ext_5f63056adbcee15d15e2aba1",
+      "product_key": "prod::external_seed::external_seed::ext_5f63056adbcee15d15e2aba1",
+      "product_group_id": "sig_e6dce3a7da796a617c2d87f0",
+      "title": "Hand + Body Lotion with Bergamot Water",
+      "brand": "UpCircle Beauty",
+      "product_type": "Body Lotion",
+      "category": "Body Lotion",
+      "category_path": "beauty/bodycare/body-lotion",
+      "canonical_url": "https://upcirclebeauty.com/products/hand-body-lotion-with-bergamot-water",
+      "pivota_signature_id": "sig_e6dce3a7da796a617c2d87f0",
+      "sku_rows": 2,
+      "first_sku": {
+        "sku_key": "prod::external_seed::external_seed::ext_5f63056adbcee15d15e2aba1::sku_fb3cf637a41b7571bc3a",
+        "product_key": "prod::external_seed::external_seed::ext_5f63056adbcee15d15e2aba1",
+        "merchant_id": "external_seed",
+        "platform": "external_seed",
+        "source_product_id": "ext_5f63056adbcee15d15e2aba1",
+        "source_variant_id": "ext_5f63056adbcee15d15e2aba1:41698456404134",
+        "source_domain": "upcirclebeauty.com",
+        "sku": "HBLB-PUMP",
+        "barcode": null,
+        "title": "Hand + Body Lotion with Bergamot Water",
+        "currency": "USD",
+        "image_url": "https://cdn.shopify.com/s/files/1/0023/6316/2681/files/Hand_BodyLotionwithBergamot_VitaminE1_9c899f6f-265b-4de8-bec6-20f76d92b10f.jpg?v=1699995646",
+        "visible_attributes": {
+          "Packaging": "Pump"
+        },
+        "visible_option_labels": {
+          "Packaging": "Pump"
+        },
+        "ingredient_ids": [],
+        "sku_payload": {
+          "source": "external_product_seeds_mirror_v1",
+          "external_product_id": "ext_5f63056adbcee15d15e2aba1",
+          "raw_variant_id": "41698456404134",
+          "source_variant_id": "ext_5f63056adbcee15d15e2aba1:41698456404134",
+          "variant_sku": "HBLB-PUMP",
+          "barcode": null,
+          "strong_identifier_kind": null,
+          "source_url": "https://upcirclebeauty.com/products/hand-body-lotion-with-bergamot-water",
+          "external_redirect_url": "https://upcirclebeauty.com/products/hand-body-lotion-with-bergamot-water",
+          "price": "21",
+          "price_amount": 21,
+          "currency": "USD",
+          "availability": "in_stock",
+          "image_url": "https://cdn.shopify.com/s/files/1/0023/6316/2681/files/Hand_BodyLotionwithBergamot_VitaminE1_9c899f6f-265b-4de8-bec6-20f76d92b10f.jpg?v=1699995646",
+          "swatch_image_url": null,
+          "label_image_url": null,
+          "options": {
+            "Packaging": "Pump"
+          },
+          "raw_variant": {
+            "sku": "HBLB-PUMP",
+            "url": "https://upcirclebeauty.com/products/hand-body-lotion-with-bergamot-water",
+            "price": "21",
+            "stock": "In Stock",
+            "currency": "USD",
+            "image_url": "https://cdn.shopify.com/s/files/1/0023/6316/2681/files/Hand_BodyLotionwithBergamot_VitaminE1_9c899f6f-265b-4de8-bec6-20f76d92b10f.jpg?v=1699995646",
+            "image_urls": [
+              "https://cdn.shopify.com/s/files/1/0023/6316/2681/files/Hand_BodyLotionwithBergamot_VitaminE1_9c899f6f-265b-4de8-bec6-20f76d92b10f.jpg?v=1699995646",
+              "https://cdn.shopify.com/s/files/1/0023/6316/2681/files/Hand_BodyLotionwithBergamot_VitaminE_5eeba2d8-c271-4cdd-b35a-adc1e6a78d91.jpg?v=1699995646",
+              "https://cdn.shopify.com/s/files/1/0023/6316/2681/files/Body_Lotion.png?v=1729593134",
+              "https://cdn.shopify.com/s/files/1/0023/6316/2681/files/CALLOUTSIMAGES13.jpg?v=1731336132",
+              "https://cdn.shopify.com/s/files/1/0023/6316/2681/files/Texture_Awards_Hand_Lotion.png?v=1729591020",
+              "https://cdn.shopify.com/s/files/1/0023/6316/2681/files/6_2be73773-efed-49af-9453-017e50211db5.jpg?v=1700760985",
+              "https://cdn.shopify.com/s/files/1/0023/6316/2681/files/107_93be983d-ee2b-498c-b61a-80323948f367.jpg?v=1700760985",
+              "https://cdn.shopify.com/s/files/1/0023/6316/2681/files/7_35a85052-0447-4b6a-99e3-583eef1447aa.jpg?v=1700760985",
+              "https://cdn.shopify.com/s/files/1/0023/6316/2681/files/HAND_BODYLOTION_60295bfc-5989-469c-80a1-16d5566dae59.png?v=1700760985",
+              "https://cdn.shopify.com/s/files/1/0023/6316/2681/files/H_B_Lotion_1.png?v=1729593133"
+            ],
+            "variant_id": "41698456404134",
+            "description": "Our 99% natural citrus-scented hand and body lotion leaves skin feeling nourished, moisturised and lightly fragranced. T his uplifting lotion combines bergamot water with lemongrass oil to uplift and invigorate the senses whilst protecting and repairing the skin. \n\nSuitable for all skin types. For best results, use after cleansing with the UpCircle Hand + Body Wash with Kiwi Water. \n\nInspiring, upcycling, uplifting: Our hand + body lotion is infused with the residual water of organic bergamot fruit, a by-product of the juicing industry. \n\nThe UpCircle Promise \n100 per cent vegan, cruelty-free and UK-made. Housed in a glass bottle with plastic pump. For a plastic-free repeat order, simply save the pump from your first bottle and select \"Repeat order - aluminium cap\" from the drop-down menu when you make a repeat purchase!",
+            "option_name": "Packaging",
+            "option_value": "Pump"
+          }
+        },
+        "readiness_tier": "referral_only"
+      },
+      "first_offer": {
+        "offer_id": "offer:external_seed:5f6b03f50842cf6ab9a43c4b09a82205",
+        "sku_key": "prod::external_seed::external_seed::ext_5f63056adbcee15d15e2aba1::sku_fb3cf637a41b7571bc3a",
+        "product_key": "prod::external_seed::external_seed::ext_5f63056adbcee15d15e2aba1",
+        "merchant_id": "external_seed",
+        "catalog_track": "external_referral",
+        "truth_tier": "observed",
+        "readiness_tier": "referral_only",
+        "offer_mode": "redirect",
+        "channel": "external_referral",
+        "availability": "in_stock",
+        "currency": "USD",
+        "list_price": 21,
+        "merchant_effective_price": 21,
+        "estimated_best_price": 21,
+        "price_confidence": 1,
+        "source_system": "external_product_seeds_mirror_v1",
+        "source_ref": "eps_1394088a91beb8a1842a3e2f",
+        "source_domain": "upcirclebeauty.com",
+        "offer_payload": {
+          "source": "external_product_seeds_mirror_v1",
+          "external_seed_id": "eps_1394088a91beb8a1842a3e2f",
+          "external_product_id": "ext_5f63056adbcee15d15e2aba1",
+          "domain": "upcirclebeauty.com",
+          "market": "US",
+          "product_title": "Hand + Body Lotion with Bergamot Water",
+          "variant_title": "Hand + Body Lotion with Bergamot Water",
+          "variant_sku": "HBLB-PUMP",
+          "raw_variant_id": "41698456404134",
+          "url": "https://upcirclebeauty.com/products/hand-body-lotion-with-bergamot-water",
+          "offer_url": "https://upcirclebeauty.com/products/hand-body-lotion-with-bergamot-water",
+          "canonical_url": "https://upcirclebeauty.com/products/hand-body-lotion-with-bergamot-water",
+          "destination_url": "https://upcirclebeauty.com/products/hand-body-lotion-with-bergamot-water",
+          "external_redirect_url": "https://upcirclebeauty.com/products/hand-body-lotion-with-bergamot-water",
+          "merchant_display_name": "UpCircle Beauty",
+          "price": "21",
+          "price_amount": 21,
+          "price_currency": "USD",
+          "availability": "in_stock",
+          "commerce_facts_v1": {
+            "contract_version": "commerce_facts.v1",
+            "market_id": "US",
+            "country": "US",
+            "currency_target": "USD",
+            "source_authority": "catalog_extract_v2",
+            "captured_at": "2026-05-18T05:00:41.940Z",
+            "evidence_url": "https://upcirclebeauty.com/products/hand-body-lotion-with-bergamot-water",
+            "sellable_region": {
+              "status": "unknown",
+              "countries": [],
+              "evidence_source": "catalog_extract_v2",
+              "confidence": "unknown",
+              "checked_at": "2026-05-18T05:00:41.940Z",
+              "reason_codes": [
+                "shipping_destination_not_verified"
+              ],
+              "evidence_url": "https://upcirclebeauty.com/products/hand-body-lotion-with-bergamot-water"
+            },
+            "regional_price": {
+              "amount": 21,
+              "currency": "USD",
+              "display_raw": null,
+              "price_type": "unknown",
+              "compare_at_amount": null,
+              "compare_at_currency": null,
+              "compare_at_display_raw": null,
+              "tax_included": "unknown",
+              "confidence": "medium",
+              "market_switch_status": "ok",
+              "observed_currency": "USD",
+              "source_url": "https://upcirclebeauty.com/products/hand-body-lotion-with-bergamot-water",
+              "captured_at": "2026-05-18T05:00:41.940Z"
+            },
+            "availability": {
+              "status": "in_stock",
+              "source": "catalog_extract_v2",
+              "confidence": "medium",
+              "captured_at": "2026-05-18T05:00:41.940Z"
+            },
+            "shipping": {
+              "status": "unknown",
+              "source": "catalog_extract_v2",
+              "confidence": "unknown",
+              "reason_codes": [
+                "external_checkout_not_queried"
+              ],
+              "checked_at": "2026-05-18T05:00:41.940Z"
+            },
+            "promotions": [],
+            "returns": {
+              "status": "unknown",
+              "source": "catalog_extract_v2",
+              "confidence": "unknown",
+              "reason_codes": [
+                "external_returns_not_extracted"
+              ],
+              "checked_at": "2026-05-18T05:00:41.940Z"
+            }
+          },
+          "agent_safe_commerce_facts": {
+            "contract_version": "commerce_facts.v1",
+            "market_id": "US",
+            "price": {
+              "amount": 21,
+              "currency": "USD",
+              "display_raw": null,
+              "price_type": "unknown",
+              "compare_at_amount": null,
+              "compare_at_currency": null,
+              "compare_at_display_raw": null,
+              "tax_included": "unknown",
+              "confidence": "medium",
+              "market_switch_status": "ok",
+              "observed_currency": "USD",
+              "source_url": "https://upcirclebeauty.com/products/hand-body-lotion-with-bergamot-water",
+              "captured_at": "2026-05-18T05:00:41.940Z"
+            },
+            "availability": {
+              "status": "in_stock",
+              "source": "catalog_extract_v2",
+              "confidence": "medium",
+              "captured_at": "2026-05-18T05:00:41.940Z"
+            },
+            "shipping": {
+              "status": "unknown",
+              "reason": "verify_at_checkout"
+            },
+            "promotions": [],
+            "checkout_note": "Shipping and promotions are not verified for this external offer; verify at merchant checkout."
+          }
+        }
+      },
+      "serving_readiness": {
+        "servingEligible": true,
+        "contentQualityScore": 90,
+        "blockerCode": "none",
+        "blockerDetail": null,
+        "identityResolved": true,
+        "identityLiveReadResolved": true,
+        "identityBootstrapEligible": false,
+        "hasImage": true,
+        "hasPrice": true,
+        "descriptionLength": 832
+      }
+    },
+    {
+      "external_product_id": "ext_719fa01081b88bf7472f06e1",
+      "product_key": "prod::external_seed::external_seed::ext_719fa01081b88bf7472f06e1",
+      "product_group_id": "sig_1e670d62fb5c926faa81f4a8",
+      "title": "RETURN + REFILL Eye Cream with Hyaluronic Acid + Coffee - ON PAUSE",
+      "brand": "UpCircle Beauty",
+      "product_type": "Eye Treatment",
+      "category": "Eye Treatment",
+      "category_path": "beauty/skincare/eye-care",
+      "canonical_url": "https://upcirclebeauty.com/products/eye-cream-refill",
+      "pivota_signature_id": "sig_1e670d62fb5c926faa81f4a8",
+      "sku_rows": 1,
+      "first_sku": {
+        "sku_key": "prod::external_seed::external_seed::ext_719fa01081b88bf7472f06e1::sku_24f57c679f1a04738127",
+        "product_key": "prod::external_seed::external_seed::ext_719fa01081b88bf7472f06e1",
+        "merchant_id": "external_seed",
+        "platform": "external_seed",
+        "source_product_id": "ext_719fa01081b88bf7472f06e1",
+        "source_variant_id": "ext_719fa01081b88bf7472f06e1:39686479347878",
+        "source_domain": "upcirclebeauty.com",
+        "sku": "ECMC-R",
+        "barcode": null,
+        "title": "RETURN + REFILL Eye Cream with Hyaluronic Acid + Coffee - ON PAUSE",
+        "currency": "USD",
+        "image_url": "https://cdn.shopify.com/s/files/1/0023/6316/2681/files/Texture10.jpg?v=1706550580",
+        "visible_attributes": {},
+        "visible_option_labels": {},
+        "ingredient_ids": [],
+        "sku_payload": {
+          "source": "external_product_seeds_mirror_v1",
+          "external_product_id": "ext_719fa01081b88bf7472f06e1",
+          "raw_variant_id": "39686479347878",
+          "source_variant_id": "ext_719fa01081b88bf7472f06e1:39686479347878",
+          "variant_sku": "ECMC-R",
+          "barcode": null,
+          "strong_identifier_kind": null,
+          "source_url": "https://upcirclebeauty.com/products/eye-cream-refill",
+          "external_redirect_url": "https://upcirclebeauty.com/products/eye-cream-refill",
+          "price": "24",
+          "price_amount": 24,
+          "currency": "USD",
+          "availability": "out_of_stock",
+          "image_url": "https://cdn.shopify.com/s/files/1/0023/6316/2681/files/Texture10.jpg?v=1706550580",
+          "swatch_image_url": null,
+          "label_image_url": null,
+          "options": {},
+          "raw_variant": {
+            "sku": "ECMC-R",
+            "url": "https://upcirclebeauty.com/products/eye-cream-refill",
+            "price": "24",
+            "stock": "Out of Stock",
+            "currency": "USD",
+            "image_url": "https://cdn.shopify.com/s/files/1/0023/6316/2681/files/Texture10.jpg?v=1706550580",
+            "image_urls": [
+              "https://cdn.shopify.com/s/files/1/0023/6316/2681/files/Texture10.jpg?v=1706550580",
+              "https://cdn.shopify.com/s/files/1/0023/6316/2681/files/RefillSchemeComplete34.jpg?v=1706550580",
+              "https://cdn.shopify.com/s/files/1/0023/6316/2681/files/RefillSchemeComplete8.jpg?v=1706550580",
+              "https://cdn.shopify.com/s/files/1/0023/6316/2681/files/EyeCream_ReturnForm4.jpg?v=1706550580",
+              "https://cdn.shopify.com/s/files/1/0023/6316/2681/files/RefillWebsiteNewandRefill8.jpg?v=1706550580",
+              "https://cdn.shopify.com/s/files/1/0023/6316/2681/files/Checklistsquare_fce444a3-cf73-4700-a21c-65e39a63725d.jpg?v=1706617718"
+            ],
+            "variant_id": "39686479347878",
+            "description": "Our Refill Scheme is on hold! We're working on a new solution for 2026. Watch this space! \n\nReturn, Refill, Reuse\n\nWith our refill scheme you need to have empty UpCircle packaging to return to us. Once you’ve placed your order, you’ll be emailed all the information you need to return your empty packaging to us including the Freepost label.\n\nExisting customers only - please ensure you already have your eye cream jar to be returned! \n\nThoroughly wash and dry your empty eye cream jar using warm soapy water \n\nPack your empties up ready to be posted- we recommend saving your original packaging. I f you haven't got your original packaging please wrap them carefully. \n\nAfter checking out you will receive an email with a free post label\n\nPrint and attach this label to the parcel and drop to your local Post Office - if you don't have a printer, you can handwrite the address on instead \n\nOnce we have received your empties back we will sterilise the jars using dry heat and refill your jar with a fresh batch of eye cream \n\nWe aim to turn around refills within 24 hours of receiving them\n\nYour refilled jar will be returned to you to enjoy! \n\n*Please note, if you are ordering new products as well as refills these will be sent when your refills are returned to you.",
+            "option_name": "Title",
+            "option_value": "Default Title"
+          }
+        },
+        "readiness_tier": "referral_only"
+      },
+      "first_offer": {
+        "offer_id": "offer:external_seed:1b2ff67621f2e1556f59e4362ddf54cd",
+        "sku_key": "prod::external_seed::external_seed::ext_719fa01081b88bf7472f06e1::sku_24f57c679f1a04738127",
+        "product_key": "prod::external_seed::external_seed::ext_719fa01081b88bf7472f06e1",
+        "merchant_id": "external_seed",
+        "catalog_track": "external_referral",
+        "truth_tier": "observed",
+        "readiness_tier": "referral_only",
+        "offer_mode": "redirect",
+        "channel": "external_referral",
+        "availability": "out_of_stock",
+        "currency": "USD",
+        "list_price": 24,
+        "merchant_effective_price": 24,
+        "estimated_best_price": 24,
+        "price_confidence": 1,
+        "source_system": "external_product_seeds_mirror_v1",
+        "source_ref": "eps_2e5e868070dbfbba025ca87f",
+        "source_domain": "upcirclebeauty.com",
+        "offer_payload": {
+          "source": "external_product_seeds_mirror_v1",
+          "external_seed_id": "eps_2e5e868070dbfbba025ca87f",
+          "external_product_id": "ext_719fa01081b88bf7472f06e1",
+          "domain": "upcirclebeauty.com",
+          "market": "US",
+          "product_title": "RETURN + REFILL Eye Cream with Hyaluronic Acid + Coffee - ON PAUSE",
+          "variant_title": "RETURN + REFILL Eye Cream with Hyaluronic Acid + Coffee - ON PAUSE",
+          "variant_sku": "ECMC-R",
+          "raw_variant_id": "39686479347878",
+          "url": "https://upcirclebeauty.com/products/eye-cream-refill",
+          "offer_url": "https://upcirclebeauty.com/products/eye-cream-refill",
+          "canonical_url": "https://upcirclebeauty.com/products/eye-cream-refill",
+          "destination_url": "https://upcirclebeauty.com/products/eye-cream-refill",
+          "external_redirect_url": "https://upcirclebeauty.com/products/eye-cream-refill",
+          "merchant_display_name": "UpCircle Beauty",
+          "price": "24",
+          "price_amount": 24,
+          "price_currency": "USD",
+          "availability": "out_of_stock",
+          "commerce_facts_v1": {
+            "contract_version": "commerce_facts.v1",
+            "market_id": "US",
+            "country": "US",
+            "currency_target": "USD",
+            "source_authority": "catalog_extract_v2",
+            "captured_at": "2026-05-18T05:00:41.940Z",
+            "evidence_url": "https://upcirclebeauty.com/products/eye-cream-refill",
+            "sellable_region": {
+              "status": "unknown",
+              "countries": [],
+              "evidence_source": "catalog_extract_v2",
+              "confidence": "unknown",
+              "checked_at": "2026-05-18T05:00:41.940Z",
+              "reason_codes": [
+                "shipping_destination_not_verified"
+              ],
+              "evidence_url": "https://upcirclebeauty.com/products/eye-cream-refill"
+            },
+            "regional_price": {
+              "amount": 24,
+              "currency": "USD",
+              "display_raw": null,
+              "price_type": "unknown",
+              "compare_at_amount": null,
+              "compare_at_currency": null,
+              "compare_at_display_raw": null,
+              "tax_included": "unknown",
+              "confidence": "medium",
+              "market_switch_status": "ok",
+              "observed_currency": "USD",
+              "source_url": "https://upcirclebeauty.com/products/eye-cream-refill",
+              "captured_at": "2026-05-18T05:00:41.940Z"
+            },
+            "availability": {
+              "status": "out_of_stock",
+              "source": "catalog_extract_v2",
+              "confidence": "medium",
+              "captured_at": "2026-05-18T05:00:41.940Z"
+            },
+            "shipping": {
+              "status": "unknown",
+              "source": "catalog_extract_v2",
+              "confidence": "unknown",
+              "reason_codes": [
+                "external_checkout_not_queried"
+              ],
+              "checked_at": "2026-05-18T05:00:41.940Z"
+            },
+            "promotions": [],
+            "returns": {
+              "status": "unknown",
+              "source": "catalog_extract_v2",
+              "confidence": "unknown",
+              "reason_codes": [
+                "external_returns_not_extracted"
+              ],
+              "checked_at": "2026-05-18T05:00:41.940Z"
+            }
+          },
+          "agent_safe_commerce_facts": {
+            "contract_version": "commerce_facts.v1",
+            "market_id": "US",
+            "price": {
+              "amount": 24,
+              "currency": "USD",
+              "display_raw": null,
+              "price_type": "unknown",
+              "compare_at_amount": null,
+              "compare_at_currency": null,
+              "compare_at_display_raw": null,
+              "tax_included": "unknown",
+              "confidence": "medium",
+              "market_switch_status": "ok",
+              "observed_currency": "USD",
+              "source_url": "https://upcirclebeauty.com/products/eye-cream-refill",
+              "captured_at": "2026-05-18T05:00:41.940Z"
+            },
+            "availability": {
+              "status": "out_of_stock",
+              "source": "catalog_extract_v2",
+              "confidence": "medium",
+              "captured_at": "2026-05-18T05:00:41.940Z"
+            },
+            "shipping": {
+              "status": "unknown",
+              "reason": "verify_at_checkout"
+            },
+            "promotions": [],
+            "checkout_note": "Shipping and promotions are not verified for this external offer; verify at merchant checkout."
+          }
+        }
+      },
+      "serving_readiness": {
+        "servingEligible": true,
+        "contentQualityScore": 90,
+        "blockerCode": "none",
+        "blockerDetail": null,
+        "identityResolved": true,
+        "identityLiveReadResolved": true,
+        "identityBootstrapEligible": false,
+        "hasImage": true,
+        "hasPrice": true,
+        "descriptionLength": 1269
+      }
+    },
+    {
+      "external_product_id": "ext_96484ace25be03a8f8cb595d",
+      "product_key": "prod::external_seed::external_seed::ext_96484ace25be03a8f8cb595d",
+      "product_group_id": "sig_79ea9d5db9a3c8e029fc54fe",
+      "title": "RETURN + REFILL Night Cream with Hyaluronic Acid + Niacinamide - ON PAUSE",
+      "brand": "UpCircle Beauty",
+      "product_type": "Moisturizer",
+      "category": "Moisturizer",
+      "category_path": "beauty/skincare/moisturizer",
+      "canonical_url": "https://upcirclebeauty.com/products/night-cream-refill",
+      "pivota_signature_id": "sig_79ea9d5db9a3c8e029fc54fe",
+      "sku_rows": 1,
+      "first_sku": {
+        "sku_key": "prod::external_seed::external_seed::ext_96484ace25be03a8f8cb595d::sku_ed8a8c4f002cefda88dd",
+        "product_key": "prod::external_seed::external_seed::ext_96484ace25be03a8f8cb595d",
+        "merchant_id": "external_seed",
+        "platform": "external_seed",
+        "source_product_id": "ext_96484ace25be03a8f8cb595d",
+        "source_variant_id": "ext_96484ace25be03a8f8cb595d:41723487879334",
+        "source_domain": "upcirclebeauty.com",
+        "sku": "NCBE-R",
+        "barcode": null,
+        "title": "RETURN + REFILL Night Cream with Hyaluronic Acid + Niacinamide - ON PAUSE",
+        "currency": "USD",
+        "image_url": "https://cdn.shopify.com/s/files/1/0023/6316/2681/files/Texture20.jpg?v=1706550790",
+        "visible_attributes": {},
+        "visible_option_labels": {},
+        "ingredient_ids": [],
+        "sku_payload": {
+          "source": "external_product_seeds_mirror_v1",
+          "external_product_id": "ext_96484ace25be03a8f8cb595d",
+          "raw_variant_id": "41723487879334",
+          "source_variant_id": "ext_96484ace25be03a8f8cb595d:41723487879334",
+          "variant_sku": "NCBE-R",
+          "barcode": null,
+          "strong_identifier_kind": null,
+          "source_url": "https://upcirclebeauty.com/products/night-cream-refill",
+          "external_redirect_url": "https://upcirclebeauty.com/products/night-cream-refill",
+          "price": "24",
+          "price_amount": 24,
+          "currency": "USD",
+          "availability": "out_of_stock",
+          "image_url": "https://cdn.shopify.com/s/files/1/0023/6316/2681/files/Texture20.jpg?v=1706550790",
+          "swatch_image_url": null,
+          "label_image_url": null,
+          "options": {},
+          "raw_variant": {
+            "sku": "NCBE-R",
+            "url": "https://upcirclebeauty.com/products/night-cream-refill",
+            "price": "24",
+            "stock": "Out of Stock",
+            "currency": "USD",
+            "image_url": "https://cdn.shopify.com/s/files/1/0023/6316/2681/files/Texture20.jpg?v=1706550790",
+            "image_urls": [
+              "https://cdn.shopify.com/s/files/1/0023/6316/2681/files/Texture20.jpg?v=1706550790",
+              "https://cdn.shopify.com/s/files/1/0023/6316/2681/files/RefillSchemeComplete47.jpg?v=1706550790",
+              "https://cdn.shopify.com/s/files/1/0023/6316/2681/files/RefillSchemeComplete21_52478508-97e2-4afa-89da-365dd90c7ef1.jpg?v=1706550790",
+              "https://cdn.shopify.com/s/files/1/0023/6316/2681/files/NightCream_ReturnForm13.jpg?v=1706550790",
+              "https://cdn.shopify.com/s/files/1/0023/6316/2681/files/RefillWebsiteNewandRefill4_0b1e5585-52f2-48bd-a97f-4c32f6c9a662.jpg?v=1706550790",
+              "https://cdn.shopify.com/s/files/1/0023/6316/2681/files/Checklistsquare_31b6756b-2ac4-44db-8a1b-5235c9c488ff.jpg?v=1706618046"
+            ],
+            "variant_id": "41723487879334",
+            "description": "Our Refill Scheme is on hold! We're working on a new solution for 2026. Watch this space! \n\nReturn, Refill, Reuse\n\nWith our refill scheme you need to have empty UpCircle packaging to return to us. Once you’ve placed your order, you’ll be emailed all the information you need to return your empty packaging to us including the Freepost label.\n\nExisting customers only - please ensure you already have your night cream jar to be returned! \n\nThoroughly wash and dry your empty night cream jar using warm soapy water \n\nPack your empties up ready to be posted- we recommend saving your original packaging. I f you haven't got your original packaging please wrap them carefully. \n\nAfter checking out you will receive an email with a free post label\n\nPrint and attach this label to the parcel and drop to your local Post Office - if you don't have a printer, you can handwrite the address on instead \n\nOnce we have received your empties back we will sterilise the jars using dry heat and refill your jar with a fresh batch of night cream \n\nWe aim to turn around refills within 24 hours of receiving them\n\nYour refilled jar will be returned to you to enjoy! \n\n*Please note, if you are ordering new products as well as refills these will be sent when your refills are returned to you.",
+            "option_name": "Title",
+            "option_value": "Default Title"
+          }
+        },
+        "readiness_tier": "referral_only"
+      },
+      "first_offer": {
+        "offer_id": "offer:external_seed:50e8f14785c1f2b91458e4e63eae1415",
+        "sku_key": "prod::external_seed::external_seed::ext_96484ace25be03a8f8cb595d::sku_ed8a8c4f002cefda88dd",
+        "product_key": "prod::external_seed::external_seed::ext_96484ace25be03a8f8cb595d",
+        "merchant_id": "external_seed",
+        "catalog_track": "external_referral",
+        "truth_tier": "observed",
+        "readiness_tier": "referral_only",
+        "offer_mode": "redirect",
+        "channel": "external_referral",
+        "availability": "out_of_stock",
+        "currency": "USD",
+        "list_price": 24,
+        "merchant_effective_price": 24,
+        "estimated_best_price": 24,
+        "price_confidence": 1,
+        "source_system": "external_product_seeds_mirror_v1",
+        "source_ref": "eps_851cdd86517958850aa83706",
+        "source_domain": "upcirclebeauty.com",
+        "offer_payload": {
+          "source": "external_product_seeds_mirror_v1",
+          "external_seed_id": "eps_851cdd86517958850aa83706",
+          "external_product_id": "ext_96484ace25be03a8f8cb595d",
+          "domain": "upcirclebeauty.com",
+          "market": "US",
+          "product_title": "RETURN + REFILL Night Cream with Hyaluronic Acid + Niacinamide - ON PAUSE",
+          "variant_title": "RETURN + REFILL Night Cream with Hyaluronic Acid + Niacinamide - ON PAUSE",
+          "variant_sku": "NCBE-R",
+          "raw_variant_id": "41723487879334",
+          "url": "https://upcirclebeauty.com/products/night-cream-refill",
+          "offer_url": "https://upcirclebeauty.com/products/night-cream-refill",
+          "canonical_url": "https://upcirclebeauty.com/products/night-cream-refill",
+          "destination_url": "https://upcirclebeauty.com/products/night-cream-refill",
+          "external_redirect_url": "https://upcirclebeauty.com/products/night-cream-refill",
+          "merchant_display_name": "UpCircle Beauty",
+          "price": "24",
+          "price_amount": 24,
+          "price_currency": "USD",
+          "availability": "out_of_stock",
+          "commerce_facts_v1": {
+            "contract_version": "commerce_facts.v1",
+            "market_id": "US",
+            "country": "US",
+            "currency_target": "USD",
+            "source_authority": "catalog_extract_v2",
+            "captured_at": "2026-05-18T05:00:41.940Z",
+            "evidence_url": "https://upcirclebeauty.com/products/night-cream-refill",
+            "sellable_region": {
+              "status": "unknown",
+              "countries": [],
+              "evidence_source": "catalog_extract_v2",
+              "confidence": "unknown",
+              "checked_at": "2026-05-18T05:00:41.940Z",
+              "reason_codes": [
+                "shipping_destination_not_verified"
+              ],
+              "evidence_url": "https://upcirclebeauty.com/products/night-cream-refill"
+            },
+            "regional_price": {
+              "amount": 24,
+              "currency": "USD",
+              "display_raw": null,
+              "price_type": "unknown",
+              "compare_at_amount": null,
+              "compare_at_currency": null,
+              "compare_at_display_raw": null,
+              "tax_included": "unknown",
+              "confidence": "medium",
+              "market_switch_status": "ok",
+              "observed_currency": "USD",
+              "source_url": "https://upcirclebeauty.com/products/night-cream-refill",
+              "captured_at": "2026-05-18T05:00:41.940Z"
+            },
+            "availability": {
+              "status": "out_of_stock",
+              "source": "catalog_extract_v2",
+              "confidence": "medium",
+              "captured_at": "2026-05-18T05:00:41.940Z"
+            },
+            "shipping": {
+              "status": "unknown",
+              "source": "catalog_extract_v2",
+              "confidence": "unknown",
+              "reason_codes": [
+                "external_checkout_not_queried"
+              ],
+              "checked_at": "2026-05-18T05:00:41.940Z"
+            },
+            "promotions": [],
+            "returns": {
+              "status": "unknown",
+              "source": "catalog_extract_v2",
+              "confidence": "unknown",
+              "reason_codes": [
+                "external_returns_not_extracted"
+              ],
+              "checked_at": "2026-05-18T05:00:41.940Z"
+            }
+          },
+          "agent_safe_commerce_facts": {
+            "contract_version": "commerce_facts.v1",
+            "market_id": "US",
+            "price": {
+              "amount": 24,
+              "currency": "USD",
+              "display_raw": null,
+              "price_type": "unknown",
+              "compare_at_amount": null,
+              "compare_at_currency": null,
+              "compare_at_display_raw": null,
+              "tax_included": "unknown",
+              "confidence": "medium",
+              "market_switch_status": "ok",
+              "observed_currency": "USD",
+              "source_url": "https://upcirclebeauty.com/products/night-cream-refill",
+              "captured_at": "2026-05-18T05:00:41.940Z"
+            },
+            "availability": {
+              "status": "out_of_stock",
+              "source": "catalog_extract_v2",
+              "confidence": "medium",
+              "captured_at": "2026-05-18T05:00:41.940Z"
+            },
+            "shipping": {
+              "status": "unknown",
+              "reason": "verify_at_checkout"
+            },
+            "promotions": [],
+            "checkout_note": "Shipping and promotions are not verified for this external offer; verify at merchant checkout."
+          }
+        }
+      },
+      "serving_readiness": {
+        "servingEligible": true,
+        "contentQualityScore": 90,
+        "blockerCode": "none",
+        "blockerDetail": null,
+        "identityResolved": true,
+        "identityLiveReadResolved": true,
+        "identityBootstrapEligible": false,
+        "hasImage": true,
+        "hasPrice": true,
+        "descriptionLength": 1275
+      }
+    },
+    {
+      "external_product_id": "ext_714399863bd72a30bcc6259c",
+      "product_key": "prod::external_seed::external_seed::ext_714399863bd72a30bcc6259c",
+      "product_group_id": "sig_7834553b8631034342c17de0",
+      "title": "RETURN + REFILL Organic Face Oil with Coffee Extract - ON PAUSE",
+      "brand": "UpCircle Beauty",
+      "product_type": "Face Oil",
+      "category": "Face Oil",
+      "category_path": "beauty/skincare/face-oil",
+      "canonical_url": "https://upcirclebeauty.com/products/face-oil-refill",
+      "pivota_signature_id": "sig_7834553b8631034342c17de0",
+      "sku_rows": 1,
+      "first_sku": {
+        "sku_key": "prod::external_seed::external_seed::ext_714399863bd72a30bcc6259c::sku_1e4ebeee88b2ae45b299",
+        "product_key": "prod::external_seed::external_seed::ext_714399863bd72a30bcc6259c",
+        "merchant_id": "external_seed",
+        "platform": "external_seed",
+        "source_product_id": "ext_714399863bd72a30bcc6259c",
+        "source_variant_id": "ext_714399863bd72a30bcc6259c:39745572307110",
+        "source_domain": "upcirclebeauty.com",
+        "sku": "SER-R",
+        "barcode": null,
+        "title": "RETURN + REFILL Organic Face Oil with Coffee Extract - ON PAUSE",
+        "currency": "USD",
+        "image_url": "https://cdn.shopify.com/s/files/1/0023/6316/2681/files/D4_Indesign_Template_complete87_1.jpg?v=1729602936",
+        "visible_attributes": {},
+        "visible_option_labels": {},
+        "ingredient_ids": [],
+        "sku_payload": {
+          "source": "external_product_seeds_mirror_v1",
+          "external_product_id": "ext_714399863bd72a30bcc6259c",
+          "raw_variant_id": "39745572307110",
+          "source_variant_id": "ext_714399863bd72a30bcc6259c:39745572307110",
+          "variant_sku": "SER-R",
+          "barcode": null,
+          "strong_identifier_kind": null,
+          "source_url": "https://upcirclebeauty.com/products/face-oil-refill",
+          "external_redirect_url": "https://upcirclebeauty.com/products/face-oil-refill",
+          "price": "22",
+          "price_amount": 22,
+          "currency": "USD",
+          "availability": "out_of_stock",
+          "image_url": "https://cdn.shopify.com/s/files/1/0023/6316/2681/files/D4_Indesign_Template_complete87_1.jpg?v=1729602936",
+          "swatch_image_url": null,
+          "label_image_url": null,
+          "options": {},
+          "raw_variant": {
+            "sku": "SER-R",
+            "url": "https://upcirclebeauty.com/products/face-oil-refill",
+            "price": "22",
+            "stock": "Out of Stock",
+            "currency": "USD",
+            "image_url": "https://cdn.shopify.com/s/files/1/0023/6316/2681/files/D4_Indesign_Template_complete87_1.jpg?v=1729602936",
+            "image_urls": [
+              "https://cdn.shopify.com/s/files/1/0023/6316/2681/files/D4_Indesign_Template_complete87_1.jpg?v=1729602936",
+              "https://cdn.shopify.com/s/files/1/0023/6316/2681/files/D4_Indesign_Template_complete41_1.jpg?v=1729602936",
+              "https://cdn.shopify.com/s/files/1/0023/6316/2681/files/D4_Indesign_Template_complete12_1.jpg?v=1729602936",
+              "https://cdn.shopify.com/s/files/1/0023/6316/2681/files/D4_Indesign_Template_complete67_1.jpg?v=1729602937",
+              "https://cdn.shopify.com/s/files/1/0023/6316/2681/files/D4_Indesign_Template_complete109_1.jpg?v=1729602936",
+              "https://cdn.shopify.com/s/files/1/0023/6316/2681/files/Checklistsquare_b7ff2fa0-47be-4ccc-8bd8-c1690ea9cd0f.jpg?v=1706618008"
+            ],
+            "variant_id": "39745572307110",
+            "description": "Our Refill Scheme is on hold! We're working on a new solution for 2026. Watch this space! \n\nReturn, Refill, Reuse\n\nWith our refill scheme you need to have empty UpCircle packaging to return to us. Once you’ve placed your order, you’ll be emailed all the information you need to return your empty packaging to us including the Freepost label.\n\nExisting customers only - please ensure you already have your face oil bottle to be returned! \n\nThoroughly wash and dry your Serum bottle using warm soapy water \n\nRemove your dropper and keep somewhere safe- we don't need this returned. Please also remove the plastic ring seal around the top of the serum bottle.\n\nPack your empties up ready to be posted - we recommend saving your original packaging. I f you haven't got your original packaging please wrap them carefully. \n\nAfter checking out you will receive an email with a free post label\n\nPrint and attach this label to the parcel and drop to your local Post Office - if you don't have a printer, you can handwrite the address on instead \n\nOnce we have received your empties back we will sterilise the jars using dry heat and refill your jar with a fresh batch of face serum\n\nWe aim to turn around refills within 24 hours of receiving them\n\nYour refilled bottle will be returned to you to enjoy! \n\n*Please note, if you are ordering new products as well as refills these will be sent when your refills are returned to you.",
+            "option_name": "Title",
+            "option_value": "Default Title"
+          }
+        },
+        "readiness_tier": "referral_only"
+      },
+      "first_offer": {
+        "offer_id": "offer:external_seed:278e48e2ad97412f904aed8d16db6965",
+        "sku_key": "prod::external_seed::external_seed::ext_714399863bd72a30bcc6259c::sku_1e4ebeee88b2ae45b299",
+        "product_key": "prod::external_seed::external_seed::ext_714399863bd72a30bcc6259c",
+        "merchant_id": "external_seed",
+        "catalog_track": "external_referral",
+        "truth_tier": "observed",
+        "readiness_tier": "referral_only",
+        "offer_mode": "redirect",
+        "channel": "external_referral",
+        "availability": "out_of_stock",
+        "currency": "USD",
+        "list_price": 22,
+        "merchant_effective_price": 22,
+        "estimated_best_price": 22,
+        "price_confidence": 1,
+        "source_system": "external_product_seeds_mirror_v1",
+        "source_ref": "eps_e21db934c16318f289e20550",
+        "source_domain": "upcirclebeauty.com",
+        "offer_payload": {
+          "source": "external_product_seeds_mirror_v1",
+          "external_seed_id": "eps_e21db934c16318f289e20550",
+          "external_product_id": "ext_714399863bd72a30bcc6259c",
+          "domain": "upcirclebeauty.com",
+          "market": "US",
+          "product_title": "RETURN + REFILL Organic Face Oil with Coffee Extract - ON PAUSE",
+          "variant_title": "RETURN + REFILL Organic Face Oil with Coffee Extract - ON PAUSE",
+          "variant_sku": "SER-R",
+          "raw_variant_id": "39745572307110",
+          "url": "https://upcirclebeauty.com/products/face-oil-refill",
+          "offer_url": "https://upcirclebeauty.com/products/face-oil-refill",
+          "canonical_url": "https://upcirclebeauty.com/products/face-oil-refill",
+          "destination_url": "https://upcirclebeauty.com/products/face-oil-refill",
+          "external_redirect_url": "https://upcirclebeauty.com/products/face-oil-refill",
+          "merchant_display_name": "UpCircle Beauty",
+          "price": "22",
+          "price_amount": 22,
+          "price_currency": "USD",
+          "availability": "out_of_stock",
+          "commerce_facts_v1": {
+            "contract_version": "commerce_facts.v1",
+            "market_id": "US",
+            "country": "US",
+            "currency_target": "USD",
+            "source_authority": "catalog_extract_v2",
+            "captured_at": "2026-05-18T05:00:41.940Z",
+            "evidence_url": "https://upcirclebeauty.com/products/face-oil-refill",
+            "sellable_region": {
+              "status": "unknown",
+              "countries": [],
+              "evidence_source": "catalog_extract_v2",
+              "confidence": "unknown",
+              "checked_at": "2026-05-18T05:00:41.940Z",
+              "reason_codes": [
+                "shipping_destination_not_verified"
+              ],
+              "evidence_url": "https://upcirclebeauty.com/products/face-oil-refill"
+            },
+            "regional_price": {
+              "amount": 22,
+              "currency": "USD",
+              "display_raw": null,
+              "price_type": "unknown",
+              "compare_at_amount": null,
+              "compare_at_currency": null,
+              "compare_at_display_raw": null,
+              "tax_included": "unknown",
+              "confidence": "medium",
+              "market_switch_status": "ok",
+              "observed_currency": "USD",
+              "source_url": "https://upcirclebeauty.com/products/face-oil-refill",
+              "captured_at": "2026-05-18T05:00:41.940Z"
+            },
+            "availability": {
+              "status": "out_of_stock",
+              "source": "catalog_extract_v2",
+              "confidence": "medium",
+              "captured_at": "2026-05-18T05:00:41.940Z"
+            },
+            "shipping": {
+              "status": "unknown",
+              "source": "catalog_extract_v2",
+              "confidence": "unknown",
+              "reason_codes": [
+                "external_checkout_not_queried"
+              ],
+              "checked_at": "2026-05-18T05:00:41.940Z"
+            },
+            "promotions": [],
+            "returns": {
+              "status": "unknown",
+              "source": "catalog_extract_v2",
+              "confidence": "unknown",
+              "reason_codes": [
+                "external_returns_not_extracted"
+              ],
+              "checked_at": "2026-05-18T05:00:41.940Z"
+            }
+          },
+          "agent_safe_commerce_facts": {
+            "contract_version": "commerce_facts.v1",
+            "market_id": "US",
+            "price": {
+              "amount": 22,
+              "currency": "USD",
+              "display_raw": null,
+              "price_type": "unknown",
+              "compare_at_amount": null,
+              "compare_at_currency": null,
+              "compare_at_display_raw": null,
+              "tax_included": "unknown",
+              "confidence": "medium",
+              "market_switch_status": "ok",
+              "observed_currency": "USD",
+              "source_url": "https://upcirclebeauty.com/products/face-oil-refill",
+              "captured_at": "2026-05-18T05:00:41.940Z"
+            },
+            "availability": {
+              "status": "out_of_stock",
+              "source": "catalog_extract_v2",
+              "confidence": "medium",
+              "captured_at": "2026-05-18T05:00:41.940Z"
+            },
+            "shipping": {
+              "status": "unknown",
+              "reason": "verify_at_checkout"
+            },
+            "promotions": [],
+            "checkout_note": "Shipping and promotions are not verified for this external offer; verify at merchant checkout."
+          }
+        }
+      },
+      "serving_readiness": {
+        "servingEligible": true,
+        "contentQualityScore": 90,
+        "blockerCode": "none",
+        "blockerDetail": null,
+        "identityResolved": true,
+        "identityLiveReadResolved": true,
+        "identityBootstrapEligible": false,
+        "hasImage": true,
+        "hasPrice": true,
+        "descriptionLength": 1420
+      }
+    },
+    {
+      "external_product_id": "ext_3584983333bdd1568bd59312",
+      "product_key": "prod::external_seed::external_seed::ext_3584983333bdd1568bd59312",
+      "product_group_id": "sig_6846eff67d20841d07ce07dc",
+      "title": "RETURN + REFILL Peptide Serum with Custard Apple + Blood Orange - ON PAUSE",
+      "brand": "UpCircle Beauty",
+      "product_type": "Serum",
+      "category": "Serum",
+      "category_path": "beauty/skincare/serum",
+      "canonical_url": "https://upcirclebeauty.com/products/peptide-serum-refill",
+      "pivota_signature_id": "sig_6846eff67d20841d07ce07dc",
+      "sku_rows": 1,
+      "first_sku": {
+        "sku_key": "prod::external_seed::external_seed::ext_3584983333bdd1568bd59312::sku_dc72fbbedc1acb0ab42a",
+        "product_key": "prod::external_seed::external_seed::ext_3584983333bdd1568bd59312",
+        "merchant_id": "external_seed",
+        "platform": "external_seed",
+        "source_product_id": "ext_3584983333bdd1568bd59312",
+        "source_variant_id": "ext_3584983333bdd1568bd59312:45885337108646",
+        "source_domain": "upcirclebeauty.com",
+        "sku": "PSCA-R",
+        "barcode": null,
+        "title": "RETURN + REFILL Peptide Serum with Custard Apple + Blood Orange - ON PAUSE",
+        "currency": "USD",
+        "image_url": "https://cdn.shopify.com/s/files/1/0023/6316/2681/files/TexturePeptideSerum_1.jpg?v=1729092316",
+        "visible_attributes": {},
+        "visible_option_labels": {},
+        "ingredient_ids": [],
+        "sku_payload": {
+          "source": "external_product_seeds_mirror_v1",
+          "external_product_id": "ext_3584983333bdd1568bd59312",
+          "raw_variant_id": "45885337108646",
+          "source_variant_id": "ext_3584983333bdd1568bd59312:45885337108646",
+          "variant_sku": "PSCA-R",
+          "barcode": null,
+          "strong_identifier_kind": null,
+          "source_url": "https://upcirclebeauty.com/products/peptide-serum-refill",
+          "external_redirect_url": "https://upcirclebeauty.com/products/peptide-serum-refill",
+          "price": "28",
+          "price_amount": 28,
+          "currency": "USD",
+          "availability": "out_of_stock",
+          "image_url": "https://cdn.shopify.com/s/files/1/0023/6316/2681/files/TexturePeptideSerum_1.jpg?v=1729092316",
+          "swatch_image_url": null,
+          "label_image_url": null,
+          "options": {},
+          "raw_variant": {
+            "sku": "PSCA-R",
+            "url": "https://upcirclebeauty.com/products/peptide-serum-refill",
+            "price": "28",
+            "stock": "Out of Stock",
+            "currency": "USD",
+            "image_url": "https://cdn.shopify.com/s/files/1/0023/6316/2681/files/TexturePeptideSerum_1.jpg?v=1729092316",
+            "image_urls": [
+              "https://cdn.shopify.com/s/files/1/0023/6316/2681/files/TexturePeptideSerum_1.jpg?v=1729092316",
+              "https://cdn.shopify.com/s/files/1/0023/6316/2681/files/EmptyPeptideSerum_1.jpg?v=1729092317",
+              "https://cdn.shopify.com/s/files/1/0023/6316/2681/files/CleanPeptideSerum_1.jpg?v=1729092317",
+              "https://cdn.shopify.com/s/files/1/0023/6316/2681/files/ReturnformPeptideSerum_1.jpg?v=1729092317",
+              "https://cdn.shopify.com/s/files/1/0023/6316/2681/files/OnSkinPeptideSerum_1.jpg?v=1729092317",
+              "https://cdn.shopify.com/s/files/1/0023/6316/2681/files/Checklistsquare_1068e3dd-6790-4ecd-be1f-df434845907f.jpg?v=1706617600"
+            ],
+            "variant_id": "45885337108646",
+            "description": "Our Refill Scheme is on hold! We're working on a new solution for 2026. Watch this space! \n\nReturn, Refill, Reuse\n\nExisting customers only - please ensure you already have your peptide serum bottle to be returned! \n\nThoroughly wash and dry your empty peptide serum bottle using warm soapy water \n\nPack your empties up ready to be posted - we recommend saving your original packaging. I f you haven't got your original packaging please wrap them carefully. \n\nAfter checking out you will receive an email with a free post label\n\nPrint and attach the label to the parcel and drop to your local Post Office - if you don't have a printer, you can handwrite the address on instead \n\nOnce we have received your empties back we will sterilise the bottle using dry heat and refill your bottle with a fresh batch of peptide serum \n\nYour refilled bottle will be returned to you to enjoy! \n\nWe aim to turn around refills within 24 hours of receiving them\n\n*Please note, if you are ordering new products as well as refills these will be sent when your refills are returned to you.",
+            "option_name": "Title",
+            "option_value": "Default Title"
+          }
+        },
+        "readiness_tier": "referral_only"
+      },
+      "first_offer": {
+        "offer_id": "offer:external_seed:e4a188a0d7d90508cdf1461aed2a8f53",
+        "sku_key": "prod::external_seed::external_seed::ext_3584983333bdd1568bd59312::sku_dc72fbbedc1acb0ab42a",
+        "product_key": "prod::external_seed::external_seed::ext_3584983333bdd1568bd59312",
+        "merchant_id": "external_seed",
+        "catalog_track": "external_referral",
+        "truth_tier": "observed",
+        "readiness_tier": "referral_only",
+        "offer_mode": "redirect",
+        "channel": "external_referral",
+        "availability": "out_of_stock",
+        "currency": "USD",
+        "list_price": 28,
+        "merchant_effective_price": 28,
+        "estimated_best_price": 28,
+        "price_confidence": 1,
+        "source_system": "external_product_seeds_mirror_v1",
+        "source_ref": "eps_c7524cc16752548d5dd06a85",
+        "source_domain": "upcirclebeauty.com",
+        "offer_payload": {
+          "source": "external_product_seeds_mirror_v1",
+          "external_seed_id": "eps_c7524cc16752548d5dd06a85",
+          "external_product_id": "ext_3584983333bdd1568bd59312",
+          "domain": "upcirclebeauty.com",
+          "market": "US",
+          "product_title": "RETURN + REFILL Peptide Serum with Custard Apple + Blood Orange - ON PAUSE",
+          "variant_title": "RETURN + REFILL Peptide Serum with Custard Apple + Blood Orange - ON PAUSE",
+          "variant_sku": "PSCA-R",
+          "raw_variant_id": "45885337108646",
+          "url": "https://upcirclebeauty.com/products/peptide-serum-refill",
+          "offer_url": "https://upcirclebeauty.com/products/peptide-serum-refill",
+          "canonical_url": "https://upcirclebeauty.com/products/peptide-serum-refill",
+          "destination_url": "https://upcirclebeauty.com/products/peptide-serum-refill",
+          "external_redirect_url": "https://upcirclebeauty.com/products/peptide-serum-refill",
+          "merchant_display_name": "UpCircle Beauty",
+          "price": "28",
+          "price_amount": 28,
+          "price_currency": "USD",
+          "availability": "out_of_stock",
+          "commerce_facts_v1": {
+            "contract_version": "commerce_facts.v1",
+            "market_id": "US",
+            "country": "US",
+            "currency_target": "USD",
+            "source_authority": "catalog_extract_v2",
+            "captured_at": "2026-05-18T05:00:41.929Z",
+            "evidence_url": "https://upcirclebeauty.com/products/peptide-serum-refill",
+            "sellable_region": {
+              "status": "unknown",
+              "countries": [],
+              "evidence_source": "catalog_extract_v2",
+              "confidence": "unknown",
+              "checked_at": "2026-05-18T05:00:41.929Z",
+              "reason_codes": [
+                "shipping_destination_not_verified"
+              ],
+              "evidence_url": "https://upcirclebeauty.com/products/peptide-serum-refill"
+            },
+            "regional_price": {
+              "amount": 28,
+              "currency": "USD",
+              "display_raw": null,
+              "price_type": "unknown",
+              "compare_at_amount": null,
+              "compare_at_currency": null,
+              "compare_at_display_raw": null,
+              "tax_included": "unknown",
+              "confidence": "medium",
+              "market_switch_status": "ok",
+              "observed_currency": "USD",
+              "source_url": "https://upcirclebeauty.com/products/peptide-serum-refill",
+              "captured_at": "2026-05-18T05:00:41.929Z"
+            },
+            "availability": {
+              "status": "out_of_stock",
+              "source": "catalog_extract_v2",
+              "confidence": "medium",
+              "captured_at": "2026-05-18T05:00:41.929Z"
+            },
+            "shipping": {
+              "status": "unknown",
+              "source": "catalog_extract_v2",
+              "confidence": "unknown",
+              "reason_codes": [
+                "external_checkout_not_queried"
+              ],
+              "checked_at": "2026-05-18T05:00:41.929Z"
+            },
+            "promotions": [],
+            "returns": {
+              "status": "unknown",
+              "source": "catalog_extract_v2",
+              "confidence": "unknown",
+              "reason_codes": [
+                "external_returns_not_extracted"
+              ],
+              "checked_at": "2026-05-18T05:00:41.929Z"
+            }
+          },
+          "agent_safe_commerce_facts": {
+            "contract_version": "commerce_facts.v1",
+            "market_id": "US",
+            "price": {
+              "amount": 28,
+              "currency": "USD",
+              "display_raw": null,
+              "price_type": "unknown",
+              "compare_at_amount": null,
+              "compare_at_currency": null,
+              "compare_at_display_raw": null,
+              "tax_included": "unknown",
+              "confidence": "medium",
+              "market_switch_status": "ok",
+              "observed_currency": "USD",
+              "source_url": "https://upcirclebeauty.com/products/peptide-serum-refill",
+              "captured_at": "2026-05-18T05:00:41.929Z"
+            },
+            "availability": {
+              "status": "out_of_stock",
+              "source": "catalog_extract_v2",
+              "confidence": "medium",
+              "captured_at": "2026-05-18T05:00:41.929Z"
+            },
+            "shipping": {
+              "status": "unknown",
+              "reason": "verify_at_checkout"
+            },
+            "promotions": [],
+            "checkout_note": "Shipping and promotions are not verified for this external offer; verify at merchant checkout."
+          }
+        }
+      },
+      "serving_readiness": {
+        "servingEligible": true,
+        "contentQualityScore": 90,
+        "blockerCode": "none",
+        "blockerDetail": null,
+        "identityResolved": true,
+        "identityLiveReadResolved": true,
+        "identityBootstrapEligible": false,
+        "hasImage": true,
+        "hasPrice": true,
+        "descriptionLength": 1067
+      }
+    },
+    {
+      "external_product_id": "ext_c384be41af865ac0aecd06ed",
+      "product_key": "prod::external_seed::external_seed::ext_c384be41af865ac0aecd06ed",
+      "product_group_id": "sig_63579f497814c8fb0b10f4dc",
+      "title": "RETURN + REFILL Shampoo Crème with Pink Berry - ON PAUSE",
+      "brand": "UpCircle Beauty",
+      "product_type": "Shampoo",
+      "category": "Shampoo",
+      "category_path": "beauty/haircare/shampoo",
+      "canonical_url": "https://upcirclebeauty.com/products/shampoo-creme-refill",
+      "pivota_signature_id": "sig_63579f497814c8fb0b10f4dc",
+      "sku_rows": 1,
+      "first_sku": {
+        "sku_key": "prod::external_seed::external_seed::ext_c384be41af865ac0aecd06ed::sku_5791acd1c5629e8c34a0",
+        "product_key": "prod::external_seed::external_seed::ext_c384be41af865ac0aecd06ed",
+        "merchant_id": "external_seed",
+        "platform": "external_seed",
+        "source_product_id": "ext_c384be41af865ac0aecd06ed",
+        "source_variant_id": "ext_c384be41af865ac0aecd06ed:44120575017126",
+        "source_domain": "upcirclebeauty.com",
+        "sku": "SPB-R",
+        "barcode": null,
+        "title": "RETURN + REFILL Shampoo Crème with Pink Berry - ON PAUSE",
+        "currency": "USD",
+        "image_url": "https://cdn.shopify.com/s/files/1/0023/6316/2681/files/Texture21.jpg?v=1706550463",
+        "visible_attributes": {},
+        "visible_option_labels": {},
+        "ingredient_ids": [],
+        "sku_payload": {
+          "source": "external_product_seeds_mirror_v1",
+          "external_product_id": "ext_c384be41af865ac0aecd06ed",
+          "raw_variant_id": "44120575017126",
+          "source_variant_id": "ext_c384be41af865ac0aecd06ed:44120575017126",
+          "variant_sku": "SPB-R",
+          "barcode": null,
+          "strong_identifier_kind": null,
+          "source_url": "https://upcirclebeauty.com/products/shampoo-creme-refill",
+          "external_redirect_url": "https://upcirclebeauty.com/products/shampoo-creme-refill",
+          "price": "22",
+          "price_amount": 22,
+          "currency": "USD",
+          "availability": "out_of_stock",
+          "image_url": "https://cdn.shopify.com/s/files/1/0023/6316/2681/files/Texture21.jpg?v=1706550463",
+          "swatch_image_url": null,
+          "label_image_url": null,
+          "options": {},
+          "raw_variant": {
+            "sku": "SPB-R",
+            "url": "https://upcirclebeauty.com/products/shampoo-creme-refill",
+            "price": "22",
+            "stock": "Out of Stock",
+            "currency": "USD",
+            "image_url": "https://cdn.shopify.com/s/files/1/0023/6316/2681/files/Texture21.jpg?v=1706550463",
+            "image_urls": [
+              "https://cdn.shopify.com/s/files/1/0023/6316/2681/files/Texture21.jpg?v=1706550463",
+              "https://cdn.shopify.com/s/files/1/0023/6316/2681/files/RefillSchemeComplete50.jpg?v=1706550463",
+              "https://cdn.shopify.com/s/files/1/0023/6316/2681/files/RefillSchemeComplete23.jpg?v=1706550463",
+              "https://cdn.shopify.com/s/files/1/0023/6316/2681/files/Shampoo_ReturnForm19.jpg?v=1706550463",
+              "https://cdn.shopify.com/s/files/1/0023/6316/2681/files/RefillWebsiteNewandRefill16.jpg?v=1706550463",
+              "https://cdn.shopify.com/s/files/1/0023/6316/2681/files/Checklistsquare_4064d41f-bec4-403f-b277-8ff58b28fe90.jpg?v=1706618012"
+            ],
+            "variant_id": "44120575017126",
+            "description": "Our Refill Scheme is on hold! We're working on a new solution for 2026. Watch this space! \n\nReturn, Refill, Reuse\n\nExisting customers only - please ensure you already have your shampoo crème jar to be returned! \n\nThoroughly wash and dry your empty shampoo jar using warm soapy water \n\nPack your empties up ready to be posted - we recommend saving your original packaging. I f you haven't got your original packaging please wrap them carefully. \n\nAfter checking out you will receive an email with a free post label\n\nPrint and attach the label to the parcel and drop to your local Post Office - if you don't have a printer, you can handwrite the address on instead \n\nOnce we have received your empties back we will sterilise the jars using dry heat and refill your jar with a fresh batch of shampoo\n\nWe aim to turn around refills within 24 hours of receiving them\n\nYour refilled jar will be returned to you to enjoy! \n\n*Please note, if you are ordering new products as well as refills these will be sent when your refills are returned to you.",
+            "option_name": "Title",
+            "option_value": "Default Title"
+          }
+        },
+        "readiness_tier": "referral_only"
+      },
+      "first_offer": {
+        "offer_id": "offer:external_seed:d0e3d6134098cb39d30db5641a25fc02",
+        "sku_key": "prod::external_seed::external_seed::ext_c384be41af865ac0aecd06ed::sku_5791acd1c5629e8c34a0",
+        "product_key": "prod::external_seed::external_seed::ext_c384be41af865ac0aecd06ed",
+        "merchant_id": "external_seed",
+        "catalog_track": "external_referral",
+        "truth_tier": "observed",
+        "readiness_tier": "referral_only",
+        "offer_mode": "redirect",
+        "channel": "external_referral",
+        "availability": "out_of_stock",
+        "currency": "USD",
+        "list_price": 22,
+        "merchant_effective_price": 22,
+        "estimated_best_price": 22,
+        "price_confidence": 1,
+        "source_system": "external_product_seeds_mirror_v1",
+        "source_ref": "eps_431b335cc65aeedc5d59b59a",
+        "source_domain": "upcirclebeauty.com",
+        "offer_payload": {
+          "source": "external_product_seeds_mirror_v1",
+          "external_seed_id": "eps_431b335cc65aeedc5d59b59a",
+          "external_product_id": "ext_c384be41af865ac0aecd06ed",
+          "domain": "upcirclebeauty.com",
+          "market": "US",
+          "product_title": "RETURN + REFILL Shampoo Crème with Pink Berry - ON PAUSE",
+          "variant_title": "RETURN + REFILL Shampoo Crème with Pink Berry - ON PAUSE",
+          "variant_sku": "SPB-R",
+          "raw_variant_id": "44120575017126",
+          "url": "https://upcirclebeauty.com/products/shampoo-creme-refill",
+          "offer_url": "https://upcirclebeauty.com/products/shampoo-creme-refill",
+          "canonical_url": "https://upcirclebeauty.com/products/shampoo-creme-refill",
+          "destination_url": "https://upcirclebeauty.com/products/shampoo-creme-refill",
+          "external_redirect_url": "https://upcirclebeauty.com/products/shampoo-creme-refill",
+          "merchant_display_name": "UpCircle Beauty",
+          "price": "22",
+          "price_amount": 22,
+          "price_currency": "USD",
+          "availability": "out_of_stock",
+          "commerce_facts_v1": {
+            "contract_version": "commerce_facts.v1",
+            "market_id": "US",
+            "country": "US",
+            "currency_target": "USD",
+            "source_authority": "catalog_extract_v2",
+            "captured_at": "2026-05-18T05:00:41.935Z",
+            "evidence_url": "https://upcirclebeauty.com/products/shampoo-creme-refill",
+            "sellable_region": {
+              "status": "unknown",
+              "countries": [],
+              "evidence_source": "catalog_extract_v2",
+              "confidence": "unknown",
+              "checked_at": "2026-05-18T05:00:41.935Z",
+              "reason_codes": [
+                "shipping_destination_not_verified"
+              ],
+              "evidence_url": "https://upcirclebeauty.com/products/shampoo-creme-refill"
+            },
+            "regional_price": {
+              "amount": 22,
+              "currency": "USD",
+              "display_raw": null,
+              "price_type": "unknown",
+              "compare_at_amount": null,
+              "compare_at_currency": null,
+              "compare_at_display_raw": null,
+              "tax_included": "unknown",
+              "confidence": "medium",
+              "market_switch_status": "ok",
+              "observed_currency": "USD",
+              "source_url": "https://upcirclebeauty.com/products/shampoo-creme-refill",
+              "captured_at": "2026-05-18T05:00:41.935Z"
+            },
+            "availability": {
+              "status": "out_of_stock",
+              "source": "catalog_extract_v2",
+              "confidence": "medium",
+              "captured_at": "2026-05-18T05:00:41.935Z"
+            },
+            "shipping": {
+              "status": "unknown",
+              "source": "catalog_extract_v2",
+              "confidence": "unknown",
+              "reason_codes": [
+                "external_checkout_not_queried"
+              ],
+              "checked_at": "2026-05-18T05:00:41.935Z"
+            },
+            "promotions": [],
+            "returns": {
+              "status": "unknown",
+              "source": "catalog_extract_v2",
+              "confidence": "unknown",
+              "reason_codes": [
+                "external_returns_not_extracted"
+              ],
+              "checked_at": "2026-05-18T05:00:41.935Z"
+            }
+          },
+          "agent_safe_commerce_facts": {
+            "contract_version": "commerce_facts.v1",
+            "market_id": "US",
+            "price": {
+              "amount": 22,
+              "currency": "USD",
+              "display_raw": null,
+              "price_type": "unknown",
+              "compare_at_amount": null,
+              "compare_at_currency": null,
+              "compare_at_display_raw": null,
+              "tax_included": "unknown",
+              "confidence": "medium",
+              "market_switch_status": "ok",
+              "observed_currency": "USD",
+              "source_url": "https://upcirclebeauty.com/products/shampoo-creme-refill",
+              "captured_at": "2026-05-18T05:00:41.935Z"
+            },
+            "availability": {
+              "status": "out_of_stock",
+              "source": "catalog_extract_v2",
+              "confidence": "medium",
+              "captured_at": "2026-05-18T05:00:41.935Z"
+            },
+            "shipping": {
+              "status": "unknown",
+              "reason": "verify_at_checkout"
+            },
+            "promotions": [],
+            "checkout_note": "Shipping and promotions are not verified for this external offer; verify at merchant checkout."
+          }
+        }
+      },
+      "serving_readiness": {
+        "servingEligible": true,
+        "contentQualityScore": 90,
+        "blockerCode": "none",
+        "blockerDetail": null,
+        "identityResolved": true,
+        "identityLiveReadResolved": true,
+        "identityBootstrapEligible": false,
+        "hasImage": true,
+        "hasPrice": true,
+        "descriptionLength": 1040
+      }
+    }
+  ]
+}

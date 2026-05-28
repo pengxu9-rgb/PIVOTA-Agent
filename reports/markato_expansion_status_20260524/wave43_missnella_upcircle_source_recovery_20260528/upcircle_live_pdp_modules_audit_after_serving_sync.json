@@ -1,0 +1,1161 @@
+{
+  "generated_at": "2026-05-28T03:53:41.869Z",
+  "source": "external_seed_live_pdp_modules_audit",
+  "query": {
+    "market": "US",
+    "domain": null,
+    "brand": null,
+    "external_product_id": null,
+    "external_product_ids": [
+      "ext_664b859ce2599a57c3f1f7ce",
+      "ext_23ae4c5d9d8f2a8be363f2cc",
+      "ext_f1f3ce59fac13141b98a911f",
+      "ext_6815bee1060ef71d9a99ce5b",
+      "ext_4a83a2638c6cb6ca3c3df9e2",
+      "ext_5f63056adbcee15d15e2aba1",
+      "ext_719fa01081b88bf7472f06e1",
+      "ext_96484ace25be03a8f8cb595d",
+      "ext_714399863bd72a30bcc6259c",
+      "ext_3584983333bdd1568bd59312",
+      "ext_c384be41af865ac0aecd06ed"
+    ],
+    "include_attached": true,
+    "limit": 50,
+    "offset": 0,
+    "include_similar": false,
+    "use_sig": false
+  },
+  "summary": {
+    "scanned": 11,
+    "ready": 8,
+    "thin": 3,
+    "not_conversion_ready": 0,
+    "by_domain": [
+      {
+        "key": "upcirclebeauty.com",
+        "count": 11
+      }
+    ],
+    "blocker_counts": [
+      {
+        "key": "missing_ingredients",
+        "count": 3
+      }
+    ],
+    "weak_insights_ids": [],
+    "seller_only_insights_ids": [],
+    "force_filled_ids": [],
+    "content_gap_ids": [
+      "ext_714399863bd72a30bcc6259c",
+      "ext_719fa01081b88bf7472f06e1",
+      "ext_5f63056adbcee15d15e2aba1"
+    ]
+  },
+  "rows": [
+    {
+      "external_product_id": "ext_c384be41af865ac0aecd06ed",
+      "pivota_signature_id": "sig_63579f497814c8fb0b10f4dc",
+      "probed_product_id": "ext_c384be41af865ac0aecd06ed",
+      "probed_id_type": "ext",
+      "seed_id": "eps_431b335cc65aeedc5d59b59a",
+      "market": "US",
+      "domain": "upcirclebeauty.com",
+      "title": "RETURN + REFILL Shampoo Crème with Pink Berry - ON PAUSE",
+      "canonical_url": "https://upcirclebeauty.com/products/shampoo-creme-refill",
+      "http_status": 200,
+      "pdp_status": "success",
+      "build_id": "8111a9811c67",
+      "module_types": [
+        "canonical",
+        "variant_selector",
+        "offers",
+        "product_intel",
+        "active_ingredients",
+        "ingredients_inci",
+        "how_to_use",
+        "product_overview",
+        "product_facts",
+        "supplemental_details",
+        "product_details",
+        "reviews_preview"
+      ],
+      "missing_modules": [
+        "variant_selector",
+        "active_ingredients",
+        "product_facts"
+      ],
+      "gallery": {
+        "image_count": 6,
+        "duplicate_url_count": 1,
+        "image_hosts": [
+          "cdn.shopify.com"
+        ],
+        "ok": true
+      },
+      "variant": {
+        "module_present": true,
+        "variant_count": 0,
+        "label_count": 0,
+        "labels": [],
+        "bad_labels": [],
+        "ok": false
+      },
+      "reviews": {
+        "module_present": true,
+        "rating": null,
+        "review_count": 0,
+        "chart_present": false,
+        "chart_estimated": false,
+        "preview_count": 0,
+        "ok": true
+      },
+      "insights": {
+        "module_present": true,
+        "quality_state": "reviewed",
+        "evidence_profile": "official_pdp_reviewed_limited",
+        "seller_only_evidence": false,
+        "seller_grounded_reviewed": false,
+        "headline": "Hair treatment",
+        "why_count": 1,
+        "ok": true
+      },
+      "content": {
+        "ingredients_present": true,
+        "ingredients_text_count": 21,
+        "ingredients_source_origin": "pdp_section",
+        "ingredients_source_quality_status": "authoritative",
+        "ingredients_force_filled": false,
+        "active_ingredients_present": false,
+        "active_ingredients_source_origin": null,
+        "active_ingredients_source_quality_status": null,
+        "active_ingredients_force_filled": false,
+        "how_to_present": true,
+        "how_to_text_count": 8,
+        "overview_present": true,
+        "details_present": true,
+        "details_text_count": 16
+      },
+      "similar": {
+        "module_present": false,
+        "count": 0,
+        "status": null
+      },
+      "product_kind": {
+        "family": "single_formula",
+        "reasons": [
+          "formula_category_path_signal"
+        ],
+        "pdp_schema_profile": "beauty_formula",
+        "formula_content_required": true
+      },
+      "blocking_reasons": [],
+      "pdp_quality_bucket": "ready",
+      "conversion_ready": true
+    },
+    {
+      "external_product_id": "ext_3584983333bdd1568bd59312",
+      "pivota_signature_id": "sig_6846eff67d20841d07ce07dc",
+      "probed_product_id": "ext_3584983333bdd1568bd59312",
+      "probed_id_type": "ext",
+      "seed_id": "eps_c7524cc16752548d5dd06a85",
+      "market": "US",
+      "domain": "upcirclebeauty.com",
+      "title": "RETURN + REFILL Peptide Serum with Custard Apple + Blood Orange - ON PAUSE",
+      "canonical_url": "https://upcirclebeauty.com/products/peptide-serum-refill",
+      "http_status": 200,
+      "pdp_status": "success",
+      "build_id": "8111a9811c67",
+      "module_types": [
+        "canonical",
+        "variant_selector",
+        "offers",
+        "product_intel",
+        "active_ingredients",
+        "ingredients_inci",
+        "how_to_use",
+        "product_overview",
+        "product_facts",
+        "supplemental_details",
+        "product_details",
+        "reviews_preview"
+      ],
+      "missing_modules": [
+        "variant_selector",
+        "product_facts"
+      ],
+      "gallery": {
+        "image_count": 6,
+        "duplicate_url_count": 1,
+        "image_hosts": [
+          "cdn.shopify.com"
+        ],
+        "ok": true
+      },
+      "variant": {
+        "module_present": true,
+        "variant_count": 0,
+        "label_count": 0,
+        "labels": [],
+        "bad_labels": [],
+        "ok": false
+      },
+      "reviews": {
+        "module_present": true,
+        "rating": null,
+        "review_count": 0,
+        "chart_present": false,
+        "chart_estimated": false,
+        "preview_count": 0,
+        "ok": true
+      },
+      "insights": {
+        "module_present": true,
+        "quality_state": "reviewed",
+        "evidence_profile": "official_pdp_reviewed_key_ingredients",
+        "seller_only_evidence": false,
+        "seller_grounded_reviewed": false,
+        "headline": "Treatment serum",
+        "why_count": 2,
+        "ok": true
+      },
+      "content": {
+        "ingredients_present": true,
+        "ingredients_text_count": 22,
+        "ingredients_source_origin": "pdp_section",
+        "ingredients_source_quality_status": "authoritative",
+        "ingredients_force_filled": false,
+        "active_ingredients_present": true,
+        "active_ingredients_source_origin": "product_active_array",
+        "active_ingredients_source_quality_status": "authoritative",
+        "active_ingredients_force_filled": false,
+        "how_to_present": true,
+        "how_to_text_count": 7,
+        "overview_present": true,
+        "details_present": true,
+        "details_text_count": 16
+      },
+      "similar": {
+        "module_present": false,
+        "count": 0,
+        "status": null
+      },
+      "product_kind": {
+        "family": "single_formula",
+        "reasons": [
+          "formula_category_path_signal"
+        ],
+        "pdp_schema_profile": "beauty_formula",
+        "formula_content_required": true
+      },
+      "blocking_reasons": [],
+      "pdp_quality_bucket": "ready",
+      "conversion_ready": true
+    },
+    {
+      "external_product_id": "ext_714399863bd72a30bcc6259c",
+      "pivota_signature_id": "sig_7834553b8631034342c17de0",
+      "probed_product_id": "ext_714399863bd72a30bcc6259c",
+      "probed_id_type": "ext",
+      "seed_id": "eps_e21db934c16318f289e20550",
+      "market": "US",
+      "domain": "upcirclebeauty.com",
+      "title": "RETURN + REFILL Organic Face Oil with Coffee Extract - ON PAUSE",
+      "canonical_url": "https://upcirclebeauty.com/products/face-oil-refill",
+      "http_status": 200,
+      "pdp_status": "success",
+      "build_id": "8111a9811c67",
+      "module_types": [
+        "canonical",
+        "variant_selector",
+        "offers",
+        "product_intel",
+        "active_ingredients",
+        "ingredients_inci",
+        "how_to_use",
+        "product_overview",
+        "product_facts",
+        "supplemental_details",
+        "product_details",
+        "reviews_preview"
+      ],
+      "missing_modules": [
+        "variant_selector",
+        "active_ingredients",
+        "ingredients_inci",
+        "product_facts"
+      ],
+      "gallery": {
+        "image_count": 6,
+        "duplicate_url_count": 1,
+        "image_hosts": [
+          "cdn.shopify.com"
+        ],
+        "ok": true
+      },
+      "variant": {
+        "module_present": true,
+        "variant_count": 0,
+        "label_count": 0,
+        "labels": [],
+        "bad_labels": [],
+        "ok": false
+      },
+      "reviews": {
+        "module_present": true,
+        "rating": null,
+        "review_count": 0,
+        "chart_present": false,
+        "chart_estimated": false,
+        "preview_count": 0,
+        "ok": true
+      },
+      "insights": {
+        "module_present": true,
+        "quality_state": "reviewed",
+        "evidence_profile": "official_pdp_reviewed_limited",
+        "seller_only_evidence": false,
+        "seller_grounded_reviewed": false,
+        "headline": "Treatment serum",
+        "why_count": 1,
+        "ok": true
+      },
+      "content": {
+        "ingredients_present": false,
+        "ingredients_text_count": 0,
+        "ingredients_source_origin": null,
+        "ingredients_source_quality_status": null,
+        "ingredients_force_filled": false,
+        "active_ingredients_present": false,
+        "active_ingredients_source_origin": null,
+        "active_ingredients_source_quality_status": null,
+        "active_ingredients_force_filled": false,
+        "how_to_present": true,
+        "how_to_text_count": 7,
+        "overview_present": true,
+        "details_present": true,
+        "details_text_count": 16
+      },
+      "similar": {
+        "module_present": false,
+        "count": 0,
+        "status": null
+      },
+      "product_kind": {
+        "family": "single_formula",
+        "reasons": [
+          "formula_category_path_signal"
+        ],
+        "pdp_schema_profile": "beauty_formula",
+        "formula_content_required": true
+      },
+      "blocking_reasons": [
+        "missing_ingredients"
+      ],
+      "pdp_quality_bucket": "thin",
+      "conversion_ready": false
+    },
+    {
+      "external_product_id": "ext_96484ace25be03a8f8cb595d",
+      "pivota_signature_id": "sig_79ea9d5db9a3c8e029fc54fe",
+      "probed_product_id": "ext_96484ace25be03a8f8cb595d",
+      "probed_id_type": "ext",
+      "seed_id": "eps_851cdd86517958850aa83706",
+      "market": "US",
+      "domain": "upcirclebeauty.com",
+      "title": "RETURN + REFILL Night Cream with Hyaluronic Acid + Niacinamide - ON PAUSE",
+      "canonical_url": "https://upcirclebeauty.com/products/night-cream-refill",
+      "http_status": 200,
+      "pdp_status": "success",
+      "build_id": "8111a9811c67",
+      "module_types": [
+        "canonical",
+        "variant_selector",
+        "offers",
+        "product_intel",
+        "active_ingredients",
+        "ingredients_inci",
+        "how_to_use",
+        "product_overview",
+        "product_facts",
+        "supplemental_details",
+        "product_details",
+        "reviews_preview"
+      ],
+      "missing_modules": [
+        "variant_selector",
+        "product_facts"
+      ],
+      "gallery": {
+        "image_count": 6,
+        "duplicate_url_count": 1,
+        "image_hosts": [
+          "cdn.shopify.com"
+        ],
+        "ok": true
+      },
+      "variant": {
+        "module_present": true,
+        "variant_count": 0,
+        "label_count": 0,
+        "labels": [],
+        "bad_labels": [],
+        "ok": false
+      },
+      "reviews": {
+        "module_present": true,
+        "rating": null,
+        "review_count": 0,
+        "chart_present": false,
+        "chart_estimated": false,
+        "preview_count": 0,
+        "ok": true
+      },
+      "insights": {
+        "module_present": true,
+        "quality_state": "reviewed",
+        "evidence_profile": "official_pdp_reviewed_key_ingredients",
+        "seller_only_evidence": false,
+        "seller_grounded_reviewed": false,
+        "headline": "Body care treatment",
+        "why_count": 2,
+        "ok": true
+      },
+      "content": {
+        "ingredients_present": true,
+        "ingredients_text_count": 23,
+        "ingredients_source_origin": "pdp_section",
+        "ingredients_source_quality_status": "authoritative",
+        "ingredients_force_filled": false,
+        "active_ingredients_present": true,
+        "active_ingredients_source_origin": "product_active_array",
+        "active_ingredients_source_quality_status": "authoritative",
+        "active_ingredients_force_filled": false,
+        "how_to_present": true,
+        "how_to_text_count": 7,
+        "overview_present": true,
+        "details_present": true,
+        "details_text_count": 16
+      },
+      "similar": {
+        "module_present": false,
+        "count": 0,
+        "status": null
+      },
+      "product_kind": {
+        "family": "single_formula",
+        "reasons": [
+          "formula_category_path_signal"
+        ],
+        "pdp_schema_profile": "beauty_formula",
+        "formula_content_required": true
+      },
+      "blocking_reasons": [],
+      "pdp_quality_bucket": "ready",
+      "conversion_ready": true
+    },
+    {
+      "external_product_id": "ext_719fa01081b88bf7472f06e1",
+      "pivota_signature_id": "sig_1e670d62fb5c926faa81f4a8",
+      "probed_product_id": "ext_719fa01081b88bf7472f06e1",
+      "probed_id_type": "ext",
+      "seed_id": "eps_2e5e868070dbfbba025ca87f",
+      "market": "US",
+      "domain": "upcirclebeauty.com",
+      "title": "RETURN + REFILL Eye Cream with Hyaluronic Acid + Coffee - ON PAUSE",
+      "canonical_url": "https://upcirclebeauty.com/products/eye-cream-refill",
+      "http_status": 200,
+      "pdp_status": "success",
+      "build_id": "8111a9811c67",
+      "module_types": [
+        "canonical",
+        "variant_selector",
+        "offers",
+        "product_intel",
+        "active_ingredients",
+        "ingredients_inci",
+        "how_to_use",
+        "product_overview",
+        "product_facts",
+        "supplemental_details",
+        "product_details",
+        "reviews_preview"
+      ],
+      "missing_modules": [
+        "variant_selector",
+        "ingredients_inci",
+        "product_facts"
+      ],
+      "gallery": {
+        "image_count": 6,
+        "duplicate_url_count": 1,
+        "image_hosts": [
+          "cdn.shopify.com"
+        ],
+        "ok": true
+      },
+      "variant": {
+        "module_present": true,
+        "variant_count": 0,
+        "label_count": 0,
+        "labels": [],
+        "bad_labels": [],
+        "ok": false
+      },
+      "reviews": {
+        "module_present": true,
+        "rating": null,
+        "review_count": 0,
+        "chart_present": false,
+        "chart_estimated": false,
+        "preview_count": 0,
+        "ok": true
+      },
+      "insights": {
+        "module_present": true,
+        "quality_state": "reviewed",
+        "evidence_profile": "official_pdp_reviewed_key_ingredients",
+        "seller_only_evidence": false,
+        "seller_grounded_reviewed": false,
+        "headline": "Body care treatment",
+        "why_count": 2,
+        "ok": true
+      },
+      "content": {
+        "ingredients_present": false,
+        "ingredients_text_count": 0,
+        "ingredients_source_origin": null,
+        "ingredients_source_quality_status": null,
+        "ingredients_force_filled": false,
+        "active_ingredients_present": true,
+        "active_ingredients_source_origin": "product_active_array",
+        "active_ingredients_source_quality_status": "captured",
+        "active_ingredients_force_filled": false,
+        "how_to_present": true,
+        "how_to_text_count": 5,
+        "overview_present": true,
+        "details_present": true,
+        "details_text_count": 16
+      },
+      "similar": {
+        "module_present": false,
+        "count": 0,
+        "status": null
+      },
+      "product_kind": {
+        "family": "single_formula",
+        "reasons": [
+          "formula_category_path_signal"
+        ],
+        "pdp_schema_profile": "beauty_formula",
+        "formula_content_required": true
+      },
+      "blocking_reasons": [
+        "missing_ingredients"
+      ],
+      "pdp_quality_bucket": "thin",
+      "conversion_ready": false
+    },
+    {
+      "external_product_id": "ext_5f63056adbcee15d15e2aba1",
+      "pivota_signature_id": "sig_e6dce3a7da796a617c2d87f0",
+      "probed_product_id": "ext_5f63056adbcee15d15e2aba1",
+      "probed_id_type": "ext",
+      "seed_id": "eps_1394088a91beb8a1842a3e2f",
+      "market": "US",
+      "domain": "upcirclebeauty.com",
+      "title": "Hand + Body Lotion with Bergamot Water",
+      "canonical_url": "https://upcirclebeauty.com/products/hand-body-lotion-with-bergamot-water",
+      "http_status": 200,
+      "pdp_status": "success",
+      "build_id": "8111a9811c67",
+      "module_types": [
+        "canonical",
+        "variant_selector",
+        "offers",
+        "product_intel",
+        "active_ingredients",
+        "ingredients_inci",
+        "how_to_use",
+        "product_overview",
+        "product_facts",
+        "supplemental_details",
+        "product_details",
+        "reviews_preview"
+      ],
+      "missing_modules": [
+        "variant_selector",
+        "active_ingredients",
+        "ingredients_inci",
+        "product_facts"
+      ],
+      "gallery": {
+        "image_count": 9,
+        "duplicate_url_count": 1,
+        "image_hosts": [
+          "cdn.shopify.com"
+        ],
+        "ok": true
+      },
+      "variant": {
+        "module_present": true,
+        "variant_count": 0,
+        "label_count": 0,
+        "labels": [],
+        "bad_labels": [],
+        "ok": false
+      },
+      "reviews": {
+        "module_present": true,
+        "rating": null,
+        "review_count": 0,
+        "chart_present": false,
+        "chart_estimated": false,
+        "preview_count": 0,
+        "ok": true
+      },
+      "insights": {
+        "module_present": true,
+        "quality_state": "reviewed",
+        "evidence_profile": "official_pdp_reviewed_limited",
+        "seller_only_evidence": false,
+        "seller_grounded_reviewed": false,
+        "headline": "Body care treatment",
+        "why_count": 1,
+        "ok": true
+      },
+      "content": {
+        "ingredients_present": false,
+        "ingredients_text_count": 0,
+        "ingredients_source_origin": null,
+        "ingredients_source_quality_status": null,
+        "ingredients_force_filled": false,
+        "active_ingredients_present": false,
+        "active_ingredients_source_origin": null,
+        "active_ingredients_source_quality_status": null,
+        "active_ingredients_force_filled": false,
+        "how_to_present": true,
+        "how_to_text_count": 7,
+        "overview_present": true,
+        "details_present": true,
+        "details_text_count": 16
+      },
+      "similar": {
+        "module_present": false,
+        "count": 0,
+        "status": null
+      },
+      "product_kind": {
+        "family": "single_formula",
+        "reasons": [
+          "formula_signal"
+        ],
+        "pdp_schema_profile": "beauty_formula",
+        "formula_content_required": true
+      },
+      "blocking_reasons": [
+        "missing_ingredients"
+      ],
+      "pdp_quality_bucket": "thin",
+      "conversion_ready": false
+    },
+    {
+      "external_product_id": "ext_4a83a2638c6cb6ca3c3df9e2",
+      "pivota_signature_id": "sig_6b4903ed828a444bad275d15",
+      "probed_product_id": "ext_4a83a2638c6cb6ca3c3df9e2",
+      "probed_id_type": "ext",
+      "seed_id": "eps_9cceb54862b0ebca219849c7",
+      "market": "US",
+      "domain": "upcirclebeauty.com",
+      "title": "Fennel + Cardamom Chai Cleansing Bar",
+      "canonical_url": "https://upcirclebeauty.com/products/fennel-cardamom-chai-soap-bar",
+      "http_status": 200,
+      "pdp_status": "success",
+      "build_id": "8111a9811c67",
+      "module_types": [
+        "canonical",
+        "variant_selector",
+        "offers",
+        "product_intel",
+        "active_ingredients",
+        "ingredients_inci",
+        "how_to_use",
+        "product_overview",
+        "product_facts",
+        "supplemental_details",
+        "product_details",
+        "reviews_preview"
+      ],
+      "missing_modules": [
+        "variant_selector",
+        "active_ingredients",
+        "product_facts"
+      ],
+      "gallery": {
+        "image_count": 11,
+        "duplicate_url_count": 1,
+        "image_hosts": [
+          "cdn.shopify.com"
+        ],
+        "ok": true
+      },
+      "variant": {
+        "module_present": true,
+        "variant_count": 0,
+        "label_count": 0,
+        "labels": [],
+        "bad_labels": [],
+        "ok": false
+      },
+      "reviews": {
+        "module_present": true,
+        "rating": null,
+        "review_count": 0,
+        "chart_present": false,
+        "chart_estimated": false,
+        "preview_count": 0,
+        "ok": true
+      },
+      "insights": {
+        "module_present": true,
+        "quality_state": "reviewed",
+        "evidence_profile": "official_pdp_reviewed_limited",
+        "seller_only_evidence": false,
+        "seller_grounded_reviewed": false,
+        "headline": "Face cleanser",
+        "why_count": 1,
+        "ok": true
+      },
+      "content": {
+        "ingredients_present": true,
+        "ingredients_text_count": 26,
+        "ingredients_source_origin": "pdp_section",
+        "ingredients_source_quality_status": "authoritative",
+        "ingredients_force_filled": false,
+        "active_ingredients_present": false,
+        "active_ingredients_source_origin": null,
+        "active_ingredients_source_quality_status": null,
+        "active_ingredients_force_filled": false,
+        "how_to_present": true,
+        "how_to_text_count": 7,
+        "overview_present": true,
+        "details_present": true,
+        "details_text_count": 16
+      },
+      "similar": {
+        "module_present": false,
+        "count": 0,
+        "status": null
+      },
+      "product_kind": {
+        "family": "single_formula",
+        "reasons": [
+          "formula_signal"
+        ],
+        "pdp_schema_profile": "beauty_formula",
+        "formula_content_required": true
+      },
+      "blocking_reasons": [],
+      "pdp_quality_bucket": "ready",
+      "conversion_ready": true
+    },
+    {
+      "external_product_id": "ext_6815bee1060ef71d9a99ce5b",
+      "pivota_signature_id": "sig_69612c2d0788a9296c85e6ef",
+      "probed_product_id": "ext_6815bee1060ef71d9a99ce5b",
+      "probed_id_type": "ext",
+      "seed_id": "eps_103c92b2eafaefa2e894f041",
+      "market": "US",
+      "domain": "upcirclebeauty.com",
+      "title": "Cleansing Face Milk with Oat Powder + Aloe Vera",
+      "canonical_url": "https://upcirclebeauty.com/products/oat-face-cleanser",
+      "http_status": 200,
+      "pdp_status": "success",
+      "build_id": "8111a9811c67",
+      "module_types": [
+        "canonical",
+        "variant_selector",
+        "offers",
+        "product_intel",
+        "active_ingredients",
+        "ingredients_inci",
+        "how_to_use",
+        "product_overview",
+        "product_facts",
+        "supplemental_details",
+        "product_details",
+        "reviews_preview"
+      ],
+      "missing_modules": [
+        "variant_selector",
+        "product_facts"
+      ],
+      "gallery": {
+        "image_count": 11,
+        "duplicate_url_count": 1,
+        "image_hosts": [
+          "cdn.shopify.com"
+        ],
+        "ok": true
+      },
+      "variant": {
+        "module_present": true,
+        "variant_count": 0,
+        "label_count": 0,
+        "labels": [],
+        "bad_labels": [],
+        "ok": false
+      },
+      "reviews": {
+        "module_present": true,
+        "rating": null,
+        "review_count": 0,
+        "chart_present": false,
+        "chart_estimated": false,
+        "preview_count": 0,
+        "ok": true
+      },
+      "insights": {
+        "module_present": true,
+        "quality_state": "reviewed",
+        "evidence_profile": "official_pdp_reviewed_limited",
+        "seller_only_evidence": false,
+        "seller_grounded_reviewed": false,
+        "headline": "Face color makeup",
+        "why_count": 1,
+        "ok": true
+      },
+      "content": {
+        "ingredients_present": true,
+        "ingredients_text_count": 26,
+        "ingredients_source_origin": "pdp_section",
+        "ingredients_source_quality_status": "authoritative",
+        "ingredients_force_filled": false,
+        "active_ingredients_present": true,
+        "active_ingredients_source_origin": "pdp_section",
+        "active_ingredients_source_quality_status": "authoritative",
+        "active_ingredients_force_filled": false,
+        "how_to_present": true,
+        "how_to_text_count": 6,
+        "overview_present": true,
+        "details_present": true,
+        "details_text_count": 16
+      },
+      "similar": {
+        "module_present": false,
+        "count": 0,
+        "status": null
+      },
+      "product_kind": {
+        "family": "single_formula",
+        "reasons": [
+          "formula_category_path_signal"
+        ],
+        "pdp_schema_profile": "beauty_formula",
+        "formula_content_required": true
+      },
+      "blocking_reasons": [],
+      "pdp_quality_bucket": "ready",
+      "conversion_ready": true
+    },
+    {
+      "external_product_id": "ext_f1f3ce59fac13141b98a911f",
+      "pivota_signature_id": "sig_226946a6ba84e4cda0525ac6",
+      "probed_product_id": "ext_f1f3ce59fac13141b98a911f",
+      "probed_id_type": "ext",
+      "seed_id": "eps_1bc6f7bd7c0610d438bb1e7f",
+      "market": "US",
+      "domain": "upcirclebeauty.com",
+      "title": "Cinnamon + Ginger Chai Cleansing Bar",
+      "canonical_url": "https://upcirclebeauty.com/products/cinnamon-ginger-chai-soap-bar",
+      "http_status": 200,
+      "pdp_status": "success",
+      "build_id": "8111a9811c67",
+      "module_types": [
+        "canonical",
+        "variant_selector",
+        "offers",
+        "product_intel",
+        "active_ingredients",
+        "ingredients_inci",
+        "how_to_use",
+        "product_overview",
+        "product_facts",
+        "supplemental_details",
+        "product_details",
+        "reviews_preview"
+      ],
+      "missing_modules": [
+        "variant_selector",
+        "active_ingredients",
+        "product_facts"
+      ],
+      "gallery": {
+        "image_count": 12,
+        "duplicate_url_count": 1,
+        "image_hosts": [
+          "cdn.shopify.com"
+        ],
+        "ok": true
+      },
+      "variant": {
+        "module_present": true,
+        "variant_count": 0,
+        "label_count": 0,
+        "labels": [],
+        "bad_labels": [],
+        "ok": false
+      },
+      "reviews": {
+        "module_present": true,
+        "rating": null,
+        "review_count": 0,
+        "chart_present": false,
+        "chart_estimated": false,
+        "preview_count": 0,
+        "ok": true
+      },
+      "insights": {
+        "module_present": true,
+        "quality_state": "reviewed",
+        "evidence_profile": "official_pdp_reviewed_limited",
+        "seller_only_evidence": false,
+        "seller_grounded_reviewed": false,
+        "headline": "Face cleanser",
+        "why_count": 1,
+        "ok": true
+      },
+      "content": {
+        "ingredients_present": true,
+        "ingredients_text_count": 25,
+        "ingredients_source_origin": "pdp_section",
+        "ingredients_source_quality_status": "authoritative",
+        "ingredients_force_filled": false,
+        "active_ingredients_present": false,
+        "active_ingredients_source_origin": null,
+        "active_ingredients_source_quality_status": null,
+        "active_ingredients_force_filled": false,
+        "how_to_present": true,
+        "how_to_text_count": 7,
+        "overview_present": true,
+        "details_present": true,
+        "details_text_count": 16
+      },
+      "similar": {
+        "module_present": false,
+        "count": 0,
+        "status": null
+      },
+      "product_kind": {
+        "family": "single_formula",
+        "reasons": [
+          "formula_signal"
+        ],
+        "pdp_schema_profile": "beauty_formula",
+        "formula_content_required": true
+      },
+      "blocking_reasons": [],
+      "pdp_quality_bucket": "ready",
+      "conversion_ready": true
+    },
+    {
+      "external_product_id": "ext_23ae4c5d9d8f2a8be363f2cc",
+      "pivota_signature_id": "sig_82b28455d7df7a1f79243cc8",
+      "probed_product_id": "ext_23ae4c5d9d8f2a8be363f2cc",
+      "probed_id_type": "ext",
+      "seed_id": "eps_8ecfa7102bfdc978accaca76",
+      "market": "US",
+      "domain": "upcirclebeauty.com",
+      "title": "Body Scrub with Coffee + Lemongrass",
+      "canonical_url": "https://upcirclebeauty.com/products/coffee-body-scrub-with-lemongrass-200ml",
+      "http_status": 200,
+      "pdp_status": "success",
+      "build_id": "8111a9811c67",
+      "module_types": [
+        "canonical",
+        "variant_selector",
+        "offers",
+        "product_intel",
+        "active_ingredients",
+        "ingredients_inci",
+        "how_to_use",
+        "product_overview",
+        "product_facts",
+        "supplemental_details",
+        "product_details",
+        "reviews_preview"
+      ],
+      "missing_modules": [
+        "active_ingredients",
+        "product_facts"
+      ],
+      "gallery": {
+        "image_count": 10,
+        "duplicate_url_count": 1,
+        "image_hosts": [
+          "cdn.shopify.com"
+        ],
+        "ok": true
+      },
+      "variant": {
+        "module_present": true,
+        "variant_count": 1,
+        "label_count": 2,
+        "labels": [
+          "Strength: 10%",
+          "10%"
+        ],
+        "bad_labels": [],
+        "ok": true
+      },
+      "reviews": {
+        "module_present": true,
+        "rating": null,
+        "review_count": 0,
+        "chart_present": false,
+        "chart_estimated": false,
+        "preview_count": 0,
+        "ok": true
+      },
+      "insights": {
+        "module_present": true,
+        "quality_state": "reviewed",
+        "evidence_profile": "official_pdp_reviewed_limited",
+        "seller_only_evidence": false,
+        "seller_grounded_reviewed": false,
+        "headline": "Face scrub",
+        "why_count": 1,
+        "ok": true
+      },
+      "content": {
+        "ingredients_present": true,
+        "ingredients_text_count": 20,
+        "ingredients_source_origin": "pdp_section",
+        "ingredients_source_quality_status": "authoritative",
+        "ingredients_force_filled": false,
+        "active_ingredients_present": false,
+        "active_ingredients_source_origin": null,
+        "active_ingredients_source_quality_status": null,
+        "active_ingredients_force_filled": false,
+        "how_to_present": true,
+        "how_to_text_count": 8,
+        "overview_present": true,
+        "details_present": true,
+        "details_text_count": 16
+      },
+      "similar": {
+        "module_present": false,
+        "count": 0,
+        "status": null
+      },
+      "product_kind": {
+        "family": "unknown_product",
+        "reasons": [],
+        "pdp_schema_profile": "beauty_formula",
+        "formula_content_required": false
+      },
+      "blocking_reasons": [],
+      "pdp_quality_bucket": "ready",
+      "conversion_ready": true
+    },
+    {
+      "external_product_id": "ext_664b859ce2599a57c3f1f7ce",
+      "pivota_signature_id": "sig_e434b90902740f110390a11d",
+      "probed_product_id": "ext_664b859ce2599a57c3f1f7ce",
+      "probed_id_type": "ext",
+      "seed_id": "eps_cf3ed51499e5db55536e1ce7",
+      "market": "US",
+      "domain": "upcirclebeauty.com",
+      "title": "Body Oil with Passion Fruit Oil",
+      "canonical_url": "https://upcirclebeauty.com/products/natural-body-oil",
+      "http_status": 200,
+      "pdp_status": "success",
+      "build_id": "8111a9811c67",
+      "module_types": [
+        "canonical",
+        "variant_selector",
+        "offers",
+        "product_intel",
+        "active_ingredients",
+        "ingredients_inci",
+        "how_to_use",
+        "product_overview",
+        "product_facts",
+        "supplemental_details",
+        "product_details",
+        "reviews_preview"
+      ],
+      "missing_modules": [
+        "variant_selector",
+        "active_ingredients",
+        "product_facts"
+      ],
+      "gallery": {
+        "image_count": 10,
+        "duplicate_url_count": 1,
+        "image_hosts": [
+          "cdn.shopify.com"
+        ],
+        "ok": true
+      },
+      "variant": {
+        "module_present": true,
+        "variant_count": 0,
+        "label_count": 0,
+        "labels": [],
+        "bad_labels": [],
+        "ok": false
+      },
+      "reviews": {
+        "module_present": true,
+        "rating": null,
+        "review_count": 0,
+        "chart_present": false,
+        "chart_estimated": false,
+        "preview_count": 0,
+        "ok": true
+      },
+      "insights": {
+        "module_present": true,
+        "quality_state": "reviewed",
+        "evidence_profile": "official_pdp_reviewed_limited",
+        "seller_only_evidence": false,
+        "seller_grounded_reviewed": false,
+        "headline": "Body oil",
+        "why_count": 1,
+        "ok": true
+      },
+      "content": {
+        "ingredients_present": true,
+        "ingredients_text_count": 15,
+        "ingredients_source_origin": "pdp_section",
+        "ingredients_source_quality_status": "authoritative",
+        "ingredients_force_filled": false,
+        "active_ingredients_present": false,
+        "active_ingredients_source_origin": null,
+        "active_ingredients_source_quality_status": null,
+        "active_ingredients_force_filled": false,
+        "how_to_present": true,
+        "how_to_text_count": 6,
+        "overview_present": true,
+        "details_present": true,
+        "details_text_count": 16
+      },
+      "similar": {
+        "module_present": false,
+        "count": 0,
+        "status": null
+      },
+      "product_kind": {
+        "family": "single_formula",
+        "reasons": [
+          "formula_signal"
+        ],
+        "pdp_schema_profile": "beauty_formula",
+        "formula_content_required": true
+      },
+      "blocking_reasons": [],
+      "pdp_quality_bucket": "ready",
+      "conversion_ready": true
+    }
+  ]
+}

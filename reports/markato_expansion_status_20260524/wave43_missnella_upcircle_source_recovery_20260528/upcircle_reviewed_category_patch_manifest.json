@@ -1,0 +1,120 @@
+{
+  "market": "US",
+  "reviewed_by": "codex_review",
+  "reason": "reviewed_upcircle_source_gap_recovery_category_patch",
+  "source_kind": "official_pdp_title_url_review",
+  "evidence": "Official UpCircle PDP titles and canonical URLs reviewed on 2026-05-28 identify the product category for each recovered source-gap row.",
+  "confidence": 0.95,
+  "entries": [
+    {
+      "external_product_id": "ext_664b859ce2599a57c3f1f7ce",
+      "title": "Body Oil with Passion Fruit Oil",
+      "canonical_url": "https://upcirclebeauty.com/products/natural-body-oil",
+      "source_url": "https://upcirclebeauty.com/products/natural-body-oil",
+      "category": "Body Oil",
+      "product_type": "Body Oil",
+      "category_path": "beauty/bodycare/body-oil",
+      "catalog_category_path": "beauty/bodycare/body-oil"
+    },
+    {
+      "external_product_id": "ext_23ae4c5d9d8f2a8be363f2cc",
+      "title": "Body Scrub with Coffee + Lemongrass",
+      "canonical_url": "https://upcirclebeauty.com/products/coffee-body-scrub-with-lemongrass-200ml",
+      "source_url": "https://upcirclebeauty.com/products/coffee-body-scrub-with-lemongrass-200ml",
+      "category": "Body Scrub",
+      "product_type": "Body Scrub",
+      "category_path": "beauty/bodycare/body-scrub",
+      "catalog_category_path": "beauty/bodycare/body-scrub"
+    },
+    {
+      "external_product_id": "ext_f1f3ce59fac13141b98a911f",
+      "title": "Cinnamon + Ginger Chai Cleansing Bar",
+      "canonical_url": "https://upcirclebeauty.com/products/cinnamon-ginger-chai-soap-bar",
+      "source_url": "https://upcirclebeauty.com/products/cinnamon-ginger-chai-soap-bar",
+      "category": "Cleansing Bar",
+      "product_type": "Cleansing Bar",
+      "category_path": "beauty/bodycare/soap",
+      "catalog_category_path": "beauty/bodycare/soap"
+    },
+    {
+      "external_product_id": "ext_6815bee1060ef71d9a99ce5b",
+      "title": "Cleansing Face Milk with Oat Powder + Aloe Vera",
+      "canonical_url": "https://upcirclebeauty.com/products/oat-face-cleanser",
+      "source_url": "https://upcirclebeauty.com/products/oat-face-cleanser",
+      "category": "Cleanser",
+      "product_type": "Cleanser",
+      "category_path": "beauty/skincare/cleanser",
+      "catalog_category_path": "beauty/skincare/cleanser"
+    },
+    {
+      "external_product_id": "ext_4a83a2638c6cb6ca3c3df9e2",
+      "title": "Fennel + Cardamom Chai Cleansing Bar",
+      "canonical_url": "https://upcirclebeauty.com/products/fennel-cardamom-chai-soap-bar",
+      "source_url": "https://upcirclebeauty.com/products/fennel-cardamom-chai-soap-bar",
+      "category": "Cleansing Bar",
+      "product_type": "Cleansing Bar",
+      "category_path": "beauty/bodycare/soap",
+      "catalog_category_path": "beauty/bodycare/soap"
+    },
+    {
+      "external_product_id": "ext_5f63056adbcee15d15e2aba1",
+      "title": "Hand + Body Lotion with Bergamot Water",
+      "canonical_url": "https://upcirclebeauty.com/products/hand-body-lotion-with-bergamot-water",
+      "source_url": "https://upcirclebeauty.com/products/hand-body-lotion-with-bergamot-water",
+      "category": "Body Lotion",
+      "product_type": "Body Lotion",
+      "category_path": "beauty/bodycare/body-lotion",
+      "catalog_category_path": "beauty/bodycare/body-lotion"
+    },
+    {
+      "external_product_id": "ext_719fa01081b88bf7472f06e1",
+      "title": "RETURN + REFILL Eye Cream with Hyaluronic Acid + Coffee - ON PAUSE",
+      "canonical_url": "https://upcirclebeauty.com/products/eye-cream-refill",
+      "source_url": "https://upcirclebeauty.com/products/eye-cream-refill",
+      "category": "Eye Treatment",
+      "product_type": "Eye Treatment",
+      "category_path": "beauty/skincare/eye-care",
+      "catalog_category_path": "beauty/skincare/eye-care"
+    },
+    {
+      "external_product_id": "ext_96484ace25be03a8f8cb595d",
+      "title": "RETURN + REFILL Night Cream with Hyaluronic Acid + Niacinamide - ON PAUSE",
+      "canonical_url": "https://upcirclebeauty.com/products/night-cream-refill",
+      "source_url": "https://upcirclebeauty.com/products/night-cream-refill",
+      "category": "Moisturizer",
+      "product_type": "Moisturizer",
+      "category_path": "beauty/skincare/moisturizer",
+      "catalog_category_path": "beauty/skincare/moisturizer"
+    },
+    {
+      "external_product_id": "ext_714399863bd72a30bcc6259c",
+      "title": "RETURN + REFILL Organic Face Oil with Coffee Extract - ON PAUSE",
+      "canonical_url": "https://upcirclebeauty.com/products/face-oil-refill",
+      "source_url": "https://upcirclebeauty.com/products/face-oil-refill",
+      "category": "Face Oil",
+      "product_type": "Face Oil",
+      "category_path": "beauty/skincare/face-oil",
+      "catalog_category_path": "beauty/skincare/face-oil"
+    },
+    {
+      "external_product_id": "ext_3584983333bdd1568bd59312",
+      "title": "RETURN + REFILL Peptide Serum with Custard Apple + Blood Orange - ON PAUSE",
+      "canonical_url": "https://upcirclebeauty.com/products/peptide-serum-refill",
+      "source_url": "https://upcirclebeauty.com/products/peptide-serum-refill",
+      "category": "Serum",
+      "product_type": "Serum",
+      "category_path": "beauty/skincare/serum",
+      "catalog_category_path": "beauty/skincare/serum"
+    },
+    {
+      "external_product_id": "ext_c384be41af865ac0aecd06ed",
+      "title": "RETURN + REFILL Shampoo Creme with Pink Berry - ON PAUSE",
+      "canonical_url": "https://upcirclebeauty.com/products/shampoo-creme-refill",
+      "source_url": "https://upcirclebeauty.com/products/shampoo-creme-refill",
+      "category": "Shampoo",
+      "product_type": "Shampoo",
+      "category_path": "beauty/haircare/shampoo",
+      "catalog_category_path": "beauty/haircare/shampoo"
+    }
+  ]
+}

@@ -1,0 +1,1696 @@
+{
+  "generated_at": "2026-05-28T04:32:54.786Z",
+  "mode": "apply",
+  "batch_size": null,
+  "bootstrap_reviewed_identity_live_read": true,
+  "requested_ids": 7,
+  "fetched_rows": 7,
+  "mirror_rows": 7,
+  "planned_sku_rows": 7,
+  "planned_offer_rows": 7,
+  "planned_index_state_rows": 7,
+  "missing_ids": [],
+  "skipped": [],
+  "applied": {
+    "mode": "apply",
+    "existing_before": {
+      "catalog_products": 7,
+      "catalog_skus": 0,
+      "catalog_offers": 0,
+      "product_group_members": 0
+    },
+    "stale_delete_preview": {
+      "current_sku_rows": 7,
+      "current_offer_rows": 7,
+      "planned_stale_sku_deletes": 7,
+      "planned_stale_offer_deletes": 7,
+      "sample_stale_skus": [
+        {
+          "title": "Diplodo-Kiss: Metallic Pink Peel Off Nail Polish",
+          "sku_key": "prod::external_seed::external_seed::ext_234ad22c62387afe966d0832::canonical",
+          "product_key": "prod::external_seed::external_seed::ext_234ad22c62387afe966d0832",
+          "source_variant_id": "prod::external_seed::external_seed::ext_234ad22c62387afe966d0832",
+          "visible_attributes": {}
+        },
+        {
+          "title": "Galactic Unicorn: Chrome Purple Peel Off Nail Polish",
+          "sku_key": "prod::external_seed::external_seed::ext_3efab0751a9f85bbdcb72388::canonical",
+          "product_key": "prod::external_seed::external_seed::ext_3efab0751a9f85bbdcb72388",
+          "source_variant_id": "prod::external_seed::external_seed::ext_3efab0751a9f85bbdcb72388",
+          "visible_attributes": {}
+        },
+        {
+          "title": "Cosmic Cutie: Chrome Bronze Peel Off Nail Polish",
+          "sku_key": "prod::external_seed::external_seed::ext_4126c4bf9bd13a864334128d::canonical",
+          "product_key": "prod::external_seed::external_seed::ext_4126c4bf9bd13a864334128d",
+          "source_variant_id": "prod::external_seed::external_seed::ext_4126c4bf9bd13a864334128d",
+          "visible_attributes": {}
+        },
+        {
+          "title": "If The Shoe Fits: Gold Fine Glitter Peel Off Nail Polish",
+          "sku_key": "prod::external_seed::external_seed::ext_428194a391e38b8c6c5c5a1b::canonical",
+          "product_key": "prod::external_seed::external_seed::ext_428194a391e38b8c6c5c5a1b",
+          "source_variant_id": "prod::external_seed::external_seed::ext_428194a391e38b8c6c5c5a1b",
+          "visible_attributes": {}
+        },
+        {
+          "title": "Croco Dazzle: Sparkly Red Peel Off Nail Polish",
+          "sku_key": "prod::external_seed::external_seed::ext_8c9db1e831c4be15a42fc407::canonical",
+          "product_key": "prod::external_seed::external_seed::ext_8c9db1e831c4be15a42fc407",
+          "source_variant_id": "prod::external_seed::external_seed::ext_8c9db1e831c4be15a42fc407",
+          "visible_attributes": {}
+        },
+        {
+          "title": "Dino-Rific: Metallic Green Peel Off Nail Polish",
+          "sku_key": "prod::external_seed::external_seed::ext_a9609ad67d8dec79dd0596a1::canonical",
+          "product_key": "prod::external_seed::external_seed::ext_a9609ad67d8dec79dd0596a1",
+          "source_variant_id": "prod::external_seed::external_seed::ext_a9609ad67d8dec79dd0596a1",
+          "visible_attributes": {}
+        },
+        {
+          "title": "Elephunky: Sparkly Blue Peel Off Nail Polish",
+          "sku_key": "prod::external_seed::external_seed::ext_ff5b7bfbff65eed0ceb7e3df::canonical",
+          "product_key": "prod::external_seed::external_seed::ext_ff5b7bfbff65eed0ceb7e3df",
+          "source_variant_id": "prod::external_seed::external_seed::ext_ff5b7bfbff65eed0ceb7e3df",
+          "visible_attributes": {}
+        }
+      ],
+      "sample_stale_offers": [
+        {
+          "sku_key": "prod::external_seed::external_seed::ext_234ad22c62387afe966d0832::canonical",
+          "offer_id": "offer:external_seed:5998e4bb43b359d4d9e6688e60d96bec",
+          "list_price": 6.49,
+          "product_key": "prod::external_seed::external_seed::ext_234ad22c62387afe966d0832",
+          "merchant_effective_price": 6.49
+        },
+        {
+          "sku_key": "prod::external_seed::external_seed::ext_3efab0751a9f85bbdcb72388::canonical",
+          "offer_id": "offer:external_seed:e7b183b9eb03a1d658f6e9aae3188388",
+          "list_price": 6.49,
+          "product_key": "prod::external_seed::external_seed::ext_3efab0751a9f85bbdcb72388",
+          "merchant_effective_price": 6.49
+        },
+        {
+          "sku_key": "prod::external_seed::external_seed::ext_4126c4bf9bd13a864334128d::canonical",
+          "offer_id": "offer:external_seed:000a128752e0f3080f107fddec67c240",
+          "list_price": 6.49,
+          "product_key": "prod::external_seed::external_seed::ext_4126c4bf9bd13a864334128d",
+          "merchant_effective_price": 6.49
+        },
+        {
+          "sku_key": "prod::external_seed::external_seed::ext_428194a391e38b8c6c5c5a1b::canonical",
+          "offer_id": "offer:external_seed:ee9d05849bd4ee6b74a754ec118acb90",
+          "list_price": 6.49,
+          "product_key": "prod::external_seed::external_seed::ext_428194a391e38b8c6c5c5a1b",
+          "merchant_effective_price": 6.49
+        },
+        {
+          "sku_key": "prod::external_seed::external_seed::ext_8c9db1e831c4be15a42fc407::canonical",
+          "offer_id": "offer:external_seed:6cf6374b95ab454b29ab0acd75008098",
+          "list_price": 6.49,
+          "product_key": "prod::external_seed::external_seed::ext_8c9db1e831c4be15a42fc407",
+          "merchant_effective_price": 6.49
+        },
+        {
+          "sku_key": "prod::external_seed::external_seed::ext_a9609ad67d8dec79dd0596a1::canonical",
+          "offer_id": "offer:external_seed:dcdfba9525b47dc3499161ff7b264413",
+          "list_price": 6.49,
+          "product_key": "prod::external_seed::external_seed::ext_a9609ad67d8dec79dd0596a1",
+          "merchant_effective_price": 6.49
+        },
+        {
+          "sku_key": "prod::external_seed::external_seed::ext_ff5b7bfbff65eed0ceb7e3df::canonical",
+          "offer_id": "offer:external_seed:5b595f6d4a01218ed809616bd9c802ed",
+          "list_price": 6.49,
+          "product_key": "prod::external_seed::external_seed::ext_ff5b7bfbff65eed0ceb7e3df",
+          "merchant_effective_price": 6.49
+        }
+      ]
+    },
+    "batch_size": null,
+    "batches": 1,
+    "audit_reasons": {
+      "no_strong_identifier": 7
+    },
+    "product_upserts": 7,
+    "sku_upserts": 7,
+    "offer_upserts": 7,
+    "group_member_upserts": 7,
+    "group_member_preserved_existing_merges": 0,
+    "seed_attachment_updates": 7,
+    "index_state_upserts": 7,
+    "identity_live_read_updates": 7,
+    "catalog_row_trust_upserts": 7,
+    "stale_offer_deletes": 7,
+    "stale_sku_deletes": 7
+  },
+  "sample": [
+    {
+      "external_product_id": "ext_4126c4bf9bd13a864334128d",
+      "product_key": "prod::external_seed::external_seed::ext_4126c4bf9bd13a864334128d",
+      "product_group_id": "sig_4fc3dd964afe3cf21a3ccd58",
+      "title": "Cosmic Cutie: Chrome Bronze Peel Off Nail Polish",
+      "brand": "Miss Nella",
+      "product_type": "Nail Polish",
+      "category": "Nail Polish",
+      "category_path": "beauty/makeup/nails/nail-polish",
+      "canonical_url": "https://www.missnella.com/products/cosmic-cutie-4ml-peel-off-kids-nail-polish",
+      "pivota_signature_id": "sig_4fc3dd964afe3cf21a3ccd58",
+      "sku_rows": 1,
+      "first_sku": {
+        "sku_key": "prod::external_seed::external_seed::ext_4126c4bf9bd13a864334128d::sku_5bd3a7607dbff4fb9c5b",
+        "product_key": "prod::external_seed::external_seed::ext_4126c4bf9bd13a864334128d",
+        "merchant_id": "external_seed",
+        "platform": "external_seed",
+        "source_product_id": "ext_4126c4bf9bd13a864334128d",
+        "source_variant_id": "ext_4126c4bf9bd13a864334128d:41123889250478",
+        "source_domain": "missnella.com",
+        "sku": "MN36-1",
+        "barcode": null,
+        "title": "Cosmic Cutie: Chrome Bronze Peel Off Nail Polish",
+        "currency": "USD",
+        "image_url": "https://cdn.shopify.com/s/files/1/2219/3831/files/MN36_Cosmic_Cutie-WEB.jpg?v=1771503890",
+        "visible_attributes": {
+          "Size": "4ml"
+        },
+        "visible_option_labels": {
+          "Size": "4ml"
+        },
+        "ingredient_ids": [],
+        "sku_payload": {
+          "source": "external_product_seeds_mirror_v1",
+          "external_product_id": "ext_4126c4bf9bd13a864334128d",
+          "raw_variant_id": "41123889250478",
+          "source_variant_id": "ext_4126c4bf9bd13a864334128d:41123889250478",
+          "variant_sku": "MN36-1",
+          "barcode": null,
+          "strong_identifier_kind": null,
+          "source_url": "https://www.missnella.com/products/cosmic-cutie-4ml-peel-off-kids-nail-polish",
+          "external_redirect_url": "https://www.missnella.com/products/cosmic-cutie-4ml-peel-off-kids-nail-polish",
+          "price": "6.49",
+          "price_amount": 6.49,
+          "currency": "USD",
+          "availability": "in_stock",
+          "image_url": "https://cdn.shopify.com/s/files/1/2219/3831/files/MN36_Cosmic_Cutie-WEB.jpg?v=1771503890",
+          "swatch_image_url": null,
+          "label_image_url": null,
+          "options": {
+            "Size": "4ml"
+          },
+          "raw_variant": {
+            "sku": "MN36-1",
+            "url": "https://www.missnella.com/products/cosmic-cutie-4ml-peel-off-kids-nail-polish",
+            "price": "6.49",
+            "stock": "In Stock",
+            "currency": "USD",
+            "image_url": "https://cdn.shopify.com/s/files/1/2219/3831/files/MN36_Cosmic_Cutie-WEB.jpg?v=1771503890",
+            "image_urls": [
+              "https://cdn.shopify.com/s/files/1/2219/3831/files/MN36_Cosmic_Cutie-WEB.jpg?v=1771503890",
+              "https://cdn.shopify.com/s/files/1/2219/3831/files/MN36CosmicCutie-01-WEB.jpg?v=1771503890",
+              "https://cdn.shopify.com/s/files/1/2219/3831/files/MN36CosmicCutie-Box-WEB_e2620b26-e8c8-42b6-b449-bceb5dc0620a.jpg?v=1771503846",
+              "https://cdn.shopify.com/s/files/1/2219/3831/files/MN36CosmicCutie-Peel-Off-WEB.jpg?v=1771503890",
+              "https://cdn.shopify.com/s/files/1/2219/3831/files/MN36CosmicCutie-Box-01-WEB.jpg?v=1771503846",
+              "https://cdn.shopify.com/s/files/1/2219/3831/files/MN-Peel-off-Nail-Polish-002-WEB.jpg?v=1771508662"
+            ],
+            "variant_id": "41123889250478",
+            "description": "💅 Safe, Fun, and Colourful - Let your child’s creativity shine with Miss Nella Nail Polish! This vibrant, non-toxic and kid-friendly polish is perfect for young hands, offering a smooth application and quick drying formula. Whether it’s for a fun playdate, a dress-up session, or just because, this nail polish adds a splash of vibrant colour to any day.",
+            "option_name": "Size",
+            "option_value": "4ml"
+          }
+        },
+        "readiness_tier": "referral_only"
+      },
+      "first_offer": {
+        "offer_id": "offer:external_seed:b6eb1b184e173cf5b0da25ababf06247",
+        "sku_key": "prod::external_seed::external_seed::ext_4126c4bf9bd13a864334128d::sku_5bd3a7607dbff4fb9c5b",
+        "product_key": "prod::external_seed::external_seed::ext_4126c4bf9bd13a864334128d",
+        "merchant_id": "external_seed",
+        "catalog_track": "external_referral",
+        "truth_tier": "observed",
+        "readiness_tier": "referral_only",
+        "offer_mode": "redirect",
+        "channel": "external_referral",
+        "availability": "in_stock",
+        "currency": "USD",
+        "list_price": 6.49,
+        "merchant_effective_price": 6.49,
+        "estimated_best_price": 6.49,
+        "price_confidence": 1,
+        "source_system": "external_product_seeds_mirror_v1",
+        "source_ref": "eps_6bc09b1a03196d9c49b21349",
+        "source_domain": "missnella.com",
+        "offer_payload": {
+          "source": "external_product_seeds_mirror_v1",
+          "external_seed_id": "eps_6bc09b1a03196d9c49b21349",
+          "external_product_id": "ext_4126c4bf9bd13a864334128d",
+          "domain": "missnella.com",
+          "market": "US",
+          "product_title": "Cosmic Cutie: Chrome Bronze Peel Off Nail Polish",
+          "variant_title": "Cosmic Cutie: Chrome Bronze Peel Off Nail Polish",
+          "variant_sku": "MN36-1",
+          "raw_variant_id": "41123889250478",
+          "url": "https://www.missnella.com/products/cosmic-cutie-4ml-peel-off-kids-nail-polish",
+          "offer_url": "https://www.missnella.com/products/cosmic-cutie-4ml-peel-off-kids-nail-polish",
+          "canonical_url": "https://www.missnella.com/products/cosmic-cutie-4ml-peel-off-kids-nail-polish",
+          "destination_url": "https://www.missnella.com/products/cosmic-cutie-4ml-peel-off-kids-nail-polish",
+          "external_redirect_url": "https://www.missnella.com/products/cosmic-cutie-4ml-peel-off-kids-nail-polish",
+          "merchant_display_name": "Miss Nella",
+          "price": "6.49",
+          "price_amount": 6.49,
+          "price_currency": "USD",
+          "availability": "in_stock",
+          "commerce_facts_v1": {
+            "contract_version": "commerce_facts.v1",
+            "market_id": "US",
+            "country": "US",
+            "currency_target": "USD",
+            "source_authority": "catalog_extract_v2",
+            "captured_at": "2026-05-18T04:53:59.090Z",
+            "evidence_url": "https://www.missnella.com/products/cosmic-cutie-4ml-peel-off-kids-nail-polish",
+            "sellable_region": {
+              "status": "unknown",
+              "countries": [],
+              "evidence_source": "catalog_extract_v2",
+              "confidence": "unknown",
+              "checked_at": "2026-05-18T04:53:59.090Z",
+              "reason_codes": [
+                "shipping_destination_not_verified"
+              ],
+              "evidence_url": "https://www.missnella.com/products/cosmic-cutie-4ml-peel-off-kids-nail-polish"
+            },
+            "regional_price": {
+              "amount": 6.49,
+              "currency": "USD",
+              "display_raw": null,
+              "price_type": "unknown",
+              "compare_at_amount": null,
+              "compare_at_currency": null,
+              "compare_at_display_raw": null,
+              "tax_included": "unknown",
+              "confidence": "medium",
+              "market_switch_status": "ok",
+              "observed_currency": "USD",
+              "source_url": "https://www.missnella.com/products/cosmic-cutie-4ml-peel-off-kids-nail-polish",
+              "captured_at": "2026-05-18T04:53:59.090Z"
+            },
+            "availability": {
+              "status": "in_stock",
+              "source": "catalog_extract_v2",
+              "confidence": "medium",
+              "captured_at": "2026-05-18T04:53:59.090Z"
+            },
+            "shipping": {
+              "status": "unknown",
+              "source": "catalog_extract_v2",
+              "confidence": "unknown",
+              "reason_codes": [
+                "external_checkout_not_queried"
+              ],
+              "checked_at": "2026-05-18T04:53:59.090Z"
+            },
+            "promotions": [],
+            "returns": {
+              "status": "unknown",
+              "source": "catalog_extract_v2",
+              "confidence": "unknown",
+              "reason_codes": [
+                "external_returns_not_extracted"
+              ],
+              "checked_at": "2026-05-18T04:53:59.090Z"
+            }
+          },
+          "agent_safe_commerce_facts": {
+            "contract_version": "commerce_facts.v1",
+            "market_id": "US",
+            "price": {
+              "amount": 6.49,
+              "currency": "USD",
+              "display_raw": null,
+              "price_type": "unknown",
+              "compare_at_amount": null,
+              "compare_at_currency": null,
+              "compare_at_display_raw": null,
+              "tax_included": "unknown",
+              "confidence": "medium",
+              "market_switch_status": "ok",
+              "observed_currency": "USD",
+              "source_url": "https://www.missnella.com/products/cosmic-cutie-4ml-peel-off-kids-nail-polish",
+              "captured_at": "2026-05-18T04:53:59.090Z"
+            },
+            "availability": {
+              "status": "in_stock",
+              "source": "catalog_extract_v2",
+              "confidence": "medium",
+              "captured_at": "2026-05-18T04:53:59.090Z"
+            },
+            "shipping": {
+              "status": "unknown",
+              "reason": "verify_at_checkout"
+            },
+            "promotions": [],
+            "checkout_note": "Shipping and promotions are not verified for this external offer; verify at merchant checkout."
+          }
+        }
+      },
+      "serving_readiness": {
+        "servingEligible": true,
+        "contentQualityScore": 90,
+        "blockerCode": "none",
+        "blockerDetail": null,
+        "identityResolved": true,
+        "identityLiveReadResolved": false,
+        "identityBootstrapEligible": true,
+        "hasImage": true,
+        "hasPrice": true,
+        "descriptionLength": 355
+      }
+    },
+    {
+      "external_product_id": "ext_8c9db1e831c4be15a42fc407",
+      "product_key": "prod::external_seed::external_seed::ext_8c9db1e831c4be15a42fc407",
+      "product_group_id": "sig_52e1bce55db87f64ac6bc1ae",
+      "title": "Croco Dazzle: Sparkly Red Peel Off Nail Polish",
+      "brand": "Miss Nella",
+      "product_type": "Nail Polish",
+      "category": "Nail Polish",
+      "category_path": "beauty/makeup/nails/nail-polish",
+      "canonical_url": "https://www.missnella.com/products/croco-dazzle-4ml-peel-off-kids-nail-polish",
+      "pivota_signature_id": "sig_52e1bce55db87f64ac6bc1ae",
+      "sku_rows": 1,
+      "first_sku": {
+        "sku_key": "prod::external_seed::external_seed::ext_8c9db1e831c4be15a42fc407::sku_496aa6b7d0014f60798a",
+        "product_key": "prod::external_seed::external_seed::ext_8c9db1e831c4be15a42fc407",
+        "merchant_id": "external_seed",
+        "platform": "external_seed",
+        "source_product_id": "ext_8c9db1e831c4be15a42fc407",
+        "source_variant_id": "ext_8c9db1e831c4be15a42fc407:42852246782210",
+        "source_domain": "missnella.com",
+        "sku": "MN48-1",
+        "barcode": null,
+        "title": "Croco Dazzle: Sparkly Red Peel Off Nail Polish",
+        "currency": "USD",
+        "image_url": "https://cdn.shopify.com/s/files/1/2219/3831/files/MN48Croco-dazzle-WEB.jpg?v=1771508396",
+        "visible_attributes": {
+          "Size": "4ml"
+        },
+        "visible_option_labels": {
+          "Size": "4ml"
+        },
+        "ingredient_ids": [],
+        "sku_payload": {
+          "source": "external_product_seeds_mirror_v1",
+          "external_product_id": "ext_8c9db1e831c4be15a42fc407",
+          "raw_variant_id": "42852246782210",
+          "source_variant_id": "ext_8c9db1e831c4be15a42fc407:42852246782210",
+          "variant_sku": "MN48-1",
+          "barcode": null,
+          "strong_identifier_kind": null,
+          "source_url": "https://www.missnella.com/products/croco-dazzle-4ml-peel-off-kids-nail-polish",
+          "external_redirect_url": "https://www.missnella.com/products/croco-dazzle-4ml-peel-off-kids-nail-polish",
+          "price": "6.49",
+          "price_amount": 6.49,
+          "currency": "USD",
+          "availability": "in_stock",
+          "image_url": "https://cdn.shopify.com/s/files/1/2219/3831/files/MN48Croco-dazzle-WEB.jpg?v=1771508396",
+          "swatch_image_url": null,
+          "label_image_url": null,
+          "options": {
+            "Size": "4ml"
+          },
+          "raw_variant": {
+            "sku": "MN48-1",
+            "url": "https://www.missnella.com/products/croco-dazzle-4ml-peel-off-kids-nail-polish",
+            "price": "6.49",
+            "stock": "In Stock",
+            "currency": "USD",
+            "image_url": "https://cdn.shopify.com/s/files/1/2219/3831/files/MN48Croco-dazzle-WEB.jpg?v=1771508396",
+            "image_urls": [
+              "https://cdn.shopify.com/s/files/1/2219/3831/files/MN48Croco-dazzle-WEB.jpg?v=1771508396",
+              "https://cdn.shopify.com/s/files/1/2219/3831/files/MN48Croco-dazzle-01-WEB.jpg?v=1771508440",
+              "https://cdn.shopify.com/s/files/1/2219/3831/files/MN48Croco-dazzle-02WEB.jpg?v=1771508396",
+              "https://cdn.shopify.com/s/files/1/2219/3831/files/MN48Croco-dazzle-Box-WEB_b67a5247-11ea-4928-b648-b49f07512aa3.jpg?v=1771508396",
+              "https://cdn.shopify.com/s/files/1/2219/3831/files/MN48Peel-off-Nail-Polish-009-WEB_3ecb2968-e0bf-49e7-8e66-a3d3a3e1bc1a.jpg?v=1771508396",
+              "https://cdn.shopify.com/s/files/1/2219/3831/files/MN48texture-WEB.jpg?v=1771508396",
+              "https://cdn.shopify.com/s/files/1/2219/3831/files/MN48Croco-dazzle-Box-01-WEB.jpg?v=1771508396",
+              "https://cdn.shopify.com/s/files/1/2219/3831/files/MN48Croco-dazzle-Peel-Off-WEB.jpg?v=1771508440",
+              "https://cdn.shopify.com/s/files/1/2219/3831/files/MN-Peel-off-Nail-Polish-002-WEB.jpg?v=1771508662"
+            ],
+            "variant_id": "42852246782210",
+            "description": "💅 Safe, Fun, and Colourful - Let your child’s creativity shine with Miss Nella Nail Polish! This vibrant, non-toxic and kid-friendly polish is perfect for young hands, offering a smooth application and quick drying formula. Whether it’s for a fun playdate, a dress-up session, or just because, this nail polish adds a splash of vibrant colour to any day.",
+            "option_name": "Size",
+            "option_value": "4ml"
+          }
+        },
+        "readiness_tier": "referral_only"
+      },
+      "first_offer": {
+        "offer_id": "offer:external_seed:95f9610d71ccc2ed4b7463b8fca84d4e",
+        "sku_key": "prod::external_seed::external_seed::ext_8c9db1e831c4be15a42fc407::sku_496aa6b7d0014f60798a",
+        "product_key": "prod::external_seed::external_seed::ext_8c9db1e831c4be15a42fc407",
+        "merchant_id": "external_seed",
+        "catalog_track": "external_referral",
+        "truth_tier": "observed",
+        "readiness_tier": "referral_only",
+        "offer_mode": "redirect",
+        "channel": "external_referral",
+        "availability": "in_stock",
+        "currency": "USD",
+        "list_price": 6.49,
+        "merchant_effective_price": 6.49,
+        "estimated_best_price": 6.49,
+        "price_confidence": 1,
+        "source_system": "external_product_seeds_mirror_v1",
+        "source_ref": "eps_c273860486f376342250588c",
+        "source_domain": "missnella.com",
+        "offer_payload": {
+          "source": "external_product_seeds_mirror_v1",
+          "external_seed_id": "eps_c273860486f376342250588c",
+          "external_product_id": "ext_8c9db1e831c4be15a42fc407",
+          "domain": "missnella.com",
+          "market": "US",
+          "product_title": "Croco Dazzle: Sparkly Red Peel Off Nail Polish",
+          "variant_title": "Croco Dazzle: Sparkly Red Peel Off Nail Polish",
+          "variant_sku": "MN48-1",
+          "raw_variant_id": "42852246782210",
+          "url": "https://www.missnella.com/products/croco-dazzle-4ml-peel-off-kids-nail-polish",
+          "offer_url": "https://www.missnella.com/products/croco-dazzle-4ml-peel-off-kids-nail-polish",
+          "canonical_url": "https://www.missnella.com/products/croco-dazzle-4ml-peel-off-kids-nail-polish",
+          "destination_url": "https://www.missnella.com/products/croco-dazzle-4ml-peel-off-kids-nail-polish",
+          "external_redirect_url": "https://www.missnella.com/products/croco-dazzle-4ml-peel-off-kids-nail-polish",
+          "merchant_display_name": "Miss Nella",
+          "price": "6.49",
+          "price_amount": 6.49,
+          "price_currency": "USD",
+          "availability": "in_stock",
+          "commerce_facts_v1": {
+            "contract_version": "commerce_facts.v1",
+            "market_id": "US",
+            "country": "US",
+            "currency_target": "USD",
+            "source_authority": "catalog_extract_v2",
+            "captured_at": "2026-05-18T04:53:59.089Z",
+            "evidence_url": "https://www.missnella.com/products/croco-dazzle-4ml-peel-off-kids-nail-polish",
+            "sellable_region": {
+              "status": "unknown",
+              "countries": [],
+              "evidence_source": "catalog_extract_v2",
+              "confidence": "unknown",
+              "checked_at": "2026-05-18T04:53:59.089Z",
+              "reason_codes": [
+                "shipping_destination_not_verified"
+              ],
+              "evidence_url": "https://www.missnella.com/products/croco-dazzle-4ml-peel-off-kids-nail-polish"
+            },
+            "regional_price": {
+              "amount": 6.49,
+              "currency": "USD",
+              "display_raw": null,
+              "price_type": "unknown",
+              "compare_at_amount": null,
+              "compare_at_currency": null,
+              "compare_at_display_raw": null,
+              "tax_included": "unknown",
+              "confidence": "medium",
+              "market_switch_status": "ok",
+              "observed_currency": "USD",
+              "source_url": "https://www.missnella.com/products/croco-dazzle-4ml-peel-off-kids-nail-polish",
+              "captured_at": "2026-05-18T04:53:59.089Z"
+            },
+            "availability": {
+              "status": "in_stock",
+              "source": "catalog_extract_v2",
+              "confidence": "medium",
+              "captured_at": "2026-05-18T04:53:59.089Z"
+            },
+            "shipping": {
+              "status": "unknown",
+              "source": "catalog_extract_v2",
+              "confidence": "unknown",
+              "reason_codes": [
+                "external_checkout_not_queried"
+              ],
+              "checked_at": "2026-05-18T04:53:59.089Z"
+            },
+            "promotions": [],
+            "returns": {
+              "status": "unknown",
+              "source": "catalog_extract_v2",
+              "confidence": "unknown",
+              "reason_codes": [
+                "external_returns_not_extracted"
+              ],
+              "checked_at": "2026-05-18T04:53:59.089Z"
+            }
+          },
+          "agent_safe_commerce_facts": {
+            "contract_version": "commerce_facts.v1",
+            "market_id": "US",
+            "price": {
+              "amount": 6.49,
+              "currency": "USD",
+              "display_raw": null,
+              "price_type": "unknown",
+              "compare_at_amount": null,
+              "compare_at_currency": null,
+              "compare_at_display_raw": null,
+              "tax_included": "unknown",
+              "confidence": "medium",
+              "market_switch_status": "ok",
+              "observed_currency": "USD",
+              "source_url": "https://www.missnella.com/products/croco-dazzle-4ml-peel-off-kids-nail-polish",
+              "captured_at": "2026-05-18T04:53:59.089Z"
+            },
+            "availability": {
+              "status": "in_stock",
+              "source": "catalog_extract_v2",
+              "confidence": "medium",
+              "captured_at": "2026-05-18T04:53:59.089Z"
+            },
+            "shipping": {
+              "status": "unknown",
+              "reason": "verify_at_checkout"
+            },
+            "promotions": [],
+            "checkout_note": "Shipping and promotions are not verified for this external offer; verify at merchant checkout."
+          }
+        }
+      },
+      "serving_readiness": {
+        "servingEligible": true,
+        "contentQualityScore": 90,
+        "blockerCode": "none",
+        "blockerDetail": null,
+        "identityResolved": true,
+        "identityLiveReadResolved": false,
+        "identityBootstrapEligible": true,
+        "hasImage": true,
+        "hasPrice": true,
+        "descriptionLength": 355
+      }
+    },
+    {
+      "external_product_id": "ext_a9609ad67d8dec79dd0596a1",
+      "product_key": "prod::external_seed::external_seed::ext_a9609ad67d8dec79dd0596a1",
+      "product_group_id": "sig_ba53742b3e733527e4556f89",
+      "title": "Dino-Rific: Metallic Green Peel Off Nail Polish",
+      "brand": "Miss Nella",
+      "product_type": "Nail Polish",
+      "category": "Nail Polish",
+      "category_path": "beauty/makeup/nails/nail-polish",
+      "canonical_url": "https://www.missnella.com/products/dino-rific-4ml-peel-off-kids-nail-polish",
+      "pivota_signature_id": "sig_ba53742b3e733527e4556f89",
+      "sku_rows": 1,
+      "first_sku": {
+        "sku_key": "prod::external_seed::external_seed::ext_a9609ad67d8dec79dd0596a1::sku_8ecf087f2630dbd5f2df",
+        "product_key": "prod::external_seed::external_seed::ext_a9609ad67d8dec79dd0596a1",
+        "merchant_id": "external_seed",
+        "platform": "external_seed",
+        "source_product_id": "ext_a9609ad67d8dec79dd0596a1",
+        "source_variant_id": "ext_a9609ad67d8dec79dd0596a1:42308253745410",
+        "source_domain": "missnella.com",
+        "sku": "MN44-1",
+        "barcode": null,
+        "title": "Dino-Rific: Metallic Green Peel Off Nail Polish",
+        "currency": "USD",
+        "image_url": "https://cdn.shopify.com/s/files/1/2219/3831/files/MN44Dino-rific-Nail-PolishWEB.jpg?v=1771507404",
+        "visible_attributes": {
+          "Size": "4ml"
+        },
+        "visible_option_labels": {
+          "Size": "4ml"
+        },
+        "ingredient_ids": [],
+        "sku_payload": {
+          "source": "external_product_seeds_mirror_v1",
+          "external_product_id": "ext_a9609ad67d8dec79dd0596a1",
+          "raw_variant_id": "42308253745410",
+          "source_variant_id": "ext_a9609ad67d8dec79dd0596a1:42308253745410",
+          "variant_sku": "MN44-1",
+          "barcode": null,
+          "strong_identifier_kind": null,
+          "source_url": "https://www.missnella.com/products/dino-rific-4ml-peel-off-kids-nail-polish",
+          "external_redirect_url": "https://www.missnella.com/products/dino-rific-4ml-peel-off-kids-nail-polish",
+          "price": "6.49",
+          "price_amount": 6.49,
+          "currency": "USD",
+          "availability": "in_stock",
+          "image_url": "https://cdn.shopify.com/s/files/1/2219/3831/files/MN44Dino-rific-Nail-PolishWEB.jpg?v=1771507404",
+          "swatch_image_url": null,
+          "label_image_url": null,
+          "options": {
+            "Size": "4ml"
+          },
+          "raw_variant": {
+            "sku": "MN44-1",
+            "url": "https://www.missnella.com/products/dino-rific-4ml-peel-off-kids-nail-polish",
+            "price": "6.49",
+            "stock": "In Stock",
+            "currency": "USD",
+            "image_url": "https://cdn.shopify.com/s/files/1/2219/3831/files/MN44Dino-rific-Nail-PolishWEB.jpg?v=1771507404",
+            "image_urls": [
+              "https://cdn.shopify.com/s/files/1/2219/3831/files/MN44Dino-rific-Nail-PolishWEB.jpg?v=1771507404",
+              "https://cdn.shopify.com/s/files/1/2219/3831/files/MN44Dino-rific-Model-03-WEB.png?v=1771507404",
+              "https://cdn.shopify.com/s/files/1/2219/3831/files/MN44Dino-rific-01-WEB_3dbb456b-c48f-43e7-a2b5-dde05a3b7693.jpg?v=1771507404",
+              "https://cdn.shopify.com/s/files/1/2219/3831/files/MN44Dino-rific-Box-WEB_b8acb31a-ef9f-4193-8551-011025ef10f4.jpg?v=1771507404",
+              "https://cdn.shopify.com/s/files/1/2219/3831/files/MN44Dino-rific-Peel-Off-WEB.jpg?v=1771507404",
+              "https://cdn.shopify.com/s/files/1/2219/3831/files/MN44Dino-rific-Box-01-WEB.jpg?v=1771507404",
+              "https://cdn.shopify.com/s/files/1/2219/3831/files/MN-Peel-off-Nail-Polish-002-WEB.jpg?v=1771508662"
+            ],
+            "variant_id": "42308253745410",
+            "description": "💅 Safe, Fun, and Colourful - Let your child’s creativity shine with Miss Nella Nail Polish! This vibrant, non-toxic and kid-friendly polish is perfect for young hands, offering a smooth application and quick drying formula. Whether it’s for a fun playdate, a dress-up session, or just because, this nail polish adds a splash of vibrant colour to any day.",
+            "option_name": "Size",
+            "option_value": "4ml"
+          }
+        },
+        "readiness_tier": "referral_only"
+      },
+      "first_offer": {
+        "offer_id": "offer:external_seed:d44408aa7f97f898fcb0210a3f5bdab1",
+        "sku_key": "prod::external_seed::external_seed::ext_a9609ad67d8dec79dd0596a1::sku_8ecf087f2630dbd5f2df",
+        "product_key": "prod::external_seed::external_seed::ext_a9609ad67d8dec79dd0596a1",
+        "merchant_id": "external_seed",
+        "catalog_track": "external_referral",
+        "truth_tier": "observed",
+        "readiness_tier": "referral_only",
+        "offer_mode": "redirect",
+        "channel": "external_referral",
+        "availability": "in_stock",
+        "currency": "USD",
+        "list_price": 6.49,
+        "merchant_effective_price": 6.49,
+        "estimated_best_price": 6.49,
+        "price_confidence": 1,
+        "source_system": "external_product_seeds_mirror_v1",
+        "source_ref": "eps_b69993dac5581bd8b7076f0a",
+        "source_domain": "missnella.com",
+        "offer_payload": {
+          "source": "external_product_seeds_mirror_v1",
+          "external_seed_id": "eps_b69993dac5581bd8b7076f0a",
+          "external_product_id": "ext_a9609ad67d8dec79dd0596a1",
+          "domain": "missnella.com",
+          "market": "US",
+          "product_title": "Dino-Rific: Metallic Green Peel Off Nail Polish",
+          "variant_title": "Dino-Rific: Metallic Green Peel Off Nail Polish",
+          "variant_sku": "MN44-1",
+          "raw_variant_id": "42308253745410",
+          "url": "https://www.missnella.com/products/dino-rific-4ml-peel-off-kids-nail-polish",
+          "offer_url": "https://www.missnella.com/products/dino-rific-4ml-peel-off-kids-nail-polish",
+          "canonical_url": "https://www.missnella.com/products/dino-rific-4ml-peel-off-kids-nail-polish",
+          "destination_url": "https://www.missnella.com/products/dino-rific-4ml-peel-off-kids-nail-polish",
+          "external_redirect_url": "https://www.missnella.com/products/dino-rific-4ml-peel-off-kids-nail-polish",
+          "merchant_display_name": "Miss Nella",
+          "price": "6.49",
+          "price_amount": 6.49,
+          "price_currency": "USD",
+          "availability": "in_stock",
+          "commerce_facts_v1": {
+            "contract_version": "commerce_facts.v1",
+            "market_id": "US",
+            "country": "US",
+            "currency_target": "USD",
+            "source_authority": "catalog_extract_v2",
+            "captured_at": "2026-05-18T04:53:59.089Z",
+            "evidence_url": "https://www.missnella.com/products/dino-rific-4ml-peel-off-kids-nail-polish",
+            "sellable_region": {
+              "status": "unknown",
+              "countries": [],
+              "evidence_source": "catalog_extract_v2",
+              "confidence": "unknown",
+              "checked_at": "2026-05-18T04:53:59.089Z",
+              "reason_codes": [
+                "shipping_destination_not_verified"
+              ],
+              "evidence_url": "https://www.missnella.com/products/dino-rific-4ml-peel-off-kids-nail-polish"
+            },
+            "regional_price": {
+              "amount": 6.49,
+              "currency": "USD",
+              "display_raw": null,
+              "price_type": "unknown",
+              "compare_at_amount": null,
+              "compare_at_currency": null,
+              "compare_at_display_raw": null,
+              "tax_included": "unknown",
+              "confidence": "medium",
+              "market_switch_status": "ok",
+              "observed_currency": "USD",
+              "source_url": "https://www.missnella.com/products/dino-rific-4ml-peel-off-kids-nail-polish",
+              "captured_at": "2026-05-18T04:53:59.089Z"
+            },
+            "availability": {
+              "status": "in_stock",
+              "source": "catalog_extract_v2",
+              "confidence": "medium",
+              "captured_at": "2026-05-18T04:53:59.089Z"
+            },
+            "shipping": {
+              "status": "unknown",
+              "source": "catalog_extract_v2",
+              "confidence": "unknown",
+              "reason_codes": [
+                "external_checkout_not_queried"
+              ],
+              "checked_at": "2026-05-18T04:53:59.089Z"
+            },
+            "promotions": [],
+            "returns": {
+              "status": "unknown",
+              "source": "catalog_extract_v2",
+              "confidence": "unknown",
+              "reason_codes": [
+                "external_returns_not_extracted"
+              ],
+              "checked_at": "2026-05-18T04:53:59.089Z"
+            }
+          },
+          "agent_safe_commerce_facts": {
+            "contract_version": "commerce_facts.v1",
+            "market_id": "US",
+            "price": {
+              "amount": 6.49,
+              "currency": "USD",
+              "display_raw": null,
+              "price_type": "unknown",
+              "compare_at_amount": null,
+              "compare_at_currency": null,
+              "compare_at_display_raw": null,
+              "tax_included": "unknown",
+              "confidence": "medium",
+              "market_switch_status": "ok",
+              "observed_currency": "USD",
+              "source_url": "https://www.missnella.com/products/dino-rific-4ml-peel-off-kids-nail-polish",
+              "captured_at": "2026-05-18T04:53:59.089Z"
+            },
+            "availability": {
+              "status": "in_stock",
+              "source": "catalog_extract_v2",
+              "confidence": "medium",
+              "captured_at": "2026-05-18T04:53:59.089Z"
+            },
+            "shipping": {
+              "status": "unknown",
+              "reason": "verify_at_checkout"
+            },
+            "promotions": [],
+            "checkout_note": "Shipping and promotions are not verified for this external offer; verify at merchant checkout."
+          }
+        }
+      },
+      "serving_readiness": {
+        "servingEligible": true,
+        "contentQualityScore": 90,
+        "blockerCode": "none",
+        "blockerDetail": null,
+        "identityResolved": true,
+        "identityLiveReadResolved": false,
+        "identityBootstrapEligible": true,
+        "hasImage": true,
+        "hasPrice": true,
+        "descriptionLength": 355
+      }
+    },
+    {
+      "external_product_id": "ext_234ad22c62387afe966d0832",
+      "product_key": "prod::external_seed::external_seed::ext_234ad22c62387afe966d0832",
+      "product_group_id": "sig_bb9e28f15c58a7aa0b5fe5d4",
+      "title": "Diplodo-Kiss: Metallic Pink Peel Off Nail Polish",
+      "brand": "Miss Nella",
+      "product_type": "Nail Polish",
+      "category": "Nail Polish",
+      "category_path": "beauty/makeup/nails/nail-polish",
+      "canonical_url": "https://www.missnella.com/products/diplodo-kiss-4ml-peel-off-kids-nail-polish",
+      "pivota_signature_id": "sig_bb9e28f15c58a7aa0b5fe5d4",
+      "sku_rows": 1,
+      "first_sku": {
+        "sku_key": "prod::external_seed::external_seed::ext_234ad22c62387afe966d0832::sku_74bb7b13721d285a8ee8",
+        "product_key": "prod::external_seed::external_seed::ext_234ad22c62387afe966d0832",
+        "merchant_id": "external_seed",
+        "platform": "external_seed",
+        "source_product_id": "ext_234ad22c62387afe966d0832",
+        "source_variant_id": "ext_234ad22c62387afe966d0832:42308244930818",
+        "source_domain": "missnella.com",
+        "sku": "MN42-1",
+        "barcode": null,
+        "title": "Diplodo-Kiss: Metallic Pink Peel Off Nail Polish",
+        "currency": "USD",
+        "image_url": "https://cdn.shopify.com/s/files/1/2219/3831/files/MN42Diplodo-kiss-WEB.jpg?v=1771507253",
+        "visible_attributes": {
+          "Size": "4ml"
+        },
+        "visible_option_labels": {
+          "Size": "4ml"
+        },
+        "ingredient_ids": [],
+        "sku_payload": {
+          "source": "external_product_seeds_mirror_v1",
+          "external_product_id": "ext_234ad22c62387afe966d0832",
+          "raw_variant_id": "42308244930818",
+          "source_variant_id": "ext_234ad22c62387afe966d0832:42308244930818",
+          "variant_sku": "MN42-1",
+          "barcode": null,
+          "strong_identifier_kind": null,
+          "source_url": "https://www.missnella.com/products/diplodo-kiss-4ml-peel-off-kids-nail-polish",
+          "external_redirect_url": "https://www.missnella.com/products/diplodo-kiss-4ml-peel-off-kids-nail-polish",
+          "price": "6.49",
+          "price_amount": 6.49,
+          "currency": "USD",
+          "availability": "in_stock",
+          "image_url": "https://cdn.shopify.com/s/files/1/2219/3831/files/MN42Diplodo-kiss-WEB.jpg?v=1771507253",
+          "swatch_image_url": null,
+          "label_image_url": null,
+          "options": {
+            "Size": "4ml"
+          },
+          "raw_variant": {
+            "sku": "MN42-1",
+            "url": "https://www.missnella.com/products/diplodo-kiss-4ml-peel-off-kids-nail-polish",
+            "price": "6.49",
+            "stock": "In Stock",
+            "currency": "USD",
+            "image_url": "https://cdn.shopify.com/s/files/1/2219/3831/files/MN42Diplodo-kiss-WEB.jpg?v=1771507253",
+            "image_urls": [
+              "https://cdn.shopify.com/s/files/1/2219/3831/files/MN42Diplodo-kiss-WEB.jpg?v=1771507253",
+              "https://cdn.shopify.com/s/files/1/2219/3831/files/MN42Diplodo-kiss-Maodel-01-WEB.png?v=1771507253",
+              "https://cdn.shopify.com/s/files/1/2219/3831/files/MN42Diplodo-kiss-Peel-Off-WEB.jpg?v=1771507253",
+              "https://cdn.shopify.com/s/files/1/2219/3831/files/MN42Diplodo-kiss-01-WEB.jpg?v=1771507253",
+              "https://cdn.shopify.com/s/files/1/2219/3831/files/MN42Diplodo-kiss-Box-WEB_fecb0999-4ebc-4739-8758-e92e427c36bc.jpg?v=1771507211",
+              "https://cdn.shopify.com/s/files/1/2219/3831/files/MN42Diplodo-kiss-Box-01-WEB.jpg?v=1771507211",
+              "https://cdn.shopify.com/s/files/1/2219/3831/files/MN-Peel-off-Nail-Polish-002-WEB.jpg?v=1771508662"
+            ],
+            "variant_id": "42308244930818",
+            "description": "💅 Safe, Fun, and Colourful - Let your child’s creativity shine with Miss Nella Nail Polish! This vibrant, non-toxic and kid-friendly polish is perfect for young hands, offering a smooth application and quick drying formula. Whether it’s for a fun playdate, a dress-up session, or just because, this nail polish adds a splash of vibrant colour to any day.",
+            "option_name": "Size",
+            "option_value": "4ml"
+          }
+        },
+        "readiness_tier": "referral_only"
+      },
+      "first_offer": {
+        "offer_id": "offer:external_seed:1f92ff938e6bf1be431dd7050f3c0931",
+        "sku_key": "prod::external_seed::external_seed::ext_234ad22c62387afe966d0832::sku_74bb7b13721d285a8ee8",
+        "product_key": "prod::external_seed::external_seed::ext_234ad22c62387afe966d0832",
+        "merchant_id": "external_seed",
+        "catalog_track": "external_referral",
+        "truth_tier": "observed",
+        "readiness_tier": "referral_only",
+        "offer_mode": "redirect",
+        "channel": "external_referral",
+        "availability": "in_stock",
+        "currency": "USD",
+        "list_price": 6.49,
+        "merchant_effective_price": 6.49,
+        "estimated_best_price": 6.49,
+        "price_confidence": 1,
+        "source_system": "external_product_seeds_mirror_v1",
+        "source_ref": "eps_2f15ba2e6623bfc23281476a",
+        "source_domain": "missnella.com",
+        "offer_payload": {
+          "source": "external_product_seeds_mirror_v1",
+          "external_seed_id": "eps_2f15ba2e6623bfc23281476a",
+          "external_product_id": "ext_234ad22c62387afe966d0832",
+          "domain": "missnella.com",
+          "market": "US",
+          "product_title": "Diplodo-Kiss: Metallic Pink Peel Off Nail Polish",
+          "variant_title": "Diplodo-Kiss: Metallic Pink Peel Off Nail Polish",
+          "variant_sku": "MN42-1",
+          "raw_variant_id": "42308244930818",
+          "url": "https://www.missnella.com/products/diplodo-kiss-4ml-peel-off-kids-nail-polish",
+          "offer_url": "https://www.missnella.com/products/diplodo-kiss-4ml-peel-off-kids-nail-polish",
+          "canonical_url": "https://www.missnella.com/products/diplodo-kiss-4ml-peel-off-kids-nail-polish",
+          "destination_url": "https://www.missnella.com/products/diplodo-kiss-4ml-peel-off-kids-nail-polish",
+          "external_redirect_url": "https://www.missnella.com/products/diplodo-kiss-4ml-peel-off-kids-nail-polish",
+          "merchant_display_name": "Miss Nella",
+          "price": "6.49",
+          "price_amount": 6.49,
+          "price_currency": "USD",
+          "availability": "in_stock",
+          "commerce_facts_v1": {
+            "contract_version": "commerce_facts.v1",
+            "market_id": "US",
+            "country": "US",
+            "currency_target": "USD",
+            "source_authority": "catalog_extract_v2",
+            "captured_at": "2026-05-18T04:53:59.089Z",
+            "evidence_url": "https://www.missnella.com/products/diplodo-kiss-4ml-peel-off-kids-nail-polish",
+            "sellable_region": {
+              "status": "unknown",
+              "countries": [],
+              "evidence_source": "catalog_extract_v2",
+              "confidence": "unknown",
+              "checked_at": "2026-05-18T04:53:59.089Z",
+              "reason_codes": [
+                "shipping_destination_not_verified"
+              ],
+              "evidence_url": "https://www.missnella.com/products/diplodo-kiss-4ml-peel-off-kids-nail-polish"
+            },
+            "regional_price": {
+              "amount": 6.49,
+              "currency": "USD",
+              "display_raw": null,
+              "price_type": "unknown",
+              "compare_at_amount": null,
+              "compare_at_currency": null,
+              "compare_at_display_raw": null,
+              "tax_included": "unknown",
+              "confidence": "medium",
+              "market_switch_status": "ok",
+              "observed_currency": "USD",
+              "source_url": "https://www.missnella.com/products/diplodo-kiss-4ml-peel-off-kids-nail-polish",
+              "captured_at": "2026-05-18T04:53:59.089Z"
+            },
+            "availability": {
+              "status": "in_stock",
+              "source": "catalog_extract_v2",
+              "confidence": "medium",
+              "captured_at": "2026-05-18T04:53:59.089Z"
+            },
+            "shipping": {
+              "status": "unknown",
+              "source": "catalog_extract_v2",
+              "confidence": "unknown",
+              "reason_codes": [
+                "external_checkout_not_queried"
+              ],
+              "checked_at": "2026-05-18T04:53:59.089Z"
+            },
+            "promotions": [],
+            "returns": {
+              "status": "unknown",
+              "source": "catalog_extract_v2",
+              "confidence": "unknown",
+              "reason_codes": [
+                "external_returns_not_extracted"
+              ],
+              "checked_at": "2026-05-18T04:53:59.089Z"
+            }
+          },
+          "agent_safe_commerce_facts": {
+            "contract_version": "commerce_facts.v1",
+            "market_id": "US",
+            "price": {
+              "amount": 6.49,
+              "currency": "USD",
+              "display_raw": null,
+              "price_type": "unknown",
+              "compare_at_amount": null,
+              "compare_at_currency": null,
+              "compare_at_display_raw": null,
+              "tax_included": "unknown",
+              "confidence": "medium",
+              "market_switch_status": "ok",
+              "observed_currency": "USD",
+              "source_url": "https://www.missnella.com/products/diplodo-kiss-4ml-peel-off-kids-nail-polish",
+              "captured_at": "2026-05-18T04:53:59.089Z"
+            },
+            "availability": {
+              "status": "in_stock",
+              "source": "catalog_extract_v2",
+              "confidence": "medium",
+              "captured_at": "2026-05-18T04:53:59.089Z"
+            },
+            "shipping": {
+              "status": "unknown",
+              "reason": "verify_at_checkout"
+            },
+            "promotions": [],
+            "checkout_note": "Shipping and promotions are not verified for this external offer; verify at merchant checkout."
+          }
+        }
+      },
+      "serving_readiness": {
+        "servingEligible": true,
+        "contentQualityScore": 90,
+        "blockerCode": "none",
+        "blockerDetail": null,
+        "identityResolved": true,
+        "identityLiveReadResolved": false,
+        "identityBootstrapEligible": true,
+        "hasImage": true,
+        "hasPrice": true,
+        "descriptionLength": 355
+      }
+    },
+    {
+      "external_product_id": "ext_ff5b7bfbff65eed0ceb7e3df",
+      "product_key": "prod::external_seed::external_seed::ext_ff5b7bfbff65eed0ceb7e3df",
+      "product_group_id": "sig_7c24cfd2aec16275143c87df",
+      "title": "Elephunky: Sparkly Blue Peel Off Nail Polish",
+      "brand": "Miss Nella",
+      "product_type": "Nail Polish",
+      "category": "Nail Polish",
+      "category_path": "beauty/makeup/nails/nail-polish",
+      "canonical_url": "https://www.missnella.com/products/elephunky-4ml-peel-off-kids-nail-polish",
+      "pivota_signature_id": "sig_7c24cfd2aec16275143c87df",
+      "sku_rows": 1,
+      "first_sku": {
+        "sku_key": "prod::external_seed::external_seed::ext_ff5b7bfbff65eed0ceb7e3df::sku_d5b460069ab48aae1091",
+        "product_key": "prod::external_seed::external_seed::ext_ff5b7bfbff65eed0ceb7e3df",
+        "merchant_id": "external_seed",
+        "platform": "external_seed",
+        "source_product_id": "ext_ff5b7bfbff65eed0ceb7e3df",
+        "source_variant_id": "ext_ff5b7bfbff65eed0ceb7e3df:42852230365442",
+        "source_domain": "missnella.com",
+        "sku": "MN46-1",
+        "barcode": null,
+        "title": "Elephunky: Sparkly Blue Peel Off Nail Polish",
+        "currency": "USD",
+        "image_url": "https://cdn.shopify.com/s/files/1/2219/3831/files/MN46ElephunkyWEB.jpg?v=1771508164",
+        "visible_attributes": {
+          "Size": "4ml"
+        },
+        "visible_option_labels": {
+          "Size": "4ml"
+        },
+        "ingredient_ids": [],
+        "sku_payload": {
+          "source": "external_product_seeds_mirror_v1",
+          "external_product_id": "ext_ff5b7bfbff65eed0ceb7e3df",
+          "raw_variant_id": "42852230365442",
+          "source_variant_id": "ext_ff5b7bfbff65eed0ceb7e3df:42852230365442",
+          "variant_sku": "MN46-1",
+          "barcode": null,
+          "strong_identifier_kind": null,
+          "source_url": "https://www.missnella.com/products/elephunky-4ml-peel-off-kids-nail-polish",
+          "external_redirect_url": "https://www.missnella.com/products/elephunky-4ml-peel-off-kids-nail-polish",
+          "price": "6.49",
+          "price_amount": 6.49,
+          "currency": "USD",
+          "availability": "in_stock",
+          "image_url": "https://cdn.shopify.com/s/files/1/2219/3831/files/MN46ElephunkyWEB.jpg?v=1771508164",
+          "swatch_image_url": null,
+          "label_image_url": null,
+          "options": {
+            "Size": "4ml"
+          },
+          "raw_variant": {
+            "sku": "MN46-1",
+            "url": "https://www.missnella.com/products/elephunky-4ml-peel-off-kids-nail-polish",
+            "price": "6.49",
+            "stock": "In Stock",
+            "currency": "USD",
+            "image_url": "https://cdn.shopify.com/s/files/1/2219/3831/files/MN46ElephunkyWEB.jpg?v=1771508164",
+            "image_urls": [
+              "https://cdn.shopify.com/s/files/1/2219/3831/files/MN46ElephunkyWEB.jpg?v=1771508164",
+              "https://cdn.shopify.com/s/files/1/2219/3831/files/MN46Elephunky-4-WEB.jpg?v=1771508164",
+              "https://cdn.shopify.com/s/files/1/2219/3831/files/MN46Elephunky-01-WEB.jpg?v=1771508164",
+              "https://cdn.shopify.com/s/files/1/2219/3831/files/MN46Elephunky-Box-WEB_89152334-518c-49d3-970d-ceb7ddea5c17.jpg?v=1771508125",
+              "https://cdn.shopify.com/s/files/1/2219/3831/files/MN46Elephunky-Peel-Off-WEB.jpg?v=1771508125",
+              "https://cdn.shopify.com/s/files/1/2219/3831/files/MN46Elephunky-Box-01-WEB.jpg?v=1771508125",
+              "https://cdn.shopify.com/s/files/1/2219/3831/files/MN-Peel-off-Nail-Polish-002-WEB.jpg?v=1771508662"
+            ],
+            "variant_id": "42852230365442",
+            "description": "💅 Safe, Fun, and Colourful - Let your child’s creativity shine with Miss Nella Nail Polish! This vibrant, non-toxic and kid-friendly polish is perfect for young hands, offering a smooth application and quick drying formula. Whether it’s for a fun playdate, a dress-up session, or just because, this nail polish adds a splash of vibrant colour to any day.",
+            "option_name": "Size",
+            "option_value": "4ml"
+          }
+        },
+        "readiness_tier": "referral_only"
+      },
+      "first_offer": {
+        "offer_id": "offer:external_seed:eaa013f88b394c8af24dfd35d46d1913",
+        "sku_key": "prod::external_seed::external_seed::ext_ff5b7bfbff65eed0ceb7e3df::sku_d5b460069ab48aae1091",
+        "product_key": "prod::external_seed::external_seed::ext_ff5b7bfbff65eed0ceb7e3df",
+        "merchant_id": "external_seed",
+        "catalog_track": "external_referral",
+        "truth_tier": "observed",
+        "readiness_tier": "referral_only",
+        "offer_mode": "redirect",
+        "channel": "external_referral",
+        "availability": "in_stock",
+        "currency": "USD",
+        "list_price": 6.49,
+        "merchant_effective_price": 6.49,
+        "estimated_best_price": 6.49,
+        "price_confidence": 1,
+        "source_system": "external_product_seeds_mirror_v1",
+        "source_ref": "eps_9f892dbb6095174adf365b7f",
+        "source_domain": "missnella.com",
+        "offer_payload": {
+          "source": "external_product_seeds_mirror_v1",
+          "external_seed_id": "eps_9f892dbb6095174adf365b7f",
+          "external_product_id": "ext_ff5b7bfbff65eed0ceb7e3df",
+          "domain": "missnella.com",
+          "market": "US",
+          "product_title": "Elephunky: Sparkly Blue Peel Off Nail Polish",
+          "variant_title": "Elephunky: Sparkly Blue Peel Off Nail Polish",
+          "variant_sku": "MN46-1",
+          "raw_variant_id": "42852230365442",
+          "url": "https://www.missnella.com/products/elephunky-4ml-peel-off-kids-nail-polish",
+          "offer_url": "https://www.missnella.com/products/elephunky-4ml-peel-off-kids-nail-polish",
+          "canonical_url": "https://www.missnella.com/products/elephunky-4ml-peel-off-kids-nail-polish",
+          "destination_url": "https://www.missnella.com/products/elephunky-4ml-peel-off-kids-nail-polish",
+          "external_redirect_url": "https://www.missnella.com/products/elephunky-4ml-peel-off-kids-nail-polish",
+          "merchant_display_name": "Miss Nella",
+          "price": "6.49",
+          "price_amount": 6.49,
+          "price_currency": "USD",
+          "availability": "in_stock",
+          "commerce_facts_v1": {
+            "contract_version": "commerce_facts.v1",
+            "market_id": "US",
+            "country": "US",
+            "currency_target": "USD",
+            "source_authority": "catalog_extract_v2",
+            "captured_at": "2026-05-18T04:53:59.089Z",
+            "evidence_url": "https://www.missnella.com/products/elephunky-4ml-peel-off-kids-nail-polish",
+            "sellable_region": {
+              "status": "unknown",
+              "countries": [],
+              "evidence_source": "catalog_extract_v2",
+              "confidence": "unknown",
+              "checked_at": "2026-05-18T04:53:59.089Z",
+              "reason_codes": [
+                "shipping_destination_not_verified"
+              ],
+              "evidence_url": "https://www.missnella.com/products/elephunky-4ml-peel-off-kids-nail-polish"
+            },
+            "regional_price": {
+              "amount": 6.49,
+              "currency": "USD",
+              "display_raw": null,
+              "price_type": "unknown",
+              "compare_at_amount": null,
+              "compare_at_currency": null,
+              "compare_at_display_raw": null,
+              "tax_included": "unknown",
+              "confidence": "medium",
+              "market_switch_status": "ok",
+              "observed_currency": "USD",
+              "source_url": "https://www.missnella.com/products/elephunky-4ml-peel-off-kids-nail-polish",
+              "captured_at": "2026-05-18T04:53:59.089Z"
+            },
+            "availability": {
+              "status": "in_stock",
+              "source": "catalog_extract_v2",
+              "confidence": "medium",
+              "captured_at": "2026-05-18T04:53:59.089Z"
+            },
+            "shipping": {
+              "status": "unknown",
+              "source": "catalog_extract_v2",
+              "confidence": "unknown",
+              "reason_codes": [
+                "external_checkout_not_queried"
+              ],
+              "checked_at": "2026-05-18T04:53:59.089Z"
+            },
+            "promotions": [],
+            "returns": {
+              "status": "unknown",
+              "source": "catalog_extract_v2",
+              "confidence": "unknown",
+              "reason_codes": [
+                "external_returns_not_extracted"
+              ],
+              "checked_at": "2026-05-18T04:53:59.089Z"
+            }
+          },
+          "agent_safe_commerce_facts": {
+            "contract_version": "commerce_facts.v1",
+            "market_id": "US",
+            "price": {
+              "amount": 6.49,
+              "currency": "USD",
+              "display_raw": null,
+              "price_type": "unknown",
+              "compare_at_amount": null,
+              "compare_at_currency": null,
+              "compare_at_display_raw": null,
+              "tax_included": "unknown",
+              "confidence": "medium",
+              "market_switch_status": "ok",
+              "observed_currency": "USD",
+              "source_url": "https://www.missnella.com/products/elephunky-4ml-peel-off-kids-nail-polish",
+              "captured_at": "2026-05-18T04:53:59.089Z"
+            },
+            "availability": {
+              "status": "in_stock",
+              "source": "catalog_extract_v2",
+              "confidence": "medium",
+              "captured_at": "2026-05-18T04:53:59.089Z"
+            },
+            "shipping": {
+              "status": "unknown",
+              "reason": "verify_at_checkout"
+            },
+            "promotions": [],
+            "checkout_note": "Shipping and promotions are not verified for this external offer; verify at merchant checkout."
+          }
+        }
+      },
+      "serving_readiness": {
+        "servingEligible": true,
+        "contentQualityScore": 90,
+        "blockerCode": "none",
+        "blockerDetail": null,
+        "identityResolved": true,
+        "identityLiveReadResolved": false,
+        "identityBootstrapEligible": true,
+        "hasImage": true,
+        "hasPrice": true,
+        "descriptionLength": 355
+      }
+    },
+    {
+      "external_product_id": "ext_3efab0751a9f85bbdcb72388",
+      "product_key": "prod::external_seed::external_seed::ext_3efab0751a9f85bbdcb72388",
+      "product_group_id": "sig_17e17275912c640d2132c744",
+      "title": "Galactic Unicorn: Chrome Purple Peel Off Nail Polish",
+      "brand": "Miss Nella",
+      "product_type": "Nail Polish",
+      "category": "Nail Polish",
+      "category_path": "beauty/makeup/nails/nail-polish",
+      "canonical_url": "https://www.missnella.com/products/galactic-unicorn-4ml-peel-off-kids-nail-polish",
+      "pivota_signature_id": "sig_17e17275912c640d2132c744",
+      "sku_rows": 1,
+      "first_sku": {
+        "sku_key": "prod::external_seed::external_seed::ext_3efab0751a9f85bbdcb72388::sku_8803bb274976c7864d23",
+        "product_key": "prod::external_seed::external_seed::ext_3efab0751a9f85bbdcb72388",
+        "merchant_id": "external_seed",
+        "platform": "external_seed",
+        "source_product_id": "ext_3efab0751a9f85bbdcb72388",
+        "source_variant_id": "ext_3efab0751a9f85bbdcb72388:41123899965614",
+        "source_domain": "missnella.com",
+        "sku": "MN38-1",
+        "barcode": null,
+        "title": "Galactic Unicorn: Chrome Purple Peel Off Nail Polish",
+        "currency": "USD",
+        "image_url": "https://cdn.shopify.com/s/files/1/2219/3831/files/MN38_Galactic_Unicorn_21c17f45-a307-4919-b09f-2f0e5fff127a.jpg?v=1771504117",
+        "visible_attributes": {
+          "Size": "4ml"
+        },
+        "visible_option_labels": {
+          "Size": "4ml"
+        },
+        "ingredient_ids": [],
+        "sku_payload": {
+          "source": "external_product_seeds_mirror_v1",
+          "external_product_id": "ext_3efab0751a9f85bbdcb72388",
+          "raw_variant_id": "41123899965614",
+          "source_variant_id": "ext_3efab0751a9f85bbdcb72388:41123899965614",
+          "variant_sku": "MN38-1",
+          "barcode": null,
+          "strong_identifier_kind": null,
+          "source_url": "https://www.missnella.com/products/galactic-unicorn-4ml-peel-off-kids-nail-polish",
+          "external_redirect_url": "https://www.missnella.com/products/galactic-unicorn-4ml-peel-off-kids-nail-polish",
+          "price": "6.49",
+          "price_amount": 6.49,
+          "currency": "USD",
+          "availability": "in_stock",
+          "image_url": "https://cdn.shopify.com/s/files/1/2219/3831/files/MN38_Galactic_Unicorn_21c17f45-a307-4919-b09f-2f0e5fff127a.jpg?v=1771504117",
+          "swatch_image_url": null,
+          "label_image_url": null,
+          "options": {
+            "Size": "4ml"
+          },
+          "raw_variant": {
+            "sku": "MN38-1",
+            "url": "https://www.missnella.com/products/galactic-unicorn-4ml-peel-off-kids-nail-polish",
+            "price": "6.49",
+            "stock": "In Stock",
+            "currency": "USD",
+            "image_url": "https://cdn.shopify.com/s/files/1/2219/3831/files/MN38_Galactic_Unicorn_21c17f45-a307-4919-b09f-2f0e5fff127a.jpg?v=1771504117",
+            "image_urls": [
+              "https://cdn.shopify.com/s/files/1/2219/3831/files/MN38_Galactic_Unicorn_21c17f45-a307-4919-b09f-2f0e5fff127a.jpg?v=1771504117",
+              "https://cdn.shopify.com/s/files/1/2219/3831/files/MN38GalacticUnicorn-01-WEB.jpg?v=1771504117",
+              "https://cdn.shopify.com/s/files/1/2219/3831/files/MN38GalacticUnicorn-Box-WEB_bb63d65c-324f-42ef-a072-7a228fa449e0.jpg?v=1771504060",
+              "https://cdn.shopify.com/s/files/1/2219/3831/files/MN38GalacticUnicorn-Peel-Off-WEB.jpg?v=1771504060",
+              "https://cdn.shopify.com/s/files/1/2219/3831/files/MN38GalacticUnicorn-Box-01-WEB.jpg?v=1771504060",
+              "https://cdn.shopify.com/s/files/1/2219/3831/files/MN-Peel-off-Nail-Polish-002-WEB.jpg?v=1771508662"
+            ],
+            "variant_id": "41123899965614",
+            "description": "💅 Safe, Fun, and Colourful - Let your child’s creativity shine with Miss Nella Nail Polish! This vibrant, non-toxic and kid-friendly polish is perfect for young hands, offering a smooth application and quick drying formula. Whether it’s for a fun playdate, a dress-up session, or just because, this nail polish adds a splash of vibrant colour to any day.",
+            "option_name": "Size",
+            "option_value": "4ml"
+          }
+        },
+        "readiness_tier": "referral_only"
+      },
+      "first_offer": {
+        "offer_id": "offer:external_seed:339299ab804e575bd634e5ae808d9326",
+        "sku_key": "prod::external_seed::external_seed::ext_3efab0751a9f85bbdcb72388::sku_8803bb274976c7864d23",
+        "product_key": "prod::external_seed::external_seed::ext_3efab0751a9f85bbdcb72388",
+        "merchant_id": "external_seed",
+        "catalog_track": "external_referral",
+        "truth_tier": "observed",
+        "readiness_tier": "referral_only",
+        "offer_mode": "redirect",
+        "channel": "external_referral",
+        "availability": "in_stock",
+        "currency": "USD",
+        "list_price": 6.49,
+        "merchant_effective_price": 6.49,
+        "estimated_best_price": 6.49,
+        "price_confidence": 1,
+        "source_system": "external_product_seeds_mirror_v1",
+        "source_ref": "eps_700f5b3beec5707f874974ce",
+        "source_domain": "missnella.com",
+        "offer_payload": {
+          "source": "external_product_seeds_mirror_v1",
+          "external_seed_id": "eps_700f5b3beec5707f874974ce",
+          "external_product_id": "ext_3efab0751a9f85bbdcb72388",
+          "domain": "missnella.com",
+          "market": "US",
+          "product_title": "Galactic Unicorn: Chrome Purple Peel Off Nail Polish",
+          "variant_title": "Galactic Unicorn: Chrome Purple Peel Off Nail Polish",
+          "variant_sku": "MN38-1",
+          "raw_variant_id": "41123899965614",
+          "url": "https://www.missnella.com/products/galactic-unicorn-4ml-peel-off-kids-nail-polish",
+          "offer_url": "https://www.missnella.com/products/galactic-unicorn-4ml-peel-off-kids-nail-polish",
+          "canonical_url": "https://www.missnella.com/products/galactic-unicorn-4ml-peel-off-kids-nail-polish",
+          "destination_url": "https://www.missnella.com/products/galactic-unicorn-4ml-peel-off-kids-nail-polish",
+          "external_redirect_url": "https://www.missnella.com/products/galactic-unicorn-4ml-peel-off-kids-nail-polish",
+          "merchant_display_name": "Miss Nella",
+          "price": "6.49",
+          "price_amount": 6.49,
+          "price_currency": "USD",
+          "availability": "in_stock",
+          "commerce_facts_v1": {
+            "contract_version": "commerce_facts.v1",
+            "market_id": "US",
+            "country": "US",
+            "currency_target": "USD",
+            "source_authority": "catalog_extract_v2",
+            "captured_at": "2026-05-18T04:53:59.090Z",
+            "evidence_url": "https://www.missnella.com/products/galactic-unicorn-4ml-peel-off-kids-nail-polish",
+            "sellable_region": {
+              "status": "unknown",
+              "countries": [],
+              "evidence_source": "catalog_extract_v2",
+              "confidence": "unknown",
+              "checked_at": "2026-05-18T04:53:59.090Z",
+              "reason_codes": [
+                "shipping_destination_not_verified"
+              ],
+              "evidence_url": "https://www.missnella.com/products/galactic-unicorn-4ml-peel-off-kids-nail-polish"
+            },
+            "regional_price": {
+              "amount": 6.49,
+              "currency": "USD",
+              "display_raw": null,
+              "price_type": "unknown",
+              "compare_at_amount": null,
+              "compare_at_currency": null,
+              "compare_at_display_raw": null,
+              "tax_included": "unknown",
+              "confidence": "medium",
+              "market_switch_status": "ok",
+              "observed_currency": "USD",
+              "source_url": "https://www.missnella.com/products/galactic-unicorn-4ml-peel-off-kids-nail-polish",
+              "captured_at": "2026-05-18T04:53:59.090Z"
+            },
+            "availability": {
+              "status": "in_stock",
+              "source": "catalog_extract_v2",
+              "confidence": "medium",
+              "captured_at": "2026-05-18T04:53:59.090Z"
+            },
+            "shipping": {
+              "status": "unknown",
+              "source": "catalog_extract_v2",
+              "confidence": "unknown",
+              "reason_codes": [
+                "external_checkout_not_queried"
+              ],
+              "checked_at": "2026-05-18T04:53:59.090Z"
+            },
+            "promotions": [],
+            "returns": {
+              "status": "unknown",
+              "source": "catalog_extract_v2",
+              "confidence": "unknown",
+              "reason_codes": [
+                "external_returns_not_extracted"
+              ],
+              "checked_at": "2026-05-18T04:53:59.090Z"
+            }
+          },
+          "agent_safe_commerce_facts": {
+            "contract_version": "commerce_facts.v1",
+            "market_id": "US",
+            "price": {
+              "amount": 6.49,
+              "currency": "USD",
+              "display_raw": null,
+              "price_type": "unknown",
+              "compare_at_amount": null,
+              "compare_at_currency": null,
+              "compare_at_display_raw": null,
+              "tax_included": "unknown",
+              "confidence": "medium",
+              "market_switch_status": "ok",
+              "observed_currency": "USD",
+              "source_url": "https://www.missnella.com/products/galactic-unicorn-4ml-peel-off-kids-nail-polish",
+              "captured_at": "2026-05-18T04:53:59.090Z"
+            },
+            "availability": {
+              "status": "in_stock",
+              "source": "catalog_extract_v2",
+              "confidence": "medium",
+              "captured_at": "2026-05-18T04:53:59.090Z"
+            },
+            "shipping": {
+              "status": "unknown",
+              "reason": "verify_at_checkout"
+            },
+            "promotions": [],
+            "checkout_note": "Shipping and promotions are not verified for this external offer; verify at merchant checkout."
+          }
+        }
+      },
+      "serving_readiness": {
+        "servingEligible": true,
+        "contentQualityScore": 90,
+        "blockerCode": "none",
+        "blockerDetail": null,
+        "identityResolved": true,
+        "identityLiveReadResolved": false,
+        "identityBootstrapEligible": true,
+        "hasImage": true,
+        "hasPrice": true,
+        "descriptionLength": 355
+      }
+    },
+    {
+      "external_product_id": "ext_428194a391e38b8c6c5c5a1b",
+      "product_key": "prod::external_seed::external_seed::ext_428194a391e38b8c6c5c5a1b",
+      "product_group_id": "sig_66bdaddb6b57ded594f54004",
+      "title": "If The Shoe Fits: Gold Fine Glitter Peel Off Nail Polish",
+      "brand": "Miss Nella",
+      "product_type": "Nail Polish",
+      "category": "Nail Polish",
+      "category_path": "beauty/makeup/nails/nail-polish",
+      "canonical_url": "https://www.missnella.com/products/if-the-shoe-fits-4ml-peel-off-kids-nail-polish",
+      "pivota_signature_id": "sig_66bdaddb6b57ded594f54004",
+      "sku_rows": 1,
+      "first_sku": {
+        "sku_key": "prod::external_seed::external_seed::ext_428194a391e38b8c6c5c5a1b::sku_f4d1282b8aa2ab027adb",
+        "product_key": "prod::external_seed::external_seed::ext_428194a391e38b8c6c5c5a1b",
+        "merchant_id": "external_seed",
+        "platform": "external_seed",
+        "source_product_id": "ext_428194a391e38b8c6c5c5a1b",
+        "source_variant_id": "ext_428194a391e38b8c6c5c5a1b:42852252877058",
+        "source_domain": "missnella.com",
+        "sku": "MN51-1",
+        "barcode": null,
+        "title": "If The Shoe Fits: Gold Fine Glitter Peel Off Nail Polish",
+        "currency": "USD",
+        "image_url": "https://cdn.shopify.com/s/files/1/2219/3831/files/MN51_If_The_Shoe_fits_new_label_594fea91-d793-46dc-add1-dc9627b56780.jpg?v=1771508662",
+        "visible_attributes": {
+          "Size": "4ml"
+        },
+        "visible_option_labels": {
+          "Size": "4ml"
+        },
+        "ingredient_ids": [],
+        "sku_payload": {
+          "source": "external_product_seeds_mirror_v1",
+          "external_product_id": "ext_428194a391e38b8c6c5c5a1b",
+          "raw_variant_id": "42852252877058",
+          "source_variant_id": "ext_428194a391e38b8c6c5c5a1b:42852252877058",
+          "variant_sku": "MN51-1",
+          "barcode": null,
+          "strong_identifier_kind": null,
+          "source_url": "https://www.missnella.com/products/if-the-shoe-fits-4ml-peel-off-kids-nail-polish",
+          "external_redirect_url": "https://www.missnella.com/products/if-the-shoe-fits-4ml-peel-off-kids-nail-polish",
+          "price": "6.49",
+          "price_amount": 6.49,
+          "currency": "USD",
+          "availability": "in_stock",
+          "image_url": "https://cdn.shopify.com/s/files/1/2219/3831/files/MN51_If_The_Shoe_fits_new_label_594fea91-d793-46dc-add1-dc9627b56780.jpg?v=1771508662",
+          "swatch_image_url": null,
+          "label_image_url": null,
+          "options": {
+            "Size": "4ml"
+          },
+          "raw_variant": {
+            "sku": "MN51-1",
+            "url": "https://www.missnella.com/products/if-the-shoe-fits-4ml-peel-off-kids-nail-polish",
+            "price": "6.49",
+            "stock": "In Stock",
+            "currency": "USD",
+            "image_url": "https://cdn.shopify.com/s/files/1/2219/3831/files/MN51_If_The_Shoe_fits_new_label_594fea91-d793-46dc-add1-dc9627b56780.jpg?v=1771508662",
+            "image_urls": [
+              "https://cdn.shopify.com/s/files/1/2219/3831/files/MN51_If_The_Shoe_fits_new_label_594fea91-d793-46dc-add1-dc9627b56780.jpg?v=1771508662",
+              "https://cdn.shopify.com/s/files/1/2219/3831/files/MN51IfTheShoeFits-01-WEB.jpg?v=1771508662",
+              "https://cdn.shopify.com/s/files/1/2219/3831/files/MN51IfTheShoeFits-Box-WEB_73dc8f4d-2d9a-461f-a54c-31fd6dd27d15.jpg?v=1771508662",
+              "https://cdn.shopify.com/s/files/1/2219/3831/files/MN-NP-Steps-1x1-WEB_671ccba8-d5f3-41bb-8d8e-6a6748e84cf5.jpg?v=1771508662",
+              "https://cdn.shopify.com/s/files/1/2219/3831/files/MN49HappilyEverAfter-WEB_e85755f0-18ad-4af6-8ff2-b09ef6849a4a.jpg?v=1771508662",
+              "https://cdn.shopify.com/s/files/1/2219/3831/files/MN51IfTheShoeFits-Box-01-WEB.jpg?v=1771508662",
+              "https://cdn.shopify.com/s/files/1/2219/3831/files/MN-Peel-off-Nail-Polish-002-WEB.jpg?v=1771508662"
+            ],
+            "variant_id": "42852252877058",
+            "description": "💅 Safe, Fun, and Colourful - Let your child’s creativity shine with Miss Nella Nail Polish! This vibrant, non-toxic and kid-friendly polish is perfect for young hands, offering a smooth application and quick drying formula. Whether it’s for a fun playdate, a dress-up session, or just because, this nail polish adds a splash of vibrant colour to any day.",
+            "option_name": "Size",
+            "option_value": "4ml"
+          }
+        },
+        "readiness_tier": "referral_only"
+      },
+      "first_offer": {
+        "offer_id": "offer:external_seed:df6c017240146f7e864bbd342fe8c48c",
+        "sku_key": "prod::external_seed::external_seed::ext_428194a391e38b8c6c5c5a1b::sku_f4d1282b8aa2ab027adb",
+        "product_key": "prod::external_seed::external_seed::ext_428194a391e38b8c6c5c5a1b",
+        "merchant_id": "external_seed",
+        "catalog_track": "external_referral",
+        "truth_tier": "observed",
+        "readiness_tier": "referral_only",
+        "offer_mode": "redirect",
+        "channel": "external_referral",
+        "availability": "in_stock",
+        "currency": "USD",
+        "list_price": 6.49,
+        "merchant_effective_price": 6.49,
+        "estimated_best_price": 6.49,
+        "price_confidence": 1,
+        "source_system": "external_product_seeds_mirror_v1",
+        "source_ref": "eps_69a6f2b0df530c69f74d95b4",
+        "source_domain": "missnella.com",
+        "offer_payload": {
+          "source": "external_product_seeds_mirror_v1",
+          "external_seed_id": "eps_69a6f2b0df530c69f74d95b4",
+          "external_product_id": "ext_428194a391e38b8c6c5c5a1b",
+          "domain": "missnella.com",
+          "market": "US",
+          "product_title": "If The Shoe Fits: Gold Fine Glitter Peel Off Nail Polish",
+          "variant_title": "If The Shoe Fits: Gold Fine Glitter Peel Off Nail Polish",
+          "variant_sku": "MN51-1",
+          "raw_variant_id": "42852252877058",
+          "url": "https://www.missnella.com/products/if-the-shoe-fits-4ml-peel-off-kids-nail-polish",
+          "offer_url": "https://www.missnella.com/products/if-the-shoe-fits-4ml-peel-off-kids-nail-polish",
+          "canonical_url": "https://www.missnella.com/products/if-the-shoe-fits-4ml-peel-off-kids-nail-polish",
+          "destination_url": "https://www.missnella.com/products/if-the-shoe-fits-4ml-peel-off-kids-nail-polish",
+          "external_redirect_url": "https://www.missnella.com/products/if-the-shoe-fits-4ml-peel-off-kids-nail-polish",
+          "merchant_display_name": "Miss Nella",
+          "price": "6.49",
+          "price_amount": 6.49,
+          "price_currency": "USD",
+          "availability": "in_stock",
+          "commerce_facts_v1": {
+            "contract_version": "commerce_facts.v1",
+            "market_id": "US",
+            "country": "US",
+            "currency_target": "USD",
+            "source_authority": "catalog_extract_v2",
+            "captured_at": "2026-05-18T04:53:59.088Z",
+            "evidence_url": "https://www.missnella.com/products/if-the-shoe-fits-4ml-peel-off-kids-nail-polish",
+            "sellable_region": {
+              "status": "unknown",
+              "countries": [],
+              "evidence_source": "catalog_extract_v2",
+              "confidence": "unknown",
+              "checked_at": "2026-05-18T04:53:59.088Z",
+              "reason_codes": [
+                "shipping_destination_not_verified"
+              ],
+              "evidence_url": "https://www.missnella.com/products/if-the-shoe-fits-4ml-peel-off-kids-nail-polish"
+            },
+            "regional_price": {
+              "amount": 6.49,
+              "currency": "USD",
+              "display_raw": null,
+              "price_type": "unknown",
+              "compare_at_amount": null,
+              "compare_at_currency": null,
+              "compare_at_display_raw": null,
+              "tax_included": "unknown",
+              "confidence": "medium",
+              "market_switch_status": "ok",
+              "observed_currency": "USD",
+              "source_url": "https://www.missnella.com/products/if-the-shoe-fits-4ml-peel-off-kids-nail-polish",
+              "captured_at": "2026-05-18T04:53:59.088Z"
+            },
+            "availability": {
+              "status": "in_stock",
+              "source": "catalog_extract_v2",
+              "confidence": "medium",
+              "captured_at": "2026-05-18T04:53:59.088Z"
+            },
+            "shipping": {
+              "status": "unknown",
+              "source": "catalog_extract_v2",
+              "confidence": "unknown",
+              "reason_codes": [
+                "external_checkout_not_queried"
+              ],
+              "checked_at": "2026-05-18T04:53:59.088Z"
+            },
+            "promotions": [],
+            "returns": {
+              "status": "unknown",
+              "source": "catalog_extract_v2",
+              "confidence": "unknown",
+              "reason_codes": [
+                "external_returns_not_extracted"
+              ],
+              "checked_at": "2026-05-18T04:53:59.088Z"
+            }
+          },
+          "agent_safe_commerce_facts": {
+            "contract_version": "commerce_facts.v1",
+            "market_id": "US",
+            "price": {
+              "amount": 6.49,
+              "currency": "USD",
+              "display_raw": null,
+              "price_type": "unknown",
+              "compare_at_amount": null,
+              "compare_at_currency": null,
+              "compare_at_display_raw": null,
+              "tax_included": "unknown",
+              "confidence": "medium",
+              "market_switch_status": "ok",
+              "observed_currency": "USD",
+              "source_url": "https://www.missnella.com/products/if-the-shoe-fits-4ml-peel-off-kids-nail-polish",
+              "captured_at": "2026-05-18T04:53:59.088Z"
+            },
+            "availability": {
+              "status": "in_stock",
+              "source": "catalog_extract_v2",
+              "confidence": "medium",
+              "captured_at": "2026-05-18T04:53:59.088Z"
+            },
+            "shipping": {
+              "status": "unknown",
+              "reason": "verify_at_checkout"
+            },
+            "promotions": [],
+            "checkout_note": "Shipping and promotions are not verified for this external offer; verify at merchant checkout."
+          }
+        }
+      },
+      "serving_readiness": {
+        "servingEligible": true,
+        "contentQualityScore": 90,
+        "blockerCode": "none",
+        "blockerDetail": null,
+        "identityResolved": true,
+        "identityLiveReadResolved": false,
+        "identityBootstrapEligible": true,
+        "hasImage": true,
+        "hasPrice": true,
+        "descriptionLength": 355
+      }
+    }
+  ]
+}

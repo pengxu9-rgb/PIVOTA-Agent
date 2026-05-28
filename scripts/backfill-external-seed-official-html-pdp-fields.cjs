@@ -22,8 +22,11 @@ const REVIEW_SUMMARY_ONLY_OKENDO_HOSTS = new Set(['beautyofjoseon.com', 'kravebe
 const REVIEW_SUMMARY_ONLY_GENERIC_HOSTS = new Set([...REVIEW_SUMMARY_ONLY_OKENDO_HOSTS, 'roundlab.com']);
 const GENERIC_OFFICIAL_SHOPIFY_FIELD_HOSTS = new Set([
   'lucamarskincare.com',
+  'missnella.com',
   'rohrremedy.com',
   'seresilk.com.au',
+  'upcirclebeauty.com',
+  'www.missnella.com',
   'www.rohrremedy.com',
 ]);
 
@@ -365,7 +368,7 @@ function looksLikeHowToUse(value) {
   const text = normalizeText(value);
   if (text.length < 45 || text.length > 1600) return false;
   if (/\b(?:checkout|shop all|ambassador|find your routine|mega menu|header menu)\b/i.test(text)) return false;
-  return /\b(?:apply|use|massage|rinse|spray|sweep|wipe|shake|dispense|pull|brush|after cleansing|after completing|before|daily|morning|evening|night|leave on|pat)\b/i.test(text);
+  return /\b(?:apply|use|massage|rinse|spray|sweep|wipe|shake|dispense|pull|brush|after cleansing|after completing|before|daily|morning|evening|night|leave on|pat|dab)\b/i.test(text);
 }
 
 function looksLikeActiveIngredientList(value) {
@@ -2566,7 +2569,7 @@ function genericOfficialProductMatches(html, product, options = {}) {
 function normalizeSectionHeading(value) {
   return cleanSectionText(value)
     .replace(/\s*\+\s*$/g, '')
-    .replace(/:$/, '')
+    .replace(/[?:]+$/, '')
     .trim();
 }
 
@@ -2610,6 +2613,38 @@ function extractAccordionItemSections(html) {
     if (!isGenericProductContentHeading(heading)) continue;
     const body = cleanSectionText(block.slice(headingMatch.index + headingMatch[0].length));
     if (heading && body.length >= 20) sections.push({ heading, body, source_origin: 'official_accordion' });
+  }
+  return sections;
+}
+
+function extractDetailsAccordionSections(html) {
+  const sections = [];
+  for (const match of String(html || '').matchAll(/<details\b[^>]*class=["'][^"']*\bcc-accordion-item\b[^"']*["'][^>]*>([\s\S]*?)<\/details>/gi)) {
+    const block = match[1];
+    const headingMatch = block.match(/<summary\b[^>]*>[\s\S]*?<h[1-6]\b[^>]*>([\s\S]*?)<\/h[1-6]>[\s\S]*?<\/summary>/i);
+    const heading = normalizeSectionHeading(headingMatch?.[1]);
+    if (!heading || !isGenericProductContentHeading(heading)) continue;
+    const panelMatch = block.match(/<div\b[^>]*class=["'][^"']*\bcc-accordion-item__panel\b[^"']*["'][^>]*>([\s\S]*?)<\/div>/i);
+    const body = cleanSectionText(panelMatch?.[1] || block.slice((headingMatch?.index || 0) + (headingMatch?.[0]?.length || 0)));
+    if (body.length >= 20) sections.push({ heading, body, source_origin: 'official_details_accordion' });
+  }
+  return sections;
+}
+
+function extractUpcircleQaGroupSections(html) {
+  const source = String(html || '');
+  const starts = Array.from(source.matchAll(/<div\b[^>]*class=["'][^"']*\bs_qa_group\b[^"']*["'][^>]*>/gi));
+  const sections = [];
+  for (let index = 0; index < starts.length; index += 1) {
+    const start = starts[index].index;
+    const end = index + 1 < starts.length ? starts[index + 1].index : start + 9000;
+    const block = source.slice(start, end);
+    const headingMatch = block.match(/<h[1-6]\b[^>]*class=["'][^"']*\bqa_group_title\b[^"']*["'][^>]*>([\s\S]*?)<\/h[1-6]>/i);
+    const heading = normalizeSectionHeading(headingMatch?.[1]);
+    if (!heading || !isGenericProductContentHeading(heading)) continue;
+    const contentMatch = block.match(/<div\b[^>]*class=["'][^"']*\bupcircle_content\b[^"']*["'][^>]*>([\s\S]*?)(?:<div\b[^>]*class=["'][^"']*\bs_qa_group\b|<\/section>|<\/main>|<script\b|$)/i);
+    const body = cleanSectionText(contentMatch?.[1] || block.slice((headingMatch?.index || 0) + (headingMatch?.[0]?.length || 0)));
+    if (body.length >= 20) sections.push({ heading, body, source_origin: 'official_upcircle_qa' });
   }
   return sections;
 }
@@ -2664,6 +2699,7 @@ function extractDescriptionLabeledSections(htmlFragment) {
 function cleanOfficialIngredientCandidate(value) {
   return normalizeText(value)
     .replace(/^(?:full\s+ingredients?|ingredients?|inci)\s*:?\s*/i, '')
+    .replace(/^\d+%\s+natural\s+ingredients?\s*:?\s*/i, '')
     .replace(/\bIngredients explained\s*:?\s*[\s\S]*$/i, '')
     .replace(/\bNo\s+parab[eé]ns\b[\s\S]*$/i, '')
     .replace(/\bProudly\s+Made\b[\s\S]*$/i, '')
@@ -2725,6 +2761,8 @@ function extractGenericOfficialShopifyFields(html, options = {}) {
     [
       ...extractProductTabSections(html),
       ...extractAccordionItemSections(html),
+      ...extractDetailsAccordionSections(html),
+      ...extractUpcircleQaGroupSections(html),
       ...extractDescriptionLabeledSections(productDescriptionHtml),
     ],
   );

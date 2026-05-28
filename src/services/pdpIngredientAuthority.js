@@ -59,6 +59,10 @@ const STOP_MARKERS = [
   /\bnote\s*:/i,
   /\bcaution\s*:/i,
   /\bfor external use only\b/i,
+  /(?:^|[,.]\s*)\*+\s*organic(?:ally)?\s+(?:grown\s+)?ingredients?\b/i,
+  /(?:^|[,.]\s*)\^?\*+\s*natural constituent of essential oils listed\b/i,
+  /(?:^|[,.]\s*)\^+\s*natural constituent of essential oils listed\b/i,
+  /\b\d+%\s+organic of total\b/i,
 ];
 const ACTIVE_STOP_MARKERS = [
   ...STOP_MARKERS,
@@ -246,15 +250,25 @@ function readReviewedActiveCandidates(product, inputs) {
   });
 }
 
-function findLastSectionMatch(text, re) {
+function findLastSectionMatch(text, re, predicate = null) {
   let match = null;
   let next = re.exec(text);
   while (next) {
-    match = next;
+    if (!predicate || predicate(next)) match = next;
     next = re.exec(text);
   }
   re.lastIndex = 0;
   return match;
+}
+
+function looksLikeIngredientSectionHeadingMatch(text, match) {
+  if (!match || typeof match.index !== 'number') return false;
+  const label = asString(match[1] || match[0]).toLowerCase();
+  if (/^(?:full\s+ingredient|inci)/.test(label)) return true;
+  if (match.index <= 2) return true;
+  if (/:\s*$/.test(asString(match[0]))) return true;
+  const prefix = text.slice(Math.max(0, match.index - 24), match.index);
+  return /(?:^|[.!?\n\r|•])\s*$/.test(prefix);
 }
 
 function sanitizeIngredientRawText(rawText, { activeOnly = false } = {}) {
@@ -262,7 +276,9 @@ function sanitizeIngredientRawText(rawText, { activeOnly = false } = {}) {
   if (!text) return '';
 
   const sectionRe = activeOnly ? ACTIVE_SECTION_RE : INGREDIENT_SECTION_RE;
-  const sectionMatch = findLastSectionMatch(text, sectionRe);
+  const sectionMatch = findLastSectionMatch(text, sectionRe, (match) =>
+    activeOnly || looksLikeIngredientSectionHeadingMatch(text, match)
+  );
   if (sectionMatch && typeof sectionMatch.index === 'number') {
     text = text.slice(sectionMatch.index + sectionMatch[0].length);
   }
