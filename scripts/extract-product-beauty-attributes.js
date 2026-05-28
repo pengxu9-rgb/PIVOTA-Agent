@@ -187,7 +187,7 @@ function buildPrompt(snapshot) {
     '- Use concise lowercase snake_case labels for non-enum strings, for example: serum, cream, lipstick, matte_lipstick, face, lips, floral, warm_brown.',
     '- product_form = physical/product format such as serum, cream, gel, oil, stick, powder, palette, spray, cleanser, mask, brush, shampoo, conditioner, fragrance.',
     '- category_leaf = the most specific product category you can infer, such as hydrating_serum, matte_lipstick, tinted_moisturizer, sunscreen_lotion, eau_de_parfum.',
-    '- target_area = where it is used: face, lips, eyes, hair, body, nails, fragrance, brows, cheeks, multi_area, unknown.',
+    '- target_area must be exactly one of: face, lips, body, hair, eyes, brows, cheeks, hands, nails, scalp, oral, fragrance, multi_area, unknown. Use `oral` for teeth/mouth oral-care (toothpaste, whitening, mouthwash). Use multi_area for all-over products or sets spanning regions.',
     '- shade_or_color_family is for makeup shade/color families. Use null when shade is irrelevant or clearly not applicable.',
     '- scent_family is for fragrance or materially scented products. Use null for unscented products or when scent is irrelevant.',
     '- spf_or_otc_flag must be exactly one of: cosmetic, spf, otc_drug, spf_otc, unknown.',

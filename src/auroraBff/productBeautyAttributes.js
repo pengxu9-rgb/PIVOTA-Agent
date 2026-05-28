@@ -17,7 +17,7 @@ const SPF_OTC_VALUES = new Set(['cosmetic', 'spf', 'otc_drug', 'spf_otc', 'unkno
 const CLAIM_RISK_VALUES = new Set(['low', 'medium', 'high']);
 const TARGET_AREA_VALUES = new Set([
   'face', 'lips', 'body', 'hair', 'eyes', 'brows', 'cheeks',
-  'hands', 'nails', 'scalp', 'fragrance', 'multi_area', 'unknown',
+  'hands', 'nails', 'scalp', 'oral', 'fragrance', 'multi_area', 'unknown',
 ]);
 
 function normalizeKey(value) {
