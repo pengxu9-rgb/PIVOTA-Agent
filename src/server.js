@@ -51,6 +51,7 @@ const {
   prioritizeOffersResolveResponse,
   annotateOffersWithCommerceMetadata,
   prioritizeOffers,
+  isInternalOffer,
   pickDefaultOfferId,
 } = require('./offers/offersPriority');
 const {
@@ -9152,6 +9153,68 @@ function dedupeEquivalentOffers(offers) {
   return { offers: result, removed };
 }
 
+function readCollapsibleInternalMerchantId(offer) {
+  const merchantId = String(offer?.merchant_id || offer?.merchantId || '').trim();
+  if (!merchantId || merchantId === EXTERNAL_SEED_MERCHANT_ID) return null;
+  if (!isInternalOffer(offer) && !offerIsInternalCheckoutCandidate(offer)) return null;
+  return merchantId.toLowerCase();
+}
+
+function compareOffersForSameMerchantCollapse(a, b) {
+  const aInStock = offerHasAvailableInventory(a) ? 1 : 0;
+  const bInStock = offerHasAvailableInventory(b) ? 1 : 0;
+  if (aInStock !== bInStock) return bInStock - aInStock;
+
+  const aTotal = computeOfferTotal(a);
+  const bTotal = computeOfferTotal(b);
+  if (aTotal !== bTotal) return aTotal < bTotal ? -1 : 1;
+
+  return 0;
+}
+
+function collapseSameInternalMerchantOffers(offers) {
+  const list = Array.isArray(offers) ? offers : [];
+  if (list.length < 2) return { offers: list, removed: 0 };
+
+  const groups = new Map();
+  for (const offer of list) {
+    const merchantId = readCollapsibleInternalMerchantId(offer);
+    if (!merchantId) continue;
+
+    const current = groups.get(merchantId);
+    if (!current) {
+      groups.set(merchantId, { best: offer, count: 1 });
+      continue;
+    }
+    current.count += 1;
+    if (compareOffersForSameMerchantCollapse(offer, current.best) < 0) {
+      current.best = offer;
+    }
+  }
+
+  const collapsedMerchantIds = new Set(
+    Array.from(groups.entries())
+      .filter(([, group]) => group.count > 1)
+      .map(([merchantId]) => merchantId),
+  );
+  if (!collapsedMerchantIds.size) return { offers: list, removed: 0 };
+
+  const emitted = new Set();
+  const result = [];
+  for (const offer of list) {
+    const merchantId = readCollapsibleInternalMerchantId(offer);
+    if (!merchantId || !collapsedMerchantIds.has(merchantId)) {
+      result.push(offer);
+      continue;
+    }
+    if (emitted.has(merchantId)) continue;
+    emitted.add(merchantId);
+    result.push(groups.get(merchantId).best);
+  }
+
+  return { offers: result, removed: list.length - result.length };
+}
+
 function parseQuarantineSurvivorMembers(value) {
   if (Array.isArray(value)) return value;
   if (typeof value === 'string' && value.trim()) {
@@ -9633,9 +9696,13 @@ async function buildOffersFromGroupMembers(args) {
   timings.build_offer_rows = Date.now() - buildOfferRowsStartedAt;
 
   const { offers: dedupedOffers, removed: dedupedOfferCount } = dedupeEquivalentOffers(offers);
+  const {
+    offers: merchantCollapsedOffers,
+    removed: sameMerchantCollapsedOfferCount,
+  } = collapseSameInternalMerchantOffers(dedupedOffers);
 
   const sortStartedAt = Date.now();
-  const annotatedOffers = annotateOffersWithCommerceMetadata(dedupedOffers);
+  const annotatedOffers = annotateOffersWithCommerceMetadata(merchantCollapsedOffers);
   const prioritizedOffers = prioritizeOffers(annotatedOffers);
   const sortedByTotal = [...annotatedOffers].sort((a, b) => {
     const aTotal = computeOfferTotal(a);
@@ -9663,7 +9730,7 @@ async function buildOffersFromGroupMembers(args) {
     status: 'success',
     product_group_id: resolvedProductGroupId,
     canonical_product_ref: canonicalProductRef,
-    offers_count: dedupedOffers.length,
+    offers_count: merchantCollapsedOffers.length,
     offers: prioritizedOffers,
     default_offer_id: defaultOfferId,
     best_price_offer_id: bestPriceOfferId,
@@ -9677,6 +9744,7 @@ async function buildOffersFromGroupMembers(args) {
             merchant_name_lookup_enabled: merchantProfileNameLookupEnabled,
             store_discount_evidence: storeDiscountDiagnostics,
             deduped_offer_count: dedupedOfferCount,
+            same_merchant_collapsed_offer_count: sameMerchantCollapsedOfferCount,
             transaction_held_offer_count: transactionHeldOfferCount,
             source_quarantine_filtered_count: sourceQuarantineFilteredCount,
           },
