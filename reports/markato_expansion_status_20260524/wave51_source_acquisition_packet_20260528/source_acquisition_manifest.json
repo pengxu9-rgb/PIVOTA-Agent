@@ -1,0 +1,100 @@
+{
+  "generated_at": "2026-05-28T11:29:39.773Z",
+  "source_inputs": {
+    "candidate_rollup": "reports/markato_expansion_status_20260524/wave50_next_brand_expansion_20260528/current_rollup/wave24_candidate_rollup.json",
+    "source_gap_probe_dry_run": "reports/markato_expansion_status_20260524/wave50_next_brand_expansion_20260528/official_html_source_gap_probe_dry_run/dry-run.json",
+    "dermstore_duplicate_dry_run": "reports/markato_expansion_status_20260524/wave50_next_brand_expansion_20260528/dermstore_concealer_serving_sync_dry_run.json"
+  },
+  "reviewer_decision": {
+    "production_apply_performed": false,
+    "safe_standalone_promotion_candidates": 0,
+    "recommended_real_move": "Use this packet to request official source evidence or design canonical/offer attachment lanes; keep all listed rows held until review evidence is complete."
+  },
+  "counts": {
+    "source_gap_rows": 83,
+    "acquisition_rows": 83,
+    "retailer_offer_attachment_candidates": 2,
+    "lane_counts": {
+      "non_formula_or_terminal_hold_candidate": 7,
+      "partner_how_to_request": 2,
+      "partner_full_inci_and_how_to_request": 13,
+      "retailer_offer_attachment_candidate": 1,
+      "partner_full_inci_request": 5,
+      "ingredient_evidence_review_request": 2,
+      "canonical_parent_or_bundle_mapping_request": 53
+    },
+    "priority_counts": {
+      "P3": 7,
+      "P0": 20,
+      "P1": 3,
+      "P2": 53
+    },
+    "brand_rows": 10,
+    "p0_rows": 20,
+    "p1_rows": 3,
+    "p2_rows": 53,
+    "p3_rows": 7,
+    "source_gap_probe_summary": {
+      "scanned": 83,
+      "dry_run": 25,
+      "updated": 0,
+      "skipped": 58,
+      "failed": 0,
+      "by_field": {
+        "pdp_description_raw": 2,
+        "pdp_details_sections": 24,
+        "pdp_how_to_use_raw": 5
+      }
+    },
+    "current_rollup_summary": {
+      "generated_at": "2026-05-28T11:00:54.835Z",
+      "production_rows": 604,
+      "queried_domains": 225,
+      "artifact_external_ids": 873,
+      "domains_with_rows": 33,
+      "catalog_attached": 604,
+      "catalog_attached_pct": 100,
+      "index_serving_eligible": 348,
+      "index_serving_eligible_pct": 57.6,
+      "identity_ready": 352,
+      "identity_ready_pct": 58.3,
+      "product_intel_high_quality": 538,
+      "product_intel_high_quality_pct": 89.1,
+      "lane_counts": {
+        "ready_or_covered": 159,
+        "hold_risk_review": 361,
+        "hold_source_gap": 83,
+        "identity_refresh": 1
+      },
+      "recommended_next_batch_rows": 1,
+      "source_gap_rows": 83,
+      "risk_hold_rows": 361
+    }
+  },
+  "p0_external_product_ids": [
+    "ext_60ded78effb04e9d6389bfce",
+    "ext_d2be72abe173e52d5baa6879",
+    "ext_aa24dcd6cf3888a68f222281",
+    "ext_e795b1a17f6222e44dfb3dfd",
+    "ext_7f3fcd8b1ea9a9c48026e3ff",
+    "ext_0389cd34ac2b199ed7d155fd",
+    "ext_c954d06d813f8162e2f104c7",
+    "ext_d4cd4e83ffea1be996dc5655",
+    "ext_18c788834195be4e0022a2c3",
+    "ext_8d2decaa8a177bd033597c3e",
+    "ext_bede5d7b6beac13274e28b6a",
+    "ext_bba56c29b8209bcefce46fcb",
+    "ext_a7ab937f43db2868c6f9e383",
+    "ext_83b8555768814cac5243aef1",
+    "ext_67472974111568c15ac3920d",
+    "ext_cf945cc7bfe99bf9864bd6df",
+    "ext_876342422f9629ea9363953c",
+    "ext_ab35eb07e8635bb1e1be3ebf",
+    "ext_1493a61baf165a6c00e4977b",
+    "ext_07cfaab25950196c3ec1b5f3"
+  ],
+  "retailer_offer_attachment_external_product_ids": [
+    "ext_1cc14ab28dee629b0bb1d3db",
+    "ext_b8af61a562f4ab972197f413"
+  ]
+}
