@@ -369,6 +369,7 @@ function looksLikeShortOfficialInci(value) {
   if (text.length < 35 || text.length > 360) return false;
   if ((text.match(/,/g) || []).length < 2) return false;
   if (/\b(?:cart|checkout|shipping|customer service|menu|ambassador|swiper|document\.addEventListener)\b/i.test(text)) return false;
+  if (/(?:^|,\s*)oil\s+base(?:\s*,|$)/i.test(text)) return false;
   return /\b(?:polyisobutene|cellulose gum|pectin|copolymer|hydrocolloid|glycerin|water|aqua|sodium|acid|lanolin|vitellaria|shea butter|hemp|cera alba|bees\s*wax|beeswax|tocopherol|vitamin|frankincense|oil|methyl esters?|glutamate|adipate|oleate|palmitate|linoleate|trideceth)\b/i.test(text);
 }
 

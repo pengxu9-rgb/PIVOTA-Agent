@@ -358,6 +358,10 @@ function seedFacts(row) {
     price_currency: currency,
     availability,
     category,
+    content_evidence_hold: firstText(
+      asObject(seedData.content_evidence_hold_v1).status,
+      asObject(snapshot.content_evidence_hold_v1).status,
+    ),
     canonical_url: firstText(row.canonical_url, seedData.canonical_url, snapshot.canonical_url, product.canonical_url),
     destination_url: firstText(row.destination_url, seedData.destination_url, snapshot.destination_url, product.destination_url),
   };
@@ -398,6 +402,7 @@ function contentFlags(facts, kind) {
   }
   if (kind === 'beauty_formula' && !facts.ingredients) flags.push('missing_full_inci');
   if (kind === 'beauty_formula' && !facts.how_to_use) flags.push('missing_how_to');
+  if (facts.content_evidence_hold) flags.push('content_evidence_hold');
   if (kind !== 'beauty_formula') flags.push(kind);
   return unique(flags);
 }
@@ -520,7 +525,8 @@ function hasSourceGap(flags) {
     flag === 'missing_currency' ||
     flag === 'missing_availability' ||
     flag === 'missing_full_inci' ||
-    flag === 'missing_how_to'
+    flag === 'missing_how_to' ||
+    flag === 'content_evidence_hold'
   ));
 }
 

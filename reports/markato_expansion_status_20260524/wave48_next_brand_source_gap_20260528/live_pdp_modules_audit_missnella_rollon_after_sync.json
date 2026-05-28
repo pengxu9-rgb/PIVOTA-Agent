@@ -1,0 +1,254 @@
+{
+  "generated_at": "2026-05-28T09:57:09.434Z",
+  "source": "external_seed_live_pdp_modules_audit",
+  "query": {
+    "market": "US",
+    "domain": null,
+    "brand": null,
+    "external_product_id": null,
+    "external_product_ids": [
+      "ext_cfbb0ca2b9d0c7b411793b0b",
+      "ext_6f491538dbf9a790b66cf269"
+    ],
+    "include_attached": true,
+    "limit": 50,
+    "offset": 0,
+    "include_similar": false,
+    "use_sig": false
+  },
+  "summary": {
+    "scanned": 2,
+    "ready": 0,
+    "thin": 2,
+    "not_conversion_ready": 0,
+    "by_domain": [
+      {
+        "key": "missnella.com",
+        "count": 2
+      }
+    ],
+    "blocker_counts": [
+      {
+        "key": "missing_ingredients",
+        "count": 2
+      }
+    ],
+    "weak_insights_ids": [],
+    "seller_only_insights_ids": [],
+    "force_filled_ids": [],
+    "content_gap_ids": [
+      "ext_6f491538dbf9a790b66cf269",
+      "ext_cfbb0ca2b9d0c7b411793b0b"
+    ]
+  },
+  "rows": [
+    {
+      "external_product_id": "ext_6f491538dbf9a790b66cf269",
+      "pivota_signature_id": "sig_add4f97931e964edbb1a2b67",
+      "probed_product_id": "ext_6f491538dbf9a790b66cf269",
+      "probed_id_type": "ext",
+      "seed_id": "eps_861ca14f39569742d8460b44",
+      "market": "US",
+      "domain": "missnella.com",
+      "title": "‘Sweet Like Me’ Roll On Perfume",
+      "canonical_url": "https://www.missnella.com/products/sweet-like-me-roll-on-oil-perfume",
+      "http_status": 200,
+      "pdp_status": "success",
+      "build_id": "1aff82d66be1",
+      "module_types": [
+        "canonical",
+        "variant_selector",
+        "offers",
+        "product_intel",
+        "active_ingredients",
+        "ingredients_inci",
+        "how_to_use",
+        "product_overview",
+        "product_facts",
+        "supplemental_details",
+        "product_details",
+        "reviews_preview"
+      ],
+      "missing_modules": [
+        "variant_selector",
+        "active_ingredients",
+        "ingredients_inci",
+        "product_facts"
+      ],
+      "gallery": {
+        "image_count": 7,
+        "duplicate_url_count": 1,
+        "image_hosts": [
+          "cdn.shopify.com"
+        ],
+        "ok": true
+      },
+      "variant": {
+        "module_present": true,
+        "variant_count": 0,
+        "label_count": 0,
+        "labels": [],
+        "bad_labels": [],
+        "ok": false
+      },
+      "reviews": {
+        "module_present": true,
+        "rating": null,
+        "review_count": 0,
+        "chart_present": false,
+        "chart_estimated": false,
+        "preview_count": 0,
+        "ok": true
+      },
+      "insights": {
+        "module_present": true,
+        "quality_state": "reviewed",
+        "evidence_profile": "official_pdp_seed",
+        "seller_only_evidence": false,
+        "seller_grounded_reviewed": false,
+        "headline": "Fragrance identity",
+        "why_count": 2,
+        "ok": true
+      },
+      "content": {
+        "ingredients_present": false,
+        "ingredients_text_count": 0,
+        "ingredients_source_origin": null,
+        "ingredients_source_quality_status": null,
+        "ingredients_force_filled": false,
+        "active_ingredients_present": false,
+        "active_ingredients_source_origin": null,
+        "active_ingredients_source_quality_status": null,
+        "active_ingredients_force_filled": false,
+        "how_to_present": true,
+        "how_to_text_count": 7,
+        "overview_present": true,
+        "details_present": true,
+        "details_text_count": 16
+      },
+      "similar": {
+        "module_present": false,
+        "count": 0,
+        "status": null
+      },
+      "product_kind": {
+        "family": "single_formula",
+        "reasons": [
+          "formula_category_path_signal"
+        ],
+        "pdp_schema_profile": "beauty_formula",
+        "formula_content_required": true,
+        "merchandising_content_applicable": true
+      },
+      "blocking_reasons": [
+        "missing_ingredients"
+      ],
+      "pdp_quality_bucket": "thin",
+      "conversion_ready": false
+    },
+    {
+      "external_product_id": "ext_cfbb0ca2b9d0c7b411793b0b",
+      "pivota_signature_id": "sig_b3d7e9d7c9189b3b76e75ce1",
+      "probed_product_id": "ext_cfbb0ca2b9d0c7b411793b0b",
+      "probed_id_type": "ext",
+      "seed_id": "eps_555fd951a116860b1afca2b3",
+      "market": "US",
+      "domain": "missnella.com",
+      "title": "‘Cool Like Me’ Roll On Perfume",
+      "canonical_url": "https://www.missnella.com/products/cool-like-me-roll-on-oil-perfume",
+      "http_status": 200,
+      "pdp_status": "success",
+      "build_id": "1aff82d66be1",
+      "module_types": [
+        "canonical",
+        "variant_selector",
+        "offers",
+        "product_intel",
+        "active_ingredients",
+        "ingredients_inci",
+        "how_to_use",
+        "product_overview",
+        "product_facts",
+        "supplemental_details",
+        "product_details",
+        "reviews_preview"
+      ],
+      "missing_modules": [
+        "variant_selector",
+        "active_ingredients",
+        "ingredients_inci",
+        "product_facts"
+      ],
+      "gallery": {
+        "image_count": 7,
+        "duplicate_url_count": 1,
+        "image_hosts": [
+          "cdn.shopify.com"
+        ],
+        "ok": true
+      },
+      "variant": {
+        "module_present": true,
+        "variant_count": 0,
+        "label_count": 0,
+        "labels": [],
+        "bad_labels": [],
+        "ok": false
+      },
+      "reviews": {
+        "module_present": true,
+        "rating": null,
+        "review_count": 0,
+        "chart_present": false,
+        "chart_estimated": false,
+        "preview_count": 0,
+        "ok": true
+      },
+      "insights": {
+        "module_present": true,
+        "quality_state": "reviewed",
+        "evidence_profile": "official_pdp_seed",
+        "seller_only_evidence": false,
+        "seller_grounded_reviewed": false,
+        "headline": "Fragrance identity",
+        "why_count": 2,
+        "ok": true
+      },
+      "content": {
+        "ingredients_present": false,
+        "ingredients_text_count": 0,
+        "ingredients_source_origin": null,
+        "ingredients_source_quality_status": null,
+        "ingredients_force_filled": false,
+        "active_ingredients_present": false,
+        "active_ingredients_source_origin": null,
+        "active_ingredients_source_quality_status": null,
+        "active_ingredients_force_filled": false,
+        "how_to_present": true,
+        "how_to_text_count": 7,
+        "overview_present": true,
+        "details_present": true,
+        "details_text_count": 16
+      },
+      "similar": {
+        "module_present": false,
+        "count": 0,
+        "status": null
+      },
+      "product_kind": {
+        "family": "single_formula",
+        "reasons": [
+          "formula_category_path_signal"
+        ],
+        "pdp_schema_profile": "beauty_formula",
+        "formula_content_required": true,
+        "merchandising_content_applicable": true
+      },
+      "blocking_reasons": [
+        "missing_ingredients"
+      ],
+      "pdp_quality_bucket": "thin",
+      "conversion_ready": false
+    }
+  ]
+}

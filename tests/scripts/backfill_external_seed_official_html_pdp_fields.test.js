@@ -607,6 +607,34 @@ describe('backfill-external-seed-official-html-pdp-fields TIRTIR sheet matching'
     expect(fields.pdp_how_to_use_raw).toContain('Apply the nail polish');
   });
 
+  test('does not treat Miss Nella perfume oil-base copy as full INCI', () => {
+    const html = `
+      <meta property="og:title" content="Sweet Like Me: Hypoallergenic Kids Perfume">
+      <details class="cc-accordion-item">
+        <summary class="cc-accordion-item__title"><h3>How to use?</h3></summary>
+        <div class="cc-accordion-item__panel">
+          <div class="cc-accordion-item__content rte cf">
+            <div class="metafield-rich_text_field"><p>Simply roll onto wrists and neck for a light, fresh scent. Reapply as needed. Safe for daily use!</p></div>
+          </div>
+        </div>
+      </details>
+      <details class="cc-accordion-item">
+        <summary class="cc-accordion-item__title"><h3>Ingredients</h3></summary>
+        <div class="cc-accordion-item__panel">
+          <div class="cc-accordion-item__content rte cf">
+            <p>Oil Base, Hexamethylindanopyran, Dimethyl Phenethyl Acetate, Benzaldehyde, Carvone, Ketones Rose</p>
+          </div>
+        </div>
+      </details>
+    `;
+
+    const fields = extractGenericOfficialShopifyFields(html, {
+      productTitle: 'Sweet Like Me Roll On Perfume',
+    });
+
+    expect(fields.pdp_ingredients_raw).toBeUndefined();
+  });
+
   test('extracts short official balm ingredient lists from Shopify description labels', () => {
     const product = {
       title: 'Lucamar Baalm 50g',
