@@ -28,8 +28,11 @@ const GENERIC_OFFICIAL_SHOPIFY_FIELD_HOSTS = new Set([
   'delicatedaisys.com',
   'lucamarskincare.com',
   'missnella.com',
+  'en.oiolab.co',
+  'pl.oiolab.co',
   'rohrremedy.com',
   'seresilk.com.au',
+  'us.oiolab.co',
   'upcirclebeauty.com',
   'www.missnella.com',
   'www.rohrremedy.com',
@@ -2910,6 +2913,69 @@ function extractGenericOfficialShopifyFields(html, options = {}) {
   return fields;
 }
 
+function extractOioLabFaqSections(html) {
+  const source = String(html || '');
+  const starts = Array.from(source.matchAll(/<div\b[^>]*class=["'][^"']*\bfaq-item\b[^"']*["'][^>]*>/gi));
+  const sections = [];
+  for (let index = 0; index < starts.length; index += 1) {
+    const start = starts[index].index;
+    const end = index + 1 < starts.length ? starts[index + 1].index : start + 12000;
+    const block = source.slice(start, end);
+    const headingMatch = block.match(/<div\b[^>]*class=["'][^"']*\bfaq-question\b[^"']*["'][^>]*>[\s\S]*?<p\b[^>]*>([\s\S]*?)<\/p>/i);
+    const heading = normalizeSectionHeading(headingMatch?.[1]);
+    if (!heading || !isGenericProductContentHeading(heading)) continue;
+    const bodyMatch = block.match(/<div\b[^>]*class=["'][^"']*\bfaq-expand\b[^"']*["'][^>]*>([\s\S]*?)<\/div>\s*<\/div>/i);
+    const body = cleanSectionText(bodyMatch?.[1] || '');
+    if (body.length >= 20) sections.push({ heading, body, source_origin: 'official_oio_lab_faq' });
+  }
+  return sections;
+}
+
+function extractOioLabDailyRitualSections(html) {
+  const sections = [];
+  for (const match of String(html || '').matchAll(/<div\b[^>]*class=["'][^"']*\bnew-list\b[^"']*["'][^>]*>([\s\S]*?)<\/div>/gi)) {
+    const block = match[1];
+    const headingMatch = block.match(/<h[1-6]\b[^>]*>([\s\S]*?)<\/h[1-6]>/i);
+    const heading = normalizeSectionHeading(headingMatch?.[1]);
+    if (!heading || !isGenericProductContentHeading(heading)) continue;
+    const body = cleanSectionText(block.slice((headingMatch?.index || 0) + (headingMatch?.[0]?.length || 0)));
+    if (body.length >= 20) sections.push({ heading, body, source_origin: 'official_oio_lab_section' });
+  }
+  return sections;
+}
+
+function extractOioLabFields(html, options = {}) {
+  const fields = extractGenericOfficialShopifyFields(html, options);
+  const sections = mergeDetails([], [...extractOioLabFaqSections(html), ...extractOioLabDailyRitualSections(html)]);
+  const ingredients = cleanOfficialIngredientCandidate(
+    firstGenericSection(sections, [/^(?:full\s+)?ingredients?$/i, /^inci$/i])?.body,
+  );
+  if (
+    !hasUnscentedIngredientConflict(options.productTitle, ingredients) &&
+    (looksLikeFullInci(ingredients) || looksLikeShortOfficialInci(ingredients) || looksLikeSingleOfficialBotanicalInci(ingredients))
+  ) {
+    fields.pdp_ingredients_raw = ingredients;
+  }
+
+  const howTo = cleanOfficialHowToCandidate(
+    firstGenericSection(sections, [/^daily\s+ritual$/i, /^how\s+to\s+use$/i, /^directions?$/i, /^usage$/i])?.body,
+  );
+  if (looksLikeHowToUse(howTo)) fields.pdp_how_to_use_raw = howTo;
+
+  const details = [];
+  for (const section of sections) {
+    if (/^(?:full\s+)?ingredients?$|^inci$/i.test(section.heading)) continue;
+    if (/^daily\s+ritual$|^how\s+to\s+use$|^directions?$|^usage$/i.test(section.heading) && looksLikeHowToUse(section.body)) {
+      details.push({ heading: 'How To Use', body: cleanOfficialHowToCandidate(section.body) });
+      continue;
+    }
+    const body = truncateOfficialDetailText(section.body);
+    if (body) details.push({ heading: section.heading, body });
+  }
+  if (details.length) fields.pdp_details_sections = mergeDetails(fields.pdp_details_sections, details);
+  return fields;
+}
+
 async function extractOfficialHtmlFields(host, html, options = {}) {
   let fields = {};
   if (host === 'skin1004.com') fields = extractSkin1004Fields(html);
@@ -2928,6 +2994,7 @@ async function extractOfficialHtmlFields(host, html, options = {}) {
   }
   else if (host === 'tomfordbeauty.com') fields = extractTomFordFields(html, options);
   else if (host === 'rarebeauty.com') fields = extractRareFields(html, options);
+  else if (/^(?:us|en|pl)\.oiolab\.co$/.test(host)) fields = extractOioLabFields(html, options);
   else if (GENERIC_OFFICIAL_SHOPIFY_FIELD_HOSTS.has(host)) fields = extractGenericOfficialShopifyFields(html, options);
   else if (!options.reviewSummaryOnly || !REVIEW_SUMMARY_ONLY_GENERIC_HOSTS.has(host)) return {};
 

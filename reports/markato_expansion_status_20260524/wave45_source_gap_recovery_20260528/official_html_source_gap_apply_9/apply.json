@@ -1,0 +1,280 @@
+{
+  "generated_at": "2026-05-28T06:58:34.672Z",
+  "dry_run": false,
+  "market": "US",
+  "summary": {
+    "scanned": 9,
+    "dry_run": 0,
+    "updated": 9,
+    "skipped": 0,
+    "failed": 0,
+    "by_field": {
+      "pdp_ingredients_raw": 9,
+      "pdp_how_to_use_raw": 9,
+      "pdp_details_sections": 9
+    }
+  },
+  "results": [
+    {
+      "external_product_id": "ext_aafb624684ba1a334a53a076",
+      "title": "Flaura Eau De Parfum",
+      "domain": "upcirclebeauty.com",
+      "url": "https://upcirclebeauty.com/products/natural-floral-perfume",
+      "host": "upcirclebeauty.com",
+      "status": "updated",
+      "patch_keys": [
+        "pdp_ingredients_raw",
+        "pdp_how_to_use_raw",
+        "pdp_details_sections"
+      ],
+      "http_status": 200,
+      "final_url": "https://upcirclebeauty.com/products/natural-floral-perfume",
+      "extracted_summary": {
+        "ingredients_chars": 201,
+        "how_to_chars": 161,
+        "details_sections_count": 3,
+        "variant_count": 0,
+        "review_count": 0,
+        "rating": 0,
+        "review_preview_count": 0,
+        "review_preview_samples": []
+      },
+      "serving_mirror_sync": {
+        "catalog_products": 1,
+        "pdp_identity_listing": 1
+      }
+    },
+    {
+      "external_product_id": "ext_32e72e7e518f4dfa532a191d",
+      "title": "Home Mist with Lemongrass + Grapefruit Water",
+      "domain": "upcirclebeauty.com",
+      "url": "https://upcirclebeauty.com/products/room-spray",
+      "host": "upcirclebeauty.com",
+      "status": "updated",
+      "patch_keys": [
+        "pdp_ingredients_raw",
+        "pdp_how_to_use_raw",
+        "pdp_details_sections"
+      ],
+      "http_status": 200,
+      "final_url": "https://upcirclebeauty.com/products/room-spray",
+      "extracted_summary": {
+        "ingredients_chars": 431,
+        "how_to_chars": 170,
+        "details_sections_count": 3,
+        "variant_count": 0,
+        "review_count": 0,
+        "rating": 0,
+        "review_preview_count": 0,
+        "review_preview_samples": []
+      },
+      "serving_mirror_sync": {
+        "catalog_products": 1,
+        "pdp_identity_listing": 1
+      }
+    },
+    {
+      "external_product_id": "ext_5b4820a93b2ff42fde402c6e",
+      "title": "Alien Poo: Chrome Green Peel Off Nail Polish",
+      "domain": "missnella.com",
+      "url": "https://www.missnella.com/products/alien-poo-4ml-peel-off-kids-nail-polish",
+      "host": "missnella.com",
+      "status": "updated",
+      "patch_keys": [
+        "pdp_ingredients_raw",
+        "pdp_how_to_use_raw",
+        "pdp_details_sections"
+      ],
+      "http_status": 200,
+      "final_url": "https://www.missnella.com/products/alien-poo-4ml-peel-off-kids-nail-polish",
+      "extracted_summary": {
+        "ingredients_chars": 410,
+        "how_to_chars": 168,
+        "details_sections_count": 4,
+        "variant_count": 0,
+        "review_count": 0,
+        "rating": 0,
+        "review_preview_count": 0,
+        "review_preview_samples": []
+      },
+      "serving_mirror_sync": {
+        "catalog_products": 1,
+        "pdp_identity_listing": 1
+      }
+    },
+    {
+      "external_product_id": "ext_33466da0907b256ffc53783b",
+      "title": "Blush",
+      "domain": "missnella.com",
+      "url": "https://www.missnella.com/products/blush",
+      "host": "missnella.com",
+      "status": "updated",
+      "patch_keys": [
+        "pdp_ingredients_raw",
+        "pdp_how_to_use_raw",
+        "pdp_details_sections"
+      ],
+      "http_status": 200,
+      "final_url": "https://www.missnella.com/products/blush",
+      "extracted_summary": {
+        "ingredients_chars": 203,
+        "how_to_chars": 109,
+        "details_sections_count": 3,
+        "variant_count": 0,
+        "review_count": 0,
+        "rating": 0,
+        "review_preview_count": 0,
+        "review_preview_samples": []
+      },
+      "serving_mirror_sync": {
+        "catalog_products": 1,
+        "pdp_identity_listing": 1
+      }
+    },
+    {
+      "external_product_id": "ext_61433fafb09e5fdde9d18422",
+      "title": "Complete Eye Shadow Collection",
+      "domain": "missnella.com",
+      "url": "https://www.missnella.com/products/complete-eyeshadow-collection-non-toxic-make-up",
+      "host": "missnella.com",
+      "status": "updated",
+      "patch_keys": [
+        "pdp_ingredients_raw",
+        "pdp_how_to_use_raw",
+        "pdp_details_sections"
+      ],
+      "http_status": 200,
+      "final_url": "https://www.missnella.com/products/complete-eyeshadow-collection-non-toxic-make-up",
+      "extracted_summary": {
+        "ingredients_chars": 188,
+        "how_to_chars": 88,
+        "details_sections_count": 4,
+        "variant_count": 0,
+        "review_count": 0,
+        "rating": 0,
+        "review_preview_count": 0,
+        "review_preview_samples": []
+      },
+      "serving_mirror_sync": {
+        "catalog_products": 1,
+        "pdp_identity_listing": 1
+      }
+    },
+    {
+      "external_product_id": "ext_e9e3fba6b05911bba1bfe71e",
+      "title": "Eye Shadow",
+      "domain": "missnella.com",
+      "url": "https://www.missnella.com/products/eye-shadow",
+      "host": "missnella.com",
+      "status": "updated",
+      "patch_keys": [
+        "pdp_ingredients_raw",
+        "pdp_how_to_use_raw",
+        "pdp_details_sections"
+      ],
+      "http_status": 200,
+      "final_url": "https://www.missnella.com/products/eye-shadow",
+      "extracted_summary": {
+        "ingredients_chars": 189,
+        "how_to_chars": 88,
+        "details_sections_count": 3,
+        "variant_count": 0,
+        "review_count": 0,
+        "rating": 0,
+        "review_preview_count": 0,
+        "review_preview_samples": []
+      },
+      "serving_mirror_sync": {
+        "catalog_products": 1,
+        "pdp_identity_listing": 1
+      }
+    },
+    {
+      "external_product_id": "ext_83b5f562450f09c98c4dccb8",
+      "title": "Happily Ever After: Pink Fine Glitter Peel Off Nail Polish",
+      "domain": "missnella.com",
+      "url": "https://www.missnella.com/products/happily-ever-after-4ml-peel-off-kids-nail-polish",
+      "host": "missnella.com",
+      "status": "updated",
+      "patch_keys": [
+        "pdp_ingredients_raw",
+        "pdp_how_to_use_raw",
+        "pdp_details_sections"
+      ],
+      "http_status": 200,
+      "final_url": "https://www.missnella.com/products/happily-ever-after-4ml-peel-off-kids-nail-polish",
+      "extracted_summary": {
+        "ingredients_chars": 467,
+        "how_to_chars": 168,
+        "details_sections_count": 4,
+        "variant_count": 0,
+        "review_count": 0,
+        "rating": 0,
+        "review_preview_count": 0,
+        "review_preview_samples": []
+      },
+      "serving_mirror_sync": {
+        "catalog_products": 1,
+        "pdp_identity_listing": 1
+      }
+    },
+    {
+      "external_product_id": "ext_0bc6e4f7a15288822029334f",
+      "title": "Itsy Glitzy Hippo: Sparkly Pink Peel Off Nail Polish",
+      "domain": "missnella.com",
+      "url": "https://www.missnella.com/products/itsy-glitzy-hippo-4ml-peel-off-kids-nail-polish",
+      "host": "missnella.com",
+      "status": "updated",
+      "patch_keys": [
+        "pdp_ingredients_raw",
+        "pdp_how_to_use_raw",
+        "pdp_details_sections"
+      ],
+      "http_status": 200,
+      "final_url": "https://www.missnella.com/products/itsy-glitzy-hippo-4ml-peel-off-kids-nail-polish",
+      "extracted_summary": {
+        "ingredients_chars": 467,
+        "how_to_chars": 168,
+        "details_sections_count": 4,
+        "variant_count": 0,
+        "review_count": 0,
+        "rating": 0,
+        "review_preview_count": 0,
+        "review_preview_samples": []
+      },
+      "serving_mirror_sync": {
+        "catalog_products": 1,
+        "pdp_identity_listing": 1
+      }
+    },
+    {
+      "external_product_id": "ext_cf0f60c66afa3fb09944df4d",
+      "title": "Lip Balm",
+      "domain": "missnella.com",
+      "url": "https://www.missnella.com/products/lip-balm",
+      "host": "missnella.com",
+      "status": "updated",
+      "patch_keys": [
+        "pdp_ingredients_raw",
+        "pdp_how_to_use_raw",
+        "pdp_details_sections"
+      ],
+      "http_status": 200,
+      "final_url": "https://www.missnella.com/products/lip-balm",
+      "extracted_summary": {
+        "ingredients_chars": 195,
+        "how_to_chars": 132,
+        "details_sections_count": 3,
+        "variant_count": 0,
+        "review_count": 0,
+        "rating": 0,
+        "review_preview_count": 0,
+        "review_preview_samples": []
+      },
+      "serving_mirror_sync": {
+        "catalog_products": 1,
+        "pdp_identity_listing": 1
+      }
+    }
+  ]
+}

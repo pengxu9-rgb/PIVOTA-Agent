@@ -1,0 +1,222 @@
+{
+  "generated_at": "2026-05-28T07:06:11.192Z",
+  "dry_run": false,
+  "market": "US",
+  "summary": {
+    "scanned": 7,
+    "dry_run": 0,
+    "updated": 7,
+    "skipped": 0,
+    "failed": 0,
+    "by_field": {
+      "pdp_ingredients_raw": 7,
+      "pdp_how_to_use_raw": 7,
+      "pdp_details_sections": 7
+    }
+  },
+  "results": [
+    {
+      "external_product_id": "ext_b575a7ed71f0a4602a68c461",
+      "title": "Nail Stickers",
+      "domain": "missnella.com",
+      "url": "https://www.missnella.com/products/once-upon-a-nail-stickers",
+      "host": "missnella.com",
+      "status": "updated",
+      "patch_keys": [
+        "pdp_ingredients_raw",
+        "pdp_how_to_use_raw",
+        "pdp_details_sections"
+      ],
+      "http_status": 200,
+      "final_url": "https://www.missnella.com/products/once-upon-a-nail-stickers",
+      "extracted_summary": {
+        "ingredients_chars": 316,
+        "how_to_chars": 273,
+        "details_sections_count": 3,
+        "variant_count": 0,
+        "review_count": 0,
+        "rating": 0,
+        "review_preview_count": 0,
+        "review_preview_samples": []
+      },
+      "serving_mirror_sync": {
+        "catalog_products": 1,
+        "pdp_identity_listing": 1
+      }
+    },
+    {
+      "external_product_id": "ext_c6ea506cdaf48368131bfd6e",
+      "title": "Once Upon A Time: Light Blue Fine Glitter Peel Off Nail Polish",
+      "domain": "missnella.com",
+      "url": "https://www.missnella.com/products/once-upon-a-time-4ml-peel-off-kids-nail-polish",
+      "host": "missnella.com",
+      "status": "updated",
+      "patch_keys": [
+        "pdp_ingredients_raw",
+        "pdp_how_to_use_raw",
+        "pdp_details_sections"
+      ],
+      "http_status": 200,
+      "final_url": "https://www.missnella.com/products/once-upon-a-time-4ml-peel-off-kids-nail-polish",
+      "extracted_summary": {
+        "ingredients_chars": 467,
+        "how_to_chars": 168,
+        "details_sections_count": 4,
+        "variant_count": 0,
+        "review_count": 0,
+        "rating": 0,
+        "review_preview_count": 0,
+        "review_preview_samples": []
+      },
+      "serving_mirror_sync": {
+        "catalog_products": 1,
+        "pdp_identity_listing": 1
+      }
+    },
+    {
+      "external_product_id": "ext_026bb78a257f8ca3690ee787",
+      "title": "Rawr-Some: Metallic Blue Peel Off Nail Polish",
+      "domain": "missnella.com",
+      "url": "https://www.missnella.com/products/rawr-some-4ml-peel-off-kids-nail-polish",
+      "host": "missnella.com",
+      "status": "updated",
+      "patch_keys": [
+        "pdp_ingredients_raw",
+        "pdp_how_to_use_raw",
+        "pdp_details_sections"
+      ],
+      "http_status": 200,
+      "final_url": "https://www.missnella.com/products/rawr-some-4ml-peel-off-kids-nail-polish",
+      "extracted_summary": {
+        "ingredients_chars": 467,
+        "how_to_chars": 168,
+        "details_sections_count": 4,
+        "variant_count": 0,
+        "review_count": 0,
+        "rating": 0,
+        "review_preview_count": 0,
+        "review_preview_samples": []
+      },
+      "serving_mirror_sync": {
+        "catalog_products": 1,
+        "pdp_identity_listing": 1
+      }
+    },
+    {
+      "external_product_id": "ext_84caa40e0fafcee350045f96",
+      "title": "Shooting Star: Sliver Peel Off Nail Polish",
+      "domain": "missnella.com",
+      "url": "https://www.missnella.com/products/shooting-star-4ml-peel-off-kids-nail-polish",
+      "host": "missnella.com",
+      "status": "updated",
+      "patch_keys": [
+        "pdp_ingredients_raw",
+        "pdp_how_to_use_raw",
+        "pdp_details_sections"
+      ],
+      "http_status": 200,
+      "final_url": "https://www.missnella.com/products/shooting-star-4ml-peel-off-kids-nail-polish",
+      "extracted_summary": {
+        "ingredients_chars": 467,
+        "how_to_chars": 168,
+        "details_sections_count": 4,
+        "variant_count": 0,
+        "review_count": 0,
+        "rating": 0,
+        "review_preview_count": 0,
+        "review_preview_samples": []
+      },
+      "serving_mirror_sync": {
+        "catalog_products": 1,
+        "pdp_identity_listing": 1
+      }
+    },
+    {
+      "external_product_id": "ext_b36f6a65ae2c8f16e03809ab",
+      "title": "Sparkly Zebra:  Sparkly Lilac Peel Off Nail Polish",
+      "domain": "missnella.com",
+      "url": "https://www.missnella.com/products/sparkly-zebra-4ml-peel-off-kids-nail-polish",
+      "host": "missnella.com",
+      "status": "updated",
+      "patch_keys": [
+        "pdp_ingredients_raw",
+        "pdp_how_to_use_raw",
+        "pdp_details_sections"
+      ],
+      "http_status": 200,
+      "final_url": "https://www.missnella.com/products/sparkly-zebra-4ml-peel-off-kids-nail-polish",
+      "extracted_summary": {
+        "ingredients_chars": 467,
+        "how_to_chars": 168,
+        "details_sections_count": 4,
+        "variant_count": 0,
+        "review_count": 0,
+        "rating": 0,
+        "review_preview_count": 0,
+        "review_preview_samples": []
+      },
+      "serving_mirror_sync": {
+        "catalog_products": 1,
+        "pdp_identity_listing": 1
+      }
+    },
+    {
+      "external_product_id": "ext_623cf12819008c78502d9e6a",
+      "title": "Sweet-Osaurus: Metallic Bronze Peel Off Nail Polish",
+      "domain": "missnella.com",
+      "url": "https://www.missnella.com/products/sweet-osaurus-4ml-peel-off-kids-nail-polish",
+      "host": "missnella.com",
+      "status": "updated",
+      "patch_keys": [
+        "pdp_ingredients_raw",
+        "pdp_how_to_use_raw",
+        "pdp_details_sections"
+      ],
+      "http_status": 200,
+      "final_url": "https://www.missnella.com/products/sweet-osaurus-4ml-peel-off-kids-nail-polish",
+      "extracted_summary": {
+        "ingredients_chars": 467,
+        "how_to_chars": 168,
+        "details_sections_count": 4,
+        "variant_count": 0,
+        "review_count": 0,
+        "rating": 0,
+        "review_preview_count": 0,
+        "review_preview_samples": []
+      },
+      "serving_mirror_sync": {
+        "catalog_products": 1,
+        "pdp_identity_listing": 1
+      }
+    },
+    {
+      "external_product_id": "ext_45317ff964aa286c595a250d",
+      "title": "You're So Spacial: Chrome Blue Peel Off Nail Polish",
+      "domain": "missnella.com",
+      "url": "https://www.missnella.com/products/youre-so-spacial-4ml-peel-off-kids-nail-polish",
+      "host": "missnella.com",
+      "status": "updated",
+      "patch_keys": [
+        "pdp_ingredients_raw",
+        "pdp_how_to_use_raw",
+        "pdp_details_sections"
+      ],
+      "http_status": 200,
+      "final_url": "https://www.missnella.com/products/youre-so-spacial-4ml-peel-off-kids-nail-polish",
+      "extracted_summary": {
+        "ingredients_chars": 467,
+        "how_to_chars": 168,
+        "details_sections_count": 4,
+        "variant_count": 0,
+        "review_count": 0,
+        "rating": 0,
+        "review_preview_count": 0,
+        "review_preview_samples": []
+      },
+      "serving_mirror_sync": {
+        "catalog_products": 1,
+        "pdp_identity_listing": 1
+      }
+    }
+  ]
+}
