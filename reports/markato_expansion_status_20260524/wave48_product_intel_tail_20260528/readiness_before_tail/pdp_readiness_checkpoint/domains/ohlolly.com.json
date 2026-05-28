@@ -1,0 +1,1584 @@
+{
+  "generated_at": "2026-05-28T10:01:11.476Z",
+  "options": {
+    "market": "US",
+    "includeAttached": true,
+    "domain": "ohlolly.com",
+    "externalProductIds": [],
+    "limit": 20000,
+    "sampleLimit": 10,
+    "checkpointDir": null,
+    "checkpointMode": "domain",
+    "resume": false,
+    "force": false,
+    "continueOnError": true,
+    "pageSize": 500,
+    "format": "json",
+    "chunkByDomain": false
+  },
+  "warnings": [],
+  "summary": {
+    "scanned": 14,
+    "by_market": {
+      "US": 14
+    },
+    "by_domain": [
+      {
+        "key": "ohlolly.com",
+        "count": 14
+      }
+    ],
+    "by_product_family": [
+      {
+        "key": "single_formula",
+        "count": 11
+      },
+      {
+        "key": "unknown_product",
+        "count": 3
+      }
+    ],
+    "coverage": {
+      "missing_inci": 0,
+      "missing_active_raw": 4,
+      "missing_details": 3,
+      "missing_how_to": 0,
+      "missing_faq": 3
+    },
+    "pivota_insights": {
+      "direct": {
+        "displayable": 13,
+        "high_quality_ready": 13,
+        "missing_kb": 0,
+        "not_displayable": 1
+      },
+      "effective": {
+        "displayable": 14,
+        "high_quality_ready": 14,
+        "missing_kb": 0,
+        "not_displayable": 0,
+        "borrowed_from_sibling": 1
+      },
+      "effective_issues": [],
+      "effective_issue_domains": [],
+      "quality_state": [
+        {
+          "key": "reviewed",
+          "count": 14
+        }
+      ],
+      "evidence_profile": [
+        {
+          "key": "seller_plus_formula",
+          "count": 14
+        }
+      ],
+      "samples": {
+        "borrowed_from_sibling": [
+          {
+            "external_product_id": "ext_7c7221d7304b717904e28361",
+            "domain": "ohlolly.com",
+            "title": "Beauty of Joseon Red Bean Refreshing Pore Mask",
+            "used_product_id": "ext_ac9de387f263a0f5f8886e14",
+            "quality_state": "reviewed",
+            "evidence_profile": "seller_plus_formula"
+          }
+        ]
+      }
+    },
+    "active_ingredients": {
+      "regulatory_expected": 0,
+      "hero_expected": 12,
+      "any_active_items": 7,
+      "status": [
+        {
+          "key": "ready_hero",
+          "count": 7
+        },
+        {
+          "key": "missing_hero",
+          "count": 3
+        },
+        {
+          "key": "low_signal_active",
+          "count": 2
+        },
+        {
+          "key": "not_expected_missing",
+          "count": 2
+        }
+      ],
+      "issues": [
+        {
+          "key": "missing_hero",
+          "count": 3
+        },
+        {
+          "key": "low_signal_active",
+          "count": 2
+        }
+      ],
+      "issue_domains": [
+        {
+          "key": "ohlolly.com::missing_hero",
+          "count": 3
+        },
+        {
+          "key": "ohlolly.com::low_signal_active",
+          "count": 2
+        }
+      ],
+      "source_origin": [
+        {
+          "key": "pdp_section",
+          "count": 13
+        },
+        {
+          "key": "reviewed_source_backed_pdp_content_patch",
+          "count": 1
+        }
+      ],
+      "samples": {
+        "missing_hero": [
+          {
+            "external_product_id": "ext_074b575f32dd0f5048bf55ce",
+            "domain": "ohlolly.com",
+            "title": "Beauty of Joseon Red Bean Water Gel",
+            "status": "missing_hero",
+            "active_items": [],
+            "source_origin": "pdp_section"
+          },
+          {
+            "external_product_id": "ext_11b138988a876c7f117db034",
+            "domain": "ohlolly.com",
+            "title": "Beauty of Joseon Glow Replenishing Rice Milk",
+            "status": "missing_hero",
+            "active_items": [],
+            "source_origin": "pdp_section"
+          },
+          {
+            "external_product_id": "ext_bf55156550aa86a7eb921ff2",
+            "domain": "ohlolly.com",
+            "title": "haruharu wonder Black Rice Probiotics Barrier 2% NAD+ Serum Mist",
+            "status": "missing_hero",
+            "active_items": [],
+            "source_origin": "pdp_section"
+          }
+        ],
+        "low_signal_active": [
+          {
+            "external_product_id": "ext_7c7221d7304b717904e28361",
+            "domain": "ohlolly.com",
+            "title": "Beauty of Joseon Red Bean Refreshing Pore Mask",
+            "status": "low_signal_active",
+            "active_items": [],
+            "source_origin": "pdp_section"
+          },
+          {
+            "external_product_id": "ext_9a807b0c71317f14040abe52",
+            "domain": "ohlolly.com",
+            "title": "Beauty of Joseon Green Plum Refreshing Cleanser",
+            "status": "low_signal_active",
+            "active_items": [],
+            "source_origin": "pdp_section"
+          }
+        ]
+      }
+    },
+    "variants": {
+      "status": [
+        {
+          "key": "ready",
+          "count": 14
+        }
+      ],
+      "issues": [],
+      "issue_domains": [],
+      "samples": {}
+    }
+  },
+  "rows": [
+    {
+      "seed_id": "eps_4a41ee3a94eb714316c26b1a",
+      "external_product_id": "ext_0407f7d0bd10d95e67001357",
+      "market": "US",
+      "domain": "ohlolly.com",
+      "title": "Beauty of Joseon Apricot Blossom Peeling Gel",
+      "canonical_url": "https://ohlolly.com/products/beauty-of-joseon-apricot-blossom-peeling-gel",
+      "product_family": "unknown_product",
+      "product_line_id": "pl_27b81f8d95fd208af88ab895",
+      "identity_variant_axes": {
+        "multi_variant": false
+      },
+      "pivota_insights": {
+        "direct": {
+          "product_id": "ext_0407f7d0bd10d95e67001357",
+          "kb_key": "product:ext_0407f7d0bd10d95e67001357",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "seller_plus_formula",
+          "has_card_highlight": true
+        },
+        "effective": {
+          "product_id": "ext_0407f7d0bd10d95e67001357",
+          "kb_key": "product:ext_0407f7d0bd10d95e67001357",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "seller_plus_formula",
+          "has_card_highlight": true
+        },
+        "product_line_id": "pl_27b81f8d95fd208af88ab895",
+        "borrowed_from_sibling": false
+      },
+      "active_ingredients": {
+        "status": "not_expected_missing",
+        "issues": [],
+        "regulatory_expected": false,
+        "hero_expected": false,
+        "active_items": [],
+        "source_origin": "pdp_section",
+        "source_quality_status": "blocked",
+        "coverage": {
+          "details_sections_count": 0,
+          "faq_count": 0,
+          "how_to_chars": 171,
+          "inci_chars": 405,
+          "active_ingredients_chars": 0,
+          "inci_applicability_status": "",
+          "ingredient_review_status": "",
+          "ingredient_remediation_action": "",
+          "bundle_component_refs_count": 0,
+          "effective_inci_chars": 405,
+          "inci_borrowed_from_product_id": ""
+        },
+        "invalid_fragments": [],
+        "suppressed_reason": null
+      },
+      "variants": {
+        "status": "ready",
+        "issues": [],
+        "visible_variant_rows": 1,
+        "examples": {
+          "identity_option_visible": [],
+          "wrong_axis_for_category": [],
+          "makeup_shade_missing_visual": [],
+          "size_value_generic_axis": [],
+          "default_option_size_evidence_missing_axis": [],
+          "identity_default_title_axis": []
+        }
+      },
+      "coverage": {
+        "details_sections_count": 0,
+        "faq_count": 0,
+        "how_to_chars": 171,
+        "inci_chars": 405,
+        "active_ingredients_chars": 0,
+        "inci_applicability_status": "",
+        "ingredient_review_status": "",
+        "ingredient_remediation_action": "",
+        "bundle_component_refs_count": 0,
+        "effective_inci_chars": 405,
+        "inci_borrowed_from_product_id": ""
+      }
+    },
+    {
+      "seed_id": "eps_50462b25e0ce0f7dd012de9d",
+      "external_product_id": "ext_074b575f32dd0f5048bf55ce",
+      "market": "US",
+      "domain": "ohlolly.com",
+      "title": "Beauty of Joseon Red Bean Water Gel",
+      "canonical_url": "https://ohlolly.com/products/beauty-of-joseon-red-bean-water-gel",
+      "product_family": "unknown_product",
+      "product_line_id": "pl_d8d975afc7b6aea12e777189",
+      "identity_variant_axes": {
+        "multi_variant": false
+      },
+      "pivota_insights": {
+        "direct": {
+          "product_id": "ext_074b575f32dd0f5048bf55ce",
+          "kb_key": "product:ext_074b575f32dd0f5048bf55ce",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "seller_plus_formula",
+          "has_card_highlight": true
+        },
+        "effective": {
+          "product_id": "ext_074b575f32dd0f5048bf55ce",
+          "kb_key": "product:ext_074b575f32dd0f5048bf55ce",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "seller_plus_formula",
+          "has_card_highlight": true
+        },
+        "product_line_id": "pl_d8d975afc7b6aea12e777189",
+        "borrowed_from_sibling": false
+      },
+      "active_ingredients": {
+        "status": "missing_hero",
+        "issues": [
+          "missing_hero"
+        ],
+        "regulatory_expected": false,
+        "hero_expected": true,
+        "active_items": [],
+        "source_origin": "pdp_section",
+        "source_quality_status": "blocked",
+        "coverage": {
+          "details_sections_count": 0,
+          "faq_count": 0,
+          "how_to_chars": 162,
+          "inci_chars": 1022,
+          "active_ingredients_chars": 0,
+          "inci_applicability_status": "",
+          "ingredient_review_status": "",
+          "ingredient_remediation_action": "",
+          "bundle_component_refs_count": 0,
+          "effective_inci_chars": 1022,
+          "inci_borrowed_from_product_id": ""
+        },
+        "invalid_fragments": [],
+        "suppressed_reason": null
+      },
+      "variants": {
+        "status": "ready",
+        "issues": [],
+        "visible_variant_rows": 1,
+        "examples": {
+          "identity_option_visible": [],
+          "wrong_axis_for_category": [],
+          "makeup_shade_missing_visual": [],
+          "size_value_generic_axis": [],
+          "default_option_size_evidence_missing_axis": [],
+          "identity_default_title_axis": []
+        }
+      },
+      "coverage": {
+        "details_sections_count": 0,
+        "faq_count": 0,
+        "how_to_chars": 162,
+        "inci_chars": 1022,
+        "active_ingredients_chars": 0,
+        "inci_applicability_status": "",
+        "ingredient_review_status": "",
+        "ingredient_remediation_action": "",
+        "bundle_component_refs_count": 0,
+        "effective_inci_chars": 1022,
+        "inci_borrowed_from_product_id": ""
+      }
+    },
+    {
+      "seed_id": "eps_172d8552dcb00534a6014b91",
+      "external_product_id": "ext_0da8c2b9c880943ccdebfa2f",
+      "market": "US",
+      "domain": "ohlolly.com",
+      "title": "Beauty of Joseon Radiance Cleansing Balm",
+      "canonical_url": "https://ohlolly.com/products/beauty-of-joseon-radiance-cleansing-balm",
+      "product_family": "single_formula",
+      "product_line_id": "pl_073b67857f822914b646d12b",
+      "identity_variant_axes": {
+        "multi_variant": false
+      },
+      "pivota_insights": {
+        "direct": {
+          "product_id": "ext_0da8c2b9c880943ccdebfa2f",
+          "kb_key": "product:ext_0da8c2b9c880943ccdebfa2f",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "seller_plus_formula",
+          "has_card_highlight": true
+        },
+        "effective": {
+          "product_id": "ext_0da8c2b9c880943ccdebfa2f",
+          "kb_key": "product:ext_0da8c2b9c880943ccdebfa2f",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "seller_plus_formula",
+          "has_card_highlight": true
+        },
+        "product_line_id": "pl_073b67857f822914b646d12b",
+        "borrowed_from_sibling": false
+      },
+      "active_ingredients": {
+        "status": "ready_hero",
+        "issues": [],
+        "regulatory_expected": false,
+        "hero_expected": true,
+        "active_items": [
+          "Oryza Sativa (Rice) Bran Oil",
+          "Oryza Sativa (Rice) Seed Water",
+          "Avena Sativa (Oat) Meal Extract",
+          "Lactobacillus/Soybean Ferment Extract",
+          "Hippophae Rhamnoides Oil"
+        ],
+        "source_origin": "pdp_section",
+        "source_quality_status": "captured",
+        "coverage": {
+          "details_sections_count": 14,
+          "faq_count": 4,
+          "how_to_chars": 290,
+          "inci_chars": 517,
+          "active_ingredients_chars": 158,
+          "inci_applicability_status": "",
+          "ingredient_review_status": "",
+          "ingredient_remediation_action": "",
+          "bundle_component_refs_count": 0,
+          "effective_inci_chars": 517,
+          "inci_borrowed_from_product_id": ""
+        },
+        "invalid_fragments": [],
+        "suppressed_reason": null
+      },
+      "variants": {
+        "status": "ready",
+        "issues": [],
+        "visible_variant_rows": 1,
+        "examples": {
+          "identity_option_visible": [],
+          "wrong_axis_for_category": [],
+          "makeup_shade_missing_visual": [],
+          "size_value_generic_axis": [],
+          "default_option_size_evidence_missing_axis": [],
+          "identity_default_title_axis": []
+        }
+      },
+      "coverage": {
+        "details_sections_count": 14,
+        "faq_count": 4,
+        "how_to_chars": 290,
+        "inci_chars": 517,
+        "active_ingredients_chars": 158,
+        "inci_applicability_status": "",
+        "ingredient_review_status": "",
+        "ingredient_remediation_action": "",
+        "bundle_component_refs_count": 0,
+        "effective_inci_chars": 517,
+        "inci_borrowed_from_product_id": ""
+      }
+    },
+    {
+      "seed_id": "eps_8253a00b5f487cfdbc84de40",
+      "external_product_id": "ext_0f426381e0e6cb7b408eeecf",
+      "market": "US",
+      "domain": "ohlolly.com",
+      "title": "Beauty of Joseon Green Plum Refreshing Toner : AHA + BHA",
+      "canonical_url": "https://ohlolly.com/products/beauty-of-joseon-green-plum-refreshing-toner-aha-bha",
+      "product_family": "single_formula",
+      "product_line_id": "pl_21883bae26a33d9030d687ab",
+      "identity_variant_axes": {
+        "multi_variant": false
+      },
+      "pivota_insights": {
+        "direct": {
+          "product_id": "ext_0f426381e0e6cb7b408eeecf",
+          "kb_key": "product:ext_0f426381e0e6cb7b408eeecf",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "seller_plus_formula",
+          "has_card_highlight": true
+        },
+        "effective": {
+          "product_id": "ext_0f426381e0e6cb7b408eeecf",
+          "kb_key": "product:ext_0f426381e0e6cb7b408eeecf",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "seller_plus_formula",
+          "has_card_highlight": true
+        },
+        "product_line_id": "pl_21883bae26a33d9030d687ab",
+        "borrowed_from_sibling": false
+      },
+      "active_ingredients": {
+        "status": "ready_hero",
+        "issues": [],
+        "regulatory_expected": false,
+        "hero_expected": true,
+        "active_items": [
+          "Salicylic acid",
+          "Glycolic acid"
+        ],
+        "source_origin": "pdp_section",
+        "source_quality_status": "captured",
+        "coverage": {
+          "details_sections_count": 14,
+          "faq_count": 4,
+          "how_to_chars": 301,
+          "inci_chars": 576,
+          "active_ingredients_chars": 39,
+          "inci_applicability_status": "",
+          "ingredient_review_status": "",
+          "ingredient_remediation_action": "",
+          "bundle_component_refs_count": 0,
+          "effective_inci_chars": 576,
+          "inci_borrowed_from_product_id": ""
+        },
+        "invalid_fragments": [],
+        "suppressed_reason": null
+      },
+      "variants": {
+        "status": "ready",
+        "issues": [],
+        "visible_variant_rows": 1,
+        "examples": {
+          "identity_option_visible": [],
+          "wrong_axis_for_category": [],
+          "makeup_shade_missing_visual": [],
+          "size_value_generic_axis": [],
+          "default_option_size_evidence_missing_axis": [],
+          "identity_default_title_axis": []
+        }
+      },
+      "coverage": {
+        "details_sections_count": 14,
+        "faq_count": 4,
+        "how_to_chars": 301,
+        "inci_chars": 576,
+        "active_ingredients_chars": 39,
+        "inci_applicability_status": "",
+        "ingredient_review_status": "",
+        "ingredient_remediation_action": "",
+        "bundle_component_refs_count": 0,
+        "effective_inci_chars": 576,
+        "inci_borrowed_from_product_id": ""
+      }
+    },
+    {
+      "seed_id": "eps_5970a8ab54fd8d640299e183",
+      "external_product_id": "ext_11b138988a876c7f117db034",
+      "market": "US",
+      "domain": "ohlolly.com",
+      "title": "Beauty of Joseon Glow Replenishing Rice Milk",
+      "canonical_url": "https://ohlolly.com/products/beauty-of-joseon-glow-replenishing-rice-milk",
+      "product_family": "unknown_product",
+      "product_line_id": "pl_7800b917151af03272ed7139",
+      "identity_variant_axes": {
+        "multi_variant": false
+      },
+      "pivota_insights": {
+        "direct": {
+          "product_id": "ext_11b138988a876c7f117db034",
+          "kb_key": "product:ext_11b138988a876c7f117db034",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "seller_plus_formula",
+          "has_card_highlight": true
+        },
+        "effective": {
+          "product_id": "ext_11b138988a876c7f117db034",
+          "kb_key": "product:ext_11b138988a876c7f117db034",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "seller_plus_formula",
+          "has_card_highlight": true
+        },
+        "product_line_id": "pl_7800b917151af03272ed7139",
+        "borrowed_from_sibling": false
+      },
+      "active_ingredients": {
+        "status": "missing_hero",
+        "issues": [
+          "missing_hero"
+        ],
+        "regulatory_expected": false,
+        "hero_expected": true,
+        "active_items": [],
+        "source_origin": "pdp_section",
+        "source_quality_status": "blocked",
+        "coverage": {
+          "details_sections_count": 0,
+          "faq_count": 0,
+          "how_to_chars": 204,
+          "inci_chars": 602,
+          "active_ingredients_chars": 0,
+          "inci_applicability_status": "",
+          "ingredient_review_status": "",
+          "ingredient_remediation_action": "",
+          "bundle_component_refs_count": 0,
+          "effective_inci_chars": 602,
+          "inci_borrowed_from_product_id": ""
+        },
+        "invalid_fragments": [],
+        "suppressed_reason": null
+      },
+      "variants": {
+        "status": "ready",
+        "issues": [],
+        "visible_variant_rows": 1,
+        "examples": {
+          "identity_option_visible": [],
+          "wrong_axis_for_category": [],
+          "makeup_shade_missing_visual": [],
+          "size_value_generic_axis": [],
+          "default_option_size_evidence_missing_axis": [],
+          "identity_default_title_axis": []
+        }
+      },
+      "coverage": {
+        "details_sections_count": 0,
+        "faq_count": 0,
+        "how_to_chars": 204,
+        "inci_chars": 602,
+        "active_ingredients_chars": 0,
+        "inci_applicability_status": "",
+        "ingredient_review_status": "",
+        "ingredient_remediation_action": "",
+        "bundle_component_refs_count": 0,
+        "effective_inci_chars": 602,
+        "inci_borrowed_from_product_id": ""
+      }
+    },
+    {
+      "seed_id": "eps_626094544c232e491e635993",
+      "external_product_id": "ext_2d23fc18c8892d978a67729d",
+      "market": "US",
+      "domain": "ohlolly.com",
+      "title": "Beauty of Joseon Light On Serum : Centella + Vita C",
+      "canonical_url": "https://ohlolly.com/products/beauty-of-joseon-light-on-serum-centella-vita-c",
+      "product_family": "single_formula",
+      "product_line_id": "pl_3e2c32a5ae0d2b8ac091e9c5",
+      "identity_variant_axes": {
+        "multi_variant": false
+      },
+      "pivota_insights": {
+        "direct": {
+          "product_id": "ext_2d23fc18c8892d978a67729d",
+          "kb_key": "product:ext_2d23fc18c8892d978a67729d",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "seller_plus_formula",
+          "has_card_highlight": true
+        },
+        "effective": {
+          "product_id": "ext_2d23fc18c8892d978a67729d",
+          "kb_key": "product:ext_2d23fc18c8892d978a67729d",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "seller_plus_formula",
+          "has_card_highlight": true
+        },
+        "product_line_id": "pl_3e2c32a5ae0d2b8ac091e9c5",
+        "borrowed_from_sibling": false
+      },
+      "active_ingredients": {
+        "status": "ready_hero",
+        "issues": [],
+        "regulatory_expected": false,
+        "hero_expected": true,
+        "active_items": [
+          "Centella asiatica",
+          "Panthenol (B5)",
+          "Vitamin C (Ascorbic acid)",
+          "Hyaluronic acid"
+        ],
+        "source_origin": "pdp_section",
+        "source_quality_status": "captured",
+        "coverage": {
+          "details_sections_count": 16,
+          "faq_count": 4,
+          "how_to_chars": 341,
+          "inci_chars": 1033,
+          "active_ingredients_chars": 87,
+          "inci_applicability_status": "",
+          "ingredient_review_status": "",
+          "ingredient_remediation_action": "",
+          "bundle_component_refs_count": 0,
+          "effective_inci_chars": 1033,
+          "inci_borrowed_from_product_id": ""
+        },
+        "invalid_fragments": [],
+        "suppressed_reason": null
+      },
+      "variants": {
+        "status": "ready",
+        "issues": [],
+        "visible_variant_rows": 1,
+        "examples": {
+          "identity_option_visible": [],
+          "wrong_axis_for_category": [],
+          "makeup_shade_missing_visual": [],
+          "size_value_generic_axis": [],
+          "default_option_size_evidence_missing_axis": [],
+          "identity_default_title_axis": []
+        }
+      },
+      "coverage": {
+        "details_sections_count": 16,
+        "faq_count": 4,
+        "how_to_chars": 341,
+        "inci_chars": 1033,
+        "active_ingredients_chars": 87,
+        "inci_applicability_status": "",
+        "ingredient_review_status": "",
+        "ingredient_remediation_action": "",
+        "bundle_component_refs_count": 0,
+        "effective_inci_chars": 1033,
+        "inci_borrowed_from_product_id": ""
+      }
+    },
+    {
+      "seed_id": "eps_ffe93af6b2ce0d457330709a",
+      "external_product_id": "ext_3aaa9b764b8849dcce2bcd3f",
+      "market": "US",
+      "domain": "ohlolly.com",
+      "title": "Beauty of Joseon Glow Deep Serum : Rice + Alpha Arbutin",
+      "canonical_url": "https://ohlolly.com/products/beauty-of-joseon-glow-deep-serum-rice-alpha-arbutin",
+      "product_family": "single_formula",
+      "product_line_id": "pl_2ba16f76c8dee9c1329e1da7",
+      "identity_variant_axes": {
+        "multi_variant": false
+      },
+      "pivota_insights": {
+        "direct": {
+          "product_id": "ext_3aaa9b764b8849dcce2bcd3f",
+          "kb_key": "product:ext_3aaa9b764b8849dcce2bcd3f",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "seller_plus_formula",
+          "has_card_highlight": true
+        },
+        "effective": {
+          "product_id": "ext_3aaa9b764b8849dcce2bcd3f",
+          "kb_key": "product:ext_3aaa9b764b8849dcce2bcd3f",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "seller_plus_formula",
+          "has_card_highlight": true
+        },
+        "product_line_id": "pl_2ba16f76c8dee9c1329e1da7",
+        "borrowed_from_sibling": false
+      },
+      "active_ingredients": {
+        "status": "ready_hero",
+        "issues": [],
+        "regulatory_expected": false,
+        "hero_expected": true,
+        "active_items": [
+          "Oryza Sativa (Rice) Bran Water",
+          "Alpha-Arbutin",
+          "Niacinamide",
+          "Panthenol",
+          "Hydrolyzed Jojoba Esters",
+          "Oryza Sativa (Rice) Extract"
+        ],
+        "source_origin": "reviewed_source_backed_pdp_content_patch",
+        "source_quality_status": "captured",
+        "coverage": {
+          "details_sections_count": 10,
+          "faq_count": 4,
+          "how_to_chars": 147,
+          "inci_chars": 764,
+          "active_ingredients_chars": 124,
+          "inci_applicability_status": "",
+          "ingredient_review_status": "",
+          "ingredient_remediation_action": "",
+          "bundle_component_refs_count": 0,
+          "effective_inci_chars": 764,
+          "inci_borrowed_from_product_id": ""
+        },
+        "invalid_fragments": [],
+        "suppressed_reason": null
+      },
+      "variants": {
+        "status": "ready",
+        "issues": [],
+        "visible_variant_rows": 1,
+        "examples": {
+          "identity_option_visible": [],
+          "wrong_axis_for_category": [],
+          "makeup_shade_missing_visual": [],
+          "size_value_generic_axis": [],
+          "default_option_size_evidence_missing_axis": [],
+          "identity_default_title_axis": []
+        }
+      },
+      "coverage": {
+        "details_sections_count": 10,
+        "faq_count": 4,
+        "how_to_chars": 147,
+        "inci_chars": 764,
+        "active_ingredients_chars": 124,
+        "inci_applicability_status": "",
+        "ingredient_review_status": "",
+        "ingredient_remediation_action": "",
+        "bundle_component_refs_count": 0,
+        "effective_inci_chars": 764,
+        "inci_borrowed_from_product_id": ""
+      }
+    },
+    {
+      "seed_id": "eps_5e1b0046720656b69ea5c68e",
+      "external_product_id": "ext_41bf389f8c93f65d101bd36b",
+      "market": "US",
+      "domain": "ohlolly.com",
+      "title": "Beauty of Joseon Revive Serum : Ginseng + Snail Mucin",
+      "canonical_url": "https://ohlolly.com/products/beauty-of-joseon-revive-serum-ginseng-snail-mucin",
+      "product_family": "single_formula",
+      "product_line_id": "pl_fc6fc5194306db41606c613e",
+      "identity_variant_axes": {
+        "multi_variant": false
+      },
+      "pivota_insights": {
+        "direct": {
+          "product_id": "ext_41bf389f8c93f65d101bd36b",
+          "kb_key": "product:ext_41bf389f8c93f65d101bd36b",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "seller_plus_formula",
+          "has_card_highlight": true
+        },
+        "effective": {
+          "product_id": "ext_41bf389f8c93f65d101bd36b",
+          "kb_key": "product:ext_41bf389f8c93f65d101bd36b",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "seller_plus_formula",
+          "has_card_highlight": true
+        },
+        "product_line_id": "pl_fc6fc5194306db41606c613e",
+        "borrowed_from_sibling": false
+      },
+      "active_ingredients": {
+        "status": "ready_hero",
+        "issues": [],
+        "regulatory_expected": false,
+        "hero_expected": true,
+        "active_items": [
+          "Niacinamide",
+          "Hyaluronic acid",
+          "Centella asiatica"
+        ],
+        "source_origin": "pdp_section",
+        "source_quality_status": "captured",
+        "coverage": {
+          "details_sections_count": 12,
+          "faq_count": 4,
+          "how_to_chars": 147,
+          "inci_chars": 675,
+          "active_ingredients_chars": 57,
+          "inci_applicability_status": "",
+          "ingredient_review_status": "",
+          "ingredient_remediation_action": "",
+          "bundle_component_refs_count": 0,
+          "effective_inci_chars": 675,
+          "inci_borrowed_from_product_id": ""
+        },
+        "invalid_fragments": [],
+        "suppressed_reason": null
+      },
+      "variants": {
+        "status": "ready",
+        "issues": [],
+        "visible_variant_rows": 1,
+        "examples": {
+          "identity_option_visible": [],
+          "wrong_axis_for_category": [],
+          "makeup_shade_missing_visual": [],
+          "size_value_generic_axis": [],
+          "default_option_size_evidence_missing_axis": [],
+          "identity_default_title_axis": []
+        }
+      },
+      "coverage": {
+        "details_sections_count": 12,
+        "faq_count": 4,
+        "how_to_chars": 147,
+        "inci_chars": 675,
+        "active_ingredients_chars": 57,
+        "inci_applicability_status": "",
+        "ingredient_review_status": "",
+        "ingredient_remediation_action": "",
+        "bundle_component_refs_count": 0,
+        "effective_inci_chars": 675,
+        "inci_borrowed_from_product_id": ""
+      }
+    },
+    {
+      "seed_id": "eps_40a0092af7a3215d20768dda",
+      "external_product_id": "ext_7c7221d7304b717904e28361",
+      "market": "US",
+      "domain": "ohlolly.com",
+      "title": "Beauty of Joseon Red Bean Refreshing Pore Mask",
+      "canonical_url": "https://ohlolly.com/products/beauty-of-joseon-red-bean-refreshing-pore-mask",
+      "product_family": "single_formula",
+      "product_line_id": "pl_2fd49380673780c27880d858",
+      "identity_variant_axes": {
+        "multi_variant": false
+      },
+      "pivota_insights": {
+        "direct": {
+          "product_id": "ext_7c7221d7304b717904e28361",
+          "kb_key": "product:ext_7c7221d7304b717904e28361",
+          "status": "not_displayable",
+          "kb_exists": true,
+          "displayable": false,
+          "high_quality_ready": false,
+          "human_reviewed": true,
+          "issues": [
+            "reviewed_not_displayable",
+            "public_sensitive_claim",
+            "quality_limited",
+            "seller_only_evidence"
+          ],
+          "blocking_issues": [
+            "reviewed_not_displayable",
+            "public_sensitive_claim"
+          ],
+          "quality_state": "limited",
+          "evidence_profile": "seller_only",
+          "has_card_highlight": true
+        },
+        "effective": {
+          "product_id": "ext_ac9de387f263a0f5f8886e14",
+          "kb_key": "product:ext_ac9de387f263a0f5f8886e14",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "seller_plus_formula",
+          "has_card_highlight": true
+        },
+        "product_line_id": "pl_2fd49380673780c27880d858",
+        "borrowed_from_sibling": true
+      },
+      "active_ingredients": {
+        "status": "low_signal_active",
+        "issues": [
+          "low_signal_active"
+        ],
+        "regulatory_expected": false,
+        "hero_expected": true,
+        "active_items": [],
+        "source_origin": "pdp_section",
+        "source_quality_status": "blocked",
+        "coverage": {
+          "details_sections_count": 12,
+          "faq_count": 4,
+          "how_to_chars": 114,
+          "inci_chars": 606,
+          "active_ingredients_chars": 8,
+          "inci_applicability_status": "",
+          "ingredient_review_status": "",
+          "ingredient_remediation_action": "",
+          "bundle_component_refs_count": 0,
+          "effective_inci_chars": 606,
+          "inci_borrowed_from_product_id": ""
+        },
+        "invalid_fragments": [],
+        "suppressed_reason": "active_items_low_signal"
+      },
+      "variants": {
+        "status": "ready",
+        "issues": [],
+        "visible_variant_rows": 1,
+        "examples": {
+          "identity_option_visible": [],
+          "wrong_axis_for_category": [],
+          "makeup_shade_missing_visual": [],
+          "size_value_generic_axis": [],
+          "default_option_size_evidence_missing_axis": [],
+          "identity_default_title_axis": []
+        }
+      },
+      "coverage": {
+        "details_sections_count": 12,
+        "faq_count": 4,
+        "how_to_chars": 114,
+        "inci_chars": 606,
+        "active_ingredients_chars": 8,
+        "inci_applicability_status": "",
+        "ingredient_review_status": "",
+        "ingredient_remediation_action": "",
+        "bundle_component_refs_count": 0,
+        "effective_inci_chars": 606,
+        "inci_borrowed_from_product_id": ""
+      }
+    },
+    {
+      "seed_id": "eps_1f7b9b582259220b4c476ae2",
+      "external_product_id": "ext_9a807b0c71317f14040abe52",
+      "market": "US",
+      "domain": "ohlolly.com",
+      "title": "Beauty of Joseon Green Plum Refreshing Cleanser",
+      "canonical_url": "https://ohlolly.com/products/beauty-of-joseon-green-plum-refreshing-cleanser",
+      "product_family": "single_formula",
+      "product_line_id": "pl_0d1fbb3c65355c9d69218ee5",
+      "identity_variant_axes": {
+        "multi_variant": false
+      },
+      "pivota_insights": {
+        "direct": {
+          "product_id": "ext_9a807b0c71317f14040abe52",
+          "kb_key": "product:ext_9a807b0c71317f14040abe52",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "seller_plus_formula",
+          "has_card_highlight": true
+        },
+        "effective": {
+          "product_id": "ext_9a807b0c71317f14040abe52",
+          "kb_key": "product:ext_9a807b0c71317f14040abe52",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "seller_plus_formula",
+          "has_card_highlight": true
+        },
+        "product_line_id": "pl_0d1fbb3c65355c9d69218ee5",
+        "borrowed_from_sibling": false
+      },
+      "active_ingredients": {
+        "status": "low_signal_active",
+        "issues": [
+          "low_signal_active"
+        ],
+        "regulatory_expected": false,
+        "hero_expected": true,
+        "active_items": [],
+        "source_origin": "pdp_section",
+        "source_quality_status": "blocked",
+        "coverage": {
+          "details_sections_count": 14,
+          "faq_count": 4,
+          "how_to_chars": 199,
+          "inci_chars": 754,
+          "active_ingredients_chars": 8,
+          "inci_applicability_status": "",
+          "ingredient_review_status": "",
+          "ingredient_remediation_action": "",
+          "bundle_component_refs_count": 0,
+          "effective_inci_chars": 754,
+          "inci_borrowed_from_product_id": ""
+        },
+        "invalid_fragments": [],
+        "suppressed_reason": "active_items_low_signal"
+      },
+      "variants": {
+        "status": "ready",
+        "issues": [],
+        "visible_variant_rows": 1,
+        "examples": {
+          "identity_option_visible": [],
+          "wrong_axis_for_category": [],
+          "makeup_shade_missing_visual": [],
+          "size_value_generic_axis": [],
+          "default_option_size_evidence_missing_axis": [],
+          "identity_default_title_axis": []
+        }
+      },
+      "coverage": {
+        "details_sections_count": 14,
+        "faq_count": 4,
+        "how_to_chars": 199,
+        "inci_chars": 754,
+        "active_ingredients_chars": 8,
+        "inci_applicability_status": "",
+        "ingredient_review_status": "",
+        "ingredient_remediation_action": "",
+        "bundle_component_refs_count": 0,
+        "effective_inci_chars": 754,
+        "inci_borrowed_from_product_id": ""
+      }
+    },
+    {
+      "seed_id": "eps_c38a6a444a091f56bdceccde",
+      "external_product_id": "ext_bf55156550aa86a7eb921ff2",
+      "market": "US",
+      "domain": "ohlolly.com",
+      "title": "haruharu wonder Black Rice Probiotics Barrier 2% NAD+ Serum Mist",
+      "canonical_url": "https://ohlolly.com/products/haruharu-wonder-black-rice-probiotics-barrier-2-nad-serum-mist",
+      "product_family": "single_formula",
+      "product_line_id": "pl_cb2d28b90fe00d58cfe0de3e",
+      "identity_variant_axes": {
+        "size": "80 mL",
+        "multi_variant": false
+      },
+      "pivota_insights": {
+        "direct": {
+          "product_id": "ext_bf55156550aa86a7eb921ff2",
+          "kb_key": "product:ext_bf55156550aa86a7eb921ff2",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "seller_plus_formula",
+          "has_card_highlight": true
+        },
+        "effective": {
+          "product_id": "ext_bf55156550aa86a7eb921ff2",
+          "kb_key": "product:ext_bf55156550aa86a7eb921ff2",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "seller_plus_formula",
+          "has_card_highlight": true
+        },
+        "product_line_id": "pl_cb2d28b90fe00d58cfe0de3e",
+        "borrowed_from_sibling": false
+      },
+      "active_ingredients": {
+        "status": "missing_hero",
+        "issues": [
+          "missing_hero"
+        ],
+        "regulatory_expected": false,
+        "hero_expected": true,
+        "active_items": [],
+        "source_origin": "pdp_section",
+        "source_quality_status": "blocked",
+        "coverage": {
+          "details_sections_count": 12,
+          "faq_count": 4,
+          "how_to_chars": 427,
+          "inci_chars": 912,
+          "active_ingredients_chars": 0,
+          "inci_applicability_status": "",
+          "ingredient_review_status": "resolved_by_reviewed_source_projection",
+          "ingredient_remediation_action": "source_recovered",
+          "bundle_component_refs_count": 0,
+          "effective_inci_chars": 912,
+          "inci_borrowed_from_product_id": ""
+        },
+        "invalid_fragments": [],
+        "suppressed_reason": null
+      },
+      "variants": {
+        "status": "ready",
+        "issues": [],
+        "visible_variant_rows": 1,
+        "examples": {
+          "identity_option_visible": [],
+          "wrong_axis_for_category": [],
+          "makeup_shade_missing_visual": [],
+          "size_value_generic_axis": [],
+          "default_option_size_evidence_missing_axis": [],
+          "identity_default_title_axis": []
+        }
+      },
+      "coverage": {
+        "details_sections_count": 12,
+        "faq_count": 4,
+        "how_to_chars": 427,
+        "inci_chars": 912,
+        "active_ingredients_chars": 0,
+        "inci_applicability_status": "",
+        "ingredient_review_status": "resolved_by_reviewed_source_projection",
+        "ingredient_remediation_action": "source_recovered",
+        "bundle_component_refs_count": 0,
+        "effective_inci_chars": 912,
+        "inci_borrowed_from_product_id": ""
+      }
+    },
+    {
+      "seed_id": "eps_2ae17b53af9b629b8e96af19",
+      "external_product_id": "ext_d09e4106ca9c607bcb259c0b",
+      "market": "US",
+      "domain": "ohlolly.com",
+      "title": "Beauty of Joseon Dynasty Cream",
+      "canonical_url": "https://ohlolly.com/products/beauty-of-joseon-dynasty-cream",
+      "product_family": "single_formula",
+      "product_line_id": "pl_b760aaa1671d8c0b76c7c6d7",
+      "identity_variant_axes": {
+        "multi_variant": false
+      },
+      "pivota_insights": {
+        "direct": {
+          "product_id": "ext_d09e4106ca9c607bcb259c0b",
+          "kb_key": "product:ext_d09e4106ca9c607bcb259c0b",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "seller_plus_formula",
+          "has_card_highlight": true
+        },
+        "effective": {
+          "product_id": "ext_d09e4106ca9c607bcb259c0b",
+          "kb_key": "product:ext_d09e4106ca9c607bcb259c0b",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "seller_plus_formula",
+          "has_card_highlight": true
+        },
+        "product_line_id": "pl_b760aaa1671d8c0b76c7c6d7",
+        "borrowed_from_sibling": false
+      },
+      "active_ingredients": {
+        "status": "ready_hero",
+        "issues": [],
+        "regulatory_expected": false,
+        "hero_expected": true,
+        "active_items": [
+          "Ceramide NP",
+          "Niacinamide",
+          "Hyaluronic acid",
+          "Squalane"
+        ],
+        "source_origin": "pdp_section",
+        "source_quality_status": "captured",
+        "coverage": {
+          "details_sections_count": 14,
+          "faq_count": 4,
+          "how_to_chars": 172,
+          "inci_chars": 938,
+          "active_ingredients_chars": 61,
+          "inci_applicability_status": "",
+          "ingredient_review_status": "",
+          "ingredient_remediation_action": "",
+          "bundle_component_refs_count": 0,
+          "effective_inci_chars": 938,
+          "inci_borrowed_from_product_id": ""
+        },
+        "invalid_fragments": [],
+        "suppressed_reason": null
+      },
+      "variants": {
+        "status": "ready",
+        "issues": [],
+        "visible_variant_rows": 1,
+        "examples": {
+          "identity_option_visible": [],
+          "wrong_axis_for_category": [],
+          "makeup_shade_missing_visual": [],
+          "size_value_generic_axis": [],
+          "default_option_size_evidence_missing_axis": [],
+          "identity_default_title_axis": []
+        }
+      },
+      "coverage": {
+        "details_sections_count": 14,
+        "faq_count": 4,
+        "how_to_chars": 172,
+        "inci_chars": 938,
+        "active_ingredients_chars": 61,
+        "inci_applicability_status": "",
+        "ingredient_review_status": "",
+        "ingredient_remediation_action": "",
+        "bundle_component_refs_count": 0,
+        "effective_inci_chars": 938,
+        "inci_borrowed_from_product_id": ""
+      }
+    },
+    {
+      "seed_id": "eps_090eb97708ac2d27521d09ea",
+      "external_product_id": "ext_e3023f94f15ae8f48d6fe036",
+      "market": "US",
+      "domain": "ohlolly.com",
+      "title": "Beauty of Joseon Ginseng Essence Water",
+      "canonical_url": "https://ohlolly.com/products/beauty-of-joseon-ginseng-essence-water",
+      "product_family": "single_formula",
+      "product_line_id": "pl_da02d55c13d78a69878fd572",
+      "identity_variant_axes": {
+        "multi_variant": false
+      },
+      "pivota_insights": {
+        "direct": {
+          "product_id": "ext_e3023f94f15ae8f48d6fe036",
+          "kb_key": "product:ext_e3023f94f15ae8f48d6fe036",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "seller_plus_formula",
+          "has_card_highlight": true
+        },
+        "effective": {
+          "product_id": "ext_e3023f94f15ae8f48d6fe036",
+          "kb_key": "product:ext_e3023f94f15ae8f48d6fe036",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "seller_plus_formula",
+          "has_card_highlight": true
+        },
+        "product_line_id": "pl_da02d55c13d78a69878fd572",
+        "borrowed_from_sibling": false
+      },
+      "active_ingredients": {
+        "status": "ready_hero",
+        "issues": [],
+        "regulatory_expected": false,
+        "hero_expected": true,
+        "active_items": [
+          "Panthenol (B5)",
+          "Niacinamide"
+        ],
+        "source_origin": "pdp_section",
+        "source_quality_status": "captured",
+        "coverage": {
+          "details_sections_count": 10,
+          "faq_count": 4,
+          "how_to_chars": 88,
+          "inci_chars": 536,
+          "active_ingredients_chars": 54,
+          "inci_applicability_status": "",
+          "ingredient_review_status": "",
+          "ingredient_remediation_action": "",
+          "bundle_component_refs_count": 0,
+          "effective_inci_chars": 536,
+          "inci_borrowed_from_product_id": ""
+        },
+        "invalid_fragments": [],
+        "suppressed_reason": null
+      },
+      "variants": {
+        "status": "ready",
+        "issues": [],
+        "visible_variant_rows": 1,
+        "examples": {
+          "identity_option_visible": [],
+          "wrong_axis_for_category": [],
+          "makeup_shade_missing_visual": [],
+          "size_value_generic_axis": [],
+          "default_option_size_evidence_missing_axis": [],
+          "identity_default_title_axis": []
+        }
+      },
+      "coverage": {
+        "details_sections_count": 10,
+        "faq_count": 4,
+        "how_to_chars": 88,
+        "inci_chars": 536,
+        "active_ingredients_chars": 54,
+        "inci_applicability_status": "",
+        "ingredient_review_status": "",
+        "ingredient_remediation_action": "",
+        "bundle_component_refs_count": 0,
+        "effective_inci_chars": 536,
+        "inci_borrowed_from_product_id": ""
+      }
+    },
+    {
+      "seed_id": "eps_101d2bd9bd4a7954059be8a7",
+      "external_product_id": "ext_ffb12fe6f5825dbc7ae8d71e",
+      "market": "US",
+      "domain": "ohlolly.com",
+      "title": "Beauty of Joseon Ginseng Cleansing Oil",
+      "canonical_url": "https://ohlolly.com/products/beauty-of-joseon-ginseng-cleansing-oil",
+      "product_family": "single_formula",
+      "product_line_id": "pl_f64ad0a227e18c5aca883ae8",
+      "identity_variant_axes": {
+        "multi_variant": false
+      },
+      "pivota_insights": {
+        "direct": {
+          "product_id": "ext_ffb12fe6f5825dbc7ae8d71e",
+          "kb_key": "product:ext_ffb12fe6f5825dbc7ae8d71e",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "seller_plus_formula",
+          "has_card_highlight": true
+        },
+        "effective": {
+          "product_id": "ext_ffb12fe6f5825dbc7ae8d71e",
+          "kb_key": "product:ext_ffb12fe6f5825dbc7ae8d71e",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "seller_plus_formula",
+          "has_card_highlight": true
+        },
+        "product_line_id": "pl_f64ad0a227e18c5aca883ae8",
+        "borrowed_from_sibling": false
+      },
+      "active_ingredients": {
+        "status": "not_expected_missing",
+        "issues": [],
+        "regulatory_expected": false,
+        "hero_expected": false,
+        "active_items": [],
+        "source_origin": "pdp_section",
+        "source_quality_status": "blocked",
+        "coverage": {
+          "details_sections_count": 14,
+          "faq_count": 4,
+          "how_to_chars": 123,
+          "inci_chars": 727,
+          "active_ingredients_chars": 130,
+          "inci_applicability_status": "",
+          "ingredient_review_status": "",
+          "ingredient_remediation_action": "",
+          "bundle_component_refs_count": 0,
+          "effective_inci_chars": 727,
+          "inci_borrowed_from_product_id": ""
+        },
+        "invalid_fragments": [],
+        "suppressed_reason": "active_items_not_displayable"
+      },
+      "variants": {
+        "status": "ready",
+        "issues": [],
+        "visible_variant_rows": 1,
+        "examples": {
+          "identity_option_visible": [],
+          "wrong_axis_for_category": [],
+          "makeup_shade_missing_visual": [],
+          "size_value_generic_axis": [],
+          "default_option_size_evidence_missing_axis": [],
+          "identity_default_title_axis": []
+        }
+      },
+      "coverage": {
+        "details_sections_count": 14,
+        "faq_count": 4,
+        "how_to_chars": 123,
+        "inci_chars": 727,
+        "active_ingredients_chars": 130,
+        "inci_applicability_status": "",
+        "ingredient_review_status": "",
+        "ingredient_remediation_action": "",
+        "bundle_component_refs_count": 0,
+        "effective_inci_chars": 727,
+        "inci_borrowed_from_product_id": ""
+      }
+    }
+  ]
+}

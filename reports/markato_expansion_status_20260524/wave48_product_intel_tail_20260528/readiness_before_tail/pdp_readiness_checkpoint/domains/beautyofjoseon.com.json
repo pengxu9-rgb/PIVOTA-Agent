@@ -1,0 +1,5049 @@
+{
+  "generated_at": "2026-05-28T10:00:25.118Z",
+  "options": {
+    "market": "US",
+    "includeAttached": true,
+    "domain": "beautyofjoseon.com",
+    "externalProductIds": [],
+    "limit": 20000,
+    "sampleLimit": 10,
+    "checkpointDir": null,
+    "checkpointMode": "domain",
+    "resume": false,
+    "force": false,
+    "continueOnError": true,
+    "pageSize": 500,
+    "format": "json",
+    "chunkByDomain": false
+  },
+  "warnings": [],
+  "summary": {
+    "scanned": 46,
+    "by_market": {
+      "US": 46
+    },
+    "by_domain": [
+      {
+        "key": "beautyofjoseon.com",
+        "count": 46
+      }
+    ],
+    "by_product_family": [
+      {
+        "key": "single_formula",
+        "count": 37
+      },
+      {
+        "key": "accessory",
+        "count": 4
+      },
+      {
+        "key": "unknown_product",
+        "count": 4
+      },
+      {
+        "key": "set_or_collection",
+        "count": 1
+      }
+    ],
+    "coverage": {
+      "missing_inci": 0,
+      "missing_active_raw": 19,
+      "missing_details": 2,
+      "missing_how_to": 0,
+      "missing_faq": 9
+    },
+    "pivota_insights": {
+      "direct": {
+        "displayable": 46,
+        "high_quality_ready": 45,
+        "missing_kb": 0,
+        "not_displayable": 0
+      },
+      "effective": {
+        "displayable": 46,
+        "high_quality_ready": 45,
+        "missing_kb": 0,
+        "not_displayable": 0,
+        "borrowed_from_sibling": 0
+      },
+      "effective_issues": [
+        {
+          "key": "public_truncated_copy",
+          "count": 1
+        }
+      ],
+      "effective_issue_domains": [
+        {
+          "key": "beautyofjoseon.com::public_truncated_copy",
+          "count": 1
+        }
+      ],
+      "quality_state": [
+        {
+          "key": "reviewed",
+          "count": 46
+        }
+      ],
+      "evidence_profile": [
+        {
+          "key": "seller_plus_formula",
+          "count": 36
+        },
+        {
+          "key": "official_pdp_reviewed",
+          "count": 4
+        },
+        {
+          "key": "seller_plus_accessory",
+          "count": 4
+        },
+        {
+          "key": "seller_plus_component",
+          "count": 1
+        },
+        {
+          "key": "seller_plus_external_review",
+          "count": 1
+        }
+      ],
+      "samples": {
+        "public_truncated_copy": [
+          {
+            "external_product_id": "ext_03dfb4ac825988a3ae86c1ac",
+            "domain": "beautyofjoseon.com",
+            "title": "Day Dew Sunscreen 10ml",
+            "used_product_id": "ext_03dfb4ac825988a3ae86c1ac",
+            "quality_state": "reviewed",
+            "evidence_profile": "seller_plus_formula"
+          }
+        ]
+      }
+    },
+    "active_ingredients": {
+      "regulatory_expected": 19,
+      "hero_expected": 28,
+      "any_active_items": 36,
+      "status": [
+        {
+          "key": "ready_hero",
+          "count": 16
+        },
+        {
+          "key": "ready_regulatory",
+          "count": 15
+        },
+        {
+          "key": "not_applicable_product_family",
+          "count": 5
+        },
+        {
+          "key": "low_signal_active",
+          "count": 4
+        },
+        {
+          "key": "missing_regulatory",
+          "count": 4
+        },
+        {
+          "key": "missing_hero",
+          "count": 1
+        },
+        {
+          "key": "possibly_inci_guess",
+          "count": 1
+        }
+      ],
+      "issues": [
+        {
+          "key": "low_signal_active",
+          "count": 4
+        },
+        {
+          "key": "missing_regulatory",
+          "count": 4
+        },
+        {
+          "key": "active_raw_may_be_full_inci",
+          "count": 1
+        },
+        {
+          "key": "active_raw_too_long",
+          "count": 1
+        },
+        {
+          "key": "missing_hero",
+          "count": 1
+        },
+        {
+          "key": "possibly_inci_guess",
+          "count": 1
+        }
+      ],
+      "issue_domains": [
+        {
+          "key": "beautyofjoseon.com::low_signal_active",
+          "count": 4
+        },
+        {
+          "key": "beautyofjoseon.com::missing_regulatory",
+          "count": 4
+        },
+        {
+          "key": "beautyofjoseon.com::active_raw_may_be_full_inci",
+          "count": 1
+        },
+        {
+          "key": "beautyofjoseon.com::active_raw_too_long",
+          "count": 1
+        },
+        {
+          "key": "beautyofjoseon.com::missing_hero",
+          "count": 1
+        },
+        {
+          "key": "beautyofjoseon.com::possibly_inci_guess",
+          "count": 1
+        }
+      ],
+      "source_origin": [
+        {
+          "key": "pdp_section",
+          "count": 23
+        },
+        {
+          "key": "reviewed_source_backed_pdp_content_patch",
+          "count": 17
+        },
+        {
+          "key": "none",
+          "count": 5
+        },
+        {
+          "key": "official_pdp_manual_review",
+          "count": 1
+        }
+      ],
+      "samples": {
+        "low_signal_active": [
+          {
+            "external_product_id": "ext_0db0d50ebca111f10d7247c3",
+            "domain": "beautyofjoseon.com",
+            "title": "Green Plum Refreshing Toner : AHA + BHA",
+            "status": "low_signal_active",
+            "active_items": [],
+            "source_origin": "pdp_section"
+          },
+          {
+            "external_product_id": "ext_298af1ce6d04e51adaf998b5",
+            "domain": "beautyofjoseon.com",
+            "title": "Ground Rice and Honey Glow Mask",
+            "status": "low_signal_active",
+            "active_items": [],
+            "source_origin": "pdp_section"
+          },
+          {
+            "external_product_id": "ext_ac9de387f263a0f5f8886e14",
+            "domain": "beautyofjoseon.com",
+            "title": "Red Bean Refreshing Pore Mask",
+            "status": "low_signal_active",
+            "active_items": [],
+            "source_origin": "pdp_section"
+          },
+          {
+            "external_product_id": "ext_b907819a3430b97c7d89c1b7",
+            "domain": "beautyofjoseon.com",
+            "title": "Green Plum Refreshing Cleanser",
+            "status": "low_signal_active",
+            "active_items": [],
+            "source_origin": "pdp_section"
+          }
+        ],
+        "missing_hero": [
+          {
+            "external_product_id": "ext_364d79199298fc5e2bc460fd",
+            "domain": "beautyofjoseon.com",
+            "title": "Apricot Blossom Peeling Gel",
+            "status": "missing_hero",
+            "active_items": [],
+            "source_origin": "pdp_section"
+          }
+        ],
+        "missing_regulatory": [
+          {
+            "external_product_id": "ext_4c7b6491417102c39debc297",
+            "domain": "beautyofjoseon.com",
+            "title": "Matte Sun Stick : Mugwort+Camelia (SPF 50+ PA++++)",
+            "status": "missing_regulatory",
+            "active_items": [
+              "Panthenol (B5)",
+              "Hyaluronic acid",
+              "Centella asiatica",
+              "Ethylhexyl Triazone",
+              "Diethylamino Hydroxybenzoyl Hexyl Benzoate",
+              "Bis-Ethylhexyloxyphenol Methoxyphenyl Triazine"
+            ],
+            "source_origin": "pdp_section"
+          },
+          {
+            "external_product_id": "ext_ca06c839d3c56b3999e7202e",
+            "domain": "beautyofjoseon.com",
+            "title": "Ginseng Moist Sun Serum (SPF 50+ PA++++)",
+            "status": "missing_regulatory",
+            "active_items": [
+              "Diethylamino Hydroxybenzoyl Hexyl Benzoate",
+              "Bis-Ethylhexyloxyphenol Methoxyphenyl Triazine",
+              "Ethylhexyl Triazone",
+              "Niacinamide",
+              "Panax Ginseng Root Extract",
+              "Panax Ginseng Berry Extract",
+              "Adenosine",
+              "Tocopherol"
+            ],
+            "source_origin": "reviewed_source_backed_pdp_content_patch"
+          },
+          {
+            "external_product_id": "ext_ef1ad3d678350d3e28956fca",
+            "domain": "beautyofjoseon.com",
+            "title": "Relief Sun : Rice + Probiotics (SPF50+ PA++++)",
+            "status": "missing_regulatory",
+            "active_items": [
+              "Niacinamide"
+            ],
+            "source_origin": "pdp_section"
+          },
+          {
+            "external_product_id": "ext_f84eb0354d9578e047520615",
+            "domain": "beautyofjoseon.com",
+            "title": "Relief Sun Aqua-Fresh : Rice + B5  (SPF50+ PA++++)",
+            "status": "missing_regulatory",
+            "active_items": [
+              "Panthenol (B5)",
+              "Ceramide NP"
+            ],
+            "source_origin": "pdp_section"
+          }
+        ],
+        "active_raw_too_long": [
+          {
+            "external_product_id": "ext_4c7b6491417102c39debc297",
+            "domain": "beautyofjoseon.com",
+            "title": "Matte Sun Stick : Mugwort+Camelia (SPF 50+ PA++++)",
+            "status": "missing_regulatory",
+            "active_items": [
+              "Panthenol (B5)",
+              "Hyaluronic acid",
+              "Centella asiatica",
+              "Ethylhexyl Triazone",
+              "Diethylamino Hydroxybenzoyl Hexyl Benzoate",
+              "Bis-Ethylhexyloxyphenol Methoxyphenyl Triazine"
+            ],
+            "source_origin": "pdp_section"
+          }
+        ],
+        "active_raw_may_be_full_inci": [
+          {
+            "external_product_id": "ext_4c7b6491417102c39debc297",
+            "domain": "beautyofjoseon.com",
+            "title": "Matte Sun Stick : Mugwort+Camelia (SPF 50+ PA++++)",
+            "status": "missing_regulatory",
+            "active_items": [
+              "Panthenol (B5)",
+              "Hyaluronic acid",
+              "Centella asiatica",
+              "Ethylhexyl Triazone",
+              "Diethylamino Hydroxybenzoyl Hexyl Benzoate",
+              "Bis-Ethylhexyloxyphenol Methoxyphenyl Triazine"
+            ],
+            "source_origin": "pdp_section"
+          }
+        ],
+        "possibly_inci_guess": [
+          {
+            "external_product_id": "ext_f164b139414863392b334345",
+            "domain": "beautyofjoseon.com",
+            "title": "Ginseng Cleansing Oil",
+            "status": "possibly_inci_guess",
+            "active_items": [
+              "Ginseng Seed Oil",
+              "Soybean Oil",
+              "Ginseng Root Extract",
+              "Ginseng Berry Extract",
+              "Ginseng Extract"
+            ],
+            "source_origin": "pdp_section"
+          }
+        ]
+      }
+    },
+    "variants": {
+      "status": [
+        {
+          "key": "ready",
+          "count": 46
+        }
+      ],
+      "issues": [],
+      "issue_domains": [],
+      "samples": {}
+    }
+  },
+  "rows": [
+    {
+      "seed_id": "eps_4979b3af7863d0aa76c8f046",
+      "external_product_id": "ext_004922feb3a077c05c62af25",
+      "market": "US",
+      "domain": "beautyofjoseon.com",
+      "title": "Revive Under Eye Patch: Ginseng + Retinal",
+      "canonical_url": "https://beautyofjoseon.com/products/revive-under-eye-patch",
+      "product_family": "single_formula",
+      "product_line_id": "pl_0832a2a0ffc82b062c1d9ce2",
+      "identity_variant_axes": {
+        "multi_variant": true
+      },
+      "pivota_insights": {
+        "direct": {
+          "product_id": "ext_004922feb3a077c05c62af25",
+          "kb_key": "product:ext_004922feb3a077c05c62af25",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "seller_plus_formula",
+          "has_card_highlight": true
+        },
+        "effective": {
+          "product_id": "ext_004922feb3a077c05c62af25",
+          "kb_key": "product:ext_004922feb3a077c05c62af25",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "seller_plus_formula",
+          "has_card_highlight": true
+        },
+        "product_line_id": "pl_0832a2a0ffc82b062c1d9ce2",
+        "borrowed_from_sibling": false
+      },
+      "active_ingredients": {
+        "status": "ready_hero",
+        "issues": [],
+        "regulatory_expected": false,
+        "hero_expected": true,
+        "active_items": [
+          "Retinal",
+          "Panax Ginseng Root Water",
+          "Collagen Water",
+          "Hydrolyzed Collagen",
+          "Bakuchiol",
+          "Adenosine",
+          "Acetyl Hexapeptide-8",
+          "Ceramide NP",
+          "Beta-Glucan"
+        ],
+        "source_origin": "official_pdp_manual_review",
+        "source_quality_status": "captured",
+        "coverage": {
+          "details_sections_count": 12,
+          "faq_count": 0,
+          "how_to_chars": 314,
+          "inci_chars": 552,
+          "active_ingredients_chars": 140,
+          "inci_applicability_status": "",
+          "ingredient_review_status": "",
+          "ingredient_remediation_action": "",
+          "bundle_component_refs_count": 0,
+          "effective_inci_chars": 552,
+          "inci_borrowed_from_product_id": ""
+        },
+        "invalid_fragments": [],
+        "suppressed_reason": null
+      },
+      "variants": {
+        "status": "ready",
+        "issues": [],
+        "visible_variant_rows": 1,
+        "examples": {
+          "identity_option_visible": [],
+          "wrong_axis_for_category": [],
+          "makeup_shade_missing_visual": [],
+          "size_value_generic_axis": [],
+          "default_option_size_evidence_missing_axis": [],
+          "identity_default_title_axis": []
+        }
+      },
+      "coverage": {
+        "details_sections_count": 12,
+        "faq_count": 0,
+        "how_to_chars": 314,
+        "inci_chars": 552,
+        "active_ingredients_chars": 140,
+        "inci_applicability_status": "",
+        "ingredient_review_status": "",
+        "ingredient_remediation_action": "",
+        "bundle_component_refs_count": 0,
+        "effective_inci_chars": 552,
+        "inci_borrowed_from_product_id": ""
+      }
+    },
+    {
+      "seed_id": "eps_c0ad3379896ccd037286d742",
+      "external_product_id": "ext_03dfb4ac825988a3ae86c1ac",
+      "market": "US",
+      "domain": "beautyofjoseon.com",
+      "title": "Day Dew Sunscreen 10ml",
+      "canonical_url": "https://beautyofjoseon.com/products/day-dew-sunscreen-10ml",
+      "product_family": "single_formula",
+      "product_line_id": "pl_357e9395676c519b63478ec9",
+      "identity_variant_axes": {
+        "size": "10ml",
+        "volume": "10ml",
+        "multi_variant": false
+      },
+      "pivota_insights": {
+        "direct": {
+          "product_id": "ext_03dfb4ac825988a3ae86c1ac",
+          "kb_key": "product:ext_03dfb4ac825988a3ae86c1ac",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": false,
+          "human_reviewed": true,
+          "issues": [
+            "public_truncated_copy"
+          ],
+          "blocking_issues": [
+            "public_truncated_copy"
+          ],
+          "quality_state": "reviewed",
+          "evidence_profile": "seller_plus_formula",
+          "has_card_highlight": true
+        },
+        "effective": {
+          "product_id": "ext_03dfb4ac825988a3ae86c1ac",
+          "kb_key": "product:ext_03dfb4ac825988a3ae86c1ac",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": false,
+          "human_reviewed": true,
+          "issues": [
+            "public_truncated_copy"
+          ],
+          "blocking_issues": [
+            "public_truncated_copy"
+          ],
+          "quality_state": "reviewed",
+          "evidence_profile": "seller_plus_formula",
+          "has_card_highlight": true
+        },
+        "product_line_id": "pl_357e9395676c519b63478ec9",
+        "borrowed_from_sibling": false
+      },
+      "active_ingredients": {
+        "status": "ready_regulatory",
+        "issues": [],
+        "regulatory_expected": true,
+        "hero_expected": true,
+        "active_items": [
+          "Avobenzone",
+          "Homosalate",
+          "Octisalate",
+          "Octocrylene",
+          "Niacinamide",
+          "Panthenol",
+          "Sodium Hyaluronate"
+        ],
+        "source_origin": "reviewed_source_backed_pdp_content_patch",
+        "source_quality_status": "regulatory_active",
+        "coverage": {
+          "details_sections_count": 8,
+          "faq_count": 0,
+          "how_to_chars": 145,
+          "inci_chars": 512,
+          "active_ingredients_chars": 91,
+          "inci_applicability_status": "",
+          "ingredient_review_status": "manual_source_review_required",
+          "ingredient_remediation_action": "manual_source_review_required",
+          "bundle_component_refs_count": 0,
+          "effective_inci_chars": 512,
+          "inci_borrowed_from_product_id": ""
+        },
+        "invalid_fragments": [],
+        "suppressed_reason": null
+      },
+      "variants": {
+        "status": "ready",
+        "issues": [],
+        "visible_variant_rows": 1,
+        "examples": {
+          "identity_option_visible": [],
+          "wrong_axis_for_category": [],
+          "makeup_shade_missing_visual": [],
+          "size_value_generic_axis": [],
+          "default_option_size_evidence_missing_axis": [],
+          "identity_default_title_axis": []
+        }
+      },
+      "coverage": {
+        "details_sections_count": 8,
+        "faq_count": 0,
+        "how_to_chars": 145,
+        "inci_chars": 512,
+        "active_ingredients_chars": 91,
+        "inci_applicability_status": "",
+        "ingredient_review_status": "manual_source_review_required",
+        "ingredient_remediation_action": "manual_source_review_required",
+        "bundle_component_refs_count": 0,
+        "effective_inci_chars": 512,
+        "inci_borrowed_from_product_id": ""
+      }
+    },
+    {
+      "seed_id": "eps_2aab1484de44e77bbf357cdf",
+      "external_product_id": "ext_07d58518db2e7b38b9794923",
+      "market": "US",
+      "domain": "beautyofjoseon.com",
+      "title": "Daily Tinted Fluid Sunscreen DY330",
+      "canonical_url": "https://beautyofjoseon.com/products/daily-tinted-fluid-sunscreen-dy330",
+      "product_family": "single_formula",
+      "product_line_id": "pl_9f6eba61992718e099ff8563",
+      "identity_variant_axes": {
+        "size": "1 69 fl oz 50ml",
+        "shade": "dy330",
+        "volume": "69floz",
+        "multi_variant": true
+      },
+      "pivota_insights": {
+        "direct": {
+          "product_id": "ext_07d58518db2e7b38b9794923",
+          "kb_key": "product:ext_07d58518db2e7b38b9794923",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "seller_plus_formula",
+          "has_card_highlight": true
+        },
+        "effective": {
+          "product_id": "ext_07d58518db2e7b38b9794923",
+          "kb_key": "product:ext_07d58518db2e7b38b9794923",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "seller_plus_formula",
+          "has_card_highlight": true
+        },
+        "product_line_id": "pl_9f6eba61992718e099ff8563",
+        "borrowed_from_sibling": false
+      },
+      "active_ingredients": {
+        "status": "ready_regulatory",
+        "issues": [],
+        "regulatory_expected": true,
+        "hero_expected": false,
+        "active_items": [
+          "Iron Oxides",
+          "Hydrogenated Olive Oil Unsaponifiables",
+          "Artemisia Capillaris Extract",
+          "Tocopherol",
+          "Zinc Oxide"
+        ],
+        "source_origin": "reviewed_source_backed_pdp_content_patch",
+        "source_quality_status": "regulatory_active",
+        "coverage": {
+          "details_sections_count": 6,
+          "faq_count": 8,
+          "how_to_chars": 286,
+          "inci_chars": 774,
+          "active_ingredients_chars": 114,
+          "inci_applicability_status": "",
+          "ingredient_review_status": "",
+          "ingredient_remediation_action": "",
+          "bundle_component_refs_count": 0,
+          "effective_inci_chars": 774,
+          "inci_borrowed_from_product_id": ""
+        },
+        "invalid_fragments": [],
+        "suppressed_reason": null
+      },
+      "variants": {
+        "status": "ready",
+        "issues": [],
+        "visible_variant_rows": 2,
+        "examples": {
+          "identity_option_visible": [],
+          "wrong_axis_for_category": [],
+          "makeup_shade_missing_visual": [],
+          "size_value_generic_axis": [],
+          "default_option_size_evidence_missing_axis": [],
+          "identity_default_title_axis": []
+        }
+      },
+      "coverage": {
+        "details_sections_count": 6,
+        "faq_count": 8,
+        "how_to_chars": 286,
+        "inci_chars": 774,
+        "active_ingredients_chars": 114,
+        "inci_applicability_status": "",
+        "ingredient_review_status": "",
+        "ingredient_remediation_action": "",
+        "bundle_component_refs_count": 0,
+        "effective_inci_chars": 774,
+        "inci_borrowed_from_product_id": ""
+      }
+    },
+    {
+      "seed_id": "eps_1c60272f4730de6f65b15b95",
+      "external_product_id": "ext_0841faaffda3c76269a1a719",
+      "market": "US",
+      "domain": "beautyofjoseon.com",
+      "title": "Revive Eye Serum : Ginseng + Retinal",
+      "canonical_url": "https://beautyofjoseon.com/products/revive-eye-serum-ginseng-retinal",
+      "product_family": "single_formula",
+      "product_line_id": "pl_5a6b11c236e8723b5820275b",
+      "identity_variant_axes": {
+        "size": "30ml",
+        "volume": "30ml",
+        "multi_variant": true
+      },
+      "pivota_insights": {
+        "direct": {
+          "product_id": "ext_0841faaffda3c76269a1a719",
+          "kb_key": "product:ext_0841faaffda3c76269a1a719",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "seller_plus_formula",
+          "has_card_highlight": true
+        },
+        "effective": {
+          "product_id": "ext_0841faaffda3c76269a1a719",
+          "kb_key": "product:ext_0841faaffda3c76269a1a719",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "seller_plus_formula",
+          "has_card_highlight": true
+        },
+        "product_line_id": "pl_5a6b11c236e8723b5820275b",
+        "borrowed_from_sibling": false
+      },
+      "active_ingredients": {
+        "status": "ready_hero",
+        "issues": [],
+        "regulatory_expected": false,
+        "hero_expected": true,
+        "active_items": [
+          "Ceramide NP",
+          "Niacinamide",
+          "Peptides",
+          "Retinal"
+        ],
+        "source_origin": "pdp_section",
+        "source_quality_status": "captured",
+        "coverage": {
+          "details_sections_count": 14,
+          "faq_count": 12,
+          "how_to_chars": 192,
+          "inci_chars": 790,
+          "active_ingredients_chars": 0,
+          "inci_applicability_status": "",
+          "ingredient_review_status": "",
+          "ingredient_remediation_action": "",
+          "bundle_component_refs_count": 0,
+          "effective_inci_chars": 790,
+          "inci_borrowed_from_product_id": ""
+        },
+        "invalid_fragments": [],
+        "suppressed_reason": null
+      },
+      "variants": {
+        "status": "ready",
+        "issues": [],
+        "visible_variant_rows": 3,
+        "examples": {
+          "identity_option_visible": [],
+          "wrong_axis_for_category": [],
+          "makeup_shade_missing_visual": [],
+          "size_value_generic_axis": [],
+          "default_option_size_evidence_missing_axis": [],
+          "identity_default_title_axis": []
+        }
+      },
+      "coverage": {
+        "details_sections_count": 14,
+        "faq_count": 12,
+        "how_to_chars": 192,
+        "inci_chars": 790,
+        "active_ingredients_chars": 0,
+        "inci_applicability_status": "",
+        "ingredient_review_status": "",
+        "ingredient_remediation_action": "",
+        "bundle_component_refs_count": 0,
+        "effective_inci_chars": 790,
+        "inci_borrowed_from_product_id": ""
+      }
+    },
+    {
+      "seed_id": "eps_2935205393231e1f4222391c",
+      "external_product_id": "ext_0db0d50ebca111f10d7247c3",
+      "market": "US",
+      "domain": "beautyofjoseon.com",
+      "title": "Green Plum Refreshing Toner : AHA + BHA",
+      "canonical_url": "https://beautyofjoseon.com/products/green-plum-refreshing-toner-aha-bha",
+      "product_family": "single_formula",
+      "product_line_id": "pl_21883bae26a33d9030d687ab",
+      "identity_variant_axes": {
+        "multi_variant": false
+      },
+      "pivota_insights": {
+        "direct": {
+          "product_id": "ext_0db0d50ebca111f10d7247c3",
+          "kb_key": "product:ext_0db0d50ebca111f10d7247c3",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "seller_plus_formula",
+          "has_card_highlight": true
+        },
+        "effective": {
+          "product_id": "ext_0db0d50ebca111f10d7247c3",
+          "kb_key": "product:ext_0db0d50ebca111f10d7247c3",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "seller_plus_formula",
+          "has_card_highlight": true
+        },
+        "product_line_id": "pl_21883bae26a33d9030d687ab",
+        "borrowed_from_sibling": false
+      },
+      "active_ingredients": {
+        "status": "low_signal_active",
+        "issues": [
+          "low_signal_active"
+        ],
+        "regulatory_expected": false,
+        "hero_expected": true,
+        "active_items": [],
+        "source_origin": "pdp_section",
+        "source_quality_status": "blocked",
+        "coverage": {
+          "details_sections_count": 18,
+          "faq_count": 8,
+          "how_to_chars": 175,
+          "inci_chars": 543,
+          "active_ingredients_chars": 0,
+          "inci_applicability_status": "",
+          "ingredient_review_status": "",
+          "ingredient_remediation_action": "",
+          "bundle_component_refs_count": 0,
+          "effective_inci_chars": 543,
+          "inci_borrowed_from_product_id": ""
+        },
+        "invalid_fragments": [],
+        "suppressed_reason": "active_items_low_signal"
+      },
+      "variants": {
+        "status": "ready",
+        "issues": [],
+        "visible_variant_rows": 1,
+        "examples": {
+          "identity_option_visible": [],
+          "wrong_axis_for_category": [],
+          "makeup_shade_missing_visual": [],
+          "size_value_generic_axis": [],
+          "default_option_size_evidence_missing_axis": [],
+          "identity_default_title_axis": []
+        }
+      },
+      "coverage": {
+        "details_sections_count": 18,
+        "faq_count": 8,
+        "how_to_chars": 175,
+        "inci_chars": 543,
+        "active_ingredients_chars": 0,
+        "inci_applicability_status": "",
+        "ingredient_review_status": "",
+        "ingredient_remediation_action": "",
+        "bundle_component_refs_count": 0,
+        "effective_inci_chars": 543,
+        "inci_borrowed_from_product_id": ""
+      }
+    },
+    {
+      "seed_id": "eps_81bde808f0ab69c93d1a34e9",
+      "external_product_id": "ext_0f62484cdd1c70b06b46461a",
+      "market": "US",
+      "domain": "beautyofjoseon.com",
+      "title": "Daily Tinted Fluid Sunscreen MY210",
+      "canonical_url": "https://beautyofjoseon.com/products/daily-tinted-fluid-sunscreen-my210",
+      "product_family": "single_formula",
+      "product_line_id": "pl_9f6eba61992718e099ff8563",
+      "identity_variant_axes": {
+        "size": "1 69 fl oz 50ml",
+        "shade": "my210",
+        "volume": "69floz",
+        "multi_variant": true
+      },
+      "pivota_insights": {
+        "direct": {
+          "product_id": "ext_0f62484cdd1c70b06b46461a",
+          "kb_key": "product:ext_0f62484cdd1c70b06b46461a",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "seller_plus_formula",
+          "has_card_highlight": true
+        },
+        "effective": {
+          "product_id": "ext_0f62484cdd1c70b06b46461a",
+          "kb_key": "product:ext_0f62484cdd1c70b06b46461a",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "seller_plus_formula",
+          "has_card_highlight": true
+        },
+        "product_line_id": "pl_9f6eba61992718e099ff8563",
+        "borrowed_from_sibling": false
+      },
+      "active_ingredients": {
+        "status": "ready_regulatory",
+        "issues": [],
+        "regulatory_expected": true,
+        "hero_expected": false,
+        "active_items": [
+          "Iron Oxides",
+          "Hydrogenated Olive Oil Unsaponifiables",
+          "Artemisia Capillaris Extract",
+          "Tocopherol",
+          "Zinc Oxide"
+        ],
+        "source_origin": "reviewed_source_backed_pdp_content_patch",
+        "source_quality_status": "regulatory_active",
+        "coverage": {
+          "details_sections_count": 6,
+          "faq_count": 8,
+          "how_to_chars": 286,
+          "inci_chars": 774,
+          "active_ingredients_chars": 114,
+          "inci_applicability_status": "",
+          "ingredient_review_status": "",
+          "ingredient_remediation_action": "",
+          "bundle_component_refs_count": 0,
+          "effective_inci_chars": 774,
+          "inci_borrowed_from_product_id": ""
+        },
+        "invalid_fragments": [],
+        "suppressed_reason": null
+      },
+      "variants": {
+        "status": "ready",
+        "issues": [],
+        "visible_variant_rows": 2,
+        "examples": {
+          "identity_option_visible": [],
+          "wrong_axis_for_category": [],
+          "makeup_shade_missing_visual": [],
+          "size_value_generic_axis": [],
+          "default_option_size_evidence_missing_axis": [],
+          "identity_default_title_axis": []
+        }
+      },
+      "coverage": {
+        "details_sections_count": 6,
+        "faq_count": 8,
+        "how_to_chars": 286,
+        "inci_chars": 774,
+        "active_ingredients_chars": 114,
+        "inci_applicability_status": "",
+        "ingredient_review_status": "",
+        "ingredient_remediation_action": "",
+        "bundle_component_refs_count": 0,
+        "effective_inci_chars": 774,
+        "inci_borrowed_from_product_id": ""
+      }
+    },
+    {
+      "seed_id": "eps_adfacb333c8a659756dfcc9f",
+      "external_product_id": "ext_0fff03f61c59e019e5b8cccd",
+      "market": "US",
+      "domain": "beautyofjoseon.com",
+      "title": "Dayscreen Moisturizer SPF 30",
+      "canonical_url": "https://nl.beautyofjoseon.com/products/dayscreen-moisturizer-sunscreen-global",
+      "product_family": "single_formula",
+      "product_line_id": "pl_8039e4239a6623a9330af093",
+      "identity_variant_axes": {
+        "pack": "1pack",
+        "multi_variant": true
+      },
+      "pivota_insights": {
+        "direct": {
+          "product_id": "ext_0fff03f61c59e019e5b8cccd",
+          "kb_key": "product:ext_0fff03f61c59e019e5b8cccd",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "seller_plus_formula",
+          "has_card_highlight": true
+        },
+        "effective": {
+          "product_id": "ext_0fff03f61c59e019e5b8cccd",
+          "kb_key": "product:ext_0fff03f61c59e019e5b8cccd",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "seller_plus_formula",
+          "has_card_highlight": true
+        },
+        "product_line_id": "pl_8039e4239a6623a9330af093",
+        "borrowed_from_sibling": false
+      },
+      "active_ingredients": {
+        "status": "ready_regulatory",
+        "issues": [],
+        "regulatory_expected": true,
+        "hero_expected": true,
+        "active_items": [
+          "Ceramide NP",
+          "Octocrylene",
+          "Homosalate",
+          "Ethylhexyl Salicylate"
+        ],
+        "source_origin": "pdp_section",
+        "source_quality_status": "regulatory_active",
+        "coverage": {
+          "details_sections_count": 16,
+          "faq_count": 12,
+          "how_to_chars": 224,
+          "inci_chars": 637,
+          "active_ingredients_chars": 0,
+          "inci_applicability_status": "",
+          "ingredient_review_status": "",
+          "ingredient_remediation_action": "",
+          "bundle_component_refs_count": 0,
+          "effective_inci_chars": 637,
+          "inci_borrowed_from_product_id": ""
+        },
+        "invalid_fragments": [],
+        "suppressed_reason": null
+      },
+      "variants": {
+        "status": "ready",
+        "issues": [],
+        "visible_variant_rows": 2,
+        "examples": {
+          "identity_option_visible": [],
+          "wrong_axis_for_category": [],
+          "makeup_shade_missing_visual": [],
+          "size_value_generic_axis": [],
+          "default_option_size_evidence_missing_axis": [],
+          "identity_default_title_axis": []
+        }
+      },
+      "coverage": {
+        "details_sections_count": 16,
+        "faq_count": 12,
+        "how_to_chars": 224,
+        "inci_chars": 637,
+        "active_ingredients_chars": 0,
+        "inci_applicability_status": "",
+        "ingredient_review_status": "",
+        "ingredient_remediation_action": "",
+        "bundle_component_refs_count": 0,
+        "effective_inci_chars": 637,
+        "inci_borrowed_from_product_id": ""
+      }
+    },
+    {
+      "seed_id": "eps_a989f9445894397d73954914",
+      "external_product_id": "ext_125e6b88cd78fe243b4f19e1",
+      "market": "US",
+      "domain": "beautyofjoseon.com",
+      "title": "Daily Tinted Fluid Sunscreen DY300",
+      "canonical_url": "https://beautyofjoseon.com/products/daily-tinted-fluid-sunscreen-dy300",
+      "product_family": "single_formula",
+      "product_line_id": "pl_9f6eba61992718e099ff8563",
+      "identity_variant_axes": {
+        "size": "1 69 fl oz 50ml",
+        "shade": "dy300",
+        "volume": "69floz",
+        "multi_variant": true
+      },
+      "pivota_insights": {
+        "direct": {
+          "product_id": "ext_125e6b88cd78fe243b4f19e1",
+          "kb_key": "product:ext_125e6b88cd78fe243b4f19e1",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "seller_plus_formula",
+          "has_card_highlight": true
+        },
+        "effective": {
+          "product_id": "ext_125e6b88cd78fe243b4f19e1",
+          "kb_key": "product:ext_125e6b88cd78fe243b4f19e1",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "seller_plus_formula",
+          "has_card_highlight": true
+        },
+        "product_line_id": "pl_9f6eba61992718e099ff8563",
+        "borrowed_from_sibling": false
+      },
+      "active_ingredients": {
+        "status": "ready_regulatory",
+        "issues": [],
+        "regulatory_expected": true,
+        "hero_expected": false,
+        "active_items": [
+          "Iron Oxides",
+          "Hydrogenated Olive Oil Unsaponifiables",
+          "Artemisia Capillaris Extract",
+          "Tocopherol",
+          "Zinc Oxide"
+        ],
+        "source_origin": "reviewed_source_backed_pdp_content_patch",
+        "source_quality_status": "regulatory_active",
+        "coverage": {
+          "details_sections_count": 6,
+          "faq_count": 8,
+          "how_to_chars": 286,
+          "inci_chars": 774,
+          "active_ingredients_chars": 114,
+          "inci_applicability_status": "",
+          "ingredient_review_status": "",
+          "ingredient_remediation_action": "",
+          "bundle_component_refs_count": 0,
+          "effective_inci_chars": 774,
+          "inci_borrowed_from_product_id": ""
+        },
+        "invalid_fragments": [],
+        "suppressed_reason": null
+      },
+      "variants": {
+        "status": "ready",
+        "issues": [],
+        "visible_variant_rows": 2,
+        "examples": {
+          "identity_option_visible": [],
+          "wrong_axis_for_category": [],
+          "makeup_shade_missing_visual": [],
+          "size_value_generic_axis": [],
+          "default_option_size_evidence_missing_axis": [],
+          "identity_default_title_axis": []
+        }
+      },
+      "coverage": {
+        "details_sections_count": 6,
+        "faq_count": 8,
+        "how_to_chars": 286,
+        "inci_chars": 774,
+        "active_ingredients_chars": 114,
+        "inci_applicability_status": "",
+        "ingredient_review_status": "",
+        "ingredient_remediation_action": "",
+        "bundle_component_refs_count": 0,
+        "effective_inci_chars": 774,
+        "inci_borrowed_from_product_id": ""
+      }
+    },
+    {
+      "seed_id": "eps_0da39c0ee72be33fd56d5b12",
+      "external_product_id": "ext_13b0f6b0c032e399575cf546",
+      "market": "US",
+      "domain": "beautyofjoseon.com",
+      "title": "Dynasty Cream",
+      "canonical_url": "https://beautyofjoseon.com/products/dynasty-cream",
+      "product_family": "single_formula",
+      "product_line_id": "pl_b760aaa1671d8c0b76c7c6d7",
+      "identity_variant_axes": {
+        "size": "1 fl oz 30ml",
+        "volume": "1floz",
+        "multi_variant": true
+      },
+      "pivota_insights": {
+        "direct": {
+          "product_id": "ext_13b0f6b0c032e399575cf546",
+          "kb_key": "product:ext_13b0f6b0c032e399575cf546",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "seller_plus_formula",
+          "has_card_highlight": true
+        },
+        "effective": {
+          "product_id": "ext_13b0f6b0c032e399575cf546",
+          "kb_key": "product:ext_13b0f6b0c032e399575cf546",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "seller_plus_formula",
+          "has_card_highlight": true
+        },
+        "product_line_id": "pl_b760aaa1671d8c0b76c7c6d7",
+        "borrowed_from_sibling": false
+      },
+      "active_ingredients": {
+        "status": "ready_hero",
+        "issues": [],
+        "regulatory_expected": false,
+        "hero_expected": true,
+        "active_items": [
+          "Ceramide NP",
+          "Niacinamide",
+          "Hyaluronic acid",
+          "Squalane"
+        ],
+        "source_origin": "pdp_section",
+        "source_quality_status": "captured",
+        "coverage": {
+          "details_sections_count": 16,
+          "faq_count": 8,
+          "how_to_chars": 264,
+          "inci_chars": 877,
+          "active_ingredients_chars": 0,
+          "inci_applicability_status": "",
+          "ingredient_review_status": "",
+          "ingredient_remediation_action": "",
+          "bundle_component_refs_count": 0,
+          "effective_inci_chars": 877,
+          "inci_borrowed_from_product_id": ""
+        },
+        "invalid_fragments": [],
+        "suppressed_reason": null
+      },
+      "variants": {
+        "status": "ready",
+        "issues": [],
+        "visible_variant_rows": 3,
+        "examples": {
+          "identity_option_visible": [],
+          "wrong_axis_for_category": [],
+          "makeup_shade_missing_visual": [],
+          "size_value_generic_axis": [],
+          "default_option_size_evidence_missing_axis": [],
+          "identity_default_title_axis": []
+        }
+      },
+      "coverage": {
+        "details_sections_count": 16,
+        "faq_count": 8,
+        "how_to_chars": 264,
+        "inci_chars": 877,
+        "active_ingredients_chars": 0,
+        "inci_applicability_status": "",
+        "ingredient_review_status": "",
+        "ingredient_remediation_action": "",
+        "bundle_component_refs_count": 0,
+        "effective_inci_chars": 877,
+        "inci_borrowed_from_product_id": ""
+      }
+    },
+    {
+      "seed_id": "eps_bb74f8d1b523a19980a983ee",
+      "external_product_id": "ext_298af1ce6d04e51adaf998b5",
+      "market": "US",
+      "domain": "beautyofjoseon.com",
+      "title": "Ground Rice and Honey Glow Mask",
+      "canonical_url": "https://beautyofjoseon.com/products/ground-rice-and-honey-glow-mask",
+      "product_family": "single_formula",
+      "product_line_id": "pl_7517056f89669e629d940870",
+      "identity_variant_axes": {
+        "multi_variant": false
+      },
+      "pivota_insights": {
+        "direct": {
+          "product_id": "ext_298af1ce6d04e51adaf998b5",
+          "kb_key": "product:ext_298af1ce6d04e51adaf998b5",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "seller_plus_formula",
+          "has_card_highlight": true
+        },
+        "effective": {
+          "product_id": "ext_298af1ce6d04e51adaf998b5",
+          "kb_key": "product:ext_298af1ce6d04e51adaf998b5",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "seller_plus_formula",
+          "has_card_highlight": true
+        },
+        "product_line_id": "pl_7517056f89669e629d940870",
+        "borrowed_from_sibling": false
+      },
+      "active_ingredients": {
+        "status": "low_signal_active",
+        "issues": [
+          "low_signal_active"
+        ],
+        "regulatory_expected": false,
+        "hero_expected": true,
+        "active_items": [],
+        "source_origin": "pdp_section",
+        "source_quality_status": "blocked",
+        "coverage": {
+          "details_sections_count": 12,
+          "faq_count": 12,
+          "how_to_chars": 164,
+          "inci_chars": 680,
+          "active_ingredients_chars": 0,
+          "inci_applicability_status": "",
+          "ingredient_review_status": "",
+          "ingredient_remediation_action": "",
+          "bundle_component_refs_count": 0,
+          "effective_inci_chars": 680,
+          "inci_borrowed_from_product_id": ""
+        },
+        "invalid_fragments": [],
+        "suppressed_reason": "active_items_low_signal"
+      },
+      "variants": {
+        "status": "ready",
+        "issues": [],
+        "visible_variant_rows": 1,
+        "examples": {
+          "identity_option_visible": [],
+          "wrong_axis_for_category": [],
+          "makeup_shade_missing_visual": [],
+          "size_value_generic_axis": [],
+          "default_option_size_evidence_missing_axis": [],
+          "identity_default_title_axis": []
+        }
+      },
+      "coverage": {
+        "details_sections_count": 12,
+        "faq_count": 12,
+        "how_to_chars": 164,
+        "inci_chars": 680,
+        "active_ingredients_chars": 0,
+        "inci_applicability_status": "",
+        "ingredient_review_status": "",
+        "ingredient_remediation_action": "",
+        "bundle_component_refs_count": 0,
+        "effective_inci_chars": 680,
+        "inci_borrowed_from_product_id": ""
+      }
+    },
+    {
+      "seed_id": "eps_6718dbf9e3cf74de52ef484a",
+      "external_product_id": "ext_2a3a4502264d08c5fa0901fd",
+      "market": "US",
+      "domain": "beautyofjoseon.com",
+      "title": "Bojagi",
+      "canonical_url": "https://nl.beautyofjoseon.com/products/bojagi",
+      "product_family": "accessory",
+      "product_line_id": "pl_194b3e620017cecb37484743",
+      "identity_variant_axes": {
+        "color": "olive",
+        "multi_variant": true
+      },
+      "pivota_insights": {
+        "direct": {
+          "product_id": "ext_2a3a4502264d08c5fa0901fd",
+          "kb_key": "product:ext_2a3a4502264d08c5fa0901fd",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "seller_plus_accessory",
+          "has_card_highlight": true
+        },
+        "effective": {
+          "product_id": "ext_2a3a4502264d08c5fa0901fd",
+          "kb_key": "product:ext_2a3a4502264d08c5fa0901fd",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "seller_plus_accessory",
+          "has_card_highlight": true
+        },
+        "product_line_id": "pl_194b3e620017cecb37484743",
+        "borrowed_from_sibling": false
+      },
+      "active_ingredients": {
+        "status": "not_applicable_product_family",
+        "issues": [],
+        "regulatory_expected": false,
+        "hero_expected": false,
+        "active_items": [],
+        "source_origin": "none",
+        "source_quality_status": "blocked",
+        "coverage": {
+          "details_sections_count": 0,
+          "faq_count": 0,
+          "how_to_chars": 154,
+          "inci_chars": 0,
+          "active_ingredients_chars": 0,
+          "inci_applicability_status": "not_applicable",
+          "ingredient_review_status": "",
+          "ingredient_remediation_action": "mark_inci_not_applicable",
+          "bundle_component_refs_count": 0,
+          "effective_inci_chars": 0,
+          "inci_borrowed_from_product_id": ""
+        },
+        "invalid_fragments": [],
+        "suppressed_reason": "accessory"
+      },
+      "variants": {
+        "status": "ready",
+        "issues": [],
+        "visible_variant_rows": 3,
+        "examples": {
+          "identity_option_visible": [],
+          "wrong_axis_for_category": [],
+          "makeup_shade_missing_visual": [],
+          "size_value_generic_axis": [],
+          "default_option_size_evidence_missing_axis": [],
+          "identity_default_title_axis": []
+        }
+      },
+      "coverage": {
+        "details_sections_count": 0,
+        "faq_count": 0,
+        "how_to_chars": 154,
+        "inci_chars": 0,
+        "active_ingredients_chars": 0,
+        "inci_applicability_status": "not_applicable",
+        "ingredient_review_status": "",
+        "ingredient_remediation_action": "mark_inci_not_applicable",
+        "bundle_component_refs_count": 0,
+        "effective_inci_chars": 0,
+        "inci_borrowed_from_product_id": ""
+      }
+    },
+    {
+      "seed_id": "eps_341f1a6f47a228d1c2987441",
+      "external_product_id": "ext_2e6b76c51b0fef3f89cd170d",
+      "market": "US",
+      "domain": "beautyofjoseon.com",
+      "title": "Daily Tinted Fluid Sunscreen DP320",
+      "canonical_url": "https://beautyofjoseon.com/products/daily-tinted-fluid-sunscreen-dp320",
+      "product_family": "single_formula",
+      "product_line_id": "pl_9f6eba61992718e099ff8563",
+      "identity_variant_axes": {
+        "size": "1 69 fl oz 50ml",
+        "shade": "dp320",
+        "volume": "69floz",
+        "multi_variant": true
+      },
+      "pivota_insights": {
+        "direct": {
+          "product_id": "ext_2e6b76c51b0fef3f89cd170d",
+          "kb_key": "product:ext_2e6b76c51b0fef3f89cd170d",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "official_pdp_reviewed",
+          "has_card_highlight": true
+        },
+        "effective": {
+          "product_id": "ext_2e6b76c51b0fef3f89cd170d",
+          "kb_key": "product:ext_2e6b76c51b0fef3f89cd170d",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "official_pdp_reviewed",
+          "has_card_highlight": true
+        },
+        "product_line_id": "pl_9f6eba61992718e099ff8563",
+        "borrowed_from_sibling": false
+      },
+      "active_ingredients": {
+        "status": "ready_regulatory",
+        "issues": [],
+        "regulatory_expected": true,
+        "hero_expected": false,
+        "active_items": [
+          "Iron Oxides",
+          "Hydrogenated Olive Oil Unsaponifiables",
+          "Artemisia Capillaris Extract",
+          "Tocopherol",
+          "Zinc Oxide"
+        ],
+        "source_origin": "reviewed_source_backed_pdp_content_patch",
+        "source_quality_status": "regulatory_active",
+        "coverage": {
+          "details_sections_count": 6,
+          "faq_count": 8,
+          "how_to_chars": 286,
+          "inci_chars": 774,
+          "active_ingredients_chars": 114,
+          "inci_applicability_status": "",
+          "ingredient_review_status": "",
+          "ingredient_remediation_action": "",
+          "bundle_component_refs_count": 0,
+          "effective_inci_chars": 774,
+          "inci_borrowed_from_product_id": ""
+        },
+        "invalid_fragments": [],
+        "suppressed_reason": null
+      },
+      "variants": {
+        "status": "ready",
+        "issues": [],
+        "visible_variant_rows": 2,
+        "examples": {
+          "identity_option_visible": [],
+          "wrong_axis_for_category": [],
+          "makeup_shade_missing_visual": [],
+          "size_value_generic_axis": [],
+          "default_option_size_evidence_missing_axis": [],
+          "identity_default_title_axis": []
+        }
+      },
+      "coverage": {
+        "details_sections_count": 6,
+        "faq_count": 8,
+        "how_to_chars": 286,
+        "inci_chars": 774,
+        "active_ingredients_chars": 114,
+        "inci_applicability_status": "",
+        "ingredient_review_status": "",
+        "ingredient_remediation_action": "",
+        "bundle_component_refs_count": 0,
+        "effective_inci_chars": 774,
+        "inci_borrowed_from_product_id": ""
+      }
+    },
+    {
+      "seed_id": "eps_a7b60e4ad2f3ac998bba298f",
+      "external_product_id": "ext_30a00ffd89b3270dbca1967f",
+      "market": "US",
+      "domain": "beautyofjoseon.com",
+      "title": "Daily Tinted Fluid Sunscreen MP200",
+      "canonical_url": "https://beautyofjoseon.com/products/daily-tinted-fluid-sunscreen-mp200",
+      "product_family": "single_formula",
+      "product_line_id": "pl_9f6eba61992718e099ff8563",
+      "identity_variant_axes": {
+        "size": "1 69 fl oz 50ml",
+        "shade": "mp200",
+        "volume": "69floz",
+        "multi_variant": true
+      },
+      "pivota_insights": {
+        "direct": {
+          "product_id": "ext_30a00ffd89b3270dbca1967f",
+          "kb_key": "product:ext_30a00ffd89b3270dbca1967f",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "seller_plus_formula",
+          "has_card_highlight": true
+        },
+        "effective": {
+          "product_id": "ext_30a00ffd89b3270dbca1967f",
+          "kb_key": "product:ext_30a00ffd89b3270dbca1967f",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "seller_plus_formula",
+          "has_card_highlight": true
+        },
+        "product_line_id": "pl_9f6eba61992718e099ff8563",
+        "borrowed_from_sibling": false
+      },
+      "active_ingredients": {
+        "status": "ready_regulatory",
+        "issues": [],
+        "regulatory_expected": true,
+        "hero_expected": false,
+        "active_items": [
+          "Iron Oxides",
+          "Hydrogenated Olive Oil Unsaponifiables",
+          "Artemisia Capillaris Extract",
+          "Tocopherol",
+          "Zinc Oxide"
+        ],
+        "source_origin": "reviewed_source_backed_pdp_content_patch",
+        "source_quality_status": "regulatory_active",
+        "coverage": {
+          "details_sections_count": 6,
+          "faq_count": 8,
+          "how_to_chars": 286,
+          "inci_chars": 774,
+          "active_ingredients_chars": 114,
+          "inci_applicability_status": "",
+          "ingredient_review_status": "",
+          "ingredient_remediation_action": "",
+          "bundle_component_refs_count": 0,
+          "effective_inci_chars": 774,
+          "inci_borrowed_from_product_id": ""
+        },
+        "invalid_fragments": [],
+        "suppressed_reason": null
+      },
+      "variants": {
+        "status": "ready",
+        "issues": [],
+        "visible_variant_rows": 2,
+        "examples": {
+          "identity_option_visible": [],
+          "wrong_axis_for_category": [],
+          "makeup_shade_missing_visual": [],
+          "size_value_generic_axis": [],
+          "default_option_size_evidence_missing_axis": [],
+          "identity_default_title_axis": []
+        }
+      },
+      "coverage": {
+        "details_sections_count": 6,
+        "faq_count": 8,
+        "how_to_chars": 286,
+        "inci_chars": 774,
+        "active_ingredients_chars": 114,
+        "inci_applicability_status": "",
+        "ingredient_review_status": "",
+        "ingredient_remediation_action": "",
+        "bundle_component_refs_count": 0,
+        "effective_inci_chars": 774,
+        "inci_borrowed_from_product_id": ""
+      }
+    },
+    {
+      "seed_id": "eps_269424de89822748cca7cdbb",
+      "external_product_id": "ext_35f5c9efedde1f5ac9837e01",
+      "market": "US",
+      "domain": "beautyofjoseon.com",
+      "title": "Revive Serum : Ginseng + Snail Mucin",
+      "canonical_url": "https://beautyofjoseon.com/products/revive-serum-ginseng-snail-mucin",
+      "product_family": "single_formula",
+      "product_line_id": "pl_fc6fc5194306db41606c613e",
+      "identity_variant_axes": {
+        "size": "1 01 fl oz 30ml",
+        "volume": "1floz",
+        "multi_variant": true
+      },
+      "pivota_insights": {
+        "direct": {
+          "product_id": "ext_35f5c9efedde1f5ac9837e01",
+          "kb_key": "product:ext_35f5c9efedde1f5ac9837e01",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "seller_plus_formula",
+          "has_card_highlight": true
+        },
+        "effective": {
+          "product_id": "ext_35f5c9efedde1f5ac9837e01",
+          "kb_key": "product:ext_35f5c9efedde1f5ac9837e01",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "seller_plus_formula",
+          "has_card_highlight": true
+        },
+        "product_line_id": "pl_fc6fc5194306db41606c613e",
+        "borrowed_from_sibling": false
+      },
+      "active_ingredients": {
+        "status": "ready_hero",
+        "issues": [],
+        "regulatory_expected": false,
+        "hero_expected": true,
+        "active_items": [
+          "Niacinamide",
+          "Hyaluronic acid",
+          "Centella asiatica"
+        ],
+        "source_origin": "pdp_section",
+        "source_quality_status": "captured",
+        "coverage": {
+          "details_sections_count": 14,
+          "faq_count": 6,
+          "how_to_chars": 196,
+          "inci_chars": 615,
+          "active_ingredients_chars": 0,
+          "inci_applicability_status": "",
+          "ingredient_review_status": "",
+          "ingredient_remediation_action": "",
+          "bundle_component_refs_count": 0,
+          "effective_inci_chars": 615,
+          "inci_borrowed_from_product_id": ""
+        },
+        "invalid_fragments": [],
+        "suppressed_reason": null
+      },
+      "variants": {
+        "status": "ready",
+        "issues": [],
+        "visible_variant_rows": 2,
+        "examples": {
+          "identity_option_visible": [],
+          "wrong_axis_for_category": [],
+          "makeup_shade_missing_visual": [],
+          "size_value_generic_axis": [],
+          "default_option_size_evidence_missing_axis": [],
+          "identity_default_title_axis": []
+        }
+      },
+      "coverage": {
+        "details_sections_count": 14,
+        "faq_count": 6,
+        "how_to_chars": 196,
+        "inci_chars": 615,
+        "active_ingredients_chars": 0,
+        "inci_applicability_status": "",
+        "ingredient_review_status": "",
+        "ingredient_remediation_action": "",
+        "bundle_component_refs_count": 0,
+        "effective_inci_chars": 615,
+        "inci_borrowed_from_product_id": ""
+      }
+    },
+    {
+      "seed_id": "eps_f6c1be2adf52acae724dd4ae",
+      "external_product_id": "ext_364d79199298fc5e2bc460fd",
+      "market": "US",
+      "domain": "beautyofjoseon.com",
+      "title": "Apricot Blossom Peeling Gel",
+      "canonical_url": "https://beautyofjoseon.com/products/apricot-blossom-peeling-gel",
+      "product_family": "unknown_product",
+      "product_line_id": "pl_27b81f8d95fd208af88ab895",
+      "identity_variant_axes": {
+        "multi_variant": false
+      },
+      "pivota_insights": {
+        "direct": {
+          "product_id": "ext_364d79199298fc5e2bc460fd",
+          "kb_key": "product:ext_364d79199298fc5e2bc460fd",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "seller_plus_formula",
+          "has_card_highlight": true
+        },
+        "effective": {
+          "product_id": "ext_364d79199298fc5e2bc460fd",
+          "kb_key": "product:ext_364d79199298fc5e2bc460fd",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "seller_plus_formula",
+          "has_card_highlight": true
+        },
+        "product_line_id": "pl_27b81f8d95fd208af88ab895",
+        "borrowed_from_sibling": false
+      },
+      "active_ingredients": {
+        "status": "missing_hero",
+        "issues": [
+          "missing_hero"
+        ],
+        "regulatory_expected": false,
+        "hero_expected": true,
+        "active_items": [],
+        "source_origin": "pdp_section",
+        "source_quality_status": "blocked",
+        "coverage": {
+          "details_sections_count": 14,
+          "faq_count": 6,
+          "how_to_chars": 171,
+          "inci_chars": 404,
+          "active_ingredients_chars": 0,
+          "inci_applicability_status": "",
+          "ingredient_review_status": "",
+          "ingredient_remediation_action": "",
+          "bundle_component_refs_count": 0,
+          "effective_inci_chars": 404,
+          "inci_borrowed_from_product_id": ""
+        },
+        "invalid_fragments": [],
+        "suppressed_reason": null
+      },
+      "variants": {
+        "status": "ready",
+        "issues": [],
+        "visible_variant_rows": 1,
+        "examples": {
+          "identity_option_visible": [],
+          "wrong_axis_for_category": [],
+          "makeup_shade_missing_visual": [],
+          "size_value_generic_axis": [],
+          "default_option_size_evidence_missing_axis": [],
+          "identity_default_title_axis": []
+        }
+      },
+      "coverage": {
+        "details_sections_count": 14,
+        "faq_count": 6,
+        "how_to_chars": 171,
+        "inci_chars": 404,
+        "active_ingredients_chars": 0,
+        "inci_applicability_status": "",
+        "ingredient_review_status": "",
+        "ingredient_remediation_action": "",
+        "bundle_component_refs_count": 0,
+        "effective_inci_chars": 404,
+        "inci_borrowed_from_product_id": ""
+      }
+    },
+    {
+      "seed_id": "eps_cfc5a27ccf9e64f2d9904740",
+      "external_product_id": "ext_3a23aa3e20cea405b0d7fed0",
+      "market": "US",
+      "domain": "beautyofjoseon.com",
+      "title": "Daily Tinted Fluid Sunscreen",
+      "canonical_url": "https://beautyofjoseon.com/products/daily-tinted-fluid-sunscreen-uk-eu",
+      "product_family": "single_formula",
+      "product_line_id": "pl_0f8017aaf05aae5dfec2d7b1",
+      "identity_variant_axes": {
+        "shade": "lp100",
+        "multi_variant": true
+      },
+      "pivota_insights": {
+        "direct": {
+          "product_id": "ext_3a23aa3e20cea405b0d7fed0",
+          "kb_key": "product:ext_3a23aa3e20cea405b0d7fed0",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "seller_plus_formula",
+          "has_card_highlight": true
+        },
+        "effective": {
+          "product_id": "ext_3a23aa3e20cea405b0d7fed0",
+          "kb_key": "product:ext_3a23aa3e20cea405b0d7fed0",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "seller_plus_formula",
+          "has_card_highlight": true
+        },
+        "product_line_id": "pl_0f8017aaf05aae5dfec2d7b1",
+        "borrowed_from_sibling": false
+      },
+      "active_ingredients": {
+        "status": "ready_regulatory",
+        "issues": [],
+        "regulatory_expected": true,
+        "hero_expected": false,
+        "active_items": [
+          "Iron Oxides",
+          "Hydrogenated Olive Oil Unsaponifiables",
+          "Artemisia Capillaris Extract",
+          "Tocopherol",
+          "Zinc Oxide"
+        ],
+        "source_origin": "reviewed_source_backed_pdp_content_patch",
+        "source_quality_status": "regulatory_active",
+        "coverage": {
+          "details_sections_count": 4,
+          "faq_count": 0,
+          "how_to_chars": 286,
+          "inci_chars": 774,
+          "active_ingredients_chars": 114,
+          "inci_applicability_status": "",
+          "ingredient_review_status": "manual_source_review_required",
+          "ingredient_remediation_action": "manual_source_review_required",
+          "bundle_component_refs_count": 0,
+          "effective_inci_chars": 774,
+          "inci_borrowed_from_product_id": ""
+        },
+        "invalid_fragments": [],
+        "suppressed_reason": null
+      },
+      "variants": {
+        "status": "ready",
+        "issues": [],
+        "visible_variant_rows": 14,
+        "examples": {
+          "identity_option_visible": [],
+          "wrong_axis_for_category": [],
+          "makeup_shade_missing_visual": [],
+          "size_value_generic_axis": [],
+          "default_option_size_evidence_missing_axis": [],
+          "identity_default_title_axis": []
+        }
+      },
+      "coverage": {
+        "details_sections_count": 4,
+        "faq_count": 0,
+        "how_to_chars": 286,
+        "inci_chars": 774,
+        "active_ingredients_chars": 114,
+        "inci_applicability_status": "",
+        "ingredient_review_status": "manual_source_review_required",
+        "ingredient_remediation_action": "manual_source_review_required",
+        "bundle_component_refs_count": 0,
+        "effective_inci_chars": 774,
+        "inci_borrowed_from_product_id": ""
+      }
+    },
+    {
+      "seed_id": "eps_db97376d144b81c1cb2ce682",
+      "external_product_id": "ext_442c94ac9ed66a214bc834a5",
+      "market": "US",
+      "domain": "beautyofjoseon.com",
+      "title": "Nobang Soap Saver",
+      "canonical_url": "https://beautyofjoseon.com/products/nobang-soap-saver",
+      "product_family": "accessory",
+      "product_line_id": "pl_279c09e66ec18d153dd2e8bc",
+      "identity_variant_axes": {
+        "multi_variant": false
+      },
+      "pivota_insights": {
+        "direct": {
+          "product_id": "ext_442c94ac9ed66a214bc834a5",
+          "kb_key": "product:ext_442c94ac9ed66a214bc834a5",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "seller_plus_accessory",
+          "has_card_highlight": true
+        },
+        "effective": {
+          "product_id": "ext_442c94ac9ed66a214bc834a5",
+          "kb_key": "product:ext_442c94ac9ed66a214bc834a5",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "seller_plus_accessory",
+          "has_card_highlight": true
+        },
+        "product_line_id": "pl_279c09e66ec18d153dd2e8bc",
+        "borrowed_from_sibling": false
+      },
+      "active_ingredients": {
+        "status": "not_applicable_product_family",
+        "issues": [],
+        "regulatory_expected": false,
+        "hero_expected": false,
+        "active_items": [],
+        "source_origin": "none",
+        "source_quality_status": "blocked",
+        "coverage": {
+          "details_sections_count": 2,
+          "faq_count": 0,
+          "how_to_chars": 161,
+          "inci_chars": 0,
+          "active_ingredients_chars": 0,
+          "inci_applicability_status": "not_applicable",
+          "ingredient_review_status": "",
+          "ingredient_remediation_action": "mark_inci_not_applicable",
+          "bundle_component_refs_count": 0,
+          "effective_inci_chars": 0,
+          "inci_borrowed_from_product_id": ""
+        },
+        "invalid_fragments": [],
+        "suppressed_reason": "accessory"
+      },
+      "variants": {
+        "status": "ready",
+        "issues": [],
+        "visible_variant_rows": 1,
+        "examples": {
+          "identity_option_visible": [],
+          "wrong_axis_for_category": [],
+          "makeup_shade_missing_visual": [],
+          "size_value_generic_axis": [],
+          "default_option_size_evidence_missing_axis": [],
+          "identity_default_title_axis": []
+        }
+      },
+      "coverage": {
+        "details_sections_count": 2,
+        "faq_count": 0,
+        "how_to_chars": 161,
+        "inci_chars": 0,
+        "active_ingredients_chars": 0,
+        "inci_applicability_status": "not_applicable",
+        "ingredient_review_status": "",
+        "ingredient_remediation_action": "mark_inci_not_applicable",
+        "bundle_component_refs_count": 0,
+        "effective_inci_chars": 0,
+        "inci_borrowed_from_product_id": ""
+      }
+    },
+    {
+      "seed_id": "eps_48213a3325231509b197441f",
+      "external_product_id": "ext_4c7b6491417102c39debc297",
+      "market": "US",
+      "domain": "beautyofjoseon.com",
+      "title": "Matte Sun Stick : Mugwort+Camelia (SPF 50+ PA++++)",
+      "canonical_url": "https://nl.beautyofjoseon.com/products/matte-sun-stick-mugwort-camelia",
+      "product_family": "single_formula",
+      "product_line_id": "pl_3e192481666625303c1279cf",
+      "identity_variant_axes": {
+        "pack": "1pack",
+        "multi_variant": true
+      },
+      "pivota_insights": {
+        "direct": {
+          "product_id": "ext_4c7b6491417102c39debc297",
+          "kb_key": "product:ext_4c7b6491417102c39debc297",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "seller_plus_formula",
+          "has_card_highlight": true
+        },
+        "effective": {
+          "product_id": "ext_4c7b6491417102c39debc297",
+          "kb_key": "product:ext_4c7b6491417102c39debc297",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "seller_plus_formula",
+          "has_card_highlight": true
+        },
+        "product_line_id": "pl_3e192481666625303c1279cf",
+        "borrowed_from_sibling": false
+      },
+      "active_ingredients": {
+        "status": "missing_regulatory",
+        "issues": [
+          "missing_regulatory",
+          "active_raw_too_long",
+          "active_raw_may_be_full_inci"
+        ],
+        "regulatory_expected": true,
+        "hero_expected": true,
+        "active_items": [
+          "Panthenol (B5)",
+          "Hyaluronic acid",
+          "Centella asiatica",
+          "Ethylhexyl Triazone",
+          "Diethylamino Hydroxybenzoyl Hexyl Benzoate",
+          "Bis-Ethylhexyloxyphenol Methoxyphenyl Triazine"
+        ],
+        "source_origin": "pdp_section",
+        "source_quality_status": "blocked",
+        "coverage": {
+          "details_sections_count": 14,
+          "faq_count": 12,
+          "how_to_chars": 201,
+          "inci_chars": 1249,
+          "active_ingredients_chars": 1506,
+          "inci_applicability_status": "",
+          "ingredient_review_status": "",
+          "ingredient_remediation_action": "",
+          "bundle_component_refs_count": 0,
+          "effective_inci_chars": 1249,
+          "inci_borrowed_from_product_id": ""
+        },
+        "invalid_fragments": [],
+        "suppressed_reason": null
+      },
+      "variants": {
+        "status": "ready",
+        "issues": [],
+        "visible_variant_rows": 2,
+        "examples": {
+          "identity_option_visible": [],
+          "wrong_axis_for_category": [],
+          "makeup_shade_missing_visual": [],
+          "size_value_generic_axis": [],
+          "default_option_size_evidence_missing_axis": [],
+          "identity_default_title_axis": []
+        }
+      },
+      "coverage": {
+        "details_sections_count": 14,
+        "faq_count": 12,
+        "how_to_chars": 201,
+        "inci_chars": 1249,
+        "active_ingredients_chars": 1506,
+        "inci_applicability_status": "",
+        "ingredient_review_status": "",
+        "ingredient_remediation_action": "",
+        "bundle_component_refs_count": 0,
+        "effective_inci_chars": 1249,
+        "inci_borrowed_from_product_id": ""
+      }
+    },
+    {
+      "seed_id": "eps_71036c566e4d4fb213df8b7a",
+      "external_product_id": "ext_587a08e4bd88335a35173ee1",
+      "market": "US",
+      "domain": "beautyofjoseon.com",
+      "title": "Low pH Rice Face and Body Cleansing Bar",
+      "canonical_url": "https://beautyofjoseon.com/products/low-ph-rice-face-and-body-cleansing-bar",
+      "product_family": "single_formula",
+      "product_line_id": "pl_305d986cf774ba2fa054e10b",
+      "identity_variant_axes": {
+        "multi_variant": false
+      },
+      "pivota_insights": {
+        "direct": {
+          "product_id": "ext_587a08e4bd88335a35173ee1",
+          "kb_key": "product:ext_587a08e4bd88335a35173ee1",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "seller_plus_formula",
+          "has_card_highlight": true
+        },
+        "effective": {
+          "product_id": "ext_587a08e4bd88335a35173ee1",
+          "kb_key": "product:ext_587a08e4bd88335a35173ee1",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "seller_plus_formula",
+          "has_card_highlight": true
+        },
+        "product_line_id": "pl_305d986cf774ba2fa054e10b",
+        "borrowed_from_sibling": false
+      },
+      "active_ingredients": {
+        "status": "ready_hero",
+        "issues": [],
+        "regulatory_expected": false,
+        "hero_expected": true,
+        "active_items": [
+          "Sodium Cocoyl Isethionate",
+          "Decyl Glucoside",
+          "Oryza Sativa (Rice) Bran Extract",
+          "Sesamum Indicum (Sesame) Seed Powder",
+          "Olea Europaea (Olive) Fruit Oil"
+        ],
+        "source_origin": "reviewed_source_backed_pdp_content_patch",
+        "source_quality_status": "captured",
+        "coverage": {
+          "details_sections_count": 4,
+          "faq_count": 0,
+          "how_to_chars": 87,
+          "inci_chars": 294,
+          "active_ingredients_chars": 147,
+          "inci_applicability_status": "",
+          "ingredient_review_status": "manual_source_review_required",
+          "ingredient_remediation_action": "manual_source_review_required",
+          "bundle_component_refs_count": 0,
+          "effective_inci_chars": 294,
+          "inci_borrowed_from_product_id": ""
+        },
+        "invalid_fragments": [],
+        "suppressed_reason": null
+      },
+      "variants": {
+        "status": "ready",
+        "issues": [],
+        "visible_variant_rows": 1,
+        "examples": {
+          "identity_option_visible": [],
+          "wrong_axis_for_category": [],
+          "makeup_shade_missing_visual": [],
+          "size_value_generic_axis": [],
+          "default_option_size_evidence_missing_axis": [],
+          "identity_default_title_axis": []
+        }
+      },
+      "coverage": {
+        "details_sections_count": 4,
+        "faq_count": 0,
+        "how_to_chars": 87,
+        "inci_chars": 294,
+        "active_ingredients_chars": 147,
+        "inci_applicability_status": "",
+        "ingredient_review_status": "manual_source_review_required",
+        "ingredient_remediation_action": "manual_source_review_required",
+        "bundle_component_refs_count": 0,
+        "effective_inci_chars": 294,
+        "inci_borrowed_from_product_id": ""
+      }
+    },
+    {
+      "seed_id": "eps_45b7cd8386741c1f0b884e91",
+      "external_product_id": "ext_61beb592d2642087c6cde62d",
+      "market": "US",
+      "domain": "beautyofjoseon.com",
+      "title": "Glow Serum : Propolis + Niacinamide",
+      "canonical_url": "https://beautyofjoseon.com/products/glow-serum-propolis-niacinamide",
+      "product_family": "single_formula",
+      "product_line_id": "pl_21050a1b92bf77b939d68014",
+      "identity_variant_axes": {
+        "size": "1 01 fl oz 30ml",
+        "volume": "1floz",
+        "multi_variant": true
+      },
+      "pivota_insights": {
+        "direct": {
+          "product_id": "ext_61beb592d2642087c6cde62d",
+          "kb_key": "product:ext_61beb592d2642087c6cde62d",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "seller_plus_formula",
+          "has_card_highlight": true
+        },
+        "effective": {
+          "product_id": "ext_61beb592d2642087c6cde62d",
+          "kb_key": "product:ext_61beb592d2642087c6cde62d",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "seller_plus_formula",
+          "has_card_highlight": true
+        },
+        "product_line_id": "pl_21050a1b92bf77b939d68014",
+        "borrowed_from_sibling": false
+      },
+      "active_ingredients": {
+        "status": "ready_hero",
+        "issues": [],
+        "regulatory_expected": false,
+        "hero_expected": true,
+        "active_items": [
+          "Niacinamide",
+          "Centella asiatica"
+        ],
+        "source_origin": "pdp_section",
+        "source_quality_status": "captured",
+        "coverage": {
+          "details_sections_count": 16,
+          "faq_count": 6,
+          "how_to_chars": 242,
+          "inci_chars": 678,
+          "active_ingredients_chars": 0,
+          "inci_applicability_status": "",
+          "ingredient_review_status": "",
+          "ingredient_remediation_action": "",
+          "bundle_component_refs_count": 0,
+          "effective_inci_chars": 678,
+          "inci_borrowed_from_product_id": ""
+        },
+        "invalid_fragments": [],
+        "suppressed_reason": null
+      },
+      "variants": {
+        "status": "ready",
+        "issues": [],
+        "visible_variant_rows": 2,
+        "examples": {
+          "identity_option_visible": [],
+          "wrong_axis_for_category": [],
+          "makeup_shade_missing_visual": [],
+          "size_value_generic_axis": [],
+          "default_option_size_evidence_missing_axis": [],
+          "identity_default_title_axis": []
+        }
+      },
+      "coverage": {
+        "details_sections_count": 16,
+        "faq_count": 6,
+        "how_to_chars": 242,
+        "inci_chars": 678,
+        "active_ingredients_chars": 0,
+        "inci_applicability_status": "",
+        "ingredient_review_status": "",
+        "ingredient_remediation_action": "",
+        "bundle_component_refs_count": 0,
+        "effective_inci_chars": 678,
+        "inci_borrowed_from_product_id": ""
+      }
+    },
+    {
+      "seed_id": "eps_da787ddba23a50d026c1c4e3",
+      "external_product_id": "ext_6aa235f9b1977ce419f179c1",
+      "market": "US",
+      "domain": "beautyofjoseon.com",
+      "title": "Daily Tinted Fluid Sunscreen MY220",
+      "canonical_url": "https://beautyofjoseon.com/products/daily-tinted-fluid-sunscreen-my220",
+      "product_family": "single_formula",
+      "product_line_id": "pl_9f6eba61992718e099ff8563",
+      "identity_variant_axes": {
+        "size": "1 69 fl oz 50ml",
+        "shade": "my220",
+        "volume": "69floz",
+        "multi_variant": true
+      },
+      "pivota_insights": {
+        "direct": {
+          "product_id": "ext_6aa235f9b1977ce419f179c1",
+          "kb_key": "product:ext_6aa235f9b1977ce419f179c1",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "official_pdp_reviewed",
+          "has_card_highlight": true
+        },
+        "effective": {
+          "product_id": "ext_6aa235f9b1977ce419f179c1",
+          "kb_key": "product:ext_6aa235f9b1977ce419f179c1",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "official_pdp_reviewed",
+          "has_card_highlight": true
+        },
+        "product_line_id": "pl_9f6eba61992718e099ff8563",
+        "borrowed_from_sibling": false
+      },
+      "active_ingredients": {
+        "status": "ready_regulatory",
+        "issues": [],
+        "regulatory_expected": true,
+        "hero_expected": false,
+        "active_items": [
+          "Iron Oxides",
+          "Hydrogenated Olive Oil Unsaponifiables",
+          "Artemisia Capillaris Extract",
+          "Tocopherol",
+          "Zinc Oxide"
+        ],
+        "source_origin": "reviewed_source_backed_pdp_content_patch",
+        "source_quality_status": "regulatory_active",
+        "coverage": {
+          "details_sections_count": 6,
+          "faq_count": 8,
+          "how_to_chars": 286,
+          "inci_chars": 774,
+          "active_ingredients_chars": 114,
+          "inci_applicability_status": "",
+          "ingredient_review_status": "",
+          "ingredient_remediation_action": "",
+          "bundle_component_refs_count": 0,
+          "effective_inci_chars": 774,
+          "inci_borrowed_from_product_id": ""
+        },
+        "invalid_fragments": [],
+        "suppressed_reason": null
+      },
+      "variants": {
+        "status": "ready",
+        "issues": [],
+        "visible_variant_rows": 2,
+        "examples": {
+          "identity_option_visible": [],
+          "wrong_axis_for_category": [],
+          "makeup_shade_missing_visual": [],
+          "size_value_generic_axis": [],
+          "default_option_size_evidence_missing_axis": [],
+          "identity_default_title_axis": []
+        }
+      },
+      "coverage": {
+        "details_sections_count": 6,
+        "faq_count": 8,
+        "how_to_chars": 286,
+        "inci_chars": 774,
+        "active_ingredients_chars": 114,
+        "inci_applicability_status": "",
+        "ingredient_review_status": "",
+        "ingredient_remediation_action": "",
+        "bundle_component_refs_count": 0,
+        "effective_inci_chars": 774,
+        "inci_borrowed_from_product_id": ""
+      }
+    },
+    {
+      "seed_id": "eps_713c76f4e4d707b68b1f67e8",
+      "external_product_id": "ext_77b92b93aae08decbf8cf50f",
+      "market": "US",
+      "domain": "beautyofjoseon.com",
+      "title": "Revive Firming Moisturizer : Ginseng + Retinol",
+      "canonical_url": "https://beautyofjoseon.com/products/revive-firming-moisturizer",
+      "product_family": "single_formula",
+      "product_line_id": "pl_befddbd8d6d263d2a73d073d",
+      "identity_variant_axes": {
+        "multi_variant": false
+      },
+      "pivota_insights": {
+        "direct": {
+          "product_id": "ext_77b92b93aae08decbf8cf50f",
+          "kb_key": "product:ext_77b92b93aae08decbf8cf50f",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "seller_plus_formula",
+          "has_card_highlight": true
+        },
+        "effective": {
+          "product_id": "ext_77b92b93aae08decbf8cf50f",
+          "kb_key": "product:ext_77b92b93aae08decbf8cf50f",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "seller_plus_formula",
+          "has_card_highlight": true
+        },
+        "product_line_id": "pl_befddbd8d6d263d2a73d073d",
+        "borrowed_from_sibling": false
+      },
+      "active_ingredients": {
+        "status": "ready_hero",
+        "issues": [],
+        "regulatory_expected": false,
+        "hero_expected": true,
+        "active_items": [
+          "Retinol",
+          "Ceramide NP",
+          "Squalane"
+        ],
+        "source_origin": "pdp_section",
+        "source_quality_status": "captured",
+        "coverage": {
+          "details_sections_count": 10,
+          "faq_count": 10,
+          "how_to_chars": 448,
+          "inci_chars": 914,
+          "active_ingredients_chars": 0,
+          "inci_applicability_status": "",
+          "ingredient_review_status": "",
+          "ingredient_remediation_action": "",
+          "bundle_component_refs_count": 0,
+          "effective_inci_chars": 914,
+          "inci_borrowed_from_product_id": ""
+        },
+        "invalid_fragments": [],
+        "suppressed_reason": null
+      },
+      "variants": {
+        "status": "ready",
+        "issues": [],
+        "visible_variant_rows": 1,
+        "examples": {
+          "identity_option_visible": [],
+          "wrong_axis_for_category": [],
+          "makeup_shade_missing_visual": [],
+          "size_value_generic_axis": [],
+          "default_option_size_evidence_missing_axis": [],
+          "identity_default_title_axis": []
+        }
+      },
+      "coverage": {
+        "details_sections_count": 10,
+        "faq_count": 10,
+        "how_to_chars": 448,
+        "inci_chars": 914,
+        "active_ingredients_chars": 0,
+        "inci_applicability_status": "",
+        "ingredient_review_status": "",
+        "ingredient_remediation_action": "",
+        "bundle_component_refs_count": 0,
+        "effective_inci_chars": 914,
+        "inci_borrowed_from_product_id": ""
+      }
+    },
+    {
+      "seed_id": "eps_64aae0640755ca0bec71d945",
+      "external_product_id": "ext_7b89e40cf21f7b8782783e15",
+      "market": "US",
+      "domain": "beautyofjoseon.com",
+      "title": "Daily Tinted Fluid Sunscreen DN350",
+      "canonical_url": "https://beautyofjoseon.com/products/daily-tinted-fluid-sunscreen-dn350",
+      "product_family": "single_formula",
+      "product_line_id": "pl_9f6eba61992718e099ff8563",
+      "identity_variant_axes": {
+        "size": "1 69 fl oz 50ml",
+        "shade": "dn350",
+        "volume": "69floz",
+        "multi_variant": true
+      },
+      "pivota_insights": {
+        "direct": {
+          "product_id": "ext_7b89e40cf21f7b8782783e15",
+          "kb_key": "product:ext_7b89e40cf21f7b8782783e15",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "official_pdp_reviewed",
+          "has_card_highlight": true
+        },
+        "effective": {
+          "product_id": "ext_7b89e40cf21f7b8782783e15",
+          "kb_key": "product:ext_7b89e40cf21f7b8782783e15",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "official_pdp_reviewed",
+          "has_card_highlight": true
+        },
+        "product_line_id": "pl_9f6eba61992718e099ff8563",
+        "borrowed_from_sibling": false
+      },
+      "active_ingredients": {
+        "status": "ready_regulatory",
+        "issues": [],
+        "regulatory_expected": true,
+        "hero_expected": false,
+        "active_items": [
+          "Iron Oxides",
+          "Hydrogenated Olive Oil Unsaponifiables",
+          "Artemisia Capillaris Extract",
+          "Tocopherol",
+          "Zinc Oxide"
+        ],
+        "source_origin": "reviewed_source_backed_pdp_content_patch",
+        "source_quality_status": "regulatory_active",
+        "coverage": {
+          "details_sections_count": 6,
+          "faq_count": 8,
+          "how_to_chars": 286,
+          "inci_chars": 774,
+          "active_ingredients_chars": 114,
+          "inci_applicability_status": "",
+          "ingredient_review_status": "",
+          "ingredient_remediation_action": "",
+          "bundle_component_refs_count": 0,
+          "effective_inci_chars": 774,
+          "inci_borrowed_from_product_id": ""
+        },
+        "invalid_fragments": [],
+        "suppressed_reason": null
+      },
+      "variants": {
+        "status": "ready",
+        "issues": [],
+        "visible_variant_rows": 2,
+        "examples": {
+          "identity_option_visible": [],
+          "wrong_axis_for_category": [],
+          "makeup_shade_missing_visual": [],
+          "size_value_generic_axis": [],
+          "default_option_size_evidence_missing_axis": [],
+          "identity_default_title_axis": []
+        }
+      },
+      "coverage": {
+        "details_sections_count": 6,
+        "faq_count": 8,
+        "how_to_chars": 286,
+        "inci_chars": 774,
+        "active_ingredients_chars": 114,
+        "inci_applicability_status": "",
+        "ingredient_review_status": "",
+        "ingredient_remediation_action": "",
+        "bundle_component_refs_count": 0,
+        "effective_inci_chars": 774,
+        "inci_borrowed_from_product_id": ""
+      }
+    },
+    {
+      "seed_id": "eps_9f3849604a75687ec4bb70ea",
+      "external_product_id": "ext_7f86bf0eba830f16dae39f6c",
+      "market": "US",
+      "domain": "beautyofjoseon.com",
+      "title": "Red Bean Water Gel",
+      "canonical_url": "https://beautyofjoseon.com/products/red-bean-water-gel",
+      "product_family": "unknown_product",
+      "product_line_id": "pl_d8d975afc7b6aea12e777189",
+      "identity_variant_axes": {
+        "multi_variant": false
+      },
+      "pivota_insights": {
+        "direct": {
+          "product_id": "ext_7f86bf0eba830f16dae39f6c",
+          "kb_key": "product:ext_7f86bf0eba830f16dae39f6c",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "seller_plus_formula",
+          "has_card_highlight": true
+        },
+        "effective": {
+          "product_id": "ext_7f86bf0eba830f16dae39f6c",
+          "kb_key": "product:ext_7f86bf0eba830f16dae39f6c",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "seller_plus_formula",
+          "has_card_highlight": true
+        },
+        "product_line_id": "pl_d8d975afc7b6aea12e777189",
+        "borrowed_from_sibling": false
+      },
+      "active_ingredients": {
+        "status": "ready_hero",
+        "issues": [],
+        "regulatory_expected": false,
+        "hero_expected": true,
+        "active_items": [
+          "Panthenol (B5)",
+          "Peptides"
+        ],
+        "source_origin": "pdp_section",
+        "source_quality_status": "captured",
+        "coverage": {
+          "details_sections_count": 16,
+          "faq_count": 6,
+          "how_to_chars": 162,
+          "inci_chars": 1021,
+          "active_ingredients_chars": 0,
+          "inci_applicability_status": "",
+          "ingredient_review_status": "",
+          "ingredient_remediation_action": "",
+          "bundle_component_refs_count": 0,
+          "effective_inci_chars": 1021,
+          "inci_borrowed_from_product_id": ""
+        },
+        "invalid_fragments": [],
+        "suppressed_reason": null
+      },
+      "variants": {
+        "status": "ready",
+        "issues": [],
+        "visible_variant_rows": 1,
+        "examples": {
+          "identity_option_visible": [],
+          "wrong_axis_for_category": [],
+          "makeup_shade_missing_visual": [],
+          "size_value_generic_axis": [],
+          "default_option_size_evidence_missing_axis": [],
+          "identity_default_title_axis": []
+        }
+      },
+      "coverage": {
+        "details_sections_count": 16,
+        "faq_count": 6,
+        "how_to_chars": 162,
+        "inci_chars": 1021,
+        "active_ingredients_chars": 0,
+        "inci_applicability_status": "",
+        "ingredient_review_status": "",
+        "ingredient_remediation_action": "",
+        "bundle_component_refs_count": 0,
+        "effective_inci_chars": 1021,
+        "inci_borrowed_from_product_id": ""
+      }
+    },
+    {
+      "seed_id": "eps_befe06607e24084e5f59d28b",
+      "external_product_id": "ext_806b303777439a0c0e0a7e2e",
+      "market": "US",
+      "domain": "beautyofjoseon.com",
+      "title": "Light On Serum : Centella + Vita C",
+      "canonical_url": "https://beautyofjoseon.com/products/light-on-serum-centella-vita-c",
+      "product_family": "single_formula",
+      "product_line_id": "pl_3e2c32a5ae0d2b8ac091e9c5",
+      "identity_variant_axes": {
+        "multi_variant": false
+      },
+      "pivota_insights": {
+        "direct": {
+          "product_id": "ext_806b303777439a0c0e0a7e2e",
+          "kb_key": "product:ext_806b303777439a0c0e0a7e2e",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "seller_plus_formula",
+          "has_card_highlight": true
+        },
+        "effective": {
+          "product_id": "ext_806b303777439a0c0e0a7e2e",
+          "kb_key": "product:ext_806b303777439a0c0e0a7e2e",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "seller_plus_formula",
+          "has_card_highlight": true
+        },
+        "product_line_id": "pl_3e2c32a5ae0d2b8ac091e9c5",
+        "borrowed_from_sibling": false
+      },
+      "active_ingredients": {
+        "status": "ready_hero",
+        "issues": [],
+        "regulatory_expected": false,
+        "hero_expected": true,
+        "active_items": [
+          "Centella asiatica",
+          "Panthenol (B5)",
+          "Vitamin C (Ascorbic acid)",
+          "Hyaluronic acid"
+        ],
+        "source_origin": "pdp_section",
+        "source_quality_status": "captured",
+        "coverage": {
+          "details_sections_count": 16,
+          "faq_count": 14,
+          "how_to_chars": 147,
+          "inci_chars": 1011,
+          "active_ingredients_chars": 0,
+          "inci_applicability_status": "",
+          "ingredient_review_status": "",
+          "ingredient_remediation_action": "",
+          "bundle_component_refs_count": 0,
+          "effective_inci_chars": 1011,
+          "inci_borrowed_from_product_id": ""
+        },
+        "invalid_fragments": [],
+        "suppressed_reason": null
+      },
+      "variants": {
+        "status": "ready",
+        "issues": [],
+        "visible_variant_rows": 1,
+        "examples": {
+          "identity_option_visible": [],
+          "wrong_axis_for_category": [],
+          "makeup_shade_missing_visual": [],
+          "size_value_generic_axis": [],
+          "default_option_size_evidence_missing_axis": [],
+          "identity_default_title_axis": []
+        }
+      },
+      "coverage": {
+        "details_sections_count": 16,
+        "faq_count": 14,
+        "how_to_chars": 147,
+        "inci_chars": 1011,
+        "active_ingredients_chars": 0,
+        "inci_applicability_status": "",
+        "ingredient_review_status": "",
+        "ingredient_remediation_action": "",
+        "bundle_component_refs_count": 0,
+        "effective_inci_chars": 1011,
+        "inci_borrowed_from_product_id": ""
+      }
+    },
+    {
+      "seed_id": "eps_c0e4b7bb3b930b39fba50f84",
+      "external_product_id": "ext_84af5e06ecc12b8ef3ee33fd",
+      "market": "US",
+      "domain": "beautyofjoseon.com",
+      "title": "Calming Barrier Serum",
+      "canonical_url": "https://beautyofjoseon.com/products/calming-barrier-serum",
+      "product_family": "single_formula",
+      "product_line_id": "pl_383b2d88d2902b6da0f34784",
+      "identity_variant_axes": {
+        "size": "1 01 fl oz 30ml",
+        "volume": "1floz",
+        "multi_variant": false
+      },
+      "pivota_insights": {
+        "direct": {
+          "product_id": "ext_84af5e06ecc12b8ef3ee33fd",
+          "kb_key": "product:ext_84af5e06ecc12b8ef3ee33fd",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "seller_plus_formula",
+          "has_card_highlight": true
+        },
+        "effective": {
+          "product_id": "ext_84af5e06ecc12b8ef3ee33fd",
+          "kb_key": "product:ext_84af5e06ecc12b8ef3ee33fd",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "seller_plus_formula",
+          "has_card_highlight": true
+        },
+        "product_line_id": "pl_383b2d88d2902b6da0f34784",
+        "borrowed_from_sibling": false
+      },
+      "active_ingredients": {
+        "status": "ready_hero",
+        "issues": [],
+        "regulatory_expected": false,
+        "hero_expected": true,
+        "active_items": [
+          "Ceramide NP",
+          "Panthenol (B5)",
+          "Niacinamide",
+          "Centella asiatica"
+        ],
+        "source_origin": "pdp_section",
+        "source_quality_status": "captured",
+        "coverage": {
+          "details_sections_count": 16,
+          "faq_count": 12,
+          "how_to_chars": 289,
+          "inci_chars": 681,
+          "active_ingredients_chars": 0,
+          "inci_applicability_status": "",
+          "ingredient_review_status": "",
+          "ingredient_remediation_action": "",
+          "bundle_component_refs_count": 0,
+          "effective_inci_chars": 681,
+          "inci_borrowed_from_product_id": ""
+        },
+        "invalid_fragments": [],
+        "suppressed_reason": null
+      },
+      "variants": {
+        "status": "ready",
+        "issues": [],
+        "visible_variant_rows": 1,
+        "examples": {
+          "identity_option_visible": [],
+          "wrong_axis_for_category": [],
+          "makeup_shade_missing_visual": [],
+          "size_value_generic_axis": [],
+          "default_option_size_evidence_missing_axis": [],
+          "identity_default_title_axis": []
+        }
+      },
+      "coverage": {
+        "details_sections_count": 16,
+        "faq_count": 12,
+        "how_to_chars": 289,
+        "inci_chars": 681,
+        "active_ingredients_chars": 0,
+        "inci_applicability_status": "",
+        "ingredient_review_status": "",
+        "ingredient_remediation_action": "",
+        "bundle_component_refs_count": 0,
+        "effective_inci_chars": 681,
+        "inci_borrowed_from_product_id": ""
+      }
+    },
+    {
+      "seed_id": "eps_6a991c014ea8257fd8faaddc",
+      "external_product_id": "ext_8b778e0c4a593d189f82dd77",
+      "market": "US",
+      "domain": "beautyofjoseon.com",
+      "title": "Porcelain Gwalsa (Gua Sha)",
+      "canonical_url": "https://beautyofjoseon.com/products/porcelain-gwalsa-guasha",
+      "product_family": "accessory",
+      "product_line_id": "pl_91e7556c92e979a5afc6091d",
+      "identity_variant_axes": {
+        "multi_variant": false
+      },
+      "pivota_insights": {
+        "direct": {
+          "product_id": "ext_8b778e0c4a593d189f82dd77",
+          "kb_key": "product:ext_8b778e0c4a593d189f82dd77",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "seller_plus_accessory",
+          "has_card_highlight": true
+        },
+        "effective": {
+          "product_id": "ext_8b778e0c4a593d189f82dd77",
+          "kb_key": "product:ext_8b778e0c4a593d189f82dd77",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "seller_plus_accessory",
+          "has_card_highlight": true
+        },
+        "product_line_id": "pl_91e7556c92e979a5afc6091d",
+        "borrowed_from_sibling": false
+      },
+      "active_ingredients": {
+        "status": "not_applicable_product_family",
+        "issues": [],
+        "regulatory_expected": false,
+        "hero_expected": false,
+        "active_items": [],
+        "source_origin": "none",
+        "source_quality_status": "blocked",
+        "coverage": {
+          "details_sections_count": 4,
+          "faq_count": 6,
+          "how_to_chars": 138,
+          "inci_chars": 0,
+          "active_ingredients_chars": 0,
+          "inci_applicability_status": "not_applicable",
+          "ingredient_review_status": "",
+          "ingredient_remediation_action": "mark_inci_not_applicable",
+          "bundle_component_refs_count": 0,
+          "effective_inci_chars": 0,
+          "inci_borrowed_from_product_id": ""
+        },
+        "invalid_fragments": [],
+        "suppressed_reason": "accessory"
+      },
+      "variants": {
+        "status": "ready",
+        "issues": [],
+        "visible_variant_rows": 1,
+        "examples": {
+          "identity_option_visible": [],
+          "wrong_axis_for_category": [],
+          "makeup_shade_missing_visual": [],
+          "size_value_generic_axis": [],
+          "default_option_size_evidence_missing_axis": [],
+          "identity_default_title_axis": []
+        }
+      },
+      "coverage": {
+        "details_sections_count": 4,
+        "faq_count": 6,
+        "how_to_chars": 138,
+        "inci_chars": 0,
+        "active_ingredients_chars": 0,
+        "inci_applicability_status": "not_applicable",
+        "ingredient_review_status": "",
+        "ingredient_remediation_action": "mark_inci_not_applicable",
+        "bundle_component_refs_count": 0,
+        "effective_inci_chars": 0,
+        "inci_borrowed_from_product_id": ""
+      }
+    },
+    {
+      "seed_id": "eps_97b4bb151146da94478100ee",
+      "external_product_id": "ext_97fcd73a4ee767b9fc25856f",
+      "market": "US",
+      "domain": "beautyofjoseon.com",
+      "title": "Daily Tinted Fluid Sunscreen LN110",
+      "canonical_url": "https://beautyofjoseon.com/products/daily-tinted-fluid-sunscreen-ln110",
+      "product_family": "single_formula",
+      "product_line_id": "pl_9f6eba61992718e099ff8563",
+      "identity_variant_axes": {
+        "size": "1 69 fl oz 50ml",
+        "shade": "ln110",
+        "volume": "69floz",
+        "multi_variant": true
+      },
+      "pivota_insights": {
+        "direct": {
+          "product_id": "ext_97fcd73a4ee767b9fc25856f",
+          "kb_key": "product:ext_97fcd73a4ee767b9fc25856f",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "seller_plus_formula",
+          "has_card_highlight": true
+        },
+        "effective": {
+          "product_id": "ext_97fcd73a4ee767b9fc25856f",
+          "kb_key": "product:ext_97fcd73a4ee767b9fc25856f",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "seller_plus_formula",
+          "has_card_highlight": true
+        },
+        "product_line_id": "pl_9f6eba61992718e099ff8563",
+        "borrowed_from_sibling": false
+      },
+      "active_ingredients": {
+        "status": "ready_regulatory",
+        "issues": [],
+        "regulatory_expected": true,
+        "hero_expected": false,
+        "active_items": [
+          "Iron Oxides",
+          "Hydrogenated Olive Oil Unsaponifiables",
+          "Artemisia Capillaris Extract",
+          "Tocopherol",
+          "Zinc Oxide"
+        ],
+        "source_origin": "reviewed_source_backed_pdp_content_patch",
+        "source_quality_status": "regulatory_active",
+        "coverage": {
+          "details_sections_count": 6,
+          "faq_count": 8,
+          "how_to_chars": 286,
+          "inci_chars": 774,
+          "active_ingredients_chars": 114,
+          "inci_applicability_status": "",
+          "ingredient_review_status": "",
+          "ingredient_remediation_action": "",
+          "bundle_component_refs_count": 0,
+          "effective_inci_chars": 774,
+          "inci_borrowed_from_product_id": ""
+        },
+        "invalid_fragments": [],
+        "suppressed_reason": null
+      },
+      "variants": {
+        "status": "ready",
+        "issues": [],
+        "visible_variant_rows": 2,
+        "examples": {
+          "identity_option_visible": [],
+          "wrong_axis_for_category": [],
+          "makeup_shade_missing_visual": [],
+          "size_value_generic_axis": [],
+          "default_option_size_evidence_missing_axis": [],
+          "identity_default_title_axis": []
+        }
+      },
+      "coverage": {
+        "details_sections_count": 6,
+        "faq_count": 8,
+        "how_to_chars": 286,
+        "inci_chars": 774,
+        "active_ingredients_chars": 114,
+        "inci_applicability_status": "",
+        "ingredient_review_status": "",
+        "ingredient_remediation_action": "",
+        "bundle_component_refs_count": 0,
+        "effective_inci_chars": 774,
+        "inci_borrowed_from_product_id": ""
+      }
+    },
+    {
+      "seed_id": "eps_5c028d8e9a97c4cb02d9f515",
+      "external_product_id": "ext_9c38d62652cbb1cc23efc065",
+      "market": "US",
+      "domain": "beautyofjoseon.com",
+      "title": "Glow Deep Serum : Rice + Alpha-Arbutin",
+      "canonical_url": "https://beautyofjoseon.com/products/glow-deep-serum-rice-alpha-arbutin",
+      "product_family": "single_formula",
+      "product_line_id": "pl_2ba16f76c8dee9c1329e1da7",
+      "identity_variant_axes": {
+        "size": "1 01 fl oz 30ml",
+        "volume": "1floz",
+        "multi_variant": true
+      },
+      "pivota_insights": {
+        "direct": {
+          "product_id": "ext_9c38d62652cbb1cc23efc065",
+          "kb_key": "product:ext_9c38d62652cbb1cc23efc065",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "seller_plus_formula",
+          "has_card_highlight": true
+        },
+        "effective": {
+          "product_id": "ext_9c38d62652cbb1cc23efc065",
+          "kb_key": "product:ext_9c38d62652cbb1cc23efc065",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "seller_plus_formula",
+          "has_card_highlight": true
+        },
+        "product_line_id": "pl_2ba16f76c8dee9c1329e1da7",
+        "borrowed_from_sibling": false
+      },
+      "active_ingredients": {
+        "status": "ready_hero",
+        "issues": [],
+        "regulatory_expected": false,
+        "hero_expected": true,
+        "active_items": [
+          "Oryza Sativa (Rice) Bran Water",
+          "Alpha-Arbutin",
+          "Niacinamide",
+          "Panthenol",
+          "Hydrolyzed Jojoba Esters",
+          "Oryza Sativa (Rice) Extract",
+          "Alpha Arbutin",
+          "Rice Bran Water"
+        ],
+        "source_origin": "reviewed_source_backed_pdp_content_patch",
+        "source_quality_status": "captured",
+        "coverage": {
+          "details_sections_count": 10,
+          "faq_count": 0,
+          "how_to_chars": 123,
+          "inci_chars": 764,
+          "active_ingredients_chars": 124,
+          "inci_applicability_status": "",
+          "ingredient_review_status": "",
+          "ingredient_remediation_action": "",
+          "bundle_component_refs_count": 0,
+          "effective_inci_chars": 764,
+          "inci_borrowed_from_product_id": ""
+        },
+        "invalid_fragments": [],
+        "suppressed_reason": null
+      },
+      "variants": {
+        "status": "ready",
+        "issues": [],
+        "visible_variant_rows": 2,
+        "examples": {
+          "identity_option_visible": [],
+          "wrong_axis_for_category": [],
+          "makeup_shade_missing_visual": [],
+          "size_value_generic_axis": [],
+          "default_option_size_evidence_missing_axis": [],
+          "identity_default_title_axis": []
+        }
+      },
+      "coverage": {
+        "details_sections_count": 10,
+        "faq_count": 0,
+        "how_to_chars": 123,
+        "inci_chars": 764,
+        "active_ingredients_chars": 124,
+        "inci_applicability_status": "",
+        "ingredient_review_status": "",
+        "ingredient_remediation_action": "",
+        "bundle_component_refs_count": 0,
+        "effective_inci_chars": 764,
+        "inci_borrowed_from_product_id": ""
+      }
+    },
+    {
+      "seed_id": "eps_d2f83f33990f09a245a8d1e2",
+      "external_product_id": "ext_a986eef875b6895d09b00c83",
+      "market": "US",
+      "domain": "beautyofjoseon.com",
+      "title": "Radiance Cleansing Balm",
+      "canonical_url": "https://beautyofjoseon.com/products/radiance-cleansing-balm",
+      "product_family": "single_formula",
+      "product_line_id": "pl_073b67857f822914b646d12b",
+      "identity_variant_axes": {
+        "multi_variant": false
+      },
+      "pivota_insights": {
+        "direct": {
+          "product_id": "ext_a986eef875b6895d09b00c83",
+          "kb_key": "product:ext_a986eef875b6895d09b00c83",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "seller_plus_formula",
+          "has_card_highlight": true
+        },
+        "effective": {
+          "product_id": "ext_a986eef875b6895d09b00c83",
+          "kb_key": "product:ext_a986eef875b6895d09b00c83",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "seller_plus_formula",
+          "has_card_highlight": true
+        },
+        "product_line_id": "pl_073b67857f822914b646d12b",
+        "borrowed_from_sibling": false
+      },
+      "active_ingredients": {
+        "status": "ready_hero",
+        "issues": [],
+        "regulatory_expected": false,
+        "hero_expected": true,
+        "active_items": [
+          "Rice Extract",
+          "Grain Complex",
+          "Oryza Sativa (Rice) Bran Oil",
+          "Oryza Sativa (Rice) Seed Water",
+          "Avena Sativa (Oat) Meal Extract",
+          "Lactobacillus/Soybean Ferment Extract"
+        ],
+        "source_origin": "pdp_section",
+        "source_quality_status": "captured",
+        "coverage": {
+          "details_sections_count": 16,
+          "faq_count": 4,
+          "how_to_chars": 197,
+          "inci_chars": 468,
+          "active_ingredients_chars": 161,
+          "inci_applicability_status": "",
+          "ingredient_review_status": "",
+          "ingredient_remediation_action": "",
+          "bundle_component_refs_count": 0,
+          "effective_inci_chars": 468,
+          "inci_borrowed_from_product_id": ""
+        },
+        "invalid_fragments": [],
+        "suppressed_reason": null
+      },
+      "variants": {
+        "status": "ready",
+        "issues": [],
+        "visible_variant_rows": 1,
+        "examples": {
+          "identity_option_visible": [],
+          "wrong_axis_for_category": [],
+          "makeup_shade_missing_visual": [],
+          "size_value_generic_axis": [],
+          "default_option_size_evidence_missing_axis": [],
+          "identity_default_title_axis": []
+        }
+      },
+      "coverage": {
+        "details_sections_count": 16,
+        "faq_count": 4,
+        "how_to_chars": 197,
+        "inci_chars": 468,
+        "active_ingredients_chars": 161,
+        "inci_applicability_status": "",
+        "ingredient_review_status": "",
+        "ingredient_remediation_action": "",
+        "bundle_component_refs_count": 0,
+        "effective_inci_chars": 468,
+        "inci_borrowed_from_product_id": ""
+      }
+    },
+    {
+      "seed_id": "eps_5aaee8abc441f20f1167d5c0",
+      "external_product_id": "ext_ac9de387f263a0f5f8886e14",
+      "market": "US",
+      "domain": "beautyofjoseon.com",
+      "title": "Red Bean Refreshing Pore Mask",
+      "canonical_url": "https://beautyofjoseon.com/products/red-bean-refreshing-pore-mask",
+      "product_family": "single_formula",
+      "product_line_id": "pl_2fd49380673780c27880d858",
+      "identity_variant_axes": {
+        "multi_variant": false
+      },
+      "pivota_insights": {
+        "direct": {
+          "product_id": "ext_ac9de387f263a0f5f8886e14",
+          "kb_key": "product:ext_ac9de387f263a0f5f8886e14",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "seller_plus_formula",
+          "has_card_highlight": true
+        },
+        "effective": {
+          "product_id": "ext_ac9de387f263a0f5f8886e14",
+          "kb_key": "product:ext_ac9de387f263a0f5f8886e14",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "seller_plus_formula",
+          "has_card_highlight": true
+        },
+        "product_line_id": "pl_2fd49380673780c27880d858",
+        "borrowed_from_sibling": false
+      },
+      "active_ingredients": {
+        "status": "low_signal_active",
+        "issues": [
+          "low_signal_active"
+        ],
+        "regulatory_expected": false,
+        "hero_expected": true,
+        "active_items": [],
+        "source_origin": "pdp_section",
+        "source_quality_status": "blocked",
+        "coverage": {
+          "details_sections_count": 22,
+          "faq_count": 8,
+          "how_to_chars": 165,
+          "inci_chars": 563,
+          "active_ingredients_chars": 0,
+          "inci_applicability_status": "",
+          "ingredient_review_status": "",
+          "ingredient_remediation_action": "",
+          "bundle_component_refs_count": 0,
+          "effective_inci_chars": 563,
+          "inci_borrowed_from_product_id": ""
+        },
+        "invalid_fragments": [],
+        "suppressed_reason": "active_items_low_signal"
+      },
+      "variants": {
+        "status": "ready",
+        "issues": [],
+        "visible_variant_rows": 1,
+        "examples": {
+          "identity_option_visible": [],
+          "wrong_axis_for_category": [],
+          "makeup_shade_missing_visual": [],
+          "size_value_generic_axis": [],
+          "default_option_size_evidence_missing_axis": [],
+          "identity_default_title_axis": []
+        }
+      },
+      "coverage": {
+        "details_sections_count": 22,
+        "faq_count": 8,
+        "how_to_chars": 165,
+        "inci_chars": 563,
+        "active_ingredients_chars": 0,
+        "inci_applicability_status": "",
+        "ingredient_review_status": "",
+        "ingredient_remediation_action": "",
+        "bundle_component_refs_count": 0,
+        "effective_inci_chars": 563,
+        "inci_borrowed_from_product_id": ""
+      }
+    },
+    {
+      "seed_id": "eps_03f5433500df7646fb19348e",
+      "external_product_id": "ext_af0a4aa5d9053ba69505ba76",
+      "market": "US",
+      "domain": "beautyofjoseon.com",
+      "title": "JELLOSKIN Massage Cream For Face and Body",
+      "canonical_url": "https://beautyofjoseon.com/products/jelloskin-massage-cream-for-face-and-body",
+      "product_family": "single_formula",
+      "product_line_id": "pl_1769381893c82c9a249f628f",
+      "identity_variant_axes": {
+        "pack": "1pack",
+        "multi_variant": false
+      },
+      "pivota_insights": {
+        "direct": {
+          "product_id": "ext_af0a4aa5d9053ba69505ba76",
+          "kb_key": "product:ext_af0a4aa5d9053ba69505ba76",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "seller_plus_formula",
+          "has_card_highlight": true
+        },
+        "effective": {
+          "product_id": "ext_af0a4aa5d9053ba69505ba76",
+          "kb_key": "product:ext_af0a4aa5d9053ba69505ba76",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "seller_plus_formula",
+          "has_card_highlight": true
+        },
+        "product_line_id": "pl_1769381893c82c9a249f628f",
+        "borrowed_from_sibling": false
+      },
+      "active_ingredients": {
+        "status": "ready_hero",
+        "issues": [],
+        "regulatory_expected": false,
+        "hero_expected": true,
+        "active_items": [
+          "Ceramide NP",
+          "Panthenol (B5)",
+          "Niacinamide",
+          "Hyaluronic acid"
+        ],
+        "source_origin": "pdp_section",
+        "source_quality_status": "captured",
+        "coverage": {
+          "details_sections_count": 12,
+          "faq_count": 12,
+          "how_to_chars": 168,
+          "inci_chars": 871,
+          "active_ingredients_chars": 0,
+          "inci_applicability_status": "",
+          "ingredient_review_status": "",
+          "ingredient_remediation_action": "",
+          "bundle_component_refs_count": 0,
+          "effective_inci_chars": 871,
+          "inci_borrowed_from_product_id": ""
+        },
+        "invalid_fragments": [],
+        "suppressed_reason": null
+      },
+      "variants": {
+        "status": "ready",
+        "issues": [],
+        "visible_variant_rows": 1,
+        "examples": {
+          "identity_option_visible": [],
+          "wrong_axis_for_category": [],
+          "makeup_shade_missing_visual": [],
+          "size_value_generic_axis": [],
+          "default_option_size_evidence_missing_axis": [],
+          "identity_default_title_axis": []
+        }
+      },
+      "coverage": {
+        "details_sections_count": 12,
+        "faq_count": 12,
+        "how_to_chars": 168,
+        "inci_chars": 871,
+        "active_ingredients_chars": 0,
+        "inci_applicability_status": "",
+        "ingredient_review_status": "",
+        "ingredient_remediation_action": "",
+        "bundle_component_refs_count": 0,
+        "effective_inci_chars": 871,
+        "inci_borrowed_from_product_id": ""
+      }
+    },
+    {
+      "seed_id": "eps_bce7f4cfae2963c01a715cda",
+      "external_product_id": "ext_b1e05b43d8851bb70f2f0a17",
+      "market": "US",
+      "domain": "beautyofjoseon.com",
+      "title": "Ginseng Essence Water",
+      "canonical_url": "https://beautyofjoseon.com/products/ginseng-essence-water",
+      "product_family": "single_formula",
+      "product_line_id": "pl_da02d55c13d78a69878fd572",
+      "identity_variant_axes": {
+        "multi_variant": false
+      },
+      "pivota_insights": {
+        "direct": {
+          "product_id": "ext_b1e05b43d8851bb70f2f0a17",
+          "kb_key": "product:ext_b1e05b43d8851bb70f2f0a17",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "seller_plus_formula",
+          "has_card_highlight": true
+        },
+        "effective": {
+          "product_id": "ext_b1e05b43d8851bb70f2f0a17",
+          "kb_key": "product:ext_b1e05b43d8851bb70f2f0a17",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "seller_plus_formula",
+          "has_card_highlight": true
+        },
+        "product_line_id": "pl_da02d55c13d78a69878fd572",
+        "borrowed_from_sibling": false
+      },
+      "active_ingredients": {
+        "status": "ready_hero",
+        "issues": [],
+        "regulatory_expected": false,
+        "hero_expected": true,
+        "active_items": [
+          "Panthenol (B5)",
+          "Niacinamide"
+        ],
+        "source_origin": "pdp_section",
+        "source_quality_status": "captured",
+        "coverage": {
+          "details_sections_count": 20,
+          "faq_count": 8,
+          "how_to_chars": 208,
+          "inci_chars": 465,
+          "active_ingredients_chars": 0,
+          "inci_applicability_status": "",
+          "ingredient_review_status": "",
+          "ingredient_remediation_action": "",
+          "bundle_component_refs_count": 0,
+          "effective_inci_chars": 465,
+          "inci_borrowed_from_product_id": ""
+        },
+        "invalid_fragments": [],
+        "suppressed_reason": null
+      },
+      "variants": {
+        "status": "ready",
+        "issues": [],
+        "visible_variant_rows": 1,
+        "examples": {
+          "identity_option_visible": [],
+          "wrong_axis_for_category": [],
+          "makeup_shade_missing_visual": [],
+          "size_value_generic_axis": [],
+          "default_option_size_evidence_missing_axis": [],
+          "identity_default_title_axis": []
+        }
+      },
+      "coverage": {
+        "details_sections_count": 20,
+        "faq_count": 8,
+        "how_to_chars": 208,
+        "inci_chars": 465,
+        "active_ingredients_chars": 0,
+        "inci_applicability_status": "",
+        "ingredient_review_status": "",
+        "ingredient_remediation_action": "",
+        "bundle_component_refs_count": 0,
+        "effective_inci_chars": 465,
+        "inci_borrowed_from_product_id": ""
+      }
+    },
+    {
+      "seed_id": "eps_0c41a3f1744273bcd8c8b92f",
+      "external_product_id": "ext_b37bce17197b257891788045",
+      "market": "US",
+      "domain": "beautyofjoseon.com",
+      "title": "Lucky Pouch",
+      "canonical_url": "https://beautyofjoseon.com/products/lucky-pouch",
+      "product_family": "accessory",
+      "product_line_id": "pl_d1303a627ec82a12138d7882",
+      "identity_variant_axes": {
+        "color": "maehwa pink",
+        "multi_variant": true
+      },
+      "pivota_insights": {
+        "direct": {
+          "product_id": "ext_b37bce17197b257891788045",
+          "kb_key": "product:ext_b37bce17197b257891788045",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "seller_plus_accessory",
+          "has_card_highlight": true
+        },
+        "effective": {
+          "product_id": "ext_b37bce17197b257891788045",
+          "kb_key": "product:ext_b37bce17197b257891788045",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "seller_plus_accessory",
+          "has_card_highlight": true
+        },
+        "product_line_id": "pl_d1303a627ec82a12138d7882",
+        "borrowed_from_sibling": false
+      },
+      "active_ingredients": {
+        "status": "not_applicable_product_family",
+        "issues": [],
+        "regulatory_expected": false,
+        "hero_expected": false,
+        "active_items": [],
+        "source_origin": "none",
+        "source_quality_status": "blocked",
+        "coverage": {
+          "details_sections_count": 4,
+          "faq_count": 6,
+          "how_to_chars": 129,
+          "inci_chars": 0,
+          "active_ingredients_chars": 0,
+          "inci_applicability_status": "not_applicable",
+          "ingredient_review_status": "",
+          "ingredient_remediation_action": "mark_inci_not_applicable",
+          "bundle_component_refs_count": 0,
+          "effective_inci_chars": 0,
+          "inci_borrowed_from_product_id": ""
+        },
+        "invalid_fragments": [],
+        "suppressed_reason": "accessory"
+      },
+      "variants": {
+        "status": "ready",
+        "issues": [],
+        "visible_variant_rows": 2,
+        "examples": {
+          "identity_option_visible": [],
+          "wrong_axis_for_category": [],
+          "makeup_shade_missing_visual": [],
+          "size_value_generic_axis": [],
+          "default_option_size_evidence_missing_axis": [],
+          "identity_default_title_axis": []
+        }
+      },
+      "coverage": {
+        "details_sections_count": 4,
+        "faq_count": 6,
+        "how_to_chars": 129,
+        "inci_chars": 0,
+        "active_ingredients_chars": 0,
+        "inci_applicability_status": "not_applicable",
+        "ingredient_review_status": "",
+        "ingredient_remediation_action": "mark_inci_not_applicable",
+        "bundle_component_refs_count": 0,
+        "effective_inci_chars": 0,
+        "inci_borrowed_from_product_id": ""
+      }
+    },
+    {
+      "seed_id": "eps_8d8976d2c07fcc52f85854c4",
+      "external_product_id": "ext_b5edb9ddb6761b1433b6cbca",
+      "market": "US",
+      "domain": "beautyofjoseon.com",
+      "title": "Daily Tinted Fluid Sunscreen MN230",
+      "canonical_url": "https://beautyofjoseon.com/products/daily-tinted-fluid-sunscreen-mn230",
+      "product_family": "single_formula",
+      "product_line_id": "pl_9f6eba61992718e099ff8563",
+      "identity_variant_axes": {
+        "size": "1 69 fl oz 50ml",
+        "shade": "mn230",
+        "volume": "69floz",
+        "multi_variant": true
+      },
+      "pivota_insights": {
+        "direct": {
+          "product_id": "ext_b5edb9ddb6761b1433b6cbca",
+          "kb_key": "product:ext_b5edb9ddb6761b1433b6cbca",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "seller_plus_formula",
+          "has_card_highlight": true
+        },
+        "effective": {
+          "product_id": "ext_b5edb9ddb6761b1433b6cbca",
+          "kb_key": "product:ext_b5edb9ddb6761b1433b6cbca",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "seller_plus_formula",
+          "has_card_highlight": true
+        },
+        "product_line_id": "pl_9f6eba61992718e099ff8563",
+        "borrowed_from_sibling": false
+      },
+      "active_ingredients": {
+        "status": "ready_regulatory",
+        "issues": [],
+        "regulatory_expected": true,
+        "hero_expected": false,
+        "active_items": [
+          "Iron Oxides",
+          "Hydrogenated Olive Oil Unsaponifiables",
+          "Artemisia Capillaris Extract",
+          "Tocopherol",
+          "Zinc Oxide"
+        ],
+        "source_origin": "reviewed_source_backed_pdp_content_patch",
+        "source_quality_status": "regulatory_active",
+        "coverage": {
+          "details_sections_count": 6,
+          "faq_count": 8,
+          "how_to_chars": 286,
+          "inci_chars": 774,
+          "active_ingredients_chars": 114,
+          "inci_applicability_status": "",
+          "ingredient_review_status": "",
+          "ingredient_remediation_action": "",
+          "bundle_component_refs_count": 0,
+          "effective_inci_chars": 774,
+          "inci_borrowed_from_product_id": ""
+        },
+        "invalid_fragments": [],
+        "suppressed_reason": null
+      },
+      "variants": {
+        "status": "ready",
+        "issues": [],
+        "visible_variant_rows": 2,
+        "examples": {
+          "identity_option_visible": [],
+          "wrong_axis_for_category": [],
+          "makeup_shade_missing_visual": [],
+          "size_value_generic_axis": [],
+          "default_option_size_evidence_missing_axis": [],
+          "identity_default_title_axis": []
+        }
+      },
+      "coverage": {
+        "details_sections_count": 6,
+        "faq_count": 8,
+        "how_to_chars": 286,
+        "inci_chars": 774,
+        "active_ingredients_chars": 114,
+        "inci_applicability_status": "",
+        "ingredient_review_status": "",
+        "ingredient_remediation_action": "",
+        "bundle_component_refs_count": 0,
+        "effective_inci_chars": 774,
+        "inci_borrowed_from_product_id": ""
+      }
+    },
+    {
+      "seed_id": "eps_aa29bfac208f750ad7f0a29e",
+      "external_product_id": "ext_b907819a3430b97c7d89c1b7",
+      "market": "US",
+      "domain": "beautyofjoseon.com",
+      "title": "Green Plum Refreshing Cleanser",
+      "canonical_url": "https://beautyofjoseon.com/products/green-plum-refreshing-cleanser",
+      "product_family": "single_formula",
+      "product_line_id": "pl_0d1fbb3c65355c9d69218ee5",
+      "identity_variant_axes": {
+        "size": "100ml",
+        "volume": "100ml",
+        "multi_variant": true
+      },
+      "pivota_insights": {
+        "direct": {
+          "product_id": "ext_b907819a3430b97c7d89c1b7",
+          "kb_key": "product:ext_b907819a3430b97c7d89c1b7",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "seller_plus_formula",
+          "has_card_highlight": true
+        },
+        "effective": {
+          "product_id": "ext_b907819a3430b97c7d89c1b7",
+          "kb_key": "product:ext_b907819a3430b97c7d89c1b7",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "seller_plus_formula",
+          "has_card_highlight": true
+        },
+        "product_line_id": "pl_0d1fbb3c65355c9d69218ee5",
+        "borrowed_from_sibling": false
+      },
+      "active_ingredients": {
+        "status": "low_signal_active",
+        "issues": [
+          "low_signal_active"
+        ],
+        "regulatory_expected": false,
+        "hero_expected": true,
+        "active_items": [],
+        "source_origin": "pdp_section",
+        "source_quality_status": "blocked",
+        "coverage": {
+          "details_sections_count": 16,
+          "faq_count": 6,
+          "how_to_chars": 200,
+          "inci_chars": 688,
+          "active_ingredients_chars": 0,
+          "inci_applicability_status": "",
+          "ingredient_review_status": "",
+          "ingredient_remediation_action": "",
+          "bundle_component_refs_count": 0,
+          "effective_inci_chars": 688,
+          "inci_borrowed_from_product_id": ""
+        },
+        "invalid_fragments": [],
+        "suppressed_reason": "active_items_low_signal"
+      },
+      "variants": {
+        "status": "ready",
+        "issues": [],
+        "visible_variant_rows": 2,
+        "examples": {
+          "identity_option_visible": [],
+          "wrong_axis_for_category": [],
+          "makeup_shade_missing_visual": [],
+          "size_value_generic_axis": [],
+          "default_option_size_evidence_missing_axis": [],
+          "identity_default_title_axis": []
+        }
+      },
+      "coverage": {
+        "details_sections_count": 16,
+        "faq_count": 6,
+        "how_to_chars": 200,
+        "inci_chars": 688,
+        "active_ingredients_chars": 0,
+        "inci_applicability_status": "",
+        "ingredient_review_status": "",
+        "ingredient_remediation_action": "",
+        "bundle_component_refs_count": 0,
+        "effective_inci_chars": 688,
+        "inci_borrowed_from_product_id": ""
+      }
+    },
+    {
+      "seed_id": "eps_28181ede13ee655026fff5d8",
+      "external_product_id": "ext_bb92ea11b6e1167e9d828486",
+      "market": "US",
+      "domain": "beautyofjoseon.com",
+      "title": "Daily Tinted Fluid Sunscreen DN310",
+      "canonical_url": "https://beautyofjoseon.com/products/daily-tinted-fluid-sunscreen-dn310",
+      "product_family": "single_formula",
+      "product_line_id": "pl_9f6eba61992718e099ff8563",
+      "identity_variant_axes": {
+        "size": "1 69 fl oz 50ml",
+        "shade": "dn310",
+        "volume": "69floz",
+        "multi_variant": true
+      },
+      "pivota_insights": {
+        "direct": {
+          "product_id": "ext_bb92ea11b6e1167e9d828486",
+          "kb_key": "product:ext_bb92ea11b6e1167e9d828486",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "seller_plus_formula",
+          "has_card_highlight": true
+        },
+        "effective": {
+          "product_id": "ext_bb92ea11b6e1167e9d828486",
+          "kb_key": "product:ext_bb92ea11b6e1167e9d828486",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "seller_plus_formula",
+          "has_card_highlight": true
+        },
+        "product_line_id": "pl_9f6eba61992718e099ff8563",
+        "borrowed_from_sibling": false
+      },
+      "active_ingredients": {
+        "status": "ready_regulatory",
+        "issues": [],
+        "regulatory_expected": true,
+        "hero_expected": false,
+        "active_items": [
+          "Iron Oxides",
+          "Hydrogenated Olive Oil Unsaponifiables",
+          "Artemisia Capillaris Extract",
+          "Tocopherol",
+          "Zinc Oxide"
+        ],
+        "source_origin": "reviewed_source_backed_pdp_content_patch",
+        "source_quality_status": "regulatory_active",
+        "coverage": {
+          "details_sections_count": 6,
+          "faq_count": 8,
+          "how_to_chars": 286,
+          "inci_chars": 774,
+          "active_ingredients_chars": 114,
+          "inci_applicability_status": "",
+          "ingredient_review_status": "",
+          "ingredient_remediation_action": "",
+          "bundle_component_refs_count": 0,
+          "effective_inci_chars": 774,
+          "inci_borrowed_from_product_id": ""
+        },
+        "invalid_fragments": [],
+        "suppressed_reason": null
+      },
+      "variants": {
+        "status": "ready",
+        "issues": [],
+        "visible_variant_rows": 2,
+        "examples": {
+          "identity_option_visible": [],
+          "wrong_axis_for_category": [],
+          "makeup_shade_missing_visual": [],
+          "size_value_generic_axis": [],
+          "default_option_size_evidence_missing_axis": [],
+          "identity_default_title_axis": []
+        }
+      },
+      "coverage": {
+        "details_sections_count": 6,
+        "faq_count": 8,
+        "how_to_chars": 286,
+        "inci_chars": 774,
+        "active_ingredients_chars": 114,
+        "inci_applicability_status": "",
+        "ingredient_review_status": "",
+        "ingredient_remediation_action": "",
+        "bundle_component_refs_count": 0,
+        "effective_inci_chars": 774,
+        "inci_borrowed_from_product_id": ""
+      }
+    },
+    {
+      "seed_id": "eps_66c071421914b37f950138c2",
+      "external_product_id": "ext_ca06c839d3c56b3999e7202e",
+      "market": "US",
+      "domain": "beautyofjoseon.com",
+      "title": "Ginseng Moist Sun Serum (SPF 50+ PA++++)",
+      "canonical_url": "https://beautyofjoseon.com/products/ginseng-moist-sun-serum-spf-50-pa-uk",
+      "product_family": "single_formula",
+      "product_line_id": null,
+      "pivota_insights": {
+        "direct": {
+          "product_id": "ext_ca06c839d3c56b3999e7202e",
+          "kb_key": "product:ext_ca06c839d3c56b3999e7202e",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "seller_plus_formula",
+          "has_card_highlight": true
+        },
+        "effective": {
+          "product_id": "ext_ca06c839d3c56b3999e7202e",
+          "kb_key": "product:ext_ca06c839d3c56b3999e7202e",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "seller_plus_formula",
+          "has_card_highlight": true
+        },
+        "product_line_id": null,
+        "borrowed_from_sibling": false
+      },
+      "active_ingredients": {
+        "status": "missing_regulatory",
+        "issues": [
+          "missing_regulatory"
+        ],
+        "regulatory_expected": true,
+        "hero_expected": true,
+        "active_items": [
+          "Diethylamino Hydroxybenzoyl Hexyl Benzoate",
+          "Bis-Ethylhexyloxyphenol Methoxyphenyl Triazine",
+          "Ethylhexyl Triazone",
+          "Niacinamide",
+          "Panax Ginseng Root Extract",
+          "Panax Ginseng Berry Extract",
+          "Adenosine",
+          "Tocopherol"
+        ],
+        "source_origin": "reviewed_source_backed_pdp_content_patch",
+        "source_quality_status": "blocked",
+        "coverage": {
+          "details_sections_count": 4,
+          "faq_count": 0,
+          "how_to_chars": 177,
+          "inci_chars": 1106,
+          "active_ingredients_chars": 204,
+          "inci_applicability_status": "",
+          "ingredient_review_status": "manual_source_review_required",
+          "ingredient_remediation_action": "manual_source_review_required",
+          "bundle_component_refs_count": 0,
+          "effective_inci_chars": 1106,
+          "inci_borrowed_from_product_id": ""
+        },
+        "invalid_fragments": [],
+        "suppressed_reason": null
+      },
+      "variants": {
+        "status": "ready",
+        "issues": [],
+        "visible_variant_rows": 1,
+        "examples": {
+          "identity_option_visible": [],
+          "wrong_axis_for_category": [],
+          "makeup_shade_missing_visual": [],
+          "size_value_generic_axis": [],
+          "default_option_size_evidence_missing_axis": [],
+          "identity_default_title_axis": []
+        }
+      },
+      "coverage": {
+        "details_sections_count": 4,
+        "faq_count": 0,
+        "how_to_chars": 177,
+        "inci_chars": 1106,
+        "active_ingredients_chars": 204,
+        "inci_applicability_status": "",
+        "ingredient_review_status": "manual_source_review_required",
+        "ingredient_remediation_action": "manual_source_review_required",
+        "bundle_component_refs_count": 0,
+        "effective_inci_chars": 1106,
+        "inci_borrowed_from_product_id": ""
+      }
+    },
+    {
+      "seed_id": "eps_ae7a4458d1e3bc4b45e4fdc3",
+      "external_product_id": "ext_cde60aaf3970cd5c4ddb5e78",
+      "market": "US",
+      "domain": "beautyofjoseon.com",
+      "title": "Day Dew Sunscreen",
+      "canonical_url": "https://beautyofjoseon.com/products/day-dew-sunscreen",
+      "product_family": "single_formula",
+      "product_line_id": "pl_61e6bdac94e5ecdcca0a70a5",
+      "identity_variant_axes": {
+        "pack": "1pack",
+        "multi_variant": true
+      },
+      "pivota_insights": {
+        "direct": {
+          "product_id": "ext_cde60aaf3970cd5c4ddb5e78",
+          "kb_key": "product:ext_cde60aaf3970cd5c4ddb5e78",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "seller_plus_formula",
+          "has_card_highlight": true
+        },
+        "effective": {
+          "product_id": "ext_cde60aaf3970cd5c4ddb5e78",
+          "kb_key": "product:ext_cde60aaf3970cd5c4ddb5e78",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "seller_plus_formula",
+          "has_card_highlight": true
+        },
+        "product_line_id": "pl_61e6bdac94e5ecdcca0a70a5",
+        "borrowed_from_sibling": false
+      },
+      "active_ingredients": {
+        "status": "ready_regulatory",
+        "issues": [],
+        "regulatory_expected": true,
+        "hero_expected": true,
+        "active_items": [
+          "Avobenzone",
+          "Homosalate",
+          "Octisalate",
+          "Octocrylene"
+        ],
+        "source_origin": "pdp_section",
+        "source_quality_status": "regulatory_active",
+        "coverage": {
+          "details_sections_count": 4,
+          "faq_count": 28,
+          "how_to_chars": 172,
+          "inci_chars": 513,
+          "active_ingredients_chars": 44,
+          "inci_applicability_status": "",
+          "ingredient_review_status": "",
+          "ingredient_remediation_action": "",
+          "bundle_component_refs_count": 0,
+          "effective_inci_chars": 513,
+          "inci_borrowed_from_product_id": ""
+        },
+        "invalid_fragments": [],
+        "suppressed_reason": null
+      },
+      "variants": {
+        "status": "ready",
+        "issues": [],
+        "visible_variant_rows": 2,
+        "examples": {
+          "identity_option_visible": [],
+          "wrong_axis_for_category": [],
+          "makeup_shade_missing_visual": [],
+          "size_value_generic_axis": [],
+          "default_option_size_evidence_missing_axis": [],
+          "identity_default_title_axis": []
+        }
+      },
+      "coverage": {
+        "details_sections_count": 4,
+        "faq_count": 28,
+        "how_to_chars": 172,
+        "inci_chars": 513,
+        "active_ingredients_chars": 44,
+        "inci_applicability_status": "",
+        "ingredient_review_status": "",
+        "ingredient_remediation_action": "",
+        "bundle_component_refs_count": 0,
+        "effective_inci_chars": 513,
+        "inci_borrowed_from_product_id": ""
+      }
+    },
+    {
+      "seed_id": "eps_077c6d62f17ca9acb776b05c",
+      "external_product_id": "ext_d5b85dc7036a9145ed6e583f",
+      "market": "US",
+      "domain": "beautyofjoseon.com",
+      "title": "Glow Replenishing Rice Milk",
+      "canonical_url": "https://beautyofjoseon.com/products/glow-replenishing-rice-milk",
+      "product_family": "single_formula",
+      "product_line_id": "pl_7800b917151af03272ed7139",
+      "identity_variant_axes": {
+        "multi_variant": false
+      },
+      "pivota_insights": {
+        "direct": {
+          "product_id": "ext_d5b85dc7036a9145ed6e583f",
+          "kb_key": "product:ext_d5b85dc7036a9145ed6e583f",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "seller_plus_formula",
+          "has_card_highlight": true
+        },
+        "effective": {
+          "product_id": "ext_d5b85dc7036a9145ed6e583f",
+          "kb_key": "product:ext_d5b85dc7036a9145ed6e583f",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "seller_plus_formula",
+          "has_card_highlight": true
+        },
+        "product_line_id": "pl_7800b917151af03272ed7139",
+        "borrowed_from_sibling": false
+      },
+      "active_ingredients": {
+        "status": "ready_hero",
+        "issues": [],
+        "regulatory_expected": false,
+        "hero_expected": true,
+        "active_items": [
+          "Oryza Sativa (Rice) Extract",
+          "Rice Amino Acids",
+          "Panthenol",
+          "Kaolin",
+          "Aluminum Chlorohydrate",
+          "Ceramide NP",
+          "Sodium Hyaluronate"
+        ],
+        "source_origin": "reviewed_source_backed_pdp_content_patch",
+        "source_quality_status": "captured",
+        "coverage": {
+          "details_sections_count": 16,
+          "faq_count": 6,
+          "how_to_chars": 89,
+          "inci_chars": 602,
+          "active_ingredients_chars": 121,
+          "inci_applicability_status": "",
+          "ingredient_review_status": "",
+          "ingredient_remediation_action": "",
+          "bundle_component_refs_count": 0,
+          "effective_inci_chars": 602,
+          "inci_borrowed_from_product_id": ""
+        },
+        "invalid_fragments": [],
+        "suppressed_reason": null
+      },
+      "variants": {
+        "status": "ready",
+        "issues": [],
+        "visible_variant_rows": 1,
+        "examples": {
+          "identity_option_visible": [],
+          "wrong_axis_for_category": [],
+          "makeup_shade_missing_visual": [],
+          "size_value_generic_axis": [],
+          "default_option_size_evidence_missing_axis": [],
+          "identity_default_title_axis": []
+        }
+      },
+      "coverage": {
+        "details_sections_count": 16,
+        "faq_count": 6,
+        "how_to_chars": 89,
+        "inci_chars": 602,
+        "active_ingredients_chars": 121,
+        "inci_applicability_status": "",
+        "ingredient_review_status": "",
+        "ingredient_remediation_action": "",
+        "bundle_component_refs_count": 0,
+        "effective_inci_chars": 602,
+        "inci_borrowed_from_product_id": ""
+      }
+    },
+    {
+      "seed_id": "eps_d47870cef9ef8f7b3b69d747",
+      "external_product_id": "ext_d5d1370ee145d142f72d3408",
+      "market": "US",
+      "domain": "beautyofjoseon.com",
+      "title": "Perfect Hanbang Palette",
+      "canonical_url": "https://beautyofjoseon.com/products/hanbang-pallete-global",
+      "product_family": "set_or_collection",
+      "product_line_id": null,
+      "pivota_insights": {
+        "direct": {
+          "product_id": "ext_d5d1370ee145d142f72d3408",
+          "kb_key": "product:ext_d5d1370ee145d142f72d3408",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "seller_plus_component",
+          "has_card_highlight": true
+        },
+        "effective": {
+          "product_id": "ext_d5d1370ee145d142f72d3408",
+          "kb_key": "product:ext_d5d1370ee145d142f72d3408",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "seller_plus_component",
+          "has_card_highlight": true
+        },
+        "product_line_id": null,
+        "borrowed_from_sibling": false
+      },
+      "active_ingredients": {
+        "status": "not_applicable_product_family",
+        "issues": [],
+        "regulatory_expected": false,
+        "hero_expected": false,
+        "active_items": [],
+        "source_origin": "none",
+        "source_quality_status": "blocked",
+        "coverage": {
+          "details_sections_count": 0,
+          "faq_count": 0,
+          "how_to_chars": 155,
+          "inci_chars": 0,
+          "active_ingredients_chars": 0,
+          "inci_applicability_status": "",
+          "ingredient_review_status": "component_refs_linked",
+          "ingredient_remediation_action": "component_refs_linked",
+          "bundle_component_refs_count": 4,
+          "effective_inci_chars": 0,
+          "inci_borrowed_from_product_id": ""
+        },
+        "invalid_fragments": [],
+        "suppressed_reason": "set_or_collection"
+      },
+      "variants": {
+        "status": "ready",
+        "issues": [],
+        "visible_variant_rows": 1,
+        "examples": {
+          "identity_option_visible": [],
+          "wrong_axis_for_category": [],
+          "makeup_shade_missing_visual": [],
+          "size_value_generic_axis": [],
+          "default_option_size_evidence_missing_axis": [],
+          "identity_default_title_axis": []
+        }
+      },
+      "coverage": {
+        "details_sections_count": 0,
+        "faq_count": 0,
+        "how_to_chars": 155,
+        "inci_chars": 0,
+        "active_ingredients_chars": 0,
+        "inci_applicability_status": "",
+        "ingredient_review_status": "component_refs_linked",
+        "ingredient_remediation_action": "component_refs_linked",
+        "bundle_component_refs_count": 4,
+        "effective_inci_chars": 0,
+        "inci_borrowed_from_product_id": ""
+      }
+    },
+    {
+      "seed_id": "eps_3c1c6096aa4095cc5db8deb0",
+      "external_product_id": "ext_ef1ad3d678350d3e28956fca",
+      "market": "US",
+      "domain": "beautyofjoseon.com",
+      "title": "Relief Sun : Rice + Probiotics (SPF50+ PA++++)",
+      "canonical_url": "https://nl.beautyofjoseon.com/products/relief-sun-rice-probiotics",
+      "product_family": "unknown_product",
+      "product_line_id": "pl_f1920a3d209b2775d357ded6",
+      "identity_variant_axes": {
+        "pack": "1pack",
+        "multi_variant": true
+      },
+      "pivota_insights": {
+        "direct": {
+          "product_id": "ext_ef1ad3d678350d3e28956fca",
+          "kb_key": "product:ext_ef1ad3d678350d3e28956fca",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "seller_plus_external_review",
+          "has_card_highlight": true
+        },
+        "effective": {
+          "product_id": "ext_ef1ad3d678350d3e28956fca",
+          "kb_key": "product:ext_ef1ad3d678350d3e28956fca",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "seller_plus_external_review",
+          "has_card_highlight": true
+        },
+        "product_line_id": "pl_f1920a3d209b2775d357ded6",
+        "borrowed_from_sibling": false
+      },
+      "active_ingredients": {
+        "status": "missing_regulatory",
+        "issues": [
+          "missing_regulatory"
+        ],
+        "regulatory_expected": true,
+        "hero_expected": true,
+        "active_items": [
+          "Niacinamide"
+        ],
+        "source_origin": "pdp_section",
+        "source_quality_status": "blocked",
+        "coverage": {
+          "details_sections_count": 8,
+          "faq_count": 10,
+          "how_to_chars": 115,
+          "inci_chars": 1062,
+          "active_ingredients_chars": 0,
+          "inci_applicability_status": "",
+          "ingredient_review_status": "",
+          "ingredient_remediation_action": "",
+          "bundle_component_refs_count": 0,
+          "effective_inci_chars": 1062,
+          "inci_borrowed_from_product_id": ""
+        },
+        "invalid_fragments": [],
+        "suppressed_reason": null
+      },
+      "variants": {
+        "status": "ready",
+        "issues": [],
+        "visible_variant_rows": 2,
+        "examples": {
+          "identity_option_visible": [],
+          "wrong_axis_for_category": [],
+          "makeup_shade_missing_visual": [],
+          "size_value_generic_axis": [],
+          "default_option_size_evidence_missing_axis": [],
+          "identity_default_title_axis": []
+        }
+      },
+      "coverage": {
+        "details_sections_count": 8,
+        "faq_count": 10,
+        "how_to_chars": 115,
+        "inci_chars": 1062,
+        "active_ingredients_chars": 0,
+        "inci_applicability_status": "",
+        "ingredient_review_status": "",
+        "ingredient_remediation_action": "",
+        "bundle_component_refs_count": 0,
+        "effective_inci_chars": 1062,
+        "inci_borrowed_from_product_id": ""
+      }
+    },
+    {
+      "seed_id": "eps_0a5cc55e5564a5bdd3d5b0ba",
+      "external_product_id": "ext_f164b139414863392b334345",
+      "market": "US",
+      "domain": "beautyofjoseon.com",
+      "title": "Ginseng Cleansing Oil",
+      "canonical_url": "https://beautyofjoseon.com/products/ginseng-cleansing-oil",
+      "product_family": "single_formula",
+      "product_line_id": "pl_f64ad0a227e18c5aca883ae8",
+      "identity_variant_axes": {
+        "multi_variant": false
+      },
+      "pivota_insights": {
+        "direct": {
+          "product_id": "ext_f164b139414863392b334345",
+          "kb_key": "product:ext_f164b139414863392b334345",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "seller_plus_formula",
+          "has_card_highlight": true
+        },
+        "effective": {
+          "product_id": "ext_f164b139414863392b334345",
+          "kb_key": "product:ext_f164b139414863392b334345",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "seller_plus_formula",
+          "has_card_highlight": true
+        },
+        "product_line_id": "pl_f64ad0a227e18c5aca883ae8",
+        "borrowed_from_sibling": false
+      },
+      "active_ingredients": {
+        "status": "possibly_inci_guess",
+        "issues": [
+          "possibly_inci_guess"
+        ],
+        "regulatory_expected": false,
+        "hero_expected": false,
+        "active_items": [
+          "Ginseng Seed Oil",
+          "Soybean Oil",
+          "Ginseng Root Extract",
+          "Ginseng Berry Extract",
+          "Ginseng Extract"
+        ],
+        "source_origin": "pdp_section",
+        "source_quality_status": "blocked",
+        "coverage": {
+          "details_sections_count": 16,
+          "faq_count": 8,
+          "how_to_chars": 182,
+          "inci_chars": 633,
+          "active_ingredients_chars": 91,
+          "inci_applicability_status": "",
+          "ingredient_review_status": "",
+          "ingredient_remediation_action": "",
+          "bundle_component_refs_count": 0,
+          "effective_inci_chars": 633,
+          "inci_borrowed_from_product_id": ""
+        },
+        "invalid_fragments": [],
+        "suppressed_reason": null
+      },
+      "variants": {
+        "status": "ready",
+        "issues": [],
+        "visible_variant_rows": 1,
+        "examples": {
+          "identity_option_visible": [],
+          "wrong_axis_for_category": [],
+          "makeup_shade_missing_visual": [],
+          "size_value_generic_axis": [],
+          "default_option_size_evidence_missing_axis": [],
+          "identity_default_title_axis": []
+        }
+      },
+      "coverage": {
+        "details_sections_count": 16,
+        "faq_count": 8,
+        "how_to_chars": 182,
+        "inci_chars": 633,
+        "active_ingredients_chars": 91,
+        "inci_applicability_status": "",
+        "ingredient_review_status": "",
+        "ingredient_remediation_action": "",
+        "bundle_component_refs_count": 0,
+        "effective_inci_chars": 633,
+        "inci_borrowed_from_product_id": ""
+      }
+    },
+    {
+      "seed_id": "eps_ee274dca3526d0b5c51ca335",
+      "external_product_id": "ext_f507ba8a55c82c5f3c5536a7",
+      "market": "US",
+      "domain": "beautyofjoseon.com",
+      "title": "Daily Tinted Fluid Sunscreen LP110",
+      "canonical_url": "https://beautyofjoseon.com/products/daily-tinted-fluid-sunscreen-lp110",
+      "product_family": "single_formula",
+      "product_line_id": "pl_9f6eba61992718e099ff8563",
+      "identity_variant_axes": {
+        "size": "1 69 fl oz 50ml",
+        "shade": "lp110",
+        "volume": "69floz",
+        "multi_variant": true
+      },
+      "pivota_insights": {
+        "direct": {
+          "product_id": "ext_f507ba8a55c82c5f3c5536a7",
+          "kb_key": "product:ext_f507ba8a55c82c5f3c5536a7",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "official_pdp_reviewed",
+          "has_card_highlight": true
+        },
+        "effective": {
+          "product_id": "ext_f507ba8a55c82c5f3c5536a7",
+          "kb_key": "product:ext_f507ba8a55c82c5f3c5536a7",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "official_pdp_reviewed",
+          "has_card_highlight": true
+        },
+        "product_line_id": "pl_9f6eba61992718e099ff8563",
+        "borrowed_from_sibling": false
+      },
+      "active_ingredients": {
+        "status": "ready_regulatory",
+        "issues": [],
+        "regulatory_expected": true,
+        "hero_expected": false,
+        "active_items": [
+          "Iron Oxides",
+          "Hydrogenated Olive Oil Unsaponifiables",
+          "Artemisia Capillaris Extract",
+          "Tocopherol",
+          "Zinc Oxide"
+        ],
+        "source_origin": "reviewed_source_backed_pdp_content_patch",
+        "source_quality_status": "regulatory_active",
+        "coverage": {
+          "details_sections_count": 6,
+          "faq_count": 8,
+          "how_to_chars": 286,
+          "inci_chars": 774,
+          "active_ingredients_chars": 114,
+          "inci_applicability_status": "",
+          "ingredient_review_status": "",
+          "ingredient_remediation_action": "",
+          "bundle_component_refs_count": 0,
+          "effective_inci_chars": 774,
+          "inci_borrowed_from_product_id": ""
+        },
+        "invalid_fragments": [],
+        "suppressed_reason": null
+      },
+      "variants": {
+        "status": "ready",
+        "issues": [],
+        "visible_variant_rows": 2,
+        "examples": {
+          "identity_option_visible": [],
+          "wrong_axis_for_category": [],
+          "makeup_shade_missing_visual": [],
+          "size_value_generic_axis": [],
+          "default_option_size_evidence_missing_axis": [],
+          "identity_default_title_axis": []
+        }
+      },
+      "coverage": {
+        "details_sections_count": 6,
+        "faq_count": 8,
+        "how_to_chars": 286,
+        "inci_chars": 774,
+        "active_ingredients_chars": 114,
+        "inci_applicability_status": "",
+        "ingredient_review_status": "",
+        "ingredient_remediation_action": "",
+        "bundle_component_refs_count": 0,
+        "effective_inci_chars": 774,
+        "inci_borrowed_from_product_id": ""
+      }
+    },
+    {
+      "seed_id": "eps_eca29df024cd32553669f090",
+      "external_product_id": "ext_f84eb0354d9578e047520615",
+      "market": "US",
+      "domain": "beautyofjoseon.com",
+      "title": "Relief Sun Aqua-Fresh : Rice + B5  (SPF50+ PA++++)",
+      "canonical_url": "https://nl.beautyofjoseon.com/products/relief-sun-aqua-fresh",
+      "product_family": "unknown_product",
+      "product_line_id": "pl_979761c2d6ed354beef46c49",
+      "identity_variant_axes": {
+        "pack": "1pack",
+        "multi_variant": true
+      },
+      "pivota_insights": {
+        "direct": {
+          "product_id": "ext_f84eb0354d9578e047520615",
+          "kb_key": "product:ext_f84eb0354d9578e047520615",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "seller_plus_formula",
+          "has_card_highlight": true
+        },
+        "effective": {
+          "product_id": "ext_f84eb0354d9578e047520615",
+          "kb_key": "product:ext_f84eb0354d9578e047520615",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "seller_plus_formula",
+          "has_card_highlight": true
+        },
+        "product_line_id": "pl_979761c2d6ed354beef46c49",
+        "borrowed_from_sibling": false
+      },
+      "active_ingredients": {
+        "status": "missing_regulatory",
+        "issues": [
+          "missing_regulatory"
+        ],
+        "regulatory_expected": true,
+        "hero_expected": true,
+        "active_items": [
+          "Panthenol (B5)",
+          "Ceramide NP"
+        ],
+        "source_origin": "pdp_section",
+        "source_quality_status": "blocked",
+        "coverage": {
+          "details_sections_count": 12,
+          "faq_count": 10,
+          "how_to_chars": 158,
+          "inci_chars": 971,
+          "active_ingredients_chars": 0,
+          "inci_applicability_status": "",
+          "ingredient_review_status": "",
+          "ingredient_remediation_action": "",
+          "bundle_component_refs_count": 0,
+          "effective_inci_chars": 971,
+          "inci_borrowed_from_product_id": ""
+        },
+        "invalid_fragments": [],
+        "suppressed_reason": null
+      },
+      "variants": {
+        "status": "ready",
+        "issues": [],
+        "visible_variant_rows": 2,
+        "examples": {
+          "identity_option_visible": [],
+          "wrong_axis_for_category": [],
+          "makeup_shade_missing_visual": [],
+          "size_value_generic_axis": [],
+          "default_option_size_evidence_missing_axis": [],
+          "identity_default_title_axis": []
+        }
+      },
+      "coverage": {
+        "details_sections_count": 12,
+        "faq_count": 10,
+        "how_to_chars": 158,
+        "inci_chars": 971,
+        "active_ingredients_chars": 0,
+        "inci_applicability_status": "",
+        "ingredient_review_status": "",
+        "ingredient_remediation_action": "",
+        "bundle_component_refs_count": 0,
+        "effective_inci_chars": 971,
+        "inci_borrowed_from_product_id": ""
+      }
+    },
+    {
+      "seed_id": "eps_b56f6988341e251e4ee15fd8",
+      "external_product_id": "ext_fd1603e2522f59c803a7d636",
+      "market": "US",
+      "domain": "beautyofjoseon.com",
+      "title": "Centella Asiatica Calming Mask (10 Sheets)",
+      "canonical_url": "https://beautyofjoseon.com/products/centella-asiatica-calming-mask-10-sheets",
+      "product_family": "single_formula",
+      "product_line_id": "pl_bee1b83af591eb651b79c70c",
+      "identity_variant_axes": {
+        "multi_variant": false
+      },
+      "pivota_insights": {
+        "direct": {
+          "product_id": "ext_fd1603e2522f59c803a7d636",
+          "kb_key": "product:ext_fd1603e2522f59c803a7d636",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "seller_plus_formula",
+          "has_card_highlight": true
+        },
+        "effective": {
+          "product_id": "ext_fd1603e2522f59c803a7d636",
+          "kb_key": "product:ext_fd1603e2522f59c803a7d636",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "seller_plus_formula",
+          "has_card_highlight": true
+        },
+        "product_line_id": "pl_bee1b83af591eb651b79c70c",
+        "borrowed_from_sibling": false
+      },
+      "active_ingredients": {
+        "status": "ready_hero",
+        "issues": [],
+        "regulatory_expected": false,
+        "hero_expected": true,
+        "active_items": [
+          "Centella asiatica",
+          "Panthenol (B5)",
+          "Niacinamide",
+          "Hyaluronic acid"
+        ],
+        "source_origin": "pdp_section",
+        "source_quality_status": "captured",
+        "coverage": {
+          "details_sections_count": 14,
+          "faq_count": 4,
+          "how_to_chars": 218,
+          "inci_chars": 670,
+          "active_ingredients_chars": 0,
+          "inci_applicability_status": "",
+          "ingredient_review_status": "",
+          "ingredient_remediation_action": "",
+          "bundle_component_refs_count": 0,
+          "effective_inci_chars": 670,
+          "inci_borrowed_from_product_id": ""
+        },
+        "invalid_fragments": [],
+        "suppressed_reason": null
+      },
+      "variants": {
+        "status": "ready",
+        "issues": [],
+        "visible_variant_rows": 1,
+        "examples": {
+          "identity_option_visible": [],
+          "wrong_axis_for_category": [],
+          "makeup_shade_missing_visual": [],
+          "size_value_generic_axis": [],
+          "default_option_size_evidence_missing_axis": [],
+          "identity_default_title_axis": []
+        }
+      },
+      "coverage": {
+        "details_sections_count": 14,
+        "faq_count": 4,
+        "how_to_chars": 218,
+        "inci_chars": 670,
+        "active_ingredients_chars": 0,
+        "inci_applicability_status": "",
+        "ingredient_review_status": "",
+        "ingredient_remediation_action": "",
+        "bundle_component_refs_count": 0,
+        "effective_inci_chars": 670,
+        "inci_borrowed_from_product_id": ""
+      }
+    }
+  ]
+}

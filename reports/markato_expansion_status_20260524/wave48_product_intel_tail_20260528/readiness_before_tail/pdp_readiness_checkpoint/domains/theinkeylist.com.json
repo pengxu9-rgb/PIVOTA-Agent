@@ -1,0 +1,1308 @@
+{
+  "generated_at": "2026-05-28T10:01:33.453Z",
+  "options": {
+    "market": "US",
+    "includeAttached": true,
+    "domain": "theinkeylist.com",
+    "externalProductIds": [],
+    "limit": 20000,
+    "sampleLimit": 10,
+    "checkpointDir": null,
+    "checkpointMode": "domain",
+    "resume": false,
+    "force": false,
+    "continueOnError": true,
+    "pageSize": 500,
+    "format": "json",
+    "chunkByDomain": false
+  },
+  "warnings": [],
+  "summary": {
+    "scanned": 9,
+    "by_market": {
+      "US": 9
+    },
+    "by_domain": [
+      {
+        "key": "theinkeylist.com",
+        "count": 9
+      }
+    ],
+    "by_product_family": [
+      {
+        "key": "single_formula",
+        "count": 9
+      }
+    ],
+    "coverage": {
+      "missing_inci": 2,
+      "missing_active_raw": 2,
+      "missing_details": 2,
+      "missing_how_to": 0,
+      "missing_faq": 5
+    },
+    "pivota_insights": {
+      "direct": {
+        "displayable": 9,
+        "high_quality_ready": 2,
+        "missing_kb": 0,
+        "not_displayable": 0
+      },
+      "effective": {
+        "displayable": 9,
+        "high_quality_ready": 2,
+        "missing_kb": 0,
+        "not_displayable": 0,
+        "borrowed_from_sibling": 0
+      },
+      "effective_issues": [
+        {
+          "key": "quality_eligible",
+          "count": 8
+        },
+        {
+          "key": "missing_card_highlight",
+          "count": 7
+        },
+        {
+          "key": "empty_watchouts",
+          "count": 3
+        },
+        {
+          "key": "public_sensitive_claim",
+          "count": 1
+        }
+      ],
+      "effective_issue_domains": [
+        {
+          "key": "theinkeylist.com::quality_eligible",
+          "count": 8
+        },
+        {
+          "key": "theinkeylist.com::missing_card_highlight",
+          "count": 7
+        },
+        {
+          "key": "theinkeylist.com::empty_watchouts",
+          "count": 3
+        },
+        {
+          "key": "theinkeylist.com::public_sensitive_claim",
+          "count": 1
+        }
+      ],
+      "quality_state": [
+        {
+          "key": "eligible",
+          "count": 8
+        },
+        {
+          "key": "reviewed",
+          "count": 1
+        }
+      ],
+      "evidence_profile": [
+        {
+          "key": "community_supported",
+          "count": 5
+        },
+        {
+          "key": "seller_plus_formula",
+          "count": 4
+        }
+      ],
+      "samples": {
+        "missing_card_highlight": [
+          {
+            "external_product_id": "ext_0b3d97758bc02698aaf31ed7",
+            "domain": "theinkeylist.com",
+            "title": "Tranexamic Acid Serum",
+            "used_product_id": "ext_0b3d97758bc02698aaf31ed7",
+            "quality_state": "eligible",
+            "evidence_profile": "community_supported"
+          },
+          {
+            "external_product_id": "ext_378d80a20c6f872e94e9ca86",
+            "domain": "theinkeylist.com",
+            "title": "Supersize Omega Water Cream - 100ml",
+            "used_product_id": "ext_378d80a20c6f872e94e9ca86",
+            "quality_state": "eligible",
+            "evidence_profile": "community_supported"
+          },
+          {
+            "external_product_id": "ext_3eeaf9c029c24e5a0cbab749",
+            "domain": "theinkeylist.com",
+            "title": "PDRN Serum",
+            "used_product_id": "ext_3eeaf9c029c24e5a0cbab749",
+            "quality_state": "eligible",
+            "evidence_profile": "seller_plus_formula"
+          },
+          {
+            "external_product_id": "ext_4e6158b5e6f187c03c87b013",
+            "domain": "theinkeylist.com",
+            "title": "10% Azelaic Acid Serum for Redness Relief",
+            "used_product_id": "ext_4e6158b5e6f187c03c87b013",
+            "quality_state": "eligible",
+            "evidence_profile": "community_supported"
+          },
+          {
+            "external_product_id": "ext_6f885ffc900b6c99115c25e9",
+            "domain": "theinkeylist.com",
+            "title": "Supersize Hyaluronic Acid Serum - 100ml",
+            "used_product_id": "ext_6f885ffc900b6c99115c25e9",
+            "quality_state": "eligible",
+            "evidence_profile": "community_supported"
+          },
+          {
+            "external_product_id": "ext_7f2927806c10ab6988776684",
+            "domain": "theinkeylist.com",
+            "title": "Advanced 0.2% Retinal Serum",
+            "used_product_id": "ext_7f2927806c10ab6988776684",
+            "quality_state": "eligible",
+            "evidence_profile": "community_supported"
+          },
+          {
+            "external_product_id": "ext_fe0c55a05a505ad59ddd7f0c",
+            "domain": "theinkeylist.com",
+            "title": "360° Acne Clearing Serum",
+            "used_product_id": "ext_fe0c55a05a505ad59ddd7f0c",
+            "quality_state": "eligible",
+            "evidence_profile": "seller_plus_formula"
+          }
+        ],
+        "public_sensitive_claim": [
+          {
+            "external_product_id": "ext_3eeaf9c029c24e5a0cbab749",
+            "domain": "theinkeylist.com",
+            "title": "PDRN Serum",
+            "used_product_id": "ext_3eeaf9c029c24e5a0cbab749",
+            "quality_state": "eligible",
+            "evidence_profile": "seller_plus_formula"
+          }
+        ]
+      }
+    },
+    "active_ingredients": {
+      "regulatory_expected": 0,
+      "hero_expected": 9,
+      "any_active_items": 8,
+      "status": [
+        {
+          "key": "ready_hero",
+          "count": 6
+        },
+        {
+          "key": "missing_hero",
+          "count": 1
+        },
+        {
+          "key": "possibly_inci_guess",
+          "count": 1
+        },
+        {
+          "key": "ready_other",
+          "count": 1
+        }
+      ],
+      "issues": [
+        {
+          "key": "active_raw_may_be_full_inci",
+          "count": 3
+        },
+        {
+          "key": "missing_hero",
+          "count": 1
+        },
+        {
+          "key": "possibly_inci_guess",
+          "count": 1
+        }
+      ],
+      "issue_domains": [
+        {
+          "key": "theinkeylist.com::active_raw_may_be_full_inci",
+          "count": 3
+        },
+        {
+          "key": "theinkeylist.com::missing_hero",
+          "count": 1
+        },
+        {
+          "key": "theinkeylist.com::possibly_inci_guess",
+          "count": 1
+        }
+      ],
+      "source_origin": [
+        {
+          "key": "pdp_section",
+          "count": 7
+        },
+        {
+          "key": "active_block",
+          "count": 1
+        },
+        {
+          "key": "none",
+          "count": 1
+        }
+      ],
+      "samples": {
+        "active_raw_may_be_full_inci": [
+          {
+            "external_product_id": "ext_378d80a20c6f872e94e9ca86",
+            "domain": "theinkeylist.com",
+            "title": "Supersize Omega Water Cream - 100ml",
+            "status": "ready_hero",
+            "active_items": [
+              "Ceramide Complex",
+              "Glycerin",
+              "Betaine",
+              "Niacinamide"
+            ],
+            "source_origin": "pdp_section"
+          },
+          {
+            "external_product_id": "ext_6f885ffc900b6c99115c25e9",
+            "domain": "theinkeylist.com",
+            "title": "Supersize Hyaluronic Acid Serum - 100ml",
+            "status": "ready_hero",
+            "active_items": [
+              "Hyaluronic Acid",
+              "Matrixyl 3000 Peptide"
+            ],
+            "source_origin": "pdp_section"
+          },
+          {
+            "external_product_id": "ext_ba77f628da48958583f0f49f",
+            "domain": "theinkeylist.com",
+            "title": "Starter Retinol Serum",
+            "status": "ready_hero",
+            "active_items": [
+              "Retinal",
+              "Hydroxypinacolone Retinoate",
+              "Retinol"
+            ],
+            "source_origin": "pdp_section"
+          }
+        ],
+        "possibly_inci_guess": [
+          {
+            "external_product_id": "ext_3eeaf9c029c24e5a0cbab749",
+            "domain": "theinkeylist.com",
+            "title": "PDRN Serum",
+            "status": "possibly_inci_guess",
+            "active_items": [
+              "PDRN",
+              "Glycerin"
+            ],
+            "source_origin": "pdp_section"
+          }
+        ],
+        "missing_hero": [
+          {
+            "external_product_id": "ext_7f2927806c10ab6988776684",
+            "domain": "theinkeylist.com",
+            "title": "Advanced 0.2% Retinal Serum",
+            "status": "missing_hero",
+            "active_items": [],
+            "source_origin": "none"
+          }
+        ]
+      }
+    },
+    "variants": {
+      "status": [
+        {
+          "key": "ready",
+          "count": 9
+        }
+      ],
+      "issues": [],
+      "issue_domains": [],
+      "samples": {}
+    }
+  },
+  "rows": [
+    {
+      "seed_id": "eps_c60eeb7389583b924cc3bae3",
+      "external_product_id": "ext_0b3d97758bc02698aaf31ed7",
+      "market": "US",
+      "domain": "theinkeylist.com",
+      "title": "Tranexamic Acid Serum",
+      "canonical_url": "https://www.theinkeylist.com/products/tranexamic-acid-serum",
+      "product_family": "single_formula",
+      "product_line_id": "pl_4bc4cd361d08ef9ab364d049",
+      "identity_variant_axes": {
+        "volume": "30ml",
+        "multi_variant": false
+      },
+      "pivota_insights": {
+        "direct": {
+          "product_id": "ext_0b3d97758bc02698aaf31ed7",
+          "kb_key": "product:ext_0b3d97758bc02698aaf31ed7",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": false,
+          "human_reviewed": true,
+          "issues": [
+            "missing_card_highlight",
+            "empty_watchouts",
+            "quality_eligible"
+          ],
+          "blocking_issues": [
+            "missing_card_highlight"
+          ],
+          "quality_state": "eligible",
+          "evidence_profile": "community_supported",
+          "has_card_highlight": false
+        },
+        "effective": {
+          "product_id": "ext_0b3d97758bc02698aaf31ed7",
+          "kb_key": "product:ext_0b3d97758bc02698aaf31ed7",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": false,
+          "human_reviewed": true,
+          "issues": [
+            "missing_card_highlight",
+            "empty_watchouts",
+            "quality_eligible"
+          ],
+          "blocking_issues": [
+            "missing_card_highlight"
+          ],
+          "quality_state": "eligible",
+          "evidence_profile": "community_supported",
+          "has_card_highlight": false
+        },
+        "product_line_id": "pl_4bc4cd361d08ef9ab364d049",
+        "borrowed_from_sibling": false
+      },
+      "active_ingredients": {
+        "status": "ready_hero",
+        "issues": [],
+        "regulatory_expected": false,
+        "hero_expected": true,
+        "active_items": [
+          "Tranexamic Acid",
+          "Acai Berry Extract",
+          "Vitamin C derivative"
+        ],
+        "source_origin": "pdp_section",
+        "source_quality_status": "captured",
+        "coverage": {
+          "details_sections_count": 4,
+          "faq_count": 24,
+          "how_to_chars": 550,
+          "inci_chars": 471,
+          "active_ingredients_chars": 140,
+          "inci_applicability_status": "",
+          "ingredient_review_status": "",
+          "ingredient_remediation_action": "",
+          "bundle_component_refs_count": 0,
+          "effective_inci_chars": 471,
+          "inci_borrowed_from_product_id": ""
+        },
+        "invalid_fragments": [],
+        "suppressed_reason": null
+      },
+      "variants": {
+        "status": "ready",
+        "issues": [],
+        "visible_variant_rows": 1,
+        "examples": {
+          "identity_option_visible": [],
+          "wrong_axis_for_category": [],
+          "makeup_shade_missing_visual": [],
+          "size_value_generic_axis": [],
+          "default_option_size_evidence_missing_axis": [],
+          "identity_default_title_axis": []
+        }
+      },
+      "coverage": {
+        "details_sections_count": 4,
+        "faq_count": 24,
+        "how_to_chars": 550,
+        "inci_chars": 471,
+        "active_ingredients_chars": 140,
+        "inci_applicability_status": "",
+        "ingredient_review_status": "",
+        "ingredient_remediation_action": "",
+        "bundle_component_refs_count": 0,
+        "effective_inci_chars": 471,
+        "inci_borrowed_from_product_id": ""
+      }
+    },
+    {
+      "seed_id": "eps_5d0fff73431362d67fd9d622",
+      "external_product_id": "ext_378d80a20c6f872e94e9ca86",
+      "market": "US",
+      "domain": "theinkeylist.com",
+      "title": "Supersize Omega Water Cream - 100ml",
+      "canonical_url": "https://www.theinkeylist.com/products/omega-water-cream-100ml",
+      "product_family": "single_formula",
+      "product_line_id": "pl_752917b22e1bd0a5c269b85e",
+      "identity_variant_axes": {
+        "volume": "100ml",
+        "multi_variant": false
+      },
+      "pivota_insights": {
+        "direct": {
+          "product_id": "ext_378d80a20c6f872e94e9ca86",
+          "kb_key": "product:ext_378d80a20c6f872e94e9ca86",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": false,
+          "human_reviewed": true,
+          "issues": [
+            "missing_card_highlight",
+            "quality_eligible"
+          ],
+          "blocking_issues": [
+            "missing_card_highlight"
+          ],
+          "quality_state": "eligible",
+          "evidence_profile": "community_supported",
+          "has_card_highlight": false
+        },
+        "effective": {
+          "product_id": "ext_378d80a20c6f872e94e9ca86",
+          "kb_key": "product:ext_378d80a20c6f872e94e9ca86",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": false,
+          "human_reviewed": true,
+          "issues": [
+            "missing_card_highlight",
+            "quality_eligible"
+          ],
+          "blocking_issues": [
+            "missing_card_highlight"
+          ],
+          "quality_state": "eligible",
+          "evidence_profile": "community_supported",
+          "has_card_highlight": false
+        },
+        "product_line_id": "pl_752917b22e1bd0a5c269b85e",
+        "borrowed_from_sibling": false
+      },
+      "active_ingredients": {
+        "status": "ready_hero",
+        "issues": [
+          "active_raw_may_be_full_inci"
+        ],
+        "regulatory_expected": false,
+        "hero_expected": true,
+        "active_items": [
+          "Ceramide Complex",
+          "Glycerin",
+          "Betaine",
+          "Niacinamide"
+        ],
+        "source_origin": "pdp_section",
+        "source_quality_status": "captured",
+        "coverage": {
+          "details_sections_count": 4,
+          "faq_count": 6,
+          "how_to_chars": 490,
+          "inci_chars": 294,
+          "active_ingredients_chars": 418,
+          "inci_applicability_status": "",
+          "ingredient_review_status": "",
+          "ingredient_remediation_action": "",
+          "bundle_component_refs_count": 0,
+          "effective_inci_chars": 294,
+          "inci_borrowed_from_product_id": ""
+        },
+        "invalid_fragments": [],
+        "suppressed_reason": null
+      },
+      "variants": {
+        "status": "ready",
+        "issues": [],
+        "visible_variant_rows": 1,
+        "examples": {
+          "identity_option_visible": [],
+          "wrong_axis_for_category": [],
+          "makeup_shade_missing_visual": [],
+          "size_value_generic_axis": [],
+          "default_option_size_evidence_missing_axis": [],
+          "identity_default_title_axis": []
+        }
+      },
+      "coverage": {
+        "details_sections_count": 4,
+        "faq_count": 6,
+        "how_to_chars": 490,
+        "inci_chars": 294,
+        "active_ingredients_chars": 418,
+        "inci_applicability_status": "",
+        "ingredient_review_status": "",
+        "ingredient_remediation_action": "",
+        "bundle_component_refs_count": 0,
+        "effective_inci_chars": 294,
+        "inci_borrowed_from_product_id": ""
+      }
+    },
+    {
+      "seed_id": "eps_0a86dc5878da5cdcc65f8ea5",
+      "external_product_id": "ext_3eeaf9c029c24e5a0cbab749",
+      "market": "US",
+      "domain": "theinkeylist.com",
+      "title": "PDRN Serum",
+      "canonical_url": "https://www.theinkeylist.com/products/pdrn-serum",
+      "product_family": "single_formula",
+      "product_line_id": "pl_5d8582924c46563f4449f143",
+      "identity_variant_axes": {
+        "multi_variant": false
+      },
+      "pivota_insights": {
+        "direct": {
+          "product_id": "ext_3eeaf9c029c24e5a0cbab749",
+          "kb_key": "product:ext_3eeaf9c029c24e5a0cbab749",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": false,
+          "human_reviewed": true,
+          "issues": [
+            "missing_card_highlight",
+            "public_sensitive_claim",
+            "empty_watchouts",
+            "quality_eligible"
+          ],
+          "blocking_issues": [
+            "missing_card_highlight",
+            "public_sensitive_claim"
+          ],
+          "quality_state": "eligible",
+          "evidence_profile": "seller_plus_formula",
+          "has_card_highlight": false
+        },
+        "effective": {
+          "product_id": "ext_3eeaf9c029c24e5a0cbab749",
+          "kb_key": "product:ext_3eeaf9c029c24e5a0cbab749",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": false,
+          "human_reviewed": true,
+          "issues": [
+            "missing_card_highlight",
+            "public_sensitive_claim",
+            "empty_watchouts",
+            "quality_eligible"
+          ],
+          "blocking_issues": [
+            "missing_card_highlight",
+            "public_sensitive_claim"
+          ],
+          "quality_state": "eligible",
+          "evidence_profile": "seller_plus_formula",
+          "has_card_highlight": false
+        },
+        "product_line_id": "pl_5d8582924c46563f4449f143",
+        "borrowed_from_sibling": false
+      },
+      "active_ingredients": {
+        "status": "possibly_inci_guess",
+        "issues": [
+          "possibly_inci_guess"
+        ],
+        "regulatory_expected": false,
+        "hero_expected": true,
+        "active_items": [
+          "PDRN",
+          "Glycerin"
+        ],
+        "source_origin": "pdp_section",
+        "source_quality_status": "blocked",
+        "coverage": {
+          "details_sections_count": 4,
+          "faq_count": 0,
+          "how_to_chars": 541,
+          "inci_chars": 447,
+          "active_ingredients_chars": 170,
+          "inci_applicability_status": "",
+          "ingredient_review_status": "",
+          "ingredient_remediation_action": "",
+          "bundle_component_refs_count": 0,
+          "effective_inci_chars": 447,
+          "inci_borrowed_from_product_id": ""
+        },
+        "invalid_fragments": [],
+        "suppressed_reason": null
+      },
+      "variants": {
+        "status": "ready",
+        "issues": [],
+        "visible_variant_rows": 1,
+        "examples": {
+          "identity_option_visible": [],
+          "wrong_axis_for_category": [],
+          "makeup_shade_missing_visual": [],
+          "size_value_generic_axis": [],
+          "default_option_size_evidence_missing_axis": [],
+          "identity_default_title_axis": []
+        }
+      },
+      "coverage": {
+        "details_sections_count": 4,
+        "faq_count": 0,
+        "how_to_chars": 541,
+        "inci_chars": 447,
+        "active_ingredients_chars": 170,
+        "inci_applicability_status": "",
+        "ingredient_review_status": "",
+        "ingredient_remediation_action": "",
+        "bundle_component_refs_count": 0,
+        "effective_inci_chars": 447,
+        "inci_borrowed_from_product_id": ""
+      }
+    },
+    {
+      "seed_id": "eps_c67ebdefe8eaa9f14f8ca059",
+      "external_product_id": "ext_4e6158b5e6f187c03c87b013",
+      "market": "US",
+      "domain": "theinkeylist.com",
+      "title": "10% Azelaic Acid Serum for Redness Relief",
+      "canonical_url": "https://www.theinkeylist.com/products/redness-relief-solution",
+      "product_family": "single_formula",
+      "product_line_id": "pl_448e62f2753b790186669e8f",
+      "identity_variant_axes": {
+        "size": "30ml",
+        "multi_variant": false
+      },
+      "pivota_insights": {
+        "direct": {
+          "product_id": "ext_4e6158b5e6f187c03c87b013",
+          "kb_key": "product:ext_4e6158b5e6f187c03c87b013",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": false,
+          "human_reviewed": true,
+          "issues": [
+            "missing_card_highlight",
+            "empty_watchouts",
+            "quality_eligible"
+          ],
+          "blocking_issues": [
+            "missing_card_highlight"
+          ],
+          "quality_state": "eligible",
+          "evidence_profile": "community_supported",
+          "has_card_highlight": false
+        },
+        "effective": {
+          "product_id": "ext_4e6158b5e6f187c03c87b013",
+          "kb_key": "product:ext_4e6158b5e6f187c03c87b013",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": false,
+          "human_reviewed": true,
+          "issues": [
+            "missing_card_highlight",
+            "empty_watchouts",
+            "quality_eligible"
+          ],
+          "blocking_issues": [
+            "missing_card_highlight"
+          ],
+          "quality_state": "eligible",
+          "evidence_profile": "community_supported",
+          "has_card_highlight": false
+        },
+        "product_line_id": "pl_448e62f2753b790186669e8f",
+        "borrowed_from_sibling": false
+      },
+      "active_ingredients": {
+        "status": "ready_hero",
+        "issues": [],
+        "regulatory_expected": false,
+        "hero_expected": true,
+        "active_items": [
+          "Azelaic Acid",
+          "Allantoin"
+        ],
+        "source_origin": "pdp_section",
+        "source_quality_status": "captured",
+        "coverage": {
+          "details_sections_count": 6,
+          "faq_count": 6,
+          "how_to_chars": 773,
+          "inci_chars": 346,
+          "active_ingredients_chars": 88,
+          "inci_applicability_status": "",
+          "ingredient_review_status": "",
+          "ingredient_remediation_action": "",
+          "bundle_component_refs_count": 0,
+          "effective_inci_chars": 346,
+          "inci_borrowed_from_product_id": ""
+        },
+        "invalid_fragments": [],
+        "suppressed_reason": null
+      },
+      "variants": {
+        "status": "ready",
+        "issues": [],
+        "visible_variant_rows": 1,
+        "examples": {
+          "identity_option_visible": [],
+          "wrong_axis_for_category": [],
+          "makeup_shade_missing_visual": [],
+          "size_value_generic_axis": [],
+          "default_option_size_evidence_missing_axis": [],
+          "identity_default_title_axis": []
+        }
+      },
+      "coverage": {
+        "details_sections_count": 6,
+        "faq_count": 6,
+        "how_to_chars": 773,
+        "inci_chars": 346,
+        "active_ingredients_chars": 88,
+        "inci_applicability_status": "",
+        "ingredient_review_status": "",
+        "ingredient_remediation_action": "",
+        "bundle_component_refs_count": 0,
+        "effective_inci_chars": 346,
+        "inci_borrowed_from_product_id": ""
+      }
+    },
+    {
+      "seed_id": "eps_6a87f58f9cabcb8e8a1ccb2c",
+      "external_product_id": "ext_6f885ffc900b6c99115c25e9",
+      "market": "US",
+      "domain": "theinkeylist.com",
+      "title": "Supersize Hyaluronic Acid Serum - 100ml",
+      "canonical_url": "https://www.theinkeylist.com/products/supersize-hyaluronic-acid-serum",
+      "product_family": "single_formula",
+      "product_line_id": "pl_1d0c9b238a7b2649872b866a",
+      "identity_variant_axes": {
+        "volume": "100ml",
+        "multi_variant": false
+      },
+      "pivota_insights": {
+        "direct": {
+          "product_id": "ext_6f885ffc900b6c99115c25e9",
+          "kb_key": "product:ext_6f885ffc900b6c99115c25e9",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": false,
+          "human_reviewed": true,
+          "issues": [
+            "missing_card_highlight",
+            "quality_eligible"
+          ],
+          "blocking_issues": [
+            "missing_card_highlight"
+          ],
+          "quality_state": "eligible",
+          "evidence_profile": "community_supported",
+          "has_card_highlight": false
+        },
+        "effective": {
+          "product_id": "ext_6f885ffc900b6c99115c25e9",
+          "kb_key": "product:ext_6f885ffc900b6c99115c25e9",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": false,
+          "human_reviewed": true,
+          "issues": [
+            "missing_card_highlight",
+            "quality_eligible"
+          ],
+          "blocking_issues": [
+            "missing_card_highlight"
+          ],
+          "quality_state": "eligible",
+          "evidence_profile": "community_supported",
+          "has_card_highlight": false
+        },
+        "product_line_id": "pl_1d0c9b238a7b2649872b866a",
+        "borrowed_from_sibling": false
+      },
+      "active_ingredients": {
+        "status": "ready_hero",
+        "issues": [
+          "active_raw_may_be_full_inci"
+        ],
+        "regulatory_expected": false,
+        "hero_expected": true,
+        "active_items": [
+          "Hyaluronic Acid",
+          "Matrixyl 3000 Peptide"
+        ],
+        "source_origin": "pdp_section",
+        "source_quality_status": "captured",
+        "coverage": {
+          "details_sections_count": 6,
+          "faq_count": 24,
+          "how_to_chars": 531,
+          "inci_chars": 291,
+          "active_ingredients_chars": 271,
+          "inci_applicability_status": "",
+          "ingredient_review_status": "",
+          "ingredient_remediation_action": "",
+          "bundle_component_refs_count": 0,
+          "effective_inci_chars": 291,
+          "inci_borrowed_from_product_id": ""
+        },
+        "invalid_fragments": [],
+        "suppressed_reason": null
+      },
+      "variants": {
+        "status": "ready",
+        "issues": [],
+        "visible_variant_rows": 1,
+        "examples": {
+          "identity_option_visible": [],
+          "wrong_axis_for_category": [],
+          "makeup_shade_missing_visual": [],
+          "size_value_generic_axis": [],
+          "default_option_size_evidence_missing_axis": [],
+          "identity_default_title_axis": []
+        }
+      },
+      "coverage": {
+        "details_sections_count": 6,
+        "faq_count": 24,
+        "how_to_chars": 531,
+        "inci_chars": 291,
+        "active_ingredients_chars": 271,
+        "inci_applicability_status": "",
+        "ingredient_review_status": "",
+        "ingredient_remediation_action": "",
+        "bundle_component_refs_count": 0,
+        "effective_inci_chars": 291,
+        "inci_borrowed_from_product_id": ""
+      }
+    },
+    {
+      "seed_id": "eps_ef3fe1776596ed4923f30adf",
+      "external_product_id": "ext_7f2927806c10ab6988776684",
+      "market": "US",
+      "domain": "theinkeylist.com",
+      "title": "Advanced 0.2% Retinal Serum",
+      "canonical_url": "https://www.theinkeylist.com/products/advanced-retinal",
+      "product_family": "single_formula",
+      "product_line_id": "pl_9c500d4bb395298bd9db2ad6",
+      "identity_variant_axes": {
+        "multi_variant": false
+      },
+      "pivota_insights": {
+        "direct": {
+          "product_id": "ext_7f2927806c10ab6988776684",
+          "kb_key": "product:ext_7f2927806c10ab6988776684",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": false,
+          "human_reviewed": true,
+          "issues": [
+            "missing_card_highlight",
+            "quality_eligible"
+          ],
+          "blocking_issues": [
+            "missing_card_highlight"
+          ],
+          "quality_state": "eligible",
+          "evidence_profile": "community_supported",
+          "has_card_highlight": false
+        },
+        "effective": {
+          "product_id": "ext_7f2927806c10ab6988776684",
+          "kb_key": "product:ext_7f2927806c10ab6988776684",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": false,
+          "human_reviewed": true,
+          "issues": [
+            "missing_card_highlight",
+            "quality_eligible"
+          ],
+          "blocking_issues": [
+            "missing_card_highlight"
+          ],
+          "quality_state": "eligible",
+          "evidence_profile": "community_supported",
+          "has_card_highlight": false
+        },
+        "product_line_id": "pl_9c500d4bb395298bd9db2ad6",
+        "borrowed_from_sibling": false
+      },
+      "active_ingredients": {
+        "status": "missing_hero",
+        "issues": [
+          "missing_hero"
+        ],
+        "regulatory_expected": false,
+        "hero_expected": true,
+        "active_items": [],
+        "source_origin": "none",
+        "source_quality_status": "blocked",
+        "coverage": {
+          "details_sections_count": 0,
+          "faq_count": 0,
+          "how_to_chars": 155,
+          "inci_chars": 0,
+          "active_ingredients_chars": 0,
+          "inci_applicability_status": "",
+          "ingredient_review_status": "",
+          "ingredient_remediation_action": "",
+          "bundle_component_refs_count": 0,
+          "effective_inci_chars": 0,
+          "inci_borrowed_from_product_id": ""
+        },
+        "invalid_fragments": [],
+        "suppressed_reason": "no_authoritative_source"
+      },
+      "variants": {
+        "status": "ready",
+        "issues": [],
+        "visible_variant_rows": 1,
+        "examples": {
+          "identity_option_visible": [],
+          "wrong_axis_for_category": [],
+          "makeup_shade_missing_visual": [],
+          "size_value_generic_axis": [],
+          "default_option_size_evidence_missing_axis": [],
+          "identity_default_title_axis": []
+        }
+      },
+      "coverage": {
+        "details_sections_count": 0,
+        "faq_count": 0,
+        "how_to_chars": 155,
+        "inci_chars": 0,
+        "active_ingredients_chars": 0,
+        "inci_applicability_status": "",
+        "ingredient_review_status": "",
+        "ingredient_remediation_action": "",
+        "bundle_component_refs_count": 0,
+        "effective_inci_chars": 0,
+        "inci_borrowed_from_product_id": ""
+      }
+    },
+    {
+      "seed_id": "eps_847a82d52ee4b6ef7c3aa20c",
+      "external_product_id": "ext_ba77f628da48958583f0f49f",
+      "market": "US",
+      "domain": "theinkeylist.com",
+      "title": "Starter Retinol Serum",
+      "canonical_url": "https://www.theinkeylist.com/products/starter-retinol",
+      "product_family": "single_formula",
+      "product_line_id": "pl_2a78708ec56e50213ca5e518",
+      "identity_variant_axes": {
+        "multi_variant": false
+      },
+      "pivota_insights": {
+        "direct": {
+          "product_id": "ext_ba77f628da48958583f0f49f",
+          "kb_key": "product:ext_ba77f628da48958583f0f49f",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [
+            "quality_eligible"
+          ],
+          "blocking_issues": [],
+          "quality_state": "eligible",
+          "evidence_profile": "seller_plus_formula",
+          "has_card_highlight": true
+        },
+        "effective": {
+          "product_id": "ext_ba77f628da48958583f0f49f",
+          "kb_key": "product:ext_ba77f628da48958583f0f49f",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [
+            "quality_eligible"
+          ],
+          "blocking_issues": [],
+          "quality_state": "eligible",
+          "evidence_profile": "seller_plus_formula",
+          "has_card_highlight": true
+        },
+        "product_line_id": "pl_2a78708ec56e50213ca5e518",
+        "borrowed_from_sibling": false
+      },
+      "active_ingredients": {
+        "status": "ready_hero",
+        "issues": [
+          "active_raw_may_be_full_inci"
+        ],
+        "regulatory_expected": false,
+        "hero_expected": true,
+        "active_items": [
+          "Retinal",
+          "Hydroxypinacolone Retinoate",
+          "Retinol"
+        ],
+        "source_origin": "pdp_section",
+        "source_quality_status": "captured",
+        "coverage": {
+          "details_sections_count": 4,
+          "faq_count": 0,
+          "how_to_chars": 903,
+          "inci_chars": 750,
+          "active_ingredients_chars": 633,
+          "inci_applicability_status": "",
+          "ingredient_review_status": "",
+          "ingredient_remediation_action": "",
+          "bundle_component_refs_count": 0,
+          "effective_inci_chars": 750,
+          "inci_borrowed_from_product_id": ""
+        },
+        "invalid_fragments": [],
+        "suppressed_reason": null
+      },
+      "variants": {
+        "status": "ready",
+        "issues": [],
+        "visible_variant_rows": 1,
+        "examples": {
+          "identity_option_visible": [],
+          "wrong_axis_for_category": [],
+          "makeup_shade_missing_visual": [],
+          "size_value_generic_axis": [],
+          "default_option_size_evidence_missing_axis": [],
+          "identity_default_title_axis": []
+        }
+      },
+      "coverage": {
+        "details_sections_count": 4,
+        "faq_count": 0,
+        "how_to_chars": 903,
+        "inci_chars": 750,
+        "active_ingredients_chars": 633,
+        "inci_applicability_status": "",
+        "ingredient_review_status": "",
+        "ingredient_remediation_action": "",
+        "bundle_component_refs_count": 0,
+        "effective_inci_chars": 750,
+        "inci_borrowed_from_product_id": ""
+      }
+    },
+    {
+      "seed_id": "eps_f9ac3728fece6ecce70f5619",
+      "external_product_id": "ext_cb5bf6c59bef31adc9fc4bb2",
+      "market": "US",
+      "domain": "theinkeylist.com",
+      "title": "10% Niacinamide Serum",
+      "canonical_url": "https://www.theinkeylist.com/products/niacinamide-serum",
+      "product_family": "single_formula",
+      "product_line_id": "pl_120e0378ecbde824945cb674",
+      "identity_variant_axes": {
+        "multi_variant": false
+      },
+      "pivota_insights": {
+        "direct": {
+          "product_id": "ext_cb5bf6c59bef31adc9fc4bb2",
+          "kb_key": "product:ext_cb5bf6c59bef31adc9fc4bb2",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "seller_plus_formula",
+          "has_card_highlight": true
+        },
+        "effective": {
+          "product_id": "ext_cb5bf6c59bef31adc9fc4bb2",
+          "kb_key": "product:ext_cb5bf6c59bef31adc9fc4bb2",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "seller_plus_formula",
+          "has_card_highlight": true
+        },
+        "product_line_id": "pl_120e0378ecbde824945cb674",
+        "borrowed_from_sibling": false
+      },
+      "active_ingredients": {
+        "status": "ready_hero",
+        "issues": [],
+        "regulatory_expected": false,
+        "hero_expected": true,
+        "active_items": [
+          "Niacinamide"
+        ],
+        "source_origin": "active_block",
+        "source_quality_status": "captured",
+        "coverage": {
+          "details_sections_count": 0,
+          "faq_count": 0,
+          "how_to_chars": 155,
+          "inci_chars": 0,
+          "active_ingredients_chars": 0,
+          "inci_applicability_status": "",
+          "ingredient_review_status": "",
+          "ingredient_remediation_action": "",
+          "bundle_component_refs_count": 0,
+          "effective_inci_chars": 0,
+          "inci_borrowed_from_product_id": ""
+        },
+        "invalid_fragments": [],
+        "suppressed_reason": "full_inci_low_purity"
+      },
+      "variants": {
+        "status": "ready",
+        "issues": [],
+        "visible_variant_rows": 1,
+        "examples": {
+          "identity_option_visible": [],
+          "wrong_axis_for_category": [],
+          "makeup_shade_missing_visual": [],
+          "size_value_generic_axis": [],
+          "default_option_size_evidence_missing_axis": [],
+          "identity_default_title_axis": []
+        }
+      },
+      "coverage": {
+        "details_sections_count": 0,
+        "faq_count": 0,
+        "how_to_chars": 155,
+        "inci_chars": 0,
+        "active_ingredients_chars": 0,
+        "inci_applicability_status": "",
+        "ingredient_review_status": "",
+        "ingredient_remediation_action": "",
+        "bundle_component_refs_count": 0,
+        "effective_inci_chars": 0,
+        "inci_borrowed_from_product_id": ""
+      }
+    },
+    {
+      "seed_id": "eps_8b5ac5af447f67b9c13367d1",
+      "external_product_id": "ext_fe0c55a05a505ad59ddd7f0c",
+      "market": "US",
+      "domain": "theinkeylist.com",
+      "title": "360° Acne Clearing Serum",
+      "canonical_url": "https://www.theinkeylist.com/products/360-acne-clearing-serum",
+      "product_family": "single_formula",
+      "product_line_id": "pl_a02894eca10122fb34a89f1d",
+      "identity_variant_axes": {
+        "multi_variant": false
+      },
+      "pivota_insights": {
+        "direct": {
+          "product_id": "ext_fe0c55a05a505ad59ddd7f0c",
+          "kb_key": "product:ext_fe0c55a05a505ad59ddd7f0c",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": false,
+          "human_reviewed": true,
+          "issues": [
+            "missing_card_highlight",
+            "quality_eligible"
+          ],
+          "blocking_issues": [
+            "missing_card_highlight"
+          ],
+          "quality_state": "eligible",
+          "evidence_profile": "seller_plus_formula",
+          "has_card_highlight": false
+        },
+        "effective": {
+          "product_id": "ext_fe0c55a05a505ad59ddd7f0c",
+          "kb_key": "product:ext_fe0c55a05a505ad59ddd7f0c",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": false,
+          "human_reviewed": true,
+          "issues": [
+            "missing_card_highlight",
+            "quality_eligible"
+          ],
+          "blocking_issues": [
+            "missing_card_highlight"
+          ],
+          "quality_state": "eligible",
+          "evidence_profile": "seller_plus_formula",
+          "has_card_highlight": false
+        },
+        "product_line_id": "pl_a02894eca10122fb34a89f1d",
+        "borrowed_from_sibling": false
+      },
+      "active_ingredients": {
+        "status": "ready_other",
+        "issues": [],
+        "regulatory_expected": false,
+        "hero_expected": true,
+        "active_items": [
+          "Dioic Acid",
+          "Salicylic Acid",
+          "Dendriclear"
+        ],
+        "source_origin": "pdp_section",
+        "source_quality_status": "captured",
+        "coverage": {
+          "details_sections_count": 4,
+          "faq_count": 0,
+          "how_to_chars": 458,
+          "inci_chars": 614,
+          "active_ingredients_chars": 262,
+          "inci_applicability_status": "",
+          "ingredient_review_status": "",
+          "ingredient_remediation_action": "",
+          "bundle_component_refs_count": 0,
+          "effective_inci_chars": 614,
+          "inci_borrowed_from_product_id": ""
+        },
+        "invalid_fragments": [],
+        "suppressed_reason": null
+      },
+      "variants": {
+        "status": "ready",
+        "issues": [],
+        "visible_variant_rows": 1,
+        "examples": {
+          "identity_option_visible": [],
+          "wrong_axis_for_category": [],
+          "makeup_shade_missing_visual": [],
+          "size_value_generic_axis": [],
+          "default_option_size_evidence_missing_axis": [],
+          "identity_default_title_axis": []
+        }
+      },
+      "coverage": {
+        "details_sections_count": 4,
+        "faq_count": 0,
+        "how_to_chars": 458,
+        "inci_chars": 614,
+        "active_ingredients_chars": 262,
+        "inci_applicability_status": "",
+        "ingredient_review_status": "",
+        "ingredient_remediation_action": "",
+        "bundle_component_refs_count": 0,
+        "effective_inci_chars": 614,
+        "inci_borrowed_from_product_id": ""
+      }
+    }
+  ]
+}

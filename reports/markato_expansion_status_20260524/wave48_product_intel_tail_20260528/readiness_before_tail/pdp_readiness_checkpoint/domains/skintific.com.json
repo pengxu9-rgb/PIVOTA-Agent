@@ -1,0 +1,2040 @@
+{
+  "generated_at": "2026-05-28T10:01:05.721Z",
+  "options": {
+    "market": "US",
+    "includeAttached": true,
+    "domain": "skintific.com",
+    "externalProductIds": [],
+    "limit": 20000,
+    "sampleLimit": 10,
+    "checkpointDir": null,
+    "checkpointMode": "domain",
+    "resume": false,
+    "force": false,
+    "continueOnError": true,
+    "pageSize": 500,
+    "format": "json",
+    "chunkByDomain": false
+  },
+  "warnings": [],
+  "summary": {
+    "scanned": 15,
+    "by_market": {
+      "US": 15
+    },
+    "by_domain": [
+      {
+        "key": "skintific.com",
+        "count": 15
+      }
+    ],
+    "by_product_family": [
+      {
+        "key": "single_formula",
+        "count": 8
+      },
+      {
+        "key": "set_or_collection",
+        "count": 6
+      },
+      {
+        "key": "sample",
+        "count": 1
+      }
+    ],
+    "coverage": {
+      "missing_inci": 5,
+      "missing_active_raw": 5,
+      "missing_details": 1,
+      "missing_how_to": 0,
+      "missing_faq": 8
+    },
+    "pivota_insights": {
+      "direct": {
+        "displayable": 9,
+        "high_quality_ready": 4,
+        "missing_kb": 0,
+        "not_displayable": 6
+      },
+      "effective": {
+        "displayable": 9,
+        "high_quality_ready": 4,
+        "missing_kb": 0,
+        "not_displayable": 6,
+        "borrowed_from_sibling": 0
+      },
+      "effective_issues": [
+        {
+          "key": "empty_watchouts",
+          "count": 6
+        },
+        {
+          "key": "quality_eligible",
+          "count": 6
+        },
+        {
+          "key": "quality_limited",
+          "count": 6
+        },
+        {
+          "key": "reviewed_not_displayable",
+          "count": 6
+        },
+        {
+          "key": "seller_only_evidence",
+          "count": 6
+        },
+        {
+          "key": "missing_card_highlight",
+          "count": 5
+        }
+      ],
+      "effective_issue_domains": [
+        {
+          "key": "skintific.com::empty_watchouts",
+          "count": 6
+        },
+        {
+          "key": "skintific.com::quality_eligible",
+          "count": 6
+        },
+        {
+          "key": "skintific.com::quality_limited",
+          "count": 6
+        },
+        {
+          "key": "skintific.com::reviewed_not_displayable",
+          "count": 6
+        },
+        {
+          "key": "skintific.com::seller_only_evidence",
+          "count": 6
+        },
+        {
+          "key": "skintific.com::missing_card_highlight",
+          "count": 5
+        }
+      ],
+      "quality_state": [
+        {
+          "key": "eligible",
+          "count": 6
+        },
+        {
+          "key": "limited",
+          "count": 6
+        },
+        {
+          "key": "verified",
+          "count": 2
+        },
+        {
+          "key": "reviewed",
+          "count": 1
+        }
+      ],
+      "evidence_profile": [
+        {
+          "key": "seller_plus_formula",
+          "count": 8
+        },
+        {
+          "key": "seller_only",
+          "count": 6
+        },
+        {
+          "key": "mixed",
+          "count": 1
+        }
+      ],
+      "samples": {
+        "reviewed_not_displayable": [
+          {
+            "external_product_id": "ext_099d477c5c4149458b661817",
+            "domain": "skintific.com",
+            "title": "Pore Perfect Clay Stick Mask Set 3pcs",
+            "used_product_id": "ext_099d477c5c4149458b661817",
+            "quality_state": "limited",
+            "evidence_profile": "seller_only"
+          },
+          {
+            "external_product_id": "ext_4f3abc692059299f1ac3f12b",
+            "domain": "skintific.com",
+            "title": "Glow Cushion & Serum Spray Set 2pcs",
+            "used_product_id": "ext_4f3abc692059299f1ac3f12b",
+            "quality_state": "limited",
+            "evidence_profile": "seller_only"
+          },
+          {
+            "external_product_id": "ext_9b15ea1fb859095cf0a4f042",
+            "domain": "skintific.com",
+            "title": "Peptide Nourishing Lip Serum Set 3pcs",
+            "used_product_id": "ext_9b15ea1fb859095cf0a4f042",
+            "quality_state": "limited",
+            "evidence_profile": "seller_only"
+          },
+          {
+            "external_product_id": "ext_b5486583f272268936cf7a0a",
+            "domain": "skintific.com",
+            "title": "Glow & Cover Radiant Base Set 2pcs",
+            "used_product_id": "ext_b5486583f272268936cf7a0a",
+            "quality_state": "limited",
+            "evidence_profile": "seller_only"
+          },
+          {
+            "external_product_id": "ext_cd47f24ccb3564f7aeefc798",
+            "domain": "skintific.com",
+            "title": "Velvet Matte & Cover Perfect Stay Base Set 2pcs",
+            "used_product_id": "ext_cd47f24ccb3564f7aeefc798",
+            "quality_state": "limited",
+            "evidence_profile": "seller_only"
+          },
+          {
+            "external_product_id": "ext_d7ce5dea9d90103468e9640d",
+            "domain": "skintific.com",
+            "title": "Glow Cushion & Peptide Lip Serum Set 2pcs",
+            "used_product_id": "ext_d7ce5dea9d90103468e9640d",
+            "quality_state": "limited",
+            "evidence_profile": "seller_only"
+          }
+        ],
+        "seller_only_evidence": [
+          {
+            "external_product_id": "ext_099d477c5c4149458b661817",
+            "domain": "skintific.com",
+            "title": "Pore Perfect Clay Stick Mask Set 3pcs",
+            "used_product_id": "ext_099d477c5c4149458b661817",
+            "quality_state": "limited",
+            "evidence_profile": "seller_only"
+          },
+          {
+            "external_product_id": "ext_4f3abc692059299f1ac3f12b",
+            "domain": "skintific.com",
+            "title": "Glow Cushion & Serum Spray Set 2pcs",
+            "used_product_id": "ext_4f3abc692059299f1ac3f12b",
+            "quality_state": "limited",
+            "evidence_profile": "seller_only"
+          },
+          {
+            "external_product_id": "ext_9b15ea1fb859095cf0a4f042",
+            "domain": "skintific.com",
+            "title": "Peptide Nourishing Lip Serum Set 3pcs",
+            "used_product_id": "ext_9b15ea1fb859095cf0a4f042",
+            "quality_state": "limited",
+            "evidence_profile": "seller_only"
+          },
+          {
+            "external_product_id": "ext_b5486583f272268936cf7a0a",
+            "domain": "skintific.com",
+            "title": "Glow & Cover Radiant Base Set 2pcs",
+            "used_product_id": "ext_b5486583f272268936cf7a0a",
+            "quality_state": "limited",
+            "evidence_profile": "seller_only"
+          },
+          {
+            "external_product_id": "ext_cd47f24ccb3564f7aeefc798",
+            "domain": "skintific.com",
+            "title": "Velvet Matte & Cover Perfect Stay Base Set 2pcs",
+            "used_product_id": "ext_cd47f24ccb3564f7aeefc798",
+            "quality_state": "limited",
+            "evidence_profile": "seller_only"
+          },
+          {
+            "external_product_id": "ext_d7ce5dea9d90103468e9640d",
+            "domain": "skintific.com",
+            "title": "Glow Cushion & Peptide Lip Serum Set 2pcs",
+            "used_product_id": "ext_d7ce5dea9d90103468e9640d",
+            "quality_state": "limited",
+            "evidence_profile": "seller_only"
+          }
+        ],
+        "missing_card_highlight": [
+          {
+            "external_product_id": "ext_0bc9c2c8758615ee4851cd75",
+            "domain": "skintific.com",
+            "title": "5X Ceramide Low pH Cleanser Facial Wash",
+            "used_product_id": "ext_0bc9c2c8758615ee4851cd75",
+            "quality_state": "eligible",
+            "evidence_profile": "seller_plus_formula"
+          },
+          {
+            "external_product_id": "ext_3c2c93acef47834b1ddda467",
+            "domain": "skintific.com",
+            "title": "Matte Fit Serum Sunscreen SPF 50+ PA++++",
+            "used_product_id": "ext_3c2c93acef47834b1ddda467",
+            "quality_state": "eligible",
+            "evidence_profile": "seller_plus_formula"
+          },
+          {
+            "external_product_id": "ext_8181bcabc55c6c0b821b4047",
+            "domain": "skintific.com",
+            "title": "Ultra Light Serum Sunscreen SPF 50+ PA++++ for Oily & Sensitive Skin",
+            "used_product_id": "ext_8181bcabc55c6c0b821b4047",
+            "quality_state": "eligible",
+            "evidence_profile": "seller_plus_formula"
+          },
+          {
+            "external_product_id": "ext_863f6f847c2b89f4f6bb4c79",
+            "domain": "skintific.com",
+            "title": "Glow Bright Day Cream",
+            "used_product_id": "ext_863f6f847c2b89f4f6bb4c79",
+            "quality_state": "eligible",
+            "evidence_profile": "seller_plus_formula"
+          },
+          {
+            "external_product_id": "ext_edf65d8605ed8a842d8f8a8d",
+            "domain": "skintific.com",
+            "title": "Damask Rose Brightening Whipped Cream Cleanser",
+            "used_product_id": "ext_edf65d8605ed8a842d8f8a8d",
+            "quality_state": "eligible",
+            "evidence_profile": "seller_plus_formula"
+          }
+        ]
+      }
+    },
+    "active_ingredients": {
+      "regulatory_expected": 2,
+      "hero_expected": 9,
+      "any_active_items": 8,
+      "status": [
+        {
+          "key": "not_applicable_product_family",
+          "count": 6
+        },
+        {
+          "key": "ready_hero",
+          "count": 6
+        },
+        {
+          "key": "missing_hero",
+          "count": 1
+        },
+        {
+          "key": "missing_regulatory",
+          "count": 1
+        },
+        {
+          "key": "ready_regulatory",
+          "count": 1
+        }
+      ],
+      "issues": [
+        {
+          "key": "missing_hero",
+          "count": 1
+        },
+        {
+          "key": "missing_regulatory",
+          "count": 1
+        }
+      ],
+      "issue_domains": [
+        {
+          "key": "skintific.com::missing_hero",
+          "count": 1
+        },
+        {
+          "key": "skintific.com::missing_regulatory",
+          "count": 1
+        }
+      ],
+      "source_origin": [
+        {
+          "key": "pdp_section",
+          "count": 7
+        },
+        {
+          "key": "none",
+          "count": 6
+        },
+        {
+          "key": "active_block",
+          "count": 2
+        }
+      ],
+      "samples": {
+        "missing_regulatory": [
+          {
+            "external_product_id": "ext_3c2c93acef47834b1ddda467",
+            "domain": "skintific.com",
+            "title": "Matte Fit Serum Sunscreen SPF 50+ PA++++",
+            "status": "missing_regulatory",
+            "active_items": [
+              "Zinc PCA",
+              "Ethylhexyl Methoxycinnamate",
+              "Ethylhexyl Triazone",
+              "Diethylamino Hydroxybenzoyl Hexyl Benzoate",
+              "Bis-Ethylhexyloxyphenol Methoxyphenyl Triazine"
+            ],
+            "source_origin": "pdp_section"
+          }
+        ],
+        "missing_hero": [
+          {
+            "external_product_id": "ext_eccdebcd9666e8c5a23cbf5e",
+            "domain": "skintific.com",
+            "title": "5% B5 Ceramide Barrier Relief Moisturizer",
+            "status": "missing_hero",
+            "active_items": [],
+            "source_origin": "pdp_section"
+          }
+        ]
+      }
+    },
+    "variants": {
+      "status": [
+        {
+          "key": "ready",
+          "count": 10
+        },
+        {
+          "key": "no_visible_variant_axis",
+          "count": 5
+        }
+      ],
+      "issues": [],
+      "issue_domains": [],
+      "samples": {}
+    }
+  },
+  "rows": [
+    {
+      "seed_id": "eps_8259af4df1ba4703a2793648",
+      "external_product_id": "ext_099d477c5c4149458b661817",
+      "market": "US",
+      "domain": "skintific.com",
+      "title": "Pore Perfect Clay Stick Mask Set 3pcs",
+      "canonical_url": "https://skintific.com/products/pore-perfect-clay-stick-mask-set",
+      "product_family": "set_or_collection",
+      "product_line_id": "pl_b5c76ecb67ef0c3ad18998a2",
+      "identity_variant_axes": {
+        "pack": "3pack",
+        "multi_variant": false
+      },
+      "pivota_insights": {
+        "direct": {
+          "product_id": "ext_099d477c5c4149458b661817",
+          "kb_key": "product:ext_099d477c5c4149458b661817",
+          "status": "not_displayable",
+          "kb_exists": true,
+          "displayable": false,
+          "high_quality_ready": false,
+          "human_reviewed": true,
+          "issues": [
+            "reviewed_not_displayable",
+            "quality_limited",
+            "seller_only_evidence"
+          ],
+          "blocking_issues": [
+            "reviewed_not_displayable"
+          ],
+          "quality_state": "limited",
+          "evidence_profile": "seller_only",
+          "has_card_highlight": true
+        },
+        "effective": {
+          "product_id": "ext_099d477c5c4149458b661817",
+          "kb_key": "product:ext_099d477c5c4149458b661817",
+          "status": "not_displayable",
+          "kb_exists": true,
+          "displayable": false,
+          "high_quality_ready": false,
+          "human_reviewed": true,
+          "issues": [
+            "reviewed_not_displayable",
+            "quality_limited",
+            "seller_only_evidence"
+          ],
+          "blocking_issues": [
+            "reviewed_not_displayable"
+          ],
+          "quality_state": "limited",
+          "evidence_profile": "seller_only",
+          "has_card_highlight": true
+        },
+        "product_line_id": "pl_b5c76ecb67ef0c3ad18998a2",
+        "borrowed_from_sibling": false
+      },
+      "active_ingredients": {
+        "status": "not_applicable_product_family",
+        "issues": [],
+        "regulatory_expected": false,
+        "hero_expected": false,
+        "active_items": [],
+        "source_origin": "none",
+        "source_quality_status": "blocked",
+        "coverage": {
+          "details_sections_count": 6,
+          "faq_count": 10,
+          "how_to_chars": 378,
+          "inci_chars": 0,
+          "active_ingredients_chars": 0,
+          "inci_applicability_status": "",
+          "ingredient_review_status": "",
+          "ingredient_remediation_action": "",
+          "bundle_component_refs_count": 0,
+          "effective_inci_chars": 0,
+          "inci_borrowed_from_product_id": ""
+        },
+        "invalid_fragments": [],
+        "suppressed_reason": "set_or_collection"
+      },
+      "variants": {
+        "status": "ready",
+        "issues": [],
+        "visible_variant_rows": 1,
+        "examples": {
+          "identity_option_visible": [],
+          "wrong_axis_for_category": [],
+          "makeup_shade_missing_visual": [],
+          "size_value_generic_axis": [],
+          "default_option_size_evidence_missing_axis": [],
+          "identity_default_title_axis": []
+        }
+      },
+      "coverage": {
+        "details_sections_count": 6,
+        "faq_count": 10,
+        "how_to_chars": 378,
+        "inci_chars": 0,
+        "active_ingredients_chars": 0,
+        "inci_applicability_status": "",
+        "ingredient_review_status": "",
+        "ingredient_remediation_action": "",
+        "bundle_component_refs_count": 0,
+        "effective_inci_chars": 0,
+        "inci_borrowed_from_product_id": ""
+      }
+    },
+    {
+      "seed_id": "eps_486e3f4658ca49cb8151abe2",
+      "external_product_id": "ext_0bc9c2c8758615ee4851cd75",
+      "market": "US",
+      "domain": "skintific.com",
+      "title": "5X Ceramide Low pH Cleanser Facial Wash",
+      "canonical_url": "https://skintific.com/products/5x-ceramide-low-ph-cleanser-facial-wash-for-sensitive-skin",
+      "product_family": "single_formula",
+      "product_line_id": "pl_0da0d59a5fffd3fec7e536c5",
+      "identity_variant_axes": {
+        "size": "4 05 fl oz",
+        "volume": "5floz",
+        "multi_variant": true
+      },
+      "pivota_insights": {
+        "direct": {
+          "product_id": "ext_0bc9c2c8758615ee4851cd75",
+          "kb_key": "product:ext_0bc9c2c8758615ee4851cd75",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": false,
+          "human_reviewed": true,
+          "issues": [
+            "missing_card_highlight",
+            "empty_watchouts",
+            "quality_eligible"
+          ],
+          "blocking_issues": [
+            "missing_card_highlight"
+          ],
+          "quality_state": "eligible",
+          "evidence_profile": "seller_plus_formula",
+          "has_card_highlight": false
+        },
+        "effective": {
+          "product_id": "ext_0bc9c2c8758615ee4851cd75",
+          "kb_key": "product:ext_0bc9c2c8758615ee4851cd75",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": false,
+          "human_reviewed": true,
+          "issues": [
+            "missing_card_highlight",
+            "empty_watchouts",
+            "quality_eligible"
+          ],
+          "blocking_issues": [
+            "missing_card_highlight"
+          ],
+          "quality_state": "eligible",
+          "evidence_profile": "seller_plus_formula",
+          "has_card_highlight": false
+        },
+        "product_line_id": "pl_0da0d59a5fffd3fec7e536c5",
+        "borrowed_from_sibling": false
+      },
+      "active_ingredients": {
+        "status": "ready_hero",
+        "issues": [],
+        "regulatory_expected": false,
+        "hero_expected": true,
+        "active_items": [
+          "Ceramide NP",
+          "Niacinamide",
+          "Hyaluronic acid"
+        ],
+        "source_origin": "active_block",
+        "source_quality_status": "captured",
+        "coverage": {
+          "details_sections_count": 10,
+          "faq_count": 0,
+          "how_to_chars": 87,
+          "inci_chars": 16,
+          "active_ingredients_chars": 16,
+          "inci_applicability_status": "",
+          "ingredient_review_status": "",
+          "ingredient_remediation_action": "",
+          "bundle_component_refs_count": 0,
+          "effective_inci_chars": 16,
+          "inci_borrowed_from_product_id": ""
+        },
+        "invalid_fragments": [],
+        "suppressed_reason": "full_inci_low_purity"
+      },
+      "variants": {
+        "status": "ready",
+        "issues": [],
+        "visible_variant_rows": 2,
+        "examples": {
+          "identity_option_visible": [],
+          "wrong_axis_for_category": [],
+          "makeup_shade_missing_visual": [],
+          "size_value_generic_axis": [],
+          "default_option_size_evidence_missing_axis": [],
+          "identity_default_title_axis": []
+        }
+      },
+      "coverage": {
+        "details_sections_count": 10,
+        "faq_count": 0,
+        "how_to_chars": 87,
+        "inci_chars": 16,
+        "active_ingredients_chars": 16,
+        "inci_applicability_status": "",
+        "ingredient_review_status": "",
+        "ingredient_remediation_action": "",
+        "bundle_component_refs_count": 0,
+        "effective_inci_chars": 16,
+        "inci_borrowed_from_product_id": ""
+      }
+    },
+    {
+      "seed_id": "eps_e24ebabacbb34890899a59da",
+      "external_product_id": "ext_3c2c93acef47834b1ddda467",
+      "market": "US",
+      "domain": "skintific.com",
+      "title": "Matte Fit Serum Sunscreen SPF 50+ PA++++",
+      "canonical_url": "https://skintific.com/products/matte-fit-serum-sunscreen-spf-50",
+      "product_family": "single_formula",
+      "product_line_id": "pl_472214633f4d774694197a9e",
+      "identity_variant_axes": {
+        "size": "1 06 fl oz",
+        "volume": "6floz",
+        "multi_variant": true
+      },
+      "pivota_insights": {
+        "direct": {
+          "product_id": "ext_3c2c93acef47834b1ddda467",
+          "kb_key": "product:ext_3c2c93acef47834b1ddda467",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": false,
+          "human_reviewed": true,
+          "issues": [
+            "missing_card_highlight",
+            "quality_eligible"
+          ],
+          "blocking_issues": [
+            "missing_card_highlight"
+          ],
+          "quality_state": "eligible",
+          "evidence_profile": "seller_plus_formula",
+          "has_card_highlight": false
+        },
+        "effective": {
+          "product_id": "ext_3c2c93acef47834b1ddda467",
+          "kb_key": "product:ext_3c2c93acef47834b1ddda467",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": false,
+          "human_reviewed": true,
+          "issues": [
+            "missing_card_highlight",
+            "quality_eligible"
+          ],
+          "blocking_issues": [
+            "missing_card_highlight"
+          ],
+          "quality_state": "eligible",
+          "evidence_profile": "seller_plus_formula",
+          "has_card_highlight": false
+        },
+        "product_line_id": "pl_472214633f4d774694197a9e",
+        "borrowed_from_sibling": false
+      },
+      "active_ingredients": {
+        "status": "missing_regulatory",
+        "issues": [
+          "missing_regulatory"
+        ],
+        "regulatory_expected": true,
+        "hero_expected": true,
+        "active_items": [
+          "Zinc PCA",
+          "Ethylhexyl Methoxycinnamate",
+          "Ethylhexyl Triazone",
+          "Diethylamino Hydroxybenzoyl Hexyl Benzoate",
+          "Bis-Ethylhexyloxyphenol Methoxyphenyl Triazine"
+        ],
+        "source_origin": "pdp_section",
+        "source_quality_status": "blocked",
+        "coverage": {
+          "details_sections_count": 8,
+          "faq_count": 2,
+          "how_to_chars": 370,
+          "inci_chars": 760,
+          "active_ingredients_chars": 0,
+          "inci_applicability_status": "",
+          "ingredient_review_status": "",
+          "ingredient_remediation_action": "",
+          "bundle_component_refs_count": 0,
+          "effective_inci_chars": 760,
+          "inci_borrowed_from_product_id": ""
+        },
+        "invalid_fragments": [],
+        "suppressed_reason": null
+      },
+      "variants": {
+        "status": "ready",
+        "issues": [],
+        "visible_variant_rows": 3,
+        "examples": {
+          "identity_option_visible": [],
+          "wrong_axis_for_category": [],
+          "makeup_shade_missing_visual": [],
+          "size_value_generic_axis": [],
+          "default_option_size_evidence_missing_axis": [],
+          "identity_default_title_axis": []
+        }
+      },
+      "coverage": {
+        "details_sections_count": 8,
+        "faq_count": 2,
+        "how_to_chars": 370,
+        "inci_chars": 760,
+        "active_ingredients_chars": 0,
+        "inci_applicability_status": "",
+        "ingredient_review_status": "",
+        "ingredient_remediation_action": "",
+        "bundle_component_refs_count": 0,
+        "effective_inci_chars": 760,
+        "inci_borrowed_from_product_id": ""
+      }
+    },
+    {
+      "seed_id": "eps_a1d50aa15e8344a7b2c47929",
+      "external_product_id": "ext_4f3abc692059299f1ac3f12b",
+      "market": "US",
+      "domain": "skintific.com",
+      "title": "Glow Cushion & Serum Spray Set 2pcs",
+      "canonical_url": "https://skintific.com/products/glow-cushion-serum-spray-set-2pcs",
+      "product_family": "set_or_collection",
+      "product_line_id": "pl_3ac54a170ff62cb447751bea",
+      "identity_variant_axes": {
+        "pack": "2pack",
+        "color": "3 3 fl oz 00 porcelain",
+        "volume": "3floz",
+        "multi_variant": true
+      },
+      "pivota_insights": {
+        "direct": {
+          "product_id": "ext_4f3abc692059299f1ac3f12b",
+          "kb_key": "product:ext_4f3abc692059299f1ac3f12b",
+          "status": "not_displayable",
+          "kb_exists": true,
+          "displayable": false,
+          "high_quality_ready": false,
+          "human_reviewed": true,
+          "issues": [
+            "reviewed_not_displayable",
+            "quality_limited",
+            "seller_only_evidence"
+          ],
+          "blocking_issues": [
+            "reviewed_not_displayable"
+          ],
+          "quality_state": "limited",
+          "evidence_profile": "seller_only",
+          "has_card_highlight": true
+        },
+        "effective": {
+          "product_id": "ext_4f3abc692059299f1ac3f12b",
+          "kb_key": "product:ext_4f3abc692059299f1ac3f12b",
+          "status": "not_displayable",
+          "kb_exists": true,
+          "displayable": false,
+          "high_quality_ready": false,
+          "human_reviewed": true,
+          "issues": [
+            "reviewed_not_displayable",
+            "quality_limited",
+            "seller_only_evidence"
+          ],
+          "blocking_issues": [
+            "reviewed_not_displayable"
+          ],
+          "quality_state": "limited",
+          "evidence_profile": "seller_only",
+          "has_card_highlight": true
+        },
+        "product_line_id": "pl_3ac54a170ff62cb447751bea",
+        "borrowed_from_sibling": false
+      },
+      "active_ingredients": {
+        "status": "not_applicable_product_family",
+        "issues": [],
+        "regulatory_expected": false,
+        "hero_expected": false,
+        "active_items": [],
+        "source_origin": "none",
+        "source_quality_status": "blocked",
+        "coverage": {
+          "details_sections_count": 6,
+          "faq_count": 4,
+          "how_to_chars": 384,
+          "inci_chars": 0,
+          "active_ingredients_chars": 0,
+          "inci_applicability_status": "",
+          "ingredient_review_status": "",
+          "ingredient_remediation_action": "",
+          "bundle_component_refs_count": 0,
+          "effective_inci_chars": 0,
+          "inci_borrowed_from_product_id": ""
+        },
+        "invalid_fragments": [],
+        "suppressed_reason": "set_or_collection"
+      },
+      "variants": {
+        "status": "no_visible_variant_axis",
+        "issues": [],
+        "visible_variant_rows": 0,
+        "examples": {
+          "identity_option_visible": [],
+          "wrong_axis_for_category": [],
+          "makeup_shade_missing_visual": [],
+          "size_value_generic_axis": [],
+          "default_option_size_evidence_missing_axis": [],
+          "identity_default_title_axis": []
+        }
+      },
+      "coverage": {
+        "details_sections_count": 6,
+        "faq_count": 4,
+        "how_to_chars": 384,
+        "inci_chars": 0,
+        "active_ingredients_chars": 0,
+        "inci_applicability_status": "",
+        "ingredient_review_status": "",
+        "ingredient_remediation_action": "",
+        "bundle_component_refs_count": 0,
+        "effective_inci_chars": 0,
+        "inci_borrowed_from_product_id": ""
+      }
+    },
+    {
+      "seed_id": "eps_31d33a4af12b444db5d20634",
+      "external_product_id": "ext_8181bcabc55c6c0b821b4047",
+      "market": "US",
+      "domain": "skintific.com",
+      "title": "Ultra Light Serum Sunscreen SPF 50+ PA++++ for Oily & Sensitive Skin",
+      "canonical_url": "https://skintific.com/products/new-launch-light-serum-sunscreen-spf50-pa",
+      "product_family": "single_formula",
+      "product_line_id": "pl_2629836ea95dd560a29b6e70",
+      "identity_variant_axes": {
+        "size": "0 83 fl oz",
+        "volume": "83floz",
+        "multi_variant": false
+      },
+      "pivota_insights": {
+        "direct": {
+          "product_id": "ext_8181bcabc55c6c0b821b4047",
+          "kb_key": "product:ext_8181bcabc55c6c0b821b4047",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": false,
+          "human_reviewed": true,
+          "issues": [
+            "missing_card_highlight",
+            "quality_eligible"
+          ],
+          "blocking_issues": [
+            "missing_card_highlight"
+          ],
+          "quality_state": "eligible",
+          "evidence_profile": "seller_plus_formula",
+          "has_card_highlight": false
+        },
+        "effective": {
+          "product_id": "ext_8181bcabc55c6c0b821b4047",
+          "kb_key": "product:ext_8181bcabc55c6c0b821b4047",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": false,
+          "human_reviewed": true,
+          "issues": [
+            "missing_card_highlight",
+            "quality_eligible"
+          ],
+          "blocking_issues": [
+            "missing_card_highlight"
+          ],
+          "quality_state": "eligible",
+          "evidence_profile": "seller_plus_formula",
+          "has_card_highlight": false
+        },
+        "product_line_id": "pl_2629836ea95dd560a29b6e70",
+        "borrowed_from_sibling": false
+      },
+      "active_ingredients": {
+        "status": "ready_regulatory",
+        "issues": [],
+        "regulatory_expected": true,
+        "hero_expected": true,
+        "active_items": [
+          "Ceramide NP",
+          "Vitamin C (Ascorbic acid)",
+          "Homosalate",
+          "Ethylhexyl Salicylate",
+          "Diethylamino Hydroxybenzoyl Hexyl Benzoate",
+          "Bis-Ethylhexyloxyphenol Methoxyphenyl Triazine"
+        ],
+        "source_origin": "pdp_section",
+        "source_quality_status": "regulatory_active",
+        "coverage": {
+          "details_sections_count": 8,
+          "faq_count": 4,
+          "how_to_chars": 287,
+          "inci_chars": 978,
+          "active_ingredients_chars": 0,
+          "inci_applicability_status": "",
+          "ingredient_review_status": "",
+          "ingredient_remediation_action": "",
+          "bundle_component_refs_count": 0,
+          "effective_inci_chars": 978,
+          "inci_borrowed_from_product_id": ""
+        },
+        "invalid_fragments": [],
+        "suppressed_reason": null
+      },
+      "variants": {
+        "status": "ready",
+        "issues": [],
+        "visible_variant_rows": 2,
+        "examples": {
+          "identity_option_visible": [],
+          "wrong_axis_for_category": [],
+          "makeup_shade_missing_visual": [],
+          "size_value_generic_axis": [],
+          "default_option_size_evidence_missing_axis": [],
+          "identity_default_title_axis": []
+        }
+      },
+      "coverage": {
+        "details_sections_count": 8,
+        "faq_count": 4,
+        "how_to_chars": 287,
+        "inci_chars": 978,
+        "active_ingredients_chars": 0,
+        "inci_applicability_status": "",
+        "ingredient_review_status": "",
+        "ingredient_remediation_action": "",
+        "bundle_component_refs_count": 0,
+        "effective_inci_chars": 978,
+        "inci_borrowed_from_product_id": ""
+      }
+    },
+    {
+      "seed_id": "eps_9989fe55c918426aab4856ff",
+      "external_product_id": "ext_863f6f847c2b89f4f6bb4c79",
+      "market": "US",
+      "domain": "skintific.com",
+      "title": "Glow Bright Day Cream",
+      "canonical_url": "https://skintific.com/products/glow-bright-day-cream",
+      "product_family": "single_formula",
+      "product_line_id": "pl_a3a7fd0f69cb3c9dee3a0d70",
+      "identity_variant_axes": {
+        "size": "1 05 fl oz",
+        "volume": "5floz",
+        "multi_variant": false
+      },
+      "pivota_insights": {
+        "direct": {
+          "product_id": "ext_863f6f847c2b89f4f6bb4c79",
+          "kb_key": "product:ext_863f6f847c2b89f4f6bb4c79",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": false,
+          "human_reviewed": true,
+          "issues": [
+            "missing_card_highlight",
+            "empty_watchouts",
+            "quality_eligible"
+          ],
+          "blocking_issues": [
+            "missing_card_highlight"
+          ],
+          "quality_state": "eligible",
+          "evidence_profile": "seller_plus_formula",
+          "has_card_highlight": false
+        },
+        "effective": {
+          "product_id": "ext_863f6f847c2b89f4f6bb4c79",
+          "kb_key": "product:ext_863f6f847c2b89f4f6bb4c79",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": false,
+          "human_reviewed": true,
+          "issues": [
+            "missing_card_highlight",
+            "empty_watchouts",
+            "quality_eligible"
+          ],
+          "blocking_issues": [
+            "missing_card_highlight"
+          ],
+          "quality_state": "eligible",
+          "evidence_profile": "seller_plus_formula",
+          "has_card_highlight": false
+        },
+        "product_line_id": "pl_a3a7fd0f69cb3c9dee3a0d70",
+        "borrowed_from_sibling": false
+      },
+      "active_ingredients": {
+        "status": "ready_hero",
+        "issues": [],
+        "regulatory_expected": false,
+        "hero_expected": true,
+        "active_items": [
+          "Ceramide NP",
+          "Panthenol (B5)",
+          "Niacinamide",
+          "Hyaluronic acid"
+        ],
+        "source_origin": "active_block",
+        "source_quality_status": "captured",
+        "coverage": {
+          "details_sections_count": 10,
+          "faq_count": 0,
+          "how_to_chars": 110,
+          "inci_chars": 16,
+          "active_ingredients_chars": 16,
+          "inci_applicability_status": "",
+          "ingredient_review_status": "",
+          "ingredient_remediation_action": "",
+          "bundle_component_refs_count": 0,
+          "effective_inci_chars": 16,
+          "inci_borrowed_from_product_id": ""
+        },
+        "invalid_fragments": [],
+        "suppressed_reason": "full_inci_low_purity"
+      },
+      "variants": {
+        "status": "ready",
+        "issues": [],
+        "visible_variant_rows": 1,
+        "examples": {
+          "identity_option_visible": [],
+          "wrong_axis_for_category": [],
+          "makeup_shade_missing_visual": [],
+          "size_value_generic_axis": [],
+          "default_option_size_evidence_missing_axis": [],
+          "identity_default_title_axis": []
+        }
+      },
+      "coverage": {
+        "details_sections_count": 10,
+        "faq_count": 0,
+        "how_to_chars": 110,
+        "inci_chars": 16,
+        "active_ingredients_chars": 16,
+        "inci_applicability_status": "",
+        "ingredient_review_status": "",
+        "ingredient_remediation_action": "",
+        "bundle_component_refs_count": 0,
+        "effective_inci_chars": 16,
+        "inci_borrowed_from_product_id": ""
+      }
+    },
+    {
+      "seed_id": "eps_1cad582925ba4c648aeafd0e",
+      "external_product_id": "ext_9b15ea1fb859095cf0a4f042",
+      "market": "US",
+      "domain": "skintific.com",
+      "title": "Peptide Nourishing Lip Serum Set 3pcs",
+      "canonical_url": "https://skintific.com/products/peptide-nourishing-lip-serum-set-3pcs",
+      "product_family": "set_or_collection",
+      "product_line_id": "pl_b7dc26b5414a68d95dde82b0",
+      "identity_variant_axes": {
+        "pack": "3pack",
+        "shade": "pink berry plus peach rose plus cherry red",
+        "multi_variant": false
+      },
+      "pivota_insights": {
+        "direct": {
+          "product_id": "ext_9b15ea1fb859095cf0a4f042",
+          "kb_key": "product:ext_9b15ea1fb859095cf0a4f042",
+          "status": "not_displayable",
+          "kb_exists": true,
+          "displayable": false,
+          "high_quality_ready": false,
+          "human_reviewed": true,
+          "issues": [
+            "reviewed_not_displayable",
+            "quality_limited",
+            "seller_only_evidence"
+          ],
+          "blocking_issues": [
+            "reviewed_not_displayable"
+          ],
+          "quality_state": "limited",
+          "evidence_profile": "seller_only",
+          "has_card_highlight": true
+        },
+        "effective": {
+          "product_id": "ext_9b15ea1fb859095cf0a4f042",
+          "kb_key": "product:ext_9b15ea1fb859095cf0a4f042",
+          "status": "not_displayable",
+          "kb_exists": true,
+          "displayable": false,
+          "high_quality_ready": false,
+          "human_reviewed": true,
+          "issues": [
+            "reviewed_not_displayable",
+            "quality_limited",
+            "seller_only_evidence"
+          ],
+          "blocking_issues": [
+            "reviewed_not_displayable"
+          ],
+          "quality_state": "limited",
+          "evidence_profile": "seller_only",
+          "has_card_highlight": true
+        },
+        "product_line_id": "pl_b7dc26b5414a68d95dde82b0",
+        "borrowed_from_sibling": false
+      },
+      "active_ingredients": {
+        "status": "not_applicable_product_family",
+        "issues": [],
+        "regulatory_expected": false,
+        "hero_expected": false,
+        "active_items": [],
+        "source_origin": "none",
+        "source_quality_status": "blocked",
+        "coverage": {
+          "details_sections_count": 8,
+          "faq_count": 6,
+          "how_to_chars": 280,
+          "inci_chars": 208,
+          "active_ingredients_chars": 48,
+          "inci_applicability_status": "",
+          "ingredient_review_status": "",
+          "ingredient_remediation_action": "",
+          "bundle_component_refs_count": 0,
+          "effective_inci_chars": 208,
+          "inci_borrowed_from_product_id": ""
+        },
+        "invalid_fragments": [],
+        "suppressed_reason": "set_or_collection"
+      },
+      "variants": {
+        "status": "no_visible_variant_axis",
+        "issues": [],
+        "visible_variant_rows": 0,
+        "examples": {
+          "identity_option_visible": [],
+          "wrong_axis_for_category": [],
+          "makeup_shade_missing_visual": [],
+          "size_value_generic_axis": [],
+          "default_option_size_evidence_missing_axis": [],
+          "identity_default_title_axis": []
+        }
+      },
+      "coverage": {
+        "details_sections_count": 8,
+        "faq_count": 6,
+        "how_to_chars": 280,
+        "inci_chars": 208,
+        "active_ingredients_chars": 48,
+        "inci_applicability_status": "",
+        "ingredient_review_status": "",
+        "ingredient_remediation_action": "",
+        "bundle_component_refs_count": 0,
+        "effective_inci_chars": 208,
+        "inci_borrowed_from_product_id": ""
+      }
+    },
+    {
+      "seed_id": "eps_4d1530936909462bb01e8de8",
+      "external_product_id": "ext_9b79b9a79e978e9f29a1346c",
+      "market": "US",
+      "domain": "skintific.com",
+      "title": "Niacinamide Brightening Daily Quick Mask (30pcs)",
+      "canonical_url": "https://skintific.com/products/niacinamide-brightening-daily-quick-mask-30pcs",
+      "product_family": "single_formula",
+      "product_line_id": "pl_c39234eaccee04f9ccb062e5",
+      "identity_variant_axes": {
+        "size": "14 10 oz",
+        "volume": "10oz",
+        "multi_variant": false
+      },
+      "pivota_insights": {
+        "direct": {
+          "product_id": "ext_9b79b9a79e978e9f29a1346c",
+          "kb_key": "product:ext_9b79b9a79e978e9f29a1346c",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [
+            "empty_watchouts"
+          ],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "seller_plus_formula",
+          "has_card_highlight": true
+        },
+        "effective": {
+          "product_id": "ext_9b79b9a79e978e9f29a1346c",
+          "kb_key": "product:ext_9b79b9a79e978e9f29a1346c",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [
+            "empty_watchouts"
+          ],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "seller_plus_formula",
+          "has_card_highlight": true
+        },
+        "product_line_id": "pl_c39234eaccee04f9ccb062e5",
+        "borrowed_from_sibling": false
+      },
+      "active_ingredients": {
+        "status": "ready_hero",
+        "issues": [],
+        "regulatory_expected": false,
+        "hero_expected": true,
+        "active_items": [
+          "Niacinamide",
+          "Vitamin C (Ascorbic acid)",
+          "Tranexamic acid"
+        ],
+        "source_origin": "pdp_section",
+        "source_quality_status": "captured",
+        "coverage": {
+          "details_sections_count": 8,
+          "faq_count": 4,
+          "how_to_chars": 173,
+          "inci_chars": 516,
+          "active_ingredients_chars": 0,
+          "inci_applicability_status": "",
+          "ingredient_review_status": "",
+          "ingredient_remediation_action": "",
+          "bundle_component_refs_count": 0,
+          "effective_inci_chars": 516,
+          "inci_borrowed_from_product_id": ""
+        },
+        "invalid_fragments": [],
+        "suppressed_reason": null
+      },
+      "variants": {
+        "status": "ready",
+        "issues": [],
+        "visible_variant_rows": 1,
+        "examples": {
+          "identity_option_visible": [],
+          "wrong_axis_for_category": [],
+          "makeup_shade_missing_visual": [],
+          "size_value_generic_axis": [],
+          "default_option_size_evidence_missing_axis": [],
+          "identity_default_title_axis": []
+        }
+      },
+      "coverage": {
+        "details_sections_count": 8,
+        "faq_count": 4,
+        "how_to_chars": 173,
+        "inci_chars": 516,
+        "active_ingredients_chars": 0,
+        "inci_applicability_status": "",
+        "ingredient_review_status": "",
+        "ingredient_remediation_action": "",
+        "bundle_component_refs_count": 0,
+        "effective_inci_chars": 516,
+        "inci_borrowed_from_product_id": ""
+      }
+    },
+    {
+      "seed_id": "eps_b8c9f002816b43cbab3c7bbe",
+      "external_product_id": "ext_aa93bbb9dbe9e3529030408b",
+      "market": "US",
+      "domain": "skintific.com",
+      "title": "Vitamin C Brightening Boost Moisturizer",
+      "canonical_url": "https://skintific.com/products/vitamin-c-brightening-boost-moisturizer",
+      "product_family": "single_formula",
+      "product_line_id": "pl_a64dd02d4f0745e509100cdc",
+      "identity_variant_axes": {
+        "size": "1 05 fl oz",
+        "volume": "5floz",
+        "multi_variant": false
+      },
+      "pivota_insights": {
+        "direct": {
+          "product_id": "ext_aa93bbb9dbe9e3529030408b",
+          "kb_key": "product:ext_aa93bbb9dbe9e3529030408b",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [
+            "quality_eligible"
+          ],
+          "blocking_issues": [],
+          "quality_state": "eligible",
+          "evidence_profile": "mixed",
+          "has_card_highlight": true
+        },
+        "effective": {
+          "product_id": "ext_aa93bbb9dbe9e3529030408b",
+          "kb_key": "product:ext_aa93bbb9dbe9e3529030408b",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [
+            "quality_eligible"
+          ],
+          "blocking_issues": [],
+          "quality_state": "eligible",
+          "evidence_profile": "mixed",
+          "has_card_highlight": true
+        },
+        "product_line_id": "pl_a64dd02d4f0745e509100cdc",
+        "borrowed_from_sibling": false
+      },
+      "active_ingredients": {
+        "status": "ready_hero",
+        "issues": [],
+        "regulatory_expected": false,
+        "hero_expected": true,
+        "active_items": [
+          "Vitamin C (Ascorbic acid)"
+        ],
+        "source_origin": "pdp_section",
+        "source_quality_status": "captured",
+        "coverage": {
+          "details_sections_count": 8,
+          "faq_count": 0,
+          "how_to_chars": 244,
+          "inci_chars": 851,
+          "active_ingredients_chars": 0,
+          "inci_applicability_status": "",
+          "ingredient_review_status": "",
+          "ingredient_remediation_action": "",
+          "bundle_component_refs_count": 0,
+          "effective_inci_chars": 851,
+          "inci_borrowed_from_product_id": ""
+        },
+        "invalid_fragments": [],
+        "suppressed_reason": null
+      },
+      "variants": {
+        "status": "ready",
+        "issues": [],
+        "visible_variant_rows": 1,
+        "examples": {
+          "identity_option_visible": [],
+          "wrong_axis_for_category": [],
+          "makeup_shade_missing_visual": [],
+          "size_value_generic_axis": [],
+          "default_option_size_evidence_missing_axis": [],
+          "identity_default_title_axis": []
+        }
+      },
+      "coverage": {
+        "details_sections_count": 8,
+        "faq_count": 0,
+        "how_to_chars": 244,
+        "inci_chars": 851,
+        "active_ingredients_chars": 0,
+        "inci_applicability_status": "",
+        "ingredient_review_status": "",
+        "ingredient_remediation_action": "",
+        "bundle_component_refs_count": 0,
+        "effective_inci_chars": 851,
+        "inci_borrowed_from_product_id": ""
+      }
+    },
+    {
+      "seed_id": "eps_a9765de84fbc4602b57e01de",
+      "external_product_id": "ext_b5486583f272268936cf7a0a",
+      "market": "US",
+      "domain": "skintific.com",
+      "title": "Glow & Cover Radiant Base Set 2pcs",
+      "canonical_url": "https://skintific.com/products/glow-cover-radiant-base-set-2pcs",
+      "product_family": "set_or_collection",
+      "product_line_id": "pl_f7d6a5d1aad7117a92d42ad6",
+      "identity_variant_axes": {
+        "pack": "2pack",
+        "color": "00 porcelain 00 porcelain",
+        "multi_variant": true
+      },
+      "pivota_insights": {
+        "direct": {
+          "product_id": "ext_b5486583f272268936cf7a0a",
+          "kb_key": "product:ext_b5486583f272268936cf7a0a",
+          "status": "not_displayable",
+          "kb_exists": true,
+          "displayable": false,
+          "high_quality_ready": false,
+          "human_reviewed": true,
+          "issues": [
+            "reviewed_not_displayable",
+            "quality_limited",
+            "seller_only_evidence"
+          ],
+          "blocking_issues": [
+            "reviewed_not_displayable"
+          ],
+          "quality_state": "limited",
+          "evidence_profile": "seller_only",
+          "has_card_highlight": true
+        },
+        "effective": {
+          "product_id": "ext_b5486583f272268936cf7a0a",
+          "kb_key": "product:ext_b5486583f272268936cf7a0a",
+          "status": "not_displayable",
+          "kb_exists": true,
+          "displayable": false,
+          "high_quality_ready": false,
+          "human_reviewed": true,
+          "issues": [
+            "reviewed_not_displayable",
+            "quality_limited",
+            "seller_only_evidence"
+          ],
+          "blocking_issues": [
+            "reviewed_not_displayable"
+          ],
+          "quality_state": "limited",
+          "evidence_profile": "seller_only",
+          "has_card_highlight": true
+        },
+        "product_line_id": "pl_f7d6a5d1aad7117a92d42ad6",
+        "borrowed_from_sibling": false
+      },
+      "active_ingredients": {
+        "status": "not_applicable_product_family",
+        "issues": [],
+        "regulatory_expected": false,
+        "hero_expected": false,
+        "active_items": [],
+        "source_origin": "none",
+        "source_quality_status": "blocked",
+        "coverage": {
+          "details_sections_count": 6,
+          "faq_count": 4,
+          "how_to_chars": 436,
+          "inci_chars": 0,
+          "active_ingredients_chars": 0,
+          "inci_applicability_status": "",
+          "ingredient_review_status": "",
+          "ingredient_remediation_action": "",
+          "bundle_component_refs_count": 0,
+          "effective_inci_chars": 0,
+          "inci_borrowed_from_product_id": ""
+        },
+        "invalid_fragments": [],
+        "suppressed_reason": "set_or_collection"
+      },
+      "variants": {
+        "status": "no_visible_variant_axis",
+        "issues": [],
+        "visible_variant_rows": 0,
+        "examples": {
+          "identity_option_visible": [],
+          "wrong_axis_for_category": [],
+          "makeup_shade_missing_visual": [],
+          "size_value_generic_axis": [],
+          "default_option_size_evidence_missing_axis": [],
+          "identity_default_title_axis": []
+        }
+      },
+      "coverage": {
+        "details_sections_count": 6,
+        "faq_count": 4,
+        "how_to_chars": 436,
+        "inci_chars": 0,
+        "active_ingredients_chars": 0,
+        "inci_applicability_status": "",
+        "ingredient_review_status": "",
+        "ingredient_remediation_action": "",
+        "bundle_component_refs_count": 0,
+        "effective_inci_chars": 0,
+        "inci_borrowed_from_product_id": ""
+      }
+    },
+    {
+      "seed_id": "eps_626439c4bcef4a53a59650a0",
+      "external_product_id": "ext_cd47f24ccb3564f7aeefc798",
+      "market": "US",
+      "domain": "skintific.com",
+      "title": "Velvet Matte & Cover Perfect Stay Base Set 2pcs",
+      "canonical_url": "https://skintific.com/products/velvet-matte-cover-perfect-stay-base-set-2pcs",
+      "product_family": "set_or_collection",
+      "product_line_id": "pl_d613536a5905675c18ee961c",
+      "identity_variant_axes": {
+        "pack": "2pack",
+        "color": "01 vanilla 00 porcelain",
+        "multi_variant": true
+      },
+      "pivota_insights": {
+        "direct": {
+          "product_id": "ext_cd47f24ccb3564f7aeefc798",
+          "kb_key": "product:ext_cd47f24ccb3564f7aeefc798",
+          "status": "not_displayable",
+          "kb_exists": true,
+          "displayable": false,
+          "high_quality_ready": false,
+          "human_reviewed": true,
+          "issues": [
+            "reviewed_not_displayable",
+            "quality_limited",
+            "seller_only_evidence"
+          ],
+          "blocking_issues": [
+            "reviewed_not_displayable"
+          ],
+          "quality_state": "limited",
+          "evidence_profile": "seller_only",
+          "has_card_highlight": true
+        },
+        "effective": {
+          "product_id": "ext_cd47f24ccb3564f7aeefc798",
+          "kb_key": "product:ext_cd47f24ccb3564f7aeefc798",
+          "status": "not_displayable",
+          "kb_exists": true,
+          "displayable": false,
+          "high_quality_ready": false,
+          "human_reviewed": true,
+          "issues": [
+            "reviewed_not_displayable",
+            "quality_limited",
+            "seller_only_evidence"
+          ],
+          "blocking_issues": [
+            "reviewed_not_displayable"
+          ],
+          "quality_state": "limited",
+          "evidence_profile": "seller_only",
+          "has_card_highlight": true
+        },
+        "product_line_id": "pl_d613536a5905675c18ee961c",
+        "borrowed_from_sibling": false
+      },
+      "active_ingredients": {
+        "status": "not_applicable_product_family",
+        "issues": [],
+        "regulatory_expected": false,
+        "hero_expected": false,
+        "active_items": [],
+        "source_origin": "none",
+        "source_quality_status": "blocked",
+        "coverage": {
+          "details_sections_count": 0,
+          "faq_count": 0,
+          "how_to_chars": 109,
+          "inci_chars": 0,
+          "active_ingredients_chars": 0,
+          "inci_applicability_status": "",
+          "ingredient_review_status": "",
+          "ingredient_remediation_action": "",
+          "bundle_component_refs_count": 0,
+          "effective_inci_chars": 0,
+          "inci_borrowed_from_product_id": ""
+        },
+        "invalid_fragments": [],
+        "suppressed_reason": "set_or_collection"
+      },
+      "variants": {
+        "status": "no_visible_variant_axis",
+        "issues": [],
+        "visible_variant_rows": 0,
+        "examples": {
+          "identity_option_visible": [],
+          "wrong_axis_for_category": [],
+          "makeup_shade_missing_visual": [],
+          "size_value_generic_axis": [],
+          "default_option_size_evidence_missing_axis": [],
+          "identity_default_title_axis": []
+        }
+      },
+      "coverage": {
+        "details_sections_count": 0,
+        "faq_count": 0,
+        "how_to_chars": 109,
+        "inci_chars": 0,
+        "active_ingredients_chars": 0,
+        "inci_applicability_status": "",
+        "ingredient_review_status": "",
+        "ingredient_remediation_action": "",
+        "bundle_component_refs_count": 0,
+        "effective_inci_chars": 0,
+        "inci_borrowed_from_product_id": ""
+      }
+    },
+    {
+      "seed_id": "eps_e49ba92834d24bac922e80cf",
+      "external_product_id": "ext_d7ce5dea9d90103468e9640d",
+      "market": "US",
+      "domain": "skintific.com",
+      "title": "Glow Cushion & Peptide Lip Serum Set 2pcs",
+      "canonical_url": "https://skintific.com/products/glow-cushion-peptide-lip-serum-set-2pcs",
+      "product_family": "set_or_collection",
+      "product_line_id": "pl_6d88a543759c3ad4e680fc7c",
+      "identity_variant_axes": {
+        "pack": "2pack",
+        "color": "00 porcelain clear",
+        "multi_variant": true
+      },
+      "pivota_insights": {
+        "direct": {
+          "product_id": "ext_d7ce5dea9d90103468e9640d",
+          "kb_key": "product:ext_d7ce5dea9d90103468e9640d",
+          "status": "not_displayable",
+          "kb_exists": true,
+          "displayable": false,
+          "high_quality_ready": false,
+          "human_reviewed": true,
+          "issues": [
+            "reviewed_not_displayable",
+            "quality_limited",
+            "seller_only_evidence"
+          ],
+          "blocking_issues": [
+            "reviewed_not_displayable"
+          ],
+          "quality_state": "limited",
+          "evidence_profile": "seller_only",
+          "has_card_highlight": true
+        },
+        "effective": {
+          "product_id": "ext_d7ce5dea9d90103468e9640d",
+          "kb_key": "product:ext_d7ce5dea9d90103468e9640d",
+          "status": "not_displayable",
+          "kb_exists": true,
+          "displayable": false,
+          "high_quality_ready": false,
+          "human_reviewed": true,
+          "issues": [
+            "reviewed_not_displayable",
+            "quality_limited",
+            "seller_only_evidence"
+          ],
+          "blocking_issues": [
+            "reviewed_not_displayable"
+          ],
+          "quality_state": "limited",
+          "evidence_profile": "seller_only",
+          "has_card_highlight": true
+        },
+        "product_line_id": "pl_6d88a543759c3ad4e680fc7c",
+        "borrowed_from_sibling": false
+      },
+      "active_ingredients": {
+        "status": "not_applicable_product_family",
+        "issues": [],
+        "regulatory_expected": false,
+        "hero_expected": false,
+        "active_items": [],
+        "source_origin": "none",
+        "source_quality_status": "blocked",
+        "coverage": {
+          "details_sections_count": 4,
+          "faq_count": 0,
+          "how_to_chars": 308,
+          "inci_chars": 0,
+          "active_ingredients_chars": 0,
+          "inci_applicability_status": "",
+          "ingredient_review_status": "",
+          "ingredient_remediation_action": "",
+          "bundle_component_refs_count": 0,
+          "effective_inci_chars": 0,
+          "inci_borrowed_from_product_id": ""
+        },
+        "invalid_fragments": [],
+        "suppressed_reason": "set_or_collection"
+      },
+      "variants": {
+        "status": "no_visible_variant_axis",
+        "issues": [],
+        "visible_variant_rows": 0,
+        "examples": {
+          "identity_option_visible": [],
+          "wrong_axis_for_category": [],
+          "makeup_shade_missing_visual": [],
+          "size_value_generic_axis": [],
+          "default_option_size_evidence_missing_axis": [],
+          "identity_default_title_axis": []
+        }
+      },
+      "coverage": {
+        "details_sections_count": 4,
+        "faq_count": 0,
+        "how_to_chars": 308,
+        "inci_chars": 0,
+        "active_ingredients_chars": 0,
+        "inci_applicability_status": "",
+        "ingredient_review_status": "",
+        "ingredient_remediation_action": "",
+        "bundle_component_refs_count": 0,
+        "effective_inci_chars": 0,
+        "inci_borrowed_from_product_id": ""
+      }
+    },
+    {
+      "seed_id": "eps_274dc58abd924a7cb7a591b3",
+      "external_product_id": "ext_da58ac28942c85b891d5a6b5",
+      "market": "US",
+      "domain": "skintific.com",
+      "title": "5X Ceramide Barrier Repair Moisture Gel (Mini Sample)",
+      "canonical_url": "https://skintific.com/products/5x-ceramide-barrier-repair-moisture-gel-mini-sample",
+      "product_family": "sample",
+      "product_line_id": "pl_aca6db8f1cabd732db129d8c",
+      "identity_variant_axes": {
+        "size": "0 2 fl oz",
+        "volume": "2floz",
+        "multi_variant": false
+      },
+      "pivota_insights": {
+        "direct": {
+          "product_id": "ext_da58ac28942c85b891d5a6b5",
+          "kb_key": "product:ext_da58ac28942c85b891d5a6b5",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [
+            "empty_watchouts"
+          ],
+          "blocking_issues": [],
+          "quality_state": "verified",
+          "evidence_profile": "seller_plus_formula",
+          "has_card_highlight": true
+        },
+        "effective": {
+          "product_id": "ext_da58ac28942c85b891d5a6b5",
+          "kb_key": "product:ext_da58ac28942c85b891d5a6b5",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [
+            "empty_watchouts"
+          ],
+          "blocking_issues": [],
+          "quality_state": "verified",
+          "evidence_profile": "seller_plus_formula",
+          "has_card_highlight": true
+        },
+        "product_line_id": "pl_aca6db8f1cabd732db129d8c",
+        "borrowed_from_sibling": false
+      },
+      "active_ingredients": {
+        "status": "ready_hero",
+        "issues": [],
+        "regulatory_expected": false,
+        "hero_expected": true,
+        "active_items": [
+          "Niacinamide",
+          "Hyaluronic acid",
+          "Centella asiatica"
+        ],
+        "source_origin": "pdp_section",
+        "source_quality_status": "captured",
+        "coverage": {
+          "details_sections_count": 10,
+          "faq_count": 0,
+          "how_to_chars": 155,
+          "inci_chars": 16,
+          "active_ingredients_chars": 16,
+          "inci_applicability_status": "",
+          "ingredient_review_status": "",
+          "ingredient_remediation_action": "",
+          "bundle_component_refs_count": 0,
+          "effective_inci_chars": 16,
+          "inci_borrowed_from_product_id": ""
+        },
+        "invalid_fragments": [],
+        "suppressed_reason": null
+      },
+      "variants": {
+        "status": "ready",
+        "issues": [],
+        "visible_variant_rows": 1,
+        "examples": {
+          "identity_option_visible": [],
+          "wrong_axis_for_category": [],
+          "makeup_shade_missing_visual": [],
+          "size_value_generic_axis": [],
+          "default_option_size_evidence_missing_axis": [],
+          "identity_default_title_axis": []
+        }
+      },
+      "coverage": {
+        "details_sections_count": 10,
+        "faq_count": 0,
+        "how_to_chars": 155,
+        "inci_chars": 16,
+        "active_ingredients_chars": 16,
+        "inci_applicability_status": "",
+        "ingredient_review_status": "",
+        "ingredient_remediation_action": "",
+        "bundle_component_refs_count": 0,
+        "effective_inci_chars": 16,
+        "inci_borrowed_from_product_id": ""
+      }
+    },
+    {
+      "seed_id": "eps_9b210a200bc74c9f86c10f59",
+      "external_product_id": "ext_eccdebcd9666e8c5a23cbf5e",
+      "market": "US",
+      "domain": "skintific.com",
+      "title": "5% B5 Ceramide Barrier Relief Moisturizer",
+      "canonical_url": "https://skintific.com/products/5-b5-ceramide-barrier-relief-moisturizer",
+      "product_family": "single_formula",
+      "product_line_id": "pl_498b57e5ae4e2e1d2bb3a0bb",
+      "identity_variant_axes": {
+        "size": "1 76 oz",
+        "volume": "76oz",
+        "multi_variant": false
+      },
+      "pivota_insights": {
+        "direct": {
+          "product_id": "ext_eccdebcd9666e8c5a23cbf5e",
+          "kb_key": "product:ext_eccdebcd9666e8c5a23cbf5e",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [
+            "empty_watchouts"
+          ],
+          "blocking_issues": [],
+          "quality_state": "verified",
+          "evidence_profile": "seller_plus_formula",
+          "has_card_highlight": true
+        },
+        "effective": {
+          "product_id": "ext_eccdebcd9666e8c5a23cbf5e",
+          "kb_key": "product:ext_eccdebcd9666e8c5a23cbf5e",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [
+            "empty_watchouts"
+          ],
+          "blocking_issues": [],
+          "quality_state": "verified",
+          "evidence_profile": "seller_plus_formula",
+          "has_card_highlight": true
+        },
+        "product_line_id": "pl_498b57e5ae4e2e1d2bb3a0bb",
+        "borrowed_from_sibling": false
+      },
+      "active_ingredients": {
+        "status": "missing_hero",
+        "issues": [
+          "missing_hero"
+        ],
+        "regulatory_expected": false,
+        "hero_expected": true,
+        "active_items": [],
+        "source_origin": "pdp_section",
+        "source_quality_status": "blocked",
+        "coverage": {
+          "details_sections_count": 10,
+          "faq_count": 0,
+          "how_to_chars": 181,
+          "inci_chars": 1004,
+          "active_ingredients_chars": 0,
+          "inci_applicability_status": "",
+          "ingredient_review_status": "",
+          "ingredient_remediation_action": "",
+          "bundle_component_refs_count": 0,
+          "effective_inci_chars": 1004,
+          "inci_borrowed_from_product_id": ""
+        },
+        "invalid_fragments": [],
+        "suppressed_reason": null
+      },
+      "variants": {
+        "status": "ready",
+        "issues": [],
+        "visible_variant_rows": 2,
+        "examples": {
+          "identity_option_visible": [],
+          "wrong_axis_for_category": [],
+          "makeup_shade_missing_visual": [],
+          "size_value_generic_axis": [],
+          "default_option_size_evidence_missing_axis": [],
+          "identity_default_title_axis": []
+        }
+      },
+      "coverage": {
+        "details_sections_count": 10,
+        "faq_count": 0,
+        "how_to_chars": 181,
+        "inci_chars": 1004,
+        "active_ingredients_chars": 0,
+        "inci_applicability_status": "",
+        "ingredient_review_status": "",
+        "ingredient_remediation_action": "",
+        "bundle_component_refs_count": 0,
+        "effective_inci_chars": 1004,
+        "inci_borrowed_from_product_id": ""
+      }
+    },
+    {
+      "seed_id": "eps_15b688114f5e4337a1c7e2ec",
+      "external_product_id": "ext_edf65d8605ed8a842d8f8a8d",
+      "market": "US",
+      "domain": "skintific.com",
+      "title": "Damask Rose Brightening Whipped Cream Cleanser",
+      "canonical_url": "https://skintific.com/products/damask-rose-brightening-whipped-cream-cleanser",
+      "product_family": "single_formula",
+      "product_line_id": "pl_33bd9957096e75ef8bb19b38",
+      "identity_variant_axes": {
+        "size": "4 23 fl oz",
+        "volume": "23floz",
+        "multi_variant": false
+      },
+      "pivota_insights": {
+        "direct": {
+          "product_id": "ext_edf65d8605ed8a842d8f8a8d",
+          "kb_key": "product:ext_edf65d8605ed8a842d8f8a8d",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": false,
+          "human_reviewed": true,
+          "issues": [
+            "missing_card_highlight",
+            "empty_watchouts",
+            "quality_eligible"
+          ],
+          "blocking_issues": [
+            "missing_card_highlight"
+          ],
+          "quality_state": "eligible",
+          "evidence_profile": "seller_plus_formula",
+          "has_card_highlight": false
+        },
+        "effective": {
+          "product_id": "ext_edf65d8605ed8a842d8f8a8d",
+          "kb_key": "product:ext_edf65d8605ed8a842d8f8a8d",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": false,
+          "human_reviewed": true,
+          "issues": [
+            "missing_card_highlight",
+            "empty_watchouts",
+            "quality_eligible"
+          ],
+          "blocking_issues": [
+            "missing_card_highlight"
+          ],
+          "quality_state": "eligible",
+          "evidence_profile": "seller_plus_formula",
+          "has_card_highlight": false
+        },
+        "product_line_id": "pl_33bd9957096e75ef8bb19b38",
+        "borrowed_from_sibling": false
+      },
+      "active_ingredients": {
+        "status": "ready_hero",
+        "issues": [],
+        "regulatory_expected": false,
+        "hero_expected": true,
+        "active_items": [
+          "Niacinamide",
+          "Hyaluronic acid"
+        ],
+        "source_origin": "pdp_section",
+        "source_quality_status": "captured",
+        "coverage": {
+          "details_sections_count": 10,
+          "faq_count": 0,
+          "how_to_chars": 87,
+          "inci_chars": 16,
+          "active_ingredients_chars": 16,
+          "inci_applicability_status": "",
+          "ingredient_review_status": "",
+          "ingredient_remediation_action": "",
+          "bundle_component_refs_count": 0,
+          "effective_inci_chars": 16,
+          "inci_borrowed_from_product_id": ""
+        },
+        "invalid_fragments": [],
+        "suppressed_reason": null
+      },
+      "variants": {
+        "status": "ready",
+        "issues": [],
+        "visible_variant_rows": 1,
+        "examples": {
+          "identity_option_visible": [],
+          "wrong_axis_for_category": [],
+          "makeup_shade_missing_visual": [],
+          "size_value_generic_axis": [],
+          "default_option_size_evidence_missing_axis": [],
+          "identity_default_title_axis": []
+        }
+      },
+      "coverage": {
+        "details_sections_count": 10,
+        "faq_count": 0,
+        "how_to_chars": 87,
+        "inci_chars": 16,
+        "active_ingredients_chars": 16,
+        "inci_applicability_status": "",
+        "ingredient_review_status": "",
+        "ingredient_remediation_action": "",
+        "bundle_component_refs_count": 0,
+        "effective_inci_chars": 16,
+        "inci_borrowed_from_product_id": ""
+      }
+    }
+  ]
+}

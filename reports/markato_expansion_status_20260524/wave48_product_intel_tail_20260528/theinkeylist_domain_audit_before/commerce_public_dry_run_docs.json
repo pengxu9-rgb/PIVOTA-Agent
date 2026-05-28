@@ -1,0 +1,535 @@
+{
+  "generated_at": "2026-05-28T10:53:07.132Z",
+  "market": "US",
+  "include_non_public": false,
+  "docs_built": 9,
+  "source_build_failures": [],
+  "docs": [
+    {
+      "doc_id": "sellable:sig_22143785d11a89528295eb7418958525",
+      "sellable_item_group_id": "sig_22143785d11a89528295eb7418958525",
+      "product_line_id": "pl_4bc4cd361d08ef9ab364d049",
+      "review_family_id": "rf_4bc4cd361d08ef9ab364d049",
+      "brand_name": "The INKEY List",
+      "category_paths": [
+        "Serum"
+      ],
+      "market": "US",
+      "availability_state": "available",
+      "publish_state": "public",
+      "title": "Tranexamic Acid Serum",
+      "subtitle": "This gel treatment targets hyperpigmentation, uneven patches and dark spots. It brightens your skin's complexion, as well as aids the reduction of dark spots and uneven skin tone.\n\nFormulated with 2% Tranexamic Acid (a powerful amino acid), 2% Acai Berry extract to promote even skin tone, as well as 2% skin brightening hero Vitamin C, it also boosts overall skin brightness and evens skin tone",
+      "variant_axes": {
+        "volume": "30ml",
+        "multi_variant": false
+      },
+      "size": null,
+      "shade": null,
+      "pack": null,
+      "hero_media": {
+        "url": "https://www.theinkeylist.com/cdn/shop/files/TheINKEYList_TranexamicAcidSerum_30mlpump_1000x1000_b480622d-efd7-48a7-ac34-87f6724691a2_grande.png?v=1704369745",
+        "source_kind": "catalog",
+        "source_tier": "catalog"
+      },
+      "preview_media": [
+        "https://www.theinkeylist.com/cdn/shop/files/TheINKEYList_TranexamicAcidSerum_30mlpump_1000x1000_b480622d-efd7-48a7-ac34-87f6724691a2_grande.png?v=1704369745",
+        "https://cdn.shopify.com/s/files/1/0428/8498/9091/products/T-rex_Swatch_2000x2000_19183947-88a3-4b76-bbed-d00dc79ff21b.jpg?v=1704369745",
+        "https://www.theinkeylist.com/cdn/shop/files/tranexamic-acid-serum-30ml-201-UK-EU-US-CA-ME-SEA-AUS-2000x2000_3200x_crop_center.jpg?v=1752499644",
+        "https://www.theinkeylist.com/cdn/shop/files/Tranexamic_Acid_Serum_Why_we_love_it_2000x2000_d050ff59-8db5-4c58-8a4b-c0c810617d21_3200x_crop_center.jpg?v=1759778068",
+        "https://www.theinkeylist.com/cdn/shop/files/Tranexamic_Acid_Serum_How_to_layer_2000x2000_89a2dd01-b45e-4850-9af2-91ba8757fc46_3200x_crop_center.jpg?v=1759778068",
+        "https://www.theinkeylist.com/cdn/shop/files/Tranexamic_Acid_Serum_Why_it_works_2000x2000_f7743480-a5b7-42ca-8f89-347a4af136a6_3200x_crop_center.jpg?v=1759778068",
+        "https://www.theinkeylist.com/cdn/shop/files/Tranexamic_Acid_Serum_How_to_Use_2000x2000_4df4d9bd-2a6b-4ab9-bea4-7934b534a130_3200x_crop_center.jpg?v=1759778068",
+        "https://www.theinkeylist.com/cdn/shop/files/Tranexamic_Acid_Serum_Before_After_2000x2000_98ebc8be-77b0-4843-8a22-90790ebe918b_3200x_crop_center.jpg?v=1759778068"
+      ],
+      "price_min": 18,
+      "price_max": 18,
+      "default_offer_id": "external_seed:ext_0b3d97758bc02698aaf31ed7",
+      "internal_offer_exists": false,
+      "external_offer_exists": true,
+      "pivota_insight_status": "missing",
+      "pivota_insight_summary": null,
+      "quality_score": null,
+      "browse_score": null,
+      "facet_tokens": [
+        "The INKEY List",
+        "Serum"
+      ],
+      "sort_keys": {
+        "price_min": 18,
+        "price_max": 18,
+        "updated_at": null
+      },
+      "updated_at": null,
+      "source_refs": [
+        "external_seed:ext_0b3d97758bc02698aaf31ed7"
+      ]
+    },
+    {
+      "doc_id": "sellable:sig_316abf498f3f7b6488b1273e",
+      "sellable_item_group_id": "sig_316abf498f3f7b6488b1273e",
+      "product_line_id": "pl_752917b22e1bd0a5c269b85e",
+      "review_family_id": "rf_752917b22e1bd0a5c269b85e",
+      "brand_name": "The Inkey List",
+      "category_paths": [
+        "Moisturizer"
+      ],
+      "market": "US",
+      "availability_state": "available",
+      "publish_state": "public",
+      "title": "Supersize Omega Water Cream - 100ml",
+      "subtitle": "An oil-free gel-cream moisturizer built for lightweight daily hydration, with niacinamide and lipid-support ingredients in a non-greasy format.",
+      "variant_axes": {
+        "volume": "100ml",
+        "multi_variant": false
+      },
+      "size": null,
+      "shade": null,
+      "pack": null,
+      "hero_media": {
+        "url": "https://www.theinkeylist.com/cdn/shop/files/OMEGASUPERSIZE_Packshot_grande.png?v=1727108488",
+        "source_kind": "catalog",
+        "source_tier": "catalog"
+      },
+      "preview_media": [
+        "https://www.theinkeylist.com/cdn/shop/files/OMEGASUPERSIZE_Packshot_grande.png?v=1727108488",
+        "https://cdn.shopify.com/s/files/1/0428/8498/9091/files/Swatch_3f3f0bfa-0135-4bd0-bfb5-20368e9bc2f9.jpg?v=1730483234",
+        "https://cdn.shopify.com/s/files/1/0428/8498/9091/files/Hero_026c776c-16f5-483e-861b-331dea8c6a2f.jpg?v=1730483258",
+        "https://www.theinkeylist.com/cdn/shop/files/Omega50_Why_we_love_it_2000x2000_a04046bb-75f6-4bd5-888d-e17c82dd5583_3200x_crop_center.jpg?v=1759262701",
+        "https://www.theinkeylist.com/cdn/shop/files/Omega50_How_to_layer_2000x2000_7b06d73b-4ae7-4b67-969a-52e45813a457_3200x_crop_center.jpg?v=1759262701",
+        "https://www.theinkeylist.com/cdn/shop/files/Omega50_key_Claims_-_lines_extra_3200x_crop_center.jpg?v=1759262701",
+        "https://www.theinkeylist.com/cdn/shop/files/Omega50_Why_it_works_2000x2000_679bc88d-9efc-4838-a9fe-351a65c02b43_3200x_crop_center.jpg?v=1759262701",
+        "https://www.theinkeylist.com/cdn/shop/files/Omega100_How_to_use_OptB_2000x2000_030fc11d-00c4-4749-a1e5-91b55b0782d5_3200x_crop_center.jpg?v=1759262701"
+      ],
+      "price_min": 18,
+      "price_max": 18,
+      "default_offer_id": "external_seed:ext_378d80a20c6f872e94e9ca86",
+      "internal_offer_exists": false,
+      "external_offer_exists": true,
+      "pivota_insight_status": "missing",
+      "pivota_insight_summary": null,
+      "quality_score": null,
+      "browse_score": null,
+      "facet_tokens": [
+        "The Inkey List",
+        "Moisturizer"
+      ],
+      "sort_keys": {
+        "price_min": 18,
+        "price_max": 18,
+        "updated_at": null
+      },
+      "updated_at": null,
+      "source_refs": [
+        "external_seed:ext_378d80a20c6f872e94e9ca86"
+      ]
+    },
+    {
+      "doc_id": "sellable:sig_6454f8bafe165aac70e37e3e",
+      "sellable_item_group_id": "sig_6454f8bafe165aac70e37e3e",
+      "product_line_id": "pl_5d8582924c46563f4449f143",
+      "review_family_id": "rf_5d8582924c46563f4449f143",
+      "brand_name": "The Inkey List",
+      "category_paths": [
+        "Serum"
+      ],
+      "market": "US",
+      "availability_state": "out_of_stock",
+      "publish_state": "public",
+      "title": "PDRN Serum",
+      "subtitle": "Free shipping over $35. Vegan PDRN serum for instant glass skin glow. Promotes cell renewal & boosts collagen for smoother, firmer, radiant skin. Shop now.",
+      "variant_axes": {
+        "multi_variant": false
+      },
+      "size": null,
+      "shade": null,
+      "pack": null,
+      "hero_media": {
+        "url": "https://cdn.shopify.com/s/files/1/0428/8498/9091/files/Packshot_PNG_with_Sold_Out.png",
+        "source_kind": "catalog",
+        "source_tier": "catalog"
+      },
+      "preview_media": [
+        "https://cdn.shopify.com/s/files/1/0428/8498/9091/files/Packshot_PNG_with_Sold_Out.png",
+        "https://cdn.shopify.com/s/files/1/0428/8498/9091/files/Packshot_PNG_with_Sold_Out_b7ccb4b8-f5ff-4e49-a1b2-98b23d303daf.png",
+        "https://cdn.shopify.com/s/files/1/0428/8498/9091/files/PDRN-SOLD_OUT_a8fd3499-59e2-4649-95d5-b18573218351.jpg",
+        "https://cdn.shopify.com/s/files/1/0428/8498/9091/files/03.jpg",
+        "https://cdn.shopify.com/s/files/1/0428/8498/9091/files/02.jpg",
+        "https://cdn.shopify.com/s/files/1/0428/8498/9091/files/04.jpg",
+        "https://cdn.shopify.com/s/files/1/0428/8498/9091/files/05.jpg",
+        "https://cdn.shopify.com/s/files/1/0428/8498/9091/files/06_B_A_PDRN.jpg"
+      ],
+      "price_min": 18,
+      "price_max": 18,
+      "default_offer_id": "external_seed:ext_3eeaf9c029c24e5a0cbab749",
+      "internal_offer_exists": false,
+      "external_offer_exists": true,
+      "pivota_insight_status": "missing",
+      "pivota_insight_summary": null,
+      "quality_score": null,
+      "browse_score": null,
+      "facet_tokens": [
+        "The Inkey List",
+        "Serum"
+      ],
+      "sort_keys": {
+        "price_min": 18,
+        "price_max": 18,
+        "updated_at": null
+      },
+      "updated_at": null,
+      "source_refs": [
+        "external_seed:ext_3eeaf9c029c24e5a0cbab749"
+      ]
+    },
+    {
+      "doc_id": "sellable:sig_744ff822b89e47dcd3a2ec78",
+      "sellable_item_group_id": "sig_744ff822b89e47dcd3a2ec78",
+      "product_line_id": "pl_448e62f2753b790186669e8f",
+      "review_family_id": "rf_448e62f2753b790186669e8f",
+      "brand_name": "The Inkey List",
+      "category_paths": [
+        "Serum"
+      ],
+      "market": "US",
+      "availability_state": "available",
+      "publish_state": "public",
+      "title": "10% Azelaic Acid Serum for Redness Relief",
+      "subtitle": "A fast-absorbing, non-pilling azelaic acid serum is formulated with 10% Azelaic Acid. By reducing the appearance of redness and an uneven skin tone, this anti-redness serum gives the skin a more even complexion and instantly soothes and calms skin that feels irritated.\n\nCreated in partnership with dermatologists, this formula contains micro-fine green colour particles to help mask redness and Allantoin 0.3% which helps to soothe the skin. It can be easily layered with other products and leaves no white-cast or 'crunchy' layer when paired with other products.",
+      "variant_axes": {
+        "size": "30ml",
+        "multi_variant": false
+      },
+      "size": null,
+      "shade": null,
+      "pack": null,
+      "hero_media": {
+        "url": "https://cdn.shopify.com/s/files/1/0428/8498/9091/products/RednessRelief_US_TILSS_packshot_1000x1000_5db7e7d4-d826-4c2d-b344-d5686b5abb51.png?v=1676629669",
+        "source_kind": "catalog",
+        "source_tier": "catalog"
+      },
+      "preview_media": [
+        "https://cdn.shopify.com/s/files/1/0428/8498/9091/products/RednessRelief_US_TILSS_packshot_1000x1000_5db7e7d4-d826-4c2d-b344-d5686b5abb51.png?v=1676629669",
+        "https://cdn.shopify.com/s/files/1/0428/8498/9091/products/AzealicV2-WhiteBG_1000x1000_76abbc8d-ed1d-44c7-83d5-50615c3c6a5a.jpg?v=1676629669",
+        "https://www.theinkeylist.com/cdn/shop/files/super-solutions-10_-azelaic-acid-serum-30ml-201-UK-EU-US-CA-ME-SEA-AUS-2000x2000_3200x_crop_center.jpg?v=1752499027",
+        "https://www.theinkeylist.com/cdn/shop/files/Redness_Relief_Serum_Why_we_love_it_2000x2000_004c15c6-88f0-4291-bfaa-f2b9adf4cd2d_3200x_crop_center.jpg?v=1759507846",
+        "https://www.theinkeylist.com/cdn/shop/files/Redness_Relief_Serum_How_to_layer_2000x2000_8496fe1a-b605-4469-bfa4-4cef7ffe4ba6_3200x_crop_center.jpg?v=1759507846",
+        "https://www.theinkeylist.com/cdn/shop/files/Redness_Relief_Serum_Why_it_works_2000x2000_5825ad0b-5b0b-4512-bc6a-8863ad50eece_3200x_crop_center.jpg?v=1759507846",
+        "https://www.theinkeylist.com/cdn/shop/files/Redness_Relief_Serum_How_to_Use_2000x2000_0d495cdf-7abc-46d8-9150-9a2e63e83e60_3200x_crop_center.jpg?v=1759507846",
+        "https://www.theinkeylist.com/cdn/shop/files/Redness_Relief_Serum_Before_After_2000x2000_3334dc9a-cce9-4e00-8aec-7ad89ca051f2_3200x_crop_center.jpg?v=1759507846"
+      ],
+      "price_min": 19.5,
+      "price_max": 19.5,
+      "default_offer_id": "external_seed:ext_4e6158b5e6f187c03c87b013",
+      "internal_offer_exists": false,
+      "external_offer_exists": true,
+      "pivota_insight_status": "missing",
+      "pivota_insight_summary": null,
+      "quality_score": null,
+      "browse_score": null,
+      "facet_tokens": [
+        "The Inkey List",
+        "Serum"
+      ],
+      "sort_keys": {
+        "price_min": 19.5,
+        "price_max": 19.5,
+        "updated_at": null
+      },
+      "updated_at": null,
+      "source_refs": [
+        "external_seed:ext_4e6158b5e6f187c03c87b013"
+      ]
+    },
+    {
+      "doc_id": "sellable:sig_eb18ecb35081c1390b9b88f1",
+      "sellable_item_group_id": "sig_eb18ecb35081c1390b9b88f1",
+      "product_line_id": "pl_1d0c9b238a7b2649872b866a",
+      "review_family_id": "rf_1d0c9b238a7b2649872b866a",
+      "brand_name": "The Inkey List",
+      "category_paths": [
+        "Serum"
+      ],
+      "market": "US",
+      "availability_state": "out_of_stock",
+      "publish_state": "public",
+      "title": "Supersize Hyaluronic Acid Serum - 100ml",
+      "subtitle": "A supersize hydrating serum centered on hyaluronic acid, glycerin, and sodium lactate for lightweight water-binding hydration rather than treatment-level exfoliation or brightening.",
+      "variant_axes": {
+        "volume": "100ml",
+        "multi_variant": false
+      },
+      "size": null,
+      "shade": null,
+      "pack": null,
+      "hero_media": {
+        "url": "https://www.theinkeylist.com/cdn/shop/files/HA100ML_Packshot-Primary_1_grande.png?v=1730496440",
+        "source_kind": "catalog",
+        "source_tier": "catalog"
+      },
+      "preview_media": [
+        "https://www.theinkeylist.com/cdn/shop/files/HA100ML_Packshot-Primary_1_grande.png?v=1730496440",
+        "https://cdn.shopify.com/s/files/1/0428/8498/9091/files/Swatch_dc5cbb5a-ef81-4c4b-99af-eb564f387f1a.jpg?v=1730463182",
+        "https://www.theinkeylist.com/cdn/shop/files/HA100ML_AwardHero_3200x_crop_center.jpg?v=1730496282",
+        "https://www.theinkeylist.com/cdn/shop/files/Hyaluronic_Acid_Why_we_love_it_2000x2000_UK_3200x_crop_center.png?v=1759173250",
+        "https://www.theinkeylist.com/cdn/shop/files/Hyaluronic_Acid_Claim_2000x2000_8942d4d2-4379-49e1-92dd-502943a490a6_3200x_crop_center.jpg?v=1759173250",
+        "https://www.theinkeylist.com/cdn/shop/files/Hyaluronic_Acid_How_to_layer_2000x2000_82d1ce04-a5e3-455d-8cc6-227166227983_3200x_crop_center.jpg?v=1759241399",
+        "https://www.theinkeylist.com/cdn/shop/files/Hyaluronic_Acid_Key_Claims_2000x2000_6cd5d40e-f194-4cd1-9fb9-1cc9acc391c0_3200x_crop_center.png?v=1759241249",
+        "https://www.theinkeylist.com/cdn/shop/files/Hyaluronic_Acid_Before_After_2000x2000_d7983956-8aa2-4ea3-8255-c63e8d4f892e_3200x_crop_center.jpg?v=1759241249"
+      ],
+      "price_min": 25,
+      "price_max": 25,
+      "default_offer_id": "external_seed:ext_6f885ffc900b6c99115c25e9",
+      "internal_offer_exists": false,
+      "external_offer_exists": true,
+      "pivota_insight_status": "missing",
+      "pivota_insight_summary": null,
+      "quality_score": null,
+      "browse_score": null,
+      "facet_tokens": [
+        "The Inkey List",
+        "Serum"
+      ],
+      "sort_keys": {
+        "price_min": 25,
+        "price_max": 25,
+        "updated_at": null
+      },
+      "updated_at": null,
+      "source_refs": [
+        "external_seed:ext_6f885ffc900b6c99115c25e9"
+      ]
+    },
+    {
+      "doc_id": "sellable:sig_83d905f41ae980cfeb7cef17",
+      "sellable_item_group_id": "sig_83d905f41ae980cfeb7cef17",
+      "product_line_id": "pl_9c500d4bb395298bd9db2ad6",
+      "review_family_id": "rf_9c500d4bb395298bd9db2ad6",
+      "brand_name": "The Inkey List",
+      "category_paths": [
+        "Serum"
+      ],
+      "market": "US",
+      "availability_state": "available",
+      "publish_state": "public",
+      "title": "Advanced 0.2% Retinal Serum",
+      "subtitle": "A retinal treatment serum for experienced vitamin A users, positioned around smoother texture, visible lines, and more even-looking tone in a nighttime routine.",
+      "variant_axes": {
+        "multi_variant": false
+      },
+      "size": null,
+      "shade": null,
+      "pack": null,
+      "hero_media": {
+        "url": "https://cdn.shopify.com/s/files/1/0428/8498/9091/files/AdvancedRetinal_PackShot_1000x1000_136494cc-a562-4049-8815-8dc9016e8252.png?v=1765817076",
+        "source_kind": "catalog",
+        "source_tier": "catalog"
+      },
+      "preview_media": [
+        "https://cdn.shopify.com/s/files/1/0428/8498/9091/files/AdvancedRetinal_PackShot_1000x1000_136494cc-a562-4049-8815-8dc9016e8252.png?v=1765817076",
+        "https://cdn.shopify.com/s/files/1/0428/8498/9091/files/AdvancedRetinal_Goop_2000x2000_24dfc09d-7211-4cb6-b0c0-e83bdc73ab96.jpg?v=1765817076",
+        "https://cdn.shopify.com/s/files/1/0428/8498/9091/files/Advanced_Retinal_Shelfie_2000x2000_18a5b96e-7ee0-4431-8092-1e0254c51fab.jpg?v=1766150421",
+        "https://cdn.shopify.com/s/files/1/0428/8498/9091/files/AdvancedRetinal_Whyweloveit_2000x2000_a3b5bf44-6009-46f0-b045-4955a4b780c8.jpg?v=1766506653",
+        "https://cdn.shopify.com/s/files/1/0428/8498/9091/files/AdvancedRetinal_Claim1_2000x2000_b4d4601a-b808-48b0-87bc-fb94d7cacdcd.jpg?v=1767864576",
+        "https://cdn.shopify.com/s/files/1/0428/8498/9091/files/Advanced_Retinal_How_to_layer_2000x2000_1.jpg?v=1767865017",
+        "https://cdn.shopify.com/s/files/1/0428/8498/9091/files/Advanced_Retinal_Why_it_works_2000x2000_02884860-9806-4dc6-92a7-80aca6bfceeb.jpg?v=1769166532",
+        "https://cdn.shopify.com/s/files/1/0428/8498/9091/files/AdvancedRetinal_Howtouse_2000x2000_2e65b8d6-c209-4060-b880-445ceb2cd794.jpg?v=1769166515"
+      ],
+      "price_min": 15,
+      "price_max": 15,
+      "default_offer_id": "external_seed:ext_7f2927806c10ab6988776684",
+      "internal_offer_exists": false,
+      "external_offer_exists": true,
+      "pivota_insight_status": "missing",
+      "pivota_insight_summary": null,
+      "quality_score": null,
+      "browse_score": null,
+      "facet_tokens": [
+        "The Inkey List",
+        "Serum"
+      ],
+      "sort_keys": {
+        "price_min": 15,
+        "price_max": 15,
+        "updated_at": null
+      },
+      "updated_at": null,
+      "source_refs": [
+        "external_seed:ext_7f2927806c10ab6988776684"
+      ]
+    },
+    {
+      "doc_id": "sellable:sig_7b1fec27422a9b92a82c1f84",
+      "sellable_item_group_id": "sig_7b1fec27422a9b92a82c1f84",
+      "product_line_id": "pl_2a78708ec56e50213ca5e518",
+      "review_family_id": "rf_2a78708ec56e50213ca5e518",
+      "brand_name": "The Inkey List",
+      "category_paths": [
+        "Serum"
+      ],
+      "market": "US",
+      "availability_state": "available",
+      "publish_state": "public",
+      "title": "Starter Retinol Serum",
+      "subtitle": "WHAT YOU GETA gentle yet effective beginner Retinol serum, clinically proven to visibly smooth fine lines in just 7 days -without irritation*. It helps even skin tone and refine texture while being perfectly suited for first-time Retinol users, sensitive skin, and rosacea-prone skin.WHY IT WORKSPowered by a slow-release Dual-Retinoid complex to gently boost cell turnover. Our encapsulated retinol is proven to be 2x more effective than standard retinol**. Balanced with barrier-boosting ingredients, like 0.2% Symrelief 100, soothe skin - so you get results without redness.HOW IT FEELSSilky, lightweight and hydrating. Skin feels comforted, zero irritation.WHEN TO USEPM only, 2-3 nights a week to start. Increase frequency as your skin builds tolerance. Always follow with moisturiser and use SPF the next morning.",
+      "variant_axes": {
+        "multi_variant": false
+      },
+      "size": null,
+      "shade": null,
+      "pack": null,
+      "hero_media": {
+        "url": "https://cdn.shopify.com/s/files/1/0428/8498/9091/files/StarterRetinol_PackShot_1000x1000_40f6a4ba-a667-43af-ba0d-7c8868d288c8.png",
+        "source_kind": "catalog",
+        "source_tier": "catalog"
+      },
+      "preview_media": [
+        "https://cdn.shopify.com/s/files/1/0428/8498/9091/files/StarterRetinol_PackShot_1000x1000_40f6a4ba-a667-43af-ba0d-7c8868d288c8.png",
+        "https://cdn.shopify.com/s/files/1/0428/8498/9091/files/StarterRetinol_Goop_2000x2000_5d9d2324-aab1-4c1c-bcdd-6d9c4bae6f9a.jpg",
+        "https://cdn.shopify.com/s/files/1/0428/8498/9091/files/Starter_Retinol_Shelfie_2000x2000_2efedab9-6585-4898-afcf-4fb4ee6e19b4.jpg",
+        "https://cdn.shopify.com/s/files/1/0428/8498/9091/files/StarterRetinol_Whyweloveit_2000x2000_705da7db-7f87-41fa-817a-f49566d074f1.jpg",
+        "https://cdn.shopify.com/s/files/1/0428/8498/9091/files/StarterRetinol_Claim2_2000x2000_86309734-a66d-4150-aa66-b18b6b6458b7.jpg",
+        "https://cdn.shopify.com/s/files/1/0428/8498/9091/files/Starter_Retinol_How_to_layer_2000x2000_50958956-86b2-4848-9220-72b0249c0fc6.jpg",
+        "https://cdn.shopify.com/s/files/1/0428/8498/9091/files/StarterRetinol_DualRetinoid_2000x2000_41d66a92-05cb-482f-a84d-47e564921037.jpg",
+        "https://cdn.shopify.com/s/files/1/0428/8498/9091/files/StarterRetinol_Howtouse_2000x2000_7ee4b238-3bfd-4879-943b-aa6486ff883f.jpg"
+      ],
+      "price_min": 14,
+      "price_max": 14,
+      "default_offer_id": "external_seed:ext_ba77f628da48958583f0f49f",
+      "internal_offer_exists": false,
+      "external_offer_exists": true,
+      "pivota_insight_status": "available",
+      "pivota_insight_summary": "A gentler retinol serum for fine lines, tone, and texture.",
+      "quality_score": null,
+      "browse_score": null,
+      "facet_tokens": [
+        "The Inkey List",
+        "Serum"
+      ],
+      "sort_keys": {
+        "price_min": 14,
+        "price_max": 14,
+        "updated_at": null
+      },
+      "updated_at": null,
+      "source_refs": [
+        "external_seed:ext_ba77f628da48958583f0f49f"
+      ]
+    },
+    {
+      "doc_id": "sellable:sig_0a338fa7f4f2d78fb47ef322",
+      "sellable_item_group_id": "sig_0a338fa7f4f2d78fb47ef322",
+      "product_line_id": "pl_120e0378ecbde824945cb674",
+      "review_family_id": "rf_120e0378ecbde824945cb674",
+      "brand_name": "The Inkey List",
+      "category_paths": [
+        "Serum"
+      ],
+      "market": "US",
+      "availability_state": "available",
+      "publish_state": "public",
+      "title": "10% Niacinamide Serum",
+      "subtitle": "A lightweight, power-packed Niacinamide Serum that can be easily layered into your skincare routine. \n\nContaining 10% Niacinamide this naturally occurring B3 vitamin helps to effectively reduce excess oil, blemishes and redness. This anti-blemish serum has a thin consistency and is formulated with 1% Hyaluronic Acid for added hydration and effective delivery.",
+      "variant_axes": {
+        "multi_variant": false
+      },
+      "size": null,
+      "shade": null,
+      "pack": null,
+      "hero_media": {
+        "url": "https://cdn.shopify.com/s/files/1/0428/8498/9091/files/TheINKEYList_NiacinamideSerum_30mlbottle_1000x1000_5c1f85db-53c9-48cd-975e-e70371e617a1.png?v=1700586730",
+        "source_kind": "catalog",
+        "source_tier": "catalog"
+      },
+      "preview_media": [
+        "https://cdn.shopify.com/s/files/1/0428/8498/9091/files/TheINKEYList_NiacinamideSerum_30mlbottle_1000x1000_5c1f85db-53c9-48cd-975e-e70371e617a1.png?v=1700586730",
+        "https://cdn.shopify.com/s/files/1/0428/8498/9091/files/Swatch_bc853d67-ea35-4e7b-83f0-43ab8f92dd9e.jpg?v=1730493597",
+        "https://cdn.shopify.com/s/files/1/0428/8498/9091/files/DTC-Top15_Amends_NiacinamideHero.jpg?v=1732187658",
+        "https://cdn.shopify.com/s/files/1/0428/8498/9091/files/Niacinamide_Serum_Why_we_love_it_2000x2000_b76b33d7-7a7c-46a6-ad75-c0e3f24b2694.jpg?v=1759776866",
+        "https://cdn.shopify.com/s/files/1/0428/8498/9091/files/Niacinamide_Serum_How_to_layer_2000x2000_537cacf8-21ec-40a1-91eb-ec089951f500.jpg?v=1759776866",
+        "https://cdn.shopify.com/s/files/1/0428/8498/9091/files/Niacinamide_Serum_Why_it_works_2000x2000_debdd3f8-30cf-4431-9eb2-29118955288c.jpg?v=1759776866",
+        "https://cdn.shopify.com/s/files/1/0428/8498/9091/files/Niacinamide_Serum_How_to_Use_2000x2000_32d24ddc-f8d0-4b98-8738-f9583ead5315.jpg?v=1759776866",
+        "https://cdn.shopify.com/s/files/1/0428/8498/9091/files/Niacinamide_Serum_Before_After_2000x2000_bde32455-9e7d-448e-b053-bef41504f0a9.jpg?v=1759776866"
+      ],
+      "price_min": 10.5,
+      "price_max": 10.5,
+      "default_offer_id": "external_seed:ext_cb5bf6c59bef31adc9fc4bb2",
+      "internal_offer_exists": false,
+      "external_offer_exists": true,
+      "pivota_insight_status": "available",
+      "pivota_insight_summary": "A lightweight serum containing 10% niacinamide, a form of vitamin B3, plus 1% hyaluronic acid for hydration and delivery support.",
+      "quality_score": null,
+      "browse_score": null,
+      "facet_tokens": [
+        "The Inkey List",
+        "Serum"
+      ],
+      "sort_keys": {
+        "price_min": 10.5,
+        "price_max": 10.5,
+        "updated_at": null
+      },
+      "updated_at": null,
+      "source_refs": [
+        "external_seed:ext_cb5bf6c59bef31adc9fc4bb2"
+      ]
+    },
+    {
+      "doc_id": "sellable:sig_59d6ff7ee74d3cd13444a8f0",
+      "sellable_item_group_id": "sig_59d6ff7ee74d3cd13444a8f0",
+      "product_line_id": "pl_a02894eca10122fb34a89f1d",
+      "review_family_id": "rf_a02894eca10122fb34a89f1d",
+      "brand_name": "The Inkey List",
+      "category_paths": [
+        "Serum"
+      ],
+      "market": "US",
+      "availability_state": "available",
+      "publish_state": "public",
+      "title": "360° Acne Clearing Serum",
+      "subtitle": "WHAT YOU GET: A high-performance, daily anti-blemish serum that targets all 3 stages of breakouts in one step. From excess shine to active breakouts and post-blemish pigmentation – it works like 3 products in 1 bottle. Clear skin, no clutter.WHY IT WORKS: Formulated with 1% Dioic Acid to visibly reduce blemishes and pigmentation, 2% Salicylic Acid to unclog pores, and 0.4% Dendriclear to balance oil. This multi-action skin clearing serum blend helps leave skin visibly clearer, calmer, and balanced.HOW IT FEELS: Lightweight, fast-absorbing and non-sticky. Delivers a fresh, non-drying feel that works under makeup or on bare skin before your moisturizer. WHEN TO USE: Apply AM and/or PM after cleansing. Gently massage a pea-sized amount onto face and neck after cleansing. Always follow with SPF in your AM routine.",
+      "variant_axes": {
+        "multi_variant": false
+      },
+      "size": null,
+      "shade": null,
+      "pack": null,
+      "hero_media": {
+        "url": "https://cdn.shopify.com/s/files/1/0428/8498/9091/files/DIOIC_HERO_US.png",
+        "source_kind": "catalog",
+        "source_tier": "catalog"
+      },
+      "preview_media": [
+        "https://cdn.shopify.com/s/files/1/0428/8498/9091/files/DIOIC_HERO_US.png",
+        "https://cdn.shopify.com/s/files/1/0428/8498/9091/files/Goop.jpg",
+        "https://cdn.shopify.com/s/files/1/0428/8498/9091/files/DIOC_Shelfie_US.jpg",
+        "https://cdn.shopify.com/s/files/1/0428/8498/9091/files/Dioic_Whyweloveit_2000x2000_175aafd3-0cbe-403a-b317-a8362881bfe2.jpg",
+        "https://cdn.shopify.com/s/files/1/0428/8498/9091/files/360_Serum_Key_Claim.png",
+        "https://cdn.shopify.com/s/files/1/0428/8498/9091/files/DIOICB_A2000x2000.jpg",
+        "https://cdn.shopify.com/s/files/1/0428/8498/9091/files/Dioic_HowToLayer2000x2000.jpg",
+        "https://cdn.shopify.com/s/files/1/0428/8498/9091/files/Dioic_Whyitworks_2000x2000_37f55fe8-79af-4246-a8e4-3f7000aeed91.jpg"
+      ],
+      "price_min": 18,
+      "price_max": 18,
+      "default_offer_id": "external_seed:ext_fe0c55a05a505ad59ddd7f0c",
+      "internal_offer_exists": false,
+      "external_offer_exists": true,
+      "pivota_insight_status": "missing",
+      "pivota_insight_summary": null,
+      "quality_score": null,
+      "browse_score": null,
+      "facet_tokens": [
+        "The Inkey List",
+        "Serum"
+      ],
+      "sort_keys": {
+        "price_min": 18,
+        "price_max": 18,
+        "updated_at": null
+      },
+      "updated_at": null,
+      "source_refs": [
+        "external_seed:ext_fe0c55a05a505ad59ddd7f0c"
+      ]
+    }
+  ]
+}

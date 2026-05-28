@@ -1,0 +1,4973 @@
+{
+  "generated_at": "2026-05-28T10:45:59.240Z",
+  "options": {
+    "market": "US",
+    "includeAttached": true,
+    "domain": "supergoop.com",
+    "externalProductIds": [],
+    "limit": 500,
+    "sampleLimit": 10,
+    "checkpointDir": "/private/tmp/pivota-agent-product-intel-tail-20260528/reports/markato_expansion_status_20260524/wave48_product_intel_tail_20260528/supergoop_domain_audit_before/pdp_readiness_checkpoint",
+    "checkpointMode": "domain",
+    "resume": false,
+    "force": false,
+    "continueOnError": true,
+    "pageSize": 500,
+    "format": "json"
+  },
+  "warnings": [],
+  "summary": {
+    "scanned": 39,
+    "by_market": {
+      "US": 39
+    },
+    "by_domain": [
+      {
+        "key": "supergoop.com",
+        "count": 39
+      }
+    ],
+    "by_product_family": [
+      {
+        "key": "single_formula",
+        "count": 35
+      },
+      {
+        "key": "accessory",
+        "count": 3
+      },
+      {
+        "key": "unknown_product",
+        "count": 1
+      }
+    ],
+    "coverage": {
+      "missing_inci": 6,
+      "missing_active_raw": 3,
+      "missing_details": 4,
+      "missing_how_to": 0,
+      "missing_faq": 37
+    },
+    "pivota_insights": {
+      "direct": {
+        "displayable": 33,
+        "high_quality_ready": 4,
+        "missing_kb": 0,
+        "not_displayable": 6
+      },
+      "effective": {
+        "displayable": 33,
+        "high_quality_ready": 4,
+        "missing_kb": 0,
+        "not_displayable": 6,
+        "borrowed_from_sibling": 0
+      },
+      "effective_issues": [
+        {
+          "key": "quality_eligible",
+          "count": 32
+        },
+        {
+          "key": "missing_card_highlight",
+          "count": 31
+        },
+        {
+          "key": "reviewed_not_displayable",
+          "count": 6
+        },
+        {
+          "key": "empty_watchouts",
+          "count": 4
+        },
+        {
+          "key": "quality_limited",
+          "count": 4
+        },
+        {
+          "key": "seller_only_evidence",
+          "count": 4
+        },
+        {
+          "key": "public_generic_marketing_copy",
+          "count": 2
+        },
+        {
+          "key": "generic_copy_signal",
+          "count": 1
+        }
+      ],
+      "effective_issue_domains": [
+        {
+          "key": "supergoop.com::quality_eligible",
+          "count": 32
+        },
+        {
+          "key": "supergoop.com::missing_card_highlight",
+          "count": 31
+        },
+        {
+          "key": "supergoop.com::reviewed_not_displayable",
+          "count": 6
+        },
+        {
+          "key": "supergoop.com::empty_watchouts",
+          "count": 4
+        },
+        {
+          "key": "supergoop.com::quality_limited",
+          "count": 4
+        },
+        {
+          "key": "supergoop.com::seller_only_evidence",
+          "count": 4
+        },
+        {
+          "key": "supergoop.com::public_generic_marketing_copy",
+          "count": 2
+        },
+        {
+          "key": "supergoop.com::generic_copy_signal",
+          "count": 1
+        }
+      ],
+      "quality_state": [
+        {
+          "key": "eligible",
+          "count": 32
+        },
+        {
+          "key": "limited",
+          "count": 4
+        },
+        {
+          "key": "verified",
+          "count": 2
+        },
+        {
+          "key": "reviewed",
+          "count": 1
+        }
+      ],
+      "evidence_profile": [
+        {
+          "key": "seller_plus_formula",
+          "count": 29
+        },
+        {
+          "key": "community_supported",
+          "count": 5
+        },
+        {
+          "key": "seller_only",
+          "count": 4
+        },
+        {
+          "key": "mixed",
+          "count": 1
+        }
+      ],
+      "samples": {
+        "missing_card_highlight": [
+          {
+            "external_product_id": "ext_0231446ecac11c097b5c182a",
+            "domain": "supergoop.com",
+            "title": "Unseen Sunscreen SPF 50",
+            "used_product_id": "ext_0231446ecac11c097b5c182a",
+            "quality_state": "eligible",
+            "evidence_profile": "seller_plus_formula"
+          },
+          {
+            "external_product_id": "ext_1d9f58d9eb614ad78f87503e",
+            "domain": "supergoop.com",
+            "title": "PLAY Lip Shield SPF 30 Coconut",
+            "used_product_id": "ext_1d9f58d9eb614ad78f87503e",
+            "quality_state": "eligible",
+            "evidence_profile": "seller_plus_formula"
+          },
+          {
+            "external_product_id": "ext_2541610fd3f95d198c98bd01",
+            "domain": "supergoop.com",
+            "title": "Unseen Sunscreen Stick SPF 40",
+            "used_product_id": "ext_2541610fd3f95d198c98bd01",
+            "quality_state": "eligible",
+            "evidence_profile": "community_supported"
+          },
+          {
+            "external_product_id": "ext_2a7f0f4aac89565439078194",
+            "domain": "supergoop.com",
+            "title": "PLAY Antioxidant Body Mist SPF 30 with Vitamin C",
+            "used_product_id": "ext_2a7f0f4aac89565439078194",
+            "quality_state": "eligible",
+            "evidence_profile": "seller_plus_formula"
+          },
+          {
+            "external_product_id": "ext_356103c0072a64c0d2b112f0",
+            "domain": "supergoop.com",
+            "title": "PLAY Everyday Lotion SPF 30",
+            "used_product_id": "ext_356103c0072a64c0d2b112f0",
+            "quality_state": "eligible",
+            "evidence_profile": "community_supported"
+          },
+          {
+            "external_product_id": "ext_4f05182f81e66c1a648219ec",
+            "domain": "supergoop.com",
+            "title": "Protec(tint) Daily Skin Tint SPF 50",
+            "used_product_id": "ext_4f05182f81e66c1a648219ec",
+            "quality_state": "eligible",
+            "evidence_profile": "seller_plus_formula"
+          },
+          {
+            "external_product_id": "ext_52bf3996675b121b766c4303",
+            "domain": "supergoop.com",
+            "title": "PLAY Antioxidant Body Mist SPF 50 with Vitamin C",
+            "used_product_id": "ext_52bf3996675b121b766c4303",
+            "quality_state": "eligible",
+            "evidence_profile": "seller_plus_formula"
+          },
+          {
+            "external_product_id": "ext_5cb0a930037cfd06122de114",
+            "domain": "supergoop.com",
+            "title": "PLAY Mineral Lotion SPF 30",
+            "used_product_id": "ext_5cb0a930037cfd06122de114",
+            "quality_state": "eligible",
+            "evidence_profile": "mixed"
+          },
+          {
+            "external_product_id": "ext_633e8684f7da4e64ef14bbf8",
+            "domain": "supergoop.com",
+            "title": "Mineral Glowscreen Soft-Radiance Drops SPF 40",
+            "used_product_id": "ext_633e8684f7da4e64ef14bbf8",
+            "quality_state": "eligible",
+            "evidence_profile": "seller_plus_formula"
+          },
+          {
+            "external_product_id": "ext_732ee259400f476472656719",
+            "domain": "supergoop.com",
+            "title": "PLAY Lip Shield SPF 30 Strawberry",
+            "used_product_id": "ext_732ee259400f476472656719",
+            "quality_state": "eligible",
+            "evidence_profile": "seller_plus_formula"
+          }
+        ],
+        "reviewed_not_displayable": [
+          {
+            "external_product_id": "ext_192d3571e29963d1f55307db",
+            "domain": "supergoop.com",
+            "title": "SPF! Keychain",
+            "used_product_id": "ext_192d3571e29963d1f55307db",
+            "quality_state": "limited",
+            "evidence_profile": "seller_only"
+          },
+          {
+            "external_product_id": "ext_1d9f58d9eb614ad78f87503e",
+            "domain": "supergoop.com",
+            "title": "PLAY Lip Shield SPF 30 Coconut",
+            "used_product_id": "ext_1d9f58d9eb614ad78f87503e",
+            "quality_state": "eligible",
+            "evidence_profile": "seller_plus_formula"
+          },
+          {
+            "external_product_id": "ext_39dea73e212c850cc4ba3dfb",
+            "domain": "supergoop.com",
+            "title": "SPF! Glass Water Bottle",
+            "used_product_id": "ext_39dea73e212c850cc4ba3dfb",
+            "quality_state": "limited",
+            "evidence_profile": "seller_only"
+          },
+          {
+            "external_product_id": "ext_732ee259400f476472656719",
+            "domain": "supergoop.com",
+            "title": "PLAY Lip Shield SPF 30 Strawberry",
+            "used_product_id": "ext_732ee259400f476472656719",
+            "quality_state": "eligible",
+            "evidence_profile": "seller_plus_formula"
+          },
+          {
+            "external_product_id": "ext_e1f5622616eb50523643c2cc",
+            "domain": "supergoop.com",
+            "title": "Supergoop! Mesh Zip Pouch Bag",
+            "used_product_id": "ext_e1f5622616eb50523643c2cc",
+            "quality_state": "limited",
+            "evidence_profile": "seller_only"
+          },
+          {
+            "external_product_id": "ext_f51b2e9026d47980c5ada3bf",
+            "domain": "supergoop.com",
+            "title": "Butterfly Hair Clip",
+            "used_product_id": "ext_f51b2e9026d47980c5ada3bf",
+            "quality_state": "limited",
+            "evidence_profile": "seller_only"
+          }
+        ],
+        "seller_only_evidence": [
+          {
+            "external_product_id": "ext_192d3571e29963d1f55307db",
+            "domain": "supergoop.com",
+            "title": "SPF! Keychain",
+            "used_product_id": "ext_192d3571e29963d1f55307db",
+            "quality_state": "limited",
+            "evidence_profile": "seller_only"
+          },
+          {
+            "external_product_id": "ext_39dea73e212c850cc4ba3dfb",
+            "domain": "supergoop.com",
+            "title": "SPF! Glass Water Bottle",
+            "used_product_id": "ext_39dea73e212c850cc4ba3dfb",
+            "quality_state": "limited",
+            "evidence_profile": "seller_only"
+          },
+          {
+            "external_product_id": "ext_e1f5622616eb50523643c2cc",
+            "domain": "supergoop.com",
+            "title": "Supergoop! Mesh Zip Pouch Bag",
+            "used_product_id": "ext_e1f5622616eb50523643c2cc",
+            "quality_state": "limited",
+            "evidence_profile": "seller_only"
+          },
+          {
+            "external_product_id": "ext_f51b2e9026d47980c5ada3bf",
+            "domain": "supergoop.com",
+            "title": "Butterfly Hair Clip",
+            "used_product_id": "ext_f51b2e9026d47980c5ada3bf",
+            "quality_state": "limited",
+            "evidence_profile": "seller_only"
+          }
+        ],
+        "generic_copy_signal": [
+          {
+            "external_product_id": "ext_a64a5392090b679605a58b02",
+            "domain": "supergoop.com",
+            "title": "PLAY Body Mousse SPF 50",
+            "used_product_id": "ext_a64a5392090b679605a58b02",
+            "quality_state": "eligible",
+            "evidence_profile": "seller_plus_formula"
+          }
+        ],
+        "public_generic_marketing_copy": [
+          {
+            "external_product_id": "ext_e1f5622616eb50523643c2cc",
+            "domain": "supergoop.com",
+            "title": "Supergoop! Mesh Zip Pouch Bag",
+            "used_product_id": "ext_e1f5622616eb50523643c2cc",
+            "quality_state": "limited",
+            "evidence_profile": "seller_only"
+          },
+          {
+            "external_product_id": "ext_f51b2e9026d47980c5ada3bf",
+            "domain": "supergoop.com",
+            "title": "Butterfly Hair Clip",
+            "used_product_id": "ext_f51b2e9026d47980c5ada3bf",
+            "quality_state": "limited",
+            "evidence_profile": "seller_only"
+          }
+        ]
+      }
+    },
+    "active_ingredients": {
+      "regulatory_expected": 35,
+      "hero_expected": 3,
+      "any_active_items": 33,
+      "status": [
+        {
+          "key": "ready_regulatory",
+          "count": 33
+        },
+        {
+          "key": "not_applicable_product_family",
+          "count": 3
+        },
+        {
+          "key": "missing_regulatory",
+          "count": 2
+        },
+        {
+          "key": "not_expected_missing",
+          "count": 1
+        }
+      ],
+      "issues": [
+        {
+          "key": "missing_regulatory",
+          "count": 2
+        }
+      ],
+      "issue_domains": [
+        {
+          "key": "supergoop.com::missing_regulatory",
+          "count": 2
+        }
+      ],
+      "source_origin": [
+        {
+          "key": "pdp_section",
+          "count": 33
+        },
+        {
+          "key": "none",
+          "count": 6
+        }
+      ],
+      "samples": {
+        "missing_regulatory": [
+          {
+            "external_product_id": "ext_39dea73e212c850cc4ba3dfb",
+            "domain": "supergoop.com",
+            "title": "SPF! Glass Water Bottle",
+            "status": "missing_regulatory",
+            "active_items": [],
+            "source_origin": "none"
+          },
+          {
+            "external_product_id": "ext_df3d4d8854c5e416d2c8a5b3",
+            "domain": "supergoop.com",
+            "title": "PLAY Lip Shield SPF 30 Mint",
+            "status": "missing_regulatory",
+            "active_items": [],
+            "source_origin": "none"
+          }
+        ]
+      }
+    },
+    "variants": {
+      "status": [
+        {
+          "key": "ready",
+          "count": 35
+        },
+        {
+          "key": "flagged",
+          "count": 4
+        }
+      ],
+      "issues": [
+        {
+          "key": "wrong_axis_for_category",
+          "count": 4
+        }
+      ],
+      "issue_domains": [
+        {
+          "key": "supergoop.com::wrong_axis_for_category",
+          "count": 4
+        }
+      ],
+      "samples": {
+        "wrong_axis_for_category": [
+          {
+            "external_product_id": "ext_633e8684f7da4e64ef14bbf8",
+            "domain": "supergoop.com",
+            "title": "Mineral Glowscreen Soft-Radiance Drops SPF 40",
+            "status": "flagged",
+            "examples": [
+              {
+                "axis_name": "shade",
+                "axis_kind": "shade",
+                "value": "sunrise",
+                "visual": true
+              },
+              {
+                "axis_name": "shade",
+                "axis_kind": "shade",
+                "value": "golden hour",
+                "visual": true
+              },
+              {
+                "axis_name": "shade",
+                "axis_kind": "shade",
+                "value": "sunset",
+                "visual": true
+              }
+            ]
+          },
+          {
+            "external_product_id": "ext_95cb5b67ba4527b8c34949b2",
+            "domain": "supergoop.com",
+            "title": "Glowscreen SPF 40",
+            "status": "flagged",
+            "examples": [
+              {
+                "axis_name": "shade",
+                "axis_kind": "shade",
+                "value": "sunrise",
+                "visual": true
+              },
+              {
+                "axis_name": "shade",
+                "axis_kind": "shade",
+                "value": "sunrise",
+                "visual": true
+              },
+              {
+                "axis_name": "shade",
+                "axis_kind": "shade",
+                "value": "sunrise",
+                "visual": true
+              },
+              {
+                "axis_name": "shade",
+                "axis_kind": "shade",
+                "value": "dawn",
+                "visual": true
+              }
+            ]
+          },
+          {
+            "external_product_id": "ext_cf0ebf0bb700023746462779",
+            "domain": "supergoop.com",
+            "title": "Mineral Mattescreen SPF 40",
+            "status": "flagged",
+            "examples": [
+              {
+                "axis_name": "shade",
+                "axis_kind": "shade",
+                "value": "sunrise",
+                "visual": true
+              },
+              {
+                "axis_name": "shade",
+                "axis_kind": "shade",
+                "value": "sunrise",
+                "visual": true
+              },
+              {
+                "axis_name": "shade",
+                "axis_kind": "shade",
+                "value": "sunrise",
+                "visual": true
+              },
+              {
+                "axis_name": "shade",
+                "axis_kind": "shade",
+                "value": "untinted",
+                "visual": true
+              }
+            ]
+          },
+          {
+            "external_product_id": "ext_f79ad746e7214428de0ae942",
+            "domain": "supergoop.com",
+            "title": "Glowscreen Sunlighter Stick SPF 45",
+            "status": "flagged",
+            "examples": [
+              {
+                "axis_name": "shade",
+                "axis_kind": "shade",
+                "value": "sunrise",
+                "visual": true
+              },
+              {
+                "axis_name": "shade",
+                "axis_kind": "shade",
+                "value": "golden hour",
+                "visual": true
+              }
+            ]
+          }
+        ]
+      }
+    }
+  },
+  "rows": [
+    {
+      "seed_id": "eps_e48e892068ae2a6fe94dbb40",
+      "external_product_id": "ext_0231446ecac11c097b5c182a",
+      "market": "US",
+      "domain": "supergoop.com",
+      "title": "Unseen Sunscreen SPF 50",
+      "canonical_url": "https://supergoop.com/products/unseen-sunscreen-spf-50",
+      "product_family": "single_formula",
+      "product_line_id": "pl_b52c2d25227d6dfec023c031",
+      "identity_variant_axes": {
+        "size": "1 7 fl oz",
+        "volume": "7floz",
+        "multi_variant": true
+      },
+      "pivota_insights": {
+        "direct": {
+          "product_id": "ext_0231446ecac11c097b5c182a",
+          "kb_key": "product:ext_0231446ecac11c097b5c182a",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": false,
+          "human_reviewed": true,
+          "issues": [
+            "missing_card_highlight",
+            "quality_eligible"
+          ],
+          "blocking_issues": [
+            "missing_card_highlight"
+          ],
+          "quality_state": "eligible",
+          "evidence_profile": "seller_plus_formula",
+          "has_card_highlight": false
+        },
+        "effective": {
+          "product_id": "ext_0231446ecac11c097b5c182a",
+          "kb_key": "product:ext_0231446ecac11c097b5c182a",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": false,
+          "human_reviewed": true,
+          "issues": [
+            "missing_card_highlight",
+            "quality_eligible"
+          ],
+          "blocking_issues": [
+            "missing_card_highlight"
+          ],
+          "quality_state": "eligible",
+          "evidence_profile": "seller_plus_formula",
+          "has_card_highlight": false
+        },
+        "product_line_id": "pl_b52c2d25227d6dfec023c031",
+        "borrowed_from_sibling": false
+      },
+      "active_ingredients": {
+        "status": "ready_regulatory",
+        "issues": [],
+        "regulatory_expected": true,
+        "hero_expected": false,
+        "active_items": [
+          "Avobenzone",
+          "Homosalate",
+          "Octisalate",
+          "Octocrylene"
+        ],
+        "source_origin": "pdp_section",
+        "source_quality_status": "regulatory_active",
+        "coverage": {
+          "details_sections_count": 2,
+          "faq_count": 0,
+          "how_to_chars": 577,
+          "inci_chars": 1280,
+          "active_ingredients_chars": 59,
+          "inci_applicability_status": "",
+          "ingredient_review_status": "",
+          "ingredient_remediation_action": "",
+          "bundle_component_refs_count": 0,
+          "effective_inci_chars": 1280,
+          "inci_borrowed_from_product_id": ""
+        },
+        "invalid_fragments": [],
+        "suppressed_reason": null
+      },
+      "variants": {
+        "status": "ready",
+        "issues": [],
+        "visible_variant_rows": 4,
+        "examples": {
+          "identity_option_visible": [],
+          "wrong_axis_for_category": [],
+          "makeup_shade_missing_visual": [],
+          "size_value_generic_axis": [],
+          "default_option_size_evidence_missing_axis": [],
+          "identity_default_title_axis": []
+        }
+      },
+      "coverage": {
+        "details_sections_count": 2,
+        "faq_count": 0,
+        "how_to_chars": 577,
+        "inci_chars": 1280,
+        "active_ingredients_chars": 59,
+        "inci_applicability_status": "",
+        "ingredient_review_status": "",
+        "ingredient_remediation_action": "",
+        "bundle_component_refs_count": 0,
+        "effective_inci_chars": 1280,
+        "inci_borrowed_from_product_id": ""
+      }
+    },
+    {
+      "seed_id": "eps_c2760ae5af1134a34c708aa2",
+      "external_product_id": "ext_0ec21474e8dbfff30e8f6101",
+      "market": "US",
+      "domain": "supergoop.com",
+      "title": "Unseen Sunscreen Body SPF 40",
+      "canonical_url": "https://supergoop.com/products/unseen-sunscreen-body-spf-40",
+      "product_family": "single_formula",
+      "product_line_id": "pl_3c1e4817f3e5d0a12de1f007",
+      "identity_variant_axes": {
+        "size": "3 4 fl oz",
+        "volume": "4floz",
+        "multi_variant": false
+      },
+      "pivota_insights": {
+        "direct": {
+          "product_id": "ext_0ec21474e8dbfff30e8f6101",
+          "kb_key": "product:ext_0ec21474e8dbfff30e8f6101",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "seller_plus_formula",
+          "has_card_highlight": true
+        },
+        "effective": {
+          "product_id": "ext_0ec21474e8dbfff30e8f6101",
+          "kb_key": "product:ext_0ec21474e8dbfff30e8f6101",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "seller_plus_formula",
+          "has_card_highlight": true
+        },
+        "product_line_id": "pl_3c1e4817f3e5d0a12de1f007",
+        "borrowed_from_sibling": false
+      },
+      "active_ingredients": {
+        "status": "ready_regulatory",
+        "issues": [],
+        "regulatory_expected": true,
+        "hero_expected": false,
+        "active_items": [
+          "Avobenzone",
+          "Homosalate",
+          "Octisalate",
+          "Octocrylene"
+        ],
+        "source_origin": "pdp_section",
+        "source_quality_status": "regulatory_active",
+        "coverage": {
+          "details_sections_count": 2,
+          "faq_count": 0,
+          "how_to_chars": 565,
+          "inci_chars": 752,
+          "active_ingredients_chars": 60,
+          "inci_applicability_status": "",
+          "ingredient_review_status": "",
+          "ingredient_remediation_action": "",
+          "bundle_component_refs_count": 0,
+          "effective_inci_chars": 752,
+          "inci_borrowed_from_product_id": ""
+        },
+        "invalid_fragments": [],
+        "suppressed_reason": null
+      },
+      "variants": {
+        "status": "ready",
+        "issues": [],
+        "visible_variant_rows": 1,
+        "examples": {
+          "identity_option_visible": [],
+          "wrong_axis_for_category": [],
+          "makeup_shade_missing_visual": [],
+          "size_value_generic_axis": [],
+          "default_option_size_evidence_missing_axis": [],
+          "identity_default_title_axis": []
+        }
+      },
+      "coverage": {
+        "details_sections_count": 2,
+        "faq_count": 0,
+        "how_to_chars": 565,
+        "inci_chars": 752,
+        "active_ingredients_chars": 60,
+        "inci_applicability_status": "",
+        "ingredient_review_status": "",
+        "ingredient_remediation_action": "",
+        "bundle_component_refs_count": 0,
+        "effective_inci_chars": 752,
+        "inci_borrowed_from_product_id": ""
+      }
+    },
+    {
+      "seed_id": "eps_3230deaa20cf57a3b55cd906",
+      "external_product_id": "ext_192d3571e29963d1f55307db",
+      "market": "US",
+      "domain": "supergoop.com",
+      "title": "SPF! Keychain",
+      "canonical_url": "https://supergoop.com/products/spf-keychain",
+      "product_family": "accessory",
+      "product_line_id": "pl_662fd66ab872a23c37daed6a",
+      "identity_variant_axes": {
+        "size": "one size",
+        "multi_variant": false
+      },
+      "pivota_insights": {
+        "direct": {
+          "product_id": "ext_192d3571e29963d1f55307db",
+          "kb_key": "product:ext_192d3571e29963d1f55307db",
+          "status": "not_displayable",
+          "kb_exists": true,
+          "displayable": false,
+          "high_quality_ready": false,
+          "human_reviewed": true,
+          "issues": [
+            "reviewed_not_displayable",
+            "quality_limited",
+            "seller_only_evidence"
+          ],
+          "blocking_issues": [
+            "reviewed_not_displayable"
+          ],
+          "quality_state": "limited",
+          "evidence_profile": "seller_only",
+          "has_card_highlight": true
+        },
+        "effective": {
+          "product_id": "ext_192d3571e29963d1f55307db",
+          "kb_key": "product:ext_192d3571e29963d1f55307db",
+          "status": "not_displayable",
+          "kb_exists": true,
+          "displayable": false,
+          "high_quality_ready": false,
+          "human_reviewed": true,
+          "issues": [
+            "reviewed_not_displayable",
+            "quality_limited",
+            "seller_only_evidence"
+          ],
+          "blocking_issues": [
+            "reviewed_not_displayable"
+          ],
+          "quality_state": "limited",
+          "evidence_profile": "seller_only",
+          "has_card_highlight": true
+        },
+        "product_line_id": "pl_662fd66ab872a23c37daed6a",
+        "borrowed_from_sibling": false
+      },
+      "active_ingredients": {
+        "status": "not_applicable_product_family",
+        "issues": [],
+        "regulatory_expected": false,
+        "hero_expected": false,
+        "active_items": [],
+        "source_origin": "none",
+        "source_quality_status": "blocked",
+        "coverage": {
+          "details_sections_count": 0,
+          "faq_count": 0,
+          "how_to_chars": 177,
+          "inci_chars": 0,
+          "active_ingredients_chars": 0,
+          "inci_applicability_status": "",
+          "ingredient_review_status": "",
+          "ingredient_remediation_action": "",
+          "bundle_component_refs_count": 0,
+          "effective_inci_chars": 0,
+          "inci_borrowed_from_product_id": ""
+        },
+        "invalid_fragments": [],
+        "suppressed_reason": "accessory"
+      },
+      "variants": {
+        "status": "ready",
+        "issues": [],
+        "visible_variant_rows": 1,
+        "examples": {
+          "identity_option_visible": [],
+          "wrong_axis_for_category": [],
+          "makeup_shade_missing_visual": [],
+          "size_value_generic_axis": [],
+          "default_option_size_evidence_missing_axis": [],
+          "identity_default_title_axis": []
+        }
+      },
+      "coverage": {
+        "details_sections_count": 0,
+        "faq_count": 0,
+        "how_to_chars": 177,
+        "inci_chars": 0,
+        "active_ingredients_chars": 0,
+        "inci_applicability_status": "",
+        "ingredient_review_status": "",
+        "ingredient_remediation_action": "",
+        "bundle_component_refs_count": 0,
+        "effective_inci_chars": 0,
+        "inci_borrowed_from_product_id": ""
+      }
+    },
+    {
+      "seed_id": "eps_d073a7d2c2d621970505f855",
+      "external_product_id": "ext_1d9f58d9eb614ad78f87503e",
+      "market": "US",
+      "domain": "supergoop.com",
+      "title": "PLAY Lip Shield SPF 30 Coconut",
+      "canonical_url": "https://supergoop.com/products/play-lip-shield-spf-30-coconut-1",
+      "product_family": "single_formula",
+      "product_line_id": "pl_517536f6a5cbb52d777c3630",
+      "identity_variant_axes": {
+        "multi_variant": true
+      },
+      "pivota_insights": {
+        "direct": {
+          "product_id": "ext_1d9f58d9eb614ad78f87503e",
+          "kb_key": "product:ext_1d9f58d9eb614ad78f87503e",
+          "status": "not_displayable",
+          "kb_exists": true,
+          "displayable": false,
+          "high_quality_ready": false,
+          "human_reviewed": true,
+          "issues": [
+            "reviewed_not_displayable",
+            "missing_card_highlight",
+            "empty_watchouts",
+            "quality_eligible"
+          ],
+          "blocking_issues": [
+            "reviewed_not_displayable",
+            "missing_card_highlight"
+          ],
+          "quality_state": "eligible",
+          "evidence_profile": "seller_plus_formula",
+          "has_card_highlight": false
+        },
+        "effective": {
+          "product_id": "ext_1d9f58d9eb614ad78f87503e",
+          "kb_key": "product:ext_1d9f58d9eb614ad78f87503e",
+          "status": "not_displayable",
+          "kb_exists": true,
+          "displayable": false,
+          "high_quality_ready": false,
+          "human_reviewed": true,
+          "issues": [
+            "reviewed_not_displayable",
+            "missing_card_highlight",
+            "empty_watchouts",
+            "quality_eligible"
+          ],
+          "blocking_issues": [
+            "reviewed_not_displayable",
+            "missing_card_highlight"
+          ],
+          "quality_state": "eligible",
+          "evidence_profile": "seller_plus_formula",
+          "has_card_highlight": false
+        },
+        "product_line_id": "pl_517536f6a5cbb52d777c3630",
+        "borrowed_from_sibling": false
+      },
+      "active_ingredients": {
+        "status": "ready_regulatory",
+        "issues": [],
+        "regulatory_expected": true,
+        "hero_expected": false,
+        "active_items": [
+          "Avobenzone",
+          "Homosalate",
+          "Octisalate",
+          "Octocrylene"
+        ],
+        "source_origin": "pdp_section",
+        "source_quality_status": "regulatory_active",
+        "coverage": {
+          "details_sections_count": 6,
+          "faq_count": 6,
+          "how_to_chars": 2605,
+          "inci_chars": 1610,
+          "active_ingredients_chars": 61,
+          "inci_applicability_status": "",
+          "ingredient_review_status": "",
+          "ingredient_remediation_action": "",
+          "bundle_component_refs_count": 0,
+          "effective_inci_chars": 1610,
+          "inci_borrowed_from_product_id": ""
+        },
+        "invalid_fragments": [],
+        "suppressed_reason": null
+      },
+      "variants": {
+        "status": "ready",
+        "issues": [],
+        "visible_variant_rows": 1,
+        "examples": {
+          "identity_option_visible": [],
+          "wrong_axis_for_category": [],
+          "makeup_shade_missing_visual": [],
+          "size_value_generic_axis": [],
+          "default_option_size_evidence_missing_axis": [],
+          "identity_default_title_axis": []
+        }
+      },
+      "coverage": {
+        "details_sections_count": 6,
+        "faq_count": 6,
+        "how_to_chars": 2605,
+        "inci_chars": 1610,
+        "active_ingredients_chars": 61,
+        "inci_applicability_status": "",
+        "ingredient_review_status": "",
+        "ingredient_remediation_action": "",
+        "bundle_component_refs_count": 0,
+        "effective_inci_chars": 1610,
+        "inci_borrowed_from_product_id": ""
+      }
+    },
+    {
+      "seed_id": "eps_c92ff6ff37773d882f388ca6",
+      "external_product_id": "ext_239df33ad598fb4f4e6d27b7",
+      "market": "US",
+      "domain": "supergoop.com",
+      "title": "Dewscreen Hydrating Primer SPF 50",
+      "canonical_url": "https://supergoop.com/products/dewscreen-hydrating-primer-spf-50",
+      "product_family": "single_formula",
+      "product_line_id": "pl_dc034a499101095de7ad121d",
+      "identity_variant_axes": {
+        "size": "1 7 fl oz",
+        "volume": "7floz",
+        "multi_variant": false
+      },
+      "pivota_insights": {
+        "direct": {
+          "product_id": "ext_239df33ad598fb4f4e6d27b7",
+          "kb_key": "product:ext_239df33ad598fb4f4e6d27b7",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [
+            "quality_eligible"
+          ],
+          "blocking_issues": [],
+          "quality_state": "eligible",
+          "evidence_profile": "seller_plus_formula",
+          "has_card_highlight": true
+        },
+        "effective": {
+          "product_id": "ext_239df33ad598fb4f4e6d27b7",
+          "kb_key": "product:ext_239df33ad598fb4f4e6d27b7",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [
+            "quality_eligible"
+          ],
+          "blocking_issues": [],
+          "quality_state": "eligible",
+          "evidence_profile": "seller_plus_formula",
+          "has_card_highlight": true
+        },
+        "product_line_id": "pl_dc034a499101095de7ad121d",
+        "borrowed_from_sibling": false
+      },
+      "active_ingredients": {
+        "status": "ready_regulatory",
+        "issues": [],
+        "regulatory_expected": true,
+        "hero_expected": false,
+        "active_items": [
+          "Avobenzone",
+          "Homosalate",
+          "Octisalate",
+          "Octocrylene"
+        ],
+        "source_origin": "pdp_section",
+        "source_quality_status": "regulatory_active",
+        "coverage": {
+          "details_sections_count": 2,
+          "faq_count": 0,
+          "how_to_chars": 209,
+          "inci_chars": 1195,
+          "active_ingredients_chars": 70,
+          "inci_applicability_status": "",
+          "ingredient_review_status": "",
+          "ingredient_remediation_action": "",
+          "bundle_component_refs_count": 0,
+          "effective_inci_chars": 1195,
+          "inci_borrowed_from_product_id": ""
+        },
+        "invalid_fragments": [],
+        "suppressed_reason": null
+      },
+      "variants": {
+        "status": "ready",
+        "issues": [],
+        "visible_variant_rows": 1,
+        "examples": {
+          "identity_option_visible": [],
+          "wrong_axis_for_category": [],
+          "makeup_shade_missing_visual": [],
+          "size_value_generic_axis": [],
+          "default_option_size_evidence_missing_axis": [],
+          "identity_default_title_axis": []
+        }
+      },
+      "coverage": {
+        "details_sections_count": 2,
+        "faq_count": 0,
+        "how_to_chars": 209,
+        "inci_chars": 1195,
+        "active_ingredients_chars": 70,
+        "inci_applicability_status": "",
+        "ingredient_review_status": "",
+        "ingredient_remediation_action": "",
+        "bundle_component_refs_count": 0,
+        "effective_inci_chars": 1195,
+        "inci_borrowed_from_product_id": ""
+      }
+    },
+    {
+      "seed_id": "eps_3d9a2c614fa96802874850d3",
+      "external_product_id": "ext_2541610fd3f95d198c98bd01",
+      "market": "US",
+      "domain": "supergoop.com",
+      "title": "Unseen Sunscreen Stick SPF 40",
+      "canonical_url": "https://supergoop.com/products/unseen-clear-sunscreen-stick",
+      "product_family": "single_formula",
+      "product_line_id": "pl_2921d36475e31f4786ed3203",
+      "identity_variant_axes": {
+        "size": "0 70 oz",
+        "volume": "70oz",
+        "multi_variant": false
+      },
+      "pivota_insights": {
+        "direct": {
+          "product_id": "ext_2541610fd3f95d198c98bd01",
+          "kb_key": "product:ext_2541610fd3f95d198c98bd01",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": false,
+          "human_reviewed": true,
+          "issues": [
+            "missing_card_highlight",
+            "empty_watchouts",
+            "quality_eligible"
+          ],
+          "blocking_issues": [
+            "missing_card_highlight"
+          ],
+          "quality_state": "eligible",
+          "evidence_profile": "community_supported",
+          "has_card_highlight": false
+        },
+        "effective": {
+          "product_id": "ext_2541610fd3f95d198c98bd01",
+          "kb_key": "product:ext_2541610fd3f95d198c98bd01",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": false,
+          "human_reviewed": true,
+          "issues": [
+            "missing_card_highlight",
+            "empty_watchouts",
+            "quality_eligible"
+          ],
+          "blocking_issues": [
+            "missing_card_highlight"
+          ],
+          "quality_state": "eligible",
+          "evidence_profile": "community_supported",
+          "has_card_highlight": false
+        },
+        "product_line_id": "pl_2921d36475e31f4786ed3203",
+        "borrowed_from_sibling": false
+      },
+      "active_ingredients": {
+        "status": "ready_regulatory",
+        "issues": [],
+        "regulatory_expected": true,
+        "hero_expected": false,
+        "active_items": [
+          "Avobenzone",
+          "Homosalate",
+          "Octisalate",
+          "Octocrylene"
+        ],
+        "source_origin": "pdp_section",
+        "source_quality_status": "regulatory_active",
+        "coverage": {
+          "details_sections_count": 2,
+          "faq_count": 0,
+          "how_to_chars": 572,
+          "inci_chars": 1048,
+          "active_ingredients_chars": 59,
+          "inci_applicability_status": "",
+          "ingredient_review_status": "",
+          "ingredient_remediation_action": "",
+          "bundle_component_refs_count": 0,
+          "effective_inci_chars": 1048,
+          "inci_borrowed_from_product_id": ""
+        },
+        "invalid_fragments": [],
+        "suppressed_reason": null
+      },
+      "variants": {
+        "status": "ready",
+        "issues": [],
+        "visible_variant_rows": 1,
+        "examples": {
+          "identity_option_visible": [],
+          "wrong_axis_for_category": [],
+          "makeup_shade_missing_visual": [],
+          "size_value_generic_axis": [],
+          "default_option_size_evidence_missing_axis": [],
+          "identity_default_title_axis": []
+        }
+      },
+      "coverage": {
+        "details_sections_count": 2,
+        "faq_count": 0,
+        "how_to_chars": 572,
+        "inci_chars": 1048,
+        "active_ingredients_chars": 59,
+        "inci_applicability_status": "",
+        "ingredient_review_status": "",
+        "ingredient_remediation_action": "",
+        "bundle_component_refs_count": 0,
+        "effective_inci_chars": 1048,
+        "inci_borrowed_from_product_id": ""
+      }
+    },
+    {
+      "seed_id": "eps_b80e29fdb7285841bb4bc319",
+      "external_product_id": "ext_2a7f0f4aac89565439078194",
+      "market": "US",
+      "domain": "supergoop.com",
+      "title": "PLAY Antioxidant Body Mist SPF 30 with Vitamin C",
+      "canonical_url": "https://supergoop.com/products/play-antioxidant-body-mist-spf-30-with-vitamin-c",
+      "product_family": "single_formula",
+      "product_line_id": "pl_d9386df37d4f7f2a289af2d9",
+      "identity_variant_axes": {
+        "size": "6 fl oz",
+        "volume": "6floz",
+        "multi_variant": false
+      },
+      "pivota_insights": {
+        "direct": {
+          "product_id": "ext_2a7f0f4aac89565439078194",
+          "kb_key": "product:ext_2a7f0f4aac89565439078194",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": false,
+          "human_reviewed": true,
+          "issues": [
+            "missing_card_highlight",
+            "quality_eligible"
+          ],
+          "blocking_issues": [
+            "missing_card_highlight"
+          ],
+          "quality_state": "eligible",
+          "evidence_profile": "seller_plus_formula",
+          "has_card_highlight": false
+        },
+        "effective": {
+          "product_id": "ext_2a7f0f4aac89565439078194",
+          "kb_key": "product:ext_2a7f0f4aac89565439078194",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": false,
+          "human_reviewed": true,
+          "issues": [
+            "missing_card_highlight",
+            "quality_eligible"
+          ],
+          "blocking_issues": [
+            "missing_card_highlight"
+          ],
+          "quality_state": "eligible",
+          "evidence_profile": "seller_plus_formula",
+          "has_card_highlight": false
+        },
+        "product_line_id": "pl_d9386df37d4f7f2a289af2d9",
+        "borrowed_from_sibling": false
+      },
+      "active_ingredients": {
+        "status": "ready_regulatory",
+        "issues": [],
+        "regulatory_expected": true,
+        "hero_expected": true,
+        "active_items": [
+          "Avobenzone",
+          "Homosalate",
+          "Octisalate",
+          "Octocrylene",
+          "Vitamin C (Ascorbic acid)"
+        ],
+        "source_origin": "pdp_section",
+        "source_quality_status": "regulatory_active",
+        "coverage": {
+          "details_sections_count": 2,
+          "faq_count": 0,
+          "how_to_chars": 566,
+          "inci_chars": 1354,
+          "active_ingredients_chars": 67,
+          "inci_applicability_status": "",
+          "ingredient_review_status": "",
+          "ingredient_remediation_action": "",
+          "bundle_component_refs_count": 0,
+          "effective_inci_chars": 1354,
+          "inci_borrowed_from_product_id": ""
+        },
+        "invalid_fragments": [],
+        "suppressed_reason": null
+      },
+      "variants": {
+        "status": "ready",
+        "issues": [],
+        "visible_variant_rows": 1,
+        "examples": {
+          "identity_option_visible": [],
+          "wrong_axis_for_category": [],
+          "makeup_shade_missing_visual": [],
+          "size_value_generic_axis": [],
+          "default_option_size_evidence_missing_axis": [],
+          "identity_default_title_axis": []
+        }
+      },
+      "coverage": {
+        "details_sections_count": 2,
+        "faq_count": 0,
+        "how_to_chars": 566,
+        "inci_chars": 1354,
+        "active_ingredients_chars": 67,
+        "inci_applicability_status": "",
+        "ingredient_review_status": "",
+        "ingredient_remediation_action": "",
+        "bundle_component_refs_count": 0,
+        "effective_inci_chars": 1354,
+        "inci_borrowed_from_product_id": ""
+      }
+    },
+    {
+      "seed_id": "eps_9076a5823daa1b88de40d1fb",
+      "external_product_id": "ext_356103c0072a64c0d2b112f0",
+      "market": "US",
+      "domain": "supergoop.com",
+      "title": "PLAY Everyday Lotion SPF 30",
+      "canonical_url": "https://supergoop.com/products/everyday-sunscreen-spf30",
+      "product_family": "single_formula",
+      "product_line_id": "pl_86e309474f56d3ad1304816a",
+      "identity_variant_axes": {
+        "size": "2 4 fl oz",
+        "volume": "4floz",
+        "multi_variant": true
+      },
+      "pivota_insights": {
+        "direct": {
+          "product_id": "ext_356103c0072a64c0d2b112f0",
+          "kb_key": "product:ext_356103c0072a64c0d2b112f0",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": false,
+          "human_reviewed": true,
+          "issues": [
+            "missing_card_highlight",
+            "quality_eligible"
+          ],
+          "blocking_issues": [
+            "missing_card_highlight"
+          ],
+          "quality_state": "eligible",
+          "evidence_profile": "community_supported",
+          "has_card_highlight": false
+        },
+        "effective": {
+          "product_id": "ext_356103c0072a64c0d2b112f0",
+          "kb_key": "product:ext_356103c0072a64c0d2b112f0",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": false,
+          "human_reviewed": true,
+          "issues": [
+            "missing_card_highlight",
+            "quality_eligible"
+          ],
+          "blocking_issues": [
+            "missing_card_highlight"
+          ],
+          "quality_state": "eligible",
+          "evidence_profile": "community_supported",
+          "has_card_highlight": false
+        },
+        "product_line_id": "pl_86e309474f56d3ad1304816a",
+        "borrowed_from_sibling": false
+      },
+      "active_ingredients": {
+        "status": "ready_regulatory",
+        "issues": [],
+        "regulatory_expected": true,
+        "hero_expected": false,
+        "active_items": [
+          "Homosalate",
+          "Octisalate",
+          "Avobenzone"
+        ],
+        "source_origin": "pdp_section",
+        "source_quality_status": "regulatory_active",
+        "coverage": {
+          "details_sections_count": 2,
+          "faq_count": 0,
+          "how_to_chars": 565,
+          "inci_chars": 1687,
+          "active_ingredients_chars": 44,
+          "inci_applicability_status": "",
+          "ingredient_review_status": "",
+          "ingredient_remediation_action": "",
+          "bundle_component_refs_count": 0,
+          "effective_inci_chars": 1687,
+          "inci_borrowed_from_product_id": ""
+        },
+        "invalid_fragments": [],
+        "suppressed_reason": null
+      },
+      "variants": {
+        "status": "ready",
+        "issues": [],
+        "visible_variant_rows": 2,
+        "examples": {
+          "identity_option_visible": [],
+          "wrong_axis_for_category": [],
+          "makeup_shade_missing_visual": [],
+          "size_value_generic_axis": [],
+          "default_option_size_evidence_missing_axis": [],
+          "identity_default_title_axis": []
+        }
+      },
+      "coverage": {
+        "details_sections_count": 2,
+        "faq_count": 0,
+        "how_to_chars": 565,
+        "inci_chars": 1687,
+        "active_ingredients_chars": 44,
+        "inci_applicability_status": "",
+        "ingredient_review_status": "",
+        "ingredient_remediation_action": "",
+        "bundle_component_refs_count": 0,
+        "effective_inci_chars": 1687,
+        "inci_borrowed_from_product_id": ""
+      }
+    },
+    {
+      "seed_id": "eps_fd7f93d69017cc6ca2fde4bd",
+      "external_product_id": "ext_39dea73e212c850cc4ba3dfb",
+      "market": "US",
+      "domain": "supergoop.com",
+      "title": "SPF! Glass Water Bottle",
+      "canonical_url": "https://supergoop.com/products/spf-glass-water-bottle",
+      "product_family": "single_formula",
+      "product_line_id": "pl_984eb7bd5397e8b032dc813d",
+      "identity_variant_axes": {
+        "size": "20 oz",
+        "volume": "20oz",
+        "multi_variant": false
+      },
+      "pivota_insights": {
+        "direct": {
+          "product_id": "ext_39dea73e212c850cc4ba3dfb",
+          "kb_key": "product:ext_39dea73e212c850cc4ba3dfb",
+          "status": "not_displayable",
+          "kb_exists": true,
+          "displayable": false,
+          "high_quality_ready": false,
+          "human_reviewed": true,
+          "issues": [
+            "reviewed_not_displayable",
+            "quality_limited",
+            "seller_only_evidence"
+          ],
+          "blocking_issues": [
+            "reviewed_not_displayable"
+          ],
+          "quality_state": "limited",
+          "evidence_profile": "seller_only",
+          "has_card_highlight": true
+        },
+        "effective": {
+          "product_id": "ext_39dea73e212c850cc4ba3dfb",
+          "kb_key": "product:ext_39dea73e212c850cc4ba3dfb",
+          "status": "not_displayable",
+          "kb_exists": true,
+          "displayable": false,
+          "high_quality_ready": false,
+          "human_reviewed": true,
+          "issues": [
+            "reviewed_not_displayable",
+            "quality_limited",
+            "seller_only_evidence"
+          ],
+          "blocking_issues": [
+            "reviewed_not_displayable"
+          ],
+          "quality_state": "limited",
+          "evidence_profile": "seller_only",
+          "has_card_highlight": true
+        },
+        "product_line_id": "pl_984eb7bd5397e8b032dc813d",
+        "borrowed_from_sibling": false
+      },
+      "active_ingredients": {
+        "status": "missing_regulatory",
+        "issues": [
+          "missing_regulatory"
+        ],
+        "regulatory_expected": true,
+        "hero_expected": false,
+        "active_items": [],
+        "source_origin": "none",
+        "source_quality_status": "blocked",
+        "coverage": {
+          "details_sections_count": 0,
+          "faq_count": 0,
+          "how_to_chars": 177,
+          "inci_chars": 0,
+          "active_ingredients_chars": 0,
+          "inci_applicability_status": "",
+          "ingredient_review_status": "",
+          "ingredient_remediation_action": "",
+          "bundle_component_refs_count": 0,
+          "effective_inci_chars": 0,
+          "inci_borrowed_from_product_id": ""
+        },
+        "invalid_fragments": [],
+        "suppressed_reason": "active_items_not_displayable"
+      },
+      "variants": {
+        "status": "ready",
+        "issues": [],
+        "visible_variant_rows": 1,
+        "examples": {
+          "identity_option_visible": [],
+          "wrong_axis_for_category": [],
+          "makeup_shade_missing_visual": [],
+          "size_value_generic_axis": [],
+          "default_option_size_evidence_missing_axis": [],
+          "identity_default_title_axis": []
+        }
+      },
+      "coverage": {
+        "details_sections_count": 0,
+        "faq_count": 0,
+        "how_to_chars": 177,
+        "inci_chars": 0,
+        "active_ingredients_chars": 0,
+        "inci_applicability_status": "",
+        "ingredient_review_status": "",
+        "ingredient_remediation_action": "",
+        "bundle_component_refs_count": 0,
+        "effective_inci_chars": 0,
+        "inci_borrowed_from_product_id": ""
+      }
+    },
+    {
+      "seed_id": "eps_0f24397e437898372495ff66",
+      "external_product_id": "ext_4f05182f81e66c1a648219ec",
+      "market": "US",
+      "domain": "supergoop.com",
+      "title": "Protec(tint) Daily Skin Tint SPF 50",
+      "canonical_url": "https://supergoop.com/products/protectint-skin-tint-spf-50",
+      "product_family": "single_formula",
+      "product_line_id": "pl_f53545ffbf43526cd25ada9b",
+      "identity_variant_axes": {
+        "size": "1 18 fl oz",
+        "color": "10n",
+        "volume": "18floz",
+        "multi_variant": true
+      },
+      "pivota_insights": {
+        "direct": {
+          "product_id": "ext_4f05182f81e66c1a648219ec",
+          "kb_key": "product:ext_4f05182f81e66c1a648219ec",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": false,
+          "human_reviewed": true,
+          "issues": [
+            "missing_card_highlight",
+            "quality_eligible"
+          ],
+          "blocking_issues": [
+            "missing_card_highlight"
+          ],
+          "quality_state": "eligible",
+          "evidence_profile": "seller_plus_formula",
+          "has_card_highlight": false
+        },
+        "effective": {
+          "product_id": "ext_4f05182f81e66c1a648219ec",
+          "kb_key": "product:ext_4f05182f81e66c1a648219ec",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": false,
+          "human_reviewed": true,
+          "issues": [
+            "missing_card_highlight",
+            "quality_eligible"
+          ],
+          "blocking_issues": [
+            "missing_card_highlight"
+          ],
+          "quality_state": "eligible",
+          "evidence_profile": "seller_plus_formula",
+          "has_card_highlight": false
+        },
+        "product_line_id": "pl_f53545ffbf43526cd25ada9b",
+        "borrowed_from_sibling": false
+      },
+      "active_ingredients": {
+        "status": "ready_regulatory",
+        "issues": [],
+        "regulatory_expected": true,
+        "hero_expected": false,
+        "active_items": [
+          "Homosalate",
+          "Octisalate",
+          "Zinc Oxide"
+        ],
+        "source_origin": "pdp_section",
+        "source_quality_status": "regulatory_active",
+        "coverage": {
+          "details_sections_count": 2,
+          "faq_count": 0,
+          "how_to_chars": 557,
+          "inci_chars": 1147,
+          "active_ingredients_chars": 47,
+          "inci_applicability_status": "",
+          "ingredient_review_status": "",
+          "ingredient_remediation_action": "",
+          "bundle_component_refs_count": 0,
+          "effective_inci_chars": 1147,
+          "inci_borrowed_from_product_id": ""
+        },
+        "invalid_fragments": [],
+        "suppressed_reason": null
+      },
+      "variants": {
+        "status": "ready",
+        "issues": [],
+        "visible_variant_rows": 28,
+        "examples": {
+          "identity_option_visible": [],
+          "wrong_axis_for_category": [],
+          "makeup_shade_missing_visual": [],
+          "size_value_generic_axis": [],
+          "default_option_size_evidence_missing_axis": [],
+          "identity_default_title_axis": []
+        }
+      },
+      "coverage": {
+        "details_sections_count": 2,
+        "faq_count": 0,
+        "how_to_chars": 557,
+        "inci_chars": 1147,
+        "active_ingredients_chars": 47,
+        "inci_applicability_status": "",
+        "ingredient_review_status": "",
+        "ingredient_remediation_action": "",
+        "bundle_component_refs_count": 0,
+        "effective_inci_chars": 1147,
+        "inci_borrowed_from_product_id": ""
+      }
+    },
+    {
+      "seed_id": "eps_1a7b7ea06fbe51ed18efa7f8",
+      "external_product_id": "ext_52bf3996675b121b766c4303",
+      "market": "US",
+      "domain": "supergoop.com",
+      "title": "PLAY Antioxidant Body Mist SPF 50 with Vitamin C",
+      "canonical_url": "https://supergoop.com/products/antioxidant-infused-sunscreen-mist-with-vitamin-c",
+      "product_family": "single_formula",
+      "product_line_id": "pl_dbcf676f32d16cf27cd08ae2",
+      "identity_variant_axes": {
+        "size": "sunny citrus 6 fl oz",
+        "volume": "6floz",
+        "multi_variant": true
+      },
+      "pivota_insights": {
+        "direct": {
+          "product_id": "ext_52bf3996675b121b766c4303",
+          "kb_key": "product:ext_52bf3996675b121b766c4303",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": false,
+          "human_reviewed": true,
+          "issues": [
+            "missing_card_highlight",
+            "quality_eligible"
+          ],
+          "blocking_issues": [
+            "missing_card_highlight"
+          ],
+          "quality_state": "eligible",
+          "evidence_profile": "seller_plus_formula",
+          "has_card_highlight": false
+        },
+        "effective": {
+          "product_id": "ext_52bf3996675b121b766c4303",
+          "kb_key": "product:ext_52bf3996675b121b766c4303",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": false,
+          "human_reviewed": true,
+          "issues": [
+            "missing_card_highlight",
+            "quality_eligible"
+          ],
+          "blocking_issues": [
+            "missing_card_highlight"
+          ],
+          "quality_state": "eligible",
+          "evidence_profile": "seller_plus_formula",
+          "has_card_highlight": false
+        },
+        "product_line_id": "pl_dbcf676f32d16cf27cd08ae2",
+        "borrowed_from_sibling": false
+      },
+      "active_ingredients": {
+        "status": "ready_regulatory",
+        "issues": [],
+        "regulatory_expected": true,
+        "hero_expected": true,
+        "active_items": [
+          "Avobenzone",
+          "Homosalate",
+          "Octisalate",
+          "Octocrylene",
+          "Vitamin C (Ascorbic acid)"
+        ],
+        "source_origin": "pdp_section",
+        "source_quality_status": "regulatory_active",
+        "coverage": {
+          "details_sections_count": 2,
+          "faq_count": 0,
+          "how_to_chars": 566,
+          "inci_chars": 1354,
+          "active_ingredients_chars": 67,
+          "inci_applicability_status": "",
+          "ingredient_review_status": "",
+          "ingredient_remediation_action": "",
+          "bundle_component_refs_count": 0,
+          "effective_inci_chars": 1354,
+          "inci_borrowed_from_product_id": ""
+        },
+        "invalid_fragments": [],
+        "suppressed_reason": null
+      },
+      "variants": {
+        "status": "ready",
+        "issues": [],
+        "visible_variant_rows": 14,
+        "examples": {
+          "identity_option_visible": [],
+          "wrong_axis_for_category": [],
+          "makeup_shade_missing_visual": [],
+          "size_value_generic_axis": [],
+          "default_option_size_evidence_missing_axis": [],
+          "identity_default_title_axis": []
+        }
+      },
+      "coverage": {
+        "details_sections_count": 2,
+        "faq_count": 0,
+        "how_to_chars": 566,
+        "inci_chars": 1354,
+        "active_ingredients_chars": 67,
+        "inci_applicability_status": "",
+        "ingredient_review_status": "",
+        "ingredient_remediation_action": "",
+        "bundle_component_refs_count": 0,
+        "effective_inci_chars": 1354,
+        "inci_borrowed_from_product_id": ""
+      }
+    },
+    {
+      "seed_id": "eps_6b9858bf3516a1af023e0a2e",
+      "external_product_id": "ext_5cb0a930037cfd06122de114",
+      "market": "US",
+      "domain": "supergoop.com",
+      "title": "PLAY Mineral Lotion SPF 30",
+      "canonical_url": "https://supergoop.com/products/play-mineral-lotion-spf-30-with-green-algae",
+      "product_family": "single_formula",
+      "product_line_id": "pl_f8b713961780d8de8722e027",
+      "identity_variant_axes": {
+        "size": "1 fl oz",
+        "volume": "1floz",
+        "multi_variant": true
+      },
+      "pivota_insights": {
+        "direct": {
+          "product_id": "ext_5cb0a930037cfd06122de114",
+          "kb_key": "product:ext_5cb0a930037cfd06122de114",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": false,
+          "human_reviewed": true,
+          "issues": [
+            "missing_card_highlight",
+            "quality_eligible"
+          ],
+          "blocking_issues": [
+            "missing_card_highlight"
+          ],
+          "quality_state": "eligible",
+          "evidence_profile": "mixed",
+          "has_card_highlight": false
+        },
+        "effective": {
+          "product_id": "ext_5cb0a930037cfd06122de114",
+          "kb_key": "product:ext_5cb0a930037cfd06122de114",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": false,
+          "human_reviewed": true,
+          "issues": [
+            "missing_card_highlight",
+            "quality_eligible"
+          ],
+          "blocking_issues": [
+            "missing_card_highlight"
+          ],
+          "quality_state": "eligible",
+          "evidence_profile": "mixed",
+          "has_card_highlight": false
+        },
+        "product_line_id": "pl_f8b713961780d8de8722e027",
+        "borrowed_from_sibling": false
+      },
+      "active_ingredients": {
+        "status": "ready_regulatory",
+        "issues": [],
+        "regulatory_expected": true,
+        "hero_expected": false,
+        "active_items": [
+          "Zinc Oxide"
+        ],
+        "source_origin": "pdp_section",
+        "source_quality_status": "regulatory_active",
+        "coverage": {
+          "details_sections_count": 2,
+          "faq_count": 0,
+          "how_to_chars": 564,
+          "inci_chars": 1164,
+          "active_ingredients_chars": 16,
+          "inci_applicability_status": "",
+          "ingredient_review_status": "",
+          "ingredient_remediation_action": "",
+          "bundle_component_refs_count": 0,
+          "effective_inci_chars": 1164,
+          "inci_borrowed_from_product_id": ""
+        },
+        "invalid_fragments": [],
+        "suppressed_reason": null
+      },
+      "variants": {
+        "status": "ready",
+        "issues": [],
+        "visible_variant_rows": 2,
+        "examples": {
+          "identity_option_visible": [],
+          "wrong_axis_for_category": [],
+          "makeup_shade_missing_visual": [],
+          "size_value_generic_axis": [],
+          "default_option_size_evidence_missing_axis": [],
+          "identity_default_title_axis": []
+        }
+      },
+      "coverage": {
+        "details_sections_count": 2,
+        "faq_count": 0,
+        "how_to_chars": 564,
+        "inci_chars": 1164,
+        "active_ingredients_chars": 16,
+        "inci_applicability_status": "",
+        "ingredient_review_status": "",
+        "ingredient_remediation_action": "",
+        "bundle_component_refs_count": 0,
+        "effective_inci_chars": 1164,
+        "inci_borrowed_from_product_id": ""
+      }
+    },
+    {
+      "seed_id": "eps_44b3c737a6f5481f51f91fac",
+      "external_product_id": "ext_633e8684f7da4e64ef14bbf8",
+      "market": "US",
+      "domain": "supergoop.com",
+      "title": "Mineral Glowscreen Soft-Radiance Drops SPF 40",
+      "canonical_url": "https://supergoop.com/products/glowscreen-glow-drops",
+      "product_family": "single_formula",
+      "product_line_id": "pl_3d1500aeb84d989706e66926",
+      "identity_variant_axes": {
+        "size": "1 7 fl oz",
+        "color": "sunrise",
+        "volume": "7floz",
+        "multi_variant": true
+      },
+      "pivota_insights": {
+        "direct": {
+          "product_id": "ext_633e8684f7da4e64ef14bbf8",
+          "kb_key": "product:ext_633e8684f7da4e64ef14bbf8",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": false,
+          "human_reviewed": true,
+          "issues": [
+            "missing_card_highlight",
+            "quality_eligible"
+          ],
+          "blocking_issues": [
+            "missing_card_highlight"
+          ],
+          "quality_state": "eligible",
+          "evidence_profile": "seller_plus_formula",
+          "has_card_highlight": false
+        },
+        "effective": {
+          "product_id": "ext_633e8684f7da4e64ef14bbf8",
+          "kb_key": "product:ext_633e8684f7da4e64ef14bbf8",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": false,
+          "human_reviewed": true,
+          "issues": [
+            "missing_card_highlight",
+            "quality_eligible"
+          ],
+          "blocking_issues": [
+            "missing_card_highlight"
+          ],
+          "quality_state": "eligible",
+          "evidence_profile": "seller_plus_formula",
+          "has_card_highlight": false
+        },
+        "product_line_id": "pl_3d1500aeb84d989706e66926",
+        "borrowed_from_sibling": false
+      },
+      "active_ingredients": {
+        "status": "ready_regulatory",
+        "issues": [],
+        "regulatory_expected": true,
+        "hero_expected": false,
+        "active_items": [
+          "Zinc Oxide"
+        ],
+        "source_origin": "pdp_section",
+        "source_quality_status": "regulatory_active",
+        "coverage": {
+          "details_sections_count": 2,
+          "faq_count": 0,
+          "how_to_chars": 561,
+          "inci_chars": 1974,
+          "active_ingredients_chars": 79,
+          "inci_applicability_status": "",
+          "ingredient_review_status": "",
+          "ingredient_remediation_action": "",
+          "bundle_component_refs_count": 0,
+          "effective_inci_chars": 1974,
+          "inci_borrowed_from_product_id": ""
+        },
+        "invalid_fragments": [],
+        "suppressed_reason": null
+      },
+      "variants": {
+        "status": "flagged",
+        "issues": [
+          "wrong_axis_for_category"
+        ],
+        "visible_variant_rows": 6,
+        "examples": {
+          "identity_option_visible": [],
+          "wrong_axis_for_category": [
+            {
+              "axis_name": "shade",
+              "axis_kind": "shade",
+              "value": "sunrise",
+              "visual": true
+            },
+            {
+              "axis_name": "shade",
+              "axis_kind": "shade",
+              "value": "golden hour",
+              "visual": true
+            },
+            {
+              "axis_name": "shade",
+              "axis_kind": "shade",
+              "value": "sunset",
+              "visual": true
+            }
+          ],
+          "makeup_shade_missing_visual": [],
+          "size_value_generic_axis": [],
+          "default_option_size_evidence_missing_axis": [],
+          "identity_default_title_axis": []
+        }
+      },
+      "coverage": {
+        "details_sections_count": 2,
+        "faq_count": 0,
+        "how_to_chars": 561,
+        "inci_chars": 1974,
+        "active_ingredients_chars": 79,
+        "inci_applicability_status": "",
+        "ingredient_review_status": "",
+        "ingredient_remediation_action": "",
+        "bundle_component_refs_count": 0,
+        "effective_inci_chars": 1974,
+        "inci_borrowed_from_product_id": ""
+      }
+    },
+    {
+      "seed_id": "eps_39db41992d3be2107c3f4164",
+      "external_product_id": "ext_732ee259400f476472656719",
+      "market": "US",
+      "domain": "supergoop.com",
+      "title": "PLAY Lip Shield SPF 30 Strawberry",
+      "canonical_url": "https://supergoop.com/products/play-lip-shield-spf-30",
+      "product_family": "single_formula",
+      "product_line_id": "pl_cb44cf3ca4df50249c32beb5",
+      "identity_variant_axes": {
+        "multi_variant": true
+      },
+      "pivota_insights": {
+        "direct": {
+          "product_id": "ext_732ee259400f476472656719",
+          "kb_key": "product:ext_732ee259400f476472656719",
+          "status": "not_displayable",
+          "kb_exists": true,
+          "displayable": false,
+          "high_quality_ready": false,
+          "human_reviewed": true,
+          "issues": [
+            "reviewed_not_displayable",
+            "missing_card_highlight",
+            "empty_watchouts",
+            "quality_eligible"
+          ],
+          "blocking_issues": [
+            "reviewed_not_displayable",
+            "missing_card_highlight"
+          ],
+          "quality_state": "eligible",
+          "evidence_profile": "seller_plus_formula",
+          "has_card_highlight": false
+        },
+        "effective": {
+          "product_id": "ext_732ee259400f476472656719",
+          "kb_key": "product:ext_732ee259400f476472656719",
+          "status": "not_displayable",
+          "kb_exists": true,
+          "displayable": false,
+          "high_quality_ready": false,
+          "human_reviewed": true,
+          "issues": [
+            "reviewed_not_displayable",
+            "missing_card_highlight",
+            "empty_watchouts",
+            "quality_eligible"
+          ],
+          "blocking_issues": [
+            "reviewed_not_displayable",
+            "missing_card_highlight"
+          ],
+          "quality_state": "eligible",
+          "evidence_profile": "seller_plus_formula",
+          "has_card_highlight": false
+        },
+        "product_line_id": "pl_cb44cf3ca4df50249c32beb5",
+        "borrowed_from_sibling": false
+      },
+      "active_ingredients": {
+        "status": "ready_regulatory",
+        "issues": [],
+        "regulatory_expected": true,
+        "hero_expected": false,
+        "active_items": [
+          "Avobenzone",
+          "Homosalate",
+          "Octisalate",
+          "Octocrylene"
+        ],
+        "source_origin": "pdp_section",
+        "source_quality_status": "regulatory_active",
+        "coverage": {
+          "details_sections_count": 6,
+          "faq_count": 6,
+          "how_to_chars": 2605,
+          "inci_chars": 1610,
+          "active_ingredients_chars": 61,
+          "inci_applicability_status": "",
+          "ingredient_review_status": "",
+          "ingredient_remediation_action": "",
+          "bundle_component_refs_count": 0,
+          "effective_inci_chars": 1610,
+          "inci_borrowed_from_product_id": ""
+        },
+        "invalid_fragments": [],
+        "suppressed_reason": null
+      },
+      "variants": {
+        "status": "ready",
+        "issues": [],
+        "visible_variant_rows": 1,
+        "examples": {
+          "identity_option_visible": [],
+          "wrong_axis_for_category": [],
+          "makeup_shade_missing_visual": [],
+          "size_value_generic_axis": [],
+          "default_option_size_evidence_missing_axis": [],
+          "identity_default_title_axis": []
+        }
+      },
+      "coverage": {
+        "details_sections_count": 6,
+        "faq_count": 6,
+        "how_to_chars": 2605,
+        "inci_chars": 1610,
+        "active_ingredients_chars": 61,
+        "inci_applicability_status": "",
+        "ingredient_review_status": "",
+        "ingredient_remediation_action": "",
+        "bundle_component_refs_count": 0,
+        "effective_inci_chars": 1610,
+        "inci_borrowed_from_product_id": ""
+      }
+    },
+    {
+      "seed_id": "eps_1005c75e257f8f4e17ddd2c1",
+      "external_product_id": "ext_7845fe8f6275319e5fee60b9",
+      "market": "US",
+      "domain": "supergoop.com",
+      "title": "PLAY Everyday Lotion SPF 50 Pump Refill Pouch",
+      "canonical_url": "https://supergoop.com/products/play-everyday-lotion-spf-50-pump-refill-pouch",
+      "product_family": "single_formula",
+      "product_line_id": "pl_ef7170df1ce10749e8be7872",
+      "identity_variant_axes": {
+        "size": "18 fl oz",
+        "volume": "18floz",
+        "multi_variant": false
+      },
+      "pivota_insights": {
+        "direct": {
+          "product_id": "ext_7845fe8f6275319e5fee60b9",
+          "kb_key": "product:ext_7845fe8f6275319e5fee60b9",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": false,
+          "human_reviewed": true,
+          "issues": [
+            "missing_card_highlight",
+            "quality_eligible"
+          ],
+          "blocking_issues": [
+            "missing_card_highlight"
+          ],
+          "quality_state": "eligible",
+          "evidence_profile": "seller_plus_formula",
+          "has_card_highlight": false
+        },
+        "effective": {
+          "product_id": "ext_7845fe8f6275319e5fee60b9",
+          "kb_key": "product:ext_7845fe8f6275319e5fee60b9",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": false,
+          "human_reviewed": true,
+          "issues": [
+            "missing_card_highlight",
+            "quality_eligible"
+          ],
+          "blocking_issues": [
+            "missing_card_highlight"
+          ],
+          "quality_state": "eligible",
+          "evidence_profile": "seller_plus_formula",
+          "has_card_highlight": false
+        },
+        "product_line_id": "pl_ef7170df1ce10749e8be7872",
+        "borrowed_from_sibling": false
+      },
+      "active_ingredients": {
+        "status": "ready_regulatory",
+        "issues": [],
+        "regulatory_expected": true,
+        "hero_expected": false,
+        "active_items": [
+          "Avobenzone",
+          "Homosalate",
+          "Octisalate",
+          "Octocrylene"
+        ],
+        "source_origin": "pdp_section",
+        "source_quality_status": "regulatory_active",
+        "coverage": {
+          "details_sections_count": 2,
+          "faq_count": 0,
+          "how_to_chars": 564,
+          "inci_chars": 1836,
+          "active_ingredients_chars": 70,
+          "inci_applicability_status": "",
+          "ingredient_review_status": "",
+          "ingredient_remediation_action": "",
+          "bundle_component_refs_count": 0,
+          "effective_inci_chars": 1836,
+          "inci_borrowed_from_product_id": ""
+        },
+        "invalid_fragments": [],
+        "suppressed_reason": null
+      },
+      "variants": {
+        "status": "ready",
+        "issues": [],
+        "visible_variant_rows": 1,
+        "examples": {
+          "identity_option_visible": [],
+          "wrong_axis_for_category": [],
+          "makeup_shade_missing_visual": [],
+          "size_value_generic_axis": [],
+          "default_option_size_evidence_missing_axis": [],
+          "identity_default_title_axis": []
+        }
+      },
+      "coverage": {
+        "details_sections_count": 2,
+        "faq_count": 0,
+        "how_to_chars": 564,
+        "inci_chars": 1836,
+        "active_ingredients_chars": 70,
+        "inci_applicability_status": "",
+        "ingredient_review_status": "",
+        "ingredient_remediation_action": "",
+        "bundle_component_refs_count": 0,
+        "effective_inci_chars": 1836,
+        "inci_borrowed_from_product_id": ""
+      }
+    },
+    {
+      "seed_id": "eps_8e5332a58c339666879ccfc8",
+      "external_product_id": "ext_7ceff2134b5420d499855d9a",
+      "market": "US",
+      "domain": "supergoop.com",
+      "title": "Glow Stick SPF 50",
+      "canonical_url": "https://supergoop.com/products/glow-stick-sunscreen",
+      "product_family": "single_formula",
+      "product_line_id": "pl_5e063947291da342d630c101",
+      "identity_variant_axes": {
+        "size": "0 70 oz",
+        "volume": "70oz",
+        "multi_variant": false
+      },
+      "pivota_insights": {
+        "direct": {
+          "product_id": "ext_7ceff2134b5420d499855d9a",
+          "kb_key": "product:ext_7ceff2134b5420d499855d9a",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": false,
+          "human_reviewed": true,
+          "issues": [
+            "missing_card_highlight",
+            "quality_eligible"
+          ],
+          "blocking_issues": [
+            "missing_card_highlight"
+          ],
+          "quality_state": "eligible",
+          "evidence_profile": "seller_plus_formula",
+          "has_card_highlight": false
+        },
+        "effective": {
+          "product_id": "ext_7ceff2134b5420d499855d9a",
+          "kb_key": "product:ext_7ceff2134b5420d499855d9a",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": false,
+          "human_reviewed": true,
+          "issues": [
+            "missing_card_highlight",
+            "quality_eligible"
+          ],
+          "blocking_issues": [
+            "missing_card_highlight"
+          ],
+          "quality_state": "eligible",
+          "evidence_profile": "seller_plus_formula",
+          "has_card_highlight": false
+        },
+        "product_line_id": "pl_5e063947291da342d630c101",
+        "borrowed_from_sibling": false
+      },
+      "active_ingredients": {
+        "status": "ready_regulatory",
+        "issues": [],
+        "regulatory_expected": true,
+        "hero_expected": false,
+        "active_items": [
+          "Avobenzone",
+          "Octisalate",
+          "Octocrylene"
+        ],
+        "source_origin": "pdp_section",
+        "source_quality_status": "regulatory_active",
+        "coverage": {
+          "details_sections_count": 2,
+          "faq_count": 0,
+          "how_to_chars": 546,
+          "inci_chars": 985,
+          "active_ingredients_chars": 51,
+          "inci_applicability_status": "",
+          "ingredient_review_status": "",
+          "ingredient_remediation_action": "",
+          "bundle_component_refs_count": 0,
+          "effective_inci_chars": 985,
+          "inci_borrowed_from_product_id": ""
+        },
+        "invalid_fragments": [],
+        "suppressed_reason": null
+      },
+      "variants": {
+        "status": "ready",
+        "issues": [],
+        "visible_variant_rows": 1,
+        "examples": {
+          "identity_option_visible": [],
+          "wrong_axis_for_category": [],
+          "makeup_shade_missing_visual": [],
+          "size_value_generic_axis": [],
+          "default_option_size_evidence_missing_axis": [],
+          "identity_default_title_axis": []
+        }
+      },
+      "coverage": {
+        "details_sections_count": 2,
+        "faq_count": 0,
+        "how_to_chars": 546,
+        "inci_chars": 985,
+        "active_ingredients_chars": 51,
+        "inci_applicability_status": "",
+        "ingredient_review_status": "",
+        "ingredient_remediation_action": "",
+        "bundle_component_refs_count": 0,
+        "effective_inci_chars": 985,
+        "inci_borrowed_from_product_id": ""
+      }
+    },
+    {
+      "seed_id": "eps_517ccd56a7275f47d7e72864",
+      "external_product_id": "ext_8a616ceb3c7d5307c6872185",
+      "market": "US",
+      "domain": "supergoop.com",
+      "title": "Every. Single. Face. Watery Lotion SPF 50",
+      "canonical_url": "https://supergoop.com/products/every-single-face-watery-lotion-spf-50",
+      "product_family": "single_formula",
+      "product_line_id": "pl_491cfddcca975c20f86e28d4",
+      "identity_variant_axes": {
+        "size": "1 7 fl oz",
+        "volume": "7floz",
+        "multi_variant": false
+      },
+      "pivota_insights": {
+        "direct": {
+          "product_id": "ext_8a616ceb3c7d5307c6872185",
+          "kb_key": "product:ext_8a616ceb3c7d5307c6872185",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": false,
+          "human_reviewed": true,
+          "issues": [
+            "missing_card_highlight",
+            "quality_eligible"
+          ],
+          "blocking_issues": [
+            "missing_card_highlight"
+          ],
+          "quality_state": "eligible",
+          "evidence_profile": "community_supported",
+          "has_card_highlight": false
+        },
+        "effective": {
+          "product_id": "ext_8a616ceb3c7d5307c6872185",
+          "kb_key": "product:ext_8a616ceb3c7d5307c6872185",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": false,
+          "human_reviewed": true,
+          "issues": [
+            "missing_card_highlight",
+            "quality_eligible"
+          ],
+          "blocking_issues": [
+            "missing_card_highlight"
+          ],
+          "quality_state": "eligible",
+          "evidence_profile": "community_supported",
+          "has_card_highlight": false
+        },
+        "product_line_id": "pl_491cfddcca975c20f86e28d4",
+        "borrowed_from_sibling": false
+      },
+      "active_ingredients": {
+        "status": "ready_regulatory",
+        "issues": [],
+        "regulatory_expected": true,
+        "hero_expected": false,
+        "active_items": [
+          "Avobenzone",
+          "Homosalate",
+          "Octisalate",
+          "Octocrylene"
+        ],
+        "source_origin": "pdp_section",
+        "source_quality_status": "regulatory_active",
+        "coverage": {
+          "details_sections_count": 2,
+          "faq_count": 0,
+          "how_to_chars": 564,
+          "inci_chars": 1422,
+          "active_ingredients_chars": 59,
+          "inci_applicability_status": "",
+          "ingredient_review_status": "",
+          "ingredient_remediation_action": "",
+          "bundle_component_refs_count": 0,
+          "effective_inci_chars": 1422,
+          "inci_borrowed_from_product_id": ""
+        },
+        "invalid_fragments": [],
+        "suppressed_reason": null
+      },
+      "variants": {
+        "status": "ready",
+        "issues": [],
+        "visible_variant_rows": 1,
+        "examples": {
+          "identity_option_visible": [],
+          "wrong_axis_for_category": [],
+          "makeup_shade_missing_visual": [],
+          "size_value_generic_axis": [],
+          "default_option_size_evidence_missing_axis": [],
+          "identity_default_title_axis": []
+        }
+      },
+      "coverage": {
+        "details_sections_count": 2,
+        "faq_count": 0,
+        "how_to_chars": 564,
+        "inci_chars": 1422,
+        "active_ingredients_chars": 59,
+        "inci_applicability_status": "",
+        "ingredient_review_status": "",
+        "ingredient_remediation_action": "",
+        "bundle_component_refs_count": 0,
+        "effective_inci_chars": 1422,
+        "inci_borrowed_from_product_id": ""
+      }
+    },
+    {
+      "seed_id": "eps_b314cd250219fee32faa47f8",
+      "external_product_id": "ext_8fe52e9e4eaa9df976acecdc",
+      "market": "US",
+      "domain": "supergoop.com",
+      "title": "PLAY Mineral Sunscreen Stick SPF 50",
+      "canonical_url": "https://supergoop.com/products/mineral-sunscreen-stick",
+      "product_family": "single_formula",
+      "product_line_id": "pl_e7a767ed72eb14659d5c23b3",
+      "identity_variant_axes": {
+        "size": "0 67 oz",
+        "volume": "67oz",
+        "multi_variant": false
+      },
+      "pivota_insights": {
+        "direct": {
+          "product_id": "ext_8fe52e9e4eaa9df976acecdc",
+          "kb_key": "product:ext_8fe52e9e4eaa9df976acecdc",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": false,
+          "human_reviewed": true,
+          "issues": [
+            "missing_card_highlight",
+            "quality_eligible"
+          ],
+          "blocking_issues": [
+            "missing_card_highlight"
+          ],
+          "quality_state": "eligible",
+          "evidence_profile": "seller_plus_formula",
+          "has_card_highlight": false
+        },
+        "effective": {
+          "product_id": "ext_8fe52e9e4eaa9df976acecdc",
+          "kb_key": "product:ext_8fe52e9e4eaa9df976acecdc",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": false,
+          "human_reviewed": true,
+          "issues": [
+            "missing_card_highlight",
+            "quality_eligible"
+          ],
+          "blocking_issues": [
+            "missing_card_highlight"
+          ],
+          "quality_state": "eligible",
+          "evidence_profile": "seller_plus_formula",
+          "has_card_highlight": false
+        },
+        "product_line_id": "pl_e7a767ed72eb14659d5c23b3",
+        "borrowed_from_sibling": false
+      },
+      "active_ingredients": {
+        "status": "ready_regulatory",
+        "issues": [],
+        "regulatory_expected": true,
+        "hero_expected": false,
+        "active_items": [
+          "Zinc Oxide"
+        ],
+        "source_origin": "pdp_section",
+        "source_quality_status": "regulatory_active",
+        "coverage": {
+          "details_sections_count": 2,
+          "faq_count": 0,
+          "how_to_chars": 565,
+          "inci_chars": 972,
+          "active_ingredients_chars": 16,
+          "inci_applicability_status": "",
+          "ingredient_review_status": "",
+          "ingredient_remediation_action": "",
+          "bundle_component_refs_count": 0,
+          "effective_inci_chars": 972,
+          "inci_borrowed_from_product_id": ""
+        },
+        "invalid_fragments": [],
+        "suppressed_reason": null
+      },
+      "variants": {
+        "status": "ready",
+        "issues": [],
+        "visible_variant_rows": 1,
+        "examples": {
+          "identity_option_visible": [],
+          "wrong_axis_for_category": [],
+          "makeup_shade_missing_visual": [],
+          "size_value_generic_axis": [],
+          "default_option_size_evidence_missing_axis": [],
+          "identity_default_title_axis": []
+        }
+      },
+      "coverage": {
+        "details_sections_count": 2,
+        "faq_count": 0,
+        "how_to_chars": 565,
+        "inci_chars": 972,
+        "active_ingredients_chars": 16,
+        "inci_applicability_status": "",
+        "ingredient_review_status": "",
+        "ingredient_remediation_action": "",
+        "bundle_component_refs_count": 0,
+        "effective_inci_chars": 972,
+        "inci_borrowed_from_product_id": ""
+      }
+    },
+    {
+      "seed_id": "eps_7f5445663feb56ad0bb6efd3",
+      "external_product_id": "ext_95cb5b67ba4527b8c34949b2",
+      "market": "US",
+      "domain": "supergoop.com",
+      "title": "Glowscreen SPF 40",
+      "canonical_url": "https://supergoop.com/products/glowscreen-spf-40",
+      "product_family": "single_formula",
+      "product_line_id": "pl_d5151945f916a659acecea1e",
+      "identity_variant_axes": {
+        "size": "1 7 fl oz",
+        "color": "sunrise",
+        "volume": "7floz",
+        "multi_variant": true
+      },
+      "pivota_insights": {
+        "direct": {
+          "product_id": "ext_95cb5b67ba4527b8c34949b2",
+          "kb_key": "product:ext_95cb5b67ba4527b8c34949b2",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": false,
+          "human_reviewed": true,
+          "issues": [
+            "missing_card_highlight",
+            "quality_eligible"
+          ],
+          "blocking_issues": [
+            "missing_card_highlight"
+          ],
+          "quality_state": "eligible",
+          "evidence_profile": "seller_plus_formula",
+          "has_card_highlight": false
+        },
+        "effective": {
+          "product_id": "ext_95cb5b67ba4527b8c34949b2",
+          "kb_key": "product:ext_95cb5b67ba4527b8c34949b2",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": false,
+          "human_reviewed": true,
+          "issues": [
+            "missing_card_highlight",
+            "quality_eligible"
+          ],
+          "blocking_issues": [
+            "missing_card_highlight"
+          ],
+          "quality_state": "eligible",
+          "evidence_profile": "seller_plus_formula",
+          "has_card_highlight": false
+        },
+        "product_line_id": "pl_d5151945f916a659acecea1e",
+        "borrowed_from_sibling": false
+      },
+      "active_ingredients": {
+        "status": "ready_regulatory",
+        "issues": [],
+        "regulatory_expected": true,
+        "hero_expected": false,
+        "active_items": [
+          "Avobenzone",
+          "Octisalate",
+          "Octocrylene",
+          "Homosalate"
+        ],
+        "source_origin": "pdp_section",
+        "source_quality_status": "regulatory_active",
+        "coverage": {
+          "details_sections_count": 2,
+          "faq_count": 0,
+          "how_to_chars": 546,
+          "inci_chars": 4225,
+          "active_ingredients_chars": 341,
+          "inci_applicability_status": "",
+          "ingredient_review_status": "",
+          "ingredient_remediation_action": "",
+          "bundle_component_refs_count": 0,
+          "effective_inci_chars": 4225,
+          "inci_borrowed_from_product_id": ""
+        },
+        "invalid_fragments": [],
+        "suppressed_reason": null
+      },
+      "variants": {
+        "status": "flagged",
+        "issues": [
+          "wrong_axis_for_category"
+        ],
+        "visible_variant_rows": 12,
+        "examples": {
+          "identity_option_visible": [],
+          "wrong_axis_for_category": [
+            {
+              "axis_name": "shade",
+              "axis_kind": "shade",
+              "value": "sunrise",
+              "visual": true
+            },
+            {
+              "axis_name": "shade",
+              "axis_kind": "shade",
+              "value": "sunrise",
+              "visual": true
+            },
+            {
+              "axis_name": "shade",
+              "axis_kind": "shade",
+              "value": "sunrise",
+              "visual": true
+            },
+            {
+              "axis_name": "shade",
+              "axis_kind": "shade",
+              "value": "dawn",
+              "visual": true
+            }
+          ],
+          "makeup_shade_missing_visual": [],
+          "size_value_generic_axis": [],
+          "default_option_size_evidence_missing_axis": [],
+          "identity_default_title_axis": []
+        }
+      },
+      "coverage": {
+        "details_sections_count": 2,
+        "faq_count": 0,
+        "how_to_chars": 546,
+        "inci_chars": 4225,
+        "active_ingredients_chars": 341,
+        "inci_applicability_status": "",
+        "ingredient_review_status": "",
+        "ingredient_remediation_action": "",
+        "bundle_component_refs_count": 0,
+        "effective_inci_chars": 4225,
+        "inci_borrowed_from_product_id": ""
+      }
+    },
+    {
+      "seed_id": "eps_47601319f9d18e187641ae6d",
+      "external_product_id": "ext_9601c7d1a8305f81830b04bf",
+      "market": "US",
+      "domain": "supergoop.com",
+      "title": "Bright-Eyed Mineral Eye Cream SPF 40",
+      "canonical_url": "https://supergoop.com/products/bright-eyed-100-mineral-eye-cream-spf-40",
+      "product_family": "single_formula",
+      "product_line_id": "pl_c15d6352e24e4c7f9a97b3f1",
+      "identity_variant_axes": {
+        "size": "0 5 fl oz",
+        "volume": "5floz",
+        "multi_variant": false
+      },
+      "pivota_insights": {
+        "direct": {
+          "product_id": "ext_9601c7d1a8305f81830b04bf",
+          "kb_key": "product:ext_9601c7d1a8305f81830b04bf",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": false,
+          "human_reviewed": true,
+          "issues": [
+            "missing_card_highlight",
+            "quality_eligible"
+          ],
+          "blocking_issues": [
+            "missing_card_highlight"
+          ],
+          "quality_state": "eligible",
+          "evidence_profile": "seller_plus_formula",
+          "has_card_highlight": false
+        },
+        "effective": {
+          "product_id": "ext_9601c7d1a8305f81830b04bf",
+          "kb_key": "product:ext_9601c7d1a8305f81830b04bf",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": false,
+          "human_reviewed": true,
+          "issues": [
+            "missing_card_highlight",
+            "quality_eligible"
+          ],
+          "blocking_issues": [
+            "missing_card_highlight"
+          ],
+          "quality_state": "eligible",
+          "evidence_profile": "seller_plus_formula",
+          "has_card_highlight": false
+        },
+        "product_line_id": "pl_c15d6352e24e4c7f9a97b3f1",
+        "borrowed_from_sibling": false
+      },
+      "active_ingredients": {
+        "status": "ready_regulatory",
+        "issues": [],
+        "regulatory_expected": true,
+        "hero_expected": true,
+        "active_items": [
+          "Zinc Oxide"
+        ],
+        "source_origin": "pdp_section",
+        "source_quality_status": "regulatory_active",
+        "coverage": {
+          "details_sections_count": 2,
+          "faq_count": 0,
+          "how_to_chars": 546,
+          "inci_chars": 1413,
+          "active_ingredients_chars": 16,
+          "inci_applicability_status": "",
+          "ingredient_review_status": "",
+          "ingredient_remediation_action": "",
+          "bundle_component_refs_count": 0,
+          "effective_inci_chars": 1413,
+          "inci_borrowed_from_product_id": ""
+        },
+        "invalid_fragments": [],
+        "suppressed_reason": null
+      },
+      "variants": {
+        "status": "ready",
+        "issues": [],
+        "visible_variant_rows": 1,
+        "examples": {
+          "identity_option_visible": [],
+          "wrong_axis_for_category": [],
+          "makeup_shade_missing_visual": [],
+          "size_value_generic_axis": [],
+          "default_option_size_evidence_missing_axis": [],
+          "identity_default_title_axis": []
+        }
+      },
+      "coverage": {
+        "details_sections_count": 2,
+        "faq_count": 0,
+        "how_to_chars": 546,
+        "inci_chars": 1413,
+        "active_ingredients_chars": 16,
+        "inci_applicability_status": "",
+        "ingredient_review_status": "",
+        "ingredient_remediation_action": "",
+        "bundle_component_refs_count": 0,
+        "effective_inci_chars": 1413,
+        "inci_borrowed_from_product_id": ""
+      }
+    },
+    {
+      "seed_id": "eps_b55c2e079163bce8d7032259",
+      "external_product_id": "ext_96d07d5a03240cfbfc263517",
+      "market": "US",
+      "domain": "supergoop.com",
+      "title": "Superscreen Hydrating Daily Cream SPF 40",
+      "canonical_url": "https://supergoop.com/products/superscreen-daily-moisturizer",
+      "product_family": "single_formula",
+      "product_line_id": "pl_b46783b466e78bba967bb647",
+      "identity_variant_axes": {
+        "size": "1 7 fl oz",
+        "volume": "7floz",
+        "multi_variant": false
+      },
+      "pivota_insights": {
+        "direct": {
+          "product_id": "ext_96d07d5a03240cfbfc263517",
+          "kb_key": "product:ext_96d07d5a03240cfbfc263517",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": false,
+          "human_reviewed": true,
+          "issues": [
+            "missing_card_highlight",
+            "empty_watchouts",
+            "quality_eligible"
+          ],
+          "blocking_issues": [
+            "missing_card_highlight"
+          ],
+          "quality_state": "eligible",
+          "evidence_profile": "community_supported",
+          "has_card_highlight": false
+        },
+        "effective": {
+          "product_id": "ext_96d07d5a03240cfbfc263517",
+          "kb_key": "product:ext_96d07d5a03240cfbfc263517",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": false,
+          "human_reviewed": true,
+          "issues": [
+            "missing_card_highlight",
+            "empty_watchouts",
+            "quality_eligible"
+          ],
+          "blocking_issues": [
+            "missing_card_highlight"
+          ],
+          "quality_state": "eligible",
+          "evidence_profile": "community_supported",
+          "has_card_highlight": false
+        },
+        "product_line_id": "pl_b46783b466e78bba967bb647",
+        "borrowed_from_sibling": false
+      },
+      "active_ingredients": {
+        "status": "ready_regulatory",
+        "issues": [],
+        "regulatory_expected": true,
+        "hero_expected": false,
+        "active_items": [
+          "Avobenzone",
+          "Homosalate",
+          "Octisalate",
+          "Octocrylene"
+        ],
+        "source_origin": "pdp_section",
+        "source_quality_status": "regulatory_active",
+        "coverage": {
+          "details_sections_count": 2,
+          "faq_count": 0,
+          "how_to_chars": 545,
+          "inci_chars": 1004,
+          "active_ingredients_chars": 61,
+          "inci_applicability_status": "",
+          "ingredient_review_status": "",
+          "ingredient_remediation_action": "",
+          "bundle_component_refs_count": 0,
+          "effective_inci_chars": 1004,
+          "inci_borrowed_from_product_id": ""
+        },
+        "invalid_fragments": [],
+        "suppressed_reason": null
+      },
+      "variants": {
+        "status": "ready",
+        "issues": [],
+        "visible_variant_rows": 1,
+        "examples": {
+          "identity_option_visible": [],
+          "wrong_axis_for_category": [],
+          "makeup_shade_missing_visual": [],
+          "size_value_generic_axis": [],
+          "default_option_size_evidence_missing_axis": [],
+          "identity_default_title_axis": []
+        }
+      },
+      "coverage": {
+        "details_sections_count": 2,
+        "faq_count": 0,
+        "how_to_chars": 545,
+        "inci_chars": 1004,
+        "active_ingredients_chars": 61,
+        "inci_applicability_status": "",
+        "ingredient_review_status": "",
+        "ingredient_remediation_action": "",
+        "bundle_component_refs_count": 0,
+        "effective_inci_chars": 1004,
+        "inci_borrowed_from_product_id": ""
+      }
+    },
+    {
+      "seed_id": "eps_aa70637bfd0e275c3648b89c",
+      "external_product_id": "ext_9b321232cea2cd471051a4c6",
+      "market": "US",
+      "domain": "supergoop.com",
+      "title": "PLAY Everyday Lotion SPF 50",
+      "canonical_url": "https://supergoop.com/products/everyday-sunscreen",
+      "product_family": "single_formula",
+      "product_line_id": "pl_ee7c02e079b1460afdb04ada",
+      "identity_variant_axes": {
+        "size": "5 5 fl oz",
+        "volume": "5floz",
+        "multi_variant": true
+      },
+      "pivota_insights": {
+        "direct": {
+          "product_id": "ext_9b321232cea2cd471051a4c6",
+          "kb_key": "product:ext_9b321232cea2cd471051a4c6",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": false,
+          "human_reviewed": true,
+          "issues": [
+            "missing_card_highlight",
+            "quality_eligible"
+          ],
+          "blocking_issues": [
+            "missing_card_highlight"
+          ],
+          "quality_state": "eligible",
+          "evidence_profile": "community_supported",
+          "has_card_highlight": false
+        },
+        "effective": {
+          "product_id": "ext_9b321232cea2cd471051a4c6",
+          "kb_key": "product:ext_9b321232cea2cd471051a4c6",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": false,
+          "human_reviewed": true,
+          "issues": [
+            "missing_card_highlight",
+            "quality_eligible"
+          ],
+          "blocking_issues": [
+            "missing_card_highlight"
+          ],
+          "quality_state": "eligible",
+          "evidence_profile": "community_supported",
+          "has_card_highlight": false
+        },
+        "product_line_id": "pl_ee7c02e079b1460afdb04ada",
+        "borrowed_from_sibling": false
+      },
+      "active_ingredients": {
+        "status": "ready_regulatory",
+        "issues": [],
+        "regulatory_expected": true,
+        "hero_expected": false,
+        "active_items": [
+          "Avobenzone",
+          "Homosalate",
+          "Octisalate",
+          "Octocrylene"
+        ],
+        "source_origin": "pdp_section",
+        "source_quality_status": "regulatory_active",
+        "coverage": {
+          "details_sections_count": 2,
+          "faq_count": 0,
+          "how_to_chars": 565,
+          "inci_chars": 1703,
+          "active_ingredients_chars": 70,
+          "inci_applicability_status": "",
+          "ingredient_review_status": "",
+          "ingredient_remediation_action": "",
+          "bundle_component_refs_count": 0,
+          "effective_inci_chars": 1703,
+          "inci_borrowed_from_product_id": ""
+        },
+        "invalid_fragments": [],
+        "suppressed_reason": null
+      },
+      "variants": {
+        "status": "ready",
+        "issues": [],
+        "visible_variant_rows": 5,
+        "examples": {
+          "identity_option_visible": [],
+          "wrong_axis_for_category": [],
+          "makeup_shade_missing_visual": [],
+          "size_value_generic_axis": [],
+          "default_option_size_evidence_missing_axis": [],
+          "identity_default_title_axis": []
+        }
+      },
+      "coverage": {
+        "details_sections_count": 2,
+        "faq_count": 0,
+        "how_to_chars": 565,
+        "inci_chars": 1703,
+        "active_ingredients_chars": 70,
+        "inci_applicability_status": "",
+        "ingredient_review_status": "",
+        "ingredient_remediation_action": "",
+        "bundle_component_refs_count": 0,
+        "effective_inci_chars": 1703,
+        "inci_borrowed_from_product_id": ""
+      }
+    },
+    {
+      "seed_id": "eps_8d607d4902c1b814551762f8",
+      "external_product_id": "ext_a4ff74ea3b00b5619463125f",
+      "market": "US",
+      "domain": "supergoop.com",
+      "title": "PLAY Everyday Sunscreen Stick SPF 50",
+      "canonical_url": "https://supergoop.com/products/play-everyday-stick-spf-50",
+      "product_family": "single_formula",
+      "product_line_id": "pl_cb83f38a1106b94294bcaf5a",
+      "identity_variant_axes": {
+        "size": "1 4 oz",
+        "volume": "4oz",
+        "multi_variant": false
+      },
+      "pivota_insights": {
+        "direct": {
+          "product_id": "ext_a4ff74ea3b00b5619463125f",
+          "kb_key": "product:ext_a4ff74ea3b00b5619463125f",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": false,
+          "human_reviewed": true,
+          "issues": [
+            "missing_card_highlight",
+            "quality_eligible"
+          ],
+          "blocking_issues": [
+            "missing_card_highlight"
+          ],
+          "quality_state": "eligible",
+          "evidence_profile": "seller_plus_formula",
+          "has_card_highlight": false
+        },
+        "effective": {
+          "product_id": "ext_a4ff74ea3b00b5619463125f",
+          "kb_key": "product:ext_a4ff74ea3b00b5619463125f",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": false,
+          "human_reviewed": true,
+          "issues": [
+            "missing_card_highlight",
+            "quality_eligible"
+          ],
+          "blocking_issues": [
+            "missing_card_highlight"
+          ],
+          "quality_state": "eligible",
+          "evidence_profile": "seller_plus_formula",
+          "has_card_highlight": false
+        },
+        "product_line_id": "pl_cb83f38a1106b94294bcaf5a",
+        "borrowed_from_sibling": false
+      },
+      "active_ingredients": {
+        "status": "ready_regulatory",
+        "issues": [],
+        "regulatory_expected": true,
+        "hero_expected": false,
+        "active_items": [
+          "Avobenzone",
+          "Homosalate",
+          "Octisalate",
+          "Octocrylene"
+        ],
+        "source_origin": "pdp_section",
+        "source_quality_status": "regulatory_active",
+        "coverage": {
+          "details_sections_count": 2,
+          "faq_count": 0,
+          "how_to_chars": 577,
+          "inci_chars": 1123,
+          "active_ingredients_chars": 59,
+          "inci_applicability_status": "",
+          "ingredient_review_status": "",
+          "ingredient_remediation_action": "",
+          "bundle_component_refs_count": 0,
+          "effective_inci_chars": 1123,
+          "inci_borrowed_from_product_id": ""
+        },
+        "invalid_fragments": [],
+        "suppressed_reason": null
+      },
+      "variants": {
+        "status": "ready",
+        "issues": [],
+        "visible_variant_rows": 1,
+        "examples": {
+          "identity_option_visible": [],
+          "wrong_axis_for_category": [],
+          "makeup_shade_missing_visual": [],
+          "size_value_generic_axis": [],
+          "default_option_size_evidence_missing_axis": [],
+          "identity_default_title_axis": []
+        }
+      },
+      "coverage": {
+        "details_sections_count": 2,
+        "faq_count": 0,
+        "how_to_chars": 577,
+        "inci_chars": 1123,
+        "active_ingredients_chars": 59,
+        "inci_applicability_status": "",
+        "ingredient_review_status": "",
+        "ingredient_remediation_action": "",
+        "bundle_component_refs_count": 0,
+        "effective_inci_chars": 1123,
+        "inci_borrowed_from_product_id": ""
+      }
+    },
+    {
+      "seed_id": "eps_bf20ffc83678082954d5f4b5",
+      "external_product_id": "ext_a64a5392090b679605a58b02",
+      "market": "US",
+      "domain": "supergoop.com",
+      "title": "PLAY Body Mousse SPF 50",
+      "canonical_url": "https://supergoop.com/products/super-power-sunscreen-mousse",
+      "product_family": "single_formula",
+      "product_line_id": "pl_7da80b831cfd7dd64347072d",
+      "identity_variant_axes": {
+        "size": "6 5 oz",
+        "volume": "5oz",
+        "multi_variant": true
+      },
+      "pivota_insights": {
+        "direct": {
+          "product_id": "ext_a64a5392090b679605a58b02",
+          "kb_key": "product:ext_a64a5392090b679605a58b02",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": false,
+          "human_reviewed": true,
+          "issues": [
+            "missing_card_highlight",
+            "generic_copy_signal",
+            "quality_eligible"
+          ],
+          "blocking_issues": [
+            "missing_card_highlight",
+            "generic_copy_signal"
+          ],
+          "quality_state": "eligible",
+          "evidence_profile": "seller_plus_formula",
+          "has_card_highlight": false
+        },
+        "effective": {
+          "product_id": "ext_a64a5392090b679605a58b02",
+          "kb_key": "product:ext_a64a5392090b679605a58b02",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": false,
+          "human_reviewed": true,
+          "issues": [
+            "missing_card_highlight",
+            "generic_copy_signal",
+            "quality_eligible"
+          ],
+          "blocking_issues": [
+            "missing_card_highlight",
+            "generic_copy_signal"
+          ],
+          "quality_state": "eligible",
+          "evidence_profile": "seller_plus_formula",
+          "has_card_highlight": false
+        },
+        "product_line_id": "pl_7da80b831cfd7dd64347072d",
+        "borrowed_from_sibling": false
+      },
+      "active_ingredients": {
+        "status": "ready_regulatory",
+        "issues": [],
+        "regulatory_expected": true,
+        "hero_expected": false,
+        "active_items": [
+          "Homosalate",
+          "Octisalate",
+          "Avobenzone"
+        ],
+        "source_origin": "pdp_section",
+        "source_quality_status": "regulatory_active",
+        "coverage": {
+          "details_sections_count": 2,
+          "faq_count": 0,
+          "how_to_chars": 566,
+          "inci_chars": 1264,
+          "active_ingredients_chars": 50,
+          "inci_applicability_status": "",
+          "ingredient_review_status": "",
+          "ingredient_remediation_action": "",
+          "bundle_component_refs_count": 0,
+          "effective_inci_chars": 1264,
+          "inci_borrowed_from_product_id": ""
+        },
+        "invalid_fragments": [],
+        "suppressed_reason": null
+      },
+      "variants": {
+        "status": "ready",
+        "issues": [],
+        "visible_variant_rows": 2,
+        "examples": {
+          "identity_option_visible": [],
+          "wrong_axis_for_category": [],
+          "makeup_shade_missing_visual": [],
+          "size_value_generic_axis": [],
+          "default_option_size_evidence_missing_axis": [],
+          "identity_default_title_axis": []
+        }
+      },
+      "coverage": {
+        "details_sections_count": 2,
+        "faq_count": 0,
+        "how_to_chars": 566,
+        "inci_chars": 1264,
+        "active_ingredients_chars": 50,
+        "inci_applicability_status": "",
+        "ingredient_review_status": "",
+        "ingredient_remediation_action": "",
+        "bundle_component_refs_count": 0,
+        "effective_inci_chars": 1264,
+        "inci_borrowed_from_product_id": ""
+      }
+    },
+    {
+      "seed_id": "eps_2ed61877f0cad5f87d3a7751",
+      "external_product_id": "ext_ad1bc821d166c51fec10d988",
+      "market": "US",
+      "domain": "supergoop.com",
+      "title": "Unseen Sunscreen Lip Protector SPF 30",
+      "canonical_url": "https://supergoop.com/products/lipscreen-sheer-spf-30",
+      "product_family": "single_formula",
+      "product_line_id": "pl_577d69df2435b1cea9f4e97c",
+      "identity_variant_axes": {
+        "color": "unseen",
+        "shade": "unseen",
+        "multi_variant": false
+      },
+      "pivota_insights": {
+        "direct": {
+          "product_id": "ext_ad1bc821d166c51fec10d988",
+          "kb_key": "product:ext_ad1bc821d166c51fec10d988",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": false,
+          "human_reviewed": true,
+          "issues": [
+            "missing_card_highlight",
+            "quality_eligible"
+          ],
+          "blocking_issues": [
+            "missing_card_highlight"
+          ],
+          "quality_state": "eligible",
+          "evidence_profile": "seller_plus_formula",
+          "has_card_highlight": false
+        },
+        "effective": {
+          "product_id": "ext_ad1bc821d166c51fec10d988",
+          "kb_key": "product:ext_ad1bc821d166c51fec10d988",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": false,
+          "human_reviewed": true,
+          "issues": [
+            "missing_card_highlight",
+            "quality_eligible"
+          ],
+          "blocking_issues": [
+            "missing_card_highlight"
+          ],
+          "quality_state": "eligible",
+          "evidence_profile": "seller_plus_formula",
+          "has_card_highlight": false
+        },
+        "product_line_id": "pl_577d69df2435b1cea9f4e97c",
+        "borrowed_from_sibling": false
+      },
+      "active_ingredients": {
+        "status": "ready_regulatory",
+        "issues": [],
+        "regulatory_expected": true,
+        "hero_expected": false,
+        "active_items": [
+          "Avobenzone",
+          "Homosalate",
+          "Octisalate",
+          "Octocrylene"
+        ],
+        "source_origin": "pdp_section",
+        "source_quality_status": "regulatory_active",
+        "coverage": {
+          "details_sections_count": 2,
+          "faq_count": 0,
+          "how_to_chars": 545,
+          "inci_chars": 854,
+          "active_ingredients_chars": 59,
+          "inci_applicability_status": "",
+          "ingredient_review_status": "",
+          "ingredient_remediation_action": "",
+          "bundle_component_refs_count": 0,
+          "effective_inci_chars": 854,
+          "inci_borrowed_from_product_id": ""
+        },
+        "invalid_fragments": [],
+        "suppressed_reason": null
+      },
+      "variants": {
+        "status": "ready",
+        "issues": [],
+        "visible_variant_rows": 1,
+        "examples": {
+          "identity_option_visible": [],
+          "wrong_axis_for_category": [],
+          "makeup_shade_missing_visual": [],
+          "size_value_generic_axis": [],
+          "default_option_size_evidence_missing_axis": [],
+          "identity_default_title_axis": []
+        }
+      },
+      "coverage": {
+        "details_sections_count": 2,
+        "faq_count": 0,
+        "how_to_chars": 545,
+        "inci_chars": 854,
+        "active_ingredients_chars": 59,
+        "inci_applicability_status": "",
+        "ingredient_review_status": "",
+        "ingredient_remediation_action": "",
+        "bundle_component_refs_count": 0,
+        "effective_inci_chars": 854,
+        "inci_borrowed_from_product_id": ""
+      }
+    },
+    {
+      "seed_id": "eps_14cc5f498c0300a7a77d85eb",
+      "external_product_id": "ext_af94497e3186fceab04a2af0",
+      "market": "US",
+      "domain": "supergoop.com",
+      "title": "City Sunscreen Serum SPF 30",
+      "canonical_url": "https://supergoop.com/products/city-sunscreen-serum",
+      "product_family": "single_formula",
+      "product_line_id": "pl_7b356f56f81e45605b3fb12e",
+      "identity_variant_axes": {
+        "size": "2 0 fl oz",
+        "shade": "2 0 fl oz",
+        "multi_variant": false
+      },
+      "pivota_insights": {
+        "direct": {
+          "product_id": "ext_af94497e3186fceab04a2af0",
+          "kb_key": "product:ext_af94497e3186fceab04a2af0",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": false,
+          "human_reviewed": true,
+          "issues": [
+            "missing_card_highlight",
+            "quality_eligible"
+          ],
+          "blocking_issues": [
+            "missing_card_highlight"
+          ],
+          "quality_state": "eligible",
+          "evidence_profile": "seller_plus_formula",
+          "has_card_highlight": false
+        },
+        "effective": {
+          "product_id": "ext_af94497e3186fceab04a2af0",
+          "kb_key": "product:ext_af94497e3186fceab04a2af0",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": false,
+          "human_reviewed": true,
+          "issues": [
+            "missing_card_highlight",
+            "quality_eligible"
+          ],
+          "blocking_issues": [
+            "missing_card_highlight"
+          ],
+          "quality_state": "eligible",
+          "evidence_profile": "seller_plus_formula",
+          "has_card_highlight": false
+        },
+        "product_line_id": "pl_7b356f56f81e45605b3fb12e",
+        "borrowed_from_sibling": false
+      },
+      "active_ingredients": {
+        "status": "ready_regulatory",
+        "issues": [],
+        "regulatory_expected": true,
+        "hero_expected": false,
+        "active_items": [
+          "Homosalate",
+          "Octisalate",
+          "Avobenzone",
+          "Octocrylene"
+        ],
+        "source_origin": "pdp_section",
+        "source_quality_status": "regulatory_active",
+        "coverage": {
+          "details_sections_count": 2,
+          "faq_count": 0,
+          "how_to_chars": 546,
+          "inci_chars": 1051,
+          "active_ingredients_chars": 83,
+          "inci_applicability_status": "",
+          "ingredient_review_status": "",
+          "ingredient_remediation_action": "",
+          "bundle_component_refs_count": 0,
+          "effective_inci_chars": 1051,
+          "inci_borrowed_from_product_id": ""
+        },
+        "invalid_fragments": [],
+        "suppressed_reason": null
+      },
+      "variants": {
+        "status": "ready",
+        "issues": [],
+        "visible_variant_rows": 1,
+        "examples": {
+          "identity_option_visible": [],
+          "wrong_axis_for_category": [],
+          "makeup_shade_missing_visual": [],
+          "size_value_generic_axis": [],
+          "default_option_size_evidence_missing_axis": [],
+          "identity_default_title_axis": []
+        }
+      },
+      "coverage": {
+        "details_sections_count": 2,
+        "faq_count": 0,
+        "how_to_chars": 546,
+        "inci_chars": 1051,
+        "active_ingredients_chars": 83,
+        "inci_applicability_status": "",
+        "ingredient_review_status": "",
+        "ingredient_remediation_action": "",
+        "bundle_component_refs_count": 0,
+        "effective_inci_chars": 1051,
+        "inci_borrowed_from_product_id": ""
+      }
+    },
+    {
+      "seed_id": "eps_a9e61530e4a10fecd6554c20",
+      "external_product_id": "ext_b01d37eef1360232e22e5605",
+      "market": "US",
+      "domain": "supergoop.com",
+      "title": "Mineral Unseen Sunscreen SPF 40",
+      "canonical_url": "https://supergoop.com/products/mineral-unseen",
+      "product_family": "single_formula",
+      "product_line_id": "pl_044bafd61192a5e6b8c432e8",
+      "identity_variant_axes": {
+        "size": "1 7 fl oz",
+        "volume": "7floz",
+        "multi_variant": false
+      },
+      "pivota_insights": {
+        "direct": {
+          "product_id": "ext_b01d37eef1360232e22e5605",
+          "kb_key": "product:ext_b01d37eef1360232e22e5605",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": false,
+          "human_reviewed": true,
+          "issues": [
+            "missing_card_highlight",
+            "quality_eligible"
+          ],
+          "blocking_issues": [
+            "missing_card_highlight"
+          ],
+          "quality_state": "eligible",
+          "evidence_profile": "seller_plus_formula",
+          "has_card_highlight": false
+        },
+        "effective": {
+          "product_id": "ext_b01d37eef1360232e22e5605",
+          "kb_key": "product:ext_b01d37eef1360232e22e5605",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": false,
+          "human_reviewed": true,
+          "issues": [
+            "missing_card_highlight",
+            "quality_eligible"
+          ],
+          "blocking_issues": [
+            "missing_card_highlight"
+          ],
+          "quality_state": "eligible",
+          "evidence_profile": "seller_plus_formula",
+          "has_card_highlight": false
+        },
+        "product_line_id": "pl_044bafd61192a5e6b8c432e8",
+        "borrowed_from_sibling": false
+      },
+      "active_ingredients": {
+        "status": "ready_regulatory",
+        "issues": [],
+        "regulatory_expected": true,
+        "hero_expected": false,
+        "active_items": [
+          "Zinc Oxide",
+          "Titanium Dioxide"
+        ],
+        "source_origin": "pdp_section",
+        "source_quality_status": "regulatory_active",
+        "coverage": {
+          "details_sections_count": 2,
+          "faq_count": 0,
+          "how_to_chars": 568,
+          "inci_chars": 842,
+          "active_ingredients_chars": 41,
+          "inci_applicability_status": "",
+          "ingredient_review_status": "",
+          "ingredient_remediation_action": "",
+          "bundle_component_refs_count": 0,
+          "effective_inci_chars": 842,
+          "inci_borrowed_from_product_id": ""
+        },
+        "invalid_fragments": [],
+        "suppressed_reason": null
+      },
+      "variants": {
+        "status": "ready",
+        "issues": [],
+        "visible_variant_rows": 1,
+        "examples": {
+          "identity_option_visible": [],
+          "wrong_axis_for_category": [],
+          "makeup_shade_missing_visual": [],
+          "size_value_generic_axis": [],
+          "default_option_size_evidence_missing_axis": [],
+          "identity_default_title_axis": []
+        }
+      },
+      "coverage": {
+        "details_sections_count": 2,
+        "faq_count": 0,
+        "how_to_chars": 568,
+        "inci_chars": 842,
+        "active_ingredients_chars": 41,
+        "inci_applicability_status": "",
+        "ingredient_review_status": "",
+        "ingredient_remediation_action": "",
+        "bundle_component_refs_count": 0,
+        "effective_inci_chars": 842,
+        "inci_borrowed_from_product_id": ""
+      }
+    },
+    {
+      "seed_id": "eps_c77d87be928df362b00e966e",
+      "external_product_id": "ext_b2a5946df2e1bffeb5f640af",
+      "market": "US",
+      "domain": "supergoop.com",
+      "title": "Lipscreen Shine SPF 40",
+      "canonical_url": "https://supergoop.com/products/shine-on-lip-screen",
+      "product_family": "single_formula",
+      "product_line_id": "pl_d2a187265895e45c93994798",
+      "identity_variant_axes": {
+        "size": "0 34 oz",
+        "volume": "34oz",
+        "multi_variant": false
+      },
+      "pivota_insights": {
+        "direct": {
+          "product_id": "ext_b2a5946df2e1bffeb5f640af",
+          "kb_key": "product:ext_b2a5946df2e1bffeb5f640af",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": false,
+          "human_reviewed": true,
+          "issues": [
+            "missing_card_highlight",
+            "quality_eligible"
+          ],
+          "blocking_issues": [
+            "missing_card_highlight"
+          ],
+          "quality_state": "eligible",
+          "evidence_profile": "seller_plus_formula",
+          "has_card_highlight": false
+        },
+        "effective": {
+          "product_id": "ext_b2a5946df2e1bffeb5f640af",
+          "kb_key": "product:ext_b2a5946df2e1bffeb5f640af",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": false,
+          "human_reviewed": true,
+          "issues": [
+            "missing_card_highlight",
+            "quality_eligible"
+          ],
+          "blocking_issues": [
+            "missing_card_highlight"
+          ],
+          "quality_state": "eligible",
+          "evidence_profile": "seller_plus_formula",
+          "has_card_highlight": false
+        },
+        "product_line_id": "pl_d2a187265895e45c93994798",
+        "borrowed_from_sibling": false
+      },
+      "active_ingredients": {
+        "status": "ready_regulatory",
+        "issues": [],
+        "regulatory_expected": true,
+        "hero_expected": false,
+        "active_items": [
+          "Avobenzone",
+          "Homosalate",
+          "Octisalate",
+          "Octocrylene"
+        ],
+        "source_origin": "pdp_section",
+        "source_quality_status": "regulatory_active",
+        "coverage": {
+          "details_sections_count": 2,
+          "faq_count": 0,
+          "how_to_chars": 546,
+          "inci_chars": 1223,
+          "active_ingredients_chars": 60,
+          "inci_applicability_status": "",
+          "ingredient_review_status": "",
+          "ingredient_remediation_action": "",
+          "bundle_component_refs_count": 0,
+          "effective_inci_chars": 1223,
+          "inci_borrowed_from_product_id": ""
+        },
+        "invalid_fragments": [],
+        "suppressed_reason": null
+      },
+      "variants": {
+        "status": "ready",
+        "issues": [],
+        "visible_variant_rows": 1,
+        "examples": {
+          "identity_option_visible": [],
+          "wrong_axis_for_category": [],
+          "makeup_shade_missing_visual": [],
+          "size_value_generic_axis": [],
+          "default_option_size_evidence_missing_axis": [],
+          "identity_default_title_axis": []
+        }
+      },
+      "coverage": {
+        "details_sections_count": 2,
+        "faq_count": 0,
+        "how_to_chars": 546,
+        "inci_chars": 1223,
+        "active_ingredients_chars": 60,
+        "inci_applicability_status": "",
+        "ingredient_review_status": "",
+        "ingredient_remediation_action": "",
+        "bundle_component_refs_count": 0,
+        "effective_inci_chars": 1223,
+        "inci_borrowed_from_product_id": ""
+      }
+    },
+    {
+      "seed_id": "eps_18a55ab4f960af84f3c49c4d",
+      "external_product_id": "ext_b3cbae284413bc58a3b25c50",
+      "market": "US",
+      "domain": "supergoop.com",
+      "title": "PLAY Lip Balm SPF 30",
+      "canonical_url": "https://supergoop.com/products/play-lip-balm-spf-30",
+      "product_family": "single_formula",
+      "product_line_id": null,
+      "pivota_insights": {
+        "direct": {
+          "product_id": "ext_b3cbae284413bc58a3b25c50",
+          "kb_key": "product:ext_b3cbae284413bc58a3b25c50",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": false,
+          "human_reviewed": true,
+          "issues": [
+            "missing_card_highlight",
+            "quality_eligible"
+          ],
+          "blocking_issues": [
+            "missing_card_highlight"
+          ],
+          "quality_state": "eligible",
+          "evidence_profile": "seller_plus_formula",
+          "has_card_highlight": false
+        },
+        "effective": {
+          "product_id": "ext_b3cbae284413bc58a3b25c50",
+          "kb_key": "product:ext_b3cbae284413bc58a3b25c50",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": false,
+          "human_reviewed": true,
+          "issues": [
+            "missing_card_highlight",
+            "quality_eligible"
+          ],
+          "blocking_issues": [
+            "missing_card_highlight"
+          ],
+          "quality_state": "eligible",
+          "evidence_profile": "seller_plus_formula",
+          "has_card_highlight": false
+        },
+        "product_line_id": null,
+        "borrowed_from_sibling": false
+      },
+      "active_ingredients": {
+        "status": "ready_regulatory",
+        "issues": [],
+        "regulatory_expected": true,
+        "hero_expected": false,
+        "active_items": [
+          "Avobenzone",
+          "Homosalate",
+          "Octocrylene",
+          "Octisalate",
+          "Acai Avobenzone (3%)"
+        ],
+        "source_origin": "pdp_section",
+        "source_quality_status": "regulatory_active",
+        "coverage": {
+          "details_sections_count": 2,
+          "faq_count": 0,
+          "how_to_chars": 546,
+          "inci_chars": 1815,
+          "active_ingredients_chars": 149,
+          "inci_applicability_status": "",
+          "ingredient_review_status": "",
+          "ingredient_remediation_action": "",
+          "bundle_component_refs_count": 0,
+          "effective_inci_chars": 1815,
+          "inci_borrowed_from_product_id": ""
+        },
+        "invalid_fragments": [],
+        "suppressed_reason": null
+      },
+      "variants": {
+        "status": "ready",
+        "issues": [],
+        "visible_variant_rows": 2,
+        "examples": {
+          "identity_option_visible": [],
+          "wrong_axis_for_category": [],
+          "makeup_shade_missing_visual": [],
+          "size_value_generic_axis": [],
+          "default_option_size_evidence_missing_axis": [],
+          "identity_default_title_axis": []
+        }
+      },
+      "coverage": {
+        "details_sections_count": 2,
+        "faq_count": 0,
+        "how_to_chars": 546,
+        "inci_chars": 1815,
+        "active_ingredients_chars": 149,
+        "inci_applicability_status": "",
+        "ingredient_review_status": "",
+        "ingredient_remediation_action": "",
+        "bundle_component_refs_count": 0,
+        "effective_inci_chars": 1815,
+        "inci_borrowed_from_product_id": ""
+      }
+    },
+    {
+      "seed_id": "eps_1d0843392705a9aa356984db",
+      "external_product_id": "ext_c7876e169f94f92d0d128c0e",
+      "market": "US",
+      "domain": "supergoop.com",
+      "title": "Glow Gloss SPF 40 Lip Balm",
+      "canonical_url": "https://supergoop.com/products/glow-gloss-lip-balm",
+      "product_family": "single_formula",
+      "product_line_id": "pl_5d1322b26596537d59ead512",
+      "identity_variant_axes": {
+        "color": "vanilla soft serve",
+        "multi_variant": true
+      },
+      "pivota_insights": {
+        "direct": {
+          "product_id": "ext_c7876e169f94f92d0d128c0e",
+          "kb_key": "product:ext_c7876e169f94f92d0d128c0e",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": false,
+          "human_reviewed": true,
+          "issues": [
+            "missing_card_highlight",
+            "quality_eligible"
+          ],
+          "blocking_issues": [
+            "missing_card_highlight"
+          ],
+          "quality_state": "eligible",
+          "evidence_profile": "seller_plus_formula",
+          "has_card_highlight": false
+        },
+        "effective": {
+          "product_id": "ext_c7876e169f94f92d0d128c0e",
+          "kb_key": "product:ext_c7876e169f94f92d0d128c0e",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": false,
+          "human_reviewed": true,
+          "issues": [
+            "missing_card_highlight",
+            "quality_eligible"
+          ],
+          "blocking_issues": [
+            "missing_card_highlight"
+          ],
+          "quality_state": "eligible",
+          "evidence_profile": "seller_plus_formula",
+          "has_card_highlight": false
+        },
+        "product_line_id": "pl_5d1322b26596537d59ead512",
+        "borrowed_from_sibling": false
+      },
+      "active_ingredients": {
+        "status": "ready_regulatory",
+        "issues": [],
+        "regulatory_expected": true,
+        "hero_expected": false,
+        "active_items": [
+          "Avobenzone",
+          "Homosalate",
+          "Octisalate",
+          "Octocrylene",
+          "Glow Gloss Lip Balm SPF 40"
+        ],
+        "source_origin": "pdp_section",
+        "source_quality_status": "regulatory_active",
+        "coverage": {
+          "details_sections_count": 2,
+          "faq_count": 0,
+          "how_to_chars": 561,
+          "inci_chars": 3078,
+          "active_ingredients_chars": 328,
+          "inci_applicability_status": "",
+          "ingredient_review_status": "",
+          "ingredient_remediation_action": "",
+          "bundle_component_refs_count": 0,
+          "effective_inci_chars": 3078,
+          "inci_borrowed_from_product_id": ""
+        },
+        "invalid_fragments": [],
+        "suppressed_reason": null
+      },
+      "variants": {
+        "status": "ready",
+        "issues": [],
+        "visible_variant_rows": 3,
+        "examples": {
+          "identity_option_visible": [],
+          "wrong_axis_for_category": [],
+          "makeup_shade_missing_visual": [],
+          "size_value_generic_axis": [],
+          "default_option_size_evidence_missing_axis": [],
+          "identity_default_title_axis": []
+        }
+      },
+      "coverage": {
+        "details_sections_count": 2,
+        "faq_count": 0,
+        "how_to_chars": 561,
+        "inci_chars": 3078,
+        "active_ingredients_chars": 328,
+        "inci_applicability_status": "",
+        "ingredient_review_status": "",
+        "ingredient_remediation_action": "",
+        "bundle_component_refs_count": 0,
+        "effective_inci_chars": 3078,
+        "inci_borrowed_from_product_id": ""
+      }
+    },
+    {
+      "seed_id": "eps_da1a27561fd62ada2426accb",
+      "external_product_id": "ext_c8b5cc316521cfbd00294ef7",
+      "market": "US",
+      "domain": "supergoop.com",
+      "title": "Glow Oil SPF 50 Body Oil",
+      "canonical_url": "https://supergoop.com/products/sun-defying-sunscreen-oil-with-meadowfoam",
+      "product_family": "single_formula",
+      "product_line_id": "pl_74a9c9c095503e4d933be9fc",
+      "identity_variant_axes": {
+        "size": "unscented 5 fl oz",
+        "volume": "5floz",
+        "multi_variant": true
+      },
+      "pivota_insights": {
+        "direct": {
+          "product_id": "ext_c8b5cc316521cfbd00294ef7",
+          "kb_key": "product:ext_c8b5cc316521cfbd00294ef7",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": false,
+          "human_reviewed": true,
+          "issues": [
+            "missing_card_highlight",
+            "quality_eligible"
+          ],
+          "blocking_issues": [
+            "missing_card_highlight"
+          ],
+          "quality_state": "eligible",
+          "evidence_profile": "seller_plus_formula",
+          "has_card_highlight": false
+        },
+        "effective": {
+          "product_id": "ext_c8b5cc316521cfbd00294ef7",
+          "kb_key": "product:ext_c8b5cc316521cfbd00294ef7",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": false,
+          "human_reviewed": true,
+          "issues": [
+            "missing_card_highlight",
+            "quality_eligible"
+          ],
+          "blocking_issues": [
+            "missing_card_highlight"
+          ],
+          "quality_state": "eligible",
+          "evidence_profile": "seller_plus_formula",
+          "has_card_highlight": false
+        },
+        "product_line_id": "pl_74a9c9c095503e4d933be9fc",
+        "borrowed_from_sibling": false
+      },
+      "active_ingredients": {
+        "status": "ready_regulatory",
+        "issues": [],
+        "regulatory_expected": true,
+        "hero_expected": false,
+        "active_items": [
+          "Avobenzone",
+          "Homosalate",
+          "Octisalate",
+          "Octocrylene"
+        ],
+        "source_origin": "pdp_section",
+        "source_quality_status": "regulatory_active",
+        "coverage": {
+          "details_sections_count": 2,
+          "faq_count": 0,
+          "how_to_chars": 565,
+          "inci_chars": 1340,
+          "active_ingredients_chars": 61,
+          "inci_applicability_status": "",
+          "ingredient_review_status": "",
+          "ingredient_remediation_action": "",
+          "bundle_component_refs_count": 0,
+          "effective_inci_chars": 1340,
+          "inci_borrowed_from_product_id": ""
+        },
+        "invalid_fragments": [],
+        "suppressed_reason": null
+      },
+      "variants": {
+        "status": "ready",
+        "issues": [],
+        "visible_variant_rows": 8,
+        "examples": {
+          "identity_option_visible": [],
+          "wrong_axis_for_category": [],
+          "makeup_shade_missing_visual": [],
+          "size_value_generic_axis": [],
+          "default_option_size_evidence_missing_axis": [],
+          "identity_default_title_axis": []
+        }
+      },
+      "coverage": {
+        "details_sections_count": 2,
+        "faq_count": 0,
+        "how_to_chars": 565,
+        "inci_chars": 1340,
+        "active_ingredients_chars": 61,
+        "inci_applicability_status": "",
+        "ingredient_review_status": "",
+        "ingredient_remediation_action": "",
+        "bundle_component_refs_count": 0,
+        "effective_inci_chars": 1340,
+        "inci_borrowed_from_product_id": ""
+      }
+    },
+    {
+      "seed_id": "eps_145838a9d8eb227bcdeeb8ca",
+      "external_product_id": "ext_cf0ebf0bb700023746462779",
+      "market": "US",
+      "domain": "supergoop.com",
+      "title": "Mineral Mattescreen SPF 40",
+      "canonical_url": "https://supergoop.com/products/smooth-and-poreless-mattescreen",
+      "product_family": "single_formula",
+      "product_line_id": "pl_fb126a6ab8fa49884d5a45b6",
+      "identity_variant_axes": {
+        "size": "1 5 fl oz",
+        "color": "sunrise",
+        "volume": "5floz",
+        "multi_variant": true
+      },
+      "pivota_insights": {
+        "direct": {
+          "product_id": "ext_cf0ebf0bb700023746462779",
+          "kb_key": "product:ext_cf0ebf0bb700023746462779",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": false,
+          "human_reviewed": true,
+          "issues": [
+            "missing_card_highlight",
+            "quality_eligible"
+          ],
+          "blocking_issues": [
+            "missing_card_highlight"
+          ],
+          "quality_state": "eligible",
+          "evidence_profile": "seller_plus_formula",
+          "has_card_highlight": false
+        },
+        "effective": {
+          "product_id": "ext_cf0ebf0bb700023746462779",
+          "kb_key": "product:ext_cf0ebf0bb700023746462779",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": false,
+          "human_reviewed": true,
+          "issues": [
+            "missing_card_highlight",
+            "quality_eligible"
+          ],
+          "blocking_issues": [
+            "missing_card_highlight"
+          ],
+          "quality_state": "eligible",
+          "evidence_profile": "seller_plus_formula",
+          "has_card_highlight": false
+        },
+        "product_line_id": "pl_fb126a6ab8fa49884d5a45b6",
+        "borrowed_from_sibling": false
+      },
+      "active_ingredients": {
+        "status": "ready_regulatory",
+        "issues": [],
+        "regulatory_expected": true,
+        "hero_expected": false,
+        "active_items": [
+          "Titanium Dioxide",
+          "Zinc Oxide"
+        ],
+        "source_origin": "pdp_section",
+        "source_quality_status": "regulatory_active",
+        "coverage": {
+          "details_sections_count": 2,
+          "faq_count": 0,
+          "how_to_chars": 545,
+          "inci_chars": 1046,
+          "active_ingredients_chars": 41,
+          "inci_applicability_status": "",
+          "ingredient_review_status": "",
+          "ingredient_remediation_action": "",
+          "bundle_component_refs_count": 0,
+          "effective_inci_chars": 1046,
+          "inci_borrowed_from_product_id": ""
+        },
+        "invalid_fragments": [],
+        "suppressed_reason": null
+      },
+      "variants": {
+        "status": "flagged",
+        "issues": [
+          "wrong_axis_for_category"
+        ],
+        "visible_variant_rows": 12,
+        "examples": {
+          "identity_option_visible": [],
+          "wrong_axis_for_category": [
+            {
+              "axis_name": "shade",
+              "axis_kind": "shade",
+              "value": "sunrise",
+              "visual": true
+            },
+            {
+              "axis_name": "shade",
+              "axis_kind": "shade",
+              "value": "sunrise",
+              "visual": true
+            },
+            {
+              "axis_name": "shade",
+              "axis_kind": "shade",
+              "value": "sunrise",
+              "visual": true
+            },
+            {
+              "axis_name": "shade",
+              "axis_kind": "shade",
+              "value": "untinted",
+              "visual": true
+            }
+          ],
+          "makeup_shade_missing_visual": [],
+          "size_value_generic_axis": [],
+          "default_option_size_evidence_missing_axis": [],
+          "identity_default_title_axis": []
+        }
+      },
+      "coverage": {
+        "details_sections_count": 2,
+        "faq_count": 0,
+        "how_to_chars": 545,
+        "inci_chars": 1046,
+        "active_ingredients_chars": 41,
+        "inci_applicability_status": "",
+        "ingredient_review_status": "",
+        "ingredient_remediation_action": "",
+        "bundle_component_refs_count": 0,
+        "effective_inci_chars": 1046,
+        "inci_borrowed_from_product_id": ""
+      }
+    },
+    {
+      "seed_id": "eps_17235732d0933365605b4459",
+      "external_product_id": "ext_dec9a0707cb6759231ebe1ec",
+      "market": "US",
+      "domain": "supergoop.com",
+      "title": "Triple Prep Weightless Multitasking Moisturizer SPF 40",
+      "canonical_url": "https://supergoop.com/products/triple-prep-weightless-multitasking-moisturizer-spf-40",
+      "product_family": "single_formula",
+      "product_line_id": "pl_859c0a141b237aeb5c05769d",
+      "identity_variant_axes": {
+        "size": "1 7 fl oz",
+        "volume": "7floz",
+        "multi_variant": false
+      },
+      "pivota_insights": {
+        "direct": {
+          "product_id": "ext_dec9a0707cb6759231ebe1ec",
+          "kb_key": "product:ext_dec9a0707cb6759231ebe1ec",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": false,
+          "human_reviewed": true,
+          "issues": [
+            "missing_card_highlight",
+            "quality_eligible"
+          ],
+          "blocking_issues": [
+            "missing_card_highlight"
+          ],
+          "quality_state": "eligible",
+          "evidence_profile": "seller_plus_formula",
+          "has_card_highlight": false
+        },
+        "effective": {
+          "product_id": "ext_dec9a0707cb6759231ebe1ec",
+          "kb_key": "product:ext_dec9a0707cb6759231ebe1ec",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": false,
+          "human_reviewed": true,
+          "issues": [
+            "missing_card_highlight",
+            "quality_eligible"
+          ],
+          "blocking_issues": [
+            "missing_card_highlight"
+          ],
+          "quality_state": "eligible",
+          "evidence_profile": "seller_plus_formula",
+          "has_card_highlight": false
+        },
+        "product_line_id": "pl_859c0a141b237aeb5c05769d",
+        "borrowed_from_sibling": false
+      },
+      "active_ingredients": {
+        "status": "ready_regulatory",
+        "issues": [],
+        "regulatory_expected": true,
+        "hero_expected": false,
+        "active_items": [
+          "Avobenzone",
+          "Homosalate",
+          "Octisalate",
+          "Octocrylene"
+        ],
+        "source_origin": "pdp_section",
+        "source_quality_status": "regulatory_active",
+        "coverage": {
+          "details_sections_count": 2,
+          "faq_count": 0,
+          "how_to_chars": 546,
+          "inci_chars": 1127,
+          "active_ingredients_chars": 59,
+          "inci_applicability_status": "",
+          "ingredient_review_status": "",
+          "ingredient_remediation_action": "",
+          "bundle_component_refs_count": 0,
+          "effective_inci_chars": 1127,
+          "inci_borrowed_from_product_id": ""
+        },
+        "invalid_fragments": [],
+        "suppressed_reason": null
+      },
+      "variants": {
+        "status": "ready",
+        "issues": [],
+        "visible_variant_rows": 1,
+        "examples": {
+          "identity_option_visible": [],
+          "wrong_axis_for_category": [],
+          "makeup_shade_missing_visual": [],
+          "size_value_generic_axis": [],
+          "default_option_size_evidence_missing_axis": [],
+          "identity_default_title_axis": []
+        }
+      },
+      "coverage": {
+        "details_sections_count": 2,
+        "faq_count": 0,
+        "how_to_chars": 546,
+        "inci_chars": 1127,
+        "active_ingredients_chars": 59,
+        "inci_applicability_status": "",
+        "ingredient_review_status": "",
+        "ingredient_remediation_action": "",
+        "bundle_component_refs_count": 0,
+        "effective_inci_chars": 1127,
+        "inci_borrowed_from_product_id": ""
+      }
+    },
+    {
+      "seed_id": "eps_fa2a6ee3d8619d1b23173c91",
+      "external_product_id": "ext_df3d4d8854c5e416d2c8a5b3",
+      "market": "US",
+      "domain": "supergoop.com",
+      "title": "PLAY Lip Shield SPF 30 Mint",
+      "canonical_url": "https://supergoop.com/products/play-lip-shield-spf-30-mint-1",
+      "product_family": "single_formula",
+      "product_line_id": "pl_374bf71ca995a454f622f06e",
+      "identity_variant_axes": {
+        "multi_variant": true
+      },
+      "pivota_insights": {
+        "direct": {
+          "product_id": "ext_df3d4d8854c5e416d2c8a5b3",
+          "kb_key": "product:ext_df3d4d8854c5e416d2c8a5b3",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "verified",
+          "evidence_profile": "seller_plus_formula",
+          "has_card_highlight": true
+        },
+        "effective": {
+          "product_id": "ext_df3d4d8854c5e416d2c8a5b3",
+          "kb_key": "product:ext_df3d4d8854c5e416d2c8a5b3",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "verified",
+          "evidence_profile": "seller_plus_formula",
+          "has_card_highlight": true
+        },
+        "product_line_id": "pl_374bf71ca995a454f622f06e",
+        "borrowed_from_sibling": false
+      },
+      "active_ingredients": {
+        "status": "missing_regulatory",
+        "issues": [
+          "missing_regulatory"
+        ],
+        "regulatory_expected": true,
+        "hero_expected": false,
+        "active_items": [],
+        "source_origin": "none",
+        "source_quality_status": "blocked",
+        "coverage": {
+          "details_sections_count": 2,
+          "faq_count": 0,
+          "how_to_chars": 177,
+          "inci_chars": 0,
+          "active_ingredients_chars": 0,
+          "inci_applicability_status": "",
+          "ingredient_review_status": "",
+          "ingredient_remediation_action": "",
+          "bundle_component_refs_count": 0,
+          "effective_inci_chars": 0,
+          "inci_borrowed_from_product_id": ""
+        },
+        "invalid_fragments": [],
+        "suppressed_reason": "active_items_not_displayable"
+      },
+      "variants": {
+        "status": "ready",
+        "issues": [],
+        "visible_variant_rows": 1,
+        "examples": {
+          "identity_option_visible": [],
+          "wrong_axis_for_category": [],
+          "makeup_shade_missing_visual": [],
+          "size_value_generic_axis": [],
+          "default_option_size_evidence_missing_axis": [],
+          "identity_default_title_axis": []
+        }
+      },
+      "coverage": {
+        "details_sections_count": 2,
+        "faq_count": 0,
+        "how_to_chars": 177,
+        "inci_chars": 0,
+        "active_ingredients_chars": 0,
+        "inci_applicability_status": "",
+        "ingredient_review_status": "",
+        "ingredient_remediation_action": "",
+        "bundle_component_refs_count": 0,
+        "effective_inci_chars": 0,
+        "inci_borrowed_from_product_id": ""
+      }
+    },
+    {
+      "seed_id": "eps_81264694939367630629f63b",
+      "external_product_id": "ext_e1f5622616eb50523643c2cc",
+      "market": "US",
+      "domain": "supergoop.com",
+      "title": "Supergoop! Mesh Zip Pouch Bag",
+      "canonical_url": "https://supergoop.com/products/mesh-pouch",
+      "product_family": "accessory",
+      "product_line_id": "pl_1a775ebe4f58d3464c21bb97",
+      "identity_variant_axes": {
+        "size": "one size",
+        "multi_variant": false
+      },
+      "pivota_insights": {
+        "direct": {
+          "product_id": "ext_e1f5622616eb50523643c2cc",
+          "kb_key": "product:ext_e1f5622616eb50523643c2cc",
+          "status": "not_displayable",
+          "kb_exists": true,
+          "displayable": false,
+          "high_quality_ready": false,
+          "human_reviewed": true,
+          "issues": [
+            "reviewed_not_displayable",
+            "public_generic_marketing_copy",
+            "quality_limited",
+            "seller_only_evidence"
+          ],
+          "blocking_issues": [
+            "reviewed_not_displayable",
+            "public_generic_marketing_copy"
+          ],
+          "quality_state": "limited",
+          "evidence_profile": "seller_only",
+          "has_card_highlight": true
+        },
+        "effective": {
+          "product_id": "ext_e1f5622616eb50523643c2cc",
+          "kb_key": "product:ext_e1f5622616eb50523643c2cc",
+          "status": "not_displayable",
+          "kb_exists": true,
+          "displayable": false,
+          "high_quality_ready": false,
+          "human_reviewed": true,
+          "issues": [
+            "reviewed_not_displayable",
+            "public_generic_marketing_copy",
+            "quality_limited",
+            "seller_only_evidence"
+          ],
+          "blocking_issues": [
+            "reviewed_not_displayable",
+            "public_generic_marketing_copy"
+          ],
+          "quality_state": "limited",
+          "evidence_profile": "seller_only",
+          "has_card_highlight": true
+        },
+        "product_line_id": "pl_1a775ebe4f58d3464c21bb97",
+        "borrowed_from_sibling": false
+      },
+      "active_ingredients": {
+        "status": "not_applicable_product_family",
+        "issues": [],
+        "regulatory_expected": false,
+        "hero_expected": false,
+        "active_items": [],
+        "source_origin": "none",
+        "source_quality_status": "blocked",
+        "coverage": {
+          "details_sections_count": 0,
+          "faq_count": 0,
+          "how_to_chars": 177,
+          "inci_chars": 0,
+          "active_ingredients_chars": 0,
+          "inci_applicability_status": "",
+          "ingredient_review_status": "",
+          "ingredient_remediation_action": "",
+          "bundle_component_refs_count": 0,
+          "effective_inci_chars": 0,
+          "inci_borrowed_from_product_id": ""
+        },
+        "invalid_fragments": [],
+        "suppressed_reason": "accessory"
+      },
+      "variants": {
+        "status": "ready",
+        "issues": [],
+        "visible_variant_rows": 1,
+        "examples": {
+          "identity_option_visible": [],
+          "wrong_axis_for_category": [],
+          "makeup_shade_missing_visual": [],
+          "size_value_generic_axis": [],
+          "default_option_size_evidence_missing_axis": [],
+          "identity_default_title_axis": []
+        }
+      },
+      "coverage": {
+        "details_sections_count": 0,
+        "faq_count": 0,
+        "how_to_chars": 177,
+        "inci_chars": 0,
+        "active_ingredients_chars": 0,
+        "inci_applicability_status": "",
+        "ingredient_review_status": "",
+        "ingredient_remediation_action": "",
+        "bundle_component_refs_count": 0,
+        "effective_inci_chars": 0,
+        "inci_borrowed_from_product_id": ""
+      }
+    },
+    {
+      "seed_id": "eps_72ef7fc94c76777fddb8c79f",
+      "external_product_id": "ext_ed6fc1cfe16e6788fe4cfddd",
+      "market": "US",
+      "domain": "supergoop.com",
+      "title": "Glowscreen .68oz Golden Hour",
+      "canonical_url": "https://supergoop.com/products/glowscreen-68ox-golden-hour",
+      "product_family": "unknown_product",
+      "product_line_id": "pl_35bd931ea82ab44868764fd6",
+      "identity_variant_axes": {
+        "volume": "68oz",
+        "multi_variant": false
+      },
+      "pivota_insights": {
+        "direct": {
+          "product_id": "ext_ed6fc1cfe16e6788fe4cfddd",
+          "kb_key": "product:ext_ed6fc1cfe16e6788fe4cfddd",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "verified",
+          "evidence_profile": "seller_plus_formula",
+          "has_card_highlight": true
+        },
+        "effective": {
+          "product_id": "ext_ed6fc1cfe16e6788fe4cfddd",
+          "kb_key": "product:ext_ed6fc1cfe16e6788fe4cfddd",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "verified",
+          "evidence_profile": "seller_plus_formula",
+          "has_card_highlight": true
+        },
+        "product_line_id": "pl_35bd931ea82ab44868764fd6",
+        "borrowed_from_sibling": false
+      },
+      "active_ingredients": {
+        "status": "not_expected_missing",
+        "issues": [],
+        "regulatory_expected": false,
+        "hero_expected": false,
+        "active_items": [],
+        "source_origin": "none",
+        "source_quality_status": "blocked",
+        "coverage": {
+          "details_sections_count": 2,
+          "faq_count": 0,
+          "how_to_chars": 177,
+          "inci_chars": 0,
+          "active_ingredients_chars": 0,
+          "inci_applicability_status": "",
+          "ingredient_review_status": "",
+          "ingredient_remediation_action": "",
+          "bundle_component_refs_count": 0,
+          "effective_inci_chars": 0,
+          "inci_borrowed_from_product_id": ""
+        },
+        "invalid_fragments": [],
+        "suppressed_reason": "no_authoritative_source"
+      },
+      "variants": {
+        "status": "ready",
+        "issues": [],
+        "visible_variant_rows": 1,
+        "examples": {
+          "identity_option_visible": [],
+          "wrong_axis_for_category": [],
+          "makeup_shade_missing_visual": [],
+          "size_value_generic_axis": [],
+          "default_option_size_evidence_missing_axis": [],
+          "identity_default_title_axis": []
+        }
+      },
+      "coverage": {
+        "details_sections_count": 2,
+        "faq_count": 0,
+        "how_to_chars": 177,
+        "inci_chars": 0,
+        "active_ingredients_chars": 0,
+        "inci_applicability_status": "",
+        "ingredient_review_status": "",
+        "ingredient_remediation_action": "",
+        "bundle_component_refs_count": 0,
+        "effective_inci_chars": 0,
+        "inci_borrowed_from_product_id": ""
+      }
+    },
+    {
+      "seed_id": "eps_69c3cc8ae39d747e4788e643",
+      "external_product_id": "ext_f1ead7376a769999794c5d57",
+      "market": "US",
+      "domain": "supergoop.com",
+      "title": "(Re)setting Mineral Powder SPF 35",
+      "canonical_url": "https://supergoop.com/products/mineral-setting-powder",
+      "product_family": "single_formula",
+      "product_line_id": "pl_eed161d7a92b4a5ead097aad",
+      "identity_variant_axes": {
+        "color": "translucent",
+        "multi_variant": true
+      },
+      "pivota_insights": {
+        "direct": {
+          "product_id": "ext_f1ead7376a769999794c5d57",
+          "kb_key": "product:ext_f1ead7376a769999794c5d57",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": false,
+          "human_reviewed": true,
+          "issues": [
+            "missing_card_highlight",
+            "quality_eligible"
+          ],
+          "blocking_issues": [
+            "missing_card_highlight"
+          ],
+          "quality_state": "eligible",
+          "evidence_profile": "seller_plus_formula",
+          "has_card_highlight": false
+        },
+        "effective": {
+          "product_id": "ext_f1ead7376a769999794c5d57",
+          "kb_key": "product:ext_f1ead7376a769999794c5d57",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": false,
+          "human_reviewed": true,
+          "issues": [
+            "missing_card_highlight",
+            "quality_eligible"
+          ],
+          "blocking_issues": [
+            "missing_card_highlight"
+          ],
+          "quality_state": "eligible",
+          "evidence_profile": "seller_plus_formula",
+          "has_card_highlight": false
+        },
+        "product_line_id": "pl_eed161d7a92b4a5ead097aad",
+        "borrowed_from_sibling": false
+      },
+      "active_ingredients": {
+        "status": "ready_regulatory",
+        "issues": [],
+        "regulatory_expected": true,
+        "hero_expected": false,
+        "active_items": [
+          "Zinc Oxide"
+        ],
+        "source_origin": "pdp_section",
+        "source_quality_status": "regulatory_active",
+        "coverage": {
+          "details_sections_count": 2,
+          "faq_count": 0,
+          "how_to_chars": 546,
+          "inci_chars": 851,
+          "active_ingredients_chars": 16,
+          "inci_applicability_status": "",
+          "ingredient_review_status": "",
+          "ingredient_remediation_action": "",
+          "bundle_component_refs_count": 0,
+          "effective_inci_chars": 851,
+          "inci_borrowed_from_product_id": ""
+        },
+        "invalid_fragments": [],
+        "suppressed_reason": null
+      },
+      "variants": {
+        "status": "ready",
+        "issues": [],
+        "visible_variant_rows": 4,
+        "examples": {
+          "identity_option_visible": [],
+          "wrong_axis_for_category": [],
+          "makeup_shade_missing_visual": [],
+          "size_value_generic_axis": [],
+          "default_option_size_evidence_missing_axis": [],
+          "identity_default_title_axis": []
+        }
+      },
+      "coverage": {
+        "details_sections_count": 2,
+        "faq_count": 0,
+        "how_to_chars": 546,
+        "inci_chars": 851,
+        "active_ingredients_chars": 16,
+        "inci_applicability_status": "",
+        "ingredient_review_status": "",
+        "ingredient_remediation_action": "",
+        "bundle_component_refs_count": 0,
+        "effective_inci_chars": 851,
+        "inci_borrowed_from_product_id": ""
+      }
+    },
+    {
+      "seed_id": "eps_73a7cf28a182a9d7af1e168a",
+      "external_product_id": "ext_f51b2e9026d47980c5ada3bf",
+      "market": "US",
+      "domain": "supergoop.com",
+      "title": "Butterfly Hair Clip",
+      "canonical_url": "https://supergoop.com/products/butterfly-hair-clip",
+      "product_family": "accessory",
+      "product_line_id": "pl_66012b3ea1bdfdcef7b03107",
+      "identity_variant_axes": {
+        "size": "one size",
+        "multi_variant": false
+      },
+      "pivota_insights": {
+        "direct": {
+          "product_id": "ext_f51b2e9026d47980c5ada3bf",
+          "kb_key": "product:ext_f51b2e9026d47980c5ada3bf",
+          "status": "not_displayable",
+          "kb_exists": true,
+          "displayable": false,
+          "high_quality_ready": false,
+          "human_reviewed": true,
+          "issues": [
+            "reviewed_not_displayable",
+            "public_generic_marketing_copy",
+            "quality_limited",
+            "seller_only_evidence"
+          ],
+          "blocking_issues": [
+            "reviewed_not_displayable",
+            "public_generic_marketing_copy"
+          ],
+          "quality_state": "limited",
+          "evidence_profile": "seller_only",
+          "has_card_highlight": true
+        },
+        "effective": {
+          "product_id": "ext_f51b2e9026d47980c5ada3bf",
+          "kb_key": "product:ext_f51b2e9026d47980c5ada3bf",
+          "status": "not_displayable",
+          "kb_exists": true,
+          "displayable": false,
+          "high_quality_ready": false,
+          "human_reviewed": true,
+          "issues": [
+            "reviewed_not_displayable",
+            "public_generic_marketing_copy",
+            "quality_limited",
+            "seller_only_evidence"
+          ],
+          "blocking_issues": [
+            "reviewed_not_displayable",
+            "public_generic_marketing_copy"
+          ],
+          "quality_state": "limited",
+          "evidence_profile": "seller_only",
+          "has_card_highlight": true
+        },
+        "product_line_id": "pl_66012b3ea1bdfdcef7b03107",
+        "borrowed_from_sibling": false
+      },
+      "active_ingredients": {
+        "status": "not_applicable_product_family",
+        "issues": [],
+        "regulatory_expected": false,
+        "hero_expected": false,
+        "active_items": [],
+        "source_origin": "none",
+        "source_quality_status": "blocked",
+        "coverage": {
+          "details_sections_count": 0,
+          "faq_count": 0,
+          "how_to_chars": 104,
+          "inci_chars": 0,
+          "active_ingredients_chars": 0,
+          "inci_applicability_status": "",
+          "ingredient_review_status": "",
+          "ingredient_remediation_action": "",
+          "bundle_component_refs_count": 0,
+          "effective_inci_chars": 0,
+          "inci_borrowed_from_product_id": ""
+        },
+        "invalid_fragments": [],
+        "suppressed_reason": "accessory"
+      },
+      "variants": {
+        "status": "ready",
+        "issues": [],
+        "visible_variant_rows": 1,
+        "examples": {
+          "identity_option_visible": [],
+          "wrong_axis_for_category": [],
+          "makeup_shade_missing_visual": [],
+          "size_value_generic_axis": [],
+          "default_option_size_evidence_missing_axis": [],
+          "identity_default_title_axis": []
+        }
+      },
+      "coverage": {
+        "details_sections_count": 0,
+        "faq_count": 0,
+        "how_to_chars": 104,
+        "inci_chars": 0,
+        "active_ingredients_chars": 0,
+        "inci_applicability_status": "",
+        "ingredient_review_status": "",
+        "ingredient_remediation_action": "",
+        "bundle_component_refs_count": 0,
+        "effective_inci_chars": 0,
+        "inci_borrowed_from_product_id": ""
+      }
+    },
+    {
+      "seed_id": "eps_10e9b26a43afb9e1c46337f1",
+      "external_product_id": "ext_f79ad746e7214428de0ae942",
+      "market": "US",
+      "domain": "supergoop.com",
+      "title": "Glowscreen Sunlighter Stick SPF 45",
+      "canonical_url": "https://supergoop.com/products/glowscreen-sunlighter-stick-spf-45",
+      "product_family": "single_formula",
+      "product_line_id": "pl_04074b4b7e90a10525e03335",
+      "identity_variant_axes": {
+        "size": "0 35 oz",
+        "color": "sunrise",
+        "volume": "35oz",
+        "multi_variant": true
+      },
+      "pivota_insights": {
+        "direct": {
+          "product_id": "ext_f79ad746e7214428de0ae942",
+          "kb_key": "product:ext_f79ad746e7214428de0ae942",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": false,
+          "human_reviewed": true,
+          "issues": [
+            "missing_card_highlight",
+            "quality_eligible"
+          ],
+          "blocking_issues": [
+            "missing_card_highlight"
+          ],
+          "quality_state": "eligible",
+          "evidence_profile": "seller_plus_formula",
+          "has_card_highlight": false
+        },
+        "effective": {
+          "product_id": "ext_f79ad746e7214428de0ae942",
+          "kb_key": "product:ext_f79ad746e7214428de0ae942",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": false,
+          "human_reviewed": true,
+          "issues": [
+            "missing_card_highlight",
+            "quality_eligible"
+          ],
+          "blocking_issues": [
+            "missing_card_highlight"
+          ],
+          "quality_state": "eligible",
+          "evidence_profile": "seller_plus_formula",
+          "has_card_highlight": false
+        },
+        "product_line_id": "pl_04074b4b7e90a10525e03335",
+        "borrowed_from_sibling": false
+      },
+      "active_ingredients": {
+        "status": "ready_regulatory",
+        "issues": [],
+        "regulatory_expected": true,
+        "hero_expected": false,
+        "active_items": [
+          "Avobenzone",
+          "Homosalate",
+          "Octisalate",
+          "Octocrylene"
+        ],
+        "source_origin": "pdp_section",
+        "source_quality_status": "regulatory_active",
+        "coverage": {
+          "details_sections_count": 2,
+          "faq_count": 0,
+          "how_to_chars": 555,
+          "inci_chars": 1553,
+          "active_ingredients_chars": 71,
+          "inci_applicability_status": "",
+          "ingredient_review_status": "",
+          "ingredient_remediation_action": "",
+          "bundle_component_refs_count": 0,
+          "effective_inci_chars": 1553,
+          "inci_borrowed_from_product_id": ""
+        },
+        "invalid_fragments": [],
+        "suppressed_reason": null
+      },
+      "variants": {
+        "status": "flagged",
+        "issues": [
+          "wrong_axis_for_category"
+        ],
+        "visible_variant_rows": 4,
+        "examples": {
+          "identity_option_visible": [],
+          "wrong_axis_for_category": [
+            {
+              "axis_name": "shade",
+              "axis_kind": "shade",
+              "value": "sunrise",
+              "visual": true
+            },
+            {
+              "axis_name": "shade",
+              "axis_kind": "shade",
+              "value": "golden hour",
+              "visual": true
+            }
+          ],
+          "makeup_shade_missing_visual": [],
+          "size_value_generic_axis": [],
+          "default_option_size_evidence_missing_axis": [],
+          "identity_default_title_axis": []
+        }
+      },
+      "coverage": {
+        "details_sections_count": 2,
+        "faq_count": 0,
+        "how_to_chars": 555,
+        "inci_chars": 1553,
+        "active_ingredients_chars": 71,
+        "inci_applicability_status": "",
+        "ingredient_review_status": "",
+        "ingredient_remediation_action": "",
+        "bundle_component_refs_count": 0,
+        "effective_inci_chars": 1553,
+        "inci_borrowed_from_product_id": ""
+      }
+    }
+  ]
+}

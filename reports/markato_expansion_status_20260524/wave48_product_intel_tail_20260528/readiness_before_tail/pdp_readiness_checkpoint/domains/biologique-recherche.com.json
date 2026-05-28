@@ -1,0 +1,1998 @@
+{
+  "generated_at": "2026-05-28T10:01:08.282Z",
+  "options": {
+    "market": "US",
+    "includeAttached": true,
+    "domain": "biologique-recherche.com",
+    "externalProductIds": [],
+    "limit": 20000,
+    "sampleLimit": 10,
+    "checkpointDir": null,
+    "checkpointMode": "domain",
+    "resume": false,
+    "force": false,
+    "continueOnError": true,
+    "pageSize": 500,
+    "format": "json",
+    "chunkByDomain": false
+  },
+  "warnings": [],
+  "summary": {
+    "scanned": 14,
+    "by_market": {
+      "US": 14
+    },
+    "by_domain": [
+      {
+        "key": "biologique-recherche.com",
+        "count": 14
+      }
+    ],
+    "by_product_family": [
+      {
+        "key": "unknown_product",
+        "count": 10
+      },
+      {
+        "key": "single_formula",
+        "count": 4
+      }
+    ],
+    "coverage": {
+      "missing_inci": 14,
+      "missing_active_raw": 14,
+      "missing_details": 2,
+      "missing_how_to": 0,
+      "missing_faq": 14
+    },
+    "pivota_insights": {
+      "direct": {
+        "displayable": 1,
+        "high_quality_ready": 1,
+        "missing_kb": 0,
+        "not_displayable": 13
+      },
+      "effective": {
+        "displayable": 1,
+        "high_quality_ready": 1,
+        "missing_kb": 0,
+        "not_displayable": 13,
+        "borrowed_from_sibling": 0
+      },
+      "effective_issues": [
+        {
+          "key": "quality_limited",
+          "count": 13
+        },
+        {
+          "key": "reviewed_not_displayable",
+          "count": 13
+        },
+        {
+          "key": "seller_only_evidence",
+          "count": 13
+        },
+        {
+          "key": "empty_watchouts",
+          "count": 12
+        },
+        {
+          "key": "missing_card_highlight",
+          "count": 11
+        }
+      ],
+      "effective_issue_domains": [
+        {
+          "key": "biologique-recherche.com::quality_limited",
+          "count": 13
+        },
+        {
+          "key": "biologique-recherche.com::reviewed_not_displayable",
+          "count": 13
+        },
+        {
+          "key": "biologique-recherche.com::seller_only_evidence",
+          "count": 13
+        },
+        {
+          "key": "biologique-recherche.com::empty_watchouts",
+          "count": 12
+        },
+        {
+          "key": "biologique-recherche.com::missing_card_highlight",
+          "count": 11
+        }
+      ],
+      "quality_state": [
+        {
+          "key": "limited",
+          "count": 13
+        },
+        {
+          "key": "verified",
+          "count": 1
+        }
+      ],
+      "evidence_profile": [
+        {
+          "key": "seller_only",
+          "count": 13
+        },
+        {
+          "key": "seller_plus_formula",
+          "count": 1
+        }
+      ],
+      "samples": {
+        "reviewed_not_displayable": [
+          {
+            "external_product_id": "ext_1509b3e07bb723f60e985e73",
+            "domain": "biologique-recherche.com",
+            "title": "Platysma",
+            "used_product_id": "ext_1509b3e07bb723f60e985e73",
+            "quality_state": "limited",
+            "evidence_profile": "seller_only"
+          },
+          {
+            "external_product_id": "ext_1ada6e722106de34a0287e35",
+            "domain": "biologique-recherche.com",
+            "title": "Complexe Royal",
+            "used_product_id": "ext_1ada6e722106de34a0287e35",
+            "quality_state": "limited",
+            "evidence_profile": "seller_only"
+          },
+          {
+            "external_product_id": "ext_1fe9e2c123fd3399cc621104",
+            "domain": "biologique-recherche.com",
+            "title": "Shampooing Dermo-Apaisant",
+            "used_product_id": "ext_1fe9e2c123fd3399cc621104",
+            "quality_state": "limited",
+            "evidence_profile": "seller_only"
+          },
+          {
+            "external_product_id": "ext_5f5842585fecd11be5031bbf",
+            "domain": "biologique-recherche.com",
+            "title": "Sérum PIGM 400",
+            "used_product_id": "ext_5f5842585fecd11be5031bbf",
+            "quality_state": "limited",
+            "evidence_profile": "seller_only"
+          },
+          {
+            "external_product_id": "ext_84c17bdd6e7d5c5489a29c8d",
+            "domain": "biologique-recherche.com",
+            "title": "Lotion P50W",
+            "used_product_id": "ext_84c17bdd6e7d5c5489a29c8d",
+            "quality_state": "limited",
+            "evidence_profile": "seller_only"
+          },
+          {
+            "external_product_id": "ext_8af147de5c1a6addbb5213ca",
+            "domain": "biologique-recherche.com",
+            "title": "Sérum Biosensible",
+            "used_product_id": "ext_8af147de5c1a6addbb5213ca",
+            "quality_state": "limited",
+            "evidence_profile": "seller_only"
+          },
+          {
+            "external_product_id": "ext_8e6740eb8dfbcac56a4f786c",
+            "domain": "biologique-recherche.com",
+            "title": "Stilligouttes",
+            "used_product_id": "ext_8e6740eb8dfbcac56a4f786c",
+            "quality_state": "limited",
+            "evidence_profile": "seller_only"
+          },
+          {
+            "external_product_id": "ext_9803119f30c6e74461971a8e",
+            "domain": "biologique-recherche.com",
+            "title": "Shampooing Sébo-Rééquilibrant",
+            "used_product_id": "ext_9803119f30c6e74461971a8e",
+            "quality_state": "limited",
+            "evidence_profile": "seller_only"
+          },
+          {
+            "external_product_id": "ext_9dbb7bb9db5cb2d711a1e987",
+            "domain": "biologique-recherche.com",
+            "title": "Stilligouttes",
+            "used_product_id": "ext_9dbb7bb9db5cb2d711a1e987",
+            "quality_state": "limited",
+            "evidence_profile": "seller_only"
+          },
+          {
+            "external_product_id": "ext_b6946adbfc3a89b52ce0a03a",
+            "domain": "biologique-recherche.com",
+            "title": "Lotion P50 Capillaire",
+            "used_product_id": "ext_b6946adbfc3a89b52ce0a03a",
+            "quality_state": "limited",
+            "evidence_profile": "seller_only"
+          }
+        ],
+        "missing_card_highlight": [
+          {
+            "external_product_id": "ext_1509b3e07bb723f60e985e73",
+            "domain": "biologique-recherche.com",
+            "title": "Platysma",
+            "used_product_id": "ext_1509b3e07bb723f60e985e73",
+            "quality_state": "limited",
+            "evidence_profile": "seller_only"
+          },
+          {
+            "external_product_id": "ext_1ada6e722106de34a0287e35",
+            "domain": "biologique-recherche.com",
+            "title": "Complexe Royal",
+            "used_product_id": "ext_1ada6e722106de34a0287e35",
+            "quality_state": "limited",
+            "evidence_profile": "seller_only"
+          },
+          {
+            "external_product_id": "ext_1fe9e2c123fd3399cc621104",
+            "domain": "biologique-recherche.com",
+            "title": "Shampooing Dermo-Apaisant",
+            "used_product_id": "ext_1fe9e2c123fd3399cc621104",
+            "quality_state": "limited",
+            "evidence_profile": "seller_only"
+          },
+          {
+            "external_product_id": "ext_5f5842585fecd11be5031bbf",
+            "domain": "biologique-recherche.com",
+            "title": "Sérum PIGM 400",
+            "used_product_id": "ext_5f5842585fecd11be5031bbf",
+            "quality_state": "limited",
+            "evidence_profile": "seller_only"
+          },
+          {
+            "external_product_id": "ext_84c17bdd6e7d5c5489a29c8d",
+            "domain": "biologique-recherche.com",
+            "title": "Lotion P50W",
+            "used_product_id": "ext_84c17bdd6e7d5c5489a29c8d",
+            "quality_state": "limited",
+            "evidence_profile": "seller_only"
+          },
+          {
+            "external_product_id": "ext_8af147de5c1a6addbb5213ca",
+            "domain": "biologique-recherche.com",
+            "title": "Sérum Biosensible",
+            "used_product_id": "ext_8af147de5c1a6addbb5213ca",
+            "quality_state": "limited",
+            "evidence_profile": "seller_only"
+          },
+          {
+            "external_product_id": "ext_9803119f30c6e74461971a8e",
+            "domain": "biologique-recherche.com",
+            "title": "Shampooing Sébo-Rééquilibrant",
+            "used_product_id": "ext_9803119f30c6e74461971a8e",
+            "quality_state": "limited",
+            "evidence_profile": "seller_only"
+          },
+          {
+            "external_product_id": "ext_b6946adbfc3a89b52ce0a03a",
+            "domain": "biologique-recherche.com",
+            "title": "Lotion P50 Capillaire",
+            "used_product_id": "ext_b6946adbfc3a89b52ce0a03a",
+            "quality_state": "limited",
+            "evidence_profile": "seller_only"
+          },
+          {
+            "external_product_id": "ext_c9704eeb7ba912757c3d8d17",
+            "domain": "biologique-recherche.com",
+            "title": "Masque Dermo-Apaisant",
+            "used_product_id": "ext_c9704eeb7ba912757c3d8d17",
+            "quality_state": "limited",
+            "evidence_profile": "seller_only"
+          },
+          {
+            "external_product_id": "ext_e37ac3ad62f12cb867f501d4",
+            "domain": "biologique-recherche.com",
+            "title": "Crème V. Espoir",
+            "used_product_id": "ext_e37ac3ad62f12cb867f501d4",
+            "quality_state": "limited",
+            "evidence_profile": "seller_only"
+          }
+        ],
+        "seller_only_evidence": [
+          {
+            "external_product_id": "ext_1509b3e07bb723f60e985e73",
+            "domain": "biologique-recherche.com",
+            "title": "Platysma",
+            "used_product_id": "ext_1509b3e07bb723f60e985e73",
+            "quality_state": "limited",
+            "evidence_profile": "seller_only"
+          },
+          {
+            "external_product_id": "ext_1ada6e722106de34a0287e35",
+            "domain": "biologique-recherche.com",
+            "title": "Complexe Royal",
+            "used_product_id": "ext_1ada6e722106de34a0287e35",
+            "quality_state": "limited",
+            "evidence_profile": "seller_only"
+          },
+          {
+            "external_product_id": "ext_1fe9e2c123fd3399cc621104",
+            "domain": "biologique-recherche.com",
+            "title": "Shampooing Dermo-Apaisant",
+            "used_product_id": "ext_1fe9e2c123fd3399cc621104",
+            "quality_state": "limited",
+            "evidence_profile": "seller_only"
+          },
+          {
+            "external_product_id": "ext_5f5842585fecd11be5031bbf",
+            "domain": "biologique-recherche.com",
+            "title": "Sérum PIGM 400",
+            "used_product_id": "ext_5f5842585fecd11be5031bbf",
+            "quality_state": "limited",
+            "evidence_profile": "seller_only"
+          },
+          {
+            "external_product_id": "ext_84c17bdd6e7d5c5489a29c8d",
+            "domain": "biologique-recherche.com",
+            "title": "Lotion P50W",
+            "used_product_id": "ext_84c17bdd6e7d5c5489a29c8d",
+            "quality_state": "limited",
+            "evidence_profile": "seller_only"
+          },
+          {
+            "external_product_id": "ext_8af147de5c1a6addbb5213ca",
+            "domain": "biologique-recherche.com",
+            "title": "Sérum Biosensible",
+            "used_product_id": "ext_8af147de5c1a6addbb5213ca",
+            "quality_state": "limited",
+            "evidence_profile": "seller_only"
+          },
+          {
+            "external_product_id": "ext_8e6740eb8dfbcac56a4f786c",
+            "domain": "biologique-recherche.com",
+            "title": "Stilligouttes",
+            "used_product_id": "ext_8e6740eb8dfbcac56a4f786c",
+            "quality_state": "limited",
+            "evidence_profile": "seller_only"
+          },
+          {
+            "external_product_id": "ext_9803119f30c6e74461971a8e",
+            "domain": "biologique-recherche.com",
+            "title": "Shampooing Sébo-Rééquilibrant",
+            "used_product_id": "ext_9803119f30c6e74461971a8e",
+            "quality_state": "limited",
+            "evidence_profile": "seller_only"
+          },
+          {
+            "external_product_id": "ext_9dbb7bb9db5cb2d711a1e987",
+            "domain": "biologique-recherche.com",
+            "title": "Stilligouttes",
+            "used_product_id": "ext_9dbb7bb9db5cb2d711a1e987",
+            "quality_state": "limited",
+            "evidence_profile": "seller_only"
+          },
+          {
+            "external_product_id": "ext_b6946adbfc3a89b52ce0a03a",
+            "domain": "biologique-recherche.com",
+            "title": "Lotion P50 Capillaire",
+            "used_product_id": "ext_b6946adbfc3a89b52ce0a03a",
+            "quality_state": "limited",
+            "evidence_profile": "seller_only"
+          }
+        ]
+      }
+    },
+    "active_ingredients": {
+      "regulatory_expected": 0,
+      "hero_expected": 1,
+      "any_active_items": 0,
+      "status": [
+        {
+          "key": "not_expected_missing",
+          "count": 13
+        },
+        {
+          "key": "missing_hero",
+          "count": 1
+        }
+      ],
+      "issues": [
+        {
+          "key": "missing_hero",
+          "count": 1
+        }
+      ],
+      "issue_domains": [
+        {
+          "key": "biologique-recherche.com::missing_hero",
+          "count": 1
+        }
+      ],
+      "source_origin": [
+        {
+          "key": "none",
+          "count": 14
+        }
+      ],
+      "samples": {
+        "missing_hero": [
+          {
+            "external_product_id": "ext_1ada6e722106de34a0287e35",
+            "domain": "biologique-recherche.com",
+            "title": "Complexe Royal",
+            "status": "missing_hero",
+            "active_items": [],
+            "source_origin": "none"
+          }
+        ]
+      }
+    },
+    "variants": {
+      "status": [
+        {
+          "key": "ready",
+          "count": 14
+        }
+      ],
+      "issues": [],
+      "issue_domains": [],
+      "samples": {}
+    }
+  },
+  "rows": [
+    {
+      "seed_id": "eps_a9a792d5aeba4228a2c6855f",
+      "external_product_id": "ext_1509b3e07bb723f60e985e73",
+      "market": "US",
+      "domain": "biologique-recherche.com",
+      "title": "Platysma",
+      "canonical_url": "https://biologique-recherche.com/products/platysma",
+      "product_family": "unknown_product",
+      "product_line_id": "pl_9d0f60cb9cd4434ae360d58d",
+      "identity_variant_axes": {
+        "shade": "1 sachet",
+        "multi_variant": false
+      },
+      "pivota_insights": {
+        "direct": {
+          "product_id": "ext_1509b3e07bb723f60e985e73",
+          "kb_key": "product:ext_1509b3e07bb723f60e985e73",
+          "status": "not_displayable",
+          "kb_exists": true,
+          "displayable": false,
+          "high_quality_ready": false,
+          "human_reviewed": true,
+          "issues": [
+            "reviewed_not_displayable",
+            "missing_card_highlight",
+            "empty_watchouts",
+            "quality_limited",
+            "seller_only_evidence"
+          ],
+          "blocking_issues": [
+            "reviewed_not_displayable",
+            "missing_card_highlight"
+          ],
+          "quality_state": "limited",
+          "evidence_profile": "seller_only",
+          "has_card_highlight": false
+        },
+        "effective": {
+          "product_id": "ext_1509b3e07bb723f60e985e73",
+          "kb_key": "product:ext_1509b3e07bb723f60e985e73",
+          "status": "not_displayable",
+          "kb_exists": true,
+          "displayable": false,
+          "high_quality_ready": false,
+          "human_reviewed": true,
+          "issues": [
+            "reviewed_not_displayable",
+            "missing_card_highlight",
+            "empty_watchouts",
+            "quality_limited",
+            "seller_only_evidence"
+          ],
+          "blocking_issues": [
+            "reviewed_not_displayable",
+            "missing_card_highlight"
+          ],
+          "quality_state": "limited",
+          "evidence_profile": "seller_only",
+          "has_card_highlight": false
+        },
+        "product_line_id": "pl_9d0f60cb9cd4434ae360d58d",
+        "borrowed_from_sibling": false
+      },
+      "active_ingredients": {
+        "status": "not_expected_missing",
+        "issues": [],
+        "regulatory_expected": false,
+        "hero_expected": false,
+        "active_items": [],
+        "source_origin": "none",
+        "source_quality_status": "blocked",
+        "coverage": {
+          "details_sections_count": 2,
+          "faq_count": 0,
+          "how_to_chars": 109,
+          "inci_chars": 0,
+          "active_ingredients_chars": 0,
+          "inci_applicability_status": "",
+          "ingredient_review_status": "",
+          "ingredient_remediation_action": "",
+          "bundle_component_refs_count": 0,
+          "effective_inci_chars": 0,
+          "inci_borrowed_from_product_id": ""
+        },
+        "invalid_fragments": [],
+        "suppressed_reason": "no_authoritative_source"
+      },
+      "variants": {
+        "status": "ready",
+        "issues": [],
+        "visible_variant_rows": 1,
+        "examples": {
+          "identity_option_visible": [],
+          "wrong_axis_for_category": [],
+          "makeup_shade_missing_visual": [],
+          "size_value_generic_axis": [],
+          "default_option_size_evidence_missing_axis": [],
+          "identity_default_title_axis": []
+        }
+      },
+      "coverage": {
+        "details_sections_count": 2,
+        "faq_count": 0,
+        "how_to_chars": 109,
+        "inci_chars": 0,
+        "active_ingredients_chars": 0,
+        "inci_applicability_status": "",
+        "ingredient_review_status": "",
+        "ingredient_remediation_action": "",
+        "bundle_component_refs_count": 0,
+        "effective_inci_chars": 0,
+        "inci_borrowed_from_product_id": ""
+      }
+    },
+    {
+      "seed_id": "eps_562e231167fb4093b40071f7",
+      "external_product_id": "ext_1ada6e722106de34a0287e35",
+      "market": "US",
+      "domain": "biologique-recherche.com",
+      "title": "Complexe Royal",
+      "canonical_url": "https://biologique-recherche.com/products/complexe-royal",
+      "product_family": "unknown_product",
+      "product_line_id": "pl_b06baa0062a72ea2e6b635f0",
+      "identity_variant_axes": {
+        "volume": "8ml",
+        "multi_variant": true
+      },
+      "pivota_insights": {
+        "direct": {
+          "product_id": "ext_1ada6e722106de34a0287e35",
+          "kb_key": "product:ext_1ada6e722106de34a0287e35",
+          "status": "not_displayable",
+          "kb_exists": true,
+          "displayable": false,
+          "high_quality_ready": false,
+          "human_reviewed": true,
+          "issues": [
+            "reviewed_not_displayable",
+            "missing_card_highlight",
+            "empty_watchouts",
+            "quality_limited",
+            "seller_only_evidence"
+          ],
+          "blocking_issues": [
+            "reviewed_not_displayable",
+            "missing_card_highlight"
+          ],
+          "quality_state": "limited",
+          "evidence_profile": "seller_only",
+          "has_card_highlight": false
+        },
+        "effective": {
+          "product_id": "ext_1ada6e722106de34a0287e35",
+          "kb_key": "product:ext_1ada6e722106de34a0287e35",
+          "status": "not_displayable",
+          "kb_exists": true,
+          "displayable": false,
+          "high_quality_ready": false,
+          "human_reviewed": true,
+          "issues": [
+            "reviewed_not_displayable",
+            "missing_card_highlight",
+            "empty_watchouts",
+            "quality_limited",
+            "seller_only_evidence"
+          ],
+          "blocking_issues": [
+            "reviewed_not_displayable",
+            "missing_card_highlight"
+          ],
+          "quality_state": "limited",
+          "evidence_profile": "seller_only",
+          "has_card_highlight": false
+        },
+        "product_line_id": "pl_b06baa0062a72ea2e6b635f0",
+        "borrowed_from_sibling": false
+      },
+      "active_ingredients": {
+        "status": "missing_hero",
+        "issues": [
+          "missing_hero"
+        ],
+        "regulatory_expected": false,
+        "hero_expected": true,
+        "active_items": [],
+        "source_origin": "none",
+        "source_quality_status": "blocked",
+        "coverage": {
+          "details_sections_count": 2,
+          "faq_count": 0,
+          "how_to_chars": 109,
+          "inci_chars": 0,
+          "active_ingredients_chars": 0,
+          "inci_applicability_status": "",
+          "ingredient_review_status": "",
+          "ingredient_remediation_action": "",
+          "bundle_component_refs_count": 0,
+          "effective_inci_chars": 0,
+          "inci_borrowed_from_product_id": ""
+        },
+        "invalid_fragments": [],
+        "suppressed_reason": "no_authoritative_source"
+      },
+      "variants": {
+        "status": "ready",
+        "issues": [],
+        "visible_variant_rows": 2,
+        "examples": {
+          "identity_option_visible": [],
+          "wrong_axis_for_category": [],
+          "makeup_shade_missing_visual": [],
+          "size_value_generic_axis": [],
+          "default_option_size_evidence_missing_axis": [],
+          "identity_default_title_axis": []
+        }
+      },
+      "coverage": {
+        "details_sections_count": 2,
+        "faq_count": 0,
+        "how_to_chars": 109,
+        "inci_chars": 0,
+        "active_ingredients_chars": 0,
+        "inci_applicability_status": "",
+        "ingredient_review_status": "",
+        "ingredient_remediation_action": "",
+        "bundle_component_refs_count": 0,
+        "effective_inci_chars": 0,
+        "inci_borrowed_from_product_id": ""
+      }
+    },
+    {
+      "seed_id": "eps_c928f7b4cdc340aea4fe191b",
+      "external_product_id": "ext_1fe9e2c123fd3399cc621104",
+      "market": "US",
+      "domain": "biologique-recherche.com",
+      "title": "Shampooing Dermo-Apaisant",
+      "canonical_url": "https://biologique-recherche.com/products/shampooing-dermo-apaisant",
+      "product_family": "unknown_product",
+      "product_line_id": "pl_08aeb9182c0739ee672de151",
+      "identity_variant_axes": {
+        "volume": "75ml",
+        "multi_variant": true
+      },
+      "pivota_insights": {
+        "direct": {
+          "product_id": "ext_1fe9e2c123fd3399cc621104",
+          "kb_key": "product:ext_1fe9e2c123fd3399cc621104",
+          "status": "not_displayable",
+          "kb_exists": true,
+          "displayable": false,
+          "high_quality_ready": false,
+          "human_reviewed": true,
+          "issues": [
+            "reviewed_not_displayable",
+            "missing_card_highlight",
+            "empty_watchouts",
+            "quality_limited",
+            "seller_only_evidence"
+          ],
+          "blocking_issues": [
+            "reviewed_not_displayable",
+            "missing_card_highlight"
+          ],
+          "quality_state": "limited",
+          "evidence_profile": "seller_only",
+          "has_card_highlight": false
+        },
+        "effective": {
+          "product_id": "ext_1fe9e2c123fd3399cc621104",
+          "kb_key": "product:ext_1fe9e2c123fd3399cc621104",
+          "status": "not_displayable",
+          "kb_exists": true,
+          "displayable": false,
+          "high_quality_ready": false,
+          "human_reviewed": true,
+          "issues": [
+            "reviewed_not_displayable",
+            "missing_card_highlight",
+            "empty_watchouts",
+            "quality_limited",
+            "seller_only_evidence"
+          ],
+          "blocking_issues": [
+            "reviewed_not_displayable",
+            "missing_card_highlight"
+          ],
+          "quality_state": "limited",
+          "evidence_profile": "seller_only",
+          "has_card_highlight": false
+        },
+        "product_line_id": "pl_08aeb9182c0739ee672de151",
+        "borrowed_from_sibling": false
+      },
+      "active_ingredients": {
+        "status": "not_expected_missing",
+        "issues": [],
+        "regulatory_expected": false,
+        "hero_expected": false,
+        "active_items": [],
+        "source_origin": "none",
+        "source_quality_status": "blocked",
+        "coverage": {
+          "details_sections_count": 2,
+          "faq_count": 0,
+          "how_to_chars": 109,
+          "inci_chars": 0,
+          "active_ingredients_chars": 0,
+          "inci_applicability_status": "",
+          "ingredient_review_status": "",
+          "ingredient_remediation_action": "",
+          "bundle_component_refs_count": 0,
+          "effective_inci_chars": 0,
+          "inci_borrowed_from_product_id": ""
+        },
+        "invalid_fragments": [],
+        "suppressed_reason": "no_authoritative_source"
+      },
+      "variants": {
+        "status": "ready",
+        "issues": [],
+        "visible_variant_rows": 2,
+        "examples": {
+          "identity_option_visible": [],
+          "wrong_axis_for_category": [],
+          "makeup_shade_missing_visual": [],
+          "size_value_generic_axis": [],
+          "default_option_size_evidence_missing_axis": [],
+          "identity_default_title_axis": []
+        }
+      },
+      "coverage": {
+        "details_sections_count": 2,
+        "faq_count": 0,
+        "how_to_chars": 109,
+        "inci_chars": 0,
+        "active_ingredients_chars": 0,
+        "inci_applicability_status": "",
+        "ingredient_review_status": "",
+        "ingredient_remediation_action": "",
+        "bundle_component_refs_count": 0,
+        "effective_inci_chars": 0,
+        "inci_borrowed_from_product_id": ""
+      }
+    },
+    {
+      "seed_id": "eps_741d988b44694b398d76dfc8",
+      "external_product_id": "ext_3cb4352b108c3222f442e128",
+      "market": "US",
+      "domain": "biologique-recherche.com",
+      "title": "Expert Eyes",
+      "canonical_url": "https://biologique-recherche.com/products/expert-eyes",
+      "product_family": "unknown_product",
+      "product_line_id": "pl_3f144ac56b1c9e9a652ef1c7",
+      "identity_variant_axes": {
+        "shade": "1 unité",
+        "multi_variant": false
+      },
+      "pivota_insights": {
+        "direct": {
+          "product_id": "ext_3cb4352b108c3222f442e128",
+          "kb_key": "product:ext_3cb4352b108c3222f442e128",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [
+            "empty_watchouts"
+          ],
+          "blocking_issues": [],
+          "quality_state": "verified",
+          "evidence_profile": "seller_plus_formula",
+          "has_card_highlight": true
+        },
+        "effective": {
+          "product_id": "ext_3cb4352b108c3222f442e128",
+          "kb_key": "product:ext_3cb4352b108c3222f442e128",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [
+            "empty_watchouts"
+          ],
+          "blocking_issues": [],
+          "quality_state": "verified",
+          "evidence_profile": "seller_plus_formula",
+          "has_card_highlight": true
+        },
+        "product_line_id": "pl_3f144ac56b1c9e9a652ef1c7",
+        "borrowed_from_sibling": false
+      },
+      "active_ingredients": {
+        "status": "not_expected_missing",
+        "issues": [],
+        "regulatory_expected": false,
+        "hero_expected": false,
+        "active_items": [],
+        "source_origin": "none",
+        "source_quality_status": "blocked",
+        "coverage": {
+          "details_sections_count": 2,
+          "faq_count": 0,
+          "how_to_chars": 109,
+          "inci_chars": 0,
+          "active_ingredients_chars": 0,
+          "inci_applicability_status": "",
+          "ingredient_review_status": "",
+          "ingredient_remediation_action": "",
+          "bundle_component_refs_count": 0,
+          "effective_inci_chars": 0,
+          "inci_borrowed_from_product_id": ""
+        },
+        "invalid_fragments": [],
+        "suppressed_reason": "no_authoritative_source"
+      },
+      "variants": {
+        "status": "ready",
+        "issues": [],
+        "visible_variant_rows": 1,
+        "examples": {
+          "identity_option_visible": [],
+          "wrong_axis_for_category": [],
+          "makeup_shade_missing_visual": [],
+          "size_value_generic_axis": [],
+          "default_option_size_evidence_missing_axis": [],
+          "identity_default_title_axis": []
+        }
+      },
+      "coverage": {
+        "details_sections_count": 2,
+        "faq_count": 0,
+        "how_to_chars": 109,
+        "inci_chars": 0,
+        "active_ingredients_chars": 0,
+        "inci_applicability_status": "",
+        "ingredient_review_status": "",
+        "ingredient_remediation_action": "",
+        "bundle_component_refs_count": 0,
+        "effective_inci_chars": 0,
+        "inci_borrowed_from_product_id": ""
+      }
+    },
+    {
+      "seed_id": "eps_f8fa53b8b28243b48ff11b51",
+      "external_product_id": "ext_5f5842585fecd11be5031bbf",
+      "market": "US",
+      "domain": "biologique-recherche.com",
+      "title": "Sérum PIGM 400",
+      "canonical_url": "https://biologique-recherche.com/products/serum-pigm-400",
+      "product_family": "single_formula",
+      "product_line_id": "pl_874aa18106e9a9c9e55e8391",
+      "identity_variant_axes": {
+        "volume": "8ml",
+        "multi_variant": true
+      },
+      "pivota_insights": {
+        "direct": {
+          "product_id": "ext_5f5842585fecd11be5031bbf",
+          "kb_key": "product:ext_5f5842585fecd11be5031bbf",
+          "status": "not_displayable",
+          "kb_exists": true,
+          "displayable": false,
+          "high_quality_ready": false,
+          "human_reviewed": true,
+          "issues": [
+            "reviewed_not_displayable",
+            "missing_card_highlight",
+            "empty_watchouts",
+            "quality_limited",
+            "seller_only_evidence"
+          ],
+          "blocking_issues": [
+            "reviewed_not_displayable",
+            "missing_card_highlight"
+          ],
+          "quality_state": "limited",
+          "evidence_profile": "seller_only",
+          "has_card_highlight": false
+        },
+        "effective": {
+          "product_id": "ext_5f5842585fecd11be5031bbf",
+          "kb_key": "product:ext_5f5842585fecd11be5031bbf",
+          "status": "not_displayable",
+          "kb_exists": true,
+          "displayable": false,
+          "high_quality_ready": false,
+          "human_reviewed": true,
+          "issues": [
+            "reviewed_not_displayable",
+            "missing_card_highlight",
+            "empty_watchouts",
+            "quality_limited",
+            "seller_only_evidence"
+          ],
+          "blocking_issues": [
+            "reviewed_not_displayable",
+            "missing_card_highlight"
+          ],
+          "quality_state": "limited",
+          "evidence_profile": "seller_only",
+          "has_card_highlight": false
+        },
+        "product_line_id": "pl_874aa18106e9a9c9e55e8391",
+        "borrowed_from_sibling": false
+      },
+      "active_ingredients": {
+        "status": "not_expected_missing",
+        "issues": [],
+        "regulatory_expected": false,
+        "hero_expected": false,
+        "active_items": [],
+        "source_origin": "none",
+        "source_quality_status": "blocked",
+        "coverage": {
+          "details_sections_count": 2,
+          "faq_count": 0,
+          "how_to_chars": 109,
+          "inci_chars": 0,
+          "active_ingredients_chars": 0,
+          "inci_applicability_status": "",
+          "ingredient_review_status": "",
+          "ingredient_remediation_action": "",
+          "bundle_component_refs_count": 0,
+          "effective_inci_chars": 0,
+          "inci_borrowed_from_product_id": ""
+        },
+        "invalid_fragments": [],
+        "suppressed_reason": "no_authoritative_source"
+      },
+      "variants": {
+        "status": "ready",
+        "issues": [],
+        "visible_variant_rows": 2,
+        "examples": {
+          "identity_option_visible": [],
+          "wrong_axis_for_category": [],
+          "makeup_shade_missing_visual": [],
+          "size_value_generic_axis": [],
+          "default_option_size_evidence_missing_axis": [],
+          "identity_default_title_axis": []
+        }
+      },
+      "coverage": {
+        "details_sections_count": 2,
+        "faq_count": 0,
+        "how_to_chars": 109,
+        "inci_chars": 0,
+        "active_ingredients_chars": 0,
+        "inci_applicability_status": "",
+        "ingredient_review_status": "",
+        "ingredient_remediation_action": "",
+        "bundle_component_refs_count": 0,
+        "effective_inci_chars": 0,
+        "inci_borrowed_from_product_id": ""
+      }
+    },
+    {
+      "seed_id": "eps_5ffe70eacd1748bd917a65a7",
+      "external_product_id": "ext_84c17bdd6e7d5c5489a29c8d",
+      "market": "US",
+      "domain": "biologique-recherche.com",
+      "title": "Lotion P50W",
+      "canonical_url": "https://biologique-recherche.com/products/lotion-p50w",
+      "product_family": "single_formula",
+      "product_line_id": "pl_4cdb13a0e92694007e1ae8f8",
+      "identity_variant_axes": {
+        "volume": "50ml",
+        "multi_variant": true
+      },
+      "pivota_insights": {
+        "direct": {
+          "product_id": "ext_84c17bdd6e7d5c5489a29c8d",
+          "kb_key": "product:ext_84c17bdd6e7d5c5489a29c8d",
+          "status": "not_displayable",
+          "kb_exists": true,
+          "displayable": false,
+          "high_quality_ready": false,
+          "human_reviewed": true,
+          "issues": [
+            "reviewed_not_displayable",
+            "missing_card_highlight",
+            "empty_watchouts",
+            "quality_limited",
+            "seller_only_evidence"
+          ],
+          "blocking_issues": [
+            "reviewed_not_displayable",
+            "missing_card_highlight"
+          ],
+          "quality_state": "limited",
+          "evidence_profile": "seller_only",
+          "has_card_highlight": false
+        },
+        "effective": {
+          "product_id": "ext_84c17bdd6e7d5c5489a29c8d",
+          "kb_key": "product:ext_84c17bdd6e7d5c5489a29c8d",
+          "status": "not_displayable",
+          "kb_exists": true,
+          "displayable": false,
+          "high_quality_ready": false,
+          "human_reviewed": true,
+          "issues": [
+            "reviewed_not_displayable",
+            "missing_card_highlight",
+            "empty_watchouts",
+            "quality_limited",
+            "seller_only_evidence"
+          ],
+          "blocking_issues": [
+            "reviewed_not_displayable",
+            "missing_card_highlight"
+          ],
+          "quality_state": "limited",
+          "evidence_profile": "seller_only",
+          "has_card_highlight": false
+        },
+        "product_line_id": "pl_4cdb13a0e92694007e1ae8f8",
+        "borrowed_from_sibling": false
+      },
+      "active_ingredients": {
+        "status": "not_expected_missing",
+        "issues": [],
+        "regulatory_expected": false,
+        "hero_expected": false,
+        "active_items": [],
+        "source_origin": "none",
+        "source_quality_status": "blocked",
+        "coverage": {
+          "details_sections_count": 2,
+          "faq_count": 0,
+          "how_to_chars": 110,
+          "inci_chars": 0,
+          "active_ingredients_chars": 0,
+          "inci_applicability_status": "",
+          "ingredient_review_status": "",
+          "ingredient_remediation_action": "",
+          "bundle_component_refs_count": 0,
+          "effective_inci_chars": 0,
+          "inci_borrowed_from_product_id": ""
+        },
+        "invalid_fragments": [],
+        "suppressed_reason": "no_authoritative_source"
+      },
+      "variants": {
+        "status": "ready",
+        "issues": [],
+        "visible_variant_rows": 3,
+        "examples": {
+          "identity_option_visible": [],
+          "wrong_axis_for_category": [],
+          "makeup_shade_missing_visual": [],
+          "size_value_generic_axis": [],
+          "default_option_size_evidence_missing_axis": [],
+          "identity_default_title_axis": []
+        }
+      },
+      "coverage": {
+        "details_sections_count": 2,
+        "faq_count": 0,
+        "how_to_chars": 110,
+        "inci_chars": 0,
+        "active_ingredients_chars": 0,
+        "inci_applicability_status": "",
+        "ingredient_review_status": "",
+        "ingredient_remediation_action": "",
+        "bundle_component_refs_count": 0,
+        "effective_inci_chars": 0,
+        "inci_borrowed_from_product_id": ""
+      }
+    },
+    {
+      "seed_id": "eps_ccd6227a1bc1491a847c8823",
+      "external_product_id": "ext_8af147de5c1a6addbb5213ca",
+      "market": "US",
+      "domain": "biologique-recherche.com",
+      "title": "Sérum Biosensible",
+      "canonical_url": "https://biologique-recherche.com/products/serum-biosensible",
+      "product_family": "single_formula",
+      "product_line_id": "pl_53ce6a47d1457a2627a2c7fd",
+      "identity_variant_axes": {
+        "volume": "30ml",
+        "multi_variant": false
+      },
+      "pivota_insights": {
+        "direct": {
+          "product_id": "ext_8af147de5c1a6addbb5213ca",
+          "kb_key": "product:ext_8af147de5c1a6addbb5213ca",
+          "status": "not_displayable",
+          "kb_exists": true,
+          "displayable": false,
+          "high_quality_ready": false,
+          "human_reviewed": true,
+          "issues": [
+            "reviewed_not_displayable",
+            "missing_card_highlight",
+            "empty_watchouts",
+            "quality_limited",
+            "seller_only_evidence"
+          ],
+          "blocking_issues": [
+            "reviewed_not_displayable",
+            "missing_card_highlight"
+          ],
+          "quality_state": "limited",
+          "evidence_profile": "seller_only",
+          "has_card_highlight": false
+        },
+        "effective": {
+          "product_id": "ext_8af147de5c1a6addbb5213ca",
+          "kb_key": "product:ext_8af147de5c1a6addbb5213ca",
+          "status": "not_displayable",
+          "kb_exists": true,
+          "displayable": false,
+          "high_quality_ready": false,
+          "human_reviewed": true,
+          "issues": [
+            "reviewed_not_displayable",
+            "missing_card_highlight",
+            "empty_watchouts",
+            "quality_limited",
+            "seller_only_evidence"
+          ],
+          "blocking_issues": [
+            "reviewed_not_displayable",
+            "missing_card_highlight"
+          ],
+          "quality_state": "limited",
+          "evidence_profile": "seller_only",
+          "has_card_highlight": false
+        },
+        "product_line_id": "pl_53ce6a47d1457a2627a2c7fd",
+        "borrowed_from_sibling": false
+      },
+      "active_ingredients": {
+        "status": "not_expected_missing",
+        "issues": [],
+        "regulatory_expected": false,
+        "hero_expected": false,
+        "active_items": [],
+        "source_origin": "none",
+        "source_quality_status": "blocked",
+        "coverage": {
+          "details_sections_count": 2,
+          "faq_count": 0,
+          "how_to_chars": 109,
+          "inci_chars": 0,
+          "active_ingredients_chars": 0,
+          "inci_applicability_status": "",
+          "ingredient_review_status": "",
+          "ingredient_remediation_action": "",
+          "bundle_component_refs_count": 0,
+          "effective_inci_chars": 0,
+          "inci_borrowed_from_product_id": ""
+        },
+        "invalid_fragments": [],
+        "suppressed_reason": "no_authoritative_source"
+      },
+      "variants": {
+        "status": "ready",
+        "issues": [],
+        "visible_variant_rows": 1,
+        "examples": {
+          "identity_option_visible": [],
+          "wrong_axis_for_category": [],
+          "makeup_shade_missing_visual": [],
+          "size_value_generic_axis": [],
+          "default_option_size_evidence_missing_axis": [],
+          "identity_default_title_axis": []
+        }
+      },
+      "coverage": {
+        "details_sections_count": 2,
+        "faq_count": 0,
+        "how_to_chars": 109,
+        "inci_chars": 0,
+        "active_ingredients_chars": 0,
+        "inci_applicability_status": "",
+        "ingredient_review_status": "",
+        "ingredient_remediation_action": "",
+        "bundle_component_refs_count": 0,
+        "effective_inci_chars": 0,
+        "inci_borrowed_from_product_id": ""
+      }
+    },
+    {
+      "seed_id": "eps_71997689f88440638dabd3a7",
+      "external_product_id": "ext_8e6740eb8dfbcac56a4f786c",
+      "market": "US",
+      "domain": "biologique-recherche.com",
+      "title": "Stilligouttes",
+      "canonical_url": "https://biologique-recherche.com/products/stilligouttes",
+      "product_family": "unknown_product",
+      "product_line_id": null,
+      "pivota_insights": {
+        "direct": {
+          "product_id": "ext_8e6740eb8dfbcac56a4f786c",
+          "kb_key": "product:ext_8e6740eb8dfbcac56a4f786c",
+          "status": "not_displayable",
+          "kb_exists": true,
+          "displayable": false,
+          "high_quality_ready": false,
+          "human_reviewed": true,
+          "issues": [
+            "reviewed_not_displayable",
+            "quality_limited",
+            "seller_only_evidence"
+          ],
+          "blocking_issues": [
+            "reviewed_not_displayable"
+          ],
+          "quality_state": "limited",
+          "evidence_profile": "seller_only",
+          "has_card_highlight": true
+        },
+        "effective": {
+          "product_id": "ext_8e6740eb8dfbcac56a4f786c",
+          "kb_key": "product:ext_8e6740eb8dfbcac56a4f786c",
+          "status": "not_displayable",
+          "kb_exists": true,
+          "displayable": false,
+          "high_quality_ready": false,
+          "human_reviewed": true,
+          "issues": [
+            "reviewed_not_displayable",
+            "quality_limited",
+            "seller_only_evidence"
+          ],
+          "blocking_issues": [
+            "reviewed_not_displayable"
+          ],
+          "quality_state": "limited",
+          "evidence_profile": "seller_only",
+          "has_card_highlight": true
+        },
+        "product_line_id": null,
+        "borrowed_from_sibling": false
+      },
+      "active_ingredients": {
+        "status": "not_expected_missing",
+        "issues": [],
+        "regulatory_expected": false,
+        "hero_expected": false,
+        "active_items": [],
+        "source_origin": "none",
+        "source_quality_status": "blocked",
+        "coverage": {
+          "details_sections_count": 0,
+          "faq_count": 0,
+          "how_to_chars": 109,
+          "inci_chars": 0,
+          "active_ingredients_chars": 0,
+          "inci_applicability_status": "",
+          "ingredient_review_status": "",
+          "ingredient_remediation_action": "",
+          "bundle_component_refs_count": 0,
+          "effective_inci_chars": 0,
+          "inci_borrowed_from_product_id": ""
+        },
+        "invalid_fragments": [],
+        "suppressed_reason": "no_authoritative_source"
+      },
+      "variants": {
+        "status": "ready",
+        "issues": [],
+        "visible_variant_rows": 1,
+        "examples": {
+          "identity_option_visible": [],
+          "wrong_axis_for_category": [],
+          "makeup_shade_missing_visual": [],
+          "size_value_generic_axis": [],
+          "default_option_size_evidence_missing_axis": [],
+          "identity_default_title_axis": []
+        }
+      },
+      "coverage": {
+        "details_sections_count": 0,
+        "faq_count": 0,
+        "how_to_chars": 109,
+        "inci_chars": 0,
+        "active_ingredients_chars": 0,
+        "inci_applicability_status": "",
+        "ingredient_review_status": "",
+        "ingredient_remediation_action": "",
+        "bundle_component_refs_count": 0,
+        "effective_inci_chars": 0,
+        "inci_borrowed_from_product_id": ""
+      }
+    },
+    {
+      "seed_id": "eps_fdc1f6d0e2cf4f30af76183f",
+      "external_product_id": "ext_9803119f30c6e74461971a8e",
+      "market": "US",
+      "domain": "biologique-recherche.com",
+      "title": "Shampooing Sébo-Rééquilibrant",
+      "canonical_url": "https://biologique-recherche.com/products/shampooing-sebo-reequilibrant",
+      "product_family": "unknown_product",
+      "product_line_id": "pl_b5e02f55e1be441b2ca50ef5",
+      "identity_variant_axes": {
+        "volume": "75ml",
+        "multi_variant": true
+      },
+      "pivota_insights": {
+        "direct": {
+          "product_id": "ext_9803119f30c6e74461971a8e",
+          "kb_key": "product:ext_9803119f30c6e74461971a8e",
+          "status": "not_displayable",
+          "kb_exists": true,
+          "displayable": false,
+          "high_quality_ready": false,
+          "human_reviewed": true,
+          "issues": [
+            "reviewed_not_displayable",
+            "missing_card_highlight",
+            "empty_watchouts",
+            "quality_limited",
+            "seller_only_evidence"
+          ],
+          "blocking_issues": [
+            "reviewed_not_displayable",
+            "missing_card_highlight"
+          ],
+          "quality_state": "limited",
+          "evidence_profile": "seller_only",
+          "has_card_highlight": false
+        },
+        "effective": {
+          "product_id": "ext_9803119f30c6e74461971a8e",
+          "kb_key": "product:ext_9803119f30c6e74461971a8e",
+          "status": "not_displayable",
+          "kb_exists": true,
+          "displayable": false,
+          "high_quality_ready": false,
+          "human_reviewed": true,
+          "issues": [
+            "reviewed_not_displayable",
+            "missing_card_highlight",
+            "empty_watchouts",
+            "quality_limited",
+            "seller_only_evidence"
+          ],
+          "blocking_issues": [
+            "reviewed_not_displayable",
+            "missing_card_highlight"
+          ],
+          "quality_state": "limited",
+          "evidence_profile": "seller_only",
+          "has_card_highlight": false
+        },
+        "product_line_id": "pl_b5e02f55e1be441b2ca50ef5",
+        "borrowed_from_sibling": false
+      },
+      "active_ingredients": {
+        "status": "not_expected_missing",
+        "issues": [],
+        "regulatory_expected": false,
+        "hero_expected": false,
+        "active_items": [],
+        "source_origin": "none",
+        "source_quality_status": "blocked",
+        "coverage": {
+          "details_sections_count": 2,
+          "faq_count": 0,
+          "how_to_chars": 109,
+          "inci_chars": 0,
+          "active_ingredients_chars": 0,
+          "inci_applicability_status": "",
+          "ingredient_review_status": "",
+          "ingredient_remediation_action": "",
+          "bundle_component_refs_count": 0,
+          "effective_inci_chars": 0,
+          "inci_borrowed_from_product_id": ""
+        },
+        "invalid_fragments": [],
+        "suppressed_reason": "no_authoritative_source"
+      },
+      "variants": {
+        "status": "ready",
+        "issues": [],
+        "visible_variant_rows": 2,
+        "examples": {
+          "identity_option_visible": [],
+          "wrong_axis_for_category": [],
+          "makeup_shade_missing_visual": [],
+          "size_value_generic_axis": [],
+          "default_option_size_evidence_missing_axis": [],
+          "identity_default_title_axis": []
+        }
+      },
+      "coverage": {
+        "details_sections_count": 2,
+        "faq_count": 0,
+        "how_to_chars": 109,
+        "inci_chars": 0,
+        "active_ingredients_chars": 0,
+        "inci_applicability_status": "",
+        "ingredient_review_status": "",
+        "ingredient_remediation_action": "",
+        "bundle_component_refs_count": 0,
+        "effective_inci_chars": 0,
+        "inci_borrowed_from_product_id": ""
+      }
+    },
+    {
+      "seed_id": "eps_aa1e5d97d7944626be9215d9",
+      "external_product_id": "ext_9dbb7bb9db5cb2d711a1e987",
+      "market": "US",
+      "domain": "biologique-recherche.com",
+      "title": "Stilligouttes",
+      "canonical_url": "https://biologique-recherche.com/products/stilligouttes1",
+      "product_family": "unknown_product",
+      "product_line_id": null,
+      "pivota_insights": {
+        "direct": {
+          "product_id": "ext_9dbb7bb9db5cb2d711a1e987",
+          "kb_key": "product:ext_9dbb7bb9db5cb2d711a1e987",
+          "status": "not_displayable",
+          "kb_exists": true,
+          "displayable": false,
+          "high_quality_ready": false,
+          "human_reviewed": true,
+          "issues": [
+            "reviewed_not_displayable",
+            "quality_limited",
+            "seller_only_evidence"
+          ],
+          "blocking_issues": [
+            "reviewed_not_displayable"
+          ],
+          "quality_state": "limited",
+          "evidence_profile": "seller_only",
+          "has_card_highlight": true
+        },
+        "effective": {
+          "product_id": "ext_9dbb7bb9db5cb2d711a1e987",
+          "kb_key": "product:ext_9dbb7bb9db5cb2d711a1e987",
+          "status": "not_displayable",
+          "kb_exists": true,
+          "displayable": false,
+          "high_quality_ready": false,
+          "human_reviewed": true,
+          "issues": [
+            "reviewed_not_displayable",
+            "quality_limited",
+            "seller_only_evidence"
+          ],
+          "blocking_issues": [
+            "reviewed_not_displayable"
+          ],
+          "quality_state": "limited",
+          "evidence_profile": "seller_only",
+          "has_card_highlight": true
+        },
+        "product_line_id": null,
+        "borrowed_from_sibling": false
+      },
+      "active_ingredients": {
+        "status": "not_expected_missing",
+        "issues": [],
+        "regulatory_expected": false,
+        "hero_expected": false,
+        "active_items": [],
+        "source_origin": "none",
+        "source_quality_status": "blocked",
+        "coverage": {
+          "details_sections_count": 0,
+          "faq_count": 0,
+          "how_to_chars": 109,
+          "inci_chars": 0,
+          "active_ingredients_chars": 0,
+          "inci_applicability_status": "",
+          "ingredient_review_status": "",
+          "ingredient_remediation_action": "",
+          "bundle_component_refs_count": 0,
+          "effective_inci_chars": 0,
+          "inci_borrowed_from_product_id": ""
+        },
+        "invalid_fragments": [],
+        "suppressed_reason": "no_authoritative_source"
+      },
+      "variants": {
+        "status": "ready",
+        "issues": [],
+        "visible_variant_rows": 1,
+        "examples": {
+          "identity_option_visible": [],
+          "wrong_axis_for_category": [],
+          "makeup_shade_missing_visual": [],
+          "size_value_generic_axis": [],
+          "default_option_size_evidence_missing_axis": [],
+          "identity_default_title_axis": []
+        }
+      },
+      "coverage": {
+        "details_sections_count": 0,
+        "faq_count": 0,
+        "how_to_chars": 109,
+        "inci_chars": 0,
+        "active_ingredients_chars": 0,
+        "inci_applicability_status": "",
+        "ingredient_review_status": "",
+        "ingredient_remediation_action": "",
+        "bundle_component_refs_count": 0,
+        "effective_inci_chars": 0,
+        "inci_borrowed_from_product_id": ""
+      }
+    },
+    {
+      "seed_id": "eps_ecbdd8bf3d7f42749849a763",
+      "external_product_id": "ext_b6946adbfc3a89b52ce0a03a",
+      "market": "US",
+      "domain": "biologique-recherche.com",
+      "title": "Lotion P50 Capillaire",
+      "canonical_url": "https://biologique-recherche.com/products/lotion-p50-capillaire",
+      "product_family": "single_formula",
+      "product_line_id": "pl_1d2474b6e1eec2f2246cd8e1",
+      "identity_variant_axes": {
+        "volume": "250ml",
+        "multi_variant": false
+      },
+      "pivota_insights": {
+        "direct": {
+          "product_id": "ext_b6946adbfc3a89b52ce0a03a",
+          "kb_key": "product:ext_b6946adbfc3a89b52ce0a03a",
+          "status": "not_displayable",
+          "kb_exists": true,
+          "displayable": false,
+          "high_quality_ready": false,
+          "human_reviewed": true,
+          "issues": [
+            "reviewed_not_displayable",
+            "missing_card_highlight",
+            "empty_watchouts",
+            "quality_limited",
+            "seller_only_evidence"
+          ],
+          "blocking_issues": [
+            "reviewed_not_displayable",
+            "missing_card_highlight"
+          ],
+          "quality_state": "limited",
+          "evidence_profile": "seller_only",
+          "has_card_highlight": false
+        },
+        "effective": {
+          "product_id": "ext_b6946adbfc3a89b52ce0a03a",
+          "kb_key": "product:ext_b6946adbfc3a89b52ce0a03a",
+          "status": "not_displayable",
+          "kb_exists": true,
+          "displayable": false,
+          "high_quality_ready": false,
+          "human_reviewed": true,
+          "issues": [
+            "reviewed_not_displayable",
+            "missing_card_highlight",
+            "empty_watchouts",
+            "quality_limited",
+            "seller_only_evidence"
+          ],
+          "blocking_issues": [
+            "reviewed_not_displayable",
+            "missing_card_highlight"
+          ],
+          "quality_state": "limited",
+          "evidence_profile": "seller_only",
+          "has_card_highlight": false
+        },
+        "product_line_id": "pl_1d2474b6e1eec2f2246cd8e1",
+        "borrowed_from_sibling": false
+      },
+      "active_ingredients": {
+        "status": "not_expected_missing",
+        "issues": [],
+        "regulatory_expected": false,
+        "hero_expected": false,
+        "active_items": [],
+        "source_origin": "none",
+        "source_quality_status": "blocked",
+        "coverage": {
+          "details_sections_count": 2,
+          "faq_count": 0,
+          "how_to_chars": 110,
+          "inci_chars": 0,
+          "active_ingredients_chars": 0,
+          "inci_applicability_status": "",
+          "ingredient_review_status": "",
+          "ingredient_remediation_action": "",
+          "bundle_component_refs_count": 0,
+          "effective_inci_chars": 0,
+          "inci_borrowed_from_product_id": ""
+        },
+        "invalid_fragments": [],
+        "suppressed_reason": "no_authoritative_source"
+      },
+      "variants": {
+        "status": "ready",
+        "issues": [],
+        "visible_variant_rows": 1,
+        "examples": {
+          "identity_option_visible": [],
+          "wrong_axis_for_category": [],
+          "makeup_shade_missing_visual": [],
+          "size_value_generic_axis": [],
+          "default_option_size_evidence_missing_axis": [],
+          "identity_default_title_axis": []
+        }
+      },
+      "coverage": {
+        "details_sections_count": 2,
+        "faq_count": 0,
+        "how_to_chars": 110,
+        "inci_chars": 0,
+        "active_ingredients_chars": 0,
+        "inci_applicability_status": "",
+        "ingredient_review_status": "",
+        "ingredient_remediation_action": "",
+        "bundle_component_refs_count": 0,
+        "effective_inci_chars": 0,
+        "inci_borrowed_from_product_id": ""
+      }
+    },
+    {
+      "seed_id": "eps_b750e68dc09644c8b8e74069",
+      "external_product_id": "ext_c9704eeb7ba912757c3d8d17",
+      "market": "US",
+      "domain": "biologique-recherche.com",
+      "title": "Masque Dermo-Apaisant",
+      "canonical_url": "https://biologique-recherche.com/products/masque-dermo-apaisant",
+      "product_family": "unknown_product",
+      "product_line_id": "pl_39be0a07ed15c0ff05deba1c",
+      "identity_variant_axes": {
+        "volume": "100ml",
+        "multi_variant": false
+      },
+      "pivota_insights": {
+        "direct": {
+          "product_id": "ext_c9704eeb7ba912757c3d8d17",
+          "kb_key": "product:ext_c9704eeb7ba912757c3d8d17",
+          "status": "not_displayable",
+          "kb_exists": true,
+          "displayable": false,
+          "high_quality_ready": false,
+          "human_reviewed": true,
+          "issues": [
+            "reviewed_not_displayable",
+            "missing_card_highlight",
+            "empty_watchouts",
+            "quality_limited",
+            "seller_only_evidence"
+          ],
+          "blocking_issues": [
+            "reviewed_not_displayable",
+            "missing_card_highlight"
+          ],
+          "quality_state": "limited",
+          "evidence_profile": "seller_only",
+          "has_card_highlight": false
+        },
+        "effective": {
+          "product_id": "ext_c9704eeb7ba912757c3d8d17",
+          "kb_key": "product:ext_c9704eeb7ba912757c3d8d17",
+          "status": "not_displayable",
+          "kb_exists": true,
+          "displayable": false,
+          "high_quality_ready": false,
+          "human_reviewed": true,
+          "issues": [
+            "reviewed_not_displayable",
+            "missing_card_highlight",
+            "empty_watchouts",
+            "quality_limited",
+            "seller_only_evidence"
+          ],
+          "blocking_issues": [
+            "reviewed_not_displayable",
+            "missing_card_highlight"
+          ],
+          "quality_state": "limited",
+          "evidence_profile": "seller_only",
+          "has_card_highlight": false
+        },
+        "product_line_id": "pl_39be0a07ed15c0ff05deba1c",
+        "borrowed_from_sibling": false
+      },
+      "active_ingredients": {
+        "status": "not_expected_missing",
+        "issues": [],
+        "regulatory_expected": false,
+        "hero_expected": false,
+        "active_items": [],
+        "source_origin": "none",
+        "source_quality_status": "blocked",
+        "coverage": {
+          "details_sections_count": 2,
+          "faq_count": 0,
+          "how_to_chars": 109,
+          "inci_chars": 0,
+          "active_ingredients_chars": 0,
+          "inci_applicability_status": "",
+          "ingredient_review_status": "",
+          "ingredient_remediation_action": "",
+          "bundle_component_refs_count": 0,
+          "effective_inci_chars": 0,
+          "inci_borrowed_from_product_id": ""
+        },
+        "invalid_fragments": [],
+        "suppressed_reason": "no_authoritative_source"
+      },
+      "variants": {
+        "status": "ready",
+        "issues": [],
+        "visible_variant_rows": 1,
+        "examples": {
+          "identity_option_visible": [],
+          "wrong_axis_for_category": [],
+          "makeup_shade_missing_visual": [],
+          "size_value_generic_axis": [],
+          "default_option_size_evidence_missing_axis": [],
+          "identity_default_title_axis": []
+        }
+      },
+      "coverage": {
+        "details_sections_count": 2,
+        "faq_count": 0,
+        "how_to_chars": 109,
+        "inci_chars": 0,
+        "active_ingredients_chars": 0,
+        "inci_applicability_status": "",
+        "ingredient_review_status": "",
+        "ingredient_remediation_action": "",
+        "bundle_component_refs_count": 0,
+        "effective_inci_chars": 0,
+        "inci_borrowed_from_product_id": ""
+      }
+    },
+    {
+      "seed_id": "eps_6192a07783a7400d937e0305",
+      "external_product_id": "ext_e37ac3ad62f12cb867f501d4",
+      "market": "US",
+      "domain": "biologique-recherche.com",
+      "title": "Crème V. Espoir",
+      "canonical_url": "https://biologique-recherche.com/products/creme-v-espoir",
+      "product_family": "unknown_product",
+      "product_line_id": "pl_37693c488e1e7a25e317b2c6",
+      "identity_variant_axes": {
+        "volume": "50ml",
+        "multi_variant": false
+      },
+      "pivota_insights": {
+        "direct": {
+          "product_id": "ext_e37ac3ad62f12cb867f501d4",
+          "kb_key": "product:ext_e37ac3ad62f12cb867f501d4",
+          "status": "not_displayable",
+          "kb_exists": true,
+          "displayable": false,
+          "high_quality_ready": false,
+          "human_reviewed": true,
+          "issues": [
+            "reviewed_not_displayable",
+            "missing_card_highlight",
+            "empty_watchouts",
+            "quality_limited",
+            "seller_only_evidence"
+          ],
+          "blocking_issues": [
+            "reviewed_not_displayable",
+            "missing_card_highlight"
+          ],
+          "quality_state": "limited",
+          "evidence_profile": "seller_only",
+          "has_card_highlight": false
+        },
+        "effective": {
+          "product_id": "ext_e37ac3ad62f12cb867f501d4",
+          "kb_key": "product:ext_e37ac3ad62f12cb867f501d4",
+          "status": "not_displayable",
+          "kb_exists": true,
+          "displayable": false,
+          "high_quality_ready": false,
+          "human_reviewed": true,
+          "issues": [
+            "reviewed_not_displayable",
+            "missing_card_highlight",
+            "empty_watchouts",
+            "quality_limited",
+            "seller_only_evidence"
+          ],
+          "blocking_issues": [
+            "reviewed_not_displayable",
+            "missing_card_highlight"
+          ],
+          "quality_state": "limited",
+          "evidence_profile": "seller_only",
+          "has_card_highlight": false
+        },
+        "product_line_id": "pl_37693c488e1e7a25e317b2c6",
+        "borrowed_from_sibling": false
+      },
+      "active_ingredients": {
+        "status": "not_expected_missing",
+        "issues": [],
+        "regulatory_expected": false,
+        "hero_expected": false,
+        "active_items": [],
+        "source_origin": "none",
+        "source_quality_status": "blocked",
+        "coverage": {
+          "details_sections_count": 2,
+          "faq_count": 0,
+          "how_to_chars": 109,
+          "inci_chars": 0,
+          "active_ingredients_chars": 0,
+          "inci_applicability_status": "",
+          "ingredient_review_status": "",
+          "ingredient_remediation_action": "",
+          "bundle_component_refs_count": 0,
+          "effective_inci_chars": 0,
+          "inci_borrowed_from_product_id": ""
+        },
+        "invalid_fragments": [],
+        "suppressed_reason": "no_authoritative_source"
+      },
+      "variants": {
+        "status": "ready",
+        "issues": [],
+        "visible_variant_rows": 1,
+        "examples": {
+          "identity_option_visible": [],
+          "wrong_axis_for_category": [],
+          "makeup_shade_missing_visual": [],
+          "size_value_generic_axis": [],
+          "default_option_size_evidence_missing_axis": [],
+          "identity_default_title_axis": []
+        }
+      },
+      "coverage": {
+        "details_sections_count": 2,
+        "faq_count": 0,
+        "how_to_chars": 109,
+        "inci_chars": 0,
+        "active_ingredients_chars": 0,
+        "inci_applicability_status": "",
+        "ingredient_review_status": "",
+        "ingredient_remediation_action": "",
+        "bundle_component_refs_count": 0,
+        "effective_inci_chars": 0,
+        "inci_borrowed_from_product_id": ""
+      }
+    },
+    {
+      "seed_id": "eps_a07ee700b0434706beaaf1d5",
+      "external_product_id": "ext_ff777478fa2dad8412a51bab",
+      "market": "US",
+      "domain": "biologique-recherche.com",
+      "title": "Eau Micellaire Biosensible",
+      "canonical_url": "https://biologique-recherche.com/products/eau-micellaire-biosensible",
+      "product_family": "unknown_product",
+      "product_line_id": "pl_e5715a6a5ae763a524fb3c97",
+      "identity_variant_axes": {
+        "volume": "100ml",
+        "multi_variant": true
+      },
+      "pivota_insights": {
+        "direct": {
+          "product_id": "ext_ff777478fa2dad8412a51bab",
+          "kb_key": "product:ext_ff777478fa2dad8412a51bab",
+          "status": "not_displayable",
+          "kb_exists": true,
+          "displayable": false,
+          "high_quality_ready": false,
+          "human_reviewed": true,
+          "issues": [
+            "reviewed_not_displayable",
+            "missing_card_highlight",
+            "empty_watchouts",
+            "quality_limited",
+            "seller_only_evidence"
+          ],
+          "blocking_issues": [
+            "reviewed_not_displayable",
+            "missing_card_highlight"
+          ],
+          "quality_state": "limited",
+          "evidence_profile": "seller_only",
+          "has_card_highlight": false
+        },
+        "effective": {
+          "product_id": "ext_ff777478fa2dad8412a51bab",
+          "kb_key": "product:ext_ff777478fa2dad8412a51bab",
+          "status": "not_displayable",
+          "kb_exists": true,
+          "displayable": false,
+          "high_quality_ready": false,
+          "human_reviewed": true,
+          "issues": [
+            "reviewed_not_displayable",
+            "missing_card_highlight",
+            "empty_watchouts",
+            "quality_limited",
+            "seller_only_evidence"
+          ],
+          "blocking_issues": [
+            "reviewed_not_displayable",
+            "missing_card_highlight"
+          ],
+          "quality_state": "limited",
+          "evidence_profile": "seller_only",
+          "has_card_highlight": false
+        },
+        "product_line_id": "pl_e5715a6a5ae763a524fb3c97",
+        "borrowed_from_sibling": false
+      },
+      "active_ingredients": {
+        "status": "not_expected_missing",
+        "issues": [],
+        "regulatory_expected": false,
+        "hero_expected": false,
+        "active_items": [],
+        "source_origin": "none",
+        "source_quality_status": "blocked",
+        "coverage": {
+          "details_sections_count": 2,
+          "faq_count": 0,
+          "how_to_chars": 109,
+          "inci_chars": 0,
+          "active_ingredients_chars": 0,
+          "inci_applicability_status": "",
+          "ingredient_review_status": "",
+          "ingredient_remediation_action": "",
+          "bundle_component_refs_count": 0,
+          "effective_inci_chars": 0,
+          "inci_borrowed_from_product_id": ""
+        },
+        "invalid_fragments": [],
+        "suppressed_reason": "no_authoritative_source"
+      },
+      "variants": {
+        "status": "ready",
+        "issues": [],
+        "visible_variant_rows": 2,
+        "examples": {
+          "identity_option_visible": [],
+          "wrong_axis_for_category": [],
+          "makeup_shade_missing_visual": [],
+          "size_value_generic_axis": [],
+          "default_option_size_evidence_missing_axis": [],
+          "identity_default_title_axis": []
+        }
+      },
+      "coverage": {
+        "details_sections_count": 2,
+        "faq_count": 0,
+        "how_to_chars": 109,
+        "inci_chars": 0,
+        "active_ingredients_chars": 0,
+        "inci_applicability_status": "",
+        "ingredient_review_status": "",
+        "ingredient_remediation_action": "",
+        "bundle_component_refs_count": 0,
+        "effective_inci_chars": 0,
+        "inci_borrowed_from_product_id": ""
+      }
+    }
+  ]
+}

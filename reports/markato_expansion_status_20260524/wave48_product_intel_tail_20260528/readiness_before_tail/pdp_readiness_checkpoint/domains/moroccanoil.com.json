@@ -1,0 +1,717 @@
+{
+  "generated_at": "2026-05-28T10:02:08.615Z",
+  "options": {
+    "market": "US",
+    "includeAttached": true,
+    "domain": "moroccanoil.com",
+    "externalProductIds": [],
+    "limit": 20000,
+    "sampleLimit": 10,
+    "checkpointDir": null,
+    "checkpointMode": "domain",
+    "resume": false,
+    "force": false,
+    "continueOnError": true,
+    "pageSize": 500,
+    "format": "json",
+    "chunkByDomain": false
+  },
+  "warnings": [],
+  "summary": {
+    "scanned": 4,
+    "by_market": {
+      "US": 4
+    },
+    "by_domain": [
+      {
+        "key": "moroccanoil.com",
+        "count": 4
+      }
+    ],
+    "by_product_family": [
+      {
+        "key": "single_formula",
+        "count": 4
+      }
+    ],
+    "coverage": {
+      "missing_inci": 1,
+      "missing_active_raw": 4,
+      "missing_details": 0,
+      "missing_how_to": 0,
+      "missing_faq": 1
+    },
+    "pivota_insights": {
+      "direct": {
+        "displayable": 0,
+        "high_quality_ready": 0,
+        "missing_kb": 0,
+        "not_displayable": 4
+      },
+      "effective": {
+        "displayable": 0,
+        "high_quality_ready": 0,
+        "missing_kb": 0,
+        "not_displayable": 4,
+        "borrowed_from_sibling": 0
+      },
+      "effective_issues": [
+        {
+          "key": "empty_watchouts",
+          "count": 4
+        },
+        {
+          "key": "missing_card_highlight",
+          "count": 4
+        },
+        {
+          "key": "quality_limited",
+          "count": 4
+        },
+        {
+          "key": "reviewed_not_displayable",
+          "count": 4
+        },
+        {
+          "key": "seller_only_evidence",
+          "count": 4
+        }
+      ],
+      "effective_issue_domains": [
+        {
+          "key": "moroccanoil.com::empty_watchouts",
+          "count": 4
+        },
+        {
+          "key": "moroccanoil.com::missing_card_highlight",
+          "count": 4
+        },
+        {
+          "key": "moroccanoil.com::quality_limited",
+          "count": 4
+        },
+        {
+          "key": "moroccanoil.com::reviewed_not_displayable",
+          "count": 4
+        },
+        {
+          "key": "moroccanoil.com::seller_only_evidence",
+          "count": 4
+        }
+      ],
+      "quality_state": [
+        {
+          "key": "limited",
+          "count": 4
+        }
+      ],
+      "evidence_profile": [
+        {
+          "key": "seller_only",
+          "count": 4
+        }
+      ],
+      "samples": {
+        "reviewed_not_displayable": [
+          {
+            "external_product_id": "ext_507039a177c254b71d7b592e",
+            "domain": "moroccanoil.com",
+            "title": "Moroccanoil Treatment Light",
+            "used_product_id": "ext_507039a177c254b71d7b592e",
+            "quality_state": "limited",
+            "evidence_profile": "seller_only"
+          },
+          {
+            "external_product_id": "ext_78c6141c8d346cc6c83787fb",
+            "domain": "moroccanoil.com",
+            "title": "Pure Argan Oil",
+            "used_product_id": "ext_78c6141c8d346cc6c83787fb",
+            "quality_state": "limited",
+            "evidence_profile": "seller_only"
+          },
+          {
+            "external_product_id": "ext_bbfe3a11344a53d5354f1d99",
+            "domain": "moroccanoil.com",
+            "title": "Moroccanoil Treatment Purple",
+            "used_product_id": "ext_bbfe3a11344a53d5354f1d99",
+            "quality_state": "limited",
+            "evidence_profile": "seller_only"
+          },
+          {
+            "external_product_id": "ext_c9c3f8db66f9a97547e08350",
+            "domain": "moroccanoil.com",
+            "title": "Moroccanoil Treatment Original",
+            "used_product_id": "ext_c9c3f8db66f9a97547e08350",
+            "quality_state": "limited",
+            "evidence_profile": "seller_only"
+          }
+        ],
+        "missing_card_highlight": [
+          {
+            "external_product_id": "ext_507039a177c254b71d7b592e",
+            "domain": "moroccanoil.com",
+            "title": "Moroccanoil Treatment Light",
+            "used_product_id": "ext_507039a177c254b71d7b592e",
+            "quality_state": "limited",
+            "evidence_profile": "seller_only"
+          },
+          {
+            "external_product_id": "ext_78c6141c8d346cc6c83787fb",
+            "domain": "moroccanoil.com",
+            "title": "Pure Argan Oil",
+            "used_product_id": "ext_78c6141c8d346cc6c83787fb",
+            "quality_state": "limited",
+            "evidence_profile": "seller_only"
+          },
+          {
+            "external_product_id": "ext_bbfe3a11344a53d5354f1d99",
+            "domain": "moroccanoil.com",
+            "title": "Moroccanoil Treatment Purple",
+            "used_product_id": "ext_bbfe3a11344a53d5354f1d99",
+            "quality_state": "limited",
+            "evidence_profile": "seller_only"
+          },
+          {
+            "external_product_id": "ext_c9c3f8db66f9a97547e08350",
+            "domain": "moroccanoil.com",
+            "title": "Moroccanoil Treatment Original",
+            "used_product_id": "ext_c9c3f8db66f9a97547e08350",
+            "quality_state": "limited",
+            "evidence_profile": "seller_only"
+          }
+        ],
+        "seller_only_evidence": [
+          {
+            "external_product_id": "ext_507039a177c254b71d7b592e",
+            "domain": "moroccanoil.com",
+            "title": "Moroccanoil Treatment Light",
+            "used_product_id": "ext_507039a177c254b71d7b592e",
+            "quality_state": "limited",
+            "evidence_profile": "seller_only"
+          },
+          {
+            "external_product_id": "ext_78c6141c8d346cc6c83787fb",
+            "domain": "moroccanoil.com",
+            "title": "Pure Argan Oil",
+            "used_product_id": "ext_78c6141c8d346cc6c83787fb",
+            "quality_state": "limited",
+            "evidence_profile": "seller_only"
+          },
+          {
+            "external_product_id": "ext_bbfe3a11344a53d5354f1d99",
+            "domain": "moroccanoil.com",
+            "title": "Moroccanoil Treatment Purple",
+            "used_product_id": "ext_bbfe3a11344a53d5354f1d99",
+            "quality_state": "limited",
+            "evidence_profile": "seller_only"
+          },
+          {
+            "external_product_id": "ext_c9c3f8db66f9a97547e08350",
+            "domain": "moroccanoil.com",
+            "title": "Moroccanoil Treatment Original",
+            "used_product_id": "ext_c9c3f8db66f9a97547e08350",
+            "quality_state": "limited",
+            "evidence_profile": "seller_only"
+          }
+        ]
+      }
+    },
+    "active_ingredients": {
+      "regulatory_expected": 0,
+      "hero_expected": 0,
+      "any_active_items": 0,
+      "status": [
+        {
+          "key": "not_expected_missing",
+          "count": 4
+        }
+      ],
+      "issues": [],
+      "issue_domains": [],
+      "source_origin": [
+        {
+          "key": "pdp_section",
+          "count": 3
+        },
+        {
+          "key": "none",
+          "count": 1
+        }
+      ],
+      "samples": {}
+    },
+    "variants": {
+      "status": [
+        {
+          "key": "ready",
+          "count": 4
+        }
+      ],
+      "issues": [],
+      "issue_domains": [],
+      "samples": {}
+    }
+  },
+  "rows": [
+    {
+      "seed_id": "eps_32b1560e0b653fcbf113a707",
+      "external_product_id": "ext_507039a177c254b71d7b592e",
+      "market": "US",
+      "domain": "moroccanoil.com",
+      "title": "Moroccanoil Treatment Light",
+      "canonical_url": "https://www.moroccanoil.com/products/moroccanoil-treatment-light",
+      "product_family": "single_formula",
+      "product_line_id": "pl_4cf1b80b3b5a9ffccc87eb8c",
+      "identity_variant_axes": {
+        "size": "full 3 4 fl oz",
+        "volume": "4floz",
+        "multi_variant": true
+      },
+      "pivota_insights": {
+        "direct": {
+          "product_id": "ext_507039a177c254b71d7b592e",
+          "kb_key": "product:ext_507039a177c254b71d7b592e",
+          "status": "not_displayable",
+          "kb_exists": true,
+          "displayable": false,
+          "high_quality_ready": false,
+          "human_reviewed": true,
+          "issues": [
+            "reviewed_not_displayable",
+            "missing_card_highlight",
+            "empty_watchouts",
+            "quality_limited",
+            "seller_only_evidence"
+          ],
+          "blocking_issues": [
+            "reviewed_not_displayable",
+            "missing_card_highlight"
+          ],
+          "quality_state": "limited",
+          "evidence_profile": "seller_only",
+          "has_card_highlight": false
+        },
+        "effective": {
+          "product_id": "ext_507039a177c254b71d7b592e",
+          "kb_key": "product:ext_507039a177c254b71d7b592e",
+          "status": "not_displayable",
+          "kb_exists": true,
+          "displayable": false,
+          "high_quality_ready": false,
+          "human_reviewed": true,
+          "issues": [
+            "reviewed_not_displayable",
+            "missing_card_highlight",
+            "empty_watchouts",
+            "quality_limited",
+            "seller_only_evidence"
+          ],
+          "blocking_issues": [
+            "reviewed_not_displayable",
+            "missing_card_highlight"
+          ],
+          "quality_state": "limited",
+          "evidence_profile": "seller_only",
+          "has_card_highlight": false
+        },
+        "product_line_id": "pl_4cf1b80b3b5a9ffccc87eb8c",
+        "borrowed_from_sibling": false
+      },
+      "active_ingredients": {
+        "status": "not_expected_missing",
+        "issues": [],
+        "regulatory_expected": false,
+        "hero_expected": false,
+        "active_items": [],
+        "source_origin": "pdp_section",
+        "source_quality_status": "blocked",
+        "coverage": {
+          "details_sections_count": 8,
+          "faq_count": 16,
+          "how_to_chars": 366,
+          "inci_chars": 358,
+          "active_ingredients_chars": 0,
+          "inci_applicability_status": "",
+          "ingredient_review_status": "",
+          "ingredient_remediation_action": "",
+          "bundle_component_refs_count": 0,
+          "effective_inci_chars": 358,
+          "inci_borrowed_from_product_id": ""
+        },
+        "invalid_fragments": [],
+        "suppressed_reason": null
+      },
+      "variants": {
+        "status": "ready",
+        "issues": [],
+        "visible_variant_rows": 3,
+        "examples": {
+          "identity_option_visible": [],
+          "wrong_axis_for_category": [],
+          "makeup_shade_missing_visual": [],
+          "size_value_generic_axis": [],
+          "default_option_size_evidence_missing_axis": [],
+          "identity_default_title_axis": []
+        }
+      },
+      "coverage": {
+        "details_sections_count": 8,
+        "faq_count": 16,
+        "how_to_chars": 366,
+        "inci_chars": 358,
+        "active_ingredients_chars": 0,
+        "inci_applicability_status": "",
+        "ingredient_review_status": "",
+        "ingredient_remediation_action": "",
+        "bundle_component_refs_count": 0,
+        "effective_inci_chars": 358,
+        "inci_borrowed_from_product_id": ""
+      }
+    },
+    {
+      "seed_id": "eps_e764e9916bf5b527b91c6886",
+      "external_product_id": "ext_78c6141c8d346cc6c83787fb",
+      "market": "US",
+      "domain": "moroccanoil.com",
+      "title": "Pure Argan Oil",
+      "canonical_url": "https://www.moroccanoil.com/products/pure-argan-oil",
+      "product_family": "single_formula",
+      "product_line_id": "pl_22e89f3aff45e45959b10883",
+      "identity_variant_axes": {
+        "size": "full 1 7 fl oz",
+        "volume": "7floz",
+        "multi_variant": false
+      },
+      "pivota_insights": {
+        "direct": {
+          "product_id": "ext_78c6141c8d346cc6c83787fb",
+          "kb_key": "product:ext_78c6141c8d346cc6c83787fb",
+          "status": "not_displayable",
+          "kb_exists": true,
+          "displayable": false,
+          "high_quality_ready": false,
+          "human_reviewed": true,
+          "issues": [
+            "reviewed_not_displayable",
+            "missing_card_highlight",
+            "empty_watchouts",
+            "quality_limited",
+            "seller_only_evidence"
+          ],
+          "blocking_issues": [
+            "reviewed_not_displayable",
+            "missing_card_highlight"
+          ],
+          "quality_state": "limited",
+          "evidence_profile": "seller_only",
+          "has_card_highlight": false
+        },
+        "effective": {
+          "product_id": "ext_78c6141c8d346cc6c83787fb",
+          "kb_key": "product:ext_78c6141c8d346cc6c83787fb",
+          "status": "not_displayable",
+          "kb_exists": true,
+          "displayable": false,
+          "high_quality_ready": false,
+          "human_reviewed": true,
+          "issues": [
+            "reviewed_not_displayable",
+            "missing_card_highlight",
+            "empty_watchouts",
+            "quality_limited",
+            "seller_only_evidence"
+          ],
+          "blocking_issues": [
+            "reviewed_not_displayable",
+            "missing_card_highlight"
+          ],
+          "quality_state": "limited",
+          "evidence_profile": "seller_only",
+          "has_card_highlight": false
+        },
+        "product_line_id": "pl_22e89f3aff45e45959b10883",
+        "borrowed_from_sibling": false
+      },
+      "active_ingredients": {
+        "status": "not_expected_missing",
+        "issues": [],
+        "regulatory_expected": false,
+        "hero_expected": false,
+        "active_items": [],
+        "source_origin": "none",
+        "source_quality_status": "blocked",
+        "coverage": {
+          "details_sections_count": 6,
+          "faq_count": 8,
+          "how_to_chars": 258,
+          "inci_chars": 0,
+          "active_ingredients_chars": 0,
+          "inci_applicability_status": "",
+          "ingredient_review_status": "",
+          "ingredient_remediation_action": "",
+          "bundle_component_refs_count": 0,
+          "effective_inci_chars": 0,
+          "inci_borrowed_from_product_id": ""
+        },
+        "invalid_fragments": [],
+        "suppressed_reason": "no_authoritative_source"
+      },
+      "variants": {
+        "status": "ready",
+        "issues": [],
+        "visible_variant_rows": 1,
+        "examples": {
+          "identity_option_visible": [],
+          "wrong_axis_for_category": [],
+          "makeup_shade_missing_visual": [],
+          "size_value_generic_axis": [],
+          "default_option_size_evidence_missing_axis": [],
+          "identity_default_title_axis": []
+        }
+      },
+      "coverage": {
+        "details_sections_count": 6,
+        "faq_count": 8,
+        "how_to_chars": 258,
+        "inci_chars": 0,
+        "active_ingredients_chars": 0,
+        "inci_applicability_status": "",
+        "ingredient_review_status": "",
+        "ingredient_remediation_action": "",
+        "bundle_component_refs_count": 0,
+        "effective_inci_chars": 0,
+        "inci_borrowed_from_product_id": ""
+      }
+    },
+    {
+      "seed_id": "eps_4788d5202852773e527589cb",
+      "external_product_id": "ext_bbfe3a11344a53d5354f1d99",
+      "market": "US",
+      "domain": "moroccanoil.com",
+      "title": "Moroccanoil Treatment Purple",
+      "canonical_url": "https://www.moroccanoil.com/products/moroccanoil-treatment-purple",
+      "product_family": "single_formula",
+      "product_line_id": "pl_8b18de686f5950760bcfe998",
+      "identity_variant_axes": {
+        "size": "full 1 7 fl oz",
+        "volume": "7floz",
+        "multi_variant": true
+      },
+      "pivota_insights": {
+        "direct": {
+          "product_id": "ext_bbfe3a11344a53d5354f1d99",
+          "kb_key": "product:ext_bbfe3a11344a53d5354f1d99",
+          "status": "not_displayable",
+          "kb_exists": true,
+          "displayable": false,
+          "high_quality_ready": false,
+          "human_reviewed": true,
+          "issues": [
+            "reviewed_not_displayable",
+            "missing_card_highlight",
+            "empty_watchouts",
+            "quality_limited",
+            "seller_only_evidence"
+          ],
+          "blocking_issues": [
+            "reviewed_not_displayable",
+            "missing_card_highlight"
+          ],
+          "quality_state": "limited",
+          "evidence_profile": "seller_only",
+          "has_card_highlight": false
+        },
+        "effective": {
+          "product_id": "ext_bbfe3a11344a53d5354f1d99",
+          "kb_key": "product:ext_bbfe3a11344a53d5354f1d99",
+          "status": "not_displayable",
+          "kb_exists": true,
+          "displayable": false,
+          "high_quality_ready": false,
+          "human_reviewed": true,
+          "issues": [
+            "reviewed_not_displayable",
+            "missing_card_highlight",
+            "empty_watchouts",
+            "quality_limited",
+            "seller_only_evidence"
+          ],
+          "blocking_issues": [
+            "reviewed_not_displayable",
+            "missing_card_highlight"
+          ],
+          "quality_state": "limited",
+          "evidence_profile": "seller_only",
+          "has_card_highlight": false
+        },
+        "product_line_id": "pl_8b18de686f5950760bcfe998",
+        "borrowed_from_sibling": false
+      },
+      "active_ingredients": {
+        "status": "not_expected_missing",
+        "issues": [],
+        "regulatory_expected": false,
+        "hero_expected": false,
+        "active_items": [],
+        "source_origin": "pdp_section",
+        "source_quality_status": "blocked",
+        "coverage": {
+          "details_sections_count": 10,
+          "faq_count": 0,
+          "how_to_chars": 447,
+          "inci_chars": 242,
+          "active_ingredients_chars": 0,
+          "inci_applicability_status": "",
+          "ingredient_review_status": "",
+          "ingredient_remediation_action": "",
+          "bundle_component_refs_count": 0,
+          "effective_inci_chars": 242,
+          "inci_borrowed_from_product_id": ""
+        },
+        "invalid_fragments": [],
+        "suppressed_reason": null
+      },
+      "variants": {
+        "status": "ready",
+        "issues": [],
+        "visible_variant_rows": 2,
+        "examples": {
+          "identity_option_visible": [],
+          "wrong_axis_for_category": [],
+          "makeup_shade_missing_visual": [],
+          "size_value_generic_axis": [],
+          "default_option_size_evidence_missing_axis": [],
+          "identity_default_title_axis": []
+        }
+      },
+      "coverage": {
+        "details_sections_count": 10,
+        "faq_count": 0,
+        "how_to_chars": 447,
+        "inci_chars": 242,
+        "active_ingredients_chars": 0,
+        "inci_applicability_status": "",
+        "ingredient_review_status": "",
+        "ingredient_remediation_action": "",
+        "bundle_component_refs_count": 0,
+        "effective_inci_chars": 242,
+        "inci_borrowed_from_product_id": ""
+      }
+    },
+    {
+      "seed_id": "eps_804a531c15f03e31525aedf6",
+      "external_product_id": "ext_c9c3f8db66f9a97547e08350",
+      "market": "US",
+      "domain": "moroccanoil.com",
+      "title": "Moroccanoil Treatment Original",
+      "canonical_url": "https://www.moroccanoil.com/products/moroccanoil-treatment-original",
+      "product_family": "single_formula",
+      "product_line_id": "pl_060b5d9848b6dcf83b57fe13",
+      "identity_variant_axes": {
+        "size": "full 3 4 fl oz",
+        "volume": "4floz",
+        "multi_variant": true
+      },
+      "pivota_insights": {
+        "direct": {
+          "product_id": "ext_c9c3f8db66f9a97547e08350",
+          "kb_key": "product:ext_c9c3f8db66f9a97547e08350",
+          "status": "not_displayable",
+          "kb_exists": true,
+          "displayable": false,
+          "high_quality_ready": false,
+          "human_reviewed": true,
+          "issues": [
+            "reviewed_not_displayable",
+            "missing_card_highlight",
+            "empty_watchouts",
+            "quality_limited",
+            "seller_only_evidence"
+          ],
+          "blocking_issues": [
+            "reviewed_not_displayable",
+            "missing_card_highlight"
+          ],
+          "quality_state": "limited",
+          "evidence_profile": "seller_only",
+          "has_card_highlight": false
+        },
+        "effective": {
+          "product_id": "ext_c9c3f8db66f9a97547e08350",
+          "kb_key": "product:ext_c9c3f8db66f9a97547e08350",
+          "status": "not_displayable",
+          "kb_exists": true,
+          "displayable": false,
+          "high_quality_ready": false,
+          "human_reviewed": true,
+          "issues": [
+            "reviewed_not_displayable",
+            "missing_card_highlight",
+            "empty_watchouts",
+            "quality_limited",
+            "seller_only_evidence"
+          ],
+          "blocking_issues": [
+            "reviewed_not_displayable",
+            "missing_card_highlight"
+          ],
+          "quality_state": "limited",
+          "evidence_profile": "seller_only",
+          "has_card_highlight": false
+        },
+        "product_line_id": "pl_060b5d9848b6dcf83b57fe13",
+        "borrowed_from_sibling": false
+      },
+      "active_ingredients": {
+        "status": "not_expected_missing",
+        "issues": [],
+        "regulatory_expected": false,
+        "hero_expected": false,
+        "active_items": [],
+        "source_origin": "pdp_section",
+        "source_quality_status": "blocked",
+        "coverage": {
+          "details_sections_count": 8,
+          "faq_count": 16,
+          "how_to_chars": 339,
+          "inci_chars": 357,
+          "active_ingredients_chars": 0,
+          "inci_applicability_status": "",
+          "ingredient_review_status": "",
+          "ingredient_remediation_action": "",
+          "bundle_component_refs_count": 0,
+          "effective_inci_chars": 357,
+          "inci_borrowed_from_product_id": ""
+        },
+        "invalid_fragments": [],
+        "suppressed_reason": null
+      },
+      "variants": {
+        "status": "ready",
+        "issues": [],
+        "visible_variant_rows": 3,
+        "examples": {
+          "identity_option_visible": [],
+          "wrong_axis_for_category": [],
+          "makeup_shade_missing_visual": [],
+          "size_value_generic_axis": [],
+          "default_option_size_evidence_missing_axis": [],
+          "identity_default_title_axis": []
+        }
+      },
+      "coverage": {
+        "details_sections_count": 8,
+        "faq_count": 16,
+        "how_to_chars": 339,
+        "inci_chars": 357,
+        "active_ingredients_chars": 0,
+        "inci_applicability_status": "",
+        "ingredient_review_status": "",
+        "ingredient_remediation_action": "",
+        "bundle_component_refs_count": 0,
+        "effective_inci_chars": 357,
+        "inci_borrowed_from_product_id": ""
+      }
+    }
+  ]
+}

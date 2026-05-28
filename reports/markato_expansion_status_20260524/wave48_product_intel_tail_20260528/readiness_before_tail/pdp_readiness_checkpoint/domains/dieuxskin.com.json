@@ -1,0 +1,261 @@
+{
+  "generated_at": "2026-05-28T10:02:35.793Z",
+  "options": {
+    "market": "US",
+    "includeAttached": true,
+    "domain": "dieuxskin.com",
+    "externalProductIds": [],
+    "limit": 20000,
+    "sampleLimit": 10,
+    "checkpointDir": null,
+    "checkpointMode": "domain",
+    "resume": false,
+    "force": false,
+    "continueOnError": true,
+    "pageSize": 500,
+    "format": "json",
+    "chunkByDomain": false
+  },
+  "warnings": [],
+  "summary": {
+    "scanned": 1,
+    "by_market": {
+      "US": 1
+    },
+    "by_domain": [
+      {
+        "key": "dieuxskin.com",
+        "count": 1
+      }
+    ],
+    "by_product_family": [
+      {
+        "key": "single_formula",
+        "count": 1
+      }
+    ],
+    "coverage": {
+      "missing_inci": 1,
+      "missing_active_raw": 1,
+      "missing_details": 1,
+      "missing_how_to": 0,
+      "missing_faq": 1
+    },
+    "pivota_insights": {
+      "direct": {
+        "displayable": 0,
+        "high_quality_ready": 0,
+        "missing_kb": 0,
+        "not_displayable": 1
+      },
+      "effective": {
+        "displayable": 0,
+        "high_quality_ready": 0,
+        "missing_kb": 0,
+        "not_displayable": 1,
+        "borrowed_from_sibling": 0
+      },
+      "effective_issues": [
+        {
+          "key": "quality_limited",
+          "count": 1
+        },
+        {
+          "key": "reviewed_not_displayable",
+          "count": 1
+        },
+        {
+          "key": "seller_only_evidence",
+          "count": 1
+        }
+      ],
+      "effective_issue_domains": [
+        {
+          "key": "dieuxskin.com::quality_limited",
+          "count": 1
+        },
+        {
+          "key": "dieuxskin.com::reviewed_not_displayable",
+          "count": 1
+        },
+        {
+          "key": "dieuxskin.com::seller_only_evidence",
+          "count": 1
+        }
+      ],
+      "quality_state": [
+        {
+          "key": "limited",
+          "count": 1
+        }
+      ],
+      "evidence_profile": [
+        {
+          "key": "seller_only",
+          "count": 1
+        }
+      ],
+      "samples": {
+        "reviewed_not_displayable": [
+          {
+            "external_product_id": "ext_7ea5ca404c2a7121f6368e36",
+            "domain": "dieuxskin.com",
+            "title": "Air Angel Peptide Plumping Gel Cream",
+            "used_product_id": "ext_7ea5ca404c2a7121f6368e36",
+            "quality_state": "limited",
+            "evidence_profile": "seller_only"
+          }
+        ],
+        "seller_only_evidence": [
+          {
+            "external_product_id": "ext_7ea5ca404c2a7121f6368e36",
+            "domain": "dieuxskin.com",
+            "title": "Air Angel Peptide Plumping Gel Cream",
+            "used_product_id": "ext_7ea5ca404c2a7121f6368e36",
+            "quality_state": "limited",
+            "evidence_profile": "seller_only"
+          }
+        ]
+      }
+    },
+    "active_ingredients": {
+      "regulatory_expected": 0,
+      "hero_expected": 1,
+      "any_active_items": 1,
+      "status": [
+        {
+          "key": "ready_hero",
+          "count": 1
+        }
+      ],
+      "issues": [],
+      "issue_domains": [],
+      "source_origin": [
+        {
+          "key": "active_block",
+          "count": 1
+        }
+      ],
+      "samples": {}
+    },
+    "variants": {
+      "status": [
+        {
+          "key": "ready",
+          "count": 1
+        }
+      ],
+      "issues": [],
+      "issue_domains": [],
+      "samples": {}
+    }
+  },
+  "rows": [
+    {
+      "seed_id": "eps_5e0007857840bd24a06c0646",
+      "external_product_id": "ext_7ea5ca404c2a7121f6368e36",
+      "market": "US",
+      "domain": "dieuxskin.com",
+      "title": "Air Angel Peptide Plumping Gel Cream",
+      "canonical_url": "https://www.dieuxskin.com/products/air-angel",
+      "product_family": "single_formula",
+      "product_line_id": null,
+      "pivota_insights": {
+        "direct": {
+          "product_id": "ext_7ea5ca404c2a7121f6368e36",
+          "kb_key": "product:ext_7ea5ca404c2a7121f6368e36",
+          "status": "not_displayable",
+          "kb_exists": true,
+          "displayable": false,
+          "high_quality_ready": false,
+          "human_reviewed": true,
+          "issues": [
+            "reviewed_not_displayable",
+            "quality_limited",
+            "seller_only_evidence"
+          ],
+          "blocking_issues": [
+            "reviewed_not_displayable"
+          ],
+          "quality_state": "limited",
+          "evidence_profile": "seller_only",
+          "has_card_highlight": true
+        },
+        "effective": {
+          "product_id": "ext_7ea5ca404c2a7121f6368e36",
+          "kb_key": "product:ext_7ea5ca404c2a7121f6368e36",
+          "status": "not_displayable",
+          "kb_exists": true,
+          "displayable": false,
+          "high_quality_ready": false,
+          "human_reviewed": true,
+          "issues": [
+            "reviewed_not_displayable",
+            "quality_limited",
+            "seller_only_evidence"
+          ],
+          "blocking_issues": [
+            "reviewed_not_displayable"
+          ],
+          "quality_state": "limited",
+          "evidence_profile": "seller_only",
+          "has_card_highlight": true
+        },
+        "product_line_id": null,
+        "borrowed_from_sibling": false
+      },
+      "active_ingredients": {
+        "status": "ready_hero",
+        "issues": [],
+        "regulatory_expected": false,
+        "hero_expected": true,
+        "active_items": [
+          "Peptides"
+        ],
+        "source_origin": "active_block",
+        "source_quality_status": "captured",
+        "coverage": {
+          "details_sections_count": 0,
+          "faq_count": 0,
+          "how_to_chars": 110,
+          "inci_chars": 0,
+          "active_ingredients_chars": 0,
+          "inci_applicability_status": "",
+          "ingredient_review_status": "",
+          "ingredient_remediation_action": "",
+          "bundle_component_refs_count": 0,
+          "effective_inci_chars": 0,
+          "inci_borrowed_from_product_id": ""
+        },
+        "invalid_fragments": [],
+        "suppressed_reason": "full_inci_low_purity"
+      },
+      "variants": {
+        "status": "ready",
+        "issues": [],
+        "visible_variant_rows": 2,
+        "examples": {
+          "identity_option_visible": [],
+          "wrong_axis_for_category": [],
+          "makeup_shade_missing_visual": [],
+          "size_value_generic_axis": [],
+          "default_option_size_evidence_missing_axis": [],
+          "identity_default_title_axis": []
+        }
+      },
+      "coverage": {
+        "details_sections_count": 0,
+        "faq_count": 0,
+        "how_to_chars": 110,
+        "inci_chars": 0,
+        "active_ingredients_chars": 0,
+        "inci_applicability_status": "",
+        "ingredient_review_status": "",
+        "ingredient_remediation_action": "",
+        "bundle_component_refs_count": 0,
+        "effective_inci_chars": 0,
+        "inci_borrowed_from_product_id": ""
+      }
+    }
+  ]
+}

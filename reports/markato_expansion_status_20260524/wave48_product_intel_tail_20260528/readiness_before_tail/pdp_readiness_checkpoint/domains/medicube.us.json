@@ -1,0 +1,1837 @@
+{
+  "generated_at": "2026-05-28T10:01:01.021Z",
+  "options": {
+    "market": "US",
+    "includeAttached": true,
+    "domain": "medicube.us",
+    "externalProductIds": [],
+    "limit": 20000,
+    "sampleLimit": 10,
+    "checkpointDir": null,
+    "checkpointMode": "domain",
+    "resume": false,
+    "force": false,
+    "continueOnError": true,
+    "pageSize": 500,
+    "format": "json",
+    "chunkByDomain": false
+  },
+  "warnings": [],
+  "summary": {
+    "scanned": 17,
+    "by_market": {
+      "US": 17
+    },
+    "by_domain": [
+      {
+        "key": "medicube.us",
+        "count": 17
+      }
+    ],
+    "by_product_family": [
+      {
+        "key": "single_formula",
+        "count": 13
+      },
+      {
+        "key": "set_or_collection",
+        "count": 4
+      }
+    ],
+    "coverage": {
+      "missing_inci": 0,
+      "missing_active_raw": 0,
+      "missing_details": 0,
+      "missing_how_to": 0,
+      "missing_faq": 15
+    },
+    "pivota_insights": {
+      "direct": {
+        "displayable": 17,
+        "high_quality_ready": 17,
+        "missing_kb": 0,
+        "not_displayable": 0
+      },
+      "effective": {
+        "displayable": 17,
+        "high_quality_ready": 17,
+        "missing_kb": 0,
+        "not_displayable": 0,
+        "borrowed_from_sibling": 0
+      },
+      "effective_issues": [],
+      "effective_issue_domains": [],
+      "quality_state": [
+        {
+          "key": "verified",
+          "count": 17
+        }
+      ],
+      "evidence_profile": [
+        {
+          "key": "seller_plus_formula_reviews",
+          "count": 12
+        },
+        {
+          "key": "seller_plus_formula",
+          "count": 5
+        }
+      ],
+      "samples": {}
+    },
+    "active_ingredients": {
+      "regulatory_expected": 0,
+      "hero_expected": 12,
+      "any_active_items": 13,
+      "status": [
+        {
+          "key": "ready_hero",
+          "count": 11
+        },
+        {
+          "key": "not_applicable_product_family",
+          "count": 4
+        },
+        {
+          "key": "possibly_inci_guess",
+          "count": 1
+        },
+        {
+          "key": "ready_other",
+          "count": 1
+        }
+      ],
+      "issues": [
+        {
+          "key": "possibly_inci_guess",
+          "count": 1
+        }
+      ],
+      "issue_domains": [
+        {
+          "key": "medicube.us::possibly_inci_guess",
+          "count": 1
+        }
+      ],
+      "source_origin": [
+        {
+          "key": "pdp_section",
+          "count": 13
+        },
+        {
+          "key": "none",
+          "count": 4
+        }
+      ],
+      "samples": {
+        "possibly_inci_guess": [
+          {
+            "external_product_id": "ext_bdeaac19241ab0f35520a3a0",
+            "domain": "medicube.us",
+            "title": "Booster Gel Serum",
+            "status": "possibly_inci_guess",
+            "active_items": [
+              "Plant Stem Cell Extract"
+            ],
+            "source_origin": "pdp_section"
+          }
+        ]
+      }
+    },
+    "variants": {
+      "status": [
+        {
+          "key": "ready",
+          "count": 17
+        }
+      ],
+      "issues": [],
+      "issue_domains": [],
+      "samples": {}
+    }
+  },
+  "rows": [
+    {
+      "seed_id": "eps_8df546000bd9c4fd79936a04",
+      "external_product_id": "ext_1c7d35c56b316e2dceae281d",
+      "market": "US",
+      "domain": "medicube.us",
+      "title": "Exosome Cica Calming Toner",
+      "canonical_url": "https://medicube.us/products/exosome-cica-calming-toner",
+      "product_family": "single_formula",
+      "product_line_id": "pl_1d2d74b10203faec31b67324",
+      "identity_variant_axes": {
+        "multi_variant": false
+      },
+      "pivota_insights": {
+        "direct": {
+          "product_id": "ext_1c7d35c56b316e2dceae281d",
+          "kb_key": "product:ext_1c7d35c56b316e2dceae281d",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "verified",
+          "evidence_profile": "seller_plus_formula_reviews",
+          "has_card_highlight": true
+        },
+        "effective": {
+          "product_id": "ext_1c7d35c56b316e2dceae281d",
+          "kb_key": "product:ext_1c7d35c56b316e2dceae281d",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "verified",
+          "evidence_profile": "seller_plus_formula_reviews",
+          "has_card_highlight": true
+        },
+        "product_line_id": "pl_1d2d74b10203faec31b67324",
+        "borrowed_from_sibling": false
+      },
+      "active_ingredients": {
+        "status": "ready_hero",
+        "issues": [],
+        "regulatory_expected": false,
+        "hero_expected": true,
+        "active_items": [
+          "Niacinamide",
+          "Exosome CICA"
+        ],
+        "source_origin": "pdp_section",
+        "source_quality_status": "captured",
+        "coverage": {
+          "details_sections_count": 6,
+          "faq_count": 0,
+          "how_to_chars": 386,
+          "inci_chars": 882,
+          "active_ingredients_chars": 25,
+          "inci_applicability_status": "",
+          "ingredient_review_status": "",
+          "ingredient_remediation_action": "",
+          "bundle_component_refs_count": 0,
+          "effective_inci_chars": 882,
+          "inci_borrowed_from_product_id": ""
+        },
+        "invalid_fragments": [],
+        "suppressed_reason": null
+      },
+      "variants": {
+        "status": "ready",
+        "issues": [],
+        "visible_variant_rows": 1,
+        "examples": {
+          "identity_option_visible": [],
+          "wrong_axis_for_category": [],
+          "makeup_shade_missing_visual": [],
+          "size_value_generic_axis": [],
+          "default_option_size_evidence_missing_axis": [],
+          "identity_default_title_axis": []
+        }
+      },
+      "coverage": {
+        "details_sections_count": 6,
+        "faq_count": 0,
+        "how_to_chars": 386,
+        "inci_chars": 882,
+        "active_ingredients_chars": 25,
+        "inci_applicability_status": "",
+        "ingredient_review_status": "",
+        "ingredient_remediation_action": "",
+        "bundle_component_refs_count": 0,
+        "effective_inci_chars": 882,
+        "inci_borrowed_from_product_id": ""
+      }
+    },
+    {
+      "seed_id": "eps_e67d5c9f7068957e23321697",
+      "external_product_id": "ext_37711c1df803ce80b791b2c5",
+      "market": "US",
+      "domain": "medicube.us",
+      "title": "Collagen Night Wrapping Mask",
+      "canonical_url": "https://medicube.us/products/collagen-night-wrapping-mask",
+      "product_family": "set_or_collection",
+      "product_line_id": "pl_6a9b150dea4c1d6a6b169dd3",
+      "identity_variant_axes": {
+        "multi_variant": true
+      },
+      "pivota_insights": {
+        "direct": {
+          "product_id": "ext_37711c1df803ce80b791b2c5",
+          "kb_key": "product:ext_37711c1df803ce80b791b2c5",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "verified",
+          "evidence_profile": "seller_plus_formula",
+          "has_card_highlight": true
+        },
+        "effective": {
+          "product_id": "ext_37711c1df803ce80b791b2c5",
+          "kb_key": "product:ext_37711c1df803ce80b791b2c5",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "verified",
+          "evidence_profile": "seller_plus_formula",
+          "has_card_highlight": true
+        },
+        "product_line_id": "pl_6a9b150dea4c1d6a6b169dd3",
+        "borrowed_from_sibling": false
+      },
+      "active_ingredients": {
+        "status": "not_applicable_product_family",
+        "issues": [],
+        "regulatory_expected": false,
+        "hero_expected": false,
+        "active_items": [],
+        "source_origin": "none",
+        "source_quality_status": "blocked",
+        "coverage": {
+          "details_sections_count": 2,
+          "faq_count": 0,
+          "how_to_chars": 261,
+          "inci_chars": 497,
+          "active_ingredients_chars": 61,
+          "inci_applicability_status": "",
+          "ingredient_review_status": "",
+          "ingredient_remediation_action": "",
+          "bundle_component_refs_count": 0,
+          "effective_inci_chars": 497,
+          "inci_borrowed_from_product_id": ""
+        },
+        "invalid_fragments": [],
+        "suppressed_reason": "set_or_collection"
+      },
+      "variants": {
+        "status": "ready",
+        "issues": [],
+        "visible_variant_rows": 5,
+        "examples": {
+          "identity_option_visible": [],
+          "wrong_axis_for_category": [],
+          "makeup_shade_missing_visual": [],
+          "size_value_generic_axis": [],
+          "default_option_size_evidence_missing_axis": [],
+          "identity_default_title_axis": []
+        }
+      },
+      "coverage": {
+        "details_sections_count": 2,
+        "faq_count": 0,
+        "how_to_chars": 261,
+        "inci_chars": 497,
+        "active_ingredients_chars": 61,
+        "inci_applicability_status": "",
+        "ingredient_review_status": "",
+        "ingredient_remediation_action": "",
+        "bundle_component_refs_count": 0,
+        "effective_inci_chars": 497,
+        "inci_borrowed_from_product_id": ""
+      }
+    },
+    {
+      "seed_id": "eps_57bb3ca969f2c00a2d44bd12",
+      "external_product_id": "ext_48b334f563d1069621c1508e",
+      "market": "US",
+      "domain": "medicube.us",
+      "title": "AGE-R Glutathione Glow Capsule Cream",
+      "canonical_url": "https://medicube.us/products/age-r-glutathione-glow-capsule-cream",
+      "product_family": "set_or_collection",
+      "product_line_id": null,
+      "pivota_insights": {
+        "direct": {
+          "product_id": "ext_48b334f563d1069621c1508e",
+          "kb_key": "product:ext_48b334f563d1069621c1508e",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "verified",
+          "evidence_profile": "seller_plus_formula_reviews",
+          "has_card_highlight": true
+        },
+        "effective": {
+          "product_id": "ext_48b334f563d1069621c1508e",
+          "kb_key": "product:ext_48b334f563d1069621c1508e",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "verified",
+          "evidence_profile": "seller_plus_formula_reviews",
+          "has_card_highlight": true
+        },
+        "product_line_id": null,
+        "borrowed_from_sibling": false
+      },
+      "active_ingredients": {
+        "status": "not_applicable_product_family",
+        "issues": [],
+        "regulatory_expected": false,
+        "hero_expected": false,
+        "active_items": [],
+        "source_origin": "none",
+        "source_quality_status": "blocked",
+        "coverage": {
+          "details_sections_count": 4,
+          "faq_count": 0,
+          "how_to_chars": 283,
+          "inci_chars": 785,
+          "active_ingredients_chars": 59,
+          "inci_applicability_status": "",
+          "ingredient_review_status": "resolved_by_reviewed_external_source",
+          "ingredient_remediation_action": "source_recovered",
+          "bundle_component_refs_count": 0,
+          "effective_inci_chars": 785,
+          "inci_borrowed_from_product_id": ""
+        },
+        "invalid_fragments": [],
+        "suppressed_reason": "set_or_collection"
+      },
+      "variants": {
+        "status": "ready",
+        "issues": [],
+        "visible_variant_rows": 1,
+        "examples": {
+          "identity_option_visible": [],
+          "wrong_axis_for_category": [],
+          "makeup_shade_missing_visual": [],
+          "size_value_generic_axis": [],
+          "default_option_size_evidence_missing_axis": [],
+          "identity_default_title_axis": []
+        }
+      },
+      "coverage": {
+        "details_sections_count": 4,
+        "faq_count": 0,
+        "how_to_chars": 283,
+        "inci_chars": 785,
+        "active_ingredients_chars": 59,
+        "inci_applicability_status": "",
+        "ingredient_review_status": "resolved_by_reviewed_external_source",
+        "ingredient_remediation_action": "source_recovered",
+        "bundle_component_refs_count": 0,
+        "effective_inci_chars": 785,
+        "inci_borrowed_from_product_id": ""
+      }
+    },
+    {
+      "seed_id": "eps_23c2c0375445626c9dc312b7",
+      "external_product_id": "ext_4b93fc8cebbce7e48cbee1a8",
+      "market": "US",
+      "domain": "medicube.us",
+      "title": "Collagen Niacinamide Jelly Cream",
+      "canonical_url": "https://medicube.us/products/collagen-niacinamide-jelly-cream",
+      "product_family": "single_formula",
+      "product_line_id": "pl_b296b09f39da6d827cc54fb9",
+      "identity_variant_axes": {
+        "size": "110ml",
+        "volume": "110ml",
+        "multi_variant": true
+      },
+      "pivota_insights": {
+        "direct": {
+          "product_id": "ext_4b93fc8cebbce7e48cbee1a8",
+          "kb_key": "product:ext_4b93fc8cebbce7e48cbee1a8",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "verified",
+          "evidence_profile": "seller_plus_formula_reviews",
+          "has_card_highlight": true
+        },
+        "effective": {
+          "product_id": "ext_4b93fc8cebbce7e48cbee1a8",
+          "kb_key": "product:ext_4b93fc8cebbce7e48cbee1a8",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "verified",
+          "evidence_profile": "seller_plus_formula_reviews",
+          "has_card_highlight": true
+        },
+        "product_line_id": "pl_b296b09f39da6d827cc54fb9",
+        "borrowed_from_sibling": false
+      },
+      "active_ingredients": {
+        "status": "ready_hero",
+        "issues": [],
+        "regulatory_expected": false,
+        "hero_expected": true,
+        "active_items": [
+          "Niacinamide",
+          "Niacinamide (Vitamin B3)",
+          "Freeze-dried *Hydrolyzed Collagen"
+        ],
+        "source_origin": "pdp_section",
+        "source_quality_status": "captured",
+        "coverage": {
+          "details_sections_count": 6,
+          "faq_count": 0,
+          "how_to_chars": 570,
+          "inci_chars": 1066,
+          "active_ingredients_chars": 72,
+          "inci_applicability_status": "",
+          "ingredient_review_status": "",
+          "ingredient_remediation_action": "",
+          "bundle_component_refs_count": 0,
+          "effective_inci_chars": 1066,
+          "inci_borrowed_from_product_id": ""
+        },
+        "invalid_fragments": [],
+        "suppressed_reason": null
+      },
+      "variants": {
+        "status": "ready",
+        "issues": [],
+        "visible_variant_rows": 3,
+        "examples": {
+          "identity_option_visible": [],
+          "wrong_axis_for_category": [],
+          "makeup_shade_missing_visual": [],
+          "size_value_generic_axis": [],
+          "default_option_size_evidence_missing_axis": [],
+          "identity_default_title_axis": []
+        }
+      },
+      "coverage": {
+        "details_sections_count": 6,
+        "faq_count": 0,
+        "how_to_chars": 570,
+        "inci_chars": 1066,
+        "active_ingredients_chars": 72,
+        "inci_applicability_status": "",
+        "ingredient_review_status": "",
+        "ingredient_remediation_action": "",
+        "bundle_component_refs_count": 0,
+        "effective_inci_chars": 1066,
+        "inci_borrowed_from_product_id": ""
+      }
+    },
+    {
+      "seed_id": "eps_1255d926f5573bb75ca038cb",
+      "external_product_id": "ext_50abe9cc5d85a34e24605945",
+      "market": "US",
+      "domain": "medicube.us",
+      "title": "Deep Reviving Bakuchiol Retinol Serum",
+      "canonical_url": "https://medicube.us/products/deep-reviving-bakuchiol-retinol-serum",
+      "product_family": "single_formula",
+      "product_line_id": "pl_9103471f616d02726e230cc4",
+      "identity_variant_axes": {
+        "multi_variant": false
+      },
+      "pivota_insights": {
+        "direct": {
+          "product_id": "ext_50abe9cc5d85a34e24605945",
+          "kb_key": "product:ext_50abe9cc5d85a34e24605945",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "verified",
+          "evidence_profile": "seller_plus_formula_reviews",
+          "has_card_highlight": true
+        },
+        "effective": {
+          "product_id": "ext_50abe9cc5d85a34e24605945",
+          "kb_key": "product:ext_50abe9cc5d85a34e24605945",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "verified",
+          "evidence_profile": "seller_plus_formula_reviews",
+          "has_card_highlight": true
+        },
+        "product_line_id": "pl_9103471f616d02726e230cc4",
+        "borrowed_from_sibling": false
+      },
+      "active_ingredients": {
+        "status": "ready_hero",
+        "issues": [],
+        "regulatory_expected": false,
+        "hero_expected": true,
+        "active_items": [
+          "Niacinamide",
+          "Bakuchiol",
+          "Retinol",
+          "Fast Acting Retinal",
+          "Ecapsulated Retinol",
+          "Niacinamide (Vitamin B3)",
+          "Hydrolyzed Collagen"
+        ],
+        "source_origin": "pdp_section",
+        "source_quality_status": "captured",
+        "coverage": {
+          "details_sections_count": 6,
+          "faq_count": 0,
+          "how_to_chars": 905,
+          "inci_chars": 1543,
+          "active_ingredients_chars": 120,
+          "inci_applicability_status": "",
+          "ingredient_review_status": "",
+          "ingredient_remediation_action": "",
+          "bundle_component_refs_count": 0,
+          "effective_inci_chars": 1543,
+          "inci_borrowed_from_product_id": ""
+        },
+        "invalid_fragments": [],
+        "suppressed_reason": null
+      },
+      "variants": {
+        "status": "ready",
+        "issues": [],
+        "visible_variant_rows": 2,
+        "examples": {
+          "identity_option_visible": [],
+          "wrong_axis_for_category": [],
+          "makeup_shade_missing_visual": [],
+          "size_value_generic_axis": [],
+          "default_option_size_evidence_missing_axis": [],
+          "identity_default_title_axis": []
+        }
+      },
+      "coverage": {
+        "details_sections_count": 6,
+        "faq_count": 0,
+        "how_to_chars": 905,
+        "inci_chars": 1543,
+        "active_ingredients_chars": 120,
+        "inci_applicability_status": "",
+        "ingredient_review_status": "",
+        "ingredient_remediation_action": "",
+        "bundle_component_refs_count": 0,
+        "effective_inci_chars": 1543,
+        "inci_borrowed_from_product_id": ""
+      }
+    },
+    {
+      "seed_id": "eps_1a12dd3c218caf638a7ad2d0",
+      "external_product_id": "ext_59522af9624198656cc8881b",
+      "market": "US",
+      "domain": "medicube.us",
+      "title": "21% Red Succinic Acid Cleansing Booster Serum",
+      "canonical_url": "https://medicube.us/products/red-succinic-acid-peel",
+      "product_family": "single_formula",
+      "product_line_id": "pl_8897ca7a2596a44f4cbde0e7",
+      "identity_variant_axes": {
+        "volume": "40g",
+        "multi_variant": false
+      },
+      "pivota_insights": {
+        "direct": {
+          "product_id": "ext_59522af9624198656cc8881b",
+          "kb_key": "product:ext_59522af9624198656cc8881b",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "verified",
+          "evidence_profile": "seller_plus_formula_reviews",
+          "has_card_highlight": true
+        },
+        "effective": {
+          "product_id": "ext_59522af9624198656cc8881b",
+          "kb_key": "product:ext_59522af9624198656cc8881b",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "verified",
+          "evidence_profile": "seller_plus_formula_reviews",
+          "has_card_highlight": true
+        },
+        "product_line_id": "pl_8897ca7a2596a44f4cbde0e7",
+        "borrowed_from_sibling": false
+      },
+      "active_ingredients": {
+        "status": "ready_other",
+        "issues": [],
+        "regulatory_expected": false,
+        "hero_expected": false,
+        "active_items": [
+          "Succinic Acid",
+          "Lactic Acid",
+          "Panthenol (B5)",
+          "Salicylic Acid",
+          "Glycerin"
+        ],
+        "source_origin": "pdp_section",
+        "source_quality_status": "captured",
+        "coverage": {
+          "details_sections_count": 2,
+          "faq_count": 0,
+          "how_to_chars": 998,
+          "inci_chars": 787,
+          "active_ingredients_chars": 68,
+          "inci_applicability_status": "",
+          "ingredient_review_status": "",
+          "ingredient_remediation_action": "",
+          "bundle_component_refs_count": 0,
+          "effective_inci_chars": 787,
+          "inci_borrowed_from_product_id": ""
+        },
+        "invalid_fragments": [],
+        "suppressed_reason": null
+      },
+      "variants": {
+        "status": "ready",
+        "issues": [],
+        "visible_variant_rows": 1,
+        "examples": {
+          "identity_option_visible": [],
+          "wrong_axis_for_category": [],
+          "makeup_shade_missing_visual": [],
+          "size_value_generic_axis": [],
+          "default_option_size_evidence_missing_axis": [],
+          "identity_default_title_axis": []
+        }
+      },
+      "coverage": {
+        "details_sections_count": 2,
+        "faq_count": 0,
+        "how_to_chars": 998,
+        "inci_chars": 787,
+        "active_ingredients_chars": 68,
+        "inci_applicability_status": "",
+        "ingredient_review_status": "",
+        "ingredient_remediation_action": "",
+        "bundle_component_refs_count": 0,
+        "effective_inci_chars": 787,
+        "inci_borrowed_from_product_id": ""
+      }
+    },
+    {
+      "seed_id": "eps_0a6830ea890e0ad16aff8ec5",
+      "external_product_id": "ext_621c92c2182c896eaf780642",
+      "market": "US",
+      "domain": "medicube.us",
+      "title": "AGE-R Glutathione Glow Serum",
+      "canonical_url": "https://medicube.us/products/age-r-glutathione-glow-serum",
+      "product_family": "single_formula",
+      "product_line_id": "pl_70ecf1bc6f9adc40d37b8c2f",
+      "identity_variant_axes": {
+        "multi_variant": false
+      },
+      "pivota_insights": {
+        "direct": {
+          "product_id": "ext_621c92c2182c896eaf780642",
+          "kb_key": "product:ext_621c92c2182c896eaf780642",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "verified",
+          "evidence_profile": "seller_plus_formula_reviews",
+          "has_card_highlight": true
+        },
+        "effective": {
+          "product_id": "ext_621c92c2182c896eaf780642",
+          "kb_key": "product:ext_621c92c2182c896eaf780642",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "verified",
+          "evidence_profile": "seller_plus_formula_reviews",
+          "has_card_highlight": true
+        },
+        "product_line_id": "pl_70ecf1bc6f9adc40d37b8c2f",
+        "borrowed_from_sibling": false
+      },
+      "active_ingredients": {
+        "status": "ready_hero",
+        "issues": [],
+        "regulatory_expected": false,
+        "hero_expected": true,
+        "active_items": [
+          "Niacinamide",
+          "Hyaluronic Acid",
+          "Panthenol",
+          "Ceramide",
+          "Glutathione",
+          "Glutathione (500ppm) Niacinamide",
+          "Ceramide NP",
+          "Hydrolyzed Hyaluronic Acid"
+        ],
+        "source_origin": "pdp_section",
+        "source_quality_status": "captured",
+        "coverage": {
+          "details_sections_count": 4,
+          "faq_count": 0,
+          "how_to_chars": 155,
+          "inci_chars": 2327,
+          "active_ingredients_chars": 137,
+          "inci_applicability_status": "",
+          "ingredient_review_status": "",
+          "ingredient_remediation_action": "",
+          "bundle_component_refs_count": 0,
+          "effective_inci_chars": 2327,
+          "inci_borrowed_from_product_id": ""
+        },
+        "invalid_fragments": [],
+        "suppressed_reason": null
+      },
+      "variants": {
+        "status": "ready",
+        "issues": [],
+        "visible_variant_rows": 1,
+        "examples": {
+          "identity_option_visible": [],
+          "wrong_axis_for_category": [],
+          "makeup_shade_missing_visual": [],
+          "size_value_generic_axis": [],
+          "default_option_size_evidence_missing_axis": [],
+          "identity_default_title_axis": []
+        }
+      },
+      "coverage": {
+        "details_sections_count": 4,
+        "faq_count": 0,
+        "how_to_chars": 155,
+        "inci_chars": 2327,
+        "active_ingredients_chars": 137,
+        "inci_applicability_status": "",
+        "ingredient_review_status": "",
+        "ingredient_remediation_action": "",
+        "bundle_component_refs_count": 0,
+        "effective_inci_chars": 2327,
+        "inci_borrowed_from_product_id": ""
+      }
+    },
+    {
+      "seed_id": "eps_9f6d049f720f978eeb59a444",
+      "external_product_id": "ext_719f2cee39b26d4a7a8253af",
+      "market": "US",
+      "domain": "medicube.us",
+      "title": "AGE-R Glutathione Glow Milk Toner",
+      "canonical_url": "https://medicube.us/products/age-r-glutathione-glow-milk-toner",
+      "product_family": "single_formula",
+      "product_line_id": "pl_92eccd13bc199621e8c64d46",
+      "identity_variant_axes": {
+        "multi_variant": false
+      },
+      "pivota_insights": {
+        "direct": {
+          "product_id": "ext_719f2cee39b26d4a7a8253af",
+          "kb_key": "product:ext_719f2cee39b26d4a7a8253af",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "verified",
+          "evidence_profile": "seller_plus_formula_reviews",
+          "has_card_highlight": true
+        },
+        "effective": {
+          "product_id": "ext_719f2cee39b26d4a7a8253af",
+          "kb_key": "product:ext_719f2cee39b26d4a7a8253af",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "verified",
+          "evidence_profile": "seller_plus_formula_reviews",
+          "has_card_highlight": true
+        },
+        "product_line_id": "pl_92eccd13bc199621e8c64d46",
+        "borrowed_from_sibling": false
+      },
+      "active_ingredients": {
+        "status": "ready_hero",
+        "issues": [],
+        "regulatory_expected": false,
+        "hero_expected": true,
+        "active_items": [
+          "Peptide",
+          "Glutathione"
+        ],
+        "source_origin": "pdp_section",
+        "source_quality_status": "captured",
+        "coverage": {
+          "details_sections_count": 6,
+          "faq_count": 2,
+          "how_to_chars": 89,
+          "inci_chars": 1057,
+          "active_ingredients_chars": 20,
+          "inci_applicability_status": "",
+          "ingredient_review_status": "",
+          "ingredient_remediation_action": "",
+          "bundle_component_refs_count": 0,
+          "effective_inci_chars": 1057,
+          "inci_borrowed_from_product_id": ""
+        },
+        "invalid_fragments": [],
+        "suppressed_reason": null
+      },
+      "variants": {
+        "status": "ready",
+        "issues": [],
+        "visible_variant_rows": 1,
+        "examples": {
+          "identity_option_visible": [],
+          "wrong_axis_for_category": [],
+          "makeup_shade_missing_visual": [],
+          "size_value_generic_axis": [],
+          "default_option_size_evidence_missing_axis": [],
+          "identity_default_title_axis": []
+        }
+      },
+      "coverage": {
+        "details_sections_count": 6,
+        "faq_count": 2,
+        "how_to_chars": 89,
+        "inci_chars": 1057,
+        "active_ingredients_chars": 20,
+        "inci_applicability_status": "",
+        "ingredient_review_status": "",
+        "ingredient_remediation_action": "",
+        "bundle_component_refs_count": 0,
+        "effective_inci_chars": 1057,
+        "inci_borrowed_from_product_id": ""
+      }
+    },
+    {
+      "seed_id": "eps_8b284b232d94f6eeb6a925e6",
+      "external_product_id": "ext_79bca27423e4840cc4cc4e93",
+      "market": "US",
+      "domain": "medicube.us",
+      "title": "Deep Vitamin C Capsule Serum",
+      "canonical_url": "https://medicube.us/products/deep-vitamin-c-capsule-serum",
+      "product_family": "single_formula",
+      "product_line_id": "pl_7f52004f040bf3e3b855d66c",
+      "identity_variant_axes": {
+        "multi_variant": false
+      },
+      "pivota_insights": {
+        "direct": {
+          "product_id": "ext_79bca27423e4840cc4cc4e93",
+          "kb_key": "product:ext_79bca27423e4840cc4cc4e93",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "verified",
+          "evidence_profile": "seller_plus_formula_reviews",
+          "has_card_highlight": true
+        },
+        "effective": {
+          "product_id": "ext_79bca27423e4840cc4cc4e93",
+          "kb_key": "product:ext_79bca27423e4840cc4cc4e93",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "verified",
+          "evidence_profile": "seller_plus_formula_reviews",
+          "has_card_highlight": true
+        },
+        "product_line_id": "pl_7f52004f040bf3e3b855d66c",
+        "borrowed_from_sibling": false
+      },
+      "active_ingredients": {
+        "status": "ready_hero",
+        "issues": [],
+        "regulatory_expected": false,
+        "hero_expected": true,
+        "active_items": [
+          "Niacinamide",
+          "99% high-purity Vitamin C",
+          "5% Niacinamide",
+          "Vitamin C (Ascorbic acid)"
+        ],
+        "source_origin": "pdp_section",
+        "source_quality_status": "captured",
+        "coverage": {
+          "details_sections_count": 8,
+          "faq_count": 0,
+          "how_to_chars": 373,
+          "inci_chars": 1214,
+          "active_ingredients_chars": 54,
+          "inci_applicability_status": "",
+          "ingredient_review_status": "",
+          "ingredient_remediation_action": "",
+          "bundle_component_refs_count": 0,
+          "effective_inci_chars": 1214,
+          "inci_borrowed_from_product_id": ""
+        },
+        "invalid_fragments": [],
+        "suppressed_reason": null
+      },
+      "variants": {
+        "status": "ready",
+        "issues": [],
+        "visible_variant_rows": 1,
+        "examples": {
+          "identity_option_visible": [],
+          "wrong_axis_for_category": [],
+          "makeup_shade_missing_visual": [],
+          "size_value_generic_axis": [],
+          "default_option_size_evidence_missing_axis": [],
+          "identity_default_title_axis": []
+        }
+      },
+      "coverage": {
+        "details_sections_count": 8,
+        "faq_count": 0,
+        "how_to_chars": 373,
+        "inci_chars": 1214,
+        "active_ingredients_chars": 54,
+        "inci_applicability_status": "",
+        "ingredient_review_status": "",
+        "ingredient_remediation_action": "",
+        "bundle_component_refs_count": 0,
+        "effective_inci_chars": 1214,
+        "inci_borrowed_from_product_id": ""
+      }
+    },
+    {
+      "seed_id": "eps_799483f258db57bfa5be7b07",
+      "external_product_id": "ext_80735ef3328f583532d34b5a",
+      "market": "US",
+      "domain": "medicube.us",
+      "title": "Deep Vita C Pads",
+      "canonical_url": "https://medicube.us/products/deep-vita-c-pad",
+      "product_family": "single_formula",
+      "product_line_id": "pl_587364f63997b8c604aa442d",
+      "identity_variant_axes": {
+        "multi_variant": false
+      },
+      "pivota_insights": {
+        "direct": {
+          "product_id": "ext_80735ef3328f583532d34b5a",
+          "kb_key": "product:ext_80735ef3328f583532d34b5a",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "verified",
+          "evidence_profile": "seller_plus_formula",
+          "has_card_highlight": true
+        },
+        "effective": {
+          "product_id": "ext_80735ef3328f583532d34b5a",
+          "kb_key": "product:ext_80735ef3328f583532d34b5a",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "verified",
+          "evidence_profile": "seller_plus_formula",
+          "has_card_highlight": true
+        },
+        "product_line_id": "pl_587364f63997b8c604aa442d",
+        "borrowed_from_sibling": false
+      },
+      "active_ingredients": {
+        "status": "ready_hero",
+        "issues": [],
+        "regulatory_expected": false,
+        "hero_expected": true,
+        "active_items": [
+          "Ascorbic Acid",
+          "Niacinamide",
+          "Panthenol",
+          "Vitamin C (3-O-Ethyl Ascorbic Acid)",
+          "Panthenol (Provitamin B5)"
+        ],
+        "source_origin": "pdp_section",
+        "source_quality_status": "captured",
+        "coverage": {
+          "details_sections_count": 6,
+          "faq_count": 0,
+          "how_to_chars": 978,
+          "inci_chars": 934,
+          "active_ingredients_chars": 101,
+          "inci_applicability_status": "",
+          "ingredient_review_status": "",
+          "ingredient_remediation_action": "",
+          "bundle_component_refs_count": 0,
+          "effective_inci_chars": 934,
+          "inci_borrowed_from_product_id": ""
+        },
+        "invalid_fragments": [],
+        "suppressed_reason": null
+      },
+      "variants": {
+        "status": "ready",
+        "issues": [],
+        "visible_variant_rows": 2,
+        "examples": {
+          "identity_option_visible": [],
+          "wrong_axis_for_category": [],
+          "makeup_shade_missing_visual": [],
+          "size_value_generic_axis": [],
+          "default_option_size_evidence_missing_axis": [],
+          "identity_default_title_axis": []
+        }
+      },
+      "coverage": {
+        "details_sections_count": 6,
+        "faq_count": 0,
+        "how_to_chars": 978,
+        "inci_chars": 934,
+        "active_ingredients_chars": 101,
+        "inci_applicability_status": "",
+        "ingredient_review_status": "",
+        "ingredient_remediation_action": "",
+        "bundle_component_refs_count": 0,
+        "effective_inci_chars": 934,
+        "inci_borrowed_from_product_id": ""
+      }
+    },
+    {
+      "seed_id": "eps_dd0b4c879dda9bcb842db3eb",
+      "external_product_id": "ext_98b732ab71195d87c9369b5a",
+      "market": "US",
+      "domain": "medicube.us",
+      "title": "Deep Vita C Patch",
+      "canonical_url": "https://medicube.us/products/deep-vita-c-patch",
+      "product_family": "single_formula",
+      "product_line_id": "pl_90b3efde67b7a463b6ccfef2",
+      "identity_variant_axes": {
+        "multi_variant": false
+      },
+      "pivota_insights": {
+        "direct": {
+          "product_id": "ext_98b732ab71195d87c9369b5a",
+          "kb_key": "product:ext_98b732ab71195d87c9369b5a",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "verified",
+          "evidence_profile": "seller_plus_formula",
+          "has_card_highlight": true
+        },
+        "effective": {
+          "product_id": "ext_98b732ab71195d87c9369b5a",
+          "kb_key": "product:ext_98b732ab71195d87c9369b5a",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "verified",
+          "evidence_profile": "seller_plus_formula",
+          "has_card_highlight": true
+        },
+        "product_line_id": "pl_90b3efde67b7a463b6ccfef2",
+        "borrowed_from_sibling": false
+      },
+      "active_ingredients": {
+        "status": "ready_hero",
+        "issues": [],
+        "regulatory_expected": false,
+        "hero_expected": true,
+        "active_items": [
+          "Ascorbic Acid",
+          "Niacinamide"
+        ],
+        "source_origin": "pdp_section",
+        "source_quality_status": "captured",
+        "coverage": {
+          "details_sections_count": 4,
+          "faq_count": 0,
+          "how_to_chars": 1429,
+          "inci_chars": 138,
+          "active_ingredients_chars": 26,
+          "inci_applicability_status": "",
+          "ingredient_review_status": "resolved_by_reviewed_external_source",
+          "ingredient_remediation_action": "source_recovered",
+          "bundle_component_refs_count": 0,
+          "effective_inci_chars": 138,
+          "inci_borrowed_from_product_id": ""
+        },
+        "invalid_fragments": [],
+        "suppressed_reason": null
+      },
+      "variants": {
+        "status": "ready",
+        "issues": [],
+        "visible_variant_rows": 1,
+        "examples": {
+          "identity_option_visible": [],
+          "wrong_axis_for_category": [],
+          "makeup_shade_missing_visual": [],
+          "size_value_generic_axis": [],
+          "default_option_size_evidence_missing_axis": [],
+          "identity_default_title_axis": []
+        }
+      },
+      "coverage": {
+        "details_sections_count": 4,
+        "faq_count": 0,
+        "how_to_chars": 1429,
+        "inci_chars": 138,
+        "active_ingredients_chars": 26,
+        "inci_applicability_status": "",
+        "ingredient_review_status": "resolved_by_reviewed_external_source",
+        "ingredient_remediation_action": "source_recovered",
+        "bundle_component_refs_count": 0,
+        "effective_inci_chars": 138,
+        "inci_borrowed_from_product_id": ""
+      }
+    },
+    {
+      "seed_id": "eps_03737bc26e17caf76127f55a",
+      "external_product_id": "ext_9cc158f25a88a454c30d449c",
+      "market": "US",
+      "domain": "medicube.us",
+      "title": "Azelaic Acid 16 Calming Serum",
+      "canonical_url": "https://medicube.us/products/azelaic-acid-16-calming-serum",
+      "product_family": "single_formula",
+      "product_line_id": "pl_c9bf1cf695f32c5567cd7320",
+      "identity_variant_axes": {
+        "multi_variant": false
+      },
+      "pivota_insights": {
+        "direct": {
+          "product_id": "ext_9cc158f25a88a454c30d449c",
+          "kb_key": "product:ext_9cc158f25a88a454c30d449c",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "verified",
+          "evidence_profile": "seller_plus_formula_reviews",
+          "has_card_highlight": true
+        },
+        "effective": {
+          "product_id": "ext_9cc158f25a88a454c30d449c",
+          "kb_key": "product:ext_9cc158f25a88a454c30d449c",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "verified",
+          "evidence_profile": "seller_plus_formula_reviews",
+          "has_card_highlight": true
+        },
+        "product_line_id": "pl_c9bf1cf695f32c5567cd7320",
+        "borrowed_from_sibling": false
+      },
+      "active_ingredients": {
+        "status": "ready_hero",
+        "issues": [],
+        "regulatory_expected": false,
+        "hero_expected": true,
+        "active_items": [
+          "Niacinamide",
+          "Azelaic Acid",
+          "Azelaic Acid Complex",
+          "Pantothenic Acid"
+        ],
+        "source_origin": "pdp_section",
+        "source_quality_status": "captured",
+        "coverage": {
+          "details_sections_count": 4,
+          "faq_count": 0,
+          "how_to_chars": 535,
+          "inci_chars": 679,
+          "active_ingredients_chars": 65,
+          "inci_applicability_status": "",
+          "ingredient_review_status": "",
+          "ingredient_remediation_action": "",
+          "bundle_component_refs_count": 0,
+          "effective_inci_chars": 679,
+          "inci_borrowed_from_product_id": ""
+        },
+        "invalid_fragments": [],
+        "suppressed_reason": null
+      },
+      "variants": {
+        "status": "ready",
+        "issues": [],
+        "visible_variant_rows": 1,
+        "examples": {
+          "identity_option_visible": [],
+          "wrong_axis_for_category": [],
+          "makeup_shade_missing_visual": [],
+          "size_value_generic_axis": [],
+          "default_option_size_evidence_missing_axis": [],
+          "identity_default_title_axis": []
+        }
+      },
+      "coverage": {
+        "details_sections_count": 4,
+        "faq_count": 0,
+        "how_to_chars": 535,
+        "inci_chars": 679,
+        "active_ingredients_chars": 65,
+        "inci_applicability_status": "",
+        "ingredient_review_status": "",
+        "ingredient_remediation_action": "",
+        "bundle_component_refs_count": 0,
+        "effective_inci_chars": 679,
+        "inci_borrowed_from_product_id": ""
+      }
+    },
+    {
+      "seed_id": "eps_9feebe1fca857fda72e3ed74",
+      "external_product_id": "ext_9d97b1e55b4bfb6c13e71289",
+      "market": "US",
+      "domain": "medicube.us",
+      "title": "Deep Peptide Radiance Mask",
+      "canonical_url": "https://medicube.us/products/medicube-deep-peptide-radiance-mask-2ea",
+      "product_family": "single_formula",
+      "product_line_id": null,
+      "pivota_insights": {
+        "direct": {
+          "product_id": "ext_9d97b1e55b4bfb6c13e71289",
+          "kb_key": "product:ext_9d97b1e55b4bfb6c13e71289",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "verified",
+          "evidence_profile": "seller_plus_formula_reviews",
+          "has_card_highlight": true
+        },
+        "effective": {
+          "product_id": "ext_9d97b1e55b4bfb6c13e71289",
+          "kb_key": "product:ext_9d97b1e55b4bfb6c13e71289",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "verified",
+          "evidence_profile": "seller_plus_formula_reviews",
+          "has_card_highlight": true
+        },
+        "product_line_id": null,
+        "borrowed_from_sibling": false
+      },
+      "active_ingredients": {
+        "status": "ready_hero",
+        "issues": [],
+        "regulatory_expected": false,
+        "hero_expected": true,
+        "active_items": [
+          "Niacinamide",
+          "Hyaluronic Acid",
+          "Peptide",
+          "Quadruple Peptide"
+        ],
+        "source_origin": "pdp_section",
+        "source_quality_status": "captured",
+        "coverage": {
+          "details_sections_count": 4,
+          "faq_count": 0,
+          "how_to_chars": 319,
+          "inci_chars": 692,
+          "active_ingredients_chars": 56,
+          "inci_applicability_status": "",
+          "ingredient_review_status": "resolved_by_reviewed_external_source",
+          "ingredient_remediation_action": "source_recovered",
+          "bundle_component_refs_count": 0,
+          "effective_inci_chars": 692,
+          "inci_borrowed_from_product_id": ""
+        },
+        "invalid_fragments": [],
+        "suppressed_reason": null
+      },
+      "variants": {
+        "status": "ready",
+        "issues": [],
+        "visible_variant_rows": 4,
+        "examples": {
+          "identity_option_visible": [],
+          "wrong_axis_for_category": [],
+          "makeup_shade_missing_visual": [],
+          "size_value_generic_axis": [],
+          "default_option_size_evidence_missing_axis": [],
+          "identity_default_title_axis": []
+        }
+      },
+      "coverage": {
+        "details_sections_count": 4,
+        "faq_count": 0,
+        "how_to_chars": 319,
+        "inci_chars": 692,
+        "active_ingredients_chars": 56,
+        "inci_applicability_status": "",
+        "ingredient_review_status": "resolved_by_reviewed_external_source",
+        "ingredient_remediation_action": "source_recovered",
+        "bundle_component_refs_count": 0,
+        "effective_inci_chars": 692,
+        "inci_borrowed_from_product_id": ""
+      }
+    },
+    {
+      "seed_id": "eps_b777765d7977a8fe3c253e55",
+      "external_product_id": "ext_ac4c47dafb427e53752fb522",
+      "market": "US",
+      "domain": "medicube.us",
+      "title": "Collagen Milky Glow Daytime Wrapping Mask",
+      "canonical_url": "https://medicube.us/products/collagen-milk-toning-wrapping-mask",
+      "product_family": "set_or_collection",
+      "product_line_id": "pl_c0107370b80a1f34fc510cd7",
+      "identity_variant_axes": {
+        "multi_variant": false
+      },
+      "pivota_insights": {
+        "direct": {
+          "product_id": "ext_ac4c47dafb427e53752fb522",
+          "kb_key": "product:ext_ac4c47dafb427e53752fb522",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "verified",
+          "evidence_profile": "seller_plus_formula",
+          "has_card_highlight": true
+        },
+        "effective": {
+          "product_id": "ext_ac4c47dafb427e53752fb522",
+          "kb_key": "product:ext_ac4c47dafb427e53752fb522",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "verified",
+          "evidence_profile": "seller_plus_formula",
+          "has_card_highlight": true
+        },
+        "product_line_id": "pl_c0107370b80a1f34fc510cd7",
+        "borrowed_from_sibling": false
+      },
+      "active_ingredients": {
+        "status": "not_applicable_product_family",
+        "issues": [],
+        "regulatory_expected": false,
+        "hero_expected": false,
+        "active_items": [],
+        "source_origin": "none",
+        "source_quality_status": "blocked",
+        "coverage": {
+          "details_sections_count": 4,
+          "faq_count": 0,
+          "how_to_chars": 181,
+          "inci_chars": 1160,
+          "active_ingredients_chars": 40,
+          "inci_applicability_status": "",
+          "ingredient_review_status": "resolved_by_reviewed_external_source",
+          "ingredient_remediation_action": "source_recovered",
+          "bundle_component_refs_count": 0,
+          "effective_inci_chars": 1160,
+          "inci_borrowed_from_product_id": ""
+        },
+        "invalid_fragments": [],
+        "suppressed_reason": "set_or_collection"
+      },
+      "variants": {
+        "status": "ready",
+        "issues": [],
+        "visible_variant_rows": 3,
+        "examples": {
+          "identity_option_visible": [],
+          "wrong_axis_for_category": [],
+          "makeup_shade_missing_visual": [],
+          "size_value_generic_axis": [],
+          "default_option_size_evidence_missing_axis": [],
+          "identity_default_title_axis": []
+        }
+      },
+      "coverage": {
+        "details_sections_count": 4,
+        "faq_count": 0,
+        "how_to_chars": 181,
+        "inci_chars": 1160,
+        "active_ingredients_chars": 40,
+        "inci_applicability_status": "",
+        "ingredient_review_status": "resolved_by_reviewed_external_source",
+        "ingredient_remediation_action": "source_recovered",
+        "bundle_component_refs_count": 0,
+        "effective_inci_chars": 1160,
+        "inci_borrowed_from_product_id": ""
+      }
+    },
+    {
+      "seed_id": "eps_956218ce833bfb741be84907",
+      "external_product_id": "ext_ac802f92e078086c1ad93cfe",
+      "market": "US",
+      "domain": "medicube.us",
+      "title": "Collagen Glow Booster Milk Serum",
+      "canonical_url": "https://medicube.us/products/collagen-glow-booster-milk-serum",
+      "product_family": "single_formula",
+      "product_line_id": "pl_aed0ef4b2b60d3e97fb8efd4",
+      "identity_variant_axes": {
+        "multi_variant": false
+      },
+      "pivota_insights": {
+        "direct": {
+          "product_id": "ext_ac802f92e078086c1ad93cfe",
+          "kb_key": "product:ext_ac802f92e078086c1ad93cfe",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "verified",
+          "evidence_profile": "seller_plus_formula",
+          "has_card_highlight": true
+        },
+        "effective": {
+          "product_id": "ext_ac802f92e078086c1ad93cfe",
+          "kb_key": "product:ext_ac802f92e078086c1ad93cfe",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "verified",
+          "evidence_profile": "seller_plus_formula",
+          "has_card_highlight": true
+        },
+        "product_line_id": "pl_aed0ef4b2b60d3e97fb8efd4",
+        "borrowed_from_sibling": false
+      },
+      "active_ingredients": {
+        "status": "ready_hero",
+        "issues": [],
+        "regulatory_expected": false,
+        "hero_expected": true,
+        "active_items": [
+          "Niacinamide",
+          "Ceramide",
+          "Niacinamide (Vitamin B3)",
+          "Milk Protein Extract 1% + PDRN",
+          "Hydrolyzed Collagen + Hydrolyzed Elastin",
+          "Ceramide Np"
+        ],
+        "source_origin": "pdp_section",
+        "source_quality_status": "captured",
+        "coverage": {
+          "details_sections_count": 8,
+          "faq_count": 0,
+          "how_to_chars": 673,
+          "inci_chars": 734,
+          "active_ingredients_chars": 134,
+          "inci_applicability_status": "",
+          "ingredient_review_status": "",
+          "ingredient_remediation_action": "",
+          "bundle_component_refs_count": 0,
+          "effective_inci_chars": 734,
+          "inci_borrowed_from_product_id": ""
+        },
+        "invalid_fragments": [],
+        "suppressed_reason": null
+      },
+      "variants": {
+        "status": "ready",
+        "issues": [],
+        "visible_variant_rows": 2,
+        "examples": {
+          "identity_option_visible": [],
+          "wrong_axis_for_category": [],
+          "makeup_shade_missing_visual": [],
+          "size_value_generic_axis": [],
+          "default_option_size_evidence_missing_axis": [],
+          "identity_default_title_axis": []
+        }
+      },
+      "coverage": {
+        "details_sections_count": 8,
+        "faq_count": 0,
+        "how_to_chars": 673,
+        "inci_chars": 734,
+        "active_ingredients_chars": 134,
+        "inci_applicability_status": "",
+        "ingredient_review_status": "",
+        "ingredient_remediation_action": "",
+        "bundle_component_refs_count": 0,
+        "effective_inci_chars": 734,
+        "inci_borrowed_from_product_id": ""
+      }
+    },
+    {
+      "seed_id": "eps_e967fda5fc564942a44056e0",
+      "external_product_id": "ext_ba84ece297536294ea627a07",
+      "market": "US",
+      "domain": "medicube.us",
+      "title": "Deep Vita C Capsule Cream",
+      "canonical_url": "https://medicube.us/products/deep-vita-c-capsule-cream",
+      "product_family": "set_or_collection",
+      "product_line_id": "pl_3522619c4a1858f65dc88ea0",
+      "identity_variant_axes": {
+        "multi_variant": false
+      },
+      "pivota_insights": {
+        "direct": {
+          "product_id": "ext_ba84ece297536294ea627a07",
+          "kb_key": "product:ext_ba84ece297536294ea627a07",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "verified",
+          "evidence_profile": "seller_plus_formula_reviews",
+          "has_card_highlight": true
+        },
+        "effective": {
+          "product_id": "ext_ba84ece297536294ea627a07",
+          "kb_key": "product:ext_ba84ece297536294ea627a07",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "verified",
+          "evidence_profile": "seller_plus_formula_reviews",
+          "has_card_highlight": true
+        },
+        "product_line_id": "pl_3522619c4a1858f65dc88ea0",
+        "borrowed_from_sibling": false
+      },
+      "active_ingredients": {
+        "status": "not_applicable_product_family",
+        "issues": [],
+        "regulatory_expected": false,
+        "hero_expected": false,
+        "active_items": [],
+        "source_origin": "none",
+        "source_quality_status": "blocked",
+        "coverage": {
+          "details_sections_count": 8,
+          "faq_count": 0,
+          "how_to_chars": 304,
+          "inci_chars": 1115,
+          "active_ingredients_chars": 166,
+          "inci_applicability_status": "",
+          "ingredient_review_status": "",
+          "ingredient_remediation_action": "",
+          "bundle_component_refs_count": 0,
+          "effective_inci_chars": 1115,
+          "inci_borrowed_from_product_id": ""
+        },
+        "invalid_fragments": [],
+        "suppressed_reason": "set_or_collection"
+      },
+      "variants": {
+        "status": "ready",
+        "issues": [],
+        "visible_variant_rows": 4,
+        "examples": {
+          "identity_option_visible": [],
+          "wrong_axis_for_category": [],
+          "makeup_shade_missing_visual": [],
+          "size_value_generic_axis": [],
+          "default_option_size_evidence_missing_axis": [],
+          "identity_default_title_axis": []
+        }
+      },
+      "coverage": {
+        "details_sections_count": 8,
+        "faq_count": 0,
+        "how_to_chars": 304,
+        "inci_chars": 1115,
+        "active_ingredients_chars": 166,
+        "inci_applicability_status": "",
+        "ingredient_review_status": "",
+        "ingredient_remediation_action": "",
+        "bundle_component_refs_count": 0,
+        "effective_inci_chars": 1115,
+        "inci_borrowed_from_product_id": ""
+      }
+    },
+    {
+      "seed_id": "eps_cbf6eca668a886fb94aeb1d5",
+      "external_product_id": "ext_bdeaac19241ab0f35520a3a0",
+      "market": "US",
+      "domain": "medicube.us",
+      "title": "Booster Gel Serum",
+      "canonical_url": "https://medicube.us/products/age-r-booster-gel-serum",
+      "product_family": "single_formula",
+      "product_line_id": "pl_1919203b5f4f3b760ea4cde2",
+      "identity_variant_axes": {
+        "size": "100ml",
+        "volume": "100ml",
+        "multi_variant": true
+      },
+      "pivota_insights": {
+        "direct": {
+          "product_id": "ext_bdeaac19241ab0f35520a3a0",
+          "kb_key": "product:ext_bdeaac19241ab0f35520a3a0",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "verified",
+          "evidence_profile": "seller_plus_formula_reviews",
+          "has_card_highlight": true
+        },
+        "effective": {
+          "product_id": "ext_bdeaac19241ab0f35520a3a0",
+          "kb_key": "product:ext_bdeaac19241ab0f35520a3a0",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "verified",
+          "evidence_profile": "seller_plus_formula_reviews",
+          "has_card_highlight": true
+        },
+        "product_line_id": "pl_1919203b5f4f3b760ea4cde2",
+        "borrowed_from_sibling": false
+      },
+      "active_ingredients": {
+        "status": "possibly_inci_guess",
+        "issues": [
+          "possibly_inci_guess"
+        ],
+        "regulatory_expected": false,
+        "hero_expected": true,
+        "active_items": [
+          "Plant Stem Cell Extract"
+        ],
+        "source_origin": "pdp_section",
+        "source_quality_status": "blocked",
+        "coverage": {
+          "details_sections_count": 6,
+          "faq_count": 8,
+          "how_to_chars": 1412,
+          "inci_chars": 764,
+          "active_ingredients_chars": 23,
+          "inci_applicability_status": "",
+          "ingredient_review_status": "",
+          "ingredient_remediation_action": "",
+          "bundle_component_refs_count": 0,
+          "effective_inci_chars": 764,
+          "inci_borrowed_from_product_id": ""
+        },
+        "invalid_fragments": [],
+        "suppressed_reason": null
+      },
+      "variants": {
+        "status": "ready",
+        "issues": [],
+        "visible_variant_rows": 2,
+        "examples": {
+          "identity_option_visible": [],
+          "wrong_axis_for_category": [],
+          "makeup_shade_missing_visual": [],
+          "size_value_generic_axis": [],
+          "default_option_size_evidence_missing_axis": [],
+          "identity_default_title_axis": []
+        }
+      },
+      "coverage": {
+        "details_sections_count": 6,
+        "faq_count": 8,
+        "how_to_chars": 1412,
+        "inci_chars": 764,
+        "active_ingredients_chars": 23,
+        "inci_applicability_status": "",
+        "ingredient_review_status": "",
+        "ingredient_remediation_action": "",
+        "bundle_component_refs_count": 0,
+        "effective_inci_chars": 764,
+        "inci_borrowed_from_product_id": ""
+      }
+    }
+  ]
+}

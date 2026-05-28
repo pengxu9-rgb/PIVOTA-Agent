@@ -1,0 +1,533 @@
+{
+  "generated_at": "2026-05-28T10:02:16.909Z",
+  "options": {
+    "market": "US",
+    "includeAttached": true,
+    "domain": "purito-seoul.com",
+    "externalProductIds": [],
+    "limit": 20000,
+    "sampleLimit": 10,
+    "checkpointDir": null,
+    "checkpointMode": "domain",
+    "resume": false,
+    "force": false,
+    "continueOnError": true,
+    "pageSize": 500,
+    "format": "json",
+    "chunkByDomain": false
+  },
+  "warnings": [],
+  "summary": {
+    "scanned": 3,
+    "by_market": {
+      "US": 3
+    },
+    "by_domain": [
+      {
+        "key": "purito-seoul.com",
+        "count": 3
+      }
+    ],
+    "by_product_family": [
+      {
+        "key": "non_merch",
+        "count": 2
+      },
+      {
+        "key": "single_formula",
+        "count": 1
+      }
+    ],
+    "coverage": {
+      "missing_inci": 3,
+      "missing_active_raw": 1,
+      "missing_details": 3,
+      "missing_how_to": 0,
+      "missing_faq": 3
+    },
+    "pivota_insights": {
+      "direct": {
+        "displayable": 1,
+        "high_quality_ready": 1,
+        "missing_kb": 0,
+        "not_displayable": 2
+      },
+      "effective": {
+        "displayable": 1,
+        "high_quality_ready": 1,
+        "missing_kb": 0,
+        "not_displayable": 2,
+        "borrowed_from_sibling": 0
+      },
+      "effective_issues": [
+        {
+          "key": "quality_limited",
+          "count": 2
+        },
+        {
+          "key": "reviewed_not_displayable",
+          "count": 2
+        },
+        {
+          "key": "seller_only_evidence",
+          "count": 2
+        },
+        {
+          "key": "empty_watchouts",
+          "count": 1
+        },
+        {
+          "key": "public_generic_marketing_copy",
+          "count": 1
+        }
+      ],
+      "effective_issue_domains": [
+        {
+          "key": "purito-seoul.com::quality_limited",
+          "count": 2
+        },
+        {
+          "key": "purito-seoul.com::reviewed_not_displayable",
+          "count": 2
+        },
+        {
+          "key": "purito-seoul.com::seller_only_evidence",
+          "count": 2
+        },
+        {
+          "key": "purito-seoul.com::empty_watchouts",
+          "count": 1
+        },
+        {
+          "key": "purito-seoul.com::public_generic_marketing_copy",
+          "count": 1
+        }
+      ],
+      "quality_state": [
+        {
+          "key": "limited",
+          "count": 2
+        },
+        {
+          "key": "verified",
+          "count": 1
+        }
+      ],
+      "evidence_profile": [
+        {
+          "key": "seller_only",
+          "count": 2
+        },
+        {
+          "key": "seller_plus_formula",
+          "count": 1
+        }
+      ],
+      "samples": {
+        "reviewed_not_displayable": [
+          {
+            "external_product_id": "ext_69f3356b518c24035855bd6b",
+            "domain": "purito-seoul.com",
+            "title": "Shipping Protection",
+            "used_product_id": "ext_69f3356b518c24035855bd6b",
+            "quality_state": "limited",
+            "evidence_profile": "seller_only"
+          },
+          {
+            "external_product_id": "ext_f2e1b91df86d5ddf53d3543c",
+            "domain": "purito-seoul.com",
+            "title": "High Waist Wide Leg Linen Pants with Pockets",
+            "used_product_id": "ext_f2e1b91df86d5ddf53d3543c",
+            "quality_state": "limited",
+            "evidence_profile": "seller_only"
+          }
+        ],
+        "seller_only_evidence": [
+          {
+            "external_product_id": "ext_69f3356b518c24035855bd6b",
+            "domain": "purito-seoul.com",
+            "title": "Shipping Protection",
+            "used_product_id": "ext_69f3356b518c24035855bd6b",
+            "quality_state": "limited",
+            "evidence_profile": "seller_only"
+          },
+          {
+            "external_product_id": "ext_f2e1b91df86d5ddf53d3543c",
+            "domain": "purito-seoul.com",
+            "title": "High Waist Wide Leg Linen Pants with Pockets",
+            "used_product_id": "ext_f2e1b91df86d5ddf53d3543c",
+            "quality_state": "limited",
+            "evidence_profile": "seller_only"
+          }
+        ],
+        "public_generic_marketing_copy": [
+          {
+            "external_product_id": "ext_f2e1b91df86d5ddf53d3543c",
+            "domain": "purito-seoul.com",
+            "title": "High Waist Wide Leg Linen Pants with Pockets",
+            "used_product_id": "ext_f2e1b91df86d5ddf53d3543c",
+            "quality_state": "limited",
+            "evidence_profile": "seller_only"
+          }
+        ]
+      }
+    },
+    "active_ingredients": {
+      "regulatory_expected": 0,
+      "hero_expected": 0,
+      "any_active_items": 0,
+      "status": [
+        {
+          "key": "not_applicable_product_family",
+          "count": 2
+        },
+        {
+          "key": "not_expected_missing",
+          "count": 1
+        }
+      ],
+      "issues": [],
+      "issue_domains": [],
+      "source_origin": [
+        {
+          "key": "none",
+          "count": 3
+        }
+      ],
+      "samples": {}
+    },
+    "variants": {
+      "status": [
+        {
+          "key": "ready",
+          "count": 2
+        },
+        {
+          "key": "no_visible_variant_axis",
+          "count": 1
+        }
+      ],
+      "issues": [],
+      "issue_domains": [],
+      "samples": {}
+    }
+  },
+  "rows": [
+    {
+      "seed_id": "eps_fe590784e3a48757a76d78de",
+      "external_product_id": "ext_0b16b7ab0f27aad5007e1c4e",
+      "market": "US",
+      "domain": "purito-seoul.com",
+      "title": "Purito Cream Bamboo",
+      "canonical_url": "https://purito-seoul.com/products/purito-cream-bamboo",
+      "product_family": "single_formula",
+      "product_line_id": "pl_136c5587f20cb97b68bc8870",
+      "identity_variant_axes": {
+        "multi_variant": false
+      },
+      "pivota_insights": {
+        "direct": {
+          "product_id": "ext_0b16b7ab0f27aad5007e1c4e",
+          "kb_key": "product:ext_0b16b7ab0f27aad5007e1c4e",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [
+            "empty_watchouts"
+          ],
+          "blocking_issues": [],
+          "quality_state": "verified",
+          "evidence_profile": "seller_plus_formula",
+          "has_card_highlight": true
+        },
+        "effective": {
+          "product_id": "ext_0b16b7ab0f27aad5007e1c4e",
+          "kb_key": "product:ext_0b16b7ab0f27aad5007e1c4e",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [
+            "empty_watchouts"
+          ],
+          "blocking_issues": [],
+          "quality_state": "verified",
+          "evidence_profile": "seller_plus_formula",
+          "has_card_highlight": true
+        },
+        "product_line_id": "pl_136c5587f20cb97b68bc8870",
+        "borrowed_from_sibling": false
+      },
+      "active_ingredients": {
+        "status": "not_expected_missing",
+        "issues": [],
+        "regulatory_expected": false,
+        "hero_expected": false,
+        "active_items": [],
+        "source_origin": "none",
+        "source_quality_status": "blocked",
+        "coverage": {
+          "details_sections_count": 0,
+          "faq_count": 0,
+          "how_to_chars": 110,
+          "inci_chars": 0,
+          "active_ingredients_chars": 0,
+          "inci_applicability_status": "",
+          "ingredient_review_status": "",
+          "ingredient_remediation_action": "",
+          "bundle_component_refs_count": 0,
+          "effective_inci_chars": 0,
+          "inci_borrowed_from_product_id": ""
+        },
+        "invalid_fragments": [],
+        "suppressed_reason": "no_authoritative_source"
+      },
+      "variants": {
+        "status": "ready",
+        "issues": [],
+        "visible_variant_rows": 1,
+        "examples": {
+          "identity_option_visible": [],
+          "wrong_axis_for_category": [],
+          "makeup_shade_missing_visual": [],
+          "size_value_generic_axis": [],
+          "default_option_size_evidence_missing_axis": [],
+          "identity_default_title_axis": []
+        }
+      },
+      "coverage": {
+        "details_sections_count": 0,
+        "faq_count": 0,
+        "how_to_chars": 110,
+        "inci_chars": 0,
+        "active_ingredients_chars": 0,
+        "inci_applicability_status": "",
+        "ingredient_review_status": "",
+        "ingredient_remediation_action": "",
+        "bundle_component_refs_count": 0,
+        "effective_inci_chars": 0,
+        "inci_borrowed_from_product_id": ""
+      }
+    },
+    {
+      "seed_id": "eps_79263fd2e6b523d6904c41da",
+      "external_product_id": "ext_69f3356b518c24035855bd6b",
+      "market": "US",
+      "domain": "purito-seoul.com",
+      "title": "Shipping Protection",
+      "canonical_url": "https://purito-seoul.com/products/shipping-protection",
+      "product_family": "non_merch",
+      "product_line_id": null,
+      "pivota_insights": {
+        "direct": {
+          "product_id": "ext_69f3356b518c24035855bd6b",
+          "kb_key": "product:ext_69f3356b518c24035855bd6b",
+          "status": "not_displayable",
+          "kb_exists": true,
+          "displayable": false,
+          "high_quality_ready": false,
+          "human_reviewed": true,
+          "issues": [
+            "reviewed_not_displayable",
+            "quality_limited",
+            "seller_only_evidence"
+          ],
+          "blocking_issues": [
+            "reviewed_not_displayable"
+          ],
+          "quality_state": "limited",
+          "evidence_profile": "seller_only",
+          "has_card_highlight": true
+        },
+        "effective": {
+          "product_id": "ext_69f3356b518c24035855bd6b",
+          "kb_key": "product:ext_69f3356b518c24035855bd6b",
+          "status": "not_displayable",
+          "kb_exists": true,
+          "displayable": false,
+          "high_quality_ready": false,
+          "human_reviewed": true,
+          "issues": [
+            "reviewed_not_displayable",
+            "quality_limited",
+            "seller_only_evidence"
+          ],
+          "blocking_issues": [
+            "reviewed_not_displayable"
+          ],
+          "quality_state": "limited",
+          "evidence_profile": "seller_only",
+          "has_card_highlight": true
+        },
+        "product_line_id": null,
+        "borrowed_from_sibling": false
+      },
+      "active_ingredients": {
+        "status": "not_applicable_product_family",
+        "issues": [],
+        "regulatory_expected": false,
+        "hero_expected": false,
+        "active_items": [],
+        "source_origin": "none",
+        "source_quality_status": "blocked",
+        "coverage": {
+          "details_sections_count": 0,
+          "faq_count": 0,
+          "how_to_chars": 109,
+          "inci_chars": 0,
+          "active_ingredients_chars": 0,
+          "inci_applicability_status": "",
+          "ingredient_review_status": "",
+          "ingredient_remediation_action": "",
+          "bundle_component_refs_count": 0,
+          "effective_inci_chars": 0,
+          "inci_borrowed_from_product_id": ""
+        },
+        "invalid_fragments": [],
+        "suppressed_reason": "non_merch"
+      },
+      "variants": {
+        "status": "ready",
+        "issues": [],
+        "visible_variant_rows": 1,
+        "examples": {
+          "identity_option_visible": [],
+          "wrong_axis_for_category": [],
+          "makeup_shade_missing_visual": [],
+          "size_value_generic_axis": [],
+          "default_option_size_evidence_missing_axis": [],
+          "identity_default_title_axis": []
+        }
+      },
+      "coverage": {
+        "details_sections_count": 0,
+        "faq_count": 0,
+        "how_to_chars": 109,
+        "inci_chars": 0,
+        "active_ingredients_chars": 0,
+        "inci_applicability_status": "",
+        "ingredient_review_status": "",
+        "ingredient_remediation_action": "",
+        "bundle_component_refs_count": 0,
+        "effective_inci_chars": 0,
+        "inci_borrowed_from_product_id": ""
+      }
+    },
+    {
+      "seed_id": "eps_5b9a4a2da6f68d3e9df59563",
+      "external_product_id": "ext_f2e1b91df86d5ddf53d3543c",
+      "market": "US",
+      "domain": "purito-seoul.com",
+      "title": "High Waist Wide Leg Linen Pants with Pockets",
+      "canonical_url": "https://purito-seoul.com/products/high-waist-leg-pants",
+      "product_family": "non_merch",
+      "product_line_id": "pl_98787d5334b60f8a94c20a98",
+      "identity_variant_axes": {
+        "size": "s apricot",
+        "color": "s apricot",
+        "multi_variant": true
+      },
+      "pivota_insights": {
+        "direct": {
+          "product_id": "ext_f2e1b91df86d5ddf53d3543c",
+          "kb_key": "product:ext_f2e1b91df86d5ddf53d3543c",
+          "status": "not_displayable",
+          "kb_exists": true,
+          "displayable": false,
+          "high_quality_ready": false,
+          "human_reviewed": true,
+          "issues": [
+            "reviewed_not_displayable",
+            "public_generic_marketing_copy",
+            "quality_limited",
+            "seller_only_evidence"
+          ],
+          "blocking_issues": [
+            "reviewed_not_displayable",
+            "public_generic_marketing_copy"
+          ],
+          "quality_state": "limited",
+          "evidence_profile": "seller_only",
+          "has_card_highlight": true
+        },
+        "effective": {
+          "product_id": "ext_f2e1b91df86d5ddf53d3543c",
+          "kb_key": "product:ext_f2e1b91df86d5ddf53d3543c",
+          "status": "not_displayable",
+          "kb_exists": true,
+          "displayable": false,
+          "high_quality_ready": false,
+          "human_reviewed": true,
+          "issues": [
+            "reviewed_not_displayable",
+            "public_generic_marketing_copy",
+            "quality_limited",
+            "seller_only_evidence"
+          ],
+          "blocking_issues": [
+            "reviewed_not_displayable",
+            "public_generic_marketing_copy"
+          ],
+          "quality_state": "limited",
+          "evidence_profile": "seller_only",
+          "has_card_highlight": true
+        },
+        "product_line_id": "pl_98787d5334b60f8a94c20a98",
+        "borrowed_from_sibling": false
+      },
+      "active_ingredients": {
+        "status": "not_applicable_product_family",
+        "issues": [],
+        "regulatory_expected": false,
+        "hero_expected": false,
+        "active_items": [],
+        "source_origin": "none",
+        "source_quality_status": "blocked",
+        "coverage": {
+          "details_sections_count": 0,
+          "faq_count": 0,
+          "how_to_chars": 109,
+          "inci_chars": 0,
+          "active_ingredients_chars": 0,
+          "inci_applicability_status": "",
+          "ingredient_review_status": "",
+          "ingredient_remediation_action": "",
+          "bundle_component_refs_count": 0,
+          "effective_inci_chars": 0,
+          "inci_borrowed_from_product_id": ""
+        },
+        "invalid_fragments": [],
+        "suppressed_reason": "non_merch"
+      },
+      "variants": {
+        "status": "no_visible_variant_axis",
+        "issues": [],
+        "visible_variant_rows": 0,
+        "examples": {
+          "identity_option_visible": [],
+          "wrong_axis_for_category": [],
+          "makeup_shade_missing_visual": [],
+          "size_value_generic_axis": [],
+          "default_option_size_evidence_missing_axis": [],
+          "identity_default_title_axis": []
+        }
+      },
+      "coverage": {
+        "details_sections_count": 0,
+        "faq_count": 0,
+        "how_to_chars": 109,
+        "inci_chars": 0,
+        "active_ingredients_chars": 0,
+        "inci_applicability_status": "",
+        "ingredient_review_status": "",
+        "ingredient_remediation_action": "",
+        "bundle_component_refs_count": 0,
+        "effective_inci_chars": 0,
+        "inci_borrowed_from_product_id": ""
+      }
+    }
+  ]
+}

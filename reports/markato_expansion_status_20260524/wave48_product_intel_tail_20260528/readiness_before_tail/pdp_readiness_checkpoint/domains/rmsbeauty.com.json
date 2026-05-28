@@ -1,0 +1,1183 @@
+{
+  "generated_at": "2026-05-28T10:01:31.131Z",
+  "options": {
+    "market": "US",
+    "includeAttached": true,
+    "domain": "rmsbeauty.com",
+    "externalProductIds": [],
+    "limit": 20000,
+    "sampleLimit": 10,
+    "checkpointDir": null,
+    "checkpointMode": "domain",
+    "resume": false,
+    "force": false,
+    "continueOnError": true,
+    "pageSize": 500,
+    "format": "json",
+    "chunkByDomain": false
+  },
+  "warnings": [],
+  "summary": {
+    "scanned": 9,
+    "by_market": {
+      "US": 9
+    },
+    "by_domain": [
+      {
+        "key": "rmsbeauty.com",
+        "count": 9
+      }
+    ],
+    "by_product_family": [
+      {
+        "key": "set_or_collection",
+        "count": 4
+      },
+      {
+        "key": "single_formula",
+        "count": 4
+      },
+      {
+        "key": "unknown_product",
+        "count": 1
+      }
+    ],
+    "coverage": {
+      "missing_inci": 2,
+      "missing_active_raw": 3,
+      "missing_details": 7,
+      "missing_how_to": 5,
+      "missing_faq": 9
+    },
+    "pivota_insights": {
+      "direct": {
+        "displayable": 8,
+        "high_quality_ready": 8,
+        "missing_kb": 1,
+        "not_displayable": 0
+      },
+      "effective": {
+        "displayable": 8,
+        "high_quality_ready": 8,
+        "missing_kb": 1,
+        "not_displayable": 0,
+        "borrowed_from_sibling": 0
+      },
+      "effective_issues": [
+        {
+          "key": "missing_kb",
+          "count": 1
+        }
+      ],
+      "effective_issue_domains": [
+        {
+          "key": "rmsbeauty.com::missing_kb",
+          "count": 1
+        }
+      ],
+      "quality_state": [
+        {
+          "key": "reviewed",
+          "count": 6
+        },
+        {
+          "key": "verified",
+          "count": 2
+        },
+        {
+          "key": "missing",
+          "count": 1
+        }
+      ],
+      "evidence_profile": [
+        {
+          "key": "official_pdp_reviewed_key_ingredients",
+          "count": 3
+        },
+        {
+          "key": "seller_plus_formula",
+          "count": 2
+        },
+        {
+          "key": "missing",
+          "count": 1
+        },
+        {
+          "key": "official_pdp_reviewed_formula",
+          "count": 1
+        },
+        {
+          "key": "official_pdp_reviewed_key_ingredients_and_usage",
+          "count": 1
+        },
+        {
+          "key": "official_pdp_reviewed_line",
+          "count": 1
+        }
+      ],
+      "samples": {
+        "missing_kb": [
+          {
+            "external_product_id": "ext_9ed40a265f7b8f06d4c05645",
+            "domain": "rmsbeauty.com",
+            "title": "The Artist Toolkit",
+            "used_product_id": "ext_9ed40a265f7b8f06d4c05645",
+            "quality_state": "missing",
+            "evidence_profile": "missing"
+          }
+        ]
+      }
+    },
+    "active_ingredients": {
+      "regulatory_expected": 2,
+      "hero_expected": 3,
+      "any_active_items": 2,
+      "status": [
+        {
+          "key": "not_applicable_product_family",
+          "count": 4
+        },
+        {
+          "key": "not_expected_missing",
+          "count": 2
+        },
+        {
+          "key": "missing_regulatory",
+          "count": 1
+        },
+        {
+          "key": "ready_hero",
+          "count": 1
+        },
+        {
+          "key": "ready_regulatory",
+          "count": 1
+        }
+      ],
+      "issues": [
+        {
+          "key": "missing_regulatory",
+          "count": 1
+        }
+      ],
+      "issue_domains": [
+        {
+          "key": "rmsbeauty.com::missing_regulatory",
+          "count": 1
+        }
+      ],
+      "source_origin": [
+        {
+          "key": "none",
+          "count": 6
+        },
+        {
+          "key": "pdp_section",
+          "count": 2
+        },
+        {
+          "key": "official_pdp",
+          "count": 1
+        }
+      ],
+      "samples": {
+        "missing_regulatory": [
+          {
+            "external_product_id": "ext_532eab3a9ce8813badaefe99",
+            "domain": "rmsbeauty.com",
+            "title": "ReFresh Eye Brightener SPF 30 + Correcting Tint",
+            "status": "missing_regulatory",
+            "active_items": [],
+            "source_origin": "none"
+          }
+        ]
+      }
+    },
+    "variants": {
+      "status": [
+        {
+          "key": "no_visible_variant_axis",
+          "count": 4
+        },
+        {
+          "key": "ready",
+          "count": 3
+        },
+        {
+          "key": "flagged",
+          "count": 2
+        }
+      ],
+      "issues": [
+        {
+          "key": "default_option_size_evidence_missing_axis",
+          "count": 1
+        },
+        {
+          "key": "wrong_axis_for_category",
+          "count": 1
+        }
+      ],
+      "issue_domains": [
+        {
+          "key": "rmsbeauty.com::default_option_size_evidence_missing_axis",
+          "count": 1
+        },
+        {
+          "key": "rmsbeauty.com::wrong_axis_for_category",
+          "count": 1
+        }
+      ],
+      "samples": {
+        "wrong_axis_for_category": [
+          {
+            "external_product_id": "ext_532eab3a9ce8813badaefe99",
+            "domain": "rmsbeauty.com",
+            "title": "ReFresh Eye Brightener SPF 30 + Correcting Tint",
+            "status": "flagged",
+            "examples": [
+              {
+                "axis_name": "shade",
+                "axis_kind": "shade",
+                "value": "adore",
+                "visual": true
+              },
+              {
+                "axis_name": "shade",
+                "axis_kind": "shade",
+                "value": "cherish",
+                "visual": true
+              },
+              {
+                "axis_name": "shade",
+                "axis_kind": "shade",
+                "value": "hush",
+                "visual": true
+              },
+              {
+                "axis_name": "shade",
+                "axis_kind": "shade",
+                "value": "swoon",
+                "visual": true
+              }
+            ]
+          }
+        ],
+        "default_option_size_evidence_missing_axis": [
+          {
+            "external_product_id": "ext_b8addda223ad2f4e0501b799",
+            "domain": "rmsbeauty.com",
+            "title": "ReFresh Eye Brightener Broad Spectrum SPF 30 + Correcting Tint",
+            "status": "flagged",
+            "examples": [
+              {
+                "axis_name": "default",
+                "axis_kind": "volume",
+                "value": "11.5 mL",
+                "visual": false
+              }
+            ]
+          }
+        ]
+      }
+    }
+  },
+  "rows": [
+    {
+      "seed_id": "eps_a4bf1c3ae6eeffd84a1f5806",
+      "external_product_id": "ext_1c6390a4583df99215617f2b",
+      "market": "US",
+      "domain": "rmsbeauty.com",
+      "title": "Revitalize Hydra Concealer",
+      "canonical_url": "https://www.rmsbeauty.com/products/revitalize-hydra-concealer",
+      "product_family": "single_formula",
+      "product_line_id": "pl_94ea4baccce0c56763c38658",
+      "identity_variant_axes": {
+        "shade": "on01",
+        "multi_variant": true
+      },
+      "pivota_insights": {
+        "direct": {
+          "product_id": "ext_1c6390a4583df99215617f2b",
+          "kb_key": "product:ext_1c6390a4583df99215617f2b",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "verified",
+          "evidence_profile": "seller_plus_formula",
+          "has_card_highlight": true
+        },
+        "effective": {
+          "product_id": "ext_1c6390a4583df99215617f2b",
+          "kb_key": "product:ext_1c6390a4583df99215617f2b",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "verified",
+          "evidence_profile": "seller_plus_formula",
+          "has_card_highlight": true
+        },
+        "product_line_id": "pl_94ea4baccce0c56763c38658",
+        "borrowed_from_sibling": false
+      },
+      "active_ingredients": {
+        "status": "ready_hero",
+        "issues": [],
+        "regulatory_expected": false,
+        "hero_expected": true,
+        "active_items": [
+          "Retinol"
+        ],
+        "source_origin": "pdp_section",
+        "source_quality_status": "captured",
+        "coverage": {
+          "details_sections_count": 12,
+          "faq_count": 0,
+          "how_to_chars": 557,
+          "inci_chars": 1446,
+          "active_ingredients_chars": 17,
+          "inci_applicability_status": "",
+          "ingredient_review_status": "",
+          "ingredient_remediation_action": "",
+          "bundle_component_refs_count": 0,
+          "effective_inci_chars": 1446,
+          "inci_borrowed_from_product_id": ""
+        },
+        "invalid_fragments": [],
+        "suppressed_reason": null
+      },
+      "variants": {
+        "status": "ready",
+        "issues": [],
+        "visible_variant_rows": 26,
+        "examples": {
+          "identity_option_visible": [],
+          "wrong_axis_for_category": [],
+          "makeup_shade_missing_visual": [],
+          "size_value_generic_axis": [],
+          "default_option_size_evidence_missing_axis": [],
+          "identity_default_title_axis": []
+        }
+      },
+      "coverage": {
+        "details_sections_count": 12,
+        "faq_count": 0,
+        "how_to_chars": 557,
+        "inci_chars": 1446,
+        "active_ingredients_chars": 17,
+        "inci_applicability_status": "",
+        "ingredient_review_status": "",
+        "ingredient_remediation_action": "",
+        "bundle_component_refs_count": 0,
+        "effective_inci_chars": 1446,
+        "inci_borrowed_from_product_id": ""
+      }
+    },
+    {
+      "seed_id": "eps_023b4ad478e38035633e16a4",
+      "external_product_id": "ext_532eab3a9ce8813badaefe99",
+      "market": "US",
+      "domain": "rmsbeauty.com",
+      "title": "ReFresh Eye Brightener SPF 30 + Correcting Tint",
+      "canonical_url": "https://www.rmsbeauty.com/products/refresh-eye-brightener-spf-30",
+      "product_family": "single_formula",
+      "product_line_id": null,
+      "pivota_insights": {
+        "direct": {
+          "product_id": "ext_532eab3a9ce8813badaefe99",
+          "kb_key": "product:ext_532eab3a9ce8813badaefe99",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "official_pdp_reviewed_key_ingredients",
+          "has_card_highlight": true
+        },
+        "effective": {
+          "product_id": "ext_532eab3a9ce8813badaefe99",
+          "kb_key": "product:ext_532eab3a9ce8813badaefe99",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "official_pdp_reviewed_key_ingredients",
+          "has_card_highlight": true
+        },
+        "product_line_id": null,
+        "borrowed_from_sibling": false
+      },
+      "active_ingredients": {
+        "status": "missing_regulatory",
+        "issues": [
+          "missing_regulatory"
+        ],
+        "regulatory_expected": true,
+        "hero_expected": true,
+        "active_items": [],
+        "source_origin": "none",
+        "source_quality_status": "blocked",
+        "coverage": {
+          "details_sections_count": 0,
+          "faq_count": 0,
+          "how_to_chars": 0,
+          "inci_chars": 0,
+          "active_ingredients_chars": 0,
+          "inci_applicability_status": "",
+          "ingredient_review_status": "",
+          "ingredient_remediation_action": "",
+          "bundle_component_refs_count": 0,
+          "effective_inci_chars": 0,
+          "inci_borrowed_from_product_id": ""
+        },
+        "invalid_fragments": [],
+        "suppressed_reason": "active_items_not_displayable"
+      },
+      "variants": {
+        "status": "flagged",
+        "issues": [
+          "wrong_axis_for_category"
+        ],
+        "visible_variant_rows": 4,
+        "examples": {
+          "identity_option_visible": [],
+          "wrong_axis_for_category": [
+            {
+              "axis_name": "shade",
+              "axis_kind": "shade",
+              "value": "adore",
+              "visual": true
+            },
+            {
+              "axis_name": "shade",
+              "axis_kind": "shade",
+              "value": "cherish",
+              "visual": true
+            },
+            {
+              "axis_name": "shade",
+              "axis_kind": "shade",
+              "value": "hush",
+              "visual": true
+            },
+            {
+              "axis_name": "shade",
+              "axis_kind": "shade",
+              "value": "swoon",
+              "visual": true
+            }
+          ],
+          "makeup_shade_missing_visual": [],
+          "size_value_generic_axis": [],
+          "default_option_size_evidence_missing_axis": [],
+          "identity_default_title_axis": []
+        }
+      },
+      "coverage": {
+        "details_sections_count": 0,
+        "faq_count": 0,
+        "how_to_chars": 0,
+        "inci_chars": 0,
+        "active_ingredients_chars": 0,
+        "inci_applicability_status": "",
+        "ingredient_review_status": "",
+        "ingredient_remediation_action": "",
+        "bundle_component_refs_count": 0,
+        "effective_inci_chars": 0,
+        "inci_borrowed_from_product_id": ""
+      }
+    },
+    {
+      "seed_id": "eps_9e450eabae4cffa4f9143f06",
+      "external_product_id": "ext_5f69a24fd9314e9ea535ea25",
+      "market": "US",
+      "domain": "rmsbeauty.com",
+      "title": "ReDimension Hydra Eyes Quartet",
+      "canonical_url": "https://www.rmsbeauty.com/products/redimension-hydra-eyes-quartet",
+      "product_family": "set_or_collection",
+      "product_line_id": null,
+      "pivota_insights": {
+        "direct": {
+          "product_id": "ext_5f69a24fd9314e9ea535ea25",
+          "kb_key": "product:ext_5f69a24fd9314e9ea535ea25",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "official_pdp_reviewed_key_ingredients_and_usage",
+          "has_card_highlight": true
+        },
+        "effective": {
+          "product_id": "ext_5f69a24fd9314e9ea535ea25",
+          "kb_key": "product:ext_5f69a24fd9314e9ea535ea25",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "official_pdp_reviewed_key_ingredients_and_usage",
+          "has_card_highlight": true
+        },
+        "product_line_id": null,
+        "borrowed_from_sibling": false
+      },
+      "active_ingredients": {
+        "status": "not_applicable_product_family",
+        "issues": [],
+        "regulatory_expected": false,
+        "hero_expected": false,
+        "active_items": [],
+        "source_origin": "none",
+        "source_quality_status": "blocked",
+        "coverage": {
+          "details_sections_count": 0,
+          "faq_count": 0,
+          "how_to_chars": 260,
+          "inci_chars": 3998,
+          "active_ingredients_chars": 28,
+          "inci_applicability_status": "",
+          "ingredient_review_status": "",
+          "ingredient_remediation_action": "",
+          "bundle_component_refs_count": 0,
+          "effective_inci_chars": 3998,
+          "inci_borrowed_from_product_id": ""
+        },
+        "invalid_fragments": [],
+        "suppressed_reason": "set_or_collection"
+      },
+      "variants": {
+        "status": "no_visible_variant_axis",
+        "issues": [],
+        "visible_variant_rows": 0,
+        "examples": {
+          "identity_option_visible": [],
+          "wrong_axis_for_category": [],
+          "makeup_shade_missing_visual": [],
+          "size_value_generic_axis": [],
+          "default_option_size_evidence_missing_axis": [],
+          "identity_default_title_axis": []
+        }
+      },
+      "coverage": {
+        "details_sections_count": 0,
+        "faq_count": 0,
+        "how_to_chars": 260,
+        "inci_chars": 3998,
+        "active_ingredients_chars": 28,
+        "inci_applicability_status": "",
+        "ingredient_review_status": "",
+        "ingredient_remediation_action": "",
+        "bundle_component_refs_count": 0,
+        "effective_inci_chars": 3998,
+        "inci_borrowed_from_product_id": ""
+      }
+    },
+    {
+      "seed_id": "eps_0f62b1951364d06db98ab494",
+      "external_product_id": "ext_9247e1285fadd4b02bc33aad",
+      "market": "US",
+      "domain": "rmsbeauty.com",
+      "title": "Makeup Remover | Ultimate Makeup Remover Wipe",
+      "canonical_url": "https://www.rmsbeauty.com/products/ultimate-makeup-remover-wipe",
+      "product_family": "single_formula",
+      "product_line_id": "pl_25eb02af822ade692cf98318",
+      "identity_variant_axes": {
+        "pack": "20pack",
+        "multi_variant": false
+      },
+      "pivota_insights": {
+        "direct": {
+          "product_id": "ext_9247e1285fadd4b02bc33aad",
+          "kb_key": "product:ext_9247e1285fadd4b02bc33aad",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "official_pdp_reviewed_line",
+          "has_card_highlight": true
+        },
+        "effective": {
+          "product_id": "ext_9247e1285fadd4b02bc33aad",
+          "kb_key": "product:ext_9247e1285fadd4b02bc33aad",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "official_pdp_reviewed_line",
+          "has_card_highlight": true
+        },
+        "product_line_id": "pl_25eb02af822ade692cf98318",
+        "borrowed_from_sibling": false
+      },
+      "active_ingredients": {
+        "status": "not_expected_missing",
+        "issues": [],
+        "regulatory_expected": false,
+        "hero_expected": false,
+        "active_items": [],
+        "source_origin": "official_pdp",
+        "source_quality_status": "blocked",
+        "coverage": {
+          "details_sections_count": 0,
+          "faq_count": 0,
+          "how_to_chars": 812,
+          "inci_chars": 28,
+          "active_ingredients_chars": 0,
+          "inci_applicability_status": "",
+          "ingredient_review_status": "",
+          "ingredient_remediation_action": "",
+          "bundle_component_refs_count": 0,
+          "effective_inci_chars": 28,
+          "inci_borrowed_from_product_id": ""
+        },
+        "invalid_fragments": [],
+        "suppressed_reason": null
+      },
+      "variants": {
+        "status": "ready",
+        "issues": [],
+        "visible_variant_rows": 1,
+        "examples": {
+          "identity_option_visible": [],
+          "wrong_axis_for_category": [],
+          "makeup_shade_missing_visual": [],
+          "size_value_generic_axis": [],
+          "default_option_size_evidence_missing_axis": [],
+          "identity_default_title_axis": []
+        }
+      },
+      "coverage": {
+        "details_sections_count": 0,
+        "faq_count": 0,
+        "how_to_chars": 812,
+        "inci_chars": 28,
+        "active_ingredients_chars": 0,
+        "inci_applicability_status": "",
+        "ingredient_review_status": "",
+        "ingredient_remediation_action": "",
+        "bundle_component_refs_count": 0,
+        "effective_inci_chars": 28,
+        "inci_borrowed_from_product_id": ""
+      }
+    },
+    {
+      "seed_id": "eps_42bba698ab9a43275d41bb89",
+      "external_product_id": "ext_9ed40a265f7b8f06d4c05645",
+      "market": "US",
+      "domain": "rmsbeauty.com",
+      "title": "The Artist Toolkit",
+      "canonical_url": "https://www.rmsbeauty.com/products/the-artist-toolkit",
+      "product_family": "unknown_product",
+      "product_line_id": "pl_01f25afa7b8ee4153b9b3b49",
+      "identity_variant_axes": {
+        "multi_variant": false
+      },
+      "pivota_insights": {
+        "direct": {
+          "product_id": "ext_9ed40a265f7b8f06d4c05645",
+          "kb_key": null,
+          "status": "missing_kb",
+          "kb_exists": false,
+          "displayable": false,
+          "high_quality_ready": false,
+          "issues": [
+            "missing_kb"
+          ],
+          "quality_state": "missing",
+          "evidence_profile": "missing"
+        },
+        "effective": {
+          "product_id": "ext_9ed40a265f7b8f06d4c05645",
+          "kb_key": null,
+          "status": "missing_kb",
+          "kb_exists": false,
+          "displayable": false,
+          "high_quality_ready": false,
+          "issues": [
+            "missing_kb"
+          ],
+          "quality_state": "missing",
+          "evidence_profile": "missing"
+        },
+        "product_line_id": "pl_01f25afa7b8ee4153b9b3b49",
+        "borrowed_from_sibling": false
+      },
+      "active_ingredients": {
+        "status": "not_expected_missing",
+        "issues": [],
+        "regulatory_expected": false,
+        "hero_expected": false,
+        "active_items": [],
+        "source_origin": "none",
+        "source_quality_status": "blocked",
+        "coverage": {
+          "details_sections_count": 0,
+          "faq_count": 0,
+          "how_to_chars": 0,
+          "inci_chars": 0,
+          "active_ingredients_chars": 0,
+          "inci_applicability_status": "",
+          "ingredient_review_status": "",
+          "ingredient_remediation_action": "",
+          "bundle_component_refs_count": 0,
+          "effective_inci_chars": 0,
+          "inci_borrowed_from_product_id": ""
+        },
+        "invalid_fragments": [],
+        "suppressed_reason": "no_authoritative_source"
+      },
+      "variants": {
+        "status": "no_visible_variant_axis",
+        "issues": [],
+        "visible_variant_rows": 0,
+        "examples": {
+          "identity_option_visible": [],
+          "wrong_axis_for_category": [],
+          "makeup_shade_missing_visual": [],
+          "size_value_generic_axis": [],
+          "default_option_size_evidence_missing_axis": [],
+          "identity_default_title_axis": []
+        }
+      },
+      "coverage": {
+        "details_sections_count": 0,
+        "faq_count": 0,
+        "how_to_chars": 0,
+        "inci_chars": 0,
+        "active_ingredients_chars": 0,
+        "inci_applicability_status": "",
+        "ingredient_review_status": "",
+        "ingredient_remediation_action": "",
+        "bundle_component_refs_count": 0,
+        "effective_inci_chars": 0,
+        "inci_borrowed_from_product_id": ""
+      }
+    },
+    {
+      "seed_id": "eps_f89ec24947595c4ffafa63ed",
+      "external_product_id": "ext_b8addda223ad2f4e0501b799",
+      "market": "US",
+      "domain": "rmsbeauty.com",
+      "title": "ReFresh Eye Brightener Broad Spectrum SPF 30 + Correcting Tint",
+      "canonical_url": "https://www.rmsbeauty.com/products/refresh-eye-brightener-broad-spectrum-spf-30-sunscreen",
+      "product_family": "single_formula",
+      "product_line_id": "pl_9cc31e08f4ce66d3bbb24336",
+      "identity_variant_axes": {
+        "size": "11 5 ml",
+        "volume": "5ml",
+        "multi_variant": true
+      },
+      "pivota_insights": {
+        "direct": {
+          "product_id": "ext_b8addda223ad2f4e0501b799",
+          "kb_key": "product:ext_b8addda223ad2f4e0501b799",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "official_pdp_reviewed_formula",
+          "has_card_highlight": true
+        },
+        "effective": {
+          "product_id": "ext_b8addda223ad2f4e0501b799",
+          "kb_key": "product:ext_b8addda223ad2f4e0501b799",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "official_pdp_reviewed_formula",
+          "has_card_highlight": true
+        },
+        "product_line_id": "pl_9cc31e08f4ce66d3bbb24336",
+        "borrowed_from_sibling": false
+      },
+      "active_ingredients": {
+        "status": "ready_regulatory",
+        "issues": [],
+        "regulatory_expected": true,
+        "hero_expected": true,
+        "active_items": [
+          "Niacinamide",
+          "Titanium Dioxide"
+        ],
+        "source_origin": "pdp_section",
+        "source_quality_status": "regulatory_active",
+        "coverage": {
+          "details_sections_count": 0,
+          "faq_count": 0,
+          "how_to_chars": 0,
+          "inci_chars": 5258,
+          "active_ingredients_chars": 31,
+          "inci_applicability_status": "",
+          "ingredient_review_status": "",
+          "ingredient_remediation_action": "",
+          "bundle_component_refs_count": 0,
+          "effective_inci_chars": 5258,
+          "inci_borrowed_from_product_id": ""
+        },
+        "invalid_fragments": [],
+        "suppressed_reason": null
+      },
+      "variants": {
+        "status": "flagged",
+        "issues": [
+          "default_option_size_evidence_missing_axis"
+        ],
+        "visible_variant_rows": 0,
+        "examples": {
+          "identity_option_visible": [],
+          "wrong_axis_for_category": [],
+          "makeup_shade_missing_visual": [],
+          "size_value_generic_axis": [],
+          "default_option_size_evidence_missing_axis": [
+            {
+              "axis_name": "default",
+              "axis_kind": "volume",
+              "value": "11.5 mL",
+              "visual": false
+            }
+          ],
+          "identity_default_title_axis": []
+        }
+      },
+      "coverage": {
+        "details_sections_count": 0,
+        "faq_count": 0,
+        "how_to_chars": 0,
+        "inci_chars": 5258,
+        "active_ingredients_chars": 31,
+        "inci_applicability_status": "",
+        "ingredient_review_status": "",
+        "ingredient_remediation_action": "",
+        "bundle_component_refs_count": 0,
+        "effective_inci_chars": 5258,
+        "inci_borrowed_from_product_id": ""
+      }
+    },
+    {
+      "seed_id": "eps_cb8769a8573228cc4a5cd99a",
+      "external_product_id": "ext_bade6c28017ee245bec5aaeb",
+      "market": "US",
+      "domain": "rmsbeauty.com",
+      "title": "Color Capsule: The Rosé Edit",
+      "canonical_url": "https://www.rmsbeauty.com/products/color-capsule-the-rose-edit",
+      "product_family": "set_or_collection",
+      "product_line_id": "pl_ea2cc2920fa9315e49aec51a",
+      "identity_variant_axes": {
+        "multi_variant": false
+      },
+      "pivota_insights": {
+        "direct": {
+          "product_id": "ext_bade6c28017ee245bec5aaeb",
+          "kb_key": "product:ext_bade6c28017ee245bec5aaeb",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "official_pdp_reviewed_key_ingredients",
+          "has_card_highlight": true
+        },
+        "effective": {
+          "product_id": "ext_bade6c28017ee245bec5aaeb",
+          "kb_key": "product:ext_bade6c28017ee245bec5aaeb",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "official_pdp_reviewed_key_ingredients",
+          "has_card_highlight": true
+        },
+        "product_line_id": "pl_ea2cc2920fa9315e49aec51a",
+        "borrowed_from_sibling": false
+      },
+      "active_ingredients": {
+        "status": "not_applicable_product_family",
+        "issues": [],
+        "regulatory_expected": false,
+        "hero_expected": false,
+        "active_items": [],
+        "source_origin": "none",
+        "source_quality_status": "blocked",
+        "coverage": {
+          "details_sections_count": 0,
+          "faq_count": 0,
+          "how_to_chars": 0,
+          "inci_chars": 3664,
+          "active_ingredients_chars": 28,
+          "inci_applicability_status": "",
+          "ingredient_review_status": "",
+          "ingredient_remediation_action": "",
+          "bundle_component_refs_count": 0,
+          "effective_inci_chars": 3664,
+          "inci_borrowed_from_product_id": ""
+        },
+        "invalid_fragments": [],
+        "suppressed_reason": "set_or_collection"
+      },
+      "variants": {
+        "status": "no_visible_variant_axis",
+        "issues": [],
+        "visible_variant_rows": 0,
+        "examples": {
+          "identity_option_visible": [],
+          "wrong_axis_for_category": [],
+          "makeup_shade_missing_visual": [],
+          "size_value_generic_axis": [],
+          "default_option_size_evidence_missing_axis": [],
+          "identity_default_title_axis": []
+        }
+      },
+      "coverage": {
+        "details_sections_count": 0,
+        "faq_count": 0,
+        "how_to_chars": 0,
+        "inci_chars": 3664,
+        "active_ingredients_chars": 28,
+        "inci_applicability_status": "",
+        "ingredient_review_status": "",
+        "ingredient_remediation_action": "",
+        "bundle_component_refs_count": 0,
+        "effective_inci_chars": 3664,
+        "inci_borrowed_from_product_id": ""
+      }
+    },
+    {
+      "seed_id": "eps_2a97efcdfbe03673bc538dae",
+      "external_product_id": "ext_f16d1ed12f9f2c9966d47d78",
+      "market": "US",
+      "domain": "rmsbeauty.com",
+      "title": "Radiance Lock Setting Mist",
+      "canonical_url": "https://www.rmsbeauty.com/products/radiance-lock-setting-mist",
+      "product_family": "set_or_collection",
+      "product_line_id": "pl_691e030f70a6059c86e61784",
+      "identity_variant_axes": {
+        "size": "100 ml",
+        "volume": "100ml",
+        "multi_variant": true
+      },
+      "pivota_insights": {
+        "direct": {
+          "product_id": "ext_f16d1ed12f9f2c9966d47d78",
+          "kb_key": "product:ext_f16d1ed12f9f2c9966d47d78",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "verified",
+          "evidence_profile": "seller_plus_formula",
+          "has_card_highlight": true
+        },
+        "effective": {
+          "product_id": "ext_f16d1ed12f9f2c9966d47d78",
+          "kb_key": "product:ext_f16d1ed12f9f2c9966d47d78",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "verified",
+          "evidence_profile": "seller_plus_formula",
+          "has_card_highlight": true
+        },
+        "product_line_id": "pl_691e030f70a6059c86e61784",
+        "borrowed_from_sibling": false
+      },
+      "active_ingredients": {
+        "status": "not_applicable_product_family",
+        "issues": [],
+        "regulatory_expected": false,
+        "hero_expected": false,
+        "active_items": [],
+        "source_origin": "none",
+        "source_quality_status": "blocked",
+        "coverage": {
+          "details_sections_count": 8,
+          "faq_count": 0,
+          "how_to_chars": 504,
+          "inci_chars": 1051,
+          "active_ingredients_chars": 48,
+          "inci_applicability_status": "",
+          "ingredient_review_status": "",
+          "ingredient_remediation_action": "",
+          "bundle_component_refs_count": 0,
+          "effective_inci_chars": 1051,
+          "inci_borrowed_from_product_id": ""
+        },
+        "invalid_fragments": [],
+        "suppressed_reason": "set_or_collection"
+      },
+      "variants": {
+        "status": "ready",
+        "issues": [],
+        "visible_variant_rows": 2,
+        "examples": {
+          "identity_option_visible": [],
+          "wrong_axis_for_category": [],
+          "makeup_shade_missing_visual": [],
+          "size_value_generic_axis": [],
+          "default_option_size_evidence_missing_axis": [],
+          "identity_default_title_axis": []
+        }
+      },
+      "coverage": {
+        "details_sections_count": 8,
+        "faq_count": 0,
+        "how_to_chars": 504,
+        "inci_chars": 1051,
+        "active_ingredients_chars": 48,
+        "inci_applicability_status": "",
+        "ingredient_review_status": "",
+        "ingredient_remediation_action": "",
+        "bundle_component_refs_count": 0,
+        "effective_inci_chars": 1051,
+        "inci_borrowed_from_product_id": ""
+      }
+    },
+    {
+      "seed_id": "eps_11bfaebf470ba34bb29dd10c",
+      "external_product_id": "ext_f301f89697ac6b95ba4f2925",
+      "market": "US",
+      "domain": "rmsbeauty.com",
+      "title": "Color Capsule: The Wine Edit",
+      "canonical_url": "https://www.rmsbeauty.com/products/color-capsule-wine-edit",
+      "product_family": "set_or_collection",
+      "product_line_id": "pl_ca80281bd36a0fd2b373bb7d",
+      "identity_variant_axes": {
+        "multi_variant": false
+      },
+      "pivota_insights": {
+        "direct": {
+          "product_id": "ext_f301f89697ac6b95ba4f2925",
+          "kb_key": "product:ext_f301f89697ac6b95ba4f2925",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "official_pdp_reviewed_key_ingredients",
+          "has_card_highlight": true
+        },
+        "effective": {
+          "product_id": "ext_f301f89697ac6b95ba4f2925",
+          "kb_key": "product:ext_f301f89697ac6b95ba4f2925",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "official_pdp_reviewed_key_ingredients",
+          "has_card_highlight": true
+        },
+        "product_line_id": "pl_ca80281bd36a0fd2b373bb7d",
+        "borrowed_from_sibling": false
+      },
+      "active_ingredients": {
+        "status": "not_applicable_product_family",
+        "issues": [],
+        "regulatory_expected": false,
+        "hero_expected": false,
+        "active_items": [],
+        "source_origin": "none",
+        "source_quality_status": "blocked",
+        "coverage": {
+          "details_sections_count": 0,
+          "faq_count": 0,
+          "how_to_chars": 0,
+          "inci_chars": 3994,
+          "active_ingredients_chars": 38,
+          "inci_applicability_status": "",
+          "ingredient_review_status": "",
+          "ingredient_remediation_action": "",
+          "bundle_component_refs_count": 0,
+          "effective_inci_chars": 3994,
+          "inci_borrowed_from_product_id": ""
+        },
+        "invalid_fragments": [],
+        "suppressed_reason": "set_or_collection"
+      },
+      "variants": {
+        "status": "no_visible_variant_axis",
+        "issues": [],
+        "visible_variant_rows": 0,
+        "examples": {
+          "identity_option_visible": [],
+          "wrong_axis_for_category": [],
+          "makeup_shade_missing_visual": [],
+          "size_value_generic_axis": [],
+          "default_option_size_evidence_missing_axis": [],
+          "identity_default_title_axis": []
+        }
+      },
+      "coverage": {
+        "details_sections_count": 0,
+        "faq_count": 0,
+        "how_to_chars": 0,
+        "inci_chars": 3994,
+        "active_ingredients_chars": 38,
+        "inci_applicability_status": "",
+        "ingredient_review_status": "",
+        "ingredient_remediation_action": "",
+        "bundle_component_refs_count": 0,
+        "effective_inci_chars": 3994,
+        "inci_borrowed_from_product_id": ""
+      }
+    }
+  ]
+}

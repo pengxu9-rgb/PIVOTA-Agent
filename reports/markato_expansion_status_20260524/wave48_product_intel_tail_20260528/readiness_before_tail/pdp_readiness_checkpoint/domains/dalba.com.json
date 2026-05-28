@@ -1,0 +1,287 @@
+{
+  "generated_at": "2026-05-28T10:02:34.998Z",
+  "options": {
+    "market": "US",
+    "includeAttached": true,
+    "domain": "dalba.com",
+    "externalProductIds": [],
+    "limit": 20000,
+    "sampleLimit": 10,
+    "checkpointDir": null,
+    "checkpointMode": "domain",
+    "resume": false,
+    "force": false,
+    "continueOnError": true,
+    "pageSize": 500,
+    "format": "json",
+    "chunkByDomain": false
+  },
+  "warnings": [],
+  "summary": {
+    "scanned": 1,
+    "by_market": {
+      "US": 1
+    },
+    "by_domain": [
+      {
+        "key": "dalba.com",
+        "count": 1
+      }
+    ],
+    "by_product_family": [
+      {
+        "key": "single_formula",
+        "count": 1
+      }
+    ],
+    "coverage": {
+      "missing_inci": 1,
+      "missing_active_raw": 1,
+      "missing_details": 1,
+      "missing_how_to": 0,
+      "missing_faq": 1
+    },
+    "pivota_insights": {
+      "direct": {
+        "displayable": 0,
+        "high_quality_ready": 0,
+        "missing_kb": 0,
+        "not_displayable": 1
+      },
+      "effective": {
+        "displayable": 0,
+        "high_quality_ready": 0,
+        "missing_kb": 0,
+        "not_displayable": 1,
+        "borrowed_from_sibling": 0
+      },
+      "effective_issues": [
+        {
+          "key": "quality_limited",
+          "count": 1
+        },
+        {
+          "key": "reviewed_not_displayable",
+          "count": 1
+        },
+        {
+          "key": "seller_only_evidence",
+          "count": 1
+        }
+      ],
+      "effective_issue_domains": [
+        {
+          "key": "dalba.com::quality_limited",
+          "count": 1
+        },
+        {
+          "key": "dalba.com::reviewed_not_displayable",
+          "count": 1
+        },
+        {
+          "key": "dalba.com::seller_only_evidence",
+          "count": 1
+        }
+      ],
+      "quality_state": [
+        {
+          "key": "limited",
+          "count": 1
+        }
+      ],
+      "evidence_profile": [
+        {
+          "key": "seller_only",
+          "count": 1
+        }
+      ],
+      "samples": {
+        "reviewed_not_displayable": [
+          {
+            "external_product_id": "ext_773109bb11fb03457017dfbf",
+            "domain": "dalba.com",
+            "title": "d'Alba White Truffle Return Oil Cream Cleanser 160ml",
+            "used_product_id": "ext_773109bb11fb03457017dfbf",
+            "quality_state": "limited",
+            "evidence_profile": "seller_only"
+          }
+        ],
+        "seller_only_evidence": [
+          {
+            "external_product_id": "ext_773109bb11fb03457017dfbf",
+            "domain": "dalba.com",
+            "title": "d'Alba White Truffle Return Oil Cream Cleanser 160ml",
+            "used_product_id": "ext_773109bb11fb03457017dfbf",
+            "quality_state": "limited",
+            "evidence_profile": "seller_only"
+          }
+        ]
+      }
+    },
+    "active_ingredients": {
+      "regulatory_expected": 0,
+      "hero_expected": 1,
+      "any_active_items": 0,
+      "status": [
+        {
+          "key": "missing_hero",
+          "count": 1
+        }
+      ],
+      "issues": [
+        {
+          "key": "missing_hero",
+          "count": 1
+        }
+      ],
+      "issue_domains": [
+        {
+          "key": "dalba.com::missing_hero",
+          "count": 1
+        }
+      ],
+      "source_origin": [
+        {
+          "key": "none",
+          "count": 1
+        }
+      ],
+      "samples": {
+        "missing_hero": [
+          {
+            "external_product_id": "ext_773109bb11fb03457017dfbf",
+            "domain": "dalba.com",
+            "title": "d'Alba White Truffle Return Oil Cream Cleanser 160ml",
+            "status": "missing_hero",
+            "active_items": [],
+            "source_origin": "none"
+          }
+        ]
+      }
+    },
+    "variants": {
+      "status": [
+        {
+          "key": "ready",
+          "count": 1
+        }
+      ],
+      "issues": [],
+      "issue_domains": [],
+      "samples": {}
+    }
+  },
+  "rows": [
+    {
+      "seed_id": "eps_c2f4a69cda453dd40da368b0",
+      "external_product_id": "ext_773109bb11fb03457017dfbf",
+      "market": "US",
+      "domain": "dalba.com",
+      "title": "d'Alba White Truffle Return Oil Cream Cleanser 160ml",
+      "canonical_url": "https://dalba.com/products/dalba-white-truffle-return-oil-cream-cleanser-150ml-copy",
+      "product_family": "single_formula",
+      "product_line_id": "pl_bd2751eac2f7f695d5b8d9e3",
+      "identity_variant_axes": {
+        "size": "160ml",
+        "volume": "160ml",
+        "multi_variant": false
+      },
+      "pivota_insights": {
+        "direct": {
+          "product_id": "ext_773109bb11fb03457017dfbf",
+          "kb_key": "product:ext_773109bb11fb03457017dfbf",
+          "status": "not_displayable",
+          "kb_exists": true,
+          "displayable": false,
+          "high_quality_ready": false,
+          "human_reviewed": true,
+          "issues": [
+            "reviewed_not_displayable",
+            "quality_limited",
+            "seller_only_evidence"
+          ],
+          "blocking_issues": [
+            "reviewed_not_displayable"
+          ],
+          "quality_state": "limited",
+          "evidence_profile": "seller_only",
+          "has_card_highlight": true
+        },
+        "effective": {
+          "product_id": "ext_773109bb11fb03457017dfbf",
+          "kb_key": "product:ext_773109bb11fb03457017dfbf",
+          "status": "not_displayable",
+          "kb_exists": true,
+          "displayable": false,
+          "high_quality_ready": false,
+          "human_reviewed": true,
+          "issues": [
+            "reviewed_not_displayable",
+            "quality_limited",
+            "seller_only_evidence"
+          ],
+          "blocking_issues": [
+            "reviewed_not_displayable"
+          ],
+          "quality_state": "limited",
+          "evidence_profile": "seller_only",
+          "has_card_highlight": true
+        },
+        "product_line_id": "pl_bd2751eac2f7f695d5b8d9e3",
+        "borrowed_from_sibling": false
+      },
+      "active_ingredients": {
+        "status": "missing_hero",
+        "issues": [
+          "missing_hero"
+        ],
+        "regulatory_expected": false,
+        "hero_expected": true,
+        "active_items": [],
+        "source_origin": "none",
+        "source_quality_status": "blocked",
+        "coverage": {
+          "details_sections_count": 0,
+          "faq_count": 0,
+          "how_to_chars": 87,
+          "inci_chars": 0,
+          "active_ingredients_chars": 0,
+          "inci_applicability_status": "",
+          "ingredient_review_status": "",
+          "ingredient_remediation_action": "",
+          "bundle_component_refs_count": 0,
+          "effective_inci_chars": 0,
+          "inci_borrowed_from_product_id": ""
+        },
+        "invalid_fragments": [],
+        "suppressed_reason": "no_authoritative_source"
+      },
+      "variants": {
+        "status": "ready",
+        "issues": [],
+        "visible_variant_rows": 1,
+        "examples": {
+          "identity_option_visible": [],
+          "wrong_axis_for_category": [],
+          "makeup_shade_missing_visual": [],
+          "size_value_generic_axis": [],
+          "default_option_size_evidence_missing_axis": [],
+          "identity_default_title_axis": []
+        }
+      },
+      "coverage": {
+        "details_sections_count": 0,
+        "faq_count": 0,
+        "how_to_chars": 87,
+        "inci_chars": 0,
+        "active_ingredients_chars": 0,
+        "inci_applicability_status": "",
+        "ingredient_review_status": "",
+        "ingredient_remediation_action": "",
+        "bundle_component_refs_count": 0,
+        "effective_inci_chars": 0,
+        "inci_borrowed_from_product_id": ""
+      }
+    }
+  ]
+}

@@ -1,0 +1,715 @@
+{
+  "generated_at": "2026-05-28T10:02:03.111Z",
+  "options": {
+    "market": "US",
+    "includeAttached": true,
+    "domain": "drjart.com",
+    "externalProductIds": [],
+    "limit": 20000,
+    "sampleLimit": 10,
+    "checkpointDir": null,
+    "checkpointMode": "domain",
+    "resume": false,
+    "force": false,
+    "continueOnError": true,
+    "pageSize": 500,
+    "format": "json",
+    "chunkByDomain": false
+  },
+  "warnings": [],
+  "summary": {
+    "scanned": 4,
+    "by_market": {
+      "US": 4
+    },
+    "by_domain": [
+      {
+        "key": "drjart.com",
+        "count": 4
+      }
+    ],
+    "by_product_family": [
+      {
+        "key": "single_formula",
+        "count": 4
+      }
+    ],
+    "coverage": {
+      "missing_inci": 3,
+      "missing_active_raw": 3,
+      "missing_details": 3,
+      "missing_how_to": 0,
+      "missing_faq": 3
+    },
+    "pivota_insights": {
+      "direct": {
+        "displayable": 0,
+        "high_quality_ready": 0,
+        "missing_kb": 0,
+        "not_displayable": 4
+      },
+      "effective": {
+        "displayable": 0,
+        "high_quality_ready": 0,
+        "missing_kb": 0,
+        "not_displayable": 4,
+        "borrowed_from_sibling": 0
+      },
+      "effective_issues": [
+        {
+          "key": "quality_limited",
+          "count": 4
+        },
+        {
+          "key": "reviewed_not_displayable",
+          "count": 4
+        },
+        {
+          "key": "seller_only_evidence",
+          "count": 4
+        },
+        {
+          "key": "empty_watchouts",
+          "count": 1
+        },
+        {
+          "key": "missing_card_highlight",
+          "count": 1
+        }
+      ],
+      "effective_issue_domains": [
+        {
+          "key": "drjart.com::quality_limited",
+          "count": 4
+        },
+        {
+          "key": "drjart.com::reviewed_not_displayable",
+          "count": 4
+        },
+        {
+          "key": "drjart.com::seller_only_evidence",
+          "count": 4
+        },
+        {
+          "key": "drjart.com::empty_watchouts",
+          "count": 1
+        },
+        {
+          "key": "drjart.com::missing_card_highlight",
+          "count": 1
+        }
+      ],
+      "quality_state": [
+        {
+          "key": "limited",
+          "count": 4
+        }
+      ],
+      "evidence_profile": [
+        {
+          "key": "seller_only",
+          "count": 4
+        }
+      ],
+      "samples": {
+        "reviewed_not_displayable": [
+          {
+            "external_product_id": "ext_484d7d19a2f6b7887a0daddc",
+            "domain": "drjart.com",
+            "title": "Premium BB Tinted Moisturizer with Niacinamide and SPF 40",
+            "used_product_id": "ext_484d7d19a2f6b7887a0daddc",
+            "quality_state": "limited",
+            "evidence_profile": "seller_only"
+          },
+          {
+            "external_product_id": "ext_4e91530e954825ae7bd38a4e",
+            "domain": "drjart.com",
+            "title": "Cicapair™ Soothing Color Correcting Treatment SPF 30 with Centella Asiatica Extracts",
+            "used_product_id": "ext_4e91530e954825ae7bd38a4e",
+            "quality_state": "limited",
+            "evidence_profile": "seller_only"
+          },
+          {
+            "external_product_id": "ext_8cbb01725f651ccb66a48cd3",
+            "domain": "drjart.com",
+            "title": "Cryo Sorbet™ Icy Facial Mask to Visibly Depuff",
+            "used_product_id": "ext_8cbb01725f651ccb66a48cd3",
+            "quality_state": "limited",
+            "evidence_profile": "seller_only"
+          },
+          {
+            "external_product_id": "ext_b29d97329b60c6b331e5a70e",
+            "domain": "drjart.com",
+            "title": "Ceramidin™ Skin Barrier Moisturizing Cream",
+            "used_product_id": "ext_b29d97329b60c6b331e5a70e",
+            "quality_state": "limited",
+            "evidence_profile": "seller_only"
+          }
+        ],
+        "seller_only_evidence": [
+          {
+            "external_product_id": "ext_484d7d19a2f6b7887a0daddc",
+            "domain": "drjart.com",
+            "title": "Premium BB Tinted Moisturizer with Niacinamide and SPF 40",
+            "used_product_id": "ext_484d7d19a2f6b7887a0daddc",
+            "quality_state": "limited",
+            "evidence_profile": "seller_only"
+          },
+          {
+            "external_product_id": "ext_4e91530e954825ae7bd38a4e",
+            "domain": "drjart.com",
+            "title": "Cicapair™ Soothing Color Correcting Treatment SPF 30 with Centella Asiatica Extracts",
+            "used_product_id": "ext_4e91530e954825ae7bd38a4e",
+            "quality_state": "limited",
+            "evidence_profile": "seller_only"
+          },
+          {
+            "external_product_id": "ext_8cbb01725f651ccb66a48cd3",
+            "domain": "drjart.com",
+            "title": "Cryo Sorbet™ Icy Facial Mask to Visibly Depuff",
+            "used_product_id": "ext_8cbb01725f651ccb66a48cd3",
+            "quality_state": "limited",
+            "evidence_profile": "seller_only"
+          },
+          {
+            "external_product_id": "ext_b29d97329b60c6b331e5a70e",
+            "domain": "drjart.com",
+            "title": "Ceramidin™ Skin Barrier Moisturizing Cream",
+            "used_product_id": "ext_b29d97329b60c6b331e5a70e",
+            "quality_state": "limited",
+            "evidence_profile": "seller_only"
+          }
+        ],
+        "missing_card_highlight": [
+          {
+            "external_product_id": "ext_b29d97329b60c6b331e5a70e",
+            "domain": "drjart.com",
+            "title": "Ceramidin™ Skin Barrier Moisturizing Cream",
+            "used_product_id": "ext_b29d97329b60c6b331e5a70e",
+            "quality_state": "limited",
+            "evidence_profile": "seller_only"
+          }
+        ]
+      }
+    },
+    "active_ingredients": {
+      "regulatory_expected": 2,
+      "hero_expected": 3,
+      "any_active_items": 3,
+      "status": [
+        {
+          "key": "missing_regulatory",
+          "count": 2
+        },
+        {
+          "key": "not_expected_missing",
+          "count": 1
+        },
+        {
+          "key": "ready_hero",
+          "count": 1
+        }
+      ],
+      "issues": [
+        {
+          "key": "missing_regulatory",
+          "count": 2
+        }
+      ],
+      "issue_domains": [
+        {
+          "key": "drjart.com::missing_regulatory",
+          "count": 2
+        }
+      ],
+      "source_origin": [
+        {
+          "key": "active_block",
+          "count": 3
+        },
+        {
+          "key": "none",
+          "count": 1
+        }
+      ],
+      "samples": {
+        "missing_regulatory": [
+          {
+            "external_product_id": "ext_484d7d19a2f6b7887a0daddc",
+            "domain": "drjart.com",
+            "title": "Premium BB Tinted Moisturizer with Niacinamide and SPF 40",
+            "status": "missing_regulatory",
+            "active_items": [
+              "Niacinamide"
+            ],
+            "source_origin": "active_block"
+          },
+          {
+            "external_product_id": "ext_4e91530e954825ae7bd38a4e",
+            "domain": "drjart.com",
+            "title": "Cicapair™ Soothing Color Correcting Treatment SPF 30 with Centella Asiatica Extracts",
+            "status": "missing_regulatory",
+            "active_items": [
+              "Centella asiatica"
+            ],
+            "source_origin": "active_block"
+          }
+        ]
+      }
+    },
+    "variants": {
+      "status": [
+        {
+          "key": "ready",
+          "count": 4
+        }
+      ],
+      "issues": [],
+      "issue_domains": [],
+      "samples": {}
+    }
+  },
+  "rows": [
+    {
+      "seed_id": "eps_60c8b3838031356c16301ff1",
+      "external_product_id": "ext_484d7d19a2f6b7887a0daddc",
+      "market": "US",
+      "domain": "drjart.com",
+      "title": "Premium BB Tinted Moisturizer with Niacinamide and SPF 40",
+      "canonical_url": "https://www.drjart.com/product/36654/106709/bb-creams/premium-bb-tinted-moisturizer-with-niacinamide-and-spf-40?shade=Fair",
+      "product_family": "single_formula",
+      "product_line_id": null,
+      "pivota_insights": {
+        "direct": {
+          "product_id": "ext_484d7d19a2f6b7887a0daddc",
+          "kb_key": "product:ext_484d7d19a2f6b7887a0daddc",
+          "status": "not_displayable",
+          "kb_exists": true,
+          "displayable": false,
+          "high_quality_ready": false,
+          "human_reviewed": true,
+          "issues": [
+            "reviewed_not_displayable",
+            "quality_limited",
+            "seller_only_evidence"
+          ],
+          "blocking_issues": [
+            "reviewed_not_displayable"
+          ],
+          "quality_state": "limited",
+          "evidence_profile": "seller_only",
+          "has_card_highlight": true
+        },
+        "effective": {
+          "product_id": "ext_484d7d19a2f6b7887a0daddc",
+          "kb_key": "product:ext_484d7d19a2f6b7887a0daddc",
+          "status": "not_displayable",
+          "kb_exists": true,
+          "displayable": false,
+          "high_quality_ready": false,
+          "human_reviewed": true,
+          "issues": [
+            "reviewed_not_displayable",
+            "quality_limited",
+            "seller_only_evidence"
+          ],
+          "blocking_issues": [
+            "reviewed_not_displayable"
+          ],
+          "quality_state": "limited",
+          "evidence_profile": "seller_only",
+          "has_card_highlight": true
+        },
+        "product_line_id": null,
+        "borrowed_from_sibling": false
+      },
+      "active_ingredients": {
+        "status": "missing_regulatory",
+        "issues": [
+          "missing_regulatory"
+        ],
+        "regulatory_expected": true,
+        "hero_expected": true,
+        "active_items": [
+          "Niacinamide"
+        ],
+        "source_origin": "active_block",
+        "source_quality_status": "blocked",
+        "coverage": {
+          "details_sections_count": 0,
+          "faq_count": 0,
+          "how_to_chars": 177,
+          "inci_chars": 0,
+          "active_ingredients_chars": 0,
+          "inci_applicability_status": "",
+          "ingredient_review_status": "",
+          "ingredient_remediation_action": "",
+          "bundle_component_refs_count": 0,
+          "effective_inci_chars": 0,
+          "inci_borrowed_from_product_id": ""
+        },
+        "invalid_fragments": [],
+        "suppressed_reason": "full_inci_low_purity"
+      },
+      "variants": {
+        "status": "ready",
+        "issues": [],
+        "visible_variant_rows": 6,
+        "examples": {
+          "identity_option_visible": [],
+          "wrong_axis_for_category": [],
+          "makeup_shade_missing_visual": [],
+          "size_value_generic_axis": [],
+          "default_option_size_evidence_missing_axis": [],
+          "identity_default_title_axis": []
+        }
+      },
+      "coverage": {
+        "details_sections_count": 0,
+        "faq_count": 0,
+        "how_to_chars": 177,
+        "inci_chars": 0,
+        "active_ingredients_chars": 0,
+        "inci_applicability_status": "",
+        "ingredient_review_status": "",
+        "ingredient_remediation_action": "",
+        "bundle_component_refs_count": 0,
+        "effective_inci_chars": 0,
+        "inci_borrowed_from_product_id": ""
+      }
+    },
+    {
+      "seed_id": "eps_b54720f7804150a655828cef",
+      "external_product_id": "ext_4e91530e954825ae7bd38a4e",
+      "market": "US",
+      "domain": "drjart.com",
+      "title": "Cicapair™ Soothing Color Correcting Treatment SPF 30 with Centella Asiatica Extracts",
+      "canonical_url": "https://www.drjart.com/product/29717/138113/color-corrector/cicapairtm-soothing-color-correcting-treatment-spf-30-with-centella-asiatica-extracts",
+      "product_family": "single_formula",
+      "product_line_id": null,
+      "pivota_insights": {
+        "direct": {
+          "product_id": "ext_4e91530e954825ae7bd38a4e",
+          "kb_key": "product:ext_4e91530e954825ae7bd38a4e",
+          "status": "not_displayable",
+          "kb_exists": true,
+          "displayable": false,
+          "high_quality_ready": false,
+          "human_reviewed": true,
+          "issues": [
+            "reviewed_not_displayable",
+            "quality_limited",
+            "seller_only_evidence"
+          ],
+          "blocking_issues": [
+            "reviewed_not_displayable"
+          ],
+          "quality_state": "limited",
+          "evidence_profile": "seller_only",
+          "has_card_highlight": true
+        },
+        "effective": {
+          "product_id": "ext_4e91530e954825ae7bd38a4e",
+          "kb_key": "product:ext_4e91530e954825ae7bd38a4e",
+          "status": "not_displayable",
+          "kb_exists": true,
+          "displayable": false,
+          "high_quality_ready": false,
+          "human_reviewed": true,
+          "issues": [
+            "reviewed_not_displayable",
+            "quality_limited",
+            "seller_only_evidence"
+          ],
+          "blocking_issues": [
+            "reviewed_not_displayable"
+          ],
+          "quality_state": "limited",
+          "evidence_profile": "seller_only",
+          "has_card_highlight": true
+        },
+        "product_line_id": null,
+        "borrowed_from_sibling": false
+      },
+      "active_ingredients": {
+        "status": "missing_regulatory",
+        "issues": [
+          "missing_regulatory"
+        ],
+        "regulatory_expected": true,
+        "hero_expected": true,
+        "active_items": [
+          "Centella asiatica"
+        ],
+        "source_origin": "active_block",
+        "source_quality_status": "blocked",
+        "coverage": {
+          "details_sections_count": 0,
+          "faq_count": 0,
+          "how_to_chars": 177,
+          "inci_chars": 0,
+          "active_ingredients_chars": 0,
+          "inci_applicability_status": "",
+          "ingredient_review_status": "",
+          "ingredient_remediation_action": "",
+          "bundle_component_refs_count": 0,
+          "effective_inci_chars": 0,
+          "inci_borrowed_from_product_id": ""
+        },
+        "invalid_fragments": [],
+        "suppressed_reason": "full_inci_low_purity"
+      },
+      "variants": {
+        "status": "ready",
+        "issues": [],
+        "visible_variant_rows": 2,
+        "examples": {
+          "identity_option_visible": [],
+          "wrong_axis_for_category": [],
+          "makeup_shade_missing_visual": [],
+          "size_value_generic_axis": [],
+          "default_option_size_evidence_missing_axis": [],
+          "identity_default_title_axis": []
+        }
+      },
+      "coverage": {
+        "details_sections_count": 0,
+        "faq_count": 0,
+        "how_to_chars": 177,
+        "inci_chars": 0,
+        "active_ingredients_chars": 0,
+        "inci_applicability_status": "",
+        "ingredient_review_status": "",
+        "ingredient_remediation_action": "",
+        "bundle_component_refs_count": 0,
+        "effective_inci_chars": 0,
+        "inci_borrowed_from_product_id": ""
+      }
+    },
+    {
+      "seed_id": "eps_ee9f3101c4a7b413fa8ea052",
+      "external_product_id": "ext_8cbb01725f651ccb66a48cd3",
+      "market": "US",
+      "domain": "drjart.com",
+      "title": "Cryo Sorbet™ Icy Facial Mask to Visibly Depuff",
+      "canonical_url": "https://www.drjart.com/product/28256/145913/masks/cryo-sorbettm-icy-facial-mask-to-visibly-depuff",
+      "product_family": "single_formula",
+      "product_line_id": "pl_f55b35527e0cd20e31cce2c3",
+      "identity_variant_axes": {
+        "shade": "h92p01",
+        "multi_variant": false
+      },
+      "pivota_insights": {
+        "direct": {
+          "product_id": "ext_8cbb01725f651ccb66a48cd3",
+          "kb_key": "product:ext_8cbb01725f651ccb66a48cd3",
+          "status": "not_displayable",
+          "kb_exists": true,
+          "displayable": false,
+          "high_quality_ready": false,
+          "human_reviewed": true,
+          "issues": [
+            "reviewed_not_displayable",
+            "quality_limited",
+            "seller_only_evidence"
+          ],
+          "blocking_issues": [
+            "reviewed_not_displayable"
+          ],
+          "quality_state": "limited",
+          "evidence_profile": "seller_only",
+          "has_card_highlight": true
+        },
+        "effective": {
+          "product_id": "ext_8cbb01725f651ccb66a48cd3",
+          "kb_key": "product:ext_8cbb01725f651ccb66a48cd3",
+          "status": "not_displayable",
+          "kb_exists": true,
+          "displayable": false,
+          "high_quality_ready": false,
+          "human_reviewed": true,
+          "issues": [
+            "reviewed_not_displayable",
+            "quality_limited",
+            "seller_only_evidence"
+          ],
+          "blocking_issues": [
+            "reviewed_not_displayable"
+          ],
+          "quality_state": "limited",
+          "evidence_profile": "seller_only",
+          "has_card_highlight": true
+        },
+        "product_line_id": "pl_f55b35527e0cd20e31cce2c3",
+        "borrowed_from_sibling": false
+      },
+      "active_ingredients": {
+        "status": "not_expected_missing",
+        "issues": [],
+        "regulatory_expected": false,
+        "hero_expected": false,
+        "active_items": [],
+        "source_origin": "none",
+        "source_quality_status": "blocked",
+        "coverage": {
+          "details_sections_count": 0,
+          "faq_count": 0,
+          "how_to_chars": 108,
+          "inci_chars": 0,
+          "active_ingredients_chars": 0,
+          "inci_applicability_status": "",
+          "ingredient_review_status": "",
+          "ingredient_remediation_action": "",
+          "bundle_component_refs_count": 0,
+          "effective_inci_chars": 0,
+          "inci_borrowed_from_product_id": ""
+        },
+        "invalid_fragments": [],
+        "suppressed_reason": "no_authoritative_source"
+      },
+      "variants": {
+        "status": "ready",
+        "issues": [],
+        "visible_variant_rows": 1,
+        "examples": {
+          "identity_option_visible": [],
+          "wrong_axis_for_category": [],
+          "makeup_shade_missing_visual": [],
+          "size_value_generic_axis": [],
+          "default_option_size_evidence_missing_axis": [],
+          "identity_default_title_axis": []
+        }
+      },
+      "coverage": {
+        "details_sections_count": 0,
+        "faq_count": 0,
+        "how_to_chars": 108,
+        "inci_chars": 0,
+        "active_ingredients_chars": 0,
+        "inci_applicability_status": "",
+        "ingredient_review_status": "",
+        "ingredient_remediation_action": "",
+        "bundle_component_refs_count": 0,
+        "effective_inci_chars": 0,
+        "inci_borrowed_from_product_id": ""
+      }
+    },
+    {
+      "seed_id": "eps_bb91ff2ab92dc685c86c85b5",
+      "external_product_id": "ext_b29d97329b60c6b331e5a70e",
+      "market": "US",
+      "domain": "drjart.com",
+      "title": "Ceramidin™ Skin Barrier Moisturizing Cream",
+      "canonical_url": "https://www.drjart.com/product/28258/111504/moisturizers/ceramidintm-skin-barrier-moisturizing-cream",
+      "product_family": "single_formula",
+      "product_line_id": "pl_9c203925cd629bfd644cc7ed",
+      "identity_variant_axes": {
+        "volume": "15ml",
+        "multi_variant": true
+      },
+      "pivota_insights": {
+        "direct": {
+          "product_id": "ext_b29d97329b60c6b331e5a70e",
+          "kb_key": "product:ext_b29d97329b60c6b331e5a70e",
+          "status": "not_displayable",
+          "kb_exists": true,
+          "displayable": false,
+          "high_quality_ready": false,
+          "human_reviewed": true,
+          "issues": [
+            "reviewed_not_displayable",
+            "missing_card_highlight",
+            "empty_watchouts",
+            "quality_limited",
+            "seller_only_evidence"
+          ],
+          "blocking_issues": [
+            "reviewed_not_displayable",
+            "missing_card_highlight"
+          ],
+          "quality_state": "limited",
+          "evidence_profile": "seller_only",
+          "has_card_highlight": false
+        },
+        "effective": {
+          "product_id": "ext_b29d97329b60c6b331e5a70e",
+          "kb_key": "product:ext_b29d97329b60c6b331e5a70e",
+          "status": "not_displayable",
+          "kb_exists": true,
+          "displayable": false,
+          "high_quality_ready": false,
+          "human_reviewed": true,
+          "issues": [
+            "reviewed_not_displayable",
+            "missing_card_highlight",
+            "empty_watchouts",
+            "quality_limited",
+            "seller_only_evidence"
+          ],
+          "blocking_issues": [
+            "reviewed_not_displayable",
+            "missing_card_highlight"
+          ],
+          "quality_state": "limited",
+          "evidence_profile": "seller_only",
+          "has_card_highlight": false
+        },
+        "product_line_id": "pl_9c203925cd629bfd644cc7ed",
+        "borrowed_from_sibling": false
+      },
+      "active_ingredients": {
+        "status": "ready_hero",
+        "issues": [],
+        "regulatory_expected": false,
+        "hero_expected": true,
+        "active_items": [
+          "Ceramide NP",
+          "Panthenol (B5)"
+        ],
+        "source_origin": "active_block",
+        "source_quality_status": "captured",
+        "coverage": {
+          "details_sections_count": 16,
+          "faq_count": 32,
+          "how_to_chars": 262,
+          "inci_chars": 192,
+          "active_ingredients_chars": 37,
+          "inci_applicability_status": "",
+          "ingredient_review_status": "",
+          "ingredient_remediation_action": "",
+          "bundle_component_refs_count": 0,
+          "effective_inci_chars": 192,
+          "inci_borrowed_from_product_id": ""
+        },
+        "invalid_fragments": [],
+        "suppressed_reason": "full_inci_low_purity"
+      },
+      "variants": {
+        "status": "ready",
+        "issues": [],
+        "visible_variant_rows": 3,
+        "examples": {
+          "identity_option_visible": [],
+          "wrong_axis_for_category": [],
+          "makeup_shade_missing_visual": [],
+          "size_value_generic_axis": [],
+          "default_option_size_evidence_missing_axis": [],
+          "identity_default_title_axis": []
+        }
+      },
+      "coverage": {
+        "details_sections_count": 16,
+        "faq_count": 32,
+        "how_to_chars": 262,
+        "inci_chars": 192,
+        "active_ingredients_chars": 37,
+        "inci_applicability_status": "",
+        "ingredient_review_status": "",
+        "ingredient_remediation_action": "",
+        "bundle_component_refs_count": 0,
+        "effective_inci_chars": 192,
+        "inci_borrowed_from_product_id": ""
+      }
+    }
+  ]
+}
