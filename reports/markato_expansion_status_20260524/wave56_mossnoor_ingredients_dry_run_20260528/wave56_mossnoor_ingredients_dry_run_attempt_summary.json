@@ -1,0 +1,31 @@
+{
+  "generated_at": "2026-05-28",
+  "brand": "Moss & Noor",
+  "domain": "mossnoor.com",
+  "source_wave": "wave55_mossnoor_official_source_review_20260528",
+  "attempt_type": "production_official_html_missing_fields_dry_run",
+  "runtime_database_writes": 0,
+  "serving_promotions_approved": 0,
+  "dry_run_output_available": false,
+  "target_external_product_ids": [
+    "ext_83b8555768814cac5243aef1",
+    "ext_67472974111568c15ac3920d",
+    "ext_cf945cc7bfe99bf9864bd6df",
+    "ext_876342422f9629ea9363953c"
+  ],
+  "intended_patch_scope": "pdp_ingredients_raw only; missing fields only; no how-to patch; no serving promotion",
+  "attempt_result": "blocked_before_row_scan",
+  "failure_class": "production_db_private_network_unreachable_from_local_railway_run",
+  "failure_message": "getaddrinfo ENOTFOUND postgres-xmr6.railway.internal",
+  "notes": [
+    "The dry-run command reached Railway production env resolution, but the exposed DATABASE_URL uses Railway's private Postgres hostname.",
+    "The private hostname is not resolvable from the local machine, so the script failed before fetchRows could scan target rows.",
+    "No dry-run JSON was emitted, no database update was attempted, and no serving mirror sync ran.",
+    "Next safe execution path is a public read-only production Postgres URL or a narrow server-side Railway execution surface on a running service in the private network."
+  ],
+  "review_gates": [
+    "Do not apply the Moss & Noor ingredients patch until a production dry-run report exists and is reviewed.",
+    "Do not mark any Moss & Noor row serving-ready from ingredients recovery alone because product-specific how-to remains missing for all five Wave55 rows.",
+    "Do not use railway up; deployment/push work must continue through Git push only."
+  ]
+}
