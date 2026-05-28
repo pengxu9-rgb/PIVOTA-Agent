@@ -4058,6 +4058,91 @@ describe('discovery feed service', () => {
     expect(alphaCount).toBeLessThanOrEqual(2);
   });
 
+  test('home_hot_deals does not backfill recent views just to fill display slots', async () => {
+    const response = await getDiscoveryFeed(
+      {
+        surface: 'home_hot_deals',
+        limit: 6,
+        debug: true,
+        context: {
+          auth_state: 'authenticated',
+          locale: 'en-US',
+          recent_views: [
+            {
+              merchant_id: 'external_seed',
+              product_id: 'recent_seed',
+              title: 'Recently Viewed Sunscreen',
+              brand: 'Recent Brand',
+              category: 'Skincare',
+              product_type: 'Sunscreen',
+              viewed_at: '2026-04-04T10:00:00Z',
+            },
+          ],
+          recent_queries: ['sunscreen'],
+        },
+      },
+      {
+        candidateProducts: [
+          makeProduct({
+            merchant_id: 'external_seed',
+            product_id: 'recent_seed',
+            title: 'Recently Viewed Sunscreen',
+            brand: 'Recent Brand',
+            category: 'Skincare',
+            product_type: 'Sunscreen',
+          }),
+          makeProduct({
+            merchant_id: 'external_seed',
+            product_id: 'fresh_seed_1',
+            title: 'Fresh Sunscreen 1',
+            brand: 'Fresh One',
+            category: 'Skincare',
+            product_type: 'Sunscreen',
+          }),
+          makeProduct({
+            merchant_id: 'external_seed',
+            product_id: 'fresh_seed_2',
+            title: 'Fresh Sunscreen 2',
+            brand: 'Fresh Two',
+            category: 'Skincare',
+            product_type: 'Sunscreen',
+          }),
+          makeProduct({
+            merchant_id: 'external_seed',
+            product_id: 'fresh_seed_3',
+            title: 'Fresh Sunscreen 3',
+            brand: 'Fresh Three',
+            category: 'Skincare',
+            product_type: 'Sunscreen',
+          }),
+          makeProduct({
+            merchant_id: 'external_seed',
+            product_id: 'fresh_seed_4',
+            title: 'Fresh Sunscreen 4',
+            brand: 'Fresh Four',
+            category: 'Skincare',
+            product_type: 'Sunscreen',
+          }),
+        ],
+      },
+    );
+
+    expect(response.products.map((product) => product.product_id)).toEqual([
+      'fresh_seed_1',
+      'fresh_seed_2',
+      'fresh_seed_3',
+      'fresh_seed_4',
+    ]);
+    expect(response.metadata.rank_debug.top_candidates).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          product_id: 'recent_seed',
+          decision: 'filtered_recent_view',
+        }),
+      ]),
+    );
+  });
+
   test('home_hot_deals exposes sig product ids when catalog signatures are present', async () => {
     const response = await getDiscoveryFeed(
       {
@@ -9089,6 +9174,113 @@ describe('discovery feed service', () => {
     );
   });
 
+  test('beauty interest mainline expands external seeds before products search when recent views underfill browse slots', async () => {
+    delete process.env.DISCOVERY_PRODUCTS_SEARCH_BASE_URL;
+    delete process.env.DISCOVERY_PRODUCTS_SEARCH_API_KEY;
+    delete process.env.PIVOTA_BACKEND_BASE_URL;
+    delete process.env.PIVOTA_API_BASE;
+    delete process.env.PIVOTA_API_KEY;
+
+    const beautyMainlineProducts = [
+      makeProduct({
+        merchant_id: 'external_seed',
+        product_id: 'recent_seed',
+        title: 'Recently Viewed Daily Sunscreen',
+        brand: 'Recent SPF',
+        category: 'Skincare',
+        product_type: 'Sunscreen',
+      }),
+      ...Array.from({ length: 5 }, (_, idx) =>
+        makeProduct({
+          merchant_id: 'external_seed',
+          product_id: `fresh_spf_${idx + 1}`,
+          title: `Fresh Daily Sunscreen ${idx + 1}`,
+          brand: `Fresh SPF ${idx + 1}`,
+          category: 'Skincare',
+          product_type: 'Sunscreen',
+        }),
+      ),
+    ];
+    const externalSeedSpy = jest.fn(async () => [
+      makeProduct({
+        merchant_id: 'external_seed',
+        product_id: 'external_fill_spf',
+        title: 'External Fill Daily Sunscreen',
+        brand: 'External SPF',
+        category: 'Skincare',
+        product_type: 'Sunscreen',
+      }),
+    ]);
+    const internalSpy = jest.fn(async () => [
+      makeProduct({
+        merchant_id: 'm_internal',
+        product_id: 'internal_spf',
+        title: 'Internal Daily Sunscreen',
+        brand: 'Internal SPF',
+        category: 'Skincare',
+        product_type: 'Sunscreen',
+      }),
+    ]);
+
+    const response = await getDiscoveryFeed(
+      {
+        surface: 'browse_products',
+        page: 1,
+        limit: 6,
+        debug: true,
+        context: {
+          auth_state: 'authenticated',
+          recent_views: [
+            {
+              merchant_id: 'external_seed',
+              product_id: 'recent_seed',
+              title: 'Recently Viewed Daily Sunscreen',
+              brand: 'Recent SPF',
+              category: 'Skincare',
+              product_type: 'Sunscreen',
+              viewed_at: '2026-04-04T10:00:00Z',
+            },
+          ],
+          recent_queries: ['daily sunscreen'],
+        },
+      },
+      {
+        providerOverrides: {
+          beauty_interest_mainline: async () => beautyMainlineProducts,
+          external_seeds: externalSeedSpy,
+          internal_catalog: internalSpy,
+        },
+      },
+    );
+
+    expect(response.products).toHaveLength(6);
+    expect(response.products.map((product) => product.product_id)).not.toContain('recent_seed');
+    expect(response.products.map((product) => product.product_id)).toContain('external_fill_spf');
+    expect(externalSeedSpy).toHaveBeenCalledTimes(1);
+    expect(internalSpy).not.toHaveBeenCalled();
+    expect(response.metadata.candidate_source).toBe('beauty_interest_mainline+multi_provider');
+    expect(response.metadata.primary_path_used).toBe('beauty_interest_mainline');
+    expect(response.metadata.fallback_triggered).toBe(true);
+    expect(response.metadata.fallback_reason).toBe('beauty_interest_mainline_insufficient');
+    expect(response.metadata.provider_breakdown).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ provider: 'beauty_interest_mainline', successful: true, returned: 6 }),
+        expect.objectContaining({ provider: 'products_search', skipped: true }),
+        expect.objectContaining({ provider: 'internal_catalog', skipped: true }),
+        expect.objectContaining({ provider: 'external_seeds', successful: true, returned: 1 }),
+      ]),
+    );
+    expect(response.metadata.rank_debug.recall_summary).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          provider: 'products_search',
+          skipped: true,
+          skip_reason: 'beauty_interest_external_seed_expansion_sufficient',
+        }),
+      ]),
+    );
+  });
+
   test('beauty interest mainline expands providers when authority identity dedupe underfills display slots', async () => {
     process.env.DISCOVERY_PRODUCTS_SEARCH_BASE_URL = 'http://discovery-catalog.test';
     process.env.PIVOTA_BACKEND_BASE_URL = 'http://wrong-backend.test';
@@ -10820,7 +11012,7 @@ describe('discovery feed service', () => {
     expect(stages.map((stage) => stage.stage)).not.toContain('recall_compound_summary');
   });
 
-			  test('anonymous generic browse fastpath uses indexed curated head instead of lexical DB stages', async () => {
+  test('anonymous generic fastpath uses indexed curated head instead of lexical DB stages', async () => {
     jest.resetModules();
     const prevDatabaseUrl = process.env.DATABASE_URL;
     process.env.DATABASE_URL = 'postgres://discovery-fastpath-test';
@@ -10994,6 +11186,88 @@ describe('discovery feed service', () => {
             raw_rows: 4,
             deduped_rows: 4,
             final_eligible_rows: 120,
+          }),
+        ]),
+      );
+
+      dbQueryMock
+        .mockResolvedValueOnce({
+          rows: makeSeedRows(201, 7, 'skincare', 'Skincare'),
+        })
+        .mockResolvedValueOnce({
+          rows: makeSeedRows(208, 5, 'makeup', 'Makeup'),
+        })
+        .mockResolvedValueOnce({
+          rows: makeSeedRows(213, 3, 'haircare', 'Haircare'),
+        })
+        .mockResolvedValueOnce({
+          rows: makeSeedRows(216, 2, 'fragrance', 'Fragrance'),
+        })
+        .mockResolvedValueOnce({
+          rows: makeSeedRows(218, 1, 'bodycare', 'Bodycare'),
+        })
+        .mockResolvedValueOnce({
+          rows: makeSeedRows(219, 1, 'beauty_tools', 'Beauty Tools'),
+        });
+
+      const homeRequest = freshInternals.normalizeDiscoveryRequest({
+        surface: 'home_hot_deals',
+        page: 1,
+        limit: 6,
+        context: {
+          auth_state: 'anonymous',
+          locale: 'en-US',
+          recent_views: [],
+          recent_queries: [],
+        },
+      });
+
+      const homeResult = await freshInternals.fetchBeautyInterestExternalSeedFastpathCandidates({
+        request: homeRequest,
+        profile: {
+          hasInterestSignals: false,
+        },
+        queries: ['niacinamide serum'],
+        limit: 18,
+        providerName: 'external_seeds',
+        productProvider: 'beauty_interest_mainline',
+        stepName: 'external_seed_pool_fastpath',
+        label: 'external_seed_pool_fastpath',
+      });
+
+      expect(homeResult.products).toHaveLength(18);
+      expect(dbQueryMock).toHaveBeenCalledTimes(14);
+      const homeCuratedSql = String(dbQueryMock.mock.calls[8]?.[0] || '');
+      expect(homeCuratedSql).toContain("'generic_browse_curated_head'::text AS match_stage");
+      for (const call of dbQueryMock.mock.calls.slice(8)) {
+        const sql = String(call?.[0] || '');
+        expect(sql).not.toContain('LIKE ANY');
+        expect(sql).not.toContain('UNION ALL');
+        expect(sql).not.toContain('row_number() OVER');
+        expect(sql).not.toContain("'recall_title'::text AS match_stage");
+        expect(sql).not.toContain("'recall_tokens'::text AS match_stage");
+      }
+      expect(homeResult.recallSummary[0].external_seed_stage_counts).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            stage: 'generic_browse_curated_head',
+            tool_scope: '*',
+            match_axis: 'vertical',
+            match_value: 'skincare',
+            stage_quota: 7,
+            raw_rows: 7,
+            deduped_rows: 7,
+            final_eligible_rows: 7,
+          }),
+          expect.objectContaining({
+            stage: 'generic_browse_curated_head',
+            tool_scope: '*',
+            match_axis: 'vertical',
+            match_value: 'bodycare',
+            stage_quota: 1,
+            raw_rows: 1,
+            deduped_rows: 1,
+            final_eligible_rows: 18,
           }),
         ]),
       );
