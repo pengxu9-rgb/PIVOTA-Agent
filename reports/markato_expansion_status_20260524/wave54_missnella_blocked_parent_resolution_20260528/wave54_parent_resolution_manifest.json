@@ -1,0 +1,37 @@
+{
+  "generated_at": "2026-05-28",
+  "source": "reports/markato_expansion_status_20260524/wave52_missnella_canonical_mapping_20260528/missnella_blocked_parent_requests.csv",
+  "runtime_database_writes": 0,
+  "serving_promotions_approved": 0,
+  "total_blocked_rows": 20,
+  "counts": {
+    "by_blocker_decision": {
+      "blocked_missing_ready_parent": 15,
+      "blocked_ambiguous_family_parent": 2,
+      "blocked_parent_not_ready": 3
+    },
+    "by_wave54_lane": {
+      "create_or_source_ready_parent": 15,
+      "split_or_terminal_hold_family_selector": 2,
+      "clear_existing_parent_review": 3
+    },
+    "missing_ready_parent_rows": 15,
+    "non_ready_parent_rows": 3,
+    "ambiguous_family_selector_rows": 2
+  },
+  "review_gates": [
+    "No Wave54 row is approved for serving promotion.",
+    "No ingredient, how-to, or product-intel content should be inherited from a parent through this packet.",
+    "Rows in clear_existing_parent_review must wait until the target parent clears source/risk/evidence review.",
+    "Rows in create_or_source_ready_parent must wait for an official source-backed canonical parent.",
+    "Rows in split_or_terminal_hold_family_selector must be split into explicit variants or remain held."
+  ],
+  "artifacts": [
+    "missnella_blocked_parent_resolution_queue.csv",
+    "missnella_missing_ready_parent_source_requests.csv",
+    "missnella_non_ready_parent_review_requests.csv",
+    "missnella_ambiguous_family_selector_holds.csv",
+    "wave54_parent_resolution_manifest.json",
+    "wave54_missnella_blocked_parent_resolution_closeout_20260528.md"
+  ]
+}
