@@ -200,6 +200,8 @@ jobs:
           bash -n scripts/verify_deployed_commit_matches.sh
 
       - name: Shared search + discovery regressions
+        env:
+          NODE_OPTIONS: --max-old-space-size=4096
         run: |
           npx jest --runInBand \
             tests/integration/invoke.find_products_multi_cache_search.test.js \
@@ -393,4 +395,3 @@ jobs:
           VERIFY_DEPLOY=0 \
           TIMEOUT_MS=60000 \
           bash scripts/smoke_discovery_feed_prod.sh
-
