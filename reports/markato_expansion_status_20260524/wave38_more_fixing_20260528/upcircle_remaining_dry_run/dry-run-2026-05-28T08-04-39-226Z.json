@@ -1,0 +1,473 @@
+{
+  "generated_at": "2026-05-28T08:04:39.226Z",
+  "source": "pivota_insights_official_pdp_manual_review_v1",
+  "mode": "dry_run",
+  "filters": {
+    "brand": null,
+    "product_ids": [
+      "ext_092b6aa9139491c529586778",
+      "ext_2c1a3931e9b15bb1ae7eeebd",
+      "ext_6126e44050e66ecd34780fc4",
+      "ext_aacacfb4fcef9845059df771",
+      "ext_ed2f56c9c3b0f0b461a1ddc2"
+    ],
+    "limit": null,
+    "include_strong": false,
+    "include_url_key": false,
+    "apply_chunk_size": null
+  },
+  "summary": {
+    "scanned": 5,
+    "changed_products": 0,
+    "blocked_products": 2,
+    "skipped_products": 3,
+    "write_actions": {
+      "skip": 6
+    },
+    "skip_reasons": {
+      "no_safe_writes": 3,
+      "candidate_not_publish_quality_ready": 6,
+      "candidate_failed_manual_quality_gate:generic_beauty_product_copy": 2
+    },
+    "evidence_profiles": {
+      "official_pdp_reviewed_limited": 4,
+      "official_pdp_reviewed_line": 1
+    }
+  },
+  "plans": [
+    {
+      "external_product_id": "ext_092b6aa9139491c529586778",
+      "pivota_signature_id": "sig_a7f55f854a3936a31ca7f9f5",
+      "title": "Bamboo Cotton Buds - 200 Pieces",
+      "brand": "UpCircle Beauty",
+      "canonical_url": "https://upcirclebeauty.com/products/bamboo-cotton-buds",
+      "changed": false,
+      "blocked": false,
+      "skip_reason": "no_safe_writes",
+      "candidate_hash": "cf44b45ffb81dbd6ce1de42d4dd6eb1fb083930d9d0e92b49bfc8e86529cfc2d",
+      "evidence_profile": "official_pdp_reviewed_limited",
+      "source_coverage": {
+        "source": "official_pdp",
+        "canonical_url": "https://upcirclebeauty.com/products/bamboo-cotton-buds",
+        "fields": {
+          "description": true,
+          "ingredients": 0,
+          "active_ingredients": 0,
+          "how_to": 0,
+          "details": 0,
+          "variants": 1
+        }
+      },
+      "preview": {
+        "headline": "Beauty utility",
+        "what_it_is": "Bamboo Cotton Buds - 200 Pieces is a beauty utility from UpCircle Beauty. A staple for any bathroom - 200 high quality bamboo sticks that make an excellent, sustainable alternative to plastic buds.",
+        "why_it_stands_out": [
+          {
+            "headline": "Official PDP evidence only",
+            "body": "This insight is limited to the official product fields currently available for Bamboo Cotton Buds - 200 Pieces.",
+            "evidence_strength": "official_pdp_reviewed_limited"
+          }
+        ],
+        "best_for": [
+          {
+            "tag": "beauty_utility",
+            "label": "Beauty utility",
+            "confidence": "moderate"
+          }
+        ],
+        "shopping_highlight": "Beauty utility"
+      },
+      "writes": [
+        {
+          "kb_key": "product:ext_092b6aa9139491c529586778",
+          "action": "skip",
+          "reason": "candidate_not_publish_quality_ready",
+          "old_hash": null,
+          "candidate_hash": "ecba6b649e40d9c1ee21b9973a7d866bc57cc8e7aaef06ba292eb8af44340497",
+          "existing_weak": true,
+          "assessment": {
+            "allowed": false,
+            "reason": "candidate_not_publish_quality_ready",
+            "candidate": {
+              "lane": "regenerate",
+              "reason": "requires_regeneration",
+              "priority": 95,
+              "protected": false,
+              "displayable": true,
+              "high_quality_ready": false,
+              "human_reviewed": true,
+              "issues": [
+                "public_generic_marketing_copy"
+              ],
+              "blocking_issues": [
+                "public_generic_marketing_copy"
+              ],
+              "quality_state": "reviewed",
+              "evidence_profile": "official_pdp_reviewed_limited",
+              "evidence_rank": 1,
+              "review_tier": "assistant_reviewed"
+            },
+            "candidate_bundle_hash": "cf44b45ffb81dbd6ce1de42d4dd6eb1fb083930d9d0e92b49bfc8e86529cfc2d"
+          }
+        },
+        {
+          "kb_key": "product:sig_a7f55f854a3936a31ca7f9f5",
+          "action": "skip",
+          "reason": "candidate_not_publish_quality_ready",
+          "old_hash": null,
+          "candidate_hash": "ecba6b649e40d9c1ee21b9973a7d866bc57cc8e7aaef06ba292eb8af44340497",
+          "existing_weak": true,
+          "assessment": {
+            "allowed": false,
+            "reason": "candidate_not_publish_quality_ready",
+            "candidate": {
+              "lane": "regenerate",
+              "reason": "requires_regeneration",
+              "priority": 95,
+              "protected": false,
+              "displayable": true,
+              "high_quality_ready": false,
+              "human_reviewed": true,
+              "issues": [
+                "public_generic_marketing_copy"
+              ],
+              "blocking_issues": [
+                "public_generic_marketing_copy"
+              ],
+              "quality_state": "reviewed",
+              "evidence_profile": "official_pdp_reviewed_limited",
+              "evidence_rank": 1,
+              "review_tier": "assistant_reviewed"
+            },
+            "candidate_bundle_hash": "cf44b45ffb81dbd6ce1de42d4dd6eb1fb083930d9d0e92b49bfc8e86529cfc2d"
+          }
+        }
+      ]
+    },
+    {
+      "external_product_id": "ext_6126e44050e66ecd34780fc4",
+      "pivota_signature_id": "sig_6b9b65d4cf59f903362b2e76",
+      "title": "Cotton Gift Wrap - Furoshiki Cloth",
+      "brand": "UpCircle Beauty",
+      "canonical_url": "https://upcirclebeauty.com/products/gift-wrap-furoshiki",
+      "changed": false,
+      "blocked": true,
+      "skip_reason": "candidate_failed_manual_quality_gate:generic_beauty_product_copy",
+      "candidate_hash": "1613a1fa266d7b8cdeef675de1d7e48b1be0c6cda47b0eece37892f97183d205",
+      "evidence_profile": "official_pdp_reviewed_limited",
+      "source_coverage": {
+        "source": "official_pdp",
+        "canonical_url": "https://upcirclebeauty.com/products/gift-wrap-furoshiki",
+        "fields": {
+          "description": true,
+          "ingredients": 0,
+          "active_ingredients": 0,
+          "how_to": 0,
+          "details": 0,
+          "variants": 1
+        }
+      },
+      "preview": {
+        "headline": "Beauty product",
+        "what_it_is": "Cotton Gift Wrap - Furoshiki Cloth is a beauty product from UpCircle Beauty. Furoshiki is a traditional Japanese eco-friendly and ethically-sourced wrapping cloth made from calico, a cotton fabric.",
+        "why_it_stands_out": [
+          {
+            "headline": "Official PDP evidence only",
+            "body": "This insight is limited to the official product fields currently available for Cotton Gift Wrap - Furoshiki Cloth.",
+            "evidence_strength": "official_pdp_reviewed_limited"
+          }
+        ],
+        "best_for": [
+          {
+            "tag": "beauty_product",
+            "label": "Beauty product",
+            "confidence": "moderate"
+          }
+        ],
+        "shopping_highlight": "Beauty product"
+      },
+      "writes": []
+    },
+    {
+      "external_product_id": "ext_ed2f56c9c3b0f0b461a1ddc2",
+      "pivota_signature_id": "sig_1225a0eaacea77d20047eb3a",
+      "title": "Hydration Skincare Set",
+      "brand": "UpCircle Beauty",
+      "canonical_url": "https://upcirclebeauty.com/products/the-hydration-bundle",
+      "changed": false,
+      "blocked": false,
+      "skip_reason": "no_safe_writes",
+      "candidate_hash": "c51b5e60ed7dc057c6dd67d2ab3ba01ae213a3363ce2d2ab287dc2d3622e8090",
+      "evidence_profile": "official_pdp_reviewed_line",
+      "source_coverage": {
+        "source": "official_pdp",
+        "canonical_url": "https://upcirclebeauty.com/products/the-hydration-bundle",
+        "fields": {
+          "description": true,
+          "ingredients": 0,
+          "active_ingredients": 0,
+          "how_to": 0,
+          "details": 0,
+          "variants": 2
+        }
+      },
+      "preview": {
+        "headline": "Skincare set",
+        "what_it_is": "Hydration Skincare Set is a skincare set from UpCircle Beauty, with source-backed cues around hydration and brightening support.",
+        "why_it_stands_out": [
+          {
+            "headline": "Routine step cues are specific",
+            "body": "Reviewed skincare cues such as hydration identify the routine role or key ingredient context without inventing unsupported benefits.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Shade and size are explicit",
+            "body": "Variant labels such as Save 10% On Oil + Moisturiser Bundle, Title: Save 10% On Oil + Moisturiser Bundle, Plastic Free Repeat Order, Title: Plastic Free Repeat Order are visible, reducing ambiguity around the product format before a shopper clicks through.",
+            "evidence_strength": "official_pdp_reviewed"
+          }
+        ],
+        "best_for": [
+          {
+            "tag": "hydration",
+            "label": "hydration",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "radiance",
+            "label": "radiance",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "aromatherapy",
+            "label": "aromatherapy",
+            "confidence": "moderate"
+          }
+        ],
+        "shopping_highlight": "Skincare routine set"
+      },
+      "writes": [
+        {
+          "kb_key": "product:ext_ed2f56c9c3b0f0b461a1ddc2",
+          "action": "skip",
+          "reason": "candidate_not_publish_quality_ready",
+          "old_hash": "8ffe140b3e9d95c7966ef3cacc6cd9c2b47f71e78de7d9aa6466b412443e177c",
+          "candidate_hash": "8d9387590e20ed41a449fda73d961a3d4a929c63a0d163d1bc60936676fd2484",
+          "existing_weak": true,
+          "assessment": {
+            "allowed": false,
+            "reason": "candidate_not_publish_quality_ready",
+            "candidate": {
+              "lane": "repair",
+              "reason": "commerce_truth_claim_requires_mainline_source",
+              "priority": 80,
+              "protected": false,
+              "displayable": true,
+              "high_quality_ready": false,
+              "human_reviewed": true,
+              "issues": [
+                "public_promo_availability_copy",
+                "commerce_truth_claim"
+              ],
+              "blocking_issues": [
+                "public_promo_availability_copy",
+                "commerce_truth_claim"
+              ],
+              "quality_state": "reviewed",
+              "evidence_profile": "official_pdp_reviewed_line",
+              "evidence_rank": 3,
+              "review_tier": "assistant_reviewed"
+            },
+            "candidate_bundle_hash": "c51b5e60ed7dc057c6dd67d2ab3ba01ae213a3363ce2d2ab287dc2d3622e8090"
+          }
+        },
+        {
+          "kb_key": "product:sig_1225a0eaacea77d20047eb3a",
+          "action": "skip",
+          "reason": "candidate_not_publish_quality_ready",
+          "old_hash": null,
+          "candidate_hash": "8d9387590e20ed41a449fda73d961a3d4a929c63a0d163d1bc60936676fd2484",
+          "existing_weak": true,
+          "assessment": {
+            "allowed": false,
+            "reason": "candidate_not_publish_quality_ready",
+            "candidate": {
+              "lane": "repair",
+              "reason": "commerce_truth_claim_requires_mainline_source",
+              "priority": 80,
+              "protected": false,
+              "displayable": true,
+              "high_quality_ready": false,
+              "human_reviewed": true,
+              "issues": [
+                "public_promo_availability_copy",
+                "commerce_truth_claim"
+              ],
+              "blocking_issues": [
+                "public_promo_availability_copy",
+                "commerce_truth_claim"
+              ],
+              "quality_state": "reviewed",
+              "evidence_profile": "official_pdp_reviewed_line",
+              "evidence_rank": 3,
+              "review_tier": "assistant_reviewed"
+            },
+            "candidate_bundle_hash": "c51b5e60ed7dc057c6dd67d2ab3ba01ae213a3363ce2d2ab287dc2d3622e8090"
+          }
+        }
+      ]
+    },
+    {
+      "external_product_id": "ext_aacacfb4fcef9845059df771",
+      "pivota_signature_id": "sig_93e615368e9256d0d5f1081f4ee9fee7",
+      "title": "Mystery Box - Worth £100",
+      "brand": "UpCircle Beauty",
+      "canonical_url": "https://upcirclebeauty.com/products/beauty-mystery-box",
+      "changed": false,
+      "blocked": false,
+      "skip_reason": "no_safe_writes",
+      "candidate_hash": "da2b41bfa25a7769e4547dd18303a12d467cc7826ebff4aa87ef9b52aa2625e5",
+      "evidence_profile": "official_pdp_reviewed_limited",
+      "source_coverage": {
+        "source": "official_pdp",
+        "canonical_url": "https://upcirclebeauty.com/products/beauty-mystery-box",
+        "fields": {
+          "description": true,
+          "ingredients": 0,
+          "active_ingredients": 0,
+          "how_to": 0,
+          "details": 0,
+          "variants": 1
+        }
+      },
+      "preview": {
+        "headline": "Fine fragrance",
+        "what_it_is": "Mystery Box - Worth £100 is a fine fragrance from UpCircle Beauty.",
+        "why_it_stands_out": [
+          {
+            "headline": "Official PDP evidence only",
+            "body": "This insight is limited to the official product fields currently available for Mystery Box - Worth £100.",
+            "evidence_strength": "official_pdp_reviewed_limited"
+          }
+        ],
+        "best_for": [
+          {
+            "tag": "fine_fragrance",
+            "label": "Fine fragrance",
+            "confidence": "moderate"
+          }
+        ],
+        "shopping_highlight": "Fine fragrance"
+      },
+      "writes": [
+        {
+          "kb_key": "product:ext_aacacfb4fcef9845059df771",
+          "action": "skip",
+          "reason": "candidate_not_publish_quality_ready",
+          "old_hash": null,
+          "candidate_hash": "d504686b5509c28d203809afbc774353199f6434abd830b4eec59789f4840a8c",
+          "existing_weak": true,
+          "assessment": {
+            "allowed": false,
+            "reason": "candidate_not_publish_quality_ready",
+            "candidate": {
+              "lane": "repair",
+              "reason": "commerce_truth_claim_requires_mainline_source",
+              "priority": 75,
+              "protected": true,
+              "displayable": true,
+              "high_quality_ready": true,
+              "human_reviewed": true,
+              "issues": [
+                "commerce_truth_claim"
+              ],
+              "blocking_issues": [
+                "commerce_truth_claim"
+              ],
+              "quality_state": "reviewed",
+              "evidence_profile": "official_pdp_reviewed_limited",
+              "evidence_rank": 1,
+              "review_tier": "assistant_reviewed"
+            },
+            "candidate_bundle_hash": "da2b41bfa25a7769e4547dd18303a12d467cc7826ebff4aa87ef9b52aa2625e5"
+          }
+        },
+        {
+          "kb_key": "product:sig_93e615368e9256d0d5f1081f4ee9fee7",
+          "action": "skip",
+          "reason": "candidate_not_publish_quality_ready",
+          "old_hash": null,
+          "candidate_hash": "d504686b5509c28d203809afbc774353199f6434abd830b4eec59789f4840a8c",
+          "existing_weak": true,
+          "assessment": {
+            "allowed": false,
+            "reason": "candidate_not_publish_quality_ready",
+            "candidate": {
+              "lane": "repair",
+              "reason": "commerce_truth_claim_requires_mainline_source",
+              "priority": 75,
+              "protected": true,
+              "displayable": true,
+              "high_quality_ready": true,
+              "human_reviewed": true,
+              "issues": [
+                "commerce_truth_claim"
+              ],
+              "blocking_issues": [
+                "commerce_truth_claim"
+              ],
+              "quality_state": "reviewed",
+              "evidence_profile": "official_pdp_reviewed_limited",
+              "evidence_rank": 1,
+              "review_tier": "assistant_reviewed"
+            },
+            "candidate_bundle_hash": "da2b41bfa25a7769e4547dd18303a12d467cc7826ebff4aa87ef9b52aa2625e5"
+          }
+        }
+      ]
+    },
+    {
+      "external_product_id": "ext_2c1a3931e9b15bb1ae7eeebd",
+      "pivota_signature_id": "sig_e439a329395894ea5f12934b57e11c05",
+      "title": "UpCircle Beauty E-Gift Card",
+      "brand": "UpCircle Beauty",
+      "canonical_url": "https://upcirclebeauty.com/products/gift-card",
+      "changed": false,
+      "blocked": true,
+      "skip_reason": "candidate_failed_manual_quality_gate:generic_beauty_product_copy",
+      "candidate_hash": "e3e76cff8f87a533d5d950454cbbc89b21ae0f2d789a0cf0e6be9bb946e8baa7",
+      "evidence_profile": "official_pdp_reviewed_limited",
+      "source_coverage": {
+        "source": "official_pdp",
+        "canonical_url": "https://upcirclebeauty.com/products/gift-card",
+        "fields": {
+          "description": true,
+          "ingredients": 0,
+          "active_ingredients": 0,
+          "how_to": 0,
+          "details": 0,
+          "variants": 11
+        }
+      },
+      "preview": {
+        "headline": "Beauty product",
+        "what_it_is": "UpCircle Beauty E-Gift Card is a beauty product from UpCircle Beauty. Shopping for a special someone but not sure what UpCircle goodies to give them?",
+        "why_it_stands_out": [
+          {
+            "headline": "Official PDP evidence only",
+            "body": "This insight is limited to the official product fields currently available for UpCircle Beauty E-Gift Card.",
+            "evidence_strength": "official_pdp_reviewed_limited"
+          }
+        ],
+        "best_for": [
+          {
+            "tag": "beauty_product",
+            "label": "Beauty product",
+            "confidence": "moderate"
+          }
+        ],
+        "shopping_highlight": "Beauty product"
+      },
+      "writes": []
+    }
+  ]
+}

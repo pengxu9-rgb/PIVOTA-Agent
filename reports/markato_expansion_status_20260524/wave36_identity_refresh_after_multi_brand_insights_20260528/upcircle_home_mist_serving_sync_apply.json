@@ -1,0 +1,287 @@
+{
+  "generated_at": "2026-05-28T07:21:21.668Z",
+  "mode": "apply",
+  "batch_size": null,
+  "bootstrap_reviewed_identity_live_read": true,
+  "requested_ids": 1,
+  "fetched_rows": 1,
+  "mirror_rows": 1,
+  "planned_sku_rows": 2,
+  "planned_offer_rows": 2,
+  "planned_index_state_rows": 1,
+  "missing_ids": [],
+  "skipped": [],
+  "applied": {
+    "mode": "apply",
+    "existing_before": {
+      "catalog_products": 1,
+      "catalog_skus": 0,
+      "catalog_offers": 0,
+      "product_group_members": 0
+    },
+    "stale_delete_preview": {
+      "current_sku_rows": 1,
+      "current_offer_rows": 1,
+      "planned_stale_sku_deletes": 1,
+      "planned_stale_offer_deletes": 1,
+      "sample_stale_skus": [
+        {
+          "title": "Home Mist with Lemongrass + Grapefruit Water",
+          "sku_key": "prod::external_seed::external_seed::ext_32e72e7e518f4dfa532a191d::canonical",
+          "product_key": "prod::external_seed::external_seed::ext_32e72e7e518f4dfa532a191d",
+          "source_variant_id": "prod::external_seed::external_seed::ext_32e72e7e518f4dfa532a191d",
+          "visible_attributes": {}
+        }
+      ],
+      "sample_stale_offers": [
+        {
+          "sku_key": "prod::external_seed::external_seed::ext_32e72e7e518f4dfa532a191d::canonical",
+          "offer_id": "offer:external_seed:9ea05915556575666455f68dfe1a0fae",
+          "list_price": 14,
+          "product_key": "prod::external_seed::external_seed::ext_32e72e7e518f4dfa532a191d",
+          "merchant_effective_price": 14
+        }
+      ]
+    },
+    "batch_size": null,
+    "batches": 1,
+    "audit_reasons": {
+      "no_strong_identifier": 2
+    },
+    "product_upserts": 1,
+    "sku_upserts": 2,
+    "offer_upserts": 2,
+    "group_member_upserts": 1,
+    "group_member_preserved_existing_merges": 0,
+    "seed_attachment_updates": 1,
+    "index_state_upserts": 1,
+    "identity_live_read_updates": 0,
+    "catalog_row_trust_upserts": 1,
+    "stale_offer_deletes": 1,
+    "stale_sku_deletes": 1
+  },
+  "sample": [
+    {
+      "external_product_id": "ext_32e72e7e518f4dfa532a191d",
+      "product_key": "prod::external_seed::external_seed::ext_32e72e7e518f4dfa532a191d",
+      "product_group_id": "sig_7b926720a893e74993c5f09623779c55",
+      "title": "Home Mist with Lemongrass + Grapefruit Water",
+      "brand": "UpCircle Beauty",
+      "product_type": "Beauty Product",
+      "category": "Beauty Product",
+      "category_path": "beauty",
+      "canonical_url": "https://upcirclebeauty.com/products/room-spray",
+      "pivota_signature_id": "sig_7b926720a893e74993c5f09623779c55",
+      "sku_rows": 2,
+      "first_sku": {
+        "sku_key": "prod::external_seed::external_seed::ext_32e72e7e518f4dfa532a191d::sku_16140c4d4811c5220a28",
+        "product_key": "prod::external_seed::external_seed::ext_32e72e7e518f4dfa532a191d",
+        "merchant_id": "external_seed",
+        "platform": "external_seed",
+        "source_product_id": "ext_32e72e7e518f4dfa532a191d",
+        "source_variant_id": "ext_32e72e7e518f4dfa532a191d:56886196371839",
+        "source_domain": "upcirclebeauty.com",
+        "sku": "HMGW",
+        "barcode": null,
+        "title": "Home Mist with Lemongrass + Grapefruit Water",
+        "currency": "USD",
+        "image_url": "https://cdn.shopify.com/s/files/1/0023/6316/2681/files/HomeMist_BOTTLE_Web_Ready_2copy.jpg?v=1713265927",
+        "visible_attributes": {
+          "Choose": "Sprayer"
+        },
+        "visible_option_labels": {
+          "Choose": "Sprayer"
+        },
+        "ingredient_ids": [],
+        "sku_payload": {
+          "source": "external_product_seeds_mirror_v1",
+          "external_product_id": "ext_32e72e7e518f4dfa532a191d",
+          "raw_variant_id": "56886196371839",
+          "source_variant_id": "ext_32e72e7e518f4dfa532a191d:56886196371839",
+          "variant_sku": "HMGW",
+          "barcode": null,
+          "strong_identifier_kind": null,
+          "source_url": "https://upcirclebeauty.com/products/room-spray",
+          "external_redirect_url": "https://upcirclebeauty.com/products/room-spray",
+          "price": "14",
+          "price_amount": 14,
+          "currency": "USD",
+          "availability": "in_stock",
+          "image_url": "https://cdn.shopify.com/s/files/1/0023/6316/2681/files/HomeMist_BOTTLE_Web_Ready_2copy.jpg?v=1713265927",
+          "swatch_image_url": null,
+          "label_image_url": null,
+          "options": {
+            "Choose": "Sprayer"
+          },
+          "raw_variant": {
+            "sku": "HMGW",
+            "url": "https://upcirclebeauty.com/products/room-spray",
+            "price": "14",
+            "stock": "In Stock",
+            "currency": "USD",
+            "image_url": "https://cdn.shopify.com/s/files/1/0023/6316/2681/files/HomeMist_BOTTLE_Web_Ready_2copy.jpg?v=1713265927",
+            "image_urls": [
+              "https://cdn.shopify.com/s/files/1/0023/6316/2681/files/HomeMist_BOTTLE_Web_Ready_2copy.jpg?v=1713265927",
+              "https://cdn.shopify.com/s/files/1/0023/6316/2681/files/HomeMist_Packaging_Web_Ready_2copy.jpg?v=1713265927",
+              "https://cdn.shopify.com/s/files/1/0023/6316/2681/files/22_dccbfb4e-9334-4b45-b9a2-29fcc23f2169.jpg?v=1729173000",
+              "https://cdn.shopify.com/s/files/1/0023/6316/2681/files/Home_Mist.png?v=1729593202",
+              "https://cdn.shopify.com/s/files/1/0023/6316/2681/files/2404-StaticHomeMist_BodyOil1x12.jpg?v=1724321650",
+              "https://cdn.shopify.com/s/files/1/0023/6316/2681/files/15.jpg?v=1724321650",
+              "https://cdn.shopify.com/s/files/1/0023/6316/2681/files/14.jpg?v=1724321650",
+              "https://cdn.shopify.com/s/files/1/0023/6316/2681/files/13.jpg?v=1724321650"
+            ],
+            "variant_id": "56886196371839",
+            "description": "With a soothing blend of lavender and eucalyptus, this multi-award-winning home mist leaves spaces feeling homely and calm. Rich in zesty lemongrass and grapefruit oils, this mist transforms your house into a home. \n\nThe Home Mist won gold in the \"Home Ambience\" category of the Free From Living Awards 2024.\n\nInspiring, upcycling, uplifting: This home mist is made with upcycled grapefruit water from the food and drinks industry. \n\nThe UpCircle Promise \n\nCertified organic, vegan, sustainable and cruelty-free. Housed in a glass bottle. For a plastic-free repeat order, simply save the pump from your first bottle and select \"Repeat order -aluminium cap\" from the drop-down menu when you make a repeat purchase!",
+            "option_name": "Choose",
+            "option_value": "Sprayer"
+          }
+        },
+        "readiness_tier": "referral_only"
+      },
+      "first_offer": {
+        "offer_id": "offer:external_seed:2947d9b60cb97b3a1e7b231f50122816",
+        "sku_key": "prod::external_seed::external_seed::ext_32e72e7e518f4dfa532a191d::sku_16140c4d4811c5220a28",
+        "product_key": "prod::external_seed::external_seed::ext_32e72e7e518f4dfa532a191d",
+        "merchant_id": "external_seed",
+        "catalog_track": "external_referral",
+        "truth_tier": "observed",
+        "readiness_tier": "referral_only",
+        "offer_mode": "redirect",
+        "channel": "external_referral",
+        "availability": "in_stock",
+        "currency": "USD",
+        "list_price": 14,
+        "merchant_effective_price": 14,
+        "estimated_best_price": 14,
+        "price_confidence": 1,
+        "source_system": "external_product_seeds_mirror_v1",
+        "source_ref": "eps_def1866ba6f6215478fac613",
+        "source_domain": "upcirclebeauty.com",
+        "offer_payload": {
+          "source": "external_product_seeds_mirror_v1",
+          "external_seed_id": "eps_def1866ba6f6215478fac613",
+          "external_product_id": "ext_32e72e7e518f4dfa532a191d",
+          "domain": "upcirclebeauty.com",
+          "market": "US",
+          "product_title": "Home Mist with Lemongrass + Grapefruit Water",
+          "variant_title": "Home Mist with Lemongrass + Grapefruit Water",
+          "variant_sku": "HMGW",
+          "raw_variant_id": "56886196371839",
+          "url": "https://upcirclebeauty.com/products/room-spray",
+          "offer_url": "https://upcirclebeauty.com/products/room-spray",
+          "canonical_url": "https://upcirclebeauty.com/products/room-spray",
+          "destination_url": "https://upcirclebeauty.com/products/room-spray",
+          "external_redirect_url": "https://upcirclebeauty.com/products/room-spray",
+          "merchant_display_name": "UpCircle Beauty",
+          "price": "14",
+          "price_amount": 14,
+          "price_currency": "USD",
+          "availability": "in_stock",
+          "commerce_facts_v1": {
+            "contract_version": "commerce_facts.v1",
+            "market_id": "US",
+            "country": "US",
+            "currency_target": "USD",
+            "source_authority": "catalog_extract_v2",
+            "captured_at": "2026-05-18T05:00:41.932Z",
+            "evidence_url": "https://upcirclebeauty.com/products/room-spray",
+            "sellable_region": {
+              "status": "unknown",
+              "countries": [],
+              "evidence_source": "catalog_extract_v2",
+              "confidence": "unknown",
+              "checked_at": "2026-05-18T05:00:41.932Z",
+              "reason_codes": [
+                "shipping_destination_not_verified"
+              ],
+              "evidence_url": "https://upcirclebeauty.com/products/room-spray"
+            },
+            "regional_price": {
+              "amount": 14,
+              "currency": "USD",
+              "display_raw": null,
+              "price_type": "unknown",
+              "compare_at_amount": null,
+              "compare_at_currency": null,
+              "compare_at_display_raw": null,
+              "tax_included": "unknown",
+              "confidence": "medium",
+              "market_switch_status": "ok",
+              "observed_currency": "USD",
+              "source_url": "https://upcirclebeauty.com/products/room-spray",
+              "captured_at": "2026-05-18T05:00:41.932Z"
+            },
+            "availability": {
+              "status": "in_stock",
+              "source": "catalog_extract_v2",
+              "confidence": "medium",
+              "captured_at": "2026-05-18T05:00:41.932Z"
+            },
+            "shipping": {
+              "status": "unknown",
+              "source": "catalog_extract_v2",
+              "confidence": "unknown",
+              "reason_codes": [
+                "external_checkout_not_queried"
+              ],
+              "checked_at": "2026-05-18T05:00:41.932Z"
+            },
+            "promotions": [],
+            "returns": {
+              "status": "unknown",
+              "source": "catalog_extract_v2",
+              "confidence": "unknown",
+              "reason_codes": [
+                "external_returns_not_extracted"
+              ],
+              "checked_at": "2026-05-18T05:00:41.932Z"
+            }
+          },
+          "agent_safe_commerce_facts": {
+            "contract_version": "commerce_facts.v1",
+            "market_id": "US",
+            "price": {
+              "amount": 14,
+              "currency": "USD",
+              "display_raw": null,
+              "price_type": "unknown",
+              "compare_at_amount": null,
+              "compare_at_currency": null,
+              "compare_at_display_raw": null,
+              "tax_included": "unknown",
+              "confidence": "medium",
+              "market_switch_status": "ok",
+              "observed_currency": "USD",
+              "source_url": "https://upcirclebeauty.com/products/room-spray",
+              "captured_at": "2026-05-18T05:00:41.932Z"
+            },
+            "availability": {
+              "status": "in_stock",
+              "source": "catalog_extract_v2",
+              "confidence": "medium",
+              "captured_at": "2026-05-18T05:00:41.932Z"
+            },
+            "shipping": {
+              "status": "unknown",
+              "reason": "verify_at_checkout"
+            },
+            "promotions": [],
+            "checkout_note": "Shipping and promotions are not verified for this external offer; verify at merchant checkout."
+          }
+        }
+      },
+      "serving_readiness": {
+        "servingEligible": true,
+        "contentQualityScore": 90,
+        "blockerCode": "none",
+        "blockerDetail": null,
+        "identityResolved": true,
+        "identityLiveReadResolved": true,
+        "identityBootstrapEligible": false,
+        "hasImage": true,
+        "hasPrice": true,
+        "descriptionLength": 713
+      }
+    }
+  ]
+}

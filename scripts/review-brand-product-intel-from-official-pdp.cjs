@@ -34,6 +34,7 @@ const SUPPORTED_BRANDS = new Set([
   'kylie cosmetics',
   'baie botanique',
   'beekman 1802',
+  'byra',
   'into you',
   'intoyou',
   'intoyou cosmetics',
@@ -42,6 +43,9 @@ const SUPPORTED_BRANDS = new Set([
   'rms',
   'rms beauty',
   'rmsbeauty',
+  'terra & co.',
+  'terra & co',
+  'terra and co',
   'innbeauty',
   'innbeauty project',
   'inn beauty',
@@ -51,6 +55,7 @@ const SUPPORTED_BRANDS = new Set([
   'lizush',
   'murad',
   'naturium',
+  'nourwish',
   'nuxe',
   'olehenriksen',
   'ole henriksen',
@@ -323,14 +328,17 @@ function displayBrand(raw) {
   if (/^flower\s+knows/i.test(brand)) return 'Flower Knows';
   if (/^inn\s*beauty|^innbeauty/i.test(brand)) return 'INNBeauty Project';
   if (/^into\s*you|^intoyou/i.test(brand)) return 'INTO YOU';
+  if (/^byra/i.test(brand)) return 'Byra';
   if (/^linhart/i.test(brand)) return 'Linhart Smile Care';
   if (/^lizush/i.test(brand)) return 'Lizush';
   if (/^murad/i.test(brand)) return 'Murad';
   if (/^naturium/i.test(brand)) return 'Naturium';
+  if (/^nourwish/i.test(brand)) return 'Nourwish';
   if (/^nuxe/i.test(brand)) return 'Nuxe';
   if (/^ole\s*henriksen|^olehenriksen/i.test(brand)) return 'Ole Henriksen';
   if (/^pixi/i.test(brand)) return 'Pixi';
   if (/^rms\b/i.test(brand)) return 'RMS Beauty';
+  if (/^terra\s*(?:&|and)\s*co\.?/i.test(brand)) return 'Terra & Co.';
   if (/^tirtir/i.test(brand)) return 'TIRTIR Global';
   if (/^up\s*circle|^upcircle/i.test(brand)) return 'UpCircle Beauty';
   return brand || 'the brand';
@@ -467,6 +475,9 @@ function inferRole(facts) {
   if (/\b(?:body\s+oil|massage\s+oil|baby\s+oil)\b/.test(titleText)) {
     return { label: 'Body oil', step: 'body care', amPm: ['as_needed'] };
   }
+  if (/\b(?:face|facial|organic\s+face)\s+oil\b/.test(titleText)) {
+    return { label: 'Face oil', step: 'skincare', amPm: ['am', 'pm'] };
+  }
   if (/\b(?:magic\s+balm|rescue\s+balm|body\s+balm|muscle\s+balm)\b/.test(titleText)) {
     return { label: 'Body balm', step: 'body care', amPm: ['as_needed'] };
   }
@@ -477,8 +488,23 @@ function inferRole(facts) {
     return { label: 'Aromatherapy treatment', step: 'body care', amPm: ['as_needed'] };
   }
   if (/\b(?:puff|sponge|applicator)\b/.test(titleText)) return { label: 'Makeup applicator', step: 'application tool', amPm: ['as_needed'] };
+  if (/\b(?:scalp\s+(?:brush|massager)|shampoo\s+brush|wide\s+tooth\s+comb|comb|crease[-\s]?free\s+clips?)\b/.test(titleText)) {
+    return { label: 'Hair tool', step: 'hair tool', amPm: ['as_needed'] };
+  }
+  const oralCareCue =
+    /\b(?:toothpaste|mouthwash|oil\s+pulling|oral\s+care|tongue\s+scraper|dental\s+floss|toothbrush|floss|teeth\s+whiten(?:ing)?|tooth\s+whiten(?:er|ing)|whitening\s+(?:pen|gel)|smile\s+enhancement)\b/.test(titleText) ||
+    (/^terra\s*&\s*co\.$/i.test(facts.brand) && /\b(?:hydroxyapatite|enamel|teeth|tooth|oral|mouthwash|oil\s+pulling|floss|charcoal)\b/.test(text));
+  if (oralCareCue) {
+    const oralSet = /\b(?:set|kit|bundle|duo|trio|smile\s+enhancement\s+pro)\b/.test(titleText);
+    const oralTool = /\b(?:toothbrush|tongue\s+scraper|dental\s+floss|floss|oil\s+pulling\s+spoon|led\s+light|16[-\s]?led)\b/.test(titleText);
+    return {
+      label: oralSet ? 'Oral care set' : oralTool ? 'Oral care tool' : 'Oral care treatment',
+      step: oralTool ? 'oral care tool' : 'oral care',
+      amPm: ['am', 'pm'],
+    };
+  }
   if (/\bbrush\b/.test(titleText)) return { label: 'Makeup brush', step: 'application tool', amPm: ['as_needed'] };
-  const accessoryCue = /\b(?:stickers?|decals?|claw clip|head\s*band|headband|pouch|bag|organizer|mirror|sharpener|tool|tray|keychain|key chain|tote|clutch|backpack|wash\s*cloth|washcloth|cuffs?|scrunchie|sleeve|case)\b/.test(titleText);
+  const accessoryCue = /\b(?:stickers?|decals?|claw clip|head\s*band|headband|pouch|bag|organizer|mirror|sharpener|tool|tray|keychain|key chain|tote|clutch|backpack|wash\s*cloth|washcloth|cuffs?|scrunchie|sleeve|case|spatulas?)\b/.test(titleText);
   const formulaCue = /\b(?:spf|sunscreen|moisturizer|serum|cream|lotion|body milk|lipstick|lip gloss|lip glaze|lip ink|lip luminizer|lip liner|mascara|eyeshadow|eye shadow|eye brightener|palette|makeup remover|remover wipe|eyeliner|foundation|concealer|cushion|bronzer|blush|highlighter|toner|nail\s+polish|nail\s+color|cuticle\s+oil|nail\s+polish\s+remover)\b/.test(titleText);
   if (accessoryCue && !formulaCue) {
     return { label: 'Beauty accessory', step: 'beauty routine', amPm: ['as_needed'] };
@@ -492,6 +518,12 @@ function inferRole(facts) {
   if (/\bdeodorant\b/.test(titleText)) {
     return { label: 'Deodorant', step: 'body care', amPm: ['am', 'as_needed'] };
   }
+  if (/\b(?:safety\s+razor|razor\s+blades?|shav(?:e|ing))\b/.test(titleText)) {
+    return { label: 'Body care tool', step: 'body care tool', amPm: ['as_needed'] };
+  }
+  if (/\b(?:cotton\s+buds?|bamboo\s+cotton\s+buds?)\b/.test(titleText)) {
+    return { label: 'Beauty utility', step: 'beauty routine', amPm: ['as_needed'] };
+  }
   if (/\b(?:parfum|eau de parfum|eau de toilette|fragrance|perfume|cologne|layering balm)\b/.test(titleText)) {
     return { label: 'Fine fragrance', step: 'fragrance', amPm: ['as_needed'] };
   }
@@ -499,6 +531,18 @@ function inferRole(facts) {
     /\b(?:liner|lip\s+liner|gloss|lip\s+gloss|lipstick|lip\s+color|lip\s+luminizer)\b.{0,80}(?:&|\+).{0,80}\b(?:liner|lip\s+liner|gloss|lip\s+gloss|lipstick|lip\s+color|lip\s+luminizer)\b/.test(titleOnly);
   if (/\blip\b/.test(titleOnly) && (/\b(?:combo|kit|set|duo|bundle)\b/.test(titleOnly) || explicitLipPair)) {
     return { label: 'Lip combo', step: 'lip color', amPm: ['as_needed'] };
+  }
+  if (/\b(?:set|kit|trio|combo|bundle|flight\s+pack)\b/.test(titleText) && /\b(?:skin|skincare|serum|cleanser|moisturi[sz]er|moisturiser|cream|bright|firm|renewal|transformation|glow)\b/.test(titleText)) {
+    return { label: 'Skincare set', step: 'skincare', amPm: ['am', 'pm'] };
+  }
+  const nourwishHairCue =
+    /^nourwish$/i.test(facts.brand) &&
+    /\b(?:hair|scalp|keratin|shampoo|conditioner|frizz|thin\s+to\s+thick|power\s+of\s+gro|regenerating|weightless)\b/.test(text);
+  if (/\b(?:keratin\s+water\s+treatment|water\s+treatment|scalp\s+retreat|hair\s+repair|oily\s+scalp|thin\s+to\s+thick|power\s+of\s+gro|regenerating\s+shampoo|weightless\s+conditioner)\b/.test(titleText) || nourwishHairCue) {
+    return { label: /\b(?:set|kit|trio|bundle)\b/.test(titleText) ? 'Hair care set' : 'Hair treatment', step: 'hair care', amPm: ['as_needed'] };
+  }
+  if (/\b(?:essence|enhancer|nutri[-\s]?essence)\b/.test(titleText)) {
+    return { label: 'Treatment serum', step: 'serum', amPm: ['am', 'pm'] };
   }
   if (/\bnail\s+polish\s+remover\b/.test(titleOnly)) return { label: 'Nail polish remover', step: 'nail remover', amPm: ['as_needed'] };
   if (/\bcuticle\s+oil\b/.test(titleOnly)) return { label: 'Cuticle oil', step: 'nail care', amPm: ['as_needed'] };
@@ -525,10 +569,14 @@ function inferRole(facts) {
   if (/\b(?:cleanser\s*\+\s*toner|toner serum duo)\b/.test(titleText)) {
     return { label: 'Skincare set', step: 'skincare', amPm: ['am', 'pm'] };
   }
+  if (/\b(?:setting\s+mist|setting\s+spray|radiance\s+lock\s+setting\s+mist|4-in-1 mist|4 in 1 mist)\b/.test(titleText)) {
+    return { label: 'Setting mist', step: 'complexion', amPm: ['as_needed'] };
+  }
   if (/\b(?:glow mist|face mist|facial mist|milky mist)\b/.test(titleText)) {
     return { label: 'Face mist', step: 'skincare', amPm: ['am', 'pm'] };
   }
   if (/\b(?:facial\s+sauna\s+scrub|smoothing\s+scrub|face\s+scrub|scrub)\b/.test(titleText)) {
+    if (/\bbody\s+scrub\b/.test(titleText)) return { label: 'Body scrub', step: 'body care', amPm: ['as_needed'] };
     return { label: 'Face scrub', step: 'skincare', amPm: ['am', 'pm'] };
   }
   if (/\btoner\b/.test(titleText)) {
@@ -562,8 +610,8 @@ function inferRole(facts) {
     return { label: 'Treatment serum', step: 'serum', amPm: ['pm'] };
   }
   if (/\bfoundation|concealer|skin tint|complexion|tinted moisturizer|cream cushion|cushion foundation|cushion\b/.test(titleText)) return { label: 'Complexion makeup', step: 'complexion', amPm: ['as_needed'] };
-  if (/\b(?:setting spray|4-in-1 mist|4 in 1 mist|face mist)\b/.test(titleText)) return { label: 'Setting mist', step: 'complexion', amPm: ['as_needed'] };
-  if (/\b(?:setting powder|finishing powder|powder|bronzer|blush|highlighter|luminizer)\b/.test(titleText)) return { label: 'Face color makeup', step: 'face color', amPm: ['as_needed'] };
+  if (/\b(?:setting mist|setting spray|4-in-1 mist|4 in 1 mist|face mist)\b/.test(titleText)) return { label: 'Setting mist', step: 'complexion', amPm: ['as_needed'] };
+  if (/\b(?:setting powder|finishing powder|face powder|powder foundation|bronzer|blush|highlighter|luminizer)\b/.test(titleText)) return { label: 'Face color makeup', step: 'face color', amPm: ['as_needed'] };
   if (/\bprimer|base perfecting|pore prep\b/.test(titleText)) return { label: 'Makeup primer', step: 'primer', amPm: ['as_needed'] };
   if (/\bbody\s+wash\b/.test(titleText)) return { label: 'Body cleanser', step: 'cleanser', amPm: ['am', 'pm'] };
   if (/\bcleanser|cleansing|makeup\s+remover|remover\s+wipes?|makeup\s+wipes?\b/.test(titleText)) return { label: 'Face cleanser', step: 'cleanser', amPm: ['am', 'pm'] };
@@ -590,7 +638,7 @@ function inferRole(facts) {
     const exfoliating = /\b(?:bha|aha|pha|salicylic|glycolic|lactic|exfoliat|pore\s+purify)\b/.test(text);
     return { label: exfoliating ? 'Exfoliating toner' : 'Face toner', step: 'skincare', amPm: ['am', 'pm'] };
   }
-  const titleLooksLikeSkincareFormula = /\b(?:toner|cleanser|cleansing|moisturizer|serum|cream|lotion|mask|spf|sunscreen|treatment|bha|aha|pha|salicylic|aloe)\b/.test(titleText);
+  const titleLooksLikeSkincareFormula = /\b(?:toner|cleanser|cleansing|moisturizer|moisturiser|serum|cream|lotion|mask|spf|sunscreen|essence|enhancer|treatment|bha|aha|pha|salicylic|aloe)\b/.test(titleText);
   if (!titleLooksLikeSkincareFormula && /\bparfum|eau de parfum|eau de toilette|fragrance|perfume|cologne\b/.test(text)) {
     return { label: 'Fine fragrance', step: 'fragrance', amPm: ['as_needed'] };
   }
@@ -599,13 +647,15 @@ function inferRole(facts) {
   if (/\bbrush\b/.test(text) && /\bbrush\b/.test(titleText)) return { label: 'Makeup brush', step: 'application tool', amPm: ['as_needed'] };
   if (/\bpowder|bronzer|blush|highlighter|luminizer\b/.test(text)) return { label: 'Face color makeup', step: 'face color', amPm: ['as_needed'] };
   if (/\bmascara|eyeshadow|eye shadow|eye color|eyeliner|eyes\s+quartet|eye\s+palette|makeup\s+palette|five[-\s]?color\s+makeup\s+palette\b/.test(text)) return { label: 'Eye makeup', step: 'eye makeup', amPm: ['as_needed'] };
-  if (/\bserum|cream|moisturizer|lotion|cleanser|mask|spf|sunscreen|treatment\b/.test(text)) {
+  if (/\bserum|cream|moisturizer|moisturiser|lotion|cleanser|mask|spf|sunscreen|essence|enhancer|treatment\b/.test(text)) {
     if (/\bbody\s+wash\b/.test(text)) return { label: 'Body cleanser', step: 'cleanser', amPm: ['am', 'pm'] };
     if (/\bcleanser|cleansing|makeup\s+remover|remover\s+wipes?|makeup\s+wipes?\b/.test(text)) return { label: 'Face cleanser', step: 'cleanser', amPm: ['am', 'pm'] };
     if (/\bspf|sunscreen\b/.test(text)) return { label: 'Daily sunscreen', step: 'sunscreen', amPm: ['am'] };
-    if (/\bserum\b/.test(text)) return { label: 'Treatment serum', step: 'serum', amPm: ['am', 'pm'] };
+    if (/\bserum|essence|enhancer|treatment\b/.test(text)) return { label: 'Treatment serum', step: 'serum', amPm: ['am', 'pm'] };
     if (/\bmask\b/.test(text)) return { label: 'Treatment mask', step: 'mask', amPm: ['as_needed'] };
-    return { label: 'Body care treatment', step: 'skincare', amPm: ['am', 'pm'] };
+    if (/\bbody\s+lotion|body\s+cream|body\s+mousse|hand\s+cream\b/.test(text)) return { label: 'Body care treatment', step: 'skincare', amPm: ['am', 'pm'] };
+    if (/\bmoisturizer|moisturiser|cream|lotion\b/.test(text)) return { label: 'Face moisturizer', step: 'skincare', amPm: ['am', 'pm'] };
+    return { label: 'Skincare treatment', step: 'skincare', amPm: ['am', 'pm'] };
   }
   return { label: 'Beauty product', step: 'beauty routine', amPm: ['as_needed'] };
 }
@@ -670,12 +720,19 @@ function inferAnchors(facts, role) {
       ['pore-smoothing', /\bpore|smooths?\s+pores?\b/],
     ]);
   } else if (role.step === 'complexion') {
-    productAnchors = findTokens(text, [
-      ['longwear coverage', /\b(?:longwear|long-wear)\b/],
-      ['soft-matte finish', /\bsoft[-\s]?matte|matte\b/],
-      ['coverage control', /\b(?:medium to full|light to full|buildable|coverage)\b/],
-      ['shade range', /\bshade|color|colour\b/],
-    ]);
+    productAnchors = role.label === 'Setting mist'
+      ? findTokens(text, [
+        ['setting mist format', /\bsetting\s+mist|setting\s+spray|mist\b/],
+        ['radiance finish', /\bradiance|radiant|glow|luminous\b/],
+        ['hydration', /\bhydrat|hyaluronic|moistur|glycerin\b/],
+        ['makeup-set support', /\bset(?:s|ting)?\s+makeup|lock|wear|hold\b/],
+      ])
+      : findTokens(text, [
+        ['longwear coverage', /\b(?:longwear|long-wear)\b/],
+        ['soft-matte finish', /\bsoft[-\s]?matte|matte\b/],
+        ['coverage control', /\b(?:medium to full|light to full|buildable|coverage)\b/],
+        ['shade range', /\bshade|color|colour\b/],
+      ]);
   } else if (role.step === 'lip definition') {
     productAnchors = findTokens(text, [
       ['longwear lip definition', /\b(?:lasts?\s+up\s+to\s+\d+\s+hours?|longwear|long-wear)\b/],
@@ -741,6 +798,62 @@ function inferAnchors(facts, role) {
       ['hair control', /\bhair|headband|claw clip|clip\b/],
       ['collectible format', /\bsticker|decal|collectible|enamel\b/],
       ['compact accessory', /\bkeychain|key chain|mini|pouch|compact\b/],
+    ]);
+  } else if (role.step === 'hair tool') {
+    productAnchors = findTokens(text, [
+      ['scalp massage', /\bscalp|massage|massager\b/],
+      ['shampoo brush format', /\bshampoo\s+brush|brush\b/],
+      ['wide-tooth comb format', /\bwide\s+tooth\s+comb|comb\b/],
+      ['crease-free hair control', /\bcrease[-\s]?free|clip|clips?\b/],
+      ['hair sectioning', /\bsection|parting|styling|hair\b/],
+    ]);
+  } else if (role.step === 'body care tool') {
+    const toolAnchors = findTokens(text, [
+      ['razor stand format', /\brazor\s+stand|stand\b/],
+      ['safety razor format', /\bsafety\s+razor|razor\b/],
+      ['refill blade format', /\brazor\s+blades?|double[-\s]?edged|stainless\s+steel\s+blades?\b/],
+      ['plastic-free positioning', /\bplastic[-\s]?free|reduced\s+plastic|zero\s+waste\b/],
+      ['shaving routine tool', /\bshav(?:e|ing)|smoothest\s+skin\b/],
+    ]);
+    productAnchors = toolAnchors.filter((item) => !(
+      item === 'refill blade format' &&
+      /\bsafety\s+razor\b/.test(titleText) &&
+      !/\b(?:razor\s+blades?|blade\s+refill|refill\s+blades?)\b/.test(titleText)
+    ));
+  } else if (role.step === 'oral care' || role.step === 'oral care tool') {
+    const oralAnchorText = /^terra\s*&\s*co\.$/i.test(facts.brand) ? titleText : `${titleText} ${text}`;
+    const titleAnchors = findTokens(titleText, [
+      ['teeth-whitening format', /\bteeth\s+whiten(?:ing)?|tooth\s+whiten(?:er|ing)|whitening\b/],
+      ['LED whitening light', /\bled\s+light|16[-\s]?led\b/],
+      ['whitening pen format', /\bwhitening\s+pen\b/],
+      ['whitening gel format', /\bwhiten(?:er|ing)?\s+gel|gel\s+syringes?\b/],
+      ['oil pulling format', /\boil\s+pulling\b/],
+      ['tongue cleaning', /\btongue\s+scraper|tongue\s+clean\b/],
+      ['dental floss format', /\bdental\s+floss|floss\b/],
+      ['soft-bristle brushing', /\bsoft\s+bristles?|toothbrush\b/],
+      ['travel-friendly oral care', /\btravel[-\s]?friendly|tabs?\b/],
+    ]);
+    const contextAnchors = findTokens(oralAnchorText, [
+      ['hydroxyapatite', /\bhydroxyapatite|micro[-\s]?hydroxyapatite|nano[-\s]?hydroxyapatite\b/],
+      ['activated charcoal', /\bcharcoal\b/],
+      ['fluoride-free positioning', /\bfluoride[-\s]?free\b/],
+      ['teeth-whitening format', /\bteeth\s+whiten(?:ing)?|tooth\s+whiten(?:er|ing)|whitening\b/],
+      ['LED whitening light', /\bled\s+light|16[-\s]?led\b/],
+      ['whitening pen format', /\bwhitening\s+pen\b/],
+      ['whitening gel format', /\bwhiten(?:er|ing)?\s+gel|gel\s+syringes?\b/],
+      ['oil pulling format', /\boil\s+pulling\b/],
+      ['tongue cleaning', /\btongue\s+scraper|tongue\s+clean\b/],
+      ['dental floss format', /\bdental\s+floss|floss\b/],
+      ['soft-bristle brushing', /\bsoft\s+bristles?|toothbrush\b/],
+      ['travel-friendly oral care', /\btravel[-\s]?friendly|tabs?\b/],
+    ]);
+    const titleHasWhiteningPenOrGel = /\b(?:whitening\s+pen|whiten(?:er|ing)?\s+gel|gel\s+syringes?)\b/.test(titleText);
+    productAnchors = uniq([
+      ...titleAnchors,
+      ...contextAnchors.filter((item) => (
+        !(titleHasWhiteningPenOrGel && item === 'LED whitening light') &&
+        !(titleAnchors.includes('dental floss format') && item === 'teeth-whitening format')
+      )),
     ]);
   } else if (role.step === 'brow definition') {
     productAnchors = findTokens(text, [
@@ -851,12 +964,18 @@ function inferBestFor(facts, role, anchors) {
       ['makeup-wear support', /\bfoundation\s+(?:wear|last|application)|makeup\s+(?:last|wear)|wear\s+longer|extend\b/],
     ]);
   } else if (role.step === 'complexion' || role.step === 'face color') {
-    labels = findTokens(text, [
-      ['base makeup prep', /\bprimer|prep|base\b/],
-      ['complexion coverage', /\bfoundation|coverage|concealer|skin tint\b/],
-      ['soft-focus finish', /\bblur|pore|soft-focus|matte|powder\b/],
-      ['radiant finish', /\bradiant|glow|highlight|luminous\b/],
-    ]);
+    labels = role.label === 'Setting mist'
+      ? findTokens(text, [
+        ['makeup setting', /\bsetting\s+mist|setting\s+spray|set(?:s|ting)?\s+makeup|lock\b/],
+        ['radiant finish', /\bradiance|radiant|glow|luminous\b/],
+        ['hydrating mist feel', /\bhydrat|hyaluronic|moistur|glycerin\b/],
+      ])
+      : findTokens(text, [
+        ['base makeup prep', /\bprimer|prep|base\b/],
+        ['complexion coverage', /\bfoundation|coverage|concealer|skin tint\b/],
+        ['soft-focus finish', /\bblur|pore|soft-focus|matte|powder\b/],
+        ['radiant finish', /\bradiant|glow|highlight|luminous\b/],
+      ]);
   } else if (role.step === 'brow definition') {
     labels = findTokens(text, [
       ['brow definition', /\bbrow|eyebrow|definition|define\b/],
@@ -888,6 +1007,29 @@ function inferBestFor(facts, role, anchors) {
       ['hair hold', /\bhair|headband|claw clip|clip\b/],
       ['collecting', /\bsticker|decal|collectible|keychain|key chain\b/],
       ['travel', /\btravel|on the go|carryall\b/],
+    ]);
+  } else if (role.step === 'hair tool') {
+    labels = findTokens(text, [
+      ['scalp massage', /\bscalp|massage|massager\b/],
+      ['hair sectioning', /\bcrease[-\s]?free|clip|section|styling\b/],
+      ['shampoo routine tool', /\bshampoo\s+brush|brush\b/],
+    ]);
+  } else if (role.step === 'body care tool') {
+    labels = findTokens(text, [
+      ['shaving routine', /\bshav(?:e|ing)|razor\b/],
+      ['refillable body-care tools', /\brefill|blades?\b/],
+      ['plastic-free body care', /\bplastic[-\s]?free|reduced\s+plastic|zero\s+waste\b/],
+    ]);
+  } else if (role.step === 'oral care' || role.step === 'oral care tool') {
+    labels = findTokens(text, [
+      ['enamel support context', /\bhydroxyapatite|enamel\b/],
+      ['fluoride-free oral care', /\bfluoride[-\s]?free\b/],
+      ['charcoal oral care', /\bcharcoal\b/],
+      ['teeth-whitening routine', /\bteeth\s+whiten(?:ing)?|tooth\s+whiten(?:er|ing)|whitening\b/],
+      ['LED whitening device', /\bled\s+light|16[-\s]?led\b/],
+      ['whitening gel format', /\bwhiten(?:er|ing)?\s+gel|gel\s+syringes?\b/],
+      ['oil pulling routine', /\boil\s+pulling\b/],
+      ['oral care tools', /\btoothbrush|tongue\s+scraper|dental\s+floss|floss\b/],
     ]);
   } else if (role.step === 'hair care') {
     labels = findTokens(text, [
@@ -961,7 +1103,11 @@ function buildPairingNotes(facts, role) {
   if (role.step === 'nail remover') return ['Use on nails as directed by the official remover instructions, then wash and dry nails before new polish.'];
   if (role.step === 'nail care') return ['Apply to cuticles or nails as directed by the official product instructions.'];
   if (role.step === 'hair care') return ['Apply to hair as directed for the specific treatment or styling step.'];
+  if (role.step === 'hair tool') return ['Use in the hair or scalp routine described by the official product details.'];
+  if (role.step === 'oral care' || role.step === 'oral care tool') return ['Use only as directed by the official oral-care instructions and check the merchant PDP for fit.'];
+  if (role.step === 'body care tool') return ['Use only as directed by the official body-care tool instructions and replace compatible parts as needed.'];
   if (role.step === 'primer') return ['Apply before complexion makeup where you want smoother makeup laydown.'];
+  if (role.label === 'Setting mist') return ['Mist over skin or makeup as directed by the official PDP.'];
   if (role.step === 'application tool') return ['Use with the product textures the brush is designed to apply.'];
   return ['Use in the routine step implied by the official product directions.'];
 }
@@ -1185,18 +1331,27 @@ function buildEvidenceAnchoredWhatItIs(facts, role) {
   }
 
   if (role.step === 'complexion') {
-    const format = /\bconcealer\b/.test(lowerTitle)
+    const format = role.label === 'Setting mist'
+      ? 'setting mist'
+      : /\bconcealer\b/.test(lowerTitle)
       ? 'concealer'
       : /\bpowder foundation\b/.test(lowerTitle)
         ? 'powder foundation'
         : /\bfoundation\b/.test(lowerTitle)
           ? 'foundation'
           : 'complexion product';
-    const claims = joinClaims([
-      /\blongwear|long-wear\b/i.test(text) ? 'long-wear coverage' : '',
-      /\bsoft[-\s]?matte|matte\b/i.test(text) ? 'a soft-matte finish' : '',
-      /\bmedium to full|light to full|buildable|coverage\b/i.test(text) ? 'coverage control' : '',
-    ]);
+    const claims = role.label === 'Setting mist'
+      ? joinClaims([
+        /\bsetting\s+mist|setting\s+spray|mist\b/i.test(text) ? 'mist format' : '',
+        /\bradiance|radiant|glow|luminous\b/i.test(text) ? 'radiance finish' : '',
+        /\bhydrat|hyaluronic|moistur|glycerin\b/i.test(text) ? 'hydrating cues' : '',
+        /\bset(?:s|ting)?\s+makeup|lock|wear|hold\b/i.test(text) ? 'makeup-set support' : '',
+      ])
+      : joinClaims([
+        /\blongwear|long-wear\b/i.test(text) ? 'long-wear coverage' : '',
+        /\bsoft[-\s]?matte|matte\b/i.test(text) ? 'a soft-matte finish' : '',
+        /\bmedium to full|light to full|buildable|coverage\b/i.test(text) ? 'coverage control' : '',
+      ]);
     const sku = shade || size;
     return sentence(`${copyTitle} is a ${format} from ${facts.brand}${sku ? ` in ${sku}` : ''}${claims ? `, with source-backed cues around ${claims}` : ''}`);
   }
@@ -1288,7 +1443,9 @@ function buildEvidenceAnchoredWhatItIs(facts, role) {
   }
 
   if (role.step === 'hair care') {
-    const format = /\bdry\s+shampoo\b/i.test(text)
+    const format = role.label === 'Hair care set'
+      ? 'hair care set'
+      : /\bdry\s+shampoo\b/i.test(text)
       ? (/\bpowder\b/i.test(text) ? 'dry shampoo powder' : 'dry shampoo')
       : /\bheat protect|heat protection\b/i.test(text)
         ? 'heat protectant styling product'
@@ -1314,6 +1471,75 @@ function buildEvidenceAnchoredWhatItIs(facts, role) {
       /\bcheek|face|lid|eye\b/i.test(text) ? 'targeted application area' : '',
     ]);
     return sentence(`${copyTitle} is a makeup brush from ${facts.brand}${claims ? `, with source-backed cues around ${claims}` : ''}`);
+  }
+
+  if (role.step === 'hair tool') {
+    const format = /\b(?:scalp|shampoo)\s+(?:brush|massager)\b/i.test(text)
+      ? 'scalp brush'
+      : /\bwide\s+tooth\s+comb|comb\b/i.test(text)
+        ? 'hair comb'
+      : /\bclips?\b/i.test(text)
+        ? 'hair clip set'
+        : 'hair tool';
+    const claims = joinClaims([
+      /\bscalp|massag/i.test(text) ? 'scalp-use cues' : '',
+      /\bshampoo\s+brush|rinse|cleanse\b/i.test(text) ? 'shampoo-routine use' : '',
+      /\bcrease[-\s]?free|clip|section\b/i.test(text) ? 'hair sectioning' : '',
+    ]);
+    return sentence(`${copyTitle} is a ${format} from ${facts.brand}${claims ? `, with source-backed cues around ${claims}` : ''}`);
+  }
+
+  if (role.step === 'body care tool') {
+    const format = /\brazor\s+stand|stand\b/i.test(lowerTitle)
+      ? 'razor stand'
+      : /\b(?:razor\s+blades?|blade\s+refill|refill\s+blades?)\b/i.test(lowerTitle)
+      ? 'razor blade refill'
+      : /\bsafety\s+razor|razor\b/i.test(lowerTitle)
+        ? 'safety razor'
+        : 'body care tool';
+    const claims = joinClaims([
+      /\brazor\s+stand|stand\b/i.test(text) ? 'stand format' : '',
+      /\bplastic[-\s]?free|reduced\s+plastic|zero\s+waste\b/i.test(text) ? 'plastic-free positioning' : '',
+      /\bdouble[-\s]?edged|stainless\s+steel\s+blades?\b/i.test(text) ? 'stainless steel blade format' : '',
+      /\bshav(?:e|ing)|smoothest\s+skin\b/i.test(text) ? 'shaving routine use' : '',
+    ]);
+    return sentence(`${copyTitle} is a ${format} from ${facts.brand}${claims ? `, with source-backed cues around ${claims}` : ''}`);
+  }
+
+  if (role.step === 'oral care' || role.step === 'oral care tool') {
+    const titleSource = lowerTitle;
+    const oralClaimSource = /^terra\s*&\s*co\.$/i.test(facts.brand) ? lowerTitle : `${lowerTitle} ${text}`;
+    const format = /\b(?:set|bundle|duo|trio|pack|smile\s+enhancement\s+pro)\b/i.test(titleSource) && /\b(?:teeth\s+whiten(?:ing)?|tooth\s+whiten(?:er|ing)|whitening|toothpaste|mouthwash|oil\s+pulling|toothbrush|floss|tongue\s+scraper)\b/i.test(oralClaimSource)
+      ? 'oral care set'
+      : /\bled\s+light|16[-\s]?led\b/i.test(titleSource)
+        ? 'teeth-whitening light'
+        : /\bwhitening\s+pen\b/i.test(titleSource)
+          ? 'whitening pen'
+          : /\bwhiten(?:er|ing)?\s+gel|gel\s+syringes?\b/i.test(titleSource)
+            ? 'whitening gel'
+            : /\bfloss\b/i.test(titleSource)
+              ? 'dental floss'
+              : /\btongue\s+scraper\b/i.test(titleSource)
+                ? 'tongue scraper'
+                : /\btoothbrush\b/i.test(titleSource)
+                  ? 'toothbrush'
+                  : /\bmouthwash|oil\s+pulling\b/i.test(titleSource)
+                    ? 'oral rinse'
+                    : /\btoothpaste\b/i.test(titleSource)
+                      ? 'toothpaste'
+                      : 'oral care product';
+    const claims = joinClaims([
+      /\bhydroxyapatite|enamel\b/i.test(oralClaimSource) ? 'enamel-care context' : '',
+      /\bcharcoal\b/i.test(oralClaimSource) ? 'charcoal' : '',
+      /\bfluoride[-\s]?free\b/i.test(oralClaimSource) ? 'fluoride-free positioning' : '',
+      /\bteeth\s+whiten(?:ing)?|tooth\s+whiten(?:er|ing)|whitening\b/i.test(oralClaimSource) ? 'teeth-whitening format' : '',
+      /\bled\s+light|16[-\s]?led\b/i.test(titleSource) ? 'LED light format' : '',
+      /\bwhitening\s+pen\b/i.test(titleSource) ? 'pen applicator format' : '',
+      /\bwhiten(?:er|ing)?\s+gel|gel\s+syringes?\b/i.test(titleSource) ? 'gel format' : '',
+      /\boil\s+pulling\b/i.test(oralClaimSource) ? 'oil-pulling format' : '',
+      /\btongue\s+scraper\b/i.test(titleSource) ? 'tongue-cleaning tool use' : '',
+    ]);
+    return sentence(`${copyTitle} is ${articleFor(format)} ${format} from ${facts.brand}${claims ? `, with source-backed cues around ${claims}` : ''}`);
   }
 
   if (role.step === 'body fragrance' || role.step === 'fragrance' || role.step === 'home fragrance') {
@@ -1530,6 +1756,9 @@ function buildWhyItStandsOut(facts, role, anchors) {
     } else if (role.step === 'lip color') {
       anchorHeadline = 'Lip finish cues are specific';
       anchorBody = `Reviewed lip cues such as ${anchorText} identify finish, shade, or formula context before the shopper leaves Pivota`;
+    } else if (role.label === 'Setting mist') {
+      anchorHeadline = 'Setting-mist cues are specific';
+      anchorBody = `Reviewed mist cues such as ${anchorText} identify finish, hydration, or makeup-set context without turning it into a toner`;
     } else if (role.step === 'complexion') {
       anchorHeadline = 'Coverage and finish cues are clear';
       anchorBody = `Reviewed complexion cues such as ${anchorText} support a more precise read on coverage, finish, or shade fit`;
@@ -1542,6 +1771,15 @@ function buildWhyItStandsOut(facts, role, anchors) {
     } else if (role.step === 'sunscreen') {
       anchorHeadline = 'SPF format cues are clear';
       anchorBody = `Reviewed SPF cues such as ${anchorText} clarify protection format, hydration support, or refill status without replacing the official sunscreen facts`;
+    } else if (role.step === 'hair tool') {
+      anchorHeadline = 'Hair-tool cues are specific';
+      anchorBody = `Reviewed tool cues such as ${anchorText} identify how the accessory fits into a hair or scalp routine without treating it like a formula product`;
+    } else if (role.step === 'body care tool') {
+      anchorHeadline = 'Body-care tool cues are specific';
+      anchorBody = `Reviewed tool cues such as ${anchorText} identify the shaving or body-care format without treating it like a formula product`;
+    } else if (role.step === 'oral care' || role.step === 'oral care tool') {
+      anchorHeadline = 'Oral-care format cues are clear';
+      anchorBody = `Reviewed oral-care cues such as ${anchorText} identify the format and source-backed context without turning regulated language into recommendations`;
     }
     why.push({
       headline: anchorHeadline,
@@ -1635,7 +1873,13 @@ function buildWatchouts(facts, role) {
         label: 'Check the official size and material details before choosing a fit.',
         severity: 'low',
       });
-    } else if (role.step === 'beauty routine' || role.step === 'pet accessory' || role.step === 'application tool') {
+    } else if (
+      role.step === 'beauty routine' ||
+      role.step === 'pet accessory' ||
+      role.step === 'application tool' ||
+      role.step === 'hair tool' ||
+      role.step === 'oral care tool'
+    ) {
       watchouts.push({
         type: 'format_fit',
         label: 'Check the official dimensions, material, or care details for fit with your routine.',

@@ -1,0 +1,3324 @@
+{
+  "generated_at": "2026-05-28T07:05:19.615Z",
+  "source": "pivota_insights_official_pdp_manual_review_v1",
+  "mode": "dry_run",
+  "filters": {
+    "brand": "Terra & Co.",
+    "product_ids": [],
+    "limit": null,
+    "include_strong": false,
+    "include_url_key": false,
+    "apply_chunk_size": null
+  },
+  "summary": {
+    "scanned": 24,
+    "changed_products": 24,
+    "blocked_products": 0,
+    "skipped_products": 0,
+    "write_actions": {
+      "update": 14,
+      "insert": 26
+    },
+    "skip_reasons": {},
+    "evidence_profiles": {
+      "official_pdp_reviewed_limited": 24
+    }
+  },
+  "plans": [
+    {
+      "external_product_id": "ext_dec5426aec93a7c944147949",
+      "pivota_signature_id": "sig_2b113d57c5b162ea80fd8224",
+      "title": "Ayurvedic Oral Care Set | Full-Size Fluoride-Free Hydroxyapatite Toothpaste & Oil Pulling",
+      "brand": "Terra & Co.",
+      "canonical_url": "https://www.terraandco.com/products/terra-co-activated-charcoal-toiletry-set-online-exclusive",
+      "changed": true,
+      "blocked": false,
+      "skip_reason": null,
+      "candidate_hash": "d21cb2759f16080a617116eb835838bab55948b4d3b6dcf0cbf4e521793395a3",
+      "evidence_profile": "official_pdp_reviewed_limited",
+      "source_coverage": {
+        "source": "official_pdp",
+        "canonical_url": "https://www.terraandco.com/products/terra-co-activated-charcoal-toiletry-set-online-exclusive",
+        "fields": {
+          "description": true,
+          "ingredients": 0,
+          "active_ingredients": 0,
+          "how_to": 0,
+          "details": 0,
+          "variants": 1
+        }
+      },
+      "preview": {
+        "headline": "Oral care treatment",
+        "what_it_is": "Ayurvedic Oral Care Set | Full-Size Fluoride-Free Hydroxyapatite Toothpaste & Oil Pulling is an oral care set from Terra & Co., with source-backed cues around enamel-care context, fluoride-free positioning and oil-pulling format.",
+        "why_it_stands_out": [
+          {
+            "headline": "Oral-care format cues are clear",
+            "body": "Reviewed oral-care cues such as hydroxyapatite, fluoride-free positioning, oil pulling format identify the format and source-backed context without turning regulated language into recommendations.",
+            "evidence_strength": "official_pdp_reviewed"
+          }
+        ],
+        "best_for": [
+          {
+            "tag": "enamel_support_context",
+            "label": "enamel support context",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "fluoride_free_oral_care",
+            "label": "fluoride-free oral care",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "charcoal_oral_care",
+            "label": "charcoal oral care",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "oil_pulling_routine",
+            "label": "oil pulling routine",
+            "confidence": "moderate"
+          }
+        ],
+        "shopping_highlight": "hydroxyapatite"
+      },
+      "writes": [
+        {
+          "kb_key": "product:ext_dec5426aec93a7c944147949",
+          "action": "update",
+          "reason": "explicit_owner_delegated_assistant_replacement_review",
+          "old_hash": "436edb3351ae1166ca7c27eab8e7a4115837ca96a3f589bb9a9646542272958e",
+          "candidate_hash": "555b8afd6377fa734542d4a9b91a2f3ee2211feda31463e35509806baeaae573",
+          "existing_weak": true,
+          "source": "pivota_insights_official_pdp_manual_review_v1",
+          "after_inventory": {
+            "product_id": "ext_dec5426aec93a7c944147949",
+            "kb_key": "product:ext_dec5426aec93a7c944147949",
+            "source": "pivota_insights_official_pdp_manual_review_v1",
+            "updated_at": "",
+            "last_success_at": "",
+            "title": "Ayurvedic Oral Care Set | Full-Size Fluoride-Free Hydroxyapatite Toothpaste & Oil Pulling",
+            "canonical_url": "",
+            "bundle_hash": "d21cb2759f16080a617116eb835838bab55948b4d3b6dcf0cbf4e521793395a3",
+            "lane": "keep",
+            "reason": "protected_good_content",
+            "priority": 0,
+            "protected": true,
+            "displayable": true,
+            "high_quality_ready": true,
+            "human_reviewed": true,
+            "issues": [],
+            "blocking_issues": [],
+            "quality_state": "reviewed",
+            "evidence_profile": "official_pdp_reviewed_limited",
+            "evidence_rank": 1,
+            "review_tier": "assistant_reviewed",
+            "agent_readable": true,
+            "public_ready": true
+          },
+          "source_meta": {
+            "evidence_profile": "official_pdp_reviewed_limited",
+            "quality_state": "reviewed",
+            "source_origin": "official_pdp_fields",
+            "source_url": "https://www.terraandco.com/products/terra-co-activated-charcoal-toiletry-set-online-exclusive",
+            "quality_improvement": {
+              "previous_bundle_hash": "8c3885146ec5927986a064e20583c00fc53e0192b47d4e6f29a0882a809805a4",
+              "candidate_bundle_hash": "d21cb2759f16080a617116eb835838bab55948b4d3b6dcf0cbf4e521793395a3",
+              "replacement_decision": "explicit_owner_delegated_assistant_replacement_review",
+              "existing_quality_lane": "suppress_public",
+              "candidate_quality_lane": "keep",
+              "existing_evidence_profile": "seller_only",
+              "candidate_evidence_profile": "official_pdp_reviewed_limited"
+            }
+          }
+        },
+        {
+          "kb_key": "product:sig_2b113d57c5b162ea80fd8224",
+          "action": "insert",
+          "reason": "new_product_intel_bundle",
+          "old_hash": null,
+          "candidate_hash": "555b8afd6377fa734542d4a9b91a2f3ee2211feda31463e35509806baeaae573",
+          "existing_weak": true,
+          "source": "pivota_insights_official_pdp_manual_review_v1",
+          "after_inventory": {
+            "product_id": "ext_dec5426aec93a7c944147949",
+            "kb_key": "product:sig_2b113d57c5b162ea80fd8224",
+            "source": "pivota_insights_official_pdp_manual_review_v1",
+            "updated_at": "",
+            "last_success_at": "",
+            "title": "Ayurvedic Oral Care Set | Full-Size Fluoride-Free Hydroxyapatite Toothpaste & Oil Pulling",
+            "canonical_url": "",
+            "bundle_hash": "d21cb2759f16080a617116eb835838bab55948b4d3b6dcf0cbf4e521793395a3",
+            "lane": "keep",
+            "reason": "protected_good_content",
+            "priority": 0,
+            "protected": true,
+            "displayable": true,
+            "high_quality_ready": true,
+            "human_reviewed": true,
+            "issues": [],
+            "blocking_issues": [],
+            "quality_state": "reviewed",
+            "evidence_profile": "official_pdp_reviewed_limited",
+            "evidence_rank": 1,
+            "review_tier": "assistant_reviewed",
+            "agent_readable": true,
+            "public_ready": true
+          },
+          "source_meta": {
+            "evidence_profile": "official_pdp_reviewed_limited",
+            "quality_state": "reviewed",
+            "source_origin": "official_pdp_fields",
+            "source_url": "https://www.terraandco.com/products/terra-co-activated-charcoal-toiletry-set-online-exclusive",
+            "quality_improvement": {
+              "previous_bundle_hash": null,
+              "candidate_bundle_hash": "d21cb2759f16080a617116eb835838bab55948b4d3b6dcf0cbf4e521793395a3",
+              "replacement_decision": "new_product_intel_bundle",
+              "existing_quality_lane": null,
+              "candidate_quality_lane": "keep",
+              "existing_evidence_profile": null,
+              "candidate_evidence_profile": "official_pdp_reviewed_limited"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "external_product_id": "ext_135f4a59d907ba0b1d28b6c2",
+      "pivota_signature_id": "sig_a5f3bd2a76809717ae856872",
+      "title": "Brilliant Black® Charcoal Whitening Toothpaste with Micro-Hydroxyapatite (Fluoride-Free, Enamel Strength & Sensitive Teeth Relief)",
+      "brand": "Terra & Co.",
+      "canonical_url": "https://www.terraandco.com/products/new-improved-brilliant-black-toothpaste-with-hydroxyapatite-charcoal",
+      "changed": true,
+      "blocked": false,
+      "skip_reason": null,
+      "candidate_hash": "953dee11ec936f2b4484fc58d4c8a6d5e78ab1031684ef25b19edff9fbaf811a",
+      "evidence_profile": "official_pdp_reviewed_limited",
+      "source_coverage": {
+        "source": "official_pdp",
+        "canonical_url": "https://www.terraandco.com/products/new-improved-brilliant-black-toothpaste-with-hydroxyapatite-charcoal",
+        "fields": {
+          "description": true,
+          "ingredients": 0,
+          "active_ingredients": 0,
+          "how_to": 0,
+          "details": 0,
+          "variants": 1
+        }
+      },
+      "preview": {
+        "headline": "Oral care treatment",
+        "what_it_is": "Brilliant Black® Charcoal Whitening Toothpaste with Micro-Hydroxyapatite is a toothpaste from Terra & Co., with source-backed cues around enamel-care context, charcoal and fluoride-free positioning.",
+        "why_it_stands_out": [
+          {
+            "headline": "Oral-care format cues are clear",
+            "body": "Reviewed oral-care cues such as hydroxyapatite, activated charcoal, fluoride-free positioning identify the format and source-backed context without turning regulated language into recommendations.",
+            "evidence_strength": "official_pdp_reviewed"
+          }
+        ],
+        "best_for": [
+          {
+            "tag": "enamel_support_context",
+            "label": "enamel support context",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "fluoride_free_oral_care",
+            "label": "fluoride-free oral care",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "charcoal_oral_care",
+            "label": "charcoal oral care",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "oil_pulling_routine",
+            "label": "oil pulling routine",
+            "confidence": "moderate"
+          }
+        ],
+        "shopping_highlight": "hydroxyapatite, activated charcoal"
+      },
+      "writes": [
+        {
+          "kb_key": "product:ext_135f4a59d907ba0b1d28b6c2",
+          "action": "update",
+          "reason": "explicit_owner_delegated_assistant_replacement_review",
+          "old_hash": "ecb55ce389468344b2728c67d345333ef5c220c40d2a2114c9cf7c93e1cb26f7",
+          "candidate_hash": "cdc8168cc5d78105b8f73656a680cf08f4d4e4d8c64aea3db58682709f053365",
+          "existing_weak": true,
+          "source": "pivota_insights_official_pdp_manual_review_v1",
+          "after_inventory": {
+            "product_id": "ext_135f4a59d907ba0b1d28b6c2",
+            "kb_key": "product:ext_135f4a59d907ba0b1d28b6c2",
+            "source": "pivota_insights_official_pdp_manual_review_v1",
+            "updated_at": "",
+            "last_success_at": "",
+            "title": "Brilliant Black® Charcoal Whitening Toothpaste with Micro-Hydroxyapatite (Fluoride-Free, Enamel Strength & Sensitive Teeth Relief)",
+            "canonical_url": "",
+            "bundle_hash": "953dee11ec936f2b4484fc58d4c8a6d5e78ab1031684ef25b19edff9fbaf811a",
+            "lane": "keep",
+            "reason": "protected_good_content",
+            "priority": 0,
+            "protected": true,
+            "displayable": true,
+            "high_quality_ready": true,
+            "human_reviewed": true,
+            "issues": [],
+            "blocking_issues": [],
+            "quality_state": "reviewed",
+            "evidence_profile": "official_pdp_reviewed_limited",
+            "evidence_rank": 1,
+            "review_tier": "assistant_reviewed",
+            "agent_readable": true,
+            "public_ready": true
+          },
+          "source_meta": {
+            "evidence_profile": "official_pdp_reviewed_limited",
+            "quality_state": "reviewed",
+            "source_origin": "official_pdp_fields",
+            "source_url": "https://www.terraandco.com/products/new-improved-brilliant-black-toothpaste-with-hydroxyapatite-charcoal",
+            "quality_improvement": {
+              "previous_bundle_hash": "c8a8123f32605ff435da5382fd91238dc431ddcb95b881ba56e5acd5dde4b385",
+              "candidate_bundle_hash": "953dee11ec936f2b4484fc58d4c8a6d5e78ab1031684ef25b19edff9fbaf811a",
+              "replacement_decision": "explicit_owner_delegated_assistant_replacement_review",
+              "existing_quality_lane": "suppress_public",
+              "candidate_quality_lane": "keep",
+              "existing_evidence_profile": "seller_only",
+              "candidate_evidence_profile": "official_pdp_reviewed_limited"
+            }
+          }
+        },
+        {
+          "kb_key": "product:sig_a5f3bd2a76809717ae856872",
+          "action": "insert",
+          "reason": "new_product_intel_bundle",
+          "old_hash": null,
+          "candidate_hash": "cdc8168cc5d78105b8f73656a680cf08f4d4e4d8c64aea3db58682709f053365",
+          "existing_weak": true,
+          "source": "pivota_insights_official_pdp_manual_review_v1",
+          "after_inventory": {
+            "product_id": "ext_135f4a59d907ba0b1d28b6c2",
+            "kb_key": "product:sig_a5f3bd2a76809717ae856872",
+            "source": "pivota_insights_official_pdp_manual_review_v1",
+            "updated_at": "",
+            "last_success_at": "",
+            "title": "Brilliant Black® Charcoal Whitening Toothpaste with Micro-Hydroxyapatite (Fluoride-Free, Enamel Strength & Sensitive Teeth Relief)",
+            "canonical_url": "",
+            "bundle_hash": "953dee11ec936f2b4484fc58d4c8a6d5e78ab1031684ef25b19edff9fbaf811a",
+            "lane": "keep",
+            "reason": "protected_good_content",
+            "priority": 0,
+            "protected": true,
+            "displayable": true,
+            "high_quality_ready": true,
+            "human_reviewed": true,
+            "issues": [],
+            "blocking_issues": [],
+            "quality_state": "reviewed",
+            "evidence_profile": "official_pdp_reviewed_limited",
+            "evidence_rank": 1,
+            "review_tier": "assistant_reviewed",
+            "agent_readable": true,
+            "public_ready": true
+          },
+          "source_meta": {
+            "evidence_profile": "official_pdp_reviewed_limited",
+            "quality_state": "reviewed",
+            "source_origin": "official_pdp_fields",
+            "source_url": "https://www.terraandco.com/products/new-improved-brilliant-black-toothpaste-with-hydroxyapatite-charcoal",
+            "quality_improvement": {
+              "previous_bundle_hash": null,
+              "candidate_bundle_hash": "953dee11ec936f2b4484fc58d4c8a6d5e78ab1031684ef25b19edff9fbaf811a",
+              "replacement_decision": "new_product_intel_bundle",
+              "existing_quality_lane": null,
+              "candidate_quality_lane": "keep",
+              "existing_evidence_profile": null,
+              "candidate_evidence_profile": "official_pdp_reviewed_limited"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "external_product_id": "ext_f132ec1dfeb7c58da4d96a60",
+      "pivota_signature_id": "sig_34aacce9dc6da92059ab33aabfbbc7e7",
+      "title": "Brilliant Black® Floss – Whitens Between Teeth Naturally",
+      "brand": "Terra & Co.",
+      "canonical_url": "https://www.terraandco.com/products/bamboo-charcoal-dental-floss",
+      "changed": true,
+      "blocked": false,
+      "skip_reason": null,
+      "candidate_hash": "1b1490ba200b8886fbb25d037a37844a3712d4f2beead7bcc8bce209559aef29",
+      "evidence_profile": "official_pdp_reviewed_limited",
+      "source_coverage": {
+        "source": "official_pdp",
+        "canonical_url": "https://www.terraandco.com/products/bamboo-charcoal-dental-floss",
+        "fields": {
+          "description": true,
+          "ingredients": 0,
+          "active_ingredients": 0,
+          "how_to": 0,
+          "details": 0,
+          "variants": 3
+        }
+      },
+      "preview": {
+        "headline": "Oral care tool",
+        "what_it_is": "Brilliant Black® Floss – Whitens Between Teeth Naturally is a dental floss from Terra & Co.",
+        "why_it_stands_out": [
+          {
+            "headline": "Oral-care format cues are clear",
+            "body": "Reviewed oral-care cues such as dental floss format identify the format and source-backed context without turning regulated language into recommendations.",
+            "evidence_strength": "official_pdp_reviewed"
+          }
+        ],
+        "best_for": [
+          {
+            "tag": "enamel_support_context",
+            "label": "enamel support context",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "fluoride_free_oral_care",
+            "label": "fluoride-free oral care",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "charcoal_oral_care",
+            "label": "charcoal oral care",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "oil_pulling_routine",
+            "label": "oil pulling routine",
+            "confidence": "moderate"
+          }
+        ],
+        "shopping_highlight": "dental floss format"
+      },
+      "writes": [
+        {
+          "kb_key": "product:ext_f132ec1dfeb7c58da4d96a60",
+          "action": "insert",
+          "reason": "new_product_intel_bundle",
+          "old_hash": null,
+          "candidate_hash": "73d0bb965f4e2ebc7d4ae651d69124bad42ff5cc82487e16fa05480eff4b94eb",
+          "existing_weak": true,
+          "source": "pivota_insights_official_pdp_manual_review_v1",
+          "after_inventory": {
+            "product_id": "ext_f132ec1dfeb7c58da4d96a60",
+            "kb_key": "product:ext_f132ec1dfeb7c58da4d96a60",
+            "source": "pivota_insights_official_pdp_manual_review_v1",
+            "updated_at": "",
+            "last_success_at": "",
+            "title": "Brilliant Black® Floss – Whitens Between Teeth Naturally",
+            "canonical_url": "",
+            "bundle_hash": "1b1490ba200b8886fbb25d037a37844a3712d4f2beead7bcc8bce209559aef29",
+            "lane": "keep",
+            "reason": "protected_good_content",
+            "priority": 0,
+            "protected": true,
+            "displayable": true,
+            "high_quality_ready": true,
+            "human_reviewed": true,
+            "issues": [],
+            "blocking_issues": [],
+            "quality_state": "reviewed",
+            "evidence_profile": "official_pdp_reviewed_limited",
+            "evidence_rank": 1,
+            "review_tier": "assistant_reviewed",
+            "agent_readable": true,
+            "public_ready": true
+          },
+          "source_meta": {
+            "evidence_profile": "official_pdp_reviewed_limited",
+            "quality_state": "reviewed",
+            "source_origin": "official_pdp_fields",
+            "source_url": "https://www.terraandco.com/products/bamboo-charcoal-dental-floss",
+            "quality_improvement": {
+              "previous_bundle_hash": null,
+              "candidate_bundle_hash": "1b1490ba200b8886fbb25d037a37844a3712d4f2beead7bcc8bce209559aef29",
+              "replacement_decision": "new_product_intel_bundle",
+              "existing_quality_lane": null,
+              "candidate_quality_lane": "keep",
+              "existing_evidence_profile": null,
+              "candidate_evidence_profile": "official_pdp_reviewed_limited"
+            }
+          }
+        },
+        {
+          "kb_key": "product:sig_34aacce9dc6da92059ab33aabfbbc7e7",
+          "action": "insert",
+          "reason": "new_product_intel_bundle",
+          "old_hash": null,
+          "candidate_hash": "73d0bb965f4e2ebc7d4ae651d69124bad42ff5cc82487e16fa05480eff4b94eb",
+          "existing_weak": true,
+          "source": "pivota_insights_official_pdp_manual_review_v1",
+          "after_inventory": {
+            "product_id": "ext_f132ec1dfeb7c58da4d96a60",
+            "kb_key": "product:sig_34aacce9dc6da92059ab33aabfbbc7e7",
+            "source": "pivota_insights_official_pdp_manual_review_v1",
+            "updated_at": "",
+            "last_success_at": "",
+            "title": "Brilliant Black® Floss – Whitens Between Teeth Naturally",
+            "canonical_url": "",
+            "bundle_hash": "1b1490ba200b8886fbb25d037a37844a3712d4f2beead7bcc8bce209559aef29",
+            "lane": "keep",
+            "reason": "protected_good_content",
+            "priority": 0,
+            "protected": true,
+            "displayable": true,
+            "high_quality_ready": true,
+            "human_reviewed": true,
+            "issues": [],
+            "blocking_issues": [],
+            "quality_state": "reviewed",
+            "evidence_profile": "official_pdp_reviewed_limited",
+            "evidence_rank": 1,
+            "review_tier": "assistant_reviewed",
+            "agent_readable": true,
+            "public_ready": true
+          },
+          "source_meta": {
+            "evidence_profile": "official_pdp_reviewed_limited",
+            "quality_state": "reviewed",
+            "source_origin": "official_pdp_fields",
+            "source_url": "https://www.terraandco.com/products/bamboo-charcoal-dental-floss",
+            "quality_improvement": {
+              "previous_bundle_hash": null,
+              "candidate_bundle_hash": "1b1490ba200b8886fbb25d037a37844a3712d4f2beead7bcc8bce209559aef29",
+              "replacement_decision": "new_product_intel_bundle",
+              "existing_quality_lane": null,
+              "candidate_quality_lane": "keep",
+              "existing_evidence_profile": null,
+              "candidate_evidence_profile": "official_pdp_reviewed_limited"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "external_product_id": "ext_b5fa772e96baf3fe79f101ef",
+      "pivota_signature_id": "sig_fc26c9a7cf355c1b63dbe1de1bd0b244",
+      "title": "Brilliant Black® Oil Pulling – Ayurvedic Mouthwash for Teeth Whitening, Detox & Gum Health",
+      "brand": "Terra & Co.",
+      "canonical_url": "https://www.terraandco.com/products/brilliant-black-oil-pulling",
+      "changed": true,
+      "blocked": false,
+      "skip_reason": null,
+      "candidate_hash": "ca06ba67ce457367250c2156c4d3235091607432393a6670b1bfa09b88c4fb93",
+      "evidence_profile": "official_pdp_reviewed_limited",
+      "source_coverage": {
+        "source": "official_pdp",
+        "canonical_url": "https://www.terraandco.com/products/brilliant-black-oil-pulling",
+        "fields": {
+          "description": true,
+          "ingredients": 0,
+          "active_ingredients": 0,
+          "how_to": 0,
+          "details": 0,
+          "variants": 3
+        }
+      },
+      "preview": {
+        "headline": "Oral care treatment",
+        "what_it_is": "Brilliant Black® Oil Pulling – Ayurvedic Mouthwash for Teeth Whitening, Detox & Gum Health is an oral rinse from Terra & Co., with source-backed cues around oil-pulling format.",
+        "why_it_stands_out": [
+          {
+            "headline": "Oral-care format cues are clear",
+            "body": "Reviewed oral-care cues such as oil pulling format identify the format and source-backed context without turning regulated language into recommendations.",
+            "evidence_strength": "official_pdp_reviewed"
+          }
+        ],
+        "best_for": [
+          {
+            "tag": "enamel_support_context",
+            "label": "enamel support context",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "fluoride_free_oral_care",
+            "label": "fluoride-free oral care",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "charcoal_oral_care",
+            "label": "charcoal oral care",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "oil_pulling_routine",
+            "label": "oil pulling routine",
+            "confidence": "moderate"
+          }
+        ],
+        "shopping_highlight": "oil pulling format"
+      },
+      "writes": [
+        {
+          "kb_key": "product:ext_b5fa772e96baf3fe79f101ef",
+          "action": "insert",
+          "reason": "new_product_intel_bundle",
+          "old_hash": null,
+          "candidate_hash": "4ec77cc5b2728ea1bc09e4fdc4d1205c53cdbf0b9e8f4d1d8768a114c4cc4d4b",
+          "existing_weak": true,
+          "source": "pivota_insights_official_pdp_manual_review_v1",
+          "after_inventory": {
+            "product_id": "ext_b5fa772e96baf3fe79f101ef",
+            "kb_key": "product:ext_b5fa772e96baf3fe79f101ef",
+            "source": "pivota_insights_official_pdp_manual_review_v1",
+            "updated_at": "",
+            "last_success_at": "",
+            "title": "Brilliant Black® Oil Pulling – Ayurvedic Mouthwash for Teeth Whitening, Detox & Gum Health",
+            "canonical_url": "",
+            "bundle_hash": "ca06ba67ce457367250c2156c4d3235091607432393a6670b1bfa09b88c4fb93",
+            "lane": "keep",
+            "reason": "protected_good_content",
+            "priority": 0,
+            "protected": true,
+            "displayable": true,
+            "high_quality_ready": true,
+            "human_reviewed": true,
+            "issues": [],
+            "blocking_issues": [],
+            "quality_state": "reviewed",
+            "evidence_profile": "official_pdp_reviewed_limited",
+            "evidence_rank": 1,
+            "review_tier": "assistant_reviewed",
+            "agent_readable": true,
+            "public_ready": true
+          },
+          "source_meta": {
+            "evidence_profile": "official_pdp_reviewed_limited",
+            "quality_state": "reviewed",
+            "source_origin": "official_pdp_fields",
+            "source_url": "https://www.terraandco.com/products/brilliant-black-oil-pulling",
+            "quality_improvement": {
+              "previous_bundle_hash": null,
+              "candidate_bundle_hash": "ca06ba67ce457367250c2156c4d3235091607432393a6670b1bfa09b88c4fb93",
+              "replacement_decision": "new_product_intel_bundle",
+              "existing_quality_lane": null,
+              "candidate_quality_lane": "keep",
+              "existing_evidence_profile": null,
+              "candidate_evidence_profile": "official_pdp_reviewed_limited"
+            }
+          }
+        },
+        {
+          "kb_key": "product:sig_fc26c9a7cf355c1b63dbe1de1bd0b244",
+          "action": "insert",
+          "reason": "new_product_intel_bundle",
+          "old_hash": null,
+          "candidate_hash": "4ec77cc5b2728ea1bc09e4fdc4d1205c53cdbf0b9e8f4d1d8768a114c4cc4d4b",
+          "existing_weak": true,
+          "source": "pivota_insights_official_pdp_manual_review_v1",
+          "after_inventory": {
+            "product_id": "ext_b5fa772e96baf3fe79f101ef",
+            "kb_key": "product:sig_fc26c9a7cf355c1b63dbe1de1bd0b244",
+            "source": "pivota_insights_official_pdp_manual_review_v1",
+            "updated_at": "",
+            "last_success_at": "",
+            "title": "Brilliant Black® Oil Pulling – Ayurvedic Mouthwash for Teeth Whitening, Detox & Gum Health",
+            "canonical_url": "",
+            "bundle_hash": "ca06ba67ce457367250c2156c4d3235091607432393a6670b1bfa09b88c4fb93",
+            "lane": "keep",
+            "reason": "protected_good_content",
+            "priority": 0,
+            "protected": true,
+            "displayable": true,
+            "high_quality_ready": true,
+            "human_reviewed": true,
+            "issues": [],
+            "blocking_issues": [],
+            "quality_state": "reviewed",
+            "evidence_profile": "official_pdp_reviewed_limited",
+            "evidence_rank": 1,
+            "review_tier": "assistant_reviewed",
+            "agent_readable": true,
+            "public_ready": true
+          },
+          "source_meta": {
+            "evidence_profile": "official_pdp_reviewed_limited",
+            "quality_state": "reviewed",
+            "source_origin": "official_pdp_fields",
+            "source_url": "https://www.terraandco.com/products/brilliant-black-oil-pulling",
+            "quality_improvement": {
+              "previous_bundle_hash": null,
+              "candidate_bundle_hash": "ca06ba67ce457367250c2156c4d3235091607432393a6670b1bfa09b88c4fb93",
+              "replacement_decision": "new_product_intel_bundle",
+              "existing_quality_lane": null,
+              "candidate_quality_lane": "keep",
+              "existing_evidence_profile": null,
+              "candidate_evidence_profile": "official_pdp_reviewed_limited"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "external_product_id": "ext_e70d88b05e2b74dd162d44cb",
+      "pivota_signature_id": "sig_4a4aecff7bfec264f4c319329b92ade3",
+      "title": "Brilliant Black® Toothpaste | Fluoride-Free Activated Charcoal Whitening – Terra & Co.",
+      "brand": "Terra & Co.",
+      "canonical_url": "https://www.terraandco.com/products/new-brilliant-black-toothpaste",
+      "changed": true,
+      "blocked": false,
+      "skip_reason": null,
+      "candidate_hash": "9384eba58a15c4f277c2d4d8dea13b399b58a150b339923aa7caf44c5538e568",
+      "evidence_profile": "official_pdp_reviewed_limited",
+      "source_coverage": {
+        "source": "official_pdp",
+        "canonical_url": "https://www.terraandco.com/products/new-brilliant-black-toothpaste",
+        "fields": {
+          "description": true,
+          "ingredients": 0,
+          "active_ingredients": 0,
+          "how_to": 0,
+          "details": 0,
+          "variants": 3
+        }
+      },
+      "preview": {
+        "headline": "Oral care treatment",
+        "what_it_is": "Brilliant Black® Toothpaste | Fluoride-Free Activated Charcoal Whitening – Terra & Co. is a toothpaste from Terra & Co., with source-backed cues around charcoal and fluoride-free positioning.",
+        "why_it_stands_out": [
+          {
+            "headline": "Oral-care format cues are clear",
+            "body": "Reviewed oral-care cues such as activated charcoal, fluoride-free positioning identify the format and source-backed context without turning regulated language into recommendations.",
+            "evidence_strength": "official_pdp_reviewed"
+          }
+        ],
+        "best_for": [
+          {
+            "tag": "enamel_support_context",
+            "label": "enamel support context",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "fluoride_free_oral_care",
+            "label": "fluoride-free oral care",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "charcoal_oral_care",
+            "label": "charcoal oral care",
+            "confidence": "moderate"
+          }
+        ],
+        "shopping_highlight": "activated charcoal"
+      },
+      "writes": [
+        {
+          "kb_key": "product:ext_e70d88b05e2b74dd162d44cb",
+          "action": "insert",
+          "reason": "new_product_intel_bundle",
+          "old_hash": null,
+          "candidate_hash": "9a8e9d6ef7bbad9f0933bc5ceb10c00c74ae07f36e40012251fc9d35e8de347e",
+          "existing_weak": true,
+          "source": "pivota_insights_official_pdp_manual_review_v1",
+          "after_inventory": {
+            "product_id": "ext_e70d88b05e2b74dd162d44cb",
+            "kb_key": "product:ext_e70d88b05e2b74dd162d44cb",
+            "source": "pivota_insights_official_pdp_manual_review_v1",
+            "updated_at": "",
+            "last_success_at": "",
+            "title": "Brilliant Black® Toothpaste | Fluoride-Free Activated Charcoal Whitening – Terra & Co.",
+            "canonical_url": "",
+            "bundle_hash": "9384eba58a15c4f277c2d4d8dea13b399b58a150b339923aa7caf44c5538e568",
+            "lane": "keep",
+            "reason": "protected_good_content",
+            "priority": 0,
+            "protected": true,
+            "displayable": true,
+            "high_quality_ready": true,
+            "human_reviewed": true,
+            "issues": [],
+            "blocking_issues": [],
+            "quality_state": "reviewed",
+            "evidence_profile": "official_pdp_reviewed_limited",
+            "evidence_rank": 1,
+            "review_tier": "assistant_reviewed",
+            "agent_readable": true,
+            "public_ready": true
+          },
+          "source_meta": {
+            "evidence_profile": "official_pdp_reviewed_limited",
+            "quality_state": "reviewed",
+            "source_origin": "official_pdp_fields",
+            "source_url": "https://www.terraandco.com/products/new-brilliant-black-toothpaste",
+            "quality_improvement": {
+              "previous_bundle_hash": null,
+              "candidate_bundle_hash": "9384eba58a15c4f277c2d4d8dea13b399b58a150b339923aa7caf44c5538e568",
+              "replacement_decision": "new_product_intel_bundle",
+              "existing_quality_lane": null,
+              "candidate_quality_lane": "keep",
+              "existing_evidence_profile": null,
+              "candidate_evidence_profile": "official_pdp_reviewed_limited"
+            }
+          }
+        },
+        {
+          "kb_key": "product:sig_4a4aecff7bfec264f4c319329b92ade3",
+          "action": "insert",
+          "reason": "new_product_intel_bundle",
+          "old_hash": null,
+          "candidate_hash": "9a8e9d6ef7bbad9f0933bc5ceb10c00c74ae07f36e40012251fc9d35e8de347e",
+          "existing_weak": true,
+          "source": "pivota_insights_official_pdp_manual_review_v1",
+          "after_inventory": {
+            "product_id": "ext_e70d88b05e2b74dd162d44cb",
+            "kb_key": "product:sig_4a4aecff7bfec264f4c319329b92ade3",
+            "source": "pivota_insights_official_pdp_manual_review_v1",
+            "updated_at": "",
+            "last_success_at": "",
+            "title": "Brilliant Black® Toothpaste | Fluoride-Free Activated Charcoal Whitening – Terra & Co.",
+            "canonical_url": "",
+            "bundle_hash": "9384eba58a15c4f277c2d4d8dea13b399b58a150b339923aa7caf44c5538e568",
+            "lane": "keep",
+            "reason": "protected_good_content",
+            "priority": 0,
+            "protected": true,
+            "displayable": true,
+            "high_quality_ready": true,
+            "human_reviewed": true,
+            "issues": [],
+            "blocking_issues": [],
+            "quality_state": "reviewed",
+            "evidence_profile": "official_pdp_reviewed_limited",
+            "evidence_rank": 1,
+            "review_tier": "assistant_reviewed",
+            "agent_readable": true,
+            "public_ready": true
+          },
+          "source_meta": {
+            "evidence_profile": "official_pdp_reviewed_limited",
+            "quality_state": "reviewed",
+            "source_origin": "official_pdp_fields",
+            "source_url": "https://www.terraandco.com/products/new-brilliant-black-toothpaste",
+            "quality_improvement": {
+              "previous_bundle_hash": null,
+              "candidate_bundle_hash": "9384eba58a15c4f277c2d4d8dea13b399b58a150b339923aa7caf44c5538e568",
+              "replacement_decision": "new_product_intel_bundle",
+              "existing_quality_lane": null,
+              "candidate_quality_lane": "keep",
+              "existing_evidence_profile": null,
+              "candidate_evidence_profile": "official_pdp_reviewed_limited"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "external_product_id": "ext_dc17fe43b3531368d2a3694b",
+      "pivota_signature_id": "sig_66c008f963e495f98761c48a",
+      "title": "Brilliant Black Whitening Bundle | Charcoal + Micro-Hydroxyapatite",
+      "brand": "Terra & Co.",
+      "canonical_url": "https://www.terraandco.com/products/brilliant-black-whitening-bundle-charcoal-micro-hydroxyapatite",
+      "changed": true,
+      "blocked": false,
+      "skip_reason": null,
+      "candidate_hash": "cca9c9b7b7f767e33f17bd7c86b5ab0fbb0ec89ce29103413d04764a33659c25",
+      "evidence_profile": "official_pdp_reviewed_limited",
+      "source_coverage": {
+        "source": "official_pdp",
+        "canonical_url": "https://www.terraandco.com/products/brilliant-black-whitening-bundle-charcoal-micro-hydroxyapatite",
+        "fields": {
+          "description": true,
+          "ingredients": 0,
+          "active_ingredients": 0,
+          "how_to": 0,
+          "details": 0,
+          "variants": 1
+        }
+      },
+      "preview": {
+        "headline": "Oral care treatment",
+        "what_it_is": "Brilliant Black Whitening Bundle | Charcoal + Micro-Hydroxyapatite is an oral care product from Terra & Co., with source-backed cues around enamel-care context and charcoal.",
+        "why_it_stands_out": [
+          {
+            "headline": "Oral-care format cues are clear",
+            "body": "Reviewed oral-care cues such as hydroxyapatite, activated charcoal identify the format and source-backed context without turning regulated language into recommendations.",
+            "evidence_strength": "official_pdp_reviewed"
+          }
+        ],
+        "best_for": [
+          {
+            "tag": "enamel_support_context",
+            "label": "enamel support context",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "fluoride_free_oral_care",
+            "label": "fluoride-free oral care",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "charcoal_oral_care",
+            "label": "charcoal oral care",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "oil_pulling_routine",
+            "label": "oil pulling routine",
+            "confidence": "moderate"
+          }
+        ],
+        "shopping_highlight": "hydroxyapatite, activated charcoal"
+      },
+      "writes": [
+        {
+          "kb_key": "product:ext_dc17fe43b3531368d2a3694b",
+          "action": "update",
+          "reason": "explicit_owner_delegated_assistant_replacement_review",
+          "old_hash": "13c99583daaab244dc4d443bad9e68295988db5b7fb8fe39b4e3d6873837631d",
+          "candidate_hash": "7aafbcd2ed9676a6d528e01f2638b37876b417227131f8098b139923d7cf51c4",
+          "existing_weak": true,
+          "source": "pivota_insights_official_pdp_manual_review_v1",
+          "after_inventory": {
+            "product_id": "ext_dc17fe43b3531368d2a3694b",
+            "kb_key": "product:ext_dc17fe43b3531368d2a3694b",
+            "source": "pivota_insights_official_pdp_manual_review_v1",
+            "updated_at": "",
+            "last_success_at": "",
+            "title": "Brilliant Black Whitening Bundle | Charcoal + Micro-Hydroxyapatite",
+            "canonical_url": "",
+            "bundle_hash": "cca9c9b7b7f767e33f17bd7c86b5ab0fbb0ec89ce29103413d04764a33659c25",
+            "lane": "keep",
+            "reason": "protected_good_content",
+            "priority": 0,
+            "protected": true,
+            "displayable": true,
+            "high_quality_ready": true,
+            "human_reviewed": true,
+            "issues": [],
+            "blocking_issues": [],
+            "quality_state": "reviewed",
+            "evidence_profile": "official_pdp_reviewed_limited",
+            "evidence_rank": 1,
+            "review_tier": "assistant_reviewed",
+            "agent_readable": true,
+            "public_ready": true
+          },
+          "source_meta": {
+            "evidence_profile": "official_pdp_reviewed_limited",
+            "quality_state": "reviewed",
+            "source_origin": "official_pdp_fields",
+            "source_url": "https://www.terraandco.com/products/brilliant-black-whitening-bundle-charcoal-micro-hydroxyapatite",
+            "quality_improvement": {
+              "previous_bundle_hash": "c7727cf0bd2fe256629ae423052c1ce4d7c5d66bf329e95e7edfa5c998b24f5e",
+              "candidate_bundle_hash": "cca9c9b7b7f767e33f17bd7c86b5ab0fbb0ec89ce29103413d04764a33659c25",
+              "replacement_decision": "explicit_owner_delegated_assistant_replacement_review",
+              "existing_quality_lane": "suppress_public",
+              "candidate_quality_lane": "keep",
+              "existing_evidence_profile": "seller_only",
+              "candidate_evidence_profile": "official_pdp_reviewed_limited"
+            }
+          }
+        },
+        {
+          "kb_key": "product:sig_66c008f963e495f98761c48a",
+          "action": "insert",
+          "reason": "new_product_intel_bundle",
+          "old_hash": null,
+          "candidate_hash": "7aafbcd2ed9676a6d528e01f2638b37876b417227131f8098b139923d7cf51c4",
+          "existing_weak": true,
+          "source": "pivota_insights_official_pdp_manual_review_v1",
+          "after_inventory": {
+            "product_id": "ext_dc17fe43b3531368d2a3694b",
+            "kb_key": "product:sig_66c008f963e495f98761c48a",
+            "source": "pivota_insights_official_pdp_manual_review_v1",
+            "updated_at": "",
+            "last_success_at": "",
+            "title": "Brilliant Black Whitening Bundle | Charcoal + Micro-Hydroxyapatite",
+            "canonical_url": "",
+            "bundle_hash": "cca9c9b7b7f767e33f17bd7c86b5ab0fbb0ec89ce29103413d04764a33659c25",
+            "lane": "keep",
+            "reason": "protected_good_content",
+            "priority": 0,
+            "protected": true,
+            "displayable": true,
+            "high_quality_ready": true,
+            "human_reviewed": true,
+            "issues": [],
+            "blocking_issues": [],
+            "quality_state": "reviewed",
+            "evidence_profile": "official_pdp_reviewed_limited",
+            "evidence_rank": 1,
+            "review_tier": "assistant_reviewed",
+            "agent_readable": true,
+            "public_ready": true
+          },
+          "source_meta": {
+            "evidence_profile": "official_pdp_reviewed_limited",
+            "quality_state": "reviewed",
+            "source_origin": "official_pdp_fields",
+            "source_url": "https://www.terraandco.com/products/brilliant-black-whitening-bundle-charcoal-micro-hydroxyapatite",
+            "quality_improvement": {
+              "previous_bundle_hash": null,
+              "candidate_bundle_hash": "cca9c9b7b7f767e33f17bd7c86b5ab0fbb0ec89ce29103413d04764a33659c25",
+              "replacement_decision": "new_product_intel_bundle",
+              "existing_quality_lane": null,
+              "candidate_quality_lane": "keep",
+              "existing_evidence_profile": null,
+              "candidate_evidence_profile": "official_pdp_reviewed_limited"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "external_product_id": "ext_3a05cfda578e5724b0fb0a01",
+      "pivota_signature_id": "sig_bbd1f238aed87c8cb53d78dc",
+      "title": "Charcoal-Infused Bamboo Toothbrush – Naturally Whiten & Detoxify | Terra & Co.",
+      "brand": "Terra & Co.",
+      "canonical_url": "https://www.terraandco.com/products/brilliant-black-bamboo-toothbrush",
+      "changed": true,
+      "blocked": false,
+      "skip_reason": null,
+      "candidate_hash": "fa44f689ecc8218e112f83518d7ec2c235714edb388bf75f06f337bdff1c6bfb",
+      "evidence_profile": "official_pdp_reviewed_limited",
+      "source_coverage": {
+        "source": "official_pdp",
+        "canonical_url": "https://www.terraandco.com/products/brilliant-black-bamboo-toothbrush",
+        "fields": {
+          "description": true,
+          "ingredients": 0,
+          "active_ingredients": 0,
+          "how_to": 0,
+          "details": 0,
+          "variants": 1
+        }
+      },
+      "preview": {
+        "headline": "Oral care tool",
+        "what_it_is": "Charcoal-Infused Bamboo Toothbrush – Naturally Whiten & Detoxify | Terra & Co. is a toothbrush from Terra & Co., with source-backed cues around charcoal.",
+        "why_it_stands_out": [
+          {
+            "headline": "Oral-care format cues are clear",
+            "body": "Reviewed oral-care cues such as activated charcoal, soft-bristle brushing identify the format and source-backed context without turning regulated language into recommendations.",
+            "evidence_strength": "official_pdp_reviewed"
+          }
+        ],
+        "best_for": [
+          {
+            "tag": "charcoal_oral_care",
+            "label": "charcoal oral care",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "oil_pulling_routine",
+            "label": "oil pulling routine",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "oral_care_tools",
+            "label": "oral care tools",
+            "confidence": "moderate"
+          }
+        ],
+        "shopping_highlight": "activated charcoal"
+      },
+      "writes": [
+        {
+          "kb_key": "product:ext_3a05cfda578e5724b0fb0a01",
+          "action": "update",
+          "reason": "explicit_owner_delegated_assistant_replacement_review",
+          "old_hash": "71032c92bb1f4c5748c223436f18b22f51708a767d4a4e02860b0e0579c82a29",
+          "candidate_hash": "e56047ee6ea31bba18c4878fe015e7f6c61f28b0010cb5bacba652c98bf289d9",
+          "existing_weak": true,
+          "source": "pivota_insights_official_pdp_manual_review_v1",
+          "after_inventory": {
+            "product_id": "ext_3a05cfda578e5724b0fb0a01",
+            "kb_key": "product:ext_3a05cfda578e5724b0fb0a01",
+            "source": "pivota_insights_official_pdp_manual_review_v1",
+            "updated_at": "",
+            "last_success_at": "",
+            "title": "Charcoal-Infused Bamboo Toothbrush – Naturally Whiten & Detoxify | Terra & Co.",
+            "canonical_url": "",
+            "bundle_hash": "fa44f689ecc8218e112f83518d7ec2c235714edb388bf75f06f337bdff1c6bfb",
+            "lane": "keep",
+            "reason": "protected_good_content",
+            "priority": 0,
+            "protected": true,
+            "displayable": true,
+            "high_quality_ready": true,
+            "human_reviewed": true,
+            "issues": [],
+            "blocking_issues": [],
+            "quality_state": "reviewed",
+            "evidence_profile": "official_pdp_reviewed_limited",
+            "evidence_rank": 1,
+            "review_tier": "assistant_reviewed",
+            "agent_readable": true,
+            "public_ready": true
+          },
+          "source_meta": {
+            "evidence_profile": "official_pdp_reviewed_limited",
+            "quality_state": "reviewed",
+            "source_origin": "official_pdp_fields",
+            "source_url": "https://www.terraandco.com/products/brilliant-black-bamboo-toothbrush",
+            "quality_improvement": {
+              "previous_bundle_hash": "72c633788ce8226ab5e3f3663b822d63d7efd4da9539b4acfe81069af33a9c87",
+              "candidate_bundle_hash": "fa44f689ecc8218e112f83518d7ec2c235714edb388bf75f06f337bdff1c6bfb",
+              "replacement_decision": "explicit_owner_delegated_assistant_replacement_review",
+              "existing_quality_lane": "suppress_public",
+              "candidate_quality_lane": "keep",
+              "existing_evidence_profile": "seller_only",
+              "candidate_evidence_profile": "official_pdp_reviewed_limited"
+            }
+          }
+        },
+        {
+          "kb_key": "product:sig_bbd1f238aed87c8cb53d78dc",
+          "action": "insert",
+          "reason": "new_product_intel_bundle",
+          "old_hash": null,
+          "candidate_hash": "e56047ee6ea31bba18c4878fe015e7f6c61f28b0010cb5bacba652c98bf289d9",
+          "existing_weak": true,
+          "source": "pivota_insights_official_pdp_manual_review_v1",
+          "after_inventory": {
+            "product_id": "ext_3a05cfda578e5724b0fb0a01",
+            "kb_key": "product:sig_bbd1f238aed87c8cb53d78dc",
+            "source": "pivota_insights_official_pdp_manual_review_v1",
+            "updated_at": "",
+            "last_success_at": "",
+            "title": "Charcoal-Infused Bamboo Toothbrush – Naturally Whiten & Detoxify | Terra & Co.",
+            "canonical_url": "",
+            "bundle_hash": "fa44f689ecc8218e112f83518d7ec2c235714edb388bf75f06f337bdff1c6bfb",
+            "lane": "keep",
+            "reason": "protected_good_content",
+            "priority": 0,
+            "protected": true,
+            "displayable": true,
+            "high_quality_ready": true,
+            "human_reviewed": true,
+            "issues": [],
+            "blocking_issues": [],
+            "quality_state": "reviewed",
+            "evidence_profile": "official_pdp_reviewed_limited",
+            "evidence_rank": 1,
+            "review_tier": "assistant_reviewed",
+            "agent_readable": true,
+            "public_ready": true
+          },
+          "source_meta": {
+            "evidence_profile": "official_pdp_reviewed_limited",
+            "quality_state": "reviewed",
+            "source_origin": "official_pdp_fields",
+            "source_url": "https://www.terraandco.com/products/brilliant-black-bamboo-toothbrush",
+            "quality_improvement": {
+              "previous_bundle_hash": null,
+              "candidate_bundle_hash": "fa44f689ecc8218e112f83518d7ec2c235714edb388bf75f06f337bdff1c6bfb",
+              "replacement_decision": "new_product_intel_bundle",
+              "existing_quality_lane": null,
+              "candidate_quality_lane": "keep",
+              "existing_evidence_profile": null,
+              "candidate_evidence_profile": "official_pdp_reviewed_limited"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "external_product_id": "ext_85abf9f60fb74fe9cd9d4b09",
+      "pivota_signature_id": null,
+      "title": "Charcoal Oil Pulling + Hydroxyapatite Toothpaste Bundle | Terra & Co.",
+      "brand": "Terra & Co.",
+      "canonical_url": "https://www.terraandco.com/products/charcoal-oil-pulling-natural-charcoal-toothpaste-with-hydroxyapatite",
+      "changed": true,
+      "blocked": false,
+      "skip_reason": null,
+      "candidate_hash": "0a8ad40d543a4146735b4eb6fb53c1f7fb56da9b3141940af5c982a0e525d9a1",
+      "evidence_profile": "official_pdp_reviewed_limited",
+      "source_coverage": {
+        "source": "official_pdp",
+        "canonical_url": "https://www.terraandco.com/products/charcoal-oil-pulling-natural-charcoal-toothpaste-with-hydroxyapatite",
+        "fields": {
+          "description": true,
+          "ingredients": 0,
+          "active_ingredients": 0,
+          "how_to": 0,
+          "details": 0,
+          "variants": 1
+        }
+      },
+      "preview": {
+        "headline": "Oral care treatment",
+        "what_it_is": "Charcoal Oil Pulling + Hydroxyapatite Toothpaste Bundle | Terra & Co. is an oral care set from Terra & Co., with source-backed cues around enamel-care context, charcoal and oil-pulling format.",
+        "why_it_stands_out": [
+          {
+            "headline": "Oral-care format cues are clear",
+            "body": "Reviewed oral-care cues such as hydroxyapatite, activated charcoal, oil pulling format identify the format and source-backed context without turning regulated language into recommendations.",
+            "evidence_strength": "official_pdp_reviewed"
+          }
+        ],
+        "best_for": [
+          {
+            "tag": "enamel_support_context",
+            "label": "enamel support context",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "fluoride_free_oral_care",
+            "label": "fluoride-free oral care",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "charcoal_oral_care",
+            "label": "charcoal oral care",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "oil_pulling_routine",
+            "label": "oil pulling routine",
+            "confidence": "moderate"
+          }
+        ],
+        "shopping_highlight": "hydroxyapatite, activated charcoal"
+      },
+      "writes": [
+        {
+          "kb_key": "product:ext_85abf9f60fb74fe9cd9d4b09",
+          "action": "update",
+          "reason": "explicit_owner_delegated_assistant_replacement_review",
+          "old_hash": "3cb2426638c337f48fb04bdb74d99119040174394f5d3cdf14daa5ec0c3dd049",
+          "candidate_hash": "5d1358358d9c9b744d8c9c18df7df6f2c1822e19d69875e111845ffc69a93c4b",
+          "existing_weak": true,
+          "source": "pivota_insights_official_pdp_manual_review_v1",
+          "after_inventory": {
+            "product_id": "ext_85abf9f60fb74fe9cd9d4b09",
+            "kb_key": "product:ext_85abf9f60fb74fe9cd9d4b09",
+            "source": "pivota_insights_official_pdp_manual_review_v1",
+            "updated_at": "",
+            "last_success_at": "",
+            "title": "Charcoal Oil Pulling + Hydroxyapatite Toothpaste Bundle | Terra & Co.",
+            "canonical_url": "",
+            "bundle_hash": "0a8ad40d543a4146735b4eb6fb53c1f7fb56da9b3141940af5c982a0e525d9a1",
+            "lane": "keep",
+            "reason": "protected_good_content",
+            "priority": 0,
+            "protected": true,
+            "displayable": true,
+            "high_quality_ready": true,
+            "human_reviewed": true,
+            "issues": [],
+            "blocking_issues": [],
+            "quality_state": "reviewed",
+            "evidence_profile": "official_pdp_reviewed_limited",
+            "evidence_rank": 1,
+            "review_tier": "assistant_reviewed",
+            "agent_readable": true,
+            "public_ready": true
+          },
+          "source_meta": {
+            "evidence_profile": "official_pdp_reviewed_limited",
+            "quality_state": "reviewed",
+            "source_origin": "official_pdp_fields",
+            "source_url": "https://www.terraandco.com/products/charcoal-oil-pulling-natural-charcoal-toothpaste-with-hydroxyapatite",
+            "quality_improvement": {
+              "previous_bundle_hash": "9ffaf19fb9b0e148540aad1935dad3fb30d4d1a7393f76683fd6913c58e0a849",
+              "candidate_bundle_hash": "0a8ad40d543a4146735b4eb6fb53c1f7fb56da9b3141940af5c982a0e525d9a1",
+              "replacement_decision": "explicit_owner_delegated_assistant_replacement_review",
+              "existing_quality_lane": "suppress_public",
+              "candidate_quality_lane": "keep",
+              "existing_evidence_profile": "seller_only",
+              "candidate_evidence_profile": "official_pdp_reviewed_limited"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "external_product_id": "ext_c4ce9ce7a7ecf932e093d030",
+      "pivota_signature_id": null,
+      "title": "Charcoal Oil Pulling + Stainless Steel Tongue Scraper Bundle",
+      "brand": "Terra & Co.",
+      "canonical_url": "https://www.terraandco.com/products/charcoal-oil-pulling-with-stainless-steel-tongue-cleaner",
+      "changed": true,
+      "blocked": false,
+      "skip_reason": null,
+      "candidate_hash": "99a119d128082f6106b1761efa78852a994e699b2b6b7fe37588c47df4b7624f",
+      "evidence_profile": "official_pdp_reviewed_limited",
+      "source_coverage": {
+        "source": "official_pdp",
+        "canonical_url": "https://www.terraandco.com/products/charcoal-oil-pulling-with-stainless-steel-tongue-cleaner",
+        "fields": {
+          "description": true,
+          "ingredients": 0,
+          "active_ingredients": 0,
+          "how_to": 0,
+          "details": 0,
+          "variants": 1
+        }
+      },
+      "preview": {
+        "headline": "Oral care tool",
+        "what_it_is": "Charcoal Oil Pulling + Stainless Steel Tongue Scraper Bundle is an oral care set from Terra & Co., with source-backed cues around charcoal, oil-pulling format and tongue-cleaning tool use.",
+        "why_it_stands_out": [
+          {
+            "headline": "Oral-care format cues are clear",
+            "body": "Reviewed oral-care cues such as activated charcoal, oil pulling format, tongue cleaning identify the format and source-backed context without turning regulated language into recommendations.",
+            "evidence_strength": "official_pdp_reviewed"
+          }
+        ],
+        "best_for": [
+          {
+            "tag": "charcoal_oral_care",
+            "label": "charcoal oral care",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "oil_pulling_routine",
+            "label": "oil pulling routine",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "oral_care_tools",
+            "label": "oral care tools",
+            "confidence": "moderate"
+          }
+        ],
+        "shopping_highlight": "activated charcoal, oil pulling format"
+      },
+      "writes": [
+        {
+          "kb_key": "product:ext_c4ce9ce7a7ecf932e093d030",
+          "action": "update",
+          "reason": "explicit_owner_delegated_assistant_replacement_review",
+          "old_hash": "d8dde307f67939dd92968a2ae7092d8a0e3363a75e202d3784a120bb74248aad",
+          "candidate_hash": "bf5a596b4c328ce8aa9c5638b2bc5284e12a00747a43ee39fe8e91bfca549b97",
+          "existing_weak": true,
+          "source": "pivota_insights_official_pdp_manual_review_v1",
+          "after_inventory": {
+            "product_id": "ext_c4ce9ce7a7ecf932e093d030",
+            "kb_key": "product:ext_c4ce9ce7a7ecf932e093d030",
+            "source": "pivota_insights_official_pdp_manual_review_v1",
+            "updated_at": "",
+            "last_success_at": "",
+            "title": "Charcoal Oil Pulling + Stainless Steel Tongue Scraper Bundle",
+            "canonical_url": "",
+            "bundle_hash": "99a119d128082f6106b1761efa78852a994e699b2b6b7fe37588c47df4b7624f",
+            "lane": "keep",
+            "reason": "protected_good_content",
+            "priority": 0,
+            "protected": true,
+            "displayable": true,
+            "high_quality_ready": true,
+            "human_reviewed": true,
+            "issues": [],
+            "blocking_issues": [],
+            "quality_state": "reviewed",
+            "evidence_profile": "official_pdp_reviewed_limited",
+            "evidence_rank": 1,
+            "review_tier": "assistant_reviewed",
+            "agent_readable": true,
+            "public_ready": true
+          },
+          "source_meta": {
+            "evidence_profile": "official_pdp_reviewed_limited",
+            "quality_state": "reviewed",
+            "source_origin": "official_pdp_fields",
+            "source_url": "https://www.terraandco.com/products/charcoal-oil-pulling-with-stainless-steel-tongue-cleaner",
+            "quality_improvement": {
+              "previous_bundle_hash": "edfe30ae9784bf4072aa47a4ec6cd5dfe81a23d04e7c9c04a2c3a6e0dc0fc2fe",
+              "candidate_bundle_hash": "99a119d128082f6106b1761efa78852a994e699b2b6b7fe37588c47df4b7624f",
+              "replacement_decision": "explicit_owner_delegated_assistant_replacement_review",
+              "existing_quality_lane": "suppress_public",
+              "candidate_quality_lane": "keep",
+              "existing_evidence_profile": "seller_only",
+              "candidate_evidence_profile": "official_pdp_reviewed_limited"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "external_product_id": "ext_8c65618dbd33bd350fe40b4e",
+      "pivota_signature_id": "sig_aee69d25cdb3893590032bc9",
+      "title": "Gentle Green Mouthwash Tabs – Fluoride-Free, Travel-Friendly Oral Care with Nano-Hydroxyapatite",
+      "brand": "Terra & Co.",
+      "canonical_url": "https://www.terraandco.com/products/new-gentle-green-mouthwash-tabs",
+      "changed": true,
+      "blocked": false,
+      "skip_reason": null,
+      "candidate_hash": "696b3724da82c192f1c9fa4421ee04110c4501c2c6eece6063db43782e924040",
+      "evidence_profile": "official_pdp_reviewed_limited",
+      "source_coverage": {
+        "source": "official_pdp",
+        "canonical_url": "https://www.terraandco.com/products/new-gentle-green-mouthwash-tabs",
+        "fields": {
+          "description": true,
+          "ingredients": 0,
+          "active_ingredients": 0,
+          "how_to": 0,
+          "details": 0,
+          "variants": 1
+        }
+      },
+      "preview": {
+        "headline": "Oral care treatment",
+        "what_it_is": "Gentle Green Mouthwash Tabs – Fluoride-Free, Travel-Friendly Oral Care with Nano-Hydroxyapatite is an oral rinse from Terra & Co., with source-backed cues around enamel-care context and fluoride-free positioning.",
+        "why_it_stands_out": [
+          {
+            "headline": "Oral-care format cues are clear",
+            "body": "Reviewed oral-care cues such as hydroxyapatite, fluoride-free positioning, travel-friendly oral care identify the format and source-backed context without turning regulated language into recommendations.",
+            "evidence_strength": "official_pdp_reviewed"
+          }
+        ],
+        "best_for": [
+          {
+            "tag": "enamel_support_context",
+            "label": "enamel support context",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "fluoride_free_oral_care",
+            "label": "fluoride-free oral care",
+            "confidence": "moderate"
+          }
+        ],
+        "shopping_highlight": "hydroxyapatite"
+      },
+      "writes": [
+        {
+          "kb_key": "product:ext_8c65618dbd33bd350fe40b4e",
+          "action": "insert",
+          "reason": "new_product_intel_bundle",
+          "old_hash": null,
+          "candidate_hash": "0c29dbe937c8fe49066aae297195a87cc8fa35ca0ff77eeb7d4a60cc45e31682",
+          "existing_weak": true,
+          "source": "pivota_insights_official_pdp_manual_review_v1",
+          "after_inventory": {
+            "product_id": "ext_8c65618dbd33bd350fe40b4e",
+            "kb_key": "product:ext_8c65618dbd33bd350fe40b4e",
+            "source": "pivota_insights_official_pdp_manual_review_v1",
+            "updated_at": "",
+            "last_success_at": "",
+            "title": "Gentle Green Mouthwash Tabs – Fluoride-Free, Travel-Friendly Oral Care with Nano-Hydroxyapatite",
+            "canonical_url": "",
+            "bundle_hash": "696b3724da82c192f1c9fa4421ee04110c4501c2c6eece6063db43782e924040",
+            "lane": "keep",
+            "reason": "protected_good_content",
+            "priority": 0,
+            "protected": true,
+            "displayable": true,
+            "high_quality_ready": true,
+            "human_reviewed": true,
+            "issues": [],
+            "blocking_issues": [],
+            "quality_state": "reviewed",
+            "evidence_profile": "official_pdp_reviewed_limited",
+            "evidence_rank": 1,
+            "review_tier": "assistant_reviewed",
+            "agent_readable": true,
+            "public_ready": true
+          },
+          "source_meta": {
+            "evidence_profile": "official_pdp_reviewed_limited",
+            "quality_state": "reviewed",
+            "source_origin": "official_pdp_fields",
+            "source_url": "https://www.terraandco.com/products/new-gentle-green-mouthwash-tabs",
+            "quality_improvement": {
+              "previous_bundle_hash": null,
+              "candidate_bundle_hash": "696b3724da82c192f1c9fa4421ee04110c4501c2c6eece6063db43782e924040",
+              "replacement_decision": "new_product_intel_bundle",
+              "existing_quality_lane": null,
+              "candidate_quality_lane": "keep",
+              "existing_evidence_profile": null,
+              "candidate_evidence_profile": "official_pdp_reviewed_limited"
+            }
+          }
+        },
+        {
+          "kb_key": "product:sig_aee69d25cdb3893590032bc9",
+          "action": "insert",
+          "reason": "new_product_intel_bundle",
+          "old_hash": null,
+          "candidate_hash": "0c29dbe937c8fe49066aae297195a87cc8fa35ca0ff77eeb7d4a60cc45e31682",
+          "existing_weak": true,
+          "source": "pivota_insights_official_pdp_manual_review_v1",
+          "after_inventory": {
+            "product_id": "ext_8c65618dbd33bd350fe40b4e",
+            "kb_key": "product:sig_aee69d25cdb3893590032bc9",
+            "source": "pivota_insights_official_pdp_manual_review_v1",
+            "updated_at": "",
+            "last_success_at": "",
+            "title": "Gentle Green Mouthwash Tabs – Fluoride-Free, Travel-Friendly Oral Care with Nano-Hydroxyapatite",
+            "canonical_url": "",
+            "bundle_hash": "696b3724da82c192f1c9fa4421ee04110c4501c2c6eece6063db43782e924040",
+            "lane": "keep",
+            "reason": "protected_good_content",
+            "priority": 0,
+            "protected": true,
+            "displayable": true,
+            "high_quality_ready": true,
+            "human_reviewed": true,
+            "issues": [],
+            "blocking_issues": [],
+            "quality_state": "reviewed",
+            "evidence_profile": "official_pdp_reviewed_limited",
+            "evidence_rank": 1,
+            "review_tier": "assistant_reviewed",
+            "agent_readable": true,
+            "public_ready": true
+          },
+          "source_meta": {
+            "evidence_profile": "official_pdp_reviewed_limited",
+            "quality_state": "reviewed",
+            "source_origin": "official_pdp_fields",
+            "source_url": "https://www.terraandco.com/products/new-gentle-green-mouthwash-tabs",
+            "quality_improvement": {
+              "previous_bundle_hash": null,
+              "candidate_bundle_hash": "696b3724da82c192f1c9fa4421ee04110c4501c2c6eece6063db43782e924040",
+              "replacement_decision": "new_product_intel_bundle",
+              "existing_quality_lane": null,
+              "candidate_quality_lane": "keep",
+              "existing_evidence_profile": null,
+              "candidate_evidence_profile": "official_pdp_reviewed_limited"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "external_product_id": "ext_4cd5eb41e6c4edddf4303904",
+      "pivota_signature_id": "sig_e8d51ecd9a6fff66a110cbbd62b64357",
+      "title": "Gentle Green Oil Pulling Mouthwash – Enamel Support & Gum Health",
+      "brand": "Terra & Co.",
+      "canonical_url": "https://www.terraandco.com/products/gentle-green-oil-pulling",
+      "changed": true,
+      "blocked": false,
+      "skip_reason": null,
+      "candidate_hash": "f6e41f277a71b599af686cc53943fad777b5678e89c89858cf272da7a674787e",
+      "evidence_profile": "official_pdp_reviewed_limited",
+      "source_coverage": {
+        "source": "official_pdp",
+        "canonical_url": "https://www.terraandco.com/products/gentle-green-oil-pulling",
+        "fields": {
+          "description": true,
+          "ingredients": 0,
+          "active_ingredients": 0,
+          "how_to": 0,
+          "details": 0,
+          "variants": 3
+        }
+      },
+      "preview": {
+        "headline": "Oral care treatment",
+        "what_it_is": "Gentle Green Oil Pulling Mouthwash – Enamel Support & Gum Health is an oral rinse from Terra & Co., with source-backed cues around enamel-care context and oil-pulling format.",
+        "why_it_stands_out": [
+          {
+            "headline": "Oral-care format cues are clear",
+            "body": "Reviewed oral-care cues such as oil pulling format identify the format and source-backed context without turning regulated language into recommendations.",
+            "evidence_strength": "official_pdp_reviewed"
+          }
+        ],
+        "best_for": [
+          {
+            "tag": "enamel_support_context",
+            "label": "enamel support context",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "oil_pulling_routine",
+            "label": "oil pulling routine",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "oral_care_tools",
+            "label": "oral care tools",
+            "confidence": "moderate"
+          }
+        ],
+        "shopping_highlight": "oil pulling format"
+      },
+      "writes": [
+        {
+          "kb_key": "product:ext_4cd5eb41e6c4edddf4303904",
+          "action": "insert",
+          "reason": "new_product_intel_bundle",
+          "old_hash": null,
+          "candidate_hash": "35886ccc275d2fc17e3286ea218e032d846a90729eb406ec329680ced25def0d",
+          "existing_weak": true,
+          "source": "pivota_insights_official_pdp_manual_review_v1",
+          "after_inventory": {
+            "product_id": "ext_4cd5eb41e6c4edddf4303904",
+            "kb_key": "product:ext_4cd5eb41e6c4edddf4303904",
+            "source": "pivota_insights_official_pdp_manual_review_v1",
+            "updated_at": "",
+            "last_success_at": "",
+            "title": "Gentle Green Oil Pulling Mouthwash – Enamel Support & Gum Health",
+            "canonical_url": "",
+            "bundle_hash": "f6e41f277a71b599af686cc53943fad777b5678e89c89858cf272da7a674787e",
+            "lane": "keep",
+            "reason": "protected_good_content",
+            "priority": 0,
+            "protected": true,
+            "displayable": true,
+            "high_quality_ready": true,
+            "human_reviewed": true,
+            "issues": [],
+            "blocking_issues": [],
+            "quality_state": "reviewed",
+            "evidence_profile": "official_pdp_reviewed_limited",
+            "evidence_rank": 1,
+            "review_tier": "assistant_reviewed",
+            "agent_readable": true,
+            "public_ready": true
+          },
+          "source_meta": {
+            "evidence_profile": "official_pdp_reviewed_limited",
+            "quality_state": "reviewed",
+            "source_origin": "official_pdp_fields",
+            "source_url": "https://www.terraandco.com/products/gentle-green-oil-pulling",
+            "quality_improvement": {
+              "previous_bundle_hash": null,
+              "candidate_bundle_hash": "f6e41f277a71b599af686cc53943fad777b5678e89c89858cf272da7a674787e",
+              "replacement_decision": "new_product_intel_bundle",
+              "existing_quality_lane": null,
+              "candidate_quality_lane": "keep",
+              "existing_evidence_profile": null,
+              "candidate_evidence_profile": "official_pdp_reviewed_limited"
+            }
+          }
+        },
+        {
+          "kb_key": "product:sig_e8d51ecd9a6fff66a110cbbd62b64357",
+          "action": "insert",
+          "reason": "new_product_intel_bundle",
+          "old_hash": null,
+          "candidate_hash": "35886ccc275d2fc17e3286ea218e032d846a90729eb406ec329680ced25def0d",
+          "existing_weak": true,
+          "source": "pivota_insights_official_pdp_manual_review_v1",
+          "after_inventory": {
+            "product_id": "ext_4cd5eb41e6c4edddf4303904",
+            "kb_key": "product:sig_e8d51ecd9a6fff66a110cbbd62b64357",
+            "source": "pivota_insights_official_pdp_manual_review_v1",
+            "updated_at": "",
+            "last_success_at": "",
+            "title": "Gentle Green Oil Pulling Mouthwash – Enamel Support & Gum Health",
+            "canonical_url": "",
+            "bundle_hash": "f6e41f277a71b599af686cc53943fad777b5678e89c89858cf272da7a674787e",
+            "lane": "keep",
+            "reason": "protected_good_content",
+            "priority": 0,
+            "protected": true,
+            "displayable": true,
+            "high_quality_ready": true,
+            "human_reviewed": true,
+            "issues": [],
+            "blocking_issues": [],
+            "quality_state": "reviewed",
+            "evidence_profile": "official_pdp_reviewed_limited",
+            "evidence_rank": 1,
+            "review_tier": "assistant_reviewed",
+            "agent_readable": true,
+            "public_ready": true
+          },
+          "source_meta": {
+            "evidence_profile": "official_pdp_reviewed_limited",
+            "quality_state": "reviewed",
+            "source_origin": "official_pdp_fields",
+            "source_url": "https://www.terraandco.com/products/gentle-green-oil-pulling",
+            "quality_improvement": {
+              "previous_bundle_hash": null,
+              "candidate_bundle_hash": "f6e41f277a71b599af686cc53943fad777b5678e89c89858cf272da7a674787e",
+              "replacement_decision": "new_product_intel_bundle",
+              "existing_quality_lane": null,
+              "candidate_quality_lane": "keep",
+              "existing_evidence_profile": null,
+              "candidate_evidence_profile": "official_pdp_reviewed_limited"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "external_product_id": "ext_4f351cdf3b379a11a3804803",
+      "pivota_signature_id": "sig_498e672b457dff779679a2c8",
+      "title": "Gentle Green Oral Care Bundle | Sensitive Teeth + Enamel Support",
+      "brand": "Terra & Co.",
+      "canonical_url": "https://www.terraandco.com/products/gentle-green-oral-care-bundle-sensitive-teeth-enamel-support",
+      "changed": true,
+      "blocked": false,
+      "skip_reason": null,
+      "candidate_hash": "198bd84246158ef833264c5eacecde446bb5e88eb86736ced18d79e0e82fd013",
+      "evidence_profile": "official_pdp_reviewed_limited",
+      "source_coverage": {
+        "source": "official_pdp",
+        "canonical_url": "https://www.terraandco.com/products/gentle-green-oral-care-bundle-sensitive-teeth-enamel-support",
+        "fields": {
+          "description": true,
+          "ingredients": 0,
+          "active_ingredients": 0,
+          "how_to": 0,
+          "details": 0,
+          "variants": 1
+        }
+      },
+      "preview": {
+        "headline": "Oral care treatment",
+        "what_it_is": "Gentle Green Oral Care Bundle | Sensitive Teeth + Enamel Support is an oral care product from Terra & Co., with source-backed cues around enamel-care context.",
+        "why_it_stands_out": [
+          {
+            "headline": "Official PDP evidence only",
+            "body": "This insight is limited to the official product fields currently available for Gentle Green Oral Care Bundle | Sensitive Teeth + Enamel Support.",
+            "evidence_strength": "official_pdp_reviewed_limited"
+          }
+        ],
+        "best_for": [
+          {
+            "tag": "enamel_support_context",
+            "label": "enamel support context",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "fluoride_free_oral_care",
+            "label": "fluoride-free oral care",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "oil_pulling_routine",
+            "label": "oil pulling routine",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "oral_care_tools",
+            "label": "oral care tools",
+            "confidence": "moderate"
+          }
+        ],
+        "shopping_highlight": "enamel support context"
+      },
+      "writes": [
+        {
+          "kb_key": "product:ext_4f351cdf3b379a11a3804803",
+          "action": "update",
+          "reason": "explicit_owner_delegated_assistant_replacement_review",
+          "old_hash": "29611150ad97c7e022657afa61532adb0059f608acf3572a9dc2bcfec7c43538",
+          "candidate_hash": "e88d9d8041855f8d3d0246168bb6b5660a98a352122288783293f343367f667b",
+          "existing_weak": true,
+          "source": "pivota_insights_official_pdp_manual_review_v1",
+          "after_inventory": {
+            "product_id": "ext_4f351cdf3b379a11a3804803",
+            "kb_key": "product:ext_4f351cdf3b379a11a3804803",
+            "source": "pivota_insights_official_pdp_manual_review_v1",
+            "updated_at": "",
+            "last_success_at": "",
+            "title": "Gentle Green Oral Care Bundle | Sensitive Teeth + Enamel Support",
+            "canonical_url": "",
+            "bundle_hash": "198bd84246158ef833264c5eacecde446bb5e88eb86736ced18d79e0e82fd013",
+            "lane": "keep",
+            "reason": "protected_good_content",
+            "priority": 0,
+            "protected": true,
+            "displayable": true,
+            "high_quality_ready": true,
+            "human_reviewed": true,
+            "issues": [],
+            "blocking_issues": [],
+            "quality_state": "reviewed",
+            "evidence_profile": "official_pdp_reviewed_limited",
+            "evidence_rank": 1,
+            "review_tier": "assistant_reviewed",
+            "agent_readable": true,
+            "public_ready": true
+          },
+          "source_meta": {
+            "evidence_profile": "official_pdp_reviewed_limited",
+            "quality_state": "reviewed",
+            "source_origin": "official_pdp_fields",
+            "source_url": "https://www.terraandco.com/products/gentle-green-oral-care-bundle-sensitive-teeth-enamel-support",
+            "quality_improvement": {
+              "previous_bundle_hash": "afe0b42ba2ccf6ce08c28e73c633788396113ce284c5d92c7e70a5ed30199b7c",
+              "candidate_bundle_hash": "198bd84246158ef833264c5eacecde446bb5e88eb86736ced18d79e0e82fd013",
+              "replacement_decision": "explicit_owner_delegated_assistant_replacement_review",
+              "existing_quality_lane": "repair",
+              "candidate_quality_lane": "keep",
+              "existing_evidence_profile": "seller_only",
+              "candidate_evidence_profile": "official_pdp_reviewed_limited"
+            }
+          }
+        },
+        {
+          "kb_key": "product:sig_498e672b457dff779679a2c8",
+          "action": "insert",
+          "reason": "new_product_intel_bundle",
+          "old_hash": null,
+          "candidate_hash": "e88d9d8041855f8d3d0246168bb6b5660a98a352122288783293f343367f667b",
+          "existing_weak": true,
+          "source": "pivota_insights_official_pdp_manual_review_v1",
+          "after_inventory": {
+            "product_id": "ext_4f351cdf3b379a11a3804803",
+            "kb_key": "product:sig_498e672b457dff779679a2c8",
+            "source": "pivota_insights_official_pdp_manual_review_v1",
+            "updated_at": "",
+            "last_success_at": "",
+            "title": "Gentle Green Oral Care Bundle | Sensitive Teeth + Enamel Support",
+            "canonical_url": "",
+            "bundle_hash": "198bd84246158ef833264c5eacecde446bb5e88eb86736ced18d79e0e82fd013",
+            "lane": "keep",
+            "reason": "protected_good_content",
+            "priority": 0,
+            "protected": true,
+            "displayable": true,
+            "high_quality_ready": true,
+            "human_reviewed": true,
+            "issues": [],
+            "blocking_issues": [],
+            "quality_state": "reviewed",
+            "evidence_profile": "official_pdp_reviewed_limited",
+            "evidence_rank": 1,
+            "review_tier": "assistant_reviewed",
+            "agent_readable": true,
+            "public_ready": true
+          },
+          "source_meta": {
+            "evidence_profile": "official_pdp_reviewed_limited",
+            "quality_state": "reviewed",
+            "source_origin": "official_pdp_fields",
+            "source_url": "https://www.terraandco.com/products/gentle-green-oral-care-bundle-sensitive-teeth-enamel-support",
+            "quality_improvement": {
+              "previous_bundle_hash": null,
+              "candidate_bundle_hash": "198bd84246158ef833264c5eacecde446bb5e88eb86736ced18d79e0e82fd013",
+              "replacement_decision": "new_product_intel_bundle",
+              "existing_quality_lane": null,
+              "candidate_quality_lane": "keep",
+              "existing_evidence_profile": null,
+              "candidate_evidence_profile": "official_pdp_reviewed_limited"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "external_product_id": "ext_2b1e02a63ba75d573fe760e5",
+      "pivota_signature_id": null,
+      "title": "Gentle Green™ Oral Detox Bundle – Stainless Steel Tongue Scraper & Ayurvedic Oil Pulling (Fluoride-Free, Enamel Support)",
+      "brand": "Terra & Co.",
+      "canonical_url": "https://www.terraandco.com/products/oil-pulling-with-hydroxyapatite-and-stainless-steel-tongue-scraper",
+      "changed": true,
+      "blocked": false,
+      "skip_reason": null,
+      "candidate_hash": "4ca92fba09ad8d5dbba750b5c84bcfb3d3af0b9633ee524adcc53efeb1743a30",
+      "evidence_profile": "official_pdp_reviewed_limited",
+      "source_coverage": {
+        "source": "official_pdp",
+        "canonical_url": "https://www.terraandco.com/products/oil-pulling-with-hydroxyapatite-and-stainless-steel-tongue-scraper",
+        "fields": {
+          "description": true,
+          "ingredients": 0,
+          "active_ingredients": 0,
+          "how_to": 0,
+          "details": 0,
+          "variants": 1
+        }
+      },
+      "preview": {
+        "headline": "Oral care tool",
+        "what_it_is": "Gentle Green™ Oral Detox Bundle – Stainless Steel Tongue Scraper & Ayurvedic Oil Pulling is an oral care set from Terra & Co., with source-backed cues around enamel-care context, fluoride-free positioning, oil-pulling format and tongue-cleaning tool use.",
+        "why_it_stands_out": [
+          {
+            "headline": "Oral-care format cues are clear",
+            "body": "Reviewed oral-care cues such as fluoride-free positioning, oil pulling format, tongue cleaning identify the format and source-backed context without turning regulated language into recommendations.",
+            "evidence_strength": "official_pdp_reviewed"
+          }
+        ],
+        "best_for": [
+          {
+            "tag": "enamel_support_context",
+            "label": "enamel support context",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "fluoride_free_oral_care",
+            "label": "fluoride-free oral care",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "oil_pulling_routine",
+            "label": "oil pulling routine",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "oral_care_tools",
+            "label": "oral care tools",
+            "confidence": "moderate"
+          }
+        ],
+        "shopping_highlight": "fluoride-free positioning"
+      },
+      "writes": [
+        {
+          "kb_key": "product:ext_2b1e02a63ba75d573fe760e5",
+          "action": "insert",
+          "reason": "new_product_intel_bundle",
+          "old_hash": null,
+          "candidate_hash": "96086cd89f9c1a98e93fd7dc795fcb89c9f86b1380c7f11ddfdac2841de88d5d",
+          "existing_weak": true,
+          "source": "pivota_insights_official_pdp_manual_review_v1",
+          "after_inventory": {
+            "product_id": "ext_2b1e02a63ba75d573fe760e5",
+            "kb_key": "product:ext_2b1e02a63ba75d573fe760e5",
+            "source": "pivota_insights_official_pdp_manual_review_v1",
+            "updated_at": "",
+            "last_success_at": "",
+            "title": "Gentle Green™ Oral Detox Bundle – Stainless Steel Tongue Scraper & Ayurvedic Oil Pulling (Fluoride-Free, Enamel Support)",
+            "canonical_url": "",
+            "bundle_hash": "4ca92fba09ad8d5dbba750b5c84bcfb3d3af0b9633ee524adcc53efeb1743a30",
+            "lane": "keep",
+            "reason": "protected_good_content",
+            "priority": 0,
+            "protected": true,
+            "displayable": true,
+            "high_quality_ready": true,
+            "human_reviewed": true,
+            "issues": [],
+            "blocking_issues": [],
+            "quality_state": "reviewed",
+            "evidence_profile": "official_pdp_reviewed_limited",
+            "evidence_rank": 1,
+            "review_tier": "assistant_reviewed",
+            "agent_readable": true,
+            "public_ready": true
+          },
+          "source_meta": {
+            "evidence_profile": "official_pdp_reviewed_limited",
+            "quality_state": "reviewed",
+            "source_origin": "official_pdp_fields",
+            "source_url": "https://www.terraandco.com/products/oil-pulling-with-hydroxyapatite-and-stainless-steel-tongue-scraper",
+            "quality_improvement": {
+              "previous_bundle_hash": null,
+              "candidate_bundle_hash": "4ca92fba09ad8d5dbba750b5c84bcfb3d3af0b9633ee524adcc53efeb1743a30",
+              "replacement_decision": "new_product_intel_bundle",
+              "existing_quality_lane": null,
+              "candidate_quality_lane": "keep",
+              "existing_evidence_profile": null,
+              "candidate_evidence_profile": "official_pdp_reviewed_limited"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "external_product_id": "ext_beef551afdd1da4de64a6094",
+      "pivota_signature_id": "sig_f6ce0a55889cccad41e03936ffcfc3c0",
+      "title": "Gentle Green™ Sensitive Toothpaste with Hydroxyapatite & B12 (Fluoride-Free, Natural Enamel Support & Sensitive Teeth Relief)",
+      "brand": "Terra & Co.",
+      "canonical_url": "https://www.terraandco.com/products/new-gentle-green-toothpaste",
+      "changed": true,
+      "blocked": false,
+      "skip_reason": null,
+      "candidate_hash": "bea7910195a13af7d52559e2db8f2cfcae0c1ae966846741dd71214e4eebb598",
+      "evidence_profile": "official_pdp_reviewed_limited",
+      "source_coverage": {
+        "source": "official_pdp",
+        "canonical_url": "https://www.terraandco.com/products/new-gentle-green-toothpaste",
+        "fields": {
+          "description": true,
+          "ingredients": 0,
+          "active_ingredients": 0,
+          "how_to": 0,
+          "details": 0,
+          "variants": 3
+        }
+      },
+      "preview": {
+        "headline": "Oral care treatment",
+        "what_it_is": "Gentle Green™ Sensitive Toothpaste with Hydroxyapatite & B12 is a toothpaste from Terra & Co., with source-backed cues around enamel-care context and fluoride-free positioning.",
+        "why_it_stands_out": [
+          {
+            "headline": "Oral-care format cues are clear",
+            "body": "Reviewed oral-care cues such as hydroxyapatite, fluoride-free positioning identify the format and source-backed context without turning regulated language into recommendations.",
+            "evidence_strength": "official_pdp_reviewed"
+          }
+        ],
+        "best_for": [
+          {
+            "tag": "enamel_support_context",
+            "label": "enamel support context",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "fluoride_free_oral_care",
+            "label": "fluoride-free oral care",
+            "confidence": "moderate"
+          }
+        ],
+        "shopping_highlight": "hydroxyapatite"
+      },
+      "writes": [
+        {
+          "kb_key": "product:ext_beef551afdd1da4de64a6094",
+          "action": "insert",
+          "reason": "new_product_intel_bundle",
+          "old_hash": null,
+          "candidate_hash": "36bd7826b592b9b31d7df526775f64d41eb014c43fb185ffd1fe1558f58f112e",
+          "existing_weak": true,
+          "source": "pivota_insights_official_pdp_manual_review_v1",
+          "after_inventory": {
+            "product_id": "ext_beef551afdd1da4de64a6094",
+            "kb_key": "product:ext_beef551afdd1da4de64a6094",
+            "source": "pivota_insights_official_pdp_manual_review_v1",
+            "updated_at": "",
+            "last_success_at": "",
+            "title": "Gentle Green™ Sensitive Toothpaste with Hydroxyapatite & B12 (Fluoride-Free, Natural Enamel Support & Sensitive Teeth Relief)",
+            "canonical_url": "",
+            "bundle_hash": "bea7910195a13af7d52559e2db8f2cfcae0c1ae966846741dd71214e4eebb598",
+            "lane": "keep",
+            "reason": "protected_good_content",
+            "priority": 0,
+            "protected": true,
+            "displayable": true,
+            "high_quality_ready": true,
+            "human_reviewed": true,
+            "issues": [],
+            "blocking_issues": [],
+            "quality_state": "reviewed",
+            "evidence_profile": "official_pdp_reviewed_limited",
+            "evidence_rank": 1,
+            "review_tier": "assistant_reviewed",
+            "agent_readable": true,
+            "public_ready": true
+          },
+          "source_meta": {
+            "evidence_profile": "official_pdp_reviewed_limited",
+            "quality_state": "reviewed",
+            "source_origin": "official_pdp_fields",
+            "source_url": "https://www.terraandco.com/products/new-gentle-green-toothpaste",
+            "quality_improvement": {
+              "previous_bundle_hash": null,
+              "candidate_bundle_hash": "bea7910195a13af7d52559e2db8f2cfcae0c1ae966846741dd71214e4eebb598",
+              "replacement_decision": "new_product_intel_bundle",
+              "existing_quality_lane": null,
+              "candidate_quality_lane": "keep",
+              "existing_evidence_profile": null,
+              "candidate_evidence_profile": "official_pdp_reviewed_limited"
+            }
+          }
+        },
+        {
+          "kb_key": "product:sig_f6ce0a55889cccad41e03936ffcfc3c0",
+          "action": "insert",
+          "reason": "new_product_intel_bundle",
+          "old_hash": null,
+          "candidate_hash": "36bd7826b592b9b31d7df526775f64d41eb014c43fb185ffd1fe1558f58f112e",
+          "existing_weak": true,
+          "source": "pivota_insights_official_pdp_manual_review_v1",
+          "after_inventory": {
+            "product_id": "ext_beef551afdd1da4de64a6094",
+            "kb_key": "product:sig_f6ce0a55889cccad41e03936ffcfc3c0",
+            "source": "pivota_insights_official_pdp_manual_review_v1",
+            "updated_at": "",
+            "last_success_at": "",
+            "title": "Gentle Green™ Sensitive Toothpaste with Hydroxyapatite & B12 (Fluoride-Free, Natural Enamel Support & Sensitive Teeth Relief)",
+            "canonical_url": "",
+            "bundle_hash": "bea7910195a13af7d52559e2db8f2cfcae0c1ae966846741dd71214e4eebb598",
+            "lane": "keep",
+            "reason": "protected_good_content",
+            "priority": 0,
+            "protected": true,
+            "displayable": true,
+            "high_quality_ready": true,
+            "human_reviewed": true,
+            "issues": [],
+            "blocking_issues": [],
+            "quality_state": "reviewed",
+            "evidence_profile": "official_pdp_reviewed_limited",
+            "evidence_rank": 1,
+            "review_tier": "assistant_reviewed",
+            "agent_readable": true,
+            "public_ready": true
+          },
+          "source_meta": {
+            "evidence_profile": "official_pdp_reviewed_limited",
+            "quality_state": "reviewed",
+            "source_origin": "official_pdp_fields",
+            "source_url": "https://www.terraandco.com/products/new-gentle-green-toothpaste",
+            "quality_improvement": {
+              "previous_bundle_hash": null,
+              "candidate_bundle_hash": "bea7910195a13af7d52559e2db8f2cfcae0c1ae966846741dd71214e4eebb598",
+              "replacement_decision": "new_product_intel_bundle",
+              "existing_quality_lane": null,
+              "candidate_quality_lane": "keep",
+              "existing_evidence_profile": null,
+              "candidate_evidence_profile": "official_pdp_reviewed_limited"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "external_product_id": "ext_e12eb3271a479392785c24bf",
+      "pivota_signature_id": null,
+      "title": "Gentle Green Toothbrush Family Pack (10 Count) – Eco-Friendly Wheat Straw Toothbrushes for Sensitive Teeth | BPA-Free, Travel-Friendly",
+      "brand": "Terra & Co.",
+      "canonical_url": "https://www.terraandco.com/products/new-gentle-green-toothbrush",
+      "changed": true,
+      "blocked": false,
+      "skip_reason": null,
+      "candidate_hash": "8066ba8250b09d817393a5afe713e50015bade802de8def5b9dea76c2045105e",
+      "evidence_profile": "official_pdp_reviewed_limited",
+      "source_coverage": {
+        "source": "official_pdp",
+        "canonical_url": "https://www.terraandco.com/products/new-gentle-green-toothbrush",
+        "fields": {
+          "description": true,
+          "ingredients": 0,
+          "active_ingredients": 0,
+          "how_to": 0,
+          "details": 0,
+          "variants": 1
+        }
+      },
+      "preview": {
+        "headline": "Oral care tool",
+        "what_it_is": "Gentle Green Toothbrush Family Pack (10 Count) – Eco-Friendly Wheat Straw Toothbrushes for Sensitive Teeth | BPA-Free, Travel-Friendly is an oral care set from Terra & Co.",
+        "why_it_stands_out": [
+          {
+            "headline": "Oral-care format cues are clear",
+            "body": "Reviewed oral-care cues such as soft-bristle brushing, travel-friendly oral care identify the format and source-backed context without turning regulated language into recommendations.",
+            "evidence_strength": "official_pdp_reviewed"
+          }
+        ],
+        "best_for": [
+          {
+            "tag": "oral_care_tools",
+            "label": "oral care tools",
+            "confidence": "moderate"
+          }
+        ],
+        "shopping_highlight": "soft-bristle brushing"
+      },
+      "writes": [
+        {
+          "kb_key": "product:ext_e12eb3271a479392785c24bf",
+          "action": "update",
+          "reason": "explicit_owner_delegated_assistant_replacement_review",
+          "old_hash": "f5ef8015a0916e76ab52dcf4000a7fe39def67c4030d9fe2d827293c6426ecfb",
+          "candidate_hash": "208dc9756f7cd01473fa9d8188724d323224bf75d372c7f7e6bddcba0895fd14",
+          "existing_weak": true,
+          "source": "pivota_insights_official_pdp_manual_review_v1",
+          "after_inventory": {
+            "product_id": "ext_e12eb3271a479392785c24bf",
+            "kb_key": "product:ext_e12eb3271a479392785c24bf",
+            "source": "pivota_insights_official_pdp_manual_review_v1",
+            "updated_at": "",
+            "last_success_at": "",
+            "title": "Gentle Green Toothbrush Family Pack (10 Count) – Eco-Friendly Wheat Straw Toothbrushes for Sensitive Teeth | BPA-Free, Travel-Friendly",
+            "canonical_url": "",
+            "bundle_hash": "8066ba8250b09d817393a5afe713e50015bade802de8def5b9dea76c2045105e",
+            "lane": "keep",
+            "reason": "protected_good_content",
+            "priority": 0,
+            "protected": true,
+            "displayable": true,
+            "high_quality_ready": true,
+            "human_reviewed": true,
+            "issues": [],
+            "blocking_issues": [],
+            "quality_state": "reviewed",
+            "evidence_profile": "official_pdp_reviewed_limited",
+            "evidence_rank": 1,
+            "review_tier": "assistant_reviewed",
+            "agent_readable": true,
+            "public_ready": true
+          },
+          "source_meta": {
+            "evidence_profile": "official_pdp_reviewed_limited",
+            "quality_state": "reviewed",
+            "source_origin": "official_pdp_fields",
+            "source_url": "https://www.terraandco.com/products/new-gentle-green-toothbrush",
+            "quality_improvement": {
+              "previous_bundle_hash": "262f69f21ed953d0bd01b14ebf84a3bb6dff24b2685eb4be600fd2f1829e9bb9",
+              "candidate_bundle_hash": "8066ba8250b09d817393a5afe713e50015bade802de8def5b9dea76c2045105e",
+              "replacement_decision": "explicit_owner_delegated_assistant_replacement_review",
+              "existing_quality_lane": "repair",
+              "candidate_quality_lane": "keep",
+              "existing_evidence_profile": "seller_only",
+              "candidate_evidence_profile": "official_pdp_reviewed_limited"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "external_product_id": "ext_84411575ae78986f11587606",
+      "pivota_signature_id": null,
+      "title": "Gentle Green Toothpaste Duo – Sensitive Teeth & Enamel Support",
+      "brand": "Terra & Co.",
+      "canonical_url": "https://www.terraandco.com/products/gentle-green-toothpaste-duo-sensitive-teeth-enamel-support",
+      "changed": true,
+      "blocked": false,
+      "skip_reason": null,
+      "candidate_hash": "1eb8196c1c88edeb9d861c94e5577164dc564a0fe161d2b9de520a9eb63f2725",
+      "evidence_profile": "official_pdp_reviewed_limited",
+      "source_coverage": {
+        "source": "official_pdp",
+        "canonical_url": "https://www.terraandco.com/products/gentle-green-toothpaste-duo-sensitive-teeth-enamel-support",
+        "fields": {
+          "description": true,
+          "ingredients": 0,
+          "active_ingredients": 0,
+          "how_to": 0,
+          "details": 0,
+          "variants": 1
+        }
+      },
+      "preview": {
+        "headline": "Oral care treatment",
+        "what_it_is": "Gentle Green Toothpaste Duo – Sensitive Teeth & Enamel Support is an oral care set from Terra & Co., with source-backed cues around enamel-care context.",
+        "why_it_stands_out": [
+          {
+            "headline": "Official PDP evidence only",
+            "body": "This insight is limited to the official product fields currently available for Gentle Green Toothpaste Duo – Sensitive Teeth & Enamel Support.",
+            "evidence_strength": "official_pdp_reviewed_limited"
+          }
+        ],
+        "best_for": [
+          {
+            "tag": "enamel_support_context",
+            "label": "enamel support context",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "fluoride_free_oral_care",
+            "label": "fluoride-free oral care",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "oral_care_tools",
+            "label": "oral care tools",
+            "confidence": "moderate"
+          }
+        ],
+        "shopping_highlight": "enamel support context"
+      },
+      "writes": [
+        {
+          "kb_key": "product:ext_84411575ae78986f11587606",
+          "action": "update",
+          "reason": "explicit_owner_delegated_assistant_replacement_review",
+          "old_hash": "b7c6aa9750b7265a314b83ec6ce344e711bfafe0fbdc81e3d8aa59fed80a67ec",
+          "candidate_hash": "1e84225f8bb07339ef7c774a86e146654f8441dda242c7613a6202331f858670",
+          "existing_weak": true,
+          "source": "pivota_insights_official_pdp_manual_review_v1",
+          "after_inventory": {
+            "product_id": "ext_84411575ae78986f11587606",
+            "kb_key": "product:ext_84411575ae78986f11587606",
+            "source": "pivota_insights_official_pdp_manual_review_v1",
+            "updated_at": "",
+            "last_success_at": "",
+            "title": "Gentle Green Toothpaste Duo – Sensitive Teeth & Enamel Support",
+            "canonical_url": "",
+            "bundle_hash": "1eb8196c1c88edeb9d861c94e5577164dc564a0fe161d2b9de520a9eb63f2725",
+            "lane": "keep",
+            "reason": "protected_good_content",
+            "priority": 0,
+            "protected": true,
+            "displayable": true,
+            "high_quality_ready": true,
+            "human_reviewed": true,
+            "issues": [],
+            "blocking_issues": [],
+            "quality_state": "reviewed",
+            "evidence_profile": "official_pdp_reviewed_limited",
+            "evidence_rank": 1,
+            "review_tier": "assistant_reviewed",
+            "agent_readable": true,
+            "public_ready": true
+          },
+          "source_meta": {
+            "evidence_profile": "official_pdp_reviewed_limited",
+            "quality_state": "reviewed",
+            "source_origin": "official_pdp_fields",
+            "source_url": "https://www.terraandco.com/products/gentle-green-toothpaste-duo-sensitive-teeth-enamel-support",
+            "quality_improvement": {
+              "previous_bundle_hash": "08c3c0c63e88fa52c8694564499230fb0174cd6246bf01dd30c1c118b2e25a13",
+              "candidate_bundle_hash": "1eb8196c1c88edeb9d861c94e5577164dc564a0fe161d2b9de520a9eb63f2725",
+              "replacement_decision": "explicit_owner_delegated_assistant_replacement_review",
+              "existing_quality_lane": "suppress_public",
+              "candidate_quality_lane": "keep",
+              "existing_evidence_profile": "seller_only",
+              "candidate_evidence_profile": "official_pdp_reviewed_limited"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "external_product_id": "ext_93e1a5073ec510e1c720380b",
+      "pivota_signature_id": null,
+      "title": "Natural Charcoal Toothpaste + Hydroxyapatite Bundle – Fluoride-Free Whitening & Remineralizing Duo",
+      "brand": "Terra & Co.",
+      "canonical_url": "https://www.terraandco.com/products/natural-charcoal-toothpaste-with-hydroxyapatite-bundle",
+      "changed": true,
+      "blocked": false,
+      "skip_reason": null,
+      "candidate_hash": "2cf3502dce8d7dd8bd16744a6f3a9f308c07ea7d2bd49cada42494bc00552601",
+      "evidence_profile": "official_pdp_reviewed_limited",
+      "source_coverage": {
+        "source": "official_pdp",
+        "canonical_url": "https://www.terraandco.com/products/natural-charcoal-toothpaste-with-hydroxyapatite-bundle",
+        "fields": {
+          "description": true,
+          "ingredients": 0,
+          "active_ingredients": 0,
+          "how_to": 0,
+          "details": 0,
+          "variants": 1
+        }
+      },
+      "preview": {
+        "headline": "Oral care treatment",
+        "what_it_is": "Natural Charcoal Toothpaste + Hydroxyapatite Bundle – Fluoride-Free Whitening & Remineralizing Duo is an oral care set from Terra & Co., with source-backed cues around enamel-care context, charcoal and fluoride-free positioning.",
+        "why_it_stands_out": [
+          {
+            "headline": "Oral-care format cues are clear",
+            "body": "Reviewed oral-care cues such as hydroxyapatite, activated charcoal, fluoride-free positioning identify the format and source-backed context without turning regulated language into recommendations.",
+            "evidence_strength": "official_pdp_reviewed"
+          }
+        ],
+        "best_for": [
+          {
+            "tag": "enamel_support_context",
+            "label": "enamel support context",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "fluoride_free_oral_care",
+            "label": "fluoride-free oral care",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "charcoal_oral_care",
+            "label": "charcoal oral care",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "oil_pulling_routine",
+            "label": "oil pulling routine",
+            "confidence": "moderate"
+          }
+        ],
+        "shopping_highlight": "hydroxyapatite, activated charcoal"
+      },
+      "writes": [
+        {
+          "kb_key": "product:ext_93e1a5073ec510e1c720380b",
+          "action": "update",
+          "reason": "explicit_owner_delegated_assistant_replacement_review",
+          "old_hash": "86c12b59c44effbd4a4425aabd609db8ace293ad1fd61f76a8a8e0033ce13e88",
+          "candidate_hash": "b0d6255a4c18e5be0270a8003ee53b3cbf19d3b52e9caa9fdee53b80c19c5207",
+          "existing_weak": true,
+          "source": "pivota_insights_official_pdp_manual_review_v1",
+          "after_inventory": {
+            "product_id": "ext_93e1a5073ec510e1c720380b",
+            "kb_key": "product:ext_93e1a5073ec510e1c720380b",
+            "source": "pivota_insights_official_pdp_manual_review_v1",
+            "updated_at": "",
+            "last_success_at": "",
+            "title": "Natural Charcoal Toothpaste + Hydroxyapatite Bundle – Fluoride-Free Whitening & Remineralizing Duo",
+            "canonical_url": "",
+            "bundle_hash": "2cf3502dce8d7dd8bd16744a6f3a9f308c07ea7d2bd49cada42494bc00552601",
+            "lane": "keep",
+            "reason": "protected_good_content",
+            "priority": 0,
+            "protected": true,
+            "displayable": true,
+            "high_quality_ready": true,
+            "human_reviewed": true,
+            "issues": [],
+            "blocking_issues": [],
+            "quality_state": "reviewed",
+            "evidence_profile": "official_pdp_reviewed_limited",
+            "evidence_rank": 1,
+            "review_tier": "assistant_reviewed",
+            "agent_readable": true,
+            "public_ready": true
+          },
+          "source_meta": {
+            "evidence_profile": "official_pdp_reviewed_limited",
+            "quality_state": "reviewed",
+            "source_origin": "official_pdp_fields",
+            "source_url": "https://www.terraandco.com/products/natural-charcoal-toothpaste-with-hydroxyapatite-bundle",
+            "quality_improvement": {
+              "previous_bundle_hash": "4c6869f97d51b67b1a5d81c067497ab1b0f4113ca56ac0ad2822378fd50612c7",
+              "candidate_bundle_hash": "2cf3502dce8d7dd8bd16744a6f3a9f308c07ea7d2bd49cada42494bc00552601",
+              "replacement_decision": "explicit_owner_delegated_assistant_replacement_review",
+              "existing_quality_lane": "repair",
+              "candidate_quality_lane": "keep",
+              "existing_evidence_profile": "seller_only",
+              "candidate_evidence_profile": "official_pdp_reviewed_limited"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "external_product_id": "ext_a837e71a9924268d188dcd5e",
+      "pivota_signature_id": null,
+      "title": "Natural Vegan Dental Floss – 6-Pack Family Bundle | Activated Charcoal for Whitening & Fresh Breath | Plastic-Free, PFAS-Free, Bamboo Fiber",
+      "brand": "Terra & Co.",
+      "canonical_url": "https://www.terraandco.com/products/natural-vegan-dental-floss-6-pack-family-bundle-activated-charcoal-for-whitening-fresh-breath-plastic-free-pfas-free-bamboo-fiber",
+      "changed": true,
+      "blocked": false,
+      "skip_reason": null,
+      "candidate_hash": "f1cb40ea3336db940bdc70ffe4d3841bc8425b1d9e95f486e4275256755d9965",
+      "evidence_profile": "official_pdp_reviewed_limited",
+      "source_coverage": {
+        "source": "official_pdp",
+        "canonical_url": "https://www.terraandco.com/products/natural-vegan-dental-floss-6-pack-family-bundle-activated-charcoal-for-whitening-fresh-breath-plastic-free-pfas-free-bamboo-fiber",
+        "fields": {
+          "description": true,
+          "ingredients": 0,
+          "active_ingredients": 0,
+          "how_to": 0,
+          "details": 0,
+          "variants": 1
+        }
+      },
+      "preview": {
+        "headline": "Oral care tool",
+        "what_it_is": "Natural Vegan Dental Floss – 6-Pack Family Bundle | Activated Charcoal for Whitening & Fresh Breath | Plastic-Free, PFAS-Free, Bamboo Fiber is an oral care set from Terra & Co., with source-backed cues around charcoal.",
+        "why_it_stands_out": [
+          {
+            "headline": "Oral-care format cues are clear",
+            "body": "Reviewed oral-care cues such as activated charcoal, dental floss format identify the format and source-backed context without turning regulated language into recommendations.",
+            "evidence_strength": "official_pdp_reviewed"
+          }
+        ],
+        "best_for": [
+          {
+            "tag": "enamel_support_context",
+            "label": "enamel support context",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "fluoride_free_oral_care",
+            "label": "fluoride-free oral care",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "charcoal_oral_care",
+            "label": "charcoal oral care",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "oral_care_tools",
+            "label": "oral care tools",
+            "confidence": "moderate"
+          }
+        ],
+        "shopping_highlight": "activated charcoal, dental floss format"
+      },
+      "writes": [
+        {
+          "kb_key": "product:ext_a837e71a9924268d188dcd5e",
+          "action": "update",
+          "reason": "explicit_owner_delegated_assistant_replacement_review",
+          "old_hash": "4965078702378ea26bdb61e419c390a5e926d0280df0805e5abff10fe6c5736f",
+          "candidate_hash": "2774cd5bfbcb14e6a3cf637ebf6e07bb5ebbfb8c25bb5360fe10fc3f1b80ceea",
+          "existing_weak": true,
+          "source": "pivota_insights_official_pdp_manual_review_v1",
+          "after_inventory": {
+            "product_id": "ext_a837e71a9924268d188dcd5e",
+            "kb_key": "product:ext_a837e71a9924268d188dcd5e",
+            "source": "pivota_insights_official_pdp_manual_review_v1",
+            "updated_at": "",
+            "last_success_at": "",
+            "title": "Natural Vegan Dental Floss – 6-Pack Family Bundle | Activated Charcoal for Whitening & Fresh Breath | Plastic-Free, PFAS-Free, Bamboo Fiber",
+            "canonical_url": "",
+            "bundle_hash": "f1cb40ea3336db940bdc70ffe4d3841bc8425b1d9e95f486e4275256755d9965",
+            "lane": "keep",
+            "reason": "protected_good_content",
+            "priority": 0,
+            "protected": true,
+            "displayable": true,
+            "high_quality_ready": true,
+            "human_reviewed": true,
+            "issues": [],
+            "blocking_issues": [],
+            "quality_state": "reviewed",
+            "evidence_profile": "official_pdp_reviewed_limited",
+            "evidence_rank": 1,
+            "review_tier": "assistant_reviewed",
+            "agent_readable": true,
+            "public_ready": true
+          },
+          "source_meta": {
+            "evidence_profile": "official_pdp_reviewed_limited",
+            "quality_state": "reviewed",
+            "source_origin": "official_pdp_fields",
+            "source_url": "https://www.terraandco.com/products/natural-vegan-dental-floss-6-pack-family-bundle-activated-charcoal-for-whitening-fresh-breath-plastic-free-pfas-free-bamboo-fiber",
+            "quality_improvement": {
+              "previous_bundle_hash": "ebd78305a3e4a2cb2ed78fc003dd86a82de17440b61fbff23ba2cd64b1561e09",
+              "candidate_bundle_hash": "f1cb40ea3336db940bdc70ffe4d3841bc8425b1d9e95f486e4275256755d9965",
+              "replacement_decision": "explicit_owner_delegated_assistant_replacement_review",
+              "existing_quality_lane": "suppress_public",
+              "candidate_quality_lane": "keep",
+              "existing_evidence_profile": "seller_only",
+              "candidate_evidence_profile": "official_pdp_reviewed_limited"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "external_product_id": "ext_e3a9de1c5d14cf7364cc47d9",
+      "pivota_signature_id": "sig_8b9e40b61b3f7393242f2abb",
+      "title": "Plant-Based Dental Floss Trio – Vegan, Charcoal, Fluoride-Free | Terra & Co",
+      "brand": "Terra & Co.",
+      "canonical_url": "https://www.terraandco.com/products/brilliant-bundle",
+      "changed": true,
+      "blocked": false,
+      "skip_reason": null,
+      "candidate_hash": "9f4e2f1c3e9551505ad85185946dc7e8bdf05014ba23fba02a5e0696f3097e06",
+      "evidence_profile": "official_pdp_reviewed_limited",
+      "source_coverage": {
+        "source": "official_pdp",
+        "canonical_url": "https://www.terraandco.com/products/brilliant-bundle",
+        "fields": {
+          "description": true,
+          "ingredients": 0,
+          "active_ingredients": 0,
+          "how_to": 0,
+          "details": 0,
+          "variants": 1
+        }
+      },
+      "preview": {
+        "headline": "Oral care tool",
+        "what_it_is": "Plant-Based Dental Floss Trio – Vegan, Charcoal, Fluoride-Free | Terra & Co is an oral care set from Terra & Co., with source-backed cues around charcoal and fluoride-free positioning.",
+        "why_it_stands_out": [
+          {
+            "headline": "Oral-care format cues are clear",
+            "body": "Reviewed oral-care cues such as activated charcoal, fluoride-free positioning, dental floss format identify the format and source-backed context without turning regulated language into recommendations.",
+            "evidence_strength": "official_pdp_reviewed"
+          }
+        ],
+        "best_for": [
+          {
+            "tag": "enamel_support_context",
+            "label": "enamel support context",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "fluoride_free_oral_care",
+            "label": "fluoride-free oral care",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "charcoal_oral_care",
+            "label": "charcoal oral care",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "oil_pulling_routine",
+            "label": "oil pulling routine",
+            "confidence": "moderate"
+          }
+        ],
+        "shopping_highlight": "activated charcoal"
+      },
+      "writes": [
+        {
+          "kb_key": "product:ext_e3a9de1c5d14cf7364cc47d9",
+          "action": "update",
+          "reason": "explicit_owner_delegated_assistant_replacement_review",
+          "old_hash": "ff76cad304300856b3d675dfee9ed6c4dbce300c2fbb144421829f8bb14a5947",
+          "candidate_hash": "b725d28e825353bd512debf548d63d1976933859be63be38af00016238fd361c",
+          "existing_weak": true,
+          "source": "pivota_insights_official_pdp_manual_review_v1",
+          "after_inventory": {
+            "product_id": "ext_e3a9de1c5d14cf7364cc47d9",
+            "kb_key": "product:ext_e3a9de1c5d14cf7364cc47d9",
+            "source": "pivota_insights_official_pdp_manual_review_v1",
+            "updated_at": "",
+            "last_success_at": "",
+            "title": "Plant-Based Dental Floss Trio – Vegan, Charcoal, Fluoride-Free | Terra & Co",
+            "canonical_url": "",
+            "bundle_hash": "9f4e2f1c3e9551505ad85185946dc7e8bdf05014ba23fba02a5e0696f3097e06",
+            "lane": "keep",
+            "reason": "protected_good_content",
+            "priority": 0,
+            "protected": true,
+            "displayable": true,
+            "high_quality_ready": true,
+            "human_reviewed": true,
+            "issues": [],
+            "blocking_issues": [],
+            "quality_state": "reviewed",
+            "evidence_profile": "official_pdp_reviewed_limited",
+            "evidence_rank": 1,
+            "review_tier": "assistant_reviewed",
+            "agent_readable": true,
+            "public_ready": true
+          },
+          "source_meta": {
+            "evidence_profile": "official_pdp_reviewed_limited",
+            "quality_state": "reviewed",
+            "source_origin": "official_pdp_fields",
+            "source_url": "https://www.terraandco.com/products/brilliant-bundle",
+            "quality_improvement": {
+              "previous_bundle_hash": "c01eeaee1ea49001f3a6a9a4f67659e56b2adeb7284350989468b72af64df16f",
+              "candidate_bundle_hash": "9f4e2f1c3e9551505ad85185946dc7e8bdf05014ba23fba02a5e0696f3097e06",
+              "replacement_decision": "explicit_owner_delegated_assistant_replacement_review",
+              "existing_quality_lane": "suppress_public",
+              "candidate_quality_lane": "keep",
+              "existing_evidence_profile": "seller_only",
+              "candidate_evidence_profile": "official_pdp_reviewed_limited"
+            }
+          }
+        },
+        {
+          "kb_key": "product:sig_8b9e40b61b3f7393242f2abb",
+          "action": "insert",
+          "reason": "new_product_intel_bundle",
+          "old_hash": null,
+          "candidate_hash": "b725d28e825353bd512debf548d63d1976933859be63be38af00016238fd361c",
+          "existing_weak": true,
+          "source": "pivota_insights_official_pdp_manual_review_v1",
+          "after_inventory": {
+            "product_id": "ext_e3a9de1c5d14cf7364cc47d9",
+            "kb_key": "product:sig_8b9e40b61b3f7393242f2abb",
+            "source": "pivota_insights_official_pdp_manual_review_v1",
+            "updated_at": "",
+            "last_success_at": "",
+            "title": "Plant-Based Dental Floss Trio – Vegan, Charcoal, Fluoride-Free | Terra & Co",
+            "canonical_url": "",
+            "bundle_hash": "9f4e2f1c3e9551505ad85185946dc7e8bdf05014ba23fba02a5e0696f3097e06",
+            "lane": "keep",
+            "reason": "protected_good_content",
+            "priority": 0,
+            "protected": true,
+            "displayable": true,
+            "high_quality_ready": true,
+            "human_reviewed": true,
+            "issues": [],
+            "blocking_issues": [],
+            "quality_state": "reviewed",
+            "evidence_profile": "official_pdp_reviewed_limited",
+            "evidence_rank": 1,
+            "review_tier": "assistant_reviewed",
+            "agent_readable": true,
+            "public_ready": true
+          },
+          "source_meta": {
+            "evidence_profile": "official_pdp_reviewed_limited",
+            "quality_state": "reviewed",
+            "source_origin": "official_pdp_fields",
+            "source_url": "https://www.terraandco.com/products/brilliant-bundle",
+            "quality_improvement": {
+              "previous_bundle_hash": null,
+              "candidate_bundle_hash": "9f4e2f1c3e9551505ad85185946dc7e8bdf05014ba23fba02a5e0696f3097e06",
+              "replacement_decision": "new_product_intel_bundle",
+              "existing_quality_lane": null,
+              "candidate_quality_lane": "keep",
+              "existing_evidence_profile": null,
+              "candidate_evidence_profile": "official_pdp_reviewed_limited"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "external_product_id": "ext_7b4b12d709d5c53ca2e0ca1d",
+      "pivota_signature_id": "sig_ea1fe4457c23e0ebd1bae04a69268622",
+      "title": "Stainless Steel Tongue Scraper – Ayurvedic Oral Detox Tool for Fresh Breath & Bad Breath Relief",
+      "brand": "Terra & Co.",
+      "canonical_url": "https://www.terraandco.com/products/gentle-green-tongue-scraper",
+      "changed": true,
+      "blocked": false,
+      "skip_reason": null,
+      "candidate_hash": "79d4929722f1fe1e834f23b3ff606a823788d0f6725de0c316293cae5201ae41",
+      "evidence_profile": "official_pdp_reviewed_limited",
+      "source_coverage": {
+        "source": "official_pdp",
+        "canonical_url": "https://www.terraandco.com/products/gentle-green-tongue-scraper",
+        "fields": {
+          "description": true,
+          "ingredients": 0,
+          "active_ingredients": 0,
+          "how_to": 0,
+          "details": 0,
+          "variants": 2
+        }
+      },
+      "preview": {
+        "headline": "Oral care tool",
+        "what_it_is": "Stainless Steel Tongue Scraper – Ayurvedic Oral Detox Tool for Fresh Breath & Bad Breath Relief is a tongue scraper from Terra & Co., with source-backed cues around tongue-cleaning tool use.",
+        "why_it_stands_out": [
+          {
+            "headline": "Oral-care format cues are clear",
+            "body": "Reviewed oral-care cues such as tongue cleaning identify the format and source-backed context without turning regulated language into recommendations.",
+            "evidence_strength": "official_pdp_reviewed"
+          }
+        ],
+        "best_for": [
+          {
+            "tag": "oil_pulling_routine",
+            "label": "oil pulling routine",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "oral_care_tools",
+            "label": "oral care tools",
+            "confidence": "moderate"
+          }
+        ],
+        "shopping_highlight": "tongue cleaning"
+      },
+      "writes": [
+        {
+          "kb_key": "product:ext_7b4b12d709d5c53ca2e0ca1d",
+          "action": "insert",
+          "reason": "new_product_intel_bundle",
+          "old_hash": null,
+          "candidate_hash": "baeb2fcf950c953d7950beb9a0677d8152b4d473d70ba84491f6b1139eadd35f",
+          "existing_weak": true,
+          "source": "pivota_insights_official_pdp_manual_review_v1",
+          "after_inventory": {
+            "product_id": "ext_7b4b12d709d5c53ca2e0ca1d",
+            "kb_key": "product:ext_7b4b12d709d5c53ca2e0ca1d",
+            "source": "pivota_insights_official_pdp_manual_review_v1",
+            "updated_at": "",
+            "last_success_at": "",
+            "title": "Stainless Steel Tongue Scraper – Ayurvedic Oral Detox Tool for Fresh Breath & Bad Breath Relief",
+            "canonical_url": "",
+            "bundle_hash": "79d4929722f1fe1e834f23b3ff606a823788d0f6725de0c316293cae5201ae41",
+            "lane": "keep",
+            "reason": "protected_good_content",
+            "priority": 0,
+            "protected": true,
+            "displayable": true,
+            "high_quality_ready": true,
+            "human_reviewed": true,
+            "issues": [],
+            "blocking_issues": [],
+            "quality_state": "reviewed",
+            "evidence_profile": "official_pdp_reviewed_limited",
+            "evidence_rank": 1,
+            "review_tier": "assistant_reviewed",
+            "agent_readable": true,
+            "public_ready": true
+          },
+          "source_meta": {
+            "evidence_profile": "official_pdp_reviewed_limited",
+            "quality_state": "reviewed",
+            "source_origin": "official_pdp_fields",
+            "source_url": "https://www.terraandco.com/products/gentle-green-tongue-scraper",
+            "quality_improvement": {
+              "previous_bundle_hash": null,
+              "candidate_bundle_hash": "79d4929722f1fe1e834f23b3ff606a823788d0f6725de0c316293cae5201ae41",
+              "replacement_decision": "new_product_intel_bundle",
+              "existing_quality_lane": null,
+              "candidate_quality_lane": "keep",
+              "existing_evidence_profile": null,
+              "candidate_evidence_profile": "official_pdp_reviewed_limited"
+            }
+          }
+        },
+        {
+          "kb_key": "product:sig_ea1fe4457c23e0ebd1bae04a69268622",
+          "action": "insert",
+          "reason": "new_product_intel_bundle",
+          "old_hash": null,
+          "candidate_hash": "baeb2fcf950c953d7950beb9a0677d8152b4d473d70ba84491f6b1139eadd35f",
+          "existing_weak": true,
+          "source": "pivota_insights_official_pdp_manual_review_v1",
+          "after_inventory": {
+            "product_id": "ext_7b4b12d709d5c53ca2e0ca1d",
+            "kb_key": "product:sig_ea1fe4457c23e0ebd1bae04a69268622",
+            "source": "pivota_insights_official_pdp_manual_review_v1",
+            "updated_at": "",
+            "last_success_at": "",
+            "title": "Stainless Steel Tongue Scraper – Ayurvedic Oral Detox Tool for Fresh Breath & Bad Breath Relief",
+            "canonical_url": "",
+            "bundle_hash": "79d4929722f1fe1e834f23b3ff606a823788d0f6725de0c316293cae5201ae41",
+            "lane": "keep",
+            "reason": "protected_good_content",
+            "priority": 0,
+            "protected": true,
+            "displayable": true,
+            "high_quality_ready": true,
+            "human_reviewed": true,
+            "issues": [],
+            "blocking_issues": [],
+            "quality_state": "reviewed",
+            "evidence_profile": "official_pdp_reviewed_limited",
+            "evidence_rank": 1,
+            "review_tier": "assistant_reviewed",
+            "agent_readable": true,
+            "public_ready": true
+          },
+          "source_meta": {
+            "evidence_profile": "official_pdp_reviewed_limited",
+            "quality_state": "reviewed",
+            "source_origin": "official_pdp_fields",
+            "source_url": "https://www.terraandco.com/products/gentle-green-tongue-scraper",
+            "quality_improvement": {
+              "previous_bundle_hash": null,
+              "candidate_bundle_hash": "79d4929722f1fe1e834f23b3ff606a823788d0f6725de0c316293cae5201ae41",
+              "replacement_decision": "new_product_intel_bundle",
+              "existing_quality_lane": null,
+              "candidate_quality_lane": "keep",
+              "existing_evidence_profile": null,
+              "candidate_evidence_profile": "official_pdp_reviewed_limited"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "external_product_id": "ext_dc6b7839a9cf5bc87916e392",
+      "pivota_signature_id": "sig_3820078c7437afd4ce28be1a",
+      "title": "Terra & Co. Gentle Green Toothbrush – Plant-Based, Soft Bristles",
+      "brand": "Terra & Co.",
+      "canonical_url": "https://www.terraandco.com/products/new-gentle-green-toothbrush-1",
+      "changed": true,
+      "blocked": false,
+      "skip_reason": null,
+      "candidate_hash": "1b08aeb106a72d3067d6e8a5fd1c2496143a10f544076c885cba157f35d21a55",
+      "evidence_profile": "official_pdp_reviewed_limited",
+      "source_coverage": {
+        "source": "official_pdp",
+        "canonical_url": "https://www.terraandco.com/products/new-gentle-green-toothbrush-1",
+        "fields": {
+          "description": true,
+          "ingredients": 0,
+          "active_ingredients": 0,
+          "how_to": 0,
+          "details": 0,
+          "variants": 1
+        }
+      },
+      "preview": {
+        "headline": "Oral care tool",
+        "what_it_is": "Terra & Co. Gentle Green Toothbrush – Plant-Based, Soft Bristles is a toothbrush from Terra & Co.",
+        "why_it_stands_out": [
+          {
+            "headline": "Oral-care format cues are clear",
+            "body": "Reviewed oral-care cues such as soft-bristle brushing identify the format and source-backed context without turning regulated language into recommendations.",
+            "evidence_strength": "official_pdp_reviewed"
+          }
+        ],
+        "best_for": [
+          {
+            "tag": "oral_care_tools",
+            "label": "oral care tools",
+            "confidence": "moderate"
+          }
+        ],
+        "shopping_highlight": "soft-bristle brushing"
+      },
+      "writes": [
+        {
+          "kb_key": "product:ext_dc6b7839a9cf5bc87916e392",
+          "action": "update",
+          "reason": "explicit_owner_delegated_assistant_replacement_review",
+          "old_hash": "b49c27ac8601d778bc22030d9085c7946120eb4c56073bef55cecaf89dc63caa",
+          "candidate_hash": "4c7b816111bf65605c0f33cf08b39af90c7351ad92503c1f7b0d595e99672540",
+          "existing_weak": true,
+          "source": "pivota_insights_official_pdp_manual_review_v1",
+          "after_inventory": {
+            "product_id": "ext_dc6b7839a9cf5bc87916e392",
+            "kb_key": "product:ext_dc6b7839a9cf5bc87916e392",
+            "source": "pivota_insights_official_pdp_manual_review_v1",
+            "updated_at": "",
+            "last_success_at": "",
+            "title": "Terra & Co. Gentle Green Toothbrush – Plant-Based, Soft Bristles",
+            "canonical_url": "",
+            "bundle_hash": "1b08aeb106a72d3067d6e8a5fd1c2496143a10f544076c885cba157f35d21a55",
+            "lane": "keep",
+            "reason": "protected_good_content",
+            "priority": 0,
+            "protected": true,
+            "displayable": true,
+            "high_quality_ready": true,
+            "human_reviewed": true,
+            "issues": [],
+            "blocking_issues": [],
+            "quality_state": "reviewed",
+            "evidence_profile": "official_pdp_reviewed_limited",
+            "evidence_rank": 1,
+            "review_tier": "assistant_reviewed",
+            "agent_readable": true,
+            "public_ready": true
+          },
+          "source_meta": {
+            "evidence_profile": "official_pdp_reviewed_limited",
+            "quality_state": "reviewed",
+            "source_origin": "official_pdp_fields",
+            "source_url": "https://www.terraandco.com/products/new-gentle-green-toothbrush-1",
+            "quality_improvement": {
+              "previous_bundle_hash": "8d4102dddd0423e90fe2f3634988db6bc577560079c86384a6f145a930c9b7a3",
+              "candidate_bundle_hash": "1b08aeb106a72d3067d6e8a5fd1c2496143a10f544076c885cba157f35d21a55",
+              "replacement_decision": "explicit_owner_delegated_assistant_replacement_review",
+              "existing_quality_lane": "suppress_public",
+              "candidate_quality_lane": "keep",
+              "existing_evidence_profile": "seller_only",
+              "candidate_evidence_profile": "official_pdp_reviewed_limited"
+            }
+          }
+        },
+        {
+          "kb_key": "product:sig_3820078c7437afd4ce28be1a",
+          "action": "insert",
+          "reason": "new_product_intel_bundle",
+          "old_hash": null,
+          "candidate_hash": "4c7b816111bf65605c0f33cf08b39af90c7351ad92503c1f7b0d595e99672540",
+          "existing_weak": true,
+          "source": "pivota_insights_official_pdp_manual_review_v1",
+          "after_inventory": {
+            "product_id": "ext_dc6b7839a9cf5bc87916e392",
+            "kb_key": "product:sig_3820078c7437afd4ce28be1a",
+            "source": "pivota_insights_official_pdp_manual_review_v1",
+            "updated_at": "",
+            "last_success_at": "",
+            "title": "Terra & Co. Gentle Green Toothbrush – Plant-Based, Soft Bristles",
+            "canonical_url": "",
+            "bundle_hash": "1b08aeb106a72d3067d6e8a5fd1c2496143a10f544076c885cba157f35d21a55",
+            "lane": "keep",
+            "reason": "protected_good_content",
+            "priority": 0,
+            "protected": true,
+            "displayable": true,
+            "high_quality_ready": true,
+            "human_reviewed": true,
+            "issues": [],
+            "blocking_issues": [],
+            "quality_state": "reviewed",
+            "evidence_profile": "official_pdp_reviewed_limited",
+            "evidence_rank": 1,
+            "review_tier": "assistant_reviewed",
+            "agent_readable": true,
+            "public_ready": true
+          },
+          "source_meta": {
+            "evidence_profile": "official_pdp_reviewed_limited",
+            "quality_state": "reviewed",
+            "source_origin": "official_pdp_fields",
+            "source_url": "https://www.terraandco.com/products/new-gentle-green-toothbrush-1",
+            "quality_improvement": {
+              "previous_bundle_hash": null,
+              "candidate_bundle_hash": "1b08aeb106a72d3067d6e8a5fd1c2496143a10f544076c885cba157f35d21a55",
+              "replacement_decision": "new_product_intel_bundle",
+              "existing_quality_lane": null,
+              "candidate_quality_lane": "keep",
+              "existing_evidence_profile": null,
+              "candidate_evidence_profile": "official_pdp_reviewed_limited"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "external_product_id": "ext_4e06191d574498f1e1f61bf6",
+      "pivota_signature_id": null,
+      "title": "Terra & Co.® Oil Pulling Bundle – Gentle Green + Brilliant Black | Ayurvedic Detox, Enamel Protection & Whitening",
+      "brand": "Terra & Co.",
+      "canonical_url": "https://www.terraandco.com/products/ayurvedic-oil-pulling-mouthwash-rinse",
+      "changed": true,
+      "blocked": false,
+      "skip_reason": null,
+      "candidate_hash": "7182cecf5f740c2562a836f409f1d4724e86ea9de098dae0e0b9b696c9aa31cd",
+      "evidence_profile": "official_pdp_reviewed_limited",
+      "source_coverage": {
+        "source": "official_pdp",
+        "canonical_url": "https://www.terraandco.com/products/ayurvedic-oil-pulling-mouthwash-rinse",
+        "fields": {
+          "description": true,
+          "ingredients": 0,
+          "active_ingredients": 0,
+          "how_to": 0,
+          "details": 0,
+          "variants": 1
+        }
+      },
+      "preview": {
+        "headline": "Oral care treatment",
+        "what_it_is": "Terra & Co.® Oil Pulling Bundle – Gentle Green + Brilliant Black | Ayurvedic Detox, Enamel Protection & Whitening is an oral care set from Terra & Co., with source-backed cues around enamel-care context and oil-pulling format.",
+        "why_it_stands_out": [
+          {
+            "headline": "Oral-care format cues are clear",
+            "body": "Reviewed oral-care cues such as oil pulling format identify the format and source-backed context without turning regulated language into recommendations.",
+            "evidence_strength": "official_pdp_reviewed"
+          }
+        ],
+        "best_for": [
+          {
+            "tag": "enamel_support_context",
+            "label": "enamel support context",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "fluoride_free_oral_care",
+            "label": "fluoride-free oral care",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "charcoal_oral_care",
+            "label": "charcoal oral care",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "oil_pulling_routine",
+            "label": "oil pulling routine",
+            "confidence": "moderate"
+          }
+        ],
+        "shopping_highlight": "oil pulling format"
+      },
+      "writes": [
+        {
+          "kb_key": "product:ext_4e06191d574498f1e1f61bf6",
+          "action": "insert",
+          "reason": "new_product_intel_bundle",
+          "old_hash": null,
+          "candidate_hash": "0896d84fbe5994e39f381aaf1c8159963f28e9e3b5b88036196e5671edb7fe2d",
+          "existing_weak": true,
+          "source": "pivota_insights_official_pdp_manual_review_v1",
+          "after_inventory": {
+            "product_id": "ext_4e06191d574498f1e1f61bf6",
+            "kb_key": "product:ext_4e06191d574498f1e1f61bf6",
+            "source": "pivota_insights_official_pdp_manual_review_v1",
+            "updated_at": "",
+            "last_success_at": "",
+            "title": "Terra & Co.® Oil Pulling Bundle – Gentle Green + Brilliant Black | Ayurvedic Detox, Enamel Protection & Whitening",
+            "canonical_url": "",
+            "bundle_hash": "7182cecf5f740c2562a836f409f1d4724e86ea9de098dae0e0b9b696c9aa31cd",
+            "lane": "keep",
+            "reason": "protected_good_content",
+            "priority": 0,
+            "protected": true,
+            "displayable": true,
+            "high_quality_ready": true,
+            "human_reviewed": true,
+            "issues": [],
+            "blocking_issues": [],
+            "quality_state": "reviewed",
+            "evidence_profile": "official_pdp_reviewed_limited",
+            "evidence_rank": 1,
+            "review_tier": "assistant_reviewed",
+            "agent_readable": true,
+            "public_ready": true
+          },
+          "source_meta": {
+            "evidence_profile": "official_pdp_reviewed_limited",
+            "quality_state": "reviewed",
+            "source_origin": "official_pdp_fields",
+            "source_url": "https://www.terraandco.com/products/ayurvedic-oil-pulling-mouthwash-rinse",
+            "quality_improvement": {
+              "previous_bundle_hash": null,
+              "candidate_bundle_hash": "7182cecf5f740c2562a836f409f1d4724e86ea9de098dae0e0b9b696c9aa31cd",
+              "replacement_decision": "new_product_intel_bundle",
+              "existing_quality_lane": null,
+              "candidate_quality_lane": "keep",
+              "existing_evidence_profile": null,
+              "candidate_evidence_profile": "official_pdp_reviewed_limited"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "external_product_id": "ext_442cd0de3df2cf8404568b35",
+      "pivota_signature_id": "sig_90d7c9bfbb7e7e5c08a0bb62",
+      "title": "Terra & Co.® Oil Pulling Spoon – Hygienic, Sustainable & Designed for Holistic Oral Care",
+      "brand": "Terra & Co.",
+      "canonical_url": "https://www.terraandco.com/products/stainless-steel-spoon-for-oil-pulling",
+      "changed": true,
+      "blocked": false,
+      "skip_reason": null,
+      "candidate_hash": "0ac43ada262ecea1487685a79bf5cebd51b794be8ace30ccc638a02e6aed5de9",
+      "evidence_profile": "official_pdp_reviewed_limited",
+      "source_coverage": {
+        "source": "official_pdp",
+        "canonical_url": "https://www.terraandco.com/products/stainless-steel-spoon-for-oil-pulling",
+        "fields": {
+          "description": true,
+          "ingredients": 0,
+          "active_ingredients": 0,
+          "how_to": 0,
+          "details": 0,
+          "variants": 1
+        }
+      },
+      "preview": {
+        "headline": "Oral care tool",
+        "what_it_is": "Terra & Co.® Oil Pulling Spoon – Hygienic, Sustainable & Designed for Holistic Oral Care is an oral rinse from Terra & Co., with source-backed cues around oil-pulling format.",
+        "why_it_stands_out": [
+          {
+            "headline": "Oral-care format cues are clear",
+            "body": "Reviewed oral-care cues such as oil pulling format identify the format and source-backed context without turning regulated language into recommendations.",
+            "evidence_strength": "official_pdp_reviewed"
+          }
+        ],
+        "best_for": [
+          {
+            "tag": "oil_pulling_routine",
+            "label": "oil pulling routine",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "oral_care_tools",
+            "label": "oral care tools",
+            "confidence": "moderate"
+          }
+        ],
+        "shopping_highlight": "oil pulling format"
+      },
+      "writes": [
+        {
+          "kb_key": "product:ext_442cd0de3df2cf8404568b35",
+          "action": "update",
+          "reason": "explicit_owner_delegated_assistant_replacement_review",
+          "old_hash": "d03e87a821fea1c873828ed48f990b1add79f0e4586578eb72751b6d661af832",
+          "candidate_hash": "2c4369dd2fa8338e69d1bb45707de6481a6f46079373e48e1e658477abf2b865",
+          "existing_weak": true,
+          "source": "pivota_insights_official_pdp_manual_review_v1",
+          "after_inventory": {
+            "product_id": "ext_442cd0de3df2cf8404568b35",
+            "kb_key": "product:ext_442cd0de3df2cf8404568b35",
+            "source": "pivota_insights_official_pdp_manual_review_v1",
+            "updated_at": "",
+            "last_success_at": "",
+            "title": "Terra & Co.® Oil Pulling Spoon – Hygienic, Sustainable & Designed for Holistic Oral Care",
+            "canonical_url": "",
+            "bundle_hash": "0ac43ada262ecea1487685a79bf5cebd51b794be8ace30ccc638a02e6aed5de9",
+            "lane": "keep",
+            "reason": "protected_good_content",
+            "priority": 0,
+            "protected": true,
+            "displayable": true,
+            "high_quality_ready": true,
+            "human_reviewed": true,
+            "issues": [],
+            "blocking_issues": [],
+            "quality_state": "reviewed",
+            "evidence_profile": "official_pdp_reviewed_limited",
+            "evidence_rank": 1,
+            "review_tier": "assistant_reviewed",
+            "agent_readable": true,
+            "public_ready": true
+          },
+          "source_meta": {
+            "evidence_profile": "official_pdp_reviewed_limited",
+            "quality_state": "reviewed",
+            "source_origin": "official_pdp_fields",
+            "source_url": "https://www.terraandco.com/products/stainless-steel-spoon-for-oil-pulling",
+            "quality_improvement": {
+              "previous_bundle_hash": "7da292cb8d32b832210e8ffbbaef018aed3ef152bbf619d660d09a25bb2a4f0a",
+              "candidate_bundle_hash": "0ac43ada262ecea1487685a79bf5cebd51b794be8ace30ccc638a02e6aed5de9",
+              "replacement_decision": "explicit_owner_delegated_assistant_replacement_review",
+              "existing_quality_lane": "suppress_public",
+              "candidate_quality_lane": "keep",
+              "existing_evidence_profile": "seller_only",
+              "candidate_evidence_profile": "official_pdp_reviewed_limited"
+            }
+          }
+        },
+        {
+          "kb_key": "product:sig_90d7c9bfbb7e7e5c08a0bb62",
+          "action": "insert",
+          "reason": "new_product_intel_bundle",
+          "old_hash": null,
+          "candidate_hash": "2c4369dd2fa8338e69d1bb45707de6481a6f46079373e48e1e658477abf2b865",
+          "existing_weak": true,
+          "source": "pivota_insights_official_pdp_manual_review_v1",
+          "after_inventory": {
+            "product_id": "ext_442cd0de3df2cf8404568b35",
+            "kb_key": "product:sig_90d7c9bfbb7e7e5c08a0bb62",
+            "source": "pivota_insights_official_pdp_manual_review_v1",
+            "updated_at": "",
+            "last_success_at": "",
+            "title": "Terra & Co.® Oil Pulling Spoon – Hygienic, Sustainable & Designed for Holistic Oral Care",
+            "canonical_url": "",
+            "bundle_hash": "0ac43ada262ecea1487685a79bf5cebd51b794be8ace30ccc638a02e6aed5de9",
+            "lane": "keep",
+            "reason": "protected_good_content",
+            "priority": 0,
+            "protected": true,
+            "displayable": true,
+            "high_quality_ready": true,
+            "human_reviewed": true,
+            "issues": [],
+            "blocking_issues": [],
+            "quality_state": "reviewed",
+            "evidence_profile": "official_pdp_reviewed_limited",
+            "evidence_rank": 1,
+            "review_tier": "assistant_reviewed",
+            "agent_readable": true,
+            "public_ready": true
+          },
+          "source_meta": {
+            "evidence_profile": "official_pdp_reviewed_limited",
+            "quality_state": "reviewed",
+            "source_origin": "official_pdp_fields",
+            "source_url": "https://www.terraandco.com/products/stainless-steel-spoon-for-oil-pulling",
+            "quality_improvement": {
+              "previous_bundle_hash": null,
+              "candidate_bundle_hash": "0ac43ada262ecea1487685a79bf5cebd51b794be8ace30ccc638a02e6aed5de9",
+              "replacement_decision": "new_product_intel_bundle",
+              "existing_quality_lane": null,
+              "candidate_quality_lane": "keep",
+              "existing_evidence_profile": null,
+              "candidate_evidence_profile": "official_pdp_reviewed_limited"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "external_product_id": "ext_94f9ccddc2bc8baff837cea4",
+      "pivota_signature_id": "sig_1dd4df887121a9460d85439d",
+      "title": "Zeeyo Gut-Safe Dog Toothpaste Box – Hydroxyapatite Canine Oral Care, Vegan & Fluoride-Free",
+      "brand": "Terra & Co.",
+      "canonical_url": "https://www.terraandco.com/products/zeeyo-box",
+      "changed": true,
+      "blocked": false,
+      "skip_reason": null,
+      "candidate_hash": "c46dd62ddafe9e8f1cc7a681132a58b87c74f1410c7cf0885d162631672987b3",
+      "evidence_profile": "official_pdp_reviewed_limited",
+      "source_coverage": {
+        "source": "official_pdp",
+        "canonical_url": "https://www.terraandco.com/products/zeeyo-box",
+        "fields": {
+          "description": true,
+          "ingredients": 0,
+          "active_ingredients": 0,
+          "how_to": 0,
+          "details": 0,
+          "variants": 1
+        }
+      },
+      "preview": {
+        "headline": "Oral care treatment",
+        "what_it_is": "Zeeyo Gut-Safe Dog Toothpaste Box – Hydroxyapatite Canine Oral Care, Vegan & Fluoride-Free is a toothpaste from Terra & Co., with source-backed cues around enamel-care context and fluoride-free positioning.",
+        "why_it_stands_out": [
+          {
+            "headline": "Oral-care format cues are clear",
+            "body": "Reviewed oral-care cues such as hydroxyapatite, fluoride-free positioning identify the format and source-backed context without turning regulated language into recommendations.",
+            "evidence_strength": "official_pdp_reviewed"
+          }
+        ],
+        "best_for": [
+          {
+            "tag": "enamel_support_context",
+            "label": "enamel support context",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "fluoride_free_oral_care",
+            "label": "fluoride-free oral care",
+            "confidence": "moderate"
+          }
+        ],
+        "shopping_highlight": "hydroxyapatite"
+      },
+      "writes": [
+        {
+          "kb_key": "product:ext_94f9ccddc2bc8baff837cea4",
+          "action": "insert",
+          "reason": "new_product_intel_bundle",
+          "old_hash": null,
+          "candidate_hash": "ad5529bf2ff9eaae211f0733d7bc5f1348f222abbc94420917fab21bb7cd93b8",
+          "existing_weak": true,
+          "source": "pivota_insights_official_pdp_manual_review_v1",
+          "after_inventory": {
+            "product_id": "ext_94f9ccddc2bc8baff837cea4",
+            "kb_key": "product:ext_94f9ccddc2bc8baff837cea4",
+            "source": "pivota_insights_official_pdp_manual_review_v1",
+            "updated_at": "",
+            "last_success_at": "",
+            "title": "Zeeyo Gut-Safe Dog Toothpaste Box – Hydroxyapatite Canine Oral Care, Vegan & Fluoride-Free",
+            "canonical_url": "",
+            "bundle_hash": "c46dd62ddafe9e8f1cc7a681132a58b87c74f1410c7cf0885d162631672987b3",
+            "lane": "keep",
+            "reason": "protected_good_content",
+            "priority": 0,
+            "protected": true,
+            "displayable": true,
+            "high_quality_ready": true,
+            "human_reviewed": true,
+            "issues": [],
+            "blocking_issues": [],
+            "quality_state": "reviewed",
+            "evidence_profile": "official_pdp_reviewed_limited",
+            "evidence_rank": 1,
+            "review_tier": "assistant_reviewed",
+            "agent_readable": true,
+            "public_ready": true
+          },
+          "source_meta": {
+            "evidence_profile": "official_pdp_reviewed_limited",
+            "quality_state": "reviewed",
+            "source_origin": "official_pdp_fields",
+            "source_url": "https://www.terraandco.com/products/zeeyo-box",
+            "quality_improvement": {
+              "previous_bundle_hash": null,
+              "candidate_bundle_hash": "c46dd62ddafe9e8f1cc7a681132a58b87c74f1410c7cf0885d162631672987b3",
+              "replacement_decision": "new_product_intel_bundle",
+              "existing_quality_lane": null,
+              "candidate_quality_lane": "keep",
+              "existing_evidence_profile": null,
+              "candidate_evidence_profile": "official_pdp_reviewed_limited"
+            }
+          }
+        },
+        {
+          "kb_key": "product:sig_1dd4df887121a9460d85439d",
+          "action": "insert",
+          "reason": "new_product_intel_bundle",
+          "old_hash": null,
+          "candidate_hash": "ad5529bf2ff9eaae211f0733d7bc5f1348f222abbc94420917fab21bb7cd93b8",
+          "existing_weak": true,
+          "source": "pivota_insights_official_pdp_manual_review_v1",
+          "after_inventory": {
+            "product_id": "ext_94f9ccddc2bc8baff837cea4",
+            "kb_key": "product:sig_1dd4df887121a9460d85439d",
+            "source": "pivota_insights_official_pdp_manual_review_v1",
+            "updated_at": "",
+            "last_success_at": "",
+            "title": "Zeeyo Gut-Safe Dog Toothpaste Box – Hydroxyapatite Canine Oral Care, Vegan & Fluoride-Free",
+            "canonical_url": "",
+            "bundle_hash": "c46dd62ddafe9e8f1cc7a681132a58b87c74f1410c7cf0885d162631672987b3",
+            "lane": "keep",
+            "reason": "protected_good_content",
+            "priority": 0,
+            "protected": true,
+            "displayable": true,
+            "high_quality_ready": true,
+            "human_reviewed": true,
+            "issues": [],
+            "blocking_issues": [],
+            "quality_state": "reviewed",
+            "evidence_profile": "official_pdp_reviewed_limited",
+            "evidence_rank": 1,
+            "review_tier": "assistant_reviewed",
+            "agent_readable": true,
+            "public_ready": true
+          },
+          "source_meta": {
+            "evidence_profile": "official_pdp_reviewed_limited",
+            "quality_state": "reviewed",
+            "source_origin": "official_pdp_fields",
+            "source_url": "https://www.terraandco.com/products/zeeyo-box",
+            "quality_improvement": {
+              "previous_bundle_hash": null,
+              "candidate_bundle_hash": "c46dd62ddafe9e8f1cc7a681132a58b87c74f1410c7cf0885d162631672987b3",
+              "replacement_decision": "new_product_intel_bundle",
+              "existing_quality_lane": null,
+              "candidate_quality_lane": "keep",
+              "existing_evidence_profile": null,
+              "candidate_evidence_profile": "official_pdp_reviewed_limited"
+            }
+          }
+        }
+      ]
+    }
+  ]
+}

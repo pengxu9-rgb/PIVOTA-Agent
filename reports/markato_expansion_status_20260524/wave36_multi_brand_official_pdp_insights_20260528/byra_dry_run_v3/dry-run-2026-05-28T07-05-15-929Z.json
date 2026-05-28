@@ -1,0 +1,1901 @@
+{
+  "generated_at": "2026-05-28T07:05:15.929Z",
+  "source": "pivota_insights_official_pdp_manual_review_v1",
+  "mode": "dry_run",
+  "filters": {
+    "brand": "Byra",
+    "product_ids": [],
+    "limit": null,
+    "include_strong": false,
+    "include_url_key": false,
+    "apply_chunk_size": null
+  },
+  "summary": {
+    "scanned": 14,
+    "changed_products": 12,
+    "blocked_products": 1,
+    "skipped_products": 1,
+    "write_actions": {
+      "update": 8,
+      "insert": 13,
+      "skip": 2
+    },
+    "skip_reasons": {
+      "no_safe_writes": 1,
+      "candidate_not_publish_quality_ready": 2,
+      "candidate_failed_manual_quality_gate:generic_beauty_product_copy": 1
+    },
+    "evidence_profiles": {
+      "official_pdp_reviewed_limited": 14
+    }
+  },
+  "plans": [
+    {
+      "external_product_id": "ext_3d78ee9a97fa29cbc4d22b67",
+      "pivota_signature_id": "sig_74715d03f182fe9a82ba5459",
+      "title": "Beauty Flight Pack by Byra & Anaya",
+      "brand": "Byra",
+      "canonical_url": "https://byrabeauty.com/products/beauty-flight-pack",
+      "changed": true,
+      "blocked": false,
+      "skip_reason": null,
+      "candidate_hash": "87001c8faae5a303f1a093197f9b9541b50a38aaf6170515d0acfac0091eb719",
+      "evidence_profile": "official_pdp_reviewed_limited",
+      "source_coverage": {
+        "source": "official_pdp",
+        "canonical_url": "https://byrabeauty.com/products/beauty-flight-pack",
+        "fields": {
+          "description": true,
+          "ingredients": 0,
+          "active_ingredients": 0,
+          "how_to": 0,
+          "details": 0,
+          "variants": 1
+        }
+      },
+      "preview": {
+        "headline": "Skincare set",
+        "what_it_is": "Beauty Flight Pack by Byra & Anaya is a skincare set from Byra, with source-backed cues around hydration.",
+        "why_it_stands_out": [
+          {
+            "headline": "Routine step cues are specific",
+            "body": "Reviewed skincare cues such as hydration, barrier support identify the routine role or key ingredient context without inventing unsupported benefits.",
+            "evidence_strength": "official_pdp_reviewed"
+          }
+        ],
+        "best_for": [
+          {
+            "tag": "hydration",
+            "label": "hydration",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "firmness",
+            "label": "firmness",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "barrier_support",
+            "label": "barrier support",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "body_routine",
+            "label": "body routine",
+            "confidence": "moderate"
+          }
+        ],
+        "shopping_highlight": "Skincare routine set"
+      },
+      "writes": [
+        {
+          "kb_key": "product:ext_3d78ee9a97fa29cbc4d22b67",
+          "action": "update",
+          "reason": "explicit_owner_delegated_assistant_replacement_review",
+          "old_hash": "50858718fc69d1efb022168ca2cdb81ef7f55408c3daa078e19c78dc6dae6ec6",
+          "candidate_hash": "4e2c21dfdb5af997a51d16e45343a95c6bc86220a974f7461306418b7b67ba6a",
+          "existing_weak": true,
+          "source": "pivota_insights_official_pdp_manual_review_v1",
+          "after_inventory": {
+            "product_id": "ext_3d78ee9a97fa29cbc4d22b67",
+            "kb_key": "product:ext_3d78ee9a97fa29cbc4d22b67",
+            "source": "pivota_insights_official_pdp_manual_review_v1",
+            "updated_at": "",
+            "last_success_at": "",
+            "title": "Beauty Flight Pack by Byra & Anaya",
+            "canonical_url": "",
+            "bundle_hash": "87001c8faae5a303f1a093197f9b9541b50a38aaf6170515d0acfac0091eb719",
+            "lane": "keep",
+            "reason": "protected_good_content",
+            "priority": 0,
+            "protected": true,
+            "displayable": true,
+            "high_quality_ready": true,
+            "human_reviewed": true,
+            "issues": [],
+            "blocking_issues": [],
+            "quality_state": "reviewed",
+            "evidence_profile": "official_pdp_reviewed_limited",
+            "evidence_rank": 1,
+            "review_tier": "assistant_reviewed",
+            "agent_readable": true,
+            "public_ready": true
+          },
+          "source_meta": {
+            "evidence_profile": "official_pdp_reviewed_limited",
+            "quality_state": "reviewed",
+            "source_origin": "official_pdp_fields",
+            "source_url": "https://byrabeauty.com/products/beauty-flight-pack",
+            "quality_improvement": {
+              "previous_bundle_hash": "c3c9f0916a5c2aeafa32d67cbf34761af48caa56ceac672f70d9176ddc0e82e3",
+              "candidate_bundle_hash": "87001c8faae5a303f1a093197f9b9541b50a38aaf6170515d0acfac0091eb719",
+              "replacement_decision": "explicit_owner_delegated_assistant_replacement_review",
+              "existing_quality_lane": "repair",
+              "candidate_quality_lane": "keep",
+              "existing_evidence_profile": "seller_only",
+              "candidate_evidence_profile": "official_pdp_reviewed_limited"
+            }
+          }
+        },
+        {
+          "kb_key": "product:sig_74715d03f182fe9a82ba5459",
+          "action": "insert",
+          "reason": "new_product_intel_bundle",
+          "old_hash": null,
+          "candidate_hash": "4e2c21dfdb5af997a51d16e45343a95c6bc86220a974f7461306418b7b67ba6a",
+          "existing_weak": true,
+          "source": "pivota_insights_official_pdp_manual_review_v1",
+          "after_inventory": {
+            "product_id": "ext_3d78ee9a97fa29cbc4d22b67",
+            "kb_key": "product:sig_74715d03f182fe9a82ba5459",
+            "source": "pivota_insights_official_pdp_manual_review_v1",
+            "updated_at": "",
+            "last_success_at": "",
+            "title": "Beauty Flight Pack by Byra & Anaya",
+            "canonical_url": "",
+            "bundle_hash": "87001c8faae5a303f1a093197f9b9541b50a38aaf6170515d0acfac0091eb719",
+            "lane": "keep",
+            "reason": "protected_good_content",
+            "priority": 0,
+            "protected": true,
+            "displayable": true,
+            "high_quality_ready": true,
+            "human_reviewed": true,
+            "issues": [],
+            "blocking_issues": [],
+            "quality_state": "reviewed",
+            "evidence_profile": "official_pdp_reviewed_limited",
+            "evidence_rank": 1,
+            "review_tier": "assistant_reviewed",
+            "agent_readable": true,
+            "public_ready": true
+          },
+          "source_meta": {
+            "evidence_profile": "official_pdp_reviewed_limited",
+            "quality_state": "reviewed",
+            "source_origin": "official_pdp_fields",
+            "source_url": "https://byrabeauty.com/products/beauty-flight-pack",
+            "quality_improvement": {
+              "previous_bundle_hash": null,
+              "candidate_bundle_hash": "87001c8faae5a303f1a093197f9b9541b50a38aaf6170515d0acfac0091eb719",
+              "replacement_decision": "new_product_intel_bundle",
+              "existing_quality_lane": null,
+              "candidate_quality_lane": "keep",
+              "existing_evidence_profile": null,
+              "candidate_evidence_profile": "official_pdp_reviewed_limited"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "external_product_id": "ext_936878eeb9a3b577ef32f8a6",
+      "pivota_signature_id": null,
+      "title": "Byra - Complete Skin Transformation Set",
+      "brand": "Byra",
+      "canonical_url": "https://byrabeauty.com/products/byra-complete-skin-transformation-set",
+      "changed": true,
+      "blocked": false,
+      "skip_reason": null,
+      "candidate_hash": "f9837e49c9fc28763b1fd54bd292f58ff7e84e6b8c4d590057efe4eec8c4498c",
+      "evidence_profile": "official_pdp_reviewed_limited",
+      "source_coverage": {
+        "source": "official_pdp",
+        "canonical_url": "https://byrabeauty.com/products/byra-complete-skin-transformation-set",
+        "fields": {
+          "description": true,
+          "ingredients": 0,
+          "active_ingredients": 0,
+          "how_to": 0,
+          "details": 0,
+          "variants": 1
+        }
+      },
+      "preview": {
+        "headline": "Skincare set",
+        "what_it_is": "Byra - Complete Skin Transformation Set is a skincare set from Byra, with source-backed cues around cleansing, hydration and brightening support.",
+        "why_it_stands_out": [
+          {
+            "headline": "Routine step cues are specific",
+            "body": "Reviewed skincare cues such as vitamin C, retinol, peptides, hydration identify the routine role or key ingredient context without inventing unsupported benefits.",
+            "evidence_strength": "official_pdp_reviewed"
+          }
+        ],
+        "best_for": [
+          {
+            "tag": "hydration",
+            "label": "hydration",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "firmness",
+            "label": "firmness",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "radiance",
+            "label": "radiance",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "barrier_support",
+            "label": "barrier support",
+            "confidence": "moderate"
+          }
+        ],
+        "shopping_highlight": "Skincare routine set"
+      },
+      "writes": [
+        {
+          "kb_key": "product:ext_936878eeb9a3b577ef32f8a6",
+          "action": "insert",
+          "reason": "new_product_intel_bundle",
+          "old_hash": null,
+          "candidate_hash": "bfc59641b8f21c85e385dafdfbb751fd1b73db0783ed694828bbd99173639e6a",
+          "existing_weak": true,
+          "source": "pivota_insights_official_pdp_manual_review_v1",
+          "after_inventory": {
+            "product_id": "ext_936878eeb9a3b577ef32f8a6",
+            "kb_key": "product:ext_936878eeb9a3b577ef32f8a6",
+            "source": "pivota_insights_official_pdp_manual_review_v1",
+            "updated_at": "",
+            "last_success_at": "",
+            "title": "Byra - Complete Skin Transformation Set",
+            "canonical_url": "",
+            "bundle_hash": "f9837e49c9fc28763b1fd54bd292f58ff7e84e6b8c4d590057efe4eec8c4498c",
+            "lane": "keep",
+            "reason": "protected_good_content",
+            "priority": 0,
+            "protected": true,
+            "displayable": true,
+            "high_quality_ready": true,
+            "human_reviewed": true,
+            "issues": [],
+            "blocking_issues": [],
+            "quality_state": "reviewed",
+            "evidence_profile": "official_pdp_reviewed_limited",
+            "evidence_rank": 1,
+            "review_tier": "assistant_reviewed",
+            "agent_readable": true,
+            "public_ready": true
+          },
+          "source_meta": {
+            "evidence_profile": "official_pdp_reviewed_limited",
+            "quality_state": "reviewed",
+            "source_origin": "official_pdp_fields",
+            "source_url": "https://byrabeauty.com/products/byra-complete-skin-transformation-set",
+            "quality_improvement": {
+              "previous_bundle_hash": null,
+              "candidate_bundle_hash": "f9837e49c9fc28763b1fd54bd292f58ff7e84e6b8c4d590057efe4eec8c4498c",
+              "replacement_decision": "new_product_intel_bundle",
+              "existing_quality_lane": null,
+              "candidate_quality_lane": "keep",
+              "existing_evidence_profile": null,
+              "candidate_evidence_profile": "official_pdp_reviewed_limited"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "external_product_id": "ext_475ee6b7d783d597bb021546",
+      "pivota_signature_id": null,
+      "title": "Byra - Skin Brightening Trio",
+      "brand": "Byra",
+      "canonical_url": "https://byrabeauty.com/products/byra-skin-brightening-trio",
+      "changed": true,
+      "blocked": false,
+      "skip_reason": null,
+      "candidate_hash": "c361ec1601103d59878a293790aa6206545f368643eda0b46ef6c1438ff79d42",
+      "evidence_profile": "official_pdp_reviewed_limited",
+      "source_coverage": {
+        "source": "official_pdp",
+        "canonical_url": "https://byrabeauty.com/products/byra-skin-brightening-trio",
+        "fields": {
+          "description": true,
+          "ingredients": 0,
+          "active_ingredients": 0,
+          "how_to": 0,
+          "details": 0,
+          "variants": 1
+        }
+      },
+      "preview": {
+        "headline": "Skincare set",
+        "what_it_is": "Byra - Skin Brightening Trio is a skincare set from Byra, with source-backed cues around cleansing, hydration and brightening support.",
+        "why_it_stands_out": [
+          {
+            "headline": "Routine step cues are specific",
+            "body": "Reviewed skincare cues such as vitamin C, hydration, barrier support identify the routine role or key ingredient context without inventing unsupported benefits.",
+            "evidence_strength": "official_pdp_reviewed"
+          }
+        ],
+        "best_for": [
+          {
+            "tag": "hydration",
+            "label": "hydration",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "radiance",
+            "label": "radiance",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "barrier_support",
+            "label": "barrier support",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "sun_protection",
+            "label": "sun protection",
+            "confidence": "moderate"
+          }
+        ],
+        "shopping_highlight": "Brightening skincare set"
+      },
+      "writes": [
+        {
+          "kb_key": "product:ext_475ee6b7d783d597bb021546",
+          "action": "insert",
+          "reason": "new_product_intel_bundle",
+          "old_hash": null,
+          "candidate_hash": "5f68b9443fa2649d64f05b1b288e2c9cee8dec685aad9001a8c2ef6c89ff4f54",
+          "existing_weak": true,
+          "source": "pivota_insights_official_pdp_manual_review_v1",
+          "after_inventory": {
+            "product_id": "ext_475ee6b7d783d597bb021546",
+            "kb_key": "product:ext_475ee6b7d783d597bb021546",
+            "source": "pivota_insights_official_pdp_manual_review_v1",
+            "updated_at": "",
+            "last_success_at": "",
+            "title": "Byra - Skin Brightening Trio",
+            "canonical_url": "",
+            "bundle_hash": "c361ec1601103d59878a293790aa6206545f368643eda0b46ef6c1438ff79d42",
+            "lane": "keep",
+            "reason": "protected_good_content",
+            "priority": 0,
+            "protected": true,
+            "displayable": true,
+            "high_quality_ready": true,
+            "human_reviewed": true,
+            "issues": [],
+            "blocking_issues": [],
+            "quality_state": "reviewed",
+            "evidence_profile": "official_pdp_reviewed_limited",
+            "evidence_rank": 1,
+            "review_tier": "assistant_reviewed",
+            "agent_readable": true,
+            "public_ready": true
+          },
+          "source_meta": {
+            "evidence_profile": "official_pdp_reviewed_limited",
+            "quality_state": "reviewed",
+            "source_origin": "official_pdp_fields",
+            "source_url": "https://byrabeauty.com/products/byra-skin-brightening-trio",
+            "quality_improvement": {
+              "previous_bundle_hash": null,
+              "candidate_bundle_hash": "c361ec1601103d59878a293790aa6206545f368643eda0b46ef6c1438ff79d42",
+              "replacement_decision": "new_product_intel_bundle",
+              "existing_quality_lane": null,
+              "candidate_quality_lane": "keep",
+              "existing_evidence_profile": null,
+              "candidate_evidence_profile": "official_pdp_reviewed_limited"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "external_product_id": "ext_d70d0668aa2e18fed1d2086d",
+      "pivota_signature_id": null,
+      "title": "Byra - Skin Firming Trio",
+      "brand": "Byra",
+      "canonical_url": "https://byrabeauty.com/products/byra-skin-firming-trio",
+      "changed": true,
+      "blocked": false,
+      "skip_reason": null,
+      "candidate_hash": "03bc9cb20f12b40d23427078f83789124ee7cd5b37e94ba984ff91fa54df6f45",
+      "evidence_profile": "official_pdp_reviewed_limited",
+      "source_coverage": {
+        "source": "official_pdp",
+        "canonical_url": "https://byrabeauty.com/products/byra-skin-firming-trio",
+        "fields": {
+          "description": true,
+          "ingredients": 0,
+          "active_ingredients": 0,
+          "how_to": 0,
+          "details": 0,
+          "variants": 1
+        }
+      },
+      "preview": {
+        "headline": "Skincare set",
+        "what_it_is": "Byra - Skin Firming Trio is a skincare set from Byra, with source-backed cues around hydration and brightening support.",
+        "why_it_stands_out": [
+          {
+            "headline": "Routine step cues are specific",
+            "body": "Reviewed skincare cues such as vitamin C, retinol, peptides, hydration identify the routine role or key ingredient context without inventing unsupported benefits.",
+            "evidence_strength": "official_pdp_reviewed"
+          }
+        ],
+        "best_for": [
+          {
+            "tag": "hydration",
+            "label": "hydration",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "firmness",
+            "label": "firmness",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "radiance",
+            "label": "radiance",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "barrier_support",
+            "label": "barrier support",
+            "confidence": "moderate"
+          }
+        ],
+        "shopping_highlight": "Skincare routine set"
+      },
+      "writes": [
+        {
+          "kb_key": "product:ext_d70d0668aa2e18fed1d2086d",
+          "action": "insert",
+          "reason": "new_product_intel_bundle",
+          "old_hash": null,
+          "candidate_hash": "c43f1eb9b545b46f5edc16fbede435b7367b54b70fb9ff8078ab8c2f84132cc8",
+          "existing_weak": true,
+          "source": "pivota_insights_official_pdp_manual_review_v1",
+          "after_inventory": {
+            "product_id": "ext_d70d0668aa2e18fed1d2086d",
+            "kb_key": "product:ext_d70d0668aa2e18fed1d2086d",
+            "source": "pivota_insights_official_pdp_manual_review_v1",
+            "updated_at": "",
+            "last_success_at": "",
+            "title": "Byra - Skin Firming Trio",
+            "canonical_url": "",
+            "bundle_hash": "03bc9cb20f12b40d23427078f83789124ee7cd5b37e94ba984ff91fa54df6f45",
+            "lane": "keep",
+            "reason": "protected_good_content",
+            "priority": 0,
+            "protected": true,
+            "displayable": true,
+            "high_quality_ready": true,
+            "human_reviewed": true,
+            "issues": [],
+            "blocking_issues": [],
+            "quality_state": "reviewed",
+            "evidence_profile": "official_pdp_reviewed_limited",
+            "evidence_rank": 1,
+            "review_tier": "assistant_reviewed",
+            "agent_readable": true,
+            "public_ready": true
+          },
+          "source_meta": {
+            "evidence_profile": "official_pdp_reviewed_limited",
+            "quality_state": "reviewed",
+            "source_origin": "official_pdp_fields",
+            "source_url": "https://byrabeauty.com/products/byra-skin-firming-trio",
+            "quality_improvement": {
+              "previous_bundle_hash": null,
+              "candidate_bundle_hash": "03bc9cb20f12b40d23427078f83789124ee7cd5b37e94ba984ff91fa54df6f45",
+              "replacement_decision": "new_product_intel_bundle",
+              "existing_quality_lane": null,
+              "candidate_quality_lane": "keep",
+              "existing_evidence_profile": null,
+              "candidate_evidence_profile": "official_pdp_reviewed_limited"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "external_product_id": "ext_d2be72abe173e52d5baa6879",
+      "pivota_signature_id": "sig_0a6749918fd15d522c5399d0",
+      "title": "Deep Calm - Eau De Parfum 30ml",
+      "brand": "Byra",
+      "canonical_url": "https://byrabeauty.com/products/deep-calm-eau-de-parfum-30ml",
+      "changed": true,
+      "blocked": false,
+      "skip_reason": null,
+      "candidate_hash": "22b0396d7d176e49bb80edc18408396257af1678b82fdbeaf4b14ec16b994e18",
+      "evidence_profile": "official_pdp_reviewed_limited",
+      "source_coverage": {
+        "source": "official_pdp",
+        "canonical_url": "https://byrabeauty.com/products/deep-calm-eau-de-parfum-30ml",
+        "fields": {
+          "description": true,
+          "ingredients": 0,
+          "active_ingredients": 0,
+          "how_to": 0,
+          "details": 0,
+          "variants": 1
+        }
+      },
+      "preview": {
+        "headline": "Fine fragrance",
+        "what_it_is": "Deep Calm - Eau De Parfum 30ml is a fine fragrance from Byra.",
+        "why_it_stands_out": [
+          {
+            "headline": "Official PDP evidence only",
+            "body": "This insight is limited to the official product fields currently available for Deep Calm - Eau De Parfum 30ml.",
+            "evidence_strength": "official_pdp_reviewed_limited"
+          }
+        ],
+        "best_for": [
+          {
+            "tag": "fine_fragrance",
+            "label": "Fine fragrance",
+            "confidence": "moderate"
+          }
+        ],
+        "shopping_highlight": "Fine fragrance"
+      },
+      "writes": [
+        {
+          "kb_key": "product:ext_d2be72abe173e52d5baa6879",
+          "action": "update",
+          "reason": "explicit_owner_delegated_assistant_replacement_review",
+          "old_hash": "0474902fc674df430f3b04f1c0f5b3da9d341ae585959f20686aef3f90013a12",
+          "candidate_hash": "32a98fa5179b2c01bdda929c743be2de6a3824c26d96e4dc2acd5d943dc2f69d",
+          "existing_weak": true,
+          "source": "pivota_insights_official_pdp_manual_review_v1",
+          "after_inventory": {
+            "product_id": "ext_d2be72abe173e52d5baa6879",
+            "kb_key": "product:ext_d2be72abe173e52d5baa6879",
+            "source": "pivota_insights_official_pdp_manual_review_v1",
+            "updated_at": "",
+            "last_success_at": "",
+            "title": "Deep Calm - Eau De Parfum 30ml",
+            "canonical_url": "",
+            "bundle_hash": "22b0396d7d176e49bb80edc18408396257af1678b82fdbeaf4b14ec16b994e18",
+            "lane": "keep",
+            "reason": "protected_good_content",
+            "priority": 0,
+            "protected": true,
+            "displayable": true,
+            "high_quality_ready": true,
+            "human_reviewed": true,
+            "issues": [],
+            "blocking_issues": [],
+            "quality_state": "reviewed",
+            "evidence_profile": "official_pdp_reviewed_limited",
+            "evidence_rank": 1,
+            "review_tier": "assistant_reviewed",
+            "agent_readable": true,
+            "public_ready": true
+          },
+          "source_meta": {
+            "evidence_profile": "official_pdp_reviewed_limited",
+            "quality_state": "reviewed",
+            "source_origin": "official_pdp_fields",
+            "source_url": "https://byrabeauty.com/products/deep-calm-eau-de-parfum-30ml",
+            "quality_improvement": {
+              "previous_bundle_hash": "7935329debe7adf30cc9cdb3362753fbba486efa7b3bb5c7a03eb869798d37fe",
+              "candidate_bundle_hash": "22b0396d7d176e49bb80edc18408396257af1678b82fdbeaf4b14ec16b994e18",
+              "replacement_decision": "explicit_owner_delegated_assistant_replacement_review",
+              "existing_quality_lane": "suppress_public",
+              "candidate_quality_lane": "keep",
+              "existing_evidence_profile": "seller_only",
+              "candidate_evidence_profile": "official_pdp_reviewed_limited"
+            }
+          }
+        },
+        {
+          "kb_key": "product:sig_0a6749918fd15d522c5399d0",
+          "action": "insert",
+          "reason": "new_product_intel_bundle",
+          "old_hash": null,
+          "candidate_hash": "32a98fa5179b2c01bdda929c743be2de6a3824c26d96e4dc2acd5d943dc2f69d",
+          "existing_weak": true,
+          "source": "pivota_insights_official_pdp_manual_review_v1",
+          "after_inventory": {
+            "product_id": "ext_d2be72abe173e52d5baa6879",
+            "kb_key": "product:sig_0a6749918fd15d522c5399d0",
+            "source": "pivota_insights_official_pdp_manual_review_v1",
+            "updated_at": "",
+            "last_success_at": "",
+            "title": "Deep Calm - Eau De Parfum 30ml",
+            "canonical_url": "",
+            "bundle_hash": "22b0396d7d176e49bb80edc18408396257af1678b82fdbeaf4b14ec16b994e18",
+            "lane": "keep",
+            "reason": "protected_good_content",
+            "priority": 0,
+            "protected": true,
+            "displayable": true,
+            "high_quality_ready": true,
+            "human_reviewed": true,
+            "issues": [],
+            "blocking_issues": [],
+            "quality_state": "reviewed",
+            "evidence_profile": "official_pdp_reviewed_limited",
+            "evidence_rank": 1,
+            "review_tier": "assistant_reviewed",
+            "agent_readable": true,
+            "public_ready": true
+          },
+          "source_meta": {
+            "evidence_profile": "official_pdp_reviewed_limited",
+            "quality_state": "reviewed",
+            "source_origin": "official_pdp_fields",
+            "source_url": "https://byrabeauty.com/products/deep-calm-eau-de-parfum-30ml",
+            "quality_improvement": {
+              "previous_bundle_hash": null,
+              "candidate_bundle_hash": "22b0396d7d176e49bb80edc18408396257af1678b82fdbeaf4b14ec16b994e18",
+              "replacement_decision": "new_product_intel_bundle",
+              "existing_quality_lane": null,
+              "candidate_quality_lane": "keep",
+              "existing_evidence_profile": null,
+              "candidate_evidence_profile": "official_pdp_reviewed_limited"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "external_product_id": "ext_effcc5f6c49a6774850db282",
+      "pivota_signature_id": "sig_b6e47551358fa4712c869a8d",
+      "title": "Glow & Renewal Serum Combo",
+      "brand": "Byra",
+      "canonical_url": "https://byrabeauty.com/products/glow-renewal-serum-combo",
+      "changed": true,
+      "blocked": false,
+      "skip_reason": null,
+      "candidate_hash": "90a1e4ce5541d14aeb6813ec79e74d145a2e4b3196ee04270bcc55aba2baf051",
+      "evidence_profile": "official_pdp_reviewed_limited",
+      "source_coverage": {
+        "source": "official_pdp",
+        "canonical_url": "https://byrabeauty.com/products/glow-renewal-serum-combo",
+        "fields": {
+          "description": true,
+          "ingredients": 0,
+          "active_ingredients": 0,
+          "how_to": 0,
+          "details": 0,
+          "variants": 1
+        }
+      },
+      "preview": {
+        "headline": "Skincare set",
+        "what_it_is": "Glow & Renewal Serum Combo is a skincare set from Byra, with source-backed cues around hydration and brightening support.",
+        "why_it_stands_out": [
+          {
+            "headline": "Routine step cues are specific",
+            "body": "Reviewed skincare cues such as vitamin C, hydration, barrier support identify the routine role or key ingredient context without inventing unsupported benefits.",
+            "evidence_strength": "official_pdp_reviewed"
+          }
+        ],
+        "best_for": [
+          {
+            "tag": "hydration",
+            "label": "hydration",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "firmness",
+            "label": "firmness",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "radiance",
+            "label": "radiance",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "barrier_support",
+            "label": "barrier support",
+            "confidence": "moderate"
+          }
+        ],
+        "shopping_highlight": "Brightening skincare set"
+      },
+      "writes": [
+        {
+          "kb_key": "product:ext_effcc5f6c49a6774850db282",
+          "action": "update",
+          "reason": "explicit_owner_delegated_assistant_replacement_review",
+          "old_hash": "7ff05d882df662f57478cb4e38ea9ca5be943fa32b33ad726fbc30d109b1b987",
+          "candidate_hash": "e92b117efdf14c4af1c8c9b901a26b2224be092e78d1f2390e34d90795b68ae0",
+          "existing_weak": true,
+          "source": "pivota_insights_official_pdp_manual_review_v1",
+          "after_inventory": {
+            "product_id": "ext_effcc5f6c49a6774850db282",
+            "kb_key": "product:ext_effcc5f6c49a6774850db282",
+            "source": "pivota_insights_official_pdp_manual_review_v1",
+            "updated_at": "",
+            "last_success_at": "",
+            "title": "Glow & Renewal Serum Combo",
+            "canonical_url": "",
+            "bundle_hash": "90a1e4ce5541d14aeb6813ec79e74d145a2e4b3196ee04270bcc55aba2baf051",
+            "lane": "keep",
+            "reason": "protected_good_content",
+            "priority": 0,
+            "protected": true,
+            "displayable": true,
+            "high_quality_ready": true,
+            "human_reviewed": true,
+            "issues": [],
+            "blocking_issues": [],
+            "quality_state": "reviewed",
+            "evidence_profile": "official_pdp_reviewed_limited",
+            "evidence_rank": 1,
+            "review_tier": "assistant_reviewed",
+            "agent_readable": true,
+            "public_ready": true
+          },
+          "source_meta": {
+            "evidence_profile": "official_pdp_reviewed_limited",
+            "quality_state": "reviewed",
+            "source_origin": "official_pdp_fields",
+            "source_url": "https://byrabeauty.com/products/glow-renewal-serum-combo",
+            "quality_improvement": {
+              "previous_bundle_hash": "92dbec73e0d8d63c237c991cbd1468778162d766dced70ab507a9cd05e9a7ece",
+              "candidate_bundle_hash": "90a1e4ce5541d14aeb6813ec79e74d145a2e4b3196ee04270bcc55aba2baf051",
+              "replacement_decision": "explicit_owner_delegated_assistant_replacement_review",
+              "existing_quality_lane": "suppress_public",
+              "candidate_quality_lane": "keep",
+              "existing_evidence_profile": "seller_only",
+              "candidate_evidence_profile": "official_pdp_reviewed_limited"
+            }
+          }
+        },
+        {
+          "kb_key": "product:sig_b6e47551358fa4712c869a8d",
+          "action": "insert",
+          "reason": "new_product_intel_bundle",
+          "old_hash": null,
+          "candidate_hash": "e92b117efdf14c4af1c8c9b901a26b2224be092e78d1f2390e34d90795b68ae0",
+          "existing_weak": true,
+          "source": "pivota_insights_official_pdp_manual_review_v1",
+          "after_inventory": {
+            "product_id": "ext_effcc5f6c49a6774850db282",
+            "kb_key": "product:sig_b6e47551358fa4712c869a8d",
+            "source": "pivota_insights_official_pdp_manual_review_v1",
+            "updated_at": "",
+            "last_success_at": "",
+            "title": "Glow & Renewal Serum Combo",
+            "canonical_url": "",
+            "bundle_hash": "90a1e4ce5541d14aeb6813ec79e74d145a2e4b3196ee04270bcc55aba2baf051",
+            "lane": "keep",
+            "reason": "protected_good_content",
+            "priority": 0,
+            "protected": true,
+            "displayable": true,
+            "high_quality_ready": true,
+            "human_reviewed": true,
+            "issues": [],
+            "blocking_issues": [],
+            "quality_state": "reviewed",
+            "evidence_profile": "official_pdp_reviewed_limited",
+            "evidence_rank": 1,
+            "review_tier": "assistant_reviewed",
+            "agent_readable": true,
+            "public_ready": true
+          },
+          "source_meta": {
+            "evidence_profile": "official_pdp_reviewed_limited",
+            "quality_state": "reviewed",
+            "source_origin": "official_pdp_fields",
+            "source_url": "https://byrabeauty.com/products/glow-renewal-serum-combo",
+            "quality_improvement": {
+              "previous_bundle_hash": null,
+              "candidate_bundle_hash": "90a1e4ce5541d14aeb6813ec79e74d145a2e4b3196ee04270bcc55aba2baf051",
+              "replacement_decision": "new_product_intel_bundle",
+              "existing_quality_lane": null,
+              "candidate_quality_lane": "keep",
+              "existing_evidence_profile": null,
+              "candidate_evidence_profile": "official_pdp_reviewed_limited"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "external_product_id": "ext_9b1044e6e0e376f6e31754df",
+      "pivota_signature_id": "sig_9ab77174f5b24e16af94cfa0",
+      "title": "ILLUMINATE Nutri-Serum Concentrate",
+      "brand": "Byra",
+      "canonical_url": "https://byrabeauty.com/products/illuminate-nutri-serum-concentrate",
+      "changed": true,
+      "blocked": false,
+      "skip_reason": null,
+      "candidate_hash": "5c8cbdc720062dac8faa189c28ccab60eed0143298cfb40d5165e93cca8ee410",
+      "evidence_profile": "official_pdp_reviewed_limited",
+      "source_coverage": {
+        "source": "official_pdp",
+        "canonical_url": "https://byrabeauty.com/products/illuminate-nutri-serum-concentrate",
+        "fields": {
+          "description": true,
+          "ingredients": 0,
+          "active_ingredients": 0,
+          "how_to": 0,
+          "details": 0,
+          "variants": 1
+        }
+      },
+      "preview": {
+        "headline": "Treatment serum",
+        "what_it_is": "ILLUMINATE Nutri-Serum Concentrate is a treatment serum from Byra, with source-backed ingredient cues around vitamin C and barrier support.",
+        "why_it_stands_out": [
+          {
+            "headline": "Routine step cues are specific",
+            "body": "Reviewed skincare cues such as vitamin C, toning step, barrier support identify the routine role or key ingredient context without inventing unsupported benefits.",
+            "evidence_strength": "official_pdp_reviewed"
+          }
+        ],
+        "best_for": [
+          {
+            "tag": "radiance",
+            "label": "radiance",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "barrier_support",
+            "label": "barrier support",
+            "confidence": "moderate"
+          }
+        ],
+        "shopping_highlight": "vitamin C, toning step, barrier support"
+      },
+      "writes": [
+        {
+          "kb_key": "product:ext_9b1044e6e0e376f6e31754df",
+          "action": "update",
+          "reason": "explicit_owner_delegated_assistant_replacement_review",
+          "old_hash": "0794909d636a0c6df6af8639aabd723825e71953c16db418813d5e3dcd9c5e6f",
+          "candidate_hash": "878a9df7cc7d3352a9e827b86fe13c495513990ae0863f82d049eb82fb420260",
+          "existing_weak": true,
+          "source": "pivota_insights_official_pdp_manual_review_v1",
+          "after_inventory": {
+            "product_id": "ext_9b1044e6e0e376f6e31754df",
+            "kb_key": "product:ext_9b1044e6e0e376f6e31754df",
+            "source": "pivota_insights_official_pdp_manual_review_v1",
+            "updated_at": "",
+            "last_success_at": "",
+            "title": "ILLUMINATE Nutri-Serum Concentrate",
+            "canonical_url": "",
+            "bundle_hash": "5c8cbdc720062dac8faa189c28ccab60eed0143298cfb40d5165e93cca8ee410",
+            "lane": "keep",
+            "reason": "protected_good_content",
+            "priority": 0,
+            "protected": true,
+            "displayable": true,
+            "high_quality_ready": true,
+            "human_reviewed": true,
+            "issues": [],
+            "blocking_issues": [],
+            "quality_state": "reviewed",
+            "evidence_profile": "official_pdp_reviewed_limited",
+            "evidence_rank": 1,
+            "review_tier": "assistant_reviewed",
+            "agent_readable": true,
+            "public_ready": true
+          },
+          "source_meta": {
+            "evidence_profile": "official_pdp_reviewed_limited",
+            "quality_state": "reviewed",
+            "source_origin": "official_pdp_fields",
+            "source_url": "https://byrabeauty.com/products/illuminate-nutri-serum-concentrate",
+            "quality_improvement": {
+              "previous_bundle_hash": "31af5d43485f840d3eb156c1fd5cd2f8f8bf6d897bf5000c9b42759c1cba8727",
+              "candidate_bundle_hash": "5c8cbdc720062dac8faa189c28ccab60eed0143298cfb40d5165e93cca8ee410",
+              "replacement_decision": "explicit_owner_delegated_assistant_replacement_review",
+              "existing_quality_lane": "suppress_public",
+              "candidate_quality_lane": "keep",
+              "existing_evidence_profile": "seller_only",
+              "candidate_evidence_profile": "official_pdp_reviewed_limited"
+            }
+          }
+        },
+        {
+          "kb_key": "product:sig_9ab77174f5b24e16af94cfa0",
+          "action": "insert",
+          "reason": "new_product_intel_bundle",
+          "old_hash": null,
+          "candidate_hash": "878a9df7cc7d3352a9e827b86fe13c495513990ae0863f82d049eb82fb420260",
+          "existing_weak": true,
+          "source": "pivota_insights_official_pdp_manual_review_v1",
+          "after_inventory": {
+            "product_id": "ext_9b1044e6e0e376f6e31754df",
+            "kb_key": "product:sig_9ab77174f5b24e16af94cfa0",
+            "source": "pivota_insights_official_pdp_manual_review_v1",
+            "updated_at": "",
+            "last_success_at": "",
+            "title": "ILLUMINATE Nutri-Serum Concentrate",
+            "canonical_url": "",
+            "bundle_hash": "5c8cbdc720062dac8faa189c28ccab60eed0143298cfb40d5165e93cca8ee410",
+            "lane": "keep",
+            "reason": "protected_good_content",
+            "priority": 0,
+            "protected": true,
+            "displayable": true,
+            "high_quality_ready": true,
+            "human_reviewed": true,
+            "issues": [],
+            "blocking_issues": [],
+            "quality_state": "reviewed",
+            "evidence_profile": "official_pdp_reviewed_limited",
+            "evidence_rank": 1,
+            "review_tier": "assistant_reviewed",
+            "agent_readable": true,
+            "public_ready": true
+          },
+          "source_meta": {
+            "evidence_profile": "official_pdp_reviewed_limited",
+            "quality_state": "reviewed",
+            "source_origin": "official_pdp_fields",
+            "source_url": "https://byrabeauty.com/products/illuminate-nutri-serum-concentrate",
+            "quality_improvement": {
+              "previous_bundle_hash": null,
+              "candidate_bundle_hash": "5c8cbdc720062dac8faa189c28ccab60eed0143298cfb40d5165e93cca8ee410",
+              "replacement_decision": "new_product_intel_bundle",
+              "existing_quality_lane": null,
+              "candidate_quality_lane": "keep",
+              "existing_evidence_profile": null,
+              "candidate_evidence_profile": "official_pdp_reviewed_limited"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "external_product_id": "ext_a146f7010622206ee2796574",
+      "pivota_signature_id": "sig_a7178e1a3e9a606d3ca69b09",
+      "title": "Je Suis Tote Bag (pure cotton, thick 22oz)",
+      "brand": "Byra",
+      "canonical_url": "https://byrabeauty.com/products/je-suis-comme-je-suis-tote-bag-pure-cotton-thick-22oz",
+      "changed": false,
+      "blocked": false,
+      "skip_reason": "no_safe_writes",
+      "candidate_hash": "c1a925f08786ca86f6a265893fa87bbb9e55767e063e4510cf8817d78a9960b5",
+      "evidence_profile": "official_pdp_reviewed_limited",
+      "source_coverage": {
+        "source": "official_pdp",
+        "canonical_url": "https://byrabeauty.com/products/je-suis-comme-je-suis-tote-bag-pure-cotton-thick-22oz",
+        "fields": {
+          "description": true,
+          "ingredients": 0,
+          "active_ingredients": 0,
+          "how_to": 0,
+          "details": 0,
+          "variants": 1
+        }
+      },
+      "preview": {
+        "headline": "Beauty accessory",
+        "what_it_is": "Je Suis Tote Bag (pure cotton, thick 22oz) is a beauty accessory from Byra. ABOUT Our brand new Je Suis Totebag is a new improved everyday must have for the confident, self-loving woman or man.",
+        "why_it_stands_out": [
+          {
+            "headline": "Product cues are source-backed",
+            "body": "Reviewed PDP cues such as travel organization give shoppers specific comparison points within Byra, rather than category-only copy.",
+            "evidence_strength": "official_pdp_reviewed"
+          }
+        ],
+        "best_for": [
+          {
+            "tag": "makeup_organization",
+            "label": "makeup organization",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "travel",
+            "label": "travel",
+            "confidence": "moderate"
+          }
+        ],
+        "shopping_highlight": "travel organization"
+      },
+      "writes": [
+        {
+          "kb_key": "product:ext_a146f7010622206ee2796574",
+          "action": "skip",
+          "reason": "candidate_not_publish_quality_ready",
+          "old_hash": null,
+          "candidate_hash": "6b7195aa892b4bfe004e24f1677acc67a80135e3cb1c94660f86b5e61b86fe5c",
+          "existing_weak": true,
+          "assessment": {
+            "allowed": false,
+            "reason": "candidate_not_publish_quality_ready",
+            "candidate": {
+              "lane": "regenerate",
+              "reason": "requires_regeneration",
+              "priority": 95,
+              "protected": false,
+              "displayable": true,
+              "high_quality_ready": false,
+              "human_reviewed": true,
+              "issues": [
+                "public_generic_marketing_copy"
+              ],
+              "blocking_issues": [
+                "public_generic_marketing_copy"
+              ],
+              "quality_state": "reviewed",
+              "evidence_profile": "official_pdp_reviewed_limited",
+              "evidence_rank": 1,
+              "review_tier": "assistant_reviewed"
+            },
+            "candidate_bundle_hash": "c1a925f08786ca86f6a265893fa87bbb9e55767e063e4510cf8817d78a9960b5"
+          }
+        },
+        {
+          "kb_key": "product:sig_a7178e1a3e9a606d3ca69b09",
+          "action": "skip",
+          "reason": "candidate_not_publish_quality_ready",
+          "old_hash": null,
+          "candidate_hash": "6b7195aa892b4bfe004e24f1677acc67a80135e3cb1c94660f86b5e61b86fe5c",
+          "existing_weak": true,
+          "assessment": {
+            "allowed": false,
+            "reason": "candidate_not_publish_quality_ready",
+            "candidate": {
+              "lane": "regenerate",
+              "reason": "requires_regeneration",
+              "priority": 95,
+              "protected": false,
+              "displayable": true,
+              "high_quality_ready": false,
+              "human_reviewed": true,
+              "issues": [
+                "public_generic_marketing_copy"
+              ],
+              "blocking_issues": [
+                "public_generic_marketing_copy"
+              ],
+              "quality_state": "reviewed",
+              "evidence_profile": "official_pdp_reviewed_limited",
+              "evidence_rank": 1,
+              "review_tier": "assistant_reviewed"
+            },
+            "candidate_bundle_hash": "c1a925f08786ca86f6a265893fa87bbb9e55767e063e4510cf8817d78a9960b5"
+          }
+        }
+      ]
+    },
+    {
+      "external_product_id": "ext_9820a5ae58feea4c66c19cef",
+      "pivota_signature_id": "sig_06ddf4752a7626897e091d3c",
+      "title": "MERACLE Nutri-Essence Treatment Enhancer",
+      "brand": "Byra",
+      "canonical_url": "https://byrabeauty.com/products/nutri-essence-aha-bha",
+      "changed": true,
+      "blocked": false,
+      "skip_reason": null,
+      "candidate_hash": "22879f4960c1989f3c25e40276d4f42da3658c46d79de93729ea378554931ecb",
+      "evidence_profile": "official_pdp_reviewed_limited",
+      "source_coverage": {
+        "source": "official_pdp",
+        "canonical_url": "https://byrabeauty.com/products/nutri-essence-aha-bha",
+        "fields": {
+          "description": true,
+          "ingredients": 0,
+          "active_ingredients": 0,
+          "how_to": 0,
+          "details": 0,
+          "variants": 1
+        }
+      },
+      "preview": {
+        "headline": "Body care treatment",
+        "what_it_is": "MERACLE Nutri-Essence Treatment Enhancer is a body care treatment from Byra, with source-backed cues around cleansing, hydration and brightening support.",
+        "why_it_stands_out": [
+          {
+            "headline": "Routine step cues are specific",
+            "body": "Reviewed skincare cues such as BHA/salicylic acid, AHA exfoliation, hydration, barrier support identify the routine role or key ingredient context without inventing unsupported benefits.",
+            "evidence_strength": "official_pdp_reviewed"
+          }
+        ],
+        "best_for": [
+          {
+            "tag": "exfoliating_toner_step",
+            "label": "exfoliating toner step",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "hydration",
+            "label": "hydration",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "radiance",
+            "label": "radiance",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "barrier_support",
+            "label": "barrier support",
+            "confidence": "moderate"
+          }
+        ],
+        "shopping_highlight": "BHA/salicylic acid, AHA exfoliation"
+      },
+      "writes": [
+        {
+          "kb_key": "product:ext_9820a5ae58feea4c66c19cef",
+          "action": "insert",
+          "reason": "new_product_intel_bundle",
+          "old_hash": null,
+          "candidate_hash": "78eb17c3381aa3e2879a4ce3a3137dec24ece2fc60c4b48c83d0d7a075a5fb54",
+          "existing_weak": true,
+          "source": "pivota_insights_official_pdp_manual_review_v1",
+          "after_inventory": {
+            "product_id": "ext_9820a5ae58feea4c66c19cef",
+            "kb_key": "product:ext_9820a5ae58feea4c66c19cef",
+            "source": "pivota_insights_official_pdp_manual_review_v1",
+            "updated_at": "",
+            "last_success_at": "",
+            "title": "MERACLE Nutri-Essence Treatment Enhancer",
+            "canonical_url": "",
+            "bundle_hash": "22879f4960c1989f3c25e40276d4f42da3658c46d79de93729ea378554931ecb",
+            "lane": "keep",
+            "reason": "protected_good_content",
+            "priority": 0,
+            "protected": true,
+            "displayable": true,
+            "high_quality_ready": true,
+            "human_reviewed": true,
+            "issues": [],
+            "blocking_issues": [],
+            "quality_state": "reviewed",
+            "evidence_profile": "official_pdp_reviewed_limited",
+            "evidence_rank": 1,
+            "review_tier": "assistant_reviewed",
+            "agent_readable": true,
+            "public_ready": true
+          },
+          "source_meta": {
+            "evidence_profile": "official_pdp_reviewed_limited",
+            "quality_state": "reviewed",
+            "source_origin": "official_pdp_fields",
+            "source_url": "https://byrabeauty.com/products/nutri-essence-aha-bha",
+            "quality_improvement": {
+              "previous_bundle_hash": null,
+              "candidate_bundle_hash": "22879f4960c1989f3c25e40276d4f42da3658c46d79de93729ea378554931ecb",
+              "replacement_decision": "new_product_intel_bundle",
+              "existing_quality_lane": null,
+              "candidate_quality_lane": "keep",
+              "existing_evidence_profile": null,
+              "candidate_evidence_profile": "official_pdp_reviewed_limited"
+            }
+          }
+        },
+        {
+          "kb_key": "product:sig_06ddf4752a7626897e091d3c",
+          "action": "insert",
+          "reason": "new_product_intel_bundle",
+          "old_hash": null,
+          "candidate_hash": "78eb17c3381aa3e2879a4ce3a3137dec24ece2fc60c4b48c83d0d7a075a5fb54",
+          "existing_weak": true,
+          "source": "pivota_insights_official_pdp_manual_review_v1",
+          "after_inventory": {
+            "product_id": "ext_9820a5ae58feea4c66c19cef",
+            "kb_key": "product:sig_06ddf4752a7626897e091d3c",
+            "source": "pivota_insights_official_pdp_manual_review_v1",
+            "updated_at": "",
+            "last_success_at": "",
+            "title": "MERACLE Nutri-Essence Treatment Enhancer",
+            "canonical_url": "",
+            "bundle_hash": "22879f4960c1989f3c25e40276d4f42da3658c46d79de93729ea378554931ecb",
+            "lane": "keep",
+            "reason": "protected_good_content",
+            "priority": 0,
+            "protected": true,
+            "displayable": true,
+            "high_quality_ready": true,
+            "human_reviewed": true,
+            "issues": [],
+            "blocking_issues": [],
+            "quality_state": "reviewed",
+            "evidence_profile": "official_pdp_reviewed_limited",
+            "evidence_rank": 1,
+            "review_tier": "assistant_reviewed",
+            "agent_readable": true,
+            "public_ready": true
+          },
+          "source_meta": {
+            "evidence_profile": "official_pdp_reviewed_limited",
+            "quality_state": "reviewed",
+            "source_origin": "official_pdp_fields",
+            "source_url": "https://byrabeauty.com/products/nutri-essence-aha-bha",
+            "quality_improvement": {
+              "previous_bundle_hash": null,
+              "candidate_bundle_hash": "22879f4960c1989f3c25e40276d4f42da3658c46d79de93729ea378554931ecb",
+              "replacement_decision": "new_product_intel_bundle",
+              "existing_quality_lane": null,
+              "candidate_quality_lane": "keep",
+              "existing_evidence_profile": null,
+              "candidate_evidence_profile": "official_pdp_reviewed_limited"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "external_product_id": "ext_c015b81bbdd329d51a5430fd",
+      "pivota_signature_id": "sig_eb2044b5430b7bac7e88a319",
+      "title": "Naked Skin Nutrition: Feed Your Glow (Hardcover)",
+      "brand": "Byra",
+      "canonical_url": "https://byrabeauty.com/products/naked-skin-nutrition-feed-your-glow-hardcover",
+      "changed": false,
+      "blocked": true,
+      "skip_reason": "candidate_failed_manual_quality_gate:generic_beauty_product_copy",
+      "candidate_hash": "3428ec0e0c479a00d1dddba6f775c414fabeac21994c210b3193aa318be5c53c",
+      "evidence_profile": "official_pdp_reviewed_limited",
+      "source_coverage": {
+        "source": "official_pdp",
+        "canonical_url": "https://byrabeauty.com/products/naked-skin-nutrition-feed-your-glow-hardcover",
+        "fields": {
+          "description": true,
+          "ingredients": 0,
+          "active_ingredients": 0,
+          "how_to": 0,
+          "details": 0,
+          "variants": 1
+        }
+      },
+      "preview": {
+        "headline": "Beauty product",
+        "what_it_is": "Naked Skin Nutrition: Feed Your Glow (Hardcover) is a beauty product from Byra. Welcome to a new era of beauty, where optimal nourishment of your skin from within is the key to sustainably timeless beauty for those who value their skin and well-being.",
+        "why_it_stands_out": [
+          {
+            "headline": "Official PDP evidence only",
+            "body": "This insight is limited to the official product fields currently available for Naked Skin Nutrition: Feed Your Glow (Hardcover).",
+            "evidence_strength": "official_pdp_reviewed_limited"
+          }
+        ],
+        "best_for": [
+          {
+            "tag": "beauty_product",
+            "label": "Beauty product",
+            "confidence": "moderate"
+          }
+        ],
+        "shopping_highlight": "Beauty product"
+      },
+      "writes": []
+    },
+    {
+      "external_product_id": "ext_a92dc3f3178447692d4cac69",
+      "pivota_signature_id": "sig_a1511da5d6b87cd6530a81fb",
+      "title": "PURIFY Biotic Cleanser",
+      "brand": "Byra",
+      "canonical_url": "https://byrabeauty.com/products/purify-biotic-cleanser-1",
+      "changed": true,
+      "blocked": false,
+      "skip_reason": null,
+      "candidate_hash": "009c3d6491a940d8a071ccb48238d5adeb4ee7e3f777e0f25286d3dd9fcc7aa7",
+      "evidence_profile": "official_pdp_reviewed_limited",
+      "source_coverage": {
+        "source": "official_pdp",
+        "canonical_url": "https://byrabeauty.com/products/purify-biotic-cleanser-1",
+        "fields": {
+          "description": true,
+          "ingredients": 0,
+          "active_ingredients": 0,
+          "how_to": 0,
+          "details": 0,
+          "variants": 1
+        }
+      },
+      "preview": {
+        "headline": "Face cleanser",
+        "what_it_is": "PURIFY Biotic Cleanser is a face cleanser from Byra, with source-backed cues around cleansing, makeup removal, a non-stripping feel and dirt, oil, and impurity removal.",
+        "why_it_stands_out": [
+          {
+            "headline": "Product cues are source-backed",
+            "body": "Reviewed PDP cues such as daily cleansing, pore cleansing, non-stripping cleanse, makeup removal give shoppers specific comparison points within Byra, rather than category-only copy.",
+            "evidence_strength": "official_pdp_reviewed"
+          }
+        ],
+        "best_for": [
+          {
+            "tag": "daily_cleansing",
+            "label": "daily cleansing",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "pore_cleansing",
+            "label": "pore cleansing",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "non_stripping_cleanse",
+            "label": "non-stripping cleanse",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "makeup_removal",
+            "label": "makeup removal",
+            "confidence": "moderate"
+          }
+        ],
+        "shopping_highlight": "daily cleansing, pore cleansing"
+      },
+      "writes": [
+        {
+          "kb_key": "product:ext_a92dc3f3178447692d4cac69",
+          "action": "update",
+          "reason": "explicit_owner_delegated_assistant_replacement_review",
+          "old_hash": "d7fdc769cd9a0bb26079312e346b19b7f6283c0cceb98df4f66de9844c71da34",
+          "candidate_hash": "5a3d3b1bb7f7ca4a9a5d8dc2420287e3bdc4bb6f97df72d52aedd6678c5ba07e",
+          "existing_weak": true,
+          "source": "pivota_insights_official_pdp_manual_review_v1",
+          "after_inventory": {
+            "product_id": "ext_a92dc3f3178447692d4cac69",
+            "kb_key": "product:ext_a92dc3f3178447692d4cac69",
+            "source": "pivota_insights_official_pdp_manual_review_v1",
+            "updated_at": "",
+            "last_success_at": "",
+            "title": "PURIFY Biotic Cleanser",
+            "canonical_url": "",
+            "bundle_hash": "009c3d6491a940d8a071ccb48238d5adeb4ee7e3f777e0f25286d3dd9fcc7aa7",
+            "lane": "keep",
+            "reason": "protected_good_content",
+            "priority": 0,
+            "protected": true,
+            "displayable": true,
+            "high_quality_ready": true,
+            "human_reviewed": true,
+            "issues": [],
+            "blocking_issues": [],
+            "quality_state": "reviewed",
+            "evidence_profile": "official_pdp_reviewed_limited",
+            "evidence_rank": 1,
+            "review_tier": "assistant_reviewed",
+            "agent_readable": true,
+            "public_ready": true
+          },
+          "source_meta": {
+            "evidence_profile": "official_pdp_reviewed_limited",
+            "quality_state": "reviewed",
+            "source_origin": "official_pdp_fields",
+            "source_url": "https://byrabeauty.com/products/purify-biotic-cleanser-1",
+            "quality_improvement": {
+              "previous_bundle_hash": "f56928edb48e929db60aba8a2adb0817fe6ba39cf7cbb2b8fbe1f2bcbc2d380b",
+              "candidate_bundle_hash": "009c3d6491a940d8a071ccb48238d5adeb4ee7e3f777e0f25286d3dd9fcc7aa7",
+              "replacement_decision": "explicit_owner_delegated_assistant_replacement_review",
+              "existing_quality_lane": "suppress_public",
+              "candidate_quality_lane": "keep",
+              "existing_evidence_profile": "seller_only",
+              "candidate_evidence_profile": "official_pdp_reviewed_limited"
+            }
+          }
+        },
+        {
+          "kb_key": "product:sig_a1511da5d6b87cd6530a81fb",
+          "action": "insert",
+          "reason": "new_product_intel_bundle",
+          "old_hash": null,
+          "candidate_hash": "5a3d3b1bb7f7ca4a9a5d8dc2420287e3bdc4bb6f97df72d52aedd6678c5ba07e",
+          "existing_weak": true,
+          "source": "pivota_insights_official_pdp_manual_review_v1",
+          "after_inventory": {
+            "product_id": "ext_a92dc3f3178447692d4cac69",
+            "kb_key": "product:sig_a1511da5d6b87cd6530a81fb",
+            "source": "pivota_insights_official_pdp_manual_review_v1",
+            "updated_at": "",
+            "last_success_at": "",
+            "title": "PURIFY Biotic Cleanser",
+            "canonical_url": "",
+            "bundle_hash": "009c3d6491a940d8a071ccb48238d5adeb4ee7e3f777e0f25286d3dd9fcc7aa7",
+            "lane": "keep",
+            "reason": "protected_good_content",
+            "priority": 0,
+            "protected": true,
+            "displayable": true,
+            "high_quality_ready": true,
+            "human_reviewed": true,
+            "issues": [],
+            "blocking_issues": [],
+            "quality_state": "reviewed",
+            "evidence_profile": "official_pdp_reviewed_limited",
+            "evidence_rank": 1,
+            "review_tier": "assistant_reviewed",
+            "agent_readable": true,
+            "public_ready": true
+          },
+          "source_meta": {
+            "evidence_profile": "official_pdp_reviewed_limited",
+            "quality_state": "reviewed",
+            "source_origin": "official_pdp_fields",
+            "source_url": "https://byrabeauty.com/products/purify-biotic-cleanser-1",
+            "quality_improvement": {
+              "previous_bundle_hash": null,
+              "candidate_bundle_hash": "009c3d6491a940d8a071ccb48238d5adeb4ee7e3f777e0f25286d3dd9fcc7aa7",
+              "replacement_decision": "new_product_intel_bundle",
+              "existing_quality_lane": null,
+              "candidate_quality_lane": "keep",
+              "existing_evidence_profile": null,
+              "candidate_evidence_profile": "official_pdp_reviewed_limited"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "external_product_id": "ext_60e8d58a4992f033747967f5",
+      "pivota_signature_id": "sig_7e322f739035bae51072841f",
+      "title": "REJUVENATE Nutri-Serum Concentrate",
+      "brand": "Byra",
+      "canonical_url": "https://byrabeauty.com/products/rejuvenate-nutri-serum-concentrate",
+      "changed": true,
+      "blocked": false,
+      "skip_reason": null,
+      "candidate_hash": "9f43e98cd443da6fccfb2557062c2c2d051ce38c025ec4d38dc6cf29ec35f9ca",
+      "evidence_profile": "official_pdp_reviewed_limited",
+      "source_coverage": {
+        "source": "official_pdp",
+        "canonical_url": "https://byrabeauty.com/products/rejuvenate-nutri-serum-concentrate",
+        "fields": {
+          "description": true,
+          "ingredients": 0,
+          "active_ingredients": 0,
+          "how_to": 0,
+          "details": 0,
+          "variants": 1
+        }
+      },
+      "preview": {
+        "headline": "Treatment serum",
+        "what_it_is": "REJUVENATE Nutri-Serum Concentrate is a treatment serum from Byra, with source-backed ingredient cues around retinol and barrier support.",
+        "why_it_stands_out": [
+          {
+            "headline": "Routine step cues are specific",
+            "body": "Reviewed skincare cues such as retinol, hydration, barrier support identify the routine role or key ingredient context without inventing unsupported benefits.",
+            "evidence_strength": "official_pdp_reviewed"
+          }
+        ],
+        "best_for": [
+          {
+            "tag": "hydration",
+            "label": "hydration",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "firmness",
+            "label": "firmness",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "radiance",
+            "label": "radiance",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "barrier_support",
+            "label": "barrier support",
+            "confidence": "moderate"
+          }
+        ],
+        "shopping_highlight": "retinol, hydration, barrier support"
+      },
+      "writes": [
+        {
+          "kb_key": "product:ext_60e8d58a4992f033747967f5",
+          "action": "update",
+          "reason": "explicit_owner_delegated_assistant_replacement_review",
+          "old_hash": "330bb2e540c51a4e6a1222a8f93c33824ed2e0b21ce1efde0f7637aa5cda6630",
+          "candidate_hash": "a4f97b864a1f2ee80ff6fc93e29e48ae4d9619026a7019600f6495a52cc57c30",
+          "existing_weak": true,
+          "source": "pivota_insights_official_pdp_manual_review_v1",
+          "after_inventory": {
+            "product_id": "ext_60e8d58a4992f033747967f5",
+            "kb_key": "product:ext_60e8d58a4992f033747967f5",
+            "source": "pivota_insights_official_pdp_manual_review_v1",
+            "updated_at": "",
+            "last_success_at": "",
+            "title": "REJUVENATE Nutri-Serum Concentrate",
+            "canonical_url": "",
+            "bundle_hash": "9f43e98cd443da6fccfb2557062c2c2d051ce38c025ec4d38dc6cf29ec35f9ca",
+            "lane": "keep",
+            "reason": "protected_good_content",
+            "priority": 0,
+            "protected": true,
+            "displayable": true,
+            "high_quality_ready": true,
+            "human_reviewed": true,
+            "issues": [],
+            "blocking_issues": [],
+            "quality_state": "reviewed",
+            "evidence_profile": "official_pdp_reviewed_limited",
+            "evidence_rank": 1,
+            "review_tier": "assistant_reviewed",
+            "agent_readable": true,
+            "public_ready": true
+          },
+          "source_meta": {
+            "evidence_profile": "official_pdp_reviewed_limited",
+            "quality_state": "reviewed",
+            "source_origin": "official_pdp_fields",
+            "source_url": "https://byrabeauty.com/products/rejuvenate-nutri-serum-concentrate",
+            "quality_improvement": {
+              "previous_bundle_hash": "ab8667a5f20edf322ac4da4ea1c5971d6fcbad959b4dc0ca6867372b59630518",
+              "candidate_bundle_hash": "9f43e98cd443da6fccfb2557062c2c2d051ce38c025ec4d38dc6cf29ec35f9ca",
+              "replacement_decision": "explicit_owner_delegated_assistant_replacement_review",
+              "existing_quality_lane": "suppress_public",
+              "candidate_quality_lane": "keep",
+              "existing_evidence_profile": "seller_only",
+              "candidate_evidence_profile": "official_pdp_reviewed_limited"
+            }
+          }
+        },
+        {
+          "kb_key": "product:sig_7e322f739035bae51072841f",
+          "action": "insert",
+          "reason": "new_product_intel_bundle",
+          "old_hash": null,
+          "candidate_hash": "a4f97b864a1f2ee80ff6fc93e29e48ae4d9619026a7019600f6495a52cc57c30",
+          "existing_weak": true,
+          "source": "pivota_insights_official_pdp_manual_review_v1",
+          "after_inventory": {
+            "product_id": "ext_60e8d58a4992f033747967f5",
+            "kb_key": "product:sig_7e322f739035bae51072841f",
+            "source": "pivota_insights_official_pdp_manual_review_v1",
+            "updated_at": "",
+            "last_success_at": "",
+            "title": "REJUVENATE Nutri-Serum Concentrate",
+            "canonical_url": "",
+            "bundle_hash": "9f43e98cd443da6fccfb2557062c2c2d051ce38c025ec4d38dc6cf29ec35f9ca",
+            "lane": "keep",
+            "reason": "protected_good_content",
+            "priority": 0,
+            "protected": true,
+            "displayable": true,
+            "high_quality_ready": true,
+            "human_reviewed": true,
+            "issues": [],
+            "blocking_issues": [],
+            "quality_state": "reviewed",
+            "evidence_profile": "official_pdp_reviewed_limited",
+            "evidence_rank": 1,
+            "review_tier": "assistant_reviewed",
+            "agent_readable": true,
+            "public_ready": true
+          },
+          "source_meta": {
+            "evidence_profile": "official_pdp_reviewed_limited",
+            "quality_state": "reviewed",
+            "source_origin": "official_pdp_fields",
+            "source_url": "https://byrabeauty.com/products/rejuvenate-nutri-serum-concentrate",
+            "quality_improvement": {
+              "previous_bundle_hash": null,
+              "candidate_bundle_hash": "9f43e98cd443da6fccfb2557062c2c2d051ce38c025ec4d38dc6cf29ec35f9ca",
+              "replacement_decision": "new_product_intel_bundle",
+              "existing_quality_lane": null,
+              "candidate_quality_lane": "keep",
+              "existing_evidence_profile": null,
+              "candidate_evidence_profile": "official_pdp_reviewed_limited"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "external_product_id": "ext_1a0538d5cde6bee407083bd0",
+      "pivota_signature_id": "sig_976e0316dbc3d964e5bdaf07",
+      "title": "SATURATE Nutri-Moisturiser",
+      "brand": "Byra",
+      "canonical_url": "https://byrabeauty.com/products/saturate-nutri-moisturiser",
+      "changed": true,
+      "blocked": false,
+      "skip_reason": null,
+      "candidate_hash": "89ab07ff6bb757a02b36fc36a58e568f42f57e1050bacc2ffa31158dd981f5f6",
+      "evidence_profile": "official_pdp_reviewed_limited",
+      "source_coverage": {
+        "source": "official_pdp",
+        "canonical_url": "https://byrabeauty.com/products/saturate-nutri-moisturiser",
+        "fields": {
+          "description": true,
+          "ingredients": 0,
+          "active_ingredients": 0,
+          "how_to": 0,
+          "details": 0,
+          "variants": 1
+        }
+      },
+      "preview": {
+        "headline": "Body care treatment",
+        "what_it_is": "SATURATE Nutri-Moisturiser is a body care treatment from Byra, with source-backed cues around hydration and brightening support.",
+        "why_it_stands_out": [
+          {
+            "headline": "Routine step cues are specific",
+            "body": "Reviewed skincare cues such as peptides, hydration, barrier support identify the routine role or key ingredient context without inventing unsupported benefits.",
+            "evidence_strength": "official_pdp_reviewed"
+          }
+        ],
+        "best_for": [
+          {
+            "tag": "hydration",
+            "label": "hydration",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "firmness",
+            "label": "firmness",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "radiance",
+            "label": "radiance",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "barrier_support",
+            "label": "barrier support",
+            "confidence": "moderate"
+          }
+        ],
+        "shopping_highlight": "peptides, hydration, barrier support"
+      },
+      "writes": [
+        {
+          "kb_key": "product:ext_1a0538d5cde6bee407083bd0",
+          "action": "update",
+          "reason": "explicit_owner_delegated_assistant_replacement_review",
+          "old_hash": "045aed3d4851455e93b4037b046d4321fc53f6ef8283a4f78036b70e68372e39",
+          "candidate_hash": "99ffef0286d182241eeadc4370081103979796960e0bd6a3fe04ee333ee620da",
+          "existing_weak": true,
+          "source": "pivota_insights_official_pdp_manual_review_v1",
+          "after_inventory": {
+            "product_id": "ext_1a0538d5cde6bee407083bd0",
+            "kb_key": "product:ext_1a0538d5cde6bee407083bd0",
+            "source": "pivota_insights_official_pdp_manual_review_v1",
+            "updated_at": "",
+            "last_success_at": "",
+            "title": "SATURATE Nutri-Moisturiser",
+            "canonical_url": "",
+            "bundle_hash": "89ab07ff6bb757a02b36fc36a58e568f42f57e1050bacc2ffa31158dd981f5f6",
+            "lane": "keep",
+            "reason": "protected_good_content",
+            "priority": 0,
+            "protected": true,
+            "displayable": true,
+            "high_quality_ready": true,
+            "human_reviewed": true,
+            "issues": [],
+            "blocking_issues": [],
+            "quality_state": "reviewed",
+            "evidence_profile": "official_pdp_reviewed_limited",
+            "evidence_rank": 1,
+            "review_tier": "assistant_reviewed",
+            "agent_readable": true,
+            "public_ready": true
+          },
+          "source_meta": {
+            "evidence_profile": "official_pdp_reviewed_limited",
+            "quality_state": "reviewed",
+            "source_origin": "official_pdp_fields",
+            "source_url": "https://byrabeauty.com/products/saturate-nutri-moisturiser",
+            "quality_improvement": {
+              "previous_bundle_hash": "0a07ce05eadfa50ee8ab84fdddd3349daf9f8f4d7ca1c7a180ea1780e167bea4",
+              "candidate_bundle_hash": "89ab07ff6bb757a02b36fc36a58e568f42f57e1050bacc2ffa31158dd981f5f6",
+              "replacement_decision": "explicit_owner_delegated_assistant_replacement_review",
+              "existing_quality_lane": "suppress_public",
+              "candidate_quality_lane": "keep",
+              "existing_evidence_profile": "seller_only",
+              "candidate_evidence_profile": "official_pdp_reviewed_limited"
+            }
+          }
+        },
+        {
+          "kb_key": "product:sig_976e0316dbc3d964e5bdaf07",
+          "action": "insert",
+          "reason": "new_product_intel_bundle",
+          "old_hash": null,
+          "candidate_hash": "99ffef0286d182241eeadc4370081103979796960e0bd6a3fe04ee333ee620da",
+          "existing_weak": true,
+          "source": "pivota_insights_official_pdp_manual_review_v1",
+          "after_inventory": {
+            "product_id": "ext_1a0538d5cde6bee407083bd0",
+            "kb_key": "product:sig_976e0316dbc3d964e5bdaf07",
+            "source": "pivota_insights_official_pdp_manual_review_v1",
+            "updated_at": "",
+            "last_success_at": "",
+            "title": "SATURATE Nutri-Moisturiser",
+            "canonical_url": "",
+            "bundle_hash": "89ab07ff6bb757a02b36fc36a58e568f42f57e1050bacc2ffa31158dd981f5f6",
+            "lane": "keep",
+            "reason": "protected_good_content",
+            "priority": 0,
+            "protected": true,
+            "displayable": true,
+            "high_quality_ready": true,
+            "human_reviewed": true,
+            "issues": [],
+            "blocking_issues": [],
+            "quality_state": "reviewed",
+            "evidence_profile": "official_pdp_reviewed_limited",
+            "evidence_rank": 1,
+            "review_tier": "assistant_reviewed",
+            "agent_readable": true,
+            "public_ready": true
+          },
+          "source_meta": {
+            "evidence_profile": "official_pdp_reviewed_limited",
+            "quality_state": "reviewed",
+            "source_origin": "official_pdp_fields",
+            "source_url": "https://byrabeauty.com/products/saturate-nutri-moisturiser",
+            "quality_improvement": {
+              "previous_bundle_hash": null,
+              "candidate_bundle_hash": "89ab07ff6bb757a02b36fc36a58e568f42f57e1050bacc2ffa31158dd981f5f6",
+              "replacement_decision": "new_product_intel_bundle",
+              "existing_quality_lane": null,
+              "candidate_quality_lane": "keep",
+              "existing_evidence_profile": null,
+              "candidate_evidence_profile": "official_pdp_reviewed_limited"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "external_product_id": "ext_9940e0166e797a4b3d334815",
+      "pivota_signature_id": "sig_78437002309eda2735243c08",
+      "title": "Trigona Propolis Oil 20ml",
+      "brand": "Byra",
+      "canonical_url": "https://byrabeauty.com/products/propolis-oil-20ml",
+      "changed": true,
+      "blocked": false,
+      "skip_reason": null,
+      "candidate_hash": "bb6fdb8351e37e2c7d13714be989504d852dd78740ecdf0fce5c3599ee83c41b",
+      "evidence_profile": "official_pdp_reviewed_limited",
+      "source_coverage": {
+        "source": "official_pdp",
+        "canonical_url": "https://byrabeauty.com/products/propolis-oil-20ml",
+        "fields": {
+          "description": true,
+          "ingredients": 0,
+          "active_ingredients": 0,
+          "how_to": 0,
+          "details": 0,
+          "variants": 1
+        }
+      },
+      "preview": {
+        "headline": "Fine fragrance",
+        "what_it_is": "Trigona Propolis Oil 20ml is a fine fragrance from Byra.",
+        "why_it_stands_out": [
+          {
+            "headline": "Official PDP evidence only",
+            "body": "This insight is limited to the official product fields currently available for Trigona Propolis Oil 20ml.",
+            "evidence_strength": "official_pdp_reviewed_limited"
+          }
+        ],
+        "best_for": [
+          {
+            "tag": "fragrance_layering",
+            "label": "fragrance layering",
+            "confidence": "moderate"
+          }
+        ],
+        "shopping_highlight": "fragrance layering"
+      },
+      "writes": [
+        {
+          "kb_key": "product:ext_9940e0166e797a4b3d334815",
+          "action": "update",
+          "reason": "explicit_owner_delegated_assistant_replacement_review",
+          "old_hash": "7b2c8f80b666eb3d2e813dcba38bb06094410960adb80ed2210262dc100c5d7c",
+          "candidate_hash": "f1fd8432868b15824a73d0783c8a9b568a580a005080cbb27958e9c0c5ff264c",
+          "existing_weak": true,
+          "source": "pivota_insights_official_pdp_manual_review_v1",
+          "after_inventory": {
+            "product_id": "ext_9940e0166e797a4b3d334815",
+            "kb_key": "product:ext_9940e0166e797a4b3d334815",
+            "source": "pivota_insights_official_pdp_manual_review_v1",
+            "updated_at": "",
+            "last_success_at": "",
+            "title": "Trigona Propolis Oil 20ml",
+            "canonical_url": "",
+            "bundle_hash": "bb6fdb8351e37e2c7d13714be989504d852dd78740ecdf0fce5c3599ee83c41b",
+            "lane": "keep",
+            "reason": "protected_good_content",
+            "priority": 0,
+            "protected": true,
+            "displayable": true,
+            "high_quality_ready": true,
+            "human_reviewed": true,
+            "issues": [],
+            "blocking_issues": [],
+            "quality_state": "reviewed",
+            "evidence_profile": "official_pdp_reviewed_limited",
+            "evidence_rank": 1,
+            "review_tier": "assistant_reviewed",
+            "agent_readable": true,
+            "public_ready": true
+          },
+          "source_meta": {
+            "evidence_profile": "official_pdp_reviewed_limited",
+            "quality_state": "reviewed",
+            "source_origin": "official_pdp_fields",
+            "source_url": "https://byrabeauty.com/products/propolis-oil-20ml",
+            "quality_improvement": {
+              "previous_bundle_hash": "e5e849e82447dcd948126ebc03531d63613f5dc7f597807e468007a5161bd309",
+              "candidate_bundle_hash": "bb6fdb8351e37e2c7d13714be989504d852dd78740ecdf0fce5c3599ee83c41b",
+              "replacement_decision": "explicit_owner_delegated_assistant_replacement_review",
+              "existing_quality_lane": "repair",
+              "candidate_quality_lane": "keep",
+              "existing_evidence_profile": "seller_only",
+              "candidate_evidence_profile": "official_pdp_reviewed_limited"
+            }
+          }
+        },
+        {
+          "kb_key": "product:sig_78437002309eda2735243c08",
+          "action": "insert",
+          "reason": "new_product_intel_bundle",
+          "old_hash": null,
+          "candidate_hash": "f1fd8432868b15824a73d0783c8a9b568a580a005080cbb27958e9c0c5ff264c",
+          "existing_weak": true,
+          "source": "pivota_insights_official_pdp_manual_review_v1",
+          "after_inventory": {
+            "product_id": "ext_9940e0166e797a4b3d334815",
+            "kb_key": "product:sig_78437002309eda2735243c08",
+            "source": "pivota_insights_official_pdp_manual_review_v1",
+            "updated_at": "",
+            "last_success_at": "",
+            "title": "Trigona Propolis Oil 20ml",
+            "canonical_url": "",
+            "bundle_hash": "bb6fdb8351e37e2c7d13714be989504d852dd78740ecdf0fce5c3599ee83c41b",
+            "lane": "keep",
+            "reason": "protected_good_content",
+            "priority": 0,
+            "protected": true,
+            "displayable": true,
+            "high_quality_ready": true,
+            "human_reviewed": true,
+            "issues": [],
+            "blocking_issues": [],
+            "quality_state": "reviewed",
+            "evidence_profile": "official_pdp_reviewed_limited",
+            "evidence_rank": 1,
+            "review_tier": "assistant_reviewed",
+            "agent_readable": true,
+            "public_ready": true
+          },
+          "source_meta": {
+            "evidence_profile": "official_pdp_reviewed_limited",
+            "quality_state": "reviewed",
+            "source_origin": "official_pdp_fields",
+            "source_url": "https://byrabeauty.com/products/propolis-oil-20ml",
+            "quality_improvement": {
+              "previous_bundle_hash": null,
+              "candidate_bundle_hash": "bb6fdb8351e37e2c7d13714be989504d852dd78740ecdf0fce5c3599ee83c41b",
+              "replacement_decision": "new_product_intel_bundle",
+              "existing_quality_lane": null,
+              "candidate_quality_lane": "keep",
+              "existing_evidence_profile": null,
+              "candidate_evidence_profile": "official_pdp_reviewed_limited"
+            }
+          }
+        }
+      ]
+    }
+  ]
+}

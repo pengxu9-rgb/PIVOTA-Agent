@@ -1,0 +1,249 @@
+{
+  "generated_at": "2026-05-28T08:09:51.909Z",
+  "source": "pivota_insights_official_pdp_manual_review_v1",
+  "mode": "dry_run",
+  "filters": {
+    "brand": null,
+    "product_ids": [
+      "ext_1cc14ab28dee629b0bb1d3db",
+      "ext_b8af61a562f4ab972197f413"
+    ],
+    "limit": null,
+    "include_strong": false,
+    "include_url_key": false,
+    "apply_chunk_size": null
+  },
+  "summary": {
+    "scanned": 2,
+    "changed_products": 2,
+    "blocked_products": 0,
+    "skipped_products": 0,
+    "write_actions": {
+      "insert": 2
+    },
+    "skip_reasons": {},
+    "evidence_profiles": {
+      "official_pdp_reviewed_line": 2
+    }
+  },
+  "plans": [
+    {
+      "external_product_id": "ext_1cc14ab28dee629b0bb1d3db",
+      "pivota_signature_id": null,
+      "title": "RMS Beauty Radiance Lock Setting Mist 100ml",
+      "brand": "RMS Beauty",
+      "canonical_url": "https://www.dermstore.com/p/rms-beauty-radiance-lock-setting-mist-100ml/15820047/",
+      "changed": true,
+      "blocked": false,
+      "skip_reason": null,
+      "candidate_hash": "a2206cab0283a2f36eed8d8b40ab28eb40e7ac44519358e7227cef272ff0808d",
+      "evidence_profile": "official_pdp_reviewed_line",
+      "source_coverage": {
+        "source": "official_pdp",
+        "canonical_url": "https://www.dermstore.com/p/rms-beauty-radiance-lock-setting-mist-100ml/15820047/",
+        "fields": {
+          "description": true,
+          "ingredients": 0,
+          "active_ingredients": 0,
+          "how_to": 1,
+          "details": 2,
+          "variants": 2
+        }
+      },
+      "preview": {
+        "headline": "Setting mist",
+        "what_it_is": "RMS Beauty Radiance Lock Setting Mist 100ml is a setting mist from RMS Beauty, with source-backed cues around mist format, radiance finish and makeup-set support.",
+        "why_it_stands_out": [
+          {
+            "headline": "Setting-mist cues are specific",
+            "body": "Reviewed mist cues such as setting mist format, radiance finish, makeup-set support identify finish, hydration, or makeup-set context without turning it into a toner.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Shade and size are explicit",
+            "body": "Variant labels such as RMS Beauty Radiance Lock Setting Mist 100ml, Variant: RMS Beauty Radiance Lock Setting Mist 100ml are visible, reducing ambiguity around the product format before a shopper clicks through.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Usage instructions available",
+            "body": "Reviewed usage context is present, including: Hold 8 to 10 inches away from face and mist evenly onto skin with eyes and mouth closed.",
+            "evidence_strength": "official_pdp_reviewed"
+          }
+        ],
+        "best_for": [
+          {
+            "tag": "makeup_setting",
+            "label": "makeup setting",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "radiant_finish",
+            "label": "radiant finish",
+            "confidence": "moderate"
+          }
+        ],
+        "shopping_highlight": "setting mist format, radiance finish"
+      },
+      "writes": [
+        {
+          "kb_key": "product:ext_1cc14ab28dee629b0bb1d3db",
+          "action": "insert",
+          "reason": "new_product_intel_bundle",
+          "old_hash": null,
+          "candidate_hash": "cda3e68c4028f62f079ed317ee310ff7ba055c46dbbe45667096cba5446429fe",
+          "existing_weak": true,
+          "source": "pivota_insights_official_pdp_manual_review_v1",
+          "after_inventory": {
+            "product_id": "ext_1cc14ab28dee629b0bb1d3db",
+            "kb_key": "product:ext_1cc14ab28dee629b0bb1d3db",
+            "source": "pivota_insights_official_pdp_manual_review_v1",
+            "updated_at": "",
+            "last_success_at": "",
+            "title": "RMS Beauty Radiance Lock Setting Mist 100ml",
+            "canonical_url": "",
+            "bundle_hash": "a2206cab0283a2f36eed8d8b40ab28eb40e7ac44519358e7227cef272ff0808d",
+            "lane": "keep",
+            "reason": "protected_good_content",
+            "priority": 0,
+            "protected": true,
+            "displayable": true,
+            "high_quality_ready": true,
+            "human_reviewed": true,
+            "issues": [],
+            "blocking_issues": [],
+            "quality_state": "reviewed",
+            "evidence_profile": "official_pdp_reviewed_line",
+            "evidence_rank": 3,
+            "review_tier": "assistant_reviewed",
+            "agent_readable": true,
+            "public_ready": true
+          },
+          "source_meta": {
+            "evidence_profile": "official_pdp_reviewed_line",
+            "quality_state": "reviewed",
+            "source_origin": "official_pdp_fields",
+            "source_url": "https://www.dermstore.com/p/rms-beauty-radiance-lock-setting-mist-100ml/15820047/",
+            "quality_improvement": {
+              "previous_bundle_hash": null,
+              "candidate_bundle_hash": "a2206cab0283a2f36eed8d8b40ab28eb40e7ac44519358e7227cef272ff0808d",
+              "replacement_decision": "new_product_intel_bundle",
+              "existing_quality_lane": null,
+              "candidate_quality_lane": "keep",
+              "existing_evidence_profile": null,
+              "candidate_evidence_profile": "official_pdp_reviewed_line"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "external_product_id": "ext_b8af61a562f4ab972197f413",
+      "pivota_signature_id": null,
+      "title": "RMS Beauty Revitalize Hydra Concealer 0.17fl oz (Various Shades)",
+      "brand": "RMS Beauty",
+      "canonical_url": "https://www.dermstore.com/p/rms-beauty-revitalize-hydra-concealer-0.17fl-oz-various-shades/16621199/",
+      "changed": true,
+      "blocked": false,
+      "skip_reason": null,
+      "candidate_hash": "9ddc1f24c00ad421f70d7f2d2bfe4105256a94c12c2d47b072d35e3e8dbc168b",
+      "evidence_profile": "official_pdp_reviewed_line",
+      "source_coverage": {
+        "source": "official_pdp",
+        "canonical_url": "https://www.dermstore.com/p/rms-beauty-revitalize-hydra-concealer-0.17fl-oz-various-shades/16621199/",
+        "fields": {
+          "description": true,
+          "ingredients": 0,
+          "active_ingredients": 0,
+          "how_to": 1,
+          "details": 3,
+          "variants": 26
+        }
+      },
+      "preview": {
+        "headline": "Complexion makeup",
+        "what_it_is": "RMS Beauty Revitalize Hydra Concealer 0.17fl oz (Various Shades) is a concealer from RMS Beauty, with source-backed cues around coverage control.",
+        "why_it_stands_out": [
+          {
+            "headline": "Coverage and finish cues are clear",
+            "body": "Reviewed complexion cues such as coverage control, shade range support a more precise read on coverage, finish, or shade fit.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Shade and size are explicit",
+            "body": "Variant labels such as W023, Variant: W023, WN012, Variant: WN012 are visible, reducing ambiguity around the product format before a shopper clicks through.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Usage instructions available",
+            "body": "Reviewed usage context is present, including: For seamless coverage every time, use the wand's brush tip and lightly apply concealer to the under eye area, directly onto blemishes, redness, and/or imperfections.",
+            "evidence_strength": "official_pdp_reviewed"
+          }
+        ],
+        "best_for": [
+          {
+            "tag": "complexion_coverage",
+            "label": "complexion coverage",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "soft_focus_finish",
+            "label": "soft-focus finish",
+            "confidence": "moderate"
+          }
+        ],
+        "shopping_highlight": "coverage control, shade range"
+      },
+      "writes": [
+        {
+          "kb_key": "product:ext_b8af61a562f4ab972197f413",
+          "action": "insert",
+          "reason": "new_product_intel_bundle",
+          "old_hash": null,
+          "candidate_hash": "33194ea0deed5d2fced5881b84a8eba4a2179cf4939010f70bd09c438c99694b",
+          "existing_weak": true,
+          "source": "pivota_insights_official_pdp_manual_review_v1",
+          "after_inventory": {
+            "product_id": "ext_b8af61a562f4ab972197f413",
+            "kb_key": "product:ext_b8af61a562f4ab972197f413",
+            "source": "pivota_insights_official_pdp_manual_review_v1",
+            "updated_at": "",
+            "last_success_at": "",
+            "title": "RMS Beauty Revitalize Hydra Concealer 0.17fl oz (Various Shades)",
+            "canonical_url": "",
+            "bundle_hash": "9ddc1f24c00ad421f70d7f2d2bfe4105256a94c12c2d47b072d35e3e8dbc168b",
+            "lane": "keep",
+            "reason": "protected_good_content",
+            "priority": 0,
+            "protected": true,
+            "displayable": true,
+            "high_quality_ready": true,
+            "human_reviewed": true,
+            "issues": [],
+            "blocking_issues": [],
+            "quality_state": "reviewed",
+            "evidence_profile": "official_pdp_reviewed_line",
+            "evidence_rank": 3,
+            "review_tier": "assistant_reviewed",
+            "agent_readable": true,
+            "public_ready": true
+          },
+          "source_meta": {
+            "evidence_profile": "official_pdp_reviewed_line",
+            "quality_state": "reviewed",
+            "source_origin": "official_pdp_fields",
+            "source_url": "https://www.dermstore.com/p/rms-beauty-revitalize-hydra-concealer-0.17fl-oz-various-shades/16621199/",
+            "quality_improvement": {
+              "previous_bundle_hash": null,
+              "candidate_bundle_hash": "9ddc1f24c00ad421f70d7f2d2bfe4105256a94c12c2d47b072d35e3e8dbc168b",
+              "replacement_decision": "new_product_intel_bundle",
+              "existing_quality_lane": null,
+              "candidate_quality_lane": "keep",
+              "existing_evidence_profile": null,
+              "candidate_evidence_profile": "official_pdp_reviewed_line"
+            }
+          }
+        }
+      ]
+    }
+  ]
+}

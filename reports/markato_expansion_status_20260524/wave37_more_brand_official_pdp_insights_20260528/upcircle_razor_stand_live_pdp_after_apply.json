@@ -1,0 +1,138 @@
+{
+  "generated_at": "2026-05-28T07:57:42.479Z",
+  "source": "external_seed_live_pdp_modules_audit",
+  "query": {
+    "market": "US",
+    "domain": null,
+    "brand": null,
+    "external_product_id": null,
+    "external_product_ids": [
+      "ext_f79a99a09a933e731880cdfb"
+    ],
+    "include_attached": true,
+    "limit": 50,
+    "offset": 0,
+    "include_similar": true,
+    "use_sig": false
+  },
+  "summary": {
+    "scanned": 1,
+    "ready": 1,
+    "thin": 0,
+    "not_conversion_ready": 0,
+    "by_domain": [
+      {
+        "key": "upcirclebeauty.com",
+        "count": 1
+      }
+    ],
+    "blocker_counts": [],
+    "weak_insights_ids": [],
+    "seller_only_insights_ids": [],
+    "force_filled_ids": [],
+    "content_gap_ids": []
+  },
+  "rows": [
+    {
+      "external_product_id": "ext_f79a99a09a933e731880cdfb",
+      "pivota_signature_id": "sig_afe3f9a92ef0da1f86bcaa53",
+      "probed_product_id": "ext_f79a99a09a933e731880cdfb",
+      "probed_id_type": "ext",
+      "seed_id": "eps_ddeee5898d1333beacfb80b5",
+      "market": "US",
+      "domain": "upcirclebeauty.com",
+      "title": "Safety Razor Stand",
+      "canonical_url": "https://upcirclebeauty.com/products/safety-razor-stand",
+      "http_status": 200,
+      "pdp_status": "success",
+      "build_id": "425f0ce3a997",
+      "module_types": [
+        "canonical",
+        "variant_selector",
+        "offers",
+        "product_intel",
+        "how_to_use",
+        "product_overview",
+        "product_facts",
+        "supplemental_details",
+        "product_details",
+        "reviews_preview",
+        "similar"
+      ],
+      "missing_modules": [
+        "how_to_use",
+        "product_facts",
+        "supplemental_details"
+      ],
+      "gallery": {
+        "image_count": 5,
+        "duplicate_url_count": 1,
+        "image_hosts": [
+          "cdn.shopify.com"
+        ],
+        "ok": true
+      },
+      "variant": {
+        "module_present": true,
+        "variant_count": 1,
+        "label_count": 2,
+        "labels": [
+          "Strength: 10%",
+          "10%"
+        ],
+        "bad_labels": [],
+        "ok": true
+      },
+      "reviews": {
+        "module_present": true,
+        "rating": null,
+        "review_count": 0,
+        "chart_present": false,
+        "chart_estimated": false,
+        "preview_count": 0,
+        "ok": true
+      },
+      "insights": {
+        "module_present": true,
+        "quality_state": "reviewed",
+        "evidence_profile": "official_pdp_reviewed_limited",
+        "seller_only_evidence": false,
+        "seller_grounded_reviewed": false,
+        "headline": "Body care tool",
+        "why_count": 1,
+        "ok": true
+      },
+      "content": {
+        "ingredients_present": false,
+        "ingredients_text_count": 0,
+        "ingredients_source_origin": null,
+        "ingredients_source_quality_status": null,
+        "ingredients_force_filled": false,
+        "active_ingredients_present": false,
+        "active_ingredients_source_origin": null,
+        "active_ingredients_source_quality_status": null,
+        "active_ingredients_force_filled": false,
+        "how_to_present": false,
+        "how_to_text_count": 0,
+        "overview_present": true,
+        "details_present": true,
+        "details_text_count": 4
+      },
+      "similar": {
+        "module_present": true,
+        "count": 0,
+        "status": "deferred"
+      },
+      "product_kind": {
+        "family": "unknown_product",
+        "reasons": [],
+        "pdp_schema_profile": "generic_product",
+        "formula_content_required": false,
+        "merchandising_content_applicable": true
+      },
+      "blocking_reasons": [],
+      "pdp_quality_bucket": "ready",
+      "conversion_ready": true
+    }
+  ]
+}

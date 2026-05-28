@@ -1,0 +1,147 @@
+{
+  "generated_at": "2026-05-28T06:41:04.464Z",
+  "source": "external_seed_live_pdp_modules_audit",
+  "query": {
+    "market": "US",
+    "domain": null,
+    "brand": null,
+    "external_product_id": "ext_397a1dbbcab4ad4a246b6a8c",
+    "external_product_ids": [],
+    "include_attached": true,
+    "limit": 50,
+    "offset": 0,
+    "include_similar": true,
+    "use_sig": false
+  },
+  "summary": {
+    "scanned": 1,
+    "ready": 0,
+    "thin": 1,
+    "not_conversion_ready": 0,
+    "by_domain": [
+      {
+        "key": "delicatedaisys.com",
+        "count": 1
+      }
+    ],
+    "blocker_counts": [
+      {
+        "key": "missing_ingredients",
+        "count": 1
+      }
+    ],
+    "weak_insights_ids": [],
+    "seller_only_insights_ids": [],
+    "force_filled_ids": [],
+    "content_gap_ids": [
+      "ext_397a1dbbcab4ad4a246b6a8c"
+    ]
+  },
+  "rows": [
+    {
+      "external_product_id": "ext_397a1dbbcab4ad4a246b6a8c",
+      "pivota_signature_id": "sig_5e89f7b2b9ef3870e60db6da",
+      "probed_product_id": "ext_397a1dbbcab4ad4a246b6a8c",
+      "probed_id_type": "ext",
+      "seed_id": "eps_28b4bb316fea9db44b3dd3e0",
+      "market": "US",
+      "domain": "delicatedaisys.com",
+      "title": "Bulgarian Rose Water Face, Hair & Body Mist Spray",
+      "canonical_url": "https://delicatedaisys.com/products/bulgarian-rose-water-face-hair-body-mist-spray",
+      "http_status": 200,
+      "pdp_status": "success",
+      "build_id": "5ff83885f89a",
+      "module_types": [
+        "canonical",
+        "variant_selector",
+        "offers",
+        "product_intel",
+        "active_ingredients",
+        "ingredients_inci",
+        "how_to_use",
+        "product_overview",
+        "product_facts",
+        "supplemental_details",
+        "product_details",
+        "reviews_preview",
+        "similar"
+      ],
+      "missing_modules": [
+        "variant_selector",
+        "active_ingredients",
+        "ingredients_inci",
+        "product_facts"
+      ],
+      "gallery": {
+        "image_count": 6,
+        "duplicate_url_count": 1,
+        "image_hosts": [
+          "delicatedaisys.com"
+        ],
+        "ok": true
+      },
+      "variant": {
+        "module_present": true,
+        "variant_count": 0,
+        "label_count": 0,
+        "labels": [],
+        "bad_labels": [],
+        "ok": false
+      },
+      "reviews": {
+        "module_present": true,
+        "rating": null,
+        "review_count": 0,
+        "chart_present": false,
+        "chart_estimated": false,
+        "preview_count": 0,
+        "ok": true
+      },
+      "insights": {
+        "module_present": true,
+        "quality_state": "reviewed",
+        "evidence_profile": "official_pdp_seed",
+        "seller_only_evidence": false,
+        "seller_grounded_reviewed": false,
+        "headline": "Body mist identity",
+        "why_count": 2,
+        "ok": true
+      },
+      "content": {
+        "ingredients_present": false,
+        "ingredients_text_count": 0,
+        "ingredients_source_origin": null,
+        "ingredients_source_quality_status": null,
+        "ingredients_force_filled": false,
+        "active_ingredients_present": false,
+        "active_ingredients_source_origin": null,
+        "active_ingredients_source_quality_status": null,
+        "active_ingredients_force_filled": false,
+        "how_to_present": true,
+        "how_to_text_count": 6,
+        "overview_present": true,
+        "details_present": true,
+        "details_text_count": 16
+      },
+      "similar": {
+        "module_present": true,
+        "count": 0,
+        "status": "deferred"
+      },
+      "product_kind": {
+        "family": "single_formula",
+        "reasons": [
+          "formula_category_path_signal"
+        ],
+        "pdp_schema_profile": "beauty_formula",
+        "formula_content_required": true,
+        "merchandising_content_applicable": true
+      },
+      "blocking_reasons": [
+        "missing_ingredients"
+      ],
+      "pdp_quality_bucket": "thin",
+      "conversion_ready": false
+    }
+  ]
+}

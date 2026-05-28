@@ -1,0 +1,1530 @@
+{
+  "generated_at": "2026-05-28T07:18:10.570Z",
+  "source": "external_seed_live_pdp_modules_audit",
+  "query": {
+    "market": "US",
+    "domain": null,
+    "brand": "Byra",
+    "external_product_id": null,
+    "external_product_ids": [],
+    "include_attached": true,
+    "limit": 30,
+    "offset": 0,
+    "include_similar": true,
+    "use_sig": false
+  },
+  "summary": {
+    "scanned": 14,
+    "ready": 1,
+    "thin": 10,
+    "not_conversion_ready": 3,
+    "by_domain": [
+      {
+        "key": "byrabeauty.com",
+        "count": 14
+      }
+    ],
+    "blocker_counts": [
+      {
+        "key": "missing_how_to",
+        "count": 9
+      },
+      {
+        "key": "missing_ingredients",
+        "count": 9
+      },
+      {
+        "key": "missing_or_weak_insights",
+        "count": 4
+      },
+      {
+        "key": "gallery_missing_or_bloated",
+        "count": 3
+      },
+      {
+        "key": "missing_details",
+        "count": 3
+      },
+      {
+        "key": "missing_overview",
+        "count": 3
+      },
+      {
+        "key": "seller_only_insights",
+        "count": 1
+      }
+    ],
+    "weak_insights_ids": [
+      "ext_c015b81bbdd329d51a5430fd",
+      "ext_475ee6b7d783d597bb021546",
+      "ext_936878eeb9a3b577ef32f8a6",
+      "ext_d70d0668aa2e18fed1d2086d"
+    ],
+    "seller_only_insights_ids": [
+      "ext_c015b81bbdd329d51a5430fd"
+    ],
+    "force_filled_ids": [],
+    "content_gap_ids": [
+      "ext_effcc5f6c49a6774850db282",
+      "ext_d2be72abe173e52d5baa6879",
+      "ext_a92dc3f3178447692d4cac69",
+      "ext_9b1044e6e0e376f6e31754df",
+      "ext_9940e0166e797a4b3d334815",
+      "ext_9820a5ae58feea4c66c19cef",
+      "ext_60e8d58a4992f033747967f5",
+      "ext_3d78ee9a97fa29cbc4d22b67",
+      "ext_1a0538d5cde6bee407083bd0",
+      "ext_475ee6b7d783d597bb021546",
+      "ext_936878eeb9a3b577ef32f8a6",
+      "ext_d70d0668aa2e18fed1d2086d"
+    ]
+  },
+  "rows": [
+    {
+      "external_product_id": "ext_effcc5f6c49a6774850db282",
+      "pivota_signature_id": "sig_b6e47551358fa4712c869a8d",
+      "probed_product_id": "ext_effcc5f6c49a6774850db282",
+      "probed_id_type": "ext",
+      "seed_id": "eps_f4f9d6aaba33dc661cc030b2",
+      "market": "US",
+      "domain": "byrabeauty.com",
+      "title": "Glow & Renewal Serum Combo",
+      "canonical_url": "https://byrabeauty.com/products/glow-renewal-serum-combo",
+      "http_status": 200,
+      "pdp_status": "success",
+      "build_id": "425f0ce3a997",
+      "module_types": [
+        "canonical",
+        "variant_selector",
+        "offers",
+        "product_intel",
+        "active_ingredients",
+        "ingredients_inci",
+        "how_to_use",
+        "product_overview",
+        "product_facts",
+        "supplemental_details",
+        "product_details",
+        "reviews_preview",
+        "similar"
+      ],
+      "missing_modules": [
+        "variant_selector",
+        "active_ingredients",
+        "ingredients_inci",
+        "how_to_use",
+        "product_facts",
+        "supplemental_details"
+      ],
+      "gallery": {
+        "image_count": 7,
+        "duplicate_url_count": 1,
+        "image_hosts": [
+          "cdn.shopify.com"
+        ],
+        "ok": true
+      },
+      "variant": {
+        "module_present": true,
+        "variant_count": 0,
+        "label_count": 0,
+        "labels": [],
+        "bad_labels": [],
+        "ok": false
+      },
+      "reviews": {
+        "module_present": true,
+        "rating": null,
+        "review_count": 0,
+        "chart_present": false,
+        "chart_estimated": false,
+        "preview_count": 0,
+        "ok": true
+      },
+      "insights": {
+        "module_present": true,
+        "quality_state": "reviewed",
+        "evidence_profile": "official_pdp_reviewed_limited",
+        "seller_only_evidence": false,
+        "seller_grounded_reviewed": false,
+        "headline": "Skincare set",
+        "why_count": 1,
+        "ok": true
+      },
+      "content": {
+        "ingredients_present": false,
+        "ingredients_text_count": 0,
+        "ingredients_source_origin": null,
+        "ingredients_source_quality_status": null,
+        "ingredients_force_filled": false,
+        "active_ingredients_present": false,
+        "active_ingredients_source_origin": null,
+        "active_ingredients_source_quality_status": null,
+        "active_ingredients_force_filled": false,
+        "how_to_present": false,
+        "how_to_text_count": 0,
+        "overview_present": true,
+        "details_present": true,
+        "details_text_count": 4
+      },
+      "similar": {
+        "module_present": true,
+        "count": 0,
+        "status": "deferred"
+      },
+      "product_kind": {
+        "family": "single_formula",
+        "reasons": [
+          "formula_signal"
+        ],
+        "pdp_schema_profile": "beauty_formula",
+        "formula_content_required": true,
+        "merchandising_content_applicable": true
+      },
+      "blocking_reasons": [
+        "missing_ingredients",
+        "missing_how_to"
+      ],
+      "pdp_quality_bucket": "thin",
+      "conversion_ready": false
+    },
+    {
+      "external_product_id": "ext_d2be72abe173e52d5baa6879",
+      "pivota_signature_id": "sig_0a6749918fd15d522c5399d0",
+      "probed_product_id": "ext_d2be72abe173e52d5baa6879",
+      "probed_id_type": "ext",
+      "seed_id": "eps_48546e3741581389be18f723",
+      "market": "US",
+      "domain": "byrabeauty.com",
+      "title": "Deep Calm - Eau De Parfum 30ml",
+      "canonical_url": "https://byrabeauty.com/products/deep-calm-eau-de-parfum-30ml",
+      "http_status": 200,
+      "pdp_status": "success",
+      "build_id": "425f0ce3a997",
+      "module_types": [
+        "canonical",
+        "variant_selector",
+        "offers",
+        "product_intel",
+        "active_ingredients",
+        "ingredients_inci",
+        "how_to_use",
+        "product_overview",
+        "product_facts",
+        "supplemental_details",
+        "product_details",
+        "reviews_preview",
+        "similar"
+      ],
+      "missing_modules": [
+        "active_ingredients",
+        "ingredients_inci",
+        "how_to_use",
+        "product_facts",
+        "supplemental_details"
+      ],
+      "gallery": {
+        "image_count": 2,
+        "duplicate_url_count": 1,
+        "image_hosts": [
+          "cdn.shopify.com"
+        ],
+        "ok": true
+      },
+      "variant": {
+        "module_present": true,
+        "variant_count": 1,
+        "label_count": 2,
+        "labels": [
+          "Size: 30 mL",
+          "30 mL"
+        ],
+        "bad_labels": [],
+        "ok": true
+      },
+      "reviews": {
+        "module_present": true,
+        "rating": null,
+        "review_count": 0,
+        "chart_present": false,
+        "chart_estimated": false,
+        "preview_count": 0,
+        "ok": true
+      },
+      "insights": {
+        "module_present": true,
+        "quality_state": "reviewed",
+        "evidence_profile": "official_pdp_reviewed_limited",
+        "seller_only_evidence": false,
+        "seller_grounded_reviewed": false,
+        "headline": "Fine fragrance",
+        "why_count": 1,
+        "ok": true
+      },
+      "content": {
+        "ingredients_present": false,
+        "ingredients_text_count": 0,
+        "ingredients_source_origin": null,
+        "ingredients_source_quality_status": null,
+        "ingredients_force_filled": false,
+        "active_ingredients_present": false,
+        "active_ingredients_source_origin": null,
+        "active_ingredients_source_quality_status": null,
+        "active_ingredients_force_filled": false,
+        "how_to_present": false,
+        "how_to_text_count": 0,
+        "overview_present": true,
+        "details_present": true,
+        "details_text_count": 4
+      },
+      "similar": {
+        "module_present": true,
+        "count": 0,
+        "status": "deferred"
+      },
+      "product_kind": {
+        "family": "single_formula",
+        "reasons": [
+          "formula_signal"
+        ],
+        "pdp_schema_profile": "beauty_formula",
+        "formula_content_required": true,
+        "merchandising_content_applicable": true
+      },
+      "blocking_reasons": [
+        "missing_ingredients",
+        "missing_how_to"
+      ],
+      "pdp_quality_bucket": "thin",
+      "conversion_ready": false
+    },
+    {
+      "external_product_id": "ext_c015b81bbdd329d51a5430fd",
+      "pivota_signature_id": "sig_eb2044b5430b7bac7e88a319",
+      "probed_product_id": "ext_c015b81bbdd329d51a5430fd",
+      "probed_id_type": "ext",
+      "seed_id": "eps_e1b8fac24619dc4e5fff535e",
+      "market": "US",
+      "domain": "byrabeauty.com",
+      "title": "Naked Skin Nutrition: Feed Your Glow (Hardcover)",
+      "canonical_url": "https://byrabeauty.com/products/naked-skin-nutrition-feed-your-glow-hardcover",
+      "http_status": 200,
+      "pdp_status": "success",
+      "build_id": "425f0ce3a997",
+      "module_types": [
+        "canonical",
+        "variant_selector",
+        "offers",
+        "product_intel",
+        "active_ingredients",
+        "ingredients_inci",
+        "how_to_use",
+        "product_overview",
+        "product_facts",
+        "supplemental_details",
+        "product_details",
+        "reviews_preview",
+        "similar"
+      ],
+      "missing_modules": [
+        "variant_selector",
+        "active_ingredients",
+        "ingredients_inci",
+        "how_to_use",
+        "product_facts",
+        "supplemental_details"
+      ],
+      "gallery": {
+        "image_count": 3,
+        "duplicate_url_count": 1,
+        "image_hosts": [
+          "cdn.shopify.com"
+        ],
+        "ok": true
+      },
+      "variant": {
+        "module_present": true,
+        "variant_count": 0,
+        "label_count": 0,
+        "labels": [],
+        "bad_labels": [],
+        "ok": false
+      },
+      "reviews": {
+        "module_present": true,
+        "rating": null,
+        "review_count": 0,
+        "chart_present": false,
+        "chart_estimated": false,
+        "preview_count": 0,
+        "ok": true
+      },
+      "insights": {
+        "module_present": true,
+        "quality_state": "limited",
+        "evidence_profile": "seller_only",
+        "seller_only_evidence": true,
+        "seller_grounded_reviewed": false,
+        "headline": "Wellness Tool",
+        "why_count": 1,
+        "ok": false
+      },
+      "content": {
+        "ingredients_present": false,
+        "ingredients_text_count": 0,
+        "ingredients_source_origin": null,
+        "ingredients_source_quality_status": null,
+        "ingredients_force_filled": false,
+        "active_ingredients_present": false,
+        "active_ingredients_source_origin": null,
+        "active_ingredients_source_quality_status": null,
+        "active_ingredients_force_filled": false,
+        "how_to_present": false,
+        "how_to_text_count": 0,
+        "overview_present": true,
+        "details_present": true,
+        "details_text_count": 4
+      },
+      "similar": {
+        "module_present": true,
+        "count": 0,
+        "status": "deferred"
+      },
+      "product_kind": {
+        "family": "unknown_product",
+        "reasons": [],
+        "pdp_schema_profile": "beauty_formula",
+        "formula_content_required": false,
+        "merchandising_content_applicable": true
+      },
+      "blocking_reasons": [
+        "missing_or_weak_insights",
+        "seller_only_insights"
+      ],
+      "pdp_quality_bucket": "thin",
+      "conversion_ready": false
+    },
+    {
+      "external_product_id": "ext_a92dc3f3178447692d4cac69",
+      "pivota_signature_id": "sig_a1511da5d6b87cd6530a81fb",
+      "probed_product_id": "ext_a92dc3f3178447692d4cac69",
+      "probed_id_type": "ext",
+      "seed_id": "eps_ce422b1c8c76c3a11f059e60",
+      "market": "US",
+      "domain": "byrabeauty.com",
+      "title": "PURIFY Biotic Cleanser",
+      "canonical_url": "https://byrabeauty.com/products/purify-biotic-cleanser-1",
+      "http_status": 200,
+      "pdp_status": "success",
+      "build_id": "425f0ce3a997",
+      "module_types": [
+        "canonical",
+        "variant_selector",
+        "offers",
+        "product_intel",
+        "active_ingredients",
+        "ingredients_inci",
+        "how_to_use",
+        "product_overview",
+        "product_facts",
+        "supplemental_details",
+        "product_details",
+        "reviews_preview",
+        "similar"
+      ],
+      "missing_modules": [
+        "variant_selector",
+        "active_ingredients",
+        "ingredients_inci",
+        "how_to_use",
+        "product_facts",
+        "supplemental_details"
+      ],
+      "gallery": {
+        "image_count": 5,
+        "duplicate_url_count": 1,
+        "image_hosts": [
+          "cdn.shopify.com"
+        ],
+        "ok": true
+      },
+      "variant": {
+        "module_present": true,
+        "variant_count": 0,
+        "label_count": 0,
+        "labels": [],
+        "bad_labels": [],
+        "ok": false
+      },
+      "reviews": {
+        "module_present": true,
+        "rating": null,
+        "review_count": 0,
+        "chart_present": false,
+        "chart_estimated": false,
+        "preview_count": 0,
+        "ok": true
+      },
+      "insights": {
+        "module_present": true,
+        "quality_state": "reviewed",
+        "evidence_profile": "official_pdp_reviewed_limited",
+        "seller_only_evidence": false,
+        "seller_grounded_reviewed": false,
+        "headline": "Face cleanser",
+        "why_count": 1,
+        "ok": true
+      },
+      "content": {
+        "ingredients_present": false,
+        "ingredients_text_count": 0,
+        "ingredients_source_origin": null,
+        "ingredients_source_quality_status": null,
+        "ingredients_force_filled": false,
+        "active_ingredients_present": false,
+        "active_ingredients_source_origin": null,
+        "active_ingredients_source_quality_status": null,
+        "active_ingredients_force_filled": false,
+        "how_to_present": false,
+        "how_to_text_count": 0,
+        "overview_present": true,
+        "details_present": true,
+        "details_text_count": 5
+      },
+      "similar": {
+        "module_present": true,
+        "count": 0,
+        "status": "deferred"
+      },
+      "product_kind": {
+        "family": "single_formula",
+        "reasons": [
+          "formula_signal"
+        ],
+        "pdp_schema_profile": "beauty_formula",
+        "formula_content_required": true,
+        "merchandising_content_applicable": true
+      },
+      "blocking_reasons": [
+        "missing_ingredients",
+        "missing_how_to"
+      ],
+      "pdp_quality_bucket": "thin",
+      "conversion_ready": false
+    },
+    {
+      "external_product_id": "ext_a146f7010622206ee2796574",
+      "pivota_signature_id": "sig_a7178e1a3e9a606d3ca69b09",
+      "probed_product_id": "ext_a146f7010622206ee2796574",
+      "probed_id_type": "ext",
+      "seed_id": "eps_78e7cfc2a950fe26235fbfaa",
+      "market": "US",
+      "domain": "byrabeauty.com",
+      "title": "Je Suis Tote Bag (pure cotton, thick 22oz)",
+      "canonical_url": "https://byrabeauty.com/products/je-suis-comme-je-suis-tote-bag-pure-cotton-thick-22oz",
+      "http_status": 200,
+      "pdp_status": "success",
+      "build_id": "425f0ce3a997",
+      "module_types": [
+        "canonical",
+        "variant_selector",
+        "offers",
+        "product_intel",
+        "how_to_use",
+        "product_overview",
+        "product_facts",
+        "supplemental_details",
+        "product_details",
+        "reviews_preview",
+        "similar"
+      ],
+      "missing_modules": [
+        "product_intel"
+      ],
+      "gallery": {
+        "image_count": 4,
+        "duplicate_url_count": 1,
+        "image_hosts": [
+          "cdn.shopify.com"
+        ],
+        "ok": true
+      },
+      "variant": {
+        "module_present": true,
+        "variant_count": 1,
+        "label_count": 2,
+        "labels": [
+          "Size: 28 cm",
+          "28 cm"
+        ],
+        "bad_labels": [],
+        "ok": true
+      },
+      "reviews": {
+        "module_present": true,
+        "rating": null,
+        "review_count": 0,
+        "chart_present": false,
+        "chart_estimated": false,
+        "preview_count": 0,
+        "ok": true
+      },
+      "insights": {
+        "module_present": true,
+        "quality_state": null,
+        "evidence_profile": null,
+        "seller_only_evidence": false,
+        "seller_grounded_reviewed": false,
+        "headline": null,
+        "why_count": 0,
+        "ok": false
+      },
+      "content": {
+        "ingredients_present": false,
+        "ingredients_text_count": 0,
+        "ingredients_source_origin": null,
+        "ingredients_source_quality_status": null,
+        "ingredients_force_filled": false,
+        "active_ingredients_present": false,
+        "active_ingredients_source_origin": null,
+        "active_ingredients_source_quality_status": null,
+        "active_ingredients_force_filled": false,
+        "how_to_present": false,
+        "how_to_text_count": 0,
+        "overview_present": true,
+        "details_present": true,
+        "details_text_count": 4
+      },
+      "similar": {
+        "module_present": true,
+        "count": 0,
+        "status": null
+      },
+      "product_kind": {
+        "family": "accessory",
+        "reasons": [
+          "accessory_signal"
+        ],
+        "pdp_schema_profile": "generic_merch",
+        "formula_content_required": false,
+        "merchandising_content_applicable": false
+      },
+      "blocking_reasons": [],
+      "pdp_quality_bucket": "ready",
+      "conversion_ready": true
+    },
+    {
+      "external_product_id": "ext_9b1044e6e0e376f6e31754df",
+      "pivota_signature_id": "sig_9ab77174f5b24e16af94cfa0",
+      "probed_product_id": "ext_9b1044e6e0e376f6e31754df",
+      "probed_id_type": "ext",
+      "seed_id": "eps_d8117120bf9cc44604c605f3",
+      "market": "US",
+      "domain": "byrabeauty.com",
+      "title": "ILLUMINATE Nutri-Serum Concentrate",
+      "canonical_url": "https://byrabeauty.com/products/illuminate-nutri-serum-concentrate",
+      "http_status": 200,
+      "pdp_status": "success",
+      "build_id": "425f0ce3a997",
+      "module_types": [
+        "canonical",
+        "variant_selector",
+        "offers",
+        "product_intel",
+        "active_ingredients",
+        "ingredients_inci",
+        "how_to_use",
+        "product_overview",
+        "product_facts",
+        "supplemental_details",
+        "product_details",
+        "reviews_preview",
+        "similar"
+      ],
+      "missing_modules": [
+        "variant_selector",
+        "active_ingredients",
+        "ingredients_inci",
+        "how_to_use",
+        "product_facts",
+        "supplemental_details"
+      ],
+      "gallery": {
+        "image_count": 7,
+        "duplicate_url_count": 1,
+        "image_hosts": [
+          "cdn.shopify.com"
+        ],
+        "ok": true
+      },
+      "variant": {
+        "module_present": true,
+        "variant_count": 0,
+        "label_count": 0,
+        "labels": [],
+        "bad_labels": [],
+        "ok": false
+      },
+      "reviews": {
+        "module_present": true,
+        "rating": null,
+        "review_count": 0,
+        "chart_present": false,
+        "chart_estimated": false,
+        "preview_count": 0,
+        "ok": true
+      },
+      "insights": {
+        "module_present": true,
+        "quality_state": "reviewed",
+        "evidence_profile": "official_pdp_reviewed_limited",
+        "seller_only_evidence": false,
+        "seller_grounded_reviewed": false,
+        "headline": "Treatment serum",
+        "why_count": 1,
+        "ok": true
+      },
+      "content": {
+        "ingredients_present": false,
+        "ingredients_text_count": 0,
+        "ingredients_source_origin": null,
+        "ingredients_source_quality_status": null,
+        "ingredients_force_filled": false,
+        "active_ingredients_present": false,
+        "active_ingredients_source_origin": null,
+        "active_ingredients_source_quality_status": null,
+        "active_ingredients_force_filled": false,
+        "how_to_present": false,
+        "how_to_text_count": 0,
+        "overview_present": true,
+        "details_present": true,
+        "details_text_count": 5
+      },
+      "similar": {
+        "module_present": true,
+        "count": 0,
+        "status": "deferred"
+      },
+      "product_kind": {
+        "family": "single_formula",
+        "reasons": [
+          "formula_signal"
+        ],
+        "pdp_schema_profile": "beauty_formula",
+        "formula_content_required": true,
+        "merchandising_content_applicable": true
+      },
+      "blocking_reasons": [
+        "missing_ingredients",
+        "missing_how_to"
+      ],
+      "pdp_quality_bucket": "thin",
+      "conversion_ready": false
+    },
+    {
+      "external_product_id": "ext_9940e0166e797a4b3d334815",
+      "pivota_signature_id": "sig_78437002309eda2735243c08",
+      "probed_product_id": "ext_9940e0166e797a4b3d334815",
+      "probed_id_type": "ext",
+      "seed_id": "eps_d640f946908731c8cf648b0d",
+      "market": "US",
+      "domain": "byrabeauty.com",
+      "title": "Trigona Propolis Oil 20ml",
+      "canonical_url": "https://byrabeauty.com/products/propolis-oil-20ml",
+      "http_status": 200,
+      "pdp_status": "success",
+      "build_id": "425f0ce3a997",
+      "module_types": [
+        "canonical",
+        "variant_selector",
+        "offers",
+        "product_intel",
+        "active_ingredients",
+        "ingredients_inci",
+        "how_to_use",
+        "product_overview",
+        "product_facts",
+        "supplemental_details",
+        "product_details",
+        "reviews_preview",
+        "similar"
+      ],
+      "missing_modules": [
+        "active_ingredients",
+        "ingredients_inci",
+        "how_to_use",
+        "product_facts",
+        "supplemental_details"
+      ],
+      "gallery": {
+        "image_count": 7,
+        "duplicate_url_count": 1,
+        "image_hosts": [
+          "cdn.shopify.com"
+        ],
+        "ok": true
+      },
+      "variant": {
+        "module_present": true,
+        "variant_count": 1,
+        "label_count": 2,
+        "labels": [
+          "Size: 20 mL",
+          "20 mL"
+        ],
+        "bad_labels": [],
+        "ok": true
+      },
+      "reviews": {
+        "module_present": true,
+        "rating": null,
+        "review_count": 0,
+        "chart_present": false,
+        "chart_estimated": false,
+        "preview_count": 0,
+        "ok": true
+      },
+      "insights": {
+        "module_present": true,
+        "quality_state": "reviewed",
+        "evidence_profile": "official_pdp_reviewed_limited",
+        "seller_only_evidence": false,
+        "seller_grounded_reviewed": false,
+        "headline": "Fine fragrance",
+        "why_count": 1,
+        "ok": true
+      },
+      "content": {
+        "ingredients_present": false,
+        "ingredients_text_count": 0,
+        "ingredients_source_origin": null,
+        "ingredients_source_quality_status": null,
+        "ingredients_force_filled": false,
+        "active_ingredients_present": false,
+        "active_ingredients_source_origin": null,
+        "active_ingredients_source_quality_status": null,
+        "active_ingredients_force_filled": false,
+        "how_to_present": false,
+        "how_to_text_count": 0,
+        "overview_present": true,
+        "details_present": true,
+        "details_text_count": 5
+      },
+      "similar": {
+        "module_present": true,
+        "count": 0,
+        "status": "deferred"
+      },
+      "product_kind": {
+        "family": "single_formula",
+        "reasons": [
+          "formula_signal"
+        ],
+        "pdp_schema_profile": "beauty_formula",
+        "formula_content_required": true,
+        "merchandising_content_applicable": true
+      },
+      "blocking_reasons": [
+        "missing_ingredients",
+        "missing_how_to"
+      ],
+      "pdp_quality_bucket": "thin",
+      "conversion_ready": false
+    },
+    {
+      "external_product_id": "ext_9820a5ae58feea4c66c19cef",
+      "pivota_signature_id": "sig_06ddf4752a7626897e091d3c",
+      "probed_product_id": "ext_9820a5ae58feea4c66c19cef",
+      "probed_id_type": "ext",
+      "seed_id": "eps_19dfd73c6382f642c0b61212",
+      "market": "US",
+      "domain": "byrabeauty.com",
+      "title": "MERACLE Nutri-Essence Treatment Enhancer",
+      "canonical_url": "https://byrabeauty.com/products/nutri-essence-aha-bha",
+      "http_status": 200,
+      "pdp_status": "success",
+      "build_id": "425f0ce3a997",
+      "module_types": [
+        "canonical",
+        "variant_selector",
+        "offers",
+        "product_intel",
+        "active_ingredients",
+        "ingredients_inci",
+        "how_to_use",
+        "product_overview",
+        "product_facts",
+        "supplemental_details",
+        "product_details",
+        "reviews_preview",
+        "similar"
+      ],
+      "missing_modules": [
+        "variant_selector",
+        "active_ingredients",
+        "ingredients_inci",
+        "how_to_use",
+        "product_facts",
+        "supplemental_details"
+      ],
+      "gallery": {
+        "image_count": 7,
+        "duplicate_url_count": 1,
+        "image_hosts": [
+          "cdn.shopify.com"
+        ],
+        "ok": true
+      },
+      "variant": {
+        "module_present": true,
+        "variant_count": 0,
+        "label_count": 0,
+        "labels": [],
+        "bad_labels": [],
+        "ok": false
+      },
+      "reviews": {
+        "module_present": true,
+        "rating": null,
+        "review_count": 0,
+        "chart_present": false,
+        "chart_estimated": false,
+        "preview_count": 0,
+        "ok": true
+      },
+      "insights": {
+        "module_present": true,
+        "quality_state": "reviewed",
+        "evidence_profile": "official_pdp_reviewed_limited",
+        "seller_only_evidence": false,
+        "seller_grounded_reviewed": false,
+        "headline": "Treatment serum",
+        "why_count": 1,
+        "ok": true
+      },
+      "content": {
+        "ingredients_present": false,
+        "ingredients_text_count": 0,
+        "ingredients_source_origin": null,
+        "ingredients_source_quality_status": null,
+        "ingredients_force_filled": false,
+        "active_ingredients_present": false,
+        "active_ingredients_source_origin": null,
+        "active_ingredients_source_quality_status": null,
+        "active_ingredients_force_filled": false,
+        "how_to_present": false,
+        "how_to_text_count": 0,
+        "overview_present": true,
+        "details_present": true,
+        "details_text_count": 5
+      },
+      "similar": {
+        "module_present": true,
+        "count": 0,
+        "status": "deferred"
+      },
+      "product_kind": {
+        "family": "single_formula",
+        "reasons": [
+          "formula_signal"
+        ],
+        "pdp_schema_profile": "beauty_formula",
+        "formula_content_required": true,
+        "merchandising_content_applicable": true
+      },
+      "blocking_reasons": [
+        "missing_ingredients",
+        "missing_how_to"
+      ],
+      "pdp_quality_bucket": "thin",
+      "conversion_ready": false
+    },
+    {
+      "external_product_id": "ext_60e8d58a4992f033747967f5",
+      "pivota_signature_id": "sig_7e322f739035bae51072841f",
+      "probed_product_id": "ext_60e8d58a4992f033747967f5",
+      "probed_id_type": "ext",
+      "seed_id": "eps_351e533985d732093009ff74",
+      "market": "US",
+      "domain": "byrabeauty.com",
+      "title": "REJUVENATE Nutri-Serum Concentrate",
+      "canonical_url": "https://byrabeauty.com/products/rejuvenate-nutri-serum-concentrate",
+      "http_status": 200,
+      "pdp_status": "success",
+      "build_id": "425f0ce3a997",
+      "module_types": [
+        "canonical",
+        "variant_selector",
+        "offers",
+        "product_intel",
+        "active_ingredients",
+        "ingredients_inci",
+        "how_to_use",
+        "product_overview",
+        "product_facts",
+        "supplemental_details",
+        "product_details",
+        "reviews_preview",
+        "similar"
+      ],
+      "missing_modules": [
+        "variant_selector",
+        "active_ingredients",
+        "ingredients_inci",
+        "how_to_use",
+        "product_facts",
+        "supplemental_details"
+      ],
+      "gallery": {
+        "image_count": 6,
+        "duplicate_url_count": 1,
+        "image_hosts": [
+          "cdn.shopify.com"
+        ],
+        "ok": true
+      },
+      "variant": {
+        "module_present": true,
+        "variant_count": 0,
+        "label_count": 0,
+        "labels": [],
+        "bad_labels": [],
+        "ok": false
+      },
+      "reviews": {
+        "module_present": true,
+        "rating": null,
+        "review_count": 0,
+        "chart_present": false,
+        "chart_estimated": false,
+        "preview_count": 0,
+        "ok": true
+      },
+      "insights": {
+        "module_present": true,
+        "quality_state": "reviewed",
+        "evidence_profile": "official_pdp_reviewed_limited",
+        "seller_only_evidence": false,
+        "seller_grounded_reviewed": false,
+        "headline": "Treatment serum",
+        "why_count": 1,
+        "ok": true
+      },
+      "content": {
+        "ingredients_present": false,
+        "ingredients_text_count": 0,
+        "ingredients_source_origin": null,
+        "ingredients_source_quality_status": null,
+        "ingredients_force_filled": false,
+        "active_ingredients_present": false,
+        "active_ingredients_source_origin": null,
+        "active_ingredients_source_quality_status": null,
+        "active_ingredients_force_filled": false,
+        "how_to_present": false,
+        "how_to_text_count": 0,
+        "overview_present": true,
+        "details_present": true,
+        "details_text_count": 5
+      },
+      "similar": {
+        "module_present": true,
+        "count": 0,
+        "status": "deferred"
+      },
+      "product_kind": {
+        "family": "single_formula",
+        "reasons": [
+          "formula_signal"
+        ],
+        "pdp_schema_profile": "beauty_formula",
+        "formula_content_required": true,
+        "merchandising_content_applicable": true
+      },
+      "blocking_reasons": [
+        "missing_ingredients",
+        "missing_how_to"
+      ],
+      "pdp_quality_bucket": "thin",
+      "conversion_ready": false
+    },
+    {
+      "external_product_id": "ext_3d78ee9a97fa29cbc4d22b67",
+      "pivota_signature_id": "sig_74715d03f182fe9a82ba5459",
+      "probed_product_id": "ext_3d78ee9a97fa29cbc4d22b67",
+      "probed_id_type": "ext",
+      "seed_id": "eps_2388ffde450549e37a2a89d8",
+      "market": "US",
+      "domain": "byrabeauty.com",
+      "title": "Beauty Flight Pack by Byra & Anaya",
+      "canonical_url": "https://byrabeauty.com/products/beauty-flight-pack",
+      "http_status": 200,
+      "pdp_status": "success",
+      "build_id": "425f0ce3a997",
+      "module_types": [
+        "canonical",
+        "variant_selector",
+        "offers",
+        "product_intel",
+        "active_ingredients",
+        "ingredients_inci",
+        "how_to_use",
+        "product_overview",
+        "product_facts",
+        "supplemental_details",
+        "product_details",
+        "reviews_preview",
+        "similar"
+      ],
+      "missing_modules": [
+        "active_ingredients",
+        "ingredients_inci",
+        "how_to_use",
+        "product_facts",
+        "supplemental_details"
+      ],
+      "gallery": {
+        "image_count": 5,
+        "duplicate_url_count": 1,
+        "image_hosts": [
+          "cdn.shopify.com"
+        ],
+        "ok": true
+      },
+      "variant": {
+        "module_present": true,
+        "variant_count": 1,
+        "label_count": 2,
+        "labels": [
+          "Size: 18 cm",
+          "18 cm"
+        ],
+        "bad_labels": [],
+        "ok": true
+      },
+      "reviews": {
+        "module_present": true,
+        "rating": null,
+        "review_count": 0,
+        "chart_present": false,
+        "chart_estimated": false,
+        "preview_count": 0,
+        "ok": true
+      },
+      "insights": {
+        "module_present": true,
+        "quality_state": "reviewed",
+        "evidence_profile": "official_pdp_reviewed_limited",
+        "seller_only_evidence": false,
+        "seller_grounded_reviewed": false,
+        "headline": "Skincare set",
+        "why_count": 1,
+        "ok": true
+      },
+      "content": {
+        "ingredients_present": false,
+        "ingredients_text_count": 0,
+        "ingredients_source_origin": null,
+        "ingredients_source_quality_status": null,
+        "ingredients_force_filled": false,
+        "active_ingredients_present": false,
+        "active_ingredients_source_origin": null,
+        "active_ingredients_source_quality_status": null,
+        "active_ingredients_force_filled": false,
+        "how_to_present": false,
+        "how_to_text_count": 0,
+        "overview_present": true,
+        "details_present": true,
+        "details_text_count": 4
+      },
+      "similar": {
+        "module_present": true,
+        "count": 0,
+        "status": "deferred"
+      },
+      "product_kind": {
+        "family": "single_formula",
+        "reasons": [
+          "formula_signal"
+        ],
+        "pdp_schema_profile": "beauty_formula",
+        "formula_content_required": true,
+        "merchandising_content_applicable": true
+      },
+      "blocking_reasons": [
+        "missing_ingredients",
+        "missing_how_to"
+      ],
+      "pdp_quality_bucket": "thin",
+      "conversion_ready": false
+    },
+    {
+      "external_product_id": "ext_1a0538d5cde6bee407083bd0",
+      "pivota_signature_id": "sig_976e0316dbc3d964e5bdaf07",
+      "probed_product_id": "ext_1a0538d5cde6bee407083bd0",
+      "probed_id_type": "ext",
+      "seed_id": "eps_929e48cf48c62864e20e761c",
+      "market": "US",
+      "domain": "byrabeauty.com",
+      "title": "SATURATE Nutri-Moisturiser",
+      "canonical_url": "https://byrabeauty.com/products/saturate-nutri-moisturiser",
+      "http_status": 200,
+      "pdp_status": "success",
+      "build_id": "425f0ce3a997",
+      "module_types": [
+        "canonical",
+        "variant_selector",
+        "offers",
+        "product_intel",
+        "active_ingredients",
+        "ingredients_inci",
+        "how_to_use",
+        "product_overview",
+        "product_facts",
+        "supplemental_details",
+        "product_details",
+        "reviews_preview",
+        "similar"
+      ],
+      "missing_modules": [
+        "variant_selector",
+        "active_ingredients",
+        "ingredients_inci",
+        "how_to_use",
+        "product_facts",
+        "supplemental_details"
+      ],
+      "gallery": {
+        "image_count": 6,
+        "duplicate_url_count": 1,
+        "image_hosts": [
+          "cdn.shopify.com"
+        ],
+        "ok": true
+      },
+      "variant": {
+        "module_present": true,
+        "variant_count": 0,
+        "label_count": 0,
+        "labels": [],
+        "bad_labels": [],
+        "ok": false
+      },
+      "reviews": {
+        "module_present": true,
+        "rating": null,
+        "review_count": 0,
+        "chart_present": false,
+        "chart_estimated": false,
+        "preview_count": 0,
+        "ok": true
+      },
+      "insights": {
+        "module_present": true,
+        "quality_state": "reviewed",
+        "evidence_profile": "official_pdp_reviewed_limited",
+        "seller_only_evidence": false,
+        "seller_grounded_reviewed": false,
+        "headline": "Body care treatment",
+        "why_count": 1,
+        "ok": true
+      },
+      "content": {
+        "ingredients_present": false,
+        "ingredients_text_count": 0,
+        "ingredients_source_origin": null,
+        "ingredients_source_quality_status": null,
+        "ingredients_force_filled": false,
+        "active_ingredients_present": false,
+        "active_ingredients_source_origin": null,
+        "active_ingredients_source_quality_status": null,
+        "active_ingredients_force_filled": false,
+        "how_to_present": false,
+        "how_to_text_count": 0,
+        "overview_present": true,
+        "details_present": true,
+        "details_text_count": 5
+      },
+      "similar": {
+        "module_present": true,
+        "count": 0,
+        "status": "deferred"
+      },
+      "product_kind": {
+        "family": "single_formula",
+        "reasons": [
+          "formula_signal"
+        ],
+        "pdp_schema_profile": "beauty_formula",
+        "formula_content_required": true,
+        "merchandising_content_applicable": true
+      },
+      "blocking_reasons": [
+        "missing_ingredients",
+        "missing_how_to"
+      ],
+      "pdp_quality_bucket": "thin",
+      "conversion_ready": false
+    },
+    {
+      "external_product_id": "ext_475ee6b7d783d597bb021546",
+      "pivota_signature_id": "",
+      "probed_product_id": "ext_475ee6b7d783d597bb021546",
+      "probed_id_type": "ext",
+      "seed_id": "eps_8c3c9104a4f3392f29aa861a",
+      "market": "US",
+      "domain": "byrabeauty.com",
+      "title": "Byra - Skin Brightening Trio",
+      "canonical_url": "https://byrabeauty.com/products/byra-skin-brightening-trio",
+      "http_status": 404,
+      "pdp_status": "",
+      "build_id": "",
+      "module_types": [],
+      "missing_modules": [],
+      "gallery": {
+        "image_count": 0,
+        "duplicate_url_count": 0,
+        "image_hosts": [],
+        "ok": false
+      },
+      "variant": {
+        "module_present": false,
+        "variant_count": 0,
+        "label_count": 0,
+        "labels": [],
+        "bad_labels": [],
+        "ok": false
+      },
+      "reviews": {
+        "module_present": false,
+        "rating": null,
+        "review_count": 0,
+        "chart_present": false,
+        "chart_estimated": false,
+        "preview_count": 0,
+        "ok": true
+      },
+      "insights": {
+        "module_present": false,
+        "quality_state": null,
+        "evidence_profile": null,
+        "seller_only_evidence": false,
+        "seller_grounded_reviewed": false,
+        "headline": null,
+        "why_count": 0,
+        "ok": false
+      },
+      "content": {
+        "ingredients_present": false,
+        "ingredients_text_count": 0,
+        "ingredients_source_origin": null,
+        "ingredients_source_quality_status": null,
+        "ingredients_force_filled": false,
+        "active_ingredients_present": false,
+        "active_ingredients_source_origin": null,
+        "active_ingredients_source_quality_status": null,
+        "active_ingredients_force_filled": false,
+        "how_to_present": false,
+        "how_to_text_count": 0,
+        "overview_present": false,
+        "details_present": false,
+        "details_text_count": 0
+      },
+      "similar": {
+        "module_present": false,
+        "count": 0,
+        "status": null
+      },
+      "product_kind": {
+        "family": "set_or_collection",
+        "reasons": [
+          "bundle_set_signal"
+        ],
+        "pdp_schema_profile": null,
+        "formula_content_required": false,
+        "merchandising_content_applicable": true
+      },
+      "blocking_reasons": [
+        "gallery_missing_or_bloated",
+        "missing_or_weak_insights",
+        "missing_overview",
+        "missing_details"
+      ],
+      "pdp_quality_bucket": "not_conversion_ready",
+      "conversion_ready": false
+    },
+    {
+      "external_product_id": "ext_936878eeb9a3b577ef32f8a6",
+      "pivota_signature_id": "",
+      "probed_product_id": "ext_936878eeb9a3b577ef32f8a6",
+      "probed_id_type": "ext",
+      "seed_id": "eps_a59dbb773bd6b0e00441871a",
+      "market": "US",
+      "domain": "byrabeauty.com",
+      "title": "Byra - Complete Skin Transformation Set",
+      "canonical_url": "https://byrabeauty.com/products/byra-complete-skin-transformation-set",
+      "http_status": 404,
+      "pdp_status": "",
+      "build_id": "",
+      "module_types": [],
+      "missing_modules": [],
+      "gallery": {
+        "image_count": 0,
+        "duplicate_url_count": 0,
+        "image_hosts": [],
+        "ok": false
+      },
+      "variant": {
+        "module_present": false,
+        "variant_count": 0,
+        "label_count": 0,
+        "labels": [],
+        "bad_labels": [],
+        "ok": false
+      },
+      "reviews": {
+        "module_present": false,
+        "rating": null,
+        "review_count": 0,
+        "chart_present": false,
+        "chart_estimated": false,
+        "preview_count": 0,
+        "ok": true
+      },
+      "insights": {
+        "module_present": false,
+        "quality_state": null,
+        "evidence_profile": null,
+        "seller_only_evidence": false,
+        "seller_grounded_reviewed": false,
+        "headline": null,
+        "why_count": 0,
+        "ok": false
+      },
+      "content": {
+        "ingredients_present": false,
+        "ingredients_text_count": 0,
+        "ingredients_source_origin": null,
+        "ingredients_source_quality_status": null,
+        "ingredients_force_filled": false,
+        "active_ingredients_present": false,
+        "active_ingredients_source_origin": null,
+        "active_ingredients_source_quality_status": null,
+        "active_ingredients_force_filled": false,
+        "how_to_present": false,
+        "how_to_text_count": 0,
+        "overview_present": false,
+        "details_present": false,
+        "details_text_count": 0
+      },
+      "similar": {
+        "module_present": false,
+        "count": 0,
+        "status": null
+      },
+      "product_kind": {
+        "family": "set_or_collection",
+        "reasons": [
+          "bundle_set_signal"
+        ],
+        "pdp_schema_profile": null,
+        "formula_content_required": false,
+        "merchandising_content_applicable": true
+      },
+      "blocking_reasons": [
+        "gallery_missing_or_bloated",
+        "missing_or_weak_insights",
+        "missing_overview",
+        "missing_details"
+      ],
+      "pdp_quality_bucket": "not_conversion_ready",
+      "conversion_ready": false
+    },
+    {
+      "external_product_id": "ext_d70d0668aa2e18fed1d2086d",
+      "pivota_signature_id": "",
+      "probed_product_id": "ext_d70d0668aa2e18fed1d2086d",
+      "probed_id_type": "ext",
+      "seed_id": "eps_c619f547baf77d2f4d8b5eb6",
+      "market": "US",
+      "domain": "byrabeauty.com",
+      "title": "Byra - Skin Firming Trio",
+      "canonical_url": "https://byrabeauty.com/products/byra-skin-firming-trio",
+      "http_status": 404,
+      "pdp_status": "",
+      "build_id": "",
+      "module_types": [],
+      "missing_modules": [],
+      "gallery": {
+        "image_count": 0,
+        "duplicate_url_count": 0,
+        "image_hosts": [],
+        "ok": false
+      },
+      "variant": {
+        "module_present": false,
+        "variant_count": 0,
+        "label_count": 0,
+        "labels": [],
+        "bad_labels": [],
+        "ok": false
+      },
+      "reviews": {
+        "module_present": false,
+        "rating": null,
+        "review_count": 0,
+        "chart_present": false,
+        "chart_estimated": false,
+        "preview_count": 0,
+        "ok": true
+      },
+      "insights": {
+        "module_present": false,
+        "quality_state": null,
+        "evidence_profile": null,
+        "seller_only_evidence": false,
+        "seller_grounded_reviewed": false,
+        "headline": null,
+        "why_count": 0,
+        "ok": false
+      },
+      "content": {
+        "ingredients_present": false,
+        "ingredients_text_count": 0,
+        "ingredients_source_origin": null,
+        "ingredients_source_quality_status": null,
+        "ingredients_force_filled": false,
+        "active_ingredients_present": false,
+        "active_ingredients_source_origin": null,
+        "active_ingredients_source_quality_status": null,
+        "active_ingredients_force_filled": false,
+        "how_to_present": false,
+        "how_to_text_count": 0,
+        "overview_present": false,
+        "details_present": false,
+        "details_text_count": 0
+      },
+      "similar": {
+        "module_present": false,
+        "count": 0,
+        "status": null
+      },
+      "product_kind": {
+        "family": "set_or_collection",
+        "reasons": [
+          "bundle_set_signal"
+        ],
+        "pdp_schema_profile": null,
+        "formula_content_required": false,
+        "merchandising_content_applicable": true
+      },
+      "blocking_reasons": [
+        "gallery_missing_or_bloated",
+        "missing_or_weak_insights",
+        "missing_overview",
+        "missing_details"
+      ],
+      "pdp_quality_bucket": "not_conversion_ready",
+      "conversion_ready": false
+    }
+  ]
+}

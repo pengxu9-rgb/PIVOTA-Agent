@@ -1,0 +1,16 @@
+{
+  "market": "US",
+  "reviewed_by": "codex_wave36_brand_expansion",
+  "reason": "wave36_delicate_daisys_official_single_ingredient_formula_repair",
+  "source_kind": "official_pdp_single_ingredient_formula",
+  "allow_single_ingredient_formula": true,
+  "write_reviewed_ingredient_authority": true,
+  "entries": [
+    {
+      "external_product_id": "ext_397a1dbbcab4ad4a246b6a8c",
+      "source_url": "https://delicatedaisys.com/products/bulgarian-rose-water-face-hair-body-mist-spray",
+      "evidence": "Official Delicate Daisys PDP ingredients section lists Organic Rosa Damascena (Damask Rose) Floral Water as the formula for Bulgarian Rose Water Face, Hair & Body Mist Spray.",
+      "pdp_ingredients_raw": "Organic Rosa Damascena (Damask Rose) Floral Water"
+    }
+  ]
+}
