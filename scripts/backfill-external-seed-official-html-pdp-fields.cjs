@@ -21,6 +21,9 @@ const SHOPIFY_PRODUCT_JSON_VARIANT_HOSTS = new Set([
 const REVIEW_SUMMARY_ONLY_OKENDO_HOSTS = new Set(['beautyofjoseon.com', 'kravebeauty.com']);
 const REVIEW_SUMMARY_ONLY_GENERIC_HOSTS = new Set([...REVIEW_SUMMARY_ONLY_OKENDO_HOSTS, 'roundlab.com']);
 const GENERIC_OFFICIAL_SHOPIFY_FIELD_HOSTS = new Set([
+  'baiebotanique.com',
+  'byrabeauty.com',
+  'delicatedaisys.com',
   'lucamarskincare.com',
   'missnella.com',
   'rohrremedy.com',
@@ -362,6 +365,20 @@ function looksLikeShortOfficialInci(value) {
   if ((text.match(/,/g) || []).length < 2) return false;
   if (/\b(?:cart|checkout|shipping|customer service|menu|ambassador|swiper|document\.addEventListener)\b/i.test(text)) return false;
   return /\b(?:polyisobutene|cellulose gum|pectin|copolymer|hydrocolloid|glycerin|water|aqua|sodium|acid|lanolin|vitellaria|shea butter|hemp|cera alba|bees\s*wax|beeswax|tocopherol|vitamin|frankincense)\b/i.test(text);
+}
+
+function looksLikeSingleOfficialBotanicalInci(value) {
+  const text = normalizeText(value);
+  if (text.length < 20 || text.length > 180) return false;
+  if ((text.match(/,/g) || []).length > 0) return false;
+  if (
+    /\b(?:cart|checkout|shipping|customer service|menu|ambassador|swiper|document\.addEventListener|directions?|apply|use|spray|caution|warning|external use|keep out|avoid)\b/i.test(
+      text,
+    )
+  ) {
+    return false;
+  }
+  return /\b(?:rosa\s+damascena|flower water|floral water|hydrosol|aloe barbadensis|simmondsia chinensis|argania spinosa|cocos nucifera|helianthus annuus|butyrospermum parkii|vitellaria paradoxa|vitis vinifera|prunus amygdalus|olea europaea|seed oil|fruit oil|kernel oil|leaf juice|leaf extract)\b/i.test(text);
 }
 
 function looksLikeHowToUse(value) {
@@ -2533,10 +2550,23 @@ function extractGenericShopifyProductJsonScripts(html) {
   return products;
 }
 
+function extractGenericShopifyInlineProductObjects(html) {
+  const source = String(html || '');
+  const products = [];
+  for (const match of source.matchAll(/\bproduct\s*:\s*\{/gi)) {
+    const parsed = normalizeGenericProductObject(extractBalancedJsonObject(source.slice(match.index), 'product'));
+    if (!parsed) continue;
+    if (normalizeText(parsed.description).length < 40 && asArray(parsed.variants).length === 0) continue;
+    products.push(parsed);
+  }
+  return products;
+}
+
 function extractGenericOfficialProduct(html, options = {}) {
   const productTitle = normalizeText(options.productTitle);
   const candidates = [
     ...extractGenericShopifyProductJsonScripts(html),
+    ...extractGenericShopifyInlineProductObjects(html),
     normalizeGenericProductObject(findJsonLdProduct(html, options)),
   ].filter(Boolean);
   if (!candidates.length) return null;
@@ -2673,6 +2703,17 @@ function paragraphLabelMatch(text) {
   return GENERIC_DESCRIPTION_LABELS.find((label) => label.pattern.test(text));
 }
 
+function cleanGenericProductDescriptionOverview(htmlFragment) {
+  const paragraphs = extractDescriptionParagraphs(htmlFragment);
+  const overview = [];
+  for (const paragraph of paragraphs) {
+    if (paragraphLabelMatch(paragraph)) break;
+    if (/^(?:caution|warning)\s*:|\bfor external use only\b/i.test(paragraph)) break;
+    overview.push(paragraph);
+  }
+  return normalizeText(overview.join('\n\n'));
+}
+
 function extractDescriptionLabeledSections(htmlFragment) {
   const paragraphs = extractDescriptionParagraphs(htmlFragment);
   const sections = [];
@@ -2686,6 +2727,7 @@ function extractDescriptionLabeledSections(htmlFragment) {
     for (let inner = index + 1; inner < paragraphs.length; inner += 1) {
       const next = paragraphs[inner];
       if (paragraphLabelMatch(next)) break;
+      if (/^(?:caution|warning)\s*:|\bfor external use only\b/i.test(next)) break;
       if (/^(?:proudly\s+made|cruelty\s+free|made\s+in|shop\s+now)\b/i.test(next)) break;
       bodyParts.push(next);
       if (bodyParts.join(' ').length > 1400) break;
@@ -2747,7 +2789,7 @@ function extractGenericOfficialShopifyFields(html, options = {}) {
 
   const productDescriptionHtml = normalizeText(product?.description);
   const productDescription = normalizeText(
-    cleanSectionText(productDescriptionHtml) ||
+    cleanGenericProductDescriptionOverview(productDescriptionHtml) ||
     cleanSectionText(findJsonLdProduct(html, options)?.description) ||
     cleanSectionText(extractMetaContent(html, 'description')),
   )
@@ -2772,7 +2814,7 @@ function extractGenericOfficialShopifyFields(html, options = {}) {
   );
   if (
     !hasUnscentedIngredientConflict(options.productTitle || product?.title, ingredients) &&
-    (looksLikeFullInci(ingredients) || looksLikeShortOfficialInci(ingredients))
+    (looksLikeFullInci(ingredients) || looksLikeShortOfficialInci(ingredients) || looksLikeSingleOfficialBotanicalInci(ingredients))
   ) {
     fields.pdp_ingredients_raw = ingredients;
   }
@@ -3076,7 +3118,12 @@ function buildSeedDataPatch(row, extracted, options = {}) {
     }
     if (fieldKey === 'pdp_ingredients_raw') {
       if (isForceFilledExisting('ingredients_raw')) return false;
-      return looksLikeFullInci(seedData.pdp_ingredients_raw || snapshot.pdp_ingredients_raw);
+      const existingIngredients = seedData.pdp_ingredients_raw || snapshot.pdp_ingredients_raw;
+      return (
+        looksLikeFullInci(existingIngredients) ||
+        looksLikeShortOfficialInci(existingIngredients) ||
+        looksLikeSingleOfficialBotanicalInci(existingIngredients)
+      );
     }
     if (fieldKey === 'pdp_active_ingredients_raw') {
       if (isForceFilledExisting('active_ingredients_raw')) return false;

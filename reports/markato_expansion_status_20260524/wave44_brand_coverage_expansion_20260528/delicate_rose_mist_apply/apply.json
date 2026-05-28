@@ -1,0 +1,48 @@
+{
+  "generated_at": "2026-05-28T05:23:45.658Z",
+  "dry_run": false,
+  "market": "US",
+  "summary": {
+    "scanned": 1,
+    "dry_run": 0,
+    "updated": 1,
+    "skipped": 0,
+    "failed": 0,
+    "by_field": {
+      "pdp_ingredients_raw": 1,
+      "pdp_how_to_use_raw": 1,
+      "pdp_details_sections": 1
+    }
+  },
+  "results": [
+    {
+      "external_product_id": "ext_397a1dbbcab4ad4a246b6a8c",
+      "title": "Bulgarian Rose Water Face, Hair & Body Mist Spray",
+      "domain": "delicatedaisys.com",
+      "url": "https://delicatedaisys.com/products/bulgarian-rose-water-face-hair-body-mist-spray",
+      "host": "delicatedaisys.com",
+      "status": "updated",
+      "patch_keys": [
+        "pdp_ingredients_raw",
+        "pdp_how_to_use_raw",
+        "pdp_details_sections"
+      ],
+      "http_status": 200,
+      "final_url": "https://delicatedaisys.com/products/bulgarian-rose-water-face-hair-body-mist-spray",
+      "extracted_summary": {
+        "ingredients_chars": 49,
+        "how_to_chars": 102,
+        "details_sections_count": 2,
+        "variant_count": 0,
+        "review_count": 0,
+        "rating": 0,
+        "review_preview_count": 0,
+        "review_preview_samples": []
+      },
+      "serving_mirror_sync": {
+        "catalog_products": 1,
+        "pdp_identity_listing": 1
+      }
+    }
+  ]
+}

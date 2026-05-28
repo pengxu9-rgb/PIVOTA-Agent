@@ -610,6 +610,43 @@ describe('backfill-external-seed-official-html-pdp-fields TIRTIR sheet matching'
     expect(fields.pdp_how_to_use_raw).toContain('Soften balm');
   });
 
+  test('extracts generic official Shopify inline product object labels', () => {
+    const product = {
+      id: 9020926066962,
+      title: 'Bulgarian Rose Water Face, Hair & Body Mist Spray',
+      handle: 'bulgarian-rose-water-face-hair-body-mist-spray',
+      description: `
+        <p>Discover the rejuvenating benefits of this botanical face, hair, and body mist.</p>
+        <p><span>Directions: Apply on clean skin using a cotton pad or by directly spraying it on your skin. No rinse is necessary.</span></p>
+        <p><span>Caution: For external use only. Keep out of the reach of children. Avoid eye contact.</span></p>
+        <p><span>Ingredients: Organic Rosa Damascena (Damask Rose) Floral Water</span></p>
+      `,
+      variants: [{ id: 47818533798162, title: 'Default Title', option1: 'Default Title', sku: '860008494016', price: 2999 }],
+    };
+    const html = `
+      <meta property="og:title" content="Bulgarian Rose Water Face, Hair &amp; Body Mist Spray">
+      <script>
+        window.AIR_REVIEWS = {
+          product: ${JSON.stringify(product)}
+        };
+      </script>
+    `;
+
+    const fields = extractGenericOfficialShopifyFields(html, {
+      productTitle: 'Bulgarian Rose Water Face, Hair & Body Mist Spray',
+    });
+
+    expect(fields.pdp_ingredients_raw).toBe('Organic Rosa Damascena (Damask Rose) Floral Water');
+    expect(fields.pdp_how_to_use_raw).toContain('Apply on clean skin');
+    expect(fields.pdp_how_to_use_raw).not.toContain('Caution');
+    expect(fields.pdp_description_raw).toContain('botanical face, hair, and body mist');
+    expect(fields.pdp_description_raw).not.toContain('Caution');
+    expect(fields.pdp_description_raw).not.toContain('Ingredients');
+    expect(fields.pdp_details_sections).toEqual(
+      expect.arrayContaining([expect.objectContaining({ heading: 'How To Use' })]),
+    );
+  });
+
   test('extracts LANEIGE official fields from current product HTML without related-product ingredient drift', () => {
     const product = {
       id: 7231516639284,
