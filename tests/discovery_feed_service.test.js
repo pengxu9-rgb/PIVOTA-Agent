@@ -10820,7 +10820,7 @@ describe('discovery feed service', () => {
     expect(stages.map((stage) => stage.stage)).not.toContain('recall_compound_summary');
   });
 
-			  test('anonymous generic browse fastpath uses indexed curated head instead of lexical DB stages', async () => {
+  test('anonymous generic fastpath uses indexed curated head instead of lexical DB stages', async () => {
     jest.resetModules();
     const prevDatabaseUrl = process.env.DATABASE_URL;
     process.env.DATABASE_URL = 'postgres://discovery-fastpath-test';
@@ -10994,6 +10994,88 @@ describe('discovery feed service', () => {
             raw_rows: 4,
             deduped_rows: 4,
             final_eligible_rows: 120,
+          }),
+        ]),
+      );
+
+      dbQueryMock
+        .mockResolvedValueOnce({
+          rows: makeSeedRows(201, 7, 'skincare', 'Skincare'),
+        })
+        .mockResolvedValueOnce({
+          rows: makeSeedRows(208, 5, 'makeup', 'Makeup'),
+        })
+        .mockResolvedValueOnce({
+          rows: makeSeedRows(213, 3, 'haircare', 'Haircare'),
+        })
+        .mockResolvedValueOnce({
+          rows: makeSeedRows(216, 2, 'fragrance', 'Fragrance'),
+        })
+        .mockResolvedValueOnce({
+          rows: makeSeedRows(218, 1, 'bodycare', 'Bodycare'),
+        })
+        .mockResolvedValueOnce({
+          rows: makeSeedRows(219, 1, 'beauty_tools', 'Beauty Tools'),
+        });
+
+      const homeRequest = freshInternals.normalizeDiscoveryRequest({
+        surface: 'home_hot_deals',
+        page: 1,
+        limit: 6,
+        context: {
+          auth_state: 'anonymous',
+          locale: 'en-US',
+          recent_views: [],
+          recent_queries: [],
+        },
+      });
+
+      const homeResult = await freshInternals.fetchBeautyInterestExternalSeedFastpathCandidates({
+        request: homeRequest,
+        profile: {
+          hasInterestSignals: false,
+        },
+        queries: ['niacinamide serum'],
+        limit: 18,
+        providerName: 'external_seeds',
+        productProvider: 'beauty_interest_mainline',
+        stepName: 'external_seed_pool_fastpath',
+        label: 'external_seed_pool_fastpath',
+      });
+
+      expect(homeResult.products).toHaveLength(18);
+      expect(dbQueryMock).toHaveBeenCalledTimes(14);
+      const homeCuratedSql = String(dbQueryMock.mock.calls[8]?.[0] || '');
+      expect(homeCuratedSql).toContain("'generic_browse_curated_head'::text AS match_stage");
+      for (const call of dbQueryMock.mock.calls.slice(8)) {
+        const sql = String(call?.[0] || '');
+        expect(sql).not.toContain('LIKE ANY');
+        expect(sql).not.toContain('UNION ALL');
+        expect(sql).not.toContain('row_number() OVER');
+        expect(sql).not.toContain("'recall_title'::text AS match_stage");
+        expect(sql).not.toContain("'recall_tokens'::text AS match_stage");
+      }
+      expect(homeResult.recallSummary[0].external_seed_stage_counts).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            stage: 'generic_browse_curated_head',
+            tool_scope: '*',
+            match_axis: 'vertical',
+            match_value: 'skincare',
+            stage_quota: 7,
+            raw_rows: 7,
+            deduped_rows: 7,
+            final_eligible_rows: 7,
+          }),
+          expect.objectContaining({
+            stage: 'generic_browse_curated_head',
+            tool_scope: '*',
+            match_axis: 'vertical',
+            match_value: 'bodycare',
+            stage_quota: 1,
+            raw_rows: 1,
+            deduped_rows: 1,
+            final_eligible_rows: 18,
           }),
         ]),
       );

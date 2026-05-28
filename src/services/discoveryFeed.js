@@ -5589,7 +5589,10 @@ function buildDiscoverySeedStageSqlId(row) {
 }
 
 function shouldUseGenericBrowseExternalSeedServingPath(request, profile) {
-  return request?.surface === 'browse_products' && isGenericNoSignalDiscoveryRequest(request, profile);
+  return (
+    (request?.surface === 'browse_products' || request?.surface === 'home_hot_deals') &&
+    isGenericNoSignalDiscoveryRequest(request, profile)
+  );
 }
 
 async function fetchGenericBrowseExternalSeedServingCandidates({
