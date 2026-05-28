@@ -1,0 +1,525 @@
+{
+  "generated_at": "2026-05-28T09:05:11.975Z",
+  "mode": "dry_run",
+  "batch_size": null,
+  "bootstrap_reviewed_identity_live_read": false,
+  "requested_ids": 2,
+  "fetched_rows": 2,
+  "mirror_rows": 2,
+  "planned_sku_rows": 6,
+  "planned_offer_rows": 6,
+  "planned_index_state_rows": 2,
+  "missing_ids": [],
+  "skipped": [],
+  "applied": {
+    "mode": "dry_run",
+    "existing_before": {
+      "catalog_products": 2,
+      "catalog_skus": 0,
+      "catalog_offers": 0,
+      "product_group_members": 0
+    },
+    "stale_delete_preview": {
+      "current_sku_rows": 2,
+      "current_offer_rows": 2,
+      "planned_stale_sku_deletes": 2,
+      "planned_stale_offer_deletes": 2,
+      "sample_stale_skus": [
+        {
+          "title": "Blush",
+          "sku_key": "prod::external_seed::external_seed::ext_33466da0907b256ffc53783b::canonical",
+          "product_key": "prod::external_seed::external_seed::ext_33466da0907b256ffc53783b",
+          "source_variant_id": "prod::external_seed::external_seed::ext_33466da0907b256ffc53783b",
+          "visible_attributes": {}
+        },
+        {
+          "title": "Eye Shadow",
+          "sku_key": "prod::external_seed::external_seed::ext_e9e3fba6b05911bba1bfe71e::canonical",
+          "product_key": "prod::external_seed::external_seed::ext_e9e3fba6b05911bba1bfe71e",
+          "source_variant_id": "prod::external_seed::external_seed::ext_e9e3fba6b05911bba1bfe71e",
+          "visible_attributes": {}
+        }
+      ],
+      "sample_stale_offers": [
+        {
+          "sku_key": "prod::external_seed::external_seed::ext_33466da0907b256ffc53783b::canonical",
+          "offer_id": "offer:external_seed:62c426ceaeb413c49f2b2b0fe1a9d905",
+          "list_price": 5.99,
+          "product_key": "prod::external_seed::external_seed::ext_33466da0907b256ffc53783b",
+          "merchant_effective_price": 5.99
+        },
+        {
+          "sku_key": "prod::external_seed::external_seed::ext_e9e3fba6b05911bba1bfe71e::canonical",
+          "offer_id": "offer:external_seed:0620e5f82a4b2deb1dc14ded7b59e205",
+          "list_price": 5.99,
+          "product_key": "prod::external_seed::external_seed::ext_e9e3fba6b05911bba1bfe71e",
+          "merchant_effective_price": 5.99
+        }
+      ]
+    },
+    "batch_size": null,
+    "batches": 1,
+    "audit_reasons": {
+      "no_strong_identifier": 6
+    },
+    "product_upserts": 0,
+    "sku_upserts": 0,
+    "offer_upserts": 0,
+    "group_member_upserts": 0,
+    "group_member_preserved_existing_merges": 0,
+    "seed_attachment_updates": 0,
+    "index_state_upserts": 0,
+    "identity_live_read_updates": 0,
+    "catalog_row_trust_upserts": 0,
+    "stale_offer_deletes": 0,
+    "stale_sku_deletes": 0
+  },
+  "sample": [
+    {
+      "external_product_id": "ext_33466da0907b256ffc53783b",
+      "product_key": "prod::external_seed::external_seed::ext_33466da0907b256ffc53783b",
+      "product_group_id": "sig_a00b1fa0b5b4decd373fa5a9",
+      "title": "Blush",
+      "brand": "Miss Nella",
+      "product_type": "Blush",
+      "category": "Blush",
+      "category_path": "beauty/makeup/cheek/blush",
+      "canonical_url": "https://www.missnella.com/products/blush",
+      "pivota_signature_id": "sig_a00b1fa0b5b4decd373fa5a9",
+      "sku_rows": 3,
+      "first_sku": {
+        "sku_key": "prod::external_seed::external_seed::ext_33466da0907b256ffc53783b::sku_69e5121472f58cc8946d",
+        "product_key": "prod::external_seed::external_seed::ext_33466da0907b256ffc53783b",
+        "merchant_id": "external_seed",
+        "platform": "external_seed",
+        "source_product_id": "ext_33466da0907b256ffc53783b",
+        "source_variant_id": "ext_33466da0907b256ffc53783b:57261765788025",
+        "source_domain": "missnella.com",
+        "sku": "BCF-1",
+        "barcode": null,
+        "title": "Blush",
+        "currency": "USD",
+        "image_url": "https://cdn.shopify.com/s/files/1/2219/3831/files/MN-LIsting-Blush-Candy-Flosscopy.jpg?v=1770742783",
+        "visible_attributes": {
+          "Style": "Candy Floss"
+        },
+        "visible_option_labels": {
+          "Style": "Candy Floss"
+        },
+        "ingredient_ids": [],
+        "sku_payload": {
+          "source": "external_product_seeds_mirror_v1",
+          "external_product_id": "ext_33466da0907b256ffc53783b",
+          "raw_variant_id": "57261765788025",
+          "source_variant_id": "ext_33466da0907b256ffc53783b:57261765788025",
+          "variant_sku": "BCF-1",
+          "barcode": null,
+          "strong_identifier_kind": null,
+          "source_url": "https://www.missnella.com/products/blush",
+          "external_redirect_url": "https://www.missnella.com/products/blush",
+          "price": "5.99",
+          "price_amount": 5.99,
+          "currency": "USD",
+          "availability": "in_stock",
+          "image_url": "https://cdn.shopify.com/s/files/1/2219/3831/files/MN-LIsting-Blush-Candy-Flosscopy.jpg?v=1770742783",
+          "swatch_image_url": null,
+          "label_image_url": null,
+          "options": {
+            "Style": "Candy Floss"
+          },
+          "raw_variant": {
+            "sku": "BCF-1",
+            "url": "https://www.missnella.com/products/blush",
+            "price": "5.99",
+            "stock": "In Stock",
+            "currency": "USD",
+            "image_url": "https://cdn.shopify.com/s/files/1/2219/3831/files/MN-LIsting-Blush-Candy-Flosscopy.jpg?v=1770742783",
+            "image_urls": [
+              "https://cdn.shopify.com/s/files/1/2219/3831/files/MN-LIsting-Blush-Candy-Flosscopy.jpg?v=1770742783",
+              "https://cdn.shopify.com/s/files/1/2219/3831/files/MissNellalisting-Blush-CandyFlosshover_1_2defe430-8bf3-4f15-a808-ef10b0728a75.jpg?v=1770742494",
+              "https://cdn.shopify.com/s/files/1/2219/3831/files/MN-LIsting-Blush-Lolly-Pop-middlecopy.jpg?v=1770742746",
+              "https://cdn.shopify.com/s/files/1/2219/3831/files/MissNellalisting-Blush-Pomegranate-fizz-Hover.jpg?v=1770742768",
+              "https://cdn.shopify.com/s/files/1/2219/3831/files/MN-LIsting-Blush-Pomegranate-fizz-middlecopy.jpg?v=1770742768",
+              "https://cdn.shopify.com/s/files/1/2219/3831/files/MissNellalisting-Blush-Lollypop-hover.jpg?v=1770742746"
+            ],
+            "variant_id": "57261765788025",
+            "description": "Miss Nella Blushes offer a delicate, buildable colour that effortlessly enhances your natural glow. With a smooth, lightweight formula, they’re perfect for creating a fresh, rosy finish that suits every skin tone 💖. Ideal for adding a soft flush to your cheeks, these blushes are a must-have for a youthful, radiant look 😊💫",
+            "option_name": "Style",
+            "option_value": "Candy Floss"
+          }
+        },
+        "readiness_tier": "referral_only"
+      },
+      "first_offer": {
+        "offer_id": "offer:external_seed:8715a5f9bb19576ff58c30eacad7ed12",
+        "sku_key": "prod::external_seed::external_seed::ext_33466da0907b256ffc53783b::sku_69e5121472f58cc8946d",
+        "product_key": "prod::external_seed::external_seed::ext_33466da0907b256ffc53783b",
+        "merchant_id": "external_seed",
+        "catalog_track": "external_referral",
+        "truth_tier": "observed",
+        "readiness_tier": "referral_only",
+        "offer_mode": "redirect",
+        "channel": "external_referral",
+        "availability": "in_stock",
+        "currency": "USD",
+        "list_price": 5.99,
+        "merchant_effective_price": 5.99,
+        "estimated_best_price": 5.99,
+        "price_confidence": 1,
+        "source_system": "external_product_seeds_mirror_v1",
+        "source_ref": "eps_884542f4ebd6ccb0bf69800c",
+        "source_domain": "missnella.com",
+        "offer_payload": {
+          "source": "external_product_seeds_mirror_v1",
+          "external_seed_id": "eps_884542f4ebd6ccb0bf69800c",
+          "external_product_id": "ext_33466da0907b256ffc53783b",
+          "domain": "missnella.com",
+          "market": "US",
+          "product_title": "Blush",
+          "variant_title": "Blush",
+          "variant_sku": "BCF-1",
+          "raw_variant_id": "57261765788025",
+          "url": "https://www.missnella.com/products/blush",
+          "offer_url": "https://www.missnella.com/products/blush",
+          "canonical_url": "https://www.missnella.com/products/blush",
+          "destination_url": "https://www.missnella.com/products/blush",
+          "external_redirect_url": "https://www.missnella.com/products/blush",
+          "merchant_display_name": "Miss Nella",
+          "price": "5.99",
+          "price_amount": 5.99,
+          "price_currency": "USD",
+          "availability": "in_stock",
+          "commerce_facts_v1": {
+            "contract_version": "commerce_facts.v1",
+            "market_id": "US",
+            "country": "US",
+            "currency_target": "USD",
+            "source_authority": "catalog_extract_v2",
+            "captured_at": "2026-05-18T04:53:59.072Z",
+            "evidence_url": "https://www.missnella.com/products/blush",
+            "sellable_region": {
+              "status": "unknown",
+              "countries": [],
+              "evidence_source": "catalog_extract_v2",
+              "confidence": "unknown",
+              "checked_at": "2026-05-18T04:53:59.072Z",
+              "reason_codes": [
+                "shipping_destination_not_verified"
+              ],
+              "evidence_url": "https://www.missnella.com/products/blush"
+            },
+            "regional_price": {
+              "amount": 5.99,
+              "currency": "USD",
+              "display_raw": null,
+              "price_type": "unknown",
+              "compare_at_amount": null,
+              "compare_at_currency": null,
+              "compare_at_display_raw": null,
+              "tax_included": "unknown",
+              "confidence": "medium",
+              "market_switch_status": "ok",
+              "observed_currency": "USD",
+              "source_url": "https://www.missnella.com/products/blush",
+              "captured_at": "2026-05-18T04:53:59.072Z"
+            },
+            "availability": {
+              "status": "in_stock",
+              "source": "catalog_extract_v2",
+              "confidence": "medium",
+              "captured_at": "2026-05-18T04:53:59.072Z"
+            },
+            "shipping": {
+              "status": "unknown",
+              "source": "catalog_extract_v2",
+              "confidence": "unknown",
+              "reason_codes": [
+                "external_checkout_not_queried"
+              ],
+              "checked_at": "2026-05-18T04:53:59.072Z"
+            },
+            "promotions": [],
+            "returns": {
+              "status": "unknown",
+              "source": "catalog_extract_v2",
+              "confidence": "unknown",
+              "reason_codes": [
+                "external_returns_not_extracted"
+              ],
+              "checked_at": "2026-05-18T04:53:59.072Z"
+            }
+          },
+          "agent_safe_commerce_facts": {
+            "contract_version": "commerce_facts.v1",
+            "market_id": "US",
+            "price": {
+              "amount": 5.99,
+              "currency": "USD",
+              "display_raw": null,
+              "price_type": "unknown",
+              "compare_at_amount": null,
+              "compare_at_currency": null,
+              "compare_at_display_raw": null,
+              "tax_included": "unknown",
+              "confidence": "medium",
+              "market_switch_status": "ok",
+              "observed_currency": "USD",
+              "source_url": "https://www.missnella.com/products/blush",
+              "captured_at": "2026-05-18T04:53:59.072Z"
+            },
+            "availability": {
+              "status": "in_stock",
+              "source": "catalog_extract_v2",
+              "confidence": "medium",
+              "captured_at": "2026-05-18T04:53:59.072Z"
+            },
+            "shipping": {
+              "status": "unknown",
+              "reason": "verify_at_checkout"
+            },
+            "promotions": [],
+            "checkout_note": "Shipping and promotions are not verified for this external offer; verify at merchant checkout."
+          }
+        }
+      },
+      "serving_readiness": {
+        "servingEligible": true,
+        "contentQualityScore": 90,
+        "blockerCode": "none",
+        "blockerDetail": null,
+        "identityResolved": true,
+        "identityLiveReadResolved": true,
+        "identityBootstrapEligible": false,
+        "hasImage": true,
+        "hasPrice": true,
+        "descriptionLength": 326
+      }
+    },
+    {
+      "external_product_id": "ext_e9e3fba6b05911bba1bfe71e",
+      "product_key": "prod::external_seed::external_seed::ext_e9e3fba6b05911bba1bfe71e",
+      "product_group_id": "sig_87118369fce39046e97e5f37",
+      "title": "Eye Shadow",
+      "brand": "Miss Nella",
+      "product_type": "Eyeshadow",
+      "category": "Eyeshadow",
+      "category_path": "beauty/makeup/eye/eyeshadow",
+      "canonical_url": "https://www.missnella.com/products/eye-shadow",
+      "pivota_signature_id": "sig_87118369fce39046e97e5f37",
+      "sku_rows": 3,
+      "first_sku": {
+        "sku_key": "prod::external_seed::external_seed::ext_e9e3fba6b05911bba1bfe71e::sku_8ed7df013d2ecd6cf508",
+        "product_key": "prod::external_seed::external_seed::ext_e9e3fba6b05911bba1bfe71e",
+        "merchant_id": "external_seed",
+        "platform": "external_seed",
+        "source_product_id": "ext_e9e3fba6b05911bba1bfe71e",
+        "source_variant_id": "ext_e9e3fba6b05911bba1bfe71e:57261782073721",
+        "source_domain": "missnella.com",
+        "sku": "EPS-1",
+        "barcode": null,
+        "title": "Eye Shadow",
+        "currency": "USD",
+        "image_url": "https://cdn.shopify.com/s/files/1/2219/3831/files/MN-Pink_Skies_Eye-Shadow-03.jpg?v=1777284237",
+        "visible_attributes": {
+          "Style": "Pink Skies"
+        },
+        "visible_option_labels": {
+          "Style": "Pink Skies"
+        },
+        "ingredient_ids": [],
+        "sku_payload": {
+          "source": "external_product_seeds_mirror_v1",
+          "external_product_id": "ext_e9e3fba6b05911bba1bfe71e",
+          "raw_variant_id": "57261782073721",
+          "source_variant_id": "ext_e9e3fba6b05911bba1bfe71e:57261782073721",
+          "variant_sku": "EPS-1",
+          "barcode": null,
+          "strong_identifier_kind": null,
+          "source_url": "https://www.missnella.com/products/eye-shadow",
+          "external_redirect_url": "https://www.missnella.com/products/eye-shadow",
+          "price": "5.99",
+          "price_amount": 5.99,
+          "currency": "USD",
+          "availability": "in_stock",
+          "image_url": "https://cdn.shopify.com/s/files/1/2219/3831/files/MN-Pink_Skies_Eye-Shadow-03.jpg?v=1777284237",
+          "swatch_image_url": null,
+          "label_image_url": null,
+          "options": {
+            "Style": "Pink Skies"
+          },
+          "raw_variant": {
+            "sku": "EPS-1",
+            "url": "https://www.missnella.com/products/eye-shadow",
+            "price": "5.99",
+            "stock": "In Stock",
+            "currency": "USD",
+            "image_url": "https://cdn.shopify.com/s/files/1/2219/3831/files/MN-Pink_Skies_Eye-Shadow-03.jpg?v=1777284237",
+            "image_urls": [
+              "https://cdn.shopify.com/s/files/1/2219/3831/files/MN-Pink_Skies_Eye-Shadow-03.jpg?v=1777284237",
+              "https://cdn.shopify.com/s/files/1/2219/3831/files/CompleteEyeShadowCollectionHover_dacfc040-89f1-4f2c-a8f9-0ab65a20a8bf.jpg?v=1778247763",
+              "https://cdn.shopify.com/s/files/1/2219/3831/files/MN-Pink_Skies_Eye-Shadow-04.jpg?v=1777284238",
+              "https://cdn.shopify.com/s/files/1/2219/3831/files/MN-PinkSkiesEye-Shadow-04_3.jpg?v=1778246681",
+              "https://cdn.shopify.com/s/files/1/2219/3831/files/MN-PinkSkiesEye-Shadow-05.jpg?v=1778247580",
+              "https://cdn.shopify.com/s/files/1/2219/3831/files/MN-LIsting-Eye_Shadow-Lavender-Fields_copy.jpg?v=1770743064",
+              "https://cdn.shopify.com/s/files/1/2219/3831/files/17.jpg?v=1778247762",
+              "https://cdn.shopify.com/s/files/1/2219/3831/files/MN-GoldenSandsEye-Shadow-04_3_cd5db1c2-ec43-421b-a8e0-5dd5a73a7b39.jpg?v=1778247489",
+              "https://cdn.shopify.com/s/files/1/2219/3831/files/CompleteEyeShadowCollectionHover_3.jpg?v=1778247491",
+              "https://cdn.shopify.com/s/files/1/2219/3831/files/MN-GoldenSandsEye-Shadow-01.jpg?v=1777284136",
+              "https://cdn.shopify.com/s/files/1/2219/3831/files/MN-GoldenSandsEye-Shadow-02.jpg?v=1777284135",
+              "https://cdn.shopify.com/s/files/1/2219/3831/files/CompleteEyeShadowCollectionHover_2_2b5bf99d-1150-45c4-bf1b-fa659f87e7bb.jpg?v=1778247489"
+            ],
+            "variant_id": "57261782073721",
+            "description": "🎨✨ Miss Nella Eyeshadows bring a pop of colour and shimmer to little ones’ looks. With a soft, blendable formula and fun, vibrant shades, they’re perfect for playful makeovers and creative expression. Gentle on delicate skin and easy to wash off, they make beauty fun and safe for kids! 💖",
+            "option_name": "Style",
+            "option_value": "Pink Skies"
+          }
+        },
+        "readiness_tier": "referral_only"
+      },
+      "first_offer": {
+        "offer_id": "offer:external_seed:8dd0d1500fdcd0be984348f1f4ebab67",
+        "sku_key": "prod::external_seed::external_seed::ext_e9e3fba6b05911bba1bfe71e::sku_8ed7df013d2ecd6cf508",
+        "product_key": "prod::external_seed::external_seed::ext_e9e3fba6b05911bba1bfe71e",
+        "merchant_id": "external_seed",
+        "catalog_track": "external_referral",
+        "truth_tier": "observed",
+        "readiness_tier": "referral_only",
+        "offer_mode": "redirect",
+        "channel": "external_referral",
+        "availability": "in_stock",
+        "currency": "USD",
+        "list_price": 5.99,
+        "merchant_effective_price": 5.99,
+        "estimated_best_price": 5.99,
+        "price_confidence": 1,
+        "source_system": "external_product_seeds_mirror_v1",
+        "source_ref": "eps_07527cdb1e3e518b3eb2d430",
+        "source_domain": "missnella.com",
+        "offer_payload": {
+          "source": "external_product_seeds_mirror_v1",
+          "external_seed_id": "eps_07527cdb1e3e518b3eb2d430",
+          "external_product_id": "ext_e9e3fba6b05911bba1bfe71e",
+          "domain": "missnella.com",
+          "market": "US",
+          "product_title": "Eye Shadow",
+          "variant_title": "Eye Shadow",
+          "variant_sku": "EPS-1",
+          "raw_variant_id": "57261782073721",
+          "url": "https://www.missnella.com/products/eye-shadow",
+          "offer_url": "https://www.missnella.com/products/eye-shadow",
+          "canonical_url": "https://www.missnella.com/products/eye-shadow",
+          "destination_url": "https://www.missnella.com/products/eye-shadow",
+          "external_redirect_url": "https://www.missnella.com/products/eye-shadow",
+          "merchant_display_name": "Miss Nella",
+          "price": "5.99",
+          "price_amount": 5.99,
+          "price_currency": "USD",
+          "availability": "in_stock",
+          "commerce_facts_v1": {
+            "contract_version": "commerce_facts.v1",
+            "market_id": "US",
+            "country": "US",
+            "currency_target": "USD",
+            "source_authority": "catalog_extract_v2",
+            "captured_at": "2026-05-18T04:53:59.072Z",
+            "evidence_url": "https://www.missnella.com/products/eye-shadow",
+            "sellable_region": {
+              "status": "unknown",
+              "countries": [],
+              "evidence_source": "catalog_extract_v2",
+              "confidence": "unknown",
+              "checked_at": "2026-05-18T04:53:59.072Z",
+              "reason_codes": [
+                "shipping_destination_not_verified"
+              ],
+              "evidence_url": "https://www.missnella.com/products/eye-shadow"
+            },
+            "regional_price": {
+              "amount": 5.99,
+              "currency": "USD",
+              "display_raw": null,
+              "price_type": "unknown",
+              "compare_at_amount": null,
+              "compare_at_currency": null,
+              "compare_at_display_raw": null,
+              "tax_included": "unknown",
+              "confidence": "medium",
+              "market_switch_status": "ok",
+              "observed_currency": "USD",
+              "source_url": "https://www.missnella.com/products/eye-shadow",
+              "captured_at": "2026-05-18T04:53:59.072Z"
+            },
+            "availability": {
+              "status": "in_stock",
+              "source": "catalog_extract_v2",
+              "confidence": "medium",
+              "captured_at": "2026-05-18T04:53:59.072Z"
+            },
+            "shipping": {
+              "status": "unknown",
+              "source": "catalog_extract_v2",
+              "confidence": "unknown",
+              "reason_codes": [
+                "external_checkout_not_queried"
+              ],
+              "checked_at": "2026-05-18T04:53:59.072Z"
+            },
+            "promotions": [],
+            "returns": {
+              "status": "unknown",
+              "source": "catalog_extract_v2",
+              "confidence": "unknown",
+              "reason_codes": [
+                "external_returns_not_extracted"
+              ],
+              "checked_at": "2026-05-18T04:53:59.072Z"
+            }
+          },
+          "agent_safe_commerce_facts": {
+            "contract_version": "commerce_facts.v1",
+            "market_id": "US",
+            "price": {
+              "amount": 5.99,
+              "currency": "USD",
+              "display_raw": null,
+              "price_type": "unknown",
+              "compare_at_amount": null,
+              "compare_at_currency": null,
+              "compare_at_display_raw": null,
+              "tax_included": "unknown",
+              "confidence": "medium",
+              "market_switch_status": "ok",
+              "observed_currency": "USD",
+              "source_url": "https://www.missnella.com/products/eye-shadow",
+              "captured_at": "2026-05-18T04:53:59.072Z"
+            },
+            "availability": {
+              "status": "in_stock",
+              "source": "catalog_extract_v2",
+              "confidence": "medium",
+              "captured_at": "2026-05-18T04:53:59.072Z"
+            },
+            "shipping": {
+              "status": "unknown",
+              "reason": "verify_at_checkout"
+            },
+            "promotions": [],
+            "checkout_note": "Shipping and promotions are not verified for this external offer; verify at merchant checkout."
+          }
+        }
+      },
+      "serving_readiness": {
+        "servingEligible": true,
+        "contentQualityScore": 90,
+        "blockerCode": "none",
+        "blockerDetail": null,
+        "identityResolved": true,
+        "identityLiveReadResolved": true,
+        "identityBootstrapEligible": false,
+        "hasImage": true,
+        "hasPrice": true,
+        "descriptionLength": 290
+      }
+    }
+  ]
+}

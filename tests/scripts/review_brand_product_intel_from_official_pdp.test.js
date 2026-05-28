@@ -1684,6 +1684,80 @@ describe('official PDP manual insight review', () => {
     expect(settingMistBundle.product_intel_core.what_it_is.body).not.toContain('face toner');
   });
 
+  test('allows Miss Nella color and shimmer rows without generic add-on copy', () => {
+    const blushPlan = buildPlan(
+      row({
+        external_product_id: 'ext_missnella_blush',
+        title: 'WH | Pomegranate Fizz Blush',
+        brand: 'Miss Nella',
+        canonical_url: 'https://missnella.com/products/pomegranate-fizz-blush',
+        seed_data: {
+          brand: 'Miss Nella',
+          pdp_description_raw:
+            'A kids makeup blush with a soft pink color cue and playful compact format.',
+          pdp_details_sections: [
+            { heading: 'Format', body: 'Blush compact for pretend-play makeup routines.' },
+          ],
+          variants: [{ title: 'Pomegranate Fizz', options: [{ name: 'Shade', value: 'Pomegranate Fizz' }] }],
+        },
+      }),
+      { brand: 'Miss Nella', includeStrong: false },
+    );
+    const shimmerPlan = buildPlan(
+      row({
+        external_product_id: 'ext_missnella_glitter',
+        title: 'WH | Planet Pink Roll-On Body Glitter',
+        brand: 'Miss Nella',
+        canonical_url: 'https://missnella.com/products/planet-pink-roll-on-body-glitter',
+        seed_data: {
+          brand: 'Miss Nella',
+          pdp_description_raw:
+            'A roll-on body glitter with pink shimmer finish for dress-up makeup play.',
+          pdp_details_sections: [
+            { heading: 'Format', body: 'Roll-on applicator for body shimmer.' },
+          ],
+        },
+      }),
+      { brand: 'Miss Nella', includeStrong: false },
+    );
+    const addOnBundle = buildInsightBundle(row({
+      title: 'Add Lip Gloss?',
+      brand: 'Miss Nella',
+      seed_data: {
+        brand: 'Miss Nella',
+        pdp_description_raw: 'A lip gloss add-on with shine finish.',
+      },
+    }));
+    const thinPerfumePlan = buildPlan(
+      row({
+        external_product_id: 'ext_missnella_perfume',
+        title: 'WH | Sweet Like Me Roll On Perfume',
+        brand: 'Miss Nella',
+        canonical_url: 'https://missnella.com/products/sweet-like-me-roll-on-perfume',
+        seed_data: {
+          brand: 'Miss Nella',
+          pdp_details_sections: [
+            { heading: 'Format', body: 'Roll-on perfume.' },
+          ],
+        },
+      }),
+      { brand: 'Miss Nella', includeStrong: false },
+    );
+
+    expect(blushPlan.blocked).toBe(false);
+    expect(blushPlan.preview.headline).toBe('Face color makeup');
+    expect(blushPlan.preview.what_it_is).toContain('Pomegranate Fizz Blush');
+    expect(blushPlan.preview.what_it_is).not.toContain('WH |');
+    expect(shimmerPlan.blocked).toBe(false);
+    expect(shimmerPlan.preview.headline).toBe('Body shimmer');
+    expect(shimmerPlan.preview.what_it_is).toContain('body shimmer product');
+    expect(shimmerPlan.preview.what_it_is).not.toContain('WH |');
+    expect(addOnBundle.product_intel_core.what_it_is.body).toContain('Lip Gloss');
+    expect(addOnBundle.product_intel_core.what_it_is.body).not.toContain('Add Lip Gloss?');
+    expect(thinPerfumePlan.blocked).toBe(true);
+    expect(thinPerfumePlan.skip_reason).toBe('candidate_failed_manual_quality_gate:insufficient_official_pdp_specificity');
+  });
+
   test('does not treat polluted legacy raw ingredient text as INCI evidence', () => {
     const serumRow = row({
       external_product_id: 'ext_guerlain_serum',

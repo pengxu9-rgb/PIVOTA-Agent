@@ -76,6 +76,43 @@ describe('align-external-seed-identity-to-catalog-sig reviewed singleton guard',
     expect(plan.reviewed_product_line_singleton.eligible).toBe(true);
   });
 
+  test('bootstraps a missing catalog sig from reviewed singleton identity sig', () => {
+    const [plan] = buildPlans(
+      [
+        safeReviewedSingleton({
+          catalog_sig_id: '',
+          catalog_sig_url: '',
+          identity_sig_id: 'sig_a00b1fa0b5b4decd373fa5a9',
+        }),
+      ],
+      { allowReviewedProductLineSingletons: true },
+    );
+
+    expect(plan.action).toBe('align_ready');
+    expect(plan.blockers).toEqual([]);
+    expect(plan.catalog_sig_id).toBe('sig_a00b1fa0b5b4decd373fa5a9');
+    expect(plan.catalog_sig_id_before).toBe('');
+    expect(plan.catalog_sig_bootstrap_from_identity).toBe(true);
+    expect(plan.catalog_sig_url).toBe('https://agent.pivota.cc/products/sig_a00b1fa0b5b4decd373fa5a9');
+  });
+
+  test('does not bootstrap a missing catalog sig without a valid identity sig', () => {
+    const [plan] = buildPlans(
+      [
+        safeReviewedSingleton({
+          catalog_sig_id: '',
+          catalog_sig_url: '',
+          identity_sig_id: '',
+        }),
+      ],
+      { allowReviewedProductLineSingletons: true },
+    );
+
+    expect(plan.action).toBe('hold');
+    expect(plan.blockers).toContain('invalid_catalog_sig');
+    expect(plan.catalog_sig_bootstrap_from_identity).toBe(false);
+  });
+
   test('blocks source identity drift where official URL no longer matches canonical', () => {
     const [plan] = buildPlans(
       [

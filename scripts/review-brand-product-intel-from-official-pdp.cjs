@@ -53,6 +53,8 @@ const SUPPORTED_BRANDS = new Set([
   'linhart',
   'linhart smile care',
   'lizush',
+  'miss nella',
+  'missnella',
   'murad',
   'naturium',
   'nourwish',
@@ -123,6 +125,7 @@ function stripHtml(input) {
     .replace(/&#39;/gi, "'")
     .replace(/&rsquo;/gi, "'")
     .replace(/&ndash;|&mdash;/gi, '-')
+    .replace(/[\u{1F000}-\u{1FAFF}\u{2600}-\u{27BF}]/gu, ' ')
     .replace(/\s+/g, ' ')
     .trim();
 }
@@ -137,6 +140,8 @@ function publicCopyProductName(value) {
   let text = stripHtml(value);
   if (!text) return '';
   text = text
+    .replace(/^wh\s*\|\s*/i, '')
+    .replace(/^add\s+(.+?)\?$/i, '$1')
     .replace(/\([^)]*\b(?:100%\s*off|free|promo|promotion|discount|gift)\b[^)]*\)/gi, '')
     .replace(/\b(?:ultimate|flawless)\s+(?=[A-Z0-9+&-])/gi, '')
     .replace(/\b(?:best[-\s]?selling|bestselling|cult[-\s]?(?:favorite|favourite))\b/gi, '')
@@ -474,6 +479,9 @@ function inferRole(facts) {
   }
   if (/\b(?:body\s+oil|massage\s+oil|baby\s+oil)\b/.test(titleText)) {
     return { label: 'Body oil', step: 'body care', amPm: ['as_needed'] };
+  }
+  if (/\b(?:body\s+(?:glitter|shimmer)|roll[-\s]?on\s+body\s+(?:glitter|shimmer))\b/.test(titleText)) {
+    return { label: 'Body shimmer', step: 'body shimmer', amPm: ['as_needed'] };
   }
   if (/\b(?:face|facial|organic\s+face)\s+oil\b/.test(titleText)) {
     return { label: 'Face oil', step: 'skincare', amPm: ['am', 'pm'] };
@@ -820,6 +828,12 @@ function inferAnchors(facts, role) {
       /\bsafety\s+razor\b/.test(titleText) &&
       !/\b(?:razor\s+blades?|blade\s+refill|refill\s+blades?)\b/.test(titleText)
     ));
+  } else if (role.step === 'body shimmer') {
+    productAnchors = findTokens(text, [
+      ['roll-on format', /\broll[-\s]?on\b/],
+      ['body shimmer finish', /\bbody\s+(?:glitter|shimmer)|shimmer|sparkle|glitter\b/],
+      ['shade or color cue', /\bshade|color|colour|pink|gold|planet|supernova|astroglow\b/],
+    ]);
   } else if (role.step === 'oral care' || role.step === 'oral care tool') {
     const oralAnchorText = /^terra\s*&\s*co\.$/i.test(facts.brand) ? titleText : `${titleText} ${text}`;
     const titleAnchors = findTokens(titleText, [
@@ -1000,6 +1014,12 @@ function inferBestFor(facts, role, anchors) {
       ['body routine', /\bbody|lotion|wash|essentials\b/],
       ['aromatherapy', /\baromatherapy|scent|soothe|comfort\b/],
     ]);
+  } else if (role.step === 'body shimmer') {
+    labels = findTokens(text, [
+      ['body shimmer finish', /\bbody\s+(?:glitter|shimmer)|shimmer|sparkle|glitter\b/],
+      ['roll-on application', /\broll[-\s]?on\b/],
+      ['play makeup', /\bmakeup|cosmetic|dress[-\s]?up|party\b/],
+    ]);
   } else if (role.step === 'beauty routine') {
     labels = findTokens(text, [
       ['makeup organization', /\btoiletry|pouch|bag|organize|organizer|tote|clutch|backpack\b/],
@@ -1106,6 +1126,7 @@ function buildPairingNotes(facts, role) {
   if (role.step === 'hair tool') return ['Use in the hair or scalp routine described by the official product details.'];
   if (role.step === 'oral care' || role.step === 'oral care tool') return ['Use only as directed by the official oral-care instructions and check the merchant PDP for fit.'];
   if (role.step === 'body care tool') return ['Use only as directed by the official body-care tool instructions and replace compatible parts as needed.'];
+  if (role.step === 'body shimmer') return ['Apply as directed by the official PDP and avoid the eye area unless the product page says otherwise.'];
   if (role.step === 'primer') return ['Apply before complexion makeup where you want smoother makeup laydown.'];
   if (role.label === 'Setting mist') return ['Mist over skin or makeup as directed by the official PDP.'];
   if (role.step === 'application tool') return ['Use with the product textures the brush is designed to apply.'];
@@ -1506,6 +1527,15 @@ function buildEvidenceAnchoredWhatItIs(facts, role) {
     return sentence(`${copyTitle} is a ${format} from ${facts.brand}${claims ? `, with source-backed cues around ${claims}` : ''}`);
   }
 
+  if (role.step === 'body shimmer') {
+    const claims = joinClaims([
+      /\broll[-\s]?on\b/i.test(text) ? 'roll-on application' : '',
+      /\bbody\s+(?:glitter|shimmer)|shimmer|sparkle|glitter\b/i.test(text) ? 'body shimmer finish' : '',
+      /\bshade|color|colour|pink|gold|planet|supernova|astroglow\b/i.test(text) ? 'visible color cues' : '',
+    ]);
+    return sentence(`${copyTitle} is a body shimmer product from ${facts.brand}${claims ? `, with source-backed cues around ${claims}` : ''}`);
+  }
+
   if (role.step === 'oral care' || role.step === 'oral care tool') {
     const titleSource = lowerTitle;
     const oralClaimSource = /^terra\s*&\s*co\.$/i.test(facts.brand) ? lowerTitle : `${lowerTitle} ${text}`;
@@ -1768,6 +1798,9 @@ function buildWhyItStandsOut(facts, role, anchors) {
     } else if (role.step === 'skincare' || role.step === 'serum' || role.step === 'body care') {
       anchorHeadline = 'Routine step cues are specific';
       anchorBody = `Reviewed skincare cues such as ${anchorText} identify the routine role or key ingredient context without inventing unsupported benefits`;
+    } else if (role.step === 'body shimmer') {
+      anchorHeadline = 'Body-shimmer cues are specific';
+      anchorBody = `Reviewed shimmer cues such as ${anchorText} identify the format and finish without treating it like a skincare formula`;
     } else if (role.step === 'sunscreen') {
       anchorHeadline = 'SPF format cues are clear';
       anchorBody = `Reviewed SPF cues such as ${anchorText} clarify protection format, hydration support, or refill status without replacing the official sunscreen facts`;
@@ -2064,7 +2097,17 @@ function manualCandidateQualityIssue(facts, role, bundle) {
   const howTo = facts.howTo.join(' ').toLowerCase();
   const details = facts.details.join(' ').toLowerCase();
   const bundleText = stripHtml(readTextFromBundle(bundle)).toLowerCase();
-  const whatItIs = stripHtml(asObject(asObject(bundle.product_intel_core).what_it_is).body).toLowerCase();
+  const core = asObject(bundle.product_intel_core);
+  const whatItIs = stripHtml(asObject(core.what_it_is).body).toLowerCase();
+  const why = asArray(core.why_it_stands_out);
+
+  if (
+    why.length === 1 &&
+    /official pdp evidence only/i.test(asString(why[0]?.headline)) &&
+    /limited to the official product fields/i.test(asString(why[0]?.body))
+  ) {
+    return 'insufficient_official_pdp_specificity';
+  }
 
   if (/\bdonate\b|\bclara lionel foundation\b/.test(title)) {
     return 'non_product_donation_row';
