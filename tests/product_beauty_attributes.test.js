@@ -52,12 +52,26 @@ describe('product beauty attributes helpers', () => {
       product_key: 'ext_x',
       spf_or_otc_flag: 'sometimes',
       claim_risk_level: 'extreme',
+      target_area: 'snout',
     });
     expect(r.ok).toBe(false);
     expect(r.errors).toEqual(expect.arrayContaining([
       'invalid_spf_or_otc_flag:sometimes',
       'invalid_claim_risk_level:extreme',
+      'invalid_target_area:snout',
     ]));
+  });
+
+  test('validateExtractionPayload accepts every documented target_area value', () => {
+    for (const area of ['face', 'lips', 'body', 'hair', 'eyes', 'brows', 'cheeks', 'hands', 'nails', 'scalp', 'fragrance', 'multi_area', 'unknown']) {
+      const r = validateExtractionPayload({ product_key: 'ext_x', target_area: area });
+      expect(r.ok).toBe(true);
+    }
+  });
+
+  test('validateExtractionPayload allows null target_area', () => {
+    const r = validateExtractionPayload({ product_key: 'ext_x', target_area: null });
+    expect(r.ok).toBe(true);
   });
 
   test('validateExtractionPayload requires skin_concern to be an array if provided', () => {
