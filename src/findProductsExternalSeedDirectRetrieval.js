@@ -164,30 +164,20 @@ async function retrieveExternalSeedDirectCandidates({
               created_at
             FROM external_product_seeds
             WHERE status = 'active'
+              AND attached_product_key IS NOT NULL
               AND EXISTS (
                 SELECT 1
                 FROM catalog_products cp
                 ${buildExternalSeedServingEligibleJoinSql()}
                 WHERE cp.product_key = external_product_seeds.attached_product_key
-                   OR (
-                    cp.merchant_id = 'external_seed'
-                    AND cp.platform = 'external_seed'
-                    AND cp.source_product_id = coalesce(
-                      nullif(external_product_seeds.external_product_id, ''),
-                      nullif(external_product_seeds.seed_data->>'external_product_id', ''),
-                      nullif(external_product_seeds.seed_data->>'product_id', '')
-                    )
-                  )
               )
               AND market = $1
               AND (
-                -- Standard recall: unattached seeds matching the requested tool.
-                ((tool = '*' OR tool = $2) AND attached_product_key IS NULL)
-                -- Phase 7a bridge: agent-authored canonical seeds remain
-                -- visible in DirectRetrieval even when attached_product_key
-                -- is set, since the gateway does not yet JOIN catalog_offers
-                -- (Phase 7b). Without this, every seed Phase 4 attaches to
-                -- a canonical PDP would disappear from generic recall.
+                -- Public card recall may only surface seeds attached to a
+                -- serving canonical catalog row. Matching by source_product_id
+                -- creates sig_* links that PDP later rejects as no_seed.
+                tool = '*'
+                OR tool = $2
                 OR tool = 'catalog_enrichment_agent_v1'
               )
               ${filters.length > 0 ? `AND ${filters.join('\n              AND ')}` : ''}

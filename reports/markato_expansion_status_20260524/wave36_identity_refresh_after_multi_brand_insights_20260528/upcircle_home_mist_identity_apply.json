@@ -1,0 +1,94 @@
+{
+  "status": "success",
+  "mode": "write",
+  "generated_at": "2026-05-28T07:19:55.737Z",
+  "external_product_ids": [
+    "ext_32e72e7e518f4dfa532a191d"
+  ],
+  "options": {
+    "allow_reviewed_product_line_singletons": true,
+    "allow_official_url_exact_conflict_cleanup": true
+  },
+  "rows_seen": 1,
+  "missing_ids": [],
+  "align_ready_count": 1,
+  "already_aligned_count": 0,
+  "held_count": 0,
+  "applied": {
+    "override_upserts": 1,
+    "identity_rows_updated": 1
+  },
+  "blockers": [],
+  "plans": [
+    {
+      "action": "align_ready",
+      "blockers": [],
+      "product_key": "prod::external_seed::external_seed::ext_32e72e7e518f4dfa532a191d",
+      "source_listing_ref": "external_seed:ext_32e72e7e518f4dfa532a191d",
+      "external_product_id": "ext_32e72e7e518f4dfa532a191d",
+      "title": "Home Mist with Lemongrass + Grapefruit Water",
+      "brand": "UpCircle Beauty",
+      "canonical_url": "https://upcirclebeauty.com/products/room-spray",
+      "product_group_id": "",
+      "is_primary": false,
+      "content_key": "ck_ea5865d76b4d16835ed4b947980bf831",
+      "catalog_sig_id": "sig_7b926720a893e74993c5f09623779c55",
+      "catalog_sig_url": "https://agent.pivota.cc/products/sig_7b926720a893e74993c5f09623779c55",
+      "identity_sig_id_before": "sig_bdbddb90ac25534ce92d2918",
+      "product_line_id": "pl_721bc3c2fdcca3f37d424a47",
+      "review_family_id": "rf_721bc3c2fdcca3f37d424a47",
+      "identity_status_before": "review_required",
+      "live_read_enabled_before": false,
+      "review_required_before": true,
+      "review_reason_codes_before": [
+        "multi_variant_exact_item_unresolved",
+        "insufficient_exact_item_evidence"
+      ],
+      "reviewed_product_line_singleton": {
+        "eligible": true,
+        "blockers": [],
+        "evidence": {
+          "source_tier": "brand",
+          "matched_by_rule": "singleton_source_ref",
+          "review_reason_codes": [
+            "multi_variant_exact_item_unresolved",
+            "insufficient_exact_item_evidence"
+          ],
+          "variant_axes": {
+            "multi_variant": true
+          },
+          "official_url": "https://upcirclebeauty.com/products/room-spray",
+          "canonical_url": "https://upcirclebeauty.com/products/room-spray",
+          "seed_canonical_url": "https://upcirclebeauty.com/products/room-spray",
+          "title": "Home Mist with Lemongrass + Grapefruit Water",
+          "seed_title": "Home Mist with Lemongrass + Grapefruit Water"
+        }
+      },
+      "reviewed_official_url_exact_conflict_cleanup": {
+        "eligible": false,
+        "blockers": [
+          "unexpected_matched_by_rule",
+          "missing_conflicting_official_url_review_reason",
+          "unsupported_review_reason_codes"
+        ],
+        "evidence": {
+          "source_tier": "brand",
+          "matched_by_rule": "singleton_source_ref",
+          "review_reason_codes": [
+            "multi_variant_exact_item_unresolved",
+            "insufficient_exact_item_evidence"
+          ],
+          "variant_axes": {
+            "multi_variant": true
+          },
+          "official_url": "https://upcirclebeauty.com/products/room-spray",
+          "canonical_url": "https://upcirclebeauty.com/products/room-spray",
+          "seed_canonical_url": "https://upcirclebeauty.com/products/room-spray",
+          "title": "Home Mist with Lemongrass + Grapefruit Water",
+          "seed_title": "Home Mist with Lemongrass + Grapefruit Water"
+        }
+      },
+      "needs_update": true
+    }
+  ]
+}

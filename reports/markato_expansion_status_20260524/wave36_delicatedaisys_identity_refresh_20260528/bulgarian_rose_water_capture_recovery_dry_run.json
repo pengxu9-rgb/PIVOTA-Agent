@@ -1,0 +1,49 @@
+{
+  "generated_at": "2026-05-28T06:45:50.351Z",
+  "dry_run": true,
+  "manifest": "reports/markato_expansion_status_20260524/wave36_delicatedaisys_identity_refresh_20260528/bulgarian_rose_water_single_ingredient_manifest.json",
+  "summary": {
+    "scanned_rows": 1,
+    "missing_rows": 0,
+    "blocked_rows": 0,
+    "change_candidates": 1,
+    "updated_rows": 0,
+    "catalog_product_updates": 0,
+    "identity_updates": 0
+  },
+  "apply_results": [],
+  "plans": [
+    {
+      "external_product_id": "ext_397a1dbbcab4ad4a246b6a8c",
+      "seed_id": "eps_28b4bb316fea9db44b3dd3e0",
+      "title": "Bulgarian Rose Water Face, Hair & Body Mist Spray",
+      "canonical_url": "https://delicatedaisys.com/products/bulgarian-rose-water-face-hair-body-mist-spray",
+      "status": "ready",
+      "changed": true,
+      "blockers": [],
+      "skipped_fields": [],
+      "patched_fields": [
+        "pdp_ingredients_raw",
+        "raw_ingredient_text_clean",
+        "ingredients_inci"
+      ],
+      "before": {
+        "description": "Discover the rejuvenating benefits of our Bulgarian Rose Water Face, Hair & Body Mist Spray. With a gentle, refreshing aroma, this all-natural toner will clarify and balance your skin while providing instant moisture for a revitalized appearance. Versatile enough for use on the face, body, and hair, our formula is",
+        "pdp_description_raw": "Discover the rejuvenating benefits of our Bulgarian Rose Water Face, Hair & Body Mist Spray. With a gentle, refreshing aroma, this all-natural toner will clarify and balance your skin while providing instant moisture for a revitalized appearance. Versatile enough for use on the face, body, and hair, our formula is",
+        "pdp_ingredients_raw": "Organic Rosa Damascena (Damask Rose) Floral Water",
+        "pdp_how_to_use_raw": "Apply on clean skin using a cotton pad or by directly spraying it on your skin. No rinse is necessary.",
+        "ingredients_polluted": false,
+        "polluted_detail_section_count": 0
+      },
+      "after": {
+        "description": "Discover the rejuvenating benefits of our Bulgarian Rose Water Face, Hair & Body Mist Spray. With a gentle, refreshing aroma, this all-natural toner will clarify and balance your skin while providing instant moisture for a revitalized appearance. Versatile enough for use on the face, body, and hair, our formula is",
+        "pdp_description_raw": "Discover the rejuvenating benefits of our Bulgarian Rose Water Face, Hair & Body Mist Spray. With a gentle, refreshing aroma, this all-natural toner will clarify and balance your skin while providing instant moisture for a revitalized appearance. Versatile enough for use on the face, body, and hair, our formula is",
+        "pdp_how_to_use_raw": "Apply on clean skin using a cotton pad or by directly spraying it on your skin. No rinse is necessary.",
+        "pdp_ingredients_raw": "Organic Rosa Damascena (Damask Rose) Floral Water",
+        "ingredients_polluted": false,
+        "detail_section_count": 2,
+        "polluted_detail_section_count": 0
+      }
+    }
+  ]
+}

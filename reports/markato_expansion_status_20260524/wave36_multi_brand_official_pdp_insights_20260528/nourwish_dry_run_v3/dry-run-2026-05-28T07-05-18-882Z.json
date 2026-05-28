@@ -1,0 +1,3508 @@
+{
+  "generated_at": "2026-05-28T07:05:18.882Z",
+  "source": "pivota_insights_official_pdp_manual_review_v1",
+  "mode": "dry_run",
+  "filters": {
+    "brand": "Nourwish",
+    "product_ids": [],
+    "limit": null,
+    "include_strong": false,
+    "include_url_key": false,
+    "apply_chunk_size": null
+  },
+  "summary": {
+    "scanned": 26,
+    "changed_products": 25,
+    "blocked_products": 0,
+    "skipped_products": 1,
+    "write_actions": {
+      "update": 21,
+      "insert": 23,
+      "skip": 2
+    },
+    "skip_reasons": {
+      "no_safe_writes": 1,
+      "candidate_not_publish_quality_ready": 2
+    },
+    "evidence_profiles": {
+      "official_pdp_reviewed_limited": 26
+    }
+  },
+  "plans": [
+    {
+      "external_product_id": "ext_2f1a77e54e4308022dd527c4",
+      "pivota_signature_id": "sig_cac625af37ef6cbea79ea3ce",
+      "title": "Airy Glow Hair Repair Oil",
+      "brand": "Nourwish",
+      "canonical_url": "https://nourwish.com/products/nourwish-airy-glow-hair-repair-oil",
+      "changed": true,
+      "blocked": false,
+      "skip_reason": null,
+      "candidate_hash": "925d8c796c8c917a2788c9c42aff17a1c4b4aef241be277c8a4e4fac2f120a53",
+      "evidence_profile": "official_pdp_reviewed_limited",
+      "source_coverage": {
+        "source": "official_pdp",
+        "canonical_url": "https://nourwish.com/products/nourwish-airy-glow-hair-repair-oil",
+        "fields": {
+          "description": true,
+          "ingredients": 0,
+          "active_ingredients": 0,
+          "how_to": 0,
+          "details": 0,
+          "variants": 1
+        }
+      },
+      "preview": {
+        "headline": "Hair treatment",
+        "what_it_is": "Airy Glow Hair Repair Oil is a hair treatment from Nourwish, with source-backed cues around frizz control.",
+        "why_it_stands_out": [
+          {
+            "headline": "Product cues are source-backed",
+            "body": "Reviewed PDP cues such as frizz control, scalp or style refresh give shoppers specific comparison points within Nourwish, rather than category-only copy.",
+            "evidence_strength": "official_pdp_reviewed"
+          }
+        ],
+        "best_for": [
+          {
+            "tag": "frizz_control",
+            "label": "frizz control",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "hair_hydration",
+            "label": "hair hydration",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "style_refresh",
+            "label": "style refresh",
+            "confidence": "moderate"
+          }
+        ],
+        "shopping_highlight": "frizz control, scalp or style refresh"
+      },
+      "writes": [
+        {
+          "kb_key": "product:ext_2f1a77e54e4308022dd527c4",
+          "action": "update",
+          "reason": "explicit_owner_delegated_assistant_replacement_review",
+          "old_hash": "c5c757778cbf5457c43454527c4ffbeaad7213f00a2f041c1c0b47f347e03d37",
+          "candidate_hash": "7267b470dd8909e735d9007092553fcd72bcdb7beda0b347d47c4e04f0af1534",
+          "existing_weak": true,
+          "source": "pivota_insights_official_pdp_manual_review_v1",
+          "after_inventory": {
+            "product_id": "ext_2f1a77e54e4308022dd527c4",
+            "kb_key": "product:ext_2f1a77e54e4308022dd527c4",
+            "source": "pivota_insights_official_pdp_manual_review_v1",
+            "updated_at": "",
+            "last_success_at": "",
+            "title": "Airy Glow Hair Repair Oil",
+            "canonical_url": "",
+            "bundle_hash": "925d8c796c8c917a2788c9c42aff17a1c4b4aef241be277c8a4e4fac2f120a53",
+            "lane": "keep",
+            "reason": "protected_good_content",
+            "priority": 0,
+            "protected": true,
+            "displayable": true,
+            "high_quality_ready": true,
+            "human_reviewed": true,
+            "issues": [],
+            "blocking_issues": [],
+            "quality_state": "reviewed",
+            "evidence_profile": "official_pdp_reviewed_limited",
+            "evidence_rank": 1,
+            "review_tier": "assistant_reviewed",
+            "agent_readable": true,
+            "public_ready": true
+          },
+          "source_meta": {
+            "evidence_profile": "official_pdp_reviewed_limited",
+            "quality_state": "reviewed",
+            "source_origin": "official_pdp_fields",
+            "source_url": "https://nourwish.com/products/nourwish-airy-glow-hair-repair-oil",
+            "quality_improvement": {
+              "previous_bundle_hash": "fc7fbf2e0569615030144aa05ad4b2b83d102ac2f64011508e3a9c99972472c9",
+              "candidate_bundle_hash": "925d8c796c8c917a2788c9c42aff17a1c4b4aef241be277c8a4e4fac2f120a53",
+              "replacement_decision": "explicit_owner_delegated_assistant_replacement_review",
+              "existing_quality_lane": "suppress_public",
+              "candidate_quality_lane": "keep",
+              "existing_evidence_profile": "seller_only",
+              "candidate_evidence_profile": "official_pdp_reviewed_limited"
+            }
+          }
+        },
+        {
+          "kb_key": "product:sig_cac625af37ef6cbea79ea3ce",
+          "action": "insert",
+          "reason": "new_product_intel_bundle",
+          "old_hash": null,
+          "candidate_hash": "7267b470dd8909e735d9007092553fcd72bcdb7beda0b347d47c4e04f0af1534",
+          "existing_weak": true,
+          "source": "pivota_insights_official_pdp_manual_review_v1",
+          "after_inventory": {
+            "product_id": "ext_2f1a77e54e4308022dd527c4",
+            "kb_key": "product:sig_cac625af37ef6cbea79ea3ce",
+            "source": "pivota_insights_official_pdp_manual_review_v1",
+            "updated_at": "",
+            "last_success_at": "",
+            "title": "Airy Glow Hair Repair Oil",
+            "canonical_url": "",
+            "bundle_hash": "925d8c796c8c917a2788c9c42aff17a1c4b4aef241be277c8a4e4fac2f120a53",
+            "lane": "keep",
+            "reason": "protected_good_content",
+            "priority": 0,
+            "protected": true,
+            "displayable": true,
+            "high_quality_ready": true,
+            "human_reviewed": true,
+            "issues": [],
+            "blocking_issues": [],
+            "quality_state": "reviewed",
+            "evidence_profile": "official_pdp_reviewed_limited",
+            "evidence_rank": 1,
+            "review_tier": "assistant_reviewed",
+            "agent_readable": true,
+            "public_ready": true
+          },
+          "source_meta": {
+            "evidence_profile": "official_pdp_reviewed_limited",
+            "quality_state": "reviewed",
+            "source_origin": "official_pdp_fields",
+            "source_url": "https://nourwish.com/products/nourwish-airy-glow-hair-repair-oil",
+            "quality_improvement": {
+              "previous_bundle_hash": null,
+              "candidate_bundle_hash": "925d8c796c8c917a2788c9c42aff17a1c4b4aef241be277c8a4e4fac2f120a53",
+              "replacement_decision": "new_product_intel_bundle",
+              "existing_quality_lane": null,
+              "candidate_quality_lane": "keep",
+              "existing_evidence_profile": null,
+              "candidate_evidence_profile": "official_pdp_reviewed_limited"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "external_product_id": "ext_515bdcd75130953012b2bfc5",
+      "pivota_signature_id": "sig_f44f5cb3ca26363bd6f565a7",
+      "title": "Airy Glow Hydrating Shampoo",
+      "brand": "Nourwish",
+      "canonical_url": "https://nourwish.com/products/nourwish-airy-glow-hydrating-shampoo",
+      "changed": true,
+      "blocked": false,
+      "skip_reason": null,
+      "candidate_hash": "73fdfcef9e297185ad76edff5f3604cdcd719181aa3b899324c3c6bc18124ef6",
+      "evidence_profile": "official_pdp_reviewed_limited",
+      "source_coverage": {
+        "source": "official_pdp",
+        "canonical_url": "https://nourwish.com/products/nourwish-airy-glow-hydrating-shampoo",
+        "fields": {
+          "description": true,
+          "ingredients": 0,
+          "active_ingredients": 0,
+          "how_to": 0,
+          "details": 0,
+          "variants": 2
+        }
+      },
+      "preview": {
+        "headline": "Hair treatment",
+        "what_it_is": "Airy Glow Hydrating Shampoo is a hair treatment from Nourwish, with source-backed cues around frizz control.",
+        "why_it_stands_out": [
+          {
+            "headline": "Product cues are source-backed",
+            "body": "Reviewed PDP cues such as frizz control, scalp or style refresh give shoppers specific comparison points within Nourwish, rather than category-only copy.",
+            "evidence_strength": "official_pdp_reviewed"
+          }
+        ],
+        "best_for": [
+          {
+            "tag": "frizz_control",
+            "label": "frizz control",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "hair_hydration",
+            "label": "hair hydration",
+            "confidence": "moderate"
+          }
+        ],
+        "shopping_highlight": "frizz control, scalp or style refresh"
+      },
+      "writes": [
+        {
+          "kb_key": "product:ext_515bdcd75130953012b2bfc5",
+          "action": "update",
+          "reason": "explicit_owner_delegated_assistant_replacement_review",
+          "old_hash": "4981af8fa64f0bd14f4cb1aef3ef2968a5d7e4d70870b79007c1cb6f0482f342",
+          "candidate_hash": "32c1bc5c37bab94c33b1d55408853e23876f1475d1a60ec58b64d5e84333f3d0",
+          "existing_weak": true,
+          "source": "pivota_insights_official_pdp_manual_review_v1",
+          "after_inventory": {
+            "product_id": "ext_515bdcd75130953012b2bfc5",
+            "kb_key": "product:ext_515bdcd75130953012b2bfc5",
+            "source": "pivota_insights_official_pdp_manual_review_v1",
+            "updated_at": "",
+            "last_success_at": "",
+            "title": "Airy Glow Hydrating Shampoo",
+            "canonical_url": "",
+            "bundle_hash": "73fdfcef9e297185ad76edff5f3604cdcd719181aa3b899324c3c6bc18124ef6",
+            "lane": "keep",
+            "reason": "protected_good_content",
+            "priority": 0,
+            "protected": true,
+            "displayable": true,
+            "high_quality_ready": true,
+            "human_reviewed": true,
+            "issues": [],
+            "blocking_issues": [],
+            "quality_state": "reviewed",
+            "evidence_profile": "official_pdp_reviewed_limited",
+            "evidence_rank": 1,
+            "review_tier": "assistant_reviewed",
+            "agent_readable": true,
+            "public_ready": true
+          },
+          "source_meta": {
+            "evidence_profile": "official_pdp_reviewed_limited",
+            "quality_state": "reviewed",
+            "source_origin": "official_pdp_fields",
+            "source_url": "https://nourwish.com/products/nourwish-airy-glow-hydrating-shampoo",
+            "quality_improvement": {
+              "previous_bundle_hash": "5b0a19929d45a938f476ea2a5623dfe4cae4e32863d676f37849e4357016e928",
+              "candidate_bundle_hash": "73fdfcef9e297185ad76edff5f3604cdcd719181aa3b899324c3c6bc18124ef6",
+              "replacement_decision": "explicit_owner_delegated_assistant_replacement_review",
+              "existing_quality_lane": "suppress_public",
+              "candidate_quality_lane": "keep",
+              "existing_evidence_profile": "seller_only",
+              "candidate_evidence_profile": "official_pdp_reviewed_limited"
+            }
+          }
+        },
+        {
+          "kb_key": "product:sig_f44f5cb3ca26363bd6f565a7",
+          "action": "insert",
+          "reason": "new_product_intel_bundle",
+          "old_hash": null,
+          "candidate_hash": "32c1bc5c37bab94c33b1d55408853e23876f1475d1a60ec58b64d5e84333f3d0",
+          "existing_weak": true,
+          "source": "pivota_insights_official_pdp_manual_review_v1",
+          "after_inventory": {
+            "product_id": "ext_515bdcd75130953012b2bfc5",
+            "kb_key": "product:sig_f44f5cb3ca26363bd6f565a7",
+            "source": "pivota_insights_official_pdp_manual_review_v1",
+            "updated_at": "",
+            "last_success_at": "",
+            "title": "Airy Glow Hydrating Shampoo",
+            "canonical_url": "",
+            "bundle_hash": "73fdfcef9e297185ad76edff5f3604cdcd719181aa3b899324c3c6bc18124ef6",
+            "lane": "keep",
+            "reason": "protected_good_content",
+            "priority": 0,
+            "protected": true,
+            "displayable": true,
+            "high_quality_ready": true,
+            "human_reviewed": true,
+            "issues": [],
+            "blocking_issues": [],
+            "quality_state": "reviewed",
+            "evidence_profile": "official_pdp_reviewed_limited",
+            "evidence_rank": 1,
+            "review_tier": "assistant_reviewed",
+            "agent_readable": true,
+            "public_ready": true
+          },
+          "source_meta": {
+            "evidence_profile": "official_pdp_reviewed_limited",
+            "quality_state": "reviewed",
+            "source_origin": "official_pdp_fields",
+            "source_url": "https://nourwish.com/products/nourwish-airy-glow-hydrating-shampoo",
+            "quality_improvement": {
+              "previous_bundle_hash": null,
+              "candidate_bundle_hash": "73fdfcef9e297185ad76edff5f3604cdcd719181aa3b899324c3c6bc18124ef6",
+              "replacement_decision": "new_product_intel_bundle",
+              "existing_quality_lane": null,
+              "candidate_quality_lane": "keep",
+              "existing_evidence_profile": null,
+              "candidate_evidence_profile": "official_pdp_reviewed_limited"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "external_product_id": "ext_9a6aa187716aae5cab2277c3",
+      "pivota_signature_id": "sig_a2253bbef20a08ff04705a5d160450b3",
+      "title": "Airy Glow Keratin Water Treatment",
+      "brand": "Nourwish",
+      "canonical_url": "https://nourwish.com/products/airy-glow-keratin-water-treatment",
+      "changed": true,
+      "blocked": false,
+      "skip_reason": null,
+      "candidate_hash": "c2b8888c1019f574de7f9e8984b4244f53862c3b880c239f9a0a508d45ffb7f0",
+      "evidence_profile": "official_pdp_reviewed_limited",
+      "source_coverage": {
+        "source": "official_pdp",
+        "canonical_url": "https://nourwish.com/products/airy-glow-keratin-water-treatment",
+        "fields": {
+          "description": true,
+          "ingredients": 0,
+          "active_ingredients": 0,
+          "how_to": 0,
+          "details": 0,
+          "variants": 2
+        }
+      },
+      "preview": {
+        "headline": "Hair treatment",
+        "what_it_is": "Airy Glow Keratin Water Treatment is a hair treatment from Nourwish.",
+        "why_it_stands_out": [
+          {
+            "headline": "Official PDP evidence only",
+            "body": "This insight is limited to the official product fields currently available for Airy Glow Keratin Water Treatment.",
+            "evidence_strength": "official_pdp_reviewed_limited"
+          }
+        ],
+        "best_for": [
+          {
+            "tag": "hair_treatment",
+            "label": "Hair treatment",
+            "confidence": "moderate"
+          }
+        ],
+        "shopping_highlight": "Hair treatment"
+      },
+      "writes": [
+        {
+          "kb_key": "product:ext_9a6aa187716aae5cab2277c3",
+          "action": "insert",
+          "reason": "new_product_intel_bundle",
+          "old_hash": null,
+          "candidate_hash": "c6e69b5bdab7b95b2cb4c9045f1cd714aba1b7e7513b8a236b1a5e0d6a72d29d",
+          "existing_weak": true,
+          "source": "pivota_insights_official_pdp_manual_review_v1",
+          "after_inventory": {
+            "product_id": "ext_9a6aa187716aae5cab2277c3",
+            "kb_key": "product:ext_9a6aa187716aae5cab2277c3",
+            "source": "pivota_insights_official_pdp_manual_review_v1",
+            "updated_at": "",
+            "last_success_at": "",
+            "title": "Airy Glow Keratin Water Treatment",
+            "canonical_url": "",
+            "bundle_hash": "c2b8888c1019f574de7f9e8984b4244f53862c3b880c239f9a0a508d45ffb7f0",
+            "lane": "keep",
+            "reason": "protected_good_content",
+            "priority": 0,
+            "protected": true,
+            "displayable": true,
+            "high_quality_ready": true,
+            "human_reviewed": true,
+            "issues": [],
+            "blocking_issues": [],
+            "quality_state": "reviewed",
+            "evidence_profile": "official_pdp_reviewed_limited",
+            "evidence_rank": 1,
+            "review_tier": "assistant_reviewed",
+            "agent_readable": true,
+            "public_ready": true
+          },
+          "source_meta": {
+            "evidence_profile": "official_pdp_reviewed_limited",
+            "quality_state": "reviewed",
+            "source_origin": "official_pdp_fields",
+            "source_url": "https://nourwish.com/products/airy-glow-keratin-water-treatment",
+            "quality_improvement": {
+              "previous_bundle_hash": null,
+              "candidate_bundle_hash": "c2b8888c1019f574de7f9e8984b4244f53862c3b880c239f9a0a508d45ffb7f0",
+              "replacement_decision": "new_product_intel_bundle",
+              "existing_quality_lane": null,
+              "candidate_quality_lane": "keep",
+              "existing_evidence_profile": null,
+              "candidate_evidence_profile": "official_pdp_reviewed_limited"
+            }
+          }
+        },
+        {
+          "kb_key": "product:sig_a2253bbef20a08ff04705a5d160450b3",
+          "action": "insert",
+          "reason": "new_product_intel_bundle",
+          "old_hash": null,
+          "candidate_hash": "c6e69b5bdab7b95b2cb4c9045f1cd714aba1b7e7513b8a236b1a5e0d6a72d29d",
+          "existing_weak": true,
+          "source": "pivota_insights_official_pdp_manual_review_v1",
+          "after_inventory": {
+            "product_id": "ext_9a6aa187716aae5cab2277c3",
+            "kb_key": "product:sig_a2253bbef20a08ff04705a5d160450b3",
+            "source": "pivota_insights_official_pdp_manual_review_v1",
+            "updated_at": "",
+            "last_success_at": "",
+            "title": "Airy Glow Keratin Water Treatment",
+            "canonical_url": "",
+            "bundle_hash": "c2b8888c1019f574de7f9e8984b4244f53862c3b880c239f9a0a508d45ffb7f0",
+            "lane": "keep",
+            "reason": "protected_good_content",
+            "priority": 0,
+            "protected": true,
+            "displayable": true,
+            "high_quality_ready": true,
+            "human_reviewed": true,
+            "issues": [],
+            "blocking_issues": [],
+            "quality_state": "reviewed",
+            "evidence_profile": "official_pdp_reviewed_limited",
+            "evidence_rank": 1,
+            "review_tier": "assistant_reviewed",
+            "agent_readable": true,
+            "public_ready": true
+          },
+          "source_meta": {
+            "evidence_profile": "official_pdp_reviewed_limited",
+            "quality_state": "reviewed",
+            "source_origin": "official_pdp_fields",
+            "source_url": "https://nourwish.com/products/airy-glow-keratin-water-treatment",
+            "quality_improvement": {
+              "previous_bundle_hash": null,
+              "candidate_bundle_hash": "c2b8888c1019f574de7f9e8984b4244f53862c3b880c239f9a0a508d45ffb7f0",
+              "replacement_decision": "new_product_intel_bundle",
+              "existing_quality_lane": null,
+              "candidate_quality_lane": "keep",
+              "existing_evidence_profile": null,
+              "candidate_evidence_profile": "official_pdp_reviewed_limited"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "external_product_id": "ext_7ccdafdd10e3ee83a600e9af",
+      "pivota_signature_id": null,
+      "title": "Bye-Bye Dryness Kit",
+      "brand": "Nourwish",
+      "canonical_url": "https://nourwish.com/products/bye-bye-dryness-kit",
+      "changed": true,
+      "blocked": false,
+      "skip_reason": null,
+      "candidate_hash": "a2fc7198c1c84c6dd4f9a9a2e7bd1daf179fba3e1a272fa5484bc1ebd84d64a1",
+      "evidence_profile": "official_pdp_reviewed_limited",
+      "source_coverage": {
+        "source": "official_pdp",
+        "canonical_url": "https://nourwish.com/products/bye-bye-dryness-kit",
+        "fields": {
+          "description": true,
+          "ingredients": 0,
+          "active_ingredients": 0,
+          "how_to": 0,
+          "details": 0,
+          "variants": 1
+        }
+      },
+      "preview": {
+        "headline": "Hair care set",
+        "what_it_is": "Bye-Bye Dryness Kit is a hair treatment from Nourwish, with source-backed cues around volume-texture boost.",
+        "why_it_stands_out": [
+          {
+            "headline": "Official PDP evidence only",
+            "body": "This insight is limited to the official product fields currently available for Bye-Bye Dryness Kit.",
+            "evidence_strength": "official_pdp_reviewed_limited"
+          }
+        ],
+        "best_for": [
+          {
+            "tag": "hair_hydration",
+            "label": "hair hydration",
+            "confidence": "moderate"
+          }
+        ],
+        "shopping_highlight": "hair hydration"
+      },
+      "writes": [
+        {
+          "kb_key": "product:ext_7ccdafdd10e3ee83a600e9af",
+          "action": "update",
+          "reason": "explicit_owner_delegated_assistant_replacement_review",
+          "old_hash": "5fe32cd79da13392ea5b0016773f338eb01e484febc591822f9fb96a448321e6",
+          "candidate_hash": "5fc372aace467edde8b63e94a0c4ad55b4276b332f62bf9b4dbe32a6e1c738f4",
+          "existing_weak": true,
+          "source": "pivota_insights_official_pdp_manual_review_v1",
+          "after_inventory": {
+            "product_id": "ext_7ccdafdd10e3ee83a600e9af",
+            "kb_key": "product:ext_7ccdafdd10e3ee83a600e9af",
+            "source": "pivota_insights_official_pdp_manual_review_v1",
+            "updated_at": "",
+            "last_success_at": "",
+            "title": "Bye-Bye Dryness Kit",
+            "canonical_url": "",
+            "bundle_hash": "a2fc7198c1c84c6dd4f9a9a2e7bd1daf179fba3e1a272fa5484bc1ebd84d64a1",
+            "lane": "keep",
+            "reason": "protected_good_content",
+            "priority": 0,
+            "protected": true,
+            "displayable": true,
+            "high_quality_ready": true,
+            "human_reviewed": true,
+            "issues": [],
+            "blocking_issues": [],
+            "quality_state": "reviewed",
+            "evidence_profile": "official_pdp_reviewed_limited",
+            "evidence_rank": 1,
+            "review_tier": "assistant_reviewed",
+            "agent_readable": true,
+            "public_ready": true
+          },
+          "source_meta": {
+            "evidence_profile": "official_pdp_reviewed_limited",
+            "quality_state": "reviewed",
+            "source_origin": "official_pdp_fields",
+            "source_url": "https://nourwish.com/products/bye-bye-dryness-kit",
+            "quality_improvement": {
+              "previous_bundle_hash": "a2d5f6e64862b8a968f1a0be465078f0492fa4a576e5074803042cc87023a52d",
+              "candidate_bundle_hash": "a2fc7198c1c84c6dd4f9a9a2e7bd1daf179fba3e1a272fa5484bc1ebd84d64a1",
+              "replacement_decision": "explicit_owner_delegated_assistant_replacement_review",
+              "existing_quality_lane": "repair",
+              "candidate_quality_lane": "keep",
+              "existing_evidence_profile": "seller_only",
+              "candidate_evidence_profile": "official_pdp_reviewed_limited"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "external_product_id": "ext_1cb9ba8946925a272dec9052",
+      "pivota_signature_id": null,
+      "title": "Hair Regenerating Travel Kit - For Oily Scalp",
+      "brand": "Nourwish",
+      "canonical_url": "https://nourwish.com/products/hair-regenerating-travel-kit-for-oily-scalp",
+      "changed": true,
+      "blocked": false,
+      "skip_reason": null,
+      "candidate_hash": "15739921d865fc66c0747dcb6091dd63d9414d6b1756c2d80f6465944b88886b",
+      "evidence_profile": "official_pdp_reviewed_limited",
+      "source_coverage": {
+        "source": "official_pdp",
+        "canonical_url": "https://nourwish.com/products/hair-regenerating-travel-kit-for-oily-scalp",
+        "fields": {
+          "description": true,
+          "ingredients": 0,
+          "active_ingredients": 0,
+          "how_to": 0,
+          "details": 0,
+          "variants": 1
+        }
+      },
+      "preview": {
+        "headline": "Hair care set",
+        "what_it_is": "Hair Regenerating Travel Kit - For Oily Scalp is a leave-in hair treatment from Nourwish, with source-backed cues around volume-texture boost and leave-in care.",
+        "why_it_stands_out": [
+          {
+            "headline": "Product cues are source-backed",
+            "body": "Reviewed PDP cues such as leave-in care, scalp or style refresh give shoppers specific comparison points within Nourwish, rather than category-only copy.",
+            "evidence_strength": "official_pdp_reviewed"
+          }
+        ],
+        "best_for": [
+          {
+            "tag": "hair_hydration",
+            "label": "hair hydration",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "style_refresh",
+            "label": "style refresh",
+            "confidence": "moderate"
+          }
+        ],
+        "shopping_highlight": "leave-in care, scalp or style refresh"
+      },
+      "writes": [
+        {
+          "kb_key": "product:ext_1cb9ba8946925a272dec9052",
+          "action": "update",
+          "reason": "explicit_owner_delegated_assistant_replacement_review",
+          "old_hash": "7716ddefa26e4c31456acc85dffe929692ca908d767997a4de1c013a46052d09",
+          "candidate_hash": "64ac19ba6a376fd7b74ff6bb48281284826161f5344ade76bb4a605c65caf066",
+          "existing_weak": true,
+          "source": "pivota_insights_official_pdp_manual_review_v1",
+          "after_inventory": {
+            "product_id": "ext_1cb9ba8946925a272dec9052",
+            "kb_key": "product:ext_1cb9ba8946925a272dec9052",
+            "source": "pivota_insights_official_pdp_manual_review_v1",
+            "updated_at": "",
+            "last_success_at": "",
+            "title": "Hair Regenerating Travel Kit - For Oily Scalp",
+            "canonical_url": "",
+            "bundle_hash": "15739921d865fc66c0747dcb6091dd63d9414d6b1756c2d80f6465944b88886b",
+            "lane": "keep",
+            "reason": "protected_good_content",
+            "priority": 0,
+            "protected": true,
+            "displayable": true,
+            "high_quality_ready": true,
+            "human_reviewed": true,
+            "issues": [],
+            "blocking_issues": [],
+            "quality_state": "reviewed",
+            "evidence_profile": "official_pdp_reviewed_limited",
+            "evidence_rank": 1,
+            "review_tier": "assistant_reviewed",
+            "agent_readable": true,
+            "public_ready": true
+          },
+          "source_meta": {
+            "evidence_profile": "official_pdp_reviewed_limited",
+            "quality_state": "reviewed",
+            "source_origin": "official_pdp_fields",
+            "source_url": "https://nourwish.com/products/hair-regenerating-travel-kit-for-oily-scalp",
+            "quality_improvement": {
+              "previous_bundle_hash": "d90e531cf7ec02c8547b640e53349284903ef6c05fa9e5b37f4723b0d13dbb64",
+              "candidate_bundle_hash": "15739921d865fc66c0747dcb6091dd63d9414d6b1756c2d80f6465944b88886b",
+              "replacement_decision": "explicit_owner_delegated_assistant_replacement_review",
+              "existing_quality_lane": "suppress_public",
+              "candidate_quality_lane": "keep",
+              "existing_evidence_profile": "seller_only",
+              "candidate_evidence_profile": "official_pdp_reviewed_limited"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "external_product_id": "ext_d31437b7fe86536bd949c022",
+      "pivota_signature_id": "sig_d3be6c248d1758026506580f",
+      "title": "Home Trial: Scalp Retreat Regenerating Shampoo (10ml)",
+      "brand": "Nourwish",
+      "canonical_url": "https://nourwish.com/products/home-trial-scalp-retreat-regenerating-shampoo-10ml",
+      "changed": true,
+      "blocked": false,
+      "skip_reason": null,
+      "candidate_hash": "444077a5bb9447b55af2be931ca4b48cbe6f96f69ab6e6e050c5c80b77f62b1c",
+      "evidence_profile": "official_pdp_reviewed_limited",
+      "source_coverage": {
+        "source": "official_pdp",
+        "canonical_url": "https://nourwish.com/products/home-trial-scalp-retreat-regenerating-shampoo-10ml",
+        "fields": {
+          "description": true,
+          "ingredients": 0,
+          "active_ingredients": 0,
+          "how_to": 0,
+          "details": 0,
+          "variants": 1
+        }
+      },
+      "preview": {
+        "headline": "Hair treatment",
+        "what_it_is": "Home Trial: Scalp Retreat Regenerating Shampoo (10ml) is a hair treatment from Nourwish, with source-backed cues around volume-texture boost.",
+        "why_it_stands_out": [
+          {
+            "headline": "Product cues are source-backed",
+            "body": "Reviewed PDP cues such as scalp or style refresh give shoppers specific comparison points within Nourwish, rather than category-only copy.",
+            "evidence_strength": "official_pdp_reviewed"
+          }
+        ],
+        "best_for": [
+          {
+            "tag": "scalp_or_style_refresh",
+            "label": "scalp or style refresh",
+            "confidence": "moderate"
+          }
+        ],
+        "shopping_highlight": "scalp or style refresh"
+      },
+      "writes": [
+        {
+          "kb_key": "product:ext_d31437b7fe86536bd949c022",
+          "action": "update",
+          "reason": "explicit_owner_delegated_assistant_replacement_review",
+          "old_hash": "ec143f6c3903d2c309cf67577bdf4047e7099c8642c2509232bdd2dcb374677a",
+          "candidate_hash": "2e50ab9f683d9b74772085669620d6daea24c2396ff43d8bbbeb3306504b731d",
+          "existing_weak": true,
+          "source": "pivota_insights_official_pdp_manual_review_v1",
+          "after_inventory": {
+            "product_id": "ext_d31437b7fe86536bd949c022",
+            "kb_key": "product:ext_d31437b7fe86536bd949c022",
+            "source": "pivota_insights_official_pdp_manual_review_v1",
+            "updated_at": "",
+            "last_success_at": "",
+            "title": "Home Trial: Scalp Retreat Regenerating Shampoo (10ml)",
+            "canonical_url": "",
+            "bundle_hash": "444077a5bb9447b55af2be931ca4b48cbe6f96f69ab6e6e050c5c80b77f62b1c",
+            "lane": "keep",
+            "reason": "protected_good_content",
+            "priority": 0,
+            "protected": true,
+            "displayable": true,
+            "high_quality_ready": true,
+            "human_reviewed": true,
+            "issues": [],
+            "blocking_issues": [],
+            "quality_state": "reviewed",
+            "evidence_profile": "official_pdp_reviewed_limited",
+            "evidence_rank": 1,
+            "review_tier": "assistant_reviewed",
+            "agent_readable": true,
+            "public_ready": true
+          },
+          "source_meta": {
+            "evidence_profile": "official_pdp_reviewed_limited",
+            "quality_state": "reviewed",
+            "source_origin": "official_pdp_fields",
+            "source_url": "https://nourwish.com/products/home-trial-scalp-retreat-regenerating-shampoo-10ml",
+            "quality_improvement": {
+              "previous_bundle_hash": "fdca0ead859eb9f245d7342c23cea13411a3c1a05da277cc2d733d94d9e4c479",
+              "candidate_bundle_hash": "444077a5bb9447b55af2be931ca4b48cbe6f96f69ab6e6e050c5c80b77f62b1c",
+              "replacement_decision": "explicit_owner_delegated_assistant_replacement_review",
+              "existing_quality_lane": "suppress_public",
+              "candidate_quality_lane": "keep",
+              "existing_evidence_profile": "seller_only",
+              "candidate_evidence_profile": "official_pdp_reviewed_limited"
+            }
+          }
+        },
+        {
+          "kb_key": "product:sig_d3be6c248d1758026506580f",
+          "action": "insert",
+          "reason": "new_product_intel_bundle",
+          "old_hash": null,
+          "candidate_hash": "2e50ab9f683d9b74772085669620d6daea24c2396ff43d8bbbeb3306504b731d",
+          "existing_weak": true,
+          "source": "pivota_insights_official_pdp_manual_review_v1",
+          "after_inventory": {
+            "product_id": "ext_d31437b7fe86536bd949c022",
+            "kb_key": "product:sig_d3be6c248d1758026506580f",
+            "source": "pivota_insights_official_pdp_manual_review_v1",
+            "updated_at": "",
+            "last_success_at": "",
+            "title": "Home Trial: Scalp Retreat Regenerating Shampoo (10ml)",
+            "canonical_url": "",
+            "bundle_hash": "444077a5bb9447b55af2be931ca4b48cbe6f96f69ab6e6e050c5c80b77f62b1c",
+            "lane": "keep",
+            "reason": "protected_good_content",
+            "priority": 0,
+            "protected": true,
+            "displayable": true,
+            "high_quality_ready": true,
+            "human_reviewed": true,
+            "issues": [],
+            "blocking_issues": [],
+            "quality_state": "reviewed",
+            "evidence_profile": "official_pdp_reviewed_limited",
+            "evidence_rank": 1,
+            "review_tier": "assistant_reviewed",
+            "agent_readable": true,
+            "public_ready": true
+          },
+          "source_meta": {
+            "evidence_profile": "official_pdp_reviewed_limited",
+            "quality_state": "reviewed",
+            "source_origin": "official_pdp_fields",
+            "source_url": "https://nourwish.com/products/home-trial-scalp-retreat-regenerating-shampoo-10ml",
+            "quality_improvement": {
+              "previous_bundle_hash": null,
+              "candidate_bundle_hash": "444077a5bb9447b55af2be931ca4b48cbe6f96f69ab6e6e050c5c80b77f62b1c",
+              "replacement_decision": "new_product_intel_bundle",
+              "existing_quality_lane": null,
+              "candidate_quality_lane": "keep",
+              "existing_evidence_profile": null,
+              "candidate_evidence_profile": "official_pdp_reviewed_limited"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "external_product_id": "ext_a9ee3bab6563dbd007b33191",
+      "pivota_signature_id": "sig_2b9f613bd7be99c7a285c024",
+      "title": "Keratin Supercharge Bundle",
+      "brand": "Nourwish",
+      "canonical_url": "https://nourwish.com/products/keratin-supercharge-bundle",
+      "changed": true,
+      "blocked": false,
+      "skip_reason": null,
+      "candidate_hash": "2bd2c3742e55a44287c7b73d848bb7f02cb9dbb057c127a7db59ab771ffa90b8",
+      "evidence_profile": "official_pdp_reviewed_limited",
+      "source_coverage": {
+        "source": "official_pdp",
+        "canonical_url": "https://nourwish.com/products/keratin-supercharge-bundle",
+        "fields": {
+          "description": true,
+          "ingredients": 0,
+          "active_ingredients": 0,
+          "how_to": 0,
+          "details": 0,
+          "variants": 1
+        }
+      },
+      "preview": {
+        "headline": "Hair care set",
+        "what_it_is": "Keratin Supercharge Bundle is a leave-in hair treatment from Nourwish, with source-backed cues around leave-in care and frizz control.",
+        "why_it_stands_out": [
+          {
+            "headline": "Product cues are source-backed",
+            "body": "Reviewed PDP cues such as frizz control, leave-in care give shoppers specific comparison points within Nourwish, rather than category-only copy.",
+            "evidence_strength": "official_pdp_reviewed"
+          }
+        ],
+        "best_for": [
+          {
+            "tag": "frizz_control",
+            "label": "frizz control",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "hair_hydration",
+            "label": "hair hydration",
+            "confidence": "moderate"
+          }
+        ],
+        "shopping_highlight": "frizz control, leave-in care"
+      },
+      "writes": [
+        {
+          "kb_key": "product:ext_a9ee3bab6563dbd007b33191",
+          "action": "update",
+          "reason": "explicit_owner_delegated_assistant_replacement_review",
+          "old_hash": "bd89ad45d1c99f0928a7f28dda554f6d11cb930d89c12ae3d5d35e4a511c7497",
+          "candidate_hash": "edd61c7629f2d902a85a6db73bb3cd9d13088f25fa9a1a733a8e80cbe9ce8216",
+          "existing_weak": true,
+          "source": "pivota_insights_official_pdp_manual_review_v1",
+          "after_inventory": {
+            "product_id": "ext_a9ee3bab6563dbd007b33191",
+            "kb_key": "product:ext_a9ee3bab6563dbd007b33191",
+            "source": "pivota_insights_official_pdp_manual_review_v1",
+            "updated_at": "",
+            "last_success_at": "",
+            "title": "Keratin Supercharge Bundle",
+            "canonical_url": "",
+            "bundle_hash": "2bd2c3742e55a44287c7b73d848bb7f02cb9dbb057c127a7db59ab771ffa90b8",
+            "lane": "keep",
+            "reason": "protected_good_content",
+            "priority": 0,
+            "protected": true,
+            "displayable": true,
+            "high_quality_ready": true,
+            "human_reviewed": true,
+            "issues": [],
+            "blocking_issues": [],
+            "quality_state": "reviewed",
+            "evidence_profile": "official_pdp_reviewed_limited",
+            "evidence_rank": 1,
+            "review_tier": "assistant_reviewed",
+            "agent_readable": true,
+            "public_ready": true
+          },
+          "source_meta": {
+            "evidence_profile": "official_pdp_reviewed_limited",
+            "quality_state": "reviewed",
+            "source_origin": "official_pdp_fields",
+            "source_url": "https://nourwish.com/products/keratin-supercharge-bundle",
+            "quality_improvement": {
+              "previous_bundle_hash": "6462da92641de4fd902714817f88faa9df2545d7c013f25a318d6c4605526835",
+              "candidate_bundle_hash": "2bd2c3742e55a44287c7b73d848bb7f02cb9dbb057c127a7db59ab771ffa90b8",
+              "replacement_decision": "explicit_owner_delegated_assistant_replacement_review",
+              "existing_quality_lane": "repair",
+              "candidate_quality_lane": "keep",
+              "existing_evidence_profile": "seller_only",
+              "candidate_evidence_profile": "official_pdp_reviewed_limited"
+            }
+          }
+        },
+        {
+          "kb_key": "product:sig_2b9f613bd7be99c7a285c024",
+          "action": "insert",
+          "reason": "new_product_intel_bundle",
+          "old_hash": null,
+          "candidate_hash": "edd61c7629f2d902a85a6db73bb3cd9d13088f25fa9a1a733a8e80cbe9ce8216",
+          "existing_weak": true,
+          "source": "pivota_insights_official_pdp_manual_review_v1",
+          "after_inventory": {
+            "product_id": "ext_a9ee3bab6563dbd007b33191",
+            "kb_key": "product:sig_2b9f613bd7be99c7a285c024",
+            "source": "pivota_insights_official_pdp_manual_review_v1",
+            "updated_at": "",
+            "last_success_at": "",
+            "title": "Keratin Supercharge Bundle",
+            "canonical_url": "",
+            "bundle_hash": "2bd2c3742e55a44287c7b73d848bb7f02cb9dbb057c127a7db59ab771ffa90b8",
+            "lane": "keep",
+            "reason": "protected_good_content",
+            "priority": 0,
+            "protected": true,
+            "displayable": true,
+            "high_quality_ready": true,
+            "human_reviewed": true,
+            "issues": [],
+            "blocking_issues": [],
+            "quality_state": "reviewed",
+            "evidence_profile": "official_pdp_reviewed_limited",
+            "evidence_rank": 1,
+            "review_tier": "assistant_reviewed",
+            "agent_readable": true,
+            "public_ready": true
+          },
+          "source_meta": {
+            "evidence_profile": "official_pdp_reviewed_limited",
+            "quality_state": "reviewed",
+            "source_origin": "official_pdp_fields",
+            "source_url": "https://nourwish.com/products/keratin-supercharge-bundle",
+            "quality_improvement": {
+              "previous_bundle_hash": null,
+              "candidate_bundle_hash": "2bd2c3742e55a44287c7b73d848bb7f02cb9dbb057c127a7db59ab771ffa90b8",
+              "replacement_decision": "new_product_intel_bundle",
+              "existing_quality_lane": null,
+              "candidate_quality_lane": "keep",
+              "existing_evidence_profile": null,
+              "candidate_evidence_profile": "official_pdp_reviewed_limited"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "external_product_id": "ext_fd208834a157173a178387b3",
+      "pivota_signature_id": "sig_74248d2f7e7c24d37ed0e828",
+      "title": "Mini Airy Glow Hair Repair Oil - 10ml",
+      "brand": "Nourwish",
+      "canonical_url": "https://nourwish.com/products/mini-airy-glow-hair-repair-oil-10ml",
+      "changed": true,
+      "blocked": false,
+      "skip_reason": null,
+      "candidate_hash": "e262aa696128af86685d3943bd009ab91e73e38391bdf655a6ae2ab81001059d",
+      "evidence_profile": "official_pdp_reviewed_limited",
+      "source_coverage": {
+        "source": "official_pdp",
+        "canonical_url": "https://nourwish.com/products/mini-airy-glow-hair-repair-oil-10ml",
+        "fields": {
+          "description": true,
+          "ingredients": 0,
+          "active_ingredients": 0,
+          "how_to": 0,
+          "details": 0,
+          "variants": 1
+        }
+      },
+      "preview": {
+        "headline": "Hair treatment",
+        "what_it_is": "Mini Airy Glow Hair Repair Oil - 10ml is a hair treatment from Nourwish, with source-backed cues around frizz control.",
+        "why_it_stands_out": [
+          {
+            "headline": "Product cues are source-backed",
+            "body": "Reviewed PDP cues such as frizz control, scalp or style refresh give shoppers specific comparison points within Nourwish, rather than category-only copy.",
+            "evidence_strength": "official_pdp_reviewed"
+          }
+        ],
+        "best_for": [
+          {
+            "tag": "frizz_control",
+            "label": "frizz control",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "hair_hydration",
+            "label": "hair hydration",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "style_refresh",
+            "label": "style refresh",
+            "confidence": "moderate"
+          }
+        ],
+        "shopping_highlight": "frizz control, scalp or style refresh"
+      },
+      "writes": [
+        {
+          "kb_key": "product:ext_fd208834a157173a178387b3",
+          "action": "update",
+          "reason": "explicit_owner_delegated_assistant_replacement_review",
+          "old_hash": "89a6112ee8d8a631bba9d258491915fbe5b6ba3fe2d95f7046772bcb5ec978a2",
+          "candidate_hash": "ecdc99dbf611d4defcc4dbeae86c73e1821922096456c50da31ce13821a971c4",
+          "existing_weak": true,
+          "source": "pivota_insights_official_pdp_manual_review_v1",
+          "after_inventory": {
+            "product_id": "ext_fd208834a157173a178387b3",
+            "kb_key": "product:ext_fd208834a157173a178387b3",
+            "source": "pivota_insights_official_pdp_manual_review_v1",
+            "updated_at": "",
+            "last_success_at": "",
+            "title": "Mini Airy Glow Hair Repair Oil - 10ml",
+            "canonical_url": "",
+            "bundle_hash": "e262aa696128af86685d3943bd009ab91e73e38391bdf655a6ae2ab81001059d",
+            "lane": "keep",
+            "reason": "protected_good_content",
+            "priority": 0,
+            "protected": true,
+            "displayable": true,
+            "high_quality_ready": true,
+            "human_reviewed": true,
+            "issues": [],
+            "blocking_issues": [],
+            "quality_state": "reviewed",
+            "evidence_profile": "official_pdp_reviewed_limited",
+            "evidence_rank": 1,
+            "review_tier": "assistant_reviewed",
+            "agent_readable": true,
+            "public_ready": true
+          },
+          "source_meta": {
+            "evidence_profile": "official_pdp_reviewed_limited",
+            "quality_state": "reviewed",
+            "source_origin": "official_pdp_fields",
+            "source_url": "https://nourwish.com/products/mini-airy-glow-hair-repair-oil-10ml",
+            "quality_improvement": {
+              "previous_bundle_hash": "43402a19befa0f4b460146b9862cd5afa8836fd9554fc0484fddaef87b60bf5e",
+              "candidate_bundle_hash": "e262aa696128af86685d3943bd009ab91e73e38391bdf655a6ae2ab81001059d",
+              "replacement_decision": "explicit_owner_delegated_assistant_replacement_review",
+              "existing_quality_lane": "suppress_public",
+              "candidate_quality_lane": "keep",
+              "existing_evidence_profile": "seller_only",
+              "candidate_evidence_profile": "official_pdp_reviewed_limited"
+            }
+          }
+        },
+        {
+          "kb_key": "product:sig_74248d2f7e7c24d37ed0e828",
+          "action": "insert",
+          "reason": "new_product_intel_bundle",
+          "old_hash": null,
+          "candidate_hash": "ecdc99dbf611d4defcc4dbeae86c73e1821922096456c50da31ce13821a971c4",
+          "existing_weak": true,
+          "source": "pivota_insights_official_pdp_manual_review_v1",
+          "after_inventory": {
+            "product_id": "ext_fd208834a157173a178387b3",
+            "kb_key": "product:sig_74248d2f7e7c24d37ed0e828",
+            "source": "pivota_insights_official_pdp_manual_review_v1",
+            "updated_at": "",
+            "last_success_at": "",
+            "title": "Mini Airy Glow Hair Repair Oil - 10ml",
+            "canonical_url": "",
+            "bundle_hash": "e262aa696128af86685d3943bd009ab91e73e38391bdf655a6ae2ab81001059d",
+            "lane": "keep",
+            "reason": "protected_good_content",
+            "priority": 0,
+            "protected": true,
+            "displayable": true,
+            "high_quality_ready": true,
+            "human_reviewed": true,
+            "issues": [],
+            "blocking_issues": [],
+            "quality_state": "reviewed",
+            "evidence_profile": "official_pdp_reviewed_limited",
+            "evidence_rank": 1,
+            "review_tier": "assistant_reviewed",
+            "agent_readable": true,
+            "public_ready": true
+          },
+          "source_meta": {
+            "evidence_profile": "official_pdp_reviewed_limited",
+            "quality_state": "reviewed",
+            "source_origin": "official_pdp_fields",
+            "source_url": "https://nourwish.com/products/mini-airy-glow-hair-repair-oil-10ml",
+            "quality_improvement": {
+              "previous_bundle_hash": null,
+              "candidate_bundle_hash": "e262aa696128af86685d3943bd009ab91e73e38391bdf655a6ae2ab81001059d",
+              "replacement_decision": "new_product_intel_bundle",
+              "existing_quality_lane": null,
+              "candidate_quality_lane": "keep",
+              "existing_evidence_profile": null,
+              "candidate_evidence_profile": "official_pdp_reviewed_limited"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "external_product_id": "ext_67a26bdc59ccf41e100c4ebb",
+      "pivota_signature_id": "sig_c84ba86f8f90687305e0c7b6",
+      "title": "Mini Airy Glow Keratin Water Treatment 25ml",
+      "brand": "Nourwish",
+      "canonical_url": "https://nourwish.com/products/mini-airy-glow-keratin-water-treatment-25ml",
+      "changed": true,
+      "blocked": false,
+      "skip_reason": null,
+      "candidate_hash": "407a0f5b3991a85fcdf4fb5d5314ef97a240c5c821bb3bfdaad453c79d45366d",
+      "evidence_profile": "official_pdp_reviewed_limited",
+      "source_coverage": {
+        "source": "official_pdp",
+        "canonical_url": "https://nourwish.com/products/mini-airy-glow-keratin-water-treatment-25ml",
+        "fields": {
+          "description": true,
+          "ingredients": 0,
+          "active_ingredients": 0,
+          "how_to": 0,
+          "details": 0,
+          "variants": 1
+        }
+      },
+      "preview": {
+        "headline": "Hair treatment",
+        "what_it_is": "Mini Airy Glow Keratin Water Treatment 25ml is a hair treatment from Nourwish.",
+        "why_it_stands_out": [
+          {
+            "headline": "Official PDP evidence only",
+            "body": "This insight is limited to the official product fields currently available for Mini Airy Glow Keratin Water Treatment 25ml.",
+            "evidence_strength": "official_pdp_reviewed_limited"
+          }
+        ],
+        "best_for": [
+          {
+            "tag": "hair_treatment",
+            "label": "Hair treatment",
+            "confidence": "moderate"
+          }
+        ],
+        "shopping_highlight": "Hair treatment"
+      },
+      "writes": [
+        {
+          "kb_key": "product:ext_67a26bdc59ccf41e100c4ebb",
+          "action": "update",
+          "reason": "explicit_owner_delegated_assistant_replacement_review",
+          "old_hash": "673cd89e36aa74a4aad0d08f3efcc9dc3b27115c4539de37b31a93c107f42ecf",
+          "candidate_hash": "59812f5de7601689e21e9f21d48de002fc5a4edce127376441a26c3140d1f337",
+          "existing_weak": true,
+          "source": "pivota_insights_official_pdp_manual_review_v1",
+          "after_inventory": {
+            "product_id": "ext_67a26bdc59ccf41e100c4ebb",
+            "kb_key": "product:ext_67a26bdc59ccf41e100c4ebb",
+            "source": "pivota_insights_official_pdp_manual_review_v1",
+            "updated_at": "",
+            "last_success_at": "",
+            "title": "Mini Airy Glow Keratin Water Treatment 25ml",
+            "canonical_url": "",
+            "bundle_hash": "407a0f5b3991a85fcdf4fb5d5314ef97a240c5c821bb3bfdaad453c79d45366d",
+            "lane": "keep",
+            "reason": "protected_good_content",
+            "priority": 0,
+            "protected": true,
+            "displayable": true,
+            "high_quality_ready": true,
+            "human_reviewed": true,
+            "issues": [],
+            "blocking_issues": [],
+            "quality_state": "reviewed",
+            "evidence_profile": "official_pdp_reviewed_limited",
+            "evidence_rank": 1,
+            "review_tier": "assistant_reviewed",
+            "agent_readable": true,
+            "public_ready": true
+          },
+          "source_meta": {
+            "evidence_profile": "official_pdp_reviewed_limited",
+            "quality_state": "reviewed",
+            "source_origin": "official_pdp_fields",
+            "source_url": "https://nourwish.com/products/mini-airy-glow-keratin-water-treatment-25ml",
+            "quality_improvement": {
+              "previous_bundle_hash": "ce05b65209bef5e3840b686fdcfe578a5cfe093b5222a491c02586673e5838fe",
+              "candidate_bundle_hash": "407a0f5b3991a85fcdf4fb5d5314ef97a240c5c821bb3bfdaad453c79d45366d",
+              "replacement_decision": "explicit_owner_delegated_assistant_replacement_review",
+              "existing_quality_lane": "repair",
+              "candidate_quality_lane": "keep",
+              "existing_evidence_profile": "seller_only",
+              "candidate_evidence_profile": "official_pdp_reviewed_limited"
+            }
+          }
+        },
+        {
+          "kb_key": "product:sig_c84ba86f8f90687305e0c7b6",
+          "action": "insert",
+          "reason": "new_product_intel_bundle",
+          "old_hash": null,
+          "candidate_hash": "59812f5de7601689e21e9f21d48de002fc5a4edce127376441a26c3140d1f337",
+          "existing_weak": true,
+          "source": "pivota_insights_official_pdp_manual_review_v1",
+          "after_inventory": {
+            "product_id": "ext_67a26bdc59ccf41e100c4ebb",
+            "kb_key": "product:sig_c84ba86f8f90687305e0c7b6",
+            "source": "pivota_insights_official_pdp_manual_review_v1",
+            "updated_at": "",
+            "last_success_at": "",
+            "title": "Mini Airy Glow Keratin Water Treatment 25ml",
+            "canonical_url": "",
+            "bundle_hash": "407a0f5b3991a85fcdf4fb5d5314ef97a240c5c821bb3bfdaad453c79d45366d",
+            "lane": "keep",
+            "reason": "protected_good_content",
+            "priority": 0,
+            "protected": true,
+            "displayable": true,
+            "high_quality_ready": true,
+            "human_reviewed": true,
+            "issues": [],
+            "blocking_issues": [],
+            "quality_state": "reviewed",
+            "evidence_profile": "official_pdp_reviewed_limited",
+            "evidence_rank": 1,
+            "review_tier": "assistant_reviewed",
+            "agent_readable": true,
+            "public_ready": true
+          },
+          "source_meta": {
+            "evidence_profile": "official_pdp_reviewed_limited",
+            "quality_state": "reviewed",
+            "source_origin": "official_pdp_fields",
+            "source_url": "https://nourwish.com/products/mini-airy-glow-keratin-water-treatment-25ml",
+            "quality_improvement": {
+              "previous_bundle_hash": null,
+              "candidate_bundle_hash": "407a0f5b3991a85fcdf4fb5d5314ef97a240c5c821bb3bfdaad453c79d45366d",
+              "replacement_decision": "new_product_intel_bundle",
+              "existing_quality_lane": null,
+              "candidate_quality_lane": "keep",
+              "existing_evidence_profile": null,
+              "candidate_evidence_profile": "official_pdp_reviewed_limited"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "external_product_id": "ext_bab8b6f5848f4e9306b0b792",
+      "pivota_signature_id": "sig_6b9302bfef3867e8bd60233e",
+      "title": "Mini Scalp Retreat Regenerating Shampoo 59ml",
+      "brand": "Nourwish",
+      "canonical_url": "https://nourwish.com/products/mini-scalp-retreat-regenerating-shampoo-59ml",
+      "changed": true,
+      "blocked": false,
+      "skip_reason": null,
+      "candidate_hash": "3c310bc32e4b33dd97bb8741a2b68b74ee19db5a8629a589cc27725eea7faff4",
+      "evidence_profile": "official_pdp_reviewed_limited",
+      "source_coverage": {
+        "source": "official_pdp",
+        "canonical_url": "https://nourwish.com/products/mini-scalp-retreat-regenerating-shampoo-59ml",
+        "fields": {
+          "description": true,
+          "ingredients": 0,
+          "active_ingredients": 0,
+          "how_to": 0,
+          "details": 0,
+          "variants": 1
+        }
+      },
+      "preview": {
+        "headline": "Hair treatment",
+        "what_it_is": "Mini Scalp Retreat Regenerating Shampoo 59ml is a hair treatment from Nourwish, with source-backed cues around volume-texture boost.",
+        "why_it_stands_out": [
+          {
+            "headline": "Product cues are source-backed",
+            "body": "Reviewed PDP cues such as scalp or style refresh give shoppers specific comparison points within Nourwish, rather than category-only copy.",
+            "evidence_strength": "official_pdp_reviewed"
+          }
+        ],
+        "best_for": [
+          {
+            "tag": "scalp_or_style_refresh",
+            "label": "scalp or style refresh",
+            "confidence": "moderate"
+          }
+        ],
+        "shopping_highlight": "scalp or style refresh"
+      },
+      "writes": [
+        {
+          "kb_key": "product:ext_bab8b6f5848f4e9306b0b792",
+          "action": "update",
+          "reason": "explicit_owner_delegated_assistant_replacement_review",
+          "old_hash": "4ba63a41146bc78325f35abd36246c0411961d201fc415cdf71e171535118fa0",
+          "candidate_hash": "fa13cd2d712d35f783d252d3ca41df4df54999713a74241b88e91f4e90fda9ed",
+          "existing_weak": true,
+          "source": "pivota_insights_official_pdp_manual_review_v1",
+          "after_inventory": {
+            "product_id": "ext_bab8b6f5848f4e9306b0b792",
+            "kb_key": "product:ext_bab8b6f5848f4e9306b0b792",
+            "source": "pivota_insights_official_pdp_manual_review_v1",
+            "updated_at": "",
+            "last_success_at": "",
+            "title": "Mini Scalp Retreat Regenerating Shampoo 59ml",
+            "canonical_url": "",
+            "bundle_hash": "3c310bc32e4b33dd97bb8741a2b68b74ee19db5a8629a589cc27725eea7faff4",
+            "lane": "keep",
+            "reason": "protected_good_content",
+            "priority": 0,
+            "protected": true,
+            "displayable": true,
+            "high_quality_ready": true,
+            "human_reviewed": true,
+            "issues": [],
+            "blocking_issues": [],
+            "quality_state": "reviewed",
+            "evidence_profile": "official_pdp_reviewed_limited",
+            "evidence_rank": 1,
+            "review_tier": "assistant_reviewed",
+            "agent_readable": true,
+            "public_ready": true
+          },
+          "source_meta": {
+            "evidence_profile": "official_pdp_reviewed_limited",
+            "quality_state": "reviewed",
+            "source_origin": "official_pdp_fields",
+            "source_url": "https://nourwish.com/products/mini-scalp-retreat-regenerating-shampoo-59ml",
+            "quality_improvement": {
+              "previous_bundle_hash": "360ba8a6042d0e39466bba5c7c0c43af5e7e5b71a5f8884ea642d936a67d1022",
+              "candidate_bundle_hash": "3c310bc32e4b33dd97bb8741a2b68b74ee19db5a8629a589cc27725eea7faff4",
+              "replacement_decision": "explicit_owner_delegated_assistant_replacement_review",
+              "existing_quality_lane": "repair",
+              "candidate_quality_lane": "keep",
+              "existing_evidence_profile": "seller_only",
+              "candidate_evidence_profile": "official_pdp_reviewed_limited"
+            }
+          }
+        },
+        {
+          "kb_key": "product:sig_6b9302bfef3867e8bd60233e",
+          "action": "insert",
+          "reason": "new_product_intel_bundle",
+          "old_hash": null,
+          "candidate_hash": "fa13cd2d712d35f783d252d3ca41df4df54999713a74241b88e91f4e90fda9ed",
+          "existing_weak": true,
+          "source": "pivota_insights_official_pdp_manual_review_v1",
+          "after_inventory": {
+            "product_id": "ext_bab8b6f5848f4e9306b0b792",
+            "kb_key": "product:sig_6b9302bfef3867e8bd60233e",
+            "source": "pivota_insights_official_pdp_manual_review_v1",
+            "updated_at": "",
+            "last_success_at": "",
+            "title": "Mini Scalp Retreat Regenerating Shampoo 59ml",
+            "canonical_url": "",
+            "bundle_hash": "3c310bc32e4b33dd97bb8741a2b68b74ee19db5a8629a589cc27725eea7faff4",
+            "lane": "keep",
+            "reason": "protected_good_content",
+            "priority": 0,
+            "protected": true,
+            "displayable": true,
+            "high_quality_ready": true,
+            "human_reviewed": true,
+            "issues": [],
+            "blocking_issues": [],
+            "quality_state": "reviewed",
+            "evidence_profile": "official_pdp_reviewed_limited",
+            "evidence_rank": 1,
+            "review_tier": "assistant_reviewed",
+            "agent_readable": true,
+            "public_ready": true
+          },
+          "source_meta": {
+            "evidence_profile": "official_pdp_reviewed_limited",
+            "quality_state": "reviewed",
+            "source_origin": "official_pdp_fields",
+            "source_url": "https://nourwish.com/products/mini-scalp-retreat-regenerating-shampoo-59ml",
+            "quality_improvement": {
+              "previous_bundle_hash": null,
+              "candidate_bundle_hash": "3c310bc32e4b33dd97bb8741a2b68b74ee19db5a8629a589cc27725eea7faff4",
+              "replacement_decision": "new_product_intel_bundle",
+              "existing_quality_lane": null,
+              "candidate_quality_lane": "keep",
+              "existing_evidence_profile": null,
+              "candidate_evidence_profile": "official_pdp_reviewed_limited"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "external_product_id": "ext_9f68582b0148a91a4c94a209",
+      "pivota_signature_id": "sig_1f9ab1c5a7284f8c7bc064f5",
+      "title": "Mini Scalp Retreat Weightless Conditioner 59ml",
+      "brand": "Nourwish",
+      "canonical_url": "https://nourwish.com/products/mini-scalp-retreat-weightless-conditioner-59ml",
+      "changed": true,
+      "blocked": false,
+      "skip_reason": null,
+      "candidate_hash": "d0a6a6c07590e71ee66c3937c4bb0647a6d6159ff61e800bee7c2206f62fe70c",
+      "evidence_profile": "official_pdp_reviewed_limited",
+      "source_coverage": {
+        "source": "official_pdp",
+        "canonical_url": "https://nourwish.com/products/mini-scalp-retreat-weightless-conditioner-59ml",
+        "fields": {
+          "description": true,
+          "ingredients": 0,
+          "active_ingredients": 0,
+          "how_to": 0,
+          "details": 0,
+          "variants": 1
+        }
+      },
+      "preview": {
+        "headline": "Hair treatment",
+        "what_it_is": "Mini Scalp Retreat Weightless Conditioner 59ml is a leave-in hair treatment from Nourwish, with source-backed cues around volume-texture boost, leave-in care and frizz control.",
+        "why_it_stands_out": [
+          {
+            "headline": "Product cues are source-backed",
+            "body": "Reviewed PDP cues such as frizz control, leave-in care, scalp or style refresh give shoppers specific comparison points within Nourwish, rather than category-only copy.",
+            "evidence_strength": "official_pdp_reviewed"
+          }
+        ],
+        "best_for": [
+          {
+            "tag": "frizz_control",
+            "label": "frizz control",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "hair_hydration",
+            "label": "hair hydration",
+            "confidence": "moderate"
+          }
+        ],
+        "shopping_highlight": "frizz control, leave-in care"
+      },
+      "writes": [
+        {
+          "kb_key": "product:ext_9f68582b0148a91a4c94a209",
+          "action": "update",
+          "reason": "explicit_owner_delegated_assistant_replacement_review",
+          "old_hash": "f3b833c0c240ecffff79dfdf1622ad32047aa28cf0e9c5937ea39cca632c7aae",
+          "candidate_hash": "f82ebb56a96b2ce1d20f40fa4eeb87f4bb425e72d51fc7648d8821af81dd9f1e",
+          "existing_weak": true,
+          "source": "pivota_insights_official_pdp_manual_review_v1",
+          "after_inventory": {
+            "product_id": "ext_9f68582b0148a91a4c94a209",
+            "kb_key": "product:ext_9f68582b0148a91a4c94a209",
+            "source": "pivota_insights_official_pdp_manual_review_v1",
+            "updated_at": "",
+            "last_success_at": "",
+            "title": "Mini Scalp Retreat Weightless Conditioner 59ml",
+            "canonical_url": "",
+            "bundle_hash": "d0a6a6c07590e71ee66c3937c4bb0647a6d6159ff61e800bee7c2206f62fe70c",
+            "lane": "keep",
+            "reason": "protected_good_content",
+            "priority": 0,
+            "protected": true,
+            "displayable": true,
+            "high_quality_ready": true,
+            "human_reviewed": true,
+            "issues": [],
+            "blocking_issues": [],
+            "quality_state": "reviewed",
+            "evidence_profile": "official_pdp_reviewed_limited",
+            "evidence_rank": 1,
+            "review_tier": "assistant_reviewed",
+            "agent_readable": true,
+            "public_ready": true
+          },
+          "source_meta": {
+            "evidence_profile": "official_pdp_reviewed_limited",
+            "quality_state": "reviewed",
+            "source_origin": "official_pdp_fields",
+            "source_url": "https://nourwish.com/products/mini-scalp-retreat-weightless-conditioner-59ml",
+            "quality_improvement": {
+              "previous_bundle_hash": "b9cd71ac3d4d25347d631aab82420cd0a9cc037c5c566b7e26c02fc47a85f6b0",
+              "candidate_bundle_hash": "d0a6a6c07590e71ee66c3937c4bb0647a6d6159ff61e800bee7c2206f62fe70c",
+              "replacement_decision": "explicit_owner_delegated_assistant_replacement_review",
+              "existing_quality_lane": "repair",
+              "candidate_quality_lane": "keep",
+              "existing_evidence_profile": "seller_only",
+              "candidate_evidence_profile": "official_pdp_reviewed_limited"
+            }
+          }
+        },
+        {
+          "kb_key": "product:sig_1f9ab1c5a7284f8c7bc064f5",
+          "action": "insert",
+          "reason": "new_product_intel_bundle",
+          "old_hash": null,
+          "candidate_hash": "f82ebb56a96b2ce1d20f40fa4eeb87f4bb425e72d51fc7648d8821af81dd9f1e",
+          "existing_weak": true,
+          "source": "pivota_insights_official_pdp_manual_review_v1",
+          "after_inventory": {
+            "product_id": "ext_9f68582b0148a91a4c94a209",
+            "kb_key": "product:sig_1f9ab1c5a7284f8c7bc064f5",
+            "source": "pivota_insights_official_pdp_manual_review_v1",
+            "updated_at": "",
+            "last_success_at": "",
+            "title": "Mini Scalp Retreat Weightless Conditioner 59ml",
+            "canonical_url": "",
+            "bundle_hash": "d0a6a6c07590e71ee66c3937c4bb0647a6d6159ff61e800bee7c2206f62fe70c",
+            "lane": "keep",
+            "reason": "protected_good_content",
+            "priority": 0,
+            "protected": true,
+            "displayable": true,
+            "high_quality_ready": true,
+            "human_reviewed": true,
+            "issues": [],
+            "blocking_issues": [],
+            "quality_state": "reviewed",
+            "evidence_profile": "official_pdp_reviewed_limited",
+            "evidence_rank": 1,
+            "review_tier": "assistant_reviewed",
+            "agent_readable": true,
+            "public_ready": true
+          },
+          "source_meta": {
+            "evidence_profile": "official_pdp_reviewed_limited",
+            "quality_state": "reviewed",
+            "source_origin": "official_pdp_fields",
+            "source_url": "https://nourwish.com/products/mini-scalp-retreat-weightless-conditioner-59ml",
+            "quality_improvement": {
+              "previous_bundle_hash": null,
+              "candidate_bundle_hash": "d0a6a6c07590e71ee66c3937c4bb0647a6d6159ff61e800bee7c2206f62fe70c",
+              "replacement_decision": "new_product_intel_bundle",
+              "existing_quality_lane": null,
+              "candidate_quality_lane": "keep",
+              "existing_evidence_profile": null,
+              "candidate_evidence_profile": "official_pdp_reviewed_limited"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "external_product_id": "ext_66ad03bf823a3c81b0ad5662",
+      "pivota_signature_id": "sig_9ab32dfcd39e880e4972c312",
+      "title": "Nourwish Crease-Free Clips",
+      "brand": "Nourwish",
+      "canonical_url": "https://nourwish.com/products/nourwish-crease-free-clips",
+      "changed": true,
+      "blocked": false,
+      "skip_reason": null,
+      "candidate_hash": "93b39181d5728b4f0e895e21630050e164b8e317e40f6fb6d75357bd50dd1fac",
+      "evidence_profile": "official_pdp_reviewed_limited",
+      "source_coverage": {
+        "source": "official_pdp",
+        "canonical_url": "https://nourwish.com/products/nourwish-crease-free-clips",
+        "fields": {
+          "description": true,
+          "ingredients": 0,
+          "active_ingredients": 0,
+          "how_to": 0,
+          "details": 0,
+          "variants": 1
+        }
+      },
+      "preview": {
+        "headline": "Hair tool",
+        "what_it_is": "Nourwish Crease-Free Clips is a hair clip set from Nourwish, with source-backed cues around hair sectioning.",
+        "why_it_stands_out": [
+          {
+            "headline": "Hair-tool cues are specific",
+            "body": "Reviewed tool cues such as crease-free hair control, hair sectioning identify how the accessory fits into a hair or scalp routine without treating it like a formula product.",
+            "evidence_strength": "official_pdp_reviewed"
+          }
+        ],
+        "best_for": [
+          {
+            "tag": "hair_sectioning",
+            "label": "hair sectioning",
+            "confidence": "moderate"
+          }
+        ],
+        "shopping_highlight": "crease-free hair control"
+      },
+      "writes": [
+        {
+          "kb_key": "product:ext_66ad03bf823a3c81b0ad5662",
+          "action": "insert",
+          "reason": "new_product_intel_bundle",
+          "old_hash": null,
+          "candidate_hash": "fced29bc6e972b2423b087c896cf026f024a01ffba7ba293db83e23762754db2",
+          "existing_weak": true,
+          "source": "pivota_insights_official_pdp_manual_review_v1",
+          "after_inventory": {
+            "product_id": "ext_66ad03bf823a3c81b0ad5662",
+            "kb_key": "product:ext_66ad03bf823a3c81b0ad5662",
+            "source": "pivota_insights_official_pdp_manual_review_v1",
+            "updated_at": "",
+            "last_success_at": "",
+            "title": "Nourwish Crease-Free Clips",
+            "canonical_url": "",
+            "bundle_hash": "93b39181d5728b4f0e895e21630050e164b8e317e40f6fb6d75357bd50dd1fac",
+            "lane": "keep",
+            "reason": "protected_good_content",
+            "priority": 0,
+            "protected": true,
+            "displayable": true,
+            "high_quality_ready": true,
+            "human_reviewed": true,
+            "issues": [],
+            "blocking_issues": [],
+            "quality_state": "reviewed",
+            "evidence_profile": "official_pdp_reviewed_limited",
+            "evidence_rank": 1,
+            "review_tier": "assistant_reviewed",
+            "agent_readable": true,
+            "public_ready": true
+          },
+          "source_meta": {
+            "evidence_profile": "official_pdp_reviewed_limited",
+            "quality_state": "reviewed",
+            "source_origin": "official_pdp_fields",
+            "source_url": "https://nourwish.com/products/nourwish-crease-free-clips",
+            "quality_improvement": {
+              "previous_bundle_hash": null,
+              "candidate_bundle_hash": "93b39181d5728b4f0e895e21630050e164b8e317e40f6fb6d75357bd50dd1fac",
+              "replacement_decision": "new_product_intel_bundle",
+              "existing_quality_lane": null,
+              "candidate_quality_lane": "keep",
+              "existing_evidence_profile": null,
+              "candidate_evidence_profile": "official_pdp_reviewed_limited"
+            }
+          }
+        },
+        {
+          "kb_key": "product:sig_9ab32dfcd39e880e4972c312",
+          "action": "insert",
+          "reason": "new_product_intel_bundle",
+          "old_hash": null,
+          "candidate_hash": "fced29bc6e972b2423b087c896cf026f024a01ffba7ba293db83e23762754db2",
+          "existing_weak": true,
+          "source": "pivota_insights_official_pdp_manual_review_v1",
+          "after_inventory": {
+            "product_id": "ext_66ad03bf823a3c81b0ad5662",
+            "kb_key": "product:sig_9ab32dfcd39e880e4972c312",
+            "source": "pivota_insights_official_pdp_manual_review_v1",
+            "updated_at": "",
+            "last_success_at": "",
+            "title": "Nourwish Crease-Free Clips",
+            "canonical_url": "",
+            "bundle_hash": "93b39181d5728b4f0e895e21630050e164b8e317e40f6fb6d75357bd50dd1fac",
+            "lane": "keep",
+            "reason": "protected_good_content",
+            "priority": 0,
+            "protected": true,
+            "displayable": true,
+            "high_quality_ready": true,
+            "human_reviewed": true,
+            "issues": [],
+            "blocking_issues": [],
+            "quality_state": "reviewed",
+            "evidence_profile": "official_pdp_reviewed_limited",
+            "evidence_rank": 1,
+            "review_tier": "assistant_reviewed",
+            "agent_readable": true,
+            "public_ready": true
+          },
+          "source_meta": {
+            "evidence_profile": "official_pdp_reviewed_limited",
+            "quality_state": "reviewed",
+            "source_origin": "official_pdp_fields",
+            "source_url": "https://nourwish.com/products/nourwish-crease-free-clips",
+            "quality_improvement": {
+              "previous_bundle_hash": null,
+              "candidate_bundle_hash": "93b39181d5728b4f0e895e21630050e164b8e317e40f6fb6d75357bd50dd1fac",
+              "replacement_decision": "new_product_intel_bundle",
+              "existing_quality_lane": null,
+              "candidate_quality_lane": "keep",
+              "existing_evidence_profile": null,
+              "candidate_evidence_profile": "official_pdp_reviewed_limited"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "external_product_id": "ext_be02532bcc3bf896bf0fea85",
+      "pivota_signature_id": "sig_1c72b9b242e366581c6c91e8",
+      "title": "Nourwish Halo Crown Gold Scalp Brush",
+      "brand": "Nourwish",
+      "canonical_url": "https://nourwish.com/products/nourwish-halo-crown-gold-scalp-brush",
+      "changed": true,
+      "blocked": false,
+      "skip_reason": null,
+      "candidate_hash": "e239c0f789026f69ab5dde5be97ae307f1dc83a3317e3861254ca7ae1fe037dc",
+      "evidence_profile": "official_pdp_reviewed_limited",
+      "source_coverage": {
+        "source": "official_pdp",
+        "canonical_url": "https://nourwish.com/products/nourwish-halo-crown-gold-scalp-brush",
+        "fields": {
+          "description": true,
+          "ingredients": 0,
+          "active_ingredients": 0,
+          "how_to": 0,
+          "details": 0,
+          "variants": 1
+        }
+      },
+      "preview": {
+        "headline": "Hair tool",
+        "what_it_is": "Nourwish Halo Crown Gold Scalp Brush is a scalp brush from Nourwish, with source-backed cues around scalp-use cues.",
+        "why_it_stands_out": [
+          {
+            "headline": "Hair-tool cues are specific",
+            "body": "Reviewed tool cues such as scalp massage, shampoo brush format, hair sectioning identify how the accessory fits into a hair or scalp routine without treating it like a formula product.",
+            "evidence_strength": "official_pdp_reviewed"
+          }
+        ],
+        "best_for": [
+          {
+            "tag": "scalp_massage",
+            "label": "scalp massage",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "shampoo_routine_tool",
+            "label": "shampoo routine tool",
+            "confidence": "moderate"
+          }
+        ],
+        "shopping_highlight": "scalp massage, shampoo brush format"
+      },
+      "writes": [
+        {
+          "kb_key": "product:ext_be02532bcc3bf896bf0fea85",
+          "action": "update",
+          "reason": "explicit_owner_delegated_assistant_replacement_review",
+          "old_hash": "54554d38fda1bcf05feb0f74b3e23976492cc113f3841f3c0cc8d943973b20b0",
+          "candidate_hash": "80d8217403efdc8af6546bee75c263c95921da4931fb438b14c94543a387d411",
+          "existing_weak": true,
+          "source": "pivota_insights_official_pdp_manual_review_v1",
+          "after_inventory": {
+            "product_id": "ext_be02532bcc3bf896bf0fea85",
+            "kb_key": "product:ext_be02532bcc3bf896bf0fea85",
+            "source": "pivota_insights_official_pdp_manual_review_v1",
+            "updated_at": "",
+            "last_success_at": "",
+            "title": "Nourwish Halo Crown Gold Scalp Brush",
+            "canonical_url": "",
+            "bundle_hash": "e239c0f789026f69ab5dde5be97ae307f1dc83a3317e3861254ca7ae1fe037dc",
+            "lane": "keep",
+            "reason": "protected_good_content",
+            "priority": 0,
+            "protected": true,
+            "displayable": true,
+            "high_quality_ready": true,
+            "human_reviewed": true,
+            "issues": [],
+            "blocking_issues": [],
+            "quality_state": "reviewed",
+            "evidence_profile": "official_pdp_reviewed_limited",
+            "evidence_rank": 1,
+            "review_tier": "assistant_reviewed",
+            "agent_readable": true,
+            "public_ready": true
+          },
+          "source_meta": {
+            "evidence_profile": "official_pdp_reviewed_limited",
+            "quality_state": "reviewed",
+            "source_origin": "official_pdp_fields",
+            "source_url": "https://nourwish.com/products/nourwish-halo-crown-gold-scalp-brush",
+            "quality_improvement": {
+              "previous_bundle_hash": "0a6799fc7cef7b020516db38a6fb8139ee52913a22f0f5ce4abfdcffa5ce6c91",
+              "candidate_bundle_hash": "e239c0f789026f69ab5dde5be97ae307f1dc83a3317e3861254ca7ae1fe037dc",
+              "replacement_decision": "explicit_owner_delegated_assistant_replacement_review",
+              "existing_quality_lane": "repair",
+              "candidate_quality_lane": "keep",
+              "existing_evidence_profile": "seller_only",
+              "candidate_evidence_profile": "official_pdp_reviewed_limited"
+            }
+          }
+        },
+        {
+          "kb_key": "product:sig_1c72b9b242e366581c6c91e8",
+          "action": "insert",
+          "reason": "new_product_intel_bundle",
+          "old_hash": null,
+          "candidate_hash": "80d8217403efdc8af6546bee75c263c95921da4931fb438b14c94543a387d411",
+          "existing_weak": true,
+          "source": "pivota_insights_official_pdp_manual_review_v1",
+          "after_inventory": {
+            "product_id": "ext_be02532bcc3bf896bf0fea85",
+            "kb_key": "product:sig_1c72b9b242e366581c6c91e8",
+            "source": "pivota_insights_official_pdp_manual_review_v1",
+            "updated_at": "",
+            "last_success_at": "",
+            "title": "Nourwish Halo Crown Gold Scalp Brush",
+            "canonical_url": "",
+            "bundle_hash": "e239c0f789026f69ab5dde5be97ae307f1dc83a3317e3861254ca7ae1fe037dc",
+            "lane": "keep",
+            "reason": "protected_good_content",
+            "priority": 0,
+            "protected": true,
+            "displayable": true,
+            "high_quality_ready": true,
+            "human_reviewed": true,
+            "issues": [],
+            "blocking_issues": [],
+            "quality_state": "reviewed",
+            "evidence_profile": "official_pdp_reviewed_limited",
+            "evidence_rank": 1,
+            "review_tier": "assistant_reviewed",
+            "agent_readable": true,
+            "public_ready": true
+          },
+          "source_meta": {
+            "evidence_profile": "official_pdp_reviewed_limited",
+            "quality_state": "reviewed",
+            "source_origin": "official_pdp_fields",
+            "source_url": "https://nourwish.com/products/nourwish-halo-crown-gold-scalp-brush",
+            "quality_improvement": {
+              "previous_bundle_hash": null,
+              "candidate_bundle_hash": "e239c0f789026f69ab5dde5be97ae307f1dc83a3317e3861254ca7ae1fe037dc",
+              "replacement_decision": "new_product_intel_bundle",
+              "existing_quality_lane": null,
+              "candidate_quality_lane": "keep",
+              "existing_evidence_profile": null,
+              "candidate_evidence_profile": "official_pdp_reviewed_limited"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "external_product_id": "ext_ac846cee1307988559a87e27",
+      "pivota_signature_id": "sig_101111c452aa16957042cdba",
+      "title": "Nourwish Holiday Velvet Bag",
+      "brand": "Nourwish",
+      "canonical_url": "https://nourwish.com/products/nourwish-holiday-velvet-bag",
+      "changed": false,
+      "blocked": false,
+      "skip_reason": "no_safe_writes",
+      "candidate_hash": "3870bb1f053651b38e6478e6e8f787b5ca105c9841985a561728fa058ab25065",
+      "evidence_profile": "official_pdp_reviewed_limited",
+      "source_coverage": {
+        "source": "official_pdp",
+        "canonical_url": "https://nourwish.com/products/nourwish-holiday-velvet-bag",
+        "fields": {
+          "description": true,
+          "ingredients": 0,
+          "active_ingredients": 0,
+          "how_to": 0,
+          "details": 0,
+          "variants": 1
+        }
+      },
+      "preview": {
+        "headline": "Beauty accessory",
+        "what_it_is": "Nourwish Holiday Velvet Bag is a beauty accessory from Nourwish. This luxurious velvet zipper pouch is perfect for organizing your everyday essentials or adding a touch of sophistication to your gifts.",
+        "why_it_stands_out": [
+          {
+            "headline": "Product cues are source-backed",
+            "body": "Reviewed PDP cues such as travel organization, compact accessory give shoppers specific comparison points within Nourwish, rather than category-only copy.",
+            "evidence_strength": "official_pdp_reviewed"
+          }
+        ],
+        "best_for": [
+          {
+            "tag": "makeup_organization",
+            "label": "makeup organization",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "travel",
+            "label": "travel",
+            "confidence": "moderate"
+          }
+        ],
+        "shopping_highlight": "travel organization, compact accessory"
+      },
+      "writes": [
+        {
+          "kb_key": "product:ext_ac846cee1307988559a87e27",
+          "action": "skip",
+          "reason": "candidate_not_publish_quality_ready",
+          "old_hash": null,
+          "candidate_hash": "bd7cd332548f56f9731f56f38254aec9f70e8b421722b6e0e8b4dbc975cae103",
+          "existing_weak": true,
+          "assessment": {
+            "allowed": false,
+            "reason": "candidate_not_publish_quality_ready",
+            "candidate": {
+              "lane": "regenerate",
+              "reason": "requires_regeneration",
+              "priority": 95,
+              "protected": false,
+              "displayable": true,
+              "high_quality_ready": false,
+              "human_reviewed": true,
+              "issues": [
+                "public_generic_marketing_copy"
+              ],
+              "blocking_issues": [
+                "public_generic_marketing_copy"
+              ],
+              "quality_state": "reviewed",
+              "evidence_profile": "official_pdp_reviewed_limited",
+              "evidence_rank": 1,
+              "review_tier": "assistant_reviewed"
+            },
+            "candidate_bundle_hash": "3870bb1f053651b38e6478e6e8f787b5ca105c9841985a561728fa058ab25065"
+          }
+        },
+        {
+          "kb_key": "product:sig_101111c452aa16957042cdba",
+          "action": "skip",
+          "reason": "candidate_not_publish_quality_ready",
+          "old_hash": null,
+          "candidate_hash": "bd7cd332548f56f9731f56f38254aec9f70e8b421722b6e0e8b4dbc975cae103",
+          "existing_weak": true,
+          "assessment": {
+            "allowed": false,
+            "reason": "candidate_not_publish_quality_ready",
+            "candidate": {
+              "lane": "regenerate",
+              "reason": "requires_regeneration",
+              "priority": 95,
+              "protected": false,
+              "displayable": true,
+              "high_quality_ready": false,
+              "human_reviewed": true,
+              "issues": [
+                "public_generic_marketing_copy"
+              ],
+              "blocking_issues": [
+                "public_generic_marketing_copy"
+              ],
+              "quality_state": "reviewed",
+              "evidence_profile": "official_pdp_reviewed_limited",
+              "evidence_rank": 1,
+              "review_tier": "assistant_reviewed"
+            },
+            "candidate_bundle_hash": "3870bb1f053651b38e6478e6e8f787b5ca105c9841985a561728fa058ab25065"
+          }
+        }
+      ]
+    },
+    {
+      "external_product_id": "ext_eb5bc0de255d4342591d9b06",
+      "pivota_signature_id": "sig_61d0c8c2d9e60a2646300f95",
+      "title": "Nourwish Recharge & Restart Trio",
+      "brand": "Nourwish",
+      "canonical_url": "https://nourwish.com/products/nourwish-recharge-restart-bundle",
+      "changed": true,
+      "blocked": false,
+      "skip_reason": null,
+      "candidate_hash": "e166d679ecb07e75680d4b6731bdb4f40da23fdffd5c5e754a639c21ac0bb089",
+      "evidence_profile": "official_pdp_reviewed_limited",
+      "source_coverage": {
+        "source": "official_pdp",
+        "canonical_url": "https://nourwish.com/products/nourwish-recharge-restart-bundle",
+        "fields": {
+          "description": true,
+          "ingredients": 0,
+          "active_ingredients": 0,
+          "how_to": 0,
+          "details": 0,
+          "variants": 1
+        }
+      },
+      "preview": {
+        "headline": "Hair care set",
+        "what_it_is": "Nourwish Recharge & Restart Trio is a leave-in hair treatment from Nourwish, with source-backed cues around volume-texture boost and leave-in care.",
+        "why_it_stands_out": [
+          {
+            "headline": "Product cues are source-backed",
+            "body": "Reviewed PDP cues such as leave-in care, scalp or style refresh give shoppers specific comparison points within Nourwish, rather than category-only copy.",
+            "evidence_strength": "official_pdp_reviewed"
+          }
+        ],
+        "best_for": [
+          {
+            "tag": "hair_hydration",
+            "label": "hair hydration",
+            "confidence": "moderate"
+          }
+        ],
+        "shopping_highlight": "leave-in care, scalp or style refresh"
+      },
+      "writes": [
+        {
+          "kb_key": "product:ext_eb5bc0de255d4342591d9b06",
+          "action": "update",
+          "reason": "explicit_owner_delegated_assistant_replacement_review",
+          "old_hash": "eb88abe2fb4412e101449a6123b6409308878ed9442e7c29a9bc2f68b5d1e8a8",
+          "candidate_hash": "78cbecb6fd67e5852545f8e363f7af602763023d9cb4a8744f2dfe73c6334f91",
+          "existing_weak": true,
+          "source": "pivota_insights_official_pdp_manual_review_v1",
+          "after_inventory": {
+            "product_id": "ext_eb5bc0de255d4342591d9b06",
+            "kb_key": "product:ext_eb5bc0de255d4342591d9b06",
+            "source": "pivota_insights_official_pdp_manual_review_v1",
+            "updated_at": "",
+            "last_success_at": "",
+            "title": "Nourwish Recharge & Restart Trio",
+            "canonical_url": "",
+            "bundle_hash": "e166d679ecb07e75680d4b6731bdb4f40da23fdffd5c5e754a639c21ac0bb089",
+            "lane": "keep",
+            "reason": "protected_good_content",
+            "priority": 0,
+            "protected": true,
+            "displayable": true,
+            "high_quality_ready": true,
+            "human_reviewed": true,
+            "issues": [],
+            "blocking_issues": [],
+            "quality_state": "reviewed",
+            "evidence_profile": "official_pdp_reviewed_limited",
+            "evidence_rank": 1,
+            "review_tier": "assistant_reviewed",
+            "agent_readable": true,
+            "public_ready": true
+          },
+          "source_meta": {
+            "evidence_profile": "official_pdp_reviewed_limited",
+            "quality_state": "reviewed",
+            "source_origin": "official_pdp_fields",
+            "source_url": "https://nourwish.com/products/nourwish-recharge-restart-bundle",
+            "quality_improvement": {
+              "previous_bundle_hash": "492445b3c5bcbc48588e53f664dbc8534655bdf0117fcb0ce60f8a15ea35096c",
+              "candidate_bundle_hash": "e166d679ecb07e75680d4b6731bdb4f40da23fdffd5c5e754a639c21ac0bb089",
+              "replacement_decision": "explicit_owner_delegated_assistant_replacement_review",
+              "existing_quality_lane": "suppress_public",
+              "candidate_quality_lane": "keep",
+              "existing_evidence_profile": "seller_only",
+              "candidate_evidence_profile": "official_pdp_reviewed_limited"
+            }
+          }
+        },
+        {
+          "kb_key": "product:sig_61d0c8c2d9e60a2646300f95",
+          "action": "insert",
+          "reason": "new_product_intel_bundle",
+          "old_hash": null,
+          "candidate_hash": "78cbecb6fd67e5852545f8e363f7af602763023d9cb4a8744f2dfe73c6334f91",
+          "existing_weak": true,
+          "source": "pivota_insights_official_pdp_manual_review_v1",
+          "after_inventory": {
+            "product_id": "ext_eb5bc0de255d4342591d9b06",
+            "kb_key": "product:sig_61d0c8c2d9e60a2646300f95",
+            "source": "pivota_insights_official_pdp_manual_review_v1",
+            "updated_at": "",
+            "last_success_at": "",
+            "title": "Nourwish Recharge & Restart Trio",
+            "canonical_url": "",
+            "bundle_hash": "e166d679ecb07e75680d4b6731bdb4f40da23fdffd5c5e754a639c21ac0bb089",
+            "lane": "keep",
+            "reason": "protected_good_content",
+            "priority": 0,
+            "protected": true,
+            "displayable": true,
+            "high_quality_ready": true,
+            "human_reviewed": true,
+            "issues": [],
+            "blocking_issues": [],
+            "quality_state": "reviewed",
+            "evidence_profile": "official_pdp_reviewed_limited",
+            "evidence_rank": 1,
+            "review_tier": "assistant_reviewed",
+            "agent_readable": true,
+            "public_ready": true
+          },
+          "source_meta": {
+            "evidence_profile": "official_pdp_reviewed_limited",
+            "quality_state": "reviewed",
+            "source_origin": "official_pdp_fields",
+            "source_url": "https://nourwish.com/products/nourwish-recharge-restart-bundle",
+            "quality_improvement": {
+              "previous_bundle_hash": null,
+              "candidate_bundle_hash": "e166d679ecb07e75680d4b6731bdb4f40da23fdffd5c5e754a639c21ac0bb089",
+              "replacement_decision": "new_product_intel_bundle",
+              "existing_quality_lane": null,
+              "candidate_quality_lane": "keep",
+              "existing_evidence_profile": null,
+              "candidate_evidence_profile": "official_pdp_reviewed_limited"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "external_product_id": "ext_13dd548c58df9a58d13a6665",
+      "pivota_signature_id": "sig_17efafe708c9021c9f780f83",
+      "title": "Power of Gro - Hydrating",
+      "brand": "Nourwish",
+      "canonical_url": "https://nourwish.com/products/power-of-gro-hydrating",
+      "changed": true,
+      "blocked": false,
+      "skip_reason": null,
+      "candidate_hash": "283ff858562bf4e2f3bce45edffc045de24c8c84e2d41ad4604aa0a31b62f1e9",
+      "evidence_profile": "official_pdp_reviewed_limited",
+      "source_coverage": {
+        "source": "official_pdp",
+        "canonical_url": "https://nourwish.com/products/power-of-gro-hydrating",
+        "fields": {
+          "description": true,
+          "ingredients": 0,
+          "active_ingredients": 0,
+          "how_to": 0,
+          "details": 0,
+          "variants": 1
+        }
+      },
+      "preview": {
+        "headline": "Hair treatment",
+        "what_it_is": "Power of Gro - Hydrating is a leave-in hair treatment from Nourwish, with source-backed cues around volume-texture boost, leave-in care and frizz control.",
+        "why_it_stands_out": [
+          {
+            "headline": "Product cues are source-backed",
+            "body": "Reviewed PDP cues such as frizz control, leave-in care, scalp or style refresh give shoppers specific comparison points within Nourwish, rather than category-only copy.",
+            "evidence_strength": "official_pdp_reviewed"
+          }
+        ],
+        "best_for": [
+          {
+            "tag": "frizz_control",
+            "label": "frizz control",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "hair_hydration",
+            "label": "hair hydration",
+            "confidence": "moderate"
+          }
+        ],
+        "shopping_highlight": "frizz control, leave-in care"
+      },
+      "writes": [
+        {
+          "kb_key": "product:ext_13dd548c58df9a58d13a6665",
+          "action": "insert",
+          "reason": "new_product_intel_bundle",
+          "old_hash": null,
+          "candidate_hash": "66e0b1d550514bb3ef25f33ef7de75cc4474ed6ef60b831ffe646690768346de",
+          "existing_weak": true,
+          "source": "pivota_insights_official_pdp_manual_review_v1",
+          "after_inventory": {
+            "product_id": "ext_13dd548c58df9a58d13a6665",
+            "kb_key": "product:ext_13dd548c58df9a58d13a6665",
+            "source": "pivota_insights_official_pdp_manual_review_v1",
+            "updated_at": "",
+            "last_success_at": "",
+            "title": "Power of Gro - Hydrating",
+            "canonical_url": "",
+            "bundle_hash": "283ff858562bf4e2f3bce45edffc045de24c8c84e2d41ad4604aa0a31b62f1e9",
+            "lane": "keep",
+            "reason": "protected_good_content",
+            "priority": 0,
+            "protected": true,
+            "displayable": true,
+            "high_quality_ready": true,
+            "human_reviewed": true,
+            "issues": [],
+            "blocking_issues": [],
+            "quality_state": "reviewed",
+            "evidence_profile": "official_pdp_reviewed_limited",
+            "evidence_rank": 1,
+            "review_tier": "assistant_reviewed",
+            "agent_readable": true,
+            "public_ready": true
+          },
+          "source_meta": {
+            "evidence_profile": "official_pdp_reviewed_limited",
+            "quality_state": "reviewed",
+            "source_origin": "official_pdp_fields",
+            "source_url": "https://nourwish.com/products/power-of-gro-hydrating",
+            "quality_improvement": {
+              "previous_bundle_hash": null,
+              "candidate_bundle_hash": "283ff858562bf4e2f3bce45edffc045de24c8c84e2d41ad4604aa0a31b62f1e9",
+              "replacement_decision": "new_product_intel_bundle",
+              "existing_quality_lane": null,
+              "candidate_quality_lane": "keep",
+              "existing_evidence_profile": null,
+              "candidate_evidence_profile": "official_pdp_reviewed_limited"
+            }
+          }
+        },
+        {
+          "kb_key": "product:sig_17efafe708c9021c9f780f83",
+          "action": "insert",
+          "reason": "new_product_intel_bundle",
+          "old_hash": null,
+          "candidate_hash": "66e0b1d550514bb3ef25f33ef7de75cc4474ed6ef60b831ffe646690768346de",
+          "existing_weak": true,
+          "source": "pivota_insights_official_pdp_manual_review_v1",
+          "after_inventory": {
+            "product_id": "ext_13dd548c58df9a58d13a6665",
+            "kb_key": "product:sig_17efafe708c9021c9f780f83",
+            "source": "pivota_insights_official_pdp_manual_review_v1",
+            "updated_at": "",
+            "last_success_at": "",
+            "title": "Power of Gro - Hydrating",
+            "canonical_url": "",
+            "bundle_hash": "283ff858562bf4e2f3bce45edffc045de24c8c84e2d41ad4604aa0a31b62f1e9",
+            "lane": "keep",
+            "reason": "protected_good_content",
+            "priority": 0,
+            "protected": true,
+            "displayable": true,
+            "high_quality_ready": true,
+            "human_reviewed": true,
+            "issues": [],
+            "blocking_issues": [],
+            "quality_state": "reviewed",
+            "evidence_profile": "official_pdp_reviewed_limited",
+            "evidence_rank": 1,
+            "review_tier": "assistant_reviewed",
+            "agent_readable": true,
+            "public_ready": true
+          },
+          "source_meta": {
+            "evidence_profile": "official_pdp_reviewed_limited",
+            "quality_state": "reviewed",
+            "source_origin": "official_pdp_fields",
+            "source_url": "https://nourwish.com/products/power-of-gro-hydrating",
+            "quality_improvement": {
+              "previous_bundle_hash": null,
+              "candidate_bundle_hash": "283ff858562bf4e2f3bce45edffc045de24c8c84e2d41ad4604aa0a31b62f1e9",
+              "replacement_decision": "new_product_intel_bundle",
+              "existing_quality_lane": null,
+              "candidate_quality_lane": "keep",
+              "existing_evidence_profile": null,
+              "candidate_evidence_profile": "official_pdp_reviewed_limited"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "external_product_id": "ext_615b64ad49f9a08ac8682581",
+      "pivota_signature_id": "sig_5f0af99f7e795f897bed65a2",
+      "title": "Power of Gro - Regenerating",
+      "brand": "Nourwish",
+      "canonical_url": "https://nourwish.com/products/power-of-gro-regenerating",
+      "changed": true,
+      "blocked": false,
+      "skip_reason": null,
+      "candidate_hash": "1d0c3cf39692c5ca6272dcdab86c29559ee74057d5ac5b9722bcee4f2674795a",
+      "evidence_profile": "official_pdp_reviewed_limited",
+      "source_coverage": {
+        "source": "official_pdp",
+        "canonical_url": "https://nourwish.com/products/power-of-gro-regenerating",
+        "fields": {
+          "description": true,
+          "ingredients": 0,
+          "active_ingredients": 0,
+          "how_to": 0,
+          "details": 0,
+          "variants": 1
+        }
+      },
+      "preview": {
+        "headline": "Hair treatment",
+        "what_it_is": "Power of Gro - Regenerating is a leave-in hair treatment from Nourwish, with source-backed cues around between-wash refresh and leave-in care.",
+        "why_it_stands_out": [
+          {
+            "headline": "Product cues are source-backed",
+            "body": "Reviewed PDP cues such as leave-in care, scalp or style refresh give shoppers specific comparison points within Nourwish, rather than category-only copy.",
+            "evidence_strength": "official_pdp_reviewed"
+          }
+        ],
+        "best_for": [
+          {
+            "tag": "hair_hydration",
+            "label": "hair hydration",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "style_refresh",
+            "label": "style refresh",
+            "confidence": "moderate"
+          }
+        ],
+        "shopping_highlight": "leave-in care, scalp or style refresh"
+      },
+      "writes": [
+        {
+          "kb_key": "product:ext_615b64ad49f9a08ac8682581",
+          "action": "update",
+          "reason": "explicit_owner_delegated_assistant_replacement_review",
+          "old_hash": "0a012b6cdc9be1bf600867f7bcbc220e4ab90a690942dd0236c0c84d57c73e5b",
+          "candidate_hash": "50d2f7362b1b1db53b93145d8e43d67064e2b9fe450531221883dea952cd12a8",
+          "existing_weak": true,
+          "source": "pivota_insights_official_pdp_manual_review_v1",
+          "after_inventory": {
+            "product_id": "ext_615b64ad49f9a08ac8682581",
+            "kb_key": "product:ext_615b64ad49f9a08ac8682581",
+            "source": "pivota_insights_official_pdp_manual_review_v1",
+            "updated_at": "",
+            "last_success_at": "",
+            "title": "Power of Gro - Regenerating",
+            "canonical_url": "",
+            "bundle_hash": "1d0c3cf39692c5ca6272dcdab86c29559ee74057d5ac5b9722bcee4f2674795a",
+            "lane": "keep",
+            "reason": "protected_good_content",
+            "priority": 0,
+            "protected": true,
+            "displayable": true,
+            "high_quality_ready": true,
+            "human_reviewed": true,
+            "issues": [],
+            "blocking_issues": [],
+            "quality_state": "reviewed",
+            "evidence_profile": "official_pdp_reviewed_limited",
+            "evidence_rank": 1,
+            "review_tier": "assistant_reviewed",
+            "agent_readable": true,
+            "public_ready": true
+          },
+          "source_meta": {
+            "evidence_profile": "official_pdp_reviewed_limited",
+            "quality_state": "reviewed",
+            "source_origin": "official_pdp_fields",
+            "source_url": "https://nourwish.com/products/power-of-gro-regenerating",
+            "quality_improvement": {
+              "previous_bundle_hash": "70bd2525937c402c368ef2f331c2a0194624cd80f896e0fd28b8c90660b6d883",
+              "candidate_bundle_hash": "1d0c3cf39692c5ca6272dcdab86c29559ee74057d5ac5b9722bcee4f2674795a",
+              "replacement_decision": "explicit_owner_delegated_assistant_replacement_review",
+              "existing_quality_lane": "suppress_public",
+              "candidate_quality_lane": "keep",
+              "existing_evidence_profile": "seller_only",
+              "candidate_evidence_profile": "official_pdp_reviewed_limited"
+            }
+          }
+        },
+        {
+          "kb_key": "product:sig_5f0af99f7e795f897bed65a2",
+          "action": "insert",
+          "reason": "new_product_intel_bundle",
+          "old_hash": null,
+          "candidate_hash": "50d2f7362b1b1db53b93145d8e43d67064e2b9fe450531221883dea952cd12a8",
+          "existing_weak": true,
+          "source": "pivota_insights_official_pdp_manual_review_v1",
+          "after_inventory": {
+            "product_id": "ext_615b64ad49f9a08ac8682581",
+            "kb_key": "product:sig_5f0af99f7e795f897bed65a2",
+            "source": "pivota_insights_official_pdp_manual_review_v1",
+            "updated_at": "",
+            "last_success_at": "",
+            "title": "Power of Gro - Regenerating",
+            "canonical_url": "",
+            "bundle_hash": "1d0c3cf39692c5ca6272dcdab86c29559ee74057d5ac5b9722bcee4f2674795a",
+            "lane": "keep",
+            "reason": "protected_good_content",
+            "priority": 0,
+            "protected": true,
+            "displayable": true,
+            "high_quality_ready": true,
+            "human_reviewed": true,
+            "issues": [],
+            "blocking_issues": [],
+            "quality_state": "reviewed",
+            "evidence_profile": "official_pdp_reviewed_limited",
+            "evidence_rank": 1,
+            "review_tier": "assistant_reviewed",
+            "agent_readable": true,
+            "public_ready": true
+          },
+          "source_meta": {
+            "evidence_profile": "official_pdp_reviewed_limited",
+            "quality_state": "reviewed",
+            "source_origin": "official_pdp_fields",
+            "source_url": "https://nourwish.com/products/power-of-gro-regenerating",
+            "quality_improvement": {
+              "previous_bundle_hash": null,
+              "candidate_bundle_hash": "1d0c3cf39692c5ca6272dcdab86c29559ee74057d5ac5b9722bcee4f2674795a",
+              "replacement_decision": "new_product_intel_bundle",
+              "existing_quality_lane": null,
+              "candidate_quality_lane": "keep",
+              "existing_evidence_profile": null,
+              "candidate_evidence_profile": "official_pdp_reviewed_limited"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "external_product_id": "ext_dabda563a2808fc07724e933",
+      "pivota_signature_id": null,
+      "title": "Scalp Massager & Shampoo Brush",
+      "brand": "Nourwish",
+      "canonical_url": "https://nourwish.com/products/scalp-massager-shampoo-brush",
+      "changed": true,
+      "blocked": false,
+      "skip_reason": null,
+      "candidate_hash": "b7858f23f3f0c70cc58cb13719041c927a2e174d8039133117888f101d64b33c",
+      "evidence_profile": "official_pdp_reviewed_limited",
+      "source_coverage": {
+        "source": "official_pdp",
+        "canonical_url": "https://nourwish.com/products/scalp-massager-shampoo-brush",
+        "fields": {
+          "description": true,
+          "ingredients": 0,
+          "active_ingredients": 0,
+          "how_to": 0,
+          "details": 0,
+          "variants": 1
+        }
+      },
+      "preview": {
+        "headline": "Hair tool",
+        "what_it_is": "Scalp Massager & Shampoo Brush is a scalp brush from Nourwish, with source-backed cues around scalp-use cues and shampoo-routine use.",
+        "why_it_stands_out": [
+          {
+            "headline": "Hair-tool cues are specific",
+            "body": "Reviewed tool cues such as scalp massage, shampoo brush format, hair sectioning identify how the accessory fits into a hair or scalp routine without treating it like a formula product.",
+            "evidence_strength": "official_pdp_reviewed"
+          }
+        ],
+        "best_for": [
+          {
+            "tag": "scalp_massage",
+            "label": "scalp massage",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "shampoo_routine_tool",
+            "label": "shampoo routine tool",
+            "confidence": "moderate"
+          }
+        ],
+        "shopping_highlight": "scalp massage, shampoo brush format"
+      },
+      "writes": [
+        {
+          "kb_key": "product:ext_dabda563a2808fc07724e933",
+          "action": "update",
+          "reason": "explicit_owner_delegated_assistant_replacement_review",
+          "old_hash": "7ad975746bbc1021ee319fbf909e2e9b93246113ca507bf30d0bc96b0a8615dd",
+          "candidate_hash": "978856c8d9db5eef1643cc3a82296fbdcf16e0345959604e7000f47cfbb4395f",
+          "existing_weak": true,
+          "source": "pivota_insights_official_pdp_manual_review_v1",
+          "after_inventory": {
+            "product_id": "ext_dabda563a2808fc07724e933",
+            "kb_key": "product:ext_dabda563a2808fc07724e933",
+            "source": "pivota_insights_official_pdp_manual_review_v1",
+            "updated_at": "",
+            "last_success_at": "",
+            "title": "Scalp Massager & Shampoo Brush",
+            "canonical_url": "",
+            "bundle_hash": "b7858f23f3f0c70cc58cb13719041c927a2e174d8039133117888f101d64b33c",
+            "lane": "keep",
+            "reason": "protected_good_content",
+            "priority": 0,
+            "protected": true,
+            "displayable": true,
+            "high_quality_ready": true,
+            "human_reviewed": true,
+            "issues": [],
+            "blocking_issues": [],
+            "quality_state": "reviewed",
+            "evidence_profile": "official_pdp_reviewed_limited",
+            "evidence_rank": 1,
+            "review_tier": "assistant_reviewed",
+            "agent_readable": true,
+            "public_ready": true
+          },
+          "source_meta": {
+            "evidence_profile": "official_pdp_reviewed_limited",
+            "quality_state": "reviewed",
+            "source_origin": "official_pdp_fields",
+            "source_url": "https://nourwish.com/products/scalp-massager-shampoo-brush",
+            "quality_improvement": {
+              "previous_bundle_hash": "977129421cdd9ee6d1a648377546ad4c87ff058be44c3e672b7f05e72a808e94",
+              "candidate_bundle_hash": "b7858f23f3f0c70cc58cb13719041c927a2e174d8039133117888f101d64b33c",
+              "replacement_decision": "explicit_owner_delegated_assistant_replacement_review",
+              "existing_quality_lane": "suppress_public",
+              "candidate_quality_lane": "keep",
+              "existing_evidence_profile": "seller_only",
+              "candidate_evidence_profile": "official_pdp_reviewed_limited"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "external_product_id": "ext_40c0347ee0c6d9f612f6ec6f",
+      "pivota_signature_id": "sig_495b5a19c9632f63bc951f57",
+      "title": "Scalp Retreat Nourishing Scalp Serum",
+      "brand": "Nourwish",
+      "canonical_url": "https://nourwish.com/products/scalp-retreat-scalp-serum",
+      "changed": true,
+      "blocked": false,
+      "skip_reason": null,
+      "candidate_hash": "1d38636aa1bc17155007049a0ce60040333ee7ba9ccef524d7bc5c982997b0e3",
+      "evidence_profile": "official_pdp_reviewed_limited",
+      "source_coverage": {
+        "source": "official_pdp",
+        "canonical_url": "https://nourwish.com/products/scalp-retreat-scalp-serum",
+        "fields": {
+          "description": true,
+          "ingredients": 0,
+          "active_ingredients": 0,
+          "how_to": 0,
+          "details": 0,
+          "variants": 1
+        }
+      },
+      "preview": {
+        "headline": "Hair treatment",
+        "what_it_is": "Scalp Retreat Nourishing Scalp Serum is a hair treatment from Nourwish.",
+        "why_it_stands_out": [
+          {
+            "headline": "Product cues are source-backed",
+            "body": "Reviewed PDP cues such as scalp or style refresh give shoppers specific comparison points within Nourwish, rather than category-only copy.",
+            "evidence_strength": "official_pdp_reviewed"
+          }
+        ],
+        "best_for": [
+          {
+            "tag": "hair_hydration",
+            "label": "hair hydration",
+            "confidence": "moderate"
+          }
+        ],
+        "shopping_highlight": "scalp or style refresh"
+      },
+      "writes": [
+        {
+          "kb_key": "product:ext_40c0347ee0c6d9f612f6ec6f",
+          "action": "update",
+          "reason": "explicit_owner_delegated_assistant_replacement_review",
+          "old_hash": "0aab63e707a4ac1188fd8dcafeeb45ddb845e55fc01bfc8777cc1550296bc216",
+          "candidate_hash": "51b233d913890185e2cc96079dde2af7ed02e96b03ebf521d29d3ae62ddbfa8f",
+          "existing_weak": true,
+          "source": "pivota_insights_official_pdp_manual_review_v1",
+          "after_inventory": {
+            "product_id": "ext_40c0347ee0c6d9f612f6ec6f",
+            "kb_key": "product:ext_40c0347ee0c6d9f612f6ec6f",
+            "source": "pivota_insights_official_pdp_manual_review_v1",
+            "updated_at": "",
+            "last_success_at": "",
+            "title": "Scalp Retreat Nourishing Scalp Serum",
+            "canonical_url": "",
+            "bundle_hash": "1d38636aa1bc17155007049a0ce60040333ee7ba9ccef524d7bc5c982997b0e3",
+            "lane": "keep",
+            "reason": "protected_good_content",
+            "priority": 0,
+            "protected": true,
+            "displayable": true,
+            "high_quality_ready": true,
+            "human_reviewed": true,
+            "issues": [],
+            "blocking_issues": [],
+            "quality_state": "reviewed",
+            "evidence_profile": "official_pdp_reviewed_limited",
+            "evidence_rank": 1,
+            "review_tier": "assistant_reviewed",
+            "agent_readable": true,
+            "public_ready": true
+          },
+          "source_meta": {
+            "evidence_profile": "official_pdp_reviewed_limited",
+            "quality_state": "reviewed",
+            "source_origin": "official_pdp_fields",
+            "source_url": "https://nourwish.com/products/scalp-retreat-scalp-serum",
+            "quality_improvement": {
+              "previous_bundle_hash": "da17295eb752dab93cdf9c5a31fa28e9af11b0785e11fdec9892ac9992aa226e",
+              "candidate_bundle_hash": "1d38636aa1bc17155007049a0ce60040333ee7ba9ccef524d7bc5c982997b0e3",
+              "replacement_decision": "explicit_owner_delegated_assistant_replacement_review",
+              "existing_quality_lane": "suppress_public",
+              "candidate_quality_lane": "keep",
+              "existing_evidence_profile": "seller_only",
+              "candidate_evidence_profile": "official_pdp_reviewed_limited"
+            }
+          }
+        },
+        {
+          "kb_key": "product:sig_495b5a19c9632f63bc951f57",
+          "action": "insert",
+          "reason": "new_product_intel_bundle",
+          "old_hash": null,
+          "candidate_hash": "51b233d913890185e2cc96079dde2af7ed02e96b03ebf521d29d3ae62ddbfa8f",
+          "existing_weak": true,
+          "source": "pivota_insights_official_pdp_manual_review_v1",
+          "after_inventory": {
+            "product_id": "ext_40c0347ee0c6d9f612f6ec6f",
+            "kb_key": "product:sig_495b5a19c9632f63bc951f57",
+            "source": "pivota_insights_official_pdp_manual_review_v1",
+            "updated_at": "",
+            "last_success_at": "",
+            "title": "Scalp Retreat Nourishing Scalp Serum",
+            "canonical_url": "",
+            "bundle_hash": "1d38636aa1bc17155007049a0ce60040333ee7ba9ccef524d7bc5c982997b0e3",
+            "lane": "keep",
+            "reason": "protected_good_content",
+            "priority": 0,
+            "protected": true,
+            "displayable": true,
+            "high_quality_ready": true,
+            "human_reviewed": true,
+            "issues": [],
+            "blocking_issues": [],
+            "quality_state": "reviewed",
+            "evidence_profile": "official_pdp_reviewed_limited",
+            "evidence_rank": 1,
+            "review_tier": "assistant_reviewed",
+            "agent_readable": true,
+            "public_ready": true
+          },
+          "source_meta": {
+            "evidence_profile": "official_pdp_reviewed_limited",
+            "quality_state": "reviewed",
+            "source_origin": "official_pdp_fields",
+            "source_url": "https://nourwish.com/products/scalp-retreat-scalp-serum",
+            "quality_improvement": {
+              "previous_bundle_hash": null,
+              "candidate_bundle_hash": "1d38636aa1bc17155007049a0ce60040333ee7ba9ccef524d7bc5c982997b0e3",
+              "replacement_decision": "new_product_intel_bundle",
+              "existing_quality_lane": null,
+              "candidate_quality_lane": "keep",
+              "existing_evidence_profile": null,
+              "candidate_evidence_profile": "official_pdp_reviewed_limited"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "external_product_id": "ext_bdfdd96423eb55d7bdbf6b89",
+      "pivota_signature_id": "sig_efc0bd760fb0b6807428271b4d914387",
+      "title": "Scalp Retreat Regenerating Shampoo",
+      "brand": "Nourwish",
+      "canonical_url": "https://nourwish.com/products/nourwish™-001-regenerating-treatment-shampoo",
+      "changed": true,
+      "blocked": false,
+      "skip_reason": null,
+      "candidate_hash": "af0da73696f04d8820e0c9a65536a3a8945a0adfa452f999b198d490d0021744",
+      "evidence_profile": "official_pdp_reviewed_limited",
+      "source_coverage": {
+        "source": "official_pdp",
+        "canonical_url": "https://nourwish.com/products/nourwish™-001-regenerating-treatment-shampoo",
+        "fields": {
+          "description": true,
+          "ingredients": 0,
+          "active_ingredients": 0,
+          "how_to": 0,
+          "details": 0,
+          "variants": 2
+        }
+      },
+      "preview": {
+        "headline": "Hair treatment",
+        "what_it_is": "Scalp Retreat Regenerating Shampoo is a hair treatment from Nourwish, with source-backed cues around volume-texture boost.",
+        "why_it_stands_out": [
+          {
+            "headline": "Product cues are source-backed",
+            "body": "Reviewed PDP cues such as scalp or style refresh give shoppers specific comparison points within Nourwish, rather than category-only copy.",
+            "evidence_strength": "official_pdp_reviewed"
+          }
+        ],
+        "best_for": [
+          {
+            "tag": "scalp_or_style_refresh",
+            "label": "scalp or style refresh",
+            "confidence": "moderate"
+          }
+        ],
+        "shopping_highlight": "scalp or style refresh"
+      },
+      "writes": [
+        {
+          "kb_key": "product:ext_bdfdd96423eb55d7bdbf6b89",
+          "action": "insert",
+          "reason": "new_product_intel_bundle",
+          "old_hash": null,
+          "candidate_hash": "1f22d2270351e798c07c52f6040f7efc625a3b501b6a3631bfacf69e8094f9ae",
+          "existing_weak": true,
+          "source": "pivota_insights_official_pdp_manual_review_v1",
+          "after_inventory": {
+            "product_id": "ext_bdfdd96423eb55d7bdbf6b89",
+            "kb_key": "product:ext_bdfdd96423eb55d7bdbf6b89",
+            "source": "pivota_insights_official_pdp_manual_review_v1",
+            "updated_at": "",
+            "last_success_at": "",
+            "title": "Scalp Retreat Regenerating Shampoo",
+            "canonical_url": "",
+            "bundle_hash": "af0da73696f04d8820e0c9a65536a3a8945a0adfa452f999b198d490d0021744",
+            "lane": "keep",
+            "reason": "protected_good_content",
+            "priority": 0,
+            "protected": true,
+            "displayable": true,
+            "high_quality_ready": true,
+            "human_reviewed": true,
+            "issues": [],
+            "blocking_issues": [],
+            "quality_state": "reviewed",
+            "evidence_profile": "official_pdp_reviewed_limited",
+            "evidence_rank": 1,
+            "review_tier": "assistant_reviewed",
+            "agent_readable": true,
+            "public_ready": true
+          },
+          "source_meta": {
+            "evidence_profile": "official_pdp_reviewed_limited",
+            "quality_state": "reviewed",
+            "source_origin": "official_pdp_fields",
+            "source_url": "https://nourwish.com/products/nourwish™-001-regenerating-treatment-shampoo",
+            "quality_improvement": {
+              "previous_bundle_hash": null,
+              "candidate_bundle_hash": "af0da73696f04d8820e0c9a65536a3a8945a0adfa452f999b198d490d0021744",
+              "replacement_decision": "new_product_intel_bundle",
+              "existing_quality_lane": null,
+              "candidate_quality_lane": "keep",
+              "existing_evidence_profile": null,
+              "candidate_evidence_profile": "official_pdp_reviewed_limited"
+            }
+          }
+        },
+        {
+          "kb_key": "product:sig_efc0bd760fb0b6807428271b4d914387",
+          "action": "insert",
+          "reason": "new_product_intel_bundle",
+          "old_hash": null,
+          "candidate_hash": "1f22d2270351e798c07c52f6040f7efc625a3b501b6a3631bfacf69e8094f9ae",
+          "existing_weak": true,
+          "source": "pivota_insights_official_pdp_manual_review_v1",
+          "after_inventory": {
+            "product_id": "ext_bdfdd96423eb55d7bdbf6b89",
+            "kb_key": "product:sig_efc0bd760fb0b6807428271b4d914387",
+            "source": "pivota_insights_official_pdp_manual_review_v1",
+            "updated_at": "",
+            "last_success_at": "",
+            "title": "Scalp Retreat Regenerating Shampoo",
+            "canonical_url": "",
+            "bundle_hash": "af0da73696f04d8820e0c9a65536a3a8945a0adfa452f999b198d490d0021744",
+            "lane": "keep",
+            "reason": "protected_good_content",
+            "priority": 0,
+            "protected": true,
+            "displayable": true,
+            "high_quality_ready": true,
+            "human_reviewed": true,
+            "issues": [],
+            "blocking_issues": [],
+            "quality_state": "reviewed",
+            "evidence_profile": "official_pdp_reviewed_limited",
+            "evidence_rank": 1,
+            "review_tier": "assistant_reviewed",
+            "agent_readable": true,
+            "public_ready": true
+          },
+          "source_meta": {
+            "evidence_profile": "official_pdp_reviewed_limited",
+            "quality_state": "reviewed",
+            "source_origin": "official_pdp_fields",
+            "source_url": "https://nourwish.com/products/nourwish™-001-regenerating-treatment-shampoo",
+            "quality_improvement": {
+              "previous_bundle_hash": null,
+              "candidate_bundle_hash": "af0da73696f04d8820e0c9a65536a3a8945a0adfa452f999b198d490d0021744",
+              "replacement_decision": "new_product_intel_bundle",
+              "existing_quality_lane": null,
+              "candidate_quality_lane": "keep",
+              "existing_evidence_profile": null,
+              "candidate_evidence_profile": "official_pdp_reviewed_limited"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "external_product_id": "ext_8a6b09d12daad41be88ae6ce",
+      "pivota_signature_id": "sig_fa7e43890ac4fc4f5aad6d82",
+      "title": "Scalp Retreat Shampoo + Serum Duo",
+      "brand": "Nourwish",
+      "canonical_url": "https://nourwish.com/products/scalp-retreat-kit",
+      "changed": true,
+      "blocked": false,
+      "skip_reason": null,
+      "candidate_hash": "0fb47cc7b88dc57c5d92ba0346ec77d21482782476700b1627939b039fa09f83",
+      "evidence_profile": "official_pdp_reviewed_limited",
+      "source_coverage": {
+        "source": "official_pdp",
+        "canonical_url": "https://nourwish.com/products/scalp-retreat-kit",
+        "fields": {
+          "description": true,
+          "ingredients": 0,
+          "active_ingredients": 0,
+          "how_to": 0,
+          "details": 0,
+          "variants": 1
+        }
+      },
+      "preview": {
+        "headline": "Hair treatment",
+        "what_it_is": "Scalp Retreat Shampoo + Serum Duo is a hair treatment from Nourwish, with source-backed cues around volume-texture boost.",
+        "why_it_stands_out": [
+          {
+            "headline": "Product cues are source-backed",
+            "body": "Reviewed PDP cues such as scalp or style refresh give shoppers specific comparison points within Nourwish, rather than category-only copy.",
+            "evidence_strength": "official_pdp_reviewed"
+          }
+        ],
+        "best_for": [
+          {
+            "tag": "scalp_or_style_refresh",
+            "label": "scalp or style refresh",
+            "confidence": "moderate"
+          }
+        ],
+        "shopping_highlight": "scalp or style refresh"
+      },
+      "writes": [
+        {
+          "kb_key": "product:ext_8a6b09d12daad41be88ae6ce",
+          "action": "update",
+          "reason": "explicit_owner_delegated_assistant_replacement_review",
+          "old_hash": "9ce30edbb941830c8c2cecc446e900ec55bc06da51d610484f5976e9aedf1050",
+          "candidate_hash": "fb5fb6d1776fee85cf59c64f85dd82b3f2ed02103eebcfe077b29462863ab306",
+          "existing_weak": true,
+          "source": "pivota_insights_official_pdp_manual_review_v1",
+          "after_inventory": {
+            "product_id": "ext_8a6b09d12daad41be88ae6ce",
+            "kb_key": "product:ext_8a6b09d12daad41be88ae6ce",
+            "source": "pivota_insights_official_pdp_manual_review_v1",
+            "updated_at": "",
+            "last_success_at": "",
+            "title": "Scalp Retreat Shampoo + Serum Duo",
+            "canonical_url": "",
+            "bundle_hash": "0fb47cc7b88dc57c5d92ba0346ec77d21482782476700b1627939b039fa09f83",
+            "lane": "keep",
+            "reason": "protected_good_content",
+            "priority": 0,
+            "protected": true,
+            "displayable": true,
+            "high_quality_ready": true,
+            "human_reviewed": true,
+            "issues": [],
+            "blocking_issues": [],
+            "quality_state": "reviewed",
+            "evidence_profile": "official_pdp_reviewed_limited",
+            "evidence_rank": 1,
+            "review_tier": "assistant_reviewed",
+            "agent_readable": true,
+            "public_ready": true
+          },
+          "source_meta": {
+            "evidence_profile": "official_pdp_reviewed_limited",
+            "quality_state": "reviewed",
+            "source_origin": "official_pdp_fields",
+            "source_url": "https://nourwish.com/products/scalp-retreat-kit",
+            "quality_improvement": {
+              "previous_bundle_hash": "36f10a6f3e0b146cd059d8d9f51563ca29b11111272d73d27869c52c36c85572",
+              "candidate_bundle_hash": "0fb47cc7b88dc57c5d92ba0346ec77d21482782476700b1627939b039fa09f83",
+              "replacement_decision": "explicit_owner_delegated_assistant_replacement_review",
+              "existing_quality_lane": "suppress_public",
+              "candidate_quality_lane": "keep",
+              "existing_evidence_profile": "seller_only",
+              "candidate_evidence_profile": "official_pdp_reviewed_limited"
+            }
+          }
+        },
+        {
+          "kb_key": "product:sig_fa7e43890ac4fc4f5aad6d82",
+          "action": "insert",
+          "reason": "new_product_intel_bundle",
+          "old_hash": null,
+          "candidate_hash": "fb5fb6d1776fee85cf59c64f85dd82b3f2ed02103eebcfe077b29462863ab306",
+          "existing_weak": true,
+          "source": "pivota_insights_official_pdp_manual_review_v1",
+          "after_inventory": {
+            "product_id": "ext_8a6b09d12daad41be88ae6ce",
+            "kb_key": "product:sig_fa7e43890ac4fc4f5aad6d82",
+            "source": "pivota_insights_official_pdp_manual_review_v1",
+            "updated_at": "",
+            "last_success_at": "",
+            "title": "Scalp Retreat Shampoo + Serum Duo",
+            "canonical_url": "",
+            "bundle_hash": "0fb47cc7b88dc57c5d92ba0346ec77d21482782476700b1627939b039fa09f83",
+            "lane": "keep",
+            "reason": "protected_good_content",
+            "priority": 0,
+            "protected": true,
+            "displayable": true,
+            "high_quality_ready": true,
+            "human_reviewed": true,
+            "issues": [],
+            "blocking_issues": [],
+            "quality_state": "reviewed",
+            "evidence_profile": "official_pdp_reviewed_limited",
+            "evidence_rank": 1,
+            "review_tier": "assistant_reviewed",
+            "agent_readable": true,
+            "public_ready": true
+          },
+          "source_meta": {
+            "evidence_profile": "official_pdp_reviewed_limited",
+            "quality_state": "reviewed",
+            "source_origin": "official_pdp_fields",
+            "source_url": "https://nourwish.com/products/scalp-retreat-kit",
+            "quality_improvement": {
+              "previous_bundle_hash": null,
+              "candidate_bundle_hash": "0fb47cc7b88dc57c5d92ba0346ec77d21482782476700b1627939b039fa09f83",
+              "replacement_decision": "new_product_intel_bundle",
+              "existing_quality_lane": null,
+              "candidate_quality_lane": "keep",
+              "existing_evidence_profile": null,
+              "candidate_evidence_profile": "official_pdp_reviewed_limited"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "external_product_id": "ext_80da9f9cf5226a90db642762",
+      "pivota_signature_id": null,
+      "title": "Scalp Retreat Travel Kit",
+      "brand": "Nourwish",
+      "canonical_url": "https://nourwish.com/products/scalp-retreat-travel-kit",
+      "changed": true,
+      "blocked": false,
+      "skip_reason": null,
+      "candidate_hash": "b6aceffa1419bf6202cb07da352beded0d238bc0fa76c85a67b881de8d310fc1",
+      "evidence_profile": "official_pdp_reviewed_limited",
+      "source_coverage": {
+        "source": "official_pdp",
+        "canonical_url": "https://nourwish.com/products/scalp-retreat-travel-kit",
+        "fields": {
+          "description": true,
+          "ingredients": 0,
+          "active_ingredients": 0,
+          "how_to": 0,
+          "details": 0,
+          "variants": 1
+        }
+      },
+      "preview": {
+        "headline": "Hair care set",
+        "what_it_is": "Scalp Retreat Travel Kit is a leave-in hair treatment from Nourwish, with source-backed cues around volume-texture boost and leave-in care.",
+        "why_it_stands_out": [
+          {
+            "headline": "Product cues are source-backed",
+            "body": "Reviewed PDP cues such as leave-in care, scalp or style refresh give shoppers specific comparison points within Nourwish, rather than category-only copy.",
+            "evidence_strength": "official_pdp_reviewed"
+          }
+        ],
+        "best_for": [
+          {
+            "tag": "hair_hydration",
+            "label": "hair hydration",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "style_refresh",
+            "label": "style refresh",
+            "confidence": "moderate"
+          }
+        ],
+        "shopping_highlight": "leave-in care, scalp or style refresh"
+      },
+      "writes": [
+        {
+          "kb_key": "product:ext_80da9f9cf5226a90db642762",
+          "action": "update",
+          "reason": "explicit_owner_delegated_assistant_replacement_review",
+          "old_hash": "6ffefc37084fd87a51aae217613dd6e43d5e62eb6d39980bcbf3fdf23c396f93",
+          "candidate_hash": "e466c9917f16c29bebf724a65a437098d06fe85e68aa0d2f64c0a3ba6dd125f7",
+          "existing_weak": true,
+          "source": "pivota_insights_official_pdp_manual_review_v1",
+          "after_inventory": {
+            "product_id": "ext_80da9f9cf5226a90db642762",
+            "kb_key": "product:ext_80da9f9cf5226a90db642762",
+            "source": "pivota_insights_official_pdp_manual_review_v1",
+            "updated_at": "",
+            "last_success_at": "",
+            "title": "Scalp Retreat Travel Kit",
+            "canonical_url": "",
+            "bundle_hash": "b6aceffa1419bf6202cb07da352beded0d238bc0fa76c85a67b881de8d310fc1",
+            "lane": "keep",
+            "reason": "protected_good_content",
+            "priority": 0,
+            "protected": true,
+            "displayable": true,
+            "high_quality_ready": true,
+            "human_reviewed": true,
+            "issues": [],
+            "blocking_issues": [],
+            "quality_state": "reviewed",
+            "evidence_profile": "official_pdp_reviewed_limited",
+            "evidence_rank": 1,
+            "review_tier": "assistant_reviewed",
+            "agent_readable": true,
+            "public_ready": true
+          },
+          "source_meta": {
+            "evidence_profile": "official_pdp_reviewed_limited",
+            "quality_state": "reviewed",
+            "source_origin": "official_pdp_fields",
+            "source_url": "https://nourwish.com/products/scalp-retreat-travel-kit",
+            "quality_improvement": {
+              "previous_bundle_hash": "01278ae1912c627b2092debc06f649a8962c1b5d17d8dbd69294986d4b020025",
+              "candidate_bundle_hash": "b6aceffa1419bf6202cb07da352beded0d238bc0fa76c85a67b881de8d310fc1",
+              "replacement_decision": "explicit_owner_delegated_assistant_replacement_review",
+              "existing_quality_lane": "repair",
+              "candidate_quality_lane": "keep",
+              "existing_evidence_profile": "seller_only",
+              "candidate_evidence_profile": "official_pdp_reviewed_limited"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "external_product_id": "ext_932b64068bf11f0ef69c73c4",
+      "pivota_signature_id": "sig_83c03f01c2d234e989b3e2a6",
+      "title": "Scalp Retreat Weightless Conditioner",
+      "brand": "Nourwish",
+      "canonical_url": "https://nourwish.com/products/nourwish-scalp-retreat-weightless-conditioner",
+      "changed": true,
+      "blocked": false,
+      "skip_reason": null,
+      "candidate_hash": "8038ed3880df532fd90cb6a1c68af15879bfe6551d17358ebfeb4a944e7de61e",
+      "evidence_profile": "official_pdp_reviewed_limited",
+      "source_coverage": {
+        "source": "official_pdp",
+        "canonical_url": "https://nourwish.com/products/nourwish-scalp-retreat-weightless-conditioner",
+        "fields": {
+          "description": true,
+          "ingredients": 0,
+          "active_ingredients": 0,
+          "how_to": 0,
+          "details": 0,
+          "variants": 1
+        }
+      },
+      "preview": {
+        "headline": "Hair treatment",
+        "what_it_is": "Scalp Retreat Weightless Conditioner is a leave-in hair treatment from Nourwish, with source-backed cues around volume-texture boost, leave-in care and frizz control.",
+        "why_it_stands_out": [
+          {
+            "headline": "Product cues are source-backed",
+            "body": "Reviewed PDP cues such as frizz control, leave-in care, scalp or style refresh give shoppers specific comparison points within Nourwish, rather than category-only copy.",
+            "evidence_strength": "official_pdp_reviewed"
+          }
+        ],
+        "best_for": [
+          {
+            "tag": "frizz_control",
+            "label": "frizz control",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "hair_hydration",
+            "label": "hair hydration",
+            "confidence": "moderate"
+          }
+        ],
+        "shopping_highlight": "frizz control, leave-in care"
+      },
+      "writes": [
+        {
+          "kb_key": "product:ext_932b64068bf11f0ef69c73c4",
+          "action": "update",
+          "reason": "explicit_owner_delegated_assistant_replacement_review",
+          "old_hash": "26abf718ef6a17a24268441d4a869003ac5295bb4a9b8483defc41f7464658f7",
+          "candidate_hash": "4d7851f0c2055e97c7b51a68f161bd1b5c9b5ba41ced966b2cf542fb23cb46e2",
+          "existing_weak": true,
+          "source": "pivota_insights_official_pdp_manual_review_v1",
+          "after_inventory": {
+            "product_id": "ext_932b64068bf11f0ef69c73c4",
+            "kb_key": "product:ext_932b64068bf11f0ef69c73c4",
+            "source": "pivota_insights_official_pdp_manual_review_v1",
+            "updated_at": "",
+            "last_success_at": "",
+            "title": "Scalp Retreat Weightless Conditioner",
+            "canonical_url": "",
+            "bundle_hash": "8038ed3880df532fd90cb6a1c68af15879bfe6551d17358ebfeb4a944e7de61e",
+            "lane": "keep",
+            "reason": "protected_good_content",
+            "priority": 0,
+            "protected": true,
+            "displayable": true,
+            "high_quality_ready": true,
+            "human_reviewed": true,
+            "issues": [],
+            "blocking_issues": [],
+            "quality_state": "reviewed",
+            "evidence_profile": "official_pdp_reviewed_limited",
+            "evidence_rank": 1,
+            "review_tier": "assistant_reviewed",
+            "agent_readable": true,
+            "public_ready": true
+          },
+          "source_meta": {
+            "evidence_profile": "official_pdp_reviewed_limited",
+            "quality_state": "reviewed",
+            "source_origin": "official_pdp_fields",
+            "source_url": "https://nourwish.com/products/nourwish-scalp-retreat-weightless-conditioner",
+            "quality_improvement": {
+              "previous_bundle_hash": "2ae0f1818b9a03f75212b03b4eee778e3822eab3f3489723bd7b38dd969338a0",
+              "candidate_bundle_hash": "8038ed3880df532fd90cb6a1c68af15879bfe6551d17358ebfeb4a944e7de61e",
+              "replacement_decision": "explicit_owner_delegated_assistant_replacement_review",
+              "existing_quality_lane": "suppress_public",
+              "candidate_quality_lane": "keep",
+              "existing_evidence_profile": "seller_only",
+              "candidate_evidence_profile": "official_pdp_reviewed_limited"
+            }
+          }
+        },
+        {
+          "kb_key": "product:sig_83c03f01c2d234e989b3e2a6",
+          "action": "insert",
+          "reason": "new_product_intel_bundle",
+          "old_hash": null,
+          "candidate_hash": "4d7851f0c2055e97c7b51a68f161bd1b5c9b5ba41ced966b2cf542fb23cb46e2",
+          "existing_weak": true,
+          "source": "pivota_insights_official_pdp_manual_review_v1",
+          "after_inventory": {
+            "product_id": "ext_932b64068bf11f0ef69c73c4",
+            "kb_key": "product:sig_83c03f01c2d234e989b3e2a6",
+            "source": "pivota_insights_official_pdp_manual_review_v1",
+            "updated_at": "",
+            "last_success_at": "",
+            "title": "Scalp Retreat Weightless Conditioner",
+            "canonical_url": "",
+            "bundle_hash": "8038ed3880df532fd90cb6a1c68af15879bfe6551d17358ebfeb4a944e7de61e",
+            "lane": "keep",
+            "reason": "protected_good_content",
+            "priority": 0,
+            "protected": true,
+            "displayable": true,
+            "high_quality_ready": true,
+            "human_reviewed": true,
+            "issues": [],
+            "blocking_issues": [],
+            "quality_state": "reviewed",
+            "evidence_profile": "official_pdp_reviewed_limited",
+            "evidence_rank": 1,
+            "review_tier": "assistant_reviewed",
+            "agent_readable": true,
+            "public_ready": true
+          },
+          "source_meta": {
+            "evidence_profile": "official_pdp_reviewed_limited",
+            "quality_state": "reviewed",
+            "source_origin": "official_pdp_fields",
+            "source_url": "https://nourwish.com/products/nourwish-scalp-retreat-weightless-conditioner",
+            "quality_improvement": {
+              "previous_bundle_hash": null,
+              "candidate_bundle_hash": "8038ed3880df532fd90cb6a1c68af15879bfe6551d17358ebfeb4a944e7de61e",
+              "replacement_decision": "new_product_intel_bundle",
+              "existing_quality_lane": null,
+              "candidate_quality_lane": "keep",
+              "existing_evidence_profile": null,
+              "candidate_evidence_profile": "official_pdp_reviewed_limited"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "external_product_id": "ext_3be7219e10f88ec8a65d138e",
+      "pivota_signature_id": null,
+      "title": "The Airy Glow Set",
+      "brand": "Nourwish",
+      "canonical_url": "https://nourwish.com/products/airy-glow-set",
+      "changed": true,
+      "blocked": false,
+      "skip_reason": null,
+      "candidate_hash": "b68acb89ff60fc4daecdd5aaaf9d287c8c33b0b54a914c64cdd2ba001e8ff898",
+      "evidence_profile": "official_pdp_reviewed_limited",
+      "source_coverage": {
+        "source": "official_pdp",
+        "canonical_url": "https://nourwish.com/products/airy-glow-set",
+        "fields": {
+          "description": true,
+          "ingredients": 0,
+          "active_ingredients": 0,
+          "how_to": 0,
+          "details": 0,
+          "variants": 1
+        }
+      },
+      "preview": {
+        "headline": "Skincare set",
+        "what_it_is": "The Airy Glow Set is a skincare set from Nourwish, with source-backed cues around hydration.",
+        "why_it_stands_out": [
+          {
+            "headline": "Routine step cues are specific",
+            "body": "Reviewed skincare cues such as hydration identify the routine role or key ingredient context without inventing unsupported benefits.",
+            "evidence_strength": "official_pdp_reviewed"
+          }
+        ],
+        "best_for": [
+          {
+            "tag": "hydration",
+            "label": "hydration",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "radiance",
+            "label": "radiance",
+            "confidence": "moderate"
+          }
+        ],
+        "shopping_highlight": "Brightening skincare set"
+      },
+      "writes": [
+        {
+          "kb_key": "product:ext_3be7219e10f88ec8a65d138e",
+          "action": "update",
+          "reason": "explicit_owner_delegated_assistant_replacement_review",
+          "old_hash": "82dda0d11d9eb69ba66feedb6bb7c7c04ed813a21c34b4c649f39451b5c239b5",
+          "candidate_hash": "31d40d3239e191aaddd2b9d8087ea74ec363d49e0fa29bb119cdd9fd362d90ca",
+          "existing_weak": true,
+          "source": "pivota_insights_official_pdp_manual_review_v1",
+          "after_inventory": {
+            "product_id": "ext_3be7219e10f88ec8a65d138e",
+            "kb_key": "product:ext_3be7219e10f88ec8a65d138e",
+            "source": "pivota_insights_official_pdp_manual_review_v1",
+            "updated_at": "",
+            "last_success_at": "",
+            "title": "The Airy Glow Set",
+            "canonical_url": "",
+            "bundle_hash": "b68acb89ff60fc4daecdd5aaaf9d287c8c33b0b54a914c64cdd2ba001e8ff898",
+            "lane": "keep",
+            "reason": "protected_good_content",
+            "priority": 0,
+            "protected": true,
+            "displayable": true,
+            "high_quality_ready": true,
+            "human_reviewed": true,
+            "issues": [],
+            "blocking_issues": [],
+            "quality_state": "reviewed",
+            "evidence_profile": "official_pdp_reviewed_limited",
+            "evidence_rank": 1,
+            "review_tier": "assistant_reviewed",
+            "agent_readable": true,
+            "public_ready": true
+          },
+          "source_meta": {
+            "evidence_profile": "official_pdp_reviewed_limited",
+            "quality_state": "reviewed",
+            "source_origin": "official_pdp_fields",
+            "source_url": "https://nourwish.com/products/airy-glow-set",
+            "quality_improvement": {
+              "previous_bundle_hash": "f7d9583a62b229859b0e530d28c89fda649bdce2593449801dba4114dacc4ae1",
+              "candidate_bundle_hash": "b68acb89ff60fc4daecdd5aaaf9d287c8c33b0b54a914c64cdd2ba001e8ff898",
+              "replacement_decision": "explicit_owner_delegated_assistant_replacement_review",
+              "existing_quality_lane": "repair",
+              "candidate_quality_lane": "keep",
+              "existing_evidence_profile": "seller_only",
+              "candidate_evidence_profile": "official_pdp_reviewed_limited"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "external_product_id": "ext_a3df3d56e24bd1dbcf149598",
+      "pivota_signature_id": null,
+      "title": "The Scalp Retreat Set",
+      "brand": "Nourwish",
+      "canonical_url": "https://nourwish.com/products/the-scalp-retreat-set",
+      "changed": true,
+      "blocked": false,
+      "skip_reason": null,
+      "candidate_hash": "7ea4834974cad6c8e1e2399c4f870219c5913fcdf6945d7e9deaa197c331fe08",
+      "evidence_profile": "official_pdp_reviewed_limited",
+      "source_coverage": {
+        "source": "official_pdp",
+        "canonical_url": "https://nourwish.com/products/the-scalp-retreat-set",
+        "fields": {
+          "description": true,
+          "ingredients": 0,
+          "active_ingredients": 0,
+          "how_to": 0,
+          "details": 0,
+          "variants": 1
+        }
+      },
+      "preview": {
+        "headline": "Hair care set",
+        "what_it_is": "The Scalp Retreat Set is a leave-in hair treatment from Nourwish, with source-backed cues around volume-texture boost and leave-in care.",
+        "why_it_stands_out": [
+          {
+            "headline": "Product cues are source-backed",
+            "body": "Reviewed PDP cues such as leave-in care, scalp or style refresh give shoppers specific comparison points within Nourwish, rather than category-only copy.",
+            "evidence_strength": "official_pdp_reviewed"
+          }
+        ],
+        "best_for": [
+          {
+            "tag": "hair_hydration",
+            "label": "hair hydration",
+            "confidence": "moderate"
+          }
+        ],
+        "shopping_highlight": "leave-in care, scalp or style refresh"
+      },
+      "writes": [
+        {
+          "kb_key": "product:ext_a3df3d56e24bd1dbcf149598",
+          "action": "update",
+          "reason": "explicit_owner_delegated_assistant_replacement_review",
+          "old_hash": "4a95cf72b04d4e27fa97ad63eab784795bc05cf1f60aef968bf1bb14fb9ef092",
+          "candidate_hash": "9dc46536db1a984b68fe565d066bd4c9c08011a2c75341e6097cad888cc8a96b",
+          "existing_weak": true,
+          "source": "pivota_insights_official_pdp_manual_review_v1",
+          "after_inventory": {
+            "product_id": "ext_a3df3d56e24bd1dbcf149598",
+            "kb_key": "product:ext_a3df3d56e24bd1dbcf149598",
+            "source": "pivota_insights_official_pdp_manual_review_v1",
+            "updated_at": "",
+            "last_success_at": "",
+            "title": "The Scalp Retreat Set",
+            "canonical_url": "",
+            "bundle_hash": "7ea4834974cad6c8e1e2399c4f870219c5913fcdf6945d7e9deaa197c331fe08",
+            "lane": "keep",
+            "reason": "protected_good_content",
+            "priority": 0,
+            "protected": true,
+            "displayable": true,
+            "high_quality_ready": true,
+            "human_reviewed": true,
+            "issues": [],
+            "blocking_issues": [],
+            "quality_state": "reviewed",
+            "evidence_profile": "official_pdp_reviewed_limited",
+            "evidence_rank": 1,
+            "review_tier": "assistant_reviewed",
+            "agent_readable": true,
+            "public_ready": true
+          },
+          "source_meta": {
+            "evidence_profile": "official_pdp_reviewed_limited",
+            "quality_state": "reviewed",
+            "source_origin": "official_pdp_fields",
+            "source_url": "https://nourwish.com/products/the-scalp-retreat-set",
+            "quality_improvement": {
+              "previous_bundle_hash": "39f91e0892382987a60f090d48c3146a705bbe2a79004901bb95cecc7400ae5b",
+              "candidate_bundle_hash": "7ea4834974cad6c8e1e2399c4f870219c5913fcdf6945d7e9deaa197c331fe08",
+              "replacement_decision": "explicit_owner_delegated_assistant_replacement_review",
+              "existing_quality_lane": "repair",
+              "candidate_quality_lane": "keep",
+              "existing_evidence_profile": "seller_only",
+              "candidate_evidence_profile": "official_pdp_reviewed_limited"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "external_product_id": "ext_e19a1e587469ab8765d49e03",
+      "pivota_signature_id": "sig_921def9caa7ff5aa1f4a7a51",
+      "title": "Through Thin to Thick",
+      "brand": "Nourwish",
+      "canonical_url": "https://nourwish.com/products/hair-serum-bundle",
+      "changed": true,
+      "blocked": false,
+      "skip_reason": null,
+      "candidate_hash": "e81f2eebec53c89729e809140fa910ea8018210ec39cd817b559d463e41b883f",
+      "evidence_profile": "official_pdp_reviewed_limited",
+      "source_coverage": {
+        "source": "official_pdp",
+        "canonical_url": "https://nourwish.com/products/hair-serum-bundle",
+        "fields": {
+          "description": true,
+          "ingredients": 0,
+          "active_ingredients": 0,
+          "how_to": 0,
+          "details": 0,
+          "variants": 1
+        }
+      },
+      "preview": {
+        "headline": "Hair treatment",
+        "what_it_is": "Through Thin to Thick is a leave-in hair treatment from Nourwish, with source-backed cues around between-wash refresh and leave-in care.",
+        "why_it_stands_out": [
+          {
+            "headline": "Product cues are source-backed",
+            "body": "Reviewed PDP cues such as leave-in care, scalp or style refresh give shoppers specific comparison points within Nourwish, rather than category-only copy.",
+            "evidence_strength": "official_pdp_reviewed"
+          }
+        ],
+        "best_for": [
+          {
+            "tag": "hair_hydration",
+            "label": "hair hydration",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "style_refresh",
+            "label": "style refresh",
+            "confidence": "moderate"
+          }
+        ],
+        "shopping_highlight": "leave-in care, scalp or style refresh"
+      },
+      "writes": [
+        {
+          "kb_key": "product:ext_e19a1e587469ab8765d49e03",
+          "action": "update",
+          "reason": "explicit_owner_delegated_assistant_replacement_review",
+          "old_hash": "fecbbb5ea5d14ccb1ad18fa3ddaf1dbd359bc47b24dd472b0abed8902e797841",
+          "candidate_hash": "dd168969b51002afaefda26ffd7f7517667c1c5741197e193c18dac1617c6f5b",
+          "existing_weak": true,
+          "source": "pivota_insights_official_pdp_manual_review_v1",
+          "after_inventory": {
+            "product_id": "ext_e19a1e587469ab8765d49e03",
+            "kb_key": "product:ext_e19a1e587469ab8765d49e03",
+            "source": "pivota_insights_official_pdp_manual_review_v1",
+            "updated_at": "",
+            "last_success_at": "",
+            "title": "Through Thin to Thick",
+            "canonical_url": "",
+            "bundle_hash": "e81f2eebec53c89729e809140fa910ea8018210ec39cd817b559d463e41b883f",
+            "lane": "keep",
+            "reason": "protected_good_content",
+            "priority": 0,
+            "protected": true,
+            "displayable": true,
+            "high_quality_ready": true,
+            "human_reviewed": true,
+            "issues": [],
+            "blocking_issues": [],
+            "quality_state": "reviewed",
+            "evidence_profile": "official_pdp_reviewed_limited",
+            "evidence_rank": 1,
+            "review_tier": "assistant_reviewed",
+            "agent_readable": true,
+            "public_ready": true
+          },
+          "source_meta": {
+            "evidence_profile": "official_pdp_reviewed_limited",
+            "quality_state": "reviewed",
+            "source_origin": "official_pdp_fields",
+            "source_url": "https://nourwish.com/products/hair-serum-bundle",
+            "quality_improvement": {
+              "previous_bundle_hash": "03f77022785691a80637400caddb7baf6863d3c6d9ca5f347ce5036e7d38f59d",
+              "candidate_bundle_hash": "e81f2eebec53c89729e809140fa910ea8018210ec39cd817b559d463e41b883f",
+              "replacement_decision": "explicit_owner_delegated_assistant_replacement_review",
+              "existing_quality_lane": "repair",
+              "candidate_quality_lane": "keep",
+              "existing_evidence_profile": "seller_only",
+              "candidate_evidence_profile": "official_pdp_reviewed_limited"
+            }
+          }
+        },
+        {
+          "kb_key": "product:sig_921def9caa7ff5aa1f4a7a51",
+          "action": "insert",
+          "reason": "new_product_intel_bundle",
+          "old_hash": null,
+          "candidate_hash": "dd168969b51002afaefda26ffd7f7517667c1c5741197e193c18dac1617c6f5b",
+          "existing_weak": true,
+          "source": "pivota_insights_official_pdp_manual_review_v1",
+          "after_inventory": {
+            "product_id": "ext_e19a1e587469ab8765d49e03",
+            "kb_key": "product:sig_921def9caa7ff5aa1f4a7a51",
+            "source": "pivota_insights_official_pdp_manual_review_v1",
+            "updated_at": "",
+            "last_success_at": "",
+            "title": "Through Thin to Thick",
+            "canonical_url": "",
+            "bundle_hash": "e81f2eebec53c89729e809140fa910ea8018210ec39cd817b559d463e41b883f",
+            "lane": "keep",
+            "reason": "protected_good_content",
+            "priority": 0,
+            "protected": true,
+            "displayable": true,
+            "high_quality_ready": true,
+            "human_reviewed": true,
+            "issues": [],
+            "blocking_issues": [],
+            "quality_state": "reviewed",
+            "evidence_profile": "official_pdp_reviewed_limited",
+            "evidence_rank": 1,
+            "review_tier": "assistant_reviewed",
+            "agent_readable": true,
+            "public_ready": true
+          },
+          "source_meta": {
+            "evidence_profile": "official_pdp_reviewed_limited",
+            "quality_state": "reviewed",
+            "source_origin": "official_pdp_fields",
+            "source_url": "https://nourwish.com/products/hair-serum-bundle",
+            "quality_improvement": {
+              "previous_bundle_hash": null,
+              "candidate_bundle_hash": "e81f2eebec53c89729e809140fa910ea8018210ec39cd817b559d463e41b883f",
+              "replacement_decision": "new_product_intel_bundle",
+              "existing_quality_lane": null,
+              "candidate_quality_lane": "keep",
+              "existing_evidence_profile": null,
+              "candidate_evidence_profile": "official_pdp_reviewed_limited"
+            }
+          }
+        }
+      ]
+    }
+  ]
+}

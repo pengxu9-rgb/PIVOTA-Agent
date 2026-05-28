@@ -1,0 +1,678 @@
+{
+  "generated_at": "2026-05-28T07:46:16.905Z",
+  "source": "pivota_insights_official_pdp_manual_review_v1",
+  "mode": "dry_run",
+  "filters": {
+    "brand": null,
+    "product_ids": [
+      "ext_092b6aa9139491c529586778",
+      "ext_1662650fcc65682ef1260b1a",
+      "ext_2c1a3931e9b15bb1ae7eeebd",
+      "ext_6126e44050e66ecd34780fc4",
+      "ext_65d1debe6aa024c1cd199190",
+      "ext_aacacfb4fcef9845059df771",
+      "ext_ab96b5d595d2fcba9ab8e9b6",
+      "ext_d6d7b98727a3ffea3b8dee7b"
+    ],
+    "limit": null,
+    "include_strong": false,
+    "include_url_key": false,
+    "apply_chunk_size": null
+  },
+  "summary": {
+    "scanned": 8,
+    "changed_products": 2,
+    "blocked_products": 5,
+    "skipped_products": 1,
+    "write_actions": {
+      "skip": 2,
+      "update": 2,
+      "insert": 2
+    },
+    "skip_reasons": {
+      "candidate_failed_manual_quality_gate:generic_beauty_product_copy": 5,
+      "no_safe_writes": 1,
+      "candidate_not_publish_quality_ready": 2
+    },
+    "evidence_profiles": {
+      "official_pdp_reviewed_limited": 8
+    }
+  },
+  "plans": [
+    {
+      "external_product_id": "ext_092b6aa9139491c529586778",
+      "pivota_signature_id": "sig_a7f55f854a3936a31ca7f9f5",
+      "title": "Bamboo Cotton Buds - 200 Pieces",
+      "brand": "UpCircle Beauty",
+      "canonical_url": "https://upcirclebeauty.com/products/bamboo-cotton-buds",
+      "changed": false,
+      "blocked": true,
+      "skip_reason": "candidate_failed_manual_quality_gate:generic_beauty_product_copy",
+      "candidate_hash": "2fd448af15124fc2b40c524dc7ea48819f27f32a1d72f96fcff6c8616e2b0798",
+      "evidence_profile": "official_pdp_reviewed_limited",
+      "source_coverage": {
+        "source": "official_pdp",
+        "canonical_url": "https://upcirclebeauty.com/products/bamboo-cotton-buds",
+        "fields": {
+          "description": true,
+          "ingredients": 0,
+          "active_ingredients": 0,
+          "how_to": 0,
+          "details": 0,
+          "variants": 1
+        }
+      },
+      "preview": {
+        "headline": "Beauty product",
+        "what_it_is": "Bamboo Cotton Buds - 200 Pieces is a beauty product from UpCircle Beauty. A staple for any bathroom - 200 high quality bamboo sticks that make an excellent, sustainable alternative to plastic buds.",
+        "why_it_stands_out": [
+          {
+            "headline": "Official PDP evidence only",
+            "body": "This insight is limited to the official product fields currently available for Bamboo Cotton Buds - 200 Pieces.",
+            "evidence_strength": "official_pdp_reviewed_limited"
+          }
+        ],
+        "best_for": [
+          {
+            "tag": "beauty_product",
+            "label": "Beauty product",
+            "confidence": "moderate"
+          }
+        ],
+        "shopping_highlight": "Beauty product"
+      },
+      "writes": []
+    },
+    {
+      "external_product_id": "ext_6126e44050e66ecd34780fc4",
+      "pivota_signature_id": "sig_6b9b65d4cf59f903362b2e76",
+      "title": "Cotton Gift Wrap - Furoshiki Cloth",
+      "brand": "UpCircle Beauty",
+      "canonical_url": "https://upcirclebeauty.com/products/gift-wrap-furoshiki",
+      "changed": false,
+      "blocked": true,
+      "skip_reason": "candidate_failed_manual_quality_gate:generic_beauty_product_copy",
+      "candidate_hash": "20c1163840dabbd22fa89366a76f8204e64ec0d4e31535df4d6cad301f6918f1",
+      "evidence_profile": "official_pdp_reviewed_limited",
+      "source_coverage": {
+        "source": "official_pdp",
+        "canonical_url": "https://upcirclebeauty.com/products/gift-wrap-furoshiki",
+        "fields": {
+          "description": true,
+          "ingredients": 0,
+          "active_ingredients": 0,
+          "how_to": 0,
+          "details": 0,
+          "variants": 1
+        }
+      },
+      "preview": {
+        "headline": "Beauty product",
+        "what_it_is": "Cotton Gift Wrap - Furoshiki Cloth is a beauty product from UpCircle Beauty. Furoshiki is a traditional Japanese eco-friendly and ethically-sourced wrapping cloth made from calico, a cotton fabric.",
+        "why_it_stands_out": [
+          {
+            "headline": "Official PDP evidence only",
+            "body": "This insight is limited to the official product fields currently available for Cotton Gift Wrap - Furoshiki Cloth.",
+            "evidence_strength": "official_pdp_reviewed_limited"
+          }
+        ],
+        "best_for": [
+          {
+            "tag": "beauty_product",
+            "label": "Beauty product",
+            "confidence": "moderate"
+          }
+        ],
+        "shopping_highlight": "Beauty product"
+      },
+      "writes": []
+    },
+    {
+      "external_product_id": "ext_aacacfb4fcef9845059df771",
+      "pivota_signature_id": "sig_93e615368e9256d0d5f1081f4ee9fee7",
+      "title": "Mystery Box - Worth £100",
+      "brand": "UpCircle Beauty",
+      "canonical_url": "https://upcirclebeauty.com/products/beauty-mystery-box",
+      "changed": false,
+      "blocked": false,
+      "skip_reason": "no_safe_writes",
+      "candidate_hash": "c17a845a89164160d238332bd298fa7696ea85db2f67d35d1e90d5f9eb536d10",
+      "evidence_profile": "official_pdp_reviewed_limited",
+      "source_coverage": {
+        "source": "official_pdp",
+        "canonical_url": "https://upcirclebeauty.com/products/beauty-mystery-box",
+        "fields": {
+          "description": true,
+          "ingredients": 0,
+          "active_ingredients": 0,
+          "how_to": 0,
+          "details": 0,
+          "variants": 1
+        }
+      },
+      "preview": {
+        "headline": "Fine fragrance",
+        "what_it_is": "Mystery Box - Worth £100 is a fine fragrance from UpCircle Beauty.",
+        "why_it_stands_out": [
+          {
+            "headline": "Official PDP evidence only",
+            "body": "This insight is limited to the official product fields currently available for Mystery Box - Worth £100.",
+            "evidence_strength": "official_pdp_reviewed_limited"
+          }
+        ],
+        "best_for": [
+          {
+            "tag": "fine_fragrance",
+            "label": "Fine fragrance",
+            "confidence": "moderate"
+          }
+        ],
+        "shopping_highlight": "Fine fragrance"
+      },
+      "writes": [
+        {
+          "kb_key": "product:ext_aacacfb4fcef9845059df771",
+          "action": "skip",
+          "reason": "candidate_not_publish_quality_ready",
+          "old_hash": null,
+          "candidate_hash": "caa281467735987eb7e1da9c31ff884aa7d09c881fa3f89f7db5e091a564879a",
+          "existing_weak": true,
+          "assessment": {
+            "allowed": false,
+            "reason": "candidate_not_publish_quality_ready",
+            "candidate": {
+              "lane": "repair",
+              "reason": "commerce_truth_claim_requires_mainline_source",
+              "priority": 75,
+              "protected": true,
+              "displayable": true,
+              "high_quality_ready": true,
+              "human_reviewed": true,
+              "issues": [
+                "commerce_truth_claim"
+              ],
+              "blocking_issues": [
+                "commerce_truth_claim"
+              ],
+              "quality_state": "reviewed",
+              "evidence_profile": "official_pdp_reviewed_limited",
+              "evidence_rank": 1,
+              "review_tier": "assistant_reviewed"
+            },
+            "candidate_bundle_hash": "c17a845a89164160d238332bd298fa7696ea85db2f67d35d1e90d5f9eb536d10"
+          }
+        },
+        {
+          "kb_key": "product:sig_93e615368e9256d0d5f1081f4ee9fee7",
+          "action": "skip",
+          "reason": "candidate_not_publish_quality_ready",
+          "old_hash": null,
+          "candidate_hash": "caa281467735987eb7e1da9c31ff884aa7d09c881fa3f89f7db5e091a564879a",
+          "existing_weak": true,
+          "assessment": {
+            "allowed": false,
+            "reason": "candidate_not_publish_quality_ready",
+            "candidate": {
+              "lane": "repair",
+              "reason": "commerce_truth_claim_requires_mainline_source",
+              "priority": 75,
+              "protected": true,
+              "displayable": true,
+              "high_quality_ready": true,
+              "human_reviewed": true,
+              "issues": [
+                "commerce_truth_claim"
+              ],
+              "blocking_issues": [
+                "commerce_truth_claim"
+              ],
+              "quality_state": "reviewed",
+              "evidence_profile": "official_pdp_reviewed_limited",
+              "evidence_rank": 1,
+              "review_tier": "assistant_reviewed"
+            },
+            "candidate_bundle_hash": "c17a845a89164160d238332bd298fa7696ea85db2f67d35d1e90d5f9eb536d10"
+          }
+        }
+      ]
+    },
+    {
+      "external_product_id": "ext_1662650fcc65682ef1260b1a",
+      "pivota_signature_id": "sig_58cbaa9dd90c59c77d5fa24e",
+      "title": "Organic Face Oil with Coffee Extract",
+      "brand": "UpCircle Beauty",
+      "canonical_url": "https://upcirclebeauty.com/products/organic-face-oil-with-coffee",
+      "changed": true,
+      "blocked": false,
+      "skip_reason": null,
+      "candidate_hash": "3e1cae2149c65908d4ab9b3ed78a0437c514b3ad66180b16fb4d5a0ec48a746a",
+      "evidence_profile": "official_pdp_reviewed_limited",
+      "source_coverage": {
+        "source": "official_pdp",
+        "canonical_url": "https://upcirclebeauty.com/products/organic-face-oil-with-coffee",
+        "fields": {
+          "description": true,
+          "ingredients": 0,
+          "active_ingredients": 0,
+          "how_to": 0,
+          "details": 0,
+          "variants": 2
+        }
+      },
+      "preview": {
+        "headline": "Face moisturizer",
+        "what_it_is": "Organic Face Oil with Coffee Extract is a face moisturizer from UpCircle Beauty, with source-backed cues around hydration and brightening support.",
+        "why_it_stands_out": [
+          {
+            "headline": "Routine step cues are specific",
+            "body": "Reviewed skincare cues such as vitamin C, hydration identify the routine role or key ingredient context without inventing unsupported benefits.",
+            "evidence_strength": "official_pdp_reviewed"
+          }
+        ],
+        "best_for": [
+          {
+            "tag": "hydration",
+            "label": "hydration",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "firmness",
+            "label": "firmness",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "radiance",
+            "label": "radiance",
+            "confidence": "moderate"
+          }
+        ],
+        "shopping_highlight": "vitamin C, hydration"
+      },
+      "writes": [
+        {
+          "kb_key": "product:ext_1662650fcc65682ef1260b1a",
+          "action": "update",
+          "reason": "explicit_owner_delegated_assistant_replacement_review",
+          "old_hash": "1ed69f4621ccef3c24412308c052862645a2202059732abea57c1ee1a37a6d53",
+          "candidate_hash": "723c1c2aad43cd9dadfd235872f692a2ed733c8da8f13488fb52f7d0d61a3a16",
+          "existing_weak": true,
+          "source": "pivota_insights_official_pdp_manual_review_v1",
+          "after_inventory": {
+            "product_id": "ext_1662650fcc65682ef1260b1a",
+            "kb_key": "product:ext_1662650fcc65682ef1260b1a",
+            "source": "pivota_insights_official_pdp_manual_review_v1",
+            "updated_at": "",
+            "last_success_at": "",
+            "title": "Organic Face Oil with Coffee Extract",
+            "canonical_url": "",
+            "bundle_hash": "3e1cae2149c65908d4ab9b3ed78a0437c514b3ad66180b16fb4d5a0ec48a746a",
+            "lane": "keep",
+            "reason": "protected_good_content",
+            "priority": 0,
+            "protected": true,
+            "displayable": true,
+            "high_quality_ready": true,
+            "human_reviewed": true,
+            "issues": [],
+            "blocking_issues": [],
+            "quality_state": "reviewed",
+            "evidence_profile": "official_pdp_reviewed_limited",
+            "evidence_rank": 1,
+            "review_tier": "assistant_reviewed",
+            "agent_readable": true,
+            "public_ready": true
+          },
+          "source_meta": {
+            "evidence_profile": "official_pdp_reviewed_limited",
+            "quality_state": "reviewed",
+            "source_origin": "official_pdp_fields",
+            "source_url": "https://upcirclebeauty.com/products/organic-face-oil-with-coffee",
+            "quality_improvement": {
+              "previous_bundle_hash": "1520ae003600139aba0b1e40223cba7071f888888b98ff55bc0eb41003401d72",
+              "candidate_bundle_hash": "3e1cae2149c65908d4ab9b3ed78a0437c514b3ad66180b16fb4d5a0ec48a746a",
+              "replacement_decision": "explicit_owner_delegated_assistant_replacement_review",
+              "existing_quality_lane": "suppress_public",
+              "candidate_quality_lane": "keep",
+              "existing_evidence_profile": "seller_only",
+              "candidate_evidence_profile": "official_pdp_reviewed_limited"
+            }
+          }
+        },
+        {
+          "kb_key": "product:sig_58cbaa9dd90c59c77d5fa24e",
+          "action": "insert",
+          "reason": "new_product_intel_bundle",
+          "old_hash": null,
+          "candidate_hash": "723c1c2aad43cd9dadfd235872f692a2ed733c8da8f13488fb52f7d0d61a3a16",
+          "existing_weak": true,
+          "source": "pivota_insights_official_pdp_manual_review_v1",
+          "after_inventory": {
+            "product_id": "ext_1662650fcc65682ef1260b1a",
+            "kb_key": "product:sig_58cbaa9dd90c59c77d5fa24e",
+            "source": "pivota_insights_official_pdp_manual_review_v1",
+            "updated_at": "",
+            "last_success_at": "",
+            "title": "Organic Face Oil with Coffee Extract",
+            "canonical_url": "",
+            "bundle_hash": "3e1cae2149c65908d4ab9b3ed78a0437c514b3ad66180b16fb4d5a0ec48a746a",
+            "lane": "keep",
+            "reason": "protected_good_content",
+            "priority": 0,
+            "protected": true,
+            "displayable": true,
+            "high_quality_ready": true,
+            "human_reviewed": true,
+            "issues": [],
+            "blocking_issues": [],
+            "quality_state": "reviewed",
+            "evidence_profile": "official_pdp_reviewed_limited",
+            "evidence_rank": 1,
+            "review_tier": "assistant_reviewed",
+            "agent_readable": true,
+            "public_ready": true
+          },
+          "source_meta": {
+            "evidence_profile": "official_pdp_reviewed_limited",
+            "quality_state": "reviewed",
+            "source_origin": "official_pdp_fields",
+            "source_url": "https://upcirclebeauty.com/products/organic-face-oil-with-coffee",
+            "quality_improvement": {
+              "previous_bundle_hash": null,
+              "candidate_bundle_hash": "3e1cae2149c65908d4ab9b3ed78a0437c514b3ad66180b16fb4d5a0ec48a746a",
+              "replacement_decision": "new_product_intel_bundle",
+              "existing_quality_lane": null,
+              "candidate_quality_lane": "keep",
+              "existing_evidence_profile": null,
+              "candidate_evidence_profile": "official_pdp_reviewed_limited"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "external_product_id": "ext_65d1debe6aa024c1cd199190",
+      "pivota_signature_id": "sig_a00467b1ae9659996a5c6871",
+      "title": "Organic Face Oil with Coffee Extract - Travel Size",
+      "brand": "UpCircle Beauty",
+      "canonical_url": "https://upcirclebeauty.com/products/mini-face-oil",
+      "changed": true,
+      "blocked": false,
+      "skip_reason": null,
+      "candidate_hash": "308040a47b56c61030f7a2b83748580b04685e56c69d37cac09f304e81f2eb04",
+      "evidence_profile": "official_pdp_reviewed_limited",
+      "source_coverage": {
+        "source": "official_pdp",
+        "canonical_url": "https://upcirclebeauty.com/products/mini-face-oil",
+        "fields": {
+          "description": true,
+          "ingredients": 0,
+          "active_ingredients": 0,
+          "how_to": 0,
+          "details": 0,
+          "variants": 1
+        }
+      },
+      "preview": {
+        "headline": "Face moisturizer",
+        "what_it_is": "Organic Face Oil with Coffee Extract - Travel Size is a face moisturizer from UpCircle Beauty, with source-backed cues around hydration and brightening support.",
+        "why_it_stands_out": [
+          {
+            "headline": "Routine step cues are specific",
+            "body": "Reviewed skincare cues such as vitamin C, hydration identify the routine role or key ingredient context without inventing unsupported benefits.",
+            "evidence_strength": "official_pdp_reviewed"
+          }
+        ],
+        "best_for": [
+          {
+            "tag": "hydration",
+            "label": "hydration",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "firmness",
+            "label": "firmness",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "radiance",
+            "label": "radiance",
+            "confidence": "moderate"
+          }
+        ],
+        "shopping_highlight": "vitamin C, hydration"
+      },
+      "writes": [
+        {
+          "kb_key": "product:ext_65d1debe6aa024c1cd199190",
+          "action": "update",
+          "reason": "explicit_owner_delegated_assistant_replacement_review",
+          "old_hash": "8421c755bb4a5aaa3abbe3d116e4cf38a3915794aca0c80ef2df18dc0b90f7e1",
+          "candidate_hash": "e5359e53eec0a49fd2a63f59ff8cf8bf29acff1d0fb16b6212359b2c44d53c1c",
+          "existing_weak": true,
+          "source": "pivota_insights_official_pdp_manual_review_v1",
+          "after_inventory": {
+            "product_id": "ext_65d1debe6aa024c1cd199190",
+            "kb_key": "product:ext_65d1debe6aa024c1cd199190",
+            "source": "pivota_insights_official_pdp_manual_review_v1",
+            "updated_at": "",
+            "last_success_at": "",
+            "title": "Organic Face Oil with Coffee Extract - Travel Size",
+            "canonical_url": "",
+            "bundle_hash": "308040a47b56c61030f7a2b83748580b04685e56c69d37cac09f304e81f2eb04",
+            "lane": "keep",
+            "reason": "protected_good_content",
+            "priority": 0,
+            "protected": true,
+            "displayable": true,
+            "high_quality_ready": true,
+            "human_reviewed": true,
+            "issues": [],
+            "blocking_issues": [],
+            "quality_state": "reviewed",
+            "evidence_profile": "official_pdp_reviewed_limited",
+            "evidence_rank": 1,
+            "review_tier": "assistant_reviewed",
+            "agent_readable": true,
+            "public_ready": true
+          },
+          "source_meta": {
+            "evidence_profile": "official_pdp_reviewed_limited",
+            "quality_state": "reviewed",
+            "source_origin": "official_pdp_fields",
+            "source_url": "https://upcirclebeauty.com/products/mini-face-oil",
+            "quality_improvement": {
+              "previous_bundle_hash": "4f8d697be2395457ae989dd3ade79649c57549a2a8237fddc6802f0f99ba0e1f",
+              "candidate_bundle_hash": "308040a47b56c61030f7a2b83748580b04685e56c69d37cac09f304e81f2eb04",
+              "replacement_decision": "explicit_owner_delegated_assistant_replacement_review",
+              "existing_quality_lane": "suppress_public",
+              "candidate_quality_lane": "keep",
+              "existing_evidence_profile": "seller_only",
+              "candidate_evidence_profile": "official_pdp_reviewed_limited"
+            }
+          }
+        },
+        {
+          "kb_key": "product:sig_a00467b1ae9659996a5c6871",
+          "action": "insert",
+          "reason": "new_product_intel_bundle",
+          "old_hash": null,
+          "candidate_hash": "e5359e53eec0a49fd2a63f59ff8cf8bf29acff1d0fb16b6212359b2c44d53c1c",
+          "existing_weak": true,
+          "source": "pivota_insights_official_pdp_manual_review_v1",
+          "after_inventory": {
+            "product_id": "ext_65d1debe6aa024c1cd199190",
+            "kb_key": "product:sig_a00467b1ae9659996a5c6871",
+            "source": "pivota_insights_official_pdp_manual_review_v1",
+            "updated_at": "",
+            "last_success_at": "",
+            "title": "Organic Face Oil with Coffee Extract - Travel Size",
+            "canonical_url": "",
+            "bundle_hash": "308040a47b56c61030f7a2b83748580b04685e56c69d37cac09f304e81f2eb04",
+            "lane": "keep",
+            "reason": "protected_good_content",
+            "priority": 0,
+            "protected": true,
+            "displayable": true,
+            "high_quality_ready": true,
+            "human_reviewed": true,
+            "issues": [],
+            "blocking_issues": [],
+            "quality_state": "reviewed",
+            "evidence_profile": "official_pdp_reviewed_limited",
+            "evidence_rank": 1,
+            "review_tier": "assistant_reviewed",
+            "agent_readable": true,
+            "public_ready": true
+          },
+          "source_meta": {
+            "evidence_profile": "official_pdp_reviewed_limited",
+            "quality_state": "reviewed",
+            "source_origin": "official_pdp_fields",
+            "source_url": "https://upcirclebeauty.com/products/mini-face-oil",
+            "quality_improvement": {
+              "previous_bundle_hash": null,
+              "candidate_bundle_hash": "308040a47b56c61030f7a2b83748580b04685e56c69d37cac09f304e81f2eb04",
+              "replacement_decision": "new_product_intel_bundle",
+              "existing_quality_lane": null,
+              "candidate_quality_lane": "keep",
+              "existing_evidence_profile": null,
+              "candidate_evidence_profile": "official_pdp_reviewed_limited"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "external_product_id": "ext_d6d7b98727a3ffea3b8dee7b",
+      "pivota_signature_id": "sig_2222006ec7433a7e1c9d9b9e",
+      "title": "Plastic-Free Safety Razor",
+      "brand": "UpCircle Beauty",
+      "canonical_url": "https://upcirclebeauty.com/products/safety-razor",
+      "changed": false,
+      "blocked": true,
+      "skip_reason": "candidate_failed_manual_quality_gate:generic_beauty_product_copy",
+      "candidate_hash": "8ca1f54fcf7c0bc9367b457ca87c7bcefc59fc43ac83c574e1571377c3b3b22f",
+      "evidence_profile": "official_pdp_reviewed_limited",
+      "source_coverage": {
+        "source": "official_pdp",
+        "canonical_url": "https://upcirclebeauty.com/products/safety-razor",
+        "fields": {
+          "description": true,
+          "ingredients": 0,
+          "active_ingredients": 0,
+          "how_to": 0,
+          "details": 0,
+          "variants": 2
+        }
+      },
+      "preview": {
+        "headline": "Beauty product",
+        "what_it_is": "Plastic-Free Safety Razor is a beauty product from UpCircle Beauty. Award-winning chrome safety razor for a superior shave and reduced irritation.",
+        "why_it_stands_out": [
+          {
+            "headline": "Product cues are source-backed",
+            "body": "Reviewed PDP cues such as compact accessory give shoppers specific comparison points within UpCircle Beauty, rather than category-only copy.",
+            "evidence_strength": "official_pdp_reviewed"
+          }
+        ],
+        "best_for": [
+          {
+            "tag": "compact_accessory",
+            "label": "compact accessory",
+            "confidence": "moderate"
+          }
+        ],
+        "shopping_highlight": "compact accessory"
+      },
+      "writes": []
+    },
+    {
+      "external_product_id": "ext_ab96b5d595d2fcba9ab8e9b6",
+      "pivota_signature_id": null,
+      "title": "Refill Safety Razor Blades – Pack Of 10",
+      "brand": "UpCircle Beauty",
+      "canonical_url": "https://upcirclebeauty.com/products/refill-razor-blades",
+      "changed": false,
+      "blocked": true,
+      "skip_reason": "candidate_failed_manual_quality_gate:generic_beauty_product_copy",
+      "candidate_hash": "89c25402cef123fce47de5a68244f485f3bab1f9038016003a72793043da1680",
+      "evidence_profile": "official_pdp_reviewed_limited",
+      "source_coverage": {
+        "source": "official_pdp",
+        "canonical_url": "https://upcirclebeauty.com/products/refill-razor-blades",
+        "fields": {
+          "description": true,
+          "ingredients": 0,
+          "active_ingredients": 0,
+          "how_to": 0,
+          "details": 0,
+          "variants": 1
+        }
+      },
+      "preview": {
+        "headline": "Beauty product",
+        "what_it_is": "Refill Safety Razor Blades – Pack Of 10 is a beauty product from UpCircle Beauty. These double-edged stainless steel blades fit tightly in your razor, giving you the closet shave and smoothest skin.",
+        "why_it_stands_out": [
+          {
+            "headline": "Product cues are source-backed",
+            "body": "Reviewed PDP cues such as hair control give shoppers specific comparison points within UpCircle Beauty, rather than category-only copy.",
+            "evidence_strength": "official_pdp_reviewed"
+          }
+        ],
+        "best_for": [
+          {
+            "tag": "hair_hold",
+            "label": "hair hold",
+            "confidence": "moderate"
+          }
+        ],
+        "shopping_highlight": "hair control"
+      },
+      "writes": []
+    },
+    {
+      "external_product_id": "ext_2c1a3931e9b15bb1ae7eeebd",
+      "pivota_signature_id": "sig_e439a329395894ea5f12934b57e11c05",
+      "title": "UpCircle Beauty E-Gift Card",
+      "brand": "UpCircle Beauty",
+      "canonical_url": "https://upcirclebeauty.com/products/gift-card",
+      "changed": false,
+      "blocked": true,
+      "skip_reason": "candidate_failed_manual_quality_gate:generic_beauty_product_copy",
+      "candidate_hash": "4e8337918b3bf58d15ac29ceac33ba4b2437883c140c257cd3dcf2f62282f2f7",
+      "evidence_profile": "official_pdp_reviewed_limited",
+      "source_coverage": {
+        "source": "official_pdp",
+        "canonical_url": "https://upcirclebeauty.com/products/gift-card",
+        "fields": {
+          "description": true,
+          "ingredients": 0,
+          "active_ingredients": 0,
+          "how_to": 0,
+          "details": 0,
+          "variants": 11
+        }
+      },
+      "preview": {
+        "headline": "Beauty product",
+        "what_it_is": "UpCircle Beauty E-Gift Card is a beauty product from UpCircle Beauty. Shopping for a special someone but not sure what UpCircle goodies to give them?",
+        "why_it_stands_out": [
+          {
+            "headline": "Official PDP evidence only",
+            "body": "This insight is limited to the official product fields currently available for UpCircle Beauty E-Gift Card.",
+            "evidence_strength": "official_pdp_reviewed_limited"
+          }
+        ],
+        "best_for": [
+          {
+            "tag": "beauty_product",
+            "label": "Beauty product",
+            "confidence": "moderate"
+          }
+        ],
+        "shopping_highlight": "Beauty product"
+      },
+      "writes": []
+    }
+  ]
+}

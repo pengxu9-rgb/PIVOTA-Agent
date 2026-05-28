@@ -304,6 +304,18 @@ describe('discovery feed service', () => {
     ]);
   });
 
+  test('external seed public PDP SQL only resolves signatures through attached serving rows', () => {
+    const selectSql = _internals.buildBeautyInterestSeedSelect();
+    expect(selectSql).toMatch(/cp\.product_key\s*=\s*external_product_seeds\.attached_product_key/i);
+    expect(selectSql).toMatch(/serving_eligible\s*=\s*TRUE|catalog_row_trust/i);
+    expect(selectSql).not.toMatch(/cp\.source_product_id\s*=\s*external_product_seeds\.external_product_id/i);
+
+    const gateSql = _internals.buildDiscoveryAttachedSeedServingExistsSql('eps');
+    expect(gateSql).toMatch(/eps\.attached_product_key\s+IS\s+NOT\s+NULL/i);
+    expect(gateSql).toMatch(/cp_serving\.product_key\s*=\s*eps\.attached_product_key/i);
+    expect(gateSql).not.toMatch(/source_product_id/i);
+  });
+
   test('explicit browse query uses staged external seed mainline without cold-start beauty fallback terms', async () => {
     delete process.env.DISCOVERY_PRODUCTS_SEARCH_BASE_URL;
     delete process.env.PIVOTA_BACKEND_BASE_URL;

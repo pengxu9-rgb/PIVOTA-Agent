@@ -1,0 +1,1073 @@
+{
+  "generated_at": "2026-05-28T07:44:13.295Z",
+  "source": "pivota_insights_official_pdp_manual_review_v1",
+  "mode": "apply",
+  "filters": {
+    "brand": null,
+    "product_ids": [
+      "ext_44b5c6180b6b2e57bfa2a8ed",
+      "ext_aa24dcd6cf3888a68f222281",
+      "ext_c1a3aac3be37dcedc3788d6a",
+      "ext_61eb4eb37362ae7b05a0ea62",
+      "ext_ef9fce748dfe937928f48d1a",
+      "ext_4099267ea35a5d5f273d78ce",
+      "ext_e795b1a17f6222e44dfb3dfd"
+    ],
+    "limit": null,
+    "include_strong": false,
+    "include_url_key": false,
+    "apply_chunk_size": 10
+  },
+  "summary": {
+    "scanned": 7,
+    "changed_products": 7,
+    "blocked_products": 0,
+    "skipped_products": 0,
+    "write_actions": {
+      "insert": 13
+    },
+    "skip_reasons": {},
+    "evidence_profiles": {
+      "official_pdp_reviewed_line": 6,
+      "official_pdp_reviewed_limited": 1
+    }
+  },
+  "plans": [
+    {
+      "external_product_id": "ext_44b5c6180b6b2e57bfa2a8ed",
+      "pivota_signature_id": "sig_7d5494b514794f50284dbc56",
+      "title": "16 LED Light for Teeth Whitening",
+      "brand": "Linhart Smile Care",
+      "canonical_url": "https://linhart.nyc/products/16-led-light-for-teeth-whitening",
+      "changed": true,
+      "blocked": false,
+      "skip_reason": null,
+      "candidate_hash": "10d16e6a7ecc879f6f5463ca8e5d7ab85a41614917507eeee19e9cf7006962e0",
+      "evidence_profile": "official_pdp_reviewed_line",
+      "source_coverage": {
+        "source": "official_pdp",
+        "canonical_url": "https://linhart.nyc/products/16-led-light-for-teeth-whitening",
+        "fields": {
+          "description": true,
+          "ingredients": 0,
+          "active_ingredients": 0,
+          "how_to": 0,
+          "details": 0,
+          "variants": 1
+        }
+      },
+      "preview": {
+        "headline": "Oral care tool",
+        "what_it_is": "16 LED Light for Teeth Whitening is a teeth-whitening light from Linhart Smile Care, with source-backed cues around teeth-whitening format and LED light format.",
+        "why_it_stands_out": [
+          {
+            "headline": "Oral-care format cues are clear",
+            "body": "Reviewed oral-care cues such as teeth-whitening format, LED whitening light, whitening gel format, 3.4oz identify the format and source-backed context without turning regulated language into recommendations.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Shade and size are explicit",
+            "body": "Variant labels such as 3.4oz, Size: 3.4oz are visible, reducing ambiguity around the product format before a shopper clicks through.",
+            "evidence_strength": "official_pdp_reviewed"
+          }
+        ],
+        "best_for": [
+          {
+            "tag": "teeth_whitening_routine",
+            "label": "teeth-whitening routine",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "led_whitening_device",
+            "label": "LED whitening device",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "whitening_gel_format",
+            "label": "whitening gel format",
+            "confidence": "moderate"
+          }
+        ],
+        "shopping_highlight": "teeth-whitening format"
+      },
+      "writes": [
+        {
+          "kb_key": "product:ext_44b5c6180b6b2e57bfa2a8ed",
+          "action": "insert",
+          "reason": "new_product_intel_bundle",
+          "old_hash": null,
+          "candidate_hash": "0e9120a57b8cf65c77d35b63855be5bf95d4a3b03024edbe225d183d222bb5a2",
+          "existing_weak": true,
+          "source": "pivota_insights_official_pdp_manual_review_v1",
+          "after_inventory": {
+            "product_id": "ext_44b5c6180b6b2e57bfa2a8ed",
+            "kb_key": "product:ext_44b5c6180b6b2e57bfa2a8ed",
+            "source": "pivota_insights_official_pdp_manual_review_v1",
+            "updated_at": "",
+            "last_success_at": "",
+            "title": "16 LED Light for Teeth Whitening",
+            "canonical_url": "",
+            "bundle_hash": "10d16e6a7ecc879f6f5463ca8e5d7ab85a41614917507eeee19e9cf7006962e0",
+            "lane": "keep",
+            "reason": "protected_good_content",
+            "priority": 0,
+            "protected": true,
+            "displayable": true,
+            "high_quality_ready": true,
+            "human_reviewed": true,
+            "issues": [],
+            "blocking_issues": [],
+            "quality_state": "reviewed",
+            "evidence_profile": "official_pdp_reviewed_line",
+            "evidence_rank": 3,
+            "review_tier": "assistant_reviewed",
+            "agent_readable": true,
+            "public_ready": true
+          },
+          "source_meta": {
+            "evidence_profile": "official_pdp_reviewed_line",
+            "quality_state": "reviewed",
+            "source_origin": "official_pdp_fields",
+            "source_url": "https://linhart.nyc/products/16-led-light-for-teeth-whitening",
+            "quality_improvement": {
+              "previous_bundle_hash": null,
+              "candidate_bundle_hash": "10d16e6a7ecc879f6f5463ca8e5d7ab85a41614917507eeee19e9cf7006962e0",
+              "replacement_decision": "new_product_intel_bundle",
+              "existing_quality_lane": null,
+              "candidate_quality_lane": "keep",
+              "existing_evidence_profile": null,
+              "candidate_evidence_profile": "official_pdp_reviewed_line"
+            }
+          }
+        },
+        {
+          "kb_key": "product:sig_7d5494b514794f50284dbc56",
+          "action": "insert",
+          "reason": "new_product_intel_bundle",
+          "old_hash": null,
+          "candidate_hash": "0e9120a57b8cf65c77d35b63855be5bf95d4a3b03024edbe225d183d222bb5a2",
+          "existing_weak": true,
+          "source": "pivota_insights_official_pdp_manual_review_v1",
+          "after_inventory": {
+            "product_id": "ext_44b5c6180b6b2e57bfa2a8ed",
+            "kb_key": "product:sig_7d5494b514794f50284dbc56",
+            "source": "pivota_insights_official_pdp_manual_review_v1",
+            "updated_at": "",
+            "last_success_at": "",
+            "title": "16 LED Light for Teeth Whitening",
+            "canonical_url": "",
+            "bundle_hash": "10d16e6a7ecc879f6f5463ca8e5d7ab85a41614917507eeee19e9cf7006962e0",
+            "lane": "keep",
+            "reason": "protected_good_content",
+            "priority": 0,
+            "protected": true,
+            "displayable": true,
+            "high_quality_ready": true,
+            "human_reviewed": true,
+            "issues": [],
+            "blocking_issues": [],
+            "quality_state": "reviewed",
+            "evidence_profile": "official_pdp_reviewed_line",
+            "evidence_rank": 3,
+            "review_tier": "assistant_reviewed",
+            "agent_readable": true,
+            "public_ready": true
+          },
+          "source_meta": {
+            "evidence_profile": "official_pdp_reviewed_line",
+            "quality_state": "reviewed",
+            "source_origin": "official_pdp_fields",
+            "source_url": "https://linhart.nyc/products/16-led-light-for-teeth-whitening",
+            "quality_improvement": {
+              "previous_bundle_hash": null,
+              "candidate_bundle_hash": "10d16e6a7ecc879f6f5463ca8e5d7ab85a41614917507eeee19e9cf7006962e0",
+              "replacement_decision": "new_product_intel_bundle",
+              "existing_quality_lane": null,
+              "candidate_quality_lane": "keep",
+              "existing_evidence_profile": null,
+              "candidate_evidence_profile": "official_pdp_reviewed_line"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "external_product_id": "ext_aa24dcd6cf3888a68f222281",
+      "pivota_signature_id": "sig_3710ad21bba001abfc27ec20",
+      "title": "Linämel Toothpaste",
+      "brand": "Linhart Smile Care",
+      "canonical_url": "https://linhart.nyc/products/linamel-toothpaste",
+      "changed": true,
+      "blocked": false,
+      "skip_reason": null,
+      "candidate_hash": "1625087e41b93548b21bcdd5a89768ac0606edfd40701b5a95ac7a908fe0cb2b",
+      "evidence_profile": "official_pdp_reviewed_line",
+      "source_coverage": {
+        "source": "official_pdp",
+        "canonical_url": "https://linhart.nyc/products/linamel-toothpaste",
+        "fields": {
+          "description": true,
+          "ingredients": 0,
+          "active_ingredients": 0,
+          "how_to": 0,
+          "details": 0,
+          "variants": 1
+        }
+      },
+      "preview": {
+        "headline": "Oral care treatment",
+        "what_it_is": "Linämel Toothpaste is a toothpaste from Linhart Smile Care, with source-backed cues around enamel-care context.",
+        "why_it_stands_out": [
+          {
+            "headline": "Oral-care format cues are clear",
+            "body": "Reviewed oral-care cues such as 3.4oz identify the format and source-backed context without turning regulated language into recommendations.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Shade and size are explicit",
+            "body": "Variant labels such as 3.4oz, Size: 3.4oz are visible, reducing ambiguity around the product format before a shopper clicks through.",
+            "evidence_strength": "official_pdp_reviewed"
+          }
+        ],
+        "best_for": [
+          {
+            "tag": "enamel_support_context",
+            "label": "enamel support context",
+            "confidence": "moderate"
+          }
+        ],
+        "shopping_highlight": "3.4oz"
+      },
+      "writes": [
+        {
+          "kb_key": "product:ext_aa24dcd6cf3888a68f222281",
+          "action": "insert",
+          "reason": "new_product_intel_bundle",
+          "old_hash": null,
+          "candidate_hash": "1df0e5e5cc179a507dc96621bb59a1f158c106cc2567d3d516b835549b9be4d9",
+          "existing_weak": true,
+          "source": "pivota_insights_official_pdp_manual_review_v1",
+          "after_inventory": {
+            "product_id": "ext_aa24dcd6cf3888a68f222281",
+            "kb_key": "product:ext_aa24dcd6cf3888a68f222281",
+            "source": "pivota_insights_official_pdp_manual_review_v1",
+            "updated_at": "",
+            "last_success_at": "",
+            "title": "Linämel Toothpaste",
+            "canonical_url": "",
+            "bundle_hash": "1625087e41b93548b21bcdd5a89768ac0606edfd40701b5a95ac7a908fe0cb2b",
+            "lane": "keep",
+            "reason": "protected_good_content",
+            "priority": 0,
+            "protected": true,
+            "displayable": true,
+            "high_quality_ready": true,
+            "human_reviewed": true,
+            "issues": [],
+            "blocking_issues": [],
+            "quality_state": "reviewed",
+            "evidence_profile": "official_pdp_reviewed_line",
+            "evidence_rank": 3,
+            "review_tier": "assistant_reviewed",
+            "agent_readable": true,
+            "public_ready": true
+          },
+          "source_meta": {
+            "evidence_profile": "official_pdp_reviewed_line",
+            "quality_state": "reviewed",
+            "source_origin": "official_pdp_fields",
+            "source_url": "https://linhart.nyc/products/linamel-toothpaste",
+            "quality_improvement": {
+              "previous_bundle_hash": null,
+              "candidate_bundle_hash": "1625087e41b93548b21bcdd5a89768ac0606edfd40701b5a95ac7a908fe0cb2b",
+              "replacement_decision": "new_product_intel_bundle",
+              "existing_quality_lane": null,
+              "candidate_quality_lane": "keep",
+              "existing_evidence_profile": null,
+              "candidate_evidence_profile": "official_pdp_reviewed_line"
+            }
+          }
+        },
+        {
+          "kb_key": "product:sig_3710ad21bba001abfc27ec20",
+          "action": "insert",
+          "reason": "new_product_intel_bundle",
+          "old_hash": null,
+          "candidate_hash": "1df0e5e5cc179a507dc96621bb59a1f158c106cc2567d3d516b835549b9be4d9",
+          "existing_weak": true,
+          "source": "pivota_insights_official_pdp_manual_review_v1",
+          "after_inventory": {
+            "product_id": "ext_aa24dcd6cf3888a68f222281",
+            "kb_key": "product:sig_3710ad21bba001abfc27ec20",
+            "source": "pivota_insights_official_pdp_manual_review_v1",
+            "updated_at": "",
+            "last_success_at": "",
+            "title": "Linämel Toothpaste",
+            "canonical_url": "",
+            "bundle_hash": "1625087e41b93548b21bcdd5a89768ac0606edfd40701b5a95ac7a908fe0cb2b",
+            "lane": "keep",
+            "reason": "protected_good_content",
+            "priority": 0,
+            "protected": true,
+            "displayable": true,
+            "high_quality_ready": true,
+            "human_reviewed": true,
+            "issues": [],
+            "blocking_issues": [],
+            "quality_state": "reviewed",
+            "evidence_profile": "official_pdp_reviewed_line",
+            "evidence_rank": 3,
+            "review_tier": "assistant_reviewed",
+            "agent_readable": true,
+            "public_ready": true
+          },
+          "source_meta": {
+            "evidence_profile": "official_pdp_reviewed_line",
+            "quality_state": "reviewed",
+            "source_origin": "official_pdp_fields",
+            "source_url": "https://linhart.nyc/products/linamel-toothpaste",
+            "quality_improvement": {
+              "previous_bundle_hash": null,
+              "candidate_bundle_hash": "1625087e41b93548b21bcdd5a89768ac0606edfd40701b5a95ac7a908fe0cb2b",
+              "replacement_decision": "new_product_intel_bundle",
+              "existing_quality_lane": null,
+              "candidate_quality_lane": "keep",
+              "existing_evidence_profile": null,
+              "candidate_evidence_profile": "official_pdp_reviewed_line"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "external_product_id": "ext_c1a3aac3be37dcedc3788d6a",
+      "pivota_signature_id": "sig_e3b2b1bcb365f91776a53059",
+      "title": "Linhart Whitening Pen - NEW ARRIVAL!",
+      "brand": "Linhart Smile Care",
+      "canonical_url": "https://linhart.nyc/products/linhart-whitening-pen",
+      "changed": true,
+      "blocked": false,
+      "skip_reason": null,
+      "candidate_hash": "56a4f4f57bdbfb4c0ee23ba65f9b80554ca47833dfef18d0b122bd5f94e9550d",
+      "evidence_profile": "official_pdp_reviewed_line",
+      "source_coverage": {
+        "source": "official_pdp",
+        "canonical_url": "https://linhart.nyc/products/linhart-whitening-pen",
+        "fields": {
+          "description": true,
+          "ingredients": 0,
+          "active_ingredients": 0,
+          "how_to": 1,
+          "details": 1,
+          "variants": 1
+        }
+      },
+      "preview": {
+        "headline": "Oral care treatment",
+        "what_it_is": "Linhart Whitening Pen - NEW ARRIVAL! is a whitening pen from Linhart Smile Care, with source-backed cues around teeth-whitening format and pen applicator format.",
+        "why_it_stands_out": [
+          {
+            "headline": "Oral-care format cues are clear",
+            "body": "Reviewed oral-care cues such as teeth-whitening format, whitening pen format, whitening gel format, soft-bristle brushing identify the format and source-backed context without turning regulated language into recommendations.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Shade and size are explicit",
+            "body": "Variant labels such as 3.4oz, Size: 3.4oz are visible, reducing ambiguity around the product format before a shopper clicks through.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Usage instructions available",
+            "body": "Reviewed usage context is present, including: Twist the Pen to Dispense Gel and apply a thin, even layer directly onto the surface of your teeth.",
+            "evidence_strength": "official_pdp_reviewed"
+          }
+        ],
+        "best_for": [
+          {
+            "tag": "teeth_whitening_routine",
+            "label": "teeth-whitening routine",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "led_whitening_device",
+            "label": "LED whitening device",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "whitening_gel_format",
+            "label": "whitening gel format",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "oral_care_tools",
+            "label": "oral care tools",
+            "confidence": "moderate"
+          }
+        ],
+        "shopping_highlight": "teeth-whitening format"
+      },
+      "writes": [
+        {
+          "kb_key": "product:ext_c1a3aac3be37dcedc3788d6a",
+          "action": "insert",
+          "reason": "new_product_intel_bundle",
+          "old_hash": null,
+          "candidate_hash": "8bc455a440bc738f69c3f8165201c5a8de070d5b4b25ebf4cba0f72080eb73d2",
+          "existing_weak": true,
+          "source": "pivota_insights_official_pdp_manual_review_v1",
+          "after_inventory": {
+            "product_id": "ext_c1a3aac3be37dcedc3788d6a",
+            "kb_key": "product:ext_c1a3aac3be37dcedc3788d6a",
+            "source": "pivota_insights_official_pdp_manual_review_v1",
+            "updated_at": "",
+            "last_success_at": "",
+            "title": "Linhart Whitening Pen - NEW ARRIVAL!",
+            "canonical_url": "",
+            "bundle_hash": "56a4f4f57bdbfb4c0ee23ba65f9b80554ca47833dfef18d0b122bd5f94e9550d",
+            "lane": "keep",
+            "reason": "protected_good_content",
+            "priority": 0,
+            "protected": true,
+            "displayable": true,
+            "high_quality_ready": true,
+            "human_reviewed": true,
+            "issues": [],
+            "blocking_issues": [],
+            "quality_state": "reviewed",
+            "evidence_profile": "official_pdp_reviewed_line",
+            "evidence_rank": 3,
+            "review_tier": "assistant_reviewed",
+            "agent_readable": true,
+            "public_ready": true
+          },
+          "source_meta": {
+            "evidence_profile": "official_pdp_reviewed_line",
+            "quality_state": "reviewed",
+            "source_origin": "official_pdp_fields",
+            "source_url": "https://linhart.nyc/products/linhart-whitening-pen",
+            "quality_improvement": {
+              "previous_bundle_hash": null,
+              "candidate_bundle_hash": "56a4f4f57bdbfb4c0ee23ba65f9b80554ca47833dfef18d0b122bd5f94e9550d",
+              "replacement_decision": "new_product_intel_bundle",
+              "existing_quality_lane": null,
+              "candidate_quality_lane": "keep",
+              "existing_evidence_profile": null,
+              "candidate_evidence_profile": "official_pdp_reviewed_line"
+            }
+          }
+        },
+        {
+          "kb_key": "product:sig_e3b2b1bcb365f91776a53059",
+          "action": "insert",
+          "reason": "new_product_intel_bundle",
+          "old_hash": null,
+          "candidate_hash": "8bc455a440bc738f69c3f8165201c5a8de070d5b4b25ebf4cba0f72080eb73d2",
+          "existing_weak": true,
+          "source": "pivota_insights_official_pdp_manual_review_v1",
+          "after_inventory": {
+            "product_id": "ext_c1a3aac3be37dcedc3788d6a",
+            "kb_key": "product:sig_e3b2b1bcb365f91776a53059",
+            "source": "pivota_insights_official_pdp_manual_review_v1",
+            "updated_at": "",
+            "last_success_at": "",
+            "title": "Linhart Whitening Pen - NEW ARRIVAL!",
+            "canonical_url": "",
+            "bundle_hash": "56a4f4f57bdbfb4c0ee23ba65f9b80554ca47833dfef18d0b122bd5f94e9550d",
+            "lane": "keep",
+            "reason": "protected_good_content",
+            "priority": 0,
+            "protected": true,
+            "displayable": true,
+            "high_quality_ready": true,
+            "human_reviewed": true,
+            "issues": [],
+            "blocking_issues": [],
+            "quality_state": "reviewed",
+            "evidence_profile": "official_pdp_reviewed_line",
+            "evidence_rank": 3,
+            "review_tier": "assistant_reviewed",
+            "agent_readable": true,
+            "public_ready": true
+          },
+          "source_meta": {
+            "evidence_profile": "official_pdp_reviewed_line",
+            "quality_state": "reviewed",
+            "source_origin": "official_pdp_fields",
+            "source_url": "https://linhart.nyc/products/linhart-whitening-pen",
+            "quality_improvement": {
+              "previous_bundle_hash": null,
+              "candidate_bundle_hash": "56a4f4f57bdbfb4c0ee23ba65f9b80554ca47833dfef18d0b122bd5f94e9550d",
+              "replacement_decision": "new_product_intel_bundle",
+              "existing_quality_lane": null,
+              "candidate_quality_lane": "keep",
+              "existing_evidence_profile": null,
+              "candidate_evidence_profile": "official_pdp_reviewed_line"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "external_product_id": "ext_61eb4eb37362ae7b05a0ea62",
+      "pivota_signature_id": "sig_5c40ea6acc282676fa81cabe",
+      "title": "Microfiber Dental Floss in Glass Bottle - 25m - Mint & Xylitol",
+      "brand": "Linhart Smile Care",
+      "canonical_url": "https://linhart.nyc/products/microfiber-dental-floss-in-glass-bottle-25m-mint-xylitol",
+      "changed": true,
+      "blocked": false,
+      "skip_reason": null,
+      "candidate_hash": "f31aa0eb4ebb18d54782e9317d26519622c3a7011b12cf28503c38c86081f5ff",
+      "evidence_profile": "official_pdp_reviewed_limited",
+      "source_coverage": {
+        "source": "official_pdp",
+        "canonical_url": "https://linhart.nyc/products/microfiber-dental-floss-in-glass-bottle-25m-mint-xylitol",
+        "fields": {
+          "description": true,
+          "ingredients": 0,
+          "active_ingredients": 0,
+          "how_to": 0,
+          "details": 0,
+          "variants": 1
+        }
+      },
+      "preview": {
+        "headline": "Oral care tool",
+        "what_it_is": "Microfiber Dental Floss in Glass Bottle - 25m - Mint & Xylitol is a dental floss from Linhart Smile Care.",
+        "why_it_stands_out": [
+          {
+            "headline": "Oral-care format cues are clear",
+            "body": "Reviewed oral-care cues such as dental floss format identify the format and source-backed context without turning regulated language into recommendations.",
+            "evidence_strength": "official_pdp_reviewed"
+          }
+        ],
+        "best_for": [
+          {
+            "tag": "oral_care_tools",
+            "label": "oral care tools",
+            "confidence": "moderate"
+          }
+        ],
+        "shopping_highlight": "dental floss format"
+      },
+      "writes": [
+        {
+          "kb_key": "product:ext_61eb4eb37362ae7b05a0ea62",
+          "action": "insert",
+          "reason": "new_product_intel_bundle",
+          "old_hash": null,
+          "candidate_hash": "f18fb03783c48bec386954220d66102f342a58151889348033c7241e72f6e1c2",
+          "existing_weak": true,
+          "source": "pivota_insights_official_pdp_manual_review_v1",
+          "after_inventory": {
+            "product_id": "ext_61eb4eb37362ae7b05a0ea62",
+            "kb_key": "product:ext_61eb4eb37362ae7b05a0ea62",
+            "source": "pivota_insights_official_pdp_manual_review_v1",
+            "updated_at": "",
+            "last_success_at": "",
+            "title": "Microfiber Dental Floss in Glass Bottle - 25m - Mint & Xylitol",
+            "canonical_url": "",
+            "bundle_hash": "f31aa0eb4ebb18d54782e9317d26519622c3a7011b12cf28503c38c86081f5ff",
+            "lane": "keep",
+            "reason": "protected_good_content",
+            "priority": 0,
+            "protected": true,
+            "displayable": true,
+            "high_quality_ready": true,
+            "human_reviewed": true,
+            "issues": [],
+            "blocking_issues": [],
+            "quality_state": "reviewed",
+            "evidence_profile": "official_pdp_reviewed_limited",
+            "evidence_rank": 1,
+            "review_tier": "assistant_reviewed",
+            "agent_readable": true,
+            "public_ready": true
+          },
+          "source_meta": {
+            "evidence_profile": "official_pdp_reviewed_limited",
+            "quality_state": "reviewed",
+            "source_origin": "official_pdp_fields",
+            "source_url": "https://linhart.nyc/products/microfiber-dental-floss-in-glass-bottle-25m-mint-xylitol",
+            "quality_improvement": {
+              "previous_bundle_hash": null,
+              "candidate_bundle_hash": "f31aa0eb4ebb18d54782e9317d26519622c3a7011b12cf28503c38c86081f5ff",
+              "replacement_decision": "new_product_intel_bundle",
+              "existing_quality_lane": null,
+              "candidate_quality_lane": "keep",
+              "existing_evidence_profile": null,
+              "candidate_evidence_profile": "official_pdp_reviewed_limited"
+            }
+          }
+        },
+        {
+          "kb_key": "product:sig_5c40ea6acc282676fa81cabe",
+          "action": "insert",
+          "reason": "new_product_intel_bundle",
+          "old_hash": null,
+          "candidate_hash": "f18fb03783c48bec386954220d66102f342a58151889348033c7241e72f6e1c2",
+          "existing_weak": true,
+          "source": "pivota_insights_official_pdp_manual_review_v1",
+          "after_inventory": {
+            "product_id": "ext_61eb4eb37362ae7b05a0ea62",
+            "kb_key": "product:sig_5c40ea6acc282676fa81cabe",
+            "source": "pivota_insights_official_pdp_manual_review_v1",
+            "updated_at": "",
+            "last_success_at": "",
+            "title": "Microfiber Dental Floss in Glass Bottle - 25m - Mint & Xylitol",
+            "canonical_url": "",
+            "bundle_hash": "f31aa0eb4ebb18d54782e9317d26519622c3a7011b12cf28503c38c86081f5ff",
+            "lane": "keep",
+            "reason": "protected_good_content",
+            "priority": 0,
+            "protected": true,
+            "displayable": true,
+            "high_quality_ready": true,
+            "human_reviewed": true,
+            "issues": [],
+            "blocking_issues": [],
+            "quality_state": "reviewed",
+            "evidence_profile": "official_pdp_reviewed_limited",
+            "evidence_rank": 1,
+            "review_tier": "assistant_reviewed",
+            "agent_readable": true,
+            "public_ready": true
+          },
+          "source_meta": {
+            "evidence_profile": "official_pdp_reviewed_limited",
+            "quality_state": "reviewed",
+            "source_origin": "official_pdp_fields",
+            "source_url": "https://linhart.nyc/products/microfiber-dental-floss-in-glass-bottle-25m-mint-xylitol",
+            "quality_improvement": {
+              "previous_bundle_hash": null,
+              "candidate_bundle_hash": "f31aa0eb4ebb18d54782e9317d26519622c3a7011b12cf28503c38c86081f5ff",
+              "replacement_decision": "new_product_intel_bundle",
+              "existing_quality_lane": null,
+              "candidate_quality_lane": "keep",
+              "existing_evidence_profile": null,
+              "candidate_evidence_profile": "official_pdp_reviewed_limited"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "external_product_id": "ext_ef9fce748dfe937928f48d1a",
+      "pivota_signature_id": null,
+      "title": "Nano-Silver Toothbrush",
+      "brand": "Linhart Smile Care",
+      "canonical_url": "https://linhart.nyc/products/anti-bacteria-toothbrush",
+      "changed": true,
+      "blocked": false,
+      "skip_reason": null,
+      "candidate_hash": "1fff3aabc9cd443607af2d9e703d071826fc390b130002d0104ca1674d8591f6",
+      "evidence_profile": "official_pdp_reviewed_line",
+      "source_coverage": {
+        "source": "official_pdp",
+        "canonical_url": "https://linhart.nyc/products/anti-bacteria-toothbrush",
+        "fields": {
+          "description": true,
+          "ingredients": 0,
+          "active_ingredients": 0,
+          "how_to": 0,
+          "details": 0,
+          "variants": 4
+        }
+      },
+      "preview": {
+        "headline": "Oral care tool",
+        "what_it_is": "Nano-Silver Toothbrush is a toothbrush from Linhart Smile Care.",
+        "why_it_stands_out": [
+          {
+            "headline": "Oral-care format cues are clear",
+            "body": "Reviewed oral-care cues such as soft-bristle brushing identify the format and source-backed context without turning regulated language into recommendations.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Shade and size are explicit",
+            "body": "Variant labels such as Orange handle white bristles, Color: Orange handle white bristles, Orange handle black bristles, Color: Orange handle black bristles are visible, reducing ambiguity around the product format before a shopper clicks through.",
+            "evidence_strength": "official_pdp_reviewed"
+          }
+        ],
+        "best_for": [
+          {
+            "tag": "oral_care_tools",
+            "label": "oral care tools",
+            "confidence": "moderate"
+          }
+        ],
+        "shopping_highlight": "soft-bristle brushing"
+      },
+      "writes": [
+        {
+          "kb_key": "product:ext_ef9fce748dfe937928f48d1a",
+          "action": "insert",
+          "reason": "new_product_intel_bundle",
+          "old_hash": null,
+          "candidate_hash": "c865aa44a4d9d979688d65688840b4c19d2ff4cfc08a22c7abef9bb38f77b95c",
+          "existing_weak": true,
+          "source": "pivota_insights_official_pdp_manual_review_v1",
+          "after_inventory": {
+            "product_id": "ext_ef9fce748dfe937928f48d1a",
+            "kb_key": "product:ext_ef9fce748dfe937928f48d1a",
+            "source": "pivota_insights_official_pdp_manual_review_v1",
+            "updated_at": "",
+            "last_success_at": "",
+            "title": "Nano-Silver Toothbrush",
+            "canonical_url": "",
+            "bundle_hash": "1fff3aabc9cd443607af2d9e703d071826fc390b130002d0104ca1674d8591f6",
+            "lane": "keep",
+            "reason": "protected_good_content",
+            "priority": 0,
+            "protected": true,
+            "displayable": true,
+            "high_quality_ready": true,
+            "human_reviewed": true,
+            "issues": [],
+            "blocking_issues": [],
+            "quality_state": "reviewed",
+            "evidence_profile": "official_pdp_reviewed_line",
+            "evidence_rank": 3,
+            "review_tier": "assistant_reviewed",
+            "agent_readable": true,
+            "public_ready": true
+          },
+          "source_meta": {
+            "evidence_profile": "official_pdp_reviewed_line",
+            "quality_state": "reviewed",
+            "source_origin": "official_pdp_fields",
+            "source_url": "https://linhart.nyc/products/anti-bacteria-toothbrush",
+            "quality_improvement": {
+              "previous_bundle_hash": null,
+              "candidate_bundle_hash": "1fff3aabc9cd443607af2d9e703d071826fc390b130002d0104ca1674d8591f6",
+              "replacement_decision": "new_product_intel_bundle",
+              "existing_quality_lane": null,
+              "candidate_quality_lane": "keep",
+              "existing_evidence_profile": null,
+              "candidate_evidence_profile": "official_pdp_reviewed_line"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "external_product_id": "ext_4099267ea35a5d5f273d78ce",
+      "pivota_signature_id": "sig_9b6b459ed1c97835aee03c92",
+      "title": "The Smile Enhancement Pro",
+      "brand": "Linhart Smile Care",
+      "canonical_url": "https://linhart.nyc/products/the-smile-enhancement-pro",
+      "changed": true,
+      "blocked": false,
+      "skip_reason": null,
+      "candidate_hash": "55218acd0df369c1787b52019224c9f026ab4acdede62caf0aad53391817554e",
+      "evidence_profile": "official_pdp_reviewed_line",
+      "source_coverage": {
+        "source": "official_pdp",
+        "canonical_url": "https://linhart.nyc/products/the-smile-enhancement-pro",
+        "fields": {
+          "description": true,
+          "ingredients": 0,
+          "active_ingredients": 0,
+          "how_to": 0,
+          "details": 0,
+          "variants": 1
+        }
+      },
+      "preview": {
+        "headline": "Oral care set",
+        "what_it_is": "The Smile Enhancement Pro is an oral care set from Linhart Smile Care, with source-backed cues around teeth-whitening format.",
+        "why_it_stands_out": [
+          {
+            "headline": "Oral-care format cues are clear",
+            "body": "Reviewed oral-care cues such as teeth-whitening format, whitening gel format, soft-bristle brushing, 3.4oz identify the format and source-backed context without turning regulated language into recommendations.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Shade and size are explicit",
+            "body": "Variant labels such as 3.4oz, Size: 3.4oz are visible, reducing ambiguity around the product format before a shopper clicks through.",
+            "evidence_strength": "official_pdp_reviewed"
+          }
+        ],
+        "best_for": [
+          {
+            "tag": "teeth_whitening_routine",
+            "label": "teeth-whitening routine",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "whitening_gel_format",
+            "label": "whitening gel format",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "oral_care_tools",
+            "label": "oral care tools",
+            "confidence": "moderate"
+          }
+        ],
+        "shopping_highlight": "teeth-whitening format"
+      },
+      "writes": [
+        {
+          "kb_key": "product:ext_4099267ea35a5d5f273d78ce",
+          "action": "insert",
+          "reason": "new_product_intel_bundle",
+          "old_hash": null,
+          "candidate_hash": "82ee3b124984ec4bc5a6db83614e3767f26284da8fe969adff838ed9115a520e",
+          "existing_weak": true,
+          "source": "pivota_insights_official_pdp_manual_review_v1",
+          "after_inventory": {
+            "product_id": "ext_4099267ea35a5d5f273d78ce",
+            "kb_key": "product:ext_4099267ea35a5d5f273d78ce",
+            "source": "pivota_insights_official_pdp_manual_review_v1",
+            "updated_at": "",
+            "last_success_at": "",
+            "title": "The Smile Enhancement Pro",
+            "canonical_url": "",
+            "bundle_hash": "55218acd0df369c1787b52019224c9f026ab4acdede62caf0aad53391817554e",
+            "lane": "keep",
+            "reason": "protected_good_content",
+            "priority": 0,
+            "protected": true,
+            "displayable": true,
+            "high_quality_ready": true,
+            "human_reviewed": true,
+            "issues": [],
+            "blocking_issues": [],
+            "quality_state": "reviewed",
+            "evidence_profile": "official_pdp_reviewed_line",
+            "evidence_rank": 3,
+            "review_tier": "assistant_reviewed",
+            "agent_readable": true,
+            "public_ready": true
+          },
+          "source_meta": {
+            "evidence_profile": "official_pdp_reviewed_line",
+            "quality_state": "reviewed",
+            "source_origin": "official_pdp_fields",
+            "source_url": "https://linhart.nyc/products/the-smile-enhancement-pro",
+            "quality_improvement": {
+              "previous_bundle_hash": null,
+              "candidate_bundle_hash": "55218acd0df369c1787b52019224c9f026ab4acdede62caf0aad53391817554e",
+              "replacement_decision": "new_product_intel_bundle",
+              "existing_quality_lane": null,
+              "candidate_quality_lane": "keep",
+              "existing_evidence_profile": null,
+              "candidate_evidence_profile": "official_pdp_reviewed_line"
+            }
+          }
+        },
+        {
+          "kb_key": "product:sig_9b6b459ed1c97835aee03c92",
+          "action": "insert",
+          "reason": "new_product_intel_bundle",
+          "old_hash": null,
+          "candidate_hash": "82ee3b124984ec4bc5a6db83614e3767f26284da8fe969adff838ed9115a520e",
+          "existing_weak": true,
+          "source": "pivota_insights_official_pdp_manual_review_v1",
+          "after_inventory": {
+            "product_id": "ext_4099267ea35a5d5f273d78ce",
+            "kb_key": "product:sig_9b6b459ed1c97835aee03c92",
+            "source": "pivota_insights_official_pdp_manual_review_v1",
+            "updated_at": "",
+            "last_success_at": "",
+            "title": "The Smile Enhancement Pro",
+            "canonical_url": "",
+            "bundle_hash": "55218acd0df369c1787b52019224c9f026ab4acdede62caf0aad53391817554e",
+            "lane": "keep",
+            "reason": "protected_good_content",
+            "priority": 0,
+            "protected": true,
+            "displayable": true,
+            "high_quality_ready": true,
+            "human_reviewed": true,
+            "issues": [],
+            "blocking_issues": [],
+            "quality_state": "reviewed",
+            "evidence_profile": "official_pdp_reviewed_line",
+            "evidence_rank": 3,
+            "review_tier": "assistant_reviewed",
+            "agent_readable": true,
+            "public_ready": true
+          },
+          "source_meta": {
+            "evidence_profile": "official_pdp_reviewed_line",
+            "quality_state": "reviewed",
+            "source_origin": "official_pdp_fields",
+            "source_url": "https://linhart.nyc/products/the-smile-enhancement-pro",
+            "quality_improvement": {
+              "previous_bundle_hash": null,
+              "candidate_bundle_hash": "55218acd0df369c1787b52019224c9f026ab4acdede62caf0aad53391817554e",
+              "replacement_decision": "new_product_intel_bundle",
+              "existing_quality_lane": null,
+              "candidate_quality_lane": "keep",
+              "existing_evidence_profile": null,
+              "candidate_evidence_profile": "official_pdp_reviewed_line"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "external_product_id": "ext_e795b1a17f6222e44dfb3dfd",
+      "pivota_signature_id": "sig_e3d3c45394c8d3365eda6c22",
+      "title": "Tooth Whitener Gel",
+      "brand": "Linhart Smile Care",
+      "canonical_url": "https://linhart.nyc/products/toth-whitener-gel-1",
+      "changed": true,
+      "blocked": false,
+      "skip_reason": null,
+      "candidate_hash": "ea137a299e99be3d3cfd17364cfcdadbff236d444654ea6fdc032f74b5134520",
+      "evidence_profile": "official_pdp_reviewed_line",
+      "source_coverage": {
+        "source": "official_pdp",
+        "canonical_url": "https://linhart.nyc/products/toth-whitener-gel-1",
+        "fields": {
+          "description": true,
+          "ingredients": 0,
+          "active_ingredients": 0,
+          "how_to": 0,
+          "details": 5,
+          "variants": 1
+        }
+      },
+      "preview": {
+        "headline": "Oral care treatment",
+        "what_it_is": "Tooth Whitener Gel is a whitening gel from Linhart Smile Care, with source-backed cues around teeth-whitening format and gel format.",
+        "why_it_stands_out": [
+          {
+            "headline": "Oral-care format cues are clear",
+            "body": "Reviewed oral-care cues such as teeth-whitening format, whitening gel format, soft-bristle brushing identify the format and source-backed context without turning regulated language into recommendations.",
+            "evidence_strength": "official_pdp_reviewed"
+          }
+        ],
+        "best_for": [
+          {
+            "tag": "teeth_whitening_routine",
+            "label": "teeth-whitening routine",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "led_whitening_device",
+            "label": "LED whitening device",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "whitening_gel_format",
+            "label": "whitening gel format",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "oral_care_tools",
+            "label": "oral care tools",
+            "confidence": "moderate"
+          }
+        ],
+        "shopping_highlight": "teeth-whitening format"
+      },
+      "writes": [
+        {
+          "kb_key": "product:ext_e795b1a17f6222e44dfb3dfd",
+          "action": "insert",
+          "reason": "new_product_intel_bundle",
+          "old_hash": null,
+          "candidate_hash": "7f7bc9bd242de83986dbb8e17a19150ac8aeed067cecff138d01cf42e505540b",
+          "existing_weak": true,
+          "source": "pivota_insights_official_pdp_manual_review_v1",
+          "after_inventory": {
+            "product_id": "ext_e795b1a17f6222e44dfb3dfd",
+            "kb_key": "product:ext_e795b1a17f6222e44dfb3dfd",
+            "source": "pivota_insights_official_pdp_manual_review_v1",
+            "updated_at": "",
+            "last_success_at": "",
+            "title": "Tooth Whitener Gel",
+            "canonical_url": "",
+            "bundle_hash": "ea137a299e99be3d3cfd17364cfcdadbff236d444654ea6fdc032f74b5134520",
+            "lane": "keep",
+            "reason": "protected_good_content",
+            "priority": 0,
+            "protected": true,
+            "displayable": true,
+            "high_quality_ready": true,
+            "human_reviewed": true,
+            "issues": [],
+            "blocking_issues": [],
+            "quality_state": "reviewed",
+            "evidence_profile": "official_pdp_reviewed_line",
+            "evidence_rank": 3,
+            "review_tier": "assistant_reviewed",
+            "agent_readable": true,
+            "public_ready": true
+          },
+          "source_meta": {
+            "evidence_profile": "official_pdp_reviewed_line",
+            "quality_state": "reviewed",
+            "source_origin": "official_pdp_fields",
+            "source_url": "https://linhart.nyc/products/toth-whitener-gel-1",
+            "quality_improvement": {
+              "previous_bundle_hash": null,
+              "candidate_bundle_hash": "ea137a299e99be3d3cfd17364cfcdadbff236d444654ea6fdc032f74b5134520",
+              "replacement_decision": "new_product_intel_bundle",
+              "existing_quality_lane": null,
+              "candidate_quality_lane": "keep",
+              "existing_evidence_profile": null,
+              "candidate_evidence_profile": "official_pdp_reviewed_line"
+            }
+          }
+        },
+        {
+          "kb_key": "product:sig_e3d3c45394c8d3365eda6c22",
+          "action": "insert",
+          "reason": "new_product_intel_bundle",
+          "old_hash": null,
+          "candidate_hash": "7f7bc9bd242de83986dbb8e17a19150ac8aeed067cecff138d01cf42e505540b",
+          "existing_weak": true,
+          "source": "pivota_insights_official_pdp_manual_review_v1",
+          "after_inventory": {
+            "product_id": "ext_e795b1a17f6222e44dfb3dfd",
+            "kb_key": "product:sig_e3d3c45394c8d3365eda6c22",
+            "source": "pivota_insights_official_pdp_manual_review_v1",
+            "updated_at": "",
+            "last_success_at": "",
+            "title": "Tooth Whitener Gel",
+            "canonical_url": "",
+            "bundle_hash": "ea137a299e99be3d3cfd17364cfcdadbff236d444654ea6fdc032f74b5134520",
+            "lane": "keep",
+            "reason": "protected_good_content",
+            "priority": 0,
+            "protected": true,
+            "displayable": true,
+            "high_quality_ready": true,
+            "human_reviewed": true,
+            "issues": [],
+            "blocking_issues": [],
+            "quality_state": "reviewed",
+            "evidence_profile": "official_pdp_reviewed_line",
+            "evidence_rank": 3,
+            "review_tier": "assistant_reviewed",
+            "agent_readable": true,
+            "public_ready": true
+          },
+          "source_meta": {
+            "evidence_profile": "official_pdp_reviewed_line",
+            "quality_state": "reviewed",
+            "source_origin": "official_pdp_fields",
+            "source_url": "https://linhart.nyc/products/toth-whitener-gel-1",
+            "quality_improvement": {
+              "previous_bundle_hash": null,
+              "candidate_bundle_hash": "ea137a299e99be3d3cfd17364cfcdadbff236d444654ea6fdc032f74b5134520",
+              "replacement_decision": "new_product_intel_bundle",
+              "existing_quality_lane": null,
+              "candidate_quality_lane": "keep",
+              "existing_evidence_profile": null,
+              "candidate_evidence_profile": "official_pdp_reviewed_line"
+            }
+          }
+        }
+      ]
+    }
+  ],
+  "apply_result": {
+    "upserts": 13,
+    "chunks": 2
+  }
+}

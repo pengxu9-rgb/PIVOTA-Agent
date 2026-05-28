@@ -1432,6 +1432,70 @@ async function staleDeletePreview(mirrors, sampleLimit = 50) {
   };
 }
 
+async function fetchExistingSignatureRows(mirrors) {
+  const sigs = Array.from(
+    new Set(
+      (mirrors || [])
+        .map((mirror) => asString(mirror?.product?.pivota_signature_id))
+        .filter(isSig),
+    ),
+  );
+  if (!sigs.length) return [];
+  const res = await query(
+    `
+      SELECT product_key, source_product_id, title, brand, canonical_url, pivota_signature_id
+      FROM catalog_products
+      WHERE pivota_signature_id = ANY($1::text[])
+    `,
+    [sigs],
+  );
+  return res.rows || [];
+}
+
+function filterMirrorsWithSignatureConflicts(mirrors, existingSignatureRows, skipped) {
+  const bySig = new Map();
+  for (const row of existingSignatureRows || []) {
+    const sig = asString(row.pivota_signature_id);
+    if (!isSig(sig)) continue;
+    if (!bySig.has(sig)) bySig.set(sig, []);
+    bySig.get(sig).push(row);
+  }
+
+  const plannedBySig = new Map();
+  const filtered = [];
+  for (const mirror of mirrors || []) {
+    const sig = asString(mirror?.product?.pivota_signature_id);
+    const existingConflicts = (bySig.get(sig) || [])
+      .filter((row) => asString(row.product_key) && asString(row.product_key) !== asString(mirror.productKey));
+    const plannedConflict = plannedBySig.get(sig);
+    if (isSig(sig) && (existingConflicts.length || (plannedConflict && plannedConflict.productKey !== mirror.productKey))) {
+      skipped.push({
+        external_product_id: asString(mirror.row?.external_product_id),
+        reason: 'duplicate_pivota_signature_conflict',
+        pivota_signature_id: sig,
+        conflicting_products: [
+          ...existingConflicts.slice(0, 5).map((row) => ({
+            product_key: asString(row.product_key),
+            source_product_id: asString(row.source_product_id),
+            title: asString(row.title),
+            canonical_url: asString(row.canonical_url),
+          })),
+          ...(plannedConflict ? [{
+            product_key: asString(plannedConflict.productKey),
+            source_product_id: asString(plannedConflict.row?.external_product_id),
+            title: asString(plannedConflict.product?.title),
+            canonical_url: asString(plannedConflict.product?.canonical_url),
+          }] : []),
+        ],
+      });
+      continue;
+    }
+    if (isSig(sig)) plannedBySig.set(sig, mirror);
+    filtered.push(mirror);
+  }
+  return filtered;
+}
+
 async function applyMirrors(
   mirrors,
   dryRun,
@@ -1941,7 +2005,7 @@ async function run() {
   const missingIds = ids.filter((id) => !rows.some((row) => asString(row.external_product_id) === id));
   const duplicateCanonicals = findDuplicateCanonicals(rows);
   const skipped = [];
-  const mirrors = [];
+  let mirrors = [];
   for (const row of rows) {
     const id = asString(row.external_product_id);
     if (asString(row.status).toLowerCase() !== 'active') {
@@ -1983,6 +2047,8 @@ async function run() {
     }
     mirrors.push(mirror);
   }
+  const existingSignatureRows = await fetchExistingSignatureRows(mirrors);
+  mirrors = filterMirrorsWithSignatureConflicts(mirrors, existingSignatureRows, skipped);
   const applied = await applyMirrors(mirrors, dryRun, {
     upsertServingState,
     batchSize,
@@ -2044,6 +2110,7 @@ module.exports = {
     normalizeCategoryToken,
     titleCategoryText,
     buildMirror,
+    filterMirrorsWithSignatureConflicts,
     scoreMirrorServingQuality,
   },
 };

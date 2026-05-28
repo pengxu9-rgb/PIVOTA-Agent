@@ -1,0 +1,444 @@
+{
+  "market": "US",
+  "base_url": "https://pivota-catalog-intelligence-production.up.railway.app",
+  "timeout_ms": 120000,
+  "external_product_ids": [
+    "ext_397a1dbbcab4ad4a246b6a8c"
+  ],
+  "rows": [
+    {
+      "external_product_id": "ext_397a1dbbcab4ad4a246b6a8c",
+      "title": "Bulgarian Rose Water Face, Hair & Body Mist Spray",
+      "target_url": "https://delicatedaisys.com/products/bulgarian-rose-water-face-hair-body-mist-spray",
+      "current_seed": {
+        "description": "Discover the rejuvenating benefits of our Bulgarian Rose Water Face, Hair & Body Mist Spray. With a gentle, refreshing aroma, this all-natural toner will clarify and balance your skin while providing instant moisture for a revitalized appearance. Versatile enough for use on the face, body, and hair, our formula is",
+        "pdp_description_raw": "Discover the rejuvenating benefits of our Bulgarian Rose Water Face, Hair & Body Mist Spray. With a gentle, refreshing aroma, this all-natural toner will clarify and balance your skin while providing instant moisture for a revitalized appearance. Versatile enough for use on the face, body, and hair, our formula is",
+        "pdp_ingredients_raw": "Organic Rosa Damascena (Damask Rose) Floral Water",
+        "pdp_how_to_use_raw": "Apply on clean skin using a cotton pad or by directly spraying it on your skin. No rinse is necessary.",
+        "pdp_details_titles": [
+          "Overview",
+          "How To Use"
+        ],
+        "ingredients_inci_count": 1,
+        "product_kind": "fragrance",
+        "pdp_field_capture_status": {
+          "faq_items": "missing",
+          "how_to_use_raw": "missing",
+          "description_raw": "present",
+          "ingredients_raw": "missing",
+          "details_sections": "missing",
+          "active_ingredients_raw": "missing"
+        },
+        "pdp_field_quality_summary": {
+          "category": {
+            "reason": "reviewed_official_dtc_category_patch_for_markato_next_wave_similarity_recall",
+            "evidence": "Reviewed from official DTC PDP title and description: Bulgarian Rose Water Face, Hair & Body Mist Spray. Discover the rejuvenating benefits of our Bulgarian Rose Water Face, Hair &amp; Body Mist Spray. With a gentle, refreshing aroma, this all-natural toner will clarify and balance yo",
+            "source_url": "https://delicatedaisys.com/products/bulgarian-rose-water-face-hair-body-mist-spray",
+            "updated_at": "2026-05-23T00:56:24.977Z",
+            "reviewed_by": "codex_markato_review_20260523",
+            "source_kinds": [
+              "official_dtc_pdp_manual_category_review"
+            ],
+            "source_origin": "reviewed_source_backed_category_patch",
+            "source_quality_status": "high"
+          },
+          "faq_items": {
+            "reason_codes": [
+              "missing_source_kind"
+            ],
+            "source_kinds": [],
+            "source_origin": "unknown",
+            "source_quality_status": "low"
+          },
+          "product_type": {
+            "reason": "reviewed_official_dtc_category_patch_for_markato_next_wave_similarity_recall",
+            "evidence": "Reviewed from official DTC PDP title and description: Bulgarian Rose Water Face, Hair & Body Mist Spray. Discover the rejuvenating benefits of our Bulgarian Rose Water Face, Hair &amp; Body Mist Spray. With a gentle, refreshing aroma, this all-natural toner will clarify and balance yo",
+            "source_url": "https://delicatedaisys.com/products/bulgarian-rose-water-face-hair-body-mist-spray",
+            "updated_at": "2026-05-23T00:56:24.977Z",
+            "reviewed_by": "codex_markato_review_20260523",
+            "source_kinds": [
+              "official_dtc_pdp_manual_category_review"
+            ],
+            "source_origin": "reviewed_source_backed_category_patch",
+            "source_quality_status": "high"
+          },
+          "category_path": {
+            "reason": "reviewed_official_dtc_category_patch_for_markato_next_wave_similarity_recall",
+            "evidence": "Reviewed from official DTC PDP title and description: Bulgarian Rose Water Face, Hair & Body Mist Spray. Discover the rejuvenating benefits of our Bulgarian Rose Water Face, Hair &amp; Body Mist Spray. With a gentle, refreshing aroma, this all-natural toner will clarify and balance yo",
+            "source_url": "https://delicatedaisys.com/products/bulgarian-rose-water-face-hair-body-mist-spray",
+            "updated_at": "2026-05-23T00:56:24.977Z",
+            "reviewed_by": "codex_markato_review_20260523",
+            "source_kinds": [
+              "official_dtc_pdp_manual_category_review"
+            ],
+            "source_origin": "reviewed_source_backed_category_patch",
+            "source_quality_status": "high"
+          },
+          "how_to_use_raw": {
+            "updated_at": "2026-05-28T05:23:44.457Z",
+            "reason_codes": [],
+            "source_kinds": [
+              "official_pdp_how_to_use"
+            ],
+            "source_origin": "official_html",
+            "source_quality_status": "high"
+          },
+          "description_raw": {
+            "reason_codes": [],
+            "source_kinds": [
+              "shopify_description"
+            ],
+            "source_origin": "shopify_json",
+            "source_quality_status": "high"
+          },
+          "ingredients_raw": {
+            "reason": "wave36_delicate_daisys_official_single_ingredient_formula_repair",
+            "source_url": "https://delicatedaisys.com/products/bulgarian-rose-water-face-hair-body-mist-spray",
+            "updated_at": "2026-05-28T06:37:14.869Z",
+            "reviewed_by": "codex_wave36_brand_expansion",
+            "source_kinds": [
+              "official_pdp_single_ingredient_formula"
+            ],
+            "source_origin": "reviewed_source_backed_pdp_content_patch",
+            "source_quality_status": "high"
+          },
+          "details_sections": {
+            "updated_at": "2026-05-28T05:23:44.457Z",
+            "reason_codes": [],
+            "source_kinds": [
+              "official_pdp_details_section"
+            ],
+            "source_origin": "official_html",
+            "source_quality_status": "high"
+          },
+          "ingredients_inci": {
+            "reason": "wave36_delicate_daisys_official_single_ingredient_formula_repair",
+            "source_url": "https://delicatedaisys.com/products/bulgarian-rose-water-face-hair-body-mist-spray",
+            "updated_at": "2026-05-28T06:37:14.869Z",
+            "reviewed_by": "codex_wave36_brand_expansion",
+            "source_kinds": [
+              "official_pdp_single_ingredient_formula"
+            ],
+            "source_origin": "reviewed_source_backed_pdp_content_patch",
+            "source_quality_status": "high"
+          },
+          "catalog_category_path": {
+            "reason": "reviewed_official_dtc_category_patch_for_markato_next_wave_similarity_recall",
+            "evidence": "Reviewed from official DTC PDP title and description: Bulgarian Rose Water Face, Hair & Body Mist Spray. Discover the rejuvenating benefits of our Bulgarian Rose Water Face, Hair &amp; Body Mist Spray. With a gentle, refreshing aroma, this all-natural toner will clarify and balance yo",
+            "source_url": "https://delicatedaisys.com/products/bulgarian-rose-water-face-hair-body-mist-spray",
+            "updated_at": "2026-05-23T00:56:24.977Z",
+            "reviewed_by": "codex_markato_review_20260523",
+            "source_kinds": [
+              "official_dtc_pdp_manual_category_review"
+            ],
+            "source_origin": "reviewed_source_backed_category_patch",
+            "source_quality_status": "high"
+          },
+          "active_ingredients_raw": {
+            "reason_codes": [
+              "missing_source_kind"
+            ],
+            "source_kinds": [],
+            "source_origin": "unknown",
+            "source_quality_status": "low"
+          }
+        },
+        "strict_pdp_source_blocker_v1": null,
+        "external_seed_url_repair_v1": null,
+        "pdp_content_asset_fields": [
+          "description",
+          "how_to_use_raw",
+          "description_raw",
+          "ingredients_raw",
+          "details_sections"
+        ],
+        "pdp_content_asset_ingredients_raw": {
+          "updated_at": "2026-05-28T05:23:44.458Z",
+          "source_kind": "official_pdp_full_ingredients",
+          "content_hash": "17fcf7231d3de078",
+          "review_state": "assistant_reviewed",
+          "source_origin": "official_html",
+          "overwrite_policy": "preserve_best_available",
+          "source_quality_status": "high"
+        },
+        "review_count": 0
+      },
+      "representative_product": {
+        "title": "Bulgarian Rose Water Face, Hair & Body Mist Spray",
+        "description_raw_len": 817,
+        "ingredients_raw_len": 49,
+        "how_to_use_raw_len": 190,
+        "details_titles": [],
+        "review_count": 0,
+        "field_quality_summary": {
+          "description_raw": {
+            "source_origin": "shopify_json",
+            "source_quality_status": "high",
+            "source_kinds": [
+              "shopify_description"
+            ],
+            "reason_codes": []
+          },
+          "details_sections": {
+            "source_origin": "unknown",
+            "source_quality_status": "low",
+            "source_kinds": [],
+            "reason_codes": [
+              "missing_source_kind"
+            ]
+          },
+          "ingredients_raw": {
+            "source_origin": "shopify_json",
+            "source_quality_status": "high",
+            "source_kinds": [
+              "shopify_body_html_labeled_ingredients"
+            ],
+            "reason_codes": []
+          },
+          "active_ingredients_raw": {
+            "source_origin": "unknown",
+            "source_quality_status": "low",
+            "source_kinds": [],
+            "reason_codes": [
+              "missing_source_kind"
+            ]
+          },
+          "how_to_use_raw": {
+            "source_origin": "shopify_json",
+            "source_quality_status": "high",
+            "source_kinds": [
+              "shopify_body_html_labeled_how_to_use"
+            ],
+            "reason_codes": []
+          },
+          "faq_items": {
+            "source_origin": "unknown",
+            "source_quality_status": "low",
+            "source_kinds": [],
+            "reason_codes": [
+              "missing_source_kind"
+            ]
+          }
+        }
+      },
+      "next_seed": {
+        "description": "Discover the rejuvenating benefits of our Bulgarian Rose Water Face, Hair & Body Mist Spray. With a gentle, refreshing aroma, this all-natural toner will clarify and balance your skin while providing instant moisture for a revitalized appearance. Versatile enough for use on the face, body, and hair, our formula is",
+        "pdp_description_raw": "Discover the rejuvenating benefits of our Bulgarian Rose Water Face, Hair & Body Mist Spray. With a gentle, refreshing aroma, this all-natural toner will clarify and balance your skin while providing instant moisture for a revitalized appearance. Versatile enough for use on the face, body, and hair, our formula is",
+        "pdp_ingredients_raw": "",
+        "pdp_how_to_use_raw": "",
+        "pdp_details_titles": [
+          "Overview"
+        ],
+        "review_count": 0
+      },
+      "changed": true,
+      "extract_error": null,
+      "identity_listing": {
+        "source_listing_ref": "external_seed:ext_397a1dbbcab4ad4a246b6a8c",
+        "live_read_enabled": true,
+        "top_level": {
+          "pdp_ingredients_raw": "Organic Rosa Damascena (Damask Rose) Floral Water",
+          "pdp_how_to_use_raw": "Apply on clean skin using a cotton pad or by directly spraying it on your skin. No rinse is necessary.",
+          "pdp_details_titles": [
+            "Overview",
+            "How To Use"
+          ],
+          "ingredients_inci_count": 1
+        },
+        "nested_seed_data": {
+          "description": "Discover the rejuvenating benefits of our Bulgarian Rose Water Face, Hair & Body Mist Spray. With a gentle, refreshing aroma, this all-natural toner will clarify and balance your skin while providing instant moisture for a revitalized appearance. Versatile enough for use on the face, body, and hair, our formula is",
+          "pdp_description_raw": "Discover the rejuvenating benefits of our Bulgarian Rose Water Face, Hair & Body Mist Spray. With a gentle, refreshing aroma, this all-natural toner will clarify and balance your skin while providing instant moisture for a revitalized appearance. Versatile enough for use on the face, body, and hair, our formula is",
+          "pdp_ingredients_raw": "",
+          "pdp_how_to_use_raw": "",
+          "pdp_details_titles": [],
+          "ingredients_inci_count": 0,
+          "product_kind": "fragrance",
+          "pdp_field_capture_status": {
+            "faq_items": "missing",
+            "how_to_use_raw": "missing",
+            "description_raw": "present",
+            "ingredients_raw": "missing",
+            "details_sections": "missing",
+            "active_ingredients_raw": "missing"
+          },
+          "pdp_field_quality_summary": {
+            "faq_items": {
+              "reason_codes": [
+                "missing_source_kind"
+              ],
+              "source_kinds": [],
+              "source_origin": "unknown",
+              "source_quality_status": "low"
+            },
+            "how_to_use_raw": {
+              "reason_codes": [],
+              "source_kinds": [
+                "shopify_body_html_labeled_how_to_use"
+              ],
+              "source_origin": "shopify_json",
+              "source_quality_status": "high"
+            },
+            "description_raw": {
+              "reason_codes": [],
+              "source_kinds": [
+                "shopify_description"
+              ],
+              "source_origin": "shopify_json",
+              "source_quality_status": "high"
+            },
+            "ingredients_raw": {
+              "reason_codes": [],
+              "source_kinds": [
+                "shopify_body_html_labeled_ingredients"
+              ],
+              "source_origin": "shopify_json",
+              "source_quality_status": "high"
+            },
+            "details_sections": {
+              "reason_codes": [
+                "missing_source_kind"
+              ],
+              "source_kinds": [],
+              "source_origin": "unknown",
+              "source_quality_status": "low"
+            },
+            "active_ingredients_raw": {
+              "reason_codes": [
+                "missing_source_kind"
+              ],
+              "source_kinds": [],
+              "source_origin": "unknown",
+              "source_quality_status": "low"
+            }
+          },
+          "strict_pdp_source_blocker_v1": null,
+          "external_seed_url_repair_v1": null,
+          "pdp_content_asset_fields": [
+            "description",
+            "description_raw"
+          ],
+          "pdp_content_asset_ingredients_raw": null,
+          "review_count": 0
+        },
+        "nested_snapshot": {
+          "description": "Discover the rejuvenating benefits of our Bulgarian Rose Water Face, Hair & Body Mist Spray. With a gentle, refreshing aroma, this all-natural toner will clarify and balance your skin while providing instant moisture for a revitalized appearance. Versatile enough for use on the face, body, and hair, our formula is",
+          "pdp_description_raw": "Discover the rejuvenating benefits of our Bulgarian Rose Water Face, Hair & Body Mist Spray. With a gentle, refreshing aroma, this all-natural toner will clarify and balance your skin while providing instant moisture for a revitalized appearance. Versatile enough for use on the face, body, and hair, our formula is",
+          "pdp_ingredients_raw": "",
+          "pdp_how_to_use_raw": "",
+          "pdp_details_titles": [],
+          "ingredients_inci_count": 0,
+          "product_kind": "fragrance",
+          "pdp_field_capture_status": {
+            "faq_items": "missing",
+            "how_to_use_raw": "missing",
+            "description_raw": "present",
+            "ingredients_raw": "missing",
+            "details_sections": "missing",
+            "active_ingredients_raw": "missing"
+          },
+          "pdp_field_quality_summary": {
+            "faq_items": {
+              "reason_codes": [
+                "missing_source_kind"
+              ],
+              "source_kinds": [],
+              "source_origin": "unknown",
+              "source_quality_status": "low"
+            },
+            "how_to_use_raw": {
+              "reason_codes": [],
+              "source_kinds": [
+                "shopify_body_html_labeled_how_to_use"
+              ],
+              "source_origin": "shopify_json",
+              "source_quality_status": "high"
+            },
+            "description_raw": {
+              "reason_codes": [],
+              "source_kinds": [
+                "shopify_description"
+              ],
+              "source_origin": "shopify_json",
+              "source_quality_status": "high"
+            },
+            "ingredients_raw": {
+              "reason_codes": [],
+              "source_kinds": [
+                "shopify_body_html_labeled_ingredients"
+              ],
+              "source_origin": "shopify_json",
+              "source_quality_status": "high"
+            },
+            "details_sections": {
+              "reason_codes": [
+                "missing_source_kind"
+              ],
+              "source_kinds": [],
+              "source_origin": "unknown",
+              "source_quality_status": "low"
+            },
+            "active_ingredients_raw": {
+              "reason_codes": [
+                "missing_source_kind"
+              ],
+              "source_kinds": [],
+              "source_origin": "unknown",
+              "source_quality_status": "low"
+            }
+          },
+          "strict_pdp_source_blocker_v1": null,
+          "external_seed_url_repair_v1": null,
+          "pdp_content_asset_fields": [
+            "description",
+            "description_raw"
+          ],
+          "pdp_content_asset_ingredients_raw": null,
+          "review_count": 0
+        }
+      },
+      "identity_listing_candidates": [
+        {
+          "source_listing_ref": "external_seed:ext_397a1dbbcab4ad4a246b6a8c",
+          "merchant_id": "external_seed",
+          "product_id": "ext_397a1dbbcab4ad4a246b6a8c",
+          "source_kind": "external_seed",
+          "source_tier": "brand",
+          "live_read_enabled": true,
+          "identity_status": "approved",
+          "review_required": false,
+          "sellable_item_group_id": "sig_5e89f7b2b9ef3870e60db6da",
+          "product_line_id": "pl_27453100a670ade6c6c51fd3",
+          "review_family_id": "rf_27453100a670ade6c6c51fd3",
+          "identity_confidence": "0.9200",
+          "match_basis": [
+            "official_url:https://delicatedaisys.com/products/bulgarian-rose-water-face-hair-body-mist-spray",
+            "reviewed_catalog_sig_alignment:sig_5e89f7b2b9ef3870e60db6da",
+            "product_group_id:sig_5e89f7b2b9ef3870e60db6da"
+          ],
+          "created_at": "2026-05-22T23:55:41.160Z",
+          "updated_at": "2026-05-28T06:37:16.728Z",
+          "payload_summary": {
+            "title": "Bulgarian Rose Water Face, Hair & Body Mist Spray",
+            "description_len": 246,
+            "pdp_description_len": 315,
+            "ingredients_top_len": 49,
+            "ingredients_seed_len": 0,
+            "ingredients_snapshot_len": 0,
+            "how_to_top_len": 102,
+            "how_to_seed_len": 0,
+            "how_to_snapshot_len": 0,
+            "details_top_titles": [
+              "Overview",
+              "How To Use"
+            ],
+            "details_seed_titles": [],
+            "details_snapshot_titles": [],
+            "review_count": 0,
+            "canonical_url": "https://delicatedaisys.com/products/bulgarian-rose-water-face-hair-body-mist-spray",
+            "strict_blocker": false
+          }
+        }
+      ]
+    }
+  ]
+}

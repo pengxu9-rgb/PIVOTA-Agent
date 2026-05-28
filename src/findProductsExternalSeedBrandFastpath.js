@@ -73,7 +73,7 @@ async function runExternalSeedBrandMainlineFastpath({
   const availabilityFilter = inStockOnly
     ? `AND coalesce(lower(availability), '') NOT IN ('out of stock', 'out_of_stock', 'outofstock', 'oos')`
     : '';
-  const attachedFilter = includeAttached ? '' : 'AND attached_product_key IS NULL';
+  const attachedFilter = 'AND attached_product_key IS NOT NULL';
   const brandMatchExpr = `
     lower(
       regexp_replace(
@@ -95,15 +95,6 @@ async function runExternalSeedBrandMainlineFastpath({
       FROM catalog_products cp
       ${buildExternalSeedServingEligibleJoinSql()}
       WHERE cp.product_key = external_product_seeds.attached_product_key
-         OR (
-          cp.merchant_id = 'external_seed'
-          AND cp.platform = 'external_seed'
-          AND cp.source_product_id = coalesce(
-            nullif(external_product_seeds.external_product_id, ''),
-            nullif(external_product_seeds.seed_data->>'external_product_id', ''),
-            nullif(external_product_seeds.seed_data->>'product_id', '')
-          )
-        )
     )
   `;
   const brandFastpathSelect = `

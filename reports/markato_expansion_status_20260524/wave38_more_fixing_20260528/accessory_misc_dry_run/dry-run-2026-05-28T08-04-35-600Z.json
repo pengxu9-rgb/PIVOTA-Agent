@@ -1,0 +1,499 @@
+{
+  "generated_at": "2026-05-28T08:04:35.600Z",
+  "source": "pivota_insights_official_pdp_manual_review_v1",
+  "mode": "dry_run",
+  "filters": {
+    "brand": null,
+    "product_ids": [
+      "ext_31b12b124fb01c2d35b98e38",
+      "ext_c127c1d09e3be26e54f4a0a0",
+      "ext_e96da71bdfd3ec573a4642cd",
+      "ext_a146f7010622206ee2796574",
+      "ext_ac846cee1307988559a87e27"
+    ],
+    "limit": null,
+    "include_strong": false,
+    "include_url_key": false,
+    "apply_chunk_size": null
+  },
+  "summary": {
+    "scanned": 5,
+    "changed_products": 1,
+    "blocked_products": 2,
+    "skipped_products": 2,
+    "write_actions": {
+      "insert": 2,
+      "skip": 4
+    },
+    "skip_reasons": {
+      "candidate_failed_manual_quality_gate:generic_beauty_product_copy": 2,
+      "no_safe_writes": 2,
+      "candidate_not_publish_quality_ready": 4
+    },
+    "evidence_profiles": {
+      "official_pdp_reviewed_limited": 4,
+      "official_pdp_reviewed_line": 1
+    }
+  },
+  "plans": [
+    {
+      "external_product_id": "ext_31b12b124fb01c2d35b98e38",
+      "pivota_signature_id": "sig_e7b698a7466d8715b609299c7a97c93f",
+      "title": "786 Canvas Tote Bag",
+      "brand": "786 Cosmetics",
+      "canonical_url": "https://786cosmetics.com/products/786-tote-bag",
+      "changed": true,
+      "blocked": false,
+      "skip_reason": null,
+      "candidate_hash": "0104b2e6c3756a4d224fa0c2fcd245bf6732c44539aa1204027a8afe13970d6b",
+      "evidence_profile": "official_pdp_reviewed_limited",
+      "source_coverage": {
+        "source": "official_pdp",
+        "canonical_url": "https://786cosmetics.com/products/786-tote-bag",
+        "fields": {
+          "description": true,
+          "ingredients": 0,
+          "active_ingredients": 0,
+          "how_to": 0,
+          "details": 0,
+          "variants": 2
+        }
+      },
+      "preview": {
+        "headline": "Beauty accessory",
+        "what_it_is": "786 Canvas Tote Bag is a beauty accessory from 786 Cosmetics. Introducing our stylish Canvas Tote Bag, the perfect accessory for your everyday needs.",
+        "why_it_stands_out": [
+          {
+            "headline": "Product cues are source-backed",
+            "body": "Reviewed PDP cues such as travel organization give shoppers specific comparison points within 786 Cosmetics, rather than category-only copy.",
+            "evidence_strength": "official_pdp_reviewed"
+          }
+        ],
+        "best_for": [
+          {
+            "tag": "makeup_organization",
+            "label": "makeup organization",
+            "confidence": "moderate"
+          }
+        ],
+        "shopping_highlight": "travel organization"
+      },
+      "writes": [
+        {
+          "kb_key": "product:ext_31b12b124fb01c2d35b98e38",
+          "action": "insert",
+          "reason": "new_product_intel_bundle",
+          "old_hash": null,
+          "candidate_hash": "16d55a598a9a233c083129d96eea8f3634905395025d30f6644ea886b671cbb6",
+          "existing_weak": true,
+          "source": "pivota_insights_official_pdp_manual_review_v1",
+          "after_inventory": {
+            "product_id": "ext_31b12b124fb01c2d35b98e38",
+            "kb_key": "product:ext_31b12b124fb01c2d35b98e38",
+            "source": "pivota_insights_official_pdp_manual_review_v1",
+            "updated_at": "",
+            "last_success_at": "",
+            "title": "786 Canvas Tote Bag",
+            "canonical_url": "",
+            "bundle_hash": "0104b2e6c3756a4d224fa0c2fcd245bf6732c44539aa1204027a8afe13970d6b",
+            "lane": "keep",
+            "reason": "protected_good_content",
+            "priority": 0,
+            "protected": true,
+            "displayable": true,
+            "high_quality_ready": true,
+            "human_reviewed": true,
+            "issues": [],
+            "blocking_issues": [],
+            "quality_state": "reviewed",
+            "evidence_profile": "official_pdp_reviewed_limited",
+            "evidence_rank": 1,
+            "review_tier": "assistant_reviewed",
+            "agent_readable": true,
+            "public_ready": true
+          },
+          "source_meta": {
+            "evidence_profile": "official_pdp_reviewed_limited",
+            "quality_state": "reviewed",
+            "source_origin": "official_pdp_fields",
+            "source_url": "https://786cosmetics.com/products/786-tote-bag",
+            "quality_improvement": {
+              "previous_bundle_hash": null,
+              "candidate_bundle_hash": "0104b2e6c3756a4d224fa0c2fcd245bf6732c44539aa1204027a8afe13970d6b",
+              "replacement_decision": "new_product_intel_bundle",
+              "existing_quality_lane": null,
+              "candidate_quality_lane": "keep",
+              "existing_evidence_profile": null,
+              "candidate_evidence_profile": "official_pdp_reviewed_limited"
+            }
+          }
+        },
+        {
+          "kb_key": "product:sig_e7b698a7466d8715b609299c7a97c93f",
+          "action": "insert",
+          "reason": "new_product_intel_bundle",
+          "old_hash": null,
+          "candidate_hash": "16d55a598a9a233c083129d96eea8f3634905395025d30f6644ea886b671cbb6",
+          "existing_weak": true,
+          "source": "pivota_insights_official_pdp_manual_review_v1",
+          "after_inventory": {
+            "product_id": "ext_31b12b124fb01c2d35b98e38",
+            "kb_key": "product:sig_e7b698a7466d8715b609299c7a97c93f",
+            "source": "pivota_insights_official_pdp_manual_review_v1",
+            "updated_at": "",
+            "last_success_at": "",
+            "title": "786 Canvas Tote Bag",
+            "canonical_url": "",
+            "bundle_hash": "0104b2e6c3756a4d224fa0c2fcd245bf6732c44539aa1204027a8afe13970d6b",
+            "lane": "keep",
+            "reason": "protected_good_content",
+            "priority": 0,
+            "protected": true,
+            "displayable": true,
+            "high_quality_ready": true,
+            "human_reviewed": true,
+            "issues": [],
+            "blocking_issues": [],
+            "quality_state": "reviewed",
+            "evidence_profile": "official_pdp_reviewed_limited",
+            "evidence_rank": 1,
+            "review_tier": "assistant_reviewed",
+            "agent_readable": true,
+            "public_ready": true
+          },
+          "source_meta": {
+            "evidence_profile": "official_pdp_reviewed_limited",
+            "quality_state": "reviewed",
+            "source_origin": "official_pdp_fields",
+            "source_url": "https://786cosmetics.com/products/786-tote-bag",
+            "quality_improvement": {
+              "previous_bundle_hash": null,
+              "candidate_bundle_hash": "0104b2e6c3756a4d224fa0c2fcd245bf6732c44539aa1204027a8afe13970d6b",
+              "replacement_decision": "new_product_intel_bundle",
+              "existing_quality_lane": null,
+              "candidate_quality_lane": "keep",
+              "existing_evidence_profile": null,
+              "candidate_evidence_profile": "official_pdp_reviewed_limited"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "external_product_id": "ext_c127c1d09e3be26e54f4a0a0",
+      "pivota_signature_id": "sig_a02cc00fb661cfbc1cf18975f4256385",
+      "title": "Gift Card",
+      "brand": "786 Cosmetics",
+      "canonical_url": "https://786cosmetics.com/products/gift-card",
+      "changed": false,
+      "blocked": true,
+      "skip_reason": "candidate_failed_manual_quality_gate:generic_beauty_product_copy",
+      "candidate_hash": "7187d4aef5802fce7ff629e594f6de091909186f8639ab4e2ac090996672975a",
+      "evidence_profile": "official_pdp_reviewed_limited",
+      "source_coverage": {
+        "source": "official_pdp",
+        "canonical_url": "https://786cosmetics.com/products/gift-card",
+        "fields": {
+          "description": true,
+          "ingredients": 0,
+          "active_ingredients": 0,
+          "how_to": 0,
+          "details": 0,
+          "variants": 4
+        }
+      },
+      "preview": {
+        "headline": "Beauty product",
+        "what_it_is": "Gift Card is a beauty product from 786 Cosmetics. Shopping for someone else but not sure what to give them?",
+        "why_it_stands_out": [
+          {
+            "headline": "Official PDP evidence only",
+            "body": "This insight is limited to the official product fields currently available for Gift Card.",
+            "evidence_strength": "official_pdp_reviewed_limited"
+          }
+        ],
+        "best_for": [
+          {
+            "tag": "beauty_product",
+            "label": "Beauty product",
+            "confidence": "moderate"
+          }
+        ],
+        "shopping_highlight": "Beauty product"
+      },
+      "writes": []
+    },
+    {
+      "external_product_id": "ext_a146f7010622206ee2796574",
+      "pivota_signature_id": "sig_a7178e1a3e9a606d3ca69b09",
+      "title": "Je Suis Tote Bag (pure cotton, thick 22oz)",
+      "brand": "Byra",
+      "canonical_url": "https://byrabeauty.com/products/je-suis-comme-je-suis-tote-bag-pure-cotton-thick-22oz",
+      "changed": false,
+      "blocked": false,
+      "skip_reason": "no_safe_writes",
+      "candidate_hash": "953fee9ad7616f8f19cce21f70ad8b09ccc86fc9b0aed0bfd439c34bc7b086b1",
+      "evidence_profile": "official_pdp_reviewed_limited",
+      "source_coverage": {
+        "source": "official_pdp",
+        "canonical_url": "https://byrabeauty.com/products/je-suis-comme-je-suis-tote-bag-pure-cotton-thick-22oz",
+        "fields": {
+          "description": true,
+          "ingredients": 0,
+          "active_ingredients": 0,
+          "how_to": 0,
+          "details": 0,
+          "variants": 1
+        }
+      },
+      "preview": {
+        "headline": "Beauty accessory",
+        "what_it_is": "Je Suis Tote Bag (pure cotton, thick 22oz) is a beauty accessory from Byra. ABOUT Our brand new Je Suis Totebag is a new improved everyday must have for the confident, self-loving woman or man.",
+        "why_it_stands_out": [
+          {
+            "headline": "Product cues are source-backed",
+            "body": "Reviewed PDP cues such as travel organization give shoppers specific comparison points within Byra, rather than category-only copy.",
+            "evidence_strength": "official_pdp_reviewed"
+          }
+        ],
+        "best_for": [
+          {
+            "tag": "makeup_organization",
+            "label": "makeup organization",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "travel",
+            "label": "travel",
+            "confidence": "moderate"
+          }
+        ],
+        "shopping_highlight": "travel organization"
+      },
+      "writes": [
+        {
+          "kb_key": "product:ext_a146f7010622206ee2796574",
+          "action": "skip",
+          "reason": "candidate_not_publish_quality_ready",
+          "old_hash": null,
+          "candidate_hash": "16f083e1a2b07b1264ebd69e0f552180244ad6fc6af0e3dc816f9b7f115e35e5",
+          "existing_weak": true,
+          "assessment": {
+            "allowed": false,
+            "reason": "candidate_not_publish_quality_ready",
+            "candidate": {
+              "lane": "regenerate",
+              "reason": "requires_regeneration",
+              "priority": 95,
+              "protected": false,
+              "displayable": true,
+              "high_quality_ready": false,
+              "human_reviewed": true,
+              "issues": [
+                "public_generic_marketing_copy"
+              ],
+              "blocking_issues": [
+                "public_generic_marketing_copy"
+              ],
+              "quality_state": "reviewed",
+              "evidence_profile": "official_pdp_reviewed_limited",
+              "evidence_rank": 1,
+              "review_tier": "assistant_reviewed"
+            },
+            "candidate_bundle_hash": "953fee9ad7616f8f19cce21f70ad8b09ccc86fc9b0aed0bfd439c34bc7b086b1"
+          }
+        },
+        {
+          "kb_key": "product:sig_a7178e1a3e9a606d3ca69b09",
+          "action": "skip",
+          "reason": "candidate_not_publish_quality_ready",
+          "old_hash": null,
+          "candidate_hash": "16f083e1a2b07b1264ebd69e0f552180244ad6fc6af0e3dc816f9b7f115e35e5",
+          "existing_weak": true,
+          "assessment": {
+            "allowed": false,
+            "reason": "candidate_not_publish_quality_ready",
+            "candidate": {
+              "lane": "regenerate",
+              "reason": "requires_regeneration",
+              "priority": 95,
+              "protected": false,
+              "displayable": true,
+              "high_quality_ready": false,
+              "human_reviewed": true,
+              "issues": [
+                "public_generic_marketing_copy"
+              ],
+              "blocking_issues": [
+                "public_generic_marketing_copy"
+              ],
+              "quality_state": "reviewed",
+              "evidence_profile": "official_pdp_reviewed_limited",
+              "evidence_rank": 1,
+              "review_tier": "assistant_reviewed"
+            },
+            "candidate_bundle_hash": "953fee9ad7616f8f19cce21f70ad8b09ccc86fc9b0aed0bfd439c34bc7b086b1"
+          }
+        }
+      ]
+    },
+    {
+      "external_product_id": "ext_ac846cee1307988559a87e27",
+      "pivota_signature_id": "sig_101111c452aa16957042cdba",
+      "title": "Nourwish Holiday Velvet Bag",
+      "brand": "Nourwish",
+      "canonical_url": "https://nourwish.com/products/nourwish-holiday-velvet-bag",
+      "changed": false,
+      "blocked": false,
+      "skip_reason": "no_safe_writes",
+      "candidate_hash": "685d47d6ab62d9b246c12881be6efb706f8665a7bc2ed138a077dcde01e3219f",
+      "evidence_profile": "official_pdp_reviewed_limited",
+      "source_coverage": {
+        "source": "official_pdp",
+        "canonical_url": "https://nourwish.com/products/nourwish-holiday-velvet-bag",
+        "fields": {
+          "description": true,
+          "ingredients": 0,
+          "active_ingredients": 0,
+          "how_to": 0,
+          "details": 0,
+          "variants": 1
+        }
+      },
+      "preview": {
+        "headline": "Beauty accessory",
+        "what_it_is": "Nourwish Holiday Velvet Bag is a beauty accessory from Nourwish. This luxurious velvet zipper pouch is perfect for organizing your everyday essentials or adding a touch of sophistication to your gifts.",
+        "why_it_stands_out": [
+          {
+            "headline": "Product cues are source-backed",
+            "body": "Reviewed PDP cues such as travel organization, compact accessory give shoppers specific comparison points within Nourwish, rather than category-only copy.",
+            "evidence_strength": "official_pdp_reviewed"
+          }
+        ],
+        "best_for": [
+          {
+            "tag": "makeup_organization",
+            "label": "makeup organization",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "travel",
+            "label": "travel",
+            "confidence": "moderate"
+          }
+        ],
+        "shopping_highlight": "travel organization, compact accessory"
+      },
+      "writes": [
+        {
+          "kb_key": "product:ext_ac846cee1307988559a87e27",
+          "action": "skip",
+          "reason": "candidate_not_publish_quality_ready",
+          "old_hash": null,
+          "candidate_hash": "5eed21fe7b12d61346f238d83e658a78d2e6d9859ad0cb26a3b7c0ce099a6904",
+          "existing_weak": true,
+          "assessment": {
+            "allowed": false,
+            "reason": "candidate_not_publish_quality_ready",
+            "candidate": {
+              "lane": "regenerate",
+              "reason": "requires_regeneration",
+              "priority": 95,
+              "protected": false,
+              "displayable": true,
+              "high_quality_ready": false,
+              "human_reviewed": true,
+              "issues": [
+                "public_generic_marketing_copy"
+              ],
+              "blocking_issues": [
+                "public_generic_marketing_copy"
+              ],
+              "quality_state": "reviewed",
+              "evidence_profile": "official_pdp_reviewed_limited",
+              "evidence_rank": 1,
+              "review_tier": "assistant_reviewed"
+            },
+            "candidate_bundle_hash": "685d47d6ab62d9b246c12881be6efb706f8665a7bc2ed138a077dcde01e3219f"
+          }
+        },
+        {
+          "kb_key": "product:sig_101111c452aa16957042cdba",
+          "action": "skip",
+          "reason": "candidate_not_publish_quality_ready",
+          "old_hash": null,
+          "candidate_hash": "5eed21fe7b12d61346f238d83e658a78d2e6d9859ad0cb26a3b7c0ce099a6904",
+          "existing_weak": true,
+          "assessment": {
+            "allowed": false,
+            "reason": "candidate_not_publish_quality_ready",
+            "candidate": {
+              "lane": "regenerate",
+              "reason": "requires_regeneration",
+              "priority": 95,
+              "protected": false,
+              "displayable": true,
+              "high_quality_ready": false,
+              "human_reviewed": true,
+              "issues": [
+                "public_generic_marketing_copy"
+              ],
+              "blocking_issues": [
+                "public_generic_marketing_copy"
+              ],
+              "quality_state": "reviewed",
+              "evidence_profile": "official_pdp_reviewed_limited",
+              "evidence_rank": 1,
+              "review_tier": "assistant_reviewed"
+            },
+            "candidate_bundle_hash": "685d47d6ab62d9b246c12881be6efb706f8665a7bc2ed138a077dcde01e3219f"
+          }
+        }
+      ]
+    },
+    {
+      "external_product_id": "ext_e96da71bdfd3ec573a4642cd",
+      "pivota_signature_id": "sig_e62fc1e10e9176158ca01ad1",
+      "title": "Shipping Protection",
+      "brand": "786 Cosmetics",
+      "canonical_url": "https://786cosmetics.com/products/shipping-protection",
+      "changed": false,
+      "blocked": true,
+      "skip_reason": "candidate_failed_manual_quality_gate:generic_beauty_product_copy",
+      "candidate_hash": "91a326b5f1d578ecf7138a8f64c645c07b36eac22f8509c076ff24afdae8558d",
+      "evidence_profile": "official_pdp_reviewed_line",
+      "source_coverage": {
+        "source": "official_pdp",
+        "canonical_url": "https://786cosmetics.com/products/shipping-protection",
+        "fields": {
+          "description": true,
+          "ingredients": 0,
+          "active_ingredients": 0,
+          "how_to": 0,
+          "details": 0,
+          "variants": 1
+        }
+      },
+      "preview": {
+        "headline": "Beauty product",
+        "what_it_is": "Shipping Protection is a beauty product from 786 Cosmetics. Protect your order from damage, loss, or theft during shipping.",
+        "why_it_stands_out": [
+          {
+            "headline": "Accessory format is explicit",
+            "body": "Variant labels such as Service: Shipping Protection are visible, reducing ambiguity around the product format before a shopper clicks through.",
+            "evidence_strength": "official_pdp_reviewed"
+          }
+        ],
+        "best_for": [
+          {
+            "tag": "beauty_product",
+            "label": "Beauty product",
+            "confidence": "moderate"
+          }
+        ],
+        "shopping_highlight": "Beauty product"
+      },
+      "writes": []
+    }
+  ]
+}
