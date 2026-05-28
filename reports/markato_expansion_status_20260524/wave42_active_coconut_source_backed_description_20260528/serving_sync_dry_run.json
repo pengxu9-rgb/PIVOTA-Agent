@@ -1,0 +1,684 @@
+{
+  "generated_at": "2026-05-28T03:17:16.036Z",
+  "mode": "dry_run",
+  "batch_size": null,
+  "bootstrap_reviewed_identity_live_read": true,
+  "requested_ids": 3,
+  "fetched_rows": 3,
+  "mirror_rows": 3,
+  "planned_sku_rows": 3,
+  "planned_offer_rows": 3,
+  "planned_index_state_rows": 3,
+  "missing_ids": [],
+  "skipped": [],
+  "applied": {
+    "mode": "dry_run",
+    "existing_before": {
+      "catalog_products": 3,
+      "catalog_skus": 3,
+      "catalog_offers": 3,
+      "product_group_members": 3
+    },
+    "stale_delete_preview": {
+      "current_sku_rows": 3,
+      "current_offer_rows": 3,
+      "planned_stale_sku_deletes": 0,
+      "planned_stale_offer_deletes": 0,
+      "sample_stale_skus": [],
+      "sample_stale_offers": []
+    },
+    "batch_size": null,
+    "batches": 1,
+    "audit_reasons": {
+      "no_strong_identifier": 3
+    },
+    "product_upserts": 0,
+    "sku_upserts": 0,
+    "offer_upserts": 0,
+    "group_member_upserts": 0,
+    "group_member_preserved_existing_merges": 0,
+    "seed_attachment_updates": 0,
+    "index_state_upserts": 0,
+    "identity_live_read_updates": 0,
+    "catalog_row_trust_upserts": 0,
+    "stale_offer_deletes": 0,
+    "stale_sku_deletes": 0
+  },
+  "sample": [
+    {
+      "external_product_id": "ext_11509e4feaf83a2419d8c77d",
+      "product_key": "prod::external_seed::external_seed::ext_11509e4feaf83a2419d8c77d",
+      "product_group_id": "sig_836b576047d491db3b856375",
+      "title": "KOJIC DRIP",
+      "brand": "Active Drip",
+      "product_type": "Serum",
+      "category": "Serum",
+      "category_path": "beauty/skincare/serum",
+      "canonical_url": "https://activedrip.com/products/niacinamide-kojic-acid-glow-and-corrective-serum",
+      "pivota_signature_id": "sig_836b576047d491db3b856375",
+      "sku_rows": 1,
+      "first_sku": {
+        "sku_key": "prod::external_seed::external_seed::ext_11509e4feaf83a2419d8c77d::sku_574849ea23b6e615549b",
+        "product_key": "prod::external_seed::external_seed::ext_11509e4feaf83a2419d8c77d",
+        "merchant_id": "external_seed",
+        "platform": "external_seed",
+        "source_product_id": "ext_11509e4feaf83a2419d8c77d",
+        "source_variant_id": "ext_11509e4feaf83a2419d8c77d:40823241572386",
+        "source_domain": "activedrip.com",
+        "sku": "8436585435135",
+        "barcode": null,
+        "title": "KOJIC DRIP",
+        "currency": "USD",
+        "image_url": "https://cdn.shopify.com/s/files/1/0587/8215/4786/files/active-drip-kojic-drip-niacinamide-serum-bottle.png?v=1778767043",
+        "visible_attributes": {},
+        "visible_option_labels": {},
+        "ingredient_ids": [],
+        "sku_payload": {
+          "source": "external_product_seeds_mirror_v1",
+          "external_product_id": "ext_11509e4feaf83a2419d8c77d",
+          "raw_variant_id": "40823241572386",
+          "source_variant_id": "ext_11509e4feaf83a2419d8c77d:40823241572386",
+          "variant_sku": "8436585435135",
+          "barcode": null,
+          "strong_identifier_kind": null,
+          "source_url": "https://activedrip.com/products/niacinamide-kojic-acid-glow-and-corrective-serum",
+          "external_redirect_url": "https://activedrip.com/products/niacinamide-kojic-acid-glow-and-corrective-serum",
+          "price": "59.9",
+          "price_amount": 59.9,
+          "currency": "USD",
+          "availability": "in_stock",
+          "image_url": "https://cdn.shopify.com/s/files/1/0587/8215/4786/files/active-drip-kojic-drip-niacinamide-serum-bottle.png?v=1778767043",
+          "swatch_image_url": null,
+          "label_image_url": null,
+          "options": {},
+          "raw_variant": {
+            "sku": "8436585435135",
+            "url": "https://activedrip.com/products/niacinamide-kojic-acid-glow-and-corrective-serum",
+            "price": "59.9",
+            "stock": "In Stock",
+            "currency": "USD",
+            "image_url": "https://cdn.shopify.com/s/files/1/0587/8215/4786/files/active-drip-kojic-drip-niacinamide-serum-bottle.png?v=1778767043",
+            "image_urls": [
+              "https://cdn.shopify.com/s/files/1/0587/8215/4786/files/active-drip-kojic-drip-niacinamide-serum-bottle.png?v=1778767043",
+              "https://cdn.shopify.com/s/files/1/0587/8215/4786/files/kojic-drip-niacinamide-serum-bottle-dropper.png?v=1778767200",
+              "https://cdn.shopify.com/s/files/1/0587/8215/4786/files/kojic-drip-benefits-fades-acne-marks-hyperpigmentation.jpg?v=1778767306",
+              "https://cdn.shopify.com/s/files/1/0587/8215/4786/files/kojic-drip-clinically-proven-fade-brighten-even-skin-tone.jpg?v=1778767350",
+              "https://cdn.shopify.com/s/files/1/0587/8215/4786/files/how-to-layer-skincare-routine-with-kojic-drip-serum.jpg?v=1778767393",
+              "https://cdn.shopify.com/s/files/1/0587/8215/4786/files/kojic-drip-clinical-study-results-after-4-weeks.jpg?v=1778767469",
+              "https://cdn.shopify.com/s/files/1/0587/8215/4786/files/kojic-drip-niacinamide-5-kojic-acid-0-3-ingredients.jpg?v=1778767515",
+              "https://cdn.shopify.com/s/files/1/0587/8215/4786/files/how-to-use-kojic-drip-niacinamide-serum-am-pm.jpg?v=1778767558",
+              "https://cdn.shopify.com/s/files/1/0587/8215/4786/files/kojic-drip-before-and-after-results-acne-marks.jpg?v=1778767592",
+              "https://cdn.shopify.com/s/files/1/0587/8215/4786/files/woman-with-glowing-skin-holding-kojic-drip-serum.png?v=1778767635",
+              "https://cdn.shopify.com/s/files/1/0587/8215/4786/files/kojic-drip-niacinamide-serum-texture-lightweight-formula.png?v=1778767672"
+            ],
+            "variant_id": "40823241572386",
+            "description": "Inspired by Japanese fermentation traditions.",
+            "option_name": "Title",
+            "option_value": "Default Title"
+          }
+        },
+        "readiness_tier": "referral_only"
+      },
+      "first_offer": {
+        "offer_id": "offer:external_seed:736eb70561f7ddf2a33f1e535f49421a",
+        "sku_key": "prod::external_seed::external_seed::ext_11509e4feaf83a2419d8c77d::sku_574849ea23b6e615549b",
+        "product_key": "prod::external_seed::external_seed::ext_11509e4feaf83a2419d8c77d",
+        "merchant_id": "external_seed",
+        "catalog_track": "external_referral",
+        "truth_tier": "observed",
+        "readiness_tier": "referral_only",
+        "offer_mode": "redirect",
+        "channel": "external_referral",
+        "availability": "in_stock",
+        "currency": "USD",
+        "list_price": 59.9,
+        "merchant_effective_price": 59.9,
+        "estimated_best_price": 59.9,
+        "price_confidence": 1,
+        "source_system": "external_product_seeds_mirror_v1",
+        "source_ref": "eps_d59fad188d62afa3cf2f56fd",
+        "source_domain": "activedrip.com",
+        "offer_payload": {
+          "source": "external_product_seeds_mirror_v1",
+          "external_seed_id": "eps_d59fad188d62afa3cf2f56fd",
+          "external_product_id": "ext_11509e4feaf83a2419d8c77d",
+          "domain": "activedrip.com",
+          "market": "US",
+          "product_title": "KOJIC DRIP",
+          "variant_title": "KOJIC DRIP",
+          "variant_sku": "8436585435135",
+          "raw_variant_id": "40823241572386",
+          "url": "https://activedrip.com/products/niacinamide-kojic-acid-glow-and-corrective-serum",
+          "offer_url": "https://activedrip.com/products/niacinamide-kojic-acid-glow-and-corrective-serum",
+          "canonical_url": "https://activedrip.com/products/niacinamide-kojic-acid-glow-and-corrective-serum",
+          "destination_url": "https://activedrip.com/products/niacinamide-kojic-acid-glow-and-corrective-serum",
+          "external_redirect_url": "https://activedrip.com/products/niacinamide-kojic-acid-glow-and-corrective-serum",
+          "merchant_display_name": "Active Drip",
+          "price": "59.9",
+          "price_amount": 59.9,
+          "price_currency": "USD",
+          "availability": "in_stock",
+          "commerce_facts_v1": {
+            "contract_version": "commerce_facts.v1",
+            "market_id": "US",
+            "country": "US",
+            "currency_target": "USD",
+            "source_authority": "catalog_extract_v2",
+            "captured_at": "2026-05-24T01:07:13.798Z",
+            "evidence_url": "https://activedrip.com/products/niacinamide-kojic-acid-glow-and-corrective-serum",
+            "sellable_region": {
+              "status": "unknown",
+              "countries": [],
+              "evidence_source": "catalog_extract_v2",
+              "confidence": "medium",
+              "checked_at": "2026-05-24T01:07:13.798Z",
+              "reason_codes": [
+                "market_currency_observed",
+                "shipping_destination_not_verified",
+                "external_checkout_not_queried"
+              ],
+              "evidence_url": "https://activedrip.com/products/niacinamide-kojic-acid-glow-and-corrective-serum"
+            },
+            "regional_price": {
+              "amount": 59.9,
+              "currency": "USD",
+              "display_raw": "59.90",
+              "price_type": "list",
+              "compare_at_amount": null,
+              "compare_at_currency": null,
+              "compare_at_display_raw": null,
+              "tax_included": "unknown",
+              "confidence": "medium",
+              "market_switch_status": "ok",
+              "observed_currency": "USD",
+              "source_url": "https://activedrip.com/products/niacinamide-kojic-acid-glow-and-corrective-serum",
+              "captured_at": "2026-05-24T01:07:13.798Z"
+            },
+            "availability": {
+              "status": "in_stock",
+              "source": "catalog_extract_v2",
+              "confidence": "medium",
+              "captured_at": "2026-05-24T01:07:13.798Z"
+            },
+            "shipping": {
+              "status": "unknown",
+              "source": "catalog_extract_v2",
+              "confidence": "unknown",
+              "reason_codes": [
+                "external_checkout_not_queried"
+              ],
+              "checked_at": "2026-05-24T01:07:13.798Z"
+            },
+            "promotions": [],
+            "returns": {
+              "status": "unknown",
+              "source": "catalog_extract_v2",
+              "confidence": "unknown",
+              "reason_codes": [
+                "external_returns_not_extracted"
+              ],
+              "checked_at": "2026-05-24T01:07:13.798Z"
+            }
+          },
+          "agent_safe_commerce_facts": {
+            "contract_version": "commerce_facts.v1",
+            "market_id": "US",
+            "price": {
+              "amount": 59.9,
+              "currency": "USD",
+              "display_raw": "59.90",
+              "price_type": "list",
+              "compare_at_amount": null,
+              "compare_at_currency": null,
+              "compare_at_display_raw": null,
+              "tax_included": "unknown",
+              "confidence": "medium",
+              "market_switch_status": "ok",
+              "observed_currency": "USD",
+              "source_url": "https://activedrip.com/products/niacinamide-kojic-acid-glow-and-corrective-serum",
+              "captured_at": "2026-05-24T01:07:13.798Z"
+            },
+            "availability": {
+              "status": "in_stock",
+              "source": "catalog_extract_v2",
+              "confidence": "medium",
+              "captured_at": "2026-05-24T01:07:13.798Z"
+            },
+            "shipping": {
+              "status": "unknown",
+              "reason": "verify_at_checkout"
+            },
+            "promotions": [],
+            "checkout_note": "Shipping and promotions are not verified for this external offer; verify at merchant checkout."
+          }
+        }
+      },
+      "serving_readiness": {
+        "servingEligible": true,
+        "contentQualityScore": 83,
+        "blockerCode": "none",
+        "blockerDetail": null,
+        "identityResolved": true,
+        "identityLiveReadResolved": true,
+        "identityBootstrapEligible": false,
+        "hasImage": true,
+        "hasPrice": true,
+        "descriptionLength": 45
+      }
+    },
+    {
+      "external_product_id": "ext_9518e81076efc5c5138214ee",
+      "product_key": "prod::external_seed::external_seed::ext_9518e81076efc5c5138214ee",
+      "product_group_id": "sig_2d065c767b6e18a4d7f4a660",
+      "title": "Matcha Shake Shampoo Concentrate | For All Hair Types",
+      "brand": "COCONUT MATTER",
+      "product_type": "Shampoo",
+      "category": "Shampoo",
+      "category_path": "beauty/hair/shampoo",
+      "canonical_url": "https://coconutmatter.com/products/matcha-shake-shampoo-concentrate",
+      "pivota_signature_id": "sig_2d065c767b6e18a4d7f4a660",
+      "sku_rows": 1,
+      "first_sku": {
+        "sku_key": "prod::external_seed::external_seed::ext_9518e81076efc5c5138214ee::sku_46e9e864d1ba419d5d8a",
+        "product_key": "prod::external_seed::external_seed::ext_9518e81076efc5c5138214ee",
+        "merchant_id": "external_seed",
+        "platform": "external_seed",
+        "source_product_id": "ext_9518e81076efc5c5138214ee",
+        "source_variant_id": "ext_9518e81076efc5c5138214ee:40607486378066",
+        "source_domain": "coconutmatter.com",
+        "sku": "CM60-Matcha",
+        "barcode": null,
+        "title": "Matcha Shake Shampoo Concentrate | For All Hair Types",
+        "currency": "USD",
+        "image_url": "https://cdn.shopify.com/s/files/1/0060/2108/7314/files/1_f9e1fb1d-a484-4b41-b3b4-70ff8dcda8db.png?v=1763292731",
+        "visible_attributes": {},
+        "visible_option_labels": {},
+        "ingredient_ids": [],
+        "sku_payload": {
+          "source": "external_product_seeds_mirror_v1",
+          "external_product_id": "ext_9518e81076efc5c5138214ee",
+          "raw_variant_id": "40607486378066",
+          "source_variant_id": "ext_9518e81076efc5c5138214ee:40607486378066",
+          "variant_sku": "CM60-Matcha",
+          "barcode": null,
+          "strong_identifier_kind": null,
+          "source_url": "https://coconutmatter.com/products/matcha-shake-shampoo-concentrate",
+          "external_redirect_url": "https://coconutmatter.com/products/matcha-shake-shampoo-concentrate",
+          "price": "25",
+          "price_amount": 25,
+          "currency": "USD",
+          "availability": "in_stock",
+          "image_url": "https://cdn.shopify.com/s/files/1/0060/2108/7314/files/1_f9e1fb1d-a484-4b41-b3b4-70ff8dcda8db.png?v=1763292731",
+          "swatch_image_url": null,
+          "label_image_url": null,
+          "options": {},
+          "raw_variant": {
+            "sku": "CM60-Matcha",
+            "url": "https://coconutmatter.com/products/matcha-shake-shampoo-concentrate",
+            "price": "25",
+            "stock": "In Stock",
+            "currency": "USD",
+            "image_url": "https://cdn.shopify.com/s/files/1/0060/2108/7314/files/1_f9e1fb1d-a484-4b41-b3b4-70ff8dcda8db.png?v=1763292731",
+            "image_urls": [
+              "https://cdn.shopify.com/s/files/1/0060/2108/7314/files/1_f9e1fb1d-a484-4b41-b3b4-70ff8dcda8db.png?v=1763292731",
+              "https://cdn.shopify.com/s/files/1/0060/2108/7314/files/3_e19226d6-86b1-4d9c-a977-5f0bdcc54cdb.png?v=1763292731",
+              "https://cdn.shopify.com/s/files/1/0060/2108/7314/files/5_4bfd3984-bd4e-4283-b8aa-4e4d28f10f24.png?v=1763292850",
+              "https://cdn.shopify.com/s/files/1/0060/2108/7314/files/liquidshampoovspowder_88a67b62-b3a6-405c-b15d-712b049e04e6.png?v=1763292850",
+              "https://cdn.shopify.com/s/files/1/0060/2108/7314/files/coconut-matter-matcha-shake-shampoo-natural-vegan-beforeafter2.png?v=1763292850",
+              "https://cdn.shopify.com/s/files/1/0060/2108/7314/files/coconut-matter-matcha-shake-shampoo-natural-vegan-beforeafter3.png?v=1763292850",
+              "https://cdn.shopify.com/s/files/1/0060/2108/7314/files/coconut-matter-matcha-shake-shampoo-natural-vegan-features.png?v=1763292850",
+              "https://cdn.shopify.com/s/files/1/0060/2108/7314/files/coconut-matter-matcha-shake-shampoo-natural-vegan-reviews.png?v=1763292850",
+              "https://cdn.shopify.com/s/files/1/0060/2108/7314/files/11.png?v=1763292850",
+              "https://cdn.shopify.com/s/files/1/0060/2108/7314/files/1bottlelastsupto50washes_71299936-45c0-4f1a-bd22-5dc74c3e7584.png?v=1763292850"
+            ],
+            "variant_id": "40607486378066",
+            "description": "Matcha Shake Shampoo Concentrate",
+            "option_name": "Title",
+            "option_value": "Default Title"
+          }
+        },
+        "readiness_tier": "referral_only"
+      },
+      "first_offer": {
+        "offer_id": "offer:external_seed:f97dc6d83ee1134252d7dce16e2f93b5",
+        "sku_key": "prod::external_seed::external_seed::ext_9518e81076efc5c5138214ee::sku_46e9e864d1ba419d5d8a",
+        "product_key": "prod::external_seed::external_seed::ext_9518e81076efc5c5138214ee",
+        "merchant_id": "external_seed",
+        "catalog_track": "external_referral",
+        "truth_tier": "observed",
+        "readiness_tier": "referral_only",
+        "offer_mode": "redirect",
+        "channel": "external_referral",
+        "availability": "in_stock",
+        "currency": "USD",
+        "list_price": 25,
+        "merchant_effective_price": 25,
+        "estimated_best_price": 25,
+        "price_confidence": 1,
+        "source_system": "external_product_seeds_mirror_v1",
+        "source_ref": "eps_b62d981a219a498ecd7b94ed",
+        "source_domain": "coconutmatter.com",
+        "offer_payload": {
+          "source": "external_product_seeds_mirror_v1",
+          "external_seed_id": "eps_b62d981a219a498ecd7b94ed",
+          "external_product_id": "ext_9518e81076efc5c5138214ee",
+          "domain": "coconutmatter.com",
+          "market": "US",
+          "product_title": "Matcha Shake Shampoo Concentrate | For All Hair Types",
+          "variant_title": "Matcha Shake Shampoo Concentrate | For All Hair Types",
+          "variant_sku": "CM60-Matcha",
+          "raw_variant_id": "40607486378066",
+          "url": "https://coconutmatter.com/products/matcha-shake-shampoo-concentrate",
+          "offer_url": "https://coconutmatter.com/products/matcha-shake-shampoo-concentrate",
+          "canonical_url": "https://coconutmatter.com/products/matcha-shake-shampoo-concentrate",
+          "destination_url": "https://coconutmatter.com/products/matcha-shake-shampoo-concentrate",
+          "external_redirect_url": "https://coconutmatter.com/products/matcha-shake-shampoo-concentrate",
+          "merchant_display_name": "COCONUT MATTER",
+          "price": "25",
+          "price_amount": 25,
+          "price_currency": "USD",
+          "availability": "in_stock",
+          "commerce_facts_v1": {
+            "contract_version": "commerce_facts.v1",
+            "market_id": "US",
+            "country": "US",
+            "currency_target": "USD",
+            "source_authority": "catalog_extract_v2",
+            "captured_at": "2026-05-24T01:06:29.717Z",
+            "evidence_url": "https://coconutmatter.com/products/matcha-shake-shampoo-concentrate",
+            "sellable_region": {
+              "status": "unknown",
+              "countries": [],
+              "evidence_source": "catalog_extract_v2",
+              "confidence": "low",
+              "checked_at": "2026-05-24T01:06:29.717Z",
+              "reason_codes": [
+                "market_currency_not_verified",
+                "shipping_destination_not_verified",
+                "external_checkout_not_queried"
+              ],
+              "evidence_url": "https://coconutmatter.com/products/matcha-shake-shampoo-concentrate"
+            },
+            "regional_price": {
+              "amount": 25,
+              "currency": "USD",
+              "display_raw": "25.00",
+              "price_type": "list",
+              "compare_at_amount": null,
+              "compare_at_currency": null,
+              "compare_at_display_raw": null,
+              "tax_included": "unknown",
+              "confidence": "low",
+              "market_switch_status": "unknown",
+              "observed_currency": "USD",
+              "source_url": "https://coconutmatter.com/products/matcha-shake-shampoo-concentrate",
+              "captured_at": "2026-05-24T01:06:29.717Z"
+            },
+            "availability": {
+              "status": "in_stock",
+              "source": "catalog_extract_v2",
+              "confidence": "medium",
+              "captured_at": "2026-05-24T01:06:29.717Z"
+            },
+            "shipping": {
+              "status": "unknown",
+              "source": "catalog_extract_v2",
+              "confidence": "unknown",
+              "reason_codes": [
+                "external_checkout_not_queried"
+              ],
+              "checked_at": "2026-05-24T01:06:29.717Z"
+            },
+            "promotions": [],
+            "returns": {
+              "status": "unknown",
+              "source": "catalog_extract_v2",
+              "confidence": "unknown",
+              "reason_codes": [
+                "external_returns_not_extracted"
+              ],
+              "checked_at": "2026-05-24T01:06:29.717Z"
+            }
+          },
+          "agent_safe_commerce_facts": {
+            "contract_version": "commerce_facts.v1",
+            "market_id": "US",
+            "price": {
+              "status": "unverified",
+              "reason": "low_confidence_or_market_mismatch"
+            },
+            "availability": {
+              "status": "in_stock",
+              "source": "catalog_extract_v2",
+              "confidence": "medium",
+              "captured_at": "2026-05-24T01:06:29.717Z"
+            },
+            "shipping": {
+              "status": "unknown",
+              "reason": "verify_at_checkout"
+            },
+            "promotions": [],
+            "checkout_note": "Shipping and promotions are not verified for this external offer; verify at merchant checkout."
+          }
+        }
+      },
+      "serving_readiness": {
+        "servingEligible": true,
+        "contentQualityScore": 75,
+        "blockerCode": "none",
+        "blockerDetail": null,
+        "identityResolved": true,
+        "identityLiveReadResolved": true,
+        "identityBootstrapEligible": false,
+        "hasImage": true,
+        "hasPrice": true,
+        "descriptionLength": 32
+      }
+    },
+    {
+      "external_product_id": "ext_57fe66e03e7b47b972b78c30",
+      "product_key": "prod::external_seed::external_seed::ext_57fe66e03e7b47b972b78c30",
+      "product_group_id": "sig_cd6ca146b0bc7efe26834866",
+      "title": "Oaty Shake Body Wash Concentrate",
+      "brand": "COCONUT MATTER",
+      "product_type": "Body Cleanser",
+      "category": "Body Cleanser",
+      "category_path": "beauty/body/body-wash",
+      "canonical_url": "https://coconutmatter.com/products/oaty-shake-body-wash-concentrate",
+      "pivota_signature_id": "sig_cd6ca146b0bc7efe26834866",
+      "sku_rows": 1,
+      "first_sku": {
+        "sku_key": "prod::external_seed::external_seed::ext_57fe66e03e7b47b972b78c30::sku_d769697a6eb905c8bf97",
+        "product_key": "prod::external_seed::external_seed::ext_57fe66e03e7b47b972b78c30",
+        "merchant_id": "external_seed",
+        "platform": "external_seed",
+        "source_product_id": "ext_57fe66e03e7b47b972b78c30",
+        "source_variant_id": "ext_57fe66e03e7b47b972b78c30:40610296954962",
+        "source_domain": "coconutmatter.com",
+        "sku": "CM60-Oaty",
+        "barcode": null,
+        "title": "Oaty Shake Body Wash Concentrate",
+        "currency": "USD",
+        "image_url": "https://cdn.shopify.com/s/files/1/0060/2108/7314/files/20.png?v=1763371394",
+        "visible_attributes": {},
+        "visible_option_labels": {},
+        "ingredient_ids": [],
+        "sku_payload": {
+          "source": "external_product_seeds_mirror_v1",
+          "external_product_id": "ext_57fe66e03e7b47b972b78c30",
+          "raw_variant_id": "40610296954962",
+          "source_variant_id": "ext_57fe66e03e7b47b972b78c30:40610296954962",
+          "variant_sku": "CM60-Oaty",
+          "barcode": null,
+          "strong_identifier_kind": null,
+          "source_url": "https://coconutmatter.com/products/oaty-shake-body-wash-concentrate",
+          "external_redirect_url": "https://coconutmatter.com/products/oaty-shake-body-wash-concentrate",
+          "price": "25",
+          "price_amount": 25,
+          "currency": "USD",
+          "availability": "in_stock",
+          "image_url": "https://cdn.shopify.com/s/files/1/0060/2108/7314/files/20.png?v=1763371394",
+          "swatch_image_url": null,
+          "label_image_url": null,
+          "options": {},
+          "raw_variant": {
+            "sku": "CM60-Oaty",
+            "url": "https://coconutmatter.com/products/oaty-shake-body-wash-concentrate",
+            "price": "25",
+            "stock": "In Stock",
+            "currency": "USD",
+            "image_url": "https://cdn.shopify.com/s/files/1/0060/2108/7314/files/20.png?v=1763371394",
+            "image_urls": [
+              "https://cdn.shopify.com/s/files/1/0060/2108/7314/files/20.png?v=1763371394",
+              "https://cdn.shopify.com/s/files/1/0060/2108/7314/files/21.png?v=1763371394",
+              "https://cdn.shopify.com/s/files/1/0060/2108/7314/files/22.png?v=1763371394",
+              "https://cdn.shopify.com/s/files/1/0060/2108/7314/files/5_a9dfa538-4bb1-422b-8dfe-966bc461fbde.png?v=1763371394",
+              "https://cdn.shopify.com/s/files/1/0060/2108/7314/files/coconut-matter-all-natural-body-wash-concentrate-oaty-shake-reviews.png?v=1763371394",
+              "https://cdn.shopify.com/s/files/1/0060/2108/7314/files/23.png?v=1763371394"
+            ],
+            "variant_id": "40610296954962",
+            "description": "Oaty Shake Body Wash Concentrate",
+            "option_name": "Title",
+            "option_value": "Default Title"
+          }
+        },
+        "readiness_tier": "referral_only"
+      },
+      "first_offer": {
+        "offer_id": "offer:external_seed:21e1e080179a041f0ddb79851cdcb8e7",
+        "sku_key": "prod::external_seed::external_seed::ext_57fe66e03e7b47b972b78c30::sku_d769697a6eb905c8bf97",
+        "product_key": "prod::external_seed::external_seed::ext_57fe66e03e7b47b972b78c30",
+        "merchant_id": "external_seed",
+        "catalog_track": "external_referral",
+        "truth_tier": "observed",
+        "readiness_tier": "referral_only",
+        "offer_mode": "redirect",
+        "channel": "external_referral",
+        "availability": "in_stock",
+        "currency": "USD",
+        "list_price": 25,
+        "merchant_effective_price": 25,
+        "estimated_best_price": 25,
+        "price_confidence": 1,
+        "source_system": "external_product_seeds_mirror_v1",
+        "source_ref": "eps_ccfacc32c00451497b119be2",
+        "source_domain": "coconutmatter.com",
+        "offer_payload": {
+          "source": "external_product_seeds_mirror_v1",
+          "external_seed_id": "eps_ccfacc32c00451497b119be2",
+          "external_product_id": "ext_57fe66e03e7b47b972b78c30",
+          "domain": "coconutmatter.com",
+          "market": "US",
+          "product_title": "Oaty Shake Body Wash Concentrate",
+          "variant_title": "Oaty Shake Body Wash Concentrate",
+          "variant_sku": "CM60-Oaty",
+          "raw_variant_id": "40610296954962",
+          "url": "https://coconutmatter.com/products/oaty-shake-body-wash-concentrate",
+          "offer_url": "https://coconutmatter.com/products/oaty-shake-body-wash-concentrate",
+          "canonical_url": "https://coconutmatter.com/products/oaty-shake-body-wash-concentrate",
+          "destination_url": "https://coconutmatter.com/products/oaty-shake-body-wash-concentrate",
+          "external_redirect_url": "https://coconutmatter.com/products/oaty-shake-body-wash-concentrate",
+          "merchant_display_name": "COCONUT MATTER",
+          "price": "25",
+          "price_amount": 25,
+          "price_currency": "USD",
+          "availability": "in_stock",
+          "commerce_facts_v1": {
+            "contract_version": "commerce_facts.v1",
+            "market_id": "US",
+            "country": "US",
+            "currency_target": "USD",
+            "source_authority": "catalog_extract_v2",
+            "captured_at": "2026-05-24T01:06:29.717Z",
+            "evidence_url": "https://coconutmatter.com/products/oaty-shake-body-wash-concentrate",
+            "sellable_region": {
+              "status": "unknown",
+              "countries": [],
+              "evidence_source": "catalog_extract_v2",
+              "confidence": "low",
+              "checked_at": "2026-05-24T01:06:29.717Z",
+              "reason_codes": [
+                "market_currency_not_verified",
+                "shipping_destination_not_verified",
+                "external_checkout_not_queried"
+              ],
+              "evidence_url": "https://coconutmatter.com/products/oaty-shake-body-wash-concentrate"
+            },
+            "regional_price": {
+              "amount": 25,
+              "currency": "USD",
+              "display_raw": "25.00",
+              "price_type": "list",
+              "compare_at_amount": null,
+              "compare_at_currency": null,
+              "compare_at_display_raw": null,
+              "tax_included": "unknown",
+              "confidence": "low",
+              "market_switch_status": "unknown",
+              "observed_currency": "USD",
+              "source_url": "https://coconutmatter.com/products/oaty-shake-body-wash-concentrate",
+              "captured_at": "2026-05-24T01:06:29.717Z"
+            },
+            "availability": {
+              "status": "in_stock",
+              "source": "catalog_extract_v2",
+              "confidence": "medium",
+              "captured_at": "2026-05-24T01:06:29.717Z"
+            },
+            "shipping": {
+              "status": "unknown",
+              "source": "catalog_extract_v2",
+              "confidence": "unknown",
+              "reason_codes": [
+                "external_checkout_not_queried"
+              ],
+              "checked_at": "2026-05-24T01:06:29.717Z"
+            },
+            "promotions": [],
+            "returns": {
+              "status": "unknown",
+              "source": "catalog_extract_v2",
+              "confidence": "unknown",
+              "reason_codes": [
+                "external_returns_not_extracted"
+              ],
+              "checked_at": "2026-05-24T01:06:29.717Z"
+            }
+          },
+          "agent_safe_commerce_facts": {
+            "contract_version": "commerce_facts.v1",
+            "market_id": "US",
+            "price": {
+              "status": "unverified",
+              "reason": "low_confidence_or_market_mismatch"
+            },
+            "availability": {
+              "status": "in_stock",
+              "source": "catalog_extract_v2",
+              "confidence": "medium",
+              "captured_at": "2026-05-24T01:06:29.717Z"
+            },
+            "shipping": {
+              "status": "unknown",
+              "reason": "verify_at_checkout"
+            },
+            "promotions": [],
+            "checkout_note": "Shipping and promotions are not verified for this external offer; verify at merchant checkout."
+          }
+        }
+      },
+      "serving_readiness": {
+        "servingEligible": true,
+        "contentQualityScore": 75,
+        "blockerCode": "none",
+        "blockerDetail": null,
+        "identityResolved": true,
+        "identityLiveReadResolved": true,
+        "identityBootstrapEligible": false,
+        "hasImage": true,
+        "hasPrice": true,
+        "descriptionLength": 32
+      }
+    }
+  ]
+}

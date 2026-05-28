@@ -1,0 +1,346 @@
+{
+  "generated_at": "2026-05-28T03:19:46.997Z",
+  "source": "external_seed_live_pdp_modules_audit",
+  "query": {
+    "market": "US",
+    "domain": null,
+    "brand": null,
+    "external_product_id": null,
+    "external_product_ids": [
+      "ext_11509e4feaf83a2419d8c77d",
+      "ext_9518e81076efc5c5138214ee",
+      "ext_57fe66e03e7b47b972b78c30"
+    ],
+    "include_attached": true,
+    "limit": 50,
+    "offset": 0,
+    "include_similar": false,
+    "use_sig": false
+  },
+  "summary": {
+    "scanned": 3,
+    "ready": 3,
+    "thin": 0,
+    "not_conversion_ready": 0,
+    "by_domain": [
+      {
+        "key": "coconutmatter.com",
+        "count": 2
+      },
+      {
+        "key": "activedrip.com",
+        "count": 1
+      }
+    ],
+    "blocker_counts": [],
+    "weak_insights_ids": [],
+    "seller_only_insights_ids": [],
+    "force_filled_ids": [],
+    "content_gap_ids": []
+  },
+  "rows": [
+    {
+      "external_product_id": "ext_57fe66e03e7b47b972b78c30",
+      "pivota_signature_id": "sig_cd6ca146b0bc7efe26834866",
+      "probed_product_id": "ext_57fe66e03e7b47b972b78c30",
+      "probed_id_type": "ext",
+      "seed_id": "eps_ccfacc32c00451497b119be2",
+      "market": "US",
+      "domain": "coconutmatter.com",
+      "title": "Oaty Shake Body Wash Concentrate",
+      "canonical_url": "https://coconutmatter.com/products/oaty-shake-body-wash-concentrate",
+      "http_status": 200,
+      "pdp_status": "success",
+      "build_id": "3c881aa4b8a7",
+      "module_types": [
+        "canonical",
+        "variant_selector",
+        "offers",
+        "product_intel",
+        "active_ingredients",
+        "ingredients_inci",
+        "how_to_use",
+        "product_overview",
+        "product_facts",
+        "supplemental_details",
+        "product_details",
+        "reviews_preview"
+      ],
+      "missing_modules": [
+        "variant_selector",
+        "active_ingredients",
+        "product_facts",
+        "supplemental_details"
+      ],
+      "gallery": {
+        "image_count": 6,
+        "duplicate_url_count": 1,
+        "image_hosts": [
+          "cdn.shopify.com"
+        ],
+        "ok": true
+      },
+      "variant": {
+        "module_present": true,
+        "variant_count": 0,
+        "label_count": 0,
+        "labels": [],
+        "bad_labels": [],
+        "ok": false
+      },
+      "reviews": {
+        "module_present": true,
+        "rating": null,
+        "review_count": 0,
+        "chart_present": false,
+        "chart_estimated": false,
+        "preview_count": 0,
+        "ok": true
+      },
+      "insights": {
+        "module_present": true,
+        "quality_state": "reviewed",
+        "evidence_profile": "official_pdp_seed",
+        "seller_only_evidence": false,
+        "seller_grounded_reviewed": false,
+        "headline": "Body wash concentrate identity",
+        "why_count": 2,
+        "ok": true
+      },
+      "content": {
+        "ingredients_present": true,
+        "ingredients_text_count": 25,
+        "ingredients_source_origin": "pdp_section",
+        "ingredients_source_quality_status": "authoritative",
+        "ingredients_force_filled": false,
+        "active_ingredients_present": false,
+        "active_ingredients_source_origin": null,
+        "active_ingredients_source_quality_status": null,
+        "active_ingredients_force_filled": false,
+        "how_to_present": true,
+        "how_to_text_count": 10,
+        "overview_present": true,
+        "details_present": true,
+        "details_text_count": 4
+      },
+      "similar": {
+        "module_present": false,
+        "count": 0,
+        "status": null
+      },
+      "product_kind": {
+        "family": "single_formula",
+        "reasons": [
+          "formula_category_path_signal"
+        ],
+        "pdp_schema_profile": "beauty_formula",
+        "formula_content_required": true
+      },
+      "blocking_reasons": [],
+      "pdp_quality_bucket": "ready",
+      "conversion_ready": true
+    },
+    {
+      "external_product_id": "ext_9518e81076efc5c5138214ee",
+      "pivota_signature_id": "sig_2d065c767b6e18a4d7f4a660",
+      "probed_product_id": "ext_9518e81076efc5c5138214ee",
+      "probed_id_type": "ext",
+      "seed_id": "eps_b62d981a219a498ecd7b94ed",
+      "market": "US",
+      "domain": "coconutmatter.com",
+      "title": "Matcha Shake Shampoo Concentrate | For All Hair Types",
+      "canonical_url": "https://coconutmatter.com/products/matcha-shake-shampoo-concentrate",
+      "http_status": 200,
+      "pdp_status": "success",
+      "build_id": "3c881aa4b8a7",
+      "module_types": [
+        "canonical",
+        "variant_selector",
+        "offers",
+        "product_intel",
+        "active_ingredients",
+        "ingredients_inci",
+        "how_to_use",
+        "product_overview",
+        "product_facts",
+        "supplemental_details",
+        "product_details",
+        "reviews_preview"
+      ],
+      "missing_modules": [
+        "variant_selector",
+        "active_ingredients",
+        "product_facts",
+        "supplemental_details"
+      ],
+      "gallery": {
+        "image_count": 10,
+        "duplicate_url_count": 1,
+        "image_hosts": [
+          "cdn.shopify.com"
+        ],
+        "ok": true
+      },
+      "variant": {
+        "module_present": true,
+        "variant_count": 0,
+        "label_count": 0,
+        "labels": [],
+        "bad_labels": [],
+        "ok": false
+      },
+      "reviews": {
+        "module_present": true,
+        "rating": null,
+        "review_count": 0,
+        "chart_present": false,
+        "chart_estimated": false,
+        "preview_count": 0,
+        "ok": true
+      },
+      "insights": {
+        "module_present": true,
+        "quality_state": "reviewed",
+        "evidence_profile": "official_pdp_seed",
+        "seller_only_evidence": false,
+        "seller_grounded_reviewed": false,
+        "headline": "Shampoo concentrate identity",
+        "why_count": 2,
+        "ok": true
+      },
+      "content": {
+        "ingredients_present": true,
+        "ingredients_text_count": 25,
+        "ingredients_source_origin": "pdp_section",
+        "ingredients_source_quality_status": "authoritative",
+        "ingredients_force_filled": false,
+        "active_ingredients_present": false,
+        "active_ingredients_source_origin": null,
+        "active_ingredients_source_quality_status": null,
+        "active_ingredients_force_filled": false,
+        "how_to_present": true,
+        "how_to_text_count": 10,
+        "overview_present": true,
+        "details_present": true,
+        "details_text_count": 4
+      },
+      "similar": {
+        "module_present": false,
+        "count": 0,
+        "status": null
+      },
+      "product_kind": {
+        "family": "single_formula",
+        "reasons": [
+          "formula_category_path_signal"
+        ],
+        "pdp_schema_profile": "beauty_formula",
+        "formula_content_required": true
+      },
+      "blocking_reasons": [],
+      "pdp_quality_bucket": "ready",
+      "conversion_ready": true
+    },
+    {
+      "external_product_id": "ext_11509e4feaf83a2419d8c77d",
+      "pivota_signature_id": "sig_836b576047d491db3b856375",
+      "probed_product_id": "ext_11509e4feaf83a2419d8c77d",
+      "probed_id_type": "ext",
+      "seed_id": "eps_d59fad188d62afa3cf2f56fd",
+      "market": "US",
+      "domain": "activedrip.com",
+      "title": "KOJIC DRIP",
+      "canonical_url": "https://activedrip.com/products/niacinamide-kojic-acid-glow-and-corrective-serum",
+      "http_status": 200,
+      "pdp_status": "success",
+      "build_id": "3c881aa4b8a7",
+      "module_types": [
+        "canonical",
+        "variant_selector",
+        "offers",
+        "product_intel",
+        "active_ingredients",
+        "ingredients_inci",
+        "how_to_use",
+        "product_overview",
+        "product_facts",
+        "supplemental_details",
+        "product_details",
+        "reviews_preview"
+      ],
+      "missing_modules": [
+        "variant_selector",
+        "active_ingredients",
+        "product_facts",
+        "supplemental_details"
+      ],
+      "gallery": {
+        "image_count": 7,
+        "duplicate_url_count": 1,
+        "image_hosts": [
+          "cdn.shopify.com"
+        ],
+        "ok": true
+      },
+      "variant": {
+        "module_present": true,
+        "variant_count": 0,
+        "label_count": 0,
+        "labels": [],
+        "bad_labels": [],
+        "ok": false
+      },
+      "reviews": {
+        "module_present": true,
+        "rating": null,
+        "review_count": 0,
+        "chart_present": false,
+        "chart_estimated": false,
+        "preview_count": 0,
+        "ok": true
+      },
+      "insights": {
+        "module_present": true,
+        "quality_state": "reviewed",
+        "evidence_profile": "official_pdp_seed",
+        "seller_only_evidence": false,
+        "seller_grounded_reviewed": false,
+        "headline": "Kojic serum identity",
+        "why_count": 2,
+        "ok": true
+      },
+      "content": {
+        "ingredients_present": true,
+        "ingredients_text_count": 28,
+        "ingredients_source_origin": "pdp_section",
+        "ingredients_source_quality_status": "authoritative",
+        "ingredients_force_filled": false,
+        "active_ingredients_present": false,
+        "active_ingredients_source_origin": null,
+        "active_ingredients_source_quality_status": null,
+        "active_ingredients_force_filled": false,
+        "how_to_present": true,
+        "how_to_text_count": 9,
+        "overview_present": true,
+        "details_present": true,
+        "details_text_count": 5
+      },
+      "similar": {
+        "module_present": false,
+        "count": 0,
+        "status": null
+      },
+      "product_kind": {
+        "family": "single_formula",
+        "reasons": [
+          "formula_category_path_signal"
+        ],
+        "pdp_schema_profile": "beauty_formula",
+        "formula_content_required": true
+      },
+      "blocking_reasons": [],
+      "pdp_quality_bucket": "ready",
+      "conversion_ready": true
+    }
+  ]
+}

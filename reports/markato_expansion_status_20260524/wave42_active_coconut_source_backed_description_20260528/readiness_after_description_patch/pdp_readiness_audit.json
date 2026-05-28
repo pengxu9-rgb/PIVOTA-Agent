@@ -1,0 +1,441 @@
+{
+  "generated_at": "2026-05-28T03:22:34.892Z",
+  "options": {
+    "market": "US",
+    "includeAttached": true,
+    "domain": null,
+    "externalProductIds": [
+      "ext_11509e4feaf83a2419d8c77d",
+      "ext_9518e81076efc5c5138214ee",
+      "ext_57fe66e03e7b47b972b78c30"
+    ],
+    "limit": 20000,
+    "sampleLimit": 10,
+    "checkpointDir": "/Users/pengchydan/dev/_worktrees/pivota-agent-markato-wave25-786-20260527/reports/markato_expansion_status_20260524/wave42_active_coconut_source_backed_description_20260528/readiness_after_description_patch/pdp_readiness_checkpoint",
+    "checkpointMode": "domain",
+    "resume": false,
+    "force": false,
+    "continueOnError": true,
+    "pageSize": 500,
+    "format": "json"
+  },
+  "warnings": [],
+  "summary": {
+    "scanned": 3,
+    "by_market": {
+      "US": 3
+    },
+    "by_domain": [
+      {
+        "key": "coconutmatter.com",
+        "count": 2
+      },
+      {
+        "key": "activedrip.com",
+        "count": 1
+      }
+    ],
+    "by_product_family": [
+      {
+        "key": "single_formula",
+        "count": 3
+      }
+    ],
+    "coverage": {
+      "missing_inci": 0,
+      "missing_active_raw": 3,
+      "missing_details": 3,
+      "missing_how_to": 0,
+      "missing_faq": 3
+    },
+    "pivota_insights": {
+      "direct": {
+        "displayable": 3,
+        "high_quality_ready": 3,
+        "missing_kb": 0,
+        "not_displayable": 0
+      },
+      "effective": {
+        "displayable": 3,
+        "high_quality_ready": 3,
+        "missing_kb": 0,
+        "not_displayable": 0,
+        "borrowed_from_sibling": 0
+      },
+      "effective_issues": [],
+      "effective_issue_domains": [],
+      "quality_state": [
+        {
+          "key": "reviewed",
+          "count": 3
+        }
+      ],
+      "evidence_profile": [
+        {
+          "key": "official_pdp_seed",
+          "count": 3
+        }
+      ],
+      "samples": {}
+    },
+    "active_ingredients": {
+      "regulatory_expected": 0,
+      "hero_expected": 2,
+      "any_active_items": 0,
+      "status": [
+        {
+          "key": "missing_hero",
+          "count": 2
+        },
+        {
+          "key": "not_expected_missing",
+          "count": 1
+        }
+      ],
+      "issues": [
+        {
+          "key": "missing_hero",
+          "count": 2
+        }
+      ],
+      "issue_domains": [
+        {
+          "key": "activedrip.com::missing_hero",
+          "count": 1
+        },
+        {
+          "key": "coconutmatter.com::missing_hero",
+          "count": 1
+        }
+      ],
+      "source_origin": [
+        {
+          "key": "pdp_section",
+          "count": 3
+        }
+      ],
+      "samples": {
+        "missing_hero": [
+          {
+            "external_product_id": "ext_11509e4feaf83a2419d8c77d",
+            "domain": "activedrip.com",
+            "title": "KOJIC DRIP",
+            "status": "missing_hero",
+            "active_items": [],
+            "source_origin": "pdp_section"
+          },
+          {
+            "external_product_id": "ext_57fe66e03e7b47b972b78c30",
+            "domain": "coconutmatter.com",
+            "title": "Oaty Shake Body Wash Concentrate",
+            "status": "missing_hero",
+            "active_items": [],
+            "source_origin": "pdp_section"
+          }
+        ]
+      }
+    },
+    "variants": {
+      "status": [
+        {
+          "key": "no_visible_variant_axis",
+          "count": 3
+        }
+      ],
+      "issues": [],
+      "issue_domains": [],
+      "samples": {}
+    }
+  },
+  "rows": [
+    {
+      "seed_id": "eps_d59fad188d62afa3cf2f56fd",
+      "external_product_id": "ext_11509e4feaf83a2419d8c77d",
+      "market": "US",
+      "domain": "activedrip.com",
+      "title": "KOJIC DRIP",
+      "canonical_url": "https://activedrip.com/products/niacinamide-kojic-acid-glow-and-corrective-serum",
+      "product_family": "single_formula",
+      "product_line_id": "pl_fc8ad53d0f7c035398bf1af6",
+      "identity_variant_axes": {
+        "multi_variant": false
+      },
+      "pivota_insights": {
+        "direct": {
+          "product_id": "ext_11509e4feaf83a2419d8c77d",
+          "kb_key": "product:ext_11509e4feaf83a2419d8c77d",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "official_pdp_seed",
+          "has_card_highlight": true
+        },
+        "effective": {
+          "product_id": "ext_11509e4feaf83a2419d8c77d",
+          "kb_key": "product:ext_11509e4feaf83a2419d8c77d",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "official_pdp_seed",
+          "has_card_highlight": true
+        },
+        "product_line_id": "pl_fc8ad53d0f7c035398bf1af6",
+        "borrowed_from_sibling": false
+      },
+      "active_ingredients": {
+        "status": "missing_hero",
+        "issues": [
+          "missing_hero"
+        ],
+        "regulatory_expected": false,
+        "hero_expected": true,
+        "active_items": [],
+        "source_origin": "pdp_section",
+        "source_quality_status": "blocked",
+        "coverage": {
+          "details_sections_count": 0,
+          "faq_count": 0,
+          "how_to_chars": 174,
+          "inci_chars": 407,
+          "active_ingredients_chars": 0,
+          "inci_applicability_status": "",
+          "ingredient_review_status": "",
+          "ingredient_remediation_action": "",
+          "bundle_component_refs_count": 0,
+          "effective_inci_chars": 407,
+          "inci_borrowed_from_product_id": ""
+        },
+        "invalid_fragments": [],
+        "suppressed_reason": null
+      },
+      "variants": {
+        "status": "no_visible_variant_axis",
+        "issues": [],
+        "visible_variant_rows": 0,
+        "examples": {
+          "identity_option_visible": [],
+          "wrong_axis_for_category": [],
+          "makeup_shade_missing_visual": [],
+          "size_value_generic_axis": [],
+          "default_option_size_evidence_missing_axis": [],
+          "identity_default_title_axis": []
+        }
+      },
+      "coverage": {
+        "details_sections_count": 0,
+        "faq_count": 0,
+        "how_to_chars": 174,
+        "inci_chars": 407,
+        "active_ingredients_chars": 0,
+        "inci_applicability_status": "",
+        "ingredient_review_status": "",
+        "ingredient_remediation_action": "",
+        "bundle_component_refs_count": 0,
+        "effective_inci_chars": 407,
+        "inci_borrowed_from_product_id": ""
+      }
+    },
+    {
+      "seed_id": "eps_b62d981a219a498ecd7b94ed",
+      "external_product_id": "ext_9518e81076efc5c5138214ee",
+      "market": "US",
+      "domain": "coconutmatter.com",
+      "title": "Matcha Shake Shampoo Concentrate | For All Hair Types",
+      "canonical_url": "https://coconutmatter.com/products/matcha-shake-shampoo-concentrate",
+      "product_family": "single_formula",
+      "product_line_id": "pl_7f52f3cb18dea57eab9a16cd",
+      "identity_variant_axes": {
+        "multi_variant": false
+      },
+      "pivota_insights": {
+        "direct": {
+          "product_id": "ext_9518e81076efc5c5138214ee",
+          "kb_key": "product:ext_9518e81076efc5c5138214ee",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "official_pdp_seed",
+          "has_card_highlight": true
+        },
+        "effective": {
+          "product_id": "ext_9518e81076efc5c5138214ee",
+          "kb_key": "product:ext_9518e81076efc5c5138214ee",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "official_pdp_seed",
+          "has_card_highlight": true
+        },
+        "product_line_id": "pl_7f52f3cb18dea57eab9a16cd",
+        "borrowed_from_sibling": false
+      },
+      "active_ingredients": {
+        "status": "not_expected_missing",
+        "issues": [],
+        "regulatory_expected": false,
+        "hero_expected": false,
+        "active_items": [],
+        "source_origin": "pdp_section",
+        "source_quality_status": "blocked",
+        "coverage": {
+          "details_sections_count": 0,
+          "faq_count": 0,
+          "how_to_chars": 549,
+          "inci_chars": 491,
+          "active_ingredients_chars": 0,
+          "inci_applicability_status": "",
+          "ingredient_review_status": "",
+          "ingredient_remediation_action": "",
+          "bundle_component_refs_count": 0,
+          "effective_inci_chars": 491,
+          "inci_borrowed_from_product_id": ""
+        },
+        "invalid_fragments": [],
+        "suppressed_reason": null
+      },
+      "variants": {
+        "status": "no_visible_variant_axis",
+        "issues": [],
+        "visible_variant_rows": 0,
+        "examples": {
+          "identity_option_visible": [],
+          "wrong_axis_for_category": [],
+          "makeup_shade_missing_visual": [],
+          "size_value_generic_axis": [],
+          "default_option_size_evidence_missing_axis": [],
+          "identity_default_title_axis": []
+        }
+      },
+      "coverage": {
+        "details_sections_count": 0,
+        "faq_count": 0,
+        "how_to_chars": 549,
+        "inci_chars": 491,
+        "active_ingredients_chars": 0,
+        "inci_applicability_status": "",
+        "ingredient_review_status": "",
+        "ingredient_remediation_action": "",
+        "bundle_component_refs_count": 0,
+        "effective_inci_chars": 491,
+        "inci_borrowed_from_product_id": ""
+      }
+    },
+    {
+      "seed_id": "eps_ccfacc32c00451497b119be2",
+      "external_product_id": "ext_57fe66e03e7b47b972b78c30",
+      "market": "US",
+      "domain": "coconutmatter.com",
+      "title": "Oaty Shake Body Wash Concentrate",
+      "canonical_url": "https://coconutmatter.com/products/oaty-shake-body-wash-concentrate",
+      "product_family": "single_formula",
+      "product_line_id": "pl_6029041f7f356100d8858990",
+      "identity_variant_axes": {
+        "multi_variant": false
+      },
+      "pivota_insights": {
+        "direct": {
+          "product_id": "ext_57fe66e03e7b47b972b78c30",
+          "kb_key": "product:ext_57fe66e03e7b47b972b78c30",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "official_pdp_seed",
+          "has_card_highlight": true
+        },
+        "effective": {
+          "product_id": "ext_57fe66e03e7b47b972b78c30",
+          "kb_key": "product:ext_57fe66e03e7b47b972b78c30",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "official_pdp_seed",
+          "has_card_highlight": true
+        },
+        "product_line_id": "pl_6029041f7f356100d8858990",
+        "borrowed_from_sibling": false
+      },
+      "active_ingredients": {
+        "status": "missing_hero",
+        "issues": [
+          "missing_hero"
+        ],
+        "regulatory_expected": false,
+        "hero_expected": true,
+        "active_items": [],
+        "source_origin": "pdp_section",
+        "source_quality_status": "blocked",
+        "coverage": {
+          "details_sections_count": 0,
+          "faq_count": 0,
+          "how_to_chars": 476,
+          "inci_chars": 491,
+          "active_ingredients_chars": 0,
+          "inci_applicability_status": "",
+          "ingredient_review_status": "",
+          "ingredient_remediation_action": "",
+          "bundle_component_refs_count": 0,
+          "effective_inci_chars": 491,
+          "inci_borrowed_from_product_id": ""
+        },
+        "invalid_fragments": [],
+        "suppressed_reason": null
+      },
+      "variants": {
+        "status": "no_visible_variant_axis",
+        "issues": [],
+        "visible_variant_rows": 0,
+        "examples": {
+          "identity_option_visible": [],
+          "wrong_axis_for_category": [],
+          "makeup_shade_missing_visual": [],
+          "size_value_generic_axis": [],
+          "default_option_size_evidence_missing_axis": [],
+          "identity_default_title_axis": []
+        }
+      },
+      "coverage": {
+        "details_sections_count": 0,
+        "faq_count": 0,
+        "how_to_chars": 476,
+        "inci_chars": 491,
+        "active_ingredients_chars": 0,
+        "inci_applicability_status": "",
+        "ingredient_review_status": "",
+        "ingredient_remediation_action": "",
+        "bundle_component_refs_count": 0,
+        "effective_inci_chars": 491,
+        "inci_borrowed_from_product_id": ""
+      }
+    }
+  ]
+}
