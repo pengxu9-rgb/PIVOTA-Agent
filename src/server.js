@@ -5066,6 +5066,7 @@ async function resolveCatalogProductRefFromPivotaSignatureInner(normalizedProduc
           cp.category_label_source,
           cp.category_confidence,
           signature_ips.serving_eligible AS signature_serving_eligible,
+          signature_ips.readiness_tier AS signature_readiness_tier,
           signature_ips.pipeline_stage AS signature_pipeline_stage,
           signature_ips.blocker_code AS signature_blocker_code,
           signature_ips.blocker_detail AS signature_blocker_detail,
@@ -5314,9 +5315,11 @@ async function resolveCatalogProductRefFromPivotaSignatureInner(normalizedProduc
         ),
         serving_eligibility_prefetched:
           Object.prototype.hasOwnProperty.call(exactRow, 'signature_serving_eligible') ||
+          Object.prototype.hasOwnProperty.call(exactRow, 'signature_readiness_tier') ||
           Object.prototype.hasOwnProperty.call(exactRow, 'signature_pipeline_stage') ||
           Object.prototype.hasOwnProperty.call(exactRow, 'signature_blocker_code'),
         signature_serving_eligible: exactRow?.signature_serving_eligible,
+        signature_readiness_tier: firstNonEmptyString(exactRow?.signature_readiness_tier),
         signature_pipeline_stage: firstNonEmptyString(exactRow?.signature_pipeline_stage),
         signature_blocker_code: firstNonEmptyString(exactRow?.signature_blocker_code),
         signature_blocker_detail: firstNonEmptyString(exactRow?.signature_blocker_detail),
@@ -6287,6 +6290,7 @@ function normalizePdpServingEligibilityRow(row) {
     sync_status: syncStatus,
     pdp_lifecycle_stage: firstNonEmptyString(row.pdp_lifecycle_stage) || null,
     serving_eligible: row.serving_eligible === true,
+    readiness_tier: firstNonEmptyString(row.readiness_tier) || null,
     index_row_found: row.serving_eligible !== null && row.serving_eligible !== undefined,
     pipeline_stage: firstNonEmptyString(row.pipeline_stage) || null,
     blocker_code: blockerCode,
@@ -6311,6 +6315,10 @@ function buildPrefetchedPdpServingEligibilityFromSignatureRef(signatureProductRe
     sync_status: signatureProductRef.sync_status,
     pdp_lifecycle_stage: signatureProductRef.pdp_lifecycle_stage,
     serving_eligible: signatureProductRef.signature_serving_eligible,
+    readiness_tier: firstNonEmptyString(
+      signatureProductRef.signature_readiness_tier,
+      signatureProductRef.readiness_tier,
+    ),
     pipeline_stage: signatureProductRef.signature_pipeline_stage,
     blocker_code: signatureProductRef.signature_blocker_code,
     blocker_detail: signatureProductRef.signature_blocker_detail,
@@ -6669,6 +6677,7 @@ async function fetchPdpServingEligibilityFromDb(args = {}) {
           cp.sync_status,
           cp.pdp_lifecycle_stage,
           ips.serving_eligible,
+          ips.readiness_tier,
           ips.pipeline_stage,
           ips.blocker_code,
           ips.blocker_detail,
@@ -35393,6 +35402,8 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
           let signatureExternalSeedRouteStatus = null;
           let signatureExternalSeedPrecheckProduct = null;
           let signaturePrefetchedServingEligibility = null;
+          let pdpServingEligibility = null;
+          let pdpServingEligibilityChecked = false;
           let signaturePrefetchedPdpContentProductId = null;
 		      if (
 			        productId &&
@@ -36118,6 +36129,8 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
                     productId: canonicalProductRef?.product_id,
                   });
             markPdpV2Phase('serving_eligibility_gate', servingEligibilityStartedAt);
+            pdpServingEligibility = servingEligibility;
+            pdpServingEligibilityChecked = true;
             const failClosedForMissingEligibility = shouldFailClosedForMissingPdpServingEligibility({
               requestedPivotaSignatureId,
               canonicalProductRef,
@@ -36880,9 +36893,27 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
         );
       }
 
+      if (!pdpServingEligibilityChecked) {
+        pdpServingEligibility =
+          signaturePrefetchedServingEligibility &&
+          canonicalProductRef?.merchant_id === EXTERNAL_SEED_MERCHANT_ID &&
+          String(canonicalProductRef?.product_id || '').trim() ===
+            String(signatureExternalSeedPrecheckProduct?.product_id || productId || '').trim()
+            ? signaturePrefetchedServingEligibility
+            : await fetchPdpServingEligibilityFromDb({
+                contentKey: canonicalProductRef?.content_key || null,
+                pivotaSignatureId: requestedPivotaSignatureId || null,
+                merchantId: canonicalProductRef?.merchant_id,
+                productId: canonicalProductRef?.product_id,
+              });
+        pdpServingEligibilityChecked = true;
+      }
+
       const pdpPayload = buildPdpPayload({
         product: canonicalProductForPdp,
         relatedProducts,
+        readiness_tier: firstNonEmptyString(pdpServingEligibility?.readiness_tier),
+        serving_eligible: pdpServingEligibility?.serving_eligible === true,
         entryPoint: pdpOptions.entryPoint,
         experiment: pdpOptions.experiment,
         templateHint: pdpOptions.templateHint,
@@ -38178,9 +38209,31 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
         );
       }
 
+      const pdpServingEligibility = await fetchPdpServingEligibilityFromDb({
+        contentKey: firstNonEmptyString(
+          product?.content_key,
+          product?.canonical_product_ref?.content_key,
+        ),
+        pivotaSignatureId: firstNonEmptyString(
+          product?.pivota_signature_id,
+          product?.signature_id,
+          product?.canonical_product_ref?.pivota_signature_id,
+        ),
+        merchantId: firstNonEmptyString(product?.merchant_id, merchantId),
+        productId: firstNonEmptyString(
+          product?.source_product_id,
+          product?.platform_product_id,
+          product?.product_id,
+          product?.id,
+          productId,
+        ),
+      });
+
       const pdpPayload = buildPdpPayload({
         product,
         relatedProducts,
+        readiness_tier: firstNonEmptyString(pdpServingEligibility?.readiness_tier),
+        serving_eligible: pdpServingEligibility?.serving_eligible === true,
         entryPoint: pdpOptions.entryPoint,
         experiment: pdpOptions.experiment,
         templateHint: pdpOptions.templateHint,

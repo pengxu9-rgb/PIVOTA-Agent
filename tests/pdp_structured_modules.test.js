@@ -7,6 +7,37 @@ function findModule(payload, type) {
 }
 
 describe('pdpBuilder structured PDP modules', () => {
+  test('surfaces PDP readiness signals and keeps route keys present', () => {
+    const payload = buildPdpPayload({
+      product: {
+        product_id: 'p_decision_grade',
+        merchant_id: 'external_seed',
+        title: 'Decision Grade Product',
+        readiness_tier: 'knowledge_ready',
+      },
+      serving_eligible: true,
+    });
+
+    expect(payload.product.readiness_tier).toBe('knowledge_ready');
+    expect(payload.product.serving_eligible).toBe(true);
+    expect(payload.product.purchase_route).toBeNull();
+    expect(payload.product.commerce_mode).toBeNull();
+    expect(payload.product.checkout_handoff).toBeNull();
+
+    const nonStrictBooleanPayload = buildPdpPayload({
+      product: {
+        product_id: 'p_decision_grade_string_boolean',
+        merchant_id: 'external_seed',
+        title: 'Decision Grade Product String Boolean',
+      },
+      readiness_tier: 'commerce_ready',
+      serving_eligible: 'true',
+    });
+
+    expect(nonStrictBooleanPayload.product.readiness_tier).toBe('commerce_ready');
+    expect(nonStrictBooleanPayload.product.serving_eligible).toBe(false);
+  });
+
   test('media_gallery keeps only the selected variant gallery when variant images are authoritative', () => {
     const payload = buildPdpPayload({
       product: {
