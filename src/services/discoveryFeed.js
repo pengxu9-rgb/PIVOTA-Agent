@@ -2164,7 +2164,7 @@ function buildStableBrowseCatalogCountQuery(request, { includeIdentityJoin = tru
           ${externalSearchTextExpr} AS search_text
         FROM external_product_seeds eps
         WHERE eps.status = 'active'
-          AND eps.attached_product_key IS NULL
+          AND ${buildDiscoveryAttachedSeedServingExistsSql('eps')}
           AND eps.market = ${marketBind}
           AND (eps.tool = '*' OR eps.tool = ${toolBind})
           AND coalesce(lower(eps.seed_data#>>'{suppression_flags,exclude_from_recall}'), 'false') <> 'true'
@@ -4855,6 +4855,7 @@ async function fetchExternalSeedCandidates({
             ) AS search_text
           FROM external_product_seeds
           WHERE status = 'active'
+            AND ${buildDiscoveryAttachedSeedServingExistsSql('external_product_seeds')}
             AND market = $1
             AND (tool = '*' OR tool = $2)
             AND (
@@ -5365,15 +5366,13 @@ function buildBeautyInterestSeedSelect() {
     ), 1200) AS seed_description,
     (SELECT cp.pivota_signature_id
        FROM catalog_products cp
-      WHERE cp.merchant_id = 'external_seed'
-        AND cp.platform = 'external_seed'
-        AND cp.source_product_id = external_product_seeds.external_product_id
+      ${buildDiscoveryCatalogServingGateJoinSql('cp')}
+      WHERE cp.product_key = external_product_seeds.attached_product_key
       LIMIT 1) AS pivota_signature_id,
     (SELECT cp.pivota_canonical_url
        FROM catalog_products cp
-      WHERE cp.merchant_id = 'external_seed'
-        AND cp.platform = 'external_seed'
-        AND cp.source_product_id = external_product_seeds.external_product_id
+      ${buildDiscoveryCatalogServingGateJoinSql('cp')}
+      WHERE cp.product_key = external_product_seeds.attached_product_key
       LIMIT 1) AS pivota_canonical_url
   `;
 }
@@ -5674,7 +5673,7 @@ async function fetchGenericBrowseExternalSeedServingCandidates({
             '${stage}'::text AS match_stage
           FROM external_product_seeds
           WHERE status = 'active'
-            AND attached_product_key IS NULL
+            AND ${buildDiscoveryAttachedSeedServingExistsSql('external_product_seeds')}
             AND market = $1
             AND tool = $2
             AND coalesce(lower(seed_data#>>'{suppression_flags,exclude_from_recall}'), 'false') <> 'true'
@@ -5713,7 +5712,7 @@ async function fetchGenericBrowseExternalSeedServingCandidates({
           '${stage}'::text AS match_stage
         FROM external_product_seeds
         WHERE status = 'active'
-          AND attached_product_key IS NULL
+          AND ${buildDiscoveryAttachedSeedServingExistsSql('external_product_seeds')}
           AND market = $1
           AND tool = $2
           AND coalesce(lower(seed_data#>>'{suppression_flags,exclude_from_recall}'), 'false') <> 'true'
@@ -6022,6 +6021,7 @@ async function fetchExternalSeedExactTitleCandidates({
           END AS exact_match_rank
         FROM external_product_seeds
         WHERE status = 'active'
+          AND ${buildDiscoveryAttachedSeedServingExistsSql('external_product_seeds')}
           AND market = $1
           AND (tool = '*' OR tool = $2)
           AND (
@@ -6249,7 +6249,7 @@ async function fetchBeautyInterestExternalSeedFastpathCandidates({
 
   const baseWhereSql = `
     status = 'active'
-      AND attached_product_key IS NULL
+      AND ${buildDiscoveryAttachedSeedServingExistsSql('external_product_seeds')}
       AND market = $1
       AND tool = $2
   `;
@@ -8431,8 +8431,8 @@ async function fetchBrandScopedExternalSeedCandidates({
     `;
     const normalizedBrandSql = `trim(regexp_replace(${epsBrandFieldSql}, '[^a-z0-9]+', ' ', 'g'))`;
     const compactBrandSql = `regexp_replace(${epsBrandFieldSql}, '[^a-z0-9]+', '', 'g')`;
-    // Exactly matches idx_external_product_seeds_brand_search_norm_recency so PostgreSQL
-    // can use the partial index (requires attached_product_key IS NULL in WHERE too).
+    // Brand-scoped public cards must point at a PDP that the serving contract
+    // accepts, so external seeds are resolved through attached_product_key.
     const indexedBrandSql = `lower(regexp_replace(coalesce(eps.seed_data->>'brand', eps.seed_data->'snapshot'->>'brand', split_part(eps.domain, '.', 1), ''), '[^a-z0-9]+', '', 'g'))`;
     const orderClause = orderByRecency
       ? 'ORDER BY eps.updated_at DESC NULLS LAST, eps.created_at DESC NULLS LAST'
@@ -8445,14 +8445,18 @@ async function fetchBrandScopedExternalSeedCandidates({
         OR ${compactBrandSql} = ANY($6::text[])
         OR ${indexedBrandSql} = ANY($6::text[])
       )`;
-    // Query A — unattached seeds, partial-index fast path. No JOIN; can never produce
-    // canonical fields (attached_product_key IS NULL by predicate).
-    const unattachedRes = await query(
+    if (!includeAttached) return [];
+    // Primary query — attached seeds with canonical fields. The old unattached
+    // partial-index path could expose ext_* or stale sig_* routes that PDP
+    // rejects, so public brand recall now requires the serving catalog join.
+    const attachedHeadRes = await query(
       `
-        SELECT ${baseSelectColumns}
+        SELECT ${attachedSelectColumns}
         FROM external_product_seeds eps
+        JOIN catalog_products cp ON cp.product_key = eps.attached_product_key
+        ${buildDiscoveryCatalogServingGateJoinSql('cp')}
         WHERE eps.status = 'active'
-          AND eps.attached_product_key IS NULL
+          AND eps.attached_product_key IS NOT NULL
           AND eps.market = $1
           AND (eps.tool = '*' OR eps.tool = $2)
           AND ${brandMatchSql}
@@ -8461,51 +8465,16 @@ async function fetchBrandScopedExternalSeedCandidates({
       `,
       [market, tool, normalizedAliases, brandPrefixPatterns, safeLimit, compactAliases],
     );
-    const rows = Array.isArray(unattachedRes?.rows) ? [...unattachedRes.rows] : [];
-    // Query B — attached seeds joined to catalog_products. Surfaces canonical
-    // pivota_signature_id / canonical_url so the frontend builds /products/sig_* URLs
-    // pointing to the Pivota canonical PDP rather than the merchant-scoped fallback.
-    // Skipped when `includeAttached` is false (e.g. when the canonical agent_pdp_view
-    // path is the primary source via BRAND_PAGE_USES_COMMERCE_INDEX — avoids dupes).
-    if (includeAttached && rows.length < safeLimit) {
-      const attachedRes = await query(
-        `
-          SELECT ${attachedSelectColumns}
-          FROM external_product_seeds eps
-          LEFT JOIN catalog_products cp ON cp.product_key = eps.attached_product_key
-          WHERE eps.status = 'active'
-            AND eps.attached_product_key IS NOT NULL
-            AND eps.market = $1
-            AND (eps.tool = '*' OR eps.tool = $2)
-            AND ${brandMatchSql}
-          ${orderClause}
-          LIMIT $5
-        `,
-        [
-          market,
-          tool,
-          normalizedAliases,
-          brandPrefixPatterns,
-          Math.max(0, safeLimit - rows.length),
-          compactAliases,
-        ],
-      );
-      const seenIds = new Set(rows.map((row) => String(row?.id || '').trim()).filter(Boolean));
-      for (const row of Array.isArray(attachedRes?.rows) ? attachedRes.rows : []) {
-        const id = String(row?.id || '').trim();
-        if (id && seenIds.has(id)) continue;
-        if (id) seenIds.add(id);
-        rows.push(row);
-        if (rows.length >= safeLimit) break;
-      }
-    }
+    const rows = Array.isArray(attachedHeadRes?.rows) ? [...attachedHeadRes.rows] : [];
     if (rows.length < safeLimit) {
       const titleRes = await query(
         `
           SELECT ${attachedSelectColumns}
           FROM external_product_seeds eps
-          LEFT JOIN catalog_products cp ON cp.product_key = eps.attached_product_key
+          JOIN catalog_products cp ON cp.product_key = eps.attached_product_key
+          ${buildDiscoveryCatalogServingGateJoinSql('cp')}
           WHERE eps.status = 'active'
+            AND eps.attached_product_key IS NOT NULL
             AND eps.market = $1
             AND (eps.tool = '*' OR eps.tool = $2)
             AND EXISTS (
@@ -8632,6 +8601,31 @@ async function fetchBrandScopedInternalCatalogCandidates({ brandAliases = [], li
 function discoveryUsesCatalogRowTrust() {
   const flag = String(process.env.DISCOVERY_USES_CATALOG_ROW_TRUST || '').trim().toLowerCase();
   return flag === '1' || flag === 'true' || flag === 'yes' || flag === 'on';
+}
+
+function buildDiscoveryCatalogServingGateJoinSql(catalogAlias = 'cp') {
+  const alias = String(catalogAlias || 'cp').trim() || 'cp';
+  return discoveryUsesCatalogRowTrust()
+    ? `JOIN catalog_row_trust crt
+        ON crt.subject_type = 'product'
+       AND crt.subject_key = ${alias}.product_key
+       AND crt.serving_decision = 'public'`
+    : `JOIN index_pipeline_state ips
+        ON ips.content_key = ${alias}.content_key
+       AND ips.serving_eligible = TRUE`;
+}
+
+function buildDiscoveryAttachedSeedServingExistsSql(seedAlias = 'external_product_seeds') {
+  const alias = String(seedAlias || 'external_product_seeds').trim() || 'external_product_seeds';
+  return `
+    ${alias}.attached_product_key IS NOT NULL
+    AND EXISTS (
+      SELECT 1
+      FROM catalog_products cp_serving
+      ${buildDiscoveryCatalogServingGateJoinSql('cp_serving')}
+      WHERE cp_serving.product_key = ${alias}.attached_product_key
+    )
+  `;
 }
 
 async function fetchBrandScopedCanonicalCandidates({ brandAliases = [], limit = 120 } = {}) {
@@ -11287,6 +11281,8 @@ module.exports = {
     loadBrandScopedDirectCandidates,
     fetchExternalSeedExactTitleCandidates,
     fetchBeautyInterestExternalSeedFastpathCandidates,
+    buildBeautyInterestSeedSelect,
+    buildDiscoveryAttachedSeedServingExistsSql,
     buildDiscoveryExactTitleLookupVariants,
     buildDiscoveryContextCacheKey,
     buildDiscoveryDatabaseSearchTerms,

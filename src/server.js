@@ -14766,28 +14766,42 @@ async function queryBeautyExternalSeedRowsFast({
   const catalogMirrorProjectionSql = `
           (SELECT cp.product_key
              FROM catalog_products cp
-            WHERE cp.merchant_id = 'external_seed'
-              AND cp.platform = 'external_seed'
-              AND cp.source_product_id = external_product_seeds.external_product_id
+             JOIN index_pipeline_state ips
+               ON ips.content_key = cp.content_key
+              AND ips.serving_eligible = TRUE
+            WHERE cp.product_key = external_product_seeds.attached_product_key
             LIMIT 1) AS catalog_product_key,
           (SELECT cp.pivota_signature_id
              FROM catalog_products cp
-            WHERE cp.merchant_id = 'external_seed'
-              AND cp.platform = 'external_seed'
-              AND cp.source_product_id = external_product_seeds.external_product_id
+             JOIN index_pipeline_state ips
+               ON ips.content_key = cp.content_key
+              AND ips.serving_eligible = TRUE
+            WHERE cp.product_key = external_product_seeds.attached_product_key
             LIMIT 1) AS pivota_signature_id,
           (SELECT cp.pivota_canonical_url
              FROM catalog_products cp
-            WHERE cp.merchant_id = 'external_seed'
-              AND cp.platform = 'external_seed'
-              AND cp.source_product_id = external_product_seeds.external_product_id
+             JOIN index_pipeline_state ips
+               ON ips.content_key = cp.content_key
+              AND ips.serving_eligible = TRUE
+            WHERE cp.product_key = external_product_seeds.attached_product_key
             LIMIT 1) AS pivota_canonical_url,
           (SELECT cp.category_path
              FROM catalog_products cp
-            WHERE cp.merchant_id = 'external_seed'
-              AND cp.platform = 'external_seed'
-              AND cp.source_product_id = external_product_seeds.external_product_id
+             JOIN index_pipeline_state ips
+               ON ips.content_key = cp.content_key
+              AND ips.serving_eligible = TRUE
+            WHERE cp.product_key = external_product_seeds.attached_product_key
             LIMIT 1) AS catalog_category_path`;
+  const attachedServingSeedFilterSql = `
+              AND attached_product_key IS NOT NULL
+              AND EXISTS (
+                SELECT 1
+                FROM catalog_products cp_serving
+                JOIN index_pipeline_state ips_serving
+                  ON ips_serving.content_key = cp_serving.content_key
+                 AND ips_serving.serving_eligible = TRUE
+                WHERE cp_serving.product_key = external_product_seeds.attached_product_key
+              )`;
   const runScopeQuery = async (tool, queryMarket = safeMarket, marketScope = 'exact_market') => {
     try {
       const safeQueryMarket = String(queryMarket || safeMarket).trim().toUpperCase() || safeMarket;
@@ -14841,7 +14855,7 @@ async function queryBeautyExternalSeedRowsFast({
               ${index} AS category_order
             FROM external_product_seeds
             WHERE status = 'active'
-              AND attached_product_key IS NULL
+              ${attachedServingSeedFilterSql}
               AND market = $1
               AND tool = $2
               AND ${categoryAuthoritySql} = ${categoryBind}
@@ -14881,7 +14895,7 @@ async function queryBeautyExternalSeedRowsFast({
           ${catalogMirrorProjectionSql}
         FROM external_product_seeds
         WHERE status = 'active'
-          AND attached_product_key IS NULL
+          ${attachedServingSeedFilterSql}
           AND market = $1
           AND tool = $2
           AND ${categoryAuthoritySql} = $3
@@ -15027,7 +15041,7 @@ async function queryBeautyExternalSeedRowsFast({
             ${catalogMirrorProjectionSql}
           FROM external_product_seeds
           WHERE status = 'active'
-            AND attached_product_key IS NULL
+            ${attachedServingSeedFilterSql}
             AND market = $1
             AND tool = $2
             AND (${brandClauses.join('\n            OR ')})
@@ -15104,7 +15118,7 @@ async function queryBeautyExternalSeedRowsFast({
           ${catalogMirrorProjectionSql}
         FROM external_product_seeds
         WHERE status = 'active'
-          AND attached_product_key IS NULL
+          ${attachedServingSeedFilterSql}
           AND market = $1
           AND tool = $2
           AND (${patternClauses.join('\n          OR ')})

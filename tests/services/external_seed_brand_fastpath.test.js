@@ -54,6 +54,9 @@ describe('runExternalSeedBrandMainlineFastpath', () => {
       expect(deps.query).toHaveBeenCalledTimes(1);
       expect(queries[0].sql).toMatch(/INNER\s+JOIN\s+index_pipeline_state\s+ips/i);
       expect(queries[0].sql).toMatch(/ips\.serving_eligible\s*=\s*TRUE/i);
+      expect(queries[0].sql).toMatch(/attached_product_key\s+IS\s+NOT\s+NULL/i);
+      expect(queries[0].sql).toMatch(/cp\.product_key\s*=\s*external_product_seeds\.attached_product_key/i);
+      expect(queries[0].sql).not.toMatch(/source_product_id\s*=\s*coalesce/i);
       expect(queries[0].sql).not.toMatch(/catalog_row_trust/i);
     } finally {
       if (prev === undefined) delete process.env.FIND_PRODUCTS_USES_CATALOG_ROW_TRUST;
@@ -93,6 +96,9 @@ describe('runExternalSeedBrandMainlineFastpath', () => {
       expect(queries[0].sql).toMatch(/crt\.subject_type\s*=\s*'product'/i);
       expect(queries[0].sql).toMatch(/crt\.subject_key\s*=\s*cp\.product_key/i);
       expect(queries[0].sql).toMatch(/crt\.serving_decision\s*=\s*'public'/i);
+      expect(queries[0].sql).toMatch(/attached_product_key\s+IS\s+NOT\s+NULL/i);
+      expect(queries[0].sql).toMatch(/cp\.product_key\s*=\s*external_product_seeds\.attached_product_key/i);
+      expect(queries[0].sql).not.toMatch(/source_product_id\s*=\s*coalesce/i);
       expect(queries[0].sql).not.toMatch(/INNER\s+JOIN\s+index_pipeline_state\s+ips/i);
       expect(queries[0].sql).not.toMatch(/ips\.serving_eligible/i);
     } finally {
@@ -218,8 +224,10 @@ describe('runExternalSeedBrandMainlineFastpath', () => {
 
     expect(response?.products).toHaveLength(1);
     expect(response?.metadata?.retrieval_include_attached).toBe(true);
+    expect(queries[0].sql).toContain('attached_product_key IS NOT NULL');
     expect(queries[0].sql).not.toContain('attached_product_key IS NULL');
     expect(queries[1].sql).toContain('seed_data::text');
+    expect(queries[1].sql).toContain('attached_product_key IS NOT NULL');
     expect(queries[1].sql).not.toContain('attached_product_key IS NULL');
   });
 });
