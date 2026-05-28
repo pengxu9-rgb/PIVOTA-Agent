@@ -1,0 +1,580 @@
+{
+  "generated_at": "2026-05-28T12:32:27.643Z",
+  "source": "wave53_static_preflight_from_wave50_rollup",
+  "mapping_json": "reports/markato_expansion_status_20260524/wave52_missnella_canonical_mapping_20260528/missnella_component_ref_candidate_mapping.json",
+  "rollup_json": "reports/markato_expansion_status_20260524/wave50_next_brand_expansion_20260528/current_rollup/wave24_candidate_rollup.json",
+  "warning": "This is not the production DB dry-run. It validates candidate mappings against the latest committed Wave50 rollup only.",
+  "summary": {
+    "production_db_dry_run_completed": false,
+    "static_preflight_only": true,
+    "mappings": 33,
+    "unique_ids_checked": 53,
+    "ready_rows": 33,
+    "blocked_rows": 0,
+    "host_mismatches": 0,
+    "missing_rollup_rows": 0
+  },
+  "results": [
+    {
+      "external_product_id": "ext_02f16f8ae0e642d8f6599640",
+      "title": "Add Blush?",
+      "status": "static_preflight_ready",
+      "blocked_reasons": [],
+      "component_refs": [
+        {
+          "external_product_id": "ext_33466da0907b256ffc53783b",
+          "title": "Blush",
+          "found_in_rollup": true,
+          "host_match": true,
+          "parent_ready_or_covered": true,
+          "parent_index_serving_eligible": true,
+          "parent_quality_flags": ""
+        }
+      ]
+    },
+    {
+      "external_product_id": "ext_5d152578766f6dafde6361fb",
+      "title": "Add Croco Dazzle - Glittery Red",
+      "status": "static_preflight_ready",
+      "blocked_reasons": [],
+      "component_refs": [
+        {
+          "external_product_id": "ext_8c9db1e831c4be15a42fc407",
+          "title": "Croco Dazzle: Sparkly Red Peel Off Nail Polish",
+          "found_in_rollup": true,
+          "host_match": true,
+          "parent_ready_or_covered": true,
+          "parent_index_serving_eligible": true,
+          "parent_quality_flags": ""
+        }
+      ]
+    },
+    {
+      "external_product_id": "ext_1fc4f0b1653b5758dffae560",
+      "title": "Add Eye Shadow?",
+      "status": "static_preflight_ready",
+      "blocked_reasons": [],
+      "component_refs": [
+        {
+          "external_product_id": "ext_e9e3fba6b05911bba1bfe71e",
+          "title": "Eye Shadow",
+          "found_in_rollup": true,
+          "host_match": true,
+          "parent_ready_or_covered": true,
+          "parent_index_serving_eligible": true,
+          "parent_quality_flags": ""
+        }
+      ]
+    },
+    {
+      "external_product_id": "ext_e95d981ef7dc3b7520bd24d9",
+      "title": "Add Galactic Unicorn - Deep Purple",
+      "status": "static_preflight_ready",
+      "blocked_reasons": [],
+      "component_refs": [
+        {
+          "external_product_id": "ext_3efab0751a9f85bbdcb72388",
+          "title": "Galactic Unicorn: Chrome Purple Peel Off Nail Polish",
+          "found_in_rollup": true,
+          "host_match": true,
+          "parent_ready_or_covered": true,
+          "parent_index_serving_eligible": true,
+          "parent_quality_flags": ""
+        }
+      ]
+    },
+    {
+      "external_product_id": "ext_dfc8cb7a965b06dd2aec3949",
+      "title": "Add Lip Balm?",
+      "status": "static_preflight_ready",
+      "blocked_reasons": [],
+      "component_refs": [
+        {
+          "external_product_id": "ext_cf0f60c66afa3fb09944df4d",
+          "title": "Lip Balm",
+          "found_in_rollup": true,
+          "host_match": true,
+          "parent_ready_or_covered": true,
+          "parent_index_serving_eligible": true,
+          "parent_quality_flags": ""
+        }
+      ]
+    },
+    {
+      "external_product_id": "ext_6306a6d00b6e082ccc40932e",
+      "title": "MN36 Cosmic Cutie: Chrome Bronze Peel Off Nail Polish",
+      "status": "static_preflight_ready",
+      "blocked_reasons": [],
+      "component_refs": [
+        {
+          "external_product_id": "ext_4126c4bf9bd13a864334128d",
+          "title": "Cosmic Cutie: Chrome Bronze Peel Off Nail Polish",
+          "found_in_rollup": true,
+          "host_match": true,
+          "parent_ready_or_covered": true,
+          "parent_index_serving_eligible": true,
+          "parent_quality_flags": ""
+        }
+      ]
+    },
+    {
+      "external_product_id": "ext_9bd51781d637e8161b67f6ff",
+      "title": "MN37 You're So Spacial: Chrome Blue Peel Off Nail Polish",
+      "status": "static_preflight_ready",
+      "blocked_reasons": [],
+      "component_refs": [
+        {
+          "external_product_id": "ext_45317ff964aa286c595a250d",
+          "title": "You're So Spacial: Chrome Blue Peel Off Nail Polish",
+          "found_in_rollup": true,
+          "host_match": true,
+          "parent_ready_or_covered": true,
+          "parent_index_serving_eligible": true,
+          "parent_quality_flags": ""
+        }
+      ]
+    },
+    {
+      "external_product_id": "ext_e1a12de43227d2f2a9d8bdc8",
+      "title": "MN38 Galactic Unicorn: Chrome Purple Peel Off Nail Polish",
+      "status": "static_preflight_ready",
+      "blocked_reasons": [],
+      "component_refs": [
+        {
+          "external_product_id": "ext_3efab0751a9f85bbdcb72388",
+          "title": "Galactic Unicorn: Chrome Purple Peel Off Nail Polish",
+          "found_in_rollup": true,
+          "host_match": true,
+          "parent_ready_or_covered": true,
+          "parent_index_serving_eligible": true,
+          "parent_quality_flags": ""
+        }
+      ]
+    },
+    {
+      "external_product_id": "ext_ac6c674eda87668b7782a43c",
+      "title": "MN39 Alien Poo: Chrome Green Peel Off Nail Polish",
+      "status": "static_preflight_ready",
+      "blocked_reasons": [],
+      "component_refs": [
+        {
+          "external_product_id": "ext_5b4820a93b2ff42fde402c6e",
+          "title": "Alien Poo: Chrome Green Peel Off Nail Polish",
+          "found_in_rollup": true,
+          "host_match": true,
+          "parent_ready_or_covered": true,
+          "parent_index_serving_eligible": true,
+          "parent_quality_flags": ""
+        }
+      ]
+    },
+    {
+      "external_product_id": "ext_56dab6df882d473ca41f58f3",
+      "title": "MN40 Shooting Star: Sliver Peel Off Nail Polish",
+      "status": "static_preflight_ready",
+      "blocked_reasons": [],
+      "component_refs": [
+        {
+          "external_product_id": "ext_84caa40e0fafcee350045f96",
+          "title": "Shooting Star: Sliver Peel Off Nail Polish",
+          "found_in_rollup": true,
+          "host_match": true,
+          "parent_ready_or_covered": true,
+          "parent_index_serving_eligible": true,
+          "parent_quality_flags": ""
+        }
+      ]
+    },
+    {
+      "external_product_id": "ext_df81c48df0493157cedccf76",
+      "title": "MN41 Sweet-Osaurus: Metallic Bronze Peel Off Nail Polish",
+      "status": "static_preflight_ready",
+      "blocked_reasons": [],
+      "component_refs": [
+        {
+          "external_product_id": "ext_623cf12819008c78502d9e6a",
+          "title": "Sweet-Osaurus: Metallic Bronze Peel Off Nail Polish",
+          "found_in_rollup": true,
+          "host_match": true,
+          "parent_ready_or_covered": true,
+          "parent_index_serving_eligible": true,
+          "parent_quality_flags": ""
+        }
+      ]
+    },
+    {
+      "external_product_id": "ext_e292dbb537aafa997d87d528",
+      "title": "MN42 Diplodo-Kiss: Metallic Pink Peel Off Nail Polish",
+      "status": "static_preflight_ready",
+      "blocked_reasons": [],
+      "component_refs": [
+        {
+          "external_product_id": "ext_234ad22c62387afe966d0832",
+          "title": "Diplodo-Kiss: Metallic Pink Peel Off Nail Polish",
+          "found_in_rollup": true,
+          "host_match": true,
+          "parent_ready_or_covered": true,
+          "parent_index_serving_eligible": true,
+          "parent_quality_flags": ""
+        }
+      ]
+    },
+    {
+      "external_product_id": "ext_c48e56047d039a4945c0a1c8",
+      "title": "MN43 Rawr-Some: Metallic Blue Peel Off Nail Polish",
+      "status": "static_preflight_ready",
+      "blocked_reasons": [],
+      "component_refs": [
+        {
+          "external_product_id": "ext_026bb78a257f8ca3690ee787",
+          "title": "Rawr-Some: Metallic Blue Peel Off Nail Polish",
+          "found_in_rollup": true,
+          "host_match": true,
+          "parent_ready_or_covered": true,
+          "parent_index_serving_eligible": true,
+          "parent_quality_flags": ""
+        }
+      ]
+    },
+    {
+      "external_product_id": "ext_6b9bfd5acdfc4004795eb033",
+      "title": "MN44 Dino-Rific: Metallic Green Peel Off Nail Polish",
+      "status": "static_preflight_ready",
+      "blocked_reasons": [],
+      "component_refs": [
+        {
+          "external_product_id": "ext_a9609ad67d8dec79dd0596a1",
+          "title": "Dino-Rific: Metallic Green Peel Off Nail Polish",
+          "found_in_rollup": true,
+          "host_match": true,
+          "parent_ready_or_covered": true,
+          "parent_index_serving_eligible": true,
+          "parent_quality_flags": ""
+        }
+      ]
+    },
+    {
+      "external_product_id": "ext_b0f1ea21db064e10fd3c19ca",
+      "title": "MN45 Itsy Glitzy Hippo: Sparkly Pink Peel Off Nail Polish",
+      "status": "static_preflight_ready",
+      "blocked_reasons": [],
+      "component_refs": [
+        {
+          "external_product_id": "ext_0bc6e4f7a15288822029334f",
+          "title": "Itsy Glitzy Hippo: Sparkly Pink Peel Off Nail Polish",
+          "found_in_rollup": true,
+          "host_match": true,
+          "parent_ready_or_covered": true,
+          "parent_index_serving_eligible": true,
+          "parent_quality_flags": ""
+        }
+      ]
+    },
+    {
+      "external_product_id": "ext_9e45e1bfc7097a1b8e678f33",
+      "title": "MN46 Elephunky: Sparkly Blue Peel Off Nail Polish",
+      "status": "static_preflight_ready",
+      "blocked_reasons": [],
+      "component_refs": [
+        {
+          "external_product_id": "ext_ff5b7bfbff65eed0ceb7e3df",
+          "title": "Elephunky: Sparkly Blue Peel Off Nail Polish",
+          "found_in_rollup": true,
+          "host_match": true,
+          "parent_ready_or_covered": true,
+          "parent_index_serving_eligible": true,
+          "parent_quality_flags": ""
+        }
+      ]
+    },
+    {
+      "external_product_id": "ext_80021c42248dccc2725a0f2e",
+      "title": "MN47 Sparkly Zebra: Sparkly Lilac Peel Off Nail Polish",
+      "status": "static_preflight_ready",
+      "blocked_reasons": [],
+      "component_refs": [
+        {
+          "external_product_id": "ext_b36f6a65ae2c8f16e03809ab",
+          "title": "Sparkly Zebra: Sparkly Lilac Peel Off Nail Polish",
+          "found_in_rollup": true,
+          "host_match": true,
+          "parent_ready_or_covered": true,
+          "parent_index_serving_eligible": true,
+          "parent_quality_flags": ""
+        }
+      ]
+    },
+    {
+      "external_product_id": "ext_ac4d26e9d3b9ed5adcd695bc",
+      "title": "MN48 Croco Dazzle: Sparkly Red Peel Off Nail Polish",
+      "status": "static_preflight_ready",
+      "blocked_reasons": [],
+      "component_refs": [
+        {
+          "external_product_id": "ext_8c9db1e831c4be15a42fc407",
+          "title": "Croco Dazzle: Sparkly Red Peel Off Nail Polish",
+          "found_in_rollup": true,
+          "host_match": true,
+          "parent_ready_or_covered": true,
+          "parent_index_serving_eligible": true,
+          "parent_quality_flags": ""
+        }
+      ]
+    },
+    {
+      "external_product_id": "ext_6160f76488ee112f32e585ad",
+      "title": "MN49 Happily Ever After: Pink Fine Glitter Peel Off Nail Polish",
+      "status": "static_preflight_ready",
+      "blocked_reasons": [],
+      "component_refs": [
+        {
+          "external_product_id": "ext_83b5f562450f09c98c4dccb8",
+          "title": "Happily Ever After: Pink Fine Glitter Peel Off Nail Polish",
+          "found_in_rollup": true,
+          "host_match": true,
+          "parent_ready_or_covered": true,
+          "parent_index_serving_eligible": true,
+          "parent_quality_flags": ""
+        }
+      ]
+    },
+    {
+      "external_product_id": "ext_e804b5b2c3fe9b68fc346fbe",
+      "title": "MN51 If The Shoe Fits: Gold Fine Glitter Peel Off Nail Polish",
+      "status": "static_preflight_ready",
+      "blocked_reasons": [],
+      "component_refs": [
+        {
+          "external_product_id": "ext_428194a391e38b8c6c5c5a1b",
+          "title": "If The Shoe Fits: Gold Fine Glitter Peel Off Nail Polish",
+          "found_in_rollup": true,
+          "host_match": true,
+          "parent_ready_or_covered": true,
+          "parent_index_serving_eligible": true,
+          "parent_quality_flags": ""
+        }
+      ]
+    },
+    {
+      "external_product_id": "ext_ea41a1679acc205877e56908",
+      "title": "MN52 Once Upon A Time: Light Blue Fine Glitter Peel Off Nail Polish",
+      "status": "static_preflight_ready",
+      "blocked_reasons": [],
+      "component_refs": [
+        {
+          "external_product_id": "ext_c6ea506cdaf48368131bfd6e",
+          "title": "Once Upon A Time: Light Blue Fine Glitter Peel Off Nail Polish",
+          "found_in_rollup": true,
+          "host_match": true,
+          "parent_ready_or_covered": true,
+          "parent_index_serving_eligible": true,
+          "parent_quality_flags": ""
+        }
+      ]
+    },
+    {
+      "external_product_id": "ext_e9aed78a3e3565faa4f79274",
+      "title": "WH | Cutie In Bloom Nail Stickers",
+      "status": "static_preflight_ready",
+      "blocked_reasons": [],
+      "component_refs": [
+        {
+          "external_product_id": "ext_b575a7ed71f0a4602a68c461",
+          "title": "Nail Stickers",
+          "found_in_rollup": true,
+          "host_match": true,
+          "parent_ready_or_covered": true,
+          "parent_index_serving_eligible": true,
+          "parent_quality_flags": ""
+        }
+      ]
+    },
+    {
+      "external_product_id": "ext_a4e0feeb2b9b60faf69a3744",
+      "title": "WH | Cutie Pie Lip Balm",
+      "status": "static_preflight_ready",
+      "blocked_reasons": [],
+      "component_refs": [
+        {
+          "external_product_id": "ext_cf0f60c66afa3fb09944df4d",
+          "title": "Lip Balm",
+          "found_in_rollup": true,
+          "host_match": true,
+          "parent_ready_or_covered": true,
+          "parent_index_serving_eligible": true,
+          "parent_quality_flags": ""
+        }
+      ]
+    },
+    {
+      "external_product_id": "ext_088385a34673307ec7d90d23",
+      "title": "WH | Golden Sands Eye Shadow",
+      "status": "static_preflight_ready",
+      "blocked_reasons": [],
+      "component_refs": [
+        {
+          "external_product_id": "ext_e9e3fba6b05911bba1bfe71e",
+          "title": "Eye Shadow",
+          "found_in_rollup": true,
+          "host_match": true,
+          "parent_ready_or_covered": true,
+          "parent_index_serving_eligible": true,
+          "parent_quality_flags": ""
+        }
+      ]
+    },
+    {
+      "external_product_id": "ext_8ffdefaea0efb70cb730a670",
+      "title": "WH | Lavender Fields Eye Shadow",
+      "status": "static_preflight_ready",
+      "blocked_reasons": [],
+      "component_refs": [
+        {
+          "external_product_id": "ext_e9e3fba6b05911bba1bfe71e",
+          "title": "Eye Shadow",
+          "found_in_rollup": true,
+          "host_match": true,
+          "parent_ready_or_covered": true,
+          "parent_index_serving_eligible": true,
+          "parent_quality_flags": ""
+        }
+      ]
+    },
+    {
+      "external_product_id": "ext_36ce25215b20df0b07a5249b",
+      "title": "WH | Lip Balm Retail Display *Organic Lip Balm Collection*",
+      "status": "static_preflight_ready",
+      "blocked_reasons": [],
+      "component_refs": [
+        {
+          "external_product_id": "ext_cf0f60c66afa3fb09944df4d",
+          "title": "Lip Balm",
+          "found_in_rollup": true,
+          "host_match": true,
+          "parent_ready_or_covered": true,
+          "parent_index_serving_eligible": true,
+          "parent_quality_flags": ""
+        }
+      ]
+    },
+    {
+      "external_product_id": "ext_ce9afe62b715b4fad61face6",
+      "title": "WH | Lollypop Blush",
+      "status": "static_preflight_ready",
+      "blocked_reasons": [],
+      "component_refs": [
+        {
+          "external_product_id": "ext_33466da0907b256ffc53783b",
+          "title": "Blush",
+          "found_in_rollup": true,
+          "host_match": true,
+          "parent_ready_or_covered": true,
+          "parent_index_serving_eligible": true,
+          "parent_quality_flags": ""
+        }
+      ]
+    },
+    {
+      "external_product_id": "ext_af758de3d843c03fe9548105",
+      "title": "WH | Luvvy Wuvvy Lip Balm",
+      "status": "static_preflight_ready",
+      "blocked_reasons": [],
+      "component_refs": [
+        {
+          "external_product_id": "ext_cf0f60c66afa3fb09944df4d",
+          "title": "Lip Balm",
+          "found_in_rollup": true,
+          "host_match": true,
+          "parent_ready_or_covered": true,
+          "parent_index_serving_eligible": true,
+          "parent_quality_flags": ""
+        }
+      ]
+    },
+    {
+      "external_product_id": "ext_8f2cb8f0cc6857a78ebdd5f9",
+      "title": "WH | Once Upon a Nail Stickers",
+      "status": "static_preflight_ready",
+      "blocked_reasons": [],
+      "component_refs": [
+        {
+          "external_product_id": "ext_b575a7ed71f0a4602a68c461",
+          "title": "Nail Stickers",
+          "found_in_rollup": true,
+          "host_match": true,
+          "parent_ready_or_covered": true,
+          "parent_index_serving_eligible": true,
+          "parent_quality_flags": ""
+        }
+      ]
+    },
+    {
+      "external_product_id": "ext_53d8b7377873cf1ae1001c1b",
+      "title": "WH | Pomegranate Fizz Blush",
+      "status": "static_preflight_ready",
+      "blocked_reasons": [],
+      "component_refs": [
+        {
+          "external_product_id": "ext_33466da0907b256ffc53783b",
+          "title": "Blush",
+          "found_in_rollup": true,
+          "host_match": true,
+          "parent_ready_or_covered": true,
+          "parent_index_serving_eligible": true,
+          "parent_quality_flags": ""
+        }
+      ]
+    },
+    {
+      "external_product_id": "ext_52fecdaf5a439f0211547627",
+      "title": "WH | Pretty Pop Nail Stickers",
+      "status": "static_preflight_ready",
+      "blocked_reasons": [],
+      "component_refs": [
+        {
+          "external_product_id": "ext_b575a7ed71f0a4602a68c461",
+          "title": "Nail Stickers",
+          "found_in_rollup": true,
+          "host_match": true,
+          "parent_ready_or_covered": true,
+          "parent_index_serving_eligible": true,
+          "parent_quality_flags": ""
+        }
+      ]
+    },
+    {
+      "external_product_id": "ext_0d43c2e4f17599db42623f5f",
+      "title": "WH | Snow Cute Nail Stickers",
+      "status": "static_preflight_ready",
+      "blocked_reasons": [],
+      "component_refs": [
+        {
+          "external_product_id": "ext_b575a7ed71f0a4602a68c461",
+          "title": "Nail Stickers",
+          "found_in_rollup": true,
+          "host_match": true,
+          "parent_ready_or_covered": true,
+          "parent_index_serving_eligible": true,
+          "parent_quality_flags": ""
+        }
+      ]
+    },
+    {
+      "external_product_id": "ext_5f24f69f578451c59693798b",
+      "title": "WH | Sugar Plum Lip Balm",
+      "status": "static_preflight_ready",
+      "blocked_reasons": [],
+      "component_refs": [
+        {
+          "external_product_id": "ext_cf0f60c66afa3fb09944df4d",
+          "title": "Lip Balm",
+          "found_in_rollup": true,
+          "host_match": true,
+          "parent_ready_or_covered": true,
+          "parent_index_serving_eligible": true,
+          "parent_quality_flags": ""
+        }
+      ]
+    }
+  ]
+}

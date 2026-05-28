@@ -1,0 +1,40 @@
+{
+  "generated_at": "2026-05-28T12:32:27.645Z",
+  "requested_move": "production read-only dry-run for Miss Nella component-ref candidates",
+  "final_status": "blocked_by_private_database_connectivity_and_access_surface",
+  "no_database_writes": true,
+  "no_railway_up": true,
+  "helper_commit": "7f783f46",
+  "attempts": [
+    {
+      "method": "local railway run with read-only helper",
+      "status": "blocked",
+      "reason": "production DATABASE_URL resolves to postgres-xmr6.railway.internal, which is not reachable from the local machine"
+    },
+    {
+      "method": "railway connect Postgres-xMr6",
+      "status": "not_run",
+      "reason": "rejected by policy as a general interactive production database shell rather than a narrow read-only dry-run"
+    },
+    {
+      "method": "railway ssh into helper services",
+      "status": "blocked",
+      "reason": "available services returned application-not-running/unexpected-state for SSH probes"
+    }
+  ],
+  "static_preflight_summary": {
+    "production_db_dry_run_completed": false,
+    "static_preflight_only": true,
+    "mappings": 33,
+    "unique_ids_checked": 53,
+    "ready_rows": 33,
+    "blocked_rows": 0,
+    "host_mismatches": 0,
+    "missing_rollup_rows": 0
+  },
+  "next_safe_options": [
+    "Provide or configure a public read-only DATABASE_URL for the production Postgres service.",
+    "Enable Railway SSH/exec on a running service in the same private network with a narrow read-only command path.",
+    "Add an explicit no-write production dry-run job or endpoint that runs SELECT-only validation server-side."
+  ]
+}
