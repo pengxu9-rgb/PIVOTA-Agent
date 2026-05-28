@@ -3875,7 +3875,37 @@ function buildPdpSimilarInflightKey(args = {}) {
   const bypass = Boolean(
     args?.options?.no_cache || args?.options?.cache_bypass || args?.options?.bypass_cache,
   );
-  return `${merchantId}::${productId}::${limit}::${locale}::${currency}::${bypass ? '1' : '0'}`;
+  const excludeKey = collectPdpSimilarExcludeKeyTokens(args?.options).join(',');
+  return `${merchantId}::${productId}::${limit}::${locale}::${currency}::${bypass ? '1' : '0'}::${excludeKey}`;
+}
+
+function collectPdpSimilarExcludeKeyTokens(options = {}) {
+  const tokens = new Set();
+  const addProduct = (item) => {
+    if (!item || typeof item !== 'object' || Array.isArray(item)) return;
+    const merchantId = firstNonEmptyString(item.merchant_id, item.merchantId) || EXTERNAL_SEED_MERCHANT_ID;
+    const productId = firstNonEmptyString(
+      item.product_id,
+      item.productId,
+      item.id,
+      item.external_product_id,
+      item.externalProductId,
+      item.source_product_id,
+      item.sourceProductId,
+      item.platform_product_id,
+      item.platformProductId,
+    );
+    if (!productId) return;
+    tokens.add(`${merchantId}::${productId}`);
+  };
+  for (const item of Array.isArray(options?.exclude_items) ? options.exclude_items : []) {
+    addProduct(item);
+  }
+  for (const productId of Array.isArray(options?.exclude_ids) ? options.exclude_ids : []) {
+    const normalized = firstNonEmptyString(productId);
+    if (normalized) tokens.add(`${EXTERNAL_SEED_MERCHANT_ID}::${normalized}`);
+  }
+  return Array.from(tokens).sort();
 }
 
 function resolvePdpSimilarDisplayLimit(payload = {}) {
@@ -4056,6 +4086,8 @@ function buildPdpSimilarFetchArgs({
   bypassCache = false,
   debug = false,
   candidateLimit = null,
+  excludeItems = [],
+  excludeIds = [],
   requestMode = 'first_paint',
 } = {}) {
   const limit = resolvePdpSimilarDisplayLimit(payload);
@@ -4072,6 +4104,10 @@ function buildPdpSimilarFetchArgs({
       ? PDP_SIMILAR_BACKGROUND_EXTERNAL_FETCH_BUDGET_MS
       : PDP_SIMILAR_EXTERNAL_FETCH_BUDGET_MS;
   const catalogFetchLimit = resolvePdpSimilarCatalogFetchLimit(limit, resolvedCandidateLimit);
+  const normalizedExcludeItems = dedupeSimilarCandidatesByMerchantProductId(excludeItems);
+  const normalizedExcludeIds = Array.from(
+    new Set((Array.isArray(excludeIds) ? excludeIds : []).map((value) => firstNonEmptyString(value)).filter(Boolean)),
+  );
   return {
     displayLimit: limit,
     candidateLimit: resolvedCandidateLimit,
@@ -4100,6 +4136,8 @@ function buildPdpSimilarFetchArgs({
         catalog_fetch_overfetch_multiplier: 1,
         identity_dedupe_timeout_ms: PDP_SIMILAR_IDENTITY_DEDUPE_BUDGET_MS,
         hydrate_product_intel_cards: false,
+        ...(normalizedExcludeItems.length > 0 ? { exclude_items: normalizedExcludeItems } : {}),
+        ...(normalizedExcludeIds.length > 0 ? { exclude_ids: normalizedExcludeIds } : {}),
       },
     },
   };
@@ -25674,7 +25712,15 @@ function isBundleOrSetPdpForComponentScopedSimilar(product = {}) {
   return /\b(set|bundle|kit|duo|trio|routine|regimen|gift\s*set|minis?)\b/i.test(text);
 }
 
-function scopeBundleSimilarToReviewedComponents({
+function collectPdpComponentExternalSeedIds(componentCandidates = []) {
+  return new Set(
+    (Array.isArray(componentCandidates) ? componentCandidates : [])
+      .flatMap((item) => collectExternalSeedIdCandidatesForVisibleCatalogHydration(item))
+      .filter((value) => isExternalSeedProductId(value)),
+  );
+}
+
+function excludeBundleComponentProductsFromSimilar({
   products = [],
   baseProduct = {},
   componentCandidates = [],
@@ -25686,30 +25732,25 @@ function scopeBundleSimilarToReviewedComponents({
   if (!isBundleOrSetPdpForComponentScopedSimilar(baseProduct)) {
     return { products: list, applied: false, dropped_count: 0 };
   }
-  const componentIds = new Set(
-    componentCandidates
-      .map((item) => firstNonEmptyString(
-        item.product_id,
-        item.productId,
-        item.id,
-        item.external_product_id,
-        item.externalProductId,
-        item.platform_product_id,
-        item.platformProductId,
-      ))
-      .filter((value) => isExternalSeedProductId(value)),
-  );
-  const scoped = list.filter((item) => {
+  const componentIds = collectPdpComponentExternalSeedIds(componentCandidates);
+  if (componentIds.size <= 0) {
+    return { products: list, applied: false, dropped_count: 0 };
+  }
+  const filtered = list.filter((item) => {
     if (!item || typeof item !== 'object' || Array.isArray(item)) return false;
-    if (String(item.retrieval_source || '').trim() === 'reviewed_component_ref') return true;
+    if (String(item.retrieval_source || '').trim() === 'reviewed_component_ref') return false;
     const ids = collectExternalSeedIdCandidatesForVisibleCatalogHydration(item);
-    return ids.some((id) => componentIds.has(id));
+    return !ids.some((id) => componentIds.has(id));
   });
   return {
-    products: scoped,
+    products: filtered,
     applied: true,
-    dropped_count: Math.max(0, list.length - scoped.length),
+    dropped_count: Math.max(0, list.length - filtered.length),
   };
+}
+
+function scopeBundleSimilarToReviewedComponents(args = {}) {
+  return excludeBundleComponentProductsFromSimilar(args);
 }
 
 function collectPdpComponentSimilarCandidates(product = {}) {
@@ -25783,6 +25824,7 @@ async function prewarmPdpSimilarForProduct({
   bypassCache = false,
 } = {}) {
   if (bypassCache) return;
+  const componentCandidates = collectPdpComponentSimilarCandidates(canonicalProductForPdp);
   const { candidateLimit, fetchArgs } = buildPdpSimilarFetchArgs({
     payload,
     canonicalProductForPdp,
@@ -25790,6 +25832,7 @@ async function prewarmPdpSimilarForProduct({
     canonicalProduct,
     bypassCache: false,
     debug: false,
+    excludeItems: componentCandidates,
     requestMode: 'background',
   });
   const relatedProductsEnvelope = await fetchSimilarProductsDeduped(fetchArgs);
@@ -32317,6 +32360,9 @@ async function resolveProductIntelInvokeContext({
   const relatedProductsDisplayLimit = resolvePdpSimilarDisplayLimit(payload);
   const relatedProductsCandidateLimit = resolvePdpSimilarCandidateLimit(relatedProductsDisplayLimit);
   const similarCacheBypass = resolvePdpSimilarCacheBypass(payload);
+  const componentSimilarCandidates = includeRecommendations
+    ? collectPdpComponentSimilarCandidates(product)
+    : [];
   const relatedProducts = includeRecommendations
     ? await fetchSimilarProductsDeduped({
         pdp_product: product,
@@ -32327,18 +32373,22 @@ async function resolveProductIntelInvokeContext({
           no_cache: similarCacheBypass,
           cache_bypass: similarCacheBypass,
           bypass_cache: similarCacheBypass,
+          ...(componentSimilarCandidates.length > 0 ? { exclude_items: componentSimilarCandidates } : {}),
         },
       }).catch(() => null)
     : [];
+  const filteredRelatedProducts = excludeBundleComponentProductsFromSimilar({
+    products: Array.isArray(relatedProducts?.items) ? relatedProducts.items : [],
+    baseProduct: product,
+    componentCandidates: componentSimilarCandidates,
+  }).products;
 
   return {
     canonicalProductRef,
     productGroupId,
     groupMembers,
     product,
-    relatedProducts: Array.isArray(relatedProducts?.items)
-      ? relatedProducts.items.slice(0, relatedProductsDisplayLimit)
-      : [],
+    relatedProducts: filteredRelatedProducts.slice(0, relatedProductsDisplayLimit),
   };
 }
 function buildOffersResolveResponse({
@@ -36503,6 +36553,9 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
         product: canonicalProductForPdp,
         pdpSchemaProfile: preSimilarPdpSchemaProfile,
       });
+      const preSimilarComponentCandidates = wantsSimilar
+        ? collectPdpComponentSimilarCandidates(canonicalProductForPdp)
+        : [];
 
 	      // Similar products (non-blocking; can be requested by include=similar).
 	      // Run in parallel with reviews fetch to avoid additive latency on first paint.
@@ -36562,6 +36615,7 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
                 canonicalProduct,
                 bypassCache: similarCacheBypass,
                 debug,
+                excludeItems: preSimilarComponentCandidates,
                 requestMode: similarRequestMode,
               });
               return await resolvePdpSimilarWithBudget(
@@ -36753,10 +36807,13 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
       }
 
       const componentSimilarCandidates = wantsSimilar
-        ? collectPdpComponentSimilarCandidates(canonicalProductForPdp)
+        ? dedupeSimilarCandidatesByMerchantProductId([
+            ...preSimilarComponentCandidates,
+            ...collectPdpComponentSimilarCandidates(canonicalProductForPdp),
+          ])
         : [];
 
-      if (wantsSimilar && (relatedProducts.length > 0 || componentSimilarCandidates.length > 0)) {
+      if (wantsSimilar && relatedProducts.length > 0) {
 	        const similarCardEnrichmentStartedAt = Date.now();
 	        const similarLimit = resolvePdpSimilarDisplayLimit(payload);
           const similarCandidateLimit = resolvePdpSimilarCandidateLimit(similarLimit);
@@ -36764,10 +36821,7 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
             similarLimit,
             similarCandidateLimit,
           );
-        const relatedProductsForEnrichment = dedupeSimilarCandidatesByMerchantProductId([
-          ...componentSimilarCandidates,
-          ...relatedProducts,
-        ]);
+        const relatedProductsForEnrichment = dedupeSimilarCandidatesByMerchantProductId(relatedProducts);
 	        const enrichedRelatedProducts = await enrichSimilarProductsForPdpCards({
 	          items: relatedProductsForEnrichment,
 	          checkoutToken,
@@ -36790,12 +36844,12 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
           { bypassCache },
         );
         const publicSimilarCandidates = filterPublicVisibleSimilarProducts(hydratedSimilarCandidates);
-        const componentScopedSimilar = scopeBundleSimilarToReviewedComponents({
+        const componentFilteredSimilar = excludeBundleComponentProductsFromSimilar({
           products: publicSimilarCandidates,
           baseProduct: canonicalProductForPdp,
           componentCandidates: componentSimilarCandidates,
         });
-        const displayableRelatedProducts = componentScopedSimilar.products.slice(0, similarLimit);
+        const displayableRelatedProducts = componentFilteredSimilar.products.slice(0, similarLimit);
         const publicExternalIdFilteredCount = Math.max(
           0,
           hydratedSimilarCandidates.length - publicSimilarCandidates.length,
@@ -36808,13 +36862,19 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
         if (relatedProductsEnvelope && typeof relatedProductsEnvelope === 'object') {
           relatedProductsEnvelope = {
             ...relatedProductsEnvelope,
+            status: relatedProducts.length > 0 ? relatedProductsEnvelope.status : 'empty',
             items: relatedProducts,
             metadata: {
               ...calibrateSimilarMetadataForVisibleProducts({
                 metadata:
                   relatedProductsEnvelope.metadata && typeof relatedProductsEnvelope.metadata === 'object'
-                    ? relatedProductsEnvelope.metadata
-                    : {},
+                    ? {
+                        ...relatedProductsEnvelope.metadata,
+                        ...(relatedProducts.length <= 0 ? { similar_status: 'empty' } : {}),
+                      }
+                    : relatedProducts.length <= 0
+                      ? { similar_status: 'empty' }
+                      : {},
                 products: relatedProducts,
                 requestedLimit: similarLimit,
               }),
@@ -36829,8 +36889,10 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
               card_highlight_filtered_count: filteredHighlightMissingCount,
               public_external_id_filtered_count: publicExternalIdFilteredCount,
               component_ref_candidate_count: componentSimilarCandidates.length,
-              component_ref_scope_applied: componentScopedSimilar.applied,
-              component_ref_scope_dropped_count: componentScopedSimilar.dropped_count,
+              component_ref_scope_applied: false,
+              component_ref_scope_dropped_count: 0,
+              component_ref_exclusion_applied: componentFilteredSimilar.applied,
+              component_ref_excluded_count: componentFilteredSimilar.dropped_count,
             },
           };
         } else {
@@ -36855,8 +36917,10 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
               card_highlight_filtered_count: filteredHighlightMissingCount,
               public_external_id_filtered_count: publicExternalIdFilteredCount,
               component_ref_candidate_count: componentSimilarCandidates.length,
-              component_ref_scope_applied: componentScopedSimilar.applied,
-              component_ref_scope_dropped_count: componentScopedSimilar.dropped_count,
+              component_ref_scope_applied: false,
+              component_ref_scope_dropped_count: 0,
+              component_ref_exclusion_applied: componentFilteredSimilar.applied,
+              component_ref_excluded_count: componentFilteredSimilar.dropped_count,
             },
           };
         }
@@ -38164,6 +38228,7 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
           payload?.options?.no_cache === true ||
           payload?.options?.cache_bypass === true ||
           payload?.options?.bypass_cache === true;
+        const componentSimilarCandidates = collectPdpComponentSimilarCandidates(product);
         try {
           const rec = await recommendPdpProducts({
             pdp_product: product,
@@ -38175,9 +38240,14 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
               no_cache: bypassCache,
               cache_bypass: bypassCache,
               bypass_cache: bypassCache,
+              ...(componentSimilarCandidates.length > 0 ? { exclude_items: componentSimilarCandidates } : {}),
             },
           });
-          relatedProducts = Array.isArray(rec?.items) ? rec.items : [];
+          relatedProducts = excludeBundleComponentProductsFromSimilar({
+            products: Array.isArray(rec?.items) ? rec.items : [],
+            baseProduct: product,
+            componentCandidates: componentSimilarCandidates,
+          }).products;
         } catch (err) {
           logger.warn(
             { err: err?.message || String(err), merchantId, productId },
@@ -45157,6 +45227,8 @@ module.exports._debug = {
   filterPublicVisibleSimilarProducts,
   dedupeSimilarCandidatesByMerchantProductId,
   isBundleOrSetPdpForComponentScopedSimilar,
+  collectPdpComponentExternalSeedIds,
+  excludeBundleComponentProductsFromSimilar,
   scopeBundleSimilarToReviewedComponents,
   collectPdpComponentSimilarCandidates,
   calibrateSimilarMetadataForVisibleProducts,

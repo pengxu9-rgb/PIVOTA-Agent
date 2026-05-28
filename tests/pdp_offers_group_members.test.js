@@ -894,6 +894,86 @@ describe('PDP grouped offers', () => {
     expect(args.fetchArgs.k).toBe(args.candidateLimit);
   });
 
+  test('excludes reviewed set component refs from PDP similar recommendations', () => {
+    const app = require('../src/server');
+    const baseProduct = {
+      product_family: 'set',
+      title: 'Fenty Beauty Lip Set',
+      seed_data: {
+        bundle_component_refs: [
+          {
+            external_product_id: 'ext_liner',
+            review_state: 'reviewed',
+            title: "Trace'd Out Longwear Waterproof Pencil Lip Liner",
+          },
+          {
+            external_product_id: 'ext_gloss',
+            review_state: 'approved',
+            title: "Gloss Bomb Oil Luminizing Lip Oil 'N Gloss",
+          },
+        ],
+      },
+    };
+    const componentCandidates = app._debug.collectPdpComponentSimilarCandidates(baseProduct);
+
+    const filtered = app._debug.excludeBundleComponentProductsFromSimilar({
+      baseProduct,
+      componentCandidates,
+      products: [
+        {
+          product_id: 'sig_liner_visible',
+          external_product_id: 'ext_liner',
+          title: 'Visible liner component',
+        },
+        {
+          product_id: 'ext_gloss',
+          retrieval_source: 'reviewed_component_ref',
+          title: 'Injected gloss component',
+        },
+        {
+          product_id: 'sig_other_lip',
+          external_product_id: 'ext_other_lip',
+          title: 'Different lip product',
+        },
+        {
+          merchant_id: 'shopify_store',
+          product_id: 'shopify_alt',
+          title: 'Different merchant alternative',
+        },
+      ],
+    });
+
+    expect(componentCandidates.map((item) => item.product_id)).toEqual(['ext_liner', 'ext_gloss']);
+    expect(filtered).toEqual(
+      expect.objectContaining({
+        applied: true,
+        dropped_count: 2,
+      }),
+    );
+    expect(filtered.products.map((item) => item.product_id)).toEqual([
+      'sig_other_lip',
+      'shopify_alt',
+    ]);
+
+    const fetchArgs = app._debug.buildPdpSimilarFetchArgs({
+      payload: { similar: { limit: 6 } },
+      canonicalProductForPdp: {
+        merchant_id: 'external_seed',
+        product_id: 'ext_set',
+        currency: 'USD',
+      },
+      canonicalProductRef: {
+        merchant_id: 'external_seed',
+        product_id: 'ext_set',
+      },
+      excludeItems: componentCandidates,
+    });
+    expect(fetchArgs.fetchArgs.options.exclude_items.map((item) => item.product_id)).toEqual([
+      'ext_liner',
+      'ext_gloss',
+    ]);
+  });
+
   test('detects missing similar card images separately from highlight readiness', () => {
     const app = require('../src/server');
 
