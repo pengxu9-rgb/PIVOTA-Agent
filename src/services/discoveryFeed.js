@@ -3800,6 +3800,47 @@ function shouldSkipNoSignalProviderExpansion(products = [], { request, profile }
   return highQualityCount >= threshold;
 }
 
+function getNoSignalMinimumFastpathCoverageThreshold(request) {
+  const requestedLimit = clampInt(request?.limit, 12, 1, 48);
+  if (request?.surface === 'home_hot_deals') {
+    return Math.min(requestedLimit, 3);
+  }
+  if (request?.surface === 'browse_products') {
+    const page = Math.max(1, Number(request?.page || 1));
+    return Math.min(getDiscoveryCandidateFetchCap(request), page * requestedLimit);
+  }
+  return requestedLimit;
+}
+
+function countNoSignalMinimumFastpathCandidates(products = [], { request, profile } = {}) {
+  if (!isGenericNoSignalDiscoveryRequest(request, profile)) return 0;
+  let count = 0;
+  for (let idx = 0; idx < (Array.isArray(products) ? products : []).length; idx += 1) {
+    const candidate = normalizeCandidateProduct(products[idx], idx);
+    if (!candidate) continue;
+    const domain = String(candidate.domain || 'unknown').trim();
+    if (COLD_START_DEFERRED_DOMAINS.has(domain)) continue;
+    if (candidate.beautyBucket === 'tools') continue;
+    if (request?.surface === 'home_hot_deals' && candidate.domain !== 'beauty' && !candidate.beautyBucket) {
+      continue;
+    }
+    count += 1;
+  }
+  return count;
+}
+
+function resolveNoSignalProductsSearchSkipReason(products = [], { request, profile } = {}) {
+  if (shouldSkipNoSignalProviderExpansion(products, { request, profile })) {
+    return 'anonymous_cold_start_fastpath_sufficient';
+  }
+  if (!isGenericNoSignalDiscoveryRequest(request, profile)) return null;
+  const minimumCoverage = countNoSignalMinimumFastpathCandidates(products, { request, profile });
+  const minimumThreshold = getNoSignalMinimumFastpathCoverageThreshold(request);
+  return minimumCoverage >= minimumThreshold
+    ? 'anonymous_cold_start_fastpath_minimum_coverage'
+    : null;
+}
+
 function isQueryOnlyPersonalizedDiscoveryRequest(request, profile) {
   if (!profile?.hasInterestSignals) return false;
   if (Number(profile?.historyItemsUsed || 0) > 0) return false;
@@ -7200,7 +7241,11 @@ async function loadCatalogCandidates({
       }
     }
 
-    if (shouldSkipNoSignalProviderExpansion(mergedProducts, { request, profile })) {
+    const productsSearchSkipReason = resolveNoSignalProductsSearchSkipReason(mergedProducts, {
+      request,
+      profile,
+    });
+    if (productsSearchSkipReason) {
       candidateSource = includeInternal
         ? 'external_seed_fastpath+internal_catalog'
         : 'external_seed_fastpath';
@@ -7210,7 +7255,7 @@ async function loadCatalogCandidates({
           label: getProviderLabel('products_search'),
           query: providerQueries.join(' | '),
           limit: safeLimit,
-          skipReason: 'anonymous_cold_start_fastpath_sufficient',
+          skipReason: productsSearchSkipReason,
         }),
       );
       if (!includeInternal) {

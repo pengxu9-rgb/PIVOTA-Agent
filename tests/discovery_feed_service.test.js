@@ -9235,6 +9235,90 @@ describe('discovery feed service', () => {
     );
   });
 
+  test('anonymous cold start skips products/search when external fastpath has minimum display coverage', async () => {
+    process.env.DISCOVERY_PRODUCTS_SEARCH_BASE_URL = 'http://discovery-catalog.test';
+    process.env.DISCOVERY_PRODUCTS_SEARCH_API_KEY = 'bridge-key';
+    process.env.PIVOTA_BACKEND_BASE_URL = 'http://wrong-backend.test';
+    delete process.env.PIVOTA_API_BASE;
+    delete process.env.PIVOTA_API_KEY;
+
+    const productsSearchScope = nock('http://discovery-catalog.test')
+      .get('/agent/v1/products/search')
+      .query(true)
+      .reply(200, {
+        products: [
+          makeProduct({
+            merchant_id: 'm_search',
+            product_id: 'search_serum_1',
+            title: 'Search Repair Serum',
+            brand: 'Search Brand',
+            category: 'Skincare',
+            product_type: 'Serum',
+          }),
+        ],
+      });
+
+    const response = await getDiscoveryFeed(
+      {
+        surface: 'home_hot_deals',
+        limit: 6,
+        debug: true,
+        context: {
+          auth_state: 'anonymous',
+          locale: 'en-US',
+          recent_views: [],
+          recent_queries: [],
+        },
+      },
+      {
+        providerOverrides: {
+          external_seeds: async () => [
+            makeProduct({
+              merchant_id: 'external_seed',
+              product_id: 'external_serum_1',
+              title: 'External Repair Serum',
+              brand: 'Seeded',
+              category: 'Skincare',
+              product_type: 'Serum',
+            }),
+            makeProduct({
+              merchant_id: 'external_seed',
+              product_id: 'external_toner_1',
+              title: 'External Hydrating Toner',
+              brand: 'Seeded',
+              category: 'Skincare',
+              product_type: 'Toner',
+            }),
+            makeProduct({
+              merchant_id: 'external_seed',
+              product_id: 'external_cleanser_1',
+              title: 'External Gentle Cleanser',
+              brand: 'Seeded',
+              category: 'Skincare',
+              product_type: 'Cleanser',
+            }),
+          ],
+          internal_catalog: async () => [],
+        },
+      },
+    );
+
+    expect(productsSearchScope.isDone()).toBe(false);
+    expect(response.products).toHaveLength(3);
+    expect(response.metadata.candidate_source).toBe('external_seed_fastpath');
+    expect(response.metadata.fallback_triggered).toBe(false);
+    expect(response.metadata.provider_breakdown).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          provider: 'products_search',
+          skipped: true,
+          skip_reason: 'anonymous_cold_start_fastpath_minimum_coverage',
+        }),
+        expect.objectContaining({ provider: 'external_seeds', successful: true, returned: 3 }),
+      ]),
+    );
+  });
+
   test('cold start discovery falls back to discovery-specific products/search after cold-start fastpath underfills', async () => {
     process.env.DISCOVERY_PRODUCTS_SEARCH_BASE_URL = 'http://discovery-catalog.test';
     process.env.PIVOTA_BACKEND_BASE_URL = 'http://wrong-backend.test';
