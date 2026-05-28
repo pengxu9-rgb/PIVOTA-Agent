@@ -1,0 +1,20 @@
+{
+  "generated_at": "2026-05-28",
+  "brand": "Moss & Noor",
+  "domain": "mossnoor.com",
+  "runtime_database_writes": 0,
+  "serving_promotions_approved": 0,
+  "official_pdp_rows_reviewed": 5,
+  "official_inci_found_rows": 5,
+  "official_how_to_found_rows": 0,
+  "ingredients_only_patch_candidate_rows": 4,
+  "remaining_how_to_request_rows": 5,
+  "decision": "Official PDPs can support an ingredients-only dry-run for four Moss & Noor shower gel rows, but no row is serving-ready because product-specific how-to remains missing.",
+  "artifacts": [
+    "mossnoor_official_pdp_source_review.csv",
+    "mossnoor_ingredients_only_patch_candidates.csv",
+    "mossnoor_remaining_how_to_requests.csv",
+    "wave55_mossnoor_official_source_review_manifest.json",
+    "wave55_mossnoor_official_source_review_closeout_20260528.md"
+  ]
+}
