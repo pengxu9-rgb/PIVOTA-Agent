@@ -138,6 +138,20 @@ function normalizeDomain(value) {
   return text.replace(/:\d+$/, '');
 }
 
+function normalizeCanonicalUrl(value) {
+  const raw = asText(value);
+  if (!raw) return '';
+  try {
+    const url = new URL(raw);
+    url.hash = '';
+    url.search = '';
+    url.pathname = url.pathname.replace(/\/+$/, '') || '/';
+    return `${url.protocol.toLowerCase()}//${url.hostname.toLowerCase()}${url.pathname.toLowerCase()}`;
+  } catch {
+    return raw.toLowerCase().replace(/[?#].*$/, '').replace(/\/+$/, '');
+  }
+}
+
 function unique(values) {
   const seen = new Set();
   const out = [];
@@ -460,11 +474,35 @@ function laneRank(lane) {
   return ranks[lane] || 99;
 }
 
+function buildDuplicateCanonicalPendingIdSet(entries) {
+  const byCanonical = new Map();
+  for (const entry of entries) {
+    const canonical = normalizeCanonicalUrl(entry.facts.canonical_url || entry.facts.destination_url);
+    if (!canonical) continue;
+    const group = byCanonical.get(canonical) || [];
+    group.push({
+      externalProductId: asText(entry.row.external_product_id),
+      indexServingEligible: entry.row.serving_eligible === true,
+    });
+    byCanonical.set(canonical, group);
+  }
+
+  const pending = new Set();
+  for (const group of byCanonical.values()) {
+    if (group.length < 2) continue;
+    for (const item of group) {
+      if (!item.indexServingEligible && item.externalProductId) pending.add(item.externalProductId);
+    }
+  }
+  return pending;
+}
+
 function isHardRisk(flags) {
   return flags.some((flag) => (
     flag === 'non_usd_price' ||
     flag === 'high_price_review' ||
     flag === 'not_in_stock' ||
+    flag === 'duplicate_canonical_identity_review' ||
     flag === 'regulated_claim_review' ||
     flag === 'wellness_or_supplement' ||
     flag === 'sunscreen_regulated' ||
@@ -628,11 +666,14 @@ async function main() {
   ].map(normalizeDomain)).filter((domain) => domain && !BLOCKED_DOMAINS.has(domain)).sort();
   const externalIds = discoverArtifactExternalIds().sort();
   const rows = await fetchRows(domains, externalIds);
+  const rowEntries = rows.map((row) => ({ row, facts: seedFacts(row) }));
+  const duplicateCanonicalPendingIds = buildDuplicateCanonicalPendingIdSet(rowEntries);
 
-  const productRows = rows.map((row) => {
-    const facts = seedFacts(row);
+  const productRows = rowEntries.map(({ row, facts }) => {
     const kind = productKind(facts);
     const flags = contentFlags(facts, kind);
+    const duplicateCanonicalIdentityReview = duplicateCanonicalPendingIds.has(asText(row.external_product_id));
+    if (duplicateCanonicalIdentityReview) flags.push('duplicate_canonical_identity_review');
     const hardRisk = isHardRisk(flags);
     const sourceGap = hasSourceGap(flags);
     const intel = productIntelStatus(row);
@@ -671,6 +712,7 @@ async function main() {
       has_image: Boolean(facts.image_url),
       has_full_inci: Boolean(facts.ingredients),
       has_how_to: Boolean(facts.how_to_use),
+      duplicate_canonical_identity_review: duplicateCanonicalIdentityReview,
       hard_risk: hardRisk,
       source_gap: sourceGap,
       quality_flags: flags.join('|'),
@@ -796,6 +838,7 @@ async function main() {
     'has_image',
     'has_full_inci',
     'has_how_to',
+    'duplicate_canonical_identity_review',
     'hard_risk',
     'source_gap',
     'quality_flags',

@@ -1,0 +1,90 @@
+{
+  "generated_at": "2026-05-28T01:15:54.124Z",
+  "source": "pdp_module_value_quality_audit_v1",
+  "query": {
+    "sig": "",
+    "externalProductId": "ext_37711c1df803ce80b791b2c5",
+    "brand": "",
+    "domain": "",
+    "market": "US",
+    "limit": 0,
+    "out": "/private/tmp/pivota-agent-expand-coverage-20260528/reports/markato_expansion_status_20260524/wave33_medicube_identity_refresh_20260528/live_pdp_modules_audit_after_identity_refresh.json",
+    "includeInactive": false
+  },
+  "summary": {
+    "scanned": 1,
+    "by_bucket": [
+      {
+        "key": "pass",
+        "count": 1
+      }
+    ],
+    "by_reason": [],
+    "by_module": [],
+    "top_brands": [
+      {
+        "key": "Medicube",
+        "count": 1
+      }
+    ],
+    "top_domains": [
+      {
+        "key": "medicube.us",
+        "count": 1
+      }
+    ]
+  },
+  "rows": [
+    {
+      "product_key": "prod::external_seed::external_seed::ext_37711c1df803ce80b791b2c5",
+      "pivota_signature_id": "sig_3bba045e1627f41cd1163b3f0e548c9d",
+      "external_product_id": "ext_37711c1df803ce80b791b2c5",
+      "title": "Collagen Night Wrapping Mask",
+      "brand": "Medicube",
+      "domain": "medicube.us",
+      "market": "US",
+      "category_path": "beauty/skincare/treat/mask",
+      "canonical_url": "https://medicube.us/products/collagen-night-wrapping-mask",
+      "bucket": "pass",
+      "issue_count": 0,
+      "module_status": {
+        "variant_label_count": 10,
+        "variant_labels_sample": [
+          "1 Pack",
+          "Pack: 1 Pack",
+          "2 PACK(+GIFT)",
+          "Pack: 2 PACK(+GIFT)",
+          "Collagen & Kojic Acid Bundle (2 PACK)",
+          "Pack: Collagen & Kojic Acid Bundle (2 PACK)",
+          "Collagen & PDRN Bundle (2 PACK)",
+          "Pack: Collagen & PDRN Bundle (2 PACK)",
+          "Collagen&Milk Bundle (2PACK)",
+          "Pack: Collagen&Milk Bundle (2PACK)"
+        ],
+        "variant_count": 15,
+        "image_count": 19,
+        "root_image_count": 14,
+        "variant_image_count": 19,
+        "image_hosts_sample": [
+          "medicube.us"
+        ],
+        "ingredient_applicability_status": "",
+        "ingredient_applicability_evidence": [],
+        "ingredient_component_refs_status": "",
+        "ingredient_component_refs_count": 0,
+        "ingredient_component_refs_sample": [],
+        "ingredient_texts_sample": [
+          "Water, Polyvinyl Alcohol, Glycerin, Agave Americana Stem Extract, Niacinamide, Sodium Hyaluronate, 1,2-Hexanediol, Caprylyl Glycol, Polyglyceryl-10 Laurate, Chlorella Vulgaris Extract, Glucose, Butylene Glycol, Ethylhexylglycerin, Fructooligosaccharides, Fructose, Adenosine, Xanthan Gum, Cynanchum Atratum Extract, Caprylic/Capric Triglyceride, Hydrogenated Lecithin, Althaea Rosea Flower Extract, Ceramide NP, Tocopherol, Pancratium Maritimum Extract, Collagen Extract, Sodium Stearoyl Glutamate"
+        ],
+        "how_to_texts_sample": [
+          "After cleansing, apply toner and cream first. Apply an even layer of the wrapping mask to the face, avoiding the eyebrows, hairline, eyes, and lips. Let it dry before going to sleep. The next morning, peel from the edges or rinse thoroughly with lukewarm water."
+        ],
+        "detail_section_count": 3,
+        "intel_kb_key": "product:ext_37711c1df803ce80b791b2c5",
+        "review_count": 0,
+        "qna_count": 0
+      },
+      "issues": []
+    }
+  ]
+}

@@ -1,0 +1,67 @@
+{
+  "generated_at": "2026-05-28T01:15:56.025Z",
+  "market": "US",
+  "include_non_public": false,
+  "docs_built": 1,
+  "source_build_failures": [],
+  "docs": [
+    {
+      "doc_id": "sellable:sig_3bba045e1627f41cd1163b3f0e548c9d",
+      "sellable_item_group_id": "sig_3bba045e1627f41cd1163b3f0e548c9d",
+      "product_line_id": "pl_6a9b150dea4c1d6a6b169dd3",
+      "review_family_id": "rf_6a9b150dea4c1d6a6b169dd3",
+      "brand_name": "Medicube",
+      "category_paths": [
+        "Treatment"
+      ],
+      "market": "US",
+      "availability_state": "available",
+      "publish_state": "public",
+      "title": "Collagen Night Wrapping Mask",
+      "subtitle": "New Look, Same Radiance!\nThe same iconic formula for glass skin, now in a sleek new package.",
+      "variant_axes": {
+        "multi_variant": true
+      },
+      "size": null,
+      "shade": null,
+      "pack": null,
+      "hero_media": {
+        "url": "https://medicube.us/cdn/shop/files/00_6d878aff-381d-4cd6-b9e1-d8b924225025.jpg?v=1766713832",
+        "source_kind": "catalog",
+        "source_tier": "catalog"
+      },
+      "preview_media": [
+        "https://medicube.us/cdn/shop/files/00_6d878aff-381d-4cd6-b9e1-d8b924225025.jpg?v=1766713832",
+        "https://medicube.us/cdn/shop/files/1_8eebab8c-2116-446e-a6bb-39bc668f24e9.jpg?v=1767079139",
+        "https://medicube.us/cdn/shop/files/01_1823c050-4a1c-4a12-ae1c-8a03cf397278.jpg?v=1768382747",
+        "https://medicube.us/cdn/shop/files/02_7030e20a-fe58-4f7b-80ac-8d98b1d6801e.jpg?v=1766713832",
+        "https://medicube.us/cdn/shop/files/03_870b4175-779e-4b15-823a-df0b1d50b618.jpg?v=1766713832",
+        "https://medicube.us/cdn/shop/files/04_f2aa19f0-a804-4ce5-be0e-e201bfe1af5a.jpg?v=1768382747",
+        "https://medicube.us/cdn/shop/files/05_05511a3e-fec4-47e2-a62d-8736f6bfa830.jpg?v=1768382747",
+        "https://medicube.us/cdn/shop/files/img_a3833906-160c-4dbc-9d21-00949d12c3ee.webp?v=1766713832"
+      ],
+      "price_min": 24,
+      "price_max": 24,
+      "default_offer_id": "external_seed:ext_37711c1df803ce80b791b2c5",
+      "internal_offer_exists": false,
+      "external_offer_exists": true,
+      "pivota_insight_status": "available",
+      "pivota_insight_summary": "An overnight-style wrapping mask for glass-skin glow, hydration, and fine-line care, with polyvinyl alcohol film-forming cues plus niacinamide, sodium hyaluronate, glycerin, ceramide NP, and collagen extract.",
+      "quality_score": null,
+      "browse_score": null,
+      "facet_tokens": [
+        "Medicube",
+        "Treatment"
+      ],
+      "sort_keys": {
+        "price_min": 24,
+        "price_max": 24,
+        "updated_at": null
+      },
+      "updated_at": null,
+      "source_refs": [
+        "external_seed:ext_37711c1df803ce80b791b2c5"
+      ]
+    }
+  ]
+}

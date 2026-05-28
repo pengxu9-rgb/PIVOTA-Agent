@@ -1,0 +1,95 @@
+{
+  "status": "success",
+  "mode": "dry_run",
+  "generated_at": "2026-05-28T01:15:16.186Z",
+  "external_product_ids": [
+    "ext_37711c1df803ce80b791b2c5"
+  ],
+  "options": {
+    "allow_reviewed_product_line_singletons": true,
+    "allow_official_url_exact_conflict_cleanup": false
+  },
+  "rows_seen": 1,
+  "missing_ids": [],
+  "align_ready_count": 1,
+  "already_aligned_count": 0,
+  "held_count": 0,
+  "applied": {
+    "override_upserts": 0,
+    "identity_rows_updated": 0
+  },
+  "blockers": [],
+  "plans": [
+    {
+      "action": "align_ready",
+      "blockers": [],
+      "product_key": "prod::external_seed::external_seed::ext_37711c1df803ce80b791b2c5",
+      "source_listing_ref": "external_seed:ext_37711c1df803ce80b791b2c5",
+      "external_product_id": "ext_37711c1df803ce80b791b2c5",
+      "title": "Collagen Night Wrapping Mask",
+      "brand": "Medicube",
+      "canonical_url": "https://medicube.us/products/collagen-night-wrapping-mask",
+      "product_group_id": "pg_catalog_26f40d65713f6edd",
+      "is_primary": true,
+      "content_key": "ck_4a7c7516e4c28e1b9961f699ee27d3e9",
+      "catalog_sig_id": "sig_3bba045e1627f41cd1163b3f0e548c9d",
+      "catalog_sig_url": "https://agent.pivota.cc/products/sig_3bba045e1627f41cd1163b3f0e548c9d",
+      "identity_sig_id_before": "sig_9de5222d7a58910af53fd2f0",
+      "product_line_id": "pl_6a9b150dea4c1d6a6b169dd3",
+      "review_family_id": "rf_6a9b150dea4c1d6a6b169dd3",
+      "identity_status_before": "review_required",
+      "live_read_enabled_before": false,
+      "review_required_before": true,
+      "review_reason_codes_before": [
+        "multi_variant_exact_item_unresolved",
+        "insufficient_exact_item_evidence"
+      ],
+      "reviewed_product_line_singleton": {
+        "eligible": true,
+        "blockers": [],
+        "evidence": {
+          "source_tier": "brand",
+          "matched_by_rule": "singleton_source_ref",
+          "review_reason_codes": [
+            "multi_variant_exact_item_unresolved",
+            "insufficient_exact_item_evidence"
+          ],
+          "variant_axes": {
+            "multi_variant": true
+          },
+          "official_url": "https://medicube.us/products/collagen-night-wrapping-mask",
+          "canonical_url": "https://medicube.us/products/collagen-night-wrapping-mask",
+          "seed_canonical_url": "https://medicube.us/products/collagen-night-wrapping-mask",
+          "title": "Collagen Night Wrapping Mask",
+          "seed_title": "Collagen Night Wrapping Mask"
+        }
+      },
+      "reviewed_official_url_exact_conflict_cleanup": {
+        "eligible": false,
+        "blockers": [
+          "flag_not_enabled",
+          "unexpected_matched_by_rule",
+          "missing_conflicting_official_url_review_reason",
+          "unsupported_review_reason_codes"
+        ],
+        "evidence": {
+          "source_tier": "brand",
+          "matched_by_rule": "singleton_source_ref",
+          "review_reason_codes": [
+            "multi_variant_exact_item_unresolved",
+            "insufficient_exact_item_evidence"
+          ],
+          "variant_axes": {
+            "multi_variant": true
+          },
+          "official_url": "https://medicube.us/products/collagen-night-wrapping-mask",
+          "canonical_url": "https://medicube.us/products/collagen-night-wrapping-mask",
+          "seed_canonical_url": "https://medicube.us/products/collagen-night-wrapping-mask",
+          "title": "Collagen Night Wrapping Mask",
+          "seed_title": "Collagen Night Wrapping Mask"
+        }
+      },
+      "needs_update": true
+    }
+  ]
+}

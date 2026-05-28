@@ -1,0 +1,204 @@
+{
+  "generated_at": "2026-05-28T01:15:54.038Z",
+  "options": {
+    "market": "US",
+    "includeAttached": true,
+    "domain": null,
+    "externalProductIds": [
+      "ext_37711c1df803ce80b791b2c5"
+    ],
+    "limit": 20000,
+    "sampleLimit": 10,
+    "checkpointDir": "/private/tmp/pivota-agent-expand-coverage-20260528/reports/markato_expansion_status_20260524/wave33_medicube_identity_refresh_20260528/readiness_after_identity_refresh/pdp_readiness_checkpoint",
+    "checkpointMode": "domain",
+    "resume": false,
+    "force": false,
+    "continueOnError": true,
+    "pageSize": 500,
+    "format": "json"
+  },
+  "warnings": [],
+  "summary": {
+    "scanned": 1,
+    "by_market": {
+      "US": 1
+    },
+    "by_domain": [
+      {
+        "key": "medicube.us",
+        "count": 1
+      }
+    ],
+    "by_product_family": [
+      {
+        "key": "set_or_collection",
+        "count": 1
+      }
+    ],
+    "coverage": {
+      "missing_inci": 0,
+      "missing_active_raw": 0,
+      "missing_details": 0,
+      "missing_how_to": 0,
+      "missing_faq": 1
+    },
+    "pivota_insights": {
+      "direct": {
+        "displayable": 1,
+        "high_quality_ready": 1,
+        "missing_kb": 0,
+        "not_displayable": 0
+      },
+      "effective": {
+        "displayable": 1,
+        "high_quality_ready": 1,
+        "missing_kb": 0,
+        "not_displayable": 0,
+        "borrowed_from_sibling": 0
+      },
+      "effective_issues": [],
+      "effective_issue_domains": [],
+      "quality_state": [
+        {
+          "key": "verified",
+          "count": 1
+        }
+      ],
+      "evidence_profile": [
+        {
+          "key": "seller_plus_formula",
+          "count": 1
+        }
+      ],
+      "samples": {}
+    },
+    "active_ingredients": {
+      "regulatory_expected": 0,
+      "hero_expected": 0,
+      "any_active_items": 0,
+      "status": [
+        {
+          "key": "not_applicable_product_family",
+          "count": 1
+        }
+      ],
+      "issues": [],
+      "issue_domains": [],
+      "source_origin": [
+        {
+          "key": "none",
+          "count": 1
+        }
+      ],
+      "samples": {}
+    },
+    "variants": {
+      "status": [
+        {
+          "key": "ready",
+          "count": 1
+        }
+      ],
+      "issues": [],
+      "issue_domains": [],
+      "samples": {}
+    }
+  },
+  "rows": [
+    {
+      "seed_id": "eps_e67d5c9f7068957e23321697",
+      "external_product_id": "ext_37711c1df803ce80b791b2c5",
+      "market": "US",
+      "domain": "medicube.us",
+      "title": "Collagen Night Wrapping Mask",
+      "canonical_url": "https://medicube.us/products/collagen-night-wrapping-mask",
+      "product_family": "set_or_collection",
+      "product_line_id": "pl_6a9b150dea4c1d6a6b169dd3",
+      "identity_variant_axes": {
+        "multi_variant": true
+      },
+      "pivota_insights": {
+        "direct": {
+          "product_id": "ext_37711c1df803ce80b791b2c5",
+          "kb_key": "product:ext_37711c1df803ce80b791b2c5",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "verified",
+          "evidence_profile": "seller_plus_formula",
+          "has_card_highlight": true
+        },
+        "effective": {
+          "product_id": "ext_37711c1df803ce80b791b2c5",
+          "kb_key": "product:ext_37711c1df803ce80b791b2c5",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "verified",
+          "evidence_profile": "seller_plus_formula",
+          "has_card_highlight": true
+        },
+        "product_line_id": "pl_6a9b150dea4c1d6a6b169dd3",
+        "borrowed_from_sibling": false
+      },
+      "active_ingredients": {
+        "status": "not_applicable_product_family",
+        "issues": [],
+        "regulatory_expected": false,
+        "hero_expected": false,
+        "active_items": [],
+        "source_origin": "none",
+        "source_quality_status": "blocked",
+        "coverage": {
+          "details_sections_count": 2,
+          "faq_count": 0,
+          "how_to_chars": 261,
+          "inci_chars": 497,
+          "active_ingredients_chars": 61,
+          "inci_applicability_status": "",
+          "ingredient_review_status": "",
+          "ingredient_remediation_action": "",
+          "bundle_component_refs_count": 0,
+          "effective_inci_chars": 497,
+          "inci_borrowed_from_product_id": ""
+        },
+        "invalid_fragments": [],
+        "suppressed_reason": "set_or_collection"
+      },
+      "variants": {
+        "status": "ready",
+        "issues": [],
+        "visible_variant_rows": 5,
+        "examples": {
+          "identity_option_visible": [],
+          "wrong_axis_for_category": [],
+          "makeup_shade_missing_visual": [],
+          "size_value_generic_axis": [],
+          "default_option_size_evidence_missing_axis": [],
+          "identity_default_title_axis": []
+        }
+      },
+      "coverage": {
+        "details_sections_count": 2,
+        "faq_count": 0,
+        "how_to_chars": 261,
+        "inci_chars": 497,
+        "active_ingredients_chars": 61,
+        "inci_applicability_status": "",
+        "ingredient_review_status": "",
+        "ingredient_remediation_action": "",
+        "bundle_component_refs_count": 0,
+        "effective_inci_chars": 497,
+        "inci_borrowed_from_product_id": ""
+      }
+    }
+  ]
+}
