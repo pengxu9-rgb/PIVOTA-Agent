@@ -9174,6 +9174,113 @@ describe('discovery feed service', () => {
     );
   });
 
+  test('beauty interest mainline expands external seeds before products search when recent views underfill browse slots', async () => {
+    delete process.env.DISCOVERY_PRODUCTS_SEARCH_BASE_URL;
+    delete process.env.DISCOVERY_PRODUCTS_SEARCH_API_KEY;
+    delete process.env.PIVOTA_BACKEND_BASE_URL;
+    delete process.env.PIVOTA_API_BASE;
+    delete process.env.PIVOTA_API_KEY;
+
+    const beautyMainlineProducts = [
+      makeProduct({
+        merchant_id: 'external_seed',
+        product_id: 'recent_seed',
+        title: 'Recently Viewed Daily Sunscreen',
+        brand: 'Recent SPF',
+        category: 'Skincare',
+        product_type: 'Sunscreen',
+      }),
+      ...Array.from({ length: 5 }, (_, idx) =>
+        makeProduct({
+          merchant_id: 'external_seed',
+          product_id: `fresh_spf_${idx + 1}`,
+          title: `Fresh Daily Sunscreen ${idx + 1}`,
+          brand: `Fresh SPF ${idx + 1}`,
+          category: 'Skincare',
+          product_type: 'Sunscreen',
+        }),
+      ),
+    ];
+    const externalSeedSpy = jest.fn(async () => [
+      makeProduct({
+        merchant_id: 'external_seed',
+        product_id: 'external_fill_spf',
+        title: 'External Fill Daily Sunscreen',
+        brand: 'External SPF',
+        category: 'Skincare',
+        product_type: 'Sunscreen',
+      }),
+    ]);
+    const internalSpy = jest.fn(async () => [
+      makeProduct({
+        merchant_id: 'm_internal',
+        product_id: 'internal_spf',
+        title: 'Internal Daily Sunscreen',
+        brand: 'Internal SPF',
+        category: 'Skincare',
+        product_type: 'Sunscreen',
+      }),
+    ]);
+
+    const response = await getDiscoveryFeed(
+      {
+        surface: 'browse_products',
+        page: 1,
+        limit: 6,
+        debug: true,
+        context: {
+          auth_state: 'authenticated',
+          recent_views: [
+            {
+              merchant_id: 'external_seed',
+              product_id: 'recent_seed',
+              title: 'Recently Viewed Daily Sunscreen',
+              brand: 'Recent SPF',
+              category: 'Skincare',
+              product_type: 'Sunscreen',
+              viewed_at: '2026-04-04T10:00:00Z',
+            },
+          ],
+          recent_queries: ['daily sunscreen'],
+        },
+      },
+      {
+        providerOverrides: {
+          beauty_interest_mainline: async () => beautyMainlineProducts,
+          external_seeds: externalSeedSpy,
+          internal_catalog: internalSpy,
+        },
+      },
+    );
+
+    expect(response.products).toHaveLength(6);
+    expect(response.products.map((product) => product.product_id)).not.toContain('recent_seed');
+    expect(response.products.map((product) => product.product_id)).toContain('external_fill_spf');
+    expect(externalSeedSpy).toHaveBeenCalledTimes(1);
+    expect(internalSpy).not.toHaveBeenCalled();
+    expect(response.metadata.candidate_source).toBe('beauty_interest_mainline+multi_provider');
+    expect(response.metadata.primary_path_used).toBe('beauty_interest_mainline');
+    expect(response.metadata.fallback_triggered).toBe(true);
+    expect(response.metadata.fallback_reason).toBe('beauty_interest_mainline_insufficient');
+    expect(response.metadata.provider_breakdown).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ provider: 'beauty_interest_mainline', successful: true, returned: 6 }),
+        expect.objectContaining({ provider: 'products_search', skipped: true }),
+        expect.objectContaining({ provider: 'internal_catalog', skipped: true }),
+        expect.objectContaining({ provider: 'external_seeds', successful: true, returned: 1 }),
+      ]),
+    );
+    expect(response.metadata.rank_debug.recall_summary).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          provider: 'products_search',
+          skipped: true,
+          skip_reason: 'beauty_interest_external_seed_expansion_sufficient',
+        }),
+      ]),
+    );
+  });
+
   test('beauty interest mainline expands providers when authority identity dedupe underfills display slots', async () => {
     process.env.DISCOVERY_PRODUCTS_SEARCH_BASE_URL = 'http://discovery-catalog.test';
     process.env.PIVOTA_BACKEND_BASE_URL = 'http://wrong-backend.test';

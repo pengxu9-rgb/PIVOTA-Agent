@@ -6763,11 +6763,21 @@ function isHighQualityProviderCandidate(candidate, request, profile) {
   return candidate.domain !== 'pet' && candidate.domain !== 'sleepwear';
 }
 
+function buildRecentViewKeySet(request) {
+  return new Set(
+    (Array.isArray(request?.context?.recent_views) ? request.context.recent_views : [])
+      .map((view) => buildProductKey(view?.merchant_id, view?.product_id))
+      .filter(Boolean),
+  );
+}
+
 function countHighQualityProviderCandidates(products = [], { request, profile } = {}) {
+  const viewedKeys = buildRecentViewKeySet(request);
   let count = 0;
   for (let idx = 0; idx < products.length; idx += 1) {
     const candidate = normalizeCandidateProduct(products[idx], idx);
     if (!candidate) continue;
+    if (viewedKeys.has(candidate.key)) continue;
     if (isHighQualityProviderCandidate(candidate, request, profile)) count += 1;
   }
   return count;
@@ -6944,6 +6954,7 @@ async function loadCatalogCandidates({
   let primaryPathUsed = useBeautyInterestMainline ? 'beauty_interest_mainline' : 'multi_provider';
   let fallbackTriggered = false;
   let fallbackReason = null;
+  let externalSeedsProviderLoaded = false;
   const explicitQueryScoped = isExplicitQueryScopedBrowseRequest(request);
   const compoundIntent = explicitQueryScoped
     ? resolveExplicitBeautyCompoundIntent(request?.query?.text)
@@ -7037,6 +7048,42 @@ async function loadCatalogCandidates({
       return buildProviderErrorResult('products_search', err);
     }
   };
+
+  async function loadExternalSeedProviderResult() {
+    try {
+      const externalResult = explicitQueryScoped
+        ? await fetchBeautyInterestExternalSeedFastpathCandidates({
+            request,
+            profile,
+            queries: externalProviderQueries,
+            limit: externalProviderLimit,
+            fetchFn: providerOverrides?.external_seeds || null,
+            providerName: 'external_seeds',
+            productProvider: 'external_seeds',
+            stepName: 'external_seed_pool',
+            label: 'external_seed_pool',
+          })
+        : await fetchExternalSeedCandidates({
+            request,
+            profile,
+            queries: externalProviderQueries,
+            limit: externalProviderLimit,
+            fetchFn: providerOverrides?.external_seeds || null,
+          });
+      return {
+        provider: 'external_seeds',
+        products: externalResult.products,
+        recallSummary: externalResult.recallSummary,
+      };
+    } catch (err) {
+      return buildProviderErrorResult('external_seeds', err);
+    }
+  }
+
+  async function fetchExternalSeedProviderResult() {
+    appendProviderResult(await loadExternalSeedProviderResult());
+    externalSeedsProviderLoaded = true;
+  }
 
   const finalizeProviderResult = () => {
     const recallSummary = providerResults.flatMap((result) =>
@@ -7317,6 +7364,42 @@ async function loadCatalogCandidates({
     return finalizeProviderResult();
   }
 
+  const shouldTryBeautyInterestExternalSeedExpansionFirst =
+    useBeautyInterestMainline &&
+    !explicitQueryScoped &&
+    isGenericPersonalizedDiscoveryRequest(request, profile) &&
+    mergedProducts.length >= primaryPathEnoughThreshold;
+  if (shouldTryBeautyInterestExternalSeedExpansionFirst) {
+    await fetchExternalSeedProviderResult();
+    const externalExpandedSufficiencyProducts = await resolveIdentityAwareSufficiencyProducts(mergedProducts);
+    if (
+      hasSufficientProviderCandidates(externalExpandedSufficiencyProducts, {
+        request,
+        profile,
+        enoughThreshold: primaryPathEnoughThreshold,
+        qualityThreshold,
+      })
+    ) {
+      providerResults.push(
+        buildSkippedProviderResult('products_search', {
+          label: getProviderLabel('products_search'),
+          query: providerQueries.join(' | '),
+          limit: safeLimit,
+          skipReason: 'beauty_interest_external_seed_expansion_sufficient',
+        }),
+      );
+      providerResults.push(
+        buildSkippedProviderResult('internal_catalog', {
+          label: getProviderLabel('internal_catalog'),
+          query: providerQueries.join(' | '),
+          limit: internalProviderLimit,
+          skipReason: 'beauty_interest_external_seed_expansion_sufficient',
+        }),
+      );
+      return finalizeProviderResult();
+    }
+  }
+
   if (compoundIntent) {
     providerResults.push(
       buildSkippedProviderResult('products_search', {
@@ -7408,22 +7491,14 @@ async function loadCatalogCandidates({
     return finalizeProviderResult();
   }
 
-  const shouldSkipInternal =
-    useBeautyInterestMainline &&
-    hasSufficientProviderCandidates(mergedProducts, {
-      request,
-      profile,
-      enoughThreshold,
-      qualityThreshold,
-    });
-  const shouldSkipExternalSeeds =
-    useBeautyInterestMainline ||
-    hasSufficientProviderCandidates(mergedProducts, {
-      request,
-      profile,
-      enoughThreshold,
-      qualityThreshold,
-    });
+  const hasEnoughMergedProviderCandidates = hasSufficientProviderCandidates(mergedProducts, {
+    request,
+    profile,
+    enoughThreshold,
+    qualityThreshold,
+  });
+  const shouldSkipInternal = useBeautyInterestMainline && hasEnoughMergedProviderCandidates;
+  const shouldSkipExternalSeeds = hasEnoughMergedProviderCandidates;
 
   const pushSkippedInternalProviderResult = (skipReason) => {
     providerResults.push(
@@ -7466,41 +7541,6 @@ async function loadCatalogCandidates({
     } catch (err) {
       providerResults.push(buildProviderErrorResult('internal_catalog', err));
     }
-  };
-
-  const loadExternalSeedProviderResult = async () => {
-    try {
-      const externalResult = explicitQueryScoped
-        ? await fetchBeautyInterestExternalSeedFastpathCandidates({
-            request,
-            profile,
-            queries: externalProviderQueries,
-            limit: externalProviderLimit,
-            fetchFn: providerOverrides?.external_seeds || null,
-            providerName: 'external_seeds',
-            productProvider: 'external_seeds',
-            stepName: 'external_seed_pool',
-            label: 'external_seed_pool',
-          })
-        : await fetchExternalSeedCandidates({
-            request,
-            profile,
-            queries: externalProviderQueries,
-            limit: externalProviderLimit,
-            fetchFn: providerOverrides?.external_seeds || null,
-          });
-      return {
-        provider: 'external_seeds',
-        products: externalResult.products,
-        recallSummary: externalResult.recallSummary,
-      };
-    } catch (err) {
-      return buildProviderErrorResult('external_seeds', err);
-    }
-  };
-
-  const fetchExternalSeedProviderResult = async () => {
-    appendProviderResult(await loadExternalSeedProviderResult());
   };
 
   const externalSkipReason = useBeautyInterestMainline
@@ -7601,7 +7641,11 @@ async function loadCatalogCandidates({
     await fetchInternalProviderResult();
   }
 
-  if (shouldSkipExternalSeeds) {
+  if (externalSeedsProviderLoaded) {
+    // External seeds were already loaded as the first expansion path for an
+    // underfilled beauty-interest mainline. Avoid adding a duplicate provider
+    // result because provider breakdown uses the first provider entry.
+  } else if (shouldSkipExternalSeeds) {
     pushSkippedExternalSeedProviderResult(externalSkipReason);
   } else {
     await fetchExternalSeedProviderResult();
