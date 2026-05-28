@@ -4,6 +4,7 @@ const { query } = require('../../db');
 const repository = require('./repository');
 const { STATUSES, BookingTransitionError, requireTransition } = require('./state');
 const { runNotifyOnce } = require('./notifyWorker');
+const { getProviderById } = require('../servicesSearch');
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const DEFAULT_LIMIT = 20;
@@ -332,7 +333,22 @@ const getBooking = wrap(async (req, res) => {
 
   const queryUserId = cleanString(req.query?.user_id);
   const canSeeFull = hasAdminToken(req) || (queryUserId && queryUserId === booking.user_id);
-  return res.json(canSeeFull ? booking : sanitizePublicBooking(booking));
+  const view = canSeeFull ? booking : sanitizePublicBooking(booking);
+
+  // Enrich with the provider + booked listing so the confirmation UI renders
+  // from a single fetch (no second round-trip from the client).
+  try {
+    const provider = await getProviderById(booking.provider_id);
+    const listings = provider
+      ? (provider.matching_listings || provider.service_listings || [])
+      : [];
+    const listing =
+      listings.find((l) => (l.listing_id || l.id) === booking.listing_id) || listings[0] || null;
+    return res.json({ ...view, provider: provider || null, listing });
+  } catch (err) {
+    logger.warn({ error_name: err?.name, booking_id: bookingId }, 'Failed to enrich booking with provider');
+    return res.json(view);
+  }
 });
 
 const listBookings = wrap(async (req, res) => {
