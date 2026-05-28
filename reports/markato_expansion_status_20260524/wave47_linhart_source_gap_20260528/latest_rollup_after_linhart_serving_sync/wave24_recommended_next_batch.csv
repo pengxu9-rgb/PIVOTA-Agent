@@ -1,0 +1,3 @@
+domain,brand,external_product_id,title,product_kind,recommended_lane,catalog_attached,index_serving_eligible,identity_ready,product_intel_high_quality,price_amount,price_currency,availability,description_len,has_image,has_full_inci,has_how_to,duplicate_canonical_identity_review,hard_risk,source_gap,quality_flags,canonical_url
+missnella.com,Miss Nella,ext_33466da0907b256ffc53783b,Blush,beauty_formula,identity_refresh,true,false,false,false,5.99,USD,in_stock,326,true,true,true,false,false,false,,https://www.missnella.com/products/blush
+missnella.com,Miss Nella,ext_e9e3fba6b05911bba1bfe71e,Eye Shadow,beauty_formula,identity_refresh,true,false,false,false,5.99,USD,in_stock,290,true,true,true,false,false,false,,https://www.missnella.com/products/eye-shadow

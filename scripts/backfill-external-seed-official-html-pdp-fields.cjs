@@ -2913,6 +2913,89 @@ function extractGenericOfficialShopifyFields(html, options = {}) {
   return fields;
 }
 
+function findLinhartProductBlock(html, options = {}) {
+  const pageText = cleanSectionText(html).replace(/\s+/g, ' ').trim();
+  const productTitle = normalizeText(options.productTitle);
+  if (!pageText || !productTitle) return pageText;
+
+  const lowerText = pageText.toLowerCase();
+  const titleCandidates = [
+    productTitle,
+    productTitle.replace(/\s+-\s+new\s+arrival!?\s*$/i, ''),
+    productTitle.replace(/\s+\d+(?:\.\d+)?\s*(?:ml|oz)\b/gi, ''),
+  ]
+    .map((item) => normalizeText(item).toLowerCase())
+    .filter((item, index, values) => item && values.indexOf(item) === index);
+
+  const starts = [];
+  for (const candidate of titleCandidates) {
+    let index = lowerText.indexOf(candidate);
+    while (index >= 0) {
+      starts.push(index);
+      index = lowerText.indexOf(candidate, index + candidate.length);
+    }
+  }
+  if (!starts.length) return pageText;
+
+  starts.sort((a, b) => a - b);
+  const productStart =
+    starts.find((start) => /(?:ingredients|formula\s+&\s+ingredients|how\s+to\s+use)/i.test(pageText.slice(start, start + 7000))) ||
+    starts[0];
+  return pageText.slice(productStart, productStart + 11000);
+}
+
+function extractLinhartSection(block, headingPattern, stopPattern) {
+  const heading = headingPattern.source;
+  const stop = stopPattern.source;
+  const match = new RegExp(`(?:${heading})\\s*([\\s\\S]*?)(?=\\s*(?:${stop})\\b|$)`, 'i').exec(block);
+  return normalizeText(match?.[1] || '');
+}
+
+function extractLinhartFields(html, options = {}) {
+  const fields = extractGenericOfficialShopifyFields(html, options);
+  const block = findLinhartProductBlock(html, options);
+  if (!block) return fields;
+
+  if (!fields.pdp_description_raw) {
+    const metaDescription = cleanSectionText(extractMetaContent(html, 'description') || extractMetaContent(html, 'og:description'));
+    if (metaDescription.length >= 60) fields.pdp_description_raw = metaDescription;
+  }
+
+  const ingredients = cleanOfficialIngredientCandidate(
+    extractLinhartSection(
+      block,
+      /ingredients:/,
+      /formula\s+&\s+ingredients|how\s+to\s+use|complete\s+your\s+routine|as\s+featured\s+in|real\s+smiles|buy\s+now/,
+    ),
+  );
+  if (looksLikeFullInci(ingredients) || looksLikeShortOfficialInci(ingredients)) {
+    fields.pdp_ingredients_raw = ingredients;
+  }
+
+  const howTo = cleanOfficialHowToCandidate(
+    extractLinhartSection(
+      block,
+      /how\s+to\s+use/,
+      /complete\s+your\s+routine|as\s+featured\s+in|real\s+smiles|buy\s+now|why\s+linhart/,
+    ),
+  );
+  if (looksLikeHowToUse(howTo)) fields.pdp_how_to_use_raw = howTo;
+
+  const formulaDetails = truncateOfficialDetailText(
+    extractLinhartSection(
+      block,
+      /formula\s+&\s+ingredients/,
+      /how\s+to\s+use|complete\s+your\s+routine|as\s+featured\s+in|real\s+smiles|buy\s+now/,
+    ),
+  );
+  const details = [...asArray(fields.pdp_details_sections)];
+  if (formulaDetails) details.push({ heading: 'Formula & Ingredients', body: formulaDetails, source_origin: 'official_linhart_replo_section' });
+  if (howTo) details.push({ heading: 'How To Use', body: howTo, source_origin: 'official_linhart_replo_section' });
+  if (details.length) fields.pdp_details_sections = mergeDetails([], details);
+
+  return fields;
+}
+
 function extractOioLabFaqSections(html) {
   const source = String(html || '');
   const starts = Array.from(source.matchAll(/<div\b[^>]*class=["'][^"']*\bfaq-item\b[^"']*["'][^>]*>/gi));
@@ -2994,6 +3077,7 @@ async function extractOfficialHtmlFields(host, html, options = {}) {
   }
   else if (host === 'tomfordbeauty.com') fields = extractTomFordFields(html, options);
   else if (host === 'rarebeauty.com') fields = extractRareFields(html, options);
+  else if (host === 'linhart.nyc') fields = extractLinhartFields(html, options);
   else if (/^(?:us|en|pl)\.oiolab\.co$/.test(host)) fields = extractOioLabFields(html, options);
   else if (GENERIC_OFFICIAL_SHOPIFY_FIELD_HOSTS.has(host)) fields = extractGenericOfficialShopifyFields(html, options);
   else if (!options.reviewSummaryOnly || !REVIEW_SUMMARY_ONLY_GENERIC_HOSTS.has(host)) return {};
@@ -3704,6 +3788,7 @@ module.exports = {
     extractTomFordFields,
     extractRareFields,
     extractGenericOfficialShopifyFields,
+    extractLinhartFields,
     extractTomFordAccordionText,
     extractOfficialShopifyVariants,
     fetchStampedReviewSummary,

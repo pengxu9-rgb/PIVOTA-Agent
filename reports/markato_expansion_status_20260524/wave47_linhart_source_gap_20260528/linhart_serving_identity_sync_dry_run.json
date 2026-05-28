@@ -1,0 +1,303 @@
+{
+  "generated_at": "2026-05-28T08:52:17.288Z",
+  "mode": "dry_run",
+  "batch_size": null,
+  "bootstrap_reviewed_identity_live_read": true,
+  "requested_ids": 1,
+  "fetched_rows": 1,
+  "mirror_rows": 1,
+  "planned_sku_rows": 1,
+  "planned_offer_rows": 1,
+  "planned_index_state_rows": 1,
+  "missing_ids": [],
+  "skipped": [],
+  "applied": {
+    "mode": "dry_run",
+    "existing_before": {
+      "catalog_products": 1,
+      "catalog_skus": 1,
+      "catalog_offers": 1,
+      "product_group_members": 1
+    },
+    "stale_delete_preview": {
+      "current_sku_rows": 2,
+      "current_offer_rows": 2,
+      "planned_stale_sku_deletes": 1,
+      "planned_stale_offer_deletes": 1,
+      "sample_stale_skus": [
+        {
+          "title": "Linhart Whitening Pen - NEW ARRIVAL!",
+          "sku_key": "prod::external_seed::external_seed::ext_c1a3aac3be37dcedc3788d6a::canonical",
+          "product_key": "prod::external_seed::external_seed::ext_c1a3aac3be37dcedc3788d6a",
+          "source_variant_id": "prod::external_seed::external_seed::ext_c1a3aac3be37dcedc3788d6a",
+          "visible_attributes": {}
+        }
+      ],
+      "sample_stale_offers": [
+        {
+          "sku_key": "prod::external_seed::external_seed::ext_c1a3aac3be37dcedc3788d6a::canonical",
+          "offer_id": "offer:external_seed:7c90319f0b8ee9c47f6bf5ed53102018",
+          "list_price": 30,
+          "product_key": "prod::external_seed::external_seed::ext_c1a3aac3be37dcedc3788d6a",
+          "merchant_effective_price": 30
+        }
+      ]
+    },
+    "batch_size": null,
+    "batches": 1,
+    "audit_reasons": {
+      "no_strong_identifier": 1
+    },
+    "product_upserts": 0,
+    "sku_upserts": 0,
+    "offer_upserts": 0,
+    "group_member_upserts": 0,
+    "group_member_preserved_existing_merges": 0,
+    "seed_attachment_updates": 0,
+    "index_state_upserts": 0,
+    "identity_live_read_updates": 0,
+    "catalog_row_trust_upserts": 0,
+    "stale_offer_deletes": 0,
+    "stale_sku_deletes": 0
+  },
+  "sample": [
+    {
+      "external_product_id": "ext_c1a3aac3be37dcedc3788d6a",
+      "product_key": "prod::external_seed::external_seed::ext_c1a3aac3be37dcedc3788d6a",
+      "product_group_id": "sig_e3b2b1bcb365f91776a53059",
+      "title": "Linhart Whitening Pen - NEW ARRIVAL!",
+      "brand": "Linhart Smile Care",
+      "product_type": "Beauty Set",
+      "category": "Beauty Set",
+      "category_path": "beauty/sets",
+      "canonical_url": "https://linhart.nyc/products/linhart-whitening-pen",
+      "pivota_signature_id": "sig_e3b2b1bcb365f91776a53059",
+      "sku_rows": 1,
+      "first_sku": {
+        "sku_key": "prod::external_seed::external_seed::ext_c1a3aac3be37dcedc3788d6a::sku_7a1801ed2f276e0ba3f7",
+        "product_key": "prod::external_seed::external_seed::ext_c1a3aac3be37dcedc3788d6a",
+        "merchant_id": "external_seed",
+        "platform": "external_seed",
+        "source_product_id": "ext_c1a3aac3be37dcedc3788d6a",
+        "source_variant_id": "ext_c1a3aac3be37dcedc3788d6a:45752177361113",
+        "source_domain": "linhart.nyc",
+        "sku": "LH-TWP-35CP",
+        "barcode": null,
+        "title": "3.4oz",
+        "currency": "USD",
+        "image_url": "https://linhart.nyc/cdn/shop/files/Whitening_Pen_package_top_off_copy_1200x1200.jpg?v=1743093020",
+        "visible_attributes": {
+          "Size": "3.4oz"
+        },
+        "visible_option_labels": {
+          "Size": "3.4oz"
+        },
+        "ingredient_ids": [],
+        "sku_payload": {
+          "source": "external_product_seeds_mirror_v1",
+          "external_product_id": "ext_c1a3aac3be37dcedc3788d6a",
+          "raw_variant_id": "45752177361113",
+          "source_variant_id": "ext_c1a3aac3be37dcedc3788d6a:45752177361113",
+          "variant_sku": "LH-TWP-35CP",
+          "barcode": null,
+          "strong_identifier_kind": null,
+          "source_url": "https://linhart.nyc/products/linhart-whitening-pen",
+          "external_redirect_url": "https://linhart.nyc/products/linhart-whitening-pen",
+          "price": "30",
+          "price_amount": 30,
+          "currency": "USD",
+          "availability": "in_stock",
+          "image_url": "https://linhart.nyc/cdn/shop/files/Whitening_Pen_package_top_off_copy_1200x1200.jpg?v=1743093020",
+          "swatch_image_url": null,
+          "label_image_url": null,
+          "options": {
+            "Size": "3.4oz"
+          },
+          "raw_variant": {
+            "sku": "LH-TWP-35CP",
+            "url": "https://linhart.nyc/products/linhart-whitening-pen?variant=45752177361113&utm_source=pivota&utm_medium=affiliate",
+            "price": "30.00",
+            "stock": "In Stock",
+            "title": "3.4oz",
+            "options": [
+              {
+                "name": "Size",
+                "value": "3.4oz"
+              }
+            ],
+            "currency": "USD",
+            "deep_link": "https://linhart.nyc/products/linhart-whitening-pen?variant=45752177361113&utm_source=pivota&utm_medium=affiliate",
+            "image_url": "https://linhart.nyc/cdn/shop/files/Whitening_Pen_package_top_off_copy_1200x1200.jpg?v=1743093020",
+            "image_urls": [
+              "https://linhart.nyc/cdn/shop/files/Whitening_Pen_package_top_off_copy_1200x1200.jpg?v=1743093020",
+              "https://linhart.nyc/cdn/shop/files/image0_3_1200x1200.jpg?v=1743093020",
+              "https://linhart.nyc/cdn/shop/files/image1_1_1200x1200.jpg?v=1743093020",
+              "https://cdn.shopify.com/s/files/1/2120/4923/files/LinhartPenMockUp-1.png?v=1743093020",
+              "https://cdn.shopify.com/s/files/1/2120/4923/files/Whitening_Pen.jpg?v=1743093020",
+              "https://cdn.shopify.com/s/files/1/2120/4923/files/Whitening_Pen_Package_2_copy.jpg?v=1743093020",
+              "https://cdn.shopify.com/s/files/1/2120/4923/files/Whitening_Pen_package_copy.jpg?v=1743093020",
+              "https://cdn.shopify.com/s/files/1/2120/4923/files/Whitening_Pen_top_off_copy.jpg?v=1743092957",
+              "https://cdn.shopify.com/s/files/1/2120/4923/files/cross_1.png?v=1622641324",
+              "https://linhart.nyc/cdn/shop/products/Toothpaste_3.4oz_200x250.jpg?v=1635346323",
+              "https://linhart.nyc/cdn/shop/products/SmileEnhancementCollection_WHWH_200x250.jpg?v=1635539718",
+              "https://linhart.nyc/cdn/shop/products/EssentialCollection_200x250.jpg?v=1635538665",
+              "https://linhart.nyc/cdn/shop/products/NanoSilverToothbrush_ORWH_200x250.jpg?v=1635537960",
+              "https://linhart.nyc/cdn/shop/products/Linhart-TravelToothpaste-3Pack-223698_200x250.jpg?v=1636753958"
+            ],
+            "variant_id": "45752177361113",
+            "option_name": "Size",
+            "product_url": "https://linhart.nyc/products/linhart-whitening-pen",
+            "option_value": "3.4oz"
+          }
+        },
+        "readiness_tier": "referral_only"
+      },
+      "first_offer": {
+        "offer_id": "offer:external_seed:1dd59de389c9b29ce6d2ea200e2161ca",
+        "sku_key": "prod::external_seed::external_seed::ext_c1a3aac3be37dcedc3788d6a::sku_7a1801ed2f276e0ba3f7",
+        "product_key": "prod::external_seed::external_seed::ext_c1a3aac3be37dcedc3788d6a",
+        "merchant_id": "external_seed",
+        "catalog_track": "external_referral",
+        "truth_tier": "observed",
+        "readiness_tier": "referral_only",
+        "offer_mode": "redirect",
+        "channel": "external_referral",
+        "availability": "in_stock",
+        "currency": "USD",
+        "list_price": 30,
+        "merchant_effective_price": 30,
+        "estimated_best_price": 30,
+        "price_confidence": 1,
+        "source_system": "external_product_seeds_mirror_v1",
+        "source_ref": "eps_f5f8b08c6e1a7f129d5fca1d",
+        "source_domain": "linhart.nyc",
+        "offer_payload": {
+          "source": "external_product_seeds_mirror_v1",
+          "external_seed_id": "eps_f5f8b08c6e1a7f129d5fca1d",
+          "external_product_id": "ext_c1a3aac3be37dcedc3788d6a",
+          "domain": "linhart.nyc",
+          "market": "US",
+          "product_title": "Linhart Whitening Pen - NEW ARRIVAL!",
+          "variant_title": "3.4oz",
+          "variant_sku": "LH-TWP-35CP",
+          "raw_variant_id": "45752177361113",
+          "url": "https://linhart.nyc/products/linhart-whitening-pen",
+          "offer_url": "https://linhart.nyc/products/linhart-whitening-pen",
+          "canonical_url": "https://linhart.nyc/products/linhart-whitening-pen",
+          "destination_url": "https://linhart.nyc/products/linhart-whitening-pen",
+          "external_redirect_url": "https://linhart.nyc/products/linhart-whitening-pen",
+          "merchant_display_name": "Linhart Smile Care",
+          "price": "30",
+          "price_amount": 30,
+          "price_currency": "USD",
+          "availability": "in_stock",
+          "commerce_facts_v1": {
+            "contract_version": "commerce_facts.v1",
+            "market_id": "US",
+            "country": "US",
+            "currency_target": "USD",
+            "source_authority": "catalog_extract_v2",
+            "captured_at": "2026-05-23T00:28:45.152Z",
+            "evidence_url": "https://linhart.nyc/products/linhart-whitening-pen",
+            "sellable_region": {
+              "status": "unknown",
+              "countries": [],
+              "evidence_source": "catalog_extract_v2",
+              "confidence": "medium",
+              "checked_at": "2026-05-23T00:28:45.152Z",
+              "reason_codes": [
+                "market_currency_observed",
+                "shipping_destination_not_verified",
+                "external_checkout_not_queried"
+              ],
+              "evidence_url": "https://linhart.nyc/products/linhart-whitening-pen"
+            },
+            "regional_price": {
+              "amount": 30,
+              "currency": "USD",
+              "display_raw": "30.00",
+              "price_type": "sale",
+              "compare_at_amount": 36,
+              "compare_at_currency": "USD",
+              "compare_at_display_raw": "36.00",
+              "tax_included": "unknown",
+              "confidence": "medium",
+              "market_switch_status": "ok",
+              "observed_currency": "USD",
+              "source_url": "https://linhart.nyc/products/linhart-whitening-pen",
+              "captured_at": "2026-05-23T00:28:45.152Z"
+            },
+            "availability": {
+              "status": "in_stock",
+              "source": "catalog_extract_v2",
+              "confidence": "medium",
+              "captured_at": "2026-05-23T00:28:45.152Z"
+            },
+            "shipping": {
+              "status": "unknown",
+              "source": "catalog_extract_v2",
+              "confidence": "unknown",
+              "reason_codes": [
+                "external_checkout_not_queried"
+              ],
+              "checked_at": "2026-05-23T00:28:45.152Z"
+            },
+            "promotions": [],
+            "returns": {
+              "status": "unknown",
+              "source": "catalog_extract_v2",
+              "confidence": "unknown",
+              "reason_codes": [
+                "external_returns_not_extracted"
+              ],
+              "checked_at": "2026-05-23T00:28:45.152Z"
+            }
+          },
+          "agent_safe_commerce_facts": {
+            "contract_version": "commerce_facts.v1",
+            "market_id": "US",
+            "price": {
+              "amount": 30,
+              "currency": "USD",
+              "display_raw": "30.00",
+              "price_type": "sale",
+              "compare_at_amount": 36,
+              "compare_at_currency": "USD",
+              "compare_at_display_raw": "36.00",
+              "tax_included": "unknown",
+              "confidence": "medium",
+              "market_switch_status": "ok",
+              "observed_currency": "USD",
+              "source_url": "https://linhart.nyc/products/linhart-whitening-pen",
+              "captured_at": "2026-05-23T00:28:45.152Z"
+            },
+            "availability": {
+              "status": "in_stock",
+              "source": "catalog_extract_v2",
+              "confidence": "medium",
+              "captured_at": "2026-05-23T00:28:45.152Z"
+            },
+            "shipping": {
+              "status": "unknown",
+              "reason": "verify_at_checkout"
+            },
+            "promotions": [],
+            "checkout_note": "Shipping and promotions are not verified for this external offer; verify at merchant checkout."
+          }
+        }
+      },
+      "serving_readiness": {
+        "servingEligible": true,
+        "contentQualityScore": 90,
+        "blockerCode": "none",
+        "blockerDetail": null,
+        "identityResolved": true,
+        "identityLiveReadResolved": false,
+        "identityBootstrapEligible": true,
+        "hasImage": true,
+        "hasPrice": true,
+        "descriptionLength": 363
+      }
+    }
+  ]
+}
