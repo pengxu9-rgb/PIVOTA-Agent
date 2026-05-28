@@ -8595,24 +8595,15 @@ async function fetchBrandScopedInternalCatalogCandidates({ brandAliases = [], li
 // Gated by env var BRAND_PAGE_USES_COMMERCE_INDEX (handled by the caller). This
 // function does not check the flag itself; it's just the canonical reader.
 //
-// `index_pipeline_state.serving_eligible=TRUE` is enforced via inner JOIN so we
-// only surface products that the pipeline has marked ready for serving. The query
-// fails open (logged warn + returns []) if the pipeline tables aren't present yet.
-function discoveryUsesCatalogRowTrust() {
-  const flag = String(process.env.DISCOVERY_USES_CATALOG_ROW_TRUST || '').trim().toLowerCase();
-  return flag === '1' || flag === 'true' || flag === 'yes' || flag === 'on';
-}
-
+// `catalog_row_trust.serving_decision='public'` is enforced via inner JOIN so we
+// only surface products the trust contract has marked ready for serving. The query
+// fails open (logged warn + returns []) if the trust table isn't present yet.
 function buildDiscoveryCatalogServingGateJoinSql(catalogAlias = 'cp') {
   const alias = String(catalogAlias || 'cp').trim() || 'cp';
-  return discoveryUsesCatalogRowTrust()
-    ? `JOIN catalog_row_trust crt
+  return `JOIN catalog_row_trust crt
         ON crt.subject_type = 'product'
        AND crt.subject_key = ${alias}.product_key
-       AND crt.serving_decision = 'public'`
-    : `JOIN index_pipeline_state ips
-        ON ips.content_key = ${alias}.content_key
-       AND ips.serving_eligible = TRUE`;
+       AND crt.serving_decision = 'public'`;
 }
 
 function buildDiscoveryAttachedSeedServingExistsSql(seedAlias = 'external_product_seeds') {
@@ -8641,19 +8632,14 @@ async function fetchBrandScopedCanonicalCandidates({ brandAliases = [], limit = 
   );
 
   const safeLimit = clampInt(limit, Math.max(limit, 120), 24, 400);
-  const useTrustContract = discoveryUsesCatalogRowTrust();
-  const gateJoinSql = useTrustContract
-    ? ''
-    : 'JOIN index_pipeline_state ips ON ips.content_key = apv.content_key';
-  const gateWhereSql = useTrustContract
-    ? `AND EXISTS (
+  const gateJoinSql = '';
+  const gateWhereSql = `AND EXISTS (
             SELECT 1 FROM catalog_products cp_trust
             JOIN catalog_row_trust crt
               ON crt.subject_type = 'product' AND crt.subject_key = cp_trust.product_key
             WHERE cp_trust.content_key = apv.content_key
               AND crt.serving_decision = 'public'
-          )`
-    : 'AND ips.serving_eligible = TRUE';
+          )`;
   try {
     const res = await query(
       `

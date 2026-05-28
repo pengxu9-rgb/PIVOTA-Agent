@@ -1,18 +1,11 @@
-function findProductsUsesCatalogRowTrust() {
-  const flag = String(process.env.FIND_PRODUCTS_USES_CATALOG_ROW_TRUST || '').trim().toLowerCase();
-  return flag === '1' || flag === 'true' || flag === 'yes' || flag === 'on';
-}
-
 function buildExternalSeedServingEligibleJoinSql() {
-  // Layer C1 Phase 3c — mirrors findProductsExternalSeedDirectRetrieval.
-  return findProductsUsesCatalogRowTrust()
-    ? `INNER JOIN catalog_row_trust crt
+  // Gate external_seed retrieval on catalog_row_trust.serving_decision='public',
+  // the single source of truth for serving eligibility (identity + source
+  // lifecycle + IPS + quarantine + tombstone composed in one place).
+  return `INNER JOIN catalog_row_trust crt
         ON crt.subject_type = 'product'
        AND crt.subject_key = cp.product_key
-       AND crt.serving_decision = 'public'`
-    : `INNER JOIN index_pipeline_state ips
-        ON ips.content_key = cp.content_key
-       AND ips.serving_eligible = TRUE`;
+       AND crt.serving_decision = 'public'`;
 }
 
 async function runExternalSeedBrandMainlineFastpath({
@@ -404,7 +397,6 @@ async function runExternalSeedBrandMainlineFastpath({
 module.exports = {
   runExternalSeedBrandMainlineFastpath,
   _internals: {
-    findProductsUsesCatalogRowTrust,
     buildExternalSeedServingEligibleJoinSql,
   },
 };

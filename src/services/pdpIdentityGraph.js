@@ -3939,11 +3939,6 @@ async function resolveLivePdpIdentityGroupForPdp({
   }
 }
 
-function pdpIdentityUsesCatalogRowTrust() {
-  const flag = String(process.env.PDP_IDENTITY_USES_CATALOG_ROW_TRUST || '').trim().toLowerCase();
-  return flag === '1' || flag === 'true' || flag === 'yes' || flag === 'on';
-}
-
 async function listLivePdpIdentityRowsForRefs({
   sourceListingRefs = [],
   queryFn = query,
@@ -3954,17 +3949,13 @@ async function listLivePdpIdentityRowsForRefs({
   const refs = uniqueStrings(sourceListingRefs, 500);
   if (!refs.length) return [];
 
-  // Layer C1 Phase 3d: when PDP_IDENTITY_USES_CATALOG_ROW_TRUST is on, gate
-  // identity rows on catalog_row_trust.serving_decision='public' (via EXISTS
-  // on source_listing_ref) instead of the legacy identity_status / live_read /
-  // active-external-seed compound predicate. The trust gate composes all of
-  // those gates plus quarantine, tombstone, IPS, sync_status, and the c1.v0.3
-  // first-party carve-out in one place — matching the contract semantics for
-  // both serving (catalogServingIndex doc builds) and dedup (discoveryFeed
-  // identity-graph candidate merging) callers.
-  const useTrustContract = pdpIdentityUsesCatalogRowTrust();
-  const sql = useTrustContract
-    ? `
+  // Gate identity rows on catalog_row_trust.serving_decision='public' (via
+  // EXISTS on source_listing_ref). The trust gate composes identity_status /
+  // live_read / active-external-seed plus quarantine, tombstone, IPS,
+  // sync_status, and the c1.v0.3 first-party carve-out in one place — matching
+  // the contract semantics for both serving (catalogServingIndex doc builds)
+  // and dedup (discoveryFeed identity-graph candidate merging) callers.
+  const sql = `
         SELECT
           pil.source_listing_ref,
           pil.merchant_id,
@@ -3987,26 +3978,6 @@ async function listLivePdpIdentityRowsForRefs({
               AND crt.source_listing_ref = pil.source_listing_ref
               AND crt.serving_decision = 'public'
           )
-      `
-    : `
-        SELECT
-          source_listing_ref,
-          merchant_id,
-          product_id,
-          source_kind,
-          source_tier,
-          live_read_enabled,
-          sellable_item_group_id,
-          product_line_id,
-          review_family_id,
-          identity_status,
-          identity_confidence,
-          match_basis
-        FROM pdp_identity_listing
-        WHERE source_listing_ref = ANY($1::text[])
-          AND identity_status = 'approved'
-          AND live_read_enabled = true
-          AND ${buildActiveExternalSeedIdentityPredicate('pdp_identity_listing')}
       `;
 
   try {
