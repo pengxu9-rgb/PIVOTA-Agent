@@ -1,0 +1,509 @@
+{
+  "generated_at": "2026-05-28T09:56:05.732Z",
+  "mode": "dry_run",
+  "batch_size": null,
+  "bootstrap_reviewed_identity_live_read": true,
+  "requested_ids": 2,
+  "fetched_rows": 2,
+  "mirror_rows": 2,
+  "planned_sku_rows": 2,
+  "planned_offer_rows": 2,
+  "planned_index_state_rows": 2,
+  "missing_ids": [],
+  "skipped": [],
+  "applied": {
+    "mode": "dry_run",
+    "existing_before": {
+      "catalog_products": 2,
+      "catalog_skus": 0,
+      "catalog_offers": 0,
+      "product_group_members": 0
+    },
+    "stale_delete_preview": {
+      "current_sku_rows": 2,
+      "current_offer_rows": 2,
+      "planned_stale_sku_deletes": 2,
+      "planned_stale_offer_deletes": 2,
+      "sample_stale_skus": [
+        {
+          "title": "‘Sweet Like Me’ Roll On Perfume",
+          "sku_key": "prod::external_seed::external_seed::ext_6f491538dbf9a790b66cf269::canonical",
+          "product_key": "prod::external_seed::external_seed::ext_6f491538dbf9a790b66cf269",
+          "source_variant_id": "prod::external_seed::external_seed::ext_6f491538dbf9a790b66cf269",
+          "visible_attributes": {}
+        },
+        {
+          "title": "‘Cool Like Me’ Roll On Perfume",
+          "sku_key": "prod::external_seed::external_seed::ext_cfbb0ca2b9d0c7b411793b0b::canonical",
+          "product_key": "prod::external_seed::external_seed::ext_cfbb0ca2b9d0c7b411793b0b",
+          "source_variant_id": "prod::external_seed::external_seed::ext_cfbb0ca2b9d0c7b411793b0b",
+          "visible_attributes": {}
+        }
+      ],
+      "sample_stale_offers": [
+        {
+          "sku_key": "prod::external_seed::external_seed::ext_6f491538dbf9a790b66cf269::canonical",
+          "offer_id": "offer:external_seed:f2ee87afc3035509d528f6a35c8e043a",
+          "list_price": 10.3,
+          "product_key": "prod::external_seed::external_seed::ext_6f491538dbf9a790b66cf269",
+          "merchant_effective_price": 10.3
+        },
+        {
+          "sku_key": "prod::external_seed::external_seed::ext_cfbb0ca2b9d0c7b411793b0b::canonical",
+          "offer_id": "offer:external_seed:d971c868d0dbdc6e6403e47ef1648cea",
+          "list_price": 10.3,
+          "product_key": "prod::external_seed::external_seed::ext_cfbb0ca2b9d0c7b411793b0b",
+          "merchant_effective_price": 10.3
+        }
+      ]
+    },
+    "batch_size": null,
+    "batches": 1,
+    "audit_reasons": {
+      "no_strong_identifier": 2
+    },
+    "product_upserts": 0,
+    "sku_upserts": 0,
+    "offer_upserts": 0,
+    "group_member_upserts": 0,
+    "group_member_preserved_existing_merges": 0,
+    "seed_attachment_updates": 0,
+    "index_state_upserts": 0,
+    "identity_live_read_updates": 0,
+    "catalog_row_trust_upserts": 0,
+    "stale_offer_deletes": 0,
+    "stale_sku_deletes": 0
+  },
+  "sample": [
+    {
+      "external_product_id": "ext_cfbb0ca2b9d0c7b411793b0b",
+      "product_key": "prod::external_seed::external_seed::ext_cfbb0ca2b9d0c7b411793b0b",
+      "product_group_id": "sig_b3d7e9d7c9189b3b76e75ce1",
+      "title": "‘Cool Like Me’ Roll On Perfume",
+      "brand": "Miss Nella",
+      "product_type": "Fragrance",
+      "category": "Fragrance",
+      "category_path": "beauty/fragrance/perfume",
+      "canonical_url": "https://www.missnella.com/products/cool-like-me-roll-on-oil-perfume",
+      "pivota_signature_id": "sig_b3d7e9d7c9189b3b76e75ce1",
+      "sku_rows": 1,
+      "first_sku": {
+        "sku_key": "prod::external_seed::external_seed::ext_cfbb0ca2b9d0c7b411793b0b::sku_101c94ca481a4e4e64b2",
+        "product_key": "prod::external_seed::external_seed::ext_cfbb0ca2b9d0c7b411793b0b",
+        "merchant_id": "external_seed",
+        "platform": "external_seed",
+        "source_product_id": "ext_cfbb0ca2b9d0c7b411793b0b",
+        "source_variant_id": "ext_cfbb0ca2b9d0c7b411793b0b:42166560194818",
+        "source_domain": "missnella.com",
+        "sku": "PCLM-1",
+        "barcode": null,
+        "title": "‘Cool Like Me’ Roll On Perfume",
+        "currency": "USD",
+        "image_url": "https://cdn.shopify.com/s/files/1/2219/3831/files/MN-1500x1500-Listings-Perfume-Sweet-like-me-1-WEB.jpg?v=1774446925",
+        "visible_attributes": {},
+        "visible_option_labels": {},
+        "ingredient_ids": [],
+        "sku_payload": {
+          "source": "external_product_seeds_mirror_v1",
+          "external_product_id": "ext_cfbb0ca2b9d0c7b411793b0b",
+          "raw_variant_id": "42166560194818",
+          "source_variant_id": "ext_cfbb0ca2b9d0c7b411793b0b:42166560194818",
+          "variant_sku": "PCLM-1",
+          "barcode": null,
+          "strong_identifier_kind": null,
+          "source_url": "https://www.missnella.com/products/cool-like-me-roll-on-oil-perfume",
+          "external_redirect_url": "https://www.missnella.com/products/cool-like-me-roll-on-oil-perfume",
+          "price": "10.3",
+          "price_amount": 10.3,
+          "currency": "USD",
+          "availability": "in_stock",
+          "image_url": "https://cdn.shopify.com/s/files/1/2219/3831/files/MN-1500x1500-Listings-Perfume-Sweet-like-me-1-WEB.jpg?v=1774446925",
+          "swatch_image_url": null,
+          "label_image_url": null,
+          "options": {},
+          "raw_variant": {
+            "sku": "PCLM-1",
+            "url": "https://www.missnella.com/products/cool-like-me-roll-on-oil-perfume",
+            "price": "10.3",
+            "stock": "In Stock",
+            "currency": "USD",
+            "image_url": "https://cdn.shopify.com/s/files/1/2219/3831/files/MN-1500x1500-Listings-Perfume-Sweet-like-me-1-WEB.jpg?v=1774446925",
+            "image_urls": [
+              "https://cdn.shopify.com/s/files/1/2219/3831/files/MN-1500x1500-Listings-Perfume-Sweet-like-me-1-WEB.jpg?v=1774446925",
+              "https://cdn.shopify.com/s/files/1/2219/3831/files/MN-1500x1500-Listings-Perfume-Cool-Like-Me_2_-WEB.jpg?v=1774446925",
+              "https://cdn.shopify.com/s/files/1/2219/3831/files/MN-Lifestyle-Perfume-Cool-Like-Me-00005.jpg?v=1774446925",
+              "https://cdn.shopify.com/s/files/1/2219/3831/files/MN-1500x1500-Listings-Perfume-Cool-like-me-1-WEB.jpg?v=1774446925",
+              "https://cdn.shopify.com/s/files/1/2219/3831/files/MN-1500x1500-Listings-Perfumes-2-WEB.jpg?v=1772554472",
+              "https://cdn.shopify.com/s/files/1/2219/3831/files/3-WEB.jpg?v=1772554472",
+              "https://cdn.shopify.com/s/files/1/2219/3831/files/MN-1500x1500-Listings-Perfume-Cool-Like-Me-WEB.jpg?v=1772554472"
+            ],
+            "variant_id": "42166560194818",
+            "description": "Miss Nella's Cool Like Me roll-on perfume features a lovely Aloe Fruit scent that's fresh, floral, and smooth. Perfect for kids, this gentle fragrance is safe for delicate skin and easy to apply with its roll-on design. A fun way for little ones to smell sweet and feel special! ✨💖",
+            "option_name": "Title",
+            "option_value": "Default Title"
+          }
+        },
+        "readiness_tier": "referral_only"
+      },
+      "first_offer": {
+        "offer_id": "offer:external_seed:e39540236545825c582e85d3ec560fdf",
+        "sku_key": "prod::external_seed::external_seed::ext_cfbb0ca2b9d0c7b411793b0b::sku_101c94ca481a4e4e64b2",
+        "product_key": "prod::external_seed::external_seed::ext_cfbb0ca2b9d0c7b411793b0b",
+        "merchant_id": "external_seed",
+        "catalog_track": "external_referral",
+        "truth_tier": "observed",
+        "readiness_tier": "referral_only",
+        "offer_mode": "redirect",
+        "channel": "external_referral",
+        "availability": "in_stock",
+        "currency": "USD",
+        "list_price": 10.3,
+        "merchant_effective_price": 10.3,
+        "estimated_best_price": 10.3,
+        "price_confidence": 1,
+        "source_system": "external_product_seeds_mirror_v1",
+        "source_ref": "eps_555fd951a116860b1afca2b3",
+        "source_domain": "missnella.com",
+        "offer_payload": {
+          "source": "external_product_seeds_mirror_v1",
+          "external_seed_id": "eps_555fd951a116860b1afca2b3",
+          "external_product_id": "ext_cfbb0ca2b9d0c7b411793b0b",
+          "domain": "missnella.com",
+          "market": "US",
+          "product_title": "‘Cool Like Me’ Roll On Perfume",
+          "variant_title": "‘Cool Like Me’ Roll On Perfume",
+          "variant_sku": "PCLM-1",
+          "raw_variant_id": "42166560194818",
+          "url": "https://www.missnella.com/products/cool-like-me-roll-on-oil-perfume",
+          "offer_url": "https://www.missnella.com/products/cool-like-me-roll-on-oil-perfume",
+          "canonical_url": "https://www.missnella.com/products/cool-like-me-roll-on-oil-perfume",
+          "destination_url": "https://www.missnella.com/products/cool-like-me-roll-on-oil-perfume",
+          "external_redirect_url": "https://www.missnella.com/products/cool-like-me-roll-on-oil-perfume",
+          "merchant_display_name": "Miss Nella",
+          "price": "10.3",
+          "price_amount": 10.3,
+          "price_currency": "USD",
+          "availability": "in_stock",
+          "commerce_facts_v1": {
+            "contract_version": "commerce_facts.v1",
+            "market_id": "US",
+            "country": "US",
+            "currency_target": "USD",
+            "source_authority": "catalog_extract_v2",
+            "captured_at": "2026-05-18T04:53:59.090Z",
+            "evidence_url": "https://www.missnella.com/products/cool-like-me-roll-on-oil-perfume",
+            "sellable_region": {
+              "status": "unknown",
+              "countries": [],
+              "evidence_source": "catalog_extract_v2",
+              "confidence": "unknown",
+              "checked_at": "2026-05-18T04:53:59.090Z",
+              "reason_codes": [
+                "shipping_destination_not_verified"
+              ],
+              "evidence_url": "https://www.missnella.com/products/cool-like-me-roll-on-oil-perfume"
+            },
+            "regional_price": {
+              "amount": 10.3,
+              "currency": "USD",
+              "display_raw": null,
+              "price_type": "unknown",
+              "compare_at_amount": null,
+              "compare_at_currency": null,
+              "compare_at_display_raw": null,
+              "tax_included": "unknown",
+              "confidence": "medium",
+              "market_switch_status": "ok",
+              "observed_currency": "USD",
+              "source_url": "https://www.missnella.com/products/cool-like-me-roll-on-oil-perfume",
+              "captured_at": "2026-05-18T04:53:59.090Z"
+            },
+            "availability": {
+              "status": "in_stock",
+              "source": "catalog_extract_v2",
+              "confidence": "medium",
+              "captured_at": "2026-05-18T04:53:59.090Z"
+            },
+            "shipping": {
+              "status": "unknown",
+              "source": "catalog_extract_v2",
+              "confidence": "unknown",
+              "reason_codes": [
+                "external_checkout_not_queried"
+              ],
+              "checked_at": "2026-05-18T04:53:59.090Z"
+            },
+            "promotions": [],
+            "returns": {
+              "status": "unknown",
+              "source": "catalog_extract_v2",
+              "confidence": "unknown",
+              "reason_codes": [
+                "external_returns_not_extracted"
+              ],
+              "checked_at": "2026-05-18T04:53:59.090Z"
+            }
+          },
+          "agent_safe_commerce_facts": {
+            "contract_version": "commerce_facts.v1",
+            "market_id": "US",
+            "price": {
+              "amount": 10.3,
+              "currency": "USD",
+              "display_raw": null,
+              "price_type": "unknown",
+              "compare_at_amount": null,
+              "compare_at_currency": null,
+              "compare_at_display_raw": null,
+              "tax_included": "unknown",
+              "confidence": "medium",
+              "market_switch_status": "ok",
+              "observed_currency": "USD",
+              "source_url": "https://www.missnella.com/products/cool-like-me-roll-on-oil-perfume",
+              "captured_at": "2026-05-18T04:53:59.090Z"
+            },
+            "availability": {
+              "status": "in_stock",
+              "source": "catalog_extract_v2",
+              "confidence": "medium",
+              "captured_at": "2026-05-18T04:53:59.090Z"
+            },
+            "shipping": {
+              "status": "unknown",
+              "reason": "verify_at_checkout"
+            },
+            "promotions": [],
+            "checkout_note": "Shipping and promotions are not verified for this external offer; verify at merchant checkout."
+          }
+        }
+      },
+      "serving_readiness": {
+        "servingEligible": true,
+        "contentQualityScore": 90,
+        "blockerCode": "none",
+        "blockerDetail": null,
+        "identityResolved": true,
+        "identityLiveReadResolved": false,
+        "identityBootstrapEligible": true,
+        "hasImage": true,
+        "hasPrice": true,
+        "descriptionLength": 282
+      }
+    },
+    {
+      "external_product_id": "ext_6f491538dbf9a790b66cf269",
+      "product_key": "prod::external_seed::external_seed::ext_6f491538dbf9a790b66cf269",
+      "product_group_id": "sig_add4f97931e964edbb1a2b67",
+      "title": "‘Sweet Like Me’ Roll On Perfume",
+      "brand": "Miss Nella",
+      "product_type": "Fragrance",
+      "category": "Fragrance",
+      "category_path": "beauty/fragrance/perfume",
+      "canonical_url": "https://www.missnella.com/products/sweet-like-me-roll-on-oil-perfume",
+      "pivota_signature_id": "sig_add4f97931e964edbb1a2b67",
+      "sku_rows": 1,
+      "first_sku": {
+        "sku_key": "prod::external_seed::external_seed::ext_6f491538dbf9a790b66cf269::sku_b21e16662a95e4e7c626",
+        "product_key": "prod::external_seed::external_seed::ext_6f491538dbf9a790b66cf269",
+        "merchant_id": "external_seed",
+        "platform": "external_seed",
+        "source_product_id": "ext_6f491538dbf9a790b66cf269",
+        "source_variant_id": "ext_6f491538dbf9a790b66cf269:42166555934978",
+        "source_domain": "missnella.com",
+        "sku": "PSLM-1",
+        "barcode": null,
+        "title": "‘Sweet Like Me’ Roll On Perfume",
+        "currency": "USD",
+        "image_url": "https://cdn.shopify.com/s/files/1/2219/3831/files/MN-Lifestyle-Perfume-Sweet-Like-Me-00005.jpg?v=1772554503",
+        "visible_attributes": {},
+        "visible_option_labels": {},
+        "ingredient_ids": [],
+        "sku_payload": {
+          "source": "external_product_seeds_mirror_v1",
+          "external_product_id": "ext_6f491538dbf9a790b66cf269",
+          "raw_variant_id": "42166555934978",
+          "source_variant_id": "ext_6f491538dbf9a790b66cf269:42166555934978",
+          "variant_sku": "PSLM-1",
+          "barcode": null,
+          "strong_identifier_kind": null,
+          "source_url": "https://www.missnella.com/products/sweet-like-me-roll-on-oil-perfume",
+          "external_redirect_url": "https://www.missnella.com/products/sweet-like-me-roll-on-oil-perfume",
+          "price": "10.3",
+          "price_amount": 10.3,
+          "currency": "USD",
+          "availability": "in_stock",
+          "image_url": "https://cdn.shopify.com/s/files/1/2219/3831/files/MN-Lifestyle-Perfume-Sweet-Like-Me-00005.jpg?v=1772554503",
+          "swatch_image_url": null,
+          "label_image_url": null,
+          "options": {},
+          "raw_variant": {
+            "sku": "PSLM-1",
+            "url": "https://www.missnella.com/products/sweet-like-me-roll-on-oil-perfume",
+            "price": "10.3",
+            "stock": "In Stock",
+            "currency": "USD",
+            "image_url": "https://cdn.shopify.com/s/files/1/2219/3831/files/MN-Lifestyle-Perfume-Sweet-Like-Me-00005.jpg?v=1772554503",
+            "image_urls": [
+              "https://cdn.shopify.com/s/files/1/2219/3831/files/MN-Lifestyle-Perfume-Sweet-Like-Me-00005.jpg?v=1772554503",
+              "https://cdn.shopify.com/s/files/1/2219/3831/files/10-WEB.jpg?v=1772554503",
+              "https://cdn.shopify.com/s/files/1/2219/3831/files/MN-1500x1500-Listings-Perfume-Sweet-like-me-1_2_-WEB.jpg?v=1772554503",
+              "https://cdn.shopify.com/s/files/1/2219/3831/files/9-WEB.jpg?v=1772554503",
+              "https://cdn.shopify.com/s/files/1/2219/3831/files/MN-1500x1500-Listings-Perfume-Sweet-Like-Me_3_-WEB.jpg?v=1772554503",
+              "https://cdn.shopify.com/s/files/1/2219/3831/files/MN-1500x1500-Listings-Perfume-Sweet-like-me-1_3_-WEB.jpg?v=1772554503",
+              "https://cdn.shopify.com/s/files/1/2219/3831/files/MN-1500x1500-Listings-Perfumes-2-WEB_46390223-8aaa-44df-be89-5d88287bbe5f.jpg?v=1772554503"
+            ],
+            "variant_id": "42166555934978",
+            "description": "Miss Nella's Sweet Like Me roll-on perfume features a tropical mango scent that's sunny, fruity, and exotic! With its playful, skin-friendly formula and easy roll-on design, it's perfect for little ones who love a burst of sweet, sunny fragrance all day long. 🌞🥭✨",
+            "option_name": "Title",
+            "option_value": "Default Title"
+          }
+        },
+        "readiness_tier": "referral_only"
+      },
+      "first_offer": {
+        "offer_id": "offer:external_seed:042c37cbbf1d90a6770b32106e123252",
+        "sku_key": "prod::external_seed::external_seed::ext_6f491538dbf9a790b66cf269::sku_b21e16662a95e4e7c626",
+        "product_key": "prod::external_seed::external_seed::ext_6f491538dbf9a790b66cf269",
+        "merchant_id": "external_seed",
+        "catalog_track": "external_referral",
+        "truth_tier": "observed",
+        "readiness_tier": "referral_only",
+        "offer_mode": "redirect",
+        "channel": "external_referral",
+        "availability": "in_stock",
+        "currency": "USD",
+        "list_price": 10.3,
+        "merchant_effective_price": 10.3,
+        "estimated_best_price": 10.3,
+        "price_confidence": 1,
+        "source_system": "external_product_seeds_mirror_v1",
+        "source_ref": "eps_861ca14f39569742d8460b44",
+        "source_domain": "missnella.com",
+        "offer_payload": {
+          "source": "external_product_seeds_mirror_v1",
+          "external_seed_id": "eps_861ca14f39569742d8460b44",
+          "external_product_id": "ext_6f491538dbf9a790b66cf269",
+          "domain": "missnella.com",
+          "market": "US",
+          "product_title": "‘Sweet Like Me’ Roll On Perfume",
+          "variant_title": "‘Sweet Like Me’ Roll On Perfume",
+          "variant_sku": "PSLM-1",
+          "raw_variant_id": "42166555934978",
+          "url": "https://www.missnella.com/products/sweet-like-me-roll-on-oil-perfume",
+          "offer_url": "https://www.missnella.com/products/sweet-like-me-roll-on-oil-perfume",
+          "canonical_url": "https://www.missnella.com/products/sweet-like-me-roll-on-oil-perfume",
+          "destination_url": "https://www.missnella.com/products/sweet-like-me-roll-on-oil-perfume",
+          "external_redirect_url": "https://www.missnella.com/products/sweet-like-me-roll-on-oil-perfume",
+          "merchant_display_name": "Miss Nella",
+          "price": "10.3",
+          "price_amount": 10.3,
+          "price_currency": "USD",
+          "availability": "in_stock",
+          "commerce_facts_v1": {
+            "contract_version": "commerce_facts.v1",
+            "market_id": "US",
+            "country": "US",
+            "currency_target": "USD",
+            "source_authority": "catalog_extract_v2",
+            "captured_at": "2026-05-18T04:53:59.082Z",
+            "evidence_url": "https://www.missnella.com/products/sweet-like-me-roll-on-oil-perfume",
+            "sellable_region": {
+              "status": "unknown",
+              "countries": [],
+              "evidence_source": "catalog_extract_v2",
+              "confidence": "unknown",
+              "checked_at": "2026-05-18T04:53:59.082Z",
+              "reason_codes": [
+                "shipping_destination_not_verified"
+              ],
+              "evidence_url": "https://www.missnella.com/products/sweet-like-me-roll-on-oil-perfume"
+            },
+            "regional_price": {
+              "amount": 10.3,
+              "currency": "USD",
+              "display_raw": null,
+              "price_type": "unknown",
+              "compare_at_amount": null,
+              "compare_at_currency": null,
+              "compare_at_display_raw": null,
+              "tax_included": "unknown",
+              "confidence": "medium",
+              "market_switch_status": "ok",
+              "observed_currency": "USD",
+              "source_url": "https://www.missnella.com/products/sweet-like-me-roll-on-oil-perfume",
+              "captured_at": "2026-05-18T04:53:59.082Z"
+            },
+            "availability": {
+              "status": "in_stock",
+              "source": "catalog_extract_v2",
+              "confidence": "medium",
+              "captured_at": "2026-05-18T04:53:59.082Z"
+            },
+            "shipping": {
+              "status": "unknown",
+              "source": "catalog_extract_v2",
+              "confidence": "unknown",
+              "reason_codes": [
+                "external_checkout_not_queried"
+              ],
+              "checked_at": "2026-05-18T04:53:59.082Z"
+            },
+            "promotions": [],
+            "returns": {
+              "status": "unknown",
+              "source": "catalog_extract_v2",
+              "confidence": "unknown",
+              "reason_codes": [
+                "external_returns_not_extracted"
+              ],
+              "checked_at": "2026-05-18T04:53:59.082Z"
+            }
+          },
+          "agent_safe_commerce_facts": {
+            "contract_version": "commerce_facts.v1",
+            "market_id": "US",
+            "price": {
+              "amount": 10.3,
+              "currency": "USD",
+              "display_raw": null,
+              "price_type": "unknown",
+              "compare_at_amount": null,
+              "compare_at_currency": null,
+              "compare_at_display_raw": null,
+              "tax_included": "unknown",
+              "confidence": "medium",
+              "market_switch_status": "ok",
+              "observed_currency": "USD",
+              "source_url": "https://www.missnella.com/products/sweet-like-me-roll-on-oil-perfume",
+              "captured_at": "2026-05-18T04:53:59.082Z"
+            },
+            "availability": {
+              "status": "in_stock",
+              "source": "catalog_extract_v2",
+              "confidence": "medium",
+              "captured_at": "2026-05-18T04:53:59.082Z"
+            },
+            "shipping": {
+              "status": "unknown",
+              "reason": "verify_at_checkout"
+            },
+            "promotions": [],
+            "checkout_note": "Shipping and promotions are not verified for this external offer; verify at merchant checkout."
+          }
+        }
+      },
+      "serving_readiness": {
+        "servingEligible": true,
+        "contentQualityScore": 90,
+        "blockerCode": "none",
+        "blockerDetail": null,
+        "identityResolved": true,
+        "identityLiveReadResolved": false,
+        "identityBootstrapEligible": true,
+        "hasImage": true,
+        "hasPrice": true,
+        "descriptionLength": 265
+      }
+    }
+  ]
+}

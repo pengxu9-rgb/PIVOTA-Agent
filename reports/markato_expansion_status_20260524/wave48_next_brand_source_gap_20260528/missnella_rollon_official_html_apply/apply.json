@@ -1,0 +1,77 @@
+{
+  "generated_at": "2026-05-28T09:54:53.850Z",
+  "dry_run": false,
+  "market": "US",
+  "summary": {
+    "scanned": 2,
+    "dry_run": 0,
+    "updated": 2,
+    "skipped": 0,
+    "failed": 0,
+    "by_field": {
+      "pdp_ingredients_raw": 2,
+      "pdp_how_to_use_raw": 2,
+      "pdp_details_sections": 2
+    }
+  },
+  "results": [
+    {
+      "external_product_id": "ext_cfbb0ca2b9d0c7b411793b0b",
+      "title": "‘Cool Like Me’ Roll On Perfume",
+      "domain": "missnella.com",
+      "url": "https://www.missnella.com/products/cool-like-me-roll-on-oil-perfume",
+      "host": "missnella.com",
+      "status": "updated",
+      "patch_keys": [
+        "pdp_ingredients_raw",
+        "pdp_how_to_use_raw",
+        "pdp_details_sections"
+      ],
+      "http_status": 200,
+      "final_url": "https://www.missnella.com/products/cool-like-me-roll-on-oil-perfume",
+      "extracted_summary": {
+        "ingredients_chars": 96,
+        "how_to_chars": 97,
+        "details_sections_count": 3,
+        "variant_count": 0,
+        "review_count": 0,
+        "rating": 0,
+        "review_preview_count": 0,
+        "review_preview_samples": []
+      },
+      "serving_mirror_sync": {
+        "catalog_products": 1,
+        "pdp_identity_listing": 1
+      }
+    },
+    {
+      "external_product_id": "ext_6f491538dbf9a790b66cf269",
+      "title": "‘Sweet Like Me’ Roll On Perfume",
+      "domain": "missnella.com",
+      "url": "https://www.missnella.com/products/sweet-like-me-roll-on-oil-perfume",
+      "host": "missnella.com",
+      "status": "updated",
+      "patch_keys": [
+        "pdp_ingredients_raw",
+        "pdp_how_to_use_raw",
+        "pdp_details_sections"
+      ],
+      "http_status": 200,
+      "final_url": "https://www.missnella.com/products/sweet-like-me-roll-on-oil-perfume",
+      "extracted_summary": {
+        "ingredients_chars": 96,
+        "how_to_chars": 97,
+        "details_sections_count": 3,
+        "variant_count": 0,
+        "review_count": 0,
+        "rating": 0,
+        "review_preview_count": 0,
+        "review_preview_samples": []
+      },
+      "serving_mirror_sync": {
+        "catalog_products": 1,
+        "pdp_identity_listing": 1
+      }
+    }
+  ]
+}
