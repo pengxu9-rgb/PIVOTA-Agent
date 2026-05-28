@@ -804,6 +804,14 @@ function asNonEmptyString(value) {
   return normalized;
 }
 
+function firstNonEmptyString(...values) {
+  for (const value of values) {
+    const normalized = asNonEmptyString(value);
+    if (normalized) return normalized;
+  }
+  return null;
+}
+
 const PDP_PUBLIC_CONTRIBUTION_APPROVED_STATES = new Set([
   'approved',
   'published',
@@ -4900,6 +4908,13 @@ function buildPdpPayload(args) {
   const productPurchaseRoute = stripHtml(product.purchase_route || product.purchaseRoute);
   const productCommerceMode = stripHtml(product.commerce_mode || product.commerceMode);
   const productCheckoutHandoff = stripHtml(product.checkout_handoff || product.checkoutHandoff);
+  const productReadinessTier = firstNonEmptyString(
+    args.readiness_tier,
+    args.readinessTier,
+    product.readiness_tier,
+    product.readinessTier,
+  );
+  const productServingEligible = args.serving_eligible === true;
   const externalRedirectUrl = resolveProductExternalRedirectUrl(product);
   const productUrl = normalizePdpHttpUrl(product.url || product.product_url || product.productUrl);
   const canonicalUrl = normalizePdpHttpUrl(product.canonical_url || product.canonicalUrl);
@@ -5163,9 +5178,11 @@ function buildPdpPayload(args) {
       tags: Array.isArray(product.tags) ? product.tags : undefined,
       department: product.department || undefined,
       source: productSource || undefined,
-      purchase_route: productPurchaseRoute || undefined,
-      commerce_mode: productCommerceMode || undefined,
-      checkout_handoff: productCheckoutHandoff || undefined,
+      readiness_tier: productReadinessTier || null,
+      serving_eligible: productServingEligible,
+      purchase_route: productPurchaseRoute || null,
+      commerce_mode: productCommerceMode || null,
+      checkout_handoff: productCheckoutHandoff || null,
       external_redirect_url: externalRedirectUrl || undefined,
       url: productUrl || undefined,
       canonical_url: canonicalUrl || undefined,
