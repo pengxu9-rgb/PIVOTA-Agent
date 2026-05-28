@@ -1,0 +1,44 @@
+{
+  "generated_at": "2026-05-28T08:48:32.283Z",
+  "dry_run": false,
+  "market": "US",
+  "summary": {
+    "scanned": 1,
+    "dry_run": 0,
+    "updated": 1,
+    "skipped": 0,
+    "failed": 0,
+    "by_field": {
+      "pdp_ingredients_raw": 1
+    }
+  },
+  "results": [
+    {
+      "external_product_id": "ext_c1a3aac3be37dcedc3788d6a",
+      "title": "Linhart Whitening Pen - NEW ARRIVAL!",
+      "domain": "linhart.nyc",
+      "url": "https://linhart.nyc/products/linhart-whitening-pen",
+      "host": "linhart.nyc",
+      "status": "updated",
+      "patch_keys": [
+        "pdp_ingredients_raw"
+      ],
+      "http_status": 200,
+      "final_url": "https://linhart.nyc/products/linhart-whitening-pen",
+      "extracted_summary": {
+        "ingredients_chars": 129,
+        "how_to_chars": 442,
+        "details_sections_count": 2,
+        "variant_count": 0,
+        "review_count": 0,
+        "rating": 0,
+        "review_preview_count": 0,
+        "review_preview_samples": []
+      },
+      "serving_mirror_sync": {
+        "catalog_products": 1,
+        "pdp_identity_listing": 1
+      }
+    }
+  ]
+}
