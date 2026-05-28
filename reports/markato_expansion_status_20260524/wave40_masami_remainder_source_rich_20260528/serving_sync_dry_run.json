@@ -1,0 +1,791 @@
+{
+  "generated_at": "2026-05-28T02:50:44.662Z",
+  "mode": "dry_run",
+  "batch_size": null,
+  "bootstrap_reviewed_identity_live_read": true,
+  "requested_ids": 3,
+  "fetched_rows": 3,
+  "mirror_rows": 3,
+  "planned_sku_rows": 3,
+  "planned_offer_rows": 3,
+  "planned_index_state_rows": 3,
+  "missing_ids": [],
+  "skipped": [],
+  "applied": {
+    "mode": "dry_run",
+    "existing_before": {
+      "catalog_products": 3,
+      "catalog_skus": 3,
+      "catalog_offers": 3,
+      "product_group_members": 3
+    },
+    "stale_delete_preview": {
+      "current_sku_rows": 6,
+      "current_offer_rows": 6,
+      "planned_stale_sku_deletes": 3,
+      "planned_stale_offer_deletes": 3,
+      "sample_stale_skus": [
+        {
+          "title": "Mekabu Hydrating Shampoo",
+          "sku_key": "prod::external_seed::external_seed::ext_96a7ecc1003f0f94e5b6805c::canonical",
+          "product_key": "prod::external_seed::external_seed::ext_96a7ecc1003f0f94e5b6805c",
+          "source_variant_id": "prod::external_seed::external_seed::ext_96a7ecc1003f0f94e5b6805c",
+          "visible_attributes": {}
+        },
+        {
+          "title": "Mekabu Hydrating Conditioner",
+          "sku_key": "prod::external_seed::external_seed::ext_a1bb997d38b6823e83f23948::canonical",
+          "product_key": "prod::external_seed::external_seed::ext_a1bb997d38b6823e83f23948",
+          "source_variant_id": "prod::external_seed::external_seed::ext_a1bb997d38b6823e83f23948",
+          "visible_attributes": {}
+        },
+        {
+          "title": "Mekabu Hydrating Styling Cream",
+          "sku_key": "prod::external_seed::external_seed::ext_fe9ef8f2a6343901489fe63e::canonical",
+          "product_key": "prod::external_seed::external_seed::ext_fe9ef8f2a6343901489fe63e",
+          "source_variant_id": "prod::external_seed::external_seed::ext_fe9ef8f2a6343901489fe63e",
+          "visible_attributes": {}
+        }
+      ],
+      "sample_stale_offers": [
+        {
+          "sku_key": "prod::external_seed::external_seed::ext_96a7ecc1003f0f94e5b6805c::canonical",
+          "offer_id": "offer:external_seed:29532d22fee7cbbc10e61987bf76e49f",
+          "list_price": 38,
+          "product_key": "prod::external_seed::external_seed::ext_96a7ecc1003f0f94e5b6805c",
+          "merchant_effective_price": 38
+        },
+        {
+          "sku_key": "prod::external_seed::external_seed::ext_a1bb997d38b6823e83f23948::canonical",
+          "offer_id": "offer:external_seed:3f6fec98a6f39f2061ad06feffedb11d",
+          "list_price": 38,
+          "product_key": "prod::external_seed::external_seed::ext_a1bb997d38b6823e83f23948",
+          "merchant_effective_price": 38
+        },
+        {
+          "sku_key": "prod::external_seed::external_seed::ext_fe9ef8f2a6343901489fe63e::canonical",
+          "offer_id": "offer:external_seed:a9b6ec33ed534d40b1645084608728f9",
+          "list_price": 36,
+          "product_key": "prod::external_seed::external_seed::ext_fe9ef8f2a6343901489fe63e",
+          "merchant_effective_price": 36
+        }
+      ]
+    },
+    "batch_size": null,
+    "batches": 1,
+    "audit_reasons": {
+      "no_strong_identifier": 3
+    },
+    "product_upserts": 0,
+    "sku_upserts": 0,
+    "offer_upserts": 0,
+    "group_member_upserts": 0,
+    "group_member_preserved_existing_merges": 0,
+    "seed_attachment_updates": 0,
+    "index_state_upserts": 0,
+    "identity_live_read_updates": 0,
+    "catalog_row_trust_upserts": 0,
+    "stale_offer_deletes": 0,
+    "stale_sku_deletes": 0
+  },
+  "sample": [
+    {
+      "external_product_id": "ext_96a7ecc1003f0f94e5b6805c",
+      "product_key": "prod::external_seed::external_seed::ext_96a7ecc1003f0f94e5b6805c",
+      "product_group_id": "sig_0ab1781be3e500ce2ddfa6b3",
+      "title": "Mekabu Hydrating Shampoo",
+      "brand": "MASAMI",
+      "product_type": "Shampoo",
+      "category": "Shampoo",
+      "category_path": "beauty/haircare/shampoo",
+      "canonical_url": "https://lovemasami.com/products/mekabu-shampoo",
+      "pivota_signature_id": "sig_0ab1781be3e500ce2ddfa6b3",
+      "sku_rows": 1,
+      "first_sku": {
+        "sku_key": "prod::external_seed::external_seed::ext_96a7ecc1003f0f94e5b6805c::sku_7b9eca57f7af61fd00cd",
+        "product_key": "prod::external_seed::external_seed::ext_96a7ecc1003f0f94e5b6805c",
+        "merchant_id": "external_seed",
+        "platform": "external_seed",
+        "source_product_id": "ext_96a7ecc1003f0f94e5b6805c",
+        "source_variant_id": "ext_96a7ecc1003f0f94e5b6805c:44102598033632",
+        "source_domain": "lovemasami.com",
+        "sku": "18600012765031",
+        "barcode": null,
+        "title": "Mekabu Hydrating Shampoo",
+        "currency": "USD",
+        "image_url": "https://cdn.shopify.com/s/files/1/0138/7901/7536/products/masami-shampoo-mekabu-shampoo-18600012765031-13418472865856.jpg?v=1755658247",
+        "visible_attributes": {
+          "Offer": "18600012765031"
+        },
+        "visible_option_labels": {
+          "Offer": "18600012765031"
+        },
+        "ingredient_ids": [],
+        "sku_payload": {
+          "source": "external_product_seeds_mirror_v1",
+          "external_product_id": "ext_96a7ecc1003f0f94e5b6805c",
+          "raw_variant_id": "44102598033632",
+          "source_variant_id": "ext_96a7ecc1003f0f94e5b6805c:44102598033632",
+          "variant_sku": "18600012765031",
+          "barcode": null,
+          "strong_identifier_kind": null,
+          "source_url": "https://lovemasami.com/products/mekabu-shampoo",
+          "external_redirect_url": "https://lovemasami.com/products/mekabu-shampoo",
+          "price": "38",
+          "price_amount": 38,
+          "currency": "USD",
+          "availability": "in_stock",
+          "image_url": "https://cdn.shopify.com/s/files/1/0138/7901/7536/products/masami-shampoo-mekabu-shampoo-18600012765031-13418472865856.jpg?v=1755658247",
+          "swatch_image_url": null,
+          "label_image_url": null,
+          "options": {
+            "Offer": "18600012765031"
+          },
+          "raw_variant": {
+            "sku": "18600012765031",
+            "url": "https://lovemasami.com/products/mekabu-shampoo",
+            "price": "38.00",
+            "stock": "In Stock",
+            "images": [
+              "https://cdn.shopify.com/s/files/1/0138/7901/7536/products/Girl_smelling_MASAMI_shampoo.png?v=1755658069",
+              "https://cdn.shopify.com/s/files/1/0138/7901/7536/products/MASAMI_shampoo_underwater.jpg?v=1755658109",
+              "https://cdn.shopify.com/s/files/1/0138/7901/7536/products/justin-chen-J7Cf1Gch49E-unsplashcopy_8a98ee0b-69f0-4c7c-b15b-49f19dcf7b4d.jpg?v=1755658137",
+              "https://cdn.shopify.com/s/files/1/0138/7901/7536/products/Woman_with_curly_hair_holding_shampoo.jpg?v=1755658196",
+              "https://cdn.shopify.com/s/files/1/0138/7901/7536/products/MASAMI_with_girl_in_background.jpg?v=1755658226",
+              "https://cdn.shopify.com/s/files/1/0138/7901/7536/products/masami-shampoo-mekabu-shampoo-18600012765031-13418472865856.jpg?v=1755658247",
+              "https://cdn.shopify.com/s/files/1/0138/7901/7536/products/masami-shampoo-mekabu-shampoo-18600012765031-13418474143808.jpg?v=1755658277"
+            ],
+            "currency": "USD",
+            "image_url": "https://cdn.shopify.com/s/files/1/0138/7901/7536/products/masami-shampoo-mekabu-shampoo-18600012765031-13418472865856.jpg?v=1755658247",
+            "image_urls": [
+              "https://cdn.shopify.com/s/files/1/0138/7901/7536/products/Girl_smelling_MASAMI_shampoo.png?v=1755658069",
+              "https://cdn.shopify.com/s/files/1/0138/7901/7536/products/MASAMI_shampoo_underwater.jpg?v=1755658109",
+              "https://cdn.shopify.com/s/files/1/0138/7901/7536/products/justin-chen-J7Cf1Gch49E-unsplashcopy_8a98ee0b-69f0-4c7c-b15b-49f19dcf7b4d.jpg?v=1755658137",
+              "https://cdn.shopify.com/s/files/1/0138/7901/7536/products/Woman_with_curly_hair_holding_shampoo.jpg?v=1755658196",
+              "https://cdn.shopify.com/s/files/1/0138/7901/7536/products/MASAMI_with_girl_in_background.jpg?v=1755658226",
+              "https://cdn.shopify.com/s/files/1/0138/7901/7536/products/masami-shampoo-mekabu-shampoo-18600012765031-13418472865856.jpg?v=1755658247",
+              "https://cdn.shopify.com/s/files/1/0138/7901/7536/products/masami-shampoo-mekabu-shampoo-18600012765031-13418474143808.jpg?v=1755658277"
+            ],
+            "variant_id": "44102598033632",
+            "description": "MASAMI Mekabu Hydrating Shampoo's nutrient-rich formulation fortifies and reawakens hair. Apricot oil, coconut oil and laminaria japonica (kombu) provide nutrients and vitamins important for healthy hair. MASAMI Shampoo is the ultimate in botanical hydration for hair and nourishment for the scalp. Great for any hair type and texture -- anyone who wants salon hair every day without weighing hair down.\n\nOur low foam formula keeps hair hydrated between washes. You don't need to use a lot to see the benefits -- and thanks to our botanically hydrating formulas, you'll find you won't have to wash your hair as often.",
+            "option_name": "Offer",
+            "option_value": "18600012765031"
+          }
+        },
+        "readiness_tier": "referral_only"
+      },
+      "first_offer": {
+        "offer_id": "offer:external_seed:5b80d619def3f38f13296b5b537ec7f8",
+        "sku_key": "prod::external_seed::external_seed::ext_96a7ecc1003f0f94e5b6805c::sku_7b9eca57f7af61fd00cd",
+        "product_key": "prod::external_seed::external_seed::ext_96a7ecc1003f0f94e5b6805c",
+        "merchant_id": "external_seed",
+        "catalog_track": "external_referral",
+        "truth_tier": "observed",
+        "readiness_tier": "referral_only",
+        "offer_mode": "redirect",
+        "channel": "external_referral",
+        "availability": "in_stock",
+        "currency": "USD",
+        "list_price": 38,
+        "merchant_effective_price": 38,
+        "estimated_best_price": 38,
+        "price_confidence": 1,
+        "source_system": "external_product_seeds_mirror_v1",
+        "source_ref": "eps_ccb1ab0f2d6a2b29671e2116",
+        "source_domain": "lovemasami.com",
+        "offer_payload": {
+          "source": "external_product_seeds_mirror_v1",
+          "external_seed_id": "eps_ccb1ab0f2d6a2b29671e2116",
+          "external_product_id": "ext_96a7ecc1003f0f94e5b6805c",
+          "domain": "lovemasami.com",
+          "market": "US",
+          "product_title": "Mekabu Hydrating Shampoo",
+          "variant_title": "Mekabu Hydrating Shampoo",
+          "variant_sku": "18600012765031",
+          "raw_variant_id": "44102598033632",
+          "url": "https://lovemasami.com/products/mekabu-shampoo",
+          "offer_url": "https://lovemasami.com/products/mekabu-shampoo",
+          "canonical_url": "https://lovemasami.com/products/mekabu-shampoo",
+          "destination_url": "https://lovemasami.com/products/mekabu-shampoo",
+          "external_redirect_url": "https://lovemasami.com/products/mekabu-shampoo",
+          "merchant_display_name": "MASAMI",
+          "price": "38",
+          "price_amount": 38,
+          "price_currency": "USD",
+          "availability": "in_stock",
+          "commerce_facts_v1": {
+            "contract_version": "commerce_facts.v1",
+            "market_id": "US",
+            "country": "US",
+            "currency_target": "USD",
+            "source_authority": "catalog_extract_v2",
+            "captured_at": "2026-05-25T05:05:25.772Z",
+            "evidence_url": "https://lovemasami.com/products/mekabu-shampoo",
+            "sellable_region": {
+              "status": "unknown",
+              "countries": [],
+              "evidence_source": "catalog_extract_v2",
+              "confidence": "medium",
+              "checked_at": "2026-05-25T05:05:25.772Z",
+              "reason_codes": [
+                "market_currency_observed",
+                "shipping_destination_not_verified",
+                "external_checkout_not_queried"
+              ],
+              "evidence_url": "https://lovemasami.com/products/mekabu-shampoo"
+            },
+            "regional_price": {
+              "amount": 38,
+              "currency": "USD",
+              "display_raw": "38.00",
+              "price_type": "list",
+              "compare_at_amount": null,
+              "compare_at_currency": null,
+              "compare_at_display_raw": null,
+              "tax_included": "unknown",
+              "confidence": "medium",
+              "market_switch_status": "ok",
+              "observed_currency": "USD",
+              "source_url": "https://lovemasami.com/products/mekabu-shampoo",
+              "captured_at": "2026-05-25T05:05:25.772Z"
+            },
+            "availability": {
+              "status": "in_stock",
+              "source": "catalog_extract_v2",
+              "confidence": "medium",
+              "captured_at": "2026-05-25T05:05:25.772Z"
+            },
+            "shipping": {
+              "status": "unknown",
+              "source": "catalog_extract_v2",
+              "confidence": "unknown",
+              "reason_codes": [
+                "external_checkout_not_queried"
+              ],
+              "checked_at": "2026-05-25T05:05:25.772Z"
+            },
+            "promotions": [],
+            "returns": {
+              "status": "unknown",
+              "source": "catalog_extract_v2",
+              "confidence": "unknown",
+              "reason_codes": [
+                "external_returns_not_extracted"
+              ],
+              "checked_at": "2026-05-25T05:05:25.772Z"
+            }
+          },
+          "agent_safe_commerce_facts": {
+            "contract_version": "commerce_facts.v1",
+            "market_id": "US",
+            "price": {
+              "amount": 38,
+              "currency": "USD",
+              "display_raw": "38.00",
+              "price_type": "list",
+              "compare_at_amount": null,
+              "compare_at_currency": null,
+              "compare_at_display_raw": null,
+              "tax_included": "unknown",
+              "confidence": "medium",
+              "market_switch_status": "ok",
+              "observed_currency": "USD",
+              "source_url": "https://lovemasami.com/products/mekabu-shampoo",
+              "captured_at": "2026-05-25T05:05:25.772Z"
+            },
+            "availability": {
+              "status": "in_stock",
+              "source": "catalog_extract_v2",
+              "confidence": "medium",
+              "captured_at": "2026-05-25T05:05:25.772Z"
+            },
+            "shipping": {
+              "status": "unknown",
+              "reason": "verify_at_checkout"
+            },
+            "promotions": [],
+            "checkout_note": "Shipping and promotions are not verified for this external offer; verify at merchant checkout."
+          }
+        }
+      },
+      "serving_readiness": {
+        "servingEligible": true,
+        "contentQualityScore": 90,
+        "blockerCode": "none",
+        "blockerDetail": null,
+        "identityResolved": true,
+        "identityLiveReadResolved": true,
+        "identityBootstrapEligible": false,
+        "hasImage": true,
+        "hasPrice": true,
+        "descriptionLength": 617
+      }
+    },
+    {
+      "external_product_id": "ext_a1bb997d38b6823e83f23948",
+      "product_key": "prod::external_seed::external_seed::ext_a1bb997d38b6823e83f23948",
+      "product_group_id": "sig_137493920cc718428f38809c",
+      "title": "Mekabu Hydrating Conditioner",
+      "brand": "MASAMI",
+      "product_type": "Conditioner",
+      "category": "Conditioner",
+      "category_path": "beauty/haircare/conditioner",
+      "canonical_url": "https://lovemasami.com/products/mekabu-conditioner",
+      "pivota_signature_id": "sig_137493920cc718428f38809c",
+      "sku_rows": 1,
+      "first_sku": {
+        "sku_key": "prod::external_seed::external_seed::ext_a1bb997d38b6823e83f23948::sku_4eee7e388d03a8d6cee1",
+        "product_key": "prod::external_seed::external_seed::ext_a1bb997d38b6823e83f23948",
+        "merchant_id": "external_seed",
+        "platform": "external_seed",
+        "source_product_id": "ext_a1bb997d38b6823e83f23948",
+        "source_variant_id": "ext_a1bb997d38b6823e83f23948:30304560808000",
+        "source_domain": "lovemasami.com",
+        "sku": "18600012765101",
+        "barcode": null,
+        "title": "Mekabu Hydrating Conditioner",
+        "currency": "USD",
+        "image_url": "https://cdn.shopify.com/s/files/1/0138/7901/7536/products/MASAMI_Mekabu_Hydrating_Conditioner_Award_Hero.png?v=1762527201",
+        "visible_attributes": {
+          "Offer": "18600012765101"
+        },
+        "visible_option_labels": {
+          "Offer": "18600012765101"
+        },
+        "ingredient_ids": [],
+        "sku_payload": {
+          "source": "external_product_seeds_mirror_v1",
+          "external_product_id": "ext_a1bb997d38b6823e83f23948",
+          "raw_variant_id": "30304560808000",
+          "source_variant_id": "ext_a1bb997d38b6823e83f23948:30304560808000",
+          "variant_sku": "18600012765101",
+          "barcode": null,
+          "strong_identifier_kind": null,
+          "source_url": "https://lovemasami.com/products/mekabu-conditioner",
+          "external_redirect_url": "https://lovemasami.com/products/mekabu-conditioner",
+          "price": "38",
+          "price_amount": 38,
+          "currency": "USD",
+          "availability": "in_stock",
+          "image_url": "https://cdn.shopify.com/s/files/1/0138/7901/7536/products/MASAMI_Mekabu_Hydrating_Conditioner_Award_Hero.png?v=1762527201",
+          "swatch_image_url": null,
+          "label_image_url": null,
+          "options": {
+            "Offer": "18600012765101"
+          },
+          "raw_variant": {
+            "sku": "18600012765101",
+            "url": "https://lovemasami.com/products/mekabu-conditioner",
+            "price": "38.00",
+            "stock": "In Stock",
+            "images": [
+              "https://cdn.shopify.com/s/files/1/0138/7901/7536/products/MASAMI_Mekabu_Hydrating_Conditioner_Award_Hero.png?v=1762527201",
+              "https://cdn.shopify.com/s/files/1/0138/7901/7536/products/MASAMI_Mekabu_Conditioner_model.jpg?v=1755656793",
+              "https://cdn.shopify.com/s/files/1/0138/7901/7536/products/masami-conditioner-mekabu-hydrating-conditioner-18600012765101-23627637325980.jpg?v=1755656826",
+              "https://cdn.shopify.com/s/files/1/0138/7901/7536/products/justin-chen-J7Cf1Gch49E-unsplashcopy.jpg?v=1755656860",
+              "https://cdn.shopify.com/s/files/1/0138/7901/7536/products/MASAMI_Mekabu_Hydrating_Conditioner.jpg?v=1755656919",
+              "https://www.lovemasami.com/cdn/shop/products/MASAMI_Mekabu_Hydrating_Conditioner_Award_Hero.png?v=1762527201&width=1920",
+              "https://www.lovemasami.com/cdn/shop/products/MASAMI_Mekabu_Conditioner_model_114x144_crop_center.jpg?v=1755656793",
+              "https://www.lovemasami.com/cdn/shop/products/masami-conditioner-mekabu-hydrating-conditioner-18600012765101-23627637325980_114x144_crop_center.jpg?v=1755656826",
+              "https://www.lovemasami.com/cdn/shop/products/justin-chen-J7Cf1Gch49E-unsplashcopy_114x144_crop_center.jpg?v=1755656860"
+            ],
+            "currency": "USD",
+            "image_url": "https://cdn.shopify.com/s/files/1/0138/7901/7536/products/MASAMI_Mekabu_Hydrating_Conditioner_Award_Hero.png?v=1762527201",
+            "image_urls": [
+              "https://cdn.shopify.com/s/files/1/0138/7901/7536/products/MASAMI_Mekabu_Hydrating_Conditioner_Award_Hero.png?v=1762527201",
+              "https://cdn.shopify.com/s/files/1/0138/7901/7536/products/MASAMI_Mekabu_Conditioner_model.jpg?v=1755656793",
+              "https://cdn.shopify.com/s/files/1/0138/7901/7536/products/masami-conditioner-mekabu-hydrating-conditioner-18600012765101-23627637325980.jpg?v=1755656826",
+              "https://cdn.shopify.com/s/files/1/0138/7901/7536/products/justin-chen-J7Cf1Gch49E-unsplashcopy.jpg?v=1755656860",
+              "https://cdn.shopify.com/s/files/1/0138/7901/7536/products/MASAMI_Mekabu_Hydrating_Conditioner.jpg?v=1755656919",
+              "https://www.lovemasami.com/cdn/shop/products/MASAMI_Mekabu_Hydrating_Conditioner_Award_Hero.png?v=1762527201&width=1920",
+              "https://www.lovemasami.com/cdn/shop/products/MASAMI_Mekabu_Conditioner_model_114x144_crop_center.jpg?v=1755656793",
+              "https://www.lovemasami.com/cdn/shop/products/masami-conditioner-mekabu-hydrating-conditioner-18600012765101-23627637325980_114x144_crop_center.jpg?v=1755656826",
+              "https://www.lovemasami.com/cdn/shop/products/justin-chen-J7Cf1Gch49E-unsplashcopy_114x144_crop_center.jpg?v=1755656860"
+            ],
+            "variant_id": "30304560808000",
+            "description": "MASAMI's Mekabu Hydrating Conditioner is fortified by the hydrating qualities of the Japanese ocean botanical Mekabu, and enhanced with Laminaria Japonica (Kombu) seaweed, aloe vera, blueberry extract, Vitamin B and other powerful anti-oxidants. This deep yet lightweight conditioner nourishes to restore softness, shine and manageability while soothing the scalp, all without weighing hair down. This conditioner won't leave hair feeling greasy or heavy, just botanically hydrated, smooth and soft.\n\nGreat for every hair type and texture -- and anyone who wants salon hair every day. If your hair is dry, brittle, frizzy or colored, this is for you.\n\nWaves and curls love it too, from 2a to 4c hair.",
+            "option_name": "Offer",
+            "option_value": "18600012765101"
+          }
+        },
+        "readiness_tier": "referral_only"
+      },
+      "first_offer": {
+        "offer_id": "offer:external_seed:e2e814342e8f7653a03e6abe04fa4c8e",
+        "sku_key": "prod::external_seed::external_seed::ext_a1bb997d38b6823e83f23948::sku_4eee7e388d03a8d6cee1",
+        "product_key": "prod::external_seed::external_seed::ext_a1bb997d38b6823e83f23948",
+        "merchant_id": "external_seed",
+        "catalog_track": "external_referral",
+        "truth_tier": "observed",
+        "readiness_tier": "referral_only",
+        "offer_mode": "redirect",
+        "channel": "external_referral",
+        "availability": "in_stock",
+        "currency": "USD",
+        "list_price": 38,
+        "merchant_effective_price": 38,
+        "estimated_best_price": 38,
+        "price_confidence": 1,
+        "source_system": "external_product_seeds_mirror_v1",
+        "source_ref": "eps_94a899fff76f8e6463ddb8b7",
+        "source_domain": "lovemasami.com",
+        "offer_payload": {
+          "source": "external_product_seeds_mirror_v1",
+          "external_seed_id": "eps_94a899fff76f8e6463ddb8b7",
+          "external_product_id": "ext_a1bb997d38b6823e83f23948",
+          "domain": "lovemasami.com",
+          "market": "US",
+          "product_title": "Mekabu Hydrating Conditioner",
+          "variant_title": "Mekabu Hydrating Conditioner",
+          "variant_sku": "18600012765101",
+          "raw_variant_id": "30304560808000",
+          "url": "https://lovemasami.com/products/mekabu-conditioner",
+          "offer_url": "https://lovemasami.com/products/mekabu-conditioner",
+          "canonical_url": "https://lovemasami.com/products/mekabu-conditioner",
+          "destination_url": "https://lovemasami.com/products/mekabu-conditioner",
+          "external_redirect_url": "https://lovemasami.com/products/mekabu-conditioner",
+          "merchant_display_name": "MASAMI",
+          "price": "38",
+          "price_amount": 38,
+          "price_currency": "USD",
+          "availability": "in_stock",
+          "commerce_facts_v1": {
+            "contract_version": "commerce_facts.v1",
+            "market_id": "US",
+            "country": "US",
+            "currency_target": "USD",
+            "source_authority": "catalog_extract_v2",
+            "captured_at": "2026-05-25T05:05:33.751Z",
+            "evidence_url": "https://lovemasami.com/products/mekabu-conditioner",
+            "sellable_region": {
+              "status": "unknown",
+              "countries": [],
+              "evidence_source": "catalog_extract_v2",
+              "confidence": "medium",
+              "checked_at": "2026-05-25T05:05:33.751Z",
+              "reason_codes": [
+                "market_currency_observed",
+                "shipping_destination_not_verified",
+                "external_checkout_not_queried"
+              ],
+              "evidence_url": "https://lovemasami.com/products/mekabu-conditioner"
+            },
+            "regional_price": {
+              "amount": 38,
+              "currency": "USD",
+              "display_raw": "38.00",
+              "price_type": "list",
+              "compare_at_amount": null,
+              "compare_at_currency": null,
+              "compare_at_display_raw": null,
+              "tax_included": "unknown",
+              "confidence": "medium",
+              "market_switch_status": "ok",
+              "observed_currency": "USD",
+              "source_url": "https://lovemasami.com/products/mekabu-conditioner",
+              "captured_at": "2026-05-25T05:05:33.751Z"
+            },
+            "availability": {
+              "status": "in_stock",
+              "source": "catalog_extract_v2",
+              "confidence": "medium",
+              "captured_at": "2026-05-25T05:05:33.751Z"
+            },
+            "shipping": {
+              "status": "unknown",
+              "source": "catalog_extract_v2",
+              "confidence": "unknown",
+              "reason_codes": [
+                "external_checkout_not_queried"
+              ],
+              "checked_at": "2026-05-25T05:05:33.751Z"
+            },
+            "promotions": [],
+            "returns": {
+              "status": "unknown",
+              "source": "catalog_extract_v2",
+              "confidence": "unknown",
+              "reason_codes": [
+                "external_returns_not_extracted"
+              ],
+              "checked_at": "2026-05-25T05:05:33.751Z"
+            }
+          },
+          "agent_safe_commerce_facts": {
+            "contract_version": "commerce_facts.v1",
+            "market_id": "US",
+            "price": {
+              "amount": 38,
+              "currency": "USD",
+              "display_raw": "38.00",
+              "price_type": "list",
+              "compare_at_amount": null,
+              "compare_at_currency": null,
+              "compare_at_display_raw": null,
+              "tax_included": "unknown",
+              "confidence": "medium",
+              "market_switch_status": "ok",
+              "observed_currency": "USD",
+              "source_url": "https://lovemasami.com/products/mekabu-conditioner",
+              "captured_at": "2026-05-25T05:05:33.751Z"
+            },
+            "availability": {
+              "status": "in_stock",
+              "source": "catalog_extract_v2",
+              "confidence": "medium",
+              "captured_at": "2026-05-25T05:05:33.751Z"
+            },
+            "shipping": {
+              "status": "unknown",
+              "reason": "verify_at_checkout"
+            },
+            "promotions": [],
+            "checkout_note": "Shipping and promotions are not verified for this external offer; verify at merchant checkout."
+          }
+        }
+      },
+      "serving_readiness": {
+        "servingEligible": true,
+        "contentQualityScore": 90,
+        "blockerCode": "none",
+        "blockerDetail": null,
+        "identityResolved": true,
+        "identityLiveReadResolved": true,
+        "identityBootstrapEligible": false,
+        "hasImage": true,
+        "hasPrice": true,
+        "descriptionLength": 700
+      }
+    },
+    {
+      "external_product_id": "ext_fe9ef8f2a6343901489fe63e",
+      "product_key": "prod::external_seed::external_seed::ext_fe9ef8f2a6343901489fe63e",
+      "product_group_id": "sig_e959cbde356524d37aa4e7f7",
+      "title": "Mekabu Hydrating Styling Cream",
+      "brand": "MASAMI",
+      "product_type": "Styling Cream",
+      "category": "Styling Cream",
+      "category_path": "beauty/haircare/styling-cream",
+      "canonical_url": "https://lovemasami.com/products/mekabu-cream",
+      "pivota_signature_id": "sig_e959cbde356524d37aa4e7f7",
+      "sku_rows": 1,
+      "first_sku": {
+        "sku_key": "prod::external_seed::external_seed::ext_fe9ef8f2a6343901489fe63e::sku_3431986cc86b05e0d387",
+        "product_key": "prod::external_seed::external_seed::ext_fe9ef8f2a6343901489fe63e",
+        "merchant_id": "external_seed",
+        "platform": "external_seed",
+        "source_product_id": "ext_fe9ef8f2a6343901489fe63e",
+        "source_variant_id": "ext_fe9ef8f2a6343901489fe63e:19939837870144",
+        "source_domain": "lovemasami.com",
+        "sku": "18600012765271",
+        "barcode": null,
+        "title": "Mekabu Hydrating Styling Cream",
+        "currency": "USD",
+        "image_url": "https://cdn.shopify.com/s/files/1/0138/7901/7536/products/masami-treatment-mekabu-hydrating-styling-cream-18600012765271-23627651547292.jpg?v=1755657303",
+        "visible_attributes": {
+          "Offer": "18600012765271"
+        },
+        "visible_option_labels": {
+          "Offer": "18600012765271"
+        },
+        "ingredient_ids": [],
+        "sku_payload": {
+          "source": "external_product_seeds_mirror_v1",
+          "external_product_id": "ext_fe9ef8f2a6343901489fe63e",
+          "raw_variant_id": "19939837870144",
+          "source_variant_id": "ext_fe9ef8f2a6343901489fe63e:19939837870144",
+          "variant_sku": "18600012765271",
+          "barcode": null,
+          "strong_identifier_kind": null,
+          "source_url": "https://lovemasami.com/products/mekabu-cream",
+          "external_redirect_url": "https://lovemasami.com/products/mekabu-cream",
+          "price": "36",
+          "price_amount": 36,
+          "currency": "USD",
+          "availability": "in_stock",
+          "image_url": "https://cdn.shopify.com/s/files/1/0138/7901/7536/products/masami-treatment-mekabu-hydrating-styling-cream-18600012765271-23627651547292.jpg?v=1755657303",
+          "swatch_image_url": null,
+          "label_image_url": null,
+          "options": {
+            "Offer": "18600012765271"
+          },
+          "raw_variant": {
+            "sku": "18600012765271",
+            "url": "https://lovemasami.com/products/mekabu-cream",
+            "price": "36.00",
+            "stock": "In Stock",
+            "images": [
+              "https://cdn.shopify.com/s/files/1/0138/7901/7536/products/MASAMI_Mekabu_Hydrating_Styling_Cream_Texture.jpg?v=1755657190",
+              "https://cdn.shopify.com/s/files/1/0138/7901/7536/products/Man_Holding_MASAMI_Styling_Cream.png?v=1755657253",
+              "https://cdn.shopify.com/s/files/1/0138/7901/7536/products/MASAMI_Mekabu_Hydrating_Styling_Cream_Edges.jpg?v=1755657284",
+              "https://cdn.shopify.com/s/files/1/0138/7901/7536/products/masami-treatment-mekabu-hydrating-styling-cream-18600012765271-23627651547292.jpg?v=1755657303",
+              "https://cdn.shopify.com/s/files/1/0138/7901/7536/products/MASAMI_Mekabu_Hydrating_Styling_Cream_Outside.jpg?v=1755657342",
+              "https://www.lovemasami.com/cdn/shop/products/MASAMI_Mekabu_Hydrating_Styling_Cream_Texture_114x144_crop_center.jpg?v=1755657190"
+            ],
+            "currency": "USD",
+            "image_url": "https://cdn.shopify.com/s/files/1/0138/7901/7536/products/masami-treatment-mekabu-hydrating-styling-cream-18600012765271-23627651547292.jpg?v=1755657303",
+            "image_urls": [
+              "https://cdn.shopify.com/s/files/1/0138/7901/7536/products/MASAMI_Mekabu_Hydrating_Styling_Cream_Texture.jpg?v=1755657190",
+              "https://cdn.shopify.com/s/files/1/0138/7901/7536/products/Man_Holding_MASAMI_Styling_Cream.png?v=1755657253",
+              "https://cdn.shopify.com/s/files/1/0138/7901/7536/products/MASAMI_Mekabu_Hydrating_Styling_Cream_Edges.jpg?v=1755657284",
+              "https://cdn.shopify.com/s/files/1/0138/7901/7536/products/masami-treatment-mekabu-hydrating-styling-cream-18600012765271-23627651547292.jpg?v=1755657303",
+              "https://cdn.shopify.com/s/files/1/0138/7901/7536/products/MASAMI_Mekabu_Hydrating_Styling_Cream_Outside.jpg?v=1755657342",
+              "https://www.lovemasami.com/cdn/shop/products/MASAMI_Mekabu_Hydrating_Styling_Cream_Texture_114x144_crop_center.jpg?v=1755657190"
+            ],
+            "variant_id": "19939837870144",
+            "description": "Mekabu and Aloe Vera add hydration, protection and shine, while Vitamin E, Grapeseed, and Sweet Almond Oils help nourish the hair from root to tip, eliminating frizz for a natural, soft, silky look.\n\nThis curl-defining formula is non-greasy, non-sticky and boasts the benefits of a wax, paste and cream for a flexible, all-day hold, that can be messy, sleek or anything in between. Use on wet or dry hair.",
+            "option_name": "Offer",
+            "option_value": "18600012765271"
+          }
+        },
+        "readiness_tier": "referral_only"
+      },
+      "first_offer": {
+        "offer_id": "offer:external_seed:514e1a73234658ccfeae2169bbfeb32d",
+        "sku_key": "prod::external_seed::external_seed::ext_fe9ef8f2a6343901489fe63e::sku_3431986cc86b05e0d387",
+        "product_key": "prod::external_seed::external_seed::ext_fe9ef8f2a6343901489fe63e",
+        "merchant_id": "external_seed",
+        "catalog_track": "external_referral",
+        "truth_tier": "observed",
+        "readiness_tier": "referral_only",
+        "offer_mode": "redirect",
+        "channel": "external_referral",
+        "availability": "in_stock",
+        "currency": "USD",
+        "list_price": 36,
+        "merchant_effective_price": 36,
+        "estimated_best_price": 36,
+        "price_confidence": 1,
+        "source_system": "external_product_seeds_mirror_v1",
+        "source_ref": "eps_4a1782147cf6c901a6166f7e",
+        "source_domain": "lovemasami.com",
+        "offer_payload": {
+          "source": "external_product_seeds_mirror_v1",
+          "external_seed_id": "eps_4a1782147cf6c901a6166f7e",
+          "external_product_id": "ext_fe9ef8f2a6343901489fe63e",
+          "domain": "lovemasami.com",
+          "market": "US",
+          "product_title": "Mekabu Hydrating Styling Cream",
+          "variant_title": "Mekabu Hydrating Styling Cream",
+          "variant_sku": "18600012765271",
+          "raw_variant_id": "19939837870144",
+          "url": "https://lovemasami.com/products/mekabu-cream",
+          "offer_url": "https://lovemasami.com/products/mekabu-cream",
+          "canonical_url": "https://lovemasami.com/products/mekabu-cream",
+          "destination_url": "https://lovemasami.com/products/mekabu-cream",
+          "external_redirect_url": "https://lovemasami.com/products/mekabu-cream",
+          "merchant_display_name": "MASAMI",
+          "price": "36",
+          "price_amount": 36,
+          "price_currency": "USD",
+          "availability": "in_stock",
+          "commerce_facts_v1": {
+            "contract_version": "commerce_facts.v1",
+            "market_id": "US",
+            "country": "US",
+            "currency_target": "USD",
+            "source_authority": "catalog_extract_v2",
+            "captured_at": "2026-05-25T05:05:48.128Z",
+            "evidence_url": "https://lovemasami.com/products/mekabu-cream",
+            "sellable_region": {
+              "status": "unknown",
+              "countries": [],
+              "evidence_source": "catalog_extract_v2",
+              "confidence": "medium",
+              "checked_at": "2026-05-25T05:05:48.128Z",
+              "reason_codes": [
+                "market_currency_observed",
+                "shipping_destination_not_verified",
+                "external_checkout_not_queried"
+              ],
+              "evidence_url": "https://lovemasami.com/products/mekabu-cream"
+            },
+            "regional_price": {
+              "amount": 36,
+              "currency": "USD",
+              "display_raw": "36.00",
+              "price_type": "list",
+              "compare_at_amount": null,
+              "compare_at_currency": null,
+              "compare_at_display_raw": null,
+              "tax_included": "unknown",
+              "confidence": "medium",
+              "market_switch_status": "ok",
+              "observed_currency": "USD",
+              "source_url": "https://lovemasami.com/products/mekabu-cream",
+              "captured_at": "2026-05-25T05:05:48.128Z"
+            },
+            "availability": {
+              "status": "in_stock",
+              "source": "catalog_extract_v2",
+              "confidence": "medium",
+              "captured_at": "2026-05-25T05:05:48.128Z"
+            },
+            "shipping": {
+              "status": "unknown",
+              "source": "catalog_extract_v2",
+              "confidence": "unknown",
+              "reason_codes": [
+                "external_checkout_not_queried"
+              ],
+              "checked_at": "2026-05-25T05:05:48.128Z"
+            },
+            "promotions": [],
+            "returns": {
+              "status": "unknown",
+              "source": "catalog_extract_v2",
+              "confidence": "unknown",
+              "reason_codes": [
+                "external_returns_not_extracted"
+              ],
+              "checked_at": "2026-05-25T05:05:48.128Z"
+            }
+          },
+          "agent_safe_commerce_facts": {
+            "contract_version": "commerce_facts.v1",
+            "market_id": "US",
+            "price": {
+              "amount": 36,
+              "currency": "USD",
+              "display_raw": "36.00",
+              "price_type": "list",
+              "compare_at_amount": null,
+              "compare_at_currency": null,
+              "compare_at_display_raw": null,
+              "tax_included": "unknown",
+              "confidence": "medium",
+              "market_switch_status": "ok",
+              "observed_currency": "USD",
+              "source_url": "https://lovemasami.com/products/mekabu-cream",
+              "captured_at": "2026-05-25T05:05:48.128Z"
+            },
+            "availability": {
+              "status": "in_stock",
+              "source": "catalog_extract_v2",
+              "confidence": "medium",
+              "captured_at": "2026-05-25T05:05:48.128Z"
+            },
+            "shipping": {
+              "status": "unknown",
+              "reason": "verify_at_checkout"
+            },
+            "promotions": [],
+            "checkout_note": "Shipping and promotions are not verified for this external offer; verify at merchant checkout."
+          }
+        }
+      },
+      "serving_readiness": {
+        "servingEligible": true,
+        "contentQualityScore": 90,
+        "blockerCode": "none",
+        "blockerDetail": null,
+        "identityResolved": true,
+        "identityLiveReadResolved": true,
+        "identityBootstrapEligible": false,
+        "hasImage": true,
+        "hasPrice": true,
+        "descriptionLength": 405
+      }
+    }
+  ]
+}
