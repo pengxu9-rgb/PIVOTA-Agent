@@ -1,0 +1,46 @@
+{
+  "generated_at": "2026-05-28T02:49:37.627Z",
+  "dry_run": false,
+  "summary": {
+    "scanned": 3,
+    "dry_run": 0,
+    "updated": 3,
+    "unchanged": 0,
+    "missing": 0
+  },
+  "results": [
+    {
+      "external_product_id": "ext_8d14bc437cfb15f2717c6bcc",
+      "title": "Nail Polish Set 6 Piece (Choose Your Colors)",
+      "status": "updated",
+      "reason": "custom_bundle_components_selected_by_shopper",
+      "product_family": "set_or_collection",
+      "serving_mirror_sync": {
+        "catalog_products": 1,
+        "pdp_identity_listing": 1
+      }
+    },
+    {
+      "external_product_id": "ext_5c80fda1202cbae9f1252b1c",
+      "title": "Nail Polish Set (Choose your Colors)",
+      "status": "updated",
+      "reason": "custom_bundle_components_selected_by_shopper",
+      "product_family": "set_or_collection",
+      "serving_mirror_sync": {
+        "catalog_products": 1,
+        "pdp_identity_listing": 1
+      }
+    },
+    {
+      "external_product_id": "ext_2dcd32513f13fbec782bb9d2",
+      "title": "Nail Polish Set 4 Piece (Choose Your Colors)",
+      "status": "updated",
+      "reason": "custom_bundle_components_selected_by_shopper",
+      "product_family": "set_or_collection",
+      "serving_mirror_sync": {
+        "catalog_products": 1,
+        "pdp_identity_listing": 1
+      }
+    }
+  ]
+}

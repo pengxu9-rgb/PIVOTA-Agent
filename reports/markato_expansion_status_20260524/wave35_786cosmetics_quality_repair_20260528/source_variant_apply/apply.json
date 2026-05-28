@@ -1,0 +1,816 @@
+{
+  "generated_at": "2026-05-28T02:29:29.645Z",
+  "dry_run": false,
+  "market": "US",
+  "contract_version": "external_seed.source_variant_fields.v1",
+  "summary": {
+    "scanned": 38,
+    "dry_run": 0,
+    "updated": 38,
+    "skipped": 0,
+    "failed": 0,
+    "by_field": {
+      "variants": 38
+    }
+  },
+  "results": [
+    {
+      "external_product_id": "ext_faf89834933316df0d8da973",
+      "title": "Azores - Breathable Nail Polish",
+      "source_url": "https://786cosmetics.com/products/azores-breathable-nail-polish",
+      "source_host": "786cosmetics.com",
+      "status": "updated",
+      "patch_keys": [
+        "variants"
+      ],
+      "reason": "replace_force_or_weak_variant",
+      "before_hash": "10e66100aca1ef6f4dcd486ffde3b9cc84a9c1fd2fa6860b016d319519c78d57",
+      "after_hash": "994c095a51a2d50a08d8a64b325b2b2273df83c964c01564dec8d29af454a91e",
+      "variant_count": 1,
+      "variant_labels": [
+        "Shade: Azores"
+      ],
+      "serving_mirror_sync": {
+        "catalog_products": 1,
+        "pdp_identity_listing": 1
+      }
+    },
+    {
+      "external_product_id": "ext_5f55c01bae5cd6b5f0a0e78e",
+      "title": "Dakar - Breathable Nail Polish",
+      "source_url": "https://786cosmetics.com/products/dakar-breathable-nail-polish",
+      "source_host": "786cosmetics.com",
+      "status": "updated",
+      "patch_keys": [
+        "variants"
+      ],
+      "reason": "replace_force_or_weak_variant",
+      "before_hash": "5889a6685b35ec9796673f215f0c127995159b344e55a3c345c457a484888cc7",
+      "after_hash": "4f1ea84d9443c119d06f5016a82aedf18b821a074d3440bdc6610fe831031652",
+      "variant_count": 1,
+      "variant_labels": [
+        "Shade: Dakar"
+      ],
+      "serving_mirror_sync": {
+        "catalog_products": 1,
+        "pdp_identity_listing": 1
+      }
+    },
+    {
+      "external_product_id": "ext_a36359795b89961a7c052b21",
+      "title": "Karachi - Breathable Nail Polish",
+      "source_url": "https://786cosmetics.com/products/karachi-breathable-nail-polish",
+      "source_host": "786cosmetics.com",
+      "status": "updated",
+      "patch_keys": [
+        "variants"
+      ],
+      "reason": "replace_force_or_weak_variant",
+      "before_hash": "29f0f26e92aff8013270790a3b79dd4b3ab725b50c3c12cfdb5ab37d87051348",
+      "after_hash": "1e3be78f1dc716ffd573a0decc3ea73a9a257465bfa6af2339b1b94a3ddba90d",
+      "variant_count": 1,
+      "variant_labels": [
+        "Shade: Karachi"
+      ],
+      "serving_mirror_sync": {
+        "catalog_products": 1,
+        "pdp_identity_listing": 1
+      }
+    },
+    {
+      "external_product_id": "ext_ab5107f3a835da10508757c6",
+      "title": "Havana - Breathable Nail Polish",
+      "source_url": "https://786cosmetics.com/products/havana-breathable-nail-polish",
+      "source_host": "786cosmetics.com",
+      "status": "updated",
+      "patch_keys": [
+        "variants"
+      ],
+      "reason": "replace_force_or_weak_variant",
+      "before_hash": "e7f79200db7bed8724a283839a80bf2f3a0e8c833a8d04aa28972a8e8d222074",
+      "after_hash": "df4c90b13b1cc5961568be3a9930662c765e798ab530945c4895f7188171bf83",
+      "variant_count": 1,
+      "variant_labels": [
+        "Shade: Havana"
+      ],
+      "serving_mirror_sync": {
+        "catalog_products": 1,
+        "pdp_identity_listing": 1
+      }
+    },
+    {
+      "external_product_id": "ext_abd25039dea2189dfcca8079",
+      "title": "Patagonia - Breathable Nail Polish",
+      "source_url": "https://786cosmetics.com/products/patagonia-breathable-nail-polish",
+      "source_host": "786cosmetics.com",
+      "status": "updated",
+      "patch_keys": [
+        "variants"
+      ],
+      "reason": "replace_force_or_weak_variant",
+      "before_hash": "ccbbd57327711e90c7d681730ae659764b20d3824eb57456fef36574f4dbb90e",
+      "after_hash": "4a718aea1a5a41fc1f57823c95bb9c7f5bba370c964e370c0c15c336901a224a",
+      "variant_count": 1,
+      "variant_labels": [
+        "Shade: Patagonia"
+      ],
+      "serving_mirror_sync": {
+        "catalog_products": 1,
+        "pdp_identity_listing": 1
+      }
+    },
+    {
+      "external_product_id": "ext_c6d113bff874c00abfb4ba33",
+      "title": "Tallinn - Breathable Nail Polish",
+      "source_url": "https://786cosmetics.com/products/tallinn-breathable-nail-polish",
+      "source_host": "786cosmetics.com",
+      "status": "updated",
+      "patch_keys": [
+        "variants"
+      ],
+      "reason": "replace_force_or_weak_variant",
+      "before_hash": "37e221dc0c48332f8eb559c02780101f740d91eefe3390541e55cd775f0aea4d",
+      "after_hash": "910ba00f1d4b58cbb259322c2c168b4275ad669ad935e26abedf2c1764d9f6f8",
+      "variant_count": 1,
+      "variant_labels": [
+        "Shade: Tallinn"
+      ],
+      "serving_mirror_sync": {
+        "catalog_products": 1,
+        "pdp_identity_listing": 1
+      }
+    },
+    {
+      "external_product_id": "ext_da3b149ed322142c187224b6",
+      "title": "Toulouse - Breathable Nail Polish",
+      "source_url": "https://786cosmetics.com/products/toulouse-breathable-nail-polish",
+      "source_host": "786cosmetics.com",
+      "status": "updated",
+      "patch_keys": [
+        "variants"
+      ],
+      "reason": "replace_force_or_weak_variant",
+      "before_hash": "4eea6e5d458338dad9076f2b32634846c1e01045e04d07fbcee1932e609c94d8",
+      "after_hash": "79ebb74b0c4b38084155f66849ce78aa114e93080af83d44261dec824e55f6fc",
+      "variant_count": 1,
+      "variant_labels": [
+        "Shade: Toulouse"
+      ],
+      "serving_mirror_sync": {
+        "catalog_products": 1,
+        "pdp_identity_listing": 1
+      }
+    },
+    {
+      "external_product_id": "ext_efe7512de8c6df9f75ca19e0",
+      "title": "Dubrovnik - Breathable Nail Polish",
+      "source_url": "https://786cosmetics.com/products/dubrovnik-breathable-nail-polish",
+      "source_host": "786cosmetics.com",
+      "status": "updated",
+      "patch_keys": [
+        "variants"
+      ],
+      "reason": "replace_force_or_weak_variant",
+      "before_hash": "92a84e6973426cafad2b16a86ff75a7772ad1e2a9a37a0c51bc5b049a4e1d578",
+      "after_hash": "9ca42f26390048fe4bd96b0a97cd0259e8bdb147697c93a3a57e6da44a5aa48e",
+      "variant_count": 1,
+      "variant_labels": [
+        "Shade: Dubrovnik"
+      ],
+      "serving_mirror_sync": {
+        "catalog_products": 1,
+        "pdp_identity_listing": 1
+      }
+    },
+    {
+      "external_product_id": "ext_f56010dd5bf971f7b7f644a6",
+      "title": "Uluru - Breathable Nail Polish",
+      "source_url": "https://786cosmetics.com/products/uluru-breathable-nail-polish",
+      "source_host": "786cosmetics.com",
+      "status": "updated",
+      "patch_keys": [
+        "variants"
+      ],
+      "reason": "replace_force_or_weak_variant",
+      "before_hash": "c80106c61bfa16430ee94bf348b04efe88732eef25776290d5925a1534469b31",
+      "after_hash": "bc99991450478779bdc2ffb79915bae050240f4abfdd55d83641d31db4e5dab5",
+      "variant_count": 1,
+      "variant_labels": [
+        "Shade: Uluru"
+      ],
+      "serving_mirror_sync": {
+        "catalog_products": 1,
+        "pdp_identity_listing": 1
+      }
+    },
+    {
+      "external_product_id": "ext_0d844fc65fd3348e35a09c80",
+      "title": "Abu Dhabi - Breathable Nail Polish",
+      "source_url": "https://786cosmetics.com/products/abu-dhabi-breathable-nail-polish",
+      "source_host": "786cosmetics.com",
+      "status": "updated",
+      "patch_keys": [
+        "variants"
+      ],
+      "reason": "replace_force_or_weak_variant",
+      "before_hash": "76e5fe415a8bd4a2d1e6c4d7ced9253189e4c87c37a472413c78e619db0fe162",
+      "after_hash": "6b26404dd871063379f835c8ebaf86f01e5174d5d2c0fcf29034850acfbe2a08",
+      "variant_count": 1,
+      "variant_labels": [
+        "Shade: Abu Dhabi"
+      ],
+      "serving_mirror_sync": {
+        "catalog_products": 1,
+        "pdp_identity_listing": 1
+      }
+    },
+    {
+      "external_product_id": "ext_151aebc5b6246b8d2d9a877b",
+      "title": "Agra - Breathable Nail Polish",
+      "source_url": "https://786cosmetics.com/products/agra-breathable-nail-polish",
+      "source_host": "786cosmetics.com",
+      "status": "updated",
+      "patch_keys": [
+        "variants"
+      ],
+      "reason": "replace_force_or_weak_variant",
+      "before_hash": "760c91309860f5983cbf579f85275dcac17ff27b35f5e853160bb76766824394",
+      "after_hash": "e2eeedb218c38775ddf88ff7241f4d6aaa248eb16305092f115087345752a9d8",
+      "variant_count": 1,
+      "variant_labels": [
+        "Shade: Agra"
+      ],
+      "serving_mirror_sync": {
+        "catalog_products": 1,
+        "pdp_identity_listing": 1
+      }
+    },
+    {
+      "external_product_id": "ext_2fc7cc1ac3370464b4b923d3",
+      "title": "Bahrain - Breathable Nail Polish",
+      "source_url": "https://786cosmetics.com/products/bahrain-breathable-nail-polish",
+      "source_host": "786cosmetics.com",
+      "status": "updated",
+      "patch_keys": [
+        "variants"
+      ],
+      "reason": "replace_force_or_weak_variant",
+      "before_hash": "38ffcc63884e28232045831cdee8a3ecc7ad053098d51e3f6989b37e071aaa46",
+      "after_hash": "a828f64c52de5e5c34c5b29b57d086ccd2caf02f75ab3be19ab0cd164f42855b",
+      "variant_count": 1,
+      "variant_labels": [
+        "Shade: Bahrain"
+      ],
+      "serving_mirror_sync": {
+        "catalog_products": 1,
+        "pdp_identity_listing": 1
+      }
+    },
+    {
+      "external_product_id": "ext_33fa1a749060cefdd3e0dc2b",
+      "title": "Beirut - Breathable Nail Polish",
+      "source_url": "https://786cosmetics.com/products/beirut-breathable-nail-polish",
+      "source_host": "786cosmetics.com",
+      "status": "updated",
+      "patch_keys": [
+        "variants"
+      ],
+      "reason": "replace_force_or_weak_variant",
+      "before_hash": "b095ad43d83e2bfc0d1829bec6ed691de2c150bdec414d06241eb04c106d6aa0",
+      "after_hash": "ea5f637a132d88758d0f66435c002c467fd7677f6abcf34c189b45feeca2b171",
+      "variant_count": 1,
+      "variant_labels": [
+        "Shade: Beirut"
+      ],
+      "serving_mirror_sync": {
+        "catalog_products": 1,
+        "pdp_identity_listing": 1
+      }
+    },
+    {
+      "external_product_id": "ext_36b452da1e0dde5c19bd2ed0",
+      "title": "Casablanca - Breathable Nail Polish",
+      "source_url": "https://786cosmetics.com/products/casablanca-breathable-nail-polish",
+      "source_host": "786cosmetics.com",
+      "status": "updated",
+      "patch_keys": [
+        "variants"
+      ],
+      "reason": "replace_force_or_weak_variant",
+      "before_hash": "2f15a709f8a2ad2480d21ad60181a377826a07248fc85775016fb4ef364a0a01",
+      "after_hash": "23b7ebfbed181ab7669cc1dc6658f4ebc1897b06f5f6c75c1df9dfbfeefbf3ea",
+      "variant_count": 1,
+      "variant_labels": [
+        "Shade: Casablanca"
+      ],
+      "serving_mirror_sync": {
+        "catalog_products": 1,
+        "pdp_identity_listing": 1
+      }
+    },
+    {
+      "external_product_id": "ext_2c4793f5f96ec2d4680fd55b",
+      "title": "Zhangye - Breathable Nail Polish",
+      "source_url": "https://786cosmetics.com/products/zhangye-breathable-nail-polish",
+      "source_host": "786cosmetics.com",
+      "status": "updated",
+      "patch_keys": [
+        "variants"
+      ],
+      "reason": "replace_force_or_weak_variant",
+      "before_hash": "69cee25aaddd3c9e71687b12593c05288c9f4ff5944e1615e5bb5664b4eb9265",
+      "after_hash": "bff4fecb9ae7e239e1719650f22468ac26b2530e27f8e48a946cfbeeb357039b",
+      "variant_count": 1,
+      "variant_labels": [
+        "Shade: Zhangye"
+      ],
+      "serving_mirror_sync": {
+        "catalog_products": 1,
+        "pdp_identity_listing": 1
+      }
+    },
+    {
+      "external_product_id": "ext_41aeeb470016979417c8637d",
+      "title": "Kabul - Breathable Nail Polish",
+      "source_url": "https://786cosmetics.com/products/kabul-breathable-nail-polish",
+      "source_host": "786cosmetics.com",
+      "status": "updated",
+      "patch_keys": [
+        "variants"
+      ],
+      "reason": "replace_force_or_weak_variant",
+      "before_hash": "b405be4edba0f53671abc974fad0a9e7db638cb028dec47dab0662f0695cc858",
+      "after_hash": "35e382316cd48b4b54085a1f67f0451b4fbf8aef34f809bfc687649d4c13f809",
+      "variant_count": 1,
+      "variant_labels": [
+        "Shade: Kabul"
+      ],
+      "serving_mirror_sync": {
+        "catalog_products": 1,
+        "pdp_identity_listing": 1
+      }
+    },
+    {
+      "external_product_id": "ext_69dcb156e335cb9756e016b2",
+      "title": "Kashmir - Breathable Nail Polish",
+      "source_url": "https://786cosmetics.com/products/kashmir-breathable-nail-polish",
+      "source_host": "786cosmetics.com",
+      "status": "updated",
+      "patch_keys": [
+        "variants"
+      ],
+      "reason": "replace_force_or_weak_variant",
+      "before_hash": "fed917f121eebef44d437991d99392709162b7dc9c2839426a5b3be062be84fc",
+      "after_hash": "2e19dd4f03f0ca742708787f79231b6ed6aa51a3dd83a20f36e335780e88d5a8",
+      "variant_count": 1,
+      "variant_labels": [
+        "Shade: Kashmir"
+      ],
+      "serving_mirror_sync": {
+        "catalog_products": 1,
+        "pdp_identity_listing": 1
+      }
+    },
+    {
+      "external_product_id": "ext_8573685e1cc94840934c764d",
+      "title": "Goychay - Breathable Nail Polish",
+      "source_url": "https://786cosmetics.com/products/goychay-breathable-nail-polish",
+      "source_host": "786cosmetics.com",
+      "status": "updated",
+      "patch_keys": [
+        "variants"
+      ],
+      "reason": "replace_force_or_weak_variant",
+      "before_hash": "c897f39eb2a9bbce2e0929758afc1702520bebc2219de2c9eff1350072d89e8f",
+      "after_hash": "000139576243eb44aaf2c97800effb311b0c01fcd86e53926bf9993395cda2ee",
+      "variant_count": 1,
+      "variant_labels": [
+        "Shade: Goychay"
+      ],
+      "serving_mirror_sync": {
+        "catalog_products": 1,
+        "pdp_identity_listing": 1
+      }
+    },
+    {
+      "external_product_id": "ext_55b774d3c57906a77a7167f0",
+      "title": "Sorrento - Breathable Nail Polish",
+      "source_url": "https://786cosmetics.com/products/sorrento-breathable-nail-polish",
+      "source_host": "786cosmetics.com",
+      "status": "updated",
+      "patch_keys": [
+        "variants"
+      ],
+      "reason": "replace_force_or_weak_variant",
+      "before_hash": "a24e7b963f28172e0aeaac1a49659dcfcc21264b96634b13c1401ce263b40c84",
+      "after_hash": "84ab36b6a222e1eb97ab2e18e5652174ce25003aa76f7026fc53d8425027ffd2",
+      "variant_count": 1,
+      "variant_labels": [
+        "Shade: Sorrento"
+      ],
+      "serving_mirror_sync": {
+        "catalog_products": 1,
+        "pdp_identity_listing": 1
+      }
+    },
+    {
+      "external_product_id": "ext_f37bb5bc53c4764bc5de8e9c",
+      "title": "Isfahan - Breathable Nail Polish",
+      "source_url": "https://786cosmetics.com/products/isfahan-breathable-nail-polish",
+      "source_host": "786cosmetics.com",
+      "status": "updated",
+      "patch_keys": [
+        "variants"
+      ],
+      "reason": "replace_force_or_weak_variant",
+      "before_hash": "c0f22644a330434b579ed364a94c2a5ae78430d3d6b3429bf0ac888cad3d6131",
+      "after_hash": "607546927721df33390be74893a0dd521078f0c1a5461e0e66d9cc51fc41c2d5",
+      "variant_count": 1,
+      "variant_labels": [
+        "Shade: Isfahan"
+      ],
+      "serving_mirror_sync": {
+        "catalog_products": 1,
+        "pdp_identity_listing": 1
+      }
+    },
+    {
+      "external_product_id": "ext_cd1678cacc37126a9d483888",
+      "title": "Bursa - Breathable Nail Polish",
+      "source_url": "https://786cosmetics.com/products/bursa-breathable-nail-polish",
+      "source_host": "786cosmetics.com",
+      "status": "updated",
+      "patch_keys": [
+        "variants"
+      ],
+      "reason": "replace_force_or_weak_variant",
+      "before_hash": "35425bce5907bf70e02033a45d31eb6dfbb8863cc92a7899f7233298d5deca91",
+      "after_hash": "c87dc2f933808ed6e6e5c7aad2f8c161e220a40518927ead610aac1ef77bdfef",
+      "variant_count": 1,
+      "variant_labels": [
+        "Shade: Bursa"
+      ],
+      "serving_mirror_sync": {
+        "catalog_products": 1,
+        "pdp_identity_listing": 1
+      }
+    },
+    {
+      "external_product_id": "ext_c6ce33a7e9e59a7c8c24fc36",
+      "title": "Kyoto - Breathable Nail Polish",
+      "source_url": "https://786cosmetics.com/products/kyoto",
+      "source_host": "786cosmetics.com",
+      "status": "updated",
+      "patch_keys": [
+        "variants"
+      ],
+      "reason": "replace_force_or_weak_variant",
+      "before_hash": "0c9fe4cbd79cf3e98995e1d3e0869b735fd594d6f8813f71d7ae8bd81c7f55a9",
+      "after_hash": "0608355b1e53c86acb5fc566ef0be0754790411bc71ef069640cdb7924b591bc",
+      "variant_count": 1,
+      "variant_labels": [
+        "Shade: Kyoto"
+      ],
+      "serving_mirror_sync": {
+        "catalog_products": 1,
+        "pdp_identity_listing": 1
+      }
+    },
+    {
+      "external_product_id": "ext_afb163014d0bffd3a6493c05",
+      "title": "Marrakesh - Breathable Nail Polish",
+      "source_url": "https://786cosmetics.com/products/marrakesh",
+      "source_host": "786cosmetics.com",
+      "status": "updated",
+      "patch_keys": [
+        "variants"
+      ],
+      "reason": "replace_force_or_weak_variant",
+      "before_hash": "b778d5d8694d15ce83ab8016b1414e30db1054dc5224eb83b19c415f2e7f4806",
+      "after_hash": "14a7a1a55b9cf987006c7ac6987a9c98a27515cdb033ed69722b9ee757808bd9",
+      "variant_count": 1,
+      "variant_labels": [
+        "Shade: Marrakesh"
+      ],
+      "serving_mirror_sync": {
+        "catalog_products": 1,
+        "pdp_identity_listing": 1
+      }
+    },
+    {
+      "external_product_id": "ext_a5d2bdb05f2216a85764454f",
+      "title": "Lisbon - Breathable Nail Polish",
+      "source_url": "https://786cosmetics.com/products/lisbon-breathable-nail-polish",
+      "source_host": "786cosmetics.com",
+      "status": "updated",
+      "patch_keys": [
+        "variants"
+      ],
+      "reason": "replace_force_or_weak_variant",
+      "before_hash": "d4e312efa66eb1aa16ceb8999d2c7e507cb2b6dd39edc640fcb38672c119a2fc",
+      "after_hash": "287f78452955be18f519b08a3ea23a31ac613da0b9bb81c4416f78c0a81ff365",
+      "variant_count": 1,
+      "variant_labels": [
+        "Shade: Lisbon"
+      ],
+      "serving_mirror_sync": {
+        "catalog_products": 1,
+        "pdp_identity_listing": 1
+      }
+    },
+    {
+      "external_product_id": "ext_96324332335f327e15bbd1a3",
+      "title": "Istanbul - Breathable Nail Polish",
+      "source_url": "https://786cosmetics.com/products/istanbul-breathable-nail-polish",
+      "source_host": "786cosmetics.com",
+      "status": "updated",
+      "patch_keys": [
+        "variants"
+      ],
+      "reason": "replace_force_or_weak_variant",
+      "before_hash": "cf50927019891f125c45b554e3100d117358bde3990bf05f68d9856bf7088963",
+      "after_hash": "6f8b09d3fcbe7448f3207e566161dc3098bd364ddd196dca533c688f6db56834",
+      "variant_count": 1,
+      "variant_labels": [
+        "Shade: Istanbul"
+      ],
+      "serving_mirror_sync": {
+        "catalog_products": 1,
+        "pdp_identity_listing": 1
+      }
+    },
+    {
+      "external_product_id": "ext_9f7b485a72fece5e2dfc5176",
+      "title": "Himalayas - Breathable Nail Polish",
+      "source_url": "https://786cosmetics.com/products/himalayas-breathable-nail-polish",
+      "source_host": "786cosmetics.com",
+      "status": "updated",
+      "patch_keys": [
+        "variants"
+      ],
+      "reason": "replace_force_or_weak_variant",
+      "before_hash": "7d327d38aa46111602e8fa94701d1978ddd65cf5eadc0ebb97a1655c8dd10ca9",
+      "after_hash": "cd0ff428a64c47fb09b75462d6306e22c3975f0d147d8d8ec600f1341051ae0d",
+      "variant_count": 1,
+      "variant_labels": [
+        "Shade: Himalayas"
+      ],
+      "serving_mirror_sync": {
+        "catalog_products": 1,
+        "pdp_identity_listing": 1
+      }
+    },
+    {
+      "external_product_id": "ext_9a469b8f450d59f67ae21f6d",
+      "title": "Paris - Breathable Nail Polish",
+      "source_url": "https://786cosmetics.com/products/paris",
+      "source_host": "786cosmetics.com",
+      "status": "updated",
+      "patch_keys": [
+        "variants"
+      ],
+      "reason": "replace_force_or_weak_variant",
+      "before_hash": "e01950cc993cc54f3c26be5563dad7b3df064cf6baee0e3ee606444a7c168245",
+      "after_hash": "1fde23f8c1b159a34091f6632568dc4307798598f983f330ad750130ccc2fe78",
+      "variant_count": 1,
+      "variant_labels": [
+        "Shade: Paris"
+      ],
+      "serving_mirror_sync": {
+        "catalog_products": 1,
+        "pdp_identity_listing": 1
+      }
+    },
+    {
+      "external_product_id": "ext_87a0af88b9bd23b8f2123d1b",
+      "title": "Almond & Ginseng Cuticle Oil",
+      "source_url": "https://786cosmetics.com/products/almond-ginseng-cuticle-oil",
+      "source_host": "786cosmetics.com",
+      "status": "updated",
+      "patch_keys": [
+        "variants"
+      ],
+      "reason": "replace_force_or_weak_variant",
+      "before_hash": "639221bf7568f7745fd79204c0c2c62d51021b66ac50e7c2e7e426ff72cbf756",
+      "after_hash": "6eea2d68b079f9daf292794b1e2a14948b929f6f109f46636e0ab856550f4d35",
+      "variant_count": 1,
+      "variant_labels": [
+        "Format: Cuticle Oil"
+      ],
+      "serving_mirror_sync": {
+        "catalog_products": 1,
+        "pdp_identity_listing": 1
+      }
+    },
+    {
+      "external_product_id": "ext_7bac80d00f1f149743824dee",
+      "title": "Top Coat Clear - Breathable Nail Polish",
+      "source_url": "https://786cosmetics.com/products/top-coat-clear-breathable-nail-polish",
+      "source_host": "786cosmetics.com",
+      "status": "updated",
+      "patch_keys": [
+        "variants"
+      ],
+      "reason": "replace_force_or_weak_variant",
+      "before_hash": "b1c8879db4b60a0b7ebeba0fda73c32d8039522e9913d9a45533d92efd1e756f",
+      "after_hash": "868af1d5b6f72a155f85040e84869302b082bdf1461976248994687280948d9e",
+      "variant_count": 1,
+      "variant_labels": [
+        "Finish: Clear"
+      ],
+      "serving_mirror_sync": {
+        "catalog_products": 1,
+        "pdp_identity_listing": 1
+      }
+    },
+    {
+      "external_product_id": "ext_799b3d12caaa6ad1842840dd",
+      "title": "Sakura - Breathable Nail Polish",
+      "source_url": "https://786cosmetics.com/products/sakura-breathable-nail-polish",
+      "source_host": "786cosmetics.com",
+      "status": "updated",
+      "patch_keys": [
+        "variants"
+      ],
+      "reason": "replace_force_or_weak_variant",
+      "before_hash": "849df8d55808bb680280703f4089b5f5fea887db3098d9733319c284fa899435",
+      "after_hash": "22f4fa532be7960822db0db701252d5a09d294222cf06ff5815fdbc60e738c3b",
+      "variant_count": 1,
+      "variant_labels": [
+        "Shade: Sakura"
+      ],
+      "serving_mirror_sync": {
+        "catalog_products": 1,
+        "pdp_identity_listing": 1
+      }
+    },
+    {
+      "external_product_id": "ext_478c309275606a587d949541",
+      "title": "Cusco - Breathable Nail Polish",
+      "source_url": "https://786cosmetics.com/products/cusco-breathable-nail-polish",
+      "source_host": "786cosmetics.com",
+      "status": "updated",
+      "patch_keys": [
+        "variants"
+      ],
+      "reason": "replace_force_or_weak_variant",
+      "before_hash": "339b307fd75492398b3823e933a2ac30c38901e2964e99c2746c9210f37228e1",
+      "after_hash": "2c2b26eab97f5e1ed91cdbec3f8c004f73ecfbb22fe91aa0968247bfcd40c3ac",
+      "variant_count": 1,
+      "variant_labels": [
+        "Shade: Cusco"
+      ],
+      "serving_mirror_sync": {
+        "catalog_products": 1,
+        "pdp_identity_listing": 1
+      }
+    },
+    {
+      "external_product_id": "ext_45293e532ad5a5f33438d38f",
+      "title": "Nizwa - Breathable Nail Polish",
+      "source_url": "https://786cosmetics.com/products/nizwa-breathable-nail-polish",
+      "source_host": "786cosmetics.com",
+      "status": "updated",
+      "patch_keys": [
+        "variants"
+      ],
+      "reason": "replace_force_or_weak_variant",
+      "before_hash": "aeec230f38840ce19211346cae100c84dc832665cf06236b6307eb9904f2a80c",
+      "after_hash": "e46b32ef5565e1cb87c230651083ce25435d492928501c4ab187a2cf87d19f3d",
+      "variant_count": 1,
+      "variant_labels": [
+        "Shade: Nizwa"
+      ],
+      "serving_mirror_sync": {
+        "catalog_products": 1,
+        "pdp_identity_listing": 1
+      }
+    },
+    {
+      "external_product_id": "ext_2d506dd9dc7428de2d3d0cc8",
+      "title": "Seville - Breathable Nail Polish",
+      "source_url": "https://786cosmetics.com/products/seville-breathable-nail-polish",
+      "source_host": "786cosmetics.com",
+      "status": "updated",
+      "patch_keys": [
+        "variants"
+      ],
+      "reason": "replace_force_or_weak_variant",
+      "before_hash": "38fa279a624d34d58e69fe82554387dfc566dd8025d379d14e7a93be5d91527c",
+      "after_hash": "fdcf95fd5485abb045ffba3ec5ddb000f6f3c30ca8c22ff642e4c9d371f0ea59",
+      "variant_count": 1,
+      "variant_labels": [
+        "Shade: Seville"
+      ],
+      "serving_mirror_sync": {
+        "catalog_products": 1,
+        "pdp_identity_listing": 1
+      }
+    },
+    {
+      "external_product_id": "ext_22c3e831a335c12bc33fca2f",
+      "title": "Java - Breathable Nail Polish",
+      "source_url": "https://786cosmetics.com/products/java-breathable-nail-polish",
+      "source_host": "786cosmetics.com",
+      "status": "updated",
+      "patch_keys": [
+        "variants"
+      ],
+      "reason": "replace_force_or_weak_variant",
+      "before_hash": "4c92857176fd3ba76cbf73b75c18c5895abbaaa3d9101dc61a11496a7c3e6bf9",
+      "after_hash": "5eb7371051a213bc75da5155e44a0f0cd788220104e801a90d854b1e569ab5fe",
+      "variant_count": 1,
+      "variant_labels": [
+        "Shade: Java"
+      ],
+      "serving_mirror_sync": {
+        "catalog_products": 1,
+        "pdp_identity_listing": 1
+      }
+    },
+    {
+      "external_product_id": "ext_1a3dc4611dcd01447437ed9c",
+      "title": "Rotomahana - Breathable Nail Polish",
+      "source_url": "https://786cosmetics.com/products/rotomahana-breathable-nail-polish",
+      "source_host": "786cosmetics.com",
+      "status": "updated",
+      "patch_keys": [
+        "variants"
+      ],
+      "reason": "replace_force_or_weak_variant",
+      "before_hash": "f5bf719ea546400820f55b7047302fe022f1f0ecbb1cd318340560ab095c89f7",
+      "after_hash": "b876a88e31fe2a71415af604973ba72c5b08561cbdf9a2ae54da596d72c901e9",
+      "variant_count": 1,
+      "variant_labels": [
+        "Shade: Rotomahana"
+      ],
+      "serving_mirror_sync": {
+        "catalog_products": 1,
+        "pdp_identity_listing": 1
+      }
+    },
+    {
+      "external_product_id": "ext_152e5d39e5ef4ee3a67894b7",
+      "title": "Guanajuato - Breathable Nail Polish",
+      "source_url": "https://786cosmetics.com/products/guanajuato-breathable-nail-polish",
+      "source_host": "786cosmetics.com",
+      "status": "updated",
+      "patch_keys": [
+        "variants"
+      ],
+      "reason": "replace_force_or_weak_variant",
+      "before_hash": "ba01de1bd96001686477489087acc4861b4c1e4d98540f9dbfa9cc6ef0e5b8e6",
+      "after_hash": "3ae9e0fd93bd797d4c001e514edf41d1f57076e6cc64c795dae47e0cb8b206e4",
+      "variant_count": 1,
+      "variant_labels": [
+        "Shade: Guanajuato"
+      ],
+      "serving_mirror_sync": {
+        "catalog_products": 1,
+        "pdp_identity_listing": 1
+      }
+    },
+    {
+      "external_product_id": "ext_09bd1a60af24d620706724ee",
+      "title": "Hyderabad - Breathable Nail Polish",
+      "source_url": "https://786cosmetics.com/products/hyderabad-breathable-nail-polish",
+      "source_host": "786cosmetics.com",
+      "status": "updated",
+      "patch_keys": [
+        "variants"
+      ],
+      "reason": "replace_force_or_weak_variant",
+      "before_hash": "1e58afd1286bb4524f1c1c6f8b020a4ea8b4710d17ed522b243474dd2bbbeabe",
+      "after_hash": "63017227920fe0fbe65ab781de74b5d295493bd313d24182687fe4ef8f7a318e",
+      "variant_count": 1,
+      "variant_labels": [
+        "Shade: Hyderabad"
+      ],
+      "serving_mirror_sync": {
+        "catalog_products": 1,
+        "pdp_identity_listing": 1
+      }
+    },
+    {
+      "external_product_id": "ext_09f3ad39bdfe1ea4a957c45f",
+      "title": "Alexandria - Breathable Nail Polish",
+      "source_url": "https://786cosmetics.com/products/alexandria-breathable-nail-polish",
+      "source_host": "786cosmetics.com",
+      "status": "updated",
+      "patch_keys": [
+        "variants"
+      ],
+      "reason": "replace_force_or_weak_variant",
+      "before_hash": "d5e084876d13799465f6b30712fa75731f23d30e3b8862f959b95fa630469902",
+      "after_hash": "b91d32355641ec816091d0573d176b388783b0fc7d0b79506f48fac7e5db3013",
+      "variant_count": 1,
+      "variant_labels": [
+        "Shade: Alexandria"
+      ],
+      "serving_mirror_sync": {
+        "catalog_products": 1,
+        "pdp_identity_listing": 1
+      }
+    }
+  ]
+}

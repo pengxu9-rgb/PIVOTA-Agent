@@ -10,6 +10,7 @@ const CONTRACT_VERSION = 'external_seed.official_html_pdp_fields.v1';
 const PDP_CONTENT_ASSET_VERSION = 'pivota.pdp_content_asset.v1';
 const SNAPSHOT_CONTRACT_VERSION = 'external_seed.snapshot_contract.v1';
 const SHOPIFY_PRODUCT_JSON_VARIANT_HOSTS = new Set([
+  '786cosmetics.com',
   'medicube.us',
   'skin1004.com',
   'tirtir.global',
@@ -21,6 +22,7 @@ const SHOPIFY_PRODUCT_JSON_VARIANT_HOSTS = new Set([
 const REVIEW_SUMMARY_ONLY_OKENDO_HOSTS = new Set(['beautyofjoseon.com', 'kravebeauty.com']);
 const REVIEW_SUMMARY_ONLY_GENERIC_HOSTS = new Set([...REVIEW_SUMMARY_ONLY_OKENDO_HOSTS, 'roundlab.com']);
 const GENERIC_OFFICIAL_SHOPIFY_FIELD_HOSTS = new Set([
+  '786cosmetics.com',
   'lucamarskincare.com',
   'rohrremedy.com',
   'seresilk.com.au',
@@ -350,7 +352,7 @@ function looksLikeFullInci(value) {
   const commaCount = (text.match(/,/g) || []).length;
   if (commaCount < 8) return false;
   if (/\b(?:cart|checkout|shipping|customer service|menu|ambassador)\b/i.test(text.slice(0, 250))) return false;
-  return /\b(?:water|aqua|glycerin|butylene glycol|niacinamide|extract|acid|sodium|potassium|glycol|fragrance|tocopherol|mica|isododecane|polybutene|trimethylsiloxysilicate|titanium dioxide|iron oxides|ci\s*\d{4,6})\b/i.test(text);
+  return /\b(?:water|aqua|glycerin|butylene glycol|niacinamide|extract|acid|sodium|potassium|glycol|fragrance|tocopherol|mica|isododecane|polybutene|trimethylsiloxysilicate|titanium dioxide|iron oxides|ci\s*\d{4,6}|methyl esters?|glutamate|adipate|oleate|palmitate|linoleate|trideceth)\b/i.test(text);
 }
 
 function looksLikeShortOfficialInci(value) {
@@ -358,7 +360,7 @@ function looksLikeShortOfficialInci(value) {
   if (text.length < 35 || text.length > 360) return false;
   if ((text.match(/,/g) || []).length < 2) return false;
   if (/\b(?:cart|checkout|shipping|customer service|menu|ambassador|swiper|document\.addEventListener)\b/i.test(text)) return false;
-  return /\b(?:polyisobutene|cellulose gum|pectin|copolymer|hydrocolloid|glycerin|water|aqua|sodium|acid|lanolin|vitellaria|shea butter|hemp|cera alba|bees\s*wax|beeswax|tocopherol|vitamin|frankincense)\b/i.test(text);
+  return /\b(?:polyisobutene|cellulose gum|pectin|copolymer|hydrocolloid|glycerin|water|aqua|sodium|acid|lanolin|vitellaria|shea butter|hemp|cera alba|bees\s*wax|beeswax|tocopherol|vitamin|frankincense|oil|methyl esters?|glutamate|adipate|oleate|palmitate|linoleate|trideceth)\b/i.test(text);
 }
 
 function looksLikeHowToUse(value) {
@@ -2611,6 +2613,12 @@ function extractAccordionItemSections(html) {
     const body = cleanSectionText(block.slice(headingMatch.index + headingMatch[0].length));
     if (heading && body.length >= 20) sections.push({ heading, body, source_origin: 'official_accordion' });
   }
+  for (const match of source.matchAll(/<h3\b[^>]*>([\s\S]*?)<\/h3>[\s\S]{0,2500}?<div\b[^>]*\bid=["']accordion-content[^"']*["'][^>]*>([\s\S]*?)<\/div>/gi)) {
+    const heading = normalizeSectionHeading(match[1]);
+    if (!isGenericProductContentHeading(heading)) continue;
+    const body = cleanSectionText(match[2]);
+    if (body.length >= 20) sections.push({ heading, body, source_origin: 'official_stiletto_accordion' });
+  }
   return sections;
 }
 
@@ -2674,6 +2682,56 @@ function cleanOfficialIngredientCandidate(value) {
     .trim();
 }
 
+function normalizeOfficialIngredientSpelling(value) {
+  return normalizeText(value)
+    .replace(/\bSimmonsdsia\b/g, 'Simmondsia')
+    .replace(/\(Jojoba\)\s*Seed/gi, '(Jojoba) Seed')
+    .replace(/\bMethylOleate\b/g, 'Methyl Oleate')
+    .replace(/\s+,/g, ',')
+    .replace(/,\s*/g, ', ')
+    .replace(/\s{2,}/g, ' ')
+    .trim();
+}
+
+function productLooksLike786SoyRemover(productTitle, product = {}) {
+  const text = [
+    productTitle,
+    product?.title,
+    product?.handle,
+    product?.type,
+    ...(Array.isArray(product?.variants) ? product.variants.map((variant) => variant?.sku) : []),
+  ]
+    .map(normalizeText)
+    .join(' ');
+  return /\bsoy\b/i.test(text) && /\bremover\b/i.test(text);
+}
+
+function select786SoyRemoverIngredients(ingredients, options = {}) {
+  const text = normalizeOfficialIngredientSpelling(ingredients);
+  if (!/Tea Tree Jojoba Soy Remover\s*:/i.test(text) || !/Almond Soy Remover\s*:/i.test(text)) {
+    return text;
+  }
+  const product = options.product || {};
+  if (!productLooksLike786SoyRemover(options.productTitle, product)) return text;
+  const discriminator = [
+    options.productTitle,
+    product.title,
+    product.handle,
+    ...(Array.isArray(product.variants) ? product.variants.map((variant) => variant?.sku) : []),
+  ]
+    .map(normalizeText)
+    .join(' ');
+  const wantAlmond = /\balmond\b/i.test(discriminator);
+  const wantJojoba = /\b(?:jojoba|tea\s*tree)\b/i.test(discriminator);
+  const labelPattern = wantAlmond
+    ? /Almond Soy Remover\s*:\s*([\s\S]*?)$/i
+    : wantJojoba
+      ? /Tea Tree Jojoba Soy Remover\s*:\s*([\s\S]*?)(?=\s*Almond Soy Remover\s*:|$)/i
+      : null;
+  const scoped = labelPattern ? normalizeOfficialIngredientSpelling(text.match(labelPattern)?.[1]) : '';
+  return scoped || text;
+}
+
 function hasUnscentedIngredientConflict(productTitle, ingredients) {
   return /\bunscented\b/i.test(normalizeText(productTitle)) && /\b(?:fragrance|parfum|perfume)\b/i.test(normalizeText(ingredients));
 }
@@ -2729,9 +2787,13 @@ function extractGenericOfficialShopifyFields(html, options = {}) {
     ],
   );
 
-  const ingredients = cleanOfficialIngredientCandidate(
+  let ingredients = cleanOfficialIngredientCandidate(
     firstGenericSection(sections, [/^(?:full\s+)?ingredients?$/i, /^inci$/i])?.body,
   );
+  ingredients = select786SoyRemoverIngredients(ingredients, {
+    product,
+    productTitle: options.productTitle || product?.title,
+  });
   if (
     !hasUnscentedIngredientConflict(options.productTitle || product?.title, ingredients) &&
     (looksLikeFullInci(ingredients) || looksLikeShortOfficialInci(ingredients))

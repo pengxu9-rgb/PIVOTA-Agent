@@ -1,0 +1,39 @@
+{
+  "mappings": [
+    {
+      "external_product_id": "ext_c7f9b723f9c30146d9cb1fce",
+      "evidence_source": "official_pdp",
+      "evidence_note": "Official 786 Cosmetics Blush & Bare PDP lists included shades: Paris, Muscat, Kyoto, Alexandria.",
+      "component_refs": [
+        { "external_product_id": "ext_9a469b8f450d59f67ae21f6d", "component_role": "included_shade", "size_label": "1 bottle" },
+        { "external_product_id": "ext_9cd211269e8480e6a7475b5e", "component_role": "included_shade", "size_label": "1 bottle" },
+        { "external_product_id": "ext_c6ce33a7e9e59a7c8c24fc36", "component_role": "included_shade", "size_label": "1 bottle" },
+        { "external_product_id": "ext_09f3ad39bdfe1ea4a957c45f", "component_role": "included_shade", "size_label": "1 bottle" }
+      ]
+    },
+    {
+      "external_product_id": "ext_bde8c6160a5da39af55066d6",
+      "evidence_source": "official_pdp",
+      "evidence_note": "Official 786 Cosmetics Riviera Collection PDP lists included shades: Abu Dhabi, Zhangye, Sorrento, Havana.",
+      "component_refs": [
+        { "external_product_id": "ext_0d844fc65fd3348e35a09c80", "component_role": "included_shade", "size_label": "1 bottle" },
+        { "external_product_id": "ext_2c4793f5f96ec2d4680fd55b", "component_role": "included_shade", "size_label": "1 bottle" },
+        { "external_product_id": "ext_55b774d3c57906a77a7167f0", "component_role": "included_shade", "size_label": "1 bottle" },
+        { "external_product_id": "ext_ab5107f3a835da10508757c6", "component_role": "included_shade", "size_label": "1 bottle" }
+      ]
+    },
+    {
+      "external_product_id": "ext_86344711237a7b6cdad6cfa3",
+      "evidence_source": "official_pdp",
+      "evidence_note": "Official 786 Cosmetics Golden Hour Collection PDP lists included shades: Sorrento, Zhangye, Dubrovnik, Karachi, Seville, Uluru.",
+      "component_refs": [
+        { "external_product_id": "ext_55b774d3c57906a77a7167f0", "component_role": "included_shade", "size_label": "1 bottle" },
+        { "external_product_id": "ext_2c4793f5f96ec2d4680fd55b", "component_role": "included_shade", "size_label": "1 bottle" },
+        { "external_product_id": "ext_efe7512de8c6df9f75ca19e0", "component_role": "included_shade", "size_label": "1 bottle" },
+        { "external_product_id": "ext_a36359795b89961a7c052b21", "component_role": "included_shade", "size_label": "1 bottle" },
+        { "external_product_id": "ext_2d506dd9dc7428de2d3d0cc8", "component_role": "included_shade", "size_label": "1 bottle" },
+        { "external_product_id": "ext_f56010dd5bf971f7b7f644a6", "component_role": "included_shade", "size_label": "1 bottle" }
+      ]
+    }
+  ]
+}

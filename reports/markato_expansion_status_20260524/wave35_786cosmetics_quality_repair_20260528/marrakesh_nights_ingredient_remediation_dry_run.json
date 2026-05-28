@@ -1,0 +1,45 @@
+{
+  "generated_at": "2026-05-28T03:30:53.989Z",
+  "options": {
+    "apply": false,
+    "market": "US",
+    "domain": "786cosmetics.com",
+    "out": "reports/markato_expansion_status_20260524/wave35_786cosmetics_quality_repair_20260528/marrakesh_nights_ingredient_remediation_dry_run.json",
+    "forceFamily": "",
+    "generatedAt": "2026-05-28T03:30:53.989Z"
+  },
+  "summary": {
+    "dry_run": true,
+    "input_target_ids": 1,
+    "fetched_rows": 1,
+    "changed_rows": 1,
+    "updated_rows": 0,
+    "failed_rows": 0,
+    "serving_mirror_catalog_updates": 0,
+    "serving_mirror_identity_updates": 0,
+    "by_action": {
+      "component_refs_linked": 1
+    },
+    "by_status": {
+      "dry_run": 1
+    },
+    "by_family": {
+      "set_or_collection": 1
+    }
+  },
+  "apply_errors": [],
+  "results": [
+    {
+      "external_product_id": "ext_ab32c65ee7badd0b4a614919",
+      "title": "Marrakesh Nights Collection - 4  Piece Nail Polish Set",
+      "family": "set_or_collection",
+      "classified_family": "set_or_collection",
+      "forced_family": null,
+      "status": "dry_run",
+      "action": "component_refs_linked",
+      "reason_codes": [
+        "bundle_component_refs_linked"
+      ]
+    }
+  ]
+}

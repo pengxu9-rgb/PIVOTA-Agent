@@ -12,6 +12,7 @@ const PDP_CONTENT_ASSET_VERSION = 'pivota.pdp_content_asset.v1';
 const SNAPSHOT_CONTRACT_VERSION = 'external_seed.snapshot_contract.v1';
 
 const TRUSTED_SOURCE_HOSTS = new Set([
+  '786cosmetics.com',
   'guerlain.com',
   'fentybeauty.com',
   'beautyofjoseon.com',
@@ -66,6 +67,29 @@ function normalizeText(value) {
     .replace(/[ \t]{2,}/g, ' ')
     .replace(/\n{3,}/g, '\n\n')
     .trim();
+}
+
+function normalizeCompact(value) {
+  return normalizeText(value).toLowerCase().replace(/[^a-z0-9]+/g, '');
+}
+
+function looksLikeRealSku(value) {
+  const text = normalizeText(value);
+  if (!text) return false;
+  if (/\d/.test(text)) return true;
+  return /^[A-Z0-9][A-Z0-9_-]{3,}$/.test(text) && /[_-]/.test(text);
+}
+
+function normalizeSkuLikeValue(primary, fallback, variantId, displayLabel, rawOptions) {
+  const raw = normalizeText(primary || fallback);
+  if (!raw) return variantId;
+  const compactRaw = normalizeCompact(raw);
+  const displayValues = [
+    displayLabel.includes(':') ? displayLabel.split(':').pop() : displayLabel,
+    ...rawOptions.map((option) => option.value),
+  ].map(normalizeCompact).filter(Boolean);
+  if (!looksLikeRealSku(raw) && displayValues.includes(compactRaw)) return variantId;
+  return raw;
 }
 
 function ensureObject(value) {
@@ -221,6 +245,30 @@ function existingVariantNeedsTrustedScalarLabelCorrection(seedData, snapshot, ma
   return staleLabels.some((value) => value !== label);
 }
 
+function optionValuesForVariant(variant) {
+  return [
+    normalizeText(variant?.option_value),
+    ...asArray(variant?.options).map((option) => normalizeText(option?.value || option?.option_value)),
+  ].map(normalizeCompact).filter(Boolean);
+}
+
+function existingVariantNeedsTrustedSkuOptionValueCorrection(seedData, variants, sourceOrigin) {
+  if (sourceOrigin !== 'official_pdp') return false;
+  const existingVariants = asArray(seedData.variants);
+  if (existingVariants.length !== 1 || variants.length !== 1) return false;
+  const existing = existingVariants[0];
+  const incoming = variants[0];
+  if (!variantIsDisplayable(existing) || !variantIsDisplayable(incoming)) return false;
+  const existingLabel = normalizeCompact(existing.display_label || existing.title);
+  const incomingLabel = normalizeCompact(incoming.display_label || incoming.title);
+  if (!existingLabel || existingLabel !== incomingLabel) return false;
+  const existingSku = normalizeText(existing.sku || existing.sku_id);
+  const incomingSku = normalizeText(incoming.sku || incoming.sku_id);
+  if (!existingSku || !incomingSku || normalizeCompact(existingSku) === normalizeCompact(incomingSku)) return false;
+  const optionValues = new Set([...optionValuesForVariant(existing), ...optionValuesForVariant(incoming)]);
+  return optionValues.has(normalizeCompact(existingSku)) && !optionValues.has(normalizeCompact(incomingSku));
+}
+
 function normalizeVariant(input, sourceUrl, sourceOrigin) {
   const object = ensureObject(input);
   const rawOptions = asArray(object.options)
@@ -236,11 +284,13 @@ function normalizeVariant(input, sourceUrl, sourceOrigin) {
   const variantId =
     normalizeText(object.variant_id || object.id || object.sku || object.sku_id) ||
     crypto.createHash('sha1').update(`${sourceUrl}\n${displayLabel}`).digest('hex').slice(0, 12);
+  const sku = normalizeSkuLikeValue(object.sku, object.sku_id, variantId, displayLabel, rawOptions);
+  const skuId = normalizeSkuLikeValue(object.sku_id, object.sku, variantId, displayLabel, rawOptions);
   const normalized = {
     id: variantId,
     variant_id: variantId,
-    sku: normalizeText(object.sku || object.sku_id) || variantId,
-    sku_id: normalizeText(object.sku_id || object.sku) || variantId,
+    sku,
+    sku_id: skuId,
     title: normalizeText(object.title || object.name || displayLabel) || displayLabel,
     options: rawOptions,
     option_name: rawOptions.length === 1 ? rawOptions[0].name : undefined,
@@ -337,7 +387,8 @@ function buildPatch(row, mapping) {
     sourceOrigin,
   );
   const trustedScalarLabelCorrection = existingVariantNeedsTrustedScalarLabelCorrection(seedData, snapshot, mapping);
-  if (protectedVariant && !trustedPriceUrlCorrection && !trustedScalarLabelCorrection) {
+  const trustedSkuOptionValueCorrection = existingVariantNeedsTrustedSkuOptionValueCorrection(seedData, variants, sourceOrigin);
+  if (protectedVariant && !trustedPriceUrlCorrection && !trustedScalarLabelCorrection && !trustedSkuOptionValueCorrection) {
     return { patchKeys: [], reason: 'blocked_protect_high_quality_variant' };
   }
   seedData.variants = variants;

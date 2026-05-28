@@ -409,32 +409,33 @@ function buildRowAudit(row, probe, probedProductId = '') {
   const productKind = analyzeProductKind(row, pdp);
   const requiresReadableVariantAxis = requiresVariantClarity(variant);
   const requiresHowTo = productKind.formula_content_required;
+  const merchandisingContentApplicable = !['accessory', 'non_merch'].includes(productKind.family);
 
   const blockingReasons = [];
-  if (!gallery.ok) blockingReasons.push('gallery_missing_or_bloated');
+  if (merchandisingContentApplicable && !gallery.ok) blockingReasons.push('gallery_missing_or_bloated');
   if (requiresReadableVariantAxis && !variant.ok) blockingReasons.push('missing_variant_clarity');
-  if (!insights.ok) blockingReasons.push('missing_or_weak_insights');
-  if (insights.seller_only_evidence) blockingReasons.push('seller_only_insights');
+  if (merchandisingContentApplicable && !insights.ok) blockingReasons.push('missing_or_weak_insights');
+  if (merchandisingContentApplicable && insights.seller_only_evidence) blockingReasons.push('seller_only_insights');
   if (!reviews.ok) blockingReasons.push('missing_reviews_chart');
   if (productKind.formula_content_required && !content.ingredients_present) blockingReasons.push('missing_ingredients');
   if (productKind.formula_content_required && content.ingredients_force_filled) blockingReasons.push('force_filled_ingredients');
   if (content.active_ingredients_force_filled) blockingReasons.push('force_filled_active_ingredients');
   if (requiresHowTo && !content.how_to_present) blockingReasons.push('missing_how_to');
-  if (!content.overview_present) blockingReasons.push('missing_overview');
-  if (!content.details_present) blockingReasons.push('missing_details');
-  if (hasUnavailableModule(pdp, 'product_intel')) blockingReasons.push('product_intel_unavailable');
+  if (merchandisingContentApplicable && !content.overview_present) blockingReasons.push('missing_overview');
+  if (merchandisingContentApplicable && !content.details_present) blockingReasons.push('missing_details');
+  if (merchandisingContentApplicable && hasUnavailableModule(pdp, 'product_intel')) blockingReasons.push('product_intel_unavailable');
 
   const coreReady =
-    gallery.ok &&
+    (!merchandisingContentApplicable || gallery.ok) &&
     (!requiresReadableVariantAxis || variant.ok) &&
-    insights.ok &&
-    !insights.seller_only_evidence &&
+    (!merchandisingContentApplicable || insights.ok) &&
+    (!merchandisingContentApplicable || !insights.seller_only_evidence) &&
     reviews.ok &&
     (!productKind.formula_content_required || content.ingredients_present) &&
     (!productKind.formula_content_required || !content.ingredients_force_filled) &&
     !content.active_ingredients_force_filled &&
     (!requiresHowTo || content.how_to_present) &&
-    content.overview_present;
+    (!merchandisingContentApplicable || content.overview_present);
 
   return {
     external_product_id: row.external_product_id,
@@ -457,7 +458,10 @@ function buildRowAudit(row, probe, probedProductId = '') {
     insights,
     content,
     similar,
-    product_kind: productKind,
+    product_kind: {
+      ...productKind,
+      merchandising_content_applicable: merchandisingContentApplicable,
+    },
     blocking_reasons: uniqueStrings(blockingReasons),
     pdp_quality_bucket: coreReady ? 'ready' : blockingReasons.length <= 2 ? 'thin' : 'not_conversion_ready',
     conversion_ready: coreReady,

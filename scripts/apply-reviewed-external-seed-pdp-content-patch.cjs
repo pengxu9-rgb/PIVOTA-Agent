@@ -340,6 +340,9 @@ function readManifestEntries(raw) {
     source_url: text(entry.source_url || entry.canonical_url || root.source_url || root.canonical_url),
     source_kind: text(entry.source_kind || root.source_kind || 'official_pdp_structured_section'),
     description_source_kind: text(entry.description_source_kind || root.description_source_kind),
+    write_reviewed_ingredient_authority:
+      entry.write_reviewed_ingredient_authority === true ||
+      root.write_reviewed_ingredient_authority === true,
     description: text(entry.description || entry.pdp_description_raw),
     pdp_how_to_use_raw: text(entry.pdp_how_to_use_raw || entry.how_to_use_raw || entry.how_to_use),
     pdp_ingredients_raw: text(
@@ -456,7 +459,21 @@ function buildNextSeedData(row, entry, now) {
         inci_list: ingredientsInci,
         inci_normalized: ingredientsInci,
       };
-      delete target.ingredient_intel.authoritative;
+      if (entry.write_reviewed_ingredient_authority === true) {
+        target.ingredient_intel.authoritative = {
+          raw_text: cleanIngredients,
+          items: ingredientsInci,
+          active_items: [],
+          source_origin: 'reviewed_source_backed_pdp_content_patch',
+          purity_status: 'authoritative',
+          authority_scope: 'reviewed_official_pdp_inci',
+          source_url: text(entry.source_url || entry.canonical_url),
+          reviewed_by: text(entry.reviewed_by),
+          generated_at: now,
+        };
+      } else {
+        delete target.ingredient_intel.authoritative;
+      }
     };
     patchIngredients(seedData);
     patchIngredients(snapshot);

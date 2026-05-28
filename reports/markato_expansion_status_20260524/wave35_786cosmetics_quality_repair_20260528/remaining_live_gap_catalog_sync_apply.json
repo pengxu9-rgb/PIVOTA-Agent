@@ -1,0 +1,762 @@
+{
+  "generated_at": "2026-05-28T03:02:36.551Z",
+  "mode": "apply",
+  "batch_size": null,
+  "bootstrap_reviewed_identity_live_read": true,
+  "requested_ids": 3,
+  "fetched_rows": 3,
+  "mirror_rows": 3,
+  "planned_sku_rows": 3,
+  "planned_offer_rows": 3,
+  "planned_index_state_rows": 3,
+  "missing_ids": [],
+  "skipped": [],
+  "applied": {
+    "mode": "apply",
+    "existing_before": {
+      "catalog_products": 3,
+      "catalog_skus": 0,
+      "catalog_offers": 0,
+      "product_group_members": 0
+    },
+    "stale_delete_preview": {
+      "current_sku_rows": 3,
+      "current_offer_rows": 3,
+      "planned_stale_sku_deletes": 3,
+      "planned_stale_offer_deletes": 3,
+      "sample_stale_skus": [
+        {
+          "title": "Muscat - Breathable Nail Polish",
+          "sku_key": "prod::external_seed::external_seed::ext_9cd211269e8480e6a7475b5e::canonical",
+          "product_key": "prod::external_seed::external_seed::ext_9cd211269e8480e6a7475b5e",
+          "source_variant_id": "prod::external_seed::external_seed::ext_9cd211269e8480e6a7475b5e",
+          "visible_attributes": {}
+        },
+        {
+          "title": "Marrakesh Nights Collection - 4  Piece Nail Polish Set",
+          "sku_key": "prod::external_seed::external_seed::ext_ab32c65ee7badd0b4a614919::canonical",
+          "product_key": "prod::external_seed::external_seed::ext_ab32c65ee7badd0b4a614919",
+          "source_variant_id": "prod::external_seed::external_seed::ext_ab32c65ee7badd0b4a614919",
+          "visible_attributes": {}
+        },
+        {
+          "title": "Soy Nail Polish Remover With Almond Essential Oil",
+          "sku_key": "prod::external_seed::external_seed::ext_e86ee213b542fbb671e0804e::canonical",
+          "product_key": "prod::external_seed::external_seed::ext_e86ee213b542fbb671e0804e",
+          "source_variant_id": "prod::external_seed::external_seed::ext_e86ee213b542fbb671e0804e",
+          "visible_attributes": {}
+        }
+      ],
+      "sample_stale_offers": [
+        {
+          "sku_key": "prod::external_seed::external_seed::ext_9cd211269e8480e6a7475b5e::canonical",
+          "offer_id": "offer:external_seed:dc062d5896e214ab853c7bc6d5ccea40",
+          "list_price": 13.99,
+          "product_key": "prod::external_seed::external_seed::ext_9cd211269e8480e6a7475b5e",
+          "merchant_effective_price": 13.99
+        },
+        {
+          "sku_key": "prod::external_seed::external_seed::ext_ab32c65ee7badd0b4a614919::canonical",
+          "offer_id": "offer:external_seed:4dd799056bc7a647748e15dd6aef0fea",
+          "list_price": 54.99,
+          "product_key": "prod::external_seed::external_seed::ext_ab32c65ee7badd0b4a614919",
+          "merchant_effective_price": 54.99
+        },
+        {
+          "sku_key": "prod::external_seed::external_seed::ext_e86ee213b542fbb671e0804e::canonical",
+          "offer_id": "offer:external_seed:f68c4f82261dcd178c9e9f2414048c09",
+          "list_price": 14.99,
+          "product_key": "prod::external_seed::external_seed::ext_e86ee213b542fbb671e0804e",
+          "merchant_effective_price": 14.99
+        }
+      ]
+    },
+    "batch_size": null,
+    "batches": 1,
+    "audit_reasons": {
+      "no_strong_identifier": 3
+    },
+    "product_upserts": 3,
+    "sku_upserts": 3,
+    "offer_upserts": 3,
+    "group_member_upserts": 3,
+    "group_member_preserved_existing_merges": 0,
+    "seed_attachment_updates": 1,
+    "index_state_upserts": 3,
+    "identity_live_read_updates": 3,
+    "catalog_row_trust_upserts": 3,
+    "stale_offer_deletes": 3,
+    "stale_sku_deletes": 3
+  },
+  "sample": [
+    {
+      "external_product_id": "ext_e86ee213b542fbb671e0804e",
+      "product_key": "prod::external_seed::external_seed::ext_e86ee213b542fbb671e0804e",
+      "product_group_id": "sig_abb0301133d433fb9888940b",
+      "title": "Soy Nail Polish Remover With Almond Essential Oil",
+      "brand": "786 Cosmetics",
+      "product_type": "Beauty Product",
+      "category": "Beauty Product",
+      "category_path": "beauty",
+      "canonical_url": "https://786cosmetics.com/products/soy-based-nail-polish-remover",
+      "pivota_signature_id": "sig_abb0301133d433fb9888940b",
+      "sku_rows": 1,
+      "first_sku": {
+        "sku_key": "prod::external_seed::external_seed::ext_e86ee213b542fbb671e0804e::sku_ed5ed08958b8526e05b2",
+        "product_key": "prod::external_seed::external_seed::ext_e86ee213b542fbb671e0804e",
+        "merchant_id": "external_seed",
+        "platform": "external_seed",
+        "source_product_id": "ext_e86ee213b542fbb671e0804e",
+        "source_variant_id": "ext_e86ee213b542fbb671e0804e:34780884271268",
+        "source_domain": "786cosmetics.com",
+        "sku": "Almond Soy",
+        "barcode": null,
+        "title": "118ml",
+        "currency": "USD",
+        "image_url": "https://786cosmetics.com/cdn/shop/files/Soy_Remover.jpg?v=1770971914",
+        "visible_attributes": {
+          "Size": "118ml"
+        },
+        "visible_option_labels": {
+          "Size": "118ml"
+        },
+        "ingredient_ids": [],
+        "sku_payload": {
+          "source": "external_product_seeds_mirror_v1",
+          "external_product_id": "ext_e86ee213b542fbb671e0804e",
+          "raw_variant_id": "34780884271268",
+          "source_variant_id": "ext_e86ee213b542fbb671e0804e:34780884271268",
+          "variant_sku": "Almond Soy",
+          "barcode": null,
+          "strong_identifier_kind": null,
+          "source_url": "https://786cosmetics.com/products/soy-based-nail-polish-remover",
+          "external_redirect_url": "https://786cosmetics.com/products/soy-based-nail-polish-remover",
+          "price": "14.99",
+          "price_amount": 14.99,
+          "currency": "USD",
+          "availability": "in_stock",
+          "image_url": "https://786cosmetics.com/cdn/shop/files/Soy_Remover.jpg?v=1770971914",
+          "swatch_image_url": null,
+          "label_image_url": null,
+          "options": {
+            "Size": "118ml"
+          },
+          "raw_variant": {
+            "sku": "Almond Soy",
+            "url": "https://786cosmetics.com/products/soy-based-nail-polish-remover?variant=34780884271268&utm_source=pivota&utm_medium=affiliate",
+            "price": "14.99",
+            "stock": "In Stock",
+            "title": "118ml",
+            "images": [
+              "https://786cosmetics.com/cdn/shop/files/Soy_Remover.jpg?v=1770971914",
+              "https://786cosmetics.com/cdn/shop/files/Soy_Remover.jpg?crop=center&v=1770971914"
+            ],
+            "options": [
+              {
+                "name": "Size",
+                "value": "118ml"
+              }
+            ],
+            "currency": "USD",
+            "deep_link": "https://786cosmetics.com/products/soy-based-nail-polish-remover?variant=34780884271268&utm_source=pivota&utm_medium=affiliate",
+            "image_url": "https://786cosmetics.com/cdn/shop/files/Soy_Remover.jpg?v=1770971914",
+            "image_urls": [
+              "https://786cosmetics.com/cdn/shop/files/Soy_Remover.jpg?v=1770971914",
+              "https://786cosmetics.com/cdn/shop/files/Soy_Remover.jpg?crop=center&v=1770971914"
+            ],
+            "variant_id": "34780884271268",
+            "description": "Our 4 oz Soy-Based Nail Polish Remover is designed to gently remove nail polish. Almond Essential Oil promotes healthy, moisturized nails.\n\nThis product does not contain acetone or harsh acetates which will damage your nails and cuticles, and dry out your skin.\n\n4 fl. oz / 118 mL\n\n--\n\nDirections for use:\nSaturate a cotton ball or cotton pad with the Soy-Based Nail Polish Remover. Wipe all nails and allow the remover to absorb into the nail for at least 20-30 seconds. Wipe each nail until the polish is fully removed. Wash hands and nails thoroughly and dry well. Make sure the nail bed is dry and clean before applying polish.",
+            "option_name": "Size",
+            "product_url": "https://786cosmetics.com/products/soy-based-nail-polish-remover",
+            "option_value": "118ml"
+          }
+        },
+        "readiness_tier": "referral_only"
+      },
+      "first_offer": {
+        "offer_id": "offer:external_seed:5e570284a19a4dc44e5d75fe143ce62d",
+        "sku_key": "prod::external_seed::external_seed::ext_e86ee213b542fbb671e0804e::sku_ed5ed08958b8526e05b2",
+        "product_key": "prod::external_seed::external_seed::ext_e86ee213b542fbb671e0804e",
+        "merchant_id": "external_seed",
+        "catalog_track": "external_referral",
+        "truth_tier": "observed",
+        "readiness_tier": "referral_only",
+        "offer_mode": "redirect",
+        "channel": "external_referral",
+        "availability": "in_stock",
+        "currency": "USD",
+        "list_price": 14.99,
+        "merchant_effective_price": 14.99,
+        "estimated_best_price": 14.99,
+        "price_confidence": 1,
+        "source_system": "external_product_seeds_mirror_v1",
+        "source_ref": "eps_cf3467b5a100a7d77b90ca05",
+        "source_domain": "786cosmetics.com",
+        "offer_payload": {
+          "source": "external_product_seeds_mirror_v1",
+          "external_seed_id": "eps_cf3467b5a100a7d77b90ca05",
+          "external_product_id": "ext_e86ee213b542fbb671e0804e",
+          "domain": "786cosmetics.com",
+          "market": "US",
+          "product_title": "Soy Nail Polish Remover With Almond Essential Oil",
+          "variant_title": "118ml",
+          "variant_sku": "Almond Soy",
+          "raw_variant_id": "34780884271268",
+          "url": "https://786cosmetics.com/products/soy-based-nail-polish-remover",
+          "offer_url": "https://786cosmetics.com/products/soy-based-nail-polish-remover",
+          "canonical_url": "https://786cosmetics.com/products/soy-based-nail-polish-remover",
+          "destination_url": "https://786cosmetics.com/products/soy-based-nail-polish-remover",
+          "external_redirect_url": "https://786cosmetics.com/products/soy-based-nail-polish-remover",
+          "merchant_display_name": "786 Cosmetics",
+          "price": "14.99",
+          "price_amount": 14.99,
+          "price_currency": "USD",
+          "availability": "in_stock",
+          "commerce_facts_v1": {
+            "contract_version": "commerce_facts.v1",
+            "market_id": "US",
+            "country": "US",
+            "currency_target": "USD",
+            "source_authority": "catalog_extract_v2",
+            "captured_at": "2026-05-18T04:43:40.322Z",
+            "evidence_url": "https://786cosmetics.com/products/soy-based-nail-polish-remover",
+            "sellable_region": {
+              "status": "unknown",
+              "countries": [],
+              "evidence_source": "catalog_extract_v2",
+              "confidence": "unknown",
+              "checked_at": "2026-05-18T04:43:40.322Z",
+              "reason_codes": [
+                "shipping_destination_not_verified"
+              ],
+              "evidence_url": "https://786cosmetics.com/products/soy-based-nail-polish-remover"
+            },
+            "regional_price": {
+              "amount": 14.99,
+              "currency": "USD",
+              "display_raw": null,
+              "price_type": "unknown",
+              "compare_at_amount": null,
+              "compare_at_currency": null,
+              "compare_at_display_raw": null,
+              "tax_included": "unknown",
+              "confidence": "medium",
+              "market_switch_status": "ok",
+              "observed_currency": "USD",
+              "source_url": "https://786cosmetics.com/products/soy-based-nail-polish-remover",
+              "captured_at": "2026-05-18T04:43:40.322Z"
+            },
+            "availability": {
+              "status": "in_stock",
+              "source": "catalog_extract_v2",
+              "confidence": "medium",
+              "captured_at": "2026-05-18T04:43:40.322Z"
+            },
+            "shipping": {
+              "status": "unknown",
+              "source": "catalog_extract_v2",
+              "confidence": "unknown",
+              "reason_codes": [
+                "external_checkout_not_queried"
+              ],
+              "checked_at": "2026-05-18T04:43:40.322Z"
+            },
+            "promotions": [],
+            "returns": {
+              "status": "unknown",
+              "source": "catalog_extract_v2",
+              "confidence": "unknown",
+              "reason_codes": [
+                "external_returns_not_extracted"
+              ],
+              "checked_at": "2026-05-18T04:43:40.322Z"
+            }
+          },
+          "agent_safe_commerce_facts": {
+            "contract_version": "commerce_facts.v1",
+            "market_id": "US",
+            "price": {
+              "amount": 14.99,
+              "currency": "USD",
+              "display_raw": null,
+              "price_type": "unknown",
+              "compare_at_amount": null,
+              "compare_at_currency": null,
+              "compare_at_display_raw": null,
+              "tax_included": "unknown",
+              "confidence": "medium",
+              "market_switch_status": "ok",
+              "observed_currency": "USD",
+              "source_url": "https://786cosmetics.com/products/soy-based-nail-polish-remover",
+              "captured_at": "2026-05-18T04:43:40.322Z"
+            },
+            "availability": {
+              "status": "in_stock",
+              "source": "catalog_extract_v2",
+              "confidence": "medium",
+              "captured_at": "2026-05-18T04:43:40.322Z"
+            },
+            "shipping": {
+              "status": "unknown",
+              "reason": "verify_at_checkout"
+            },
+            "promotions": [],
+            "checkout_note": "Shipping and promotions are not verified for this external offer; verify at merchant checkout."
+          }
+        }
+      },
+      "serving_readiness": {
+        "servingEligible": true,
+        "contentQualityScore": 90,
+        "blockerCode": "none",
+        "blockerDetail": null,
+        "identityResolved": true,
+        "identityLiveReadResolved": false,
+        "identityBootstrapEligible": true,
+        "hasImage": true,
+        "hasPrice": true,
+        "descriptionLength": 631
+      }
+    },
+    {
+      "external_product_id": "ext_9cd211269e8480e6a7475b5e",
+      "product_key": "prod::external_seed::external_seed::ext_9cd211269e8480e6a7475b5e",
+      "product_group_id": "sig_cda7e3d3c12cbbf08efea3ac",
+      "title": "Muscat - Breathable Nail Polish",
+      "brand": "786 Cosmetics",
+      "product_type": "Beauty Product",
+      "category": "Beauty Product",
+      "category_path": "beauty",
+      "canonical_url": "https://786cosmetics.com/products/muscat",
+      "pivota_signature_id": "sig_cda7e3d3c12cbbf08efea3ac",
+      "sku_rows": 1,
+      "first_sku": {
+        "sku_key": "prod::external_seed::external_seed::ext_9cd211269e8480e6a7475b5e::sku_20aea57e118869f37119",
+        "product_key": "prod::external_seed::external_seed::ext_9cd211269e8480e6a7475b5e",
+        "merchant_id": "external_seed",
+        "platform": "external_seed",
+        "source_product_id": "ext_9cd211269e8480e6a7475b5e",
+        "source_variant_id": "ext_9cd211269e8480e6a7475b5e:51537209393383",
+        "source_domain": "786cosmetics.com",
+        "sku": "SHOPIFY-51537209393383",
+        "barcode": null,
+        "title": "AUTO-d3b8b0c679e6",
+        "currency": "USD",
+        "image_url": "https://cdn.shopify.com/s/files/1/0413/6229/2900/files/ESRGAN_00853.jpg?v=1771086372",
+        "visible_attributes": {
+          "Offer": "AUTO-d3b8b0c679e6"
+        },
+        "visible_option_labels": {
+          "Offer": "AUTO-d3b8b0c679e6"
+        },
+        "ingredient_ids": [],
+        "sku_payload": {
+          "source": "external_product_seeds_mirror_v1",
+          "external_product_id": "ext_9cd211269e8480e6a7475b5e",
+          "raw_variant_id": "51537209393383",
+          "source_variant_id": "ext_9cd211269e8480e6a7475b5e:51537209393383",
+          "variant_sku": "SHOPIFY-51537209393383",
+          "barcode": null,
+          "strong_identifier_kind": null,
+          "source_url": "https://786cosmetics.com/products/muscat",
+          "external_redirect_url": "https://786cosmetics.com/products/muscat",
+          "price": "13.99",
+          "price_amount": 13.99,
+          "currency": "USD",
+          "availability": "in_stock",
+          "image_url": "https://cdn.shopify.com/s/files/1/0413/6229/2900/files/ESRGAN_00853.jpg?v=1771086372",
+          "swatch_image_url": null,
+          "label_image_url": null,
+          "options": {
+            "Offer": "AUTO-d3b8b0c679e6"
+          },
+          "raw_variant": {
+            "sku": "SHOPIFY-51537209393383",
+            "url": "https://786cosmetics.com/products/muscat?variant=51537209393383&utm_source=pivota&utm_medium=affiliate",
+            "price": "13.99",
+            "stock": "In Stock",
+            "title": "AUTO-d3b8b0c679e6",
+            "options": [
+              {
+                "name": "Offer",
+                "value": "AUTO-d3b8b0c679e6"
+              }
+            ],
+            "currency": "USD",
+            "deep_link": "https://786cosmetics.com/products/muscat?variant=51537209393383&utm_source=pivota&utm_medium=affiliate",
+            "image_url": "",
+            "image_urls": [],
+            "variant_id": "51537209393383",
+            "description": "Inspired by Muscat, this soft sheer semi translucent beige-pink polish captures the coastal elegance and warm desert sunrise of Oman's capital. Its subtle, creamy tone evokes soft sands, sea-breezes and minimal sophistication - ideal for a polished, everyday manicure that reflects global beauty.",
+            "option_name": "Offer",
+            "product_url": "https://786cosmetics.com/products/muscat",
+            "option_value": "AUTO-d3b8b0c679e6"
+          }
+        },
+        "readiness_tier": "referral_only"
+      },
+      "first_offer": {
+        "offer_id": "offer:external_seed:e0bb9844e8b6571467847f522cb5dfb1",
+        "sku_key": "prod::external_seed::external_seed::ext_9cd211269e8480e6a7475b5e::sku_20aea57e118869f37119",
+        "product_key": "prod::external_seed::external_seed::ext_9cd211269e8480e6a7475b5e",
+        "merchant_id": "external_seed",
+        "catalog_track": "external_referral",
+        "truth_tier": "observed",
+        "readiness_tier": "referral_only",
+        "offer_mode": "redirect",
+        "channel": "external_referral",
+        "availability": "in_stock",
+        "currency": "USD",
+        "list_price": 13.99,
+        "merchant_effective_price": 13.99,
+        "estimated_best_price": 13.99,
+        "price_confidence": 1,
+        "source_system": "external_product_seeds_mirror_v1",
+        "source_ref": "eps_0a8dce61b04a6c51f4722c0a",
+        "source_domain": "786cosmetics.com",
+        "offer_payload": {
+          "source": "external_product_seeds_mirror_v1",
+          "external_seed_id": "eps_0a8dce61b04a6c51f4722c0a",
+          "external_product_id": "ext_9cd211269e8480e6a7475b5e",
+          "domain": "786cosmetics.com",
+          "market": "US",
+          "product_title": "Muscat - Breathable Nail Polish",
+          "variant_title": "AUTO-d3b8b0c679e6",
+          "variant_sku": "SHOPIFY-51537209393383",
+          "raw_variant_id": "51537209393383",
+          "url": "https://786cosmetics.com/products/muscat",
+          "offer_url": "https://786cosmetics.com/products/muscat",
+          "canonical_url": "https://786cosmetics.com/products/muscat",
+          "destination_url": "https://786cosmetics.com/products/muscat",
+          "external_redirect_url": "https://786cosmetics.com/products/muscat",
+          "merchant_display_name": "786 Cosmetics",
+          "price": "13.99",
+          "price_amount": 13.99,
+          "price_currency": "USD",
+          "availability": "in_stock",
+          "commerce_facts_v1": {
+            "contract_version": "commerce_facts.v1",
+            "market_id": "US",
+            "country": "US",
+            "currency_target": "USD",
+            "source_authority": "catalog_extract_v2",
+            "captured_at": "2026-05-18T04:43:40.316Z",
+            "evidence_url": "https://786cosmetics.com/products/muscat",
+            "sellable_region": {
+              "status": "unknown",
+              "countries": [],
+              "evidence_source": "catalog_extract_v2",
+              "confidence": "unknown",
+              "checked_at": "2026-05-18T04:43:40.316Z",
+              "reason_codes": [
+                "shipping_destination_not_verified"
+              ],
+              "evidence_url": "https://786cosmetics.com/products/muscat"
+            },
+            "regional_price": {
+              "amount": 13.99,
+              "currency": "USD",
+              "display_raw": null,
+              "price_type": "unknown",
+              "compare_at_amount": null,
+              "compare_at_currency": null,
+              "compare_at_display_raw": null,
+              "tax_included": "unknown",
+              "confidence": "medium",
+              "market_switch_status": "ok",
+              "observed_currency": "USD",
+              "source_url": "https://786cosmetics.com/products/muscat",
+              "captured_at": "2026-05-18T04:43:40.316Z"
+            },
+            "availability": {
+              "status": "in_stock",
+              "source": "catalog_extract_v2",
+              "confidence": "medium",
+              "captured_at": "2026-05-18T04:43:40.316Z"
+            },
+            "shipping": {
+              "status": "unknown",
+              "source": "catalog_extract_v2",
+              "confidence": "unknown",
+              "reason_codes": [
+                "external_checkout_not_queried"
+              ],
+              "checked_at": "2026-05-18T04:43:40.316Z"
+            },
+            "promotions": [],
+            "returns": {
+              "status": "unknown",
+              "source": "catalog_extract_v2",
+              "confidence": "unknown",
+              "reason_codes": [
+                "external_returns_not_extracted"
+              ],
+              "checked_at": "2026-05-18T04:43:40.316Z"
+            }
+          },
+          "agent_safe_commerce_facts": {
+            "contract_version": "commerce_facts.v1",
+            "market_id": "US",
+            "price": {
+              "amount": 13.99,
+              "currency": "USD",
+              "display_raw": null,
+              "price_type": "unknown",
+              "compare_at_amount": null,
+              "compare_at_currency": null,
+              "compare_at_display_raw": null,
+              "tax_included": "unknown",
+              "confidence": "medium",
+              "market_switch_status": "ok",
+              "observed_currency": "USD",
+              "source_url": "https://786cosmetics.com/products/muscat",
+              "captured_at": "2026-05-18T04:43:40.316Z"
+            },
+            "availability": {
+              "status": "in_stock",
+              "source": "catalog_extract_v2",
+              "confidence": "medium",
+              "captured_at": "2026-05-18T04:43:40.316Z"
+            },
+            "shipping": {
+              "status": "unknown",
+              "reason": "verify_at_checkout"
+            },
+            "promotions": [],
+            "checkout_note": "Shipping and promotions are not verified for this external offer; verify at merchant checkout."
+          }
+        }
+      },
+      "serving_readiness": {
+        "servingEligible": true,
+        "contentQualityScore": 90,
+        "blockerCode": "none",
+        "blockerDetail": null,
+        "identityResolved": true,
+        "identityLiveReadResolved": false,
+        "identityBootstrapEligible": true,
+        "hasImage": true,
+        "hasPrice": true,
+        "descriptionLength": 296
+      }
+    },
+    {
+      "external_product_id": "ext_ab32c65ee7badd0b4a614919",
+      "product_key": "prod::external_seed::external_seed::ext_ab32c65ee7badd0b4a614919",
+      "product_group_id": "sig_d768555e09a74b03d496653a",
+      "title": "Marrakesh Nights Collection - 4  Piece Nail Polish Set",
+      "brand": "786 Cosmetics",
+      "product_type": "Beauty Set",
+      "category": "Beauty Set",
+      "category_path": "beauty/sets",
+      "canonical_url": "https://786cosmetics.com/products/marrakesh-nights-collection-4-piece-nail-polish-set",
+      "pivota_signature_id": "sig_d768555e09a74b03d496653a",
+      "sku_rows": 1,
+      "first_sku": {
+        "sku_key": "prod::external_seed::external_seed::ext_ab32c65ee7badd0b4a614919::sku_c5c246a0ed67749fec58",
+        "product_key": "prod::external_seed::external_seed::ext_ab32c65ee7badd0b4a614919",
+        "merchant_id": "external_seed",
+        "platform": "external_seed",
+        "source_product_id": "ext_ab32c65ee7badd0b4a614919",
+        "source_variant_id": "ext_ab32c65ee7badd0b4a614919:52067503243495",
+        "source_domain": "786cosmetics.com",
+        "sku": "SHOPIFY-52067503243495",
+        "barcode": null,
+        "title": "Marrakesh Nights Collection - 4  Piece Nail Polish Set",
+        "currency": "USD",
+        "image_url": "https://cdn.shopify.com/s/files/1/0413/6229/2900/files/Marrakesh_Nights_Swatch-2.png?v=1778880023",
+        "visible_attributes": {
+          "Size": "4 piece"
+        },
+        "visible_option_labels": {
+          "Size": "4 piece"
+        },
+        "ingredient_ids": [],
+        "sku_payload": {
+          "source": "external_product_seeds_mirror_v1",
+          "external_product_id": "ext_ab32c65ee7badd0b4a614919",
+          "raw_variant_id": "52067503243495",
+          "source_variant_id": "ext_ab32c65ee7badd0b4a614919:52067503243495",
+          "variant_sku": "SHOPIFY-52067503243495",
+          "barcode": null,
+          "strong_identifier_kind": null,
+          "source_url": "https://786cosmetics.com/products/marrakesh-nights-collection-4-piece-nail-polish-set",
+          "external_redirect_url": "https://786cosmetics.com/products/marrakesh-nights-collection-4-piece-nail-polish-set",
+          "price": "54.99",
+          "price_amount": 54.99,
+          "currency": "USD",
+          "availability": "in_stock",
+          "image_url": "https://cdn.shopify.com/s/files/1/0413/6229/2900/files/Marrakesh_Nights_Swatch-2.png?v=1778880023",
+          "swatch_image_url": null,
+          "label_image_url": null,
+          "options": {
+            "Size": "4 piece"
+          },
+          "raw_variant": {
+            "sku": "SHOPIFY-52067503243495",
+            "url": "https://786cosmetics.com/products/marrakesh-nights-collection-4-piece-nail-polish-set",
+            "price": "54.99",
+            "stock": "In Stock",
+            "currency": "USD",
+            "image_url": "https://cdn.shopify.com/s/files/1/0413/6229/2900/files/Marrakesh_Nights_Swatch-2.png?v=1778880023",
+            "image_urls": [
+              "https://cdn.shopify.com/s/files/1/0413/6229/2900/files/Marrakesh_Nights_Swatch-2.png?v=1778880023",
+              "https://cdn.shopify.com/s/files/1/0413/6229/2900/files/Marrakesh_Nights-2.png?v=1778879414",
+              "https://cdn.shopify.com/s/files/1/0413/6229/2900/files/Marrakesh_Nights_Swatch.png?v=1778879414",
+              "https://cdn.shopify.com/s/files/1/0413/6229/2900/files/Alexandria_b4fa9d13-f886-4b3c-aed9-5cfa025eb482.png?v=1778879487"
+            ],
+            "variant_id": "52067503243495",
+            "description": "The Golden Hour Edit is a curated 6-piece set from 786 Cosmetics — the breathable, water-permeable nail polish brand trusted by Muslim women around the world. Every shade in this set was chosen for maximum contrast and versatility. \n\nTHE SHADES \n\nMarrakesh — bright crimson red. \n\nTallinn — warm mauve rose. \n\nBursa — muted sage green. \n\nDubrovnik — sun-baked clay spice.",
+            "option_name": "Size",
+            "option_value": "4 piece"
+          }
+        },
+        "readiness_tier": "referral_only"
+      },
+      "first_offer": {
+        "offer_id": "offer:external_seed:8e45123400d16436d06a4db14e0ea523",
+        "sku_key": "prod::external_seed::external_seed::ext_ab32c65ee7badd0b4a614919::sku_c5c246a0ed67749fec58",
+        "product_key": "prod::external_seed::external_seed::ext_ab32c65ee7badd0b4a614919",
+        "merchant_id": "external_seed",
+        "catalog_track": "external_referral",
+        "truth_tier": "observed",
+        "readiness_tier": "referral_only",
+        "offer_mode": "redirect",
+        "channel": "external_referral",
+        "availability": "in_stock",
+        "currency": "USD",
+        "list_price": 54.99,
+        "merchant_effective_price": 54.99,
+        "estimated_best_price": 54.99,
+        "price_confidence": 1,
+        "source_system": "external_product_seeds_mirror_v1",
+        "source_ref": "eps_ae17ab5e59fb851502d98429",
+        "source_domain": "786cosmetics.com",
+        "offer_payload": {
+          "source": "external_product_seeds_mirror_v1",
+          "external_seed_id": "eps_ae17ab5e59fb851502d98429",
+          "external_product_id": "ext_ab32c65ee7badd0b4a614919",
+          "domain": "786cosmetics.com",
+          "market": "US",
+          "product_title": "Marrakesh Nights Collection - 4  Piece Nail Polish Set",
+          "variant_title": "Marrakesh Nights Collection - 4  Piece Nail Polish Set",
+          "variant_sku": "SHOPIFY-52067503243495",
+          "raw_variant_id": "52067503243495",
+          "url": "https://786cosmetics.com/products/marrakesh-nights-collection-4-piece-nail-polish-set",
+          "offer_url": "https://786cosmetics.com/products/marrakesh-nights-collection-4-piece-nail-polish-set",
+          "canonical_url": "https://786cosmetics.com/products/marrakesh-nights-collection-4-piece-nail-polish-set",
+          "destination_url": "https://786cosmetics.com/products/marrakesh-nights-collection-4-piece-nail-polish-set",
+          "external_redirect_url": "https://786cosmetics.com/products/marrakesh-nights-collection-4-piece-nail-polish-set",
+          "merchant_display_name": "786 Cosmetics",
+          "price": "54.99",
+          "price_amount": 54.99,
+          "price_currency": "USD",
+          "availability": "in_stock",
+          "commerce_facts_v1": {
+            "contract_version": "commerce_facts.v1",
+            "market_id": "US",
+            "country": "US",
+            "currency_target": "USD",
+            "source_authority": "catalog_extract_v2",
+            "captured_at": "2026-05-18T04:43:40.313Z",
+            "evidence_url": "https://786cosmetics.com/products/marrakesh-nights-collection-4-piece-nail-polish-set",
+            "sellable_region": {
+              "status": "unknown",
+              "countries": [],
+              "evidence_source": "catalog_extract_v2",
+              "confidence": "unknown",
+              "checked_at": "2026-05-18T04:43:40.313Z",
+              "reason_codes": [
+                "shipping_destination_not_verified"
+              ],
+              "evidence_url": "https://786cosmetics.com/products/marrakesh-nights-collection-4-piece-nail-polish-set"
+            },
+            "regional_price": {
+              "amount": 54.99,
+              "currency": "USD",
+              "display_raw": null,
+              "price_type": "unknown",
+              "compare_at_amount": null,
+              "compare_at_currency": null,
+              "compare_at_display_raw": null,
+              "tax_included": "unknown",
+              "confidence": "medium",
+              "market_switch_status": "ok",
+              "observed_currency": "USD",
+              "source_url": "https://786cosmetics.com/products/marrakesh-nights-collection-4-piece-nail-polish-set",
+              "captured_at": "2026-05-18T04:43:40.313Z"
+            },
+            "availability": {
+              "status": "in_stock",
+              "source": "catalog_extract_v2",
+              "confidence": "medium",
+              "captured_at": "2026-05-18T04:43:40.313Z"
+            },
+            "shipping": {
+              "status": "unknown",
+              "source": "catalog_extract_v2",
+              "confidence": "unknown",
+              "reason_codes": [
+                "external_checkout_not_queried"
+              ],
+              "checked_at": "2026-05-18T04:43:40.313Z"
+            },
+            "promotions": [],
+            "returns": {
+              "status": "unknown",
+              "source": "catalog_extract_v2",
+              "confidence": "unknown",
+              "reason_codes": [
+                "external_returns_not_extracted"
+              ],
+              "checked_at": "2026-05-18T04:43:40.313Z"
+            }
+          },
+          "agent_safe_commerce_facts": {
+            "contract_version": "commerce_facts.v1",
+            "market_id": "US",
+            "price": {
+              "amount": 54.99,
+              "currency": "USD",
+              "display_raw": null,
+              "price_type": "unknown",
+              "compare_at_amount": null,
+              "compare_at_currency": null,
+              "compare_at_display_raw": null,
+              "tax_included": "unknown",
+              "confidence": "medium",
+              "market_switch_status": "ok",
+              "observed_currency": "USD",
+              "source_url": "https://786cosmetics.com/products/marrakesh-nights-collection-4-piece-nail-polish-set",
+              "captured_at": "2026-05-18T04:43:40.313Z"
+            },
+            "availability": {
+              "status": "in_stock",
+              "source": "catalog_extract_v2",
+              "confidence": "medium",
+              "captured_at": "2026-05-18T04:43:40.313Z"
+            },
+            "shipping": {
+              "status": "unknown",
+              "reason": "verify_at_checkout"
+            },
+            "promotions": [],
+            "checkout_note": "Shipping and promotions are not verified for this external offer; verify at merchant checkout."
+          }
+        }
+      },
+      "serving_readiness": {
+        "servingEligible": true,
+        "contentQualityScore": 90,
+        "blockerCode": "none",
+        "blockerDetail": null,
+        "identityResolved": true,
+        "identityLiveReadResolved": false,
+        "identityBootstrapEligible": true,
+        "hasImage": true,
+        "hasPrice": true,
+        "descriptionLength": 371
+      }
+    }
+  ]
+}

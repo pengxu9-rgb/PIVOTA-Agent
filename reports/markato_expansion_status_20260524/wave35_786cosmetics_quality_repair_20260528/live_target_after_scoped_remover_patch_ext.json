@@ -1,0 +1,346 @@
+{
+  "generated_at": "2026-05-28T03:24:38.014Z",
+  "source": "external_seed_live_pdp_modules_audit",
+  "query": {
+    "market": "US",
+    "domain": "786cosmetics.com",
+    "brand": null,
+    "external_product_id": null,
+    "external_product_ids": [
+      "ext_9cd211269e8480e6a7475b5e",
+      "ext_e86ee213b542fbb671e0804e",
+      "ext_58baf9029d81af1ac9f8bc7e"
+    ],
+    "include_attached": true,
+    "limit": 50,
+    "offset": 0,
+    "include_similar": false,
+    "use_sig": false
+  },
+  "summary": {
+    "scanned": 3,
+    "ready": 3,
+    "thin": 0,
+    "not_conversion_ready": 0,
+    "by_domain": [
+      {
+        "key": "786cosmetics.com",
+        "count": 3
+      }
+    ],
+    "blocker_counts": [],
+    "weak_insights_ids": [],
+    "seller_only_insights_ids": [],
+    "force_filled_ids": [],
+    "content_gap_ids": []
+  },
+  "rows": [
+    {
+      "external_product_id": "ext_e86ee213b542fbb671e0804e",
+      "pivota_signature_id": "sig_abb0301133d433fb9888940b",
+      "probed_product_id": "ext_e86ee213b542fbb671e0804e",
+      "probed_id_type": "ext",
+      "seed_id": "eps_cf3467b5a100a7d77b90ca05",
+      "market": "US",
+      "domain": "786cosmetics.com",
+      "title": "Soy Nail Polish Remover With Almond Essential Oil",
+      "canonical_url": "https://786cosmetics.com/products/soy-based-nail-polish-remover",
+      "http_status": 200,
+      "pdp_status": "success",
+      "build_id": "3d898abf7f5f",
+      "module_types": [
+        "canonical",
+        "variant_selector",
+        "offers",
+        "product_intel",
+        "active_ingredients",
+        "ingredients_inci",
+        "how_to_use",
+        "product_overview",
+        "product_facts",
+        "supplemental_details",
+        "product_details",
+        "reviews_preview"
+      ],
+      "missing_modules": [
+        "active_ingredients",
+        "product_facts"
+      ],
+      "gallery": {
+        "image_count": 2,
+        "duplicate_url_count": 1,
+        "image_hosts": [
+          "786cosmetics.com"
+        ],
+        "ok": true
+      },
+      "variant": {
+        "module_present": true,
+        "variant_count": 1,
+        "label_count": 2,
+        "labels": [
+          "Size: 118 mL",
+          "118 mL"
+        ],
+        "bad_labels": [],
+        "ok": true
+      },
+      "reviews": {
+        "module_present": true,
+        "rating": null,
+        "review_count": 0,
+        "chart_present": false,
+        "chart_estimated": false,
+        "preview_count": 0,
+        "ok": true
+      },
+      "insights": {
+        "module_present": true,
+        "quality_state": "reviewed",
+        "evidence_profile": "official_pdp_reviewed_formula_and_usage",
+        "seller_only_evidence": false,
+        "seller_grounded_reviewed": false,
+        "headline": "Nail polish remover",
+        "why_count": 3,
+        "ok": true
+      },
+      "content": {
+        "ingredients_present": true,
+        "ingredients_text_count": 9,
+        "ingredients_source_origin": "reviewed_source_backed_pdp_content_patch",
+        "ingredients_source_quality_status": "authoritative",
+        "ingredients_force_filled": false,
+        "active_ingredients_present": false,
+        "active_ingredients_source_origin": null,
+        "active_ingredients_source_quality_status": null,
+        "active_ingredients_force_filled": false,
+        "how_to_present": true,
+        "how_to_text_count": 10,
+        "overview_present": true,
+        "details_present": true,
+        "details_text_count": 17
+      },
+      "similar": {
+        "module_present": false,
+        "count": 0,
+        "status": null
+      },
+      "product_kind": {
+        "family": "single_formula",
+        "reasons": [
+          "explicit_product_kind_signal"
+        ],
+        "pdp_schema_profile": "beauty_formula",
+        "formula_content_required": true
+      },
+      "blocking_reasons": [],
+      "pdp_quality_bucket": "ready",
+      "conversion_ready": true
+    },
+    {
+      "external_product_id": "ext_58baf9029d81af1ac9f8bc7e",
+      "pivota_signature_id": "sig_c6ba64101d30a587c38771c3",
+      "probed_product_id": "ext_58baf9029d81af1ac9f8bc7e",
+      "probed_id_type": "ext",
+      "seed_id": "eps_a2b53eb674ee4b7e8521d1dd",
+      "market": "US",
+      "domain": "786cosmetics.com",
+      "title": "Soy Nail Polish Remover With Jojoba Seed & Tea Tree Oil",
+      "canonical_url": "https://786cosmetics.com/products/soy-nail-polish-remover-with-jojoba-seed-tea-tree-oil",
+      "http_status": 200,
+      "pdp_status": "success",
+      "build_id": "3d898abf7f5f",
+      "module_types": [
+        "canonical",
+        "variant_selector",
+        "offers",
+        "product_intel",
+        "active_ingredients",
+        "ingredients_inci",
+        "how_to_use",
+        "product_overview",
+        "product_facts",
+        "supplemental_details",
+        "product_details",
+        "reviews_preview"
+      ],
+      "missing_modules": [
+        "active_ingredients",
+        "product_facts",
+        "supplemental_details"
+      ],
+      "gallery": {
+        "image_count": 3,
+        "duplicate_url_count": 1,
+        "image_hosts": [
+          "cdn.shopify.com"
+        ],
+        "ok": true
+      },
+      "variant": {
+        "module_present": true,
+        "variant_count": 1,
+        "label_count": 2,
+        "labels": [
+          "Size: 118 mL",
+          "118 mL"
+        ],
+        "bad_labels": [],
+        "ok": true
+      },
+      "reviews": {
+        "module_present": true,
+        "rating": null,
+        "review_count": 0,
+        "chart_present": false,
+        "chart_estimated": false,
+        "preview_count": 0,
+        "ok": true
+      },
+      "insights": {
+        "module_present": true,
+        "quality_state": "reviewed",
+        "evidence_profile": "official_pdp_reviewed_line",
+        "seller_only_evidence": false,
+        "seller_grounded_reviewed": false,
+        "headline": "Nail polish remover",
+        "why_count": 2,
+        "ok": true
+      },
+      "content": {
+        "ingredients_present": true,
+        "ingredients_text_count": 10,
+        "ingredients_source_origin": "reviewed_source_backed_pdp_content_patch",
+        "ingredients_source_quality_status": "authoritative",
+        "ingredients_force_filled": false,
+        "active_ingredients_present": false,
+        "active_ingredients_source_origin": null,
+        "active_ingredients_source_quality_status": null,
+        "active_ingredients_force_filled": false,
+        "how_to_present": true,
+        "how_to_text_count": 10,
+        "overview_present": true,
+        "details_present": true,
+        "details_text_count": 4
+      },
+      "similar": {
+        "module_present": false,
+        "count": 0,
+        "status": null
+      },
+      "product_kind": {
+        "family": "single_formula",
+        "reasons": [
+          "formula_signal"
+        ],
+        "pdp_schema_profile": "beauty_formula",
+        "formula_content_required": true
+      },
+      "blocking_reasons": [],
+      "pdp_quality_bucket": "ready",
+      "conversion_ready": true
+    },
+    {
+      "external_product_id": "ext_9cd211269e8480e6a7475b5e",
+      "pivota_signature_id": "sig_cda7e3d3c12cbbf08efea3ac",
+      "probed_product_id": "ext_9cd211269e8480e6a7475b5e",
+      "probed_id_type": "ext",
+      "seed_id": "eps_0a8dce61b04a6c51f4722c0a",
+      "market": "US",
+      "domain": "786cosmetics.com",
+      "title": "Muscat - Breathable Nail Polish",
+      "canonical_url": "https://786cosmetics.com/products/muscat",
+      "http_status": 200,
+      "pdp_status": "success",
+      "build_id": "3d898abf7f5f",
+      "module_types": [
+        "canonical",
+        "variant_selector",
+        "offers",
+        "product_intel",
+        "active_ingredients",
+        "ingredients_inci",
+        "how_to_use",
+        "product_overview",
+        "product_facts",
+        "supplemental_details",
+        "product_details",
+        "reviews_preview"
+      ],
+      "missing_modules": [
+        "active_ingredients",
+        "product_facts"
+      ],
+      "gallery": {
+        "image_count": 2,
+        "duplicate_url_count": 1,
+        "image_hosts": [
+          "cdn.shopify.com"
+        ],
+        "ok": true
+      },
+      "variant": {
+        "module_present": true,
+        "variant_count": 1,
+        "label_count": 2,
+        "labels": [
+          "Shade: Muscat",
+          "Muscat"
+        ],
+        "bad_labels": [],
+        "ok": true
+      },
+      "reviews": {
+        "module_present": true,
+        "rating": null,
+        "review_count": 0,
+        "chart_present": false,
+        "chart_estimated": false,
+        "preview_count": 0,
+        "ok": true
+      },
+      "insights": {
+        "module_present": true,
+        "quality_state": "reviewed",
+        "evidence_profile": "official_pdp_reviewed_formula_and_usage",
+        "seller_only_evidence": false,
+        "seller_grounded_reviewed": false,
+        "headline": "Nail color",
+        "why_count": 3,
+        "ok": true
+      },
+      "content": {
+        "ingredients_present": true,
+        "ingredients_text_count": 36,
+        "ingredients_source_origin": "pdp_section",
+        "ingredients_source_quality_status": "authoritative",
+        "ingredients_force_filled": false,
+        "active_ingredients_present": false,
+        "active_ingredients_source_origin": null,
+        "active_ingredients_source_quality_status": null,
+        "active_ingredients_force_filled": false,
+        "how_to_present": true,
+        "how_to_text_count": 9,
+        "overview_present": true,
+        "details_present": true,
+        "details_text_count": 17
+      },
+      "similar": {
+        "module_present": false,
+        "count": 0,
+        "status": null
+      },
+      "product_kind": {
+        "family": "single_formula",
+        "reasons": [
+          "explicit_product_kind_signal"
+        ],
+        "pdp_schema_profile": "beauty_formula",
+        "formula_content_required": true
+      },
+      "blocking_reasons": [],
+      "pdp_quality_bucket": "ready",
+      "conversion_ready": true
+    }
+  ]
+}

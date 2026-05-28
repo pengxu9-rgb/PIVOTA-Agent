@@ -1,0 +1,46 @@
+{
+  "source": "codex_manual_review_official_pdp",
+  "generated_at": "2026-05-28T02:49:00.000Z",
+  "mappings": [
+    {
+      "target_id": "ext_e96da71bdfd3ec573a4642cd",
+      "source_url": "https://786cosmetics.com/products/shipping-protection",
+      "source_origin": "official_pdp",
+      "variant_detail_label": "Service: Shipping Protection",
+      "variant_axes": {
+        "service": "Shipping Protection"
+      },
+      "match_basis": [
+        "brand:786 cosmetics",
+        "product_family:non_merch",
+        "official_pdp:shipping-protection"
+      ],
+      "variants": [
+        {
+          "id": "50541917110503",
+          "variant_id": "50541917110503",
+          "title": "Service: Shipping Protection",
+          "display_label": "Service: Shipping Protection",
+          "options": [
+            {
+              "name": "Service",
+              "value": "Shipping Protection",
+              "axis_kind": "service"
+            }
+          ],
+          "option_name": "Service",
+          "option_value": "Shipping Protection",
+          "axis_kind": "service",
+          "price_amount": 1.79,
+          "price": 1.79,
+          "currency": "USD",
+          "available": true,
+          "in_stock": true,
+          "product_url": "https://786cosmetics.com/products/shipping-protection",
+          "deep_link": "https://786cosmetics.com/products/shipping-protection",
+          "source_quality_status": "high"
+        }
+      ]
+    }
+  ]
+}

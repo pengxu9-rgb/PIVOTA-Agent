@@ -1,0 +1,278 @@
+{
+  "generated_at": "2026-05-28T03:04:36.141Z",
+  "mode": "apply",
+  "batch_size": null,
+  "bootstrap_reviewed_identity_live_read": true,
+  "requested_ids": 1,
+  "fetched_rows": 1,
+  "mirror_rows": 1,
+  "planned_sku_rows": 1,
+  "planned_offer_rows": 1,
+  "planned_index_state_rows": 1,
+  "missing_ids": [],
+  "skipped": [],
+  "applied": {
+    "mode": "apply",
+    "existing_before": {
+      "catalog_products": 1,
+      "catalog_skus": 1,
+      "catalog_offers": 1,
+      "product_group_members": 1
+    },
+    "stale_delete_preview": {
+      "current_sku_rows": 1,
+      "current_offer_rows": 1,
+      "planned_stale_sku_deletes": 0,
+      "planned_stale_offer_deletes": 0,
+      "sample_stale_skus": [],
+      "sample_stale_offers": []
+    },
+    "batch_size": null,
+    "batches": 1,
+    "audit_reasons": {
+      "no_strong_identifier": 1
+    },
+    "product_upserts": 1,
+    "sku_upserts": 1,
+    "offer_upserts": 1,
+    "group_member_upserts": 1,
+    "group_member_preserved_existing_merges": 0,
+    "seed_attachment_updates": 0,
+    "index_state_upserts": 1,
+    "identity_live_read_updates": 0,
+    "catalog_row_trust_upserts": 1,
+    "stale_offer_deletes": 0,
+    "stale_sku_deletes": 0
+  },
+  "sample": [
+    {
+      "external_product_id": "ext_9cd211269e8480e6a7475b5e",
+      "product_key": "prod::external_seed::external_seed::ext_9cd211269e8480e6a7475b5e",
+      "product_group_id": "sig_cda7e3d3c12cbbf08efea3ac",
+      "title": "Muscat - Breathable Nail Polish",
+      "brand": "786 Cosmetics",
+      "product_type": "Beauty Product",
+      "category": "Beauty Product",
+      "category_path": "beauty",
+      "canonical_url": "https://786cosmetics.com/products/muscat",
+      "pivota_signature_id": "sig_cda7e3d3c12cbbf08efea3ac",
+      "sku_rows": 1,
+      "first_sku": {
+        "sku_key": "prod::external_seed::external_seed::ext_9cd211269e8480e6a7475b5e::sku_20aea57e118869f37119",
+        "product_key": "prod::external_seed::external_seed::ext_9cd211269e8480e6a7475b5e",
+        "merchant_id": "external_seed",
+        "platform": "external_seed",
+        "source_product_id": "ext_9cd211269e8480e6a7475b5e",
+        "source_variant_id": "ext_9cd211269e8480e6a7475b5e:51537209393383",
+        "source_domain": "786cosmetics.com",
+        "sku": "51537209393383",
+        "barcode": null,
+        "title": "Shade: Muscat",
+        "currency": "USD",
+        "image_url": "https://cdn.shopify.com/s/files/1/0413/6229/2900/files/ESRGAN_00853.jpg?v=1771086372",
+        "visible_attributes": {
+          "Shade": "Muscat"
+        },
+        "visible_option_labels": {
+          "Shade": "Muscat"
+        },
+        "ingredient_ids": [],
+        "sku_payload": {
+          "source": "external_product_seeds_mirror_v1",
+          "external_product_id": "ext_9cd211269e8480e6a7475b5e",
+          "raw_variant_id": "51537209393383",
+          "source_variant_id": "ext_9cd211269e8480e6a7475b5e:51537209393383",
+          "variant_sku": "51537209393383",
+          "barcode": null,
+          "strong_identifier_kind": null,
+          "source_url": "https://786cosmetics.com/products/muscat",
+          "external_redirect_url": "https://786cosmetics.com/products/muscat",
+          "price": "8.39",
+          "price_amount": 8.39,
+          "currency": "USD",
+          "availability": "in_stock",
+          "image_url": "https://cdn.shopify.com/s/files/1/0413/6229/2900/files/ESRGAN_00853.jpg?v=1771086372",
+          "swatch_image_url": null,
+          "label_image_url": null,
+          "options": {
+            "Shade": "Muscat"
+          },
+          "raw_variant": {
+            "id": "51537209393383",
+            "sku": "51537209393383",
+            "price": 8.39,
+            "title": "Shade: Muscat",
+            "sku_id": "51537209393383",
+            "options": [
+              {
+                "name": "Shade",
+                "value": "Muscat",
+                "axis_kind": "shade"
+              }
+            ],
+            "currency": "USD",
+            "in_stock": true,
+            "available": true,
+            "axis_kind": "shade",
+            "deep_link": "https://786cosmetics.com/products/muscat",
+            "image_urls": [],
+            "source_url": "https://786cosmetics.com/products/muscat",
+            "variant_id": "51537209393383",
+            "option_name": "Shade",
+            "product_url": "https://786cosmetics.com/products/muscat",
+            "option_value": "Muscat",
+            "price_amount": 8.39,
+            "display_label": "Shade: Muscat",
+            "source_origin": "official_pdp",
+            "source_quality_status": "high"
+          }
+        },
+        "readiness_tier": "referral_only"
+      },
+      "first_offer": {
+        "offer_id": "offer:external_seed:e0bb9844e8b6571467847f522cb5dfb1",
+        "sku_key": "prod::external_seed::external_seed::ext_9cd211269e8480e6a7475b5e::sku_20aea57e118869f37119",
+        "product_key": "prod::external_seed::external_seed::ext_9cd211269e8480e6a7475b5e",
+        "merchant_id": "external_seed",
+        "catalog_track": "external_referral",
+        "truth_tier": "observed",
+        "readiness_tier": "referral_only",
+        "offer_mode": "redirect",
+        "channel": "external_referral",
+        "availability": "in_stock",
+        "currency": "USD",
+        "list_price": 8.39,
+        "merchant_effective_price": 8.39,
+        "estimated_best_price": 8.39,
+        "price_confidence": 1,
+        "source_system": "external_product_seeds_mirror_v1",
+        "source_ref": "eps_0a8dce61b04a6c51f4722c0a",
+        "source_domain": "786cosmetics.com",
+        "offer_payload": {
+          "source": "external_product_seeds_mirror_v1",
+          "external_seed_id": "eps_0a8dce61b04a6c51f4722c0a",
+          "external_product_id": "ext_9cd211269e8480e6a7475b5e",
+          "domain": "786cosmetics.com",
+          "market": "US",
+          "product_title": "Muscat - Breathable Nail Polish",
+          "variant_title": "Shade: Muscat",
+          "variant_sku": "51537209393383",
+          "raw_variant_id": "51537209393383",
+          "url": "https://786cosmetics.com/products/muscat",
+          "offer_url": "https://786cosmetics.com/products/muscat",
+          "canonical_url": "https://786cosmetics.com/products/muscat",
+          "destination_url": "https://786cosmetics.com/products/muscat",
+          "external_redirect_url": "https://786cosmetics.com/products/muscat",
+          "merchant_display_name": "786 Cosmetics",
+          "price": "8.39",
+          "price_amount": 8.39,
+          "price_currency": "USD",
+          "availability": "in_stock",
+          "commerce_facts_v1": {
+            "contract_version": "commerce_facts.v1",
+            "market_id": "US",
+            "country": "US",
+            "currency_target": "USD",
+            "source_authority": "catalog_extract_v2",
+            "captured_at": "2026-05-18T04:43:40.316Z",
+            "evidence_url": "https://786cosmetics.com/products/muscat",
+            "sellable_region": {
+              "status": "unknown",
+              "countries": [],
+              "evidence_source": "catalog_extract_v2",
+              "confidence": "unknown",
+              "checked_at": "2026-05-18T04:43:40.316Z",
+              "reason_codes": [
+                "shipping_destination_not_verified"
+              ],
+              "evidence_url": "https://786cosmetics.com/products/muscat"
+            },
+            "regional_price": {
+              "amount": 13.99,
+              "currency": "USD",
+              "display_raw": null,
+              "price_type": "unknown",
+              "compare_at_amount": null,
+              "compare_at_currency": null,
+              "compare_at_display_raw": null,
+              "tax_included": "unknown",
+              "confidence": "medium",
+              "market_switch_status": "ok",
+              "observed_currency": "USD",
+              "source_url": "https://786cosmetics.com/products/muscat",
+              "captured_at": "2026-05-18T04:43:40.316Z"
+            },
+            "availability": {
+              "status": "in_stock",
+              "source": "catalog_extract_v2",
+              "confidence": "medium",
+              "captured_at": "2026-05-18T04:43:40.316Z"
+            },
+            "shipping": {
+              "status": "unknown",
+              "source": "catalog_extract_v2",
+              "confidence": "unknown",
+              "reason_codes": [
+                "external_checkout_not_queried"
+              ],
+              "checked_at": "2026-05-18T04:43:40.316Z"
+            },
+            "promotions": [],
+            "returns": {
+              "status": "unknown",
+              "source": "catalog_extract_v2",
+              "confidence": "unknown",
+              "reason_codes": [
+                "external_returns_not_extracted"
+              ],
+              "checked_at": "2026-05-18T04:43:40.316Z"
+            }
+          },
+          "agent_safe_commerce_facts": {
+            "contract_version": "commerce_facts.v1",
+            "market_id": "US",
+            "price": {
+              "amount": 13.99,
+              "currency": "USD",
+              "display_raw": null,
+              "price_type": "unknown",
+              "compare_at_amount": null,
+              "compare_at_currency": null,
+              "compare_at_display_raw": null,
+              "tax_included": "unknown",
+              "confidence": "medium",
+              "market_switch_status": "ok",
+              "observed_currency": "USD",
+              "source_url": "https://786cosmetics.com/products/muscat",
+              "captured_at": "2026-05-18T04:43:40.316Z"
+            },
+            "availability": {
+              "status": "in_stock",
+              "source": "catalog_extract_v2",
+              "confidence": "medium",
+              "captured_at": "2026-05-18T04:43:40.316Z"
+            },
+            "shipping": {
+              "status": "unknown",
+              "reason": "verify_at_checkout"
+            },
+            "promotions": [],
+            "checkout_note": "Shipping and promotions are not verified for this external offer; verify at merchant checkout."
+          }
+        }
+      },
+      "serving_readiness": {
+        "servingEligible": true,
+        "contentQualityScore": 90,
+        "blockerCode": "none",
+        "blockerDetail": null,
+        "identityResolved": true,
+        "identityLiveReadResolved": true,
+        "identityBootstrapEligible": false,
+        "hasImage": true,
+        "hasPrice": true,
+        "descriptionLength": 296
+      }
+    }
+  ]
+}

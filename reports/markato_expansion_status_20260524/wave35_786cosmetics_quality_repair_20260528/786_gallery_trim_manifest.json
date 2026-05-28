@@ -1,0 +1,36 @@
+{
+  "market": "US",
+  "reviewed_by": "codex_manual_gallery_review",
+  "reason": "reviewed_gallery_trim_786cosmetics_generic_social_and_instructional_media",
+  "allow_hosts": [
+    "cdn.shopify.com"
+  ],
+  "min_kept_images": 2,
+  "variant_strategy": "filter_like_root",
+  "entries": [
+    {
+      "external_product_id": "ext_0d844fc65fd3348e35a09c80",
+      "source_url": "https://786cosmetics.com/products/abu-dhabi-breathable-nail-polish"
+    },
+    {
+      "external_product_id": "ext_151aebc5b6246b8d2d9a877b",
+      "source_url": "https://786cosmetics.com/products/agra-breathable-nail-polish"
+    },
+    {
+      "external_product_id": "ext_faf89834933316df0d8da973",
+      "source_url": "https://786cosmetics.com/products/azores-breathable-nail-polish"
+    },
+    {
+      "external_product_id": "ext_2fc7cc1ac3370464b4b923d3",
+      "source_url": "https://786cosmetics.com/products/bahrain-breathable-nail-polish"
+    },
+    {
+      "external_product_id": "ext_33fa1a749060cefdd3e0dc2b",
+      "source_url": "https://786cosmetics.com/products/beirut-breathable-nail-polish"
+    },
+    {
+      "external_product_id": "ext_36b452da1e0dde5c19bd2ed0",
+      "source_url": "https://786cosmetics.com/products/casablanca-breathable-nail-polish"
+    }
+  ]
+}

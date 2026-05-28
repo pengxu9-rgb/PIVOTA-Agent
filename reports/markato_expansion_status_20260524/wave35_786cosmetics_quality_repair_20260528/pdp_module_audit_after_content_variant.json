@@ -1,0 +1,2778 @@
+{
+  "generated_at": "2026-05-28T02:30:18.166Z",
+  "source": "pdp_module_value_quality_audit_v1",
+  "query": {
+    "sig": "",
+    "externalProductId": "",
+    "brand": "",
+    "domain": "786cosmetics.com",
+    "market": "US",
+    "limit": 75,
+    "out": "reports/markato_expansion_status_20260524/wave35_786cosmetics_quality_repair_20260528/pdp_module_audit_after_content_variant.json",
+    "includeInactive": false
+  },
+  "summary": {
+    "scanned": 48,
+    "by_bucket": [
+      {
+        "key": "blocked_value_defect",
+        "count": 35
+      },
+      {
+        "key": "needs_value_repair",
+        "count": 11
+      },
+      {
+        "key": "review",
+        "count": 2
+      }
+    ],
+    "by_reason": [
+      {
+        "key": "variant_size_value_looks_like_sku_or_asset_suffix",
+        "count": 35
+      },
+      {
+        "key": "ingredients_missing_source_backed_inci",
+        "count": 13
+      },
+      {
+        "key": "gallery_excessive_image_count",
+        "count": 6
+      },
+      {
+        "key": "insights_missing_reviewed_bundle",
+        "count": 4
+      },
+      {
+        "key": "how_to_missing_for_formula",
+        "count": 2
+      },
+      {
+        "key": "variant_default_or_placeholder_label",
+        "count": 1
+      }
+    ],
+    "by_module": [
+      {
+        "key": "variant",
+        "count": 36
+      },
+      {
+        "key": "ingredients",
+        "count": 13
+      },
+      {
+        "key": "gallery",
+        "count": 6
+      },
+      {
+        "key": "insights",
+        "count": 4
+      },
+      {
+        "key": "how_to_use",
+        "count": 2
+      }
+    ],
+    "top_brands": [
+      {
+        "key": "786 Cosmetics",
+        "count": 48
+      }
+    ],
+    "top_domains": [
+      {
+        "key": "786cosmetics.com",
+        "count": 48
+      }
+    ]
+  },
+  "rows": [
+    {
+      "product_key": "prod::external_seed::external_seed::ext_09f3ad39bdfe1ea4a957c45f",
+      "pivota_signature_id": "sig_fc09faf271b14870aae5c61d",
+      "external_product_id": "ext_09f3ad39bdfe1ea4a957c45f",
+      "title": "Alexandria - Breathable Nail Polish",
+      "brand": "786 Cosmetics",
+      "domain": "786cosmetics.com",
+      "market": "US",
+      "category_path": "beauty",
+      "canonical_url": "https://786cosmetics.com/products/alexandria-breathable-nail-polish",
+      "bucket": "blocked_value_defect",
+      "issue_count": 1,
+      "module_status": {
+        "variant_label_count": 2,
+        "variant_labels_sample": [
+          "Shade: Alexandria",
+          "Alexandria"
+        ],
+        "variant_count": 5,
+        "image_count": 6,
+        "root_image_count": 6,
+        "variant_image_count": 0,
+        "image_hosts_sample": [
+          "cdn.shopify.com"
+        ],
+        "ingredient_applicability_status": "",
+        "ingredient_applicability_evidence": [],
+        "ingredient_component_refs_status": "",
+        "ingredient_component_refs_count": 0,
+        "ingredient_component_refs_sample": [],
+        "ingredient_texts_sample": [
+          "Butyl Acetate, Ethyl Acetate, Nitrocellulose, Adipic Acid/Neopentyl Glycorrimellitic Anhydride Copolymer, Acetyl Tribu:y1 Citrate, Isopropyl Alcohol, Polyethylmethacrylate, Sucrose Acetate Isobutyrate, Stearalkonium Bentonite, Diacetone Alcohol, Silica, Benzophenone-1, Trimethylpentanediyl Dibenzoate, Dimethicone, Trimethylsiloxysili-cate, N-Butyl Alcohol, Phosphoric Acid, May Contain: Mica, Bis(Glycidoxyphenyl)Propane/ Bisaminomethylnorbornane Copolymer, Aluminum Hydroxide, Tin Oxide, Titanium Dioxide/CI 77891, Ferric Ammonium Ferrocyanide/CI 77510, Iron Oxide/CI 77499, Black Iron Oxide/CI 77499, Red Iron Oxide/CI 77499, Ultramarines/CI 77007, Aluminium Powder/CI 77000, DC Violet 2/CI 60730, Red 28/CI 45410, Yellow 5 Lake/CI 19140, Red 34 Lake/CI 15880, Red 6 Lake/CI 15850, Red 7 Lake/CI 15850"
+        ],
+        "how_to_texts_sample": [
+          "For water permeability, apply 1-2 thin coats. To extend polish longevity, prep the nail by shaping and buffing before application. Enhance nail health by finishing with our Almond & Ginseng Cuticle Oil ."
+        ],
+        "detail_section_count": 9,
+        "intel_kb_key": "product:ext_09f3ad39bdfe1ea4a957c45f",
+        "review_count": 0,
+        "qna_count": 0
+      },
+      "issues": [
+        {
+          "module": "variant",
+          "reason_code": "variant_size_value_looks_like_sku_or_asset_suffix",
+          "severity": "critical",
+          "evidence": [
+            "Shade: Alexandria",
+            "Alexandria"
+          ],
+          "recommended_action": "re-extract source variant axes; do not surface SKU/image filename suffix as shopper size"
+        }
+      ]
+    },
+    {
+      "product_key": "prod::external_seed::external_seed::ext_09bd1a60af24d620706724ee",
+      "pivota_signature_id": "sig_ff89c9e4687dab885b3dcf51",
+      "external_product_id": "ext_09bd1a60af24d620706724ee",
+      "title": "Hyderabad - Breathable Nail Polish",
+      "brand": "786 Cosmetics",
+      "domain": "786cosmetics.com",
+      "market": "US",
+      "category_path": "beauty",
+      "canonical_url": "https://786cosmetics.com/products/hyderabad-breathable-nail-polish",
+      "bucket": "blocked_value_defect",
+      "issue_count": 1,
+      "module_status": {
+        "variant_label_count": 2,
+        "variant_labels_sample": [
+          "Shade: Hyderabad",
+          "Hyderabad"
+        ],
+        "variant_count": 5,
+        "image_count": 5,
+        "root_image_count": 5,
+        "variant_image_count": 0,
+        "image_hosts_sample": [
+          "cdn.shopify.com"
+        ],
+        "ingredient_applicability_status": "",
+        "ingredient_applicability_evidence": [],
+        "ingredient_component_refs_status": "",
+        "ingredient_component_refs_count": 0,
+        "ingredient_component_refs_sample": [],
+        "ingredient_texts_sample": [
+          "Butyl Acetate, Ethyl Acetate, Nitrocellulose, Adipic Acid/Neopentyl Glycorrimellitic Anhydride Copolymer, Acetyl Tribu:y1 Citrate, Isopropyl Alcohol, Polyethylmethacrylate, Sucrose Acetate Isobutyrate, Stearalkonium Bentonite, Diacetone Alcohol, Silica, Benzophenone-1, Trimethylpentanediyl Dibenzoate, Dimethicone, Trimethylsiloxysili-cate, N-Butyl Alcohol, Phosphoric Acid, May Contain: Mica, Bis(Glycidoxyphenyl)Propane/ Bisaminomethylnorbornane Copolymer, Aluminum Hydroxide, Tin Oxide, Titanium Dioxide/CI 77891, Ferric Ammonium Ferrocyanide/CI 77510, Iron Oxide/CI 77499, Black Iron Oxide/CI 77499, Red Iron Oxide/CI 77499, Ultramarines/CI 77007, Aluminium Powder/CI 77000, DC Violet 2/CI 60730, Red 28/CI 45410, Yellow 5 Lake/CI 19140, Red 34 Lake/CI 15880, Red 6 Lake/CI 15850, Red 7 Lake/CI 15850"
+        ],
+        "how_to_texts_sample": [
+          "For water permeability, apply 1-2 thin coats. To extend polish longevity, prep the nail by shaping and buffing before application. Enhance nail health by finishing with our Almond & Ginseng Cuticle Oil ."
+        ],
+        "detail_section_count": 9,
+        "intel_kb_key": "product:ext_09bd1a60af24d620706724ee",
+        "review_count": 0,
+        "qna_count": 0
+      },
+      "issues": [
+        {
+          "module": "variant",
+          "reason_code": "variant_size_value_looks_like_sku_or_asset_suffix",
+          "severity": "critical",
+          "evidence": [
+            "Shade: Hyderabad",
+            "Hyderabad"
+          ],
+          "recommended_action": "re-extract source variant axes; do not surface SKU/image filename suffix as shopper size"
+        }
+      ]
+    },
+    {
+      "product_key": "prod::external_seed::external_seed::ext_152e5d39e5ef4ee3a67894b7",
+      "pivota_signature_id": "sig_509c8ac188acb93a8438a8cc",
+      "external_product_id": "ext_152e5d39e5ef4ee3a67894b7",
+      "title": "Guanajuato - Breathable Nail Polish",
+      "brand": "786 Cosmetics",
+      "domain": "786cosmetics.com",
+      "market": "US",
+      "category_path": "beauty",
+      "canonical_url": "https://786cosmetics.com/products/guanajuato-breathable-nail-polish",
+      "bucket": "blocked_value_defect",
+      "issue_count": 1,
+      "module_status": {
+        "variant_label_count": 2,
+        "variant_labels_sample": [
+          "Shade: Guanajuato",
+          "Guanajuato"
+        ],
+        "variant_count": 5,
+        "image_count": 3,
+        "root_image_count": 3,
+        "variant_image_count": 0,
+        "image_hosts_sample": [
+          "cdn.shopify.com"
+        ],
+        "ingredient_applicability_status": "",
+        "ingredient_applicability_evidence": [],
+        "ingredient_component_refs_status": "",
+        "ingredient_component_refs_count": 0,
+        "ingredient_component_refs_sample": [],
+        "ingredient_texts_sample": [
+          "Butyl Acetate, Ethyl Acetate, Nitrocellulose, Adipic Acid/Neopentyl Glycorrimellitic Anhydride Copolymer, Acetyl Tribu:y1 Citrate, Isopropyl Alcohol, Polyethylmethacrylate, Sucrose Acetate Isobutyrate, Stearalkonium Bentonite, Diacetone Alcohol, Silica, Benzophenone-1, Trimethylpentanediyl Dibenzoate, Dimethicone, Trimethylsiloxysili-cate, N-Butyl Alcohol, Phosphoric Acid, May Contain: Mica, Bis(Glycidoxyphenyl)Propane/ Bisaminomethylnorbornane Copolymer, Aluminum Hydroxide, Tin Oxide, Titanium Dioxide/CI 77891, Ferric Ammonium Ferrocyanide/CI 77510, Iron Oxide/CI 77499, Black Iron Oxide/CI 77499, Red Iron Oxide/CI 77499, Ultramarines/CI 77007, Aluminium Powder/CI 77000, DC Violet 2/CI 60730, Red 28/CI 45410, Yellow 5 Lake/CI 19140, Red 34 Lake/CI 15880, Red 6 Lake/CI 15850, Red 7 Lake/CI 15850"
+        ],
+        "how_to_texts_sample": [
+          "For water permeability, apply 1-2 thin coats. To extend polish longevity, prep the nail by shaping and buffing before application. Enhance nail health by finishing with our Almond & Ginseng Cuticle Oil ."
+        ],
+        "detail_section_count": 9,
+        "intel_kb_key": "product:ext_152e5d39e5ef4ee3a67894b7",
+        "review_count": 0,
+        "qna_count": 0
+      },
+      "issues": [
+        {
+          "module": "variant",
+          "reason_code": "variant_size_value_looks_like_sku_or_asset_suffix",
+          "severity": "critical",
+          "evidence": [
+            "Shade: Guanajuato",
+            "Guanajuato"
+          ],
+          "recommended_action": "re-extract source variant axes; do not surface SKU/image filename suffix as shopper size"
+        }
+      ]
+    },
+    {
+      "product_key": "prod::external_seed::external_seed::ext_1a3dc4611dcd01447437ed9c",
+      "pivota_signature_id": "sig_5c3b9f33ef3014838be12111",
+      "external_product_id": "ext_1a3dc4611dcd01447437ed9c",
+      "title": "Rotomahana - Breathable Nail Polish",
+      "brand": "786 Cosmetics",
+      "domain": "786cosmetics.com",
+      "market": "US",
+      "category_path": "beauty",
+      "canonical_url": "https://786cosmetics.com/products/rotomahana-breathable-nail-polish",
+      "bucket": "blocked_value_defect",
+      "issue_count": 1,
+      "module_status": {
+        "variant_label_count": 2,
+        "variant_labels_sample": [
+          "Shade: Rotomahana",
+          "Rotomahana"
+        ],
+        "variant_count": 5,
+        "image_count": 5,
+        "root_image_count": 5,
+        "variant_image_count": 0,
+        "image_hosts_sample": [
+          "cdn.shopify.com"
+        ],
+        "ingredient_applicability_status": "",
+        "ingredient_applicability_evidence": [],
+        "ingredient_component_refs_status": "",
+        "ingredient_component_refs_count": 0,
+        "ingredient_component_refs_sample": [],
+        "ingredient_texts_sample": [
+          "Butyl Acetate, Ethyl Acetate, Nitrocellulose, Adipic Acid/Neopentyl Glycorrimellitic Anhydride Copolymer, Acetyl Tribu:y1 Citrate, Isopropyl Alcohol, Polyethylmethacrylate, Sucrose Acetate Isobutyrate, Stearalkonium Bentonite, Diacetone Alcohol, Silica, Benzophenone-1, Trimethylpentanediyl Dibenzoate, Dimethicone, Trimethylsiloxysili-cate, N-Butyl Alcohol, Phosphoric Acid, May Contain: Mica, Bis(Glycidoxyphenyl)Propane/ Bisaminomethylnorbornane Copolymer, Aluminum Hydroxide, Tin Oxide, Titanium Dioxide/CI 77891, Ferric Ammonium Ferrocyanide/CI 77510, Iron Oxide/CI 77499, Black Iron Oxide/CI 77499, Red Iron Oxide/CI 77499, Ultramarines/CI 77007, Aluminium Powder/CI 77000, DC Violet 2/CI 60730, Red 28/CI 45410, Yellow 5 Lake/CI 19140, Red 34 Lake/CI 15880, Red 6 Lake/CI 15850, Red 7 Lake/CI 15850"
+        ],
+        "how_to_texts_sample": [
+          "For water permeability, apply 1-2 thin coats. To extend polish longevity, prep the nail by shaping and buffing before application. Enhance nail health by finishing with our Almond & Ginseng Cuticle Oil ."
+        ],
+        "detail_section_count": 9,
+        "intel_kb_key": "product:ext_1a3dc4611dcd01447437ed9c",
+        "review_count": 0,
+        "qna_count": 0
+      },
+      "issues": [
+        {
+          "module": "variant",
+          "reason_code": "variant_size_value_looks_like_sku_or_asset_suffix",
+          "severity": "critical",
+          "evidence": [
+            "Shade: Rotomahana",
+            "Rotomahana"
+          ],
+          "recommended_action": "re-extract source variant axes; do not surface SKU/image filename suffix as shopper size"
+        }
+      ]
+    },
+    {
+      "product_key": "prod::external_seed::external_seed::ext_22c3e831a335c12bc33fca2f",
+      "pivota_signature_id": "sig_c5f0d3058ec462e0c09bb124",
+      "external_product_id": "ext_22c3e831a335c12bc33fca2f",
+      "title": "Java - Breathable Nail Polish",
+      "brand": "786 Cosmetics",
+      "domain": "786cosmetics.com",
+      "market": "US",
+      "category_path": "beauty",
+      "canonical_url": "https://786cosmetics.com/products/java-breathable-nail-polish",
+      "bucket": "needs_value_repair",
+      "issue_count": 1,
+      "module_status": {
+        "variant_label_count": 2,
+        "variant_labels_sample": [
+          "Shade: Java",
+          "Java"
+        ],
+        "variant_count": 5,
+        "image_count": 4,
+        "root_image_count": 4,
+        "variant_image_count": 0,
+        "image_hosts_sample": [
+          "cdn.shopify.com"
+        ],
+        "ingredient_applicability_status": "",
+        "ingredient_applicability_evidence": [],
+        "ingredient_component_refs_status": "",
+        "ingredient_component_refs_count": 0,
+        "ingredient_component_refs_sample": [],
+        "ingredient_texts_sample": [
+          "Butyl Acetate, Ethyl Acetate, Nitrocellulose, Adipic Acid/Neopentyl Glycorrimellitic Anhydride Copolymer, Acetyl Tribu:y1 Citrate, Isopropyl Alcohol, Polyethylmethacrylate, Sucrose Acetate Isobutyrate, Stearalkonium Bentonite, Diacetone Alcohol, Silica, Benzophenone-1, Trimethylpentanediyl Dibenzoate, Dimethicone, Trimethylsiloxysili-cate, N-Butyl Alcohol, Phosphoric Acid, May Contain: Mica, Bis(Glycidoxyphenyl)Propane/ Bisaminomethylnorbornane Copolymer, Aluminum Hydroxide, Tin Oxide, Titanium Dioxide/CI 77891, Ferric Ammonium Ferrocyanide/CI 77510, Iron Oxide/CI 77499, Black Iron Oxide/CI 77499, Red Iron Oxide/CI 77499, Ultramarines/CI 77007, Aluminium Powder/CI 77000, DC Violet 2/CI 60730, Red 28/CI 45410, Yellow 5 Lake/CI 19140, Red 34 Lake/CI 15880, Red 6 Lake/CI 15850, Red 7 Lake/CI 15850"
+        ],
+        "how_to_texts_sample": [
+          "For water permeability, apply 1-2 thin coats. To extend polish longevity, prep the nail by shaping and buffing before application. Enhance nail health by finishing with our Almond & Ginseng Cuticle Oil ."
+        ],
+        "detail_section_count": 9,
+        "intel_kb_key": "",
+        "review_count": 0,
+        "qna_count": 0
+      },
+      "issues": [
+        {
+          "module": "insights",
+          "reason_code": "insights_missing_reviewed_bundle",
+          "severity": "high",
+          "evidence": [],
+          "recommended_action": "generate/review/publish Pivota Insights from source-backed facts"
+        }
+      ]
+    },
+    {
+      "product_key": "prod::external_seed::external_seed::ext_2d506dd9dc7428de2d3d0cc8",
+      "pivota_signature_id": "sig_f2efd1c54e2b916249073a8c",
+      "external_product_id": "ext_2d506dd9dc7428de2d3d0cc8",
+      "title": "Seville - Breathable Nail Polish",
+      "brand": "786 Cosmetics",
+      "domain": "786cosmetics.com",
+      "market": "US",
+      "category_path": "beauty",
+      "canonical_url": "https://786cosmetics.com/products/seville-breathable-nail-polish",
+      "bucket": "blocked_value_defect",
+      "issue_count": 1,
+      "module_status": {
+        "variant_label_count": 2,
+        "variant_labels_sample": [
+          "Shade: Seville",
+          "Seville"
+        ],
+        "variant_count": 5,
+        "image_count": 4,
+        "root_image_count": 4,
+        "variant_image_count": 0,
+        "image_hosts_sample": [
+          "cdn.shopify.com"
+        ],
+        "ingredient_applicability_status": "",
+        "ingredient_applicability_evidence": [],
+        "ingredient_component_refs_status": "",
+        "ingredient_component_refs_count": 0,
+        "ingredient_component_refs_sample": [],
+        "ingredient_texts_sample": [
+          "Butyl Acetate, Ethyl Acetate, Nitrocellulose, Adipic Acid/Neopentyl Glycorrimellitic Anhydride Copolymer, Acetyl Tribu:y1 Citrate, Isopropyl Alcohol, Polyethylmethacrylate, Sucrose Acetate Isobutyrate, Stearalkonium Bentonite, Diacetone Alcohol, Silica, Benzophenone-1, Trimethylpentanediyl Dibenzoate, Dimethicone, Trimethylsiloxysili-cate, N-Butyl Alcohol, Phosphoric Acid, May Contain: Mica, Bis(Glycidoxyphenyl)Propane/ Bisaminomethylnorbornane Copolymer, Aluminum Hydroxide, Tin Oxide, Titanium Dioxide/CI 77891, Ferric Ammonium Ferrocyanide/CI 77510, Iron Oxide/CI 77499, Black Iron Oxide/CI 77499, Red Iron Oxide/CI 77499, Ultramarines/CI 77007, Aluminium Powder/CI 77000, DC Violet 2/CI 60730, Red 28/CI 45410, Yellow 5 Lake/CI 19140, Red 34 Lake/CI 15880, Red 6 Lake/CI 15850, Red 7 Lake/CI 15850"
+        ],
+        "how_to_texts_sample": [
+          "For water permeability, apply 1-2 thin coats. To extend polish longevity, prep the nail by shaping and buffing before application. Enhance nail health by finishing with our Almond & Ginseng Cuticle Oil ."
+        ],
+        "detail_section_count": 9,
+        "intel_kb_key": "product:ext_2d506dd9dc7428de2d3d0cc8",
+        "review_count": 0,
+        "qna_count": 0
+      },
+      "issues": [
+        {
+          "module": "variant",
+          "reason_code": "variant_size_value_looks_like_sku_or_asset_suffix",
+          "severity": "critical",
+          "evidence": [
+            "Shade: Seville",
+            "Seville"
+          ],
+          "recommended_action": "re-extract source variant axes; do not surface SKU/image filename suffix as shopper size"
+        }
+      ]
+    },
+    {
+      "product_key": "prod::external_seed::external_seed::ext_45293e532ad5a5f33438d38f",
+      "pivota_signature_id": "sig_95a68d70559b9052cd74c27c",
+      "external_product_id": "ext_45293e532ad5a5f33438d38f",
+      "title": "Nizwa - Breathable Nail Polish",
+      "brand": "786 Cosmetics",
+      "domain": "786cosmetics.com",
+      "market": "US",
+      "category_path": "beauty/skincare/toner",
+      "canonical_url": "https://786cosmetics.com/products/nizwa-breathable-nail-polish",
+      "bucket": "blocked_value_defect",
+      "issue_count": 1,
+      "module_status": {
+        "variant_label_count": 2,
+        "variant_labels_sample": [
+          "Shade: Nizwa",
+          "Nizwa"
+        ],
+        "variant_count": 5,
+        "image_count": 4,
+        "root_image_count": 4,
+        "variant_image_count": 0,
+        "image_hosts_sample": [
+          "cdn.shopify.com"
+        ],
+        "ingredient_applicability_status": "",
+        "ingredient_applicability_evidence": [],
+        "ingredient_component_refs_status": "",
+        "ingredient_component_refs_count": 0,
+        "ingredient_component_refs_sample": [],
+        "ingredient_texts_sample": [
+          "Butyl Acetate, Ethyl Acetate, Nitrocellulose, Adipic Acid/Neopentyl Glycorrimellitic Anhydride Copolymer, Acetyl Tribu:y1 Citrate, Isopropyl Alcohol, Polyethylmethacrylate, Sucrose Acetate Isobutyrate, Stearalkonium Bentonite, Diacetone Alcohol, Silica, Benzophenone-1, Trimethylpentanediyl Dibenzoate, Dimethicone, Trimethylsiloxysili-cate, N-Butyl Alcohol, Phosphoric Acid, May Contain: Mica, Bis(Glycidoxyphenyl)Propane/ Bisaminomethylnorbornane Copolymer, Aluminum Hydroxide, Tin Oxide, Titanium Dioxide/CI 77891, Ferric Ammonium Ferrocyanide/CI 77510, Iron Oxide/CI 77499, Black Iron Oxide/CI 77499, Red Iron Oxide/CI 77499, Ultramarines/CI 77007, Aluminium Powder/CI 77000, DC Violet 2/CI 60730, Red 28/CI 45410, Yellow 5 Lake/CI 19140, Red 34 Lake/CI 15880, Red 6 Lake/CI 15850, Red 7 Lake/CI 15850"
+        ],
+        "how_to_texts_sample": [
+          "For water permeability, apply 1-2 thin coats. To extend polish longevity, prep the nail by shaping and buffing before application. Enhance nail health by finishing with our Almond & Ginseng Cuticle Oil ."
+        ],
+        "detail_section_count": 9,
+        "intel_kb_key": "product:ext_45293e532ad5a5f33438d38f",
+        "review_count": 0,
+        "qna_count": 0
+      },
+      "issues": [
+        {
+          "module": "variant",
+          "reason_code": "variant_size_value_looks_like_sku_or_asset_suffix",
+          "severity": "critical",
+          "evidence": [
+            "Shade: Nizwa",
+            "Nizwa"
+          ],
+          "recommended_action": "re-extract source variant axes; do not surface SKU/image filename suffix as shopper size"
+        }
+      ]
+    },
+    {
+      "product_key": "prod::external_seed::external_seed::ext_478c309275606a587d949541",
+      "pivota_signature_id": "sig_2039014efacb9756069a0ca4",
+      "external_product_id": "ext_478c309275606a587d949541",
+      "title": "Cusco - Breathable Nail Polish",
+      "brand": "786 Cosmetics",
+      "domain": "786cosmetics.com",
+      "market": "US",
+      "category_path": "beauty/skincare/moisturizer",
+      "canonical_url": "https://786cosmetics.com/products/cusco-breathable-nail-polish",
+      "bucket": "blocked_value_defect",
+      "issue_count": 1,
+      "module_status": {
+        "variant_label_count": 2,
+        "variant_labels_sample": [
+          "Shade: Cusco",
+          "Cusco"
+        ],
+        "variant_count": 5,
+        "image_count": 3,
+        "root_image_count": 3,
+        "variant_image_count": 0,
+        "image_hosts_sample": [
+          "cdn.shopify.com"
+        ],
+        "ingredient_applicability_status": "",
+        "ingredient_applicability_evidence": [],
+        "ingredient_component_refs_status": "",
+        "ingredient_component_refs_count": 0,
+        "ingredient_component_refs_sample": [],
+        "ingredient_texts_sample": [
+          "Butyl Acetate, Ethyl Acetate, Nitrocellulose, Adipic Acid/Neopentyl Glycorrimellitic Anhydride Copolymer, Acetyl Tribu:y1 Citrate, Isopropyl Alcohol, Polyethylmethacrylate, Sucrose Acetate Isobutyrate, Stearalkonium Bentonite, Diacetone Alcohol, Silica, Benzophenone-1, Trimethylpentanediyl Dibenzoate, Dimethicone, Trimethylsiloxysili-cate, N-Butyl Alcohol, Phosphoric Acid, May Contain: Mica, Bis(Glycidoxyphenyl)Propane/ Bisaminomethylnorbornane Copolymer, Aluminum Hydroxide, Tin Oxide, Titanium Dioxide/CI 77891, Ferric Ammonium Ferrocyanide/CI 77510, Iron Oxide/CI 77499, Black Iron Oxide/CI 77499, Red Iron Oxide/CI 77499, Ultramarines/CI 77007, Aluminium Powder/CI 77000, DC Violet 2/CI 60730, Red 28/CI 45410, Yellow 5 Lake/CI 19140, Red 34 Lake/CI 15880, Red 6 Lake/CI 15850, Red 7 Lake/CI 15850"
+        ],
+        "how_to_texts_sample": [
+          "For water permeability, apply 1-2 thin coats. To extend polish longevity, prep the nail by shaping and buffing before application. Enhance nail health by finishing with our Almond & Ginseng Cuticle Oil ."
+        ],
+        "detail_section_count": 9,
+        "intel_kb_key": "product:ext_478c309275606a587d949541",
+        "review_count": 0,
+        "qna_count": 0
+      },
+      "issues": [
+        {
+          "module": "variant",
+          "reason_code": "variant_size_value_looks_like_sku_or_asset_suffix",
+          "severity": "critical",
+          "evidence": [
+            "Shade: Cusco",
+            "Cusco"
+          ],
+          "recommended_action": "re-extract source variant axes; do not surface SKU/image filename suffix as shopper size"
+        }
+      ]
+    },
+    {
+      "product_key": "prod::external_seed::external_seed::ext_799b3d12caaa6ad1842840dd",
+      "pivota_signature_id": "sig_9c543d81d3bff492de282964",
+      "external_product_id": "ext_799b3d12caaa6ad1842840dd",
+      "title": "Sakura - Breathable Nail Polish",
+      "brand": "786 Cosmetics",
+      "domain": "786cosmetics.com",
+      "market": "US",
+      "category_path": "beauty",
+      "canonical_url": "https://786cosmetics.com/products/sakura-breathable-nail-polish",
+      "bucket": "blocked_value_defect",
+      "issue_count": 1,
+      "module_status": {
+        "variant_label_count": 2,
+        "variant_labels_sample": [
+          "Shade: Sakura",
+          "Sakura"
+        ],
+        "variant_count": 5,
+        "image_count": 7,
+        "root_image_count": 7,
+        "variant_image_count": 0,
+        "image_hosts_sample": [
+          "cdn.shopify.com"
+        ],
+        "ingredient_applicability_status": "",
+        "ingredient_applicability_evidence": [],
+        "ingredient_component_refs_status": "",
+        "ingredient_component_refs_count": 0,
+        "ingredient_component_refs_sample": [],
+        "ingredient_texts_sample": [
+          "Butyl Acetate, Ethyl Acetate, Nitrocellulose, Adipic Acid/Neopentyl Glycorrimellitic Anhydride Copolymer, Acetyl Tribu:y1 Citrate, Isopropyl Alcohol, Polyethylmethacrylate, Sucrose Acetate Isobutyrate, Stearalkonium Bentonite, Diacetone Alcohol, Silica, Benzophenone-1, Trimethylpentanediyl Dibenzoate, Dimethicone, Trimethylsiloxysili-cate, N-Butyl Alcohol, Phosphoric Acid, May Contain: Mica, Bis(Glycidoxyphenyl)Propane/ Bisaminomethylnorbornane Copolymer, Aluminum Hydroxide, Tin Oxide, Titanium Dioxide/CI 77891, Ferric Ammonium Ferrocyanide/CI 77510, Iron Oxide/CI 77499, Black Iron Oxide/CI 77499, Red Iron Oxide/CI 77499, Ultramarines/CI 77007, Aluminium Powder/CI 77000, DC Violet 2/CI 60730, Red 28/CI 45410, Yellow 5 Lake/CI 19140, Red 34 Lake/CI 15880, Red 6 Lake/CI 15850, Red 7 Lake/CI 15850"
+        ],
+        "how_to_texts_sample": [
+          "For water permeability, apply 1-2 thin coats. To extend polish longevity, prep the nail by shaping and buffing before application. Enhance nail health by finishing with our Almond & Ginseng Cuticle Oil ."
+        ],
+        "detail_section_count": 9,
+        "intel_kb_key": "product:ext_799b3d12caaa6ad1842840dd",
+        "review_count": 0,
+        "qna_count": 0
+      },
+      "issues": [
+        {
+          "module": "variant",
+          "reason_code": "variant_size_value_looks_like_sku_or_asset_suffix",
+          "severity": "critical",
+          "evidence": [
+            "Shade: Sakura",
+            "Sakura"
+          ],
+          "recommended_action": "re-extract source variant axes; do not surface SKU/image filename suffix as shopper size"
+        }
+      ]
+    },
+    {
+      "product_key": "prod::external_seed::external_seed::ext_7bac80d00f1f149743824dee",
+      "pivota_signature_id": "sig_0c453529d367d96dc61c14c2",
+      "external_product_id": "ext_7bac80d00f1f149743824dee",
+      "title": "Top Coat Clear - Breathable Nail Polish",
+      "brand": "786 Cosmetics",
+      "domain": "786cosmetics.com",
+      "market": "US",
+      "category_path": "beauty",
+      "canonical_url": "https://786cosmetics.com/products/top-coat-clear-breathable-nail-polish",
+      "bucket": "blocked_value_defect",
+      "issue_count": 1,
+      "module_status": {
+        "variant_label_count": 2,
+        "variant_labels_sample": [
+          "Finish: Clear",
+          "Clear"
+        ],
+        "variant_count": 5,
+        "image_count": 2,
+        "root_image_count": 2,
+        "variant_image_count": 0,
+        "image_hosts_sample": [
+          "cdn.shopify.com"
+        ],
+        "ingredient_applicability_status": "",
+        "ingredient_applicability_evidence": [],
+        "ingredient_component_refs_status": "",
+        "ingredient_component_refs_count": 0,
+        "ingredient_component_refs_sample": [],
+        "ingredient_texts_sample": [
+          "Butyl Acetate, Ethyl Acetate, Nitrocellulose, Adipic Acid/Neopentyl Glycorrimellitic Anhydride Copolymer, Acetyl Tribu:y1 Citrate, Isopropyl Alcohol, Polyethylmethacrylate, Sucrose Acetate Isobutyrate, Stearalkonium Bentonite, Diacetone Alcohol, Silica, Benzophenone-1, Trimethylpentanediyl Dibenzoate, Dimethicone, Trimethylsiloxysili-cate, N-Butyl Alcohol, Phosphoric Acid, May Contain: Mica, Bis(Glycidoxyphenyl)Propane/ Bisaminomethylnorbornane Copolymer, Aluminum Hydroxide, Tin Oxide, Titanium Dioxide/CI 77891, Ferric Ammonium Ferrocyanide/CI 77510, Iron Oxide/CI 77499, Black Iron Oxide/CI 77499, Red Iron Oxide/CI 77499, Ultramarines/CI 77007, Aluminium Powder/CI 77000, DC Violet 2/CI 60730, Red 28/CI 45410, Yellow 5 Lake/CI 19140, Red 34 Lake/CI 15880, Red 6 Lake/CI 15850, Red 7 Lake/CI 15850"
+        ],
+        "how_to_texts_sample": [
+          "For water permeability, apply 1-2 thin coats. To extend polish longevity, prep the nail by shaping and buffing before application. Enhance nail health by finishing with our Almond & Ginseng Cuticle Oil ."
+        ],
+        "detail_section_count": 9,
+        "intel_kb_key": "product:ext_7bac80d00f1f149743824dee",
+        "review_count": 0,
+        "qna_count": 0
+      },
+      "issues": [
+        {
+          "module": "variant",
+          "reason_code": "variant_size_value_looks_like_sku_or_asset_suffix",
+          "severity": "critical",
+          "evidence": [
+            "Finish: Clear",
+            "Clear"
+          ],
+          "recommended_action": "re-extract source variant axes; do not surface SKU/image filename suffix as shopper size"
+        }
+      ]
+    },
+    {
+      "product_key": "prod::external_seed::external_seed::ext_87a0af88b9bd23b8f2123d1b",
+      "pivota_signature_id": "sig_d64ac22c1e6199912d9a3337",
+      "external_product_id": "ext_87a0af88b9bd23b8f2123d1b",
+      "title": "Almond & Ginseng Cuticle Oil",
+      "brand": "786 Cosmetics",
+      "domain": "786cosmetics.com",
+      "market": "US",
+      "category_path": "beauty",
+      "canonical_url": "https://786cosmetics.com/products/almond-ginseng-cuticle-oil",
+      "bucket": "blocked_value_defect",
+      "issue_count": 1,
+      "module_status": {
+        "variant_label_count": 2,
+        "variant_labels_sample": [
+          "Format: Cuticle Oil",
+          "Cuticle Oil"
+        ],
+        "variant_count": 5,
+        "image_count": 2,
+        "root_image_count": 2,
+        "variant_image_count": 0,
+        "image_hosts_sample": [
+          "cdn.shopify.com"
+        ],
+        "ingredient_applicability_status": "",
+        "ingredient_applicability_evidence": [],
+        "ingredient_component_refs_status": "",
+        "ingredient_component_refs_count": 0,
+        "ingredient_component_refs_sample": [],
+        "ingredient_texts_sample": [
+          "Prunus Amygdalus Dulcis (Sweet Almond) Oil, Helianthus Annuus (Sunflower) Seed Oil, Argania Spinosa (Argan) Kernel Oil, Tocopheryl Acetate, Panthenyl Triacetate, Tocopherol Retinyl Palmitate, Ethyl Acetate, Aesculus Hippocastanum (Horse Chestnut) Seed Extract, Dimethyl Oxobenzo Dioxosilane."
+        ],
+        "how_to_texts_sample": [
+          "Apply one to two coats of Deep Nutrition twice a week to revive the nails. Make sure to let dry between coats. Nail Treatment applies as a sheer, light pink color and dries with a light, glossy finish.\nOnce dried and set on nails for a few hours, you may remove the treatment before applying nail polish or praying with nail polish remover. Deep Nutrition is not water-permeable. (If you are not praying, you may leave it on just like a nail polish!)\nIn 3-4 weeks, enjoy your healthy, revived nails!"
+        ],
+        "detail_section_count": 9,
+        "intel_kb_key": "product:ext_87a0af88b9bd23b8f2123d1b",
+        "review_count": 0,
+        "qna_count": 0
+      },
+      "issues": [
+        {
+          "module": "variant",
+          "reason_code": "variant_size_value_looks_like_sku_or_asset_suffix",
+          "severity": "critical",
+          "evidence": [
+            "Format: Cuticle Oil",
+            "Cuticle Oil"
+          ],
+          "recommended_action": "re-extract source variant axes; do not surface SKU/image filename suffix as shopper size"
+        }
+      ]
+    },
+    {
+      "product_key": "prod::external_seed::external_seed::ext_9a469b8f450d59f67ae21f6d",
+      "pivota_signature_id": "sig_12ddc3d2c679bc338ba3e63b",
+      "external_product_id": "ext_9a469b8f450d59f67ae21f6d",
+      "title": "Paris - Breathable Nail Polish",
+      "brand": "786 Cosmetics",
+      "domain": "786cosmetics.com",
+      "market": "US",
+      "category_path": "beauty",
+      "canonical_url": "https://786cosmetics.com/products/paris",
+      "bucket": "blocked_value_defect",
+      "issue_count": 1,
+      "module_status": {
+        "variant_label_count": 2,
+        "variant_labels_sample": [
+          "Shade: Paris",
+          "Paris"
+        ],
+        "variant_count": 5,
+        "image_count": 6,
+        "root_image_count": 6,
+        "variant_image_count": 0,
+        "image_hosts_sample": [
+          "cdn.shopify.com"
+        ],
+        "ingredient_applicability_status": "",
+        "ingredient_applicability_evidence": [],
+        "ingredient_component_refs_status": "",
+        "ingredient_component_refs_count": 0,
+        "ingredient_component_refs_sample": [],
+        "ingredient_texts_sample": [
+          "Butyl Acetate, Ethyl Acetate, Nitrocellulose, Adipic Acid/Neopentyl Glycorrimellitic Anhydride Copolymer, Acetyl Tribu:y1 Citrate, Isopropyl Alcohol, Polyethylmethacrylate, Sucrose Acetate Isobutyrate, Stearalkonium Bentonite, Diacetone Alcohol, Silica, Benzophenone-1, Trimethylpentanediyl Dibenzoate, Dimethicone, Trimethylsiloxysili-cate, N-Butyl Alcohol, Phosphoric Acid, May Contain: Mica, Bis(Glycidoxyphenyl)Propane/ Bisaminomethylnorbornane Copolymer, Aluminum Hydroxide, Tin Oxide, Titanium Dioxide/CI 77891, Ferric Ammonium Ferrocyanide/CI 77510, Iron Oxide/CI 77499, Black Iron Oxide/CI 77499, Red Iron Oxide/CI 77499, Ultramarines/CI 77007, Aluminium Powder/CI 77000, DC Violet 2/CI 60730, Red 28/CI 45410, Yellow 5 Lake/CI 19140, Red 34 Lake/CI 15880, Red 6 Lake/CI 15850, Red 7 Lake/CI 15850"
+        ],
+        "how_to_texts_sample": [
+          "For water permeability, apply 1-2 thin coats. To extend polish longevity, prep the nail by shaping and buffing before application. Enhance nail health by finishing with our Almond & Ginseng Cuticle Oil ."
+        ],
+        "detail_section_count": 9,
+        "intel_kb_key": "product:ext_9a469b8f450d59f67ae21f6d",
+        "review_count": 0,
+        "qna_count": 0
+      },
+      "issues": [
+        {
+          "module": "variant",
+          "reason_code": "variant_size_value_looks_like_sku_or_asset_suffix",
+          "severity": "critical",
+          "evidence": [
+            "Shade: Paris",
+            "Paris"
+          ],
+          "recommended_action": "re-extract source variant axes; do not surface SKU/image filename suffix as shopper size"
+        }
+      ]
+    },
+    {
+      "product_key": "prod::external_seed::external_seed::ext_9f7b485a72fece5e2dfc5176",
+      "pivota_signature_id": "sig_78b3694e25a51deb61e2d4e3",
+      "external_product_id": "ext_9f7b485a72fece5e2dfc5176",
+      "title": "Himalayas - Breathable Nail Polish",
+      "brand": "786 Cosmetics",
+      "domain": "786cosmetics.com",
+      "market": "US",
+      "category_path": "beauty",
+      "canonical_url": "https://786cosmetics.com/products/himalayas-breathable-nail-polish",
+      "bucket": "blocked_value_defect",
+      "issue_count": 1,
+      "module_status": {
+        "variant_label_count": 2,
+        "variant_labels_sample": [
+          "Shade: Himalayas",
+          "Himalayas"
+        ],
+        "variant_count": 5,
+        "image_count": 6,
+        "root_image_count": 6,
+        "variant_image_count": 0,
+        "image_hosts_sample": [
+          "cdn.shopify.com"
+        ],
+        "ingredient_applicability_status": "",
+        "ingredient_applicability_evidence": [],
+        "ingredient_component_refs_status": "",
+        "ingredient_component_refs_count": 0,
+        "ingredient_component_refs_sample": [],
+        "ingredient_texts_sample": [
+          "Butyl Acetate, Ethyl Acetate, Nitrocellulose, Adipic Acid/Neopentyl Glycorrimellitic Anhydride Copolymer, Acetyl Tribu:y1 Citrate, Isopropyl Alcohol, Polyethylmethacrylate, Sucrose Acetate Isobutyrate, Stearalkonium Bentonite, Diacetone Alcohol, Silica, Benzophenone-1, Trimethylpentanediyl Dibenzoate, Dimethicone, Trimethylsiloxysili-cate, N-Butyl Alcohol, Phosphoric Acid, May Contain: Mica, Bis(Glycidoxyphenyl)Propane/ Bisaminomethylnorbornane Copolymer, Aluminum Hydroxide, Tin Oxide, Titanium Dioxide/CI 77891, Ferric Ammonium Ferrocyanide/CI 77510, Iron Oxide/CI 77499, Black Iron Oxide/CI 77499, Red Iron Oxide/CI 77499, Ultramarines/CI 77007, Aluminium Powder/CI 77000, DC Violet 2/CI 60730, Red 28/CI 45410, Yellow 5 Lake/CI 19140, Red 34 Lake/CI 15880, Red 6 Lake/CI 15850, Red 7 Lake/CI 15850"
+        ],
+        "how_to_texts_sample": [
+          "For water permeability, apply 1-2 thin coats. To extend polish longevity, prep the nail by shaping and buffing before application. Enhance nail health by finishing with our Almond & Ginseng Cuticle Oil ."
+        ],
+        "detail_section_count": 9,
+        "intel_kb_key": "product:ext_9f7b485a72fece5e2dfc5176",
+        "review_count": 0,
+        "qna_count": 0
+      },
+      "issues": [
+        {
+          "module": "variant",
+          "reason_code": "variant_size_value_looks_like_sku_or_asset_suffix",
+          "severity": "critical",
+          "evidence": [
+            "Shade: Himalayas",
+            "Himalayas"
+          ],
+          "recommended_action": "re-extract source variant axes; do not surface SKU/image filename suffix as shopper size"
+        }
+      ]
+    },
+    {
+      "product_key": "prod::external_seed::external_seed::ext_96324332335f327e15bbd1a3",
+      "pivota_signature_id": "sig_63ba1a546b9901d9445ddfee",
+      "external_product_id": "ext_96324332335f327e15bbd1a3",
+      "title": "Istanbul - Breathable Nail Polish",
+      "brand": "786 Cosmetics",
+      "domain": "786cosmetics.com",
+      "market": "US",
+      "category_path": "beauty",
+      "canonical_url": "https://786cosmetics.com/products/istanbul-breathable-nail-polish",
+      "bucket": "blocked_value_defect",
+      "issue_count": 1,
+      "module_status": {
+        "variant_label_count": 2,
+        "variant_labels_sample": [
+          "Shade: Istanbul",
+          "Istanbul"
+        ],
+        "variant_count": 5,
+        "image_count": 4,
+        "root_image_count": 4,
+        "variant_image_count": 0,
+        "image_hosts_sample": [
+          "cdn.shopify.com"
+        ],
+        "ingredient_applicability_status": "",
+        "ingredient_applicability_evidence": [],
+        "ingredient_component_refs_status": "",
+        "ingredient_component_refs_count": 0,
+        "ingredient_component_refs_sample": [],
+        "ingredient_texts_sample": [
+          "Butyl Acetate, Ethyl Acetate, Nitrocellulose, Adipic Acid/Neopentyl Glycorrimellitic Anhydride Copolymer, Acetyl Tribu:y1 Citrate, Isopropyl Alcohol, Polyethylmethacrylate, Sucrose Acetate Isobutyrate, Stearalkonium Bentonite, Diacetone Alcohol, Silica, Benzophenone-1, Trimethylpentanediyl Dibenzoate, Dimethicone, Trimethylsiloxysili-cate, N-Butyl Alcohol, Phosphoric Acid, May Contain: Mica, Bis(Glycidoxyphenyl)Propane/ Bisaminomethylnorbornane Copolymer, Aluminum Hydroxide, Tin Oxide, Titanium Dioxide/CI 77891, Ferric Ammonium Ferrocyanide/CI 77510, Iron Oxide/CI 77499, Black Iron Oxide/CI 77499, Red Iron Oxide/CI 77499, Ultramarines/CI 77007, Aluminium Powder/CI 77000, DC Violet 2/CI 60730, Red 28/CI 45410, Yellow 5 Lake/CI 19140, Red 34 Lake/CI 15880, Red 6 Lake/CI 15850, Red 7 Lake/CI 15850"
+        ],
+        "how_to_texts_sample": [
+          "For water permeability, apply 1-2 thin coats. To extend polish longevity, prep the nail by shaping and buffing before application. Enhance nail health by finishing with our Almond & Ginseng Cuticle Oil ."
+        ],
+        "detail_section_count": 9,
+        "intel_kb_key": "product:ext_96324332335f327e15bbd1a3",
+        "review_count": 0,
+        "qna_count": 0
+      },
+      "issues": [
+        {
+          "module": "variant",
+          "reason_code": "variant_size_value_looks_like_sku_or_asset_suffix",
+          "severity": "critical",
+          "evidence": [
+            "Shade: Istanbul",
+            "Istanbul"
+          ],
+          "recommended_action": "re-extract source variant axes; do not surface SKU/image filename suffix as shopper size"
+        }
+      ]
+    },
+    {
+      "product_key": "prod::external_seed::external_seed::ext_a5d2bdb05f2216a85764454f",
+      "pivota_signature_id": "sig_a9ebc68595dfbda18c3efeb4",
+      "external_product_id": "ext_a5d2bdb05f2216a85764454f",
+      "title": "Lisbon - Breathable Nail Polish",
+      "brand": "786 Cosmetics",
+      "domain": "786cosmetics.com",
+      "market": "US",
+      "category_path": "beauty",
+      "canonical_url": "https://786cosmetics.com/products/lisbon-breathable-nail-polish",
+      "bucket": "blocked_value_defect",
+      "issue_count": 1,
+      "module_status": {
+        "variant_label_count": 2,
+        "variant_labels_sample": [
+          "Shade: Lisbon",
+          "Lisbon"
+        ],
+        "variant_count": 5,
+        "image_count": 5,
+        "root_image_count": 5,
+        "variant_image_count": 0,
+        "image_hosts_sample": [
+          "cdn.shopify.com"
+        ],
+        "ingredient_applicability_status": "",
+        "ingredient_applicability_evidence": [],
+        "ingredient_component_refs_status": "",
+        "ingredient_component_refs_count": 0,
+        "ingredient_component_refs_sample": [],
+        "ingredient_texts_sample": [
+          "Butyl Acetate, Ethyl Acetate, Nitrocellulose, Adipic Acid/Neopentyl Glycorrimellitic Anhydride Copolymer, Acetyl Tribu:y1 Citrate, Isopropyl Alcohol, Polyethylmethacrylate, Sucrose Acetate Isobutyrate, Stearalkonium Bentonite, Diacetone Alcohol, Silica, Benzophenone-1, Trimethylpentanediyl Dibenzoate, Dimethicone, Trimethylsiloxysili-cate, N-Butyl Alcohol, Phosphoric Acid, May Contain: Mica, Bis(Glycidoxyphenyl)Propane/ Bisaminomethylnorbornane Copolymer, Aluminum Hydroxide, Tin Oxide, Titanium Dioxide/CI 77891, Ferric Ammonium Ferrocyanide/CI 77510, Iron Oxide/CI 77499, Black Iron Oxide/CI 77499, Red Iron Oxide/CI 77499, Ultramarines/CI 77007, Aluminium Powder/CI 77000, DC Violet 2/CI 60730, Red 28/CI 45410, Yellow 5 Lake/CI 19140, Red 34 Lake/CI 15880, Red 6 Lake/CI 15850, Red 7 Lake/CI 15850"
+        ],
+        "how_to_texts_sample": [
+          "For water permeability, apply 1-2 thin coats. To extend polish longevity, prep the nail by shaping and buffing before application. Enhance nail health by finishing with our Almond & Ginseng Cuticle Oil ."
+        ],
+        "detail_section_count": 9,
+        "intel_kb_key": "product:ext_a5d2bdb05f2216a85764454f",
+        "review_count": 0,
+        "qna_count": 0
+      },
+      "issues": [
+        {
+          "module": "variant",
+          "reason_code": "variant_size_value_looks_like_sku_or_asset_suffix",
+          "severity": "critical",
+          "evidence": [
+            "Shade: Lisbon",
+            "Lisbon"
+          ],
+          "recommended_action": "re-extract source variant axes; do not surface SKU/image filename suffix as shopper size"
+        }
+      ]
+    },
+    {
+      "product_key": "prod::external_seed::external_seed::ext_afb163014d0bffd3a6493c05",
+      "pivota_signature_id": "sig_756e1899a6e9a4b3eb0f3f79",
+      "external_product_id": "ext_afb163014d0bffd3a6493c05",
+      "title": "Marrakesh - Breathable Nail Polish",
+      "brand": "786 Cosmetics",
+      "domain": "786cosmetics.com",
+      "market": "US",
+      "category_path": "beauty",
+      "canonical_url": "https://786cosmetics.com/products/marrakesh",
+      "bucket": "blocked_value_defect",
+      "issue_count": 1,
+      "module_status": {
+        "variant_label_count": 2,
+        "variant_labels_sample": [
+          "Shade: Marrakesh",
+          "Marrakesh"
+        ],
+        "variant_count": 5,
+        "image_count": 6,
+        "root_image_count": 6,
+        "variant_image_count": 0,
+        "image_hosts_sample": [
+          "cdn.shopify.com"
+        ],
+        "ingredient_applicability_status": "",
+        "ingredient_applicability_evidence": [],
+        "ingredient_component_refs_status": "",
+        "ingredient_component_refs_count": 0,
+        "ingredient_component_refs_sample": [],
+        "ingredient_texts_sample": [
+          "Butyl Acetate, Ethyl Acetate, Nitrocellulose, Adipic Acid/Neopentyl Glycorrimellitic Anhydride Copolymer, Acetyl Tribu:y1 Citrate, Isopropyl Alcohol, Polyethylmethacrylate, Sucrose Acetate Isobutyrate, Stearalkonium Bentonite, Diacetone Alcohol, Silica, Benzophenone-1, Trimethylpentanediyl Dibenzoate, Dimethicone, Trimethylsiloxysili-cate, N-Butyl Alcohol, Phosphoric Acid, May Contain: Mica, Bis(Glycidoxyphenyl)Propane/ Bisaminomethylnorbornane Copolymer, Aluminum Hydroxide, Tin Oxide, Titanium Dioxide/CI 77891, Ferric Ammonium Ferrocyanide/CI 77510, Iron Oxide/CI 77499, Black Iron Oxide/CI 77499, Red Iron Oxide/CI 77499, Ultramarines/CI 77007, Aluminium Powder/CI 77000, DC Violet 2/CI 60730, Red 28/CI 45410, Yellow 5 Lake/CI 19140, Red 34 Lake/CI 15880, Red 6 Lake/CI 15850, Red 7 Lake/CI 15850"
+        ],
+        "how_to_texts_sample": [
+          "For water permeability, apply 1-2 thin coats. To extend polish longevity, prep the nail by shaping and buffing before application. Enhance nail health by finishing with our Almond & Ginseng Cuticle Oil ."
+        ],
+        "detail_section_count": 9,
+        "intel_kb_key": "product:ext_afb163014d0bffd3a6493c05",
+        "review_count": 0,
+        "qna_count": 0
+      },
+      "issues": [
+        {
+          "module": "variant",
+          "reason_code": "variant_size_value_looks_like_sku_or_asset_suffix",
+          "severity": "critical",
+          "evidence": [
+            "Shade: Marrakesh",
+            "Marrakesh"
+          ],
+          "recommended_action": "re-extract source variant axes; do not surface SKU/image filename suffix as shopper size"
+        }
+      ]
+    },
+    {
+      "product_key": "prod::external_seed::external_seed::ext_c6ce33a7e9e59a7c8c24fc36",
+      "pivota_signature_id": "sig_c70797636025a034cb79f76b",
+      "external_product_id": "ext_c6ce33a7e9e59a7c8c24fc36",
+      "title": "Kyoto - Breathable Nail Polish",
+      "brand": "786 Cosmetics",
+      "domain": "786cosmetics.com",
+      "market": "US",
+      "category_path": "beauty/makeup/blush",
+      "canonical_url": "https://786cosmetics.com/products/kyoto",
+      "bucket": "blocked_value_defect",
+      "issue_count": 2,
+      "module_status": {
+        "variant_label_count": 2,
+        "variant_labels_sample": [
+          "Shade: Kyoto",
+          "Kyoto"
+        ],
+        "variant_count": 5,
+        "image_count": 6,
+        "root_image_count": 6,
+        "variant_image_count": 0,
+        "image_hosts_sample": [
+          "cdn.shopify.com"
+        ],
+        "ingredient_applicability_status": "",
+        "ingredient_applicability_evidence": [],
+        "ingredient_component_refs_status": "",
+        "ingredient_component_refs_count": 0,
+        "ingredient_component_refs_sample": [],
+        "ingredient_texts_sample": [],
+        "how_to_texts_sample": [],
+        "detail_section_count": 0,
+        "intel_kb_key": "product:ext_c6ce33a7e9e59a7c8c24fc36",
+        "review_count": 0,
+        "qna_count": 0
+      },
+      "issues": [
+        {
+          "module": "variant",
+          "reason_code": "variant_size_value_looks_like_sku_or_asset_suffix",
+          "severity": "critical",
+          "evidence": [
+            "Shade: Kyoto",
+            "Kyoto"
+          ],
+          "recommended_action": "re-extract source variant axes; do not surface SKU/image filename suffix as shopper size"
+        },
+        {
+          "module": "ingredients",
+          "reason_code": "ingredients_missing_source_backed_inci",
+          "severity": "high",
+          "evidence": [],
+          "recommended_action": "fill from official INCI or verified retailer ingredient panel"
+        }
+      ]
+    },
+    {
+      "product_key": "prod::external_seed::external_seed::ext_cd1678cacc37126a9d483888",
+      "pivota_signature_id": "sig_60a1841ac3ba6eb809338b7d",
+      "external_product_id": "ext_cd1678cacc37126a9d483888",
+      "title": "Bursa - Breathable Nail Polish",
+      "brand": "786 Cosmetics",
+      "domain": "786cosmetics.com",
+      "market": "US",
+      "category_path": "beauty",
+      "canonical_url": "https://786cosmetics.com/products/bursa-breathable-nail-polish",
+      "bucket": "blocked_value_defect",
+      "issue_count": 2,
+      "module_status": {
+        "variant_label_count": 2,
+        "variant_labels_sample": [
+          "Shade: Bursa",
+          "Bursa"
+        ],
+        "variant_count": 5,
+        "image_count": 7,
+        "root_image_count": 7,
+        "variant_image_count": 0,
+        "image_hosts_sample": [
+          "cdn.shopify.com"
+        ],
+        "ingredient_applicability_status": "",
+        "ingredient_applicability_evidence": [],
+        "ingredient_component_refs_status": "",
+        "ingredient_component_refs_count": 0,
+        "ingredient_component_refs_sample": [],
+        "ingredient_texts_sample": [],
+        "how_to_texts_sample": [],
+        "detail_section_count": 0,
+        "intel_kb_key": "product:ext_cd1678cacc37126a9d483888",
+        "review_count": 0,
+        "qna_count": 0
+      },
+      "issues": [
+        {
+          "module": "variant",
+          "reason_code": "variant_size_value_looks_like_sku_or_asset_suffix",
+          "severity": "critical",
+          "evidence": [
+            "Shade: Bursa",
+            "Bursa"
+          ],
+          "recommended_action": "re-extract source variant axes; do not surface SKU/image filename suffix as shopper size"
+        },
+        {
+          "module": "ingredients",
+          "reason_code": "ingredients_missing_source_backed_inci",
+          "severity": "high",
+          "evidence": [],
+          "recommended_action": "fill from official INCI or verified retailer ingredient panel"
+        }
+      ]
+    },
+    {
+      "product_key": "prod::external_seed::external_seed::ext_f37bb5bc53c4764bc5de8e9c",
+      "pivota_signature_id": "sig_d592cfac4ecd2e3336cf9e7c",
+      "external_product_id": "ext_f37bb5bc53c4764bc5de8e9c",
+      "title": "Isfahan - Breathable Nail Polish",
+      "brand": "786 Cosmetics",
+      "domain": "786cosmetics.com",
+      "market": "US",
+      "category_path": "beauty/skincare/moisturizer",
+      "canonical_url": "https://786cosmetics.com/products/isfahan-breathable-nail-polish",
+      "bucket": "blocked_value_defect",
+      "issue_count": 3,
+      "module_status": {
+        "variant_label_count": 2,
+        "variant_labels_sample": [
+          "Shade: Isfahan",
+          "Isfahan"
+        ],
+        "variant_count": 5,
+        "image_count": 5,
+        "root_image_count": 5,
+        "variant_image_count": 0,
+        "image_hosts_sample": [
+          "cdn.shopify.com"
+        ],
+        "ingredient_applicability_status": "",
+        "ingredient_applicability_evidence": [],
+        "ingredient_component_refs_status": "",
+        "ingredient_component_refs_count": 0,
+        "ingredient_component_refs_sample": [],
+        "ingredient_texts_sample": [],
+        "how_to_texts_sample": [],
+        "detail_section_count": 0,
+        "intel_kb_key": "product:ext_f37bb5bc53c4764bc5de8e9c",
+        "review_count": 0,
+        "qna_count": 0
+      },
+      "issues": [
+        {
+          "module": "variant",
+          "reason_code": "variant_size_value_looks_like_sku_or_asset_suffix",
+          "severity": "critical",
+          "evidence": [
+            "Shade: Isfahan",
+            "Isfahan"
+          ],
+          "recommended_action": "re-extract source variant axes; do not surface SKU/image filename suffix as shopper size"
+        },
+        {
+          "module": "ingredients",
+          "reason_code": "ingredients_missing_source_backed_inci",
+          "severity": "high",
+          "evidence": [],
+          "recommended_action": "fill from official INCI or verified retailer ingredient panel"
+        },
+        {
+          "module": "how_to_use",
+          "reason_code": "how_to_missing_for_formula",
+          "severity": "medium",
+          "evidence": [],
+          "recommended_action": "fill source-backed directions where source exposes them"
+        }
+      ]
+    },
+    {
+      "product_key": "prod::external_seed::external_seed::ext_55b774d3c57906a77a7167f0",
+      "pivota_signature_id": "sig_337355ebd00dcd80367973fb",
+      "external_product_id": "ext_55b774d3c57906a77a7167f0",
+      "title": "Sorrento - Breathable Nail Polish",
+      "brand": "786 Cosmetics",
+      "domain": "786cosmetics.com",
+      "market": "US",
+      "category_path": "beauty",
+      "canonical_url": "https://786cosmetics.com/products/sorrento-breathable-nail-polish",
+      "bucket": "blocked_value_defect",
+      "issue_count": 1,
+      "module_status": {
+        "variant_label_count": 2,
+        "variant_labels_sample": [
+          "Shade: Sorrento",
+          "Sorrento"
+        ],
+        "variant_count": 5,
+        "image_count": 4,
+        "root_image_count": 4,
+        "variant_image_count": 0,
+        "image_hosts_sample": [
+          "cdn.shopify.com"
+        ],
+        "ingredient_applicability_status": "",
+        "ingredient_applicability_evidence": [],
+        "ingredient_component_refs_status": "",
+        "ingredient_component_refs_count": 0,
+        "ingredient_component_refs_sample": [],
+        "ingredient_texts_sample": [
+          "Butyl Acetate, Ethyl Acetate, Nitrocellulose, Adipic Acid/Neopentyl Glycorrimellitic Anhydride Copolymer, Acetyl Tribu:y1 Citrate, Isopropyl Alcohol, Polyethylmethacrylate, Sucrose Acetate Isobutyrate, Stearalkonium Bentonite, Diacetone Alcohol, Silica, Benzophenone-1, Trimethylpentanediyl Dibenzoate, Dimethicone, Trimethylsiloxysili-cate, N-Butyl Alcohol, Phosphoric Acid,May Contain: Mica, Bis(Glycidoxyphenyl)Propane/ Bisaminomethylnorbornane Copolymer, Aluminum Hydroxide, Tin Oxide, Titanium Dioxide/CI 77891, Ferric Ammonium Ferrocyanide/CI 77510, Iron Oxide/CI 77499, Black Iron Oxide/CI 77499, Red Iron Oxide/CI 77499, Ultramarines/CI 77007, Aluminium Powder/CI 77000, DC Violet 2/CI 60730, Red 28/CI 45410, Yellow 5 Lake/CI 19140, Red 34 Lake/CI 15880, Red 6 Lake/CI 15850, Red 7 Lake/CI 15850"
+        ],
+        "how_to_texts_sample": [
+          "For water permeability, apply 1-2 thin coats. To extend polish longevity, prep the nail by shaping and buffing before application. Enhance nail health by finishing with our Almond & Ginseng Cuticle Oil."
+        ],
+        "detail_section_count": 9,
+        "intel_kb_key": "product:ext_55b774d3c57906a77a7167f0",
+        "review_count": 0,
+        "qna_count": 0
+      },
+      "issues": [
+        {
+          "module": "variant",
+          "reason_code": "variant_size_value_looks_like_sku_or_asset_suffix",
+          "severity": "critical",
+          "evidence": [
+            "Shade: Sorrento",
+            "Sorrento"
+          ],
+          "recommended_action": "re-extract source variant axes; do not surface SKU/image filename suffix as shopper size"
+        }
+      ]
+    },
+    {
+      "product_key": "prod::external_seed::external_seed::ext_8573685e1cc94840934c764d",
+      "pivota_signature_id": "sig_8a7206c95b0440afe42d0de7",
+      "external_product_id": "ext_8573685e1cc94840934c764d",
+      "title": "Goychay - Breathable Nail Polish",
+      "brand": "786 Cosmetics",
+      "domain": "786cosmetics.com",
+      "market": "US",
+      "category_path": "beauty",
+      "canonical_url": "https://786cosmetics.com/products/goychay-breathable-nail-polish",
+      "bucket": "blocked_value_defect",
+      "issue_count": 1,
+      "module_status": {
+        "variant_label_count": 2,
+        "variant_labels_sample": [
+          "Shade: Goychay",
+          "Goychay"
+        ],
+        "variant_count": 5,
+        "image_count": 4,
+        "root_image_count": 4,
+        "variant_image_count": 0,
+        "image_hosts_sample": [
+          "cdn.shopify.com"
+        ],
+        "ingredient_applicability_status": "",
+        "ingredient_applicability_evidence": [],
+        "ingredient_component_refs_status": "",
+        "ingredient_component_refs_count": 0,
+        "ingredient_component_refs_sample": [],
+        "ingredient_texts_sample": [
+          "Butyl Acetate, Ethyl Acetate, Nitrocellulose, Adipic Acid/Neopentyl Glycorrimellitic Anhydride Copolymer, Acetyl Tribu:y1 Citrate, Isopropyl Alcohol, Polyethylmethacrylate, Sucrose Acetate Isobutyrate, Stearalkonium Bentonite, Diacetone Alcohol, Silica, Benzophenone-1, Trimethylpentanediyl Dibenzoate, Dimethicone, Trimethylsiloxysili-cate, N-Butyl Alcohol, Phosphoric Acid,May Contain: Mica, Bis(Glycidoxyphenyl)Propane/ Bisaminomethylnorbornane Copolymer, Aluminum Hydroxide, Tin Oxide, Titanium Dioxide/CI 77891, Ferric Ammonium Ferrocyanide/CI 77510, Iron Oxide/CI 77499, Black Iron Oxide/CI 77499, Red Iron Oxide/CI 77499, Ultramarines/CI 77007, Aluminium Powder/CI 77000, DC Violet 2/CI 60730, Red 28/CI 45410, Yellow 5 Lake/CI 19140, Red 34 Lake/CI 15880, Red 6 Lake/CI 15850, Red 7 Lake/CI 15850"
+        ],
+        "how_to_texts_sample": [
+          "For water permeability, apply 1-2 thin coats. To extend polish longevity, prep the nail by shaping and buffing before application. Enhance nail health by finishing with our Almond & Ginseng Cuticle Oil."
+        ],
+        "detail_section_count": 9,
+        "intel_kb_key": "product:ext_8573685e1cc94840934c764d",
+        "review_count": 0,
+        "qna_count": 0
+      },
+      "issues": [
+        {
+          "module": "variant",
+          "reason_code": "variant_size_value_looks_like_sku_or_asset_suffix",
+          "severity": "critical",
+          "evidence": [
+            "Shade: Goychay",
+            "Goychay"
+          ],
+          "recommended_action": "re-extract source variant axes; do not surface SKU/image filename suffix as shopper size"
+        }
+      ]
+    },
+    {
+      "product_key": "prod::external_seed::external_seed::ext_69dcb156e335cb9756e016b2",
+      "pivota_signature_id": "sig_64564840b38cef0f27045593",
+      "external_product_id": "ext_69dcb156e335cb9756e016b2",
+      "title": "Kashmir - Breathable Nail Polish",
+      "brand": "786 Cosmetics",
+      "domain": "786cosmetics.com",
+      "market": "US",
+      "category_path": "beauty",
+      "canonical_url": "https://786cosmetics.com/products/kashmir-breathable-nail-polish",
+      "bucket": "blocked_value_defect",
+      "issue_count": 1,
+      "module_status": {
+        "variant_label_count": 2,
+        "variant_labels_sample": [
+          "Shade: Kashmir",
+          "Kashmir"
+        ],
+        "variant_count": 5,
+        "image_count": 5,
+        "root_image_count": 5,
+        "variant_image_count": 0,
+        "image_hosts_sample": [
+          "cdn.shopify.com"
+        ],
+        "ingredient_applicability_status": "",
+        "ingredient_applicability_evidence": [],
+        "ingredient_component_refs_status": "",
+        "ingredient_component_refs_count": 0,
+        "ingredient_component_refs_sample": [],
+        "ingredient_texts_sample": [
+          "Butyl Acetate, Ethyl Acetate, Nitrocellulose, Adipic Acid/Neopentyl Glycorrimellitic Anhydride Copolymer, Acetyl Tribu:y1 Citrate, Isopropyl Alcohol, Polyethylmethacrylate, Sucrose Acetate Isobutyrate, Stearalkonium Bentonite, Diacetone Alcohol, Silica, Benzophenone-1, Trimethylpentanediyl Dibenzoate, Dimethicone, Trimethylsiloxysili-cate, N-Butyl Alcohol, Phosphoric Acid,May Contain: Mica, Bis(Glycidoxyphenyl)Propane/ Bisaminomethylnorbornane Copolymer, Aluminum Hydroxide, Tin Oxide, Titanium Dioxide/CI 77891, Ferric Ammonium Ferrocyanide/CI 77510, Iron Oxide/CI 77499, Black Iron Oxide/CI 77499, Red Iron Oxide/CI 77499, Ultramarines/CI 77007, Aluminium Powder/CI 77000, DC Violet 2/CI 60730, Red 28/CI 45410, Yellow 5 Lake/CI 19140, Red 34 Lake/CI 15880, Red 6 Lake/CI 15850, Red 7 Lake/CI 15850"
+        ],
+        "how_to_texts_sample": [
+          "For water permeability, apply 1-2 thin coats. To extend polish longevity, prep the nail by shaping and buffing before application. Enhance nail health by finishing with our Almond & Ginseng Cuticle Oil."
+        ],
+        "detail_section_count": 9,
+        "intel_kb_key": "product:ext_69dcb156e335cb9756e016b2",
+        "review_count": 0,
+        "qna_count": 0
+      },
+      "issues": [
+        {
+          "module": "variant",
+          "reason_code": "variant_size_value_looks_like_sku_or_asset_suffix",
+          "severity": "critical",
+          "evidence": [
+            "Shade: Kashmir",
+            "Kashmir"
+          ],
+          "recommended_action": "re-extract source variant axes; do not surface SKU/image filename suffix as shopper size"
+        }
+      ]
+    },
+    {
+      "product_key": "prod::external_seed::external_seed::ext_41aeeb470016979417c8637d",
+      "pivota_signature_id": "sig_238477f3b4019ff763ef5d4e",
+      "external_product_id": "ext_41aeeb470016979417c8637d",
+      "title": "Kabul - Breathable Nail Polish",
+      "brand": "786 Cosmetics",
+      "domain": "786cosmetics.com",
+      "market": "US",
+      "category_path": "beauty",
+      "canonical_url": "https://786cosmetics.com/products/kabul-breathable-nail-polish",
+      "bucket": "blocked_value_defect",
+      "issue_count": 1,
+      "module_status": {
+        "variant_label_count": 2,
+        "variant_labels_sample": [
+          "Shade: Kabul",
+          "Kabul"
+        ],
+        "variant_count": 5,
+        "image_count": 3,
+        "root_image_count": 3,
+        "variant_image_count": 0,
+        "image_hosts_sample": [
+          "cdn.shopify.com"
+        ],
+        "ingredient_applicability_status": "",
+        "ingredient_applicability_evidence": [],
+        "ingredient_component_refs_status": "",
+        "ingredient_component_refs_count": 0,
+        "ingredient_component_refs_sample": [],
+        "ingredient_texts_sample": [
+          "Butyl Acetate, Ethyl Acetate, Nitrocellulose, Adipic Acid/Neopentyl Glycorrimellitic Anhydride Copolymer, Acetyl Tribu:y1 Citrate, Isopropyl Alcohol, Polyethylmethacrylate, Sucrose Acetate Isobutyrate, Stearalkonium Bentonite, Diacetone Alcohol, Silica, Benzophenone-1, Trimethylpentanediyl Dibenzoate, Dimethicone, Trimethylsiloxysili-cate, N-Butyl Alcohol, Phosphoric Acid,May Contain: Mica, Bis(Glycidoxyphenyl)Propane/ Bisaminomethylnorbornane Copolymer, Aluminum Hydroxide, Tin Oxide, Titanium Dioxide/CI 77891, Ferric Ammonium Ferrocyanide/CI 77510, Iron Oxide/CI 77499, Black Iron Oxide/CI 77499, Red Iron Oxide/CI 77499, Ultramarines/CI 77007, Aluminium Powder/CI 77000, DC Violet 2/CI 60730, Red 28/CI 45410, Yellow 5 Lake/CI 19140, Red 34 Lake/CI 15880, Red 6 Lake/CI 15850, Red 7 Lake/CI 15850"
+        ],
+        "how_to_texts_sample": [
+          "For water permeability, apply 1-2 thin coats. To extend polish longevity, prep the nail by shaping and buffing before application. Enhance nail health by finishing with our Almond & Ginseng Cuticle Oil."
+        ],
+        "detail_section_count": 9,
+        "intel_kb_key": "product:ext_41aeeb470016979417c8637d",
+        "review_count": 0,
+        "qna_count": 0
+      },
+      "issues": [
+        {
+          "module": "variant",
+          "reason_code": "variant_size_value_looks_like_sku_or_asset_suffix",
+          "severity": "critical",
+          "evidence": [
+            "Shade: Kabul",
+            "Kabul"
+          ],
+          "recommended_action": "re-extract source variant axes; do not surface SKU/image filename suffix as shopper size"
+        }
+      ]
+    },
+    {
+      "product_key": "prod::external_seed::external_seed::ext_2c4793f5f96ec2d4680fd55b",
+      "pivota_signature_id": "sig_c06807c3f62bf08c23e4ea93",
+      "external_product_id": "ext_2c4793f5f96ec2d4680fd55b",
+      "title": "Zhangye - Breathable Nail Polish",
+      "brand": "786 Cosmetics",
+      "domain": "786cosmetics.com",
+      "market": "US",
+      "category_path": "beauty",
+      "canonical_url": "https://786cosmetics.com/products/zhangye-breathable-nail-polish",
+      "bucket": "blocked_value_defect",
+      "issue_count": 1,
+      "module_status": {
+        "variant_label_count": 2,
+        "variant_labels_sample": [
+          "Shade: Zhangye",
+          "Zhangye"
+        ],
+        "variant_count": 5,
+        "image_count": 5,
+        "root_image_count": 5,
+        "variant_image_count": 0,
+        "image_hosts_sample": [
+          "cdn.shopify.com"
+        ],
+        "ingredient_applicability_status": "",
+        "ingredient_applicability_evidence": [],
+        "ingredient_component_refs_status": "",
+        "ingredient_component_refs_count": 0,
+        "ingredient_component_refs_sample": [],
+        "ingredient_texts_sample": [
+          "Butyl Acetate, Ethyl Acetate, Nitrocellulose, Adipic Acid/Neopentyl Glycorrimellitic Anhydride Copolymer, Acetyl Tribu:y1 Citrate, Isopropyl Alcohol, Polyethylmethacrylate, Sucrose Acetate Isobutyrate, Stearalkonium Bentonite, Diacetone Alcohol, Silica, Benzophenone-1, Trimethylpentanediyl Dibenzoate, Dimethicone, Trimethylsiloxysili-cate, N-Butyl Alcohol, Phosphoric Acid,May Contain: Mica, Bis(Glycidoxyphenyl)Propane/ Bisaminomethylnorbornane Copolymer, Aluminum Hydroxide, Tin Oxide, Titanium Dioxide/CI 77891, Ferric Ammonium Ferrocyanide/CI 77510, Iron Oxide/CI 77499, Black Iron Oxide/CI 77499, Red Iron Oxide/CI 77499, Ultramarines/CI 77007, Aluminium Powder/CI 77000, DC Violet 2/CI 60730, Red 28/CI 45410, Yellow 5 Lake/CI 19140, Red 34 Lake/CI 15880, Red 6 Lake/CI 15850, Red 7 Lake/CI 15850"
+        ],
+        "how_to_texts_sample": [
+          "For water permeability, apply 1-2 thin coats. To extend polish longevity, prep the nail by shaping and buffing before application. Enhance nail health by finishing with our Almond & Ginseng Cuticle Oil."
+        ],
+        "detail_section_count": 9,
+        "intel_kb_key": "product:ext_2c4793f5f96ec2d4680fd55b",
+        "review_count": 0,
+        "qna_count": 0
+      },
+      "issues": [
+        {
+          "module": "variant",
+          "reason_code": "variant_size_value_looks_like_sku_or_asset_suffix",
+          "severity": "critical",
+          "evidence": [
+            "Shade: Zhangye",
+            "Zhangye"
+          ],
+          "recommended_action": "re-extract source variant axes; do not surface SKU/image filename suffix as shopper size"
+        }
+      ]
+    },
+    {
+      "product_key": "prod::external_seed::external_seed::ext_36b452da1e0dde5c19bd2ed0",
+      "pivota_signature_id": "sig_38239666ff461573fb2a2e97",
+      "external_product_id": "ext_36b452da1e0dde5c19bd2ed0",
+      "title": "Casablanca - Breathable Nail Polish",
+      "brand": "786 Cosmetics",
+      "domain": "786cosmetics.com",
+      "market": "US",
+      "category_path": "beauty",
+      "canonical_url": "https://786cosmetics.com/products/casablanca-breathable-nail-polish",
+      "bucket": "blocked_value_defect",
+      "issue_count": 2,
+      "module_status": {
+        "variant_label_count": 2,
+        "variant_labels_sample": [
+          "Shade: Casablanca",
+          "Casablanca"
+        ],
+        "variant_count": 5,
+        "image_count": 20,
+        "root_image_count": 20,
+        "variant_image_count": 0,
+        "image_hosts_sample": [
+          "cdn.shopify.com",
+          "786cosmetics.com"
+        ],
+        "ingredient_applicability_status": "",
+        "ingredient_applicability_evidence": [],
+        "ingredient_component_refs_status": "",
+        "ingredient_component_refs_count": 0,
+        "ingredient_component_refs_sample": [],
+        "ingredient_texts_sample": [
+          "Butyl Acetate, Ethyl Acetate, Nitrocellulose, Adipic Acid/Neopentyl Glycorrimellitic Anhydride Copolymer, Acetyl Tribu:y1 Citrate, Isopropyl Alcohol, Polyethylmethacrylate, Sucrose Acetate Isobutyrate, Stearalkonium Bentonite, Diacetone Alcohol, Silica, Benzophenone-1, Trimethylpentanediyl Dibenzoate, Dimethicone, Trimethylsiloxysili-cate, N-Butyl Alcohol, Phosphoric Acid,May Contain: Mica, Bis(Glycidoxyphenyl)Propane/ Bisaminomethylnorbornane Copolymer, Aluminum Hydroxide, Tin Oxide, Titanium Dioxide/CI 77891, Ferric Ammonium Ferrocyanide/CI 77510, Iron Oxide/CI 77499, Black Iron Oxide/CI 77499, Red Iron Oxide/CI 77499, Ultramarines/CI 77007, Aluminium Powder/CI 77000, DC Violet 2/CI 60730, Red 28/CI 45410, Yellow 5 Lake/CI 19140, Red 34 Lake/CI 15880, Red 6 Lake/CI 15850, Red 7 Lake/CI 15850"
+        ],
+        "how_to_texts_sample": [
+          "For water permeability, apply 1-2 thin coats. To extend polish longevity, prep the nail by shaping and buffing before application. Enhance nail health by finishing with our Almond & Ginseng Cuticle Oil."
+        ],
+        "detail_section_count": 9,
+        "intel_kb_key": "product:ext_36b452da1e0dde5c19bd2ed0",
+        "review_count": 0,
+        "qna_count": 0
+      },
+      "issues": [
+        {
+          "module": "variant",
+          "reason_code": "variant_size_value_looks_like_sku_or_asset_suffix",
+          "severity": "critical",
+          "evidence": [
+            "Shade: Casablanca",
+            "Casablanca"
+          ],
+          "recommended_action": "re-extract source variant axes; do not surface SKU/image filename suffix as shopper size"
+        },
+        {
+          "module": "gallery",
+          "reason_code": "gallery_excessive_image_count",
+          "severity": "medium",
+          "evidence": {
+            "count": 20,
+            "total_image_count": 20,
+            "variant_image_count": 0,
+            "suspicious_root_count": 8,
+            "suspicious_root_sample": [
+              "https://786cosmetics.com/cdn/shop/files/Snapinsta.app_365619948_18276175015149740_2609485125880599339_n_1080_1.jpg?crop=center&v=1696617175",
+              "https://786cosmetics.com/cdn/shop/files/3.gif?crop=center&v=1699983256",
+              "https://786cosmetics.com/cdn/shop/files/Snapinsta.app_36981757_234850793800975_8157423542682517504_n_1080.jpg?crop=center&v=1698087774",
+              "https://786cosmetics.com/cdn/shop/files/Snapinsta.app_377854146_984534276096847_5858701429379112223_n_1080.jpg?crop=center&v=1696872887",
+              "https://786cosmetics.com/cdn/shop/files/9.gif?crop=center&v=1699983259",
+              "https://786cosmetics.com/cdn/shop/files/PhotoJun202023_113212AM.jpg?crop=center&v=1708453061",
+              "https://786cosmetics.com/cdn/shop/files/35.png?crop=center&v=1698091492",
+              "https://786cosmetics.com/cdn/shop/files/32.png?crop=center&v=1698091491"
+            ]
+          },
+          "recommended_action": "trim gallery to product-specific images only"
+        }
+      ]
+    },
+    {
+      "product_key": "prod::external_seed::external_seed::ext_33fa1a749060cefdd3e0dc2b",
+      "pivota_signature_id": "sig_80adec5b3460ba6136c3ae68",
+      "external_product_id": "ext_33fa1a749060cefdd3e0dc2b",
+      "title": "Beirut - Breathable Nail Polish",
+      "brand": "786 Cosmetics",
+      "domain": "786cosmetics.com",
+      "market": "US",
+      "category_path": "beauty",
+      "canonical_url": "https://786cosmetics.com/products/beirut-breathable-nail-polish",
+      "bucket": "blocked_value_defect",
+      "issue_count": 2,
+      "module_status": {
+        "variant_label_count": 2,
+        "variant_labels_sample": [
+          "Shade: Beirut",
+          "Beirut"
+        ],
+        "variant_count": 5,
+        "image_count": 19,
+        "root_image_count": 19,
+        "variant_image_count": 0,
+        "image_hosts_sample": [
+          "cdn.shopify.com",
+          "786cosmetics.com"
+        ],
+        "ingredient_applicability_status": "",
+        "ingredient_applicability_evidence": [],
+        "ingredient_component_refs_status": "",
+        "ingredient_component_refs_count": 0,
+        "ingredient_component_refs_sample": [],
+        "ingredient_texts_sample": [
+          "Butyl Acetate, Ethyl Acetate, Nitrocellulose, Adipic Acid/Neopentyl Glycorrimellitic Anhydride Copolymer, Acetyl Tribu:y1 Citrate, Isopropyl Alcohol, Polyethylmethacrylate, Sucrose Acetate Isobutyrate, Stearalkonium Bentonite, Diacetone Alcohol, Silica, Benzophenone-1, Trimethylpentanediyl Dibenzoate, Dimethicone, Trimethylsiloxysili-cate, N-Butyl Alcohol, Phosphoric Acid,May Contain: Mica, Bis(Glycidoxyphenyl)Propane/ Bisaminomethylnorbornane Copolymer, Aluminum Hydroxide, Tin Oxide, Titanium Dioxide/CI 77891, Ferric Ammonium Ferrocyanide/CI 77510, Iron Oxide/CI 77499, Black Iron Oxide/CI 77499, Red Iron Oxide/CI 77499, Ultramarines/CI 77007, Aluminium Powder/CI 77000, DC Violet 2/CI 60730, Red 28/CI 45410, Yellow 5 Lake/CI 19140, Red 34 Lake/CI 15880, Red 6 Lake/CI 15850, Red 7 Lake/CI 15850"
+        ],
+        "how_to_texts_sample": [
+          "For water permeability, apply 1-2 thin coats. To extend polish longevity, prep the nail by shaping and buffing before application. Enhance nail health by finishing with our Almond & Ginseng Cuticle Oil."
+        ],
+        "detail_section_count": 9,
+        "intel_kb_key": "product:ext_33fa1a749060cefdd3e0dc2b",
+        "review_count": 0,
+        "qna_count": 0
+      },
+      "issues": [
+        {
+          "module": "variant",
+          "reason_code": "variant_size_value_looks_like_sku_or_asset_suffix",
+          "severity": "critical",
+          "evidence": [
+            "Shade: Beirut",
+            "Beirut"
+          ],
+          "recommended_action": "re-extract source variant axes; do not surface SKU/image filename suffix as shopper size"
+        },
+        {
+          "module": "gallery",
+          "reason_code": "gallery_excessive_image_count",
+          "severity": "medium",
+          "evidence": {
+            "count": 19,
+            "total_image_count": 19,
+            "variant_image_count": 0,
+            "suspicious_root_count": 8,
+            "suspicious_root_sample": [
+              "https://786cosmetics.com/cdn/shop/files/Snapinsta.app_365619948_18276175015149740_2609485125880599339_n_1080_1.jpg?crop=center&v=1696617175",
+              "https://786cosmetics.com/cdn/shop/files/3.gif?crop=center&v=1699983256",
+              "https://786cosmetics.com/cdn/shop/files/Snapinsta.app_36981757_234850793800975_8157423542682517504_n_1080.jpg?crop=center&v=1698087774",
+              "https://786cosmetics.com/cdn/shop/files/Snapinsta.app_377854146_984534276096847_5858701429379112223_n_1080.jpg?crop=center&v=1696872887",
+              "https://786cosmetics.com/cdn/shop/files/9.gif?crop=center&v=1699983259",
+              "https://786cosmetics.com/cdn/shop/files/PhotoJun202023_113212AM.jpg?crop=center&v=1708453061",
+              "https://786cosmetics.com/cdn/shop/files/35.png?crop=center&v=1698091492",
+              "https://786cosmetics.com/cdn/shop/files/32.png?crop=center&v=1698091491"
+            ]
+          },
+          "recommended_action": "trim gallery to product-specific images only"
+        }
+      ]
+    },
+    {
+      "product_key": "prod::external_seed::external_seed::ext_2fc7cc1ac3370464b4b923d3",
+      "pivota_signature_id": "sig_f09b74bb65313b362fb669d6",
+      "external_product_id": "ext_2fc7cc1ac3370464b4b923d3",
+      "title": "Bahrain - Breathable Nail Polish",
+      "brand": "786 Cosmetics",
+      "domain": "786cosmetics.com",
+      "market": "US",
+      "category_path": "beauty",
+      "canonical_url": "https://786cosmetics.com/products/bahrain-breathable-nail-polish",
+      "bucket": "blocked_value_defect",
+      "issue_count": 2,
+      "module_status": {
+        "variant_label_count": 2,
+        "variant_labels_sample": [
+          "Shade: Bahrain",
+          "Bahrain"
+        ],
+        "variant_count": 5,
+        "image_count": 25,
+        "root_image_count": 25,
+        "variant_image_count": 0,
+        "image_hosts_sample": [
+          "cdn.shopify.com",
+          "786cosmetics.com"
+        ],
+        "ingredient_applicability_status": "",
+        "ingredient_applicability_evidence": [],
+        "ingredient_component_refs_status": "",
+        "ingredient_component_refs_count": 0,
+        "ingredient_component_refs_sample": [],
+        "ingredient_texts_sample": [
+          "Butyl Acetate, Ethyl Acetate, Nitrocellulose, Adipic Acid/Neopentyl Glycorrimellitic Anhydride Copolymer, Acetyl Tribu:y1 Citrate, Isopropyl Alcohol, Polyethylmethacrylate, Sucrose Acetate Isobutyrate, Stearalkonium Bentonite, Diacetone Alcohol, Silica, Benzophenone-1, Trimethylpentanediyl Dibenzoate, Dimethicone, Trimethylsiloxysili-cate, N-Butyl Alcohol, Phosphoric Acid,May Contain: Mica, Bis(Glycidoxyphenyl)Propane/ Bisaminomethylnorbornane Copolymer, Aluminum Hydroxide, Tin Oxide, Titanium Dioxide/CI 77891, Ferric Ammonium Ferrocyanide/CI 77510, Iron Oxide/CI 77499, Black Iron Oxide/CI 77499, Red Iron Oxide/CI 77499, Ultramarines/CI 77007, Aluminium Powder/CI 77000, DC Violet 2/CI 60730, Red 28/CI 45410, Yellow 5 Lake/CI 19140, Red 34 Lake/CI 15880, Red 6 Lake/CI 15850, Red 7 Lake/CI 15850"
+        ],
+        "how_to_texts_sample": [
+          "For water permeability, apply 1-2 thin coats. To extend polish longevity, prep the nail by shaping and buffing before application. Enhance nail health by finishing with our Almond & Ginseng Cuticle Oil."
+        ],
+        "detail_section_count": 9,
+        "intel_kb_key": "product:ext_2fc7cc1ac3370464b4b923d3",
+        "review_count": 0,
+        "qna_count": 0
+      },
+      "issues": [
+        {
+          "module": "variant",
+          "reason_code": "variant_size_value_looks_like_sku_or_asset_suffix",
+          "severity": "critical",
+          "evidence": [
+            "Shade: Bahrain",
+            "Bahrain"
+          ],
+          "recommended_action": "re-extract source variant axes; do not surface SKU/image filename suffix as shopper size"
+        },
+        {
+          "module": "gallery",
+          "reason_code": "gallery_excessive_image_count",
+          "severity": "medium",
+          "evidence": {
+            "count": 25,
+            "total_image_count": 25,
+            "variant_image_count": 0,
+            "suspicious_root_count": 8,
+            "suspicious_root_sample": [
+              "https://786cosmetics.com/cdn/shop/files/Snapinsta.app_365619948_18276175015149740_2609485125880599339_n_1080_1.jpg?crop=center&v=1696617175",
+              "https://786cosmetics.com/cdn/shop/files/3.gif?crop=center&v=1699983256",
+              "https://786cosmetics.com/cdn/shop/files/Snapinsta.app_36981757_234850793800975_8157423542682517504_n_1080.jpg?crop=center&v=1698087774",
+              "https://786cosmetics.com/cdn/shop/files/Snapinsta.app_377854146_984534276096847_5858701429379112223_n_1080.jpg?crop=center&v=1696872887",
+              "https://786cosmetics.com/cdn/shop/files/9.gif?crop=center&v=1699983259",
+              "https://786cosmetics.com/cdn/shop/files/PhotoJun202023_113212AM.jpg?crop=center&v=1708453061",
+              "https://786cosmetics.com/cdn/shop/files/35.png?crop=center&v=1698091492",
+              "https://786cosmetics.com/cdn/shop/files/32.png?crop=center&v=1698091491"
+            ]
+          },
+          "recommended_action": "trim gallery to product-specific images only"
+        }
+      ]
+    },
+    {
+      "product_key": "prod::external_seed::external_seed::ext_151aebc5b6246b8d2d9a877b",
+      "pivota_signature_id": "sig_f4c7019e2286dbb023363806",
+      "external_product_id": "ext_151aebc5b6246b8d2d9a877b",
+      "title": "Agra - Breathable Nail Polish",
+      "brand": "786 Cosmetics",
+      "domain": "786cosmetics.com",
+      "market": "US",
+      "category_path": "beauty",
+      "canonical_url": "https://786cosmetics.com/products/agra-breathable-nail-polish",
+      "bucket": "review",
+      "issue_count": 1,
+      "module_status": {
+        "variant_label_count": 2,
+        "variant_labels_sample": [
+          "Shade: Agra",
+          "Agra"
+        ],
+        "variant_count": 5,
+        "image_count": 21,
+        "root_image_count": 21,
+        "variant_image_count": 0,
+        "image_hosts_sample": [
+          "cdn.shopify.com",
+          "786cosmetics.com"
+        ],
+        "ingredient_applicability_status": "",
+        "ingredient_applicability_evidence": [],
+        "ingredient_component_refs_status": "",
+        "ingredient_component_refs_count": 0,
+        "ingredient_component_refs_sample": [],
+        "ingredient_texts_sample": [
+          "Butyl Acetate, Ethyl Acetate, Nitrocellulose, Adipic Acid/Neopentyl Glycorrimellitic Anhydride Copolymer, Acetyl Tribu:y1 Citrate, Isopropyl Alcohol, Polyethylmethacrylate, Sucrose Acetate Isobutyrate, Stearalkonium Bentonite, Diacetone Alcohol, Silica, Benzophenone-1, Trimethylpentanediyl Dibenzoate, Dimethicone, Trimethylsiloxysili-cate, N-Butyl Alcohol, Phosphoric Acid,May Contain: Mica, Bis(Glycidoxyphenyl)Propane/ Bisaminomethylnorbornane Copolymer, Aluminum Hydroxide, Tin Oxide, Titanium Dioxide/CI 77891, Ferric Ammonium Ferrocyanide/CI 77510, Iron Oxide/CI 77499, Black Iron Oxide/CI 77499, Red Iron Oxide/CI 77499, Ultramarines/CI 77007, Aluminium Powder/CI 77000, DC Violet 2/CI 60730, Red 28/CI 45410, Yellow 5 Lake/CI 19140, Red 34 Lake/CI 15880, Red 6 Lake/CI 15850, Red 7 Lake/CI 15850"
+        ],
+        "how_to_texts_sample": [
+          "For water permeability, apply 1-2 thin coats. To extend polish longevity, prep the nail by shaping and buffing before application. Enhance nail health by finishing with our Almond & Ginseng Cuticle Oil."
+        ],
+        "detail_section_count": 9,
+        "intel_kb_key": "product:ext_151aebc5b6246b8d2d9a877b",
+        "review_count": 0,
+        "qna_count": 0
+      },
+      "issues": [
+        {
+          "module": "gallery",
+          "reason_code": "gallery_excessive_image_count",
+          "severity": "medium",
+          "evidence": {
+            "count": 21,
+            "total_image_count": 21,
+            "variant_image_count": 0,
+            "suspicious_root_count": 8,
+            "suspicious_root_sample": [
+              "https://786cosmetics.com/cdn/shop/files/Snapinsta.app_365619948_18276175015149740_2609485125880599339_n_1080_1.jpg?crop=center&v=1696617175",
+              "https://786cosmetics.com/cdn/shop/files/3.gif?crop=center&v=1699983256",
+              "https://786cosmetics.com/cdn/shop/files/Snapinsta.app_36981757_234850793800975_8157423542682517504_n_1080.jpg?crop=center&v=1698087774",
+              "https://786cosmetics.com/cdn/shop/files/Snapinsta.app_377854146_984534276096847_5858701429379112223_n_1080.jpg?crop=center&v=1696872887",
+              "https://786cosmetics.com/cdn/shop/files/9.gif?crop=center&v=1699983259",
+              "https://786cosmetics.com/cdn/shop/files/PhotoJun202023_113212AM.jpg?crop=center&v=1708453061",
+              "https://786cosmetics.com/cdn/shop/files/35.png?crop=center&v=1698091492",
+              "https://786cosmetics.com/cdn/shop/files/32.png?crop=center&v=1698091491"
+            ]
+          },
+          "recommended_action": "trim gallery to product-specific images only"
+        }
+      ]
+    },
+    {
+      "product_key": "prod::external_seed::external_seed::ext_0d844fc65fd3348e35a09c80",
+      "pivota_signature_id": "sig_8b6a01382b49a71e45aff8ac",
+      "external_product_id": "ext_0d844fc65fd3348e35a09c80",
+      "title": "Abu Dhabi - Breathable Nail Polish",
+      "brand": "786 Cosmetics",
+      "domain": "786cosmetics.com",
+      "market": "US",
+      "category_path": "beauty",
+      "canonical_url": "https://786cosmetics.com/products/abu-dhabi-breathable-nail-polish",
+      "bucket": "review",
+      "issue_count": 1,
+      "module_status": {
+        "variant_label_count": 2,
+        "variant_labels_sample": [
+          "Shade: Abu Dhabi",
+          "Abu Dhabi"
+        ],
+        "variant_count": 5,
+        "image_count": 17,
+        "root_image_count": 17,
+        "variant_image_count": 0,
+        "image_hosts_sample": [
+          "cdn.shopify.com",
+          "786cosmetics.com"
+        ],
+        "ingredient_applicability_status": "",
+        "ingredient_applicability_evidence": [],
+        "ingredient_component_refs_status": "",
+        "ingredient_component_refs_count": 0,
+        "ingredient_component_refs_sample": [],
+        "ingredient_texts_sample": [
+          "Butyl Acetate, Ethyl Acetate, Nitrocellulose, Adipic Acid/Neopentyl Glycorrimellitic Anhydride Copolymer, Acetyl Tribu:y1 Citrate, Isopropyl Alcohol, Polyethylmethacrylate, Sucrose Acetate Isobutyrate, Stearalkonium Bentonite, Diacetone Alcohol, Silica, Benzophenone-1, Trimethylpentanediyl Dibenzoate, Dimethicone, Trimethylsiloxysili-cate, N-Butyl Alcohol, Phosphoric Acid,May Contain: Mica, Bis(Glycidoxyphenyl)Propane/ Bisaminomethylnorbornane Copolymer, Aluminum Hydroxide, Tin Oxide, Titanium Dioxide/CI 77891, Ferric Ammonium Ferrocyanide/CI 77510, Iron Oxide/CI 77499, Black Iron Oxide/CI 77499, Red Iron Oxide/CI 77499, Ultramarines/CI 77007, Aluminium Powder/CI 77000, DC Violet 2/CI 60730, Red 28/CI 45410, Yellow 5 Lake/CI 19140, Red 34 Lake/CI 15880, Red 6 Lake/CI 15850, Red 7 Lake/CI 15850"
+        ],
+        "how_to_texts_sample": [
+          "For water permeability, apply 1-2 thin coats. To extend polish longevity, prep the nail by shaping and buffing before application. Enhance nail health by finishing with our Almond & Ginseng Cuticle Oil."
+        ],
+        "detail_section_count": 9,
+        "intel_kb_key": "product:ext_0d844fc65fd3348e35a09c80",
+        "review_count": 0,
+        "qna_count": 0
+      },
+      "issues": [
+        {
+          "module": "gallery",
+          "reason_code": "gallery_excessive_image_count",
+          "severity": "medium",
+          "evidence": {
+            "count": 17,
+            "total_image_count": 17,
+            "variant_image_count": 0,
+            "suspicious_root_count": 6,
+            "suspicious_root_sample": [
+              "https://786cosmetics.com/cdn/shop/files/Snapinsta.app_365619948_18276175015149740_2609485125880599339_n_1080_1.jpg?crop=center&v=1696617175",
+              "https://786cosmetics.com/cdn/shop/files/Snapinsta.app_36981757_234850793800975_8157423542682517504_n_1080.jpg?crop=center&v=1698087774",
+              "https://786cosmetics.com/cdn/shop/files/Snapinsta.app_377854146_984534276096847_5858701429379112223_n_1080.jpg?crop=center&v=1696872887",
+              "https://786cosmetics.com/cdn/shop/files/PhotoJun202023_113212AM.jpg?crop=center&v=1708453061",
+              "https://786cosmetics.com/cdn/shop/files/35.png?crop=center&v=1698091492",
+              "https://786cosmetics.com/cdn/shop/files/32.png?crop=center&v=1698091491"
+            ]
+          },
+          "recommended_action": "trim gallery to product-specific images only"
+        }
+      ]
+    },
+    {
+      "product_key": "prod::external_seed::external_seed::ext_f56010dd5bf971f7b7f644a6",
+      "pivota_signature_id": "sig_d99b29e6ad8e33c0ab94cbed",
+      "external_product_id": "ext_f56010dd5bf971f7b7f644a6",
+      "title": "Uluru - Breathable Nail Polish",
+      "brand": "786 Cosmetics",
+      "domain": "786cosmetics.com",
+      "market": "US",
+      "category_path": "beauty",
+      "canonical_url": "https://786cosmetics.com/products/uluru-breathable-nail-polish",
+      "bucket": "blocked_value_defect",
+      "issue_count": 1,
+      "module_status": {
+        "variant_label_count": 2,
+        "variant_labels_sample": [
+          "Shade: Uluru",
+          "Uluru"
+        ],
+        "variant_count": 5,
+        "image_count": 6,
+        "root_image_count": 6,
+        "variant_image_count": 0,
+        "image_hosts_sample": [
+          "cdn.shopify.com"
+        ],
+        "ingredient_applicability_status": "",
+        "ingredient_applicability_evidence": [],
+        "ingredient_component_refs_status": "",
+        "ingredient_component_refs_count": 0,
+        "ingredient_component_refs_sample": [],
+        "ingredient_texts_sample": [
+          "Butyl Acetate, Ethyl Acetate, Nitrocellulose, Adipic Acid/Neopentyl Glycorrimellitic Anhydride Copolymer, Acetyl Tribu:y1 Citrate, Isopropyl Alcohol, Polyethylmethacrylate, Sucrose Acetate Isobutyrate, Stearalkonium Bentonite, Diacetone Alcohol, Silica, Benzophenone-1, Trimethylpentanediyl Dibenzoate, Dimethicone, Trimethylsiloxysili-cate, N-Butyl Alcohol, Phosphoric Acid,May Contain: Mica, Bis(Glycidoxyphenyl)Propane/ Bisaminomethylnorbornane Copolymer, Aluminum Hydroxide, Tin Oxide, Titanium Dioxide/CI 77891, Ferric Ammonium Ferrocyanide/CI 77510, Iron Oxide/CI 77499, Black Iron Oxide/CI 77499, Red Iron Oxide/CI 77499, Ultramarines/CI 77007, Aluminium Powder/CI 77000, DC Violet 2/CI 60730, Red 28/CI 45410, Yellow 5 Lake/CI 19140, Red 34 Lake/CI 15880, Red 6 Lake/CI 15850, Red 7 Lake/CI 15850"
+        ],
+        "how_to_texts_sample": [
+          "For water permeability, apply 1-2 thin coats. To extend polish longevity, prep the nail by shaping and buffing before application. Enhance nail health by finishing with our Almond & Ginseng Cuticle Oil."
+        ],
+        "detail_section_count": 9,
+        "intel_kb_key": "product:ext_f56010dd5bf971f7b7f644a6",
+        "review_count": 0,
+        "qna_count": 0
+      },
+      "issues": [
+        {
+          "module": "variant",
+          "reason_code": "variant_size_value_looks_like_sku_or_asset_suffix",
+          "severity": "critical",
+          "evidence": [
+            "Shade: Uluru",
+            "Uluru"
+          ],
+          "recommended_action": "re-extract source variant axes; do not surface SKU/image filename suffix as shopper size"
+        }
+      ]
+    },
+    {
+      "product_key": "prod::external_seed::external_seed::ext_efe7512de8c6df9f75ca19e0",
+      "pivota_signature_id": "sig_334c164a037b883cdb4e9078",
+      "external_product_id": "ext_efe7512de8c6df9f75ca19e0",
+      "title": "Dubrovnik - Breathable Nail Polish",
+      "brand": "786 Cosmetics",
+      "domain": "786cosmetics.com",
+      "market": "US",
+      "category_path": "beauty",
+      "canonical_url": "https://786cosmetics.com/products/dubrovnik-breathable-nail-polish",
+      "bucket": "blocked_value_defect",
+      "issue_count": 1,
+      "module_status": {
+        "variant_label_count": 2,
+        "variant_labels_sample": [
+          "Shade: Dubrovnik",
+          "Dubrovnik"
+        ],
+        "variant_count": 5,
+        "image_count": 3,
+        "root_image_count": 3,
+        "variant_image_count": 0,
+        "image_hosts_sample": [
+          "cdn.shopify.com"
+        ],
+        "ingredient_applicability_status": "",
+        "ingredient_applicability_evidence": [],
+        "ingredient_component_refs_status": "",
+        "ingredient_component_refs_count": 0,
+        "ingredient_component_refs_sample": [],
+        "ingredient_texts_sample": [
+          "Butyl Acetate, Ethyl Acetate, Nitrocellulose, Adipic Acid/Neopentyl Glycorrimellitic Anhydride Copolymer, Acetyl Tribu:y1 Citrate, Isopropyl Alcohol, Polyethylmethacrylate, Sucrose Acetate Isobutyrate, Stearalkonium Bentonite, Diacetone Alcohol, Silica, Benzophenone-1, Trimethylpentanediyl Dibenzoate, Dimethicone, Trimethylsiloxysili-cate, N-Butyl Alcohol, Phosphoric Acid,May Contain: Mica, Bis(Glycidoxyphenyl)Propane/ Bisaminomethylnorbornane Copolymer, Aluminum Hydroxide, Tin Oxide, Titanium Dioxide/CI 77891, Ferric Ammonium Ferrocyanide/CI 77510, Iron Oxide/CI 77499, Black Iron Oxide/CI 77499, Red Iron Oxide/CI 77499, Ultramarines/CI 77007, Aluminium Powder/CI 77000, DC Violet 2/CI 60730, Red 28/CI 45410, Yellow 5 Lake/CI 19140, Red 34 Lake/CI 15880, Red 6 Lake/CI 15850, Red 7 Lake/CI 15850"
+        ],
+        "how_to_texts_sample": [
+          "For water permeability, apply 1-2 thin coats. To extend polish longevity, prep the nail by shaping and buffing before application. Enhance nail health by finishing with our Almond & Ginseng Cuticle Oil."
+        ],
+        "detail_section_count": 9,
+        "intel_kb_key": "product:ext_efe7512de8c6df9f75ca19e0",
+        "review_count": 0,
+        "qna_count": 0
+      },
+      "issues": [
+        {
+          "module": "variant",
+          "reason_code": "variant_size_value_looks_like_sku_or_asset_suffix",
+          "severity": "critical",
+          "evidence": [
+            "Shade: Dubrovnik",
+            "Dubrovnik"
+          ],
+          "recommended_action": "re-extract source variant axes; do not surface SKU/image filename suffix as shopper size"
+        }
+      ]
+    },
+    {
+      "product_key": "prod::external_seed::external_seed::ext_da3b149ed322142c187224b6",
+      "pivota_signature_id": "sig_140a391c218848e70b1a3ec1",
+      "external_product_id": "ext_da3b149ed322142c187224b6",
+      "title": "Toulouse - Breathable Nail Polish",
+      "brand": "786 Cosmetics",
+      "domain": "786cosmetics.com",
+      "market": "US",
+      "category_path": "beauty",
+      "canonical_url": "https://786cosmetics.com/products/toulouse-breathable-nail-polish",
+      "bucket": "blocked_value_defect",
+      "issue_count": 1,
+      "module_status": {
+        "variant_label_count": 2,
+        "variant_labels_sample": [
+          "Shade: Toulouse",
+          "Toulouse"
+        ],
+        "variant_count": 5,
+        "image_count": 4,
+        "root_image_count": 4,
+        "variant_image_count": 0,
+        "image_hosts_sample": [
+          "cdn.shopify.com"
+        ],
+        "ingredient_applicability_status": "",
+        "ingredient_applicability_evidence": [],
+        "ingredient_component_refs_status": "",
+        "ingredient_component_refs_count": 0,
+        "ingredient_component_refs_sample": [],
+        "ingredient_texts_sample": [
+          "Butyl Acetate, Ethyl Acetate, Nitrocellulose, Adipic Acid/Neopentyl Glycorrimellitic Anhydride Copolymer, Acetyl Tribu:y1 Citrate, Isopropyl Alcohol, Polyethylmethacrylate, Sucrose Acetate Isobutyrate, Stearalkonium Bentonite, Diacetone Alcohol, Silica, Benzophenone-1, Trimethylpentanediyl Dibenzoate, Dimethicone, Trimethylsiloxysili-cate, N-Butyl Alcohol, Phosphoric Acid,May Contain: Mica, Bis(Glycidoxyphenyl)Propane/ Bisaminomethylnorbornane Copolymer, Aluminum Hydroxide, Tin Oxide, Titanium Dioxide/CI 77891, Ferric Ammonium Ferrocyanide/CI 77510, Iron Oxide/CI 77499, Black Iron Oxide/CI 77499, Red Iron Oxide/CI 77499, Ultramarines/CI 77007, Aluminium Powder/CI 77000, DC Violet 2/CI 60730, Red 28/CI 45410, Yellow 5 Lake/CI 19140, Red 34 Lake/CI 15880, Red 6 Lake/CI 15850, Red 7 Lake/CI 15850"
+        ],
+        "how_to_texts_sample": [
+          "For water permeability, apply 1-2 thin coats. To extend polish longevity, prep the nail by shaping and buffing before application. Enhance nail health by finishing with our Almond & Ginseng Cuticle Oil."
+        ],
+        "detail_section_count": 9,
+        "intel_kb_key": "product:ext_da3b149ed322142c187224b6",
+        "review_count": 0,
+        "qna_count": 0
+      },
+      "issues": [
+        {
+          "module": "variant",
+          "reason_code": "variant_size_value_looks_like_sku_or_asset_suffix",
+          "severity": "critical",
+          "evidence": [
+            "Shade: Toulouse",
+            "Toulouse"
+          ],
+          "recommended_action": "re-extract source variant axes; do not surface SKU/image filename suffix as shopper size"
+        }
+      ]
+    },
+    {
+      "product_key": "prod::external_seed::external_seed::ext_c6d113bff874c00abfb4ba33",
+      "pivota_signature_id": "sig_2f9acb7f87ef84f04de0cafe",
+      "external_product_id": "ext_c6d113bff874c00abfb4ba33",
+      "title": "Tallinn - Breathable Nail Polish",
+      "brand": "786 Cosmetics",
+      "domain": "786cosmetics.com",
+      "market": "US",
+      "category_path": "beauty",
+      "canonical_url": "https://786cosmetics.com/products/tallinn-breathable-nail-polish",
+      "bucket": "blocked_value_defect",
+      "issue_count": 1,
+      "module_status": {
+        "variant_label_count": 2,
+        "variant_labels_sample": [
+          "Shade: Tallinn",
+          "Tallinn"
+        ],
+        "variant_count": 5,
+        "image_count": 3,
+        "root_image_count": 3,
+        "variant_image_count": 0,
+        "image_hosts_sample": [
+          "cdn.shopify.com"
+        ],
+        "ingredient_applicability_status": "",
+        "ingredient_applicability_evidence": [],
+        "ingredient_component_refs_status": "",
+        "ingredient_component_refs_count": 0,
+        "ingredient_component_refs_sample": [],
+        "ingredient_texts_sample": [
+          "Butyl Acetate, Ethyl Acetate, Nitrocellulose, Adipic Acid/Neopentyl Glycorrimellitic Anhydride Copolymer, Acetyl Tribu:y1 Citrate, Isopropyl Alcohol, Polyethylmethacrylate, Sucrose Acetate Isobutyrate, Stearalkonium Bentonite, Diacetone Alcohol, Silica, Benzophenone-1, Trimethylpentanediyl Dibenzoate, Dimethicone, Trimethylsiloxysili-cate, N-Butyl Alcohol, Phosphoric Acid,May Contain: Mica, Bis(Glycidoxyphenyl)Propane/ Bisaminomethylnorbornane Copolymer, Aluminum Hydroxide, Tin Oxide, Titanium Dioxide/CI 77891, Ferric Ammonium Ferrocyanide/CI 77510, Iron Oxide/CI 77499, Black Iron Oxide/CI 77499, Red Iron Oxide/CI 77499, Ultramarines/CI 77007, Aluminium Powder/CI 77000, DC Violet 2/CI 60730, Red 28/CI 45410, Yellow 5 Lake/CI 19140, Red 34 Lake/CI 15880, Red 6 Lake/CI 15850, Red 7 Lake/CI 15850"
+        ],
+        "how_to_texts_sample": [
+          "For water permeability, apply 1-2 thin coats. To extend polish longevity, prep the nail by shaping and buffing before application. Enhance nail health by finishing with our Almond & Ginseng Cuticle Oil."
+        ],
+        "detail_section_count": 9,
+        "intel_kb_key": "product:ext_c6d113bff874c00abfb4ba33",
+        "review_count": 0,
+        "qna_count": 0
+      },
+      "issues": [
+        {
+          "module": "variant",
+          "reason_code": "variant_size_value_looks_like_sku_or_asset_suffix",
+          "severity": "critical",
+          "evidence": [
+            "Shade: Tallinn",
+            "Tallinn"
+          ],
+          "recommended_action": "re-extract source variant axes; do not surface SKU/image filename suffix as shopper size"
+        }
+      ]
+    },
+    {
+      "product_key": "prod::external_seed::external_seed::ext_abd25039dea2189dfcca8079",
+      "pivota_signature_id": "sig_0b9d23782833ad5356ac276a",
+      "external_product_id": "ext_abd25039dea2189dfcca8079",
+      "title": "Patagonia - Breathable Nail Polish",
+      "brand": "786 Cosmetics",
+      "domain": "786cosmetics.com",
+      "market": "US",
+      "category_path": "beauty",
+      "canonical_url": "https://786cosmetics.com/products/patagonia-breathable-nail-polish",
+      "bucket": "blocked_value_defect",
+      "issue_count": 1,
+      "module_status": {
+        "variant_label_count": 2,
+        "variant_labels_sample": [
+          "Shade: Patagonia",
+          "Patagonia"
+        ],
+        "variant_count": 5,
+        "image_count": 3,
+        "root_image_count": 3,
+        "variant_image_count": 0,
+        "image_hosts_sample": [
+          "cdn.shopify.com"
+        ],
+        "ingredient_applicability_status": "",
+        "ingredient_applicability_evidence": [],
+        "ingredient_component_refs_status": "",
+        "ingredient_component_refs_count": 0,
+        "ingredient_component_refs_sample": [],
+        "ingredient_texts_sample": [
+          "Butyl Acetate, Ethyl Acetate, Nitrocellulose, Adipic Acid/Neopentyl Glycorrimellitic Anhydride Copolymer, Acetyl Tribu:y1 Citrate, Isopropyl Alcohol, Polyethylmethacrylate, Sucrose Acetate Isobutyrate, Stearalkonium Bentonite, Diacetone Alcohol, Silica, Benzophenone-1, Trimethylpentanediyl Dibenzoate, Dimethicone, Trimethylsiloxysili-cate, N-Butyl Alcohol, Phosphoric Acid,May Contain: Mica, Bis(Glycidoxyphenyl)Propane/ Bisaminomethylnorbornane Copolymer, Aluminum Hydroxide, Tin Oxide, Titanium Dioxide/CI 77891, Ferric Ammonium Ferrocyanide/CI 77510, Iron Oxide/CI 77499, Black Iron Oxide/CI 77499, Red Iron Oxide/CI 77499, Ultramarines/CI 77007, Aluminium Powder/CI 77000, DC Violet 2/CI 60730, Red 28/CI 45410, Yellow 5 Lake/CI 19140, Red 34 Lake/CI 15880, Red 6 Lake/CI 15850, Red 7 Lake/CI 15850"
+        ],
+        "how_to_texts_sample": [
+          "For water permeability, apply 1-2 thin coats. To extend polish longevity, prep the nail by shaping and buffing before application. Enhance nail health by finishing with our Almond & Ginseng Cuticle Oil."
+        ],
+        "detail_section_count": 9,
+        "intel_kb_key": "product:ext_abd25039dea2189dfcca8079",
+        "review_count": 0,
+        "qna_count": 0
+      },
+      "issues": [
+        {
+          "module": "variant",
+          "reason_code": "variant_size_value_looks_like_sku_or_asset_suffix",
+          "severity": "critical",
+          "evidence": [
+            "Shade: Patagonia",
+            "Patagonia"
+          ],
+          "recommended_action": "re-extract source variant axes; do not surface SKU/image filename suffix as shopper size"
+        }
+      ]
+    },
+    {
+      "product_key": "prod::external_seed::external_seed::ext_ab5107f3a835da10508757c6",
+      "pivota_signature_id": "sig_3995bef348fc16e82bedefd6",
+      "external_product_id": "ext_ab5107f3a835da10508757c6",
+      "title": "Havana - Breathable Nail Polish",
+      "brand": "786 Cosmetics",
+      "domain": "786cosmetics.com",
+      "market": "US",
+      "category_path": "beauty",
+      "canonical_url": "https://786cosmetics.com/products/havana-breathable-nail-polish",
+      "bucket": "blocked_value_defect",
+      "issue_count": 1,
+      "module_status": {
+        "variant_label_count": 2,
+        "variant_labels_sample": [
+          "Shade: Havana",
+          "Havana"
+        ],
+        "variant_count": 5,
+        "image_count": 3,
+        "root_image_count": 3,
+        "variant_image_count": 0,
+        "image_hosts_sample": [
+          "cdn.shopify.com"
+        ],
+        "ingredient_applicability_status": "",
+        "ingredient_applicability_evidence": [],
+        "ingredient_component_refs_status": "",
+        "ingredient_component_refs_count": 0,
+        "ingredient_component_refs_sample": [],
+        "ingredient_texts_sample": [
+          "Butyl Acetate, Ethyl Acetate, Nitrocellulose, Adipic Acid/Neopentyl Glycorrimellitic Anhydride Copolymer, Acetyl Tribu:y1 Citrate, Isopropyl Alcohol, Polyethylmethacrylate, Sucrose Acetate Isobutyrate, Stearalkonium Bentonite, Diacetone Alcohol, Silica, Benzophenone-1, Trimethylpentanediyl Dibenzoate, Dimethicone, Trimethylsiloxysili-cate, N-Butyl Alcohol, Phosphoric Acid,May Contain: Mica, Bis(Glycidoxyphenyl)Propane/ Bisaminomethylnorbornane Copolymer, Aluminum Hydroxide, Tin Oxide, Titanium Dioxide/CI 77891, Ferric Ammonium Ferrocyanide/CI 77510, Iron Oxide/CI 77499, Black Iron Oxide/CI 77499, Red Iron Oxide/CI 77499, Ultramarines/CI 77007, Aluminium Powder/CI 77000, DC Violet 2/CI 60730, Red 28/CI 45410, Yellow 5 Lake/CI 19140, Red 34 Lake/CI 15880, Red 6 Lake/CI 15850, Red 7 Lake/CI 15850"
+        ],
+        "how_to_texts_sample": [
+          "For water permeability, apply 1-2 thin coats. To extend polish longevity, prep the nail by shaping and buffing before application. Enhance nail health by finishing with our Almond & Ginseng Cuticle Oil."
+        ],
+        "detail_section_count": 9,
+        "intel_kb_key": "product:ext_ab5107f3a835da10508757c6",
+        "review_count": 0,
+        "qna_count": 0
+      },
+      "issues": [
+        {
+          "module": "variant",
+          "reason_code": "variant_size_value_looks_like_sku_or_asset_suffix",
+          "severity": "critical",
+          "evidence": [
+            "Shade: Havana",
+            "Havana"
+          ],
+          "recommended_action": "re-extract source variant axes; do not surface SKU/image filename suffix as shopper size"
+        }
+      ]
+    },
+    {
+      "product_key": "prod::external_seed::external_seed::ext_a36359795b89961a7c052b21",
+      "pivota_signature_id": "sig_94209714a811afb2feb7c730",
+      "external_product_id": "ext_a36359795b89961a7c052b21",
+      "title": "Karachi - Breathable Nail Polish",
+      "brand": "786 Cosmetics",
+      "domain": "786cosmetics.com",
+      "market": "US",
+      "category_path": "beauty",
+      "canonical_url": "https://786cosmetics.com/products/karachi-breathable-nail-polish",
+      "bucket": "blocked_value_defect",
+      "issue_count": 1,
+      "module_status": {
+        "variant_label_count": 2,
+        "variant_labels_sample": [
+          "Shade: Karachi",
+          "Karachi"
+        ],
+        "variant_count": 5,
+        "image_count": 5,
+        "root_image_count": 5,
+        "variant_image_count": 0,
+        "image_hosts_sample": [
+          "cdn.shopify.com"
+        ],
+        "ingredient_applicability_status": "",
+        "ingredient_applicability_evidence": [],
+        "ingredient_component_refs_status": "",
+        "ingredient_component_refs_count": 0,
+        "ingredient_component_refs_sample": [],
+        "ingredient_texts_sample": [
+          "Butyl Acetate, Ethyl Acetate, Nitrocellulose, Adipic Acid/Neopentyl Glycorrimellitic Anhydride Copolymer, Acetyl Tribu:y1 Citrate, Isopropyl Alcohol, Polyethylmethacrylate, Sucrose Acetate Isobutyrate, Stearalkonium Bentonite, Diacetone Alcohol, Silica, Benzophenone-1, Trimethylpentanediyl Dibenzoate, Dimethicone, Trimethylsiloxysili-cate, N-Butyl Alcohol, Phosphoric Acid,May Contain: Mica, Bis(Glycidoxyphenyl)Propane/ Bisaminomethylnorbornane Copolymer, Aluminum Hydroxide, Tin Oxide, Titanium Dioxide/CI 77891, Ferric Ammonium Ferrocyanide/CI 77510, Iron Oxide/CI 77499, Black Iron Oxide/CI 77499, Red Iron Oxide/CI 77499, Ultramarines/CI 77007, Aluminium Powder/CI 77000, DC Violet 2/CI 60730, Red 28/CI 45410, Yellow 5 Lake/CI 19140, Red 34 Lake/CI 15880, Red 6 Lake/CI 15850, Red 7 Lake/CI 15850"
+        ],
+        "how_to_texts_sample": [
+          "For water permeability, apply 1-2 thin coats. To extend polish longevity, prep the nail by shaping and buffing before application. Enhance nail health by finishing with our Almond & Ginseng Cuticle Oil."
+        ],
+        "detail_section_count": 9,
+        "intel_kb_key": "product:ext_a36359795b89961a7c052b21",
+        "review_count": 0,
+        "qna_count": 0
+      },
+      "issues": [
+        {
+          "module": "variant",
+          "reason_code": "variant_size_value_looks_like_sku_or_asset_suffix",
+          "severity": "critical",
+          "evidence": [
+            "Shade: Karachi",
+            "Karachi"
+          ],
+          "recommended_action": "re-extract source variant axes; do not surface SKU/image filename suffix as shopper size"
+        }
+      ]
+    },
+    {
+      "product_key": "prod::external_seed::external_seed::ext_5f55c01bae5cd6b5f0a0e78e",
+      "pivota_signature_id": "sig_6ab9aef32646e31b8520db08",
+      "external_product_id": "ext_5f55c01bae5cd6b5f0a0e78e",
+      "title": "Dakar - Breathable Nail Polish",
+      "brand": "786 Cosmetics",
+      "domain": "786cosmetics.com",
+      "market": "US",
+      "category_path": "beauty",
+      "canonical_url": "https://786cosmetics.com/products/dakar-breathable-nail-polish",
+      "bucket": "blocked_value_defect",
+      "issue_count": 1,
+      "module_status": {
+        "variant_label_count": 2,
+        "variant_labels_sample": [
+          "Shade: Dakar",
+          "Dakar"
+        ],
+        "variant_count": 5,
+        "image_count": 4,
+        "root_image_count": 4,
+        "variant_image_count": 0,
+        "image_hosts_sample": [
+          "cdn.shopify.com"
+        ],
+        "ingredient_applicability_status": "",
+        "ingredient_applicability_evidence": [],
+        "ingredient_component_refs_status": "",
+        "ingredient_component_refs_count": 0,
+        "ingredient_component_refs_sample": [],
+        "ingredient_texts_sample": [
+          "Butyl Acetate, Ethyl Acetate, Nitrocellulose, Adipic Acid/Neopentyl Glycorrimellitic Anhydride Copolymer, Acetyl Tribu:y1 Citrate, Isopropyl Alcohol, Polyethylmethacrylate, Sucrose Acetate Isobutyrate, Stearalkonium Bentonite, Diacetone Alcohol, Silica, Benzophenone-1, Trimethylpentanediyl Dibenzoate, Dimethicone, Trimethylsiloxysili-cate, N-Butyl Alcohol, Phosphoric Acid,May Contain: Mica, Bis(Glycidoxyphenyl)Propane/ Bisaminomethylnorbornane Copolymer, Aluminum Hydroxide, Tin Oxide, Titanium Dioxide/CI 77891, Ferric Ammonium Ferrocyanide/CI 77510, Iron Oxide/CI 77499, Black Iron Oxide/CI 77499, Red Iron Oxide/CI 77499, Ultramarines/CI 77007, Aluminium Powder/CI 77000, DC Violet 2/CI 60730, Red 28/CI 45410, Yellow 5 Lake/CI 19140, Red 34 Lake/CI 15880, Red 6 Lake/CI 15850, Red 7 Lake/CI 15850"
+        ],
+        "how_to_texts_sample": [
+          "For water permeability, apply 1-2 thin coats. To extend polish longevity, prep the nail by shaping and buffing before application. Enhance nail health by finishing with our Almond & Ginseng Cuticle Oil."
+        ],
+        "detail_section_count": 9,
+        "intel_kb_key": "product:ext_5f55c01bae5cd6b5f0a0e78e",
+        "review_count": 0,
+        "qna_count": 0
+      },
+      "issues": [
+        {
+          "module": "variant",
+          "reason_code": "variant_size_value_looks_like_sku_or_asset_suffix",
+          "severity": "critical",
+          "evidence": [
+            "Shade: Dakar",
+            "Dakar"
+          ],
+          "recommended_action": "re-extract source variant axes; do not surface SKU/image filename suffix as shopper size"
+        }
+      ]
+    },
+    {
+      "product_key": "prod::external_seed::external_seed::ext_faf89834933316df0d8da973",
+      "pivota_signature_id": "sig_e86eacac8d29e3f2ea6c369a",
+      "external_product_id": "ext_faf89834933316df0d8da973",
+      "title": "Azores - Breathable Nail Polish",
+      "brand": "786 Cosmetics",
+      "domain": "786cosmetics.com",
+      "market": "US",
+      "category_path": "beauty",
+      "canonical_url": "https://786cosmetics.com/products/azores-breathable-nail-polish",
+      "bucket": "blocked_value_defect",
+      "issue_count": 2,
+      "module_status": {
+        "variant_label_count": 2,
+        "variant_labels_sample": [
+          "Shade: Azores",
+          "Azores"
+        ],
+        "variant_count": 5,
+        "image_count": 21,
+        "root_image_count": 21,
+        "variant_image_count": 0,
+        "image_hosts_sample": [
+          "cdn.shopify.com",
+          "786cosmetics.com"
+        ],
+        "ingredient_applicability_status": "",
+        "ingredient_applicability_evidence": [],
+        "ingredient_component_refs_status": "",
+        "ingredient_component_refs_count": 0,
+        "ingredient_component_refs_sample": [],
+        "ingredient_texts_sample": [
+          "Butyl Acetate, Ethyl Acetate, Nitrocellulose, Adipic Acid/Neopentyl Glycorrimellitic Anhydride Copolymer, Acetyl Tribu:y1 Citrate, Isopropyl Alcohol, Polyethylmethacrylate, Sucrose Acetate Isobutyrate, Stearalkonium Bentonite, Diacetone Alcohol, Silica, Benzophenone-1, Trimethylpentanediyl Dibenzoate, Dimethicone, Trimethylsiloxysili-cate, N-Butyl Alcohol, Phosphoric Acid,May Contain: Mica, Bis(Glycidoxyphenyl)Propane/ Bisaminomethylnorbornane Copolymer, Aluminum Hydroxide, Tin Oxide, Titanium Dioxide/CI 77891, Ferric Ammonium Ferrocyanide/CI 77510, Iron Oxide/CI 77499, Black Iron Oxide/CI 77499, Red Iron Oxide/CI 77499, Ultramarines/CI 77007, Aluminium Powder/CI 77000, DC Violet 2/CI 60730, Red 28/CI 45410, Yellow 5 Lake/CI 19140, Red 34 Lake/CI 15880, Red 6 Lake/CI 15850, Red 7 Lake/CI 15850"
+        ],
+        "how_to_texts_sample": [
+          "For water permeability, apply 1-2 thin coats. To extend polish longevity, prep the nail by shaping and buffing before application. Enhance nail health by finishing with our Almond & Ginseng Cuticle Oil."
+        ],
+        "detail_section_count": 9,
+        "intel_kb_key": "product:ext_faf89834933316df0d8da973",
+        "review_count": 0,
+        "qna_count": 0
+      },
+      "issues": [
+        {
+          "module": "variant",
+          "reason_code": "variant_size_value_looks_like_sku_or_asset_suffix",
+          "severity": "critical",
+          "evidence": [
+            "Shade: Azores",
+            "Azores"
+          ],
+          "recommended_action": "re-extract source variant axes; do not surface SKU/image filename suffix as shopper size"
+        },
+        {
+          "module": "gallery",
+          "reason_code": "gallery_excessive_image_count",
+          "severity": "medium",
+          "evidence": {
+            "count": 21,
+            "total_image_count": 21,
+            "variant_image_count": 0,
+            "suspicious_root_count": 8,
+            "suspicious_root_sample": [
+              "https://786cosmetics.com/cdn/shop/files/Snapinsta.app_365619948_18276175015149740_2609485125880599339_n_1080_1.jpg?crop=center&v=1696617175",
+              "https://786cosmetics.com/cdn/shop/files/3.gif?crop=center&v=1699983256",
+              "https://786cosmetics.com/cdn/shop/files/Snapinsta.app_36981757_234850793800975_8157423542682517504_n_1080.jpg?crop=center&v=1698087774",
+              "https://786cosmetics.com/cdn/shop/files/Snapinsta.app_377854146_984534276096847_5858701429379112223_n_1080.jpg?crop=center&v=1696872887",
+              "https://786cosmetics.com/cdn/shop/files/9.gif?crop=center&v=1699983259",
+              "https://786cosmetics.com/cdn/shop/files/PhotoJun202023_113212AM.jpg?crop=center&v=1708453061",
+              "https://786cosmetics.com/cdn/shop/files/35.png?crop=center&v=1698091492",
+              "https://786cosmetics.com/cdn/shop/files/32.png?crop=center&v=1698091491"
+            ]
+          },
+          "recommended_action": "trim gallery to product-specific images only"
+        }
+      ]
+    },
+    {
+      "product_key": "prod::external_seed::external_seed::ext_58baf9029d81af1ac9f8bc7e",
+      "pivota_signature_id": "sig_c6ba64101d30a587c38771c3",
+      "external_product_id": "ext_58baf9029d81af1ac9f8bc7e",
+      "title": "Soy Nail Polish Remover With Jojoba Seed & Tea Tree Oil",
+      "brand": "786 Cosmetics",
+      "domain": "786cosmetics.com",
+      "market": "US",
+      "category_path": "beauty",
+      "canonical_url": "https://786cosmetics.com/products/soy-nail-polish-remover-with-jojoba-seed-tea-tree-oil",
+      "bucket": "needs_value_repair",
+      "issue_count": 1,
+      "module_status": {
+        "variant_label_count": 1,
+        "variant_labels_sample": [
+          "118ml"
+        ],
+        "variant_count": 5,
+        "image_count": 3,
+        "root_image_count": 3,
+        "variant_image_count": 3,
+        "image_hosts_sample": [
+          "cdn.shopify.com"
+        ],
+        "ingredient_applicability_status": "",
+        "ingredient_applicability_evidence": [],
+        "ingredient_component_refs_status": "",
+        "ingredient_component_refs_count": 0,
+        "ingredient_component_refs_sample": [],
+        "ingredient_texts_sample": [],
+        "how_to_texts_sample": [
+          "Saturate a cotton ball or cotton pad with the Soy-Based Nail Polish Remover. Wipe all nails and allow the remover to absorb into the nail for at least 20-30 seconds.\nWipe each nail until the polish is fully removed. Wash hands and nails thoroughly and dry well. Make sure the nail bed is dry and clean before applying polish."
+        ],
+        "detail_section_count": 9,
+        "intel_kb_key": "product:ext_58baf9029d81af1ac9f8bc7e",
+        "review_count": 0,
+        "qna_count": 0
+      },
+      "issues": [
+        {
+          "module": "ingredients",
+          "reason_code": "ingredients_missing_source_backed_inci",
+          "severity": "high",
+          "evidence": [],
+          "recommended_action": "fill from official INCI or verified retailer ingredient panel"
+        }
+      ]
+    },
+    {
+      "product_key": "prod::external_seed::external_seed::ext_c127c1d09e3be26e54f4a0a0",
+      "pivota_signature_id": "sig_a02cc00fb661cfbc1cf18975f4256385",
+      "external_product_id": "ext_c127c1d09e3be26e54f4a0a0",
+      "title": "Gift Card",
+      "brand": "786 Cosmetics",
+      "domain": "786cosmetics.com",
+      "market": "US",
+      "category_path": "",
+      "canonical_url": "https://786cosmetics.com/products/gift-card",
+      "bucket": "needs_value_repair",
+      "issue_count": 2,
+      "module_status": {
+        "variant_label_count": 4,
+        "variant_labels_sample": [
+          "$10.00 USD",
+          "$25.00 USD",
+          "$50.00 USD",
+          "$100.00 USD"
+        ],
+        "variant_count": 12,
+        "image_count": 1,
+        "root_image_count": 1,
+        "variant_image_count": 1,
+        "image_hosts_sample": [
+          "cdn.shopify.com"
+        ],
+        "ingredient_applicability_status": "",
+        "ingredient_applicability_evidence": [],
+        "ingredient_component_refs_status": "",
+        "ingredient_component_refs_count": 0,
+        "ingredient_component_refs_sample": [],
+        "ingredient_texts_sample": [],
+        "how_to_texts_sample": [],
+        "detail_section_count": 0,
+        "intel_kb_key": "",
+        "review_count": 0,
+        "qna_count": 0
+      },
+      "issues": [
+        {
+          "module": "ingredients",
+          "reason_code": "ingredients_missing_source_backed_inci",
+          "severity": "high",
+          "evidence": [],
+          "recommended_action": "fill from official INCI or verified retailer ingredient panel"
+        },
+        {
+          "module": "insights",
+          "reason_code": "insights_missing_reviewed_bundle",
+          "severity": "high",
+          "evidence": [],
+          "recommended_action": "generate/review/publish Pivota Insights from source-backed facts"
+        }
+      ]
+    },
+    {
+      "product_key": "prod::external_seed::external_seed::ext_31b12b124fb01c2d35b98e38",
+      "pivota_signature_id": "sig_e7b698a7466d8715b609299c7a97c93f",
+      "external_product_id": "ext_31b12b124fb01c2d35b98e38",
+      "title": "786 Canvas Tote Bag",
+      "brand": "786 Cosmetics",
+      "domain": "786cosmetics.com",
+      "market": "US",
+      "category_path": "fashion/accessories/bag",
+      "canonical_url": "https://786cosmetics.com/products/786-tote-bag",
+      "bucket": "needs_value_repair",
+      "issue_count": 2,
+      "module_status": {
+        "variant_label_count": 2,
+        "variant_labels_sample": [
+          "Green",
+          "Blue"
+        ],
+        "variant_count": 6,
+        "image_count": 4,
+        "root_image_count": 4,
+        "variant_image_count": 4,
+        "image_hosts_sample": [
+          "cdn.shopify.com"
+        ],
+        "ingredient_applicability_status": "",
+        "ingredient_applicability_evidence": [],
+        "ingredient_component_refs_status": "",
+        "ingredient_component_refs_count": 0,
+        "ingredient_component_refs_sample": [],
+        "ingredient_texts_sample": [],
+        "how_to_texts_sample": [],
+        "detail_section_count": 0,
+        "intel_kb_key": "",
+        "review_count": 0,
+        "qna_count": 0
+      },
+      "issues": [
+        {
+          "module": "ingredients",
+          "reason_code": "ingredients_missing_source_backed_inci",
+          "severity": "high",
+          "evidence": [],
+          "recommended_action": "fill from official INCI or verified retailer ingredient panel"
+        },
+        {
+          "module": "insights",
+          "reason_code": "insights_missing_reviewed_bundle",
+          "severity": "high",
+          "evidence": [],
+          "recommended_action": "generate/review/publish Pivota Insights from source-backed facts"
+        }
+      ]
+    },
+    {
+      "product_key": "prod::external_seed::external_seed::ext_e96da71bdfd3ec573a4642cd",
+      "pivota_signature_id": "sig_e62fc1e10e9176158ca01ad1",
+      "external_product_id": "ext_e96da71bdfd3ec573a4642cd",
+      "title": "Shipping Protection",
+      "brand": "786 Cosmetics",
+      "domain": "786cosmetics.com",
+      "market": "US",
+      "category_path": "beauty",
+      "canonical_url": "https://786cosmetics.com/products/shipping-protection",
+      "bucket": "needs_value_repair",
+      "issue_count": 3,
+      "module_status": {
+        "variant_label_count": 1,
+        "variant_labels_sample": [
+          "Default Title"
+        ],
+        "variant_count": 5,
+        "image_count": 1,
+        "root_image_count": 1,
+        "variant_image_count": 1,
+        "image_hosts_sample": [
+          "cdn.shopify.com"
+        ],
+        "ingredient_applicability_status": "",
+        "ingredient_applicability_evidence": [],
+        "ingredient_component_refs_status": "",
+        "ingredient_component_refs_count": 0,
+        "ingredient_component_refs_sample": [],
+        "ingredient_texts_sample": [],
+        "how_to_texts_sample": [],
+        "detail_section_count": 0,
+        "intel_kb_key": "",
+        "review_count": 0,
+        "qna_count": 0
+      },
+      "issues": [
+        {
+          "module": "variant",
+          "reason_code": "variant_default_or_placeholder_label",
+          "severity": "high",
+          "evidence": [
+            "Default Title"
+          ],
+          "recommended_action": "replace with source-backed size/shade/count label or hide selector only after showing single-SKU spec"
+        },
+        {
+          "module": "ingredients",
+          "reason_code": "ingredients_missing_source_backed_inci",
+          "severity": "high",
+          "evidence": [],
+          "recommended_action": "fill from official INCI or verified retailer ingredient panel"
+        },
+        {
+          "module": "insights",
+          "reason_code": "insights_missing_reviewed_bundle",
+          "severity": "high",
+          "evidence": [],
+          "recommended_action": "generate/review/publish Pivota Insights from source-backed facts"
+        }
+      ]
+    },
+    {
+      "product_key": "prod::external_seed::external_seed::ext_c7f9b723f9c30146d9cb1fce",
+      "pivota_signature_id": "sig_96063b1c938474ca88e17260",
+      "external_product_id": "ext_c7f9b723f9c30146d9cb1fce",
+      "title": "Blush & Bare 4-Piece Nail Polish Set",
+      "brand": "786 Cosmetics",
+      "domain": "786cosmetics.com",
+      "market": "US",
+      "category_path": "beauty/makeup/blush",
+      "canonical_url": "https://786cosmetics.com/products/blush-bare-4-piece-set",
+      "bucket": "needs_value_repair",
+      "issue_count": 1,
+      "module_status": {
+        "variant_label_count": 1,
+        "variant_labels_sample": [
+          "4 piece"
+        ],
+        "variant_count": 5,
+        "image_count": 5,
+        "root_image_count": 5,
+        "variant_image_count": 5,
+        "image_hosts_sample": [
+          "cdn.shopify.com"
+        ],
+        "ingredient_applicability_status": "",
+        "ingredient_applicability_evidence": [],
+        "ingredient_component_refs_status": "",
+        "ingredient_component_refs_count": 0,
+        "ingredient_component_refs_sample": [],
+        "ingredient_texts_sample": [],
+        "how_to_texts_sample": [],
+        "detail_section_count": 0,
+        "intel_kb_key": "product:ext_c7f9b723f9c30146d9cb1fce",
+        "review_count": 0,
+        "qna_count": 0
+      },
+      "issues": [
+        {
+          "module": "ingredients",
+          "reason_code": "ingredients_missing_source_backed_inci",
+          "severity": "high",
+          "evidence": [],
+          "recommended_action": "fill from official INCI or verified retailer ingredient panel"
+        }
+      ]
+    },
+    {
+      "product_key": "prod::external_seed::external_seed::ext_bde8c6160a5da39af55066d6",
+      "pivota_signature_id": "sig_e817ed62e76fb215dcf1cf91",
+      "external_product_id": "ext_bde8c6160a5da39af55066d6",
+      "title": "Riviera Collection - 4  Piece Nail Polish Set",
+      "brand": "786 Cosmetics",
+      "domain": "786cosmetics.com",
+      "market": "US",
+      "category_path": "beauty/skincare/moisturizer",
+      "canonical_url": "https://786cosmetics.com/products/riviera-collection-4-piece-nail-polish-set",
+      "bucket": "needs_value_repair",
+      "issue_count": 2,
+      "module_status": {
+        "variant_label_count": 1,
+        "variant_labels_sample": [
+          "4 piece"
+        ],
+        "variant_count": 5,
+        "image_count": 4,
+        "root_image_count": 4,
+        "variant_image_count": 4,
+        "image_hosts_sample": [
+          "cdn.shopify.com"
+        ],
+        "ingredient_applicability_status": "",
+        "ingredient_applicability_evidence": [],
+        "ingredient_component_refs_status": "",
+        "ingredient_component_refs_count": 0,
+        "ingredient_component_refs_sample": [],
+        "ingredient_texts_sample": [],
+        "how_to_texts_sample": [],
+        "detail_section_count": 0,
+        "intel_kb_key": "product:ext_bde8c6160a5da39af55066d6",
+        "review_count": 0,
+        "qna_count": 0
+      },
+      "issues": [
+        {
+          "module": "ingredients",
+          "reason_code": "ingredients_missing_source_backed_inci",
+          "severity": "high",
+          "evidence": [],
+          "recommended_action": "fill from official INCI or verified retailer ingredient panel"
+        },
+        {
+          "module": "how_to_use",
+          "reason_code": "how_to_missing_for_formula",
+          "severity": "medium",
+          "evidence": [],
+          "recommended_action": "fill source-backed directions where source exposes them"
+        }
+      ]
+    },
+    {
+      "product_key": "prod::external_seed::external_seed::ext_8d14bc437cfb15f2717c6bcc",
+      "pivota_signature_id": "sig_f81618e2e4532030b7fb5bdc",
+      "external_product_id": "ext_8d14bc437cfb15f2717c6bcc",
+      "title": "Nail Polish Set 6 Piece (Choose Your Colors)",
+      "brand": "786 Cosmetics",
+      "domain": "786cosmetics.com",
+      "market": "US",
+      "category_path": "beauty",
+      "canonical_url": "https://786cosmetics.com/products/nail-polish-set-6-piece-choose-your-colors",
+      "bucket": "needs_value_repair",
+      "issue_count": 1,
+      "module_status": {
+        "variant_label_count": 1,
+        "variant_labels_sample": [
+          "6 piece"
+        ],
+        "variant_count": 5,
+        "image_count": 4,
+        "root_image_count": 4,
+        "variant_image_count": 4,
+        "image_hosts_sample": [
+          "cdn.shopify.com"
+        ],
+        "ingredient_applicability_status": "",
+        "ingredient_applicability_evidence": [],
+        "ingredient_component_refs_status": "",
+        "ingredient_component_refs_count": 0,
+        "ingredient_component_refs_sample": [],
+        "ingredient_texts_sample": [],
+        "how_to_texts_sample": [],
+        "detail_section_count": 0,
+        "intel_kb_key": "product:ext_8d14bc437cfb15f2717c6bcc",
+        "review_count": 0,
+        "qna_count": 0
+      },
+      "issues": [
+        {
+          "module": "ingredients",
+          "reason_code": "ingredients_missing_source_backed_inci",
+          "severity": "high",
+          "evidence": [],
+          "recommended_action": "fill from official INCI or verified retailer ingredient panel"
+        }
+      ]
+    },
+    {
+      "product_key": "prod::external_seed::external_seed::ext_86344711237a7b6cdad6cfa3",
+      "pivota_signature_id": "sig_901bb3adaed1b7164f83c7fe",
+      "external_product_id": "ext_86344711237a7b6cdad6cfa3",
+      "title": "Golden Hour Collection - 6 Piece Nail Polish Set",
+      "brand": "786 Cosmetics",
+      "domain": "786cosmetics.com",
+      "market": "US",
+      "category_path": "beauty",
+      "canonical_url": "https://786cosmetics.com/products/the-golden-hour-edit-6-piece-breathable-nail-polish-set",
+      "bucket": "needs_value_repair",
+      "issue_count": 1,
+      "module_status": {
+        "variant_label_count": 1,
+        "variant_labels_sample": [
+          "6 piece"
+        ],
+        "variant_count": 5,
+        "image_count": 4,
+        "root_image_count": 4,
+        "variant_image_count": 4,
+        "image_hosts_sample": [
+          "cdn.shopify.com"
+        ],
+        "ingredient_applicability_status": "",
+        "ingredient_applicability_evidence": [],
+        "ingredient_component_refs_status": "",
+        "ingredient_component_refs_count": 0,
+        "ingredient_component_refs_sample": [],
+        "ingredient_texts_sample": [],
+        "how_to_texts_sample": [],
+        "detail_section_count": 0,
+        "intel_kb_key": "product:ext_86344711237a7b6cdad6cfa3",
+        "review_count": 0,
+        "qna_count": 0
+      },
+      "issues": [
+        {
+          "module": "ingredients",
+          "reason_code": "ingredients_missing_source_backed_inci",
+          "severity": "high",
+          "evidence": [],
+          "recommended_action": "fill from official INCI or verified retailer ingredient panel"
+        }
+      ]
+    },
+    {
+      "product_key": "prod::external_seed::external_seed::ext_5c80fda1202cbae9f1252b1c",
+      "pivota_signature_id": "sig_3a96e9ac8e7c112fffbee215",
+      "external_product_id": "ext_5c80fda1202cbae9f1252b1c",
+      "title": "Nail Polish Set (Choose your Colors)",
+      "brand": "786 Cosmetics",
+      "domain": "786cosmetics.com",
+      "market": "US",
+      "category_path": "beauty",
+      "canonical_url": "https://786cosmetics.com/products/nail-polish-set",
+      "bucket": "needs_value_repair",
+      "issue_count": 1,
+      "module_status": {
+        "variant_label_count": 2,
+        "variant_labels_sample": [
+          "4 Piece",
+          "6 Piece"
+        ],
+        "variant_count": 10,
+        "image_count": 7,
+        "root_image_count": 7,
+        "variant_image_count": 7,
+        "image_hosts_sample": [
+          "cdn.shopify.com"
+        ],
+        "ingredient_applicability_status": "",
+        "ingredient_applicability_evidence": [],
+        "ingredient_component_refs_status": "",
+        "ingredient_component_refs_count": 0,
+        "ingredient_component_refs_sample": [],
+        "ingredient_texts_sample": [],
+        "how_to_texts_sample": [],
+        "detail_section_count": 0,
+        "intel_kb_key": "product:ext_5c80fda1202cbae9f1252b1c",
+        "review_count": 0,
+        "qna_count": 0
+      },
+      "issues": [
+        {
+          "module": "ingredients",
+          "reason_code": "ingredients_missing_source_backed_inci",
+          "severity": "high",
+          "evidence": [],
+          "recommended_action": "fill from official INCI or verified retailer ingredient panel"
+        }
+      ]
+    },
+    {
+      "product_key": "prod::external_seed::external_seed::ext_2dcd32513f13fbec782bb9d2",
+      "pivota_signature_id": "sig_f5ab765e1d2b1d468d326702",
+      "external_product_id": "ext_2dcd32513f13fbec782bb9d2",
+      "title": "Nail Polish Set 4 Piece (Choose Your Colors)",
+      "brand": "786 Cosmetics",
+      "domain": "786cosmetics.com",
+      "market": "US",
+      "category_path": "beauty",
+      "canonical_url": "https://786cosmetics.com/products/nail-polish-set-4-piece-nail-polish",
+      "bucket": "needs_value_repair",
+      "issue_count": 1,
+      "module_status": {
+        "variant_label_count": 1,
+        "variant_labels_sample": [
+          "4 piece"
+        ],
+        "variant_count": 5,
+        "image_count": 4,
+        "root_image_count": 4,
+        "variant_image_count": 4,
+        "image_hosts_sample": [
+          "cdn.shopify.com"
+        ],
+        "ingredient_applicability_status": "",
+        "ingredient_applicability_evidence": [],
+        "ingredient_component_refs_status": "",
+        "ingredient_component_refs_count": 0,
+        "ingredient_component_refs_sample": [],
+        "ingredient_texts_sample": [],
+        "how_to_texts_sample": [],
+        "detail_section_count": 0,
+        "intel_kb_key": "product:ext_2dcd32513f13fbec782bb9d2",
+        "review_count": 0,
+        "qna_count": 0
+      },
+      "issues": [
+        {
+          "module": "ingredients",
+          "reason_code": "ingredients_missing_source_backed_inci",
+          "severity": "high",
+          "evidence": [],
+          "recommended_action": "fill from official INCI or verified retailer ingredient panel"
+        }
+      ]
+    }
+  ]
+}

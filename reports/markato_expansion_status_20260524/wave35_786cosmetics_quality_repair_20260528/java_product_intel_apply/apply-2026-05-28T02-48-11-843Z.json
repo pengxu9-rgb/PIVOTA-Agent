@@ -1,0 +1,197 @@
+{
+  "generated_at": "2026-05-28T02:48:11.843Z",
+  "source": "pivota_insights_official_pdp_manual_review_v1",
+  "mode": "apply",
+  "filters": {
+    "brand": "786 Cosmetics",
+    "product_ids": [
+      "ext_22c3e831a335c12bc33fca2f"
+    ],
+    "limit": null,
+    "include_strong": false,
+    "include_url_key": false,
+    "apply_chunk_size": null
+  },
+  "summary": {
+    "scanned": 1,
+    "changed_products": 1,
+    "blocked_products": 0,
+    "skipped_products": 0,
+    "write_actions": {
+      "insert": 2
+    },
+    "skip_reasons": {},
+    "evidence_profiles": {
+      "official_pdp_reviewed_formula_and_usage": 1
+    }
+  },
+  "plans": [
+    {
+      "external_product_id": "ext_22c3e831a335c12bc33fca2f",
+      "pivota_signature_id": "sig_c5f0d3058ec462e0c09bb124",
+      "title": "Java - Breathable Nail Polish",
+      "brand": "786 Cosmetics",
+      "canonical_url": "https://786cosmetics.com/products/java-breathable-nail-polish",
+      "changed": true,
+      "blocked": false,
+      "skip_reason": null,
+      "candidate_hash": "edf3931f72f7993e94dc5763225b0756cca46ba0fa90a25619d961a204e22c62",
+      "evidence_profile": "official_pdp_reviewed_formula_and_usage",
+      "source_coverage": {
+        "source": "official_pdp",
+        "canonical_url": "https://786cosmetics.com/products/java-breathable-nail-polish",
+        "fields": {
+          "description": true,
+          "ingredients": 1,
+          "active_ingredients": 0,
+          "how_to": 1,
+          "details": 3,
+          "variants": 1
+        }
+      },
+      "preview": {
+        "headline": "Nail color",
+        "what_it_is": "Java - Breathable Nail Polish is a nail polish from 786 Cosmetics in shade Java, with source-backed cues around a breathable polish format, thin-coat application and long-wear color.",
+        "why_it_stands_out": [
+          {
+            "headline": "Nail color cues are specific",
+            "body": "Reviewed nail-polish cues such as breathable polish format, thin-coat application, long-wear color, shade clarity help shoppers compare shade, application format, or wear context without inventing unsupported formula claims.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Ingredient list is available",
+            "body": "Full INCI is present for formula-sensitive review, which makes this PDP safer to evaluate than a claim-only listing.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Shade and size are explicit",
+            "body": "Variant labels such as Shade: Java are visible, reducing ambiguity around the product format before a shopper clicks through.",
+            "evidence_strength": "official_pdp_reviewed"
+          }
+        ],
+        "best_for": [
+          {
+            "tag": "breathable_polish_format",
+            "label": "breathable polish format",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "thin_coat_application",
+            "label": "thin-coat application",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "long_wear_color",
+            "label": "long-wear color",
+            "confidence": "moderate"
+          }
+        ],
+        "shopping_highlight": "breathable polish format"
+      },
+      "writes": [
+        {
+          "kb_key": "product:ext_22c3e831a335c12bc33fca2f",
+          "action": "insert",
+          "reason": "new_product_intel_bundle",
+          "old_hash": null,
+          "candidate_hash": "ce805e9a76148ddc3e29f903f09254b81f61386cf830b750685431294fd4deeb",
+          "existing_weak": true,
+          "source": "pivota_insights_official_pdp_manual_review_v1",
+          "after_inventory": {
+            "product_id": "ext_22c3e831a335c12bc33fca2f",
+            "kb_key": "product:ext_22c3e831a335c12bc33fca2f",
+            "source": "pivota_insights_official_pdp_manual_review_v1",
+            "updated_at": "",
+            "last_success_at": "",
+            "title": "Java - Breathable Nail Polish",
+            "canonical_url": "",
+            "bundle_hash": "edf3931f72f7993e94dc5763225b0756cca46ba0fa90a25619d961a204e22c62",
+            "lane": "keep",
+            "reason": "protected_good_content",
+            "priority": 0,
+            "protected": true,
+            "displayable": true,
+            "high_quality_ready": true,
+            "human_reviewed": true,
+            "issues": [],
+            "blocking_issues": [],
+            "quality_state": "reviewed",
+            "evidence_profile": "official_pdp_reviewed_formula_and_usage",
+            "evidence_rank": 1,
+            "review_tier": "assistant_reviewed",
+            "agent_readable": true,
+            "public_ready": true
+          },
+          "source_meta": {
+            "evidence_profile": "official_pdp_reviewed_formula_and_usage",
+            "quality_state": "reviewed",
+            "source_origin": "official_pdp_fields",
+            "source_url": "https://786cosmetics.com/products/java-breathable-nail-polish",
+            "quality_improvement": {
+              "previous_bundle_hash": null,
+              "candidate_bundle_hash": "edf3931f72f7993e94dc5763225b0756cca46ba0fa90a25619d961a204e22c62",
+              "replacement_decision": "new_product_intel_bundle",
+              "existing_quality_lane": null,
+              "candidate_quality_lane": "keep",
+              "existing_evidence_profile": null,
+              "candidate_evidence_profile": "official_pdp_reviewed_formula_and_usage"
+            }
+          }
+        },
+        {
+          "kb_key": "product:sig_c5f0d3058ec462e0c09bb124",
+          "action": "insert",
+          "reason": "new_product_intel_bundle",
+          "old_hash": null,
+          "candidate_hash": "ce805e9a76148ddc3e29f903f09254b81f61386cf830b750685431294fd4deeb",
+          "existing_weak": true,
+          "source": "pivota_insights_official_pdp_manual_review_v1",
+          "after_inventory": {
+            "product_id": "ext_22c3e831a335c12bc33fca2f",
+            "kb_key": "product:sig_c5f0d3058ec462e0c09bb124",
+            "source": "pivota_insights_official_pdp_manual_review_v1",
+            "updated_at": "",
+            "last_success_at": "",
+            "title": "Java - Breathable Nail Polish",
+            "canonical_url": "",
+            "bundle_hash": "edf3931f72f7993e94dc5763225b0756cca46ba0fa90a25619d961a204e22c62",
+            "lane": "keep",
+            "reason": "protected_good_content",
+            "priority": 0,
+            "protected": true,
+            "displayable": true,
+            "high_quality_ready": true,
+            "human_reviewed": true,
+            "issues": [],
+            "blocking_issues": [],
+            "quality_state": "reviewed",
+            "evidence_profile": "official_pdp_reviewed_formula_and_usage",
+            "evidence_rank": 1,
+            "review_tier": "assistant_reviewed",
+            "agent_readable": true,
+            "public_ready": true
+          },
+          "source_meta": {
+            "evidence_profile": "official_pdp_reviewed_formula_and_usage",
+            "quality_state": "reviewed",
+            "source_origin": "official_pdp_fields",
+            "source_url": "https://786cosmetics.com/products/java-breathable-nail-polish",
+            "quality_improvement": {
+              "previous_bundle_hash": null,
+              "candidate_bundle_hash": "edf3931f72f7993e94dc5763225b0756cca46ba0fa90a25619d961a204e22c62",
+              "replacement_decision": "new_product_intel_bundle",
+              "existing_quality_lane": null,
+              "candidate_quality_lane": "keep",
+              "existing_evidence_profile": null,
+              "candidate_evidence_profile": "official_pdp_reviewed_formula_and_usage"
+            }
+          }
+        }
+      ]
+    }
+  ],
+  "apply_result": {
+    "upserts": 2,
+    "chunks": 1
+  }
+}

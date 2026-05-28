@@ -354,6 +354,35 @@ function collectIngredientComponentRefs(seedData, snapshot, payload) {
     : null;
 }
 
+function productFamilyText(row, seedData, snapshot, payload) {
+  return [
+    seedData.product_family,
+    snapshot.product_family,
+    payload.product_family,
+    seedData.product_kind,
+    snapshot.product_kind,
+    payload.product_kind,
+    row.product_type,
+    row.category_path,
+    row.title,
+  ].map(asString).filter(Boolean).join(' ');
+}
+
+function insightsRequiredForProduct(row, seedData, snapshot, payload) {
+  const text = productFamilyText(row, seedData, snapshot, payload);
+  if (/\b(?:non_merch|non[-\s]?merchandise|accessory|beauty\s+accessory)\b/i.test(text)) return false;
+  if (/\b(?:gift\s*card|shipping protection|package protection|order protection|canvas tote|tote bag)\b/i.test(text)) {
+    return false;
+  }
+  return true;
+}
+
+function componentRefsInheritHowTo(ingredientComponentRefs) {
+  return asArray(ingredientComponentRefs?.refs).some((ref) =>
+    asArray(ref.inheritance_scope).some((scope) => /how_to_use/i.test(asString(scope))),
+  );
+}
+
 function collectHowToTexts(seedData, snapshot, payload) {
   return unique(
     compact([
@@ -539,7 +568,7 @@ function analyzeRow(row) {
   const formulaRequired = /serum|moisturizer|cleanser|sunscreen|spf|treatment|cream|toner|essence|mask|foundation|lip|fragrance/i.test(
     `${row.category_path || ''} ${row.product_type || ''} ${row.title || ''}`,
   );
-  if (!howToTexts.length && formulaRequired) {
+  if (!howToTexts.length && formulaRequired && !componentRefsInheritHowTo(ingredientComponentRefs)) {
     add('how_to_use', 'how_to_missing_for_formula', 'medium', [], 'fill source-backed directions where source exposes them');
   }
 
@@ -569,9 +598,9 @@ function analyzeRow(row) {
     add('offer', 'offer_currency_mismatch_for_us_market', 'critical', { market, currency }, 'refresh regional commerce facts and default offer');
   }
 
-  if (!intel.kb_key) {
+  if (!intel.kb_key && insightsRequiredForProduct(row, seedData, snapshot, payload)) {
     add('insights', 'insights_missing_reviewed_bundle', 'high', [], 'generate/review/publish Pivota Insights from source-backed facts');
-  } else if (!/(reviewed|published|community_supported|seller_grounded|eligible|completed|pass|human|assistant_reviewed|strict_human|seller_plus_formula)/i.test(`${intel.quality_state} ${intel.evidence_profile} ${intel.review_status} ${intel.review_tier} ${intel.source}`)) {
+  } else if (intel.kb_key && !/(reviewed|published|community_supported|seller_grounded|eligible|completed|pass|human|assistant_reviewed|strict_human|seller_plus_formula)/i.test(`${intel.quality_state} ${intel.evidence_profile} ${intel.review_status} ${intel.review_tier} ${intel.source}`)) {
     add('insights', 'insights_review_state_unclear_or_weak', 'medium', {
       kb_key: intel.kb_key,
       source: intel.source,

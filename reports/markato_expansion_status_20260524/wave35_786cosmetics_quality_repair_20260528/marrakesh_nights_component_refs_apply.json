@@ -1,0 +1,63 @@
+{
+  "generated_at": "2026-05-28T03:30:39.043Z",
+  "summary": {
+    "dry_run": false,
+    "mappings": 1,
+    "changed_rows": 1,
+    "updated_rows": 1,
+    "failed_rows": 0,
+    "blocked": 0
+  },
+  "apply_errors": [],
+  "results": [
+    {
+      "external_product_id": "ext_ab32c65ee7badd0b4a614919",
+      "title": "Marrakesh Nights Collection - 4  Piece Nail Polish Set",
+      "status": "updated",
+      "component_refs": [
+        {
+          "external_product_id": "ext_afb163014d0bffd3a6493c05",
+          "title": "Marrakesh - Breathable Nail Polish",
+          "size_label": "1 bottle",
+          "inheritance_scope": [
+            "how_to_use",
+            "ingredients_inci"
+          ],
+          "status": "ready"
+        },
+        {
+          "external_product_id": "ext_c6d113bff874c00abfb4ba33",
+          "title": "Tallinn - Breathable Nail Polish",
+          "size_label": "1 bottle",
+          "inheritance_scope": [
+            "how_to_use",
+            "ingredients_inci"
+          ],
+          "status": "ready"
+        },
+        {
+          "external_product_id": "ext_cd1678cacc37126a9d483888",
+          "title": "Bursa - Breathable Nail Polish",
+          "size_label": "1 bottle",
+          "inheritance_scope": [
+            "how_to_use",
+            "ingredients_inci"
+          ],
+          "status": "ready"
+        },
+        {
+          "external_product_id": "ext_efe7512de8c6df9f75ca19e0",
+          "title": "Dubrovnik - Breathable Nail Polish",
+          "size_label": "1 bottle",
+          "inheritance_scope": [
+            "how_to_use",
+            "ingredients_inci"
+          ],
+          "status": "ready"
+        }
+      ],
+      "before_component_ref_count": 4,
+      "after_component_ref_count": 4
+    }
+  ]
+}

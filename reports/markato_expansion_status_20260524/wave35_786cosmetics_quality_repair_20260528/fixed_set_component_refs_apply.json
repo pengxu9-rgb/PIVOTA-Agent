@@ -1,0 +1,181 @@
+{
+  "generated_at": "2026-05-28T02:43:20.946Z",
+  "summary": {
+    "dry_run": false,
+    "mappings": 3,
+    "changed_rows": 3,
+    "updated_rows": 3,
+    "failed_rows": 0,
+    "blocked": 0
+  },
+  "apply_errors": [],
+  "results": [
+    {
+      "external_product_id": "ext_c7f9b723f9c30146d9cb1fce",
+      "title": "Blush & Bare 4-Piece Nail Polish Set",
+      "status": "updated",
+      "component_refs": [
+        {
+          "external_product_id": "ext_9a469b8f450d59f67ae21f6d",
+          "title": "Paris - Breathable Nail Polish",
+          "size_label": "1 bottle",
+          "inheritance_scope": [
+            "how_to_use",
+            "ingredients_inci"
+          ],
+          "status": "ready"
+        },
+        {
+          "external_product_id": "ext_9cd211269e8480e6a7475b5e",
+          "title": "Muscat - Breathable Nail Polish",
+          "size_label": "1 bottle",
+          "inheritance_scope": [
+            "how_to_use",
+            "ingredients_inci"
+          ],
+          "status": "ready"
+        },
+        {
+          "external_product_id": "ext_c6ce33a7e9e59a7c8c24fc36",
+          "title": "Kyoto - Breathable Nail Polish",
+          "size_label": "1 bottle",
+          "inheritance_scope": [
+            "how_to_use",
+            "ingredients_inci"
+          ],
+          "status": "ready"
+        },
+        {
+          "external_product_id": "ext_09f3ad39bdfe1ea4a957c45f",
+          "title": "Alexandria - Breathable Nail Polish",
+          "size_label": "1 bottle",
+          "inheritance_scope": [
+            "how_to_use",
+            "ingredients_inci"
+          ],
+          "status": "ready"
+        }
+      ],
+      "before_component_ref_count": 4,
+      "after_component_ref_count": 4
+    },
+    {
+      "external_product_id": "ext_bde8c6160a5da39af55066d6",
+      "title": "Riviera Collection - 4  Piece Nail Polish Set",
+      "status": "updated",
+      "component_refs": [
+        {
+          "external_product_id": "ext_0d844fc65fd3348e35a09c80",
+          "title": "Abu Dhabi - Breathable Nail Polish",
+          "size_label": "1 bottle",
+          "inheritance_scope": [
+            "how_to_use",
+            "ingredients_inci"
+          ],
+          "status": "ready"
+        },
+        {
+          "external_product_id": "ext_2c4793f5f96ec2d4680fd55b",
+          "title": "Zhangye - Breathable Nail Polish",
+          "size_label": "1 bottle",
+          "inheritance_scope": [
+            "how_to_use",
+            "ingredients_inci"
+          ],
+          "status": "ready"
+        },
+        {
+          "external_product_id": "ext_55b774d3c57906a77a7167f0",
+          "title": "Sorrento - Breathable Nail Polish",
+          "size_label": "1 bottle",
+          "inheritance_scope": [
+            "how_to_use",
+            "ingredients_inci"
+          ],
+          "status": "ready"
+        },
+        {
+          "external_product_id": "ext_ab5107f3a835da10508757c6",
+          "title": "Havana - Breathable Nail Polish",
+          "size_label": "1 bottle",
+          "inheritance_scope": [
+            "how_to_use",
+            "ingredients_inci"
+          ],
+          "status": "ready"
+        }
+      ],
+      "before_component_ref_count": 4,
+      "after_component_ref_count": 4
+    },
+    {
+      "external_product_id": "ext_86344711237a7b6cdad6cfa3",
+      "title": "Golden Hour Collection - 6 Piece Nail Polish Set",
+      "status": "updated",
+      "component_refs": [
+        {
+          "external_product_id": "ext_55b774d3c57906a77a7167f0",
+          "title": "Sorrento - Breathable Nail Polish",
+          "size_label": "1 bottle",
+          "inheritance_scope": [
+            "how_to_use",
+            "ingredients_inci"
+          ],
+          "status": "ready"
+        },
+        {
+          "external_product_id": "ext_2c4793f5f96ec2d4680fd55b",
+          "title": "Zhangye - Breathable Nail Polish",
+          "size_label": "1 bottle",
+          "inheritance_scope": [
+            "how_to_use",
+            "ingredients_inci"
+          ],
+          "status": "ready"
+        },
+        {
+          "external_product_id": "ext_efe7512de8c6df9f75ca19e0",
+          "title": "Dubrovnik - Breathable Nail Polish",
+          "size_label": "1 bottle",
+          "inheritance_scope": [
+            "how_to_use",
+            "ingredients_inci"
+          ],
+          "status": "ready"
+        },
+        {
+          "external_product_id": "ext_a36359795b89961a7c052b21",
+          "title": "Karachi - Breathable Nail Polish",
+          "size_label": "1 bottle",
+          "inheritance_scope": [
+            "how_to_use",
+            "ingredients_inci"
+          ],
+          "status": "ready"
+        },
+        {
+          "external_product_id": "ext_2d506dd9dc7428de2d3d0cc8",
+          "title": "Seville - Breathable Nail Polish",
+          "size_label": "1 bottle",
+          "inheritance_scope": [
+            "how_to_use",
+            "ingredients_inci"
+          ],
+          "status": "ready"
+        },
+        {
+          "external_product_id": "ext_f56010dd5bf971f7b7f644a6",
+          "title": "Uluru - Breathable Nail Polish",
+          "size_label": "1 bottle",
+          "inheritance_scope": [
+            "how_to_use",
+            "ingredients_inci"
+          ],
+          "status": "ready"
+        }
+      ],
+      "before_component_ref_count": 6,
+      "after_component_ref_count": 6
+    }
+  ]
+}

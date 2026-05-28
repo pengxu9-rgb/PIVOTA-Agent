@@ -1,0 +1,94 @@
+{
+  "generated_at": "2026-05-28T03:23:48.801Z",
+  "dry_run": false,
+  "manifest": "reports/markato_expansion_status_20260524/wave35_786cosmetics_quality_repair_20260528/soy_remover_scoped_ingredient_patch_manifest.json",
+  "summary": {
+    "scanned_rows": 2,
+    "missing_rows": 0,
+    "blocked_rows": 0,
+    "change_candidates": 2,
+    "updated_rows": 2,
+    "catalog_product_updates": 2,
+    "identity_updates": 2
+  },
+  "apply_results": [
+    {
+      "external_product_id": "ext_58baf9029d81af1ac9f8bc7e",
+      "seed_updates": 1,
+      "catalog_product_updates": 1,
+      "identity_updates": 1
+    },
+    {
+      "external_product_id": "ext_e86ee213b542fbb671e0804e",
+      "seed_updates": 1,
+      "catalog_product_updates": 1,
+      "identity_updates": 1
+    }
+  ],
+  "plans": [
+    {
+      "external_product_id": "ext_58baf9029d81af1ac9f8bc7e",
+      "seed_id": "eps_a2b53eb674ee4b7e8521d1dd",
+      "title": "Soy Nail Polish Remover With Jojoba Seed & Tea Tree Oil",
+      "canonical_url": "https://786cosmetics.com/products/soy-nail-polish-remover-with-jojoba-seed-tea-tree-oil",
+      "status": "ready",
+      "changed": true,
+      "blockers": [],
+      "skipped_fields": [],
+      "patched_fields": [
+        "pdp_ingredients_raw",
+        "raw_ingredient_text_clean",
+        "ingredients_inci"
+      ],
+      "before": {
+        "description": "786 Cosmetics presents a new soy polish remover with new ingredients! Our 4 oz Soy-Based Nail Polish Remover is designed to gently remove nail polish. Jojoba Seed Oil replenishes the health and moisturization of your nails that was lost due to acetone-based nail polish removers. Tea Tree Oil helps to counter cracked and damaged cuticles. This product does not contain acetone or harsh acetates which will damage your nails, cuticles, and dry out your skin. 4 fl. oz / 118 mL -- Directions for use: Saturate a cotton ball or cotton pad with the Soy-Based Nail Polish Remover. Wipe all nails and allow the remover to absorb into the nail for at least 20-30 seconds. Wipe each nail until the polish is fully removed. Wash hands and nails thoroughly and dry well. Make sure the nail bed is dry and clean before applying new nail polish.",
+        "pdp_description_raw": "",
+        "pdp_ingredients_raw": "",
+        "pdp_how_to_use_raw": "Saturate a cotton ball or cotton pad with the Soy-Based Nail Polish Remover. Wipe all nails and allow the remover to absorb into the nail for at least 20-30 seconds. Wipe each nail until the polish is fully removed. Wash hands and nails thoroughly and dry well. Make sure the nail bed is dry and clean before applying polish.",
+        "ingredients_polluted": false,
+        "polluted_detail_section_count": 0
+      },
+      "after": {
+        "description": "786 Cosmetics presents a new soy polish remover with new ingredients!\n\nOur 4 oz Soy-Based Nail Polish Remover is designed to gently remove nail polish. Jojoba Seed Oil replenishes the health and moisturization of your nails that was lost due to acetone-based nail polish removers.\n\nTea Tree Oil helps to counter cracked and damaged cuticles.\n\nThis product does not contain acetone or harsh acetates which will damage your nails, cuticles, and dry out your skin.\n\n4 fl. oz / 118 mL \n\n--\n\nDirections for use: \nSaturate a cotton ball or cotton pad with the Soy-Based Nail Polish Remover. Wipe all nails and allow the remover to absorb into the nail for at least 20-30 seconds. Wipe each nail until the polish is fully removed. Wash hands and nails thoroughly and dry well. Make sure the nail bed is dry and clean before applying new nail polish.",
+        "pdp_description_raw": "",
+        "pdp_how_to_use_raw": "Saturate a cotton ball or cotton pad with the Soy-Based Nail Polish Remover. Wipe all nails and allow the remover to absorb into the nail for at least 20-30 seconds.\nWipe each nail until the polish is fully removed. Wash hands and nails thoroughly and dry well. Make sure the nail bed is dry and clean before applying polish.",
+        "pdp_ingredients_raw": "Soy/Vegetable Methyl Esters, Dimethyl Glutamate, Dimethyl Adipate, Simmondsia Chinensis (Jojoba) Seed Oil, Melaleuca Alternifolia (Tea Tree) Oil",
+        "ingredients_polluted": false,
+        "detail_section_count": 3,
+        "polluted_detail_section_count": 0
+      }
+    },
+    {
+      "external_product_id": "ext_e86ee213b542fbb671e0804e",
+      "seed_id": "eps_cf3467b5a100a7d77b90ca05",
+      "title": "Soy Nail Polish Remover With Almond Essential Oil",
+      "canonical_url": "https://786cosmetics.com/products/soy-based-nail-polish-remover",
+      "status": "ready",
+      "changed": true,
+      "blockers": [],
+      "skipped_fields": [],
+      "patched_fields": [
+        "pdp_ingredients_raw",
+        "raw_ingredient_text_clean",
+        "ingredients_inci"
+      ],
+      "before": {
+        "description": "Our 4 oz Soy-Based Nail Polish Remover is designed to gently remove nail polish. Almond Essential Oil promotes healthy, moisturized nails. This product does not contain acetone or harsh acetates which will damage your nails and cuticles, and dry out your skin. 4 fl. oz / 118 mL -- Directions for use: Saturate a cotton ball or cotton pad with the Soy-Based Nail Polish Remover. Wipe all nails and allow the remover to absorb into the nail for at least 20-30 seconds. Wipe each nail until the polish is fully removed. Wash hands and nails thoroughly and dry well. Make sure the nail bed is dry and clean before applying polish.",
+        "pdp_description_raw": "Our 4 oz Soy-Based Nail Polish Remover is designed to gently remove nail polish. Almond Essential Oil promotes healthy, moisturized nails. This product does not contain acetone or harsh acetates which will damage your nails and cuticles, and dry out your skin. 4 fl. oz / 118 mL -- Directions for use: Saturate a cotton ball or cotton pad with the Soy-Based Nail Polish Remover. Wipe all nails and allow the remover to absorb into the nail for at least 20-30 seconds. Wipe each nail until the polish is fully removed. Wash hands and nails thoroughly and dry well. Make sure the nail bed is dry and clean before applying polish.",
+        "pdp_ingredients_raw": "Tea Tree Jojoba Soy Remover: Soy/Vegetable Methyl Esters, Dimethyl Glutamate, Dimethyl Adipate, Simmonsdsia Chinensis (Jojoba)Seed Oil, Melaleuca Alternifolia (Tea Tree) Oil Almond Soy Remover: Dimethyl Glutamate, Dimethyl Adipate, MethylOleate/Palmitate/Linoleate/Stearate, Trideceth-8",
+        "pdp_how_to_use_raw": "Saturate a cotton ball or cotton pad with the Soy-Based Nail Polish Remover. Wipe all nails and allow the remover to absorb into the nail for at least 20-30 seconds. Wipe each nail until the polish is fully removed. Wash hands and nails thoroughly and dry well. Make sure the nail bed is dry and clean before applying polish.",
+        "ingredients_polluted": false,
+        "polluted_detail_section_count": 0
+      },
+      "after": {
+        "description": "Our 4 oz Soy-Based Nail Polish Remover is designed to gently remove nail polish. Almond Essential Oil promotes healthy, moisturized nails.\n\nThis product does not contain acetone or harsh acetates which will damage your nails and cuticles, and dry out your skin.\n\n4 fl. oz / 118 mL\n\n--\n\nDirections for use:\nSaturate a cotton ball or cotton pad with the Soy-Based Nail Polish Remover. Wipe all nails and allow the remover to absorb into the nail for at least 20-30 seconds. Wipe each nail until the polish is fully removed. Wash hands and nails thoroughly and dry well. Make sure the nail bed is dry and clean before applying polish.",
+        "pdp_description_raw": "Our 4 oz Soy-Based Nail Polish Remover is designed to gently remove nail polish. Almond Essential Oil promotes healthy, moisturized nails.\n\nThis product does not contain acetone or harsh acetates which will damage your nails and cuticles, and dry out your skin.\n\n4 fl. oz / 118 mL\n\n--\n\nDirections for use:\nSaturate a cotton ball or cotton pad with the Soy-Based Nail Polish Remover. Wipe all nails and allow the remover to absorb into the nail for at least 20-30 seconds. Wipe each nail until the polish is fully removed. Wash hands and nails thoroughly and dry well. Make sure the nail bed is dry and clean before applying polish.",
+        "pdp_how_to_use_raw": "Saturate a cotton ball or cotton pad with the Soy-Based Nail Polish Remover. Wipe all nails and allow the remover to absorb into the nail for at least 20-30 seconds. Wipe each nail until the polish is fully removed. Wash hands and nails thoroughly and dry well. Make sure the nail bed is dry and clean before applying polish.",
+        "pdp_ingredients_raw": "Dimethyl Glutamate, Dimethyl Adipate, Methyl Oleate/Palmitate/Linoleate/Stearate, Trideceth-8",
+        "ingredients_polluted": false,
+        "detail_section_count": 2,
+        "polluted_detail_section_count": 0
+      }
+    }
+  ]
+}

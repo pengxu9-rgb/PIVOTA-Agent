@@ -1,0 +1,22 @@
+{
+  "market": "US",
+  "reviewed_by": "codex_20260528",
+  "reason": "Scope 786 shared soy remover official Ingredients accordion to the current product formula and remove cross-formula contamination.",
+  "source_kind": "official_stiletto_accordion_scoped_formula",
+  "write_reviewed_ingredient_authority": true,
+  "entries": [
+    {
+      "external_product_id": "ext_58baf9029d81af1ac9f8bc7e",
+      "source_url": "https://786cosmetics.com/products/soy-nail-polish-remover-with-jojoba-seed-tea-tree-oil",
+      "evidence": "Official 786 Cosmetics PDP Ingredients accordion labels Tea Tree Jojoba Soy Remover separately from Almond Soy Remover.",
+      "pdp_ingredients_raw": "Soy/Vegetable Methyl Esters, Dimethyl Glutamate, Dimethyl Adipate, Simmondsia Chinensis (Jojoba) Seed Oil, Melaleuca Alternifolia (Tea Tree) Oil"
+    },
+    {
+      "external_product_id": "ext_e86ee213b542fbb671e0804e",
+      "source_url": "https://786cosmetics.com/products/soy-based-nail-polish-remover",
+      "evidence": "Official 786 Cosmetics PDP Ingredients accordion labels Almond Soy Remover separately from Tea Tree Jojoba Soy Remover.",
+      "allow_overwrite_high_quality": true,
+      "pdp_ingredients_raw": "Dimethyl Glutamate, Dimethyl Adipate, Methyl Oleate/Palmitate/Linoleate/Stearate, Trideceth-8"
+    }
+  ]
+}

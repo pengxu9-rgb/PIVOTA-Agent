@@ -1,0 +1,198 @@
+{
+  "generated_at": "2026-05-28T03:14:45.506Z",
+  "source": "pivota_insights_official_pdp_manual_review_v1",
+  "mode": "apply",
+  "filters": {
+    "brand": "786 Cosmetics",
+    "product_ids": [
+      "ext_9cd211269e8480e6a7475b5e"
+    ],
+    "limit": null,
+    "include_strong": false,
+    "include_url_key": false,
+    "apply_chunk_size": null
+  },
+  "summary": {
+    "scanned": 1,
+    "changed_products": 1,
+    "blocked_products": 0,
+    "skipped_products": 0,
+    "write_actions": {
+      "update": 1,
+      "insert": 1
+    },
+    "skip_reasons": {},
+    "evidence_profiles": {
+      "official_pdp_reviewed_formula_and_usage": 1
+    }
+  },
+  "plans": [
+    {
+      "external_product_id": "ext_9cd211269e8480e6a7475b5e",
+      "pivota_signature_id": "sig_cda7e3d3c12cbbf08efea3ac",
+      "title": "Muscat - Breathable Nail Polish",
+      "brand": "786 Cosmetics",
+      "canonical_url": "https://786cosmetics.com/products/muscat",
+      "changed": true,
+      "blocked": false,
+      "skip_reason": null,
+      "candidate_hash": "08c9caeec3c522bbf0c4fcbee78110c9edef0bd73aedb1879466ac135844e12b",
+      "evidence_profile": "official_pdp_reviewed_formula_and_usage",
+      "source_coverage": {
+        "source": "official_pdp",
+        "canonical_url": "https://786cosmetics.com/products/muscat",
+        "fields": {
+          "description": true,
+          "ingredients": 1,
+          "active_ingredients": 0,
+          "how_to": 1,
+          "details": 3,
+          "variants": 1
+        }
+      },
+      "preview": {
+        "headline": "Nail color",
+        "what_it_is": "Muscat - Breathable Nail Polish is a nail polish from 786 Cosmetics in shade Muscat, with source-backed cues around a breathable polish format, thin-coat application and long-wear color.",
+        "why_it_stands_out": [
+          {
+            "headline": "Nail color cues are specific",
+            "body": "Reviewed nail-polish cues such as breathable polish format, thin-coat application, long-wear color, shade clarity help shoppers compare shade, application format, or wear context without inventing unsupported formula claims.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Ingredient list is available",
+            "body": "Full INCI is present for formula-sensitive review, which makes this PDP safer to evaluate than a claim-only listing.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Shade and size are explicit",
+            "body": "Variant labels such as Shade: Muscat are visible, reducing ambiguity around the product format before a shopper clicks through.",
+            "evidence_strength": "official_pdp_reviewed"
+          }
+        ],
+        "best_for": [
+          {
+            "tag": "breathable_polish_format",
+            "label": "breathable polish format",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "thin_coat_application",
+            "label": "thin-coat application",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "long_wear_color",
+            "label": "long-wear color",
+            "confidence": "moderate"
+          }
+        ],
+        "shopping_highlight": "breathable polish format"
+      },
+      "writes": [
+        {
+          "kb_key": "product:ext_9cd211269e8480e6a7475b5e",
+          "action": "update",
+          "reason": "explicit_owner_delegated_assistant_replacement_review",
+          "old_hash": "3b008052e778aa413878be003a7a68cee28c2951000eb3c4150cec32b98b1ef0",
+          "candidate_hash": "bcaf7fa7a348215e326675211236b50ff83847792948dd8bbd18df7b54a57cd6",
+          "existing_weak": true,
+          "source": "pivota_insights_official_pdp_manual_review_v1",
+          "after_inventory": {
+            "product_id": "ext_9cd211269e8480e6a7475b5e",
+            "kb_key": "product:ext_9cd211269e8480e6a7475b5e",
+            "source": "pivota_insights_official_pdp_manual_review_v1",
+            "updated_at": "",
+            "last_success_at": "",
+            "title": "Muscat - Breathable Nail Polish",
+            "canonical_url": "",
+            "bundle_hash": "08c9caeec3c522bbf0c4fcbee78110c9edef0bd73aedb1879466ac135844e12b",
+            "lane": "keep",
+            "reason": "protected_good_content",
+            "priority": 0,
+            "protected": true,
+            "displayable": true,
+            "high_quality_ready": true,
+            "human_reviewed": true,
+            "issues": [],
+            "blocking_issues": [],
+            "quality_state": "reviewed",
+            "evidence_profile": "official_pdp_reviewed_formula_and_usage",
+            "evidence_rank": 1,
+            "review_tier": "assistant_reviewed",
+            "agent_readable": true,
+            "public_ready": true
+          },
+          "source_meta": {
+            "evidence_profile": "official_pdp_reviewed_formula_and_usage",
+            "quality_state": "reviewed",
+            "source_origin": "official_pdp_fields",
+            "source_url": "https://786cosmetics.com/products/muscat",
+            "quality_improvement": {
+              "previous_bundle_hash": "420ea0cca8831192ce8e0412908b3ef3ae00a62cfc1e2d8457baf7d5c1f4ea7a",
+              "candidate_bundle_hash": "08c9caeec3c522bbf0c4fcbee78110c9edef0bd73aedb1879466ac135844e12b",
+              "replacement_decision": "explicit_owner_delegated_assistant_replacement_review",
+              "existing_quality_lane": "repair",
+              "candidate_quality_lane": "keep",
+              "existing_evidence_profile": "seller_plus_formula",
+              "candidate_evidence_profile": "official_pdp_reviewed_formula_and_usage"
+            }
+          }
+        },
+        {
+          "kb_key": "product:sig_cda7e3d3c12cbbf08efea3ac",
+          "action": "insert",
+          "reason": "new_product_intel_bundle",
+          "old_hash": null,
+          "candidate_hash": "bcaf7fa7a348215e326675211236b50ff83847792948dd8bbd18df7b54a57cd6",
+          "existing_weak": true,
+          "source": "pivota_insights_official_pdp_manual_review_v1",
+          "after_inventory": {
+            "product_id": "ext_9cd211269e8480e6a7475b5e",
+            "kb_key": "product:sig_cda7e3d3c12cbbf08efea3ac",
+            "source": "pivota_insights_official_pdp_manual_review_v1",
+            "updated_at": "",
+            "last_success_at": "",
+            "title": "Muscat - Breathable Nail Polish",
+            "canonical_url": "",
+            "bundle_hash": "08c9caeec3c522bbf0c4fcbee78110c9edef0bd73aedb1879466ac135844e12b",
+            "lane": "keep",
+            "reason": "protected_good_content",
+            "priority": 0,
+            "protected": true,
+            "displayable": true,
+            "high_quality_ready": true,
+            "human_reviewed": true,
+            "issues": [],
+            "blocking_issues": [],
+            "quality_state": "reviewed",
+            "evidence_profile": "official_pdp_reviewed_formula_and_usage",
+            "evidence_rank": 1,
+            "review_tier": "assistant_reviewed",
+            "agent_readable": true,
+            "public_ready": true
+          },
+          "source_meta": {
+            "evidence_profile": "official_pdp_reviewed_formula_and_usage",
+            "quality_state": "reviewed",
+            "source_origin": "official_pdp_fields",
+            "source_url": "https://786cosmetics.com/products/muscat",
+            "quality_improvement": {
+              "previous_bundle_hash": null,
+              "candidate_bundle_hash": "08c9caeec3c522bbf0c4fcbee78110c9edef0bd73aedb1879466ac135844e12b",
+              "replacement_decision": "new_product_intel_bundle",
+              "existing_quality_lane": null,
+              "candidate_quality_lane": "keep",
+              "existing_evidence_profile": null,
+              "candidate_evidence_profile": "official_pdp_reviewed_formula_and_usage"
+            }
+          }
+        }
+      ]
+    }
+  ],
+  "apply_result": {
+    "upserts": 2,
+    "chunks": 1
+  }
+}

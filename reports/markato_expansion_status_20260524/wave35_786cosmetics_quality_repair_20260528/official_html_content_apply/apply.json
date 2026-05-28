@@ -1,0 +1,577 @@
+{
+  "generated_at": "2026-05-28T02:28:38.796Z",
+  "dry_run": false,
+  "market": "US",
+  "summary": {
+    "scanned": 20,
+    "dry_run": 0,
+    "updated": 17,
+    "skipped": 3,
+    "failed": 0,
+    "by_field": {
+      "pdp_ingredients_raw": 16,
+      "pdp_how_to_use_raw": 17,
+      "pdp_details_sections": 17
+    }
+  },
+  "results": [
+    {
+      "external_product_id": "ext_f37bb5bc53c4764bc5de8e9c",
+      "title": "Isfahan - Breathable Nail Polish",
+      "domain": "786cosmetics.com",
+      "url": "https://786cosmetics.com/products/isfahan-breathable-nail-polish",
+      "host": "786cosmetics.com",
+      "status": "skipped",
+      "patch_keys": [],
+      "http_status": 503,
+      "final_url": "https://786cosmetics.com/products/isfahan-breathable-nail-polish",
+      "extracted_summary": {
+        "ingredients_chars": 0,
+        "how_to_chars": 0,
+        "details_sections_count": 0,
+        "variant_count": 0,
+        "review_count": 0,
+        "rating": 0,
+        "review_preview_count": 0,
+        "review_preview_samples": []
+      },
+      "reason": "no_official_html_fields"
+    },
+    {
+      "external_product_id": "ext_cd1678cacc37126a9d483888",
+      "title": "Bursa - Breathable Nail Polish",
+      "domain": "786cosmetics.com",
+      "url": "https://786cosmetics.com/products/bursa-breathable-nail-polish",
+      "host": "786cosmetics.com",
+      "status": "skipped",
+      "patch_keys": [],
+      "http_status": 503,
+      "final_url": "https://786cosmetics.com/products/bursa-breathable-nail-polish",
+      "extracted_summary": {
+        "ingredients_chars": 0,
+        "how_to_chars": 0,
+        "details_sections_count": 0,
+        "variant_count": 0,
+        "review_count": 0,
+        "rating": 0,
+        "review_preview_count": 0,
+        "review_preview_samples": []
+      },
+      "reason": "no_official_html_fields"
+    },
+    {
+      "external_product_id": "ext_c6ce33a7e9e59a7c8c24fc36",
+      "title": "Kyoto - Breathable Nail Polish",
+      "domain": "786cosmetics.com",
+      "url": "https://786cosmetics.com/products/kyoto",
+      "host": "786cosmetics.com",
+      "status": "skipped",
+      "patch_keys": [],
+      "http_status": 503,
+      "final_url": "https://786cosmetics.com/products/kyoto",
+      "extracted_summary": {
+        "ingredients_chars": 0,
+        "how_to_chars": 0,
+        "details_sections_count": 0,
+        "variant_count": 0,
+        "review_count": 0,
+        "rating": 0,
+        "review_preview_count": 0,
+        "review_preview_samples": []
+      },
+      "reason": "no_official_html_fields"
+    },
+    {
+      "external_product_id": "ext_afb163014d0bffd3a6493c05",
+      "title": "Marrakesh - Breathable Nail Polish",
+      "domain": "786cosmetics.com",
+      "url": "https://786cosmetics.com/products/marrakesh",
+      "host": "786cosmetics.com",
+      "status": "updated",
+      "patch_keys": [
+        "pdp_ingredients_raw",
+        "pdp_how_to_use_raw",
+        "pdp_details_sections"
+      ],
+      "http_status": 200,
+      "final_url": "https://786cosmetics.com/products/marrakesh",
+      "extracted_summary": {
+        "ingredients_chars": 805,
+        "how_to_chars": 203,
+        "details_sections_count": 3,
+        "variant_count": 0,
+        "review_count": 0,
+        "rating": 0,
+        "review_preview_count": 0,
+        "review_preview_samples": []
+      },
+      "serving_mirror_sync": {
+        "catalog_products": 1,
+        "pdp_identity_listing": 1
+      }
+    },
+    {
+      "external_product_id": "ext_a5d2bdb05f2216a85764454f",
+      "title": "Lisbon - Breathable Nail Polish",
+      "domain": "786cosmetics.com",
+      "url": "https://786cosmetics.com/products/lisbon-breathable-nail-polish",
+      "host": "786cosmetics.com",
+      "status": "updated",
+      "patch_keys": [
+        "pdp_ingredients_raw",
+        "pdp_how_to_use_raw",
+        "pdp_details_sections"
+      ],
+      "http_status": 200,
+      "final_url": "https://786cosmetics.com/products/lisbon-breathable-nail-polish",
+      "extracted_summary": {
+        "ingredients_chars": 805,
+        "how_to_chars": 203,
+        "details_sections_count": 3,
+        "variant_count": 0,
+        "review_count": 0,
+        "rating": 0,
+        "review_preview_count": 0,
+        "review_preview_samples": []
+      },
+      "serving_mirror_sync": {
+        "catalog_products": 1,
+        "pdp_identity_listing": 1
+      }
+    },
+    {
+      "external_product_id": "ext_96324332335f327e15bbd1a3",
+      "title": "Istanbul - Breathable Nail Polish",
+      "domain": "786cosmetics.com",
+      "url": "https://786cosmetics.com/products/istanbul-breathable-nail-polish",
+      "host": "786cosmetics.com",
+      "status": "updated",
+      "patch_keys": [
+        "pdp_ingredients_raw",
+        "pdp_how_to_use_raw",
+        "pdp_details_sections"
+      ],
+      "http_status": 200,
+      "final_url": "https://786cosmetics.com/products/istanbul-breathable-nail-polish",
+      "extracted_summary": {
+        "ingredients_chars": 805,
+        "how_to_chars": 203,
+        "details_sections_count": 3,
+        "variant_count": 0,
+        "review_count": 0,
+        "rating": 0,
+        "review_preview_count": 0,
+        "review_preview_samples": []
+      },
+      "serving_mirror_sync": {
+        "catalog_products": 1,
+        "pdp_identity_listing": 1
+      }
+    },
+    {
+      "external_product_id": "ext_9f7b485a72fece5e2dfc5176",
+      "title": "Himalayas - Breathable Nail Polish",
+      "domain": "786cosmetics.com",
+      "url": "https://786cosmetics.com/products/himalayas-breathable-nail-polish",
+      "host": "786cosmetics.com",
+      "status": "updated",
+      "patch_keys": [
+        "pdp_ingredients_raw",
+        "pdp_how_to_use_raw",
+        "pdp_details_sections"
+      ],
+      "http_status": 200,
+      "final_url": "https://786cosmetics.com/products/himalayas-breathable-nail-polish",
+      "extracted_summary": {
+        "ingredients_chars": 805,
+        "how_to_chars": 203,
+        "details_sections_count": 3,
+        "variant_count": 0,
+        "review_count": 0,
+        "rating": 0,
+        "review_preview_count": 0,
+        "review_preview_samples": []
+      },
+      "serving_mirror_sync": {
+        "catalog_products": 1,
+        "pdp_identity_listing": 1
+      }
+    },
+    {
+      "external_product_id": "ext_9a469b8f450d59f67ae21f6d",
+      "title": "Paris - Breathable Nail Polish",
+      "domain": "786cosmetics.com",
+      "url": "https://786cosmetics.com/products/paris",
+      "host": "786cosmetics.com",
+      "status": "updated",
+      "patch_keys": [
+        "pdp_ingredients_raw",
+        "pdp_how_to_use_raw",
+        "pdp_details_sections"
+      ],
+      "http_status": 200,
+      "final_url": "https://786cosmetics.com/products/paris",
+      "extracted_summary": {
+        "ingredients_chars": 805,
+        "how_to_chars": 203,
+        "details_sections_count": 3,
+        "variant_count": 0,
+        "review_count": 0,
+        "rating": 0,
+        "review_preview_count": 0,
+        "review_preview_samples": []
+      },
+      "serving_mirror_sync": {
+        "catalog_products": 1,
+        "pdp_identity_listing": 1
+      }
+    },
+    {
+      "external_product_id": "ext_87a0af88b9bd23b8f2123d1b",
+      "title": "Almond & Ginseng Cuticle Oil",
+      "domain": "786cosmetics.com",
+      "url": "https://786cosmetics.com/products/almond-ginseng-cuticle-oil",
+      "host": "786cosmetics.com",
+      "status": "updated",
+      "patch_keys": [
+        "pdp_ingredients_raw",
+        "pdp_how_to_use_raw",
+        "pdp_details_sections"
+      ],
+      "http_status": 200,
+      "final_url": "https://786cosmetics.com/products/almond-ginseng-cuticle-oil",
+      "extracted_summary": {
+        "ingredients_chars": 291,
+        "how_to_chars": 499,
+        "details_sections_count": 3,
+        "variant_count": 0,
+        "review_count": 0,
+        "rating": 0,
+        "review_preview_count": 0,
+        "review_preview_samples": []
+      },
+      "serving_mirror_sync": {
+        "catalog_products": 1,
+        "pdp_identity_listing": 1
+      }
+    },
+    {
+      "external_product_id": "ext_7bac80d00f1f149743824dee",
+      "title": "Top Coat Clear - Breathable Nail Polish",
+      "domain": "786cosmetics.com",
+      "url": "https://786cosmetics.com/products/top-coat-clear-breathable-nail-polish",
+      "host": "786cosmetics.com",
+      "status": "updated",
+      "patch_keys": [
+        "pdp_ingredients_raw",
+        "pdp_how_to_use_raw",
+        "pdp_details_sections"
+      ],
+      "http_status": 200,
+      "final_url": "https://786cosmetics.com/products/top-coat-clear-breathable-nail-polish",
+      "extracted_summary": {
+        "ingredients_chars": 805,
+        "how_to_chars": 203,
+        "details_sections_count": 3,
+        "variant_count": 0,
+        "review_count": 0,
+        "rating": 0,
+        "review_preview_count": 0,
+        "review_preview_samples": []
+      },
+      "serving_mirror_sync": {
+        "catalog_products": 1,
+        "pdp_identity_listing": 1
+      }
+    },
+    {
+      "external_product_id": "ext_799b3d12caaa6ad1842840dd",
+      "title": "Sakura - Breathable Nail Polish",
+      "domain": "786cosmetics.com",
+      "url": "https://786cosmetics.com/products/sakura-breathable-nail-polish",
+      "host": "786cosmetics.com",
+      "status": "updated",
+      "patch_keys": [
+        "pdp_ingredients_raw",
+        "pdp_how_to_use_raw",
+        "pdp_details_sections"
+      ],
+      "http_status": 200,
+      "final_url": "https://786cosmetics.com/products/sakura-breathable-nail-polish",
+      "extracted_summary": {
+        "ingredients_chars": 805,
+        "how_to_chars": 203,
+        "details_sections_count": 3,
+        "variant_count": 0,
+        "review_count": 0,
+        "rating": 0,
+        "review_preview_count": 0,
+        "review_preview_samples": []
+      },
+      "serving_mirror_sync": {
+        "catalog_products": 1,
+        "pdp_identity_listing": 1
+      }
+    },
+    {
+      "external_product_id": "ext_58baf9029d81af1ac9f8bc7e",
+      "title": "Soy Nail Polish Remover With Jojoba Seed & Tea Tree Oil",
+      "domain": "786cosmetics.com",
+      "url": "https://786cosmetics.com/products/soy-nail-polish-remover-with-jojoba-seed-tea-tree-oil",
+      "host": "786cosmetics.com",
+      "status": "updated",
+      "patch_keys": [
+        "pdp_how_to_use_raw",
+        "pdp_details_sections"
+      ],
+      "http_status": 200,
+      "final_url": "https://786cosmetics.com/products/soy-nail-polish-remover-with-jojoba-seed-tea-tree-oil",
+      "extracted_summary": {
+        "ingredients_chars": 0,
+        "how_to_chars": 325,
+        "details_sections_count": 3,
+        "variant_count": 0,
+        "review_count": 0,
+        "rating": 0,
+        "review_preview_count": 0,
+        "review_preview_samples": []
+      },
+      "serving_mirror_sync": {
+        "catalog_products": 1,
+        "pdp_identity_listing": 1
+      }
+    },
+    {
+      "external_product_id": "ext_478c309275606a587d949541",
+      "title": "Cusco - Breathable Nail Polish",
+      "domain": "786cosmetics.com",
+      "url": "https://786cosmetics.com/products/cusco-breathable-nail-polish",
+      "host": "786cosmetics.com",
+      "status": "updated",
+      "patch_keys": [
+        "pdp_ingredients_raw",
+        "pdp_how_to_use_raw",
+        "pdp_details_sections"
+      ],
+      "http_status": 200,
+      "final_url": "https://786cosmetics.com/products/cusco-breathable-nail-polish",
+      "extracted_summary": {
+        "ingredients_chars": 805,
+        "how_to_chars": 203,
+        "details_sections_count": 3,
+        "variant_count": 0,
+        "review_count": 0,
+        "rating": 0,
+        "review_preview_count": 0,
+        "review_preview_samples": []
+      },
+      "serving_mirror_sync": {
+        "catalog_products": 1,
+        "pdp_identity_listing": 1
+      }
+    },
+    {
+      "external_product_id": "ext_45293e532ad5a5f33438d38f",
+      "title": "Nizwa - Breathable Nail Polish",
+      "domain": "786cosmetics.com",
+      "url": "https://786cosmetics.com/products/nizwa-breathable-nail-polish",
+      "host": "786cosmetics.com",
+      "status": "updated",
+      "patch_keys": [
+        "pdp_ingredients_raw",
+        "pdp_how_to_use_raw",
+        "pdp_details_sections"
+      ],
+      "http_status": 200,
+      "final_url": "https://786cosmetics.com/products/nizwa-breathable-nail-polish",
+      "extracted_summary": {
+        "ingredients_chars": 805,
+        "how_to_chars": 203,
+        "details_sections_count": 3,
+        "variant_count": 0,
+        "review_count": 0,
+        "rating": 0,
+        "review_preview_count": 0,
+        "review_preview_samples": []
+      },
+      "serving_mirror_sync": {
+        "catalog_products": 1,
+        "pdp_identity_listing": 1
+      }
+    },
+    {
+      "external_product_id": "ext_2d506dd9dc7428de2d3d0cc8",
+      "title": "Seville - Breathable Nail Polish",
+      "domain": "786cosmetics.com",
+      "url": "https://786cosmetics.com/products/seville-breathable-nail-polish",
+      "host": "786cosmetics.com",
+      "status": "updated",
+      "patch_keys": [
+        "pdp_ingredients_raw",
+        "pdp_how_to_use_raw",
+        "pdp_details_sections"
+      ],
+      "http_status": 200,
+      "final_url": "https://786cosmetics.com/products/seville-breathable-nail-polish",
+      "extracted_summary": {
+        "ingredients_chars": 805,
+        "how_to_chars": 203,
+        "details_sections_count": 3,
+        "variant_count": 0,
+        "review_count": 0,
+        "rating": 0,
+        "review_preview_count": 0,
+        "review_preview_samples": []
+      },
+      "serving_mirror_sync": {
+        "catalog_products": 1,
+        "pdp_identity_listing": 1
+      }
+    },
+    {
+      "external_product_id": "ext_22c3e831a335c12bc33fca2f",
+      "title": "Java - Breathable Nail Polish",
+      "domain": "786cosmetics.com",
+      "url": "https://786cosmetics.com/products/java-breathable-nail-polish",
+      "host": "786cosmetics.com",
+      "status": "updated",
+      "patch_keys": [
+        "pdp_ingredients_raw",
+        "pdp_how_to_use_raw",
+        "pdp_details_sections"
+      ],
+      "http_status": 200,
+      "final_url": "https://786cosmetics.com/products/java-breathable-nail-polish",
+      "extracted_summary": {
+        "ingredients_chars": 805,
+        "how_to_chars": 203,
+        "details_sections_count": 3,
+        "variant_count": 0,
+        "review_count": 0,
+        "rating": 0,
+        "review_preview_count": 0,
+        "review_preview_samples": []
+      },
+      "serving_mirror_sync": {
+        "catalog_products": 1,
+        "pdp_identity_listing": 1
+      }
+    },
+    {
+      "external_product_id": "ext_1a3dc4611dcd01447437ed9c",
+      "title": "Rotomahana - Breathable Nail Polish",
+      "domain": "786cosmetics.com",
+      "url": "https://786cosmetics.com/products/rotomahana-breathable-nail-polish",
+      "host": "786cosmetics.com",
+      "status": "updated",
+      "patch_keys": [
+        "pdp_ingredients_raw",
+        "pdp_how_to_use_raw",
+        "pdp_details_sections"
+      ],
+      "http_status": 200,
+      "final_url": "https://786cosmetics.com/products/rotomahana-breathable-nail-polish",
+      "extracted_summary": {
+        "ingredients_chars": 805,
+        "how_to_chars": 203,
+        "details_sections_count": 3,
+        "variant_count": 0,
+        "review_count": 0,
+        "rating": 0,
+        "review_preview_count": 0,
+        "review_preview_samples": []
+      },
+      "serving_mirror_sync": {
+        "catalog_products": 1,
+        "pdp_identity_listing": 1
+      }
+    },
+    {
+      "external_product_id": "ext_152e5d39e5ef4ee3a67894b7",
+      "title": "Guanajuato - Breathable Nail Polish",
+      "domain": "786cosmetics.com",
+      "url": "https://786cosmetics.com/products/guanajuato-breathable-nail-polish",
+      "host": "786cosmetics.com",
+      "status": "updated",
+      "patch_keys": [
+        "pdp_ingredients_raw",
+        "pdp_how_to_use_raw",
+        "pdp_details_sections"
+      ],
+      "http_status": 200,
+      "final_url": "https://786cosmetics.com/products/guanajuato-breathable-nail-polish",
+      "extracted_summary": {
+        "ingredients_chars": 805,
+        "how_to_chars": 203,
+        "details_sections_count": 3,
+        "variant_count": 0,
+        "review_count": 0,
+        "rating": 0,
+        "review_preview_count": 0,
+        "review_preview_samples": []
+      },
+      "serving_mirror_sync": {
+        "catalog_products": 1,
+        "pdp_identity_listing": 1
+      }
+    },
+    {
+      "external_product_id": "ext_09bd1a60af24d620706724ee",
+      "title": "Hyderabad - Breathable Nail Polish",
+      "domain": "786cosmetics.com",
+      "url": "https://786cosmetics.com/products/hyderabad-breathable-nail-polish",
+      "host": "786cosmetics.com",
+      "status": "updated",
+      "patch_keys": [
+        "pdp_ingredients_raw",
+        "pdp_how_to_use_raw",
+        "pdp_details_sections"
+      ],
+      "http_status": 200,
+      "final_url": "https://786cosmetics.com/products/hyderabad-breathable-nail-polish",
+      "extracted_summary": {
+        "ingredients_chars": 805,
+        "how_to_chars": 203,
+        "details_sections_count": 3,
+        "variant_count": 0,
+        "review_count": 0,
+        "rating": 0,
+        "review_preview_count": 0,
+        "review_preview_samples": []
+      },
+      "serving_mirror_sync": {
+        "catalog_products": 1,
+        "pdp_identity_listing": 1
+      }
+    },
+    {
+      "external_product_id": "ext_09f3ad39bdfe1ea4a957c45f",
+      "title": "Alexandria - Breathable Nail Polish",
+      "domain": "786cosmetics.com",
+      "url": "https://786cosmetics.com/products/alexandria-breathable-nail-polish",
+      "host": "786cosmetics.com",
+      "status": "updated",
+      "patch_keys": [
+        "pdp_ingredients_raw",
+        "pdp_how_to_use_raw",
+        "pdp_details_sections"
+      ],
+      "http_status": 200,
+      "final_url": "https://786cosmetics.com/products/alexandria-breathable-nail-polish",
+      "extracted_summary": {
+        "ingredients_chars": 805,
+        "how_to_chars": 203,
+        "details_sections_count": 3,
+        "variant_count": 0,
+        "review_count": 0,
+        "rating": 0,
+        "review_preview_count": 0,
+        "review_preview_samples": []
+      },
+      "serving_mirror_sync": {
+        "catalog_products": 1,
+        "pdp_identity_listing": 1
+      }
+    }
+  ]
+}

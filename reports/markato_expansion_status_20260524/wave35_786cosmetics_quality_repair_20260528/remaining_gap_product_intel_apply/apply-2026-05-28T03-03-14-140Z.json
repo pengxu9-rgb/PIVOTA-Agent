@@ -1,0 +1,353 @@
+{
+  "generated_at": "2026-05-28T03:03:14.140Z",
+  "source": "pivota_insights_official_pdp_manual_review_v1",
+  "mode": "apply",
+  "filters": {
+    "brand": "786 Cosmetics",
+    "product_ids": [
+      "ext_e86ee213b542fbb671e0804e",
+      "ext_ab32c65ee7badd0b4a614919"
+    ],
+    "limit": null,
+    "include_strong": false,
+    "include_url_key": false,
+    "apply_chunk_size": null
+  },
+  "summary": {
+    "scanned": 2,
+    "changed_products": 2,
+    "blocked_products": 0,
+    "skipped_products": 0,
+    "write_actions": {
+      "update": 2,
+      "insert": 2
+    },
+    "skip_reasons": {},
+    "evidence_profiles": {
+      "official_pdp_reviewed_limited": 1,
+      "official_pdp_reviewed_formula_and_usage": 1
+    }
+  },
+  "plans": [
+    {
+      "external_product_id": "ext_ab32c65ee7badd0b4a614919",
+      "pivota_signature_id": "sig_d768555e09a74b03d496653a",
+      "title": "Marrakesh Nights Collection - 4  Piece Nail Polish Set",
+      "brand": "786 Cosmetics",
+      "canonical_url": "https://786cosmetics.com/products/marrakesh-nights-collection-4-piece-nail-polish-set",
+      "changed": true,
+      "blocked": false,
+      "skip_reason": null,
+      "candidate_hash": "76ce0af6fde2a66ca7e2fd03867e9af15ed7235e3feb21029b5d787f03a96b35",
+      "evidence_profile": "official_pdp_reviewed_limited",
+      "source_coverage": {
+        "source": "official_pdp",
+        "canonical_url": "https://786cosmetics.com/products/marrakesh-nights-collection-4-piece-nail-polish-set",
+        "fields": {
+          "description": true,
+          "ingredients": 0,
+          "active_ingredients": 0,
+          "how_to": 0,
+          "details": 0,
+          "variants": 1
+        }
+      },
+      "preview": {
+        "headline": "Nail color set",
+        "what_it_is": "Marrakesh Nights Collection - 4 Piece Nail Polish Set is a nail polish set from 786 Cosmetics, with source-backed cues around set composition, shade selection and a breathable polish format.",
+        "why_it_stands_out": [
+          {
+            "headline": "Set cues are specific",
+            "body": "Reviewed set cues such as set composition, shade selection, breathable polish format help shoppers understand the shade mix or custom set format without treating the parent row as a single polish.",
+            "evidence_strength": "official_pdp_reviewed"
+          }
+        ],
+        "best_for": [
+          {
+            "tag": "set_composition",
+            "label": "set composition",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "shade_selection",
+            "label": "shade selection",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "breathable_polish_format",
+            "label": "breathable polish format",
+            "confidence": "moderate"
+          }
+        ],
+        "shopping_highlight": "set composition, shade selection"
+      },
+      "writes": [
+        {
+          "kb_key": "product:ext_ab32c65ee7badd0b4a614919",
+          "action": "update",
+          "reason": "explicit_owner_delegated_assistant_replacement_review",
+          "old_hash": "155da9acf961cc1b1cd67d60dc0bd1258e5ff584faeec0db6218d706ed4be767",
+          "candidate_hash": "80c5577c2e984973b325121e4f624cf54fdb2f3da5c164f64b7c6e7bf41f9be8",
+          "existing_weak": true,
+          "source": "pivota_insights_official_pdp_manual_review_v1",
+          "after_inventory": {
+            "product_id": "ext_ab32c65ee7badd0b4a614919",
+            "kb_key": "product:ext_ab32c65ee7badd0b4a614919",
+            "source": "pivota_insights_official_pdp_manual_review_v1",
+            "updated_at": "",
+            "last_success_at": "",
+            "title": "Marrakesh Nights Collection - 4  Piece Nail Polish Set",
+            "canonical_url": "",
+            "bundle_hash": "76ce0af6fde2a66ca7e2fd03867e9af15ed7235e3feb21029b5d787f03a96b35",
+            "lane": "keep",
+            "reason": "protected_good_content",
+            "priority": 0,
+            "protected": true,
+            "displayable": true,
+            "high_quality_ready": true,
+            "human_reviewed": true,
+            "issues": [],
+            "blocking_issues": [],
+            "quality_state": "reviewed",
+            "evidence_profile": "official_pdp_reviewed_limited",
+            "evidence_rank": 1,
+            "review_tier": "assistant_reviewed",
+            "agent_readable": true,
+            "public_ready": true
+          },
+          "source_meta": {
+            "evidence_profile": "official_pdp_reviewed_limited",
+            "quality_state": "reviewed",
+            "source_origin": "official_pdp_fields",
+            "source_url": "https://786cosmetics.com/products/marrakesh-nights-collection-4-piece-nail-polish-set",
+            "quality_improvement": {
+              "previous_bundle_hash": "2985f06b34f6c5d12b2346be4194d45f855531ef7444bbdb3db60b562bab072b",
+              "candidate_bundle_hash": "76ce0af6fde2a66ca7e2fd03867e9af15ed7235e3feb21029b5d787f03a96b35",
+              "replacement_decision": "explicit_owner_delegated_assistant_replacement_review",
+              "existing_quality_lane": "repair",
+              "candidate_quality_lane": "keep",
+              "existing_evidence_profile": "seller_only",
+              "candidate_evidence_profile": "official_pdp_reviewed_limited"
+            }
+          }
+        },
+        {
+          "kb_key": "product:sig_d768555e09a74b03d496653a",
+          "action": "insert",
+          "reason": "new_product_intel_bundle",
+          "old_hash": null,
+          "candidate_hash": "80c5577c2e984973b325121e4f624cf54fdb2f3da5c164f64b7c6e7bf41f9be8",
+          "existing_weak": true,
+          "source": "pivota_insights_official_pdp_manual_review_v1",
+          "after_inventory": {
+            "product_id": "ext_ab32c65ee7badd0b4a614919",
+            "kb_key": "product:sig_d768555e09a74b03d496653a",
+            "source": "pivota_insights_official_pdp_manual_review_v1",
+            "updated_at": "",
+            "last_success_at": "",
+            "title": "Marrakesh Nights Collection - 4  Piece Nail Polish Set",
+            "canonical_url": "",
+            "bundle_hash": "76ce0af6fde2a66ca7e2fd03867e9af15ed7235e3feb21029b5d787f03a96b35",
+            "lane": "keep",
+            "reason": "protected_good_content",
+            "priority": 0,
+            "protected": true,
+            "displayable": true,
+            "high_quality_ready": true,
+            "human_reviewed": true,
+            "issues": [],
+            "blocking_issues": [],
+            "quality_state": "reviewed",
+            "evidence_profile": "official_pdp_reviewed_limited",
+            "evidence_rank": 1,
+            "review_tier": "assistant_reviewed",
+            "agent_readable": true,
+            "public_ready": true
+          },
+          "source_meta": {
+            "evidence_profile": "official_pdp_reviewed_limited",
+            "quality_state": "reviewed",
+            "source_origin": "official_pdp_fields",
+            "source_url": "https://786cosmetics.com/products/marrakesh-nights-collection-4-piece-nail-polish-set",
+            "quality_improvement": {
+              "previous_bundle_hash": null,
+              "candidate_bundle_hash": "76ce0af6fde2a66ca7e2fd03867e9af15ed7235e3feb21029b5d787f03a96b35",
+              "replacement_decision": "new_product_intel_bundle",
+              "existing_quality_lane": null,
+              "candidate_quality_lane": "keep",
+              "existing_evidence_profile": null,
+              "candidate_evidence_profile": "official_pdp_reviewed_limited"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "external_product_id": "ext_e86ee213b542fbb671e0804e",
+      "pivota_signature_id": "sig_abb0301133d433fb9888940b",
+      "title": "Soy Nail Polish Remover With Almond Essential Oil",
+      "brand": "786 Cosmetics",
+      "canonical_url": "https://786cosmetics.com/products/soy-based-nail-polish-remover",
+      "changed": true,
+      "blocked": false,
+      "skip_reason": null,
+      "candidate_hash": "09fe91c24cd8e70c11a16ccee6d3020659779cef06bac132e76556fd9680ffba",
+      "evidence_profile": "official_pdp_reviewed_formula_and_usage",
+      "source_coverage": {
+        "source": "official_pdp",
+        "canonical_url": "https://786cosmetics.com/products/soy-based-nail-polish-remover",
+        "fields": {
+          "description": true,
+          "ingredients": 1,
+          "active_ingredients": 0,
+          "how_to": 1,
+          "details": 2,
+          "variants": 1
+        }
+      },
+      "preview": {
+        "headline": "Nail polish remover",
+        "what_it_is": "Soy Nail Polish Remover With Almond Essential Oil is a nail polish remover from 786 Cosmetics in 118ml, with source-backed cues around soy-based remover format, acetone-free positioning, jojoba seed oil and tea tree oil.",
+        "why_it_stands_out": [
+          {
+            "headline": "Nail-care cues are specific",
+            "body": "Reviewed nail-care cues such as soy-based remover, acetone-free positioning, jojoba seed oil, tea tree oil identify the product role and source-backed format without inventing unsupported claims.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Ingredient list is available",
+            "body": "Full INCI is present for formula-sensitive review, which makes this PDP safer to evaluate than a claim-only listing.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Shade and size are explicit",
+            "body": "Variant labels such as 118ml, Size: 118ml are visible, reducing ambiguity around the product format before a shopper clicks through.",
+            "evidence_strength": "official_pdp_reviewed"
+          }
+        ],
+        "best_for": [
+          {
+            "tag": "soy_based_remover",
+            "label": "soy-based remover",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "acetone_free_positioning",
+            "label": "acetone-free positioning",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "jojoba_seed_oil",
+            "label": "jojoba seed oil",
+            "confidence": "moderate"
+          }
+        ],
+        "shopping_highlight": "soy-based remover"
+      },
+      "writes": [
+        {
+          "kb_key": "product:ext_e86ee213b542fbb671e0804e",
+          "action": "update",
+          "reason": "explicit_owner_delegated_assistant_replacement_review",
+          "old_hash": "32e1c81b758cfaf591174af31a1f160f5d0b8ee9f4c7ee6028ebb0024107fe4c",
+          "candidate_hash": "c25203431ac5f44b9324efa9676814ab7e9dd7394ac9e829e8da34afa3a60532",
+          "existing_weak": true,
+          "source": "pivota_insights_official_pdp_manual_review_v1",
+          "after_inventory": {
+            "product_id": "ext_e86ee213b542fbb671e0804e",
+            "kb_key": "product:ext_e86ee213b542fbb671e0804e",
+            "source": "pivota_insights_official_pdp_manual_review_v1",
+            "updated_at": "",
+            "last_success_at": "",
+            "title": "Soy Nail Polish Remover With Almond Essential Oil",
+            "canonical_url": "",
+            "bundle_hash": "09fe91c24cd8e70c11a16ccee6d3020659779cef06bac132e76556fd9680ffba",
+            "lane": "keep",
+            "reason": "protected_good_content",
+            "priority": 0,
+            "protected": true,
+            "displayable": true,
+            "high_quality_ready": true,
+            "human_reviewed": true,
+            "issues": [],
+            "blocking_issues": [],
+            "quality_state": "reviewed",
+            "evidence_profile": "official_pdp_reviewed_formula_and_usage",
+            "evidence_rank": 1,
+            "review_tier": "assistant_reviewed",
+            "agent_readable": true,
+            "public_ready": true
+          },
+          "source_meta": {
+            "evidence_profile": "official_pdp_reviewed_formula_and_usage",
+            "quality_state": "reviewed",
+            "source_origin": "official_pdp_fields",
+            "source_url": "https://786cosmetics.com/products/soy-based-nail-polish-remover",
+            "quality_improvement": {
+              "previous_bundle_hash": "d9b3a62edbe0926e6359133c95d09d1d943effbb6b71e1fdbc7ed3da94f17c2e",
+              "candidate_bundle_hash": "09fe91c24cd8e70c11a16ccee6d3020659779cef06bac132e76556fd9680ffba",
+              "replacement_decision": "explicit_owner_delegated_assistant_replacement_review",
+              "existing_quality_lane": "suppress_public",
+              "candidate_quality_lane": "keep",
+              "existing_evidence_profile": "seller_only",
+              "candidate_evidence_profile": "official_pdp_reviewed_formula_and_usage"
+            }
+          }
+        },
+        {
+          "kb_key": "product:sig_abb0301133d433fb9888940b",
+          "action": "insert",
+          "reason": "new_product_intel_bundle",
+          "old_hash": null,
+          "candidate_hash": "c25203431ac5f44b9324efa9676814ab7e9dd7394ac9e829e8da34afa3a60532",
+          "existing_weak": true,
+          "source": "pivota_insights_official_pdp_manual_review_v1",
+          "after_inventory": {
+            "product_id": "ext_e86ee213b542fbb671e0804e",
+            "kb_key": "product:sig_abb0301133d433fb9888940b",
+            "source": "pivota_insights_official_pdp_manual_review_v1",
+            "updated_at": "",
+            "last_success_at": "",
+            "title": "Soy Nail Polish Remover With Almond Essential Oil",
+            "canonical_url": "",
+            "bundle_hash": "09fe91c24cd8e70c11a16ccee6d3020659779cef06bac132e76556fd9680ffba",
+            "lane": "keep",
+            "reason": "protected_good_content",
+            "priority": 0,
+            "protected": true,
+            "displayable": true,
+            "high_quality_ready": true,
+            "human_reviewed": true,
+            "issues": [],
+            "blocking_issues": [],
+            "quality_state": "reviewed",
+            "evidence_profile": "official_pdp_reviewed_formula_and_usage",
+            "evidence_rank": 1,
+            "review_tier": "assistant_reviewed",
+            "agent_readable": true,
+            "public_ready": true
+          },
+          "source_meta": {
+            "evidence_profile": "official_pdp_reviewed_formula_and_usage",
+            "quality_state": "reviewed",
+            "source_origin": "official_pdp_fields",
+            "source_url": "https://786cosmetics.com/products/soy-based-nail-polish-remover",
+            "quality_improvement": {
+              "previous_bundle_hash": null,
+              "candidate_bundle_hash": "09fe91c24cd8e70c11a16ccee6d3020659779cef06bac132e76556fd9680ffba",
+              "replacement_decision": "new_product_intel_bundle",
+              "existing_quality_lane": null,
+              "candidate_quality_lane": "keep",
+              "existing_evidence_profile": null,
+              "candidate_evidence_profile": "official_pdp_reviewed_formula_and_usage"
+            }
+          }
+        }
+      ]
+    }
+  ],
+  "apply_result": {
+    "upserts": 4,
+    "chunks": 1
+  }
+}

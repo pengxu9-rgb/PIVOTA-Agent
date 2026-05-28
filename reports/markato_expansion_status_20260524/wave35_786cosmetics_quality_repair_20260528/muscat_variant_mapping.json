@@ -1,0 +1,46 @@
+{
+  "source": "codex_manual_review_official_pdp",
+  "generated_at": "2026-05-28T03:03:00.000Z",
+  "mappings": [
+    {
+      "target_id": "ext_9cd211269e8480e6a7475b5e",
+      "source_url": "https://786cosmetics.com/products/muscat",
+      "source_origin": "official_pdp",
+      "variant_detail_label": "Shade: Muscat",
+      "variant_axes": {
+        "shade": "Muscat"
+      },
+      "match_basis": [
+        "brand:786 cosmetics",
+        "product_line:muscat",
+        "variant_axes:shade:muscat"
+      ],
+      "variants": [
+        {
+          "id": "51537209393383",
+          "variant_id": "51537209393383",
+          "title": "Shade: Muscat",
+          "display_label": "Shade: Muscat",
+          "options": [
+            {
+              "name": "Shade",
+              "value": "Muscat",
+              "axis_kind": "shade"
+            }
+          ],
+          "option_name": "Shade",
+          "option_value": "Muscat",
+          "axis_kind": "shade",
+          "price_amount": 8.39,
+          "price": 8.39,
+          "currency": "USD",
+          "available": true,
+          "in_stock": true,
+          "product_url": "https://786cosmetics.com/products/muscat",
+          "deep_link": "https://786cosmetics.com/products/muscat",
+          "source_quality_status": "high"
+        }
+      ]
+    }
+  ]
+}

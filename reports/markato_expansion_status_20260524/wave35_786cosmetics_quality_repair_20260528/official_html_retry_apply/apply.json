@@ -1,0 +1,106 @@
+{
+  "generated_at": "2026-05-28T02:36:32.200Z",
+  "dry_run": false,
+  "market": "US",
+  "summary": {
+    "scanned": 3,
+    "dry_run": 0,
+    "updated": 3,
+    "skipped": 0,
+    "failed": 0,
+    "by_field": {
+      "pdp_ingredients_raw": 3,
+      "pdp_how_to_use_raw": 3,
+      "pdp_details_sections": 3
+    }
+  },
+  "results": [
+    {
+      "external_product_id": "ext_f37bb5bc53c4764bc5de8e9c",
+      "title": "Isfahan - Breathable Nail Polish",
+      "domain": "786cosmetics.com",
+      "url": "https://786cosmetics.com/products/isfahan-breathable-nail-polish",
+      "host": "786cosmetics.com",
+      "status": "updated",
+      "patch_keys": [
+        "pdp_ingredients_raw",
+        "pdp_how_to_use_raw",
+        "pdp_details_sections"
+      ],
+      "http_status": 200,
+      "final_url": "https://786cosmetics.com/products/isfahan-breathable-nail-polish",
+      "extracted_summary": {
+        "ingredients_chars": 805,
+        "how_to_chars": 203,
+        "details_sections_count": 3,
+        "variant_count": 0,
+        "review_count": 0,
+        "rating": 0,
+        "review_preview_count": 0,
+        "review_preview_samples": []
+      },
+      "serving_mirror_sync": {
+        "catalog_products": 1,
+        "pdp_identity_listing": 1
+      }
+    },
+    {
+      "external_product_id": "ext_cd1678cacc37126a9d483888",
+      "title": "Bursa - Breathable Nail Polish",
+      "domain": "786cosmetics.com",
+      "url": "https://786cosmetics.com/products/bursa-breathable-nail-polish",
+      "host": "786cosmetics.com",
+      "status": "updated",
+      "patch_keys": [
+        "pdp_ingredients_raw",
+        "pdp_how_to_use_raw",
+        "pdp_details_sections"
+      ],
+      "http_status": 200,
+      "final_url": "https://786cosmetics.com/products/bursa-breathable-nail-polish",
+      "extracted_summary": {
+        "ingredients_chars": 805,
+        "how_to_chars": 203,
+        "details_sections_count": 3,
+        "variant_count": 0,
+        "review_count": 0,
+        "rating": 0,
+        "review_preview_count": 0,
+        "review_preview_samples": []
+      },
+      "serving_mirror_sync": {
+        "catalog_products": 1,
+        "pdp_identity_listing": 1
+      }
+    },
+    {
+      "external_product_id": "ext_c6ce33a7e9e59a7c8c24fc36",
+      "title": "Kyoto - Breathable Nail Polish",
+      "domain": "786cosmetics.com",
+      "url": "https://786cosmetics.com/products/kyoto",
+      "host": "786cosmetics.com",
+      "status": "updated",
+      "patch_keys": [
+        "pdp_ingredients_raw",
+        "pdp_how_to_use_raw",
+        "pdp_details_sections"
+      ],
+      "http_status": 200,
+      "final_url": "https://786cosmetics.com/products/kyoto",
+      "extracted_summary": {
+        "ingredients_chars": 805,
+        "how_to_chars": 203,
+        "details_sections_count": 3,
+        "variant_count": 0,
+        "review_count": 0,
+        "rating": 0,
+        "review_preview_count": 0,
+        "review_preview_samples": []
+      },
+      "serving_mirror_sync": {
+        "catalog_products": 1,
+        "pdp_identity_listing": 1
+      }
+    }
+  ]
+}

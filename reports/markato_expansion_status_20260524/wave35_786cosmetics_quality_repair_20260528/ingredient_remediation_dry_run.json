@@ -1,0 +1,159 @@
+{
+  "generated_at": "2026-05-28T02:43:41.915Z",
+  "options": {
+    "apply": false,
+    "market": "US",
+    "domain": "786cosmetics.com",
+    "out": "reports/markato_expansion_status_20260524/wave35_786cosmetics_quality_repair_20260528/ingredient_remediation_dry_run.json",
+    "forceFamily": "",
+    "generatedAt": "2026-05-28T02:43:41.915Z"
+  },
+  "summary": {
+    "dry_run": true,
+    "input_target_ids": 10,
+    "fetched_rows": 10,
+    "changed_rows": 10,
+    "updated_rows": 0,
+    "failed_rows": 0,
+    "serving_mirror_catalog_updates": 0,
+    "serving_mirror_identity_updates": 0,
+    "by_action": {
+      "component_ref_review_required": 3,
+      "mark_inci_not_applicable": 3,
+      "manual_source_review_required": 1,
+      "component_refs_linked": 3
+    },
+    "by_status": {
+      "dry_run": 10
+    },
+    "by_family": {
+      "set_or_collection": 6,
+      "accessory": 1,
+      "single_formula": 1,
+      "non_merch": 2
+    }
+  },
+  "apply_errors": [],
+  "results": [
+    {
+      "external_product_id": "ext_2dcd32513f13fbec782bb9d2",
+      "title": "Nail Polish Set 4 Piece (Choose Your Colors)",
+      "family": "set_or_collection",
+      "classified_family": "set_or_collection",
+      "forced_family": null,
+      "status": "dry_run",
+      "action": "component_ref_review_required",
+      "reason_codes": [
+        "bundle_component_refs_required"
+      ]
+    },
+    {
+      "external_product_id": "ext_31b12b124fb01c2d35b98e38",
+      "title": "786 Canvas Tote Bag",
+      "family": "accessory",
+      "classified_family": "accessory",
+      "forced_family": null,
+      "status": "dry_run",
+      "action": "mark_inci_not_applicable",
+      "reason_codes": [
+        "product_family_accessory"
+      ]
+    },
+    {
+      "external_product_id": "ext_58baf9029d81af1ac9f8bc7e",
+      "title": "Soy Nail Polish Remover With Jojoba Seed & Tea Tree Oil",
+      "family": "single_formula",
+      "classified_family": "single_formula",
+      "forced_family": null,
+      "status": "dry_run",
+      "action": "manual_source_review_required",
+      "reason_codes": [
+        "manual_ingredient_source_review_required"
+      ]
+    },
+    {
+      "external_product_id": "ext_5c80fda1202cbae9f1252b1c",
+      "title": "Nail Polish Set (Choose your Colors)",
+      "family": "set_or_collection",
+      "classified_family": "set_or_collection",
+      "forced_family": null,
+      "status": "dry_run",
+      "action": "component_ref_review_required",
+      "reason_codes": [
+        "bundle_component_refs_required"
+      ]
+    },
+    {
+      "external_product_id": "ext_86344711237a7b6cdad6cfa3",
+      "title": "Golden Hour Collection - 6 Piece Nail Polish Set",
+      "family": "set_or_collection",
+      "classified_family": "set_or_collection",
+      "forced_family": null,
+      "status": "dry_run",
+      "action": "component_refs_linked",
+      "reason_codes": [
+        "bundle_component_refs_linked"
+      ]
+    },
+    {
+      "external_product_id": "ext_8d14bc437cfb15f2717c6bcc",
+      "title": "Nail Polish Set 6 Piece (Choose Your Colors)",
+      "family": "set_or_collection",
+      "classified_family": "set_or_collection",
+      "forced_family": null,
+      "status": "dry_run",
+      "action": "component_ref_review_required",
+      "reason_codes": [
+        "bundle_component_refs_required"
+      ]
+    },
+    {
+      "external_product_id": "ext_bde8c6160a5da39af55066d6",
+      "title": "Riviera Collection - 4  Piece Nail Polish Set",
+      "family": "set_or_collection",
+      "classified_family": "set_or_collection",
+      "forced_family": null,
+      "status": "dry_run",
+      "action": "component_refs_linked",
+      "reason_codes": [
+        "bundle_component_refs_linked"
+      ]
+    },
+    {
+      "external_product_id": "ext_c127c1d09e3be26e54f4a0a0",
+      "title": "Gift Card",
+      "family": "non_merch",
+      "classified_family": "non_merch",
+      "forced_family": null,
+      "status": "dry_run",
+      "action": "mark_inci_not_applicable",
+      "reason_codes": [
+        "product_family_non_merch"
+      ]
+    },
+    {
+      "external_product_id": "ext_c7f9b723f9c30146d9cb1fce",
+      "title": "Blush & Bare 4-Piece Nail Polish Set",
+      "family": "set_or_collection",
+      "classified_family": "set_or_collection",
+      "forced_family": null,
+      "status": "dry_run",
+      "action": "component_refs_linked",
+      "reason_codes": [
+        "bundle_component_refs_linked"
+      ]
+    },
+    {
+      "external_product_id": "ext_e96da71bdfd3ec573a4642cd",
+      "title": "Shipping Protection",
+      "family": "non_merch",
+      "classified_family": "non_merch",
+      "forced_family": null,
+      "status": "dry_run",
+      "action": "mark_inci_not_applicable",
+      "reason_codes": [
+        "product_family_non_merch"
+      ]
+    }
+  ]
+}

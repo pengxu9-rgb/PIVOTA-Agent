@@ -1,0 +1,1602 @@
+{
+  "source": "wave35_786cosmetics_reviewed_source_variant_mapping",
+  "generated_at": "2026-05-28T02:25:58.145Z",
+  "mappings": [
+    {
+      "target_id": "ext_faf89834933316df0d8da973",
+      "source_url": "https://786cosmetics.com/products/azores-breathable-nail-polish",
+      "source_origin": "official_pdp",
+      "variant_detail_label": "Shade: Azores",
+      "variant_axes": {
+        "shade": "Azores"
+      },
+      "match_basis": [
+        "brand:786 cosmetics",
+        "product_line:azores",
+        "variant_axes:shade:azores"
+      ],
+      "variants": [
+        {
+          "id": "36937860153508",
+          "variant_id": "36937860153508",
+          "sku": "Azores",
+          "sku_id": "Azores",
+          "title": "Shade: Azores",
+          "display_label": "Shade: Azores",
+          "options": [
+            {
+              "name": "Shade",
+              "value": "Azores",
+              "axis_kind": "shade"
+            }
+          ],
+          "option_name": "Shade",
+          "option_value": "Azores",
+          "axis_kind": "shade",
+          "price_amount": 13.99,
+          "price": 13.99,
+          "currency": "USD",
+          "available": true,
+          "in_stock": true,
+          "product_url": "https://786cosmetics.com/products/azores-breathable-nail-polish",
+          "deep_link": "https://786cosmetics.com/products/azores-breathable-nail-polish",
+          "source_quality_status": "high"
+        }
+      ]
+    },
+    {
+      "target_id": "ext_5f55c01bae5cd6b5f0a0e78e",
+      "source_url": "https://786cosmetics.com/products/dakar-breathable-nail-polish",
+      "source_origin": "official_pdp",
+      "variant_detail_label": "Shade: Dakar",
+      "variant_axes": {
+        "shade": "Dakar"
+      },
+      "match_basis": [
+        "brand:786 cosmetics",
+        "product_line:dakar",
+        "variant_axes:shade:dakar"
+      ],
+      "variants": [
+        {
+          "id": "34780885844132",
+          "variant_id": "34780885844132",
+          "sku": "Dakar",
+          "sku_id": "Dakar",
+          "title": "Shade: Dakar",
+          "display_label": "Shade: Dakar",
+          "options": [
+            {
+              "name": "Shade",
+              "value": "Dakar",
+              "axis_kind": "shade"
+            }
+          ],
+          "option_name": "Shade",
+          "option_value": "Dakar",
+          "axis_kind": "shade",
+          "price_amount": 13.99,
+          "price": 13.99,
+          "currency": "USD",
+          "available": true,
+          "in_stock": true,
+          "product_url": "https://786cosmetics.com/products/dakar-breathable-nail-polish",
+          "deep_link": "https://786cosmetics.com/products/dakar-breathable-nail-polish",
+          "source_quality_status": "high"
+        }
+      ]
+    },
+    {
+      "target_id": "ext_a36359795b89961a7c052b21",
+      "source_url": "https://786cosmetics.com/products/karachi-breathable-nail-polish",
+      "source_origin": "official_pdp",
+      "variant_detail_label": "Shade: Karachi",
+      "variant_axes": {
+        "shade": "Karachi"
+      },
+      "match_basis": [
+        "brand:786 cosmetics",
+        "product_line:karachi",
+        "variant_axes:shade:karachi"
+      ],
+      "variants": [
+        {
+          "id": "34780884795556",
+          "variant_id": "34780884795556",
+          "sku": "Karachi",
+          "sku_id": "Karachi",
+          "title": "Shade: Karachi",
+          "display_label": "Shade: Karachi",
+          "options": [
+            {
+              "name": "Shade",
+              "value": "Karachi",
+              "axis_kind": "shade"
+            }
+          ],
+          "option_name": "Shade",
+          "option_value": "Karachi",
+          "axis_kind": "shade",
+          "price_amount": 9.79,
+          "price": 9.79,
+          "currency": "USD",
+          "available": true,
+          "in_stock": true,
+          "product_url": "https://786cosmetics.com/products/karachi-breathable-nail-polish",
+          "deep_link": "https://786cosmetics.com/products/karachi-breathable-nail-polish",
+          "source_quality_status": "high"
+        }
+      ]
+    },
+    {
+      "target_id": "ext_ab5107f3a835da10508757c6",
+      "source_url": "https://786cosmetics.com/products/havana-breathable-nail-polish",
+      "source_origin": "official_pdp",
+      "variant_detail_label": "Shade: Havana",
+      "variant_axes": {
+        "shade": "Havana"
+      },
+      "match_basis": [
+        "brand:786 cosmetics",
+        "product_line:havana",
+        "variant_axes:shade:havana"
+      ],
+      "variants": [
+        {
+          "id": "44882203246823",
+          "variant_id": "44882203246823",
+          "sku": "Havana",
+          "sku_id": "Havana",
+          "title": "Shade: Havana",
+          "display_label": "Shade: Havana",
+          "options": [
+            {
+              "name": "Shade",
+              "value": "Havana",
+              "axis_kind": "shade"
+            }
+          ],
+          "option_name": "Shade",
+          "option_value": "Havana",
+          "axis_kind": "shade",
+          "price_amount": 13.99,
+          "price": 13.99,
+          "currency": "USD",
+          "available": true,
+          "in_stock": true,
+          "product_url": "https://786cosmetics.com/products/havana-breathable-nail-polish",
+          "deep_link": "https://786cosmetics.com/products/havana-breathable-nail-polish",
+          "source_quality_status": "high"
+        }
+      ]
+    },
+    {
+      "target_id": "ext_abd25039dea2189dfcca8079",
+      "source_url": "https://786cosmetics.com/products/patagonia-breathable-nail-polish",
+      "source_origin": "official_pdp",
+      "variant_detail_label": "Shade: Patagonia",
+      "variant_axes": {
+        "shade": "Patagonia"
+      },
+      "match_basis": [
+        "brand:786 cosmetics",
+        "product_line:patagonia",
+        "variant_axes:shade:patagonia"
+      ],
+      "variants": [
+        {
+          "id": "39770798096548",
+          "variant_id": "39770798096548",
+          "sku": "Patagonia",
+          "sku_id": "Patagonia",
+          "title": "Shade: Patagonia",
+          "display_label": "Shade: Patagonia",
+          "options": [
+            {
+              "name": "Shade",
+              "value": "Patagonia",
+              "axis_kind": "shade"
+            }
+          ],
+          "option_name": "Shade",
+          "option_value": "Patagonia",
+          "axis_kind": "shade",
+          "price_amount": 13.99,
+          "price": 13.99,
+          "currency": "USD",
+          "available": true,
+          "in_stock": true,
+          "product_url": "https://786cosmetics.com/products/patagonia-breathable-nail-polish",
+          "deep_link": "https://786cosmetics.com/products/patagonia-breathable-nail-polish",
+          "source_quality_status": "high"
+        }
+      ]
+    },
+    {
+      "target_id": "ext_c6d113bff874c00abfb4ba33",
+      "source_url": "https://786cosmetics.com/products/tallinn-breathable-nail-polish",
+      "source_origin": "official_pdp",
+      "variant_detail_label": "Shade: Tallinn",
+      "variant_axes": {
+        "shade": "Tallinn"
+      },
+      "match_basis": [
+        "brand:786 cosmetics",
+        "product_line:tallinn",
+        "variant_axes:shade:tallinn"
+      ],
+      "variants": [
+        {
+          "id": "41077774352548",
+          "variant_id": "41077774352548",
+          "sku": "Tallinn",
+          "sku_id": "Tallinn",
+          "title": "Shade: Tallinn",
+          "display_label": "Shade: Tallinn",
+          "options": [
+            {
+              "name": "Shade",
+              "value": "Tallinn",
+              "axis_kind": "shade"
+            }
+          ],
+          "option_name": "Shade",
+          "option_value": "Tallinn",
+          "axis_kind": "shade",
+          "price_amount": 9.79,
+          "price": 9.79,
+          "currency": "USD",
+          "available": true,
+          "in_stock": true,
+          "product_url": "https://786cosmetics.com/products/tallinn-breathable-nail-polish",
+          "deep_link": "https://786cosmetics.com/products/tallinn-breathable-nail-polish",
+          "source_quality_status": "high"
+        }
+      ]
+    },
+    {
+      "target_id": "ext_da3b149ed322142c187224b6",
+      "source_url": "https://786cosmetics.com/products/toulouse-breathable-nail-polish",
+      "source_origin": "official_pdp",
+      "variant_detail_label": "Shade: Toulouse",
+      "variant_axes": {
+        "shade": "Toulouse"
+      },
+      "match_basis": [
+        "brand:786 cosmetics",
+        "product_line:toulouse",
+        "variant_axes:shade:toulouse"
+      ],
+      "variants": [
+        {
+          "id": "40807958937764",
+          "variant_id": "40807958937764",
+          "sku": "Toulouse",
+          "sku_id": "Toulouse",
+          "title": "Shade: Toulouse",
+          "display_label": "Shade: Toulouse",
+          "options": [
+            {
+              "name": "Shade",
+              "value": "Toulouse",
+              "axis_kind": "shade"
+            }
+          ],
+          "option_name": "Shade",
+          "option_value": "Toulouse",
+          "axis_kind": "shade",
+          "price_amount": 13.99,
+          "price": 13.99,
+          "currency": "USD",
+          "available": true,
+          "in_stock": true,
+          "product_url": "https://786cosmetics.com/products/toulouse-breathable-nail-polish",
+          "deep_link": "https://786cosmetics.com/products/toulouse-breathable-nail-polish",
+          "source_quality_status": "high"
+        }
+      ]
+    },
+    {
+      "target_id": "ext_efe7512de8c6df9f75ca19e0",
+      "source_url": "https://786cosmetics.com/products/dubrovnik-breathable-nail-polish",
+      "source_origin": "official_pdp",
+      "variant_detail_label": "Shade: Dubrovnik",
+      "variant_axes": {
+        "shade": "Dubrovnik"
+      },
+      "match_basis": [
+        "brand:786 cosmetics",
+        "product_line:dubrovnik",
+        "variant_axes:shade:dubrovnik"
+      ],
+      "variants": [
+        {
+          "id": "40807968538788",
+          "variant_id": "40807968538788",
+          "sku": "Dubrovnik",
+          "sku_id": "Dubrovnik",
+          "title": "Shade: Dubrovnik",
+          "display_label": "Shade: Dubrovnik",
+          "options": [
+            {
+              "name": "Shade",
+              "value": "Dubrovnik",
+              "axis_kind": "shade"
+            }
+          ],
+          "option_name": "Shade",
+          "option_value": "Dubrovnik",
+          "axis_kind": "shade",
+          "price_amount": 9.79,
+          "price": 9.79,
+          "currency": "USD",
+          "available": true,
+          "in_stock": true,
+          "product_url": "https://786cosmetics.com/products/dubrovnik-breathable-nail-polish",
+          "deep_link": "https://786cosmetics.com/products/dubrovnik-breathable-nail-polish",
+          "source_quality_status": "high"
+        }
+      ]
+    },
+    {
+      "target_id": "ext_f56010dd5bf971f7b7f644a6",
+      "source_url": "https://786cosmetics.com/products/uluru-breathable-nail-polish",
+      "source_origin": "official_pdp",
+      "variant_detail_label": "Shade: Uluru",
+      "variant_axes": {
+        "shade": "Uluru"
+      },
+      "match_basis": [
+        "brand:786 cosmetics",
+        "product_line:uluru",
+        "variant_axes:shade:uluru"
+      ],
+      "variants": [
+        {
+          "id": "41349209850020",
+          "variant_id": "41349209850020",
+          "sku": "Uluru",
+          "sku_id": "Uluru",
+          "title": "Shade: Uluru",
+          "display_label": "Shade: Uluru",
+          "options": [
+            {
+              "name": "Shade",
+              "value": "Uluru",
+              "axis_kind": "shade"
+            }
+          ],
+          "option_name": "Shade",
+          "option_value": "Uluru",
+          "axis_kind": "shade",
+          "price_amount": 9.79,
+          "price": 9.79,
+          "currency": "USD",
+          "available": true,
+          "in_stock": true,
+          "product_url": "https://786cosmetics.com/products/uluru-breathable-nail-polish",
+          "deep_link": "https://786cosmetics.com/products/uluru-breathable-nail-polish",
+          "source_quality_status": "high"
+        }
+      ]
+    },
+    {
+      "target_id": "ext_0d844fc65fd3348e35a09c80",
+      "source_url": "https://786cosmetics.com/products/abu-dhabi-breathable-nail-polish",
+      "source_origin": "official_pdp",
+      "variant_detail_label": "Shade: Abu Dhabi",
+      "variant_axes": {
+        "shade": "Abu Dhabi"
+      },
+      "match_basis": [
+        "brand:786 cosmetics",
+        "product_line:abu_dhabi",
+        "variant_axes:shade:abu_dhabi"
+      ],
+      "variants": [
+        {
+          "id": "34780881944740",
+          "variant_id": "34780881944740",
+          "sku": "Abu Dhabi-1",
+          "sku_id": "Abu Dhabi-1",
+          "title": "Shade: Abu Dhabi",
+          "display_label": "Shade: Abu Dhabi",
+          "options": [
+            {
+              "name": "Shade",
+              "value": "Abu Dhabi",
+              "axis_kind": "shade"
+            }
+          ],
+          "option_name": "Shade",
+          "option_value": "Abu Dhabi",
+          "axis_kind": "shade",
+          "price_amount": 13.99,
+          "price": 13.99,
+          "currency": "USD",
+          "available": true,
+          "in_stock": true,
+          "product_url": "https://786cosmetics.com/products/abu-dhabi-breathable-nail-polish",
+          "deep_link": "https://786cosmetics.com/products/abu-dhabi-breathable-nail-polish",
+          "source_quality_status": "high"
+        }
+      ]
+    },
+    {
+      "target_id": "ext_151aebc5b6246b8d2d9a877b",
+      "source_url": "https://786cosmetics.com/products/agra-breathable-nail-polish",
+      "source_origin": "official_pdp",
+      "variant_detail_label": "Shade: Agra",
+      "variant_axes": {
+        "shade": "Agra"
+      },
+      "match_basis": [
+        "brand:786 cosmetics",
+        "product_line:agra",
+        "variant_axes:shade:agra"
+      ],
+      "variants": [
+        {
+          "id": "34780885024932",
+          "variant_id": "34780885024932",
+          "sku": "Agra",
+          "sku_id": "Agra",
+          "title": "Shade: Agra",
+          "display_label": "Shade: Agra",
+          "options": [
+            {
+              "name": "Shade",
+              "value": "Agra",
+              "axis_kind": "shade"
+            }
+          ],
+          "option_name": "Shade",
+          "option_value": "Agra",
+          "axis_kind": "shade",
+          "price_amount": 13.99,
+          "price": 13.99,
+          "currency": "USD",
+          "available": true,
+          "in_stock": true,
+          "product_url": "https://786cosmetics.com/products/agra-breathable-nail-polish",
+          "deep_link": "https://786cosmetics.com/products/agra-breathable-nail-polish",
+          "source_quality_status": "high"
+        }
+      ]
+    },
+    {
+      "target_id": "ext_2fc7cc1ac3370464b4b923d3",
+      "source_url": "https://786cosmetics.com/products/bahrain-breathable-nail-polish",
+      "source_origin": "official_pdp",
+      "variant_detail_label": "Shade: Bahrain",
+      "variant_axes": {
+        "shade": "Bahrain"
+      },
+      "match_basis": [
+        "brand:786 cosmetics",
+        "product_line:bahrain",
+        "variant_axes:shade:bahrain"
+      ],
+      "variants": [
+        {
+          "id": "36757333475492",
+          "variant_id": "36757333475492",
+          "sku": "Bahrain",
+          "sku_id": "Bahrain",
+          "title": "Shade: Bahrain",
+          "display_label": "Shade: Bahrain",
+          "options": [
+            {
+              "name": "Shade",
+              "value": "Bahrain",
+              "axis_kind": "shade"
+            }
+          ],
+          "option_name": "Shade",
+          "option_value": "Bahrain",
+          "axis_kind": "shade",
+          "price_amount": 13.99,
+          "price": 13.99,
+          "currency": "USD",
+          "available": true,
+          "in_stock": true,
+          "product_url": "https://786cosmetics.com/products/bahrain-breathable-nail-polish",
+          "deep_link": "https://786cosmetics.com/products/bahrain-breathable-nail-polish",
+          "source_quality_status": "high"
+        }
+      ]
+    },
+    {
+      "target_id": "ext_33fa1a749060cefdd3e0dc2b",
+      "source_url": "https://786cosmetics.com/products/beirut-breathable-nail-polish",
+      "source_origin": "official_pdp",
+      "variant_detail_label": "Shade: Beirut",
+      "variant_axes": {
+        "shade": "Beirut"
+      },
+      "match_basis": [
+        "brand:786 cosmetics",
+        "product_line:beirut",
+        "variant_axes:shade:beirut"
+      ],
+      "variants": [
+        {
+          "id": "36906614915236",
+          "variant_id": "36906614915236",
+          "sku": "Beirut",
+          "sku_id": "Beirut",
+          "title": "Shade: Beirut",
+          "display_label": "Shade: Beirut",
+          "options": [
+            {
+              "name": "Shade",
+              "value": "Beirut",
+              "axis_kind": "shade"
+            }
+          ],
+          "option_name": "Shade",
+          "option_value": "Beirut",
+          "axis_kind": "shade",
+          "price_amount": 13.99,
+          "price": 13.99,
+          "currency": "USD",
+          "available": true,
+          "in_stock": true,
+          "product_url": "https://786cosmetics.com/products/beirut-breathable-nail-polish",
+          "deep_link": "https://786cosmetics.com/products/beirut-breathable-nail-polish",
+          "source_quality_status": "high"
+        }
+      ]
+    },
+    {
+      "target_id": "ext_36b452da1e0dde5c19bd2ed0",
+      "source_url": "https://786cosmetics.com/products/casablanca-breathable-nail-polish",
+      "source_origin": "official_pdp",
+      "variant_detail_label": "Shade: Casablanca",
+      "variant_axes": {
+        "shade": "Casablanca"
+      },
+      "match_basis": [
+        "brand:786 cosmetics",
+        "product_line:casablanca",
+        "variant_axes:shade:casablanca"
+      ],
+      "variants": [
+        {
+          "id": "34780884893860",
+          "variant_id": "34780884893860",
+          "sku": "Casablanca",
+          "sku_id": "Casablanca",
+          "title": "Shade: Casablanca",
+          "display_label": "Shade: Casablanca",
+          "options": [
+            {
+              "name": "Shade",
+              "value": "Casablanca",
+              "axis_kind": "shade"
+            }
+          ],
+          "option_name": "Shade",
+          "option_value": "Casablanca",
+          "axis_kind": "shade",
+          "price_amount": 13.99,
+          "price": 13.99,
+          "currency": "USD",
+          "available": true,
+          "in_stock": true,
+          "product_url": "https://786cosmetics.com/products/casablanca-breathable-nail-polish",
+          "deep_link": "https://786cosmetics.com/products/casablanca-breathable-nail-polish",
+          "source_quality_status": "high"
+        }
+      ]
+    },
+    {
+      "target_id": "ext_2c4793f5f96ec2d4680fd55b",
+      "source_url": "https://786cosmetics.com/products/zhangye-breathable-nail-polish",
+      "source_origin": "official_pdp",
+      "variant_detail_label": "Shade: Zhangye",
+      "variant_axes": {
+        "shade": "Zhangye"
+      },
+      "match_basis": [
+        "brand:786 cosmetics",
+        "product_line:zhangye",
+        "variant_axes:shade:zhangye"
+      ],
+      "variants": [
+        {
+          "id": "36937966289060",
+          "variant_id": "36937966289060",
+          "sku": "Zhangye",
+          "sku_id": "Zhangye",
+          "title": "Shade: Zhangye",
+          "display_label": "Shade: Zhangye",
+          "options": [
+            {
+              "name": "Shade",
+              "value": "Zhangye",
+              "axis_kind": "shade"
+            }
+          ],
+          "option_name": "Shade",
+          "option_value": "Zhangye",
+          "axis_kind": "shade",
+          "price_amount": 9.79,
+          "price": 9.79,
+          "currency": "USD",
+          "available": true,
+          "in_stock": true,
+          "product_url": "https://786cosmetics.com/products/zhangye-breathable-nail-polish",
+          "deep_link": "https://786cosmetics.com/products/zhangye-breathable-nail-polish",
+          "source_quality_status": "high"
+        }
+      ]
+    },
+    {
+      "target_id": "ext_41aeeb470016979417c8637d",
+      "source_url": "https://786cosmetics.com/products/kabul-breathable-nail-polish",
+      "source_origin": "official_pdp",
+      "variant_detail_label": "Shade: Kabul",
+      "variant_axes": {
+        "shade": "Kabul"
+      },
+      "match_basis": [
+        "brand:786 cosmetics",
+        "product_line:kabul",
+        "variant_axes:shade:kabul"
+      ],
+      "variants": [
+        {
+          "id": "35763930529956",
+          "variant_id": "35763930529956",
+          "sku": "Kabul",
+          "sku_id": "Kabul",
+          "title": "Shade: Kabul",
+          "display_label": "Shade: Kabul",
+          "options": [
+            {
+              "name": "Shade",
+              "value": "Kabul",
+              "axis_kind": "shade"
+            }
+          ],
+          "option_name": "Shade",
+          "option_value": "Kabul",
+          "axis_kind": "shade",
+          "price_amount": 13.99,
+          "price": 13.99,
+          "currency": "USD",
+          "available": true,
+          "in_stock": true,
+          "product_url": "https://786cosmetics.com/products/kabul-breathable-nail-polish",
+          "deep_link": "https://786cosmetics.com/products/kabul-breathable-nail-polish",
+          "source_quality_status": "high"
+        }
+      ]
+    },
+    {
+      "target_id": "ext_69dcb156e335cb9756e016b2",
+      "source_url": "https://786cosmetics.com/products/kashmir-breathable-nail-polish",
+      "source_origin": "official_pdp",
+      "variant_detail_label": "Shade: Kashmir",
+      "variant_axes": {
+        "shade": "Kashmir"
+      },
+      "match_basis": [
+        "brand:786 cosmetics",
+        "product_line:kashmir",
+        "variant_axes:shade:kashmir"
+      ],
+      "variants": [
+        {
+          "id": "34780882600100",
+          "variant_id": "34780882600100",
+          "sku": "Kashmir",
+          "sku_id": "Kashmir",
+          "title": "Shade: Kashmir",
+          "display_label": "Shade: Kashmir",
+          "options": [
+            {
+              "name": "Shade",
+              "value": "Kashmir",
+              "axis_kind": "shade"
+            }
+          ],
+          "option_name": "Shade",
+          "option_value": "Kashmir",
+          "axis_kind": "shade",
+          "price_amount": 13.99,
+          "price": 13.99,
+          "currency": "USD",
+          "available": true,
+          "in_stock": true,
+          "product_url": "https://786cosmetics.com/products/kashmir-breathable-nail-polish",
+          "deep_link": "https://786cosmetics.com/products/kashmir-breathable-nail-polish",
+          "source_quality_status": "high"
+        }
+      ]
+    },
+    {
+      "target_id": "ext_8573685e1cc94840934c764d",
+      "source_url": "https://786cosmetics.com/products/goychay-breathable-nail-polish",
+      "source_origin": "official_pdp",
+      "variant_detail_label": "Shade: Goychay",
+      "variant_axes": {
+        "shade": "Goychay"
+      },
+      "match_basis": [
+        "brand:786 cosmetics",
+        "product_line:goychay",
+        "variant_axes:shade:goychay"
+      ],
+      "variants": [
+        {
+          "id": "34780886958244",
+          "variant_id": "34780886958244",
+          "sku": "Goychay",
+          "sku_id": "Goychay",
+          "title": "Shade: Goychay",
+          "display_label": "Shade: Goychay",
+          "options": [
+            {
+              "name": "Shade",
+              "value": "Goychay",
+              "axis_kind": "shade"
+            }
+          ],
+          "option_name": "Shade",
+          "option_value": "Goychay",
+          "axis_kind": "shade",
+          "price_amount": 13.99,
+          "price": 13.99,
+          "currency": "USD",
+          "available": true,
+          "in_stock": true,
+          "product_url": "https://786cosmetics.com/products/goychay-breathable-nail-polish",
+          "deep_link": "https://786cosmetics.com/products/goychay-breathable-nail-polish",
+          "source_quality_status": "high"
+        }
+      ]
+    },
+    {
+      "target_id": "ext_55b774d3c57906a77a7167f0",
+      "source_url": "https://786cosmetics.com/products/sorrento-breathable-nail-polish",
+      "source_origin": "official_pdp",
+      "variant_detail_label": "Shade: Sorrento",
+      "variant_axes": {
+        "shade": "Sorrento"
+      },
+      "match_basis": [
+        "brand:786 cosmetics",
+        "product_line:sorrento",
+        "variant_axes:shade:sorrento"
+      ],
+      "variants": [
+        {
+          "id": "41349208309924",
+          "variant_id": "41349208309924",
+          "sku": "Sorrento",
+          "sku_id": "Sorrento",
+          "title": "Shade: Sorrento",
+          "display_label": "Shade: Sorrento",
+          "options": [
+            {
+              "name": "Shade",
+              "value": "Sorrento",
+              "axis_kind": "shade"
+            }
+          ],
+          "option_name": "Shade",
+          "option_value": "Sorrento",
+          "axis_kind": "shade",
+          "price_amount": 9.79,
+          "price": 9.79,
+          "currency": "USD",
+          "available": true,
+          "in_stock": true,
+          "product_url": "https://786cosmetics.com/products/sorrento-breathable-nail-polish",
+          "deep_link": "https://786cosmetics.com/products/sorrento-breathable-nail-polish",
+          "source_quality_status": "high"
+        }
+      ]
+    },
+    {
+      "target_id": "ext_f37bb5bc53c4764bc5de8e9c",
+      "source_url": "https://786cosmetics.com/products/isfahan-breathable-nail-polish",
+      "source_origin": "official_pdp",
+      "variant_detail_label": "Shade: Isfahan",
+      "variant_axes": {
+        "shade": "Isfahan"
+      },
+      "match_basis": [
+        "brand:786 cosmetics",
+        "product_line:isfahan",
+        "variant_axes:shade:isfahan"
+      ],
+      "variants": [
+        {
+          "id": "34780885647524",
+          "variant_id": "34780885647524",
+          "sku": "Isfahan",
+          "sku_id": "Isfahan",
+          "title": "Shade: Isfahan",
+          "display_label": "Shade: Isfahan",
+          "options": [
+            {
+              "name": "Shade",
+              "value": "Isfahan",
+              "axis_kind": "shade"
+            }
+          ],
+          "option_name": "Shade",
+          "option_value": "Isfahan",
+          "axis_kind": "shade",
+          "price_amount": 13.99,
+          "price": 13.99,
+          "currency": "USD",
+          "available": true,
+          "in_stock": true,
+          "product_url": "https://786cosmetics.com/products/isfahan-breathable-nail-polish",
+          "deep_link": "https://786cosmetics.com/products/isfahan-breathable-nail-polish",
+          "source_quality_status": "high"
+        }
+      ]
+    },
+    {
+      "target_id": "ext_cd1678cacc37126a9d483888",
+      "source_url": "https://786cosmetics.com/products/bursa-breathable-nail-polish",
+      "source_origin": "official_pdp",
+      "variant_detail_label": "Shade: Bursa",
+      "variant_axes": {
+        "shade": "Bursa"
+      },
+      "match_basis": [
+        "brand:786 cosmetics",
+        "product_line:bursa",
+        "variant_axes:shade:bursa"
+      ],
+      "variants": [
+        {
+          "id": "51537196908775",
+          "variant_id": "51537196908775",
+          "sku": "Bursa",
+          "sku_id": "Bursa",
+          "title": "Shade: Bursa",
+          "display_label": "Shade: Bursa",
+          "options": [
+            {
+              "name": "Shade",
+              "value": "Bursa",
+              "axis_kind": "shade"
+            }
+          ],
+          "option_name": "Shade",
+          "option_value": "Bursa",
+          "axis_kind": "shade",
+          "price_amount": 13.99,
+          "price": 13.99,
+          "currency": "USD",
+          "available": true,
+          "in_stock": true,
+          "product_url": "https://786cosmetics.com/products/bursa-breathable-nail-polish",
+          "deep_link": "https://786cosmetics.com/products/bursa-breathable-nail-polish",
+          "source_quality_status": "high"
+        }
+      ]
+    },
+    {
+      "target_id": "ext_c6ce33a7e9e59a7c8c24fc36",
+      "source_url": "https://786cosmetics.com/products/kyoto",
+      "source_origin": "official_pdp",
+      "variant_detail_label": "Shade: Kyoto",
+      "variant_axes": {
+        "shade": "Kyoto"
+      },
+      "match_basis": [
+        "brand:786 cosmetics",
+        "product_line:kyoto",
+        "variant_axes:shade:kyoto"
+      ],
+      "variants": [
+        {
+          "id": "51537210310887",
+          "variant_id": "51537210310887",
+          "sku": "Kyoto",
+          "sku_id": "Kyoto",
+          "title": "Shade: Kyoto",
+          "display_label": "Shade: Kyoto",
+          "options": [
+            {
+              "name": "Shade",
+              "value": "Kyoto",
+              "axis_kind": "shade"
+            }
+          ],
+          "option_name": "Shade",
+          "option_value": "Kyoto",
+          "axis_kind": "shade",
+          "price_amount": 13.99,
+          "price": 13.99,
+          "currency": "USD",
+          "available": true,
+          "in_stock": true,
+          "product_url": "https://786cosmetics.com/products/kyoto",
+          "deep_link": "https://786cosmetics.com/products/kyoto",
+          "source_quality_status": "high"
+        }
+      ]
+    },
+    {
+      "target_id": "ext_afb163014d0bffd3a6493c05",
+      "source_url": "https://786cosmetics.com/products/marrakesh",
+      "source_origin": "official_pdp",
+      "variant_detail_label": "Shade: Marrakesh",
+      "variant_axes": {
+        "shade": "Marrakesh"
+      },
+      "match_basis": [
+        "brand:786 cosmetics",
+        "product_line:marrakesh",
+        "variant_axes:shade:marrakesh"
+      ],
+      "variants": [
+        {
+          "id": "51537210867943",
+          "variant_id": "51537210867943",
+          "sku": "Marrakesh",
+          "sku_id": "Marrakesh",
+          "title": "Shade: Marrakesh",
+          "display_label": "Shade: Marrakesh",
+          "options": [
+            {
+              "name": "Shade",
+              "value": "Marrakesh",
+              "axis_kind": "shade"
+            }
+          ],
+          "option_name": "Shade",
+          "option_value": "Marrakesh",
+          "axis_kind": "shade",
+          "price_amount": 13.99,
+          "price": 13.99,
+          "currency": "USD",
+          "available": true,
+          "in_stock": true,
+          "product_url": "https://786cosmetics.com/products/marrakesh",
+          "deep_link": "https://786cosmetics.com/products/marrakesh",
+          "source_quality_status": "high"
+        }
+      ]
+    },
+    {
+      "target_id": "ext_a5d2bdb05f2216a85764454f",
+      "source_url": "https://786cosmetics.com/products/lisbon-breathable-nail-polish",
+      "source_origin": "official_pdp",
+      "variant_detail_label": "Shade: Lisbon",
+      "variant_axes": {
+        "shade": "Lisbon"
+      },
+      "match_basis": [
+        "brand:786 cosmetics",
+        "product_line:lisbon",
+        "variant_axes:shade:lisbon"
+      ],
+      "variants": [
+        {
+          "id": "39770786758820",
+          "variant_id": "39770786758820",
+          "sku": "Lisbon",
+          "sku_id": "Lisbon",
+          "title": "Shade: Lisbon",
+          "display_label": "Shade: Lisbon",
+          "options": [
+            {
+              "name": "Shade",
+              "value": "Lisbon",
+              "axis_kind": "shade"
+            }
+          ],
+          "option_name": "Shade",
+          "option_value": "Lisbon",
+          "axis_kind": "shade",
+          "price_amount": 13.99,
+          "price": 13.99,
+          "currency": "USD",
+          "available": false,
+          "in_stock": false,
+          "product_url": "https://786cosmetics.com/products/lisbon-breathable-nail-polish",
+          "deep_link": "https://786cosmetics.com/products/lisbon-breathable-nail-polish",
+          "source_quality_status": "high"
+        }
+      ]
+    },
+    {
+      "target_id": "ext_96324332335f327e15bbd1a3",
+      "source_url": "https://786cosmetics.com/products/istanbul-breathable-nail-polish",
+      "source_origin": "official_pdp",
+      "variant_detail_label": "Shade: Istanbul",
+      "variant_axes": {
+        "shade": "Istanbul"
+      },
+      "match_basis": [
+        "brand:786 cosmetics",
+        "product_line:istanbul",
+        "variant_axes:shade:istanbul"
+      ],
+      "variants": [
+        {
+          "id": "34780882895012",
+          "variant_id": "34780882895012",
+          "sku": "Istanbul",
+          "sku_id": "Istanbul",
+          "title": "Shade: Istanbul",
+          "display_label": "Shade: Istanbul",
+          "options": [
+            {
+              "name": "Shade",
+              "value": "Istanbul",
+              "axis_kind": "shade"
+            }
+          ],
+          "option_name": "Shade",
+          "option_value": "Istanbul",
+          "axis_kind": "shade",
+          "price_amount": 13.99,
+          "price": 13.99,
+          "currency": "USD",
+          "available": true,
+          "in_stock": true,
+          "product_url": "https://786cosmetics.com/products/istanbul-breathable-nail-polish",
+          "deep_link": "https://786cosmetics.com/products/istanbul-breathable-nail-polish",
+          "source_quality_status": "high"
+        }
+      ]
+    },
+    {
+      "target_id": "ext_9f7b485a72fece5e2dfc5176",
+      "source_url": "https://786cosmetics.com/products/himalayas-breathable-nail-polish",
+      "source_origin": "official_pdp",
+      "variant_detail_label": "Shade: Himalayas",
+      "variant_axes": {
+        "shade": "Himalayas"
+      },
+      "match_basis": [
+        "brand:786 cosmetics",
+        "product_line:himalayas",
+        "variant_axes:shade:himalayas"
+      ],
+      "variants": [
+        {
+          "id": "34780887187620",
+          "variant_id": "34780887187620",
+          "sku": "Himalayas",
+          "sku_id": "Himalayas",
+          "title": "Shade: Himalayas",
+          "display_label": "Shade: Himalayas",
+          "options": [
+            {
+              "name": "Shade",
+              "value": "Himalayas",
+              "axis_kind": "shade"
+            }
+          ],
+          "option_name": "Shade",
+          "option_value": "Himalayas",
+          "axis_kind": "shade",
+          "price_amount": 13.99,
+          "price": 13.99,
+          "currency": "USD",
+          "available": false,
+          "in_stock": false,
+          "product_url": "https://786cosmetics.com/products/himalayas-breathable-nail-polish",
+          "deep_link": "https://786cosmetics.com/products/himalayas-breathable-nail-polish",
+          "source_quality_status": "high"
+        }
+      ]
+    },
+    {
+      "target_id": "ext_9a469b8f450d59f67ae21f6d",
+      "source_url": "https://786cosmetics.com/products/paris",
+      "source_origin": "official_pdp",
+      "variant_detail_label": "Shade: Paris",
+      "variant_axes": {
+        "shade": "Paris"
+      },
+      "match_basis": [
+        "brand:786 cosmetics",
+        "product_line:paris",
+        "variant_axes:shade:paris"
+      ],
+      "variants": [
+        {
+          "id": "51537209852135",
+          "variant_id": "51537209852135",
+          "sku": "Paris",
+          "sku_id": "Paris",
+          "title": "Shade: Paris",
+          "display_label": "Shade: Paris",
+          "options": [
+            {
+              "name": "Shade",
+              "value": "Paris",
+              "axis_kind": "shade"
+            }
+          ],
+          "option_name": "Shade",
+          "option_value": "Paris",
+          "axis_kind": "shade",
+          "price_amount": 13.99,
+          "price": 13.99,
+          "currency": "USD",
+          "available": true,
+          "in_stock": true,
+          "product_url": "https://786cosmetics.com/products/paris",
+          "deep_link": "https://786cosmetics.com/products/paris",
+          "source_quality_status": "high"
+        }
+      ]
+    },
+    {
+      "target_id": "ext_87a0af88b9bd23b8f2123d1b",
+      "source_url": "https://786cosmetics.com/products/almond-ginseng-cuticle-oil",
+      "source_origin": "official_pdp",
+      "variant_detail_label": "Format: Cuticle Oil",
+      "variant_axes": {
+        "format": "Cuticle Oil"
+      },
+      "match_basis": [
+        "brand:786 cosmetics",
+        "product_line:almond_ginseng_cuticle_oil",
+        "variant_axes:format:cuticle_oil"
+      ],
+      "variants": [
+        {
+          "id": "34780885090468",
+          "variant_id": "34780885090468",
+          "sku": "Cuticle Oil",
+          "sku_id": "Cuticle Oil",
+          "title": "Format: Cuticle Oil",
+          "display_label": "Format: Cuticle Oil",
+          "options": [
+            {
+              "name": "Format",
+              "value": "Cuticle Oil",
+              "axis_kind": "format"
+            }
+          ],
+          "option_name": "Format",
+          "option_value": "Cuticle Oil",
+          "axis_kind": "format",
+          "price_amount": 11.99,
+          "price": 11.99,
+          "currency": "USD",
+          "available": true,
+          "in_stock": true,
+          "product_url": "https://786cosmetics.com/products/almond-ginseng-cuticle-oil",
+          "deep_link": "https://786cosmetics.com/products/almond-ginseng-cuticle-oil",
+          "source_quality_status": "high"
+        }
+      ]
+    },
+    {
+      "target_id": "ext_7bac80d00f1f149743824dee",
+      "source_url": "https://786cosmetics.com/products/top-coat-clear-breathable-nail-polish",
+      "source_origin": "official_pdp",
+      "variant_detail_label": "Finish: Clear",
+      "variant_axes": {
+        "finish": "Clear"
+      },
+      "match_basis": [
+        "brand:786 cosmetics",
+        "product_line:top_coat_clear",
+        "variant_axes:finish:clear"
+      ],
+      "variants": [
+        {
+          "id": "34780882370724",
+          "variant_id": "34780882370724",
+          "sku": "Clear",
+          "sku_id": "Clear",
+          "title": "Finish: Clear",
+          "display_label": "Finish: Clear",
+          "options": [
+            {
+              "name": "Finish",
+              "value": "Clear",
+              "axis_kind": "finish"
+            }
+          ],
+          "option_name": "Finish",
+          "option_value": "Clear",
+          "axis_kind": "finish",
+          "price_amount": 13.99,
+          "price": 13.99,
+          "currency": "USD",
+          "available": true,
+          "in_stock": true,
+          "product_url": "https://786cosmetics.com/products/top-coat-clear-breathable-nail-polish",
+          "deep_link": "https://786cosmetics.com/products/top-coat-clear-breathable-nail-polish",
+          "source_quality_status": "high"
+        }
+      ]
+    },
+    {
+      "target_id": "ext_799b3d12caaa6ad1842840dd",
+      "source_url": "https://786cosmetics.com/products/sakura-breathable-nail-polish",
+      "source_origin": "official_pdp",
+      "variant_detail_label": "Shade: Sakura",
+      "variant_axes": {
+        "shade": "Sakura"
+      },
+      "match_basis": [
+        "brand:786 cosmetics",
+        "product_line:sakura",
+        "variant_axes:shade:sakura"
+      ],
+      "variants": [
+        {
+          "id": "34780888465572",
+          "variant_id": "34780888465572",
+          "sku": "Sakura",
+          "sku_id": "Sakura",
+          "title": "Shade: Sakura",
+          "display_label": "Shade: Sakura",
+          "options": [
+            {
+              "name": "Shade",
+              "value": "Sakura",
+              "axis_kind": "shade"
+            }
+          ],
+          "option_name": "Shade",
+          "option_value": "Sakura",
+          "axis_kind": "shade",
+          "price_amount": 13.99,
+          "price": 13.99,
+          "currency": "USD",
+          "available": false,
+          "in_stock": false,
+          "product_url": "https://786cosmetics.com/products/sakura-breathable-nail-polish",
+          "deep_link": "https://786cosmetics.com/products/sakura-breathable-nail-polish",
+          "source_quality_status": "high"
+        }
+      ]
+    },
+    {
+      "target_id": "ext_478c309275606a587d949541",
+      "source_url": "https://786cosmetics.com/products/cusco-breathable-nail-polish",
+      "source_origin": "official_pdp",
+      "variant_detail_label": "Shade: Cusco",
+      "variant_axes": {
+        "shade": "Cusco"
+      },
+      "match_basis": [
+        "brand:786 cosmetics",
+        "product_line:cusco",
+        "variant_axes:shade:cusco"
+      ],
+      "variants": [
+        {
+          "id": "39449845301412",
+          "variant_id": "39449845301412",
+          "sku": "Cusco",
+          "sku_id": "Cusco",
+          "title": "Shade: Cusco",
+          "display_label": "Shade: Cusco",
+          "options": [
+            {
+              "name": "Shade",
+              "value": "Cusco",
+              "axis_kind": "shade"
+            }
+          ],
+          "option_name": "Shade",
+          "option_value": "Cusco",
+          "axis_kind": "shade",
+          "price_amount": 13.99,
+          "price": 13.99,
+          "currency": "USD",
+          "available": true,
+          "in_stock": true,
+          "product_url": "https://786cosmetics.com/products/cusco-breathable-nail-polish",
+          "deep_link": "https://786cosmetics.com/products/cusco-breathable-nail-polish",
+          "source_quality_status": "high"
+        }
+      ]
+    },
+    {
+      "target_id": "ext_45293e532ad5a5f33438d38f",
+      "source_url": "https://786cosmetics.com/products/nizwa-breathable-nail-polish",
+      "source_origin": "official_pdp",
+      "variant_detail_label": "Shade: Nizwa",
+      "variant_axes": {
+        "shade": "Nizwa"
+      },
+      "match_basis": [
+        "brand:786 cosmetics",
+        "product_line:nizwa",
+        "variant_axes:shade:nizwa"
+      ],
+      "variants": [
+        {
+          "id": "34780888531108",
+          "variant_id": "34780888531108",
+          "sku": "Nizwa",
+          "sku_id": "Nizwa",
+          "title": "Shade: Nizwa",
+          "display_label": "Shade: Nizwa",
+          "options": [
+            {
+              "name": "Shade",
+              "value": "Nizwa",
+              "axis_kind": "shade"
+            }
+          ],
+          "option_name": "Shade",
+          "option_value": "Nizwa",
+          "axis_kind": "shade",
+          "price_amount": 13.99,
+          "price": 13.99,
+          "currency": "USD",
+          "available": true,
+          "in_stock": true,
+          "product_url": "https://786cosmetics.com/products/nizwa-breathable-nail-polish",
+          "deep_link": "https://786cosmetics.com/products/nizwa-breathable-nail-polish",
+          "source_quality_status": "high"
+        }
+      ]
+    },
+    {
+      "target_id": "ext_2d506dd9dc7428de2d3d0cc8",
+      "source_url": "https://786cosmetics.com/products/seville-breathable-nail-polish",
+      "source_origin": "official_pdp",
+      "variant_detail_label": "Shade: Seville",
+      "variant_axes": {
+        "shade": "Seville"
+      },
+      "match_basis": [
+        "brand:786 cosmetics",
+        "product_line:seville",
+        "variant_axes:shade:seville"
+      ],
+      "variants": [
+        {
+          "id": "40807966310564",
+          "variant_id": "40807966310564",
+          "sku": "Seville",
+          "sku_id": "Seville",
+          "title": "Shade: Seville",
+          "display_label": "Shade: Seville",
+          "options": [
+            {
+              "name": "Shade",
+              "value": "Seville",
+              "axis_kind": "shade"
+            }
+          ],
+          "option_name": "Shade",
+          "option_value": "Seville",
+          "axis_kind": "shade",
+          "price_amount": 9.79,
+          "price": 9.79,
+          "currency": "USD",
+          "available": true,
+          "in_stock": true,
+          "product_url": "https://786cosmetics.com/products/seville-breathable-nail-polish",
+          "deep_link": "https://786cosmetics.com/products/seville-breathable-nail-polish",
+          "source_quality_status": "high"
+        }
+      ]
+    },
+    {
+      "target_id": "ext_22c3e831a335c12bc33fca2f",
+      "source_url": "https://786cosmetics.com/products/java-breathable-nail-polish",
+      "source_origin": "official_pdp",
+      "variant_detail_label": "Shade: Java",
+      "variant_axes": {
+        "shade": "Java"
+      },
+      "match_basis": [
+        "brand:786 cosmetics",
+        "product_line:java",
+        "variant_axes:shade:java"
+      ],
+      "variants": [
+        {
+          "id": "34780884435108",
+          "variant_id": "34780884435108",
+          "sku": "Java",
+          "sku_id": "Java",
+          "title": "Shade: Java",
+          "display_label": "Shade: Java",
+          "options": [
+            {
+              "name": "Shade",
+              "value": "Java",
+              "axis_kind": "shade"
+            }
+          ],
+          "option_name": "Shade",
+          "option_value": "Java",
+          "axis_kind": "shade",
+          "price_amount": 13.99,
+          "price": 13.99,
+          "currency": "USD",
+          "available": true,
+          "in_stock": true,
+          "product_url": "https://786cosmetics.com/products/java-breathable-nail-polish",
+          "deep_link": "https://786cosmetics.com/products/java-breathable-nail-polish",
+          "source_quality_status": "high"
+        }
+      ]
+    },
+    {
+      "target_id": "ext_1a3dc4611dcd01447437ed9c",
+      "source_url": "https://786cosmetics.com/products/rotomahana-breathable-nail-polish",
+      "source_origin": "official_pdp",
+      "variant_detail_label": "Shade: Rotomahana",
+      "variant_axes": {
+        "shade": "Rotomahana"
+      },
+      "match_basis": [
+        "brand:786 cosmetics",
+        "product_line:rotomahana",
+        "variant_axes:shade:rotomahana"
+      ],
+      "variants": [
+        {
+          "id": "41349203099812",
+          "variant_id": "41349203099812",
+          "sku": "Rotomahana",
+          "sku_id": "Rotomahana",
+          "title": "Shade: Rotomahana",
+          "display_label": "Shade: Rotomahana",
+          "options": [
+            {
+              "name": "Shade",
+              "value": "Rotomahana",
+              "axis_kind": "shade"
+            }
+          ],
+          "option_name": "Shade",
+          "option_value": "Rotomahana",
+          "axis_kind": "shade",
+          "price_amount": 13.99,
+          "price": 13.99,
+          "currency": "USD",
+          "available": false,
+          "in_stock": false,
+          "product_url": "https://786cosmetics.com/products/rotomahana-breathable-nail-polish",
+          "deep_link": "https://786cosmetics.com/products/rotomahana-breathable-nail-polish",
+          "source_quality_status": "high"
+        }
+      ]
+    },
+    {
+      "target_id": "ext_152e5d39e5ef4ee3a67894b7",
+      "source_url": "https://786cosmetics.com/products/guanajuato-breathable-nail-polish",
+      "source_origin": "official_pdp",
+      "variant_detail_label": "Shade: Guanajuato",
+      "variant_axes": {
+        "shade": "Guanajuato"
+      },
+      "match_basis": [
+        "brand:786 cosmetics",
+        "product_line:guanajuato",
+        "variant_axes:shade:guanajuato"
+      ],
+      "variants": [
+        {
+          "id": "40807963197604",
+          "variant_id": "40807963197604",
+          "sku": "Guanajuato",
+          "sku_id": "Guanajuato",
+          "title": "Shade: Guanajuato",
+          "display_label": "Shade: Guanajuato",
+          "options": [
+            {
+              "name": "Shade",
+              "value": "Guanajuato",
+              "axis_kind": "shade"
+            }
+          ],
+          "option_name": "Shade",
+          "option_value": "Guanajuato",
+          "axis_kind": "shade",
+          "price_amount": 13.99,
+          "price": 13.99,
+          "currency": "USD",
+          "available": true,
+          "in_stock": true,
+          "product_url": "https://786cosmetics.com/products/guanajuato-breathable-nail-polish",
+          "deep_link": "https://786cosmetics.com/products/guanajuato-breathable-nail-polish",
+          "source_quality_status": "high"
+        }
+      ]
+    },
+    {
+      "target_id": "ext_09bd1a60af24d620706724ee",
+      "source_url": "https://786cosmetics.com/products/hyderabad-breathable-nail-polish",
+      "source_origin": "official_pdp",
+      "variant_detail_label": "Shade: Hyderabad",
+      "variant_axes": {
+        "shade": "Hyderabad"
+      },
+      "match_basis": [
+        "brand:786 cosmetics",
+        "product_line:hyderabad",
+        "variant_axes:shade:hyderabad"
+      ],
+      "variants": [
+        {
+          "id": "34780883189924",
+          "variant_id": "34780883189924",
+          "sku": "Hyderabad",
+          "sku_id": "Hyderabad",
+          "title": "Shade: Hyderabad",
+          "display_label": "Shade: Hyderabad",
+          "options": [
+            {
+              "name": "Shade",
+              "value": "Hyderabad",
+              "axis_kind": "shade"
+            }
+          ],
+          "option_name": "Shade",
+          "option_value": "Hyderabad",
+          "axis_kind": "shade",
+          "price_amount": 13.99,
+          "price": 13.99,
+          "currency": "USD",
+          "available": true,
+          "in_stock": true,
+          "product_url": "https://786cosmetics.com/products/hyderabad-breathable-nail-polish",
+          "deep_link": "https://786cosmetics.com/products/hyderabad-breathable-nail-polish",
+          "source_quality_status": "high"
+        }
+      ]
+    },
+    {
+      "target_id": "ext_09f3ad39bdfe1ea4a957c45f",
+      "source_url": "https://786cosmetics.com/products/alexandria-breathable-nail-polish",
+      "source_origin": "official_pdp",
+      "variant_detail_label": "Shade: Alexandria",
+      "variant_axes": {
+        "shade": "Alexandria"
+      },
+      "match_basis": [
+        "brand:786 cosmetics",
+        "product_line:alexandria",
+        "variant_axes:shade:alexandria"
+      ],
+      "variants": [
+        {
+          "id": "36938071212196",
+          "variant_id": "36938071212196",
+          "sku": "Alexandria",
+          "sku_id": "Alexandria",
+          "title": "Shade: Alexandria",
+          "display_label": "Shade: Alexandria",
+          "options": [
+            {
+              "name": "Shade",
+              "value": "Alexandria",
+              "axis_kind": "shade"
+            }
+          ],
+          "option_name": "Shade",
+          "option_value": "Alexandria",
+          "axis_kind": "shade",
+          "price_amount": 13.99,
+          "price": 13.99,
+          "currency": "USD",
+          "available": true,
+          "in_stock": true,
+          "product_url": "https://786cosmetics.com/products/alexandria-breathable-nail-polish",
+          "deep_link": "https://786cosmetics.com/products/alexandria-breathable-nail-polish",
+          "source_quality_status": "high"
+        }
+      ]
+    }
+  ]
+}

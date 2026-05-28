@@ -1,0 +1,15 @@
+{
+  "mappings": [
+    {
+      "external_product_id": "ext_ab32c65ee7badd0b4a614919",
+      "evidence_source": "official_pdp",
+      "evidence_note": "Official 786 Cosmetics Marrakesh Nights Collection PDP describes four included shades: Marrakesh, Tallinn, Bursa, and Dubrovnik.",
+      "component_refs": [
+        { "external_product_id": "ext_afb163014d0bffd3a6493c05", "component_role": "included_shade", "size_label": "1 bottle" },
+        { "external_product_id": "ext_c6d113bff874c00abfb4ba33", "component_role": "included_shade", "size_label": "1 bottle" },
+        { "external_product_id": "ext_cd1678cacc37126a9d483888", "component_role": "included_shade", "size_label": "1 bottle" },
+        { "external_product_id": "ext_efe7512de8c6df9f75ca19e0", "component_role": "included_shade", "size_label": "1 bottle" }
+      ]
+    }
+  ]
+}

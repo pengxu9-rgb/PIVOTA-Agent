@@ -1,0 +1,274 @@
+{
+  "generated_at": "2026-05-28T02:38:25.087Z",
+  "dry_run": true,
+  "manifest": "reports/markato_expansion_status_20260524/wave35_786cosmetics_quality_repair_20260528/786_gallery_trim_manifest.json",
+  "summary": {
+    "scanned_rows": 6,
+    "blocked_rows": 0,
+    "change_candidates": 6,
+    "updated_rows": 0,
+    "catalog_product_updates": 0,
+    "identity_updates": 0
+  },
+  "apply_results": [],
+  "plans": [
+    {
+      "external_product_id": "ext_0d844fc65fd3348e35a09c80",
+      "seed_id": "eps_6048ca743d2cf89043c4b8f2",
+      "title": "Abu Dhabi - Breathable Nail Polish",
+      "canonical_url": "https://786cosmetics.com/products/abu-dhabi-breathable-nail-polish",
+      "status": "ready",
+      "changed": true,
+      "blockers": [],
+      "before": {
+        "root_count": 17,
+        "root_hash": "dfac172ea9e04cb1502a6d98c7afaed08e28a3791780343f361fb342eac5b492"
+      },
+      "after": {
+        "root_count": 5,
+        "root_hash": "ad4c0ed5f1c2c294131fbff54f00214f8b55f286791188a80772c416c7cb910b"
+      },
+      "removed_root_count": 12,
+      "removed_variant_image_count": 0,
+      "variant_changes": [
+        {
+          "label": "Shade: Abu Dhabi",
+          "before_count": 0,
+          "after_count": 5,
+          "removed_count": 0
+        },
+        {
+          "label": "Shade: Abu Dhabi",
+          "before_count": 0,
+          "after_count": 5,
+          "removed_count": 0
+        }
+      ],
+      "removed_root_sample": [
+        "https://786cosmetics.com/cdn/shop/files/Snapinsta.app_365619948_18276175015149740_2609485125880599339_n_1080_1.jpg?crop=center&v=1696617175",
+        "https://786cosmetics.com/cdn/shop/files/Snapinsta.app_365619948_18276175015149740_2609485125880599339_n_1080_1.jpg?v=1696617175",
+        "https://786cosmetics.com/cdn/shop/files/Snapinsta.app_36981757_234850793800975_8157423542682517504_n_1080.jpg?crop=center&v=1698087774",
+        "https://786cosmetics.com/cdn/shop/files/Snapinsta.app_36981757_234850793800975_8157423542682517504_n_1080.jpg?v=1698087774",
+        "https://786cosmetics.com/cdn/shop/files/Snapinsta.app_377854146_984534276096847_5858701429379112223_n_1080.jpg?crop=center&v=1696872887",
+        "https://786cosmetics.com/cdn/shop/files/Snapinsta.app_377854146_984534276096847_5858701429379112223_n_1080.jpg?v=1696872887",
+        "https://786cosmetics.com/cdn/shop/files/PhotoJun202023_113212AM.jpg?crop=center&v=1708453061",
+        "https://786cosmetics.com/cdn/shop/files/PhotoJun202023_113212AM.jpg?v=1708453061"
+      ]
+    },
+    {
+      "external_product_id": "ext_151aebc5b6246b8d2d9a877b",
+      "seed_id": "eps_2877c8f1b1f9ef8f2ee954cc",
+      "title": "Agra - Breathable Nail Polish",
+      "canonical_url": "https://786cosmetics.com/products/agra-breathable-nail-polish",
+      "status": "ready",
+      "changed": true,
+      "blockers": [],
+      "before": {
+        "root_count": 21,
+        "root_hash": "863e570bc1e8634c479fd97656be170c7ac335b9419149e277ec2239f22749b9"
+      },
+      "after": {
+        "root_count": 5,
+        "root_hash": "a8e7ad60c1c1f13afa909f796ba23345a309380276afedf10e99eb29c233dc61"
+      },
+      "removed_root_count": 16,
+      "removed_variant_image_count": 0,
+      "variant_changes": [
+        {
+          "label": "Shade: Agra",
+          "before_count": 0,
+          "after_count": 5,
+          "removed_count": 0
+        },
+        {
+          "label": "Shade: Agra",
+          "before_count": 0,
+          "after_count": 5,
+          "removed_count": 0
+        }
+      ],
+      "removed_root_sample": [
+        "https://786cosmetics.com/cdn/shop/files/Snapinsta.app_365619948_18276175015149740_2609485125880599339_n_1080_1.jpg?crop=center&v=1696617175",
+        "https://786cosmetics.com/cdn/shop/files/Snapinsta.app_365619948_18276175015149740_2609485125880599339_n_1080_1.jpg?v=1696617175",
+        "https://786cosmetics.com/cdn/shop/files/3.gif?crop=center&v=1699983256",
+        "https://786cosmetics.com/cdn/shop/files/3.gif?v=1699983256",
+        "https://786cosmetics.com/cdn/shop/files/Snapinsta.app_36981757_234850793800975_8157423542682517504_n_1080.jpg?crop=center&v=1698087774",
+        "https://786cosmetics.com/cdn/shop/files/Snapinsta.app_36981757_234850793800975_8157423542682517504_n_1080.jpg?v=1698087774",
+        "https://786cosmetics.com/cdn/shop/files/Snapinsta.app_377854146_984534276096847_5858701429379112223_n_1080.jpg?crop=center&v=1696872887",
+        "https://786cosmetics.com/cdn/shop/files/Snapinsta.app_377854146_984534276096847_5858701429379112223_n_1080.jpg?v=1696872887"
+      ]
+    },
+    {
+      "external_product_id": "ext_faf89834933316df0d8da973",
+      "seed_id": "eps_99ec566b1f749b6e2d21e127",
+      "title": "Azores - Breathable Nail Polish",
+      "canonical_url": "https://786cosmetics.com/products/azores-breathable-nail-polish",
+      "status": "ready",
+      "changed": true,
+      "blockers": [],
+      "before": {
+        "root_count": 21,
+        "root_hash": "de27c93ccf8be491b2e0c9e81f4c703b9d8e7aa7f75340f2851d52b6130fdf24"
+      },
+      "after": {
+        "root_count": 5,
+        "root_hash": "e329cfc0eb14aa73f2a53a14c5ccd7af18628c48caab3152efc23d6996bce2df"
+      },
+      "removed_root_count": 16,
+      "removed_variant_image_count": 0,
+      "variant_changes": [
+        {
+          "label": "Shade: Azores",
+          "before_count": 0,
+          "after_count": 5,
+          "removed_count": 0
+        },
+        {
+          "label": "Shade: Azores",
+          "before_count": 0,
+          "after_count": 5,
+          "removed_count": 0
+        }
+      ],
+      "removed_root_sample": [
+        "https://786cosmetics.com/cdn/shop/files/Snapinsta.app_365619948_18276175015149740_2609485125880599339_n_1080_1.jpg?crop=center&v=1696617175",
+        "https://786cosmetics.com/cdn/shop/files/Snapinsta.app_365619948_18276175015149740_2609485125880599339_n_1080_1.jpg?v=1696617175",
+        "https://786cosmetics.com/cdn/shop/files/3.gif?crop=center&v=1699983256",
+        "https://786cosmetics.com/cdn/shop/files/3.gif?v=1699983256",
+        "https://786cosmetics.com/cdn/shop/files/Snapinsta.app_36981757_234850793800975_8157423542682517504_n_1080.jpg?crop=center&v=1698087774",
+        "https://786cosmetics.com/cdn/shop/files/Snapinsta.app_36981757_234850793800975_8157423542682517504_n_1080.jpg?v=1698087774",
+        "https://786cosmetics.com/cdn/shop/files/Snapinsta.app_377854146_984534276096847_5858701429379112223_n_1080.jpg?crop=center&v=1696872887",
+        "https://786cosmetics.com/cdn/shop/files/Snapinsta.app_377854146_984534276096847_5858701429379112223_n_1080.jpg?v=1696872887"
+      ]
+    },
+    {
+      "external_product_id": "ext_2fc7cc1ac3370464b4b923d3",
+      "seed_id": "eps_f4235285f6517cbd8a21202c",
+      "title": "Bahrain - Breathable Nail Polish",
+      "canonical_url": "https://786cosmetics.com/products/bahrain-breathable-nail-polish",
+      "status": "ready",
+      "changed": true,
+      "blockers": [],
+      "before": {
+        "root_count": 25,
+        "root_hash": "97d95e33c69650b1adfadff14329a08194f3410e41fd1b9ab28951738f4f819f"
+      },
+      "after": {
+        "root_count": 9,
+        "root_hash": "7b609bcf9e4cbc714dcaaa3f732ad883532982f49c69b42337568505b6319dd6"
+      },
+      "removed_root_count": 16,
+      "removed_variant_image_count": 0,
+      "variant_changes": [
+        {
+          "label": "Shade: Bahrain",
+          "before_count": 0,
+          "after_count": 9,
+          "removed_count": 0
+        },
+        {
+          "label": "Shade: Bahrain",
+          "before_count": 0,
+          "after_count": 9,
+          "removed_count": 0
+        }
+      ],
+      "removed_root_sample": [
+        "https://786cosmetics.com/cdn/shop/files/Snapinsta.app_365619948_18276175015149740_2609485125880599339_n_1080_1.jpg?crop=center&v=1696617175",
+        "https://786cosmetics.com/cdn/shop/files/Snapinsta.app_365619948_18276175015149740_2609485125880599339_n_1080_1.jpg?v=1696617175",
+        "https://786cosmetics.com/cdn/shop/files/3.gif?crop=center&v=1699983256",
+        "https://786cosmetics.com/cdn/shop/files/3.gif?v=1699983256",
+        "https://786cosmetics.com/cdn/shop/files/Snapinsta.app_36981757_234850793800975_8157423542682517504_n_1080.jpg?crop=center&v=1698087774",
+        "https://786cosmetics.com/cdn/shop/files/Snapinsta.app_36981757_234850793800975_8157423542682517504_n_1080.jpg?v=1698087774",
+        "https://786cosmetics.com/cdn/shop/files/Snapinsta.app_377854146_984534276096847_5858701429379112223_n_1080.jpg?crop=center&v=1696872887",
+        "https://786cosmetics.com/cdn/shop/files/Snapinsta.app_377854146_984534276096847_5858701429379112223_n_1080.jpg?v=1696872887"
+      ]
+    },
+    {
+      "external_product_id": "ext_33fa1a749060cefdd3e0dc2b",
+      "seed_id": "eps_6f48694970df70f1649d4d26",
+      "title": "Beirut - Breathable Nail Polish",
+      "canonical_url": "https://786cosmetics.com/products/beirut-breathable-nail-polish",
+      "status": "ready",
+      "changed": true,
+      "blockers": [],
+      "before": {
+        "root_count": 19,
+        "root_hash": "ea6a55623cc3fe0faaa67dc131c63d37c631582f71176fb7f8bf0ce7db059f9d"
+      },
+      "after": {
+        "root_count": 3,
+        "root_hash": "c4b4926a37434e8562c07bc45e0b0ac63e2b0a42e740082f5cc28a92975c058a"
+      },
+      "removed_root_count": 16,
+      "removed_variant_image_count": 0,
+      "variant_changes": [
+        {
+          "label": "Shade: Beirut",
+          "before_count": 0,
+          "after_count": 3,
+          "removed_count": 0
+        },
+        {
+          "label": "Shade: Beirut",
+          "before_count": 0,
+          "after_count": 3,
+          "removed_count": 0
+        }
+      ],
+      "removed_root_sample": [
+        "https://786cosmetics.com/cdn/shop/files/Snapinsta.app_365619948_18276175015149740_2609485125880599339_n_1080_1.jpg?crop=center&v=1696617175",
+        "https://786cosmetics.com/cdn/shop/files/Snapinsta.app_365619948_18276175015149740_2609485125880599339_n_1080_1.jpg?v=1696617175",
+        "https://786cosmetics.com/cdn/shop/files/3.gif?crop=center&v=1699983256",
+        "https://786cosmetics.com/cdn/shop/files/3.gif?v=1699983256",
+        "https://786cosmetics.com/cdn/shop/files/Snapinsta.app_36981757_234850793800975_8157423542682517504_n_1080.jpg?crop=center&v=1698087774",
+        "https://786cosmetics.com/cdn/shop/files/Snapinsta.app_36981757_234850793800975_8157423542682517504_n_1080.jpg?v=1698087774",
+        "https://786cosmetics.com/cdn/shop/files/Snapinsta.app_377854146_984534276096847_5858701429379112223_n_1080.jpg?crop=center&v=1696872887",
+        "https://786cosmetics.com/cdn/shop/files/Snapinsta.app_377854146_984534276096847_5858701429379112223_n_1080.jpg?v=1696872887"
+      ]
+    },
+    {
+      "external_product_id": "ext_36b452da1e0dde5c19bd2ed0",
+      "seed_id": "eps_c5c1d91929bc244958ce9fb9",
+      "title": "Casablanca - Breathable Nail Polish",
+      "canonical_url": "https://786cosmetics.com/products/casablanca-breathable-nail-polish",
+      "status": "ready",
+      "changed": true,
+      "blockers": [],
+      "before": {
+        "root_count": 20,
+        "root_hash": "06f780a120eb001245b981e9b81b00bc64ccdc89816335f1938fc0dc4fb2e416"
+      },
+      "after": {
+        "root_count": 4,
+        "root_hash": "e5c046979893571ab7af9fb19b14a4fc0b8eac8ed9874c8864b097731f131c1b"
+      },
+      "removed_root_count": 16,
+      "removed_variant_image_count": 0,
+      "variant_changes": [
+        {
+          "label": "Shade: Casablanca",
+          "before_count": 0,
+          "after_count": 4,
+          "removed_count": 0
+        },
+        {
+          "label": "Shade: Casablanca",
+          "before_count": 0,
+          "after_count": 4,
+          "removed_count": 0
+        }
+      ],
+      "removed_root_sample": [
+        "https://786cosmetics.com/cdn/shop/files/Snapinsta.app_365619948_18276175015149740_2609485125880599339_n_1080_1.jpg?crop=center&v=1696617175",
+        "https://786cosmetics.com/cdn/shop/files/Snapinsta.app_365619948_18276175015149740_2609485125880599339_n_1080_1.jpg?v=1696617175",
+        "https://786cosmetics.com/cdn/shop/files/3.gif?crop=center&v=1699983256",
+        "https://786cosmetics.com/cdn/shop/files/3.gif?v=1699983256",
+        "https://786cosmetics.com/cdn/shop/files/Snapinsta.app_36981757_234850793800975_8157423542682517504_n_1080.jpg?crop=center&v=1698087774",
+        "https://786cosmetics.com/cdn/shop/files/Snapinsta.app_36981757_234850793800975_8157423542682517504_n_1080.jpg?v=1698087774",
+        "https://786cosmetics.com/cdn/shop/files/Snapinsta.app_377854146_984534276096847_5858701429379112223_n_1080.jpg?crop=center&v=1696872887",
+        "https://786cosmetics.com/cdn/shop/files/Snapinsta.app_377854146_984534276096847_5858701429379112223_n_1080.jpg?v=1696872887"
+      ]
+    }
+  ]
+}

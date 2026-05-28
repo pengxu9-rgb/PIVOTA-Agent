@@ -212,6 +212,48 @@ describe('apply-reviewed-external-seed-pdp-content-patch', () => {
     ).toEqual(['SIMMONDSIA CHINENSIS SEED OIL', 'SQUALANE', 'PARFUM (natural identical)']);
   });
 
+  test('can write reviewed ingredient authority for short source-backed INCI patches', () => {
+    const [entry] = readManifestEntries({
+      reviewed_by: 'codex',
+      evidence: 'Official PDP ingredients were reviewed and scoped to the product formula.',
+      source_url: 'https://brand.example/products/remover',
+      source_kind: 'official_stiletto_accordion_scoped_formula',
+      write_reviewed_ingredient_authority: true,
+      entries: [
+        {
+          external_product_id: 'ext_remover',
+          pdp_ingredients_raw:
+            'Dimethyl Glutamate, Dimethyl Adipate, Methyl Oleate/Palmitate/Linoleate/Stearate, Trideceth-8',
+        },
+      ],
+    });
+
+    const result = buildNextSeedData(
+      { external_product_id: 'ext_remover', seed_data: { snapshot: {} } },
+      entry,
+      '2026-05-28T00:00:00.000Z',
+    );
+
+    expect(result.blocked).toEqual([]);
+    expect(result.seedData.ingredient_intel.authoritative).toEqual(
+      expect.objectContaining({
+        purity_status: 'authoritative',
+        authority_scope: 'reviewed_official_pdp_inci',
+        items: [
+          'Dimethyl Glutamate',
+          'Dimethyl Adipate',
+          'Methyl Oleate/Palmitate/Linoleate/Stearate',
+          'Trideceth-8',
+        ],
+      }),
+    );
+    expect(result.seedData.snapshot.ingredient_intel.authoritative).toEqual(
+      expect.objectContaining({
+        source_origin: 'reviewed_source_backed_pdp_content_patch',
+      }),
+    );
+  });
+
   test('patches same raw INCI when structured ingredients are missing', () => {
     const [entry] = readManifestEntries({
       reviewed_by: 'codex',

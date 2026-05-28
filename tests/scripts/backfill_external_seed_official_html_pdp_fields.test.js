@@ -511,6 +511,42 @@ describe('backfill-external-seed-official-html-pdp-fields TIRTIR sheet matching'
     expect(fields.pdp_ingredients_raw).not.toContain('Tag Section');
   });
 
+  test('scopes 786 shared soy remover ingredient accordion to current product formula', () => {
+    const sharedIngredients =
+      'Tea Tree Jojoba Soy Remover: Soy/Vegetable Methyl Esters, Dimethyl Glutamate, Dimethyl Adipate, Simmonsdsia Chinensis (Jojoba)Seed Oil, Melaleuca Alternifolia (Tea Tree) Oil Almond Soy Remover: Dimethyl Glutamate, Dimethyl Adipate, MethylOleate/Palmitate/Linoleate/Stearate, Trideceth-8';
+    const htmlFor = (product) => `
+      <script type="application/json" id="ProductJson-template--main">${JSON.stringify({
+        title: product.title,
+        handle: product.handle,
+        variants: [{ id: 1, sku: product.sku, title: 'Default Title' }],
+      })}</script>
+      <h3 class="ff-heading">Ingredients</h3>
+      <div id="accordion-content-ingredients"><p>${sharedIngredients}</p></div>
+    `;
+
+    const almond = extractGenericOfficialShopifyFields(htmlFor({
+      title: 'Soy Nail Polish Remover With Almond Essential Oil',
+      handle: 'soy-based-nail-polish-remover',
+      sku: 'Almond Soy',
+    }), {
+      productTitle: 'Soy Nail Polish Remover With Almond Essential Oil',
+    });
+    const jojoba = extractGenericOfficialShopifyFields(htmlFor({
+      title: 'Soy Nail Polish Remover With Jojoba Seed & Tea Tree Oil',
+      handle: 'soy-nail-polish-remover-with-jojoba-seed-tea-tree-oil',
+      sku: 'Jojoba Soy',
+    }), {
+      productTitle: 'Soy Nail Polish Remover With Jojoba Seed & Tea Tree Oil',
+    });
+
+    expect(almond.pdp_ingredients_raw).toBe(
+      'Dimethyl Glutamate, Dimethyl Adipate, Methyl Oleate/Palmitate/Linoleate/Stearate, Trideceth-8',
+    );
+    expect(jojoba.pdp_ingredients_raw).toBe(
+      'Soy/Vegetable Methyl Esters, Dimethyl Glutamate, Dimethyl Adipate, Simmondsia Chinensis (Jojoba) Seed Oil, Melaleuca Alternifolia (Tea Tree) Oil',
+    );
+  });
+
   test('extracts short official balm ingredient lists from Shopify description labels', () => {
     const product = {
       title: 'Lucamar Baalm 50g',

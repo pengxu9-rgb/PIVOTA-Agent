@@ -23,6 +23,8 @@ const SUPPORTED_BRANDS = new Set([
   'fenty',
   'fenty beauty',
   'fenty skin',
+  '786 cosmetics',
+  '786cosmetics',
   'catkin',
   'catkin cosmetics',
   'flower knows',
@@ -477,7 +479,7 @@ function inferRole(facts) {
   if (/\b(?:puff|sponge|applicator)\b/.test(titleText)) return { label: 'Makeup applicator', step: 'application tool', amPm: ['as_needed'] };
   if (/\bbrush\b/.test(titleText)) return { label: 'Makeup brush', step: 'application tool', amPm: ['as_needed'] };
   const accessoryCue = /\b(?:stickers?|decals?|claw clip|head\s*band|headband|pouch|bag|organizer|mirror|sharpener|tool|tray|keychain|key chain|tote|clutch|backpack|wash\s*cloth|washcloth|cuffs?|scrunchie|sleeve|case)\b/.test(titleText);
-  const formulaCue = /\b(?:spf|sunscreen|moisturizer|serum|cream|lotion|body milk|lipstick|lip gloss|lip glaze|lip ink|lip luminizer|lip liner|mascara|eyeshadow|eye shadow|eye brightener|palette|makeup remover|remover wipe|eyeliner|foundation|concealer|cushion|bronzer|blush|highlighter|toner)\b/.test(titleText);
+  const formulaCue = /\b(?:spf|sunscreen|moisturizer|serum|cream|lotion|body milk|lipstick|lip gloss|lip glaze|lip ink|lip luminizer|lip liner|mascara|eyeshadow|eye shadow|eye brightener|palette|makeup remover|remover wipe|eyeliner|foundation|concealer|cushion|bronzer|blush|highlighter|toner|nail\s+polish|nail\s+color|cuticle\s+oil|nail\s+polish\s+remover)\b/.test(titleText);
   if (accessoryCue && !formulaCue) {
     return { label: 'Beauty accessory', step: 'beauty routine', amPm: ['as_needed'] };
   }
@@ -498,6 +500,11 @@ function inferRole(facts) {
   if (/\blip\b/.test(titleOnly) && (/\b(?:combo|kit|set|duo|bundle)\b/.test(titleOnly) || explicitLipPair)) {
     return { label: 'Lip combo', step: 'lip color', amPm: ['as_needed'] };
   }
+  if (/\bnail\s+polish\s+remover\b/.test(titleOnly)) return { label: 'Nail polish remover', step: 'nail remover', amPm: ['as_needed'] };
+  if (/\bcuticle\s+oil\b/.test(titleOnly)) return { label: 'Cuticle oil', step: 'nail care', amPm: ['as_needed'] };
+  if (/\bnail\s+polish\b.*\b(?:set|collection|edit)\b|\b(?:set|collection|edit)\b.*\bnail\s+polish\b/.test(titleOnly)) {
+    return { label: 'Nail color set', step: 'nail color set', amPm: ['as_needed'] };
+  }
   if (/\b(?:bundle|duo|trio|set|kit|collection)\b/.test(titleText) && /\b(?:serum|moisturizer|cream|cleanser|toner|scrub|mist|skincare|balance|barrier|bright|glow|hydration|pore|truth|peach|lemonade)\b/.test(titleText)) {
     return { label: 'Skincare set', step: 'skincare', amPm: ['am', 'pm'] };
   }
@@ -505,6 +512,12 @@ function inferRole(facts) {
     return { label: 'Makeup set', step: 'beauty routine', amPm: ['as_needed'] };
   }
   if (/\bbrow\s+pencil|eyebrow|brow\b/.test(titleOnly)) return { label: 'Brow product', step: 'brow definition', amPm: ['as_needed'] };
+  if (/\bnail\s+polish\s+remover\b/.test(titleOnly)) return { label: 'Nail polish remover', step: 'nail remover', amPm: ['as_needed'] };
+  if (/\bcuticle\s+oil\b/.test(titleOnly)) return { label: 'Cuticle oil', step: 'nail care', amPm: ['as_needed'] };
+  if (/\bnail\s+polish\b.*\b(?:set|collection|edit)\b|\b(?:set|collection|edit)\b.*\bnail\s+polish\b/.test(titleOnly)) {
+    return { label: 'Nail color set', step: 'nail color set', amPm: ['as_needed'] };
+  }
+  if (/\b(?:breathable\s+)?nail\s+polish|nail\s+color\b/.test(titleOnly)) return { label: 'Nail color', step: 'nail color', amPm: ['as_needed'] };
   if (/\blip\s+pencil|lip liner|contour\s+g\b/.test(titleOnly)) return { label: 'Lip liner', step: 'lip definition', amPm: ['as_needed'] };
   if (/\blipstick|lip color|lip colour|lip\s+gloss|lip\s+glaze|lip\s+ink|lip\s+luminizer|rouge g|kisskiss\b/.test(titleOnly)) return { label: 'Lip color', step: 'lip color', amPm: ['as_needed'] };
   if (/\blip\s+balm|lip\s+butter|lip\s+oil|lip\s+serum|lip\s+treatment|glossy\s+lip\b/.test(titleOnly)) return { label: 'Lip treatment', step: 'lip treatment', amPm: ['as_needed'] };
@@ -526,6 +539,12 @@ function inferRole(facts) {
     return { label: /\bpowder\b/.test(titleText) ? 'Dry shampoo powder' : 'Dry shampoo', step: 'hair care', amPm: ['as_needed'] };
   }
   if (/\bbrow\s+pencil|eyebrow|brow\b/.test(titleText)) return { label: 'Brow product', step: 'brow definition', amPm: ['as_needed'] };
+  if (/\bnail\s+polish\s+remover\b/.test(titleText)) return { label: 'Nail polish remover', step: 'nail remover', amPm: ['as_needed'] };
+  if (/\bcuticle\s+oil\b/.test(titleText)) return { label: 'Cuticle oil', step: 'nail care', amPm: ['as_needed'] };
+  if (/\bnail\s+polish\b.*\b(?:set|collection|edit)\b|\b(?:set|collection|edit)\b.*\bnail\s+polish\b/.test(titleText)) {
+    return { label: 'Nail color set', step: 'nail color set', amPm: ['as_needed'] };
+  }
+  if (/\b(?:breathable\s+)?nail\s+polish|nail\s+color\b/.test(titleText)) return { label: 'Nail color', step: 'nail color', amPm: ['as_needed'] };
   if (/\b(?:hair|leave[-\s]?in|conditioner|heat protectant|shampoo|styling cream|styler|frizz|scalp)\b/.test(titleText)) {
     return { label: 'Hair treatment', step: 'hair care', amPm: ['as_needed'] };
   }
@@ -558,6 +577,12 @@ function inferRole(facts) {
     return { label: /\bpowder\b/.test(text) ? 'Dry shampoo powder' : 'Dry shampoo', step: 'hair care', amPm: ['as_needed'] };
   }
   if (/\bbrow\s+pencil|eyebrow|brow\b/.test(text)) return { label: 'Brow product', step: 'brow definition', amPm: ['as_needed'] };
+  if (/\bnail\s+polish\s+remover\b/.test(text)) return { label: 'Nail polish remover', step: 'nail remover', amPm: ['as_needed'] };
+  if (/\bcuticle\s+oil\b/.test(text)) return { label: 'Cuticle oil', step: 'nail care', amPm: ['as_needed'] };
+  if (/\bnail\s+polish\b.*\b(?:set|collection|edit)\b|\b(?:set|collection|edit)\b.*\bnail\s+polish\b/.test(text)) {
+    return { label: 'Nail color set', step: 'nail color set', amPm: ['as_needed'] };
+  }
+  if (/\b(?:breathable\s+)?nail\s+polish|nail\s+color\b/.test(text)) return { label: 'Nail color', step: 'nail color', amPm: ['as_needed'] };
   if (/\b(?:fenty hair|leave[-\s]?in|conditioner|heat protectant|shampoo|styling cream|styler|frizz|scalp)\b/.test(text)) {
     return { label: 'Hair treatment', step: 'hair care', amPm: ['as_needed'] };
   }
@@ -669,6 +694,38 @@ function inferAnchors(facts, role) {
       ['glow payoff', bronzerLike ? /$a/ : /\bglow|dayglow|highlight|luminous|radiance\b/],
       ['matte finish', /\bmatte\b/],
       ['shade range', /\bshade|color|colour\b/],
+    ]);
+  } else if (role.step === 'nail color') {
+    productAnchors = findTokens(text, [
+      ['breathable polish format', /\bbreathable|water[-\s]?permeable|permeability\b/],
+      ['thin-coat application', /\b1\s*[-–]\s*2\s+thin\s+coats?|thin\s+coats?\b/],
+      ['long-wear color', /\blong[-\s]?wear|longevity\b/],
+      ['high-pigment payoff', /\bhigh\s+pigment|pigment\b/],
+      ['shade clarity', /\bshade|color|colour\b/],
+    ]);
+  } else if (role.step === 'nail color set') {
+    productAnchors = findTokens(text, [
+      ['set composition', /\b(?:4|four|6|six)[-\s]?piece|included\s+shades?|the\s+shades|set|collection|edit\b/],
+      ['shade selection', /\bshade|color|colour|choose your colors|selected\b/],
+      ['breathable polish format', /\bbreathable|water[-\s]?permeable|permeability\b/],
+      ['thin-coat application', /\b1\s*[-–]\s*2\s+thin\s+coats?|thin\s+coats?\b/],
+      ['long-wear color', /\blong[-\s]?wear|longevity\b/],
+    ]);
+  } else if (role.step === 'nail remover') {
+    productAnchors = findTokens(text, [
+      ['soy-based remover', /\bsoy[-\s]?based|soy\s+polish\s+remover\b/],
+      ['acetone-free positioning', /\bdoes not contain acetone|acetone[-\s]?free|without acetone\b/],
+      ['jojoba seed oil', /\bjojoba\b/],
+      ['tea tree oil', /\btea tree\b/],
+      ['polish removal directions', /\bremove nail polish|polish remover|wipe each nail\b/],
+    ]);
+  } else if (role.step === 'nail care') {
+    productAnchors = findTokens(text, [
+      ['cuticle care', /\bcuticle\b/],
+      ['nail oil format', /\boil\b/],
+      ['jojoba seed oil', /\bjojoba\b/],
+      ['ginseng', /\bginseng\b/],
+      ['nail health cue', /\bnail health|cuticles?|moisturi[sz]ation\b/],
     ]);
   } else if (role.step === 'beauty routine' && role.label === 'Makeup set') {
     productAnchors = findTokens(text, [
@@ -899,6 +956,10 @@ function buildPairingNotes(facts, role) {
   if (role.step === 'home fragrance') return ['Use as a home scent item and follow the brand safety directions for burn time and placement.'];
   if (role.step === 'lip definition') return ['Use before lip color to define the lip line and support a cleaner edge.'];
   if (role.step === 'lip color') return ['Apply directly to lips; pair with liner if you want more definition.'];
+  if (role.step === 'nail color set') return ['Use the included or selected nail colors according to the official polish directions.'];
+  if (role.step === 'nail color') return ['Apply thin coats as directed by the official PDP, then let each layer dry before additional color or top coat.'];
+  if (role.step === 'nail remover') return ['Use on nails as directed by the official remover instructions, then wash and dry nails before new polish.'];
+  if (role.step === 'nail care') return ['Apply to cuticles or nails as directed by the official product instructions.'];
   if (role.step === 'hair care') return ['Apply to hair as directed for the specific treatment or styling step.'];
   if (role.step === 'primer') return ['Apply before complexion makeup where you want smoother makeup laydown.'];
   if (role.step === 'application tool') return ['Use with the product textures the brush is designed to apply.'];
@@ -1156,6 +1217,47 @@ function buildEvidenceAnchoredWhatItIs(facts, role) {
       !bronzerLike && /\bglow|dayglow|highlight|luminous\b/i.test(text) ? 'glow payoff' : '',
     ]);
     return sentence(`${copyTitle} is a ${format} from ${facts.brand}${shade ? ` in shade ${shade}` : ''}${claims ? `, with source-backed cues around ${claims}` : ''}`);
+  }
+
+  if (role.step === 'nail color') {
+    const claims = joinClaims([
+      /\bbreathable|water[-\s]?permeable|permeability\b/i.test(text) ? 'a breathable polish format' : '',
+      /\b1\s*[-–]\s*2\s+thin\s+coats?|thin\s+coats?\b/i.test(text) ? 'thin-coat application' : '',
+      /\blong[-\s]?wear|longevity\b/i.test(text) ? 'long-wear color' : '',
+      /\bhigh\s+pigment|pigment\b/i.test(text) ? 'high-pigment payoff' : '',
+    ]);
+    return sentence(`${copyTitle} is a nail polish from ${facts.brand}${shade ? ` in shade ${shade}` : ''}${claims ? `, with source-backed cues around ${claims}` : ''}`);
+  }
+
+  if (role.step === 'nail color set') {
+    const claims = joinClaims([
+      /\b(?:4|four|6|six)[-\s]?piece|included\s+shades?|the\s+shades\b/i.test(text) ? 'set composition' : '',
+      /\bchoose your colors|selected|shade|color|colour\b/i.test(text) ? 'shade selection' : '',
+      /\bbreathable|water[-\s]?permeable|permeability\b/i.test(text) ? 'a breathable polish format' : '',
+      /\b1\s*[-–]\s*2\s+thin\s+coats?|thin\s+coats?\b/i.test(text) ? 'thin-coat application' : '',
+    ]);
+    return sentence(`${copyTitle} is a nail polish set from ${facts.brand}${size ? ` in ${size}` : ''}${claims ? `, with source-backed cues around ${claims}` : ''}`);
+  }
+
+  if (role.step === 'nail remover') {
+    const claims = joinClaims([
+      /\bsoy[-\s]?based|soy\s+polish\s+remover\b/i.test(text) ? 'soy-based remover format' : '',
+      /\bdoes not contain acetone|acetone[-\s]?free|without acetone\b/i.test(text) ? 'acetone-free positioning' : '',
+      /\bjojoba\b/i.test(text) ? 'jojoba seed oil' : '',
+      /\btea tree\b/i.test(text) ? 'tea tree oil' : '',
+    ]);
+    return sentence(`${copyTitle} is a nail polish remover from ${facts.brand}${size ? ` in ${size}` : ''}${claims ? `, with source-backed cues around ${claims}` : ''}`);
+  }
+
+  if (role.step === 'nail care') {
+    const claims = joinClaims([
+      /\bcuticle\b/i.test(text) ? 'cuticle care' : '',
+      /\boil\b/i.test(text) ? 'oil format' : '',
+      /\bjojoba\b/i.test(text) ? 'jojoba seed oil' : '',
+      /\bginseng\b/i.test(text) ? 'ginseng' : '',
+    ]);
+    const sizeClause = size && !/cuticle\s+oil/i.test(size) ? ` in ${size}` : '';
+    return sentence(`${copyTitle} is a cuticle oil from ${facts.brand}${sizeClause}${claims ? `, with source-backed cues around ${claims}` : ''}`);
   }
 
   if (role.step === 'lip color' || role.step === 'lip treatment') {
@@ -1416,6 +1518,15 @@ function buildWhyItStandsOut(facts, role, anchors) {
     } else if (role.step === 'face color') {
       anchorHeadline = 'Color payoff cues are specific';
       anchorBody = `Reviewed color cues such as ${anchorText} help shoppers compare shade, finish, or texture instead of seeing a generic blush/bronzer/highlighter card`;
+    } else if (role.step === 'nail color') {
+      anchorHeadline = 'Nail color cues are specific';
+      anchorBody = `Reviewed nail-polish cues such as ${anchorText} help shoppers compare shade, application format, or wear context without inventing unsupported formula claims`;
+    } else if (role.step === 'nail color set') {
+      anchorHeadline = 'Set cues are specific';
+      anchorBody = `Reviewed set cues such as ${anchorText} help shoppers understand the shade mix or custom set format without treating the parent row as a single polish`;
+    } else if (role.step === 'nail remover' || role.step === 'nail care') {
+      anchorHeadline = 'Nail-care cues are specific';
+      anchorBody = `Reviewed nail-care cues such as ${anchorText} identify the product role and source-backed format without inventing unsupported claims`;
     } else if (role.step === 'lip color') {
       anchorHeadline = 'Lip finish cues are specific';
       anchorBody = `Reviewed lip cues such as ${anchorText} identify finish, shade, or formula context before the shopper leaves Pivota`;

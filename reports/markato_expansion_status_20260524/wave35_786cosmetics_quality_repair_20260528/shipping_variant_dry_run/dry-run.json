@@ -1,0 +1,38 @@
+{
+  "generated_at": "2026-05-28T02:50:16.614Z",
+  "dry_run": true,
+  "market": "US",
+  "contract_version": "external_seed.source_variant_fields.v1",
+  "summary": {
+    "scanned": 1,
+    "dry_run": 1,
+    "updated": 0,
+    "skipped": 0,
+    "failed": 0,
+    "by_field": {
+      "variants": 1
+    }
+  },
+  "results": [
+    {
+      "external_product_id": "ext_e96da71bdfd3ec573a4642cd",
+      "title": "Shipping Protection",
+      "source_url": "https://786cosmetics.com/products/shipping-protection",
+      "source_host": "786cosmetics.com",
+      "status": "dry_run",
+      "patch_keys": [
+        "variants"
+      ],
+      "reason": "replace_force_or_weak_variant",
+      "before_hash": "594a94b432edf181a82c69f74dee85c5c472ce87782319e3b498b696e2b85c8e",
+      "after_hash": "f98e2583b1e430e702109a28d758e581e36c76b7d8cd7f4f334c9cece54606f4",
+      "variant_count": 1,
+      "variant_labels": [
+        "Service: Shipping Protection"
+      ],
+      "serving_mirror_sync": {
+        "planned": true
+      }
+    }
+  ]
+}

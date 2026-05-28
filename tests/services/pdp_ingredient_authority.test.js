@@ -830,6 +830,35 @@ describe('pdpIngredientAuthority', () => {
     expect(modules.activeIngredientsData.items).not.toEqual(expect.arrayContaining(['Titanium Dioxide']));
   });
 
+  test('accepts short official solvent remover INCI lists as authoritative', () => {
+    const modules = buildStructuredPdpIngredientModules({
+      merchant_id: 'external_seed',
+      source: 'external_seed',
+      title: 'Soy Nail Polish Remover With Almond Essential Oil',
+      category: 'Nail Polish Remover',
+      pdp_ingredients_raw:
+        'Dimethyl Glutamate, Dimethyl Adipate, Methyl Oleate/Palmitate/Linoleate/Stearate, Trideceth-8',
+      pdp_field_quality_summary: {
+        ingredients_raw: {
+          source_origin: 'reviewed_source_backed_pdp_content_patch',
+          source_quality_status: 'high',
+        },
+      },
+    });
+
+    expect(modules.ingredientsInciData).toEqual(
+      expect.objectContaining({
+        source_quality_status: 'authoritative',
+        items: [
+          'Dimethyl Glutamate',
+          'Dimethyl Adipate',
+          'Methyl Oleate/Palmitate/Linoleate/Stearate',
+          'Trideceth-8',
+        ],
+      }),
+    );
+  });
+
   test('augments existing non-reviewed authority with formula title evidence', () => {
     const authority = buildAuthoritativeIngredientView({
       title: 'Rice Lipids + Ectoin Microemulsion',
