@@ -1,0 +1,73 @@
+{
+  "generated_at": "2026-05-28T08:22:44.482Z",
+  "mode": "dry_run",
+  "batch_size": null,
+  "bootstrap_reviewed_identity_live_read": true,
+  "requested_ids": 2,
+  "fetched_rows": 2,
+  "mirror_rows": 0,
+  "planned_sku_rows": 0,
+  "planned_offer_rows": 0,
+  "planned_index_state_rows": 0,
+  "missing_ids": [],
+  "skipped": [
+    {
+      "external_product_id": "ext_b8af61a562f4ab972197f413",
+      "reason": "duplicate_pivota_signature_conflict",
+      "pivota_signature_id": "sig_9d68d0459c7a8e07e4004414",
+      "conflicting_products": [
+        {
+          "product_key": "prod::external_seed::external_seed::ext_1c6390a4583df99215617f2b",
+          "source_product_id": "ext_1c6390a4583df99215617f2b",
+          "title": "Revitalize Hydra Concealer",
+          "canonical_url": "https://www.rmsbeauty.com/products/revitalize-hydra-concealer"
+        }
+      ]
+    },
+    {
+      "external_product_id": "ext_1cc14ab28dee629b0bb1d3db",
+      "reason": "duplicate_pivota_signature_conflict",
+      "pivota_signature_id": "sig_2cf57ce472d380ed63f1393e",
+      "conflicting_products": [
+        {
+          "product_key": "prod::external_seed::external_seed::ext_f16d1ed12f9f2c9966d47d78",
+          "source_product_id": "ext_f16d1ed12f9f2c9966d47d78",
+          "title": "Radiance Lock Setting Mist",
+          "canonical_url": "https://www.rmsbeauty.com/products/radiance-lock-setting-mist"
+        }
+      ]
+    }
+  ],
+  "applied": {
+    "mode": "dry_run",
+    "existing_before": {
+      "catalog_products": 0,
+      "catalog_skus": 0,
+      "catalog_offers": 0,
+      "product_group_members": 0
+    },
+    "stale_delete_preview": {
+      "current_sku_rows": 0,
+      "current_offer_rows": 0,
+      "planned_stale_sku_deletes": 0,
+      "planned_stale_offer_deletes": 0,
+      "sample_stale_skus": [],
+      "sample_stale_offers": []
+    },
+    "batch_size": null,
+    "batches": 0,
+    "audit_reasons": {},
+    "product_upserts": 0,
+    "sku_upserts": 0,
+    "offer_upserts": 0,
+    "group_member_upserts": 0,
+    "group_member_preserved_existing_merges": 0,
+    "seed_attachment_updates": 0,
+    "index_state_upserts": 0,
+    "identity_live_read_updates": 0,
+    "catalog_row_trust_upserts": 0,
+    "stale_offer_deletes": 0,
+    "stale_sku_deletes": 0
+  },
+  "sample": []
+}

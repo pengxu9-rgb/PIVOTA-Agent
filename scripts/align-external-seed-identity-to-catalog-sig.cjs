@@ -263,7 +263,8 @@ function buildPlans(rows, options = {}) {
   return rows.map((row) => {
     const blockers = [];
     const sourceRef = asString(row.source_listing_ref) || `external_seed:${asString(row.source_product_id)}`;
-    const catalogSig = asString(row.catalog_sig_id);
+    const catalogSigBefore = asString(row.catalog_sig_id);
+    const identitySigBefore = asString(row.identity_sig_id);
     const reviewRequired = row.review_required === true || asString(row.identity_status) === 'review_required';
     const reviewedProductLineSingleton = reviewRequired
       ? evaluateReviewedProductLineSingleton(row, options)
@@ -274,6 +275,12 @@ function buildPlans(rows, options = {}) {
     if (!asString(row.source_product_id)) blockers.push('missing_source_product_id');
     if (!asString(row.product_key)) blockers.push('missing_catalog_product');
     if (!asString(row.source_listing_ref)) blockers.push('missing_identity_listing');
+    const catalogSigBootstrapFromIdentity =
+      !isSig(catalogSigBefore) &&
+      isSig(identitySigBefore) &&
+      options.allowReviewedProductLineSingletons &&
+      reviewedProductLineSingleton.eligible;
+    const catalogSig = catalogSigBootstrapFromIdentity ? identitySigBefore : catalogSigBefore;
     if (!isSig(catalogSig)) blockers.push('invalid_catalog_sig');
     if (reviewRequired) {
       const allowedByReviewedProductLineSingleton =
@@ -323,8 +330,10 @@ function buildPlans(rows, options = {}) {
       is_primary: row.is_primary === true,
       content_key: asString(row.content_key),
       catalog_sig_id: catalogSig,
+      catalog_sig_id_before: catalogSigBefore,
+      catalog_sig_bootstrap_from_identity: catalogSigBootstrapFromIdentity,
       catalog_sig_url: asString(row.catalog_sig_url) || `https://agent.pivota.cc/products/${catalogSig}`,
-      identity_sig_id_before: asString(row.identity_sig_id),
+      identity_sig_id_before: identitySigBefore,
       product_line_id: asString(row.product_line_id),
       review_family_id: asString(row.review_family_id),
       identity_status_before: asString(row.identity_status),
@@ -340,7 +349,7 @@ function buildPlans(rows, options = {}) {
 
 async function applyPlans(plans, reviewedBy) {
   const ready = plans.filter((plan) => plan.action === 'align_ready');
-  const totals = { override_upserts: 0, identity_rows_updated: 0 };
+  const totals = { override_upserts: 0, catalog_signature_updates: 0, identity_rows_updated: 0 };
   await withClient(async (client) => {
     await client.query('BEGIN');
     try {
@@ -396,6 +405,22 @@ async function applyPlans(plans, reviewedBy) {
           [overrideId, plan.source_listing_ref, JSON.stringify(payload), reviewedBy],
         );
         totals.override_upserts += 1;
+        if (plan.catalog_sig_bootstrap_from_identity === true) {
+          const catalogUpdate = await client.query(
+            `
+              UPDATE catalog_products
+              SET
+                pivota_signature_id = $2,
+                pivota_canonical_url = $3,
+                pivota_signature_minted_at = COALESCE(pivota_signature_minted_at, now()),
+                updated_at = now()
+              WHERE product_key = $1
+                AND COALESCE(pivota_signature_id, '') = ''
+            `,
+            [plan.product_key, plan.catalog_sig_id, plan.catalog_sig_url],
+          );
+          totals.catalog_signature_updates += Number(catalogUpdate.rowCount || 0);
+        }
         const update = await client.query(
           `
             UPDATE pdp_identity_listing

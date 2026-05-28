@@ -110,6 +110,17 @@ function isIngredientPolluted(value) {
   return isPolluted(normalized) || INGREDIENT_POLLUTION_RE.test(normalized);
 }
 
+function isReviewedSingleIngredientInci(entry) {
+  const normalized = text(entry.pdp_ingredients_raw);
+  if (!entry.allow_single_ingredient_formula && !entry.single_ingredient_formula) return false;
+  if (normalized.length < 35 || normalized.length > 180) return false;
+  if (normalized.includes(',')) return false;
+  if (isIngredientPolluted(normalized)) return false;
+  const sourceKind = text(entry.source_kind).toLowerCase();
+  if (!sourceKind.includes('official')) return false;
+  return /\b(?:aqua|water|oil|extract|floral water|flower water|rosa|damascena|simmondsia|argania|cocos|helianthus|butyrospermum|glycerin|squalane|tocopherol|aloe|juice)\b/i.test(normalized);
+}
+
 function qualityForField(seedData, field) {
   const snapshot = asObject(seedData.snapshot);
   const quality = {
@@ -236,16 +247,23 @@ function hasReviewedIngredientAuthority(seedData, ingredientsRaw) {
   );
 }
 
-function ingredientCaptureStatus(seedData) {
+function readFieldCaptureStatus(seedData, field) {
   const snapshot = asObject(seedData.snapshot);
-  return text(
-    asObject(seedData.pdp_field_capture_status).ingredients_raw ||
-      asObject(snapshot.pdp_field_capture_status).ingredients_raw,
-  ).toLowerCase();
+  const rootCapture = asObject(seedData.pdp_field_capture_status);
+  const snapshotCapture = asObject(snapshot.pdp_field_capture_status);
+  const keyByField = {
+    description: 'description_raw',
+    pdp_description_raw: 'description_raw',
+    pdp_how_to_use_raw: 'how_to_use_raw',
+    pdp_ingredients_raw: 'ingredients_raw',
+    pdp_details_sections: 'details_sections',
+  };
+  const key = keyByField[field] || field;
+  return text(rootCapture[key] || snapshotCapture[key]).toLowerCase();
 }
 
-function needsIngredientCaptureStatusMaterialization(seedData) {
-  return ['missing', 'blocked', 'quarantined', 'polluted', 'low'].includes(ingredientCaptureStatus(seedData));
+function captureStatusNeedsRecovery(seedData, field) {
+  return ['missing', 'blocked', 'quarantined', 'polluted', 'low'].includes(readFieldCaptureStatus(seedData, field));
 }
 
 function shouldPatchField(seedData, field, nextValue, entry) {
@@ -260,8 +278,12 @@ function shouldPatchField(seedData, field, nextValue, entry) {
     if (field === 'pdp_ingredients_raw' && !hasStructuredInci(seedData)) {
       return { patch: true, reason: 'materialize_structured_inci' };
     }
-    if (field === 'pdp_ingredients_raw' && needsIngredientCaptureStatusMaterialization(seedData)) {
-      return { patch: true, reason: 'materialize_ingredient_capture_status' };
+    if (captureStatusNeedsRecovery(seedData, field)) {
+      const reason =
+        field === 'pdp_ingredients_raw'
+          ? 'materialize_ingredient_capture_status'
+          : `recover_${field}_capture_status`;
+      return { patch: true, reason };
     }
     if (field === 'pdp_ingredients_raw' && !hasReviewedIngredientAuthority(seedData, normalizedNext)) {
       return { patch: true, reason: 'materialize_reviewed_ingredient_authority' };
@@ -338,6 +360,27 @@ function buildQualitySummary(seedData, fields, now, manifest) {
   return quality;
 }
 
+function buildCaptureStatus(seedData, fields) {
+  const snapshot = asObject(seedData.snapshot);
+  const capture = {
+    ...asObject(snapshot.pdp_field_capture_status),
+    ...asObject(seedData.pdp_field_capture_status),
+  };
+  if (fields.includes('description') || fields.includes('pdp_description_raw')) {
+    capture.description_raw = 'present';
+  }
+  if (fields.includes('pdp_ingredients_raw') || fields.includes('raw_ingredient_text_clean') || fields.includes('ingredients_inci')) {
+    capture.ingredients_raw = 'present';
+  }
+  if (fields.includes('pdp_how_to_use_raw')) {
+    capture.how_to_use_raw = 'present';
+  }
+  if (fields.includes('pdp_details_sections')) {
+    capture.details_sections = 'present';
+  }
+  return Object.keys(capture).length ? capture : null;
+}
+
 function buildSnapshotContract(now) {
   return {
     contract_version: SNAPSHOT_CONTRACT_VERSION,
@@ -397,6 +440,16 @@ function readManifestEntries(raw) {
     evidence: text(entry.evidence || root.evidence),
     source_url: text(entry.source_url || entry.canonical_url || root.source_url || root.canonical_url),
     source_kind: text(entry.source_kind || root.source_kind || 'official_pdp_structured_section'),
+    allow_single_ingredient_formula:
+      entry.allow_single_ingredient_formula === true ||
+      entry.single_ingredient_formula === true ||
+      root.allow_single_ingredient_formula === true ||
+      root.single_ingredient_formula === true,
+    single_ingredient_formula:
+      entry.single_ingredient_formula === true ||
+      entry.allow_single_ingredient_formula === true ||
+      root.single_ingredient_formula === true ||
+      root.allow_single_ingredient_formula === true,
     description_source_kind: text(entry.description_source_kind || root.description_source_kind),
     write_reviewed_ingredient_authority:
       entry.write_reviewed_ingredient_authority === true ||
@@ -433,9 +486,10 @@ function validateEntry(entry) {
   if (entry.pdp_ingredients_raw) {
     const inciItems = parseInciItems(entry.pdp_ingredients_raw);
     const singleIngredientAllowed = entry.allow_single_ingredient_inci === true && inciItems.length === 1;
-    if (entry.pdp_ingredients_raw.length < 80 && !singleIngredientAllowed) blockers.push('ingredients_too_short');
+    const singleIngredientOk = singleIngredientAllowed || isReviewedSingleIngredientInci(entry);
+    if (entry.pdp_ingredients_raw.length < 80 && !singleIngredientOk) blockers.push('ingredients_too_short');
     if (isIngredientPolluted(entry.pdp_ingredients_raw)) blockers.push('ingredients_polluted');
-    if (!/,/.test(entry.pdp_ingredients_raw) && !singleIngredientAllowed) blockers.push('ingredients_not_inci_like');
+    if (!/,/.test(entry.pdp_ingredients_raw) && !singleIngredientOk) blockers.push('ingredients_not_inci_like');
   }
   if (!entry.evidence || entry.evidence.length < 20) blockers.push('missing_review_evidence');
   if (!entry.reviewed_by) blockers.push('missing_reviewer');
@@ -556,6 +610,11 @@ function buildNextSeedData(row, entry, now) {
   const quality = buildQualitySummary(seedData, fields, now, entry);
   seedData.pdp_field_quality_summary = quality;
   snapshot.pdp_field_quality_summary = quality;
+  const captureStatus = buildCaptureStatus(seedData, fields);
+  if (captureStatus) {
+    seedData.pdp_field_capture_status = captureStatus;
+    snapshot.pdp_field_capture_status = captureStatus;
+  }
 
   const contract = buildSnapshotContract(now);
   seedData.external_seed_snapshot_contract = {

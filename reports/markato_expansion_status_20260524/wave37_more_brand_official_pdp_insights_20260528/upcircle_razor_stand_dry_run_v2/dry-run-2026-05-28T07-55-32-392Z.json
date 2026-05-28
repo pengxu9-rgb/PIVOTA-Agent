@@ -1,0 +1,184 @@
+{
+  "generated_at": "2026-05-28T07:55:32.392Z",
+  "source": "pivota_insights_official_pdp_manual_review_v1",
+  "mode": "dry_run",
+  "filters": {
+    "brand": null,
+    "product_ids": [
+      "ext_f79a99a09a933e731880cdfb"
+    ],
+    "limit": null,
+    "include_strong": false,
+    "include_url_key": false,
+    "apply_chunk_size": null
+  },
+  "summary": {
+    "scanned": 1,
+    "changed_products": 1,
+    "blocked_products": 0,
+    "skipped_products": 0,
+    "write_actions": {
+      "update": 1,
+      "insert": 1
+    },
+    "skip_reasons": {},
+    "evidence_profiles": {
+      "official_pdp_reviewed_limited": 1
+    }
+  },
+  "plans": [
+    {
+      "external_product_id": "ext_f79a99a09a933e731880cdfb",
+      "pivota_signature_id": "sig_afe3f9a92ef0da1f86bcaa53",
+      "title": "Safety Razor Stand",
+      "brand": "UpCircle Beauty",
+      "canonical_url": "https://upcirclebeauty.com/products/safety-razor-stand",
+      "changed": true,
+      "blocked": false,
+      "skip_reason": null,
+      "candidate_hash": "7aa15505d4630556c089477555dacbf16a71ac28c5ad57389736d33bbab5a1e0",
+      "evidence_profile": "official_pdp_reviewed_limited",
+      "source_coverage": {
+        "source": "official_pdp",
+        "canonical_url": "https://upcirclebeauty.com/products/safety-razor-stand",
+        "fields": {
+          "description": true,
+          "ingredients": 0,
+          "active_ingredients": 0,
+          "how_to": 0,
+          "details": 0,
+          "variants": 2
+        }
+      },
+      "preview": {
+        "headline": "Body care tool",
+        "what_it_is": "Safety Razor Stand is a razor stand from UpCircle Beauty, with source-backed cues around stand format and plastic-free positioning.",
+        "why_it_stands_out": [
+          {
+            "headline": "Body-care tool cues are specific",
+            "body": "Reviewed tool cues such as razor stand format, safety razor format, plastic-free positioning identify the shaving or body-care format without treating it like a formula product.",
+            "evidence_strength": "official_pdp_reviewed"
+          }
+        ],
+        "best_for": [
+          {
+            "tag": "shaving_routine",
+            "label": "shaving routine",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "refillable_body_care_tools",
+            "label": "refillable body-care tools",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "plastic_free_body_care",
+            "label": "plastic-free body care",
+            "confidence": "moderate"
+          }
+        ],
+        "shopping_highlight": "razor stand format, safety razor format"
+      },
+      "writes": [
+        {
+          "kb_key": "product:ext_f79a99a09a933e731880cdfb",
+          "action": "update",
+          "reason": "explicit_owner_delegated_assistant_replacement_review",
+          "old_hash": "17b8dac46322ee293ea15837a2a8c07f404ef2edfd858b3fd8ce4548dcfdc41d",
+          "candidate_hash": "61b1244f876c8004de0c5ad38c749c552c52c692df647e3f05664b83558cd5b7",
+          "existing_weak": true,
+          "source": "pivota_insights_official_pdp_manual_review_v1",
+          "after_inventory": {
+            "product_id": "ext_f79a99a09a933e731880cdfb",
+            "kb_key": "product:ext_f79a99a09a933e731880cdfb",
+            "source": "pivota_insights_official_pdp_manual_review_v1",
+            "updated_at": "",
+            "last_success_at": "",
+            "title": "Safety Razor Stand",
+            "canonical_url": "",
+            "bundle_hash": "7aa15505d4630556c089477555dacbf16a71ac28c5ad57389736d33bbab5a1e0",
+            "lane": "keep",
+            "reason": "protected_good_content",
+            "priority": 0,
+            "protected": true,
+            "displayable": true,
+            "high_quality_ready": true,
+            "human_reviewed": true,
+            "issues": [],
+            "blocking_issues": [],
+            "quality_state": "reviewed",
+            "evidence_profile": "official_pdp_reviewed_limited",
+            "evidence_rank": 1,
+            "review_tier": "assistant_reviewed",
+            "agent_readable": true,
+            "public_ready": true
+          },
+          "source_meta": {
+            "evidence_profile": "official_pdp_reviewed_limited",
+            "quality_state": "reviewed",
+            "source_origin": "official_pdp_fields",
+            "source_url": "https://upcirclebeauty.com/products/safety-razor-stand",
+            "quality_improvement": {
+              "previous_bundle_hash": "71a54ee14e8d64b991ec1d8cdd0a24cb01ca40049a75e0d480a2b807f61881e7",
+              "candidate_bundle_hash": "7aa15505d4630556c089477555dacbf16a71ac28c5ad57389736d33bbab5a1e0",
+              "replacement_decision": "explicit_owner_delegated_assistant_replacement_review",
+              "existing_quality_lane": "suppress_public",
+              "candidate_quality_lane": "keep",
+              "existing_evidence_profile": "seller_only",
+              "candidate_evidence_profile": "official_pdp_reviewed_limited"
+            }
+          }
+        },
+        {
+          "kb_key": "product:sig_afe3f9a92ef0da1f86bcaa53",
+          "action": "insert",
+          "reason": "new_product_intel_bundle",
+          "old_hash": null,
+          "candidate_hash": "61b1244f876c8004de0c5ad38c749c552c52c692df647e3f05664b83558cd5b7",
+          "existing_weak": true,
+          "source": "pivota_insights_official_pdp_manual_review_v1",
+          "after_inventory": {
+            "product_id": "ext_f79a99a09a933e731880cdfb",
+            "kb_key": "product:sig_afe3f9a92ef0da1f86bcaa53",
+            "source": "pivota_insights_official_pdp_manual_review_v1",
+            "updated_at": "",
+            "last_success_at": "",
+            "title": "Safety Razor Stand",
+            "canonical_url": "",
+            "bundle_hash": "7aa15505d4630556c089477555dacbf16a71ac28c5ad57389736d33bbab5a1e0",
+            "lane": "keep",
+            "reason": "protected_good_content",
+            "priority": 0,
+            "protected": true,
+            "displayable": true,
+            "high_quality_ready": true,
+            "human_reviewed": true,
+            "issues": [],
+            "blocking_issues": [],
+            "quality_state": "reviewed",
+            "evidence_profile": "official_pdp_reviewed_limited",
+            "evidence_rank": 1,
+            "review_tier": "assistant_reviewed",
+            "agent_readable": true,
+            "public_ready": true
+          },
+          "source_meta": {
+            "evidence_profile": "official_pdp_reviewed_limited",
+            "quality_state": "reviewed",
+            "source_origin": "official_pdp_fields",
+            "source_url": "https://upcirclebeauty.com/products/safety-razor-stand",
+            "quality_improvement": {
+              "previous_bundle_hash": null,
+              "candidate_bundle_hash": "7aa15505d4630556c089477555dacbf16a71ac28c5ad57389736d33bbab5a1e0",
+              "replacement_decision": "new_product_intel_bundle",
+              "existing_quality_lane": null,
+              "candidate_quality_lane": "keep",
+              "existing_evidence_profile": null,
+              "candidate_evidence_profile": "official_pdp_reviewed_limited"
+            }
+          }
+        }
+      ]
+    }
+  ]
+}

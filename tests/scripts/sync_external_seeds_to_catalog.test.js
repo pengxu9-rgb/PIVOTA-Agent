@@ -1,8 +1,50 @@
 const {
-  _internals: { buildMirror, inferCatalogMirrorCategory, scoreMirrorServingQuality },
+  _internals: {
+    buildMirror,
+    filterMirrorsWithSignatureConflicts,
+    inferCatalogMirrorCategory,
+    scoreMirrorServingQuality,
+  },
 } = require('../../scripts/sync-external-seeds-to-catalog.cjs');
 
 describe('sync-external-seeds-to-catalog category inference', () => {
+  test('classifies duplicate pivota signature rows before apply', () => {
+    const skipped = [];
+    const mirrors = [
+      {
+        productKey: 'prod::external_seed::external_seed::ext_dermstore_duplicate',
+        row: { external_product_id: 'ext_dermstore_duplicate' },
+        product: {
+          pivota_signature_id: 'sig_aaaaaaaaaaaaaaaa',
+          title: 'Retailer Duplicate Product',
+          canonical_url: 'https://retailer.example/product',
+        },
+      },
+    ];
+
+    const filtered = filterMirrorsWithSignatureConflicts(mirrors, [
+      {
+        product_key: 'prod::external_seed::external_seed::ext_official_canonical',
+        source_product_id: 'ext_official_canonical',
+        title: 'Official Canonical Product',
+        canonical_url: 'https://brand.example/product',
+        pivota_signature_id: 'sig_aaaaaaaaaaaaaaaa',
+      },
+    ], skipped);
+
+    expect(filtered).toEqual([]);
+    expect(skipped).toEqual([
+      expect.objectContaining({
+        external_product_id: 'ext_dermstore_duplicate',
+        reason: 'duplicate_pivota_signature_conflict',
+        pivota_signature_id: 'sig_aaaaaaaaaaaaaaaa',
+      }),
+    ]);
+    expect(skipped[0].conflicting_products[0]).toEqual(expect.objectContaining({
+      source_product_id: 'ext_official_canonical',
+    }));
+  });
+
   test('classifies mineral highlighters as makeup instead of generic beauty', () => {
     const category = inferCatalogMirrorCategory({
       title: 'King Kylie Loose Powder Highlighter',

@@ -1,0 +1,1440 @@
+{
+  "generated_at": "2026-05-28T08:56:54.224Z",
+  "source": "pivota_insights_official_pdp_manual_review_v1",
+  "mode": "apply",
+  "filters": {
+    "brand": "Miss Nella",
+    "product_ids": [
+      "ext_33466da0907b256ffc53783b",
+      "ext_e9e3fba6b05911bba1bfe71e",
+      "ext_b8dbd5e1eeaa06e173cea408",
+      "ext_30ec832501cabee19853e014",
+      "ext_a4e0feeb2b9b60faf69a3744",
+      "ext_8793dabe7fb8f55499ca2eea",
+      "ext_088385a34673307ec7d90d23",
+      "ext_ce9afe62b715b4fad61face6",
+      "ext_af758de3d843c03fe9548105",
+      "ext_85497220bc1f512254d1d470",
+      "ext_44cdfacf7dba0295657eb7f3",
+      "ext_53d8b7377873cf1ae1001c1b",
+      "ext_5f24f69f578451c59693798b",
+      "ext_c6b23872e9aadeeb30e13d61"
+    ],
+    "limit": null,
+    "include_strong": false,
+    "include_url_key": false,
+    "apply_chunk_size": 10
+  },
+  "summary": {
+    "scanned": 14,
+    "changed_products": 14,
+    "blocked_products": 0,
+    "skipped_products": 0,
+    "write_actions": {
+      "insert": 6,
+      "update": 8
+    },
+    "skip_reasons": {},
+    "evidence_profiles": {
+      "official_pdp_reviewed_formula_and_usage": 2,
+      "official_pdp_reviewed_limited": 12
+    }
+  },
+  "plans": [
+    {
+      "external_product_id": "ext_33466da0907b256ffc53783b",
+      "pivota_signature_id": null,
+      "title": "Blush",
+      "brand": "Miss Nella",
+      "canonical_url": "https://www.missnella.com/products/blush",
+      "changed": true,
+      "blocked": false,
+      "skip_reason": null,
+      "candidate_hash": "028948c35d21d87a08df2f13d0a15117258e425f842990001b59ce158a6ebb9e",
+      "evidence_profile": "official_pdp_reviewed_formula_and_usage",
+      "source_coverage": {
+        "source": "official_pdp",
+        "canonical_url": "https://www.missnella.com/products/blush",
+        "fields": {
+          "description": true,
+          "ingredients": 1,
+          "active_ingredients": 0,
+          "how_to": 1,
+          "details": 3,
+          "variants": 3
+        }
+      },
+      "preview": {
+        "headline": "Face color makeup",
+        "what_it_is": "Blush is a blush from Miss Nella, with source-backed cues around glow payoff.",
+        "why_it_stands_out": [
+          {
+            "headline": "Color payoff cues are specific",
+            "body": "Reviewed color cues such as glow payoff, shade range help shoppers compare shade, finish, or texture instead of seeing a generic blush/bronzer/highlighter card.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Ingredient list is available",
+            "body": "Full INCI is present for formula-sensitive review, which makes this PDP safer to evaluate than a claim-only listing.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Usage instructions available",
+            "body": "Reviewed usage context is present, including: Apply to the apples of your cheeks and blend for a natural, rosy glow, building layers for desired intensity.",
+            "evidence_strength": "official_pdp_reviewed"
+          }
+        ],
+        "best_for": [
+          {
+            "tag": "radiant_finish",
+            "label": "radiant finish",
+            "confidence": "moderate"
+          }
+        ],
+        "shopping_highlight": "glow payoff, shade range"
+      },
+      "writes": [
+        {
+          "kb_key": "product:ext_33466da0907b256ffc53783b",
+          "action": "insert",
+          "reason": "new_product_intel_bundle",
+          "old_hash": null,
+          "candidate_hash": "408cc4b461077164f093c82ce834f391cb76c6b9ba9bad3d0669519cd0f87214",
+          "existing_weak": true,
+          "source": "pivota_insights_official_pdp_manual_review_v1",
+          "after_inventory": {
+            "product_id": "ext_33466da0907b256ffc53783b",
+            "kb_key": "product:ext_33466da0907b256ffc53783b",
+            "source": "pivota_insights_official_pdp_manual_review_v1",
+            "updated_at": "",
+            "last_success_at": "",
+            "title": "Blush",
+            "canonical_url": "",
+            "bundle_hash": "028948c35d21d87a08df2f13d0a15117258e425f842990001b59ce158a6ebb9e",
+            "lane": "keep",
+            "reason": "protected_good_content",
+            "priority": 0,
+            "protected": true,
+            "displayable": true,
+            "high_quality_ready": true,
+            "human_reviewed": true,
+            "issues": [],
+            "blocking_issues": [],
+            "quality_state": "reviewed",
+            "evidence_profile": "official_pdp_reviewed_formula_and_usage",
+            "evidence_rank": 1,
+            "review_tier": "assistant_reviewed",
+            "agent_readable": true,
+            "public_ready": true
+          },
+          "source_meta": {
+            "evidence_profile": "official_pdp_reviewed_formula_and_usage",
+            "quality_state": "reviewed",
+            "source_origin": "official_pdp_fields",
+            "source_url": "https://www.missnella.com/products/blush",
+            "quality_improvement": {
+              "previous_bundle_hash": null,
+              "candidate_bundle_hash": "028948c35d21d87a08df2f13d0a15117258e425f842990001b59ce158a6ebb9e",
+              "replacement_decision": "new_product_intel_bundle",
+              "existing_quality_lane": null,
+              "candidate_quality_lane": "keep",
+              "existing_evidence_profile": null,
+              "candidate_evidence_profile": "official_pdp_reviewed_formula_and_usage"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "external_product_id": "ext_e9e3fba6b05911bba1bfe71e",
+      "pivota_signature_id": null,
+      "title": "Eye Shadow",
+      "brand": "Miss Nella",
+      "canonical_url": "https://www.missnella.com/products/eye-shadow",
+      "changed": true,
+      "blocked": false,
+      "skip_reason": null,
+      "candidate_hash": "337eef60ccd64763302cc3917c907be853cf186cf48e6472ee570fbff571c4c7",
+      "evidence_profile": "official_pdp_reviewed_formula_and_usage",
+      "source_coverage": {
+        "source": "official_pdp",
+        "canonical_url": "https://www.missnella.com/products/eye-shadow",
+        "fields": {
+          "description": true,
+          "ingredients": 1,
+          "active_ingredients": 0,
+          "how_to": 1,
+          "details": 3,
+          "variants": 3
+        }
+      },
+      "preview": {
+        "headline": "Eye makeup",
+        "what_it_is": "Eye Shadow is an eye makeup product from Miss Nella, with source-backed cues around multi-shade color selection.",
+        "why_it_stands_out": [
+          {
+            "headline": "Product cues are source-backed",
+            "body": "Reviewed PDP cues such as multi-shade color story give shoppers specific comparison points within Miss Nella, rather than category-only copy.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Ingredient list is available",
+            "body": "Full INCI is present for formula-sensitive review, which makes this PDP safer to evaluate than a claim-only listing.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Usage instructions available",
+            "body": "Reviewed usage context is present, including: Gently apply to eyelids using a fingertip or brush, then blend for a soft, playful look!",
+            "evidence_strength": "official_pdp_reviewed"
+          }
+        ],
+        "best_for": [
+          {
+            "tag": "multi_shade_color_story",
+            "label": "multi-shade color story",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "full_inci_available",
+            "label": "full INCI available",
+            "confidence": "moderate"
+          }
+        ],
+        "shopping_highlight": "multi-shade color story"
+      },
+      "writes": [
+        {
+          "kb_key": "product:ext_e9e3fba6b05911bba1bfe71e",
+          "action": "insert",
+          "reason": "new_product_intel_bundle",
+          "old_hash": null,
+          "candidate_hash": "d3e1c54d13338879807df7b77eb2426e74538b65a7525c4cb4ff9e66b2501b15",
+          "existing_weak": true,
+          "source": "pivota_insights_official_pdp_manual_review_v1",
+          "after_inventory": {
+            "product_id": "ext_e9e3fba6b05911bba1bfe71e",
+            "kb_key": "product:ext_e9e3fba6b05911bba1bfe71e",
+            "source": "pivota_insights_official_pdp_manual_review_v1",
+            "updated_at": "",
+            "last_success_at": "",
+            "title": "Eye Shadow",
+            "canonical_url": "",
+            "bundle_hash": "337eef60ccd64763302cc3917c907be853cf186cf48e6472ee570fbff571c4c7",
+            "lane": "keep",
+            "reason": "protected_good_content",
+            "priority": 0,
+            "protected": true,
+            "displayable": true,
+            "high_quality_ready": true,
+            "human_reviewed": true,
+            "issues": [],
+            "blocking_issues": [],
+            "quality_state": "reviewed",
+            "evidence_profile": "official_pdp_reviewed_formula_and_usage",
+            "evidence_rank": 1,
+            "review_tier": "assistant_reviewed",
+            "agent_readable": true,
+            "public_ready": true
+          },
+          "source_meta": {
+            "evidence_profile": "official_pdp_reviewed_formula_and_usage",
+            "quality_state": "reviewed",
+            "source_origin": "official_pdp_fields",
+            "source_url": "https://www.missnella.com/products/eye-shadow",
+            "quality_improvement": {
+              "previous_bundle_hash": null,
+              "candidate_bundle_hash": "337eef60ccd64763302cc3917c907be853cf186cf48e6472ee570fbff571c4c7",
+              "replacement_decision": "new_product_intel_bundle",
+              "existing_quality_lane": null,
+              "candidate_quality_lane": "keep",
+              "existing_evidence_profile": null,
+              "candidate_evidence_profile": "official_pdp_reviewed_formula_and_usage"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "external_product_id": "ext_b8dbd5e1eeaa06e173cea408",
+      "pivota_signature_id": null,
+      "title": "Roll-On Body Shimmer",
+      "brand": "Miss Nella",
+      "canonical_url": "https://www.missnella.com/products/roll-on-body-glitter",
+      "changed": true,
+      "blocked": false,
+      "skip_reason": null,
+      "candidate_hash": "599894001eec172d3691cd74b02c064d03497a30a5959d87ef336716499e4633",
+      "evidence_profile": "official_pdp_reviewed_limited",
+      "source_coverage": {
+        "source": "official_pdp",
+        "canonical_url": "https://www.missnella.com/products/roll-on-body-glitter",
+        "fields": {
+          "description": true,
+          "ingredients": 0,
+          "active_ingredients": 0,
+          "how_to": 0,
+          "details": 0,
+          "variants": 3
+        }
+      },
+      "preview": {
+        "headline": "Body shimmer",
+        "what_it_is": "Roll-On Body Shimmer is a body shimmer product from Miss Nella, with source-backed cues around roll-on application and body shimmer finish.",
+        "why_it_stands_out": [
+          {
+            "headline": "Body-shimmer cues are specific",
+            "body": "Reviewed shimmer cues such as roll-on format, body shimmer finish identify the format and finish without treating it like a skincare formula.",
+            "evidence_strength": "official_pdp_reviewed"
+          }
+        ],
+        "best_for": [
+          {
+            "tag": "body_shimmer_finish",
+            "label": "body shimmer finish",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "roll_on_application",
+            "label": "roll-on application",
+            "confidence": "moderate"
+          }
+        ],
+        "shopping_highlight": "roll-on format, body shimmer finish"
+      },
+      "writes": [
+        {
+          "kb_key": "product:ext_b8dbd5e1eeaa06e173cea408",
+          "action": "insert",
+          "reason": "new_product_intel_bundle",
+          "old_hash": null,
+          "candidate_hash": "677497ee72af4b58c1da34974cb1548056e4d0526582244486374197ba206051",
+          "existing_weak": true,
+          "source": "pivota_insights_official_pdp_manual_review_v1",
+          "after_inventory": {
+            "product_id": "ext_b8dbd5e1eeaa06e173cea408",
+            "kb_key": "product:ext_b8dbd5e1eeaa06e173cea408",
+            "source": "pivota_insights_official_pdp_manual_review_v1",
+            "updated_at": "",
+            "last_success_at": "",
+            "title": "Roll-On Body Shimmer",
+            "canonical_url": "",
+            "bundle_hash": "599894001eec172d3691cd74b02c064d03497a30a5959d87ef336716499e4633",
+            "lane": "keep",
+            "reason": "protected_good_content",
+            "priority": 0,
+            "protected": true,
+            "displayable": true,
+            "high_quality_ready": true,
+            "human_reviewed": true,
+            "issues": [],
+            "blocking_issues": [],
+            "quality_state": "reviewed",
+            "evidence_profile": "official_pdp_reviewed_limited",
+            "evidence_rank": 1,
+            "review_tier": "assistant_reviewed",
+            "agent_readable": true,
+            "public_ready": true
+          },
+          "source_meta": {
+            "evidence_profile": "official_pdp_reviewed_limited",
+            "quality_state": "reviewed",
+            "source_origin": "official_pdp_fields",
+            "source_url": "https://www.missnella.com/products/roll-on-body-glitter",
+            "quality_improvement": {
+              "previous_bundle_hash": null,
+              "candidate_bundle_hash": "599894001eec172d3691cd74b02c064d03497a30a5959d87ef336716499e4633",
+              "replacement_decision": "new_product_intel_bundle",
+              "existing_quality_lane": null,
+              "candidate_quality_lane": "keep",
+              "existing_evidence_profile": null,
+              "candidate_evidence_profile": "official_pdp_reviewed_limited"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "external_product_id": "ext_30ec832501cabee19853e014",
+      "pivota_signature_id": null,
+      "title": "WH | Astroglow Roll-On Body Glitter",
+      "brand": "Miss Nella",
+      "canonical_url": "https://www.missnella.com/products/astroglow-roll-on-body-glitter",
+      "changed": true,
+      "blocked": false,
+      "skip_reason": null,
+      "candidate_hash": "cd016c22bae06a621ab743be46f44965b9b61c3881146038d17c3e0212be4128",
+      "evidence_profile": "official_pdp_reviewed_limited",
+      "source_coverage": {
+        "source": "official_pdp",
+        "canonical_url": "https://www.missnella.com/products/astroglow-roll-on-body-glitter",
+        "fields": {
+          "description": true,
+          "ingredients": 0,
+          "active_ingredients": 0,
+          "how_to": 0,
+          "details": 0,
+          "variants": 1
+        }
+      },
+      "preview": {
+        "headline": "Body shimmer",
+        "what_it_is": "Astroglow Roll-On Body Glitter is a body shimmer product from Miss Nella, with source-backed cues around roll-on application, body shimmer finish and visible color cues.",
+        "why_it_stands_out": [
+          {
+            "headline": "Body-shimmer cues are specific",
+            "body": "Reviewed shimmer cues such as roll-on format, body shimmer finish, shade or color cue identify the format and finish without treating it like a skincare formula.",
+            "evidence_strength": "official_pdp_reviewed"
+          }
+        ],
+        "best_for": [
+          {
+            "tag": "body_shimmer_finish",
+            "label": "body shimmer finish",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "roll_on_application",
+            "label": "roll-on application",
+            "confidence": "moderate"
+          }
+        ],
+        "shopping_highlight": "roll-on format, body shimmer finish"
+      },
+      "writes": [
+        {
+          "kb_key": "product:ext_30ec832501cabee19853e014",
+          "action": "update",
+          "reason": "explicit_owner_delegated_assistant_replacement_review",
+          "old_hash": "1d4868b181b53a178ba05c7538a91cb1b3dad8891959948f010b54e2f510b580",
+          "candidate_hash": "a0d33813f73c7f7d89e1bbc63ac704ccfb6e0fb0b37a66570e51a1cc06ee4e41",
+          "existing_weak": true,
+          "source": "pivota_insights_official_pdp_manual_review_v1",
+          "after_inventory": {
+            "product_id": "ext_30ec832501cabee19853e014",
+            "kb_key": "product:ext_30ec832501cabee19853e014",
+            "source": "pivota_insights_official_pdp_manual_review_v1",
+            "updated_at": "",
+            "last_success_at": "",
+            "title": "WH | Astroglow Roll-On Body Glitter",
+            "canonical_url": "",
+            "bundle_hash": "cd016c22bae06a621ab743be46f44965b9b61c3881146038d17c3e0212be4128",
+            "lane": "keep",
+            "reason": "protected_good_content",
+            "priority": 0,
+            "protected": true,
+            "displayable": true,
+            "high_quality_ready": true,
+            "human_reviewed": true,
+            "issues": [],
+            "blocking_issues": [],
+            "quality_state": "reviewed",
+            "evidence_profile": "official_pdp_reviewed_limited",
+            "evidence_rank": 1,
+            "review_tier": "assistant_reviewed",
+            "agent_readable": true,
+            "public_ready": true
+          },
+          "source_meta": {
+            "evidence_profile": "official_pdp_reviewed_limited",
+            "quality_state": "reviewed",
+            "source_origin": "official_pdp_fields",
+            "source_url": "https://www.missnella.com/products/astroglow-roll-on-body-glitter",
+            "quality_improvement": {
+              "previous_bundle_hash": "1b9a4a9fedc489b55d01cf9cf8578a6f2cb001b81bbf9d9d35f9eb88f867e88a",
+              "candidate_bundle_hash": "cd016c22bae06a621ab743be46f44965b9b61c3881146038d17c3e0212be4128",
+              "replacement_decision": "explicit_owner_delegated_assistant_replacement_review",
+              "existing_quality_lane": "suppress_public",
+              "candidate_quality_lane": "keep",
+              "existing_evidence_profile": "seller_only",
+              "candidate_evidence_profile": "official_pdp_reviewed_limited"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "external_product_id": "ext_a4e0feeb2b9b60faf69a3744",
+      "pivota_signature_id": null,
+      "title": "WH | Cutie Pie Lip Balm",
+      "brand": "Miss Nella",
+      "canonical_url": "https://www.missnella.com/products/xl-lip-balm-cutie-pie-pack-of-3",
+      "changed": true,
+      "blocked": false,
+      "skip_reason": null,
+      "candidate_hash": "ea6b60fb1b2442acbaa4c0bd01083552ae2a909feb527e5b332343243a21fddd",
+      "evidence_profile": "official_pdp_reviewed_limited",
+      "source_coverage": {
+        "source": "official_pdp",
+        "canonical_url": "https://www.missnella.com/products/xl-lip-balm-cutie-pie-pack-of-3",
+        "fields": {
+          "description": true,
+          "ingredients": 0,
+          "active_ingredients": 0,
+          "how_to": 0,
+          "details": 0,
+          "variants": 1
+        }
+      },
+      "preview": {
+        "headline": "Lip treatment",
+        "what_it_is": "Cutie Pie Lip Balm is a tinted lip balm from Miss Nella, with source-backed cues around shade clarity and comfort-oriented lip care.",
+        "why_it_stands_out": [
+          {
+            "headline": "Product cues are source-backed",
+            "body": "Reviewed PDP cues such as shade range give shoppers specific comparison points within Miss Nella, rather than category-only copy.",
+            "evidence_strength": "official_pdp_reviewed"
+          }
+        ],
+        "best_for": [
+          {
+            "tag": "color_payoff",
+            "label": "color payoff",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "lip_comfort",
+            "label": "lip comfort",
+            "confidence": "moderate"
+          }
+        ],
+        "shopping_highlight": "shade range"
+      },
+      "writes": [
+        {
+          "kb_key": "product:ext_a4e0feeb2b9b60faf69a3744",
+          "action": "update",
+          "reason": "explicit_owner_delegated_assistant_replacement_review",
+          "old_hash": "6dfa51d8f53a4737761974fdf5815047b9c04f0cb4aa7046f4bb0a5694bb10ec",
+          "candidate_hash": "91852bcbfe34fecacea67617e4d67065ec0c6bb7af438bc47880b9c652608df8",
+          "existing_weak": true,
+          "source": "pivota_insights_official_pdp_manual_review_v1",
+          "after_inventory": {
+            "product_id": "ext_a4e0feeb2b9b60faf69a3744",
+            "kb_key": "product:ext_a4e0feeb2b9b60faf69a3744",
+            "source": "pivota_insights_official_pdp_manual_review_v1",
+            "updated_at": "",
+            "last_success_at": "",
+            "title": "WH | Cutie Pie Lip Balm",
+            "canonical_url": "",
+            "bundle_hash": "ea6b60fb1b2442acbaa4c0bd01083552ae2a909feb527e5b332343243a21fddd",
+            "lane": "keep",
+            "reason": "protected_good_content",
+            "priority": 0,
+            "protected": true,
+            "displayable": true,
+            "high_quality_ready": true,
+            "human_reviewed": true,
+            "issues": [],
+            "blocking_issues": [],
+            "quality_state": "reviewed",
+            "evidence_profile": "official_pdp_reviewed_limited",
+            "evidence_rank": 1,
+            "review_tier": "assistant_reviewed",
+            "agent_readable": true,
+            "public_ready": true
+          },
+          "source_meta": {
+            "evidence_profile": "official_pdp_reviewed_limited",
+            "quality_state": "reviewed",
+            "source_origin": "official_pdp_fields",
+            "source_url": "https://www.missnella.com/products/xl-lip-balm-cutie-pie-pack-of-3",
+            "quality_improvement": {
+              "previous_bundle_hash": "0d01f1caf56f5731b25420d81b9d77534fdb9aeef45b96a6e85943b949740de4",
+              "candidate_bundle_hash": "ea6b60fb1b2442acbaa4c0bd01083552ae2a909feb527e5b332343243a21fddd",
+              "replacement_decision": "explicit_owner_delegated_assistant_replacement_review",
+              "existing_quality_lane": "suppress_public",
+              "candidate_quality_lane": "keep",
+              "existing_evidence_profile": "seller_only",
+              "candidate_evidence_profile": "official_pdp_reviewed_limited"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "external_product_id": "ext_8793dabe7fb8f55499ca2eea",
+      "pivota_signature_id": null,
+      "title": "WH | Fairy Kiss Lip Gloss",
+      "brand": "Miss Nella",
+      "canonical_url": "https://www.missnella.com/products/fairy-kiss-lip-gloss-pack-of-6",
+      "changed": true,
+      "blocked": false,
+      "skip_reason": null,
+      "candidate_hash": "8889504ad4ce3a3089369cbc5ddefa432fced3fdfa7a7e94f9ab06cfede771eb",
+      "evidence_profile": "official_pdp_reviewed_limited",
+      "source_coverage": {
+        "source": "official_pdp",
+        "canonical_url": "https://www.missnella.com/products/fairy-kiss-lip-gloss-pack-of-6",
+        "fields": {
+          "description": true,
+          "ingredients": 0,
+          "active_ingredients": 0,
+          "how_to": 0,
+          "details": 0,
+          "variants": 1
+        }
+      },
+      "preview": {
+        "headline": "Lip color",
+        "what_it_is": "Fairy Kiss Lip Gloss is a lip gloss from Miss Nella, with source-backed cues around shine finish and shade clarity.",
+        "why_it_stands_out": [
+          {
+            "headline": "Lip finish cues are specific",
+            "body": "Reviewed lip cues such as shine finish identify finish, shade, or formula context before the shopper leaves Pivota.",
+            "evidence_strength": "official_pdp_reviewed"
+          }
+        ],
+        "best_for": [
+          {
+            "tag": "color_payoff",
+            "label": "color payoff",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "shine_finish",
+            "label": "shine finish",
+            "confidence": "moderate"
+          }
+        ],
+        "shopping_highlight": "shine finish"
+      },
+      "writes": [
+        {
+          "kb_key": "product:ext_8793dabe7fb8f55499ca2eea",
+          "action": "update",
+          "reason": "explicit_owner_delegated_assistant_replacement_review",
+          "old_hash": "966b07193fd6ab21c76b849610259dd696e0aeaacdb087df11d4c122601dbf9f",
+          "candidate_hash": "f0bca07d35adaac363323ec8aaae8929869063492d2624ab0abb79b78ec5a821",
+          "existing_weak": true,
+          "source": "pivota_insights_official_pdp_manual_review_v1",
+          "after_inventory": {
+            "product_id": "ext_8793dabe7fb8f55499ca2eea",
+            "kb_key": "product:ext_8793dabe7fb8f55499ca2eea",
+            "source": "pivota_insights_official_pdp_manual_review_v1",
+            "updated_at": "",
+            "last_success_at": "",
+            "title": "WH | Fairy Kiss Lip Gloss",
+            "canonical_url": "",
+            "bundle_hash": "8889504ad4ce3a3089369cbc5ddefa432fced3fdfa7a7e94f9ab06cfede771eb",
+            "lane": "keep",
+            "reason": "protected_good_content",
+            "priority": 0,
+            "protected": true,
+            "displayable": true,
+            "high_quality_ready": true,
+            "human_reviewed": true,
+            "issues": [],
+            "blocking_issues": [],
+            "quality_state": "reviewed",
+            "evidence_profile": "official_pdp_reviewed_limited",
+            "evidence_rank": 1,
+            "review_tier": "assistant_reviewed",
+            "agent_readable": true,
+            "public_ready": true
+          },
+          "source_meta": {
+            "evidence_profile": "official_pdp_reviewed_limited",
+            "quality_state": "reviewed",
+            "source_origin": "official_pdp_fields",
+            "source_url": "https://www.missnella.com/products/fairy-kiss-lip-gloss-pack-of-6",
+            "quality_improvement": {
+              "previous_bundle_hash": "861d5e342528fe75df9727fd80683eee2cbd8ed976ea6c208cdba73aab652e51",
+              "candidate_bundle_hash": "8889504ad4ce3a3089369cbc5ddefa432fced3fdfa7a7e94f9ab06cfede771eb",
+              "replacement_decision": "explicit_owner_delegated_assistant_replacement_review",
+              "existing_quality_lane": "suppress_public",
+              "candidate_quality_lane": "keep",
+              "existing_evidence_profile": "seller_only",
+              "candidate_evidence_profile": "official_pdp_reviewed_limited"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "external_product_id": "ext_088385a34673307ec7d90d23",
+      "pivota_signature_id": null,
+      "title": "WH | Golden Sands Eye Shadow",
+      "brand": "Miss Nella",
+      "canonical_url": "https://www.missnella.com/products/eye-shadow-golden-sands-pack-of-5",
+      "changed": true,
+      "blocked": false,
+      "skip_reason": null,
+      "candidate_hash": "9670b6436db44864d636883d10b0024b1425de9bda530d3a59afe3df642fb5b4",
+      "evidence_profile": "official_pdp_reviewed_limited",
+      "source_coverage": {
+        "source": "official_pdp",
+        "canonical_url": "https://www.missnella.com/products/eye-shadow-golden-sands-pack-of-5",
+        "fields": {
+          "description": true,
+          "ingredients": 0,
+          "active_ingredients": 0,
+          "how_to": 0,
+          "details": 0,
+          "variants": 1
+        }
+      },
+      "preview": {
+        "headline": "Eye makeup",
+        "what_it_is": "Golden Sands Eye Shadow is an eye makeup product from Miss Nella, with source-backed cues around multi-shade color selection.",
+        "why_it_stands_out": [
+          {
+            "headline": "Product cues are source-backed",
+            "body": "Reviewed PDP cues such as multi-shade color story give shoppers specific comparison points within Miss Nella, rather than category-only copy.",
+            "evidence_strength": "official_pdp_reviewed"
+          }
+        ],
+        "best_for": [
+          {
+            "tag": "multi_shade_color_story",
+            "label": "multi-shade color story",
+            "confidence": "moderate"
+          }
+        ],
+        "shopping_highlight": "multi-shade color story"
+      },
+      "writes": [
+        {
+          "kb_key": "product:ext_088385a34673307ec7d90d23",
+          "action": "insert",
+          "reason": "new_product_intel_bundle",
+          "old_hash": null,
+          "candidate_hash": "d3cf74f2c0bf44d0dd3e09b55e0609fb66804cee8a79184c0776c3b1c75c4f37",
+          "existing_weak": true,
+          "source": "pivota_insights_official_pdp_manual_review_v1",
+          "after_inventory": {
+            "product_id": "ext_088385a34673307ec7d90d23",
+            "kb_key": "product:ext_088385a34673307ec7d90d23",
+            "source": "pivota_insights_official_pdp_manual_review_v1",
+            "updated_at": "",
+            "last_success_at": "",
+            "title": "WH | Golden Sands Eye Shadow",
+            "canonical_url": "",
+            "bundle_hash": "9670b6436db44864d636883d10b0024b1425de9bda530d3a59afe3df642fb5b4",
+            "lane": "keep",
+            "reason": "protected_good_content",
+            "priority": 0,
+            "protected": true,
+            "displayable": true,
+            "high_quality_ready": true,
+            "human_reviewed": true,
+            "issues": [],
+            "blocking_issues": [],
+            "quality_state": "reviewed",
+            "evidence_profile": "official_pdp_reviewed_limited",
+            "evidence_rank": 1,
+            "review_tier": "assistant_reviewed",
+            "agent_readable": true,
+            "public_ready": true
+          },
+          "source_meta": {
+            "evidence_profile": "official_pdp_reviewed_limited",
+            "quality_state": "reviewed",
+            "source_origin": "official_pdp_fields",
+            "source_url": "https://www.missnella.com/products/eye-shadow-golden-sands-pack-of-5",
+            "quality_improvement": {
+              "previous_bundle_hash": null,
+              "candidate_bundle_hash": "9670b6436db44864d636883d10b0024b1425de9bda530d3a59afe3df642fb5b4",
+              "replacement_decision": "new_product_intel_bundle",
+              "existing_quality_lane": null,
+              "candidate_quality_lane": "keep",
+              "existing_evidence_profile": null,
+              "candidate_evidence_profile": "official_pdp_reviewed_limited"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "external_product_id": "ext_ce9afe62b715b4fad61face6",
+      "pivota_signature_id": null,
+      "title": "WH | Lollypop Blush",
+      "brand": "Miss Nella",
+      "canonical_url": "https://www.missnella.com/products/blush-lollypop-pack-of-3",
+      "changed": true,
+      "blocked": false,
+      "skip_reason": null,
+      "candidate_hash": "1d3049536348c2630f4eb710ac34b12597c3be4d9beff8467712dc8142ebbc25",
+      "evidence_profile": "official_pdp_reviewed_limited",
+      "source_coverage": {
+        "source": "official_pdp",
+        "canonical_url": "https://www.missnella.com/products/blush-lollypop-pack-of-3",
+        "fields": {
+          "description": true,
+          "ingredients": 0,
+          "active_ingredients": 0,
+          "how_to": 0,
+          "details": 0,
+          "variants": 1
+        }
+      },
+      "preview": {
+        "headline": "Face color makeup",
+        "what_it_is": "Lollypop Blush is a blush from Miss Nella.",
+        "why_it_stands_out": [
+          {
+            "headline": "Color payoff cues are specific",
+            "body": "Reviewed color cues such as shade range help shoppers compare shade, finish, or texture instead of seeing a generic blush/bronzer/highlighter card.",
+            "evidence_strength": "official_pdp_reviewed"
+          }
+        ],
+        "best_for": [
+          {
+            "tag": "shade_range",
+            "label": "shade range",
+            "confidence": "moderate"
+          }
+        ],
+        "shopping_highlight": "shade range"
+      },
+      "writes": [
+        {
+          "kb_key": "product:ext_ce9afe62b715b4fad61face6",
+          "action": "insert",
+          "reason": "new_product_intel_bundle",
+          "old_hash": null,
+          "candidate_hash": "2809cd10e99f568c1199e9a1d41ef60fe1853feb5e3e47b3d0cd2dd3098d1a8c",
+          "existing_weak": true,
+          "source": "pivota_insights_official_pdp_manual_review_v1",
+          "after_inventory": {
+            "product_id": "ext_ce9afe62b715b4fad61face6",
+            "kb_key": "product:ext_ce9afe62b715b4fad61face6",
+            "source": "pivota_insights_official_pdp_manual_review_v1",
+            "updated_at": "",
+            "last_success_at": "",
+            "title": "WH | Lollypop Blush",
+            "canonical_url": "",
+            "bundle_hash": "1d3049536348c2630f4eb710ac34b12597c3be4d9beff8467712dc8142ebbc25",
+            "lane": "keep",
+            "reason": "protected_good_content",
+            "priority": 0,
+            "protected": true,
+            "displayable": true,
+            "high_quality_ready": true,
+            "human_reviewed": true,
+            "issues": [],
+            "blocking_issues": [],
+            "quality_state": "reviewed",
+            "evidence_profile": "official_pdp_reviewed_limited",
+            "evidence_rank": 1,
+            "review_tier": "assistant_reviewed",
+            "agent_readable": true,
+            "public_ready": true
+          },
+          "source_meta": {
+            "evidence_profile": "official_pdp_reviewed_limited",
+            "quality_state": "reviewed",
+            "source_origin": "official_pdp_fields",
+            "source_url": "https://www.missnella.com/products/blush-lollypop-pack-of-3",
+            "quality_improvement": {
+              "previous_bundle_hash": null,
+              "candidate_bundle_hash": "1d3049536348c2630f4eb710ac34b12597c3be4d9beff8467712dc8142ebbc25",
+              "replacement_decision": "new_product_intel_bundle",
+              "existing_quality_lane": null,
+              "candidate_quality_lane": "keep",
+              "existing_evidence_profile": null,
+              "candidate_evidence_profile": "official_pdp_reviewed_limited"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "external_product_id": "ext_af758de3d843c03fe9548105",
+      "pivota_signature_id": null,
+      "title": "WH | Luvvy Wuvvy Lip Balm",
+      "brand": "Miss Nella",
+      "canonical_url": "https://www.missnella.com/products/xl-lip-balm-luvvy-wuvvy-pack-of-5",
+      "changed": true,
+      "blocked": false,
+      "skip_reason": null,
+      "candidate_hash": "41816264c655fc44085fdbdecc83522018cfa1ac0f13ae09ca8f54e82a0799fd",
+      "evidence_profile": "official_pdp_reviewed_limited",
+      "source_coverage": {
+        "source": "official_pdp",
+        "canonical_url": "https://www.missnella.com/products/xl-lip-balm-luvvy-wuvvy-pack-of-5",
+        "fields": {
+          "description": true,
+          "ingredients": 0,
+          "active_ingredients": 0,
+          "how_to": 0,
+          "details": 0,
+          "variants": 1
+        }
+      },
+      "preview": {
+        "headline": "Lip treatment",
+        "what_it_is": "Luvvy Wuvvy Lip Balm is a tinted lip balm from Miss Nella, with source-backed cues around shade clarity and comfort-oriented lip care.",
+        "why_it_stands_out": [
+          {
+            "headline": "Product cues are source-backed",
+            "body": "Reviewed PDP cues such as shade range give shoppers specific comparison points within Miss Nella, rather than category-only copy.",
+            "evidence_strength": "official_pdp_reviewed"
+          }
+        ],
+        "best_for": [
+          {
+            "tag": "color_payoff",
+            "label": "color payoff",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "lip_comfort",
+            "label": "lip comfort",
+            "confidence": "moderate"
+          }
+        ],
+        "shopping_highlight": "shade range"
+      },
+      "writes": [
+        {
+          "kb_key": "product:ext_af758de3d843c03fe9548105",
+          "action": "update",
+          "reason": "explicit_owner_delegated_assistant_replacement_review",
+          "old_hash": "c4bd61a4e0ac4ea2fd6584deac431f9e844aa54b246d6c81769797a96f74a447",
+          "candidate_hash": "7e1d419966ef6112b761d29f73bb8a9483a57b7fd13b169c549ce9b80c903a62",
+          "existing_weak": true,
+          "source": "pivota_insights_official_pdp_manual_review_v1",
+          "after_inventory": {
+            "product_id": "ext_af758de3d843c03fe9548105",
+            "kb_key": "product:ext_af758de3d843c03fe9548105",
+            "source": "pivota_insights_official_pdp_manual_review_v1",
+            "updated_at": "",
+            "last_success_at": "",
+            "title": "WH | Luvvy Wuvvy Lip Balm",
+            "canonical_url": "",
+            "bundle_hash": "41816264c655fc44085fdbdecc83522018cfa1ac0f13ae09ca8f54e82a0799fd",
+            "lane": "keep",
+            "reason": "protected_good_content",
+            "priority": 0,
+            "protected": true,
+            "displayable": true,
+            "high_quality_ready": true,
+            "human_reviewed": true,
+            "issues": [],
+            "blocking_issues": [],
+            "quality_state": "reviewed",
+            "evidence_profile": "official_pdp_reviewed_limited",
+            "evidence_rank": 1,
+            "review_tier": "assistant_reviewed",
+            "agent_readable": true,
+            "public_ready": true
+          },
+          "source_meta": {
+            "evidence_profile": "official_pdp_reviewed_limited",
+            "quality_state": "reviewed",
+            "source_origin": "official_pdp_fields",
+            "source_url": "https://www.missnella.com/products/xl-lip-balm-luvvy-wuvvy-pack-of-5",
+            "quality_improvement": {
+              "previous_bundle_hash": "6f5e3cabe4b83beffea160562dfff19d2d332522851f28db265036696e668998",
+              "candidate_bundle_hash": "41816264c655fc44085fdbdecc83522018cfa1ac0f13ae09ca8f54e82a0799fd",
+              "replacement_decision": "explicit_owner_delegated_assistant_replacement_review",
+              "existing_quality_lane": "suppress_public",
+              "candidate_quality_lane": "keep",
+              "existing_evidence_profile": "seller_only",
+              "candidate_evidence_profile": "official_pdp_reviewed_limited"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "external_product_id": "ext_85497220bc1f512254d1d470",
+      "pivota_signature_id": null,
+      "title": "WH | Pink Secret Lip Gloss",
+      "brand": "Miss Nella",
+      "canonical_url": "https://www.missnella.com/products/pink-secret-lip-gloss-pack-of-6",
+      "changed": true,
+      "blocked": false,
+      "skip_reason": null,
+      "candidate_hash": "baf3c3c15f86e828bd05c20e4088c46ae380b917450ca818fe458693c0604738",
+      "evidence_profile": "official_pdp_reviewed_limited",
+      "source_coverage": {
+        "source": "official_pdp",
+        "canonical_url": "https://www.missnella.com/products/pink-secret-lip-gloss-pack-of-6",
+        "fields": {
+          "description": true,
+          "ingredients": 0,
+          "active_ingredients": 0,
+          "how_to": 0,
+          "details": 0,
+          "variants": 1
+        }
+      },
+      "preview": {
+        "headline": "Lip color",
+        "what_it_is": "Pink Secret Lip Gloss is a lip gloss from Miss Nella, with source-backed cues around shine finish, shade clarity and comfort-oriented lip care.",
+        "why_it_stands_out": [
+          {
+            "headline": "Lip finish cues are specific",
+            "body": "Reviewed lip cues such as shine finish identify finish, shade, or formula context before the shopper leaves Pivota.",
+            "evidence_strength": "official_pdp_reviewed"
+          }
+        ],
+        "best_for": [
+          {
+            "tag": "color_payoff",
+            "label": "color payoff",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "lip_comfort",
+            "label": "lip comfort",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "shine_finish",
+            "label": "shine finish",
+            "confidence": "moderate"
+          }
+        ],
+        "shopping_highlight": "shine finish"
+      },
+      "writes": [
+        {
+          "kb_key": "product:ext_85497220bc1f512254d1d470",
+          "action": "update",
+          "reason": "explicit_owner_delegated_assistant_replacement_review",
+          "old_hash": "50a56fab1cb482d5ad138d2bec7433de713c71da3c61082a71a41bff21665eda",
+          "candidate_hash": "cb799f69096e2fa20003258e7e5ff5c8ec10f03a78a7528a9d4f330968e8ec5b",
+          "existing_weak": true,
+          "source": "pivota_insights_official_pdp_manual_review_v1",
+          "after_inventory": {
+            "product_id": "ext_85497220bc1f512254d1d470",
+            "kb_key": "product:ext_85497220bc1f512254d1d470",
+            "source": "pivota_insights_official_pdp_manual_review_v1",
+            "updated_at": "",
+            "last_success_at": "",
+            "title": "WH | Pink Secret Lip Gloss",
+            "canonical_url": "",
+            "bundle_hash": "baf3c3c15f86e828bd05c20e4088c46ae380b917450ca818fe458693c0604738",
+            "lane": "keep",
+            "reason": "protected_good_content",
+            "priority": 0,
+            "protected": true,
+            "displayable": true,
+            "high_quality_ready": true,
+            "human_reviewed": true,
+            "issues": [],
+            "blocking_issues": [],
+            "quality_state": "reviewed",
+            "evidence_profile": "official_pdp_reviewed_limited",
+            "evidence_rank": 1,
+            "review_tier": "assistant_reviewed",
+            "agent_readable": true,
+            "public_ready": true
+          },
+          "source_meta": {
+            "evidence_profile": "official_pdp_reviewed_limited",
+            "quality_state": "reviewed",
+            "source_origin": "official_pdp_fields",
+            "source_url": "https://www.missnella.com/products/pink-secret-lip-gloss-pack-of-6",
+            "quality_improvement": {
+              "previous_bundle_hash": "90ad5951f9968a07db177b3f2d5c0a2e1b98d2eb9ca8392e80d5f5692f907f2e",
+              "candidate_bundle_hash": "baf3c3c15f86e828bd05c20e4088c46ae380b917450ca818fe458693c0604738",
+              "replacement_decision": "explicit_owner_delegated_assistant_replacement_review",
+              "existing_quality_lane": "suppress_public",
+              "candidate_quality_lane": "keep",
+              "existing_evidence_profile": "seller_only",
+              "candidate_evidence_profile": "official_pdp_reviewed_limited"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "external_product_id": "ext_44cdfacf7dba0295657eb7f3",
+      "pivota_signature_id": null,
+      "title": "WH | Planet Pink Roll-On Body Glitter",
+      "brand": "Miss Nella",
+      "canonical_url": "https://www.missnella.com/products/planet-pink-roll-on-body-glitter",
+      "changed": true,
+      "blocked": false,
+      "skip_reason": null,
+      "candidate_hash": "32a2410dad2947389e6edebe8e87482fd6830861296fd5d80d9d8b89c804a405",
+      "evidence_profile": "official_pdp_reviewed_limited",
+      "source_coverage": {
+        "source": "official_pdp",
+        "canonical_url": "https://www.missnella.com/products/planet-pink-roll-on-body-glitter",
+        "fields": {
+          "description": true,
+          "ingredients": 0,
+          "active_ingredients": 0,
+          "how_to": 0,
+          "details": 0,
+          "variants": 1
+        }
+      },
+      "preview": {
+        "headline": "Body shimmer",
+        "what_it_is": "Planet Pink Roll-On Body Glitter is a body shimmer product from Miss Nella, with source-backed cues around roll-on application, body shimmer finish and visible color cues.",
+        "why_it_stands_out": [
+          {
+            "headline": "Body-shimmer cues are specific",
+            "body": "Reviewed shimmer cues such as roll-on format, body shimmer finish, shade or color cue identify the format and finish without treating it like a skincare formula.",
+            "evidence_strength": "official_pdp_reviewed"
+          }
+        ],
+        "best_for": [
+          {
+            "tag": "body_shimmer_finish",
+            "label": "body shimmer finish",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "roll_on_application",
+            "label": "roll-on application",
+            "confidence": "moderate"
+          }
+        ],
+        "shopping_highlight": "roll-on format, body shimmer finish"
+      },
+      "writes": [
+        {
+          "kb_key": "product:ext_44cdfacf7dba0295657eb7f3",
+          "action": "update",
+          "reason": "explicit_owner_delegated_assistant_replacement_review",
+          "old_hash": "828a6a6f7cc279ea03742ad0e8af2f4e779613a80d6c160edf35071980984346",
+          "candidate_hash": "099579eaeb111640176a357de5dff6cf85d340ac562e79f74830a9c4761d36b3",
+          "existing_weak": true,
+          "source": "pivota_insights_official_pdp_manual_review_v1",
+          "after_inventory": {
+            "product_id": "ext_44cdfacf7dba0295657eb7f3",
+            "kb_key": "product:ext_44cdfacf7dba0295657eb7f3",
+            "source": "pivota_insights_official_pdp_manual_review_v1",
+            "updated_at": "",
+            "last_success_at": "",
+            "title": "WH | Planet Pink Roll-On Body Glitter",
+            "canonical_url": "",
+            "bundle_hash": "32a2410dad2947389e6edebe8e87482fd6830861296fd5d80d9d8b89c804a405",
+            "lane": "keep",
+            "reason": "protected_good_content",
+            "priority": 0,
+            "protected": true,
+            "displayable": true,
+            "high_quality_ready": true,
+            "human_reviewed": true,
+            "issues": [],
+            "blocking_issues": [],
+            "quality_state": "reviewed",
+            "evidence_profile": "official_pdp_reviewed_limited",
+            "evidence_rank": 1,
+            "review_tier": "assistant_reviewed",
+            "agent_readable": true,
+            "public_ready": true
+          },
+          "source_meta": {
+            "evidence_profile": "official_pdp_reviewed_limited",
+            "quality_state": "reviewed",
+            "source_origin": "official_pdp_fields",
+            "source_url": "https://www.missnella.com/products/planet-pink-roll-on-body-glitter",
+            "quality_improvement": {
+              "previous_bundle_hash": "24d621308e02064e7c4f33c4675ef54c83ec1771dc9974f889c4d3dd9087847f",
+              "candidate_bundle_hash": "32a2410dad2947389e6edebe8e87482fd6830861296fd5d80d9d8b89c804a405",
+              "replacement_decision": "explicit_owner_delegated_assistant_replacement_review",
+              "existing_quality_lane": "suppress_public",
+              "candidate_quality_lane": "keep",
+              "existing_evidence_profile": "seller_only",
+              "candidate_evidence_profile": "official_pdp_reviewed_limited"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "external_product_id": "ext_53d8b7377873cf1ae1001c1b",
+      "pivota_signature_id": null,
+      "title": "WH | Pomegranate Fizz Blush",
+      "brand": "Miss Nella",
+      "canonical_url": "https://www.missnella.com/products/blush-pomegranate-fizz-pack-of-3",
+      "changed": true,
+      "blocked": false,
+      "skip_reason": null,
+      "candidate_hash": "8182fd831f5944fa2e7ec57ae814a5c6f9cfca29184e468678838d54d9048501",
+      "evidence_profile": "official_pdp_reviewed_limited",
+      "source_coverage": {
+        "source": "official_pdp",
+        "canonical_url": "https://www.missnella.com/products/blush-pomegranate-fizz-pack-of-3",
+        "fields": {
+          "description": true,
+          "ingredients": 0,
+          "active_ingredients": 0,
+          "how_to": 0,
+          "details": 0,
+          "variants": 1
+        }
+      },
+      "preview": {
+        "headline": "Face color makeup",
+        "what_it_is": "Pomegranate Fizz Blush is a blush from Miss Nella, with source-backed cues around glow payoff.",
+        "why_it_stands_out": [
+          {
+            "headline": "Color payoff cues are specific",
+            "body": "Reviewed color cues such as glow payoff, shade range help shoppers compare shade, finish, or texture instead of seeing a generic blush/bronzer/highlighter card.",
+            "evidence_strength": "official_pdp_reviewed"
+          }
+        ],
+        "best_for": [
+          {
+            "tag": "radiant_finish",
+            "label": "radiant finish",
+            "confidence": "moderate"
+          }
+        ],
+        "shopping_highlight": "glow payoff, shade range"
+      },
+      "writes": [
+        {
+          "kb_key": "product:ext_53d8b7377873cf1ae1001c1b",
+          "action": "insert",
+          "reason": "new_product_intel_bundle",
+          "old_hash": null,
+          "candidate_hash": "412d41534aea56025527c372dae9ad85c88b67502f1ec606ce8a1bb5d1e250a2",
+          "existing_weak": true,
+          "source": "pivota_insights_official_pdp_manual_review_v1",
+          "after_inventory": {
+            "product_id": "ext_53d8b7377873cf1ae1001c1b",
+            "kb_key": "product:ext_53d8b7377873cf1ae1001c1b",
+            "source": "pivota_insights_official_pdp_manual_review_v1",
+            "updated_at": "",
+            "last_success_at": "",
+            "title": "WH | Pomegranate Fizz Blush",
+            "canonical_url": "",
+            "bundle_hash": "8182fd831f5944fa2e7ec57ae814a5c6f9cfca29184e468678838d54d9048501",
+            "lane": "keep",
+            "reason": "protected_good_content",
+            "priority": 0,
+            "protected": true,
+            "displayable": true,
+            "high_quality_ready": true,
+            "human_reviewed": true,
+            "issues": [],
+            "blocking_issues": [],
+            "quality_state": "reviewed",
+            "evidence_profile": "official_pdp_reviewed_limited",
+            "evidence_rank": 1,
+            "review_tier": "assistant_reviewed",
+            "agent_readable": true,
+            "public_ready": true
+          },
+          "source_meta": {
+            "evidence_profile": "official_pdp_reviewed_limited",
+            "quality_state": "reviewed",
+            "source_origin": "official_pdp_fields",
+            "source_url": "https://www.missnella.com/products/blush-pomegranate-fizz-pack-of-3",
+            "quality_improvement": {
+              "previous_bundle_hash": null,
+              "candidate_bundle_hash": "8182fd831f5944fa2e7ec57ae814a5c6f9cfca29184e468678838d54d9048501",
+              "replacement_decision": "new_product_intel_bundle",
+              "existing_quality_lane": null,
+              "candidate_quality_lane": "keep",
+              "existing_evidence_profile": null,
+              "candidate_evidence_profile": "official_pdp_reviewed_limited"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "external_product_id": "ext_5f24f69f578451c59693798b",
+      "pivota_signature_id": null,
+      "title": "WH | Sugar Plum Lip Balm",
+      "brand": "Miss Nella",
+      "canonical_url": "https://www.missnella.com/products/xl-lip-balm-sugar-plum-pack-of-5",
+      "changed": true,
+      "blocked": false,
+      "skip_reason": null,
+      "candidate_hash": "8e513b812439e7713dc06a8c2e2619db2cba3aaa800021d04c8811c5e603291d",
+      "evidence_profile": "official_pdp_reviewed_limited",
+      "source_coverage": {
+        "source": "official_pdp",
+        "canonical_url": "https://www.missnella.com/products/xl-lip-balm-sugar-plum-pack-of-5",
+        "fields": {
+          "description": true,
+          "ingredients": 0,
+          "active_ingredients": 0,
+          "how_to": 0,
+          "details": 0,
+          "variants": 1
+        }
+      },
+      "preview": {
+        "headline": "Lip treatment",
+        "what_it_is": "Sugar Plum Lip Balm is a tinted lip balm from Miss Nella, with source-backed cues around shade clarity and comfort-oriented lip care.",
+        "why_it_stands_out": [
+          {
+            "headline": "Product cues are source-backed",
+            "body": "Reviewed PDP cues such as shade range give shoppers specific comparison points within Miss Nella, rather than category-only copy.",
+            "evidence_strength": "official_pdp_reviewed"
+          }
+        ],
+        "best_for": [
+          {
+            "tag": "color_payoff",
+            "label": "color payoff",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "lip_comfort",
+            "label": "lip comfort",
+            "confidence": "moderate"
+          }
+        ],
+        "shopping_highlight": "shade range"
+      },
+      "writes": [
+        {
+          "kb_key": "product:ext_5f24f69f578451c59693798b",
+          "action": "update",
+          "reason": "explicit_owner_delegated_assistant_replacement_review",
+          "old_hash": "f7ce2961bfc6985d790c63a865060fffadf23bf792cd2b289160617ec93bae4b",
+          "candidate_hash": "7d18740cba286b5d02fdb20f5af97b365a8c0d6315b6ea6173b8575d664432c7",
+          "existing_weak": true,
+          "source": "pivota_insights_official_pdp_manual_review_v1",
+          "after_inventory": {
+            "product_id": "ext_5f24f69f578451c59693798b",
+            "kb_key": "product:ext_5f24f69f578451c59693798b",
+            "source": "pivota_insights_official_pdp_manual_review_v1",
+            "updated_at": "",
+            "last_success_at": "",
+            "title": "WH | Sugar Plum Lip Balm",
+            "canonical_url": "",
+            "bundle_hash": "8e513b812439e7713dc06a8c2e2619db2cba3aaa800021d04c8811c5e603291d",
+            "lane": "keep",
+            "reason": "protected_good_content",
+            "priority": 0,
+            "protected": true,
+            "displayable": true,
+            "high_quality_ready": true,
+            "human_reviewed": true,
+            "issues": [],
+            "blocking_issues": [],
+            "quality_state": "reviewed",
+            "evidence_profile": "official_pdp_reviewed_limited",
+            "evidence_rank": 1,
+            "review_tier": "assistant_reviewed",
+            "agent_readable": true,
+            "public_ready": true
+          },
+          "source_meta": {
+            "evidence_profile": "official_pdp_reviewed_limited",
+            "quality_state": "reviewed",
+            "source_origin": "official_pdp_fields",
+            "source_url": "https://www.missnella.com/products/xl-lip-balm-sugar-plum-pack-of-5",
+            "quality_improvement": {
+              "previous_bundle_hash": "6d3308251de0190fd170d10cb06163d67956ac372c8a1f672e8e5de1ce44d7fe",
+              "candidate_bundle_hash": "8e513b812439e7713dc06a8c2e2619db2cba3aaa800021d04c8811c5e603291d",
+              "replacement_decision": "explicit_owner_delegated_assistant_replacement_review",
+              "existing_quality_lane": "suppress_public",
+              "candidate_quality_lane": "keep",
+              "existing_evidence_profile": "seller_only",
+              "candidate_evidence_profile": "official_pdp_reviewed_limited"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "external_product_id": "ext_c6b23872e9aadeeb30e13d61",
+      "pivota_signature_id": null,
+      "title": "WH | Supernova Roll-On Body Glitter",
+      "brand": "Miss Nella",
+      "canonical_url": "https://www.missnella.com/products/supernova-roll-on-body-glitter",
+      "changed": true,
+      "blocked": false,
+      "skip_reason": null,
+      "candidate_hash": "e1d4630a0855199f307a4bcf1cf9c0dab1e6b2adfa05e28bd14d5ea93d3a3921",
+      "evidence_profile": "official_pdp_reviewed_limited",
+      "source_coverage": {
+        "source": "official_pdp",
+        "canonical_url": "https://www.missnella.com/products/supernova-roll-on-body-glitter",
+        "fields": {
+          "description": true,
+          "ingredients": 0,
+          "active_ingredients": 0,
+          "how_to": 0,
+          "details": 0,
+          "variants": 1
+        }
+      },
+      "preview": {
+        "headline": "Body shimmer",
+        "what_it_is": "Supernova Roll-On Body Glitter is a body shimmer product from Miss Nella, with source-backed cues around roll-on application, body shimmer finish and visible color cues.",
+        "why_it_stands_out": [
+          {
+            "headline": "Body-shimmer cues are specific",
+            "body": "Reviewed shimmer cues such as roll-on format, body shimmer finish, shade or color cue identify the format and finish without treating it like a skincare formula.",
+            "evidence_strength": "official_pdp_reviewed"
+          }
+        ],
+        "best_for": [
+          {
+            "tag": "body_shimmer_finish",
+            "label": "body shimmer finish",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "roll_on_application",
+            "label": "roll-on application",
+            "confidence": "moderate"
+          }
+        ],
+        "shopping_highlight": "roll-on format, body shimmer finish"
+      },
+      "writes": [
+        {
+          "kb_key": "product:ext_c6b23872e9aadeeb30e13d61",
+          "action": "update",
+          "reason": "explicit_owner_delegated_assistant_replacement_review",
+          "old_hash": "96c86e793494dc8a543da1c56d85e404d09414ef75f26367f15bf5b703bb767c",
+          "candidate_hash": "3ff50a35379ede50be08b1505bf6c2626fd2b2da58817f60537a587264422130",
+          "existing_weak": true,
+          "source": "pivota_insights_official_pdp_manual_review_v1",
+          "after_inventory": {
+            "product_id": "ext_c6b23872e9aadeeb30e13d61",
+            "kb_key": "product:ext_c6b23872e9aadeeb30e13d61",
+            "source": "pivota_insights_official_pdp_manual_review_v1",
+            "updated_at": "",
+            "last_success_at": "",
+            "title": "WH | Supernova Roll-On Body Glitter",
+            "canonical_url": "",
+            "bundle_hash": "e1d4630a0855199f307a4bcf1cf9c0dab1e6b2adfa05e28bd14d5ea93d3a3921",
+            "lane": "keep",
+            "reason": "protected_good_content",
+            "priority": 0,
+            "protected": true,
+            "displayable": true,
+            "high_quality_ready": true,
+            "human_reviewed": true,
+            "issues": [],
+            "blocking_issues": [],
+            "quality_state": "reviewed",
+            "evidence_profile": "official_pdp_reviewed_limited",
+            "evidence_rank": 1,
+            "review_tier": "assistant_reviewed",
+            "agent_readable": true,
+            "public_ready": true
+          },
+          "source_meta": {
+            "evidence_profile": "official_pdp_reviewed_limited",
+            "quality_state": "reviewed",
+            "source_origin": "official_pdp_fields",
+            "source_url": "https://www.missnella.com/products/supernova-roll-on-body-glitter",
+            "quality_improvement": {
+              "previous_bundle_hash": "8a351fc183f04aa463f9aa7beb1bf2d79f5df4860a628b29a1bd1f49f1e48d6c",
+              "candidate_bundle_hash": "e1d4630a0855199f307a4bcf1cf9c0dab1e6b2adfa05e28bd14d5ea93d3a3921",
+              "replacement_decision": "explicit_owner_delegated_assistant_replacement_review",
+              "existing_quality_lane": "suppress_public",
+              "candidate_quality_lane": "keep",
+              "existing_evidence_profile": "seller_only",
+              "candidate_evidence_profile": "official_pdp_reviewed_limited"
+            }
+          }
+        }
+      ]
+    }
+  ],
+  "apply_result": {
+    "upserts": 14,
+    "chunks": 2
+  }
+}

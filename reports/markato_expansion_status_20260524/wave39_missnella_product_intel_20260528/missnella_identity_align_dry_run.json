@@ -1,0 +1,182 @@
+{
+  "status": "blocked",
+  "mode": "dry_run",
+  "generated_at": "2026-05-28T08:59:19.661Z",
+  "external_product_ids": [
+    "ext_33466da0907b256ffc53783b",
+    "ext_e9e3fba6b05911bba1bfe71e"
+  ],
+  "options": {
+    "allow_reviewed_product_line_singletons": true,
+    "allow_official_url_exact_conflict_cleanup": true
+  },
+  "rows_seen": 2,
+  "missing_ids": [],
+  "align_ready_count": 0,
+  "already_aligned_count": 0,
+  "held_count": 2,
+  "applied": {
+    "override_upserts": 0,
+    "identity_rows_updated": 0
+  },
+  "blockers": [
+    {
+      "external_product_id": "ext_33466da0907b256ffc53783b",
+      "blockers": [
+        "invalid_catalog_sig"
+      ]
+    },
+    {
+      "external_product_id": "ext_e9e3fba6b05911bba1bfe71e",
+      "blockers": [
+        "invalid_catalog_sig"
+      ]
+    }
+  ],
+  "plans": [
+    {
+      "action": "hold",
+      "blockers": [
+        "invalid_catalog_sig"
+      ],
+      "product_key": "prod::external_seed::external_seed::ext_33466da0907b256ffc53783b",
+      "source_listing_ref": "external_seed:ext_33466da0907b256ffc53783b",
+      "external_product_id": "ext_33466da0907b256ffc53783b",
+      "title": "Blush",
+      "brand": "Miss Nella",
+      "canonical_url": "https://www.missnella.com/products/blush",
+      "product_group_id": "",
+      "is_primary": false,
+      "content_key": "ck_9a9763e70b24035f563bfb5da8f36822",
+      "catalog_sig_id": "",
+      "catalog_sig_url": "https://agent.pivota.cc/products/",
+      "identity_sig_id_before": "sig_a00b1fa0b5b4decd373fa5a9",
+      "product_line_id": "pl_9741c1252de414875ad0c6c0",
+      "review_family_id": "rf_9741c1252de414875ad0c6c0",
+      "identity_status_before": "review_required",
+      "live_read_enabled_before": false,
+      "review_required_before": true,
+      "review_reason_codes_before": [
+        "multi_variant_exact_item_unresolved",
+        "insufficient_exact_item_evidence"
+      ],
+      "reviewed_product_line_singleton": {
+        "eligible": true,
+        "blockers": [],
+        "evidence": {
+          "source_tier": "brand",
+          "matched_by_rule": "singleton_source_ref",
+          "review_reason_codes": [
+            "multi_variant_exact_item_unresolved",
+            "insufficient_exact_item_evidence"
+          ],
+          "variant_axes": {
+            "multi_variant": true
+          },
+          "official_url": "https://www.missnella.com/products/blush",
+          "canonical_url": "https://www.missnella.com/products/blush",
+          "seed_canonical_url": "https://www.missnella.com/products/blush",
+          "title": "Blush",
+          "seed_title": "Blush"
+        }
+      },
+      "reviewed_official_url_exact_conflict_cleanup": {
+        "eligible": false,
+        "blockers": [
+          "unexpected_matched_by_rule",
+          "missing_conflicting_official_url_review_reason",
+          "unsupported_review_reason_codes"
+        ],
+        "evidence": {
+          "source_tier": "brand",
+          "matched_by_rule": "singleton_source_ref",
+          "review_reason_codes": [
+            "multi_variant_exact_item_unresolved",
+            "insufficient_exact_item_evidence"
+          ],
+          "variant_axes": {
+            "multi_variant": true
+          },
+          "official_url": "https://www.missnella.com/products/blush",
+          "canonical_url": "https://www.missnella.com/products/blush",
+          "seed_canonical_url": "https://www.missnella.com/products/blush",
+          "title": "Blush",
+          "seed_title": "Blush"
+        }
+      },
+      "needs_update": false
+    },
+    {
+      "action": "hold",
+      "blockers": [
+        "invalid_catalog_sig"
+      ],
+      "product_key": "prod::external_seed::external_seed::ext_e9e3fba6b05911bba1bfe71e",
+      "source_listing_ref": "external_seed:ext_e9e3fba6b05911bba1bfe71e",
+      "external_product_id": "ext_e9e3fba6b05911bba1bfe71e",
+      "title": "Eye Shadow",
+      "brand": "Miss Nella",
+      "canonical_url": "https://www.missnella.com/products/eye-shadow",
+      "product_group_id": "",
+      "is_primary": false,
+      "content_key": "ck_5de5b1d2355fb52696787ca671b53dd6",
+      "catalog_sig_id": "",
+      "catalog_sig_url": "https://agent.pivota.cc/products/",
+      "identity_sig_id_before": "sig_87118369fce39046e97e5f37",
+      "product_line_id": "pl_329c4071040830d81a555817",
+      "review_family_id": "rf_329c4071040830d81a555817",
+      "identity_status_before": "review_required",
+      "live_read_enabled_before": false,
+      "review_required_before": true,
+      "review_reason_codes_before": [
+        "multi_variant_exact_item_unresolved",
+        "insufficient_exact_item_evidence"
+      ],
+      "reviewed_product_line_singleton": {
+        "eligible": true,
+        "blockers": [],
+        "evidence": {
+          "source_tier": "brand",
+          "matched_by_rule": "singleton_source_ref",
+          "review_reason_codes": [
+            "multi_variant_exact_item_unresolved",
+            "insufficient_exact_item_evidence"
+          ],
+          "variant_axes": {
+            "multi_variant": true
+          },
+          "official_url": "https://www.missnella.com/products/eye-shadow",
+          "canonical_url": "https://www.missnella.com/products/eye-shadow",
+          "seed_canonical_url": "https://www.missnella.com/products/eye-shadow",
+          "title": "Eye Shadow",
+          "seed_title": "Eye Shadow"
+        }
+      },
+      "reviewed_official_url_exact_conflict_cleanup": {
+        "eligible": false,
+        "blockers": [
+          "unexpected_matched_by_rule",
+          "missing_conflicting_official_url_review_reason",
+          "unsupported_review_reason_codes"
+        ],
+        "evidence": {
+          "source_tier": "brand",
+          "matched_by_rule": "singleton_source_ref",
+          "review_reason_codes": [
+            "multi_variant_exact_item_unresolved",
+            "insufficient_exact_item_evidence"
+          ],
+          "variant_axes": {
+            "multi_variant": true
+          },
+          "official_url": "https://www.missnella.com/products/eye-shadow",
+          "canonical_url": "https://www.missnella.com/products/eye-shadow",
+          "seed_canonical_url": "https://www.missnella.com/products/eye-shadow",
+          "title": "Eye Shadow",
+          "seed_title": "Eye Shadow"
+        }
+      },
+      "needs_update": false
+    }
+  ]
+}

@@ -254,6 +254,102 @@ describe('apply-reviewed-external-seed-pdp-content-patch', () => {
     );
   });
 
+  test('allows explicit official single-ingredient formula patches', () => {
+    const [entry] = readManifestEntries({
+      reviewed_by: 'codex',
+      evidence: 'Official PDP ingredients section lists a one-ingredient rose-water formula for this exact product.',
+      source_url: 'https://brand.example/products/rose-water',
+      source_kind: 'official_pdp_single_ingredient_formula',
+      allow_single_ingredient_formula: true,
+      write_reviewed_ingredient_authority: true,
+      entries: [
+        {
+          external_product_id: 'ext_rose_water',
+          pdp_ingredients_raw: 'Organic Rosa Damascena (Damask Rose) Floral Water',
+        },
+      ],
+    });
+
+    expect(validateEntry(entry)).toEqual([]);
+
+    const result = buildNextSeedData(
+      { external_product_id: 'ext_rose_water', seed_data: { snapshot: {} } },
+      entry,
+      '2026-05-28T00:00:00.000Z',
+    );
+
+    expect(result.blocked).toEqual([]);
+    expect(result.fields).toEqual(expect.arrayContaining(['pdp_ingredients_raw', 'ingredients_inci']));
+    expect(result.seedData.ingredients_inci).toEqual(['Organic Rosa Damascena (Damask Rose) Floral Water']);
+    expect(result.seedData.pdp_field_capture_status.ingredients_raw).toBe('present');
+    expect(result.seedData.snapshot.pdp_field_capture_status.ingredients_raw).toBe('present');
+    expect(result.seedData.ingredient_intel.authoritative).toEqual(
+      expect.objectContaining({
+        authority_scope: 'reviewed_official_pdp_inci',
+        items: ['Organic Rosa Damascena (Damask Rose) Floral Water'],
+      }),
+    );
+  });
+
+  test('keeps short ingredient patches blocked without explicit single-ingredient review', () => {
+    const [entry] = readManifestEntries({
+      reviewed_by: 'codex',
+      evidence: 'Official PDP ingredients were reviewed for this exact product.',
+      source_url: 'https://brand.example/products/rose-water',
+      source_kind: 'official_pdp_ingredients_reviewed',
+      entries: [
+        {
+          external_product_id: 'ext_short_unflagged',
+          pdp_ingredients_raw: 'Organic Rosa Damascena (Damask Rose) Floral Water',
+        },
+      ],
+    });
+
+    expect(validateEntry(entry)).toEqual(
+      expect.arrayContaining(['ingredients_too_short', 'ingredients_not_inci_like']),
+    );
+  });
+
+  test('recovers stale missing capture status for already materialized ingredients', () => {
+    const [entry] = readManifestEntries({
+      reviewed_by: 'codex',
+      evidence: 'Official PDP ingredients section lists a one-ingredient rose-water formula for this exact product.',
+      source_url: 'https://brand.example/products/rose-water',
+      source_kind: 'official_pdp_single_ingredient_formula',
+      allow_single_ingredient_formula: true,
+      entries: [
+        {
+          external_product_id: 'ext_rose_water_stale_capture',
+          pdp_ingredients_raw: 'Organic Rosa Damascena (Damask Rose) Floral Water',
+        },
+      ],
+    });
+
+    const result = buildNextSeedData(
+      {
+        external_product_id: 'ext_rose_water_stale_capture',
+        seed_data: {
+          pdp_ingredients_raw: entry.pdp_ingredients_raw,
+          raw_ingredient_text_clean: entry.pdp_ingredients_raw,
+          ingredients_inci: [entry.pdp_ingredients_raw],
+          pdp_field_capture_status: { ingredients_raw: 'missing' },
+          snapshot: {
+            pdp_ingredients_raw: entry.pdp_ingredients_raw,
+            raw_ingredient_text_clean: entry.pdp_ingredients_raw,
+            ingredients_inci: [entry.pdp_ingredients_raw],
+            pdp_field_capture_status: { ingredients_raw: 'missing' },
+          },
+        },
+      },
+      entry,
+      '2026-05-28T00:00:00.000Z',
+    );
+
+    expect(result.changed).toBe(true);
+    expect(result.fields).toEqual(expect.arrayContaining(['pdp_ingredients_raw']));
+    expect(result.seedData.pdp_field_capture_status.ingredients_raw).toBe('present');
+  });
+
   test('patches same raw INCI when structured ingredients are missing', () => {
     const [entry] = readManifestEntries({
       reviewed_by: 'codex',

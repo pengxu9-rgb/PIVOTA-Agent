@@ -1,0 +1,57 @@
+{
+  "status": "success",
+  "mode": "write",
+  "generated_at": "2026-05-28T06:30:49.412Z",
+  "external_product_ids": [
+    "ext_397a1dbbcab4ad4a246b6a8c"
+  ],
+  "options": {
+    "allow_reviewed_product_line_singletons": true,
+    "allow_official_url_exact_conflict_cleanup": true
+  },
+  "rows_seen": 1,
+  "missing_ids": [],
+  "align_ready_count": 1,
+  "already_aligned_count": 0,
+  "held_count": 0,
+  "applied": {
+    "override_upserts": 1,
+    "identity_rows_updated": 1
+  },
+  "blockers": [],
+  "plans": [
+    {
+      "action": "align_ready",
+      "blockers": [],
+      "product_key": "prod::external_seed::external_seed::ext_397a1dbbcab4ad4a246b6a8c",
+      "source_listing_ref": "external_seed:ext_397a1dbbcab4ad4a246b6a8c",
+      "external_product_id": "ext_397a1dbbcab4ad4a246b6a8c",
+      "title": "Bulgarian Rose Water Face, Hair & Body Mist Spray",
+      "brand": "Delicate Daisys Botanical Beauty",
+      "canonical_url": "https://delicatedaisys.com/products/bulgarian-rose-water-face-hair-body-mist-spray",
+      "product_group_id": "sig_5e89f7b2b9ef3870e60db6da",
+      "is_primary": true,
+      "content_key": "ck_0ef11cc37991276d8dd837a2522ed69c",
+      "catalog_sig_id": "sig_5e89f7b2b9ef3870e60db6da",
+      "catalog_sig_url": "https://agent.pivota.cc/products/sig_5e89f7b2b9ef3870e60db6da",
+      "identity_sig_id_before": "sig_5e89f7b2b9ef3870e60db6da",
+      "product_line_id": "pl_27453100a670ade6c6c51fd3",
+      "review_family_id": "rf_27453100a670ade6c6c51fd3",
+      "identity_status_before": "approved",
+      "live_read_enabled_before": false,
+      "review_required_before": false,
+      "review_reason_codes_before": [],
+      "reviewed_product_line_singleton": {
+        "eligible": false,
+        "blockers": [],
+        "evidence": null
+      },
+      "reviewed_official_url_exact_conflict_cleanup": {
+        "eligible": false,
+        "blockers": [],
+        "evidence": null
+      },
+      "needs_update": true
+    }
+  ]
+}

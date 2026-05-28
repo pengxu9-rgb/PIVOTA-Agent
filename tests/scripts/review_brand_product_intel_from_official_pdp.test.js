@@ -1477,6 +1477,287 @@ describe('official PDP manual insight review', () => {
     expect(urlWrite.existing_weak).toBe(true);
   });
 
+  test('allows Byra, Nourwish, and Terra & Co through source-backed roles', () => {
+    const byraPlan = buildPlan(
+      row({
+        external_product_id: 'ext_byra_cleanser',
+        title: 'PURIFY Biotic Cleanser',
+        brand: 'Byra',
+        canonical_url: 'https://byrabeauty.com/products/purify-biotic-cleanser-1',
+        seed_data: {
+          brand: 'Byra',
+          pdp_description_raw: 'A biotic cleanser positioned for a daily cleanse with a cushiony gel texture.',
+          pdp_how_to_use_raw: 'Massage onto damp skin, then rinse thoroughly.',
+          pdp_details_sections: [{ heading: 'Routine', body: 'Use as the cleansing step before serum or moisturizer.' }],
+        },
+      }),
+      { brand: 'Byra', includeStrong: false },
+    );
+    const nourwishPlan = buildPlan(
+      row({
+        external_product_id: 'ext_nourwish_scalp_brush',
+        title: 'Nourwish Halo Crown Gold Scalp Brush',
+        brand: 'Nourwish',
+        canonical_url: 'https://nourwish.com/products/nourwish-halo-crown-gold-scalp-brush',
+        seed_data: {
+          brand: 'Nourwish',
+          pdp_description_raw: 'A scalp brush designed for shampoo-routine massage and hair sectioning.',
+          pdp_details_sections: [{ heading: 'Tool', body: 'Flexible bristles support scalp massage during wash routines.' }],
+        },
+      }),
+      { brand: 'Nourwish', includeStrong: false },
+    );
+    const terraPlan = buildPlan(
+      row({
+        external_product_id: 'ext_terra_toothpaste',
+        title: 'Brilliant Black Charcoal Toothpaste with Micro-Hydroxyapatite',
+        brand: 'Terra and Co',
+        canonical_url: 'https://terraandco.com/products/brilliant-black-toothpaste',
+        seed_data: {
+          brand: 'Terra and Co',
+          pdp_description_raw:
+            'A fluoride-free oral care toothpaste with activated charcoal and micro-hydroxyapatite positioning.',
+          pdp_how_to_use_raw: 'Brush teeth as directed on the official product page.',
+          pdp_details_sections: [{ heading: 'Format', body: 'Toothpaste format for an oral care routine.' }],
+        },
+      }),
+      { brand: 'Terra & Co.', includeStrong: false },
+    );
+
+    expect(byraPlan.blocked).toBe(false);
+    expect(byraPlan.preview.what_it_is).toContain('Byra');
+    expect(nourwishPlan.blocked).toBe(false);
+    expect(nourwishPlan.preview.headline).toBe('Hair tool');
+    expect(nourwishPlan.preview.what_it_is).not.toContain('makeup brush');
+    expect(terraPlan.blocked).toBe(false);
+    expect(terraPlan.preview.headline).toBe('Oral care treatment');
+    expect(terraPlan.preview.what_it_is).toContain('Terra & Co.');
+
+    expect(inferRole(readSeedFacts(row({
+      title: 'Byra - Skin Brightening Trio',
+      brand: 'Byra',
+      seed_data: {
+        brand: 'Byra',
+        pdp_description_raw: 'A trio with cleanser, serum, and moisturiser steps for a brightening routine.',
+      },
+    }))).label).toBe('Skincare set');
+    expect(inferRole(readSeedFacts(row({
+      title: 'Airy Glow Keratin Water Treatment',
+      brand: 'Nourwish',
+      seed_data: {
+        brand: 'Nourwish',
+        pdp_description_raw: 'A keratin water treatment for a hair repair routine.',
+      },
+    }))).label).toBe('Hair treatment');
+    expect(inferRole(readSeedFacts(row({
+      title: 'MERACLE Nutri-Essence Treatment Enhancer',
+      brand: 'Byra',
+      seed_data: {
+        brand: 'Byra',
+        pdp_description_raw: 'A nutri-essence treatment enhancer for a serum step.',
+      },
+    }))).label).toBe('Treatment serum');
+    expect(buildInsightBundle(row({
+      title: 'Brilliant Black Floss - Whitens Between Teeth Naturally',
+      brand: 'Terra and Co',
+      seed_data: {
+        brand: 'Terra and Co',
+        pdp_description_raw: 'A fluoride-free dental floss with activated charcoal positioning.',
+        pdp_how_to_use_raw: 'Use between teeth as directed on the official product page.',
+      },
+    })).product_intel_core.what_it_is.body).toContain('dental floss');
+  });
+
+  test('keeps oral-care and utility tools out of generic beauty roles', () => {
+    const whiteningPenFacts = readSeedFacts(row({
+      title: 'Linhart Whitening Pen - NEW ARRIVAL!',
+      brand: 'Linhart Smile Care',
+      seed_data: {
+        brand: 'Linhart Smile Care',
+        pdp_description_raw: 'A whitening pen format for applying a thin layer of gel directly onto teeth.',
+        pdp_how_to_use_raw: 'Twist the pen to dispense gel and apply a thin, even layer directly onto the surface of your teeth.',
+      },
+    }));
+    const ledLightBundle = buildInsightBundle(row({
+      title: '16 LED Light for Teeth Whitening',
+      brand: 'Linhart Smile Care',
+      seed_data: {
+        brand: 'Linhart Smile Care',
+        pdp_description_raw: 'A 16-LED blue light used with whitening gel syringes in a teeth-whitening routine.',
+      },
+    }));
+    const toothGelBundle = buildInsightBundle(row({
+      title: 'Tooth Whitener Gel',
+      brand: 'Linhart Smile Care',
+      seed_data: {
+        brand: 'Linhart Smile Care',
+        pdp_description_raw: 'A tooth whitener gel used in a teeth-whitening routine.',
+      },
+    }));
+    const bodyScrubFacts = readSeedFacts(row({
+      title: 'Body Scrub with Coffee + Lemongrass',
+      brand: 'UpCircle Beauty',
+      seed_data: {
+        brand: 'UpCircle Beauty',
+        pdp_description_raw: 'A body scrub for damp skin with coffee and lemongrass cues.',
+      },
+    }));
+    const combFacts = readSeedFacts(row({
+      title: 'Bamboo Wide Tooth Comb',
+      brand: 'UpCircle Beauty',
+      seed_data: {
+        brand: 'UpCircle Beauty',
+        pdp_description_raw: 'A wide tooth comb for detangling and hair styling routines.',
+      },
+    }));
+    const faceMilkFacts = readSeedFacts(row({
+      title: 'Cleansing Face Milk with Oat Powder + Aloe Vera',
+      brand: 'UpCircle Beauty',
+      seed_data: {
+        brand: 'UpCircle Beauty',
+        pdp_description_raw: 'A cleansing face milk with oat powder and aloe vera.',
+        pdp_how_to_use_raw: 'Massage onto damp face and rinse.',
+      },
+    }));
+    const faceOilFacts = readSeedFacts(row({
+      title: 'Organic Face Oil with Coffee Extract',
+      brand: 'UpCircle Beauty',
+      seed_data: {
+        brand: 'UpCircle Beauty',
+        pdp_description_raw: 'An organic face oil for a skincare routine.',
+      },
+    }));
+    const razorBundle = buildInsightBundle(row({
+      title: 'Plastic-Free Safety Razor',
+      brand: 'UpCircle Beauty',
+      seed_data: {
+        brand: 'UpCircle Beauty',
+        pdp_description_raw: 'A plastic-free safety razor for a shaving routine.',
+      },
+    }));
+    const razorStandBundle = buildInsightBundle(row({
+      title: 'Safety Razor Stand',
+      brand: 'UpCircle Beauty',
+      seed_data: {
+        brand: 'UpCircle Beauty',
+        pdp_description_raw: 'A matching stand for holding a safety razor between uses.',
+      },
+    }));
+
+    expect(inferRole(whiteningPenFacts).label).toBe('Oral care treatment');
+    expect(ledLightBundle.product_intel_core.what_it_is.body).toContain('teeth-whitening light');
+    expect(ledLightBundle.shopping_card.highlight).not.toBe('3.4oz');
+    expect(toothGelBundle.product_intel_core.what_it_is.body).toContain('whitening gel');
+    expect(toothGelBundle.product_intel_core.what_it_is.body).not.toContain('teeth-whitening light');
+    expect(inferRole(bodyScrubFacts).label).toBe('Body scrub');
+    expect(inferRole(combFacts).label).toBe('Hair tool');
+    expect(inferRole(faceMilkFacts).label).toBe('Face cleanser');
+    expect(inferRole(faceOilFacts).label).toBe('Face oil');
+    expect(razorBundle.product_intel_core.what_it_is.body).toContain('safety razor');
+    expect(razorBundle.product_intel_core.what_it_is.body).not.toContain('beauty product');
+    expect(razorStandBundle.product_intel_core.what_it_is.body).toContain('razor stand');
+    expect(razorStandBundle.product_intel_core.what_it_is.body).not.toContain('is a safety razor');
+  });
+
+  test('keeps setting mists out of toner language', () => {
+    const settingMistFacts = readSeedFacts(row({
+      title: 'RMS Beauty Radiance Lock Setting Mist 100ml',
+      brand: 'RMS Beauty',
+      seed_data: {
+        brand: 'RMS Beauty',
+        pdp_description_raw: 'A radiance-locking setting mist with hydrating mist cues for makeup-set support.',
+        pdp_how_to_use_raw: 'Hold 8 to 10 inches away from face and mist evenly onto skin.',
+      },
+    }));
+    const settingMistBundle = buildInsightBundle(row({
+      title: 'RMS Beauty Radiance Lock Setting Mist 100ml',
+      brand: 'RMS Beauty',
+      seed_data: {
+        brand: 'RMS Beauty',
+        pdp_description_raw: 'A radiance-locking setting mist with hydrating mist cues for makeup-set support.',
+        pdp_how_to_use_raw: 'Hold 8 to 10 inches away from face and mist evenly onto skin.',
+      },
+    }));
+
+    expect(inferRole(settingMistFacts).label).toBe('Setting mist');
+    expect(settingMistBundle.product_intel_core.what_it_is.body).toContain('setting mist');
+    expect(settingMistBundle.product_intel_core.what_it_is.body).not.toContain('face toner');
+  });
+
+  test('allows Miss Nella color and shimmer rows without generic add-on copy', () => {
+    const blushPlan = buildPlan(
+      row({
+        external_product_id: 'ext_missnella_blush',
+        title: 'WH | Pomegranate Fizz Blush',
+        brand: 'Miss Nella',
+        canonical_url: 'https://missnella.com/products/pomegranate-fizz-blush',
+        seed_data: {
+          brand: 'Miss Nella',
+          pdp_description_raw:
+            'A kids makeup blush with a soft pink color cue and playful compact format.',
+          pdp_details_sections: [
+            { heading: 'Format', body: 'Blush compact for pretend-play makeup routines.' },
+          ],
+          variants: [{ title: 'Pomegranate Fizz', options: [{ name: 'Shade', value: 'Pomegranate Fizz' }] }],
+        },
+      }),
+      { brand: 'Miss Nella', includeStrong: false },
+    );
+    const shimmerPlan = buildPlan(
+      row({
+        external_product_id: 'ext_missnella_glitter',
+        title: 'WH | Planet Pink Roll-On Body Glitter',
+        brand: 'Miss Nella',
+        canonical_url: 'https://missnella.com/products/planet-pink-roll-on-body-glitter',
+        seed_data: {
+          brand: 'Miss Nella',
+          pdp_description_raw:
+            'A roll-on body glitter with pink shimmer finish for dress-up makeup play.',
+          pdp_details_sections: [
+            { heading: 'Format', body: 'Roll-on applicator for body shimmer.' },
+          ],
+        },
+      }),
+      { brand: 'Miss Nella', includeStrong: false },
+    );
+    const addOnBundle = buildInsightBundle(row({
+      title: 'Add Lip Gloss?',
+      brand: 'Miss Nella',
+      seed_data: {
+        brand: 'Miss Nella',
+        pdp_description_raw: 'A lip gloss add-on with shine finish.',
+      },
+    }));
+    const thinPerfumePlan = buildPlan(
+      row({
+        external_product_id: 'ext_missnella_perfume',
+        title: 'WH | Sweet Like Me Roll On Perfume',
+        brand: 'Miss Nella',
+        canonical_url: 'https://missnella.com/products/sweet-like-me-roll-on-perfume',
+        seed_data: {
+          brand: 'Miss Nella',
+          pdp_details_sections: [
+            { heading: 'Format', body: 'Roll-on perfume.' },
+          ],
+        },
+      }),
+      { brand: 'Miss Nella', includeStrong: false },
+    );
+
+    expect(blushPlan.blocked).toBe(false);
+    expect(blushPlan.preview.headline).toBe('Face color makeup');
+    expect(blushPlan.preview.what_it_is).toContain('Pomegranate Fizz Blush');
+    expect(blushPlan.preview.what_it_is).not.toContain('WH |');
+    expect(shimmerPlan.blocked).toBe(false);
+    expect(shimmerPlan.preview.headline).toBe('Body shimmer');
+    expect(shimmerPlan.preview.what_it_is).toContain('body shimmer product');
+    expect(shimmerPlan.preview.what_it_is).not.toContain('WH |');
+    expect(addOnBundle.product_intel_core.what_it_is.body).toContain('Lip Gloss');
+    expect(addOnBundle.product_intel_core.what_it_is.body).not.toContain('Add Lip Gloss?');
+    expect(thinPerfumePlan.blocked).toBe(true);
+    expect(thinPerfumePlan.skip_reason).toBe('candidate_failed_manual_quality_gate:insufficient_official_pdp_specificity');
+  });
+
   test('does not treat polluted legacy raw ingredient text as INCI evidence', () => {
     const serumRow = row({
       external_product_id: 'ext_guerlain_serum',
