@@ -1,0 +1,638 @@
+{
+  "generated_at": "2026-05-28T06:56:53.069Z",
+  "dry_run": true,
+  "market": "US",
+  "summary": {
+    "scanned": 24,
+    "dry_run": 17,
+    "updated": 0,
+    "skipped": 7,
+    "failed": 0,
+    "by_field": {
+      "pdp_details_sections": 17,
+      "pdp_how_to_use_raw": 14,
+      "pdp_ingredients_raw": 9
+    }
+  },
+  "results": [
+    {
+      "external_product_id": "ext_60ded78effb04e9d6389bfce",
+      "title": "Rose & Cupuaçu Enzyme Cleanser",
+      "domain": "baiebotanique.com",
+      "url": "https://www.baiebotanique.com/products/rose-cupuacu-enzyme-cleanser-sns",
+      "host": "baiebotanique.com",
+      "status": "skipped",
+      "patch_keys": [],
+      "http_status": 200,
+      "final_url": "https://www.baiebotanique.com/products/rose-cupuacu-enzyme-cleanser-sns",
+      "extracted_summary": {
+        "ingredients_chars": 870,
+        "how_to_chars": 0,
+        "details_sections_count": 1,
+        "variant_count": 1,
+        "review_count": 0,
+        "rating": 0,
+        "review_preview_count": 0,
+        "review_preview_samples": []
+      },
+      "reason": "no_official_html_fields"
+    },
+    {
+      "external_product_id": "ext_d2be72abe173e52d5baa6879",
+      "title": "Deep Calm - Eau De Parfum 30ml",
+      "domain": "byrabeauty.com",
+      "url": "https://byrabeauty.com/products/deep-calm-eau-de-parfum-30ml",
+      "host": "byrabeauty.com",
+      "status": "dry_run",
+      "patch_keys": [
+        "pdp_details_sections"
+      ],
+      "http_status": 200,
+      "final_url": "https://byrabeauty.com/products/deep-calm-eau-de-parfum-30ml",
+      "extracted_summary": {
+        "ingredients_chars": 0,
+        "how_to_chars": 0,
+        "details_sections_count": 1,
+        "variant_count": 0,
+        "review_count": 0,
+        "rating": 0,
+        "review_preview_count": 0,
+        "review_preview_samples": []
+      },
+      "serving_mirror_sync": {
+        "planned": true
+      }
+    },
+    {
+      "external_product_id": "ext_092b6aa9139491c529586778",
+      "title": "Bamboo Cotton Buds - 200 Pieces",
+      "domain": "upcirclebeauty.com",
+      "url": "https://upcirclebeauty.com/products/bamboo-cotton-buds",
+      "host": "upcirclebeauty.com",
+      "status": "dry_run",
+      "patch_keys": [
+        "pdp_how_to_use_raw",
+        "pdp_details_sections"
+      ],
+      "http_status": 200,
+      "final_url": "https://upcirclebeauty.com/products/bamboo-cotton-buds",
+      "extracted_summary": {
+        "ingredients_chars": 0,
+        "how_to_chars": 122,
+        "details_sections_count": 3,
+        "variant_count": 0,
+        "review_count": 0,
+        "rating": 0,
+        "review_preview_count": 0,
+        "review_preview_samples": []
+      },
+      "serving_mirror_sync": {
+        "planned": true
+      }
+    },
+    {
+      "external_product_id": "ext_aafb624684ba1a334a53a076",
+      "title": "Flaura Eau De Parfum",
+      "domain": "upcirclebeauty.com",
+      "url": "https://upcirclebeauty.com/products/natural-floral-perfume",
+      "host": "upcirclebeauty.com",
+      "status": "dry_run",
+      "patch_keys": [
+        "pdp_ingredients_raw",
+        "pdp_how_to_use_raw",
+        "pdp_details_sections"
+      ],
+      "http_status": 200,
+      "final_url": "https://upcirclebeauty.com/products/natural-floral-perfume",
+      "extracted_summary": {
+        "ingredients_chars": 201,
+        "how_to_chars": 161,
+        "details_sections_count": 3,
+        "variant_count": 0,
+        "review_count": 0,
+        "rating": 0,
+        "review_preview_count": 0,
+        "review_preview_samples": []
+      },
+      "serving_mirror_sync": {
+        "planned": true
+      }
+    },
+    {
+      "external_product_id": "ext_32e72e7e518f4dfa532a191d",
+      "title": "Home Mist with Lemongrass + Grapefruit Water",
+      "domain": "upcirclebeauty.com",
+      "url": "https://upcirclebeauty.com/products/room-spray",
+      "host": "upcirclebeauty.com",
+      "status": "dry_run",
+      "patch_keys": [
+        "pdp_ingredients_raw",
+        "pdp_how_to_use_raw",
+        "pdp_details_sections"
+      ],
+      "http_status": 200,
+      "final_url": "https://upcirclebeauty.com/products/room-spray",
+      "extracted_summary": {
+        "ingredients_chars": 431,
+        "how_to_chars": 170,
+        "details_sections_count": 3,
+        "variant_count": 0,
+        "review_count": 0,
+        "rating": 0,
+        "review_preview_count": 0,
+        "review_preview_samples": []
+      },
+      "serving_mirror_sync": {
+        "planned": true
+      }
+    },
+    {
+      "external_product_id": "ext_08c2ddfec1c05e891513988b",
+      "title": "Organic Muslin Face Cloths",
+      "domain": "upcirclebeauty.com",
+      "url": "https://upcirclebeauty.com/products/organic-muslin-cloths",
+      "host": "upcirclebeauty.com",
+      "status": "dry_run",
+      "patch_keys": [
+        "pdp_how_to_use_raw",
+        "pdp_details_sections"
+      ],
+      "http_status": 200,
+      "final_url": "https://upcirclebeauty.com/products/organic-muslin-cloths",
+      "extracted_summary": {
+        "ingredients_chars": 0,
+        "how_to_chars": 361,
+        "details_sections_count": 3,
+        "variant_count": 0,
+        "review_count": 0,
+        "rating": 0,
+        "review_preview_count": 0,
+        "review_preview_samples": []
+      },
+      "serving_mirror_sync": {
+        "planned": true
+      }
+    },
+    {
+      "external_product_id": "ext_ab96b5d595d2fcba9ab8e9b6",
+      "title": "Refill Safety Razor Blades – Pack Of 10",
+      "domain": "upcirclebeauty.com",
+      "url": "https://upcirclebeauty.com/products/refill-razor-blades",
+      "host": "upcirclebeauty.com",
+      "status": "dry_run",
+      "patch_keys": [
+        "pdp_details_sections"
+      ],
+      "http_status": 200,
+      "final_url": "https://upcirclebeauty.com/products/refill-razor-blades",
+      "extracted_summary": {
+        "ingredients_chars": 0,
+        "how_to_chars": 0,
+        "details_sections_count": 3,
+        "variant_count": 0,
+        "review_count": 0,
+        "rating": 0,
+        "review_preview_count": 0,
+        "review_preview_samples": []
+      },
+      "serving_mirror_sync": {
+        "planned": true
+      }
+    },
+    {
+      "external_product_id": "ext_f79a99a09a933e731880cdfb",
+      "title": "Safety Razor Stand",
+      "domain": "upcirclebeauty.com",
+      "url": "https://upcirclebeauty.com/products/safety-razor-stand",
+      "host": "upcirclebeauty.com",
+      "status": "dry_run",
+      "patch_keys": [
+        "pdp_how_to_use_raw",
+        "pdp_details_sections"
+      ],
+      "http_status": 200,
+      "final_url": "https://upcirclebeauty.com/products/safety-razor-stand",
+      "extracted_summary": {
+        "ingredients_chars": 0,
+        "how_to_chars": 529,
+        "details_sections_count": 3,
+        "variant_count": 0,
+        "review_count": 0,
+        "rating": 0,
+        "review_preview_count": 0,
+        "review_preview_samples": []
+      },
+      "serving_mirror_sync": {
+        "planned": true
+      }
+    },
+    {
+      "external_product_id": "ext_48bff725ea55adb2e644f108",
+      "title": "UpCycled Beauty Hardback Book",
+      "domain": "upcirclebeauty.com",
+      "url": "https://upcirclebeauty.com/products/homemade-beauty-recipe-book",
+      "host": "upcirclebeauty.com",
+      "status": "dry_run",
+      "patch_keys": [
+        "pdp_details_sections"
+      ],
+      "http_status": 200,
+      "final_url": "https://upcirclebeauty.com/products/homemade-beauty-recipe-book",
+      "extracted_summary": {
+        "ingredients_chars": 0,
+        "how_to_chars": 0,
+        "details_sections_count": 3,
+        "variant_count": 0,
+        "review_count": 0,
+        "rating": 0,
+        "review_preview_count": 0,
+        "review_preview_samples": []
+      },
+      "serving_mirror_sync": {
+        "planned": true
+      }
+    },
+    {
+      "external_product_id": "ext_cfbb0ca2b9d0c7b411793b0b",
+      "title": "‘Cool Like Me’ Roll On Perfume",
+      "domain": "missnella.com",
+      "url": "https://www.missnella.com/products/cool-like-me-roll-on-oil-perfume",
+      "host": "missnella.com",
+      "status": "dry_run",
+      "patch_keys": [
+        "pdp_how_to_use_raw",
+        "pdp_details_sections"
+      ],
+      "http_status": 200,
+      "final_url": "https://www.missnella.com/products/cool-like-me-roll-on-oil-perfume",
+      "extracted_summary": {
+        "ingredients_chars": 0,
+        "how_to_chars": 97,
+        "details_sections_count": 3,
+        "variant_count": 0,
+        "review_count": 0,
+        "rating": 0,
+        "review_preview_count": 0,
+        "review_preview_samples": []
+      },
+      "serving_mirror_sync": {
+        "planned": true
+      }
+    },
+    {
+      "external_product_id": "ext_6f491538dbf9a790b66cf269",
+      "title": "‘Sweet Like Me’ Roll On Perfume",
+      "domain": "missnella.com",
+      "url": "https://www.missnella.com/products/sweet-like-me-roll-on-oil-perfume",
+      "host": "missnella.com",
+      "status": "dry_run",
+      "patch_keys": [
+        "pdp_how_to_use_raw",
+        "pdp_details_sections"
+      ],
+      "http_status": 200,
+      "final_url": "https://www.missnella.com/products/sweet-like-me-roll-on-oil-perfume",
+      "extracted_summary": {
+        "ingredients_chars": 0,
+        "how_to_chars": 97,
+        "details_sections_count": 3,
+        "variant_count": 0,
+        "review_count": 0,
+        "rating": 0,
+        "review_preview_count": 0,
+        "review_preview_samples": []
+      },
+      "serving_mirror_sync": {
+        "planned": true
+      }
+    },
+    {
+      "external_product_id": "ext_5b4820a93b2ff42fde402c6e",
+      "title": "Alien Poo: Chrome Green Peel Off Nail Polish",
+      "domain": "missnella.com",
+      "url": "https://www.missnella.com/products/alien-poo-4ml-peel-off-kids-nail-polish",
+      "host": "missnella.com",
+      "status": "dry_run",
+      "patch_keys": [
+        "pdp_ingredients_raw",
+        "pdp_how_to_use_raw",
+        "pdp_details_sections"
+      ],
+      "http_status": 200,
+      "final_url": "https://www.missnella.com/products/alien-poo-4ml-peel-off-kids-nail-polish",
+      "extracted_summary": {
+        "ingredients_chars": 410,
+        "how_to_chars": 168,
+        "details_sections_count": 4,
+        "variant_count": 0,
+        "review_count": 0,
+        "rating": 0,
+        "review_preview_count": 0,
+        "review_preview_samples": []
+      },
+      "serving_mirror_sync": {
+        "planned": true
+      }
+    },
+    {
+      "external_product_id": "ext_33466da0907b256ffc53783b",
+      "title": "Blush",
+      "domain": "missnella.com",
+      "url": "https://www.missnella.com/products/blush",
+      "host": "missnella.com",
+      "status": "dry_run",
+      "patch_keys": [
+        "pdp_ingredients_raw",
+        "pdp_how_to_use_raw",
+        "pdp_details_sections"
+      ],
+      "http_status": 200,
+      "final_url": "https://www.missnella.com/products/blush",
+      "extracted_summary": {
+        "ingredients_chars": 203,
+        "how_to_chars": 109,
+        "details_sections_count": 3,
+        "variant_count": 0,
+        "review_count": 0,
+        "rating": 0,
+        "review_preview_count": 0,
+        "review_preview_samples": []
+      },
+      "serving_mirror_sync": {
+        "planned": true
+      }
+    },
+    {
+      "external_product_id": "ext_61433fafb09e5fdde9d18422",
+      "title": "Complete Eye Shadow Collection",
+      "domain": "missnella.com",
+      "url": "https://www.missnella.com/products/complete-eyeshadow-collection-non-toxic-make-up",
+      "host": "missnella.com",
+      "status": "dry_run",
+      "patch_keys": [
+        "pdp_ingredients_raw",
+        "pdp_how_to_use_raw",
+        "pdp_details_sections"
+      ],
+      "http_status": 200,
+      "final_url": "https://www.missnella.com/products/complete-eyeshadow-collection-non-toxic-make-up",
+      "extracted_summary": {
+        "ingredients_chars": 188,
+        "how_to_chars": 88,
+        "details_sections_count": 4,
+        "variant_count": 0,
+        "review_count": 0,
+        "rating": 0,
+        "review_preview_count": 0,
+        "review_preview_samples": []
+      },
+      "serving_mirror_sync": {
+        "planned": true
+      }
+    },
+    {
+      "external_product_id": "ext_e9e3fba6b05911bba1bfe71e",
+      "title": "Eye Shadow",
+      "domain": "missnella.com",
+      "url": "https://www.missnella.com/products/eye-shadow",
+      "host": "missnella.com",
+      "status": "dry_run",
+      "patch_keys": [
+        "pdp_ingredients_raw",
+        "pdp_how_to_use_raw",
+        "pdp_details_sections"
+      ],
+      "http_status": 200,
+      "final_url": "https://www.missnella.com/products/eye-shadow",
+      "extracted_summary": {
+        "ingredients_chars": 189,
+        "how_to_chars": 88,
+        "details_sections_count": 3,
+        "variant_count": 0,
+        "review_count": 0,
+        "rating": 0,
+        "review_preview_count": 0,
+        "review_preview_samples": []
+      },
+      "serving_mirror_sync": {
+        "planned": true
+      }
+    },
+    {
+      "external_product_id": "ext_83b5f562450f09c98c4dccb8",
+      "title": "Happily Ever After: Pink Fine Glitter Peel Off Nail Polish",
+      "domain": "missnella.com",
+      "url": "https://www.missnella.com/products/happily-ever-after-4ml-peel-off-kids-nail-polish",
+      "host": "missnella.com",
+      "status": "dry_run",
+      "patch_keys": [
+        "pdp_ingredients_raw",
+        "pdp_how_to_use_raw",
+        "pdp_details_sections"
+      ],
+      "http_status": 200,
+      "final_url": "https://www.missnella.com/products/happily-ever-after-4ml-peel-off-kids-nail-polish",
+      "extracted_summary": {
+        "ingredients_chars": 467,
+        "how_to_chars": 168,
+        "details_sections_count": 4,
+        "variant_count": 0,
+        "review_count": 0,
+        "rating": 0,
+        "review_preview_count": 0,
+        "review_preview_samples": []
+      },
+      "serving_mirror_sync": {
+        "planned": true
+      }
+    },
+    {
+      "external_product_id": "ext_0bc6e4f7a15288822029334f",
+      "title": "Itsy Glitzy Hippo: Sparkly Pink Peel Off Nail Polish",
+      "domain": "missnella.com",
+      "url": "https://www.missnella.com/products/itsy-glitzy-hippo-4ml-peel-off-kids-nail-polish",
+      "host": "missnella.com",
+      "status": "dry_run",
+      "patch_keys": [
+        "pdp_ingredients_raw",
+        "pdp_how_to_use_raw",
+        "pdp_details_sections"
+      ],
+      "http_status": 200,
+      "final_url": "https://www.missnella.com/products/itsy-glitzy-hippo-4ml-peel-off-kids-nail-polish",
+      "extracted_summary": {
+        "ingredients_chars": 467,
+        "how_to_chars": 168,
+        "details_sections_count": 4,
+        "variant_count": 0,
+        "review_count": 0,
+        "rating": 0,
+        "review_preview_count": 0,
+        "review_preview_samples": []
+      },
+      "serving_mirror_sync": {
+        "planned": true
+      }
+    },
+    {
+      "external_product_id": "ext_7f3fcd8b1ea9a9c48026e3ff",
+      "title": "Lav Kids by Miss Nella Moisturising Leave In Conditioner 100ml",
+      "domain": "missnella.com",
+      "url": "https://www.missnella.com/products/lavkids-by-miss-nella-moisturising-leave-in-conditioner",
+      "host": "missnella.com",
+      "status": "skipped",
+      "patch_keys": [],
+      "http_status": 200,
+      "final_url": "https://www.missnella.com/products/lavkids-by-miss-nella-moisturising-leave-in-conditioner",
+      "extracted_summary": {
+        "ingredients_chars": 0,
+        "how_to_chars": 0,
+        "details_sections_count": 0,
+        "variant_count": 0,
+        "review_count": 0,
+        "rating": 0,
+        "review_preview_count": 0,
+        "review_preview_samples": []
+      },
+      "reason": "no_official_html_fields"
+    },
+    {
+      "external_product_id": "ext_0389cd34ac2b199ed7d155fd",
+      "title": "Lav Kids Skincare by Miss Nella Facial Foaming Cleanser 100ml",
+      "domain": "missnella.com",
+      "url": "https://www.missnella.com/products/lavkids-skincare-by-miss-nella-facial-foaming-cleanser-100ml",
+      "host": "missnella.com",
+      "status": "skipped",
+      "patch_keys": [],
+      "http_status": 200,
+      "final_url": "https://www.missnella.com/products/lavkids-skincare-by-miss-nella-facial-foaming-cleanser-100ml",
+      "extracted_summary": {
+        "ingredients_chars": 0,
+        "how_to_chars": 0,
+        "details_sections_count": 0,
+        "variant_count": 0,
+        "review_count": 0,
+        "rating": 0,
+        "review_preview_count": 0,
+        "review_preview_samples": []
+      },
+      "reason": "no_official_html_fields"
+    },
+    {
+      "external_product_id": "ext_c954d06d813f8162e2f104c7",
+      "title": "Lav Kids Skincare by Miss Nella Foaming Shower Gel 200ml",
+      "domain": "missnella.com",
+      "url": "https://www.missnella.com/products/lavkids-skincare-by-miss-nella-foaming-shower-gel-200ml",
+      "host": "missnella.com",
+      "status": "skipped",
+      "patch_keys": [],
+      "http_status": 200,
+      "final_url": "https://www.missnella.com/products/lavkids-skincare-by-miss-nella-foaming-shower-gel-200ml",
+      "extracted_summary": {
+        "ingredients_chars": 0,
+        "how_to_chars": 0,
+        "details_sections_count": 0,
+        "variant_count": 0,
+        "review_count": 0,
+        "rating": 0,
+        "review_preview_count": 0,
+        "review_preview_samples": []
+      },
+      "reason": "no_official_html_fields"
+    },
+    {
+      "external_product_id": "ext_d4cd4e83ffea1be996dc5655",
+      "title": "Lav Kids Skincare by Miss Nella Gentle Care Conditioner 200ml",
+      "domain": "missnella.com",
+      "url": "https://www.missnella.com/products/lavkids-skincare-by-miss-nella-gentle-care-conditioner-200ml",
+      "host": "missnella.com",
+      "status": "skipped",
+      "patch_keys": [],
+      "http_status": 200,
+      "final_url": "https://www.missnella.com/products/lavkids-skincare-by-miss-nella-gentle-care-conditioner-200ml",
+      "extracted_summary": {
+        "ingredients_chars": 0,
+        "how_to_chars": 0,
+        "details_sections_count": 0,
+        "variant_count": 0,
+        "review_count": 0,
+        "rating": 0,
+        "review_preview_count": 0,
+        "review_preview_samples": []
+      },
+      "reason": "no_official_html_fields"
+    },
+    {
+      "external_product_id": "ext_18c788834195be4e0022a2c3",
+      "title": "Lav Kids Skincare by Miss Nella Gentle Care Shampoo 215ml",
+      "domain": "missnella.com",
+      "url": "https://www.missnella.com/products/lavkids-skincare-by-miss-nella-gentle-care-shampoo-200ml",
+      "host": "missnella.com",
+      "status": "skipped",
+      "patch_keys": [],
+      "http_status": 200,
+      "final_url": "https://www.missnella.com/products/lavkids-skincare-by-miss-nella-gentle-care-shampoo-200ml",
+      "extracted_summary": {
+        "ingredients_chars": 0,
+        "how_to_chars": 0,
+        "details_sections_count": 0,
+        "variant_count": 0,
+        "review_count": 0,
+        "rating": 0,
+        "review_preview_count": 0,
+        "review_preview_samples": []
+      },
+      "reason": "no_official_html_fields"
+    },
+    {
+      "external_product_id": "ext_bede5d7b6beac13274e28b6a",
+      "title": "Lav Kids Skincare by Miss Nella Moisturising Lip Butter",
+      "domain": "missnella.com",
+      "url": "https://www.missnella.com/products/lavkids-skincare-by-miss-nella-moisturising-lip-butter",
+      "host": "missnella.com",
+      "status": "skipped",
+      "patch_keys": [],
+      "http_status": 200,
+      "final_url": "https://www.missnella.com/products/lavkids-skincare-by-miss-nella-moisturising-lip-butter",
+      "extracted_summary": {
+        "ingredients_chars": 0,
+        "how_to_chars": 0,
+        "details_sections_count": 0,
+        "variant_count": 0,
+        "review_count": 0,
+        "rating": 0,
+        "review_preview_count": 0,
+        "review_preview_samples": []
+      },
+      "reason": "no_official_html_fields"
+    },
+    {
+      "external_product_id": "ext_cf0f60c66afa3fb09944df4d",
+      "title": "Lip Balm",
+      "domain": "missnella.com",
+      "url": "https://www.missnella.com/products/lip-balm",
+      "host": "missnella.com",
+      "status": "dry_run",
+      "patch_keys": [
+        "pdp_ingredients_raw",
+        "pdp_how_to_use_raw",
+        "pdp_details_sections"
+      ],
+      "http_status": 200,
+      "final_url": "https://www.missnella.com/products/lip-balm",
+      "extracted_summary": {
+        "ingredients_chars": 195,
+        "how_to_chars": 132,
+        "details_sections_count": 3,
+        "variant_count": 0,
+        "review_count": 0,
+        "rating": 0,
+        "review_preview_count": 0,
+        "review_preview_samples": []
+      },
+      "serving_mirror_sync": {
+        "planned": true
+      }
+    }
+  ]
+}

@@ -1,0 +1,1468 @@
+{
+  "generated_at": "2026-05-28T06:59:54.816Z",
+  "mode": "dry_run",
+  "batch_size": null,
+  "bootstrap_reviewed_identity_live_read": true,
+  "requested_ids": 9,
+  "fetched_rows": 9,
+  "mirror_rows": 6,
+  "planned_sku_rows": 10,
+  "planned_offer_rows": 10,
+  "planned_index_state_rows": 6,
+  "missing_ids": [],
+  "skipped": [
+    {
+      "external_product_id": "ext_32e72e7e518f4dfa532a191d",
+      "reason": "identity_review_required"
+    },
+    {
+      "external_product_id": "ext_33466da0907b256ffc53783b",
+      "reason": "identity_review_required"
+    },
+    {
+      "external_product_id": "ext_e9e3fba6b05911bba1bfe71e",
+      "reason": "identity_review_required"
+    }
+  ],
+  "applied": {
+    "mode": "dry_run",
+    "existing_before": {
+      "catalog_products": 6,
+      "catalog_skus": 0,
+      "catalog_offers": 0,
+      "product_group_members": 0
+    },
+    "stale_delete_preview": {
+      "current_sku_rows": 6,
+      "current_offer_rows": 6,
+      "planned_stale_sku_deletes": 6,
+      "planned_stale_offer_deletes": 6,
+      "sample_stale_skus": [
+        {
+          "title": "Itsy Glitzy Hippo: Sparkly Pink Peel Off Nail Polish",
+          "sku_key": "prod::external_seed::external_seed::ext_0bc6e4f7a15288822029334f::canonical",
+          "product_key": "prod::external_seed::external_seed::ext_0bc6e4f7a15288822029334f",
+          "source_variant_id": "prod::external_seed::external_seed::ext_0bc6e4f7a15288822029334f",
+          "visible_attributes": {}
+        },
+        {
+          "title": "Alien Poo: Chrome Green Peel Off Nail Polish",
+          "sku_key": "prod::external_seed::external_seed::ext_5b4820a93b2ff42fde402c6e::canonical",
+          "product_key": "prod::external_seed::external_seed::ext_5b4820a93b2ff42fde402c6e",
+          "source_variant_id": "prod::external_seed::external_seed::ext_5b4820a93b2ff42fde402c6e",
+          "visible_attributes": {}
+        },
+        {
+          "title": "Complete Eye Shadow Collection",
+          "sku_key": "prod::external_seed::external_seed::ext_61433fafb09e5fdde9d18422::canonical",
+          "product_key": "prod::external_seed::external_seed::ext_61433fafb09e5fdde9d18422",
+          "source_variant_id": "prod::external_seed::external_seed::ext_61433fafb09e5fdde9d18422",
+          "visible_attributes": {}
+        },
+        {
+          "title": "Happily Ever After: Pink Fine Glitter Peel Off Nail Polish",
+          "sku_key": "prod::external_seed::external_seed::ext_83b5f562450f09c98c4dccb8::canonical",
+          "product_key": "prod::external_seed::external_seed::ext_83b5f562450f09c98c4dccb8",
+          "source_variant_id": "prod::external_seed::external_seed::ext_83b5f562450f09c98c4dccb8",
+          "visible_attributes": {}
+        },
+        {
+          "title": "Flaura Eau De Parfum",
+          "sku_key": "prod::external_seed::external_seed::ext_aafb624684ba1a334a53a076::canonical",
+          "product_key": "prod::external_seed::external_seed::ext_aafb624684ba1a334a53a076",
+          "source_variant_id": "prod::external_seed::external_seed::ext_aafb624684ba1a334a53a076",
+          "visible_attributes": {}
+        },
+        {
+          "title": "Lip Balm",
+          "sku_key": "prod::external_seed::external_seed::ext_cf0f60c66afa3fb09944df4d::canonical",
+          "product_key": "prod::external_seed::external_seed::ext_cf0f60c66afa3fb09944df4d",
+          "source_variant_id": "prod::external_seed::external_seed::ext_cf0f60c66afa3fb09944df4d",
+          "visible_attributes": {}
+        }
+      ],
+      "sample_stale_offers": [
+        {
+          "sku_key": "prod::external_seed::external_seed::ext_0bc6e4f7a15288822029334f::canonical",
+          "offer_id": "offer:external_seed:0a649deb21b6d18a3f619042786142c6",
+          "list_price": 6.49,
+          "product_key": "prod::external_seed::external_seed::ext_0bc6e4f7a15288822029334f",
+          "merchant_effective_price": 6.49
+        },
+        {
+          "sku_key": "prod::external_seed::external_seed::ext_5b4820a93b2ff42fde402c6e::canonical",
+          "offer_id": "offer:external_seed:13acd6cab7c1f153b8ce120cdd807778",
+          "list_price": 6.49,
+          "product_key": "prod::external_seed::external_seed::ext_5b4820a93b2ff42fde402c6e",
+          "merchant_effective_price": 6.49
+        },
+        {
+          "sku_key": "prod::external_seed::external_seed::ext_61433fafb09e5fdde9d18422::canonical",
+          "offer_id": "offer:external_seed:c161d5b3a5708bc1279515f1a32fd0a6",
+          "list_price": 14.99,
+          "product_key": "prod::external_seed::external_seed::ext_61433fafb09e5fdde9d18422",
+          "merchant_effective_price": 14.99
+        },
+        {
+          "sku_key": "prod::external_seed::external_seed::ext_83b5f562450f09c98c4dccb8::canonical",
+          "offer_id": "offer:external_seed:0c8b095792a9987dac7d0c7ce4d2d655",
+          "list_price": 6.49,
+          "product_key": "prod::external_seed::external_seed::ext_83b5f562450f09c98c4dccb8",
+          "merchant_effective_price": 6.49
+        },
+        {
+          "sku_key": "prod::external_seed::external_seed::ext_aafb624684ba1a334a53a076::canonical",
+          "offer_id": "offer:external_seed:67f158259238f8e631423ba4f025919b",
+          "list_price": 62,
+          "product_key": "prod::external_seed::external_seed::ext_aafb624684ba1a334a53a076",
+          "merchant_effective_price": 62
+        },
+        {
+          "sku_key": "prod::external_seed::external_seed::ext_cf0f60c66afa3fb09944df4d::canonical",
+          "offer_id": "offer:external_seed:407ae48892f6b6b369d9191675d16050",
+          "list_price": 4.49,
+          "product_key": "prod::external_seed::external_seed::ext_cf0f60c66afa3fb09944df4d",
+          "merchant_effective_price": 4.49
+        }
+      ]
+    },
+    "batch_size": null,
+    "batches": 1,
+    "audit_reasons": {
+      "no_strong_identifier": 10
+    },
+    "product_upserts": 0,
+    "sku_upserts": 0,
+    "offer_upserts": 0,
+    "group_member_upserts": 0,
+    "group_member_preserved_existing_merges": 0,
+    "seed_attachment_updates": 0,
+    "index_state_upserts": 0,
+    "identity_live_read_updates": 0,
+    "catalog_row_trust_upserts": 0,
+    "stale_offer_deletes": 0,
+    "stale_sku_deletes": 0
+  },
+  "sample": [
+    {
+      "external_product_id": "ext_aafb624684ba1a334a53a076",
+      "product_key": "prod::external_seed::external_seed::ext_aafb624684ba1a334a53a076",
+      "product_group_id": "sig_b1d79d9991f0feddefa461ff",
+      "title": "Flaura Eau De Parfum",
+      "brand": "UpCircle Beauty",
+      "product_type": "Blush",
+      "category": "Blush",
+      "category_path": "beauty/makeup/blush",
+      "canonical_url": "https://upcirclebeauty.com/products/natural-floral-perfume",
+      "pivota_signature_id": "sig_b1d79d9991f0feddefa461ff",
+      "sku_rows": 1,
+      "first_sku": {
+        "sku_key": "prod::external_seed::external_seed::ext_aafb624684ba1a334a53a076::sku_1872d4a095cac50f1dd1",
+        "product_key": "prod::external_seed::external_seed::ext_aafb624684ba1a334a53a076",
+        "merchant_id": "external_seed",
+        "platform": "external_seed",
+        "source_product_id": "ext_aafb624684ba1a334a53a076",
+        "source_variant_id": "ext_aafb624684ba1a334a53a076:44444656304294",
+        "source_domain": "upcirclebeauty.com",
+        "sku": "FLR",
+        "barcode": null,
+        "title": "Flaura Eau De Parfum",
+        "currency": "USD",
+        "image_url": "https://cdn.shopify.com/s/files/1/0023/6316/2681/files/Flaura1.jpg?v=1745188321",
+        "visible_attributes": {},
+        "visible_option_labels": {},
+        "ingredient_ids": [],
+        "sku_payload": {
+          "source": "external_product_seeds_mirror_v1",
+          "external_product_id": "ext_aafb624684ba1a334a53a076",
+          "raw_variant_id": "44444656304294",
+          "source_variant_id": "ext_aafb624684ba1a334a53a076:44444656304294",
+          "variant_sku": "FLR",
+          "barcode": null,
+          "strong_identifier_kind": null,
+          "source_url": "https://upcirclebeauty.com/products/natural-floral-perfume",
+          "external_redirect_url": "https://upcirclebeauty.com/products/natural-floral-perfume",
+          "price": "62",
+          "price_amount": 62,
+          "currency": "USD",
+          "availability": "in_stock",
+          "image_url": "https://cdn.shopify.com/s/files/1/0023/6316/2681/files/Flaura1.jpg?v=1745188321",
+          "swatch_image_url": null,
+          "label_image_url": null,
+          "options": {},
+          "raw_variant": {
+            "sku": "FLR",
+            "url": "https://upcirclebeauty.com/products/natural-floral-perfume",
+            "price": "62",
+            "stock": "In Stock",
+            "currency": "USD",
+            "image_url": "https://cdn.shopify.com/s/files/1/0023/6316/2681/files/Flaura1.jpg?v=1745188321",
+            "image_urls": [
+              "https://cdn.shopify.com/s/files/1/0023/6316/2681/files/Flaura1.jpg?v=1745188321",
+              "https://cdn.shopify.com/s/files/1/0023/6316/2681/files/FLR-RETAILBOX_OPEN_WEB_READYcopy.jpg?v=1757950373",
+              "https://cdn.shopify.com/s/files/1/0023/6316/2681/files/Press_FLR_1.png?v=1757950373",
+              "https://cdn.shopify.com/s/files/1/0023/6316/2681/files/CALLOUTSIMAGES34.jpg?v=1757950373",
+              "https://cdn.shopify.com/s/files/1/0023/6316/2681/files/93.jpg?v=1757950373",
+              "https://cdn.shopify.com/s/files/1/0023/6316/2681/files/Website_Texture_Flaura.jpg?v=1757950373",
+              "https://cdn.shopify.com/s/files/1/0023/6316/2681/files/48_1951aa2a-dd36-49a4-9c13-42efc44f08c8.jpg?v=1757950373",
+              "https://cdn.shopify.com/s/files/1/0023/6316/2681/files/47.jpg?v=1757950373",
+              "https://cdn.shopify.com/s/files/1/0023/6316/2681/files/60_08e72e56-f45b-4bc1-9db3-ce5f7b885783.jpg?v=1757950373",
+              "https://cdn.shopify.com/s/files/1/0023/6316/2681/files/Eau_De_Parfum_a1b83f85-d8d1-48a3-92cc-851cc138d3b0.png?v=1757950373",
+              "https://cdn.shopify.com/s/files/1/0023/6316/2681/files/ProductComparePerfumes.png?v=1776096687"
+            ],
+            "variant_id": "44444656304294",
+            "description": "Create yourself a vibrant floral aura. Opening brightly with uplifting freshness, Flaura is a scent blooming with white flowers and sensuality and surrounds you with effervescent positivity.\n\nTop Notes Fresh, sparkling and uplifting bergamot with the juicy sweetness of blackcurrant.\n\nHeart Notes A floral aura from honeyed petals of orange blossom, green jasmine sambac and peachy tuberose.\n\nBase Notes A radiant base of Virginia cedarwood, velvety vanilla pods and warm fluffy musks. \n\nWe've upcycled... \n\nJasmine Sambac \nGreen, floral, bright and blooming, jasmine sambac is grown in Tamil Nadu for use in bridal and ceremonial wear. Blossoms of these sacred flowers that remain unsold from markets are rescued and transformed into floral absolute for use in perfumery. It brings warm, blossoming sensuality to Flaura.\n\nCinnamon Bark \nSpicy and peppery with a blush of vanilla, Sri Lankan cinnamon is heralded as the finest in the world. Sun-warmed cinnamon bark curls into quills on drying, but less uniform rolls are left behind. The spice market’s loss is our gain as these imperfect quills are distilled into a sweet, woody oil that exudes sophistication and elegance.",
+            "option_name": "Title",
+            "option_value": "Default Title"
+          }
+        },
+        "readiness_tier": "referral_only"
+      },
+      "first_offer": {
+        "offer_id": "offer:external_seed:3e5f712db774aa00611d7ce399a47f56",
+        "sku_key": "prod::external_seed::external_seed::ext_aafb624684ba1a334a53a076::sku_1872d4a095cac50f1dd1",
+        "product_key": "prod::external_seed::external_seed::ext_aafb624684ba1a334a53a076",
+        "merchant_id": "external_seed",
+        "catalog_track": "external_referral",
+        "truth_tier": "observed",
+        "readiness_tier": "referral_only",
+        "offer_mode": "redirect",
+        "channel": "external_referral",
+        "availability": "in_stock",
+        "currency": "USD",
+        "list_price": 62,
+        "merchant_effective_price": 62,
+        "estimated_best_price": 62,
+        "price_confidence": 1,
+        "source_system": "external_product_seeds_mirror_v1",
+        "source_ref": "eps_c4f57b2d06eb2880781b786e",
+        "source_domain": "upcirclebeauty.com",
+        "offer_payload": {
+          "source": "external_product_seeds_mirror_v1",
+          "external_seed_id": "eps_c4f57b2d06eb2880781b786e",
+          "external_product_id": "ext_aafb624684ba1a334a53a076",
+          "domain": "upcirclebeauty.com",
+          "market": "US",
+          "product_title": "Flaura Eau De Parfum",
+          "variant_title": "Flaura Eau De Parfum",
+          "variant_sku": "FLR",
+          "raw_variant_id": "44444656304294",
+          "url": "https://upcirclebeauty.com/products/natural-floral-perfume",
+          "offer_url": "https://upcirclebeauty.com/products/natural-floral-perfume",
+          "canonical_url": "https://upcirclebeauty.com/products/natural-floral-perfume",
+          "destination_url": "https://upcirclebeauty.com/products/natural-floral-perfume",
+          "external_redirect_url": "https://upcirclebeauty.com/products/natural-floral-perfume",
+          "merchant_display_name": "UpCircle Beauty",
+          "price": "62",
+          "price_amount": 62,
+          "price_currency": "USD",
+          "availability": "in_stock",
+          "commerce_facts_v1": {
+            "contract_version": "commerce_facts.v1",
+            "market_id": "US",
+            "country": "US",
+            "currency_target": "USD",
+            "source_authority": "catalog_extract_v2",
+            "captured_at": "2026-05-18T05:00:41.934Z",
+            "evidence_url": "https://upcirclebeauty.com/products/natural-floral-perfume",
+            "sellable_region": {
+              "status": "unknown",
+              "countries": [],
+              "evidence_source": "catalog_extract_v2",
+              "confidence": "unknown",
+              "checked_at": "2026-05-18T05:00:41.934Z",
+              "reason_codes": [
+                "shipping_destination_not_verified"
+              ],
+              "evidence_url": "https://upcirclebeauty.com/products/natural-floral-perfume"
+            },
+            "regional_price": {
+              "amount": 62,
+              "currency": "USD",
+              "display_raw": null,
+              "price_type": "unknown",
+              "compare_at_amount": null,
+              "compare_at_currency": null,
+              "compare_at_display_raw": null,
+              "tax_included": "unknown",
+              "confidence": "medium",
+              "market_switch_status": "ok",
+              "observed_currency": "USD",
+              "source_url": "https://upcirclebeauty.com/products/natural-floral-perfume",
+              "captured_at": "2026-05-18T05:00:41.934Z"
+            },
+            "availability": {
+              "status": "in_stock",
+              "source": "catalog_extract_v2",
+              "confidence": "medium",
+              "captured_at": "2026-05-18T05:00:41.934Z"
+            },
+            "shipping": {
+              "status": "unknown",
+              "source": "catalog_extract_v2",
+              "confidence": "unknown",
+              "reason_codes": [
+                "external_checkout_not_queried"
+              ],
+              "checked_at": "2026-05-18T05:00:41.934Z"
+            },
+            "promotions": [],
+            "returns": {
+              "status": "unknown",
+              "source": "catalog_extract_v2",
+              "confidence": "unknown",
+              "reason_codes": [
+                "external_returns_not_extracted"
+              ],
+              "checked_at": "2026-05-18T05:00:41.934Z"
+            }
+          },
+          "agent_safe_commerce_facts": {
+            "contract_version": "commerce_facts.v1",
+            "market_id": "US",
+            "price": {
+              "amount": 62,
+              "currency": "USD",
+              "display_raw": null,
+              "price_type": "unknown",
+              "compare_at_amount": null,
+              "compare_at_currency": null,
+              "compare_at_display_raw": null,
+              "tax_included": "unknown",
+              "confidence": "medium",
+              "market_switch_status": "ok",
+              "observed_currency": "USD",
+              "source_url": "https://upcirclebeauty.com/products/natural-floral-perfume",
+              "captured_at": "2026-05-18T05:00:41.934Z"
+            },
+            "availability": {
+              "status": "in_stock",
+              "source": "catalog_extract_v2",
+              "confidence": "medium",
+              "captured_at": "2026-05-18T05:00:41.934Z"
+            },
+            "shipping": {
+              "status": "unknown",
+              "reason": "verify_at_checkout"
+            },
+            "promotions": [],
+            "checkout_note": "Shipping and promotions are not verified for this external offer; verify at merchant checkout."
+          }
+        }
+      },
+      "serving_readiness": {
+        "servingEligible": true,
+        "contentQualityScore": 90,
+        "blockerCode": "none",
+        "blockerDetail": null,
+        "identityResolved": true,
+        "identityLiveReadResolved": false,
+        "identityBootstrapEligible": true,
+        "hasImage": true,
+        "hasPrice": true,
+        "descriptionLength": 1175
+      }
+    },
+    {
+      "external_product_id": "ext_5b4820a93b2ff42fde402c6e",
+      "product_key": "prod::external_seed::external_seed::ext_5b4820a93b2ff42fde402c6e",
+      "product_group_id": "sig_3220cab04a8dffba3c8fb4c2",
+      "title": "Alien Poo: Chrome Green Peel Off Nail Polish",
+      "brand": "Miss Nella",
+      "product_type": "Nail Polish",
+      "category": "Nail Polish",
+      "category_path": "beauty/makeup/nails/nail-polish",
+      "canonical_url": "https://www.missnella.com/products/alien-poo-4ml-peel-off-kids-nail-polish",
+      "pivota_signature_id": "sig_3220cab04a8dffba3c8fb4c2",
+      "sku_rows": 1,
+      "first_sku": {
+        "sku_key": "prod::external_seed::external_seed::ext_5b4820a93b2ff42fde402c6e::sku_d8f0ca45de39601fc40d",
+        "product_key": "prod::external_seed::external_seed::ext_5b4820a93b2ff42fde402c6e",
+        "merchant_id": "external_seed",
+        "platform": "external_seed",
+        "source_product_id": "ext_5b4820a93b2ff42fde402c6e",
+        "source_variant_id": "ext_5b4820a93b2ff42fde402c6e:41123904127150",
+        "source_domain": "missnella.com",
+        "sku": "MN39-1",
+        "barcode": null,
+        "title": "Alien Poo: Chrome Green Peel Off Nail Polish",
+        "currency": "USD",
+        "image_url": "https://cdn.shopify.com/s/files/1/2219/3831/files/MN39AlienPoo.jpg?v=1771506808",
+        "visible_attributes": {
+          "Size": "4ml"
+        },
+        "visible_option_labels": {
+          "Size": "4ml"
+        },
+        "ingredient_ids": [],
+        "sku_payload": {
+          "source": "external_product_seeds_mirror_v1",
+          "external_product_id": "ext_5b4820a93b2ff42fde402c6e",
+          "raw_variant_id": "41123904127150",
+          "source_variant_id": "ext_5b4820a93b2ff42fde402c6e:41123904127150",
+          "variant_sku": "MN39-1",
+          "barcode": null,
+          "strong_identifier_kind": null,
+          "source_url": "https://www.missnella.com/products/alien-poo-4ml-peel-off-kids-nail-polish",
+          "external_redirect_url": "https://www.missnella.com/products/alien-poo-4ml-peel-off-kids-nail-polish",
+          "price": "6.49",
+          "price_amount": 6.49,
+          "currency": "USD",
+          "availability": "out_of_stock",
+          "image_url": "https://cdn.shopify.com/s/files/1/2219/3831/files/MN39AlienPoo.jpg?v=1771506808",
+          "swatch_image_url": null,
+          "label_image_url": null,
+          "options": {
+            "Size": "4ml"
+          },
+          "raw_variant": {
+            "sku": "MN39-1",
+            "url": "https://www.missnella.com/products/alien-poo-4ml-peel-off-kids-nail-polish",
+            "price": "6.49",
+            "stock": "Out of Stock",
+            "currency": "USD",
+            "image_url": "https://cdn.shopify.com/s/files/1/2219/3831/files/MN39AlienPoo.jpg?v=1771506808",
+            "image_urls": [
+              "https://cdn.shopify.com/s/files/1/2219/3831/files/MN39AlienPoo.jpg?v=1771506808",
+              "https://cdn.shopify.com/s/files/1/2219/3831/files/MN39AlienPoo-Peel-Off-WEB.jpg?v=1771506808",
+              "https://cdn.shopify.com/s/files/1/2219/3831/files/MN39AlienPoo-Box-WEB_f2aead38-6005-4046-828d-23957c2eca2d.jpg?v=1771506762",
+              "https://cdn.shopify.com/s/files/1/2219/3831/files/MN-Peel-off-Nail-Polish-002-WEB.jpg?v=1771508662",
+              "https://cdn.shopify.com/s/files/1/2219/3831/files/MN39AlienPoo-Box-01-WEB.jpg?v=1771506762"
+            ],
+            "variant_id": "41123904127150",
+            "description": "💅 Safe, Fun, and Colourful - Let your child’s creativity shine with Miss Nella Nail Polish! This vibrant, non-toxic and kid-friendly polish is perfect for young hands, offering a smooth application and quick drying formula. Whether it’s for a fun playdate, a dress-up session, or just because, this nail polish adds a splash of vibrant colour to any day.",
+            "option_name": "Size",
+            "option_value": "4ml"
+          }
+        },
+        "readiness_tier": "referral_only"
+      },
+      "first_offer": {
+        "offer_id": "offer:external_seed:7c80eeb2e36c9e3f222e71bc959b4164",
+        "sku_key": "prod::external_seed::external_seed::ext_5b4820a93b2ff42fde402c6e::sku_d8f0ca45de39601fc40d",
+        "product_key": "prod::external_seed::external_seed::ext_5b4820a93b2ff42fde402c6e",
+        "merchant_id": "external_seed",
+        "catalog_track": "external_referral",
+        "truth_tier": "observed",
+        "readiness_tier": "referral_only",
+        "offer_mode": "redirect",
+        "channel": "external_referral",
+        "availability": "out_of_stock",
+        "currency": "USD",
+        "list_price": 6.49,
+        "merchant_effective_price": 6.49,
+        "estimated_best_price": 6.49,
+        "price_confidence": 1,
+        "source_system": "external_product_seeds_mirror_v1",
+        "source_ref": "eps_2464c04ad34fc90d5bf1d8d9",
+        "source_domain": "missnella.com",
+        "offer_payload": {
+          "source": "external_product_seeds_mirror_v1",
+          "external_seed_id": "eps_2464c04ad34fc90d5bf1d8d9",
+          "external_product_id": "ext_5b4820a93b2ff42fde402c6e",
+          "domain": "missnella.com",
+          "market": "US",
+          "product_title": "Alien Poo: Chrome Green Peel Off Nail Polish",
+          "variant_title": "Alien Poo: Chrome Green Peel Off Nail Polish",
+          "variant_sku": "MN39-1",
+          "raw_variant_id": "41123904127150",
+          "url": "https://www.missnella.com/products/alien-poo-4ml-peel-off-kids-nail-polish",
+          "offer_url": "https://www.missnella.com/products/alien-poo-4ml-peel-off-kids-nail-polish",
+          "canonical_url": "https://www.missnella.com/products/alien-poo-4ml-peel-off-kids-nail-polish",
+          "destination_url": "https://www.missnella.com/products/alien-poo-4ml-peel-off-kids-nail-polish",
+          "external_redirect_url": "https://www.missnella.com/products/alien-poo-4ml-peel-off-kids-nail-polish",
+          "merchant_display_name": "Miss Nella",
+          "price": "6.49",
+          "price_amount": 6.49,
+          "price_currency": "USD",
+          "availability": "out_of_stock",
+          "commerce_facts_v1": {
+            "contract_version": "commerce_facts.v1",
+            "market_id": "US",
+            "country": "US",
+            "currency_target": "USD",
+            "source_authority": "catalog_extract_v2",
+            "captured_at": "2026-05-18T04:53:59.090Z",
+            "evidence_url": "https://www.missnella.com/products/alien-poo-4ml-peel-off-kids-nail-polish",
+            "sellable_region": {
+              "status": "unknown",
+              "countries": [],
+              "evidence_source": "catalog_extract_v2",
+              "confidence": "unknown",
+              "checked_at": "2026-05-18T04:53:59.090Z",
+              "reason_codes": [
+                "shipping_destination_not_verified"
+              ],
+              "evidence_url": "https://www.missnella.com/products/alien-poo-4ml-peel-off-kids-nail-polish"
+            },
+            "regional_price": {
+              "amount": 6.49,
+              "currency": "USD",
+              "display_raw": null,
+              "price_type": "unknown",
+              "compare_at_amount": null,
+              "compare_at_currency": null,
+              "compare_at_display_raw": null,
+              "tax_included": "unknown",
+              "confidence": "medium",
+              "market_switch_status": "ok",
+              "observed_currency": "USD",
+              "source_url": "https://www.missnella.com/products/alien-poo-4ml-peel-off-kids-nail-polish",
+              "captured_at": "2026-05-18T04:53:59.090Z"
+            },
+            "availability": {
+              "status": "out_of_stock",
+              "source": "catalog_extract_v2",
+              "confidence": "medium",
+              "captured_at": "2026-05-18T04:53:59.090Z"
+            },
+            "shipping": {
+              "status": "unknown",
+              "source": "catalog_extract_v2",
+              "confidence": "unknown",
+              "reason_codes": [
+                "external_checkout_not_queried"
+              ],
+              "checked_at": "2026-05-18T04:53:59.090Z"
+            },
+            "promotions": [],
+            "returns": {
+              "status": "unknown",
+              "source": "catalog_extract_v2",
+              "confidence": "unknown",
+              "reason_codes": [
+                "external_returns_not_extracted"
+              ],
+              "checked_at": "2026-05-18T04:53:59.090Z"
+            }
+          },
+          "agent_safe_commerce_facts": {
+            "contract_version": "commerce_facts.v1",
+            "market_id": "US",
+            "price": {
+              "amount": 6.49,
+              "currency": "USD",
+              "display_raw": null,
+              "price_type": "unknown",
+              "compare_at_amount": null,
+              "compare_at_currency": null,
+              "compare_at_display_raw": null,
+              "tax_included": "unknown",
+              "confidence": "medium",
+              "market_switch_status": "ok",
+              "observed_currency": "USD",
+              "source_url": "https://www.missnella.com/products/alien-poo-4ml-peel-off-kids-nail-polish",
+              "captured_at": "2026-05-18T04:53:59.090Z"
+            },
+            "availability": {
+              "status": "out_of_stock",
+              "source": "catalog_extract_v2",
+              "confidence": "medium",
+              "captured_at": "2026-05-18T04:53:59.090Z"
+            },
+            "shipping": {
+              "status": "unknown",
+              "reason": "verify_at_checkout"
+            },
+            "promotions": [],
+            "checkout_note": "Shipping and promotions are not verified for this external offer; verify at merchant checkout."
+          }
+        }
+      },
+      "serving_readiness": {
+        "servingEligible": true,
+        "contentQualityScore": 90,
+        "blockerCode": "none",
+        "blockerDetail": null,
+        "identityResolved": true,
+        "identityLiveReadResolved": false,
+        "identityBootstrapEligible": true,
+        "hasImage": true,
+        "hasPrice": true,
+        "descriptionLength": 355
+      }
+    },
+    {
+      "external_product_id": "ext_61433fafb09e5fdde9d18422",
+      "product_key": "prod::external_seed::external_seed::ext_61433fafb09e5fdde9d18422",
+      "product_group_id": "sig_c4e3ec0bc688f874ef3cd9e0",
+      "title": "Complete Eye Shadow Collection",
+      "brand": "Miss Nella",
+      "product_type": "Skincare Set",
+      "category": "Skincare Set",
+      "category_path": "beauty/skincare/sets",
+      "canonical_url": "https://www.missnella.com/products/complete-eyeshadow-collection-non-toxic-make-up",
+      "pivota_signature_id": "sig_c4e3ec0bc688f874ef3cd9e0",
+      "sku_rows": 1,
+      "first_sku": {
+        "sku_key": "prod::external_seed::external_seed::ext_61433fafb09e5fdde9d18422::sku_071d3637b9d5c0800f0b",
+        "product_key": "prod::external_seed::external_seed::ext_61433fafb09e5fdde9d18422",
+        "merchant_id": "external_seed",
+        "platform": "external_seed",
+        "source_product_id": "ext_61433fafb09e5fdde9d18422",
+        "source_variant_id": "ext_61433fafb09e5fdde9d18422:51760241350",
+        "source_domain": "missnella.com",
+        "sku": "EYESH-COL",
+        "barcode": null,
+        "title": "Complete Eye Shadow Collection",
+        "currency": "USD",
+        "image_url": "https://cdn.shopify.com/s/files/1/2219/3831/files/CompleteEyeShadowCollection_eb994f4c-ee3e-4a55-90c8-a145953925a0.jpg?v=1778247488",
+        "visible_attributes": {},
+        "visible_option_labels": {},
+        "ingredient_ids": [],
+        "sku_payload": {
+          "source": "external_product_seeds_mirror_v1",
+          "external_product_id": "ext_61433fafb09e5fdde9d18422",
+          "raw_variant_id": "51760241350",
+          "source_variant_id": "ext_61433fafb09e5fdde9d18422:51760241350",
+          "variant_sku": "EYESH-COL",
+          "barcode": null,
+          "strong_identifier_kind": null,
+          "source_url": "https://www.missnella.com/products/complete-eyeshadow-collection-non-toxic-make-up",
+          "external_redirect_url": "https://www.missnella.com/products/complete-eyeshadow-collection-non-toxic-make-up",
+          "price": "14.99",
+          "price_amount": 14.99,
+          "currency": "USD",
+          "availability": "in_stock",
+          "image_url": "https://cdn.shopify.com/s/files/1/2219/3831/files/CompleteEyeShadowCollection_eb994f4c-ee3e-4a55-90c8-a145953925a0.jpg?v=1778247488",
+          "swatch_image_url": null,
+          "label_image_url": null,
+          "options": {},
+          "raw_variant": {
+            "sku": "EYESH-COL",
+            "url": "https://www.missnella.com/products/complete-eyeshadow-collection-non-toxic-make-up",
+            "price": "14.99",
+            "stock": "In Stock",
+            "currency": "USD",
+            "image_url": "https://cdn.shopify.com/s/files/1/2219/3831/files/CompleteEyeShadowCollection_eb994f4c-ee3e-4a55-90c8-a145953925a0.jpg?v=1778247488",
+            "image_urls": [
+              "https://cdn.shopify.com/s/files/1/2219/3831/files/CompleteEyeShadowCollection_eb994f4c-ee3e-4a55-90c8-a145953925a0.jpg?v=1778247488",
+              "https://cdn.shopify.com/s/files/1/2219/3831/files/CompleteEyeShadowCollectionHover_3.jpg?v=1778247491",
+              "https://cdn.shopify.com/s/files/1/2219/3831/files/MN-GoldenSandsEye-Shadow-04_3_cd5db1c2-ec43-421b-a8e0-5dd5a73a7b39.jpg?v=1778247489",
+              "https://cdn.shopify.com/s/files/1/2219/3831/files/CompleteEyeShadowCollectionHover_2_2b5bf99d-1150-45c4-bf1b-fa659f87e7bb.jpg?v=1778247489",
+              "https://cdn.shopify.com/s/files/1/2219/3831/files/MN-GoldenSandsEye-Shadow-04.jpg?v=1778247489",
+              "https://cdn.shopify.com/s/files/1/2219/3831/files/18_cd267cb2-2aee-4e51-8011-9f2023269fd7.jpg?v=1778247489"
+            ],
+            "variant_id": "51760241350",
+            "description": "The Miss Nella Eyeshadow Collection features three magical shades - pink, purple, and blue! Perfect for adding a pop of fun colour and sparkle to your little one’s look. ✨😊",
+            "option_name": "Title",
+            "option_value": "Default Title"
+          }
+        },
+        "readiness_tier": "referral_only"
+      },
+      "first_offer": {
+        "offer_id": "offer:external_seed:907dbb3309adec83c80430812b251c56",
+        "sku_key": "prod::external_seed::external_seed::ext_61433fafb09e5fdde9d18422::sku_071d3637b9d5c0800f0b",
+        "product_key": "prod::external_seed::external_seed::ext_61433fafb09e5fdde9d18422",
+        "merchant_id": "external_seed",
+        "catalog_track": "external_referral",
+        "truth_tier": "observed",
+        "readiness_tier": "referral_only",
+        "offer_mode": "redirect",
+        "channel": "external_referral",
+        "availability": "in_stock",
+        "currency": "USD",
+        "list_price": 14.99,
+        "merchant_effective_price": 14.99,
+        "estimated_best_price": 14.99,
+        "price_confidence": 1,
+        "source_system": "external_product_seeds_mirror_v1",
+        "source_ref": "eps_43ea02a7859ad5da2b982e21",
+        "source_domain": "missnella.com",
+        "offer_payload": {
+          "source": "external_product_seeds_mirror_v1",
+          "external_seed_id": "eps_43ea02a7859ad5da2b982e21",
+          "external_product_id": "ext_61433fafb09e5fdde9d18422",
+          "domain": "missnella.com",
+          "market": "US",
+          "product_title": "Complete Eye Shadow Collection",
+          "variant_title": "Complete Eye Shadow Collection",
+          "variant_sku": "EYESH-COL",
+          "raw_variant_id": "51760241350",
+          "url": "https://www.missnella.com/products/complete-eyeshadow-collection-non-toxic-make-up",
+          "offer_url": "https://www.missnella.com/products/complete-eyeshadow-collection-non-toxic-make-up",
+          "canonical_url": "https://www.missnella.com/products/complete-eyeshadow-collection-non-toxic-make-up",
+          "destination_url": "https://www.missnella.com/products/complete-eyeshadow-collection-non-toxic-make-up",
+          "external_redirect_url": "https://www.missnella.com/products/complete-eyeshadow-collection-non-toxic-make-up",
+          "merchant_display_name": "Miss Nella",
+          "price": "14.99",
+          "price_amount": 14.99,
+          "price_currency": "USD",
+          "availability": "in_stock",
+          "commerce_facts_v1": {
+            "contract_version": "commerce_facts.v1",
+            "market_id": "US",
+            "country": "US",
+            "currency_target": "USD",
+            "source_authority": "catalog_extract_v2",
+            "captured_at": "2026-05-18T04:53:59.087Z",
+            "evidence_url": "https://www.missnella.com/products/complete-eyeshadow-collection-non-toxic-make-up",
+            "sellable_region": {
+              "status": "unknown",
+              "countries": [],
+              "evidence_source": "catalog_extract_v2",
+              "confidence": "unknown",
+              "checked_at": "2026-05-18T04:53:59.087Z",
+              "reason_codes": [
+                "shipping_destination_not_verified"
+              ],
+              "evidence_url": "https://www.missnella.com/products/complete-eyeshadow-collection-non-toxic-make-up"
+            },
+            "regional_price": {
+              "amount": 14.99,
+              "currency": "USD",
+              "display_raw": null,
+              "price_type": "unknown",
+              "compare_at_amount": null,
+              "compare_at_currency": null,
+              "compare_at_display_raw": null,
+              "tax_included": "unknown",
+              "confidence": "medium",
+              "market_switch_status": "ok",
+              "observed_currency": "USD",
+              "source_url": "https://www.missnella.com/products/complete-eyeshadow-collection-non-toxic-make-up",
+              "captured_at": "2026-05-18T04:53:59.087Z"
+            },
+            "availability": {
+              "status": "in_stock",
+              "source": "catalog_extract_v2",
+              "confidence": "medium",
+              "captured_at": "2026-05-18T04:53:59.087Z"
+            },
+            "shipping": {
+              "status": "unknown",
+              "source": "catalog_extract_v2",
+              "confidence": "unknown",
+              "reason_codes": [
+                "external_checkout_not_queried"
+              ],
+              "checked_at": "2026-05-18T04:53:59.087Z"
+            },
+            "promotions": [],
+            "returns": {
+              "status": "unknown",
+              "source": "catalog_extract_v2",
+              "confidence": "unknown",
+              "reason_codes": [
+                "external_returns_not_extracted"
+              ],
+              "checked_at": "2026-05-18T04:53:59.087Z"
+            }
+          },
+          "agent_safe_commerce_facts": {
+            "contract_version": "commerce_facts.v1",
+            "market_id": "US",
+            "price": {
+              "amount": 14.99,
+              "currency": "USD",
+              "display_raw": null,
+              "price_type": "unknown",
+              "compare_at_amount": null,
+              "compare_at_currency": null,
+              "compare_at_display_raw": null,
+              "tax_included": "unknown",
+              "confidence": "medium",
+              "market_switch_status": "ok",
+              "observed_currency": "USD",
+              "source_url": "https://www.missnella.com/products/complete-eyeshadow-collection-non-toxic-make-up",
+              "captured_at": "2026-05-18T04:53:59.087Z"
+            },
+            "availability": {
+              "status": "in_stock",
+              "source": "catalog_extract_v2",
+              "confidence": "medium",
+              "captured_at": "2026-05-18T04:53:59.087Z"
+            },
+            "shipping": {
+              "status": "unknown",
+              "reason": "verify_at_checkout"
+            },
+            "promotions": [],
+            "checkout_note": "Shipping and promotions are not verified for this external offer; verify at merchant checkout."
+          }
+        }
+      },
+      "serving_readiness": {
+        "servingEligible": true,
+        "contentQualityScore": 90,
+        "blockerCode": "none",
+        "blockerDetail": null,
+        "identityResolved": true,
+        "identityLiveReadResolved": false,
+        "identityBootstrapEligible": true,
+        "hasImage": true,
+        "hasPrice": true,
+        "descriptionLength": 173
+      }
+    },
+    {
+      "external_product_id": "ext_83b5f562450f09c98c4dccb8",
+      "product_key": "prod::external_seed::external_seed::ext_83b5f562450f09c98c4dccb8",
+      "product_group_id": "sig_f1b058104ee0164e5b51c65c",
+      "title": "Happily Ever After: Pink Fine Glitter Peel Off Nail Polish",
+      "brand": "Miss Nella",
+      "product_type": "Nail Polish",
+      "category": "Nail Polish",
+      "category_path": "beauty/makeup/nails/nail-polish",
+      "canonical_url": "https://www.missnella.com/products/happily-ever-after-4ml-peel-off-kids-nail-polish",
+      "pivota_signature_id": "sig_f1b058104ee0164e5b51c65c",
+      "sku_rows": 1,
+      "first_sku": {
+        "sku_key": "prod::external_seed::external_seed::ext_83b5f562450f09c98c4dccb8::sku_4eacd15a056a61894d13",
+        "product_key": "prod::external_seed::external_seed::ext_83b5f562450f09c98c4dccb8",
+        "merchant_id": "external_seed",
+        "platform": "external_seed",
+        "source_product_id": "ext_83b5f562450f09c98c4dccb8",
+        "source_variant_id": "ext_83b5f562450f09c98c4dccb8:42852250550530",
+        "source_domain": "missnella.com",
+        "sku": "MN49-1",
+        "barcode": null,
+        "title": "Happily Ever After: Pink Fine Glitter Peel Off Nail Polish",
+        "currency": "USD",
+        "image_url": "https://cdn.shopify.com/s/files/1/2219/3831/files/MN49HappilyEverAfterWEB.jpg?v=1771508548",
+        "visible_attributes": {
+          "Size": "4ml"
+        },
+        "visible_option_labels": {
+          "Size": "4ml"
+        },
+        "ingredient_ids": [],
+        "sku_payload": {
+          "source": "external_product_seeds_mirror_v1",
+          "external_product_id": "ext_83b5f562450f09c98c4dccb8",
+          "raw_variant_id": "42852250550530",
+          "source_variant_id": "ext_83b5f562450f09c98c4dccb8:42852250550530",
+          "variant_sku": "MN49-1",
+          "barcode": null,
+          "strong_identifier_kind": null,
+          "source_url": "https://www.missnella.com/products/happily-ever-after-4ml-peel-off-kids-nail-polish",
+          "external_redirect_url": "https://www.missnella.com/products/happily-ever-after-4ml-peel-off-kids-nail-polish",
+          "price": "6.49",
+          "price_amount": 6.49,
+          "currency": "USD",
+          "availability": "out_of_stock",
+          "image_url": "https://cdn.shopify.com/s/files/1/2219/3831/files/MN49HappilyEverAfterWEB.jpg?v=1771508548",
+          "swatch_image_url": null,
+          "label_image_url": null,
+          "options": {
+            "Size": "4ml"
+          },
+          "raw_variant": {
+            "sku": "MN49-1",
+            "url": "https://www.missnella.com/products/happily-ever-after-4ml-peel-off-kids-nail-polish",
+            "price": "6.49",
+            "stock": "Out of Stock",
+            "currency": "USD",
+            "image_url": "https://cdn.shopify.com/s/files/1/2219/3831/files/MN49HappilyEverAfterWEB.jpg?v=1771508548",
+            "image_urls": [
+              "https://cdn.shopify.com/s/files/1/2219/3831/files/MN49HappilyEverAfterWEB.jpg?v=1771508548",
+              "https://cdn.shopify.com/s/files/1/2219/3831/files/MN49HappilyEverAfter-WEB.jpg?v=1771508548",
+              "https://cdn.shopify.com/s/files/1/2219/3831/files/MN49HappilyEverAfter-Box-WEB_776b4ced-58ee-4dd0-baec-25a3faa4e49a.jpg?v=1771508500",
+              "https://cdn.shopify.com/s/files/1/2219/3831/files/MN-NP-Steps-1x1-WEB.jpg?v=1771508500",
+              "https://cdn.shopify.com/s/files/1/2219/3831/files/MN49HappilyEverAfter-Box-01-WEB.jpg?v=1771508500",
+              "https://cdn.shopify.com/s/files/1/2219/3831/files/MN-Peel-off-Nail-Polish-002-WEB.jpg?v=1771508662"
+            ],
+            "variant_id": "42852250550530",
+            "description": "💅 Safe, Fun, and Colourful - Let your child’s creativity shine with Miss Nella Nail Polish! This vibrant, non-toxic and kid-friendly polish is perfect for young hands, offering a smooth application and quick drying formula. Whether it’s for a fun playdate, a dress-up session, or just because, this nail polish adds a splash of vibrant colour to any day.",
+            "option_name": "Size",
+            "option_value": "4ml"
+          }
+        },
+        "readiness_tier": "referral_only"
+      },
+      "first_offer": {
+        "offer_id": "offer:external_seed:43987a7d8651a3e856d2abb6528598f1",
+        "sku_key": "prod::external_seed::external_seed::ext_83b5f562450f09c98c4dccb8::sku_4eacd15a056a61894d13",
+        "product_key": "prod::external_seed::external_seed::ext_83b5f562450f09c98c4dccb8",
+        "merchant_id": "external_seed",
+        "catalog_track": "external_referral",
+        "truth_tier": "observed",
+        "readiness_tier": "referral_only",
+        "offer_mode": "redirect",
+        "channel": "external_referral",
+        "availability": "out_of_stock",
+        "currency": "USD",
+        "list_price": 6.49,
+        "merchant_effective_price": 6.49,
+        "estimated_best_price": 6.49,
+        "price_confidence": 1,
+        "source_system": "external_product_seeds_mirror_v1",
+        "source_ref": "eps_ea0489b43a8306d878680f21",
+        "source_domain": "missnella.com",
+        "offer_payload": {
+          "source": "external_product_seeds_mirror_v1",
+          "external_seed_id": "eps_ea0489b43a8306d878680f21",
+          "external_product_id": "ext_83b5f562450f09c98c4dccb8",
+          "domain": "missnella.com",
+          "market": "US",
+          "product_title": "Happily Ever After: Pink Fine Glitter Peel Off Nail Polish",
+          "variant_title": "Happily Ever After: Pink Fine Glitter Peel Off Nail Polish",
+          "variant_sku": "MN49-1",
+          "raw_variant_id": "42852250550530",
+          "url": "https://www.missnella.com/products/happily-ever-after-4ml-peel-off-kids-nail-polish",
+          "offer_url": "https://www.missnella.com/products/happily-ever-after-4ml-peel-off-kids-nail-polish",
+          "canonical_url": "https://www.missnella.com/products/happily-ever-after-4ml-peel-off-kids-nail-polish",
+          "destination_url": "https://www.missnella.com/products/happily-ever-after-4ml-peel-off-kids-nail-polish",
+          "external_redirect_url": "https://www.missnella.com/products/happily-ever-after-4ml-peel-off-kids-nail-polish",
+          "merchant_display_name": "Miss Nella",
+          "price": "6.49",
+          "price_amount": 6.49,
+          "price_currency": "USD",
+          "availability": "out_of_stock",
+          "commerce_facts_v1": {
+            "contract_version": "commerce_facts.v1",
+            "market_id": "US",
+            "country": "US",
+            "currency_target": "USD",
+            "source_authority": "catalog_extract_v2",
+            "captured_at": "2026-05-18T04:53:59.089Z",
+            "evidence_url": "https://www.missnella.com/products/happily-ever-after-4ml-peel-off-kids-nail-polish",
+            "sellable_region": {
+              "status": "unknown",
+              "countries": [],
+              "evidence_source": "catalog_extract_v2",
+              "confidence": "unknown",
+              "checked_at": "2026-05-18T04:53:59.089Z",
+              "reason_codes": [
+                "shipping_destination_not_verified"
+              ],
+              "evidence_url": "https://www.missnella.com/products/happily-ever-after-4ml-peel-off-kids-nail-polish"
+            },
+            "regional_price": {
+              "amount": 6.49,
+              "currency": "USD",
+              "display_raw": null,
+              "price_type": "unknown",
+              "compare_at_amount": null,
+              "compare_at_currency": null,
+              "compare_at_display_raw": null,
+              "tax_included": "unknown",
+              "confidence": "medium",
+              "market_switch_status": "ok",
+              "observed_currency": "USD",
+              "source_url": "https://www.missnella.com/products/happily-ever-after-4ml-peel-off-kids-nail-polish",
+              "captured_at": "2026-05-18T04:53:59.089Z"
+            },
+            "availability": {
+              "status": "out_of_stock",
+              "source": "catalog_extract_v2",
+              "confidence": "medium",
+              "captured_at": "2026-05-18T04:53:59.089Z"
+            },
+            "shipping": {
+              "status": "unknown",
+              "source": "catalog_extract_v2",
+              "confidence": "unknown",
+              "reason_codes": [
+                "external_checkout_not_queried"
+              ],
+              "checked_at": "2026-05-18T04:53:59.089Z"
+            },
+            "promotions": [],
+            "returns": {
+              "status": "unknown",
+              "source": "catalog_extract_v2",
+              "confidence": "unknown",
+              "reason_codes": [
+                "external_returns_not_extracted"
+              ],
+              "checked_at": "2026-05-18T04:53:59.089Z"
+            }
+          },
+          "agent_safe_commerce_facts": {
+            "contract_version": "commerce_facts.v1",
+            "market_id": "US",
+            "price": {
+              "amount": 6.49,
+              "currency": "USD",
+              "display_raw": null,
+              "price_type": "unknown",
+              "compare_at_amount": null,
+              "compare_at_currency": null,
+              "compare_at_display_raw": null,
+              "tax_included": "unknown",
+              "confidence": "medium",
+              "market_switch_status": "ok",
+              "observed_currency": "USD",
+              "source_url": "https://www.missnella.com/products/happily-ever-after-4ml-peel-off-kids-nail-polish",
+              "captured_at": "2026-05-18T04:53:59.089Z"
+            },
+            "availability": {
+              "status": "out_of_stock",
+              "source": "catalog_extract_v2",
+              "confidence": "medium",
+              "captured_at": "2026-05-18T04:53:59.089Z"
+            },
+            "shipping": {
+              "status": "unknown",
+              "reason": "verify_at_checkout"
+            },
+            "promotions": [],
+            "checkout_note": "Shipping and promotions are not verified for this external offer; verify at merchant checkout."
+          }
+        }
+      },
+      "serving_readiness": {
+        "servingEligible": true,
+        "contentQualityScore": 90,
+        "blockerCode": "none",
+        "blockerDetail": null,
+        "identityResolved": true,
+        "identityLiveReadResolved": false,
+        "identityBootstrapEligible": true,
+        "hasImage": true,
+        "hasPrice": true,
+        "descriptionLength": 355
+      }
+    },
+    {
+      "external_product_id": "ext_0bc6e4f7a15288822029334f",
+      "product_key": "prod::external_seed::external_seed::ext_0bc6e4f7a15288822029334f",
+      "product_group_id": "sig_4fd4f90a42275a7184d52cb3",
+      "title": "Itsy Glitzy Hippo: Sparkly Pink Peel Off Nail Polish",
+      "brand": "Miss Nella",
+      "product_type": "Nail Polish",
+      "category": "Nail Polish",
+      "category_path": "beauty/makeup/nails/nail-polish",
+      "canonical_url": "https://www.missnella.com/products/itsy-glitzy-hippo-4ml-peel-off-kids-nail-polish",
+      "pivota_signature_id": "sig_4fd4f90a42275a7184d52cb3",
+      "sku_rows": 1,
+      "first_sku": {
+        "sku_key": "prod::external_seed::external_seed::ext_0bc6e4f7a15288822029334f::sku_e0e590dbdd518c681011",
+        "product_key": "prod::external_seed::external_seed::ext_0bc6e4f7a15288822029334f",
+        "merchant_id": "external_seed",
+        "platform": "external_seed",
+        "source_product_id": "ext_0bc6e4f7a15288822029334f",
+        "source_variant_id": "ext_0bc6e4f7a15288822029334f:42852225908994",
+        "source_domain": "missnella.com",
+        "sku": "MN45-1",
+        "barcode": null,
+        "title": "Itsy Glitzy Hippo: Sparkly Pink Peel Off Nail Polish",
+        "currency": "USD",
+        "image_url": "https://cdn.shopify.com/s/files/1/2219/3831/files/MN45_Itsy_Glitsy_Hippo.jpg?v=1771508041",
+        "visible_attributes": {
+          "Size": "4ml"
+        },
+        "visible_option_labels": {
+          "Size": "4ml"
+        },
+        "ingredient_ids": [],
+        "sku_payload": {
+          "source": "external_product_seeds_mirror_v1",
+          "external_product_id": "ext_0bc6e4f7a15288822029334f",
+          "raw_variant_id": "42852225908994",
+          "source_variant_id": "ext_0bc6e4f7a15288822029334f:42852225908994",
+          "variant_sku": "MN45-1",
+          "barcode": null,
+          "strong_identifier_kind": null,
+          "source_url": "https://www.missnella.com/products/itsy-glitzy-hippo-4ml-peel-off-kids-nail-polish",
+          "external_redirect_url": "https://www.missnella.com/products/itsy-glitzy-hippo-4ml-peel-off-kids-nail-polish",
+          "price": "6.49",
+          "price_amount": 6.49,
+          "currency": "USD",
+          "availability": "in_stock",
+          "image_url": "https://cdn.shopify.com/s/files/1/2219/3831/files/MN45_Itsy_Glitsy_Hippo.jpg?v=1771508041",
+          "swatch_image_url": null,
+          "label_image_url": null,
+          "options": {
+            "Size": "4ml"
+          },
+          "raw_variant": {
+            "sku": "MN45-1",
+            "url": "https://www.missnella.com/products/itsy-glitzy-hippo-4ml-peel-off-kids-nail-polish",
+            "price": "6.49",
+            "stock": "In Stock",
+            "currency": "USD",
+            "image_url": "https://cdn.shopify.com/s/files/1/2219/3831/files/MN45_Itsy_Glitsy_Hippo.jpg?v=1771508041",
+            "image_urls": [
+              "https://cdn.shopify.com/s/files/1/2219/3831/files/MN45_Itsy_Glitsy_Hippo.jpg?v=1771508041",
+              "https://cdn.shopify.com/s/files/1/2219/3831/files/MN45ItsyGlitsyHippo-02-WEB.jpg?v=1771508041",
+              "https://cdn.shopify.com/s/files/1/2219/3831/files/MN45ItsyGlitsyHippo-Peel-Off-WEB.jpg?v=1771507980",
+              "https://cdn.shopify.com/s/files/1/2219/3831/files/MN45ItsyGlitsyHippo-Box-WEB_ad50bd25-338f-4cda-9394-93c79f9b0095.jpg?v=1771507980",
+              "https://cdn.shopify.com/s/files/1/2219/3831/files/MN27Peel-off-Nail-Polish-005-WEB_d5b3e160-9a56-4fbb-99fa-8d3dd971881f.jpg?v=1771508041",
+              "https://cdn.shopify.com/s/files/1/2219/3831/files/MN45ItsyGlitsyHippo-03-WEB.jpg?v=1771508041",
+              "https://cdn.shopify.com/s/files/1/2219/3831/files/MN45ItsyGlitsyHippo-Box-01-WEB.jpg?v=1771507980",
+              "https://cdn.shopify.com/s/files/1/2219/3831/files/MN45ItsyGlitsyHippo-01-WEB.jpg?v=1771508041",
+              "https://cdn.shopify.com/s/files/1/2219/3831/files/MN-Peel-off-Nail-Polish-002-WEB.jpg?v=1771508662"
+            ],
+            "variant_id": "42852225908994",
+            "description": "💅 Safe, Fun, and Colourful - Let your child’s creativity shine with Miss Nella Nail Polish! This vibrant, non-toxic and kid-friendly polish is perfect for young hands, offering a smooth application and quick drying formula. Whether it’s for a fun playdate, a dress-up session, or just because, this nail polish adds a splash of vibrant colour to any day.",
+            "option_name": "Size",
+            "option_value": "4ml"
+          }
+        },
+        "readiness_tier": "referral_only"
+      },
+      "first_offer": {
+        "offer_id": "offer:external_seed:313d0f8130880d0dd72b16c95fede920",
+        "sku_key": "prod::external_seed::external_seed::ext_0bc6e4f7a15288822029334f::sku_e0e590dbdd518c681011",
+        "product_key": "prod::external_seed::external_seed::ext_0bc6e4f7a15288822029334f",
+        "merchant_id": "external_seed",
+        "catalog_track": "external_referral",
+        "truth_tier": "observed",
+        "readiness_tier": "referral_only",
+        "offer_mode": "redirect",
+        "channel": "external_referral",
+        "availability": "in_stock",
+        "currency": "USD",
+        "list_price": 6.49,
+        "merchant_effective_price": 6.49,
+        "estimated_best_price": 6.49,
+        "price_confidence": 1,
+        "source_system": "external_product_seeds_mirror_v1",
+        "source_ref": "eps_3dad9ed9b4e05949396f90b2",
+        "source_domain": "missnella.com",
+        "offer_payload": {
+          "source": "external_product_seeds_mirror_v1",
+          "external_seed_id": "eps_3dad9ed9b4e05949396f90b2",
+          "external_product_id": "ext_0bc6e4f7a15288822029334f",
+          "domain": "missnella.com",
+          "market": "US",
+          "product_title": "Itsy Glitzy Hippo: Sparkly Pink Peel Off Nail Polish",
+          "variant_title": "Itsy Glitzy Hippo: Sparkly Pink Peel Off Nail Polish",
+          "variant_sku": "MN45-1",
+          "raw_variant_id": "42852225908994",
+          "url": "https://www.missnella.com/products/itsy-glitzy-hippo-4ml-peel-off-kids-nail-polish",
+          "offer_url": "https://www.missnella.com/products/itsy-glitzy-hippo-4ml-peel-off-kids-nail-polish",
+          "canonical_url": "https://www.missnella.com/products/itsy-glitzy-hippo-4ml-peel-off-kids-nail-polish",
+          "destination_url": "https://www.missnella.com/products/itsy-glitzy-hippo-4ml-peel-off-kids-nail-polish",
+          "external_redirect_url": "https://www.missnella.com/products/itsy-glitzy-hippo-4ml-peel-off-kids-nail-polish",
+          "merchant_display_name": "Miss Nella",
+          "price": "6.49",
+          "price_amount": 6.49,
+          "price_currency": "USD",
+          "availability": "in_stock",
+          "commerce_facts_v1": {
+            "contract_version": "commerce_facts.v1",
+            "market_id": "US",
+            "country": "US",
+            "currency_target": "USD",
+            "source_authority": "catalog_extract_v2",
+            "captured_at": "2026-05-18T04:53:59.089Z",
+            "evidence_url": "https://www.missnella.com/products/itsy-glitzy-hippo-4ml-peel-off-kids-nail-polish",
+            "sellable_region": {
+              "status": "unknown",
+              "countries": [],
+              "evidence_source": "catalog_extract_v2",
+              "confidence": "unknown",
+              "checked_at": "2026-05-18T04:53:59.089Z",
+              "reason_codes": [
+                "shipping_destination_not_verified"
+              ],
+              "evidence_url": "https://www.missnella.com/products/itsy-glitzy-hippo-4ml-peel-off-kids-nail-polish"
+            },
+            "regional_price": {
+              "amount": 6.49,
+              "currency": "USD",
+              "display_raw": null,
+              "price_type": "unknown",
+              "compare_at_amount": null,
+              "compare_at_currency": null,
+              "compare_at_display_raw": null,
+              "tax_included": "unknown",
+              "confidence": "medium",
+              "market_switch_status": "ok",
+              "observed_currency": "USD",
+              "source_url": "https://www.missnella.com/products/itsy-glitzy-hippo-4ml-peel-off-kids-nail-polish",
+              "captured_at": "2026-05-18T04:53:59.089Z"
+            },
+            "availability": {
+              "status": "in_stock",
+              "source": "catalog_extract_v2",
+              "confidence": "medium",
+              "captured_at": "2026-05-18T04:53:59.089Z"
+            },
+            "shipping": {
+              "status": "unknown",
+              "source": "catalog_extract_v2",
+              "confidence": "unknown",
+              "reason_codes": [
+                "external_checkout_not_queried"
+              ],
+              "checked_at": "2026-05-18T04:53:59.089Z"
+            },
+            "promotions": [],
+            "returns": {
+              "status": "unknown",
+              "source": "catalog_extract_v2",
+              "confidence": "unknown",
+              "reason_codes": [
+                "external_returns_not_extracted"
+              ],
+              "checked_at": "2026-05-18T04:53:59.089Z"
+            }
+          },
+          "agent_safe_commerce_facts": {
+            "contract_version": "commerce_facts.v1",
+            "market_id": "US",
+            "price": {
+              "amount": 6.49,
+              "currency": "USD",
+              "display_raw": null,
+              "price_type": "unknown",
+              "compare_at_amount": null,
+              "compare_at_currency": null,
+              "compare_at_display_raw": null,
+              "tax_included": "unknown",
+              "confidence": "medium",
+              "market_switch_status": "ok",
+              "observed_currency": "USD",
+              "source_url": "https://www.missnella.com/products/itsy-glitzy-hippo-4ml-peel-off-kids-nail-polish",
+              "captured_at": "2026-05-18T04:53:59.089Z"
+            },
+            "availability": {
+              "status": "in_stock",
+              "source": "catalog_extract_v2",
+              "confidence": "medium",
+              "captured_at": "2026-05-18T04:53:59.089Z"
+            },
+            "shipping": {
+              "status": "unknown",
+              "reason": "verify_at_checkout"
+            },
+            "promotions": [],
+            "checkout_note": "Shipping and promotions are not verified for this external offer; verify at merchant checkout."
+          }
+        }
+      },
+      "serving_readiness": {
+        "servingEligible": true,
+        "contentQualityScore": 90,
+        "blockerCode": "none",
+        "blockerDetail": null,
+        "identityResolved": true,
+        "identityLiveReadResolved": false,
+        "identityBootstrapEligible": true,
+        "hasImage": true,
+        "hasPrice": true,
+        "descriptionLength": 355
+      }
+    },
+    {
+      "external_product_id": "ext_cf0f60c66afa3fb09944df4d",
+      "product_key": "prod::external_seed::external_seed::ext_cf0f60c66afa3fb09944df4d",
+      "product_group_id": "sig_42c5be387e5cc0b6a4590ec9",
+      "title": "Lip Balm",
+      "brand": "Miss Nella",
+      "product_type": "Lip Balm",
+      "category": "Lip Balm",
+      "category_path": "beauty/makeup/lips/lip-balm",
+      "canonical_url": "https://www.missnella.com/products/lip-balm",
+      "pivota_signature_id": "sig_42c5be387e5cc0b6a4590ec9",
+      "sku_rows": 5,
+      "first_sku": {
+        "sku_key": "prod::external_seed::external_seed::ext_cf0f60c66afa3fb09944df4d::sku_0c08caf08b9c20c402c1",
+        "product_key": "prod::external_seed::external_seed::ext_cf0f60c66afa3fb09944df4d",
+        "merchant_id": "external_seed",
+        "platform": "external_seed",
+        "source_product_id": "ext_cf0f60c66afa3fb09944df4d",
+        "source_variant_id": "ext_cf0f60c66afa3fb09944df4d:57262000406905",
+        "source_domain": "missnella.com",
+        "sku": "LBC-1",
+        "barcode": null,
+        "title": "Lip Balm",
+        "currency": "USD",
+        "image_url": "https://cdn.shopify.com/s/files/1/2219/3831/files/MissNellaListinglipBalmButter-Cheeks.jpg?v=1761208886",
+        "visible_attributes": {
+          "Color": "Butter Cheeks"
+        },
+        "visible_option_labels": {
+          "Color": "Butter Cheeks"
+        },
+        "ingredient_ids": [],
+        "sku_payload": {
+          "source": "external_product_seeds_mirror_v1",
+          "external_product_id": "ext_cf0f60c66afa3fb09944df4d",
+          "raw_variant_id": "57262000406905",
+          "source_variant_id": "ext_cf0f60c66afa3fb09944df4d:57262000406905",
+          "variant_sku": "LBC-1",
+          "barcode": null,
+          "strong_identifier_kind": null,
+          "source_url": "https://www.missnella.com/products/lip-balm",
+          "external_redirect_url": "https://www.missnella.com/products/lip-balm",
+          "price": "4.49",
+          "price_amount": 4.49,
+          "currency": "USD",
+          "availability": "in_stock",
+          "image_url": "https://cdn.shopify.com/s/files/1/2219/3831/files/MissNellaListinglipBalmButter-Cheeks.jpg?v=1761208886",
+          "swatch_image_url": null,
+          "label_image_url": null,
+          "options": {
+            "Color": "Butter Cheeks"
+          },
+          "raw_variant": {
+            "sku": "LBC-1",
+            "url": "https://www.missnella.com/products/lip-balm",
+            "price": "4.49",
+            "stock": "In Stock",
+            "currency": "USD",
+            "image_url": "https://cdn.shopify.com/s/files/1/2219/3831/files/MissNellaListinglipBalmButter-Cheeks.jpg?v=1761208886",
+            "image_urls": [
+              "https://cdn.shopify.com/s/files/1/2219/3831/files/MissNellaListinglipBalmButter-Cheeks.jpg?v=1761208886",
+              "https://cdn.shopify.com/s/files/1/2219/3831/files/MN-Model-Photo-Lip-Balm-00003-WEB.jpg?v=1771857398",
+              "https://cdn.shopify.com/s/files/1/2219/3831/files/Miss_Nella-Listing_Images-Lip-Balm-Butter_Cheeks.jpg?v=1770657927",
+              "https://cdn.shopify.com/s/files/1/2219/3831/files/MissNellaListinglipBalmCutiePie.jpg?v=1761147608",
+              "https://cdn.shopify.com/s/files/1/2219/3831/files/MissNella-ListingImages-Lip-Balm-CutiePie-AMAZON.jpg?v=1772193651",
+              "https://cdn.shopify.com/s/files/1/2219/3831/files/MissNellaListinglipBalmhoney-bunny.jpg?v=1761147651",
+              "https://cdn.shopify.com/s/files/1/2219/3831/files/MissNella-ListingImages-Lip-Balm-HoneyBunny-WEB.jpg?v=1772192515",
+              "https://cdn.shopify.com/s/files/1/2219/3831/files/MissNellaListinglipBalmluvvywuvvyy.jpg?v=1761147716",
+              "https://cdn.shopify.com/s/files/1/2219/3831/files/MissNella-ListingImages-Lip-Balm-LuvvyWuvvy-WEB.jpg?v=1772207074",
+              "https://cdn.shopify.com/s/files/1/2219/3831/files/MissNellaListinglipBalmsugar-Plum.jpg?v=1761147775",
+              "https://cdn.shopify.com/s/files/1/2219/3831/files/Miss_Nella-Listing_Images-Lip-Balm-Sugar_Plum.jpg?v=1770657927"
+            ],
+            "variant_id": "57262000406905",
+            "description": "Perfect for everyday use, the Miss Nella Lip Balm is a must-have for little ones who love a touch of self-care. Whether it's a chilly day or just time for a bit of pampering, this balm glides on effortlessly, leaving lips feeling soft, protected, and nourished. With its gentle formula and charming design, it's the ideal companion for keeping those smiles sweet and happy! 💕",
+            "option_name": "Colour",
+            "option_value": "Butter Cheeks"
+          }
+        },
+        "readiness_tier": "referral_only"
+      },
+      "first_offer": {
+        "offer_id": "offer:external_seed:9c09ee8c37576f96633d79d3973e5968",
+        "sku_key": "prod::external_seed::external_seed::ext_cf0f60c66afa3fb09944df4d::sku_0c08caf08b9c20c402c1",
+        "product_key": "prod::external_seed::external_seed::ext_cf0f60c66afa3fb09944df4d",
+        "merchant_id": "external_seed",
+        "catalog_track": "external_referral",
+        "truth_tier": "observed",
+        "readiness_tier": "referral_only",
+        "offer_mode": "redirect",
+        "channel": "external_referral",
+        "availability": "in_stock",
+        "currency": "USD",
+        "list_price": 4.49,
+        "merchant_effective_price": 4.49,
+        "estimated_best_price": 4.49,
+        "price_confidence": 1,
+        "source_system": "external_product_seeds_mirror_v1",
+        "source_ref": "eps_b029e1dd9b6de9ad24f76e89",
+        "source_domain": "missnella.com",
+        "offer_payload": {
+          "source": "external_product_seeds_mirror_v1",
+          "external_seed_id": "eps_b029e1dd9b6de9ad24f76e89",
+          "external_product_id": "ext_cf0f60c66afa3fb09944df4d",
+          "domain": "missnella.com",
+          "market": "US",
+          "product_title": "Lip Balm",
+          "variant_title": "Lip Balm",
+          "variant_sku": "LBC-1",
+          "raw_variant_id": "57262000406905",
+          "url": "https://www.missnella.com/products/lip-balm",
+          "offer_url": "https://www.missnella.com/products/lip-balm",
+          "canonical_url": "https://www.missnella.com/products/lip-balm",
+          "destination_url": "https://www.missnella.com/products/lip-balm",
+          "external_redirect_url": "https://www.missnella.com/products/lip-balm",
+          "merchant_display_name": "Miss Nella",
+          "price": "4.49",
+          "price_amount": 4.49,
+          "price_currency": "USD",
+          "availability": "in_stock",
+          "commerce_facts_v1": {
+            "contract_version": "commerce_facts.v1",
+            "market_id": "US",
+            "country": "US",
+            "currency_target": "USD",
+            "source_authority": "catalog_extract_v2",
+            "captured_at": "2026-05-18T04:53:59.071Z",
+            "evidence_url": "https://www.missnella.com/products/lip-balm",
+            "sellable_region": {
+              "status": "unknown",
+              "countries": [],
+              "evidence_source": "catalog_extract_v2",
+              "confidence": "unknown",
+              "checked_at": "2026-05-18T04:53:59.071Z",
+              "reason_codes": [
+                "shipping_destination_not_verified"
+              ],
+              "evidence_url": "https://www.missnella.com/products/lip-balm"
+            },
+            "regional_price": {
+              "amount": 4.49,
+              "currency": "USD",
+              "display_raw": null,
+              "price_type": "unknown",
+              "compare_at_amount": null,
+              "compare_at_currency": null,
+              "compare_at_display_raw": null,
+              "tax_included": "unknown",
+              "confidence": "medium",
+              "market_switch_status": "ok",
+              "observed_currency": "USD",
+              "source_url": "https://www.missnella.com/products/lip-balm",
+              "captured_at": "2026-05-18T04:53:59.071Z"
+            },
+            "availability": {
+              "status": "in_stock",
+              "source": "catalog_extract_v2",
+              "confidence": "medium",
+              "captured_at": "2026-05-18T04:53:59.071Z"
+            },
+            "shipping": {
+              "status": "unknown",
+              "source": "catalog_extract_v2",
+              "confidence": "unknown",
+              "reason_codes": [
+                "external_checkout_not_queried"
+              ],
+              "checked_at": "2026-05-18T04:53:59.071Z"
+            },
+            "promotions": [],
+            "returns": {
+              "status": "unknown",
+              "source": "catalog_extract_v2",
+              "confidence": "unknown",
+              "reason_codes": [
+                "external_returns_not_extracted"
+              ],
+              "checked_at": "2026-05-18T04:53:59.071Z"
+            }
+          },
+          "agent_safe_commerce_facts": {
+            "contract_version": "commerce_facts.v1",
+            "market_id": "US",
+            "price": {
+              "amount": 4.49,
+              "currency": "USD",
+              "display_raw": null,
+              "price_type": "unknown",
+              "compare_at_amount": null,
+              "compare_at_currency": null,
+              "compare_at_display_raw": null,
+              "tax_included": "unknown",
+              "confidence": "medium",
+              "market_switch_status": "ok",
+              "observed_currency": "USD",
+              "source_url": "https://www.missnella.com/products/lip-balm",
+              "captured_at": "2026-05-18T04:53:59.071Z"
+            },
+            "availability": {
+              "status": "in_stock",
+              "source": "catalog_extract_v2",
+              "confidence": "medium",
+              "captured_at": "2026-05-18T04:53:59.071Z"
+            },
+            "shipping": {
+              "status": "unknown",
+              "reason": "verify_at_checkout"
+            },
+            "promotions": [],
+            "checkout_note": "Shipping and promotions are not verified for this external offer; verify at merchant checkout."
+          }
+        }
+      },
+      "serving_readiness": {
+        "servingEligible": true,
+        "contentQualityScore": 90,
+        "blockerCode": "none",
+        "blockerDetail": null,
+        "identityResolved": true,
+        "identityLiveReadResolved": false,
+        "identityBootstrapEligible": true,
+        "hasImage": true,
+        "hasPrice": true,
+        "descriptionLength": 376
+      }
+    }
+  ]
+}
