@@ -1,0 +1,669 @@
+{
+  "generated_at": "2026-05-28T12:03:54.409Z",
+  "market": "US",
+  "apply_status": "not_applied_review_packet_only",
+  "source": "wave52_missnella_canonical_mapping_review_20260528",
+  "warning": "Identity/component-reference candidates only. Do not use for content inheritance or serving promotion without a separate dry-run and human review.",
+  "mappings": [
+    {
+      "external_product_id": "ext_02f16f8ae0e642d8f6599640",
+      "title": "Add Blush?",
+      "canonical_url": "https://www.missnella.com/products/add-blush",
+      "mapping_type": "add_on_selector_to_ready_parent",
+      "review_state": "human_reviewed_candidate",
+      "evidence_note": "Wave52 review matched Add Blush? to ready parent Blush. Identity/component mapping only; no content inheritance approved.",
+      "component_refs": [
+        {
+          "external_product_id": "ext_33466da0907b256ffc53783b",
+          "title": "Blush",
+          "component_role": "blush_option",
+          "inheritance_scope": [
+            "identity_resolution_only"
+          ],
+          "source_kind": "wave52_human_review_canonical_component_ref",
+          "evidence_note": "Same-brand title/slug/category match in Wave50 rollup; parent is ready_or_covered."
+        }
+      ]
+    },
+    {
+      "external_product_id": "ext_5d152578766f6dafde6361fb",
+      "title": "Add Croco Dazzle - Glittery Red",
+      "canonical_url": "https://www.missnella.com/products/croco-dazzle-glittery-red",
+      "mapping_type": "add_on_shade_to_ready_parent",
+      "review_state": "human_reviewed_candidate",
+      "evidence_note": "Wave52 review matched Add Croco Dazzle - Glittery Red to ready parent Croco Dazzle: Sparkly Red Peel Off Nail Polish. Identity/component mapping only; no content inheritance approved.",
+      "component_refs": [
+        {
+          "external_product_id": "ext_8c9db1e831c4be15a42fc407",
+          "title": "Croco Dazzle: Sparkly Red Peel Off Nail Polish",
+          "component_role": "nail_polish_shade",
+          "inheritance_scope": [
+            "identity_resolution_only"
+          ],
+          "source_kind": "wave52_human_review_canonical_component_ref",
+          "evidence_note": "Same-brand title/slug/category match in Wave50 rollup; parent is ready_or_covered."
+        }
+      ]
+    },
+    {
+      "external_product_id": "ext_1fc4f0b1653b5758dffae560",
+      "title": "Add Eye Shadow?",
+      "canonical_url": "https://www.missnella.com/products/add-eye-shadow",
+      "mapping_type": "add_on_selector_to_ready_parent",
+      "review_state": "human_reviewed_candidate",
+      "evidence_note": "Wave52 review matched Add Eye Shadow? to ready parent Eye Shadow. Identity/component mapping only; no content inheritance approved.",
+      "component_refs": [
+        {
+          "external_product_id": "ext_e9e3fba6b05911bba1bfe71e",
+          "title": "Eye Shadow",
+          "component_role": "eye_shadow_option",
+          "inheritance_scope": [
+            "identity_resolution_only"
+          ],
+          "source_kind": "wave52_human_review_canonical_component_ref",
+          "evidence_note": "Same-brand title/slug/category match in Wave50 rollup; parent is ready_or_covered."
+        }
+      ]
+    },
+    {
+      "external_product_id": "ext_e95d981ef7dc3b7520bd24d9",
+      "title": "Add Galactic Unicorn - Deep Purple",
+      "canonical_url": "https://www.missnella.com/products/galactic-unicorn-deep-purple",
+      "mapping_type": "add_on_shade_to_ready_parent",
+      "review_state": "human_reviewed_candidate",
+      "evidence_note": "Wave52 review matched Add Galactic Unicorn - Deep Purple to ready parent Galactic Unicorn: Chrome Purple Peel Off Nail Polish. Identity/component mapping only; no content inheritance approved.",
+      "component_refs": [
+        {
+          "external_product_id": "ext_3efab0751a9f85bbdcb72388",
+          "title": "Galactic Unicorn: Chrome Purple Peel Off Nail Polish",
+          "component_role": "nail_polish_shade",
+          "inheritance_scope": [
+            "identity_resolution_only"
+          ],
+          "source_kind": "wave52_human_review_canonical_component_ref",
+          "evidence_note": "Same-brand title/slug/category match in Wave50 rollup; parent is ready_or_covered."
+        }
+      ]
+    },
+    {
+      "external_product_id": "ext_dfc8cb7a965b06dd2aec3949",
+      "title": "Add Lip Balm?",
+      "canonical_url": "https://www.missnella.com/products/add-lip-balm",
+      "mapping_type": "add_on_selector_to_ready_parent",
+      "review_state": "human_reviewed_candidate",
+      "evidence_note": "Wave52 review matched Add Lip Balm? to ready parent Lip Balm. Identity/component mapping only; no content inheritance approved.",
+      "component_refs": [
+        {
+          "external_product_id": "ext_cf0f60c66afa3fb09944df4d",
+          "title": "Lip Balm",
+          "component_role": "lip_balm_option",
+          "inheritance_scope": [
+            "identity_resolution_only"
+          ],
+          "source_kind": "wave52_human_review_canonical_component_ref",
+          "evidence_note": "Same-brand title/slug/category match in Wave50 rollup; parent is ready_or_covered."
+        }
+      ]
+    },
+    {
+      "external_product_id": "ext_6306a6d00b6e082ccc40932e",
+      "title": "MN36 Cosmic Cutie: Chrome Bronze Peel Off Nail Polish",
+      "canonical_url": "https://www.missnella.com/products/mn36-cosmic-cutie-3-pack",
+      "mapping_type": "same_shade_pack_to_ready_parent",
+      "review_state": "human_reviewed_candidate",
+      "evidence_note": "Wave52 review matched MN36 Cosmic Cutie: Chrome Bronze Peel Off Nail Polish to ready parent Cosmic Cutie: Chrome Bronze Peel Off Nail Polish. Identity/component mapping only; no content inheritance approved.",
+      "component_refs": [
+        {
+          "external_product_id": "ext_4126c4bf9bd13a864334128d",
+          "title": "Cosmic Cutie: Chrome Bronze Peel Off Nail Polish",
+          "component_role": "same_shade_pack_component",
+          "inheritance_scope": [
+            "identity_resolution_only"
+          ],
+          "source_kind": "wave52_human_review_canonical_component_ref",
+          "evidence_note": "Same-brand title/slug/category match in Wave50 rollup; parent is ready_or_covered."
+        }
+      ]
+    },
+    {
+      "external_product_id": "ext_9bd51781d637e8161b67f6ff",
+      "title": "MN37 You're So Spacial: Chrome Blue Peel Off Nail Polish",
+      "canonical_url": "https://www.missnella.com/products/mn37-youre-so-spacial-3-pack",
+      "mapping_type": "same_shade_pack_to_ready_parent",
+      "review_state": "human_reviewed_candidate",
+      "evidence_note": "Wave52 review matched MN37 You're So Spacial: Chrome Blue Peel Off Nail Polish to ready parent You're So Spacial: Chrome Blue Peel Off Nail Polish. Identity/component mapping only; no content inheritance approved.",
+      "component_refs": [
+        {
+          "external_product_id": "ext_45317ff964aa286c595a250d",
+          "title": "You're So Spacial: Chrome Blue Peel Off Nail Polish",
+          "component_role": "same_shade_pack_component",
+          "inheritance_scope": [
+            "identity_resolution_only"
+          ],
+          "source_kind": "wave52_human_review_canonical_component_ref",
+          "evidence_note": "Same-brand title/slug/category match in Wave50 rollup; parent is ready_or_covered."
+        }
+      ]
+    },
+    {
+      "external_product_id": "ext_e1a12de43227d2f2a9d8bdc8",
+      "title": "MN38 Galactic Unicorn: Chrome Purple Peel Off Nail Polish",
+      "canonical_url": "https://www.missnella.com/products/mn38-galactic-unicorn-3-pack",
+      "mapping_type": "same_shade_pack_to_ready_parent",
+      "review_state": "human_reviewed_candidate",
+      "evidence_note": "Wave52 review matched MN38 Galactic Unicorn: Chrome Purple Peel Off Nail Polish to ready parent Galactic Unicorn: Chrome Purple Peel Off Nail Polish. Identity/component mapping only; no content inheritance approved.",
+      "component_refs": [
+        {
+          "external_product_id": "ext_3efab0751a9f85bbdcb72388",
+          "title": "Galactic Unicorn: Chrome Purple Peel Off Nail Polish",
+          "component_role": "same_shade_pack_component",
+          "inheritance_scope": [
+            "identity_resolution_only"
+          ],
+          "source_kind": "wave52_human_review_canonical_component_ref",
+          "evidence_note": "Same-brand title/slug/category match in Wave50 rollup; parent is ready_or_covered."
+        }
+      ]
+    },
+    {
+      "external_product_id": "ext_ac6c674eda87668b7782a43c",
+      "title": "MN39 Alien Poo: Chrome Green Peel Off Nail Polish",
+      "canonical_url": "https://www.missnella.com/products/mn39-alien-poo-3-pack",
+      "mapping_type": "same_shade_pack_to_ready_parent",
+      "review_state": "human_reviewed_candidate",
+      "evidence_note": "Wave52 review matched MN39 Alien Poo: Chrome Green Peel Off Nail Polish to ready parent Alien Poo: Chrome Green Peel Off Nail Polish. Identity/component mapping only; no content inheritance approved.",
+      "component_refs": [
+        {
+          "external_product_id": "ext_5b4820a93b2ff42fde402c6e",
+          "title": "Alien Poo: Chrome Green Peel Off Nail Polish",
+          "component_role": "same_shade_pack_component",
+          "inheritance_scope": [
+            "identity_resolution_only"
+          ],
+          "source_kind": "wave52_human_review_canonical_component_ref",
+          "evidence_note": "Same-brand title/slug/category match in Wave50 rollup; parent is ready_or_covered."
+        }
+      ]
+    },
+    {
+      "external_product_id": "ext_56dab6df882d473ca41f58f3",
+      "title": "MN40 Shooting Star: Sliver Peel Off Nail Polish",
+      "canonical_url": "https://www.missnella.com/products/mn40-shooting-star-3-pack",
+      "mapping_type": "same_shade_pack_to_ready_parent",
+      "review_state": "human_reviewed_candidate",
+      "evidence_note": "Wave52 review matched MN40 Shooting Star: Sliver Peel Off Nail Polish to ready parent Shooting Star: Sliver Peel Off Nail Polish. Identity/component mapping only; no content inheritance approved.",
+      "component_refs": [
+        {
+          "external_product_id": "ext_84caa40e0fafcee350045f96",
+          "title": "Shooting Star: Sliver Peel Off Nail Polish",
+          "component_role": "same_shade_pack_component",
+          "inheritance_scope": [
+            "identity_resolution_only"
+          ],
+          "source_kind": "wave52_human_review_canonical_component_ref",
+          "evidence_note": "Same-brand title/slug/category match in Wave50 rollup; parent is ready_or_covered."
+        }
+      ]
+    },
+    {
+      "external_product_id": "ext_df81c48df0493157cedccf76",
+      "title": "MN41 Sweet-Osaurus: Metallic Bronze Peel Off Nail Polish",
+      "canonical_url": "https://www.missnella.com/products/mn41-sweet-osaurus-3-pack",
+      "mapping_type": "same_shade_pack_to_ready_parent",
+      "review_state": "human_reviewed_candidate",
+      "evidence_note": "Wave52 review matched MN41 Sweet-Osaurus: Metallic Bronze Peel Off Nail Polish to ready parent Sweet-Osaurus: Metallic Bronze Peel Off Nail Polish. Identity/component mapping only; no content inheritance approved.",
+      "component_refs": [
+        {
+          "external_product_id": "ext_623cf12819008c78502d9e6a",
+          "title": "Sweet-Osaurus: Metallic Bronze Peel Off Nail Polish",
+          "component_role": "same_shade_pack_component",
+          "inheritance_scope": [
+            "identity_resolution_only"
+          ],
+          "source_kind": "wave52_human_review_canonical_component_ref",
+          "evidence_note": "Same-brand title/slug/category match in Wave50 rollup; parent is ready_or_covered."
+        }
+      ]
+    },
+    {
+      "external_product_id": "ext_e292dbb537aafa997d87d528",
+      "title": "MN42 Diplodo-Kiss: Metallic Pink Peel Off Nail Polish",
+      "canonical_url": "https://www.missnella.com/products/mn42-diplodo-kiss-3-pack",
+      "mapping_type": "same_shade_pack_to_ready_parent",
+      "review_state": "human_reviewed_candidate",
+      "evidence_note": "Wave52 review matched MN42 Diplodo-Kiss: Metallic Pink Peel Off Nail Polish to ready parent Diplodo-Kiss: Metallic Pink Peel Off Nail Polish. Identity/component mapping only; no content inheritance approved.",
+      "component_refs": [
+        {
+          "external_product_id": "ext_234ad22c62387afe966d0832",
+          "title": "Diplodo-Kiss: Metallic Pink Peel Off Nail Polish",
+          "component_role": "same_shade_pack_component",
+          "inheritance_scope": [
+            "identity_resolution_only"
+          ],
+          "source_kind": "wave52_human_review_canonical_component_ref",
+          "evidence_note": "Same-brand title/slug/category match in Wave50 rollup; parent is ready_or_covered."
+        }
+      ]
+    },
+    {
+      "external_product_id": "ext_c48e56047d039a4945c0a1c8",
+      "title": "MN43 Rawr-Some: Metallic Blue Peel Off Nail Polish",
+      "canonical_url": "https://www.missnella.com/products/mn43-rawr-some-3-pack",
+      "mapping_type": "same_shade_pack_to_ready_parent",
+      "review_state": "human_reviewed_candidate",
+      "evidence_note": "Wave52 review matched MN43 Rawr-Some: Metallic Blue Peel Off Nail Polish to ready parent Rawr-Some: Metallic Blue Peel Off Nail Polish. Identity/component mapping only; no content inheritance approved.",
+      "component_refs": [
+        {
+          "external_product_id": "ext_026bb78a257f8ca3690ee787",
+          "title": "Rawr-Some: Metallic Blue Peel Off Nail Polish",
+          "component_role": "same_shade_pack_component",
+          "inheritance_scope": [
+            "identity_resolution_only"
+          ],
+          "source_kind": "wave52_human_review_canonical_component_ref",
+          "evidence_note": "Same-brand title/slug/category match in Wave50 rollup; parent is ready_or_covered."
+        }
+      ]
+    },
+    {
+      "external_product_id": "ext_6b9bfd5acdfc4004795eb033",
+      "title": "MN44 Dino-Rific: Metallic Green Peel Off Nail Polish",
+      "canonical_url": "https://www.missnella.com/products/mn44-dino-rific-3-pack",
+      "mapping_type": "same_shade_pack_to_ready_parent",
+      "review_state": "human_reviewed_candidate",
+      "evidence_note": "Wave52 review matched MN44 Dino-Rific: Metallic Green Peel Off Nail Polish to ready parent Dino-Rific: Metallic Green Peel Off Nail Polish. Identity/component mapping only; no content inheritance approved.",
+      "component_refs": [
+        {
+          "external_product_id": "ext_a9609ad67d8dec79dd0596a1",
+          "title": "Dino-Rific: Metallic Green Peel Off Nail Polish",
+          "component_role": "same_shade_pack_component",
+          "inheritance_scope": [
+            "identity_resolution_only"
+          ],
+          "source_kind": "wave52_human_review_canonical_component_ref",
+          "evidence_note": "Same-brand title/slug/category match in Wave50 rollup; parent is ready_or_covered."
+        }
+      ]
+    },
+    {
+      "external_product_id": "ext_b0f1ea21db064e10fd3c19ca",
+      "title": "MN45 Itsy Glitzy Hippo: Sparkly Pink Peel Off Nail Polish",
+      "canonical_url": "https://www.missnella.com/products/mn45-itsy-glitzy-hippo-3-pack",
+      "mapping_type": "same_shade_pack_to_ready_parent",
+      "review_state": "human_reviewed_candidate",
+      "evidence_note": "Wave52 review matched MN45 Itsy Glitzy Hippo: Sparkly Pink Peel Off Nail Polish to ready parent Itsy Glitzy Hippo: Sparkly Pink Peel Off Nail Polish. Identity/component mapping only; no content inheritance approved.",
+      "component_refs": [
+        {
+          "external_product_id": "ext_0bc6e4f7a15288822029334f",
+          "title": "Itsy Glitzy Hippo: Sparkly Pink Peel Off Nail Polish",
+          "component_role": "same_shade_pack_component",
+          "inheritance_scope": [
+            "identity_resolution_only"
+          ],
+          "source_kind": "wave52_human_review_canonical_component_ref",
+          "evidence_note": "Same-brand title/slug/category match in Wave50 rollup; parent is ready_or_covered."
+        }
+      ]
+    },
+    {
+      "external_product_id": "ext_9e45e1bfc7097a1b8e678f33",
+      "title": "MN46 Elephunky: Sparkly Blue Peel Off Nail Polish",
+      "canonical_url": "https://www.missnella.com/products/mn46-elephunky-3-pack",
+      "mapping_type": "same_shade_pack_to_ready_parent",
+      "review_state": "human_reviewed_candidate",
+      "evidence_note": "Wave52 review matched MN46 Elephunky: Sparkly Blue Peel Off Nail Polish to ready parent Elephunky: Sparkly Blue Peel Off Nail Polish. Identity/component mapping only; no content inheritance approved.",
+      "component_refs": [
+        {
+          "external_product_id": "ext_ff5b7bfbff65eed0ceb7e3df",
+          "title": "Elephunky: Sparkly Blue Peel Off Nail Polish",
+          "component_role": "same_shade_pack_component",
+          "inheritance_scope": [
+            "identity_resolution_only"
+          ],
+          "source_kind": "wave52_human_review_canonical_component_ref",
+          "evidence_note": "Same-brand title/slug/category match in Wave50 rollup; parent is ready_or_covered."
+        }
+      ]
+    },
+    {
+      "external_product_id": "ext_80021c42248dccc2725a0f2e",
+      "title": "MN47 Sparkly Zebra: Sparkly Lilac Peel Off Nail Polish",
+      "canonical_url": "https://www.missnella.com/products/mn47-sparkly-zebra-3-pack",
+      "mapping_type": "same_shade_pack_to_ready_parent",
+      "review_state": "human_reviewed_candidate",
+      "evidence_note": "Wave52 review matched MN47 Sparkly Zebra: Sparkly Lilac Peel Off Nail Polish to ready parent Sparkly Zebra: Sparkly Lilac Peel Off Nail Polish. Identity/component mapping only; no content inheritance approved.",
+      "component_refs": [
+        {
+          "external_product_id": "ext_b36f6a65ae2c8f16e03809ab",
+          "title": "Sparkly Zebra: Sparkly Lilac Peel Off Nail Polish",
+          "component_role": "same_shade_pack_component",
+          "inheritance_scope": [
+            "identity_resolution_only"
+          ],
+          "source_kind": "wave52_human_review_canonical_component_ref",
+          "evidence_note": "Same-brand title/slug/category match in Wave50 rollup; parent is ready_or_covered."
+        }
+      ]
+    },
+    {
+      "external_product_id": "ext_ac4d26e9d3b9ed5adcd695bc",
+      "title": "MN48 Croco Dazzle: Sparkly Red Peel Off Nail Polish",
+      "canonical_url": "https://www.missnella.com/products/mn48-croco-dazzle-3-pack",
+      "mapping_type": "same_shade_pack_to_ready_parent",
+      "review_state": "human_reviewed_candidate",
+      "evidence_note": "Wave52 review matched MN48 Croco Dazzle: Sparkly Red Peel Off Nail Polish to ready parent Croco Dazzle: Sparkly Red Peel Off Nail Polish. Identity/component mapping only; no content inheritance approved.",
+      "component_refs": [
+        {
+          "external_product_id": "ext_8c9db1e831c4be15a42fc407",
+          "title": "Croco Dazzle: Sparkly Red Peel Off Nail Polish",
+          "component_role": "same_shade_pack_component",
+          "inheritance_scope": [
+            "identity_resolution_only"
+          ],
+          "source_kind": "wave52_human_review_canonical_component_ref",
+          "evidence_note": "Same-brand title/slug/category match in Wave50 rollup; parent is ready_or_covered."
+        }
+      ]
+    },
+    {
+      "external_product_id": "ext_6160f76488ee112f32e585ad",
+      "title": "MN49 Happily Ever After: Pink Fine Glitter Peel Off Nail Polish",
+      "canonical_url": "https://www.missnella.com/products/mn49-happily-ever-after-3-pack",
+      "mapping_type": "same_shade_pack_to_ready_parent",
+      "review_state": "human_reviewed_candidate",
+      "evidence_note": "Wave52 review matched MN49 Happily Ever After: Pink Fine Glitter Peel Off Nail Polish to ready parent Happily Ever After: Pink Fine Glitter Peel Off Nail Polish. Identity/component mapping only; no content inheritance approved.",
+      "component_refs": [
+        {
+          "external_product_id": "ext_83b5f562450f09c98c4dccb8",
+          "title": "Happily Ever After: Pink Fine Glitter Peel Off Nail Polish",
+          "component_role": "same_shade_pack_component",
+          "inheritance_scope": [
+            "identity_resolution_only"
+          ],
+          "source_kind": "wave52_human_review_canonical_component_ref",
+          "evidence_note": "Same-brand title/slug/category match in Wave50 rollup; parent is ready_or_covered."
+        }
+      ]
+    },
+    {
+      "external_product_id": "ext_e804b5b2c3fe9b68fc346fbe",
+      "title": "MN51 If The Shoe Fits: Gold Fine Glitter Peel Off Nail Polish",
+      "canonical_url": "https://www.missnella.com/products/mn51-if-the-shoe-fits-3-pack",
+      "mapping_type": "same_shade_pack_to_ready_parent",
+      "review_state": "human_reviewed_candidate",
+      "evidence_note": "Wave52 review matched MN51 If The Shoe Fits: Gold Fine Glitter Peel Off Nail Polish to ready parent If The Shoe Fits: Gold Fine Glitter Peel Off Nail Polish. Identity/component mapping only; no content inheritance approved.",
+      "component_refs": [
+        {
+          "external_product_id": "ext_428194a391e38b8c6c5c5a1b",
+          "title": "If The Shoe Fits: Gold Fine Glitter Peel Off Nail Polish",
+          "component_role": "same_shade_pack_component",
+          "inheritance_scope": [
+            "identity_resolution_only"
+          ],
+          "source_kind": "wave52_human_review_canonical_component_ref",
+          "evidence_note": "Same-brand title/slug/category match in Wave50 rollup; parent is ready_or_covered."
+        }
+      ]
+    },
+    {
+      "external_product_id": "ext_ea41a1679acc205877e56908",
+      "title": "MN52 Once Upon A Time: Light Blue Fine Glitter Peel Off Nail Polish",
+      "canonical_url": "https://www.missnella.com/products/mn52-once-upon-a-time-3-pack",
+      "mapping_type": "same_shade_pack_to_ready_parent",
+      "review_state": "human_reviewed_candidate",
+      "evidence_note": "Wave52 review matched MN52 Once Upon A Time: Light Blue Fine Glitter Peel Off Nail Polish to ready parent Once Upon A Time: Light Blue Fine Glitter Peel Off Nail Polish. Identity/component mapping only; no content inheritance approved.",
+      "component_refs": [
+        {
+          "external_product_id": "ext_c6ea506cdaf48368131bfd6e",
+          "title": "Once Upon A Time: Light Blue Fine Glitter Peel Off Nail Polish",
+          "component_role": "same_shade_pack_component",
+          "inheritance_scope": [
+            "identity_resolution_only"
+          ],
+          "source_kind": "wave52_human_review_canonical_component_ref",
+          "evidence_note": "Same-brand title/slug/category match in Wave50 rollup; parent is ready_or_covered."
+        }
+      ]
+    },
+    {
+      "external_product_id": "ext_e9aed78a3e3565faa4f79274",
+      "title": "WH | Cutie In Bloom Nail Stickers",
+      "canonical_url": "https://www.missnella.com/products/wh-pretty-pop-nail-stickers-copy",
+      "mapping_type": "wholesale_accessory_pack_to_ready_parent",
+      "review_state": "human_reviewed_candidate",
+      "evidence_note": "Wave52 review matched WH | Cutie In Bloom Nail Stickers to ready parent Nail Stickers. Identity/component mapping only; no content inheritance approved.",
+      "component_refs": [
+        {
+          "external_product_id": "ext_b575a7ed71f0a4602a68c461",
+          "title": "Nail Stickers",
+          "component_role": "nail_sticker_pack",
+          "inheritance_scope": [
+            "identity_resolution_only"
+          ],
+          "source_kind": "wave52_human_review_canonical_component_ref",
+          "evidence_note": "Same-brand title/slug/category match in Wave50 rollup; parent is ready_or_covered."
+        }
+      ]
+    },
+    {
+      "external_product_id": "ext_a4e0feeb2b9b60faf69a3744",
+      "title": "WH | Cutie Pie Lip Balm",
+      "canonical_url": "https://www.missnella.com/products/xl-lip-balm-cutie-pie-pack-of-3",
+      "mapping_type": "wholesale_pack_to_ready_parent",
+      "review_state": "human_reviewed_candidate",
+      "evidence_note": "Wave52 review matched WH | Cutie Pie Lip Balm to ready parent Lip Balm. Identity/component mapping only; no content inheritance approved.",
+      "component_refs": [
+        {
+          "external_product_id": "ext_cf0f60c66afa3fb09944df4d",
+          "title": "Lip Balm",
+          "component_role": "lip_balm_pack",
+          "inheritance_scope": [
+            "identity_resolution_only"
+          ],
+          "source_kind": "wave52_human_review_canonical_component_ref",
+          "evidence_note": "Same-brand title/slug/category match in Wave50 rollup; parent is ready_or_covered."
+        }
+      ]
+    },
+    {
+      "external_product_id": "ext_088385a34673307ec7d90d23",
+      "title": "WH | Golden Sands Eye Shadow",
+      "canonical_url": "https://www.missnella.com/products/eye-shadow-golden-sands-pack-of-5",
+      "mapping_type": "wholesale_pack_to_ready_parent",
+      "review_state": "human_reviewed_candidate",
+      "evidence_note": "Wave52 review matched WH | Golden Sands Eye Shadow to ready parent Eye Shadow. Identity/component mapping only; no content inheritance approved.",
+      "component_refs": [
+        {
+          "external_product_id": "ext_e9e3fba6b05911bba1bfe71e",
+          "title": "Eye Shadow",
+          "component_role": "eye_shadow_pack",
+          "inheritance_scope": [
+            "identity_resolution_only"
+          ],
+          "source_kind": "wave52_human_review_canonical_component_ref",
+          "evidence_note": "Same-brand title/slug/category match in Wave50 rollup; parent is ready_or_covered."
+        }
+      ]
+    },
+    {
+      "external_product_id": "ext_8ffdefaea0efb70cb730a670",
+      "title": "WH | Lavender Fields Eye Shadow",
+      "canonical_url": "https://www.missnella.com/products/eyeshadow-duo-lavender-fields-pack-of-3",
+      "mapping_type": "wholesale_pack_to_ready_parent",
+      "review_state": "human_reviewed_candidate",
+      "evidence_note": "Wave52 review matched WH | Lavender Fields Eye Shadow to ready parent Eye Shadow. Identity/component mapping only; no content inheritance approved.",
+      "component_refs": [
+        {
+          "external_product_id": "ext_e9e3fba6b05911bba1bfe71e",
+          "title": "Eye Shadow",
+          "component_role": "eye_shadow_pack",
+          "inheritance_scope": [
+            "identity_resolution_only"
+          ],
+          "source_kind": "wave52_human_review_canonical_component_ref",
+          "evidence_note": "Same-brand title/slug/category match in Wave50 rollup; parent is ready_or_covered."
+        }
+      ]
+    },
+    {
+      "external_product_id": "ext_36ce25215b20df0b07a5249b",
+      "title": "WH | Lip Balm Retail Display *Organic Lip Balm Collection*",
+      "canonical_url": "https://www.missnella.com/products/xl-lip-balm-retail-display-organic-lip-balm-collection",
+      "mapping_type": "wholesale_pack_to_ready_parent",
+      "review_state": "human_reviewed_candidate",
+      "evidence_note": "Wave52 review matched WH | Lip Balm Retail Display *Organic Lip Balm Collection* to ready parent Lip Balm. Identity/component mapping only; no content inheritance approved.",
+      "component_refs": [
+        {
+          "external_product_id": "ext_cf0f60c66afa3fb09944df4d",
+          "title": "Lip Balm",
+          "component_role": "lip_balm_retail_display",
+          "inheritance_scope": [
+            "identity_resolution_only"
+          ],
+          "source_kind": "wave52_human_review_canonical_component_ref",
+          "evidence_note": "Same-brand title/slug/category match in Wave50 rollup; parent is ready_or_covered."
+        }
+      ]
+    },
+    {
+      "external_product_id": "ext_ce9afe62b715b4fad61face6",
+      "title": "WH | Lollypop Blush",
+      "canonical_url": "https://www.missnella.com/products/blush-lollypop-pack-of-3",
+      "mapping_type": "wholesale_pack_to_ready_parent",
+      "review_state": "human_reviewed_candidate",
+      "evidence_note": "Wave52 review matched WH | Lollypop Blush to ready parent Blush. Identity/component mapping only; no content inheritance approved.",
+      "component_refs": [
+        {
+          "external_product_id": "ext_33466da0907b256ffc53783b",
+          "title": "Blush",
+          "component_role": "blush_pack",
+          "inheritance_scope": [
+            "identity_resolution_only"
+          ],
+          "source_kind": "wave52_human_review_canonical_component_ref",
+          "evidence_note": "Same-brand title/slug/category match in Wave50 rollup; parent is ready_or_covered."
+        }
+      ]
+    },
+    {
+      "external_product_id": "ext_af758de3d843c03fe9548105",
+      "title": "WH | Luvvy Wuvvy Lip Balm",
+      "canonical_url": "https://www.missnella.com/products/xl-lip-balm-luvvy-wuvvy-pack-of-5",
+      "mapping_type": "wholesale_pack_to_ready_parent",
+      "review_state": "human_reviewed_candidate",
+      "evidence_note": "Wave52 review matched WH | Luvvy Wuvvy Lip Balm to ready parent Lip Balm. Identity/component mapping only; no content inheritance approved.",
+      "component_refs": [
+        {
+          "external_product_id": "ext_cf0f60c66afa3fb09944df4d",
+          "title": "Lip Balm",
+          "component_role": "lip_balm_pack",
+          "inheritance_scope": [
+            "identity_resolution_only"
+          ],
+          "source_kind": "wave52_human_review_canonical_component_ref",
+          "evidence_note": "Same-brand title/slug/category match in Wave50 rollup; parent is ready_or_covered."
+        }
+      ]
+    },
+    {
+      "external_product_id": "ext_8f2cb8f0cc6857a78ebdd5f9",
+      "title": "WH | Once Upon a Nail Stickers",
+      "canonical_url": "https://www.missnella.com/products/once-upon-a-nail-stickers-1",
+      "mapping_type": "wholesale_accessory_pack_to_ready_parent",
+      "review_state": "human_reviewed_candidate",
+      "evidence_note": "Wave52 review matched WH | Once Upon a Nail Stickers to ready parent Nail Stickers. Identity/component mapping only; no content inheritance approved.",
+      "component_refs": [
+        {
+          "external_product_id": "ext_b575a7ed71f0a4602a68c461",
+          "title": "Nail Stickers",
+          "component_role": "nail_sticker_pack",
+          "inheritance_scope": [
+            "identity_resolution_only"
+          ],
+          "source_kind": "wave52_human_review_canonical_component_ref",
+          "evidence_note": "Same-brand title/slug/category match in Wave50 rollup; parent is ready_or_covered."
+        }
+      ]
+    },
+    {
+      "external_product_id": "ext_53d8b7377873cf1ae1001c1b",
+      "title": "WH | Pomegranate Fizz Blush",
+      "canonical_url": "https://www.missnella.com/products/blush-pomegranate-fizz-pack-of-3",
+      "mapping_type": "wholesale_pack_to_ready_parent",
+      "review_state": "human_reviewed_candidate",
+      "evidence_note": "Wave52 review matched WH | Pomegranate Fizz Blush to ready parent Blush. Identity/component mapping only; no content inheritance approved.",
+      "component_refs": [
+        {
+          "external_product_id": "ext_33466da0907b256ffc53783b",
+          "title": "Blush",
+          "component_role": "blush_pack",
+          "inheritance_scope": [
+            "identity_resolution_only"
+          ],
+          "source_kind": "wave52_human_review_canonical_component_ref",
+          "evidence_note": "Same-brand title/slug/category match in Wave50 rollup; parent is ready_or_covered."
+        }
+      ]
+    },
+    {
+      "external_product_id": "ext_52fecdaf5a439f0211547627",
+      "title": "WH | Pretty Pop Nail Stickers",
+      "canonical_url": "https://www.missnella.com/products/wh-pretty-pop-nail-stickers",
+      "mapping_type": "wholesale_accessory_pack_to_ready_parent",
+      "review_state": "human_reviewed_candidate",
+      "evidence_note": "Wave52 review matched WH | Pretty Pop Nail Stickers to ready parent Nail Stickers. Identity/component mapping only; no content inheritance approved.",
+      "component_refs": [
+        {
+          "external_product_id": "ext_b575a7ed71f0a4602a68c461",
+          "title": "Nail Stickers",
+          "component_role": "nail_sticker_pack",
+          "inheritance_scope": [
+            "identity_resolution_only"
+          ],
+          "source_kind": "wave52_human_review_canonical_component_ref",
+          "evidence_note": "Same-brand title/slug/category match in Wave50 rollup; parent is ready_or_covered."
+        }
+      ]
+    },
+    {
+      "external_product_id": "ext_0d43c2e4f17599db42623f5f",
+      "title": "WH | Snow Cute Nail Stickers",
+      "canonical_url": "https://www.missnella.com/products/wh-snow-cute-nail-stickers",
+      "mapping_type": "wholesale_accessory_pack_to_ready_parent",
+      "review_state": "human_reviewed_candidate",
+      "evidence_note": "Wave52 review matched WH | Snow Cute Nail Stickers to ready parent Nail Stickers. Identity/component mapping only; no content inheritance approved.",
+      "component_refs": [
+        {
+          "external_product_id": "ext_b575a7ed71f0a4602a68c461",
+          "title": "Nail Stickers",
+          "component_role": "nail_sticker_pack",
+          "inheritance_scope": [
+            "identity_resolution_only"
+          ],
+          "source_kind": "wave52_human_review_canonical_component_ref",
+          "evidence_note": "Same-brand title/slug/category match in Wave50 rollup; parent is ready_or_covered."
+        }
+      ]
+    },
+    {
+      "external_product_id": "ext_5f24f69f578451c59693798b",
+      "title": "WH | Sugar Plum Lip Balm",
+      "canonical_url": "https://www.missnella.com/products/xl-lip-balm-sugar-plum-pack-of-5",
+      "mapping_type": "wholesale_pack_to_ready_parent",
+      "review_state": "human_reviewed_candidate",
+      "evidence_note": "Wave52 review matched WH | Sugar Plum Lip Balm to ready parent Lip Balm. Identity/component mapping only; no content inheritance approved.",
+      "component_refs": [
+        {
+          "external_product_id": "ext_cf0f60c66afa3fb09944df4d",
+          "title": "Lip Balm",
+          "component_role": "lip_balm_pack",
+          "inheritance_scope": [
+            "identity_resolution_only"
+          ],
+          "source_kind": "wave52_human_review_canonical_component_ref",
+          "evidence_note": "Same-brand title/slug/category match in Wave50 rollup; parent is ready_or_covered."
+        }
+      ]
+    }
+  ]
+}

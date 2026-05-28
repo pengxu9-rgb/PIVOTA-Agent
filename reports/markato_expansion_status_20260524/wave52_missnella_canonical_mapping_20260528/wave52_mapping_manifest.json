@@ -1,0 +1,42 @@
+{
+  "generated_at": "2026-05-28T12:03:54.411Z",
+  "source_inputs": {
+    "wave50_rollup": "reports/markato_expansion_status_20260524/wave50_next_brand_expansion_20260528/current_rollup/wave24_candidate_rollup.json",
+    "wave51_manifest": "reports/markato_expansion_status_20260524/wave51_source_acquisition_packet_20260528/source_acquisition_manifest.json"
+  },
+  "scope": {
+    "brand": "Miss Nella",
+    "domain": "missnella.com",
+    "p2_rows_reviewed": 53,
+    "no_runtime_or_database_writes": true,
+    "serving_promotions": 0
+  },
+  "counts": {
+    "decisions": {
+      "blocked_ambiguous_family_parent": 2,
+      "blocked_missing_ready_parent": 15,
+      "blocked_parent_not_ready": 3,
+      "candidate_component_ref_ready": 33
+    },
+    "mapping_types": {
+      "add_on_selector_to_ready_parent": 3,
+      "add_on_shade_to_ready_parent": 2,
+      "blocked_parent_not_ready": 3,
+      "family_selector_without_single_parent": 2,
+      "same_shade_pack_to_ready_parent": 16,
+      "shade_or_pack_without_ready_parent": 15,
+      "wholesale_accessory_pack_to_ready_parent": 4,
+      "wholesale_pack_to_ready_parent": 8
+    },
+    "component_ref_candidate_rows": 33,
+    "blocked_rows": 20,
+    "parent_resolution_rows": 38,
+    "wave51_p2_count": 53
+  },
+  "next_safe_actions": [
+    "Run a production dry-run only for missnella_component_ref_candidate_mapping.json if a metadata apply is requested.",
+    "Do not inherit ingredients/how-to from parent rows; this review only resolves identity/component relationships.",
+    "For blocked_missing_ready_parent rows, request official source evidence or create a reviewed single-shade parent first.",
+    "For blocked_parent_not_ready rows, finish parent source/risk review before using the parent as authoritative."
+  ]
+}
