@@ -69,6 +69,38 @@ describe('agentCenterLlmProbe — request validation', () => {
     expect(r.normalized.max_runs).toBeLessThanOrEqual(8);
   });
 
+  test('accepts optional provider model from options.model and ignores invalid values', () => {
+    const base = {
+      scan_mode: 'open_product_visibility_test',
+      scan_target_id: 'acst_1',
+      merchant_id: 'm1',
+      store_id: 's1',
+      context: {},
+      options: { provider: 'chatgpt' },
+    };
+
+    const withModel = validateRequest({
+      ...base,
+      options: { ...base.options, model: '  gpt-5.5-mini  ' },
+    });
+    expect(withModel.ok).toBe(true);
+    expect(withModel.normalized.model).toBe('gpt-5.5-mini');
+
+    const blankModel = validateRequest({
+      ...base,
+      options: { ...base.options, model: '   ' },
+    });
+    expect(blankModel.ok).toBe(true);
+    expect(blankModel.normalized.model).toBeNull();
+
+    const nonStringModel = validateRequest({
+      ...base,
+      options: { ...base.options, model: 42 },
+    });
+    expect(nonStringModel.ok).toBe(true);
+    expect(nonStringModel.normalized.model).toBeNull();
+  });
+
   test('accepts a fully-formed request and normalizes context', () => {
     const r = validateRequest({
       scan_mode: 'pivota_pdp_attribution_test',
@@ -1167,6 +1199,9 @@ describe('agentCenterLlmProbe — ChatGPT and Claude providers', () => {
       },
     });
 
+    expect(probe._internals.DEFAULT_OPENAI_MODEL).toBe('chat-latest');
+    expect(probe._internals.DEFAULT_OPENAI_MODEL).not.toBe('gpt-5');
+    expect(observedArgs.model).toBe(probe._internals.DEFAULT_OPENAI_MODEL);
     expect(observedArgs.tools).toEqual([{ type: 'web_search_preview' }]);
     expect(out.provider).toBe('chatgpt');
     expect(out.scores.visibility_score).toBe(100);
@@ -1186,6 +1221,46 @@ describe('agentCenterLlmProbe — ChatGPT and Claude providers', () => {
       grounding_sources: [{ uri: 'https://merchant.com/p/123', title: 'Merchant Product Page' }],
       url_match: null,
     }));
+  });
+
+  test('ChatGPT probe honors request-level options.model', async () => {
+    let observedArgs = null;
+    const create = jest.fn(async (args) => {
+      observedArgs = args;
+      return {
+        output_text: '{"product_visible": true}',
+        output: [
+          {
+            type: 'message',
+            content: [
+              {
+                type: 'output_text',
+                text: '{"product_visible": true}',
+                annotations: [{ type: 'url_citation', url: 'https://merchant.com/p/123', title: 'Merchant' }],
+              },
+            ],
+          },
+        ],
+        usage: { input_tokens: 10, output_tokens: 5 },
+      };
+    });
+    const { probe } = installFakeOpenAI(create);
+    const request = probe._internals.validateRequest({
+      scan_mode: 'open_product_visibility_test',
+      scan_target_id: 'acst_1',
+      merchant_id: 'm1',
+      store_id: 's1',
+      context: {
+        queries: ['where can I buy Product X'],
+        product: { title: 'Product X' },
+      },
+      options: { provider: 'chatgpt', model: 'gpt-5.5-mini', max_runs: 1 },
+    });
+
+    expect(request.ok).toBe(true);
+    await probe._internals.dispatchProbe(request.normalized);
+
+    expect(observedArgs.model).toBe('gpt-5.5-mini');
   });
 
   test('ChatGPT probe with empty output_text returns Gemini-compatible fallback run shape', async () => {
