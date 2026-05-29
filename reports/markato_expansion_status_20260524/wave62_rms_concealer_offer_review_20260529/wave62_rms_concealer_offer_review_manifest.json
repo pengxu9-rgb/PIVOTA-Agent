@@ -1,0 +1,81 @@
+{
+  "wave": "wave62_rms_concealer_offer_review_20260529",
+  "created_at": "2026-05-29",
+  "review_mode": "source_review_and_operator_mapping_only",
+  "runtime_database_writes": 0,
+  "serving_promotions": 0,
+  "railway_up_used": false,
+  "targets": {
+    "rows_reviewed": 2,
+    "official_brand_pages_reviewed": 1,
+    "official_shopify_json_reviewed": 1,
+    "retailer_pages_reviewed": 1,
+    "catalog_extractions_reviewed": 1,
+    "retailer_offer_candidates_reviewed": 1,
+    "risk_hold_canonical_rows_reviewed": 1
+  },
+  "source_files": {
+    "dermstore_catalog_extract": "/private/tmp/wave62_rms_concealer_offer_mapping/dermstore_extract.json",
+    "official_html_capture": "/private/tmp/wave62_rms_concealer_offer_mapping/rms_revitalize_hydra_concealer.html",
+    "official_shopify_json_capture": "/private/tmp/wave62_rms_concealer_offer_mapping/rms_revitalize_hydra_concealer.json",
+    "retailer_html_capture": "/private/tmp/wave62_rms_concealer_offer_mapping/dermstore_revitalize_hydra_concealer.html"
+  },
+  "extractor_summary": {
+    "requested_domain": "www.dermstore.com",
+    "discovery_strategy": "seed_page",
+    "failure_category": null,
+    "block_provider": null,
+    "http_statuses": [404, 200, 200],
+    "products_returned": 1,
+    "variants_extracted": 26,
+    "pricing_currency": "USD",
+    "pricing_min": 36,
+    "pricing_max": 36,
+    "source_quality_status": "high",
+    "source_origin": "shopify_json"
+  },
+  "evidence_summary": {
+    "canonical_match_found": true,
+    "same_brand_found": true,
+    "same_product_line_found": true,
+    "same_size_match_found": true,
+    "matched_size": "0.17 fl oz",
+    "official_full_inci_found": true,
+    "retailer_full_inci_found": true,
+    "official_how_to_found": true,
+    "retailer_how_to_found": true,
+    "official_variant_count": 26,
+    "retailer_variant_count": 26,
+    "normalized_shade_set_match": true,
+    "normalized_shade_set_match_count": 26,
+    "official_product_type": "Concealer",
+    "official_price": 3600,
+    "official_available_variant_count": 26,
+    "official_product_images": 119,
+    "retailer_product_group_id": "16621199"
+  },
+  "decisions": {
+    "ext_b8af61a562f4ab972197f413": {
+      "decision": "map_as_retailer_offer_candidate_blocked_by_parent_taxonomy",
+      "canonical_external_product_id": "ext_1c6390a4583df99215617f2b",
+      "promote_as_standalone": false,
+      "reason": "Dermstore and official RMS expose the same 26-shade concealer family, same size, same price, full ingredients, and usage guidance. The Dermstore row should become retailer-offer data only after the official canonical parent clears taxonomy/risk review."
+    },
+    "ext_1c6390a4583df99215617f2b": {
+      "decision": "source_backed_but_risk_taxonomy_review_required",
+      "promote_to_serving": false,
+      "reason": "Official RMS evidence supports a normal concealer, but the local rollup still classifies the canonical row as accessory_or_tool under hold_risk_review."
+    }
+  },
+  "next_actions": [
+    "Review whether official RMS canonical row ext_1c6390a4583df99215617f2b should be reclassified from accessory_or_tool to beauty_formula.",
+    "After parent taxonomy/risk review clears, build or apply a reviewed retailer-offer attachment for Dermstore row ext_b8af61a562f4ab972197f413.",
+    "Rerun identity and serving readiness gates before any serving promotion."
+  ],
+  "artifacts": [
+    "rms_revitalize_hydra_concealer_offer_review.csv",
+    "rms_revitalize_hydra_concealer_operator_actions.csv",
+    "wave62_rms_concealer_offer_review_manifest.json",
+    "wave62_rms_concealer_offer_review_closeout_20260529.md"
+  ]
+}
