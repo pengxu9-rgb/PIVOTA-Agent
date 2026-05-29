@@ -1,0 +1,258 @@
+{
+  "generated_at": "2026-05-29T13:41:59.838Z",
+  "source": "external_seed_live_pdp_modules_audit",
+  "query": {
+    "market": "US",
+    "domain": null,
+    "brand": null,
+    "external_product_id": null,
+    "external_product_ids": [
+      "ext_1c6390a4583df99215617f2b",
+      "ext_f16d1ed12f9f2c9966d47d78"
+    ],
+    "include_attached": true,
+    "limit": 50,
+    "offset": 0,
+    "include_similar": true,
+    "use_sig": false
+  },
+  "summary": {
+    "scanned": 2,
+    "ready": 2,
+    "thin": 0,
+    "not_conversion_ready": 0,
+    "by_domain": [
+      {
+        "key": "rmsbeauty.com",
+        "count": 2
+      }
+    ],
+    "blocker_counts": [],
+    "weak_insights_ids": [],
+    "seller_only_insights_ids": [],
+    "force_filled_ids": [],
+    "content_gap_ids": []
+  },
+  "rows": [
+    {
+      "external_product_id": "ext_1c6390a4583df99215617f2b",
+      "pivota_signature_id": "sig_9d68d0459c7a8e07e4004414",
+      "probed_product_id": "ext_1c6390a4583df99215617f2b",
+      "probed_id_type": "ext",
+      "seed_id": "eps_a4bf1c3ae6eeffd84a1f5806",
+      "market": "US",
+      "domain": "rmsbeauty.com",
+      "title": "Revitalize Hydra Concealer",
+      "canonical_url": "https://www.rmsbeauty.com/products/revitalize-hydra-concealer",
+      "http_status": 200,
+      "pdp_status": "success",
+      "build_id": "7311ca613c28",
+      "module_types": [
+        "canonical",
+        "variant_selector",
+        "offers",
+        "product_intel",
+        "active_ingredients",
+        "ingredients_inci",
+        "how_to_use",
+        "product_overview",
+        "product_facts",
+        "supplemental_details",
+        "product_details",
+        "reviews_preview",
+        "similar"
+      ],
+      "missing_modules": [
+        "active_ingredients"
+      ],
+      "gallery": {
+        "image_count": 29,
+        "duplicate_url_count": 1,
+        "image_hosts": [
+          "cdn.shopify.com",
+          "www.rmsbeauty.com"
+        ],
+        "ok": true
+      },
+      "variant": {
+        "module_present": true,
+        "variant_count": 26,
+        "label_count": 52,
+        "labels": [
+          "Shade: ON01",
+          "Shade: C02",
+          "Shade: CN03",
+          "Shade: WN04",
+          "Shade: C05",
+          "Shade: C06",
+          "Shade: CN07",
+          "Shade: ON08",
+          "Shade: WN09",
+          "Shade: CN010",
+          "Shade: WN011",
+          "Shade: WN012"
+        ],
+        "bad_labels": [],
+        "ok": true
+      },
+      "reviews": {
+        "module_present": true,
+        "rating": null,
+        "review_count": 0,
+        "chart_present": false,
+        "chart_estimated": false,
+        "preview_count": 0,
+        "ok": true
+      },
+      "insights": {
+        "module_present": true,
+        "quality_state": "verified",
+        "evidence_profile": "seller_plus_formula",
+        "seller_only_evidence": false,
+        "seller_grounded_reviewed": false,
+        "headline": "Hydrating concealer",
+        "why_count": 1,
+        "ok": true
+      },
+      "content": {
+        "ingredients_present": true,
+        "ingredients_text_count": 59,
+        "ingredients_source_origin": "pdp_section",
+        "ingredients_source_quality_status": "authoritative",
+        "ingredients_force_filled": false,
+        "active_ingredients_present": false,
+        "active_ingredients_source_origin": null,
+        "active_ingredients_source_quality_status": null,
+        "active_ingredients_force_filled": false,
+        "how_to_present": true,
+        "how_to_text_count": 9,
+        "overview_present": true,
+        "details_present": true,
+        "details_text_count": 26
+      },
+      "similar": {
+        "module_present": true,
+        "count": 0,
+        "status": "deferred"
+      },
+      "product_kind": {
+        "family": "single_formula",
+        "reasons": [
+          "explicit_product_kind_signal"
+        ],
+        "pdp_schema_profile": "beauty_formula",
+        "formula_content_required": true,
+        "merchandising_content_applicable": true
+      },
+      "blocking_reasons": [],
+      "pdp_quality_bucket": "ready",
+      "conversion_ready": true
+    },
+    {
+      "external_product_id": "ext_f16d1ed12f9f2c9966d47d78",
+      "pivota_signature_id": "sig_2cf57ce472d380ed63f1393e",
+      "probed_product_id": "ext_f16d1ed12f9f2c9966d47d78",
+      "probed_id_type": "ext",
+      "seed_id": "eps_2a97efcdfbe03673bc538dae",
+      "market": "US",
+      "domain": "rmsbeauty.com",
+      "title": "Radiance Lock Setting Mist",
+      "canonical_url": "https://www.rmsbeauty.com/products/radiance-lock-setting-mist",
+      "http_status": 200,
+      "pdp_status": "success",
+      "build_id": "7311ca613c28",
+      "module_types": [
+        "canonical",
+        "variant_selector",
+        "offers",
+        "product_intel",
+        "active_ingredients",
+        "ingredients_inci",
+        "how_to_use",
+        "product_overview",
+        "product_facts",
+        "supplemental_details",
+        "product_details",
+        "reviews_preview",
+        "similar"
+      ],
+      "missing_modules": [
+        "supplemental_details"
+      ],
+      "gallery": {
+        "image_count": 2,
+        "duplicate_url_count": 0,
+        "image_hosts": [
+          "cdn.shopify.com",
+          "www.rmsbeauty.com"
+        ],
+        "ok": true
+      },
+      "variant": {
+        "module_present": true,
+        "variant_count": 2,
+        "label_count": 4,
+        "labels": [
+          "Size: 100 mL",
+          "Size: 30 mL",
+          "100 mL",
+          "30 mL"
+        ],
+        "bad_labels": [],
+        "ok": true
+      },
+      "reviews": {
+        "module_present": true,
+        "rating": null,
+        "review_count": 0,
+        "chart_present": false,
+        "chart_estimated": false,
+        "preview_count": 0,
+        "ok": true
+      },
+      "insights": {
+        "module_present": true,
+        "quality_state": "verified",
+        "evidence_profile": "seller_plus_formula",
+        "seller_only_evidence": false,
+        "seller_grounded_reviewed": false,
+        "headline": "Setting mist",
+        "why_count": 1,
+        "ok": true
+      },
+      "content": {
+        "ingredients_present": false,
+        "ingredients_text_count": 0,
+        "ingredients_source_origin": null,
+        "ingredients_source_quality_status": null,
+        "ingredients_force_filled": false,
+        "active_ingredients_present": false,
+        "active_ingredients_source_origin": null,
+        "active_ingredients_source_quality_status": null,
+        "active_ingredients_force_filled": false,
+        "how_to_present": true,
+        "how_to_text_count": 9,
+        "overview_present": true,
+        "details_present": true,
+        "details_text_count": 10
+      },
+      "similar": {
+        "module_present": true,
+        "count": 0,
+        "status": "deferred"
+      },
+      "product_kind": {
+        "family": "set_or_collection",
+        "reasons": [
+          "explicit_product_kind_signal"
+        ],
+        "pdp_schema_profile": "beauty_formula",
+        "formula_content_required": false,
+        "merchandising_content_applicable": true
+      },
+      "blocking_reasons": [],
+      "pdp_quality_bucket": "ready",
+      "conversion_ready": true
+    }
+  ]
+}

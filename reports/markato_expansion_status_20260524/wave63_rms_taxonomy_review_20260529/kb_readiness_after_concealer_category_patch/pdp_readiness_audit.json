@@ -1,0 +1,317 @@
+{
+  "generated_at": "2026-05-29T13:41:13.439Z",
+  "options": {
+    "market": "US",
+    "includeAttached": true,
+    "domain": null,
+    "externalProductIds": [
+      "ext_1c6390a4583df99215617f2b",
+      "ext_f16d1ed12f9f2c9966d47d78"
+    ],
+    "limit": 20000,
+    "sampleLimit": 10,
+    "checkpointDir": "/Users/pengchydan/dev/_worktrees/pivota-agent-markato-wave25-786-20260527/reports/markato_expansion_status_20260524/wave63_rms_taxonomy_review_20260529/kb_readiness_after_concealer_category_patch/pdp_readiness_checkpoint",
+    "checkpointMode": "domain",
+    "resume": false,
+    "force": false,
+    "continueOnError": true,
+    "pageSize": 500,
+    "format": "json"
+  },
+  "warnings": [],
+  "summary": {
+    "scanned": 2,
+    "by_market": {
+      "US": 2
+    },
+    "by_domain": [
+      {
+        "key": "rmsbeauty.com",
+        "count": 2
+      }
+    ],
+    "by_product_family": [
+      {
+        "key": "set_or_collection",
+        "count": 1
+      },
+      {
+        "key": "single_formula",
+        "count": 1
+      }
+    ],
+    "coverage": {
+      "missing_inci": 0,
+      "missing_active_raw": 0,
+      "missing_details": 0,
+      "missing_how_to": 0,
+      "missing_faq": 2
+    },
+    "pivota_insights": {
+      "direct": {
+        "displayable": 2,
+        "high_quality_ready": 2,
+        "missing_kb": 0,
+        "not_displayable": 0
+      },
+      "effective": {
+        "displayable": 2,
+        "high_quality_ready": 2,
+        "missing_kb": 0,
+        "not_displayable": 0,
+        "borrowed_from_sibling": 0
+      },
+      "effective_issues": [],
+      "effective_issue_domains": [],
+      "quality_state": [
+        {
+          "key": "verified",
+          "count": 2
+        }
+      ],
+      "evidence_profile": [
+        {
+          "key": "seller_plus_formula",
+          "count": 2
+        }
+      ],
+      "samples": {}
+    },
+    "active_ingredients": {
+      "regulatory_expected": 0,
+      "hero_expected": 1,
+      "any_active_items": 1,
+      "status": [
+        {
+          "key": "not_applicable_product_family",
+          "count": 1
+        },
+        {
+          "key": "ready_hero",
+          "count": 1
+        }
+      ],
+      "issues": [],
+      "issue_domains": [],
+      "source_origin": [
+        {
+          "key": "none",
+          "count": 1
+        },
+        {
+          "key": "pdp_section",
+          "count": 1
+        }
+      ],
+      "samples": {}
+    },
+    "variants": {
+      "status": [
+        {
+          "key": "ready",
+          "count": 2
+        }
+      ],
+      "issues": [],
+      "issue_domains": [],
+      "samples": {}
+    }
+  },
+  "rows": [
+    {
+      "seed_id": "eps_2a97efcdfbe03673bc538dae",
+      "external_product_id": "ext_f16d1ed12f9f2c9966d47d78",
+      "market": "US",
+      "domain": "rmsbeauty.com",
+      "title": "Radiance Lock Setting Mist",
+      "canonical_url": "https://www.rmsbeauty.com/products/radiance-lock-setting-mist",
+      "product_family": "set_or_collection",
+      "product_line_id": "pl_691e030f70a6059c86e61784",
+      "identity_variant_axes": {
+        "size": "100 ml",
+        "volume": "100ml",
+        "multi_variant": true
+      },
+      "pivota_insights": {
+        "direct": {
+          "product_id": "ext_f16d1ed12f9f2c9966d47d78",
+          "kb_key": "product:ext_f16d1ed12f9f2c9966d47d78",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "verified",
+          "evidence_profile": "seller_plus_formula",
+          "has_card_highlight": true
+        },
+        "effective": {
+          "product_id": "ext_f16d1ed12f9f2c9966d47d78",
+          "kb_key": "product:ext_f16d1ed12f9f2c9966d47d78",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "verified",
+          "evidence_profile": "seller_plus_formula",
+          "has_card_highlight": true
+        },
+        "product_line_id": "pl_691e030f70a6059c86e61784",
+        "borrowed_from_sibling": false
+      },
+      "active_ingredients": {
+        "status": "not_applicable_product_family",
+        "issues": [],
+        "regulatory_expected": false,
+        "hero_expected": false,
+        "active_items": [],
+        "source_origin": "none",
+        "source_quality_status": "blocked",
+        "coverage": {
+          "details_sections_count": 8,
+          "faq_count": 0,
+          "how_to_chars": 504,
+          "inci_chars": 1051,
+          "active_ingredients_chars": 48,
+          "inci_applicability_status": "",
+          "ingredient_review_status": "",
+          "ingredient_remediation_action": "",
+          "bundle_component_refs_count": 0,
+          "effective_inci_chars": 1051,
+          "inci_borrowed_from_product_id": ""
+        },
+        "invalid_fragments": [],
+        "suppressed_reason": "set_or_collection"
+      },
+      "variants": {
+        "status": "ready",
+        "issues": [],
+        "visible_variant_rows": 2,
+        "examples": {
+          "identity_option_visible": [],
+          "wrong_axis_for_category": [],
+          "makeup_shade_missing_visual": [],
+          "size_value_generic_axis": [],
+          "default_option_size_evidence_missing_axis": [],
+          "identity_default_title_axis": []
+        }
+      },
+      "coverage": {
+        "details_sections_count": 8,
+        "faq_count": 0,
+        "how_to_chars": 504,
+        "inci_chars": 1051,
+        "active_ingredients_chars": 48,
+        "inci_applicability_status": "",
+        "ingredient_review_status": "",
+        "ingredient_remediation_action": "",
+        "bundle_component_refs_count": 0,
+        "effective_inci_chars": 1051,
+        "inci_borrowed_from_product_id": ""
+      }
+    },
+    {
+      "seed_id": "eps_a4bf1c3ae6eeffd84a1f5806",
+      "external_product_id": "ext_1c6390a4583df99215617f2b",
+      "market": "US",
+      "domain": "rmsbeauty.com",
+      "title": "Revitalize Hydra Concealer",
+      "canonical_url": "https://www.rmsbeauty.com/products/revitalize-hydra-concealer",
+      "product_family": "single_formula",
+      "product_line_id": "pl_94ea4baccce0c56763c38658",
+      "identity_variant_axes": {
+        "shade": "on01",
+        "multi_variant": true
+      },
+      "pivota_insights": {
+        "direct": {
+          "product_id": "ext_1c6390a4583df99215617f2b",
+          "kb_key": "product:ext_1c6390a4583df99215617f2b",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "verified",
+          "evidence_profile": "seller_plus_formula",
+          "has_card_highlight": true
+        },
+        "effective": {
+          "product_id": "ext_1c6390a4583df99215617f2b",
+          "kb_key": "product:ext_1c6390a4583df99215617f2b",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "verified",
+          "evidence_profile": "seller_plus_formula",
+          "has_card_highlight": true
+        },
+        "product_line_id": "pl_94ea4baccce0c56763c38658",
+        "borrowed_from_sibling": false
+      },
+      "active_ingredients": {
+        "status": "ready_hero",
+        "issues": [],
+        "regulatory_expected": false,
+        "hero_expected": true,
+        "active_items": [
+          "Retinol"
+        ],
+        "source_origin": "pdp_section",
+        "source_quality_status": "captured",
+        "coverage": {
+          "details_sections_count": 12,
+          "faq_count": 0,
+          "how_to_chars": 557,
+          "inci_chars": 1446,
+          "active_ingredients_chars": 17,
+          "inci_applicability_status": "",
+          "ingredient_review_status": "",
+          "ingredient_remediation_action": "",
+          "bundle_component_refs_count": 0,
+          "effective_inci_chars": 1446,
+          "inci_borrowed_from_product_id": ""
+        },
+        "invalid_fragments": [],
+        "suppressed_reason": null
+      },
+      "variants": {
+        "status": "ready",
+        "issues": [],
+        "visible_variant_rows": 26,
+        "examples": {
+          "identity_option_visible": [],
+          "wrong_axis_for_category": [],
+          "makeup_shade_missing_visual": [],
+          "size_value_generic_axis": [],
+          "default_option_size_evidence_missing_axis": [],
+          "identity_default_title_axis": []
+        }
+      },
+      "coverage": {
+        "details_sections_count": 12,
+        "faq_count": 0,
+        "how_to_chars": 557,
+        "inci_chars": 1446,
+        "active_ingredients_chars": 17,
+        "inci_applicability_status": "",
+        "ingredient_review_status": "",
+        "ingredient_remediation_action": "",
+        "bundle_component_refs_count": 0,
+        "effective_inci_chars": 1446,
+        "inci_borrowed_from_product_id": ""
+      }
+    }
+  ]
+}

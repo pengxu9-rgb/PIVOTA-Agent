@@ -1,0 +1,128 @@
+{
+  "generated_at": "2026-05-29T13:41:16.228Z",
+  "market": "US",
+  "include_non_public": false,
+  "docs_built": 2,
+  "source_build_failures": [],
+  "docs": [
+    {
+      "doc_id": "sellable:sig_2cf57ce472d380ed63f1393e",
+      "sellable_item_group_id": "sig_2cf57ce472d380ed63f1393e",
+      "product_line_id": "pl_691e030f70a6059c86e61784",
+      "review_family_id": "rf_691e030f70a6059c86e61784",
+      "brand_name": "RMS Beauty",
+      "category_paths": [
+        "Treatment"
+      ],
+      "market": "US",
+      "availability_state": "available",
+      "publish_state": "public",
+      "title": "Radiance Lock Setting Mist",
+      "subtitle": "What it Is:\nAn alcohol-free, radiance-enhancing setting spray that locks in and prolongs makeup wear without feeling sticky, so skin stays glowy and your look stays put.\n\nWhat it Does:\nThis weightless, microfine mist dries down in a flash and seamlessly sets makeup with a skin-perfecting, nourishing veil that helps to avoid any fading, melting, or creasing for radiant skin and a flawless finish that lasts. It's also been clinically proven to instantly hydrate and replenish the skin barrier for up to 24 hours.\n\nWhat Makes it Special:\nThe 97% naturally derived, innovative formula is skincare-infused and packed with powerful clean ingredients like Pullulan - a lightweight, plant-based film former that creates a smooth, flexible layer on the skin, acting like an invisible shield to enhance makeup longevity. In addition, this superfine mist features Tightenyl™, a natural retinol alternative to firm and tone, GlowPlex™ to help brighten and smooth, Eggplant Fruit Extract for rich antioxidant defense, as well as moisture-attracting Hyaluronic Acid and hydrating Vegetable Squalane to draw and seal in moisture.\n\n* In cosmetics, the term \"alcohol\" refers specifically to ethyl alcohol (ethanol) or denatured alcohol, which must be listed on the label as \"alcohol\" or \"alcohol denat.\" Radiance Lock Setting Mist does not contain ethyl alcohol, so it is still considered alcohol-free. While the formula does contain benzyl alcohol, this is a different type of ingredient that serves other functions and does not affect the \"alcohol-free\" classification.\n\nNet Wt: 100 ml / 3.4 fl. oz (Travel Size: 30 ml / 1 fl. oz)\n\nIngredients:\nWater/Aqua/Eau, Propanediol, Glycerin, 1,2-Hexanediol, Polyglyceryl-10 Oleate, *Pullulan, Niacinamide, Caesalpinia Spinosa Fruit Extract, Betaine, Trehalose, Eclipta Prostrata Extract, Ethylhexylglycerin, Pisum Sativum (Pea) Seed Extract, Kappaphycus Alvarezii Extract, Coccinia Indica Fruit Extract, Citrus Aurantium Bergamia (Bergamot) Fruit Oil, Benzyl Alcohol, Olea Europaea (Olive) Fruit Oil, Chenopodium Quinoa Seed Extract, Citrus Aurantium Dulcis (Orange) Peel Oil, Potassium Sorbate, Sodium Benzoate, Hyaluronic Acid, *Squalane, Lavandula Angustifolia (Lavender) Oil, Juniperus Virginiana Oil, Pelargonium Graveolens Flower Oil, Tocopherol, Oryza Sativa (Rice) Bran Oil, Copaifera Officinalis (Balsam Copaiba) Resin, Artemisia Vulgaris Oil, Myrtus Communis Oil, Disodium Acetyl Glucosamine Phosphate, Rosa Damascena Flower Oil, Sodium Glucuronate, Magnesium Sulfate, Solanum Melongena (Eggplant) Fruit Extract, Ferula Galbaniflua (Galbanum) Resin Oil, Limonene, Linalool.&lt;br&gt;&lt;br&gt;\n\n* Certified Organic/Certifié Biologique&lt;br&gt;",
+      "variant_axes": {
+        "size": "100 ml",
+        "volume": "100ml",
+        "multi_variant": true
+      },
+      "size": null,
+      "shade": null,
+      "pack": null,
+      "hero_media": {
+        "url": "https://www.rmsbeauty.com/cdn/shop/files/810170740183-SSP1-PACK-SHOT.jpg?v=1762290924",
+        "source_kind": "catalog",
+        "source_tier": "catalog"
+      },
+      "preview_media": [
+        "https://www.rmsbeauty.com/cdn/shop/files/810170740183-SSP1-PACK-SHOT.jpg?v=1762290924",
+        "https://www.rmsbeauty.com/cdn/shop/files/810170740183-SSP1-LIFESTYLE-2.jpg?v=1767268139",
+        "https://www.rmsbeauty.com/cdn/shop/files/RLSM-HOVER-900X1084.jpg?v=1767268139",
+        "https://cdn.shopify.com/s/files/1/0642/6399/files/Radiance_Lock_Setting_Mist-Anni-Hover-900x1084_1.jpg?v=1763435989",
+        "https://cdn.shopify.com/s/files/1/0642/6399/files/810170740268-SSP1Travel-PACK-SHOT_4.jpg?v=1763435989",
+        "https://cdn.shopify.com/s/files/1/0642/6399/files/810170740183-SSP1-LIFESTYLE-1.jpg?v=1763435989",
+        "https://cdn.shopify.com/s/files/1/0642/6399/files/810170740183-SSP1-MODEL-2.jpg?v=1763435989",
+        "https://cdn.shopify.com/s/files/1/0642/6399/files/810170740183-SSP1-MODEL-1.jpg?v=1763435989"
+      ],
+      "price_min": 27,
+      "price_max": 27,
+      "default_offer_id": "external_seed:ext_f16d1ed12f9f2c9966d47d78",
+      "internal_offer_exists": false,
+      "external_offer_exists": true,
+      "pivota_insight_status": "available",
+      "pivota_insight_summary": "An alcohol-free makeup setting mist with pullulan, niacinamide, squalane, and humectants to help set makeup while keeping the finish radiant.",
+      "quality_score": null,
+      "browse_score": null,
+      "facet_tokens": [
+        "RMS Beauty",
+        "Treatment"
+      ],
+      "sort_keys": {
+        "price_min": 27,
+        "price_max": 27,
+        "updated_at": null
+      },
+      "updated_at": null,
+      "source_refs": [
+        "external_seed:ext_f16d1ed12f9f2c9966d47d78"
+      ]
+    },
+    {
+      "doc_id": "sellable:sig_9d68d0459c7a8e07e4004414",
+      "sellable_item_group_id": "sig_9d68d0459c7a8e07e4004414",
+      "product_line_id": "pl_94ea4baccce0c56763c38658",
+      "review_family_id": "rf_94ea4baccce0c56763c38658",
+      "brand_name": "RMS Beauty",
+      "category_paths": [
+        "Concealer"
+      ],
+      "market": "US",
+      "availability_state": "available",
+      "publish_state": "public",
+      "title": "Revitalize Hydra Concealer",
+      "subtitle": "What it Is:\nA high-performance, clean complexion-perfecting liquid concealer with medium coverage and a satin skin-like finish.\n\nWhat it Does:\nCreaseproof and ultra-nourishing, this skincare-infused multitasker delivers the benefits of an eye cream, revitalizing the delicate eye area and improving the appearance of skin's texture, while seamlessly color-correcting and concealing dark circles, imperfections, and redness with smooth, long-lasting coverage. The light-as-air, creamy consistency feels weightless and blends in effortlessly without caking or settling into fine lines or pores.\n\nWhat Makes it Special:\nThis cutting-edge formula is clinically proven to provide 8 hours of hydration, is hypoallergenic, suitable for sensitive skin, dermatologist-tested, ophthalmologist-tested, and visibly reduces the look of crow's feet and fine lines after 30 days of use. It features a slim built-in brush for precise application and is packed with powerful clean ingredients like invigorating Eyebright, innovative Revital-Eyes complex, skin-firming Tightenyl™ (a gentle retinol alternative), moisture-rich Vegetable Squalene, and our signature Organic RMS Adaptogenic Herbal Blend - for a brighter, smoother, more radiant complexion that's never dry or dull.\n\nNet Wt: 5 ml / 0.17 fl. oz\n\nIngredients:\nWater/Aqua/Eau, Coco-Caprylate/Caprate, Hexyl Laurate, Propanediol, Hydrogenated Ethylhexyl Olivate, Polyglyceryl-3 Polyricinoleate, Glycerin, Polyglyceryl-4 Isostearate, Butyrospermum Parkii (Shea) Butter, Disteardimonium Hectorite, Sorbitan Isostearate, Magnesium Sulfate, Pentylene Glycol, Glyceryl Caprylate, Aluminum Hydroxide, Glyceryl Undecylenate, Magnesium Stearate, Hydrogenated Olive Oil Unsaponifiables, Xanthan Gum, *Simmondsia Chinensis (Jojoba) Seed Oil, Sodium Lauroyl Glutamate, Sodium Phytate, Mica, Helianthus Annuus (Sunflower) Seed Oil, Euphrasia Officinalis (Eyebright) Extract, Lysine, Magnesium Chloride, Tocopherol (non-GMO), Lactobacillus Ferment Lysate, Camellia Sinensis (Green Tea) Leaf Extract, Punica Granatum (Pomegranate) Extract, Disodium Acetyl Glucosamine Phosphate, Sodium Glucuronate, Beta-Sitosterol, *Aloe Barbadensis Leaf Extract, *Calendula Officinalis (Marigold) Flower Extract, Squalene (Vegetable), *Hypericum Perforatum (St. John's Wart) Flower Extract, *Equisetum Arvense (Horsetail) Leaf Extract, *Hemidesmus Indicus (Country Sarsaparilla) Root Powder, *Curcuma Longa (Turmeric) Root Extract, *Withania Somnifera (Ashwagandha) Root Extract, Lactobacillus Ferment, *Glycyrrhiza Glabra (Licorice) Root Extract, *Olea Europaea (Olive) Leaf Extract, Caffeine, Titanium Dioxide (CI 77891), Iron Oxides (CI 77491, CI 77492, CI 77499).&lt;br&gt;&lt;br&gt;\n\n* Certified Organic/Certifié Biologique&lt;br&gt;",
+      "variant_axes": {
+        "shade": "on01",
+        "multi_variant": true
+      },
+      "size": null,
+      "shade": null,
+      "pack": null,
+      "hero_media": {
+        "url": "https://www.rmsbeauty.com/cdn/shop/files/816248028986-rhc4-c05-pack-shot-900x1084_1.jpg?v=1753885001",
+        "source_kind": "catalog",
+        "source_tier": "catalog"
+      },
+      "preview_media": [
+        "https://www.rmsbeauty.com/cdn/shop/files/816248028986-rhc4-c05-pack-shot-900x1084_1.jpg?v=1753885001",
+        "https://www.rmsbeauty.com/cdn/shop/files/RevitalizeHydraConcealer-Shade-Finder-900X1084_2.jpg?v=1754416529",
+        "https://www.rmsbeauty.com/cdn/shop/files/RevitalizeHydraConcealer-lifestyle-900X1084_1.jpg?v=1754416529",
+        "https://cdn.shopify.com/s/files/1/0642/6399/files/816248028979-RHC3-ON01-PACK-SHOT-900X1084.jpg?v=1754416529",
+        "https://cdn.shopify.com/s/files/1/0642/6399/files/816248028962-RHC2-C02-PACK-SHOT-900X1084.jpg?v=1754416529",
+        "https://cdn.shopify.com/s/files/1/0642/6399/files/816248028955-RHC1-CN03-PACK-SHOT-900X1084.jpg?v=1754416529",
+        "https://cdn.shopify.com/s/files/1/0642/6399/files/816248028986-RHC4-C05-PACK-SHOT-900X1084.jpg?v=1754416529",
+        "https://cdn.shopify.com/s/files/1/0642/6399/files/816248028993-RHC5-C06-PACK-SHOT-900X1084.jpg?v=1754416529"
+      ],
+      "price_min": 36,
+      "price_max": 36,
+      "default_offer_id": "external_seed:ext_1c6390a4583df99215617f2b",
+      "internal_offer_exists": false,
+      "external_offer_exists": true,
+      "pivota_insight_status": "available",
+      "pivota_insight_summary": "A hydrating liquid concealer in a 26-shade range for under-eyes, redness, blemishes, and targeted complexion coverage.",
+      "quality_score": null,
+      "browse_score": null,
+      "facet_tokens": [
+        "RMS Beauty",
+        "Concealer"
+      ],
+      "sort_keys": {
+        "price_min": 36,
+        "price_max": 36,
+        "updated_at": null
+      },
+      "updated_at": null,
+      "source_refs": [
+        "external_seed:ext_1c6390a4583df99215617f2b"
+      ]
+    }
+  ]
+}
