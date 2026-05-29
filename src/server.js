@@ -369,6 +369,11 @@ const {
   getCacheStats: getPdpRecsCacheStats,
   hydrateRecommendationItemsWithReviewedProductIntel,
 } = require('./services/RecommendationEngine');
+const {
+  buildAnchorRefsFromProduct: buildRelationshipGraphAnchorRefs,
+  listApprovedRelationshipEdgesForAnchor: listApprovedRelationshipEdges,
+  relationshipEdgeToSimilarItem,
+} = require('./auroraBff/productRelationshipGraph');
 const { getGeminiGlobalGate } = require('./lib/geminiGlobalGate');
 const {
   resolveProductRef,
@@ -24063,16 +24068,65 @@ async function fetchReviewSummaryCached(args = {}) {
   return task;
 }
 
+// Curated product-relationship graph (human-approved edges in
+// `product_relationship_edges`) is the high-trust complement to the dynamic
+// recall engine. Default OFF — flip the flag only after staging verification.
+const RELATIONSHIP_GRAPH_SERVING_ENABLED =
+  String(process.env.AURORA_BFF_RELATIONSHIP_GRAPH_ENABLED || '').trim().toLowerCase() === 'true';
+
+async function fetchRelationshipGraphSimilarItems(anchorProduct, { market = 'US', limit = 24 } = {}) {
+  if (!RELATIONSHIP_GRAPH_SERVING_ENABLED) return [];
+  try {
+    const anchorRefs = buildRelationshipGraphAnchorRefs(anchorProduct || {});
+    if (!anchorRefs.length) return [];
+    const edges = await listApprovedRelationshipEdges({
+      anchorType: 'product',
+      anchorRefs,
+      market: firstNonEmptyString(market, anchorProduct?.market, 'US'),
+      limit: Math.max(1, Math.min(120, Number(limit) || 24)),
+    });
+    return (Array.isArray(edges) ? edges : []).map(relationshipEdgeToSimilarItem).filter(Boolean);
+  } catch (err) {
+    // The curated graph is additive — never let a reader failure break the PDP.
+    logger.warn?.({ err: err?.message }, 'relationship_graph_similar_fetch_failed');
+    return [];
+  }
+}
+
 async function fetchSimilarProductsDeduped(args = {}) {
   const inflightKey = buildPdpSimilarInflightKey(args);
   const runOnce = async () => {
     const rec = await recommendPdpProducts(args);
     const items = Array.isArray(rec?.items) ? rec.items : [];
+    let mergedItems = items;
+    let relationshipGraphMeta;
+    if (RELATIONSHIP_GRAPH_SERVING_ENABLED) {
+      const curated = await fetchRelationshipGraphSimilarItems(args?.pdp_product, {
+        market: args?.pdp_product?.market || 'US',
+        limit: Number(args?.k) || 24,
+      });
+      if (curated.length) {
+        // Curated (human-approved) edges rank ahead of dynamic recall; dedupe
+        // keeps the first occurrence, so curated wins on collisions.
+        mergedItems = dedupeSimilarCandidatesByMerchantProductId([...curated, ...items]);
+        const k = Number(args?.k);
+        if (Number.isFinite(k) && k > 0) mergedItems = mergedItems.slice(0, k);
+        relationshipGraphMeta = {
+          relationship_graph_curated_count: curated.length,
+          relationship_graph_served_count: mergedItems.filter(
+            (item) => item && item.source === 'relationship_graph',
+          ).length,
+        };
+      }
+    }
     return {
-      status: rec?.status || (items.length > 0 ? 'success' : 'empty'),
+      status: mergedItems.length > 0 ? 'success' : rec?.status || 'empty',
       strategy: rec?.strategy || 'related_products',
-      items,
-      metadata: rec?.metadata && typeof rec.metadata === 'object' ? rec.metadata : {},
+      items: mergedItems,
+      metadata: {
+        ...(rec?.metadata && typeof rec.metadata === 'object' ? rec.metadata : {}),
+        ...(relationshipGraphMeta || {}),
+      },
       ...(rec?.debug ? { debug: rec.debug } : {}),
       ...(rec?.cache ? { cache: rec.cache } : {}),
     };
@@ -25790,14 +25844,10 @@ function collectPdpComponentExternalSeedIds(componentCandidates = []) {
 
 function excludeBundleComponentProductsFromSimilar({
   products = [],
-  baseProduct = {},
   componentCandidates = [],
 } = {}) {
   const list = Array.isArray(products) ? products : [];
   if (!Array.isArray(componentCandidates) || componentCandidates.length <= 0) {
-    return { products: list, applied: false, dropped_count: 0 };
-  }
-  if (!isBundleOrSetPdpForComponentScopedSimilar(baseProduct)) {
     return { products: list, applied: false, dropped_count: 0 };
   }
   const componentIds = collectPdpComponentExternalSeedIds(componentCandidates);

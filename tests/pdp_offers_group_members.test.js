@@ -974,6 +974,59 @@ describe('PDP grouped offers', () => {
     ]);
   });
 
+  test('excludes reviewed component refs even when set title is neutral', () => {
+    const app = require('../src/server');
+    const baseProduct = {
+      product_id: 'ext_brightening_boost',
+      title: 'Brightening Boost',
+      seed_data: {
+        bundle_component_refs: [
+          {
+            external_product_id: 'ext_peptide_serum',
+            review_state: 'reviewed',
+            title: 'The 6 Peptide Skin Booster Serum',
+          },
+          {
+            external_product_id: 'ext_vitamin_c_serum',
+            review_state: 'reviewed',
+            title: 'Advanced The Vitamin C 23 Serum',
+          },
+        ],
+      },
+    };
+    const componentCandidates = app._debug.collectPdpComponentSimilarCandidates(baseProduct);
+
+    const filtered = app._debug.excludeBundleComponentProductsFromSimilar({
+      baseProduct,
+      componentCandidates,
+      products: [
+        {
+          product_id: 'sig_peptide_visible',
+          external_product_id: 'ext_peptide_serum',
+          title: 'The 6 Peptide Skin Booster Serum',
+        },
+        {
+          product_id: 'sig_other_serum',
+          external_product_id: 'ext_other_serum',
+          title: 'Different serum',
+        },
+      ],
+    });
+
+    expect(app._debug.isBundleOrSetPdpForComponentScopedSimilar(baseProduct)).toBe(false);
+    expect(componentCandidates.map((item) => item.product_id)).toEqual([
+      'ext_peptide_serum',
+      'ext_vitamin_c_serum',
+    ]);
+    expect(filtered).toEqual(
+      expect.objectContaining({
+        applied: true,
+        dropped_count: 1,
+      }),
+    );
+    expect(filtered.products.map((item) => item.product_id)).toEqual(['sig_other_serum']);
+  });
+
   test('detects missing similar card images separately from highlight readiness', () => {
     const app = require('../src/server');
 

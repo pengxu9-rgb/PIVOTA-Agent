@@ -883,9 +883,13 @@ describe('find_similar_products mainline wrapper', () => {
     ]);
   });
 
-  it('scopes bundle PDP similar results to reviewed component refs', () => {
+  it('excludes bundle component refs from PDP similar results (scopeBundleSimilarToReviewedComponents alias)', () => {
     const app = require('../src/server');
 
+    // scopeBundleSimilarToReviewedComponents now aliases
+    // excludeBundleComponentProductsFromSimilar: on a bundle/set PDP it DROPS
+    // the bundle's own reviewed components from similar results (so a kit
+    // doesn't recommend its own pieces) and keeps unrelated products.
     const out = app._debug.scopeBundleSimilarToReviewedComponents({
       baseProduct: {
         title: 'Barrier Care Kit',
@@ -916,8 +920,8 @@ describe('find_similar_products mainline wrapper', () => {
     expect(out).toEqual({
       products: [
         expect.objectContaining({
-          product_id: 'sig_component_1',
-          source_product_id: 'ext_component_1',
+          product_id: 'sig_unrelated_gift_set',
+          source_product_id: 'ext_unrelated_gift_set',
         }),
       ],
       applied: true,

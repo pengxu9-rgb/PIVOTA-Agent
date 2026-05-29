@@ -7,6 +7,7 @@ const ANCHOR_TYPES = new Set(['product', 'need']);
 const PRICE_FRESHNESS_MS = 14 * 24 * 60 * 60 * 1000;
 const DEFAULT_MARKET = 'US';
 const DEFAULT_VERTICAL = 'beauty';
+const EXTERNAL_SEED_MERCHANT_ID = 'external_seed';
 
 const AUTHORITATIVE_SOURCE_TYPES = new Set([
   'official_pdp',
@@ -439,6 +440,19 @@ function buildAnchorRefsFromProduct(anchor = {}) {
   };
   push(src.product_id || src.productId || src.sku_id || src.skuId || src.id, 'product');
   push(src.product_id || src.productId || src.sku_id || src.skuId || src.id);
+  // External-seed anchors are stored as `product:ext_<hash>`. At serving time the
+  // canonical product_id may be a pivota signature while the ext_ key lives on
+  // external_product_id/source_product_id — derive a ref from it too so curated
+  // edges match regardless of which identity the upstream resolver selected.
+  const externalId =
+    src.external_product_id ||
+    src.externalProductId ||
+    src.external_seed_product_id ||
+    src.externalSeedProductId ||
+    src.source_product_id ||
+    src.sourceProductId;
+  push(externalId, 'product');
+  push(externalId);
   push(src.url || src.canonical_url || src.canonicalUrl || src.pdp_url || src.pdpUrl, 'url');
   const brand = pickFirstString(src.brand, src.brand_name, src.brandName, src.vendor);
   const name = extractProductName(src);
@@ -504,6 +518,55 @@ function splitEdgesForRecoBlocks(edges = []) {
     }
   }
   return out;
+}
+
+function stripRelationshipRefPrefix(ref) {
+  return normalizeString(ref, 260).replace(/^[a-z][a-z0-9_+-]*:/i, '').trim();
+}
+
+// Adapts an approved edge into the PDP "similar products" item shape consumed by
+// the recall pipeline + buildRecommendations (server.js / pdpBuilder.js). External
+// seed is the only catalog the curated graph spans, so candidate ids map to the
+// `external_seed` merchant. Returns null when the candidate has no usable id.
+function relationshipEdgeToSimilarItem(edgeInput = {}) {
+  const edge = coerceRelationshipEdge(edgeInput);
+  const snap = isPlainObject(edge.candidate_snapshot) ? edge.candidate_snapshot : {};
+  const productId = pickFirstString(
+    snap.product_id,
+    snap.productId,
+    snap.id,
+    stripRelationshipRefPrefix(edge.candidate_product_ref),
+  );
+  if (!productId) return null;
+  const brand = pickFirstString(
+    typeof snap.brand === 'string' ? snap.brand : isPlainObject(snap.brand) ? snap.brand.name : '',
+    snap.brand_name,
+    snap.brandName,
+    snap.vendor,
+  );
+  const url = pickFirstString(snap.url, snap.canonical_url, snap.canonicalUrl, snap.pdp_url, snap.pdpUrl);
+  const imageUrl = pickFirstString(snap.image_url, snap.image, Array.isArray(snap.images) ? snap.images[0] : '');
+  const name = extractProductName(snap);
+  const reason = pickFirstString(edge.display_label, edge.relation_type);
+  const price = getCandidatePrice(edge);
+  return {
+    product_id: productId,
+    external_product_id: productId,
+    merchant_id: EXTERNAL_SEED_MERCHANT_ID,
+    ...(name ? { title: name } : {}),
+    ...(brand ? { brand } : {}),
+    ...(snap.category ? { category: normalizeString(snap.category, 240) } : {}),
+    ...(url ? { url, canonical_url: url } : {}),
+    ...(imageUrl ? { image_url: imageUrl } : {}),
+    ...(price != null ? { price } : {}),
+    source: 'relationship_graph',
+    recommendation_source: 'relationship_graph',
+    ...(reason ? { reason, recommendation_reason: reason } : {}),
+    ...(Number.isFinite(edge.score_total) ? { x_score: edge.score_total } : {}),
+    relationship_edge_id: edge.id,
+    relationship_type: edge.relation_type,
+    ...(edge.display_label ? { display_label: edge.display_label } : {}),
+  };
 }
 
 async function listApprovedRelationshipEdgesForAnchor({
@@ -882,6 +945,8 @@ module.exports = {
   isApprovedFreshEdge,
   edgeToRecoCandidate,
   splitEdgesForRecoBlocks,
+  relationshipEdgeToSimilarItem,
+  stripRelationshipRefPrefix,
   buildAnchorRefsFromProduct,
   listApprovedRelationshipEdgesForAnchor,
   getRelationshipGraphCandidatesForAnchor,
