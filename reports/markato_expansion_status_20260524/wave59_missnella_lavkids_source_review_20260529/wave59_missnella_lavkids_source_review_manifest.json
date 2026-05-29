@@ -1,0 +1,106 @@
+{
+  "wave": "wave59_missnella_lavkids_source_review_20260529",
+  "generated_at": "2026-05-29T10:52:54+08:00",
+  "brand": "Miss Nella",
+  "scope": "P0 Lav Kids/Lav Teens partner_full_inci_and_how_to_request rows from the Wave51 source acquisition packet",
+  "source_inputs": {
+    "source_acquisition_packet": "reports/markato_expansion_status_20260524/wave51_source_acquisition_packet_20260528/source_acquisition_requests.csv",
+    "official_product_json_temp_dir": "/private/tmp/wave59_missnella_lav",
+    "official_media_assets_downloaded": 23,
+    "official_media_assets_reviewed": 23
+  },
+  "summary": {
+    "official_rows_reviewed": 8,
+    "official_product_json_rows_reviewed": 8,
+    "official_product_json_parseable_rows": 7,
+    "official_product_json_unavailable_rows": 1,
+    "official_description_found_rows": 7,
+    "formal_inci_found_rows": 0,
+    "partial_product_use_context_rows": 7,
+    "complete_how_to_found_rows": 0,
+    "patch_candidate_rows": 0,
+    "runtime_database_writes": 0,
+    "serving_promotions_approved": 0,
+    "railway_cli_deployments": 0,
+    "remaining_source_requests": 8
+  },
+  "artifacts": {
+    "official_source_review_csv": "missnella_lavkids_official_source_review.csv",
+    "remaining_source_requests_csv": "missnella_lavkids_remaining_source_requests.csv",
+    "closeout_markdown": "wave59_missnella_lavkids_source_review_closeout_20260529.md"
+  },
+  "reviewed_rows": [
+    {
+      "external_product_id": "ext_7f3fcd8b1ea9a9c48026e3ff",
+      "title": "Lav Kids by Miss Nella Moisturising Leave In Conditioner 100ml",
+      "canonical_url": "https://www.missnella.com/products/lavkids-by-miss-nella-moisturising-leave-in-conditioner",
+      "official_source_status": "official_product_json_and_media_reviewed",
+      "media_assets_reviewed": 3,
+      "formal_inci_found": false,
+      "patch_candidate": false
+    },
+    {
+      "external_product_id": "ext_0389cd34ac2b199ed7d155fd",
+      "title": "Lav Kids Skincare by Miss Nella Facial Foaming Cleanser 100ml",
+      "canonical_url": "https://www.missnella.com/products/lavkids-skincare-by-miss-nella-facial-foaming-cleanser-100ml",
+      "official_source_status": "official_product_json_and_media_reviewed",
+      "media_assets_reviewed": 2,
+      "formal_inci_found": false,
+      "patch_candidate": false
+    },
+    {
+      "external_product_id": "ext_c954d06d813f8162e2f104c7",
+      "title": "Lav Kids Skincare by Miss Nella Foaming Shower Gel 200ml",
+      "canonical_url": "https://www.missnella.com/products/lavkids-skincare-by-miss-nella-foaming-shower-gel-200ml",
+      "official_source_status": "official_product_json_and_media_reviewed",
+      "media_assets_reviewed": 6,
+      "formal_inci_found": false,
+      "patch_candidate": false
+    },
+    {
+      "external_product_id": "ext_d4cd4e83ffea1be996dc5655",
+      "title": "Lav Kids Skincare by Miss Nella Gentle Care Conditioner 200ml",
+      "canonical_url": "https://www.missnella.com/products/lavkids-skincare-by-miss-nella-gentle-care-conditioner-200ml",
+      "official_source_status": "official_product_json_and_media_reviewed",
+      "media_assets_reviewed": 2,
+      "formal_inci_found": false,
+      "patch_candidate": false
+    },
+    {
+      "external_product_id": "ext_18c788834195be4e0022a2c3",
+      "title": "Lav Kids Skincare by Miss Nella Gentle Care Shampoo 215ml",
+      "canonical_url": "https://www.missnella.com/products/lavkids-skincare-by-miss-nella-gentle-care-shampoo-200ml",
+      "official_source_status": "official_product_json_and_media_reviewed",
+      "media_assets_reviewed": 2,
+      "formal_inci_found": false,
+      "patch_candidate": false
+    },
+    {
+      "external_product_id": "ext_8d2decaa8a177bd033597c3e",
+      "title": "Lav Kids Skincare by Miss Nella Gentle Care Shampoo 280ml",
+      "canonical_url": "https://www.missnella.com/products/lav-kids-skincare-by-miss-nella-gentle-care-shampoo-280ml",
+      "official_source_status": "official_product_json_unavailable",
+      "media_assets_reviewed": 0,
+      "formal_inci_found": false,
+      "patch_candidate": false
+    },
+    {
+      "external_product_id": "ext_bede5d7b6beac13274e28b6a",
+      "title": "Lav Kids Skincare by Miss Nella Moisturising Lip Butter",
+      "canonical_url": "https://www.missnella.com/products/lavkids-skincare-by-miss-nella-moisturising-lip-butter",
+      "official_source_status": "official_product_json_and_media_reviewed",
+      "media_assets_reviewed": 4,
+      "formal_inci_found": false,
+      "patch_candidate": false
+    },
+    {
+      "external_product_id": "ext_bba56c29b8209bcefce46fcb",
+      "title": "Let's Clay! Face Mask",
+      "canonical_url": "https://www.missnella.com/products/lav-teens-let-s-clay-face-mask",
+      "official_source_status": "official_product_json_and_media_reviewed",
+      "media_assets_reviewed": 4,
+      "formal_inci_found": false,
+      "patch_candidate": false
+    }
+  ]
+}
