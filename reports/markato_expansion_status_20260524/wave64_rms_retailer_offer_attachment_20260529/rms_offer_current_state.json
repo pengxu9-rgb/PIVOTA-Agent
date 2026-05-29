@@ -1,0 +1,400 @@
+{
+  "generated_at": "2026-05-29T13:58:03.320Z",
+  "ids": [
+    "ext_1cc14ab28dee629b0bb1d3db",
+    "ext_f16d1ed12f9f2c9966d47d78",
+    "ext_b8af61a562f4ab972197f413",
+    "ext_1c6390a4583df99215617f2b"
+  ],
+  "summary": {
+    "seeds_seen": 4,
+    "identities_seen": 4,
+    "catalog_rows_seen": 4,
+    "index_rows_seen": 4,
+    "attached_seed_rows": 4,
+    "retailer_offer_seed_rows": 2,
+    "reviewed_merge_candidate_rows": 2
+  },
+  "seeds": [
+    {
+      "id": "eps_548685da3cccebe574b327c3",
+      "external_product_id": "ext_1cc14ab28dee629b0bb1d3db",
+      "market": "US",
+      "domain": "dermstore.com",
+      "title": "RMS Beauty Radiance Lock Setting Mist 100ml",
+      "canonical_url": "https://www.dermstore.com/p/rms-beauty-radiance-lock-setting-mist-100ml/15820047/",
+      "destination_url": "https://www.dermstore.com/p/rms-beauty-radiance-lock-setting-mist-100ml/15820047/",
+      "attached_product_key": "prod::external_seed::external_seed::ext_1cc14ab28dee629b0bb1d3db",
+      "seed_source_role": "retailer_offer",
+      "snapshot_source_role": "retailer_offer",
+      "seed_source_listing_scope": "retailer_offer",
+      "snapshot_source_listing_scope": "retailer_offer",
+      "seed_multi_offer_merge_candidate": {
+        "status": "approved",
+        "match_basis": [
+          "normalized_brand_match",
+          "title_core_match",
+          "size_axis_match",
+          "source_backed_price_availability",
+          "official_dtc_canonical_content_owner"
+        ],
+        "reviewed_at": "2026-05-15T00:10:10.803Z",
+        "reviewed_by": "codex_manual_review",
+        "evidence_url": "https://www.dermstore.com/p/rms-beauty-radiance-lock-setting-mist-100ml/15820047/?variation=15820047",
+        "reviewer_standard": "strict_human_quality_gate",
+        "target_canonical_url": "https://www.rmsbeauty.com/products/radiance-lock-setting-mist",
+        "target_product_title": "Radiance Lock Setting Mist",
+        "retailer_offer_source": "Dermstore",
+        "canonical_content_owner": "official_dtc",
+        "target_source_listing_ref": "external_seed:ext_f16d1ed12f9f2c9966d47d78",
+        "target_external_product_id": "ext_f16d1ed12f9f2c9966d47d78"
+      },
+      "snapshot_multi_offer_merge_candidate": {
+        "status": "approved",
+        "match_basis": [
+          "normalized_brand_match",
+          "title_core_match",
+          "size_axis_match",
+          "source_backed_price_availability",
+          "official_dtc_canonical_content_owner"
+        ],
+        "reviewed_at": "2026-05-15T00:10:10.803Z",
+        "reviewed_by": "codex_manual_review",
+        "evidence_url": "https://www.dermstore.com/p/rms-beauty-radiance-lock-setting-mist-100ml/15820047/?variation=15820047",
+        "reviewer_standard": "strict_human_quality_gate",
+        "target_canonical_url": "https://www.rmsbeauty.com/products/radiance-lock-setting-mist",
+        "target_product_title": "Radiance Lock Setting Mist",
+        "retailer_offer_source": "Dermstore",
+        "canonical_content_owner": "official_dtc",
+        "target_source_listing_ref": "external_seed:ext_f16d1ed12f9f2c9966d47d78",
+        "target_external_product_id": "ext_f16d1ed12f9f2c9966d47d78"
+      },
+      "commerce_facts_gate": {
+        "status": "pass",
+        "problems": [],
+        "market_id": "US",
+        "shipping_status": "unknown",
+        "expected_currency": "USD",
+        "observed_currency": "USD",
+        "promotions_status": "unknown",
+        "availability_status": "in_stock",
+        "market_switch_status": "ok",
+        "sellable_region_status": "unknown"
+      },
+      "updated_at": "2026-05-22T22:28:11.639Z"
+    },
+    {
+      "id": "eps_2a97efcdfbe03673bc538dae",
+      "external_product_id": "ext_f16d1ed12f9f2c9966d47d78",
+      "market": "US",
+      "domain": "rmsbeauty.com",
+      "title": "Radiance Lock Setting Mist",
+      "canonical_url": "https://www.rmsbeauty.com/products/radiance-lock-setting-mist",
+      "destination_url": "https://www.rmsbeauty.com/products/radiance-lock-setting-mist",
+      "attached_product_key": "prod::external_seed::external_seed::ext_f16d1ed12f9f2c9966d47d78",
+      "seed_source_role": null,
+      "snapshot_source_role": null,
+      "seed_source_listing_scope": null,
+      "snapshot_source_listing_scope": null,
+      "seed_multi_offer_merge_candidate": null,
+      "snapshot_multi_offer_merge_candidate": null,
+      "commerce_facts_gate": {
+        "status": "pass",
+        "problems": [],
+        "market_id": "US",
+        "shipping_status": "unknown",
+        "expected_currency": "USD",
+        "observed_currency": "USD",
+        "promotions_status": "unknown",
+        "availability_status": "in_stock",
+        "market_switch_status": "ok",
+        "sellable_region_status": "unknown"
+      },
+      "updated_at": "2026-05-24T01:45:47.795Z"
+    },
+    {
+      "id": "eps_53fd1937c623efe9cc823dfd",
+      "external_product_id": "ext_b8af61a562f4ab972197f413",
+      "market": "US",
+      "domain": "dermstore.com",
+      "title": "RMS Beauty Revitalize Hydra Concealer 0.17fl oz (Various Shades)",
+      "canonical_url": "https://www.dermstore.com/p/rms-beauty-revitalize-hydra-concealer-0.17fl-oz-various-shades/16621199/",
+      "destination_url": "https://www.dermstore.com/p/rms-beauty-revitalize-hydra-concealer-0.17fl-oz-various-shades/16621199/",
+      "attached_product_key": "prod::external_seed::external_seed::ext_b8af61a562f4ab972197f413",
+      "seed_source_role": "retailer_offer",
+      "snapshot_source_role": "retailer_offer",
+      "seed_source_listing_scope": "retailer_offer",
+      "snapshot_source_listing_scope": "retailer_offer",
+      "seed_multi_offer_merge_candidate": {
+        "status": "approved",
+        "match_basis": [
+          "normalized_brand_match",
+          "title_core_match",
+          "shade_axis_match",
+          "source_backed_price_availability",
+          "official_dtc_canonical_content_owner"
+        ],
+        "reviewed_at": "2026-05-15T00:10:13.892Z",
+        "reviewed_by": "codex_manual_review",
+        "evidence_url": "https://www.dermstore.com/p/rms-beauty-revitalize-hydra-concealer-0.17fl-oz-various-shades/16621199/?variation=16621202",
+        "reviewer_standard": "strict_human_quality_gate",
+        "target_canonical_url": "https://www.rmsbeauty.com/products/revitalize-hydra-concealer",
+        "target_product_title": "Revitalize Hydra Concealer",
+        "retailer_offer_source": "Dermstore",
+        "canonical_content_owner": "official_dtc",
+        "target_source_listing_ref": "external_seed:ext_1c6390a4583df99215617f2b",
+        "target_external_product_id": "ext_1c6390a4583df99215617f2b"
+      },
+      "snapshot_multi_offer_merge_candidate": {
+        "status": "approved",
+        "match_basis": [
+          "normalized_brand_match",
+          "title_core_match",
+          "shade_axis_match",
+          "source_backed_price_availability",
+          "official_dtc_canonical_content_owner"
+        ],
+        "reviewed_at": "2026-05-15T00:10:13.892Z",
+        "reviewed_by": "codex_manual_review",
+        "evidence_url": "https://www.dermstore.com/p/rms-beauty-revitalize-hydra-concealer-0.17fl-oz-various-shades/16621199/?variation=16621202",
+        "reviewer_standard": "strict_human_quality_gate",
+        "target_canonical_url": "https://www.rmsbeauty.com/products/revitalize-hydra-concealer",
+        "target_product_title": "Revitalize Hydra Concealer",
+        "retailer_offer_source": "Dermstore",
+        "canonical_content_owner": "official_dtc",
+        "target_source_listing_ref": "external_seed:ext_1c6390a4583df99215617f2b",
+        "target_external_product_id": "ext_1c6390a4583df99215617f2b"
+      },
+      "commerce_facts_gate": {
+        "status": "pass",
+        "problems": [],
+        "market_id": "US",
+        "shipping_status": "unknown",
+        "expected_currency": "USD",
+        "observed_currency": "USD",
+        "promotions_status": "unknown",
+        "availability_status": "in_stock",
+        "market_switch_status": "ok",
+        "sellable_region_status": "unknown"
+      },
+      "updated_at": "2026-05-22T22:28:11.639Z"
+    },
+    {
+      "id": "eps_a4bf1c3ae6eeffd84a1f5806",
+      "external_product_id": "ext_1c6390a4583df99215617f2b",
+      "market": "US",
+      "domain": "rmsbeauty.com",
+      "title": "Revitalize Hydra Concealer",
+      "canonical_url": "https://www.rmsbeauty.com/products/revitalize-hydra-concealer",
+      "destination_url": "https://www.rmsbeauty.com/products/revitalize-hydra-concealer",
+      "attached_product_key": "prod::external_seed::external_seed::ext_1c6390a4583df99215617f2b",
+      "seed_source_role": null,
+      "snapshot_source_role": null,
+      "seed_source_listing_scope": null,
+      "snapshot_source_listing_scope": null,
+      "seed_multi_offer_merge_candidate": null,
+      "snapshot_multi_offer_merge_candidate": null,
+      "commerce_facts_gate": {
+        "status": "pass",
+        "problems": [],
+        "market_id": "US",
+        "shipping_status": "unknown",
+        "expected_currency": "USD",
+        "observed_currency": "USD",
+        "promotions_status": "unknown",
+        "availability_status": "in_stock",
+        "market_switch_status": "ok",
+        "sellable_region_status": "unknown"
+      },
+      "updated_at": "2026-05-29T13:40:08.722Z"
+    }
+  ],
+  "identities": [
+    {
+      "source_listing_ref": "external_seed:ext_1cc14ab28dee629b0bb1d3db",
+      "product_id": "ext_1cc14ab28dee629b0bb1d3db",
+      "source_tier": "merchant",
+      "identity_status": "approved",
+      "live_read_enabled": false,
+      "review_required": false,
+      "sellable_item_group_id": "sig_2cf57ce472d380ed63f1393e",
+      "product_line_id": "pl_691e030f70a6059c86e61784",
+      "matched_by_rule": "reviewed_multi_offer_merge",
+      "review_reason_codes": [],
+      "match_basis": [
+        "official_url:https://dermstore.com/p/rms-beauty-radiance-lock-setting-mist-100ml/15820047",
+        "variant_axes:size:100 ml|volume:100ml",
+        "reviewed_multi_offer_target:external_seed:ext_f16d1ed12f9f2c9966d47d78",
+        "reviewed:normalized_brand_match",
+        "reviewed:title_core_match",
+        "reviewed:size_axis_match",
+        "reviewed:source_backed_price_availability",
+        "reviewed:official_dtc_canonical_content_owner",
+        "soft_exact_cluster:rms beauty|radiance lock setting mist|size:100 ml|volume:100ml"
+      ],
+      "official_url": "https://www.dermstore.com/p/rms-beauty-radiance-lock-setting-mist-100ml/15820047/",
+      "updated_at": "2026-05-24T01:51:44.391Z"
+    },
+    {
+      "source_listing_ref": "external_seed:ext_f16d1ed12f9f2c9966d47d78",
+      "product_id": "ext_f16d1ed12f9f2c9966d47d78",
+      "source_tier": "brand",
+      "identity_status": "approved",
+      "live_read_enabled": true,
+      "review_required": false,
+      "sellable_item_group_id": "sig_2cf57ce472d380ed63f1393e",
+      "product_line_id": "pl_691e030f70a6059c86e61784",
+      "matched_by_rule": "official_url_soft_exact_cluster",
+      "review_reason_codes": [],
+      "match_basis": [
+        "official_url:https://rmsbeauty.com/products/radiance-lock-setting-mist",
+        "variant_axes:size:100 ml|volume:100ml",
+        "soft_exact_cluster:rms beauty|radiance lock setting mist|size:100 ml|volume:100ml"
+      ],
+      "official_url": "https://rmsbeauty.com/products/radiance-lock-setting-mist",
+      "updated_at": "2026-05-15T02:51:49.163Z"
+    },
+    {
+      "source_listing_ref": "external_seed:ext_b8af61a562f4ab972197f413",
+      "product_id": "ext_b8af61a562f4ab972197f413",
+      "source_tier": "merchant",
+      "identity_status": "approved",
+      "live_read_enabled": false,
+      "review_required": false,
+      "sellable_item_group_id": "sig_9d68d0459c7a8e07e4004414",
+      "product_line_id": "pl_94ea4baccce0c56763c38658",
+      "matched_by_rule": "reviewed_multi_offer_merge",
+      "review_reason_codes": [],
+      "match_basis": [
+        "official_url:https://dermstore.com/p/rms-beauty-revitalize-hydra-concealer-0.17fl-oz-various-shades/16621199",
+        "variant_axes:volume:17floz|shade:w023",
+        "reviewed_multi_offer_target:external_seed:ext_1c6390a4583df99215617f2b",
+        "reviewed:normalized_brand_match",
+        "reviewed:title_core_match",
+        "reviewed:shade_axis_match",
+        "reviewed:source_backed_price_availability",
+        "reviewed:official_dtc_canonical_content_owner"
+      ],
+      "official_url": "https://www.dermstore.com/p/rms-beauty-revitalize-hydra-concealer-0.17fl-oz-various-shades/16621199/",
+      "updated_at": "2026-05-24T01:51:44.391Z"
+    },
+    {
+      "source_listing_ref": "external_seed:ext_1c6390a4583df99215617f2b",
+      "product_id": "ext_1c6390a4583df99215617f2b",
+      "source_tier": "brand",
+      "identity_status": "approved",
+      "live_read_enabled": true,
+      "review_required": false,
+      "sellable_item_group_id": "sig_9d68d0459c7a8e07e4004414",
+      "product_line_id": "pl_94ea4baccce0c56763c38658",
+      "matched_by_rule": "official_url_axes",
+      "review_reason_codes": [],
+      "match_basis": [
+        "official_url:https://rmsbeauty.com/products/revitalize-hydra-concealer",
+        "variant_axes:shade:on01"
+      ],
+      "official_url": "https://rmsbeauty.com/products/revitalize-hydra-concealer",
+      "updated_at": "2026-05-29T13:40:08.722Z"
+    }
+  ],
+  "catalog_products": [
+    {
+      "product_key": "prod::external_seed::external_seed::ext_1c6390a4583df99215617f2b",
+      "content_key": "ck_e0f19a3ad82d957a6121fbb7dc341a9c",
+      "source_product_id": "ext_1c6390a4583df99215617f2b",
+      "source_domain": "rmsbeauty.com",
+      "title": "Revitalize Hydra Concealer",
+      "brand": "RMS Beauty",
+      "product_type": "Concealer",
+      "category": "Concealer",
+      "category_path": "beauty/makeup/face/concealer",
+      "pdp_lifecycle_stage": "published",
+      "sync_status": "live",
+      "pivota_signature_id": "sig_9d68d0459c7a8e07e4004414",
+      "updated_at": "2026-05-29T05:40:08.722Z"
+    },
+    {
+      "product_key": "prod::external_seed::external_seed::ext_1cc14ab28dee629b0bb1d3db",
+      "content_key": "ck_0be9df8e8aa752079ed1568c4dc972ba",
+      "source_product_id": "ext_1cc14ab28dee629b0bb1d3db",
+      "source_domain": "dermstore.com",
+      "title": "RMS Beauty Radiance Lock Setting Mist 100ml",
+      "brand": "RMS Beauty",
+      "product_type": null,
+      "category": null,
+      "category_path": "beauty/skincare/treat/toner",
+      "pdp_lifecycle_stage": "candidate",
+      "sync_status": "live",
+      "pivota_signature_id": null,
+      "updated_at": "2026-05-25T05:34:25.148Z"
+    },
+    {
+      "product_key": "prod::external_seed::external_seed::ext_b8af61a562f4ab972197f413",
+      "content_key": "ck_a99da31a4af6e676f62a6c1a3496bdfb",
+      "source_product_id": "ext_b8af61a562f4ab972197f413",
+      "source_domain": "dermstore.com",
+      "title": "RMS Beauty Revitalize Hydra Concealer 0.17fl oz (Various Shades)",
+      "brand": "RMS Beauty",
+      "product_type": null,
+      "category": null,
+      "category_path": "beauty/makeup/face/concealer",
+      "pdp_lifecycle_stage": "candidate",
+      "sync_status": "live",
+      "pivota_signature_id": null,
+      "updated_at": "2026-05-25T05:34:25.148Z"
+    },
+    {
+      "product_key": "prod::external_seed::external_seed::ext_f16d1ed12f9f2c9966d47d78",
+      "content_key": "ck_52f53025184b72e73b42863f960393e9",
+      "source_product_id": "ext_f16d1ed12f9f2c9966d47d78",
+      "source_domain": "rmsbeauty.com",
+      "title": "Radiance Lock Setting Mist",
+      "brand": "RMS Beauty",
+      "product_type": "Beauty Product",
+      "category": "Beauty Product",
+      "category_path": "beauty",
+      "pdp_lifecycle_stage": "published",
+      "sync_status": "live",
+      "pivota_signature_id": "sig_2cf57ce472d380ed63f1393e",
+      "updated_at": "2026-05-25T05:34:25.148Z"
+    }
+  ],
+  "index_pipeline_state": [
+    {
+      "content_key": "ck_0be9df8e8aa752079ed1568c4dc972ba",
+      "pipeline_stage": "extracted",
+      "blocker_code": "low_quality",
+      "blocker_detail": "no quality snapshot found",
+      "serving_eligible": false,
+      "content_quality_score": null,
+      "quality_scored_at": null
+    },
+    {
+      "content_key": "ck_52f53025184b72e73b42863f960393e9",
+      "pipeline_stage": "shadow_indexed",
+      "blocker_code": "none",
+      "blocker_detail": null,
+      "serving_eligible": true,
+      "content_quality_score": 71.4,
+      "quality_scored_at": "2026-05-27T16:23:03.934Z"
+    },
+    {
+      "content_key": "ck_a99da31a4af6e676f62a6c1a3496bdfb",
+      "pipeline_stage": "extracted",
+      "blocker_code": "low_quality",
+      "blocker_detail": "no quality snapshot found",
+      "serving_eligible": false,
+      "content_quality_score": null,
+      "quality_scored_at": null
+    },
+    {
+      "content_key": "ck_e0f19a3ad82d957a6121fbb7dc341a9c",
+      "pipeline_stage": "shadow_indexed",
+      "blocker_code": "none",
+      "blocker_detail": null,
+      "serving_eligible": true,
+      "content_quality_score": 71.4,
+      "quality_scored_at": "2026-05-27T16:28:50.777Z"
+    }
+  ]
+}
