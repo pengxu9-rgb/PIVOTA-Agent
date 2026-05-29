@@ -577,7 +577,7 @@ describe('externalSeedProducts helper', () => {
     });
   });
 
-  test('carries force-filled estimated reviews and reviewed questions', () => {
+  test('does not carry force-filled estimated reviews as public social proof', () => {
     const product = buildExternalSeedProduct({
       id: 'eps_review_estimate_seed',
       external_product_id: 'ext_review_estimate_seed',
@@ -610,20 +610,69 @@ describe('externalSeedProducts helper', () => {
     expect(product.review_summary).toEqual(
       expect.objectContaining({
         status: 'estimated',
-        rating: 4.4,
-        review_count: 36,
+        review_count: 0,
         scale: 5,
         source: 'pivota_force_fill_v1',
         content_review_state: 'approved_estimate',
         force_filled: true,
-        questions: [
+      }),
+    );
+    expect(product.review_summary.rating).toBeUndefined();
+    expect(product.review_summary.questions).toBeUndefined();
+  });
+
+  test('source-backed review summary replaces an older force-filled estimate', () => {
+    const product = buildExternalSeedProduct({
+      id: 'eps_review_source_backed_after_estimate',
+      external_product_id: 'ext_review_source_backed_after_estimate',
+      canonical_url: 'https://fentybeauty.com/products/example',
+      destination_url: 'https://fentybeauty.com/products/example',
+      title: 'Example Product',
+      seed_data: {
+        brand: 'Fenty Beauty',
+        snapshot: {
+          pdp_review_summary: {
+            status: 'estimated',
+            rating: 4.7,
+            review_count: 28,
+            scale: 5,
+            source: 'pivota_force_fill_v1',
+            content_review_state: 'approved_estimate',
+            force_filled: true,
+          },
+          review_summary: {
+            rating: 4.397572,
+            review_count: 1318,
+            scale: 5,
+            source_origin: 'official_yotpo_reviews_api',
+            preview_items: [
+              {
+                review_id: 'yotpo_841090761',
+                rating: 5,
+                author_label: 'Maura L.',
+                text_snippet: 'I have repurchased this many times because the colour is great.',
+              },
+            ],
+          },
+        },
+      },
+    });
+
+    expect(product.review_summary).toEqual(
+      expect.objectContaining({
+        rating: 4.397572,
+        review_count: 1318,
+        scale: 5,
+        source: 'official_yotpo_reviews_api',
+        preview_items: [
           expect.objectContaining({
-            question: 'How should I use this product?',
-            answer: expect.stringContaining('product directions'),
+            review_id: 'yotpo_841090761',
           }),
         ],
       }),
     );
+    expect(product.review_summary.status).toBeUndefined();
+    expect(product.review_summary.force_filled).toBeUndefined();
   });
 
   test('normalizes merchant review preview items and q&a into external seed runtime product', () => {

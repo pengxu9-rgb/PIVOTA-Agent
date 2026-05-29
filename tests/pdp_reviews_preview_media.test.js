@@ -32,6 +32,8 @@ describe('pdpBuilder reviews preview media', () => {
           scale: 5,
           rating: 4.7,
           review_count: 128,
+          source: 'merchant_review_source',
+          source_origin: 'official_yotpo_reviews_api',
           preview_items: summaryItems,
         },
       },
@@ -45,6 +47,7 @@ describe('pdpBuilder reviews preview media', () => {
 
     expect(payload.product.brand).toEqual({ name: 'Winona' });
     expect(reviewsModule).toBeTruthy();
+    expect(reviewsModule.data.source_origin).toBe('official_yotpo_reviews_api');
     expect(reviewsModule.data.brand_card).toEqual({ name: 'Winona' });
     const previewItems = reviewsModule.data.preview_items || [];
     expect(previewItems).toHaveLength(6);
@@ -131,13 +134,14 @@ describe('pdpBuilder reviews preview media', () => {
 
     expect(reviewsModule?.data).toEqual(
       expect.objectContaining({
-        rating: 4.5,
-        review_count: 30,
+        rating: 0,
+        review_count: 0,
         source: 'pivota_force_fill_v1',
         force_filled: true,
       }),
     );
     expect(reviewsModule?.data?.questions).toBeUndefined();
+    expect(reviewsModule?.data?.star_distribution).toBeUndefined();
   });
 
   test('preserves review scope metadata and product-line preview media', () => {

@@ -264,6 +264,17 @@ function collectReviewsStatus(livePayload = {}, liveResponse = {}) {
   const reviewsData =
     findModuleData('reviews_preview', liveResponse, livePayload) ||
     ensureJsonObject(liveResponse?.reviews_preview || livePayload?.reviews_preview);
+  const sourceSignals = [
+    reviewsData.status,
+    reviewsData.source,
+    reviewsData.source_origin,
+    reviewsData.source_kind,
+    reviewsData.content_review_state,
+    reviewsData.aggregation_scope,
+  ]
+    .map((value) => normalizeNonEmptyString(value))
+    .filter(Boolean)
+    .join(' ');
   const starDistribution = Array.isArray(reviewsData.star_distribution)
     ? reviewsData.star_distribution
     : Array.isArray(reviewsData.rating_distribution)
@@ -280,6 +291,16 @@ function collectReviewsStatus(livePayload = {}, liveResponse = {}) {
     module_present: modulePresent,
     review_count: reviewCount,
     rating: Number(reviewsData.rating || reviewsData.average_rating || 0) || null,
+    force_filled: reviewsData.force_filled === true,
+    estimated_public_social_proof:
+      reviewCount > 0 &&
+      (
+        reviewsData.force_filled === true ||
+        reviewsData.distribution_estimated === true ||
+        /(?:pivota_force_fill|force_filled|force_fill|synthetic|simulation|mock|browser_fallback|legacy_fallback|\bestimated\b)/i.test(
+          sourceSignals,
+        )
+      ),
     chart_present: starDistribution.length >= 5,
     distribution_bucket_count: starDistribution.length,
     preview_count: Array.isArray(reviewsData.preview_items) ? reviewsData.preview_items.length : 0,
@@ -1178,6 +1199,9 @@ function buildLivePdpGate({
   }
   if (reviewsStatus.module_present && reviewsStatus.review_count > 0 && !reviewsStatus.chart_present) {
     failureReasons.push('reviews_distribution_incomplete');
+  }
+  if (reviewsStatus.estimated_public_social_proof) {
+    failureReasons.push('force_filled_reviews_public_social_proof');
   }
   if (extractorHasDescription && detailsText.length === 0) {
     failureReasons.push('missing_overview_from_available_description');
