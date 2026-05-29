@@ -1,0 +1,73 @@
+{
+  "wave": "wave61_rms_retailer_offer_mapping_20260529",
+  "created_at": "2026-05-29",
+  "review_mode": "source_review_and_operator_mapping_only",
+  "runtime_database_writes": 0,
+  "serving_promotions": 0,
+  "railway_up_used": false,
+  "targets": {
+    "rows_reviewed": 2,
+    "official_brand_pages_reviewed": 1,
+    "official_shopify_json_reviewed": 1,
+    "retailer_pages_reviewed": 1,
+    "retailer_offer_candidates_reviewed": 1,
+    "risk_hold_canonical_rows_reviewed": 1
+  },
+  "source_files": {
+    "official_html_capture": "/private/tmp/wave61_rms_offer_mapping/rms_radiance_lock.html",
+    "official_shopify_json_capture": "/private/tmp/wave61_rms_offer_mapping/rms_radiance_lock.json",
+    "retailer_html_capture": "/private/tmp/wave61_rms_offer_mapping/dermstore_radiance_lock.html"
+  },
+  "evidence_summary": {
+    "canonical_match_found": true,
+    "same_brand_found": true,
+    "same_product_line_found": true,
+    "same_size_match_found": true,
+    "matched_size": "100ml",
+    "official_full_inci_found": true,
+    "retailer_full_inci_found": true,
+    "official_how_to_found": true,
+    "official_variants_found": [
+      {
+        "title": "Full Size - 100ml",
+        "sku": "SSP1",
+        "available": true,
+        "price": 3900
+      },
+      {
+        "title": "Travel-size - 30ml",
+        "sku": "SSP1Travel",
+        "available": true,
+        "price": 2700
+      }
+    ],
+    "official_product_type": "Hydrating Mist",
+    "official_product_images": 16,
+    "retailer_product_group_id": "15820047",
+    "retailer_variant_sku": "15820045"
+  },
+  "decisions": {
+    "ext_1cc14ab28dee629b0bb1d3db": {
+      "decision": "map_as_retailer_offer_candidate",
+      "canonical_external_product_id": "ext_f16d1ed12f9f2c9966d47d78",
+      "promote_as_standalone": false,
+      "reason": "Dermstore page matches the official RMS canonical product and should be represented through retailer-offer attachment rather than as a duplicate canonical product."
+    },
+    "ext_f16d1ed12f9f2c9966d47d78": {
+      "decision": "source_backed_but_risk_taxonomy_review_required",
+      "promote_to_serving": false,
+      "reason": "Official evidence supports a normal RMS setting mist, but the local rollup still classifies the row as bundle_or_sample under hold_risk_review."
+    }
+  },
+  "next_actions": [
+    "Implement or use the retailer-offer attachment path to attach Dermstore offer data to the official RMS canonical row.",
+    "Review the official RMS row taxonomy/risk classification; do not bypass hold_risk_review by source evidence alone.",
+    "After taxonomy review clears, rerun identity and serving gates before any promotion."
+  ],
+  "artifacts": [
+    "rms_radiance_lock_offer_mapping_review.csv",
+    "rms_radiance_lock_operator_actions.csv",
+    "wave61_rms_retailer_offer_mapping_manifest.json",
+    "wave61_rms_retailer_offer_mapping_closeout_20260529.md"
+  ]
+}
