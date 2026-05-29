@@ -1312,6 +1312,183 @@ describe('PDP grouped offers', () => {
     expect(offersData.offers[0].merchant_name).toBe('Beauty of Joseon');
   });
 
+  test('collapses same internal merchant offers with different prices to the lowest-total offer', async () => {
+    const app = require('../src/server');
+    const merchantId = 'merch_efbc46b4619cfbdf';
+    const offerRows = [
+      { productId: 'shopify_listing_00', price: 8.68, shipping: 5.5 },
+      { productId: 'shopify_listing_01', price: 40.59, shipping: 0 },
+      { productId: 'shopify_listing_02', price: 22.1, shipping: 0 },
+      { productId: 'shopify_listing_03', price: 12.25, shipping: 0 },
+      { productId: 'shopify_listing_04', price: 9.25, shipping: 0 },
+      { productId: 'shopify_listing_05', price: 18.75, shipping: 0 },
+      { productId: 'shopify_listing_06', price: 17.3, shipping: 0 },
+      { productId: 'shopify_listing_07', price: 14.99, shipping: 0 },
+      { productId: 'shopify_listing_08', price: 27.5, shipping: 0 },
+      { productId: 'shopify_listing_09', price: 16.1, shipping: 0 },
+      { productId: 'shopify_listing_10', price: 11.8, shipping: 0 },
+      { productId: 'shopify_listing_11', price: 35.45, shipping: 0 },
+      { productId: 'shopify_listing_12', price: 24.2, shipping: 0 },
+    ];
+
+    const offersData = await app._debug.buildOffersFromGroupMembers({
+      productGroupId: 'sig_same_merchant_prices',
+      debug: true,
+      members: offerRows.map((row) => ({
+        merchant_id: merchantId,
+        product_id: row.productId,
+        platform: 'shopify',
+      })),
+      prefetchedProducts: offerRows.map((row) => ({
+        merchant_id: merchantId,
+        product_id: row.productId,
+        title: 'Same Merchant Serum',
+        merchant_name: 'Chydan',
+        price: { amount: row.price, currency: 'USD' },
+        currency: 'USD',
+        shipping: { cost: { amount: row.shipping, currency: 'USD' } },
+        in_stock: true,
+      })),
+    });
+
+    expect(offersData.offers_count).toBe(1);
+    expect(offersData.offers).toHaveLength(1);
+    expect(offersData.offers[0]).toEqual(expect.objectContaining({
+      merchant_id: merchantId,
+      product_id: 'shopify_listing_04',
+      price: { amount: 9.25, currency: 'USD' },
+    }));
+    expect(offersData.diagnostics.same_merchant_collapsed_offer_count).toBe(12);
+  });
+
+  test('keeps the in-stock offer when collapsing same internal merchant offers', async () => {
+    const app = require('../src/server');
+    const merchantId = 'merch_stock_priority';
+
+    const offersData = await app._debug.buildOffersFromGroupMembers({
+      productGroupId: 'sig_same_merchant_stock',
+      debug: true,
+      members: [
+        { merchant_id: merchantId, product_id: 'cheap_oos', platform: 'shopify' },
+        { merchant_id: merchantId, product_id: 'available_full_price', platform: 'shopify' },
+      ],
+      prefetchedProducts: [
+        {
+          merchant_id: merchantId,
+          product_id: 'cheap_oos',
+          title: 'Same Merchant Cream',
+          merchant_name: 'Stock Priority',
+          price: { amount: 5, currency: 'USD' },
+          currency: 'USD',
+          in_stock: false,
+        },
+        {
+          merchant_id: merchantId,
+          product_id: 'available_full_price',
+          title: 'Same Merchant Cream',
+          merchant_name: 'Stock Priority',
+          price: { amount: 12, currency: 'USD' },
+          currency: 'USD',
+          in_stock: true,
+        },
+      ],
+    });
+
+    expect(offersData.offers_count).toBe(1);
+    expect(offersData.offers).toHaveLength(1);
+    expect(offersData.offers[0]).toEqual(expect.objectContaining({
+      merchant_id: merchantId,
+      product_id: 'available_full_price',
+      price: { amount: 12, currency: 'USD' },
+    }));
+  });
+
+  test('preserves offers from different internal merchants', async () => {
+    const app = require('../src/server');
+
+    const offersData = await app._debug.buildOffersFromGroupMembers({
+      productGroupId: 'sig_cross_merchant_preserved',
+      debug: true,
+      members: [
+        { merchant_id: 'merch_alpha', product_id: 'alpha_listing', platform: 'shopify' },
+        { merchant_id: 'merch_beta', product_id: 'beta_listing', platform: 'shopify' },
+      ],
+      prefetchedProducts: [
+        {
+          merchant_id: 'merch_alpha',
+          product_id: 'alpha_listing',
+          title: 'Cross Merchant Toner',
+          merchant_name: 'Alpha Store',
+          price: { amount: 18, currency: 'USD' },
+          currency: 'USD',
+          in_stock: true,
+        },
+        {
+          merchant_id: 'merch_beta',
+          product_id: 'beta_listing',
+          title: 'Cross Merchant Toner',
+          merchant_name: 'Beta Store',
+          price: { amount: 17, currency: 'USD' },
+          currency: 'USD',
+          in_stock: true,
+        },
+      ],
+    });
+
+    expect(offersData.offers_count).toBe(2);
+    expect(offersData.offers).toHaveLength(2);
+    expect(offersData.offers.map((offer) => offer.merchant_id)).toEqual(
+      expect.arrayContaining(['merch_alpha', 'merch_beta']),
+    );
+    expect(offersData.diagnostics.same_merchant_collapsed_offer_count).toBe(0);
+  });
+
+  test('does not collapse different external_seed retailers by bucket merchant id', async () => {
+    const app = require('../src/server');
+
+    const offersData = await app._debug.buildOffersFromGroupMembers({
+      productGroupId: 'sig_external_seed_retailers',
+      debug: true,
+      members: [
+        {
+          merchant_id: 'external_seed',
+          product_id: 'ext_retailer_sephora',
+          source_kind: 'external_seed',
+          source_payload: {
+            title: 'External Seed Lip Oil',
+            brand: 'Pivota Test',
+            merchant_name: 'Sephora',
+            price: { amount: 24, currency: 'USD' },
+            currency: 'USD',
+            in_stock: true,
+            destination_url: 'https://www.sephora.com/product/external-seed-lip-oil',
+          },
+        },
+        {
+          merchant_id: 'external_seed',
+          product_id: 'ext_retailer_ulta',
+          source_kind: 'external_seed',
+          source_payload: {
+            title: 'External Seed Lip Oil',
+            brand: 'Pivota Test',
+            merchant_name: 'Ulta Beauty',
+            price: { amount: 24, currency: 'USD' },
+            currency: 'USD',
+            in_stock: true,
+            destination_url: 'https://www.ulta.com/p/external-seed-lip-oil',
+          },
+        },
+      ],
+    });
+
+    expect(offersData.offers_count).toBe(2);
+    expect(offersData.offers).toHaveLength(2);
+    expect(offersData.offers.map((offer) => offer.product_id)).toEqual(
+      expect.arrayContaining(['ext_retailer_sephora', 'ext_retailer_ulta']),
+    );
+    expect(offersData.diagnostics.same_merchant_collapsed_offer_count).toBe(0);
+  });
+
   test('marks external-seed offers even when group member rows do not carry source_kind', async () => {
     const app = require('../src/server');
 
