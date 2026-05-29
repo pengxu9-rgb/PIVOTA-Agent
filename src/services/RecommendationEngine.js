@@ -1819,11 +1819,6 @@ function identityRowsCoverAllSourceRefs(rows = [], products = []) {
   return sourceRefs.length > 0 && sourceRefs.every((ref) => coveredRefs.has(ref));
 }
 
-function recommendationsUseCatalogRowTrust() {
-  const flag = String(process.env.RECOMMENDATIONS_USES_CATALOG_ROW_TRUST || '').trim().toLowerCase();
-  return flag === '1' || flag === 'true' || flag === 'yes' || flag === 'on';
-}
-
 async function loadLiveIdentityRowsForRecommendationProducts(products, options = {}) {
   const timeoutMs = normalizeRecsDbTimeoutMs(
     options.timeoutMs,
@@ -1838,9 +1833,14 @@ async function loadLiveIdentityRowsForRecommendationProducts(products, options =
   ).slice(0, 600);
   if (!refs.length || !process.env.DATABASE_URL || typeof queryFn !== 'function') return [];
 
-  const useTrustContract = recommendationsUseCatalogRowTrust();
-  const sql = useTrustContract
-    ? `
+  // Gate identity-dedup rows on catalog_row_trust.serving_decision='public'.
+  // These rows are used only for identity grouping (sellable_item_group_id /
+  // product_line_id / review_family_id) — the trust gate is the single source
+  // of truth and is intentionally more inclusive than the legacy
+  // identity_status='approved' AND live_read_enabled=true predicate (e.g. it
+  // includes approved external_seed rows with live_read=false, which are valid
+  // dedup anchors).
+  const sql = `
         SELECT
           pil.source_listing_ref,
           pil.sellable_item_group_id,
@@ -1856,18 +1856,6 @@ async function loadLiveIdentityRowsForRecommendationProducts(products, options =
               AND crt.source_listing_ref = pil.source_listing_ref
               AND crt.serving_decision = 'public'
           )
-      `
-    : `
-        SELECT
-          source_listing_ref,
-          sellable_item_group_id,
-          product_line_id,
-          review_family_id,
-          identity_confidence
-        FROM pdp_identity_listing
-        WHERE source_listing_ref = ANY($1::text[])
-          AND identity_status = 'approved'
-          AND live_read_enabled = true
       `;
 
   try {
