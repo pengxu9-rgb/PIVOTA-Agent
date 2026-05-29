@@ -1,0 +1,35 @@
+{
+  "generated_at": "2026-05-29",
+  "runtime_database_writes": 0,
+  "serving_promotions": 0,
+  "classifier": "src/services/externalSeedProductKind.js",
+  "probe_summary": {
+    "rows_tested": 2,
+    "rows_classified_single_formula_after_category_patch": 2
+  },
+  "probes": [
+    {
+      "external_product_id": "ext_f16d1ed12f9f2c9966d47d78",
+      "title": "Radiance Lock Setting Mist",
+      "current_rollup_product_kind": "bundle_or_sample",
+      "proposed_category": "Setting Spray",
+      "proposed_category_path": "beauty/makeup/face/setting-spray",
+      "classifier_result_after_patch": {
+        "family": "single_formula",
+        "reasons": ["formula_category_path_signal"]
+      }
+    },
+    {
+      "external_product_id": "ext_1c6390a4583df99215617f2b",
+      "title": "Revitalize Hydra Concealer",
+      "current_rollup_product_kind": "accessory_or_tool",
+      "proposed_category": "Concealer",
+      "proposed_category_path": "beauty/makeup/face/concealer",
+      "classifier_result_after_patch": {
+        "family": "single_formula",
+        "reasons": ["formula_category_path_signal"]
+      }
+    }
+  ],
+  "command_note": "Probe run locally with classifyExternalSeedProductKind using proposed category/category_path values only; no production DB connection was used."
+}

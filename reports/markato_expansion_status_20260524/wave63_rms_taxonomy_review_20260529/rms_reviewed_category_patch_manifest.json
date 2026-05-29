@@ -1,0 +1,33 @@
+{
+  "market": "US",
+  "reviewed_by": "codex_strict_human_quality_gate",
+  "reason": "wave63_rms_source_backed_taxonomy_review",
+  "source_kind": "official_brand_pdp_and_shopify_json_review",
+  "confidence": 0.95,
+  "entries": [
+    {
+      "external_product_id": "ext_f16d1ed12f9f2c9966d47d78",
+      "market": "US",
+      "title": "Radiance Lock Setting Mist",
+      "canonical_url": "https://www.rmsbeauty.com/products/radiance-lock-setting-mist",
+      "source_url": "https://www.rmsbeauty.com/products/radiance-lock-setting-mist",
+      "category": "Setting Spray",
+      "product_type": "Setting Spray",
+      "category_path": "beauty/makeup/face/setting-spray",
+      "catalog_category_path": "beauty/makeup/face/setting-spray",
+      "evidence": "Official RMS source identifies Radiance Lock Setting Mist as an alcohol-free setting spray/hydrating mist with full ingredient text, usage instructions, available 100ml and 30ml variants, price, and product imagery. This is a beauty formula, not a bundle or sample."
+    },
+    {
+      "external_product_id": "ext_1c6390a4583df99215617f2b",
+      "market": "US",
+      "title": "Revitalize Hydra Concealer",
+      "canonical_url": "https://www.rmsbeauty.com/products/revitalize-hydra-concealer",
+      "source_url": "https://www.rmsbeauty.com/products/revitalize-hydra-concealer",
+      "category": "Concealer",
+      "product_type": "Concealer",
+      "category_path": "beauty/makeup/face/concealer",
+      "catalog_category_path": "beauty/makeup/face/concealer",
+      "evidence": "Official RMS source identifies Revitalize Hydra Concealer as a concealer with full ingredient text, usage instructions, 0.17 fl oz net weight, 26 available shade variants, price, and product imagery. This is a beauty formula, not an accessory or tool."
+    }
+  ]
+}
