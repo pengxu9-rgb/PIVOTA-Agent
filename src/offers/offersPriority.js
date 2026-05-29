@@ -286,6 +286,7 @@ module.exports = {
   enrichOfferCommerceMetadata,
   compareOffersForPresentation,
   computeOfferTotal,
+  isInternalOffer,
   pickDefaultOfferId,
   prioritizeOffers,
   prioritizeOffersResolveResponse,
