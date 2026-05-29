@@ -1,0 +1,598 @@
+{
+  "generated_at": "2026-05-29T14:06:58.958Z",
+  "source": "external_seed_live_pdp_modules_audit",
+  "query": {
+    "market": "US",
+    "domain": null,
+    "brand": null,
+    "external_product_id": null,
+    "external_product_ids": [
+      "ext_a7ab937f43db2868c6f9e383",
+      "ext_83b8555768814cac5243aef1",
+      "ext_67472974111568c15ac3920d",
+      "ext_cf945cc7bfe99bf9864bd6df",
+      "ext_876342422f9629ea9363953c"
+    ],
+    "include_attached": true,
+    "limit": 50,
+    "offset": 0,
+    "include_similar": true,
+    "use_sig": false
+  },
+  "summary": {
+    "scanned": 5,
+    "ready": 0,
+    "thin": 5,
+    "not_conversion_ready": 0,
+    "by_domain": [
+      {
+        "key": "mossnoor.com",
+        "count": 5
+      }
+    ],
+    "blocker_counts": [
+      {
+        "key": "missing_how_to",
+        "count": 5
+      },
+      {
+        "key": "missing_ingredients",
+        "count": 1
+      }
+    ],
+    "weak_insights_ids": [],
+    "seller_only_insights_ids": [],
+    "force_filled_ids": [],
+    "content_gap_ids": [
+      "ext_876342422f9629ea9363953c",
+      "ext_cf945cc7bfe99bf9864bd6df",
+      "ext_67472974111568c15ac3920d",
+      "ext_83b8555768814cac5243aef1",
+      "ext_a7ab937f43db2868c6f9e383"
+    ]
+  },
+  "rows": [
+    {
+      "external_product_id": "ext_876342422f9629ea9363953c",
+      "pivota_signature_id": "sig_c24061fe58d0cd07e8511cea",
+      "probed_product_id": "ext_876342422f9629ea9363953c",
+      "probed_id_type": "ext",
+      "seed_id": "eps_1d5624ce83b81d64ac656dd8",
+      "market": "US",
+      "domain": "mossnoor.com",
+      "title": "After Workout Shower Gel – Light Mint",
+      "canonical_url": "https://mossnoor.com/products/after-workout-shower-gel-light-mint",
+      "http_status": 200,
+      "pdp_status": "success",
+      "build_id": "332019b698a3",
+      "module_types": [
+        "canonical",
+        "variant_selector",
+        "offers",
+        "product_intel",
+        "active_ingredients",
+        "ingredients_inci",
+        "how_to_use",
+        "product_overview",
+        "product_facts",
+        "supplemental_details",
+        "product_details",
+        "reviews_preview",
+        "similar"
+      ],
+      "missing_modules": [
+        "active_ingredients",
+        "how_to_use",
+        "product_facts",
+        "supplemental_details"
+      ],
+      "gallery": {
+        "image_count": 1,
+        "duplicate_url_count": 1,
+        "image_hosts": [
+          "cdn.shopify.com"
+        ],
+        "ok": true
+      },
+      "variant": {
+        "module_present": true,
+        "variant_count": 1,
+        "label_count": 2,
+        "labels": [
+          "Size: 150 mL",
+          "150 mL"
+        ],
+        "bad_labels": [],
+        "ok": true
+      },
+      "reviews": {
+        "module_present": true,
+        "rating": null,
+        "review_count": 0,
+        "chart_present": false,
+        "chart_estimated": false,
+        "preview_count": 0,
+        "ok": true
+      },
+      "insights": {
+        "module_present": true,
+        "quality_state": "reviewed",
+        "evidence_profile": "official_pdp_seed",
+        "seller_only_evidence": false,
+        "seller_grounded_reviewed": false,
+        "headline": "Body wash identity",
+        "why_count": 2,
+        "ok": true
+      },
+      "content": {
+        "ingredients_present": true,
+        "ingredients_text_count": 27,
+        "ingredients_source_origin": "reviewed_source_backed_pdp_content_patch",
+        "ingredients_source_quality_status": "authoritative",
+        "ingredients_force_filled": false,
+        "active_ingredients_present": false,
+        "active_ingredients_source_origin": null,
+        "active_ingredients_source_quality_status": null,
+        "active_ingredients_force_filled": false,
+        "how_to_present": false,
+        "how_to_text_count": 0,
+        "overview_present": true,
+        "details_present": true,
+        "details_text_count": 4
+      },
+      "similar": {
+        "module_present": true,
+        "count": 0,
+        "status": "deferred"
+      },
+      "product_kind": {
+        "family": "single_formula",
+        "reasons": [
+          "formula_signal"
+        ],
+        "pdp_schema_profile": "beauty_formula",
+        "formula_content_required": true,
+        "merchandising_content_applicable": true
+      },
+      "blocking_reasons": [
+        "missing_how_to"
+      ],
+      "pdp_quality_bucket": "thin",
+      "conversion_ready": false
+    },
+    {
+      "external_product_id": "ext_cf945cc7bfe99bf9864bd6df",
+      "pivota_signature_id": "sig_52c6a00f3349f49fc6706f46",
+      "probed_product_id": "ext_cf945cc7bfe99bf9864bd6df",
+      "probed_id_type": "ext",
+      "seed_id": "eps_f4b8851a20e6e5eff0d7de38",
+      "market": "US",
+      "domain": "mossnoor.com",
+      "title": "After Workout Shower Gel – Fresh Grapefruit 500 ml",
+      "canonical_url": "https://mossnoor.com/products/after-workout-shower-gel-fresh-grapefruit-500-ml",
+      "http_status": 200,
+      "pdp_status": "success",
+      "build_id": "332019b698a3",
+      "module_types": [
+        "canonical",
+        "variant_selector",
+        "offers",
+        "product_intel",
+        "active_ingredients",
+        "ingredients_inci",
+        "how_to_use",
+        "product_overview",
+        "product_facts",
+        "supplemental_details",
+        "product_details",
+        "reviews_preview",
+        "similar"
+      ],
+      "missing_modules": [
+        "active_ingredients",
+        "how_to_use",
+        "product_facts",
+        "supplemental_details"
+      ],
+      "gallery": {
+        "image_count": 1,
+        "duplicate_url_count": 1,
+        "image_hosts": [
+          "mossnoor.com"
+        ],
+        "ok": true
+      },
+      "variant": {
+        "module_present": true,
+        "variant_count": 1,
+        "label_count": 2,
+        "labels": [
+          "Size: 500 mL",
+          "500 mL"
+        ],
+        "bad_labels": [],
+        "ok": true
+      },
+      "reviews": {
+        "module_present": true,
+        "rating": null,
+        "review_count": 0,
+        "chart_present": false,
+        "chart_estimated": false,
+        "preview_count": 0,
+        "ok": true
+      },
+      "insights": {
+        "module_present": true,
+        "quality_state": "reviewed",
+        "evidence_profile": "official_pdp_seed",
+        "seller_only_evidence": false,
+        "seller_grounded_reviewed": false,
+        "headline": "Body wash identity",
+        "why_count": 2,
+        "ok": true
+      },
+      "content": {
+        "ingredients_present": true,
+        "ingredients_text_count": 28,
+        "ingredients_source_origin": "reviewed_source_backed_pdp_content_patch",
+        "ingredients_source_quality_status": "authoritative",
+        "ingredients_force_filled": false,
+        "active_ingredients_present": false,
+        "active_ingredients_source_origin": null,
+        "active_ingredients_source_quality_status": null,
+        "active_ingredients_force_filled": false,
+        "how_to_present": false,
+        "how_to_text_count": 0,
+        "overview_present": true,
+        "details_present": true,
+        "details_text_count": 4
+      },
+      "similar": {
+        "module_present": true,
+        "count": 0,
+        "status": "deferred"
+      },
+      "product_kind": {
+        "family": "single_formula",
+        "reasons": [
+          "formula_signal"
+        ],
+        "pdp_schema_profile": "beauty_formula",
+        "formula_content_required": true,
+        "merchandising_content_applicable": true
+      },
+      "blocking_reasons": [
+        "missing_how_to"
+      ],
+      "pdp_quality_bucket": "thin",
+      "conversion_ready": false
+    },
+    {
+      "external_product_id": "ext_67472974111568c15ac3920d",
+      "pivota_signature_id": "sig_9240e02c74f21efa5cb5ba74",
+      "probed_product_id": "ext_67472974111568c15ac3920d",
+      "probed_id_type": "ext",
+      "seed_id": "eps_1dffa343e9ebeafb511f5c44",
+      "market": "US",
+      "domain": "mossnoor.com",
+      "title": "After Workout Shower Gel – Fresh Grapefruit",
+      "canonical_url": "https://mossnoor.com/products/shower-gel",
+      "http_status": 200,
+      "pdp_status": "success",
+      "build_id": "332019b698a3",
+      "module_types": [
+        "canonical",
+        "variant_selector",
+        "offers",
+        "product_intel",
+        "active_ingredients",
+        "ingredients_inci",
+        "how_to_use",
+        "product_overview",
+        "product_facts",
+        "supplemental_details",
+        "product_details",
+        "reviews_preview",
+        "similar"
+      ],
+      "missing_modules": [
+        "active_ingredients",
+        "how_to_use",
+        "product_facts",
+        "supplemental_details"
+      ],
+      "gallery": {
+        "image_count": 3,
+        "duplicate_url_count": 1,
+        "image_hosts": [
+          "cdn.shopify.com"
+        ],
+        "ok": true
+      },
+      "variant": {
+        "module_present": true,
+        "variant_count": 1,
+        "label_count": 2,
+        "labels": [
+          "Size: 150 mL",
+          "150 mL"
+        ],
+        "bad_labels": [],
+        "ok": true
+      },
+      "reviews": {
+        "module_present": true,
+        "rating": null,
+        "review_count": 0,
+        "chart_present": false,
+        "chart_estimated": false,
+        "preview_count": 0,
+        "ok": true
+      },
+      "insights": {
+        "module_present": true,
+        "quality_state": "reviewed",
+        "evidence_profile": "official_pdp_seed",
+        "seller_only_evidence": false,
+        "seller_grounded_reviewed": false,
+        "headline": "Body wash identity",
+        "why_count": 2,
+        "ok": true
+      },
+      "content": {
+        "ingredients_present": true,
+        "ingredients_text_count": 26,
+        "ingredients_source_origin": "reviewed_source_backed_pdp_content_patch",
+        "ingredients_source_quality_status": "authoritative",
+        "ingredients_force_filled": false,
+        "active_ingredients_present": false,
+        "active_ingredients_source_origin": null,
+        "active_ingredients_source_quality_status": null,
+        "active_ingredients_force_filled": false,
+        "how_to_present": false,
+        "how_to_text_count": 0,
+        "overview_present": true,
+        "details_present": true,
+        "details_text_count": 4
+      },
+      "similar": {
+        "module_present": true,
+        "count": 0,
+        "status": "deferred"
+      },
+      "product_kind": {
+        "family": "single_formula",
+        "reasons": [
+          "formula_signal"
+        ],
+        "pdp_schema_profile": "beauty_formula",
+        "formula_content_required": true,
+        "merchandising_content_applicable": true
+      },
+      "blocking_reasons": [
+        "missing_how_to"
+      ],
+      "pdp_quality_bucket": "thin",
+      "conversion_ready": false
+    },
+    {
+      "external_product_id": "ext_83b8555768814cac5243aef1",
+      "pivota_signature_id": "sig_d5f5f744bfb57c404d65405a",
+      "probed_product_id": "ext_83b8555768814cac5243aef1",
+      "probed_id_type": "ext",
+      "seed_id": "eps_e56270ecb6bb953e8f2ec347",
+      "market": "US",
+      "domain": "mossnoor.com",
+      "title": "After Workout Shower Gel – Crispy Cucumber 500 ml",
+      "canonical_url": "https://mossnoor.com/products/after-workout-shower-gel-crispy-cucumber",
+      "http_status": 200,
+      "pdp_status": "success",
+      "build_id": "332019b698a3",
+      "module_types": [
+        "canonical",
+        "variant_selector",
+        "offers",
+        "product_intel",
+        "active_ingredients",
+        "ingredients_inci",
+        "how_to_use",
+        "product_overview",
+        "product_facts",
+        "supplemental_details",
+        "product_details",
+        "reviews_preview",
+        "similar"
+      ],
+      "missing_modules": [
+        "active_ingredients",
+        "how_to_use",
+        "product_facts",
+        "supplemental_details"
+      ],
+      "gallery": {
+        "image_count": 1,
+        "duplicate_url_count": 1,
+        "image_hosts": [
+          "mossnoor.com"
+        ],
+        "ok": true
+      },
+      "variant": {
+        "module_present": true,
+        "variant_count": 1,
+        "label_count": 2,
+        "labels": [
+          "Size: 500 mL",
+          "500 mL"
+        ],
+        "bad_labels": [],
+        "ok": true
+      },
+      "reviews": {
+        "module_present": true,
+        "rating": null,
+        "review_count": 0,
+        "chart_present": false,
+        "chart_estimated": false,
+        "preview_count": 0,
+        "ok": true
+      },
+      "insights": {
+        "module_present": true,
+        "quality_state": "reviewed",
+        "evidence_profile": "official_pdp_seed",
+        "seller_only_evidence": false,
+        "seller_grounded_reviewed": false,
+        "headline": "Body wash identity",
+        "why_count": 2,
+        "ok": true
+      },
+      "content": {
+        "ingredients_present": true,
+        "ingredients_text_count": 25,
+        "ingredients_source_origin": "reviewed_source_backed_pdp_content_patch",
+        "ingredients_source_quality_status": "authoritative",
+        "ingredients_force_filled": false,
+        "active_ingredients_present": false,
+        "active_ingredients_source_origin": null,
+        "active_ingredients_source_quality_status": null,
+        "active_ingredients_force_filled": false,
+        "how_to_present": false,
+        "how_to_text_count": 0,
+        "overview_present": true,
+        "details_present": true,
+        "details_text_count": 4
+      },
+      "similar": {
+        "module_present": true,
+        "count": 0,
+        "status": "deferred"
+      },
+      "product_kind": {
+        "family": "single_formula",
+        "reasons": [
+          "formula_signal"
+        ],
+        "pdp_schema_profile": "beauty_formula",
+        "formula_content_required": true,
+        "merchandising_content_applicable": true
+      },
+      "blocking_reasons": [
+        "missing_how_to"
+      ],
+      "pdp_quality_bucket": "thin",
+      "conversion_ready": false
+    },
+    {
+      "external_product_id": "ext_a7ab937f43db2868c6f9e383",
+      "pivota_signature_id": "sig_f41515bba9c93a18d106523f",
+      "probed_product_id": "ext_a7ab937f43db2868c6f9e383",
+      "probed_id_type": "ext",
+      "seed_id": "eps_17e574451e2b1b7261e59e3b",
+      "market": "US",
+      "domain": "mossnoor.com",
+      "title": "After Workout Shower Gel – Clean Eucalyptus",
+      "canonical_url": "https://mossnoor.com/products/after-workout-shower-gel-clean-eucalyptus",
+      "http_status": 200,
+      "pdp_status": "success",
+      "build_id": "332019b698a3",
+      "module_types": [
+        "canonical",
+        "variant_selector",
+        "offers",
+        "product_intel",
+        "active_ingredients",
+        "ingredients_inci",
+        "how_to_use",
+        "product_overview",
+        "product_facts",
+        "supplemental_details",
+        "product_details",
+        "reviews_preview",
+        "similar"
+      ],
+      "missing_modules": [
+        "active_ingredients",
+        "ingredients_inci",
+        "how_to_use",
+        "product_facts",
+        "supplemental_details"
+      ],
+      "gallery": {
+        "image_count": 3,
+        "duplicate_url_count": 1,
+        "image_hosts": [
+          "cdn.shopify.com"
+        ],
+        "ok": true
+      },
+      "variant": {
+        "module_present": true,
+        "variant_count": 1,
+        "label_count": 2,
+        "labels": [
+          "Size: 150 mL",
+          "150 mL"
+        ],
+        "bad_labels": [],
+        "ok": true
+      },
+      "reviews": {
+        "module_present": true,
+        "rating": null,
+        "review_count": 0,
+        "chart_present": false,
+        "chart_estimated": false,
+        "preview_count": 0,
+        "ok": true
+      },
+      "insights": {
+        "module_present": true,
+        "quality_state": "reviewed",
+        "evidence_profile": "official_pdp_seed",
+        "seller_only_evidence": false,
+        "seller_grounded_reviewed": false,
+        "headline": "Body wash identity",
+        "why_count": 2,
+        "ok": true
+      },
+      "content": {
+        "ingredients_present": false,
+        "ingredients_text_count": 0,
+        "ingredients_source_origin": null,
+        "ingredients_source_quality_status": null,
+        "ingredients_force_filled": false,
+        "active_ingredients_present": false,
+        "active_ingredients_source_origin": null,
+        "active_ingredients_source_quality_status": null,
+        "active_ingredients_force_filled": false,
+        "how_to_present": false,
+        "how_to_text_count": 0,
+        "overview_present": true,
+        "details_present": true,
+        "details_text_count": 4
+      },
+      "similar": {
+        "module_present": true,
+        "count": 0,
+        "status": "deferred"
+      },
+      "product_kind": {
+        "family": "single_formula",
+        "reasons": [
+          "explicit_product_kind_signal"
+        ],
+        "pdp_schema_profile": "beauty_formula",
+        "formula_content_required": true,
+        "merchandising_content_applicable": true
+      },
+      "blocking_reasons": [
+        "missing_ingredients",
+        "missing_how_to"
+      ],
+      "pdp_quality_bucket": "thin",
+      "conversion_ready": false
+    }
+  ]
+}

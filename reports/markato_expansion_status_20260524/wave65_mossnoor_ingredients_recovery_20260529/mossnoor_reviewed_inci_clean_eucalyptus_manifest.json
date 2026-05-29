@@ -1,0 +1,20 @@
+{
+  "generated_at": "2026-05-29",
+  "brand": "Moss & Noor",
+  "domain": "mossnoor.com",
+  "market": "US",
+  "reviewed_by": "codex_manual_review",
+  "source_kind": "official_pdp_structured_section",
+  "reason": "Supplemental Wave65 patch after live PDP audit showed Clean Eucalyptus still missing ingredients; Wave55 human review found official Moss & Noor PDP INCI for this row. Product-specific how-to remains missing, so this manifest patches ingredients only and does not approve serving promotion.",
+  "evidence": "Official Moss & Noor PDP source review in wave55_mossnoor_official_source_review_20260528 found title, description, scent, size, and full INCI for Clean Eucalyptus; no explicit product-use directions were found.",
+  "write_reviewed_ingredient_authority": true,
+  "entries": [
+    {
+      "external_product_id": "ext_a7ab937f43db2868c6f9e383",
+      "title": "After Workout Shower Gel - Clean Eucalyptus",
+      "canonical_url": "https://mossnoor.com/products/after-workout-shower-gel-clean-eucalyptus",
+      "source_url": "https://mossnoor.com/products/after-workout-shower-gel-clean-eucalyptus",
+      "pdp_ingredients_raw": "Aqua, Sodium Laureth Sulfate, Cocamidopropyl Betaine, Sodium Chloride, Disodium Laureth Sulfosuccinate, Glycerin, Sodium Cocoamphoacetate, Urea, Phenoxyethanol, PEG-7 Glyceryl Cocoate, Lactic Acid, Eucalyptus Globulus Leaf Oil, Menthol, Benzoic Acid, Magnesium Aspartate, Zinc Gluconate, Dehydroacetic Acid, Limonene, Sodium Benzoate, Copper Gluconate, Linalool."
+    }
+  ]
+}

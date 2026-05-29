@@ -1,0 +1,137 @@
+{
+  "generated_at": "2026-05-29T14:06:11.860Z",
+  "dry_run": true,
+  "manifest": "reports/markato_expansion_status_20260524/wave65_mossnoor_ingredients_recovery_20260529/mossnoor_reviewed_inci_manifest.json",
+  "summary": {
+    "scanned_rows": 4,
+    "missing_rows": 0,
+    "blocked_rows": 0,
+    "change_candidates": 0,
+    "updated_rows": 0,
+    "catalog_product_updates": 0,
+    "identity_updates": 0
+  },
+  "apply_results": [],
+  "plans": [
+    {
+      "external_product_id": "ext_83b8555768814cac5243aef1",
+      "seed_id": "eps_e56270ecb6bb953e8f2ec347",
+      "title": "After Workout Shower Gel – Crispy Cucumber 500 ml",
+      "canonical_url": "https://mossnoor.com/products/after-workout-shower-gel-crispy-cucumber",
+      "status": "ready",
+      "changed": false,
+      "blockers": [],
+      "skipped_fields": [
+        "no_change_same_value"
+      ],
+      "patched_fields": [],
+      "before": {
+        "description": "After Workout Shower Gel cools the skin after your workout. A moisturizing, soft cleansing shower gel designed for active lifestyles. Boosted with essential oils and minerals. For all skin types. Boosted with: Menthol: Cools your skin Zink: Effective against odor Magnesium: Rebuilds the outermost skin layer 100% Vegan. Made in Sweden.",
+        "pdp_description_raw": "After Workout Shower Gel cools the skin after your workout. A moisturizing, soft cleansing shower gel designed for active lifestyles. Boosted with essential oils and minerals. For all skin types. Boosted with: Menthol: Cools your skin Zink: Effective against odor Magnesium: Rebuilds the outermost skin layer 100% Vegan. Made in Sweden.",
+        "pdp_ingredients_raw": "Aqua, Sodium Laureth Sulfate, Sodium Chloride, Cocamidopropyl Betaine, Disodium Laureth Sulfosuccinate, Propanediol, Glycerin, Sodium Cocoamphoacetate, Urea, Phenoxyethanol, PEG-7 Glyceryl Cocoate, Lactic Acid, Parfum, Menthol, Benzoic Acid, Magnesium Aspartate, Zinc Gluconate, Dehydroacetic Acid, Sodium Benzoate, Copper Gluconate.",
+        "pdp_how_to_use_raw": "",
+        "ingredients_polluted": false,
+        "polluted_detail_section_count": 0
+      },
+      "after": {
+        "description": "After Workout Shower Gel cools the skin after your workout. A moisturizing, soft cleansing shower gel designed for active lifestyles. Boosted with essential oils and minerals. For all skin types.\n\nBoosted with:\n\nMenthol: Cools your skin\n\nZink: Effective against odor\n\nMagnesium: Rebuilds the outermost skin layer\n\n100% Vegan. Made in Sweden.",
+        "pdp_description_raw": "After Workout Shower Gel cools the skin after your workout. A moisturizing, soft cleansing shower gel designed for active lifestyles. Boosted with essential oils and minerals. For all skin types.\n\nBoosted with:\n\nMenthol: Cools your skin\n\nZink: Effective against odor\n\nMagnesium: Rebuilds the outermost skin layer\n\n100% Vegan. Made in Sweden.",
+        "pdp_how_to_use_raw": "",
+        "pdp_ingredients_raw": "Aqua, Sodium Laureth Sulfate, Sodium Chloride, Cocamidopropyl Betaine, Disodium Laureth Sulfosuccinate, Propanediol, Glycerin, Sodium Cocoamphoacetate, Urea, Phenoxyethanol, PEG-7 Glyceryl Cocoate, Lactic Acid, Parfum, Menthol, Benzoic Acid, Magnesium Aspartate, Zinc Gluconate, Dehydroacetic Acid, Sodium Benzoate, Copper Gluconate.",
+        "ingredients_polluted": false,
+        "detail_section_count": 0,
+        "polluted_detail_section_count": 0
+      }
+    },
+    {
+      "external_product_id": "ext_67472974111568c15ac3920d",
+      "seed_id": "eps_1dffa343e9ebeafb511f5c44",
+      "title": "After Workout Shower Gel – Fresh Grapefruit",
+      "canonical_url": "https://mossnoor.com/products/shower-gel",
+      "status": "ready",
+      "changed": false,
+      "blockers": [],
+      "skipped_fields": [
+        "no_change_same_value"
+      ],
+      "patched_fields": [],
+      "before": {
+        "description": "After Workout Shower Gel cools the skin after your workout. A moisturizing, soft cleansing shower gel designed för active lifestyles. Boosted with essential oils and minerals. For all skin types. Boosted with: Menthol: cools your skin Zink: effective against odor Magnesium: rebuilds the outermost skin layer 100% Vegan and",
+        "pdp_description_raw": "After Workout Shower Gel cools the skin after your workout. A moisturizing, soft cleansing shower gel designed för active lifestyles. Boosted with essential oils and minerals. For all skin types. Boosted with: Menthol: cools your skin Zink: effective against odor Magnesium: rebuilds the outermost skin layer 100% Vegan and",
+        "pdp_ingredients_raw": "Aqua, Sodium Laureth Sulfate, Cocamidopropyl Betaine, Disodium Laureth Sulfosuccinate, Propanediol, Glycerin, Sodium Cocoamphoacetate, Sodium Chloride, Urea, Menthol, Zinc Gluconate, Magnesium Aspartate, PEG-7 Glyceryl Cocoate, Copper Gluconate, Phenoxyethanol, Benzoic Acid, Dehydroacetic Acid, Sodium Benzoate, Parfum, Limonene, Linalool.",
+        "pdp_how_to_use_raw": "",
+        "ingredients_polluted": false,
+        "polluted_detail_section_count": 0
+      },
+      "after": {
+        "description": "After Workout Shower Gel cools the skin after your workout. A moisturizing, soft cleansing shower gel designed för active lifestyles. Boosted with essential oils and minerals. For all skin types.\n\nBoosted with:\n\nMenthol: cools your skin\n\nZink: effective against odor\n\nMagnesium: rebuilds the outermost skin layer\n\n100% Vegan and",
+        "pdp_description_raw": "After Workout Shower Gel cools the skin after your workout. A moisturizing, soft cleansing shower gel designed för active lifestyles. Boosted with essential oils and minerals. For all skin types.\n\nBoosted with:\n\nMenthol: cools your skin\n\nZink: effective against odor\n\nMagnesium: rebuilds the outermost skin layer\n\n100% Vegan and",
+        "pdp_how_to_use_raw": "",
+        "pdp_ingredients_raw": "Aqua, Sodium Laureth Sulfate, Cocamidopropyl Betaine, Disodium Laureth Sulfosuccinate, Propanediol, Glycerin, Sodium Cocoamphoacetate, Sodium Chloride, Urea, Menthol, Zinc Gluconate, Magnesium Aspartate, PEG-7 Glyceryl Cocoate, Copper Gluconate, Phenoxyethanol, Benzoic Acid, Dehydroacetic Acid, Sodium Benzoate, Parfum, Limonene, Linalool.",
+        "ingredients_polluted": false,
+        "detail_section_count": 0,
+        "polluted_detail_section_count": 0
+      }
+    },
+    {
+      "external_product_id": "ext_cf945cc7bfe99bf9864bd6df",
+      "seed_id": "eps_f4b8851a20e6e5eff0d7de38",
+      "title": "After Workout Shower Gel – Fresh Grapefruit 500 ml",
+      "canonical_url": "https://mossnoor.com/products/after-workout-shower-gel-fresh-grapefruit-500-ml",
+      "status": "ready",
+      "changed": false,
+      "blockers": [],
+      "skipped_fields": [
+        "no_change_same_value"
+      ],
+      "patched_fields": [],
+      "before": {
+        "description": "After Workout Shower Gel cools the skin after your workout. A moisturizing, soft cleansing shower gel designed for active lifestyles. Boosted with essential oils and minerals. For all skin types. Boosted with: Menthol: Cools your skin Zink: Effective against odor Magnesium: Rebuilds the outermost skin layer 100% Vegan. Made in Sweden.",
+        "pdp_description_raw": "After Workout Shower Gel cools the skin after your workout. A moisturizing, soft cleansing shower gel designed for active lifestyles. Boosted with essential oils and minerals. For all skin types. Boosted with: Menthol: Cools your skin Zink: Effective against odor Magnesium: Rebuilds the outermost skin layer 100% Vegan. Made in Sweden.",
+        "pdp_ingredients_raw": "Aqua, Sodium Laureth Sulfate, Sodium Chloride, Cocamidopropyl Betaine, Disodium Laureth Sulfosuccinate, Propanediol, Glycerin, Sodium Cocoamphoacetate, Urea, Phenoxyethanol, PEG-7 Glyceryl Cocoate, Lactic Acid, Menthol, Benzoic Acid, Magnesium Aspartate, Zinc Gluconate, Dehydroacetic Acid, Sodium Benzoate, Copper Gluconate, Parfum, Limonene, Linalool, Citrus Aurantium Peel Oil.",
+        "pdp_how_to_use_raw": "",
+        "ingredients_polluted": false,
+        "polluted_detail_section_count": 0
+      },
+      "after": {
+        "description": "After Workout Shower Gel cools the skin after your workout. A moisturizing, soft cleansing shower gel designed for active lifestyles. Boosted with essential oils and minerals. For all skin types.\n\nBoosted with:\n\nMenthol: Cools your skin\n\nZink: Effective against odor\n\nMagnesium: Rebuilds the outermost skin layer\n\n100% Vegan. Made in Sweden.",
+        "pdp_description_raw": "After Workout Shower Gel cools the skin after your workout. A moisturizing, soft cleansing shower gel designed for active lifestyles. Boosted with essential oils and minerals. For all skin types.\n\nBoosted with:\n\nMenthol: Cools your skin\n\nZink: Effective against odor\n\nMagnesium: Rebuilds the outermost skin layer\n\n100% Vegan. Made in Sweden.",
+        "pdp_how_to_use_raw": "",
+        "pdp_ingredients_raw": "Aqua, Sodium Laureth Sulfate, Sodium Chloride, Cocamidopropyl Betaine, Disodium Laureth Sulfosuccinate, Propanediol, Glycerin, Sodium Cocoamphoacetate, Urea, Phenoxyethanol, PEG-7 Glyceryl Cocoate, Lactic Acid, Menthol, Benzoic Acid, Magnesium Aspartate, Zinc Gluconate, Dehydroacetic Acid, Sodium Benzoate, Copper Gluconate, Parfum, Limonene, Linalool, Citrus Aurantium Peel Oil.",
+        "ingredients_polluted": false,
+        "detail_section_count": 0,
+        "polluted_detail_section_count": 0
+      }
+    },
+    {
+      "external_product_id": "ext_876342422f9629ea9363953c",
+      "seed_id": "eps_1d5624ce83b81d64ac656dd8",
+      "title": "After Workout Shower Gel – Light Mint",
+      "canonical_url": "https://mossnoor.com/products/after-workout-shower-gel-light-mint",
+      "status": "ready",
+      "changed": false,
+      "blockers": [],
+      "skipped_fields": [
+        "no_change_same_value"
+      ],
+      "patched_fields": [],
+      "before": {
+        "description": "After Workout Shower Gel cools the skin after your workout. A moisturizing, soft cleansing shower gel designed för active lifestyles. Boosted with essential oils and minerals. For all skin types. Boosted with: Menthol: cools your skin Zink: effective against odor Magnesium: rebuilds the outermost skin layer 100% Vegan and",
+        "pdp_description_raw": "After Workout Shower Gel cools the skin after your workout. A moisturizing, soft cleansing shower gel designed för active lifestyles. Boosted with essential oils and minerals. For all skin types. Boosted with: Menthol: cools your skin Zink: effective against odor Magnesium: rebuilds the outermost skin layer 100% Vegan and",
+        "pdp_ingredients_raw": "Aqua, Sodium Laureth Sulfate, Cocamidopropyl Betaine, Disodium Laureth Sulfosuccinate, Propanediol, Glycerin, Sodium Cocoamphoacetate, Sodium Chloride, Urea, Menthol, Zinc Gluconate, Magnesium Aspartate, PEG-7 Glyceryl Cocoate, Copper Gluconate, Phenoxyethanol, Benzoic Acid, Dehydroacetic Acid, Sodium Benzoate, Parfum, Limonene, Linalool, Citral.",
+        "pdp_how_to_use_raw": "",
+        "ingredients_polluted": false,
+        "polluted_detail_section_count": 0
+      },
+      "after": {
+        "description": "After Workout Shower Gel cools the skin after your workout. A moisturizing, soft cleansing shower gel designed för active lifestyles. Boosted with essential oils and minerals. For all skin types.\n\nBoosted with:\n\nMenthol: cools your skin\n\nZink: effective against odor\n\nMagnesium: rebuilds the outermost skin layer\n\n100% Vegan and",
+        "pdp_description_raw": "After Workout Shower Gel cools the skin after your workout. A moisturizing, soft cleansing shower gel designed för active lifestyles. Boosted with essential oils and minerals. For all skin types.\n\nBoosted with:\n\nMenthol: cools your skin\n\nZink: effective against odor\n\nMagnesium: rebuilds the outermost skin layer\n\n100% Vegan and",
+        "pdp_how_to_use_raw": "",
+        "pdp_ingredients_raw": "Aqua, Sodium Laureth Sulfate, Cocamidopropyl Betaine, Disodium Laureth Sulfosuccinate, Propanediol, Glycerin, Sodium Cocoamphoacetate, Sodium Chloride, Urea, Menthol, Zinc Gluconate, Magnesium Aspartate, PEG-7 Glyceryl Cocoate, Copper Gluconate, Phenoxyethanol, Benzoic Acid, Dehydroacetic Acid, Sodium Benzoate, Parfum, Limonene, Linalool, Citral.",
+        "ingredients_polluted": false,
+        "detail_section_count": 0,
+        "polluted_detail_section_count": 0
+      }
+    }
+  ]
+}

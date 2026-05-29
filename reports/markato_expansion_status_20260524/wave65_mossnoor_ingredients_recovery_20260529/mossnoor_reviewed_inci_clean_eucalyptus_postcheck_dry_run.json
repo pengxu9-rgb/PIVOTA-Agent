@@ -1,0 +1,47 @@
+{
+  "generated_at": "2026-05-29T14:19:00.926Z",
+  "dry_run": true,
+  "manifest": "reports/markato_expansion_status_20260524/wave65_mossnoor_ingredients_recovery_20260529/mossnoor_reviewed_inci_clean_eucalyptus_manifest.json",
+  "summary": {
+    "scanned_rows": 1,
+    "missing_rows": 0,
+    "blocked_rows": 0,
+    "change_candidates": 0,
+    "updated_rows": 0,
+    "catalog_product_updates": 0,
+    "identity_updates": 0
+  },
+  "apply_results": [],
+  "plans": [
+    {
+      "external_product_id": "ext_a7ab937f43db2868c6f9e383",
+      "seed_id": "eps_17e574451e2b1b7261e59e3b",
+      "title": "After Workout Shower Gel – Clean Eucalyptus",
+      "canonical_url": "https://mossnoor.com/products/after-workout-shower-gel-clean-eucalyptus",
+      "status": "ready",
+      "changed": false,
+      "blockers": [],
+      "skipped_fields": [
+        "no_change_same_value"
+      ],
+      "patched_fields": [],
+      "before": {
+        "description": "After Workout Shower Gel cools the skin after your workout. A moisturizing, soft cleansing shower gel designed för active lifestyles. Boosted with essential oils and minerals. For all skin types. Boosted with: Menthol: cools your skin Zink: effective against odor Magnesium: rebuilds the outermost skin layer 100% Vegan and",
+        "pdp_description_raw": "After Workout Shower Gel cools the skin after your workout. A moisturizing, soft cleansing shower gel designed för active lifestyles. Boosted with essential oils and minerals. For all skin types. Boosted with: Menthol: cools your skin Zink: effective against odor Magnesium: rebuilds the outermost skin layer 100% Vegan and",
+        "pdp_ingredients_raw": "Aqua, Sodium Laureth Sulfate, Cocamidopropyl Betaine, Sodium Chloride, Disodium Laureth Sulfosuccinate, Glycerin, Sodium Cocoamphoacetate, Urea, Phenoxyethanol, PEG-7 Glyceryl Cocoate, Lactic Acid, Eucalyptus Globulus Leaf Oil, Menthol, Benzoic Acid, Magnesium Aspartate, Zinc Gluconate, Dehydroacetic Acid, Limonene, Sodium Benzoate, Copper Gluconate, Linalool.",
+        "pdp_how_to_use_raw": "",
+        "ingredients_polluted": false,
+        "polluted_detail_section_count": 0
+      },
+      "after": {
+        "description": "After Workout Shower Gel cools the skin after your workout. A moisturizing, soft cleansing shower gel designed för active lifestyles. Boosted with essential oils and minerals. For all skin types.\n\nBoosted with:\n\nMenthol: cools your skin\n\nZink: effective against odor\n\nMagnesium: rebuilds the outermost skin layer\n\n100% Vegan and",
+        "pdp_description_raw": "After Workout Shower Gel cools the skin after your workout. A moisturizing, soft cleansing shower gel designed för active lifestyles. Boosted with essential oils and minerals. For all skin types.\n\nBoosted with:\n\nMenthol: cools your skin\n\nZink: effective against odor\n\nMagnesium: rebuilds the outermost skin layer\n\n100% Vegan and",
+        "pdp_how_to_use_raw": "",
+        "pdp_ingredients_raw": "Aqua, Sodium Laureth Sulfate, Cocamidopropyl Betaine, Sodium Chloride, Disodium Laureth Sulfosuccinate, Glycerin, Sodium Cocoamphoacetate, Urea, Phenoxyethanol, PEG-7 Glyceryl Cocoate, Lactic Acid, Eucalyptus Globulus Leaf Oil, Menthol, Benzoic Acid, Magnesium Aspartate, Zinc Gluconate, Dehydroacetic Acid, Limonene, Sodium Benzoate, Copper Gluconate, Linalool.",
+        "ingredients_polluted": false,
+        "detail_section_count": 0,
+        "polluted_detail_section_count": 0
+      }
+    }
+  ]
+}
