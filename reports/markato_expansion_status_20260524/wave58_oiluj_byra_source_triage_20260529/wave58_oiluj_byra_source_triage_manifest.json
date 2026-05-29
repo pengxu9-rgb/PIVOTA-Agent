@@ -1,0 +1,34 @@
+{
+  "generated_at": "2026-05-29",
+  "brands": [
+    "Byra",
+    "OILUJ"
+  ],
+  "market": "US",
+  "runtime_database_writes": 0,
+  "serving_promotions_approved": 0,
+  "official_rows_reviewed": 4,
+  "official_pages_reachable_rows": 4,
+  "official_product_json_reviewed_rows": 1,
+  "official_media_reviewed_assets": 2,
+  "official_description_found_rows": 4,
+  "common_name_ingredient_evidence_rows": 3,
+  "formal_inci_found_rows": 0,
+  "official_how_to_found_rows": 0,
+  "patch_candidate_rows": 0,
+  "remaining_source_request_rows": 4,
+  "source_urls": [
+    "https://byrabeauty.com/products/deep-calm-eau-de-parfum-30ml",
+    "https://byrabeauty.com/products/deep-calm-eau-de-parfum-30ml.js",
+    "https://www.oiluj.com/store/p5/OIL%C3%99J%2C_Life_Oil.html",
+    "https://www.oiluj.com/store/p12/OIL%C3%99J%2C_Life_Oil%3A_Organic_Moringa%2F_French_Lavender_Blend.html",
+    "https://www.oiluj.com/store/p11/OIL%C3%99J%2C_Life_Oil%3A_Organic_Moringa%2FSandalwood_Blend.html"
+  ],
+  "decision": "Byra and OILUJ official sources were reachable and reviewed. They do not expose formal INCI-grade ingredient declarations, and Byra also lacks product-specific directions. Do not patch or promote from Wave58.",
+  "artifacts": [
+    "oiluj_byra_official_source_triage.csv",
+    "oiluj_byra_remaining_source_requests.csv",
+    "wave58_oiluj_byra_source_triage_manifest.json",
+    "wave58_oiluj_byra_source_triage_closeout_20260529.md"
+  ]
+}
