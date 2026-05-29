@@ -68,7 +68,10 @@ const DEFAULT_PROBE_GATE_QUEUE_TIMEOUT_MS = Number(
   process.env.PIVOTA_AGENT_CENTER_LLM_GATE_QUEUE_TIMEOUT_MS || 30_000,
 );
 const GEMINI_MODEL = process.env.PIVOTA_AGENT_CENTER_GEMINI_MODEL || 'gemini-2.5-flash';
-const OPENAI_MODEL = process.env.PIVOTA_AGENT_CENTER_OPENAI_MODEL || 'gpt-5';
+// OpenAI ChatGPT fidelity model. `chat-latest` is the API alias that tracks the
+// latest Instant model used in ChatGPT. Probe callers may override per request
+// via `options.model`; there is intentionally no service-env model pin here.
+const DEFAULT_OPENAI_MODEL = 'chat-latest';
 const ANTHROPIC_MODEL = process.env.PIVOTA_AGENT_CENTER_ANTHROPIC_MODEL || 'claude-sonnet-4-20250514';
 const ANTHROPIC_WEB_SEARCH_TOOL_VERSION =
   process.env.PIVOTA_AGENT_CENTER_ANTHROPIC_WEB_SEARCH_TOOL_VERSION || 'web_search_20250305';
@@ -173,6 +176,7 @@ function validateRequest(body) {
 
   let provider = 'mock';
   let maxRuns = DEFAULT_MAX_RUNS;
+  let model = null;
   if (_isPlainObject(options)) {
     if (options.provider !== undefined) {
       if (!ALLOWED_PROVIDERS.has(options.provider)) {
@@ -189,6 +193,13 @@ function validateRequest(body) {
         return { ok: false, error: 'max_runs must be a positive integer' };
       }
       maxRuns = Math.min(HARD_MAX_RUNS, Math.trunc(n));
+    }
+    // Optional provider execution model. The backend uses this as a test
+    // dimension for ChatGPT probes; non-string/blank values are ignored so
+    // old callers and malformed optional overrides fall back to provider
+    // defaults instead of failing the request.
+    if (_isNonEmptyString(options.model)) {
+      model = options.model.trim();
     }
   }
 
@@ -225,6 +236,7 @@ function validateRequest(body) {
       merchant_id,
       store_id,
       provider,
+      model,
       max_runs: maxRuns,
       context: {
         queries,
@@ -1600,6 +1612,7 @@ async function buildGeminiProbe(input) {
 }
 
 async function buildChatGptProbe(input) {
+  const model = _isNonEmptyString(input && input.model) ? input.model.trim() : DEFAULT_OPENAI_MODEL;
   return buildGroundedProviderProbe(input, {
     provider: 'chatgpt',
     getClient: getOpenAIClient,
@@ -1611,7 +1624,7 @@ async function buildChatGptProbe(input) {
         'chatgpt',
         () => withTimeout(
           client.responses.create({
-            model: OPENAI_MODEL,
+            model,
             instructions: prompt.system,
             input: userText,
             tools: [{ type: 'web_search_preview' }],
@@ -1761,5 +1774,6 @@ module.exports = {
     PRIMARY_ISSUE_TYPE_BY_SCAN_MODE,
     ALLOWED_SCAN_MODES,
     ALLOWED_PROVIDERS,
+    DEFAULT_OPENAI_MODEL,
   },
 };
