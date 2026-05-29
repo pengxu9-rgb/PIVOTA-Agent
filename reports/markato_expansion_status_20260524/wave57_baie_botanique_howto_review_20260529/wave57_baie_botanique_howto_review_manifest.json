@@ -1,0 +1,26 @@
+{
+  "generated_at": "2026-05-29",
+  "brand": "Baie Botanique",
+  "domain": "baiebotanique.com",
+  "market": "US",
+  "runtime_database_writes": 0,
+  "serving_promotions_approved": 0,
+  "official_pdp_rows_reviewed": 1,
+  "official_pdp_reachable_rows": 1,
+  "official_description_found_rows": 1,
+  "official_inci_found_rows": 1,
+  "official_media_reviewed_rows": 1,
+  "official_how_to_found_rows": 0,
+  "remaining_how_to_request_rows": 1,
+  "source_urls": [
+    "https://www.baiebotanique.com/products/rose-cupuacu-enzyme-cleanser-sns",
+    "https://www.baiebotanique.com/cdn/shop/files/Step-by-stepguideshowinghowtouseRose_CupuacuEnzymeCleanserwithinaskincareroutineforeffectivecleansingandbalancedskin.webp?v=1768995978&width=1000"
+  ],
+  "decision": "Official PDP and product media were reviewed, but no explicit product-specific cleanser directions were found. Keep the row held as a partner how-to request; do not patch or promote from Wave57.",
+  "artifacts": [
+    "baie_botanique_howto_source_review.csv",
+    "baie_botanique_remaining_how_to_requests.csv",
+    "wave57_baie_botanique_howto_review_manifest.json",
+    "wave57_baie_botanique_howto_review_closeout_20260529.md"
+  ]
+}
