@@ -37866,7 +37866,15 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
                 `SELECT DISTINCT ON (external_product_id)
                    external_product_id, title, image_url, canonical_url,
                    price_amount, price_currency,
-                   COALESCE(seed_data->>'brand', seed_data->'snapshot'->>'brand') AS brand
+                   status, availability,
+                   COALESCE(seed_data->>'brand', seed_data->'snapshot'->>'brand') AS brand,
+                   COALESCE(seed_data->>'price_label', seed_data->'snapshot'->>'price_label') AS price_label,
+                   COALESCE(seed_data->>'price_status', seed_data->'snapshot'->>'price_status') AS price_status,
+                   COALESCE(seed_data->>'price_note', seed_data->'snapshot'->>'price_note') AS price_note,
+                   seed_data->'source_unavailable_v1' AS source_unavailable_v1,
+                   seed_data->'snapshot'->'source_unavailable_v1' AS snapshot_source_unavailable_v1,
+                   seed_data->'transaction_readiness_blocker_v1' AS transaction_readiness_blocker_v1,
+                   seed_data->'snapshot'->'transaction_readiness_blocker_v1' AS snapshot_transaction_readiness_blocker_v1
                  FROM external_product_seeds
                  WHERE status = 'active' AND external_product_id = ANY($1::text[])
                  ORDER BY external_product_id, updated_at DESC NULLS LAST, created_at DESC NULLS LAST`,

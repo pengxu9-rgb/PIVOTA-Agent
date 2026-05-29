@@ -3000,5 +3000,50 @@ describe('buildBundleCompositionModuleData', () => {
       { enrichmentMap },
     );
     expect(data.items[0]).not.toHaveProperty('price');
+    expect(data.items[0]).toMatchObject({
+      price_status: 'included_in_set',
+      price_label: 'Included in set',
+      price_note: 'Not sold separately',
+      source_quality_status: 'ready',
+    });
+    expect(data).toMatchObject({
+      priced_count: 0,
+      unpriced_count: 1,
+      price_status_counts: { priced: 0, included_in_set: 1 },
+    });
+  });
+
+  test('marks unavailable standalone components as not sold separately', () => {
+    const enrichmentMap = new Map([
+      [
+        'ext_sample',
+        {
+          title: 'Cosmic Kylie Jenner 2.0 Eau de Parfum Deluxe Sample',
+          image_url: 'https://example.com/sample.png',
+          canonical_url: 'https://example.com/sample',
+          availability: 'out_of_stock',
+          price_amount: null,
+        },
+      ],
+    ]);
+    const data = buildBundleCompositionModuleData(
+      {
+        bundle_component_refs: [
+          { product_id: 'ext_sample', title: 'Cosmic Kylie Jenner 2.0 Deluxe Sample' },
+        ],
+      },
+      { enrichmentMap },
+    );
+    expect(data.items[0]).toMatchObject({
+      product_id: 'ext_sample',
+      title: 'Cosmic Kylie Jenner 2.0 Eau de Parfum Deluxe Sample',
+      canonical_url: 'https://example.com/sample',
+      price_status: 'not_sold_separately',
+      price_label: 'Included in set',
+      price_note: 'Not sold separately',
+      source_quality_status: 'ready',
+    });
+    expect(data.items[0]).not.toHaveProperty('price');
+    expect(data.price_status_counts).toMatchObject({ priced: 0, not_sold_separately: 1 });
   });
 });

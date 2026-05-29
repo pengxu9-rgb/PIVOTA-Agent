@@ -4761,6 +4761,53 @@ function buildBundleCompositionModuleData(product, options = {}) {
   const enrichmentMap =
     options.enrichmentMap instanceof Map ? options.enrichmentMap : new Map();
   const currencyFallback = asNonEmptyString(options.currencyFallback) || 'USD';
+  const buildPriceState = (ref, enriched, hasPrice) => {
+    if (hasPrice) return null;
+    const explicitStatus = asNonEmptyString(
+      enriched.price_status ||
+        enriched.priceStatus ||
+        ref.price_status ||
+        ref.priceStatus,
+    ).toLowerCase();
+    const explicitLabel = asNonEmptyString(
+      enriched.price_label ||
+        enriched.priceLabel ||
+        ref.price_label ||
+        ref.priceLabel,
+    );
+    const explicitNote = asNonEmptyString(
+      enriched.price_note ||
+        enriched.priceNote ||
+        ref.price_note ||
+        ref.priceNote,
+    );
+    const sourceUnavailableContract =
+      asPlainObject(enriched.source_unavailable_v1) ||
+      asPlainObject(enriched.snapshot_source_unavailable_v1) ||
+      asPlainObject(ref.source_unavailable_v1);
+    const transactionBlocker =
+      asPlainObject(enriched.transaction_readiness_blocker_v1) ||
+      asPlainObject(enriched.snapshot_transaction_readiness_blocker_v1) ||
+      asPlainObject(ref.transaction_readiness_blocker_v1);
+    const availability = asNonEmptyString(
+      enriched.availability ||
+        enriched.availability_status ||
+        enriched.status ||
+        ref.availability ||
+        ref.status,
+    ).toLowerCase();
+    const unavailableish =
+      Boolean(sourceUnavailableContract || transactionBlocker) ||
+      /(?:not[_\s-]?sold|unavailable|discontinued|out[_\s-]?of[_\s-]?stock|sample|gift|included)/i.test(
+        availability,
+      );
+    const priceStatus = explicitStatus || (unavailableish ? 'not_sold_separately' : 'included_in_set');
+    return {
+      price_status: priceStatus,
+      price_label: explicitLabel || 'Included in set',
+      price_note: explicitNote || 'Not sold separately',
+    };
+  };
   const items = refs.map((ref) => {
     const enrichKey = String(ref.product_id || ref.external_product_id || '').trim();
     const enriched = enrichKey ? enrichmentMap.get(enrichKey) || {} : {};
@@ -4774,6 +4821,7 @@ function buildBundleCompositionModuleData(product, options = {}) {
       currencyFallback,
     );
     const hasPrice = Number.isFinite(priceAmount) && priceAmount > 0;
+    const priceState = buildPriceState(ref, enriched, hasPrice);
     return {
       product_id: ref.product_id,
       ...(ref.merchant_id ? { merchant_id: ref.merchant_id } : {}),
@@ -4782,16 +4830,33 @@ function buildBundleCompositionModuleData(product, options = {}) {
       ...(imageUrl ? { image_url: imageUrl } : {}),
       ...(canonicalUrl ? { canonical_url: canonicalUrl } : {}),
       ...(hasPrice ? { price: { amount: priceAmount, currency: priceCurrency } } : {}),
+      ...(priceState || {}),
       ...(asNonEmptyString(ref.component_role) ? { component_role: ref.component_role } : {}),
       ...(asNonEmptyString(ref.size_label) ? { size_label: ref.size_label } : {}),
       ...(asNonEmptyString(ref.review_state) ? { review_state: ref.review_state } : {}),
-      source_quality_status: imageUrl && title ? 'ready' : 'partial',
+      source_quality_status: imageUrl && title && (hasPrice || priceState?.price_status) ? 'ready' : 'partial',
     };
   });
+  const pricedCount = items.filter((item) => item?.price).length;
+  const priceStatusCounts = items.reduce(
+    (acc, item) => {
+      if (item?.price) {
+        acc.priced += 1;
+        return acc;
+      }
+      const status = asNonEmptyString(item?.price_status) || 'unpriced';
+      acc[status] = (acc[status] || 0) + 1;
+      return acc;
+    },
+    { priced: 0 },
+  );
   return {
     strategy: 'bundle_components',
     items,
     total_count: items.length,
+    priced_count: pricedCount,
+    unpriced_count: Math.max(0, items.length - pricedCount),
+    price_status_counts: priceStatusCounts,
   };
 }
 
