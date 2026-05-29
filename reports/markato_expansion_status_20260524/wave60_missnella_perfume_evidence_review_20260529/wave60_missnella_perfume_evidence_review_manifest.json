@@ -1,0 +1,55 @@
+{
+  "wave": "wave60_missnella_perfume_evidence_review_20260529",
+  "generated_at": "2026-05-29T11:26:13+08:00",
+  "brand": "Miss Nella",
+  "scope": "P1 ingredient_evidence_review_request rows for Miss Nella roll-on perfumes from the Wave51 source acquisition packet",
+  "source_inputs": {
+    "source_acquisition_packet": "reports/markato_expansion_status_20260524/wave51_source_acquisition_packet_20260528/source_acquisition_requests.csv",
+    "official_source_temp_dir": "/private/tmp/wave60_missnella_perfume_review",
+    "official_product_json_rows_reviewed": 2,
+    "official_html_rows_reviewed": 2,
+    "official_media_assets_downloaded": 14,
+    "official_media_assets_reviewed": 14
+  },
+  "summary": {
+    "official_rows_reviewed": 2,
+    "official_pages_reachable": 2,
+    "official_product_json_rows_reviewed": 2,
+    "official_html_ingredient_accordion_rows": 2,
+    "official_how_to_found_rows": 2,
+    "formal_inci_complete_rows": 0,
+    "incomplete_ingredient_evidence_rows": 2,
+    "patch_candidate_rows": 0,
+    "runtime_database_writes": 0,
+    "serving_promotions_approved": 0,
+    "railway_cli_deployments": 0,
+    "remaining_source_requests": 2
+  },
+  "artifacts": {
+    "official_source_review_csv": "missnella_rollon_perfume_evidence_review.csv",
+    "remaining_source_requests_csv": "missnella_rollon_perfume_remaining_source_requests.csv",
+    "closeout_markdown": "wave60_missnella_perfume_evidence_review_closeout_20260529.md"
+  },
+  "reviewed_rows": [
+    {
+      "external_product_id": "ext_cfbb0ca2b9d0c7b411793b0b",
+      "title": "'Cool Like Me' Roll On Perfume",
+      "canonical_url": "https://www.missnella.com/products/cool-like-me-roll-on-oil-perfume",
+      "official_source_status": "official_product_json_html_and_media_reviewed",
+      "official_how_to_found": true,
+      "ingredient_evidence_grade": "incomplete_not_inci_grade",
+      "media_assets_reviewed": 7,
+      "patch_candidate": false
+    },
+    {
+      "external_product_id": "ext_6f491538dbf9a790b66cf269",
+      "title": "'Sweet Like Me' Roll On Perfume",
+      "canonical_url": "https://www.missnella.com/products/sweet-like-me-roll-on-oil-perfume",
+      "official_source_status": "official_product_json_html_and_media_reviewed",
+      "official_how_to_found": true,
+      "ingredient_evidence_grade": "incomplete_not_inci_grade",
+      "media_assets_reviewed": 7,
+      "patch_candidate": false
+    }
+  ]
+}
