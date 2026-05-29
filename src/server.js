@@ -25790,14 +25790,10 @@ function collectPdpComponentExternalSeedIds(componentCandidates = []) {
 
 function excludeBundleComponentProductsFromSimilar({
   products = [],
-  baseProduct = {},
   componentCandidates = [],
 } = {}) {
   const list = Array.isArray(products) ? products : [];
   if (!Array.isArray(componentCandidates) || componentCandidates.length <= 0) {
-    return { products: list, applied: false, dropped_count: 0 };
-  }
-  if (!isBundleOrSetPdpForComponentScopedSimilar(baseProduct)) {
     return { products: list, applied: false, dropped_count: 0 };
   }
   const componentIds = collectPdpComponentExternalSeedIds(componentCandidates);
