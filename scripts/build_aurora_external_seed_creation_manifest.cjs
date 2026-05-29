@@ -169,6 +169,8 @@ function buildSeedRow(item, extractDoc) {
   const priceCurrency =
     normalizeNonEmptyString(primaryVariant?.currency || product?.price_currency || product?.currency || 'USD') || 'USD';
   const availability = normalizeAvailability(primaryVariant?.stock || product?.availability || 'in_stock') || 'in_stock';
+  const reviewSummary = ensureObject(product?.review_summary);
+  const hasReviewSummary = Object.keys(reviewSummary).length > 0;
   let domain = '';
   try {
     domain = new URL(canonicalUrl).hostname.replace(/^www\./i, '');
@@ -188,6 +190,7 @@ function buildSeedRow(item, extractDoc) {
     images: imageUrls,
     variants: mappedVariants,
     diagnostics: ensureObject(extractDoc?.diagnostics),
+    ...(hasReviewSummary ? { review_summary: reviewSummary } : {}),
   };
 
   return {
@@ -223,6 +226,7 @@ function buildSeedRow(item, extractDoc) {
       image_urls: imageUrls,
       images: imageUrls,
       variants: mappedVariants,
+      ...(hasReviewSummary ? { review_summary: reviewSummary } : {}),
       snapshot,
     },
   };

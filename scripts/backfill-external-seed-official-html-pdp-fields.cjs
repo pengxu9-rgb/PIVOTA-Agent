@@ -3610,18 +3610,64 @@ async function syncServingMirrors(externalProductId, seedData, patchKeys) {
   const catalogRes = await query(
     `
       UPDATE catalog_products
-      SET product_payload = COALESCE(product_payload, '{}'::jsonb) || $2::jsonb,
+      SET product_payload = CASE
+            WHEN $3::jsonb IS NULL THEN COALESCE(product_payload, '{}'::jsonb) || $2::jsonb
+            ELSE jsonb_set(
+              jsonb_set(
+                jsonb_set(
+                  jsonb_set(
+                    COALESCE(product_payload, '{}'::jsonb) || $2::jsonb,
+                    '{seed_data,review_summary}',
+                    $3::jsonb,
+                    true
+                  ),
+                  '{seed_data,pdp_review_summary}',
+                  $3::jsonb,
+                  true
+                ),
+                '{seed_data,snapshot,review_summary}',
+                $3::jsonb,
+                true
+              ),
+              '{seed_data,snapshot,pdp_review_summary}',
+              $3::jsonb,
+              true
+            )
+          END,
           updated_at = NOW()
       WHERE merchant_id = 'external_seed'
         AND platform = 'external_seed'
         AND source_product_id = $1
     `,
-    [externalProductId, payloadJson],
+    [externalProductId, payloadJson, reviewSummaryJson],
   );
   const identityRes = await query(
     `
       UPDATE pdp_identity_listing
-      SET source_payload = COALESCE(source_payload, '{}'::jsonb) || $2::jsonb,
+      SET source_payload = CASE
+            WHEN $3::jsonb IS NULL THEN COALESCE(source_payload, '{}'::jsonb) || $2::jsonb
+            ELSE jsonb_set(
+              jsonb_set(
+                jsonb_set(
+                  jsonb_set(
+                    COALESCE(source_payload, '{}'::jsonb) || $2::jsonb,
+                    '{seed_data,review_summary}',
+                    $3::jsonb,
+                    true
+                  ),
+                  '{seed_data,pdp_review_summary}',
+                  $3::jsonb,
+                  true
+                ),
+                '{seed_data,snapshot,review_summary}',
+                $3::jsonb,
+                true
+              ),
+              '{seed_data,snapshot,pdp_review_summary}',
+              $3::jsonb,
+              true
+            )
+          END,
           review_summary = CASE
             WHEN $3::jsonb IS NULL THEN review_summary
             ELSE $3::jsonb

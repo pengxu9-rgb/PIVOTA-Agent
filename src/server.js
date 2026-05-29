@@ -5033,9 +5033,17 @@ function normalizeCatalogSignatureResolveOptions(options = {}) {
   const hydrateIdentityListing = options?.hydrateIdentityListing !== false;
   const hydrateIdentityGroupMembers =
     hydrateIdentityListing && options?.hydrateIdentityGroupMembers !== false;
+  const bypassCache =
+    options?.bypassCache === true ||
+    options?.no_cache === true ||
+    options?.cache_bypass === true ||
+    options?.bypass_cache === true ||
+    String(options?.no_cache || '').trim().toLowerCase() === 'true' ||
+    String(options?.cache_bypass || options?.bypass_cache || '').trim().toLowerCase() === 'true';
   return {
     hydrateIdentityListing,
     hydrateIdentityGroupMembers,
+    bypassCache,
     cacheVariant: hydrateIdentityListing
       ? hydrateIdentityGroupMembers
         ? 'rich'
@@ -5051,7 +5059,7 @@ async function resolveCatalogProductRefFromPivotaSignature(productId, options = 
   const resolveOptions = normalizeCatalogSignatureResolveOptions(options);
   const cacheKey = `${normalizedProductId}::${resolveOptions.cacheVariant}`;
 
-  if (RESOLVE_CATALOG_SIGNATURE_CACHE_ENABLED) {
+  if (RESOLVE_CATALOG_SIGNATURE_CACHE_ENABLED && !resolveOptions.bypassCache) {
     const cached = RESOLVE_CATALOG_SIGNATURE_CACHE.get(cacheKey);
     if (cached && cached.expiresAtMs > Date.now()) {
       return cached.value;
@@ -6545,6 +6553,18 @@ function buildExternalSeedProductFromSignatureCatalogRef(signatureProductRef) {
     externalSnapshot.category_path,
     externalSnapshot.catalog_category_path,
   );
+  const reviewSummary = [
+    payload.review_summary,
+    payload.pdp_review_summary,
+    payloadSeedData.review_summary,
+    payloadSeedData.pdp_review_summary,
+    payloadSnapshot.review_summary,
+    payloadSnapshot.pdp_review_summary,
+    externalSeed.review_summary,
+    externalSeed.pdp_review_summary,
+    externalSnapshot.review_summary,
+    externalSnapshot.pdp_review_summary,
+  ].find((value) => isPlainObject(value));
   const imageUrls = [
     imageUrl,
     ...(Array.isArray(payloadSeedData.image_urls) ? payloadSeedData.image_urls : []),
@@ -6568,6 +6588,7 @@ function buildExternalSeedProductFromSignatureCatalogRef(signatureProductRef) {
     ...(categoryPath ? { category_path: categoryPath, catalog_category_path: categoryPath } : {}),
     ...(signatureProductRef.pivota_signature_id ? { pivota_signature_id: signatureProductRef.pivota_signature_id } : {}),
     ...(signatureProductRef.pivota_canonical_url ? { pivota_canonical_url: signatureProductRef.pivota_canonical_url } : {}),
+    ...(reviewSummary ? { review_summary: reviewSummary, pdp_review_summary: reviewSummary } : {}),
     snapshot: {
       ...externalSnapshot,
       ...payloadSnapshot,
@@ -6583,6 +6604,7 @@ function buildExternalSeedProductFromSignatureCatalogRef(signatureProductRef) {
       ...(categoryPath ? { category_path: categoryPath, catalog_category_path: categoryPath } : {}),
       ...(signatureProductRef.pivota_signature_id ? { pivota_signature_id: signatureProductRef.pivota_signature_id } : {}),
       ...(signatureProductRef.pivota_canonical_url ? { pivota_canonical_url: signatureProductRef.pivota_canonical_url } : {}),
+      ...(reviewSummary ? { review_summary: reviewSummary, pdp_review_summary: reviewSummary } : {}),
     },
   };
   delete seedData.seed_data;
@@ -32280,8 +32302,11 @@ async function resolveProductIntelInvokeContext({
     options.no_cache === true ||
     options.cache_bypass === true ||
     options.bypass_cache === true ||
+    payload.no_cache === true ||
+    payload.cache_bypass === true ||
+    payload.bypass_cache === true ||
     String(options.no_cache || '').trim().toLowerCase() === 'true' ||
-    String(options.cache_bypass || options.bypass_cache || '')
+    String(options.cache_bypass || options.bypass_cache || payload.no_cache || payload.cache_bypass || payload.bypass_cache || '')
       .trim()
       .toLowerCase() === 'true';
 
@@ -35579,9 +35604,10 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
 			        (!requestedMerchantId || requestedMerchantId === EXTERNAL_SEED_MERCHANT_ID)
 			      ) {
 		        const signatureResolveStartedAt = Date.now();
-		        const signatureProductRef = await resolveCatalogProductRefFromPivotaSignature(productId, {
+        const signatureProductRef = await resolveCatalogProductRefFromPivotaSignature(productId, {
               hydrateIdentityListing: true,
               hydrateIdentityGroupMembers: wantsOffers,
+              bypassCache,
             });
 		        markPdpV2Phase('resolve_catalog_signature', signatureResolveStartedAt);
 		        if (signatureProductRef?.product_id && signatureProductRef?.merchant_id) {
@@ -41500,6 +41526,7 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
               resolvedSignatureRef = await resolveCatalogProductRefFromPivotaSignature(productId, {
                 hydrateIdentityListing: false,
                 hydrateIdentityGroupMembers: false,
+                bypassCache,
               }).catch(() => null);
               directRouteTimingMs.resolve_signature_ref = Date.now() - resolveSignatureStartedAt;
               const resolvedExternalSeedProductId =

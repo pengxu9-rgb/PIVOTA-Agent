@@ -93,6 +93,42 @@ describe('externalSeedPdpQuality', () => {
     expect(extractorGate.failure_reasons).toEqual([]);
   });
 
+  test('fails live PDP gate when force-filled review counts are exposed publicly', () => {
+    const livePdpGate = buildLivePdpGate({
+      livePayload: {
+        modules: [
+          {
+            type: 'reviews_preview',
+            data: {
+              rating: 4.7,
+              review_count: 28,
+              source: 'pivota_force_fill_v1',
+              status: 'estimated',
+              force_filled: true,
+              distribution_estimated: true,
+              star_distribution: [
+                { stars: 5, count: 20, percent: 20 / 28, estimated: true },
+                { stars: 4, count: 8, percent: 8 / 28, estimated: true },
+                { stars: 3, count: 0, percent: 0, estimated: true },
+                { stars: 2, count: 0, percent: 0, estimated: true },
+                { stars: 1, count: 0, percent: 0, estimated: true },
+              ],
+            },
+          },
+        ],
+      },
+      seedData: {
+        external_seed_snapshot_contract: {
+          authoritative: true,
+          legacy_fields_quarantined: true,
+        },
+      },
+    });
+
+    expect(livePdpGate.failure_reasons).toContain('force_filled_reviews_public_social_proof');
+    expect(livePdpGate.reviews_status.estimated_public_social_proof).toBe(true);
+  });
+
   test('marks quality result passed when all gates have no failure reasons', () => {
     const result = buildExternalSeedQualityResult({
       seedId: 'eps_ok',
