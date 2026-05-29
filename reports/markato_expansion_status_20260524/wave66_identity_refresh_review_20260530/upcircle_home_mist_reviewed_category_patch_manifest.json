@@ -1,0 +1,21 @@
+{
+  "market": "US",
+  "reviewed_by": "codex_strict_human_quality_gate",
+  "reason": "wave66_upcircle_home_mist_seed_category_completion",
+  "source_kind": "official_brand_pdp_and_source_recovered_pdp_review",
+  "confidence": 0.93,
+  "entries": [
+    {
+      "external_product_id": "ext_32e72e7e518f4dfa532a191d",
+      "market": "US",
+      "title": "Home Mist with Lemongrass + Grapefruit Water",
+      "canonical_url": "https://upcirclebeauty.com/products/room-spray",
+      "source_url": "https://upcirclebeauty.com/products/room-spray",
+      "category": "Home Fragrance",
+      "product_type": "Home Fragrance",
+      "category_path": "beauty/fragrance/home-fragrance",
+      "catalog_category_path": "beauty/fragrance/home-fragrance",
+      "evidence": "Official UpCircle PDP identifies this row as Home Mist with Lemongrass + Grapefruit Water at the room-spray URL. The reviewed official description positions it as a home mist for spaces and the recovered how-to directs spraying it on fabrics, curtains, carpets, cushions, or as a bathroom spray."
+    }
+  ]
+}

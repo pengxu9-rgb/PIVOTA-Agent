@@ -1,0 +1,44 @@
+{
+  "generated_at": "2026-05-29T23:20:27.009Z",
+  "dry_run": true,
+  "manifest": "reports/markato_expansion_status_20260524/wave66_identity_refresh_review_20260530/upcircle_home_mist_reviewed_category_patch_manifest.json",
+  "market": "US",
+  "allow_overwrite": false,
+  "overwrite_confirmed": false,
+  "summary": {
+    "scanned": 1,
+    "planned": 0,
+    "unchanged": 1,
+    "blocked": 0,
+    "missing": 0,
+    "updated": 0,
+    "catalog_product_updates": 0,
+    "identity_updates": 0,
+    "by_patch_key": {},
+    "blocking_reasons": {}
+  },
+  "apply_results": [],
+  "plans": [
+    {
+      "id": "eps_def1866ba6f6215478fac613",
+      "external_product_id": "ext_32e72e7e518f4dfa532a191d",
+      "title": "Home Mist with Lemongrass + Grapefruit Water",
+      "canonical_url": "https://upcirclebeauty.com/products/room-spray",
+      "status": "unchanged",
+      "changed": false,
+      "patch_keys": [],
+      "before": {
+        "category": "Home Fragrance",
+        "category_path": "beauty/fragrance/home-fragrance",
+        "catalog_category_path": "beauty/fragrance/home-fragrance",
+        "product_type": "Home Fragrance"
+      },
+      "after": {
+        "category": "Home Fragrance",
+        "category_path": "beauty/fragrance/home-fragrance",
+        "catalog_category_path": "beauty/fragrance/home-fragrance",
+        "product_type": "Home Fragrance"
+      }
+    }
+  ]
+}
