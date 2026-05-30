@@ -1,0 +1,43 @@
+{
+  "generated_at": "2026-05-30T13:42:13.443Z",
+  "dry_run": true,
+  "market": "US",
+  "summary": {
+    "scanned": 1,
+    "dry_run": 1,
+    "updated": 0,
+    "skipped": 0,
+    "failed": 0,
+    "by_field": {
+      "pdp_details_sections": 1
+    }
+  },
+  "results": [
+    {
+      "external_product_id": "ext_d2be72abe173e52d5baa6879",
+      "title": "Deep Calm - Eau De Parfum 30ml",
+      "domain": "byrabeauty.com",
+      "url": "https://byrabeauty.com/products/deep-calm-eau-de-parfum-30ml",
+      "host": "byrabeauty.com",
+      "status": "dry_run",
+      "patch_keys": [
+        "pdp_details_sections"
+      ],
+      "http_status": 200,
+      "final_url": "https://byrabeauty.com/products/deep-calm-eau-de-parfum-30ml",
+      "extracted_summary": {
+        "ingredients_chars": 0,
+        "how_to_chars": 0,
+        "details_sections_count": 1,
+        "variant_count": 0,
+        "review_count": 0,
+        "rating": 0,
+        "review_preview_count": 0,
+        "review_preview_samples": []
+      },
+      "serving_mirror_sync": {
+        "planned": true
+      }
+    }
+  ]
+}

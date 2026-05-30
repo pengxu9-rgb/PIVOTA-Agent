@@ -2997,6 +2997,52 @@ function extractLinhartFields(html, options = {}) {
   return fields;
 }
 
+function extractOilujProductDescriptionHtml(html) {
+  const source = String(html || '');
+  const startMatch = /<div\b[^>]*id=["']wsite-com-product-short-description["'][^>]*>/i.exec(source);
+  if (!startMatch) return '';
+  const start = startMatch.index;
+  const rest = source.slice(start);
+  const end = rest.search(/<div\b[^>]*class=["']clear["'][^>]*>/i);
+  return end > 0 ? rest.slice(0, end) : rest.slice(0, 4000);
+}
+
+function extractOilujFormula(description, options = {}) {
+  const title = normalizeText(options.productTitle);
+  const text = normalizeText(description);
+  if (!text) return '';
+  if (/moringa\s*\/\s*french\s+lavender/i.test(title) || /\bfrench\s+lavender\s+essential\s+oil\b/i.test(text)) {
+    return 'Organic moringa oil, French lavender essential oil';
+  }
+  if (/moringa\s*\/\s*sandalwood/i.test(title) || /\bsandalwood\s+essential\s+oil\b/i.test(text)) {
+    return 'Organic moringa oil, sandalwood essential oil';
+  }
+  if (/\bmoringa\s+oil\b/i.test(title) && /\bcold-pressed\b|\bfirst\s+cold\s+pressed\b/i.test(text)) {
+    return 'Cold-pressed moringa oil';
+  }
+  return '';
+}
+
+function extractOilujFields(html, options = {}) {
+  const fields = {};
+  const descriptionHtml = extractOilujProductDescriptionHtml(html);
+  const description = cleanSectionText(descriptionHtml)
+    .replace(/\bNet\s+2\s+fl\.\s+oz,\s*60ml\b[\s\S]*$/i, '')
+    .trim();
+
+  if (description.length >= 60) {
+    fields.pdp_description_raw = description;
+    fields.pdp_details_sections = [
+      { heading: 'Overview', body: truncateOfficialDetailText(description), source_origin: 'official_oiluj_product_description' },
+    ];
+  }
+
+  const ingredients = cleanOfficialIngredientCandidate(extractOilujFormula(description, options));
+  if (ingredients) fields.pdp_ingredients_raw = ingredients;
+
+  return fields;
+}
+
 function extractOioLabFaqSections(html) {
   const source = String(html || '');
   const starts = Array.from(source.matchAll(/<div\b[^>]*class=["'][^"']*\bfaq-item\b[^"']*["'][^>]*>/gi));
@@ -3079,6 +3125,7 @@ async function extractOfficialHtmlFields(host, html, options = {}) {
   else if (host === 'tomfordbeauty.com') fields = extractTomFordFields(html, options);
   else if (host === 'rarebeauty.com') fields = extractRareFields(html, options);
   else if (host === 'linhart.nyc') fields = extractLinhartFields(html, options);
+  else if (host === 'oiluj.com') fields = extractOilujFields(html, options);
   else if (/^(?:us|en|pl)\.oiolab\.co$/.test(host)) fields = extractOioLabFields(html, options);
   else if (GENERIC_OFFICIAL_SHOPIFY_FIELD_HOSTS.has(host)) fields = extractGenericOfficialShopifyFields(html, options);
   else if (!options.reviewSummaryOnly || !REVIEW_SUMMARY_ONLY_GENERIC_HOSTS.has(host)) return {};

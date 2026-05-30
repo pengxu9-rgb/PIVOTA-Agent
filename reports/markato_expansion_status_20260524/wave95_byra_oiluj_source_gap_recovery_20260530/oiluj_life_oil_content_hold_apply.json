@@ -1,0 +1,81 @@
+{
+  "generated_at": "2026-05-30T13:48:47.755Z",
+  "dry_run": false,
+  "market": "US",
+  "marker": {
+    "contract_version": "external_seed.content_evidence_hold.v1",
+    "updated_at": "2026-05-30T13:48:47.755Z",
+    "status": "hold_for_evidence",
+    "reason": "post_sync_audit_failed_similar_gate",
+    "reason_codes": [
+      "post_sync_audit_failed_similar_gate"
+    ],
+    "evidence": "similar_underfill_after_official_source_recovery",
+    "public_serving_ready": false,
+    "content_evidence_ready": false,
+    "review_state": "reviewed"
+  },
+  "summary": {
+    "requested_ids": 2,
+    "scanned": 2,
+    "missing_ids": 0,
+    "catalog_counts": {
+      "products": 2,
+      "skus": 2,
+      "index_rows": 2
+    },
+    "updated": {
+      "external_product_seeds": 2,
+      "catalog_products": 2,
+      "catalog_skus": 2,
+      "index_pipeline_state": 2
+    }
+  },
+  "missing_ids": [],
+  "rows": [
+    {
+      "id": "eps_dc72b5d18cbbbffe502bfa20",
+      "external_product_id": "ext_07cfaab25950196c3ec1b5f3",
+      "title": "OILÙJ, Life Oil: Organic Moringa/Sandalwood Blend",
+      "domain": "oiluj.com",
+      "canonical_url": "http://www.oiluj.com/store/p11/OIL%C3%99J%2C_Life_Oil%3A_Organic_Moringa%2FSandalwood_Blend.html",
+      "destination_url": "http://www.oiluj.com/store/p11/OIL%C3%99J%2C_Life_Oil%3A_Organic_Moringa%2FSandalwood_Blend.html",
+      "before": {
+        "status": "active",
+        "availability": "in_stock",
+        "price_amount": 65,
+        "price_currency": "USD"
+      },
+      "after": {
+        "status": "active",
+        "availability": "in_stock",
+        "price_amount": 65,
+        "price_currency": "USD",
+        "serving_eligible": false,
+        "blocker_code": "content_evidence_hold"
+      }
+    },
+    {
+      "id": "eps_788807b1346798f50430e971",
+      "external_product_id": "ext_1493a61baf165a6c00e4977b",
+      "title": "OILÙJ, Life Oil: Organic Moringa/ French Lavender Blend",
+      "domain": "oiluj.com",
+      "canonical_url": "http://www.oiluj.com/store/p12/OIL%C3%99J%2C_Life_Oil%3A_Organic_Moringa%2F_French_Lavender_Blend.html",
+      "destination_url": "http://www.oiluj.com/store/p12/OIL%C3%99J%2C_Life_Oil%3A_Organic_Moringa%2F_French_Lavender_Blend.html",
+      "before": {
+        "status": "active",
+        "availability": "in_stock",
+        "price_amount": 65,
+        "price_currency": "USD"
+      },
+      "after": {
+        "status": "active",
+        "availability": "in_stock",
+        "price_amount": 65,
+        "price_currency": "USD",
+        "serving_eligible": false,
+        "blocker_code": "content_evidence_hold"
+      }
+    }
+  ]
+}
