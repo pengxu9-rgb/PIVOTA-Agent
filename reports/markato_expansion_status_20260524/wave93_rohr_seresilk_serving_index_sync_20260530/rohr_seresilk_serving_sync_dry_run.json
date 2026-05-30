@@ -1,0 +1,481 @@
+{
+  "generated_at": "2026-05-30T11:20:50.022Z",
+  "mode": "dry_run",
+  "batch_size": null,
+  "bootstrap_reviewed_identity_live_read": false,
+  "requested_ids": 2,
+  "fetched_rows": 2,
+  "mirror_rows": 2,
+  "planned_sku_rows": 2,
+  "planned_offer_rows": 2,
+  "planned_index_state_rows": 2,
+  "missing_ids": [],
+  "skipped": [],
+  "applied": {
+    "mode": "dry_run",
+    "existing_before": {
+      "catalog_products": 2,
+      "catalog_skus": 2,
+      "catalog_offers": 2,
+      "product_group_members": 2
+    },
+    "stale_delete_preview": {
+      "current_sku_rows": 2,
+      "current_offer_rows": 2,
+      "planned_stale_sku_deletes": 0,
+      "planned_stale_offer_deletes": 0,
+      "sample_stale_skus": [],
+      "sample_stale_offers": []
+    },
+    "batch_size": null,
+    "batches": 1,
+    "audit_reasons": {
+      "no_strong_identifier": 2
+    },
+    "product_upserts": 0,
+    "sku_upserts": 0,
+    "offer_upserts": 0,
+    "group_member_upserts": 0,
+    "group_member_preserved_existing_merges": 0,
+    "seed_attachment_updates": 0,
+    "index_state_upserts": 0,
+    "identity_live_read_updates": 0,
+    "catalog_row_trust_upserts": 0,
+    "stale_offer_deletes": 0,
+    "stale_sku_deletes": 0
+  },
+  "sample": [
+    {
+      "external_product_id": "ext_1b95875bc9bdeee751d0cee1",
+      "product_key": "prod::external_seed::external_seed::ext_1b95875bc9bdeee751d0cee1",
+      "product_group_id": "sig_36920dabe218886c3dd32627",
+      "title": "Lilly Pilly Face Moisturiser with Omega-3",
+      "brand": "Rohr Remedy",
+      "product_type": "Moisturizer",
+      "category": "Moisturizer",
+      "category_path": "beauty/skincare/moisturizer",
+      "canonical_url": "https://rohrremedy.com/products/lilly-pilly-face-moisturiser",
+      "pivota_signature_id": "sig_36920dabe218886c3dd32627",
+      "sku_rows": 1,
+      "first_sku": {
+        "sku_key": "prod::external_seed::external_seed::ext_1b95875bc9bdeee751d0cee1::sku_51ce6f9798d7fcbdcb0b",
+        "product_key": "prod::external_seed::external_seed::ext_1b95875bc9bdeee751d0cee1",
+        "merchant_id": "external_seed",
+        "platform": "external_seed",
+        "source_product_id": "ext_1b95875bc9bdeee751d0cee1",
+        "source_variant_id": "ext_1b95875bc9bdeee751d0cee1:31273097658479",
+        "source_domain": "rohrremedy.com",
+        "sku": "UBLMP24",
+        "barcode": null,
+        "title": "Lilly Pilly Face Moisturiser with Omega-3",
+        "currency": "USD",
+        "image_url": "https://cdn.shopify.com/s/files/1/0237/1131/files/Lilly_pilly_with_flowers.jpg?v=1771234667",
+        "visible_attributes": {
+          "Size": "50ml"
+        },
+        "visible_option_labels": {
+          "Size": "50ml"
+        },
+        "ingredient_ids": [],
+        "sku_payload": {
+          "source": "external_product_seeds_mirror_v1",
+          "external_product_id": "ext_1b95875bc9bdeee751d0cee1",
+          "raw_variant_id": "31273097658479",
+          "source_variant_id": "ext_1b95875bc9bdeee751d0cee1:31273097658479",
+          "variant_sku": "UBLMP24",
+          "barcode": null,
+          "strong_identifier_kind": null,
+          "source_url": "https://rohrremedy.com/products/lilly-pilly-face-moisturiser",
+          "external_redirect_url": "https://rohrremedy.com/products/lilly-pilly-face-moisturiser",
+          "price": "30",
+          "price_amount": 30,
+          "currency": "USD",
+          "availability": "in_stock",
+          "image_url": "https://cdn.shopify.com/s/files/1/0237/1131/files/Lilly_pilly_with_flowers.jpg?v=1771234667",
+          "swatch_image_url": null,
+          "label_image_url": null,
+          "options": {
+            "Size": "50ml"
+          },
+          "raw_variant": {
+            "sku": "UBLMP24",
+            "url": "https://rohrremedy.com/products/lilly-pilly-face-moisturiser",
+            "price": "30",
+            "stock": "In Stock",
+            "currency": "USD",
+            "image_url": "https://cdn.shopify.com/s/files/1/0237/1131/files/Lilly_pilly_with_flowers.jpg?v=1771234667",
+            "image_urls": [
+              "https://cdn.shopify.com/s/files/1/0237/1131/files/Lilly_pilly_with_flowers.jpg?v=1771234667",
+              "https://cdn.shopify.com/s/files/1/0237/1131/files/5_2b58a2ad-9a7b-4d7b-8ec3-0c8c81f0cd10.png?v=1771234667",
+              "https://cdn.shopify.com/s/files/1/0237/1131/products/IMG_1036_002.jpg?v=1771234667",
+              "https://cdn.shopify.com/s/files/1/0237/1131/files/LillyPillyFace_2.jpg?v=1771234667"
+            ],
+            "variant_id": "31273097658479",
+            "description": "An enriching everyday moisturiser for normal skin. Combining Lilly Pilly extract with Omega 3 oils. \n\nMultibuy\nThis item qualifies for a multibuy discount. Add three to your cart and the discount will be automatically applied at checkout. \n\nAGE: Teens - 20s, 30s, 40s, 50s+\nSKIN CONCERN: Dull, dry or dehydrated skin, First signs of ageing, Oiliness and shine\nSKIN TYPE: Normal to dry, Normal to oily",
+            "option_name": "Size",
+            "option_value": "50ml"
+          }
+        },
+        "readiness_tier": "referral_only"
+      },
+      "first_offer": {
+        "offer_id": "offer:external_seed:9e979d56be545f894e4e68a52afdf617",
+        "sku_key": "prod::external_seed::external_seed::ext_1b95875bc9bdeee751d0cee1::sku_51ce6f9798d7fcbdcb0b",
+        "product_key": "prod::external_seed::external_seed::ext_1b95875bc9bdeee751d0cee1",
+        "merchant_id": "external_seed",
+        "catalog_track": "external_referral",
+        "truth_tier": "observed",
+        "readiness_tier": "referral_only",
+        "offer_mode": "redirect",
+        "channel": "external_referral",
+        "availability": "in_stock",
+        "currency": "USD",
+        "list_price": 30,
+        "merchant_effective_price": 30,
+        "estimated_best_price": 30,
+        "price_confidence": 1,
+        "source_system": "external_product_seeds_mirror_v1",
+        "source_ref": "eps_5ee0b414653347fb5af51740",
+        "source_domain": "rohrremedy.com",
+        "offer_payload": {
+          "source": "external_product_seeds_mirror_v1",
+          "external_seed_id": "eps_5ee0b414653347fb5af51740",
+          "external_product_id": "ext_1b95875bc9bdeee751d0cee1",
+          "domain": "rohrremedy.com",
+          "market": "US",
+          "product_title": "Lilly Pilly Face Moisturiser with Omega-3",
+          "variant_title": "Lilly Pilly Face Moisturiser with Omega-3",
+          "variant_sku": "UBLMP24",
+          "raw_variant_id": "31273097658479",
+          "url": "https://rohrremedy.com/products/lilly-pilly-face-moisturiser",
+          "offer_url": "https://rohrremedy.com/products/lilly-pilly-face-moisturiser",
+          "canonical_url": "https://rohrremedy.com/products/lilly-pilly-face-moisturiser",
+          "destination_url": "https://rohrremedy.com/products/lilly-pilly-face-moisturiser",
+          "external_redirect_url": "https://rohrremedy.com/products/lilly-pilly-face-moisturiser",
+          "merchant_display_name": "Rohr Remedy",
+          "price": "30",
+          "price_amount": 30,
+          "price_currency": "USD",
+          "availability": "in_stock",
+          "commerce_facts_v1": {
+            "contract_version": "commerce_facts.v1",
+            "market_id": "US",
+            "country": "US",
+            "currency_target": "USD",
+            "source_authority": "catalog_extract_v2",
+            "captured_at": "2026-05-24T05:00:18.176Z",
+            "evidence_url": "https://rohrremedy.com/products/lilly-pilly-face-moisturiser",
+            "sellable_region": {
+              "status": "unknown",
+              "countries": [],
+              "evidence_source": "catalog_extract_v2",
+              "confidence": "low",
+              "checked_at": "2026-05-24T05:00:18.176Z",
+              "reason_codes": [
+                "market_currency_not_verified",
+                "shipping_destination_not_verified",
+                "external_checkout_not_queried"
+              ],
+              "evidence_url": "https://rohrremedy.com/products/lilly-pilly-face-moisturiser"
+            },
+            "regional_price": {
+              "amount": 30,
+              "currency": "USD",
+              "display_raw": "30.00",
+              "price_type": "list",
+              "compare_at_amount": null,
+              "compare_at_currency": null,
+              "compare_at_display_raw": null,
+              "tax_included": "unknown",
+              "confidence": "low",
+              "market_switch_status": "unknown",
+              "observed_currency": "USD",
+              "source_url": "https://rohrremedy.com/products/lilly-pilly-face-moisturiser",
+              "captured_at": "2026-05-24T05:00:18.176Z"
+            },
+            "availability": {
+              "status": "in_stock",
+              "source": "catalog_extract_v2",
+              "confidence": "medium",
+              "captured_at": "2026-05-24T05:00:18.176Z"
+            },
+            "shipping": {
+              "status": "unknown",
+              "source": "catalog_extract_v2",
+              "confidence": "unknown",
+              "reason_codes": [
+                "external_checkout_not_queried"
+              ],
+              "checked_at": "2026-05-24T05:00:18.176Z"
+            },
+            "promotions": [],
+            "returns": {
+              "status": "unknown",
+              "source": "catalog_extract_v2",
+              "confidence": "unknown",
+              "reason_codes": [
+                "external_returns_not_extracted"
+              ],
+              "checked_at": "2026-05-24T05:00:18.176Z"
+            }
+          },
+          "agent_safe_commerce_facts": {
+            "contract_version": "commerce_facts.v1",
+            "market_id": "US",
+            "price": {
+              "status": "unverified",
+              "reason": "low_confidence_or_market_mismatch"
+            },
+            "availability": {
+              "status": "in_stock",
+              "source": "catalog_extract_v2",
+              "confidence": "medium",
+              "captured_at": "2026-05-24T05:00:18.176Z"
+            },
+            "shipping": {
+              "status": "unknown",
+              "reason": "verify_at_checkout"
+            },
+            "promotions": [],
+            "checkout_note": "Shipping and promotions are not verified for this external offer; verify at merchant checkout."
+          }
+        }
+      },
+      "serving_readiness": {
+        "servingEligible": true,
+        "contentQualityScore": 90,
+        "blockerCode": "none",
+        "blockerDetail": null,
+        "identityResolved": true,
+        "identityLiveReadResolved": true,
+        "identityBootstrapEligible": false,
+        "terminalHold": false,
+        "terminalHoldReason": "",
+        "hasImage": true,
+        "hasPrice": true,
+        "descriptionLength": 400
+      }
+    },
+    {
+      "external_product_id": "ext_0d4ffd13b899460cabb1f392",
+      "product_key": "prod::external_seed::external_seed::ext_0d4ffd13b899460cabb1f392",
+      "product_group_id": "sig_2104c12c38d9c5ae898514d4",
+      "title": "Gentle Silk Cleanser",
+      "brand": "Seresilk",
+      "product_type": "Cleanser",
+      "category": "Cleanser",
+      "category_path": "beauty/skincare/cleanser",
+      "canonical_url": "https://seresilk.com.au/products/gentle-silk-cleanser",
+      "pivota_signature_id": "sig_2104c12c38d9c5ae898514d4",
+      "sku_rows": 1,
+      "first_sku": {
+        "sku_key": "prod::external_seed::external_seed::ext_0d4ffd13b899460cabb1f392::sku_c27c557f31a3d3c4792c",
+        "product_key": "prod::external_seed::external_seed::ext_0d4ffd13b899460cabb1f392",
+        "merchant_id": "external_seed",
+        "platform": "external_seed",
+        "source_product_id": "ext_0d4ffd13b899460cabb1f392",
+        "source_variant_id": "ext_0d4ffd13b899460cabb1f392:40067068100687",
+        "source_domain": "seresilk.com.au",
+        "sku": "7068100687",
+        "barcode": null,
+        "title": "Gentle Silk Cleanser",
+        "currency": "USD",
+        "image_url": "https://cdn.shopify.com/s/files/1/0557/7123/4383/files/Ecomm_Square_GentleSilkCleanser.jpg?v=1753242356",
+        "visible_attributes": {
+          "Size": "100ml"
+        },
+        "visible_option_labels": {
+          "Size": "100ml"
+        },
+        "ingredient_ids": [],
+        "sku_payload": {
+          "source": "external_product_seeds_mirror_v1",
+          "external_product_id": "ext_0d4ffd13b899460cabb1f392",
+          "raw_variant_id": "40067068100687",
+          "source_variant_id": "ext_0d4ffd13b899460cabb1f392:40067068100687",
+          "variant_sku": "7068100687",
+          "barcode": null,
+          "strong_identifier_kind": null,
+          "source_url": "https://seresilk.com.au/products/gentle-silk-cleanser",
+          "external_redirect_url": "https://seresilk.com.au/products/gentle-silk-cleanser",
+          "price": "54.52",
+          "price_amount": 54.52,
+          "currency": "USD",
+          "availability": "in_stock",
+          "image_url": "https://cdn.shopify.com/s/files/1/0557/7123/4383/files/Ecomm_Square_GentleSilkCleanser.jpg?v=1753242356",
+          "swatch_image_url": null,
+          "label_image_url": null,
+          "options": {
+            "Size": "100ml"
+          },
+          "raw_variant": {
+            "sku": "7068100687",
+            "url": "https://seresilk.com.au/products/gentle-silk-cleanser",
+            "price": "54.52",
+            "stock": "In Stock",
+            "currency": "USD",
+            "image_url": "https://cdn.shopify.com/s/files/1/0557/7123/4383/files/Ecomm_Square_GentleSilkCleanser.jpg?v=1753242356",
+            "image_urls": [
+              "https://cdn.shopify.com/s/files/1/0557/7123/4383/files/Ecomm_Square_GentleSilkCleanser.jpg?v=1753242356",
+              "https://cdn.shopify.com/s/files/1/0557/7123/4383/files/Texture_Square_GentleSilkCleanser.webp?v=1753242356",
+              "https://cdn.shopify.com/s/files/1/0557/7123/4383/files/EditorialGentleSilkCleanserSquare.webp?v=1753242356"
+            ],
+            "variant_id": "40067068100687",
+            "description": "100ml \n\nThe Gentle Silk Cleanser is a daily cleansing formula enriched with the proprietary Hydrolysed Silk Complex HSC01-A™ and glycerin to purify the skin while preserving its essential lipids. Designed to respect the skin’s natural barrier, it removes impurities, environmental residue, and excess oil without disturbing the skin’s optimum hydration equilibrium.\n\nIts lightweight, feather-soft texture transforms on contact with water, emulsifying into a milky fluid that rinses away effortlessly. The result is a complexion that feels clean, comfortable, and prepared for exfoliation.\n\nBENEFITS\nImmediately: Skin is refreshed, softened, and hydrated. With continued use: Skin appears smoother, more balanced, and visibly more radiant.\n\nDermatologically tested and approved. Patch test before application.\nApproved under the Leaping Bunny programme.",
+            "option_name": "Size",
+            "option_value": "100ml"
+          }
+        },
+        "readiness_tier": "referral_only"
+      },
+      "first_offer": {
+        "offer_id": "offer:external_seed:f9caa9ae6d5cc22bbd7650e0f20327c1",
+        "sku_key": "prod::external_seed::external_seed::ext_0d4ffd13b899460cabb1f392::sku_c27c557f31a3d3c4792c",
+        "product_key": "prod::external_seed::external_seed::ext_0d4ffd13b899460cabb1f392",
+        "merchant_id": "external_seed",
+        "catalog_track": "external_referral",
+        "truth_tier": "observed",
+        "readiness_tier": "referral_only",
+        "offer_mode": "redirect",
+        "channel": "external_referral",
+        "availability": "in_stock",
+        "currency": "USD",
+        "list_price": 54.52,
+        "merchant_effective_price": 54.52,
+        "estimated_best_price": 54.52,
+        "price_confidence": 1,
+        "source_system": "external_product_seeds_mirror_v1",
+        "source_ref": "eps_5ae568728c95aa19d64a9413",
+        "source_domain": "seresilk.com.au",
+        "offer_payload": {
+          "source": "external_product_seeds_mirror_v1",
+          "external_seed_id": "eps_5ae568728c95aa19d64a9413",
+          "external_product_id": "ext_0d4ffd13b899460cabb1f392",
+          "domain": "seresilk.com.au",
+          "market": "US",
+          "product_title": "Gentle Silk Cleanser",
+          "variant_title": "Gentle Silk Cleanser",
+          "variant_sku": "7068100687",
+          "raw_variant_id": "40067068100687",
+          "url": "https://seresilk.com.au/products/gentle-silk-cleanser",
+          "offer_url": "https://seresilk.com.au/products/gentle-silk-cleanser",
+          "canonical_url": "https://seresilk.com.au/products/gentle-silk-cleanser",
+          "destination_url": "https://seresilk.com.au/products/gentle-silk-cleanser",
+          "external_redirect_url": "https://seresilk.com.au/products/gentle-silk-cleanser",
+          "merchant_display_name": "Seresilk",
+          "price": "54.52",
+          "price_amount": 54.52,
+          "price_currency": "USD",
+          "availability": "in_stock",
+          "commerce_facts_v1": {
+            "contract_version": "commerce_facts.v1",
+            "market_id": "US",
+            "country": "US",
+            "currency_target": "USD",
+            "source_authority": "catalog_extract_v2",
+            "captured_at": "2026-05-24T05:00:18.772Z",
+            "evidence_url": "https://seresilk.com.au/products/gentle-silk-cleanser",
+            "sellable_region": {
+              "status": "unknown",
+              "countries": [],
+              "evidence_source": "catalog_extract_v2",
+              "confidence": "medium",
+              "checked_at": "2026-05-24T05:00:18.772Z",
+              "reason_codes": [
+                "market_currency_observed",
+                "shipping_destination_not_verified",
+                "external_checkout_not_queried"
+              ],
+              "evidence_url": "https://seresilk.com.au/products/gentle-silk-cleanser"
+            },
+            "regional_price": {
+              "amount": 54.52,
+              "currency": "USD",
+              "display_raw": "54.52",
+              "price_type": "list",
+              "compare_at_amount": null,
+              "compare_at_currency": null,
+              "compare_at_display_raw": null,
+              "tax_included": "unknown",
+              "confidence": "medium",
+              "market_switch_status": "ok",
+              "observed_currency": "USD",
+              "source_url": "https://seresilk.com.au/products/gentle-silk-cleanser",
+              "captured_at": "2026-05-24T05:00:18.772Z"
+            },
+            "availability": {
+              "status": "in_stock",
+              "source": "catalog_extract_v2",
+              "confidence": "medium",
+              "captured_at": "2026-05-24T05:00:18.772Z"
+            },
+            "shipping": {
+              "status": "unknown",
+              "source": "catalog_extract_v2",
+              "confidence": "unknown",
+              "reason_codes": [
+                "external_checkout_not_queried"
+              ],
+              "checked_at": "2026-05-24T05:00:18.772Z"
+            },
+            "promotions": [],
+            "returns": {
+              "status": "unknown",
+              "source": "catalog_extract_v2",
+              "confidence": "unknown",
+              "reason_codes": [
+                "external_returns_not_extracted"
+              ],
+              "checked_at": "2026-05-24T05:00:18.772Z"
+            }
+          },
+          "agent_safe_commerce_facts": {
+            "contract_version": "commerce_facts.v1",
+            "market_id": "US",
+            "price": {
+              "amount": 54.52,
+              "currency": "USD",
+              "display_raw": "54.52",
+              "price_type": "list",
+              "compare_at_amount": null,
+              "compare_at_currency": null,
+              "compare_at_display_raw": null,
+              "tax_included": "unknown",
+              "confidence": "medium",
+              "market_switch_status": "ok",
+              "observed_currency": "USD",
+              "source_url": "https://seresilk.com.au/products/gentle-silk-cleanser",
+              "captured_at": "2026-05-24T05:00:18.772Z"
+            },
+            "availability": {
+              "status": "in_stock",
+              "source": "catalog_extract_v2",
+              "confidence": "medium",
+              "captured_at": "2026-05-24T05:00:18.772Z"
+            },
+            "shipping": {
+              "status": "unknown",
+              "reason": "verify_at_checkout"
+            },
+            "promotions": [],
+            "checkout_note": "Shipping and promotions are not verified for this external offer; verify at merchant checkout."
+          }
+        }
+      },
+      "serving_readiness": {
+        "servingEligible": true,
+        "contentQualityScore": 90,
+        "blockerCode": "none",
+        "blockerDetail": null,
+        "identityResolved": true,
+        "identityLiveReadResolved": true,
+        "identityBootstrapEligible": false,
+        "terminalHold": false,
+        "terminalHoldReason": "",
+        "hasImage": true,
+        "hasPrice": true,
+        "descriptionLength": 851
+      }
+    }
+  ]
+}
