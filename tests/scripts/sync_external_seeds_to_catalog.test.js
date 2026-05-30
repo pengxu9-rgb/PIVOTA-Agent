@@ -788,4 +788,31 @@ describe('sync-external-seeds-to-catalog serving bootstrap', () => {
       identityBootstrapEligible: false,
     });
   });
+
+  test('does not promote rows with reviewed content evidence holds', () => {
+    const mirror = buildReadyMirror({
+      identity_status: 'approved',
+      live_read_enabled: true,
+      review_required: false,
+      sellable_item_group_id: 'sig_eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee',
+      source_tier: 'brand',
+    });
+    mirror.row.seed_data.content_evidence_hold_v1 = {
+      contract_version: 'external_seed.content_evidence_hold.v1',
+      status: 'hold_for_evidence',
+      reason: 'official_ingredient_text_not_full_inci',
+    };
+    mirror.row.seed_data.snapshot = {
+      content_evidence_hold_v1: mirror.row.seed_data.content_evidence_hold_v1,
+    };
+
+    expect(scoreMirrorServingQuality(mirror, { allowIdentityBootstrap: true })).toMatchObject({
+      servingEligible: false,
+      blockerCode: 'content_evidence_hold',
+      blockerDetail: 'official_ingredient_text_not_full_inci',
+      terminalHold: true,
+      terminalHoldReason: 'official_ingredient_text_not_full_inci',
+      identityResolved: true,
+    });
+  });
 });
