@@ -1,0 +1,523 @@
+{
+  "generated_at": "2026-05-30T10:20:59.561Z",
+  "mode": "dry_run",
+  "batch_size": null,
+  "bootstrap_reviewed_identity_live_read": false,
+  "requested_ids": 2,
+  "fetched_rows": 2,
+  "mirror_rows": 2,
+  "planned_sku_rows": 2,
+  "planned_offer_rows": 2,
+  "planned_index_state_rows": 2,
+  "missing_ids": [],
+  "skipped": [],
+  "applied": {
+    "mode": "dry_run",
+    "existing_before": {
+      "catalog_products": 2,
+      "catalog_skus": 2,
+      "catalog_offers": 2,
+      "product_group_members": 2
+    },
+    "stale_delete_preview": {
+      "current_sku_rows": 2,
+      "current_offer_rows": 2,
+      "planned_stale_sku_deletes": 0,
+      "planned_stale_offer_deletes": 0,
+      "sample_stale_skus": [],
+      "sample_stale_offers": []
+    },
+    "batch_size": null,
+    "batches": 1,
+    "audit_reasons": {
+      "no_strong_identifier": 2
+    },
+    "product_upserts": 0,
+    "sku_upserts": 0,
+    "offer_upserts": 0,
+    "group_member_upserts": 0,
+    "group_member_preserved_existing_merges": 0,
+    "seed_attachment_updates": 0,
+    "index_state_upserts": 0,
+    "identity_live_read_updates": 0,
+    "catalog_row_trust_upserts": 0,
+    "stale_offer_deletes": 0,
+    "stale_sku_deletes": 0
+  },
+  "sample": [
+    {
+      "external_product_id": "ext_2da51d2f8d19211c89fb2a30",
+      "product_key": "prod::external_seed::external_seed::ext_2da51d2f8d19211c89fb2a30",
+      "product_group_id": "sig_a7ccb1334eb133e537242dde2157f01e",
+      "title": "7 Journeys Miracle Glow Serum Mask 25ml (10 Sheets)",
+      "brand": "7Journeys",
+      "product_type": "Sheet Mask",
+      "category": "Sheet Mask",
+      "category_path": "beauty/skincare/mask",
+      "canonical_url": "https://7journeys.com/en-inteuusuk/products/7journeys-miracle-glow-serum-mask-10-sheets",
+      "pivota_signature_id": "sig_a7ccb1334eb133e537242dde2157f01e",
+      "sku_rows": 1,
+      "first_sku": {
+        "sku_key": "prod::external_seed::external_seed::ext_2da51d2f8d19211c89fb2a30::sku_7b730168b99eeaaf9535",
+        "product_key": "prod::external_seed::external_seed::ext_2da51d2f8d19211c89fb2a30",
+        "merchant_id": "external_seed",
+        "platform": "external_seed",
+        "source_product_id": "ext_2da51d2f8d19211c89fb2a30",
+        "source_variant_id": "ext_2da51d2f8d19211c89fb2a30:44109378191517",
+        "source_domain": "7journeys.com",
+        "sku": "7J001",
+        "barcode": null,
+        "title": "7 Journeys Miracle Glow Serum Mask 25ml (10 Sheets)",
+        "currency": "USD",
+        "image_url": "https://cdn.shopify.com/s/files/1/0628/9716/0349/files/7-journeys-7-journeys-miracle-glow-serum-mask-25ml-10-sheets-7j001-8809443287939-9111380.png?v=1759493178",
+        "visible_attributes": {},
+        "visible_option_labels": {},
+        "ingredient_ids": [],
+        "sku_payload": {
+          "source": "external_product_seeds_mirror_v1",
+          "external_product_id": "ext_2da51d2f8d19211c89fb2a30",
+          "raw_variant_id": "44109378191517",
+          "source_variant_id": "ext_2da51d2f8d19211c89fb2a30:44109378191517",
+          "variant_sku": "7J001",
+          "barcode": null,
+          "strong_identifier_kind": null,
+          "source_url": "https://7journeys.com/en-inteuusuk/products/7journeys-miracle-glow-serum-mask-10-sheets",
+          "external_redirect_url": "https://7journeys.com/en-inteuusuk/products/7journeys-miracle-glow-serum-mask-10-sheets",
+          "price": "55",
+          "price_amount": 55,
+          "currency": "USD",
+          "availability": "in_stock",
+          "image_url": "https://cdn.shopify.com/s/files/1/0628/9716/0349/files/7-journeys-7-journeys-miracle-glow-serum-mask-25ml-10-sheets-7j001-8809443287939-9111380.png?v=1759493178",
+          "swatch_image_url": null,
+          "label_image_url": null,
+          "options": {},
+          "raw_variant": {
+            "sku": "7J001",
+            "url": "https://7journeys.com/en-inteuusuk/products/7journeys-miracle-glow-serum-mask-10-sheets",
+            "price": "55.00",
+            "stock": "In Stock",
+            "images": [
+              "https://cdn.shopify.com/s/files/1/0628/9716/0349/files/7-journeys-7-journeys-miracle-glow-serum-mask-25ml-10-sheets-7j001-8809443287939-9111380.png?v=1759493178",
+              "https://cdn.shopify.com/s/files/1/0628/9716/0349/files/7-journeys-7-journeys-miracle-glow-serum-mask-25ml-10-sheets-7j001-8809443287939-4881882.png?v=1764736567",
+              "https://cdn.shopify.com/s/files/1/0628/9716/0349/files/7-journeys-7-journeys-miracle-glow-serum-mask-25ml-10-sheets-7j001-8809443287939-7026113.jpg?v=1764736567",
+              "https://cdn.shopify.com/s/files/1/0628/9716/0349/files/7-journeys-7-journeys-miracle-glow-serum-mask-25ml-10-sheets-7j001-8809443287939-5276279.png?v=1764736567",
+              "https://cdn.shopify.com/s/files/1/0628/9716/0349/files/7-journeys-7-journeys-miracle-glow-serum-mask-25ml-10-sheets-7j001-8809443287939-1010333.jpg?v=1764659561",
+              "https://cdn.shopify.com/s/files/1/0628/9716/0349/files/7-journeys-7-journeys-miracle-glow-serum-mask-25ml-10-sheets-7j001-8809443287939-8057207.jpg?v=1764659561",
+              "https://cdn.shopify.com/s/files/1/0628/9716/0349/files/7-journeys-7-journeys-miracle-glow-serum-mask-25ml-10-sheets-7j001-8809443287939-4009473.jpg?v=1764659561",
+              "https://cdn.shopify.com/s/files/1/0628/9716/0349/files/7-journeys-7-journeys-miracle-glow-serum-mask-25ml-10-sheets-7j001-8809443287939-9399536.jpg?v=1764659561",
+              "https://cdn.shopify.com/s/files/1/0628/9716/0349/files/7-journeys-7-journeys-miracle-glow-serum-mask-25ml-10-sheets-7j001-8809443287939-8462383.jpg?v=1764659561",
+              "https://cdn.shopify.com/s/files/1/0628/9716/0349/files/7-journeys-7-journeys-miracle-glow-serum-mask-25ml-10-sheets-7j001-8809443287939-5054606.jpg?v=1764659561",
+              "https://cdn.shopify.com/s/files/1/0628/9716/0349/files/7-journeys-7-journeys-miracle-glow-serum-mask-25ml-10-sheets-7j001-8809443287939-8802155.jpg?v=1764659561",
+              "https://cdn.shopify.com/s/files/1/0628/9716/0349/files/7-journeys-7-journeys-miracle-glow-serum-mask-25ml-10-sheets-7j001-8809443287939-3416225.jpg?v=1764659561"
+            ],
+            "currency": "USD",
+            "image_url": "https://cdn.shopify.com/s/files/1/0628/9716/0349/files/7-journeys-7-journeys-miracle-glow-serum-mask-25ml-10-sheets-7j001-8809443287939-9111380.png?v=1759493178",
+            "image_urls": [
+              "https://cdn.shopify.com/s/files/1/0628/9716/0349/files/7-journeys-7-journeys-miracle-glow-serum-mask-25ml-10-sheets-7j001-8809443287939-9111380.png?v=1759493178",
+              "https://cdn.shopify.com/s/files/1/0628/9716/0349/files/7-journeys-7-journeys-miracle-glow-serum-mask-25ml-10-sheets-7j001-8809443287939-4881882.png?v=1764736567",
+              "https://cdn.shopify.com/s/files/1/0628/9716/0349/files/7-journeys-7-journeys-miracle-glow-serum-mask-25ml-10-sheets-7j001-8809443287939-7026113.jpg?v=1764736567",
+              "https://cdn.shopify.com/s/files/1/0628/9716/0349/files/7-journeys-7-journeys-miracle-glow-serum-mask-25ml-10-sheets-7j001-8809443287939-5276279.png?v=1764736567",
+              "https://cdn.shopify.com/s/files/1/0628/9716/0349/files/7-journeys-7-journeys-miracle-glow-serum-mask-25ml-10-sheets-7j001-8809443287939-1010333.jpg?v=1764659561",
+              "https://cdn.shopify.com/s/files/1/0628/9716/0349/files/7-journeys-7-journeys-miracle-glow-serum-mask-25ml-10-sheets-7j001-8809443287939-8057207.jpg?v=1764659561",
+              "https://cdn.shopify.com/s/files/1/0628/9716/0349/files/7-journeys-7-journeys-miracle-glow-serum-mask-25ml-10-sheets-7j001-8809443287939-4009473.jpg?v=1764659561",
+              "https://cdn.shopify.com/s/files/1/0628/9716/0349/files/7-journeys-7-journeys-miracle-glow-serum-mask-25ml-10-sheets-7j001-8809443287939-9399536.jpg?v=1764659561",
+              "https://cdn.shopify.com/s/files/1/0628/9716/0349/files/7-journeys-7-journeys-miracle-glow-serum-mask-25ml-10-sheets-7j001-8809443287939-8462383.jpg?v=1764659561",
+              "https://cdn.shopify.com/s/files/1/0628/9716/0349/files/7-journeys-7-journeys-miracle-glow-serum-mask-25ml-10-sheets-7j001-8809443287939-5054606.jpg?v=1764659561",
+              "https://cdn.shopify.com/s/files/1/0628/9716/0349/files/7-journeys-7-journeys-miracle-glow-serum-mask-25ml-10-sheets-7j001-8809443287939-8802155.jpg?v=1764659561",
+              "https://cdn.shopify.com/s/files/1/0628/9716/0349/files/7-journeys-7-journeys-miracle-glow-serum-mask-25ml-10-sheets-7j001-8809443287939-3416225.jpg?v=1764659561"
+            ],
+            "variant_id": "44109378191517",
+            "description": "7Journeys 7 Journeys Miracle Glow Serum Mask 25ml (10 Sheets) is a source-backed sheet mask from the brand-owned US-localized product page. The source ingredient list includes Water, Dipropylene Glycol, Butylene Glycol, Glycerin, Macadamia Ternifolia Seed Oil. Price, availability, images, use instructions, details, and formula fields were captured from the same source page.",
+            "option_name": "Size",
+            "option_value": "Default"
+          }
+        },
+        "readiness_tier": "referral_only"
+      },
+      "first_offer": {
+        "offer_id": "offer:external_seed:ad6622b05073d8ce0bf595c985ebf100",
+        "sku_key": "prod::external_seed::external_seed::ext_2da51d2f8d19211c89fb2a30::sku_7b730168b99eeaaf9535",
+        "product_key": "prod::external_seed::external_seed::ext_2da51d2f8d19211c89fb2a30",
+        "merchant_id": "external_seed",
+        "catalog_track": "external_referral",
+        "truth_tier": "observed",
+        "readiness_tier": "referral_only",
+        "offer_mode": "redirect",
+        "channel": "external_referral",
+        "availability": "in_stock",
+        "currency": "USD",
+        "list_price": 55,
+        "merchant_effective_price": 55,
+        "estimated_best_price": 55,
+        "price_confidence": 1,
+        "source_system": "external_product_seeds_mirror_v1",
+        "source_ref": "eps_b36b9b1d2fb28c5e39090157",
+        "source_domain": "7journeys.com",
+        "offer_payload": {
+          "source": "external_product_seeds_mirror_v1",
+          "external_seed_id": "eps_b36b9b1d2fb28c5e39090157",
+          "external_product_id": "ext_2da51d2f8d19211c89fb2a30",
+          "domain": "7journeys.com",
+          "market": "US",
+          "product_title": "7 Journeys Miracle Glow Serum Mask 25ml (10 Sheets)",
+          "variant_title": "7 Journeys Miracle Glow Serum Mask 25ml (10 Sheets)",
+          "variant_sku": "7J001",
+          "raw_variant_id": "44109378191517",
+          "url": "https://7journeys.com/en-inteuusuk/products/7journeys-miracle-glow-serum-mask-10-sheets",
+          "offer_url": "https://7journeys.com/en-inteuusuk/products/7journeys-miracle-glow-serum-mask-10-sheets",
+          "canonical_url": "https://7journeys.com/en-inteuusuk/products/7journeys-miracle-glow-serum-mask-10-sheets",
+          "destination_url": "https://7journeys.com/en-inteuusuk/products/7journeys-miracle-glow-serum-mask-10-sheets",
+          "external_redirect_url": "https://7journeys.com/en-inteuusuk/products/7journeys-miracle-glow-serum-mask-10-sheets",
+          "merchant_display_name": "7Journeys",
+          "price": "55",
+          "price_amount": 55,
+          "price_currency": "USD",
+          "availability": "in_stock",
+          "commerce_facts_v1": {
+            "contract_version": "commerce_facts.v1",
+            "market_id": "US",
+            "country": "US",
+            "currency_target": "USD",
+            "source_authority": "official_shopify_us_localized_pdp",
+            "captured_at": "2026-05-25T07:46:04.722Z",
+            "evidence_url": "https://7journeys.com/en-inteuusuk/products/7journeys-miracle-glow-serum-mask-10-sheets",
+            "sellable_region": {
+              "status": "unknown",
+              "countries": [
+                "US"
+              ],
+              "evidence_source": "shopify_localized_storefront_us_market",
+              "confidence": "medium",
+              "checked_at": "2026-05-25T07:46:04.722Z",
+              "reason_codes": [
+                "localized_us_storefront_url",
+                "usd_price_observed",
+                "apple_pay_currency_usd"
+              ],
+              "evidence_url": "https://7journeys.com/en-inteuusuk/products/7journeys-miracle-glow-serum-mask-10-sheets"
+            },
+            "regional_price": {
+              "amount": 55,
+              "currency": "USD",
+              "display_raw": "$55.00",
+              "price_type": "list",
+              "compare_at_amount": null,
+              "compare_at_currency": null,
+              "compare_at_display_raw": null,
+              "tax_included": "unknown",
+              "confidence": "high",
+              "market_switch_status": "ok",
+              "observed_currency": "USD",
+              "source_url": "https://7journeys.com/en-inteuusuk/products/7journeys-miracle-glow-serum-mask-10-sheets",
+              "captured_at": "2026-05-25T07:46:04.722Z"
+            },
+            "availability": {
+              "status": "in_stock",
+              "source": "official_shopify_us_localized_pdp",
+              "confidence": "high",
+              "captured_at": "2026-05-25T07:46:04.722Z"
+            },
+            "shipping": {
+              "status": "unknown",
+              "source": "official_shopify_us_localized_pdp",
+              "confidence": "medium",
+              "reason_codes": [
+                "checkout_not_queried"
+              ],
+              "checked_at": "2026-05-25T07:46:04.722Z"
+            },
+            "promotions": [],
+            "returns": {
+              "status": "unknown",
+              "source": "official_shopify_us_localized_pdp",
+              "confidence": "unknown",
+              "reason_codes": [
+                "external_returns_not_extracted"
+              ],
+              "checked_at": "2026-05-25T07:46:04.722Z"
+            }
+          },
+          "agent_safe_commerce_facts": {
+            "contract_version": "commerce_facts.v1",
+            "market_id": "US",
+            "price": {
+              "amount": 55,
+              "currency": "USD",
+              "display_raw": "$55.00",
+              "price_type": "list",
+              "compare_at_amount": null,
+              "compare_at_currency": null,
+              "compare_at_display_raw": null,
+              "tax_included": "unknown",
+              "confidence": "high",
+              "market_switch_status": "ok",
+              "observed_currency": "USD",
+              "source_url": "https://7journeys.com/en-inteuusuk/products/7journeys-miracle-glow-serum-mask-10-sheets",
+              "captured_at": "2026-05-25T07:46:04.722Z"
+            },
+            "availability": {
+              "status": "in_stock",
+              "source": "official_shopify_us_localized_pdp",
+              "confidence": "high",
+              "captured_at": "2026-05-25T07:46:04.722Z"
+            },
+            "shipping": {
+              "status": "unknown",
+              "reason": "verify_at_checkout"
+            },
+            "promotions": [],
+            "checkout_note": "Shipping and promotions are not verified for this external offer; verify at merchant checkout."
+          }
+        }
+      },
+      "serving_readiness": {
+        "servingEligible": true,
+        "contentQualityScore": 90,
+        "blockerCode": "none",
+        "blockerDetail": null,
+        "identityResolved": true,
+        "identityLiveReadResolved": true,
+        "identityBootstrapEligible": false,
+        "terminalHold": false,
+        "terminalHoldReason": "",
+        "hasImage": true,
+        "hasPrice": true,
+        "descriptionLength": 376
+      }
+    },
+    {
+      "external_product_id": "ext_d55c93a9feb384ac9e0bde40",
+      "product_key": "prod::external_seed::external_seed::ext_d55c93a9feb384ac9e0bde40",
+      "product_group_id": "sig_6f258acef923637ae7567600408ce2cf",
+      "title": "7 Journeys Antarctic Timeless Serum 45ml (Hydration & Anti-aging)",
+      "brand": "7Journeys",
+      "product_type": "Face Serum",
+      "category": "Face Serum",
+      "category_path": "beauty/skincare/serum",
+      "canonical_url": "https://7journeys.com/en-inteuusuk/products/7-journeys-anatctic-timeless-serum-45ml",
+      "pivota_signature_id": "sig_6f258acef923637ae7567600408ce2cf",
+      "sku_rows": 1,
+      "first_sku": {
+        "sku_key": "prod::external_seed::external_seed::ext_d55c93a9feb384ac9e0bde40::sku_790602725187eb1cba79",
+        "product_key": "prod::external_seed::external_seed::ext_d55c93a9feb384ac9e0bde40",
+        "merchant_id": "external_seed",
+        "platform": "external_seed",
+        "source_product_id": "ext_d55c93a9feb384ac9e0bde40",
+        "source_variant_id": "ext_d55c93a9feb384ac9e0bde40:46761570599069",
+        "source_domain": "7journeys.com",
+        "sku": "7J003-USUKEU",
+        "barcode": null,
+        "title": "7 Journeys Antarctic Timeless Serum 45ml (Hydration & Anti-aging)",
+        "currency": "USD",
+        "image_url": "https://cdn.shopify.com/s/files/1/0628/9716/0349/files/7-journeys-7-journeys-antarctic-timeless-serum-45ml-7j003-usukeu-8809789634886-6307320.png?v=1759493174",
+        "visible_attributes": {},
+        "visible_option_labels": {},
+        "ingredient_ids": [],
+        "sku_payload": {
+          "source": "external_product_seeds_mirror_v1",
+          "external_product_id": "ext_d55c93a9feb384ac9e0bde40",
+          "raw_variant_id": "46761570599069",
+          "source_variant_id": "ext_d55c93a9feb384ac9e0bde40:46761570599069",
+          "variant_sku": "7J003-USUKEU",
+          "barcode": null,
+          "strong_identifier_kind": null,
+          "source_url": "https://7journeys.com/en-inteuusuk/products/7-journeys-anatctic-timeless-serum-45ml",
+          "external_redirect_url": "https://7journeys.com/en-inteuusuk/products/7-journeys-anatctic-timeless-serum-45ml",
+          "price": "50",
+          "price_amount": 50,
+          "currency": "USD",
+          "availability": "in_stock",
+          "image_url": "https://cdn.shopify.com/s/files/1/0628/9716/0349/files/7-journeys-7-journeys-antarctic-timeless-serum-45ml-7j003-usukeu-8809789634886-6307320.png?v=1759493174",
+          "swatch_image_url": null,
+          "label_image_url": null,
+          "options": {},
+          "raw_variant": {
+            "sku": "7J003-USUKEU",
+            "url": "https://7journeys.com/en-inteuusuk/products/7-journeys-anatctic-timeless-serum-45ml",
+            "price": "50.00",
+            "stock": "In Stock",
+            "images": [
+              "https://cdn.shopify.com/s/files/1/0628/9716/0349/files/7-journeys-7-journeys-antarctic-timeless-serum-45ml-7j003-usukeu-8809789634886-6307320.png?v=1759493174",
+              "https://cdn.shopify.com/s/files/1/0628/9716/0349/files/7-journeys-7-journeys-antarctic-timeless-serum-45ml-hydration-anti-aging-7j003-usukeu-8809789634886-7442768.png?v=1764736566",
+              "https://cdn.shopify.com/s/files/1/0628/9716/0349/files/7-journeys-7-journeys-antarctic-timeless-serum-45ml-hydration-anti-aging-7j003-usukeu-8809789634886-8702048.jpg?v=1764736566",
+              "https://cdn.shopify.com/s/files/1/0628/9716/0349/files/7-journeys-7-journeys-antarctic-timeless-serum-45ml-7j003-usukeu-8809789634886-9650353.jpg?v=1764659994",
+              "https://cdn.shopify.com/s/files/1/0628/9716/0349/files/7-journeys-7-journeys-antarctic-timeless-serum-45ml-7j003-usukeu-8809789634886-5844673.jpg?v=1764659994",
+              "https://cdn.shopify.com/s/files/1/0628/9716/0349/files/7-journeys-7-journeys-antarctic-timeless-serum-45ml-7j003-usukeu-8809789634886-6428490.jpg?v=1764659994",
+              "https://cdn.shopify.com/s/files/1/0628/9716/0349/files/7-journeys-7-journeys-antarctic-timeless-serum-45ml-7j003-usukeu-8809789634886-4890502.jpg?v=1764659994",
+              "https://cdn.shopify.com/s/files/1/0628/9716/0349/files/7-journeys-7-journeys-antarctic-timeless-serum-45ml-7j003-usukeu-8809789634886-7847272.jpg?v=1764659994",
+              "https://cdn.shopify.com/s/files/1/0628/9716/0349/files/7-journeys-7-journeys-antarctic-timeless-serum-45ml-7j003-usukeu-8809789634886-8171039.jpg?v=1764659994"
+            ],
+            "currency": "USD",
+            "image_url": "https://cdn.shopify.com/s/files/1/0628/9716/0349/files/7-journeys-7-journeys-antarctic-timeless-serum-45ml-7j003-usukeu-8809789634886-6307320.png?v=1759493174",
+            "image_urls": [
+              "https://cdn.shopify.com/s/files/1/0628/9716/0349/files/7-journeys-7-journeys-antarctic-timeless-serum-45ml-7j003-usukeu-8809789634886-6307320.png?v=1759493174",
+              "https://cdn.shopify.com/s/files/1/0628/9716/0349/files/7-journeys-7-journeys-antarctic-timeless-serum-45ml-hydration-anti-aging-7j003-usukeu-8809789634886-7442768.png?v=1764736566",
+              "https://cdn.shopify.com/s/files/1/0628/9716/0349/files/7-journeys-7-journeys-antarctic-timeless-serum-45ml-hydration-anti-aging-7j003-usukeu-8809789634886-8702048.jpg?v=1764736566",
+              "https://cdn.shopify.com/s/files/1/0628/9716/0349/files/7-journeys-7-journeys-antarctic-timeless-serum-45ml-7j003-usukeu-8809789634886-9650353.jpg?v=1764659994",
+              "https://cdn.shopify.com/s/files/1/0628/9716/0349/files/7-journeys-7-journeys-antarctic-timeless-serum-45ml-7j003-usukeu-8809789634886-5844673.jpg?v=1764659994",
+              "https://cdn.shopify.com/s/files/1/0628/9716/0349/files/7-journeys-7-journeys-antarctic-timeless-serum-45ml-7j003-usukeu-8809789634886-6428490.jpg?v=1764659994",
+              "https://cdn.shopify.com/s/files/1/0628/9716/0349/files/7-journeys-7-journeys-antarctic-timeless-serum-45ml-7j003-usukeu-8809789634886-4890502.jpg?v=1764659994",
+              "https://cdn.shopify.com/s/files/1/0628/9716/0349/files/7-journeys-7-journeys-antarctic-timeless-serum-45ml-7j003-usukeu-8809789634886-7847272.jpg?v=1764659994",
+              "https://cdn.shopify.com/s/files/1/0628/9716/0349/files/7-journeys-7-journeys-antarctic-timeless-serum-45ml-7j003-usukeu-8809789634886-8171039.jpg?v=1764659994"
+            ],
+            "variant_id": "46761570599069",
+            "description": "7Journeys 7 Journeys Antarctic Timeless Serum 45ml (Hydration & Anti-aging) is a source-backed face serum from the brand-owned US-localized product page. The source ingredient list includes Water, 1,2-Hexanediol, Pseudoalteromonas Ferment Extract, Euterpe Oleracea Fruit Extract, Sodium Hyaluronate. Price, availability, images, use instructions, details, and formula fields were captured from the same source page.",
+            "option_name": "Size",
+            "option_value": "Default"
+          }
+        },
+        "readiness_tier": "referral_only"
+      },
+      "first_offer": {
+        "offer_id": "offer:external_seed:fc4acf4fe7f9b471f02f2fe47356cbb7",
+        "sku_key": "prod::external_seed::external_seed::ext_d55c93a9feb384ac9e0bde40::sku_790602725187eb1cba79",
+        "product_key": "prod::external_seed::external_seed::ext_d55c93a9feb384ac9e0bde40",
+        "merchant_id": "external_seed",
+        "catalog_track": "external_referral",
+        "truth_tier": "observed",
+        "readiness_tier": "referral_only",
+        "offer_mode": "redirect",
+        "channel": "external_referral",
+        "availability": "in_stock",
+        "currency": "USD",
+        "list_price": 50,
+        "merchant_effective_price": 50,
+        "estimated_best_price": 50,
+        "price_confidence": 1,
+        "source_system": "external_product_seeds_mirror_v1",
+        "source_ref": "eps_83b371c333c20799ce91f673",
+        "source_domain": "7journeys.com",
+        "offer_payload": {
+          "source": "external_product_seeds_mirror_v1",
+          "external_seed_id": "eps_83b371c333c20799ce91f673",
+          "external_product_id": "ext_d55c93a9feb384ac9e0bde40",
+          "domain": "7journeys.com",
+          "market": "US",
+          "product_title": "7 Journeys Antarctic Timeless Serum 45ml (Hydration & Anti-aging)",
+          "variant_title": "7 Journeys Antarctic Timeless Serum 45ml (Hydration & Anti-aging)",
+          "variant_sku": "7J003-USUKEU",
+          "raw_variant_id": "46761570599069",
+          "url": "https://7journeys.com/en-inteuusuk/products/7-journeys-anatctic-timeless-serum-45ml",
+          "offer_url": "https://7journeys.com/en-inteuusuk/products/7-journeys-anatctic-timeless-serum-45ml",
+          "canonical_url": "https://7journeys.com/en-inteuusuk/products/7-journeys-anatctic-timeless-serum-45ml",
+          "destination_url": "https://7journeys.com/en-inteuusuk/products/7-journeys-anatctic-timeless-serum-45ml",
+          "external_redirect_url": "https://7journeys.com/en-inteuusuk/products/7-journeys-anatctic-timeless-serum-45ml",
+          "merchant_display_name": "7Journeys",
+          "price": "50",
+          "price_amount": 50,
+          "price_currency": "USD",
+          "availability": "in_stock",
+          "commerce_facts_v1": {
+            "contract_version": "commerce_facts.v1",
+            "market_id": "US",
+            "country": "US",
+            "currency_target": "USD",
+            "source_authority": "official_shopify_us_localized_pdp",
+            "captured_at": "2026-05-25T07:46:04.722Z",
+            "evidence_url": "https://7journeys.com/en-inteuusuk/products/7-journeys-anatctic-timeless-serum-45ml",
+            "sellable_region": {
+              "status": "unknown",
+              "countries": [
+                "US"
+              ],
+              "evidence_source": "shopify_localized_storefront_us_market",
+              "confidence": "medium",
+              "checked_at": "2026-05-25T07:46:04.722Z",
+              "reason_codes": [
+                "localized_us_storefront_url",
+                "usd_price_observed",
+                "apple_pay_currency_usd"
+              ],
+              "evidence_url": "https://7journeys.com/en-inteuusuk/products/7-journeys-anatctic-timeless-serum-45ml"
+            },
+            "regional_price": {
+              "amount": 50,
+              "currency": "USD",
+              "display_raw": "$50.00",
+              "price_type": "list",
+              "compare_at_amount": null,
+              "compare_at_currency": null,
+              "compare_at_display_raw": null,
+              "tax_included": "unknown",
+              "confidence": "high",
+              "market_switch_status": "ok",
+              "observed_currency": "USD",
+              "source_url": "https://7journeys.com/en-inteuusuk/products/7-journeys-anatctic-timeless-serum-45ml",
+              "captured_at": "2026-05-25T07:46:04.722Z"
+            },
+            "availability": {
+              "status": "in_stock",
+              "source": "official_shopify_us_localized_pdp",
+              "confidence": "high",
+              "captured_at": "2026-05-25T07:46:04.722Z"
+            },
+            "shipping": {
+              "status": "unknown",
+              "source": "official_shopify_us_localized_pdp",
+              "confidence": "medium",
+              "reason_codes": [
+                "checkout_not_queried"
+              ],
+              "checked_at": "2026-05-25T07:46:04.722Z"
+            },
+            "promotions": [],
+            "returns": {
+              "status": "unknown",
+              "source": "official_shopify_us_localized_pdp",
+              "confidence": "unknown",
+              "reason_codes": [
+                "external_returns_not_extracted"
+              ],
+              "checked_at": "2026-05-25T07:46:04.722Z"
+            }
+          },
+          "agent_safe_commerce_facts": {
+            "contract_version": "commerce_facts.v1",
+            "market_id": "US",
+            "price": {
+              "amount": 50,
+              "currency": "USD",
+              "display_raw": "$50.00",
+              "price_type": "list",
+              "compare_at_amount": null,
+              "compare_at_currency": null,
+              "compare_at_display_raw": null,
+              "tax_included": "unknown",
+              "confidence": "high",
+              "market_switch_status": "ok",
+              "observed_currency": "USD",
+              "source_url": "https://7journeys.com/en-inteuusuk/products/7-journeys-anatctic-timeless-serum-45ml",
+              "captured_at": "2026-05-25T07:46:04.722Z"
+            },
+            "availability": {
+              "status": "in_stock",
+              "source": "official_shopify_us_localized_pdp",
+              "confidence": "high",
+              "captured_at": "2026-05-25T07:46:04.722Z"
+            },
+            "shipping": {
+              "status": "unknown",
+              "reason": "verify_at_checkout"
+            },
+            "promotions": [],
+            "checkout_note": "Shipping and promotions are not verified for this external offer; verify at merchant checkout."
+          }
+        }
+      },
+      "serving_readiness": {
+        "servingEligible": true,
+        "contentQualityScore": 90,
+        "blockerCode": "none",
+        "blockerDetail": null,
+        "identityResolved": true,
+        "identityLiveReadResolved": true,
+        "identityBootstrapEligible": false,
+        "terminalHold": false,
+        "terminalHoldReason": "",
+        "hasImage": true,
+        "hasPrice": true,
+        "descriptionLength": 415
+      }
+    }
+  ]
+}
