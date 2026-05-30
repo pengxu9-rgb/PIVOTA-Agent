@@ -1,0 +1,238 @@
+{
+  "generated_at": "2026-05-30T14:35:28.429Z",
+  "gateway": "https://agent.pivota.cc/api/gateway",
+  "results": [
+    {
+      "external_product_id": "ext_1493a61baf165a6c00e4977b",
+      "signature_id": "sig_7425ea0bd58897136a79c57d82861652",
+      "label": "OILUJ French Lavender body oil",
+      "pdp": {
+        "http_status": 200,
+        "status": "success",
+        "build_id": "55705f4adb32",
+        "title": "OILÙJ, Life Oil: Organic Moringa/ French Lavender Blend",
+        "serving_eligible": true,
+        "price_amount": 65,
+        "overview_present": true,
+        "offers_count": 1,
+        "error": null
+      },
+      "similar": {
+        "http_status": 200,
+        "status": "success",
+        "similar_status": "ready",
+        "visible_count": 6,
+        "total": 6,
+        "underfill": 0,
+        "products": [
+          {
+            "product_id": "sig_9cbfd2cd3c09bb3b811b81c806b60f57",
+            "external_product_id": "ext_07cfaab25950196c3ec1b5f3",
+            "title": "OILÙJ, Life Oil: Organic Moringa/Sandalwood Blend",
+            "brand": "OILUJ",
+            "category_path": "beauty/skincare/body/body-oil",
+            "card_highlight": "Body oil formula detail"
+          },
+          {
+            "product_id": "sig_57632931dc1e74c7855a6a8e112db4ae",
+            "external_product_id": "ext_ab35eb07e8635bb1e1be3ebf",
+            "title": "OILÙJ, Life Oil",
+            "brand": "OILUJ",
+            "category_path": "beauty/skincare/body/body-oil",
+            "card_highlight": "Body oil formula detail"
+          },
+          {
+            "product_id": "sig_6019242450baaf0e117b754749c1096a",
+            "external_product_id": "ext_e6342550bfad15fae6296e74",
+            "title": "Lavender Whipped Body Cream",
+            "brand": "Beekman 1802",
+            "category_path": "beauty/skincare/moisturizer",
+            "card_highlight": "Body moisturizer detail"
+          },
+          {
+            "product_id": "sig_6a6e0f28be4fe1091c35d3e6ded71c0e",
+            "external_product_id": "ext_50393de9ca7159f928b58490",
+            "title": "Soleil Neige Shimmering Body Oil",
+            "brand": "Tom Ford Beauty",
+            "category_path": "beauty/skincare/moisturize/oil",
+            "card_highlight": "jasmine, citrus, shine finish, 100.0 ml"
+          },
+          {
+            "product_id": "sig_78567403fba584663a09a23f43657292",
+            "external_product_id": "ext_be11814cbb50ed603d01f7e3",
+            "title": "Soleil Blanc Shimmering Body Oil",
+            "brand": "Tom Ford Beauty",
+            "category_path": "beauty/skincare/moisturize/oil",
+            "card_highlight": "amber, citrus, shine finish, 100.0 ml"
+          },
+          {
+            "product_id": "sig_946d5309a60eb1bd58fd4b92f190f373",
+            "external_product_id": "ext_0493af4ca3a6d484f5c6a057",
+            "title": "Butta Drop Whipped Oil Body Cream with Tropical Oils + Shea Butter — Fenty Fresh Shimmering",
+            "brand": "Fenty Beauty",
+            "category_path": "beauty/skincare/moisturize/cream",
+            "card_highlight": "Buttas you up in nourishing hydration"
+          }
+        ],
+        "error": null
+      }
+    },
+    {
+      "external_product_id": "ext_07cfaab25950196c3ec1b5f3",
+      "signature_id": "sig_9cbfd2cd3c09bb3b811b81c806b60f57",
+      "label": "OILUJ Sandalwood body oil",
+      "pdp": {
+        "http_status": 200,
+        "status": "success",
+        "build_id": "55705f4adb32",
+        "title": "OILÙJ, Life Oil: Organic Moringa/Sandalwood Blend",
+        "serving_eligible": true,
+        "price_amount": 65,
+        "overview_present": true,
+        "offers_count": 1,
+        "error": null
+      },
+      "similar": {
+        "http_status": 200,
+        "status": "success",
+        "similar_status": "ready",
+        "visible_count": 6,
+        "total": 6,
+        "underfill": 0,
+        "products": [
+          {
+            "product_id": "sig_7425ea0bd58897136a79c57d82861652",
+            "external_product_id": "ext_1493a61baf165a6c00e4977b",
+            "title": "OILÙJ, Life Oil: Organic Moringa/ French Lavender Blend",
+            "brand": "OILUJ",
+            "category_path": "beauty/skincare/body/body-oil",
+            "card_highlight": "Body oil formula detail"
+          },
+          {
+            "product_id": "sig_57632931dc1e74c7855a6a8e112db4ae",
+            "external_product_id": "ext_ab35eb07e8635bb1e1be3ebf",
+            "title": "OILÙJ, Life Oil",
+            "brand": "OILUJ",
+            "category_path": "beauty/skincare/body/body-oil",
+            "card_highlight": "Body oil formula detail"
+          },
+          {
+            "product_id": "sig_6a6e0f28be4fe1091c35d3e6ded71c0e",
+            "external_product_id": "ext_50393de9ca7159f928b58490",
+            "title": "Soleil Neige Shimmering Body Oil",
+            "brand": "Tom Ford Beauty",
+            "category_path": "beauty/skincare/moisturize/oil",
+            "card_highlight": "jasmine, citrus, shine finish, 100.0 ml"
+          },
+          {
+            "product_id": "sig_78567403fba584663a09a23f43657292",
+            "external_product_id": "ext_be11814cbb50ed603d01f7e3",
+            "title": "Soleil Blanc Shimmering Body Oil",
+            "brand": "Tom Ford Beauty",
+            "category_path": "beauty/skincare/moisturize/oil",
+            "card_highlight": "amber, citrus, shine finish, 100.0 ml"
+          },
+          {
+            "product_id": "sig_946d5309a60eb1bd58fd4b92f190f373",
+            "external_product_id": "ext_0493af4ca3a6d484f5c6a057",
+            "title": "Butta Drop Whipped Oil Body Cream with Tropical Oils + Shea Butter — Fenty Fresh Shimmering",
+            "brand": "Fenty Beauty",
+            "category_path": "beauty/skincare/moisturize/cream",
+            "card_highlight": "Buttas you up in nourishing hydration"
+          },
+          {
+            "product_id": "sig_28b667236c7deb38e2f1ae555fdeb3b4",
+            "external_product_id": "ext_72dc325d8450f9cb90c89378",
+            "title": "Coconut Body Lotion",
+            "brand": "Kylie Cosmetics",
+            "category_path": "beauty/skincare/moisturize/cream",
+            "card_highlight": "aloe juice, hydration, barrier support"
+          }
+        ],
+        "error": null
+      }
+    },
+    {
+      "external_product_id": "ext_664b859ce2599a57c3f1f7ce",
+      "signature_id": "sig_e434b90902740f110390a11d",
+      "label": "UpCircle Passion Fruit body oil",
+      "pdp": {
+        "http_status": 200,
+        "status": "success",
+        "build_id": "55705f4adb32",
+        "title": "Body Oil with Passion Fruit Oil",
+        "serving_eligible": true,
+        "price_amount": 21,
+        "overview_present": true,
+        "offers_count": 1,
+        "error": null
+      },
+      "similar": {
+        "http_status": 200,
+        "status": "success",
+        "similar_status": "ready",
+        "visible_count": 6,
+        "total": 6,
+        "underfill": 0,
+        "products": [
+          {
+            "product_id": "sig_e6dce3a7da796a617c2d87f0",
+            "external_product_id": "ext_5f63056adbcee15d15e2aba1",
+            "title": "Hand + Body Lotion with Bergamot Water",
+            "brand": "UpCircle Beauty",
+            "category_path": "beauty/bodycare/body-lotion",
+            "card_highlight": "firmness, body routine, aromatherapy"
+          },
+          {
+            "product_id": "sig_0ebbe86c7118d24e0d759b35",
+            "external_product_id": "ext_b30bcf26cdb534ef9538a3f7",
+            "title": "COPIOUS body serum",
+            "brand": "KHUS KHUS",
+            "category_path": "beauty/bodycare/body-oil",
+            "card_highlight": "Body oil formula detail"
+          },
+          {
+            "product_id": "sig_c5c41c0851763b2481798bcf",
+            "external_product_id": "ext_d3d708f481903ba2a6f9b732",
+            "title": "PROPOWAX™ Antioxidant Dry Oil 100ml",
+            "brand": "Apiceuticals",
+            "category_path": "beauty/bodycare/body-oil",
+            "card_highlight": "Body oil formula detail"
+          },
+          {
+            "product_id": "sig_80fbcfb336e9e7dc5fdfd47e",
+            "external_product_id": "ext_3f98c2d64d8e5f0c183261a1",
+            "title": "Natural Revitalizing Body Oil for Dry Skin | Moisturizing Body Oil | Lhamour",
+            "brand": "Lhamour",
+            "category_path": "beauty/body/body-oil",
+            "card_highlight": "Body oil formula detail"
+          },
+          {
+            "product_id": "sig_523711b2d11ac2c932194aef05f9d26e",
+            "external_product_id": "ext_08a4a4bfddf769bc8b3d7944",
+            "title": "KP Smoothing + Brightening Body Lotion Fresh Peach",
+            "brand": "First Aid Beauty",
+            "category_path": "beauty/bodycare/body-lotion",
+            "card_highlight": "Body moisturizer detail"
+          },
+          {
+            "product_id": "sig_1587d8b1843fa059eb641ef4",
+            "external_product_id": "ext_c0e5209513c083e2c649c1a1",
+            "title": "PROPOWAX™ Antioxidant Body Lotion 300ml",
+            "brand": "Apiceuticals",
+            "category_path": "beauty/bodycare/body-lotion",
+            "card_highlight": "Body moisturizer detail"
+          }
+        ],
+        "error": null
+      }
+    }
+  ],
+  "summary": {
+    "probed": 3,
+    "pdp_success": 3,
+    "similar_ready": 3,
+    "similar_min_visible_count": 6,
+    "failures": []
+  }
+}

@@ -1,0 +1,678 @@
+{
+  "generated_at": "2026-05-30T14:14:42.900Z",
+  "mode": "dry_run",
+  "batch_size": null,
+  "bootstrap_reviewed_identity_live_read": true,
+  "requested_ids": 3,
+  "fetched_rows": 3,
+  "mirror_rows": 3,
+  "planned_sku_rows": 4,
+  "planned_offer_rows": 4,
+  "planned_index_state_rows": 3,
+  "missing_ids": [],
+  "skipped": [],
+  "applied": {
+    "mode": "dry_run",
+    "existing_before": {
+      "catalog_products": 3,
+      "catalog_skus": 4,
+      "catalog_offers": 4,
+      "product_group_members": 3
+    },
+    "stale_delete_preview": {
+      "current_sku_rows": 4,
+      "current_offer_rows": 4,
+      "planned_stale_sku_deletes": 0,
+      "planned_stale_offer_deletes": 0,
+      "sample_stale_skus": [],
+      "sample_stale_offers": []
+    },
+    "batch_size": null,
+    "batches": 1,
+    "audit_reasons": {
+      "no_strong_identifier": 4
+    },
+    "product_upserts": 0,
+    "sku_upserts": 0,
+    "offer_upserts": 0,
+    "group_member_upserts": 0,
+    "group_member_preserved_existing_merges": 0,
+    "seed_attachment_updates": 0,
+    "index_state_upserts": 0,
+    "identity_live_read_updates": 0,
+    "catalog_row_trust_upserts": 0,
+    "stale_offer_deletes": 0,
+    "stale_sku_deletes": 0
+  },
+  "sample": [
+    {
+      "external_product_id": "ext_1493a61baf165a6c00e4977b",
+      "product_key": "prod::external_seed::external_seed::ext_1493a61baf165a6c00e4977b",
+      "product_group_id": "sig_a926cea3453218463535a2f7",
+      "title": "OILÙJ, Life Oil: Organic Moringa/ French Lavender Blend",
+      "brand": "OILUJ",
+      "product_type": "Body Oil",
+      "category": "Body Oil",
+      "category_path": "beauty/skincare/body/body-oil",
+      "canonical_url": "http://www.oiluj.com/store/p12/OIL%C3%99J%2C_Life_Oil%3A_Organic_Moringa%2F_French_Lavender_Blend.html",
+      "pivota_signature_id": "sig_7425ea0bd58897136a79c57d82861652",
+      "sku_rows": 1,
+      "first_sku": {
+        "sku_key": "prod::external_seed::external_seed::ext_1493a61baf165a6c00e4977b::sku_cadaec81281c30c19891",
+        "product_key": "prod::external_seed::external_seed::ext_1493a61baf165a6c00e4977b",
+        "merchant_id": "external_seed",
+        "platform": "external_seed",
+        "source_product_id": "ext_1493a61baf165a6c00e4977b",
+        "source_variant_id": "ext_1493a61baf165a6c00e4977b:28ae4c7d9745",
+        "source_domain": "oiluj.com",
+        "sku": "AUTO-28ae4c7d",
+        "barcode": null,
+        "title": "OILÙJ, Life Oil: Organic Moringa/ French Lavender Blend",
+        "currency": "USD",
+        "image_url": "http://www.oiluj.com/uploads/1/1/4/3/114370799/s721140597747557791_p12_i2_w1776.jpeg?width=640",
+        "visible_attributes": {},
+        "visible_option_labels": {},
+        "ingredient_ids": [],
+        "sku_payload": {
+          "source": "external_product_seeds_mirror_v1",
+          "external_product_id": "ext_1493a61baf165a6c00e4977b",
+          "raw_variant_id": "28ae4c7d9745",
+          "source_variant_id": "ext_1493a61baf165a6c00e4977b:28ae4c7d9745",
+          "variant_sku": "AUTO-28ae4c7d",
+          "barcode": null,
+          "strong_identifier_kind": null,
+          "source_url": "http://www.oiluj.com/store/p12/OIL%C3%99J%2C_Life_Oil%3A_Organic_Moringa%2F_French_Lavender_Blend.html",
+          "external_redirect_url": "http://www.oiluj.com/store/p12/OIL%C3%99J%2C_Life_Oil%3A_Organic_Moringa%2F_French_Lavender_Blend.html",
+          "price": "65",
+          "price_amount": 65,
+          "currency": "USD",
+          "availability": "in_stock",
+          "image_url": "http://www.oiluj.com/uploads/1/1/4/3/114370799/s721140597747557791_p12_i2_w1776.jpeg?width=640",
+          "swatch_image_url": null,
+          "label_image_url": null,
+          "options": {},
+          "raw_variant": {
+            "sku": "AUTO-28ae4c7d",
+            "url": "http://www.oiluj.com/store/p12/OIL%C3%99J%2C_Life_Oil%3A_Organic_Moringa%2F_French_Lavender_Blend.html",
+            "price": "65",
+            "stock": "In Stock",
+            "currency": "USD",
+            "image_url": "http://www.oiluj.com/uploads/1/1/4/3/114370799/s721140597747557791_p12_i2_w1776.jpeg?width=640",
+            "image_urls": [
+              "http://www.oiluj.com/uploads/1/1/4/3/114370799/s721140597747557791_p12_i2_w1776.jpeg?width=640",
+              "https://www.oiluj.com/uploads/1/1/4/3/114370799/s721140597747557791_p12_i2_w1776.jpeg?width=640"
+            ],
+            "variant_id": "28ae4c7d9745",
+            "description": "Botanical skincare products specializing in the benefits of Moringa oil.",
+            "option_name": "Offer",
+            "option_value": "Default"
+          }
+        },
+        "readiness_tier": "referral_only"
+      },
+      "first_offer": {
+        "offer_id": "offer:external_seed:e11c81ed1fa8bbca4ba70a618538a41a",
+        "sku_key": "prod::external_seed::external_seed::ext_1493a61baf165a6c00e4977b::sku_cadaec81281c30c19891",
+        "product_key": "prod::external_seed::external_seed::ext_1493a61baf165a6c00e4977b",
+        "merchant_id": "external_seed",
+        "catalog_track": "external_referral",
+        "truth_tier": "observed",
+        "readiness_tier": "referral_only",
+        "offer_mode": "redirect",
+        "channel": "external_referral",
+        "availability": "in_stock",
+        "currency": "USD",
+        "list_price": 65,
+        "merchant_effective_price": 65,
+        "estimated_best_price": 65,
+        "price_confidence": 1,
+        "source_system": "external_product_seeds_mirror_v1",
+        "source_ref": "eps_788807b1346798f50430e971",
+        "source_domain": "oiluj.com",
+        "offer_payload": {
+          "source": "external_product_seeds_mirror_v1",
+          "external_seed_id": "eps_788807b1346798f50430e971",
+          "external_product_id": "ext_1493a61baf165a6c00e4977b",
+          "domain": "oiluj.com",
+          "market": "US",
+          "product_title": "OILÙJ, Life Oil: Organic Moringa/ French Lavender Blend",
+          "variant_title": "OILÙJ, Life Oil: Organic Moringa/ French Lavender Blend",
+          "variant_sku": "AUTO-28ae4c7d",
+          "raw_variant_id": "28ae4c7d9745",
+          "url": "http://www.oiluj.com/store/p12/OIL%C3%99J%2C_Life_Oil%3A_Organic_Moringa%2F_French_Lavender_Blend.html",
+          "offer_url": "http://www.oiluj.com/store/p12/OIL%C3%99J%2C_Life_Oil%3A_Organic_Moringa%2F_French_Lavender_Blend.html",
+          "canonical_url": "http://www.oiluj.com/store/p12/OIL%C3%99J%2C_Life_Oil%3A_Organic_Moringa%2F_French_Lavender_Blend.html",
+          "destination_url": "http://www.oiluj.com/store/p12/OIL%C3%99J%2C_Life_Oil%3A_Organic_Moringa%2F_French_Lavender_Blend.html",
+          "external_redirect_url": "http://www.oiluj.com/store/p12/OIL%C3%99J%2C_Life_Oil%3A_Organic_Moringa%2F_French_Lavender_Blend.html",
+          "merchant_display_name": "OILUJ",
+          "price": "65",
+          "price_amount": 65,
+          "price_currency": "USD",
+          "availability": "in_stock",
+          "commerce_facts_v1": {
+            "contract_version": "commerce_facts.v1",
+            "market_id": "US",
+            "country": "US",
+            "currency_target": "USD",
+            "source_authority": "catalog_extract_v2",
+            "captured_at": "2026-05-28T01:54:50.795Z",
+            "evidence_url": "http://www.oiluj.com/store/p12/OIL%C3%99J%2C_Life_Oil%3A_Organic_Moringa%2F_French_Lavender_Blend.html",
+            "sellable_region": {
+              "status": "unknown",
+              "countries": [],
+              "evidence_source": "catalog_extract_v2",
+              "confidence": "low",
+              "checked_at": "2026-05-28T01:54:50.795Z",
+              "reason_codes": [
+                "market_currency_not_verified",
+                "shipping_destination_not_verified",
+                "external_checkout_not_queried"
+              ],
+              "evidence_url": "http://www.oiluj.com/store/p12/OIL%C3%99J%2C_Life_Oil%3A_Organic_Moringa%2F_French_Lavender_Blend.html"
+            },
+            "regional_price": {
+              "amount": 65,
+              "currency": "USD",
+              "display_raw": "65",
+              "price_type": "list",
+              "compare_at_amount": null,
+              "compare_at_currency": null,
+              "compare_at_display_raw": null,
+              "tax_included": "unknown",
+              "confidence": "low",
+              "market_switch_status": "unknown",
+              "observed_currency": "USD",
+              "source_url": "http://www.oiluj.com/store/p12/OIL%C3%99J%2C_Life_Oil%3A_Organic_Moringa%2F_French_Lavender_Blend.html",
+              "captured_at": "2026-05-28T01:54:50.795Z"
+            },
+            "availability": {
+              "status": "unknown",
+              "source": "catalog_extract_v2",
+              "confidence": "unknown",
+              "captured_at": "2026-05-28T01:54:50.795Z"
+            },
+            "shipping": {
+              "status": "unknown",
+              "source": "catalog_extract_v2",
+              "confidence": "unknown",
+              "reason_codes": [
+                "external_checkout_not_queried"
+              ],
+              "checked_at": "2026-05-28T01:54:50.795Z"
+            },
+            "promotions": [],
+            "returns": {
+              "status": "unknown",
+              "source": "catalog_extract_v2",
+              "confidence": "unknown",
+              "reason_codes": [
+                "external_returns_not_extracted"
+              ],
+              "checked_at": "2026-05-28T01:54:50.795Z"
+            }
+          },
+          "agent_safe_commerce_facts": {
+            "contract_version": "commerce_facts.v1",
+            "market_id": "US",
+            "price": {
+              "status": "unverified",
+              "reason": "low_confidence_or_market_mismatch"
+            },
+            "availability": {
+              "status": "unknown",
+              "reason": "low_confidence_or_missing"
+            },
+            "shipping": {
+              "status": "unknown",
+              "reason": "verify_at_checkout"
+            },
+            "promotions": [],
+            "checkout_note": "Shipping and promotions are not verified for this external offer; verify at merchant checkout."
+          }
+        }
+      },
+      "serving_readiness": {
+        "servingEligible": true,
+        "contentQualityScore": 90,
+        "blockerCode": "none",
+        "blockerDetail": null,
+        "identityResolved": true,
+        "identityLiveReadResolved": true,
+        "identityBootstrapEligible": false,
+        "terminalHold": false,
+        "terminalHoldReason": "",
+        "hasImage": true,
+        "hasPrice": true,
+        "descriptionLength": 177
+      }
+    },
+    {
+      "external_product_id": "ext_07cfaab25950196c3ec1b5f3",
+      "product_key": "prod::external_seed::external_seed::ext_07cfaab25950196c3ec1b5f3",
+      "product_group_id": "sig_ee97839e413a3173f2dcc09f",
+      "title": "OILÙJ, Life Oil: Organic Moringa/Sandalwood Blend",
+      "brand": "OILUJ",
+      "product_type": "Body Oil",
+      "category": "Body Oil",
+      "category_path": "beauty/skincare/body/body-oil",
+      "canonical_url": "http://www.oiluj.com/store/p11/OIL%C3%99J%2C_Life_Oil%3A_Organic_Moringa%2FSandalwood_Blend.html",
+      "pivota_signature_id": "sig_9cbfd2cd3c09bb3b811b81c806b60f57",
+      "sku_rows": 1,
+      "first_sku": {
+        "sku_key": "prod::external_seed::external_seed::ext_07cfaab25950196c3ec1b5f3::sku_2de8ebcba50060df3a40",
+        "product_key": "prod::external_seed::external_seed::ext_07cfaab25950196c3ec1b5f3",
+        "merchant_id": "external_seed",
+        "platform": "external_seed",
+        "source_product_id": "ext_07cfaab25950196c3ec1b5f3",
+        "source_variant_id": "ext_07cfaab25950196c3ec1b5f3:da04d4a8c80e",
+        "source_domain": "oiluj.com",
+        "sku": "AUTO-da04d4a8",
+        "barcode": null,
+        "title": "OILÙJ, Life Oil: Organic Moringa/Sandalwood Blend",
+        "currency": "USD",
+        "image_url": "http://www.oiluj.com/uploads/1/1/4/3/114370799/s721140597747557791_p11_i3_w1776.jpeg?width=640",
+        "visible_attributes": {},
+        "visible_option_labels": {},
+        "ingredient_ids": [],
+        "sku_payload": {
+          "source": "external_product_seeds_mirror_v1",
+          "external_product_id": "ext_07cfaab25950196c3ec1b5f3",
+          "raw_variant_id": "da04d4a8c80e",
+          "source_variant_id": "ext_07cfaab25950196c3ec1b5f3:da04d4a8c80e",
+          "variant_sku": "AUTO-da04d4a8",
+          "barcode": null,
+          "strong_identifier_kind": null,
+          "source_url": "http://www.oiluj.com/store/p11/OIL%C3%99J%2C_Life_Oil%3A_Organic_Moringa%2FSandalwood_Blend.html",
+          "external_redirect_url": "http://www.oiluj.com/store/p11/OIL%C3%99J%2C_Life_Oil%3A_Organic_Moringa%2FSandalwood_Blend.html",
+          "price": "65",
+          "price_amount": 65,
+          "currency": "USD",
+          "availability": "in_stock",
+          "image_url": "http://www.oiluj.com/uploads/1/1/4/3/114370799/s721140597747557791_p11_i3_w1776.jpeg?width=640",
+          "swatch_image_url": null,
+          "label_image_url": null,
+          "options": {},
+          "raw_variant": {
+            "sku": "AUTO-da04d4a8",
+            "url": "http://www.oiluj.com/store/p11/OIL%C3%99J%2C_Life_Oil%3A_Organic_Moringa%2FSandalwood_Blend.html",
+            "price": "65",
+            "stock": "In Stock",
+            "currency": "USD",
+            "image_url": "http://www.oiluj.com/uploads/1/1/4/3/114370799/s721140597747557791_p11_i3_w1776.jpeg?width=640",
+            "image_urls": [
+              "http://www.oiluj.com/uploads/1/1/4/3/114370799/s721140597747557791_p11_i3_w1776.jpeg?width=640",
+              "https://www.oiluj.com/uploads/1/1/4/3/114370799/s721140597747557791_p11_i3_w1776.jpeg?width=640"
+            ],
+            "variant_id": "da04d4a8c80e",
+            "description": "Botanical skincare products specializing in the benefits of Moringa oil.",
+            "option_name": "Offer",
+            "option_value": "Default"
+          }
+        },
+        "readiness_tier": "referral_only"
+      },
+      "first_offer": {
+        "offer_id": "offer:external_seed:909ed11c57f1c7e61aa792f0a0ae9f22",
+        "sku_key": "prod::external_seed::external_seed::ext_07cfaab25950196c3ec1b5f3::sku_2de8ebcba50060df3a40",
+        "product_key": "prod::external_seed::external_seed::ext_07cfaab25950196c3ec1b5f3",
+        "merchant_id": "external_seed",
+        "catalog_track": "external_referral",
+        "truth_tier": "observed",
+        "readiness_tier": "referral_only",
+        "offer_mode": "redirect",
+        "channel": "external_referral",
+        "availability": "in_stock",
+        "currency": "USD",
+        "list_price": 65,
+        "merchant_effective_price": 65,
+        "estimated_best_price": 65,
+        "price_confidence": 1,
+        "source_system": "external_product_seeds_mirror_v1",
+        "source_ref": "eps_dc72b5d18cbbbffe502bfa20",
+        "source_domain": "oiluj.com",
+        "offer_payload": {
+          "source": "external_product_seeds_mirror_v1",
+          "external_seed_id": "eps_dc72b5d18cbbbffe502bfa20",
+          "external_product_id": "ext_07cfaab25950196c3ec1b5f3",
+          "domain": "oiluj.com",
+          "market": "US",
+          "product_title": "OILÙJ, Life Oil: Organic Moringa/Sandalwood Blend",
+          "variant_title": "OILÙJ, Life Oil: Organic Moringa/Sandalwood Blend",
+          "variant_sku": "AUTO-da04d4a8",
+          "raw_variant_id": "da04d4a8c80e",
+          "url": "http://www.oiluj.com/store/p11/OIL%C3%99J%2C_Life_Oil%3A_Organic_Moringa%2FSandalwood_Blend.html",
+          "offer_url": "http://www.oiluj.com/store/p11/OIL%C3%99J%2C_Life_Oil%3A_Organic_Moringa%2FSandalwood_Blend.html",
+          "canonical_url": "http://www.oiluj.com/store/p11/OIL%C3%99J%2C_Life_Oil%3A_Organic_Moringa%2FSandalwood_Blend.html",
+          "destination_url": "http://www.oiluj.com/store/p11/OIL%C3%99J%2C_Life_Oil%3A_Organic_Moringa%2FSandalwood_Blend.html",
+          "external_redirect_url": "http://www.oiluj.com/store/p11/OIL%C3%99J%2C_Life_Oil%3A_Organic_Moringa%2FSandalwood_Blend.html",
+          "merchant_display_name": "OILUJ",
+          "price": "65",
+          "price_amount": 65,
+          "price_currency": "USD",
+          "availability": "in_stock",
+          "commerce_facts_v1": {
+            "contract_version": "commerce_facts.v1",
+            "market_id": "US",
+            "country": "US",
+            "currency_target": "USD",
+            "source_authority": "catalog_extract_v2",
+            "captured_at": "2026-05-28T01:54:50.795Z",
+            "evidence_url": "http://www.oiluj.com/store/p11/OIL%C3%99J%2C_Life_Oil%3A_Organic_Moringa%2FSandalwood_Blend.html",
+            "sellable_region": {
+              "status": "unknown",
+              "countries": [],
+              "evidence_source": "catalog_extract_v2",
+              "confidence": "low",
+              "checked_at": "2026-05-28T01:54:50.795Z",
+              "reason_codes": [
+                "market_currency_not_verified",
+                "shipping_destination_not_verified",
+                "external_checkout_not_queried"
+              ],
+              "evidence_url": "http://www.oiluj.com/store/p11/OIL%C3%99J%2C_Life_Oil%3A_Organic_Moringa%2FSandalwood_Blend.html"
+            },
+            "regional_price": {
+              "amount": 65,
+              "currency": "USD",
+              "display_raw": "65",
+              "price_type": "list",
+              "compare_at_amount": null,
+              "compare_at_currency": null,
+              "compare_at_display_raw": null,
+              "tax_included": "unknown",
+              "confidence": "low",
+              "market_switch_status": "unknown",
+              "observed_currency": "USD",
+              "source_url": "http://www.oiluj.com/store/p11/OIL%C3%99J%2C_Life_Oil%3A_Organic_Moringa%2FSandalwood_Blend.html",
+              "captured_at": "2026-05-28T01:54:50.795Z"
+            },
+            "availability": {
+              "status": "unknown",
+              "source": "catalog_extract_v2",
+              "confidence": "unknown",
+              "captured_at": "2026-05-28T01:54:50.795Z"
+            },
+            "shipping": {
+              "status": "unknown",
+              "source": "catalog_extract_v2",
+              "confidence": "unknown",
+              "reason_codes": [
+                "external_checkout_not_queried"
+              ],
+              "checked_at": "2026-05-28T01:54:50.795Z"
+            },
+            "promotions": [],
+            "returns": {
+              "status": "unknown",
+              "source": "catalog_extract_v2",
+              "confidence": "unknown",
+              "reason_codes": [
+                "external_returns_not_extracted"
+              ],
+              "checked_at": "2026-05-28T01:54:50.795Z"
+            }
+          },
+          "agent_safe_commerce_facts": {
+            "contract_version": "commerce_facts.v1",
+            "market_id": "US",
+            "price": {
+              "status": "unverified",
+              "reason": "low_confidence_or_market_mismatch"
+            },
+            "availability": {
+              "status": "unknown",
+              "reason": "low_confidence_or_missing"
+            },
+            "shipping": {
+              "status": "unknown",
+              "reason": "verify_at_checkout"
+            },
+            "promotions": [],
+            "checkout_note": "Shipping and promotions are not verified for this external offer; verify at merchant checkout."
+          }
+        }
+      },
+      "serving_readiness": {
+        "servingEligible": true,
+        "contentQualityScore": 90,
+        "blockerCode": "none",
+        "blockerDetail": null,
+        "identityResolved": true,
+        "identityLiveReadResolved": true,
+        "identityBootstrapEligible": false,
+        "terminalHold": false,
+        "terminalHoldReason": "",
+        "hasImage": true,
+        "hasPrice": true,
+        "descriptionLength": 205
+      }
+    },
+    {
+      "external_product_id": "ext_664b859ce2599a57c3f1f7ce",
+      "product_key": "prod::external_seed::external_seed::ext_664b859ce2599a57c3f1f7ce",
+      "product_group_id": "sig_e434b90902740f110390a11d",
+      "title": "Body Oil with Passion Fruit Oil",
+      "brand": "UpCircle Beauty",
+      "product_type": "Body Oil",
+      "category": "Body Oil",
+      "category_path": "beauty/bodycare/body-oil",
+      "canonical_url": "https://upcirclebeauty.com/products/natural-body-oil",
+      "pivota_signature_id": "sig_e434b90902740f110390a11d",
+      "sku_rows": 2,
+      "first_sku": {
+        "sku_key": "prod::external_seed::external_seed::ext_664b859ce2599a57c3f1f7ce::sku_fe9ed30fdffaa85a9bc7",
+        "product_key": "prod::external_seed::external_seed::ext_664b859ce2599a57c3f1f7ce",
+        "merchant_id": "external_seed",
+        "platform": "external_seed",
+        "source_product_id": "ext_664b859ce2599a57c3f1f7ce",
+        "source_variant_id": "ext_664b859ce2599a57c3f1f7ce:56886172123519",
+        "source_domain": "upcirclebeauty.com",
+        "sku": "BOPF",
+        "barcode": null,
+        "title": "Body Oil with Passion Fruit Oil",
+        "currency": "USD",
+        "image_url": "https://cdn.shopify.com/s/files/1/0023/6316/2681/files/BodyOil_Bottle_Web_Readycopy.jpg?v=1713265892",
+        "visible_attributes": {
+          "Choose": "Dropper"
+        },
+        "visible_option_labels": {
+          "Choose": "Dropper"
+        },
+        "ingredient_ids": [],
+        "sku_payload": {
+          "source": "external_product_seeds_mirror_v1",
+          "external_product_id": "ext_664b859ce2599a57c3f1f7ce",
+          "raw_variant_id": "56886172123519",
+          "source_variant_id": "ext_664b859ce2599a57c3f1f7ce:56886172123519",
+          "variant_sku": "BOPF",
+          "barcode": null,
+          "strong_identifier_kind": null,
+          "source_url": "https://upcirclebeauty.com/products/natural-body-oil",
+          "external_redirect_url": "https://upcirclebeauty.com/products/natural-body-oil",
+          "price": "21",
+          "price_amount": 21,
+          "currency": "USD",
+          "availability": "in_stock",
+          "image_url": "https://cdn.shopify.com/s/files/1/0023/6316/2681/files/BodyOil_Bottle_Web_Readycopy.jpg?v=1713265892",
+          "swatch_image_url": null,
+          "label_image_url": null,
+          "options": {
+            "Choose": "Dropper"
+          },
+          "raw_variant": {
+            "sku": "BOPF",
+            "url": "https://upcirclebeauty.com/products/natural-body-oil",
+            "price": "21",
+            "stock": "In Stock",
+            "currency": "USD",
+            "image_url": "https://cdn.shopify.com/s/files/1/0023/6316/2681/files/BodyOil_Bottle_Web_Readycopy.jpg?v=1713265892",
+            "image_urls": [
+              "https://cdn.shopify.com/s/files/1/0023/6316/2681/files/BodyOil_Bottle_Web_Readycopy.jpg?v=1713265892",
+              "https://cdn.shopify.com/s/files/1/0023/6316/2681/files/BodyOil_Packaging_Web_Readycopy.jpg?v=1713265892",
+              "https://cdn.shopify.com/s/files/1/0023/6316/2681/files/Press_BOPF.png?v=1729177732",
+              "https://cdn.shopify.com/s/files/1/0023/6316/2681/files/Body_Oil_78efc463-07d3-46e6-add8-d68b43c0062f.png?v=1729590751",
+              "https://cdn.shopify.com/s/files/1/0023/6316/2681/files/CALLOUTSIMAGES11.jpg?v=1731335664",
+              "https://cdn.shopify.com/s/files/1/0023/6316/2681/files/Texture_Awards_Body_Oil.png?v=1729590735",
+              "https://cdn.shopify.com/s/files/1/0023/6316/2681/files/Lifestyle-2_BodyOil_Square_LR.jpg?v=1724320420",
+              "https://cdn.shopify.com/s/files/1/0023/6316/2681/files/Hateseeingads_1.jpg?v=1724320420",
+              "https://cdn.shopify.com/s/files/1/0023/6316/2681/files/Hateseeingads.jpg?v=1724320420",
+              "https://cdn.shopify.com/s/files/1/0023/6316/2681/files/Body_Oil.png?v=1729173905",
+              "https://cdn.shopify.com/s/files/1/0023/6316/2681/files/Us_V_Them_Body_Oil.png?v=1731604665"
+            ],
+            "variant_id": "56886172123519",
+            "description": "This award-winning Body Oil is formulated with luxurious upcycled ingredients, such as natural passion fruit, tangerine, and kumquat oil to help hydrate and nourish the skin. After use, this non-greasy body oil's quick-absorbing characteristics allow it to enhance skin softness and radiance.\n\nInspiring, upcycling, uplifting: This Body Oil is made with upcycled Passion Fruit Oil to nourish and hydrate the skin.\n\nThe UpCircle Promise \nNatural, sustainable, vegan &amp; cruelty-free. Housed in refillable packaging.",
+            "option_name": "Choose",
+            "option_value": "Dropper"
+          }
+        },
+        "readiness_tier": "referral_only"
+      },
+      "first_offer": {
+        "offer_id": "offer:external_seed:5f65038b0d069afa2ca3b44ae170dd3c",
+        "sku_key": "prod::external_seed::external_seed::ext_664b859ce2599a57c3f1f7ce::sku_fe9ed30fdffaa85a9bc7",
+        "product_key": "prod::external_seed::external_seed::ext_664b859ce2599a57c3f1f7ce",
+        "merchant_id": "external_seed",
+        "catalog_track": "external_referral",
+        "truth_tier": "observed",
+        "readiness_tier": "referral_only",
+        "offer_mode": "redirect",
+        "channel": "external_referral",
+        "availability": "in_stock",
+        "currency": "USD",
+        "list_price": 21,
+        "merchant_effective_price": 21,
+        "estimated_best_price": 21,
+        "price_confidence": 1,
+        "source_system": "external_product_seeds_mirror_v1",
+        "source_ref": "eps_cf3ed51499e5db55536e1ce7",
+        "source_domain": "upcirclebeauty.com",
+        "offer_payload": {
+          "source": "external_product_seeds_mirror_v1",
+          "external_seed_id": "eps_cf3ed51499e5db55536e1ce7",
+          "external_product_id": "ext_664b859ce2599a57c3f1f7ce",
+          "domain": "upcirclebeauty.com",
+          "market": "US",
+          "product_title": "Body Oil with Passion Fruit Oil",
+          "variant_title": "Body Oil with Passion Fruit Oil",
+          "variant_sku": "BOPF",
+          "raw_variant_id": "56886172123519",
+          "url": "https://upcirclebeauty.com/products/natural-body-oil",
+          "offer_url": "https://upcirclebeauty.com/products/natural-body-oil",
+          "canonical_url": "https://upcirclebeauty.com/products/natural-body-oil",
+          "destination_url": "https://upcirclebeauty.com/products/natural-body-oil",
+          "external_redirect_url": "https://upcirclebeauty.com/products/natural-body-oil",
+          "merchant_display_name": "UpCircle Beauty",
+          "price": "21",
+          "price_amount": 21,
+          "price_currency": "USD",
+          "availability": "in_stock",
+          "commerce_facts_v1": {
+            "contract_version": "commerce_facts.v1",
+            "market_id": "US",
+            "country": "US",
+            "currency_target": "USD",
+            "source_authority": "catalog_extract_v2",
+            "captured_at": "2026-05-18T05:00:41.932Z",
+            "evidence_url": "https://upcirclebeauty.com/products/natural-body-oil",
+            "sellable_region": {
+              "status": "unknown",
+              "countries": [],
+              "evidence_source": "catalog_extract_v2",
+              "confidence": "unknown",
+              "checked_at": "2026-05-18T05:00:41.932Z",
+              "reason_codes": [
+                "shipping_destination_not_verified"
+              ],
+              "evidence_url": "https://upcirclebeauty.com/products/natural-body-oil"
+            },
+            "regional_price": {
+              "amount": 21,
+              "currency": "USD",
+              "display_raw": null,
+              "price_type": "unknown",
+              "compare_at_amount": null,
+              "compare_at_currency": null,
+              "compare_at_display_raw": null,
+              "tax_included": "unknown",
+              "confidence": "medium",
+              "market_switch_status": "ok",
+              "observed_currency": "USD",
+              "source_url": "https://upcirclebeauty.com/products/natural-body-oil",
+              "captured_at": "2026-05-18T05:00:41.932Z"
+            },
+            "availability": {
+              "status": "in_stock",
+              "source": "catalog_extract_v2",
+              "confidence": "medium",
+              "captured_at": "2026-05-18T05:00:41.932Z"
+            },
+            "shipping": {
+              "status": "unknown",
+              "source": "catalog_extract_v2",
+              "confidence": "unknown",
+              "reason_codes": [
+                "external_checkout_not_queried"
+              ],
+              "checked_at": "2026-05-18T05:00:41.932Z"
+            },
+            "promotions": [],
+            "returns": {
+              "status": "unknown",
+              "source": "catalog_extract_v2",
+              "confidence": "unknown",
+              "reason_codes": [
+                "external_returns_not_extracted"
+              ],
+              "checked_at": "2026-05-18T05:00:41.932Z"
+            }
+          },
+          "agent_safe_commerce_facts": {
+            "contract_version": "commerce_facts.v1",
+            "market_id": "US",
+            "price": {
+              "amount": 21,
+              "currency": "USD",
+              "display_raw": null,
+              "price_type": "unknown",
+              "compare_at_amount": null,
+              "compare_at_currency": null,
+              "compare_at_display_raw": null,
+              "tax_included": "unknown",
+              "confidence": "medium",
+              "market_switch_status": "ok",
+              "observed_currency": "USD",
+              "source_url": "https://upcirclebeauty.com/products/natural-body-oil",
+              "captured_at": "2026-05-18T05:00:41.932Z"
+            },
+            "availability": {
+              "status": "in_stock",
+              "source": "catalog_extract_v2",
+              "confidence": "medium",
+              "captured_at": "2026-05-18T05:00:41.932Z"
+            },
+            "shipping": {
+              "status": "unknown",
+              "reason": "verify_at_checkout"
+            },
+            "promotions": [],
+            "checkout_note": "Shipping and promotions are not verified for this external offer; verify at merchant checkout."
+          }
+        }
+      },
+      "serving_readiness": {
+        "servingEligible": true,
+        "contentQualityScore": 90,
+        "blockerCode": "none",
+        "blockerDetail": null,
+        "identityResolved": true,
+        "identityLiveReadResolved": true,
+        "identityBootstrapEligible": false,
+        "terminalHold": false,
+        "terminalHoldReason": "",
+        "hasImage": true,
+        "hasPrice": true,
+        "descriptionLength": 516
+      }
+    }
+  ]
+}
