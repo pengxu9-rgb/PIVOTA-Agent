@@ -1,0 +1,81 @@
+{
+  "generated_at": "2026-05-30T11:51:02.907Z",
+  "dry_run": false,
+  "market": "US",
+  "marker": {
+    "contract_version": "external_seed.content_evidence_hold.v1",
+    "updated_at": "2026-05-30T11:51:02.907Z",
+    "status": "hold_for_evidence",
+    "reason": "post_repair_audit_failed_similar_gate",
+    "reason_codes": [
+      "post_repair_audit_failed_similar_gate"
+    ],
+    "evidence": "Wave94 post-repair audit passed seed/extractor/identity/product_intel/live_pdp/image/variant gates but failed similar_underfill; Body Oil similar_count=2, Body Scrub similar_count=0.",
+    "public_serving_ready": false,
+    "content_evidence_ready": false,
+    "review_state": "reviewed"
+  },
+  "summary": {
+    "requested_ids": 2,
+    "scanned": 2,
+    "missing_ids": 0,
+    "catalog_counts": {
+      "products": 2,
+      "skus": 4,
+      "index_rows": 2
+    },
+    "updated": {
+      "external_product_seeds": 2,
+      "catalog_products": 2,
+      "catalog_skus": 4,
+      "index_pipeline_state": 2
+    }
+  },
+  "missing_ids": [],
+  "rows": [
+    {
+      "id": "eps_8ecfa7102bfdc978accaca76",
+      "external_product_id": "ext_23ae4c5d9d8f2a8be363f2cc",
+      "title": "Body Scrub with Coffee + Lemongrass",
+      "domain": "upcirclebeauty.com",
+      "canonical_url": "https://upcirclebeauty.com/products/coffee-body-scrub-with-lemongrass-200ml",
+      "destination_url": "https://upcirclebeauty.com/products/coffee-body-scrub-with-lemongrass-200ml",
+      "before": {
+        "status": "active",
+        "availability": "in_stock",
+        "price_amount": 26,
+        "price_currency": "USD"
+      },
+      "after": {
+        "status": "active",
+        "availability": "in_stock",
+        "price_amount": 26,
+        "price_currency": "USD",
+        "serving_eligible": false,
+        "blocker_code": "content_evidence_hold"
+      }
+    },
+    {
+      "id": "eps_cf3ed51499e5db55536e1ce7",
+      "external_product_id": "ext_664b859ce2599a57c3f1f7ce",
+      "title": "Body Oil with Passion Fruit Oil",
+      "domain": "upcirclebeauty.com",
+      "canonical_url": "https://upcirclebeauty.com/products/natural-body-oil",
+      "destination_url": "https://upcirclebeauty.com/products/natural-body-oil",
+      "before": {
+        "status": "active",
+        "availability": "in_stock",
+        "price_amount": 21,
+        "price_currency": "USD"
+      },
+      "after": {
+        "status": "active",
+        "availability": "in_stock",
+        "price_amount": 21,
+        "price_currency": "USD",
+        "serving_eligible": false,
+        "blocker_code": "content_evidence_hold"
+      }
+    }
+  ]
+}
