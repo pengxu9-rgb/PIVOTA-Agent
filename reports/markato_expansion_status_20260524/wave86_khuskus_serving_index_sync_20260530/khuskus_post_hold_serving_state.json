@@ -1,0 +1,58 @@
+{
+  "generated_at": "2026-05-30T10:33:19.304Z",
+  "target_count": 5,
+  "row_count": 5,
+  "held_count": 5,
+  "rows": [
+    {
+      "external_product_id": "ext_290f05b3b8bfbfdb4e079d09",
+      "serving_eligible": false,
+      "blocker_code": "content_evidence_hold",
+      "blocker_detail": "post_sync_audit_failed_extractor_or_similar_gate",
+      "serving_decision": "blocked",
+      "serving_reason_codes": [
+        "INDEX_NOT_SERVING_ELIGIBLE"
+      ]
+    },
+    {
+      "external_product_id": "ext_4dace0e8a2fe70b378b91c2c",
+      "serving_eligible": false,
+      "blocker_code": "content_evidence_hold",
+      "blocker_detail": "post_sync_audit_failed_extractor_or_similar_gate",
+      "serving_decision": "blocked",
+      "serving_reason_codes": [
+        "INDEX_NOT_SERVING_ELIGIBLE"
+      ]
+    },
+    {
+      "external_product_id": "ext_6ae70ce8a0cf2d0f8615d4dc",
+      "serving_eligible": false,
+      "blocker_code": "content_evidence_hold",
+      "blocker_detail": "post_sync_audit_failed_extractor_or_similar_gate",
+      "serving_decision": "blocked",
+      "serving_reason_codes": [
+        "INDEX_NOT_SERVING_ELIGIBLE"
+      ]
+    },
+    {
+      "external_product_id": "ext_f27f918bac908cf6ba236b83",
+      "serving_eligible": false,
+      "blocker_code": "content_evidence_hold",
+      "blocker_detail": "post_sync_audit_failed_extractor_or_similar_gate",
+      "serving_decision": "blocked",
+      "serving_reason_codes": [
+        "INDEX_NOT_SERVING_ELIGIBLE"
+      ]
+    },
+    {
+      "external_product_id": "ext_f86a3606bf6dc20fc810f99d",
+      "serving_eligible": false,
+      "blocker_code": "content_evidence_hold",
+      "blocker_detail": "post_sync_audit_failed_extractor_or_similar_gate",
+      "serving_decision": "blocked",
+      "serving_reason_codes": [
+        "INDEX_NOT_SERVING_ELIGIBLE"
+      ]
+    }
+  ]
+}

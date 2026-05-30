@@ -1,0 +1,100 @@
+{
+  "generated_at": "2026-05-30T10:29:23.340Z",
+  "target_count": 5,
+  "passed_count": 0,
+  "failed_count": 5,
+  "broken_images": 0,
+  "gate_counts": {
+    "failed": 5
+  },
+  "rows": [
+    {
+      "output_file": "reports/markato_expansion_status_20260524/wave86_khuskus_serving_index_sync_20260530/live_pdp_quality_after_serving_sync/bleu-body-serum_ext_4dace0e8a2fe70b378b91c2c.json",
+      "external_product_id": "ext_4dace0e8a2fe70b378b91c2c",
+      "status": "failed",
+      "seed_gate": "passed",
+      "extractor_gate": "failed",
+      "identity_gate": "passed",
+      "product_intel_gate": "passed",
+      "live_pdp_gate": "passed",
+      "similar_gate": "failed",
+      "variant_gate": "passed",
+      "image_broken": 0,
+      "image_scanned": 3,
+      "failure_reasons": [
+        "extractor_failure",
+        "similar_underfill"
+      ]
+    },
+    {
+      "output_file": "reports/markato_expansion_status_20260524/wave86_khuskus_serving_index_sync_20260530/live_pdp_quality_after_serving_sync/d-drop-humectant-factor_ext_290f05b3b8bfbfdb4e079d09.json",
+      "external_product_id": "ext_290f05b3b8bfbfdb4e079d09",
+      "status": "failed",
+      "seed_gate": "passed",
+      "extractor_gate": "failed",
+      "identity_gate": "passed",
+      "product_intel_gate": "passed",
+      "live_pdp_gate": "passed",
+      "similar_gate": "passed",
+      "variant_gate": "passed",
+      "image_broken": 0,
+      "image_scanned": 3,
+      "failure_reasons": [
+        "extractor_failure"
+      ]
+    },
+    {
+      "output_file": "reports/markato_expansion_status_20260524/wave86_khuskus_serving_index_sync_20260530/live_pdp_quality_after_serving_sync/kai-repair-balm_ext_f27f918bac908cf6ba236b83.json",
+      "external_product_id": "ext_f27f918bac908cf6ba236b83",
+      "status": "failed",
+      "seed_gate": "passed",
+      "extractor_gate": "failed",
+      "identity_gate": "passed",
+      "product_intel_gate": "passed",
+      "live_pdp_gate": "passed",
+      "similar_gate": "failed",
+      "variant_gate": "passed",
+      "image_broken": 0,
+      "image_scanned": 3,
+      "failure_reasons": [
+        "extractor_failure",
+        "similar_underfill"
+      ]
+    },
+    {
+      "output_file": "reports/markato_expansion_status_20260524/wave86_khuskus_serving_index_sync_20260530/live_pdp_quality_after_serving_sync/sans-age-face-serum_ext_f86a3606bf6dc20fc810f99d.json",
+      "external_product_id": "ext_f86a3606bf6dc20fc810f99d",
+      "status": "failed",
+      "seed_gate": "passed",
+      "extractor_gate": "failed",
+      "identity_gate": "passed",
+      "product_intel_gate": "passed",
+      "live_pdp_gate": "passed",
+      "similar_gate": "passed",
+      "variant_gate": "passed",
+      "image_broken": 0,
+      "image_scanned": 3,
+      "failure_reasons": [
+        "extractor_failure"
+      ]
+    },
+    {
+      "output_file": "reports/markato_expansion_status_20260524/wave86_khuskus_serving_index_sync_20260530/live_pdp_quality_after_serving_sync/surya-body-elixir_ext_6ae70ce8a0cf2d0f8615d4dc.json",
+      "external_product_id": "ext_6ae70ce8a0cf2d0f8615d4dc",
+      "status": "failed",
+      "seed_gate": "passed",
+      "extractor_gate": "failed",
+      "identity_gate": "passed",
+      "product_intel_gate": "passed",
+      "live_pdp_gate": "passed",
+      "similar_gate": "failed",
+      "variant_gate": "passed",
+      "image_broken": 0,
+      "image_scanned": 4,
+      "failure_reasons": [
+        "extractor_failure",
+        "similar_underfill"
+      ]
+    }
+  ]
+}
