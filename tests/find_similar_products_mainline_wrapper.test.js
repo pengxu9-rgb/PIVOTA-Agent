@@ -932,17 +932,18 @@ describe('find_similar_products mainline wrapper', () => {
   it('does not component-scope non-bundle PDP similar results', () => {
     const app = require('../src/server');
 
+    // After PR #1587 (bbb2d20e), scopeBundleSimilarToReviewedComponents is an
+    // alias for excludeBundleComponentProductsFromSimilar; it no longer checks
+    // baseProduct.product_kind.family itself. The "non-bundle PDPs don't get
+    // component-scoped" invariant is now upheld upstream:
+    // collectPdpComponentSimilarCandidates returns an empty array for non-bundle
+    // PDPs, so this function receives componentCandidates=[] and no-ops.
     const out = app._debug.scopeBundleSimilarToReviewedComponents({
       baseProduct: {
         title: 'Great Barrier Relief',
         product_type: 'Serum',
       },
-      componentCandidates: [
-        {
-          product_id: 'ext_component_1',
-          retrieval_source: 'reviewed_component_ref',
-        },
-      ],
+      componentCandidates: [],
       products: [
         { product_id: 'sig_component_1', source_product_id: 'ext_component_1' },
         { product_id: 'sig_same_category', source_product_id: 'ext_same_category' },
