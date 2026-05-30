@@ -256,6 +256,72 @@ function pickSnapshot(row) {
   return asObject(pickSeedData(row).snapshot);
 }
 
+function readTerminalHoldContract(value) {
+  const contract = asObject(value);
+  const contractVersion = asString(contract.contract_version || contract.contractVersion).toLowerCase();
+  const status = asString(contract.status).toLowerCase();
+  const reason = asString(contract.reason || asArray(contract.reason_codes)[0] || status || contractVersion);
+  if (contractVersion === 'external_seed.source_unavailable.v1' || status === 'source_unavailable') {
+    return { held: true, blockerCode: 'source_unavailable', reason: reason || 'source_unavailable' };
+  }
+  if (
+    contractVersion === 'external_seed.content_evidence_hold.v1' ||
+    status === 'hold_for_evidence' ||
+    status === 'content_evidence_hold'
+  ) {
+    return { held: true, blockerCode: 'content_evidence_hold', reason: reason || 'content_evidence_hold' };
+  }
+  if (
+    contractVersion === 'external_seed.transaction_readiness_blocker.v1' &&
+    (contract.transaction_ready === false || contract.transactionReady === false)
+  ) {
+    return { held: true, blockerCode: 'transaction_blocked', reason: reason || 'transaction_readiness_blocker' };
+  }
+  if (
+    contractVersion === 'external_seed.non_merch_terminal_hold.v1' ||
+    [
+      'non_merch_terminal_hold',
+      'sample_terminal_hold',
+      'terminal_hold',
+      'transaction_blocked',
+    ].includes(status)
+  ) {
+    return { held: true, blockerCode: 'non_core_product', reason: reason || status || 'terminal_hold' };
+  }
+  return { held: false, blockerCode: '', reason: '' };
+}
+
+function seedTerminalHoldStatus(row) {
+  const seedData = pickSeedData(row);
+  const snapshot = pickSnapshot(row);
+  const family = asString(
+    row?.product_family ||
+      row?.external_seed_product_family ||
+      seedData.product_family ||
+      seedData.external_seed_product_family ||
+      snapshot.product_family ||
+      snapshot.external_seed_product_family,
+  ).toLowerCase();
+  if (family === 'non_merch' || family === 'non_merchandise') {
+    return { held: true, blockerCode: 'non_core_product', reason: 'non_merch_product_family' };
+  }
+  const contracts = [
+    seedData.source_unavailable_v1,
+    snapshot.source_unavailable_v1,
+    seedData.non_merch_terminal_hold_v1,
+    snapshot.non_merch_terminal_hold_v1,
+    seedData.content_evidence_hold_v1,
+    snapshot.content_evidence_hold_v1,
+    seedData.transaction_readiness_blocker_v1,
+    snapshot.transaction_readiness_blocker_v1,
+  ];
+  for (const contract of contracts) {
+    const status = readTerminalHoldContract(contract);
+    if (status.held) return status;
+  }
+  return { held: false, blockerCode: '', reason: '' };
+}
+
 function pickBrand(row) {
   const seedData = pickSeedData(row);
   const snapshot = pickSnapshot(row);
@@ -828,6 +894,7 @@ function scoreMirrorServingQuality(mirror, options = {}) {
     identity.live_read_enabled !== true &&
     isReviewedBrandIdentityForLiveBootstrap(identity);
   const identityResolved = identityLiveReadResolved || identityBootstrapEligible;
+  const terminalHold = seedTerminalHoldStatus(mirror?.row || {});
 
   const missing = [];
   if (!title) missing.push('missing_title');
@@ -836,6 +903,7 @@ function scoreMirrorServingQuality(mirror, options = {}) {
   if (!imageUrl) missing.push('missing_image');
   if (!hasPrice) missing.push('missing_price');
   if (!identityResolved) missing.push('identity_not_live_approved');
+  if (terminalHold.held) missing.push(terminalHold.blockerCode || 'terminal_hold');
 
   let score = 50;
   if (!missing.length) score = 70;
@@ -844,15 +912,19 @@ function scoreMirrorServingQuality(mirror, options = {}) {
   if (skus.length > 0) score += 5;
   score = Math.max(0, Math.min(100, score));
 
-  const servingEligible = missing.length === 0 && score >= 60;
+  const servingEligible = !terminalHold.held && missing.length === 0 && score >= 60;
   return {
     servingEligible,
     contentQualityScore: score,
-    blockerCode: servingEligible ? 'none' : (missing[0] || 'low_quality'),
-    blockerDetail: servingEligible ? null : missing.join(',') || 'content_quality_score below serving threshold',
+    blockerCode: servingEligible ? 'none' : (terminalHold.blockerCode || missing[0] || 'low_quality'),
+    blockerDetail: servingEligible
+      ? null
+      : (terminalHold.reason || missing.join(',') || 'content_quality_score below serving threshold'),
     identityResolved,
     identityLiveReadResolved,
     identityBootstrapEligible,
+    terminalHold: terminalHold.held,
+    terminalHoldReason: terminalHold.reason,
     hasImage: Boolean(imageUrl),
     hasPrice,
     descriptionLength: description.length,
