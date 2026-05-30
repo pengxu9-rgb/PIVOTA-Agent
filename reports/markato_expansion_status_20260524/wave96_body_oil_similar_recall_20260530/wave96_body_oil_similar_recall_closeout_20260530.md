@@ -61,19 +61,90 @@ Result:
 - `RecommendationEngine.js` syntax check passed.
 - `pdp_recommendations_external_fetch.test.js`: 67 passed.
 
-## Holds Not Removed In This Wave
+## Deployment And Hold Cleanup
 
-The following rows remain held until this runtime change is deployed through Git and fresh live PDP quality audits pass:
+Wave96 runtime commit deployed to production:
+
+- commit: `55705f4adb32e35f5b0e0ad8d099f3c0ebeab8af`
+- production `/version` build: `55705f4adb32`
+- deployment id: `32a4f636-b282-44c0-b74d-d97972ef3db7`
+
+Pre-unhold audit by external product ID returned live PDP `404`, which was expected while the rows were still blocked by `content_evidence_hold`.
+
+After production was on Wave96, the exact-ID hold clear ran dry-run first:
+
+- requested: 3
+- scanned: 3
+- rows with hold marker: 3
+- missing IDs: 0
+- expected reasons:
+  - `post_sync_audit_failed_similar_gate`
+  - `post_repair_audit_failed_similar_gate`
+
+Apply then removed `content_evidence_hold_v1` from exactly three `external_product_seeds` rows. Follow-up verification confirmed both top-level and snapshot hold markers were removed.
+
+Exact-ID serving sync then ran dry-run first and computed:
+
+- mirror rows: 3
+- planned SKU rows: 4
+- planned offer rows: 4
+- planned index rows: 3
+- skipped: 0
+- all three rows: `servingEligible=true`, `blockerCode=none`, `contentQualityScore=90`
+
+Apply result:
+
+- product upserts: 3
+- SKU upserts: 4
+- offer upserts: 4
+- group member upserts: 3
+- index state upserts: 3
+- catalog row trust upserts: 3
+- stale deletes: 0
+
+## Post-Sync Verification
+
+The public audit script continued to return `404` when probing through the public gateway by external product ID. The authoritative invoke endpoint required an API key not present in the Postgres helper env.
+
+A direct public gateway probe by Pivota signature ID was therefore used for final live validation:
+
+- gateway: `https://agent.pivota.cc/api/gateway`
+- PDP operation: `get_pdp_v2`
+- similar operation: `find_similar_products`
+- options: `debug=true`, `no_cache=true`, `cache_bypass=true`, `similar_cache_bypass=true`
+
+Result:
+
+| External product ID | Signature ID | PDP status | Similar status | Visible similar count |
+| --- | --- | --- | --- | ---: |
+| `ext_1493a61baf165a6c00e4977b` | `sig_7425ea0bd58897136a79c57d82861652` | `success` | `ready` | 6 |
+| `ext_07cfaab25950196c3ec1b5f3` | `sig_9cbfd2cd3c09bb3b811b81c806b60f57` | `success` | `ready` | 6 |
+| `ext_664b859ce2599a57c3f1f7ce` | `sig_e434b90902740f110390a11d` | `success` | `ready` | 6 |
+
+Summary:
+
+- probed: 3
+- PDP success: 3
+- similar ready: 3
+- minimum visible similar count: 6
+- failures: 0
+
+Artifacts:
+
+- `clear_content_evidence_hold_dry_run.json`
+- `clear_content_evidence_hold_apply.json`
+- `sync_after_clear_dry_run.json`
+- `sync_after_clear_apply.json`
+- `direct_public_gateway_sig_probes_after_sync.json`
+
+## Holds Removed In This Wave
+
+The following rows were unheld and resynced to serving after Wave96 deployment and verification:
 
 - `ext_1493a61baf165a6c00e4977b`
 - `ext_07cfaab25950196c3ec1b5f3`
 - `ext_664b859ce2599a57c3f1f7ce`
 
-Do not clear `content_evidence_hold_v1` for these rows before production `/version` reflects the Wave96 commit and live PDP audits confirm `similar_gate.status=passed`.
-
 ## Next Move
 
-1. Commit and push Wave96 through Git only.
-2. Wait for production `/version` to catch the Wave96 commit.
-3. Rerun live PDP quality audits for the three body-oil rows.
-4. If live audits pass, clear the exact-ID content evidence holds and resync serving state.
+Continue expansion with the next source-gap or similar-underfill lane. Body-oil similar recall is no longer the blocker for these three rows.

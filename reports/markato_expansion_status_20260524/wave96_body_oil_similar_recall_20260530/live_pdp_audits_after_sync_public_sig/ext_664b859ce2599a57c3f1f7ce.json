@@ -1,0 +1,86 @@
+[
+  {
+    "status": "failed",
+    "seed_id": "eps_cf3ed51499e5db55536e1ce7",
+    "external_product_id": "ext_664b859ce2599a57c3f1f7ce",
+    "market": "US",
+    "domain": "upcirclebeauty.com",
+    "canonical_url": "https://upcirclebeauty.com/products/natural-body-oil",
+    "seed_gate": {
+      "status": "passed",
+      "findings_count": 0,
+      "blockers_count": 0
+    },
+    "extractor_gate": {
+      "status": "passed",
+      "failure_category": null,
+      "description_present": true,
+      "price_amount": 21,
+      "failure_reasons": []
+    },
+    "identity_gate": {
+      "status": "skipped",
+      "product_group_id": null,
+      "product_line_id": null,
+      "sellable_item_group_id": null,
+      "skipped_reason": "live_pdp_probe_failed",
+      "probe_error": "Gateway probe returned HTTP 404",
+      "failure_reasons": []
+    },
+    "product_intel_gate": {
+      "status": "skipped",
+      "has_product_intel": false,
+      "product_intel_status": null,
+      "skipped_reason": "live_pdp_probe_failed",
+      "probe_error": "Gateway probe returned HTTP 404",
+      "failure_reasons": []
+    },
+    "live_pdp_gate": {
+      "status": "failed",
+      "price_amount": null,
+      "has_overview": false,
+      "live_modules": [],
+      "probe_error": "Gateway probe returned HTTP 404",
+      "failure_reasons": [
+        "live_pdp_probe_failed"
+      ]
+    },
+    "similar_gate": {
+      "status": "failed",
+      "similar_count": 0,
+      "exempt": false,
+      "probe_error": "Gateway probe returned HTTP 404",
+      "failure_reasons": [
+        "similar_probe_failed"
+      ]
+    },
+    "variant_gate": {
+      "status": "passed",
+      "visible_variant_row_count": 0,
+      "identity_option_visible_count": 0,
+      "wrong_axis_for_category_count": 0,
+      "makeup_shade_missing_visual_count": 0,
+      "size_value_generic_axis_count": 0,
+      "examples": {
+        "identity_option_visible": [],
+        "wrong_axis_for_category": [],
+        "makeup_shade_missing_visual": [],
+        "size_value_generic_axis": [],
+        "missing_variant_selector_from_size_evidence": [],
+        "identity_default_title_axis": [],
+        "size_siblings_split_product_line": []
+      },
+      "failure_reasons": []
+    },
+    "root_cause_classification": [
+      "pdp_shaping_issue",
+      "similar_issue"
+    ],
+    "failure_reasons": [
+      "live_pdp_probe_failed",
+      "similar_probe_failed"
+    ],
+    "probed_product_id": "sig_e434b90902740f110390a11d",
+    "probed_id_type": "sig"
+  }
+]

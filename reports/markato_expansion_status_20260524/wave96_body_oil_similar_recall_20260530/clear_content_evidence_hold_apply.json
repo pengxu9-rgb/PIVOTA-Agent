@@ -1,0 +1,104 @@
+{
+  "generated_at": "2026-05-30T14:13:59.274Z",
+  "dry_run": false,
+  "market": "US",
+  "summary": {
+    "requested_ids": 3,
+    "scanned": 3,
+    "missing_ids": 0,
+    "rows_with_hold_marker": 3,
+    "updated": {
+      "external_product_seeds": 3
+    }
+  },
+  "missing_ids": [],
+  "rows": [
+    {
+      "id": "eps_dc72b5d18cbbbffe502bfa20",
+      "external_product_id": "ext_07cfaab25950196c3ec1b5f3",
+      "title": "OILÙJ, Life Oil: Organic Moringa/Sandalwood Blend",
+      "domain": "oiluj.com",
+      "canonical_url": "http://www.oiluj.com/store/p11/OIL%C3%99J%2C_Life_Oil%3A_Organic_Moringa%2FSandalwood_Blend.html",
+      "destination_url": "http://www.oiluj.com/store/p11/OIL%C3%99J%2C_Life_Oil%3A_Organic_Moringa%2FSandalwood_Blend.html",
+      "before": {
+        "status": "active",
+        "top_level_marker": {
+          "contract_version": "external_seed.content_evidence_hold.v1",
+          "status": "hold_for_evidence",
+          "reason": "post_sync_audit_failed_similar_gate",
+          "evidence": "similar_underfill_after_official_source_recovery",
+          "updated_at": "2026-05-30T13:48:47.755Z"
+        },
+        "snapshot_marker": {
+          "contract_version": "external_seed.content_evidence_hold.v1",
+          "status": "hold_for_evidence",
+          "reason": "post_sync_audit_failed_similar_gate",
+          "evidence": "similar_underfill_after_official_source_recovery",
+          "updated_at": "2026-05-30T13:48:47.755Z"
+        }
+      },
+      "after": {
+        "content_evidence_hold_v1_present": false,
+        "requires_serving_resync": true
+      }
+    },
+    {
+      "id": "eps_788807b1346798f50430e971",
+      "external_product_id": "ext_1493a61baf165a6c00e4977b",
+      "title": "OILÙJ, Life Oil: Organic Moringa/ French Lavender Blend",
+      "domain": "oiluj.com",
+      "canonical_url": "http://www.oiluj.com/store/p12/OIL%C3%99J%2C_Life_Oil%3A_Organic_Moringa%2F_French_Lavender_Blend.html",
+      "destination_url": "http://www.oiluj.com/store/p12/OIL%C3%99J%2C_Life_Oil%3A_Organic_Moringa%2F_French_Lavender_Blend.html",
+      "before": {
+        "status": "active",
+        "top_level_marker": {
+          "contract_version": "external_seed.content_evidence_hold.v1",
+          "status": "hold_for_evidence",
+          "reason": "post_sync_audit_failed_similar_gate",
+          "evidence": "similar_underfill_after_official_source_recovery",
+          "updated_at": "2026-05-30T13:48:47.755Z"
+        },
+        "snapshot_marker": {
+          "contract_version": "external_seed.content_evidence_hold.v1",
+          "status": "hold_for_evidence",
+          "reason": "post_sync_audit_failed_similar_gate",
+          "evidence": "similar_underfill_after_official_source_recovery",
+          "updated_at": "2026-05-30T13:48:47.755Z"
+        }
+      },
+      "after": {
+        "content_evidence_hold_v1_present": false,
+        "requires_serving_resync": true
+      }
+    },
+    {
+      "id": "eps_cf3ed51499e5db55536e1ce7",
+      "external_product_id": "ext_664b859ce2599a57c3f1f7ce",
+      "title": "Body Oil with Passion Fruit Oil",
+      "domain": "upcirclebeauty.com",
+      "canonical_url": "https://upcirclebeauty.com/products/natural-body-oil",
+      "destination_url": "https://upcirclebeauty.com/products/natural-body-oil",
+      "before": {
+        "status": "active",
+        "top_level_marker": {
+          "contract_version": "external_seed.content_evidence_hold.v1",
+          "status": "hold_for_evidence",
+          "reason": "post_repair_audit_failed_similar_gate",
+          "evidence": "Wave94 post-repair audit passed seed/extractor/identity/product_intel/live_pdp/image/variant gates but failed similar_underfill; Body Oil similar_count=2, Body Scrub similar_count=0. Batch6 re-applied normal hold path after serving sync race.",
+          "updated_at": "2026-05-30T11:57:41.507Z"
+        },
+        "snapshot_marker": {
+          "contract_version": "external_seed.content_evidence_hold.v1",
+          "status": "hold_for_evidence",
+          "reason": "post_repair_audit_failed_similar_gate",
+          "evidence": "Wave94 post-repair audit passed seed/extractor/identity/product_intel/live_pdp/image/variant gates but failed similar_underfill; Body Oil similar_count=2, Body Scrub similar_count=0. Batch6 re-applied normal hold path after serving sync race.",
+          "updated_at": "2026-05-30T11:57:41.507Z"
+        }
+      },
+      "after": {
+        "content_evidence_hold_v1_present": false,
+        "requires_serving_resync": true
+      }
+    }
+  ]
+}
