@@ -494,6 +494,64 @@ describe('RecommendationEngine external candidate fetch', () => {
     expect(products[0].catalog_category_path).toBe('beauty/skincare/eye-care');
   });
 
+  test('catalog-only recall expands sparse body-oil intent without eye-path fallback', async () => {
+    process.env.DATABASE_URL = 'postgres://example.test/pivota';
+    delete process.env.PDP_SIMILAR_CATALOG_ONLY;
+
+    const queryMock = jest.fn(async (sql, params) => {
+      const text = String(sql);
+      if (!text.includes('FROM catalog_products cp')) return { rows: [] };
+      expect(text).not.toContain("lower(coalesce(cp.category_path, '')) LIKE '%eye%'");
+      expect(params[0]).toBe('beauty/skincare/body/body-oil');
+      expect(params[1]).toEqual(expect.arrayContaining(['%body oil%', '%body lotion%', '%massage oil%']));
+      expect(params[2]).toEqual(expect.arrayContaining(['beauty/skincare/%']));
+      return {
+        rows: [
+          makeCatalogRow({
+            product_key: 'cat_body_lotion_1',
+            source_product_id: 'ext_body_lotion_1',
+            pivota_signature_id: 'sig_body_lotion_1',
+            title: 'Daily Body Lotion',
+            brand: 'Body Brand',
+            category: 'Body Lotion',
+            category_path: 'beauty/skincare/body/body-lotion',
+          }),
+          makeCatalogRow({
+            product_key: 'cat_massage_oil_1',
+            source_product_id: 'ext_massage_oil_1',
+            pivota_signature_id: 'sig_massage_oil_1',
+            title: 'Lavender Massage Oil',
+            brand: 'Body Brand',
+            category: 'Massage Oil',
+            category_path: 'beauty/skincare/body/massage-oil',
+          }),
+        ],
+      };
+    });
+
+    jest.doMock('../../src/db', () => ({
+      query: queryMock,
+      queryWithStatementTimeout: jest.fn(async () => ({ rows: [] })),
+    }));
+    jest.doMock('../../src/logger', () => ({ warn: jest.fn(), info: jest.fn() }));
+
+    const { _internals } = require('../../src/services/RecommendationEngine');
+    const products = await _internals.fetchCatalogCandidates({
+      brandHint: 'OILUJ',
+      categoryHint: 'Body Oil',
+      categoryPathHint: 'beauty/skincare/body/body-oil',
+      verticalHint: 'skincare',
+      intentFamilyHint: 'body_oil',
+      sourceMerchantHint: 'external_seed',
+      limit: 6,
+      overfetchMultiplier: 1,
+    });
+
+    expect(products.map((product) => product.product_id)).toEqual(
+      expect.arrayContaining(['ext_body_lotion_1', 'ext_massage_oil_1']),
+    );
+  });
+
   test('catalog-only recall honors explicit fetch limit without runtime overfetch', async () => {
     process.env.DATABASE_URL = 'postgres://example.test/pivota';
     delete process.env.PDP_SIMILAR_CATALOG_ONLY;

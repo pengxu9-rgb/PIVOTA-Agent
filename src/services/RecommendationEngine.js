@@ -2593,7 +2593,16 @@ function buildCatalogVerticalPathPatterns(vertical) {
 }
 
 function shouldExpandCatalogPathByIntentFamily(intentFamily) {
-  return ['eye_cream', 'lash_mascara'].includes(String(intentFamily || '').trim());
+  return ['body_oil', 'eye_cream', 'lash_mascara'].includes(String(intentFamily || '').trim());
+}
+
+function buildCatalogIntentExpansionPredicates(intentFamily, titlePatternParam) {
+  const normalizedIntentFamily = String(intentFamily || '').trim();
+  const predicates = [`lower(coalesce(cp.title, '')) LIKE ANY(${titlePatternParam}::text[])`];
+  if (normalizedIntentFamily === 'eye_cream') {
+    predicates.push(`lower(coalesce(cp.category_path, '')) LIKE '%eye%'`);
+  }
+  return predicates;
 }
 
 function splitCandidatesByRuntimeClass(candidates = []) {
@@ -2699,16 +2708,16 @@ async function fetchCatalogCandidates({
   ) {
     const intentParam = addParam(intentFamilyLikePatterns);
     const verticalParamForIntentExpansion = addParam(verticalPathPatterns);
+    const intentExpansionPredicates = buildCatalogIntentExpansionPredicates(intentFamily, intentParam);
+    const intentExpansionPredicate = intentExpansionPredicates.join('\n        OR ');
     matchClauses.push(`(
       lower(coalesce(cp.category_path, '')) LIKE ANY(${verticalParamForIntentExpansion}::text[])
       AND (
-        lower(coalesce(cp.title, '')) LIKE ANY(${intentParam}::text[])
-        OR lower(coalesce(cp.category_path, '')) LIKE '%eye%'
+        ${intentExpansionPredicate}
       )
     )`);
     orderClauses.push(`CASE
-      WHEN lower(coalesce(cp.title, '')) LIKE ANY(${intentParam}::text[])
-        OR lower(coalesce(cp.category_path, '')) LIKE '%eye%'
+      WHEN ${intentExpansionPredicate}
       THEN 0 ELSE 1 END`);
     stats.intent_family_catalog_expansion = intentFamily;
   }
