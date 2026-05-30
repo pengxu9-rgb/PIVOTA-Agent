@@ -1,0 +1,235 @@
+{
+  "generated_at": "2026-05-30T00:32:35.282Z",
+  "dry_run": true,
+  "market": "US",
+  "summary": {
+    "scanned": 10,
+    "dry_run": 0,
+    "updated": 0,
+    "skipped": 10,
+    "failed": 0,
+    "by_field": {}
+  },
+  "results": [
+    {
+      "external_product_id": "ext_20c5bace62df3979a457e400",
+      "title": "MN04 Little Poppet: Purple Peel Off Nail Polish",
+      "domain": "missnella.com",
+      "url": "https://www.missnella.com/products/mn04-little-poppet-3-pack",
+      "host": "missnella.com",
+      "status": "skipped",
+      "patch_keys": [],
+      "http_status": 200,
+      "final_url": "https://www.missnella.com/products/mn04-little-poppet-3-pack",
+      "extracted_summary": {
+        "ingredients_chars": 0,
+        "how_to_chars": 0,
+        "details_sections_count": 0,
+        "variant_count": 0,
+        "review_count": 0,
+        "rating": 0,
+        "review_preview_count": 0,
+        "review_preview_samples": []
+      },
+      "reason": "no_official_html_fields"
+    },
+    {
+      "external_product_id": "ext_e49b7fd12614986b2704234d",
+      "title": "MN05 Cheeky Bunny: Light Pink Peel Off Nail Polish",
+      "domain": "missnella.com",
+      "url": "https://www.missnella.com/products/mn05-cheeky-bunny-3-pack",
+      "host": "missnella.com",
+      "status": "skipped",
+      "patch_keys": [],
+      "http_status": 200,
+      "final_url": "https://www.missnella.com/products/mn05-cheeky-bunny-3-pack",
+      "extracted_summary": {
+        "ingredients_chars": 0,
+        "how_to_chars": 0,
+        "details_sections_count": 0,
+        "variant_count": 0,
+        "review_count": 0,
+        "rating": 0,
+        "review_preview_count": 0,
+        "review_preview_samples": []
+      },
+      "reason": "no_official_html_fields"
+    },
+    {
+      "external_product_id": "ext_005253c847ab00c7b62073c3",
+      "title": "MN06 Butterfly Wings: Glittery Lilac Peel Off Nail Polish",
+      "domain": "missnella.com",
+      "url": "https://www.missnella.com/products/mn06-butterfly-wings-3-pack",
+      "host": "missnella.com",
+      "status": "skipped",
+      "patch_keys": [],
+      "http_status": 200,
+      "final_url": "https://www.missnella.com/products/mn06-butterfly-wings-3-pack",
+      "extracted_summary": {
+        "ingredients_chars": 0,
+        "how_to_chars": 0,
+        "details_sections_count": 0,
+        "variant_count": 0,
+        "review_count": 0,
+        "rating": 0,
+        "review_preview_count": 0,
+        "review_preview_samples": []
+      },
+      "reason": "no_official_html_fields"
+    },
+    {
+      "external_product_id": "ext_c8d0cd315ef174ac864811bf",
+      "title": "MN11 Sweet Lavender: Deep Violet Peel Off Nail Polish",
+      "domain": "missnella.com",
+      "url": "https://www.missnella.com/products/mn11-sweet-lavender-3-pack",
+      "host": "missnella.com",
+      "status": "skipped",
+      "patch_keys": [],
+      "http_status": 200,
+      "final_url": "https://www.missnella.com/products/mn11-sweet-lavender-3-pack",
+      "extracted_summary": {
+        "ingredients_chars": 0,
+        "how_to_chars": 0,
+        "details_sections_count": 0,
+        "variant_count": 0,
+        "review_count": 0,
+        "rating": 0,
+        "review_preview_count": 0,
+        "review_preview_samples": []
+      },
+      "reason": "no_official_html_fields"
+    },
+    {
+      "external_product_id": "ext_443317ae78fcdee9271e4efa",
+      "title": "MN13 Sun Kissed: Yellow Peel Off Nail Polish",
+      "domain": "missnella.com",
+      "url": "https://www.missnella.com/products/mn13-sun-kissed-3-pack",
+      "host": "missnella.com",
+      "status": "skipped",
+      "patch_keys": [],
+      "http_status": 200,
+      "final_url": "https://www.missnella.com/products/mn13-sun-kissed-3-pack",
+      "extracted_summary": {
+        "ingredients_chars": 0,
+        "how_to_chars": 0,
+        "details_sections_count": 0,
+        "variant_count": 0,
+        "review_count": 0,
+        "rating": 0,
+        "review_preview_count": 0,
+        "review_preview_samples": []
+      },
+      "reason": "no_official_html_fields"
+    },
+    {
+      "external_product_id": "ext_45eb20f9189ad6fc2ca06c2a",
+      "title": "MN32 Blueberry Smoothie: Pastel Purple Peel Off Nail Polish",
+      "domain": "missnella.com",
+      "url": "https://www.missnella.com/products/mn32-blueberry-smoothie-3-pack",
+      "host": "missnella.com",
+      "status": "skipped",
+      "patch_keys": [],
+      "http_status": 200,
+      "final_url": "https://www.missnella.com/products/mn32-blueberry-smoothie-3-pack",
+      "extracted_summary": {
+        "ingredients_chars": 0,
+        "how_to_chars": 0,
+        "details_sections_count": 0,
+        "variant_count": 0,
+        "review_count": 0,
+        "rating": 0,
+        "review_preview_count": 0,
+        "review_preview_samples": []
+      },
+      "reason": "no_official_html_fields"
+    },
+    {
+      "external_product_id": "ext_f8e4e3a5be9203ee6665e382",
+      "title": "MN35 Banana Split: Light Yellow Peel Off Nail Polish",
+      "domain": "missnella.com",
+      "url": "https://www.missnella.com/products/mn35-banana-split-3-pack",
+      "host": "missnella.com",
+      "status": "skipped",
+      "patch_keys": [],
+      "http_status": 200,
+      "final_url": "https://www.missnella.com/products/mn35-banana-split-3-pack",
+      "extracted_summary": {
+        "ingredients_chars": 0,
+        "how_to_chars": 0,
+        "details_sections_count": 0,
+        "variant_count": 0,
+        "review_count": 0,
+        "rating": 0,
+        "review_preview_count": 0,
+        "review_preview_samples": []
+      },
+      "reason": "no_official_html_fields"
+    },
+    {
+      "external_product_id": "ext_6306a6d00b6e082ccc40932e",
+      "title": "MN36 Cosmic Cutie: Chrome Bronze Peel Off Nail Polish",
+      "domain": "missnella.com",
+      "url": "https://www.missnella.com/products/mn36-cosmic-cutie-3-pack",
+      "host": "missnella.com",
+      "status": "skipped",
+      "patch_keys": [],
+      "http_status": 200,
+      "final_url": "https://www.missnella.com/products/mn36-cosmic-cutie-3-pack",
+      "extracted_summary": {
+        "ingredients_chars": 0,
+        "how_to_chars": 0,
+        "details_sections_count": 0,
+        "variant_count": 0,
+        "review_count": 0,
+        "rating": 0,
+        "review_preview_count": 0,
+        "review_preview_samples": []
+      },
+      "reason": "no_official_html_fields"
+    },
+    {
+      "external_product_id": "ext_9bd51781d637e8161b67f6ff",
+      "title": "MN37 You're So Spacial: Chrome Blue Peel Off Nail Polish",
+      "domain": "missnella.com",
+      "url": "https://www.missnella.com/products/mn37-youre-so-spacial-3-pack",
+      "host": "missnella.com",
+      "status": "skipped",
+      "patch_keys": [],
+      "http_status": 200,
+      "final_url": "https://www.missnella.com/products/mn37-youre-so-spacial-3-pack",
+      "extracted_summary": {
+        "ingredients_chars": 0,
+        "how_to_chars": 0,
+        "details_sections_count": 0,
+        "variant_count": 0,
+        "review_count": 0,
+        "rating": 0,
+        "review_preview_count": 0,
+        "review_preview_samples": []
+      },
+      "reason": "no_official_html_fields"
+    },
+    {
+      "external_product_id": "ext_e1a12de43227d2f2a9d8bdc8",
+      "title": "MN38 Galactic Unicorn: Chrome Purple Peel Off Nail Polish",
+      "domain": "missnella.com",
+      "url": "https://www.missnella.com/products/mn38-galactic-unicorn-3-pack",
+      "host": "missnella.com",
+      "status": "skipped",
+      "patch_keys": [],
+      "http_status": 200,
+      "final_url": "https://www.missnella.com/products/mn38-galactic-unicorn-3-pack",
+      "extracted_summary": {
+        "ingredients_chars": 0,
+        "how_to_chars": 0,
+        "details_sections_count": 0,
+        "variant_count": 0,
+        "review_count": 0,
+        "rating": 0,
+        "review_preview_count": 0,
+        "review_preview_samples": []
+      },
+      "reason": "no_official_html_fields"
+    }
+  ]
+}

@@ -1,0 +1,38 @@
+{
+  "generated_at": "2026-05-30T00:46:27.573Z",
+  "dry_run": true,
+  "market": "US",
+  "contract_version": "external_seed.source_variant_fields.v1",
+  "summary": {
+    "scanned": 1,
+    "dry_run": 1,
+    "updated": 0,
+    "skipped": 0,
+    "failed": 0,
+    "by_field": {
+      "variants": 1
+    }
+  },
+  "results": [
+    {
+      "external_product_id": "ext_9cd211269e8480e6a7475b5e",
+      "title": "Muscat - Breathable Nail Polish",
+      "source_url": "https://786cosmetics.com/products/muscat",
+      "source_host": "786cosmetics.com",
+      "status": "dry_run",
+      "patch_keys": [
+        "variants"
+      ],
+      "reason": "replace_high_quality_variant_price_url_correction",
+      "before_hash": "e523701a9b3a3b075a503cfe65985f52e5c029989d2b57407696861ad357375a",
+      "after_hash": "c209098b74bcb36f1ca91cef724a5d70df83cb92b9f227ebf3f615795d016dd1",
+      "variant_count": 1,
+      "variant_labels": [
+        "Shade: Muscat"
+      ],
+      "serving_mirror_sync": {
+        "planned": true
+      }
+    }
+  ]
+}

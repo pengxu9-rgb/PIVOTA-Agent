@@ -1,0 +1,70 @@
+{
+  "generated_at": "2026-05-30T00:48:08.782Z",
+  "market": "US",
+  "include_non_public": false,
+  "docs_built": 1,
+  "source_build_failures": [],
+  "docs": [
+    {
+      "doc_id": "sellable:sig_cda7e3d3c12cbbf08efea3ac",
+      "sellable_item_group_id": "sig_cda7e3d3c12cbbf08efea3ac",
+      "product_line_id": "pl_46f956fe0b6dd642c23f7cb6",
+      "review_family_id": "rf_46f956fe0b6dd642c23f7cb6",
+      "brand_name": "786 Cosmetics",
+      "category_paths": [
+        "Nail Polish"
+      ],
+      "market": "US",
+      "availability_state": "available",
+      "publish_state": "public",
+      "title": "Muscat - Breathable Nail Polish",
+      "subtitle": "Inspired by Muscat, this soft sheer semi translucent beige-pink polish captures the coastal elegance and warm desert sunrise of Oman's capital. Its subtle, creamy tone evokes soft sands, sea-breezes and minimal sophistication - ideal for a polished, everyday manicure that reflects global beauty.",
+      "variant_axes": {
+        "axis_kind": "shade",
+        "source_url": "https://786cosmetics.com/products/muscat",
+        "review_state": "assistant_reviewed",
+        "visible_options": [
+          {
+            "name": "Shade",
+            "value": "Muscat",
+            "axis_kind": "shade"
+          }
+        ]
+      },
+      "size": null,
+      "shade": null,
+      "pack": null,
+      "hero_media": {
+        "url": "https://cdn.shopify.com/s/files/1/0413/6229/2900/files/ESRGAN_00853.jpg?v=1771086372",
+        "source_kind": "catalog",
+        "source_tier": "catalog"
+      },
+      "preview_media": [
+        "https://cdn.shopify.com/s/files/1/0413/6229/2900/files/ESRGAN_00853.jpg?v=1771086372",
+        "https://cdn.shopify.com/s/files/1/0413/6229/2900/files/ESRGAN_85107.jpg?v=1771086372"
+      ],
+      "price_min": 13.99,
+      "price_max": 13.99,
+      "default_offer_id": "external_seed:ext_9cd211269e8480e6a7475b5e",
+      "internal_offer_exists": false,
+      "external_offer_exists": true,
+      "pivota_insight_status": "available",
+      "pivota_insight_summary": "Muscat - Breathable Nail Polish is a nail polish from 786 Cosmetics in shade Muscat, with source-backed cues around a breathable polish format, thin-coat application and long-wear color.",
+      "quality_score": null,
+      "browse_score": null,
+      "facet_tokens": [
+        "786 Cosmetics",
+        "Nail Polish"
+      ],
+      "sort_keys": {
+        "price_min": 13.99,
+        "price_max": 13.99,
+        "updated_at": null
+      },
+      "updated_at": null,
+      "source_refs": [
+        "external_seed:ext_9cd211269e8480e6a7475b5e"
+      ]
+    }
+  ]
+}

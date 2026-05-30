@@ -1,0 +1,54 @@
+{
+  "generated_at": "2026-05-30T00:42:43.430Z",
+  "dry_run": true,
+  "manifest": "reports/markato_expansion_status_20260524/wave69_786_muscat_risk_review_serving_20260530/786_muscat_reviewed_category_patch_manifest.json",
+  "market": "US",
+  "allow_overwrite": true,
+  "overwrite_confirmed": false,
+  "summary": {
+    "scanned": 1,
+    "planned": 1,
+    "unchanged": 0,
+    "blocked": 0,
+    "missing": 0,
+    "updated": 0,
+    "catalog_product_updates": 0,
+    "identity_updates": 0,
+    "by_patch_key": {
+      "category": 1,
+      "product_type": 1,
+      "category_path": 1,
+      "catalog_category_path": 1
+    },
+    "blocking_reasons": {}
+  },
+  "apply_results": [],
+  "plans": [
+    {
+      "id": "eps_0a8dce61b04a6c51f4722c0a",
+      "external_product_id": "ext_9cd211269e8480e6a7475b5e",
+      "title": "Muscat - Breathable Nail Polish",
+      "canonical_url": "https://786cosmetics.com/products/muscat",
+      "status": "planned",
+      "changed": true,
+      "patch_keys": [
+        "category",
+        "product_type",
+        "category_path",
+        "catalog_category_path"
+      ],
+      "before": {
+        "category": "Powder",
+        "category_path": "",
+        "catalog_category_path": "",
+        "product_type": ""
+      },
+      "after": {
+        "category": "Nail Polish",
+        "category_path": "beauty/makeup/nails/nail-polish",
+        "catalog_category_path": "beauty/makeup/nails/nail-polish",
+        "product_type": "Nail Polish"
+      }
+    }
+  ]
+}

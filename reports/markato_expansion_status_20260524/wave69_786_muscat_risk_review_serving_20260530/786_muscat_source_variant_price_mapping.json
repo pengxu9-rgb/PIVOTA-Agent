@@ -1,0 +1,58 @@
+{
+  "mappings": [
+    {
+      "target_id": "ext_9cd211269e8480e6a7475b5e",
+      "source_url": "https://786cosmetics.com/products/muscat",
+      "source_origin": "official_pdp",
+      "allow_price_url_correction": true,
+      "match_basis": {
+        "reviewed_by": "codex_strict_human_quality_gate",
+        "reason": "wave69_786_muscat_official_shopify_json_price_repair",
+        "evidence": "Official Shopify product JSON for /products/muscat exposes one available variant id 51537209393383 with price 1399 USD cents and no compare_at_price. Existing seed variant used the same product and variant id but stale price 8.39.",
+        "source_kind": "official_shopify_product_json"
+      },
+      "variant_axes": {
+        "review_state": "assistant_reviewed",
+        "source_url": "https://786cosmetics.com/products/muscat",
+        "axis_kind": "shade",
+        "visible_options": [
+          {
+            "name": "Shade",
+            "value": "Muscat",
+            "axis_kind": "shade"
+          }
+        ]
+      },
+      "variants": [
+        {
+          "id": "51537209393383",
+          "variant_id": "51537209393383",
+          "sku": "51537209393383",
+          "sku_id": "51537209393383",
+          "title": "Shade: Muscat",
+          "display_label": "Shade: Muscat",
+          "option_name": "Shade",
+          "option_value": "Muscat",
+          "axis_kind": "shade",
+          "options": [
+            {
+              "name": "Shade",
+              "value": "Muscat",
+              "axis_kind": "shade"
+            }
+          ],
+          "price": 13.99,
+          "price_amount": 13.99,
+          "currency": "USD",
+          "available": true,
+          "in_stock": true,
+          "image_url": "https://cdn.shopify.com/s/files/1/0413/6229/2900/files/ESRGAN_00853.jpg?v=1771086372",
+          "product_url": "https://786cosmetics.com/products/muscat",
+          "deep_link": "https://786cosmetics.com/products/muscat",
+          "source_origin": "official_pdp",
+          "source_quality_status": "high"
+        }
+      ]
+    }
+  ]
+}
