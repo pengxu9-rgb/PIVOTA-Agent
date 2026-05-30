@@ -1,0 +1,59 @@
+{
+  "generated_at": "2026-05-30T09:52:06.282Z",
+  "external_product_ids": [
+    "ext_092b6aa9139491c529586778",
+    "ext_f79a99a09a933e731880cdfb"
+  ],
+  "rows": [
+    {
+      "external_product_id": "ext_092b6aa9139491c529586778",
+      "title": "Bamboo Cotton Buds - 200 Pieces",
+      "domain": "upcirclebeauty.com",
+      "canonical_url": "https://upcirclebeauty.com/products/bamboo-cotton-buds",
+      "destination_url": "https://upcirclebeauty.com/products/bamboo-cotton-buds",
+      "seed_category": null,
+      "seed_product_type": null,
+      "seed_product_family": null,
+      "seed_product_kind": null,
+      "seed_category_path": null,
+      "snapshot_category": null,
+      "snapshot_product_type": null,
+      "snapshot_product_family": null,
+      "catalog_category": "Beauty Product",
+      "catalog_product_type": "Beauty Product",
+      "catalog_category_path": "beauty",
+      "serving_eligible": true,
+      "blocker_code": "none",
+      "blocker_detail": null,
+      "identity_review_required": false,
+      "identity_status": "approved",
+      "identity_live_read_enabled": true,
+      "identity_category_path": null
+    },
+    {
+      "external_product_id": "ext_f79a99a09a933e731880cdfb",
+      "title": "Safety Razor Stand",
+      "domain": "upcirclebeauty.com",
+      "canonical_url": "https://upcirclebeauty.com/products/safety-razor-stand",
+      "destination_url": "https://upcirclebeauty.com/products/safety-razor-stand",
+      "seed_category": null,
+      "seed_product_type": null,
+      "seed_product_family": null,
+      "seed_product_kind": null,
+      "seed_category_path": null,
+      "snapshot_category": null,
+      "snapshot_product_type": null,
+      "snapshot_product_family": null,
+      "catalog_category": "Beauty Product",
+      "catalog_product_type": "Beauty Product",
+      "catalog_category_path": "beauty",
+      "serving_eligible": true,
+      "blocker_code": "none",
+      "blocker_detail": null,
+      "identity_review_required": false,
+      "identity_status": "approved",
+      "identity_live_read_enabled": true,
+      "identity_category_path": null
+    }
+  ]
+}

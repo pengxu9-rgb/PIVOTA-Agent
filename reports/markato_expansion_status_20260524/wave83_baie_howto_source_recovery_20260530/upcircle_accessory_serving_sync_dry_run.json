@@ -1,0 +1,489 @@
+{
+  "generated_at": "2026-05-30T09:54:36.215Z",
+  "mode": "dry_run",
+  "batch_size": null,
+  "bootstrap_reviewed_identity_live_read": false,
+  "requested_ids": 2,
+  "fetched_rows": 2,
+  "mirror_rows": 2,
+  "planned_sku_rows": 3,
+  "planned_offer_rows": 3,
+  "planned_index_state_rows": 2,
+  "missing_ids": [],
+  "skipped": [],
+  "applied": {
+    "mode": "dry_run",
+    "existing_before": {
+      "catalog_products": 2,
+      "catalog_skus": 3,
+      "catalog_offers": 3,
+      "product_group_members": 2
+    },
+    "stale_delete_preview": {
+      "current_sku_rows": 3,
+      "current_offer_rows": 3,
+      "planned_stale_sku_deletes": 0,
+      "planned_stale_offer_deletes": 0,
+      "sample_stale_skus": [],
+      "sample_stale_offers": []
+    },
+    "batch_size": null,
+    "batches": 1,
+    "audit_reasons": {
+      "no_strong_identifier": 3
+    },
+    "product_upserts": 0,
+    "sku_upserts": 0,
+    "offer_upserts": 0,
+    "group_member_upserts": 0,
+    "group_member_preserved_existing_merges": 0,
+    "seed_attachment_updates": 0,
+    "index_state_upserts": 0,
+    "identity_live_read_updates": 0,
+    "catalog_row_trust_upserts": 0,
+    "stale_offer_deletes": 0,
+    "stale_sku_deletes": 0
+  },
+  "sample": [
+    {
+      "external_product_id": "ext_092b6aa9139491c529586778",
+      "product_key": "prod::external_seed::external_seed::ext_092b6aa9139491c529586778",
+      "product_group_id": "sig_a7f55f854a3936a31ca7f9f5",
+      "title": "Bamboo Cotton Buds - 200 Pieces",
+      "brand": "UpCircle Beauty",
+      "product_type": "Beauty Tool",
+      "category": "Beauty Tool",
+      "category_path": "beauty/tools/cotton-buds",
+      "canonical_url": "https://upcirclebeauty.com/products/bamboo-cotton-buds",
+      "pivota_signature_id": "sig_a7f55f854a3936a31ca7f9f5",
+      "sku_rows": 1,
+      "first_sku": {
+        "sku_key": "prod::external_seed::external_seed::ext_092b6aa9139491c529586778::sku_0b9244352ae5088248a1",
+        "product_key": "prod::external_seed::external_seed::ext_092b6aa9139491c529586778",
+        "merchant_id": "external_seed",
+        "platform": "external_seed",
+        "source_product_id": "ext_092b6aa9139491c529586778",
+        "source_variant_id": "ext_092b6aa9139491c529586778:42783935889574",
+        "source_domain": "upcirclebeauty.com",
+        "sku": "BUDS",
+        "barcode": null,
+        "title": "Bamboo Cotton Buds - 200 Pieces",
+        "currency": "USD",
+        "image_url": "https://cdn.shopify.com/s/files/1/0023/6316/2681/files/200Bamboo_OrganicCottonBuds7.jpg?v=1707328130",
+        "visible_attributes": {
+          "Size": "200 pieces"
+        },
+        "visible_option_labels": {
+          "Size": "200 pieces"
+        },
+        "ingredient_ids": [],
+        "sku_payload": {
+          "source": "external_product_seeds_mirror_v1",
+          "external_product_id": "ext_092b6aa9139491c529586778",
+          "raw_variant_id": "42783935889574",
+          "source_variant_id": "ext_092b6aa9139491c529586778:42783935889574",
+          "variant_sku": "BUDS",
+          "barcode": null,
+          "strong_identifier_kind": null,
+          "source_url": "https://upcirclebeauty.com/products/bamboo-cotton-buds",
+          "external_redirect_url": "https://upcirclebeauty.com/products/bamboo-cotton-buds",
+          "price": "7",
+          "price_amount": 7,
+          "currency": "USD",
+          "availability": "in_stock",
+          "image_url": "https://cdn.shopify.com/s/files/1/0023/6316/2681/files/200Bamboo_OrganicCottonBuds7.jpg?v=1707328130",
+          "swatch_image_url": null,
+          "label_image_url": null,
+          "options": {
+            "Size": "200 pieces"
+          },
+          "raw_variant": {
+            "sku": "BUDS",
+            "url": "https://upcirclebeauty.com/products/bamboo-cotton-buds",
+            "price": "7",
+            "stock": "In Stock",
+            "currency": "USD",
+            "image_url": "https://cdn.shopify.com/s/files/1/0023/6316/2681/files/200Bamboo_OrganicCottonBuds7.jpg?v=1707328130",
+            "image_urls": [
+              "https://cdn.shopify.com/s/files/1/0023/6316/2681/files/200Bamboo_OrganicCottonBuds7.jpg?v=1707328130",
+              "https://cdn.shopify.com/s/files/1/0023/6316/2681/files/200Bamboo_OrganicCottonBuds6.jpg?v=1707328130",
+              "https://cdn.shopify.com/s/files/1/0023/6316/2681/files/COTTONBUDS.png?v=1707328130"
+            ],
+            "variant_id": "42783935889574",
+            "description": "A staple for any bathroom - 200 high quality bamboo sticks that make an excellent, sustainable alternative to plastic buds.\n\nThe sticks of these buds are made from a sustainable source of bamboo and the tips are made with organic cotton.\n\nThe UpCircle Promise\n100% plastic-free and biodegradable. Buds are housed in a recycled paper box.",
+            "option_name": "Size",
+            "option_value": "200 pieces"
+          }
+        },
+        "readiness_tier": "referral_only"
+      },
+      "first_offer": {
+        "offer_id": "offer:external_seed:9fc154308c189826da53bb6a7a6fa1ff",
+        "sku_key": "prod::external_seed::external_seed::ext_092b6aa9139491c529586778::sku_0b9244352ae5088248a1",
+        "product_key": "prod::external_seed::external_seed::ext_092b6aa9139491c529586778",
+        "merchant_id": "external_seed",
+        "catalog_track": "external_referral",
+        "truth_tier": "observed",
+        "readiness_tier": "referral_only",
+        "offer_mode": "redirect",
+        "channel": "external_referral",
+        "availability": "in_stock",
+        "currency": "USD",
+        "list_price": 7,
+        "merchant_effective_price": 7,
+        "estimated_best_price": 7,
+        "price_confidence": 1,
+        "source_system": "external_product_seeds_mirror_v1",
+        "source_ref": "eps_92f9d9ecd6c4a674340936c6",
+        "source_domain": "upcirclebeauty.com",
+        "offer_payload": {
+          "source": "external_product_seeds_mirror_v1",
+          "external_seed_id": "eps_92f9d9ecd6c4a674340936c6",
+          "external_product_id": "ext_092b6aa9139491c529586778",
+          "domain": "upcirclebeauty.com",
+          "market": "US",
+          "product_title": "Bamboo Cotton Buds - 200 Pieces",
+          "variant_title": "Bamboo Cotton Buds - 200 Pieces",
+          "variant_sku": "BUDS",
+          "raw_variant_id": "42783935889574",
+          "url": "https://upcirclebeauty.com/products/bamboo-cotton-buds",
+          "offer_url": "https://upcirclebeauty.com/products/bamboo-cotton-buds",
+          "canonical_url": "https://upcirclebeauty.com/products/bamboo-cotton-buds",
+          "destination_url": "https://upcirclebeauty.com/products/bamboo-cotton-buds",
+          "external_redirect_url": "https://upcirclebeauty.com/products/bamboo-cotton-buds",
+          "merchant_display_name": "UpCircle Beauty",
+          "price": "7",
+          "price_amount": 7,
+          "price_currency": "USD",
+          "availability": "in_stock",
+          "commerce_facts_v1": {
+            "contract_version": "commerce_facts.v1",
+            "market_id": "US",
+            "country": "US",
+            "currency_target": "USD",
+            "source_authority": "catalog_extract_v2",
+            "captured_at": "2026-05-18T05:00:41.929Z",
+            "evidence_url": "https://upcirclebeauty.com/products/bamboo-cotton-buds",
+            "sellable_region": {
+              "status": "unknown",
+              "countries": [],
+              "evidence_source": "catalog_extract_v2",
+              "confidence": "unknown",
+              "checked_at": "2026-05-18T05:00:41.929Z",
+              "reason_codes": [
+                "shipping_destination_not_verified"
+              ],
+              "evidence_url": "https://upcirclebeauty.com/products/bamboo-cotton-buds"
+            },
+            "regional_price": {
+              "amount": 7,
+              "currency": "USD",
+              "display_raw": null,
+              "price_type": "unknown",
+              "compare_at_amount": null,
+              "compare_at_currency": null,
+              "compare_at_display_raw": null,
+              "tax_included": "unknown",
+              "confidence": "medium",
+              "market_switch_status": "ok",
+              "observed_currency": "USD",
+              "source_url": "https://upcirclebeauty.com/products/bamboo-cotton-buds",
+              "captured_at": "2026-05-18T05:00:41.929Z"
+            },
+            "availability": {
+              "status": "in_stock",
+              "source": "catalog_extract_v2",
+              "confidence": "medium",
+              "captured_at": "2026-05-18T05:00:41.929Z"
+            },
+            "shipping": {
+              "status": "unknown",
+              "source": "catalog_extract_v2",
+              "confidence": "unknown",
+              "reason_codes": [
+                "external_checkout_not_queried"
+              ],
+              "checked_at": "2026-05-18T05:00:41.929Z"
+            },
+            "promotions": [],
+            "returns": {
+              "status": "unknown",
+              "source": "catalog_extract_v2",
+              "confidence": "unknown",
+              "reason_codes": [
+                "external_returns_not_extracted"
+              ],
+              "checked_at": "2026-05-18T05:00:41.929Z"
+            }
+          },
+          "agent_safe_commerce_facts": {
+            "contract_version": "commerce_facts.v1",
+            "market_id": "US",
+            "price": {
+              "amount": 7,
+              "currency": "USD",
+              "display_raw": null,
+              "price_type": "unknown",
+              "compare_at_amount": null,
+              "compare_at_currency": null,
+              "compare_at_display_raw": null,
+              "tax_included": "unknown",
+              "confidence": "medium",
+              "market_switch_status": "ok",
+              "observed_currency": "USD",
+              "source_url": "https://upcirclebeauty.com/products/bamboo-cotton-buds",
+              "captured_at": "2026-05-18T05:00:41.929Z"
+            },
+            "availability": {
+              "status": "in_stock",
+              "source": "catalog_extract_v2",
+              "confidence": "medium",
+              "captured_at": "2026-05-18T05:00:41.929Z"
+            },
+            "shipping": {
+              "status": "unknown",
+              "reason": "verify_at_checkout"
+            },
+            "promotions": [],
+            "checkout_note": "Shipping and promotions are not verified for this external offer; verify at merchant checkout."
+          }
+        }
+      },
+      "serving_readiness": {
+        "servingEligible": true,
+        "contentQualityScore": 90,
+        "blockerCode": "none",
+        "blockerDetail": null,
+        "identityResolved": true,
+        "identityLiveReadResolved": true,
+        "identityBootstrapEligible": false,
+        "terminalHold": false,
+        "terminalHoldReason": "",
+        "hasImage": true,
+        "hasPrice": true,
+        "descriptionLength": 337
+      }
+    },
+    {
+      "external_product_id": "ext_f79a99a09a933e731880cdfb",
+      "product_key": "prod::external_seed::external_seed::ext_f79a99a09a933e731880cdfb",
+      "product_group_id": "sig_afe3f9a92ef0da1f86bcaa53",
+      "title": "Safety Razor Stand",
+      "brand": "UpCircle Beauty",
+      "product_type": "Beauty Tool",
+      "category": "Beauty Tool",
+      "category_path": "beauty/tools/razor-stand",
+      "canonical_url": "https://upcirclebeauty.com/products/safety-razor-stand",
+      "pivota_signature_id": "sig_afe3f9a92ef0da1f86bcaa53",
+      "sku_rows": 2,
+      "first_sku": {
+        "sku_key": "prod::external_seed::external_seed::ext_f79a99a09a933e731880cdfb::sku_9c1818a47951e0a6b9c9",
+        "product_key": "prod::external_seed::external_seed::ext_f79a99a09a933e731880cdfb",
+        "merchant_id": "external_seed",
+        "platform": "external_seed",
+        "source_product_id": "ext_f79a99a09a933e731880cdfb",
+        "source_variant_id": "ext_f79a99a09a933e731880cdfb:40135374241958",
+        "source_domain": "upcirclebeauty.com",
+        "sku": "RZR-STD",
+        "barcode": null,
+        "title": "Safety Razor Stand",
+        "currency": "USD",
+        "image_url": "https://cdn.shopify.com/s/files/1/0023/6316/2681/files/SafetyRazorStand4_03c46fd6-67f7-40d1-b082-aa68f3741bd6.jpg?v=1699910287",
+        "visible_attributes": {
+          "With Or Without Stand": "Razor Stand without Razor"
+        },
+        "visible_option_labels": {
+          "With Or Without Stand": "Razor Stand without Razor"
+        },
+        "ingredient_ids": [],
+        "sku_payload": {
+          "source": "external_product_seeds_mirror_v1",
+          "external_product_id": "ext_f79a99a09a933e731880cdfb",
+          "raw_variant_id": "40135374241958",
+          "source_variant_id": "ext_f79a99a09a933e731880cdfb:40135374241958",
+          "variant_sku": "RZR-STD",
+          "barcode": null,
+          "strong_identifier_kind": null,
+          "source_url": "https://upcirclebeauty.com/products/safety-razor-stand",
+          "external_redirect_url": "https://upcirclebeauty.com/products/safety-razor-stand",
+          "price": "14",
+          "price_amount": 14,
+          "currency": "USD",
+          "availability": "in_stock",
+          "image_url": "https://cdn.shopify.com/s/files/1/0023/6316/2681/files/SafetyRazorStand4_03c46fd6-67f7-40d1-b082-aa68f3741bd6.jpg?v=1699910287",
+          "swatch_image_url": null,
+          "label_image_url": null,
+          "options": {
+            "With Or Without Stand": "Razor Stand without Razor"
+          },
+          "raw_variant": {
+            "sku": "RZR-STD",
+            "url": "https://upcirclebeauty.com/products/safety-razor-stand",
+            "price": "14",
+            "stock": "In Stock",
+            "currency": "USD",
+            "image_url": "https://cdn.shopify.com/s/files/1/0023/6316/2681/files/SafetyRazorStand4_03c46fd6-67f7-40d1-b082-aa68f3741bd6.jpg?v=1699910287",
+            "image_urls": [
+              "https://cdn.shopify.com/s/files/1/0023/6316/2681/files/SafetyRazorStand4_03c46fd6-67f7-40d1-b082-aa68f3741bd6.jpg?v=1699910287",
+              "https://cdn.shopify.com/s/files/1/0023/6316/2681/files/SafetyRazorStand5.jpg?v=1707328711",
+              "https://cdn.shopify.com/s/files/1/0023/6316/2681/files/Razor_bdf9ac6e-5fbf-4d05-b284-b7a4001e130f.png?v=1729676708",
+              "https://cdn.shopify.com/s/files/1/0023/6316/2681/files/CALLOUTSIMAGES36.jpg?v=1731338166",
+              "https://cdn.shopify.com/s/files/1/0023/6316/2681/files/Body_Plain_1.png?v=1745187972"
+            ],
+            "variant_id": "40135374241958",
+            "description": "Aluminium safety razor stand for safe and hygienic storage of your razor. This razor stand is 100% plastic-free.\n\nPurchase alone or with our Safety Razor for a saving of 9%. \n\nOur unisex razor can be used on the face as well as the body. Do not apply pressure when using - hold the handle gently and let the weight of the razor head glide over your skin. \n\nRazor comes with two complimentary blades in the box.\n\nRazor Blade Return Scheme: Ready for new blades? Simply send us your old ones to be disposed of and recycled. For every 5 blades returned you'll get £1 off your blades refill pack! 👌\n\nSTEP ONE: Wrap the blades in something protective e.g. tissue paper/ toilet roll. \n\nSTEP TWO: Put in an envelope and include your name and email so that we can send you your discount code.\n\nSTEP THREE: Pop on a stamp (usually enough to cover postage unless you are sending 10+ back at a time).\n\nSTEP FOUR: Post them to us at UpCircle Beauty, 316 Blucher Road, Camberwell, London, SE5 0LH \n\nAge Restricted Item: It is illegal in the UK to purchase razor blades and razors when under the age of 18. By placing an order for this product, you are confirming you are over the age of 18.",
+            "option_name": "With Or Without Stand",
+            "option_value": "Razor Stand without Razor"
+          }
+        },
+        "readiness_tier": "referral_only"
+      },
+      "first_offer": {
+        "offer_id": "offer:external_seed:dec4b1574b62ddd1dd3d73fde0e731a1",
+        "sku_key": "prod::external_seed::external_seed::ext_f79a99a09a933e731880cdfb::sku_9c1818a47951e0a6b9c9",
+        "product_key": "prod::external_seed::external_seed::ext_f79a99a09a933e731880cdfb",
+        "merchant_id": "external_seed",
+        "catalog_track": "external_referral",
+        "truth_tier": "observed",
+        "readiness_tier": "referral_only",
+        "offer_mode": "redirect",
+        "channel": "external_referral",
+        "availability": "in_stock",
+        "currency": "USD",
+        "list_price": 14,
+        "merchant_effective_price": 14,
+        "estimated_best_price": 14,
+        "price_confidence": 1,
+        "source_system": "external_product_seeds_mirror_v1",
+        "source_ref": "eps_ddeee5898d1333beacfb80b5",
+        "source_domain": "upcirclebeauty.com",
+        "offer_payload": {
+          "source": "external_product_seeds_mirror_v1",
+          "external_seed_id": "eps_ddeee5898d1333beacfb80b5",
+          "external_product_id": "ext_f79a99a09a933e731880cdfb",
+          "domain": "upcirclebeauty.com",
+          "market": "US",
+          "product_title": "Safety Razor Stand",
+          "variant_title": "Safety Razor Stand",
+          "variant_sku": "RZR-STD",
+          "raw_variant_id": "40135374241958",
+          "url": "https://upcirclebeauty.com/products/safety-razor-stand",
+          "offer_url": "https://upcirclebeauty.com/products/safety-razor-stand",
+          "canonical_url": "https://upcirclebeauty.com/products/safety-razor-stand",
+          "destination_url": "https://upcirclebeauty.com/products/safety-razor-stand",
+          "external_redirect_url": "https://upcirclebeauty.com/products/safety-razor-stand",
+          "merchant_display_name": "UpCircle Beauty",
+          "price": "14",
+          "price_amount": 14,
+          "price_currency": "USD",
+          "availability": "in_stock",
+          "commerce_facts_v1": {
+            "contract_version": "commerce_facts.v1",
+            "market_id": "US",
+            "country": "US",
+            "currency_target": "USD",
+            "source_authority": "catalog_extract_v2",
+            "captured_at": "2026-05-18T05:00:41.940Z",
+            "evidence_url": "https://upcirclebeauty.com/products/safety-razor-stand",
+            "sellable_region": {
+              "status": "unknown",
+              "countries": [],
+              "evidence_source": "catalog_extract_v2",
+              "confidence": "unknown",
+              "checked_at": "2026-05-18T05:00:41.940Z",
+              "reason_codes": [
+                "shipping_destination_not_verified"
+              ],
+              "evidence_url": "https://upcirclebeauty.com/products/safety-razor-stand"
+            },
+            "regional_price": {
+              "amount": 14,
+              "currency": "USD",
+              "display_raw": null,
+              "price_type": "unknown",
+              "compare_at_amount": null,
+              "compare_at_currency": null,
+              "compare_at_display_raw": null,
+              "tax_included": "unknown",
+              "confidence": "medium",
+              "market_switch_status": "ok",
+              "observed_currency": "USD",
+              "source_url": "https://upcirclebeauty.com/products/safety-razor-stand",
+              "captured_at": "2026-05-18T05:00:41.940Z"
+            },
+            "availability": {
+              "status": "in_stock",
+              "source": "catalog_extract_v2",
+              "confidence": "medium",
+              "captured_at": "2026-05-18T05:00:41.940Z"
+            },
+            "shipping": {
+              "status": "unknown",
+              "source": "catalog_extract_v2",
+              "confidence": "unknown",
+              "reason_codes": [
+                "external_checkout_not_queried"
+              ],
+              "checked_at": "2026-05-18T05:00:41.940Z"
+            },
+            "promotions": [],
+            "returns": {
+              "status": "unknown",
+              "source": "catalog_extract_v2",
+              "confidence": "unknown",
+              "reason_codes": [
+                "external_returns_not_extracted"
+              ],
+              "checked_at": "2026-05-18T05:00:41.940Z"
+            }
+          },
+          "agent_safe_commerce_facts": {
+            "contract_version": "commerce_facts.v1",
+            "market_id": "US",
+            "price": {
+              "amount": 14,
+              "currency": "USD",
+              "display_raw": null,
+              "price_type": "unknown",
+              "compare_at_amount": null,
+              "compare_at_currency": null,
+              "compare_at_display_raw": null,
+              "tax_included": "unknown",
+              "confidence": "medium",
+              "market_switch_status": "ok",
+              "observed_currency": "USD",
+              "source_url": "https://upcirclebeauty.com/products/safety-razor-stand",
+              "captured_at": "2026-05-18T05:00:41.940Z"
+            },
+            "availability": {
+              "status": "in_stock",
+              "source": "catalog_extract_v2",
+              "confidence": "medium",
+              "captured_at": "2026-05-18T05:00:41.940Z"
+            },
+            "shipping": {
+              "status": "unknown",
+              "reason": "verify_at_checkout"
+            },
+            "promotions": [],
+            "checkout_note": "Shipping and promotions are not verified for this external offer; verify at merchant checkout."
+          }
+        }
+      },
+      "serving_readiness": {
+        "servingEligible": true,
+        "contentQualityScore": 90,
+        "blockerCode": "none",
+        "blockerDetail": null,
+        "identityResolved": true,
+        "identityLiveReadResolved": true,
+        "identityBootstrapEligible": false,
+        "terminalHold": false,
+        "terminalHoldReason": "",
+        "hasImage": true,
+        "hasPrice": true,
+        "descriptionLength": 1178
+      }
+    }
+  ]
+}

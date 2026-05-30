@@ -1,0 +1,125 @@
+domain,brand_examples,rows,catalog_attached,catalog_attached_pct,index_serving_eligible,index_serving_eligible_pct,identity_ready,identity_ready_pct,product_intel_high_quality,product_intel_high_quality_pct,ready_or_covered,catalog_identity_sync,serving_index_sync,identity_refresh,product_intel_review,hold_source_gap,hold_risk_review,quality_flag_summary
+fentybeauty.com,Fenty Beauty | fenty beauty,860,860,100,827,96.2,836,97.2,536,62.3,203,0,0,0,159,252,246,missing_or_short_description:312 | bundle_or_sample:108 | accessory_or_tool:69 | regulated_claim_review:47 | wellness_or_supplement:37 | missing_full_inci:26 | missing_how_to:12 | missing_currency:9
+torriden.us,Torriden,35,35,100,35,100,1,2.9,6,17.1,0,0,0,27,1,0,7,wellness_or_supplement:3 | regulated_claim_review:2 | sunscreen_regulated:2
+us.embryolisse.com,EMBRYOLISSE,65,65,100,65,100,65,100,3,4.6,0,0,0,0,27,2,36,bundle_or_sample:21 | regulated_claim_review:18 | missing_full_inci:4 | wellness_or_supplement:2 | accessory_or_tool:1
+786cosmetics.com,786 Cosmetics,51,51,100,23,45.1,49,96.1,49,96.1,17,0,18,0,0,1,15,bundle_or_sample:8 | regulated_claim_review:6 | accessory_or_tool:1 | missing_full_inci:1 | missing_how_to:1 | missing_or_short_description:1
+firstaidbeauty.com,First Aid Beauty,45,45,100,45,100,42,93.3,15,33.3,4,0,0,0,16,1,24,regulated_claim_review:16 | bundle_or_sample:5 | sunscreen_regulated:4 | wellness_or_supplement:2 | missing_how_to:1
+us.laneige.com,LANEIGE US,27,27,100,27,100,0,0,21,77.8,0,0,0,15,0,2,10,regulated_claim_review:6 | sunscreen_regulated:3 | missing_full_inci:2 | wellness_or_supplement:2 | accessory_or_tool:1
+missnella.com,Miss Nella,198,198,100,16,8.1,32,16.2,143,72.2,11,0,10,0,0,63,114,missing_full_inci:68 | missing_how_to:68 | bundle_or_sample:65 | accessory_or_tool:41 | regulated_claim_review:37 | content_evidence_hold:2 | wellness_or_supplement:1
+cosrx.com,COSRX,101,101,100,101,100,86,85.1,101,100,47,0,0,9,0,1,44,regulated_claim_review:25 | wellness_or_supplement:12 | sunscreen_regulated:5 | bundle_or_sample:3 | accessory_or_tool:2 | missing_full_inci:1
+tirtir.global,TIRTIR Global,68,68,100,63,92.6,53,77.9,68,100,37,0,0,8,0,5,18,regulated_claim_review:11 | accessory_or_tool:3 | missing_currency:3 | missing_or_short_description:3 | wellness_or_supplement:3 | bundle_or_sample:2 | missing_full_inci:2 | sunscreen_regulated:2
+upcirclebeauty.com,UpCircle Beauty,103,103,100,39,37.9,92,89.3,98,95.1,6,0,6,0,0,3,88,regulated_claim_review:48 | bundle_or_sample:45 | accessory_or_tool:16 | missing_full_inci:13 | missing_how_to:13 | wellness_or_supplement:13 | missing_currency:3 | high_price_review:1
+innbeautyproject.com,INNBEAUTY PROJECT,64,64,100,64,100,53,82.8,63,98.4,25,0,0,6,0,0,33,regulated_claim_review:20 | wellness_or_supplement:20 | missing_full_inci:1
+anua.com,Anua,54,54,100,50,92.6,46,85.2,54,100,32,0,0,6,0,1,15,regulated_claim_review:10 | bundle_or_sample:3 | missing_or_short_description:2 | sunscreen_regulated:2 | wellness_or_supplement:2 | accessory_or_tool:1
+rhodeskin.com,rhode,14,14,100,14,100,14,100,7,50,4,0,0,0,6,1,3,regulated_claim_review:3 | missing_or_short_description:1
+delicatedaisys.com,Delicate Daisys Botanical Beauty,10,10,100,2,20,10,100,10,100,1,0,6,0,0,0,3,regulated_claim_review:2 | wellness_or_supplement:1
+byoma.com,BYOMA,10,10,100,10,100,10,100,5,50,1,0,0,0,5,0,4,regulated_claim_review:3 | bundle_or_sample:1 | sunscreen_regulated:1
+khus-khus.com,KHUS KHUS,8,8,100,1,12.5,8,100,8,100,0,0,5,0,0,0,3,wellness_or_supplement:3
+sokoglam.com,Neogen | COSRX | Then I Met You,15,15,100,15,100,7,46.7,15,100,4,0,0,4,0,0,7,regulated_claim_review:4 | sunscreen_regulated:3 | wellness_or_supplement:1
+aya-skincare.com.au,AYA Skincare,12,12,100,5,41.7,12,100,12,100,3,0,4,0,0,1,4,regulated_claim_review:2 | bundle_or_sample:1 | missing_full_inci:1 | missing_how_to:1 | wellness_or_supplement:1
+nalacare.com,Nala Care,10,10,100,3,30,8,80,10,100,3,0,4,0,0,0,3,regulated_claim_review:2 | missing_how_to:1 | wellness_or_supplement:1
+apiceuticals.com,Apiceuticals,5,5,100,1,20,5,100,5,100,1,0,4,0,0,0,0,
+pixibeauty.com,PIXI BEAUTY | Pixi Beauty,351,351,100,311,88.6,321,91.5,339,96.6,73,0,3,0,0,16,259,bundle_or_sample:129 | regulated_claim_review:104 | accessory_or_tool:53 | wellness_or_supplement:41 | missing_currency:30 | missing_full_inci:15 | missing_or_short_description:9 | content_evidence_hold:8
+sigmabeauty.com,sigma beauty,231,231,100,197,85.3,202,87.4,190,82.3,23,0,0,0,3,6,199,accessory_or_tool:165 | missing_currency:37 | bundle_or_sample:23 | missing_or_short_description:19 | regulated_claim_review:11 | missing_full_inci:7 | wellness_or_supplement:7 | duplicate_canonical_identity_review:6
+theinkeylist.com,The INKEY List | The Inkey List,9,9,100,9,100,9,100,2,22.2,0,0,0,0,3,0,6,regulated_claim_review:4 | wellness_or_supplement:3 | sunscreen_regulated:2
+abyssianhaircare.com,Abyssian,6,6,100,2,33.3,6,100,6,100,2,0,3,0,0,0,1,regulated_claim_review:1
+lhamour.com,Lhamour,6,6,100,2,33.3,6,100,6,100,2,0,3,0,0,0,1,regulated_claim_review:1
+lucamarskincare.com,Lucamar Skin Care,5,5,100,1,20,5,100,5,100,0,0,3,0,0,0,2,regulated_claim_review:2 | wellness_or_supplement:2
+reapandglow.com,Reap & Glow,3,3,100,0,0,0,0,3,100,0,0,0,3,0,0,0,
+jurlique.com,Jurlique,99,99,100,77,77.8,78,78.8,67,67.7,36,0,0,0,2,26,35,missing_currency:21 | bundle_or_sample:17 | missing_or_short_description:16 | missing_full_inci:15 | regulated_claim_review:13 | wellness_or_supplement:7 | accessory_or_tool:4 | missing_how_to:2
+coconutmatter.com,COCONUT MATTER,7,7,100,4,57.1,7,100,7,100,1,0,2,0,0,0,4,regulated_claim_review:3 | accessory_or_tool:1
+7journeys.com,7Journeys,5,5,100,3,60,5,100,5,100,3,0,2,0,0,0,0,
+neutrogena.com,Neutrogena,3,3,100,1,33.3,1,33.3,0,0,0,0,0,2,0,0,1,sunscreen_regulated:1
+kyliecosmetics.com,kylie cosmetics,226,226,100,214,94.7,222,98.2,219,96.9,39,0,1,0,0,12,174,bundle_or_sample:118 | accessory_or_tool:50 | regulated_claim_review:29 | missing_currency:26 | missing_full_inci:14 | high_price_review:3 | missing_or_short_description:1
+beekman1802.com,Beekman 1802,102,102,100,102,100,100,98,101,99,27,0,0,0,1,0,74,wellness_or_supplement:43 | regulated_claim_review:38 | accessory_or_tool:11 | bundle_or_sample:8 | sunscreen_regulated:2
+dermalogica.com,Dermalogica,17,17,100,17,100,17,100,1,5.9,1,0,0,0,1,2,13,regulated_claim_review:5 | wellness_or_supplement:5 | bundle_or_sample:4 | missing_full_inci:2 | sunscreen_regulated:1
+nativeatlas.com,Native Atlas,15,15,100,0,0,0,0,15,100,0,0,0,1,0,6,8,missing_how_to:9 | regulated_claim_review:7 | missing_full_inci:2 | missing_or_short_description:2 | accessory_or_tool:1 | wellness_or_supplement:1
+ohlolly.com,Beauty of Joseon | Haruharu Wonder,14,14,100,14,100,14,100,13,92.9,6,0,0,0,1,0,7,sunscreen_regulated:3 | regulated_claim_review:2 | wellness_or_supplement:2
+baiebotanique.com,Baie Botanique,12,12,100,4,33.3,11,91.7,12,100,1,0,1,0,0,0,10,wellness_or_supplement:5 | regulated_claim_review:4 | bundle_or_sample:3 | missing_full_inci:1 | missing_how_to:1
+joujoubotanicals.com,JouJou,11,11,100,3,27.3,11,100,11,100,1,0,1,0,0,0,9,wellness_or_supplement:6 | accessory_or_tool:2 | regulated_claim_review:2
+activedrip.com,Active Drip,8,8,100,4,50,8,100,8,100,3,0,1,0,0,0,4,regulated_claim_review:4
+norrenordic.com,Nörre Nordic,8,8,100,4,50,8,100,8,100,1,0,1,0,0,1,5,regulated_claim_review:5 | bundle_or_sample:1 | missing_how_to:1
+us.oiolab.co,Oio Lab,6,6,100,3,50,6,100,6,100,0,0,1,0,0,0,5,regulated_claim_review:5 | missing_how_to:4 | missing_full_inci:1 | wellness_or_supplement:1
+lovemasami.com,MASAMI,4,4,100,2,50,4,100,4,100,0,0,1,0,0,0,3,wellness_or_supplement:2 | regulated_claim_review:1
+seresilk.com.au,Seresilk,4,4,100,1,25,4,100,4,100,0,0,1,0,0,0,3,wellness_or_supplement:2 | accessory_or_tool:1 | regulated_claim_review:1
+dermstore.com,RMS Beauty,2,2,100,0,0,0,0,2,100,0,0,0,1,0,1,0,missing_full_inci:1
+en.limecosmetic.com,LIME COSMETIC,2,2,100,1,50,2,100,2,100,1,0,1,0,0,0,0,
+rohrremedy.com,Rohr Remedy,2,2,100,1,50,2,100,2,100,0,0,1,0,0,0,1,wellness_or_supplement:1
+sofiepavittface.com,Sofie Pavitt Face,1,1,100,1,100,1,100,0,0,0,0,0,0,1,0,0,
+thenimetyou.com,Then I Met You,1,1,100,1,100,1,100,0,0,0,0,0,0,1,0,0,
+vanicream.com,Vanicream,1,1,100,0,0,0,0,0,0,0,0,0,1,0,0,0,
+tomfordbeauty.com,Tom Ford Beauty,464,464,100,464,100,464,100,464,100,308,0,0,0,0,0,156,sunscreen_regulated:43 | bundle_or_sample:30 | wellness_or_supplement:29 | regulated_claim_review:25 | high_price_review:22 | accessory_or_tool:11
+palmofferonia.com,Palm of Feronia,199,199,100,74,37.2,193,97,0,0,0,0,0,0,0,132,67,missing_full_inci:134 | missing_how_to:134 | bundle_or_sample:35 | accessory_or_tool:30 | regulated_claim_review:2
+wholesale.publicgoods.com,Public Goods,181,181,100,48,26.5,177,97.8,0,0,0,0,0,0,0,79,102,missing_full_inci:118 | missing_how_to:118 | regulated_claim_review:49 | high_price_review:47 | bundle_or_sample:42 | missing_or_short_description:35 | accessory_or_tool:17 | wellness_or_supplement:4
+intelligentchange.com,INTELLIGENT CHANGE,163,163,100,65,39.9,162,99.4,0,0,0,0,0,0,0,95,68,missing_full_inci:101 | missing_how_to:101 | bundle_or_sample:53 | regulated_claim_review:9 | accessory_or_tool:6 | wellness_or_supplement:3
+lizush.com,Lizush,125,125,100,45,36,109,87.2,112,89.6,0,0,0,0,0,8,117,accessory_or_tool:56 | regulated_claim_review:53 | bundle_or_sample:52 | missing_full_inci:10 | missing_how_to:10 | missing_currency:8 | wellness_or_supplement:7 | high_price_review:6
+skin1004.com,SKIN1004 | Skin1004,113,113,100,113,100,113,100,113,100,82,0,0,0,0,0,31,sunscreen_regulated:12 | wellness_or_supplement:11 | regulated_claim_review:9 | missing_or_short_description:2 | bundle_or_sample:1
+rarebeauty.com,rare beauty,110,110,100,103,93.6,105,95.5,109,99.1,44,0,0,0,0,18,48,bundle_or_sample:25 | missing_full_inci:19 | accessory_or_tool:18 | regulated_claim_review:8 | missing_or_short_description:4 | missing_currency:3 | sunscreen_regulated:2
+naturium.com,Naturium,106,106,100,106,100,106,100,105,99.1,24,0,0,0,0,33,49,missing_full_inci:38 | regulated_claim_review:26 | wellness_or_supplement:14 | sunscreen_regulated:11 | bundle_or_sample:7
+us.nuxe.com,NUXE,103,103,100,100,97.1,99,96.1,102,99,57,0,0,0,0,4,42,bundle_or_sample:30 | regulated_claim_review:9 | accessory_or_tool:6 | missing_or_short_description:4 | missing_full_inci:2 | missing_how_to:2
+lav-kids.com,Lav Kids,91,91,100,36,39.6,83,91.2,1,1.1,0,0,0,0,0,18,73,regulated_claim_review:46 | missing_full_inci:39 | missing_how_to:39 | bundle_or_sample:34 | accessory_or_tool:12 | wellness_or_supplement:5 | missing_or_short_description:4 | duplicate_canonical_identity_review:1
+dearbarber.co.uk,Dear Barber,89,89,100,29,32.6,74,83.1,0,0,0,0,0,0,0,42,47,missing_full_inci:54 | missing_how_to:54 | accessory_or_tool:23 | regulated_claim_review:15 | bundle_or_sample:12 | missing_or_short_description:7
+roundlab.com,Round Lab | Round Lab US,79,79,100,79,100,79,100,79,100,29,0,0,0,0,0,50,regulated_claim_review:31 | wellness_or_supplement:22 | sunscreen_regulated:5 | bundle_or_sample:4
+murad.com,Murad,76,76,100,76,100,76,100,76,100,28,0,0,0,0,5,43,regulated_claim_review:24 | bundle_or_sample:13 | missing_or_short_description:10 | wellness_or_supplement:10 | sunscreen_regulated:4
+olehenriksen.com,Olehenriksen,74,74,100,71,95.9,71,95.9,71,95.9,13,0,0,0,0,4,57,bundle_or_sample:38 | regulated_claim_review:24 | wellness_or_supplement:14 | missing_full_inci:5 | missing_or_short_description:4 | missing_currency:2 | missing_how_to:2
+bijin-shop.com,BIJIN,69,69,100,23,33.3,56,81.2,0,0,0,0,0,0,0,66,3,missing_full_inci:66 | missing_how_to:66 | bundle_or_sample:3 | missing_or_short_description:1
+reddane.co.za,RED DANE,69,69,100,23,33.3,66,95.7,0,0,0,0,0,0,0,3,66,high_price_review:61 | missing_full_inci:50 | missing_how_to:50 | regulated_claim_review:43 | wellness_or_supplement:7 | accessory_or_tool:6 | bundle_or_sample:6
+theordinary.com,the ordinary | The Ordinary,66,66,100,63,95.5,63,95.5,54,81.8,29,0,0,0,0,15,22,missing_or_short_description:12 | bundle_or_sample:10 | regulated_claim_review:8 | missing_full_inci:5 | wellness_or_supplement:5 | missing_currency:3 | accessory_or_tool:2 | missing_how_to:2
+lasavonneriedupilonduroy.com,La Savonnerie du Pilon du Roy,57,57,100,24,42.1,57,100,0,0,0,0,0,0,0,45,12,missing_full_inci:50 | missing_how_to:50 | bundle_or_sample:7 | regulated_claim_review:5
+blindbarber.com,Blind Barber,54,54,100,8,14.8,17,31.5,8,14.8,0,0,0,0,0,37,17,missing_how_to:38 | missing_full_inci:27 | missing_currency:12 | missing_or_short_description:12 | accessory_or_tool:10 | bundle_or_sample:5 | regulated_claim_review:3 | wellness_or_supplement:1
+beautyofjoseon.com,Beauty of Joseon,46,46,100,46,100,45,97.8,46,100,17,0,0,0,0,1,28,sunscreen_regulated:19 | regulated_claim_review:5 | accessory_or_tool:4 | bundle_or_sample:2 | missing_full_inci:1 | wellness_or_supplement:1
+ulta.com,The Ordinary | La Roche-Posay,40,40,100,40,100,40,100,39,97.5,30,0,0,0,0,0,10,regulated_claim_review:5 | wellness_or_supplement:3 | sunscreen_regulated:2
+guerlain.com,Guerlain,39,39,100,39,100,39,100,39,100,21,0,0,0,0,1,17,bundle_or_sample:7 | high_price_review:7 | accessory_or_tool:5 | regulated_claim_review:5 | missing_or_short_description:1
+supergoop.com,Supergoop! | Supergoop,39,39,100,39,100,38,97.4,7,17.9,0,0,0,0,0,1,38,sunscreen_regulated:24 | wellness_or_supplement:8 | accessory_or_tool:4 | bundle_or_sample:2 | missing_or_short_description:2 | missing_full_inci:1 | regulated_claim_review:1
+catkin.com,Catkin | CATKIN Cosmetics,36,36,100,1,2.8,13,36.1,36,100,0,0,0,0,0,1,35,duplicate_canonical_identity_review:34 | regulated_claim_review:24 | wellness_or_supplement:23 | missing_full_inci:12 | missing_how_to:12 | accessory_or_tool:1
+kravebeauty.com,KraveBeauty,35,35,100,34,97.1,35,100,35,100,5,0,0,0,0,0,30,bundle_or_sample:17 | regulated_claim_review:14 | accessory_or_tool:4 | sunscreen_regulated:2 | missing_currency:1 | missing_full_inci:1 | missing_how_to:1 | wellness_or_supplement:1
+haruharuwonder.com,Haruharu Wonder,31,31,100,31,100,31,100,31,100,13,0,0,0,0,0,18,regulated_claim_review:9 | wellness_or_supplement:6 | sunscreen_regulated:5 | accessory_or_tool:1
+nourwish.com,Nourwish,26,26,100,10,38.5,23,88.5,25,96.2,0,0,0,0,0,0,26,regulated_claim_review:24 | bundle_or_sample:12 | accessory_or_tool:7 | missing_full_inci:6 | missing_how_to:6 | wellness_or_supplement:1
+terraandco.com,Terra & Co.,24,24,100,8,33.3,15,62.5,24,100,0,0,0,0,0,0,24,regulated_claim_review:22 | accessory_or_tool:17 | wellness_or_supplement:4 | missing_full_inci:2 | missing_how_to:2 | bundle_or_sample:1
+joocyee.com,Joocyee,18,18,100,4,22.2,18,100,18,100,4,0,0,0,0,0,14,duplicate_canonical_identity_review:14
+judydoll.com,Judydoll,17,17,100,9,52.9,14,82.4,17,100,0,0,0,0,0,9,8,missing_full_inci:17 | duplicate_canonical_identity_review:8
+medicube.us,Medicube,17,17,100,17,100,15,88.2,17,100,10,0,0,0,0,0,7,wellness_or_supplement:5 | regulated_claim_review:2 | bundle_or_sample:1
+mossnoor.com,Moss & Noor,16,16,100,0,0,0,0,16,100,0,0,0,0,0,8,8,missing_how_to:12 | regulated_claim_review:4 | wellness_or_supplement:4 | missing_full_inci:2
+skintific.com,SKINTIFIC,15,15,100,15,100,15,100,8,53.3,3,0,0,0,0,0,12,bundle_or_sample:7 | wellness_or_supplement:4 | regulated_claim_review:3 | sunscreen_regulated:1
+biologique-recherche.com,biologique-recherche,14,14,100,12,85.7,12,85.7,3,21.4,0,0,0,0,0,11,3,missing_full_inci:13 | missing_currency:2 | regulated_claim_review:2 | wellness_or_supplement:1
+byrabeauty.com,Byra,14,14,100,6,42.9,14,100,12,85.7,0,0,0,0,0,1,13,regulated_claim_review:10 | wellness_or_supplement:6 | bundle_or_sample:3 | missing_full_inci:3 | missing_how_to:3 | accessory_or_tool:2 | high_price_review:1
+lunanectar.com,Luna Nectar,11,11,100,5,45.5,11,100,11,100,0,0,0,0,0,4,7,missing_full_inci:9 | regulated_claim_review:5 | missing_how_to:2 | wellness_or_supplement:2
+nubest.com,NuBest,10,10,100,4,40,10,100,10,100,0,0,0,0,0,0,10,wellness_or_supplement:10 | regulated_claim_review:1
+intoyoucosmetics.com,INTO YOU,9,9,100,2,22.2,3,33.3,9,100,0,0,0,0,0,1,8,missing_full_inci:9 | missing_how_to:9 | duplicate_canonical_identity_review:7 | regulated_claim_review:1
+paulaschoice.com,Paula's Choice,9,9,100,9,100,9,100,7,77.8,0,0,0,0,0,3,6,missing_full_inci:5 | regulated_claim_review:4 | wellness_or_supplement:3 | sunscreen_regulated:1
+rmsbeauty.com,RMS Beauty,9,9,100,4,44.4,7,77.8,8,88.9,1,0,0,0,0,1,7,wellness_or_supplement:4 | accessory_or_tool:2 | regulated_claim_review:2 | bundle_or_sample:1 | missing_full_inci:1 | missing_how_to:1 | missing_or_short_description:1
+glossier.com,Glossier,8,8,100,6,75,6,75,5,62.5,0,0,0,0,0,1,7,wellness_or_supplement:4 | missing_or_short_description:2 | regulated_claim_review:2 | accessory_or_tool:1 | bundle_or_sample:1 | missing_full_inci:1
+linhart.nyc,Linhart Smile Care,8,8,100,1,12.5,1,12.5,8,100,1,0,0,0,0,2,5,missing_full_inci:4 | missing_how_to:4 | regulated_claim_review:4 | accessory_or_tool:1 | bundle_or_sample:1 | missing_or_short_description:1 | sunscreen_regulated:1
+flowerknows.co,Flower Knows,7,7,100,0,0,2,28.6,4,57.1,0,0,0,0,0,0,7,duplicate_canonical_identity_review:7 | missing_full_inci:5 | missing_how_to:5 | accessory_or_tool:2 | missing_or_short_description:1
+oiluj.com,OILUJ,5,5,100,3,60,5,100,5,100,0,0,0,0,0,3,2,missing_full_inci:3 | wellness_or_supplement:2 | regulated_claim_review:1
+patyka.com,PATYKA,5,5,100,5,100,5,100,3,60,0,0,0,0,0,3,2,missing_full_inci:4 | bundle_or_sample:1 | regulated_claim_review:1
+wishtrend.com,By Wishtrend,5,5,100,4,80,4,80,3,60,0,0,0,0,0,4,1,missing_or_short_description:5 | missing_full_inci:2 | regulated_claim_review:1
+drjart.com,Dr. Jart+,4,4,100,4,100,2,50,1,25,1,0,0,0,0,1,2,sunscreen_regulated:2 | missing_full_inci:1 | regulated_claim_review:1
+glowrecipe.com,Glow Recipe,4,4,100,4,100,3,75,3,75,1,0,0,0,0,0,3,wellness_or_supplement:2 | regulated_claim_review:1 | sunscreen_regulated:1
+moroccanoil.com,Moroccanoil,4,4,100,4,100,4,100,4,100,0,0,0,0,0,0,4,regulated_claim_review:3 | accessory_or_tool:2 | wellness_or_supplement:1
+peaceoutskincare.com,Peace Out Skincare,4,4,100,4,100,0,0,0,0,0,0,0,0,0,0,4,missing_full_inci:4 | regulated_claim_review:4
+hellobubble.com,Bubble,3,3,100,3,100,1,33.3,1,33.3,0,0,0,0,0,2,1,missing_full_inci:2 | regulated_claim_review:1
+lamaxime.com,LA MAXIME,3,3,100,1,33.3,3,100,3,100,1,0,0,0,0,0,2,regulated_claim_review:2 | missing_full_inci:1
+purito-seoul.com,Purito SEOUL,3,3,100,2,66.7,2,66.7,1,33.3,0,0,0,0,0,3,0,missing_full_inci:3 | missing_or_short_description:2
+us.sulwhasoo.com,Sulwhasoo US,3,3,100,3,100,3,100,0,0,0,0,0,0,0,2,1,missing_full_inci:2 | regulated_claim_review:1 | wellness_or_supplement:1
+daebyskin.com,DAEBY,2,2,100,2,100,2,100,2,100,2,0,0,0,0,0,0,
+fableandmane.com,Fable & Mane,2,2,100,2,100,2,100,2,100,0,0,0,0,0,0,2,missing_full_inci:2 | regulated_claim_review:2
+loaskin.com,LOA SKIN,2,2,100,0,0,2,100,2,100,0,0,0,0,0,1,1,missing_full_inci:1 | missing_how_to:1 | wellness_or_supplement:1
+olay.com,Olay,2,2,100,0,0,0,0,0,0,0,0,0,0,0,0,2,wellness_or_supplement:2
+aetasofficial.com,Aetās,1,1,100,1,100,1,100,1,100,1,0,0,0,0,0,0,
+aveeno.com,Aveeno,1,1,100,0,0,0,0,0,0,0,0,0,0,0,1,0,missing_full_inci:1
+bioderma.us,Bioderma,1,1,100,1,100,1,100,1,100,1,0,0,0,0,0,0,
+biossance.com,Biossance,1,1,100,1,100,1,100,1,100,0,0,0,0,0,0,1,regulated_claim_review:1
+cocokind.com,cocokind,1,1,100,1,100,1,100,1,100,0,0,0,0,0,0,1,regulated_claim_review:1
+daehair.com,dae,1,1,100,1,100,1,100,1,100,0,0,0,0,0,0,1,missing_full_inci:1 | regulated_claim_review:1
+dalba.com,d'Alba Global,1,1,100,1,100,1,100,0,0,0,0,0,0,0,0,1,wellness_or_supplement:1
+dieuxskin.com,Dieux,1,1,100,1,100,0,0,0,0,0,0,0,0,0,1,0,missing_full_inci:1
+gisou.com,Gisou,1,1,100,1,100,1,100,1,100,0,0,0,0,0,1,0,missing_full_inci:1
+jvnhair.com,JVN,1,1,100,1,100,1,100,1,100,0,0,0,0,0,0,1,missing_full_inci:1 | missing_or_short_description:1 | regulated_claim_review:1
+livingproof.com,Living Proof,1,1,100,1,100,1,100,1,100,0,0,0,0,0,1,0,missing_full_inci:1
+patternbeauty.com,PATTERN,1,1,100,1,100,1,100,0,0,0,0,0,0,0,1,0,missing_full_inci:1
+peachandlily.com,Peach & Lily,1,1,100,1,100,1,100,0,0,0,0,0,0,0,0,1,regulated_claim_review:1
+randco.com,R+Co,1,1,100,1,100,1,100,1,100,0,0,0,0,0,1,0,missing_full_inci:1
+skinfix.com,Skinfix,1,1,100,1,100,0,0,0,0,0,0,0,0,0,1,0,missing_full_inci:1
+us.innisfree.com,Innisfree US,1,1,100,1,100,1,100,0,0,0,0,0,0,0,0,1,wellness_or_supplement:1
+v1.goodmolecules.com,Good Molecules,1,1,100,1,100,1,100,1,100,0,0,0,0,0,0,1,wellness_or_supplement:1

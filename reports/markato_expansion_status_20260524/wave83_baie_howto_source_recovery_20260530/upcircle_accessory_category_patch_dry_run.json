@@ -1,0 +1,80 @@
+{
+  "generated_at": "2026-05-30T09:53:27.386Z",
+  "dry_run": true,
+  "manifest": "reports/markato_expansion_status_20260524/wave83_baie_howto_source_recovery_20260530/upcircle_accessory_reviewed_category_patch_manifest.json",
+  "market": "US",
+  "allow_overwrite": true,
+  "overwrite_confirmed": false,
+  "summary": {
+    "scanned": 2,
+    "planned": 2,
+    "unchanged": 0,
+    "blocked": 0,
+    "missing": 0,
+    "updated": 0,
+    "catalog_product_updates": 0,
+    "identity_updates": 0,
+    "by_patch_key": {
+      "category": 2,
+      "product_type": 2,
+      "category_path": 2,
+      "catalog_category_path": 2
+    },
+    "blocking_reasons": {}
+  },
+  "apply_results": [],
+  "plans": [
+    {
+      "id": "eps_92f9d9ecd6c4a674340936c6",
+      "external_product_id": "ext_092b6aa9139491c529586778",
+      "title": "Bamboo Cotton Buds - 200 Pieces",
+      "canonical_url": "https://upcirclebeauty.com/products/bamboo-cotton-buds",
+      "status": "planned",
+      "changed": true,
+      "patch_keys": [
+        "category",
+        "product_type",
+        "category_path",
+        "catalog_category_path"
+      ],
+      "before": {
+        "category": "",
+        "category_path": "",
+        "catalog_category_path": "",
+        "product_type": ""
+      },
+      "after": {
+        "category": "Beauty Tool",
+        "category_path": "beauty/tools/cotton-buds",
+        "catalog_category_path": "beauty/tools/cotton-buds",
+        "product_type": "Beauty Tool"
+      }
+    },
+    {
+      "id": "eps_ddeee5898d1333beacfb80b5",
+      "external_product_id": "ext_f79a99a09a933e731880cdfb",
+      "title": "Safety Razor Stand",
+      "canonical_url": "https://upcirclebeauty.com/products/safety-razor-stand",
+      "status": "planned",
+      "changed": true,
+      "patch_keys": [
+        "category",
+        "product_type",
+        "category_path",
+        "catalog_category_path"
+      ],
+      "before": {
+        "category": "",
+        "category_path": "",
+        "catalog_category_path": "",
+        "product_type": ""
+      },
+      "after": {
+        "category": "Beauty Tool",
+        "category_path": "beauty/tools/razor-stand",
+        "catalog_category_path": "beauty/tools/razor-stand",
+        "product_type": "Beauty Tool"
+      }
+    }
+  ]
+}

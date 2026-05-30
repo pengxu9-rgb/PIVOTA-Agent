@@ -1,0 +1,37 @@
+{
+  "generated_at": "2026-05-30T09:46:14.137Z",
+  "dry_run": true,
+  "market": "US",
+  "summary": {
+    "scanned": 1,
+    "dry_run": 0,
+    "updated": 0,
+    "skipped": 1,
+    "failed": 0,
+    "by_field": {}
+  },
+  "results": [
+    {
+      "external_product_id": "ext_60ded78effb04e9d6389bfce",
+      "title": "Rose & Cupuaçu Enzyme Cleanser",
+      "domain": "baiebotanique.com",
+      "url": "https://www.baiebotanique.com/products/rose-cupuacu-enzyme-cleanser-sns",
+      "host": "baiebotanique.com",
+      "status": "skipped",
+      "patch_keys": [],
+      "http_status": 200,
+      "final_url": "https://www.baiebotanique.com/products/rose-cupuacu-enzyme-cleanser-sns",
+      "extracted_summary": {
+        "ingredients_chars": 870,
+        "how_to_chars": 0,
+        "details_sections_count": 1,
+        "variant_count": 1,
+        "review_count": 0,
+        "rating": 0,
+        "review_preview_count": 0,
+        "review_preview_samples": []
+      },
+      "reason": "no_official_html_fields"
+    }
+  ]
+}

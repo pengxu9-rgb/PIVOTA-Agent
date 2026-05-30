@@ -1,0 +1,30 @@
+{
+  "market": "US",
+  "reviewed_by": "codex_wave83_high_quality_human_review",
+  "reason": "Reviewed source-backed category repair for UpCircle non-formula accessory rows in the source-gap backlog.",
+  "source_kind": "official_pdp_title_url_review",
+  "evidence": "Official UpCircle PDP titles, URLs, and extracted how-to/detail sections identify these rows as non-formula tools/accessories, so INCI is not applicable.",
+  "confidence": 0.95,
+  "entries": [
+    {
+      "external_product_id": "ext_092b6aa9139491c529586778",
+      "title": "Bamboo Cotton Buds - 200 Pieces",
+      "canonical_url": "https://upcirclebeauty.com/products/bamboo-cotton-buds",
+      "source_url": "https://upcirclebeauty.com/products/bamboo-cotton-buds",
+      "category": "Beauty Tool",
+      "product_type": "Beauty Tool",
+      "category_path": "beauty/tools/cotton-buds",
+      "catalog_category_path": "beauty/tools/cotton-buds"
+    },
+    {
+      "external_product_id": "ext_f79a99a09a933e731880cdfb",
+      "title": "Safety Razor Stand",
+      "canonical_url": "https://upcirclebeauty.com/products/safety-razor-stand",
+      "source_url": "https://upcirclebeauty.com/products/safety-razor-stand",
+      "category": "Beauty Tool",
+      "product_type": "Beauty Tool",
+      "category_path": "beauty/tools/razor-stand",
+      "catalog_category_path": "beauty/tools/razor-stand"
+    }
+  ]
+}
