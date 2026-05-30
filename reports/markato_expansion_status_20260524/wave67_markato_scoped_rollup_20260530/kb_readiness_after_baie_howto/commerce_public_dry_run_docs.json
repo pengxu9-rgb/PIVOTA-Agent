@@ -1,0 +1,68 @@
+{
+  "generated_at": "2026-05-29T23:57:34.977Z",
+  "market": "US",
+  "include_non_public": false,
+  "docs_built": 1,
+  "source_build_failures": [],
+  "docs": [
+    {
+      "doc_id": "sellable:sig_9098683c7baaa3849d51e544",
+      "sellable_item_group_id": "sig_9098683c7baaa3849d51e544",
+      "product_line_id": "pl_b601ecd4867576355bc54ad8",
+      "review_family_id": "rf_b601ecd4867576355bc54ad8",
+      "brand_name": "Baie Botanique",
+      "category_paths": [
+        "Cleanser"
+      ],
+      "market": "US",
+      "availability_state": "available",
+      "publish_state": "public",
+      "title": "Rose & Cupuaçu Enzyme Cleanser",
+      "subtitle": "Winner of \"Best Cleanser\" Beauty Bible 'Silver' and 'Green' Awards, 2020\n\nWinner of \"Best Cleanser\" Scandinavian Global Makeup Awards, 2019\n\nExfoliating Rose & Cupuaçu Enzyme Cleanser gently melts away makeup, dirt, excess oil, and daily pollutants without stripping the skin. Powered by pomegranate enzymes, it lightly exfoliates to lift away dead skin cells, revealing a smoother, brighter complexion. Rose waters, cupuaçu butter, and jojoba oil help nourish, hydrate, and support the skin's natural moisture balance. The creamy texture transforms with water, leaving skin feeling soft, clean, and comfortable. Suitable for daily use, even on sensitive or dry skin.",
+      "variant_axes": {
+        "volume": "120ml",
+        "multi_variant": false
+      },
+      "size": null,
+      "shade": null,
+      "pack": null,
+      "hero_media": {
+        "url": "https://www.baiebotanique.com/cdn/shop/files/EnzymeCleanserwithbox.webp?v=1768995978",
+        "source_kind": "catalog",
+        "source_tier": "catalog"
+      },
+      "preview_media": [
+        "https://www.baiebotanique.com/cdn/shop/files/EnzymeCleanserwithbox.webp?v=1768995978",
+        "https://www.baiebotanique.com/cdn/shop/files/ModelapplyingRose_CupuacuEnzymeCleanser_highlightinghydration_gentleenzymaticexfoliationandnaturallyradiantskin.webp?v=1768995978",
+        "https://www.baiebotanique.com/cdn/shop/files/CustomersatisfactionstatisticshighlightingeffectivenessofRose_CupuacuEnzymeCleanserforcleansing_hydrationandskincomfort.webp?v=1768995978",
+        "https://www.baiebotanique.com/cdn/shop/files/FlatlayofRose_CupuacuEnzymeCleanserkeyingredientsincludingpomegranateenzyme_reishiandshiitakemushroomextracts_cupuacuseedbutterandjojobaoil.webp?v=1768995978",
+        "https://www.baiebotanique.com/cdn/shop/files/Rose_CupuacuEnzymeCleanserbottlefeaturedwithmodel_anaward-winningenzymaticfacialcleanserforgentleexfoliationandhydratedskin.webp?v=1768995978",
+        "https://www.baiebotanique.com/cdn/shop/files/CustomerreviewimageshowingapplicationofRose_CupuacuEnzymeCleanseronsensitiveskinwithvisibleglowandsoftness.webp?v=1768995978",
+        "https://www.baiebotanique.com/cdn/shop/files/User-generatedphotosofrealcustomersusingRose_CupuacuEnzymeCleanseraspartoftheirdailyskincareroutine.webp?v=1768995978",
+        "https://www.baiebotanique.com/cdn/shop/files/Close-uptextureshotofRose_CupuacuEnzymeCleansershowingitscreamy_non-strippingenzymaticformula.webp?v=1768995978"
+      ],
+      "price_min": 39,
+      "price_max": 39,
+      "default_offer_id": "external_seed:ext_60ded78effb04e9d6389bfce",
+      "internal_offer_exists": false,
+      "external_offer_exists": true,
+      "pivota_insight_status": "available",
+      "pivota_insight_summary": "A Baie Botanique cleanser listed on the official source page as Rose & Cupuaçu Enzyme Cleanser. The official description identifies: Powered by pomegranate enzymes, it lightly exfoliates to lift away dead skin cells, revealing a smoother, brighter complexion.",
+      "quality_score": null,
+      "browse_score": null,
+      "facet_tokens": [
+        "Baie Botanique",
+        "Cleanser"
+      ],
+      "sort_keys": {
+        "price_min": 39,
+        "price_max": 39,
+        "updated_at": null
+      },
+      "updated_at": null,
+      "source_refs": [
+        "external_seed:ext_60ded78effb04e9d6389bfce"
+      ]
+    }
+  ]
+}

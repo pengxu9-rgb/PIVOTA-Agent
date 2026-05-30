@@ -1,0 +1,36 @@
+{
+  "generated_at": "2026-05-29T23:55:24.308Z",
+  "dry_run": true,
+  "target": {
+    "external_product_id": "ext_60ded78effb04e9d6389bfce",
+    "title": "Rose & Cupuaçu Enzyme Cleanser",
+    "domain": "baiebotanique.com",
+    "market": "US",
+    "status": "active",
+    "canonical_url": "https://www.baiebotanique.com/products/rose-cupuacu-enzyme-cleanser-sns",
+    "destination_url": "https://www.baiebotanique.com/products/rose-cupuacu-enzyme-cleanser-sns",
+    "catalog_attached": true,
+    "content_key": "ck_bbd1551510e37a8a73b11cb1b82a8b8f",
+    "db_serving_eligible": true,
+    "identity_ready": true,
+    "product_intel_exists": true
+  },
+  "source_review": {
+    "source_url": "https://usa.baiebotanique.com/products/rose-cupuacu-enzyme-cleanser-120ml",
+    "corroborating_source_url": "https://www.baiebotanique.com/products/rose-cupuacu-enzyme-cleanser",
+    "how_to_use": "Massage over face and neck, add a little water and massage further, wash off with a warm damp cloth. Can also be used on cotton wool pads to cleanse skin and remove make up.",
+    "decision": "source_backed_how_to_patch_allowed"
+  },
+  "plan": {
+    "status": "planned",
+    "reason": "",
+    "patch_keys": [
+      "pdp_how_to_use_raw"
+    ],
+    "before_how_to_len": 0,
+    "after_how_to_len": 173
+  },
+  "apply_result": {
+    "planned": true
+  }
+}

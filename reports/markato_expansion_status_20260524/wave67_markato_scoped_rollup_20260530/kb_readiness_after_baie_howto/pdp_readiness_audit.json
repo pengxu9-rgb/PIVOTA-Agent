@@ -1,0 +1,228 @@
+{
+  "generated_at": "2026-05-29T23:57:30.543Z",
+  "options": {
+    "market": "US",
+    "includeAttached": true,
+    "domain": null,
+    "externalProductIds": [
+      "ext_60ded78effb04e9d6389bfce"
+    ],
+    "limit": 20000,
+    "sampleLimit": 10,
+    "checkpointDir": "/Users/pengchydan/dev/_worktrees/pivota-agent-markato-wave25-786-20260527/reports/markato_expansion_status_20260524/wave67_markato_scoped_rollup_20260530/kb_readiness_after_baie_howto/pdp_readiness_checkpoint",
+    "checkpointMode": "domain",
+    "resume": false,
+    "force": false,
+    "continueOnError": true,
+    "pageSize": 500,
+    "format": "json"
+  },
+  "warnings": [],
+  "summary": {
+    "scanned": 1,
+    "by_market": {
+      "US": 1
+    },
+    "by_domain": [
+      {
+        "key": "baiebotanique.com",
+        "count": 1
+      }
+    ],
+    "by_product_family": [
+      {
+        "key": "single_formula",
+        "count": 1
+      }
+    ],
+    "coverage": {
+      "missing_inci": 0,
+      "missing_active_raw": 1,
+      "missing_details": 0,
+      "missing_how_to": 0,
+      "missing_faq": 1
+    },
+    "pivota_insights": {
+      "direct": {
+        "displayable": 1,
+        "high_quality_ready": 1,
+        "missing_kb": 0,
+        "not_displayable": 0
+      },
+      "effective": {
+        "displayable": 1,
+        "high_quality_ready": 1,
+        "missing_kb": 0,
+        "not_displayable": 0,
+        "borrowed_from_sibling": 0
+      },
+      "effective_issues": [],
+      "effective_issue_domains": [],
+      "quality_state": [
+        {
+          "key": "reviewed",
+          "count": 1
+        }
+      ],
+      "evidence_profile": [
+        {
+          "key": "seller_plus_formula",
+          "count": 1
+        }
+      ],
+      "samples": {}
+    },
+    "active_ingredients": {
+      "regulatory_expected": 0,
+      "hero_expected": 1,
+      "any_active_items": 0,
+      "status": [
+        {
+          "key": "missing_hero",
+          "count": 1
+        }
+      ],
+      "issues": [
+        {
+          "key": "missing_hero",
+          "count": 1
+        }
+      ],
+      "issue_domains": [
+        {
+          "key": "baiebotanique.com::missing_hero",
+          "count": 1
+        }
+      ],
+      "source_origin": [
+        {
+          "key": "pdp_section",
+          "count": 1
+        }
+      ],
+      "samples": {
+        "missing_hero": [
+          {
+            "external_product_id": "ext_60ded78effb04e9d6389bfce",
+            "domain": "baiebotanique.com",
+            "title": "Rose & Cupuaçu Enzyme Cleanser",
+            "status": "missing_hero",
+            "active_items": [],
+            "source_origin": "pdp_section"
+          }
+        ]
+      }
+    },
+    "variants": {
+      "status": [
+        {
+          "key": "ready",
+          "count": 1
+        }
+      ],
+      "issues": [],
+      "issue_domains": [],
+      "samples": {}
+    }
+  },
+  "rows": [
+    {
+      "seed_id": "eps_3493fc417686894791fde351",
+      "external_product_id": "ext_60ded78effb04e9d6389bfce",
+      "market": "US",
+      "domain": "baiebotanique.com",
+      "title": "Rose & Cupuaçu Enzyme Cleanser",
+      "canonical_url": "https://www.baiebotanique.com/products/rose-cupuacu-enzyme-cleanser-sns",
+      "product_family": "single_formula",
+      "product_line_id": "pl_b601ecd4867576355bc54ad8",
+      "identity_variant_axes": {
+        "volume": "120ml",
+        "multi_variant": false
+      },
+      "pivota_insights": {
+        "direct": {
+          "product_id": "ext_60ded78effb04e9d6389bfce",
+          "kb_key": "product:ext_60ded78effb04e9d6389bfce",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "seller_plus_formula",
+          "has_card_highlight": true
+        },
+        "effective": {
+          "product_id": "ext_60ded78effb04e9d6389bfce",
+          "kb_key": "product:ext_60ded78effb04e9d6389bfce",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "seller_plus_formula",
+          "has_card_highlight": true
+        },
+        "product_line_id": "pl_b601ecd4867576355bc54ad8",
+        "borrowed_from_sibling": false
+      },
+      "active_ingredients": {
+        "status": "missing_hero",
+        "issues": [
+          "missing_hero"
+        ],
+        "regulatory_expected": false,
+        "hero_expected": true,
+        "active_items": [],
+        "source_origin": "pdp_section",
+        "source_quality_status": "blocked",
+        "coverage": {
+          "details_sections_count": 8,
+          "faq_count": 0,
+          "how_to_chars": 173,
+          "inci_chars": 905,
+          "active_ingredients_chars": 0,
+          "inci_applicability_status": "",
+          "ingredient_review_status": "",
+          "ingredient_remediation_action": "",
+          "bundle_component_refs_count": 0,
+          "effective_inci_chars": 905,
+          "inci_borrowed_from_product_id": ""
+        },
+        "invalid_fragments": [],
+        "suppressed_reason": null
+      },
+      "variants": {
+        "status": "ready",
+        "issues": [],
+        "visible_variant_rows": 1,
+        "examples": {
+          "identity_option_visible": [],
+          "wrong_axis_for_category": [],
+          "makeup_shade_missing_visual": [],
+          "size_value_generic_axis": [],
+          "default_option_size_evidence_missing_axis": [],
+          "identity_default_title_axis": []
+        }
+      },
+      "coverage": {
+        "details_sections_count": 8,
+        "faq_count": 0,
+        "how_to_chars": 173,
+        "inci_chars": 905,
+        "active_ingredients_chars": 0,
+        "inci_applicability_status": "",
+        "ingredient_review_status": "",
+        "ingredient_remediation_action": "",
+        "bundle_component_refs_count": 0,
+        "effective_inci_chars": 905,
+        "inci_borrowed_from_product_id": ""
+      }
+    }
+  ]
+}
