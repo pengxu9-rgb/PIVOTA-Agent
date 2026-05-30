@@ -1,0 +1,321 @@
+{
+  "generated_at": "2026-05-30T10:44:25.309Z",
+  "mode": "apply",
+  "batch_size": null,
+  "bootstrap_reviewed_identity_live_read": false,
+  "requested_ids": 1,
+  "fetched_rows": 1,
+  "mirror_rows": 1,
+  "planned_sku_rows": 3,
+  "planned_offer_rows": 3,
+  "planned_index_state_rows": 1,
+  "missing_ids": [],
+  "skipped": [],
+  "applied": {
+    "mode": "apply",
+    "existing_before": {
+      "catalog_products": 1,
+      "catalog_skus": 3,
+      "catalog_offers": 3,
+      "product_group_members": 1
+    },
+    "stale_delete_preview": {
+      "current_sku_rows": 3,
+      "current_offer_rows": 3,
+      "planned_stale_sku_deletes": 0,
+      "planned_stale_offer_deletes": 0,
+      "sample_stale_skus": [],
+      "sample_stale_offers": []
+    },
+    "batch_size": null,
+    "batches": 1,
+    "audit_reasons": {
+      "no_strong_identifier": 3
+    },
+    "product_upserts": 1,
+    "sku_upserts": 3,
+    "offer_upserts": 3,
+    "group_member_upserts": 1,
+    "group_member_preserved_existing_merges": 0,
+    "seed_attachment_updates": 0,
+    "index_state_upserts": 1,
+    "identity_live_read_updates": 0,
+    "catalog_row_trust_upserts": 1,
+    "stale_offer_deletes": 0,
+    "stale_sku_deletes": 0
+  },
+  "sample": [
+    {
+      "external_product_id": "ext_ba4570b613069031f940d9b2",
+      "product_key": "prod::external_seed::external_seed::ext_ba4570b613069031f940d9b2",
+      "product_group_id": "sig_2f1b96a71288e8853116ef12",
+      "title": "LIME OIL GEL EYE PATCH",
+      "brand": "LIME COSMETIC",
+      "product_type": "Eye Patch",
+      "category": "Eye Patch",
+      "category_path": "beauty/skincare/eye-care",
+      "canonical_url": "https://en.limecosmetic.com/product/detail.html?product_no=72&item_code=P00000CU000A",
+      "pivota_signature_id": "sig_06eebe3d006d1e423eb390f5de9b19e5",
+      "sku_rows": 3,
+      "first_sku": {
+        "sku_key": "prod::external_seed::external_seed::ext_ba4570b613069031f940d9b2::sku_26c70150231a69d1bdf4",
+        "product_key": "prod::external_seed::external_seed::ext_ba4570b613069031f940d9b2",
+        "merchant_id": "external_seed",
+        "platform": "external_seed",
+        "source_product_id": "ext_ba4570b613069031f940d9b2",
+        "source_variant_id": "ext_ba4570b613069031f940d9b2:P00000CU000A",
+        "source_domain": "en.limecosmetic.com",
+        "sku": "P00000CU000A",
+        "barcode": null,
+        "title": "LIME OIL GEL EYE PATCH",
+        "currency": "USD",
+        "image_url": "https://en.limecosmetic.com/web/product/big/202406/4f67fe7722cee02c519f8fc2039f3a86.jpg",
+        "visible_attributes": {
+          "Formula": "20 TWENTY"
+        },
+        "visible_option_labels": {
+          "Formula": "20 TWENTY"
+        },
+        "ingredient_ids": [],
+        "sku_payload": {
+          "source": "external_product_seeds_mirror_v1",
+          "external_product_id": "ext_ba4570b613069031f940d9b2",
+          "raw_variant_id": "P00000CU000A",
+          "source_variant_id": "ext_ba4570b613069031f940d9b2:P00000CU000A",
+          "variant_sku": "P00000CU000A",
+          "barcode": null,
+          "strong_identifier_kind": null,
+          "source_url": "https://en.limecosmetic.com/product/detail.html?product_no=72&item_code=P00000CU000A",
+          "external_redirect_url": "https://en.limecosmetic.com/product/detail.html?product_no=72&item_code=P00000CU000A",
+          "price": "18.37",
+          "price_amount": 18.37,
+          "currency": "USD",
+          "availability": "in_stock",
+          "image_url": "https://en.limecosmetic.com/web/product/big/202406/4f67fe7722cee02c519f8fc2039f3a86.jpg",
+          "swatch_image_url": null,
+          "label_image_url": null,
+          "options": {
+            "Formula": "20 TWENTY"
+          },
+          "raw_variant": {
+            "sku": "P00000CU000A",
+            "url": "https://en.limecosmetic.com/product/detail.html?product_no=72&item_code=P00000CU000A",
+            "price": "18.37",
+            "stock": "In Stock",
+            "images": [
+              "https://en.limecosmetic.com/web/product/big/202406/4f67fe7722cee02c519f8fc2039f3a86.jpg"
+            ],
+            "currency": "USD",
+            "axis_kind": "formula_variant",
+            "image_url": "https://en.limecosmetic.com/web/product/big/202406/4f67fe7722cee02c519f8fc2039f3a86.jpg",
+            "image_urls": [
+              "https://en.limecosmetic.com/web/product/big/202406/4f67fe7722cee02c519f8fc2039f3a86.jpg"
+            ],
+            "variant_id": "P00000CU000A",
+            "description": "LIME OIL GEL EYE PATCH 20 TWENTY",
+            "option_name": "Select",
+            "option_value": "20 TWENTY",
+            "stock_number": 97,
+            "ingredients_inci": [
+              "Water",
+              "Glycerin",
+              "Niacinamide",
+              "Carrageenan",
+              "Butylene Glycol",
+              "Rosa Canina Fruit Oil",
+              "Hibiscus Sabdariffa Flower Extract",
+              "Citrus Paradisi (Grapefruit) Fruit Extract",
+              "Citrus Grandis (Grapefruit) Seed Extract",
+              "Bambusa Vulgaris Stem Extract",
+              "Pinus Palustris Leaf Extract",
+              "Euterpe Oleracea Fruit Extract",
+              "Panthenol",
+              "Retinol",
+              "Methylpropanediol",
+              "Tocopheryl Acetate",
+              "Hydrogenated Lecithin",
+              "Polysorbate 20",
+              "Glutathione",
+              "Guar Gum",
+              "Potassium Chloride",
+              "Calcium Chloride",
+              "Allantoin",
+              "Ceratonia Siliqua (Carob) Gum",
+              "Sucrose",
+              "Ricinus Communis (Castor) Seed Oil",
+              "Cellulose Gum",
+              "Calcium Lactate",
+              "Adenosine",
+              "PEG-60 Hydrogenated Castor Oil",
+              "Disodium EDTA",
+              "Arginine",
+              "Dipotassium Glycyrrhizate",
+              "Pentylene Glycol",
+              "Cocos Nucifera (Coconut) Fruit Extract",
+              "Pinus Sylvestris Leaf Extract",
+              "Chlorphenesin",
+              "Ethyl Hexanediol",
+              "1,2-Hexanediol",
+              "Propanediol",
+              "Caprylyl Glycol",
+              "Ethylhexylglycerin",
+              "Calcium Aluminum Borosilicate",
+              "Titanium Dioxide",
+              "Tin Oxide",
+              "Carmine"
+            ],
+            "pdp_ingredients_raw": "Water, Glycerin, Niacinamide, Carrageenan, Butylene Glycol, Rosa Canina Fruit Oil, Hibiscus Sabdariffa Flower Extract, Citrus Paradisi (Grapefruit) Fruit Extract, Citrus Grandis (Grapefruit) Seed Extract, Bambusa Vulgaris Stem Extract, Pinus Palustris Leaf Extract, Euterpe Oleracea Fruit Extract, Panthenol, Retinol, Methylpropanediol, Tocopheryl Acetate, Hydrogenated Lecithin, Polysorbate 20, Glutathione, Guar Gum, Potassium Chloride, Calcium Chloride, Allantoin, Ceratonia Siliqua (Carob) Gum, Sucrose, Ricinus Communis (Castor) Seed Oil, Cellulose Gum, Calcium Lactate, Adenosine, PEG-60 Hydrogenated Castor Oil, Disodium EDTA, Arginine, Dipotassium Glycyrrhizate, Pentylene Glycol, Cocos Nucifera (Coconut) Fruit Extract, Pinus Sylvestris Leaf Extract, Chlorphenesin, Ethyl Hexanediol, 1,2-Hexanediol, Propanediol, Caprylyl Glycol, Ethylhexylglycerin, Calcium Aluminum Borosilicate, Titanium Dioxide, Tin Oxide, Carmine",
+            "source_ingredients_raw_ko": "정제수, 글리세린, 나이아신아마이드, 카라기난, 부틸렌글라이콜, 로즈힙열매오일, 히비스커스꽃추출물, 자몽추출물, 왕귤씨추출물, 위버대나무줄기추출물, 대왕송잎추출물, 아사이팜열매추출물, 판테놀, 레티놀, 메틸프로판다이올, 토코페릴아세테이트, 하이드로제네이티드레시틴, 폴리솔베이트20, 글루타티온, 구아검, 포타슘클로라이드, 칼슘클로라이드, 알란토인, 캐롭검, 수크로오스, 피마자씨오일, 셀룰로오스검, 칼슘락테이트, 아데노신, 피이지-60하이드로제네이티드캐스터오일, 다이소듐이디티에이, 알지닌, 다이포타슘글리시리제이트, 펜틸렌글라이콜, 코코넛야자열매추출물, 구주소나무잎추출물, 클로페네신, 에틸헥산다이올, 1,2-헥산다이올, 프로판다이올, 카프릴릴글라이콜, 에틸헥실글리세린, 칼슘알루미늄보로실리케이트, 티타늄디옥사이드, 틴옥사이드, 카민"
+          }
+        },
+        "readiness_tier": "referral_only"
+      },
+      "first_offer": {
+        "offer_id": "offer:external_seed:201b1872fcf8184a500fb9043aacb437",
+        "sku_key": "prod::external_seed::external_seed::ext_ba4570b613069031f940d9b2::sku_26c70150231a69d1bdf4",
+        "product_key": "prod::external_seed::external_seed::ext_ba4570b613069031f940d9b2",
+        "merchant_id": "external_seed",
+        "catalog_track": "external_referral",
+        "truth_tier": "observed",
+        "readiness_tier": "referral_only",
+        "offer_mode": "redirect",
+        "channel": "external_referral",
+        "availability": "in_stock",
+        "currency": "USD",
+        "list_price": 18.37,
+        "merchant_effective_price": 18.37,
+        "estimated_best_price": 18.37,
+        "price_confidence": 1,
+        "source_system": "external_product_seeds_mirror_v1",
+        "source_ref": "eps_ba4570b613069031f940d9b2",
+        "source_domain": "en.limecosmetic.com",
+        "offer_payload": {
+          "source": "external_product_seeds_mirror_v1",
+          "external_seed_id": "eps_ba4570b613069031f940d9b2",
+          "external_product_id": "ext_ba4570b613069031f940d9b2",
+          "domain": "en.limecosmetic.com",
+          "market": "US",
+          "product_title": "LIME OIL GEL EYE PATCH",
+          "variant_title": "LIME OIL GEL EYE PATCH",
+          "variant_sku": "P00000CU000A",
+          "raw_variant_id": "P00000CU000A",
+          "url": "https://en.limecosmetic.com/product/detail.html?product_no=72&item_code=P00000CU000A",
+          "offer_url": "https://en.limecosmetic.com/product/detail.html?product_no=72&item_code=P00000CU000A",
+          "canonical_url": "https://en.limecosmetic.com/product/detail.html?product_no=72&item_code=P00000CU000A",
+          "destination_url": "https://en.limecosmetic.com/product/detail.html?product_no=72&item_code=P00000CU000A",
+          "external_redirect_url": "https://en.limecosmetic.com/product/detail.html?product_no=72&item_code=P00000CU000A",
+          "merchant_display_name": "LIME COSMETIC",
+          "price": "18.37",
+          "price_amount": 18.37,
+          "price_currency": "USD",
+          "availability": "in_stock",
+          "commerce_facts_v1": {
+            "contract_version": "commerce_facts.v1",
+            "market_id": "US",
+            "country": "US",
+            "currency_target": "USD",
+            "source_authority": "official_lime_cafe24_pdp_detail_image_review",
+            "captured_at": "2026-05-27T02:11:01.768Z",
+            "evidence_url": "https://en.limecosmetic.com/product/detail.html?product_no=72&item_code=P00000CU000A",
+            "sellable_region": {
+              "status": "unknown",
+              "countries": [],
+              "evidence_source": "official_lime_cafe24_pdp_detail_image_review",
+              "confidence": "unknown",
+              "checked_at": "2026-05-27T02:11:01.768Z",
+              "reason_codes": [
+                "shipping_destination_not_verified"
+              ],
+              "evidence_url": "https://en.limecosmetic.com/product/detail.html?product_no=72&item_code=P00000CU000A"
+            },
+            "regional_price": {
+              "amount": 18.37,
+              "currency": "USD",
+              "display_raw": null,
+              "price_type": "unknown",
+              "compare_at_amount": null,
+              "compare_at_currency": null,
+              "compare_at_display_raw": null,
+              "tax_included": "unknown",
+              "confidence": "medium",
+              "market_switch_status": "ok",
+              "observed_currency": "USD",
+              "source_url": "https://en.limecosmetic.com/product/detail.html?product_no=72&item_code=P00000CU000A",
+              "captured_at": "2026-05-27T02:11:01.768Z"
+            },
+            "availability": {
+              "status": "in_stock",
+              "source": "official_lime_cafe24_pdp_detail_image_review",
+              "confidence": "medium",
+              "captured_at": "2026-05-27T02:11:01.768Z"
+            },
+            "shipping": {
+              "status": "unknown",
+              "source": "official_lime_cafe24_pdp_detail_image_review",
+              "confidence": "unknown",
+              "reason_codes": [
+                "external_checkout_not_queried"
+              ],
+              "checked_at": "2026-05-27T02:11:01.768Z"
+            },
+            "promotions": [],
+            "returns": {
+              "status": "unknown",
+              "source": "official_lime_cafe24_pdp_detail_image_review",
+              "confidence": "unknown",
+              "reason_codes": [
+                "external_returns_not_extracted"
+              ],
+              "checked_at": "2026-05-27T02:11:01.768Z"
+            }
+          },
+          "agent_safe_commerce_facts": {
+            "contract_version": "commerce_facts.v1",
+            "market_id": "US",
+            "price": {
+              "amount": 18.37,
+              "currency": "USD",
+              "display_raw": null,
+              "price_type": "unknown",
+              "compare_at_amount": null,
+              "compare_at_currency": null,
+              "compare_at_display_raw": null,
+              "tax_included": "unknown",
+              "confidence": "medium",
+              "market_switch_status": "ok",
+              "observed_currency": "USD",
+              "source_url": "https://en.limecosmetic.com/product/detail.html?product_no=72&item_code=P00000CU000A",
+              "captured_at": "2026-05-27T02:11:01.768Z"
+            },
+            "availability": {
+              "status": "in_stock",
+              "source": "official_lime_cafe24_pdp_detail_image_review",
+              "confidence": "medium",
+              "captured_at": "2026-05-27T02:11:01.768Z"
+            },
+            "shipping": {
+              "status": "unknown",
+              "reason": "verify_at_checkout"
+            },
+            "promotions": [],
+            "checkout_note": "Shipping and promotions are not verified for this external offer; verify at merchant checkout."
+          }
+        }
+      },
+      "serving_readiness": {
+        "servingEligible": true,
+        "contentQualityScore": 90,
+        "blockerCode": "none",
+        "blockerDetail": null,
+        "identityResolved": true,
+        "identityLiveReadResolved": true,
+        "identityBootstrapEligible": false,
+        "terminalHold": false,
+        "terminalHoldReason": "",
+        "hasImage": true,
+        "hasPrice": true,
+        "descriptionLength": 214
+      }
+    }
+  ]
+}

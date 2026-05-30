@@ -1,0 +1,270 @@
+{
+  "generated_at": "2026-05-30T10:40:20.003Z",
+  "mode": "dry_run",
+  "batch_size": null,
+  "bootstrap_reviewed_identity_live_read": false,
+  "requested_ids": 1,
+  "fetched_rows": 1,
+  "mirror_rows": 1,
+  "planned_sku_rows": 1,
+  "planned_offer_rows": 1,
+  "planned_index_state_rows": 1,
+  "missing_ids": [],
+  "skipped": [],
+  "applied": {
+    "mode": "dry_run",
+    "existing_before": {
+      "catalog_products": 1,
+      "catalog_skus": 1,
+      "catalog_offers": 1,
+      "product_group_members": 1
+    },
+    "stale_delete_preview": {
+      "current_sku_rows": 1,
+      "current_offer_rows": 1,
+      "planned_stale_sku_deletes": 0,
+      "planned_stale_offer_deletes": 0,
+      "sample_stale_skus": [],
+      "sample_stale_offers": []
+    },
+    "batch_size": null,
+    "batches": 1,
+    "audit_reasons": {
+      "no_strong_identifier": 1
+    },
+    "product_upserts": 0,
+    "sku_upserts": 0,
+    "offer_upserts": 0,
+    "group_member_upserts": 0,
+    "group_member_preserved_existing_merges": 0,
+    "seed_attachment_updates": 0,
+    "index_state_upserts": 0,
+    "identity_live_read_updates": 0,
+    "catalog_row_trust_upserts": 0,
+    "stale_offer_deletes": 0,
+    "stale_sku_deletes": 0
+  },
+  "sample": [
+    {
+      "external_product_id": "ext_b5dafedce57973dfcca9fb5b",
+      "product_key": "prod::external_seed::external_seed::ext_b5dafedce57973dfcca9fb5b",
+      "product_group_id": "sig_d275edcf29109760764a2288",
+      "title": "Rejuvenating Night Face Cream Bulgarian Rose",
+      "brand": "Delicate Daisys Botanical Beauty",
+      "product_type": "Moisturizer",
+      "category": "Moisturizer",
+      "category_path": "beauty/skincare/moisturizers",
+      "canonical_url": "https://delicatedaisys.com/products/rejuvenating-night-face-cream-bulgarian-rose",
+      "pivota_signature_id": "sig_d275edcf29109760764a2288",
+      "sku_rows": 1,
+      "first_sku": {
+        "sku_key": "prod::external_seed::external_seed::ext_b5dafedce57973dfcca9fb5b::sku_5a9584d31963a01f07e4",
+        "product_key": "prod::external_seed::external_seed::ext_b5dafedce57973dfcca9fb5b",
+        "merchant_id": "external_seed",
+        "platform": "external_seed",
+        "source_product_id": "ext_b5dafedce57973dfcca9fb5b",
+        "source_variant_id": "ext_b5dafedce57973dfcca9fb5b:47818365010194",
+        "source_domain": "delicatedaisys.com",
+        "sku": "860008494092",
+        "barcode": null,
+        "title": "Rejuvenating Night Face Cream Bulgarian Rose",
+        "currency": "USD",
+        "image_url": "https://delicatedaisys.com/cdn/shop/files/IMG-3224.jpg?v=1779314439",
+        "visible_attributes": {},
+        "visible_option_labels": {},
+        "ingredient_ids": [],
+        "sku_payload": {
+          "source": "external_product_seeds_mirror_v1",
+          "external_product_id": "ext_b5dafedce57973dfcca9fb5b",
+          "raw_variant_id": "47818365010194",
+          "source_variant_id": "ext_b5dafedce57973dfcca9fb5b:47818365010194",
+          "variant_sku": "860008494092",
+          "barcode": null,
+          "strong_identifier_kind": null,
+          "source_url": "https://delicatedaisys.com/products/rejuvenating-night-face-cream-bulgarian-rose",
+          "external_redirect_url": "https://delicatedaisys.com/products/rejuvenating-night-face-cream-bulgarian-rose",
+          "price": "49.99",
+          "price_amount": 49.99,
+          "currency": "USD",
+          "availability": "in_stock",
+          "image_url": "https://delicatedaisys.com/cdn/shop/files/IMG-3224.jpg?v=1779314439",
+          "swatch_image_url": null,
+          "label_image_url": null,
+          "options": {},
+          "raw_variant": {
+            "sku": "860008494092",
+            "url": "https://delicatedaisys.com/products/rejuvenating-night-face-cream-bulgarian-rose?variant=47818365010194&utm_source=pivota&utm_medium=affiliate",
+            "price": "49.99",
+            "stock": "In Stock",
+            "title": "Default Title",
+            "options": [],
+            "currency": "USD",
+            "deep_link": "https://delicatedaisys.com/products/rejuvenating-night-face-cream-bulgarian-rose?variant=47818365010194&utm_source=pivota&utm_medium=affiliate",
+            "image_url": "https://delicatedaisys.com/cdn/shop/files/IMG-3224.jpg?v=1779314439",
+            "image_urls": [
+              "https://delicatedaisys.com/cdn/shop/files/IMG-3224.jpg?v=1779314439",
+              "https://delicatedaisys.com/cdn/shop/files/rejuvenating-night-face-cream-bulgarian-rose-254487.jpg?v=1725183707",
+              "https://delicatedaisys.com/cdn/shop/files/rejuvenating-night-face-cream-bulgarian-rose-864694.jpg?v=1725183707",
+              "https://delicatedaisys.com/cdn/shop/files/rejuvenating-night-face-cream-bulgarian-rose-132645.jpg?v=1725183707",
+              "https://delicatedaisys.com/cdn/shop/files/IMG-3230.png?v=1779314932",
+              "https://delicatedaisys.com/cdn/shop/files/IMG-3231.png?v=1779314932",
+              "https://delicatedaisys.com/cdn/shop/files/IMG-3232.png?v=1779314932",
+              "https://delicatedaisys.com/cdn/shop/files/FullSizeRender.jpg?v=1779315170"
+            ],
+            "variant_id": "47818365010194",
+            "product_url": "https://delicatedaisys.com/products/rejuvenating-night-face-cream-bulgarian-rose"
+          }
+        },
+        "readiness_tier": "referral_only"
+      },
+      "first_offer": {
+        "offer_id": "offer:external_seed:472aa0def64faec4833ccf4f9357ec7a",
+        "sku_key": "prod::external_seed::external_seed::ext_b5dafedce57973dfcca9fb5b::sku_5a9584d31963a01f07e4",
+        "product_key": "prod::external_seed::external_seed::ext_b5dafedce57973dfcca9fb5b",
+        "merchant_id": "external_seed",
+        "catalog_track": "external_referral",
+        "truth_tier": "observed",
+        "readiness_tier": "referral_only",
+        "offer_mode": "redirect",
+        "channel": "external_referral",
+        "availability": "in_stock",
+        "currency": "USD",
+        "list_price": 49.99,
+        "merchant_effective_price": 49.99,
+        "estimated_best_price": 49.99,
+        "price_confidence": 1,
+        "source_system": "external_product_seeds_mirror_v1",
+        "source_ref": "eps_9bea2beb5e5ef01fd465b526",
+        "source_domain": "delicatedaisys.com",
+        "offer_payload": {
+          "source": "external_product_seeds_mirror_v1",
+          "external_seed_id": "eps_9bea2beb5e5ef01fd465b526",
+          "external_product_id": "ext_b5dafedce57973dfcca9fb5b",
+          "domain": "delicatedaisys.com",
+          "market": "US",
+          "product_title": "Rejuvenating Night Face Cream Bulgarian Rose",
+          "variant_title": "Rejuvenating Night Face Cream Bulgarian Rose",
+          "variant_sku": "860008494092",
+          "raw_variant_id": "47818365010194",
+          "url": "https://delicatedaisys.com/products/rejuvenating-night-face-cream-bulgarian-rose",
+          "offer_url": "https://delicatedaisys.com/products/rejuvenating-night-face-cream-bulgarian-rose",
+          "canonical_url": "https://delicatedaisys.com/products/rejuvenating-night-face-cream-bulgarian-rose",
+          "destination_url": "https://delicatedaisys.com/products/rejuvenating-night-face-cream-bulgarian-rose",
+          "external_redirect_url": "https://delicatedaisys.com/products/rejuvenating-night-face-cream-bulgarian-rose",
+          "merchant_display_name": "Delicate Daisys Botanical Beauty",
+          "price": "49.99",
+          "price_amount": 49.99,
+          "price_currency": "USD",
+          "availability": "in_stock",
+          "commerce_facts_v1": {
+            "contract_version": "commerce_facts.v1",
+            "market_id": "US",
+            "country": "US",
+            "currency_target": "USD",
+            "source_authority": "catalog_extract_v2",
+            "captured_at": "2026-05-23T00:27:32.720Z",
+            "evidence_url": "https://delicatedaisys.com/products/rejuvenating-night-face-cream-bulgarian-rose",
+            "sellable_region": {
+              "status": "unknown",
+              "countries": [],
+              "evidence_source": "catalog_extract_v2",
+              "confidence": "medium",
+              "checked_at": "2026-05-23T00:27:32.720Z",
+              "reason_codes": [
+                "market_currency_observed",
+                "shipping_destination_not_verified",
+                "external_checkout_not_queried"
+              ],
+              "evidence_url": "https://delicatedaisys.com/products/rejuvenating-night-face-cream-bulgarian-rose"
+            },
+            "regional_price": {
+              "amount": 49.99,
+              "currency": "USD",
+              "display_raw": "49.99",
+              "price_type": "list",
+              "compare_at_amount": null,
+              "compare_at_currency": null,
+              "compare_at_display_raw": null,
+              "tax_included": "unknown",
+              "confidence": "medium",
+              "market_switch_status": "ok",
+              "observed_currency": "USD",
+              "source_url": "https://delicatedaisys.com/products/rejuvenating-night-face-cream-bulgarian-rose",
+              "captured_at": "2026-05-23T00:27:32.720Z"
+            },
+            "availability": {
+              "status": "in_stock",
+              "source": "catalog_extract_v2",
+              "confidence": "medium",
+              "captured_at": "2026-05-23T00:27:32.720Z"
+            },
+            "shipping": {
+              "status": "unknown",
+              "source": "catalog_extract_v2",
+              "confidence": "unknown",
+              "reason_codes": [
+                "external_checkout_not_queried"
+              ],
+              "checked_at": "2026-05-23T00:27:32.720Z"
+            },
+            "promotions": [],
+            "returns": {
+              "status": "unknown",
+              "source": "catalog_extract_v2",
+              "confidence": "unknown",
+              "reason_codes": [
+                "external_returns_not_extracted"
+              ],
+              "checked_at": "2026-05-23T00:27:32.720Z"
+            }
+          },
+          "agent_safe_commerce_facts": {
+            "contract_version": "commerce_facts.v1",
+            "market_id": "US",
+            "price": {
+              "amount": 49.99,
+              "currency": "USD",
+              "display_raw": "49.99",
+              "price_type": "list",
+              "compare_at_amount": null,
+              "compare_at_currency": null,
+              "compare_at_display_raw": null,
+              "tax_included": "unknown",
+              "confidence": "medium",
+              "market_switch_status": "ok",
+              "observed_currency": "USD",
+              "source_url": "https://delicatedaisys.com/products/rejuvenating-night-face-cream-bulgarian-rose",
+              "captured_at": "2026-05-23T00:27:32.720Z"
+            },
+            "availability": {
+              "status": "in_stock",
+              "source": "catalog_extract_v2",
+              "confidence": "medium",
+              "captured_at": "2026-05-23T00:27:32.720Z"
+            },
+            "shipping": {
+              "status": "unknown",
+              "reason": "verify_at_checkout"
+            },
+            "promotions": [],
+            "checkout_note": "Shipping and promotions are not verified for this external offer; verify at merchant checkout."
+          }
+        }
+      },
+      "serving_readiness": {
+        "servingEligible": true,
+        "contentQualityScore": 90,
+        "blockerCode": "none",
+        "blockerDetail": null,
+        "identityResolved": true,
+        "identityLiveReadResolved": true,
+        "identityBootstrapEligible": false,
+        "terminalHold": false,
+        "terminalHoldReason": "",
+        "hasImage": true,
+        "hasPrice": true,
+        "descriptionLength": 498
+      }
+    }
+  ]
+}

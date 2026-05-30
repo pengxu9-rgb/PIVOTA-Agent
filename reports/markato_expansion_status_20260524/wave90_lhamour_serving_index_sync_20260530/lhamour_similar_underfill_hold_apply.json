@@ -1,0 +1,81 @@
+{
+  "generated_at": "2026-05-30T10:50:25.934Z",
+  "dry_run": false,
+  "market": "US",
+  "marker": {
+    "contract_version": "external_seed.content_evidence_hold.v1",
+    "updated_at": "2026-05-30T10:50:25.934Z",
+    "status": "hold_for_evidence",
+    "reason": "preflight_audit_failed_similar_gate",
+    "reason_codes": [
+      "preflight_audit_failed_similar_gate"
+    ],
+    "evidence": "Wave90 preflight audit: Lhamour Body Butter and Foot Salve passed seed/extractor/identity/product_intel/live_pdp/variant gates, but similar_gate failed with similar_count=0 for both rows.",
+    "public_serving_ready": false,
+    "content_evidence_ready": false,
+    "review_state": "reviewed"
+  },
+  "summary": {
+    "requested_ids": 2,
+    "scanned": 2,
+    "missing_ids": 0,
+    "catalog_counts": {
+      "products": 2,
+      "skus": 2,
+      "index_rows": 2
+    },
+    "updated": {
+      "external_product_seeds": 2,
+      "catalog_products": 2,
+      "catalog_skus": 2,
+      "index_pipeline_state": 2
+    }
+  },
+  "missing_ids": [],
+  "rows": [
+    {
+      "id": "eps_c49287f8ca5097e5e5f1fab0",
+      "external_product_id": "ext_44acbd72aedbea7735234e44",
+      "title": "Sea buckthorn Foot Cream for Cracked Heels | Natural Foot Salve | Lhamour",
+      "domain": "lhamour.com",
+      "canonical_url": "https://www.lhamour.com/products/natural-sea-buckthorn-oil-foot-salve",
+      "destination_url": "https://www.lhamour.com/products/natural-sea-buckthorn-oil-foot-salve",
+      "before": {
+        "status": "active",
+        "availability": "in_stock",
+        "price_amount": 16,
+        "price_currency": "USD"
+      },
+      "after": {
+        "status": "active",
+        "availability": "in_stock",
+        "price_amount": 16,
+        "price_currency": "USD",
+        "serving_eligible": false,
+        "blocker_code": "content_evidence_hold"
+      }
+    },
+    {
+      "id": "eps_ae8713b49a692f5bbdbe9842",
+      "external_product_id": "ext_5a82b869bc04dc2a7dac84af",
+      "title": "Sea Buckthorn Body Butter for Dry Skin | Natural Moisturizer | Lhamour",
+      "domain": "lhamour.com",
+      "canonical_url": "https://www.lhamour.com/products/natural-sea-buckthorn-oil-body-butter",
+      "destination_url": "https://www.lhamour.com/products/natural-sea-buckthorn-oil-body-butter",
+      "before": {
+        "status": "active",
+        "availability": "in_stock",
+        "price_amount": 38,
+        "price_currency": "USD"
+      },
+      "after": {
+        "status": "active",
+        "availability": "in_stock",
+        "price_amount": 38,
+        "price_currency": "USD",
+        "serving_eligible": false,
+        "blocker_code": "content_evidence_hold"
+      }
+    }
+  ]
+}

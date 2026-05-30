@@ -1,0 +1,272 @@
+{
+  "generated_at": "2026-05-30T10:46:50.726Z",
+  "mode": "apply",
+  "batch_size": null,
+  "bootstrap_reviewed_identity_live_read": false,
+  "requested_ids": 1,
+  "fetched_rows": 1,
+  "mirror_rows": 1,
+  "planned_sku_rows": 1,
+  "planned_offer_rows": 1,
+  "planned_index_state_rows": 1,
+  "missing_ids": [],
+  "skipped": [],
+  "applied": {
+    "mode": "apply",
+    "existing_before": {
+      "catalog_products": 1,
+      "catalog_skus": 1,
+      "catalog_offers": 1,
+      "product_group_members": 1
+    },
+    "stale_delete_preview": {
+      "current_sku_rows": 1,
+      "current_offer_rows": 1,
+      "planned_stale_sku_deletes": 0,
+      "planned_stale_offer_deletes": 0,
+      "sample_stale_skus": [],
+      "sample_stale_offers": []
+    },
+    "batch_size": null,
+    "batches": 1,
+    "audit_reasons": {
+      "no_strong_identifier": 1
+    },
+    "product_upserts": 1,
+    "sku_upserts": 1,
+    "offer_upserts": 1,
+    "group_member_upserts": 1,
+    "group_member_preserved_existing_merges": 0,
+    "seed_attachment_updates": 0,
+    "index_state_upserts": 1,
+    "identity_live_read_updates": 0,
+    "catalog_row_trust_upserts": 1,
+    "stale_offer_deletes": 0,
+    "stale_sku_deletes": 0
+  },
+  "sample": [
+    {
+      "external_product_id": "ext_83ec9657a96effaf0923f850",
+      "product_key": "prod::external_seed::external_seed::ext_83ec9657a96effaf0923f850",
+      "product_group_id": "sig_e7fc20f5e7780ea4a1607f27",
+      "title": "APHRODITE Body Oil",
+      "brand": "JouJou",
+      "product_type": "Body Oil",
+      "category": "Body Oil",
+      "category_path": "beauty/body/body-oil",
+      "canonical_url": "https://joujoubotanicals.com/products/aphrodite-body-oil",
+      "pivota_signature_id": "sig_e7fc20f5e7780ea4a1607f27",
+      "sku_rows": 1,
+      "first_sku": {
+        "sku_key": "prod::external_seed::external_seed::ext_83ec9657a96effaf0923f850::sku_31dd681aae2439a677ec",
+        "product_key": "prod::external_seed::external_seed::ext_83ec9657a96effaf0923f850",
+        "merchant_id": "external_seed",
+        "platform": "external_seed",
+        "source_product_id": "ext_83ec9657a96effaf0923f850",
+        "source_variant_id": "ext_83ec9657a96effaf0923f850:45473797308681",
+        "source_domain": "joujoubotanicals.com",
+        "sku": "BODYOIL2",
+        "barcode": null,
+        "title": "APHRODITE Body Oil",
+        "currency": "USD",
+        "image_url": "https://cdn.shopify.com/s/files/1/0741/1957/7865/files/Aphrodite_PNG.png?v=1739691001",
+        "visible_attributes": {
+          "Size": "100ml"
+        },
+        "visible_option_labels": {
+          "Size": "100ml"
+        },
+        "ingredient_ids": [],
+        "sku_payload": {
+          "source": "external_product_seeds_mirror_v1",
+          "external_product_id": "ext_83ec9657a96effaf0923f850",
+          "raw_variant_id": "45473797308681",
+          "source_variant_id": "ext_83ec9657a96effaf0923f850:45473797308681",
+          "variant_sku": "BODYOIL2",
+          "barcode": null,
+          "strong_identifier_kind": null,
+          "source_url": "https://joujoubotanicals.com/products/aphrodite-body-oil",
+          "external_redirect_url": "https://joujoubotanicals.com/products/aphrodite-body-oil",
+          "price": "91",
+          "price_amount": 91,
+          "currency": "USD",
+          "availability": "in_stock",
+          "image_url": "https://cdn.shopify.com/s/files/1/0741/1957/7865/files/Aphrodite_PNG.png?v=1739691001",
+          "swatch_image_url": null,
+          "label_image_url": null,
+          "options": {
+            "Size": "100ml"
+          },
+          "raw_variant": {
+            "sku": "BODYOIL2",
+            "url": "https://joujoubotanicals.com/products/aphrodite-body-oil",
+            "price": "91",
+            "stock": "In Stock",
+            "currency": "USD",
+            "image_url": "https://cdn.shopify.com/s/files/1/0741/1957/7865/files/Aphrodite_PNG.png?v=1739691001",
+            "image_urls": [
+              "https://cdn.shopify.com/s/files/1/0741/1957/7865/files/Aphrodite_PNG.png?v=1739691001",
+              "https://cdn.shopify.com/s/files/1/0741/1957/7865/files/swatches_WEBFOTKE_8.jpg?v=1769791134",
+              "https://cdn.shopify.com/s/files/1/0741/1957/7865/files/Aphrodite_3_cecc1713-35b6-472a-82fa-bf54ca8066a4.jpg?v=1769791134",
+              "https://cdn.shopify.com/s/files/1/0741/1957/7865/files/Aphrodite_4_75f1ab3b-f6b2-49c0-b637-c0160b57b7de.jpg?v=1769791134",
+              "https://cdn.shopify.com/s/files/1/0741/1957/7865/files/Aphrodite_2_fe130b1a-7473-4654-9ce7-2a7eaff46449.jpg?v=1769791134"
+            ],
+            "variant_id": "45473797308681",
+            "description": "A bodycare masterpiece designed to elevate your beauty and well-being. This face-grade non-greasy formula enriched with Schisandra and Bakuchi promotes skin tonning offering more supple, silky and radiant skin with longlasting intoxicating scent. \n\nIlluminate your inner goddess with every drop. \n\n100 ml / 3.38 fl oz",
+            "option_name": "Size",
+            "option_value": "100ml"
+          }
+        },
+        "readiness_tier": "referral_only"
+      },
+      "first_offer": {
+        "offer_id": "offer:external_seed:224afe0e53b9bb70cc66591e83ed5ff3",
+        "sku_key": "prod::external_seed::external_seed::ext_83ec9657a96effaf0923f850::sku_31dd681aae2439a677ec",
+        "product_key": "prod::external_seed::external_seed::ext_83ec9657a96effaf0923f850",
+        "merchant_id": "external_seed",
+        "catalog_track": "external_referral",
+        "truth_tier": "observed",
+        "readiness_tier": "referral_only",
+        "offer_mode": "redirect",
+        "channel": "external_referral",
+        "availability": "in_stock",
+        "currency": "USD",
+        "list_price": 91,
+        "merchant_effective_price": 91,
+        "estimated_best_price": 91,
+        "price_confidence": 1,
+        "source_system": "external_product_seeds_mirror_v1",
+        "source_ref": "eps_f37eaf3e2d509880ff61c157",
+        "source_domain": "joujoubotanicals.com",
+        "offer_payload": {
+          "source": "external_product_seeds_mirror_v1",
+          "external_seed_id": "eps_f37eaf3e2d509880ff61c157",
+          "external_product_id": "ext_83ec9657a96effaf0923f850",
+          "domain": "joujoubotanicals.com",
+          "market": "US",
+          "product_title": "APHRODITE Body Oil",
+          "variant_title": "APHRODITE Body Oil",
+          "variant_sku": "BODYOIL2",
+          "raw_variant_id": "45473797308681",
+          "url": "https://joujoubotanicals.com/products/aphrodite-body-oil",
+          "offer_url": "https://joujoubotanicals.com/products/aphrodite-body-oil",
+          "canonical_url": "https://joujoubotanicals.com/products/aphrodite-body-oil",
+          "destination_url": "https://joujoubotanicals.com/products/aphrodite-body-oil",
+          "external_redirect_url": "https://joujoubotanicals.com/products/aphrodite-body-oil",
+          "merchant_display_name": "JouJou",
+          "price": "91",
+          "price_amount": 91,
+          "price_currency": "USD",
+          "availability": "in_stock",
+          "commerce_facts_v1": {
+            "contract_version": "commerce_facts.v1",
+            "market_id": "US",
+            "country": "US",
+            "currency_target": "USD",
+            "source_authority": "catalog_extract_v2",
+            "captured_at": "2026-05-24T00:58:39.301Z",
+            "evidence_url": "https://joujoubotanicals.com/products/aphrodite-body-oil",
+            "sellable_region": {
+              "status": "unknown",
+              "countries": [],
+              "evidence_source": "catalog_extract_v2",
+              "confidence": "medium",
+              "checked_at": "2026-05-24T00:58:39.301Z",
+              "reason_codes": [
+                "market_currency_observed",
+                "shipping_destination_not_verified",
+                "external_checkout_not_queried"
+              ],
+              "evidence_url": "https://joujoubotanicals.com/products/aphrodite-body-oil"
+            },
+            "regional_price": {
+              "amount": 91,
+              "currency": "USD",
+              "display_raw": "91.00",
+              "price_type": "sale",
+              "compare_at_amount": 114,
+              "compare_at_currency": "USD",
+              "compare_at_display_raw": "114.00",
+              "tax_included": "unknown",
+              "confidence": "medium",
+              "market_switch_status": "ok",
+              "observed_currency": "USD",
+              "source_url": "https://joujoubotanicals.com/products/aphrodite-body-oil",
+              "captured_at": "2026-05-24T00:58:39.301Z"
+            },
+            "availability": {
+              "status": "in_stock",
+              "source": "catalog_extract_v2",
+              "confidence": "medium",
+              "captured_at": "2026-05-24T00:58:39.301Z"
+            },
+            "shipping": {
+              "status": "unknown",
+              "source": "catalog_extract_v2",
+              "confidence": "unknown",
+              "reason_codes": [
+                "external_checkout_not_queried"
+              ],
+              "checked_at": "2026-05-24T00:58:39.301Z"
+            },
+            "promotions": [],
+            "returns": {
+              "status": "unknown",
+              "source": "catalog_extract_v2",
+              "confidence": "unknown",
+              "reason_codes": [
+                "external_returns_not_extracted"
+              ],
+              "checked_at": "2026-05-24T00:58:39.301Z"
+            }
+          },
+          "agent_safe_commerce_facts": {
+            "contract_version": "commerce_facts.v1",
+            "market_id": "US",
+            "price": {
+              "amount": 91,
+              "currency": "USD",
+              "display_raw": "91.00",
+              "price_type": "sale",
+              "compare_at_amount": 114,
+              "compare_at_currency": "USD",
+              "compare_at_display_raw": "114.00",
+              "tax_included": "unknown",
+              "confidence": "medium",
+              "market_switch_status": "ok",
+              "observed_currency": "USD",
+              "source_url": "https://joujoubotanicals.com/products/aphrodite-body-oil",
+              "captured_at": "2026-05-24T00:58:39.301Z"
+            },
+            "availability": {
+              "status": "in_stock",
+              "source": "catalog_extract_v2",
+              "confidence": "medium",
+              "captured_at": "2026-05-24T00:58:39.301Z"
+            },
+            "shipping": {
+              "status": "unknown",
+              "reason": "verify_at_checkout"
+            },
+            "promotions": [],
+            "checkout_note": "Shipping and promotions are not verified for this external offer; verify at merchant checkout."
+          }
+        }
+      },
+      "serving_readiness": {
+        "servingEligible": false,
+        "contentQualityScore": 70,
+        "blockerCode": "content_evidence_hold",
+        "blockerDetail": "preflight_audit_failed_similar_gate",
+        "identityResolved": true,
+        "identityLiveReadResolved": true,
+        "identityBootstrapEligible": false,
+        "terminalHold": true,
+        "terminalHoldReason": "preflight_audit_failed_similar_gate",
+        "hasImage": true,
+        "hasPrice": true,
+        "descriptionLength": 317
+      }
+    }
+  ]
+}

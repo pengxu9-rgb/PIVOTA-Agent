@@ -1,0 +1,721 @@
+{
+  "generated_at": "2026-05-30T10:47:34.886Z",
+  "mode": "dry_run",
+  "batch_size": null,
+  "bootstrap_reviewed_identity_live_read": false,
+  "requested_ids": 3,
+  "fetched_rows": 3,
+  "mirror_rows": 3,
+  "planned_sku_rows": 3,
+  "planned_offer_rows": 3,
+  "planned_index_state_rows": 3,
+  "missing_ids": [],
+  "skipped": [],
+  "applied": {
+    "mode": "dry_run",
+    "existing_before": {
+      "catalog_products": 3,
+      "catalog_skus": 3,
+      "catalog_offers": 3,
+      "product_group_members": 3
+    },
+    "stale_delete_preview": {
+      "current_sku_rows": 3,
+      "current_offer_rows": 3,
+      "planned_stale_sku_deletes": 0,
+      "planned_stale_offer_deletes": 0,
+      "sample_stale_skus": [],
+      "sample_stale_offers": []
+    },
+    "batch_size": null,
+    "batches": 1,
+    "audit_reasons": {
+      "no_strong_identifier": 3
+    },
+    "product_upserts": 0,
+    "sku_upserts": 0,
+    "offer_upserts": 0,
+    "group_member_upserts": 0,
+    "group_member_preserved_existing_merges": 0,
+    "seed_attachment_updates": 0,
+    "index_state_upserts": 0,
+    "identity_live_read_updates": 0,
+    "catalog_row_trust_upserts": 0,
+    "stale_offer_deletes": 0,
+    "stale_sku_deletes": 0
+  },
+  "sample": [
+    {
+      "external_product_id": "ext_d15df7e8e28d8f5a9aa9a170",
+      "product_key": "prod::external_seed::external_seed::ext_d15df7e8e28d8f5a9aa9a170",
+      "product_group_id": "sig_b6934c5f11f1738a2408587d",
+      "title": "Natural Face Moisturizer for Dry Skin | Organic Face Cream | Lhamour",
+      "brand": "Lhamour",
+      "product_type": "Face Cream",
+      "category": "Face Cream",
+      "category_path": "beauty/skincare/moisturizer",
+      "canonical_url": "https://www.lhamour.com/products/natural-hydrating-facial-cream",
+      "pivota_signature_id": "sig_b6934c5f11f1738a2408587d",
+      "sku_rows": 1,
+      "first_sku": {
+        "sku_key": "prod::external_seed::external_seed::ext_d15df7e8e28d8f5a9aa9a170::sku_c61f1dae04929a5d3432",
+        "product_key": "prod::external_seed::external_seed::ext_d15df7e8e28d8f5a9aa9a170",
+        "merchant_id": "external_seed",
+        "platform": "external_seed",
+        "source_product_id": "ext_d15df7e8e28d8f5a9aa9a170",
+        "source_variant_id": "ext_d15df7e8e28d8f5a9aa9a170:43309910065329",
+        "source_domain": "lhamour.com",
+        "sku": "fcl09crm",
+        "barcode": null,
+        "title": "Natural Face Moisturizer for Dry Skin | Organic Face Cream | Lhamour",
+        "currency": "USD",
+        "image_url": "https://cdn.shopify.com/s/files/1/0523/6064/2737/files/facialcreambody.png?v=1713114790",
+        "visible_attributes": {},
+        "visible_option_labels": {},
+        "ingredient_ids": [],
+        "sku_payload": {
+          "source": "external_product_seeds_mirror_v1",
+          "external_product_id": "ext_d15df7e8e28d8f5a9aa9a170",
+          "raw_variant_id": "43309910065329",
+          "source_variant_id": "ext_d15df7e8e28d8f5a9aa9a170:43309910065329",
+          "variant_sku": "fcl09crm",
+          "barcode": null,
+          "strong_identifier_kind": null,
+          "source_url": "https://www.lhamour.com/products/natural-hydrating-facial-cream",
+          "external_redirect_url": "https://www.lhamour.com/products/natural-hydrating-facial-cream",
+          "price": "48",
+          "price_amount": 48,
+          "currency": "USD",
+          "availability": "in_stock",
+          "image_url": "https://cdn.shopify.com/s/files/1/0523/6064/2737/files/facialcreambody.png?v=1713114790",
+          "swatch_image_url": null,
+          "label_image_url": null,
+          "options": {},
+          "raw_variant": {
+            "sku": "fcl09crm",
+            "url": "https://www.lhamour.com/products/natural-hydrating-facial-cream",
+            "price": "48",
+            "stock": "In Stock",
+            "images": [
+              "https://cdn.shopify.com/s/files/1/0523/6064/2737/files/facialcreambody.png?v=1713114790",
+              "https://cdn.shopify.com/s/files/1/0523/6064/2737/files/creamtexture1.png?v=1723736059",
+              "https://cdn.shopify.com/s/files/1/0523/6064/2737/files/creamdetail.png?v=1723736059",
+              "https://cdn.shopify.com/s/files/1/0523/6064/2737/files/creammodel1.png?v=1723736059"
+            ],
+            "currency": "USD",
+            "image_url": "https://cdn.shopify.com/s/files/1/0523/6064/2737/files/facialcreambody.png?v=1713114790",
+            "image_urls": [
+              "https://cdn.shopify.com/s/files/1/0523/6064/2737/files/facialcreambody.png?v=1713114790",
+              "https://cdn.shopify.com/s/files/1/0523/6064/2737/files/creamtexture1.png?v=1723736059",
+              "https://cdn.shopify.com/s/files/1/0523/6064/2737/files/creamdetail.png?v=1723736059",
+              "https://cdn.shopify.com/s/files/1/0523/6064/2737/files/creammodel1.png?v=1723736059"
+            ],
+            "variant_id": "43309910065329",
+            "description": "Natural Face Moisturizer for Dry Skin | Organic Face Cream | Lhamour is a Lhamour face cream with product-page formula and use fields captured for PDP display. The ingredient list includes Water, Flaxseed Seed Oil, Coconut Oil, Nettle Oil, Rosehip Oil. Price, availability, imagery, ingredient text, and use instructions are maintained with the same reviewed product-page record.",
+            "option_name": "Title",
+            "option_value": "Default Title"
+          }
+        },
+        "readiness_tier": "referral_only"
+      },
+      "first_offer": {
+        "offer_id": "offer:external_seed:57f7548b2d351e9178ad3351c4e4412b",
+        "sku_key": "prod::external_seed::external_seed::ext_d15df7e8e28d8f5a9aa9a170::sku_c61f1dae04929a5d3432",
+        "product_key": "prod::external_seed::external_seed::ext_d15df7e8e28d8f5a9aa9a170",
+        "merchant_id": "external_seed",
+        "catalog_track": "external_referral",
+        "truth_tier": "observed",
+        "readiness_tier": "referral_only",
+        "offer_mode": "redirect",
+        "channel": "external_referral",
+        "availability": "in_stock",
+        "currency": "USD",
+        "list_price": 48,
+        "merchant_effective_price": 48,
+        "estimated_best_price": 48,
+        "price_confidence": 1,
+        "source_system": "external_product_seeds_mirror_v1",
+        "source_ref": "eps_a53220631581db0ae2ac24b5",
+        "source_domain": "lhamour.com",
+        "offer_payload": {
+          "source": "external_product_seeds_mirror_v1",
+          "external_seed_id": "eps_a53220631581db0ae2ac24b5",
+          "external_product_id": "ext_d15df7e8e28d8f5a9aa9a170",
+          "domain": "lhamour.com",
+          "market": "US",
+          "product_title": "Natural Face Moisturizer for Dry Skin | Organic Face Cream | Lhamour",
+          "variant_title": "Natural Face Moisturizer for Dry Skin | Organic Face Cream | Lhamour",
+          "variant_sku": "fcl09crm",
+          "raw_variant_id": "43309910065329",
+          "url": "https://www.lhamour.com/products/natural-hydrating-facial-cream",
+          "offer_url": "https://www.lhamour.com/products/natural-hydrating-facial-cream",
+          "canonical_url": "https://www.lhamour.com/products/natural-hydrating-facial-cream",
+          "destination_url": "https://www.lhamour.com/products/natural-hydrating-facial-cream",
+          "external_redirect_url": "https://www.lhamour.com/products/natural-hydrating-facial-cream",
+          "merchant_display_name": "Lhamour",
+          "price": "48",
+          "price_amount": 48,
+          "price_currency": "USD",
+          "availability": "in_stock",
+          "commerce_facts_v1": {
+            "contract_version": "commerce_facts.v1",
+            "market_id": "US",
+            "country": "US",
+            "currency_target": "USD",
+            "source_authority": "official_shopify_us_pdp_html_and_product_json",
+            "captured_at": "2026-05-25T10:22:37.984Z",
+            "evidence_url": "https://www.lhamour.com/products/natural-hydrating-facial-cream",
+            "sellable_region": {
+              "status": "unknown",
+              "countries": [],
+              "evidence_source": "official_shopify_us_pdp_html_and_product_json",
+              "confidence": "unknown",
+              "checked_at": "2026-05-25T10:22:37.984Z",
+              "reason_codes": [
+                "shipping_destination_not_verified"
+              ],
+              "evidence_url": "https://www.lhamour.com/products/natural-hydrating-facial-cream"
+            },
+            "regional_price": {
+              "amount": 48,
+              "currency": "USD",
+              "display_raw": null,
+              "price_type": "unknown",
+              "compare_at_amount": null,
+              "compare_at_currency": null,
+              "compare_at_display_raw": null,
+              "tax_included": "unknown",
+              "confidence": "medium",
+              "market_switch_status": "ok",
+              "observed_currency": "USD",
+              "source_url": "https://www.lhamour.com/products/natural-hydrating-facial-cream",
+              "captured_at": "2026-05-25T10:22:37.984Z"
+            },
+            "availability": {
+              "status": "in_stock",
+              "source": "official_shopify_us_pdp_html_and_product_json",
+              "confidence": "medium",
+              "captured_at": "2026-05-25T10:22:37.984Z"
+            },
+            "shipping": {
+              "status": "unknown",
+              "source": "official_shopify_us_pdp_html_and_product_json",
+              "confidence": "unknown",
+              "reason_codes": [
+                "external_checkout_not_queried"
+              ],
+              "checked_at": "2026-05-25T10:22:37.984Z"
+            },
+            "promotions": [],
+            "returns": {
+              "status": "unknown",
+              "source": "official_shopify_us_pdp_html_and_product_json",
+              "confidence": "unknown",
+              "reason_codes": [
+                "external_returns_not_extracted"
+              ],
+              "checked_at": "2026-05-25T10:22:37.984Z"
+            }
+          },
+          "agent_safe_commerce_facts": {
+            "contract_version": "commerce_facts.v1",
+            "market_id": "US",
+            "price": {
+              "amount": 48,
+              "currency": "USD",
+              "display_raw": null,
+              "price_type": "unknown",
+              "compare_at_amount": null,
+              "compare_at_currency": null,
+              "compare_at_display_raw": null,
+              "tax_included": "unknown",
+              "confidence": "medium",
+              "market_switch_status": "ok",
+              "observed_currency": "USD",
+              "source_url": "https://www.lhamour.com/products/natural-hydrating-facial-cream",
+              "captured_at": "2026-05-25T10:22:37.984Z"
+            },
+            "availability": {
+              "status": "in_stock",
+              "source": "official_shopify_us_pdp_html_and_product_json",
+              "confidence": "medium",
+              "captured_at": "2026-05-25T10:22:37.984Z"
+            },
+            "shipping": {
+              "status": "unknown",
+              "reason": "verify_at_checkout"
+            },
+            "promotions": [],
+            "checkout_note": "Shipping and promotions are not verified for this external offer; verify at merchant checkout."
+          }
+        }
+      },
+      "serving_readiness": {
+        "servingEligible": true,
+        "contentQualityScore": 90,
+        "blockerCode": "none",
+        "blockerDetail": null,
+        "identityResolved": true,
+        "identityLiveReadResolved": true,
+        "identityBootstrapEligible": false,
+        "terminalHold": false,
+        "terminalHoldReason": "",
+        "hasImage": true,
+        "hasPrice": true,
+        "descriptionLength": 379
+      }
+    },
+    {
+      "external_product_id": "ext_5a82b869bc04dc2a7dac84af",
+      "product_key": "prod::external_seed::external_seed::ext_5a82b869bc04dc2a7dac84af",
+      "product_group_id": "sig_e982409798ce6faab135f36d",
+      "title": "Sea Buckthorn Body Butter for Dry Skin | Natural Moisturizer | Lhamour",
+      "brand": "Lhamour",
+      "product_type": "Body Butter",
+      "category": "Body Butter",
+      "category_path": "beauty/body/body-butter",
+      "canonical_url": "https://www.lhamour.com/products/natural-sea-buckthorn-oil-body-butter",
+      "pivota_signature_id": "sig_e982409798ce6faab135f36d",
+      "sku_rows": 1,
+      "first_sku": {
+        "sku_key": "prod::external_seed::external_seed::ext_5a82b869bc04dc2a7dac84af::sku_6cf5009fad53f369a3f8",
+        "product_key": "prod::external_seed::external_seed::ext_5a82b869bc04dc2a7dac84af",
+        "merchant_id": "external_seed",
+        "platform": "external_seed",
+        "source_product_id": "ext_5a82b869bc04dc2a7dac84af",
+        "source_variant_id": "ext_5a82b869bc04dc2a7dac84af:43310043529393",
+        "source_domain": "lhamour.com",
+        "sku": "sbb41p",
+        "barcode": null,
+        "title": "Sea Buckthorn Body Butter for Dry Skin | Natural Moisturizer | Lhamour",
+        "currency": "USD",
+        "image_url": "https://cdn.shopify.com/s/files/1/0523/6064/2737/files/sebuckbodybutterbdoy.png?v=1706454892",
+        "visible_attributes": {},
+        "visible_option_labels": {},
+        "ingredient_ids": [],
+        "sku_payload": {
+          "source": "external_product_seeds_mirror_v1",
+          "external_product_id": "ext_5a82b869bc04dc2a7dac84af",
+          "raw_variant_id": "43310043529393",
+          "source_variant_id": "ext_5a82b869bc04dc2a7dac84af:43310043529393",
+          "variant_sku": "sbb41p",
+          "barcode": null,
+          "strong_identifier_kind": null,
+          "source_url": "https://www.lhamour.com/products/natural-sea-buckthorn-oil-body-butter",
+          "external_redirect_url": "https://www.lhamour.com/products/natural-sea-buckthorn-oil-body-butter",
+          "price": "38",
+          "price_amount": 38,
+          "currency": "USD",
+          "availability": "in_stock",
+          "image_url": "https://cdn.shopify.com/s/files/1/0523/6064/2737/files/sebuckbodybutterbdoy.png?v=1706454892",
+          "swatch_image_url": null,
+          "label_image_url": null,
+          "options": {},
+          "raw_variant": {
+            "sku": "sbb41p",
+            "url": "https://www.lhamour.com/products/natural-sea-buckthorn-oil-body-butter",
+            "price": "38",
+            "stock": "In Stock",
+            "images": [
+              "https://cdn.shopify.com/s/files/1/0523/6064/2737/files/sebuckbodybutterbdoy.png?v=1706454892",
+              "https://cdn.shopify.com/s/files/1/0523/6064/2737/files/B07K2F68F8_3.jpg?v=1724902811",
+              "https://cdn.shopify.com/s/files/1/0523/6064/2737/files/B07K2F68F8_2.jpg?v=1724902815",
+              "https://cdn.shopify.com/s/files/1/0523/6064/2737/files/B07K2F68F8_4.jpg?v=1724902817",
+              "https://cdn.shopify.com/s/files/1/0523/6064/2737/files/seabuckbuttertexture.png?v=1724902856",
+              "https://cdn.shopify.com/s/files/1/0523/6064/2737/files/aa8103f5-19ec-460a-b669-f6d196f97fb4.png?v=1722523355",
+              "https://cdn.shopify.com/s/files/1/0523/6064/2737/files/seabuckthornbodybuttertexture.jpg?v=1724902856",
+              "https://cdn.shopify.com/s/files/1/0523/6064/2737/files/091683b6-c784-49ea-9ffa-0baf8e817327.png?v=1722522645",
+              "https://cdn.shopify.com/s/files/1/0523/6064/2737/files/46dfa469-d3cf-4afc-9ee4-68e5522bed33.png?v=1722522678",
+              "https://cdn.shopify.com/s/files/1/0523/6064/2737/files/Main_ingredient1.jpg?v=1706466473",
+              "https://cdn.shopify.com/s/files/1/0523/6064/2737/files/seabuckbutterdetail.png?v=1724902856"
+            ],
+            "currency": "USD",
+            "image_url": "https://cdn.shopify.com/s/files/1/0523/6064/2737/files/sebuckbodybutterbdoy.png?v=1706454892",
+            "image_urls": [
+              "https://cdn.shopify.com/s/files/1/0523/6064/2737/files/sebuckbodybutterbdoy.png?v=1706454892",
+              "https://cdn.shopify.com/s/files/1/0523/6064/2737/files/B07K2F68F8_3.jpg?v=1724902811",
+              "https://cdn.shopify.com/s/files/1/0523/6064/2737/files/B07K2F68F8_2.jpg?v=1724902815",
+              "https://cdn.shopify.com/s/files/1/0523/6064/2737/files/B07K2F68F8_4.jpg?v=1724902817",
+              "https://cdn.shopify.com/s/files/1/0523/6064/2737/files/seabuckbuttertexture.png?v=1724902856",
+              "https://cdn.shopify.com/s/files/1/0523/6064/2737/files/aa8103f5-19ec-460a-b669-f6d196f97fb4.png?v=1722523355",
+              "https://cdn.shopify.com/s/files/1/0523/6064/2737/files/seabuckthornbodybuttertexture.jpg?v=1724902856",
+              "https://cdn.shopify.com/s/files/1/0523/6064/2737/files/091683b6-c784-49ea-9ffa-0baf8e817327.png?v=1722522645",
+              "https://cdn.shopify.com/s/files/1/0523/6064/2737/files/46dfa469-d3cf-4afc-9ee4-68e5522bed33.png?v=1722522678",
+              "https://cdn.shopify.com/s/files/1/0523/6064/2737/files/Main_ingredient1.jpg?v=1706466473",
+              "https://cdn.shopify.com/s/files/1/0523/6064/2737/files/seabuckbutterdetail.png?v=1724902856"
+            ],
+            "variant_id": "43310043529393",
+            "description": "Sea Buckthorn Body Butter for Dry Skin | Natural Moisturizer | Lhamour is a Lhamour body butter with product-page formula and use fields captured for PDP display. The ingredient list includes Beef Tallow, Soybean Oil, Coconut Oil, Sunflower Oil, Rosehip Oil. Price, availability, imagery, ingredient text, and use instructions are maintained with the same reviewed product-page record.",
+            "option_name": "Title",
+            "option_value": "Default Title"
+          }
+        },
+        "readiness_tier": "referral_only"
+      },
+      "first_offer": {
+        "offer_id": "offer:external_seed:6d964dbc620fac808eee6657f5bf80fa",
+        "sku_key": "prod::external_seed::external_seed::ext_5a82b869bc04dc2a7dac84af::sku_6cf5009fad53f369a3f8",
+        "product_key": "prod::external_seed::external_seed::ext_5a82b869bc04dc2a7dac84af",
+        "merchant_id": "external_seed",
+        "catalog_track": "external_referral",
+        "truth_tier": "observed",
+        "readiness_tier": "referral_only",
+        "offer_mode": "redirect",
+        "channel": "external_referral",
+        "availability": "in_stock",
+        "currency": "USD",
+        "list_price": 38,
+        "merchant_effective_price": 38,
+        "estimated_best_price": 38,
+        "price_confidence": 1,
+        "source_system": "external_product_seeds_mirror_v1",
+        "source_ref": "eps_ae8713b49a692f5bbdbe9842",
+        "source_domain": "lhamour.com",
+        "offer_payload": {
+          "source": "external_product_seeds_mirror_v1",
+          "external_seed_id": "eps_ae8713b49a692f5bbdbe9842",
+          "external_product_id": "ext_5a82b869bc04dc2a7dac84af",
+          "domain": "lhamour.com",
+          "market": "US",
+          "product_title": "Sea Buckthorn Body Butter for Dry Skin | Natural Moisturizer | Lhamour",
+          "variant_title": "Sea Buckthorn Body Butter for Dry Skin | Natural Moisturizer | Lhamour",
+          "variant_sku": "sbb41p",
+          "raw_variant_id": "43310043529393",
+          "url": "https://www.lhamour.com/products/natural-sea-buckthorn-oil-body-butter",
+          "offer_url": "https://www.lhamour.com/products/natural-sea-buckthorn-oil-body-butter",
+          "canonical_url": "https://www.lhamour.com/products/natural-sea-buckthorn-oil-body-butter",
+          "destination_url": "https://www.lhamour.com/products/natural-sea-buckthorn-oil-body-butter",
+          "external_redirect_url": "https://www.lhamour.com/products/natural-sea-buckthorn-oil-body-butter",
+          "merchant_display_name": "Lhamour",
+          "price": "38",
+          "price_amount": 38,
+          "price_currency": "USD",
+          "availability": "in_stock",
+          "commerce_facts_v1": {
+            "contract_version": "commerce_facts.v1",
+            "market_id": "US",
+            "country": "US",
+            "currency_target": "USD",
+            "source_authority": "official_shopify_us_pdp_html_and_product_json",
+            "captured_at": "2026-05-25T10:22:37.984Z",
+            "evidence_url": "https://www.lhamour.com/products/natural-sea-buckthorn-oil-body-butter",
+            "sellable_region": {
+              "status": "unknown",
+              "countries": [],
+              "evidence_source": "official_shopify_us_pdp_html_and_product_json",
+              "confidence": "unknown",
+              "checked_at": "2026-05-25T10:22:37.984Z",
+              "reason_codes": [
+                "shipping_destination_not_verified"
+              ],
+              "evidence_url": "https://www.lhamour.com/products/natural-sea-buckthorn-oil-body-butter"
+            },
+            "regional_price": {
+              "amount": 38,
+              "currency": "USD",
+              "display_raw": null,
+              "price_type": "unknown",
+              "compare_at_amount": null,
+              "compare_at_currency": null,
+              "compare_at_display_raw": null,
+              "tax_included": "unknown",
+              "confidence": "medium",
+              "market_switch_status": "ok",
+              "observed_currency": "USD",
+              "source_url": "https://www.lhamour.com/products/natural-sea-buckthorn-oil-body-butter",
+              "captured_at": "2026-05-25T10:22:37.984Z"
+            },
+            "availability": {
+              "status": "in_stock",
+              "source": "official_shopify_us_pdp_html_and_product_json",
+              "confidence": "medium",
+              "captured_at": "2026-05-25T10:22:37.984Z"
+            },
+            "shipping": {
+              "status": "unknown",
+              "source": "official_shopify_us_pdp_html_and_product_json",
+              "confidence": "unknown",
+              "reason_codes": [
+                "external_checkout_not_queried"
+              ],
+              "checked_at": "2026-05-25T10:22:37.984Z"
+            },
+            "promotions": [],
+            "returns": {
+              "status": "unknown",
+              "source": "official_shopify_us_pdp_html_and_product_json",
+              "confidence": "unknown",
+              "reason_codes": [
+                "external_returns_not_extracted"
+              ],
+              "checked_at": "2026-05-25T10:22:37.984Z"
+            }
+          },
+          "agent_safe_commerce_facts": {
+            "contract_version": "commerce_facts.v1",
+            "market_id": "US",
+            "price": {
+              "amount": 38,
+              "currency": "USD",
+              "display_raw": null,
+              "price_type": "unknown",
+              "compare_at_amount": null,
+              "compare_at_currency": null,
+              "compare_at_display_raw": null,
+              "tax_included": "unknown",
+              "confidence": "medium",
+              "market_switch_status": "ok",
+              "observed_currency": "USD",
+              "source_url": "https://www.lhamour.com/products/natural-sea-buckthorn-oil-body-butter",
+              "captured_at": "2026-05-25T10:22:37.984Z"
+            },
+            "availability": {
+              "status": "in_stock",
+              "source": "official_shopify_us_pdp_html_and_product_json",
+              "confidence": "medium",
+              "captured_at": "2026-05-25T10:22:37.984Z"
+            },
+            "shipping": {
+              "status": "unknown",
+              "reason": "verify_at_checkout"
+            },
+            "promotions": [],
+            "checkout_note": "Shipping and promotions are not verified for this external offer; verify at merchant checkout."
+          }
+        }
+      },
+      "serving_readiness": {
+        "servingEligible": true,
+        "contentQualityScore": 90,
+        "blockerCode": "none",
+        "blockerDetail": null,
+        "identityResolved": true,
+        "identityLiveReadResolved": true,
+        "identityBootstrapEligible": false,
+        "terminalHold": false,
+        "terminalHoldReason": "",
+        "hasImage": true,
+        "hasPrice": true,
+        "descriptionLength": 385
+      }
+    },
+    {
+      "external_product_id": "ext_44acbd72aedbea7735234e44",
+      "product_key": "prod::external_seed::external_seed::ext_44acbd72aedbea7735234e44",
+      "product_group_id": "sig_16daa81783efc0642b746c31",
+      "title": "Sea buckthorn Foot Cream for Cracked Heels | Natural Foot Salve | Lhamour",
+      "brand": "Lhamour",
+      "product_type": "Foot Salve",
+      "category": "Foot Salve",
+      "category_path": "beauty/body/foot-care",
+      "canonical_url": "https://www.lhamour.com/products/natural-sea-buckthorn-oil-foot-salve",
+      "pivota_signature_id": "sig_16daa81783efc0642b746c31",
+      "sku_rows": 1,
+      "first_sku": {
+        "sku_key": "prod::external_seed::external_seed::ext_44acbd72aedbea7735234e44::sku_2c4999e4031c63aedac7",
+        "product_key": "prod::external_seed::external_seed::ext_44acbd72aedbea7735234e44",
+        "merchant_id": "external_seed",
+        "platform": "external_seed",
+        "source_product_id": "ext_44acbd72aedbea7735234e44",
+        "source_variant_id": "ext_44acbd72aedbea7735234e44:43310095990961",
+        "source_domain": "lhamour.com",
+        "sku": "ftslv32v",
+        "barcode": null,
+        "title": "Sea buckthorn Foot Cream for Cracked Heels | Natural Foot Salve | Lhamour",
+        "currency": "USD",
+        "image_url": "https://cdn.shopify.com/s/files/1/0523/6064/2737/files/footsalvebody.png?v=1706457977",
+        "visible_attributes": {},
+        "visible_option_labels": {},
+        "ingredient_ids": [],
+        "sku_payload": {
+          "source": "external_product_seeds_mirror_v1",
+          "external_product_id": "ext_44acbd72aedbea7735234e44",
+          "raw_variant_id": "43310095990961",
+          "source_variant_id": "ext_44acbd72aedbea7735234e44:43310095990961",
+          "variant_sku": "ftslv32v",
+          "barcode": null,
+          "strong_identifier_kind": null,
+          "source_url": "https://www.lhamour.com/products/natural-sea-buckthorn-oil-foot-salve",
+          "external_redirect_url": "https://www.lhamour.com/products/natural-sea-buckthorn-oil-foot-salve",
+          "price": "16",
+          "price_amount": 16,
+          "currency": "USD",
+          "availability": "in_stock",
+          "image_url": "https://cdn.shopify.com/s/files/1/0523/6064/2737/files/footsalvebody.png?v=1706457977",
+          "swatch_image_url": null,
+          "label_image_url": null,
+          "options": {},
+          "raw_variant": {
+            "sku": "ftslv32v",
+            "url": "https://www.lhamour.com/products/natural-sea-buckthorn-oil-foot-salve",
+            "price": "16",
+            "stock": "In Stock",
+            "images": [
+              "https://cdn.shopify.com/s/files/1/0523/6064/2737/files/footsalvebody.png?v=1706457977",
+              "https://cdn.shopify.com/s/files/1/0523/6064/2737/files/footsalvetexture.png?v=1713081339",
+              "https://cdn.shopify.com/s/files/1/0523/6064/2737/files/footsalvedetail.png?v=1713081339"
+            ],
+            "currency": "USD",
+            "image_url": "https://cdn.shopify.com/s/files/1/0523/6064/2737/files/footsalvebody.png?v=1706457977",
+            "image_urls": [
+              "https://cdn.shopify.com/s/files/1/0523/6064/2737/files/footsalvebody.png?v=1706457977",
+              "https://cdn.shopify.com/s/files/1/0523/6064/2737/files/footsalvetexture.png?v=1713081339",
+              "https://cdn.shopify.com/s/files/1/0523/6064/2737/files/footsalvedetail.png?v=1713081339"
+            ],
+            "variant_id": "43310095990961",
+            "description": "Sea buckthorn Foot Cream for Cracked Heels | Natural Foot Salve | Lhamour is a Lhamour foot salve with product-page formula and use fields captured for PDP display. The ingredient list includes Soybean Oil, Thyme Oil, Beef Tallow, Beeswax, Sea Buckthorn Fruit Oil. Price, availability, imagery, ingredient text, and use instructions are maintained with the same reviewed product-page record.",
+            "option_name": "Title",
+            "option_value": "Default Title"
+          }
+        },
+        "readiness_tier": "referral_only"
+      },
+      "first_offer": {
+        "offer_id": "offer:external_seed:6a886dd0d7e9927c79306dc708518e0e",
+        "sku_key": "prod::external_seed::external_seed::ext_44acbd72aedbea7735234e44::sku_2c4999e4031c63aedac7",
+        "product_key": "prod::external_seed::external_seed::ext_44acbd72aedbea7735234e44",
+        "merchant_id": "external_seed",
+        "catalog_track": "external_referral",
+        "truth_tier": "observed",
+        "readiness_tier": "referral_only",
+        "offer_mode": "redirect",
+        "channel": "external_referral",
+        "availability": "in_stock",
+        "currency": "USD",
+        "list_price": 16,
+        "merchant_effective_price": 16,
+        "estimated_best_price": 16,
+        "price_confidence": 1,
+        "source_system": "external_product_seeds_mirror_v1",
+        "source_ref": "eps_c49287f8ca5097e5e5f1fab0",
+        "source_domain": "lhamour.com",
+        "offer_payload": {
+          "source": "external_product_seeds_mirror_v1",
+          "external_seed_id": "eps_c49287f8ca5097e5e5f1fab0",
+          "external_product_id": "ext_44acbd72aedbea7735234e44",
+          "domain": "lhamour.com",
+          "market": "US",
+          "product_title": "Sea buckthorn Foot Cream for Cracked Heels | Natural Foot Salve | Lhamour",
+          "variant_title": "Sea buckthorn Foot Cream for Cracked Heels | Natural Foot Salve | Lhamour",
+          "variant_sku": "ftslv32v",
+          "raw_variant_id": "43310095990961",
+          "url": "https://www.lhamour.com/products/natural-sea-buckthorn-oil-foot-salve",
+          "offer_url": "https://www.lhamour.com/products/natural-sea-buckthorn-oil-foot-salve",
+          "canonical_url": "https://www.lhamour.com/products/natural-sea-buckthorn-oil-foot-salve",
+          "destination_url": "https://www.lhamour.com/products/natural-sea-buckthorn-oil-foot-salve",
+          "external_redirect_url": "https://www.lhamour.com/products/natural-sea-buckthorn-oil-foot-salve",
+          "merchant_display_name": "Lhamour",
+          "price": "16",
+          "price_amount": 16,
+          "price_currency": "USD",
+          "availability": "in_stock",
+          "commerce_facts_v1": {
+            "contract_version": "commerce_facts.v1",
+            "market_id": "US",
+            "country": "US",
+            "currency_target": "USD",
+            "source_authority": "official_shopify_us_pdp_html_and_product_json",
+            "captured_at": "2026-05-25T10:22:37.984Z",
+            "evidence_url": "https://www.lhamour.com/products/natural-sea-buckthorn-oil-foot-salve",
+            "sellable_region": {
+              "status": "unknown",
+              "countries": [],
+              "evidence_source": "official_shopify_us_pdp_html_and_product_json",
+              "confidence": "unknown",
+              "checked_at": "2026-05-25T10:22:37.984Z",
+              "reason_codes": [
+                "shipping_destination_not_verified"
+              ],
+              "evidence_url": "https://www.lhamour.com/products/natural-sea-buckthorn-oil-foot-salve"
+            },
+            "regional_price": {
+              "amount": 16,
+              "currency": "USD",
+              "display_raw": null,
+              "price_type": "unknown",
+              "compare_at_amount": null,
+              "compare_at_currency": null,
+              "compare_at_display_raw": null,
+              "tax_included": "unknown",
+              "confidence": "medium",
+              "market_switch_status": "ok",
+              "observed_currency": "USD",
+              "source_url": "https://www.lhamour.com/products/natural-sea-buckthorn-oil-foot-salve",
+              "captured_at": "2026-05-25T10:22:37.984Z"
+            },
+            "availability": {
+              "status": "in_stock",
+              "source": "official_shopify_us_pdp_html_and_product_json",
+              "confidence": "medium",
+              "captured_at": "2026-05-25T10:22:37.984Z"
+            },
+            "shipping": {
+              "status": "unknown",
+              "source": "official_shopify_us_pdp_html_and_product_json",
+              "confidence": "unknown",
+              "reason_codes": [
+                "external_checkout_not_queried"
+              ],
+              "checked_at": "2026-05-25T10:22:37.984Z"
+            },
+            "promotions": [],
+            "returns": {
+              "status": "unknown",
+              "source": "official_shopify_us_pdp_html_and_product_json",
+              "confidence": "unknown",
+              "reason_codes": [
+                "external_returns_not_extracted"
+              ],
+              "checked_at": "2026-05-25T10:22:37.984Z"
+            }
+          },
+          "agent_safe_commerce_facts": {
+            "contract_version": "commerce_facts.v1",
+            "market_id": "US",
+            "price": {
+              "amount": 16,
+              "currency": "USD",
+              "display_raw": null,
+              "price_type": "unknown",
+              "compare_at_amount": null,
+              "compare_at_currency": null,
+              "compare_at_display_raw": null,
+              "tax_included": "unknown",
+              "confidence": "medium",
+              "market_switch_status": "ok",
+              "observed_currency": "USD",
+              "source_url": "https://www.lhamour.com/products/natural-sea-buckthorn-oil-foot-salve",
+              "captured_at": "2026-05-25T10:22:37.984Z"
+            },
+            "availability": {
+              "status": "in_stock",
+              "source": "official_shopify_us_pdp_html_and_product_json",
+              "confidence": "medium",
+              "captured_at": "2026-05-25T10:22:37.984Z"
+            },
+            "shipping": {
+              "status": "unknown",
+              "reason": "verify_at_checkout"
+            },
+            "promotions": [],
+            "checkout_note": "Shipping and promotions are not verified for this external offer; verify at merchant checkout."
+          }
+        }
+      },
+      "serving_readiness": {
+        "servingEligible": true,
+        "contentQualityScore": 90,
+        "blockerCode": "none",
+        "blockerDetail": null,
+        "identityResolved": true,
+        "identityLiveReadResolved": true,
+        "identityBootstrapEligible": false,
+        "terminalHold": false,
+        "terminalHoldReason": "",
+        "hasImage": true,
+        "hasPrice": true,
+        "descriptionLength": 391
+      }
+    }
+  ]
+}
