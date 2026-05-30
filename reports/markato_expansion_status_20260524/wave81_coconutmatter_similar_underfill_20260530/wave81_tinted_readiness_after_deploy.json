@@ -1,0 +1,211 @@
+{
+  "generated_at": "2026-05-30T05:21:08.022Z",
+  "options": {
+    "market": "US",
+    "allMarkets": false,
+    "includeAttached": true,
+    "domain": null,
+    "externalProductId": "ext_c840771410198f627d75673a",
+    "limit": 5000,
+    "offset": 0,
+    "sampleLimit": 8,
+    "intelContext": "effective",
+    "chunkByDomain": false,
+    "checkpointDir": null,
+    "checkpointMode": "page",
+    "resume": false,
+    "force": false,
+    "continueOnError": false,
+    "maxDomains": 0,
+    "maxPages": 0,
+    "pageSize": 250,
+    "cursor": null,
+    "format": "json",
+    "out": "reports/markato_expansion_status_20260524/wave81_coconutmatter_similar_underfill_20260530/wave81_tinted_readiness_after_deploy.json"
+  },
+  "warnings": [],
+  "summary": {
+    "scanned": 1,
+    "by_market": {
+      "US": 1
+    },
+    "by_domain": [
+      {
+        "key": "coconutmatter.com",
+        "count": 1
+      }
+    ],
+    "by_product_family": [
+      {
+        "key": "single_formula",
+        "count": 1
+      }
+    ],
+    "coverage": {
+      "missing_inci": 0,
+      "missing_active_raw": 1,
+      "missing_details": 1,
+      "missing_how_to": 0,
+      "missing_faq": 1
+    },
+    "pivota_insights": {
+      "direct": {
+        "displayable": 1,
+        "high_quality_ready": 1,
+        "missing_kb": 0,
+        "not_displayable": 0
+      },
+      "effective": {
+        "displayable": 1,
+        "high_quality_ready": 1,
+        "missing_kb": 0,
+        "not_displayable": 0,
+        "borrowed_from_sibling": 0
+      },
+      "effective_issues": [],
+      "effective_issue_domains": [],
+      "quality_state": [
+        {
+          "key": "reviewed",
+          "count": 1
+        }
+      ],
+      "evidence_profile": [
+        {
+          "key": "official_pdp_seed",
+          "count": 1
+        }
+      ],
+      "samples": {}
+    },
+    "active_ingredients": {
+      "regulatory_expected": 0,
+      "hero_expected": 0,
+      "any_active_items": 0,
+      "status": [
+        {
+          "key": "not_expected_missing",
+          "count": 1
+        }
+      ],
+      "issues": [],
+      "issue_domains": [],
+      "source_origin": [
+        {
+          "key": "pdp_section",
+          "count": 1
+        }
+      ],
+      "samples": {}
+    },
+    "variants": {
+      "status": [
+        {
+          "key": "ready",
+          "count": 1
+        }
+      ],
+      "issues": [],
+      "issue_domains": [],
+      "samples": {}
+    }
+  },
+  "rows": [
+    {
+      "seed_id": "eps_355b1bbbc78f41a16577c1fa",
+      "external_product_id": "ext_c840771410198f627d75673a",
+      "market": "US",
+      "domain": "coconutmatter.com",
+      "title": "TINTED COCONUT LIP BALM",
+      "canonical_url": "https://coconutmatter.com/products/tinted-coconut-lip-balm",
+      "product_family": "single_formula",
+      "product_line_id": "pl_b280c2d5a19e59fcfc525550",
+      "identity_variant_axes": {
+        "color": "smooch",
+        "multi_variant": true
+      },
+      "pivota_insights": {
+        "direct": {
+          "product_id": "ext_c840771410198f627d75673a",
+          "kb_key": "product:ext_c840771410198f627d75673a",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "official_pdp_seed",
+          "has_card_highlight": true
+        },
+        "effective": {
+          "product_id": "ext_c840771410198f627d75673a",
+          "kb_key": "product:ext_c840771410198f627d75673a",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "official_pdp_seed",
+          "has_card_highlight": true
+        },
+        "product_line_id": "pl_b280c2d5a19e59fcfc525550",
+        "borrowed_from_sibling": false
+      },
+      "active_ingredients": {
+        "status": "not_expected_missing",
+        "issues": [],
+        "regulatory_expected": false,
+        "hero_expected": false,
+        "active_items": [],
+        "source_origin": "pdp_section",
+        "source_quality_status": "blocked",
+        "coverage": {
+          "details_sections_count": 0,
+          "faq_count": 0,
+          "how_to_chars": 187,
+          "inci_chars": 305,
+          "active_ingredients_chars": 0,
+          "inci_applicability_status": "",
+          "ingredient_review_status": "",
+          "ingredient_remediation_action": "",
+          "bundle_component_refs_count": 0,
+          "effective_inci_chars": 305,
+          "inci_borrowed_from_product_id": ""
+        },
+        "invalid_fragments": [],
+        "suppressed_reason": null
+      },
+      "variants": {
+        "status": "ready",
+        "issues": [],
+        "visible_variant_rows": 7,
+        "examples": {
+          "identity_option_visible": [],
+          "wrong_axis_for_category": [],
+          "makeup_shade_missing_visual": [],
+          "size_value_generic_axis": [],
+          "default_option_size_evidence_missing_axis": [],
+          "identity_default_title_axis": []
+        }
+      },
+      "coverage": {
+        "details_sections_count": 0,
+        "faq_count": 0,
+        "how_to_chars": 187,
+        "inci_chars": 305,
+        "active_ingredients_chars": 0,
+        "inci_applicability_status": "",
+        "ingredient_review_status": "",
+        "ingredient_remediation_action": "",
+        "bundle_component_refs_count": 0,
+        "effective_inci_chars": 305,
+        "inci_borrowed_from_product_id": ""
+      }
+    }
+  ]
+}

@@ -75,4 +75,36 @@ Production-data replay with local patched code:
 
 ## Deployment Status
 
-Not deployed yet at this closeout point. Next step is to commit, push to the working branch and `main` through Git only, wait for the Git deployment, then run live production PDP quality checks for both Coconut Matter rows.
+Deployed by Git push only.
+
+- runtime code commit: `bbf19aa8d6ba677b2cace25f3de78ce60a52d194`
+- trigger commit on `main`: `ab97e1ccb16bafac285aa45f88e6c5597ed1b623`
+- production `/version`: `ab97e1ccb16b`
+- deployment id: `ebcfbe97-910c-4058-be90-2c8baef28e04`
+
+## Post-Deploy Live Checks
+
+Clear Lip Care:
+
+- artifact: `wave81_coconut_clear_lip_care_pdp_quality_after_deploy_agent_gateway.json`
+- overall status: `passed`
+- live PDP gate: `passed`
+- product intel gate: `passed`
+- identity gate: `passed`
+- similar gate: `passed`
+- similar count: 5
+
+Tinted Coconut Lip Balm:
+
+- artifacts:
+  - `wave81_tinted_coconut_lip_balm_pdp_quality_after_deploy_agent_gateway.json`
+  - `wave81_tinted_readiness_after_deploy.json`
+- production DB readiness: passed for the row; product intel displayable/high-quality, variants ready, identity variant axes present
+- public `find_similar_products`: passed
+- similar count: 6
+- public `get_pdp_v2`: still returns `Product not found` for both external id and signature id modes
+
+Conclusion:
+
+- Wave81 similar-underfill runtime fix is deployed and validated.
+- The remaining Tinted issue is no longer similar underfill. It is a separate public PDP resolver/variant-line lookup issue for `ext_c840771410198f627d75673a` / `sig_ab0548c0101059f42676a642`.
