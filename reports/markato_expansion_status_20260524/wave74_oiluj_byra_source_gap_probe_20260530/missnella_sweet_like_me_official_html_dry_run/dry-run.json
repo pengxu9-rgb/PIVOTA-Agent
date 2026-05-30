@@ -1,0 +1,37 @@
+{
+  "generated_at": "2026-05-30T02:28:10.041Z",
+  "dry_run": true,
+  "market": "US",
+  "summary": {
+    "scanned": 1,
+    "dry_run": 0,
+    "updated": 0,
+    "skipped": 1,
+    "failed": 0,
+    "by_field": {}
+  },
+  "results": [
+    {
+      "external_product_id": "ext_6f491538dbf9a790b66cf269",
+      "title": "‘Sweet Like Me’ Roll On Perfume",
+      "domain": "missnella.com",
+      "url": "https://www.missnella.com/products/sweet-like-me-roll-on-oil-perfume",
+      "host": "missnella.com",
+      "status": "skipped",
+      "patch_keys": [],
+      "http_status": 503,
+      "final_url": "https://www.missnella.com/products/sweet-like-me-roll-on-oil-perfume",
+      "extracted_summary": {
+        "ingredients_chars": 0,
+        "how_to_chars": 0,
+        "details_sections_count": 0,
+        "variant_count": 0,
+        "review_count": 0,
+        "rating": 0,
+        "review_preview_count": 0,
+        "review_preview_samples": []
+      },
+      "reason": "no_official_html_fields"
+    }
+  ]
+}

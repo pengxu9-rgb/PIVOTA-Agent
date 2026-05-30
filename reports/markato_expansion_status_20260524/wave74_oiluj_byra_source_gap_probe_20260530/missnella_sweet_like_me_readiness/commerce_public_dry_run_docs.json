@@ -1,0 +1,66 @@
+{
+  "generated_at": "2026-05-30T02:28:11.407Z",
+  "market": "US",
+  "include_non_public": false,
+  "docs_built": 1,
+  "source_build_failures": [],
+  "docs": [
+    {
+      "doc_id": "sellable:sig_add4f97931e964edbb1a2b67",
+      "sellable_item_group_id": "sig_add4f97931e964edbb1a2b67",
+      "product_line_id": "pl_3430b94067792ec97cd69187",
+      "review_family_id": "rf_3430b94067792ec97cd69187",
+      "brand_name": "Miss Nella",
+      "category_paths": [
+        "Fragrance"
+      ],
+      "market": "US",
+      "availability_state": "available",
+      "publish_state": "public",
+      "title": "‘Sweet Like Me’ Roll On Perfume",
+      "subtitle": "Miss Nella's Sweet Like Me roll-on perfume features a tropical mango scent that's sunny, fruity, and exotic! With its playful, skin-friendly formula and easy roll-on design, it's perfect for little ones who love a burst of sweet, sunny fragrance all day long. 🌞🥭✨",
+      "variant_axes": {
+        "multi_variant": false
+      },
+      "size": null,
+      "shade": null,
+      "pack": null,
+      "hero_media": {
+        "url": "https://cdn.shopify.com/s/files/1/2219/3831/files/MN-Lifestyle-Perfume-Sweet-Like-Me-00005.jpg?v=1772554503",
+        "source_kind": "catalog",
+        "source_tier": "catalog"
+      },
+      "preview_media": [
+        "https://cdn.shopify.com/s/files/1/2219/3831/files/MN-Lifestyle-Perfume-Sweet-Like-Me-00005.jpg?v=1772554503",
+        "https://cdn.shopify.com/s/files/1/2219/3831/files/10-WEB.jpg?v=1772554503",
+        "https://cdn.shopify.com/s/files/1/2219/3831/files/MN-1500x1500-Listings-Perfume-Sweet-like-me-1_2_-WEB.jpg?v=1772554503",
+        "https://cdn.shopify.com/s/files/1/2219/3831/files/9-WEB.jpg?v=1772554503",
+        "https://cdn.shopify.com/s/files/1/2219/3831/files/MN-1500x1500-Listings-Perfume-Sweet-Like-Me_3_-WEB.jpg?v=1772554503",
+        "https://cdn.shopify.com/s/files/1/2219/3831/files/MN-1500x1500-Listings-Perfume-Sweet-like-me-1_3_-WEB.jpg?v=1772554503",
+        "https://cdn.shopify.com/s/files/1/2219/3831/files/MN-1500x1500-Listings-Perfumes-2-WEB_46390223-8aaa-44df-be89-5d88287bbe5f.jpg?v=1772554503"
+      ],
+      "price_min": 10.3,
+      "price_max": 10.3,
+      "default_offer_id": "external_seed:ext_6f491538dbf9a790b66cf269",
+      "internal_offer_exists": false,
+      "external_offer_exists": true,
+      "pivota_insight_status": "available",
+      "pivota_insight_summary": "‘Sweet Like Me’ Roll On Perfume is a fine fragrance from Miss Nella.",
+      "quality_score": null,
+      "browse_score": null,
+      "facet_tokens": [
+        "Miss Nella",
+        "Fragrance"
+      ],
+      "sort_keys": {
+        "price_min": 10.3,
+        "price_max": 10.3,
+        "updated_at": null
+      },
+      "updated_at": null,
+      "source_refs": [
+        "external_seed:ext_6f491538dbf9a790b66cf269"
+      ]
+    }
+  ]
+}
