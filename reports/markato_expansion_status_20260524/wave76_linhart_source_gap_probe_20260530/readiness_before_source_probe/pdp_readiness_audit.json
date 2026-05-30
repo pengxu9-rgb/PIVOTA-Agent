@@ -1,0 +1,302 @@
+{
+  "generated_at": "2026-05-30T02:52:54.269Z",
+  "options": {
+    "market": "US",
+    "includeAttached": true,
+    "domain": null,
+    "externalProductIds": [
+      "ext_aa24dcd6cf3888a68f222281",
+      "ext_e795b1a17f6222e44dfb3dfd"
+    ],
+    "limit": 20000,
+    "sampleLimit": 10,
+    "checkpointDir": "/Users/pengchydan/dev/_worktrees/pivota-agent-markato-wave25-786-20260527/reports/markato_expansion_status_20260524/wave76_linhart_source_gap_probe_20260530/readiness_before_source_probe/pdp_readiness_checkpoint",
+    "checkpointMode": "domain",
+    "resume": false,
+    "force": false,
+    "continueOnError": true,
+    "pageSize": 500,
+    "format": "json"
+  },
+  "warnings": [],
+  "summary": {
+    "scanned": 2,
+    "by_market": {
+      "US": 2
+    },
+    "by_domain": [
+      {
+        "key": "linhart.nyc",
+        "count": 2
+      }
+    ],
+    "by_product_family": [
+      {
+        "key": "single_formula",
+        "count": 1
+      },
+      {
+        "key": "unknown_product",
+        "count": 1
+      }
+    ],
+    "coverage": {
+      "missing_inci": 2,
+      "missing_active_raw": 2,
+      "missing_details": 1,
+      "missing_how_to": 2,
+      "missing_faq": 2
+    },
+    "pivota_insights": {
+      "direct": {
+        "displayable": 2,
+        "high_quality_ready": 2,
+        "missing_kb": 0,
+        "not_displayable": 0
+      },
+      "effective": {
+        "displayable": 2,
+        "high_quality_ready": 2,
+        "missing_kb": 0,
+        "not_displayable": 0,
+        "borrowed_from_sibling": 0
+      },
+      "effective_issues": [],
+      "effective_issue_domains": [],
+      "quality_state": [
+        {
+          "key": "reviewed",
+          "count": 2
+        }
+      ],
+      "evidence_profile": [
+        {
+          "key": "official_pdp_reviewed_line",
+          "count": 2
+        }
+      ],
+      "samples": {}
+    },
+    "active_ingredients": {
+      "regulatory_expected": 0,
+      "hero_expected": 0,
+      "any_active_items": 0,
+      "status": [
+        {
+          "key": "not_expected_missing",
+          "count": 2
+        }
+      ],
+      "issues": [],
+      "issue_domains": [],
+      "source_origin": [
+        {
+          "key": "none",
+          "count": 2
+        }
+      ],
+      "samples": {}
+    },
+    "variants": {
+      "status": [
+        {
+          "key": "no_visible_variant_axis",
+          "count": 1
+        },
+        {
+          "key": "ready",
+          "count": 1
+        }
+      ],
+      "issues": [],
+      "issue_domains": [],
+      "samples": {}
+    }
+  },
+  "rows": [
+    {
+      "seed_id": "eps_8d86fcc560e731fa5cb4d323",
+      "external_product_id": "ext_aa24dcd6cf3888a68f222281",
+      "market": "US",
+      "domain": "linhart.nyc",
+      "title": "Linämel Toothpaste",
+      "canonical_url": "https://linhart.nyc/products/linamel-toothpaste",
+      "product_family": "unknown_product",
+      "product_line_id": null,
+      "pivota_insights": {
+        "direct": {
+          "product_id": "ext_aa24dcd6cf3888a68f222281",
+          "kb_key": "product:ext_aa24dcd6cf3888a68f222281",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "official_pdp_reviewed_line",
+          "has_card_highlight": true
+        },
+        "effective": {
+          "product_id": "ext_aa24dcd6cf3888a68f222281",
+          "kb_key": "product:ext_aa24dcd6cf3888a68f222281",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "official_pdp_reviewed_line",
+          "has_card_highlight": true
+        },
+        "product_line_id": null,
+        "borrowed_from_sibling": false
+      },
+      "active_ingredients": {
+        "status": "not_expected_missing",
+        "issues": [],
+        "regulatory_expected": false,
+        "hero_expected": false,
+        "active_items": [],
+        "source_origin": "none",
+        "source_quality_status": "blocked",
+        "coverage": {
+          "details_sections_count": 0,
+          "faq_count": 0,
+          "how_to_chars": 0,
+          "inci_chars": 0,
+          "active_ingredients_chars": 0,
+          "inci_applicability_status": "",
+          "ingredient_review_status": "",
+          "ingredient_remediation_action": "",
+          "bundle_component_refs_count": 0,
+          "effective_inci_chars": 0,
+          "inci_borrowed_from_product_id": ""
+        },
+        "invalid_fragments": [],
+        "suppressed_reason": "no_authoritative_source"
+      },
+      "variants": {
+        "status": "ready",
+        "issues": [],
+        "visible_variant_rows": 1,
+        "examples": {
+          "identity_option_visible": [],
+          "wrong_axis_for_category": [],
+          "makeup_shade_missing_visual": [],
+          "size_value_generic_axis": [],
+          "default_option_size_evidence_missing_axis": [],
+          "identity_default_title_axis": []
+        }
+      },
+      "coverage": {
+        "details_sections_count": 0,
+        "faq_count": 0,
+        "how_to_chars": 0,
+        "inci_chars": 0,
+        "active_ingredients_chars": 0,
+        "inci_applicability_status": "",
+        "ingredient_review_status": "",
+        "ingredient_remediation_action": "",
+        "bundle_component_refs_count": 0,
+        "effective_inci_chars": 0,
+        "inci_borrowed_from_product_id": ""
+      }
+    },
+    {
+      "seed_id": "eps_4c232e29f2cd60197f645b1a",
+      "external_product_id": "ext_e795b1a17f6222e44dfb3dfd",
+      "market": "US",
+      "domain": "linhart.nyc",
+      "title": "Tooth Whitener Gel",
+      "canonical_url": "https://linhart.nyc/products/toth-whitener-gel-1",
+      "product_family": "single_formula",
+      "product_line_id": null,
+      "pivota_insights": {
+        "direct": {
+          "product_id": "ext_e795b1a17f6222e44dfb3dfd",
+          "kb_key": "product:ext_e795b1a17f6222e44dfb3dfd",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "official_pdp_reviewed_line",
+          "has_card_highlight": true
+        },
+        "effective": {
+          "product_id": "ext_e795b1a17f6222e44dfb3dfd",
+          "kb_key": "product:ext_e795b1a17f6222e44dfb3dfd",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "official_pdp_reviewed_line",
+          "has_card_highlight": true
+        },
+        "product_line_id": null,
+        "borrowed_from_sibling": false
+      },
+      "active_ingredients": {
+        "status": "not_expected_missing",
+        "issues": [],
+        "regulatory_expected": false,
+        "hero_expected": false,
+        "active_items": [],
+        "source_origin": "none",
+        "source_quality_status": "blocked",
+        "coverage": {
+          "details_sections_count": 10,
+          "faq_count": 0,
+          "how_to_chars": 0,
+          "inci_chars": 0,
+          "active_ingredients_chars": 0,
+          "inci_applicability_status": "",
+          "ingredient_review_status": "",
+          "ingredient_remediation_action": "",
+          "bundle_component_refs_count": 0,
+          "effective_inci_chars": 0,
+          "inci_borrowed_from_product_id": ""
+        },
+        "invalid_fragments": [],
+        "suppressed_reason": "no_authoritative_source"
+      },
+      "variants": {
+        "status": "no_visible_variant_axis",
+        "issues": [],
+        "visible_variant_rows": 0,
+        "examples": {
+          "identity_option_visible": [],
+          "wrong_axis_for_category": [],
+          "makeup_shade_missing_visual": [],
+          "size_value_generic_axis": [],
+          "default_option_size_evidence_missing_axis": [],
+          "identity_default_title_axis": []
+        }
+      },
+      "coverage": {
+        "details_sections_count": 10,
+        "faq_count": 0,
+        "how_to_chars": 0,
+        "inci_chars": 0,
+        "active_ingredients_chars": 0,
+        "inci_applicability_status": "",
+        "ingredient_review_status": "",
+        "ingredient_remediation_action": "",
+        "bundle_component_refs_count": 0,
+        "effective_inci_chars": 0,
+        "inci_borrowed_from_product_id": ""
+      }
+    }
+  ]
+}
