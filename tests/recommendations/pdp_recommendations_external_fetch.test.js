@@ -3851,6 +3851,175 @@ describe('RecommendationEngine external candidate fetch', () => {
     expect(result.items.map((item) => item.product_id)).not.toContain('ext_eye_liner');
   });
 
+  test('recommend treats lip-category balm and stick candidates as lip treatment matches', async () => {
+    const { recommend, _internals } = require('../../src/services/RecommendationEngine');
+    _internals.resetCache();
+
+    expect(_internals.getSimilarIntentFamilyFromText('Lip Glowy Balm')).toBe('lip_treatment');
+    expect(_internals.getSimilarIntentFamilyFromText('Lip Moisturising Stick')).toBe('lip_treatment');
+
+    const result = await recommend({
+      pdp_product: {
+        merchant_id: 'external_seed',
+        product_id: 'ext_coconut_tinted_lip_balm',
+        title: 'TINTED COCONUT LIP BALM',
+        brand: 'COCONUT MATTER',
+        category: 'Lip Treatment',
+        product_type: 'Lip Treatment',
+        category_path: 'beauty/skincare/lip',
+        semantic_vertical: 'skincare',
+        price: 19,
+        currency: 'USD',
+        inventory_quantity: 10,
+        status: 'active',
+        source: 'external_seed',
+      },
+      k: 6,
+      options: {
+        debug: true,
+        no_cache: true,
+        internal_candidates: [],
+        external_candidates: [
+          {
+            merchant_id: 'external_seed',
+            product_id: 'ext_coconut_clear_lip_care',
+            title: 'CLEAR LIP CARE',
+            brand: 'COCONUT MATTER',
+            category: 'Lip Treatment',
+            product_type: 'Lip Treatment',
+            category_path: 'beauty/skincare/lip',
+            semantic_vertical: 'skincare',
+            price: 25,
+            currency: 'USD',
+            inventory_quantity: 10,
+            status: 'active',
+            source: 'external_seed',
+          },
+          {
+            merchant_id: 'external_seed',
+            product_id: 'ext_pixi_rose_lip_nourisher',
+            title: '+Rose Lip Nourisher',
+            brand: 'PIXI BEAUTY',
+            category: 'Lip Care',
+            product_type: 'Lip Care',
+            category_path: 'beauty/skincare/lip',
+            semantic_vertical: 'skincare',
+            price: 10,
+            currency: 'USD',
+            inventory_quantity: 10,
+            status: 'active',
+            source: 'external_seed',
+          },
+          {
+            merchant_id: 'external_seed',
+            product_id: 'ext_laneige_lip_glowy_balm',
+            title: 'Lip Glowy Balm',
+            brand: 'LANEIGE US',
+            category: 'lip',
+            product_type: 'lip',
+            category_path: 'beauty/skincare/lip',
+            semantic_vertical: 'skincare',
+            price: 19,
+            currency: 'USD',
+            inventory_quantity: 10,
+            status: 'active',
+            source: 'external_seed',
+          },
+          {
+            merchant_id: 'external_seed',
+            product_id: 'ext_haruharu_peptide_glowy_balm',
+            title: 'Peptide Glowy Balm',
+            brand: 'Haruharu Wonder',
+            category: 'lip',
+            product_type: 'lip',
+            category_path: 'beauty/skincare/lip',
+            semantic_vertical: 'skincare',
+            price: 14,
+            currency: 'USD',
+            inventory_quantity: 10,
+            status: 'active',
+            source: 'external_seed',
+          },
+          {
+            merchant_id: 'external_seed',
+            product_id: 'ext_jurlique_rose_love_balm',
+            title: 'Rose Love Balm',
+            brand: 'Jurlique',
+            category: 'lip',
+            product_type: 'lip',
+            category_path: 'beauty/skincare/lip',
+            semantic_vertical: 'skincare',
+            price: 20,
+            currency: 'USD',
+            inventory_quantity: 10,
+            status: 'active',
+            source: 'external_seed',
+          },
+          {
+            merchant_id: 'external_seed',
+            product_id: 'ext_nuxe_lip_moisturising_stick',
+            title: 'Lip Moisturising Stick',
+            brand: 'NUXE',
+            category: 'lip',
+            product_type: 'lip',
+            category_path: 'beauty/skincare/lip',
+            semantic_vertical: 'skincare',
+            price: 9.2,
+            currency: 'USD',
+            inventory_quantity: 10,
+            status: 'active',
+            source: 'external_seed',
+          },
+          {
+            merchant_id: 'external_seed',
+            product_id: 'ext_lip_trio',
+            title: 'Pout Preserve Petites Mini Lip Trio',
+            brand: 'Olehenriksen',
+            category: 'lip',
+            product_type: 'lip',
+            category_path: 'beauty/skincare/lip',
+            semantic_vertical: 'skincare',
+            price: 29,
+            currency: 'USD',
+            inventory_quantity: 10,
+            status: 'active',
+            source: 'external_seed',
+          },
+          {
+            merchant_id: 'external_seed',
+            product_id: 'ext_eye_liner',
+            title: 'Waterproof Eye Liner',
+            brand: 'COCONUT MATTER',
+            category: 'Eyeliner',
+            product_type: 'Eyeliner',
+            category_path: 'beauty/makeup/eyes/eyeliner',
+            semantic_vertical: 'makeup',
+            price: 14,
+            currency: 'USD',
+            inventory_quantity: 10,
+            status: 'active',
+            source: 'external_seed',
+          },
+        ],
+      },
+    });
+
+    expect(result.debug?.fetch_strategy?.base_intent_family).toBe('lip_treatment');
+    expect(result.metadata.similar_status).toBe('ready');
+    expect(result.items.map((item) => item.product_id)).toEqual(
+      expect.arrayContaining([
+        'ext_coconut_clear_lip_care',
+        'ext_pixi_rose_lip_nourisher',
+        'ext_laneige_lip_glowy_balm',
+        'ext_haruharu_peptide_glowy_balm',
+        'ext_jurlique_rose_love_balm',
+        'ext_nuxe_lip_moisturising_stick',
+      ]),
+    );
+    expect(result.items.map((item) => item.product_id)).not.toContain('ext_lip_trio');
+    expect(result.items.map((item) => item.product_id)).not.toContain('ext_eye_liner');
+  });
+
   test('recommend rescues stale skincare serum categorization for lip serum PDPs', async () => {
     const { recommend, _internals } = require('../../src/services/RecommendationEngine');
     _internals.resetCache();
