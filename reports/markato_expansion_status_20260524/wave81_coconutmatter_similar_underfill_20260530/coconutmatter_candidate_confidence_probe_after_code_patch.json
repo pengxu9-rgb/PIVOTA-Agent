@@ -1,0 +1,2113 @@
+{
+  "generated_at": "2026-05-30T04:52:47.661Z",
+  "targets": [
+    {
+      "external_product_id": "ext_c840771410198f627d75673a",
+      "base": {
+        "product_id": "ext_c840771410198f627d75673a",
+        "merchant_id": "external_seed",
+        "title": "TINTED COCONUT LIP BALM",
+        "brand": "COCONUT MATTER",
+        "category": "Lip Treatment",
+        "product_type": "Lip Treatment",
+        "category_path": "beauty/skincare/lip",
+        "price_amount": 19,
+        "vertical": "skincare",
+        "intent_title_family": "lip_treatment",
+        "image_url_present": true,
+        "availability": "in_stock",
+        "leaf_category": "lip",
+        "parent_category": "skincare",
+        "semantic": {
+          "vertical": "skincare",
+          "vertical_inferred": false,
+          "signal_strength": 3,
+          "rescue_applied": true,
+          "rescue_fields": [
+            "brand",
+            "category",
+            "category_path",
+            "title",
+            "description",
+            "price",
+            "currency",
+            "availability",
+            "image",
+            "canonical_url",
+            "destination_url",
+            "domain"
+          ]
+        },
+        "category_path_hint": "beauty/skincare/lip",
+        "intent_family_hint": "lip_treatment"
+      },
+      "catalog_fetch_stats": {
+        "source": "catalog_products",
+        "catalog_only": true,
+        "safe_limit": 18,
+        "min_focused_candidates": 12,
+        "brand_hint": "coconut matter",
+        "category_hint": "lip",
+        "category_path_hint": "beauty/skincare/lip",
+        "vertical_hint": "skincare",
+        "intent_family_hint": "lip_treatment",
+        "source_merchant_hint": "external_seed",
+        "overfetch_multiplier": 1,
+        "timed_out": false,
+        "aborted": false,
+        "query_roundtrip_mode": "single_query",
+        "returned_count": 11
+      },
+      "catalog_candidate_count_excluding_base": 11,
+      "aggregate_pick": {
+        "accepted": true,
+        "accepted_items": [
+          {
+            "product_id": "ext_8982e4384c3bd70a5718c899",
+            "merchant_id": "external_seed",
+            "title": "CLEAR LIP CARE",
+            "brand": "COCONUT MATTER",
+            "category": "Lip Treatment",
+            "product_type": "Lip Treatment",
+            "category_path": "beauty/skincare/lip",
+            "price_amount": 25,
+            "vertical": "skincare",
+            "intent_title_family": "lip_treatment",
+            "image_url_present": true,
+            "availability": "in_stock"
+          },
+          {
+            "product_id": "ext_548e2ce796238ef8bff7c55e",
+            "merchant_id": "external_seed",
+            "title": "Lip Glowy Balm",
+            "brand": "LANEIGE US",
+            "category": "lip",
+            "product_type": "lip",
+            "category_path": "beauty/skincare/lip",
+            "price_amount": 19,
+            "vertical": "skincare",
+            "intent_title_family": "lip_treatment",
+            "image_url_present": true,
+            "availability": "in_stock"
+          },
+          {
+            "product_id": "ext_e53323db1be3e421e9a4ee38",
+            "merchant_id": "external_seed",
+            "title": "Rose Love Balm",
+            "brand": "Jurlique",
+            "category": "lip",
+            "product_type": "lip",
+            "category_path": "beauty/skincare/lip",
+            "price_amount": 20,
+            "vertical": "skincare",
+            "intent_title_family": null,
+            "image_url_present": true,
+            "availability": "in_stock"
+          },
+          {
+            "product_id": "ext_67b5e1c1d9656f40fc369795",
+            "merchant_id": "external_seed",
+            "title": "+Rose Lip Nourisher",
+            "brand": "PIXI BEAUTY",
+            "category": "Lip Care",
+            "product_type": "Lip Care",
+            "category_path": "beauty/skincare/lip",
+            "price_amount": 10,
+            "vertical": "skincare",
+            "intent_title_family": "lip_treatment",
+            "image_url_present": true,
+            "availability": "in_stock"
+          },
+          {
+            "product_id": "ext_b5e8da63c9a7246bab51a945",
+            "merchant_id": "external_seed",
+            "title": "Lip Moisturising Stick",
+            "brand": "NUXE",
+            "category": "lip",
+            "product_type": "lip",
+            "category_path": "beauty/skincare/lip",
+            "price_amount": 9.2,
+            "vertical": "skincare",
+            "intent_title_family": "lip_treatment",
+            "image_url_present": true,
+            "availability": "in_stock"
+          }
+        ],
+        "metadata": {
+          "similar_confidence": "medium",
+          "low_confidence": true,
+          "low_confidence_reason_codes": [
+            "UNDERFILL_FOR_QUALITY"
+          ],
+          "similar_status": "underfilled",
+          "retrieval_mix": {
+            "internal": 0,
+            "external": 5
+          },
+          "fallback_policy": {
+            "visible_fallbacks_enabled": false,
+            "broad_title_layer_enabled": false,
+            "blocked_visible_fallbacks": [
+              "external_recent",
+              "recent_views_history_fallback",
+              "title_token_overlap",
+              "category_title_like",
+              "global_recent_internal"
+            ]
+          },
+          "base_semantic": {
+            "brand": "coconut matter",
+            "vertical": "makeup",
+            "inferred": false,
+            "signal_strength": 3,
+            "ready_min_count": 6
+          }
+        },
+        "debug": {
+          "layers": {
+            "L2": 1,
+            "L3": 2,
+            "L3E": 2
+          },
+          "candidates_total": 5,
+          "filters": {
+            "by_vertical": 0,
+            "by_confidence": 3,
+            "by_external_brand_authority": 0,
+            "by_pdp_quality": 0
+          },
+          "confidence": {
+            "high": 3,
+            "medium": 2,
+            "low": 0
+          },
+          "base": {
+            "product_id": "ext_c840771410198f627d75673a",
+            "merchant_id": "external_seed",
+            "brand": "coconut matter",
+            "leaf_category": "lip",
+            "parent_category": "skincare",
+            "price_amount": 19,
+            "currency": "USD",
+            "is_external": true,
+            "vertical": "makeup"
+          }
+        }
+      },
+      "candidate_results": [
+        {
+          "candidate": {
+            "product_id": "ext_5ee1a11f6b1f780816beb545",
+            "merchant_id": "external_seed",
+            "title": "Pout Preserve Petites Mini Lip Trio",
+            "brand": "Olehenriksen",
+            "category": "lip",
+            "product_type": "lip",
+            "category_path": "beauty/skincare/lip",
+            "price_amount": 29,
+            "vertical": "skincare",
+            "intent_title_family": null,
+            "image_url_present": true,
+            "availability": "in_stock"
+          },
+          "solo_pick": {
+            "accepted": false,
+            "accepted_items": [],
+            "metadata": {
+              "similar_confidence": "low",
+              "low_confidence": true,
+              "low_confidence_reason_codes": [
+                "UNDERFILL_FOR_QUALITY"
+              ],
+              "similar_status": "empty",
+              "retrieval_mix": {
+                "internal": 0,
+                "external": 0
+              },
+              "fallback_policy": {
+                "visible_fallbacks_enabled": false,
+                "broad_title_layer_enabled": false,
+                "blocked_visible_fallbacks": [
+                  "external_recent",
+                  "recent_views_history_fallback",
+                  "title_token_overlap",
+                  "category_title_like",
+                  "global_recent_internal"
+                ]
+              },
+              "base_semantic": {
+                "brand": "coconut matter",
+                "vertical": "makeup",
+                "inferred": false,
+                "signal_strength": 3,
+                "ready_min_count": 1
+              }
+            },
+            "debug": {
+              "layers": {},
+              "candidates_total": 0,
+              "filters": {
+                "by_vertical": 0,
+                "by_confidence": 1,
+                "by_external_brand_authority": 0,
+                "by_pdp_quality": 0
+              },
+              "confidence": {
+                "high": 0,
+                "medium": 0,
+                "low": 0
+              },
+              "base": {
+                "product_id": "ext_c840771410198f627d75673a",
+                "merchant_id": "external_seed",
+                "brand": "coconut matter",
+                "leaf_category": "lip",
+                "parent_category": "skincare",
+                "price_amount": 19,
+                "currency": "USD",
+                "is_external": true,
+                "vertical": "makeup"
+              }
+            }
+          }
+        },
+        {
+          "candidate": {
+            "product_id": "ext_c62275061e9026916bbba57e",
+            "merchant_id": "external_seed",
+            "title": "Choose Your +Hydra LipTreat Trio",
+            "brand": "PIXI BEAUTY",
+            "category": "lip",
+            "product_type": "lip",
+            "category_path": "beauty/skincare/lip",
+            "price_amount": 19,
+            "vertical": "skincare",
+            "intent_title_family": "lip_treatment",
+            "image_url_present": true,
+            "availability": "in_stock"
+          },
+          "solo_pick": {
+            "accepted": false,
+            "accepted_items": [],
+            "metadata": {
+              "similar_confidence": "low",
+              "low_confidence": true,
+              "low_confidence_reason_codes": [
+                "UNDERFILL_FOR_QUALITY"
+              ],
+              "similar_status": "empty",
+              "retrieval_mix": {
+                "internal": 0,
+                "external": 0
+              },
+              "fallback_policy": {
+                "visible_fallbacks_enabled": false,
+                "broad_title_layer_enabled": false,
+                "blocked_visible_fallbacks": [
+                  "external_recent",
+                  "recent_views_history_fallback",
+                  "title_token_overlap",
+                  "category_title_like",
+                  "global_recent_internal"
+                ]
+              },
+              "base_semantic": {
+                "brand": "coconut matter",
+                "vertical": "makeup",
+                "inferred": false,
+                "signal_strength": 3,
+                "ready_min_count": 1
+              }
+            },
+            "debug": {
+              "layers": {},
+              "candidates_total": 0,
+              "filters": {
+                "by_vertical": 0,
+                "by_confidence": 1,
+                "by_external_brand_authority": 0,
+                "by_pdp_quality": 0
+              },
+              "confidence": {
+                "high": 0,
+                "medium": 0,
+                "low": 0
+              },
+              "base": {
+                "product_id": "ext_c840771410198f627d75673a",
+                "merchant_id": "external_seed",
+                "brand": "coconut matter",
+                "leaf_category": "lip",
+                "parent_category": "skincare",
+                "price_amount": 19,
+                "currency": "USD",
+                "is_external": true,
+                "vertical": "makeup"
+              }
+            }
+          }
+        },
+        {
+          "candidate": {
+            "product_id": "ext_8982e4384c3bd70a5718c899",
+            "merchant_id": "external_seed",
+            "title": "CLEAR LIP CARE",
+            "brand": "COCONUT MATTER",
+            "category": "Lip Treatment",
+            "product_type": "Lip Treatment",
+            "category_path": "beauty/skincare/lip",
+            "price_amount": 25,
+            "vertical": "skincare",
+            "intent_title_family": "lip_treatment",
+            "image_url_present": true,
+            "availability": "in_stock"
+          },
+          "solo_pick": {
+            "accepted": true,
+            "accepted_items": [
+              {
+                "product_id": "ext_8982e4384c3bd70a5718c899",
+                "merchant_id": "external_seed",
+                "title": "CLEAR LIP CARE",
+                "brand": "COCONUT MATTER",
+                "category": "Lip Treatment",
+                "product_type": "Lip Treatment",
+                "category_path": "beauty/skincare/lip",
+                "price_amount": 25,
+                "vertical": "skincare",
+                "intent_title_family": "lip_treatment",
+                "image_url_present": true,
+                "availability": "in_stock"
+              }
+            ],
+            "metadata": {
+              "similar_confidence": "high",
+              "low_confidence": false,
+              "low_confidence_reason_codes": [],
+              "similar_status": "ready",
+              "retrieval_mix": {
+                "internal": 0,
+                "external": 1
+              },
+              "fallback_policy": {
+                "visible_fallbacks_enabled": false,
+                "broad_title_layer_enabled": false,
+                "blocked_visible_fallbacks": [
+                  "external_recent",
+                  "recent_views_history_fallback",
+                  "title_token_overlap",
+                  "category_title_like",
+                  "global_recent_internal"
+                ]
+              },
+              "base_semantic": {
+                "brand": "coconut matter",
+                "vertical": "makeup",
+                "inferred": false,
+                "signal_strength": 3,
+                "ready_min_count": 1
+              }
+            },
+            "debug": {
+              "layers": {
+                "L2": 1
+              },
+              "candidates_total": 1,
+              "filters": {
+                "by_vertical": 0,
+                "by_confidence": 0,
+                "by_external_brand_authority": 0,
+                "by_pdp_quality": 0
+              },
+              "confidence": {
+                "high": 1,
+                "medium": 0,
+                "low": 0
+              },
+              "base": {
+                "product_id": "ext_c840771410198f627d75673a",
+                "merchant_id": "external_seed",
+                "brand": "coconut matter",
+                "leaf_category": "lip",
+                "parent_category": "skincare",
+                "price_amount": 19,
+                "currency": "USD",
+                "is_external": true,
+                "vertical": "makeup"
+              }
+            }
+          }
+        },
+        {
+          "candidate": {
+            "product_id": "ext_548e2ce796238ef8bff7c55e",
+            "merchant_id": "external_seed",
+            "title": "Lip Glowy Balm",
+            "brand": "LANEIGE US",
+            "category": "lip",
+            "product_type": "lip",
+            "category_path": "beauty/skincare/lip",
+            "price_amount": 19,
+            "vertical": "skincare",
+            "intent_title_family": "lip_treatment",
+            "image_url_present": true,
+            "availability": "in_stock"
+          },
+          "solo_pick": {
+            "accepted": true,
+            "accepted_items": [
+              {
+                "product_id": "ext_548e2ce796238ef8bff7c55e",
+                "merchant_id": "external_seed",
+                "title": "Lip Glowy Balm",
+                "brand": "LANEIGE US",
+                "category": "lip",
+                "product_type": "lip",
+                "category_path": "beauty/skincare/lip",
+                "price_amount": 19,
+                "vertical": "skincare",
+                "intent_title_family": "lip_treatment",
+                "image_url_present": true,
+                "availability": "in_stock"
+              }
+            ],
+            "metadata": {
+              "similar_confidence": "high",
+              "low_confidence": false,
+              "low_confidence_reason_codes": [],
+              "similar_status": "ready",
+              "retrieval_mix": {
+                "internal": 0,
+                "external": 1
+              },
+              "fallback_policy": {
+                "visible_fallbacks_enabled": false,
+                "broad_title_layer_enabled": false,
+                "blocked_visible_fallbacks": [
+                  "external_recent",
+                  "recent_views_history_fallback",
+                  "title_token_overlap",
+                  "category_title_like",
+                  "global_recent_internal"
+                ]
+              },
+              "base_semantic": {
+                "brand": "coconut matter",
+                "vertical": "makeup",
+                "inferred": false,
+                "signal_strength": 3,
+                "ready_min_count": 1
+              }
+            },
+            "debug": {
+              "layers": {
+                "L3": 1
+              },
+              "candidates_total": 1,
+              "filters": {
+                "by_vertical": 0,
+                "by_confidence": 0,
+                "by_external_brand_authority": 0,
+                "by_pdp_quality": 0
+              },
+              "confidence": {
+                "high": 1,
+                "medium": 0,
+                "low": 0
+              },
+              "base": {
+                "product_id": "ext_c840771410198f627d75673a",
+                "merchant_id": "external_seed",
+                "brand": "coconut matter",
+                "leaf_category": "lip",
+                "parent_category": "skincare",
+                "price_amount": 19,
+                "currency": "USD",
+                "is_external": true,
+                "vertical": "makeup"
+              }
+            }
+          }
+        },
+        {
+          "candidate": {
+            "product_id": "ext_67b5e1c1d9656f40fc369795",
+            "merchant_id": "external_seed",
+            "title": "+Rose Lip Nourisher",
+            "brand": "PIXI BEAUTY",
+            "category": "Lip Care",
+            "product_type": "Lip Care",
+            "category_path": "beauty/skincare/lip",
+            "price_amount": 10,
+            "vertical": "skincare",
+            "intent_title_family": "lip_treatment",
+            "image_url_present": true,
+            "availability": "in_stock"
+          },
+          "solo_pick": {
+            "accepted": true,
+            "accepted_items": [
+              {
+                "product_id": "ext_67b5e1c1d9656f40fc369795",
+                "merchant_id": "external_seed",
+                "title": "+Rose Lip Nourisher",
+                "brand": "PIXI BEAUTY",
+                "category": "Lip Care",
+                "product_type": "Lip Care",
+                "category_path": "beauty/skincare/lip",
+                "price_amount": 10,
+                "vertical": "skincare",
+                "intent_title_family": "lip_treatment",
+                "image_url_present": true,
+                "availability": "in_stock"
+              }
+            ],
+            "metadata": {
+              "similar_confidence": "medium",
+              "low_confidence": false,
+              "low_confidence_reason_codes": [],
+              "similar_status": "ready",
+              "retrieval_mix": {
+                "internal": 0,
+                "external": 1
+              },
+              "fallback_policy": {
+                "visible_fallbacks_enabled": false,
+                "broad_title_layer_enabled": false,
+                "blocked_visible_fallbacks": [
+                  "external_recent",
+                  "recent_views_history_fallback",
+                  "title_token_overlap",
+                  "category_title_like",
+                  "global_recent_internal"
+                ]
+              },
+              "base_semantic": {
+                "brand": "coconut matter",
+                "vertical": "makeup",
+                "inferred": false,
+                "signal_strength": 3,
+                "ready_min_count": 1
+              }
+            },
+            "debug": {
+              "layers": {
+                "L3E": 1
+              },
+              "candidates_total": 1,
+              "filters": {
+                "by_vertical": 0,
+                "by_confidence": 0,
+                "by_external_brand_authority": 0,
+                "by_pdp_quality": 0
+              },
+              "confidence": {
+                "high": 0,
+                "medium": 1,
+                "low": 0
+              },
+              "base": {
+                "product_id": "ext_c840771410198f627d75673a",
+                "merchant_id": "external_seed",
+                "brand": "coconut matter",
+                "leaf_category": "lip",
+                "parent_category": "skincare",
+                "price_amount": 19,
+                "currency": "USD",
+                "is_external": true,
+                "vertical": "makeup"
+              }
+            }
+          }
+        },
+        {
+          "candidate": {
+            "product_id": "ext_9afe700d963979054cbd575d",
+            "merchant_id": "external_seed",
+            "title": "Repulpant Lèvres Hyaluronic",
+            "brand": "PATYKA",
+            "category": "lip",
+            "product_type": "lip",
+            "category_path": "beauty/skincare/lip",
+            "price_amount": 35,
+            "vertical": "skincare",
+            "intent_title_family": null,
+            "image_url_present": true,
+            "availability": "out_of_stock"
+          },
+          "solo_pick": {
+            "accepted": false,
+            "accepted_items": [],
+            "metadata": {
+              "similar_confidence": "low",
+              "low_confidence": true,
+              "low_confidence_reason_codes": [
+                "UNDERFILL_FOR_QUALITY"
+              ],
+              "similar_status": "empty",
+              "retrieval_mix": {
+                "internal": 0,
+                "external": 0
+              },
+              "fallback_policy": {
+                "visible_fallbacks_enabled": false,
+                "broad_title_layer_enabled": false,
+                "blocked_visible_fallbacks": [
+                  "external_recent",
+                  "recent_views_history_fallback",
+                  "title_token_overlap",
+                  "category_title_like",
+                  "global_recent_internal"
+                ]
+              },
+              "base_semantic": {
+                "brand": "coconut matter",
+                "vertical": "makeup",
+                "inferred": false,
+                "signal_strength": 3,
+                "ready_min_count": 1
+              }
+            },
+            "debug": {
+              "layers": {},
+              "candidates_total": 0,
+              "filters": {
+                "by_vertical": 0,
+                "by_confidence": 0,
+                "by_external_brand_authority": 0,
+                "by_pdp_quality": 0
+              },
+              "confidence": {
+                "high": 0,
+                "medium": 0,
+                "low": 0
+              },
+              "base": {
+                "product_id": "ext_c840771410198f627d75673a",
+                "merchant_id": "external_seed",
+                "brand": "coconut matter",
+                "leaf_category": "lip",
+                "parent_category": "skincare",
+                "price_amount": 19,
+                "currency": "USD",
+                "is_external": true,
+                "vertical": "makeup"
+              }
+            }
+          }
+        },
+        {
+          "candidate": {
+            "product_id": "ext_b5e8da63c9a7246bab51a945",
+            "merchant_id": "external_seed",
+            "title": "Lip Moisturising Stick",
+            "brand": "NUXE",
+            "category": "lip",
+            "product_type": "lip",
+            "category_path": "beauty/skincare/lip",
+            "price_amount": 9.2,
+            "vertical": "skincare",
+            "intent_title_family": "lip_treatment",
+            "image_url_present": true,
+            "availability": "in_stock"
+          },
+          "solo_pick": {
+            "accepted": true,
+            "accepted_items": [
+              {
+                "product_id": "ext_b5e8da63c9a7246bab51a945",
+                "merchant_id": "external_seed",
+                "title": "Lip Moisturising Stick",
+                "brand": "NUXE",
+                "category": "lip",
+                "product_type": "lip",
+                "category_path": "beauty/skincare/lip",
+                "price_amount": 9.2,
+                "vertical": "skincare",
+                "intent_title_family": "lip_treatment",
+                "image_url_present": true,
+                "availability": "in_stock"
+              }
+            ],
+            "metadata": {
+              "similar_confidence": "medium",
+              "low_confidence": false,
+              "low_confidence_reason_codes": [],
+              "similar_status": "ready",
+              "retrieval_mix": {
+                "internal": 0,
+                "external": 1
+              },
+              "fallback_policy": {
+                "visible_fallbacks_enabled": false,
+                "broad_title_layer_enabled": false,
+                "blocked_visible_fallbacks": [
+                  "external_recent",
+                  "recent_views_history_fallback",
+                  "title_token_overlap",
+                  "category_title_like",
+                  "global_recent_internal"
+                ]
+              },
+              "base_semantic": {
+                "brand": "coconut matter",
+                "vertical": "makeup",
+                "inferred": false,
+                "signal_strength": 3,
+                "ready_min_count": 1
+              }
+            },
+            "debug": {
+              "layers": {
+                "L3E": 1
+              },
+              "candidates_total": 1,
+              "filters": {
+                "by_vertical": 0,
+                "by_confidence": 0,
+                "by_external_brand_authority": 0,
+                "by_pdp_quality": 0
+              },
+              "confidence": {
+                "high": 0,
+                "medium": 1,
+                "low": 0
+              },
+              "base": {
+                "product_id": "ext_c840771410198f627d75673a",
+                "merchant_id": "external_seed",
+                "brand": "coconut matter",
+                "leaf_category": "lip",
+                "parent_category": "skincare",
+                "price_amount": 19,
+                "currency": "USD",
+                "is_external": true,
+                "vertical": "makeup"
+              }
+            }
+          }
+        },
+        {
+          "candidate": {
+            "product_id": "ext_d5851a90036b48abc99f9ba5",
+            "merchant_id": "external_seed",
+            "title": "Mini LipLift Max Peony Bloom",
+            "brand": "PIXI BEAUTY",
+            "category": "lip",
+            "product_type": "lip",
+            "category_path": "beauty/skincare/lip",
+            "price_amount": 5,
+            "vertical": "skincare",
+            "intent_title_family": "lip_treatment",
+            "image_url_present": true,
+            "availability": "out_of_stock"
+          },
+          "solo_pick": {
+            "accepted": false,
+            "accepted_items": [],
+            "metadata": {
+              "similar_confidence": "low",
+              "low_confidence": true,
+              "low_confidence_reason_codes": [
+                "UNDERFILL_FOR_QUALITY"
+              ],
+              "similar_status": "empty",
+              "retrieval_mix": {
+                "internal": 0,
+                "external": 0
+              },
+              "fallback_policy": {
+                "visible_fallbacks_enabled": false,
+                "broad_title_layer_enabled": false,
+                "blocked_visible_fallbacks": [
+                  "external_recent",
+                  "recent_views_history_fallback",
+                  "title_token_overlap",
+                  "category_title_like",
+                  "global_recent_internal"
+                ]
+              },
+              "base_semantic": {
+                "brand": "coconut matter",
+                "vertical": "makeup",
+                "inferred": false,
+                "signal_strength": 3,
+                "ready_min_count": 1
+              }
+            },
+            "debug": {
+              "layers": {},
+              "candidates_total": 0,
+              "filters": {
+                "by_vertical": 0,
+                "by_confidence": 0,
+                "by_external_brand_authority": 0,
+                "by_pdp_quality": 0
+              },
+              "confidence": {
+                "high": 0,
+                "medium": 0,
+                "low": 0
+              },
+              "base": {
+                "product_id": "ext_c840771410198f627d75673a",
+                "merchant_id": "external_seed",
+                "brand": "coconut matter",
+                "leaf_category": "lip",
+                "parent_category": "skincare",
+                "price_amount": 19,
+                "currency": "USD",
+                "is_external": true,
+                "vertical": "makeup"
+              }
+            }
+          }
+        },
+        {
+          "candidate": {
+            "product_id": "ext_e53323db1be3e421e9a4ee38",
+            "merchant_id": "external_seed",
+            "title": "Rose Love Balm",
+            "brand": "Jurlique",
+            "category": "lip",
+            "product_type": "lip",
+            "category_path": "beauty/skincare/lip",
+            "price_amount": 20,
+            "vertical": "skincare",
+            "intent_title_family": null,
+            "image_url_present": true,
+            "availability": "in_stock"
+          },
+          "solo_pick": {
+            "accepted": true,
+            "accepted_items": [
+              {
+                "product_id": "ext_e53323db1be3e421e9a4ee38",
+                "merchant_id": "external_seed",
+                "title": "Rose Love Balm",
+                "brand": "Jurlique",
+                "category": "lip",
+                "product_type": "lip",
+                "category_path": "beauty/skincare/lip",
+                "price_amount": 20,
+                "vertical": "skincare",
+                "intent_title_family": null,
+                "image_url_present": true,
+                "availability": "in_stock"
+              }
+            ],
+            "metadata": {
+              "similar_confidence": "high",
+              "low_confidence": false,
+              "low_confidence_reason_codes": [],
+              "similar_status": "ready",
+              "retrieval_mix": {
+                "internal": 0,
+                "external": 1
+              },
+              "fallback_policy": {
+                "visible_fallbacks_enabled": false,
+                "broad_title_layer_enabled": false,
+                "blocked_visible_fallbacks": [
+                  "external_recent",
+                  "recent_views_history_fallback",
+                  "title_token_overlap",
+                  "category_title_like",
+                  "global_recent_internal"
+                ]
+              },
+              "base_semantic": {
+                "brand": "coconut matter",
+                "vertical": "makeup",
+                "inferred": false,
+                "signal_strength": 3,
+                "ready_min_count": 1
+              }
+            },
+            "debug": {
+              "layers": {
+                "L3": 1
+              },
+              "candidates_total": 1,
+              "filters": {
+                "by_vertical": 0,
+                "by_confidence": 0,
+                "by_external_brand_authority": 0,
+                "by_pdp_quality": 0
+              },
+              "confidence": {
+                "high": 1,
+                "medium": 0,
+                "low": 0
+              },
+              "base": {
+                "product_id": "ext_c840771410198f627d75673a",
+                "merchant_id": "external_seed",
+                "brand": "coconut matter",
+                "leaf_category": "lip",
+                "parent_category": "skincare",
+                "price_amount": 19,
+                "currency": "USD",
+                "is_external": true,
+                "vertical": "makeup"
+              }
+            }
+          }
+        },
+        {
+          "candidate": {
+            "product_id": "ext_e703e9fd8af228189d2caa0a",
+            "merchant_id": "external_seed",
+            "title": "Peptide Glowy Balm",
+            "brand": "Haruharu Wonder",
+            "category": "lip",
+            "product_type": "lip",
+            "category_path": "beauty/skincare/lip",
+            "price_amount": 14,
+            "vertical": "skincare",
+            "intent_title_family": null,
+            "image_url_present": true,
+            "availability": "in_stock"
+          },
+          "solo_pick": {
+            "accepted": false,
+            "accepted_items": [],
+            "metadata": {
+              "similar_confidence": "low",
+              "low_confidence": true,
+              "low_confidence_reason_codes": [
+                "UNDERFILL_FOR_QUALITY"
+              ],
+              "similar_status": "empty",
+              "retrieval_mix": {
+                "internal": 0,
+                "external": 0
+              },
+              "fallback_policy": {
+                "visible_fallbacks_enabled": false,
+                "broad_title_layer_enabled": false,
+                "blocked_visible_fallbacks": [
+                  "external_recent",
+                  "recent_views_history_fallback",
+                  "title_token_overlap",
+                  "category_title_like",
+                  "global_recent_internal"
+                ]
+              },
+              "base_semantic": {
+                "brand": "coconut matter",
+                "vertical": "makeup",
+                "inferred": false,
+                "signal_strength": 3,
+                "ready_min_count": 1
+              }
+            },
+            "debug": {
+              "layers": {},
+              "candidates_total": 0,
+              "filters": {
+                "by_vertical": 0,
+                "by_confidence": 1,
+                "by_external_brand_authority": 0,
+                "by_pdp_quality": 0
+              },
+              "confidence": {
+                "high": 0,
+                "medium": 0,
+                "low": 0
+              },
+              "base": {
+                "product_id": "ext_c840771410198f627d75673a",
+                "merchant_id": "external_seed",
+                "brand": "coconut matter",
+                "leaf_category": "lip",
+                "parent_category": "skincare",
+                "price_amount": 19,
+                "currency": "USD",
+                "is_external": true,
+                "vertical": "makeup"
+              }
+            }
+          }
+        },
+        {
+          "candidate": {
+            "product_id": "ext_f495a58dbc9861b6bc91b38e",
+            "merchant_id": "external_seed",
+            "title": "Lip Barrier Relief",
+            "brand": "KraveBeauty",
+            "category": "lip",
+            "product_type": "lip",
+            "category_path": "beauty/skincare/lip",
+            "price_amount": 14,
+            "vertical": "skincare",
+            "intent_title_family": "lip_treatment",
+            "image_url_present": true,
+            "availability": "out_of_stock"
+          },
+          "solo_pick": {
+            "accepted": false,
+            "accepted_items": [],
+            "metadata": {
+              "similar_confidence": "low",
+              "low_confidence": true,
+              "low_confidence_reason_codes": [
+                "UNDERFILL_FOR_QUALITY"
+              ],
+              "similar_status": "empty",
+              "retrieval_mix": {
+                "internal": 0,
+                "external": 0
+              },
+              "fallback_policy": {
+                "visible_fallbacks_enabled": false,
+                "broad_title_layer_enabled": false,
+                "blocked_visible_fallbacks": [
+                  "external_recent",
+                  "recent_views_history_fallback",
+                  "title_token_overlap",
+                  "category_title_like",
+                  "global_recent_internal"
+                ]
+              },
+              "base_semantic": {
+                "brand": "coconut matter",
+                "vertical": "makeup",
+                "inferred": false,
+                "signal_strength": 3,
+                "ready_min_count": 1
+              }
+            },
+            "debug": {
+              "layers": {},
+              "candidates_total": 0,
+              "filters": {
+                "by_vertical": 0,
+                "by_confidence": 0,
+                "by_external_brand_authority": 0,
+                "by_pdp_quality": 0
+              },
+              "confidence": {
+                "high": 0,
+                "medium": 0,
+                "low": 0
+              },
+              "base": {
+                "product_id": "ext_c840771410198f627d75673a",
+                "merchant_id": "external_seed",
+                "brand": "coconut matter",
+                "leaf_category": "lip",
+                "parent_category": "skincare",
+                "price_amount": 19,
+                "currency": "USD",
+                "is_external": true,
+                "vertical": "makeup"
+              }
+            }
+          }
+        }
+      ]
+    },
+    {
+      "external_product_id": "ext_8982e4384c3bd70a5718c899",
+      "base": {
+        "product_id": "ext_8982e4384c3bd70a5718c899",
+        "merchant_id": "external_seed",
+        "title": "CLEAR LIP CARE",
+        "brand": "COCONUT MATTER",
+        "category": "Lip Treatment",
+        "product_type": "Lip Treatment",
+        "category_path": "beauty/skincare/lip",
+        "price_amount": 25,
+        "vertical": "skincare",
+        "intent_title_family": "lip_treatment",
+        "image_url_present": true,
+        "availability": "in_stock",
+        "leaf_category": "lip",
+        "parent_category": "skincare",
+        "semantic": {
+          "vertical": "skincare",
+          "vertical_inferred": false,
+          "signal_strength": 3,
+          "rescue_applied": true,
+          "rescue_fields": [
+            "brand",
+            "category",
+            "category_path",
+            "title",
+            "description",
+            "price",
+            "currency",
+            "availability",
+            "image",
+            "canonical_url",
+            "destination_url",
+            "domain"
+          ]
+        },
+        "category_path_hint": "beauty/skincare/lip",
+        "intent_family_hint": "lip_treatment"
+      },
+      "catalog_fetch_stats": {
+        "source": "catalog_products",
+        "catalog_only": true,
+        "safe_limit": 18,
+        "min_focused_candidates": 12,
+        "brand_hint": "coconut matter",
+        "category_hint": "lip",
+        "category_path_hint": "beauty/skincare/lip",
+        "vertical_hint": "skincare",
+        "intent_family_hint": "lip_treatment",
+        "source_merchant_hint": "external_seed",
+        "overfetch_multiplier": 1,
+        "timed_out": false,
+        "aborted": false,
+        "query_roundtrip_mode": "single_query",
+        "returned_count": 11
+      },
+      "catalog_candidate_count_excluding_base": 10,
+      "aggregate_pick": {
+        "accepted": true,
+        "accepted_items": [
+          {
+            "product_id": "ext_e53323db1be3e421e9a4ee38",
+            "merchant_id": "external_seed",
+            "title": "Rose Love Balm",
+            "brand": "Jurlique",
+            "category": "lip",
+            "product_type": "lip",
+            "category_path": "beauty/skincare/lip",
+            "price_amount": 20,
+            "vertical": "skincare",
+            "intent_title_family": null,
+            "image_url_present": true,
+            "availability": "in_stock"
+          },
+          {
+            "product_id": "ext_548e2ce796238ef8bff7c55e",
+            "merchant_id": "external_seed",
+            "title": "Lip Glowy Balm",
+            "brand": "LANEIGE US",
+            "category": "lip",
+            "product_type": "lip",
+            "category_path": "beauty/skincare/lip",
+            "price_amount": 19,
+            "vertical": "skincare",
+            "intent_title_family": "lip_treatment",
+            "image_url_present": true,
+            "availability": "in_stock"
+          },
+          {
+            "product_id": "ext_67b5e1c1d9656f40fc369795",
+            "merchant_id": "external_seed",
+            "title": "+Rose Lip Nourisher",
+            "brand": "PIXI BEAUTY",
+            "category": "Lip Care",
+            "product_type": "Lip Care",
+            "category_path": "beauty/skincare/lip",
+            "price_amount": 10,
+            "vertical": "skincare",
+            "intent_title_family": "lip_treatment",
+            "image_url_present": true,
+            "availability": "in_stock"
+          },
+          {
+            "product_id": "ext_b5e8da63c9a7246bab51a945",
+            "merchant_id": "external_seed",
+            "title": "Lip Moisturising Stick",
+            "brand": "NUXE",
+            "category": "lip",
+            "product_type": "lip",
+            "category_path": "beauty/skincare/lip",
+            "price_amount": 9.2,
+            "vertical": "skincare",
+            "intent_title_family": "lip_treatment",
+            "image_url_present": true,
+            "availability": "in_stock"
+          }
+        ],
+        "metadata": {
+          "similar_confidence": "medium",
+          "low_confidence": true,
+          "low_confidence_reason_codes": [
+            "UNDERFILL_FOR_QUALITY"
+          ],
+          "similar_status": "underfilled",
+          "retrieval_mix": {
+            "internal": 0,
+            "external": 4
+          },
+          "fallback_policy": {
+            "visible_fallbacks_enabled": false,
+            "broad_title_layer_enabled": false,
+            "blocked_visible_fallbacks": [
+              "external_recent",
+              "recent_views_history_fallback",
+              "title_token_overlap",
+              "category_title_like",
+              "global_recent_internal"
+            ]
+          },
+          "base_semantic": {
+            "brand": "coconut matter",
+            "vertical": "makeup",
+            "inferred": false,
+            "signal_strength": 3,
+            "ready_min_count": 6
+          }
+        },
+        "debug": {
+          "layers": {
+            "L3": 2,
+            "L3E": 2
+          },
+          "candidates_total": 4,
+          "filters": {
+            "by_vertical": 0,
+            "by_confidence": 3,
+            "by_external_brand_authority": 0,
+            "by_pdp_quality": 0
+          },
+          "confidence": {
+            "high": 2,
+            "medium": 2,
+            "low": 0
+          },
+          "base": {
+            "product_id": "ext_8982e4384c3bd70a5718c899",
+            "merchant_id": "external_seed",
+            "brand": "coconut matter",
+            "leaf_category": "lip",
+            "parent_category": "skincare",
+            "price_amount": 25,
+            "currency": "USD",
+            "is_external": true,
+            "vertical": "makeup"
+          }
+        }
+      },
+      "candidate_results": [
+        {
+          "candidate": {
+            "product_id": "ext_5ee1a11f6b1f780816beb545",
+            "merchant_id": "external_seed",
+            "title": "Pout Preserve Petites Mini Lip Trio",
+            "brand": "Olehenriksen",
+            "category": "lip",
+            "product_type": "lip",
+            "category_path": "beauty/skincare/lip",
+            "price_amount": 29,
+            "vertical": "skincare",
+            "intent_title_family": null,
+            "image_url_present": true,
+            "availability": "in_stock"
+          },
+          "solo_pick": {
+            "accepted": false,
+            "accepted_items": [],
+            "metadata": {
+              "similar_confidence": "low",
+              "low_confidence": true,
+              "low_confidence_reason_codes": [
+                "UNDERFILL_FOR_QUALITY"
+              ],
+              "similar_status": "empty",
+              "retrieval_mix": {
+                "internal": 0,
+                "external": 0
+              },
+              "fallback_policy": {
+                "visible_fallbacks_enabled": false,
+                "broad_title_layer_enabled": false,
+                "blocked_visible_fallbacks": [
+                  "external_recent",
+                  "recent_views_history_fallback",
+                  "title_token_overlap",
+                  "category_title_like",
+                  "global_recent_internal"
+                ]
+              },
+              "base_semantic": {
+                "brand": "coconut matter",
+                "vertical": "makeup",
+                "inferred": false,
+                "signal_strength": 3,
+                "ready_min_count": 1
+              }
+            },
+            "debug": {
+              "layers": {},
+              "candidates_total": 0,
+              "filters": {
+                "by_vertical": 0,
+                "by_confidence": 1,
+                "by_external_brand_authority": 0,
+                "by_pdp_quality": 0
+              },
+              "confidence": {
+                "high": 0,
+                "medium": 0,
+                "low": 0
+              },
+              "base": {
+                "product_id": "ext_8982e4384c3bd70a5718c899",
+                "merchant_id": "external_seed",
+                "brand": "coconut matter",
+                "leaf_category": "lip",
+                "parent_category": "skincare",
+                "price_amount": 25,
+                "currency": "USD",
+                "is_external": true,
+                "vertical": "makeup"
+              }
+            }
+          }
+        },
+        {
+          "candidate": {
+            "product_id": "ext_c62275061e9026916bbba57e",
+            "merchant_id": "external_seed",
+            "title": "Choose Your +Hydra LipTreat Trio",
+            "brand": "PIXI BEAUTY",
+            "category": "lip",
+            "product_type": "lip",
+            "category_path": "beauty/skincare/lip",
+            "price_amount": 19,
+            "vertical": "skincare",
+            "intent_title_family": "lip_treatment",
+            "image_url_present": true,
+            "availability": "in_stock"
+          },
+          "solo_pick": {
+            "accepted": false,
+            "accepted_items": [],
+            "metadata": {
+              "similar_confidence": "low",
+              "low_confidence": true,
+              "low_confidence_reason_codes": [
+                "UNDERFILL_FOR_QUALITY"
+              ],
+              "similar_status": "empty",
+              "retrieval_mix": {
+                "internal": 0,
+                "external": 0
+              },
+              "fallback_policy": {
+                "visible_fallbacks_enabled": false,
+                "broad_title_layer_enabled": false,
+                "blocked_visible_fallbacks": [
+                  "external_recent",
+                  "recent_views_history_fallback",
+                  "title_token_overlap",
+                  "category_title_like",
+                  "global_recent_internal"
+                ]
+              },
+              "base_semantic": {
+                "brand": "coconut matter",
+                "vertical": "makeup",
+                "inferred": false,
+                "signal_strength": 3,
+                "ready_min_count": 1
+              }
+            },
+            "debug": {
+              "layers": {},
+              "candidates_total": 0,
+              "filters": {
+                "by_vertical": 0,
+                "by_confidence": 1,
+                "by_external_brand_authority": 0,
+                "by_pdp_quality": 0
+              },
+              "confidence": {
+                "high": 0,
+                "medium": 0,
+                "low": 0
+              },
+              "base": {
+                "product_id": "ext_8982e4384c3bd70a5718c899",
+                "merchant_id": "external_seed",
+                "brand": "coconut matter",
+                "leaf_category": "lip",
+                "parent_category": "skincare",
+                "price_amount": 25,
+                "currency": "USD",
+                "is_external": true,
+                "vertical": "makeup"
+              }
+            }
+          }
+        },
+        {
+          "candidate": {
+            "product_id": "ext_548e2ce796238ef8bff7c55e",
+            "merchant_id": "external_seed",
+            "title": "Lip Glowy Balm",
+            "brand": "LANEIGE US",
+            "category": "lip",
+            "product_type": "lip",
+            "category_path": "beauty/skincare/lip",
+            "price_amount": 19,
+            "vertical": "skincare",
+            "intent_title_family": "lip_treatment",
+            "image_url_present": true,
+            "availability": "in_stock"
+          },
+          "solo_pick": {
+            "accepted": true,
+            "accepted_items": [
+              {
+                "product_id": "ext_548e2ce796238ef8bff7c55e",
+                "merchant_id": "external_seed",
+                "title": "Lip Glowy Balm",
+                "brand": "LANEIGE US",
+                "category": "lip",
+                "product_type": "lip",
+                "category_path": "beauty/skincare/lip",
+                "price_amount": 19,
+                "vertical": "skincare",
+                "intent_title_family": "lip_treatment",
+                "image_url_present": true,
+                "availability": "in_stock"
+              }
+            ],
+            "metadata": {
+              "similar_confidence": "high",
+              "low_confidence": false,
+              "low_confidence_reason_codes": [],
+              "similar_status": "ready",
+              "retrieval_mix": {
+                "internal": 0,
+                "external": 1
+              },
+              "fallback_policy": {
+                "visible_fallbacks_enabled": false,
+                "broad_title_layer_enabled": false,
+                "blocked_visible_fallbacks": [
+                  "external_recent",
+                  "recent_views_history_fallback",
+                  "title_token_overlap",
+                  "category_title_like",
+                  "global_recent_internal"
+                ]
+              },
+              "base_semantic": {
+                "brand": "coconut matter",
+                "vertical": "makeup",
+                "inferred": false,
+                "signal_strength": 3,
+                "ready_min_count": 1
+              }
+            },
+            "debug": {
+              "layers": {
+                "L3": 1
+              },
+              "candidates_total": 1,
+              "filters": {
+                "by_vertical": 0,
+                "by_confidence": 0,
+                "by_external_brand_authority": 0,
+                "by_pdp_quality": 0
+              },
+              "confidence": {
+                "high": 1,
+                "medium": 0,
+                "low": 0
+              },
+              "base": {
+                "product_id": "ext_8982e4384c3bd70a5718c899",
+                "merchant_id": "external_seed",
+                "brand": "coconut matter",
+                "leaf_category": "lip",
+                "parent_category": "skincare",
+                "price_amount": 25,
+                "currency": "USD",
+                "is_external": true,
+                "vertical": "makeup"
+              }
+            }
+          }
+        },
+        {
+          "candidate": {
+            "product_id": "ext_67b5e1c1d9656f40fc369795",
+            "merchant_id": "external_seed",
+            "title": "+Rose Lip Nourisher",
+            "brand": "PIXI BEAUTY",
+            "category": "Lip Care",
+            "product_type": "Lip Care",
+            "category_path": "beauty/skincare/lip",
+            "price_amount": 10,
+            "vertical": "skincare",
+            "intent_title_family": "lip_treatment",
+            "image_url_present": true,
+            "availability": "in_stock"
+          },
+          "solo_pick": {
+            "accepted": true,
+            "accepted_items": [
+              {
+                "product_id": "ext_67b5e1c1d9656f40fc369795",
+                "merchant_id": "external_seed",
+                "title": "+Rose Lip Nourisher",
+                "brand": "PIXI BEAUTY",
+                "category": "Lip Care",
+                "product_type": "Lip Care",
+                "category_path": "beauty/skincare/lip",
+                "price_amount": 10,
+                "vertical": "skincare",
+                "intent_title_family": "lip_treatment",
+                "image_url_present": true,
+                "availability": "in_stock"
+              }
+            ],
+            "metadata": {
+              "similar_confidence": "medium",
+              "low_confidence": false,
+              "low_confidence_reason_codes": [],
+              "similar_status": "ready",
+              "retrieval_mix": {
+                "internal": 0,
+                "external": 1
+              },
+              "fallback_policy": {
+                "visible_fallbacks_enabled": false,
+                "broad_title_layer_enabled": false,
+                "blocked_visible_fallbacks": [
+                  "external_recent",
+                  "recent_views_history_fallback",
+                  "title_token_overlap",
+                  "category_title_like",
+                  "global_recent_internal"
+                ]
+              },
+              "base_semantic": {
+                "brand": "coconut matter",
+                "vertical": "makeup",
+                "inferred": false,
+                "signal_strength": 3,
+                "ready_min_count": 1
+              }
+            },
+            "debug": {
+              "layers": {
+                "L3E": 1
+              },
+              "candidates_total": 1,
+              "filters": {
+                "by_vertical": 0,
+                "by_confidence": 0,
+                "by_external_brand_authority": 0,
+                "by_pdp_quality": 0
+              },
+              "confidence": {
+                "high": 0,
+                "medium": 1,
+                "low": 0
+              },
+              "base": {
+                "product_id": "ext_8982e4384c3bd70a5718c899",
+                "merchant_id": "external_seed",
+                "brand": "coconut matter",
+                "leaf_category": "lip",
+                "parent_category": "skincare",
+                "price_amount": 25,
+                "currency": "USD",
+                "is_external": true,
+                "vertical": "makeup"
+              }
+            }
+          }
+        },
+        {
+          "candidate": {
+            "product_id": "ext_9afe700d963979054cbd575d",
+            "merchant_id": "external_seed",
+            "title": "Repulpant Lèvres Hyaluronic",
+            "brand": "PATYKA",
+            "category": "lip",
+            "product_type": "lip",
+            "category_path": "beauty/skincare/lip",
+            "price_amount": 35,
+            "vertical": "skincare",
+            "intent_title_family": null,
+            "image_url_present": true,
+            "availability": "out_of_stock"
+          },
+          "solo_pick": {
+            "accepted": false,
+            "accepted_items": [],
+            "metadata": {
+              "similar_confidence": "low",
+              "low_confidence": true,
+              "low_confidence_reason_codes": [
+                "UNDERFILL_FOR_QUALITY"
+              ],
+              "similar_status": "empty",
+              "retrieval_mix": {
+                "internal": 0,
+                "external": 0
+              },
+              "fallback_policy": {
+                "visible_fallbacks_enabled": false,
+                "broad_title_layer_enabled": false,
+                "blocked_visible_fallbacks": [
+                  "external_recent",
+                  "recent_views_history_fallback",
+                  "title_token_overlap",
+                  "category_title_like",
+                  "global_recent_internal"
+                ]
+              },
+              "base_semantic": {
+                "brand": "coconut matter",
+                "vertical": "makeup",
+                "inferred": false,
+                "signal_strength": 3,
+                "ready_min_count": 1
+              }
+            },
+            "debug": {
+              "layers": {},
+              "candidates_total": 0,
+              "filters": {
+                "by_vertical": 0,
+                "by_confidence": 0,
+                "by_external_brand_authority": 0,
+                "by_pdp_quality": 0
+              },
+              "confidence": {
+                "high": 0,
+                "medium": 0,
+                "low": 0
+              },
+              "base": {
+                "product_id": "ext_8982e4384c3bd70a5718c899",
+                "merchant_id": "external_seed",
+                "brand": "coconut matter",
+                "leaf_category": "lip",
+                "parent_category": "skincare",
+                "price_amount": 25,
+                "currency": "USD",
+                "is_external": true,
+                "vertical": "makeup"
+              }
+            }
+          }
+        },
+        {
+          "candidate": {
+            "product_id": "ext_b5e8da63c9a7246bab51a945",
+            "merchant_id": "external_seed",
+            "title": "Lip Moisturising Stick",
+            "brand": "NUXE",
+            "category": "lip",
+            "product_type": "lip",
+            "category_path": "beauty/skincare/lip",
+            "price_amount": 9.2,
+            "vertical": "skincare",
+            "intent_title_family": "lip_treatment",
+            "image_url_present": true,
+            "availability": "in_stock"
+          },
+          "solo_pick": {
+            "accepted": true,
+            "accepted_items": [
+              {
+                "product_id": "ext_b5e8da63c9a7246bab51a945",
+                "merchant_id": "external_seed",
+                "title": "Lip Moisturising Stick",
+                "brand": "NUXE",
+                "category": "lip",
+                "product_type": "lip",
+                "category_path": "beauty/skincare/lip",
+                "price_amount": 9.2,
+                "vertical": "skincare",
+                "intent_title_family": "lip_treatment",
+                "image_url_present": true,
+                "availability": "in_stock"
+              }
+            ],
+            "metadata": {
+              "similar_confidence": "medium",
+              "low_confidence": false,
+              "low_confidence_reason_codes": [],
+              "similar_status": "ready",
+              "retrieval_mix": {
+                "internal": 0,
+                "external": 1
+              },
+              "fallback_policy": {
+                "visible_fallbacks_enabled": false,
+                "broad_title_layer_enabled": false,
+                "blocked_visible_fallbacks": [
+                  "external_recent",
+                  "recent_views_history_fallback",
+                  "title_token_overlap",
+                  "category_title_like",
+                  "global_recent_internal"
+                ]
+              },
+              "base_semantic": {
+                "brand": "coconut matter",
+                "vertical": "makeup",
+                "inferred": false,
+                "signal_strength": 3,
+                "ready_min_count": 1
+              }
+            },
+            "debug": {
+              "layers": {
+                "L3E": 1
+              },
+              "candidates_total": 1,
+              "filters": {
+                "by_vertical": 0,
+                "by_confidence": 0,
+                "by_external_brand_authority": 0,
+                "by_pdp_quality": 0
+              },
+              "confidence": {
+                "high": 0,
+                "medium": 1,
+                "low": 0
+              },
+              "base": {
+                "product_id": "ext_8982e4384c3bd70a5718c899",
+                "merchant_id": "external_seed",
+                "brand": "coconut matter",
+                "leaf_category": "lip",
+                "parent_category": "skincare",
+                "price_amount": 25,
+                "currency": "USD",
+                "is_external": true,
+                "vertical": "makeup"
+              }
+            }
+          }
+        },
+        {
+          "candidate": {
+            "product_id": "ext_d5851a90036b48abc99f9ba5",
+            "merchant_id": "external_seed",
+            "title": "Mini LipLift Max Peony Bloom",
+            "brand": "PIXI BEAUTY",
+            "category": "lip",
+            "product_type": "lip",
+            "category_path": "beauty/skincare/lip",
+            "price_amount": 5,
+            "vertical": "skincare",
+            "intent_title_family": "lip_treatment",
+            "image_url_present": true,
+            "availability": "out_of_stock"
+          },
+          "solo_pick": {
+            "accepted": false,
+            "accepted_items": [],
+            "metadata": {
+              "similar_confidence": "low",
+              "low_confidence": true,
+              "low_confidence_reason_codes": [
+                "UNDERFILL_FOR_QUALITY"
+              ],
+              "similar_status": "empty",
+              "retrieval_mix": {
+                "internal": 0,
+                "external": 0
+              },
+              "fallback_policy": {
+                "visible_fallbacks_enabled": false,
+                "broad_title_layer_enabled": false,
+                "blocked_visible_fallbacks": [
+                  "external_recent",
+                  "recent_views_history_fallback",
+                  "title_token_overlap",
+                  "category_title_like",
+                  "global_recent_internal"
+                ]
+              },
+              "base_semantic": {
+                "brand": "coconut matter",
+                "vertical": "makeup",
+                "inferred": false,
+                "signal_strength": 3,
+                "ready_min_count": 1
+              }
+            },
+            "debug": {
+              "layers": {},
+              "candidates_total": 0,
+              "filters": {
+                "by_vertical": 0,
+                "by_confidence": 0,
+                "by_external_brand_authority": 0,
+                "by_pdp_quality": 0
+              },
+              "confidence": {
+                "high": 0,
+                "medium": 0,
+                "low": 0
+              },
+              "base": {
+                "product_id": "ext_8982e4384c3bd70a5718c899",
+                "merchant_id": "external_seed",
+                "brand": "coconut matter",
+                "leaf_category": "lip",
+                "parent_category": "skincare",
+                "price_amount": 25,
+                "currency": "USD",
+                "is_external": true,
+                "vertical": "makeup"
+              }
+            }
+          }
+        },
+        {
+          "candidate": {
+            "product_id": "ext_e53323db1be3e421e9a4ee38",
+            "merchant_id": "external_seed",
+            "title": "Rose Love Balm",
+            "brand": "Jurlique",
+            "category": "lip",
+            "product_type": "lip",
+            "category_path": "beauty/skincare/lip",
+            "price_amount": 20,
+            "vertical": "skincare",
+            "intent_title_family": null,
+            "image_url_present": true,
+            "availability": "in_stock"
+          },
+          "solo_pick": {
+            "accepted": true,
+            "accepted_items": [
+              {
+                "product_id": "ext_e53323db1be3e421e9a4ee38",
+                "merchant_id": "external_seed",
+                "title": "Rose Love Balm",
+                "brand": "Jurlique",
+                "category": "lip",
+                "product_type": "lip",
+                "category_path": "beauty/skincare/lip",
+                "price_amount": 20,
+                "vertical": "skincare",
+                "intent_title_family": null,
+                "image_url_present": true,
+                "availability": "in_stock"
+              }
+            ],
+            "metadata": {
+              "similar_confidence": "high",
+              "low_confidence": false,
+              "low_confidence_reason_codes": [],
+              "similar_status": "ready",
+              "retrieval_mix": {
+                "internal": 0,
+                "external": 1
+              },
+              "fallback_policy": {
+                "visible_fallbacks_enabled": false,
+                "broad_title_layer_enabled": false,
+                "blocked_visible_fallbacks": [
+                  "external_recent",
+                  "recent_views_history_fallback",
+                  "title_token_overlap",
+                  "category_title_like",
+                  "global_recent_internal"
+                ]
+              },
+              "base_semantic": {
+                "brand": "coconut matter",
+                "vertical": "makeup",
+                "inferred": false,
+                "signal_strength": 3,
+                "ready_min_count": 1
+              }
+            },
+            "debug": {
+              "layers": {
+                "L3": 1
+              },
+              "candidates_total": 1,
+              "filters": {
+                "by_vertical": 0,
+                "by_confidence": 0,
+                "by_external_brand_authority": 0,
+                "by_pdp_quality": 0
+              },
+              "confidence": {
+                "high": 1,
+                "medium": 0,
+                "low": 0
+              },
+              "base": {
+                "product_id": "ext_8982e4384c3bd70a5718c899",
+                "merchant_id": "external_seed",
+                "brand": "coconut matter",
+                "leaf_category": "lip",
+                "parent_category": "skincare",
+                "price_amount": 25,
+                "currency": "USD",
+                "is_external": true,
+                "vertical": "makeup"
+              }
+            }
+          }
+        },
+        {
+          "candidate": {
+            "product_id": "ext_e703e9fd8af228189d2caa0a",
+            "merchant_id": "external_seed",
+            "title": "Peptide Glowy Balm",
+            "brand": "Haruharu Wonder",
+            "category": "lip",
+            "product_type": "lip",
+            "category_path": "beauty/skincare/lip",
+            "price_amount": 14,
+            "vertical": "skincare",
+            "intent_title_family": null,
+            "image_url_present": true,
+            "availability": "in_stock"
+          },
+          "solo_pick": {
+            "accepted": false,
+            "accepted_items": [],
+            "metadata": {
+              "similar_confidence": "low",
+              "low_confidence": true,
+              "low_confidence_reason_codes": [
+                "UNDERFILL_FOR_QUALITY"
+              ],
+              "similar_status": "empty",
+              "retrieval_mix": {
+                "internal": 0,
+                "external": 0
+              },
+              "fallback_policy": {
+                "visible_fallbacks_enabled": false,
+                "broad_title_layer_enabled": false,
+                "blocked_visible_fallbacks": [
+                  "external_recent",
+                  "recent_views_history_fallback",
+                  "title_token_overlap",
+                  "category_title_like",
+                  "global_recent_internal"
+                ]
+              },
+              "base_semantic": {
+                "brand": "coconut matter",
+                "vertical": "makeup",
+                "inferred": false,
+                "signal_strength": 3,
+                "ready_min_count": 1
+              }
+            },
+            "debug": {
+              "layers": {},
+              "candidates_total": 0,
+              "filters": {
+                "by_vertical": 0,
+                "by_confidence": 1,
+                "by_external_brand_authority": 0,
+                "by_pdp_quality": 0
+              },
+              "confidence": {
+                "high": 0,
+                "medium": 0,
+                "low": 0
+              },
+              "base": {
+                "product_id": "ext_8982e4384c3bd70a5718c899",
+                "merchant_id": "external_seed",
+                "brand": "coconut matter",
+                "leaf_category": "lip",
+                "parent_category": "skincare",
+                "price_amount": 25,
+                "currency": "USD",
+                "is_external": true,
+                "vertical": "makeup"
+              }
+            }
+          }
+        },
+        {
+          "candidate": {
+            "product_id": "ext_f495a58dbc9861b6bc91b38e",
+            "merchant_id": "external_seed",
+            "title": "Lip Barrier Relief",
+            "brand": "KraveBeauty",
+            "category": "lip",
+            "product_type": "lip",
+            "category_path": "beauty/skincare/lip",
+            "price_amount": 14,
+            "vertical": "skincare",
+            "intent_title_family": "lip_treatment",
+            "image_url_present": true,
+            "availability": "out_of_stock"
+          },
+          "solo_pick": {
+            "accepted": false,
+            "accepted_items": [],
+            "metadata": {
+              "similar_confidence": "low",
+              "low_confidence": true,
+              "low_confidence_reason_codes": [
+                "UNDERFILL_FOR_QUALITY"
+              ],
+              "similar_status": "empty",
+              "retrieval_mix": {
+                "internal": 0,
+                "external": 0
+              },
+              "fallback_policy": {
+                "visible_fallbacks_enabled": false,
+                "broad_title_layer_enabled": false,
+                "blocked_visible_fallbacks": [
+                  "external_recent",
+                  "recent_views_history_fallback",
+                  "title_token_overlap",
+                  "category_title_like",
+                  "global_recent_internal"
+                ]
+              },
+              "base_semantic": {
+                "brand": "coconut matter",
+                "vertical": "makeup",
+                "inferred": false,
+                "signal_strength": 3,
+                "ready_min_count": 1
+              }
+            },
+            "debug": {
+              "layers": {},
+              "candidates_total": 0,
+              "filters": {
+                "by_vertical": 0,
+                "by_confidence": 0,
+                "by_external_brand_authority": 0,
+                "by_pdp_quality": 0
+              },
+              "confidence": {
+                "high": 0,
+                "medium": 0,
+                "low": 0
+              },
+              "base": {
+                "product_id": "ext_8982e4384c3bd70a5718c899",
+                "merchant_id": "external_seed",
+                "brand": "coconut matter",
+                "leaf_category": "lip",
+                "parent_category": "skincare",
+                "price_amount": 25,
+                "currency": "USD",
+                "is_external": true,
+                "vertical": "makeup"
+              }
+            }
+          }
+        }
+      ]
+    }
+  ]
+}

@@ -520,6 +520,10 @@ const IDENTITY_COLLAPSE_PROTECTION_CATEGORIES = new Set([
 ]);
 const TITLE_BACKED_SIMILAR_INTENT_FAMILIES = new Set(['face_oil']);
 const LIP_RELATED_SIMILAR_INTENT_FAMILIES = new Set(['lip_oil', 'lip_treatment']);
+const LIP_TREATMENT_DIRECT_TEXT_RE =
+  /\b(?:lip\s+(?:[a-z0-9+&-]+\s+){0,3}(?:barrier|care|cream|gloss|balm|butter|(?:sleep(?:ing)?\s+)?mask|relief|repair|restore|rescue|serum|sleep|soften(?:er|ing)?|treat|treatment|nourish(?:er|ing)?|plump(?:er|ing)?|luminiz(?:er|ers?)?|glow(?:y)?|lift|blush|tint|stain|matt(?:e)?|moisturi[sz](?:er|ing)|stick)|lip(?:gloss|glow|lift|blush|tint|stain|treat|nourish(?:er|ing)?))\b/i;
+const LIP_TREATMENT_CATEGORY_TITLE_RE =
+  /\b(?:balm|butter|care|cream|gloss|glowy|glow|luminiz(?:er|ers?)?|mask|moisturi[sz](?:er|ing)|nourish(?:er|ing)?|plump(?:er|ing)?|relief|repair|restore|rescue|serum|soften(?:er|ing)?|stick|treat|treatment)\b/i;
 
 const SIMILAR_INTENT_FAMILY_RULES = Object.freeze([
   {
@@ -3339,6 +3343,26 @@ function titleIntentMatches(baseFeatures, candidateFeatures) {
   return jaccard(tokenize(baseTitle), tokenize(candidateTitle)) >= 0.18;
 }
 
+function hasLipCategoryHint(features = {}) {
+  const text = normalizeText(
+    [
+      features?.rawCategory,
+      features?.productType,
+      features?.leafCategory,
+      features?.parentCategory,
+    ].filter(Boolean).join(' '),
+  );
+  return /\blips?\b/.test(text);
+}
+
+function titleLooksLikeLipTreatmentFromCategory(features = {}) {
+  const title = normalizeText(features?.normalizedTitle || '');
+  if (!title) return false;
+  if (BEAUTY_ACCESSORY_TITLE_RE.test(title)) return false;
+  if (!hasLipCategoryHint(features)) return false;
+  return LIP_TREATMENT_CATEGORY_TITLE_RE.test(title);
+}
+
 function buildSimilarIntentFamilyTextFromFeatures(features) {
   return [
     features?.normalizedTitle,
@@ -3354,6 +3378,7 @@ function getSimilarIntentFamilyFromText(text) {
   if (!normalized) return '';
   if (BEAUTY_TREATMENT_PATCH_STICKER_RE.test(normalized)) return 'blemish_patch';
   if (BEAUTY_ACCESSORY_TITLE_RE.test(normalized)) return '';
+  if (LIP_TREATMENT_DIRECT_TEXT_RE.test(normalized)) return 'lip_treatment';
   for (const rule of SIMILAR_INTENT_FAMILY_RULES) {
     if (rule.js.test(normalized)) return rule.id;
   }
@@ -3387,6 +3412,9 @@ function getSimilarIntentFamilyFromFeatures(features, { titleOnly = false } = {}
   if (direct) return direct;
   const leaf = normalizeText(features?.leafCategory || '');
   const parent = normalizeText(features?.parentCategory || '');
+  if (titleLooksLikeLipTreatmentFromCategory({ ...features, leafCategory: leaf, parentCategory: parent })) {
+    return 'lip_treatment';
+  }
   if (parent === 'moisturize' && ['cream', 'lotion', 'moisturizer', 'moisturiser'].includes(leaf)) {
     return 'moisturizer';
   }
@@ -3416,6 +3444,17 @@ function getSimilarIntentFamilyFromProduct(product) {
   if (direct) return direct;
   const leaf = getLeafCategory(product);
   const parent = getParentCategory(product);
+  if (
+    titleLooksLikeLipTreatmentFromCategory({
+      normalizedTitle: normalizeText([classifiedProduct?.title, classifiedProduct?.name].filter(Boolean).join(' ')),
+      rawCategory: normalizeText(classifiedProduct?.category || classifiedProduct?.product_type || classifiedProduct?.productType),
+      productType: normalizeText(classifiedProduct?.product_type || classifiedProduct?.productType || classifiedProduct?.category),
+      leafCategory: leaf,
+      parentCategory: parent,
+    })
+  ) {
+    return 'lip_treatment';
+  }
   if (parent === 'moisturize' && ['cream', 'lotion', 'moisturizer', 'moisturiser'].includes(leaf)) {
     return 'moisturizer';
   }
@@ -3749,6 +3788,12 @@ function classifyConfidenceLevel(base, candidate, layerId) {
     const missingCandidateVertical = candidate.features.vertical === UNKNOWN_VERTICAL;
     if (sameKnownVertical && candidate.relDiff != null && candidate.relDiff <= 0.6) return 'medium';
     if (sameKnownVertical && candidate.tokenOverlap >= 0.08) return 'medium';
+    if (
+      hasSharedSimilarIntentFamily(base, candidate.features) &&
+      isLipRelatedSimilarIntentFamily(getSimilarIntentFamilyFromFeatures(base))
+    ) {
+      return 'medium';
+    }
     if (missingCandidateVertical && candidate.relDiff != null && candidate.relDiff <= 0.35) return 'medium';
   }
 

@@ -1,0 +1,61 @@
+{
+  "generated_at": "2026-05-30T04:41:38.919Z",
+  "external_product_ids": [
+    "ext_8982e4384c3bd70a5718c899",
+    "ext_c840771410198f627d75673a"
+  ],
+  "rows": [
+    {
+      "external_product_id": "ext_8982e4384c3bd70a5718c899",
+      "title": "CLEAR LIP CARE",
+      "seed_brand": "COCONUT MATTER",
+      "snapshot_brand": null,
+      "domain": "coconutmatter.com",
+      "market": "US",
+      "canonical_url": "https://coconutmatter.com/products/clear-lip-care",
+      "price_amount": 25,
+      "price_currency": "USD",
+      "seed_category": "Lip Treatment",
+      "seed_product_type": "Lip Treatment",
+      "seed_category_path": "beauty/skincare/lip",
+      "snapshot_category": "Lip Treatment",
+      "snapshot_product_type": "Lip Treatment",
+      "snapshot_category_path": "beauty/skincare/lip",
+      "recall_category": "Lip Treatment",
+      "catalog_category": "Lip Treatment",
+      "catalog_product_type": "Lip Treatment",
+      "catalog_category_path": "beauty/skincare/lip",
+      "catalog_product_family": null,
+      "product_line_id": "pl_9b8329bc5f668e83f25cbd07",
+      "sellable_item_group_id": "sig_2cbeb024c2e87aa7359f3677",
+      "identity_status": "approved",
+      "review_required": false
+    },
+    {
+      "external_product_id": "ext_c840771410198f627d75673a",
+      "title": "TINTED COCONUT LIP BALM",
+      "seed_brand": "COCONUT MATTER",
+      "snapshot_brand": null,
+      "domain": "coconutmatter.com",
+      "market": "US",
+      "canonical_url": "https://coconutmatter.com/products/tinted-coconut-lip-balm",
+      "price_amount": 19,
+      "price_currency": "USD",
+      "seed_category": "Lip Treatment",
+      "seed_product_type": "Lip Treatment",
+      "seed_category_path": "beauty/skincare/lip",
+      "snapshot_category": "Lip Treatment",
+      "snapshot_product_type": "Lip Treatment",
+      "snapshot_category_path": "beauty/skincare/lip",
+      "recall_category": "Lip Treatment",
+      "catalog_category": "Lip Treatment",
+      "catalog_product_type": "Lip Treatment",
+      "catalog_category_path": "beauty/skincare/lip",
+      "catalog_product_family": null,
+      "product_line_id": "pl_b280c2d5a19e59fcfc525550",
+      "sellable_item_group_id": "sig_ab0548c0101059f42676a642",
+      "identity_status": "approved",
+      "review_required": false
+    }
+  ]
+}
