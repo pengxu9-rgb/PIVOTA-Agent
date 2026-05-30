@@ -1,0 +1,125 @@
+{
+  "generated_at": "2026-05-30T11:06:59.245Z",
+  "dry_run": true,
+  "market": "US",
+  "marker": {
+    "contract_version": "external_seed.content_evidence_hold.v1",
+    "updated_at": "2026-05-30T11:06:59.245Z",
+    "status": "hold_for_evidence",
+    "reason": "post_sync_audit_failed_quality_gate",
+    "reason_codes": [
+      "post_sync_audit_failed_quality_gate"
+    ],
+    "evidence": "MASAMI ext_53cf4f0ee46873d280f632db failed similar_underfill after serving repair. Lucamar ext_0836525e72365da8ecbcc3b5 ext_c26547ca63d530592ed62d63 ext_edcf7e510314384ac432b385 failed polluted_product_description polluted_product_details and similar_underfill after serving repair.",
+    "public_serving_ready": false,
+    "content_evidence_ready": false,
+    "review_state": "reviewed"
+  },
+  "summary": {
+    "requested_ids": 4,
+    "scanned": 4,
+    "missing_ids": 0,
+    "catalog_counts": {
+      "products": 4,
+      "skus": 4,
+      "index_rows": 4
+    },
+    "updated": {
+      "external_product_seeds": 0,
+      "catalog_products": 0,
+      "catalog_skus": 0,
+      "index_pipeline_state": 0
+    }
+  },
+  "missing_ids": [],
+  "rows": [
+    {
+      "id": "eps_e2fa8f2dda7a3a9609d84dfa",
+      "external_product_id": "ext_0836525e72365da8ecbcc3b5",
+      "title": "Baa Ram Ewe  Lanolin Skin Balm  120g",
+      "domain": "lucamarskincare.com",
+      "canonical_url": "https://lucamarskincare.com/products/baa-ram-ewe-skin-balm-120-gms",
+      "destination_url": "https://lucamarskincare.com/products/baa-ram-ewe-skin-balm-120-gms",
+      "before": {
+        "status": "active",
+        "availability": "in_stock",
+        "price_amount": 17,
+        "price_currency": "USD"
+      },
+      "after": {
+        "status": "active",
+        "availability": "in_stock",
+        "price_amount": 17,
+        "price_currency": "USD",
+        "serving_eligible": false,
+        "blocker_code": "content_evidence_hold"
+      }
+    },
+    {
+      "id": "eps_07f3261f7a8de9fe306209a1",
+      "external_product_id": "ext_53cf4f0ee46873d280f632db",
+      "title": "Mekabu Hydrating Shine Serum",
+      "domain": "lovemasami.com",
+      "canonical_url": "https://lovemasami.com/products/mekabu-serum",
+      "destination_url": "https://lovemasami.com/products/mekabu-serum",
+      "before": {
+        "status": "active",
+        "availability": "in_stock",
+        "price_amount": 34,
+        "price_currency": "USD"
+      },
+      "after": {
+        "status": "active",
+        "availability": "in_stock",
+        "price_amount": 34,
+        "price_currency": "USD",
+        "serving_eligible": false,
+        "blocker_code": "content_evidence_hold"
+      }
+    },
+    {
+      "id": "eps_4345b0af311a4e604dc9eb17",
+      "external_product_id": "ext_c26547ca63d530592ed62d63",
+      "title": "Baa Ram Ewe  Lanolin Skin Balm  120g UNSCENTED",
+      "domain": "lucamarskincare.com",
+      "canonical_url": "https://lucamarskincare.com/products/baa-ram-ewe-lanolin-skin-balm-120g-uncented",
+      "destination_url": "https://lucamarskincare.com/products/baa-ram-ewe-lanolin-skin-balm-120g-uncented",
+      "before": {
+        "status": "active",
+        "availability": "in_stock",
+        "price_amount": 17,
+        "price_currency": "USD"
+      },
+      "after": {
+        "status": "active",
+        "availability": "in_stock",
+        "price_amount": 17,
+        "price_currency": "USD",
+        "serving_eligible": false,
+        "blocker_code": "content_evidence_hold"
+      }
+    },
+    {
+      "id": "eps_f4b6e76f5ce353e8980d61fd",
+      "external_product_id": "ext_edcf7e510314384ac432b385",
+      "title": "Baa Ram Ewe Lanolin Skin Balm 50g",
+      "domain": "lucamarskincare.com",
+      "canonical_url": "https://lucamarskincare.com/products/baa-ram-ewe-skin-balm-50-gms",
+      "destination_url": "https://lucamarskincare.com/products/baa-ram-ewe-skin-balm-50-gms",
+      "before": {
+        "status": "active",
+        "availability": "in_stock",
+        "price_amount": 12,
+        "price_currency": "USD"
+      },
+      "after": {
+        "status": "active",
+        "availability": "in_stock",
+        "price_amount": 12,
+        "price_currency": "USD",
+        "serving_eligible": false,
+        "blocker_code": "content_evidence_hold"
+      }
+    }
+  ]
+}

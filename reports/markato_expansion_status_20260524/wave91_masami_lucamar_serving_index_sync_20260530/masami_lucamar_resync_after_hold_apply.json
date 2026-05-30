@@ -1,0 +1,965 @@
+{
+  "generated_at": "2026-05-30T11:08:18.864Z",
+  "mode": "apply",
+  "batch_size": null,
+  "bootstrap_reviewed_identity_live_read": false,
+  "requested_ids": 4,
+  "fetched_rows": 4,
+  "mirror_rows": 4,
+  "planned_sku_rows": 4,
+  "planned_offer_rows": 4,
+  "planned_index_state_rows": 4,
+  "missing_ids": [],
+  "skipped": [],
+  "applied": {
+    "mode": "apply",
+    "existing_before": {
+      "catalog_products": 4,
+      "catalog_skus": 4,
+      "catalog_offers": 4,
+      "product_group_members": 4
+    },
+    "stale_delete_preview": {
+      "current_sku_rows": 4,
+      "current_offer_rows": 4,
+      "planned_stale_sku_deletes": 0,
+      "planned_stale_offer_deletes": 0,
+      "sample_stale_skus": [],
+      "sample_stale_offers": []
+    },
+    "batch_size": null,
+    "batches": 1,
+    "audit_reasons": {
+      "no_strong_identifier": 4
+    },
+    "product_upserts": 4,
+    "sku_upserts": 4,
+    "offer_upserts": 4,
+    "group_member_upserts": 4,
+    "group_member_preserved_existing_merges": 0,
+    "seed_attachment_updates": 0,
+    "index_state_upserts": 4,
+    "identity_live_read_updates": 0,
+    "catalog_row_trust_upserts": 4,
+    "stale_offer_deletes": 0,
+    "stale_sku_deletes": 0
+  },
+  "sample": [
+    {
+      "external_product_id": "ext_53cf4f0ee46873d280f632db",
+      "product_key": "prod::external_seed::external_seed::ext_53cf4f0ee46873d280f632db",
+      "product_group_id": "sig_2b5d9b4dc9941fef121d2f6a",
+      "title": "Mekabu Hydrating Shine Serum",
+      "brand": "MASAMI",
+      "product_type": "Hair Serum",
+      "category": "Hair Serum",
+      "category_path": "beauty/haircare/hair-serum",
+      "canonical_url": "https://lovemasami.com/products/mekabu-serum",
+      "pivota_signature_id": "sig_2b5d9b4dc9941fef121d2f6a",
+      "sku_rows": 1,
+      "first_sku": {
+        "sku_key": "prod::external_seed::external_seed::ext_53cf4f0ee46873d280f632db::sku_74186d9c777bd59b9793",
+        "product_key": "prod::external_seed::external_seed::ext_53cf4f0ee46873d280f632db",
+        "merchant_id": "external_seed",
+        "platform": "external_seed",
+        "source_product_id": "ext_53cf4f0ee46873d280f632db",
+        "source_variant_id": "ext_53cf4f0ee46873d280f632db:19939773513792",
+        "source_domain": "lovemasami.com",
+        "sku": "18600012765341",
+        "barcode": null,
+        "title": "Mekabu Hydrating Shine Serum",
+        "currency": "USD",
+        "image_url": "https://cdn.shopify.com/s/files/1/0138/7901/7536/products/masami-serum-mekabu-hydrating-shine-serum-18600012765341-23627648893084.jpg?v=1756936109",
+        "visible_attributes": {
+          "Size": "1.7oz"
+        },
+        "visible_option_labels": {
+          "Size": "1.7oz"
+        },
+        "ingredient_ids": [],
+        "sku_payload": {
+          "source": "external_product_seeds_mirror_v1",
+          "external_product_id": "ext_53cf4f0ee46873d280f632db",
+          "raw_variant_id": "19939773513792",
+          "source_variant_id": "ext_53cf4f0ee46873d280f632db:19939773513792",
+          "variant_sku": "18600012765341",
+          "barcode": null,
+          "strong_identifier_kind": null,
+          "source_url": "https://lovemasami.com/products/mekabu-serum",
+          "external_redirect_url": "https://lovemasami.com/products/mekabu-serum",
+          "price": "34",
+          "price_amount": 34,
+          "currency": "USD",
+          "availability": "in_stock",
+          "image_url": "https://cdn.shopify.com/s/files/1/0138/7901/7536/products/masami-serum-mekabu-hydrating-shine-serum-18600012765341-23627648893084.jpg?v=1756936109",
+          "swatch_image_url": null,
+          "label_image_url": null,
+          "options": {
+            "Size": "1.7oz"
+          },
+          "raw_variant": {
+            "sku": "18600012765341",
+            "url": "https://lovemasami.com/products/mekabu-serum",
+            "price": "34.00",
+            "stock": "In Stock",
+            "images": [
+              "https://cdn.shopify.com/s/files/1/0138/7901/7536/products/MASAMI_girl_applying_shine_serum.png?v=1756936109",
+              "https://cdn.shopify.com/s/files/1/0138/7901/7536/products/MASAMI_Shine_Serum_straight_hair.jpg?v=1756936109",
+              "https://cdn.shopify.com/s/files/1/0138/7901/7536/products/masami-serum-mekabu-hydrating-shine-serum-18600012765341-23627648893084.jpg?v=1756936109",
+              "https://cdn.shopify.com/s/files/1/0138/7901/7536/products/MASAMI_Shine_Serum_Natural_Curls.jpg?v=1756936109",
+              "https://cdn.shopify.com/s/files/1/0138/7901/7536/products/MASAMI_Shine_Serum_Blonde.jpg?v=1756936109",
+              "https://cdn.shopify.com/s/files/1/0138/7901/7536/products/Mekabu_ingredient.jpg?v=1756936109"
+            ],
+            "currency": "USD",
+            "image_url": "https://cdn.shopify.com/s/files/1/0138/7901/7536/products/masami-serum-mekabu-hydrating-shine-serum-18600012765341-23627648893084.jpg?v=1756936109",
+            "image_urls": [
+              "https://cdn.shopify.com/s/files/1/0138/7901/7536/products/MASAMI_girl_applying_shine_serum.png?v=1756936109",
+              "https://cdn.shopify.com/s/files/1/0138/7901/7536/products/MASAMI_Shine_Serum_straight_hair.jpg?v=1756936109",
+              "https://cdn.shopify.com/s/files/1/0138/7901/7536/products/masami-serum-mekabu-hydrating-shine-serum-18600012765341-23627648893084.jpg?v=1756936109",
+              "https://cdn.shopify.com/s/files/1/0138/7901/7536/products/MASAMI_Shine_Serum_Natural_Curls.jpg?v=1756936109",
+              "https://cdn.shopify.com/s/files/1/0138/7901/7536/products/MASAMI_Shine_Serum_Blonde.jpg?v=1756936109",
+              "https://cdn.shopify.com/s/files/1/0138/7901/7536/products/Mekabu_ingredient.jpg?v=1756936109"
+            ],
+            "variant_id": "19939773513792",
+            "description": "MASAMI Shine Serum, enriched with the Japanese ocean botanical Mekabu, gives even unruly, dull, lifeless, over-processed hair a hydrated, smoothed and nourished look. Our Shine Serum works on virtually every hair type and texture to enhance shine while leaving hair soft and silky. It adds vibrancy to hair color while providing the nutrients necessary for long term nourishment and care. Great for any hair type and texture - anyone who wants salon hair every day. \n\nSize: 1.7oz, now in a glass bottle",
+            "option_name": "Size",
+            "option_value": "1.7oz"
+          }
+        },
+        "readiness_tier": "referral_only"
+      },
+      "first_offer": {
+        "offer_id": "offer:external_seed:c0d80643c865dff22e3ed1cafccfd44a",
+        "sku_key": "prod::external_seed::external_seed::ext_53cf4f0ee46873d280f632db::sku_74186d9c777bd59b9793",
+        "product_key": "prod::external_seed::external_seed::ext_53cf4f0ee46873d280f632db",
+        "merchant_id": "external_seed",
+        "catalog_track": "external_referral",
+        "truth_tier": "observed",
+        "readiness_tier": "referral_only",
+        "offer_mode": "redirect",
+        "channel": "external_referral",
+        "availability": "in_stock",
+        "currency": "USD",
+        "list_price": 34,
+        "merchant_effective_price": 34,
+        "estimated_best_price": 34,
+        "price_confidence": 1,
+        "source_system": "external_product_seeds_mirror_v1",
+        "source_ref": "eps_07f3261f7a8de9fe306209a1",
+        "source_domain": "lovemasami.com",
+        "offer_payload": {
+          "source": "external_product_seeds_mirror_v1",
+          "external_seed_id": "eps_07f3261f7a8de9fe306209a1",
+          "external_product_id": "ext_53cf4f0ee46873d280f632db",
+          "domain": "lovemasami.com",
+          "market": "US",
+          "product_title": "Mekabu Hydrating Shine Serum",
+          "variant_title": "Mekabu Hydrating Shine Serum",
+          "variant_sku": "18600012765341",
+          "raw_variant_id": "19939773513792",
+          "url": "https://lovemasami.com/products/mekabu-serum",
+          "offer_url": "https://lovemasami.com/products/mekabu-serum",
+          "canonical_url": "https://lovemasami.com/products/mekabu-serum",
+          "destination_url": "https://lovemasami.com/products/mekabu-serum",
+          "external_redirect_url": "https://lovemasami.com/products/mekabu-serum",
+          "merchant_display_name": "MASAMI",
+          "price": "34",
+          "price_amount": 34,
+          "price_currency": "USD",
+          "availability": "in_stock",
+          "commerce_facts_v1": {
+            "contract_version": "commerce_facts.v1",
+            "market_id": "US",
+            "country": "US",
+            "currency_target": "USD",
+            "source_authority": "catalog_extract_v2",
+            "captured_at": "2026-05-25T05:05:27.684Z",
+            "evidence_url": "https://lovemasami.com/products/mekabu-serum",
+            "sellable_region": {
+              "status": "unknown",
+              "countries": [],
+              "evidence_source": "catalog_extract_v2",
+              "confidence": "medium",
+              "checked_at": "2026-05-25T05:05:27.684Z",
+              "reason_codes": [
+                "market_currency_observed",
+                "shipping_destination_not_verified",
+                "external_checkout_not_queried"
+              ],
+              "evidence_url": "https://lovemasami.com/products/mekabu-serum"
+            },
+            "regional_price": {
+              "amount": 34,
+              "currency": "USD",
+              "display_raw": "34.00",
+              "price_type": "list",
+              "compare_at_amount": null,
+              "compare_at_currency": null,
+              "compare_at_display_raw": null,
+              "tax_included": "unknown",
+              "confidence": "medium",
+              "market_switch_status": "ok",
+              "observed_currency": "USD",
+              "source_url": "https://lovemasami.com/products/mekabu-serum",
+              "captured_at": "2026-05-25T05:05:27.684Z"
+            },
+            "availability": {
+              "status": "in_stock",
+              "source": "catalog_extract_v2",
+              "confidence": "medium",
+              "captured_at": "2026-05-25T05:05:27.684Z"
+            },
+            "shipping": {
+              "status": "unknown",
+              "source": "catalog_extract_v2",
+              "confidence": "unknown",
+              "reason_codes": [
+                "external_checkout_not_queried"
+              ],
+              "checked_at": "2026-05-25T05:05:27.684Z"
+            },
+            "promotions": [],
+            "returns": {
+              "status": "unknown",
+              "source": "catalog_extract_v2",
+              "confidence": "unknown",
+              "reason_codes": [
+                "external_returns_not_extracted"
+              ],
+              "checked_at": "2026-05-25T05:05:27.684Z"
+            }
+          },
+          "agent_safe_commerce_facts": {
+            "contract_version": "commerce_facts.v1",
+            "market_id": "US",
+            "price": {
+              "amount": 34,
+              "currency": "USD",
+              "display_raw": "34.00",
+              "price_type": "list",
+              "compare_at_amount": null,
+              "compare_at_currency": null,
+              "compare_at_display_raw": null,
+              "tax_included": "unknown",
+              "confidence": "medium",
+              "market_switch_status": "ok",
+              "observed_currency": "USD",
+              "source_url": "https://lovemasami.com/products/mekabu-serum",
+              "captured_at": "2026-05-25T05:05:27.684Z"
+            },
+            "availability": {
+              "status": "in_stock",
+              "source": "catalog_extract_v2",
+              "confidence": "medium",
+              "captured_at": "2026-05-25T05:05:27.684Z"
+            },
+            "shipping": {
+              "status": "unknown",
+              "reason": "verify_at_checkout"
+            },
+            "promotions": [],
+            "checkout_note": "Shipping and promotions are not verified for this external offer; verify at merchant checkout."
+          }
+        }
+      },
+      "serving_readiness": {
+        "servingEligible": false,
+        "contentQualityScore": 70,
+        "blockerCode": "content_evidence_hold",
+        "blockerDetail": "post_sync_audit_failed_quality_gate",
+        "identityResolved": true,
+        "identityLiveReadResolved": true,
+        "identityBootstrapEligible": false,
+        "terminalHold": true,
+        "terminalHoldReason": "post_sync_audit_failed_quality_gate",
+        "hasImage": true,
+        "hasPrice": true,
+        "descriptionLength": 502
+      }
+    },
+    {
+      "external_product_id": "ext_0836525e72365da8ecbcc3b5",
+      "product_key": "prod::external_seed::external_seed::ext_0836525e72365da8ecbcc3b5",
+      "product_group_id": "sig_a6130a657e5ea0e91dcb4d10",
+      "title": "Baa Ram Ewe  Lanolin Skin Balm  120g",
+      "brand": "Lucamar Skin Care",
+      "product_type": "Body Balm",
+      "category": "Body Balm",
+      "category_path": "beauty/bodycare/body-balm",
+      "canonical_url": "https://lucamarskincare.com/products/baa-ram-ewe-skin-balm-120-gms",
+      "pivota_signature_id": "sig_a6130a657e5ea0e91dcb4d10",
+      "sku_rows": 1,
+      "first_sku": {
+        "sku_key": "prod::external_seed::external_seed::ext_0836525e72365da8ecbcc3b5::sku_164d1d70d03ece718750",
+        "product_key": "prod::external_seed::external_seed::ext_0836525e72365da8ecbcc3b5",
+        "merchant_id": "external_seed",
+        "platform": "external_seed",
+        "source_product_id": "ext_0836525e72365da8ecbcc3b5",
+        "source_variant_id": "ext_0836525e72365da8ecbcc3b5:12224896204842",
+        "source_domain": "lucamarskincare.com",
+        "sku": "SHOPIFY-12224896204842",
+        "barcode": null,
+        "title": "Baa Ram Ewe  Lanolin Skin Balm  120g",
+        "currency": "USD",
+        "image_url": "https://cdn.shopify.com/s/files/1/2713/6250/files/Untitleddesign_14.png?v=1701869178",
+        "visible_attributes": {
+          "Size": "120g"
+        },
+        "visible_option_labels": {
+          "Size": "120g"
+        },
+        "ingredient_ids": [],
+        "sku_payload": {
+          "source": "external_product_seeds_mirror_v1",
+          "external_product_id": "ext_0836525e72365da8ecbcc3b5",
+          "raw_variant_id": "12224896204842",
+          "source_variant_id": "ext_0836525e72365da8ecbcc3b5:12224896204842",
+          "variant_sku": "SHOPIFY-12224896204842",
+          "barcode": null,
+          "strong_identifier_kind": null,
+          "source_url": "https://lucamarskincare.com/products/baa-ram-ewe-skin-balm-120-gms",
+          "external_redirect_url": "https://lucamarskincare.com/products/baa-ram-ewe-skin-balm-120-gms",
+          "price": "17",
+          "price_amount": 17,
+          "currency": "USD",
+          "availability": "in_stock",
+          "image_url": "https://cdn.shopify.com/s/files/1/2713/6250/files/Untitleddesign_14.png?v=1701869178",
+          "swatch_image_url": null,
+          "label_image_url": null,
+          "options": {
+            "Size": "120g"
+          },
+          "raw_variant": {
+            "sku": "SHOPIFY-12224896204842",
+            "url": "https://lucamarskincare.com/products/baa-ram-ewe-skin-balm-120-gms",
+            "price": "17",
+            "stock": "In Stock",
+            "images": [
+              "https://cdn.shopify.com/s/files/1/2713/6250/files/Untitleddesign_14.png?v=1701869178",
+              "https://cdn.shopify.com/s/files/1/2713/6250/files/Untitleddesign_20.png?v=1701869399",
+              "https://cdn.shopify.com/s/files/1/2713/6250/products/DSC_2722_3_b4230ea2-39cf-4f96-918c-1abf18a74681.jpg?v=1701869399",
+              "https://cdn.shopify.com/s/files/1/2713/6250/products/DSC_5128.jpg?v=1701869399"
+            ],
+            "currency": "USD",
+            "image_url": "https://cdn.shopify.com/s/files/1/2713/6250/files/Untitleddesign_14.png?v=1701869178",
+            "image_urls": [
+              "https://cdn.shopify.com/s/files/1/2713/6250/files/Untitleddesign_14.png?v=1701869178",
+              "https://cdn.shopify.com/s/files/1/2713/6250/files/Untitleddesign_20.png?v=1701869399",
+              "https://cdn.shopify.com/s/files/1/2713/6250/products/DSC_2722_3_b4230ea2-39cf-4f96-918c-1abf18a74681.jpg?v=1701869399",
+              "https://cdn.shopify.com/s/files/1/2713/6250/products/DSC_5128.jpg?v=1701869399"
+            ],
+            "variant_id": "12224896204842",
+            "description": "Baa Ram Ewe  Lanolin Skin Balm  120g is a source-backed Lucamar body balm from the brand-owned US-localized Shopify product feed. The official ingredient section includes Lanolin Anhydrous, Pure Australian Lanolin, Vitellaria Paradora, Organic Shea Butter, Cera Alba. Price, availability, imagery, ingredient text, and Daily Ritual instructions are captured from the official source.",
+            "option_name": "Size",
+            "option_value": "120g"
+          }
+        },
+        "readiness_tier": "referral_only"
+      },
+      "first_offer": {
+        "offer_id": "offer:external_seed:4d177444b52278230bffcc651f6ab858",
+        "sku_key": "prod::external_seed::external_seed::ext_0836525e72365da8ecbcc3b5::sku_164d1d70d03ece718750",
+        "product_key": "prod::external_seed::external_seed::ext_0836525e72365da8ecbcc3b5",
+        "merchant_id": "external_seed",
+        "catalog_track": "external_referral",
+        "truth_tier": "observed",
+        "readiness_tier": "referral_only",
+        "offer_mode": "redirect",
+        "channel": "external_referral",
+        "availability": "in_stock",
+        "currency": "USD",
+        "list_price": 17,
+        "merchant_effective_price": 17,
+        "estimated_best_price": 17,
+        "price_confidence": 1,
+        "source_system": "external_product_seeds_mirror_v1",
+        "source_ref": "eps_e2fa8f2dda7a3a9609d84dfa",
+        "source_domain": "lucamarskincare.com",
+        "offer_payload": {
+          "source": "external_product_seeds_mirror_v1",
+          "external_seed_id": "eps_e2fa8f2dda7a3a9609d84dfa",
+          "external_product_id": "ext_0836525e72365da8ecbcc3b5",
+          "domain": "lucamarskincare.com",
+          "market": "US",
+          "product_title": "Baa Ram Ewe  Lanolin Skin Balm  120g",
+          "variant_title": "Baa Ram Ewe  Lanolin Skin Balm  120g",
+          "variant_sku": "SHOPIFY-12224896204842",
+          "raw_variant_id": "12224896204842",
+          "url": "https://lucamarskincare.com/products/baa-ram-ewe-skin-balm-120-gms",
+          "offer_url": "https://lucamarskincare.com/products/baa-ram-ewe-skin-balm-120-gms",
+          "canonical_url": "https://lucamarskincare.com/products/baa-ram-ewe-skin-balm-120-gms",
+          "destination_url": "https://lucamarskincare.com/products/baa-ram-ewe-skin-balm-120-gms",
+          "external_redirect_url": "https://lucamarskincare.com/products/baa-ram-ewe-skin-balm-120-gms",
+          "merchant_display_name": "Lucamar Skin Care",
+          "price": "17",
+          "price_amount": 17,
+          "price_currency": "USD",
+          "availability": "in_stock",
+          "commerce_facts_v1": {
+            "contract_version": "commerce_facts.v1",
+            "market_id": "US",
+            "country": "US",
+            "currency_target": "USD",
+            "source_authority": "catalog_extract_v2",
+            "captured_at": "2026-05-25T08:57:36.646Z",
+            "evidence_url": "https://lucamarskincare.com/products/baa-ram-ewe-skin-balm-120-gms",
+            "sellable_region": {
+              "status": "unknown",
+              "countries": [],
+              "evidence_source": "catalog_extract_v2",
+              "confidence": "medium",
+              "checked_at": "2026-05-25T08:57:36.646Z",
+              "reason_codes": [
+                "market_currency_observed",
+                "shipping_destination_not_verified",
+                "external_checkout_not_queried"
+              ],
+              "evidence_url": "https://lucamarskincare.com/products/baa-ram-ewe-skin-balm-120-gms"
+            },
+            "regional_price": {
+              "amount": 17,
+              "currency": "USD",
+              "display_raw": "17.00",
+              "price_type": "list",
+              "compare_at_amount": null,
+              "compare_at_currency": null,
+              "compare_at_display_raw": null,
+              "tax_included": "unknown",
+              "confidence": "medium",
+              "market_switch_status": "ok",
+              "observed_currency": "USD",
+              "source_url": "https://lucamarskincare.com/products/baa-ram-ewe-skin-balm-120-gms",
+              "captured_at": "2026-05-25T08:57:36.646Z"
+            },
+            "availability": {
+              "status": "in_stock",
+              "source": "catalog_extract_v2",
+              "confidence": "medium",
+              "captured_at": "2026-05-25T08:57:36.646Z"
+            },
+            "shipping": {
+              "status": "unknown",
+              "source": "catalog_extract_v2",
+              "confidence": "unknown",
+              "reason_codes": [
+                "external_checkout_not_queried"
+              ],
+              "checked_at": "2026-05-25T08:57:36.646Z"
+            },
+            "promotions": [],
+            "returns": {
+              "status": "unknown",
+              "source": "catalog_extract_v2",
+              "confidence": "unknown",
+              "reason_codes": [
+                "external_returns_not_extracted"
+              ],
+              "checked_at": "2026-05-25T08:57:36.646Z"
+            }
+          },
+          "agent_safe_commerce_facts": {
+            "contract_version": "commerce_facts.v1",
+            "market_id": "US",
+            "price": {
+              "amount": 17,
+              "currency": "USD",
+              "display_raw": "17.00",
+              "price_type": "list",
+              "compare_at_amount": null,
+              "compare_at_currency": null,
+              "compare_at_display_raw": null,
+              "tax_included": "unknown",
+              "confidence": "medium",
+              "market_switch_status": "ok",
+              "observed_currency": "USD",
+              "source_url": "https://lucamarskincare.com/products/baa-ram-ewe-skin-balm-120-gms",
+              "captured_at": "2026-05-25T08:57:36.646Z"
+            },
+            "availability": {
+              "status": "in_stock",
+              "source": "catalog_extract_v2",
+              "confidence": "medium",
+              "captured_at": "2026-05-25T08:57:36.646Z"
+            },
+            "shipping": {
+              "status": "unknown",
+              "reason": "verify_at_checkout"
+            },
+            "promotions": [],
+            "checkout_note": "Shipping and promotions are not verified for this external offer; verify at merchant checkout."
+          }
+        }
+      },
+      "serving_readiness": {
+        "servingEligible": false,
+        "contentQualityScore": 70,
+        "blockerCode": "content_evidence_hold",
+        "blockerDetail": "post_sync_audit_failed_quality_gate",
+        "identityResolved": true,
+        "identityLiveReadResolved": true,
+        "identityBootstrapEligible": false,
+        "terminalHold": true,
+        "terminalHoldReason": "post_sync_audit_failed_quality_gate",
+        "hasImage": true,
+        "hasPrice": true,
+        "descriptionLength": 383
+      }
+    },
+    {
+      "external_product_id": "ext_c26547ca63d530592ed62d63",
+      "product_key": "prod::external_seed::external_seed::ext_c26547ca63d530592ed62d63",
+      "product_group_id": "sig_bb93738e3170cb9abebe3632",
+      "title": "Baa Ram Ewe  Lanolin Skin Balm  120g UNSCENTED",
+      "brand": "Lucamar Skin Care",
+      "product_type": "Body Balm",
+      "category": "Body Balm",
+      "category_path": "beauty/bodycare/body-balm",
+      "canonical_url": "https://lucamarskincare.com/products/baa-ram-ewe-lanolin-skin-balm-120g-uncented",
+      "pivota_signature_id": "sig_bb93738e3170cb9abebe3632",
+      "sku_rows": 1,
+      "first_sku": {
+        "sku_key": "prod::external_seed::external_seed::ext_c26547ca63d530592ed62d63::sku_fd4ec9a586c0e14849a6",
+        "product_key": "prod::external_seed::external_seed::ext_c26547ca63d530592ed62d63",
+        "merchant_id": "external_seed",
+        "platform": "external_seed",
+        "source_product_id": "ext_c26547ca63d530592ed62d63",
+        "source_variant_id": "ext_c26547ca63d530592ed62d63:62056733573279",
+        "source_domain": "lucamarskincare.com",
+        "sku": "SHOPIFY-62056733573279",
+        "barcode": null,
+        "title": "Baa Ram Ewe  Lanolin Skin Balm  120g UNSCENTED",
+        "currency": "USD",
+        "image_url": "https://cdn.shopify.com/s/files/1/2713/6250/files/Untitleddesign_14.png?v=1701869178",
+        "visible_attributes": {
+          "Size": "120g"
+        },
+        "visible_option_labels": {
+          "Size": "120g"
+        },
+        "ingredient_ids": [],
+        "sku_payload": {
+          "source": "external_product_seeds_mirror_v1",
+          "external_product_id": "ext_c26547ca63d530592ed62d63",
+          "raw_variant_id": "62056733573279",
+          "source_variant_id": "ext_c26547ca63d530592ed62d63:62056733573279",
+          "variant_sku": "SHOPIFY-62056733573279",
+          "barcode": null,
+          "strong_identifier_kind": null,
+          "source_url": "https://lucamarskincare.com/products/baa-ram-ewe-lanolin-skin-balm-120g-uncented",
+          "external_redirect_url": "https://lucamarskincare.com/products/baa-ram-ewe-lanolin-skin-balm-120g-uncented",
+          "price": "17",
+          "price_amount": 17,
+          "currency": "USD",
+          "availability": "in_stock",
+          "image_url": "https://cdn.shopify.com/s/files/1/2713/6250/files/Untitleddesign_14.png?v=1701869178",
+          "swatch_image_url": null,
+          "label_image_url": null,
+          "options": {
+            "Size": "120g"
+          },
+          "raw_variant": {
+            "sku": "SHOPIFY-62056733573279",
+            "url": "https://lucamarskincare.com/products/baa-ram-ewe-lanolin-skin-balm-120g-uncented",
+            "price": "17",
+            "stock": "In Stock",
+            "images": [
+              "https://cdn.shopify.com/s/files/1/2713/6250/files/Untitleddesign_14.png?v=1701869178",
+              "https://cdn.shopify.com/s/files/1/2713/6250/files/Untitleddesign_20.png?v=1701869399",
+              "https://cdn.shopify.com/s/files/1/2713/6250/products/DSC_2722_3_b4230ea2-39cf-4f96-918c-1abf18a74681.jpg?v=1701869399",
+              "https://cdn.shopify.com/s/files/1/2713/6250/products/DSC_5128.jpg?v=1701869399"
+            ],
+            "currency": "USD",
+            "image_url": "https://cdn.shopify.com/s/files/1/2713/6250/files/Untitleddesign_14.png?v=1701869178",
+            "image_urls": [
+              "https://cdn.shopify.com/s/files/1/2713/6250/files/Untitleddesign_14.png?v=1701869178",
+              "https://cdn.shopify.com/s/files/1/2713/6250/files/Untitleddesign_20.png?v=1701869399",
+              "https://cdn.shopify.com/s/files/1/2713/6250/products/DSC_2722_3_b4230ea2-39cf-4f96-918c-1abf18a74681.jpg?v=1701869399",
+              "https://cdn.shopify.com/s/files/1/2713/6250/products/DSC_5128.jpg?v=1701869399"
+            ],
+            "variant_id": "62056733573279",
+            "description": "Baa Ram Ewe  Lanolin Skin Balm  120g UNSCENTED is a source-backed Lucamar body balm from the brand-owned US-localized Shopify product feed. The official ingredient section includes Lanolin Anhydrous, Pure Australian Lanolin, Vitellaria Paradora, Organic Shea Butter, Cera Alba. Price, availability, imagery, ingredient text, and Daily Ritual instructions are captured from the official source.",
+            "option_name": "Size",
+            "option_value": "120g"
+          }
+        },
+        "readiness_tier": "referral_only"
+      },
+      "first_offer": {
+        "offer_id": "offer:external_seed:148579a96c5bdc77e8f35ec79c2ed7dc",
+        "sku_key": "prod::external_seed::external_seed::ext_c26547ca63d530592ed62d63::sku_fd4ec9a586c0e14849a6",
+        "product_key": "prod::external_seed::external_seed::ext_c26547ca63d530592ed62d63",
+        "merchant_id": "external_seed",
+        "catalog_track": "external_referral",
+        "truth_tier": "observed",
+        "readiness_tier": "referral_only",
+        "offer_mode": "redirect",
+        "channel": "external_referral",
+        "availability": "in_stock",
+        "currency": "USD",
+        "list_price": 17,
+        "merchant_effective_price": 17,
+        "estimated_best_price": 17,
+        "price_confidence": 1,
+        "source_system": "external_product_seeds_mirror_v1",
+        "source_ref": "eps_4345b0af311a4e604dc9eb17",
+        "source_domain": "lucamarskincare.com",
+        "offer_payload": {
+          "source": "external_product_seeds_mirror_v1",
+          "external_seed_id": "eps_4345b0af311a4e604dc9eb17",
+          "external_product_id": "ext_c26547ca63d530592ed62d63",
+          "domain": "lucamarskincare.com",
+          "market": "US",
+          "product_title": "Baa Ram Ewe  Lanolin Skin Balm  120g UNSCENTED",
+          "variant_title": "Baa Ram Ewe  Lanolin Skin Balm  120g UNSCENTED",
+          "variant_sku": "SHOPIFY-62056733573279",
+          "raw_variant_id": "62056733573279",
+          "url": "https://lucamarskincare.com/products/baa-ram-ewe-lanolin-skin-balm-120g-uncented",
+          "offer_url": "https://lucamarskincare.com/products/baa-ram-ewe-lanolin-skin-balm-120g-uncented",
+          "canonical_url": "https://lucamarskincare.com/products/baa-ram-ewe-lanolin-skin-balm-120g-uncented",
+          "destination_url": "https://lucamarskincare.com/products/baa-ram-ewe-lanolin-skin-balm-120g-uncented",
+          "external_redirect_url": "https://lucamarskincare.com/products/baa-ram-ewe-lanolin-skin-balm-120g-uncented",
+          "merchant_display_name": "Lucamar Skin Care",
+          "price": "17",
+          "price_amount": 17,
+          "price_currency": "USD",
+          "availability": "in_stock",
+          "commerce_facts_v1": {
+            "contract_version": "commerce_facts.v1",
+            "market_id": "US",
+            "country": "US",
+            "currency_target": "USD",
+            "source_authority": "catalog_extract_v2",
+            "captured_at": "2026-05-25T08:57:36.646Z",
+            "evidence_url": "https://lucamarskincare.com/products/baa-ram-ewe-lanolin-skin-balm-120g-uncented",
+            "sellable_region": {
+              "status": "unknown",
+              "countries": [],
+              "evidence_source": "catalog_extract_v2",
+              "confidence": "medium",
+              "checked_at": "2026-05-25T08:57:36.646Z",
+              "reason_codes": [
+                "market_currency_observed",
+                "shipping_destination_not_verified",
+                "external_checkout_not_queried"
+              ],
+              "evidence_url": "https://lucamarskincare.com/products/baa-ram-ewe-lanolin-skin-balm-120g-uncented"
+            },
+            "regional_price": {
+              "amount": 17,
+              "currency": "USD",
+              "display_raw": "17.00",
+              "price_type": "list",
+              "compare_at_amount": null,
+              "compare_at_currency": null,
+              "compare_at_display_raw": null,
+              "tax_included": "unknown",
+              "confidence": "medium",
+              "market_switch_status": "ok",
+              "observed_currency": "USD",
+              "source_url": "https://lucamarskincare.com/products/baa-ram-ewe-lanolin-skin-balm-120g-uncented",
+              "captured_at": "2026-05-25T08:57:36.646Z"
+            },
+            "availability": {
+              "status": "in_stock",
+              "source": "catalog_extract_v2",
+              "confidence": "medium",
+              "captured_at": "2026-05-25T08:57:36.646Z"
+            },
+            "shipping": {
+              "status": "unknown",
+              "source": "catalog_extract_v2",
+              "confidence": "unknown",
+              "reason_codes": [
+                "external_checkout_not_queried"
+              ],
+              "checked_at": "2026-05-25T08:57:36.646Z"
+            },
+            "promotions": [],
+            "returns": {
+              "status": "unknown",
+              "source": "catalog_extract_v2",
+              "confidence": "unknown",
+              "reason_codes": [
+                "external_returns_not_extracted"
+              ],
+              "checked_at": "2026-05-25T08:57:36.646Z"
+            }
+          },
+          "agent_safe_commerce_facts": {
+            "contract_version": "commerce_facts.v1",
+            "market_id": "US",
+            "price": {
+              "amount": 17,
+              "currency": "USD",
+              "display_raw": "17.00",
+              "price_type": "list",
+              "compare_at_amount": null,
+              "compare_at_currency": null,
+              "compare_at_display_raw": null,
+              "tax_included": "unknown",
+              "confidence": "medium",
+              "market_switch_status": "ok",
+              "observed_currency": "USD",
+              "source_url": "https://lucamarskincare.com/products/baa-ram-ewe-lanolin-skin-balm-120g-uncented",
+              "captured_at": "2026-05-25T08:57:36.646Z"
+            },
+            "availability": {
+              "status": "in_stock",
+              "source": "catalog_extract_v2",
+              "confidence": "medium",
+              "captured_at": "2026-05-25T08:57:36.646Z"
+            },
+            "shipping": {
+              "status": "unknown",
+              "reason": "verify_at_checkout"
+            },
+            "promotions": [],
+            "checkout_note": "Shipping and promotions are not verified for this external offer; verify at merchant checkout."
+          }
+        }
+      },
+      "serving_readiness": {
+        "servingEligible": false,
+        "contentQualityScore": 70,
+        "blockerCode": "content_evidence_hold",
+        "blockerDetail": "post_sync_audit_failed_quality_gate",
+        "identityResolved": true,
+        "identityLiveReadResolved": true,
+        "identityBootstrapEligible": false,
+        "terminalHold": true,
+        "terminalHoldReason": "post_sync_audit_failed_quality_gate",
+        "hasImage": true,
+        "hasPrice": true,
+        "descriptionLength": 393
+      }
+    },
+    {
+      "external_product_id": "ext_edcf7e510314384ac432b385",
+      "product_key": "prod::external_seed::external_seed::ext_edcf7e510314384ac432b385",
+      "product_group_id": "sig_83e5dd4c102d5115bfd303c9",
+      "title": "Baa Ram Ewe Lanolin Skin Balm 50g",
+      "brand": "Lucamar Skin Care",
+      "product_type": "Body Balm",
+      "category": "Body Balm",
+      "category_path": "beauty/bodycare/body-balm",
+      "canonical_url": "https://lucamarskincare.com/products/baa-ram-ewe-skin-balm-50-gms",
+      "pivota_signature_id": "sig_83e5dd4c102d5115bfd303c9",
+      "sku_rows": 1,
+      "first_sku": {
+        "sku_key": "prod::external_seed::external_seed::ext_edcf7e510314384ac432b385::sku_b247636813ec8796aeed",
+        "product_key": "prod::external_seed::external_seed::ext_edcf7e510314384ac432b385",
+        "merchant_id": "external_seed",
+        "platform": "external_seed",
+        "source_product_id": "ext_edcf7e510314384ac432b385",
+        "source_variant_id": "ext_edcf7e510314384ac432b385:12224849608746",
+        "source_domain": "lucamarskincare.com",
+        "sku": "SHOPIFY-12224849608746",
+        "barcode": null,
+        "title": "Baa Ram Ewe Lanolin Skin Balm 50g",
+        "currency": "USD",
+        "image_url": "https://cdn.shopify.com/s/files/1/2713/6250/files/Untitleddesign_19.png?v=1701869285",
+        "visible_attributes": {
+          "Size": "50g"
+        },
+        "visible_option_labels": {
+          "Size": "50g"
+        },
+        "ingredient_ids": [],
+        "sku_payload": {
+          "source": "external_product_seeds_mirror_v1",
+          "external_product_id": "ext_edcf7e510314384ac432b385",
+          "raw_variant_id": "12224849608746",
+          "source_variant_id": "ext_edcf7e510314384ac432b385:12224849608746",
+          "variant_sku": "SHOPIFY-12224849608746",
+          "barcode": null,
+          "strong_identifier_kind": null,
+          "source_url": "https://lucamarskincare.com/products/baa-ram-ewe-skin-balm-50-gms",
+          "external_redirect_url": "https://lucamarskincare.com/products/baa-ram-ewe-skin-balm-50-gms",
+          "price": "12",
+          "price_amount": 12,
+          "currency": "USD",
+          "availability": "in_stock",
+          "image_url": "https://cdn.shopify.com/s/files/1/2713/6250/files/Untitleddesign_19.png?v=1701869285",
+          "swatch_image_url": null,
+          "label_image_url": null,
+          "options": {
+            "Size": "50g"
+          },
+          "raw_variant": {
+            "sku": "SHOPIFY-12224849608746",
+            "url": "https://lucamarskincare.com/products/baa-ram-ewe-skin-balm-50-gms",
+            "price": "12",
+            "stock": "In Stock",
+            "images": [
+              "https://cdn.shopify.com/s/files/1/2713/6250/files/Untitleddesign_19.png?v=1701869285",
+              "https://cdn.shopify.com/s/files/1/2713/6250/files/Untitleddesign_21.png?v=1701869579",
+              "https://cdn.shopify.com/s/files/1/2713/6250/products/DSC_5152.jpg?v=1701869579",
+              "https://cdn.shopify.com/s/files/1/2713/6250/files/7ef164cf-15d3-44b3-b9e4-85d26bba4154.png?v=1701869579"
+            ],
+            "currency": "USD",
+            "image_url": "https://cdn.shopify.com/s/files/1/2713/6250/files/Untitleddesign_19.png?v=1701869285",
+            "image_urls": [
+              "https://cdn.shopify.com/s/files/1/2713/6250/files/Untitleddesign_19.png?v=1701869285",
+              "https://cdn.shopify.com/s/files/1/2713/6250/files/Untitleddesign_21.png?v=1701869579",
+              "https://cdn.shopify.com/s/files/1/2713/6250/products/DSC_5152.jpg?v=1701869579",
+              "https://cdn.shopify.com/s/files/1/2713/6250/files/7ef164cf-15d3-44b3-b9e4-85d26bba4154.png?v=1701869579"
+            ],
+            "variant_id": "12224849608746",
+            "description": "Baa Ram Ewe Lanolin Skin Balm 50g is a source-backed Lucamar body balm from the brand-owned US-localized Shopify product feed. The official ingredient section includes Lanolin Anhydrous, Pure Australian Lanolin, Vitellaria Paradora, Organic Shea Butter, Cera Alba. Price, availability, imagery, ingredient text, and Daily Ritual instructions are captured from the official source.",
+            "option_name": "Size",
+            "option_value": "50g"
+          }
+        },
+        "readiness_tier": "referral_only"
+      },
+      "first_offer": {
+        "offer_id": "offer:external_seed:8cc1e6e04cbd5246c82e347900fa1443",
+        "sku_key": "prod::external_seed::external_seed::ext_edcf7e510314384ac432b385::sku_b247636813ec8796aeed",
+        "product_key": "prod::external_seed::external_seed::ext_edcf7e510314384ac432b385",
+        "merchant_id": "external_seed",
+        "catalog_track": "external_referral",
+        "truth_tier": "observed",
+        "readiness_tier": "referral_only",
+        "offer_mode": "redirect",
+        "channel": "external_referral",
+        "availability": "in_stock",
+        "currency": "USD",
+        "list_price": 12,
+        "merchant_effective_price": 12,
+        "estimated_best_price": 12,
+        "price_confidence": 1,
+        "source_system": "external_product_seeds_mirror_v1",
+        "source_ref": "eps_f4b6e76f5ce353e8980d61fd",
+        "source_domain": "lucamarskincare.com",
+        "offer_payload": {
+          "source": "external_product_seeds_mirror_v1",
+          "external_seed_id": "eps_f4b6e76f5ce353e8980d61fd",
+          "external_product_id": "ext_edcf7e510314384ac432b385",
+          "domain": "lucamarskincare.com",
+          "market": "US",
+          "product_title": "Baa Ram Ewe Lanolin Skin Balm 50g",
+          "variant_title": "Baa Ram Ewe Lanolin Skin Balm 50g",
+          "variant_sku": "SHOPIFY-12224849608746",
+          "raw_variant_id": "12224849608746",
+          "url": "https://lucamarskincare.com/products/baa-ram-ewe-skin-balm-50-gms",
+          "offer_url": "https://lucamarskincare.com/products/baa-ram-ewe-skin-balm-50-gms",
+          "canonical_url": "https://lucamarskincare.com/products/baa-ram-ewe-skin-balm-50-gms",
+          "destination_url": "https://lucamarskincare.com/products/baa-ram-ewe-skin-balm-50-gms",
+          "external_redirect_url": "https://lucamarskincare.com/products/baa-ram-ewe-skin-balm-50-gms",
+          "merchant_display_name": "Lucamar Skin Care",
+          "price": "12",
+          "price_amount": 12,
+          "price_currency": "USD",
+          "availability": "in_stock",
+          "commerce_facts_v1": {
+            "contract_version": "commerce_facts.v1",
+            "market_id": "US",
+            "country": "US",
+            "currency_target": "USD",
+            "source_authority": "catalog_extract_v2",
+            "captured_at": "2026-05-25T08:57:36.646Z",
+            "evidence_url": "https://lucamarskincare.com/products/baa-ram-ewe-skin-balm-50-gms",
+            "sellable_region": {
+              "status": "unknown",
+              "countries": [],
+              "evidence_source": "catalog_extract_v2",
+              "confidence": "medium",
+              "checked_at": "2026-05-25T08:57:36.646Z",
+              "reason_codes": [
+                "market_currency_observed",
+                "shipping_destination_not_verified",
+                "external_checkout_not_queried"
+              ],
+              "evidence_url": "https://lucamarskincare.com/products/baa-ram-ewe-skin-balm-50-gms"
+            },
+            "regional_price": {
+              "amount": 12,
+              "currency": "USD",
+              "display_raw": "12.00",
+              "price_type": "list",
+              "compare_at_amount": null,
+              "compare_at_currency": null,
+              "compare_at_display_raw": null,
+              "tax_included": "unknown",
+              "confidence": "medium",
+              "market_switch_status": "ok",
+              "observed_currency": "USD",
+              "source_url": "https://lucamarskincare.com/products/baa-ram-ewe-skin-balm-50-gms",
+              "captured_at": "2026-05-25T08:57:36.646Z"
+            },
+            "availability": {
+              "status": "in_stock",
+              "source": "catalog_extract_v2",
+              "confidence": "medium",
+              "captured_at": "2026-05-25T08:57:36.646Z"
+            },
+            "shipping": {
+              "status": "unknown",
+              "source": "catalog_extract_v2",
+              "confidence": "unknown",
+              "reason_codes": [
+                "external_checkout_not_queried"
+              ],
+              "checked_at": "2026-05-25T08:57:36.646Z"
+            },
+            "promotions": [],
+            "returns": {
+              "status": "unknown",
+              "source": "catalog_extract_v2",
+              "confidence": "unknown",
+              "reason_codes": [
+                "external_returns_not_extracted"
+              ],
+              "checked_at": "2026-05-25T08:57:36.646Z"
+            }
+          },
+          "agent_safe_commerce_facts": {
+            "contract_version": "commerce_facts.v1",
+            "market_id": "US",
+            "price": {
+              "amount": 12,
+              "currency": "USD",
+              "display_raw": "12.00",
+              "price_type": "list",
+              "compare_at_amount": null,
+              "compare_at_currency": null,
+              "compare_at_display_raw": null,
+              "tax_included": "unknown",
+              "confidence": "medium",
+              "market_switch_status": "ok",
+              "observed_currency": "USD",
+              "source_url": "https://lucamarskincare.com/products/baa-ram-ewe-skin-balm-50-gms",
+              "captured_at": "2026-05-25T08:57:36.646Z"
+            },
+            "availability": {
+              "status": "in_stock",
+              "source": "catalog_extract_v2",
+              "confidence": "medium",
+              "captured_at": "2026-05-25T08:57:36.646Z"
+            },
+            "shipping": {
+              "status": "unknown",
+              "reason": "verify_at_checkout"
+            },
+            "promotions": [],
+            "checkout_note": "Shipping and promotions are not verified for this external offer; verify at merchant checkout."
+          }
+        }
+      },
+      "serving_readiness": {
+        "servingEligible": false,
+        "contentQualityScore": 70,
+        "blockerCode": "content_evidence_hold",
+        "blockerDetail": "post_sync_audit_failed_quality_gate",
+        "identityResolved": true,
+        "identityLiveReadResolved": true,
+        "identityBootstrapEligible": false,
+        "terminalHold": true,
+        "terminalHoldReason": "post_sync_audit_failed_quality_gate",
+        "hasImage": true,
+        "hasPrice": true,
+        "descriptionLength": 380
+      }
+    }
+  ]
+}
