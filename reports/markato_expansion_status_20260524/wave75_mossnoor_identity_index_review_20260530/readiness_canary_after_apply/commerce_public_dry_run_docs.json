@@ -1,0 +1,64 @@
+{
+  "generated_at": "2026-05-30T02:38:26.312Z",
+  "market": "US",
+  "include_non_public": false,
+  "docs_built": 1,
+  "source_build_failures": [],
+  "docs": [
+    {
+      "doc_id": "sellable:sig_f41515bba9c93a18d106523f",
+      "sellable_item_group_id": "sig_f41515bba9c93a18d106523f",
+      "product_line_id": "pl_6b3acf84f04017f79e9a10a9",
+      "review_family_id": "rf_6b3acf84f04017f79e9a10a9",
+      "brand_name": "Moss & Noor",
+      "category_paths": [
+        "Body Wash"
+      ],
+      "market": "US",
+      "availability_state": "available",
+      "publish_state": "public",
+      "title": "After Workout Shower Gel – Clean Eucalyptus",
+      "subtitle": "After Workout Shower Gel cools the skin after your workout. A moisturizing, soft cleansing shower gel designed för active lifestyles. Boosted with essential oils and minerals. For all skin types.\n\nBoosted with:\n\nMenthol: cools your skin\n\nZink: effective against odor\n\nMagnesium: rebuilds the outermost skin layer\n\n100% Vegan and",
+      "variant_axes": {
+        "volume": "150ml",
+        "multi_variant": false
+      },
+      "size": null,
+      "shade": null,
+      "pack": null,
+      "hero_media": {
+        "url": "https://mossnoor.com/cdn/shop/files/7350103700011_1.jpg?v=1684149706",
+        "source_kind": "catalog",
+        "source_tier": "catalog"
+      },
+      "preview_media": [
+        "https://mossnoor.com/cdn/shop/files/7350103700011_1.jpg?v=1684149706",
+        "https://cdn.shopify.com/s/files/1/0314/9037/5818/products/7350103700011_2.jpg?v=1684149706",
+        "https://cdn.shopify.com/s/files/1/0314/9037/5818/products/7350103700011_3.jpg?v=1684149706",
+        "https://cdn.shopify.com/s/files/1/0314/9037/5818/products/mossnoor_cleaneucalyptus_scent.jpg?v=1684149706"
+      ],
+      "price_min": 10,
+      "price_max": 10,
+      "default_offer_id": "external_seed:ext_a7ab937f43db2868c6f9e383",
+      "internal_offer_exists": false,
+      "external_offer_exists": true,
+      "pivota_insight_status": "available",
+      "pivota_insight_summary": "A Moss & Noor body wash listed on the official source page as After Workout Shower Gel – Clean Eucalyptus. The official description identifies: After Workout Shower Gel cools the skin after your workout.",
+      "quality_score": null,
+      "browse_score": null,
+      "facet_tokens": [
+        "Moss & Noor",
+        "Body Wash"
+      ],
+      "sort_keys": {
+        "price_min": 10,
+        "price_max": 10,
+        "updated_at": null
+      },
+      "updated_at": null,
+      "source_refs": [
+        "external_seed:ext_a7ab937f43db2868c6f9e383"
+      ]
+    }
+  ]
+}

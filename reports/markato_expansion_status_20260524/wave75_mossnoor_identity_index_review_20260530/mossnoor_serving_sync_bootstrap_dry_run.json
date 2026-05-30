@@ -1,0 +1,1992 @@
+{
+  "generated_at": "2026-05-30T02:36:44.598Z",
+  "mode": "dry_run",
+  "batch_size": null,
+  "bootstrap_reviewed_identity_live_read": true,
+  "requested_ids": 8,
+  "fetched_rows": 8,
+  "mirror_rows": 8,
+  "planned_sku_rows": 8,
+  "planned_offer_rows": 8,
+  "planned_index_state_rows": 8,
+  "missing_ids": [],
+  "skipped": [],
+  "applied": {
+    "mode": "dry_run",
+    "existing_before": {
+      "catalog_products": 8,
+      "catalog_skus": 8,
+      "catalog_offers": 8,
+      "product_group_members": 8
+    },
+    "stale_delete_preview": {
+      "current_sku_rows": 16,
+      "current_offer_rows": 16,
+      "planned_stale_sku_deletes": 8,
+      "planned_stale_offer_deletes": 8,
+      "sample_stale_skus": [
+        {
+          "title": "Hand Wash - Crispy Cucumber",
+          "sku_key": "prod::external_seed::external_seed::ext_2ceae3f0084e576134f4c1eb::canonical",
+          "product_key": "prod::external_seed::external_seed::ext_2ceae3f0084e576134f4c1eb",
+          "source_variant_id": "prod::external_seed::external_seed::ext_2ceae3f0084e576134f4c1eb",
+          "visible_attributes": {}
+        },
+        {
+          "title": "After Workout Shower Gel – Clean Eucalyptus 500 ml",
+          "sku_key": "prod::external_seed::external_seed::ext_3ad7ef081b2b95eafb2b0950::canonical",
+          "product_key": "prod::external_seed::external_seed::ext_3ad7ef081b2b95eafb2b0950",
+          "source_variant_id": "prod::external_seed::external_seed::ext_3ad7ef081b2b95eafb2b0950",
+          "visible_attributes": {}
+        },
+        {
+          "title": "After Workout Shower Gel – Fresh Grapefruit",
+          "sku_key": "prod::external_seed::external_seed::ext_67472974111568c15ac3920d::canonical",
+          "product_key": "prod::external_seed::external_seed::ext_67472974111568c15ac3920d",
+          "source_variant_id": "prod::external_seed::external_seed::ext_67472974111568c15ac3920d",
+          "visible_attributes": {}
+        },
+        {
+          "title": "After Workout Shower Gel – Crispy Cucumber 500 ml",
+          "sku_key": "prod::external_seed::external_seed::ext_83b8555768814cac5243aef1::canonical",
+          "product_key": "prod::external_seed::external_seed::ext_83b8555768814cac5243aef1",
+          "source_variant_id": "prod::external_seed::external_seed::ext_83b8555768814cac5243aef1",
+          "visible_attributes": {}
+        },
+        {
+          "title": "After Workout Shower Gel – Light Mint",
+          "sku_key": "prod::external_seed::external_seed::ext_876342422f9629ea9363953c::canonical",
+          "product_key": "prod::external_seed::external_seed::ext_876342422f9629ea9363953c",
+          "source_variant_id": "prod::external_seed::external_seed::ext_876342422f9629ea9363953c",
+          "visible_attributes": {}
+        },
+        {
+          "title": "After Workout Shower Gel – Clean Eucalyptus",
+          "sku_key": "prod::external_seed::external_seed::ext_a7ab937f43db2868c6f9e383::canonical",
+          "product_key": "prod::external_seed::external_seed::ext_a7ab937f43db2868c6f9e383",
+          "source_variant_id": "prod::external_seed::external_seed::ext_a7ab937f43db2868c6f9e383",
+          "visible_attributes": {}
+        },
+        {
+          "title": "After Workout Shower Gel – Fresh Grapefruit 500 ml",
+          "sku_key": "prod::external_seed::external_seed::ext_cf945cc7bfe99bf9864bd6df::canonical",
+          "product_key": "prod::external_seed::external_seed::ext_cf945cc7bfe99bf9864bd6df",
+          "source_variant_id": "prod::external_seed::external_seed::ext_cf945cc7bfe99bf9864bd6df",
+          "visible_attributes": {}
+        },
+        {
+          "title": "Hand Wash - Fresh Grapefruit",
+          "sku_key": "prod::external_seed::external_seed::ext_fef6fb32a26319fb95c750ab::canonical",
+          "product_key": "prod::external_seed::external_seed::ext_fef6fb32a26319fb95c750ab",
+          "source_variant_id": "prod::external_seed::external_seed::ext_fef6fb32a26319fb95c750ab",
+          "visible_attributes": {}
+        }
+      ],
+      "sample_stale_offers": [
+        {
+          "sku_key": "prod::external_seed::external_seed::ext_2ceae3f0084e576134f4c1eb::canonical",
+          "offer_id": "offer:external_seed:5ebe500a799d8ddd00a76b74c2d7c149",
+          "list_price": 12,
+          "product_key": "prod::external_seed::external_seed::ext_2ceae3f0084e576134f4c1eb",
+          "merchant_effective_price": 12
+        },
+        {
+          "sku_key": "prod::external_seed::external_seed::ext_3ad7ef081b2b95eafb2b0950::canonical",
+          "offer_id": "offer:external_seed:812f9e828e3f07346a941fe8408eda4e",
+          "list_price": 16,
+          "product_key": "prod::external_seed::external_seed::ext_3ad7ef081b2b95eafb2b0950",
+          "merchant_effective_price": 16
+        },
+        {
+          "sku_key": "prod::external_seed::external_seed::ext_67472974111568c15ac3920d::canonical",
+          "offer_id": "offer:external_seed:5c3474ea1b67ebaabf5f8bf806bd6af2",
+          "list_price": 10,
+          "product_key": "prod::external_seed::external_seed::ext_67472974111568c15ac3920d",
+          "merchant_effective_price": 10
+        },
+        {
+          "sku_key": "prod::external_seed::external_seed::ext_83b8555768814cac5243aef1::canonical",
+          "offer_id": "offer:external_seed:91c641644378e6da62e0798038d9d240",
+          "list_price": 16,
+          "product_key": "prod::external_seed::external_seed::ext_83b8555768814cac5243aef1",
+          "merchant_effective_price": 16
+        },
+        {
+          "sku_key": "prod::external_seed::external_seed::ext_876342422f9629ea9363953c::canonical",
+          "offer_id": "offer:external_seed:28fa3d1f53510b57022be0c54c7dab59",
+          "list_price": 10,
+          "product_key": "prod::external_seed::external_seed::ext_876342422f9629ea9363953c",
+          "merchant_effective_price": 10
+        },
+        {
+          "sku_key": "prod::external_seed::external_seed::ext_a7ab937f43db2868c6f9e383::canonical",
+          "offer_id": "offer:external_seed:203243c1600aa8f021e8df6fa184872a",
+          "list_price": 10,
+          "product_key": "prod::external_seed::external_seed::ext_a7ab937f43db2868c6f9e383",
+          "merchant_effective_price": 10
+        },
+        {
+          "sku_key": "prod::external_seed::external_seed::ext_cf945cc7bfe99bf9864bd6df::canonical",
+          "offer_id": "offer:external_seed:1502cd8a4376efa4600252c6962c983d",
+          "list_price": 16,
+          "product_key": "prod::external_seed::external_seed::ext_cf945cc7bfe99bf9864bd6df",
+          "merchant_effective_price": 16
+        },
+        {
+          "sku_key": "prod::external_seed::external_seed::ext_fef6fb32a26319fb95c750ab::canonical",
+          "offer_id": "offer:external_seed:8c63b11843fddb2f1cabb9f20c2f5f95",
+          "list_price": 12,
+          "product_key": "prod::external_seed::external_seed::ext_fef6fb32a26319fb95c750ab",
+          "merchant_effective_price": 12
+        }
+      ]
+    },
+    "batch_size": null,
+    "batches": 1,
+    "audit_reasons": {
+      "no_strong_identifier": 8
+    },
+    "product_upserts": 0,
+    "sku_upserts": 0,
+    "offer_upserts": 0,
+    "group_member_upserts": 0,
+    "group_member_preserved_existing_merges": 0,
+    "seed_attachment_updates": 0,
+    "index_state_upserts": 0,
+    "identity_live_read_updates": 0,
+    "catalog_row_trust_upserts": 0,
+    "stale_offer_deletes": 0,
+    "stale_sku_deletes": 0
+  },
+  "sample": [
+    {
+      "external_product_id": "ext_a7ab937f43db2868c6f9e383",
+      "product_key": "prod::external_seed::external_seed::ext_a7ab937f43db2868c6f9e383",
+      "product_group_id": "sig_f41515bba9c93a18d106523f",
+      "title": "After Workout Shower Gel – Clean Eucalyptus",
+      "brand": "Moss & Noor",
+      "product_type": "Body Wash",
+      "category": "Body Wash",
+      "category_path": "beauty/body-care/body-wash",
+      "canonical_url": "https://mossnoor.com/products/after-workout-shower-gel-clean-eucalyptus",
+      "pivota_signature_id": "sig_f41515bba9c93a18d106523f",
+      "sku_rows": 1,
+      "first_sku": {
+        "sku_key": "prod::external_seed::external_seed::ext_a7ab937f43db2868c6f9e383::sku_30f430978f5bb5e8a751",
+        "product_key": "prod::external_seed::external_seed::ext_a7ab937f43db2868c6f9e383",
+        "merchant_id": "external_seed",
+        "platform": "external_seed",
+        "source_product_id": "ext_a7ab937f43db2868c6f9e383",
+        "source_variant_id": "ext_a7ab937f43db2868c6f9e383:39694350745790",
+        "source_domain": "mossnoor.com",
+        "sku": "101210",
+        "barcode": null,
+        "title": "150ml",
+        "currency": "USD",
+        "image_url": "https://mossnoor.com/cdn/shop/files/7350103700011_1.jpg?v=1684149706",
+        "visible_attributes": {
+          "Size": "150ml"
+        },
+        "visible_option_labels": {
+          "Size": "150ml"
+        },
+        "ingredient_ids": [],
+        "sku_payload": {
+          "source": "external_product_seeds_mirror_v1",
+          "external_product_id": "ext_a7ab937f43db2868c6f9e383",
+          "raw_variant_id": "39694350745790",
+          "source_variant_id": "ext_a7ab937f43db2868c6f9e383:39694350745790",
+          "variant_sku": "101210",
+          "barcode": null,
+          "strong_identifier_kind": null,
+          "source_url": "https://mossnoor.com/products/after-workout-shower-gel-clean-eucalyptus",
+          "external_redirect_url": "https://mossnoor.com/products/after-workout-shower-gel-clean-eucalyptus",
+          "price": "10",
+          "price_amount": 10,
+          "currency": "USD",
+          "availability": "in_stock",
+          "image_url": "https://mossnoor.com/cdn/shop/files/7350103700011_1.jpg?v=1684149706",
+          "swatch_image_url": null,
+          "label_image_url": null,
+          "options": {
+            "Size": "150ml"
+          },
+          "raw_variant": {
+            "sku": "101210",
+            "url": "https://mossnoor.com/products/after-workout-shower-gel-clean-eucalyptus?variant=39694350745790&utm_source=pivota&utm_medium=affiliate",
+            "price": "10.00",
+            "stock": "In Stock",
+            "title": "150ml",
+            "options": [
+              {
+                "name": "Size",
+                "value": "150ml"
+              }
+            ],
+            "currency": "USD",
+            "deep_link": "https://mossnoor.com/products/after-workout-shower-gel-clean-eucalyptus?variant=39694350745790&utm_source=pivota&utm_medium=affiliate",
+            "image_url": "https://mossnoor.com/cdn/shop/files/7350103700011_1.jpg?v=1684149706",
+            "image_urls": [
+              "https://mossnoor.com/cdn/shop/files/7350103700011_1.jpg?v=1684149706",
+              "https://cdn.shopify.com/s/files/1/0314/9037/5818/products/7350103700011_2.jpg?v=1684149706",
+              "https://cdn.shopify.com/s/files/1/0314/9037/5818/products/7350103700011_3.jpg?v=1684149706",
+              "https://cdn.shopify.com/s/files/1/0314/9037/5818/products/mossnoor_cleaneucalyptus_scent.jpg?v=1684149706"
+            ],
+            "variant_id": "39694350745790",
+            "option_name": "Size",
+            "product_url": "https://mossnoor.com/products/after-workout-shower-gel-clean-eucalyptus",
+            "option_value": "150ml"
+          }
+        },
+        "readiness_tier": "referral_only"
+      },
+      "first_offer": {
+        "offer_id": "offer:external_seed:c69147adb2c85ac9c27d1916e785d9c2",
+        "sku_key": "prod::external_seed::external_seed::ext_a7ab937f43db2868c6f9e383::sku_30f430978f5bb5e8a751",
+        "product_key": "prod::external_seed::external_seed::ext_a7ab937f43db2868c6f9e383",
+        "merchant_id": "external_seed",
+        "catalog_track": "external_referral",
+        "truth_tier": "observed",
+        "readiness_tier": "referral_only",
+        "offer_mode": "redirect",
+        "channel": "external_referral",
+        "availability": "in_stock",
+        "currency": "USD",
+        "list_price": 10,
+        "merchant_effective_price": 10,
+        "estimated_best_price": 10,
+        "price_confidence": 1,
+        "source_system": "external_product_seeds_mirror_v1",
+        "source_ref": "eps_17e574451e2b1b7261e59e3b",
+        "source_domain": "mossnoor.com",
+        "offer_payload": {
+          "source": "external_product_seeds_mirror_v1",
+          "external_seed_id": "eps_17e574451e2b1b7261e59e3b",
+          "external_product_id": "ext_a7ab937f43db2868c6f9e383",
+          "domain": "mossnoor.com",
+          "market": "US",
+          "product_title": "After Workout Shower Gel – Clean Eucalyptus",
+          "variant_title": "150ml",
+          "variant_sku": "101210",
+          "raw_variant_id": "39694350745790",
+          "url": "https://mossnoor.com/products/after-workout-shower-gel-clean-eucalyptus",
+          "offer_url": "https://mossnoor.com/products/after-workout-shower-gel-clean-eucalyptus",
+          "canonical_url": "https://mossnoor.com/products/after-workout-shower-gel-clean-eucalyptus",
+          "destination_url": "https://mossnoor.com/products/after-workout-shower-gel-clean-eucalyptus",
+          "external_redirect_url": "https://mossnoor.com/products/after-workout-shower-gel-clean-eucalyptus",
+          "merchant_display_name": "Moss & Noor",
+          "price": "10",
+          "price_amount": 10,
+          "price_currency": "USD",
+          "availability": "in_stock",
+          "commerce_facts_v1": {
+            "contract_version": "commerce_facts.v1",
+            "market_id": "US",
+            "country": "US",
+            "currency_target": "USD",
+            "source_authority": "catalog_extract_v2",
+            "captured_at": "2026-05-23T00:34:20.713Z",
+            "evidence_url": "https://mossnoor.com/products/after-workout-shower-gel-clean-eucalyptus",
+            "sellable_region": {
+              "status": "unknown",
+              "countries": [],
+              "evidence_source": "catalog_extract_v2",
+              "confidence": "medium",
+              "checked_at": "2026-05-23T00:34:20.713Z",
+              "reason_codes": [
+                "market_currency_observed",
+                "shipping_destination_not_verified",
+                "external_checkout_not_queried"
+              ],
+              "evidence_url": "https://mossnoor.com/products/after-workout-shower-gel-clean-eucalyptus"
+            },
+            "regional_price": {
+              "amount": 10,
+              "currency": "USD",
+              "display_raw": "10.00",
+              "price_type": "list",
+              "compare_at_amount": null,
+              "compare_at_currency": null,
+              "compare_at_display_raw": null,
+              "tax_included": "unknown",
+              "confidence": "medium",
+              "market_switch_status": "ok",
+              "observed_currency": "USD",
+              "source_url": "https://mossnoor.com/products/after-workout-shower-gel-clean-eucalyptus",
+              "captured_at": "2026-05-23T00:34:20.713Z"
+            },
+            "availability": {
+              "status": "in_stock",
+              "source": "catalog_extract_v2",
+              "confidence": "medium",
+              "captured_at": "2026-05-23T00:34:20.713Z"
+            },
+            "shipping": {
+              "status": "unknown",
+              "source": "catalog_extract_v2",
+              "confidence": "unknown",
+              "reason_codes": [
+                "external_checkout_not_queried"
+              ],
+              "checked_at": "2026-05-23T00:34:20.713Z"
+            },
+            "promotions": [],
+            "returns": {
+              "status": "unknown",
+              "source": "catalog_extract_v2",
+              "confidence": "unknown",
+              "reason_codes": [
+                "external_returns_not_extracted"
+              ],
+              "checked_at": "2026-05-23T00:34:20.713Z"
+            }
+          },
+          "agent_safe_commerce_facts": {
+            "contract_version": "commerce_facts.v1",
+            "market_id": "US",
+            "price": {
+              "amount": 10,
+              "currency": "USD",
+              "display_raw": "10.00",
+              "price_type": "list",
+              "compare_at_amount": null,
+              "compare_at_currency": null,
+              "compare_at_display_raw": null,
+              "tax_included": "unknown",
+              "confidence": "medium",
+              "market_switch_status": "ok",
+              "observed_currency": "USD",
+              "source_url": "https://mossnoor.com/products/after-workout-shower-gel-clean-eucalyptus",
+              "captured_at": "2026-05-23T00:34:20.713Z"
+            },
+            "availability": {
+              "status": "in_stock",
+              "source": "catalog_extract_v2",
+              "confidence": "medium",
+              "captured_at": "2026-05-23T00:34:20.713Z"
+            },
+            "shipping": {
+              "status": "unknown",
+              "reason": "verify_at_checkout"
+            },
+            "promotions": [],
+            "checkout_note": "Shipping and promotions are not verified for this external offer; verify at merchant checkout."
+          }
+        }
+      },
+      "serving_readiness": {
+        "servingEligible": true,
+        "contentQualityScore": 90,
+        "blockerCode": "none",
+        "blockerDetail": null,
+        "identityResolved": true,
+        "identityLiveReadResolved": false,
+        "identityBootstrapEligible": true,
+        "terminalHold": false,
+        "terminalHoldReason": "",
+        "hasImage": true,
+        "hasPrice": true,
+        "descriptionLength": 328
+      }
+    },
+    {
+      "external_product_id": "ext_3ad7ef081b2b95eafb2b0950",
+      "product_key": "prod::external_seed::external_seed::ext_3ad7ef081b2b95eafb2b0950",
+      "product_group_id": "sig_4c699943c7ca53f6908c74b7",
+      "title": "After Workout Shower Gel – Clean Eucalyptus 500 ml",
+      "brand": "Moss & Noor",
+      "product_type": "Body Wash",
+      "category": "Body Wash",
+      "category_path": "beauty/body-care/body-wash",
+      "canonical_url": "https://mossnoor.com/products/after-workout-shower-gel-clean-eucalyptus-500-ml",
+      "pivota_signature_id": "sig_4c699943c7ca53f6908c74b7",
+      "sku_rows": 1,
+      "first_sku": {
+        "sku_key": "prod::external_seed::external_seed::ext_3ad7ef081b2b95eafb2b0950::sku_883c7ca256abcd584070",
+        "product_key": "prod::external_seed::external_seed::ext_3ad7ef081b2b95eafb2b0950",
+        "merchant_id": "external_seed",
+        "platform": "external_seed",
+        "source_product_id": "ext_3ad7ef081b2b95eafb2b0950",
+        "source_variant_id": "ext_3ad7ef081b2b95eafb2b0950:50317990560082",
+        "source_domain": "mossnoor.com",
+        "sku": "101250",
+        "barcode": null,
+        "title": "500ml",
+        "currency": "USD",
+        "image_url": "https://mossnoor.com/cdn/shop/files/7350103700547_1.jpg?v=1740045196",
+        "visible_attributes": {
+          "Size": "500ml"
+        },
+        "visible_option_labels": {
+          "Size": "500ml"
+        },
+        "ingredient_ids": [],
+        "sku_payload": {
+          "source": "external_product_seeds_mirror_v1",
+          "external_product_id": "ext_3ad7ef081b2b95eafb2b0950",
+          "raw_variant_id": "50317990560082",
+          "source_variant_id": "ext_3ad7ef081b2b95eafb2b0950:50317990560082",
+          "variant_sku": "101250",
+          "barcode": null,
+          "strong_identifier_kind": null,
+          "source_url": "https://mossnoor.com/products/after-workout-shower-gel-clean-eucalyptus-500-ml",
+          "external_redirect_url": "https://mossnoor.com/products/after-workout-shower-gel-clean-eucalyptus-500-ml",
+          "price": "16",
+          "price_amount": 16,
+          "currency": "USD",
+          "availability": "out_of_stock",
+          "image_url": "https://mossnoor.com/cdn/shop/files/7350103700547_1.jpg?v=1740045196",
+          "swatch_image_url": null,
+          "label_image_url": null,
+          "options": {
+            "Size": "500ml"
+          },
+          "raw_variant": {
+            "sku": "101250",
+            "url": "https://mossnoor.com/products/after-workout-shower-gel-clean-eucalyptus-500-ml?variant=50317990560082&utm_source=pivota&utm_medium=affiliate",
+            "price": "16.00",
+            "stock": "Out of Stock",
+            "title": "500ml",
+            "options": [
+              {
+                "name": "Size",
+                "value": "500ml"
+              }
+            ],
+            "currency": "USD",
+            "deep_link": "https://mossnoor.com/products/after-workout-shower-gel-clean-eucalyptus-500-ml?variant=50317990560082&utm_source=pivota&utm_medium=affiliate",
+            "image_url": "https://mossnoor.com/cdn/shop/files/7350103700547_1.jpg?v=1740045196",
+            "image_urls": [
+              "https://mossnoor.com/cdn/shop/files/7350103700547_1.jpg?v=1740045196"
+            ],
+            "variant_id": "50317990560082",
+            "option_name": "Size",
+            "product_url": "https://mossnoor.com/products/after-workout-shower-gel-clean-eucalyptus-500-ml",
+            "option_value": "500ml"
+          }
+        },
+        "readiness_tier": "referral_only"
+      },
+      "first_offer": {
+        "offer_id": "offer:external_seed:a5f653567be66bc22e5a944ac45dc35c",
+        "sku_key": "prod::external_seed::external_seed::ext_3ad7ef081b2b95eafb2b0950::sku_883c7ca256abcd584070",
+        "product_key": "prod::external_seed::external_seed::ext_3ad7ef081b2b95eafb2b0950",
+        "merchant_id": "external_seed",
+        "catalog_track": "external_referral",
+        "truth_tier": "observed",
+        "readiness_tier": "referral_only",
+        "offer_mode": "redirect",
+        "channel": "external_referral",
+        "availability": "out_of_stock",
+        "currency": "USD",
+        "list_price": 16,
+        "merchant_effective_price": 16,
+        "estimated_best_price": 16,
+        "price_confidence": 1,
+        "source_system": "external_product_seeds_mirror_v1",
+        "source_ref": "eps_e38d3a2546bdacf2f0202094",
+        "source_domain": "mossnoor.com",
+        "offer_payload": {
+          "source": "external_product_seeds_mirror_v1",
+          "external_seed_id": "eps_e38d3a2546bdacf2f0202094",
+          "external_product_id": "ext_3ad7ef081b2b95eafb2b0950",
+          "domain": "mossnoor.com",
+          "market": "US",
+          "product_title": "After Workout Shower Gel – Clean Eucalyptus 500 ml",
+          "variant_title": "500ml",
+          "variant_sku": "101250",
+          "raw_variant_id": "50317990560082",
+          "url": "https://mossnoor.com/products/after-workout-shower-gel-clean-eucalyptus-500-ml",
+          "offer_url": "https://mossnoor.com/products/after-workout-shower-gel-clean-eucalyptus-500-ml",
+          "canonical_url": "https://mossnoor.com/products/after-workout-shower-gel-clean-eucalyptus-500-ml",
+          "destination_url": "https://mossnoor.com/products/after-workout-shower-gel-clean-eucalyptus-500-ml",
+          "external_redirect_url": "https://mossnoor.com/products/after-workout-shower-gel-clean-eucalyptus-500-ml",
+          "merchant_display_name": "Moss & Noor",
+          "price": "16",
+          "price_amount": 16,
+          "price_currency": "USD",
+          "availability": "out_of_stock",
+          "commerce_facts_v1": {
+            "contract_version": "commerce_facts.v1",
+            "market_id": "US",
+            "country": "US",
+            "currency_target": "USD",
+            "source_authority": "catalog_extract_v2",
+            "captured_at": "2026-05-23T00:34:26.416Z",
+            "evidence_url": "https://mossnoor.com/products/after-workout-shower-gel-clean-eucalyptus-500-ml",
+            "sellable_region": {
+              "status": "unknown",
+              "countries": [],
+              "evidence_source": "catalog_extract_v2",
+              "confidence": "medium",
+              "checked_at": "2026-05-23T00:34:26.416Z",
+              "reason_codes": [
+                "market_currency_observed",
+                "shipping_destination_not_verified",
+                "external_checkout_not_queried"
+              ],
+              "evidence_url": "https://mossnoor.com/products/after-workout-shower-gel-clean-eucalyptus-500-ml"
+            },
+            "regional_price": {
+              "amount": 16,
+              "currency": "USD",
+              "display_raw": "16.00",
+              "price_type": "list",
+              "compare_at_amount": null,
+              "compare_at_currency": null,
+              "compare_at_display_raw": null,
+              "tax_included": "unknown",
+              "confidence": "medium",
+              "market_switch_status": "ok",
+              "observed_currency": "USD",
+              "source_url": "https://mossnoor.com/products/after-workout-shower-gel-clean-eucalyptus-500-ml",
+              "captured_at": "2026-05-23T00:34:26.416Z"
+            },
+            "availability": {
+              "status": "out_of_stock",
+              "source": "catalog_extract_v2",
+              "confidence": "medium",
+              "captured_at": "2026-05-23T00:34:26.416Z"
+            },
+            "shipping": {
+              "status": "unknown",
+              "source": "catalog_extract_v2",
+              "confidence": "unknown",
+              "reason_codes": [
+                "external_checkout_not_queried"
+              ],
+              "checked_at": "2026-05-23T00:34:26.416Z"
+            },
+            "promotions": [],
+            "returns": {
+              "status": "unknown",
+              "source": "catalog_extract_v2",
+              "confidence": "unknown",
+              "reason_codes": [
+                "external_returns_not_extracted"
+              ],
+              "checked_at": "2026-05-23T00:34:26.416Z"
+            }
+          },
+          "agent_safe_commerce_facts": {
+            "contract_version": "commerce_facts.v1",
+            "market_id": "US",
+            "price": {
+              "amount": 16,
+              "currency": "USD",
+              "display_raw": "16.00",
+              "price_type": "list",
+              "compare_at_amount": null,
+              "compare_at_currency": null,
+              "compare_at_display_raw": null,
+              "tax_included": "unknown",
+              "confidence": "medium",
+              "market_switch_status": "ok",
+              "observed_currency": "USD",
+              "source_url": "https://mossnoor.com/products/after-workout-shower-gel-clean-eucalyptus-500-ml",
+              "captured_at": "2026-05-23T00:34:26.416Z"
+            },
+            "availability": {
+              "status": "out_of_stock",
+              "source": "catalog_extract_v2",
+              "confidence": "medium",
+              "captured_at": "2026-05-23T00:34:26.416Z"
+            },
+            "shipping": {
+              "status": "unknown",
+              "reason": "verify_at_checkout"
+            },
+            "promotions": [],
+            "checkout_note": "Shipping and promotions are not verified for this external offer; verify at merchant checkout."
+          }
+        }
+      },
+      "serving_readiness": {
+        "servingEligible": true,
+        "contentQualityScore": 90,
+        "blockerCode": "none",
+        "blockerDetail": null,
+        "identityResolved": true,
+        "identityLiveReadResolved": false,
+        "identityBootstrapEligible": true,
+        "terminalHold": false,
+        "terminalHoldReason": "",
+        "hasImage": true,
+        "hasPrice": true,
+        "descriptionLength": 341
+      }
+    },
+    {
+      "external_product_id": "ext_83b8555768814cac5243aef1",
+      "product_key": "prod::external_seed::external_seed::ext_83b8555768814cac5243aef1",
+      "product_group_id": "sig_d5f5f744bfb57c404d65405a",
+      "title": "After Workout Shower Gel – Crispy Cucumber 500 ml",
+      "brand": "Moss & Noor",
+      "product_type": "Body Wash",
+      "category": "Body Wash",
+      "category_path": "beauty/body-care/body-wash",
+      "canonical_url": "https://mossnoor.com/products/after-workout-shower-gel-crispy-cucumber",
+      "pivota_signature_id": "sig_d5f5f744bfb57c404d65405a",
+      "sku_rows": 1,
+      "first_sku": {
+        "sku_key": "prod::external_seed::external_seed::ext_83b8555768814cac5243aef1::sku_18c153404bc9a80e588e",
+        "product_key": "prod::external_seed::external_seed::ext_83b8555768814cac5243aef1",
+        "merchant_id": "external_seed",
+        "platform": "external_seed",
+        "source_product_id": "ext_83b8555768814cac5243aef1",
+        "source_variant_id": "ext_83b8555768814cac5243aef1:50318004846930",
+        "source_domain": "mossnoor.com",
+        "sku": "101350",
+        "barcode": null,
+        "title": "500ml",
+        "currency": "USD",
+        "image_url": "https://mossnoor.com/cdn/shop/files/7350103701124_1.jpg?v=1740045601",
+        "visible_attributes": {
+          "Size": "500ml"
+        },
+        "visible_option_labels": {
+          "Size": "500ml"
+        },
+        "ingredient_ids": [],
+        "sku_payload": {
+          "source": "external_product_seeds_mirror_v1",
+          "external_product_id": "ext_83b8555768814cac5243aef1",
+          "raw_variant_id": "50318004846930",
+          "source_variant_id": "ext_83b8555768814cac5243aef1:50318004846930",
+          "variant_sku": "101350",
+          "barcode": null,
+          "strong_identifier_kind": null,
+          "source_url": "https://mossnoor.com/products/after-workout-shower-gel-crispy-cucumber",
+          "external_redirect_url": "https://mossnoor.com/products/after-workout-shower-gel-crispy-cucumber",
+          "price": "16",
+          "price_amount": 16,
+          "currency": "USD",
+          "availability": "in_stock",
+          "image_url": "https://mossnoor.com/cdn/shop/files/7350103701124_1.jpg?v=1740045601",
+          "swatch_image_url": null,
+          "label_image_url": null,
+          "options": {
+            "Size": "500ml"
+          },
+          "raw_variant": {
+            "sku": "101350",
+            "url": "https://mossnoor.com/products/after-workout-shower-gel-crispy-cucumber?variant=50318004846930&utm_source=pivota&utm_medium=affiliate",
+            "price": "16.00",
+            "stock": "In Stock",
+            "title": "500ml",
+            "options": [
+              {
+                "name": "Size",
+                "value": "500ml"
+              }
+            ],
+            "currency": "USD",
+            "deep_link": "https://mossnoor.com/products/after-workout-shower-gel-crispy-cucumber?variant=50318004846930&utm_source=pivota&utm_medium=affiliate",
+            "image_url": "https://mossnoor.com/cdn/shop/files/7350103701124_1.jpg?v=1740045601",
+            "image_urls": [
+              "https://mossnoor.com/cdn/shop/files/7350103701124_1.jpg?v=1740045601"
+            ],
+            "variant_id": "50318004846930",
+            "option_name": "Size",
+            "product_url": "https://mossnoor.com/products/after-workout-shower-gel-crispy-cucumber",
+            "option_value": "500ml"
+          }
+        },
+        "readiness_tier": "referral_only"
+      },
+      "first_offer": {
+        "offer_id": "offer:external_seed:dea61278760aa3c6775b9fc5093a5b19",
+        "sku_key": "prod::external_seed::external_seed::ext_83b8555768814cac5243aef1::sku_18c153404bc9a80e588e",
+        "product_key": "prod::external_seed::external_seed::ext_83b8555768814cac5243aef1",
+        "merchant_id": "external_seed",
+        "catalog_track": "external_referral",
+        "truth_tier": "observed",
+        "readiness_tier": "referral_only",
+        "offer_mode": "redirect",
+        "channel": "external_referral",
+        "availability": "in_stock",
+        "currency": "USD",
+        "list_price": 16,
+        "merchant_effective_price": 16,
+        "estimated_best_price": 16,
+        "price_confidence": 1,
+        "source_system": "external_product_seeds_mirror_v1",
+        "source_ref": "eps_e56270ecb6bb953e8f2ec347",
+        "source_domain": "mossnoor.com",
+        "offer_payload": {
+          "source": "external_product_seeds_mirror_v1",
+          "external_seed_id": "eps_e56270ecb6bb953e8f2ec347",
+          "external_product_id": "ext_83b8555768814cac5243aef1",
+          "domain": "mossnoor.com",
+          "market": "US",
+          "product_title": "After Workout Shower Gel – Crispy Cucumber 500 ml",
+          "variant_title": "500ml",
+          "variant_sku": "101350",
+          "raw_variant_id": "50318004846930",
+          "url": "https://mossnoor.com/products/after-workout-shower-gel-crispy-cucumber",
+          "offer_url": "https://mossnoor.com/products/after-workout-shower-gel-crispy-cucumber",
+          "canonical_url": "https://mossnoor.com/products/after-workout-shower-gel-crispy-cucumber",
+          "destination_url": "https://mossnoor.com/products/after-workout-shower-gel-crispy-cucumber",
+          "external_redirect_url": "https://mossnoor.com/products/after-workout-shower-gel-crispy-cucumber",
+          "merchant_display_name": "Moss & Noor",
+          "price": "16",
+          "price_amount": 16,
+          "price_currency": "USD",
+          "availability": "in_stock",
+          "commerce_facts_v1": {
+            "contract_version": "commerce_facts.v1",
+            "market_id": "US",
+            "country": "US",
+            "currency_target": "USD",
+            "source_authority": "catalog_extract_v2",
+            "captured_at": "2026-05-23T00:34:29.796Z",
+            "evidence_url": "https://mossnoor.com/products/after-workout-shower-gel-crispy-cucumber",
+            "sellable_region": {
+              "status": "unknown",
+              "countries": [],
+              "evidence_source": "catalog_extract_v2",
+              "confidence": "medium",
+              "checked_at": "2026-05-23T00:34:29.796Z",
+              "reason_codes": [
+                "market_currency_observed",
+                "shipping_destination_not_verified",
+                "external_checkout_not_queried"
+              ],
+              "evidence_url": "https://mossnoor.com/products/after-workout-shower-gel-crispy-cucumber"
+            },
+            "regional_price": {
+              "amount": 16,
+              "currency": "USD",
+              "display_raw": "16.00",
+              "price_type": "list",
+              "compare_at_amount": null,
+              "compare_at_currency": null,
+              "compare_at_display_raw": null,
+              "tax_included": "unknown",
+              "confidence": "medium",
+              "market_switch_status": "ok",
+              "observed_currency": "USD",
+              "source_url": "https://mossnoor.com/products/after-workout-shower-gel-crispy-cucumber",
+              "captured_at": "2026-05-23T00:34:29.796Z"
+            },
+            "availability": {
+              "status": "in_stock",
+              "source": "catalog_extract_v2",
+              "confidence": "medium",
+              "captured_at": "2026-05-23T00:34:29.796Z"
+            },
+            "shipping": {
+              "status": "unknown",
+              "source": "catalog_extract_v2",
+              "confidence": "unknown",
+              "reason_codes": [
+                "external_checkout_not_queried"
+              ],
+              "checked_at": "2026-05-23T00:34:29.796Z"
+            },
+            "promotions": [],
+            "returns": {
+              "status": "unknown",
+              "source": "catalog_extract_v2",
+              "confidence": "unknown",
+              "reason_codes": [
+                "external_returns_not_extracted"
+              ],
+              "checked_at": "2026-05-23T00:34:29.796Z"
+            }
+          },
+          "agent_safe_commerce_facts": {
+            "contract_version": "commerce_facts.v1",
+            "market_id": "US",
+            "price": {
+              "amount": 16,
+              "currency": "USD",
+              "display_raw": "16.00",
+              "price_type": "list",
+              "compare_at_amount": null,
+              "compare_at_currency": null,
+              "compare_at_display_raw": null,
+              "tax_included": "unknown",
+              "confidence": "medium",
+              "market_switch_status": "ok",
+              "observed_currency": "USD",
+              "source_url": "https://mossnoor.com/products/after-workout-shower-gel-crispy-cucumber",
+              "captured_at": "2026-05-23T00:34:29.796Z"
+            },
+            "availability": {
+              "status": "in_stock",
+              "source": "catalog_extract_v2",
+              "confidence": "medium",
+              "captured_at": "2026-05-23T00:34:29.796Z"
+            },
+            "shipping": {
+              "status": "unknown",
+              "reason": "verify_at_checkout"
+            },
+            "promotions": [],
+            "checkout_note": "Shipping and promotions are not verified for this external offer; verify at merchant checkout."
+          }
+        }
+      },
+      "serving_readiness": {
+        "servingEligible": true,
+        "contentQualityScore": 90,
+        "blockerCode": "none",
+        "blockerDetail": null,
+        "identityResolved": true,
+        "identityLiveReadResolved": false,
+        "identityBootstrapEligible": true,
+        "terminalHold": false,
+        "terminalHoldReason": "",
+        "hasImage": true,
+        "hasPrice": true,
+        "descriptionLength": 341
+      }
+    },
+    {
+      "external_product_id": "ext_67472974111568c15ac3920d",
+      "product_key": "prod::external_seed::external_seed::ext_67472974111568c15ac3920d",
+      "product_group_id": "sig_9240e02c74f21efa5cb5ba74",
+      "title": "After Workout Shower Gel – Fresh Grapefruit",
+      "brand": "Moss & Noor",
+      "product_type": "Body Wash",
+      "category": "Body Wash",
+      "category_path": "beauty/body-care/body-wash",
+      "canonical_url": "https://mossnoor.com/products/shower-gel",
+      "pivota_signature_id": "sig_9240e02c74f21efa5cb5ba74",
+      "sku_rows": 1,
+      "first_sku": {
+        "sku_key": "prod::external_seed::external_seed::ext_67472974111568c15ac3920d::sku_cae0fecf729bc8c46875",
+        "product_key": "prod::external_seed::external_seed::ext_67472974111568c15ac3920d",
+        "merchant_id": "external_seed",
+        "platform": "external_seed",
+        "source_product_id": "ext_67472974111568c15ac3920d",
+        "source_variant_id": "ext_67472974111568c15ac3920d:50317973160274",
+        "source_domain": "mossnoor.com",
+        "sku": "101110",
+        "barcode": null,
+        "title": "150ml",
+        "currency": "USD",
+        "image_url": "https://mossnoor.com/cdn/shop/files/7350103700028_1.jpg?v=1684149421",
+        "visible_attributes": {
+          "Size": "150ml"
+        },
+        "visible_option_labels": {
+          "Size": "150ml"
+        },
+        "ingredient_ids": [],
+        "sku_payload": {
+          "source": "external_product_seeds_mirror_v1",
+          "external_product_id": "ext_67472974111568c15ac3920d",
+          "raw_variant_id": "50317973160274",
+          "source_variant_id": "ext_67472974111568c15ac3920d:50317973160274",
+          "variant_sku": "101110",
+          "barcode": null,
+          "strong_identifier_kind": null,
+          "source_url": "https://mossnoor.com/products/shower-gel",
+          "external_redirect_url": "https://mossnoor.com/products/shower-gel",
+          "price": "10",
+          "price_amount": 10,
+          "currency": "USD",
+          "availability": "in_stock",
+          "image_url": "https://mossnoor.com/cdn/shop/files/7350103700028_1.jpg?v=1684149421",
+          "swatch_image_url": null,
+          "label_image_url": null,
+          "options": {
+            "Size": "150ml"
+          },
+          "raw_variant": {
+            "sku": "101110",
+            "url": "https://mossnoor.com/products/shower-gel?variant=50317973160274&utm_source=pivota&utm_medium=affiliate",
+            "price": "10.00",
+            "stock": "In Stock",
+            "title": "150ml",
+            "options": [
+              {
+                "name": "Size",
+                "value": "150ml"
+              }
+            ],
+            "currency": "USD",
+            "deep_link": "https://mossnoor.com/products/shower-gel?variant=50317973160274&utm_source=pivota&utm_medium=affiliate",
+            "image_url": "https://mossnoor.com/cdn/shop/files/7350103700028_1.jpg?v=1684149421",
+            "image_urls": [
+              "https://mossnoor.com/cdn/shop/files/7350103700028_1.jpg?v=1684149421",
+              "https://cdn.shopify.com/s/files/1/0314/9037/5818/products/mossnoor_freshgrape_hand.jpg?v=1684149421",
+              "https://cdn.shopify.com/s/files/1/0314/9037/5818/products/mossnoor_freshgrape_openhand.jpg?v=1684149421",
+              "https://cdn.shopify.com/s/files/1/0314/9037/5818/products/mossnoor_freshgrape_scent.jpg?v=1684149421"
+            ],
+            "variant_id": "50317973160274",
+            "option_name": "Size",
+            "product_url": "https://mossnoor.com/products/shower-gel",
+            "option_value": "150ml"
+          }
+        },
+        "readiness_tier": "referral_only"
+      },
+      "first_offer": {
+        "offer_id": "offer:external_seed:6d8e665302130b1bf83f22b864139b43",
+        "sku_key": "prod::external_seed::external_seed::ext_67472974111568c15ac3920d::sku_cae0fecf729bc8c46875",
+        "product_key": "prod::external_seed::external_seed::ext_67472974111568c15ac3920d",
+        "merchant_id": "external_seed",
+        "catalog_track": "external_referral",
+        "truth_tier": "observed",
+        "readiness_tier": "referral_only",
+        "offer_mode": "redirect",
+        "channel": "external_referral",
+        "availability": "in_stock",
+        "currency": "USD",
+        "list_price": 10,
+        "merchant_effective_price": 10,
+        "estimated_best_price": 10,
+        "price_confidence": 1,
+        "source_system": "external_product_seeds_mirror_v1",
+        "source_ref": "eps_1dffa343e9ebeafb511f5c44",
+        "source_domain": "mossnoor.com",
+        "offer_payload": {
+          "source": "external_product_seeds_mirror_v1",
+          "external_seed_id": "eps_1dffa343e9ebeafb511f5c44",
+          "external_product_id": "ext_67472974111568c15ac3920d",
+          "domain": "mossnoor.com",
+          "market": "US",
+          "product_title": "After Workout Shower Gel – Fresh Grapefruit",
+          "variant_title": "150ml",
+          "variant_sku": "101110",
+          "raw_variant_id": "50317973160274",
+          "url": "https://mossnoor.com/products/shower-gel",
+          "offer_url": "https://mossnoor.com/products/shower-gel",
+          "canonical_url": "https://mossnoor.com/products/shower-gel",
+          "destination_url": "https://mossnoor.com/products/shower-gel",
+          "external_redirect_url": "https://mossnoor.com/products/shower-gel",
+          "merchant_display_name": "Moss & Noor",
+          "price": "10",
+          "price_amount": 10,
+          "price_currency": "USD",
+          "availability": "in_stock",
+          "commerce_facts_v1": {
+            "contract_version": "commerce_facts.v1",
+            "market_id": "US",
+            "country": "US",
+            "currency_target": "USD",
+            "source_authority": "catalog_extract_v2",
+            "captured_at": "2026-05-23T00:34:32.843Z",
+            "evidence_url": "https://mossnoor.com/products/shower-gel",
+            "sellable_region": {
+              "status": "unknown",
+              "countries": [],
+              "evidence_source": "catalog_extract_v2",
+              "confidence": "medium",
+              "checked_at": "2026-05-23T00:34:32.843Z",
+              "reason_codes": [
+                "market_currency_observed",
+                "shipping_destination_not_verified",
+                "external_checkout_not_queried"
+              ],
+              "evidence_url": "https://mossnoor.com/products/shower-gel"
+            },
+            "regional_price": {
+              "amount": 10,
+              "currency": "USD",
+              "display_raw": "10.00",
+              "price_type": "list",
+              "compare_at_amount": null,
+              "compare_at_currency": null,
+              "compare_at_display_raw": null,
+              "tax_included": "unknown",
+              "confidence": "medium",
+              "market_switch_status": "ok",
+              "observed_currency": "USD",
+              "source_url": "https://mossnoor.com/products/shower-gel",
+              "captured_at": "2026-05-23T00:34:32.843Z"
+            },
+            "availability": {
+              "status": "in_stock",
+              "source": "catalog_extract_v2",
+              "confidence": "medium",
+              "captured_at": "2026-05-23T00:34:32.843Z"
+            },
+            "shipping": {
+              "status": "unknown",
+              "source": "catalog_extract_v2",
+              "confidence": "unknown",
+              "reason_codes": [
+                "external_checkout_not_queried"
+              ],
+              "checked_at": "2026-05-23T00:34:32.843Z"
+            },
+            "promotions": [],
+            "returns": {
+              "status": "unknown",
+              "source": "catalog_extract_v2",
+              "confidence": "unknown",
+              "reason_codes": [
+                "external_returns_not_extracted"
+              ],
+              "checked_at": "2026-05-23T00:34:32.843Z"
+            }
+          },
+          "agent_safe_commerce_facts": {
+            "contract_version": "commerce_facts.v1",
+            "market_id": "US",
+            "price": {
+              "amount": 10,
+              "currency": "USD",
+              "display_raw": "10.00",
+              "price_type": "list",
+              "compare_at_amount": null,
+              "compare_at_currency": null,
+              "compare_at_display_raw": null,
+              "tax_included": "unknown",
+              "confidence": "medium",
+              "market_switch_status": "ok",
+              "observed_currency": "USD",
+              "source_url": "https://mossnoor.com/products/shower-gel",
+              "captured_at": "2026-05-23T00:34:32.843Z"
+            },
+            "availability": {
+              "status": "in_stock",
+              "source": "catalog_extract_v2",
+              "confidence": "medium",
+              "captured_at": "2026-05-23T00:34:32.843Z"
+            },
+            "shipping": {
+              "status": "unknown",
+              "reason": "verify_at_checkout"
+            },
+            "promotions": [],
+            "checkout_note": "Shipping and promotions are not verified for this external offer; verify at merchant checkout."
+          }
+        }
+      },
+      "serving_readiness": {
+        "servingEligible": true,
+        "contentQualityScore": 90,
+        "blockerCode": "none",
+        "blockerDetail": null,
+        "identityResolved": true,
+        "identityLiveReadResolved": false,
+        "identityBootstrapEligible": true,
+        "terminalHold": false,
+        "terminalHoldReason": "",
+        "hasImage": true,
+        "hasPrice": true,
+        "descriptionLength": 328
+      }
+    },
+    {
+      "external_product_id": "ext_cf945cc7bfe99bf9864bd6df",
+      "product_key": "prod::external_seed::external_seed::ext_cf945cc7bfe99bf9864bd6df",
+      "product_group_id": "sig_52c6a00f3349f49fc6706f46",
+      "title": "After Workout Shower Gel – Fresh Grapefruit 500 ml",
+      "brand": "Moss & Noor",
+      "product_type": "Body Wash",
+      "category": "Body Wash",
+      "category_path": "beauty/body-care/body-wash",
+      "canonical_url": "https://mossnoor.com/products/after-workout-shower-gel-fresh-grapefruit-500-ml",
+      "pivota_signature_id": "sig_52c6a00f3349f49fc6706f46",
+      "sku_rows": 1,
+      "first_sku": {
+        "sku_key": "prod::external_seed::external_seed::ext_cf945cc7bfe99bf9864bd6df::sku_6fec50e3db50d6ca28b8",
+        "product_key": "prod::external_seed::external_seed::ext_cf945cc7bfe99bf9864bd6df",
+        "merchant_id": "external_seed",
+        "platform": "external_seed",
+        "source_product_id": "ext_cf945cc7bfe99bf9864bd6df",
+        "source_variant_id": "ext_cf945cc7bfe99bf9864bd6df:50317972013394",
+        "source_domain": "mossnoor.com",
+        "sku": "101150",
+        "barcode": null,
+        "title": "500ml",
+        "currency": "USD",
+        "image_url": "https://mossnoor.com/cdn/shop/files/7350103700554_1.jpg?v=1740044736",
+        "visible_attributes": {
+          "Size": "500ml"
+        },
+        "visible_option_labels": {
+          "Size": "500ml"
+        },
+        "ingredient_ids": [],
+        "sku_payload": {
+          "source": "external_product_seeds_mirror_v1",
+          "external_product_id": "ext_cf945cc7bfe99bf9864bd6df",
+          "raw_variant_id": "50317972013394",
+          "source_variant_id": "ext_cf945cc7bfe99bf9864bd6df:50317972013394",
+          "variant_sku": "101150",
+          "barcode": null,
+          "strong_identifier_kind": null,
+          "source_url": "https://mossnoor.com/products/after-workout-shower-gel-fresh-grapefruit-500-ml",
+          "external_redirect_url": "https://mossnoor.com/products/after-workout-shower-gel-fresh-grapefruit-500-ml",
+          "price": "16",
+          "price_amount": 16,
+          "currency": "USD",
+          "availability": "in_stock",
+          "image_url": "https://mossnoor.com/cdn/shop/files/7350103700554_1.jpg?v=1740044736",
+          "swatch_image_url": null,
+          "label_image_url": null,
+          "options": {
+            "Size": "500ml"
+          },
+          "raw_variant": {
+            "sku": "101150",
+            "url": "https://mossnoor.com/products/after-workout-shower-gel-fresh-grapefruit-500-ml?variant=50317972013394&utm_source=pivota&utm_medium=affiliate",
+            "price": "16.00",
+            "stock": "In Stock",
+            "title": "500ml",
+            "options": [
+              {
+                "name": "Size",
+                "value": "500ml"
+              }
+            ],
+            "currency": "USD",
+            "deep_link": "https://mossnoor.com/products/after-workout-shower-gel-fresh-grapefruit-500-ml?variant=50317972013394&utm_source=pivota&utm_medium=affiliate",
+            "image_url": "https://mossnoor.com/cdn/shop/files/7350103700554_1.jpg?v=1740044736",
+            "image_urls": [
+              "https://mossnoor.com/cdn/shop/files/7350103700554_1.jpg?v=1740044736"
+            ],
+            "variant_id": "50317972013394",
+            "option_name": "Size",
+            "product_url": "https://mossnoor.com/products/after-workout-shower-gel-fresh-grapefruit-500-ml",
+            "option_value": "500ml"
+          }
+        },
+        "readiness_tier": "referral_only"
+      },
+      "first_offer": {
+        "offer_id": "offer:external_seed:05eb23bd0f9a31e0012f1f651ef9480b",
+        "sku_key": "prod::external_seed::external_seed::ext_cf945cc7bfe99bf9864bd6df::sku_6fec50e3db50d6ca28b8",
+        "product_key": "prod::external_seed::external_seed::ext_cf945cc7bfe99bf9864bd6df",
+        "merchant_id": "external_seed",
+        "catalog_track": "external_referral",
+        "truth_tier": "observed",
+        "readiness_tier": "referral_only",
+        "offer_mode": "redirect",
+        "channel": "external_referral",
+        "availability": "in_stock",
+        "currency": "USD",
+        "list_price": 16,
+        "merchant_effective_price": 16,
+        "estimated_best_price": 16,
+        "price_confidence": 1,
+        "source_system": "external_product_seeds_mirror_v1",
+        "source_ref": "eps_f4b8851a20e6e5eff0d7de38",
+        "source_domain": "mossnoor.com",
+        "offer_payload": {
+          "source": "external_product_seeds_mirror_v1",
+          "external_seed_id": "eps_f4b8851a20e6e5eff0d7de38",
+          "external_product_id": "ext_cf945cc7bfe99bf9864bd6df",
+          "domain": "mossnoor.com",
+          "market": "US",
+          "product_title": "After Workout Shower Gel – Fresh Grapefruit 500 ml",
+          "variant_title": "500ml",
+          "variant_sku": "101150",
+          "raw_variant_id": "50317972013394",
+          "url": "https://mossnoor.com/products/after-workout-shower-gel-fresh-grapefruit-500-ml",
+          "offer_url": "https://mossnoor.com/products/after-workout-shower-gel-fresh-grapefruit-500-ml",
+          "canonical_url": "https://mossnoor.com/products/after-workout-shower-gel-fresh-grapefruit-500-ml",
+          "destination_url": "https://mossnoor.com/products/after-workout-shower-gel-fresh-grapefruit-500-ml",
+          "external_redirect_url": "https://mossnoor.com/products/after-workout-shower-gel-fresh-grapefruit-500-ml",
+          "merchant_display_name": "Moss & Noor",
+          "price": "16",
+          "price_amount": 16,
+          "price_currency": "USD",
+          "availability": "in_stock",
+          "commerce_facts_v1": {
+            "contract_version": "commerce_facts.v1",
+            "market_id": "US",
+            "country": "US",
+            "currency_target": "USD",
+            "source_authority": "catalog_extract_v2",
+            "captured_at": "2026-05-23T00:34:41.321Z",
+            "evidence_url": "https://mossnoor.com/products/after-workout-shower-gel-fresh-grapefruit-500-ml",
+            "sellable_region": {
+              "status": "unknown",
+              "countries": [],
+              "evidence_source": "catalog_extract_v2",
+              "confidence": "medium",
+              "checked_at": "2026-05-23T00:34:41.321Z",
+              "reason_codes": [
+                "market_currency_observed",
+                "shipping_destination_not_verified",
+                "external_checkout_not_queried"
+              ],
+              "evidence_url": "https://mossnoor.com/products/after-workout-shower-gel-fresh-grapefruit-500-ml"
+            },
+            "regional_price": {
+              "amount": 16,
+              "currency": "USD",
+              "display_raw": "16.00",
+              "price_type": "list",
+              "compare_at_amount": null,
+              "compare_at_currency": null,
+              "compare_at_display_raw": null,
+              "tax_included": "unknown",
+              "confidence": "medium",
+              "market_switch_status": "ok",
+              "observed_currency": "USD",
+              "source_url": "https://mossnoor.com/products/after-workout-shower-gel-fresh-grapefruit-500-ml",
+              "captured_at": "2026-05-23T00:34:41.321Z"
+            },
+            "availability": {
+              "status": "in_stock",
+              "source": "catalog_extract_v2",
+              "confidence": "medium",
+              "captured_at": "2026-05-23T00:34:41.321Z"
+            },
+            "shipping": {
+              "status": "unknown",
+              "source": "catalog_extract_v2",
+              "confidence": "unknown",
+              "reason_codes": [
+                "external_checkout_not_queried"
+              ],
+              "checked_at": "2026-05-23T00:34:41.321Z"
+            },
+            "promotions": [],
+            "returns": {
+              "status": "unknown",
+              "source": "catalog_extract_v2",
+              "confidence": "unknown",
+              "reason_codes": [
+                "external_returns_not_extracted"
+              ],
+              "checked_at": "2026-05-23T00:34:41.321Z"
+            }
+          },
+          "agent_safe_commerce_facts": {
+            "contract_version": "commerce_facts.v1",
+            "market_id": "US",
+            "price": {
+              "amount": 16,
+              "currency": "USD",
+              "display_raw": "16.00",
+              "price_type": "list",
+              "compare_at_amount": null,
+              "compare_at_currency": null,
+              "compare_at_display_raw": null,
+              "tax_included": "unknown",
+              "confidence": "medium",
+              "market_switch_status": "ok",
+              "observed_currency": "USD",
+              "source_url": "https://mossnoor.com/products/after-workout-shower-gel-fresh-grapefruit-500-ml",
+              "captured_at": "2026-05-23T00:34:41.321Z"
+            },
+            "availability": {
+              "status": "in_stock",
+              "source": "catalog_extract_v2",
+              "confidence": "medium",
+              "captured_at": "2026-05-23T00:34:41.321Z"
+            },
+            "shipping": {
+              "status": "unknown",
+              "reason": "verify_at_checkout"
+            },
+            "promotions": [],
+            "checkout_note": "Shipping and promotions are not verified for this external offer; verify at merchant checkout."
+          }
+        }
+      },
+      "serving_readiness": {
+        "servingEligible": true,
+        "contentQualityScore": 90,
+        "blockerCode": "none",
+        "blockerDetail": null,
+        "identityResolved": true,
+        "identityLiveReadResolved": false,
+        "identityBootstrapEligible": true,
+        "terminalHold": false,
+        "terminalHoldReason": "",
+        "hasImage": true,
+        "hasPrice": true,
+        "descriptionLength": 341
+      }
+    },
+    {
+      "external_product_id": "ext_876342422f9629ea9363953c",
+      "product_key": "prod::external_seed::external_seed::ext_876342422f9629ea9363953c",
+      "product_group_id": "sig_c24061fe58d0cd07e8511cea",
+      "title": "After Workout Shower Gel – Light Mint",
+      "brand": "Moss & Noor",
+      "product_type": "Body Wash",
+      "category": "Body Wash",
+      "category_path": "beauty/body-care/body-wash",
+      "canonical_url": "https://mossnoor.com/products/after-workout-shower-gel-light-mint",
+      "pivota_signature_id": "sig_c24061fe58d0cd07e8511cea",
+      "sku_rows": 1,
+      "first_sku": {
+        "sku_key": "prod::external_seed::external_seed::ext_876342422f9629ea9363953c::sku_4835c80664db942c2989",
+        "product_key": "prod::external_seed::external_seed::ext_876342422f9629ea9363953c",
+        "merchant_id": "external_seed",
+        "platform": "external_seed",
+        "source_product_id": "ext_876342422f9629ea9363953c",
+        "source_variant_id": "ext_876342422f9629ea9363953c:39694327709886",
+        "source_domain": "mossnoor.com",
+        "sku": "101010",
+        "barcode": null,
+        "title": "150ml",
+        "currency": "USD",
+        "image_url": "https://mossnoor.com/cdn/shop/files/7350103700035_1.jpg?v=1739976926",
+        "visible_attributes": {
+          "Size": "150ml"
+        },
+        "visible_option_labels": {
+          "Size": "150ml"
+        },
+        "ingredient_ids": [],
+        "sku_payload": {
+          "source": "external_product_seeds_mirror_v1",
+          "external_product_id": "ext_876342422f9629ea9363953c",
+          "raw_variant_id": "39694327709886",
+          "source_variant_id": "ext_876342422f9629ea9363953c:39694327709886",
+          "variant_sku": "101010",
+          "barcode": null,
+          "strong_identifier_kind": null,
+          "source_url": "https://mossnoor.com/products/after-workout-shower-gel-light-mint",
+          "external_redirect_url": "https://mossnoor.com/products/after-workout-shower-gel-light-mint",
+          "price": "10",
+          "price_amount": 10,
+          "currency": "USD",
+          "availability": "in_stock",
+          "image_url": "https://mossnoor.com/cdn/shop/files/7350103700035_1.jpg?v=1739976926",
+          "swatch_image_url": null,
+          "label_image_url": null,
+          "options": {
+            "Size": "150ml"
+          },
+          "raw_variant": {
+            "sku": "101010",
+            "url": "https://mossnoor.com/products/after-workout-shower-gel-light-mint?variant=39694327709886&utm_source=pivota&utm_medium=affiliate",
+            "price": "10.00",
+            "stock": "In Stock",
+            "title": "150ml",
+            "options": [
+              {
+                "name": "Size",
+                "value": "150ml"
+              }
+            ],
+            "currency": "USD",
+            "deep_link": "https://mossnoor.com/products/after-workout-shower-gel-light-mint?variant=39694327709886&utm_source=pivota&utm_medium=affiliate",
+            "image_url": "https://mossnoor.com/cdn/shop/files/7350103700035_1.jpg?v=1739976926",
+            "image_urls": [
+              "https://mossnoor.com/cdn/shop/files/7350103700035_1.jpg?v=1739976926",
+              "https://cdn.shopify.com/s/files/1/0314/9037/5818/products/mossnoor_lightmint_scent.jpg?v=1739976926"
+            ],
+            "variant_id": "39694327709886",
+            "option_name": "Size",
+            "product_url": "https://mossnoor.com/products/after-workout-shower-gel-light-mint",
+            "option_value": "150ml"
+          }
+        },
+        "readiness_tier": "referral_only"
+      },
+      "first_offer": {
+        "offer_id": "offer:external_seed:83663a425316bfabd57f8cf95bbee650",
+        "sku_key": "prod::external_seed::external_seed::ext_876342422f9629ea9363953c::sku_4835c80664db942c2989",
+        "product_key": "prod::external_seed::external_seed::ext_876342422f9629ea9363953c",
+        "merchant_id": "external_seed",
+        "catalog_track": "external_referral",
+        "truth_tier": "observed",
+        "readiness_tier": "referral_only",
+        "offer_mode": "redirect",
+        "channel": "external_referral",
+        "availability": "in_stock",
+        "currency": "USD",
+        "list_price": 10,
+        "merchant_effective_price": 10,
+        "estimated_best_price": 10,
+        "price_confidence": 1,
+        "source_system": "external_product_seeds_mirror_v1",
+        "source_ref": "eps_1d5624ce83b81d64ac656dd8",
+        "source_domain": "mossnoor.com",
+        "offer_payload": {
+          "source": "external_product_seeds_mirror_v1",
+          "external_seed_id": "eps_1d5624ce83b81d64ac656dd8",
+          "external_product_id": "ext_876342422f9629ea9363953c",
+          "domain": "mossnoor.com",
+          "market": "US",
+          "product_title": "After Workout Shower Gel – Light Mint",
+          "variant_title": "150ml",
+          "variant_sku": "101010",
+          "raw_variant_id": "39694327709886",
+          "url": "https://mossnoor.com/products/after-workout-shower-gel-light-mint",
+          "offer_url": "https://mossnoor.com/products/after-workout-shower-gel-light-mint",
+          "canonical_url": "https://mossnoor.com/products/after-workout-shower-gel-light-mint",
+          "destination_url": "https://mossnoor.com/products/after-workout-shower-gel-light-mint",
+          "external_redirect_url": "https://mossnoor.com/products/after-workout-shower-gel-light-mint",
+          "merchant_display_name": "Moss & Noor",
+          "price": "10",
+          "price_amount": 10,
+          "price_currency": "USD",
+          "availability": "in_stock",
+          "commerce_facts_v1": {
+            "contract_version": "commerce_facts.v1",
+            "market_id": "US",
+            "country": "US",
+            "currency_target": "USD",
+            "source_authority": "catalog_extract_v2",
+            "captured_at": "2026-05-23T00:34:45.008Z",
+            "evidence_url": "https://mossnoor.com/products/after-workout-shower-gel-light-mint",
+            "sellable_region": {
+              "status": "unknown",
+              "countries": [],
+              "evidence_source": "catalog_extract_v2",
+              "confidence": "medium",
+              "checked_at": "2026-05-23T00:34:45.008Z",
+              "reason_codes": [
+                "market_currency_observed",
+                "shipping_destination_not_verified",
+                "external_checkout_not_queried"
+              ],
+              "evidence_url": "https://mossnoor.com/products/after-workout-shower-gel-light-mint"
+            },
+            "regional_price": {
+              "amount": 10,
+              "currency": "USD",
+              "display_raw": "10.00",
+              "price_type": "list",
+              "compare_at_amount": null,
+              "compare_at_currency": null,
+              "compare_at_display_raw": null,
+              "tax_included": "unknown",
+              "confidence": "medium",
+              "market_switch_status": "ok",
+              "observed_currency": "USD",
+              "source_url": "https://mossnoor.com/products/after-workout-shower-gel-light-mint",
+              "captured_at": "2026-05-23T00:34:45.008Z"
+            },
+            "availability": {
+              "status": "in_stock",
+              "source": "catalog_extract_v2",
+              "confidence": "medium",
+              "captured_at": "2026-05-23T00:34:45.008Z"
+            },
+            "shipping": {
+              "status": "unknown",
+              "source": "catalog_extract_v2",
+              "confidence": "unknown",
+              "reason_codes": [
+                "external_checkout_not_queried"
+              ],
+              "checked_at": "2026-05-23T00:34:45.008Z"
+            },
+            "promotions": [],
+            "returns": {
+              "status": "unknown",
+              "source": "catalog_extract_v2",
+              "confidence": "unknown",
+              "reason_codes": [
+                "external_returns_not_extracted"
+              ],
+              "checked_at": "2026-05-23T00:34:45.008Z"
+            }
+          },
+          "agent_safe_commerce_facts": {
+            "contract_version": "commerce_facts.v1",
+            "market_id": "US",
+            "price": {
+              "amount": 10,
+              "currency": "USD",
+              "display_raw": "10.00",
+              "price_type": "list",
+              "compare_at_amount": null,
+              "compare_at_currency": null,
+              "compare_at_display_raw": null,
+              "tax_included": "unknown",
+              "confidence": "medium",
+              "market_switch_status": "ok",
+              "observed_currency": "USD",
+              "source_url": "https://mossnoor.com/products/after-workout-shower-gel-light-mint",
+              "captured_at": "2026-05-23T00:34:45.008Z"
+            },
+            "availability": {
+              "status": "in_stock",
+              "source": "catalog_extract_v2",
+              "confidence": "medium",
+              "captured_at": "2026-05-23T00:34:45.008Z"
+            },
+            "shipping": {
+              "status": "unknown",
+              "reason": "verify_at_checkout"
+            },
+            "promotions": [],
+            "checkout_note": "Shipping and promotions are not verified for this external offer; verify at merchant checkout."
+          }
+        }
+      },
+      "serving_readiness": {
+        "servingEligible": true,
+        "contentQualityScore": 90,
+        "blockerCode": "none",
+        "blockerDetail": null,
+        "identityResolved": true,
+        "identityLiveReadResolved": false,
+        "identityBootstrapEligible": true,
+        "terminalHold": false,
+        "terminalHoldReason": "",
+        "hasImage": true,
+        "hasPrice": true,
+        "descriptionLength": 328
+      }
+    },
+    {
+      "external_product_id": "ext_2ceae3f0084e576134f4c1eb",
+      "product_key": "prod::external_seed::external_seed::ext_2ceae3f0084e576134f4c1eb",
+      "product_group_id": "sig_54fd0e7e20cc72ab869c7f5e",
+      "title": "Hand Wash - Crispy Cucumber",
+      "brand": "Moss & Noor",
+      "product_type": "Hand Wash",
+      "category": "Hand Wash",
+      "category_path": "beauty/body-care/hand-wash",
+      "canonical_url": "https://mossnoor.com/products/hand-wash-crispy-cucumber",
+      "pivota_signature_id": "sig_54fd0e7e20cc72ab869c7f5e",
+      "sku_rows": 1,
+      "first_sku": {
+        "sku_key": "prod::external_seed::external_seed::ext_2ceae3f0084e576134f4c1eb::sku_f904b177019125e3a4d4",
+        "product_key": "prod::external_seed::external_seed::ext_2ceae3f0084e576134f4c1eb",
+        "merchant_id": "external_seed",
+        "platform": "external_seed",
+        "source_product_id": "ext_2ceae3f0084e576134f4c1eb",
+        "source_variant_id": "ext_2ceae3f0084e576134f4c1eb:52089178751314",
+        "source_domain": "mossnoor.com",
+        "sku": "211301",
+        "barcode": null,
+        "title": "400ml",
+        "currency": "USD",
+        "image_url": "https://mossnoor.com/cdn/shop/files/mossnoor_handwash_studio_crispycucumber.jpg?v=1763720844",
+        "visible_attributes": {
+          "Size": "400ml"
+        },
+        "visible_option_labels": {
+          "Size": "400ml"
+        },
+        "ingredient_ids": [],
+        "sku_payload": {
+          "source": "external_product_seeds_mirror_v1",
+          "external_product_id": "ext_2ceae3f0084e576134f4c1eb",
+          "raw_variant_id": "52089178751314",
+          "source_variant_id": "ext_2ceae3f0084e576134f4c1eb:52089178751314",
+          "variant_sku": "211301",
+          "barcode": null,
+          "strong_identifier_kind": null,
+          "source_url": "https://mossnoor.com/products/hand-wash-crispy-cucumber",
+          "external_redirect_url": "https://mossnoor.com/products/hand-wash-crispy-cucumber",
+          "price": "12",
+          "price_amount": 12,
+          "currency": "USD",
+          "availability": "in_stock",
+          "image_url": "https://mossnoor.com/cdn/shop/files/mossnoor_handwash_studio_crispycucumber.jpg?v=1763720844",
+          "swatch_image_url": null,
+          "label_image_url": null,
+          "options": {
+            "Size": "400ml"
+          },
+          "raw_variant": {
+            "sku": "211301",
+            "url": "https://mossnoor.com/products/hand-wash-crispy-cucumber?variant=52089178751314&utm_source=pivota&utm_medium=affiliate",
+            "price": "12.00",
+            "stock": "In Stock",
+            "title": "400ml",
+            "options": [
+              {
+                "name": "Size",
+                "value": "400ml"
+              }
+            ],
+            "currency": "USD",
+            "deep_link": "https://mossnoor.com/products/hand-wash-crispy-cucumber?variant=52089178751314&utm_source=pivota&utm_medium=affiliate",
+            "image_url": "https://mossnoor.com/cdn/shop/files/mossnoor_handwash_studio_crispycucumber.jpg?v=1763720844",
+            "image_urls": [
+              "https://mossnoor.com/cdn/shop/files/mossnoor_handwash_studio_crispycucumber.jpg?v=1763720844",
+              "https://mossnoor.com/cdn/shop/files/mossnoor_handwash_crispycucumber_foam.jpg?v=1763720844",
+              "https://mossnoor.com/cdn/shop/files/hand_washing.jpg?v=1763720844",
+              "https://cdn.shopify.com/s/files/1/0314/9037/5818/files/mossnoor_handwash_boosted_headline_7368d95d-d952-453e-89d0-e08bf7cf27d6.jpg?v=1763720844"
+            ],
+            "variant_id": "52089178751314",
+            "option_name": "Size",
+            "product_url": "https://mossnoor.com/products/hand-wash-crispy-cucumber",
+            "option_value": "400ml"
+          }
+        },
+        "readiness_tier": "referral_only"
+      },
+      "first_offer": {
+        "offer_id": "offer:external_seed:d435500c3e53cac51ad325919c7f52f4",
+        "sku_key": "prod::external_seed::external_seed::ext_2ceae3f0084e576134f4c1eb::sku_f904b177019125e3a4d4",
+        "product_key": "prod::external_seed::external_seed::ext_2ceae3f0084e576134f4c1eb",
+        "merchant_id": "external_seed",
+        "catalog_track": "external_referral",
+        "truth_tier": "observed",
+        "readiness_tier": "referral_only",
+        "offer_mode": "redirect",
+        "channel": "external_referral",
+        "availability": "in_stock",
+        "currency": "USD",
+        "list_price": 12,
+        "merchant_effective_price": 12,
+        "estimated_best_price": 12,
+        "price_confidence": 1,
+        "source_system": "external_product_seeds_mirror_v1",
+        "source_ref": "eps_8520c340372e3303681dc4a8",
+        "source_domain": "mossnoor.com",
+        "offer_payload": {
+          "source": "external_product_seeds_mirror_v1",
+          "external_seed_id": "eps_8520c340372e3303681dc4a8",
+          "external_product_id": "ext_2ceae3f0084e576134f4c1eb",
+          "domain": "mossnoor.com",
+          "market": "US",
+          "product_title": "Hand Wash - Crispy Cucumber",
+          "variant_title": "400ml",
+          "variant_sku": "211301",
+          "raw_variant_id": "52089178751314",
+          "url": "https://mossnoor.com/products/hand-wash-crispy-cucumber",
+          "offer_url": "https://mossnoor.com/products/hand-wash-crispy-cucumber",
+          "canonical_url": "https://mossnoor.com/products/hand-wash-crispy-cucumber",
+          "destination_url": "https://mossnoor.com/products/hand-wash-crispy-cucumber",
+          "external_redirect_url": "https://mossnoor.com/products/hand-wash-crispy-cucumber",
+          "merchant_display_name": "Moss & Noor",
+          "price": "12",
+          "price_amount": 12,
+          "price_currency": "USD",
+          "availability": "in_stock",
+          "commerce_facts_v1": {
+            "contract_version": "commerce_facts.v1",
+            "market_id": "US",
+            "country": "US",
+            "currency_target": "USD",
+            "source_authority": "catalog_extract_v2",
+            "captured_at": "2026-05-23T00:34:51.205Z",
+            "evidence_url": "https://mossnoor.com/products/hand-wash-crispy-cucumber",
+            "sellable_region": {
+              "status": "unknown",
+              "countries": [],
+              "evidence_source": "catalog_extract_v2",
+              "confidence": "medium",
+              "checked_at": "2026-05-23T00:34:51.205Z",
+              "reason_codes": [
+                "market_currency_observed",
+                "shipping_destination_not_verified",
+                "external_checkout_not_queried"
+              ],
+              "evidence_url": "https://mossnoor.com/products/hand-wash-crispy-cucumber"
+            },
+            "regional_price": {
+              "amount": 12,
+              "currency": "USD",
+              "display_raw": "12.00",
+              "price_type": "list",
+              "compare_at_amount": null,
+              "compare_at_currency": null,
+              "compare_at_display_raw": null,
+              "tax_included": "unknown",
+              "confidence": "medium",
+              "market_switch_status": "ok",
+              "observed_currency": "USD",
+              "source_url": "https://mossnoor.com/products/hand-wash-crispy-cucumber",
+              "captured_at": "2026-05-23T00:34:51.205Z"
+            },
+            "availability": {
+              "status": "in_stock",
+              "source": "catalog_extract_v2",
+              "confidence": "medium",
+              "captured_at": "2026-05-23T00:34:51.205Z"
+            },
+            "shipping": {
+              "status": "unknown",
+              "source": "catalog_extract_v2",
+              "confidence": "unknown",
+              "reason_codes": [
+                "external_checkout_not_queried"
+              ],
+              "checked_at": "2026-05-23T00:34:51.205Z"
+            },
+            "promotions": [],
+            "returns": {
+              "status": "unknown",
+              "source": "catalog_extract_v2",
+              "confidence": "unknown",
+              "reason_codes": [
+                "external_returns_not_extracted"
+              ],
+              "checked_at": "2026-05-23T00:34:51.205Z"
+            }
+          },
+          "agent_safe_commerce_facts": {
+            "contract_version": "commerce_facts.v1",
+            "market_id": "US",
+            "price": {
+              "amount": 12,
+              "currency": "USD",
+              "display_raw": "12.00",
+              "price_type": "list",
+              "compare_at_amount": null,
+              "compare_at_currency": null,
+              "compare_at_display_raw": null,
+              "tax_included": "unknown",
+              "confidence": "medium",
+              "market_switch_status": "ok",
+              "observed_currency": "USD",
+              "source_url": "https://mossnoor.com/products/hand-wash-crispy-cucumber",
+              "captured_at": "2026-05-23T00:34:51.205Z"
+            },
+            "availability": {
+              "status": "in_stock",
+              "source": "catalog_extract_v2",
+              "confidence": "medium",
+              "captured_at": "2026-05-23T00:34:51.205Z"
+            },
+            "shipping": {
+              "status": "unknown",
+              "reason": "verify_at_checkout"
+            },
+            "promotions": [],
+            "checkout_note": "Shipping and promotions are not verified for this external offer; verify at merchant checkout."
+          }
+        }
+      },
+      "serving_readiness": {
+        "servingEligible": true,
+        "contentQualityScore": 90,
+        "blockerCode": "none",
+        "blockerDetail": null,
+        "identityResolved": true,
+        "identityLiveReadResolved": false,
+        "identityBootstrapEligible": true,
+        "terminalHold": false,
+        "terminalHoldReason": "",
+        "hasImage": true,
+        "hasPrice": true,
+        "descriptionLength": 521
+      }
+    },
+    {
+      "external_product_id": "ext_fef6fb32a26319fb95c750ab",
+      "product_key": "prod::external_seed::external_seed::ext_fef6fb32a26319fb95c750ab",
+      "product_group_id": "sig_b96ea75ec16e3c88e9eabb99",
+      "title": "Hand Wash - Fresh Grapefruit",
+      "brand": "Moss & Noor",
+      "product_type": "Hand Wash",
+      "category": "Hand Wash",
+      "category_path": "beauty/body-care/hand-wash",
+      "canonical_url": "https://mossnoor.com/products/hand-wash-fresh-grapefruit",
+      "pivota_signature_id": "sig_b96ea75ec16e3c88e9eabb99",
+      "sku_rows": 1,
+      "first_sku": {
+        "sku_key": "prod::external_seed::external_seed::ext_fef6fb32a26319fb95c750ab::sku_d568968ef3d26bc3d260",
+        "product_key": "prod::external_seed::external_seed::ext_fef6fb32a26319fb95c750ab",
+        "merchant_id": "external_seed",
+        "platform": "external_seed",
+        "source_product_id": "ext_fef6fb32a26319fb95c750ab",
+        "source_variant_id": "ext_fef6fb32a26319fb95c750ab:52048554033490",
+        "source_domain": "mossnoor.com",
+        "sku": "211001",
+        "barcode": null,
+        "title": "400ml",
+        "currency": "USD",
+        "image_url": "https://mossnoor.com/cdn/shop/files/mossnoor_handwash_studio_freshgrapefruit_8f7fcbdc-70e4-456c-b9e8-d4373bf1ba52.jpg?v=1763386822",
+        "visible_attributes": {
+          "Size": "400ml"
+        },
+        "visible_option_labels": {
+          "Size": "400ml"
+        },
+        "ingredient_ids": [],
+        "sku_payload": {
+          "source": "external_product_seeds_mirror_v1",
+          "external_product_id": "ext_fef6fb32a26319fb95c750ab",
+          "raw_variant_id": "52048554033490",
+          "source_variant_id": "ext_fef6fb32a26319fb95c750ab:52048554033490",
+          "variant_sku": "211001",
+          "barcode": null,
+          "strong_identifier_kind": null,
+          "source_url": "https://mossnoor.com/products/hand-wash-fresh-grapefruit",
+          "external_redirect_url": "https://mossnoor.com/products/hand-wash-fresh-grapefruit",
+          "price": "12",
+          "price_amount": 12,
+          "currency": "USD",
+          "availability": "in_stock",
+          "image_url": "https://mossnoor.com/cdn/shop/files/mossnoor_handwash_studio_freshgrapefruit_8f7fcbdc-70e4-456c-b9e8-d4373bf1ba52.jpg?v=1763386822",
+          "swatch_image_url": null,
+          "label_image_url": null,
+          "options": {
+            "Size": "400ml"
+          },
+          "raw_variant": {
+            "sku": "211001",
+            "url": "https://mossnoor.com/products/hand-wash-fresh-grapefruit?variant=52048554033490&utm_source=pivota&utm_medium=affiliate",
+            "price": "12.00",
+            "stock": "In Stock",
+            "title": "400ml",
+            "options": [
+              {
+                "name": "Size",
+                "value": "400ml"
+              }
+            ],
+            "currency": "USD",
+            "deep_link": "https://mossnoor.com/products/hand-wash-fresh-grapefruit?variant=52048554033490&utm_source=pivota&utm_medium=affiliate",
+            "image_url": "https://mossnoor.com/cdn/shop/files/mossnoor_handwash_studio_freshgrapefruit_8f7fcbdc-70e4-456c-b9e8-d4373bf1ba52.jpg?v=1763386822",
+            "image_urls": [
+              "https://mossnoor.com/cdn/shop/files/mossnoor_handwash_studio_freshgrapefruit_8f7fcbdc-70e4-456c-b9e8-d4373bf1ba52.jpg?v=1763386822",
+              "https://mossnoor.com/cdn/shop/files/freshgrapefruit_foam.jpg?v=1763391349",
+              "https://mossnoor.com/cdn/shop/files/hand_washing.jpg?v=1763720844",
+              "https://cdn.shopify.com/s/files/1/0314/9037/5818/files/mossnoor_handwash_boosted_headline_7368d95d-d952-453e-89d0-e08bf7cf27d6.jpg?v=1763720844"
+            ],
+            "variant_id": "52048554033490",
+            "option_name": "Size",
+            "product_url": "https://mossnoor.com/products/hand-wash-fresh-grapefruit",
+            "option_value": "400ml"
+          }
+        },
+        "readiness_tier": "referral_only"
+      },
+      "first_offer": {
+        "offer_id": "offer:external_seed:1e832289d1505ba6482eeb2b01dabea4",
+        "sku_key": "prod::external_seed::external_seed::ext_fef6fb32a26319fb95c750ab::sku_d568968ef3d26bc3d260",
+        "product_key": "prod::external_seed::external_seed::ext_fef6fb32a26319fb95c750ab",
+        "merchant_id": "external_seed",
+        "catalog_track": "external_referral",
+        "truth_tier": "observed",
+        "readiness_tier": "referral_only",
+        "offer_mode": "redirect",
+        "channel": "external_referral",
+        "availability": "in_stock",
+        "currency": "USD",
+        "list_price": 12,
+        "merchant_effective_price": 12,
+        "estimated_best_price": 12,
+        "price_confidence": 1,
+        "source_system": "external_product_seeds_mirror_v1",
+        "source_ref": "eps_5a5a2ce3bd87d6c54de316b2",
+        "source_domain": "mossnoor.com",
+        "offer_payload": {
+          "source": "external_product_seeds_mirror_v1",
+          "external_seed_id": "eps_5a5a2ce3bd87d6c54de316b2",
+          "external_product_id": "ext_fef6fb32a26319fb95c750ab",
+          "domain": "mossnoor.com",
+          "market": "US",
+          "product_title": "Hand Wash - Fresh Grapefruit",
+          "variant_title": "400ml",
+          "variant_sku": "211001",
+          "raw_variant_id": "52048554033490",
+          "url": "https://mossnoor.com/products/hand-wash-fresh-grapefruit",
+          "offer_url": "https://mossnoor.com/products/hand-wash-fresh-grapefruit",
+          "canonical_url": "https://mossnoor.com/products/hand-wash-fresh-grapefruit",
+          "destination_url": "https://mossnoor.com/products/hand-wash-fresh-grapefruit",
+          "external_redirect_url": "https://mossnoor.com/products/hand-wash-fresh-grapefruit",
+          "merchant_display_name": "Moss & Noor",
+          "price": "12",
+          "price_amount": 12,
+          "price_currency": "USD",
+          "availability": "in_stock",
+          "commerce_facts_v1": {
+            "contract_version": "commerce_facts.v1",
+            "market_id": "US",
+            "country": "US",
+            "currency_target": "USD",
+            "source_authority": "catalog_extract_v2",
+            "captured_at": "2026-05-23T00:34:59.854Z",
+            "evidence_url": "https://mossnoor.com/products/hand-wash-fresh-grapefruit",
+            "sellable_region": {
+              "status": "unknown",
+              "countries": [],
+              "evidence_source": "catalog_extract_v2",
+              "confidence": "medium",
+              "checked_at": "2026-05-23T00:34:59.854Z",
+              "reason_codes": [
+                "market_currency_observed",
+                "shipping_destination_not_verified",
+                "external_checkout_not_queried"
+              ],
+              "evidence_url": "https://mossnoor.com/products/hand-wash-fresh-grapefruit"
+            },
+            "regional_price": {
+              "amount": 12,
+              "currency": "USD",
+              "display_raw": "12.00",
+              "price_type": "list",
+              "compare_at_amount": null,
+              "compare_at_currency": null,
+              "compare_at_display_raw": null,
+              "tax_included": "unknown",
+              "confidence": "medium",
+              "market_switch_status": "ok",
+              "observed_currency": "USD",
+              "source_url": "https://mossnoor.com/products/hand-wash-fresh-grapefruit",
+              "captured_at": "2026-05-23T00:34:59.854Z"
+            },
+            "availability": {
+              "status": "in_stock",
+              "source": "catalog_extract_v2",
+              "confidence": "medium",
+              "captured_at": "2026-05-23T00:34:59.854Z"
+            },
+            "shipping": {
+              "status": "unknown",
+              "source": "catalog_extract_v2",
+              "confidence": "unknown",
+              "reason_codes": [
+                "external_checkout_not_queried"
+              ],
+              "checked_at": "2026-05-23T00:34:59.854Z"
+            },
+            "promotions": [],
+            "returns": {
+              "status": "unknown",
+              "source": "catalog_extract_v2",
+              "confidence": "unknown",
+              "reason_codes": [
+                "external_returns_not_extracted"
+              ],
+              "checked_at": "2026-05-23T00:34:59.854Z"
+            }
+          },
+          "agent_safe_commerce_facts": {
+            "contract_version": "commerce_facts.v1",
+            "market_id": "US",
+            "price": {
+              "amount": 12,
+              "currency": "USD",
+              "display_raw": "12.00",
+              "price_type": "list",
+              "compare_at_amount": null,
+              "compare_at_currency": null,
+              "compare_at_display_raw": null,
+              "tax_included": "unknown",
+              "confidence": "medium",
+              "market_switch_status": "ok",
+              "observed_currency": "USD",
+              "source_url": "https://mossnoor.com/products/hand-wash-fresh-grapefruit",
+              "captured_at": "2026-05-23T00:34:59.854Z"
+            },
+            "availability": {
+              "status": "in_stock",
+              "source": "catalog_extract_v2",
+              "confidence": "medium",
+              "captured_at": "2026-05-23T00:34:59.854Z"
+            },
+            "shipping": {
+              "status": "unknown",
+              "reason": "verify_at_checkout"
+            },
+            "promotions": [],
+            "checkout_note": "Shipping and promotions are not verified for this external offer; verify at merchant checkout."
+          }
+        }
+      },
+      "serving_readiness": {
+        "servingEligible": true,
+        "contentQualityScore": 90,
+        "blockerCode": "none",
+        "blockerDetail": null,
+        "identityResolved": true,
+        "identityLiveReadResolved": false,
+        "identityBootstrapEligible": true,
+        "terminalHold": false,
+        "terminalHoldReason": "",
+        "hasImage": true,
+        "hasPrice": true,
+        "descriptionLength": 522
+      }
+    }
+  ]
+}

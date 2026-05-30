@@ -1,0 +1,15 @@
+{
+  "ok": true,
+  "result": {
+    "dry_run": true,
+    "candidate_rows_scanned": 0,
+    "groups_considered": 0,
+    "groups_eligible": 0,
+    "rows_to_enable": 0,
+    "overrides_to_write": 0,
+    "updated_rows": 0,
+    "brand_filter": null,
+    "require_brand_source": true,
+    "sample_refs": []
+  }
+}

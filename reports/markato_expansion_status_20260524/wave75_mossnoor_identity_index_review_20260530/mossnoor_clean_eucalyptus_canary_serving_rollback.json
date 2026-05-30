@@ -1,0 +1,47 @@
+{
+  "generated_at": "2026-05-30T02:40:19.081Z",
+  "external_product_id": "ext_a7ab937f43db2868c6f9e383",
+  "product_key": "prod::external_seed::external_seed::ext_a7ab937f43db2868c6f9e383",
+  "reason": "wave75 canary rollback after live PDP module audit: missing_how_to and similar_underfill",
+  "update_summary": {
+    "identity_rows_updated": 1,
+    "index_state_rows_updated": 1
+  },
+  "trust_recomputed": true,
+  "before": [
+    {
+      "product_key": "prod::external_seed::external_seed::ext_a7ab937f43db2868c6f9e383",
+      "content_key": "ck_5cccad4bf4eb2fb7ce62ca365934c15c",
+      "pipeline_stage": "shadow_indexed",
+      "blocker_code": "none",
+      "blocker_detail": null,
+      "serving_eligible": true,
+      "identity_resolved": true,
+      "live_read_enabled": true,
+      "identity_status": "approved",
+      "review_required": false,
+      "serving_decision": "public",
+      "serving_reason_codes": [
+        "PUBLIC_PASSTHROUGH"
+      ]
+    }
+  ],
+  "after": [
+    {
+      "product_key": "prod::external_seed::external_seed::ext_a7ab937f43db2868c6f9e383",
+      "content_key": "ck_5cccad4bf4eb2fb7ce62ca365934c15c",
+      "pipeline_stage": "extracted",
+      "blocker_code": "identity_not_live_approved",
+      "blocker_detail": "wave75 canary rollback after live PDP module audit: missing_how_to and similar_underfill",
+      "serving_eligible": false,
+      "identity_resolved": false,
+      "live_read_enabled": false,
+      "identity_status": "approved",
+      "review_required": false,
+      "serving_decision": "blocked",
+      "serving_reason_codes": [
+        "INDEX_NOT_SERVING_ELIGIBLE"
+      ]
+    }
+  ]
+}

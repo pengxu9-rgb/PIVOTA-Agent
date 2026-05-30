@@ -1,0 +1,295 @@
+{
+  "generated_at": "2026-05-30T02:37:51.226Z",
+  "mode": "apply",
+  "batch_size": null,
+  "bootstrap_reviewed_identity_live_read": true,
+  "requested_ids": 1,
+  "fetched_rows": 1,
+  "mirror_rows": 1,
+  "planned_sku_rows": 1,
+  "planned_offer_rows": 1,
+  "planned_index_state_rows": 1,
+  "missing_ids": [],
+  "skipped": [],
+  "applied": {
+    "mode": "apply",
+    "existing_before": {
+      "catalog_products": 1,
+      "catalog_skus": 1,
+      "catalog_offers": 1,
+      "product_group_members": 1
+    },
+    "stale_delete_preview": {
+      "current_sku_rows": 2,
+      "current_offer_rows": 2,
+      "planned_stale_sku_deletes": 1,
+      "planned_stale_offer_deletes": 1,
+      "sample_stale_skus": [
+        {
+          "title": "After Workout Shower Gel – Clean Eucalyptus",
+          "sku_key": "prod::external_seed::external_seed::ext_a7ab937f43db2868c6f9e383::canonical",
+          "product_key": "prod::external_seed::external_seed::ext_a7ab937f43db2868c6f9e383",
+          "source_variant_id": "prod::external_seed::external_seed::ext_a7ab937f43db2868c6f9e383",
+          "visible_attributes": {}
+        }
+      ],
+      "sample_stale_offers": [
+        {
+          "sku_key": "prod::external_seed::external_seed::ext_a7ab937f43db2868c6f9e383::canonical",
+          "offer_id": "offer:external_seed:203243c1600aa8f021e8df6fa184872a",
+          "list_price": 10,
+          "product_key": "prod::external_seed::external_seed::ext_a7ab937f43db2868c6f9e383",
+          "merchant_effective_price": 10
+        }
+      ]
+    },
+    "batch_size": null,
+    "batches": 1,
+    "audit_reasons": {
+      "no_strong_identifier": 1
+    },
+    "product_upserts": 1,
+    "sku_upserts": 1,
+    "offer_upserts": 1,
+    "group_member_upserts": 1,
+    "group_member_preserved_existing_merges": 0,
+    "seed_attachment_updates": 0,
+    "index_state_upserts": 1,
+    "identity_live_read_updates": 1,
+    "catalog_row_trust_upserts": 1,
+    "stale_offer_deletes": 1,
+    "stale_sku_deletes": 1
+  },
+  "sample": [
+    {
+      "external_product_id": "ext_a7ab937f43db2868c6f9e383",
+      "product_key": "prod::external_seed::external_seed::ext_a7ab937f43db2868c6f9e383",
+      "product_group_id": "sig_f41515bba9c93a18d106523f",
+      "title": "After Workout Shower Gel – Clean Eucalyptus",
+      "brand": "Moss & Noor",
+      "product_type": "Body Wash",
+      "category": "Body Wash",
+      "category_path": "beauty/body-care/body-wash",
+      "canonical_url": "https://mossnoor.com/products/after-workout-shower-gel-clean-eucalyptus",
+      "pivota_signature_id": "sig_f41515bba9c93a18d106523f",
+      "sku_rows": 1,
+      "first_sku": {
+        "sku_key": "prod::external_seed::external_seed::ext_a7ab937f43db2868c6f9e383::sku_30f430978f5bb5e8a751",
+        "product_key": "prod::external_seed::external_seed::ext_a7ab937f43db2868c6f9e383",
+        "merchant_id": "external_seed",
+        "platform": "external_seed",
+        "source_product_id": "ext_a7ab937f43db2868c6f9e383",
+        "source_variant_id": "ext_a7ab937f43db2868c6f9e383:39694350745790",
+        "source_domain": "mossnoor.com",
+        "sku": "101210",
+        "barcode": null,
+        "title": "150ml",
+        "currency": "USD",
+        "image_url": "https://mossnoor.com/cdn/shop/files/7350103700011_1.jpg?v=1684149706",
+        "visible_attributes": {
+          "Size": "150ml"
+        },
+        "visible_option_labels": {
+          "Size": "150ml"
+        },
+        "ingredient_ids": [],
+        "sku_payload": {
+          "source": "external_product_seeds_mirror_v1",
+          "external_product_id": "ext_a7ab937f43db2868c6f9e383",
+          "raw_variant_id": "39694350745790",
+          "source_variant_id": "ext_a7ab937f43db2868c6f9e383:39694350745790",
+          "variant_sku": "101210",
+          "barcode": null,
+          "strong_identifier_kind": null,
+          "source_url": "https://mossnoor.com/products/after-workout-shower-gel-clean-eucalyptus",
+          "external_redirect_url": "https://mossnoor.com/products/after-workout-shower-gel-clean-eucalyptus",
+          "price": "10",
+          "price_amount": 10,
+          "currency": "USD",
+          "availability": "in_stock",
+          "image_url": "https://mossnoor.com/cdn/shop/files/7350103700011_1.jpg?v=1684149706",
+          "swatch_image_url": null,
+          "label_image_url": null,
+          "options": {
+            "Size": "150ml"
+          },
+          "raw_variant": {
+            "sku": "101210",
+            "url": "https://mossnoor.com/products/after-workout-shower-gel-clean-eucalyptus?variant=39694350745790&utm_source=pivota&utm_medium=affiliate",
+            "price": "10.00",
+            "stock": "In Stock",
+            "title": "150ml",
+            "options": [
+              {
+                "name": "Size",
+                "value": "150ml"
+              }
+            ],
+            "currency": "USD",
+            "deep_link": "https://mossnoor.com/products/after-workout-shower-gel-clean-eucalyptus?variant=39694350745790&utm_source=pivota&utm_medium=affiliate",
+            "image_url": "https://mossnoor.com/cdn/shop/files/7350103700011_1.jpg?v=1684149706",
+            "image_urls": [
+              "https://mossnoor.com/cdn/shop/files/7350103700011_1.jpg?v=1684149706",
+              "https://cdn.shopify.com/s/files/1/0314/9037/5818/products/7350103700011_2.jpg?v=1684149706",
+              "https://cdn.shopify.com/s/files/1/0314/9037/5818/products/7350103700011_3.jpg?v=1684149706",
+              "https://cdn.shopify.com/s/files/1/0314/9037/5818/products/mossnoor_cleaneucalyptus_scent.jpg?v=1684149706"
+            ],
+            "variant_id": "39694350745790",
+            "option_name": "Size",
+            "product_url": "https://mossnoor.com/products/after-workout-shower-gel-clean-eucalyptus",
+            "option_value": "150ml"
+          }
+        },
+        "readiness_tier": "referral_only"
+      },
+      "first_offer": {
+        "offer_id": "offer:external_seed:c69147adb2c85ac9c27d1916e785d9c2",
+        "sku_key": "prod::external_seed::external_seed::ext_a7ab937f43db2868c6f9e383::sku_30f430978f5bb5e8a751",
+        "product_key": "prod::external_seed::external_seed::ext_a7ab937f43db2868c6f9e383",
+        "merchant_id": "external_seed",
+        "catalog_track": "external_referral",
+        "truth_tier": "observed",
+        "readiness_tier": "referral_only",
+        "offer_mode": "redirect",
+        "channel": "external_referral",
+        "availability": "in_stock",
+        "currency": "USD",
+        "list_price": 10,
+        "merchant_effective_price": 10,
+        "estimated_best_price": 10,
+        "price_confidence": 1,
+        "source_system": "external_product_seeds_mirror_v1",
+        "source_ref": "eps_17e574451e2b1b7261e59e3b",
+        "source_domain": "mossnoor.com",
+        "offer_payload": {
+          "source": "external_product_seeds_mirror_v1",
+          "external_seed_id": "eps_17e574451e2b1b7261e59e3b",
+          "external_product_id": "ext_a7ab937f43db2868c6f9e383",
+          "domain": "mossnoor.com",
+          "market": "US",
+          "product_title": "After Workout Shower Gel – Clean Eucalyptus",
+          "variant_title": "150ml",
+          "variant_sku": "101210",
+          "raw_variant_id": "39694350745790",
+          "url": "https://mossnoor.com/products/after-workout-shower-gel-clean-eucalyptus",
+          "offer_url": "https://mossnoor.com/products/after-workout-shower-gel-clean-eucalyptus",
+          "canonical_url": "https://mossnoor.com/products/after-workout-shower-gel-clean-eucalyptus",
+          "destination_url": "https://mossnoor.com/products/after-workout-shower-gel-clean-eucalyptus",
+          "external_redirect_url": "https://mossnoor.com/products/after-workout-shower-gel-clean-eucalyptus",
+          "merchant_display_name": "Moss & Noor",
+          "price": "10",
+          "price_amount": 10,
+          "price_currency": "USD",
+          "availability": "in_stock",
+          "commerce_facts_v1": {
+            "contract_version": "commerce_facts.v1",
+            "market_id": "US",
+            "country": "US",
+            "currency_target": "USD",
+            "source_authority": "catalog_extract_v2",
+            "captured_at": "2026-05-23T00:34:20.713Z",
+            "evidence_url": "https://mossnoor.com/products/after-workout-shower-gel-clean-eucalyptus",
+            "sellable_region": {
+              "status": "unknown",
+              "countries": [],
+              "evidence_source": "catalog_extract_v2",
+              "confidence": "medium",
+              "checked_at": "2026-05-23T00:34:20.713Z",
+              "reason_codes": [
+                "market_currency_observed",
+                "shipping_destination_not_verified",
+                "external_checkout_not_queried"
+              ],
+              "evidence_url": "https://mossnoor.com/products/after-workout-shower-gel-clean-eucalyptus"
+            },
+            "regional_price": {
+              "amount": 10,
+              "currency": "USD",
+              "display_raw": "10.00",
+              "price_type": "list",
+              "compare_at_amount": null,
+              "compare_at_currency": null,
+              "compare_at_display_raw": null,
+              "tax_included": "unknown",
+              "confidence": "medium",
+              "market_switch_status": "ok",
+              "observed_currency": "USD",
+              "source_url": "https://mossnoor.com/products/after-workout-shower-gel-clean-eucalyptus",
+              "captured_at": "2026-05-23T00:34:20.713Z"
+            },
+            "availability": {
+              "status": "in_stock",
+              "source": "catalog_extract_v2",
+              "confidence": "medium",
+              "captured_at": "2026-05-23T00:34:20.713Z"
+            },
+            "shipping": {
+              "status": "unknown",
+              "source": "catalog_extract_v2",
+              "confidence": "unknown",
+              "reason_codes": [
+                "external_checkout_not_queried"
+              ],
+              "checked_at": "2026-05-23T00:34:20.713Z"
+            },
+            "promotions": [],
+            "returns": {
+              "status": "unknown",
+              "source": "catalog_extract_v2",
+              "confidence": "unknown",
+              "reason_codes": [
+                "external_returns_not_extracted"
+              ],
+              "checked_at": "2026-05-23T00:34:20.713Z"
+            }
+          },
+          "agent_safe_commerce_facts": {
+            "contract_version": "commerce_facts.v1",
+            "market_id": "US",
+            "price": {
+              "amount": 10,
+              "currency": "USD",
+              "display_raw": "10.00",
+              "price_type": "list",
+              "compare_at_amount": null,
+              "compare_at_currency": null,
+              "compare_at_display_raw": null,
+              "tax_included": "unknown",
+              "confidence": "medium",
+              "market_switch_status": "ok",
+              "observed_currency": "USD",
+              "source_url": "https://mossnoor.com/products/after-workout-shower-gel-clean-eucalyptus",
+              "captured_at": "2026-05-23T00:34:20.713Z"
+            },
+            "availability": {
+              "status": "in_stock",
+              "source": "catalog_extract_v2",
+              "confidence": "medium",
+              "captured_at": "2026-05-23T00:34:20.713Z"
+            },
+            "shipping": {
+              "status": "unknown",
+              "reason": "verify_at_checkout"
+            },
+            "promotions": [],
+            "checkout_note": "Shipping and promotions are not verified for this external offer; verify at merchant checkout."
+          }
+        }
+      },
+      "serving_readiness": {
+        "servingEligible": true,
+        "contentQualityScore": 90,
+        "blockerCode": "none",
+        "blockerDetail": null,
+        "identityResolved": true,
+        "identityLiveReadResolved": false,
+        "identityBootstrapEligible": true,
+        "terminalHold": false,
+        "terminalHoldReason": "",
+        "hasImage": true,
+        "hasPrice": true,
+        "descriptionLength": 328
+      }
+    }
+  ]
+}
