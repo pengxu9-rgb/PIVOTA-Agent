@@ -1,0 +1,490 @@
+{
+  "generated_at": "2026-05-30T02:16:53.961Z",
+  "mode": "dry_run",
+  "batch_size": null,
+  "bootstrap_reviewed_identity_live_read": true,
+  "requested_ids": 2,
+  "fetched_rows": 2,
+  "mirror_rows": 2,
+  "planned_sku_rows": 2,
+  "planned_offer_rows": 2,
+  "planned_index_state_rows": 2,
+  "missing_ids": [],
+  "skipped": [],
+  "applied": {
+    "mode": "dry_run",
+    "existing_before": {
+      "catalog_products": 2,
+      "catalog_skus": 2,
+      "catalog_offers": 2,
+      "product_group_members": 2
+    },
+    "stale_delete_preview": {
+      "current_sku_rows": 2,
+      "current_offer_rows": 2,
+      "planned_stale_sku_deletes": 0,
+      "planned_stale_offer_deletes": 0,
+      "sample_stale_skus": [],
+      "sample_stale_offers": []
+    },
+    "batch_size": null,
+    "batches": 1,
+    "audit_reasons": {
+      "no_strong_identifier": 2
+    },
+    "product_upserts": 0,
+    "sku_upserts": 0,
+    "offer_upserts": 0,
+    "group_member_upserts": 0,
+    "group_member_preserved_existing_merges": 0,
+    "seed_attachment_updates": 0,
+    "index_state_upserts": 0,
+    "identity_live_read_updates": 0,
+    "catalog_row_trust_upserts": 0,
+    "stale_offer_deletes": 0,
+    "stale_sku_deletes": 0
+  },
+  "sample": [
+    {
+      "external_product_id": "ext_5195cd2ff341a491822447d9",
+      "product_key": "prod::external_seed::external_seed::ext_5195cd2ff341a491822447d9",
+      "product_group_id": "sig_4295e978d473a2d173e29667",
+      "title": "Shampoo Crème with Pink Berry - Jumbo",
+      "brand": "UpCircle Beauty",
+      "product_type": "Shampoo",
+      "category": "Shampoo",
+      "category_path": "beauty/haircare/shampoo",
+      "canonical_url": "https://upcirclebeauty.com/products/jumbo-shampoo",
+      "pivota_signature_id": "sig_4295e978d473a2d173e29667",
+      "sku_rows": 1,
+      "first_sku": {
+        "sku_key": "prod::external_seed::external_seed::ext_5195cd2ff341a491822447d9::sku_7dd23920fb5521a12f34",
+        "product_key": "prod::external_seed::external_seed::ext_5195cd2ff341a491822447d9",
+        "merchant_id": "external_seed",
+        "platform": "external_seed",
+        "source_product_id": "ext_5195cd2ff341a491822447d9",
+        "source_variant_id": "ext_5195cd2ff341a491822447d9:45872192716966",
+        "source_domain": "upcirclebeauty.com",
+        "sku": "SPB-J",
+        "barcode": null,
+        "title": "Shampoo Crème with Pink Berry - Jumbo",
+        "currency": "USD",
+        "image_url": "https://cdn.shopify.com/s/files/1/0023/6316/2681/files/SPB2.jpg?v=1760001840",
+        "visible_attributes": {},
+        "visible_option_labels": {},
+        "ingredient_ids": [],
+        "sku_payload": {
+          "source": "external_product_seeds_mirror_v1",
+          "external_product_id": "ext_5195cd2ff341a491822447d9",
+          "raw_variant_id": "45872192716966",
+          "source_variant_id": "ext_5195cd2ff341a491822447d9:45872192716966",
+          "variant_sku": "SPB-J",
+          "barcode": null,
+          "strong_identifier_kind": null,
+          "source_url": "https://upcirclebeauty.com/products/jumbo-shampoo",
+          "external_redirect_url": "https://upcirclebeauty.com/products/jumbo-shampoo",
+          "price": "35",
+          "price_amount": 35,
+          "currency": "USD",
+          "availability": "in_stock",
+          "image_url": "https://cdn.shopify.com/s/files/1/0023/6316/2681/files/SPB2.jpg?v=1760001840",
+          "swatch_image_url": null,
+          "label_image_url": null,
+          "options": {},
+          "raw_variant": {
+            "sku": "SPB-J",
+            "url": "https://upcirclebeauty.com/products/jumbo-shampoo",
+            "price": "35",
+            "stock": "In Stock",
+            "currency": "USD",
+            "image_url": "https://cdn.shopify.com/s/files/1/0023/6316/2681/files/SPB2.jpg?v=1760001840",
+            "image_urls": [
+              "https://cdn.shopify.com/s/files/1/0023/6316/2681/files/SPB2.jpg?v=1760001840",
+              "https://cdn.shopify.com/s/files/1/0023/6316/2681/files/SPB4.jpg?v=1760001840",
+              "https://cdn.shopify.com/s/files/1/0023/6316/2681/files/PressSPB-J_85bb4a5a-22ab-465d-9a4c-33e3f1a5d611.png?v=1760001840",
+              "https://cdn.shopify.com/s/files/1/0023/6316/2681/files/Shampoo_386fd20d-8aa7-4f30-924a-7241518c59f6.png?v=1770632586",
+              "https://cdn.shopify.com/s/files/1/0023/6316/2681/files/CALLOUTS_IMAGES38.jpg?v=1760001840",
+              "https://cdn.shopify.com/s/files/1/0023/6316/2681/files/Texture_Awards_Shampoo.png?v=1767882894",
+              "https://cdn.shopify.com/s/files/1/0023/6316/2681/files/ShampooBeforeandAfterCurlyHair_7cc2bb86-7df9-4854-8442-554aabedd2ce.jpg?v=1760001840",
+              "https://cdn.shopify.com/s/files/1/0023/6316/2681/files/SPB1.jpg?v=1760001840",
+              "https://cdn.shopify.com/s/files/1/0023/6316/2681/files/Us_V_Them_Shampoo_J.png?v=1760001840"
+            ],
+            "variant_id": "45872192716966",
+            "description": "Save 15% with our Jumbo Shampoo Crème! \n\nThis is a Jumbo version of the multi-award-winning Shampoo Crème for all hair types, ideal for gifting this holiday season. Our innovative shampoo crème is a hybrid of liquid and solid, lasting three times longer than normal shampoo.\n\nIts concentrated formula delivers THREE times the washes of a liquid shampoo! There is less waste than a shampoo bar usually due to the last slithers of the shampoo bar often being wasted. This is the type of product that once used will likely mean you never go back to liquid shampoo!\n\nIn addition, our vegan shampoo is suitable for all hair types. Due to the carefully curated formula, it has an exceptionally gentle effect on the hair and is very mild on the skin and eyes. It also works well in soft and hard water.\n\nSuitable for afro / textured hair, colour treated hair, dry and greasy hair. \n\nWinner of the \"Best shampoo for textured/afro hair\" award in the Top Santé Hair Awards 2023. \n\nAlso described as \"a revelation\" by The Telegraph as well as being awarded as a Top Santé Best Buy. Also featured in Natural Products News, Woman's Own, Black Beauty &amp; Hair and Your London.\n\nInspiring, upcycling, uplifting: Our Shampoo is made with upcycled pink berries from the fragrance industry to soothe the scalp and strengthen hair. \n\nThe UpCircle Promise \nNatural, sustainable, vegan &amp; cruelty-free. Housed in 100% plastic-free packaging.",
+            "option_name": "Title",
+            "option_value": "Default Title"
+          }
+        },
+        "readiness_tier": "referral_only"
+      },
+      "first_offer": {
+        "offer_id": "offer:external_seed:b862396c2337fd65c714ea436c9c1a4a",
+        "sku_key": "prod::external_seed::external_seed::ext_5195cd2ff341a491822447d9::sku_7dd23920fb5521a12f34",
+        "product_key": "prod::external_seed::external_seed::ext_5195cd2ff341a491822447d9",
+        "merchant_id": "external_seed",
+        "catalog_track": "external_referral",
+        "truth_tier": "observed",
+        "readiness_tier": "referral_only",
+        "offer_mode": "redirect",
+        "channel": "external_referral",
+        "availability": "in_stock",
+        "currency": "USD",
+        "list_price": 35,
+        "merchant_effective_price": 35,
+        "estimated_best_price": 35,
+        "price_confidence": 1,
+        "source_system": "external_product_seeds_mirror_v1",
+        "source_ref": "eps_2a2e178efd30cd6543d20ee1",
+        "source_domain": "upcirclebeauty.com",
+        "offer_payload": {
+          "source": "external_product_seeds_mirror_v1",
+          "external_seed_id": "eps_2a2e178efd30cd6543d20ee1",
+          "external_product_id": "ext_5195cd2ff341a491822447d9",
+          "domain": "upcirclebeauty.com",
+          "market": "US",
+          "product_title": "Shampoo Crème with Pink Berry - Jumbo",
+          "variant_title": "Shampoo Crème with Pink Berry - Jumbo",
+          "variant_sku": "SPB-J",
+          "raw_variant_id": "45872192716966",
+          "url": "https://upcirclebeauty.com/products/jumbo-shampoo",
+          "offer_url": "https://upcirclebeauty.com/products/jumbo-shampoo",
+          "canonical_url": "https://upcirclebeauty.com/products/jumbo-shampoo",
+          "destination_url": "https://upcirclebeauty.com/products/jumbo-shampoo",
+          "external_redirect_url": "https://upcirclebeauty.com/products/jumbo-shampoo",
+          "merchant_display_name": "UpCircle Beauty",
+          "price": "35",
+          "price_amount": 35,
+          "price_currency": "USD",
+          "availability": "in_stock",
+          "commerce_facts_v1": {
+            "contract_version": "commerce_facts.v1",
+            "market_id": "US",
+            "country": "US",
+            "currency_target": "USD",
+            "source_authority": "catalog_extract_v2",
+            "captured_at": "2026-05-18T05:00:41.927Z",
+            "evidence_url": "https://upcirclebeauty.com/products/jumbo-shampoo",
+            "sellable_region": {
+              "status": "unknown",
+              "countries": [],
+              "evidence_source": "catalog_extract_v2",
+              "confidence": "unknown",
+              "checked_at": "2026-05-18T05:00:41.927Z",
+              "reason_codes": [
+                "shipping_destination_not_verified"
+              ],
+              "evidence_url": "https://upcirclebeauty.com/products/jumbo-shampoo"
+            },
+            "regional_price": {
+              "amount": 35,
+              "currency": "USD",
+              "display_raw": null,
+              "price_type": "unknown",
+              "compare_at_amount": null,
+              "compare_at_currency": null,
+              "compare_at_display_raw": null,
+              "tax_included": "unknown",
+              "confidence": "medium",
+              "market_switch_status": "ok",
+              "observed_currency": "USD",
+              "source_url": "https://upcirclebeauty.com/products/jumbo-shampoo",
+              "captured_at": "2026-05-18T05:00:41.927Z"
+            },
+            "availability": {
+              "status": "in_stock",
+              "source": "catalog_extract_v2",
+              "confidence": "medium",
+              "captured_at": "2026-05-18T05:00:41.927Z"
+            },
+            "shipping": {
+              "status": "unknown",
+              "source": "catalog_extract_v2",
+              "confidence": "unknown",
+              "reason_codes": [
+                "external_checkout_not_queried"
+              ],
+              "checked_at": "2026-05-18T05:00:41.927Z"
+            },
+            "promotions": [],
+            "returns": {
+              "status": "unknown",
+              "source": "catalog_extract_v2",
+              "confidence": "unknown",
+              "reason_codes": [
+                "external_returns_not_extracted"
+              ],
+              "checked_at": "2026-05-18T05:00:41.927Z"
+            }
+          },
+          "agent_safe_commerce_facts": {
+            "contract_version": "commerce_facts.v1",
+            "market_id": "US",
+            "price": {
+              "amount": 35,
+              "currency": "USD",
+              "display_raw": null,
+              "price_type": "unknown",
+              "compare_at_amount": null,
+              "compare_at_currency": null,
+              "compare_at_display_raw": null,
+              "tax_included": "unknown",
+              "confidence": "medium",
+              "market_switch_status": "ok",
+              "observed_currency": "USD",
+              "source_url": "https://upcirclebeauty.com/products/jumbo-shampoo",
+              "captured_at": "2026-05-18T05:00:41.927Z"
+            },
+            "availability": {
+              "status": "in_stock",
+              "source": "catalog_extract_v2",
+              "confidence": "medium",
+              "captured_at": "2026-05-18T05:00:41.927Z"
+            },
+            "shipping": {
+              "status": "unknown",
+              "reason": "verify_at_checkout"
+            },
+            "promotions": [],
+            "checkout_note": "Shipping and promotions are not verified for this external offer; verify at merchant checkout."
+          }
+        }
+      },
+      "serving_readiness": {
+        "servingEligible": true,
+        "contentQualityScore": 90,
+        "blockerCode": "none",
+        "blockerDetail": null,
+        "identityResolved": true,
+        "identityLiveReadResolved": true,
+        "identityBootstrapEligible": false,
+        "terminalHold": false,
+        "terminalHoldReason": "",
+        "hasImage": true,
+        "hasPrice": true,
+        "descriptionLength": 1425
+      }
+    },
+    {
+      "external_product_id": "ext_b13a29406f82ff32d2cc2a32",
+      "product_key": "prod::external_seed::external_seed::ext_b13a29406f82ff32d2cc2a32",
+      "product_group_id": "sig_e6c2fe5bb314ac580570d705",
+      "title": "Shampoo Crème with Pink Berry",
+      "brand": "UpCircle Beauty",
+      "product_type": "Shampoo",
+      "category": "Shampoo",
+      "category_path": "beauty/haircare/shampoo",
+      "canonical_url": "https://upcirclebeauty.com/products/refillable-shampoo",
+      "pivota_signature_id": "sig_e6c2fe5bb314ac580570d705",
+      "sku_rows": 1,
+      "first_sku": {
+        "sku_key": "prod::external_seed::external_seed::ext_b13a29406f82ff32d2cc2a32::sku_91c459fcf92c0c1df5d8",
+        "product_key": "prod::external_seed::external_seed::ext_b13a29406f82ff32d2cc2a32",
+        "merchant_id": "external_seed",
+        "platform": "external_seed",
+        "source_product_id": "ext_b13a29406f82ff32d2cc2a32",
+        "source_variant_id": "ext_b13a29406f82ff32d2cc2a32:51986677825919",
+        "source_domain": "upcirclebeauty.com",
+        "sku": "SPB",
+        "barcode": null,
+        "title": "Shampoo Crème with Pink Berry",
+        "currency": "USD",
+        "image_url": "https://cdn.shopify.com/s/files/1/0023/6316/2681/files/Shampoo_Creme_Inner_with_Coconut_and_Rosemary_copy.jpg?v=1745103209",
+        "visible_attributes": {},
+        "visible_option_labels": {},
+        "ingredient_ids": [],
+        "sku_payload": {
+          "source": "external_product_seeds_mirror_v1",
+          "external_product_id": "ext_b13a29406f82ff32d2cc2a32",
+          "raw_variant_id": "51986677825919",
+          "source_variant_id": "ext_b13a29406f82ff32d2cc2a32:51986677825919",
+          "variant_sku": "SPB",
+          "barcode": null,
+          "strong_identifier_kind": null,
+          "source_url": "https://upcirclebeauty.com/products/refillable-shampoo",
+          "external_redirect_url": "https://upcirclebeauty.com/products/refillable-shampoo",
+          "price": "28",
+          "price_amount": 28,
+          "currency": "USD",
+          "availability": "in_stock",
+          "image_url": "https://cdn.shopify.com/s/files/1/0023/6316/2681/files/Shampoo_Creme_Inner_with_Coconut_and_Rosemary_copy.jpg?v=1745103209",
+          "swatch_image_url": null,
+          "label_image_url": null,
+          "options": {},
+          "raw_variant": {
+            "sku": "SPB",
+            "url": "https://upcirclebeauty.com/products/refillable-shampoo",
+            "price": "28",
+            "stock": "In Stock",
+            "currency": "USD",
+            "image_url": "https://cdn.shopify.com/s/files/1/0023/6316/2681/files/Shampoo_Creme_Inner_with_Coconut_and_Rosemary_copy.jpg?v=1745103209",
+            "image_urls": [
+              "https://cdn.shopify.com/s/files/1/0023/6316/2681/files/Shampoo_Creme_Inner_with_Coconut_and_Rosemary_copy.jpg?v=1745103209",
+              "https://cdn.shopify.com/s/files/1/0023/6316/2681/files/ShampooCremewithCoconutandRosemarycopy.jpg?v=1745103209",
+              "https://cdn.shopify.com/s/files/1/0023/6316/2681/files/39_c465cd89-941d-44fb-9563-72746d3f8332.jpg?v=1770713760",
+              "https://cdn.shopify.com/s/files/1/0023/6316/2681/files/Shampoo_a9cb9225-327b-4235-b600-872355500c92.png?v=1745103209",
+              "https://cdn.shopify.com/s/files/1/0023/6316/2681/files/CALLOUTS_IMAGES_SPB_UPDATED_1.jpg?v=1745103209",
+              "https://cdn.shopify.com/s/files/1/0023/6316/2681/files/NEWSTUFF_fd357b67-20c0-45d2-8cd9-f069f75bcb08.png?v=1767882894",
+              "https://cdn.shopify.com/s/files/1/0023/6316/2681/files/Texture_Awards_Shampoo.png?v=1767882894",
+              "https://cdn.shopify.com/s/files/1/0023/6316/2681/files/web_Ann-MarieBefore_After_1_4ff4f50f-8c9e-4305-abe3-71e486299be7.png?v=1767882894",
+              "https://cdn.shopify.com/s/files/1/0023/6316/2681/files/42_8a4ba15a-b5f6-43a3-9bb7-62066a59cc90.jpg?v=1767882894",
+              "https://cdn.shopify.com/s/files/1/0023/6316/2681/files/111_5e7aa445-74b0-485b-b682-0a0e95c7f2cf.jpg?v=1767882894",
+              "https://cdn.shopify.com/s/files/1/0023/6316/2681/files/ShampooBeforeandAfterCurlyHair_1_e0c7ebc1-b597-4c11-9c14-bd663e45c960.jpg?v=1767882894",
+              "https://cdn.shopify.com/s/files/1/0023/6316/2681/files/103.jpg?v=1767882894"
+            ],
+            "variant_id": "51986677825919",
+            "description": "Our refillable shampoo crème is a hybrid of liquid and solid, lasting three times longer than normal shampoo.\n\nIts concentrated formula delivers THREE times the washes of a liquid shampoo! There is less waste than a shampoo bar usually due to the last slithers of the shampoo bar often being wasted. This is the type of product that once used will likely mean you never go back to liquid shampoo!\n\nIn addition, our vegan shampoo is suitable for all hair types. Due to the carefully curated formula, it has an exceptionally gentle effect on the hair and is very mild on the skin and eyes. It also works well in soft and hard water.\n\nSuitable for afro / textured hair, colour treated hair, dry and greasy hair. \n\nWinner of the \"Best shampoo for textured/afro hair\" award in the Top Santé Hair Awards 2023. \n\nAlso described as \"a revelation\" by The Telegraph as well as being awarded as a Top Santé Best Buy. Also featured in Natural Products News, Woman's Own, Black Beauty &amp; Hair and Your London.\n\nInspiring, upcycling, uplifting: Our Shampoo is made with upcycled pink berries from the fragrance industry to soothe the scalp and strengthen hair. \n\nThe UpCircle Promise \nNatural, sustainable, vegan &amp; cruelty-free. Housed in 100% plastic-free packaging.",
+            "option_name": "Title",
+            "option_value": "Default Title"
+          }
+        },
+        "readiness_tier": "referral_only"
+      },
+      "first_offer": {
+        "offer_id": "offer:external_seed:f08a0ba8dac8dd04bb7e414dd00cd1e7",
+        "sku_key": "prod::external_seed::external_seed::ext_b13a29406f82ff32d2cc2a32::sku_91c459fcf92c0c1df5d8",
+        "product_key": "prod::external_seed::external_seed::ext_b13a29406f82ff32d2cc2a32",
+        "merchant_id": "external_seed",
+        "catalog_track": "external_referral",
+        "truth_tier": "observed",
+        "readiness_tier": "referral_only",
+        "offer_mode": "redirect",
+        "channel": "external_referral",
+        "availability": "in_stock",
+        "currency": "USD",
+        "list_price": 28,
+        "merchant_effective_price": 28,
+        "estimated_best_price": 28,
+        "price_confidence": 1,
+        "source_system": "external_product_seeds_mirror_v1",
+        "source_ref": "eps_c39bcd9fa6260b8c011b7823",
+        "source_domain": "upcirclebeauty.com",
+        "offer_payload": {
+          "source": "external_product_seeds_mirror_v1",
+          "external_seed_id": "eps_c39bcd9fa6260b8c011b7823",
+          "external_product_id": "ext_b13a29406f82ff32d2cc2a32",
+          "domain": "upcirclebeauty.com",
+          "market": "US",
+          "product_title": "Shampoo Crème with Pink Berry",
+          "variant_title": "Shampoo Crème with Pink Berry",
+          "variant_sku": "SPB",
+          "raw_variant_id": "51986677825919",
+          "url": "https://upcirclebeauty.com/products/refillable-shampoo",
+          "offer_url": "https://upcirclebeauty.com/products/refillable-shampoo",
+          "canonical_url": "https://upcirclebeauty.com/products/refillable-shampoo",
+          "destination_url": "https://upcirclebeauty.com/products/refillable-shampoo",
+          "external_redirect_url": "https://upcirclebeauty.com/products/refillable-shampoo",
+          "merchant_display_name": "UpCircle Beauty",
+          "price": "28",
+          "price_amount": 28,
+          "price_currency": "USD",
+          "availability": "in_stock",
+          "commerce_facts_v1": {
+            "contract_version": "commerce_facts.v1",
+            "market_id": "US",
+            "country": "US",
+            "currency_target": "USD",
+            "source_authority": "catalog_extract_v2",
+            "captured_at": "2026-05-18T05:00:41.936Z",
+            "evidence_url": "https://upcirclebeauty.com/products/refillable-shampoo",
+            "sellable_region": {
+              "status": "unknown",
+              "countries": [],
+              "evidence_source": "catalog_extract_v2",
+              "confidence": "unknown",
+              "checked_at": "2026-05-18T05:00:41.936Z",
+              "reason_codes": [
+                "shipping_destination_not_verified"
+              ],
+              "evidence_url": "https://upcirclebeauty.com/products/refillable-shampoo"
+            },
+            "regional_price": {
+              "amount": 28,
+              "currency": "USD",
+              "display_raw": null,
+              "price_type": "unknown",
+              "compare_at_amount": null,
+              "compare_at_currency": null,
+              "compare_at_display_raw": null,
+              "tax_included": "unknown",
+              "confidence": "medium",
+              "market_switch_status": "ok",
+              "observed_currency": "USD",
+              "source_url": "https://upcirclebeauty.com/products/refillable-shampoo",
+              "captured_at": "2026-05-18T05:00:41.936Z"
+            },
+            "availability": {
+              "status": "in_stock",
+              "source": "catalog_extract_v2",
+              "confidence": "medium",
+              "captured_at": "2026-05-18T05:00:41.936Z"
+            },
+            "shipping": {
+              "status": "unknown",
+              "source": "catalog_extract_v2",
+              "confidence": "unknown",
+              "reason_codes": [
+                "external_checkout_not_queried"
+              ],
+              "checked_at": "2026-05-18T05:00:41.936Z"
+            },
+            "promotions": [],
+            "returns": {
+              "status": "unknown",
+              "source": "catalog_extract_v2",
+              "confidence": "unknown",
+              "reason_codes": [
+                "external_returns_not_extracted"
+              ],
+              "checked_at": "2026-05-18T05:00:41.936Z"
+            }
+          },
+          "agent_safe_commerce_facts": {
+            "contract_version": "commerce_facts.v1",
+            "market_id": "US",
+            "price": {
+              "amount": 28,
+              "currency": "USD",
+              "display_raw": null,
+              "price_type": "unknown",
+              "compare_at_amount": null,
+              "compare_at_currency": null,
+              "compare_at_display_raw": null,
+              "tax_included": "unknown",
+              "confidence": "medium",
+              "market_switch_status": "ok",
+              "observed_currency": "USD",
+              "source_url": "https://upcirclebeauty.com/products/refillable-shampoo",
+              "captured_at": "2026-05-18T05:00:41.936Z"
+            },
+            "availability": {
+              "status": "in_stock",
+              "source": "catalog_extract_v2",
+              "confidence": "medium",
+              "captured_at": "2026-05-18T05:00:41.936Z"
+            },
+            "shipping": {
+              "status": "unknown",
+              "reason": "verify_at_checkout"
+            },
+            "promotions": [],
+            "checkout_note": "Shipping and promotions are not verified for this external offer; verify at merchant checkout."
+          }
+        }
+      },
+      "serving_readiness": {
+        "servingEligible": true,
+        "contentQualityScore": 90,
+        "blockerCode": "none",
+        "blockerDetail": null,
+        "identityResolved": true,
+        "identityLiveReadResolved": true,
+        "identityBootstrapEligible": false,
+        "terminalHold": false,
+        "terminalHoldReason": "",
+        "hasImage": true,
+        "hasPrice": true,
+        "descriptionLength": 1260
+      }
+    }
+  ]
+}

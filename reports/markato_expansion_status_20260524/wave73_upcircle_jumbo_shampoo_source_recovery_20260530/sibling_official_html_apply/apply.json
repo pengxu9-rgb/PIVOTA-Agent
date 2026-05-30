@@ -1,0 +1,48 @@
+{
+  "generated_at": "2026-05-30T02:15:48.308Z",
+  "dry_run": false,
+  "market": "US",
+  "summary": {
+    "scanned": 1,
+    "dry_run": 0,
+    "updated": 1,
+    "skipped": 0,
+    "failed": 0,
+    "by_field": {
+      "pdp_ingredients_raw": 1,
+      "pdp_how_to_use_raw": 1,
+      "pdp_details_sections": 1
+    }
+  },
+  "results": [
+    {
+      "external_product_id": "ext_b13a29406f82ff32d2cc2a32",
+      "title": "Shampoo Crème with Pink Berry",
+      "domain": "upcirclebeauty.com",
+      "url": "https://upcirclebeauty.com/products/refillable-shampoo",
+      "host": "upcirclebeauty.com",
+      "status": "updated",
+      "patch_keys": [
+        "pdp_ingredients_raw",
+        "pdp_how_to_use_raw",
+        "pdp_details_sections"
+      ],
+      "http_status": 200,
+      "final_url": "https://upcirclebeauty.com/products/refillable-shampoo",
+      "extracted_summary": {
+        "ingredients_chars": 531,
+        "how_to_chars": 766,
+        "details_sections_count": 3,
+        "variant_count": 0,
+        "review_count": 0,
+        "rating": 0,
+        "review_preview_count": 0,
+        "review_preview_samples": []
+      },
+      "serving_mirror_sync": {
+        "catalog_products": 1,
+        "pdp_identity_listing": 1
+      }
+    }
+  ]
+}

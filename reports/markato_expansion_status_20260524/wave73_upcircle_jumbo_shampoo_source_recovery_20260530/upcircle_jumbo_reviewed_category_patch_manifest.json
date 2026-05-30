@@ -1,0 +1,20 @@
+{
+  "market": "US",
+  "reviewed_by": "codex_wave73_high_quality_human_review",
+  "reason": "Reviewed source-backed category repair for UpCircle jumbo shampoo after official PDP source recovery.",
+  "source_kind": "official_pdp_title_url_review",
+  "evidence": "Official UpCircle PDP title, URL, and extracted source fields identify this row as a shampoo product, not a broad haircare category.",
+  "confidence": 0.95,
+  "entries": [
+    {
+      "external_product_id": "ext_5195cd2ff341a491822447d9",
+      "title": "Shampoo Creme with Pink Berry - Jumbo",
+      "canonical_url": "https://upcirclebeauty.com/products/jumbo-shampoo",
+      "source_url": "https://upcirclebeauty.com/products/jumbo-shampoo",
+      "category": "Shampoo",
+      "product_type": "Shampoo",
+      "category_path": "beauty/haircare/shampoo",
+      "catalog_category_path": "beauty/haircare/shampoo"
+    }
+  ]
+}

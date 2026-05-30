@@ -1,0 +1,61 @@
+{
+  "generated_at": "2026-05-30T02:13:03.570Z",
+  "dry_run": false,
+  "manifest": "reports/markato_expansion_status_20260524/wave73_upcircle_jumbo_shampoo_source_recovery_20260530/upcircle_jumbo_reviewed_category_patch_manifest.json",
+  "market": "US",
+  "allow_overwrite": false,
+  "overwrite_confirmed": false,
+  "summary": {
+    "scanned": 1,
+    "planned": 1,
+    "unchanged": 0,
+    "blocked": 0,
+    "missing": 0,
+    "updated": 1,
+    "catalog_product_updates": 1,
+    "identity_updates": 1,
+    "by_patch_key": {
+      "category": 1,
+      "product_type": 1,
+      "category_path": 1,
+      "catalog_category_path": 1
+    },
+    "blocking_reasons": {}
+  },
+  "apply_results": [
+    {
+      "external_product_id": "ext_5195cd2ff341a491822447d9",
+      "seed_updates": 1,
+      "catalog_product_updates": 1,
+      "identity_updates": 1
+    }
+  ],
+  "plans": [
+    {
+      "id": "eps_2a2e178efd30cd6543d20ee1",
+      "external_product_id": "ext_5195cd2ff341a491822447d9",
+      "title": "Shampoo Crème with Pink Berry - Jumbo",
+      "canonical_url": "https://upcirclebeauty.com/products/jumbo-shampoo",
+      "status": "planned",
+      "changed": true,
+      "patch_keys": [
+        "category",
+        "product_type",
+        "category_path",
+        "catalog_category_path"
+      ],
+      "before": {
+        "category": "",
+        "category_path": "",
+        "catalog_category_path": "",
+        "product_type": ""
+      },
+      "after": {
+        "category": "Shampoo",
+        "category_path": "beauty/haircare/shampoo",
+        "catalog_category_path": "beauty/haircare/shampoo",
+        "product_type": "Shampoo"
+      }
+    }
+  ]
+}

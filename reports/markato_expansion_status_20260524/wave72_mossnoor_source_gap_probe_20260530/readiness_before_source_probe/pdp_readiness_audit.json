@@ -1,0 +1,893 @@
+{
+  "generated_at": "2026-05-30T02:06:50.204Z",
+  "options": {
+    "market": "US",
+    "includeAttached": true,
+    "domain": null,
+    "externalProductIds": [
+      "ext_a7ab937f43db2868c6f9e383",
+      "ext_3ad7ef081b2b95eafb2b0950",
+      "ext_83b8555768814cac5243aef1",
+      "ext_67472974111568c15ac3920d",
+      "ext_cf945cc7bfe99bf9864bd6df",
+      "ext_876342422f9629ea9363953c",
+      "ext_2ceae3f0084e576134f4c1eb",
+      "ext_fef6fb32a26319fb95c750ab"
+    ],
+    "limit": 20000,
+    "sampleLimit": 10,
+    "checkpointDir": "/Users/pengchydan/dev/_worktrees/pivota-agent-markato-wave25-786-20260527/reports/markato_expansion_status_20260524/wave72_mossnoor_source_gap_probe_20260530/readiness_before_source_probe/pdp_readiness_checkpoint",
+    "checkpointMode": "domain",
+    "resume": false,
+    "force": false,
+    "continueOnError": true,
+    "pageSize": 500,
+    "format": "json"
+  },
+  "warnings": [],
+  "summary": {
+    "scanned": 8,
+    "by_market": {
+      "US": 8
+    },
+    "by_domain": [
+      {
+        "key": "mossnoor.com",
+        "count": 8
+      }
+    ],
+    "by_product_family": [
+      {
+        "key": "single_formula",
+        "count": 8
+      }
+    ],
+    "coverage": {
+      "missing_inci": 2,
+      "missing_active_raw": 8,
+      "missing_details": 8,
+      "missing_how_to": 8,
+      "missing_faq": 0
+    },
+    "pivota_insights": {
+      "direct": {
+        "displayable": 8,
+        "high_quality_ready": 8,
+        "missing_kb": 0,
+        "not_displayable": 0
+      },
+      "effective": {
+        "displayable": 8,
+        "high_quality_ready": 8,
+        "missing_kb": 0,
+        "not_displayable": 0,
+        "borrowed_from_sibling": 0
+      },
+      "effective_issues": [],
+      "effective_issue_domains": [],
+      "quality_state": [
+        {
+          "key": "reviewed",
+          "count": 8
+        }
+      ],
+      "evidence_profile": [
+        {
+          "key": "official_pdp_seed",
+          "count": 8
+        }
+      ],
+      "samples": {}
+    },
+    "active_ingredients": {
+      "regulatory_expected": 0,
+      "hero_expected": 2,
+      "any_active_items": 0,
+      "status": [
+        {
+          "key": "not_expected_missing",
+          "count": 6
+        },
+        {
+          "key": "missing_hero",
+          "count": 2
+        }
+      ],
+      "issues": [
+        {
+          "key": "missing_hero",
+          "count": 2
+        }
+      ],
+      "issue_domains": [
+        {
+          "key": "mossnoor.com::missing_hero",
+          "count": 2
+        }
+      ],
+      "source_origin": [
+        {
+          "key": "reviewed_source_backed_pdp_content_patch",
+          "count": 5
+        },
+        {
+          "key": "none",
+          "count": 3
+        }
+      ],
+      "samples": {
+        "missing_hero": [
+          {
+            "external_product_id": "ext_fef6fb32a26319fb95c750ab",
+            "domain": "mossnoor.com",
+            "title": "Hand Wash - Fresh Grapefruit",
+            "status": "missing_hero",
+            "active_items": [],
+            "source_origin": "none"
+          },
+          {
+            "external_product_id": "ext_2ceae3f0084e576134f4c1eb",
+            "domain": "mossnoor.com",
+            "title": "Hand Wash - Crispy Cucumber",
+            "status": "missing_hero",
+            "active_items": [],
+            "source_origin": "none"
+          }
+        ]
+      }
+    },
+    "variants": {
+      "status": [
+        {
+          "key": "ready",
+          "count": 8
+        }
+      ],
+      "issues": [],
+      "issue_domains": [],
+      "samples": {}
+    }
+  },
+  "rows": [
+    {
+      "seed_id": "eps_f4b8851a20e6e5eff0d7de38",
+      "external_product_id": "ext_cf945cc7bfe99bf9864bd6df",
+      "market": "US",
+      "domain": "mossnoor.com",
+      "title": "After Workout Shower Gel – Fresh Grapefruit 500 ml",
+      "canonical_url": "https://mossnoor.com/products/after-workout-shower-gel-fresh-grapefruit-500-ml",
+      "product_family": "single_formula",
+      "product_line_id": null,
+      "pivota_insights": {
+        "direct": {
+          "product_id": "ext_cf945cc7bfe99bf9864bd6df",
+          "kb_key": "product:ext_cf945cc7bfe99bf9864bd6df",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "official_pdp_seed",
+          "has_card_highlight": true
+        },
+        "effective": {
+          "product_id": "ext_cf945cc7bfe99bf9864bd6df",
+          "kb_key": "product:ext_cf945cc7bfe99bf9864bd6df",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "official_pdp_seed",
+          "has_card_highlight": true
+        },
+        "product_line_id": null,
+        "borrowed_from_sibling": false
+      },
+      "active_ingredients": {
+        "status": "not_expected_missing",
+        "issues": [],
+        "regulatory_expected": false,
+        "hero_expected": false,
+        "active_items": [],
+        "source_origin": "reviewed_source_backed_pdp_content_patch",
+        "source_quality_status": "blocked",
+        "coverage": {
+          "details_sections_count": 0,
+          "faq_count": 2,
+          "how_to_chars": 0,
+          "inci_chars": 380,
+          "active_ingredients_chars": 0,
+          "inci_applicability_status": "",
+          "ingredient_review_status": "",
+          "ingredient_remediation_action": "",
+          "bundle_component_refs_count": 0,
+          "effective_inci_chars": 380,
+          "inci_borrowed_from_product_id": ""
+        },
+        "invalid_fragments": [],
+        "suppressed_reason": null
+      },
+      "variants": {
+        "status": "ready",
+        "issues": [],
+        "visible_variant_rows": 1,
+        "examples": {
+          "identity_option_visible": [],
+          "wrong_axis_for_category": [],
+          "makeup_shade_missing_visual": [],
+          "size_value_generic_axis": [],
+          "default_option_size_evidence_missing_axis": [],
+          "identity_default_title_axis": []
+        }
+      },
+      "coverage": {
+        "details_sections_count": 0,
+        "faq_count": 2,
+        "how_to_chars": 0,
+        "inci_chars": 380,
+        "active_ingredients_chars": 0,
+        "inci_applicability_status": "",
+        "ingredient_review_status": "",
+        "ingredient_remediation_action": "",
+        "bundle_component_refs_count": 0,
+        "effective_inci_chars": 380,
+        "inci_borrowed_from_product_id": ""
+      }
+    },
+    {
+      "seed_id": "eps_1d5624ce83b81d64ac656dd8",
+      "external_product_id": "ext_876342422f9629ea9363953c",
+      "market": "US",
+      "domain": "mossnoor.com",
+      "title": "After Workout Shower Gel – Light Mint",
+      "canonical_url": "https://mossnoor.com/products/after-workout-shower-gel-light-mint",
+      "product_family": "single_formula",
+      "product_line_id": null,
+      "pivota_insights": {
+        "direct": {
+          "product_id": "ext_876342422f9629ea9363953c",
+          "kb_key": "product:ext_876342422f9629ea9363953c",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "official_pdp_seed",
+          "has_card_highlight": true
+        },
+        "effective": {
+          "product_id": "ext_876342422f9629ea9363953c",
+          "kb_key": "product:ext_876342422f9629ea9363953c",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "official_pdp_seed",
+          "has_card_highlight": true
+        },
+        "product_line_id": null,
+        "borrowed_from_sibling": false
+      },
+      "active_ingredients": {
+        "status": "not_expected_missing",
+        "issues": [],
+        "regulatory_expected": false,
+        "hero_expected": false,
+        "active_items": [],
+        "source_origin": "reviewed_source_backed_pdp_content_patch",
+        "source_quality_status": "blocked",
+        "coverage": {
+          "details_sections_count": 0,
+          "faq_count": 2,
+          "how_to_chars": 0,
+          "inci_chars": 348,
+          "active_ingredients_chars": 0,
+          "inci_applicability_status": "",
+          "ingredient_review_status": "",
+          "ingredient_remediation_action": "",
+          "bundle_component_refs_count": 0,
+          "effective_inci_chars": 348,
+          "inci_borrowed_from_product_id": ""
+        },
+        "invalid_fragments": [],
+        "suppressed_reason": null
+      },
+      "variants": {
+        "status": "ready",
+        "issues": [],
+        "visible_variant_rows": 1,
+        "examples": {
+          "identity_option_visible": [],
+          "wrong_axis_for_category": [],
+          "makeup_shade_missing_visual": [],
+          "size_value_generic_axis": [],
+          "default_option_size_evidence_missing_axis": [],
+          "identity_default_title_axis": []
+        }
+      },
+      "coverage": {
+        "details_sections_count": 0,
+        "faq_count": 2,
+        "how_to_chars": 0,
+        "inci_chars": 348,
+        "active_ingredients_chars": 0,
+        "inci_applicability_status": "",
+        "ingredient_review_status": "",
+        "ingredient_remediation_action": "",
+        "bundle_component_refs_count": 0,
+        "effective_inci_chars": 348,
+        "inci_borrowed_from_product_id": ""
+      }
+    },
+    {
+      "seed_id": "eps_1dffa343e9ebeafb511f5c44",
+      "external_product_id": "ext_67472974111568c15ac3920d",
+      "market": "US",
+      "domain": "mossnoor.com",
+      "title": "After Workout Shower Gel – Fresh Grapefruit",
+      "canonical_url": "https://mossnoor.com/products/shower-gel",
+      "product_family": "single_formula",
+      "product_line_id": null,
+      "pivota_insights": {
+        "direct": {
+          "product_id": "ext_67472974111568c15ac3920d",
+          "kb_key": "product:ext_67472974111568c15ac3920d",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "official_pdp_seed",
+          "has_card_highlight": true
+        },
+        "effective": {
+          "product_id": "ext_67472974111568c15ac3920d",
+          "kb_key": "product:ext_67472974111568c15ac3920d",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "official_pdp_seed",
+          "has_card_highlight": true
+        },
+        "product_line_id": null,
+        "borrowed_from_sibling": false
+      },
+      "active_ingredients": {
+        "status": "not_expected_missing",
+        "issues": [],
+        "regulatory_expected": false,
+        "hero_expected": false,
+        "active_items": [],
+        "source_origin": "reviewed_source_backed_pdp_content_patch",
+        "source_quality_status": "blocked",
+        "coverage": {
+          "details_sections_count": 0,
+          "faq_count": 2,
+          "how_to_chars": 0,
+          "inci_chars": 340,
+          "active_ingredients_chars": 0,
+          "inci_applicability_status": "",
+          "ingredient_review_status": "",
+          "ingredient_remediation_action": "",
+          "bundle_component_refs_count": 0,
+          "effective_inci_chars": 340,
+          "inci_borrowed_from_product_id": ""
+        },
+        "invalid_fragments": [],
+        "suppressed_reason": null
+      },
+      "variants": {
+        "status": "ready",
+        "issues": [],
+        "visible_variant_rows": 1,
+        "examples": {
+          "identity_option_visible": [],
+          "wrong_axis_for_category": [],
+          "makeup_shade_missing_visual": [],
+          "size_value_generic_axis": [],
+          "default_option_size_evidence_missing_axis": [],
+          "identity_default_title_axis": []
+        }
+      },
+      "coverage": {
+        "details_sections_count": 0,
+        "faq_count": 2,
+        "how_to_chars": 0,
+        "inci_chars": 340,
+        "active_ingredients_chars": 0,
+        "inci_applicability_status": "",
+        "ingredient_review_status": "",
+        "ingredient_remediation_action": "",
+        "bundle_component_refs_count": 0,
+        "effective_inci_chars": 340,
+        "inci_borrowed_from_product_id": ""
+      }
+    },
+    {
+      "seed_id": "eps_17e574451e2b1b7261e59e3b",
+      "external_product_id": "ext_a7ab937f43db2868c6f9e383",
+      "market": "US",
+      "domain": "mossnoor.com",
+      "title": "After Workout Shower Gel – Clean Eucalyptus",
+      "canonical_url": "https://mossnoor.com/products/after-workout-shower-gel-clean-eucalyptus",
+      "product_family": "single_formula",
+      "product_line_id": null,
+      "pivota_insights": {
+        "direct": {
+          "product_id": "ext_a7ab937f43db2868c6f9e383",
+          "kb_key": "product:ext_a7ab937f43db2868c6f9e383",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "official_pdp_seed",
+          "has_card_highlight": true
+        },
+        "effective": {
+          "product_id": "ext_a7ab937f43db2868c6f9e383",
+          "kb_key": "product:ext_a7ab937f43db2868c6f9e383",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "official_pdp_seed",
+          "has_card_highlight": true
+        },
+        "product_line_id": null,
+        "borrowed_from_sibling": false
+      },
+      "active_ingredients": {
+        "status": "not_expected_missing",
+        "issues": [],
+        "regulatory_expected": false,
+        "hero_expected": false,
+        "active_items": [],
+        "source_origin": "reviewed_source_backed_pdp_content_patch",
+        "source_quality_status": "blocked",
+        "coverage": {
+          "details_sections_count": 0,
+          "faq_count": 2,
+          "how_to_chars": 0,
+          "inci_chars": 362,
+          "active_ingredients_chars": 0,
+          "inci_applicability_status": "",
+          "ingredient_review_status": "",
+          "ingredient_remediation_action": "",
+          "bundle_component_refs_count": 0,
+          "effective_inci_chars": 362,
+          "inci_borrowed_from_product_id": ""
+        },
+        "invalid_fragments": [],
+        "suppressed_reason": null
+      },
+      "variants": {
+        "status": "ready",
+        "issues": [],
+        "visible_variant_rows": 1,
+        "examples": {
+          "identity_option_visible": [],
+          "wrong_axis_for_category": [],
+          "makeup_shade_missing_visual": [],
+          "size_value_generic_axis": [],
+          "default_option_size_evidence_missing_axis": [],
+          "identity_default_title_axis": []
+        }
+      },
+      "coverage": {
+        "details_sections_count": 0,
+        "faq_count": 2,
+        "how_to_chars": 0,
+        "inci_chars": 362,
+        "active_ingredients_chars": 0,
+        "inci_applicability_status": "",
+        "ingredient_review_status": "",
+        "ingredient_remediation_action": "",
+        "bundle_component_refs_count": 0,
+        "effective_inci_chars": 362,
+        "inci_borrowed_from_product_id": ""
+      }
+    },
+    {
+      "seed_id": "eps_e38d3a2546bdacf2f0202094",
+      "external_product_id": "ext_3ad7ef081b2b95eafb2b0950",
+      "market": "US",
+      "domain": "mossnoor.com",
+      "title": "After Workout Shower Gel – Clean Eucalyptus 500 ml",
+      "canonical_url": "https://mossnoor.com/products/after-workout-shower-gel-clean-eucalyptus-500-ml",
+      "product_family": "single_formula",
+      "product_line_id": null,
+      "pivota_insights": {
+        "direct": {
+          "product_id": "ext_3ad7ef081b2b95eafb2b0950",
+          "kb_key": "product:ext_3ad7ef081b2b95eafb2b0950",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "official_pdp_seed",
+          "has_card_highlight": true
+        },
+        "effective": {
+          "product_id": "ext_3ad7ef081b2b95eafb2b0950",
+          "kb_key": "product:ext_3ad7ef081b2b95eafb2b0950",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "official_pdp_seed",
+          "has_card_highlight": true
+        },
+        "product_line_id": null,
+        "borrowed_from_sibling": false
+      },
+      "active_ingredients": {
+        "status": "not_expected_missing",
+        "issues": [],
+        "regulatory_expected": false,
+        "hero_expected": false,
+        "active_items": [],
+        "source_origin": "none",
+        "source_quality_status": "blocked",
+        "coverage": {
+          "details_sections_count": 0,
+          "faq_count": 2,
+          "how_to_chars": 0,
+          "inci_chars": 16152,
+          "active_ingredients_chars": 0,
+          "inci_applicability_status": "",
+          "ingredient_review_status": "",
+          "ingredient_remediation_action": "",
+          "bundle_component_refs_count": 0,
+          "effective_inci_chars": 16152,
+          "inci_borrowed_from_product_id": ""
+        },
+        "invalid_fragments": [],
+        "suppressed_reason": "no_authoritative_source"
+      },
+      "variants": {
+        "status": "ready",
+        "issues": [],
+        "visible_variant_rows": 1,
+        "examples": {
+          "identity_option_visible": [],
+          "wrong_axis_for_category": [],
+          "makeup_shade_missing_visual": [],
+          "size_value_generic_axis": [],
+          "default_option_size_evidence_missing_axis": [],
+          "identity_default_title_axis": []
+        }
+      },
+      "coverage": {
+        "details_sections_count": 0,
+        "faq_count": 2,
+        "how_to_chars": 0,
+        "inci_chars": 16152,
+        "active_ingredients_chars": 0,
+        "inci_applicability_status": "",
+        "ingredient_review_status": "",
+        "ingredient_remediation_action": "",
+        "bundle_component_refs_count": 0,
+        "effective_inci_chars": 16152,
+        "inci_borrowed_from_product_id": ""
+      }
+    },
+    {
+      "seed_id": "eps_e56270ecb6bb953e8f2ec347",
+      "external_product_id": "ext_83b8555768814cac5243aef1",
+      "market": "US",
+      "domain": "mossnoor.com",
+      "title": "After Workout Shower Gel – Crispy Cucumber 500 ml",
+      "canonical_url": "https://mossnoor.com/products/after-workout-shower-gel-crispy-cucumber",
+      "product_family": "single_formula",
+      "product_line_id": null,
+      "pivota_insights": {
+        "direct": {
+          "product_id": "ext_83b8555768814cac5243aef1",
+          "kb_key": "product:ext_83b8555768814cac5243aef1",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "official_pdp_seed",
+          "has_card_highlight": true
+        },
+        "effective": {
+          "product_id": "ext_83b8555768814cac5243aef1",
+          "kb_key": "product:ext_83b8555768814cac5243aef1",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "official_pdp_seed",
+          "has_card_highlight": true
+        },
+        "product_line_id": null,
+        "borrowed_from_sibling": false
+      },
+      "active_ingredients": {
+        "status": "not_expected_missing",
+        "issues": [],
+        "regulatory_expected": false,
+        "hero_expected": false,
+        "active_items": [],
+        "source_origin": "reviewed_source_backed_pdp_content_patch",
+        "source_quality_status": "blocked",
+        "coverage": {
+          "details_sections_count": 0,
+          "faq_count": 2,
+          "how_to_chars": 0,
+          "inci_chars": 333,
+          "active_ingredients_chars": 0,
+          "inci_applicability_status": "",
+          "ingredient_review_status": "",
+          "ingredient_remediation_action": "",
+          "bundle_component_refs_count": 0,
+          "effective_inci_chars": 333,
+          "inci_borrowed_from_product_id": ""
+        },
+        "invalid_fragments": [],
+        "suppressed_reason": null
+      },
+      "variants": {
+        "status": "ready",
+        "issues": [],
+        "visible_variant_rows": 1,
+        "examples": {
+          "identity_option_visible": [],
+          "wrong_axis_for_category": [],
+          "makeup_shade_missing_visual": [],
+          "size_value_generic_axis": [],
+          "default_option_size_evidence_missing_axis": [],
+          "identity_default_title_axis": []
+        }
+      },
+      "coverage": {
+        "details_sections_count": 0,
+        "faq_count": 2,
+        "how_to_chars": 0,
+        "inci_chars": 333,
+        "active_ingredients_chars": 0,
+        "inci_applicability_status": "",
+        "ingredient_review_status": "",
+        "ingredient_remediation_action": "",
+        "bundle_component_refs_count": 0,
+        "effective_inci_chars": 333,
+        "inci_borrowed_from_product_id": ""
+      }
+    },
+    {
+      "seed_id": "eps_5a5a2ce3bd87d6c54de316b2",
+      "external_product_id": "ext_fef6fb32a26319fb95c750ab",
+      "market": "US",
+      "domain": "mossnoor.com",
+      "title": "Hand Wash - Fresh Grapefruit",
+      "canonical_url": "https://mossnoor.com/products/hand-wash-fresh-grapefruit",
+      "product_family": "single_formula",
+      "product_line_id": null,
+      "pivota_insights": {
+        "direct": {
+          "product_id": "ext_fef6fb32a26319fb95c750ab",
+          "kb_key": "product:ext_fef6fb32a26319fb95c750ab",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "official_pdp_seed",
+          "has_card_highlight": true
+        },
+        "effective": {
+          "product_id": "ext_fef6fb32a26319fb95c750ab",
+          "kb_key": "product:ext_fef6fb32a26319fb95c750ab",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "official_pdp_seed",
+          "has_card_highlight": true
+        },
+        "product_line_id": null,
+        "borrowed_from_sibling": false
+      },
+      "active_ingredients": {
+        "status": "missing_hero",
+        "issues": [
+          "missing_hero"
+        ],
+        "regulatory_expected": false,
+        "hero_expected": true,
+        "active_items": [],
+        "source_origin": "none",
+        "source_quality_status": "blocked",
+        "coverage": {
+          "details_sections_count": 0,
+          "faq_count": 2,
+          "how_to_chars": 0,
+          "inci_chars": 0,
+          "active_ingredients_chars": 0,
+          "inci_applicability_status": "",
+          "ingredient_review_status": "",
+          "ingredient_remediation_action": "",
+          "bundle_component_refs_count": 0,
+          "effective_inci_chars": 0,
+          "inci_borrowed_from_product_id": ""
+        },
+        "invalid_fragments": [],
+        "suppressed_reason": "no_authoritative_source"
+      },
+      "variants": {
+        "status": "ready",
+        "issues": [],
+        "visible_variant_rows": 1,
+        "examples": {
+          "identity_option_visible": [],
+          "wrong_axis_for_category": [],
+          "makeup_shade_missing_visual": [],
+          "size_value_generic_axis": [],
+          "default_option_size_evidence_missing_axis": [],
+          "identity_default_title_axis": []
+        }
+      },
+      "coverage": {
+        "details_sections_count": 0,
+        "faq_count": 2,
+        "how_to_chars": 0,
+        "inci_chars": 0,
+        "active_ingredients_chars": 0,
+        "inci_applicability_status": "",
+        "ingredient_review_status": "",
+        "ingredient_remediation_action": "",
+        "bundle_component_refs_count": 0,
+        "effective_inci_chars": 0,
+        "inci_borrowed_from_product_id": ""
+      }
+    },
+    {
+      "seed_id": "eps_8520c340372e3303681dc4a8",
+      "external_product_id": "ext_2ceae3f0084e576134f4c1eb",
+      "market": "US",
+      "domain": "mossnoor.com",
+      "title": "Hand Wash - Crispy Cucumber",
+      "canonical_url": "https://mossnoor.com/products/hand-wash-crispy-cucumber",
+      "product_family": "single_formula",
+      "product_line_id": null,
+      "pivota_insights": {
+        "direct": {
+          "product_id": "ext_2ceae3f0084e576134f4c1eb",
+          "kb_key": "product:ext_2ceae3f0084e576134f4c1eb",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "official_pdp_seed",
+          "has_card_highlight": true
+        },
+        "effective": {
+          "product_id": "ext_2ceae3f0084e576134f4c1eb",
+          "kb_key": "product:ext_2ceae3f0084e576134f4c1eb",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "official_pdp_seed",
+          "has_card_highlight": true
+        },
+        "product_line_id": null,
+        "borrowed_from_sibling": false
+      },
+      "active_ingredients": {
+        "status": "missing_hero",
+        "issues": [
+          "missing_hero"
+        ],
+        "regulatory_expected": false,
+        "hero_expected": true,
+        "active_items": [],
+        "source_origin": "none",
+        "source_quality_status": "blocked",
+        "coverage": {
+          "details_sections_count": 0,
+          "faq_count": 2,
+          "how_to_chars": 0,
+          "inci_chars": 0,
+          "active_ingredients_chars": 0,
+          "inci_applicability_status": "",
+          "ingredient_review_status": "",
+          "ingredient_remediation_action": "",
+          "bundle_component_refs_count": 0,
+          "effective_inci_chars": 0,
+          "inci_borrowed_from_product_id": ""
+        },
+        "invalid_fragments": [],
+        "suppressed_reason": "no_authoritative_source"
+      },
+      "variants": {
+        "status": "ready",
+        "issues": [],
+        "visible_variant_rows": 1,
+        "examples": {
+          "identity_option_visible": [],
+          "wrong_axis_for_category": [],
+          "makeup_shade_missing_visual": [],
+          "size_value_generic_axis": [],
+          "default_option_size_evidence_missing_axis": [],
+          "identity_default_title_axis": []
+        }
+      },
+      "coverage": {
+        "details_sections_count": 0,
+        "faq_count": 2,
+        "how_to_chars": 0,
+        "inci_chars": 0,
+        "active_ingredients_chars": 0,
+        "inci_applicability_status": "",
+        "ingredient_review_status": "",
+        "ingredient_remediation_action": "",
+        "bundle_component_refs_count": 0,
+        "effective_inci_chars": 0,
+        "inci_borrowed_from_product_id": ""
+      }
+    }
+  ]
+}

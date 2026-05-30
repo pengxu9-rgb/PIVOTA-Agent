@@ -1,0 +1,191 @@
+{
+  "generated_at": "2026-05-30T02:07:43.261Z",
+  "dry_run": true,
+  "market": "US",
+  "summary": {
+    "scanned": 8,
+    "dry_run": 0,
+    "updated": 0,
+    "skipped": 8,
+    "failed": 0,
+    "by_field": {}
+  },
+  "results": [
+    {
+      "external_product_id": "ext_a7ab937f43db2868c6f9e383",
+      "title": "After Workout Shower Gel – Clean Eucalyptus",
+      "domain": "mossnoor.com",
+      "url": "https://mossnoor.com/products/after-workout-shower-gel-clean-eucalyptus",
+      "host": "mossnoor.com",
+      "status": "skipped",
+      "patch_keys": [],
+      "http_status": 200,
+      "final_url": "https://mossnoor.com/products/after-workout-shower-gel-clean-eucalyptus",
+      "extracted_summary": {
+        "ingredients_chars": 0,
+        "how_to_chars": 0,
+        "details_sections_count": 0,
+        "variant_count": 0,
+        "review_count": 0,
+        "rating": 0,
+        "review_preview_count": 0,
+        "review_preview_samples": []
+      },
+      "reason": "no_official_html_fields"
+    },
+    {
+      "external_product_id": "ext_3ad7ef081b2b95eafb2b0950",
+      "title": "After Workout Shower Gel – Clean Eucalyptus 500 ml",
+      "domain": "mossnoor.com",
+      "url": "https://mossnoor.com/products/after-workout-shower-gel-clean-eucalyptus-500-ml",
+      "host": "mossnoor.com",
+      "status": "skipped",
+      "patch_keys": [],
+      "http_status": 200,
+      "final_url": "https://mossnoor.com/products/after-workout-shower-gel-clean-eucalyptus-500-ml",
+      "extracted_summary": {
+        "ingredients_chars": 0,
+        "how_to_chars": 0,
+        "details_sections_count": 0,
+        "variant_count": 0,
+        "review_count": 0,
+        "rating": 0,
+        "review_preview_count": 0,
+        "review_preview_samples": []
+      },
+      "reason": "no_official_html_fields"
+    },
+    {
+      "external_product_id": "ext_83b8555768814cac5243aef1",
+      "title": "After Workout Shower Gel – Crispy Cucumber 500 ml",
+      "domain": "mossnoor.com",
+      "url": "https://mossnoor.com/products/after-workout-shower-gel-crispy-cucumber",
+      "host": "mossnoor.com",
+      "status": "skipped",
+      "patch_keys": [],
+      "http_status": 200,
+      "final_url": "https://mossnoor.com/products/after-workout-shower-gel-crispy-cucumber",
+      "extracted_summary": {
+        "ingredients_chars": 0,
+        "how_to_chars": 0,
+        "details_sections_count": 0,
+        "variant_count": 0,
+        "review_count": 0,
+        "rating": 0,
+        "review_preview_count": 0,
+        "review_preview_samples": []
+      },
+      "reason": "no_official_html_fields"
+    },
+    {
+      "external_product_id": "ext_67472974111568c15ac3920d",
+      "title": "After Workout Shower Gel – Fresh Grapefruit",
+      "domain": "mossnoor.com",
+      "url": "https://mossnoor.com/products/shower-gel",
+      "host": "mossnoor.com",
+      "status": "skipped",
+      "patch_keys": [],
+      "http_status": 200,
+      "final_url": "https://mossnoor.com/products/shower-gel",
+      "extracted_summary": {
+        "ingredients_chars": 0,
+        "how_to_chars": 0,
+        "details_sections_count": 0,
+        "variant_count": 0,
+        "review_count": 0,
+        "rating": 0,
+        "review_preview_count": 0,
+        "review_preview_samples": []
+      },
+      "reason": "no_official_html_fields"
+    },
+    {
+      "external_product_id": "ext_cf945cc7bfe99bf9864bd6df",
+      "title": "After Workout Shower Gel – Fresh Grapefruit 500 ml",
+      "domain": "mossnoor.com",
+      "url": "https://mossnoor.com/products/after-workout-shower-gel-fresh-grapefruit-500-ml",
+      "host": "mossnoor.com",
+      "status": "skipped",
+      "patch_keys": [],
+      "http_status": 200,
+      "final_url": "https://mossnoor.com/products/after-workout-shower-gel-fresh-grapefruit-500-ml",
+      "extracted_summary": {
+        "ingredients_chars": 0,
+        "how_to_chars": 0,
+        "details_sections_count": 0,
+        "variant_count": 0,
+        "review_count": 0,
+        "rating": 0,
+        "review_preview_count": 0,
+        "review_preview_samples": []
+      },
+      "reason": "no_official_html_fields"
+    },
+    {
+      "external_product_id": "ext_876342422f9629ea9363953c",
+      "title": "After Workout Shower Gel – Light Mint",
+      "domain": "mossnoor.com",
+      "url": "https://mossnoor.com/products/after-workout-shower-gel-light-mint",
+      "host": "mossnoor.com",
+      "status": "skipped",
+      "patch_keys": [],
+      "http_status": 200,
+      "final_url": "https://mossnoor.com/products/after-workout-shower-gel-light-mint",
+      "extracted_summary": {
+        "ingredients_chars": 0,
+        "how_to_chars": 0,
+        "details_sections_count": 0,
+        "variant_count": 0,
+        "review_count": 0,
+        "rating": 0,
+        "review_preview_count": 0,
+        "review_preview_samples": []
+      },
+      "reason": "no_official_html_fields"
+    },
+    {
+      "external_product_id": "ext_2ceae3f0084e576134f4c1eb",
+      "title": "Hand Wash - Crispy Cucumber",
+      "domain": "mossnoor.com",
+      "url": "https://mossnoor.com/products/hand-wash-crispy-cucumber",
+      "host": "mossnoor.com",
+      "status": "skipped",
+      "patch_keys": [],
+      "http_status": 200,
+      "final_url": "https://mossnoor.com/products/hand-wash-crispy-cucumber",
+      "extracted_summary": {
+        "ingredients_chars": 0,
+        "how_to_chars": 0,
+        "details_sections_count": 0,
+        "variant_count": 0,
+        "review_count": 0,
+        "rating": 0,
+        "review_preview_count": 0,
+        "review_preview_samples": []
+      },
+      "reason": "no_official_html_fields"
+    },
+    {
+      "external_product_id": "ext_fef6fb32a26319fb95c750ab",
+      "title": "Hand Wash - Fresh Grapefruit",
+      "domain": "mossnoor.com",
+      "url": "https://mossnoor.com/products/hand-wash-fresh-grapefruit",
+      "host": "mossnoor.com",
+      "status": "skipped",
+      "patch_keys": [],
+      "http_status": 200,
+      "final_url": "https://mossnoor.com/products/hand-wash-fresh-grapefruit",
+      "extracted_summary": {
+        "ingredients_chars": 0,
+        "how_to_chars": 0,
+        "details_sections_count": 0,
+        "variant_count": 0,
+        "review_count": 0,
+        "rating": 0,
+        "review_preview_count": 0,
+        "review_preview_samples": []
+      },
+      "reason": "no_official_html_fields"
+    }
+  ]
+}
