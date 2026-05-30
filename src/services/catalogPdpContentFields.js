@@ -4,6 +4,13 @@ const CACHE_TTL_MS = 60 * 1000;
 const CACHE_MAX = 2000;
 const cache = new Map();
 
+// SKU Optimization OS -- hybrid publish path (reader side).
+// When ON, the PDP merge hook also reads merchant_product_overlay (the materialization
+// target of governance publish, backend migration 143) and lays approved per-field
+// corrections over the served payload. Flag-gated, OFF by default; v1 covers the
+// 'copy' module (pdp_description_raw) only.
+const SKU_OPT_OVERLAY_V1 = /^(1|true|yes|on)$/i.test(String(process.env.SKU_OPT_OVERLAY_V1 || '').trim());
+
 function asString(value) {
   if (typeof value === 'string') return value.trim();
   if (value == null) return '';
@@ -514,11 +521,109 @@ async function readCatalogPdpContentFieldsByProductRefs({
   }
 }
 
+// SKU Optimization OS overlay (reader) ---------------------------------------
+// overlay field_key -> product field it lands on. v1: copy/description only.
+const OVERLAY_FIELD_TO_PRODUCT = {
+  pdp_description_raw: 'pdp_description_raw',
+};
+
+async function readMerchantProductOverlayByProductRefs({
+  merchantId,
+  sourceProductIds,
+  bypassCache = false,
+  queryFn = query,
+} = {}) {
+  const merchant = asString(merchantId);
+  const sourceIds = Array.from(new Set((Array.isArray(sourceProductIds) ? sourceProductIds : [sourceProductIds])
+    .map(asString)
+    .filter(Boolean)));
+  if (!merchant || !sourceIds.length) return null;
+  const key = `ovl::${cacheKey(merchant, sourceIds)}`;
+  if (!bypassCache) {
+    const cached = cacheGet(key);
+    if (cached !== undefined) return cached;
+  }
+  try {
+    // product_key is "merchant|platform|source_product_id"; match on parts 1 and 3
+    // so we need not reconstruct platform at the read site. v1 only serves the
+    // 'copy' module. Order deterministically (caller sourceId order, then newest
+    // approval) so multi-product reads resolve one stable row per field below.
+    const result = await queryFn(
+      `
+        SELECT module_key, field_key, value_jsonb,
+               split_part(product_key, '|', 3) AS source_product_id, approved_at
+        FROM merchant_product_overlay
+        WHERE approval_status = 'active'
+          AND module_key = 'copy'
+          AND split_part(product_key, '|', 1) = $1
+          AND split_part(product_key, '|', 3) = ANY($2::text[])
+        ORDER BY array_position($2::text[], split_part(product_key, '|', 3)),
+                 approved_at DESC NULLS LAST
+        LIMIT 100
+      `,
+      [merchant, sourceIds],
+    );
+    // Dedupe to one row per field_key, honoring the ORDER BY (first row wins).
+    const byField = new Map();
+    for (const row of Array.isArray(result?.rows) ? result.rows : []) {
+      const fieldKey = asString(row?.field_key);
+      if (!fieldKey || !OVERLAY_FIELD_TO_PRODUCT[fieldKey] || byField.has(fieldKey)) continue;
+      byField.set(fieldKey, {
+        module_key: asString(row?.module_key),
+        field_key: fieldKey,
+        value: row?.value_jsonb,
+      });
+    }
+    const overlays = Array.from(byField.values());
+    const value = overlays.length ? overlays : null;
+    cacheSet(key, value);
+    return value;
+  } catch {
+    cacheSet(key, null);
+    return null;
+  }
+}
+
+function mergeMerchantOverlayIntoProduct(product, overlays) {
+  if (!product || typeof product !== 'object' || !Array.isArray(overlays) || !overlays.length) {
+    return product;
+  }
+  const filled = [];
+  for (const overlay of overlays) {
+    const productField = OVERLAY_FIELD_TO_PRODUCT[overlay.field_key];
+    if (!productField) continue;
+    const value = asString(overlay.value);
+    if (!value) continue;
+    // Overlay is an explicit, reviewed merchant/ops approval -> it overrides whatever
+    // the sync/enrichment payload produced for this field (RFC precedence:
+    // overlay(approved) > product_payload(approved) > sync raw).
+    product[productField] = value;
+    filled.push(productField);
+  }
+  if (filled.length) {
+    product.merchant_overlay_hydration = {
+      source: 'merchant_product_overlay',
+      filled_fields: Array.from(new Set(filled)).sort(),
+    };
+  }
+  return product;
+}
+
 async function enrichProductWithCatalogPdpContentFields(product, options = {}) {
   if (!product || typeof product !== 'object') return product;
   const fields = await readCatalogPdpContentFieldsByProductRefs(options);
-  if (!fields) return product;
-  return mergeCatalogPdpContentFieldsIntoProduct(product, fields);
+  if (fields) {
+    product = mergeCatalogPdpContentFieldsIntoProduct(product, fields);
+  }
+  if (SKU_OPT_OVERLAY_V1) {
+    try {
+      const overlays = await readMerchantProductOverlayByProductRefs(options);
+      if (overlays) product = mergeMerchantOverlayIntoProduct(product, overlays);
+    } catch {
+      // overlay read is best-effort; never block the PDP on it
+    }
+  }
+  return product;
 }
 
 module.exports = {
@@ -526,9 +631,13 @@ module.exports = {
   enrichProductWithCatalogPdpContentFields,
   mergeCatalogPdpContentFieldsIntoProduct,
   readCatalogPdpContentFieldsByProductRefs,
+  readMerchantProductOverlayByProductRefs,
+  mergeMerchantOverlayIntoProduct,
   __test: {
     buildCatalogPdpContentFieldsFromRow,
     mergeCatalogPdpContentFieldsIntoProduct,
+    mergeMerchantOverlayIntoProduct,
+    readMerchantProductOverlayByProductRefs,
     _resetCache: () => cache.clear(),
   },
 };
