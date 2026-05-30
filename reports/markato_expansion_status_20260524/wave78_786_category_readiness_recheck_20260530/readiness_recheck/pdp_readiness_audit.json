@@ -1,0 +1,305 @@
+{
+  "generated_at": "2026-05-30T03:55:05.966Z",
+  "options": {
+    "market": "US",
+    "includeAttached": true,
+    "domain": null,
+    "externalProductIds": [
+      "ext_87a0af88b9bd23b8f2123d1b",
+      "ext_e86ee213b542fbb671e0804e"
+    ],
+    "limit": 20000,
+    "sampleLimit": 10,
+    "checkpointDir": "/Users/pengchydan/dev/_worktrees/pivota-agent-markato-wave25-786-20260527/reports/markato_expansion_status_20260524/wave78_786_category_readiness_recheck_20260530/readiness_recheck/pdp_readiness_checkpoint",
+    "checkpointMode": "domain",
+    "resume": false,
+    "force": false,
+    "continueOnError": true,
+    "pageSize": 500,
+    "format": "json"
+  },
+  "warnings": [],
+  "summary": {
+    "scanned": 2,
+    "by_market": {
+      "US": 2
+    },
+    "by_domain": [
+      {
+        "key": "786cosmetics.com",
+        "count": 2
+      }
+    ],
+    "by_product_family": [
+      {
+        "key": "single_formula",
+        "count": 2
+      }
+    ],
+    "coverage": {
+      "missing_inci": 0,
+      "missing_active_raw": 2,
+      "missing_details": 0,
+      "missing_how_to": 0,
+      "missing_faq": 2
+    },
+    "pivota_insights": {
+      "direct": {
+        "displayable": 2,
+        "high_quality_ready": 2,
+        "missing_kb": 0,
+        "not_displayable": 0
+      },
+      "effective": {
+        "displayable": 2,
+        "high_quality_ready": 2,
+        "missing_kb": 0,
+        "not_displayable": 0,
+        "borrowed_from_sibling": 0
+      },
+      "effective_issues": [],
+      "effective_issue_domains": [],
+      "quality_state": [
+        {
+          "key": "reviewed",
+          "count": 2
+        }
+      ],
+      "evidence_profile": [
+        {
+          "key": "official_pdp_reviewed_formula_and_usage",
+          "count": 2
+        }
+      ],
+      "samples": {}
+    },
+    "active_ingredients": {
+      "regulatory_expected": 0,
+      "hero_expected": 0,
+      "any_active_items": 0,
+      "status": [
+        {
+          "key": "not_expected_missing",
+          "count": 2
+        }
+      ],
+      "issues": [],
+      "issue_domains": [],
+      "source_origin": [
+        {
+          "key": "pdp_section",
+          "count": 1
+        },
+        {
+          "key": "reviewed_source_backed_pdp_content_patch",
+          "count": 1
+        }
+      ],
+      "samples": {}
+    },
+    "variants": {
+      "status": [
+        {
+          "key": "ready",
+          "count": 2
+        }
+      ],
+      "issues": [],
+      "issue_domains": [],
+      "samples": {}
+    }
+  },
+  "rows": [
+    {
+      "seed_id": "eps_20813a6bef5bcc2487899a77",
+      "external_product_id": "ext_87a0af88b9bd23b8f2123d1b",
+      "market": "US",
+      "domain": "786cosmetics.com",
+      "title": "Almond & Ginseng Cuticle Oil",
+      "canonical_url": "https://786cosmetics.com/products/almond-ginseng-cuticle-oil",
+      "product_family": "single_formula",
+      "product_line_id": "pl_72295da712930949418c47f6",
+      "identity_variant_axes": {
+        "format": "Cuticle Oil"
+      },
+      "pivota_insights": {
+        "direct": {
+          "product_id": "ext_87a0af88b9bd23b8f2123d1b",
+          "kb_key": "product:ext_87a0af88b9bd23b8f2123d1b",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "official_pdp_reviewed_formula_and_usage",
+          "has_card_highlight": true
+        },
+        "effective": {
+          "product_id": "ext_87a0af88b9bd23b8f2123d1b",
+          "kb_key": "product:ext_87a0af88b9bd23b8f2123d1b",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "official_pdp_reviewed_formula_and_usage",
+          "has_card_highlight": true
+        },
+        "product_line_id": "pl_72295da712930949418c47f6",
+        "borrowed_from_sibling": false
+      },
+      "active_ingredients": {
+        "status": "not_expected_missing",
+        "issues": [],
+        "regulatory_expected": false,
+        "hero_expected": false,
+        "active_items": [],
+        "source_origin": "pdp_section",
+        "source_quality_status": "blocked",
+        "coverage": {
+          "details_sections_count": 6,
+          "faq_count": 0,
+          "how_to_chars": 499,
+          "inci_chars": 291,
+          "active_ingredients_chars": 0,
+          "inci_applicability_status": "",
+          "ingredient_review_status": "",
+          "ingredient_remediation_action": "",
+          "bundle_component_refs_count": 0,
+          "effective_inci_chars": 291,
+          "inci_borrowed_from_product_id": ""
+        },
+        "invalid_fragments": [],
+        "suppressed_reason": null
+      },
+      "variants": {
+        "status": "ready",
+        "issues": [],
+        "visible_variant_rows": 1,
+        "examples": {
+          "identity_option_visible": [],
+          "wrong_axis_for_category": [],
+          "makeup_shade_missing_visual": [],
+          "size_value_generic_axis": [],
+          "default_option_size_evidence_missing_axis": [],
+          "identity_default_title_axis": []
+        }
+      },
+      "coverage": {
+        "details_sections_count": 6,
+        "faq_count": 0,
+        "how_to_chars": 499,
+        "inci_chars": 291,
+        "active_ingredients_chars": 0,
+        "inci_applicability_status": "",
+        "ingredient_review_status": "",
+        "ingredient_remediation_action": "",
+        "bundle_component_refs_count": 0,
+        "effective_inci_chars": 291,
+        "inci_borrowed_from_product_id": ""
+      }
+    },
+    {
+      "seed_id": "eps_cf3467b5a100a7d77b90ca05",
+      "external_product_id": "ext_e86ee213b542fbb671e0804e",
+      "market": "US",
+      "domain": "786cosmetics.com",
+      "title": "Soy Nail Polish Remover With Almond Essential Oil",
+      "canonical_url": "https://786cosmetics.com/products/soy-based-nail-polish-remover",
+      "product_family": "single_formula",
+      "product_line_id": "pl_8ee57929823cc966db5adc4a",
+      "identity_variant_axes": {
+        "volume": "118ml",
+        "multi_variant": false
+      },
+      "pivota_insights": {
+        "direct": {
+          "product_id": "ext_e86ee213b542fbb671e0804e",
+          "kb_key": "product:ext_e86ee213b542fbb671e0804e",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "official_pdp_reviewed_formula_and_usage",
+          "has_card_highlight": true
+        },
+        "effective": {
+          "product_id": "ext_e86ee213b542fbb671e0804e",
+          "kb_key": "product:ext_e86ee213b542fbb671e0804e",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "official_pdp_reviewed_formula_and_usage",
+          "has_card_highlight": true
+        },
+        "product_line_id": "pl_8ee57929823cc966db5adc4a",
+        "borrowed_from_sibling": false
+      },
+      "active_ingredients": {
+        "status": "not_expected_missing",
+        "issues": [],
+        "regulatory_expected": false,
+        "hero_expected": false,
+        "active_items": [],
+        "source_origin": "reviewed_source_backed_pdp_content_patch",
+        "source_quality_status": "blocked",
+        "coverage": {
+          "details_sections_count": 4,
+          "faq_count": 0,
+          "how_to_chars": 325,
+          "inci_chars": 93,
+          "active_ingredients_chars": 0,
+          "inci_applicability_status": "",
+          "ingredient_review_status": "",
+          "ingredient_remediation_action": "",
+          "bundle_component_refs_count": 0,
+          "effective_inci_chars": 93,
+          "inci_borrowed_from_product_id": ""
+        },
+        "invalid_fragments": [],
+        "suppressed_reason": null
+      },
+      "variants": {
+        "status": "ready",
+        "issues": [],
+        "visible_variant_rows": 1,
+        "examples": {
+          "identity_option_visible": [],
+          "wrong_axis_for_category": [],
+          "makeup_shade_missing_visual": [],
+          "size_value_generic_axis": [],
+          "default_option_size_evidence_missing_axis": [],
+          "identity_default_title_axis": []
+        }
+      },
+      "coverage": {
+        "details_sections_count": 4,
+        "faq_count": 0,
+        "how_to_chars": 325,
+        "inci_chars": 93,
+        "active_ingredients_chars": 0,
+        "inci_applicability_status": "",
+        "ingredient_review_status": "",
+        "ingredient_remediation_action": "",
+        "bundle_component_refs_count": 0,
+        "effective_inci_chars": 93,
+        "inci_borrowed_from_product_id": ""
+      }
+    }
+  ]
+}

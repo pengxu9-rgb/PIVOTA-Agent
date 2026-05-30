@@ -1,0 +1,114 @@
+{
+  "generated_at": "2026-05-30T03:55:07.728Z",
+  "market": "US",
+  "include_non_public": false,
+  "docs_built": 2,
+  "source_build_failures": [],
+  "docs": [
+    {
+      "doc_id": "sellable:sig_d64ac22c1e6199912d9a3337",
+      "sellable_item_group_id": "sig_d64ac22c1e6199912d9a3337",
+      "product_line_id": "pl_72295da712930949418c47f6",
+      "review_family_id": "rf_72295da712930949418c47f6",
+      "brand_name": "786 Cosmetics",
+      "category_paths": [
+        "Cuticle Oil"
+      ],
+      "market": "US",
+      "availability_state": "available",
+      "publish_state": "public",
+      "title": "Almond & Ginseng Cuticle Oil",
+      "subtitle": "Our softening cuticle oil is enhanced with a blend of natural almond and ginseng oils which work to moisturize your cuticles and improve the look of your nails. This cuticle oil protects the cuticle and nail against damage to enhance the health and appearance of the nail and is the perfect first step to your manicure! \n\nDirections for use: \n\nStep 1: Apply a small drop of the Almond and Ginseng Cuticle Oil on your bare nails near the cuticle.\n\nStep 2: Massage the cuticle oil into the nail to moisturize and soften the cuticle and promote nail growth.\n\nStep 3: Once the nail and cuticle are softened, wash hands with soap and water. Once dry, apply your favorite 786 Cosmetics nail polish and enjoy your beautiful nails!",
+      "variant_axes": {
+        "format": "Cuticle Oil"
+      },
+      "size": null,
+      "shade": null,
+      "pack": null,
+      "hero_media": {
+        "url": "https://cdn.shopify.com/s/files/1/0413/6229/2900/products/786cosmetics-default-title-almond-ginseng-cuticle-oil-39154407407847.png?v=1762525796",
+        "source_kind": "catalog",
+        "source_tier": "catalog"
+      },
+      "preview_media": [
+        "https://cdn.shopify.com/s/files/1/0413/6229/2900/products/786cosmetics-default-title-almond-ginseng-cuticle-oil-39154407407847.png?v=1762525796",
+        "https://cdn.shopify.com/s/files/1/0413/6229/2900/files/Untitleddesign-2_676f1e79-58ab-49b1-ab77-b0f552462b1c.png?v=1738276247"
+      ],
+      "price_min": 11.99,
+      "price_max": 11.99,
+      "default_offer_id": "external_seed:ext_87a0af88b9bd23b8f2123d1b",
+      "internal_offer_exists": false,
+      "external_offer_exists": true,
+      "pivota_insight_status": "available",
+      "pivota_insight_summary": "Almond & Ginseng Cuticle Oil is a cuticle oil from 786 Cosmetics, with source-backed cues around cuticle care, oil format and ginseng.",
+      "quality_score": null,
+      "browse_score": null,
+      "facet_tokens": [
+        "786 Cosmetics",
+        "Cuticle Oil"
+      ],
+      "sort_keys": {
+        "price_min": 11.99,
+        "price_max": 11.99,
+        "updated_at": null
+      },
+      "updated_at": null,
+      "source_refs": [
+        "external_seed:ext_87a0af88b9bd23b8f2123d1b"
+      ]
+    },
+    {
+      "doc_id": "sellable:sig_abb0301133d433fb9888940b",
+      "sellable_item_group_id": "sig_abb0301133d433fb9888940b",
+      "product_line_id": "pl_8ee57929823cc966db5adc4a",
+      "review_family_id": "rf_8ee57929823cc966db5adc4a",
+      "brand_name": "786 Cosmetics",
+      "category_paths": [
+        "Nail Polish Remover"
+      ],
+      "market": "US",
+      "availability_state": "available",
+      "publish_state": "public",
+      "title": "Soy Nail Polish Remover With Almond Essential Oil",
+      "subtitle": "Our 4 oz Soy-Based Nail Polish Remover is designed to gently remove nail polish. Almond Essential Oil promotes healthy, moisturized nails.\n\nThis product does not contain acetone or harsh acetates which will damage your nails and cuticles, and dry out your skin.\n\n4 fl. oz / 118 mL\n\n--\n\nDirections for use:\nSaturate a cotton ball or cotton pad with the Soy-Based Nail Polish Remover. Wipe all nails and allow the remover to absorb into the nail for at least 20-30 seconds. Wipe each nail until the polish is fully removed. Wash hands and nails thoroughly and dry well. Make sure the nail bed is dry and clean before applying polish.",
+      "variant_axes": {
+        "volume": "118ml",
+        "multi_variant": false
+      },
+      "size": null,
+      "shade": null,
+      "pack": null,
+      "hero_media": {
+        "url": "https://786cosmetics.com/cdn/shop/files/Soy_Remover.jpg?v=1770971914",
+        "source_kind": "catalog",
+        "source_tier": "catalog"
+      },
+      "preview_media": [
+        "https://786cosmetics.com/cdn/shop/files/Soy_Remover.jpg?v=1770971914",
+        "https://786cosmetics.com/cdn/shop/files/Soy_Remover.jpg?crop=center&v=1770971914"
+      ],
+      "price_min": 14.99,
+      "price_max": 14.99,
+      "default_offer_id": "external_seed:ext_e86ee213b542fbb671e0804e",
+      "internal_offer_exists": false,
+      "external_offer_exists": true,
+      "pivota_insight_status": "available",
+      "pivota_insight_summary": "Soy Nail Polish Remover With Almond Essential Oil is a nail polish remover from 786 Cosmetics in 118ml, with source-backed cues around soy-based remover format, acetone-free positioning, jojoba seed oil and tea tree oil.",
+      "quality_score": null,
+      "browse_score": null,
+      "facet_tokens": [
+        "786 Cosmetics",
+        "Nail Polish Remover"
+      ],
+      "sort_keys": {
+        "price_min": 14.99,
+        "price_max": 14.99,
+        "updated_at": null
+      },
+      "updated_at": null,
+      "source_refs": [
+        "external_seed:ext_e86ee213b542fbb671e0804e"
+      ]
+    }
+  ]
+}
