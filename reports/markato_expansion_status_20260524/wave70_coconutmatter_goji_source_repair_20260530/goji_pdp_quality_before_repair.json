@@ -1,0 +1,123 @@
+{
+  "scanned": 1,
+  "failed": 1,
+  "failed_by_domain": [
+    {
+      "key": "coconutmatter.com",
+      "count": 1
+    }
+  ],
+  "failure_reason_counts": {
+    "live_pdp_probe_failed": 1,
+    "similar_underfill": 1
+  },
+  "failure_reason_domain_counts": [
+    {
+      "key": "coconutmatter.com::live_pdp_probe_failed",
+      "count": 1
+    },
+    {
+      "key": "coconutmatter.com::similar_underfill",
+      "count": 1
+    }
+  ],
+  "root_cause_domain_counts": [
+    {
+      "key": "coconutmatter.com::pdp_shaping_issue",
+      "count": 1
+    },
+    {
+      "key": "coconutmatter.com::similar_issue",
+      "count": 1
+    }
+  ],
+  "results": [
+    {
+      "status": "failed",
+      "seed_id": "eps_00026571cb7185b58fb61b65",
+      "external_product_id": "ext_a7f414cda657f8c5857fafe8",
+      "market": "US",
+      "domain": "coconutmatter.com",
+      "canonical_url": "https://coconutmatter.com/products/goji-shake-shampoo-concentrate",
+      "seed_gate": {
+        "status": "passed",
+        "findings_count": 0,
+        "blockers_count": 0
+      },
+      "extractor_gate": {
+        "status": "passed",
+        "failure_category": null,
+        "description_present": true,
+        "price_amount": 25,
+        "failure_reasons": []
+      },
+      "identity_gate": {
+        "status": "skipped",
+        "product_group_id": null,
+        "product_line_id": null,
+        "sellable_item_group_id": null,
+        "skipped_reason": "live_pdp_probe_failed",
+        "probe_error": "Product not found",
+        "failure_reasons": []
+      },
+      "product_intel_gate": {
+        "status": "skipped",
+        "has_product_intel": false,
+        "product_intel_status": null,
+        "skipped_reason": "live_pdp_probe_failed",
+        "probe_error": "Product not found",
+        "failure_reasons": []
+      },
+      "live_pdp_gate": {
+        "status": "failed",
+        "price_amount": null,
+        "has_overview": false,
+        "live_modules": [],
+        "probe_error": "Product not found",
+        "failure_reasons": [
+          "live_pdp_probe_failed"
+        ]
+      },
+      "similar_gate": {
+        "status": "failed",
+        "similar_count": 1,
+        "card_highlight_missing_count": 0,
+        "card_seller_only_fallback_count": 0,
+        "duplicate_count": 0,
+        "duplicate_examples": [],
+        "exempt": false,
+        "failure_reasons": [
+          "similar_underfill"
+        ]
+      },
+      "variant_gate": {
+        "status": "passed",
+        "visible_variant_row_count": 0,
+        "identity_option_visible_count": 0,
+        "wrong_axis_for_category_count": 0,
+        "makeup_shade_missing_visual_count": 0,
+        "size_value_generic_axis_count": 0,
+        "examples": {
+          "identity_option_visible": [],
+          "wrong_axis_for_category": [],
+          "makeup_shade_missing_visual": [],
+          "size_value_generic_axis": [],
+          "missing_variant_selector_from_size_evidence": [],
+          "identity_default_title_axis": [],
+          "size_siblings_split_product_line": []
+        },
+        "failure_reasons": []
+      },
+      "root_cause_classification": [
+        "pdp_shaping_issue",
+        "similar_issue"
+      ],
+      "failure_reasons": [
+        "live_pdp_probe_failed",
+        "similar_underfill"
+      ],
+      "probed_product_id": "ext_a7f414cda657f8c5857fafe8",
+      "probed_id_type": "external_product_id"
+    }
+  ]
+}

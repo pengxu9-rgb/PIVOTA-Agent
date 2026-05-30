@@ -1,0 +1,48 @@
+{
+  "generated_at": "2026-05-30T01:59:55.005Z",
+  "dry_run": true,
+  "manifest": "reports/markato_expansion_status_20260524/wave70_coconutmatter_goji_source_repair_20260530/goji_reviewed_pdp_content_patch_manifest.json",
+  "summary": {
+    "scanned_rows": 1,
+    "missing_rows": 0,
+    "blocked_rows": 0,
+    "change_candidates": 1,
+    "updated_rows": 0,
+    "catalog_product_updates": 0,
+    "identity_updates": 0
+  },
+  "apply_results": [],
+  "plans": [
+    {
+      "external_product_id": "ext_a7f414cda657f8c5857fafe8",
+      "seed_id": "eps_00026571cb7185b58fb61b65",
+      "title": "Goji Shake Shampoo Concentrate | For Treated Hair",
+      "canonical_url": "https://coconutmatter.com/products/goji-shake-shampoo-concentrate",
+      "status": "ready",
+      "changed": true,
+      "blockers": [],
+      "skipped_fields": [],
+      "patched_fields": [
+        "description",
+        "pdp_description_raw"
+      ],
+      "before": {
+        "description": "Goji Shake Shampoo Concentrate",
+        "pdp_description_raw": "",
+        "pdp_ingredients_raw": "Sodium Cocoyl Isethionate, Modified Corn Starch, Kaolin, Sorbitol, Guar hydroxypropyltrimonium chloride, Cocos Nucifera Fruit Powder, Betaine, Citric Acid, Sodium Bicarbonate, Aloe Barbadensis Leaf Powder, Hydrolyzed Rice Protein, Argania spinosa (Argan) Kernel Oil, Citrus Aurantium Peel Powder, Gluconolactone (and) Sodium Benzoate, Isoamyl laurate, Lycium Barbarum Fruit Extract, Citrus Paradisi Peel Oil, Inulin, Citrus Aurantium Dulcis Peel Oil, Cananga Odorata Flower Oil, Tocopherol, Curcuma longa L. root extract",
+        "pdp_how_to_use_raw": "Watch this tutorial video to get the perfect wash! How much powder do I need for washing? Short hair: 1/4 tsp; Medium length: 1/2 tsp; Long hair: 1 tsp Want more lather? Just add more water! Over time, you may find that you need less powder for washing your hair. Goji Shake is free from harsh sulfates, so it doesn't create as many bubbles as regular shampoo. However, it still cleans effectively, even without excessive lather! Say hello to happy, healthier hair! P.S. If you use hair styling products, a double wash will provide a deeper clean.",
+        "ingredients_polluted": false,
+        "polluted_detail_section_count": 0
+      },
+      "after": {
+        "description": "Travel-friendly, sulfate-free shampoo powder/concentrate for colour-treated hair, made with Goji Berry and Argan Oil and presented for vibrancy, shine, and smoothness. Coconut Matter describes one bottle as the equivalent of three liquid shampoos.",
+        "pdp_description_raw": "Travel-friendly, sulfate-free shampoo powder/concentrate for colour-treated hair, made with Goji Berry and Argan Oil and presented for vibrancy, shine, and smoothness. Coconut Matter describes one bottle as the equivalent of three liquid shampoos.",
+        "pdp_how_to_use_raw": "Watch this tutorial video to get the perfect wash! How much powder do I need for washing? Short hair: 1/4 tsp; Medium length: 1/2 tsp; Long hair: 1 tsp Want more lather? Just add more water! Over time, you may find that you need less powder for washing your hair. Goji Shake is free from harsh sulfates, so it doesn't create as many bubbles as regular shampoo. However, it still cleans effectively, even without excessive lather! Say hello to happy, healthier hair! P.S. If you use hair styling products, a double wash will provide a deeper clean.",
+        "pdp_ingredients_raw": "Sodium Cocoyl Isethionate, Modified Corn Starch, Kaolin, Sorbitol, Guar hydroxypropyltrimonium chloride, Cocos Nucifera Fruit Powder, Betaine, Citric Acid, Sodium Bicarbonate, Aloe Barbadensis Leaf Powder, Hydrolyzed Rice Protein, Argania spinosa (Argan) Kernel Oil, Citrus Aurantium Peel Powder, Gluconolactone (and) Sodium Benzoate, Isoamyl laurate, Lycium Barbarum Fruit Extract, Citrus Paradisi Peel Oil, Inulin, Citrus Aurantium Dulcis Peel Oil, Cananga Odorata Flower Oil, Tocopherol, Curcuma longa L. root extract",
+        "ingredients_polluted": false,
+        "detail_section_count": 0,
+        "polluted_detail_section_count": 0
+      }
+    }
+  ]
+}

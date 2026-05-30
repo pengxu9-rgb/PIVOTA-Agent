@@ -1,0 +1,64 @@
+{
+  "generated_at": "2026-05-30T02:01:52.576Z",
+  "market": "US",
+  "include_non_public": false,
+  "docs_built": 1,
+  "source_build_failures": [],
+  "docs": [
+    {
+      "doc_id": "sellable:sig_18d55245c66a1c337b9673be",
+      "sellable_item_group_id": "sig_18d55245c66a1c337b9673be",
+      "product_line_id": "pl_0d70699a9151610560548951",
+      "review_family_id": "rf_0d70699a9151610560548951",
+      "brand_name": "COCONUT MATTER",
+      "category_paths": [
+        "Shampoo"
+      ],
+      "market": "US",
+      "availability_state": "available",
+      "publish_state": "public",
+      "title": "Goji Shake Shampoo Concentrate | For Treated Hair",
+      "subtitle": "Travel-friendly, sulfate-free shampoo powder/concentrate for colour-treated hair, made with Goji Berry and Argan Oil and presented for vibrancy, shine, and smoothness. Coconut Matter describes one bottle as the equivalent of three liquid shampoos.",
+      "variant_axes": {
+        "multi_variant": false
+      },
+      "size": null,
+      "shade": null,
+      "pack": null,
+      "hero_media": {
+        "url": "https://cdn.shopify.com/s/files/1/0060/2108/7314/files/15.png?v=1763307713",
+        "source_kind": "catalog",
+        "source_tier": "catalog"
+      },
+      "preview_media": [
+        "https://cdn.shopify.com/s/files/1/0060/2108/7314/files/15.png?v=1763307713",
+        "https://cdn.shopify.com/s/files/1/0060/2108/7314/files/16.png?v=1763307713",
+        "https://cdn.shopify.com/s/files/1/0060/2108/7314/files/17.png?v=1763307713",
+        "https://cdn.shopify.com/s/files/1/0060/2108/7314/files/coconut-matter-natural-shampoo-concentrate-goji-shake-reviews.png?v=1763307713",
+        "https://cdn.shopify.com/s/files/1/0060/2108/7314/files/19.png?v=1763307713"
+      ],
+      "price_min": 25,
+      "price_max": 25,
+      "default_offer_id": "external_seed:ext_a7f414cda657f8c5857fafe8",
+      "internal_offer_exists": false,
+      "external_offer_exists": true,
+      "pivota_insight_status": "available",
+      "pivota_insight_summary": "COCONUT MATTER Goji Shake is a shampoo concentrate for treated hair, based on the official PDP title and reviewed shampoo category.",
+      "quality_score": null,
+      "browse_score": null,
+      "facet_tokens": [
+        "COCONUT MATTER",
+        "Shampoo"
+      ],
+      "sort_keys": {
+        "price_min": 25,
+        "price_max": 25,
+        "updated_at": null
+      },
+      "updated_at": null,
+      "source_refs": [
+        "external_seed:ext_a7f414cda657f8c5857fafe8"
+      ]
+    }
+  ]
+}

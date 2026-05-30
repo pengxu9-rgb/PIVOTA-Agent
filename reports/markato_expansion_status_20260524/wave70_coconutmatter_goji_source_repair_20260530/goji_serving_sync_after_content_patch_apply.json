@@ -1,0 +1,255 @@
+{
+  "generated_at": "2026-05-30T02:01:13.649Z",
+  "mode": "apply",
+  "batch_size": null,
+  "bootstrap_reviewed_identity_live_read": true,
+  "requested_ids": 1,
+  "fetched_rows": 1,
+  "mirror_rows": 1,
+  "planned_sku_rows": 1,
+  "planned_offer_rows": 1,
+  "planned_index_state_rows": 1,
+  "missing_ids": [],
+  "skipped": [],
+  "applied": {
+    "mode": "apply",
+    "existing_before": {
+      "catalog_products": 1,
+      "catalog_skus": 1,
+      "catalog_offers": 1,
+      "product_group_members": 1
+    },
+    "stale_delete_preview": {
+      "current_sku_rows": 1,
+      "current_offer_rows": 1,
+      "planned_stale_sku_deletes": 0,
+      "planned_stale_offer_deletes": 0,
+      "sample_stale_skus": [],
+      "sample_stale_offers": []
+    },
+    "batch_size": null,
+    "batches": 1,
+    "audit_reasons": {
+      "no_strong_identifier": 1
+    },
+    "product_upserts": 1,
+    "sku_upserts": 1,
+    "offer_upserts": 1,
+    "group_member_upserts": 1,
+    "group_member_preserved_existing_merges": 0,
+    "seed_attachment_updates": 0,
+    "index_state_upserts": 1,
+    "identity_live_read_updates": 0,
+    "catalog_row_trust_upserts": 1,
+    "stale_offer_deletes": 0,
+    "stale_sku_deletes": 0
+  },
+  "sample": [
+    {
+      "external_product_id": "ext_a7f414cda657f8c5857fafe8",
+      "product_key": "prod::external_seed::external_seed::ext_a7f414cda657f8c5857fafe8",
+      "product_group_id": "sig_18d55245c66a1c337b9673be",
+      "title": "Goji Shake Shampoo Concentrate | For Treated Hair",
+      "brand": "COCONUT MATTER",
+      "product_type": "Shampoo",
+      "category": "Shampoo",
+      "category_path": "beauty/hair/shampoo",
+      "canonical_url": "https://coconutmatter.com/products/goji-shake-shampoo-concentrate",
+      "pivota_signature_id": "sig_18d55245c66a1c337b9673be",
+      "sku_rows": 1,
+      "first_sku": {
+        "sku_key": "prod::external_seed::external_seed::ext_a7f414cda657f8c5857fafe8::sku_4f78afa3967532ed0390",
+        "product_key": "prod::external_seed::external_seed::ext_a7f414cda657f8c5857fafe8",
+        "merchant_id": "external_seed",
+        "platform": "external_seed",
+        "source_product_id": "ext_a7f414cda657f8c5857fafe8",
+        "source_variant_id": "ext_a7f414cda657f8c5857fafe8:40609716666450",
+        "source_domain": "coconutmatter.com",
+        "sku": "CM60-Goji",
+        "barcode": null,
+        "title": "Goji Shake Shampoo Concentrate | For Treated Hair",
+        "currency": "USD",
+        "image_url": "https://cdn.shopify.com/s/files/1/0060/2108/7314/files/15.png?v=1763307713",
+        "visible_attributes": {},
+        "visible_option_labels": {},
+        "ingredient_ids": [],
+        "sku_payload": {
+          "source": "external_product_seeds_mirror_v1",
+          "external_product_id": "ext_a7f414cda657f8c5857fafe8",
+          "raw_variant_id": "40609716666450",
+          "source_variant_id": "ext_a7f414cda657f8c5857fafe8:40609716666450",
+          "variant_sku": "CM60-Goji",
+          "barcode": null,
+          "strong_identifier_kind": null,
+          "source_url": "https://coconutmatter.com/products/goji-shake-shampoo-concentrate",
+          "external_redirect_url": "https://coconutmatter.com/products/goji-shake-shampoo-concentrate",
+          "price": "25",
+          "price_amount": 25,
+          "currency": "USD",
+          "availability": "in_stock",
+          "image_url": "https://cdn.shopify.com/s/files/1/0060/2108/7314/files/15.png?v=1763307713",
+          "swatch_image_url": null,
+          "label_image_url": null,
+          "options": {},
+          "raw_variant": {
+            "sku": "CM60-Goji",
+            "url": "https://coconutmatter.com/products/goji-shake-shampoo-concentrate",
+            "price": "25",
+            "stock": "In Stock",
+            "currency": "USD",
+            "image_url": "https://cdn.shopify.com/s/files/1/0060/2108/7314/files/15.png?v=1763307713",
+            "image_urls": [
+              "https://cdn.shopify.com/s/files/1/0060/2108/7314/files/15.png?v=1763307713",
+              "https://cdn.shopify.com/s/files/1/0060/2108/7314/files/16.png?v=1763307713",
+              "https://cdn.shopify.com/s/files/1/0060/2108/7314/files/17.png?v=1763307713",
+              "https://cdn.shopify.com/s/files/1/0060/2108/7314/files/coconut-matter-natural-shampoo-concentrate-goji-shake-reviews.png?v=1763307713",
+              "https://cdn.shopify.com/s/files/1/0060/2108/7314/files/19.png?v=1763307713"
+            ],
+            "variant_id": "40609716666450",
+            "description": "Goji Shake Shampoo Concentrate",
+            "option_name": "Title",
+            "option_value": "Default Title"
+          }
+        },
+        "readiness_tier": "referral_only"
+      },
+      "first_offer": {
+        "offer_id": "offer:external_seed:116be49d49d3dc79864e8ea92407677b",
+        "sku_key": "prod::external_seed::external_seed::ext_a7f414cda657f8c5857fafe8::sku_4f78afa3967532ed0390",
+        "product_key": "prod::external_seed::external_seed::ext_a7f414cda657f8c5857fafe8",
+        "merchant_id": "external_seed",
+        "catalog_track": "external_referral",
+        "truth_tier": "observed",
+        "readiness_tier": "referral_only",
+        "offer_mode": "redirect",
+        "channel": "external_referral",
+        "availability": "in_stock",
+        "currency": "USD",
+        "list_price": 25,
+        "merchant_effective_price": 25,
+        "estimated_best_price": 25,
+        "price_confidence": 1,
+        "source_system": "external_product_seeds_mirror_v1",
+        "source_ref": "eps_00026571cb7185b58fb61b65",
+        "source_domain": "coconutmatter.com",
+        "offer_payload": {
+          "source": "external_product_seeds_mirror_v1",
+          "external_seed_id": "eps_00026571cb7185b58fb61b65",
+          "external_product_id": "ext_a7f414cda657f8c5857fafe8",
+          "domain": "coconutmatter.com",
+          "market": "US",
+          "product_title": "Goji Shake Shampoo Concentrate | For Treated Hair",
+          "variant_title": "Goji Shake Shampoo Concentrate | For Treated Hair",
+          "variant_sku": "CM60-Goji",
+          "raw_variant_id": "40609716666450",
+          "url": "https://coconutmatter.com/products/goji-shake-shampoo-concentrate",
+          "offer_url": "https://coconutmatter.com/products/goji-shake-shampoo-concentrate",
+          "canonical_url": "https://coconutmatter.com/products/goji-shake-shampoo-concentrate",
+          "destination_url": "https://coconutmatter.com/products/goji-shake-shampoo-concentrate",
+          "external_redirect_url": "https://coconutmatter.com/products/goji-shake-shampoo-concentrate",
+          "merchant_display_name": "COCONUT MATTER",
+          "price": "25",
+          "price_amount": 25,
+          "price_currency": "USD",
+          "availability": "in_stock",
+          "commerce_facts_v1": {
+            "contract_version": "commerce_facts.v1",
+            "market_id": "US",
+            "country": "US",
+            "currency_target": "USD",
+            "source_authority": "catalog_extract_v2",
+            "captured_at": "2026-05-24T01:06:29.717Z",
+            "evidence_url": "https://coconutmatter.com/products/goji-shake-shampoo-concentrate",
+            "sellable_region": {
+              "status": "unknown",
+              "countries": [],
+              "evidence_source": "catalog_extract_v2",
+              "confidence": "low",
+              "checked_at": "2026-05-24T01:06:29.717Z",
+              "reason_codes": [
+                "market_currency_not_verified",
+                "shipping_destination_not_verified",
+                "external_checkout_not_queried"
+              ],
+              "evidence_url": "https://coconutmatter.com/products/goji-shake-shampoo-concentrate"
+            },
+            "regional_price": {
+              "amount": 25,
+              "currency": "USD",
+              "display_raw": "25.00",
+              "price_type": "list",
+              "compare_at_amount": null,
+              "compare_at_currency": null,
+              "compare_at_display_raw": null,
+              "tax_included": "unknown",
+              "confidence": "low",
+              "market_switch_status": "unknown",
+              "observed_currency": "USD",
+              "source_url": "https://coconutmatter.com/products/goji-shake-shampoo-concentrate",
+              "captured_at": "2026-05-24T01:06:29.717Z"
+            },
+            "availability": {
+              "status": "in_stock",
+              "source": "catalog_extract_v2",
+              "confidence": "medium",
+              "captured_at": "2026-05-24T01:06:29.717Z"
+            },
+            "shipping": {
+              "status": "unknown",
+              "source": "catalog_extract_v2",
+              "confidence": "unknown",
+              "reason_codes": [
+                "external_checkout_not_queried"
+              ],
+              "checked_at": "2026-05-24T01:06:29.717Z"
+            },
+            "promotions": [],
+            "returns": {
+              "status": "unknown",
+              "source": "catalog_extract_v2",
+              "confidence": "unknown",
+              "reason_codes": [
+                "external_returns_not_extracted"
+              ],
+              "checked_at": "2026-05-24T01:06:29.717Z"
+            }
+          },
+          "agent_safe_commerce_facts": {
+            "contract_version": "commerce_facts.v1",
+            "market_id": "US",
+            "price": {
+              "status": "unverified",
+              "reason": "low_confidence_or_market_mismatch"
+            },
+            "availability": {
+              "status": "in_stock",
+              "source": "catalog_extract_v2",
+              "confidence": "medium",
+              "captured_at": "2026-05-24T01:06:29.717Z"
+            },
+            "shipping": {
+              "status": "unknown",
+              "reason": "verify_at_checkout"
+            },
+            "promotions": [],
+            "checkout_note": "Shipping and promotions are not verified for this external offer; verify at merchant checkout."
+          }
+        }
+      },
+      "serving_readiness": {
+        "servingEligible": true,
+        "contentQualityScore": 90,
+        "blockerCode": "none",
+        "blockerDetail": null,
+        "identityResolved": true,
+        "identityLiveReadResolved": true,
+        "identityBootstrapEligible": false,
+        "terminalHold": false,
+        "terminalHoldReason": "",
+        "hasImage": true,
+        "hasPrice": true,
+        "descriptionLength": 247
+      }
+    }
+  ]
+}
