@@ -1,0 +1,267 @@
+{
+  "generated_at": "2026-05-30T09:37:46.315Z",
+  "mode": "apply",
+  "batch_size": null,
+  "bootstrap_reviewed_identity_live_read": false,
+  "requested_ids": 1,
+  "fetched_rows": 1,
+  "mirror_rows": 1,
+  "planned_sku_rows": 7,
+  "planned_offer_rows": 7,
+  "planned_index_state_rows": 1,
+  "missing_ids": [],
+  "skipped": [],
+  "applied": {
+    "mode": "apply",
+    "existing_before": {
+      "catalog_products": 1,
+      "catalog_skus": 7,
+      "catalog_offers": 7,
+      "product_group_members": 1
+    },
+    "stale_delete_preview": {
+      "current_sku_rows": 7,
+      "current_offer_rows": 7,
+      "planned_stale_sku_deletes": 0,
+      "planned_stale_offer_deletes": 0,
+      "sample_stale_skus": [],
+      "sample_stale_offers": []
+    },
+    "batch_size": null,
+    "batches": 1,
+    "audit_reasons": {
+      "no_strong_identifier": 7
+    },
+    "product_upserts": 1,
+    "sku_upserts": 7,
+    "offer_upserts": 7,
+    "group_member_upserts": 1,
+    "group_member_preserved_existing_merges": 0,
+    "seed_attachment_updates": 0,
+    "index_state_upserts": 1,
+    "identity_live_read_updates": 0,
+    "catalog_row_trust_upserts": 1,
+    "stale_offer_deletes": 0,
+    "stale_sku_deletes": 0
+  },
+  "sample": [
+    {
+      "external_product_id": "ext_c840771410198f627d75673a",
+      "product_key": "prod::external_seed::external_seed::ext_c840771410198f627d75673a",
+      "product_group_id": "sig_ab0548c0101059f42676a642",
+      "title": "TINTED COCONUT LIP BALM",
+      "brand": "COCONUT MATTER",
+      "product_type": "Lip Treatment",
+      "category": "Lip Treatment",
+      "category_path": "beauty/skincare/lip",
+      "canonical_url": "https://coconutmatter.com/products/tinted-coconut-lip-balm",
+      "pivota_signature_id": "sig_ab0548c0101059f42676a642",
+      "sku_rows": 7,
+      "first_sku": {
+        "sku_key": "prod::external_seed::external_seed::ext_c840771410198f627d75673a::sku_a98610fbeac9de2b4d6c",
+        "product_key": "prod::external_seed::external_seed::ext_c840771410198f627d75673a",
+        "merchant_id": "external_seed",
+        "platform": "external_seed",
+        "source_product_id": "ext_c840771410198f627d75673a",
+        "source_variant_id": "ext_c840771410198f627d75673a:39954773442642",
+        "source_domain": "coconutmatter.com",
+        "sku": "CM08-SMOOCH",
+        "barcode": null,
+        "title": "TINTED COCONUT LIP BALM",
+        "currency": "USD",
+        "image_url": "https://cdn.shopify.com/s/files/1/0060/2108/7314/files/coconut-matter-smooch-swatch.png?v=1731569108",
+        "visible_attributes": {
+          "Color": "SMOOCH"
+        },
+        "visible_option_labels": {
+          "Color": "SMOOCH"
+        },
+        "ingredient_ids": [],
+        "sku_payload": {
+          "source": "external_product_seeds_mirror_v1",
+          "external_product_id": "ext_c840771410198f627d75673a",
+          "raw_variant_id": "39954773442642",
+          "source_variant_id": "ext_c840771410198f627d75673a:39954773442642",
+          "variant_sku": "CM08-SMOOCH",
+          "barcode": null,
+          "strong_identifier_kind": null,
+          "source_url": "https://coconutmatter.com/products/tinted-coconut-lip-balm",
+          "external_redirect_url": "https://coconutmatter.com/products/tinted-coconut-lip-balm",
+          "price": "19",
+          "price_amount": 19,
+          "currency": "USD",
+          "availability": "in_stock",
+          "image_url": "https://cdn.shopify.com/s/files/1/0060/2108/7314/files/coconut-matter-smooch-swatch.png?v=1731569108",
+          "swatch_image_url": null,
+          "label_image_url": null,
+          "options": {
+            "Color": "SMOOCH"
+          },
+          "raw_variant": {
+            "sku": "CM08-SMOOCH",
+            "url": "https://coconutmatter.com/products/tinted-coconut-lip-balm",
+            "price": "19",
+            "stock": "In Stock",
+            "currency": "USD",
+            "image_url": "https://cdn.shopify.com/s/files/1/0060/2108/7314/files/coconut-matter-smooch-swatch.png?v=1731569108",
+            "image_urls": [
+              "https://cdn.shopify.com/s/files/1/0060/2108/7314/files/coconut-matter-smooch-swatch.png?v=1731569108",
+              "https://cdn.shopify.com/s/files/1/0060/2108/7314/files/COCONUT-MATTER-BEAUTY-HYDRATING-NATURAL-LIPBALM-TINT-ALL-SHADES_9f5c7538-ac19-46ac-991f-2feb5080a28a.png?v=1686806197",
+              "https://cdn.shopify.com/s/files/1/0060/2108/7314/files/coconut-matter-vegan-natural-tinted-lip-balm-before-after-review.png?v=1731988520",
+              "https://cdn.shopify.com/s/files/1/0060/2108/7314/files/coconut-matter-tinted-lip-balm-all-natural-ingredients.png?v=1718684383",
+              "https://cdn.shopify.com/s/files/1/0060/2108/7314/files/coconut-matter-tinted-lip-balm-all-natural-benefits.png?v=1718684383",
+              "https://cdn.shopify.com/s/files/1/0060/2108/7314/files/coconut-matter-sparks-swatch.png?v=1731569108",
+              "https://cdn.shopify.com/s/files/1/0060/2108/7314/files/coconut-matter-cheer-swatch.png?v=1731569108",
+              "https://cdn.shopify.com/s/files/1/0060/2108/7314/files/coconut-matter-passion-swatch.png?v=1731569108",
+              "https://cdn.shopify.com/s/files/1/0060/2108/7314/files/coconut-matter-glow-swatch.png?v=1731569108",
+              "https://cdn.shopify.com/s/files/1/0060/2108/7314/files/coconut-matter-sunrise-swatch.png?v=1731569108",
+              "https://cdn.shopify.com/s/files/1/0060/2108/7314/files/coconut-matter-coral-swatch.png?v=1731569108"
+            ],
+            "variant_id": "39954773442642",
+            "description": "Lightweight, sheer, and intensely nourishing, our tinted coconut lip balms are one of the easiest way to boost your natural lip color. \n\nAvailable in five sheer shade. Depending on swipe strength, the color can range from a sheer tint to a juicier, more saturated sheen.",
+            "option_name": "Colour",
+            "option_value": "SMOOCH"
+          }
+        },
+        "readiness_tier": "referral_only"
+      },
+      "first_offer": {
+        "offer_id": "offer:external_seed:f43c63844bd1d763e9fb667e60193bda",
+        "sku_key": "prod::external_seed::external_seed::ext_c840771410198f627d75673a::sku_a98610fbeac9de2b4d6c",
+        "product_key": "prod::external_seed::external_seed::ext_c840771410198f627d75673a",
+        "merchant_id": "external_seed",
+        "catalog_track": "external_referral",
+        "truth_tier": "observed",
+        "readiness_tier": "referral_only",
+        "offer_mode": "redirect",
+        "channel": "external_referral",
+        "availability": "in_stock",
+        "currency": "USD",
+        "list_price": 19,
+        "merchant_effective_price": 19,
+        "estimated_best_price": 19,
+        "price_confidence": 1,
+        "source_system": "external_product_seeds_mirror_v1",
+        "source_ref": "eps_355b1bbbc78f41a16577c1fa",
+        "source_domain": "coconutmatter.com",
+        "offer_payload": {
+          "source": "external_product_seeds_mirror_v1",
+          "external_seed_id": "eps_355b1bbbc78f41a16577c1fa",
+          "external_product_id": "ext_c840771410198f627d75673a",
+          "domain": "coconutmatter.com",
+          "market": "US",
+          "product_title": "TINTED COCONUT LIP BALM",
+          "variant_title": "TINTED COCONUT LIP BALM",
+          "variant_sku": "CM08-SMOOCH",
+          "raw_variant_id": "39954773442642",
+          "url": "https://coconutmatter.com/products/tinted-coconut-lip-balm",
+          "offer_url": "https://coconutmatter.com/products/tinted-coconut-lip-balm",
+          "canonical_url": "https://coconutmatter.com/products/tinted-coconut-lip-balm",
+          "destination_url": "https://coconutmatter.com/products/tinted-coconut-lip-balm",
+          "external_redirect_url": "https://coconutmatter.com/products/tinted-coconut-lip-balm",
+          "merchant_display_name": "COCONUT MATTER",
+          "price": "19",
+          "price_amount": 19,
+          "price_currency": "USD",
+          "availability": "in_stock",
+          "commerce_facts_v1": {
+            "contract_version": "commerce_facts.v1",
+            "market_id": "US",
+            "country": "US",
+            "currency_target": "USD",
+            "source_authority": "catalog_extract_v2",
+            "captured_at": "2026-05-24T01:06:29.717Z",
+            "evidence_url": "https://coconutmatter.com/products/tinted-coconut-lip-balm",
+            "sellable_region": {
+              "status": "unknown",
+              "countries": [],
+              "evidence_source": "catalog_extract_v2",
+              "confidence": "low",
+              "checked_at": "2026-05-24T01:06:29.717Z",
+              "reason_codes": [
+                "market_currency_not_verified",
+                "shipping_destination_not_verified",
+                "external_checkout_not_queried"
+              ],
+              "evidence_url": "https://coconutmatter.com/products/tinted-coconut-lip-balm"
+            },
+            "regional_price": {
+              "amount": 19,
+              "currency": "USD",
+              "display_raw": "19.00",
+              "price_type": "list",
+              "compare_at_amount": 19,
+              "compare_at_currency": null,
+              "compare_at_display_raw": "19.00",
+              "tax_included": "unknown",
+              "confidence": "low",
+              "market_switch_status": "unknown",
+              "observed_currency": "USD",
+              "source_url": "https://coconutmatter.com/products/tinted-coconut-lip-balm",
+              "captured_at": "2026-05-24T01:06:29.717Z"
+            },
+            "availability": {
+              "status": "in_stock",
+              "source": "catalog_extract_v2",
+              "confidence": "medium",
+              "captured_at": "2026-05-24T01:06:29.717Z"
+            },
+            "shipping": {
+              "status": "unknown",
+              "source": "catalog_extract_v2",
+              "confidence": "unknown",
+              "reason_codes": [
+                "external_checkout_not_queried"
+              ],
+              "checked_at": "2026-05-24T01:06:29.717Z"
+            },
+            "promotions": [],
+            "returns": {
+              "status": "unknown",
+              "source": "catalog_extract_v2",
+              "confidence": "unknown",
+              "reason_codes": [
+                "external_returns_not_extracted"
+              ],
+              "checked_at": "2026-05-24T01:06:29.717Z"
+            }
+          },
+          "agent_safe_commerce_facts": {
+            "contract_version": "commerce_facts.v1",
+            "market_id": "US",
+            "price": {
+              "status": "unverified",
+              "reason": "low_confidence_or_market_mismatch"
+            },
+            "availability": {
+              "status": "in_stock",
+              "source": "catalog_extract_v2",
+              "confidence": "medium",
+              "captured_at": "2026-05-24T01:06:29.717Z"
+            },
+            "shipping": {
+              "status": "unknown",
+              "reason": "verify_at_checkout"
+            },
+            "promotions": [],
+            "checkout_note": "Shipping and promotions are not verified for this external offer; verify at merchant checkout."
+          }
+        }
+      },
+      "serving_readiness": {
+        "servingEligible": true,
+        "contentQualityScore": 90,
+        "blockerCode": "none",
+        "blockerDetail": null,
+        "identityResolved": true,
+        "identityLiveReadResolved": true,
+        "identityBootstrapEligible": false,
+        "terminalHold": false,
+        "terminalHoldReason": "",
+        "hasImage": true,
+        "hasPrice": true,
+        "descriptionLength": 270
+      }
+    }
+  ]
+}
