@@ -1,0 +1,329 @@
+{
+  "generated_at": "2026-05-30T03:42:24.358Z",
+  "market": "US",
+  "include_non_public": false,
+  "docs_built": 6,
+  "source_build_failures": [],
+  "docs": [
+    {
+      "doc_id": "sellable:sig_ab0548c0101059f42676a642",
+      "sellable_item_group_id": "sig_ab0548c0101059f42676a642",
+      "product_line_id": "pl_b280c2d5a19e59fcfc525550",
+      "review_family_id": "rf_b280c2d5a19e59fcfc525550",
+      "brand_name": "COCONUT MATTER",
+      "category_paths": [
+        "Lip Treatment"
+      ],
+      "market": "US",
+      "availability_state": "available",
+      "publish_state": "public",
+      "title": "TINTED COCONUT LIP BALM",
+      "subtitle": "Lightweight, sheer, and intensely nourishing, our tinted coconut lip balms are one of the easiest way to boost your natural lip color. \n\nAvailable in five sheer shade. Depending on swipe strength, the color can range from a sheer tint to a juicier, more saturated sheen.",
+      "variant_axes": {
+        "color": "smooch",
+        "multi_variant": true
+      },
+      "size": null,
+      "shade": null,
+      "pack": null,
+      "hero_media": {
+        "url": "https://cdn.shopify.com/s/files/1/0060/2108/7314/files/coconut-matter-smooch-swatch.png?v=1731569108",
+        "source_kind": "catalog",
+        "source_tier": "catalog"
+      },
+      "preview_media": [
+        "https://cdn.shopify.com/s/files/1/0060/2108/7314/files/coconut-matter-smooch-swatch.png?v=1731569108",
+        "https://cdn.shopify.com/s/files/1/0060/2108/7314/files/COCONUT-MATTER-BEAUTY-HYDRATING-NATURAL-LIPBALM-TINT-ALL-SHADES_9f5c7538-ac19-46ac-991f-2feb5080a28a.png?v=1686806197",
+        "https://cdn.shopify.com/s/files/1/0060/2108/7314/files/coconut-matter-vegan-natural-tinted-lip-balm-before-after-review.png?v=1731988520",
+        "https://cdn.shopify.com/s/files/1/0060/2108/7314/files/coconut-matter-tinted-lip-balm-all-natural-ingredients.png?v=1718684383",
+        "https://cdn.shopify.com/s/files/1/0060/2108/7314/files/coconut-matter-tinted-lip-balm-all-natural-benefits.png?v=1718684383",
+        "https://cdn.shopify.com/s/files/1/0060/2108/7314/files/coconut-matter-sparks-swatch.png?v=1731569108",
+        "https://cdn.shopify.com/s/files/1/0060/2108/7314/files/coconut-matter-cheer-swatch.png?v=1731569108",
+        "https://cdn.shopify.com/s/files/1/0060/2108/7314/files/coconut-matter-passion-swatch.png?v=1731569108"
+      ],
+      "price_min": 19,
+      "price_max": 19,
+      "default_offer_id": "external_seed:ext_c840771410198f627d75673a",
+      "internal_offer_exists": false,
+      "external_offer_exists": true,
+      "pivota_insight_status": "available",
+      "pivota_insight_summary": "COCONUT MATTER TINTED COCONUT LIP BALM is a lightweight sheer tinted lip balm described around natural-looking lip color and nourishing lip-care positioning.",
+      "quality_score": null,
+      "browse_score": null,
+      "facet_tokens": [
+        "COCONUT MATTER",
+        "Lip Treatment"
+      ],
+      "sort_keys": {
+        "price_min": 19,
+        "price_max": 19,
+        "updated_at": null
+      },
+      "updated_at": null,
+      "source_refs": [
+        "external_seed:ext_c840771410198f627d75673a"
+      ]
+    },
+    {
+      "doc_id": "sellable:sig_2cbeb024c2e87aa7359f3677",
+      "sellable_item_group_id": "sig_2cbeb024c2e87aa7359f3677",
+      "product_line_id": "pl_9b8329bc5f668e83f25cbd07",
+      "review_family_id": "rf_9b8329bc5f668e83f25cbd07",
+      "brand_name": "COCONUT MATTER",
+      "category_paths": [
+        "Lip Treatment"
+      ],
+      "market": "US",
+      "availability_state": "available",
+      "publish_state": "public",
+      "title": "CLEAR LIP CARE",
+      "subtitle": "For those days you may want your lips CLEAR. It feels luxurious and creamy as it’s in omega fatty acids and antioxidants for intensive instant relief to dry lips. It’s so soft, you can even use it on babies. If applied in the nighttime, you’ll have plumped and hydrated pout in the morning. Say bye to harsh winters and cracked lips! Not only does it work wonders on dry, cracked lips — as well as chapped areas anywhere on the body — but it's also lightweight, non-sticky, and leaves behind a silky sheen that doesn't disappear after an hour. You can't go wrong with this one.",
+      "variant_axes": {
+        "multi_variant": false
+      },
+      "size": null,
+      "shade": null,
+      "pack": null,
+      "hero_media": {
+        "url": "https://cdn.shopify.com/s/files/1/0060/2108/7314/products/CLEARLIPCARE.jpg?v=1652685794",
+        "source_kind": "catalog",
+        "source_tier": "catalog"
+      },
+      "preview_media": [
+        "https://cdn.shopify.com/s/files/1/0060/2108/7314/products/CLEARLIPCARE.jpg?v=1652685794"
+      ],
+      "price_min": 25,
+      "price_max": 25,
+      "default_offer_id": "external_seed:ext_8982e4384c3bd70a5718c899",
+      "internal_offer_exists": false,
+      "external_offer_exists": true,
+      "pivota_insight_status": "available",
+      "pivota_insight_summary": "COCONUT MATTER CLEAR LIP CARE is a clear lip-care balm described for dry-feeling lips, a creamy feel, lightweight wear, and a silky sheen.",
+      "quality_score": null,
+      "browse_score": null,
+      "facet_tokens": [
+        "COCONUT MATTER",
+        "Lip Treatment"
+      ],
+      "sort_keys": {
+        "price_min": 25,
+        "price_max": 25,
+        "updated_at": null
+      },
+      "updated_at": null,
+      "source_refs": [
+        "external_seed:ext_8982e4384c3bd70a5718c899"
+      ]
+    },
+    {
+      "doc_id": "sellable:sig_fe94d67f4b6aa5cd8feb8e32",
+      "sellable_item_group_id": "sig_fe94d67f4b6aa5cd8feb8e32",
+      "product_line_id": "pl_b66437e126013dea260dd7e4",
+      "review_family_id": "rf_b66437e126013dea260dd7e4",
+      "brand_name": "Delicate Daisys Botanical Beauty",
+      "category_paths": [
+        "Body Oil"
+      ],
+      "market": "US",
+      "availability_state": "available",
+      "publish_state": "public",
+      "title": "Cooling After Sun Body Oil Aloe Vera",
+      "subtitle": "Experience the nourishing benefits of Aloe Vera with this body oil, providing deep hydration and rejuvenation for luxuriously smooth skin. The natural cooling effect of Peppermint oil adds a refreshing touch, making it ideal for daily use. This versatile body oil is not only perfect for daily indulgence, but also as a pre-, during, and post-sun companion to keep your skin healthy and hydrated. Make it a part of your all-encompassing skincare routine.",
+      "variant_axes": {
+        "multi_variant": false
+      },
+      "size": null,
+      "shade": null,
+      "pack": null,
+      "hero_media": {
+        "url": "https://delicatedaisys.com/cdn/shop/files/IMG-3438.png?v=1779473661",
+        "source_kind": "catalog",
+        "source_tier": "catalog"
+      },
+      "preview_media": [
+        "https://delicatedaisys.com/cdn/shop/files/IMG-3438.png?v=1779473661",
+        "https://delicatedaisys.com/cdn/shop/files/cooling-after-sun-body-oil-aloe-vera-898941.jpg?v=1725349379",
+        "https://delicatedaisys.com/cdn/shop/files/cooling-after-sun-body-oil-aloe-vera-299320.jpg?v=1725349379",
+        "https://delicatedaisys.com/cdn/shop/files/cooling-after-sun-body-oil-aloe-vera-960183.jpg?v=1725349379",
+        "https://delicatedaisys.com/cdn/shop/files/IMG-3439.png?v=1779473662",
+        "https://delicatedaisys.com/cdn/shop/files/IMG-3442.png?v=1779473979",
+        "https://delicatedaisys.com/cdn/shop/files/IMG-3441.png?v=1779473979"
+      ],
+      "price_min": 34.99,
+      "price_max": 34.99,
+      "default_offer_id": "external_seed:ext_b344f028268229b02a16d0cb",
+      "internal_offer_exists": false,
+      "external_offer_exists": true,
+      "pivota_insight_status": "available",
+      "pivota_insight_summary": "A Delicate Daisys Botanical Beauty body oil listed on the brand source page as Cooling After Sun Body Oil Aloe Vera. The source description identifies: Experience the nourishing benefits of Aloe Vera with this body oil, providing deep hydration and rejuvenation for luxuriously smooth skin.",
+      "quality_score": null,
+      "browse_score": null,
+      "facet_tokens": [
+        "Delicate Daisys Botanical Beauty",
+        "Body Oil"
+      ],
+      "sort_keys": {
+        "price_min": 34.99,
+        "price_max": 34.99,
+        "updated_at": null
+      },
+      "updated_at": null,
+      "source_refs": [
+        "external_seed:ext_b344f028268229b02a16d0cb"
+      ]
+    },
+    {
+      "doc_id": "sellable:sig_d64ac22c1e6199912d9a3337",
+      "sellable_item_group_id": "sig_d64ac22c1e6199912d9a3337",
+      "product_line_id": "pl_72295da712930949418c47f6",
+      "review_family_id": "rf_72295da712930949418c47f6",
+      "brand_name": "786 Cosmetics",
+      "category_paths": [],
+      "market": "US",
+      "availability_state": "available",
+      "publish_state": "public",
+      "title": "Almond & Ginseng Cuticle Oil",
+      "subtitle": "Our softening cuticle oil is enhanced with a blend of natural almond and ginseng oils which work to moisturize your cuticles and improve the look of your nails. This cuticle oil protects the cuticle and nail against damage to enhance the health and appearance of the nail and is the perfect first step to your manicure! \n\nDirections for use: \n\nStep 1: Apply a small drop of the Almond and Ginseng Cuticle Oil on your bare nails near the cuticle.\n\nStep 2: Massage the cuticle oil into the nail to moisturize and soften the cuticle and promote nail growth.\n\nStep 3: Once the nail and cuticle are softened, wash hands with soap and water. Once dry, apply your favorite 786 Cosmetics nail polish and enjoy your beautiful nails!",
+      "variant_axes": {
+        "format": "Cuticle Oil"
+      },
+      "size": null,
+      "shade": null,
+      "pack": null,
+      "hero_media": {
+        "url": "https://cdn.shopify.com/s/files/1/0413/6229/2900/products/786cosmetics-default-title-almond-ginseng-cuticle-oil-39154407407847.png?v=1762525796",
+        "source_kind": "catalog",
+        "source_tier": "catalog"
+      },
+      "preview_media": [
+        "https://cdn.shopify.com/s/files/1/0413/6229/2900/products/786cosmetics-default-title-almond-ginseng-cuticle-oil-39154407407847.png?v=1762525796",
+        "https://cdn.shopify.com/s/files/1/0413/6229/2900/files/Untitleddesign-2_676f1e79-58ab-49b1-ab77-b0f552462b1c.png?v=1738276247"
+      ],
+      "price_min": 11.99,
+      "price_max": 11.99,
+      "default_offer_id": "external_seed:ext_87a0af88b9bd23b8f2123d1b",
+      "internal_offer_exists": false,
+      "external_offer_exists": true,
+      "pivota_insight_status": "available",
+      "pivota_insight_summary": "Almond & Ginseng Cuticle Oil is a cuticle oil from 786 Cosmetics, with source-backed cues around cuticle care, oil format and ginseng.",
+      "quality_score": null,
+      "browse_score": null,
+      "facet_tokens": [
+        "786 Cosmetics"
+      ],
+      "sort_keys": {
+        "price_min": 11.99,
+        "price_max": 11.99,
+        "updated_at": null
+      },
+      "updated_at": null,
+      "source_refs": [
+        "external_seed:ext_87a0af88b9bd23b8f2123d1b"
+      ]
+    },
+    {
+      "doc_id": "sellable:sig_abb0301133d433fb9888940b",
+      "sellable_item_group_id": "sig_abb0301133d433fb9888940b",
+      "product_line_id": "pl_8ee57929823cc966db5adc4a",
+      "review_family_id": "rf_8ee57929823cc966db5adc4a",
+      "brand_name": "786 Cosmetics",
+      "category_paths": [],
+      "market": "US",
+      "availability_state": "available",
+      "publish_state": "public",
+      "title": "Soy Nail Polish Remover With Almond Essential Oil",
+      "subtitle": "Our 4 oz Soy-Based Nail Polish Remover is designed to gently remove nail polish. Almond Essential Oil promotes healthy, moisturized nails.\n\nThis product does not contain acetone or harsh acetates which will damage your nails and cuticles, and dry out your skin.\n\n4 fl. oz / 118 mL\n\n--\n\nDirections for use:\nSaturate a cotton ball or cotton pad with the Soy-Based Nail Polish Remover. Wipe all nails and allow the remover to absorb into the nail for at least 20-30 seconds. Wipe each nail until the polish is fully removed. Wash hands and nails thoroughly and dry well. Make sure the nail bed is dry and clean before applying polish.",
+      "variant_axes": {
+        "volume": "118ml",
+        "multi_variant": false
+      },
+      "size": null,
+      "shade": null,
+      "pack": null,
+      "hero_media": {
+        "url": "https://786cosmetics.com/cdn/shop/files/Soy_Remover.jpg?v=1770971914",
+        "source_kind": "catalog",
+        "source_tier": "catalog"
+      },
+      "preview_media": [
+        "https://786cosmetics.com/cdn/shop/files/Soy_Remover.jpg?v=1770971914",
+        "https://786cosmetics.com/cdn/shop/files/Soy_Remover.jpg?crop=center&v=1770971914"
+      ],
+      "price_min": 14.99,
+      "price_max": 14.99,
+      "default_offer_id": "external_seed:ext_e86ee213b542fbb671e0804e",
+      "internal_offer_exists": false,
+      "external_offer_exists": true,
+      "pivota_insight_status": "available",
+      "pivota_insight_summary": "Soy Nail Polish Remover With Almond Essential Oil is a nail polish remover from 786 Cosmetics in 118ml, with source-backed cues around soy-based remover format, acetone-free positioning, jojoba seed oil and tea tree oil.",
+      "quality_score": null,
+      "browse_score": null,
+      "facet_tokens": [
+        "786 Cosmetics"
+      ],
+      "sort_keys": {
+        "price_min": 14.99,
+        "price_max": 14.99,
+        "updated_at": null
+      },
+      "updated_at": null,
+      "source_refs": [
+        "external_seed:ext_e86ee213b542fbb671e0804e"
+      ]
+    },
+    {
+      "doc_id": "sellable:sig_337355ebd00dcd80367973fb",
+      "sellable_item_group_id": "sig_337355ebd00dcd80367973fb",
+      "product_line_id": "pl_5d796a0d4c81c0e513ee95c7",
+      "review_family_id": "rf_5d796a0d4c81c0e513ee95c7",
+      "brand_name": "786 Cosmetics",
+      "category_paths": [
+        "Powder"
+      ],
+      "market": "US",
+      "availability_state": "available",
+      "publish_state": "public",
+      "title": "Sorrento - Breathable Nail Polish",
+      "subtitle": "This creamy, light yellow is inspired by the \"lemon town\" of Italy, Sorrento. Located in Naples and on the stunning Amalfi coast, the lemons found here have been famous for centuries and are known for their flavor and healthy properties. In excavations of Pompeii, the iconic Sorrento lemons are seen in mosaic artwork of that period.\n\nSorrento is best described as a light, creamy yellow breathable nail polish. Sorrento is more yellow than Zanzibar and has no shimmer.",
+      "variant_axes": {
+        "shade": "Sorrento"
+      },
+      "size": null,
+      "shade": null,
+      "pack": null,
+      "hero_media": {
+        "url": "https://cdn.shopify.com/s/files/1/0413/6229/2900/files/Sorrento.jpg?v=1762529549",
+        "source_kind": "catalog",
+        "source_tier": "catalog"
+      },
+      "preview_media": [
+        "https://cdn.shopify.com/s/files/1/0413/6229/2900/files/Sorrento.jpg?v=1762529549",
+        "https://cdn.shopify.com/s/files/1/0413/6229/2900/files/Sorrento_3.png?v=1737672935",
+        "https://cdn.shopify.com/s/files/1/0413/6229/2900/products/786cosmetics-default-title-sorrento-breathable-nail-polish-31946800169124.jpg?v=1737672931",
+        "https://cdn.shopify.com/s/files/1/0413/6229/2900/products/786cosmetics-default-title-sorrento-breathable-nail-polish-31946800070820.jpg?v=1737672931"
+      ],
+      "price_min": 9.79,
+      "price_max": 9.79,
+      "default_offer_id": "external_seed:ext_55b774d3c57906a77a7167f0",
+      "internal_offer_exists": false,
+      "external_offer_exists": true,
+      "pivota_insight_status": "available",
+      "pivota_insight_summary": "A 786 Cosmetics nail polish listed on the brand source page as Sorrento - Breathable Nail Polish. The source description identifies: This creamy, light yellow is inspired by the \"lemon town\" of Italy, Sorrento.",
+      "quality_score": null,
+      "browse_score": null,
+      "facet_tokens": [
+        "786 Cosmetics",
+        "Powder"
+      ],
+      "sort_keys": {
+        "price_min": 9.79,
+        "price_max": 9.79,
+        "updated_at": null
+      },
+      "updated_at": null,
+      "source_refs": [
+        "external_seed:ext_55b774d3c57906a77a7167f0"
+      ]
+    }
+  ]
+}
