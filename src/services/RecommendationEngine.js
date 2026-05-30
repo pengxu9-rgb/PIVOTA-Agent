@@ -1411,10 +1411,11 @@ async function readProductIntelKbEntriesDirect(kbKeys) {
     }
     return out;
   } catch (err) {
-    const message = String(err?.message || err || '');
-    if (!message.includes('aurora_product_intel_kb') || !message.includes('does not exist')) {
+    // Only suppress the noisy log when the table itself is absent (env-dependent).
+    // Any other error — including column drift — must surface as a warning.
+    if (err?.code !== '42P01') {
       logger.warn(
-        { err: err?.message || String(err), keys: keys.length },
+        { err: err?.message || String(err), code: err?.code || null, keys: keys.length },
         'recommendations product intel direct KB fallback failed',
       );
     }
@@ -1870,14 +1871,14 @@ async function loadLiveIdentityRowsForRecommendationProducts(products, options =
     );
     return normalizeIdentityRows(result?.rows);
   } catch (err) {
-    const msg = String(err?.message || err || '');
-    if (msg.includes('pdp_identity_listing') && msg.includes('does not exist')) return [];
-    if (msg.includes('catalog_row_trust') && msg.includes('does not exist')) return [];
+    // Only silence when the underlying table is absent. Column/function drift
+    // is a code bug and must show up in logs.
+    if (err?.code === '42P01') return [];
     if (isDbTimeoutError(err)) {
       recordRecsTimeout('identity_dedupe');
     }
     logger.warn(
-      { err: err?.message || String(err), refs: refs.length },
+      { err: err?.message || String(err), code: err?.code || null, refs: refs.length },
       'recommendations identity dedupe lookup failed',
     );
     return [];
@@ -5546,13 +5547,12 @@ ${EXTERNAL_SEED_SEMANTIC_SELECT}
     );
     return res.rows?.[0] || null;
   } catch (err) {
-    const msg = String(err?.message || err || '');
-    if (msg.includes('external_product_seeds') && msg.includes('does not exist')) {
-      return null;
-    }
+    // Table-absent is the only case we silence; column/function drift surfaces.
+    if (err?.code === '42P01') return null;
     logger.warn(
       {
         err: err?.message || String(err),
+        code: err?.code || null,
         product_id: getProductId(baseProduct),
       },
       'recommendations external semantic lookup failed',

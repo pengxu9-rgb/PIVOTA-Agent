@@ -1,13 +1,15 @@
 const DEFAULT_MARKET = 'US';
 const DEFAULT_SOURCE_LIMIT = 1000;
 
+// Codes that mean "this source isn't deployed in this env" — safe to skip.
+// Deliberately EXCLUDES 42703 (undefined_column) and 42883 (undefined_function):
+// those signal code-vs-schema drift (e.g., a column rename that left a SELECT stale)
+// and must surface as errors, not silent empty results.
 const SOURCE_MISSING_CODES = new Set([
   'NO_DATABASE',
-  '42P01',
-  '42703',
-  '42704',
-  '42883',
-  '0A000',
+  '42P01', // undefined_table
+  '42704', // undefined_object (covers vector type missing when pgvector ext is absent)
+  '0A000', // feature_not_supported (vector ops without extension)
 ]);
 
 const SOURCE_PRIORITY = {
@@ -713,10 +715,10 @@ function isSourceMissingError(err) {
   const code = normalizeString(err && err.code, 20);
   if (SOURCE_MISSING_CODES.has(code)) return true;
   const msg = normalizeLower(err && (err.message || err.detail || err.toString()), 1000);
+  // Only swallow whole-table/extension absence; column or function drift must throw.
   return (
     /relation .* does not exist/.test(msg) ||
     /schema .* does not exist/.test(msg) ||
-    /column .* does not exist/.test(msg) ||
     /type .*vector.* does not exist/.test(msg) ||
     /extension .*vector.* is not available/.test(msg)
   );
@@ -750,11 +752,10 @@ async function loadProductsCacheCandidates({ queryFn, limit = DEFAULT_SOURCE_LIM
           id::text
         ) AS product_ref,
         product_data,
-        cached_at,
-        updated_at
+        cached_at
       FROM products_cache
       WHERE lower(to_jsonb(product_data)::text) LIKE ANY($2::text[])
-      ORDER BY cached_at DESC NULLS LAST, updated_at DESC NULLS LAST, id DESC
+      ORDER BY cached_at DESC NULLS LAST, id DESC
       LIMIT $1
     `,
     [normalizeLimit(limit), BEAUTY_TEXT_PATTERNS],
@@ -772,7 +773,6 @@ async function loadExternalProductSeedCandidates({ queryFn, limit = DEFAULT_SOUR
         external_product_id,
         attached_product_key,
         title,
-        category,
         price_amount,
         price_currency,
         market,
@@ -786,7 +786,6 @@ async function loadExternalProductSeedCandidates({ queryFn, limit = DEFAULT_SOUR
         AND upper(COALESCE(market, $2)) = $2
         AND (
           lower(COALESCE(title, '')) LIKE ANY($3::text[])
-          OR lower(COALESCE(category, '')) LIKE ANY($3::text[])
           OR lower(to_jsonb(seed_data)::text) LIKE ANY($3::text[])
         )
       ORDER BY updated_at DESC NULLS LAST, created_at DESC NULLS LAST, id ASC
@@ -930,7 +929,6 @@ async function loadProductsCacheVectorRecallCandidates({
         ) AS product_ref,
         pc.product_data,
         pc.cached_at,
-        pc.updated_at,
         1 - (pce.${col} <=> $1::vector) AS vector_score
       FROM products_cache_embeddings pce
       JOIN products_cache pc

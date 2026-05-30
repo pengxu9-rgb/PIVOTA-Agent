@@ -28,6 +28,45 @@ describe('product relationship graph source loaders', () => {
     expect(queryFn).toHaveBeenCalled();
   });
 
+  // Regression: prior guard swallowed `column "X" does not exist` (code 42703)
+  // and `function ... does not exist` (42883) as if the source were absent.
+  // That masked SELECT lists referencing renamed/removed columns and caused
+  // the build script to run with a silently degraded universe. The narrowed
+  // guard must surface these errors to the caller.
+  test('column / function drift must throw (not be swallowed as missing source)', async () => {
+    const colErr = Object.assign(new Error('column "category" does not exist'), { code: '42703' });
+    const fnErr = Object.assign(new Error('function pgvector_unknown() does not exist'), { code: '42883' });
+
+    const queryColMissing = jest.fn(async () => { throw colErr; });
+    const queryFnMissing = jest.fn(async () => { throw fnErr; });
+
+    await expect(loadExternalProductSeedCandidates({ queryFn: queryColMissing })).rejects.toThrow(/column .* does not exist/);
+    await expect(loadProductsCacheCandidates({ queryFn: queryColMissing })).rejects.toThrow(/column .* does not exist/);
+    await expect(loadProductIntelKbRows({ queryFn: queryColMissing })).rejects.toThrow(/column .* does not exist/);
+    await expect(loadLegacyDupeKbRows({ queryFn: queryFnMissing })).rejects.toThrow(/function .* does not exist/);
+  });
+
+  // Regression: the build script silently fell back to an empty
+  // external_product_seeds source because the SELECT list referenced a
+  // `category` column that was removed from the table. The loader now
+  // derives category from the seed_data JSONB; assert the SQL no longer
+  // references the removed columns so this class of drift is caught at CI time.
+  test('loader SQL does not reference columns that were removed from prod schema', async () => {
+    const sqlSeen = [];
+    const captureFn = jest.fn(async (sql) => { sqlSeen.push(String(sql)); return { rows: [] }; });
+
+    await loadExternalProductSeedCandidates({ queryFn: captureFn, market: 'US', limit: 5 });
+    await loadProductsCacheCandidates({ queryFn: captureFn, limit: 5 });
+
+    const seedSql = sqlSeen.find((s) => s.includes('FROM external_product_seeds')) || '';
+    const cacheSql = sqlSeen.find((s) => s.includes('FROM products_cache')) || '';
+
+    // external_product_seeds has no `category` column — must use seed_data JSONB instead.
+    expect(seedSql).not.toMatch(/\bcategory\b/);
+    // products_cache has no `updated_at` column — must use cached_at / last_accessed_at instead.
+    expect(cacheSql).not.toMatch(/\bupdated_at\b/);
+  });
+
   test('normalizes external seed and product-intel rows from fake query results', async () => {
     const externalRow = {
       id: 'seed_1',
