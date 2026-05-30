@@ -1,0 +1,54 @@
+{
+  "generated_at": "2026-05-30T04:02:25.624Z",
+  "dry_run": true,
+  "manifest": "reports/markato_expansion_status_20260524/wave80_786_sorrento_category_repair_20260530/sorrento_reviewed_category_patch_manifest.json",
+  "market": "US",
+  "allow_overwrite": true,
+  "overwrite_confirmed": false,
+  "summary": {
+    "scanned": 1,
+    "planned": 1,
+    "unchanged": 0,
+    "blocked": 0,
+    "missing": 0,
+    "updated": 0,
+    "catalog_product_updates": 0,
+    "identity_updates": 0,
+    "by_patch_key": {
+      "category": 1,
+      "product_type": 1,
+      "category_path": 1,
+      "catalog_category_path": 1
+    },
+    "blocking_reasons": {}
+  },
+  "apply_results": [],
+  "plans": [
+    {
+      "id": "eps_ce8262fbf4999342ebc97f69",
+      "external_product_id": "ext_55b774d3c57906a77a7167f0",
+      "title": "Sorrento - Breathable Nail Polish",
+      "canonical_url": "https://786cosmetics.com/products/sorrento-breathable-nail-polish",
+      "status": "planned",
+      "changed": true,
+      "patch_keys": [
+        "category",
+        "product_type",
+        "category_path",
+        "catalog_category_path"
+      ],
+      "before": {
+        "category": "Powder",
+        "category_path": "",
+        "catalog_category_path": "",
+        "product_type": ""
+      },
+      "after": {
+        "category": "Nail Polish",
+        "category_path": "beauty/makeup/nails/nail-polish",
+        "catalog_category_path": "beauty/makeup/nails/nail-polish",
+        "product_type": "Breathable Nail Polish"
+      }
+    }
+  ]
+}

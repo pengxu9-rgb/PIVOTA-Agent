@@ -1,0 +1,74 @@
+{
+  "generated_at": "2026-05-30T04:12:16.374Z",
+  "market": "US",
+  "include_non_public": false,
+  "docs_built": 1,
+  "source_build_failures": [],
+  "docs": [
+    {
+      "doc_id": "sellable:sig_337355ebd00dcd80367973fb",
+      "sellable_item_group_id": "sig_337355ebd00dcd80367973fb",
+      "product_line_id": "pl_5d796a0d4c81c0e513ee95c7",
+      "review_family_id": "rf_5d796a0d4c81c0e513ee95c7",
+      "brand_name": "786 Cosmetics",
+      "category_paths": [
+        "Nail Polish",
+        "Breathable Nail Polish"
+      ],
+      "market": "US",
+      "availability_state": "available",
+      "publish_state": "public",
+      "title": "Sorrento - Breathable Nail Polish",
+      "subtitle": "This creamy, light yellow is inspired by the \"lemon town\" of Italy, Sorrento. Located in Naples and on the stunning Amalfi coast, the lemons found here have been famous for centuries and are known for their flavor and healthy properties. In excavations of Pompeii, the iconic Sorrento lemons are seen in mosaic artwork of that period.\n\nSorrento is best described as a light, creamy yellow breathable nail polish. Sorrento is more yellow than Zanzibar and has no shimmer.",
+      "variant_axes": {
+        "axis_kind": "shade",
+        "source_url": "https://786cosmetics.com/products/sorrento-breathable-nail-polish",
+        "review_state": "assistant_reviewed",
+        "visible_options": [
+          {
+            "name": "Shade",
+            "value": "Sorrento",
+            "axis_kind": "shade"
+          }
+        ]
+      },
+      "size": null,
+      "shade": null,
+      "pack": null,
+      "hero_media": {
+        "url": "https://cdn.shopify.com/s/files/1/0413/6229/2900/files/Sorrento.jpg?v=1762529549",
+        "source_kind": "catalog",
+        "source_tier": "catalog"
+      },
+      "preview_media": [
+        "https://cdn.shopify.com/s/files/1/0413/6229/2900/files/Sorrento.jpg?v=1762529549",
+        "https://cdn.shopify.com/s/files/1/0413/6229/2900/files/Sorrento_3.png?v=1737672935",
+        "https://cdn.shopify.com/s/files/1/0413/6229/2900/products/786cosmetics-default-title-sorrento-breathable-nail-polish-31946800169124.jpg?v=1737672931",
+        "https://cdn.shopify.com/s/files/1/0413/6229/2900/products/786cosmetics-default-title-sorrento-breathable-nail-polish-31946800070820.jpg?v=1737672931"
+      ],
+      "price_min": 9.79,
+      "price_max": 9.79,
+      "default_offer_id": "external_seed:ext_55b774d3c57906a77a7167f0",
+      "internal_offer_exists": false,
+      "external_offer_exists": true,
+      "pivota_insight_status": "available",
+      "pivota_insight_summary": "A 786 Cosmetics nail polish listed on the brand source page as Sorrento - Breathable Nail Polish. The source description identifies: This creamy, light yellow is inspired by the \"lemon town\" of Italy, Sorrento.",
+      "quality_score": null,
+      "browse_score": null,
+      "facet_tokens": [
+        "786 Cosmetics",
+        "Nail Polish",
+        "Breathable Nail Polish"
+      ],
+      "sort_keys": {
+        "price_min": 9.79,
+        "price_max": 9.79,
+        "updated_at": null
+      },
+      "updated_at": null,
+      "source_refs": [
+        "external_seed:ext_55b774d3c57906a77a7167f0"
+      ]
+    }
+  ]
+}

@@ -1,0 +1,21 @@
+{
+  "market": "US",
+  "source_kind": "official_shopify_pdp_categories",
+  "reviewed_by": "codex_review",
+  "reason": "wave80_sorrento_similar_underfill_category_repair",
+  "confidence": 0.95,
+  "entries": [
+    {
+      "external_product_id": "ext_55b774d3c57906a77a7167f0",
+      "market": "US",
+      "title": "Sorrento - Breathable Nail Polish",
+      "canonical_url": "https://786cosmetics.com/products/sorrento-breathable-nail-polish",
+      "source_url": "https://786cosmetics.com/products/sorrento-breathable-nail-polish",
+      "category": "Nail Polish",
+      "product_type": "Breathable Nail Polish",
+      "category_path": "beauty/makeup/nails/nail-polish",
+      "catalog_category_path": "beauty/makeup/nails/nail-polish",
+      "evidence": "Official PDP title is Sorrento - Breathable Nail Polish; official PDP categories include Breathable Nail Polish and Yellow & Orange Nail Polish."
+    }
+  ]
+}

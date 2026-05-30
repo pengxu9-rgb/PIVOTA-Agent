@@ -1,0 +1,155 @@
+{
+  "generated_at": "2026-05-30T04:03:23.850Z",
+  "source": "external_seed_live_pdp_modules_audit",
+  "query": {
+    "market": "US",
+    "domain": null,
+    "brand": null,
+    "external_product_id": null,
+    "external_product_ids": [
+      "ext_55b774d3c57906a77a7167f0"
+    ],
+    "include_attached": true,
+    "limit": 50,
+    "offset": 0,
+    "include_similar": true,
+    "use_sig": false
+  },
+  "summary": {
+    "scanned": 1,
+    "ready": 0,
+    "thin": 0,
+    "not_conversion_ready": 1,
+    "by_domain": [
+      {
+        "key": "786cosmetics.com",
+        "count": 1
+      }
+    ],
+    "blocker_counts": [
+      {
+        "key": "gallery_missing_or_bloated",
+        "count": 1
+      },
+      {
+        "key": "missing_details",
+        "count": 1
+      },
+      {
+        "key": "missing_how_to",
+        "count": 1
+      },
+      {
+        "key": "missing_ingredients",
+        "count": 1
+      },
+      {
+        "key": "missing_or_weak_insights",
+        "count": 1
+      },
+      {
+        "key": "missing_overview",
+        "count": 1
+      }
+    ],
+    "weak_insights_ids": [
+      "ext_55b774d3c57906a77a7167f0"
+    ],
+    "seller_only_insights_ids": [],
+    "force_filled_ids": [],
+    "content_gap_ids": [
+      "ext_55b774d3c57906a77a7167f0"
+    ]
+  },
+  "rows": [
+    {
+      "external_product_id": "ext_55b774d3c57906a77a7167f0",
+      "pivota_signature_id": "sig_337355ebd00dcd80367973fb",
+      "probed_product_id": "ext_55b774d3c57906a77a7167f0",
+      "probed_id_type": "ext",
+      "seed_id": "eps_ce8262fbf4999342ebc97f69",
+      "market": "US",
+      "domain": "786cosmetics.com",
+      "title": "Sorrento - Breathable Nail Polish",
+      "canonical_url": "https://786cosmetics.com/products/sorrento-breathable-nail-polish",
+      "http_status": 404,
+      "pdp_status": "",
+      "build_id": "",
+      "module_types": [],
+      "missing_modules": [],
+      "gallery": {
+        "image_count": 0,
+        "duplicate_url_count": 0,
+        "image_hosts": [],
+        "ok": false
+      },
+      "variant": {
+        "module_present": false,
+        "variant_count": 0,
+        "label_count": 0,
+        "labels": [],
+        "bad_labels": [],
+        "ok": false
+      },
+      "reviews": {
+        "module_present": false,
+        "rating": null,
+        "review_count": 0,
+        "chart_present": false,
+        "chart_estimated": false,
+        "preview_count": 0,
+        "ok": true
+      },
+      "insights": {
+        "module_present": false,
+        "quality_state": null,
+        "evidence_profile": null,
+        "seller_only_evidence": false,
+        "seller_grounded_reviewed": false,
+        "headline": null,
+        "why_count": 0,
+        "ok": false
+      },
+      "content": {
+        "ingredients_present": false,
+        "ingredients_text_count": 0,
+        "ingredients_source_origin": null,
+        "ingredients_source_quality_status": null,
+        "ingredients_force_filled": false,
+        "active_ingredients_present": false,
+        "active_ingredients_source_origin": null,
+        "active_ingredients_source_quality_status": null,
+        "active_ingredients_force_filled": false,
+        "how_to_present": false,
+        "how_to_text_count": 0,
+        "overview_present": false,
+        "details_present": false,
+        "details_text_count": 0
+      },
+      "similar": {
+        "module_present": false,
+        "count": 0,
+        "status": null
+      },
+      "product_kind": {
+        "family": "single_formula",
+        "reasons": [
+          "explicit_product_kind_signal"
+        ],
+        "pdp_schema_profile": null,
+        "formula_content_required": true,
+        "merchandising_content_applicable": true
+      },
+      "blocking_reasons": [
+        "gallery_missing_or_bloated",
+        "missing_or_weak_insights",
+        "missing_ingredients",
+        "missing_how_to",
+        "missing_overview",
+        "missing_details"
+      ],
+      "pdp_quality_bucket": "not_conversion_ready",
+      "conversion_ready": false
+    }
+  ]
+}

@@ -1,0 +1,38 @@
+{
+  "generated_at": "2026-05-30T04:10:33.643Z",
+  "dry_run": true,
+  "market": "US",
+  "contract_version": "external_seed.source_variant_fields.v1",
+  "summary": {
+    "scanned": 1,
+    "dry_run": 1,
+    "updated": 0,
+    "skipped": 0,
+    "failed": 0,
+    "by_field": {
+      "variants": 1
+    }
+  },
+  "results": [
+    {
+      "external_product_id": "ext_55b774d3c57906a77a7167f0",
+      "title": "Sorrento - Breathable Nail Polish",
+      "source_url": "https://786cosmetics.com/products/sorrento-breathable-nail-polish",
+      "source_host": "786cosmetics.com",
+      "status": "dry_run",
+      "patch_keys": [
+        "variants"
+      ],
+      "reason": "replace_high_quality_variant_price_url_correction",
+      "before_hash": "b4f6218920119b5f7ab8270ade45fb3f4d752e5eb07861baddc7012b3082fc40",
+      "after_hash": "d4af5c2c413f0e57b65b2e2b6682ff073eef54891e955a99e81948221f72fb3c",
+      "variant_count": 1,
+      "variant_labels": [
+        "Shade: Sorrento"
+      ],
+      "serving_mirror_sync": {
+        "planned": true
+      }
+    }
+  ]
+}

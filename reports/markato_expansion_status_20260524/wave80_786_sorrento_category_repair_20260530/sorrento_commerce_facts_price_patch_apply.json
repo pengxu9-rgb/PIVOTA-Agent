@@ -1,0 +1,61 @@
+{
+  "generated_at": "2026-05-30T04:16:51.844Z",
+  "mode": "apply",
+  "external_product_id": "ext_55b774d3c57906a77a7167f0",
+  "evidence": {
+    "price_amount": 13.99,
+    "price_currency": "USD",
+    "availability": "in_stock",
+    "commerce_facts_gate": {
+      "status": "pass",
+      "market_id": "US",
+      "expected_currency": "USD",
+      "observed_currency": "USD",
+      "market_switch_status": "ok",
+      "sellable_region_status": "unknown",
+      "shipping_status": "unknown",
+      "promotions_status": "unknown",
+      "availability_status": "in_stock",
+      "problems": []
+    }
+  },
+  "before": {
+    "row_price_amount": 9.79,
+    "row_price_currency": "USD",
+    "row_availability": "in_stock",
+    "seed_data": {
+      "price_amount": 9.79,
+      "price_currency": "USD",
+      "availability": "in_stock",
+      "snapshot_price_amount": 9.79,
+      "snapshot_price_currency": "USD",
+      "snapshot_availability": "in_stock",
+      "commerce_facts_price": 9.79,
+      "snapshot_commerce_facts_price": 9.79,
+      "agent_safe_price": null,
+      "variant_count": 1,
+      "first_variant_label": "Shade: Sorrento",
+      "first_variant_price": 13.99
+    }
+  },
+  "after": {
+    "row_price_amount": 13.99,
+    "row_price_currency": "USD",
+    "row_availability": "in_stock",
+    "seed_data": {
+      "price_amount": 13.99,
+      "price_currency": "USD",
+      "availability": "in_stock",
+      "snapshot_price_amount": 13.99,
+      "snapshot_price_currency": "USD",
+      "snapshot_availability": "in_stock",
+      "commerce_facts_price": 13.99,
+      "snapshot_commerce_facts_price": 13.99,
+      "agent_safe_price": 13.99,
+      "variant_count": 1,
+      "first_variant_label": "Shade: Sorrento",
+      "first_variant_price": 13.99
+    }
+  },
+  "updated": 1
+}

@@ -1,0 +1,58 @@
+{
+  "mappings": [
+    {
+      "target_id": "ext_55b774d3c57906a77a7167f0",
+      "source_url": "https://786cosmetics.com/products/sorrento-breathable-nail-polish",
+      "source_origin": "official_pdp",
+      "allow_price_url_correction": true,
+      "match_basis": {
+        "reviewed_by": "codex_strict_human_quality_gate",
+        "reason": "wave80_786_sorrento_official_shopify_json_price_repair",
+        "evidence": "Official Shopify product JSON for /products/sorrento-breathable-nail-polish exposes one available variant id 41349208309924 with price 1399 USD cents and no compare_at_price. Existing seed variant used the same product and variant id but stale price 9.79.",
+        "source_kind": "official_shopify_product_json"
+      },
+      "variant_axes": {
+        "review_state": "assistant_reviewed",
+        "source_url": "https://786cosmetics.com/products/sorrento-breathable-nail-polish",
+        "axis_kind": "shade",
+        "visible_options": [
+          {
+            "name": "Shade",
+            "value": "Sorrento",
+            "axis_kind": "shade"
+          }
+        ]
+      },
+      "variants": [
+        {
+          "id": "41349208309924",
+          "variant_id": "41349208309924",
+          "sku": "41349208309924",
+          "sku_id": "41349208309924",
+          "title": "Shade: Sorrento",
+          "display_label": "Shade: Sorrento",
+          "option_name": "Shade",
+          "option_value": "Sorrento",
+          "axis_kind": "shade",
+          "options": [
+            {
+              "name": "Shade",
+              "value": "Sorrento",
+              "axis_kind": "shade"
+            }
+          ],
+          "price": 13.99,
+          "price_amount": 13.99,
+          "currency": "USD",
+          "available": true,
+          "in_stock": true,
+          "image_url": "https://cdn.shopify.com/s/files/1/0413/6229/2900/files/Sorrento.jpg?v=1762529549",
+          "product_url": "https://786cosmetics.com/products/sorrento-breathable-nail-polish",
+          "deep_link": "https://786cosmetics.com/products/sorrento-breathable-nail-polish",
+          "source_origin": "official_pdp",
+          "source_quality_status": "high"
+        }
+      ]
+    }
+  ]
+}

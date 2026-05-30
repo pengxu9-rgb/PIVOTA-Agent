@@ -1,0 +1,40 @@
+{
+  "generated_at": "2026-05-30T04:01:24.496Z",
+  "dry_run": true,
+  "manifest": "reports/markato_expansion_status_20260524/wave80_786_sorrento_category_repair_20260530/sorrento_reviewed_category_patch_manifest.json",
+  "market": "US",
+  "allow_overwrite": false,
+  "overwrite_confirmed": false,
+  "summary": {
+    "scanned": 1,
+    "planned": 0,
+    "unchanged": 0,
+    "blocked": 1,
+    "missing": 0,
+    "updated": 0,
+    "catalog_product_updates": 0,
+    "identity_updates": 0,
+    "by_patch_key": {},
+    "blocking_reasons": {
+      "existing_category_conflict:derived.recall.category:Powder": 1
+    }
+  },
+  "apply_results": [],
+  "plans": [
+    {
+      "external_product_id": "ext_55b774d3c57906a77a7167f0",
+      "title": "Sorrento - Breathable Nail Polish",
+      "status": "blocked",
+      "changed": false,
+      "blocking_reasons": [
+        "existing_category_conflict:derived.recall.category:Powder"
+      ],
+      "before": {
+        "category": "Powder",
+        "category_path": "",
+        "catalog_category_path": "",
+        "product_type": ""
+      }
+    }
+  ]
+}
