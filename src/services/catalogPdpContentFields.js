@@ -545,25 +545,36 @@ async function readMerchantProductOverlayByProductRefs({
   }
   try {
     // product_key is "merchant|platform|source_product_id"; match on parts 1 and 3
-    // so we need not reconstruct platform at the read site.
+    // so we need not reconstruct platform at the read site. v1 only serves the
+    // 'copy' module. Order deterministically (caller sourceId order, then newest
+    // approval) so multi-product reads resolve one stable row per field below.
     const result = await queryFn(
       `
-        SELECT module_key, field_key, value_jsonb
+        SELECT module_key, field_key, value_jsonb,
+               split_part(product_key, '|', 3) AS source_product_id, approved_at
         FROM merchant_product_overlay
         WHERE approval_status = 'active'
+          AND module_key = 'copy'
           AND split_part(product_key, '|', 1) = $1
           AND split_part(product_key, '|', 3) = ANY($2::text[])
+        ORDER BY array_position($2::text[], split_part(product_key, '|', 3)),
+                 approved_at DESC NULLS LAST
         LIMIT 100
       `,
       [merchant, sourceIds],
     );
-    const overlays = (Array.isArray(result?.rows) ? result.rows : [])
-      .map((row) => ({
+    // Dedupe to one row per field_key, honoring the ORDER BY (first row wins).
+    const byField = new Map();
+    for (const row of Array.isArray(result?.rows) ? result.rows : []) {
+      const fieldKey = asString(row?.field_key);
+      if (!fieldKey || !OVERLAY_FIELD_TO_PRODUCT[fieldKey] || byField.has(fieldKey)) continue;
+      byField.set(fieldKey, {
         module_key: asString(row?.module_key),
-        field_key: asString(row?.field_key),
+        field_key: fieldKey,
         value: row?.value_jsonb,
-      }))
-      .filter((row) => row.field_key && OVERLAY_FIELD_TO_PRODUCT[row.field_key]);
+      });
+    }
+    const overlays = Array.from(byField.values());
     const value = overlays.length ? overlays : null;
     cacheSet(key, value);
     return value;
