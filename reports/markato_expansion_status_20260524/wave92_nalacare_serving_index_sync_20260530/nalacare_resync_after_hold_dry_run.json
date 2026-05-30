@@ -1,0 +1,967 @@
+{
+  "generated_at": "2026-05-30T11:13:46.149Z",
+  "mode": "dry_run",
+  "batch_size": null,
+  "bootstrap_reviewed_identity_live_read": false,
+  "requested_ids": 4,
+  "fetched_rows": 4,
+  "mirror_rows": 4,
+  "planned_sku_rows": 4,
+  "planned_offer_rows": 4,
+  "planned_index_state_rows": 4,
+  "missing_ids": [],
+  "skipped": [],
+  "applied": {
+    "mode": "dry_run",
+    "existing_before": {
+      "catalog_products": 4,
+      "catalog_skus": 4,
+      "catalog_offers": 4,
+      "product_group_members": 4
+    },
+    "stale_delete_preview": {
+      "current_sku_rows": 4,
+      "current_offer_rows": 4,
+      "planned_stale_sku_deletes": 0,
+      "planned_stale_offer_deletes": 0,
+      "sample_stale_skus": [],
+      "sample_stale_offers": []
+    },
+    "batch_size": null,
+    "batches": 1,
+    "audit_reasons": {
+      "no_strong_identifier": 4
+    },
+    "product_upserts": 0,
+    "sku_upserts": 0,
+    "offer_upserts": 0,
+    "group_member_upserts": 0,
+    "group_member_preserved_existing_merges": 0,
+    "seed_attachment_updates": 0,
+    "index_state_upserts": 0,
+    "identity_live_read_updates": 0,
+    "catalog_row_trust_upserts": 0,
+    "stale_offer_deletes": 0,
+    "stale_sku_deletes": 0
+  },
+  "sample": [
+    {
+      "external_product_id": "ext_e08d2e62205f1691dfe30753",
+      "product_key": "prod::external_seed::external_seed::ext_e08d2e62205f1691dfe30753",
+      "product_group_id": "sig_585510673ac14ed71e01b4a9",
+      "title": "Coastal Waters, Extra Strength Natural Deodorant",
+      "brand": "Nala Care",
+      "product_type": "Deodorant",
+      "category": "Deodorant",
+      "category_path": "beauty/body-care/deodorant",
+      "canonical_url": "https://nalacare.com/products/coastal-waters-natural-deodorant-extra-strength",
+      "pivota_signature_id": "sig_585510673ac14ed71e01b4a9",
+      "sku_rows": 1,
+      "first_sku": {
+        "sku_key": "prod::external_seed::external_seed::ext_e08d2e62205f1691dfe30753::sku_ffbaf2efa6835c31ad7f",
+        "product_key": "prod::external_seed::external_seed::ext_e08d2e62205f1691dfe30753",
+        "merchant_id": "external_seed",
+        "platform": "external_seed",
+        "source_product_id": "ext_e08d2e62205f1691dfe30753",
+        "source_variant_id": "ext_e08d2e62205f1691dfe30753:39363500310628",
+        "source_domain": "nalacare.com",
+        "sku": "FFD00011",
+        "barcode": null,
+        "title": "60g",
+        "currency": "USD",
+        "image_url": "https://nalacare.com/cdn/shop/files/Nala_Natural_Deodorant_Coastal_Waters_Transparent_Box.png?v=1752600326",
+        "visible_attributes": {
+          "Size": "60g"
+        },
+        "visible_option_labels": {
+          "Size": "60g"
+        },
+        "ingredient_ids": [],
+        "sku_payload": {
+          "source": "external_product_seeds_mirror_v1",
+          "external_product_id": "ext_e08d2e62205f1691dfe30753",
+          "raw_variant_id": "39363500310628",
+          "source_variant_id": "ext_e08d2e62205f1691dfe30753:39363500310628",
+          "variant_sku": "FFD00011",
+          "barcode": null,
+          "strong_identifier_kind": null,
+          "source_url": "https://nalacare.com/products/coastal-waters-natural-deodorant-extra-strength",
+          "external_redirect_url": "https://nalacare.com/products/coastal-waters-natural-deodorant-extra-strength",
+          "price": "26",
+          "price_amount": 26,
+          "currency": "USD",
+          "availability": "in_stock",
+          "image_url": "https://nalacare.com/cdn/shop/files/Nala_Natural_Deodorant_Coastal_Waters_Transparent_Box.png?v=1752600326",
+          "swatch_image_url": null,
+          "label_image_url": null,
+          "options": {
+            "Size": "60g"
+          },
+          "raw_variant": {
+            "sku": "FFD00011",
+            "url": "https://nalacare.com/products/coastal-waters-natural-deodorant-extra-strength?variant=39363500310628&utm_source=pivota&utm_medium=affiliate",
+            "price": "26.00",
+            "stock": "In Stock",
+            "title": "60g",
+            "options": [
+              {
+                "name": "Size",
+                "value": "60g"
+              }
+            ],
+            "currency": "USD",
+            "deep_link": "https://nalacare.com/products/coastal-waters-natural-deodorant-extra-strength?variant=39363500310628&utm_source=pivota&utm_medium=affiliate",
+            "image_url": "https://nalacare.com/cdn/shop/files/Nala_Natural_Deodorant_Coastal_Waters_Transparent_Box.png?v=1752600326",
+            "image_urls": [
+              "https://nalacare.com/cdn/shop/files/Nala_Natural_Deodorant_Coastal_Waters_Transparent_Box.png?v=1752600326",
+              "https://nalacare.com/cdn/shop/files/Nala_Natural_Deodorant_Tube.png?v=1752600229",
+              "https://nalacare.com/cdn/shop/files/AK5A1190.png?v=1778824029",
+              "https://nalacare.com/cdn/shop/files/Nala_Natural_Deodorant_Sandalwood_Bergamot_Transparent_Box.png?v=1752600440",
+              "https://nalacare.com/cdn/shop/files/Nala_Natural_Deodorant_Eucalyptus_Champa_Transparent_Box.png?v=1752600258",
+              "https://nalacare.com/cdn/shop/files/Nala_Natural_Deodorant_Rosewood_Transparent_Box.png?v=1752600292",
+              "https://nalacare.com/cdn/shop/files/Nala_Natural_Deodorant_Grapefruit_Neroli_Transparent_Box.png?v=1752600087",
+              "https://nalacare.com/cdn/shop/files/Nala_Natural_Deodorant_Peach_Chamomile_Transparent_Box.png?v=1752600403",
+              "https://nalacare.com/cdn/shop/files/241205_Nala_7409_web.jpg?v=1735323818"
+            ],
+            "variant_id": "39363500310628",
+            "description": "A rugged but energizing blend of natural elements, this deodorant embodies life by the ocean. A heavier, woody scent that comes from Frankincense essential oil is balanced with lighter hints of citrus and swirls of fresh mint. The final touch in this blend is a hint of salt, reminiscent of a cool, ocean breeze. 60 g",
+            "option_name": "Size",
+            "product_url": "https://nalacare.com/products/coastal-waters-natural-deodorant-extra-strength",
+            "option_value": "60g"
+          }
+        },
+        "readiness_tier": "referral_only"
+      },
+      "first_offer": {
+        "offer_id": "offer:external_seed:5760b4da2b88e97d3ebf2dc922763fe2",
+        "sku_key": "prod::external_seed::external_seed::ext_e08d2e62205f1691dfe30753::sku_ffbaf2efa6835c31ad7f",
+        "product_key": "prod::external_seed::external_seed::ext_e08d2e62205f1691dfe30753",
+        "merchant_id": "external_seed",
+        "catalog_track": "external_referral",
+        "truth_tier": "observed",
+        "readiness_tier": "referral_only",
+        "offer_mode": "redirect",
+        "channel": "external_referral",
+        "availability": "in_stock",
+        "currency": "USD",
+        "list_price": 26,
+        "merchant_effective_price": 26,
+        "estimated_best_price": 26,
+        "price_confidence": 1,
+        "source_system": "external_product_seeds_mirror_v1",
+        "source_ref": "eps_18d393cf24840b4bbe6b1a52",
+        "source_domain": "nalacare.com",
+        "offer_payload": {
+          "source": "external_product_seeds_mirror_v1",
+          "external_seed_id": "eps_18d393cf24840b4bbe6b1a52",
+          "external_product_id": "ext_e08d2e62205f1691dfe30753",
+          "domain": "nalacare.com",
+          "market": "US",
+          "product_title": "Coastal Waters, Extra Strength Natural Deodorant",
+          "variant_title": "60g",
+          "variant_sku": "FFD00011",
+          "raw_variant_id": "39363500310628",
+          "url": "https://nalacare.com/products/coastal-waters-natural-deodorant-extra-strength",
+          "offer_url": "https://nalacare.com/products/coastal-waters-natural-deodorant-extra-strength",
+          "canonical_url": "https://nalacare.com/products/coastal-waters-natural-deodorant-extra-strength",
+          "destination_url": "https://nalacare.com/products/coastal-waters-natural-deodorant-extra-strength",
+          "external_redirect_url": "https://nalacare.com/products/coastal-waters-natural-deodorant-extra-strength",
+          "merchant_display_name": "Nala Care",
+          "price": "26",
+          "price_amount": 26,
+          "price_currency": "USD",
+          "availability": "in_stock",
+          "commerce_facts_v1": {
+            "contract_version": "commerce_facts.v1",
+            "market_id": "US",
+            "country": "US",
+            "currency_target": "USD",
+            "source_authority": "catalog_extract_v2",
+            "captured_at": "2026-05-23T00:36:18.280Z",
+            "evidence_url": "https://nalacare.com/products/coastal-waters-natural-deodorant-extra-strength",
+            "sellable_region": {
+              "status": "unknown",
+              "countries": [],
+              "evidence_source": "catalog_extract_v2",
+              "confidence": "medium",
+              "checked_at": "2026-05-23T00:36:18.280Z",
+              "reason_codes": [
+                "market_currency_observed",
+                "shipping_destination_not_verified",
+                "external_checkout_not_queried"
+              ],
+              "evidence_url": "https://nalacare.com/products/coastal-waters-natural-deodorant-extra-strength"
+            },
+            "regional_price": {
+              "amount": 26,
+              "currency": "USD",
+              "display_raw": "26.00",
+              "price_type": "list",
+              "compare_at_amount": null,
+              "compare_at_currency": null,
+              "compare_at_display_raw": null,
+              "tax_included": "unknown",
+              "confidence": "medium",
+              "market_switch_status": "ok",
+              "observed_currency": "USD",
+              "source_url": "https://nalacare.com/products/coastal-waters-natural-deodorant-extra-strength",
+              "captured_at": "2026-05-23T00:36:18.280Z"
+            },
+            "availability": {
+              "status": "in_stock",
+              "source": "catalog_extract_v2",
+              "confidence": "medium",
+              "captured_at": "2026-05-23T00:36:18.280Z"
+            },
+            "shipping": {
+              "status": "unknown",
+              "source": "catalog_extract_v2",
+              "confidence": "unknown",
+              "reason_codes": [
+                "external_checkout_not_queried"
+              ],
+              "checked_at": "2026-05-23T00:36:18.280Z"
+            },
+            "promotions": [],
+            "returns": {
+              "status": "unknown",
+              "source": "catalog_extract_v2",
+              "confidence": "unknown",
+              "reason_codes": [
+                "external_returns_not_extracted"
+              ],
+              "checked_at": "2026-05-23T00:36:18.280Z"
+            }
+          },
+          "agent_safe_commerce_facts": {
+            "contract_version": "commerce_facts.v1",
+            "market_id": "US",
+            "price": {
+              "amount": 26,
+              "currency": "USD",
+              "display_raw": "26.00",
+              "price_type": "list",
+              "compare_at_amount": null,
+              "compare_at_currency": null,
+              "compare_at_display_raw": null,
+              "tax_included": "unknown",
+              "confidence": "medium",
+              "market_switch_status": "ok",
+              "observed_currency": "USD",
+              "source_url": "https://nalacare.com/products/coastal-waters-natural-deodorant-extra-strength",
+              "captured_at": "2026-05-23T00:36:18.280Z"
+            },
+            "availability": {
+              "status": "in_stock",
+              "source": "catalog_extract_v2",
+              "confidence": "medium",
+              "captured_at": "2026-05-23T00:36:18.280Z"
+            },
+            "shipping": {
+              "status": "unknown",
+              "reason": "verify_at_checkout"
+            },
+            "promotions": [],
+            "checkout_note": "Shipping and promotions are not verified for this external offer; verify at merchant checkout."
+          }
+        }
+      },
+      "serving_readiness": {
+        "servingEligible": false,
+        "contentQualityScore": 70,
+        "blockerCode": "content_evidence_hold",
+        "blockerDetail": "preflight_audit_failed_similar_gate",
+        "identityResolved": true,
+        "identityLiveReadResolved": true,
+        "identityBootstrapEligible": false,
+        "terminalHold": true,
+        "terminalHoldReason": "preflight_audit_failed_similar_gate",
+        "hasImage": true,
+        "hasPrice": true,
+        "descriptionLength": 318
+      }
+    },
+    {
+      "external_product_id": "ext_e5f66cf29d6c516775bb0fce",
+      "product_key": "prod::external_seed::external_seed::ext_e5f66cf29d6c516775bb0fce",
+      "product_group_id": "sig_dc67c95a05ea55d137601330",
+      "title": "Essence of Rosewood, Extra Strength Natural Deodorant",
+      "brand": "Nala Care",
+      "product_type": "Deodorant",
+      "category": "Deodorant",
+      "category_path": "beauty/body-care/deodorant",
+      "canonical_url": "https://nalacare.com/products/essence-of-rosewood-extra-strength-deodorant",
+      "pivota_signature_id": "sig_dc67c95a05ea55d137601330",
+      "sku_rows": 1,
+      "first_sku": {
+        "sku_key": "prod::external_seed::external_seed::ext_e5f66cf29d6c516775bb0fce::sku_f9e579315404aed07fef",
+        "product_key": "prod::external_seed::external_seed::ext_e5f66cf29d6c516775bb0fce",
+        "merchant_id": "external_seed",
+        "platform": "external_seed",
+        "source_product_id": "ext_e5f66cf29d6c516775bb0fce",
+        "source_variant_id": "ext_e5f66cf29d6c516775bb0fce:44152762826852",
+        "source_domain": "nalacare.com",
+        "sku": "FFD00004",
+        "barcode": null,
+        "title": "60g",
+        "currency": "USD",
+        "image_url": "https://nalacare.com/cdn/shop/files/Nala_Natural_Deodorant_Rosewood_Transparent_Box.png?v=1752600292",
+        "visible_attributes": {
+          "Size": "60g"
+        },
+        "visible_option_labels": {
+          "Size": "60g"
+        },
+        "ingredient_ids": [],
+        "sku_payload": {
+          "source": "external_product_seeds_mirror_v1",
+          "external_product_id": "ext_e5f66cf29d6c516775bb0fce",
+          "raw_variant_id": "44152762826852",
+          "source_variant_id": "ext_e5f66cf29d6c516775bb0fce:44152762826852",
+          "variant_sku": "FFD00004",
+          "barcode": null,
+          "strong_identifier_kind": null,
+          "source_url": "https://nalacare.com/products/essence-of-rosewood-extra-strength-deodorant",
+          "external_redirect_url": "https://nalacare.com/products/essence-of-rosewood-extra-strength-deodorant",
+          "price": "26",
+          "price_amount": 26,
+          "currency": "USD",
+          "availability": "in_stock",
+          "image_url": "https://nalacare.com/cdn/shop/files/Nala_Natural_Deodorant_Rosewood_Transparent_Box.png?v=1752600292",
+          "swatch_image_url": null,
+          "label_image_url": null,
+          "options": {
+            "Size": "60g"
+          },
+          "raw_variant": {
+            "sku": "FFD00004",
+            "url": "https://nalacare.com/products/essence-of-rosewood-extra-strength-deodorant?variant=44152762826852&utm_source=pivota&utm_medium=affiliate",
+            "price": "26.00",
+            "stock": "In Stock",
+            "title": "60g",
+            "options": [
+              {
+                "name": "Size",
+                "value": "60g"
+              }
+            ],
+            "currency": "USD",
+            "deep_link": "https://nalacare.com/products/essence-of-rosewood-extra-strength-deodorant?variant=44152762826852&utm_source=pivota&utm_medium=affiliate",
+            "image_url": "https://nalacare.com/cdn/shop/files/Nala_Natural_Deodorant_Rosewood_Transparent_Box.png?v=1752600292",
+            "image_urls": [
+              "https://nalacare.com/cdn/shop/files/Nala_Natural_Deodorant_Rosewood_Transparent_Box.png?v=1752600292",
+              "https://nalacare.com/cdn/shop/files/Nala_Natural_Deodorant_Tube.png?v=1752600229",
+              "https://cdn.stamped.io/cdn/images/pixel.png",
+              "https://cdn1.stamped.io/uploads/productImages/139780_8139512938596.png",
+              "https://cdn1.stamped.io/uploads/productImages/139780_6580323811428.png",
+              "https://cdn1.stamped.io/uploads/productImages/139780_7212833800292.png",
+              "https://cdn1.stamped.io/uploads/productImages/139780_6597643403364.png",
+              "https://cdn1.stamped.io/uploads/productImages/139780_6580314734692.png",
+              "https://cdn1.stamped.io/uploads/productImages/139780_6599991820388.png",
+              "https://cdn1.stamped.io/uploads/productImages/139780_7212834127972.png?v=1768065157",
+              "https://cdn1.stamped.io/uploads/productImages/139780_7212833734756.png"
+            ],
+            "variant_id": "44152762826852",
+            "option_name": "Size",
+            "product_url": "https://nalacare.com/products/essence-of-rosewood-extra-strength-deodorant",
+            "option_value": "60g"
+          }
+        },
+        "readiness_tier": "referral_only"
+      },
+      "first_offer": {
+        "offer_id": "offer:external_seed:e8f7a5a21c95a3fa51779ae9761cdc75",
+        "sku_key": "prod::external_seed::external_seed::ext_e5f66cf29d6c516775bb0fce::sku_f9e579315404aed07fef",
+        "product_key": "prod::external_seed::external_seed::ext_e5f66cf29d6c516775bb0fce",
+        "merchant_id": "external_seed",
+        "catalog_track": "external_referral",
+        "truth_tier": "observed",
+        "readiness_tier": "referral_only",
+        "offer_mode": "redirect",
+        "channel": "external_referral",
+        "availability": "in_stock",
+        "currency": "USD",
+        "list_price": 26,
+        "merchant_effective_price": 26,
+        "estimated_best_price": 26,
+        "price_confidence": 1,
+        "source_system": "external_product_seeds_mirror_v1",
+        "source_ref": "eps_2a694bb944824411ac2da0a2",
+        "source_domain": "nalacare.com",
+        "offer_payload": {
+          "source": "external_product_seeds_mirror_v1",
+          "external_seed_id": "eps_2a694bb944824411ac2da0a2",
+          "external_product_id": "ext_e5f66cf29d6c516775bb0fce",
+          "domain": "nalacare.com",
+          "market": "US",
+          "product_title": "Essence of Rosewood, Extra Strength Natural Deodorant",
+          "variant_title": "60g",
+          "variant_sku": "FFD00004",
+          "raw_variant_id": "44152762826852",
+          "url": "https://nalacare.com/products/essence-of-rosewood-extra-strength-deodorant",
+          "offer_url": "https://nalacare.com/products/essence-of-rosewood-extra-strength-deodorant",
+          "canonical_url": "https://nalacare.com/products/essence-of-rosewood-extra-strength-deodorant",
+          "destination_url": "https://nalacare.com/products/essence-of-rosewood-extra-strength-deodorant",
+          "external_redirect_url": "https://nalacare.com/products/essence-of-rosewood-extra-strength-deodorant",
+          "merchant_display_name": "Nala Care",
+          "price": "26",
+          "price_amount": 26,
+          "price_currency": "USD",
+          "availability": "in_stock",
+          "commerce_facts_v1": {
+            "contract_version": "commerce_facts.v1",
+            "market_id": "US",
+            "country": "US",
+            "currency_target": "USD",
+            "source_authority": "catalog_extract_v2",
+            "captured_at": "2026-05-23T00:36:41.867Z",
+            "evidence_url": "https://nalacare.com/products/essence-of-rosewood-extra-strength-deodorant",
+            "sellable_region": {
+              "status": "unknown",
+              "countries": [],
+              "evidence_source": "catalog_extract_v2",
+              "confidence": "medium",
+              "checked_at": "2026-05-23T00:36:41.867Z",
+              "reason_codes": [
+                "market_currency_observed",
+                "shipping_destination_not_verified",
+                "external_checkout_not_queried"
+              ],
+              "evidence_url": "https://nalacare.com/products/essence-of-rosewood-extra-strength-deodorant"
+            },
+            "regional_price": {
+              "amount": 26,
+              "currency": "USD",
+              "display_raw": "26.00",
+              "price_type": "list",
+              "compare_at_amount": null,
+              "compare_at_currency": null,
+              "compare_at_display_raw": null,
+              "tax_included": "unknown",
+              "confidence": "medium",
+              "market_switch_status": "ok",
+              "observed_currency": "USD",
+              "source_url": "https://nalacare.com/products/essence-of-rosewood-extra-strength-deodorant",
+              "captured_at": "2026-05-23T00:36:41.867Z"
+            },
+            "availability": {
+              "status": "in_stock",
+              "source": "catalog_extract_v2",
+              "confidence": "medium",
+              "captured_at": "2026-05-23T00:36:41.867Z"
+            },
+            "shipping": {
+              "status": "unknown",
+              "source": "catalog_extract_v2",
+              "confidence": "unknown",
+              "reason_codes": [
+                "external_checkout_not_queried"
+              ],
+              "checked_at": "2026-05-23T00:36:41.867Z"
+            },
+            "promotions": [],
+            "returns": {
+              "status": "unknown",
+              "source": "catalog_extract_v2",
+              "confidence": "unknown",
+              "reason_codes": [
+                "external_returns_not_extracted"
+              ],
+              "checked_at": "2026-05-23T00:36:41.867Z"
+            }
+          },
+          "agent_safe_commerce_facts": {
+            "contract_version": "commerce_facts.v1",
+            "market_id": "US",
+            "price": {
+              "amount": 26,
+              "currency": "USD",
+              "display_raw": "26.00",
+              "price_type": "list",
+              "compare_at_amount": null,
+              "compare_at_currency": null,
+              "compare_at_display_raw": null,
+              "tax_included": "unknown",
+              "confidence": "medium",
+              "market_switch_status": "ok",
+              "observed_currency": "USD",
+              "source_url": "https://nalacare.com/products/essence-of-rosewood-extra-strength-deodorant",
+              "captured_at": "2026-05-23T00:36:41.867Z"
+            },
+            "availability": {
+              "status": "in_stock",
+              "source": "catalog_extract_v2",
+              "confidence": "medium",
+              "captured_at": "2026-05-23T00:36:41.867Z"
+            },
+            "shipping": {
+              "status": "unknown",
+              "reason": "verify_at_checkout"
+            },
+            "promotions": [],
+            "checkout_note": "Shipping and promotions are not verified for this external offer; verify at merchant checkout."
+          }
+        }
+      },
+      "serving_readiness": {
+        "servingEligible": false,
+        "contentQualityScore": 70,
+        "blockerCode": "content_evidence_hold",
+        "blockerDetail": "preflight_audit_failed_similar_gate",
+        "identityResolved": true,
+        "identityLiveReadResolved": true,
+        "identityBootstrapEligible": false,
+        "terminalHold": true,
+        "terminalHoldReason": "preflight_audit_failed_similar_gate",
+        "hasImage": true,
+        "hasPrice": true,
+        "descriptionLength": 422
+      }
+    },
+    {
+      "external_product_id": "ext_b36935c92dc89857bf62f25e",
+      "product_key": "prod::external_seed::external_seed::ext_b36935c92dc89857bf62f25e",
+      "product_group_id": "sig_0c5ce72c1a7bb40617f0b83d",
+      "title": "Grapefruit & Neroli, Extra Strength Natural Deodorant",
+      "brand": "Nala Care",
+      "product_type": "Deodorant",
+      "category": "Deodorant",
+      "category_path": "beauty/body-care/deodorant",
+      "canonical_url": "https://nalacare.com/products/grapefruit-neroli-natural-deodorant",
+      "pivota_signature_id": "sig_0c5ce72c1a7bb40617f0b83d",
+      "sku_rows": 1,
+      "first_sku": {
+        "sku_key": "prod::external_seed::external_seed::ext_b36935c92dc89857bf62f25e::sku_8fe703e30d5b7a539b4e",
+        "product_key": "prod::external_seed::external_seed::ext_b36935c92dc89857bf62f25e",
+        "merchant_id": "external_seed",
+        "platform": "external_seed",
+        "source_product_id": "ext_b36935c92dc89857bf62f25e",
+        "source_variant_id": "ext_b36935c92dc89857bf62f25e:43144431534180",
+        "source_domain": "nalacare.com",
+        "sku": "FFD00009",
+        "barcode": null,
+        "title": "Grapefruit & Neroli, Extra Strength Natural Deodorant",
+        "currency": "USD",
+        "image_url": "https://nalacare.com/cdn/shop/files/Nala_Natural_Deodorant_Grapefruit_Neroli_Transparent_Box.png?v=1752600087",
+        "visible_attributes": {},
+        "visible_option_labels": {},
+        "ingredient_ids": [],
+        "sku_payload": {
+          "source": "external_product_seeds_mirror_v1",
+          "external_product_id": "ext_b36935c92dc89857bf62f25e",
+          "raw_variant_id": "43144431534180",
+          "source_variant_id": "ext_b36935c92dc89857bf62f25e:43144431534180",
+          "variant_sku": "FFD00009",
+          "barcode": null,
+          "strong_identifier_kind": null,
+          "source_url": "https://nalacare.com/products/grapefruit-neroli-natural-deodorant",
+          "external_redirect_url": "https://nalacare.com/products/grapefruit-neroli-natural-deodorant",
+          "price": "26",
+          "price_amount": 26,
+          "currency": "USD",
+          "availability": "in_stock",
+          "image_url": "https://nalacare.com/cdn/shop/files/Nala_Natural_Deodorant_Grapefruit_Neroli_Transparent_Box.png?v=1752600087",
+          "swatch_image_url": null,
+          "label_image_url": null,
+          "options": {},
+          "raw_variant": {
+            "sku": "FFD00009",
+            "url": "https://nalacare.com/products/grapefruit-neroli-natural-deodorant?variant=43144431534180&utm_source=pivota&utm_medium=affiliate",
+            "price": "26.00",
+            "stock": "In Stock",
+            "title": "Default",
+            "options": [],
+            "currency": "USD",
+            "deep_link": "https://nalacare.com/products/grapefruit-neroli-natural-deodorant?variant=43144431534180&utm_source=pivota&utm_medium=affiliate",
+            "image_url": "https://nalacare.com/cdn/shop/files/Nala_Natural_Deodorant_Grapefruit_Neroli_Transparent_Box.png?v=1752600087",
+            "image_urls": [
+              "https://nalacare.com/cdn/shop/files/Nala_Natural_Deodorant_Grapefruit_Neroli_Transparent_Box.png?v=1752600087",
+              "https://nalacare.com/cdn/shop/files/Nala_Natural_Deodorant_Tube.png?v=1752600229",
+              "https://nalacare.com/cdn/shop/files/AK5A1190.png?v=1778824029",
+              "https://nalacare.com/cdn/shop/files/Nala_Natural_Deodorant_Coastal_Waters_Transparent_Box.png?v=1752600326",
+              "https://nalacare.com/cdn/shop/files/Nala_Natural_Deodorant_Sandalwood_Bergamot_Transparent_Box.png?v=1752600440",
+              "https://nalacare.com/cdn/shop/files/Nala_Natural_Deodorant_Eucalyptus_Champa_Transparent_Box.png?v=1752600258",
+              "https://nalacare.com/cdn/shop/files/Nala_Natural_Deodorant_Rosewood_Transparent_Box.png?v=1752600292",
+              "https://nalacare.com/cdn/shop/files/Nala_Natural_Deodorant_Peach_Chamomile_Transparent_Box.png?v=1752600403",
+              "https://nalacare.com/cdn/shop/files/Nala_Breast_Oil_Transparent.png?v=1753798279",
+              "https://nalacare.com/cdn/shop/files/241205_Nala_7409_web.jpg?v=1735323818"
+            ],
+            "variant_id": "43144431534180",
+            "product_url": "https://nalacare.com/products/grapefruit-neroli-natural-deodorant"
+          }
+        },
+        "readiness_tier": "referral_only"
+      },
+      "first_offer": {
+        "offer_id": "offer:external_seed:38361e2ace522ee917891d4dd589f112",
+        "sku_key": "prod::external_seed::external_seed::ext_b36935c92dc89857bf62f25e::sku_8fe703e30d5b7a539b4e",
+        "product_key": "prod::external_seed::external_seed::ext_b36935c92dc89857bf62f25e",
+        "merchant_id": "external_seed",
+        "catalog_track": "external_referral",
+        "truth_tier": "observed",
+        "readiness_tier": "referral_only",
+        "offer_mode": "redirect",
+        "channel": "external_referral",
+        "availability": "in_stock",
+        "currency": "USD",
+        "list_price": 26,
+        "merchant_effective_price": 26,
+        "estimated_best_price": 26,
+        "price_confidence": 1,
+        "source_system": "external_product_seeds_mirror_v1",
+        "source_ref": "eps_4e147a8448a969b3bd3c46a9",
+        "source_domain": "nalacare.com",
+        "offer_payload": {
+          "source": "external_product_seeds_mirror_v1",
+          "external_seed_id": "eps_4e147a8448a969b3bd3c46a9",
+          "external_product_id": "ext_b36935c92dc89857bf62f25e",
+          "domain": "nalacare.com",
+          "market": "US",
+          "product_title": "Grapefruit & Neroli, Extra Strength Natural Deodorant",
+          "variant_title": "Grapefruit & Neroli, Extra Strength Natural Deodorant",
+          "variant_sku": "FFD00009",
+          "raw_variant_id": "43144431534180",
+          "url": "https://nalacare.com/products/grapefruit-neroli-natural-deodorant",
+          "offer_url": "https://nalacare.com/products/grapefruit-neroli-natural-deodorant",
+          "canonical_url": "https://nalacare.com/products/grapefruit-neroli-natural-deodorant",
+          "destination_url": "https://nalacare.com/products/grapefruit-neroli-natural-deodorant",
+          "external_redirect_url": "https://nalacare.com/products/grapefruit-neroli-natural-deodorant",
+          "merchant_display_name": "Nala Care",
+          "price": "26",
+          "price_amount": 26,
+          "price_currency": "USD",
+          "availability": "in_stock",
+          "commerce_facts_v1": {
+            "contract_version": "commerce_facts.v1",
+            "market_id": "US",
+            "country": "US",
+            "currency_target": "USD",
+            "source_authority": "catalog_extract_v2",
+            "captured_at": "2026-05-23T00:37:24.877Z",
+            "evidence_url": "https://nalacare.com/products/grapefruit-neroli-natural-deodorant",
+            "sellable_region": {
+              "status": "unknown",
+              "countries": [],
+              "evidence_source": "catalog_extract_v2",
+              "confidence": "medium",
+              "checked_at": "2026-05-23T00:37:24.877Z",
+              "reason_codes": [
+                "market_currency_observed",
+                "shipping_destination_not_verified",
+                "external_checkout_not_queried"
+              ],
+              "evidence_url": "https://nalacare.com/products/grapefruit-neroli-natural-deodorant"
+            },
+            "regional_price": {
+              "amount": 26,
+              "currency": "USD",
+              "display_raw": "26.00",
+              "price_type": "list",
+              "compare_at_amount": null,
+              "compare_at_currency": null,
+              "compare_at_display_raw": null,
+              "tax_included": "unknown",
+              "confidence": "medium",
+              "market_switch_status": "ok",
+              "observed_currency": "USD",
+              "source_url": "https://nalacare.com/products/grapefruit-neroli-natural-deodorant",
+              "captured_at": "2026-05-23T00:37:24.877Z"
+            },
+            "availability": {
+              "status": "in_stock",
+              "source": "catalog_extract_v2",
+              "confidence": "medium",
+              "captured_at": "2026-05-23T00:37:24.877Z"
+            },
+            "shipping": {
+              "status": "unknown",
+              "source": "catalog_extract_v2",
+              "confidence": "unknown",
+              "reason_codes": [
+                "external_checkout_not_queried"
+              ],
+              "checked_at": "2026-05-23T00:37:24.877Z"
+            },
+            "promotions": [],
+            "returns": {
+              "status": "unknown",
+              "source": "catalog_extract_v2",
+              "confidence": "unknown",
+              "reason_codes": [
+                "external_returns_not_extracted"
+              ],
+              "checked_at": "2026-05-23T00:37:24.877Z"
+            }
+          },
+          "agent_safe_commerce_facts": {
+            "contract_version": "commerce_facts.v1",
+            "market_id": "US",
+            "price": {
+              "amount": 26,
+              "currency": "USD",
+              "display_raw": "26.00",
+              "price_type": "list",
+              "compare_at_amount": null,
+              "compare_at_currency": null,
+              "compare_at_display_raw": null,
+              "tax_included": "unknown",
+              "confidence": "medium",
+              "market_switch_status": "ok",
+              "observed_currency": "USD",
+              "source_url": "https://nalacare.com/products/grapefruit-neroli-natural-deodorant",
+              "captured_at": "2026-05-23T00:37:24.877Z"
+            },
+            "availability": {
+              "status": "in_stock",
+              "source": "catalog_extract_v2",
+              "confidence": "medium",
+              "captured_at": "2026-05-23T00:37:24.877Z"
+            },
+            "shipping": {
+              "status": "unknown",
+              "reason": "verify_at_checkout"
+            },
+            "promotions": [],
+            "checkout_note": "Shipping and promotions are not verified for this external offer; verify at merchant checkout."
+          }
+        }
+      },
+      "serving_readiness": {
+        "servingEligible": false,
+        "contentQualityScore": 70,
+        "blockerCode": "content_evidence_hold",
+        "blockerDetail": "preflight_audit_failed_similar_gate",
+        "identityResolved": true,
+        "identityLiveReadResolved": true,
+        "identityBootstrapEligible": false,
+        "terminalHold": true,
+        "terminalHoldReason": "preflight_audit_failed_similar_gate",
+        "hasImage": true,
+        "hasPrice": true,
+        "descriptionLength": 550
+      }
+    },
+    {
+      "external_product_id": "ext_5975f96c1d90b02d02329960",
+      "product_key": "prod::external_seed::external_seed::ext_5975f96c1d90b02d02329960",
+      "product_group_id": "sig_176d0cbeaaff82a732c51ef4",
+      "title": "Unscented, Sensitive Skin Natural Deodorant",
+      "brand": "Nala Care",
+      "product_type": "Skincare Set",
+      "category": "Skincare Set",
+      "category_path": "beauty/skincare/sets",
+      "canonical_url": "https://nalacare.com/products/unscented-natural-deodorant",
+      "pivota_signature_id": "sig_176d0cbeaaff82a732c51ef4",
+      "sku_rows": 1,
+      "first_sku": {
+        "sku_key": "prod::external_seed::external_seed::ext_5975f96c1d90b02d02329960::sku_0bc664628c69a05d780f",
+        "product_key": "prod::external_seed::external_seed::ext_5975f96c1d90b02d02329960",
+        "merchant_id": "external_seed",
+        "platform": "external_seed",
+        "source_product_id": "ext_5975f96c1d90b02d02329960",
+        "source_variant_id": "ext_5975f96c1d90b02d02329960:41827203350628",
+        "source_domain": "nalacare.com",
+        "sku": "FFD00007",
+        "barcode": null,
+        "title": "Unscented, Sensitive Skin Natural Deodorant",
+        "currency": "USD",
+        "image_url": "https://nalacare.com/cdn/shop/files/Nala_Natural_Deodorant_Unscented_Transparent_Box.png?v=1752600176",
+        "visible_attributes": {},
+        "visible_option_labels": {},
+        "ingredient_ids": [],
+        "sku_payload": {
+          "source": "external_product_seeds_mirror_v1",
+          "external_product_id": "ext_5975f96c1d90b02d02329960",
+          "raw_variant_id": "41827203350628",
+          "source_variant_id": "ext_5975f96c1d90b02d02329960:41827203350628",
+          "variant_sku": "FFD00007",
+          "barcode": null,
+          "strong_identifier_kind": null,
+          "source_url": "https://nalacare.com/products/unscented-natural-deodorant",
+          "external_redirect_url": "https://nalacare.com/products/unscented-natural-deodorant",
+          "price": "26",
+          "price_amount": 26,
+          "currency": "USD",
+          "availability": "in_stock",
+          "image_url": "https://nalacare.com/cdn/shop/files/Nala_Natural_Deodorant_Unscented_Transparent_Box.png?v=1752600176",
+          "swatch_image_url": null,
+          "label_image_url": null,
+          "options": {},
+          "raw_variant": {
+            "sku": "FFD00007",
+            "url": "https://nalacare.com/products/unscented-natural-deodorant?variant=41827203350628&utm_source=pivota&utm_medium=affiliate",
+            "price": "26.00",
+            "stock": "In Stock",
+            "title": "Default",
+            "options": [],
+            "currency": "USD",
+            "deep_link": "https://nalacare.com/products/unscented-natural-deodorant?variant=41827203350628&utm_source=pivota&utm_medium=affiliate",
+            "image_url": "https://nalacare.com/cdn/shop/files/Nala_Natural_Deodorant_Unscented_Transparent_Box.png?v=1752600176",
+            "image_urls": [
+              "https://nalacare.com/cdn/shop/files/Nala_Natural_Deodorant_Unscented_Transparent_Box.png?v=1752600176",
+              "https://nalacare.com/cdn/shop/files/Nala_Natural_Deodorant_Tube.png?v=1752600229",
+              "https://nalacare.com/cdn/shop/files/AK5A1190.png?v=1778824029",
+              "https://nalacare.com/cdn/shop/files/Nala_Natural_Deodorant_Peppermint_Charcoal_Transparent_Box.png?v=1752599986",
+              "https://nalacare.com/cdn/shop/files/Nala_Natural_Deodorant_Palo_Santo_Sage_Transparent_Box.png?v=1752600229",
+              "https://nalacare.com/cdn/shop/files/Nala_Natural_Deodorant_Lavender_Vetiver_Transparent_Box.png?v=1752600139",
+              "https://nalacare.com/cdn/shop/files/Nala_Natural_Deodorant_Eucalyptus_Champa_Transparent_Box.png?v=1752600258",
+              "https://nalacare.com/cdn/shop/files/241205_Nala_7409_web.jpg?v=1735323818"
+            ],
+            "variant_id": "41827203350628",
+            "description": "All the moisture absorbing, odor reducing and protective properties of our base formula without any of the scent. Perfect for those who work in scent-free environments or prefer to keep their routine simple and bare.",
+            "product_url": "https://nalacare.com/products/unscented-natural-deodorant"
+          }
+        },
+        "readiness_tier": "referral_only"
+      },
+      "first_offer": {
+        "offer_id": "offer:external_seed:5ac9a674ed089a97d29e972ece90e6e4",
+        "sku_key": "prod::external_seed::external_seed::ext_5975f96c1d90b02d02329960::sku_0bc664628c69a05d780f",
+        "product_key": "prod::external_seed::external_seed::ext_5975f96c1d90b02d02329960",
+        "merchant_id": "external_seed",
+        "catalog_track": "external_referral",
+        "truth_tier": "observed",
+        "readiness_tier": "referral_only",
+        "offer_mode": "redirect",
+        "channel": "external_referral",
+        "availability": "in_stock",
+        "currency": "USD",
+        "list_price": 26,
+        "merchant_effective_price": 26,
+        "estimated_best_price": 26,
+        "price_confidence": 1,
+        "source_system": "external_product_seeds_mirror_v1",
+        "source_ref": "eps_70cc3400fbd348ddea653644",
+        "source_domain": "nalacare.com",
+        "offer_payload": {
+          "source": "external_product_seeds_mirror_v1",
+          "external_seed_id": "eps_70cc3400fbd348ddea653644",
+          "external_product_id": "ext_5975f96c1d90b02d02329960",
+          "domain": "nalacare.com",
+          "market": "US",
+          "product_title": "Unscented, Sensitive Skin Natural Deodorant",
+          "variant_title": "Unscented, Sensitive Skin Natural Deodorant",
+          "variant_sku": "FFD00007",
+          "raw_variant_id": "41827203350628",
+          "url": "https://nalacare.com/products/unscented-natural-deodorant",
+          "offer_url": "https://nalacare.com/products/unscented-natural-deodorant",
+          "canonical_url": "https://nalacare.com/products/unscented-natural-deodorant",
+          "destination_url": "https://nalacare.com/products/unscented-natural-deodorant",
+          "external_redirect_url": "https://nalacare.com/products/unscented-natural-deodorant",
+          "merchant_display_name": "Nala Care",
+          "price": "26",
+          "price_amount": 26,
+          "price_currency": "USD",
+          "availability": "in_stock",
+          "commerce_facts_v1": {
+            "contract_version": "commerce_facts.v1",
+            "market_id": "US",
+            "country": "US",
+            "currency_target": "USD",
+            "source_authority": "catalog_extract_v2",
+            "captured_at": "2026-05-23T00:38:50.857Z",
+            "evidence_url": "https://nalacare.com/products/unscented-natural-deodorant",
+            "sellable_region": {
+              "status": "unknown",
+              "countries": [],
+              "evidence_source": "catalog_extract_v2",
+              "confidence": "medium",
+              "checked_at": "2026-05-23T00:38:50.857Z",
+              "reason_codes": [
+                "market_currency_observed",
+                "shipping_destination_not_verified",
+                "external_checkout_not_queried"
+              ],
+              "evidence_url": "https://nalacare.com/products/unscented-natural-deodorant"
+            },
+            "regional_price": {
+              "amount": 26,
+              "currency": "USD",
+              "display_raw": "26.00",
+              "price_type": "list",
+              "compare_at_amount": null,
+              "compare_at_currency": null,
+              "compare_at_display_raw": null,
+              "tax_included": "unknown",
+              "confidence": "medium",
+              "market_switch_status": "ok",
+              "observed_currency": "USD",
+              "source_url": "https://nalacare.com/products/unscented-natural-deodorant",
+              "captured_at": "2026-05-23T00:38:50.857Z"
+            },
+            "availability": {
+              "status": "in_stock",
+              "source": "catalog_extract_v2",
+              "confidence": "medium",
+              "captured_at": "2026-05-23T00:38:50.857Z"
+            },
+            "shipping": {
+              "status": "unknown",
+              "source": "catalog_extract_v2",
+              "confidence": "unknown",
+              "reason_codes": [
+                "external_checkout_not_queried"
+              ],
+              "checked_at": "2026-05-23T00:38:50.857Z"
+            },
+            "promotions": [],
+            "returns": {
+              "status": "unknown",
+              "source": "catalog_extract_v2",
+              "confidence": "unknown",
+              "reason_codes": [
+                "external_returns_not_extracted"
+              ],
+              "checked_at": "2026-05-23T00:38:50.857Z"
+            }
+          },
+          "agent_safe_commerce_facts": {
+            "contract_version": "commerce_facts.v1",
+            "market_id": "US",
+            "price": {
+              "amount": 26,
+              "currency": "USD",
+              "display_raw": "26.00",
+              "price_type": "list",
+              "compare_at_amount": null,
+              "compare_at_currency": null,
+              "compare_at_display_raw": null,
+              "tax_included": "unknown",
+              "confidence": "medium",
+              "market_switch_status": "ok",
+              "observed_currency": "USD",
+              "source_url": "https://nalacare.com/products/unscented-natural-deodorant",
+              "captured_at": "2026-05-23T00:38:50.857Z"
+            },
+            "availability": {
+              "status": "in_stock",
+              "source": "catalog_extract_v2",
+              "confidence": "medium",
+              "captured_at": "2026-05-23T00:38:50.857Z"
+            },
+            "shipping": {
+              "status": "unknown",
+              "reason": "verify_at_checkout"
+            },
+            "promotions": [],
+            "checkout_note": "Shipping and promotions are not verified for this external offer; verify at merchant checkout."
+          }
+        }
+      },
+      "serving_readiness": {
+        "servingEligible": false,
+        "contentQualityScore": 70,
+        "blockerCode": "content_evidence_hold",
+        "blockerDetail": "preflight_audit_failed_similar_gate",
+        "identityResolved": true,
+        "identityLiveReadResolved": true,
+        "identityBootstrapEligible": false,
+        "terminalHold": true,
+        "terminalHoldReason": "preflight_audit_failed_similar_gate",
+        "hasImage": true,
+        "hasPrice": true,
+        "descriptionLength": 216
+      }
+    }
+  ]
+}
