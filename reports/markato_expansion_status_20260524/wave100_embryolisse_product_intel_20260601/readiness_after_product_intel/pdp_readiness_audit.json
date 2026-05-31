@@ -1,0 +1,1079 @@
+{
+  "generated_at": "2026-05-31T16:20:27.026Z",
+  "options": {
+    "market": "US",
+    "includeAttached": true,
+    "domain": null,
+    "externalProductIds": [
+      "ext_1204da285323c4c294847daf",
+      "ext_1b4a85868ba125bc6b7040e0",
+      "ext_1f01309541611d783b7fd63c",
+      "ext_3a04dcee79f96ee9570e93f3",
+      "ext_4df267da6c48f581bf6ff5f4",
+      "ext_76bfd11a0bea190f4c9d32c7",
+      "ext_a47933ea068521800615641f",
+      "ext_e13d80b8bf9b8dfe44042064"
+    ],
+    "limit": 20,
+    "sampleLimit": 20,
+    "checkpointDir": "/Users/pengchydan/dev/_worktrees/pivota-agent-markato-wave25-786-20260527/reports/markato_expansion_status_20260524/wave100_embryolisse_product_intel_20260601/readiness_after_product_intel/pdp_readiness_checkpoint",
+    "checkpointMode": "domain",
+    "resume": false,
+    "force": false,
+    "continueOnError": true,
+    "pageSize": 500,
+    "format": "json"
+  },
+  "warnings": [],
+  "summary": {
+    "scanned": 8,
+    "by_market": {
+      "US": 8
+    },
+    "by_domain": [
+      {
+        "key": "us.embryolisse.com",
+        "count": 8
+      }
+    ],
+    "by_product_family": [
+      {
+        "key": "single_formula",
+        "count": 5
+      },
+      {
+        "key": "unknown_product",
+        "count": 3
+      }
+    ],
+    "coverage": {
+      "missing_inci": 0,
+      "missing_active_raw": 1,
+      "missing_details": 0,
+      "missing_how_to": 0,
+      "missing_faq": 7
+    },
+    "pivota_insights": {
+      "direct": {
+        "displayable": 8,
+        "high_quality_ready": 8,
+        "missing_kb": 0,
+        "not_displayable": 0
+      },
+      "effective": {
+        "displayable": 8,
+        "high_quality_ready": 8,
+        "missing_kb": 0,
+        "not_displayable": 0,
+        "borrowed_from_sibling": 0
+      },
+      "effective_issues": [],
+      "effective_issue_domains": [],
+      "quality_state": [
+        {
+          "key": "reviewed",
+          "count": 8
+        }
+      ],
+      "evidence_profile": [
+        {
+          "key": "seller_plus_formula",
+          "count": 8
+        }
+      ],
+      "samples": {}
+    },
+    "active_ingredients": {
+      "regulatory_expected": 0,
+      "hero_expected": 5,
+      "any_active_items": 4,
+      "status": [
+        {
+          "key": "low_signal_active",
+          "count": 3
+        },
+        {
+          "key": "ready_hero",
+          "count": 3
+        },
+        {
+          "key": "missing_hero",
+          "count": 1
+        },
+        {
+          "key": "possibly_inci_guess",
+          "count": 1
+        }
+      ],
+      "issues": [
+        {
+          "key": "active_raw_too_long",
+          "count": 3
+        },
+        {
+          "key": "low_signal_active",
+          "count": 3
+        },
+        {
+          "key": "active_raw_may_be_full_inci",
+          "count": 2
+        },
+        {
+          "key": "missing_hero",
+          "count": 1
+        },
+        {
+          "key": "possibly_inci_guess",
+          "count": 1
+        }
+      ],
+      "issue_domains": [
+        {
+          "key": "us.embryolisse.com::active_raw_too_long",
+          "count": 3
+        },
+        {
+          "key": "us.embryolisse.com::low_signal_active",
+          "count": 3
+        },
+        {
+          "key": "us.embryolisse.com::active_raw_may_be_full_inci",
+          "count": 2
+        },
+        {
+          "key": "us.embryolisse.com::missing_hero",
+          "count": 1
+        },
+        {
+          "key": "us.embryolisse.com::possibly_inci_guess",
+          "count": 1
+        }
+      ],
+      "source_origin": [
+        {
+          "key": "active_block",
+          "count": 4
+        },
+        {
+          "key": "none",
+          "count": 4
+        }
+      ],
+      "samples": {
+        "low_signal_active": [
+          {
+            "external_product_id": "ext_76bfd11a0bea190f4c9d32c7",
+            "domain": "us.embryolisse.com",
+            "title": "Radiant Eye Stick - Cool Treatment For A Brighter Look",
+            "status": "low_signal_active",
+            "active_items": [],
+            "source_origin": "none"
+          },
+          {
+            "external_product_id": "ext_4df267da6c48f581bf6ff5f4",
+            "domain": "us.embryolisse.com",
+            "title": "Cicalisse Hands and Nails",
+            "status": "low_signal_active",
+            "active_items": [],
+            "source_origin": "none"
+          },
+          {
+            "external_product_id": "ext_3a04dcee79f96ee9570e93f3",
+            "domain": "us.embryolisse.com",
+            "title": "3-in-1 Secret Paste",
+            "status": "low_signal_active",
+            "active_items": [],
+            "source_origin": "none"
+          }
+        ],
+        "active_raw_too_long": [
+          {
+            "external_product_id": "ext_1b4a85868ba125bc6b7040e0",
+            "domain": "us.embryolisse.com",
+            "title": "Filaderme Emulsion - Face Lotion For Dry Skin",
+            "status": "ready_hero",
+            "active_items": [
+              "Squalane"
+            ],
+            "source_origin": "active_block"
+          },
+          {
+            "external_product_id": "ext_a47933ea068521800615641f",
+            "domain": "us.embryolisse.com",
+            "title": "Lait-Crème Fluid+ Eco-Refill",
+            "status": "possibly_inci_guess",
+            "active_items": [
+              "Aloe Vera gently repairs and revitalizes skin"
+            ],
+            "source_origin": "active_block"
+          },
+          {
+            "external_product_id": "ext_4df267da6c48f581bf6ff5f4",
+            "domain": "us.embryolisse.com",
+            "title": "Cicalisse Hands and Nails",
+            "status": "low_signal_active",
+            "active_items": [],
+            "source_origin": "none"
+          }
+        ],
+        "active_raw_may_be_full_inci": [
+          {
+            "external_product_id": "ext_1b4a85868ba125bc6b7040e0",
+            "domain": "us.embryolisse.com",
+            "title": "Filaderme Emulsion - Face Lotion For Dry Skin",
+            "status": "ready_hero",
+            "active_items": [
+              "Squalane"
+            ],
+            "source_origin": "active_block"
+          },
+          {
+            "external_product_id": "ext_a47933ea068521800615641f",
+            "domain": "us.embryolisse.com",
+            "title": "Lait-Crème Fluid+ Eco-Refill",
+            "status": "possibly_inci_guess",
+            "active_items": [
+              "Aloe Vera gently repairs and revitalizes skin"
+            ],
+            "source_origin": "active_block"
+          }
+        ],
+        "possibly_inci_guess": [
+          {
+            "external_product_id": "ext_a47933ea068521800615641f",
+            "domain": "us.embryolisse.com",
+            "title": "Lait-Crème Fluid+ Eco-Refill",
+            "status": "possibly_inci_guess",
+            "active_items": [
+              "Aloe Vera gently repairs and revitalizes skin"
+            ],
+            "source_origin": "active_block"
+          }
+        ],
+        "missing_hero": [
+          {
+            "external_product_id": "ext_1204da285323c4c294847daf",
+            "domain": "us.embryolisse.com",
+            "title": "Exfoliating Milk Powder",
+            "status": "missing_hero",
+            "active_items": [],
+            "source_origin": "none"
+          }
+        ]
+      }
+    },
+    "variants": {
+      "status": [
+        {
+          "key": "ready",
+          "count": 8
+        }
+      ],
+      "issues": [],
+      "issue_domains": [],
+      "samples": {}
+    }
+  },
+  "rows": [
+    {
+      "seed_id": "eps_fa098a0010d14c70ad143681",
+      "external_product_id": "ext_76bfd11a0bea190f4c9d32c7",
+      "market": "US",
+      "domain": "us.embryolisse.com",
+      "title": "Radiant Eye Stick - Cool Treatment For A Brighter Look",
+      "canonical_url": "https://us.embryolisse.com/products/radiant-eye-stick-cool-treatment-for-a-brighter-look",
+      "product_family": "single_formula",
+      "product_line_id": "pl_3153659a2fe2ea13aa847d48",
+      "identity_variant_axes": {
+        "size": "0 15 oz",
+        "volume": "15oz",
+        "multi_variant": false
+      },
+      "pivota_insights": {
+        "direct": {
+          "product_id": "ext_76bfd11a0bea190f4c9d32c7",
+          "kb_key": "product:ext_76bfd11a0bea190f4c9d32c7",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "seller_plus_formula",
+          "has_card_highlight": true
+        },
+        "effective": {
+          "product_id": "ext_76bfd11a0bea190f4c9d32c7",
+          "kb_key": "product:ext_76bfd11a0bea190f4c9d32c7",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "seller_plus_formula",
+          "has_card_highlight": true
+        },
+        "product_line_id": "pl_3153659a2fe2ea13aa847d48",
+        "borrowed_from_sibling": false
+      },
+      "active_ingredients": {
+        "status": "low_signal_active",
+        "issues": [
+          "low_signal_active"
+        ],
+        "regulatory_expected": false,
+        "hero_expected": false,
+        "active_items": [],
+        "source_origin": "none",
+        "source_quality_status": "blocked",
+        "coverage": {
+          "details_sections_count": 6,
+          "faq_count": 0,
+          "how_to_chars": 145,
+          "inci_chars": 724,
+          "active_ingredients_chars": 237,
+          "inci_applicability_status": "",
+          "ingredient_review_status": "",
+          "ingredient_remediation_action": "",
+          "bundle_component_refs_count": 0,
+          "effective_inci_chars": 724,
+          "inci_borrowed_from_product_id": ""
+        },
+        "invalid_fragments": [],
+        "suppressed_reason": "active_items_low_signal"
+      },
+      "variants": {
+        "status": "ready",
+        "issues": [],
+        "visible_variant_rows": 1,
+        "examples": {
+          "identity_option_visible": [],
+          "wrong_axis_for_category": [],
+          "makeup_shade_missing_visual": [],
+          "size_value_generic_axis": [],
+          "default_option_size_evidence_missing_axis": [],
+          "identity_default_title_axis": []
+        }
+      },
+      "coverage": {
+        "details_sections_count": 6,
+        "faq_count": 0,
+        "how_to_chars": 145,
+        "inci_chars": 724,
+        "active_ingredients_chars": 237,
+        "inci_applicability_status": "",
+        "ingredient_review_status": "",
+        "ingredient_remediation_action": "",
+        "bundle_component_refs_count": 0,
+        "effective_inci_chars": 724,
+        "inci_borrowed_from_product_id": ""
+      }
+    },
+    {
+      "seed_id": "eps_f0ac2af467c140b7a77b4f20",
+      "external_product_id": "ext_1b4a85868ba125bc6b7040e0",
+      "market": "US",
+      "domain": "us.embryolisse.com",
+      "title": "Filaderme Emulsion - Face Lotion For Dry Skin",
+      "canonical_url": "https://us.embryolisse.com/products/filaderme-emulsion-face-lotion-for-dry-skin",
+      "product_family": "single_formula",
+      "product_line_id": "pl_76937acbb8f2a39a0a13bfd8",
+      "identity_variant_axes": {
+        "size": "2 54 fl oz",
+        "volume": "54floz",
+        "multi_variant": false
+      },
+      "pivota_insights": {
+        "direct": {
+          "product_id": "ext_1b4a85868ba125bc6b7040e0",
+          "kb_key": "product:ext_1b4a85868ba125bc6b7040e0",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "seller_plus_formula",
+          "has_card_highlight": true
+        },
+        "effective": {
+          "product_id": "ext_1b4a85868ba125bc6b7040e0",
+          "kb_key": "product:ext_1b4a85868ba125bc6b7040e0",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "seller_plus_formula",
+          "has_card_highlight": true
+        },
+        "product_line_id": "pl_76937acbb8f2a39a0a13bfd8",
+        "borrowed_from_sibling": false
+      },
+      "active_ingredients": {
+        "status": "ready_hero",
+        "issues": [
+          "active_raw_too_long",
+          "active_raw_may_be_full_inci"
+        ],
+        "regulatory_expected": false,
+        "hero_expected": true,
+        "active_items": [
+          "Squalane"
+        ],
+        "source_origin": "active_block",
+        "source_quality_status": "captured",
+        "coverage": {
+          "details_sections_count": 6,
+          "faq_count": 0,
+          "how_to_chars": 590,
+          "inci_chars": 1130,
+          "active_ingredients_chars": 1106,
+          "inci_applicability_status": "",
+          "ingredient_review_status": "",
+          "ingredient_remediation_action": "",
+          "bundle_component_refs_count": 0,
+          "effective_inci_chars": 1130,
+          "inci_borrowed_from_product_id": ""
+        },
+        "invalid_fragments": [],
+        "suppressed_reason": "full_inci_low_purity"
+      },
+      "variants": {
+        "status": "ready",
+        "issues": [],
+        "visible_variant_rows": 1,
+        "examples": {
+          "identity_option_visible": [],
+          "wrong_axis_for_category": [],
+          "makeup_shade_missing_visual": [],
+          "size_value_generic_axis": [],
+          "default_option_size_evidence_missing_axis": [],
+          "identity_default_title_axis": []
+        }
+      },
+      "coverage": {
+        "details_sections_count": 6,
+        "faq_count": 0,
+        "how_to_chars": 590,
+        "inci_chars": 1130,
+        "active_ingredients_chars": 1106,
+        "inci_applicability_status": "",
+        "ingredient_review_status": "",
+        "ingredient_remediation_action": "",
+        "bundle_component_refs_count": 0,
+        "effective_inci_chars": 1130,
+        "inci_borrowed_from_product_id": ""
+      }
+    },
+    {
+      "seed_id": "eps_11143c3d3426457b8004451c",
+      "external_product_id": "ext_a47933ea068521800615641f",
+      "market": "US",
+      "domain": "us.embryolisse.com",
+      "title": "Lait-Crème Fluid+ Eco-Refill",
+      "canonical_url": "https://us.embryolisse.com/products/lait-creme-fluid-eco-refill",
+      "product_family": "unknown_product",
+      "product_line_id": "pl_07ba297cf461a631c2d9120b",
+      "identity_variant_axes": {
+        "size": "13 52 fl oz",
+        "volume": "52floz",
+        "multi_variant": false
+      },
+      "pivota_insights": {
+        "direct": {
+          "product_id": "ext_a47933ea068521800615641f",
+          "kb_key": "product:ext_a47933ea068521800615641f",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "seller_plus_formula",
+          "has_card_highlight": true
+        },
+        "effective": {
+          "product_id": "ext_a47933ea068521800615641f",
+          "kb_key": "product:ext_a47933ea068521800615641f",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "seller_plus_formula",
+          "has_card_highlight": true
+        },
+        "product_line_id": "pl_07ba297cf461a631c2d9120b",
+        "borrowed_from_sibling": false
+      },
+      "active_ingredients": {
+        "status": "possibly_inci_guess",
+        "issues": [
+          "possibly_inci_guess",
+          "active_raw_too_long",
+          "active_raw_may_be_full_inci"
+        ],
+        "regulatory_expected": false,
+        "hero_expected": true,
+        "active_items": [
+          "Aloe Vera gently repairs and revitalizes skin"
+        ],
+        "source_origin": "active_block",
+        "source_quality_status": "blocked",
+        "coverage": {
+          "details_sections_count": 8,
+          "faq_count": 0,
+          "how_to_chars": 1682,
+          "inci_chars": 1438,
+          "active_ingredients_chars": 1413,
+          "inci_applicability_status": "",
+          "ingredient_review_status": "",
+          "ingredient_remediation_action": "",
+          "bundle_component_refs_count": 0,
+          "effective_inci_chars": 1438,
+          "inci_borrowed_from_product_id": ""
+        },
+        "invalid_fragments": [],
+        "suppressed_reason": "full_inci_low_purity"
+      },
+      "variants": {
+        "status": "ready",
+        "issues": [],
+        "visible_variant_rows": 1,
+        "examples": {
+          "identity_option_visible": [],
+          "wrong_axis_for_category": [],
+          "makeup_shade_missing_visual": [],
+          "size_value_generic_axis": [],
+          "default_option_size_evidence_missing_axis": [],
+          "identity_default_title_axis": []
+        }
+      },
+      "coverage": {
+        "details_sections_count": 8,
+        "faq_count": 0,
+        "how_to_chars": 1682,
+        "inci_chars": 1438,
+        "active_ingredients_chars": 1413,
+        "inci_applicability_status": "",
+        "ingredient_review_status": "",
+        "ingredient_remediation_action": "",
+        "bundle_component_refs_count": 0,
+        "effective_inci_chars": 1438,
+        "inci_borrowed_from_product_id": ""
+      }
+    },
+    {
+      "seed_id": "eps_72cd884f81f84adfaf12a083",
+      "external_product_id": "ext_4df267da6c48f581bf6ff5f4",
+      "market": "US",
+      "domain": "us.embryolisse.com",
+      "title": "Cicalisse Hands and Nails",
+      "canonical_url": "https://us.embryolisse.com/products/cicalisse-hands-and-nails",
+      "product_family": "unknown_product",
+      "product_line_id": "pl_ee0ed9a191cdc3375505180f",
+      "identity_variant_axes": {
+        "size": "1 01 fl oz",
+        "volume": "1floz",
+        "multi_variant": false
+      },
+      "pivota_insights": {
+        "direct": {
+          "product_id": "ext_4df267da6c48f581bf6ff5f4",
+          "kb_key": "product:ext_4df267da6c48f581bf6ff5f4",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "seller_plus_formula",
+          "has_card_highlight": true
+        },
+        "effective": {
+          "product_id": "ext_4df267da6c48f581bf6ff5f4",
+          "kb_key": "product:ext_4df267da6c48f581bf6ff5f4",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "seller_plus_formula",
+          "has_card_highlight": true
+        },
+        "product_line_id": "pl_ee0ed9a191cdc3375505180f",
+        "borrowed_from_sibling": false
+      },
+      "active_ingredients": {
+        "status": "low_signal_active",
+        "issues": [
+          "low_signal_active",
+          "active_raw_too_long"
+        ],
+        "regulatory_expected": false,
+        "hero_expected": false,
+        "active_items": [],
+        "source_origin": "none",
+        "source_quality_status": "blocked",
+        "coverage": {
+          "details_sections_count": 6,
+          "faq_count": 0,
+          "how_to_chars": 1023,
+          "inci_chars": 1417,
+          "active_ingredients_chars": 951,
+          "inci_applicability_status": "",
+          "ingredient_review_status": "",
+          "ingredient_remediation_action": "",
+          "bundle_component_refs_count": 0,
+          "effective_inci_chars": 1417,
+          "inci_borrowed_from_product_id": ""
+        },
+        "invalid_fragments": [],
+        "suppressed_reason": "active_items_low_signal"
+      },
+      "variants": {
+        "status": "ready",
+        "issues": [],
+        "visible_variant_rows": 1,
+        "examples": {
+          "identity_option_visible": [],
+          "wrong_axis_for_category": [],
+          "makeup_shade_missing_visual": [],
+          "size_value_generic_axis": [],
+          "default_option_size_evidence_missing_axis": [],
+          "identity_default_title_axis": []
+        }
+      },
+      "coverage": {
+        "details_sections_count": 6,
+        "faq_count": 0,
+        "how_to_chars": 1023,
+        "inci_chars": 1417,
+        "active_ingredients_chars": 951,
+        "inci_applicability_status": "",
+        "ingredient_review_status": "",
+        "ingredient_remediation_action": "",
+        "bundle_component_refs_count": 0,
+        "effective_inci_chars": 1417,
+        "inci_borrowed_from_product_id": ""
+      }
+    },
+    {
+      "seed_id": "eps_92365b70135642d3b685ad41",
+      "external_product_id": "ext_1204da285323c4c294847daf",
+      "market": "US",
+      "domain": "us.embryolisse.com",
+      "title": "Exfoliating Milk Powder",
+      "canonical_url": "https://us.embryolisse.com/products/exfoliating-milk-powder",
+      "product_family": "single_formula",
+      "product_line_id": "pl_d6f08fc01c7a9ed23cea260f",
+      "identity_variant_axes": {
+        "size": "1 41 oz",
+        "volume": "41oz",
+        "multi_variant": false
+      },
+      "pivota_insights": {
+        "direct": {
+          "product_id": "ext_1204da285323c4c294847daf",
+          "kb_key": "product:ext_1204da285323c4c294847daf",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "seller_plus_formula",
+          "has_card_highlight": true
+        },
+        "effective": {
+          "product_id": "ext_1204da285323c4c294847daf",
+          "kb_key": "product:ext_1204da285323c4c294847daf",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "seller_plus_formula",
+          "has_card_highlight": true
+        },
+        "product_line_id": "pl_d6f08fc01c7a9ed23cea260f",
+        "borrowed_from_sibling": false
+      },
+      "active_ingredients": {
+        "status": "missing_hero",
+        "issues": [
+          "missing_hero"
+        ],
+        "regulatory_expected": false,
+        "hero_expected": true,
+        "active_items": [],
+        "source_origin": "none",
+        "source_quality_status": "blocked",
+        "coverage": {
+          "details_sections_count": 8,
+          "faq_count": 0,
+          "how_to_chars": 461,
+          "inci_chars": 859,
+          "active_ingredients_chars": 272,
+          "inci_applicability_status": "",
+          "ingredient_review_status": "",
+          "ingredient_remediation_action": "",
+          "bundle_component_refs_count": 0,
+          "effective_inci_chars": 859,
+          "inci_borrowed_from_product_id": ""
+        },
+        "invalid_fragments": [],
+        "suppressed_reason": "no_authoritative_source"
+      },
+      "variants": {
+        "status": "ready",
+        "issues": [],
+        "visible_variant_rows": 1,
+        "examples": {
+          "identity_option_visible": [],
+          "wrong_axis_for_category": [],
+          "makeup_shade_missing_visual": [],
+          "size_value_generic_axis": [],
+          "default_option_size_evidence_missing_axis": [],
+          "identity_default_title_axis": []
+        }
+      },
+      "coverage": {
+        "details_sections_count": 8,
+        "faq_count": 0,
+        "how_to_chars": 461,
+        "inci_chars": 859,
+        "active_ingredients_chars": 272,
+        "inci_applicability_status": "",
+        "ingredient_review_status": "",
+        "ingredient_remediation_action": "",
+        "bundle_component_refs_count": 0,
+        "effective_inci_chars": 859,
+        "inci_borrowed_from_product_id": ""
+      }
+    },
+    {
+      "seed_id": "eps_a9ded8e0d156463eb24fe685",
+      "external_product_id": "ext_e13d80b8bf9b8dfe44042064",
+      "market": "US",
+      "domain": "us.embryolisse.com",
+      "title": "SOS Corrective Cream",
+      "canonical_url": "https://us.embryolisse.com/products/sos-corrective-cream",
+      "product_family": "single_formula",
+      "product_line_id": "pl_55ccd47a045977c3330b1b90",
+      "identity_variant_axes": {
+        "size": "1 01 fl oz",
+        "volume": "1floz",
+        "multi_variant": false
+      },
+      "pivota_insights": {
+        "direct": {
+          "product_id": "ext_e13d80b8bf9b8dfe44042064",
+          "kb_key": "product:ext_e13d80b8bf9b8dfe44042064",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "seller_plus_formula",
+          "has_card_highlight": true
+        },
+        "effective": {
+          "product_id": "ext_e13d80b8bf9b8dfe44042064",
+          "kb_key": "product:ext_e13d80b8bf9b8dfe44042064",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "seller_plus_formula",
+          "has_card_highlight": true
+        },
+        "product_line_id": "pl_55ccd47a045977c3330b1b90",
+        "borrowed_from_sibling": false
+      },
+      "active_ingredients": {
+        "status": "ready_hero",
+        "issues": [],
+        "regulatory_expected": false,
+        "hero_expected": true,
+        "active_items": [
+          "Hyaluronic acid"
+        ],
+        "source_origin": "active_block",
+        "source_quality_status": "captured",
+        "coverage": {
+          "details_sections_count": 6,
+          "faq_count": 6,
+          "how_to_chars": 792,
+          "inci_chars": 1446,
+          "active_ingredients_chars": 0,
+          "inci_applicability_status": "",
+          "ingredient_review_status": "",
+          "ingredient_remediation_action": "",
+          "bundle_component_refs_count": 0,
+          "effective_inci_chars": 1446,
+          "inci_borrowed_from_product_id": ""
+        },
+        "invalid_fragments": [],
+        "suppressed_reason": "full_inci_low_purity"
+      },
+      "variants": {
+        "status": "ready",
+        "issues": [],
+        "visible_variant_rows": 1,
+        "examples": {
+          "identity_option_visible": [],
+          "wrong_axis_for_category": [],
+          "makeup_shade_missing_visual": [],
+          "size_value_generic_axis": [],
+          "default_option_size_evidence_missing_axis": [],
+          "identity_default_title_axis": []
+        }
+      },
+      "coverage": {
+        "details_sections_count": 6,
+        "faq_count": 6,
+        "how_to_chars": 792,
+        "inci_chars": 1446,
+        "active_ingredients_chars": 0,
+        "inci_applicability_status": "",
+        "ingredient_review_status": "",
+        "ingredient_remediation_action": "",
+        "bundle_component_refs_count": 0,
+        "effective_inci_chars": 1446,
+        "inci_borrowed_from_product_id": ""
+      }
+    },
+    {
+      "seed_id": "eps_cdb047d7dcae4e31887e903f",
+      "external_product_id": "ext_3a04dcee79f96ee9570e93f3",
+      "market": "US",
+      "domain": "us.embryolisse.com",
+      "title": "3-in-1 Secret Paste",
+      "canonical_url": "https://us.embryolisse.com/products/3-in-1-secret-paste",
+      "product_family": "unknown_product",
+      "product_line_id": "pl_9891517f725ddc584537b60d",
+      "identity_variant_axes": {
+        "size": "3 38 fl oz",
+        "volume": "38floz",
+        "multi_variant": false
+      },
+      "pivota_insights": {
+        "direct": {
+          "product_id": "ext_3a04dcee79f96ee9570e93f3",
+          "kb_key": "product:ext_3a04dcee79f96ee9570e93f3",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "seller_plus_formula",
+          "has_card_highlight": true
+        },
+        "effective": {
+          "product_id": "ext_3a04dcee79f96ee9570e93f3",
+          "kb_key": "product:ext_3a04dcee79f96ee9570e93f3",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "seller_plus_formula",
+          "has_card_highlight": true
+        },
+        "product_line_id": "pl_9891517f725ddc584537b60d",
+        "borrowed_from_sibling": false
+      },
+      "active_ingredients": {
+        "status": "low_signal_active",
+        "issues": [
+          "low_signal_active"
+        ],
+        "regulatory_expected": false,
+        "hero_expected": false,
+        "active_items": [],
+        "source_origin": "none",
+        "source_quality_status": "blocked",
+        "coverage": {
+          "details_sections_count": 6,
+          "faq_count": 0,
+          "how_to_chars": 392,
+          "inci_chars": 1080,
+          "active_ingredients_chars": 380,
+          "inci_applicability_status": "",
+          "ingredient_review_status": "",
+          "ingredient_remediation_action": "",
+          "bundle_component_refs_count": 0,
+          "effective_inci_chars": 1080,
+          "inci_borrowed_from_product_id": ""
+        },
+        "invalid_fragments": [],
+        "suppressed_reason": "active_items_low_signal"
+      },
+      "variants": {
+        "status": "ready",
+        "issues": [],
+        "visible_variant_rows": 1,
+        "examples": {
+          "identity_option_visible": [],
+          "wrong_axis_for_category": [],
+          "makeup_shade_missing_visual": [],
+          "size_value_generic_axis": [],
+          "default_option_size_evidence_missing_axis": [],
+          "identity_default_title_axis": []
+        }
+      },
+      "coverage": {
+        "details_sections_count": 6,
+        "faq_count": 0,
+        "how_to_chars": 392,
+        "inci_chars": 1080,
+        "active_ingredients_chars": 380,
+        "inci_applicability_status": "",
+        "ingredient_review_status": "",
+        "ingredient_remediation_action": "",
+        "bundle_component_refs_count": 0,
+        "effective_inci_chars": 1080,
+        "inci_borrowed_from_product_id": ""
+      }
+    },
+    {
+      "seed_id": "eps_e2f0c31b7c1a4d68973a95b0",
+      "external_product_id": "ext_1f01309541611d783b7fd63c",
+      "market": "US",
+      "domain": "us.embryolisse.com",
+      "title": "Cicalisse - Restorative & Protective skin Cream - Face, Body, Lip",
+      "canonical_url": "https://us.embryolisse.com/products/cicalisse-restorative-protective-skin-cream-face-body-lip",
+      "product_family": "single_formula",
+      "product_line_id": "pl_75b7cbcd1e264a2f0f48c824",
+      "identity_variant_axes": {
+        "size": "1 35 fl oz",
+        "volume": "35floz",
+        "multi_variant": false
+      },
+      "pivota_insights": {
+        "direct": {
+          "product_id": "ext_1f01309541611d783b7fd63c",
+          "kb_key": "product:ext_1f01309541611d783b7fd63c",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "seller_plus_formula",
+          "has_card_highlight": true
+        },
+        "effective": {
+          "product_id": "ext_1f01309541611d783b7fd63c",
+          "kb_key": "product:ext_1f01309541611d783b7fd63c",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "seller_plus_formula",
+          "has_card_highlight": true
+        },
+        "product_line_id": "pl_75b7cbcd1e264a2f0f48c824",
+        "borrowed_from_sibling": false
+      },
+      "active_ingredients": {
+        "status": "ready_hero",
+        "issues": [],
+        "regulatory_expected": false,
+        "hero_expected": true,
+        "active_items": [
+          "Hyaluronic acid"
+        ],
+        "source_origin": "active_block",
+        "source_quality_status": "captured",
+        "coverage": {
+          "details_sections_count": 6,
+          "faq_count": 0,
+          "how_to_chars": 639,
+          "inci_chars": 1516,
+          "active_ingredients_chars": 332,
+          "inci_applicability_status": "",
+          "ingredient_review_status": "",
+          "ingredient_remediation_action": "",
+          "bundle_component_refs_count": 0,
+          "effective_inci_chars": 1516,
+          "inci_borrowed_from_product_id": ""
+        },
+        "invalid_fragments": [],
+        "suppressed_reason": "full_inci_low_purity"
+      },
+      "variants": {
+        "status": "ready",
+        "issues": [],
+        "visible_variant_rows": 1,
+        "examples": {
+          "identity_option_visible": [],
+          "wrong_axis_for_category": [],
+          "makeup_shade_missing_visual": [],
+          "size_value_generic_axis": [],
+          "default_option_size_evidence_missing_axis": [],
+          "identity_default_title_axis": []
+        }
+      },
+      "coverage": {
+        "details_sections_count": 6,
+        "faq_count": 0,
+        "how_to_chars": 639,
+        "inci_chars": 1516,
+        "active_ingredients_chars": 332,
+        "inci_applicability_status": "",
+        "ingredient_review_status": "",
+        "ingredient_remediation_action": "",
+        "bundle_component_refs_count": 0,
+        "effective_inci_chars": 1516,
+        "inci_borrowed_from_product_id": ""
+      }
+    }
+  ]
+}

@@ -1,0 +1,489 @@
+{
+  "generated_at": "2026-05-31T16:19:17.359Z",
+  "market": "US",
+  "include_non_public": false,
+  "docs_built": 8,
+  "source_build_failures": [],
+  "docs": [
+    {
+      "doc_id": "sellable:sig_81295b8d35e2c00a8f71985b",
+      "sellable_item_group_id": "sig_81295b8d35e2c00a8f71985b",
+      "product_line_id": "pl_3153659a2fe2ea13aa847d48",
+      "review_family_id": "rf_3153659a2fe2ea13aa847d48",
+      "brand_name": "EMBRYOLISSE",
+      "category_paths": [
+        "Eye Treatment"
+      ],
+      "market": "US",
+      "availability_state": "available",
+      "publish_state": "public",
+      "title": "Radiant Eye Stick - Cool Treatment For A Brighter Look",
+      "subtitle": "This double action cool-effect stick combines beauty and skincare: it is a make-up artist’s trick to immediately refresh the eyes, and a moisturizing care to decongest and smooth the eye contour. A magical burst of radiance that relaxes, reduces dark circles and puffiness, and makes the eyes sparkle. Its small size fits the eye contour perfectly.\n\nBENEFITS:\n\nInstant relaxing feeling of freshness and well-being\n\nBlurred signs of fatigue\n\nReduced dark circles and puffiness",
+      "variant_axes": {
+        "size": "0 15 oz",
+        "volume": "15oz",
+        "multi_variant": false
+      },
+      "size": null,
+      "shade": null,
+      "pack": null,
+      "hero_media": {
+        "url": "https://cdn.shopify.com/s/files/1/0752/5643/0881/products/EB407000_01_5cdccc5e-5061-486b-9835-ab7e818dcbb8.jpg?v=1696974991",
+        "source_kind": "catalog",
+        "source_tier": "catalog"
+      },
+      "preview_media": [
+        "https://cdn.shopify.com/s/files/1/0752/5643/0881/products/EB407000_01_5cdccc5e-5061-486b-9835-ab7e818dcbb8.jpg?v=1696974991",
+        "https://cdn.shopify.com/s/files/1/0752/5643/0881/files/radiant-eye-stick-effects.jpg?v=1772126284",
+        "https://cdn.shopify.com/s/files/1/0752/5643/0881/files/res-1.jpg?v=1772126284",
+        "https://cdn.shopify.com/s/files/1/0752/5643/0881/files/radiant-eye-stick-ingredients.jpg?v=1772147106",
+        "https://cdn.shopify.com/s/files/1/0752/5643/0881/files/radiant-eye-stick-results.jpg?v=1772146425",
+        "https://cdn.shopify.com/s/files/1/0752/5643/0881/products/EB407000_03_44a966dc-eab0-40fc-81e3-8ada1e3d95a6.jpg?v=1772126284",
+        "https://cdn.shopify.com/s/files/1/0752/5643/0881/files/res-2.jpg?v=1772126284",
+        "https://cdn.shopify.com/s/files/1/0752/5643/0881/files/radiant-eye-stick_3a817cc4-e172-487b-a7fe-bd77ba7b4360.jpg?v=1772146085"
+      ],
+      "price_min": 28,
+      "price_max": 28,
+      "default_offer_id": "external_seed:ext_76bfd11a0bea190f4c9d32c7",
+      "internal_offer_exists": false,
+      "external_offer_exists": true,
+      "pivota_insight_status": "missing",
+      "pivota_insight_summary": null,
+      "quality_score": null,
+      "browse_score": null,
+      "facet_tokens": [
+        "EMBRYOLISSE",
+        "Eye Treatment"
+      ],
+      "sort_keys": {
+        "price_min": 28,
+        "price_max": 28,
+        "updated_at": null
+      },
+      "updated_at": null,
+      "source_refs": [
+        "external_seed:ext_76bfd11a0bea190f4c9d32c7"
+      ]
+    },
+    {
+      "doc_id": "sellable:sig_10a1338ec85b83df2ea137d3",
+      "sellable_item_group_id": "sig_10a1338ec85b83df2ea137d3",
+      "product_line_id": "pl_76937acbb8f2a39a0a13bfd8",
+      "review_family_id": "rf_76937acbb8f2a39a0a13bfd8",
+      "brand_name": "EMBRYOLISSE",
+      "category_paths": [
+        "Moisturizer"
+      ],
+      "market": "US",
+      "availability_state": "available",
+      "publish_state": "public",
+      "title": "Filaderme Emulsion - Face Lotion For Dry Skin",
+      "subtitle": "This cream transforms dry, sensitive skin. Its lipid-replenishing formula rich in essential nutrients restores the protective lipidic film of the skin and strengthens the skin barrier. Signs of dryness disappear. The skin is soothed and comfortable, it is soft and supple once again. Creamy and comforting texture with a delicate almond fragrance.\n\nBENEFITS: \n\nFiladerme Emulsion is a nourishing face lotion specifically formulated for dry to very dry skin lacking comfort and lipids. Inspired by the skin’s natural composition, it helps restore the protective barrier while providing lasting nourishment and comfort.\n\nReplenishes essential lipids, helping restore the skin barrier and improve skin comfort\n\nNourishes intensely, reducing feelings of dryness, tightness, and discomfort\n\nHelps protect skin from dehydration, supporting long-lasting hydration\n\nImproves skin softness and suppleness, leaving skin smoother and more comfortable\n\nSuitable for sensitive skin, thanks to a gentle, dermatologically tested formula\n\nComfortable daily texture, creamy yet easy to apply, without heaviness\n\nWith regular use, skin feels nourished, protected, and visibly more comfortable, making Filaderme Emulsion an essential daily skincare lotion for dry skin.",
+      "variant_axes": {
+        "size": "2 54 fl oz",
+        "volume": "54floz",
+        "multi_variant": false
+      },
+      "size": null,
+      "shade": null,
+      "pack": null,
+      "hero_media": {
+        "url": "https://cdn.shopify.com/s/files/1/0752/5643/0881/products/EB305000_filaderme.jpg?v=1769971712",
+        "source_kind": "catalog",
+        "source_tier": "catalog"
+      },
+      "preview_media": [
+        "https://cdn.shopify.com/s/files/1/0752/5643/0881/products/EB305000_filaderme.jpg?v=1769971712",
+        "https://cdn.shopify.com/s/files/1/0752/5643/0881/files/filaderme-emulsion-Embryolisse_b84b470f-5914-4158-baee-25a3b58bf68c.jpg?v=1769977683",
+        "https://cdn.shopify.com/s/files/1/0752/5643/0881/files/EB302000-Filaderme-Emulsion.jpg?v=1769972509",
+        "https://cdn.shopify.com/s/files/1/0752/5643/0881/files/filaderme-emulsion-ingredients-Embryolisse_16fa0a63-090c-4717-915e-0cf084095111.jpg?v=1769977546",
+        "https://cdn.shopify.com/s/files/1/0752/5643/0881/files/filaderme-emulsion-social-proofs-Embryolisse_3d34eb11-85bc-4118-bb50-47c69bd6ed9e.jpg?v=1769972312",
+        "https://us.embryolisse.com/cdn/shop/files/filaderme-emulsion-Embryolisse_b84b470f-5914-4158-baee-25a3b58bf68c.jpg?v=1769977683&width=1500",
+        "https://us.embryolisse.com/cdn/shop/products/EB305000_filaderme.jpg?v=1769971712&width=1920",
+        "http://us.embryolisse.com/cdn/shop/products/EB305000_filaderme.jpg?v=1769971712&width=2048"
+      ],
+      "price_min": 32,
+      "price_max": 32,
+      "default_offer_id": "external_seed:ext_1b4a85868ba125bc6b7040e0",
+      "internal_offer_exists": false,
+      "external_offer_exists": true,
+      "pivota_insight_status": "missing",
+      "pivota_insight_summary": null,
+      "quality_score": null,
+      "browse_score": null,
+      "facet_tokens": [
+        "EMBRYOLISSE",
+        "Moisturizer"
+      ],
+      "sort_keys": {
+        "price_min": 32,
+        "price_max": 32,
+        "updated_at": null
+      },
+      "updated_at": null,
+      "source_refs": [
+        "external_seed:ext_1b4a85868ba125bc6b7040e0"
+      ]
+    },
+    {
+      "doc_id": "sellable:sig_4c977239b9377c775b5aba4b",
+      "sellable_item_group_id": "sig_4c977239b9377c775b5aba4b",
+      "product_line_id": "pl_07ba297cf461a631c2d9120b",
+      "review_family_id": "rf_07ba297cf461a631c2d9120b",
+      "brand_name": "EMBRYOLISSE",
+      "category_paths": [
+        "Cleanser"
+      ],
+      "market": "US",
+      "availability_state": "available",
+      "publish_state": "public",
+      "title": "Lait-Crème Fluid+ Eco-Refill",
+      "subtitle": "Introducing Eco-Refill For Your Lait-Crème Fluid+\n\nA Sustainable Choice for Nourished Skin\n\nMake a conscious choice for the environment and your skin with our eco-refill option for Lait-Crème Fluid+, the versatile moisturizer that delivers exceptional benefits. By choosing the eco-refill, you're reducing waste and continuing to enjoy the same nourishing and protective care for your skin.\n\nThe Lait-Crème Fluid+ is the lightweight, all-in-one solution inspired by our cult-favorite Lait-Crème Concentré. This innovative formula offers the same deep hydration and nourishment but with a lighter texture that's perfect for the whole family.\n\nTriple-Action Formula for Radiant Skin\n\nLait-Crème Fluid+ is formulated with 98% ingredients of natural origin, including Aloe Vera Bio, Beeswax, and Shea Butter. This unique combination works in synergy to:\n\n1. Hydrates and Nourishes: Like Lait-Crème Concentré, it nourishes and hydrates the skin for long-lasting comfort.\n\n2. Enrich and Protect: It replenishes essential nutrients to keep skin healthy and supple, creating a protective barrier against environmental aggressors.\n\n3. Lightweight and Versatile: The unique texture absorbs quickly without feeling greasy, making it ideal for all skin types.\n\nLait-Crème Fluid+ goes beyond just moisturizing; it's a versatile skincare essential that adapts to your needs:\n\nFace and Body Moisturizer: This moisturizer delivers instant and long-lasting hydration for a radiant complexion and hydrates without leaving a greasy residue, leaving skin feeling soft and smooth.\n\nMakeup Base: Create a smooth, hydrated canvas for flawless makeup application.\n\nCleanser and Makeup Remover: Gently remove makeup and impurities without stripping your skin's natural moisture barrier.\n\nAfter-Sun Soother: Calm and cool sun-exposed skin with a soothing dose of hydration.\n\nAftershave Relief: Men can benefit too! Calm razor burn and reduce redness, leaving skin feeling refreshed.\n\nSuitable for All Skin Types\n\nLait-Crème Fluid+ is dermatologist-tested and suitable for all skin types, including sensitive skin. It's a gentle yet effective skincare solution for the whole family, safe for children as young as 3 years old.\n\nLightweight, Non-Greasy Texture\n\nThe lightweight, non-greasy texture of Lait-Crème Fluid+ absorbs quickly, leaving no sticky residue. It's ideal for those who prefer a multi-functional and effective daily moisturizer.\n\nYear-round hydration for All Climates\n\nWith its unique milky texture, Lait-Crème Fluid+ addresses the essential skincare needs of all individuals, regardless of skin type or climate. It's particularly well-suited for use in warm and humid environments.\n\nEmbrace Eco-Refills and Experience the Benefits of Lait-Crème Fluid+\n\nSwitch to eco-refills and continue enjoying the nourishing benefits of Lait-Crème Fluid+ while reducing your environmental impact. With its versatile formula and lightweight texture, this skincare essential is a must-have for your beauty routine.",
+      "variant_axes": {
+        "size": "13 52 fl oz",
+        "volume": "52floz",
+        "multi_variant": false
+      },
+      "size": null,
+      "shade": null,
+      "pack": null,
+      "hero_media": {
+        "url": "https://cdn.shopify.com/s/files/1/0752/5643/0881/files/3.png?v=1744403867",
+        "source_kind": "catalog",
+        "source_tier": "catalog"
+      },
+      "preview_media": [
+        "https://cdn.shopify.com/s/files/1/0752/5643/0881/files/3.png?v=1744403867",
+        "https://cdn.shopify.com/s/files/1/0752/5643/0881/files/lcf_-refill-website4.jpg?v=1744403867",
+        "https://cdn.shopify.com/s/files/1/0752/5643/0881/files/lcf_-refill-website3.jpg?v=1744403867",
+        "https://cdn.shopify.com/s/files/1/0752/5643/0881/files/Lait-Cr_me_Fluid_Eco-Refill.jpg?v=1744403867",
+        "https://cdn.shopify.com/s/files/1/0752/5643/0881/files/LCF_-ingredients.jpg?v=1772146646",
+        "https://cdn.shopify.com/s/files/1/0752/5643/0881/files/LCF_-benefits.jpg?v=1772143339",
+        "https://cdn.shopify.com/s/files/1/0752/5643/0881/files/LCF_-uses.jpg?v=1772143339",
+        "https://cdn.shopify.com/s/files/1/0752/5643/0881/files/LCF_e51133ed-e9a4-496e-81d5-b807ad87e189.jpg?v=1772143339"
+      ],
+      "price_min": 32,
+      "price_max": 32,
+      "default_offer_id": "external_seed:ext_a47933ea068521800615641f",
+      "internal_offer_exists": false,
+      "external_offer_exists": true,
+      "pivota_insight_status": "missing",
+      "pivota_insight_summary": null,
+      "quality_score": null,
+      "browse_score": null,
+      "facet_tokens": [
+        "EMBRYOLISSE",
+        "Cleanser"
+      ],
+      "sort_keys": {
+        "price_min": 32,
+        "price_max": 32,
+        "updated_at": null
+      },
+      "updated_at": null,
+      "source_refs": [
+        "external_seed:ext_a47933ea068521800615641f"
+      ]
+    },
+    {
+      "doc_id": "sellable:sig_1cb8de4b7d9203e9b41921fc",
+      "sellable_item_group_id": "sig_1cb8de4b7d9203e9b41921fc",
+      "product_line_id": "pl_ee0ed9a191cdc3375505180f",
+      "review_family_id": "rf_ee0ed9a191cdc3375505180f",
+      "brand_name": "EMBRYOLISSE",
+      "category_paths": [
+        "Moisturizer"
+      ],
+      "market": "US",
+      "availability_state": "available",
+      "publish_state": "public",
+      "title": "Cicalisse Hands and Nails",
+      "subtitle": "CICA Repairing and Nourishing Action\n\nCicalisse Hands and Nails delivers targeted repairing and nourishing skincare for hands and nails exposed to daily aggressions such as cold, wind, pollution, and frequent washing. Its short, effective formula helps restore comfort, protect the skin barrier, and improve the appearance of hands, nails, and cuticles.\n\nRepairs and protects very dry, damaged hands by helping restore the skin barrier and relieve discomfort caused by external aggressions such as wind, cold, pollution, detergents, and repeated hand washing\n\nNourishes intensely thanks to a formula highly concentrated in Shea Butter, known for its nourishing, repairing, and protective properties\n\nHelps strengthen nails and soften cuticles, improving their appearance and comfort with regular use\n\nImproves skin suppleness and softness, leaving hands smoother, more comfortable, and visibly healthier\n\nProvides clinically tested results, showing:\n\n+107% improvement in skin suppleness*\n\n+102% improvement in skin softness*\n\n+100% improvement in nail strength and cuticle hydration**\n\nSuitable for sensitive skin, tested under dermatological control\n\nConvenient pocket-size format, ideal for daily use and on-the-go application\n\nShort, natural and vegan formula, formulated with just 10 ingredients\n\n* Clinical test conducted on 100% sensitive skin, over 21 days on 34 individuals, under dermatological control.\n\n** Self-assessment conducted on 100% sensitive skin, over 21 days on 34 individuals, under dermatological control.",
+      "variant_axes": {
+        "size": "1 01 fl oz",
+        "volume": "1floz",
+        "multi_variant": false
+      },
+      "size": null,
+      "shade": null,
+      "pack": null,
+      "hero_media": {
+        "url": "https://cdn.shopify.com/s/files/1/0752/5643/0881/files/cicalisse-hands-nails.jpg?v=1769967377",
+        "source_kind": "catalog",
+        "source_tier": "catalog"
+      },
+      "preview_media": [
+        "https://cdn.shopify.com/s/files/1/0752/5643/0881/files/cicalisse-hands-nails.jpg?v=1769967377",
+        "https://cdn.shopify.com/s/files/1/0752/5643/0881/files/81lKTqUX-BL._SL1500.jpg?v=1769977683",
+        "https://cdn.shopify.com/s/files/1/0752/5643/0881/files/8183c7kJc0L._SL1500.jpg?v=1769977683",
+        "https://cdn.shopify.com/s/files/1/0752/5643/0881/files/cicalisse-product-page.jpg?v=1769968352",
+        "https://cdn.shopify.com/s/files/1/0752/5643/0881/files/817Z529qZEL._SL1500.jpg?v=1769968352",
+        "https://cdn.shopify.com/s/files/1/0752/5643/0881/files/811spRGZ6_L._SL1500.jpg?v=1769968084",
+        "https://us.embryolisse.com/cdn/shop/files/cicalisse-hands-nails.jpg?v=1769967377&width=1920",
+        "http://us.embryolisse.com/cdn/shop/files/cicalisse-hands-nails.jpg?v=1769967377&width=2048"
+      ],
+      "price_min": 13,
+      "price_max": 13,
+      "default_offer_id": "external_seed:ext_4df267da6c48f581bf6ff5f4",
+      "internal_offer_exists": false,
+      "external_offer_exists": true,
+      "pivota_insight_status": "missing",
+      "pivota_insight_summary": null,
+      "quality_score": null,
+      "browse_score": null,
+      "facet_tokens": [
+        "EMBRYOLISSE",
+        "Moisturizer"
+      ],
+      "sort_keys": {
+        "price_min": 13,
+        "price_max": 13,
+        "updated_at": null
+      },
+      "updated_at": null,
+      "source_refs": [
+        "external_seed:ext_4df267da6c48f581bf6ff5f4"
+      ]
+    },
+    {
+      "doc_id": "sellable:sig_28f63d705a313c6f2a30bd78",
+      "sellable_item_group_id": "sig_28f63d705a313c6f2a30bd78",
+      "product_line_id": "pl_d6f08fc01c7a9ed23cea260f",
+      "review_family_id": "rf_d6f08fc01c7a9ed23cea260f",
+      "brand_name": "EMBRYOLISSE",
+      "category_paths": [
+        "Powder"
+      ],
+      "market": "US",
+      "availability_state": "available",
+      "publish_state": "public",
+      "title": "Exfoliating Milk Powder",
+      "subtitle": "The best of the coconut in a water-free powder, in a gentle formula of natural origin and more responsible\n\nwith 3 coconut extracts. - For a baby skin look.\n\nWith Plant-based foaming agent: \n\nEnvelops the skin in a milky cloud slightly foaming but ultra-soft and effective for cleansing the skin.\n\nSulfate free - Preservative-free - Labelled allergen-free\n\nTested on 100% sensitive skin",
+      "variant_axes": {
+        "size": "1 41 oz",
+        "volume": "41oz",
+        "multi_variant": false
+      },
+      "size": null,
+      "shade": null,
+      "pack": null,
+      "hero_media": {
+        "url": "https://cdn.shopify.com/s/files/1/0752/5643/0881/files/coconut-exfoliating-milk-powder-embryolisse-best-2024_aa612d29-0814-4526-a606-fbe9b9db6b1d.jpg?v=1739999054",
+        "source_kind": "catalog",
+        "source_tier": "catalog"
+      },
+      "preview_media": [
+        "https://cdn.shopify.com/s/files/1/0752/5643/0881/files/coconut-exfoliating-milk-powder-embryolisse-best-2024_aa612d29-0814-4526-a606-fbe9b9db6b1d.jpg?v=1739999054",
+        "https://cdn.shopify.com/s/files/1/0752/5643/0881/files/EB506000_02_ad83aec5-bfdb-429a-9885-2fdcf886ed98.jpg?v=1772143682",
+        "https://cdn.shopify.com/s/files/1/0752/5643/0881/files/exfoliating-milk-powder-results.jpg?v=1772145890",
+        "https://cdn.shopify.com/s/files/1/0752/5643/0881/files/EB506000_03_f8acb2f6-7804-4e71-b11e-1bdb1e795a19.jpg?v=1772125775",
+        "https://cdn.shopify.com/s/files/1/0752/5643/0881/files/EB506000_04_252f2041-03d3-4f89-8a76-e7c95aee2b3e.jpg?v=1772125775",
+        "https://cdn.shopify.com/s/files/1/0752/5643/0881/files/exfoliating-milk-powder-ingredients.jpg?v=1772147106",
+        "https://cdn.shopify.com/s/files/1/0752/5643/0881/files/exfoliating-milk-powder-effectiveness.jpg?v=1772125775",
+        "https://cdn.shopify.com/s/files/1/0752/5643/0881/files/exfoliating-milk-powder-scrub.jpg?v=1772145890"
+      ],
+      "price_min": 33,
+      "price_max": 33,
+      "default_offer_id": "external_seed:ext_1204da285323c4c294847daf",
+      "internal_offer_exists": false,
+      "external_offer_exists": true,
+      "pivota_insight_status": "missing",
+      "pivota_insight_summary": null,
+      "quality_score": null,
+      "browse_score": null,
+      "facet_tokens": [
+        "EMBRYOLISSE",
+        "Powder"
+      ],
+      "sort_keys": {
+        "price_min": 33,
+        "price_max": 33,
+        "updated_at": null
+      },
+      "updated_at": null,
+      "source_refs": [
+        "external_seed:ext_1204da285323c4c294847daf"
+      ]
+    },
+    {
+      "doc_id": "sellable:sig_e0228236860d696315de1151",
+      "sellable_item_group_id": "sig_e0228236860d696315de1151",
+      "product_line_id": "pl_55ccd47a045977c3330b1b90",
+      "review_family_id": "rf_55ccd47a045977c3330b1b90",
+      "brand_name": "EMBRYOLISSE",
+      "category_paths": [
+        "Moisturizer"
+      ],
+      "market": "US",
+      "availability_state": "out_of_stock",
+      "publish_state": "public",
+      "title": "SOS Corrective Cream",
+      "subtitle": "Multi-Tasking Soothing Anti-Redness Corrector\nDay Cream - Localized Redness Corrector - Makeup Base and Eye Contour\n\n95% ingredients of natural origin\n\nVegan, light texture formula with green neutralizing pigments\nClean silicone-free formula\n100/100 Yuka\nFor all skin types, even sensitive skin (Tested on 100% sensitive skin)\n\nRecyclable aluminum tube and packaging\nFragrance-free\n\nMade in France\n\nSOS Corrective Cream is a green color-correcting skincare cream designed to neutralize the appearance of redness while soothing sensitive, reactive skin.It combines green pigments with hydrating and calming ingredients to help even the look of the complexion and prepare skin for makeup.",
+      "variant_axes": {
+        "size": "1 01 fl oz",
+        "volume": "1floz",
+        "multi_variant": false
+      },
+      "size": null,
+      "shade": null,
+      "pack": null,
+      "hero_media": {
+        "url": "https://cdn.shopify.com/s/files/1/0752/5643/0881/files/13_dbee557b-fb15-47ee-b64e-853226737783.jpg?v=1769542526",
+        "source_kind": "catalog",
+        "source_tier": "catalog"
+      },
+      "preview_media": [
+        "https://cdn.shopify.com/s/files/1/0752/5643/0881/files/13_dbee557b-fb15-47ee-b64e-853226737783.jpg?v=1769542526",
+        "https://cdn.shopify.com/s/files/1/0752/5643/0881/files/lotus-sos-corrective-care.jpg?v=1769542526",
+        "https://cdn.shopify.com/s/files/1/0752/5643/0881/files/10_50197f20-6468-4afb-9855-acca163fd32c.jpg?v=1769542526",
+        "https://cdn.shopify.com/s/files/1/0752/5643/0881/files/11_29f47e1f-d015-407c-bf5d-14e30e9e8ae8.jpg?v=1769542526",
+        "https://cdn.shopify.com/s/files/1/0752/5643/0881/files/6_a258e4e0-0e9f-44ef-acd0-29b56829e6d8.jpg?v=1769542526",
+        "https://cdn.shopify.com/s/files/1/0752/5643/0881/files/7_29795bdc-2cda-4d49-9d9d-58034c1dc5ab.jpg?v=1769542526",
+        "https://cdn.shopify.com/s/files/1/0752/5643/0881/files/SOS-corrective-care-before-after_jpg.jpg?v=1769542526",
+        "https://cdn.shopify.com/s/files/1/0752/5643/0881/files/8_e96a17be-599e-4c93-8e43-385af90b3a63.jpg?v=1769542526"
+      ],
+      "price_min": 35,
+      "price_max": 35,
+      "default_offer_id": "external_seed:ext_e13d80b8bf9b8dfe44042064",
+      "internal_offer_exists": false,
+      "external_offer_exists": true,
+      "pivota_insight_status": "missing",
+      "pivota_insight_summary": null,
+      "quality_score": null,
+      "browse_score": null,
+      "facet_tokens": [
+        "EMBRYOLISSE",
+        "Moisturizer"
+      ],
+      "sort_keys": {
+        "price_min": 35,
+        "price_max": 35,
+        "updated_at": null
+      },
+      "updated_at": null,
+      "source_refs": [
+        "external_seed:ext_e13d80b8bf9b8dfe44042064"
+      ]
+    },
+    {
+      "doc_id": "sellable:sig_fa7cf3ac46e38475d79a27bf",
+      "sellable_item_group_id": "sig_fa7cf3ac46e38475d79a27bf",
+      "product_line_id": "pl_9891517f725ddc584537b60d",
+      "review_family_id": "rf_9891517f725ddc584537b60d",
+      "brand_name": "EMBRYOLISSE",
+      "category_paths": [
+        "Cleanser"
+      ],
+      "market": "US",
+      "availability_state": "available",
+      "publish_state": "public",
+      "title": "3-in-1 Secret Paste",
+      "subtitle": "1 Secret Paste, 3 possibilities:\n\n1. S.O.S. ANTI-BLEMISH CARE\n\nDo you have a new pimple? Applied directly to blemishes in the evening, 3 in 1 Secret Paste works overnight to dry out pimples and reduce redness.\n\n2. ANTI-SHINE MASK\n\nWhen applied in a thick layer once or twice a week for 10 minutes, 3-in-1 Secret Paste works as an absorbent, purifying mask that directly targets sebum production. Rinsed off with water, detoxified skin immediately looks fresher and healthier, and imperfections are visibly diminished.\n\n3. DAILY PURIFYING CLEANSER\n\nOnce a day, massage the 3 in 1 Secret Paste over damp skin, like a classic cleanser and enjoy the extra purifying\n\nand deep cleansing benefits. It leaves skin perfectly clean and ready for the subsequently applied active ingredients.",
+      "variant_axes": {
+        "size": "3 38 fl oz",
+        "volume": "38floz",
+        "multi_variant": false
+      },
+      "size": null,
+      "shade": null,
+      "pack": null,
+      "hero_media": {
+        "url": "https://cdn.shopify.com/s/files/1/0752/5643/0881/files/3in1-secret-paste-embryolisse.jpg?v=1736159390",
+        "source_kind": "catalog",
+        "source_tier": "catalog"
+      },
+      "preview_media": [
+        "https://cdn.shopify.com/s/files/1/0752/5643/0881/files/3in1-secret-paste-embryolisse.jpg?v=1736159390",
+        "https://cdn.shopify.com/s/files/1/0752/5643/0881/files/secret-paste-ingredients-embryolisse.jpg?v=1736159390",
+        "https://cdn.shopify.com/s/files/1/0752/5643/0881/files/3in1-secret-paste-product-page-embryolisse.jpg?v=1736159390",
+        "https://cdn.shopify.com/s/files/1/0752/5643/0881/files/secret-paste-texture-embryolisse.jpg?v=1736159390",
+        "https://cdn.shopify.com/s/files/1/0752/5643/0881/files/secret-paste-turmeric-embryolisse.jpg?v=1736159390",
+        "https://cdn.shopify.com/s/files/1/0752/5643/0881/files/anti-blemish-turmeric-routine-embryolisse.jpg?v=1760123821",
+        "https://us.embryolisse.com/cdn/shop/files/3in1-secret-paste-embryolisse.jpg?v=1736159390&width=1920",
+        "http://us.embryolisse.com/cdn/shop/files/3in1-secret-paste-embryolisse.jpg?v=1736159390&width=2048"
+      ],
+      "price_min": 33,
+      "price_max": 33,
+      "default_offer_id": "external_seed:ext_3a04dcee79f96ee9570e93f3",
+      "internal_offer_exists": false,
+      "external_offer_exists": true,
+      "pivota_insight_status": "missing",
+      "pivota_insight_summary": null,
+      "quality_score": null,
+      "browse_score": null,
+      "facet_tokens": [
+        "EMBRYOLISSE",
+        "Cleanser"
+      ],
+      "sort_keys": {
+        "price_min": 33,
+        "price_max": 33,
+        "updated_at": null
+      },
+      "updated_at": null,
+      "source_refs": [
+        "external_seed:ext_3a04dcee79f96ee9570e93f3"
+      ]
+    },
+    {
+      "doc_id": "sellable:sig_842364207e0b93a422e2016d",
+      "sellable_item_group_id": "sig_842364207e0b93a422e2016d",
+      "product_line_id": "pl_75b7cbcd1e264a2f0f48c824",
+      "review_family_id": "rf_75b7cbcd1e264a2f0f48c824",
+      "brand_name": "EMBRYOLISSE",
+      "category_paths": [
+        "Moisturizer"
+      ],
+      "market": "US",
+      "availability_state": "available",
+      "publish_state": "public",
+      "title": "Cicalisse - Restorative & Protective skin Cream - Face, Body, Lip",
+      "subtitle": "A source of comfort for adults and children* alike, Cicalisse Cream calms and restores the skin’s barrier function while moisturizing the damaged and weakened epidermis.\n\nBENEFITS:\n\nCicalisse Restorative & Protective Skin Cream provides intensive skincare for fragile, irritated, or very dry skin on the face, body, and lips. Its multi-purpose formula helps restore comfort, protect the skin barrier, and support skin repair in areas prone to dryness or discomfort.\n\n→ Helps repair and protect weakened skin, supporting the skin barrier and reducing feelings of irritation and tightness\n\n→ Soothes dry, uncomfortable areas, making it suitable for skin exposed to cold, wind, friction, or frequent cleansing\n\n→ Nourishes intensely, helping restore softness and suppleness to very dry skin\n\n→ Provides protective care for face, body, and lips, making it an essential multi-use skincare cream\n\n→Suitable for sensitive skin, dermatologically tested under professional supervision\n\n→ Comfortable daily texture, rich yet easy to apply, without leaving a greasy or sticky residue\n\nWith regular use, skin feels calmer, more comfortable, and better protected against recurring dryness and irritation.\n\n*from 3 years old",
+      "variant_axes": {
+        "size": "1 35 fl oz",
+        "volume": "35floz",
+        "multi_variant": false
+      },
+      "size": null,
+      "shade": null,
+      "pack": null,
+      "hero_media": {
+        "url": "https://cdn.shopify.com/s/files/1/0752/5643/0881/products/EB303000_Cicalisse.jpg?v=1769971136",
+        "source_kind": "catalog",
+        "source_tier": "catalog"
+      },
+      "preview_media": [
+        "https://cdn.shopify.com/s/files/1/0752/5643/0881/products/EB303000_Cicalisse.jpg?v=1769971136",
+        "https://cdn.shopify.com/s/files/1/0752/5643/0881/files/Cicalisse-benefits-embryolisse.jpg?v=1769977626",
+        "https://cdn.shopify.com/s/files/1/0752/5643/0881/files/Cicalisse-cream-texture-Embryolisse.jpg?v=1769972575",
+        "https://cdn.shopify.com/s/files/1/0752/5643/0881/files/Cicalisse-ingredients-embryolisse.jpg?v=1769977626",
+        "https://us.embryolisse.com/cdn/shop/products/EB303000_Cicalisse.jpg?v=1769971136&width=1920",
+        "http://us.embryolisse.com/cdn/shop/products/EB303000_Cicalisse.jpg?v=1769971136&width=2048",
+        "https://us.embryolisse.com/cdn/shop/products/EB303000_Cicalisse.jpg?crop=center&height=1200&v=1769971136&width=1200",
+        "https://us.embryolisse.com/cdn/shop/files/Cicalisse-benefits-embryolisse.jpg?v=1769977626&width=1500"
+      ],
+      "price_min": 17,
+      "price_max": 17,
+      "default_offer_id": "external_seed:ext_1f01309541611d783b7fd63c",
+      "internal_offer_exists": false,
+      "external_offer_exists": true,
+      "pivota_insight_status": "missing",
+      "pivota_insight_summary": null,
+      "quality_score": null,
+      "browse_score": null,
+      "facet_tokens": [
+        "EMBRYOLISSE",
+        "Moisturizer"
+      ],
+      "sort_keys": {
+        "price_min": 17,
+        "price_max": 17,
+        "updated_at": null
+      },
+      "updated_at": null,
+      "source_refs": [
+        "external_seed:ext_1f01309541611d783b7fd63c"
+      ]
+    }
+  ]
+}
