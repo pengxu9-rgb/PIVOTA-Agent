@@ -1,0 +1,788 @@
+{
+  "meta": {
+    "generated_at": "2026-05-31T16:06:32.583Z",
+    "source": "reviewed_official_seed_product_intel_report",
+    "batch_name": "wave99_firstaidbeauty_official_product_intel_review_20260601",
+    "inventory": "reports/markato_expansion_status_20260524/wave99_firstaidbeauty_product_intel_20260601/readiness_before/commerce_index_kb_readiness_inventory.json",
+    "selected_cases": 3,
+    "reviewer": "codex_human_quality_reviewer",
+    "reviewer_kind": "assistant",
+    "candidate_quality_summary": {
+      "public_ready": 3,
+      "high_quality_ready": 3,
+      "evidence_profile": {
+        "seller_plus_formula": 3
+      }
+    }
+  },
+  "rows": [
+    {
+      "case_id": "live_ext_62685854dfc71d2634e828e6",
+      "review_status": "completed",
+      "review_decision": "rewrite",
+      "reviewer": "codex_human_quality_reviewer",
+      "reviewer_kind": "assistant",
+      "reviewed_at": "2026-05-31T16:06:32.583Z",
+      "notes": "Approved official-PDP-seed rewrite for Ultra Repair Firming Day Cream with Peptides, Niacinamide + Collagen; evidence_profile=seller_plus_formula; source_url=https://www.firstaidbeauty.com/products/firming-cream-with-peptides-niacinamide-and-collagen",
+      "owner_delegated_review": {
+        "contract_version": "pivota.owner_delegated_review.v1",
+        "delegated_to": "codex_human_quality_reviewer",
+        "reviewer_kind": "assistant",
+        "owner_instruction": "User delegated Codex to perform high-quality human review for Pivota Insights quality improvement.",
+        "guardrails": [
+          "Do not overwrite good content with lower-quality content.",
+          "No commerce-state claims in Pivota Insights.",
+          "Use official source facts only; keep evidence confidence explicit."
+        ]
+      },
+      "quality_improvement_review": {
+        "decision": "approved_replacement",
+        "reviewer_kind": "assistant",
+        "owner_delegated": true,
+        "reason": "Owner-delegated assistant review confirms the replacement uses official PDP seed facts, avoids commerce and unsupported evidence claims, and explicitly marks evidence gaps instead of inventing claims."
+      },
+      "baseline": {
+        "canonical_product_ref": {
+          "merchant_id": "external_seed",
+          "product_id": "ext_62685854dfc71d2634e828e6",
+          "platform": "external_seed"
+        }
+      },
+      "selected": {
+        "selected_mode": "manual_reviewed_rewrite",
+        "selected_field_count": 7,
+        "field_sources": {
+          "what_it_is": "official_seed_description",
+          "best_for": "reviewed_category_and_official_title",
+          "why_it_stands_out": "official_seed_description_and_formula",
+          "routine_fit": "reviewed_category_and_official_title",
+          "watchouts": "owner_delegated_assistant_review",
+          "texture_finish": "reviewed_category_and_official_title",
+          "source_coverage": "official_pdp_seed_snapshot",
+          "community_signals": "not_collected"
+        },
+        "bundle": {
+          "contract_version": "pivota.product_intel.v1",
+          "display_name": "Pivota Insights",
+          "canonical_product_ref": {
+            "merchant_id": "external_seed",
+            "product_id": "ext_62685854dfc71d2634e828e6",
+            "platform": "external_seed"
+          },
+          "product_group_id": "sig_7a314bf1e42826e61bc742cc",
+          "product_intel_core": {
+            "display_name": "Pivota Insights",
+            "what_it_is": {
+              "headline": "Skincare product identity",
+              "body": "A First Aid Beauty skincare product listed on the brand source page as Ultra Repair Firming Day Cream with Peptides, Niacinamide + Collagen. The source description identifies: Ultra Repair Firming Day Cream is a rich, luxe daily cream infused with hardworking ingredients to help skin look bouncy and youthful."
+            },
+            "best_for": [
+              {
+                "tag": "skincare_shoppers",
+                "label": "Skincare product shoppers",
+                "confidence": "moderate"
+              },
+              {
+                "tag": "official_source_comparison",
+                "label": "Official-source comparison",
+                "confidence": "moderate"
+              }
+            ],
+            "why_it_stands_out": [
+              {
+                "headline": "Source-backed product detail",
+                "body": "Ultra Repair Firming Day Cream is a rich, luxe daily cream infused with hardworking ingredients to help skin look bouncy and youthful.",
+                "evidence_strength": "seller_plus_formula"
+              },
+              {
+                "headline": "Formula context captured",
+                "body": "Captured formula fields include Ingredient HighlightsPeptides: Helps smooth skin and minimize the appearance of fine lines and wrinkles.Niacinamide: Helps skin appear more bouncy and restore healthy tone and texture.Full IngredientsAqua/Water/ Eau, Glycerin, Niacinamide, C12-15 Alkyl Benzoate, Caprylic/Capric Triglyceride. Agents should keep composition claims within those source fields.",
+                "evidence_strength": "seller_plus_formula"
+              }
+            ],
+            "routine_fit": {
+              "step": "skin_care",
+              "am_pm": [
+                "as_needed"
+              ],
+              "pairing_notes": [
+                "Use within the skincare product context; avoid inferring benefits not present in the source fields."
+              ]
+            },
+            "watchouts": [
+              {
+                "type": "formula_scope",
+                "label": "Formula details are source-derived; avoid medical, safety, or suitability claims not present in the source.",
+                "severity": "medium"
+              },
+              {
+                "type": "evidence_gap",
+                "label": "No independent review or community evidence was approved for this row; keep public copy source-bound.",
+                "severity": "medium"
+              },
+              {
+                "type": "scope_guardrail",
+                "label": "Use the commerce mainline for offer facts; keep this insight focused on source-backed product identity.",
+                "severity": "medium"
+              }
+            ],
+            "confidence": {
+              "overall": "moderate",
+              "fields": {
+                "what_it_is": "high",
+                "best_for": "moderate",
+                "why_it_stands_out": "moderate",
+                "routine_fit": "moderate",
+                "watchouts": "moderate"
+              }
+            },
+            "freshness": {
+              "generated_at": "2026-05-31T16:06:32.583Z",
+              "source_version": "wave99_firstaidbeauty_official_product_intel_review_20260601"
+            },
+            "quality_state": "reviewed",
+            "evidence_profile": "seller_plus_formula",
+            "source_coverage": {
+              "seller": {
+                "available": true,
+                "source_url": "https://www.firstaidbeauty.com/products/firming-cream-with-peptides-niacinamide-and-collagen"
+              },
+              "formula": {
+                "available": true,
+                "ingredient_count": 29,
+                "source_url": "https://www.firstaidbeauty.com/products/firming-cream-with-peptides-niacinamide-and-collagen"
+              },
+              "reviews": {
+                "available": false,
+                "count": 0
+              },
+              "creator": {
+                "available": false,
+                "count": 0
+              },
+              "editorial": {
+                "available": false,
+                "count": 0
+              }
+            }
+          },
+          "texture_finish": {
+            "finish": "skincare product",
+            "texture": "skincare",
+            "source": "reviewed_category_and_official_title"
+          },
+          "community_signals": {
+            "status": "unavailable",
+            "reason": "not_collected_for_this_review_batch"
+          },
+          "recommendation_intents": {
+            "similar": [],
+            "complementary": [],
+            "routine_pairing": [],
+            "underfill_reason": null,
+            "confidence": "low"
+          },
+          "market_signal_badges": [],
+          "external_highlight_signals": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "seller_plus_formula",
+          "source_coverage": {
+            "seller": {
+              "available": true,
+              "source_url": "https://www.firstaidbeauty.com/products/firming-cream-with-peptides-niacinamide-and-collagen"
+            },
+            "formula": {
+              "available": true,
+              "ingredient_count": 29,
+              "source_url": "https://www.firstaidbeauty.com/products/firming-cream-with-peptides-niacinamide-and-collagen"
+            },
+            "reviews": {
+              "available": false,
+              "count": 0
+            },
+            "creator": {
+              "available": false,
+              "count": 0
+            },
+            "editorial": {
+              "available": false,
+              "count": 0
+            }
+          },
+          "confidence": {
+            "overall": "moderate",
+            "fields": {
+              "what_it_is": "high",
+              "best_for": "moderate",
+              "why_it_stands_out": "moderate",
+              "routine_fit": "moderate",
+              "watchouts": "moderate"
+            }
+          },
+          "freshness": {
+            "generated_at": "2026-05-31T16:06:32.583Z",
+            "source_version": "wave99_firstaidbeauty_official_product_intel_review_20260601"
+          },
+          "offer_pointers": {
+            "offers_count": 0,
+            "default_offer_id": null,
+            "best_price_offer_id": null,
+            "commerce_modes": []
+          },
+          "provenance": {
+            "source": "owner_delegated_official_seed_rewrite",
+            "generator": "owner_delegated_assistant_reviewed_rewrite",
+            "selection_strategy": "official_pdp_seed_guarded_manual_review",
+            "field_sources": {
+              "what_it_is": "official_seed_description",
+              "best_for": "reviewed_category_and_official_title",
+              "why_it_stands_out": "official_seed_description_and_formula",
+              "routine_fit": "reviewed_category_and_official_title",
+              "watchouts": "owner_delegated_assistant_review",
+              "texture_finish": "reviewed_category_and_official_title",
+              "source_coverage": "official_pdp_seed_snapshot",
+              "community_signals": "not_collected"
+            },
+            "review_status": "completed",
+            "review_decision": "rewrite",
+            "reviewer": "codex_human_quality_reviewer",
+            "reviewer_kind": "assistant",
+            "reviewed_at": "2026-05-31T16:06:32.583Z",
+            "external_highlight_review_status": "rewrite",
+            "external_review_batch": "wave99_firstaidbeauty_official_product_intel_review_20260601",
+            "official_source_url": "https://www.firstaidbeauty.com/products/firming-cream-with-peptides-niacinamide-and-collagen",
+            "official_source_ingredient_count": 29,
+            "rewrite_reason": "Owner-delegated assistant review: official PDP seed rewrite; no commerce-state, community, medical, or unsupported safety claims added."
+          },
+          "shopping_card": {
+            "contract_version": "pivota.shopping_card.v1",
+            "title": "Ultra Repair Firming Day Cream with Peptides, Niacinamide + Collagen",
+            "subtitle": "Skincare",
+            "highlight": "Skincare formula detail",
+            "intro": "A First Aid Beauty skincare product listed on the brand source page as Ultra Repair Firming Day Cream with Peptides, Niacinamide + Collagen. The source description identifies: Ultra Repair Firming Day Cream is a rich, luxe daily cream infused with hardworking ingredients to help skin look bouncy and youthful.",
+            "evidence_profile": "seller_plus_formula"
+          },
+          "search_card": {
+            "title_candidate": "Ultra Repair Firming Day Cream with Peptides, Niacinamide + Collagen",
+            "compact_candidate": "Skincare",
+            "highlight_candidate": "Skincare formula detail",
+            "intro_candidate": "A First Aid Beauty skincare product listed on the brand source page as Ultra Repair Firming Day Cream with Peptides, Niacinamide + Collagen. The source description identifies: Ultra Repair Firming Day Cream is a rich, luxe daily cream infused with hardworking ingredients to help skin look bouncy and youthful.",
+            "proof_badge_candidate": ""
+          }
+        }
+      }
+    },
+    {
+      "case_id": "live_ext_1b35e9b9464058f6b641c8e3",
+      "review_status": "completed",
+      "review_decision": "rewrite",
+      "reviewer": "codex_human_quality_reviewer",
+      "reviewer_kind": "assistant",
+      "reviewed_at": "2026-05-31T16:06:32.583Z",
+      "notes": "Approved official-PDP-seed rewrite for Brighten + Glow Facial Radiance Pads with Glycolic + Lactic Acids 90 Count; evidence_profile=seller_plus_formula; source_url=https://www.firstaidbeauty.com/products/facial-radiance-pads-with-glycolic-lactic-acids-90-day",
+      "owner_delegated_review": {
+        "contract_version": "pivota.owner_delegated_review.v1",
+        "delegated_to": "codex_human_quality_reviewer",
+        "reviewer_kind": "assistant",
+        "owner_instruction": "User delegated Codex to perform high-quality human review for Pivota Insights quality improvement.",
+        "guardrails": [
+          "Do not overwrite good content with lower-quality content.",
+          "No commerce-state claims in Pivota Insights.",
+          "Use official source facts only; keep evidence confidence explicit."
+        ]
+      },
+      "quality_improvement_review": {
+        "decision": "approved_replacement",
+        "reviewer_kind": "assistant",
+        "owner_delegated": true,
+        "reason": "Owner-delegated assistant review confirms the replacement uses official PDP seed facts, avoids commerce and unsupported evidence claims, and explicitly marks evidence gaps instead of inventing claims."
+      },
+      "baseline": {
+        "canonical_product_ref": {
+          "merchant_id": "external_seed",
+          "product_id": "ext_1b35e9b9464058f6b641c8e3",
+          "platform": "external_seed"
+        }
+      },
+      "selected": {
+        "selected_mode": "manual_reviewed_rewrite",
+        "selected_field_count": 7,
+        "field_sources": {
+          "what_it_is": "official_seed_description",
+          "best_for": "reviewed_category_and_official_title",
+          "why_it_stands_out": "official_seed_description_and_formula",
+          "routine_fit": "reviewed_category_and_official_title",
+          "watchouts": "owner_delegated_assistant_review",
+          "texture_finish": "reviewed_category_and_official_title",
+          "source_coverage": "official_pdp_seed_snapshot",
+          "community_signals": "not_collected"
+        },
+        "bundle": {
+          "contract_version": "pivota.product_intel.v1",
+          "display_name": "Pivota Insights",
+          "canonical_product_ref": {
+            "merchant_id": "external_seed",
+            "product_id": "ext_1b35e9b9464058f6b641c8e3",
+            "platform": "external_seed"
+          },
+          "product_group_id": "sig_d76694f078649c0b53798dcb",
+          "product_intel_core": {
+            "display_name": "Pivota Insights",
+            "what_it_is": {
+              "headline": "Serum identity",
+              "body": "A First Aid Beauty serum listed on the brand source page as Brighten + Glow Facial Radiance Pads with Glycolic + Lactic Acids 90 Count. The source description identifies: Sensitive skin-friendly & gentle face exfoliating pads with a blend of AHAs designed for daily use to help brighten, smooth and prep skin for makeup."
+            },
+            "best_for": [
+              {
+                "tag": "serum_shoppers",
+                "label": "Serum shoppers",
+                "confidence": "moderate"
+              },
+              {
+                "tag": "official_source_comparison",
+                "label": "Official-source comparison",
+                "confidence": "moderate"
+              }
+            ],
+            "why_it_stands_out": [
+              {
+                "headline": "Source-backed product detail",
+                "body": "Sensitive skin-friendly & gentle face exfoliating pads with a blend of AHAs designed for daily use to help brighten, smooth and prep skin for makeup.",
+                "evidence_strength": "seller_plus_formula"
+              },
+              {
+                "headline": "Formula context captured",
+                "body": "Captured formula fields include Formula With:Glycolic Acid + Lactic Acid – Alpha hydroxy acids (AH As) that exfoliate skin, helping it appear brighter with improved texture.Full Ingredients: Aqua/Water/Eau, Aloe Barbadensis Leaf Juice, Cucumis Sativus (Cucumber) Fruit Water, Lactic Acid. Agents should keep composition claims within those source fields.",
+                "evidence_strength": "seller_plus_formula"
+              }
+            ],
+            "routine_fit": {
+              "step": "skin_care",
+              "am_pm": [
+                "as_needed"
+              ],
+              "pairing_notes": [
+                "Use within the serum context; avoid inferring benefits not present in the source fields."
+              ]
+            },
+            "watchouts": [
+              {
+                "type": "formula_scope",
+                "label": "Formula details are source-derived; avoid medical, safety, or suitability claims not present in the source.",
+                "severity": "medium"
+              },
+              {
+                "type": "evidence_gap",
+                "label": "No independent review or community evidence was approved for this row; keep public copy source-bound.",
+                "severity": "medium"
+              },
+              {
+                "type": "scope_guardrail",
+                "label": "Use the commerce mainline for offer facts; keep this insight focused on source-backed product identity.",
+                "severity": "medium"
+              }
+            ],
+            "confidence": {
+              "overall": "moderate",
+              "fields": {
+                "what_it_is": "high",
+                "best_for": "moderate",
+                "why_it_stands_out": "moderate",
+                "routine_fit": "moderate",
+                "watchouts": "moderate"
+              }
+            },
+            "freshness": {
+              "generated_at": "2026-05-31T16:06:32.583Z",
+              "source_version": "wave99_firstaidbeauty_official_product_intel_review_20260601"
+            },
+            "quality_state": "reviewed",
+            "evidence_profile": "seller_plus_formula",
+            "source_coverage": {
+              "seller": {
+                "available": true,
+                "source_url": "https://www.firstaidbeauty.com/products/facial-radiance-pads-with-glycolic-lactic-acids-90-day"
+              },
+              "formula": {
+                "available": true,
+                "ingredient_count": 19,
+                "source_url": "https://www.firstaidbeauty.com/products/facial-radiance-pads-with-glycolic-lactic-acids-90-day"
+              },
+              "reviews": {
+                "available": false,
+                "count": 0
+              },
+              "creator": {
+                "available": false,
+                "count": 0
+              },
+              "editorial": {
+                "available": false,
+                "count": 0
+              }
+            }
+          },
+          "texture_finish": {
+            "finish": "serum",
+            "texture": "serum",
+            "source": "reviewed_category_and_official_title"
+          },
+          "community_signals": {
+            "status": "unavailable",
+            "reason": "not_collected_for_this_review_batch"
+          },
+          "recommendation_intents": {
+            "similar": [],
+            "complementary": [],
+            "routine_pairing": [],
+            "underfill_reason": null,
+            "confidence": "low"
+          },
+          "market_signal_badges": [],
+          "external_highlight_signals": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "seller_plus_formula",
+          "source_coverage": {
+            "seller": {
+              "available": true,
+              "source_url": "https://www.firstaidbeauty.com/products/facial-radiance-pads-with-glycolic-lactic-acids-90-day"
+            },
+            "formula": {
+              "available": true,
+              "ingredient_count": 19,
+              "source_url": "https://www.firstaidbeauty.com/products/facial-radiance-pads-with-glycolic-lactic-acids-90-day"
+            },
+            "reviews": {
+              "available": false,
+              "count": 0
+            },
+            "creator": {
+              "available": false,
+              "count": 0
+            },
+            "editorial": {
+              "available": false,
+              "count": 0
+            }
+          },
+          "confidence": {
+            "overall": "moderate",
+            "fields": {
+              "what_it_is": "high",
+              "best_for": "moderate",
+              "why_it_stands_out": "moderate",
+              "routine_fit": "moderate",
+              "watchouts": "moderate"
+            }
+          },
+          "freshness": {
+            "generated_at": "2026-05-31T16:06:32.583Z",
+            "source_version": "wave99_firstaidbeauty_official_product_intel_review_20260601"
+          },
+          "offer_pointers": {
+            "offers_count": 0,
+            "default_offer_id": null,
+            "best_price_offer_id": null,
+            "commerce_modes": []
+          },
+          "provenance": {
+            "source": "owner_delegated_official_seed_rewrite",
+            "generator": "owner_delegated_assistant_reviewed_rewrite",
+            "selection_strategy": "official_pdp_seed_guarded_manual_review",
+            "field_sources": {
+              "what_it_is": "official_seed_description",
+              "best_for": "reviewed_category_and_official_title",
+              "why_it_stands_out": "official_seed_description_and_formula",
+              "routine_fit": "reviewed_category_and_official_title",
+              "watchouts": "owner_delegated_assistant_review",
+              "texture_finish": "reviewed_category_and_official_title",
+              "source_coverage": "official_pdp_seed_snapshot",
+              "community_signals": "not_collected"
+            },
+            "review_status": "completed",
+            "review_decision": "rewrite",
+            "reviewer": "codex_human_quality_reviewer",
+            "reviewer_kind": "assistant",
+            "reviewed_at": "2026-05-31T16:06:32.583Z",
+            "external_highlight_review_status": "rewrite",
+            "external_review_batch": "wave99_firstaidbeauty_official_product_intel_review_20260601",
+            "official_source_url": "https://www.firstaidbeauty.com/products/facial-radiance-pads-with-glycolic-lactic-acids-90-day",
+            "official_source_ingredient_count": 19,
+            "rewrite_reason": "Owner-delegated assistant review: official PDP seed rewrite; no commerce-state, community, medical, or unsupported safety claims added."
+          },
+          "shopping_card": {
+            "contract_version": "pivota.shopping_card.v1",
+            "title": "Brighten + Glow Facial Radiance Pads with Glycolic + Lactic Acids 90 Count",
+            "subtitle": "Serum",
+            "highlight": "AHA serum detail",
+            "intro": "A First Aid Beauty serum listed on the brand source page as Brighten + Glow Facial Radiance Pads with Glycolic + Lactic Acids 90 Count. The source description identifies: Sensitive skin-friendly & gentle face exfoliating pads with a blend of AHAs designed for daily use to help brighten, smooth and prep skin for makeup.",
+            "evidence_profile": "seller_plus_formula"
+          },
+          "search_card": {
+            "title_candidate": "Brighten + Glow Facial Radiance Pads with Glycolic + Lactic Acids 90 Count",
+            "compact_candidate": "Serum",
+            "highlight_candidate": "AHA serum detail",
+            "intro_candidate": "A First Aid Beauty serum listed on the brand source page as Brighten + Glow Facial Radiance Pads with Glycolic + Lactic Acids 90 Count. The source description identifies: Sensitive skin-friendly & gentle face exfoliating pads with a blend of AHAs designed for daily use to help brighten, smooth and prep skin for makeup.",
+            "proof_badge_candidate": ""
+          }
+        }
+      }
+    },
+    {
+      "case_id": "live_ext_f22e924478be64d4c3a1b918",
+      "review_status": "completed",
+      "review_decision": "rewrite",
+      "reviewer": "codex_human_quality_reviewer",
+      "reviewer_kind": "assistant",
+      "reviewed_at": "2026-05-31T16:06:32.583Z",
+      "notes": "Approved official-PDP-seed rewrite for Ultra Repair Firming Night Cream with Colloidal Oatmeal + Niacinamide; evidence_profile=seller_plus_formula; source_url=https://www.firstaidbeauty.com/products/ultra-repair-hydra-firm-night-cream",
+      "owner_delegated_review": {
+        "contract_version": "pivota.owner_delegated_review.v1",
+        "delegated_to": "codex_human_quality_reviewer",
+        "reviewer_kind": "assistant",
+        "owner_instruction": "User delegated Codex to perform high-quality human review for Pivota Insights quality improvement.",
+        "guardrails": [
+          "Do not overwrite good content with lower-quality content.",
+          "No commerce-state claims in Pivota Insights.",
+          "Use official source facts only; keep evidence confidence explicit."
+        ]
+      },
+      "quality_improvement_review": {
+        "decision": "approved_replacement",
+        "reviewer_kind": "assistant",
+        "owner_delegated": true,
+        "reason": "Owner-delegated assistant review confirms the replacement uses official PDP seed facts, avoids commerce and unsupported evidence claims, and explicitly marks evidence gaps instead of inventing claims."
+      },
+      "baseline": {
+        "canonical_product_ref": {
+          "merchant_id": "external_seed",
+          "product_id": "ext_f22e924478be64d4c3a1b918",
+          "platform": "external_seed"
+        }
+      },
+      "selected": {
+        "selected_mode": "manual_reviewed_rewrite",
+        "selected_field_count": 7,
+        "field_sources": {
+          "what_it_is": "official_seed_description",
+          "best_for": "reviewed_category_and_official_title",
+          "why_it_stands_out": "official_seed_description_and_formula",
+          "routine_fit": "reviewed_category_and_official_title",
+          "watchouts": "owner_delegated_assistant_review",
+          "texture_finish": "reviewed_category_and_official_title",
+          "source_coverage": "official_pdp_seed_snapshot",
+          "community_signals": "not_collected"
+        },
+        "bundle": {
+          "contract_version": "pivota.product_intel.v1",
+          "display_name": "Pivota Insights",
+          "canonical_product_ref": {
+            "merchant_id": "external_seed",
+            "product_id": "ext_f22e924478be64d4c3a1b918",
+            "platform": "external_seed"
+          },
+          "product_group_id": "sig_e409dfa534a9a6f72e401f97",
+          "product_intel_core": {
+            "display_name": "Pivota Insights",
+            "what_it_is": {
+              "headline": "Skincare product identity",
+              "body": "A First Aid Beauty skincare product listed on the brand source page as Ultra Repair Firming Night Cream with Colloidal Oatmeal + Niacinamide. The source description identifies: A rich + buttery night cream that deeply nourishes the skin and helps combat the visible signs of aging during the skin's nightly repair phase."
+            },
+            "best_for": [
+              {
+                "tag": "skincare_shoppers",
+                "label": "Skincare product shoppers",
+                "confidence": "moderate"
+              },
+              {
+                "tag": "official_source_comparison",
+                "label": "Official-source comparison",
+                "confidence": "moderate"
+              }
+            ],
+            "why_it_stands_out": [
+              {
+                "headline": "Source-backed product detail",
+                "body": "A rich + buttery night cream that deeply nourishes the skin and helps combat the visible signs of aging during the skin's nightly repair phase.",
+                "evidence_strength": "seller_plus_formula"
+              },
+              {
+                "headline": "Formula context captured",
+                "body": "Captured formula fields include Ingredient HighlightsColloidal Oatmeal: Helps calm and relieve dry or distressed skin.Sodium Hyaluronate: Boosts skin’s moisture, helps smooth look of fine lines and wrinkles.Glutaline In-Tense: Helps skin appear firmer and reduces the look of fine lines & wrinkles.Niacinamide: Helps skin appear more bouncy and restores healthy tone and texture.Full IngredientsAqua/Water/Eau, Glycerin, Caprylic/Capric Triglyceride, Butyrospermum Parkii (Shea) Butter. Agents should keep composition claims within those source fields.",
+                "evidence_strength": "seller_plus_formula"
+              }
+            ],
+            "routine_fit": {
+              "step": "skin_care",
+              "am_pm": [
+                "as_needed"
+              ],
+              "pairing_notes": [
+                "Use within the skincare product context; avoid inferring benefits not present in the source fields."
+              ]
+            },
+            "watchouts": [
+              {
+                "type": "formula_scope",
+                "label": "Formula details are source-derived; avoid medical, safety, or suitability claims not present in the source.",
+                "severity": "medium"
+              },
+              {
+                "type": "evidence_gap",
+                "label": "No independent review or community evidence was approved for this row; keep public copy source-bound.",
+                "severity": "medium"
+              },
+              {
+                "type": "scope_guardrail",
+                "label": "Use the commerce mainline for offer facts; keep this insight focused on source-backed product identity.",
+                "severity": "medium"
+              }
+            ],
+            "confidence": {
+              "overall": "moderate",
+              "fields": {
+                "what_it_is": "high",
+                "best_for": "moderate",
+                "why_it_stands_out": "moderate",
+                "routine_fit": "moderate",
+                "watchouts": "moderate"
+              }
+            },
+            "freshness": {
+              "generated_at": "2026-05-31T16:06:32.583Z",
+              "source_version": "wave99_firstaidbeauty_official_product_intel_review_20260601"
+            },
+            "quality_state": "reviewed",
+            "evidence_profile": "seller_plus_formula",
+            "source_coverage": {
+              "seller": {
+                "available": true,
+                "source_url": "https://www.firstaidbeauty.com/products/ultra-repair-hydra-firm-night-cream"
+              },
+              "formula": {
+                "available": true,
+                "ingredient_count": 43,
+                "source_url": "https://www.firstaidbeauty.com/products/ultra-repair-hydra-firm-night-cream"
+              },
+              "reviews": {
+                "available": false,
+                "count": 0
+              },
+              "creator": {
+                "available": false,
+                "count": 0
+              },
+              "editorial": {
+                "available": false,
+                "count": 0
+              }
+            }
+          },
+          "texture_finish": {
+            "finish": "skincare product",
+            "texture": "skincare",
+            "source": "reviewed_category_and_official_title"
+          },
+          "community_signals": {
+            "status": "unavailable",
+            "reason": "not_collected_for_this_review_batch"
+          },
+          "recommendation_intents": {
+            "similar": [],
+            "complementary": [],
+            "routine_pairing": [],
+            "underfill_reason": null,
+            "confidence": "low"
+          },
+          "market_signal_badges": [],
+          "external_highlight_signals": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "seller_plus_formula",
+          "source_coverage": {
+            "seller": {
+              "available": true,
+              "source_url": "https://www.firstaidbeauty.com/products/ultra-repair-hydra-firm-night-cream"
+            },
+            "formula": {
+              "available": true,
+              "ingredient_count": 43,
+              "source_url": "https://www.firstaidbeauty.com/products/ultra-repair-hydra-firm-night-cream"
+            },
+            "reviews": {
+              "available": false,
+              "count": 0
+            },
+            "creator": {
+              "available": false,
+              "count": 0
+            },
+            "editorial": {
+              "available": false,
+              "count": 0
+            }
+          },
+          "confidence": {
+            "overall": "moderate",
+            "fields": {
+              "what_it_is": "high",
+              "best_for": "moderate",
+              "why_it_stands_out": "moderate",
+              "routine_fit": "moderate",
+              "watchouts": "moderate"
+            }
+          },
+          "freshness": {
+            "generated_at": "2026-05-31T16:06:32.583Z",
+            "source_version": "wave99_firstaidbeauty_official_product_intel_review_20260601"
+          },
+          "offer_pointers": {
+            "offers_count": 0,
+            "default_offer_id": null,
+            "best_price_offer_id": null,
+            "commerce_modes": []
+          },
+          "provenance": {
+            "source": "owner_delegated_official_seed_rewrite",
+            "generator": "owner_delegated_assistant_reviewed_rewrite",
+            "selection_strategy": "official_pdp_seed_guarded_manual_review",
+            "field_sources": {
+              "what_it_is": "official_seed_description",
+              "best_for": "reviewed_category_and_official_title",
+              "why_it_stands_out": "official_seed_description_and_formula",
+              "routine_fit": "reviewed_category_and_official_title",
+              "watchouts": "owner_delegated_assistant_review",
+              "texture_finish": "reviewed_category_and_official_title",
+              "source_coverage": "official_pdp_seed_snapshot",
+              "community_signals": "not_collected"
+            },
+            "review_status": "completed",
+            "review_decision": "rewrite",
+            "reviewer": "codex_human_quality_reviewer",
+            "reviewer_kind": "assistant",
+            "reviewed_at": "2026-05-31T16:06:32.583Z",
+            "external_highlight_review_status": "rewrite",
+            "external_review_batch": "wave99_firstaidbeauty_official_product_intel_review_20260601",
+            "official_source_url": "https://www.firstaidbeauty.com/products/ultra-repair-hydra-firm-night-cream",
+            "official_source_ingredient_count": 43,
+            "rewrite_reason": "Owner-delegated assistant review: official PDP seed rewrite; no commerce-state, community, medical, or unsupported safety claims added."
+          },
+          "shopping_card": {
+            "contract_version": "pivota.shopping_card.v1",
+            "title": "Ultra Repair Firming Night Cream with Colloidal Oatmeal + Niacinamide",
+            "subtitle": "Skincare",
+            "highlight": "Skincare formula detail",
+            "intro": "A First Aid Beauty skincare product listed on the brand source page as Ultra Repair Firming Night Cream with Colloidal Oatmeal + Niacinamide. The source description identifies: A rich + buttery night cream that deeply nourishes the skin and helps combat the visible signs of aging during the skin's nightly repair phase.",
+            "evidence_profile": "seller_plus_formula"
+          },
+          "search_card": {
+            "title_candidate": "Ultra Repair Firming Night Cream with Colloidal Oatmeal + Niacinamide",
+            "compact_candidate": "Skincare",
+            "highlight_candidate": "Skincare formula detail",
+            "intro_candidate": "A First Aid Beauty skincare product listed on the brand source page as Ultra Repair Firming Night Cream with Colloidal Oatmeal + Niacinamide. The source description identifies: A rich + buttery night cream that deeply nourishes the skin and helps combat the visible signs of aging during the skin's nightly repair phase.",
+            "proof_badge_candidate": ""
+          }
+        }
+      }
+    }
+  ]
+}

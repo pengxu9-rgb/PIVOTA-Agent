@@ -1,0 +1,1295 @@
+{
+  "generated_at": "2026-05-31T16:05:49.105Z",
+  "options": {
+    "market": "US",
+    "includeAttached": true,
+    "domain": null,
+    "externalProductIds": [
+      "ext_1b35e9b9464058f6b641c8e3",
+      "ext_1d9e01e4c3a8800a0c22b175",
+      "ext_a29393bd005135c81f47dade",
+      "ext_d59af8ba842e1f34de6a6d82",
+      "ext_9bc7ff02d709cc5383cc78ec",
+      "ext_62685854dfc71d2634e828e6",
+      "ext_f22e924478be64d4c3a1b918",
+      "ext_95582fd1ed491684223018bb"
+    ],
+    "limit": 20,
+    "sampleLimit": 20,
+    "checkpointDir": "/Users/pengchydan/dev/_worktrees/pivota-agent-markato-wave25-786-20260527/reports/markato_expansion_status_20260524/wave99_firstaidbeauty_product_intel_20260601/readiness_before/pdp_readiness_checkpoint",
+    "checkpointMode": "domain",
+    "resume": false,
+    "force": false,
+    "continueOnError": true,
+    "pageSize": 500,
+    "format": "json"
+  },
+  "warnings": [],
+  "summary": {
+    "scanned": 8,
+    "by_market": {
+      "US": 8
+    },
+    "by_domain": [
+      {
+        "key": "firstaidbeauty.com",
+        "count": 8
+      }
+    ],
+    "by_product_family": [
+      {
+        "key": "single_formula",
+        "count": 7
+      },
+      {
+        "key": "unknown_product",
+        "count": 1
+      }
+    ],
+    "coverage": {
+      "missing_inci": 0,
+      "missing_active_raw": 5,
+      "missing_details": 0,
+      "missing_how_to": 0,
+      "missing_faq": 1
+    },
+    "pivota_insights": {
+      "direct": {
+        "displayable": 2,
+        "high_quality_ready": 2,
+        "missing_kb": 0,
+        "not_displayable": 6
+      },
+      "effective": {
+        "displayable": 2,
+        "high_quality_ready": 2,
+        "missing_kb": 0,
+        "not_displayable": 6,
+        "borrowed_from_sibling": 0
+      },
+      "effective_issues": [
+        {
+          "key": "not_displayable_gate",
+          "count": 6
+        },
+        {
+          "key": "not_reviewed",
+          "count": 6
+        },
+        {
+          "key": "quality_limited",
+          "count": 6
+        },
+        {
+          "key": "seller_only_evidence",
+          "count": 6
+        },
+        {
+          "key": "empty_watchouts",
+          "count": 2
+        },
+        {
+          "key": "missing_card_highlight",
+          "count": 2
+        },
+        {
+          "key": "public_sensitive_claim",
+          "count": 1
+        }
+      ],
+      "effective_issue_domains": [
+        {
+          "key": "firstaidbeauty.com::not_displayable_gate",
+          "count": 6
+        },
+        {
+          "key": "firstaidbeauty.com::not_reviewed",
+          "count": 6
+        },
+        {
+          "key": "firstaidbeauty.com::quality_limited",
+          "count": 6
+        },
+        {
+          "key": "firstaidbeauty.com::seller_only_evidence",
+          "count": 6
+        },
+        {
+          "key": "firstaidbeauty.com::empty_watchouts",
+          "count": 2
+        },
+        {
+          "key": "firstaidbeauty.com::missing_card_highlight",
+          "count": 2
+        },
+        {
+          "key": "firstaidbeauty.com::public_sensitive_claim",
+          "count": 1
+        }
+      ],
+      "quality_state": [
+        {
+          "key": "limited",
+          "count": 6
+        },
+        {
+          "key": "reviewed",
+          "count": 2
+        }
+      ],
+      "evidence_profile": [
+        {
+          "key": "seller_only",
+          "count": 6
+        },
+        {
+          "key": "seller_plus_formula",
+          "count": 2
+        }
+      ],
+      "samples": {
+        "not_reviewed": [
+          {
+            "external_product_id": "ext_a29393bd005135c81f47dade",
+            "domain": "firstaidbeauty.com",
+            "title": "Hydrating Dewy Gel Cream Moisturizer with Hyaluronic Acid + Ceramides",
+            "used_product_id": "ext_a29393bd005135c81f47dade",
+            "quality_state": "limited",
+            "evidence_profile": "seller_only"
+          },
+          {
+            "external_product_id": "ext_62685854dfc71d2634e828e6",
+            "domain": "firstaidbeauty.com",
+            "title": "Ultra Repair Firming Day Cream with Peptides, Niacinamide + Collagen",
+            "used_product_id": "ext_62685854dfc71d2634e828e6",
+            "quality_state": "limited",
+            "evidence_profile": "seller_only"
+          },
+          {
+            "external_product_id": "ext_1b35e9b9464058f6b641c8e3",
+            "domain": "firstaidbeauty.com",
+            "title": "Brighten + Glow Facial Radiance Pads with Glycolic + Lactic Acids 90 Count",
+            "used_product_id": "ext_1b35e9b9464058f6b641c8e3",
+            "quality_state": "limited",
+            "evidence_profile": "seller_only"
+          },
+          {
+            "external_product_id": "ext_95582fd1ed491684223018bb",
+            "domain": "firstaidbeauty.com",
+            "title": "Ultra Repair Oil-Control Moisturizer",
+            "used_product_id": "ext_95582fd1ed491684223018bb",
+            "quality_state": "limited",
+            "evidence_profile": "seller_only"
+          },
+          {
+            "external_product_id": "ext_9bc7ff02d709cc5383cc78ec",
+            "domain": "firstaidbeauty.com",
+            "title": "Ultra Repair Face Lotion with Colloidal Oatmeal",
+            "used_product_id": "ext_9bc7ff02d709cc5383cc78ec",
+            "quality_state": "limited",
+            "evidence_profile": "seller_only"
+          },
+          {
+            "external_product_id": "ext_f22e924478be64d4c3a1b918",
+            "domain": "firstaidbeauty.com",
+            "title": "Ultra Repair Firming Night Cream with Colloidal Oatmeal + Niacinamide",
+            "used_product_id": "ext_f22e924478be64d4c3a1b918",
+            "quality_state": "limited",
+            "evidence_profile": "seller_only"
+          }
+        ],
+        "not_displayable_gate": [
+          {
+            "external_product_id": "ext_a29393bd005135c81f47dade",
+            "domain": "firstaidbeauty.com",
+            "title": "Hydrating Dewy Gel Cream Moisturizer with Hyaluronic Acid + Ceramides",
+            "used_product_id": "ext_a29393bd005135c81f47dade",
+            "quality_state": "limited",
+            "evidence_profile": "seller_only"
+          },
+          {
+            "external_product_id": "ext_62685854dfc71d2634e828e6",
+            "domain": "firstaidbeauty.com",
+            "title": "Ultra Repair Firming Day Cream with Peptides, Niacinamide + Collagen",
+            "used_product_id": "ext_62685854dfc71d2634e828e6",
+            "quality_state": "limited",
+            "evidence_profile": "seller_only"
+          },
+          {
+            "external_product_id": "ext_1b35e9b9464058f6b641c8e3",
+            "domain": "firstaidbeauty.com",
+            "title": "Brighten + Glow Facial Radiance Pads with Glycolic + Lactic Acids 90 Count",
+            "used_product_id": "ext_1b35e9b9464058f6b641c8e3",
+            "quality_state": "limited",
+            "evidence_profile": "seller_only"
+          },
+          {
+            "external_product_id": "ext_95582fd1ed491684223018bb",
+            "domain": "firstaidbeauty.com",
+            "title": "Ultra Repair Oil-Control Moisturizer",
+            "used_product_id": "ext_95582fd1ed491684223018bb",
+            "quality_state": "limited",
+            "evidence_profile": "seller_only"
+          },
+          {
+            "external_product_id": "ext_9bc7ff02d709cc5383cc78ec",
+            "domain": "firstaidbeauty.com",
+            "title": "Ultra Repair Face Lotion with Colloidal Oatmeal",
+            "used_product_id": "ext_9bc7ff02d709cc5383cc78ec",
+            "quality_state": "limited",
+            "evidence_profile": "seller_only"
+          },
+          {
+            "external_product_id": "ext_f22e924478be64d4c3a1b918",
+            "domain": "firstaidbeauty.com",
+            "title": "Ultra Repair Firming Night Cream with Colloidal Oatmeal + Niacinamide",
+            "used_product_id": "ext_f22e924478be64d4c3a1b918",
+            "quality_state": "limited",
+            "evidence_profile": "seller_only"
+          }
+        ],
+        "public_sensitive_claim": [
+          {
+            "external_product_id": "ext_a29393bd005135c81f47dade",
+            "domain": "firstaidbeauty.com",
+            "title": "Hydrating Dewy Gel Cream Moisturizer with Hyaluronic Acid + Ceramides",
+            "used_product_id": "ext_a29393bd005135c81f47dade",
+            "quality_state": "limited",
+            "evidence_profile": "seller_only"
+          }
+        ],
+        "seller_only_evidence": [
+          {
+            "external_product_id": "ext_a29393bd005135c81f47dade",
+            "domain": "firstaidbeauty.com",
+            "title": "Hydrating Dewy Gel Cream Moisturizer with Hyaluronic Acid + Ceramides",
+            "used_product_id": "ext_a29393bd005135c81f47dade",
+            "quality_state": "limited",
+            "evidence_profile": "seller_only"
+          },
+          {
+            "external_product_id": "ext_62685854dfc71d2634e828e6",
+            "domain": "firstaidbeauty.com",
+            "title": "Ultra Repair Firming Day Cream with Peptides, Niacinamide + Collagen",
+            "used_product_id": "ext_62685854dfc71d2634e828e6",
+            "quality_state": "limited",
+            "evidence_profile": "seller_only"
+          },
+          {
+            "external_product_id": "ext_1b35e9b9464058f6b641c8e3",
+            "domain": "firstaidbeauty.com",
+            "title": "Brighten + Glow Facial Radiance Pads with Glycolic + Lactic Acids 90 Count",
+            "used_product_id": "ext_1b35e9b9464058f6b641c8e3",
+            "quality_state": "limited",
+            "evidence_profile": "seller_only"
+          },
+          {
+            "external_product_id": "ext_95582fd1ed491684223018bb",
+            "domain": "firstaidbeauty.com",
+            "title": "Ultra Repair Oil-Control Moisturizer",
+            "used_product_id": "ext_95582fd1ed491684223018bb",
+            "quality_state": "limited",
+            "evidence_profile": "seller_only"
+          },
+          {
+            "external_product_id": "ext_9bc7ff02d709cc5383cc78ec",
+            "domain": "firstaidbeauty.com",
+            "title": "Ultra Repair Face Lotion with Colloidal Oatmeal",
+            "used_product_id": "ext_9bc7ff02d709cc5383cc78ec",
+            "quality_state": "limited",
+            "evidence_profile": "seller_only"
+          },
+          {
+            "external_product_id": "ext_f22e924478be64d4c3a1b918",
+            "domain": "firstaidbeauty.com",
+            "title": "Ultra Repair Firming Night Cream with Colloidal Oatmeal + Niacinamide",
+            "used_product_id": "ext_f22e924478be64d4c3a1b918",
+            "quality_state": "limited",
+            "evidence_profile": "seller_only"
+          }
+        ],
+        "missing_card_highlight": [
+          {
+            "external_product_id": "ext_95582fd1ed491684223018bb",
+            "domain": "firstaidbeauty.com",
+            "title": "Ultra Repair Oil-Control Moisturizer",
+            "used_product_id": "ext_95582fd1ed491684223018bb",
+            "quality_state": "limited",
+            "evidence_profile": "seller_only"
+          },
+          {
+            "external_product_id": "ext_9bc7ff02d709cc5383cc78ec",
+            "domain": "firstaidbeauty.com",
+            "title": "Ultra Repair Face Lotion with Colloidal Oatmeal",
+            "used_product_id": "ext_9bc7ff02d709cc5383cc78ec",
+            "quality_state": "limited",
+            "evidence_profile": "seller_only"
+          }
+        ]
+      }
+    },
+    "active_ingredients": {
+      "regulatory_expected": 0,
+      "hero_expected": 7,
+      "any_active_items": 7,
+      "status": [
+        {
+          "key": "ready_hero",
+          "count": 6
+        },
+        {
+          "key": "low_signal_active",
+          "count": 1
+        },
+        {
+          "key": "ready_other",
+          "count": 1
+        }
+      ],
+      "issues": [
+        {
+          "key": "low_signal_active",
+          "count": 1
+        }
+      ],
+      "issue_domains": [
+        {
+          "key": "firstaidbeauty.com::low_signal_active",
+          "count": 1
+        }
+      ],
+      "source_origin": [
+        {
+          "key": "pdp_section",
+          "count": 8
+        }
+      ],
+      "samples": {
+        "low_signal_active": [
+          {
+            "external_product_id": "ext_d59af8ba842e1f34de6a6d82",
+            "domain": "firstaidbeauty.com",
+            "title": "KP Bump Eraser Body Scrub 10% AHA",
+            "status": "low_signal_active",
+            "active_items": [],
+            "source_origin": "pdp_section"
+          }
+        ]
+      }
+    },
+    "variants": {
+      "status": [
+        {
+          "key": "ready",
+          "count": 8
+        }
+      ],
+      "issues": [],
+      "issue_domains": [],
+      "samples": {}
+    }
+  },
+  "rows": [
+    {
+      "seed_id": "eps_3e9345524c9e1c1b68315c30",
+      "external_product_id": "ext_a29393bd005135c81f47dade",
+      "market": "US",
+      "domain": "firstaidbeauty.com",
+      "title": "Hydrating Dewy Gel Cream Moisturizer with Hyaluronic Acid + Ceramides",
+      "canonical_url": "https://www.firstaidbeauty.com/products/hydrating-dewy-gel-cream-moisturizer-with-hyaluronic-acid-ceramides",
+      "product_family": "single_formula",
+      "product_line_id": "pl_06f343406987eca61e55f527",
+      "identity_variant_axes": {
+        "multi_variant": false
+      },
+      "pivota_insights": {
+        "direct": {
+          "product_id": "ext_a29393bd005135c81f47dade",
+          "kb_key": "product:ext_a29393bd005135c81f47dade",
+          "status": "not_displayable",
+          "kb_exists": true,
+          "displayable": false,
+          "high_quality_ready": false,
+          "human_reviewed": false,
+          "issues": [
+            "not_reviewed",
+            "not_displayable_gate",
+            "public_sensitive_claim",
+            "empty_watchouts",
+            "quality_limited",
+            "seller_only_evidence"
+          ],
+          "blocking_issues": [
+            "not_reviewed",
+            "not_displayable_gate",
+            "public_sensitive_claim"
+          ],
+          "quality_state": "limited",
+          "evidence_profile": "seller_only",
+          "has_card_highlight": true
+        },
+        "effective": {
+          "product_id": "ext_a29393bd005135c81f47dade",
+          "kb_key": "product:ext_a29393bd005135c81f47dade",
+          "status": "not_displayable",
+          "kb_exists": true,
+          "displayable": false,
+          "high_quality_ready": false,
+          "human_reviewed": false,
+          "issues": [
+            "not_reviewed",
+            "not_displayable_gate",
+            "public_sensitive_claim",
+            "empty_watchouts",
+            "quality_limited",
+            "seller_only_evidence"
+          ],
+          "blocking_issues": [
+            "not_reviewed",
+            "not_displayable_gate",
+            "public_sensitive_claim"
+          ],
+          "quality_state": "limited",
+          "evidence_profile": "seller_only",
+          "has_card_highlight": true
+        },
+        "product_line_id": "pl_06f343406987eca61e55f527",
+        "borrowed_from_sibling": false
+      },
+      "active_ingredients": {
+        "status": "ready_hero",
+        "issues": [],
+        "regulatory_expected": false,
+        "hero_expected": true,
+        "active_items": [
+          "Hyaluronic acid",
+          "Ceramide NP",
+          "Niacinamide",
+          "Squalane"
+        ],
+        "source_origin": "pdp_section",
+        "source_quality_status": "captured",
+        "coverage": {
+          "details_sections_count": 6,
+          "faq_count": 2,
+          "how_to_chars": 107,
+          "inci_chars": 804,
+          "active_ingredients_chars": 0,
+          "inci_applicability_status": "",
+          "ingredient_review_status": "",
+          "ingredient_remediation_action": "",
+          "bundle_component_refs_count": 0,
+          "effective_inci_chars": 804,
+          "inci_borrowed_from_product_id": ""
+        },
+        "invalid_fragments": [],
+        "suppressed_reason": null
+      },
+      "variants": {
+        "status": "ready",
+        "issues": [],
+        "visible_variant_rows": 1,
+        "examples": {
+          "identity_option_visible": [],
+          "wrong_axis_for_category": [],
+          "makeup_shade_missing_visual": [],
+          "size_value_generic_axis": [],
+          "default_option_size_evidence_missing_axis": [],
+          "identity_default_title_axis": []
+        }
+      },
+      "coverage": {
+        "details_sections_count": 6,
+        "faq_count": 2,
+        "how_to_chars": 107,
+        "inci_chars": 804,
+        "active_ingredients_chars": 0,
+        "inci_applicability_status": "",
+        "ingredient_review_status": "",
+        "ingredient_remediation_action": "",
+        "bundle_component_refs_count": 0,
+        "effective_inci_chars": 804,
+        "inci_borrowed_from_product_id": ""
+      }
+    },
+    {
+      "seed_id": "eps_650e43f50a73cf3c2dd8085e",
+      "external_product_id": "ext_62685854dfc71d2634e828e6",
+      "market": "US",
+      "domain": "firstaidbeauty.com",
+      "title": "Ultra Repair Firming Day Cream with Peptides, Niacinamide + Collagen",
+      "canonical_url": "https://www.firstaidbeauty.com/products/firming-cream-with-peptides-niacinamide-and-collagen",
+      "product_family": "single_formula",
+      "product_line_id": "pl_fca82a88291571974eb4c24a",
+      "identity_variant_axes": {
+        "multi_variant": false
+      },
+      "pivota_insights": {
+        "direct": {
+          "product_id": "ext_62685854dfc71d2634e828e6",
+          "kb_key": "product:ext_62685854dfc71d2634e828e6",
+          "status": "not_displayable",
+          "kb_exists": true,
+          "displayable": false,
+          "high_quality_ready": false,
+          "human_reviewed": false,
+          "issues": [
+            "not_reviewed",
+            "not_displayable_gate",
+            "empty_watchouts",
+            "quality_limited",
+            "seller_only_evidence"
+          ],
+          "blocking_issues": [
+            "not_reviewed",
+            "not_displayable_gate"
+          ],
+          "quality_state": "limited",
+          "evidence_profile": "seller_only",
+          "has_card_highlight": true
+        },
+        "effective": {
+          "product_id": "ext_62685854dfc71d2634e828e6",
+          "kb_key": "product:ext_62685854dfc71d2634e828e6",
+          "status": "not_displayable",
+          "kb_exists": true,
+          "displayable": false,
+          "high_quality_ready": false,
+          "human_reviewed": false,
+          "issues": [
+            "not_reviewed",
+            "not_displayable_gate",
+            "empty_watchouts",
+            "quality_limited",
+            "seller_only_evidence"
+          ],
+          "blocking_issues": [
+            "not_reviewed",
+            "not_displayable_gate"
+          ],
+          "quality_state": "limited",
+          "evidence_profile": "seller_only",
+          "has_card_highlight": true
+        },
+        "product_line_id": "pl_fca82a88291571974eb4c24a",
+        "borrowed_from_sibling": false
+      },
+      "active_ingredients": {
+        "status": "ready_hero",
+        "issues": [],
+        "regulatory_expected": false,
+        "hero_expected": true,
+        "active_items": [
+          "Niacinamide",
+          "Ceramide NP",
+          "Panthenol (B5)",
+          "Squalane",
+          "Peptides"
+        ],
+        "source_origin": "pdp_section",
+        "source_quality_status": "captured",
+        "coverage": {
+          "details_sections_count": 6,
+          "faq_count": 2,
+          "how_to_chars": 86,
+          "inci_chars": 771,
+          "active_ingredients_chars": 0,
+          "inci_applicability_status": "",
+          "ingredient_review_status": "",
+          "ingredient_remediation_action": "",
+          "bundle_component_refs_count": 0,
+          "effective_inci_chars": 771,
+          "inci_borrowed_from_product_id": ""
+        },
+        "invalid_fragments": [],
+        "suppressed_reason": null
+      },
+      "variants": {
+        "status": "ready",
+        "issues": [],
+        "visible_variant_rows": 1,
+        "examples": {
+          "identity_option_visible": [],
+          "wrong_axis_for_category": [],
+          "makeup_shade_missing_visual": [],
+          "size_value_generic_axis": [],
+          "default_option_size_evidence_missing_axis": [],
+          "identity_default_title_axis": []
+        }
+      },
+      "coverage": {
+        "details_sections_count": 6,
+        "faq_count": 2,
+        "how_to_chars": 86,
+        "inci_chars": 771,
+        "active_ingredients_chars": 0,
+        "inci_applicability_status": "",
+        "ingredient_review_status": "",
+        "ingredient_remediation_action": "",
+        "bundle_component_refs_count": 0,
+        "effective_inci_chars": 771,
+        "inci_borrowed_from_product_id": ""
+      }
+    },
+    {
+      "seed_id": "eps_c8ee6de59e29db43a5bdf47c",
+      "external_product_id": "ext_1d9e01e4c3a8800a0c22b175",
+      "market": "US",
+      "domain": "firstaidbeauty.com",
+      "title": "Daily Resurfacing Lotion with 2% Niacinamide",
+      "canonical_url": "https://www.firstaidbeauty.com/products/resurfacing-moisturizer-acne",
+      "product_family": "single_formula",
+      "product_line_id": "pl_df494c0b9dceb0c9cec233bd",
+      "identity_variant_axes": {
+        "volume": "1oz",
+        "multi_variant": false
+      },
+      "pivota_insights": {
+        "direct": {
+          "product_id": "ext_1d9e01e4c3a8800a0c22b175",
+          "kb_key": "product:ext_1d9e01e4c3a8800a0c22b175",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "seller_plus_formula",
+          "has_card_highlight": true
+        },
+        "effective": {
+          "product_id": "ext_1d9e01e4c3a8800a0c22b175",
+          "kb_key": "product:ext_1d9e01e4c3a8800a0c22b175",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "seller_plus_formula",
+          "has_card_highlight": true
+        },
+        "product_line_id": "pl_df494c0b9dceb0c9cec233bd",
+        "borrowed_from_sibling": false
+      },
+      "active_ingredients": {
+        "status": "ready_hero",
+        "issues": [],
+        "regulatory_expected": false,
+        "hero_expected": true,
+        "active_items": [
+          "2% Niacinamide",
+          "Niacinamide"
+        ],
+        "source_origin": "pdp_section",
+        "source_quality_status": "captured",
+        "coverage": {
+          "details_sections_count": 10,
+          "faq_count": 0,
+          "how_to_chars": 60,
+          "inci_chars": 350,
+          "active_ingredients_chars": 14,
+          "inci_applicability_status": "",
+          "ingredient_review_status": "",
+          "ingredient_remediation_action": "",
+          "bundle_component_refs_count": 0,
+          "effective_inci_chars": 350,
+          "inci_borrowed_from_product_id": ""
+        },
+        "invalid_fragments": [],
+        "suppressed_reason": null
+      },
+      "variants": {
+        "status": "ready",
+        "issues": [],
+        "visible_variant_rows": 1,
+        "examples": {
+          "identity_option_visible": [],
+          "wrong_axis_for_category": [],
+          "makeup_shade_missing_visual": [],
+          "size_value_generic_axis": [],
+          "default_option_size_evidence_missing_axis": [],
+          "identity_default_title_axis": []
+        }
+      },
+      "coverage": {
+        "details_sections_count": 10,
+        "faq_count": 0,
+        "how_to_chars": 60,
+        "inci_chars": 350,
+        "active_ingredients_chars": 14,
+        "inci_applicability_status": "",
+        "ingredient_review_status": "",
+        "ingredient_remediation_action": "",
+        "bundle_component_refs_count": 0,
+        "effective_inci_chars": 350,
+        "inci_borrowed_from_product_id": ""
+      }
+    },
+    {
+      "seed_id": "eps_a044bdb2e50ac82eb1491104",
+      "external_product_id": "ext_1b35e9b9464058f6b641c8e3",
+      "market": "US",
+      "domain": "firstaidbeauty.com",
+      "title": "Brighten + Glow Facial Radiance Pads with Glycolic + Lactic Acids 90 Count",
+      "canonical_url": "https://www.firstaidbeauty.com/products/facial-radiance-pads-with-glycolic-lactic-acids-90-day",
+      "product_family": "unknown_product",
+      "product_line_id": "pl_9730317f63d1c91984db3d09",
+      "identity_variant_axes": {
+        "pack": "90pack",
+        "multi_variant": false
+      },
+      "pivota_insights": {
+        "direct": {
+          "product_id": "ext_1b35e9b9464058f6b641c8e3",
+          "kb_key": "product:ext_1b35e9b9464058f6b641c8e3",
+          "status": "not_displayable",
+          "kb_exists": true,
+          "displayable": false,
+          "high_quality_ready": false,
+          "human_reviewed": false,
+          "issues": [
+            "not_reviewed",
+            "not_displayable_gate",
+            "quality_limited",
+            "seller_only_evidence"
+          ],
+          "blocking_issues": [
+            "not_reviewed",
+            "not_displayable_gate"
+          ],
+          "quality_state": "limited",
+          "evidence_profile": "seller_only",
+          "has_card_highlight": true
+        },
+        "effective": {
+          "product_id": "ext_1b35e9b9464058f6b641c8e3",
+          "kb_key": "product:ext_1b35e9b9464058f6b641c8e3",
+          "status": "not_displayable",
+          "kb_exists": true,
+          "displayable": false,
+          "high_quality_ready": false,
+          "human_reviewed": false,
+          "issues": [
+            "not_reviewed",
+            "not_displayable_gate",
+            "quality_limited",
+            "seller_only_evidence"
+          ],
+          "blocking_issues": [
+            "not_reviewed",
+            "not_displayable_gate"
+          ],
+          "quality_state": "limited",
+          "evidence_profile": "seller_only",
+          "has_card_highlight": true
+        },
+        "product_line_id": "pl_9730317f63d1c91984db3d09",
+        "borrowed_from_sibling": false
+      },
+      "active_ingredients": {
+        "status": "ready_hero",
+        "issues": [],
+        "regulatory_expected": false,
+        "hero_expected": true,
+        "active_items": [
+          "Hyaluronic acid"
+        ],
+        "source_origin": "pdp_section",
+        "source_quality_status": "captured",
+        "coverage": {
+          "details_sections_count": 6,
+          "faq_count": 2,
+          "how_to_chars": 149,
+          "inci_chars": 629,
+          "active_ingredients_chars": 0,
+          "inci_applicability_status": "",
+          "ingredient_review_status": "",
+          "ingredient_remediation_action": "",
+          "bundle_component_refs_count": 0,
+          "effective_inci_chars": 629,
+          "inci_borrowed_from_product_id": ""
+        },
+        "invalid_fragments": [],
+        "suppressed_reason": null
+      },
+      "variants": {
+        "status": "ready",
+        "issues": [],
+        "visible_variant_rows": 1,
+        "examples": {
+          "identity_option_visible": [],
+          "wrong_axis_for_category": [],
+          "makeup_shade_missing_visual": [],
+          "size_value_generic_axis": [],
+          "default_option_size_evidence_missing_axis": [],
+          "identity_default_title_axis": []
+        }
+      },
+      "coverage": {
+        "details_sections_count": 6,
+        "faq_count": 2,
+        "how_to_chars": 149,
+        "inci_chars": 629,
+        "active_ingredients_chars": 0,
+        "inci_applicability_status": "",
+        "ingredient_review_status": "",
+        "ingredient_remediation_action": "",
+        "bundle_component_refs_count": 0,
+        "effective_inci_chars": 629,
+        "inci_borrowed_from_product_id": ""
+      }
+    },
+    {
+      "seed_id": "eps_ba2d960f7cf7ccbba6c739a6",
+      "external_product_id": "ext_95582fd1ed491684223018bb",
+      "market": "US",
+      "domain": "firstaidbeauty.com",
+      "title": "Ultra Repair Oil-Control Moisturizer",
+      "canonical_url": "https://www.firstaidbeauty.com/products/ultra-repair-oil-control-moisturizer",
+      "product_family": "single_formula",
+      "product_line_id": "pl_0f14e2cf22a61730a45ccb62",
+      "identity_variant_axes": {
+        "multi_variant": false
+      },
+      "pivota_insights": {
+        "direct": {
+          "product_id": "ext_95582fd1ed491684223018bb",
+          "kb_key": "product:ext_95582fd1ed491684223018bb",
+          "status": "not_displayable",
+          "kb_exists": true,
+          "displayable": false,
+          "high_quality_ready": false,
+          "human_reviewed": false,
+          "issues": [
+            "not_reviewed",
+            "not_displayable_gate",
+            "missing_card_highlight",
+            "quality_limited",
+            "seller_only_evidence"
+          ],
+          "blocking_issues": [
+            "not_reviewed",
+            "not_displayable_gate",
+            "missing_card_highlight"
+          ],
+          "quality_state": "limited",
+          "evidence_profile": "seller_only",
+          "has_card_highlight": false
+        },
+        "effective": {
+          "product_id": "ext_95582fd1ed491684223018bb",
+          "kb_key": "product:ext_95582fd1ed491684223018bb",
+          "status": "not_displayable",
+          "kb_exists": true,
+          "displayable": false,
+          "high_quality_ready": false,
+          "human_reviewed": false,
+          "issues": [
+            "not_reviewed",
+            "not_displayable_gate",
+            "missing_card_highlight",
+            "quality_limited",
+            "seller_only_evidence"
+          ],
+          "blocking_issues": [
+            "not_reviewed",
+            "not_displayable_gate",
+            "missing_card_highlight"
+          ],
+          "quality_state": "limited",
+          "evidence_profile": "seller_only",
+          "has_card_highlight": false
+        },
+        "product_line_id": "pl_0f14e2cf22a61730a45ccb62",
+        "borrowed_from_sibling": false
+      },
+      "active_ingredients": {
+        "status": "ready_other",
+        "issues": [],
+        "regulatory_expected": false,
+        "hero_expected": false,
+        "active_items": [
+          "featuring Niacinamide"
+        ],
+        "source_origin": "pdp_section",
+        "source_quality_status": "captured",
+        "coverage": {
+          "details_sections_count": 6,
+          "faq_count": 2,
+          "how_to_chars": 62,
+          "inci_chars": 1283,
+          "active_ingredients_chars": 200,
+          "inci_applicability_status": "",
+          "ingredient_review_status": "",
+          "ingredient_remediation_action": "",
+          "bundle_component_refs_count": 0,
+          "effective_inci_chars": 1283,
+          "inci_borrowed_from_product_id": ""
+        },
+        "invalid_fragments": [],
+        "suppressed_reason": null
+      },
+      "variants": {
+        "status": "ready",
+        "issues": [],
+        "visible_variant_rows": 1,
+        "examples": {
+          "identity_option_visible": [],
+          "wrong_axis_for_category": [],
+          "makeup_shade_missing_visual": [],
+          "size_value_generic_axis": [],
+          "default_option_size_evidence_missing_axis": [],
+          "identity_default_title_axis": []
+        }
+      },
+      "coverage": {
+        "details_sections_count": 6,
+        "faq_count": 2,
+        "how_to_chars": 62,
+        "inci_chars": 1283,
+        "active_ingredients_chars": 200,
+        "inci_applicability_status": "",
+        "ingredient_review_status": "",
+        "ingredient_remediation_action": "",
+        "bundle_component_refs_count": 0,
+        "effective_inci_chars": 1283,
+        "inci_borrowed_from_product_id": ""
+      }
+    },
+    {
+      "seed_id": "eps_dbe312b2599bb005972ac358",
+      "external_product_id": "ext_d59af8ba842e1f34de6a6d82",
+      "market": "US",
+      "domain": "firstaidbeauty.com",
+      "title": "KP Bump Eraser Body Scrub 10% AHA",
+      "canonical_url": "https://www.firstaidbeauty.com/products/kp-bump-eraser-body-scrub-aha",
+      "product_family": "single_formula",
+      "product_line_id": "pl_51005a4ee9989dc8045a77a2",
+      "identity_variant_axes": {
+        "volume": "8oz",
+        "multi_variant": true
+      },
+      "pivota_insights": {
+        "direct": {
+          "product_id": "ext_d59af8ba842e1f34de6a6d82",
+          "kb_key": "product:ext_d59af8ba842e1f34de6a6d82",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "seller_plus_formula",
+          "has_card_highlight": true
+        },
+        "effective": {
+          "product_id": "ext_d59af8ba842e1f34de6a6d82",
+          "kb_key": "product:ext_d59af8ba842e1f34de6a6d82",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "seller_plus_formula",
+          "has_card_highlight": true
+        },
+        "product_line_id": "pl_51005a4ee9989dc8045a77a2",
+        "borrowed_from_sibling": false
+      },
+      "active_ingredients": {
+        "status": "low_signal_active",
+        "issues": [
+          "low_signal_active"
+        ],
+        "regulatory_expected": false,
+        "hero_expected": true,
+        "active_items": [],
+        "source_origin": "pdp_section",
+        "source_quality_status": "blocked",
+        "coverage": {
+          "details_sections_count": 8,
+          "faq_count": 2,
+          "how_to_chars": 761,
+          "inci_chars": 597,
+          "active_ingredients_chars": 33,
+          "inci_applicability_status": "",
+          "ingredient_review_status": "",
+          "ingredient_remediation_action": "",
+          "bundle_component_refs_count": 0,
+          "effective_inci_chars": 597,
+          "inci_borrowed_from_product_id": ""
+        },
+        "invalid_fragments": [],
+        "suppressed_reason": "active_items_low_signal"
+      },
+      "variants": {
+        "status": "ready",
+        "issues": [],
+        "visible_variant_rows": 2,
+        "examples": {
+          "identity_option_visible": [],
+          "wrong_axis_for_category": [],
+          "makeup_shade_missing_visual": [],
+          "size_value_generic_axis": [],
+          "default_option_size_evidence_missing_axis": [],
+          "identity_default_title_axis": []
+        }
+      },
+      "coverage": {
+        "details_sections_count": 8,
+        "faq_count": 2,
+        "how_to_chars": 761,
+        "inci_chars": 597,
+        "active_ingredients_chars": 33,
+        "inci_applicability_status": "",
+        "ingredient_review_status": "",
+        "ingredient_remediation_action": "",
+        "bundle_component_refs_count": 0,
+        "effective_inci_chars": 597,
+        "inci_borrowed_from_product_id": ""
+      }
+    },
+    {
+      "seed_id": "eps_e1cdce1c40b3369326fb3f5b",
+      "external_product_id": "ext_9bc7ff02d709cc5383cc78ec",
+      "market": "US",
+      "domain": "firstaidbeauty.com",
+      "title": "Ultra Repair Face Lotion with Colloidal Oatmeal",
+      "canonical_url": "https://www.firstaidbeauty.com/products/ultra-repair-face-moisturizer",
+      "product_family": "single_formula",
+      "product_line_id": "pl_7ef922e654d96b9aa6fed717",
+      "identity_variant_axes": {
+        "multi_variant": false
+      },
+      "pivota_insights": {
+        "direct": {
+          "product_id": "ext_9bc7ff02d709cc5383cc78ec",
+          "kb_key": "product:ext_9bc7ff02d709cc5383cc78ec",
+          "status": "not_displayable",
+          "kb_exists": true,
+          "displayable": false,
+          "high_quality_ready": false,
+          "human_reviewed": false,
+          "issues": [
+            "not_reviewed",
+            "not_displayable_gate",
+            "missing_card_highlight",
+            "quality_limited",
+            "seller_only_evidence"
+          ],
+          "blocking_issues": [
+            "not_reviewed",
+            "not_displayable_gate",
+            "missing_card_highlight"
+          ],
+          "quality_state": "limited",
+          "evidence_profile": "seller_only",
+          "has_card_highlight": false
+        },
+        "effective": {
+          "product_id": "ext_9bc7ff02d709cc5383cc78ec",
+          "kb_key": "product:ext_9bc7ff02d709cc5383cc78ec",
+          "status": "not_displayable",
+          "kb_exists": true,
+          "displayable": false,
+          "high_quality_ready": false,
+          "human_reviewed": false,
+          "issues": [
+            "not_reviewed",
+            "not_displayable_gate",
+            "missing_card_highlight",
+            "quality_limited",
+            "seller_only_evidence"
+          ],
+          "blocking_issues": [
+            "not_reviewed",
+            "not_displayable_gate",
+            "missing_card_highlight"
+          ],
+          "quality_state": "limited",
+          "evidence_profile": "seller_only",
+          "has_card_highlight": false
+        },
+        "product_line_id": "pl_7ef922e654d96b9aa6fed717",
+        "borrowed_from_sibling": false
+      },
+      "active_ingredients": {
+        "status": "ready_hero",
+        "issues": [],
+        "regulatory_expected": false,
+        "hero_expected": true,
+        "active_items": [
+          "Ceramide NP",
+          "Squalane"
+        ],
+        "source_origin": "pdp_section",
+        "source_quality_status": "captured",
+        "coverage": {
+          "details_sections_count": 10,
+          "faq_count": 2,
+          "how_to_chars": 60,
+          "inci_chars": 891,
+          "active_ingredients_chars": 0,
+          "inci_applicability_status": "",
+          "ingredient_review_status": "",
+          "ingredient_remediation_action": "",
+          "bundle_component_refs_count": 0,
+          "effective_inci_chars": 891,
+          "inci_borrowed_from_product_id": ""
+        },
+        "invalid_fragments": [],
+        "suppressed_reason": null
+      },
+      "variants": {
+        "status": "ready",
+        "issues": [],
+        "visible_variant_rows": 1,
+        "examples": {
+          "identity_option_visible": [],
+          "wrong_axis_for_category": [],
+          "makeup_shade_missing_visual": [],
+          "size_value_generic_axis": [],
+          "default_option_size_evidence_missing_axis": [],
+          "identity_default_title_axis": []
+        }
+      },
+      "coverage": {
+        "details_sections_count": 10,
+        "faq_count": 2,
+        "how_to_chars": 60,
+        "inci_chars": 891,
+        "active_ingredients_chars": 0,
+        "inci_applicability_status": "",
+        "ingredient_review_status": "",
+        "ingredient_remediation_action": "",
+        "bundle_component_refs_count": 0,
+        "effective_inci_chars": 891,
+        "inci_borrowed_from_product_id": ""
+      }
+    },
+    {
+      "seed_id": "eps_f079493b824f8a6777de00b6",
+      "external_product_id": "ext_f22e924478be64d4c3a1b918",
+      "market": "US",
+      "domain": "firstaidbeauty.com",
+      "title": "Ultra Repair Firming Night Cream with Colloidal Oatmeal + Niacinamide",
+      "canonical_url": "https://www.firstaidbeauty.com/products/ultra-repair-hydra-firm-night-cream",
+      "product_family": "single_formula",
+      "product_line_id": "pl_7cae1e4dd21a63cbb68c477e",
+      "identity_variant_axes": {
+        "multi_variant": false
+      },
+      "pivota_insights": {
+        "direct": {
+          "product_id": "ext_f22e924478be64d4c3a1b918",
+          "kb_key": "product:ext_f22e924478be64d4c3a1b918",
+          "status": "not_displayable",
+          "kb_exists": true,
+          "displayable": false,
+          "high_quality_ready": false,
+          "human_reviewed": false,
+          "issues": [
+            "not_reviewed",
+            "not_displayable_gate",
+            "quality_limited",
+            "seller_only_evidence"
+          ],
+          "blocking_issues": [
+            "not_reviewed",
+            "not_displayable_gate"
+          ],
+          "quality_state": "limited",
+          "evidence_profile": "seller_only",
+          "has_card_highlight": true
+        },
+        "effective": {
+          "product_id": "ext_f22e924478be64d4c3a1b918",
+          "kb_key": "product:ext_f22e924478be64d4c3a1b918",
+          "status": "not_displayable",
+          "kb_exists": true,
+          "displayable": false,
+          "high_quality_ready": false,
+          "human_reviewed": false,
+          "issues": [
+            "not_reviewed",
+            "not_displayable_gate",
+            "quality_limited",
+            "seller_only_evidence"
+          ],
+          "blocking_issues": [
+            "not_reviewed",
+            "not_displayable_gate"
+          ],
+          "quality_state": "limited",
+          "evidence_profile": "seller_only",
+          "has_card_highlight": true
+        },
+        "product_line_id": "pl_7cae1e4dd21a63cbb68c477e",
+        "borrowed_from_sibling": false
+      },
+      "active_ingredients": {
+        "status": "ready_hero",
+        "issues": [],
+        "regulatory_expected": false,
+        "hero_expected": true,
+        "active_items": [
+          "Niacinamide",
+          "Peptides"
+        ],
+        "source_origin": "pdp_section",
+        "source_quality_status": "captured",
+        "coverage": {
+          "details_sections_count": 6,
+          "faq_count": 2,
+          "how_to_chars": 109,
+          "inci_chars": 1320,
+          "active_ingredients_chars": 0,
+          "inci_applicability_status": "",
+          "ingredient_review_status": "",
+          "ingredient_remediation_action": "",
+          "bundle_component_refs_count": 0,
+          "effective_inci_chars": 1320,
+          "inci_borrowed_from_product_id": ""
+        },
+        "invalid_fragments": [],
+        "suppressed_reason": null
+      },
+      "variants": {
+        "status": "ready",
+        "issues": [],
+        "visible_variant_rows": 1,
+        "examples": {
+          "identity_option_visible": [],
+          "wrong_axis_for_category": [],
+          "makeup_shade_missing_visual": [],
+          "size_value_generic_axis": [],
+          "default_option_size_evidence_missing_axis": [],
+          "identity_default_title_axis": []
+        }
+      },
+      "coverage": {
+        "details_sections_count": 6,
+        "faq_count": 2,
+        "how_to_chars": 109,
+        "inci_chars": 1320,
+        "active_ingredients_chars": 0,
+        "inci_applicability_status": "",
+        "ingredient_review_status": "",
+        "ingredient_remediation_action": "",
+        "bundle_component_refs_count": 0,
+        "effective_inci_chars": 1320,
+        "inci_borrowed_from_product_id": ""
+      }
+    }
+  ]
+}
