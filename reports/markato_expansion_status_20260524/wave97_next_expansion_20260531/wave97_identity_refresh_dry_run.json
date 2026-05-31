@@ -1,0 +1,2010 @@
+{
+  "generated_at": "2026-05-31T00:55:12.253Z",
+  "mode": "dry_run",
+  "batch_size": null,
+  "bootstrap_reviewed_identity_live_read": true,
+  "requested_ids": 11,
+  "fetched_rows": 11,
+  "mirror_rows": 10,
+  "planned_sku_rows": 10,
+  "planned_offer_rows": 10,
+  "planned_index_state_rows": 10,
+  "missing_ids": [],
+  "skipped": [
+    {
+      "external_product_id": "ext_b8af61a562f4ab972197f413",
+      "reason": "duplicate_pivota_signature_conflict",
+      "pivota_signature_id": "sig_9d68d0459c7a8e07e4004414",
+      "conflicting_products": [
+        {
+          "product_key": "prod::external_seed::external_seed::ext_1c6390a4583df99215617f2b",
+          "source_product_id": "ext_1c6390a4583df99215617f2b",
+          "title": "Revitalize Hydra Concealer",
+          "canonical_url": "https://www.rmsbeauty.com/products/revitalize-hydra-concealer"
+        }
+      ]
+    }
+  ],
+  "applied": {
+    "mode": "dry_run",
+    "existing_before": {
+      "catalog_products": 10,
+      "catalog_skus": 4,
+      "catalog_offers": 4,
+      "product_group_members": 10
+    },
+    "stale_delete_preview": {
+      "current_sku_rows": 20,
+      "current_offer_rows": 14,
+      "planned_stale_sku_deletes": 16,
+      "planned_stale_offer_deletes": 10,
+      "sample_stale_skus": [
+        {
+          "title": "RESTORING Cleansing Oil",
+          "sku_key": "prod::external_seed::external_seed::ext_04f175344e976ae32c16abad::canonical",
+          "product_key": "prod::external_seed::external_seed::ext_04f175344e976ae32c16abad",
+          "source_variant_id": "prod::external_seed::external_seed::ext_04f175344e976ae32c16abad",
+          "visible_attributes": {}
+        },
+        {
+          "title": "Bio-Peel Gauze Peeling Wine",
+          "sku_key": "prod::external_seed::external_seed::ext_168590ab880a51bc9573dc3f::canonical",
+          "product_key": "prod::external_seed::external_seed::ext_168590ab880a51bc9573dc3f",
+          "source_variant_id": "prod::external_seed::external_seed::ext_168590ab880a51bc9573dc3f",
+          "visible_attributes": {}
+        },
+        {
+          "title": "Single item",
+          "sku_key": "prod::external_seed::external_seed::ext_168590ab880a51bc9573dc3f::v::473199476745",
+          "product_key": "prod::external_seed::external_seed::ext_168590ab880a51bc9573dc3f",
+          "source_variant_id": "473199476745",
+          "visible_attributes": {
+            "format": "Single item"
+          }
+        },
+        {
+          "title": "The 6 Peptide Skin Booster Serum",
+          "sku_key": "prod::external_seed::external_seed::ext_297949f25e5e699ae1bde074::canonical",
+          "product_key": "prod::external_seed::external_seed::ext_297949f25e5e699ae1bde074",
+          "source_variant_id": "prod::external_seed::external_seed::ext_297949f25e5e699ae1bde074",
+          "visible_attributes": {}
+        },
+        {
+          "title": "Single item",
+          "sku_key": "prod::external_seed::external_seed::ext_297949f25e5e699ae1bde074::v::43690684612677",
+          "product_key": "prod::external_seed::external_seed::ext_297949f25e5e699ae1bde074",
+          "source_variant_id": "43690684612677",
+          "visible_attributes": {
+            "format": "Single item"
+          }
+        },
+        {
+          "title": "Real Ferment Micro Essence",
+          "sku_key": "prod::external_seed::external_seed::ext_465831482a5a21e9d922ca60::canonical",
+          "product_key": "prod::external_seed::external_seed::ext_465831482a5a21e9d922ca60",
+          "source_variant_id": "prod::external_seed::external_seed::ext_465831482a5a21e9d922ca60",
+          "visible_attributes": {}
+        },
+        {
+          "title": "Single item",
+          "sku_key": "prod::external_seed::external_seed::ext_465831482a5a21e9d922ca60::v::41009913673",
+          "product_key": "prod::external_seed::external_seed::ext_465831482a5a21e9d922ca60",
+          "source_variant_id": "41009913673",
+          "visible_attributes": {
+            "format": "Single item"
+          }
+        },
+        {
+          "title": "Golden Honmoon Barrier Collagen Mask 4ea",
+          "sku_key": "prod::external_seed::external_seed::ext_81d3882e68c275747ef88b3f::canonical",
+          "product_key": "prod::external_seed::external_seed::ext_81d3882e68c275747ef88b3f",
+          "source_variant_id": "prod::external_seed::external_seed::ext_81d3882e68c275747ef88b3f",
+          "visible_attributes": {}
+        },
+        {
+          "title": "4ea",
+          "sku_key": "prod::external_seed::external_seed::ext_81d3882e68c275747ef88b3f::v::51019348312342",
+          "product_key": "prod::external_seed::external_seed::ext_81d3882e68c275747ef88b3f",
+          "source_variant_id": "51019348312342",
+          "visible_attributes": {
+            "size": "4ea"
+          }
+        },
+        {
+          "title": "Rumi Ultra-thin Spot Cover Patch (55ea)",
+          "sku_key": "prod::external_seed::external_seed::ext_a406636157366f31879c4cbe::canonical",
+          "product_key": "prod::external_seed::external_seed::ext_a406636157366f31879c4cbe",
+          "source_variant_id": "prod::external_seed::external_seed::ext_a406636157366f31879c4cbe",
+          "visible_attributes": {}
+        },
+        {
+          "title": "55ea",
+          "sku_key": "prod::external_seed::external_seed::ext_a406636157366f31879c4cbe::v::51019348279574",
+          "product_key": "prod::external_seed::external_seed::ext_a406636157366f31879c4cbe",
+          "source_variant_id": "51019348279574",
+          "visible_attributes": {
+            "size": "55ea"
+          }
+        },
+        {
+          "title": "Coffee Fruit Antioxidant Cleanser",
+          "sku_key": "prod::external_seed::external_seed::ext_b0e98400b870b8783629e14a::canonical",
+          "product_key": "prod::external_seed::external_seed::ext_b0e98400b870b8783629e14a",
+          "source_variant_id": "prod::external_seed::external_seed::ext_b0e98400b870b8783629e14a",
+          "visible_attributes": {}
+        },
+        {
+          "title": "Ayurvedic Deep Hydrating Rejuvenation Crème",
+          "sku_key": "prod::external_seed::external_seed::ext_b20d88539f9351b8db39595d::canonical",
+          "product_key": "prod::external_seed::external_seed::ext_b20d88539f9351b8db39595d",
+          "source_variant_id": "prod::external_seed::external_seed::ext_b20d88539f9351b8db39595d",
+          "visible_attributes": {}
+        },
+        {
+          "title": "Turmeric Peptide Firming & Smoothing Serum",
+          "sku_key": "prod::external_seed::external_seed::ext_c2aca294e6409ceced3da49b::canonical",
+          "product_key": "prod::external_seed::external_seed::ext_c2aca294e6409ceced3da49b",
+          "source_variant_id": "prod::external_seed::external_seed::ext_c2aca294e6409ceced3da49b",
+          "visible_attributes": {}
+        },
+        {
+          "title": "Green Tea Real Fresh Foam Cleanser",
+          "sku_key": "prod::external_seed::external_seed::ext_d03b58b4cf51e6a58688e578::canonical",
+          "product_key": "prod::external_seed::external_seed::ext_d03b58b4cf51e6a58688e578",
+          "source_variant_id": "prod::external_seed::external_seed::ext_d03b58b4cf51e6a58688e578",
+          "visible_attributes": {}
+        },
+        {
+          "title": "Single item",
+          "sku_key": "prod::external_seed::external_seed::ext_d03b58b4cf51e6a58688e578::v::10359211141",
+          "product_key": "prod::external_seed::external_seed::ext_d03b58b4cf51e6a58688e578",
+          "source_variant_id": "10359211141",
+          "visible_attributes": {
+            "format": "Single item"
+          }
+        }
+      ],
+      "sample_stale_offers": [
+        {
+          "sku_key": "prod::external_seed::external_seed::ext_04f175344e976ae32c16abad::canonical",
+          "offer_id": "offer:external_seed:ca4474e59640047c7628493f31bccd3f",
+          "list_price": 42,
+          "product_key": "prod::external_seed::external_seed::ext_04f175344e976ae32c16abad",
+          "merchant_effective_price": 42
+        },
+        {
+          "sku_key": "prod::external_seed::external_seed::ext_168590ab880a51bc9573dc3f::canonical",
+          "offer_id": "offer:external_seed:dfc6fad38ed5a40e563b6c1626d7b326",
+          "list_price": 27,
+          "product_key": "prod::external_seed::external_seed::ext_168590ab880a51bc9573dc3f",
+          "merchant_effective_price": 27
+        },
+        {
+          "sku_key": "prod::external_seed::external_seed::ext_297949f25e5e699ae1bde074::canonical",
+          "offer_id": "offer:external_seed:d98484500a46615a757e8817eef4f6f4",
+          "list_price": 21,
+          "product_key": "prod::external_seed::external_seed::ext_297949f25e5e699ae1bde074",
+          "merchant_effective_price": 21
+        },
+        {
+          "sku_key": "prod::external_seed::external_seed::ext_465831482a5a21e9d922ca60::canonical",
+          "offer_id": "offer:external_seed:b0da5059640f0adc1419dd7cf0376720",
+          "list_price": 38,
+          "product_key": "prod::external_seed::external_seed::ext_465831482a5a21e9d922ca60",
+          "merchant_effective_price": 38
+        },
+        {
+          "sku_key": "prod::external_seed::external_seed::ext_81d3882e68c275747ef88b3f::canonical",
+          "offer_id": "offer:external_seed:2a1a5bd871d71b9ac88bf7c440cc914e",
+          "list_price": 21,
+          "product_key": "prod::external_seed::external_seed::ext_81d3882e68c275747ef88b3f",
+          "merchant_effective_price": 21
+        },
+        {
+          "sku_key": "prod::external_seed::external_seed::ext_a406636157366f31879c4cbe::canonical",
+          "offer_id": "offer:external_seed:c29506ecdac52e9e105424bd166150d5",
+          "list_price": 14,
+          "product_key": "prod::external_seed::external_seed::ext_a406636157366f31879c4cbe",
+          "merchant_effective_price": 14
+        },
+        {
+          "sku_key": "prod::external_seed::external_seed::ext_b0e98400b870b8783629e14a::canonical",
+          "offer_id": "offer:external_seed:92a6c7ab06c8b8f295491a2954425f5f",
+          "list_price": 28,
+          "product_key": "prod::external_seed::external_seed::ext_b0e98400b870b8783629e14a",
+          "merchant_effective_price": 28
+        },
+        {
+          "sku_key": "prod::external_seed::external_seed::ext_b20d88539f9351b8db39595d::canonical",
+          "offer_id": "offer:external_seed:1c1da8b0007bc759aa2c4bbeabedff47",
+          "list_price": 68,
+          "product_key": "prod::external_seed::external_seed::ext_b20d88539f9351b8db39595d",
+          "merchant_effective_price": 68
+        },
+        {
+          "sku_key": "prod::external_seed::external_seed::ext_c2aca294e6409ceced3da49b::canonical",
+          "offer_id": "offer:external_seed:68d899afc9fe1dbe1e906d24fd0d54a2",
+          "list_price": 63,
+          "product_key": "prod::external_seed::external_seed::ext_c2aca294e6409ceced3da49b",
+          "merchant_effective_price": 63
+        },
+        {
+          "sku_key": "prod::external_seed::external_seed::ext_d03b58b4cf51e6a58688e578::canonical",
+          "offer_id": "offer:external_seed:3dec3c57d7778d64a3ad53203d620376",
+          "list_price": 22,
+          "product_key": "prod::external_seed::external_seed::ext_d03b58b4cf51e6a58688e578",
+          "merchant_effective_price": 22
+        }
+      ]
+    },
+    "batch_size": null,
+    "batches": 1,
+    "audit_reasons": {
+      "no_strong_identifier": 10
+    },
+    "product_upserts": 0,
+    "sku_upserts": 0,
+    "offer_upserts": 0,
+    "group_member_upserts": 0,
+    "group_member_preserved_existing_merges": 0,
+    "seed_attachment_updates": 0,
+    "index_state_upserts": 0,
+    "identity_live_read_updates": 0,
+    "catalog_row_trust_upserts": 0,
+    "stale_offer_deletes": 0,
+    "stale_sku_deletes": 0
+  },
+  "sample": [
+    {
+      "external_product_id": "ext_81d3882e68c275747ef88b3f",
+      "product_key": "prod::external_seed::external_seed::ext_81d3882e68c275747ef88b3f",
+      "product_group_id": "sig_c92fabca8563f04fbdaf18a7",
+      "title": "Golden Honmoon Barrier Collagen Mask 4ea",
+      "brand": "Anua",
+      "product_type": "Beauty Product",
+      "category": "Beauty Product",
+      "category_path": "beauty",
+      "canonical_url": "https://anua.com/products/golden-honmoon-barrier-collagen-mask-4ea",
+      "pivota_signature_id": "sig_500863301ceb887b3e380374dd6d46d3",
+      "sku_rows": 1,
+      "first_sku": {
+        "sku_key": "prod::external_seed::external_seed::ext_81d3882e68c275747ef88b3f::sku_8bfe7c07a8a3544395a6",
+        "product_key": "prod::external_seed::external_seed::ext_81d3882e68c275747ef88b3f",
+        "merchant_id": "external_seed",
+        "platform": "external_seed",
+        "source_product_id": "ext_81d3882e68c275747ef88b3f",
+        "source_variant_id": "ext_81d3882e68c275747ef88b3f:51019348312342",
+        "source_domain": "anua.com",
+        "sku": "AK147005",
+        "barcode": null,
+        "title": "4ea",
+        "currency": "USD",
+        "image_url": "https://cdn.shopify.com/s/files/1/0753/1429/9158/files/anua-us-golden-honmoon-barrier-collagen-mask-4ea-1218701103.jpg?v=1769764689",
+        "visible_attributes": {
+          "Size": "4ea"
+        },
+        "visible_option_labels": {
+          "Size": "4ea"
+        },
+        "ingredient_ids": [],
+        "sku_payload": {
+          "source": "external_product_seeds_mirror_v1",
+          "external_product_id": "ext_81d3882e68c275747ef88b3f",
+          "raw_variant_id": "51019348312342",
+          "source_variant_id": "ext_81d3882e68c275747ef88b3f:51019348312342",
+          "variant_sku": "AK147005",
+          "barcode": null,
+          "strong_identifier_kind": null,
+          "source_url": "https://anua.com/products/golden-honmoon-barrier-collagen-mask-4ea",
+          "external_redirect_url": "https://anua.com/products/golden-honmoon-barrier-collagen-mask-4ea",
+          "price": "21",
+          "price_amount": 21,
+          "currency": "USD",
+          "availability": "in_stock",
+          "image_url": "https://cdn.shopify.com/s/files/1/0753/1429/9158/files/anua-us-golden-honmoon-barrier-collagen-mask-4ea-1218701103.jpg?v=1769764689",
+          "swatch_image_url": null,
+          "label_image_url": null,
+          "options": {
+            "Size": "4ea"
+          },
+          "raw_variant": {
+            "sku": "AK147005",
+            "url": "https://anua.com/products/golden-honmoon-barrier-collagen-mask-4ea?variant=51019348312342&utm_source=pivota&utm_medium=affiliate",
+            "price": "21.00",
+            "stock": "In Stock",
+            "title": "4ea",
+            "options": [
+              {
+                "name": "Size",
+                "value": "4ea"
+              }
+            ],
+            "currency": "USD",
+            "deep_link": "https://anua.com/products/golden-honmoon-barrier-collagen-mask-4ea?variant=51019348312342&utm_source=pivota&utm_medium=affiliate",
+            "image_url": "https://cdn.shopify.com/s/files/1/0753/1429/9158/files/anua-us-golden-honmoon-barrier-collagen-mask-4ea-1218701103.jpg?v=1769764689",
+            "image_urls": [
+              "https://cdn.shopify.com/s/files/1/0753/1429/9158/files/anua-us-golden-honmoon-barrier-collagen-mask-4ea-1218701103.jpg?v=1769764689",
+              "https://cdn.shopify.com/s/files/1/0753/1429/9158/files/anua-us-golden-honmoon-barrier-collagen-mask-4ea-1218701051.jpg?v=1769764630",
+              "https://cdn.shopify.com/s/files/1/0753/1429/9158/files/anua-us-golden-honmoon-barrier-collagen-mask-4ea-1218701055.jpg?v=1769764569",
+              "https://cdn.shopify.com/s/files/1/0753/1429/9158/files/anua-us-golden-honmoon-barrier-collagen-mask-4ea-1218701053.jpg?v=1769764510",
+              "https://cdn.shopify.com/s/files/1/0753/1429/9158/files/anua-us-golden-honmoon-barrier-collagen-mask-4ea-1218701056.jpg?v=1769764449",
+              "https://cdn.shopify.com/s/files/1/0753/1429/9158/files/anua-us-golden-honmoon-barrier-collagen-mask-4ea-1218701052.jpg?v=1769764390",
+              "https://cdn.shopify.com/s/files/1/0753/1429/9158/files/anua-us-golden-honmoon-barrier-collagen-mask-4ea-1218701057.jpg?v=1769764330",
+              "https://cdn.shopify.com/s/files/1/0753/1429/9158/files/anua-us-golden-honmoon-barrier-collagen-mask-4ea-1218701054.jpg?v=1769764269",
+              "https://cdn.shopify.com/s/files/1/0753/1429/9158/files/anua-us-golden-honmoon-barrier-collagen-mask-4ea-1218701058.jpg?v=1769764029",
+              "https://cdn.shopify.com/s/files/1/0753/1429/9158/files/anua-us-golden-honmoon-barrier-collagen-mask-4ea-1218708564.jpg?v=1769771109"
+            ],
+            "variant_id": "51019348312342",
+            "description": "",
+            "option_name": "Size",
+            "product_url": "https://anua.com/products/golden-honmoon-barrier-collagen-mask-4ea",
+            "option_value": "4ea",
+            "display_label": "Size: 4ea",
+            "source_origin": "shopify_json",
+            "source_quality_status": "medium"
+          }
+        },
+        "readiness_tier": "referral_only"
+      },
+      "first_offer": {
+        "offer_id": "offer:external_seed:d91f84aeb41d8ab59c4e7de5fb0c4d14",
+        "sku_key": "prod::external_seed::external_seed::ext_81d3882e68c275747ef88b3f::sku_8bfe7c07a8a3544395a6",
+        "product_key": "prod::external_seed::external_seed::ext_81d3882e68c275747ef88b3f",
+        "merchant_id": "external_seed",
+        "catalog_track": "external_referral",
+        "truth_tier": "observed",
+        "readiness_tier": "referral_only",
+        "offer_mode": "redirect",
+        "channel": "external_referral",
+        "availability": "in_stock",
+        "currency": "USD",
+        "list_price": 21,
+        "merchant_effective_price": 21,
+        "estimated_best_price": 21,
+        "price_confidence": 1,
+        "source_system": "external_product_seeds_mirror_v1",
+        "source_ref": "eps_98cf17607f58f0aa121bb60b",
+        "source_domain": "anua.com",
+        "offer_payload": {
+          "source": "external_product_seeds_mirror_v1",
+          "external_seed_id": "eps_98cf17607f58f0aa121bb60b",
+          "external_product_id": "ext_81d3882e68c275747ef88b3f",
+          "domain": "anua.com",
+          "market": "US",
+          "product_title": "Golden Honmoon Barrier Collagen Mask 4ea",
+          "variant_title": "4ea",
+          "variant_sku": "AK147005",
+          "raw_variant_id": "51019348312342",
+          "url": "https://anua.com/products/golden-honmoon-barrier-collagen-mask-4ea",
+          "offer_url": "https://anua.com/products/golden-honmoon-barrier-collagen-mask-4ea",
+          "canonical_url": "https://anua.com/products/golden-honmoon-barrier-collagen-mask-4ea",
+          "destination_url": "https://anua.com/products/golden-honmoon-barrier-collagen-mask-4ea",
+          "external_redirect_url": "https://anua.com/products/golden-honmoon-barrier-collagen-mask-4ea",
+          "merchant_display_name": "Anua",
+          "price": "21",
+          "price_amount": 21,
+          "price_currency": "USD",
+          "availability": "in_stock",
+          "commerce_facts_v1": null
+        }
+      },
+      "serving_readiness": {
+        "servingEligible": true,
+        "contentQualityScore": 90,
+        "blockerCode": "none",
+        "blockerDetail": null,
+        "identityResolved": true,
+        "identityLiveReadResolved": false,
+        "identityBootstrapEligible": true,
+        "terminalHold": false,
+        "terminalHoldReason": "",
+        "hasImage": true,
+        "hasPrice": true,
+        "descriptionLength": 159
+      }
+    },
+    {
+      "external_product_id": "ext_a406636157366f31879c4cbe",
+      "product_key": "prod::external_seed::external_seed::ext_a406636157366f31879c4cbe",
+      "product_group_id": "sig_c41a77cdf2b81ccb592e1c89",
+      "title": "Rumi Ultra-thin Spot Cover Patch (55ea)",
+      "brand": "Anua",
+      "product_type": "Beauty Product",
+      "category": "Beauty Product",
+      "category_path": "beauty",
+      "canonical_url": "https://anua.com/products/rumi-ultra-thin-spot-cover-patch-55ea",
+      "pivota_signature_id": "sig_6c98bd74c053ea3a781052f400427e40",
+      "sku_rows": 1,
+      "first_sku": {
+        "sku_key": "prod::external_seed::external_seed::ext_a406636157366f31879c4cbe::sku_a79fefca7c2d1a556c21",
+        "product_key": "prod::external_seed::external_seed::ext_a406636157366f31879c4cbe",
+        "merchant_id": "external_seed",
+        "platform": "external_seed",
+        "source_product_id": "ext_a406636157366f31879c4cbe",
+        "source_variant_id": "ext_a406636157366f31879c4cbe:51019348279574",
+        "source_domain": "anua.com",
+        "sku": "AK100009",
+        "barcode": null,
+        "title": "55ea",
+        "currency": "USD",
+        "image_url": "https://cdn.shopify.com/s/files/1/0753/1429/9158/files/anua-us-rumi-ultra-thin-spot-cover-patch-55ea-1219096364.jpg?v=1770095589",
+        "visible_attributes": {
+          "Size": "55ea"
+        },
+        "visible_option_labels": {
+          "Size": "55ea"
+        },
+        "ingredient_ids": [],
+        "sku_payload": {
+          "source": "external_product_seeds_mirror_v1",
+          "external_product_id": "ext_a406636157366f31879c4cbe",
+          "raw_variant_id": "51019348279574",
+          "source_variant_id": "ext_a406636157366f31879c4cbe:51019348279574",
+          "variant_sku": "AK100009",
+          "barcode": null,
+          "strong_identifier_kind": null,
+          "source_url": "https://anua.com/products/rumi-ultra-thin-spot-cover-patch-55ea",
+          "external_redirect_url": "https://anua.com/products/rumi-ultra-thin-spot-cover-patch-55ea",
+          "price": "14",
+          "price_amount": 14,
+          "currency": "USD",
+          "availability": "in_stock",
+          "image_url": "https://cdn.shopify.com/s/files/1/0753/1429/9158/files/anua-us-rumi-ultra-thin-spot-cover-patch-55ea-1219096364.jpg?v=1770095589",
+          "swatch_image_url": null,
+          "label_image_url": null,
+          "options": {
+            "Size": "55ea"
+          },
+          "raw_variant": {
+            "sku": "AK100009",
+            "url": "https://anua.com/products/rumi-ultra-thin-spot-cover-patch-55ea?variant=51019348279574&utm_source=pivota&utm_medium=affiliate",
+            "price": "14.00",
+            "stock": "In Stock",
+            "title": "55ea",
+            "options": [
+              {
+                "name": "Size",
+                "value": "55ea"
+              }
+            ],
+            "currency": "USD",
+            "deep_link": "https://anua.com/products/rumi-ultra-thin-spot-cover-patch-55ea?variant=51019348279574&utm_source=pivota&utm_medium=affiliate",
+            "image_url": "https://cdn.shopify.com/s/files/1/0753/1429/9158/files/anua-us-rumi-ultra-thin-spot-cover-patch-55ea-1219096364.jpg?v=1770095589",
+            "image_urls": [
+              "https://cdn.shopify.com/s/files/1/0753/1429/9158/files/anua-us-rumi-ultra-thin-spot-cover-patch-55ea-1219096364.jpg?v=1770095589",
+              "https://cdn.shopify.com/s/files/1/0753/1429/9158/files/anua-us-rumi-ultra-thin-spot-cover-patch-55ea-1219096360.jpg?v=1770095530",
+              "https://cdn.shopify.com/s/files/1/0753/1429/9158/files/anua-us-rumi-ultra-thin-spot-cover-patch-55ea-1219096362.jpg?v=1770095469",
+              "https://cdn.shopify.com/s/files/1/0753/1429/9158/files/anua-us-rumi-ultra-thin-spot-cover-patch-55ea-1219096361.jpg?v=1770095409",
+              "https://cdn.shopify.com/s/files/1/0753/1429/9158/files/anua-us-rumi-ultra-thin-spot-cover-patch-55ea-1219096365.jpg?v=1770095349",
+              "https://cdn.shopify.com/s/files/1/0753/1429/9158/files/anua-us-rumi-ultra-thin-spot-cover-patch-55ea-1219096359.jpg?v=1770095290",
+              "https://cdn.shopify.com/s/files/1/0753/1429/9158/files/anua-us-rumi-ultra-thin-spot-cover-patch-55ea-1219096363.jpg?v=1770095230",
+              "https://cdn.shopify.com/s/files/1/0753/1429/9158/files/anua-us-rumi-ultra-thin-spot-cover-patch-55ea-1219096367.jpg?v=1770095169",
+              "https://cdn.shopify.com/s/files/1/0753/1429/9158/files/anua-us-rumi-ultra-thin-spot-cover-patch-55ea-1219096366.jpg?v=1770095109"
+            ],
+            "variant_id": "51019348279574",
+            "description": "",
+            "option_name": "Size",
+            "product_url": "https://anua.com/products/rumi-ultra-thin-spot-cover-patch-55ea",
+            "option_value": "55ea",
+            "display_label": "Size: 55ea",
+            "source_origin": "shopify_json",
+            "source_quality_status": "medium"
+          }
+        },
+        "readiness_tier": "referral_only"
+      },
+      "first_offer": {
+        "offer_id": "offer:external_seed:18d9a899120a2482f5efb42f0eb27c10",
+        "sku_key": "prod::external_seed::external_seed::ext_a406636157366f31879c4cbe::sku_a79fefca7c2d1a556c21",
+        "product_key": "prod::external_seed::external_seed::ext_a406636157366f31879c4cbe",
+        "merchant_id": "external_seed",
+        "catalog_track": "external_referral",
+        "truth_tier": "observed",
+        "readiness_tier": "referral_only",
+        "offer_mode": "redirect",
+        "channel": "external_referral",
+        "availability": "in_stock",
+        "currency": "USD",
+        "list_price": 14,
+        "merchant_effective_price": 14,
+        "estimated_best_price": 14,
+        "price_confidence": 1,
+        "source_system": "external_product_seeds_mirror_v1",
+        "source_ref": "eps_e647180c3482a70e59bdeccc",
+        "source_domain": "anua.com",
+        "offer_payload": {
+          "source": "external_product_seeds_mirror_v1",
+          "external_seed_id": "eps_e647180c3482a70e59bdeccc",
+          "external_product_id": "ext_a406636157366f31879c4cbe",
+          "domain": "anua.com",
+          "market": "US",
+          "product_title": "Rumi Ultra-thin Spot Cover Patch (55ea)",
+          "variant_title": "55ea",
+          "variant_sku": "AK100009",
+          "raw_variant_id": "51019348279574",
+          "url": "https://anua.com/products/rumi-ultra-thin-spot-cover-patch-55ea",
+          "offer_url": "https://anua.com/products/rumi-ultra-thin-spot-cover-patch-55ea",
+          "canonical_url": "https://anua.com/products/rumi-ultra-thin-spot-cover-patch-55ea",
+          "destination_url": "https://anua.com/products/rumi-ultra-thin-spot-cover-patch-55ea",
+          "external_redirect_url": "https://anua.com/products/rumi-ultra-thin-spot-cover-patch-55ea",
+          "merchant_display_name": "Anua",
+          "price": "14",
+          "price_amount": 14,
+          "price_currency": "USD",
+          "availability": "in_stock",
+          "commerce_facts_v1": null
+        }
+      },
+      "serving_readiness": {
+        "servingEligible": true,
+        "contentQualityScore": 90,
+        "blockerCode": "none",
+        "blockerDetail": null,
+        "identityResolved": true,
+        "identityLiveReadResolved": false,
+        "identityBootstrapEligible": true,
+        "terminalHold": false,
+        "terminalHoldReason": "",
+        "hasImage": true,
+        "hasPrice": true,
+        "descriptionLength": 179
+      }
+    },
+    {
+      "external_product_id": "ext_04f175344e976ae32c16abad",
+      "product_key": "prod::external_seed::external_seed::ext_04f175344e976ae32c16abad",
+      "product_group_id": "sig_ed3c43bfe1bfcc8c3feb16a5",
+      "title": "RESTORING Cleansing Oil",
+      "brand": "Native Atlas",
+      "product_type": "Cleanser",
+      "category": "Cleanser",
+      "category_path": "beauty/skincare/cleansers",
+      "canonical_url": "https://nativeatlas.com/products/mimea-restoring-cleansing-oil",
+      "pivota_signature_id": "sig_ed3c43bfe1bfcc8c3feb16a5",
+      "sku_rows": 1,
+      "first_sku": {
+        "sku_key": "prod::external_seed::external_seed::ext_04f175344e976ae32c16abad::sku_d2a47d172728649ca389",
+        "product_key": "prod::external_seed::external_seed::ext_04f175344e976ae32c16abad",
+        "merchant_id": "external_seed",
+        "platform": "external_seed",
+        "source_product_id": "ext_04f175344e976ae32c16abad",
+        "source_variant_id": "ext_04f175344e976ae32c16abad:46553820889311",
+        "source_domain": "nativeatlas.com",
+        "sku": "MIMEA118",
+        "barcode": null,
+        "title": "4 oz",
+        "currency": "USD",
+        "image_url": "https://cdn.shopify.com/s/files/1/0989/7256/files/beauty_43.png?v=1714084954",
+        "visible_attributes": {
+          "4 oz": "4 oz"
+        },
+        "visible_option_labels": {
+          "4 oz": "4 oz"
+        },
+        "ingredient_ids": [],
+        "sku_payload": {
+          "source": "external_product_seeds_mirror_v1",
+          "external_product_id": "ext_04f175344e976ae32c16abad",
+          "raw_variant_id": "46553820889311",
+          "source_variant_id": "ext_04f175344e976ae32c16abad:46553820889311",
+          "variant_sku": "MIMEA118",
+          "barcode": null,
+          "strong_identifier_kind": null,
+          "source_url": "https://nativeatlas.com/products/mimea-restoring-cleansing-oil",
+          "external_redirect_url": "https://nativeatlas.com/products/mimea-restoring-cleansing-oil",
+          "price": "42",
+          "price_amount": 42,
+          "currency": "USD",
+          "availability": "in_stock",
+          "image_url": "https://cdn.shopify.com/s/files/1/0989/7256/files/beauty_43.png?v=1714084954",
+          "swatch_image_url": null,
+          "label_image_url": null,
+          "options": {
+            "4 oz": "4 oz"
+          },
+          "raw_variant": {
+            "sku": "MIMEA118",
+            "url": "https://nativeatlas.com/products/mimea-restoring-cleansing-oil?variant=46553820889311&utm_source=pivota&utm_medium=affiliate",
+            "price": "42.00",
+            "stock": "In Stock",
+            "title": "4 oz",
+            "options": [
+              {
+                "name": "4 oz",
+                "value": "4 oz"
+              }
+            ],
+            "currency": "USD",
+            "deep_link": "https://nativeatlas.com/products/mimea-restoring-cleansing-oil?variant=46553820889311&utm_source=pivota&utm_medium=affiliate",
+            "image_url": "https://cdn.shopify.com/s/files/1/0989/7256/files/beauty_43.png?v=1714084954",
+            "image_urls": [
+              "https://cdn.shopify.com/s/files/1/0989/7256/files/beauty_43.png?v=1714084954",
+              "https://cdn.shopify.com/s/files/1/0989/7256/files/Cleansing_Oil_water.jpg?v=1744343379",
+              "https://cdn.shopify.com/s/files/1/0989/7256/files/beauty_41_d70ed7e2-b9c2-4785-8835-adc6e84be072.png?v=1744343379",
+              "https://cdn.shopify.com/s/files/1/0989/7256/files/beauty_10_copy.jpg?v=1744343379"
+            ],
+            "variant_id": "46553820889311",
+            "option_name": "4 oz",
+            "product_url": "https://nativeatlas.com/products/mimea-restoring-cleansing-oil",
+            "option_value": "4 oz"
+          }
+        },
+        "readiness_tier": "referral_only"
+      },
+      "first_offer": {
+        "offer_id": "offer:external_seed:cb7cabf6ab58f3b0e2f9e17234df2ba9",
+        "sku_key": "prod::external_seed::external_seed::ext_04f175344e976ae32c16abad::sku_d2a47d172728649ca389",
+        "product_key": "prod::external_seed::external_seed::ext_04f175344e976ae32c16abad",
+        "merchant_id": "external_seed",
+        "catalog_track": "external_referral",
+        "truth_tier": "observed",
+        "readiness_tier": "referral_only",
+        "offer_mode": "redirect",
+        "channel": "external_referral",
+        "availability": "in_stock",
+        "currency": "USD",
+        "list_price": 42,
+        "merchant_effective_price": 42,
+        "estimated_best_price": 42,
+        "price_confidence": 1,
+        "source_system": "external_product_seeds_mirror_v1",
+        "source_ref": "eps_14fe05dcb5efc606477aa2bb",
+        "source_domain": "nativeatlas.com",
+        "offer_payload": {
+          "source": "external_product_seeds_mirror_v1",
+          "external_seed_id": "eps_14fe05dcb5efc606477aa2bb",
+          "external_product_id": "ext_04f175344e976ae32c16abad",
+          "domain": "nativeatlas.com",
+          "market": "US",
+          "product_title": "RESTORING Cleansing Oil",
+          "variant_title": "4 oz",
+          "variant_sku": "MIMEA118",
+          "raw_variant_id": "46553820889311",
+          "url": "https://nativeatlas.com/products/mimea-restoring-cleansing-oil",
+          "offer_url": "https://nativeatlas.com/products/mimea-restoring-cleansing-oil",
+          "canonical_url": "https://nativeatlas.com/products/mimea-restoring-cleansing-oil",
+          "destination_url": "https://nativeatlas.com/products/mimea-restoring-cleansing-oil",
+          "external_redirect_url": "https://nativeatlas.com/products/mimea-restoring-cleansing-oil",
+          "merchant_display_name": "Native Atlas",
+          "price": "42",
+          "price_amount": 42,
+          "price_currency": "USD",
+          "availability": "in_stock",
+          "commerce_facts_v1": {
+            "contract_version": "commerce_facts.v1",
+            "market_id": "US",
+            "country": "US",
+            "currency_target": "USD",
+            "source_authority": "catalog_extract_v2",
+            "captured_at": "2026-05-23T00:42:46.153Z",
+            "evidence_url": "https://nativeatlas.com/products/mimea-restoring-cleansing-oil",
+            "sellable_region": {
+              "status": "unknown",
+              "countries": [],
+              "evidence_source": "catalog_extract_v2",
+              "confidence": "medium",
+              "checked_at": "2026-05-23T00:42:46.153Z",
+              "reason_codes": [
+                "market_currency_observed",
+                "shipping_destination_not_verified",
+                "external_checkout_not_queried"
+              ],
+              "evidence_url": "https://nativeatlas.com/products/mimea-restoring-cleansing-oil"
+            },
+            "regional_price": {
+              "amount": 42,
+              "currency": "USD",
+              "display_raw": "42.00",
+              "price_type": "list",
+              "compare_at_amount": null,
+              "compare_at_currency": null,
+              "compare_at_display_raw": null,
+              "tax_included": "unknown",
+              "confidence": "medium",
+              "market_switch_status": "ok",
+              "observed_currency": "USD",
+              "source_url": "https://nativeatlas.com/products/mimea-restoring-cleansing-oil",
+              "captured_at": "2026-05-23T00:42:46.153Z"
+            },
+            "availability": {
+              "status": "in_stock",
+              "source": "catalog_extract_v2",
+              "confidence": "medium",
+              "captured_at": "2026-05-23T00:42:46.153Z"
+            },
+            "shipping": {
+              "status": "unknown",
+              "source": "catalog_extract_v2",
+              "confidence": "unknown",
+              "reason_codes": [
+                "external_checkout_not_queried"
+              ],
+              "checked_at": "2026-05-23T00:42:46.153Z"
+            },
+            "promotions": [],
+            "returns": {
+              "status": "unknown",
+              "source": "catalog_extract_v2",
+              "confidence": "unknown",
+              "reason_codes": [
+                "external_returns_not_extracted"
+              ],
+              "checked_at": "2026-05-23T00:42:46.153Z"
+            }
+          },
+          "agent_safe_commerce_facts": {
+            "contract_version": "commerce_facts.v1",
+            "market_id": "US",
+            "price": {
+              "amount": 42,
+              "currency": "USD",
+              "display_raw": "42.00",
+              "price_type": "list",
+              "compare_at_amount": null,
+              "compare_at_currency": null,
+              "compare_at_display_raw": null,
+              "tax_included": "unknown",
+              "confidence": "medium",
+              "market_switch_status": "ok",
+              "observed_currency": "USD",
+              "source_url": "https://nativeatlas.com/products/mimea-restoring-cleansing-oil",
+              "captured_at": "2026-05-23T00:42:46.153Z"
+            },
+            "availability": {
+              "status": "in_stock",
+              "source": "catalog_extract_v2",
+              "confidence": "medium",
+              "captured_at": "2026-05-23T00:42:46.153Z"
+            },
+            "shipping": {
+              "status": "unknown",
+              "reason": "verify_at_checkout"
+            },
+            "promotions": [],
+            "checkout_note": "Shipping and promotions are not verified for this external offer; verify at merchant checkout."
+          }
+        }
+      },
+      "serving_readiness": {
+        "servingEligible": true,
+        "contentQualityScore": 90,
+        "blockerCode": "none",
+        "blockerDetail": null,
+        "identityResolved": true,
+        "identityLiveReadResolved": false,
+        "identityBootstrapEligible": true,
+        "terminalHold": false,
+        "terminalHoldReason": "",
+        "hasImage": true,
+        "hasPrice": true,
+        "descriptionLength": 371
+      }
+    },
+    {
+      "external_product_id": "ext_b0e98400b870b8783629e14a",
+      "product_key": "prod::external_seed::external_seed::ext_b0e98400b870b8783629e14a",
+      "product_group_id": "sig_1066ee4dff9d219be83354d1",
+      "title": "Coffee Fruit Antioxidant Cleanser",
+      "brand": "Reap & Glow",
+      "product_type": "Cleanser",
+      "category": "Cleanser",
+      "category_path": "beauty/skincare/cleansers",
+      "canonical_url": "https://reapandglow.com/products/coffee-fruit-antioxidant-cleanser",
+      "pivota_signature_id": "sig_1066ee4dff9d219be83354d1",
+      "sku_rows": 1,
+      "first_sku": {
+        "sku_key": "prod::external_seed::external_seed::ext_b0e98400b870b8783629e14a::sku_f88c897c7768e1e5d7f4",
+        "product_key": "prod::external_seed::external_seed::ext_b0e98400b870b8783629e14a",
+        "merchant_id": "external_seed",
+        "platform": "external_seed",
+        "source_product_id": "ext_b0e98400b870b8783629e14a",
+        "source_variant_id": "ext_b0e98400b870b8783629e14a:44266037805370",
+        "source_domain": "reapandglow.com",
+        "sku": "FR00003",
+        "barcode": null,
+        "title": "Coffee Fruit Antioxidant Cleanser",
+        "currency": "USD",
+        "image_url": "https://reapandglow.com/cdn/shop/files/CoffeeCleansertubeoncounterwithactivessquarephotostyle.jpg?v=1707168937",
+        "visible_attributes": {},
+        "visible_option_labels": {},
+        "ingredient_ids": [],
+        "sku_payload": {
+          "source": "external_product_seeds_mirror_v1",
+          "external_product_id": "ext_b0e98400b870b8783629e14a",
+          "raw_variant_id": "44266037805370",
+          "source_variant_id": "ext_b0e98400b870b8783629e14a:44266037805370",
+          "variant_sku": "FR00003",
+          "barcode": null,
+          "strong_identifier_kind": null,
+          "source_url": "https://reapandglow.com/products/coffee-fruit-antioxidant-cleanser",
+          "external_redirect_url": "https://reapandglow.com/products/coffee-fruit-antioxidant-cleanser",
+          "price": "28",
+          "price_amount": 28,
+          "currency": "USD",
+          "availability": "in_stock",
+          "image_url": "https://reapandglow.com/cdn/shop/files/CoffeeCleansertubeoncounterwithactivessquarephotostyle.jpg?v=1707168937",
+          "swatch_image_url": null,
+          "label_image_url": null,
+          "options": {},
+          "raw_variant": {
+            "sku": "FR00003",
+            "url": "https://reapandglow.com/products/coffee-fruit-antioxidant-cleanser?variant=44266037805370&utm_source=pivota&utm_medium=affiliate",
+            "price": "28.00",
+            "stock": "In Stock",
+            "title": "Default",
+            "options": [],
+            "currency": "USD",
+            "deep_link": "https://reapandglow.com/products/coffee-fruit-antioxidant-cleanser?variant=44266037805370&utm_source=pivota&utm_medium=affiliate",
+            "image_url": "https://reapandglow.com/cdn/shop/files/CoffeeCleansertubeoncounterwithactivessquarephotostyle.jpg?v=1707168937",
+            "image_urls": [
+              "https://reapandglow.com/cdn/shop/files/CoffeeCleansertubeoncounterwithactivessquarephotostyle.jpg?v=1707168937",
+              "https://reapandglow.com/cdn/shop/files/CoffeeFruitCleanserwithallfruitsfromAboveGreenVanityVerticalbest.jpg?v=1752373792",
+              "https://reapandglow.com/cdn/shop/files/Cleanser_ClinicalVisual.jpg?v=1772322379",
+              "https://reapandglow.com/cdn/shop/files/WomanMelissaHoldingCleanserTube.png?v=1772322111",
+              "https://reapandglow.com/cdn/shop/files/CoffeeCleansertubeoncounterwithactivessquarephotostyle.jpg?crop=center&v=1707168937",
+              "https://reapandglow.com/cdn/shop/files/CoffeeFruitCleanserwithallfruitsfromAboveGreenVanityVerticalbest.jpg?crop=center&v=1752373792",
+              "https://reapandglow.com/cdn/shop/files/Cleanser_ClinicalVisual.jpg?crop=center&v=1772322379",
+              "https://reapandglow.com/cdn/shop/files/WomanMelissaHoldingCleanserTube.png?crop=center&v=1772322111"
+            ],
+            "variant_id": "44266037805370",
+            "product_url": "https://reapandglow.com/products/coffee-fruit-antioxidant-cleanser"
+          }
+        },
+        "readiness_tier": "referral_only"
+      },
+      "first_offer": {
+        "offer_id": "offer:external_seed:139d22bcc6e62d26af5b663a0a9991fe",
+        "sku_key": "prod::external_seed::external_seed::ext_b0e98400b870b8783629e14a::sku_f88c897c7768e1e5d7f4",
+        "product_key": "prod::external_seed::external_seed::ext_b0e98400b870b8783629e14a",
+        "merchant_id": "external_seed",
+        "catalog_track": "external_referral",
+        "truth_tier": "observed",
+        "readiness_tier": "referral_only",
+        "offer_mode": "redirect",
+        "channel": "external_referral",
+        "availability": "in_stock",
+        "currency": "USD",
+        "list_price": 28,
+        "merchant_effective_price": 28,
+        "estimated_best_price": 28,
+        "price_confidence": 1,
+        "source_system": "external_product_seeds_mirror_v1",
+        "source_ref": "eps_d422bd9ae92c9fce733661d6",
+        "source_domain": "reapandglow.com",
+        "offer_payload": {
+          "source": "external_product_seeds_mirror_v1",
+          "external_seed_id": "eps_d422bd9ae92c9fce733661d6",
+          "external_product_id": "ext_b0e98400b870b8783629e14a",
+          "domain": "reapandglow.com",
+          "market": "US",
+          "product_title": "Coffee Fruit Antioxidant Cleanser",
+          "variant_title": "Coffee Fruit Antioxidant Cleanser",
+          "variant_sku": "FR00003",
+          "raw_variant_id": "44266037805370",
+          "url": "https://reapandglow.com/products/coffee-fruit-antioxidant-cleanser",
+          "offer_url": "https://reapandglow.com/products/coffee-fruit-antioxidant-cleanser",
+          "canonical_url": "https://reapandglow.com/products/coffee-fruit-antioxidant-cleanser",
+          "destination_url": "https://reapandglow.com/products/coffee-fruit-antioxidant-cleanser",
+          "external_redirect_url": "https://reapandglow.com/products/coffee-fruit-antioxidant-cleanser",
+          "merchant_display_name": "Reap & Glow",
+          "price": "28",
+          "price_amount": 28,
+          "price_currency": "USD",
+          "availability": "in_stock",
+          "commerce_facts_v1": {
+            "contract_version": "commerce_facts.v1",
+            "market_id": "US",
+            "country": "US",
+            "currency_target": "USD",
+            "source_authority": "catalog_extract_v2",
+            "captured_at": "2026-05-23T00:44:44.983Z",
+            "evidence_url": "https://reapandglow.com/products/coffee-fruit-antioxidant-cleanser",
+            "sellable_region": {
+              "status": "unknown",
+              "countries": [],
+              "evidence_source": "catalog_extract_v2",
+              "confidence": "medium",
+              "checked_at": "2026-05-23T00:44:44.983Z",
+              "reason_codes": [
+                "market_currency_observed",
+                "shipping_destination_not_verified",
+                "external_checkout_not_queried"
+              ],
+              "evidence_url": "https://reapandglow.com/products/coffee-fruit-antioxidant-cleanser"
+            },
+            "regional_price": {
+              "amount": 28,
+              "currency": "USD",
+              "display_raw": "28.00",
+              "price_type": "list",
+              "compare_at_amount": null,
+              "compare_at_currency": null,
+              "compare_at_display_raw": null,
+              "tax_included": "unknown",
+              "confidence": "medium",
+              "market_switch_status": "ok",
+              "observed_currency": "USD",
+              "source_url": "https://reapandglow.com/products/coffee-fruit-antioxidant-cleanser",
+              "captured_at": "2026-05-23T00:44:44.983Z"
+            },
+            "availability": {
+              "status": "in_stock",
+              "source": "catalog_extract_v2",
+              "confidence": "medium",
+              "captured_at": "2026-05-23T00:44:44.983Z"
+            },
+            "shipping": {
+              "status": "unknown",
+              "source": "catalog_extract_v2",
+              "confidence": "unknown",
+              "reason_codes": [
+                "external_checkout_not_queried"
+              ],
+              "checked_at": "2026-05-23T00:44:44.983Z"
+            },
+            "promotions": [],
+            "returns": {
+              "status": "unknown",
+              "source": "catalog_extract_v2",
+              "confidence": "unknown",
+              "reason_codes": [
+                "external_returns_not_extracted"
+              ],
+              "checked_at": "2026-05-23T00:44:44.983Z"
+            }
+          },
+          "agent_safe_commerce_facts": {
+            "contract_version": "commerce_facts.v1",
+            "market_id": "US",
+            "price": {
+              "amount": 28,
+              "currency": "USD",
+              "display_raw": "28.00",
+              "price_type": "list",
+              "compare_at_amount": null,
+              "compare_at_currency": null,
+              "compare_at_display_raw": null,
+              "tax_included": "unknown",
+              "confidence": "medium",
+              "market_switch_status": "ok",
+              "observed_currency": "USD",
+              "source_url": "https://reapandglow.com/products/coffee-fruit-antioxidant-cleanser",
+              "captured_at": "2026-05-23T00:44:44.983Z"
+            },
+            "availability": {
+              "status": "in_stock",
+              "source": "catalog_extract_v2",
+              "confidence": "medium",
+              "captured_at": "2026-05-23T00:44:44.983Z"
+            },
+            "shipping": {
+              "status": "unknown",
+              "reason": "verify_at_checkout"
+            },
+            "promotions": [],
+            "checkout_note": "Shipping and promotions are not verified for this external offer; verify at merchant checkout."
+          }
+        }
+      },
+      "serving_readiness": {
+        "servingEligible": true,
+        "contentQualityScore": 90,
+        "blockerCode": "none",
+        "blockerDetail": null,
+        "identityResolved": true,
+        "identityLiveReadResolved": false,
+        "identityBootstrapEligible": true,
+        "terminalHold": false,
+        "terminalHoldReason": "",
+        "hasImage": true,
+        "hasPrice": true,
+        "descriptionLength": 437
+      }
+    },
+    {
+      "external_product_id": "ext_b20d88539f9351b8db39595d",
+      "product_key": "prod::external_seed::external_seed::ext_b20d88539f9351b8db39595d",
+      "product_group_id": "sig_71962d45de560ac4d513eef9",
+      "title": "Ayurvedic Deep Hydrating Rejuvenation Crème",
+      "brand": "Reap & Glow",
+      "product_type": "Moisturizer",
+      "category": "Moisturizer",
+      "category_path": "beauty/skincare/moisturizers",
+      "canonical_url": "https://reapandglow.com/products/ayurvedic-deep-hydrating-rejuvenation-creme",
+      "pivota_signature_id": "sig_71962d45de560ac4d513eef9",
+      "sku_rows": 1,
+      "first_sku": {
+        "sku_key": "prod::external_seed::external_seed::ext_b20d88539f9351b8db39595d::sku_8b55980721d889f715bc",
+        "product_key": "prod::external_seed::external_seed::ext_b20d88539f9351b8db39595d",
+        "merchant_id": "external_seed",
+        "platform": "external_seed",
+        "source_product_id": "ext_b20d88539f9351b8db39595d",
+        "source_variant_id": "ext_b20d88539f9351b8db39595d:44266347725114",
+        "source_domain": "reapandglow.com",
+        "sku": "689030a8b8831",
+        "barcode": null,
+        "title": "Ayurvedic Deep Hydrating Rejuvenation Crème",
+        "currency": "USD",
+        "image_url": "https://reapandglow.com/cdn/shop/files/AyurvedicCremeoncounterwithActivessquarephotostyle_1.jpg?v=1707169215",
+        "visible_attributes": {},
+        "visible_option_labels": {},
+        "ingredient_ids": [],
+        "sku_payload": {
+          "source": "external_product_seeds_mirror_v1",
+          "external_product_id": "ext_b20d88539f9351b8db39595d",
+          "raw_variant_id": "44266347725114",
+          "source_variant_id": "ext_b20d88539f9351b8db39595d:44266347725114",
+          "variant_sku": "689030a8b8831",
+          "barcode": null,
+          "strong_identifier_kind": null,
+          "source_url": "https://reapandglow.com/products/ayurvedic-deep-hydrating-rejuvenation-creme",
+          "external_redirect_url": "https://reapandglow.com/products/ayurvedic-deep-hydrating-rejuvenation-creme",
+          "price": "68",
+          "price_amount": 68,
+          "currency": "USD",
+          "availability": "in_stock",
+          "image_url": "https://reapandglow.com/cdn/shop/files/AyurvedicCremeoncounterwithActivessquarephotostyle_1.jpg?v=1707169215",
+          "swatch_image_url": null,
+          "label_image_url": null,
+          "options": {},
+          "raw_variant": {
+            "sku": "689030a8b8831",
+            "url": "https://reapandglow.com/products/ayurvedic-deep-hydrating-rejuvenation-creme?variant=44266347725114&utm_source=pivota&utm_medium=affiliate",
+            "price": "68.00",
+            "stock": "In Stock",
+            "title": "Default",
+            "options": [],
+            "currency": "USD",
+            "deep_link": "https://reapandglow.com/products/ayurvedic-deep-hydrating-rejuvenation-creme?variant=44266347725114&utm_source=pivota&utm_medium=affiliate",
+            "image_url": "https://reapandglow.com/cdn/shop/files/AyurvedicCremeoncounterwithActivessquarephotostyle_1.jpg?v=1707169215",
+            "image_urls": [
+              "https://reapandglow.com/cdn/shop/files/AyurvedicCremeoncounterwithActivessquarephotostyle_1.jpg?v=1707169215",
+              "https://reapandglow.com/cdn/shop/files/3_9934ed70-73b0-4e4e-8c92-b34a1de09340.png?v=1752374084",
+              "https://reapandglow.com/cdn/shop/files/2_0a533604-1d74-4546-973f-d1ba8f5027af.png?v=1772322048",
+              "https://reapandglow.com/cdn/shop/files/Creme_ClinicalVisual.jpg?v=1772322048",
+              "https://reapandglow.com/cdn/shop/files/Ti7WaP64I_2dmtUPx4PgqAc_0_gps_generated.png?v=1772319080",
+              "https://reapandglow.com/cdn/shop/files/Ayurvedic_Deep_Hydrating_Rejuvenation_Creme_Light_Gray_Background_reflection.png?v=1772319080",
+              "https://reapandglow.com/cdn/shop/files/dyXWaMXeDtWzmtUPi9m08AY_1_gps_generated.png?v=1772319080",
+              "https://reapandglow.com/cdn/shop/files/AyurvedicCremeoncounterwithActivessquarephotostyle_1.jpg?crop=center&v=1707169215",
+              "https://reapandglow.com/cdn/shop/files/3_9934ed70-73b0-4e4e-8c92-b34a1de09340.png?crop=center&v=1752374084",
+              "https://reapandglow.com/cdn/shop/files/2_0a533604-1d74-4546-973f-d1ba8f5027af.png?crop=center&v=1772322048"
+            ],
+            "variant_id": "44266347725114",
+            "product_url": "https://reapandglow.com/products/ayurvedic-deep-hydrating-rejuvenation-creme"
+          }
+        },
+        "readiness_tier": "referral_only"
+      },
+      "first_offer": {
+        "offer_id": "offer:external_seed:19f476f9f5a100187252af01d22db30e",
+        "sku_key": "prod::external_seed::external_seed::ext_b20d88539f9351b8db39595d::sku_8b55980721d889f715bc",
+        "product_key": "prod::external_seed::external_seed::ext_b20d88539f9351b8db39595d",
+        "merchant_id": "external_seed",
+        "catalog_track": "external_referral",
+        "truth_tier": "observed",
+        "readiness_tier": "referral_only",
+        "offer_mode": "redirect",
+        "channel": "external_referral",
+        "availability": "in_stock",
+        "currency": "USD",
+        "list_price": 68,
+        "merchant_effective_price": 68,
+        "estimated_best_price": 68,
+        "price_confidence": 1,
+        "source_system": "external_product_seeds_mirror_v1",
+        "source_ref": "eps_00e0923d0cfd072af4ff60cf",
+        "source_domain": "reapandglow.com",
+        "offer_payload": {
+          "source": "external_product_seeds_mirror_v1",
+          "external_seed_id": "eps_00e0923d0cfd072af4ff60cf",
+          "external_product_id": "ext_b20d88539f9351b8db39595d",
+          "domain": "reapandglow.com",
+          "market": "US",
+          "product_title": "Ayurvedic Deep Hydrating Rejuvenation Crème",
+          "variant_title": "Ayurvedic Deep Hydrating Rejuvenation Crème",
+          "variant_sku": "689030a8b8831",
+          "raw_variant_id": "44266347725114",
+          "url": "https://reapandglow.com/products/ayurvedic-deep-hydrating-rejuvenation-creme",
+          "offer_url": "https://reapandglow.com/products/ayurvedic-deep-hydrating-rejuvenation-creme",
+          "canonical_url": "https://reapandglow.com/products/ayurvedic-deep-hydrating-rejuvenation-creme",
+          "destination_url": "https://reapandglow.com/products/ayurvedic-deep-hydrating-rejuvenation-creme",
+          "external_redirect_url": "https://reapandglow.com/products/ayurvedic-deep-hydrating-rejuvenation-creme",
+          "merchant_display_name": "Reap & Glow",
+          "price": "68",
+          "price_amount": 68,
+          "price_currency": "USD",
+          "availability": "in_stock",
+          "commerce_facts_v1": {
+            "contract_version": "commerce_facts.v1",
+            "market_id": "US",
+            "country": "US",
+            "currency_target": "USD",
+            "source_authority": "catalog_extract_v2",
+            "captured_at": "2026-05-23T00:44:28.250Z",
+            "evidence_url": "https://reapandglow.com/products/ayurvedic-deep-hydrating-rejuvenation-creme",
+            "sellable_region": {
+              "status": "unknown",
+              "countries": [],
+              "evidence_source": "catalog_extract_v2",
+              "confidence": "medium",
+              "checked_at": "2026-05-23T00:44:28.250Z",
+              "reason_codes": [
+                "market_currency_observed",
+                "shipping_destination_not_verified",
+                "external_checkout_not_queried"
+              ],
+              "evidence_url": "https://reapandglow.com/products/ayurvedic-deep-hydrating-rejuvenation-creme"
+            },
+            "regional_price": {
+              "amount": 68,
+              "currency": "USD",
+              "display_raw": "68.00",
+              "price_type": "list",
+              "compare_at_amount": null,
+              "compare_at_currency": null,
+              "compare_at_display_raw": null,
+              "tax_included": "unknown",
+              "confidence": "medium",
+              "market_switch_status": "ok",
+              "observed_currency": "USD",
+              "source_url": "https://reapandglow.com/products/ayurvedic-deep-hydrating-rejuvenation-creme",
+              "captured_at": "2026-05-23T00:44:28.250Z"
+            },
+            "availability": {
+              "status": "in_stock",
+              "source": "catalog_extract_v2",
+              "confidence": "medium",
+              "captured_at": "2026-05-23T00:44:28.250Z"
+            },
+            "shipping": {
+              "status": "unknown",
+              "source": "catalog_extract_v2",
+              "confidence": "unknown",
+              "reason_codes": [
+                "external_checkout_not_queried"
+              ],
+              "checked_at": "2026-05-23T00:44:28.250Z"
+            },
+            "promotions": [],
+            "returns": {
+              "status": "unknown",
+              "source": "catalog_extract_v2",
+              "confidence": "unknown",
+              "reason_codes": [
+                "external_returns_not_extracted"
+              ],
+              "checked_at": "2026-05-23T00:44:28.250Z"
+            }
+          },
+          "agent_safe_commerce_facts": {
+            "contract_version": "commerce_facts.v1",
+            "market_id": "US",
+            "price": {
+              "amount": 68,
+              "currency": "USD",
+              "display_raw": "68.00",
+              "price_type": "list",
+              "compare_at_amount": null,
+              "compare_at_currency": null,
+              "compare_at_display_raw": null,
+              "tax_included": "unknown",
+              "confidence": "medium",
+              "market_switch_status": "ok",
+              "observed_currency": "USD",
+              "source_url": "https://reapandglow.com/products/ayurvedic-deep-hydrating-rejuvenation-creme",
+              "captured_at": "2026-05-23T00:44:28.250Z"
+            },
+            "availability": {
+              "status": "in_stock",
+              "source": "catalog_extract_v2",
+              "confidence": "medium",
+              "captured_at": "2026-05-23T00:44:28.250Z"
+            },
+            "shipping": {
+              "status": "unknown",
+              "reason": "verify_at_checkout"
+            },
+            "promotions": [],
+            "checkout_note": "Shipping and promotions are not verified for this external offer; verify at merchant checkout."
+          }
+        }
+      },
+      "serving_readiness": {
+        "servingEligible": true,
+        "contentQualityScore": 90,
+        "blockerCode": "none",
+        "blockerDetail": null,
+        "identityResolved": true,
+        "identityLiveReadResolved": false,
+        "identityBootstrapEligible": true,
+        "terminalHold": false,
+        "terminalHoldReason": "",
+        "hasImage": true,
+        "hasPrice": true,
+        "descriptionLength": 398
+      }
+    },
+    {
+      "external_product_id": "ext_c2aca294e6409ceced3da49b",
+      "product_key": "prod::external_seed::external_seed::ext_c2aca294e6409ceced3da49b",
+      "product_group_id": "sig_ea369d1ce4d5b20ff2f9f192",
+      "title": "Turmeric Peptide Firming & Smoothing Serum",
+      "brand": "Reap & Glow",
+      "product_type": "Serum",
+      "category": "Serum",
+      "category_path": "beauty/skincare/serums",
+      "canonical_url": "https://reapandglow.com/products/turmeric-peptide-firming-smoothing-serum",
+      "pivota_signature_id": "sig_ea369d1ce4d5b20ff2f9f192",
+      "sku_rows": 1,
+      "first_sku": {
+        "sku_key": "prod::external_seed::external_seed::ext_c2aca294e6409ceced3da49b::sku_401af096cd75d2a71ebb",
+        "product_key": "prod::external_seed::external_seed::ext_c2aca294e6409ceced3da49b",
+        "merchant_id": "external_seed",
+        "platform": "external_seed",
+        "source_product_id": "ext_c2aca294e6409ceced3da49b",
+        "source_variant_id": "ext_c2aca294e6409ceced3da49b:44266305159482",
+        "source_domain": "reapandglow.com",
+        "sku": "FR00001",
+        "barcode": null,
+        "title": "Turmeric Peptide Firming & Smoothing Serum",
+        "currency": "USD",
+        "image_url": "https://reapandglow.com/cdn/shop/files/Turmeric_Peptide_Serum_on_Counter_with_Actives_Ayesha.jpg?v=1752015058",
+        "visible_attributes": {},
+        "visible_option_labels": {},
+        "ingredient_ids": [],
+        "sku_payload": {
+          "source": "external_product_seeds_mirror_v1",
+          "external_product_id": "ext_c2aca294e6409ceced3da49b",
+          "raw_variant_id": "44266305159482",
+          "source_variant_id": "ext_c2aca294e6409ceced3da49b:44266305159482",
+          "variant_sku": "FR00001",
+          "barcode": null,
+          "strong_identifier_kind": null,
+          "source_url": "https://reapandglow.com/products/turmeric-peptide-firming-smoothing-serum",
+          "external_redirect_url": "https://reapandglow.com/products/turmeric-peptide-firming-smoothing-serum",
+          "price": "63",
+          "price_amount": 63,
+          "currency": "USD",
+          "availability": "in_stock",
+          "image_url": "https://reapandglow.com/cdn/shop/files/Turmeric_Peptide_Serum_on_Counter_with_Actives_Ayesha.jpg?v=1752015058",
+          "swatch_image_url": null,
+          "label_image_url": null,
+          "options": {},
+          "raw_variant": {
+            "sku": "FR00001",
+            "url": "https://reapandglow.com/products/turmeric-peptide-firming-smoothing-serum?variant=44266305159482&utm_source=pivota&utm_medium=affiliate",
+            "price": "63.00",
+            "stock": "In Stock",
+            "title": "Default",
+            "options": [],
+            "currency": "USD",
+            "deep_link": "https://reapandglow.com/products/turmeric-peptide-firming-smoothing-serum?variant=44266305159482&utm_source=pivota&utm_medium=affiliate",
+            "image_url": "https://reapandglow.com/cdn/shop/files/Turmeric_Peptide_Serum_on_Counter_with_Actives_Ayesha.jpg?v=1752015058",
+            "image_urls": [
+              "https://reapandglow.com/cdn/shop/files/Turmeric_Peptide_Serum_on_Counter_with_Actives_Ayesha.jpg?v=1752015058",
+              "https://reapandglow.com/cdn/shop/files/4_Benefits_of_Reap_Glow_Turmeric_Pepetide.png?v=1777664837",
+              "https://reapandglow.com/cdn/shop/files/d.png?v=1772322379",
+              "https://reapandglow.com/cdn/shop/files/Turmeric_Serum_key_actives_benefits_2000X2000_992fb5fa-ccb2-4bcd-9ee0-722ef6cc4f65.jpg?v=1754301731",
+              "https://reapandglow.com/cdn/shop/files/TurmericPeptideSerumClinicalVisual.png?v=1772322379",
+              "https://reapandglow.com/cdn/shop/files/WomanCarlaHoldingSerumBottle.png?v=1772322197",
+              "https://reapandglow.com/cdn/shop/files/Turmeric_Peptide_Serum_on_Counter_with_Actives_Ayesha.jpg?crop=center&v=1752015058",
+              "https://reapandglow.com/cdn/shop/files/4_Benefits_of_Reap_Glow_Turmeric_Pepetide.png?crop=center&v=1777664837",
+              "https://reapandglow.com/cdn/shop/files/d.png?crop=center&v=1772322379",
+              "https://reapandglow.com/cdn/shop/files/Turmeric_Serum_key_actives_benefits_2000X2000_992fb5fa-ccb2-4bcd-9ee0-722ef6cc4f65.jpg?crop=center&v=1754301731"
+            ],
+            "variant_id": "44266305159482",
+            "product_url": "https://reapandglow.com/products/turmeric-peptide-firming-smoothing-serum"
+          }
+        },
+        "readiness_tier": "referral_only"
+      },
+      "first_offer": {
+        "offer_id": "offer:external_seed:3c08b95e0267e078a4f80d5ed4e41dbf",
+        "sku_key": "prod::external_seed::external_seed::ext_c2aca294e6409ceced3da49b::sku_401af096cd75d2a71ebb",
+        "product_key": "prod::external_seed::external_seed::ext_c2aca294e6409ceced3da49b",
+        "merchant_id": "external_seed",
+        "catalog_track": "external_referral",
+        "truth_tier": "observed",
+        "readiness_tier": "referral_only",
+        "offer_mode": "redirect",
+        "channel": "external_referral",
+        "availability": "in_stock",
+        "currency": "USD",
+        "list_price": 63,
+        "merchant_effective_price": 63,
+        "estimated_best_price": 63,
+        "price_confidence": 1,
+        "source_system": "external_product_seeds_mirror_v1",
+        "source_ref": "eps_d9c49de974f2282ccc0c8f9d",
+        "source_domain": "reapandglow.com",
+        "offer_payload": {
+          "source": "external_product_seeds_mirror_v1",
+          "external_seed_id": "eps_d9c49de974f2282ccc0c8f9d",
+          "external_product_id": "ext_c2aca294e6409ceced3da49b",
+          "domain": "reapandglow.com",
+          "market": "US",
+          "product_title": "Turmeric Peptide Firming & Smoothing Serum",
+          "variant_title": "Turmeric Peptide Firming & Smoothing Serum",
+          "variant_sku": "FR00001",
+          "raw_variant_id": "44266305159482",
+          "url": "https://reapandglow.com/products/turmeric-peptide-firming-smoothing-serum",
+          "offer_url": "https://reapandglow.com/products/turmeric-peptide-firming-smoothing-serum",
+          "canonical_url": "https://reapandglow.com/products/turmeric-peptide-firming-smoothing-serum",
+          "destination_url": "https://reapandglow.com/products/turmeric-peptide-firming-smoothing-serum",
+          "external_redirect_url": "https://reapandglow.com/products/turmeric-peptide-firming-smoothing-serum",
+          "merchant_display_name": "Reap & Glow",
+          "price": "63",
+          "price_amount": 63,
+          "price_currency": "USD",
+          "availability": "in_stock",
+          "commerce_facts_v1": {
+            "contract_version": "commerce_facts.v1",
+            "market_id": "US",
+            "country": "US",
+            "currency_target": "USD",
+            "source_authority": "catalog_extract_v2",
+            "captured_at": "2026-05-23T00:45:00.085Z",
+            "evidence_url": "https://reapandglow.com/products/turmeric-peptide-firming-smoothing-serum",
+            "sellable_region": {
+              "status": "unknown",
+              "countries": [],
+              "evidence_source": "catalog_extract_v2",
+              "confidence": "medium",
+              "checked_at": "2026-05-23T00:45:00.085Z",
+              "reason_codes": [
+                "market_currency_observed",
+                "shipping_destination_not_verified",
+                "external_checkout_not_queried"
+              ],
+              "evidence_url": "https://reapandglow.com/products/turmeric-peptide-firming-smoothing-serum"
+            },
+            "regional_price": {
+              "amount": 63,
+              "currency": "USD",
+              "display_raw": "63.00",
+              "price_type": "sale",
+              "compare_at_amount": 85,
+              "compare_at_currency": "USD",
+              "compare_at_display_raw": "85.00",
+              "tax_included": "unknown",
+              "confidence": "medium",
+              "market_switch_status": "ok",
+              "observed_currency": "USD",
+              "source_url": "https://reapandglow.com/products/turmeric-peptide-firming-smoothing-serum",
+              "captured_at": "2026-05-23T00:45:00.085Z"
+            },
+            "availability": {
+              "status": "in_stock",
+              "source": "catalog_extract_v2",
+              "confidence": "medium",
+              "captured_at": "2026-05-23T00:45:00.085Z"
+            },
+            "shipping": {
+              "status": "unknown",
+              "source": "catalog_extract_v2",
+              "confidence": "unknown",
+              "reason_codes": [
+                "external_checkout_not_queried"
+              ],
+              "checked_at": "2026-05-23T00:45:00.085Z"
+            },
+            "promotions": [],
+            "returns": {
+              "status": "unknown",
+              "source": "catalog_extract_v2",
+              "confidence": "unknown",
+              "reason_codes": [
+                "external_returns_not_extracted"
+              ],
+              "checked_at": "2026-05-23T00:45:00.085Z"
+            }
+          },
+          "agent_safe_commerce_facts": {
+            "contract_version": "commerce_facts.v1",
+            "market_id": "US",
+            "price": {
+              "amount": 63,
+              "currency": "USD",
+              "display_raw": "63.00",
+              "price_type": "sale",
+              "compare_at_amount": 85,
+              "compare_at_currency": "USD",
+              "compare_at_display_raw": "85.00",
+              "tax_included": "unknown",
+              "confidence": "medium",
+              "market_switch_status": "ok",
+              "observed_currency": "USD",
+              "source_url": "https://reapandglow.com/products/turmeric-peptide-firming-smoothing-serum",
+              "captured_at": "2026-05-23T00:45:00.085Z"
+            },
+            "availability": {
+              "status": "in_stock",
+              "source": "catalog_extract_v2",
+              "confidence": "medium",
+              "captured_at": "2026-05-23T00:45:00.085Z"
+            },
+            "shipping": {
+              "status": "unknown",
+              "reason": "verify_at_checkout"
+            },
+            "promotions": [],
+            "checkout_note": "Shipping and promotions are not verified for this external offer; verify at merchant checkout."
+          }
+        }
+      },
+      "serving_readiness": {
+        "servingEligible": true,
+        "contentQualityScore": 90,
+        "blockerCode": "none",
+        "blockerDetail": null,
+        "identityResolved": true,
+        "identityLiveReadResolved": false,
+        "identityBootstrapEligible": true,
+        "terminalHold": false,
+        "terminalHoldReason": "",
+        "hasImage": true,
+        "hasPrice": true,
+        "descriptionLength": 425
+      }
+    },
+    {
+      "external_product_id": "ext_168590ab880a51bc9573dc3f",
+      "product_key": "prod::external_seed::external_seed::ext_168590ab880a51bc9573dc3f",
+      "product_group_id": "sig_5deb1bd53ff2a81c9136f924",
+      "title": "Bio-Peel Gauze Peeling Wine",
+      "brand": "Neogen",
+      "product_type": "Beauty Product",
+      "category": "Beauty Product",
+      "category_path": "beauty",
+      "canonical_url": "https://sokoglam.com/products/neogen-bio-peel-gauze-peeling-wine",
+      "pivota_signature_id": "sig_53dad4f8ded9033f5ceaa0de005ddba2",
+      "sku_rows": 1,
+      "first_sku": {
+        "sku_key": "prod::external_seed::external_seed::ext_168590ab880a51bc9573dc3f::sku_be332876c7216fb20c79",
+        "product_key": "prod::external_seed::external_seed::ext_168590ab880a51bc9573dc3f",
+        "merchant_id": "external_seed",
+        "platform": "external_seed",
+        "source_product_id": "ext_168590ab880a51bc9573dc3f",
+        "source_variant_id": "ext_168590ab880a51bc9573dc3f:473199476745",
+        "source_domain": "sokoglam.com",
+        "sku": "NEO101844",
+        "barcode": null,
+        "title": "Bio-Peel Gauze Peeling Wine",
+        "currency": "USD",
+        "image_url": "https://cdn.shopify.com/s/files/1/0249/1218/files/Neogen-Bio-Peel-Gauze-Peeling-Wine.jpg?v=1756220510",
+        "visible_attributes": {},
+        "visible_option_labels": {},
+        "ingredient_ids": [],
+        "sku_payload": {
+          "source": "external_product_seeds_mirror_v1",
+          "external_product_id": "ext_168590ab880a51bc9573dc3f",
+          "raw_variant_id": "473199476745",
+          "source_variant_id": "ext_168590ab880a51bc9573dc3f:473199476745",
+          "variant_sku": "NEO101844",
+          "barcode": null,
+          "strong_identifier_kind": null,
+          "source_url": "https://sokoglam.com/products/neogen-bio-peel-gauze-peeling-wine",
+          "external_redirect_url": "https://sokoglam.com/products/neogen-bio-peel-gauze-peeling-wine",
+          "price": "27",
+          "price_amount": 27,
+          "currency": "USD",
+          "availability": "in_stock",
+          "image_url": "https://cdn.shopify.com/s/files/1/0249/1218/files/Neogen-Bio-Peel-Gauze-Peeling-Wine.jpg?v=1756220510",
+          "swatch_image_url": null,
+          "label_image_url": null,
+          "options": {},
+          "raw_variant": {
+            "sku": "NEO101844",
+            "url": "https://sokoglam.com/products/neogen-bio-peel-gauze-peeling-wine",
+            "price": "27",
+            "stock": "In Stock",
+            "title": "Single item",
+            "options": [
+              {
+                "name": "Format",
+                "value": "Single item",
+                "axis_kind": "format"
+              }
+            ],
+            "currency": "USD",
+            "axis_kind": "format",
+            "image_url": "https://cdn.shopify.com/s/files/1/0249/1218/files/Neogen-Bio-Peel-Gauze-Peeling-Wine.jpg?v=1756220510",
+            "image_urls": [
+              "https://cdn.shopify.com/s/files/1/0249/1218/files/Neogen-Bio-Peel-Gauze-Peeling-Wine.jpg?v=1756220510",
+              "https://cdn.shopify.com/s/files/1/0249/1218/products/DSC09849.jpg?v=1759799301",
+              "https://cdn.shopify.com/s/files/1/0249/1218/products/DSC09847.jpg?v=1759799301",
+              "https://cdn.shopify.com/s/files/1/0249/1218/files/Bio-PeelGauzePeelingWine_pad03_Resized.jpg?v=1759805886",
+              "https://cdn.shopify.com/s/files/1/0249/1218/files/Bio-PeelGauzePeelingWine_pad02_Resized.jpg?v=1759805301",
+              "https://cdn.shopify.com/s/files/1/0249/1218/products/Neogen-Bio-Peel-Gauze-Peeling-Wine-2.jpg?v=1759799301",
+              "https://cdn.shopify.com/s/files/1/0249/1218/files/Bio-PeelGauzePeelingWine_pad01_Resized.jpg?v=1759805809",
+              "https://cdn.shopify.com/s/files/1/0249/1218/files/Bio-PeelGauzePeelingWine_lifestyle03_Resized.jpg?v=1759805333",
+              "https://cdn.shopify.com/s/files/1/0249/1218/files/Bio-PeelGauzePeelingWine_lifestyle07_Resized.jpg?v=1759805710",
+              "https://cdn.shopify.com/s/files/1/0249/1218/files/Bio-PeelGauzePeelingWine_lifestyle01_Resized.jpg?v=1759805043",
+              "https://cdn.shopify.com/s/files/1/0249/1218/files/Bio-PeelGauzePeelingWine_lifestyle06_Resized.jpg?v=1759805239",
+              "https://cdn.shopify.com/s/files/1/0249/1218/files/Bio-PeelGauzePeelingWine_lifestyle05_Resized.jpg?v=1759804872"
+            ],
+            "variant_id": "473199476745",
+            "description": "This is the perfect exfoliator whether you prefer chemical or manual exfoliation. With 30 single-use exfoliating pads, this product provides gentle yet effective exfoliation of dead skin cells and impurities, leaving skin smoother and clear. Dead skin cells are sloughed off the surface of the skin using the unique 3 layer pad technology, as lactic acid penetrates deep into your pores to clean out pore-clogging debris.\n\nIts star ingredient, Resveratrol, comes from red wine and is naturally fermented, with naturally occurring AHAs that also help with the exfoliation process. Resveratrol is a powerful antioxidant which helps prevent free radicals from pigmenting or forming wrinkles on your skin. \n\n30 single-use pads\n\n6.76 oz / 200 ml",
+            "option_name": "Format",
+            "option_value": "Single item",
+            "display_label": "Format: Single item",
+            "source_quality_status": "captured"
+          }
+        },
+        "readiness_tier": "referral_only"
+      },
+      "first_offer": {
+        "offer_id": "offer:external_seed:a4433454f474892a537b43065c2b9c04",
+        "sku_key": "prod::external_seed::external_seed::ext_168590ab880a51bc9573dc3f::sku_be332876c7216fb20c79",
+        "product_key": "prod::external_seed::external_seed::ext_168590ab880a51bc9573dc3f",
+        "merchant_id": "external_seed",
+        "catalog_track": "external_referral",
+        "truth_tier": "observed",
+        "readiness_tier": "referral_only",
+        "offer_mode": "redirect",
+        "channel": "external_referral",
+        "availability": "in_stock",
+        "currency": "USD",
+        "list_price": 27,
+        "merchant_effective_price": 27,
+        "estimated_best_price": 27,
+        "price_confidence": 1,
+        "source_system": "external_product_seeds_mirror_v1",
+        "source_ref": "eps_84a42680b2873aab85e91c84",
+        "source_domain": "sokoglam.com",
+        "offer_payload": {
+          "source": "external_product_seeds_mirror_v1",
+          "external_seed_id": "eps_84a42680b2873aab85e91c84",
+          "external_product_id": "ext_168590ab880a51bc9573dc3f",
+          "domain": "sokoglam.com",
+          "market": "US",
+          "product_title": "Bio-Peel Gauze Peeling Wine",
+          "variant_title": "Bio-Peel Gauze Peeling Wine",
+          "variant_sku": "NEO101844",
+          "raw_variant_id": "473199476745",
+          "url": "https://sokoglam.com/products/neogen-bio-peel-gauze-peeling-wine",
+          "offer_url": "https://sokoglam.com/products/neogen-bio-peel-gauze-peeling-wine",
+          "canonical_url": "https://sokoglam.com/products/neogen-bio-peel-gauze-peeling-wine",
+          "destination_url": "https://sokoglam.com/products/neogen-bio-peel-gauze-peeling-wine",
+          "external_redirect_url": "https://sokoglam.com/products/neogen-bio-peel-gauze-peeling-wine",
+          "merchant_display_name": "sokoglam.com",
+          "price": "27",
+          "price_amount": 27,
+          "price_currency": "USD",
+          "availability": "in_stock",
+          "commerce_facts_v1": null
+        }
+      },
+      "serving_readiness": {
+        "servingEligible": false,
+        "contentQualityScore": 70,
+        "blockerCode": "identity_not_live_approved",
+        "blockerDetail": "identity_not_live_approved",
+        "identityResolved": false,
+        "identityLiveReadResolved": false,
+        "identityBootstrapEligible": false,
+        "terminalHold": false,
+        "terminalHoldReason": "",
+        "hasImage": true,
+        "hasPrice": true,
+        "descriptionLength": 146
+      }
+    },
+    {
+      "external_product_id": "ext_297949f25e5e699ae1bde074",
+      "product_key": "prod::external_seed::external_seed::ext_297949f25e5e699ae1bde074",
+      "product_group_id": "sig_775bde85b7d2a098b5933bc7",
+      "title": "The 6 Peptide Skin Booster Serum",
+      "brand": "COSRX",
+      "product_type": "Skincare Set",
+      "category": "Skincare Set",
+      "category_path": "beauty/skincare/sets",
+      "canonical_url": "https://sokoglam.com/products/cosrx-the-6-peptide-skin-booster-serum",
+      "pivota_signature_id": "sig_2464ab668cfaf1fe2cf0f9da0c4cdcd7",
+      "sku_rows": 1,
+      "first_sku": {
+        "sku_key": "prod::external_seed::external_seed::ext_297949f25e5e699ae1bde074::sku_ebfa138cc9737930906f",
+        "product_key": "prod::external_seed::external_seed::ext_297949f25e5e699ae1bde074",
+        "merchant_id": "external_seed",
+        "platform": "external_seed",
+        "source_product_id": "ext_297949f25e5e699ae1bde074",
+        "source_variant_id": "ext_297949f25e5e699ae1bde074:43690684612677",
+        "source_domain": "sokoglam.com",
+        "sku": "CRX115658",
+        "barcode": null,
+        "title": "150 mL / 5.07 fl oz",
+        "currency": "USD",
+        "image_url": "https://cdn.shopify.com/s/files/1/0249/1218/files/1_Resized_7412fc1e-f672-436d-8320-5857db7ffeea.jpg?v=1761427832",
+        "visible_attributes": {
+          "Size": "150 mL / 5.07 fl oz"
+        },
+        "visible_option_labels": {
+          "Size": "150 mL / 5.07 fl oz"
+        },
+        "ingredient_ids": [],
+        "sku_payload": {
+          "source": "external_product_seeds_mirror_v1",
+          "external_product_id": "ext_297949f25e5e699ae1bde074",
+          "raw_variant_id": "43690684612677",
+          "source_variant_id": "ext_297949f25e5e699ae1bde074:43690684612677",
+          "variant_sku": "CRX115658",
+          "barcode": null,
+          "strong_identifier_kind": null,
+          "source_url": "https://sokoglam.com/products/cosrx-the-6-peptide-skin-booster-serum",
+          "external_redirect_url": "https://sokoglam.com/products/cosrx-the-6-peptide-skin-booster-serum",
+          "price": "21",
+          "price_amount": 21,
+          "currency": "USD",
+          "availability": "out_of_stock",
+          "image_url": "https://cdn.shopify.com/s/files/1/0249/1218/files/1_Resized_7412fc1e-f672-436d-8320-5857db7ffeea.jpg?v=1761427832",
+          "swatch_image_url": null,
+          "label_image_url": null,
+          "options": {
+            "Size": "150 mL / 5.07 fl oz"
+          },
+          "raw_variant": {
+            "sku": "CRX115658",
+            "url": "https://sokoglam.com/products/cosrx-the-6-peptide-skin-booster-serum",
+            "price": "21",
+            "stock": "Out of Stock",
+            "title": "150 mL / 5.07 fl oz",
+            "options": [
+              {
+                "name": "Size",
+                "value": "150 mL / 5.07 fl oz",
+                "axis_kind": "size"
+              }
+            ],
+            "currency": "USD",
+            "axis_kind": "size",
+            "image_url": "https://cdn.shopify.com/s/files/1/0249/1218/files/1_Resized_7412fc1e-f672-436d-8320-5857db7ffeea.jpg?v=1761427832",
+            "image_urls": [
+              "https://cdn.shopify.com/s/files/1/0249/1218/files/1_Resized_7412fc1e-f672-436d-8320-5857db7ffeea.jpg?v=1761427832",
+              "https://cdn.shopify.com/s/files/1/0249/1218/files/6_Resized_5d2ee840-5126-487e-9aba-1da9caa234a6.jpg?v=1761427630",
+              "https://cdn.shopify.com/s/files/1/0249/1218/files/3_Resized_1cd013e5-0e06-4c5f-9e30-fcb168df744e.jpg?v=1761427667",
+              "https://cdn.shopify.com/s/files/1/0249/1218/files/5_Resized_3ab4976f-10b7-49a5-9d3f-096a4a449fce.jpg?v=1761427602",
+              "https://cdn.shopify.com/s/files/1/0249/1218/files/4_Resized_aed33cd0-cde2-40b6-a6ad-684511a68aa7.jpg?v=1761427761",
+              "https://cdn.shopify.com/s/files/1/0249/1218/files/2_Resized_bcb091ee-42b1-4cd0-9317-c872065faad3.jpg?v=1761427759"
+            ],
+            "variant_id": "43690684612677",
+            "description": "A lightweight, first-step serum that helps bring skin back into balance. This water-like formula is infused with six targeted peptides that work together to smooth fine lines, minimize the look of pores, and improve texture and tone for visibly clearer, firmer-looking skin.\n\nEach peptide supports specific skin needs—helping to boost elasticity, refine uneven texture, balance oil, calm redness, and strengthen the moisture barrier. The toner-like texture absorbs quickly without stickiness, delivering lightweight hydration and preparing skin to better absorb the rest of your routine.\n\nWith daily use, skin feels smoother, looks brighter, and appears more refined over time.\n\n150 mL/5.07 fl. oz.",
+            "option_name": "Size",
+            "option_value": "150 mL / 5.07 fl oz",
+            "display_label": "Size: 150 mL / 5.07 fl oz",
+            "source_quality_status": "reviewed"
+          }
+        },
+        "readiness_tier": "referral_only"
+      },
+      "first_offer": {
+        "offer_id": "offer:external_seed:0f307c85bf84192f0627032616619a6a",
+        "sku_key": "prod::external_seed::external_seed::ext_297949f25e5e699ae1bde074::sku_ebfa138cc9737930906f",
+        "product_key": "prod::external_seed::external_seed::ext_297949f25e5e699ae1bde074",
+        "merchant_id": "external_seed",
+        "catalog_track": "external_referral",
+        "truth_tier": "observed",
+        "readiness_tier": "referral_only",
+        "offer_mode": "redirect",
+        "channel": "external_referral",
+        "availability": "out_of_stock",
+        "currency": "USD",
+        "list_price": 21,
+        "merchant_effective_price": 21,
+        "estimated_best_price": 21,
+        "price_confidence": 1,
+        "source_system": "external_product_seeds_mirror_v1",
+        "source_ref": "eps_ba7be52ba29da6ccfa9fa168",
+        "source_domain": "sokoglam.com",
+        "offer_payload": {
+          "source": "external_product_seeds_mirror_v1",
+          "external_seed_id": "eps_ba7be52ba29da6ccfa9fa168",
+          "external_product_id": "ext_297949f25e5e699ae1bde074",
+          "domain": "sokoglam.com",
+          "market": "US",
+          "product_title": "The 6 Peptide Skin Booster Serum",
+          "variant_title": "150 mL / 5.07 fl oz",
+          "variant_sku": "CRX115658",
+          "raw_variant_id": "43690684612677",
+          "url": "https://sokoglam.com/products/cosrx-the-6-peptide-skin-booster-serum",
+          "offer_url": "https://sokoglam.com/products/cosrx-the-6-peptide-skin-booster-serum",
+          "canonical_url": "https://sokoglam.com/products/cosrx-the-6-peptide-skin-booster-serum",
+          "destination_url": "https://sokoglam.com/products/cosrx-the-6-peptide-skin-booster-serum",
+          "external_redirect_url": "https://sokoglam.com/products/cosrx-the-6-peptide-skin-booster-serum",
+          "merchant_display_name": "sokoglam.com",
+          "price": "21",
+          "price_amount": 21,
+          "price_currency": "USD",
+          "availability": "out_of_stock",
+          "commerce_facts_v1": null
+        }
+      },
+      "serving_readiness": {
+        "servingEligible": false,
+        "contentQualityScore": 70,
+        "blockerCode": "identity_not_live_approved",
+        "blockerDetail": "identity_not_live_approved",
+        "identityResolved": false,
+        "identityLiveReadResolved": false,
+        "identityBootstrapEligible": false,
+        "terminalHold": false,
+        "terminalHoldReason": "",
+        "hasImage": true,
+        "hasPrice": true,
+        "descriptionLength": 698
+      }
+    },
+    {
+      "external_product_id": "ext_465831482a5a21e9d922ca60",
+      "product_key": "prod::external_seed::external_seed::ext_465831482a5a21e9d922ca60",
+      "product_group_id": "sig_2827046574f6e495799b7e6d",
+      "title": "Real Ferment Micro Essence",
+      "brand": "Neogen",
+      "product_type": "Beauty Product",
+      "category": "Beauty Product",
+      "category_path": "beauty",
+      "canonical_url": "https://sokoglam.com/products/neogen-real-ferment-micro-essence",
+      "pivota_signature_id": "sig_a269725aa6d586324f50b62316a47e74",
+      "sku_rows": 1,
+      "first_sku": {
+        "sku_key": "prod::external_seed::external_seed::ext_465831482a5a21e9d922ca60::sku_cdc8975ba601f9b498ce",
+        "product_key": "prod::external_seed::external_seed::ext_465831482a5a21e9d922ca60",
+        "merchant_id": "external_seed",
+        "platform": "external_seed",
+        "source_product_id": "ext_465831482a5a21e9d922ca60",
+        "source_variant_id": "ext_465831482a5a21e9d922ca60:41009913673",
+        "source_domain": "sokoglam.com",
+        "sku": "NEO118935",
+        "barcode": null,
+        "title": "Real Ferment Micro Essence",
+        "currency": "USD",
+        "image_url": "https://cdn.shopify.com/s/files/1/0249/1218/files/NEOGEN_Micro_RealFermentEssence.jpg?v=1754962672",
+        "visible_attributes": {},
+        "visible_option_labels": {},
+        "ingredient_ids": [],
+        "sku_payload": {
+          "source": "external_product_seeds_mirror_v1",
+          "external_product_id": "ext_465831482a5a21e9d922ca60",
+          "raw_variant_id": "41009913673",
+          "source_variant_id": "ext_465831482a5a21e9d922ca60:41009913673",
+          "variant_sku": "NEO118935",
+          "barcode": null,
+          "strong_identifier_kind": null,
+          "source_url": "https://sokoglam.com/products/neogen-real-ferment-micro-essence",
+          "external_redirect_url": "https://sokoglam.com/products/neogen-real-ferment-micro-essence",
+          "price": "38",
+          "price_amount": 38,
+          "currency": "USD",
+          "availability": "in_stock",
+          "image_url": "https://cdn.shopify.com/s/files/1/0249/1218/files/NEOGEN_Micro_RealFermentEssence.jpg?v=1754962672",
+          "swatch_image_url": null,
+          "label_image_url": null,
+          "options": {},
+          "raw_variant": {
+            "sku": "NEO118935",
+            "url": "https://sokoglam.com/products/neogen-real-ferment-micro-essence",
+            "price": "38",
+            "stock": "In Stock",
+            "title": "Single item",
+            "options": [
+              {
+                "name": "Format",
+                "value": "Single item",
+                "axis_kind": "format"
+              }
+            ],
+            "currency": "USD",
+            "axis_kind": "format",
+            "image_url": "https://cdn.shopify.com/s/files/1/0249/1218/files/NEOGEN_Micro_RealFermentEssence.jpg?v=1754962672",
+            "image_urls": [
+              "https://cdn.shopify.com/s/files/1/0249/1218/files/NEOGEN_Micro_RealFermentEssence.jpg?v=1754962672",
+              "https://cdn.shopify.com/s/files/1/0249/1218/files/RealFermentMicroEssence_lifestyle01_Resized.jpg?v=1759805644"
+            ],
+            "variant_id": "41009913673",
+            "description": "A deeply hydrating and brightening essence that contains more than 93% naturally fermented ingredients, including bifida ferment lysate and 28% saccharomyces ferment filtrate, to deliver instant moisture and skin-plumping benefits. \n\nThis fragrance-free fermented treatment is also formulated with 17% birch juice to add hydration and 9% rice extracts to illuminate skin from within. Full of natural brighteners, antioxidants and cell-communicating ingredients, this essence is the key to glowing, supple \"honey skin\". To maximize results and benefits use with Micro Serum . \n\nThis product has a pH level of ~5. \n\n150 ml /5.07 fl oz",
+            "option_name": "Format",
+            "option_value": "Single item",
+            "display_label": "Format: Single item",
+            "source_quality_status": "captured"
+          }
+        },
+        "readiness_tier": "referral_only"
+      },
+      "first_offer": {
+        "offer_id": "offer:external_seed:981e3781dc5b791cf53ce72746c9e92a",
+        "sku_key": "prod::external_seed::external_seed::ext_465831482a5a21e9d922ca60::sku_cdc8975ba601f9b498ce",
+        "product_key": "prod::external_seed::external_seed::ext_465831482a5a21e9d922ca60",
+        "merchant_id": "external_seed",
+        "catalog_track": "external_referral",
+        "truth_tier": "observed",
+        "readiness_tier": "referral_only",
+        "offer_mode": "redirect",
+        "channel": "external_referral",
+        "availability": "in_stock",
+        "currency": "USD",
+        "list_price": 38,
+        "merchant_effective_price": 38,
+        "estimated_best_price": 38,
+        "price_confidence": 1,
+        "source_system": "external_product_seeds_mirror_v1",
+        "source_ref": "eps_2bccffc29e0594bb68c8d7f6",
+        "source_domain": "sokoglam.com",
+        "offer_payload": {
+          "source": "external_product_seeds_mirror_v1",
+          "external_seed_id": "eps_2bccffc29e0594bb68c8d7f6",
+          "external_product_id": "ext_465831482a5a21e9d922ca60",
+          "domain": "sokoglam.com",
+          "market": "US",
+          "product_title": "Real Ferment Micro Essence",
+          "variant_title": "Real Ferment Micro Essence",
+          "variant_sku": "NEO118935",
+          "raw_variant_id": "41009913673",
+          "url": "https://sokoglam.com/products/neogen-real-ferment-micro-essence",
+          "offer_url": "https://sokoglam.com/products/neogen-real-ferment-micro-essence",
+          "canonical_url": "https://sokoglam.com/products/neogen-real-ferment-micro-essence",
+          "destination_url": "https://sokoglam.com/products/neogen-real-ferment-micro-essence",
+          "external_redirect_url": "https://sokoglam.com/products/neogen-real-ferment-micro-essence",
+          "merchant_display_name": "sokoglam.com",
+          "price": "38",
+          "price_amount": 38,
+          "price_currency": "USD",
+          "availability": "in_stock",
+          "commerce_facts_v1": null
+        }
+      },
+      "serving_readiness": {
+        "servingEligible": false,
+        "contentQualityScore": 70,
+        "blockerCode": "identity_not_live_approved",
+        "blockerDetail": "identity_not_live_approved",
+        "identityResolved": false,
+        "identityLiveReadResolved": false,
+        "identityBootstrapEligible": false,
+        "terminalHold": false,
+        "terminalHoldReason": "",
+        "hasImage": true,
+        "hasPrice": true,
+        "descriptionLength": 179
+      }
+    },
+    {
+      "external_product_id": "ext_d03b58b4cf51e6a58688e578",
+      "product_key": "prod::external_seed::external_seed::ext_d03b58b4cf51e6a58688e578",
+      "product_group_id": "sig_dfac3068790f429a55275b00",
+      "title": "Green Tea Real Fresh Foam Cleanser",
+      "brand": "Neogen",
+      "product_type": "Cleanser",
+      "category": "Cleanser",
+      "category_path": "beauty/skincare/cleanser",
+      "canonical_url": "https://sokoglam.com/products/neogen-real-fresh-foaming-cleanser",
+      "pivota_signature_id": "sig_512e61758772d5ee8ae0de9cfa2f6d7f",
+      "sku_rows": 1,
+      "first_sku": {
+        "sku_key": "prod::external_seed::external_seed::ext_d03b58b4cf51e6a58688e578::sku_687aef6d720737716f30",
+        "product_key": "prod::external_seed::external_seed::ext_d03b58b4cf51e6a58688e578",
+        "merchant_id": "external_seed",
+        "platform": "external_seed",
+        "source_product_id": "ext_d03b58b4cf51e6a58688e578",
+        "source_variant_id": "ext_d03b58b4cf51e6a58688e578:10359211141",
+        "source_domain": "sokoglam.com",
+        "sku": "NEO102483",
+        "barcode": null,
+        "title": "Green Tea Real Fresh Foam Cleanser",
+        "currency": "USD",
+        "image_url": "https://cdn.shopify.com/s/files/1/0249/1218/files/Neogen-Green-Tea-Fresh-Foam-Cleanser.jpg?v=1754962678",
+        "visible_attributes": {},
+        "visible_option_labels": {},
+        "ingredient_ids": [],
+        "sku_payload": {
+          "source": "external_product_seeds_mirror_v1",
+          "external_product_id": "ext_d03b58b4cf51e6a58688e578",
+          "raw_variant_id": "10359211141",
+          "source_variant_id": "ext_d03b58b4cf51e6a58688e578:10359211141",
+          "variant_sku": "NEO102483",
+          "barcode": null,
+          "strong_identifier_kind": null,
+          "source_url": "https://sokoglam.com/products/neogen-real-fresh-foaming-cleanser",
+          "external_redirect_url": "https://sokoglam.com/products/neogen-real-fresh-foaming-cleanser",
+          "price": "22",
+          "price_amount": 22,
+          "currency": "USD",
+          "availability": "in_stock",
+          "image_url": "https://cdn.shopify.com/s/files/1/0249/1218/files/Neogen-Green-Tea-Fresh-Foam-Cleanser.jpg?v=1754962678",
+          "swatch_image_url": null,
+          "label_image_url": null,
+          "options": {},
+          "raw_variant": {
+            "sku": "NEO102483",
+            "url": "https://sokoglam.com/products/neogen-real-fresh-foaming-cleanser",
+            "price": "22",
+            "stock": "In Stock",
+            "title": "Single item",
+            "options": [
+              {
+                "name": "Format",
+                "value": "Single item",
+                "axis_kind": "format"
+              }
+            ],
+            "currency": "USD",
+            "axis_kind": "format",
+            "image_url": "https://cdn.shopify.com/s/files/1/0249/1218/files/Neogen-Green-Tea-Fresh-Foam-Cleanser.jpg?v=1754962678",
+            "image_urls": [
+              "https://cdn.shopify.com/s/files/1/0249/1218/files/Neogen-Green-Tea-Fresh-Foam-Cleanser.jpg?v=1754962678",
+              "https://cdn.shopify.com/s/files/1/0249/1218/products/Bestseller-Reshoot-PDP_-Neogen-Green-Tea-Fresh-Foam-Cleanser_PDP_2.jpg?v=1754962678",
+              "https://cdn.shopify.com/s/files/1/0249/1218/files/GreenTeaRealFreshFoamCleanser_lifestyle01_Resized.jpg?v=1758827070",
+              "https://cdn.shopify.com/s/files/1/0249/1218/files/GreenTeaRealFreshFoamCleanser_lifestyle03_Resized.jpg?v=1758827581",
+              "https://cdn.shopify.com/s/files/1/0249/1218/files/GreenTeaRealFreshFoamCleanser_lifestyle05_Resized.jpg?v=1758827319",
+              "https://cdn.shopify.com/s/files/1/0249/1218/files/GreenTeaRealFreshFoamCleanser_lifestyle04_Resized.jpg?v=1758827828",
+              "https://cdn.shopify.com/s/files/1/0249/1218/files/GreenTeaRealFreshFoamCleanser_lifestyle06_Resized.jpg?v=1758827383",
+              "https://cdn.shopify.com/s/files/1/0249/1218/files/GreenTeaRealFreshFoamCleanser_lifestyle07_Resized.jpg?v=1759805523",
+              "https://cdn.shopify.com/s/files/1/0249/1218/files/GreenTeaRealFreshFoamCleanser_lifestyle08_Resized_eaa7bb88-e0f3-4da2-9c05-70408fbed981.jpg?v=1759805143"
+            ],
+            "variant_id": "10359211141",
+            "description": "Neogen Green Tea Real Fresh Foam Cleanser is a must try for oily, combination, or acne-prone skin.\n\nThe start ingredient in this cleanser is fermented green tea extract, which brightens, calms, and hydrates skin. The gentle foam effectively removes impurities such as sweat and dirt from the skin without stripping your skin's natural oils.\n\nLightweight and hydrating, this is the perfect water-based cleanser to use in your double-cleansing routine. \n\n160g / 5.6 oz",
+            "option_name": "Format",
+            "option_value": "Single item",
+            "display_label": "Format: Single item",
+            "source_quality_status": "captured"
+          }
+        },
+        "readiness_tier": "referral_only"
+      },
+      "first_offer": {
+        "offer_id": "offer:external_seed:98083204d93429fca7e3d88c3513cd0f",
+        "sku_key": "prod::external_seed::external_seed::ext_d03b58b4cf51e6a58688e578::sku_687aef6d720737716f30",
+        "product_key": "prod::external_seed::external_seed::ext_d03b58b4cf51e6a58688e578",
+        "merchant_id": "external_seed",
+        "catalog_track": "external_referral",
+        "truth_tier": "observed",
+        "readiness_tier": "referral_only",
+        "offer_mode": "redirect",
+        "channel": "external_referral",
+        "availability": "in_stock",
+        "currency": "USD",
+        "list_price": 22,
+        "merchant_effective_price": 22,
+        "estimated_best_price": 22,
+        "price_confidence": 1,
+        "source_system": "external_product_seeds_mirror_v1",
+        "source_ref": "eps_60dc02962f4c989e1a85f51c",
+        "source_domain": "sokoglam.com",
+        "offer_payload": {
+          "source": "external_product_seeds_mirror_v1",
+          "external_seed_id": "eps_60dc02962f4c989e1a85f51c",
+          "external_product_id": "ext_d03b58b4cf51e6a58688e578",
+          "domain": "sokoglam.com",
+          "market": "US",
+          "product_title": "Green Tea Real Fresh Foam Cleanser",
+          "variant_title": "Green Tea Real Fresh Foam Cleanser",
+          "variant_sku": "NEO102483",
+          "raw_variant_id": "10359211141",
+          "url": "https://sokoglam.com/products/neogen-real-fresh-foaming-cleanser",
+          "offer_url": "https://sokoglam.com/products/neogen-real-fresh-foaming-cleanser",
+          "canonical_url": "https://sokoglam.com/products/neogen-real-fresh-foaming-cleanser",
+          "destination_url": "https://sokoglam.com/products/neogen-real-fresh-foaming-cleanser",
+          "external_redirect_url": "https://sokoglam.com/products/neogen-real-fresh-foaming-cleanser",
+          "merchant_display_name": "sokoglam.com",
+          "price": "22",
+          "price_amount": 22,
+          "price_currency": "USD",
+          "availability": "in_stock",
+          "commerce_facts_v1": null
+        }
+      },
+      "serving_readiness": {
+        "servingEligible": false,
+        "contentQualityScore": 70,
+        "blockerCode": "identity_not_live_approved",
+        "blockerDetail": "identity_not_live_approved",
+        "identityResolved": false,
+        "identityLiveReadResolved": false,
+        "identityBootstrapEligible": false,
+        "terminalHold": false,
+        "terminalHoldReason": "",
+        "hasImage": true,
+        "hasPrice": true,
+        "descriptionLength": 178
+      }
+    }
+  ]
+}

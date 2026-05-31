@@ -1,0 +1,54 @@
+{
+  "generated_at": "2026-05-31T06:01:09.885Z",
+  "dry_run": true,
+  "manifest": "reports/markato_expansion_status_20260524/wave97_next_expansion_20260531/anua_rumi_reviewed_category_patch_manifest.json",
+  "market": "US",
+  "allow_overwrite": false,
+  "overwrite_confirmed": false,
+  "summary": {
+    "scanned": 1,
+    "planned": 1,
+    "unchanged": 0,
+    "blocked": 0,
+    "missing": 0,
+    "updated": 0,
+    "catalog_product_updates": 0,
+    "identity_updates": 0,
+    "by_patch_key": {
+      "category": 1,
+      "product_type": 1,
+      "category_path": 1,
+      "catalog_category_path": 1
+    },
+    "blocking_reasons": {}
+  },
+  "apply_results": [],
+  "plans": [
+    {
+      "id": "eps_e647180c3482a70e59bdeccc",
+      "external_product_id": "ext_a406636157366f31879c4cbe",
+      "title": "Rumi Ultra-thin Spot Cover Patch (55ea)",
+      "canonical_url": "https://anua.com/products/rumi-ultra-thin-spot-cover-patch-55ea",
+      "status": "planned",
+      "changed": true,
+      "patch_keys": [
+        "category",
+        "product_type",
+        "category_path",
+        "catalog_category_path"
+      ],
+      "before": {
+        "category": "",
+        "category_path": "",
+        "catalog_category_path": "",
+        "product_type": ""
+      },
+      "after": {
+        "category": "Blemish Patch",
+        "category_path": "beauty/skincare/acne-treatment",
+        "catalog_category_path": "beauty/skincare/acne-treatment",
+        "product_type": "Blemish Patch"
+      }
+    }
+  ]
+}
