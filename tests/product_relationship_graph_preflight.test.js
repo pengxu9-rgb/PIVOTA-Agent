@@ -8,6 +8,8 @@ const {
   gateCategoryLeafMismatch,
   gateTargetAreaMismatch,
   gateSpfOtcMismatch,
+  isFragranceProduct,
+  gateScentFamilyMismatch,
   applyAllGates,
 } = require('../src/auroraBff/productRelationshipGraphPreflight');
 
@@ -436,5 +438,91 @@ describe('applyAllGates', () => {
       'competitive_alternative',
     );
     expect(r.passes).toBe(true);
+  });
+});
+
+// Fragrance attrs: a high-confidence scent_family on a fragrance-category item.
+// category_leaf 'eau_de_parfum' canonicalizes (eau/parfum → fragrance) so
+// isFragranceProduct is true.
+function fragranceAttrs(overrides = {}) {
+  return attrs({
+    category_leaf: 'eau_de_parfum',
+    category_leaf_confidence: 0.95,
+    scent_family: 'floral',
+    scent_family_confidence: 0.95,
+    ...overrides,
+  });
+}
+
+describe('isFragranceProduct', () => {
+  test('true for fragrance-category leaves', () => {
+    expect(isFragranceProduct(fragranceAttrs())).toBe(true);
+    expect(isFragranceProduct(attrs({ category_leaf: 'cologne' }))).toBe(true);
+  });
+  test('false for non-fragrance leaves and missing input', () => {
+    expect(isFragranceProduct(attrs({ category_leaf: 'body_wash' }))).toBe(false);
+    expect(isFragranceProduct(null)).toBe(false);
+  });
+});
+
+describe('gateScentFamilyMismatch (Lever-3, fragrance-restricted)', () => {
+  test('rejects two fragrances of different scent families', () => {
+    const r = gateScentFamilyMismatch(
+      fragranceAttrs({ scent_family: 'floral' }),
+      fragranceAttrs({ scent_family: 'woody' }),
+      'competitive_alternative',
+    );
+    expect(r.passes).toBe(false);
+    expect(r.reason).toBe('scent_family_mismatch:floral_vs_woody');
+  });
+
+  test('passes fragrances of the same scent family', () => {
+    expect(gateScentFamilyMismatch(
+      fragranceAttrs({ scent_family: 'floral' }),
+      fragranceAttrs({ scent_family: 'floral' }),
+      'dupe',
+    ).passes).toBe(true);
+  });
+
+  test('abstains for merely-scented (non-fragrance) products even if scents differ', () => {
+    // two body washes with different scent families are still alternatives
+    expect(gateScentFamilyMismatch(
+      attrs({ category_leaf: 'body_wash', scent_family: 'citrus', scent_family_confidence: 0.95 }),
+      attrs({ category_leaf: 'body_wash', scent_family: 'floral', scent_family_confidence: 0.95 }),
+      'competitive_alternative',
+    ).passes).toBe(true);
+  });
+
+  test('abstains on low confidence or missing scent_family', () => {
+    expect(gateScentFamilyMismatch(
+      fragranceAttrs({ scent_family: 'floral', scent_family_confidence: 0.4 }),
+      fragranceAttrs({ scent_family: 'woody' }),
+      'dupe',
+    ).passes).toBe(true);
+    expect(gateScentFamilyMismatch(
+      fragranceAttrs({ scent_family: null, scent_family_confidence: null }),
+      fragranceAttrs({ scent_family: 'woody' }),
+      'dupe',
+    ).passes).toBe(true);
+  });
+
+  test('related_product is exempt', () => {
+    expect(gateScentFamilyMismatch(
+      fragranceAttrs({ scent_family: 'floral' }),
+      fragranceAttrs({ scent_family: 'woody' }),
+      'related_product',
+    ).passes).toBe(true);
+  });
+
+  test('applyAllGates surfaces scent_family_mismatch reason for fragrances', () => {
+    const r = applyAllGates(
+      fragranceAttrs({ scent_family: 'floral' }),
+      fragranceAttrs({ scent_family: 'oriental' }),
+      'competitive_alternative',
+    );
+    expect(r.passes).toBe(false);
+    expect(r.prefilter_reasons).toEqual(
+      expect.arrayContaining(['scent_family_mismatch:floral_vs_oriental']),
+    );
   });
 });

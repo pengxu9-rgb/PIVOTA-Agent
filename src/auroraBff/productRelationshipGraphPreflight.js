@@ -17,11 +17,16 @@
 //     forms. approved_pass_rate=0.52.
 //   v5: replaced product_form gate with category_leaf token-overlap.
 //     approved_pass_rate=0.909, gate_precision=0.860, catch_rate=0.326.
-//   v6 (this): expanded CATEGORY_LEAF_ALIASES (cream/lotion→moisturizer,
+//   v6: expanded CATEGORY_LEAF_ALIASES (cream/lotion→moisturizer,
 //     wash→cleanser, mist→toner) + STOP additions (foaming, remineralising,
 //     toning, vitamin) + product_form fallback when leaves disagree but
 //     forms match + cheeks⊆face area compat. SHIP_V2: pass_rate=0.9705,
 //     precision=0.9432, catch=0.287.
+//   v7 (this, Lever-3): added fragrance-restricted scent_family gate (Gate 4).
+//     Of the unused beauty attributes, only fragrance-scent cleared the bar
+//     (see gateScentFamilyMismatch header for the rejected experiments).
+//     pass_rate=0.9525, precision=0.9341, catch=0.375 — trades 1.4pt pass_rate
+//     for +5.3pt catch (TN 207→241, FP 12→17).
 
 const MIN_CONFIDENCE_FOR_GATING = 0.7;
 
@@ -191,6 +196,49 @@ function gateSpfOtcMismatch(anchorAttrs, candidateAttrs, relationType) {
   };
 }
 
+// True only for products whose canonical category is a fragrance — scent is
+// the defining axis there. categoryLeafTokens canonicalizes parfum/perfume/
+// eau/cologne → 'fragrance'.
+function isFragranceProduct(attrs) {
+  return categoryLeafTokens(attrs && attrs.category_leaf).has('fragrance');
+}
+
+// Gate 4 (Phase B Lever-3, v7): scent_family mismatch — restricted to true
+// fragrances. Two fragrances of different scent families are materially
+// different products, not direct alternatives. Both sides must carry a
+// high-confidence scent_family AND canonicalize to a fragrance category;
+// merely-scented products (body wash, lotion) abstain because there a
+// different scent is not disqualifying. related_product exempt.
+//
+// Lever-3 selection (validated 2026-05-31 against prod human labels): of the
+// unused beauty attributes, this fragrance-restricted scent gate was the only
+// one to clear the SHIP_V2 bar. Rejected experiments and their standalone
+// per-gate precision (fires_on_rejected / fires_on_approved):
+//   - skin_concern disjoint        63 catch / 31 FP (67%) — too noisy
+//   - skin_concern single-purpose  11 catch / 10 FP (52%) — too noisy
+//   - claim_risk high↔low           0 catch /  0 FP        — never fires
+//   - scent_family (all scented)   51 catch / 24 FP (68%) — too noisy
+//   - scent_family (fragrance-only) 37 catch /  5 FP (88%) — KEPT
+// Combined effect when added to applyAllGates: catch_rate 0.322→0.375,
+// approved_pass_rate 0.9665→0.9525, gate_precision 0.9452→0.9341.
+function gateScentFamilyMismatch(anchorAttrs, candidateAttrs, relationType) {
+  if (!STRUCTURAL_GATE_RELATION_TYPES.has(relationType)) {
+    return { passes: true, reason: null };
+  }
+  if (!isHighConfidence(anchorAttrs, 'scent_family')) return { passes: true, reason: null };
+  if (!isHighConfidence(candidateAttrs, 'scent_family')) return { passes: true, reason: null };
+  if (!isFragranceProduct(anchorAttrs) || !isFragranceProduct(candidateAttrs)) {
+    return { passes: true, reason: null };
+  }
+  if (anchorAttrs.scent_family === candidateAttrs.scent_family) {
+    return { passes: true, reason: null };
+  }
+  return {
+    passes: false,
+    reason: `scent_family_mismatch:${anchorAttrs.scent_family}_vs_${candidateAttrs.scent_family}`,
+  };
+}
+
 // applyAllGates: compose the gates. Returns { passes, label_state,
 // prefilter_reasons }.
 //
@@ -205,6 +253,7 @@ function applyAllGates(anchorAttrs, candidateAttrs, relationType) {
     gateCategoryLeafMismatch(anchorAttrs, candidateAttrs, relationType),
     gateTargetAreaMismatch(anchorAttrs, candidateAttrs, relationType),
     gateSpfOtcMismatch(anchorAttrs, candidateAttrs, relationType),
+    gateScentFamilyMismatch(anchorAttrs, candidateAttrs, relationType),
   ];
   const reasons = results.filter((r) => !r.passes).map((r) => r.reason);
   if (reasons.length === 0) {
@@ -227,5 +276,7 @@ module.exports = {
   gateCategoryLeafMismatch,
   gateTargetAreaMismatch,
   gateSpfOtcMismatch,
+  isFragranceProduct,
+  gateScentFamilyMismatch,
   applyAllGates,
 };
