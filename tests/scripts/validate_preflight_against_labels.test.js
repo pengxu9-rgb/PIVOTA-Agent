@@ -54,7 +54,7 @@ describe('validate-preflight-against-labels', () => {
     expect(r.metrics.approved_pass_rate).toBe(1);
   });
 
-  test('rejected candidate with product_form mismatch is counted TN', async () => {
+  test('rejected candidate with category_leaf + target_area mismatch is counted TN', async () => {
     const queryFn = makeQueryFn({
       labels: [{
         id: 'lbl_2',
@@ -66,14 +66,14 @@ describe('validate-preflight-against-labels', () => {
         market: 'US',
       }],
       attributesByKey: {
-        ext_a: { product_key: 'ext_a', ...pba({ product_form: 'lipstick', target_area: 'lips' }) },
-        ext_b: { product_key: 'ext_b', ...pba({ product_form: 'foundation', target_area: 'face' }) },
+        ext_a: { product_key: 'ext_a', ...pba({ product_form: 'lipstick', category_leaf: 'matte_lipstick', category_leaf_confidence: 0.95, target_area: 'lips' }) },
+        ext_b: { product_key: 'ext_b', ...pba({ product_form: 'foundation', category_leaf: 'powder_foundation', category_leaf_confidence: 0.95, target_area: 'face' }) },
       },
     });
     const r = await runValidation({ queryFn });
     expect(r.confusion_matrix.TN).toBe(1);
     expect(r.metrics.rejected_catch_rate).toBe(1);
-    expect(r.failure_reason_top_codes.product_form_mismatch).toBe(1);
+    expect(r.failure_reason_top_codes.category_leaf_mismatch).toBe(1);
     expect(r.failure_reason_top_codes.target_area_mismatch).toBe(1);
   });
 
@@ -89,8 +89,10 @@ describe('validate-preflight-against-labels', () => {
         market: 'US',
       }],
       attributesByKey: {
-        ext_a: { product_key: 'ext_a', ...pba({ product_form: 'serum' }) },
-        ext_b: { product_key: 'ext_b', ...pba({ product_form: 'cream' }) },
+        // Distinct category_leaves with no shared token AND distinct product_forms
+        // (so the category gate's same-form fallback does not rescue) → gate fires.
+        ext_a: { product_key: 'ext_a', ...pba({ product_form: 'serum', category_leaf: 'serum', category_leaf_confidence: 0.95 }) },
+        ext_b: { product_key: 'ext_b', ...pba({ product_form: 'lipstick', category_leaf: 'lipstick', category_leaf_confidence: 0.95 }) },
       },
     });
     const r = await runValidation({ queryFn });

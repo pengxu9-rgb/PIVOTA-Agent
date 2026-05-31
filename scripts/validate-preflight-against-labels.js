@@ -26,6 +26,7 @@ const {
   gateCategoryLeafMismatch,
   gateTargetAreaMismatch,
   gateSpfOtcMismatch,
+  gateScentFamilyMismatch,
 } = require('../src/auroraBff/productRelationshipGraphPreflight');
 
 function argValue(name, fallback = null) {
@@ -43,6 +44,7 @@ const PER_GATE_FNS = {
   category_leaf: gateCategoryLeafMismatch,
   target_area: gateTargetAreaMismatch,
   spf_or_otc: gateSpfOtcMismatch,
+  scent_family: gateScentFamilyMismatch,
 };
 
 async function loadLabels({ queryFn = query, limit = null } = {}) {
@@ -84,6 +86,7 @@ async function runValidation({ queryFn = query, limit = null, verbose = false } 
       category_leaf: { fires_on_approved: 0, fires_on_rejected: 0 },
       target_area: { fires_on_approved: 0, fires_on_rejected: 0 },
       spf_or_otc: { fires_on_approved: 0, fires_on_rejected: 0 },
+      scent_family: { fires_on_approved: 0, fires_on_rejected: 0 },
     },
     coverage: {
       both_attrs_present: 0,
