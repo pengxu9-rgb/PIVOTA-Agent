@@ -141,7 +141,17 @@ Because of this network failure, the following remain pending:
 - Apply the one-row Anua Rumi reviewed category patch.
 - Rerun exact-ID DB readiness after the category patch.
 - Run direct public gateway signature PDP/similar probes.
-- Push Wave97 report artifacts after local commit.
+
+## Git Status
+
+The Wave97 report/artifact commit was created locally and pushed to the work branch after retrying Git with HTTP/1.1:
+
+- Commit: `842a04d2 Document Markato wave97 identity refresh`
+- Branch: `origin/work/markato-wave25-786-serving-20260527`
+
+The one-row category patch apply is still pending because `railway run` continues to fail at Railway backboard TLS setup before command execution, even after Railway backboard responded to `curl` and the CLI was retried with update checks disabled.
+
+Public gateway signature PDP/similar probes also remain pending. The sandbox escalation reviewer blocked the read-only probe because it would send signature IDs and product metadata to `agent.pivota.cc`; explicit user approval is required before retrying that probe from the escalated sandbox.
 
 ## Guardrails Preserved
 
