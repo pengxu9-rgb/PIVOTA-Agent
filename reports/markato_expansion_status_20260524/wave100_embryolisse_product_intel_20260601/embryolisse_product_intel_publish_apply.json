@@ -1,0 +1,26 @@
+{
+  "status": "ok",
+  "mode": "write",
+  "report": "/Users/pengchydan/dev/_worktrees/pivota-agent-markato-wave25-786-20260527/reports/markato_expansion_status_20260524/wave100_embryolisse_product_intel_20260601/embryolisse_official_product_intel_report.json",
+  "rows": [
+    "live_ext_76bfd11a0bea190f4c9d32c7",
+    "live_ext_1b4a85868ba125bc6b7040e0",
+    "live_ext_a47933ea068521800615641f",
+    "live_ext_4df267da6c48f581bf6ff5f4",
+    "live_ext_1204da285323c4c294847daf",
+    "live_ext_e13d80b8bf9b8dfe44042064",
+    "live_ext_3a04dcee79f96ee9570e93f3",
+    "live_ext_1f01309541611d783b7fd63c"
+  ],
+  "entries": [
+    "product:ext_76bfd11a0bea190f4c9d32c7",
+    "product:ext_1b4a85868ba125bc6b7040e0",
+    "product:ext_a47933ea068521800615641f",
+    "product:ext_4df267da6c48f581bf6ff5f4",
+    "product:ext_1204da285323c4c294847daf",
+    "product:ext_e13d80b8bf9b8dfe44042064",
+    "product:ext_3a04dcee79f96ee9570e93f3",
+    "product:ext_1f01309541611d783b7fd63c"
+  ],
+  "skipped_rows": []
+}

@@ -1,0 +1,2068 @@
+{
+  "meta": {
+    "generated_at": "2026-05-31T16:19:31.538Z",
+    "source": "reviewed_official_seed_product_intel_report",
+    "batch_name": "wave100_embryolisse_official_product_intel_review_20260601",
+    "inventory": "reports/markato_expansion_status_20260524/wave100_embryolisse_product_intel_20260601/readiness_before/commerce_index_kb_readiness_inventory.json",
+    "selected_cases": 8,
+    "reviewer": "codex_human_quality_reviewer",
+    "reviewer_kind": "assistant",
+    "candidate_quality_summary": {
+      "public_ready": 8,
+      "high_quality_ready": 8,
+      "evidence_profile": {
+        "seller_plus_formula": 8
+      }
+    }
+  },
+  "rows": [
+    {
+      "case_id": "live_ext_76bfd11a0bea190f4c9d32c7",
+      "review_status": "completed",
+      "review_decision": "rewrite",
+      "reviewer": "codex_human_quality_reviewer",
+      "reviewer_kind": "assistant",
+      "reviewed_at": "2026-05-31T16:19:31.538Z",
+      "notes": "Approved official-PDP-seed rewrite for Radiant Eye Stick - Cool Treatment For A Brighter Look; evidence_profile=seller_plus_formula; source_url=https://us.embryolisse.com/products/radiant-eye-stick-cool-treatment-for-a-brighter-look",
+      "owner_delegated_review": {
+        "contract_version": "pivota.owner_delegated_review.v1",
+        "delegated_to": "codex_human_quality_reviewer",
+        "reviewer_kind": "assistant",
+        "owner_instruction": "User delegated Codex to perform high-quality human review for Pivota Insights quality improvement.",
+        "guardrails": [
+          "Do not overwrite good content with lower-quality content.",
+          "No commerce-state claims in Pivota Insights.",
+          "Use official source facts only; keep evidence confidence explicit."
+        ]
+      },
+      "quality_improvement_review": {
+        "decision": "approved_replacement",
+        "reviewer_kind": "assistant",
+        "owner_delegated": true,
+        "reason": "Owner-delegated assistant review confirms the replacement uses official PDP seed facts, avoids commerce and unsupported evidence claims, and explicitly marks evidence gaps instead of inventing claims."
+      },
+      "baseline": {
+        "canonical_product_ref": {
+          "merchant_id": "external_seed",
+          "product_id": "ext_76bfd11a0bea190f4c9d32c7",
+          "platform": "external_seed"
+        }
+      },
+      "selected": {
+        "selected_mode": "manual_reviewed_rewrite",
+        "selected_field_count": 7,
+        "field_sources": {
+          "what_it_is": "official_seed_description",
+          "best_for": "reviewed_category_and_official_title",
+          "why_it_stands_out": "official_seed_description_and_formula",
+          "routine_fit": "reviewed_category_and_official_title",
+          "watchouts": "owner_delegated_assistant_review",
+          "texture_finish": "reviewed_category_and_official_title",
+          "source_coverage": "official_pdp_seed_snapshot",
+          "community_signals": "not_collected"
+        },
+        "bundle": {
+          "contract_version": "pivota.product_intel.v1",
+          "display_name": "Pivota Insights",
+          "canonical_product_ref": {
+            "merchant_id": "external_seed",
+            "product_id": "ext_76bfd11a0bea190f4c9d32c7",
+            "platform": "external_seed"
+          },
+          "product_group_id": "sig_81295b8d35e2c00a8f71985b",
+          "product_intel_core": {
+            "display_name": "Pivota Insights",
+            "what_it_is": {
+              "headline": "Makeup set identity",
+              "body": "An EMBRYOLISSE makeup set listed on the brand source page as Radiant Eye Stick - Cool Treatment For A Brighter Look. The source description identifies: This double action cool-effect stick combines beauty and skincare: it is a make-up artist’s trick to immediately refresh the eyes, and a moisturizing care to decongest and smooth the eye contour."
+            },
+            "best_for": [
+              {
+                "tag": "makeup_set_shoppers",
+                "label": "Makeup set shoppers",
+                "confidence": "moderate"
+              },
+              {
+                "tag": "official_source_comparison",
+                "label": "Official-source comparison",
+                "confidence": "moderate"
+              }
+            ],
+            "why_it_stands_out": [
+              {
+                "headline": "Source-backed product detail",
+                "body": "This double action cool-effect stick combines beauty and skincare: it is a make-up artist’s trick to immediately refresh the eyes, and a moisturizing care to decongest and smooth the eye contour.",
+                "evidence_strength": "seller_plus_formula"
+              },
+              {
+                "headline": "Formula context captured",
+                "body": "Captured formula fields include MAIN ACTIVE INGREDIENTS: An anti-fatigue active ingredient rich in vitamin PP and polysaccharides Patented complex of natural sugar derivatives: moisturizing Organic aloe vera and glycerin: moisturizing Fragrance-free 99% ingredients from natural origin 407I01 - INGREDIENTS: AQUA (WATER). SODIUM STEARATE. GLYCERIN. XYLITYLGLUCOSIDE. ANHYDROXYLITOL. PENTYLENE GLYCOL. XYLITOL. CAPRYLYL GLYCOL. SACCHAROMYCES CEREVISIAE EXTRACT. ALOE BARBADENSIS LEAF JUICE POWDER. O-CYMEN-5-OL. 1, 2-HEXANEDIOL. The list of ingredients used in the Embryolisse products is regularly updated. Before using Embryolisse products, please read the list of ingredients on the packaging to ensure the ingredients are suitable for your personal use., An anti-fatigue active ingredient rich in vitamin PP and polysaccharides Patented complex of natural sugar derivatives: moisturizing Organic aloe vera and glycerin: moisturizing Fragrance-free 99% ingredients from natural origin 407I01 -, Glycerin. Agents should keep composition claims within those source fields.",
+                "evidence_strength": "seller_plus_formula"
+              }
+            ],
+            "routine_fit": {
+              "step": "set",
+              "am_pm": [
+                "as_needed"
+              ],
+              "pairing_notes": [
+                "Use within the makeup set context; avoid inferring benefits not present in the source fields."
+              ]
+            },
+            "watchouts": [
+              {
+                "type": "formula_scope",
+                "label": "Formula details are source-derived; avoid medical, safety, or suitability claims not present in the source.",
+                "severity": "medium"
+              },
+              {
+                "type": "evidence_gap",
+                "label": "No independent review or community evidence was approved for this row; keep public copy source-bound.",
+                "severity": "medium"
+              },
+              {
+                "type": "scope_guardrail",
+                "label": "Use the commerce mainline for offer facts; keep this insight focused on source-backed product identity.",
+                "severity": "medium"
+              }
+            ],
+            "confidence": {
+              "overall": "moderate",
+              "fields": {
+                "what_it_is": "high",
+                "best_for": "moderate",
+                "why_it_stands_out": "moderate",
+                "routine_fit": "moderate",
+                "watchouts": "moderate"
+              }
+            },
+            "freshness": {
+              "generated_at": "2026-05-31T16:19:31.538Z",
+              "source_version": "wave100_embryolisse_official_product_intel_review_20260601"
+            },
+            "quality_state": "reviewed",
+            "evidence_profile": "seller_plus_formula",
+            "source_coverage": {
+              "seller": {
+                "available": true,
+                "source_url": "https://us.embryolisse.com/products/radiant-eye-stick-cool-treatment-for-a-brighter-look"
+              },
+              "formula": {
+                "available": true,
+                "ingredient_count": 3,
+                "source_url": "https://us.embryolisse.com/products/radiant-eye-stick-cool-treatment-for-a-brighter-look"
+              },
+              "reviews": {
+                "available": false,
+                "count": 0
+              },
+              "creator": {
+                "available": false,
+                "count": 0
+              },
+              "editorial": {
+                "available": false,
+                "count": 0
+              }
+            }
+          },
+          "texture_finish": {
+            "finish": "makeup set",
+            "texture": "makeup_set",
+            "source": "reviewed_category_and_official_title"
+          },
+          "community_signals": {
+            "status": "unavailable",
+            "reason": "not_collected_for_this_review_batch"
+          },
+          "recommendation_intents": {
+            "similar": [],
+            "complementary": [],
+            "routine_pairing": [],
+            "underfill_reason": null,
+            "confidence": "low"
+          },
+          "market_signal_badges": [],
+          "external_highlight_signals": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "seller_plus_formula",
+          "source_coverage": {
+            "seller": {
+              "available": true,
+              "source_url": "https://us.embryolisse.com/products/radiant-eye-stick-cool-treatment-for-a-brighter-look"
+            },
+            "formula": {
+              "available": true,
+              "ingredient_count": 3,
+              "source_url": "https://us.embryolisse.com/products/radiant-eye-stick-cool-treatment-for-a-brighter-look"
+            },
+            "reviews": {
+              "available": false,
+              "count": 0
+            },
+            "creator": {
+              "available": false,
+              "count": 0
+            },
+            "editorial": {
+              "available": false,
+              "count": 0
+            }
+          },
+          "confidence": {
+            "overall": "moderate",
+            "fields": {
+              "what_it_is": "high",
+              "best_for": "moderate",
+              "why_it_stands_out": "moderate",
+              "routine_fit": "moderate",
+              "watchouts": "moderate"
+            }
+          },
+          "freshness": {
+            "generated_at": "2026-05-31T16:19:31.538Z",
+            "source_version": "wave100_embryolisse_official_product_intel_review_20260601"
+          },
+          "offer_pointers": {
+            "offers_count": 0,
+            "default_offer_id": null,
+            "best_price_offer_id": null,
+            "commerce_modes": []
+          },
+          "provenance": {
+            "source": "owner_delegated_official_seed_rewrite",
+            "generator": "owner_delegated_assistant_reviewed_rewrite",
+            "selection_strategy": "official_pdp_seed_guarded_manual_review",
+            "field_sources": {
+              "what_it_is": "official_seed_description",
+              "best_for": "reviewed_category_and_official_title",
+              "why_it_stands_out": "official_seed_description_and_formula",
+              "routine_fit": "reviewed_category_and_official_title",
+              "watchouts": "owner_delegated_assistant_review",
+              "texture_finish": "reviewed_category_and_official_title",
+              "source_coverage": "official_pdp_seed_snapshot",
+              "community_signals": "not_collected"
+            },
+            "review_status": "completed",
+            "review_decision": "rewrite",
+            "reviewer": "codex_human_quality_reviewer",
+            "reviewer_kind": "assistant",
+            "reviewed_at": "2026-05-31T16:19:31.538Z",
+            "external_highlight_review_status": "rewrite",
+            "external_review_batch": "wave100_embryolisse_official_product_intel_review_20260601",
+            "official_source_url": "https://us.embryolisse.com/products/radiant-eye-stick-cool-treatment-for-a-brighter-look",
+            "official_source_ingredient_count": 3,
+            "rewrite_reason": "Owner-delegated assistant review: official PDP seed rewrite; no commerce-state, community, medical, or unsupported safety claims added."
+          },
+          "shopping_card": {
+            "contract_version": "pivota.shopping_card.v1",
+            "title": "Radiant Eye Stick - Cool Treatment For A Brighter Look",
+            "subtitle": "Makeup Set",
+            "highlight": "Eye-makeup routine set",
+            "intro": "An EMBRYOLISSE makeup set listed on the brand source page as Radiant Eye Stick - Cool Treatment For A Brighter Look. The source description identifies: This double action cool-effect stick combines beauty and skincare: it is a make-up artist’s trick to immediately refresh the eyes, and a moisturizing care to decongest and smooth the eye contour.",
+            "evidence_profile": "seller_plus_formula"
+          },
+          "search_card": {
+            "title_candidate": "Radiant Eye Stick - Cool Treatment For A Brighter Look",
+            "compact_candidate": "Makeup Set",
+            "highlight_candidate": "Eye-makeup routine set",
+            "intro_candidate": "An EMBRYOLISSE makeup set listed on the brand source page as Radiant Eye Stick - Cool Treatment For A Brighter Look. The source description identifies: This double action cool-effect stick combines beauty and skincare: it is a make-up artist’s trick to immediately refresh the eyes, and a moisturizing care to decongest and smooth the eye contour.",
+            "proof_badge_candidate": ""
+          }
+        }
+      }
+    },
+    {
+      "case_id": "live_ext_1b4a85868ba125bc6b7040e0",
+      "review_status": "completed",
+      "review_decision": "rewrite",
+      "reviewer": "codex_human_quality_reviewer",
+      "reviewer_kind": "assistant",
+      "reviewed_at": "2026-05-31T16:19:31.538Z",
+      "notes": "Approved official-PDP-seed rewrite for Filaderme Emulsion - Face Lotion For Dry Skin; evidence_profile=seller_plus_formula; source_url=https://us.embryolisse.com/products/filaderme-emulsion-face-lotion-for-dry-skin",
+      "owner_delegated_review": {
+        "contract_version": "pivota.owner_delegated_review.v1",
+        "delegated_to": "codex_human_quality_reviewer",
+        "reviewer_kind": "assistant",
+        "owner_instruction": "User delegated Codex to perform high-quality human review for Pivota Insights quality improvement.",
+        "guardrails": [
+          "Do not overwrite good content with lower-quality content.",
+          "No commerce-state claims in Pivota Insights.",
+          "Use official source facts only; keep evidence confidence explicit."
+        ]
+      },
+      "quality_improvement_review": {
+        "decision": "approved_replacement",
+        "reviewer_kind": "assistant",
+        "owner_delegated": true,
+        "reason": "Owner-delegated assistant review confirms the replacement uses official PDP seed facts, avoids commerce and unsupported evidence claims, and explicitly marks evidence gaps instead of inventing claims."
+      },
+      "baseline": {
+        "canonical_product_ref": {
+          "merchant_id": "external_seed",
+          "product_id": "ext_1b4a85868ba125bc6b7040e0",
+          "platform": "external_seed"
+        }
+      },
+      "selected": {
+        "selected_mode": "manual_reviewed_rewrite",
+        "selected_field_count": 7,
+        "field_sources": {
+          "what_it_is": "official_seed_description",
+          "best_for": "reviewed_category_and_official_title",
+          "why_it_stands_out": "official_seed_description_and_formula",
+          "routine_fit": "reviewed_category_and_official_title",
+          "watchouts": "owner_delegated_assistant_review",
+          "texture_finish": "reviewed_category_and_official_title",
+          "source_coverage": "official_pdp_seed_snapshot",
+          "community_signals": "not_collected"
+        },
+        "bundle": {
+          "contract_version": "pivota.product_intel.v1",
+          "display_name": "Pivota Insights",
+          "canonical_product_ref": {
+            "merchant_id": "external_seed",
+            "product_id": "ext_1b4a85868ba125bc6b7040e0",
+            "platform": "external_seed"
+          },
+          "product_group_id": "sig_10a1338ec85b83df2ea137d3",
+          "product_intel_core": {
+            "display_name": "Pivota Insights",
+            "what_it_is": {
+              "headline": "Skincare product identity",
+              "body": "An EMBRYOLISSE skincare product listed on the brand source page as Filaderme Emulsion - Face Lotion For Dry Skin. The source description identifies: This cream transforms dry, sensitive skin."
+            },
+            "best_for": [
+              {
+                "tag": "skincare_shoppers",
+                "label": "Skincare product shoppers",
+                "confidence": "moderate"
+              },
+              {
+                "tag": "official_source_comparison",
+                "label": "Official-source comparison",
+                "confidence": "moderate"
+              }
+            ],
+            "why_it_stands_out": [
+              {
+                "headline": "Source-backed product detail",
+                "body": "This cream transforms dry, sensitive skin.",
+                "evidence_strength": "seller_plus_formula"
+              },
+              {
+                "headline": "Formula context captured",
+                "body": "Captured formula fields include KEY ACTIVE INGREDIENTS: Filaderme Emulsion is formulated with a blend of nourishing ingredients inspired by the skin’s natural lipids to help restore comfort and protect dry skin. → Shea Butter: Nourishes and helps reinforce the skin barrier → Vegetal oils: Help soften skin and restore suppleness → Skin-identical lipids: Support barrier repair and hydration Formula Commitments 96% ingredients of natural origin Dermatologically tested Suitable for sensitive skin Daily facial skincare for dry to very dry skin 305I01 – INGREDIENTS AQUA (WATER). SQUALANE. CAPRYLIC/CAPRIC TRIGLYCERIDE. GLYCERIN. CETEARYL GLUCOSIDE. CETEARYL ALCOHOL. BRASSICA CAMPESTRIS (RAPESEED) STEROLS. BUTYROSPERMUM PARKII (SHEA) BUTTER. CERA ALBA (BEESWAX). SORBITAN OLIVATE. XANTHAN GUM. 1, 2-HEXANEDIOL. CAPRYLYL GLYCOL. PARFUM (FRAGRANCE). SODIUM POLYACRYLATE. CITRIC ACID. HYDROLYZED SOY PROTEIN. TROPOLONE. ALOE BARBADENSIS LEAF EXTRACT. The list of ingredients used in the Embryolisse products is regularly updated. Before using Embryolisse products, please read the ingredient list on the packaging to ensure they are suitable for your personal use., Filaderme Emulsion is formulated with a blend of nourishing ingredients inspired by the skin’s natural lipids to help restore comfort and protect dry skin. → Shea Butter: Nourishes and helps reinforce the skin barrier → Vegetal oils: Help soften skin and restore suppleness → Skin-identical lipids: Support barrier repair and hydration Formula Commitments 96% ingredients of natural origin Dermatologically tested Suitable for sensitive skin Daily facial skincare for dry to very dry skin 305I01 – INGREDIENTS AQUA (WATER). SQUALANE. CAPRYLIC/CAPRIC TRIGLYCERIDE. GLYCERIN. CETEARYL GLUCOSIDE. CETEARYL ALCOHOL. BRASSICA CAMPESTRIS (RAPESEED) STEROLS. BUTYROSPERMUM PARKII (SHEA) BUTTER. CERA ALBA (BEESWAX). SORBITAN OLIVATE. XANTHAN GUM. 1, Glycerin. Agents should keep composition claims within those source fields.",
+                "evidence_strength": "seller_plus_formula"
+              }
+            ],
+            "routine_fit": {
+              "step": "skin_care",
+              "am_pm": [
+                "as_needed"
+              ],
+              "pairing_notes": [
+                "Use within the skincare product context; avoid inferring benefits not present in the source fields."
+              ]
+            },
+            "watchouts": [
+              {
+                "type": "formula_scope",
+                "label": "Formula details are source-derived; avoid medical, safety, or suitability claims not present in the source.",
+                "severity": "medium"
+              },
+              {
+                "type": "evidence_gap",
+                "label": "No independent review or community evidence was approved for this row; keep public copy source-bound.",
+                "severity": "medium"
+              },
+              {
+                "type": "scope_guardrail",
+                "label": "Use the commerce mainline for offer facts; keep this insight focused on source-backed product identity.",
+                "severity": "medium"
+              }
+            ],
+            "confidence": {
+              "overall": "moderate",
+              "fields": {
+                "what_it_is": "high",
+                "best_for": "moderate",
+                "why_it_stands_out": "moderate",
+                "routine_fit": "moderate",
+                "watchouts": "moderate"
+              }
+            },
+            "freshness": {
+              "generated_at": "2026-05-31T16:19:31.538Z",
+              "source_version": "wave100_embryolisse_official_product_intel_review_20260601"
+            },
+            "quality_state": "reviewed",
+            "evidence_profile": "seller_plus_formula",
+            "source_coverage": {
+              "seller": {
+                "available": true,
+                "source_url": "https://us.embryolisse.com/products/filaderme-emulsion-face-lotion-for-dry-skin"
+              },
+              "formula": {
+                "available": true,
+                "ingredient_count": 3,
+                "source_url": "https://us.embryolisse.com/products/filaderme-emulsion-face-lotion-for-dry-skin"
+              },
+              "reviews": {
+                "available": false,
+                "count": 0
+              },
+              "creator": {
+                "available": false,
+                "count": 0
+              },
+              "editorial": {
+                "available": false,
+                "count": 0
+              }
+            }
+          },
+          "texture_finish": {
+            "finish": "skincare product",
+            "texture": "skincare",
+            "source": "reviewed_category_and_official_title"
+          },
+          "community_signals": {
+            "status": "unavailable",
+            "reason": "not_collected_for_this_review_batch"
+          },
+          "recommendation_intents": {
+            "similar": [],
+            "complementary": [],
+            "routine_pairing": [],
+            "underfill_reason": null,
+            "confidence": "low"
+          },
+          "market_signal_badges": [],
+          "external_highlight_signals": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "seller_plus_formula",
+          "source_coverage": {
+            "seller": {
+              "available": true,
+              "source_url": "https://us.embryolisse.com/products/filaderme-emulsion-face-lotion-for-dry-skin"
+            },
+            "formula": {
+              "available": true,
+              "ingredient_count": 3,
+              "source_url": "https://us.embryolisse.com/products/filaderme-emulsion-face-lotion-for-dry-skin"
+            },
+            "reviews": {
+              "available": false,
+              "count": 0
+            },
+            "creator": {
+              "available": false,
+              "count": 0
+            },
+            "editorial": {
+              "available": false,
+              "count": 0
+            }
+          },
+          "confidence": {
+            "overall": "moderate",
+            "fields": {
+              "what_it_is": "high",
+              "best_for": "moderate",
+              "why_it_stands_out": "moderate",
+              "routine_fit": "moderate",
+              "watchouts": "moderate"
+            }
+          },
+          "freshness": {
+            "generated_at": "2026-05-31T16:19:31.538Z",
+            "source_version": "wave100_embryolisse_official_product_intel_review_20260601"
+          },
+          "offer_pointers": {
+            "offers_count": 0,
+            "default_offer_id": null,
+            "best_price_offer_id": null,
+            "commerce_modes": []
+          },
+          "provenance": {
+            "source": "owner_delegated_official_seed_rewrite",
+            "generator": "owner_delegated_assistant_reviewed_rewrite",
+            "selection_strategy": "official_pdp_seed_guarded_manual_review",
+            "field_sources": {
+              "what_it_is": "official_seed_description",
+              "best_for": "reviewed_category_and_official_title",
+              "why_it_stands_out": "official_seed_description_and_formula",
+              "routine_fit": "reviewed_category_and_official_title",
+              "watchouts": "owner_delegated_assistant_review",
+              "texture_finish": "reviewed_category_and_official_title",
+              "source_coverage": "official_pdp_seed_snapshot",
+              "community_signals": "not_collected"
+            },
+            "review_status": "completed",
+            "review_decision": "rewrite",
+            "reviewer": "codex_human_quality_reviewer",
+            "reviewer_kind": "assistant",
+            "reviewed_at": "2026-05-31T16:19:31.538Z",
+            "external_highlight_review_status": "rewrite",
+            "external_review_batch": "wave100_embryolisse_official_product_intel_review_20260601",
+            "official_source_url": "https://us.embryolisse.com/products/filaderme-emulsion-face-lotion-for-dry-skin",
+            "official_source_ingredient_count": 3,
+            "rewrite_reason": "Owner-delegated assistant review: official PDP seed rewrite; no commerce-state, community, medical, or unsupported safety claims added."
+          },
+          "shopping_card": {
+            "contract_version": "pivota.shopping_card.v1",
+            "title": "Filaderme Emulsion - Face Lotion For Dry Skin",
+            "subtitle": "Skincare",
+            "highlight": "Moisturizer formula detail",
+            "intro": "An EMBRYOLISSE skincare product listed on the brand source page as Filaderme Emulsion - Face Lotion For Dry Skin. The source description identifies: This cream transforms dry, sensitive skin.",
+            "evidence_profile": "seller_plus_formula"
+          },
+          "search_card": {
+            "title_candidate": "Filaderme Emulsion - Face Lotion For Dry Skin",
+            "compact_candidate": "Skincare",
+            "highlight_candidate": "Moisturizer formula detail",
+            "intro_candidate": "An EMBRYOLISSE skincare product listed on the brand source page as Filaderme Emulsion - Face Lotion For Dry Skin. The source description identifies: This cream transforms dry, sensitive skin.",
+            "proof_badge_candidate": ""
+          }
+        }
+      }
+    },
+    {
+      "case_id": "live_ext_a47933ea068521800615641f",
+      "review_status": "completed",
+      "review_decision": "rewrite",
+      "reviewer": "codex_human_quality_reviewer",
+      "reviewer_kind": "assistant",
+      "reviewed_at": "2026-05-31T16:19:31.538Z",
+      "notes": "Approved official-PDP-seed rewrite for Lait-Crème Fluid+ Eco-Refill; evidence_profile=seller_plus_formula; source_url=https://us.embryolisse.com/products/lait-creme-fluid-eco-refill",
+      "owner_delegated_review": {
+        "contract_version": "pivota.owner_delegated_review.v1",
+        "delegated_to": "codex_human_quality_reviewer",
+        "reviewer_kind": "assistant",
+        "owner_instruction": "User delegated Codex to perform high-quality human review for Pivota Insights quality improvement.",
+        "guardrails": [
+          "Do not overwrite good content with lower-quality content.",
+          "No commerce-state claims in Pivota Insights.",
+          "Use official source facts only; keep evidence confidence explicit."
+        ]
+      },
+      "quality_improvement_review": {
+        "decision": "approved_replacement",
+        "reviewer_kind": "assistant",
+        "owner_delegated": true,
+        "reason": "Owner-delegated assistant review confirms the replacement uses official PDP seed facts, avoids commerce and unsupported evidence claims, and explicitly marks evidence gaps instead of inventing claims."
+      },
+      "baseline": {
+        "canonical_product_ref": {
+          "merchant_id": "external_seed",
+          "product_id": "ext_a47933ea068521800615641f",
+          "platform": "external_seed"
+        }
+      },
+      "selected": {
+        "selected_mode": "manual_reviewed_rewrite",
+        "selected_field_count": 7,
+        "field_sources": {
+          "what_it_is": "official_seed_description",
+          "best_for": "reviewed_category_and_official_title",
+          "why_it_stands_out": "official_seed_description_and_formula",
+          "routine_fit": "reviewed_category_and_official_title",
+          "watchouts": "owner_delegated_assistant_review",
+          "texture_finish": "reviewed_category_and_official_title",
+          "source_coverage": "official_pdp_seed_snapshot",
+          "community_signals": "not_collected"
+        },
+        "bundle": {
+          "contract_version": "pivota.product_intel.v1",
+          "display_name": "Pivota Insights",
+          "canonical_product_ref": {
+            "merchant_id": "external_seed",
+            "product_id": "ext_a47933ea068521800615641f",
+            "platform": "external_seed"
+          },
+          "product_group_id": "sig_4c977239b9377c775b5aba4b",
+          "product_intel_core": {
+            "display_name": "Pivota Insights",
+            "what_it_is": {
+              "headline": "Cleanser identity",
+              "body": "An EMBRYOLISSE cleanser listed on the brand source page as Lait-Crème Fluid+ Eco-Refill. The source description identifies: Introducing Eco-Refill For Your Lait-Crème Fluid+ A Sustainable Choice for Nourished Skin Make a conscious choice for the environment and your skin with our eco-refill option for Lait-Crème Fluid+, the versatile."
+            },
+            "best_for": [
+              {
+                "tag": "cleanser_shoppers",
+                "label": "Cleanser shoppers",
+                "confidence": "moderate"
+              },
+              {
+                "tag": "official_source_comparison",
+                "label": "Official-source comparison",
+                "confidence": "moderate"
+              }
+            ],
+            "why_it_stands_out": [
+              {
+                "headline": "Source-backed product detail",
+                "body": "Introducing Eco-Refill For Your Lait-Crème Fluid+ A Sustainable Choice for Nourished Skin Make a conscious choice for the environment and your skin with our eco-refill option for Lait-Crème Fluid+, the versatile.",
+                "evidence_strength": "seller_plus_formula"
+              },
+              {
+                "headline": "Formula context captured",
+                "body": "Captured formula fields include MAIN ACTIVE INGREDIENTS: At the heart of our formula lies a trio of nature's most potent treasures, meticulously blended to pamper your skin. 1. Organic Aloe Vera: A soothing elixir renowned for its restorative powers, Aloe Vera gently repairs and revitalizes skin, leaving it feeling refreshed and revitalized. 2. Beeswax: Nature's protective shield. Beeswax forms a delicate barrier on the skin, safeguarding its delicate balance and shielding it from external aggressors. 3. Shea Butter: A rich source of nourishing emollients. Agents should keep composition claims within those source fields.",
+                "evidence_strength": "seller_plus_formula"
+              }
+            ],
+            "routine_fit": {
+              "step": "cleanse",
+              "am_pm": [
+                "as_needed"
+              ],
+              "pairing_notes": [
+                "Use within the cleanser context; avoid inferring benefits not present in the source fields."
+              ]
+            },
+            "watchouts": [
+              {
+                "type": "formula_scope",
+                "label": "Formula details are source-derived; avoid medical, safety, or suitability claims not present in the source.",
+                "severity": "medium"
+              },
+              {
+                "type": "evidence_gap",
+                "label": "No independent review or community evidence was approved for this row; keep public copy source-bound.",
+                "severity": "medium"
+              },
+              {
+                "type": "scope_guardrail",
+                "label": "Use the commerce mainline for offer facts; keep this insight focused on source-backed product identity.",
+                "severity": "medium"
+              }
+            ],
+            "confidence": {
+              "overall": "moderate",
+              "fields": {
+                "what_it_is": "high",
+                "best_for": "moderate",
+                "why_it_stands_out": "moderate",
+                "routine_fit": "moderate",
+                "watchouts": "moderate"
+              }
+            },
+            "freshness": {
+              "generated_at": "2026-05-31T16:19:31.538Z",
+              "source_version": "wave100_embryolisse_official_product_intel_review_20260601"
+            },
+            "quality_state": "reviewed",
+            "evidence_profile": "seller_plus_formula",
+            "source_coverage": {
+              "seller": {
+                "available": true,
+                "source_url": "https://us.embryolisse.com/products/lait-creme-fluid-eco-refill"
+              },
+              "formula": {
+                "available": true,
+                "ingredient_count": 3,
+                "source_url": "https://us.embryolisse.com/products/lait-creme-fluid-eco-refill"
+              },
+              "reviews": {
+                "available": false,
+                "count": 0
+              },
+              "creator": {
+                "available": false,
+                "count": 0
+              },
+              "editorial": {
+                "available": false,
+                "count": 0
+              }
+            }
+          },
+          "texture_finish": {
+            "finish": "cleanser",
+            "texture": "cleanser",
+            "source": "reviewed_category_and_official_title"
+          },
+          "community_signals": {
+            "status": "unavailable",
+            "reason": "not_collected_for_this_review_batch"
+          },
+          "recommendation_intents": {
+            "similar": [],
+            "complementary": [],
+            "routine_pairing": [],
+            "underfill_reason": null,
+            "confidence": "low"
+          },
+          "market_signal_badges": [],
+          "external_highlight_signals": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "seller_plus_formula",
+          "source_coverage": {
+            "seller": {
+              "available": true,
+              "source_url": "https://us.embryolisse.com/products/lait-creme-fluid-eco-refill"
+            },
+            "formula": {
+              "available": true,
+              "ingredient_count": 3,
+              "source_url": "https://us.embryolisse.com/products/lait-creme-fluid-eco-refill"
+            },
+            "reviews": {
+              "available": false,
+              "count": 0
+            },
+            "creator": {
+              "available": false,
+              "count": 0
+            },
+            "editorial": {
+              "available": false,
+              "count": 0
+            }
+          },
+          "confidence": {
+            "overall": "moderate",
+            "fields": {
+              "what_it_is": "high",
+              "best_for": "moderate",
+              "why_it_stands_out": "moderate",
+              "routine_fit": "moderate",
+              "watchouts": "moderate"
+            }
+          },
+          "freshness": {
+            "generated_at": "2026-05-31T16:19:31.538Z",
+            "source_version": "wave100_embryolisse_official_product_intel_review_20260601"
+          },
+          "offer_pointers": {
+            "offers_count": 0,
+            "default_offer_id": null,
+            "best_price_offer_id": null,
+            "commerce_modes": []
+          },
+          "provenance": {
+            "source": "owner_delegated_official_seed_rewrite",
+            "generator": "owner_delegated_assistant_reviewed_rewrite",
+            "selection_strategy": "official_pdp_seed_guarded_manual_review",
+            "field_sources": {
+              "what_it_is": "official_seed_description",
+              "best_for": "reviewed_category_and_official_title",
+              "why_it_stands_out": "official_seed_description_and_formula",
+              "routine_fit": "reviewed_category_and_official_title",
+              "watchouts": "owner_delegated_assistant_review",
+              "texture_finish": "reviewed_category_and_official_title",
+              "source_coverage": "official_pdp_seed_snapshot",
+              "community_signals": "not_collected"
+            },
+            "review_status": "completed",
+            "review_decision": "rewrite",
+            "reviewer": "codex_human_quality_reviewer",
+            "reviewer_kind": "assistant",
+            "reviewed_at": "2026-05-31T16:19:31.538Z",
+            "external_highlight_review_status": "rewrite",
+            "external_review_batch": "wave100_embryolisse_official_product_intel_review_20260601",
+            "official_source_url": "https://us.embryolisse.com/products/lait-creme-fluid-eco-refill",
+            "official_source_ingredient_count": 3,
+            "rewrite_reason": "Owner-delegated assistant review: official PDP seed rewrite; no commerce-state, community, medical, or unsupported safety claims added."
+          },
+          "shopping_card": {
+            "contract_version": "pivota.shopping_card.v1",
+            "title": "Lait-Crème Fluid+ Eco-Refill",
+            "subtitle": "Cleanser",
+            "highlight": "Cleanser formula detail",
+            "intro": "An EMBRYOLISSE cleanser listed on the brand source page as Lait-Crème Fluid+ Eco-Refill. The source description identifies: Introducing Eco-Refill For Your Lait-Crème Fluid+ A Sustainable Choice for Nourished Skin Make a conscious choice for the environment and your skin with our eco-refill option for Lait-Crème Fluid+, the versatile.",
+            "evidence_profile": "seller_plus_formula"
+          },
+          "search_card": {
+            "title_candidate": "Lait-Crème Fluid+ Eco-Refill",
+            "compact_candidate": "Cleanser",
+            "highlight_candidate": "Cleanser formula detail",
+            "intro_candidate": "An EMBRYOLISSE cleanser listed on the brand source page as Lait-Crème Fluid+ Eco-Refill. The source description identifies: Introducing Eco-Refill For Your Lait-Crème Fluid+ A Sustainable Choice for Nourished Skin Make a conscious choice for the environment and your skin with our eco-refill option for Lait-Crème Fluid+, the versatile.",
+            "proof_badge_candidate": ""
+          }
+        }
+      }
+    },
+    {
+      "case_id": "live_ext_4df267da6c48f581bf6ff5f4",
+      "review_status": "completed",
+      "review_decision": "rewrite",
+      "reviewer": "codex_human_quality_reviewer",
+      "reviewer_kind": "assistant",
+      "reviewed_at": "2026-05-31T16:19:31.538Z",
+      "notes": "Approved official-PDP-seed rewrite for Cicalisse Hands and Nails; evidence_profile=seller_plus_formula; source_url=https://us.embryolisse.com/products/cicalisse-hands-and-nails",
+      "owner_delegated_review": {
+        "contract_version": "pivota.owner_delegated_review.v1",
+        "delegated_to": "codex_human_quality_reviewer",
+        "reviewer_kind": "assistant",
+        "owner_instruction": "User delegated Codex to perform high-quality human review for Pivota Insights quality improvement.",
+        "guardrails": [
+          "Do not overwrite good content with lower-quality content.",
+          "No commerce-state claims in Pivota Insights.",
+          "Use official source facts only; keep evidence confidence explicit."
+        ]
+      },
+      "quality_improvement_review": {
+        "decision": "approved_replacement",
+        "reviewer_kind": "assistant",
+        "owner_delegated": true,
+        "reason": "Owner-delegated assistant review confirms the replacement uses official PDP seed facts, avoids commerce and unsupported evidence claims, and explicitly marks evidence gaps instead of inventing claims."
+      },
+      "baseline": {
+        "canonical_product_ref": {
+          "merchant_id": "external_seed",
+          "product_id": "ext_4df267da6c48f581bf6ff5f4",
+          "platform": "external_seed"
+        }
+      },
+      "selected": {
+        "selected_mode": "manual_reviewed_rewrite",
+        "selected_field_count": 7,
+        "field_sources": {
+          "what_it_is": "official_seed_description",
+          "best_for": "reviewed_category_and_official_title",
+          "why_it_stands_out": "official_seed_description_and_formula",
+          "routine_fit": "reviewed_category_and_official_title",
+          "watchouts": "owner_delegated_assistant_review",
+          "texture_finish": "reviewed_category_and_official_title",
+          "source_coverage": "official_pdp_seed_snapshot",
+          "community_signals": "not_collected"
+        },
+        "bundle": {
+          "contract_version": "pivota.product_intel.v1",
+          "display_name": "Pivota Insights",
+          "canonical_product_ref": {
+            "merchant_id": "external_seed",
+            "product_id": "ext_4df267da6c48f581bf6ff5f4",
+            "platform": "external_seed"
+          },
+          "product_group_id": "sig_1cb8de4b7d9203e9b41921fc",
+          "product_intel_core": {
+            "display_name": "Pivota Insights",
+            "what_it_is": {
+              "headline": "Skincare product identity",
+              "body": "An EMBRYOLISSE skincare product listed on the brand source page as Cicalisse Hands and Nails. The source description identifies: CICA Repairing and Nourishing Action Cicalisse Hands and Nails delivers targeted repairing and nourishing skincare for hands and nails exposed to daily aggressions such as cold, wind, pollution, and frequent washing."
+            },
+            "best_for": [
+              {
+                "tag": "skincare_shoppers",
+                "label": "Skincare product shoppers",
+                "confidence": "moderate"
+              },
+              {
+                "tag": "official_source_comparison",
+                "label": "Official-source comparison",
+                "confidence": "moderate"
+              }
+            ],
+            "why_it_stands_out": [
+              {
+                "headline": "Source-backed product detail",
+                "body": "CICA Repairing and Nourishing Action Cicalisse Hands and Nails delivers targeted repairing and nourishing skincare for hands and nails exposed to daily aggressions such as cold, wind, pollution, and frequent washing.",
+                "evidence_strength": "seller_plus_formula"
+              },
+              {
+                "headline": "Formula context captured",
+                "body": "Captured formula fields include KEY ACTIVE INGREDIENTS: Cicalisse Hands and Nails is highly concentrated in Shea Butter, a nourishing and protective ingredient known for helping repair very dry, damaged skin. The formula helps restore comfort to hands and nails while protecting the skin barrier from external aggressions. → Shea Butter (Butyrospermum Parkii Butter): Nourishes, repairs, and protects very dry hands and brittle nails → Glycerin: Helps maintain hydration and improve skin comfort → Pentylene Glycol: Supports moisture retention and skin softness Formula Commitments 97% ingredients of natural origin Short and effective formula with just 10 ingredients Silicone-free Tested on 100% sensitive skin Suitable for men and women Ethical & Sustainable Sourcing The Shea Butter used in Cicalisse Hands and Nails comes from a direct and ethical supply chain in West Africa. Agents should keep composition claims within those source fields.",
+                "evidence_strength": "seller_plus_formula"
+              }
+            ],
+            "routine_fit": {
+              "step": "skin_care",
+              "am_pm": [
+                "as_needed"
+              ],
+              "pairing_notes": [
+                "Use within the skincare product context; avoid inferring benefits not present in the source fields."
+              ]
+            },
+            "watchouts": [
+              {
+                "type": "formula_scope",
+                "label": "Formula details are source-derived; avoid medical, safety, or suitability claims not present in the source.",
+                "severity": "medium"
+              },
+              {
+                "type": "evidence_gap",
+                "label": "No independent review or community evidence was approved for this row; keep public copy source-bound.",
+                "severity": "medium"
+              },
+              {
+                "type": "scope_guardrail",
+                "label": "Use the commerce mainline for offer facts; keep this insight focused on source-backed product identity.",
+                "severity": "medium"
+              }
+            ],
+            "confidence": {
+              "overall": "moderate",
+              "fields": {
+                "what_it_is": "high",
+                "best_for": "moderate",
+                "why_it_stands_out": "moderate",
+                "routine_fit": "moderate",
+                "watchouts": "moderate"
+              }
+            },
+            "freshness": {
+              "generated_at": "2026-05-31T16:19:31.538Z",
+              "source_version": "wave100_embryolisse_official_product_intel_review_20260601"
+            },
+            "quality_state": "reviewed",
+            "evidence_profile": "seller_plus_formula",
+            "source_coverage": {
+              "seller": {
+                "available": true,
+                "source_url": "https://us.embryolisse.com/products/cicalisse-hands-and-nails"
+              },
+              "formula": {
+                "available": true,
+                "ingredient_count": 3,
+                "source_url": "https://us.embryolisse.com/products/cicalisse-hands-and-nails"
+              },
+              "reviews": {
+                "available": false,
+                "count": 0
+              },
+              "creator": {
+                "available": false,
+                "count": 0
+              },
+              "editorial": {
+                "available": false,
+                "count": 0
+              }
+            }
+          },
+          "texture_finish": {
+            "finish": "skincare product",
+            "texture": "skincare",
+            "source": "reviewed_category_and_official_title"
+          },
+          "community_signals": {
+            "status": "unavailable",
+            "reason": "not_collected_for_this_review_batch"
+          },
+          "recommendation_intents": {
+            "similar": [],
+            "complementary": [],
+            "routine_pairing": [],
+            "underfill_reason": null,
+            "confidence": "low"
+          },
+          "market_signal_badges": [],
+          "external_highlight_signals": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "seller_plus_formula",
+          "source_coverage": {
+            "seller": {
+              "available": true,
+              "source_url": "https://us.embryolisse.com/products/cicalisse-hands-and-nails"
+            },
+            "formula": {
+              "available": true,
+              "ingredient_count": 3,
+              "source_url": "https://us.embryolisse.com/products/cicalisse-hands-and-nails"
+            },
+            "reviews": {
+              "available": false,
+              "count": 0
+            },
+            "creator": {
+              "available": false,
+              "count": 0
+            },
+            "editorial": {
+              "available": false,
+              "count": 0
+            }
+          },
+          "confidence": {
+            "overall": "moderate",
+            "fields": {
+              "what_it_is": "high",
+              "best_for": "moderate",
+              "why_it_stands_out": "moderate",
+              "routine_fit": "moderate",
+              "watchouts": "moderate"
+            }
+          },
+          "freshness": {
+            "generated_at": "2026-05-31T16:19:31.538Z",
+            "source_version": "wave100_embryolisse_official_product_intel_review_20260601"
+          },
+          "offer_pointers": {
+            "offers_count": 0,
+            "default_offer_id": null,
+            "best_price_offer_id": null,
+            "commerce_modes": []
+          },
+          "provenance": {
+            "source": "owner_delegated_official_seed_rewrite",
+            "generator": "owner_delegated_assistant_reviewed_rewrite",
+            "selection_strategy": "official_pdp_seed_guarded_manual_review",
+            "field_sources": {
+              "what_it_is": "official_seed_description",
+              "best_for": "reviewed_category_and_official_title",
+              "why_it_stands_out": "official_seed_description_and_formula",
+              "routine_fit": "reviewed_category_and_official_title",
+              "watchouts": "owner_delegated_assistant_review",
+              "texture_finish": "reviewed_category_and_official_title",
+              "source_coverage": "official_pdp_seed_snapshot",
+              "community_signals": "not_collected"
+            },
+            "review_status": "completed",
+            "review_decision": "rewrite",
+            "reviewer": "codex_human_quality_reviewer",
+            "reviewer_kind": "assistant",
+            "reviewed_at": "2026-05-31T16:19:31.538Z",
+            "external_highlight_review_status": "rewrite",
+            "external_review_batch": "wave100_embryolisse_official_product_intel_review_20260601",
+            "official_source_url": "https://us.embryolisse.com/products/cicalisse-hands-and-nails",
+            "official_source_ingredient_count": 3,
+            "rewrite_reason": "Owner-delegated assistant review: official PDP seed rewrite; no commerce-state, community, medical, or unsupported safety claims added."
+          },
+          "shopping_card": {
+            "contract_version": "pivota.shopping_card.v1",
+            "title": "Cicalisse Hands and Nails",
+            "subtitle": "Skincare",
+            "highlight": "Skincare formula detail",
+            "intro": "An EMBRYOLISSE skincare product listed on the brand source page as Cicalisse Hands and Nails. The source description identifies: CICA Repairing and Nourishing Action Cicalisse Hands and Nails delivers targeted repairing and nourishing skincare for hands and nails exposed to daily aggressions such as cold, wind, pollution, and frequent washing.",
+            "evidence_profile": "seller_plus_formula"
+          },
+          "search_card": {
+            "title_candidate": "Cicalisse Hands and Nails",
+            "compact_candidate": "Skincare",
+            "highlight_candidate": "Skincare formula detail",
+            "intro_candidate": "An EMBRYOLISSE skincare product listed on the brand source page as Cicalisse Hands and Nails. The source description identifies: CICA Repairing and Nourishing Action Cicalisse Hands and Nails delivers targeted repairing and nourishing skincare for hands and nails exposed to daily aggressions such as cold, wind, pollution, and frequent washing.",
+            "proof_badge_candidate": ""
+          }
+        }
+      }
+    },
+    {
+      "case_id": "live_ext_1204da285323c4c294847daf",
+      "review_status": "completed",
+      "review_decision": "rewrite",
+      "reviewer": "codex_human_quality_reviewer",
+      "reviewer_kind": "assistant",
+      "reviewed_at": "2026-05-31T16:19:31.538Z",
+      "notes": "Approved official-PDP-seed rewrite for Exfoliating Milk Powder; evidence_profile=seller_plus_formula; source_url=https://us.embryolisse.com/products/exfoliating-milk-powder",
+      "owner_delegated_review": {
+        "contract_version": "pivota.owner_delegated_review.v1",
+        "delegated_to": "codex_human_quality_reviewer",
+        "reviewer_kind": "assistant",
+        "owner_instruction": "User delegated Codex to perform high-quality human review for Pivota Insights quality improvement.",
+        "guardrails": [
+          "Do not overwrite good content with lower-quality content.",
+          "No commerce-state claims in Pivota Insights.",
+          "Use official source facts only; keep evidence confidence explicit."
+        ]
+      },
+      "quality_improvement_review": {
+        "decision": "approved_replacement",
+        "reviewer_kind": "assistant",
+        "owner_delegated": true,
+        "reason": "Owner-delegated assistant review confirms the replacement uses official PDP seed facts, avoids commerce and unsupported evidence claims, and explicitly marks evidence gaps instead of inventing claims."
+      },
+      "baseline": {
+        "canonical_product_ref": {
+          "merchant_id": "external_seed",
+          "product_id": "ext_1204da285323c4c294847daf",
+          "platform": "external_seed"
+        }
+      },
+      "selected": {
+        "selected_mode": "manual_reviewed_rewrite",
+        "selected_field_count": 7,
+        "field_sources": {
+          "what_it_is": "official_seed_description",
+          "best_for": "reviewed_category_and_official_title",
+          "why_it_stands_out": "official_seed_description_and_formula",
+          "routine_fit": "reviewed_category_and_official_title",
+          "watchouts": "owner_delegated_assistant_review",
+          "texture_finish": "reviewed_category_and_official_title",
+          "source_coverage": "official_pdp_seed_snapshot",
+          "community_signals": "not_collected"
+        },
+        "bundle": {
+          "contract_version": "pivota.product_intel.v1",
+          "display_name": "Pivota Insights",
+          "canonical_product_ref": {
+            "merchant_id": "external_seed",
+            "product_id": "ext_1204da285323c4c294847daf",
+            "platform": "external_seed"
+          },
+          "product_group_id": "sig_28f63d705a313c6f2a30bd78",
+          "product_intel_core": {
+            "display_name": "Pivota Insights",
+            "what_it_is": {
+              "headline": "Cleanser identity",
+              "body": "An EMBRYOLISSE cleanser listed on the brand source page as Exfoliating Milk Powder. The source description identifies: The best of the coconut in a water-free powder, in a gentle formula of natural origin and more responsible with 3 coconut extracts."
+            },
+            "best_for": [
+              {
+                "tag": "cleanser_shoppers",
+                "label": "Cleanser shoppers",
+                "confidence": "moderate"
+              },
+              {
+                "tag": "official_source_comparison",
+                "label": "Official-source comparison",
+                "confidence": "moderate"
+              }
+            ],
+            "why_it_stands_out": [
+              {
+                "headline": "Source-backed product detail",
+                "body": "The best of the coconut in a water-free powder, in a gentle formula of natural origin and more responsible with 3 coconut extracts.",
+                "evidence_strength": "seller_plus_formula"
+              },
+              {
+                "headline": "Formula context captured",
+                "body": "Captured formula fields include MAIN ACTIVE INGREDIENTS: Micronized coconut shell: Gently exfoliates. Stimulates skin renewal Micronized coconut pulp: Tones the skin by providing a film-firming action. Natural coconut fragrance Coconut milk powder: Smooths. Upon contact with water, it envelops the skin in a milky cloud 110I01 - INGREDIENTS: ORYZA SATIVA (RICE) STARCH. ZEA MAYS (CORN) STARCH. SODIUM LAUROYL GLUTAMATE. COCOS NUCIFERA (COCONUT) FRUIT POWDER. COCOS NUCIFERA (COCONUT) SHELL POWDER. CITRIC ACID. CALCIUM CARBONATE. SODIUM BICARBONATE. MALTODEXTRIN. PARFUM (FRAGRANCE). COCOS NUCIFERA (COCONUT) FRUIT EXTRACT. 99% ingredients from natural origin The list of ingredients used in the Embryolisse products are regularly updated. Before using Embryolisse products, please read the list of ingredients on the packaging to ensure the ingredients are suitable for your personal use., Micronized coconut shell: Gently exfoliates. Stimulates skin renewal Micronized coconut pulp: Tones the skin by providing a film-firming action. Natural coconut fragrance Coconut milk powder: Smooths. Upon contact with water, it envelops the skin in a milky cloud 110I01 -. Agents should keep composition claims within those source fields.",
+                "evidence_strength": "seller_plus_formula"
+              }
+            ],
+            "routine_fit": {
+              "step": "cleanse",
+              "am_pm": [
+                "as_needed"
+              ],
+              "pairing_notes": [
+                "Use within the cleanser context; avoid inferring benefits not present in the source fields."
+              ]
+            },
+            "watchouts": [
+              {
+                "type": "formula_scope",
+                "label": "Formula details are source-derived; avoid medical, safety, or suitability claims not present in the source.",
+                "severity": "medium"
+              },
+              {
+                "type": "evidence_gap",
+                "label": "No independent review or community evidence was approved for this row; keep public copy source-bound.",
+                "severity": "medium"
+              },
+              {
+                "type": "scope_guardrail",
+                "label": "Use the commerce mainline for offer facts; keep this insight focused on source-backed product identity.",
+                "severity": "medium"
+              }
+            ],
+            "confidence": {
+              "overall": "moderate",
+              "fields": {
+                "what_it_is": "high",
+                "best_for": "moderate",
+                "why_it_stands_out": "moderate",
+                "routine_fit": "moderate",
+                "watchouts": "moderate"
+              }
+            },
+            "freshness": {
+              "generated_at": "2026-05-31T16:19:31.538Z",
+              "source_version": "wave100_embryolisse_official_product_intel_review_20260601"
+            },
+            "quality_state": "reviewed",
+            "evidence_profile": "seller_plus_formula",
+            "source_coverage": {
+              "seller": {
+                "available": true,
+                "source_url": "https://us.embryolisse.com/products/exfoliating-milk-powder"
+              },
+              "formula": {
+                "available": true,
+                "ingredient_count": 5,
+                "source_url": "https://us.embryolisse.com/products/exfoliating-milk-powder"
+              },
+              "reviews": {
+                "available": false,
+                "count": 0
+              },
+              "creator": {
+                "available": false,
+                "count": 0
+              },
+              "editorial": {
+                "available": false,
+                "count": 0
+              }
+            }
+          },
+          "texture_finish": {
+            "finish": "cleanser",
+            "texture": "cleanser",
+            "source": "reviewed_category_and_official_title"
+          },
+          "community_signals": {
+            "status": "unavailable",
+            "reason": "not_collected_for_this_review_batch"
+          },
+          "recommendation_intents": {
+            "similar": [],
+            "complementary": [],
+            "routine_pairing": [],
+            "underfill_reason": null,
+            "confidence": "low"
+          },
+          "market_signal_badges": [],
+          "external_highlight_signals": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "seller_plus_formula",
+          "source_coverage": {
+            "seller": {
+              "available": true,
+              "source_url": "https://us.embryolisse.com/products/exfoliating-milk-powder"
+            },
+            "formula": {
+              "available": true,
+              "ingredient_count": 5,
+              "source_url": "https://us.embryolisse.com/products/exfoliating-milk-powder"
+            },
+            "reviews": {
+              "available": false,
+              "count": 0
+            },
+            "creator": {
+              "available": false,
+              "count": 0
+            },
+            "editorial": {
+              "available": false,
+              "count": 0
+            }
+          },
+          "confidence": {
+            "overall": "moderate",
+            "fields": {
+              "what_it_is": "high",
+              "best_for": "moderate",
+              "why_it_stands_out": "moderate",
+              "routine_fit": "moderate",
+              "watchouts": "moderate"
+            }
+          },
+          "freshness": {
+            "generated_at": "2026-05-31T16:19:31.538Z",
+            "source_version": "wave100_embryolisse_official_product_intel_review_20260601"
+          },
+          "offer_pointers": {
+            "offers_count": 0,
+            "default_offer_id": null,
+            "best_price_offer_id": null,
+            "commerce_modes": []
+          },
+          "provenance": {
+            "source": "owner_delegated_official_seed_rewrite",
+            "generator": "owner_delegated_assistant_reviewed_rewrite",
+            "selection_strategy": "official_pdp_seed_guarded_manual_review",
+            "field_sources": {
+              "what_it_is": "official_seed_description",
+              "best_for": "reviewed_category_and_official_title",
+              "why_it_stands_out": "official_seed_description_and_formula",
+              "routine_fit": "reviewed_category_and_official_title",
+              "watchouts": "owner_delegated_assistant_review",
+              "texture_finish": "reviewed_category_and_official_title",
+              "source_coverage": "official_pdp_seed_snapshot",
+              "community_signals": "not_collected"
+            },
+            "review_status": "completed",
+            "review_decision": "rewrite",
+            "reviewer": "codex_human_quality_reviewer",
+            "reviewer_kind": "assistant",
+            "reviewed_at": "2026-05-31T16:19:31.538Z",
+            "external_highlight_review_status": "rewrite",
+            "external_review_batch": "wave100_embryolisse_official_product_intel_review_20260601",
+            "official_source_url": "https://us.embryolisse.com/products/exfoliating-milk-powder",
+            "official_source_ingredient_count": 5,
+            "rewrite_reason": "Owner-delegated assistant review: official PDP seed rewrite; no commerce-state, community, medical, or unsupported safety claims added."
+          },
+          "shopping_card": {
+            "contract_version": "pivota.shopping_card.v1",
+            "title": "Exfoliating Milk Powder",
+            "subtitle": "Cleanser",
+            "highlight": "Cleanser formula detail",
+            "intro": "An EMBRYOLISSE cleanser listed on the brand source page as Exfoliating Milk Powder. The source description identifies: The best of the coconut in a water-free powder, in a gentle formula of natural origin and more responsible with 3 coconut extracts.",
+            "evidence_profile": "seller_plus_formula"
+          },
+          "search_card": {
+            "title_candidate": "Exfoliating Milk Powder",
+            "compact_candidate": "Cleanser",
+            "highlight_candidate": "Cleanser formula detail",
+            "intro_candidate": "An EMBRYOLISSE cleanser listed on the brand source page as Exfoliating Milk Powder. The source description identifies: The best of the coconut in a water-free powder, in a gentle formula of natural origin and more responsible with 3 coconut extracts.",
+            "proof_badge_candidate": ""
+          }
+        }
+      }
+    },
+    {
+      "case_id": "live_ext_e13d80b8bf9b8dfe44042064",
+      "review_status": "completed",
+      "review_decision": "rewrite",
+      "reviewer": "codex_human_quality_reviewer",
+      "reviewer_kind": "assistant",
+      "reviewed_at": "2026-05-31T16:19:31.538Z",
+      "notes": "Approved official-PDP-seed rewrite for SOS Corrective Cream; evidence_profile=seller_plus_formula; source_url=https://us.embryolisse.com/products/sos-corrective-cream",
+      "owner_delegated_review": {
+        "contract_version": "pivota.owner_delegated_review.v1",
+        "delegated_to": "codex_human_quality_reviewer",
+        "reviewer_kind": "assistant",
+        "owner_instruction": "User delegated Codex to perform high-quality human review for Pivota Insights quality improvement.",
+        "guardrails": [
+          "Do not overwrite good content with lower-quality content.",
+          "No commerce-state claims in Pivota Insights.",
+          "Use official source facts only; keep evidence confidence explicit."
+        ]
+      },
+      "quality_improvement_review": {
+        "decision": "approved_replacement",
+        "reviewer_kind": "assistant",
+        "owner_delegated": true,
+        "reason": "Owner-delegated assistant review confirms the replacement uses official PDP seed facts, avoids commerce and unsupported evidence claims, and explicitly marks evidence gaps instead of inventing claims."
+      },
+      "baseline": {
+        "canonical_product_ref": {
+          "merchant_id": "external_seed",
+          "product_id": "ext_e13d80b8bf9b8dfe44042064",
+          "platform": "external_seed"
+        }
+      },
+      "selected": {
+        "selected_mode": "manual_reviewed_rewrite",
+        "selected_field_count": 7,
+        "field_sources": {
+          "what_it_is": "official_seed_description",
+          "best_for": "reviewed_category_and_official_title",
+          "why_it_stands_out": "official_seed_description_and_formula",
+          "routine_fit": "reviewed_category_and_official_title",
+          "watchouts": "owner_delegated_assistant_review",
+          "texture_finish": "reviewed_category_and_official_title",
+          "source_coverage": "official_pdp_seed_snapshot",
+          "community_signals": "not_collected"
+        },
+        "bundle": {
+          "contract_version": "pivota.product_intel.v1",
+          "display_name": "Pivota Insights",
+          "canonical_product_ref": {
+            "merchant_id": "external_seed",
+            "product_id": "ext_e13d80b8bf9b8dfe44042064",
+            "platform": "external_seed"
+          },
+          "product_group_id": "sig_e0228236860d696315de1151",
+          "product_intel_core": {
+            "display_name": "Pivota Insights",
+            "what_it_is": {
+              "headline": "Skincare product identity",
+              "body": "An EMBRYOLISSE skincare product listed on the brand source page as SOS Corrective Cream. The source description identifies: Multi-Tasking Soothing Anti-Redness Corrector Day Cream - Localized Redness Corrector - Makeup Base and Eye Contour 95% ingredients of natural origin, light texture formula with green neutralizing pigments Clean."
+            },
+            "best_for": [
+              {
+                "tag": "skincare_shoppers",
+                "label": "Skincare product shoppers",
+                "confidence": "moderate"
+              },
+              {
+                "tag": "official_source_comparison",
+                "label": "Official-source comparison",
+                "confidence": "moderate"
+              }
+            ],
+            "why_it_stands_out": [
+              {
+                "headline": "Source-backed product detail",
+                "body": "Multi-Tasking Soothing Anti-Redness Corrector Day Cream - Localized Redness Corrector - Makeup Base and Eye Contour 95% ingredients of natural origin, light texture formula with green neutralizing pigments Clean.",
+                "evidence_strength": "seller_plus_formula"
+              },
+              {
+                "headline": "Formula context captured",
+                "body": "Captured formula fields include KEY SKINCARE INGREDIENTS → SACRED LOTUS FLOWER EXTRACT: It helps stressed skin cells by restoring balance and reducing the effects of daily aggressions. Its extract calms the skin, reduces redness, and protects against environmental stress, promoting skin wellbeing. It helps soothe and support a calmer-looking complexion → HYALURONIC ACIDS: Moisturizing effect - Intermediate molecular weight. Intense hydration. hydrates and helps skin feel plumper, more comfortable → GREEN NEUTRALIZING PIGMENTS: The green color is at the opposite of red on the chromatic circle. The two colors cancel each other out when they come into contact. Visually help neutralize the look of redness. 95% ingredients of natural origin Tested on 100% sensitive skin Ingredients: AQUA (WATER). C15-19 ALKANE. DICAPRYLYL CARBONATE. GLYCERIN. PENTYLENE GLYCOL. BORON NITRIDE. POLYGLYCERYL-3 DISTEARATE. BUTYROSPERMUM PARKII (SHEA) BUTTER. SODIUM ACRYLATES COPOLYMER. GLYCERYL STEARATE. POTASSIUM CETYL PHOSPHATE. TRIBEHENIN. SODIUM HYALURONATE. CETEARYL ALCOHOL. LECITHIN. GLYCERYL STEARATE CITRATE. SODIUM BENZOATE. CI 77288 (CHROMIUM OXIDE GREENS). NELUMBO NUCIFERA FLOWER EXTRACT. SODIUM PHYTATE. CITRIC ACID. TOCOPHEROL. SODIUM HYDROXYDE. The list of ingredients used in the Embryolisse products is regularly updated. Before using Embryolisse products. Agents should keep composition claims within those source fields.",
+                "evidence_strength": "seller_plus_formula"
+              }
+            ],
+            "routine_fit": {
+              "step": "skin_care",
+              "am_pm": [
+                "as_needed"
+              ],
+              "pairing_notes": [
+                "Use within the skincare product context; avoid inferring benefits not present in the source fields."
+              ]
+            },
+            "watchouts": [
+              {
+                "type": "formula_scope",
+                "label": "Formula details are source-derived; avoid medical, safety, or suitability claims not present in the source.",
+                "severity": "medium"
+              },
+              {
+                "type": "evidence_gap",
+                "label": "No independent review or community evidence was approved for this row; keep public copy source-bound.",
+                "severity": "medium"
+              },
+              {
+                "type": "scope_guardrail",
+                "label": "Use the commerce mainline for offer facts; keep this insight focused on source-backed product identity.",
+                "severity": "medium"
+              }
+            ],
+            "confidence": {
+              "overall": "moderate",
+              "fields": {
+                "what_it_is": "high",
+                "best_for": "moderate",
+                "why_it_stands_out": "moderate",
+                "routine_fit": "moderate",
+                "watchouts": "moderate"
+              }
+            },
+            "freshness": {
+              "generated_at": "2026-05-31T16:19:31.538Z",
+              "source_version": "wave100_embryolisse_official_product_intel_review_20260601"
+            },
+            "quality_state": "reviewed",
+            "evidence_profile": "seller_plus_formula",
+            "source_coverage": {
+              "seller": {
+                "available": true,
+                "source_url": "https://us.embryolisse.com/products/sos-corrective-cream"
+              },
+              "formula": {
+                "available": true,
+                "ingredient_count": 4,
+                "source_url": "https://us.embryolisse.com/products/sos-corrective-cream"
+              },
+              "reviews": {
+                "available": false,
+                "count": 0
+              },
+              "creator": {
+                "available": false,
+                "count": 0
+              },
+              "editorial": {
+                "available": false,
+                "count": 0
+              }
+            }
+          },
+          "texture_finish": {
+            "finish": "skincare product",
+            "texture": "skincare",
+            "source": "reviewed_category_and_official_title"
+          },
+          "community_signals": {
+            "status": "unavailable",
+            "reason": "not_collected_for_this_review_batch"
+          },
+          "recommendation_intents": {
+            "similar": [],
+            "complementary": [],
+            "routine_pairing": [],
+            "underfill_reason": null,
+            "confidence": "low"
+          },
+          "market_signal_badges": [],
+          "external_highlight_signals": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "seller_plus_formula",
+          "source_coverage": {
+            "seller": {
+              "available": true,
+              "source_url": "https://us.embryolisse.com/products/sos-corrective-cream"
+            },
+            "formula": {
+              "available": true,
+              "ingredient_count": 4,
+              "source_url": "https://us.embryolisse.com/products/sos-corrective-cream"
+            },
+            "reviews": {
+              "available": false,
+              "count": 0
+            },
+            "creator": {
+              "available": false,
+              "count": 0
+            },
+            "editorial": {
+              "available": false,
+              "count": 0
+            }
+          },
+          "confidence": {
+            "overall": "moderate",
+            "fields": {
+              "what_it_is": "high",
+              "best_for": "moderate",
+              "why_it_stands_out": "moderate",
+              "routine_fit": "moderate",
+              "watchouts": "moderate"
+            }
+          },
+          "freshness": {
+            "generated_at": "2026-05-31T16:19:31.538Z",
+            "source_version": "wave100_embryolisse_official_product_intel_review_20260601"
+          },
+          "offer_pointers": {
+            "offers_count": 0,
+            "default_offer_id": null,
+            "best_price_offer_id": null,
+            "commerce_modes": []
+          },
+          "provenance": {
+            "source": "owner_delegated_official_seed_rewrite",
+            "generator": "owner_delegated_assistant_reviewed_rewrite",
+            "selection_strategy": "official_pdp_seed_guarded_manual_review",
+            "field_sources": {
+              "what_it_is": "official_seed_description",
+              "best_for": "reviewed_category_and_official_title",
+              "why_it_stands_out": "official_seed_description_and_formula",
+              "routine_fit": "reviewed_category_and_official_title",
+              "watchouts": "owner_delegated_assistant_review",
+              "texture_finish": "reviewed_category_and_official_title",
+              "source_coverage": "official_pdp_seed_snapshot",
+              "community_signals": "not_collected"
+            },
+            "review_status": "completed",
+            "review_decision": "rewrite",
+            "reviewer": "codex_human_quality_reviewer",
+            "reviewer_kind": "assistant",
+            "reviewed_at": "2026-05-31T16:19:31.538Z",
+            "external_highlight_review_status": "rewrite",
+            "external_review_batch": "wave100_embryolisse_official_product_intel_review_20260601",
+            "official_source_url": "https://us.embryolisse.com/products/sos-corrective-cream",
+            "official_source_ingredient_count": 4,
+            "rewrite_reason": "Owner-delegated assistant review: official PDP seed rewrite; no commerce-state, community, medical, or unsupported safety claims added."
+          },
+          "shopping_card": {
+            "contract_version": "pivota.shopping_card.v1",
+            "title": "SOS Corrective Cream",
+            "subtitle": "Skincare",
+            "highlight": "Skincare formula detail",
+            "intro": "An EMBRYOLISSE skincare product listed on the brand source page as SOS Corrective Cream. The source description identifies: Multi-Tasking Soothing Anti-Redness Corrector Day Cream - Localized Redness Corrector - Makeup Base and Eye Contour 95% ingredients of natural origin, light texture formula with green neutralizing pigments Clean.",
+            "evidence_profile": "seller_plus_formula"
+          },
+          "search_card": {
+            "title_candidate": "SOS Corrective Cream",
+            "compact_candidate": "Skincare",
+            "highlight_candidate": "Skincare formula detail",
+            "intro_candidate": "An EMBRYOLISSE skincare product listed on the brand source page as SOS Corrective Cream. The source description identifies: Multi-Tasking Soothing Anti-Redness Corrector Day Cream - Localized Redness Corrector - Makeup Base and Eye Contour 95% ingredients of natural origin, light texture formula with green neutralizing pigments Clean.",
+            "proof_badge_candidate": ""
+          }
+        }
+      }
+    },
+    {
+      "case_id": "live_ext_3a04dcee79f96ee9570e93f3",
+      "review_status": "completed",
+      "review_decision": "rewrite",
+      "reviewer": "codex_human_quality_reviewer",
+      "reviewer_kind": "assistant",
+      "reviewed_at": "2026-05-31T16:19:31.538Z",
+      "notes": "Approved official-PDP-seed rewrite for 3-in-1 Secret Paste; evidence_profile=seller_plus_formula; source_url=https://us.embryolisse.com/products/3-in-1-secret-paste",
+      "owner_delegated_review": {
+        "contract_version": "pivota.owner_delegated_review.v1",
+        "delegated_to": "codex_human_quality_reviewer",
+        "reviewer_kind": "assistant",
+        "owner_instruction": "User delegated Codex to perform high-quality human review for Pivota Insights quality improvement.",
+        "guardrails": [
+          "Do not overwrite good content with lower-quality content.",
+          "No commerce-state claims in Pivota Insights.",
+          "Use official source facts only; keep evidence confidence explicit."
+        ]
+      },
+      "quality_improvement_review": {
+        "decision": "approved_replacement",
+        "reviewer_kind": "assistant",
+        "owner_delegated": true,
+        "reason": "Owner-delegated assistant review confirms the replacement uses official PDP seed facts, avoids commerce and unsupported evidence claims, and explicitly marks evidence gaps instead of inventing claims."
+      },
+      "baseline": {
+        "canonical_product_ref": {
+          "merchant_id": "external_seed",
+          "product_id": "ext_3a04dcee79f96ee9570e93f3",
+          "platform": "external_seed"
+        }
+      },
+      "selected": {
+        "selected_mode": "manual_reviewed_rewrite",
+        "selected_field_count": 7,
+        "field_sources": {
+          "what_it_is": "official_seed_description",
+          "best_for": "reviewed_category_and_official_title",
+          "why_it_stands_out": "official_seed_description_and_formula",
+          "routine_fit": "reviewed_category_and_official_title",
+          "watchouts": "owner_delegated_assistant_review",
+          "texture_finish": "reviewed_category_and_official_title",
+          "source_coverage": "official_pdp_seed_snapshot",
+          "community_signals": "not_collected"
+        },
+        "bundle": {
+          "contract_version": "pivota.product_intel.v1",
+          "display_name": "Pivota Insights",
+          "canonical_product_ref": {
+            "merchant_id": "external_seed",
+            "product_id": "ext_3a04dcee79f96ee9570e93f3",
+            "platform": "external_seed"
+          },
+          "product_group_id": "sig_fa7cf3ac46e38475d79a27bf",
+          "product_intel_core": {
+            "display_name": "Pivota Insights",
+            "what_it_is": {
+              "headline": "Skincare product identity",
+              "body": "An EMBRYOLISSE skincare product listed on the brand source page as 3-in-1 Secret Paste. The source description identifies: 1 Secret Paste, 3 possibilities: 1. S.O.S."
+            },
+            "best_for": [
+              {
+                "tag": "skincare_shoppers",
+                "label": "Skincare product shoppers",
+                "confidence": "moderate"
+              },
+              {
+                "tag": "official_source_comparison",
+                "label": "Official-source comparison",
+                "confidence": "moderate"
+              }
+            ],
+            "why_it_stands_out": [
+              {
+                "headline": "Source-backed product detail",
+                "body": "1 Secret Paste, 3 possibilities: 1. S.O.S.",
+                "evidence_strength": "seller_plus_formula"
+              },
+              {
+                "headline": "Formula context captured",
+                "body": "Captured formula fields include MAIN ACTIVE INGREDIENTS: Organic turmeric extract combined with two other 100% natural ingredients, enhances the quality and radiance of the skin. 1. Organic Turmeric extract (Concentrated in Turmerones) Anti-blemish, anti-mark, evens skin tone 2. Chickpea powder Purifying properties. It acts on the clarity of the complexion, marks 3. Yellow clay Absorbent properties Regulates sebum production 705I01 - INGREDIENTS: AQUA (WATER). ILLITE. CALCIUM CARBONATE. GLYCERIN. KAOLIN. DECYL GLUCOSIDE. GLYCERYL STEARATE. CAPRYLIC/CAPRIC TRIGLYCERIDE. HYDROLYZED CICER SEED EXTRACT. PENTYLENE GLYCOL. SODIUM POLYACRYLATE. MYRISTYL ALCOHOL. SODIUM STEAROYL GLUTAMATE. GLYCERYL CAPRYLATE. XANTHAN GUM. CETEARYL ALCOHOL. PARFUM (FRAGRANCE). MYRISTYL GLUCOSIDE. ETHYLHEXYLGLYCERIN. COCO-GLUCOSIDE. CURCUMA LONGA (TURMERIC) ROOT EXTRACT. O-CYMEN-5-OL. TOCOPHEROL.\" The list of ingredients used in the Embryolisse products is regularly updated. Before using Embryolisse products. Agents should keep composition claims within those source fields.",
+                "evidence_strength": "seller_plus_formula"
+              }
+            ],
+            "routine_fit": {
+              "step": "skin_care",
+              "am_pm": [
+                "as_needed"
+              ],
+              "pairing_notes": [
+                "Use within the skincare product context; avoid inferring benefits not present in the source fields."
+              ]
+            },
+            "watchouts": [
+              {
+                "type": "formula_scope",
+                "label": "Formula details are source-derived; avoid medical, safety, or suitability claims not present in the source.",
+                "severity": "medium"
+              },
+              {
+                "type": "evidence_gap",
+                "label": "No independent review or community evidence was approved for this row; keep public copy source-bound.",
+                "severity": "medium"
+              },
+              {
+                "type": "scope_guardrail",
+                "label": "Use the commerce mainline for offer facts; keep this insight focused on source-backed product identity.",
+                "severity": "medium"
+              }
+            ],
+            "confidence": {
+              "overall": "moderate",
+              "fields": {
+                "what_it_is": "high",
+                "best_for": "moderate",
+                "why_it_stands_out": "moderate",
+                "routine_fit": "moderate",
+                "watchouts": "moderate"
+              }
+            },
+            "freshness": {
+              "generated_at": "2026-05-31T16:19:31.538Z",
+              "source_version": "wave100_embryolisse_official_product_intel_review_20260601"
+            },
+            "quality_state": "reviewed",
+            "evidence_profile": "seller_plus_formula",
+            "source_coverage": {
+              "seller": {
+                "available": true,
+                "source_url": "https://us.embryolisse.com/products/3-in-1-secret-paste"
+              },
+              "formula": {
+                "available": true,
+                "ingredient_count": 3,
+                "source_url": "https://us.embryolisse.com/products/3-in-1-secret-paste"
+              },
+              "reviews": {
+                "available": false,
+                "count": 0
+              },
+              "creator": {
+                "available": false,
+                "count": 0
+              },
+              "editorial": {
+                "available": false,
+                "count": 0
+              }
+            }
+          },
+          "texture_finish": {
+            "finish": "skincare product",
+            "texture": "skincare",
+            "source": "reviewed_category_and_official_title"
+          },
+          "community_signals": {
+            "status": "unavailable",
+            "reason": "not_collected_for_this_review_batch"
+          },
+          "recommendation_intents": {
+            "similar": [],
+            "complementary": [],
+            "routine_pairing": [],
+            "underfill_reason": null,
+            "confidence": "low"
+          },
+          "market_signal_badges": [],
+          "external_highlight_signals": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "seller_plus_formula",
+          "source_coverage": {
+            "seller": {
+              "available": true,
+              "source_url": "https://us.embryolisse.com/products/3-in-1-secret-paste"
+            },
+            "formula": {
+              "available": true,
+              "ingredient_count": 3,
+              "source_url": "https://us.embryolisse.com/products/3-in-1-secret-paste"
+            },
+            "reviews": {
+              "available": false,
+              "count": 0
+            },
+            "creator": {
+              "available": false,
+              "count": 0
+            },
+            "editorial": {
+              "available": false,
+              "count": 0
+            }
+          },
+          "confidence": {
+            "overall": "moderate",
+            "fields": {
+              "what_it_is": "high",
+              "best_for": "moderate",
+              "why_it_stands_out": "moderate",
+              "routine_fit": "moderate",
+              "watchouts": "moderate"
+            }
+          },
+          "freshness": {
+            "generated_at": "2026-05-31T16:19:31.538Z",
+            "source_version": "wave100_embryolisse_official_product_intel_review_20260601"
+          },
+          "offer_pointers": {
+            "offers_count": 0,
+            "default_offer_id": null,
+            "best_price_offer_id": null,
+            "commerce_modes": []
+          },
+          "provenance": {
+            "source": "owner_delegated_official_seed_rewrite",
+            "generator": "owner_delegated_assistant_reviewed_rewrite",
+            "selection_strategy": "official_pdp_seed_guarded_manual_review",
+            "field_sources": {
+              "what_it_is": "official_seed_description",
+              "best_for": "reviewed_category_and_official_title",
+              "why_it_stands_out": "official_seed_description_and_formula",
+              "routine_fit": "reviewed_category_and_official_title",
+              "watchouts": "owner_delegated_assistant_review",
+              "texture_finish": "reviewed_category_and_official_title",
+              "source_coverage": "official_pdp_seed_snapshot",
+              "community_signals": "not_collected"
+            },
+            "review_status": "completed",
+            "review_decision": "rewrite",
+            "reviewer": "codex_human_quality_reviewer",
+            "reviewer_kind": "assistant",
+            "reviewed_at": "2026-05-31T16:19:31.538Z",
+            "external_highlight_review_status": "rewrite",
+            "external_review_batch": "wave100_embryolisse_official_product_intel_review_20260601",
+            "official_source_url": "https://us.embryolisse.com/products/3-in-1-secret-paste",
+            "official_source_ingredient_count": 3,
+            "rewrite_reason": "Owner-delegated assistant review: official PDP seed rewrite; no commerce-state, community, medical, or unsupported safety claims added."
+          },
+          "shopping_card": {
+            "contract_version": "pivota.shopping_card.v1",
+            "title": "3-in-1 Secret Paste",
+            "subtitle": "Skincare",
+            "highlight": "Mask format detail",
+            "intro": "An EMBRYOLISSE skincare product listed on the brand source page as 3-in-1 Secret Paste. The source description identifies: 1 Secret Paste, 3 possibilities: 1. S.O.S.",
+            "evidence_profile": "seller_plus_formula"
+          },
+          "search_card": {
+            "title_candidate": "3-in-1 Secret Paste",
+            "compact_candidate": "Skincare",
+            "highlight_candidate": "Mask format detail",
+            "intro_candidate": "An EMBRYOLISSE skincare product listed on the brand source page as 3-in-1 Secret Paste. The source description identifies: 1 Secret Paste, 3 possibilities: 1. S.O.S.",
+            "proof_badge_candidate": ""
+          }
+        }
+      }
+    },
+    {
+      "case_id": "live_ext_1f01309541611d783b7fd63c",
+      "review_status": "completed",
+      "review_decision": "rewrite",
+      "reviewer": "codex_human_quality_reviewer",
+      "reviewer_kind": "assistant",
+      "reviewed_at": "2026-05-31T16:19:31.538Z",
+      "notes": "Approved official-PDP-seed rewrite for Cicalisse - Restorative & Protective skin Cream - Face, Body, Lip; evidence_profile=seller_plus_formula; source_url=https://us.embryolisse.com/products/cicalisse-restorative-protective-skin-cream-face-body-lip",
+      "owner_delegated_review": {
+        "contract_version": "pivota.owner_delegated_review.v1",
+        "delegated_to": "codex_human_quality_reviewer",
+        "reviewer_kind": "assistant",
+        "owner_instruction": "User delegated Codex to perform high-quality human review for Pivota Insights quality improvement.",
+        "guardrails": [
+          "Do not overwrite good content with lower-quality content.",
+          "No commerce-state claims in Pivota Insights.",
+          "Use official source facts only; keep evidence confidence explicit."
+        ]
+      },
+      "quality_improvement_review": {
+        "decision": "approved_replacement",
+        "reviewer_kind": "assistant",
+        "owner_delegated": true,
+        "reason": "Owner-delegated assistant review confirms the replacement uses official PDP seed facts, avoids commerce and unsupported evidence claims, and explicitly marks evidence gaps instead of inventing claims."
+      },
+      "baseline": {
+        "canonical_product_ref": {
+          "merchant_id": "external_seed",
+          "product_id": "ext_1f01309541611d783b7fd63c",
+          "platform": "external_seed"
+        }
+      },
+      "selected": {
+        "selected_mode": "manual_reviewed_rewrite",
+        "selected_field_count": 7,
+        "field_sources": {
+          "what_it_is": "official_seed_description",
+          "best_for": "reviewed_category_and_official_title",
+          "why_it_stands_out": "official_seed_description_and_formula",
+          "routine_fit": "reviewed_category_and_official_title",
+          "watchouts": "owner_delegated_assistant_review",
+          "texture_finish": "reviewed_category_and_official_title",
+          "source_coverage": "official_pdp_seed_snapshot",
+          "community_signals": "not_collected"
+        },
+        "bundle": {
+          "contract_version": "pivota.product_intel.v1",
+          "display_name": "Pivota Insights",
+          "canonical_product_ref": {
+            "merchant_id": "external_seed",
+            "product_id": "ext_1f01309541611d783b7fd63c",
+            "platform": "external_seed"
+          },
+          "product_group_id": "sig_842364207e0b93a422e2016d",
+          "product_intel_core": {
+            "display_name": "Pivota Insights",
+            "what_it_is": {
+              "headline": "Cleanser identity",
+              "body": "An EMBRYOLISSE cleanser listed on the brand source page as Cicalisse - Restorative & Protective skin Cream - Face, Body, Lip. The source description identifies: A source of comfort for adults and children* alike, Cicalisse Cream calms and restores the skin’s barrier function while moisturizing the damaged and weakened epidermis."
+            },
+            "best_for": [
+              {
+                "tag": "cleanser_shoppers",
+                "label": "Cleanser shoppers",
+                "confidence": "moderate"
+              },
+              {
+                "tag": "official_source_comparison",
+                "label": "Official-source comparison",
+                "confidence": "moderate"
+              }
+            ],
+            "why_it_stands_out": [
+              {
+                "headline": "Source-backed product detail",
+                "body": "A source of comfort for adults and children* alike, Cicalisse Cream calms and restores the skin’s barrier function while moisturizing the damaged and weakened epidermis.",
+                "evidence_strength": "seller_plus_formula"
+              },
+              {
+                "headline": "Formula context captured",
+                "body": "Captured formula fields include KEY ACTIVE INGREDIENTS: Cicalisse Restorative & Protective Skin Cream is formulated with a combination of vegetal butters and nourishing agents known for their restorative and protective properties. → Vegetal butters: Help nourish, repair, and protect very dry or weakened skin → Emollient agents: Help soften skin and reinforce the skin barrier → Soothing ingredients: Help calm discomfort and improve skin comfort Formula Commitments 97% ingredients of natural origin Short and effective formula Suitable for sensitive skin Dermatologically tested Multi-use care for face, body, and lips 303I02 - INGREDIENTS: AQUA (WATER). CAPRYLIC / CAPRIC TRIGLYCERIDE. GLYCERIN. ACETAMIDOCAPROIC ACID. CETYL ALCOHOL. GLYCERYL STEARATE. ALUMINUM STARCH OCTENYLSUCCINATE. PRUNUS AMYGDALUS DULCIS (SWEET ALMOND) OIL. AMMONIUM ACRYLOYLDIMETHYLTAURATE / VP COPOLYMER. ALPHA-GLUCAN OLIGOSACCHARIDE. GOSSYPIUM HERBACEUM (COTTON) SEED OIL. PEG-75 STEARATE. HYDROGENATED SWEET ALMOND OIL. PRUNUS ARMENIACA (APRICOT) KERNEL OIL. SODIUM HYDROXIDE. 1.2-HEXANEDIOL. CAPRYLYL GLYCOL. HYDROGENATED COTTONSEED OIL. CETETH-20. STEARETH-20. HYDROGENATED APRICOT KERNEL OIL. SODIUM HYALURONATE. DISODIUM EDTA. TOCOPHERYL ACETATE. CITRIC ACID. TROPOLONE. TOCOPHEROL. SODIUM BENZOATE. ALOE BARBADENSIS LEAF EXTRACT. POTASSIUM SORBATE. The list of ingredients used in the Embryolisse products is regularly updated. Before using Embryolisse products. Agents should keep composition claims within those source fields.",
+                "evidence_strength": "seller_plus_formula"
+              }
+            ],
+            "routine_fit": {
+              "step": "cleanse",
+              "am_pm": [
+                "as_needed"
+              ],
+              "pairing_notes": [
+                "Use within the cleanser context; avoid inferring benefits not present in the source fields."
+              ]
+            },
+            "watchouts": [
+              {
+                "type": "formula_scope",
+                "label": "Formula details are source-derived; avoid medical, safety, or suitability claims not present in the source.",
+                "severity": "medium"
+              },
+              {
+                "type": "evidence_gap",
+                "label": "No independent review or community evidence was approved for this row; keep public copy source-bound.",
+                "severity": "medium"
+              },
+              {
+                "type": "scope_guardrail",
+                "label": "Use the commerce mainline for offer facts; keep this insight focused on source-backed product identity.",
+                "severity": "medium"
+              }
+            ],
+            "confidence": {
+              "overall": "moderate",
+              "fields": {
+                "what_it_is": "high",
+                "best_for": "moderate",
+                "why_it_stands_out": "moderate",
+                "routine_fit": "moderate",
+                "watchouts": "moderate"
+              }
+            },
+            "freshness": {
+              "generated_at": "2026-05-31T16:19:31.538Z",
+              "source_version": "wave100_embryolisse_official_product_intel_review_20260601"
+            },
+            "quality_state": "reviewed",
+            "evidence_profile": "seller_plus_formula",
+            "source_coverage": {
+              "seller": {
+                "available": true,
+                "source_url": "https://us.embryolisse.com/products/cicalisse-restorative-protective-skin-cream-face-body-lip"
+              },
+              "formula": {
+                "available": true,
+                "ingredient_count": 2,
+                "source_url": "https://us.embryolisse.com/products/cicalisse-restorative-protective-skin-cream-face-body-lip"
+              },
+              "reviews": {
+                "available": false,
+                "count": 0
+              },
+              "creator": {
+                "available": false,
+                "count": 0
+              },
+              "editorial": {
+                "available": false,
+                "count": 0
+              }
+            }
+          },
+          "texture_finish": {
+            "finish": "cleanser",
+            "texture": "cleanser",
+            "source": "reviewed_category_and_official_title"
+          },
+          "community_signals": {
+            "status": "unavailable",
+            "reason": "not_collected_for_this_review_batch"
+          },
+          "recommendation_intents": {
+            "similar": [],
+            "complementary": [],
+            "routine_pairing": [],
+            "underfill_reason": null,
+            "confidence": "low"
+          },
+          "market_signal_badges": [],
+          "external_highlight_signals": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "seller_plus_formula",
+          "source_coverage": {
+            "seller": {
+              "available": true,
+              "source_url": "https://us.embryolisse.com/products/cicalisse-restorative-protective-skin-cream-face-body-lip"
+            },
+            "formula": {
+              "available": true,
+              "ingredient_count": 2,
+              "source_url": "https://us.embryolisse.com/products/cicalisse-restorative-protective-skin-cream-face-body-lip"
+            },
+            "reviews": {
+              "available": false,
+              "count": 0
+            },
+            "creator": {
+              "available": false,
+              "count": 0
+            },
+            "editorial": {
+              "available": false,
+              "count": 0
+            }
+          },
+          "confidence": {
+            "overall": "moderate",
+            "fields": {
+              "what_it_is": "high",
+              "best_for": "moderate",
+              "why_it_stands_out": "moderate",
+              "routine_fit": "moderate",
+              "watchouts": "moderate"
+            }
+          },
+          "freshness": {
+            "generated_at": "2026-05-31T16:19:31.538Z",
+            "source_version": "wave100_embryolisse_official_product_intel_review_20260601"
+          },
+          "offer_pointers": {
+            "offers_count": 0,
+            "default_offer_id": null,
+            "best_price_offer_id": null,
+            "commerce_modes": []
+          },
+          "provenance": {
+            "source": "owner_delegated_official_seed_rewrite",
+            "generator": "owner_delegated_assistant_reviewed_rewrite",
+            "selection_strategy": "official_pdp_seed_guarded_manual_review",
+            "field_sources": {
+              "what_it_is": "official_seed_description",
+              "best_for": "reviewed_category_and_official_title",
+              "why_it_stands_out": "official_seed_description_and_formula",
+              "routine_fit": "reviewed_category_and_official_title",
+              "watchouts": "owner_delegated_assistant_review",
+              "texture_finish": "reviewed_category_and_official_title",
+              "source_coverage": "official_pdp_seed_snapshot",
+              "community_signals": "not_collected"
+            },
+            "review_status": "completed",
+            "review_decision": "rewrite",
+            "reviewer": "codex_human_quality_reviewer",
+            "reviewer_kind": "assistant",
+            "reviewed_at": "2026-05-31T16:19:31.538Z",
+            "external_highlight_review_status": "rewrite",
+            "external_review_batch": "wave100_embryolisse_official_product_intel_review_20260601",
+            "official_source_url": "https://us.embryolisse.com/products/cicalisse-restorative-protective-skin-cream-face-body-lip",
+            "official_source_ingredient_count": 2,
+            "rewrite_reason": "Owner-delegated assistant review: official PDP seed rewrite; no commerce-state, community, medical, or unsupported safety claims added."
+          },
+          "shopping_card": {
+            "contract_version": "pivota.shopping_card.v1",
+            "title": "Cicalisse - Restorative & Protective skin Cream - Face, Body, Lip",
+            "subtitle": "Cleanser",
+            "highlight": "Cleanser formula detail",
+            "intro": "An EMBRYOLISSE cleanser listed on the brand source page as Cicalisse - Restorative & Protective skin Cream - Face, Body, Lip. The source description identifies: A source of comfort for adults and children* alike, Cicalisse Cream calms and restores the skin’s barrier function while moisturizing the damaged and weakened epidermis.",
+            "evidence_profile": "seller_plus_formula"
+          },
+          "search_card": {
+            "title_candidate": "Cicalisse - Restorative & Protective skin Cream - Face, Body, Lip",
+            "compact_candidate": "Cleanser",
+            "highlight_candidate": "Cleanser formula detail",
+            "intro_candidate": "An EMBRYOLISSE cleanser listed on the brand source page as Cicalisse - Restorative & Protective skin Cream - Face, Body, Lip. The source description identifies: A source of comfort for adults and children* alike, Cicalisse Cream calms and restores the skin’s barrier function while moisturizing the damaged and weakened epidermis.",
+            "proof_badge_candidate": ""
+          }
+        }
+      }
+    }
+  ]
+}
