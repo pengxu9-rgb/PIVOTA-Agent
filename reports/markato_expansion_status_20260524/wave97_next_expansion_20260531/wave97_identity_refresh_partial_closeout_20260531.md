@@ -125,7 +125,39 @@ Dry-run result:
 - Missing: 0
 - Patch keys: `category`, `product_type`, `category_path`, `catalog_category_path`
 
-The apply step for this category patch did not run because Railway TLS failed before command execution.
+Apply artifact:
+
+- `anua_rumi_category_patch_apply.json`
+
+Apply result:
+
+- Scanned: 1
+- Planned: 1
+- Updated: 1
+- Catalog product updates: 1
+- Identity updates: 1
+- Blocking reasons: 0
+
+## Post-Category Readiness
+
+Readiness artifact:
+
+- `readiness_after_category_patch/summary.json`
+
+Result:
+
+- Scanned rows: 6
+- Terminal holds: 0
+- Identity ready rows: 6
+- KB direct displayable: 6
+- KB direct high quality ready: 6
+- Public dry-run docs built: 0
+- DB serving ready: 0
+- Public index ready: 0
+- Action required: 6
+- Blocker: `index_doc_shadow_only`
+
+This is not a source/identity/K knowledge quality regression: identity and KB still pass for all six rows. It appears to require an exact-ID catalog/serving/index resync after the category payload update. An exact six-ID resync dry run was attempted next, but Railway CLI/backboard TLS and transient Postgres connection resets prevented the dry run from completing.
 
 ## Validation Blocker
 
@@ -138,8 +170,8 @@ After the identity-refresh production write and DB readiness audit completed, lo
 
 Because of this network failure, the following remain pending:
 
-- Apply the one-row Anua Rumi reviewed category patch.
-- Rerun exact-ID DB readiness after the category patch.
+- Complete an exact six-ID catalog/serving/index resync dry run and apply if clean.
+- Rerun exact-ID DB readiness after the resync.
 - Run direct public gateway signature PDP/similar probes.
 
 ## Git Status
@@ -149,7 +181,7 @@ The Wave97 report/artifact commit was created locally and pushed to the work bra
 - Commit: `842a04d2 Document Markato wave97 identity refresh`
 - Branch: `origin/work/markato-wave25-786-serving-20260527`
 
-The one-row category patch apply is still pending because `railway run` continues to fail at Railway backboard TLS setup before command execution, even after Railway backboard responded to `curl` and the CLI was retried with update checks disabled.
+The one-row category patch was later applied successfully through `railway run` after retrying transient Railway failures. The subsequent exact readiness audit completed, but showed all six rows as `index_doc_shadow_only`, so the remaining production action is an exact serving/index resync rather than another identity or source recovery patch.
 
 Public gateway signature PDP/similar probes also remain pending. The sandbox escalation reviewer blocked the read-only probe because it would send signature IDs and product metadata to `agent.pivota.cc`; explicit user approval is required before retrying that probe from the escalated sandbox.
 
@@ -162,10 +194,10 @@ Public gateway signature PDP/similar probes also remain pending. The sandbox esc
 
 ## Next Commands When Network Recovers
 
-Apply the prepared category patch:
+Run the exact six-ID serving/index resync dry run:
 
 ```bash
-railway run --service Postgres-xMr6 --environment production -- bash -lc 'cd /Users/pengchydan/dev/_worktrees/pivota-agent-markato-wave25-786-20260527 && export DATABASE_URL="$DATABASE_PUBLIC_URL" && export NODE_PATH=/private/tmp/markato-wave-node-deps/node_modules:/Users/pengchydan/dev/PIVOTA-Agent/node_modules && node scripts/apply-reviewed-external-seed-category-patch.cjs --manifest reports/markato_expansion_status_20260524/wave97_next_expansion_20260531/anua_rumi_reviewed_category_patch_manifest.json --market US --write --confirm APPLY_REVIEWED_EXTERNAL_SEED_CATEGORY_PATCH --out reports/markato_expansion_status_20260524/wave97_next_expansion_20260531/anua_rumi_category_patch_apply.json'
+railway run --service Postgres-xMr6 --environment production -- bash -lc 'cd /Users/pengchydan/dev/_worktrees/pivota-agent-markato-wave25-786-20260527 && export DATABASE_URL="$DATABASE_PUBLIC_URL" && export NODE_PATH=/private/tmp/markato-wave-node-deps/node_modules:/Users/pengchydan/dev/PIVOTA-Agent/node_modules && node scripts/sync-external-seeds-to-catalog.cjs --external-product-ids-file reports/markato_expansion_status_20260524/wave97_next_expansion_20260531/wave97_identity_refresh_apply_ids.txt --market US --dry-run --upsert-serving-state --bootstrap-reviewed-identity-live-read --out reports/markato_expansion_status_20260524/wave97_next_expansion_20260531/wave97_serving_resync_after_category_patch_dry_run.json'
 ```
 
-Then rerun exact-ID readiness and direct public signature probes before claiming Wave97 conversion readiness.
+Then apply the same exact-ID resync if the dry run is clean, rerun exact-ID readiness, and run direct public signature probes before claiming Wave97 conversion readiness.
