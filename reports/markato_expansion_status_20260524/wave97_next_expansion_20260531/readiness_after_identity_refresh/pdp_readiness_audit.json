@@ -1,0 +1,788 @@
+{
+  "generated_at": "2026-05-31T00:57:27.015Z",
+  "options": {
+    "market": "US",
+    "includeAttached": true,
+    "domain": null,
+    "externalProductIds": [
+      "ext_81d3882e68c275747ef88b3f",
+      "ext_a406636157366f31879c4cbe",
+      "ext_04f175344e976ae32c16abad",
+      "ext_b0e98400b870b8783629e14a",
+      "ext_b20d88539f9351b8db39595d",
+      "ext_c2aca294e6409ceced3da49b"
+    ],
+    "limit": 20,
+    "sampleLimit": 20,
+    "checkpointDir": "/Users/pengchydan/dev/_worktrees/pivota-agent-markato-wave25-786-20260527/reports/markato_expansion_status_20260524/wave97_next_expansion_20260531/readiness_after_identity_refresh/pdp_readiness_checkpoint",
+    "checkpointMode": "domain",
+    "resume": false,
+    "force": false,
+    "continueOnError": true,
+    "pageSize": 500,
+    "format": "json"
+  },
+  "warnings": [],
+  "summary": {
+    "scanned": 6,
+    "by_market": {
+      "US": 6
+    },
+    "by_domain": [
+      {
+        "key": "reapandglow.com",
+        "count": 3
+      },
+      {
+        "key": "anua.com",
+        "count": 2
+      },
+      {
+        "key": "nativeatlas.com",
+        "count": 1
+      }
+    ],
+    "by_product_family": [
+      {
+        "key": "single_formula",
+        "count": 6
+      }
+    ],
+    "coverage": {
+      "missing_inci": 0,
+      "missing_active_raw": 4,
+      "missing_details": 1,
+      "missing_how_to": 0,
+      "missing_faq": 3
+    },
+    "pivota_insights": {
+      "direct": {
+        "displayable": 6,
+        "high_quality_ready": 6,
+        "missing_kb": 0,
+        "not_displayable": 0
+      },
+      "effective": {
+        "displayable": 6,
+        "high_quality_ready": 6,
+        "missing_kb": 0,
+        "not_displayable": 0,
+        "borrowed_from_sibling": 0
+      },
+      "effective_issues": [],
+      "effective_issue_domains": [],
+      "quality_state": [
+        {
+          "key": "reviewed",
+          "count": 6
+        }
+      ],
+      "evidence_profile": [
+        {
+          "key": "seller_plus_formula",
+          "count": 4
+        },
+        {
+          "key": "official_pdp_seed",
+          "count": 2
+        }
+      ],
+      "samples": {}
+    },
+    "active_ingredients": {
+      "regulatory_expected": 0,
+      "hero_expected": 4,
+      "any_active_items": 3,
+      "status": [
+        {
+          "key": "ready_hero",
+          "count": 3
+        },
+        {
+          "key": "not_expected_missing",
+          "count": 2
+        },
+        {
+          "key": "missing_hero",
+          "count": 1
+        }
+      ],
+      "issues": [
+        {
+          "key": "missing_hero",
+          "count": 1
+        }
+      ],
+      "issue_domains": [
+        {
+          "key": "reapandglow.com::missing_hero",
+          "count": 1
+        }
+      ],
+      "source_origin": [
+        {
+          "key": "pdp_section",
+          "count": 5
+        },
+        {
+          "key": "none",
+          "count": 1
+        }
+      ],
+      "samples": {
+        "missing_hero": [
+          {
+            "external_product_id": "ext_b20d88539f9351b8db39595d",
+            "domain": "reapandglow.com",
+            "title": "Ayurvedic Deep Hydrating Rejuvenation Crème",
+            "status": "missing_hero",
+            "active_items": [],
+            "source_origin": "none"
+          }
+        ]
+      }
+    },
+    "variants": {
+      "status": [
+        {
+          "key": "no_visible_variant_axis",
+          "count": 3
+        },
+        {
+          "key": "ready",
+          "count": 2
+        },
+        {
+          "key": "flagged",
+          "count": 1
+        }
+      ],
+      "issues": [
+        {
+          "key": "default_option_size_evidence_missing_axis",
+          "count": 1
+        }
+      ],
+      "issue_domains": [
+        {
+          "key": "nativeatlas.com::default_option_size_evidence_missing_axis",
+          "count": 1
+        }
+      ],
+      "samples": {
+        "default_option_size_evidence_missing_axis": [
+          {
+            "external_product_id": "ext_04f175344e976ae32c16abad",
+            "domain": "nativeatlas.com",
+            "title": "RESTORING Cleansing Oil",
+            "status": "flagged",
+            "examples": [
+              {
+                "axis_name": "default",
+                "axis_kind": "volume",
+                "value": "4 oz",
+                "visual": false
+              }
+            ]
+          }
+        ]
+      }
+    }
+  },
+  "rows": [
+    {
+      "seed_id": "eps_14fe05dcb5efc606477aa2bb",
+      "external_product_id": "ext_04f175344e976ae32c16abad",
+      "market": "US",
+      "domain": "nativeatlas.com",
+      "title": "RESTORING Cleansing Oil",
+      "canonical_url": "https://nativeatlas.com/products/mimea-restoring-cleansing-oil",
+      "product_family": "single_formula",
+      "product_line_id": "pl_67bf825226b89fb82c61acfc",
+      "identity_variant_axes": {
+        "multi_variant": false
+      },
+      "pivota_insights": {
+        "direct": {
+          "product_id": "ext_04f175344e976ae32c16abad",
+          "kb_key": "product:ext_04f175344e976ae32c16abad",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "official_pdp_seed",
+          "has_card_highlight": true
+        },
+        "effective": {
+          "product_id": "ext_04f175344e976ae32c16abad",
+          "kb_key": "product:ext_04f175344e976ae32c16abad",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "official_pdp_seed",
+          "has_card_highlight": true
+        },
+        "product_line_id": "pl_67bf825226b89fb82c61acfc",
+        "borrowed_from_sibling": false
+      },
+      "active_ingredients": {
+        "status": "not_expected_missing",
+        "issues": [],
+        "regulatory_expected": false,
+        "hero_expected": false,
+        "active_items": [],
+        "source_origin": "pdp_section",
+        "source_quality_status": "blocked",
+        "coverage": {
+          "details_sections_count": 0,
+          "faq_count": 0,
+          "how_to_chars": 228,
+          "inci_chars": 1055,
+          "active_ingredients_chars": 0,
+          "inci_applicability_status": "",
+          "ingredient_review_status": "",
+          "ingredient_remediation_action": "",
+          "bundle_component_refs_count": 0,
+          "effective_inci_chars": 1055,
+          "inci_borrowed_from_product_id": ""
+        },
+        "invalid_fragments": [],
+        "suppressed_reason": null
+      },
+      "variants": {
+        "status": "flagged",
+        "issues": [
+          "default_option_size_evidence_missing_axis"
+        ],
+        "visible_variant_rows": 0,
+        "examples": {
+          "identity_option_visible": [],
+          "wrong_axis_for_category": [],
+          "makeup_shade_missing_visual": [],
+          "size_value_generic_axis": [],
+          "default_option_size_evidence_missing_axis": [
+            {
+              "axis_name": "default",
+              "axis_kind": "volume",
+              "value": "4 oz",
+              "visual": false
+            }
+          ],
+          "identity_default_title_axis": []
+        }
+      },
+      "coverage": {
+        "details_sections_count": 0,
+        "faq_count": 0,
+        "how_to_chars": 228,
+        "inci_chars": 1055,
+        "active_ingredients_chars": 0,
+        "inci_applicability_status": "",
+        "ingredient_review_status": "",
+        "ingredient_remediation_action": "",
+        "bundle_component_refs_count": 0,
+        "effective_inci_chars": 1055,
+        "inci_borrowed_from_product_id": ""
+      }
+    },
+    {
+      "seed_id": "eps_d422bd9ae92c9fce733661d6",
+      "external_product_id": "ext_b0e98400b870b8783629e14a",
+      "market": "US",
+      "domain": "reapandglow.com",
+      "title": "Coffee Fruit Antioxidant Cleanser",
+      "canonical_url": "https://reapandglow.com/products/coffee-fruit-antioxidant-cleanser",
+      "product_family": "single_formula",
+      "product_line_id": "pl_516a79efe6d31825525f89cc",
+      "identity_variant_axes": {
+        "multi_variant": false
+      },
+      "pivota_insights": {
+        "direct": {
+          "product_id": "ext_b0e98400b870b8783629e14a",
+          "kb_key": "product:ext_b0e98400b870b8783629e14a",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "seller_plus_formula",
+          "has_card_highlight": true
+        },
+        "effective": {
+          "product_id": "ext_b0e98400b870b8783629e14a",
+          "kb_key": "product:ext_b0e98400b870b8783629e14a",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "seller_plus_formula",
+          "has_card_highlight": true
+        },
+        "product_line_id": "pl_516a79efe6d31825525f89cc",
+        "borrowed_from_sibling": false
+      },
+      "active_ingredients": {
+        "status": "not_expected_missing",
+        "issues": [],
+        "regulatory_expected": false,
+        "hero_expected": false,
+        "active_items": [],
+        "source_origin": "pdp_section",
+        "source_quality_status": "blocked",
+        "coverage": {
+          "details_sections_count": 6,
+          "faq_count": 2,
+          "how_to_chars": 458,
+          "inci_chars": 367,
+          "active_ingredients_chars": 0,
+          "inci_applicability_status": "",
+          "ingredient_review_status": "",
+          "ingredient_remediation_action": "",
+          "bundle_component_refs_count": 0,
+          "effective_inci_chars": 367,
+          "inci_borrowed_from_product_id": ""
+        },
+        "invalid_fragments": [],
+        "suppressed_reason": null
+      },
+      "variants": {
+        "status": "no_visible_variant_axis",
+        "issues": [],
+        "visible_variant_rows": 0,
+        "examples": {
+          "identity_option_visible": [],
+          "wrong_axis_for_category": [],
+          "makeup_shade_missing_visual": [],
+          "size_value_generic_axis": [],
+          "default_option_size_evidence_missing_axis": [],
+          "identity_default_title_axis": []
+        }
+      },
+      "coverage": {
+        "details_sections_count": 6,
+        "faq_count": 2,
+        "how_to_chars": 458,
+        "inci_chars": 367,
+        "active_ingredients_chars": 0,
+        "inci_applicability_status": "",
+        "ingredient_review_status": "",
+        "ingredient_remediation_action": "",
+        "bundle_component_refs_count": 0,
+        "effective_inci_chars": 367,
+        "inci_borrowed_from_product_id": ""
+      }
+    },
+    {
+      "seed_id": "eps_d9c49de974f2282ccc0c8f9d",
+      "external_product_id": "ext_c2aca294e6409ceced3da49b",
+      "market": "US",
+      "domain": "reapandglow.com",
+      "title": "Turmeric Peptide Firming & Smoothing Serum",
+      "canonical_url": "https://reapandglow.com/products/turmeric-peptide-firming-smoothing-serum",
+      "product_family": "single_formula",
+      "product_line_id": "pl_d94ceea23692ce63a7e898ce",
+      "identity_variant_axes": {
+        "multi_variant": false
+      },
+      "pivota_insights": {
+        "direct": {
+          "product_id": "ext_c2aca294e6409ceced3da49b",
+          "kb_key": "product:ext_c2aca294e6409ceced3da49b",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "seller_plus_formula",
+          "has_card_highlight": true
+        },
+        "effective": {
+          "product_id": "ext_c2aca294e6409ceced3da49b",
+          "kb_key": "product:ext_c2aca294e6409ceced3da49b",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "seller_plus_formula",
+          "has_card_highlight": true
+        },
+        "product_line_id": "pl_d94ceea23692ce63a7e898ce",
+        "borrowed_from_sibling": false
+      },
+      "active_ingredients": {
+        "status": "ready_hero",
+        "issues": [],
+        "regulatory_expected": false,
+        "hero_expected": true,
+        "active_items": [
+          "Peptides",
+          "Squalane"
+        ],
+        "source_origin": "pdp_section",
+        "source_quality_status": "captured",
+        "coverage": {
+          "details_sections_count": 6,
+          "faq_count": 2,
+          "how_to_chars": 202,
+          "inci_chars": 536,
+          "active_ingredients_chars": 0,
+          "inci_applicability_status": "",
+          "ingredient_review_status": "",
+          "ingredient_remediation_action": "",
+          "bundle_component_refs_count": 0,
+          "effective_inci_chars": 536,
+          "inci_borrowed_from_product_id": ""
+        },
+        "invalid_fragments": [],
+        "suppressed_reason": null
+      },
+      "variants": {
+        "status": "no_visible_variant_axis",
+        "issues": [],
+        "visible_variant_rows": 0,
+        "examples": {
+          "identity_option_visible": [],
+          "wrong_axis_for_category": [],
+          "makeup_shade_missing_visual": [],
+          "size_value_generic_axis": [],
+          "default_option_size_evidence_missing_axis": [],
+          "identity_default_title_axis": []
+        }
+      },
+      "coverage": {
+        "details_sections_count": 6,
+        "faq_count": 2,
+        "how_to_chars": 202,
+        "inci_chars": 536,
+        "active_ingredients_chars": 0,
+        "inci_applicability_status": "",
+        "ingredient_review_status": "",
+        "ingredient_remediation_action": "",
+        "bundle_component_refs_count": 0,
+        "effective_inci_chars": 536,
+        "inci_borrowed_from_product_id": ""
+      }
+    },
+    {
+      "seed_id": "eps_00e0923d0cfd072af4ff60cf",
+      "external_product_id": "ext_b20d88539f9351b8db39595d",
+      "market": "US",
+      "domain": "reapandglow.com",
+      "title": "Ayurvedic Deep Hydrating Rejuvenation Crème",
+      "canonical_url": "https://reapandglow.com/products/ayurvedic-deep-hydrating-rejuvenation-creme",
+      "product_family": "single_formula",
+      "product_line_id": "pl_2bbed0536c39ae2c98db0c7d",
+      "identity_variant_axes": {
+        "multi_variant": false
+      },
+      "pivota_insights": {
+        "direct": {
+          "product_id": "ext_b20d88539f9351b8db39595d",
+          "kb_key": "product:ext_b20d88539f9351b8db39595d",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "official_pdp_seed",
+          "has_card_highlight": true
+        },
+        "effective": {
+          "product_id": "ext_b20d88539f9351b8db39595d",
+          "kb_key": "product:ext_b20d88539f9351b8db39595d",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "official_pdp_seed",
+          "has_card_highlight": true
+        },
+        "product_line_id": "pl_2bbed0536c39ae2c98db0c7d",
+        "borrowed_from_sibling": false
+      },
+      "active_ingredients": {
+        "status": "missing_hero",
+        "issues": [
+          "missing_hero"
+        ],
+        "regulatory_expected": false,
+        "hero_expected": true,
+        "active_items": [],
+        "source_origin": "none",
+        "source_quality_status": "blocked",
+        "coverage": {
+          "details_sections_count": 6,
+          "faq_count": 2,
+          "how_to_chars": 229,
+          "inci_chars": 88,
+          "active_ingredients_chars": 0,
+          "inci_applicability_status": "",
+          "ingredient_review_status": "",
+          "ingredient_remediation_action": "",
+          "bundle_component_refs_count": 0,
+          "effective_inci_chars": 88,
+          "inci_borrowed_from_product_id": ""
+        },
+        "invalid_fragments": [],
+        "suppressed_reason": "no_authoritative_source"
+      },
+      "variants": {
+        "status": "no_visible_variant_axis",
+        "issues": [],
+        "visible_variant_rows": 0,
+        "examples": {
+          "identity_option_visible": [],
+          "wrong_axis_for_category": [],
+          "makeup_shade_missing_visual": [],
+          "size_value_generic_axis": [],
+          "default_option_size_evidence_missing_axis": [],
+          "identity_default_title_axis": []
+        }
+      },
+      "coverage": {
+        "details_sections_count": 6,
+        "faq_count": 2,
+        "how_to_chars": 229,
+        "inci_chars": 88,
+        "active_ingredients_chars": 0,
+        "inci_applicability_status": "",
+        "ingredient_review_status": "",
+        "ingredient_remediation_action": "",
+        "bundle_component_refs_count": 0,
+        "effective_inci_chars": 88,
+        "inci_borrowed_from_product_id": ""
+      }
+    },
+    {
+      "seed_id": "eps_98cf17607f58f0aa121bb60b",
+      "external_product_id": "ext_81d3882e68c275747ef88b3f",
+      "market": "US",
+      "domain": "anua.com",
+      "title": "Golden Honmoon Barrier Collagen Mask 4ea",
+      "canonical_url": "https://anua.com/products/golden-honmoon-barrier-collagen-mask-4ea",
+      "product_family": "single_formula",
+      "product_line_id": "pl_c4266e2ad396fe8d298f2498",
+      "identity_variant_axes": {
+        "multi_variant": false
+      },
+      "pivota_insights": {
+        "direct": {
+          "product_id": "ext_81d3882e68c275747ef88b3f",
+          "kb_key": "product:ext_81d3882e68c275747ef88b3f",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "seller_plus_formula",
+          "has_card_highlight": true
+        },
+        "effective": {
+          "product_id": "ext_81d3882e68c275747ef88b3f",
+          "kb_key": "product:ext_81d3882e68c275747ef88b3f",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "seller_plus_formula",
+          "has_card_highlight": true
+        },
+        "product_line_id": "pl_c4266e2ad396fe8d298f2498",
+        "borrowed_from_sibling": false
+      },
+      "active_ingredients": {
+        "status": "ready_hero",
+        "issues": [],
+        "regulatory_expected": false,
+        "hero_expected": true,
+        "active_items": [
+          "Collagen",
+          "Ceramide NP",
+          "Panthenol",
+          "Niacinamide"
+        ],
+        "source_origin": "pdp_section",
+        "source_quality_status": "captured",
+        "coverage": {
+          "details_sections_count": 6,
+          "faq_count": 0,
+          "how_to_chars": 180,
+          "inci_chars": 621,
+          "active_ingredients_chars": 45,
+          "inci_applicability_status": "",
+          "ingredient_review_status": "manual_source_review_required",
+          "ingredient_remediation_action": "manual_source_review_required",
+          "bundle_component_refs_count": 0,
+          "effective_inci_chars": 621,
+          "inci_borrowed_from_product_id": ""
+        },
+        "invalid_fragments": [],
+        "suppressed_reason": null
+      },
+      "variants": {
+        "status": "ready",
+        "issues": [],
+        "visible_variant_rows": 1,
+        "examples": {
+          "identity_option_visible": [],
+          "wrong_axis_for_category": [],
+          "makeup_shade_missing_visual": [],
+          "size_value_generic_axis": [],
+          "default_option_size_evidence_missing_axis": [],
+          "identity_default_title_axis": []
+        }
+      },
+      "coverage": {
+        "details_sections_count": 6,
+        "faq_count": 0,
+        "how_to_chars": 180,
+        "inci_chars": 621,
+        "active_ingredients_chars": 45,
+        "inci_applicability_status": "",
+        "ingredient_review_status": "manual_source_review_required",
+        "ingredient_remediation_action": "manual_source_review_required",
+        "bundle_component_refs_count": 0,
+        "effective_inci_chars": 621,
+        "inci_borrowed_from_product_id": ""
+      }
+    },
+    {
+      "seed_id": "eps_e647180c3482a70e59bdeccc",
+      "external_product_id": "ext_a406636157366f31879c4cbe",
+      "market": "US",
+      "domain": "anua.com",
+      "title": "Rumi Ultra-thin Spot Cover Patch (55ea)",
+      "canonical_url": "https://anua.com/products/rumi-ultra-thin-spot-cover-patch-55ea",
+      "product_family": "single_formula",
+      "product_line_id": "pl_56d948e822a5d9b99d5fb73e",
+      "identity_variant_axes": {
+        "multi_variant": false
+      },
+      "pivota_insights": {
+        "direct": {
+          "product_id": "ext_a406636157366f31879c4cbe",
+          "kb_key": "product:ext_a406636157366f31879c4cbe",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "seller_plus_formula",
+          "has_card_highlight": true
+        },
+        "effective": {
+          "product_id": "ext_a406636157366f31879c4cbe",
+          "kb_key": "product:ext_a406636157366f31879c4cbe",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "seller_plus_formula",
+          "has_card_highlight": true
+        },
+        "product_line_id": "pl_56d948e822a5d9b99d5fb73e",
+        "borrowed_from_sibling": false
+      },
+      "active_ingredients": {
+        "status": "ready_hero",
+        "issues": [],
+        "regulatory_expected": false,
+        "hero_expected": true,
+        "active_items": [
+          "Hydrocolloid",
+          "Centella Asiatica Extract",
+          "Ceramide NP",
+          "Madecassoside"
+        ],
+        "source_origin": "pdp_section",
+        "source_quality_status": "captured",
+        "coverage": {
+          "details_sections_count": 4,
+          "faq_count": 0,
+          "how_to_chars": 170,
+          "inci_chars": 231,
+          "active_ingredients_chars": 67,
+          "inci_applicability_status": "",
+          "ingredient_review_status": "manual_source_review_required",
+          "ingredient_remediation_action": "manual_source_review_required",
+          "bundle_component_refs_count": 0,
+          "effective_inci_chars": 231,
+          "inci_borrowed_from_product_id": ""
+        },
+        "invalid_fragments": [],
+        "suppressed_reason": null
+      },
+      "variants": {
+        "status": "ready",
+        "issues": [],
+        "visible_variant_rows": 1,
+        "examples": {
+          "identity_option_visible": [],
+          "wrong_axis_for_category": [],
+          "makeup_shade_missing_visual": [],
+          "size_value_generic_axis": [],
+          "default_option_size_evidence_missing_axis": [],
+          "identity_default_title_axis": []
+        }
+      },
+      "coverage": {
+        "details_sections_count": 4,
+        "faq_count": 0,
+        "how_to_chars": 170,
+        "inci_chars": 231,
+        "active_ingredients_chars": 67,
+        "inci_applicability_status": "",
+        "ingredient_review_status": "manual_source_review_required",
+        "ingredient_remediation_action": "manual_source_review_required",
+        "bundle_component_refs_count": 0,
+        "effective_inci_chars": 231,
+        "inci_borrowed_from_product_id": ""
+      }
+    }
+  ]
+}
