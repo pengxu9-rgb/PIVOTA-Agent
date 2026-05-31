@@ -157,22 +157,64 @@ Result:
 - Action required: 6
 - Blocker: `index_doc_shadow_only`
 
-This is not a source/identity/K knowledge quality regression: identity and KB still pass for all six rows. It appears to require an exact-ID catalog/serving/index resync after the category payload update. An exact six-ID resync dry run was attempted next, but Railway CLI/backboard TLS and transient Postgres connection resets prevented the dry run from completing.
+This was not a source/identity/KB quality regression: identity and KB still passed for all six rows. The missing public docs required an exact-ID catalog/serving/index resync after the category payload update.
 
-## Validation Blocker
+## Serving Resync
 
-After the identity-refresh production write and DB readiness audit completed, local HTTPS/TLS connections started failing for all tested external endpoints:
+Dry-run artifact:
 
-- Railway backboard: TLS handshake EOF
-- Railway production `/version`: `SSL_ERROR_SYSCALL`
-- Public gateway `agent.pivota.cc`: `SSL_ERROR_SYSCALL` / TLS connection reset
-- GitHub: `SSL_ERROR_SYSCALL`
+- `wave97_serving_resync_after_category_patch_dry_run.json`
 
-Because of this network failure, the following remain pending:
+Dry-run result:
 
-- Complete an exact six-ID catalog/serving/index resync dry run and apply if clean.
-- Rerun exact-ID DB readiness after the resync.
-- Run direct public gateway signature PDP/similar probes.
+- Requested: 6
+- Fetched: 6
+- Mirror rows: 6
+- Skipped: 0
+- Planned SKU rows: 6
+- Planned offer rows: 6
+- Planned index state rows: 6
+- Planned stale SKU deletes: 0
+- Planned stale offer deletes: 0
+- Serving blocker: `none` for all sampled rows
+
+Apply artifact:
+
+- `wave97_serving_resync_after_category_patch_apply.json`
+
+Apply result:
+
+- Requested: 6
+- Fetched: 6
+- Mirror rows: 6
+- Skipped: 0
+- Product upserts: 6
+- SKU upserts: 6
+- Offer upserts: 6
+- Index state upserts: 6
+- Catalog row trust upserts: 6
+- Stale SKU deletes: 0
+- Stale offer deletes: 0
+
+## Final Exact-ID Readiness
+
+Readiness artifact:
+
+- `readiness_after_serving_resync/summary.json`
+
+Result:
+
+- Scanned rows: 6
+- Terminal holds: 0
+- Action required: 0
+- Identity ready rows: 6
+- KB direct displayable: 6
+- KB direct high quality ready: 6
+- Public dry-run docs built: 6
+- DB serving ready: 6
+- Public index ready: 6
+- Blocker breakdown: `db_serving_ready` = 6
+- Lane breakdown: `ready_no_action` = 6
 
 ## Git Status
 
@@ -181,7 +223,7 @@ The Wave97 report/artifact commit was created locally and pushed to the work bra
 - Commit: `842a04d2 Document Markato wave97 identity refresh`
 - Branch: `origin/work/markato-wave25-786-serving-20260527`
 
-The one-row category patch was later applied successfully through `railway run` after retrying transient Railway failures. The subsequent exact readiness audit completed, but showed all six rows as `index_doc_shadow_only`, so the remaining production action is an exact serving/index resync rather than another identity or source recovery patch.
+The one-row category patch was later applied successfully through `railway run` after retrying transient Railway failures. The subsequent exact readiness audit showed all six rows as `index_doc_shadow_only`, and the follow-up exact six-ID serving/index resync cleared that blocker.
 
 Public gateway signature PDP/similar probes also remain pending. The sandbox escalation reviewer blocked the read-only probe because it would send signature IDs and product metadata to `agent.pivota.cc`; explicit user approval is required before retrying that probe from the escalated sandbox.
 
@@ -190,14 +232,9 @@ Public gateway signature PDP/similar probes also remain pending. The sandbox esc
 - No `railway up` was run.
 - Production write was limited to exact IDs after dry-run review.
 - Review-required and duplicate-signature candidates were not forced.
-- Live PDP success is not claimed yet because public gateway validation is blocked by local TLS failure.
+- DB serving/index readiness is clean for the exact six-ID Wave97 apply set.
+- Live public gateway PDP/similar success is not claimed yet because the direct public probe still requires explicit approval to send signature IDs/product metadata to `agent.pivota.cc`.
 
-## Next Commands When Network Recovers
+## Remaining Validation
 
-Run the exact six-ID serving/index resync dry run:
-
-```bash
-railway run --service Postgres-xMr6 --environment production -- bash -lc 'cd /Users/pengchydan/dev/_worktrees/pivota-agent-markato-wave25-786-20260527 && export DATABASE_URL="$DATABASE_PUBLIC_URL" && export NODE_PATH=/private/tmp/markato-wave-node-deps/node_modules:/Users/pengchydan/dev/PIVOTA-Agent/node_modules && node scripts/sync-external-seeds-to-catalog.cjs --external-product-ids-file reports/markato_expansion_status_20260524/wave97_next_expansion_20260531/wave97_identity_refresh_apply_ids.txt --market US --dry-run --upsert-serving-state --bootstrap-reviewed-identity-live-read --out reports/markato_expansion_status_20260524/wave97_next_expansion_20260531/wave97_serving_resync_after_category_patch_dry_run.json'
-```
-
-Then apply the same exact-ID resync if the dry run is clean, rerun exact-ID readiness, and run direct public signature probes before claiming Wave97 conversion readiness.
+Run direct public gateway signature PDP/similar probes only after explicit approval to send the six signature IDs and product metadata to `agent.pivota.cc`.
