@@ -1,0 +1,879 @@
+{
+  "generated_at": "2026-05-31T15:12:47.485Z",
+  "mode": "dry_run",
+  "batch_size": null,
+  "bootstrap_reviewed_identity_live_read": true,
+  "requested_ids": 3,
+  "fetched_rows": 3,
+  "mirror_rows": 3,
+  "planned_sku_rows": 7,
+  "planned_offer_rows": 7,
+  "planned_index_state_rows": 3,
+  "missing_ids": [],
+  "skipped": [],
+  "applied": {
+    "mode": "dry_run",
+    "existing_before": {
+      "catalog_products": 3,
+      "catalog_skus": 0,
+      "catalog_offers": 0,
+      "product_group_members": 3
+    },
+    "stale_delete_preview": {
+      "current_sku_rows": 10,
+      "current_offer_rows": 3,
+      "planned_stale_sku_deletes": 10,
+      "planned_stale_offer_deletes": 3,
+      "sample_stale_skus": [
+        {
+          "title": "Bouncy & Firm Sleeping Mask",
+          "sku_key": "prod::external_seed::external_seed::ext_24328cc33fabbe9a5bfbf460::canonical",
+          "product_key": "prod::external_seed::external_seed::ext_24328cc33fabbe9a5bfbf460",
+          "source_variant_id": "prod::external_seed::external_seed::ext_24328cc33fabbe9a5bfbf460",
+          "visible_attributes": {}
+        },
+        {
+          "title": "Single mask",
+          "sku_key": "prod::external_seed::external_seed::ext_24328cc33fabbe9a5bfbf460::v::42052021452852",
+          "product_key": "prod::external_seed::external_seed::ext_24328cc33fabbe9a5bfbf460",
+          "source_variant_id": "42052021452852",
+          "visible_attributes": {
+            "format": "Single mask"
+          }
+        },
+        {
+          "title": "Cream Skin Toner & Moisturizer",
+          "sku_key": "prod::external_seed::external_seed::ext_9ecbc144f1865e90167ccfec::canonical",
+          "product_key": "prod::external_seed::external_seed::ext_9ecbc144f1865e90167ccfec",
+          "source_variant_id": "prod::external_seed::external_seed::ext_9ecbc144f1865e90167ccfec",
+          "visible_attributes": {}
+        },
+        {
+          "title": "170mL",
+          "sku_key": "prod::external_seed::external_seed::ext_9ecbc144f1865e90167ccfec::v::41084692267060",
+          "product_key": "prod::external_seed::external_seed::ext_9ecbc144f1865e90167ccfec",
+          "source_variant_id": "41084692267060",
+          "visible_attributes": {
+            "size": "170mL"
+          }
+        },
+        {
+          "title": "Mini 50mL",
+          "sku_key": "prod::external_seed::external_seed::ext_9ecbc144f1865e90167ccfec::v::41084692299828",
+          "product_key": "prod::external_seed::external_seed::ext_9ecbc144f1865e90167ccfec",
+          "source_variant_id": "41084692299828",
+          "visible_attributes": {
+            "size": "Mini 50mL"
+          }
+        },
+        {
+          "title": "Jumbo 320mL",
+          "sku_key": "prod::external_seed::external_seed::ext_9ecbc144f1865e90167ccfec::v::41717324349492",
+          "product_key": "prod::external_seed::external_seed::ext_9ecbc144f1865e90167ccfec",
+          "source_variant_id": "41717324349492",
+          "visible_attributes": {
+            "size": "Jumbo 320mL"
+          }
+        },
+        {
+          "title": "Refill",
+          "sku_key": "prod::external_seed::external_seed::ext_9ecbc144f1865e90167ccfec::v::42411471765556",
+          "product_key": "prod::external_seed::external_seed::ext_9ecbc144f1865e90167ccfec",
+          "source_variant_id": "42411471765556",
+          "visible_attributes": {
+            "size": "Refill"
+          }
+        },
+        {
+          "title": "Mini Spray",
+          "sku_key": "prod::external_seed::external_seed::ext_9ecbc144f1865e90167ccfec::v::45916784951348",
+          "product_key": "prod::external_seed::external_seed::ext_9ecbc144f1865e90167ccfec",
+          "source_variant_id": "45916784951348",
+          "visible_attributes": {
+            "size": "Mini Spray"
+          }
+        },
+        {
+          "title": "Cica Sleeping Mask with Centella Asiatica for Moisture Barrier Support",
+          "sku_key": "prod::external_seed::external_seed::ext_ab3aa40d379dc1204075f94f::canonical",
+          "product_key": "prod::external_seed::external_seed::ext_ab3aa40d379dc1204075f94f",
+          "source_variant_id": "prod::external_seed::external_seed::ext_ab3aa40d379dc1204075f94f",
+          "visible_attributes": {}
+        },
+        {
+          "title": "Single mask",
+          "sku_key": "prod::external_seed::external_seed::ext_ab3aa40d379dc1204075f94f::v::31760703520820",
+          "product_key": "prod::external_seed::external_seed::ext_ab3aa40d379dc1204075f94f",
+          "source_variant_id": "31760703520820",
+          "visible_attributes": {
+            "format": "Single mask"
+          }
+        }
+      ],
+      "sample_stale_offers": [
+        {
+          "sku_key": "prod::external_seed::external_seed::ext_24328cc33fabbe9a5bfbf460::canonical",
+          "offer_id": "offer:external_seed:eb11e6213b0038d8af8936e481f1daa2",
+          "list_price": 36,
+          "product_key": "prod::external_seed::external_seed::ext_24328cc33fabbe9a5bfbf460",
+          "merchant_effective_price": 36
+        },
+        {
+          "sku_key": "prod::external_seed::external_seed::ext_9ecbc144f1865e90167ccfec::canonical",
+          "offer_id": "offer:external_seed:016114acf677e658aa2606ccf869c52a",
+          "list_price": 12,
+          "product_key": "prod::external_seed::external_seed::ext_9ecbc144f1865e90167ccfec",
+          "merchant_effective_price": 12
+        },
+        {
+          "sku_key": "prod::external_seed::external_seed::ext_ab3aa40d379dc1204075f94f::canonical",
+          "offer_id": "offer:external_seed:52ddc2ad05951f92728f9d3eb4a5e74c",
+          "list_price": 35,
+          "product_key": "prod::external_seed::external_seed::ext_ab3aa40d379dc1204075f94f",
+          "merchant_effective_price": 35
+        }
+      ]
+    },
+    "batch_size": null,
+    "batches": 1,
+    "audit_reasons": {
+      "no_strong_identifier": 7
+    },
+    "product_upserts": 0,
+    "sku_upserts": 0,
+    "offer_upserts": 0,
+    "group_member_upserts": 0,
+    "group_member_preserved_existing_merges": 0,
+    "seed_attachment_updates": 0,
+    "index_state_upserts": 0,
+    "identity_live_read_updates": 0,
+    "catalog_row_trust_upserts": 0,
+    "stale_offer_deletes": 0,
+    "stale_sku_deletes": 0
+  },
+  "sample": [
+    {
+      "external_product_id": "ext_24328cc33fabbe9a5bfbf460",
+      "product_key": "prod::external_seed::external_seed::ext_24328cc33fabbe9a5bfbf460",
+      "product_group_id": "sig_6f555830ed60f1504586c5be73dfd8c8",
+      "title": "Bouncy & Firm Sleeping Mask",
+      "brand": "LANEIGE US",
+      "product_type": "Beauty Product",
+      "category": "Beauty Product",
+      "category_path": "beauty",
+      "canonical_url": "https://us.laneige.com/products/bouncy-firm-sleeping-mask",
+      "pivota_signature_id": "sig_6f555830ed60f1504586c5be73dfd8c8",
+      "sku_rows": 1,
+      "first_sku": {
+        "sku_key": "prod::external_seed::external_seed::ext_24328cc33fabbe9a5bfbf460::sku_a071e62497c8280de866",
+        "product_key": "prod::external_seed::external_seed::ext_24328cc33fabbe9a5bfbf460",
+        "merchant_id": "external_seed",
+        "platform": "external_seed",
+        "source_product_id": "ext_24328cc33fabbe9a5bfbf460",
+        "source_variant_id": "ext_24328cc33fabbe9a5bfbf460:42052021452852",
+        "source_domain": "us.laneige.com",
+        "sku": "270283998",
+        "barcode": null,
+        "title": "Single mask",
+        "currency": "USD",
+        "image_url": "https://cdn.shopify.com/s/files/1/0255/0189/2660/files/Product_01_9129acd1-a5ce-46e2-9d30-bbd77479f839.jpg?v=1724612072",
+        "visible_attributes": {
+          "Format": "Single mask"
+        },
+        "visible_option_labels": {
+          "Format": "Single mask"
+        },
+        "ingredient_ids": [],
+        "sku_payload": {
+          "source": "external_product_seeds_mirror_v1",
+          "external_product_id": "ext_24328cc33fabbe9a5bfbf460",
+          "raw_variant_id": "42052021452852",
+          "source_variant_id": "ext_24328cc33fabbe9a5bfbf460:42052021452852",
+          "variant_sku": "270283998",
+          "barcode": null,
+          "strong_identifier_kind": null,
+          "source_url": "https://us.laneige.com/products/bouncy-firm-sleeping-mask",
+          "external_redirect_url": "https://us.laneige.com/products/bouncy-firm-sleeping-mask",
+          "price": "36",
+          "price_amount": 36,
+          "currency": "USD",
+          "availability": "in_stock",
+          "image_url": "https://cdn.shopify.com/s/files/1/0255/0189/2660/files/Product_01_9129acd1-a5ce-46e2-9d30-bbd77479f839.jpg?v=1724612072",
+          "swatch_image_url": null,
+          "label_image_url": null,
+          "options": {
+            "Format": "Single mask"
+          },
+          "raw_variant": {
+            "sku": "270283998",
+            "url": "https://us.laneige.com/products/bouncy-firm-sleeping-mask?variant=42052021452852&utm_source=pivota&utm_medium=affiliate",
+            "price": "36.00",
+            "stock": "In Stock",
+            "title": "Single mask",
+            "options": [
+              {
+                "name": "Format",
+                "value": "Single mask",
+                "axis_kind": "format"
+              }
+            ],
+            "currency": "USD",
+            "axis_kind": "format",
+            "deep_link": "https://us.laneige.com/products/bouncy-firm-sleeping-mask?variant=42052021452852&utm_source=pivota&utm_medium=affiliate",
+            "image_url": "https://cdn.shopify.com/s/files/1/0255/0189/2660/files/Product_01_9129acd1-a5ce-46e2-9d30-bbd77479f839.jpg?v=1724612072",
+            "image_urls": [
+              "https://cdn.shopify.com/s/files/1/0255/0189/2660/files/Product_01_9129acd1-a5ce-46e2-9d30-bbd77479f839.jpg?v=1724612072",
+              "https://cdn.shopify.com/s/files/1/0255/0189/2660/files/2743052-av-01.jpg?v=1773677525",
+              "https://cdn.shopify.com/s/files/1/0255/0189/2660/files/2743052-av-02.jpg?v=1772747521",
+              "https://cdn.shopify.com/s/files/1/0255/0189/2660/files/2743052-av-03.jpg?v=1772747521",
+              "https://cdn.shopify.com/s/files/1/0255/0189/2660/files/2743052-av-04.jpg?v=1772747521",
+              "https://cdn.shopify.com/s/files/1/0255/0189/2660/files/2743052-av-05.jpg?v=1773677525",
+              "https://cdn.shopify.com/s/files/1/0255/0189/2660/files/2743052-av-06.jpg?v=1773677525",
+              "https://cdn.shopify.com/s/files/1/0255/0189/2660/files/2743052-av-07.jpg?v=1772747521",
+              "https://cdn.shopify.com/s/files/1/0255/0189/2660/files/2743052-av-08.jpg?v=1772747521",
+              "https://cdn.shopify.com/s/files/1/0255/0189/2660/files/2743052-av-09.png?v=1772747521"
+            ],
+            "variant_id": "42052021452852",
+            "description": "A visibly firming Korean sleeping mask with Peony & Collagen Complex™ that delivers both overnight and long-term benefits for visibly smooth, plump, and bouncy-looking skin.",
+            "option_name": "Format",
+            "product_url": "https://us.laneige.com/products/bouncy-firm-sleeping-mask",
+            "option_value": "Single mask",
+            "display_label": "Format: Single mask",
+            "source_quality_status": "captured"
+          }
+        },
+        "readiness_tier": "referral_only"
+      },
+      "first_offer": {
+        "offer_id": "offer:external_seed:6ccd3acdb45c7218547feab29f8647bb",
+        "sku_key": "prod::external_seed::external_seed::ext_24328cc33fabbe9a5bfbf460::sku_a071e62497c8280de866",
+        "product_key": "prod::external_seed::external_seed::ext_24328cc33fabbe9a5bfbf460",
+        "merchant_id": "external_seed",
+        "catalog_track": "external_referral",
+        "truth_tier": "observed",
+        "readiness_tier": "referral_only",
+        "offer_mode": "redirect",
+        "channel": "external_referral",
+        "availability": "in_stock",
+        "currency": "USD",
+        "list_price": 36,
+        "merchant_effective_price": 36,
+        "estimated_best_price": 36,
+        "price_confidence": 1,
+        "source_system": "external_product_seeds_mirror_v1",
+        "source_ref": "eps_c12abd97fa27eab41358c6db",
+        "source_domain": "us.laneige.com",
+        "offer_payload": {
+          "source": "external_product_seeds_mirror_v1",
+          "external_seed_id": "eps_c12abd97fa27eab41358c6db",
+          "external_product_id": "ext_24328cc33fabbe9a5bfbf460",
+          "domain": "us.laneige.com",
+          "market": "US",
+          "product_title": "Bouncy & Firm Sleeping Mask",
+          "variant_title": "Single mask",
+          "variant_sku": "270283998",
+          "raw_variant_id": "42052021452852",
+          "url": "https://us.laneige.com/products/bouncy-firm-sleeping-mask",
+          "offer_url": "https://us.laneige.com/products/bouncy-firm-sleeping-mask",
+          "canonical_url": "https://us.laneige.com/products/bouncy-firm-sleeping-mask",
+          "destination_url": "https://us.laneige.com/products/bouncy-firm-sleeping-mask",
+          "external_redirect_url": "https://us.laneige.com/products/bouncy-firm-sleeping-mask",
+          "merchant_display_name": "LANEIGE US",
+          "price": "36",
+          "price_amount": 36,
+          "price_currency": "USD",
+          "availability": "in_stock",
+          "commerce_facts_v1": {
+            "contract_version": "commerce_facts.v1",
+            "market_id": "US",
+            "country": "US",
+            "currency_target": "USD",
+            "source_authority": "catalog_extract_v2",
+            "captured_at": "2026-05-01T00:35:52.046Z",
+            "evidence_url": "https://us.laneige.com/products/bouncy-firm-sleeping-mask",
+            "sellable_region": {
+              "status": "unknown",
+              "countries": [],
+              "evidence_source": "catalog_extract_v2",
+              "confidence": "unknown",
+              "checked_at": "2026-05-01T00:35:52.046Z",
+              "reason_codes": [
+                "shipping_destination_not_verified"
+              ],
+              "evidence_url": "https://us.laneige.com/products/bouncy-firm-sleeping-mask"
+            },
+            "regional_price": {
+              "amount": 36,
+              "currency": "USD",
+              "display_raw": null,
+              "price_type": "unknown",
+              "compare_at_amount": null,
+              "compare_at_currency": null,
+              "compare_at_display_raw": null,
+              "tax_included": "unknown",
+              "confidence": "medium",
+              "market_switch_status": "ok",
+              "observed_currency": "USD",
+              "source_url": "https://us.laneige.com/products/bouncy-firm-sleeping-mask",
+              "captured_at": "2026-05-01T00:35:52.046Z"
+            },
+            "availability": {
+              "status": "in_stock",
+              "source": "catalog_extract_v2",
+              "confidence": "medium",
+              "captured_at": "2026-05-01T00:35:52.046Z"
+            },
+            "shipping": {
+              "status": "unknown",
+              "source": "catalog_extract_v2",
+              "confidence": "unknown",
+              "reason_codes": [
+                "external_checkout_not_queried"
+              ],
+              "checked_at": "2026-05-01T00:35:52.046Z"
+            },
+            "promotions": [],
+            "returns": {
+              "status": "unknown",
+              "source": "catalog_extract_v2",
+              "confidence": "unknown",
+              "reason_codes": [
+                "external_returns_not_extracted"
+              ],
+              "checked_at": "2026-05-01T00:35:52.046Z"
+            }
+          },
+          "agent_safe_commerce_facts": {
+            "contract_version": "commerce_facts.v1",
+            "market_id": "US",
+            "price": {
+              "amount": 36,
+              "currency": "USD",
+              "display_raw": null,
+              "price_type": "unknown",
+              "compare_at_amount": null,
+              "compare_at_currency": null,
+              "compare_at_display_raw": null,
+              "tax_included": "unknown",
+              "confidence": "medium",
+              "market_switch_status": "ok",
+              "observed_currency": "USD",
+              "source_url": "https://us.laneige.com/products/bouncy-firm-sleeping-mask",
+              "captured_at": "2026-05-01T00:35:52.046Z"
+            },
+            "availability": {
+              "status": "in_stock",
+              "source": "catalog_extract_v2",
+              "confidence": "medium",
+              "captured_at": "2026-05-01T00:35:52.046Z"
+            },
+            "shipping": {
+              "status": "unknown",
+              "reason": "verify_at_checkout"
+            },
+            "promotions": [],
+            "checkout_note": "Shipping and promotions are not verified for this external offer; verify at merchant checkout."
+          }
+        }
+      },
+      "serving_readiness": {
+        "servingEligible": false,
+        "contentQualityScore": 70,
+        "blockerCode": "identity_not_live_approved",
+        "blockerDetail": "identity_not_live_approved",
+        "identityResolved": false,
+        "identityLiveReadResolved": false,
+        "identityBootstrapEligible": false,
+        "terminalHold": false,
+        "terminalHoldReason": "",
+        "hasImage": true,
+        "hasPrice": true,
+        "descriptionLength": 173
+      }
+    },
+    {
+      "external_product_id": "ext_ab3aa40d379dc1204075f94f",
+      "product_key": "prod::external_seed::external_seed::ext_ab3aa40d379dc1204075f94f",
+      "product_group_id": "sig_e955ad880be4c7d4440f48288400cef6",
+      "title": "Cica Sleeping Mask with Centella Asiatica for Moisture Barrier Support",
+      "brand": "LANEIGE US",
+      "product_type": "Beauty Product",
+      "category": "Beauty Product",
+      "category_path": "beauty",
+      "canonical_url": "https://us.laneige.com/products/cica-sleeping-mask",
+      "pivota_signature_id": "sig_e955ad880be4c7d4440f48288400cef6",
+      "sku_rows": 1,
+      "first_sku": {
+        "sku_key": "prod::external_seed::external_seed::ext_ab3aa40d379dc1204075f94f::sku_9de56fcb8880bf60cb0b",
+        "product_key": "prod::external_seed::external_seed::ext_ab3aa40d379dc1204075f94f",
+        "merchant_id": "external_seed",
+        "platform": "external_seed",
+        "source_product_id": "ext_ab3aa40d379dc1204075f94f",
+        "source_variant_id": "ext_ab3aa40d379dc1204075f94f:31760703520820",
+        "source_domain": "us.laneige.com",
+        "sku": "270284224",
+        "barcode": null,
+        "title": "Single mask",
+        "currency": "USD",
+        "image_url": "https://cdn.shopify.com/s/files/1/0255/0189/2660/files/CSM_PDP_IMAGE.jpg?v=1754047481",
+        "visible_attributes": {
+          "Format": "Single mask"
+        },
+        "visible_option_labels": {
+          "Format": "Single mask"
+        },
+        "ingredient_ids": [],
+        "sku_payload": {
+          "source": "external_product_seeds_mirror_v1",
+          "external_product_id": "ext_ab3aa40d379dc1204075f94f",
+          "raw_variant_id": "31760703520820",
+          "source_variant_id": "ext_ab3aa40d379dc1204075f94f:31760703520820",
+          "variant_sku": "270284224",
+          "barcode": null,
+          "strong_identifier_kind": null,
+          "source_url": "https://us.laneige.com/products/cica-sleeping-mask",
+          "external_redirect_url": "https://us.laneige.com/products/cica-sleeping-mask",
+          "price": "35",
+          "price_amount": 35,
+          "currency": "USD",
+          "availability": "in_stock",
+          "image_url": "https://cdn.shopify.com/s/files/1/0255/0189/2660/files/CSM_PDP_IMAGE.jpg?v=1754047481",
+          "swatch_image_url": null,
+          "label_image_url": null,
+          "options": {
+            "Format": "Single mask"
+          },
+          "raw_variant": {
+            "sku": "270284224",
+            "url": "https://us.laneige.com/products/cica-sleeping-mask?variant=31760703520820&utm_source=pivota&utm_medium=affiliate",
+            "price": "35.00",
+            "stock": "In Stock",
+            "title": "Single mask",
+            "options": [
+              {
+                "name": "Format",
+                "value": "Single mask",
+                "axis_kind": "format"
+              }
+            ],
+            "currency": "USD",
+            "axis_kind": "format",
+            "deep_link": "https://us.laneige.com/products/cica-sleeping-mask?variant=31760703520820&utm_source=pivota&utm_medium=affiliate",
+            "image_url": "https://cdn.shopify.com/s/files/1/0255/0189/2660/files/CSM_PDP_IMAGE.jpg?v=1754047481",
+            "image_urls": [
+              "https://cdn.shopify.com/s/files/1/0255/0189/2660/files/CSM_PDP_IMAGE.jpg?v=1754047481",
+              "https://cdn.shopify.com/s/files/1/0255/0189/2660/files/2895233-av-01.jpg?v=1772747646",
+              "https://cdn.shopify.com/s/files/1/0255/0189/2660/files/2895233-av-02.jpg?v=1772747646",
+              "https://cdn.shopify.com/s/files/1/0255/0189/2660/files/2895233-av-03.jpg?v=1772747646",
+              "https://cdn.shopify.com/s/files/1/0255/0189/2660/files/2895233-av-04.jpg?v=1772747646",
+              "https://cdn.shopify.com/s/files/1/0255/0189/2660/files/2895233-av-05.png?v=1772747646",
+              "https://cdn.shopify.com/s/files/1/0255/0189/2660/files/2895233-av-06.png?v=1772747646",
+              "https://cdn.shopify.com/s/files/1/0255/0189/2660/files/2895233-av-07.png?v=1772747646",
+              "https://cdn.shopify.com/s/files/1/0255/0189/2660/files/2895233-av-08.png?v=1772747646",
+              "https://cdn.shopify.com/s/files/1/0255/0189/2660/files/2895233-av-09.png?v=1772747646"
+            ],
+            "variant_id": "31760703520820",
+            "description": "A soothing Korean sleeping mask to visibly calm sensitive skin and strengthen the skin's moisture barrier overnight.",
+            "option_name": "Format",
+            "product_url": "https://us.laneige.com/products/cica-sleeping-mask",
+            "option_value": "Single mask",
+            "display_label": "Format: Single mask",
+            "source_quality_status": "captured"
+          }
+        },
+        "readiness_tier": "referral_only"
+      },
+      "first_offer": {
+        "offer_id": "offer:external_seed:7bd4d88c76b91969cd5906c0e1571249",
+        "sku_key": "prod::external_seed::external_seed::ext_ab3aa40d379dc1204075f94f::sku_9de56fcb8880bf60cb0b",
+        "product_key": "prod::external_seed::external_seed::ext_ab3aa40d379dc1204075f94f",
+        "merchant_id": "external_seed",
+        "catalog_track": "external_referral",
+        "truth_tier": "observed",
+        "readiness_tier": "referral_only",
+        "offer_mode": "redirect",
+        "channel": "external_referral",
+        "availability": "in_stock",
+        "currency": "USD",
+        "list_price": 35,
+        "merchant_effective_price": 35,
+        "estimated_best_price": 35,
+        "price_confidence": 1,
+        "source_system": "external_product_seeds_mirror_v1",
+        "source_ref": "eps_94f71ffe91b353d70c57cc27",
+        "source_domain": "us.laneige.com",
+        "offer_payload": {
+          "source": "external_product_seeds_mirror_v1",
+          "external_seed_id": "eps_94f71ffe91b353d70c57cc27",
+          "external_product_id": "ext_ab3aa40d379dc1204075f94f",
+          "domain": "us.laneige.com",
+          "market": "US",
+          "product_title": "Cica Sleeping Mask with Centella Asiatica for Moisture Barrier Support",
+          "variant_title": "Single mask",
+          "variant_sku": "270284224",
+          "raw_variant_id": "31760703520820",
+          "url": "https://us.laneige.com/products/cica-sleeping-mask",
+          "offer_url": "https://us.laneige.com/products/cica-sleeping-mask",
+          "canonical_url": "https://us.laneige.com/products/cica-sleeping-mask",
+          "destination_url": "https://us.laneige.com/products/cica-sleeping-mask",
+          "external_redirect_url": "https://us.laneige.com/products/cica-sleeping-mask",
+          "merchant_display_name": "LANEIGE US",
+          "price": "35",
+          "price_amount": 35,
+          "price_currency": "USD",
+          "availability": "in_stock",
+          "commerce_facts_v1": {
+            "contract_version": "commerce_facts.v1",
+            "market_id": "US",
+            "country": "US",
+            "currency_target": "USD",
+            "source_authority": "catalog_extract_v2",
+            "captured_at": "2026-05-01T00:36:23.212Z",
+            "evidence_url": "https://us.laneige.com/products/cica-sleeping-mask",
+            "sellable_region": {
+              "status": "unknown",
+              "countries": [],
+              "evidence_source": "catalog_extract_v2",
+              "confidence": "unknown",
+              "checked_at": "2026-05-01T00:36:23.212Z",
+              "reason_codes": [
+                "shipping_destination_not_verified"
+              ],
+              "evidence_url": "https://us.laneige.com/products/cica-sleeping-mask"
+            },
+            "regional_price": {
+              "amount": 35,
+              "currency": "USD",
+              "display_raw": null,
+              "price_type": "unknown",
+              "compare_at_amount": null,
+              "compare_at_currency": null,
+              "compare_at_display_raw": null,
+              "tax_included": "unknown",
+              "confidence": "medium",
+              "market_switch_status": "ok",
+              "observed_currency": "USD",
+              "source_url": "https://us.laneige.com/products/cica-sleeping-mask",
+              "captured_at": "2026-05-01T00:36:23.212Z"
+            },
+            "availability": {
+              "status": "in_stock",
+              "source": "catalog_extract_v2",
+              "confidence": "medium",
+              "captured_at": "2026-05-01T00:36:23.212Z"
+            },
+            "shipping": {
+              "status": "unknown",
+              "source": "catalog_extract_v2",
+              "confidence": "unknown",
+              "reason_codes": [
+                "external_checkout_not_queried"
+              ],
+              "checked_at": "2026-05-01T00:36:23.212Z"
+            },
+            "promotions": [],
+            "returns": {
+              "status": "unknown",
+              "source": "catalog_extract_v2",
+              "confidence": "unknown",
+              "reason_codes": [
+                "external_returns_not_extracted"
+              ],
+              "checked_at": "2026-05-01T00:36:23.212Z"
+            }
+          },
+          "agent_safe_commerce_facts": {
+            "contract_version": "commerce_facts.v1",
+            "market_id": "US",
+            "price": {
+              "amount": 35,
+              "currency": "USD",
+              "display_raw": null,
+              "price_type": "unknown",
+              "compare_at_amount": null,
+              "compare_at_currency": null,
+              "compare_at_display_raw": null,
+              "tax_included": "unknown",
+              "confidence": "medium",
+              "market_switch_status": "ok",
+              "observed_currency": "USD",
+              "source_url": "https://us.laneige.com/products/cica-sleeping-mask",
+              "captured_at": "2026-05-01T00:36:23.212Z"
+            },
+            "availability": {
+              "status": "in_stock",
+              "source": "catalog_extract_v2",
+              "confidence": "medium",
+              "captured_at": "2026-05-01T00:36:23.212Z"
+            },
+            "shipping": {
+              "status": "unknown",
+              "reason": "verify_at_checkout"
+            },
+            "promotions": [],
+            "checkout_note": "Shipping and promotions are not verified for this external offer; verify at merchant checkout."
+          }
+        }
+      },
+      "serving_readiness": {
+        "servingEligible": false,
+        "contentQualityScore": 63,
+        "blockerCode": "identity_not_live_approved",
+        "blockerDetail": "identity_not_live_approved",
+        "identityResolved": false,
+        "identityLiveReadResolved": false,
+        "identityBootstrapEligible": false,
+        "terminalHold": false,
+        "terminalHoldReason": "",
+        "hasImage": true,
+        "hasPrice": true,
+        "descriptionLength": 116
+      }
+    },
+    {
+      "external_product_id": "ext_9ecbc144f1865e90167ccfec",
+      "product_key": "prod::external_seed::external_seed::ext_9ecbc144f1865e90167ccfec",
+      "product_group_id": "sig_f9a2744cee63daf838e3579f8591a5b5",
+      "title": "Cream Skin Toner & Moisturizer",
+      "brand": "LANEIGE US",
+      "product_type": "Toner",
+      "category": "Toner",
+      "category_path": "beauty/skincare/toner",
+      "canonical_url": "https://us.laneige.com/products/cream-skin-toner-moisturizer",
+      "pivota_signature_id": "sig_f9a2744cee63daf838e3579f8591a5b5",
+      "sku_rows": 5,
+      "first_sku": {
+        "sku_key": "prod::external_seed::external_seed::ext_9ecbc144f1865e90167ccfec::sku_e60198c91192ff82022d",
+        "product_key": "prod::external_seed::external_seed::ext_9ecbc144f1865e90167ccfec",
+        "merchant_id": "external_seed",
+        "platform": "external_seed",
+        "source_product_id": "ext_9ecbc144f1865e90167ccfec",
+        "source_variant_id": "ext_9ecbc144f1865e90167ccfec:41084692267060",
+        "source_domain": "us.laneige.com",
+        "sku": "270284104",
+        "barcode": null,
+        "title": "170mL",
+        "currency": "USD",
+        "image_url": "https://cdn.shopify.com/s/files/1/0255/0189/2660/files/1080x10800_Thumbnail_Product.jpg?v=1739393277",
+        "visible_attributes": {
+          "Size": "170mL"
+        },
+        "visible_option_labels": {
+          "Size": "170mL"
+        },
+        "ingredient_ids": [],
+        "sku_payload": {
+          "source": "external_product_seeds_mirror_v1",
+          "external_product_id": "ext_9ecbc144f1865e90167ccfec",
+          "raw_variant_id": "41084692267060",
+          "source_variant_id": "ext_9ecbc144f1865e90167ccfec:41084692267060",
+          "variant_sku": "270284104",
+          "barcode": null,
+          "strong_identifier_kind": null,
+          "source_url": "https://us.laneige.com/products/cream-skin-toner-moisturizer",
+          "external_redirect_url": "https://us.laneige.com/products/cream-skin-toner-moisturizer",
+          "price": "36",
+          "price_amount": 36,
+          "currency": "USD",
+          "availability": "in_stock",
+          "image_url": "https://cdn.shopify.com/s/files/1/0255/0189/2660/files/1080x10800_Thumbnail_Product.jpg?v=1739393277",
+          "swatch_image_url": null,
+          "label_image_url": null,
+          "options": {
+            "Size": "170mL"
+          },
+          "raw_variant": {
+            "sku": "270284104",
+            "url": "https://us.laneige.com/products/cream-skin-toner-moisturizer?variant=41084692267060&utm_source=pivota&utm_medium=affiliate",
+            "price": "36.00",
+            "stock": "In Stock",
+            "title": "170mL",
+            "options": [
+              {
+                "name": "Size",
+                "value": "170mL"
+              }
+            ],
+            "currency": "USD",
+            "deep_link": "https://us.laneige.com/products/cream-skin-toner-moisturizer?variant=41084692267060&utm_source=pivota&utm_medium=affiliate",
+            "image_url": "https://cdn.shopify.com/s/files/1/0255/0189/2660/files/1080x10800_Thumbnail_Product.jpg?v=1739393277",
+            "image_urls": [
+              "https://cdn.shopify.com/s/files/1/0255/0189/2660/files/1080x10800_Thumbnail_Product.jpg?v=1739393277",
+              "https://cdn.shopify.com/s/files/1/0255/0189/2660/files/2842458-av-01_da1199f8-218d-4b05-8e81-0680daf40c4a.jpg?v=1769095344",
+              "https://cdn.shopify.com/s/files/1/0255/0189/2660/files/CrS_Infographic_2000x2000Claim1.jpg?v=1775587953",
+              "https://cdn.shopify.com/s/files/1/0255/0189/2660/files/CrS_Infographic_2000x2000B_A.jpg?v=1775587953",
+              "https://cdn.shopify.com/s/files/1/0255/0189/2660/files/CrS_Infographic_2000x2000Claim2.jpg?v=1775587953",
+              "https://cdn.shopify.com/s/files/1/0255/0189/2660/files/CrS_Infographic_2000x2000Ingredient1.jpg?v=1775587953",
+              "https://cdn.shopify.com/s/files/1/0255/0189/2660/files/CrS_Infographic_2000x2000Howtouse.jpg?v=1775587953",
+              "https://cdn.shopify.com/s/files/1/0255/0189/2660/files/CrS_Infographic_2000x2000Tech.jpg?v=1775588148",
+              "https://cdn.shopify.com/s/files/1/0255/0189/2660/files/CrS_Infographic_2000x2000Accolades.jpg?v=1775587953",
+              "https://cdn.shopify.com/s/files/1/0255/0189/2660/files/CrS_Infographic_2000x2000Routine.jpg?v=1769095344",
+              "https://cdn.shopify.com/s/files/1/0255/0189/2660/files/CrS_Infographic_2000x2000MistPump.jpg?v=1769095344",
+              "https://cdn.shopify.com/s/files/1/0255/0189/2660/files/CrS_Infographic_2000x2000Jumbo.jpg?v=1769095344",
+              "https://cdn.shopify.com/s/files/1/0255/0189/2660/files/CrS_Infographic_2000x2000Refill.jpg?v=1775587953",
+              "https://cdn.shopify.com/s/files/1/0255/0189/2660/files/CrS_Infographic_2000x2000Collection.jpg?v=1769095344",
+              "https://cdn.shopify.com/s/files/1/0255/0189/2660/files/1080x10800_Thumbnail_AwardWinner.jpg?v=1769095344",
+              "https://cdn.shopify.com/s/files/1/0255/0189/2660/files/CS1000x1000.jpg?v=1775587953",
+              "https://cdn.shopify.com/s/files/1/0255/0189/2660/files/CS1000x1000_1.jpg?v=1769095344",
+              "https://cdn.shopify.com/s/files/1/0255/0189/2660/files/Packshot_02_1.jpg?v=1769095344",
+              "https://cdn.shopify.com/s/files/1/0255/0189/2660/files/CrS_Mini_Mist_2000x2000_2a452a3e-196e-420d-ab8f-98d2d5379348.jpg?v=1775588148",
+              "https://cdn.shopify.com/s/files/1/0255/0189/2660/files/02CreamSkin_WBCreamCropsv1.jpg?v=1769095344"
+            ],
+            "variant_id": "41084692267060",
+            "description": "The original Korean milky toner in a refillable bottle, enriched with nourishing ceramides and peptides for radiant, hydrated glass skin.\n\nAllure 2023 Best of Beauty Award Winner\n2024 Vogue Best Hydrating Toner\n\nKey Ingredients:\nCeramide and Peptide Complex - Provides intense, nourishing hydration and visibly firming benefits\nWhite Leaf Tea - Rich in moisturizing amino acids to help soothe skin",
+            "option_name": "Size",
+            "product_url": "https://us.laneige.com/products/cream-skin-toner-moisturizer",
+            "option_value": "170mL"
+          }
+        },
+        "readiness_tier": "referral_only"
+      },
+      "first_offer": {
+        "offer_id": "offer:external_seed:dfb71aa07a57de92d29d48c6e85bab04",
+        "sku_key": "prod::external_seed::external_seed::ext_9ecbc144f1865e90167ccfec::sku_e60198c91192ff82022d",
+        "product_key": "prod::external_seed::external_seed::ext_9ecbc144f1865e90167ccfec",
+        "merchant_id": "external_seed",
+        "catalog_track": "external_referral",
+        "truth_tier": "observed",
+        "readiness_tier": "referral_only",
+        "offer_mode": "redirect",
+        "channel": "external_referral",
+        "availability": "in_stock",
+        "currency": "USD",
+        "list_price": 36,
+        "merchant_effective_price": 36,
+        "estimated_best_price": 36,
+        "price_confidence": 1,
+        "source_system": "external_product_seeds_mirror_v1",
+        "source_ref": "eps_7808e0f7a3de63c37cb792bb",
+        "source_domain": "us.laneige.com",
+        "offer_payload": {
+          "source": "external_product_seeds_mirror_v1",
+          "external_seed_id": "eps_7808e0f7a3de63c37cb792bb",
+          "external_product_id": "ext_9ecbc144f1865e90167ccfec",
+          "domain": "us.laneige.com",
+          "market": "US",
+          "product_title": "Cream Skin Toner & Moisturizer",
+          "variant_title": "170mL",
+          "variant_sku": "270284104",
+          "raw_variant_id": "41084692267060",
+          "url": "https://us.laneige.com/products/cream-skin-toner-moisturizer",
+          "offer_url": "https://us.laneige.com/products/cream-skin-toner-moisturizer",
+          "canonical_url": "https://us.laneige.com/products/cream-skin-toner-moisturizer",
+          "destination_url": "https://us.laneige.com/products/cream-skin-toner-moisturizer",
+          "external_redirect_url": "https://us.laneige.com/products/cream-skin-toner-moisturizer",
+          "merchant_display_name": "LANEIGE US",
+          "price": "36",
+          "price_amount": 36,
+          "price_currency": "USD",
+          "availability": "in_stock",
+          "commerce_facts_v1": {
+            "contract_version": "commerce_facts.v1",
+            "market_id": "US",
+            "country": "US",
+            "currency_target": "USD",
+            "source_authority": "catalog_extract_v2",
+            "captured_at": "2026-05-01T18:00:21.889Z",
+            "evidence_url": "https://us.laneige.com/products/cream-skin-toner-moisturizer",
+            "sellable_region": {
+              "status": "unknown",
+              "countries": [],
+              "evidence_source": "catalog_extract_v2",
+              "confidence": "unknown",
+              "checked_at": "2026-05-01T18:00:21.889Z",
+              "reason_codes": [
+                "shipping_destination_not_verified"
+              ],
+              "evidence_url": "https://us.laneige.com/products/cream-skin-toner-moisturizer"
+            },
+            "regional_price": {
+              "amount": 12,
+              "currency": "USD",
+              "display_raw": null,
+              "price_type": "unknown",
+              "compare_at_amount": null,
+              "compare_at_currency": null,
+              "compare_at_display_raw": null,
+              "tax_included": "unknown",
+              "confidence": "medium",
+              "market_switch_status": "ok",
+              "observed_currency": "USD",
+              "source_url": "https://us.laneige.com/products/cream-skin-toner-moisturizer",
+              "captured_at": "2026-05-01T18:00:21.889Z"
+            },
+            "availability": {
+              "status": "in_stock",
+              "source": "catalog_extract_v2",
+              "confidence": "medium",
+              "captured_at": "2026-05-01T18:00:21.889Z"
+            },
+            "shipping": {
+              "status": "unknown",
+              "source": "catalog_extract_v2",
+              "confidence": "unknown",
+              "reason_codes": [
+                "external_checkout_not_queried"
+              ],
+              "checked_at": "2026-05-01T18:00:21.889Z"
+            },
+            "promotions": [],
+            "returns": {
+              "status": "unknown",
+              "source": "catalog_extract_v2",
+              "confidence": "unknown",
+              "reason_codes": [
+                "external_returns_not_extracted"
+              ],
+              "checked_at": "2026-05-01T18:00:21.889Z"
+            }
+          },
+          "agent_safe_commerce_facts": {
+            "contract_version": "commerce_facts.v1",
+            "market_id": "US",
+            "price": {
+              "amount": 12,
+              "currency": "USD",
+              "display_raw": null,
+              "price_type": "unknown",
+              "compare_at_amount": null,
+              "compare_at_currency": null,
+              "compare_at_display_raw": null,
+              "tax_included": "unknown",
+              "confidence": "medium",
+              "market_switch_status": "ok",
+              "observed_currency": "USD",
+              "source_url": "https://us.laneige.com/products/cream-skin-toner-moisturizer",
+              "captured_at": "2026-05-01T18:00:21.889Z"
+            },
+            "availability": {
+              "status": "in_stock",
+              "source": "catalog_extract_v2",
+              "confidence": "medium",
+              "captured_at": "2026-05-01T18:00:21.889Z"
+            },
+            "shipping": {
+              "status": "unknown",
+              "reason": "verify_at_checkout"
+            },
+            "promotions": [],
+            "checkout_note": "Shipping and promotions are not verified for this external offer; verify at merchant checkout."
+          }
+        }
+      },
+      "serving_readiness": {
+        "servingEligible": false,
+        "contentQualityScore": 70,
+        "blockerCode": "identity_not_live_approved",
+        "blockerDetail": "identity_not_live_approved",
+        "identityResolved": false,
+        "identityLiveReadResolved": false,
+        "identityBootstrapEligible": false,
+        "terminalHold": false,
+        "terminalHoldReason": "",
+        "hasImage": true,
+        "hasPrice": true,
+        "descriptionLength": 397
+      }
+    }
+  ]
+}

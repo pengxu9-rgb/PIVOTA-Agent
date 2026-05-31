@@ -1,0 +1,580 @@
+{
+  "generated_at": "2026-05-31T15:14:21.032Z",
+  "mode": "dry_run",
+  "batch_size": null,
+  "bootstrap_reviewed_identity_live_read": true,
+  "requested_ids": 3,
+  "fetched_rows": 3,
+  "mirror_rows": 3,
+  "planned_sku_rows": 3,
+  "planned_offer_rows": 3,
+  "planned_index_state_rows": 3,
+  "missing_ids": [],
+  "skipped": [],
+  "applied": {
+    "mode": "dry_run",
+    "existing_before": {
+      "catalog_products": 3,
+      "catalog_skus": 0,
+      "catalog_offers": 0,
+      "product_group_members": 3
+    },
+    "stale_delete_preview": {
+      "current_sku_rows": 6,
+      "current_offer_rows": 3,
+      "planned_stale_sku_deletes": 6,
+      "planned_stale_offer_deletes": 3,
+      "sample_stale_skus": [
+        {
+          "title": "Vanicream™\n\t\t\t\t\t\tDaily Facial Moisturizer",
+          "sku_key": "prod::external_seed::external_seed::ext_706d38c05ce9a08ebcf9ef9d::canonical",
+          "product_key": "prod::external_seed::external_seed::ext_706d38c05ce9a08ebcf9ef9d",
+          "source_variant_id": "prod::external_seed::external_seed::ext_706d38c05ce9a08ebcf9ef9d",
+          "visible_attributes": {}
+        },
+        {
+          "title": "Single item",
+          "sku_key": "prod::external_seed::external_seed::ext_706d38c05ce9a08ebcf9ef9d::v::db78ca8c6bc7",
+          "product_key": "prod::external_seed::external_seed::ext_706d38c05ce9a08ebcf9ef9d",
+          "source_variant_id": "db78ca8c6bc7",
+          "visible_attributes": {
+            "format": "Single item"
+          }
+        },
+        {
+          "title": "Neutrogena® Hydro Boost Hyaluronic Acid Water Gel with Signature Fragrance 1.7 Oz",
+          "sku_key": "prod::external_seed::external_seed::ext_a49bab302414cd4d4c5789d2::canonical",
+          "product_key": "prod::external_seed::external_seed::ext_a49bab302414cd4d4c5789d2",
+          "source_variant_id": "prod::external_seed::external_seed::ext_a49bab302414cd4d4c5789d2",
+          "visible_attributes": {}
+        },
+        {
+          "title": "1.7oz",
+          "sku_key": "prod::external_seed::external_seed::ext_a49bab302414cd4d4c5789d2::v::d9ace7b79a31",
+          "product_key": "prod::external_seed::external_seed::ext_a49bab302414cd4d4c5789d2",
+          "source_variant_id": "d9ace7b79a31",
+          "visible_attributes": {
+            "size": "1.7oz"
+          }
+        },
+        {
+          "title": "Rapid Clear Stubborn Acne Spot Gel",
+          "sku_key": "prod::external_seed::external_seed::ext_f2c773d38fcd36279845d133::canonical",
+          "product_key": "prod::external_seed::external_seed::ext_f2c773d38fcd36279845d133",
+          "source_variant_id": "prod::external_seed::external_seed::ext_f2c773d38fcd36279845d133",
+          "visible_attributes": {}
+        },
+        {
+          "title": "Single item",
+          "sku_key": "prod::external_seed::external_seed::ext_f2c773d38fcd36279845d133::v::f3af59762496",
+          "product_key": "prod::external_seed::external_seed::ext_f2c773d38fcd36279845d133",
+          "source_variant_id": "f3af59762496",
+          "visible_attributes": {
+            "format": "Single item"
+          }
+        }
+      ],
+      "sample_stale_offers": [
+        {
+          "sku_key": "prod::external_seed::external_seed::ext_706d38c05ce9a08ebcf9ef9d::canonical",
+          "offer_id": "offer:external_seed:4ea21392416393dd97ef4f6cffc053c5",
+          "list_price": 0,
+          "product_key": "prod::external_seed::external_seed::ext_706d38c05ce9a08ebcf9ef9d",
+          "merchant_effective_price": 0
+        },
+        {
+          "sku_key": "prod::external_seed::external_seed::ext_a49bab302414cd4d4c5789d2::canonical",
+          "offer_id": "offer:external_seed:c61d11814fdc511d64bfdeb4dcd202ee",
+          "list_price": null,
+          "product_key": "prod::external_seed::external_seed::ext_a49bab302414cd4d4c5789d2",
+          "merchant_effective_price": null
+        },
+        {
+          "sku_key": "prod::external_seed::external_seed::ext_f2c773d38fcd36279845d133::canonical",
+          "offer_id": "offer:external_seed:aa4f450a72910c62c443f81baa9dd2b0",
+          "list_price": null,
+          "product_key": "prod::external_seed::external_seed::ext_f2c773d38fcd36279845d133",
+          "merchant_effective_price": null
+        }
+      ]
+    },
+    "batch_size": null,
+    "batches": 1,
+    "audit_reasons": {
+      "no_strong_identifier": 3
+    },
+    "product_upserts": 0,
+    "sku_upserts": 0,
+    "offer_upserts": 0,
+    "group_member_upserts": 0,
+    "group_member_preserved_existing_merges": 0,
+    "seed_attachment_updates": 0,
+    "index_state_upserts": 0,
+    "identity_live_read_updates": 0,
+    "catalog_row_trust_upserts": 0,
+    "stale_offer_deletes": 0,
+    "stale_sku_deletes": 0
+  },
+  "sample": [
+    {
+      "external_product_id": "ext_706d38c05ce9a08ebcf9ef9d",
+      "product_key": "prod::external_seed::external_seed::ext_706d38c05ce9a08ebcf9ef9d",
+      "product_group_id": "sig_d808825fcfcd65fcd34c8d62",
+      "title": "Vanicream™\n\t\t\t\t\t\tDaily Facial Moisturizer",
+      "brand": "Vanicream",
+      "product_type": "Moisturizer",
+      "category": "Moisturizer",
+      "category_path": "beauty/skincare/moisturizer",
+      "canonical_url": "https://www.vanicream.com/product/vanicream-daily-facial-moisturizer",
+      "pivota_signature_id": "sig_228216fa1f5f0d47bfc68693c0b40b51",
+      "sku_rows": 1,
+      "first_sku": {
+        "sku_key": "prod::external_seed::external_seed::ext_706d38c05ce9a08ebcf9ef9d::sku_27470135ac3907f04bcb",
+        "product_key": "prod::external_seed::external_seed::ext_706d38c05ce9a08ebcf9ef9d",
+        "merchant_id": "external_seed",
+        "platform": "external_seed",
+        "source_product_id": "ext_706d38c05ce9a08ebcf9ef9d",
+        "source_variant_id": "ext_706d38c05ce9a08ebcf9ef9d:db78ca8c6bc7",
+        "source_domain": "vanicream.com",
+        "sku": "AUTO-db78ca8c",
+        "barcode": null,
+        "title": "Vanicream™\n\t\t\t\t\t\tDaily Facial Moisturizer",
+        "currency": "USD",
+        "image_url": "https://www.vanicream.com/dynamic-media/product/images/dfm-gp24c-group-2661-ret-crop.jpg?gravity=center&v=galleryMedia&k=4OmHIlIodbwJrIiLYPDUGg",
+        "visible_attributes": {},
+        "visible_option_labels": {},
+        "ingredient_ids": [],
+        "sku_payload": {
+          "source": "external_product_seeds_mirror_v1",
+          "external_product_id": "ext_706d38c05ce9a08ebcf9ef9d",
+          "raw_variant_id": "db78ca8c6bc7",
+          "source_variant_id": "ext_706d38c05ce9a08ebcf9ef9d:db78ca8c6bc7",
+          "variant_sku": "AUTO-db78ca8c",
+          "barcode": null,
+          "strong_identifier_kind": null,
+          "source_url": "https://www.vanicream.com/product/vanicream-daily-facial-moisturizer",
+          "external_redirect_url": "https://www.vanicream.com/product/vanicream-daily-facial-moisturizer",
+          "price": "0",
+          "price_amount": 0,
+          "currency": "USD",
+          "availability": "in_stock",
+          "image_url": "https://www.vanicream.com/dynamic-media/product/images/dfm-gp24c-group-2661-ret-crop.jpg?gravity=center&v=galleryMedia&k=4OmHIlIodbwJrIiLYPDUGg",
+          "swatch_image_url": null,
+          "label_image_url": "https://www.vanicream.com/dynamic-media/product/images/dfm-gp24c-group-2661-ret-crop.jpg?gravity=center&v=galleryMedia&k=4OmHIlIodbwJrIiLYPDUGg",
+          "options": {},
+          "raw_variant": {
+            "id": "db78ca8c6bc7",
+            "sku": "AUTO-db78ca8c",
+            "url": "https://www.vanicream.com/product/vanicream-daily-facial-moisturizer",
+            "price": 0,
+            "title": "Single item",
+            "images": [
+              "https://www.vanicream.com/dynamic-media/product/images/dfm-gp24c-group-2661-ret-crop.jpg?gravity=center&v=galleryMedia&k=4OmHIlIodbwJrIiLYPDUGg",
+              "https://www.vanicream.com/dynamic-media/product/images/dfm-gp24c-group-2661-ret-crop.jpg?gravity=center&v=galleryThumb&width=56&k=%2BtVJP9byGAedxA9ecziwqA",
+              "https://www.vanicream.com/dynamic-media/product/images/dfm-gp24c-group-2661-ret-crop.jpg?gravity=center&v=galleryThumb&k=tVqO%2FcVSivsMl7LmV6aOng"
+            ],
+            "sku_id": "AUTO-db78ca8c",
+            "visual": {
+              "source": "variant_image",
+              "image_url": "https://www.vanicream.com/dynamic-media/product/images/dfm-gp24c-group-2661-ret-crop.jpg?gravity=center&v=galleryMedia&k=4OmHIlIodbwJrIiLYPDUGg"
+            },
+            "options": [
+              {
+                "name": "Format",
+                "value": "Single item",
+                "axis_kind": "format"
+              }
+            ],
+            "pricing": {
+              "current": {
+                "amount": 0,
+                "currency": "USD"
+              }
+            },
+            "currency": "USD",
+            "in_stock": true,
+            "available": true,
+            "axis_kind": "format",
+            "image_url": "https://www.vanicream.com/dynamic-media/product/images/dfm-gp24c-group-2661-ret-crop.jpg?gravity=center&v=galleryMedia&k=4OmHIlIodbwJrIiLYPDUGg",
+            "image_urls": [
+              "https://www.vanicream.com/dynamic-media/product/images/dfm-gp24c-group-2661-ret-crop.jpg?gravity=center&v=galleryMedia&k=4OmHIlIodbwJrIiLYPDUGg",
+              "https://www.vanicream.com/dynamic-media/product/images/dfm-gp24c-group-2661-ret-crop.jpg?gravity=center&v=galleryThumb&width=56&k=%2BtVJP9byGAedxA9ecziwqA",
+              "https://www.vanicream.com/dynamic-media/product/images/dfm-gp24c-group-2661-ret-crop.jpg?gravity=center&v=galleryThumb&k=tVqO%2FcVSivsMl7LmV6aOng"
+            ],
+            "variant_id": "db78ca8c6bc7",
+            "description": "Gentle face moisturizer with hyaluronic acid and 5 ceramides. Helps skin retain and lock in moisture.",
+            "option_name": "Format",
+            "availability": "in_stock",
+            "option_value": "Single item",
+            "display_label": "Format: Single item",
+            "label_image_url": "https://www.vanicream.com/dynamic-media/product/images/dfm-gp24c-group-2661-ret-crop.jpg?gravity=center&v=galleryMedia&k=4OmHIlIodbwJrIiLYPDUGg",
+            "inventory_quantity": 999,
+            "source_quality_status": "captured"
+          }
+        },
+        "readiness_tier": "referral_only"
+      },
+      "first_offer": {
+        "offer_id": "offer:external_seed:a4ebd65a78faf19fa0f5e14f57f64bc7",
+        "sku_key": "prod::external_seed::external_seed::ext_706d38c05ce9a08ebcf9ef9d::sku_27470135ac3907f04bcb",
+        "product_key": "prod::external_seed::external_seed::ext_706d38c05ce9a08ebcf9ef9d",
+        "merchant_id": "external_seed",
+        "catalog_track": "external_referral",
+        "truth_tier": "observed",
+        "readiness_tier": "referral_only",
+        "offer_mode": "redirect",
+        "channel": "external_referral",
+        "availability": "in_stock",
+        "currency": "USD",
+        "list_price": 0,
+        "merchant_effective_price": 0,
+        "estimated_best_price": 0,
+        "price_confidence": null,
+        "source_system": "external_product_seeds_mirror_v1",
+        "source_ref": "eps_c0c83879fccf5907f672fdef",
+        "source_domain": "vanicream.com",
+        "offer_payload": {
+          "source": "external_product_seeds_mirror_v1",
+          "external_seed_id": "eps_c0c83879fccf5907f672fdef",
+          "external_product_id": "ext_706d38c05ce9a08ebcf9ef9d",
+          "domain": "vanicream.com",
+          "market": "US",
+          "product_title": "Vanicream™\n\t\t\t\t\t\tDaily Facial Moisturizer",
+          "variant_title": "Vanicream™\n\t\t\t\t\t\tDaily Facial Moisturizer",
+          "variant_sku": "AUTO-db78ca8c",
+          "raw_variant_id": "db78ca8c6bc7",
+          "url": "https://www.vanicream.com/product/vanicream-daily-facial-moisturizer",
+          "offer_url": "https://www.vanicream.com/product/vanicream-daily-facial-moisturizer",
+          "canonical_url": "https://www.vanicream.com/product/vanicream-daily-facial-moisturizer",
+          "destination_url": "https://www.vanicream.com/product/vanicream-daily-facial-moisturizer",
+          "external_redirect_url": "https://www.vanicream.com/product/vanicream-daily-facial-moisturizer",
+          "merchant_display_name": "Vanicream",
+          "price": "0",
+          "price_amount": 0,
+          "price_currency": "USD",
+          "availability": "in_stock",
+          "commerce_facts_v1": null
+        }
+      },
+      "serving_readiness": {
+        "servingEligible": false,
+        "contentQualityScore": 63,
+        "blockerCode": "missing_price",
+        "blockerDetail": "missing_price",
+        "identityResolved": true,
+        "identityLiveReadResolved": false,
+        "identityBootstrapEligible": true,
+        "terminalHold": false,
+        "terminalHoldReason": "",
+        "hasImage": true,
+        "hasPrice": false,
+        "descriptionLength": 101
+      }
+    },
+    {
+      "external_product_id": "ext_a49bab302414cd4d4c5789d2",
+      "product_key": "prod::external_seed::external_seed::ext_a49bab302414cd4d4c5789d2",
+      "product_group_id": "sig_19ca79cfe8a16bfaae6a07cc",
+      "title": "Neutrogena® Hydro Boost Hyaluronic Acid Water Gel with Signature Fragrance 1.7 Oz",
+      "brand": "Neutrogena",
+      "product_type": "Moisturizer",
+      "category": "Moisturizer",
+      "category_path": "beauty/skincare/moisturizer",
+      "canonical_url": "https://www.neutrogena.com/products/skincare/neutrogena-hydro-boost-water-gel-with-hyaluronic-acid/6811047",
+      "pivota_signature_id": "sig_ad05b810a9aa17aae432b49f6dd2e6bf",
+      "sku_rows": 1,
+      "first_sku": {
+        "sku_key": "prod::external_seed::external_seed::ext_a49bab302414cd4d4c5789d2::sku_d240621c3c2f10656e8e",
+        "product_key": "prod::external_seed::external_seed::ext_a49bab302414cd4d4c5789d2",
+        "merchant_id": "external_seed",
+        "platform": "external_seed",
+        "source_product_id": "ext_a49bab302414cd4d4c5789d2",
+        "source_variant_id": "ext_a49bab302414cd4d4c5789d2:d9ace7b79a31",
+        "source_domain": "neutrogena.com",
+        "sku": "AUTO-d9ace7b7",
+        "barcode": null,
+        "title": "1.7oz",
+        "currency": "USD",
+        "image_url": "https://images.ctfassets.net/bcjr30vxh6td/7L1dBnEwzelXZCrKc8P7FV/ff498b7ad151961bab4abc54130535ae/6811047-202307-carousel-1-2",
+        "visible_attributes": {
+          "Size": "1.7oz"
+        },
+        "visible_option_labels": {
+          "Size": "1.7oz"
+        },
+        "ingredient_ids": [],
+        "sku_payload": {
+          "source": "external_product_seeds_mirror_v1",
+          "external_product_id": "ext_a49bab302414cd4d4c5789d2",
+          "raw_variant_id": "d9ace7b79a31",
+          "source_variant_id": "ext_a49bab302414cd4d4c5789d2:d9ace7b79a31",
+          "variant_sku": "AUTO-d9ace7b7",
+          "barcode": null,
+          "strong_identifier_kind": null,
+          "source_url": "https://www.neutrogena.com/products/skincare/neutrogena-hydro-boost-water-gel-with-hyaluronic-acid/6811047",
+          "external_redirect_url": "https://www.neutrogena.com/products/skincare/neutrogena-hydro-boost-water-gel-with-hyaluronic-acid/6811047",
+          "price": "",
+          "price_amount": null,
+          "currency": "USD",
+          "availability": "in_stock",
+          "image_url": "https://images.ctfassets.net/bcjr30vxh6td/7L1dBnEwzelXZCrKc8P7FV/ff498b7ad151961bab4abc54130535ae/6811047-202307-carousel-1-2",
+          "swatch_image_url": null,
+          "label_image_url": null,
+          "options": {
+            "Size": "1.7oz"
+          },
+          "raw_variant": {
+            "sku": "AUTO-d9ace7b7",
+            "url": "https://www.neutrogena.com/products/skincare/neutrogena-hydro-boost-water-gel-with-hyaluronic-acid/6811047?utm_source=pivota&utm_medium=affiliate",
+            "price": "BEST SELLERNeutrogena® Hydro Boost Hydrating Gel Cleanser With Hyaluronic Acid, Fragrance Free",
+            "stock": "In Stock",
+            "title": "1.7oz",
+            "options": [
+              {
+                "name": "Size",
+                "value": "1.7oz"
+              }
+            ],
+            "currency": "USD",
+            "deep_link": "https://www.neutrogena.com/products/skincare/neutrogena-hydro-boost-water-gel-with-hyaluronic-acid/6811047?utm_source=pivota&utm_medium=affiliate",
+            "image_url": "https://images.ctfassets.net/bcjr30vxh6td/7L1dBnEwzelXZCrKc8P7FV/ff498b7ad151961bab4abc54130535ae/6811047-202307-carousel-1-2",
+            "image_urls": [
+              "https://images.ctfassets.net/bcjr30vxh6td/7L1dBnEwzelXZCrKc8P7FV/ff498b7ad151961bab4abc54130535ae/6811047-202307-carousel-1-2",
+              "https://images.ctfassets.net/bcjr30vxh6td/pECXQXm3RVgwWT3zj05TT/950ae587e02b7a463decfeffb0ddefa7/Skin_360.webp?fm=webp&w=384",
+              "https://images.ctfassets.net/bcjr30vxh6td/3TfmeqVtWAAtF8LobCI3ss/d8071f4fa4a443a928cc00b98c84de95/NTG_USA_US_70501110478_681104748_HB_Hyaluronic_Acid_Water_Gel_Signature_1p7oz_00000.webp?fm=webp&w=384",
+              "https://images.ctfassets.net/bcjr30vxh6td/38M2i3fffoHXtO2TtW6BN0/d322efc6849947e6a1d194140694473a/NA_US_NTG_Tate_HydroBoost_WaterGel_1.7floz_KillerClaimAndSkin_ATF2_Amazon_3000x3000_v2.webp?fm=webp&w=384",
+              "https://images.ctfassets.net/bcjr30vxh6td/1yMI8CUsLgGlAJ4J6h5yeQ/c8f6a6aea4704eaf4acd347edad2dc69/NA_US_NTG_HydroBoost_WaterGel_1.7floz_KeyBenefit_ATF3_Amazon_3000x3000.webp?fm=webp&w=384",
+              "https://images.ctfassets.net/bcjr30vxh6td/3QZLk9rzhRVLgJNw7zx0SZ/44991ecafd7c5b46f3bb16df4cae552b/NA_US_NTG_HydroBoost_WaterGel_1.7floz_IngredientsAndScience_ATF4_Amazon_3000x3000.webp?fm=webp&w=384",
+              "https://images.ctfassets.net/bcjr30vxh6td/4M3URIzrGwxHTPKEQYHNTH/96ed1439b62e77bc7ee3d06ad0fd9ef5/NA_US_NTG_HydroBoost_WaterGel_1.7floz_HUT_ATF5_Amazon_3000x3000.webp?fm=webp&w=384",
+              "https://images.ctfassets.net/bcjr30vxh6td/3GOFEzxVfeZvDfFRwHXWos/843970723cfca716b53efa32311fbca1/AboveTheFold_Regimen1_HB_WaterGel_HydratingGelCleanser.webp?fm=webp&w=384",
+              "https://images.ctfassets.net/bcjr30vxh6td/1GMBupKZKwhxKUorgTMQip/7ff710019a4501e3ff74b22183453e8c/NA_US_NTG_HydroBoost_WaterGel_1.7floz_SafetyFormula_ATF6_Amazon_3000x3000.webp?fm=webp&w=384",
+              "https://images.ctfassets.net/bcjr30vxh6td/50PiDQ6osxc8EXG9FIjJJK/e5604af292a1688a25f3824964da4041/NTG_USA_US_70501110478_681104748_HB_Hyaluronic_Acid_Water_Gel_Signature_1p7oz_00180.webp?fm=webp&w=384",
+              "https://images.ctfassets.net/bcjr30vxh6td/YHWZngqxkINtnTRXQ1QZ8/e8a40d58e56e750923a99f3266e4b36d/6811047-mod3-banner.webp?fm=webp&w=640",
+              "https://images.ctfassets.net/bcjr30vxh6td/6Nv8y8spD1uxjEWBNWJ7Ts/b97aa78db52d6a96104123782e0a0479/NTG_GB_070501064221_680642201_373418_HB_Hydr_Gel_Cleans_FF_7p8oz_00000.webp?fm=webp&w=256",
+              "https://images.ctfassets.net/bcjr30vxh6td/63od5A22ul9NBSP3oEFoPG/3d9a16594e7ea15e5fa18c49ed1b25c3/hb-mod6-img1-20250204.webp?fm=webp&w=384",
+              "https://images.ctfassets.net/bcjr30vxh6td/4p36VlHlj66SYjOzLZdgz6/ec3e9e35bf05faeffa7aed48b1a42090/hb-mod6-img2-20250204.webp?fm=webp&w=384",
+              "https://images.ctfassets.net/bcjr30vxh6td/3YdkuyYnNX476bT5j8fDCg/7352b0024d635c43df409464e84c331f/hb-mod6-img3-20250204.webp?fm=webp&w=384"
+            ],
+            "variant_id": "d9ace7b79a31",
+            "description": "Hydrate dry, oily skin with our Hydro Boost Water Gel Moisturizer and enjoy moisturized, supple look & feel. Clinically proven to hydrate for 24 hours.\n\nHow to Use: Apply evenly to face and neck daily after cleansing. Questions? 800-582-4048;Outside US, dial collect 215-273-8755. www.neutrogena.com\n\nIngredients and Safety: Water, Dimethicone, Glycerin, Dimethicone/Vinyl Dimethicone Crosspolymer, Phenoxyethanol, Polyacrylamide, Cetearyl Olivate, Sorbitan Olivate, Dimethiconol, C13-14 Isoparaffin,\nDimethicone Crosspolymer, Chlorphenesin, Carbomer, Laureth-7, Sodium Hyaluronate, Ethylhexylglycerin, Fragrance, C12-14 Pareth-12, Sodium Hydroxide, Blue 1",
+            "option_name": "Size",
+            "product_url": "https://www.neutrogena.com/products/skincare/neutrogena-hydro-boost-water-gel-with-hyaluronic-acid/6811047",
+            "option_value": "1.7oz"
+          }
+        },
+        "readiness_tier": "referral_only"
+      },
+      "first_offer": {
+        "offer_id": "offer:external_seed:fb6e0089bfd1d9dc05584263b1d84860",
+        "sku_key": "prod::external_seed::external_seed::ext_a49bab302414cd4d4c5789d2::sku_d240621c3c2f10656e8e",
+        "product_key": "prod::external_seed::external_seed::ext_a49bab302414cd4d4c5789d2",
+        "merchant_id": "external_seed",
+        "catalog_track": "external_referral",
+        "truth_tier": "observed",
+        "readiness_tier": "referral_only",
+        "offer_mode": "redirect",
+        "channel": "external_referral",
+        "availability": "in_stock",
+        "currency": "USD",
+        "list_price": null,
+        "merchant_effective_price": null,
+        "estimated_best_price": null,
+        "price_confidence": null,
+        "source_system": "external_product_seeds_mirror_v1",
+        "source_ref": "eps_bd3a15a6de094306d14ed745",
+        "source_domain": "neutrogena.com",
+        "offer_payload": {
+          "source": "external_product_seeds_mirror_v1",
+          "external_seed_id": "eps_bd3a15a6de094306d14ed745",
+          "external_product_id": "ext_a49bab302414cd4d4c5789d2",
+          "domain": "neutrogena.com",
+          "market": "US",
+          "product_title": "Neutrogena® Hydro Boost Hyaluronic Acid Water Gel with Signature Fragrance 1.7 Oz",
+          "variant_title": "1.7oz",
+          "variant_sku": "AUTO-d9ace7b7",
+          "raw_variant_id": "d9ace7b79a31",
+          "url": "https://www.neutrogena.com/products/skincare/neutrogena-hydro-boost-water-gel-with-hyaluronic-acid/6811047",
+          "offer_url": "https://www.neutrogena.com/products/skincare/neutrogena-hydro-boost-water-gel-with-hyaluronic-acid/6811047",
+          "canonical_url": "https://www.neutrogena.com/products/skincare/neutrogena-hydro-boost-water-gel-with-hyaluronic-acid/6811047",
+          "destination_url": "https://www.neutrogena.com/products/skincare/neutrogena-hydro-boost-water-gel-with-hyaluronic-acid/6811047",
+          "external_redirect_url": "https://www.neutrogena.com/products/skincare/neutrogena-hydro-boost-water-gel-with-hyaluronic-acid/6811047",
+          "merchant_display_name": "Neutrogena",
+          "price": "",
+          "price_amount": null,
+          "price_currency": "USD",
+          "availability": "in_stock",
+          "commerce_facts_v1": null
+        }
+      },
+      "serving_readiness": {
+        "servingEligible": false,
+        "contentQualityScore": 70,
+        "blockerCode": "missing_price",
+        "blockerDetail": "missing_price",
+        "identityResolved": true,
+        "identityLiveReadResolved": false,
+        "identityBootstrapEligible": true,
+        "terminalHold": false,
+        "terminalHoldReason": "",
+        "hasImage": true,
+        "hasPrice": false,
+        "descriptionLength": 656
+      }
+    },
+    {
+      "external_product_id": "ext_f2c773d38fcd36279845d133",
+      "product_key": "prod::external_seed::external_seed::ext_f2c773d38fcd36279845d133",
+      "product_group_id": "sig_6adb594b97ea92d9cfe6863f",
+      "title": "Rapid Clear Stubborn Acne Spot Gel",
+      "brand": "Neutrogena",
+      "product_type": "Beauty Product",
+      "category": "Beauty Product",
+      "category_path": "beauty",
+      "canonical_url": "https://www.neutrogena.com/products/skincare/rapid-clear-stubborn-acne-spot-gel/6802461",
+      "pivota_signature_id": "sig_6628e54c1976d2f186194c0b522bf425",
+      "sku_rows": 1,
+      "first_sku": {
+        "sku_key": "prod::external_seed::external_seed::ext_f2c773d38fcd36279845d133::sku_dc7cedf2e0f8a2f6c3b7",
+        "product_key": "prod::external_seed::external_seed::ext_f2c773d38fcd36279845d133",
+        "merchant_id": "external_seed",
+        "platform": "external_seed",
+        "source_product_id": "ext_f2c773d38fcd36279845d133",
+        "source_variant_id": "ext_f2c773d38fcd36279845d133:f3af59762496",
+        "source_domain": "neutrogena.com",
+        "sku": "AUTO-f3af5976",
+        "barcode": null,
+        "title": "Rapid Clear Stubborn Acne Spot Gel",
+        "currency": "USD",
+        "image_url": "https://images.ctfassets.net/bcjr30vxh6td/2Qj2OApymdRydOLjxJWEIr/3b024c0a41fff249c49f582b8df89edb/6802461_nocolor_1.jpg",
+        "visible_attributes": {},
+        "visible_option_labels": {},
+        "ingredient_ids": [],
+        "sku_payload": {
+          "source": "external_product_seeds_mirror_v1",
+          "external_product_id": "ext_f2c773d38fcd36279845d133",
+          "raw_variant_id": "f3af59762496",
+          "source_variant_id": "ext_f2c773d38fcd36279845d133:f3af59762496",
+          "variant_sku": "AUTO-f3af5976",
+          "barcode": null,
+          "strong_identifier_kind": null,
+          "source_url": "https://www.neutrogena.com/products/skincare/rapid-clear-stubborn-acne-spot-gel/6802461",
+          "external_redirect_url": "https://www.neutrogena.com/products/skincare/rapid-clear-stubborn-acne-spot-gel/6802461",
+          "price": "0",
+          "price_amount": 0,
+          "currency": "USD",
+          "availability": "in_stock",
+          "image_url": "https://images.ctfassets.net/bcjr30vxh6td/2Qj2OApymdRydOLjxJWEIr/3b024c0a41fff249c49f582b8df89edb/6802461_nocolor_1.jpg",
+          "swatch_image_url": null,
+          "label_image_url": "https://images.ctfassets.net/bcjr30vxh6td/2Qj2OApymdRydOLjxJWEIr/3b024c0a41fff249c49f582b8df89edb/6802461_nocolor_1.jpg",
+          "options": {},
+          "raw_variant": {
+            "id": "f3af59762496",
+            "sku": "AUTO-f3af5976",
+            "url": "https://www.neutrogena.com/products/skincare/rapid-clear-stubborn-acne-spot-gel/6802461",
+            "price": 0,
+            "title": "Single item",
+            "images": [
+              "https://images.ctfassets.net/bcjr30vxh6td/2Qj2OApymdRydOLjxJWEIr/3b024c0a41fff249c49f582b8df89edb/6802461_nocolor_1.jpg",
+              "https://ntg-catalog.imgix.net/products/6802461_nocolor_1.jpg?fm=jpg&auto=format&w=720&h=866&fit=crop",
+              "https://images.ctfassets.net/bcjr30vxh6td/3u8plaRtB7vDWbbyaUufJ2/75dad46fd2cd8e84c43cf1038f6d2828/6802461_nocolor_1.avif?fm=webp&w=384"
+            ],
+            "sku_id": "AUTO-f3af5976",
+            "visual": {
+              "source": "variant_image",
+              "image_url": "https://images.ctfassets.net/bcjr30vxh6td/2Qj2OApymdRydOLjxJWEIr/3b024c0a41fff249c49f582b8df89edb/6802461_nocolor_1.jpg"
+            },
+            "options": [
+              {
+                "name": "Format",
+                "value": "Single item",
+                "axis_kind": "format"
+              }
+            ],
+            "pricing": {
+              "current": {
+                "amount": 0,
+                "currency": "USD"
+              }
+            },
+            "currency": "USD",
+            "in_stock": true,
+            "available": true,
+            "axis_kind": "format",
+            "image_url": "https://images.ctfassets.net/bcjr30vxh6td/2Qj2OApymdRydOLjxJWEIr/3b024c0a41fff249c49f582b8df89edb/6802461_nocolor_1.jpg",
+            "image_urls": [
+              "https://images.ctfassets.net/bcjr30vxh6td/2Qj2OApymdRydOLjxJWEIr/3b024c0a41fff249c49f582b8df89edb/6802461_nocolor_1.jpg",
+              "https://ntg-catalog.imgix.net/products/6802461_nocolor_1.jpg?fm=jpg&auto=format&w=720&h=866&fit=crop",
+              "https://images.ctfassets.net/bcjr30vxh6td/3u8plaRtB7vDWbbyaUufJ2/75dad46fd2cd8e84c43cf1038f6d2828/6802461_nocolor_1.avif?fm=webp&w=384"
+            ],
+            "variant_id": "f3af59762496",
+            "description": "Say goodbye to stubborn acne spots with NEUTROGENA® rapid clear spot gel's 10% benzoyl peroxide solution.",
+            "option_name": "Format",
+            "availability": "in_stock",
+            "option_value": "Single item",
+            "display_label": "Format: Single item",
+            "label_image_url": "https://images.ctfassets.net/bcjr30vxh6td/2Qj2OApymdRydOLjxJWEIr/3b024c0a41fff249c49f582b8df89edb/6802461_nocolor_1.jpg",
+            "inventory_quantity": 999,
+            "source_quality_status": "captured"
+          }
+        },
+        "readiness_tier": "referral_only"
+      },
+      "first_offer": {
+        "offer_id": "offer:external_seed:fb25ba5049d48025a1f833b5cd354e14",
+        "sku_key": "prod::external_seed::external_seed::ext_f2c773d38fcd36279845d133::sku_dc7cedf2e0f8a2f6c3b7",
+        "product_key": "prod::external_seed::external_seed::ext_f2c773d38fcd36279845d133",
+        "merchant_id": "external_seed",
+        "catalog_track": "external_referral",
+        "truth_tier": "observed",
+        "readiness_tier": "referral_only",
+        "offer_mode": "redirect",
+        "channel": "external_referral",
+        "availability": "in_stock",
+        "currency": "USD",
+        "list_price": 0,
+        "merchant_effective_price": 0,
+        "estimated_best_price": 0,
+        "price_confidence": null,
+        "source_system": "external_product_seeds_mirror_v1",
+        "source_ref": "eps_e8a4df2a1ee2cace58c6b5e3",
+        "source_domain": "neutrogena.com",
+        "offer_payload": {
+          "source": "external_product_seeds_mirror_v1",
+          "external_seed_id": "eps_e8a4df2a1ee2cace58c6b5e3",
+          "external_product_id": "ext_f2c773d38fcd36279845d133",
+          "domain": "neutrogena.com",
+          "market": "US",
+          "product_title": "Rapid Clear Stubborn Acne Spot Gel",
+          "variant_title": "Rapid Clear Stubborn Acne Spot Gel",
+          "variant_sku": "AUTO-f3af5976",
+          "raw_variant_id": "f3af59762496",
+          "url": "https://www.neutrogena.com/products/skincare/rapid-clear-stubborn-acne-spot-gel/6802461",
+          "offer_url": "https://www.neutrogena.com/products/skincare/rapid-clear-stubborn-acne-spot-gel/6802461",
+          "canonical_url": "https://www.neutrogena.com/products/skincare/rapid-clear-stubborn-acne-spot-gel/6802461",
+          "destination_url": "https://www.neutrogena.com/products/skincare/rapid-clear-stubborn-acne-spot-gel/6802461",
+          "external_redirect_url": "https://www.neutrogena.com/products/skincare/rapid-clear-stubborn-acne-spot-gel/6802461",
+          "merchant_display_name": "Neutrogena",
+          "price": "0",
+          "price_amount": 0,
+          "price_currency": "USD",
+          "availability": "in_stock",
+          "commerce_facts_v1": null
+        }
+      },
+      "serving_readiness": {
+        "servingEligible": false,
+        "contentQualityScore": 63,
+        "blockerCode": "missing_price",
+        "blockerDetail": "missing_price",
+        "identityResolved": true,
+        "identityLiveReadResolved": false,
+        "identityBootstrapEligible": true,
+        "terminalHold": false,
+        "terminalHoldReason": "",
+        "hasImage": true,
+        "hasPrice": false,
+        "descriptionLength": 105
+      }
+    }
+  ]
+}

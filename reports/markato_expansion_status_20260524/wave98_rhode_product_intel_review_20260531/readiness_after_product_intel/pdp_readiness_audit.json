@@ -1,0 +1,754 @@
+{
+  "generated_at": "2026-05-31T15:19:16.792Z",
+  "options": {
+    "market": "US",
+    "includeAttached": true,
+    "domain": null,
+    "externalProductIds": [
+      "ext_4357d33527506b2749d382ed",
+      "ext_03246d53c45c6dcddce7894e",
+      "ext_843a33f7d9ccb23c6ae227ee",
+      "ext_2591b74dda0b54e9c70dd47c",
+      "ext_2aee0dd4eafdbcae677997f0",
+      "ext_809e70b6907b6e0fb65cdad5"
+    ],
+    "limit": 20,
+    "sampleLimit": 20,
+    "checkpointDir": "/Users/pengchydan/dev/_worktrees/pivota-agent-markato-wave25-786-20260527/reports/markato_expansion_status_20260524/wave98_rhode_product_intel_review_20260531/readiness_after_product_intel/pdp_readiness_checkpoint",
+    "checkpointMode": "domain",
+    "resume": false,
+    "force": false,
+    "continueOnError": true,
+    "pageSize": 500,
+    "format": "json"
+  },
+  "warnings": [],
+  "summary": {
+    "scanned": 6,
+    "by_market": {
+      "US": 6
+    },
+    "by_domain": [
+      {
+        "key": "rhodeskin.com",
+        "count": 6
+      }
+    ],
+    "by_product_family": [
+      {
+        "key": "single_formula",
+        "count": 6
+      }
+    ],
+    "coverage": {
+      "missing_inci": 0,
+      "missing_active_raw": 0,
+      "missing_details": 3,
+      "missing_how_to": 0,
+      "missing_faq": 6
+    },
+    "pivota_insights": {
+      "direct": {
+        "displayable": 6,
+        "high_quality_ready": 5,
+        "missing_kb": 0,
+        "not_displayable": 0
+      },
+      "effective": {
+        "displayable": 6,
+        "high_quality_ready": 5,
+        "missing_kb": 0,
+        "not_displayable": 0,
+        "borrowed_from_sibling": 0
+      },
+      "effective_issues": [
+        {
+          "key": "missing_card_highlight",
+          "count": 1
+        },
+        {
+          "key": "quality_eligible",
+          "count": 1
+        }
+      ],
+      "effective_issue_domains": [
+        {
+          "key": "rhodeskin.com::missing_card_highlight",
+          "count": 1
+        },
+        {
+          "key": "rhodeskin.com::quality_eligible",
+          "count": 1
+        }
+      ],
+      "quality_state": [
+        {
+          "key": "reviewed",
+          "count": 5
+        },
+        {
+          "key": "eligible",
+          "count": 1
+        }
+      ],
+      "evidence_profile": [
+        {
+          "key": "seller_plus_formula",
+          "count": 5
+        },
+        {
+          "key": "community_supported",
+          "count": 1
+        }
+      ],
+      "samples": {
+        "missing_card_highlight": [
+          {
+            "external_product_id": "ext_4357d33527506b2749d382ed",
+            "domain": "rhodeskin.com",
+            "title": "barrier butter",
+            "used_product_id": "ext_4357d33527506b2749d382ed",
+            "quality_state": "eligible",
+            "evidence_profile": "community_supported"
+          }
+        ]
+      }
+    },
+    "active_ingredients": {
+      "regulatory_expected": 0,
+      "hero_expected": 6,
+      "any_active_items": 6,
+      "status": [
+        {
+          "key": "ready_hero",
+          "count": 6
+        }
+      ],
+      "issues": [],
+      "issue_domains": [],
+      "source_origin": [
+        {
+          "key": "pdp_section",
+          "count": 6
+        }
+      ],
+      "samples": {}
+    },
+    "variants": {
+      "status": [
+        {
+          "key": "ready",
+          "count": 6
+        }
+      ],
+      "issues": [],
+      "issue_domains": [],
+      "samples": {}
+    }
+  },
+  "rows": [
+    {
+      "seed_id": "eps_d769733a1156f2a447a6338b",
+      "external_product_id": "ext_03246d53c45c6dcddce7894e",
+      "market": "US",
+      "domain": "rhodeskin.com",
+      "title": "barrier restore cream",
+      "canonical_url": "https://www.rhodeskin.com/products/barrier-restore-cream",
+      "product_family": "single_formula",
+      "product_line_id": "pl_c38383ab206b88c6a3fbd4b5",
+      "identity_variant_axes": {
+        "size": "big 1 7 oz",
+        "volume": "7oz",
+        "multi_variant": true
+      },
+      "pivota_insights": {
+        "direct": {
+          "product_id": "ext_03246d53c45c6dcddce7894e",
+          "kb_key": "product:ext_03246d53c45c6dcddce7894e",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "seller_plus_formula",
+          "has_card_highlight": true
+        },
+        "effective": {
+          "product_id": "ext_03246d53c45c6dcddce7894e",
+          "kb_key": "product:ext_03246d53c45c6dcddce7894e",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "seller_plus_formula",
+          "has_card_highlight": true
+        },
+        "product_line_id": "pl_c38383ab206b88c6a3fbd4b5",
+        "borrowed_from_sibling": false
+      },
+      "active_ingredients": {
+        "status": "ready_hero",
+        "issues": [],
+        "regulatory_expected": false,
+        "hero_expected": true,
+        "active_items": [
+          "Niacinamide",
+          "Squalane",
+          "Peptides"
+        ],
+        "source_origin": "pdp_section",
+        "source_quality_status": "captured",
+        "coverage": {
+          "details_sections_count": 10,
+          "faq_count": 0,
+          "how_to_chars": 10,
+          "inci_chars": 943,
+          "active_ingredients_chars": 628,
+          "inci_applicability_status": "",
+          "ingredient_review_status": "",
+          "ingredient_remediation_action": "",
+          "bundle_component_refs_count": 0,
+          "effective_inci_chars": 943,
+          "inci_borrowed_from_product_id": ""
+        },
+        "invalid_fragments": [],
+        "suppressed_reason": null
+      },
+      "variants": {
+        "status": "ready",
+        "issues": [],
+        "visible_variant_rows": 2,
+        "examples": {
+          "identity_option_visible": [],
+          "wrong_axis_for_category": [],
+          "makeup_shade_missing_visual": [],
+          "size_value_generic_axis": [],
+          "default_option_size_evidence_missing_axis": [],
+          "identity_default_title_axis": []
+        }
+      },
+      "coverage": {
+        "details_sections_count": 10,
+        "faq_count": 0,
+        "how_to_chars": 10,
+        "inci_chars": 943,
+        "active_ingredients_chars": 628,
+        "inci_applicability_status": "",
+        "ingredient_review_status": "",
+        "ingredient_remediation_action": "",
+        "bundle_component_refs_count": 0,
+        "effective_inci_chars": 943,
+        "inci_borrowed_from_product_id": ""
+      }
+    },
+    {
+      "seed_id": "eps_9f3857c605719f0a221b4946",
+      "external_product_id": "ext_4357d33527506b2749d382ed",
+      "market": "US",
+      "domain": "rhodeskin.com",
+      "title": "barrier butter",
+      "canonical_url": "https://www.rhodeskin.com/products/barrier-butter",
+      "product_family": "single_formula",
+      "product_line_id": "pl_ab7c5e48e5ed01765b20bd10",
+      "identity_variant_axes": {
+        "size": "big 3 4 oz",
+        "volume": "4oz",
+        "multi_variant": true
+      },
+      "pivota_insights": {
+        "direct": {
+          "product_id": "ext_4357d33527506b2749d382ed",
+          "kb_key": "product:ext_4357d33527506b2749d382ed",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": false,
+          "human_reviewed": true,
+          "issues": [
+            "missing_card_highlight",
+            "quality_eligible"
+          ],
+          "blocking_issues": [
+            "missing_card_highlight"
+          ],
+          "quality_state": "eligible",
+          "evidence_profile": "community_supported",
+          "has_card_highlight": false
+        },
+        "effective": {
+          "product_id": "ext_4357d33527506b2749d382ed",
+          "kb_key": "product:ext_4357d33527506b2749d382ed",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": false,
+          "human_reviewed": true,
+          "issues": [
+            "missing_card_highlight",
+            "quality_eligible"
+          ],
+          "blocking_issues": [
+            "missing_card_highlight"
+          ],
+          "quality_state": "eligible",
+          "evidence_profile": "community_supported",
+          "has_card_highlight": false
+        },
+        "product_line_id": "pl_ab7c5e48e5ed01765b20bd10",
+        "borrowed_from_sibling": false
+      },
+      "active_ingredients": {
+        "status": "ready_hero",
+        "issues": [],
+        "regulatory_expected": false,
+        "hero_expected": true,
+        "active_items": [
+          "Ceramide NP",
+          "Panthenol (B5)",
+          "Hyaluronic acid",
+          "Peptides"
+        ],
+        "source_origin": "pdp_section",
+        "source_quality_status": "captured",
+        "coverage": {
+          "details_sections_count": 10,
+          "faq_count": 0,
+          "how_to_chars": 10,
+          "inci_chars": 916,
+          "active_ingredients_chars": 517,
+          "inci_applicability_status": "",
+          "ingredient_review_status": "",
+          "ingredient_remediation_action": "",
+          "bundle_component_refs_count": 0,
+          "effective_inci_chars": 916,
+          "inci_borrowed_from_product_id": ""
+        },
+        "invalid_fragments": [],
+        "suppressed_reason": null
+      },
+      "variants": {
+        "status": "ready",
+        "issues": [],
+        "visible_variant_rows": 2,
+        "examples": {
+          "identity_option_visible": [],
+          "wrong_axis_for_category": [],
+          "makeup_shade_missing_visual": [],
+          "size_value_generic_axis": [],
+          "default_option_size_evidence_missing_axis": [],
+          "identity_default_title_axis": []
+        }
+      },
+      "coverage": {
+        "details_sections_count": 10,
+        "faq_count": 0,
+        "how_to_chars": 10,
+        "inci_chars": 916,
+        "active_ingredients_chars": 517,
+        "inci_applicability_status": "",
+        "ingredient_review_status": "",
+        "ingredient_remediation_action": "",
+        "bundle_component_refs_count": 0,
+        "effective_inci_chars": 916,
+        "inci_borrowed_from_product_id": ""
+      }
+    },
+    {
+      "seed_id": "eps_f05f65a4bf9f3dc0cc772de1",
+      "external_product_id": "ext_2591b74dda0b54e9c70dd47c",
+      "market": "US",
+      "domain": "rhodeskin.com",
+      "title": "peptide lip tint jelly bean",
+      "canonical_url": "https://www.rhodeskin.com/products/peptide-lip-tint-jelly-bean",
+      "product_family": "single_formula",
+      "product_line_id": "pl_b3d05d075107e3723428e565",
+      "identity_variant_axes": {
+        "multi_variant": false
+      },
+      "pivota_insights": {
+        "direct": {
+          "product_id": "ext_2591b74dda0b54e9c70dd47c",
+          "kb_key": "product:ext_2591b74dda0b54e9c70dd47c",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "seller_plus_formula",
+          "has_card_highlight": true
+        },
+        "effective": {
+          "product_id": "ext_2591b74dda0b54e9c70dd47c",
+          "kb_key": "product:ext_2591b74dda0b54e9c70dd47c",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "seller_plus_formula",
+          "has_card_highlight": true
+        },
+        "product_line_id": "pl_b3d05d075107e3723428e565",
+        "borrowed_from_sibling": false
+      },
+      "active_ingredients": {
+        "status": "ready_hero",
+        "issues": [],
+        "regulatory_expected": false,
+        "hero_expected": true,
+        "active_items": [
+          "Peptides"
+        ],
+        "source_origin": "pdp_section",
+        "source_quality_status": "captured",
+        "coverage": {
+          "details_sections_count": 0,
+          "faq_count": 0,
+          "how_to_chars": 357,
+          "inci_chars": 805,
+          "active_ingredients_chars": 21,
+          "inci_applicability_status": "",
+          "ingredient_review_status": "",
+          "ingredient_remediation_action": "",
+          "bundle_component_refs_count": 0,
+          "effective_inci_chars": 805,
+          "inci_borrowed_from_product_id": ""
+        },
+        "invalid_fragments": [],
+        "suppressed_reason": null
+      },
+      "variants": {
+        "status": "ready",
+        "issues": [],
+        "visible_variant_rows": 1,
+        "examples": {
+          "identity_option_visible": [],
+          "wrong_axis_for_category": [],
+          "makeup_shade_missing_visual": [],
+          "size_value_generic_axis": [],
+          "default_option_size_evidence_missing_axis": [],
+          "identity_default_title_axis": []
+        }
+      },
+      "coverage": {
+        "details_sections_count": 0,
+        "faq_count": 0,
+        "how_to_chars": 357,
+        "inci_chars": 805,
+        "active_ingredients_chars": 21,
+        "inci_applicability_status": "",
+        "ingredient_review_status": "",
+        "ingredient_remediation_action": "",
+        "bundle_component_refs_count": 0,
+        "effective_inci_chars": 805,
+        "inci_borrowed_from_product_id": ""
+      }
+    },
+    {
+      "seed_id": "eps_69abb78e8cd2700239a21d17",
+      "external_product_id": "ext_843a33f7d9ccb23c6ae227ee",
+      "market": "US",
+      "domain": "rhodeskin.com",
+      "title": "glazing milk",
+      "canonical_url": "https://www.rhodeskin.com/products/glazing-milk",
+      "product_family": "single_formula",
+      "product_line_id": "pl_eab89323c0b650c7aadffc77",
+      "identity_variant_axes": {
+        "size": "big 4 2 oz",
+        "volume": "2oz",
+        "multi_variant": true
+      },
+      "pivota_insights": {
+        "direct": {
+          "product_id": "ext_843a33f7d9ccb23c6ae227ee",
+          "kb_key": "product:ext_843a33f7d9ccb23c6ae227ee",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "seller_plus_formula",
+          "has_card_highlight": true
+        },
+        "effective": {
+          "product_id": "ext_843a33f7d9ccb23c6ae227ee",
+          "kb_key": "product:ext_843a33f7d9ccb23c6ae227ee",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "seller_plus_formula",
+          "has_card_highlight": true
+        },
+        "product_line_id": "pl_eab89323c0b650c7aadffc77",
+        "borrowed_from_sibling": false
+      },
+      "active_ingredients": {
+        "status": "ready_hero",
+        "issues": [],
+        "regulatory_expected": false,
+        "hero_expected": true,
+        "active_items": [
+          "Ceramide NP"
+        ],
+        "source_origin": "pdp_section",
+        "source_quality_status": "captured",
+        "coverage": {
+          "details_sections_count": 10,
+          "faq_count": 0,
+          "how_to_chars": 10,
+          "inci_chars": 1004,
+          "active_ingredients_chars": 498,
+          "inci_applicability_status": "",
+          "ingredient_review_status": "",
+          "ingredient_remediation_action": "",
+          "bundle_component_refs_count": 0,
+          "effective_inci_chars": 1004,
+          "inci_borrowed_from_product_id": ""
+        },
+        "invalid_fragments": [],
+        "suppressed_reason": null
+      },
+      "variants": {
+        "status": "ready",
+        "issues": [],
+        "visible_variant_rows": 2,
+        "examples": {
+          "identity_option_visible": [],
+          "wrong_axis_for_category": [],
+          "makeup_shade_missing_visual": [],
+          "size_value_generic_axis": [],
+          "default_option_size_evidence_missing_axis": [],
+          "identity_default_title_axis": []
+        }
+      },
+      "coverage": {
+        "details_sections_count": 10,
+        "faq_count": 0,
+        "how_to_chars": 10,
+        "inci_chars": 1004,
+        "active_ingredients_chars": 498,
+        "inci_applicability_status": "",
+        "ingredient_review_status": "",
+        "ingredient_remediation_action": "",
+        "bundle_component_refs_count": 0,
+        "effective_inci_chars": 1004,
+        "inci_borrowed_from_product_id": ""
+      }
+    },
+    {
+      "seed_id": "eps_9e4367f1f82f494a799f4981",
+      "external_product_id": "ext_2aee0dd4eafdbcae677997f0",
+      "market": "US",
+      "domain": "rhodeskin.com",
+      "title": "peptide lip tint pretzel",
+      "canonical_url": "https://www.rhodeskin.com/products/peptide-lip-tint-pretzel",
+      "product_family": "single_formula",
+      "product_line_id": "pl_4a4555ed6afa477d22504d3b",
+      "identity_variant_axes": {
+        "multi_variant": false
+      },
+      "pivota_insights": {
+        "direct": {
+          "product_id": "ext_2aee0dd4eafdbcae677997f0",
+          "kb_key": "product:ext_2aee0dd4eafdbcae677997f0",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "seller_plus_formula",
+          "has_card_highlight": true
+        },
+        "effective": {
+          "product_id": "ext_2aee0dd4eafdbcae677997f0",
+          "kb_key": "product:ext_2aee0dd4eafdbcae677997f0",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "seller_plus_formula",
+          "has_card_highlight": true
+        },
+        "product_line_id": "pl_4a4555ed6afa477d22504d3b",
+        "borrowed_from_sibling": false
+      },
+      "active_ingredients": {
+        "status": "ready_hero",
+        "issues": [],
+        "regulatory_expected": false,
+        "hero_expected": true,
+        "active_items": [
+          "Peptides"
+        ],
+        "source_origin": "pdp_section",
+        "source_quality_status": "captured",
+        "coverage": {
+          "details_sections_count": 0,
+          "faq_count": 0,
+          "how_to_chars": 141,
+          "inci_chars": 818,
+          "active_ingredients_chars": 21,
+          "inci_applicability_status": "",
+          "ingredient_review_status": "",
+          "ingredient_remediation_action": "",
+          "bundle_component_refs_count": 0,
+          "effective_inci_chars": 818,
+          "inci_borrowed_from_product_id": ""
+        },
+        "invalid_fragments": [],
+        "suppressed_reason": null
+      },
+      "variants": {
+        "status": "ready",
+        "issues": [],
+        "visible_variant_rows": 1,
+        "examples": {
+          "identity_option_visible": [],
+          "wrong_axis_for_category": [],
+          "makeup_shade_missing_visual": [],
+          "size_value_generic_axis": [],
+          "default_option_size_evidence_missing_axis": [],
+          "identity_default_title_axis": []
+        }
+      },
+      "coverage": {
+        "details_sections_count": 0,
+        "faq_count": 0,
+        "how_to_chars": 141,
+        "inci_chars": 818,
+        "active_ingredients_chars": 21,
+        "inci_applicability_status": "",
+        "ingredient_review_status": "",
+        "ingredient_remediation_action": "",
+        "bundle_component_refs_count": 0,
+        "effective_inci_chars": 818,
+        "inci_borrowed_from_product_id": ""
+      }
+    },
+    {
+      "seed_id": "eps_20185935ca26490da844acc5",
+      "external_product_id": "ext_809e70b6907b6e0fb65cdad5",
+      "market": "US",
+      "domain": "rhodeskin.com",
+      "title": "peptide lip tint salty tan",
+      "canonical_url": "https://www.rhodeskin.com/products/peptide-lip-tint-salty-tan",
+      "product_family": "single_formula",
+      "product_line_id": "pl_b8c5d1496a1e315cf30a39f3",
+      "identity_variant_axes": {
+        "multi_variant": false
+      },
+      "pivota_insights": {
+        "direct": {
+          "product_id": "ext_809e70b6907b6e0fb65cdad5",
+          "kb_key": "product:ext_809e70b6907b6e0fb65cdad5",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "seller_plus_formula",
+          "has_card_highlight": true
+        },
+        "effective": {
+          "product_id": "ext_809e70b6907b6e0fb65cdad5",
+          "kb_key": "product:ext_809e70b6907b6e0fb65cdad5",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "seller_plus_formula",
+          "has_card_highlight": true
+        },
+        "product_line_id": "pl_b8c5d1496a1e315cf30a39f3",
+        "borrowed_from_sibling": false
+      },
+      "active_ingredients": {
+        "status": "ready_hero",
+        "issues": [],
+        "regulatory_expected": false,
+        "hero_expected": true,
+        "active_items": [
+          "Peptides"
+        ],
+        "source_origin": "pdp_section",
+        "source_quality_status": "captured",
+        "coverage": {
+          "details_sections_count": 0,
+          "faq_count": 0,
+          "how_to_chars": 141,
+          "inci_chars": 823,
+          "active_ingredients_chars": 21,
+          "inci_applicability_status": "",
+          "ingredient_review_status": "",
+          "ingredient_remediation_action": "",
+          "bundle_component_refs_count": 0,
+          "effective_inci_chars": 823,
+          "inci_borrowed_from_product_id": ""
+        },
+        "invalid_fragments": [],
+        "suppressed_reason": null
+      },
+      "variants": {
+        "status": "ready",
+        "issues": [],
+        "visible_variant_rows": 1,
+        "examples": {
+          "identity_option_visible": [],
+          "wrong_axis_for_category": [],
+          "makeup_shade_missing_visual": [],
+          "size_value_generic_axis": [],
+          "default_option_size_evidence_missing_axis": [],
+          "identity_default_title_axis": []
+        }
+      },
+      "coverage": {
+        "details_sections_count": 0,
+        "faq_count": 0,
+        "how_to_chars": 141,
+        "inci_chars": 823,
+        "active_ingredients_chars": 21,
+        "inci_applicability_status": "",
+        "ingredient_review_status": "",
+        "ingredient_remediation_action": "",
+        "bundle_component_refs_count": 0,
+        "effective_inci_chars": 823,
+        "inci_borrowed_from_product_id": ""
+      }
+    }
+  ]
+}
