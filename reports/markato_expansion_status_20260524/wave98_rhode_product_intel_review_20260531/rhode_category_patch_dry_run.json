@@ -1,0 +1,158 @@
+{
+  "generated_at": "2026-05-31T15:17:05.350Z",
+  "dry_run": true,
+  "manifest": "reports/markato_expansion_status_20260524/wave98_rhode_product_intel_review_20260531/rhode_reviewed_category_patch_manifest.json",
+  "market": "US",
+  "allow_overwrite": false,
+  "overwrite_confirmed": false,
+  "summary": {
+    "scanned": 5,
+    "planned": 5,
+    "unchanged": 0,
+    "blocked": 0,
+    "missing": 0,
+    "updated": 0,
+    "catalog_product_updates": 0,
+    "identity_updates": 0,
+    "by_patch_key": {
+      "category": 5,
+      "product_type": 5,
+      "category_path": 5,
+      "catalog_category_path": 5
+    },
+    "blocking_reasons": {}
+  },
+  "apply_results": [],
+  "plans": [
+    {
+      "id": "eps_9f3857c605719f0a221b4946",
+      "external_product_id": "ext_4357d33527506b2749d382ed",
+      "title": "barrier butter",
+      "canonical_url": "https://www.rhodeskin.com/products/barrier-butter",
+      "status": "planned",
+      "changed": true,
+      "patch_keys": [
+        "category",
+        "product_type",
+        "category_path",
+        "catalog_category_path"
+      ],
+      "before": {
+        "category": "",
+        "category_path": "",
+        "catalog_category_path": "",
+        "product_type": ""
+      },
+      "after": {
+        "category": "Moisturizer",
+        "category_path": "beauty/skincare/moisturizer",
+        "catalog_category_path": "beauty/skincare/moisturizer",
+        "product_type": "Moisturizer"
+      }
+    },
+    {
+      "id": "eps_69abb78e8cd2700239a21d17",
+      "external_product_id": "ext_843a33f7d9ccb23c6ae227ee",
+      "title": "glazing milk",
+      "canonical_url": "https://www.rhodeskin.com/products/glazing-milk",
+      "status": "planned",
+      "changed": true,
+      "patch_keys": [
+        "category",
+        "product_type",
+        "category_path",
+        "catalog_category_path"
+      ],
+      "before": {
+        "category": "",
+        "category_path": "",
+        "catalog_category_path": "",
+        "product_type": ""
+      },
+      "after": {
+        "category": "Essence",
+        "category_path": "beauty/skincare/essence",
+        "catalog_category_path": "beauty/skincare/essence",
+        "product_type": "Essence"
+      }
+    },
+    {
+      "id": "eps_f05f65a4bf9f3dc0cc772de1",
+      "external_product_id": "ext_2591b74dda0b54e9c70dd47c",
+      "title": "peptide lip tint jelly bean",
+      "canonical_url": "https://www.rhodeskin.com/products/peptide-lip-tint-jelly-bean",
+      "status": "planned",
+      "changed": true,
+      "patch_keys": [
+        "category",
+        "product_type",
+        "category_path",
+        "catalog_category_path"
+      ],
+      "before": {
+        "category": "",
+        "category_path": "",
+        "catalog_category_path": "",
+        "product_type": ""
+      },
+      "after": {
+        "category": "Lip Product",
+        "category_path": "beauty/makeup/lip",
+        "catalog_category_path": "beauty/makeup/lip",
+        "product_type": "Lip Product"
+      }
+    },
+    {
+      "id": "eps_9e4367f1f82f494a799f4981",
+      "external_product_id": "ext_2aee0dd4eafdbcae677997f0",
+      "title": "peptide lip tint pretzel",
+      "canonical_url": "https://www.rhodeskin.com/products/peptide-lip-tint-pretzel",
+      "status": "planned",
+      "changed": true,
+      "patch_keys": [
+        "category",
+        "product_type",
+        "category_path",
+        "catalog_category_path"
+      ],
+      "before": {
+        "category": "",
+        "category_path": "",
+        "catalog_category_path": "",
+        "product_type": ""
+      },
+      "after": {
+        "category": "Lip Product",
+        "category_path": "beauty/makeup/lip",
+        "catalog_category_path": "beauty/makeup/lip",
+        "product_type": "Lip Product"
+      }
+    },
+    {
+      "id": "eps_20185935ca26490da844acc5",
+      "external_product_id": "ext_809e70b6907b6e0fb65cdad5",
+      "title": "peptide lip tint salty tan",
+      "canonical_url": "https://www.rhodeskin.com/products/peptide-lip-tint-salty-tan",
+      "status": "planned",
+      "changed": true,
+      "patch_keys": [
+        "category",
+        "product_type",
+        "category_path",
+        "catalog_category_path"
+      ],
+      "before": {
+        "category": "",
+        "category_path": "",
+        "catalog_category_path": "",
+        "product_type": ""
+      },
+      "after": {
+        "category": "Lip Product",
+        "category_path": "beauty/makeup/lip",
+        "catalog_category_path": "beauty/makeup/lip",
+        "product_type": "Lip Product"
+      }
+    }
+  ]
+}

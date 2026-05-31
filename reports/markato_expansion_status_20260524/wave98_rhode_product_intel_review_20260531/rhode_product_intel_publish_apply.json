@@ -1,0 +1,18 @@
+{
+  "status": "ok",
+  "mode": "write",
+  "report": "/Users/pengchydan/dev/_worktrees/pivota-agent-markato-wave25-786-20260527/reports/markato_expansion_status_20260524/wave98_rhode_product_intel_review_20260531/rhode_official_product_intel_report.json",
+  "rows": [
+    "live_ext_2591b74dda0b54e9c70dd47c",
+    "live_ext_843a33f7d9ccb23c6ae227ee",
+    "live_ext_2aee0dd4eafdbcae677997f0",
+    "live_ext_809e70b6907b6e0fb65cdad5"
+  ],
+  "entries": [
+    "product:ext_2591b74dda0b54e9c70dd47c",
+    "product:ext_843a33f7d9ccb23c6ae227ee",
+    "product:ext_2aee0dd4eafdbcae677997f0",
+    "product:ext_809e70b6907b6e0fb65cdad5"
+  ],
+  "skipped_rows": []
+}

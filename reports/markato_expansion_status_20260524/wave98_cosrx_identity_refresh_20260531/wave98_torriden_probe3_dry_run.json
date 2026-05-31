@@ -1,0 +1,560 @@
+{
+  "generated_at": "2026-05-31T15:12:23.589Z",
+  "mode": "dry_run",
+  "batch_size": null,
+  "bootstrap_reviewed_identity_live_read": true,
+  "requested_ids": 3,
+  "fetched_rows": 3,
+  "mirror_rows": 3,
+  "planned_sku_rows": 3,
+  "planned_offer_rows": 3,
+  "planned_index_state_rows": 3,
+  "missing_ids": [],
+  "skipped": [],
+  "applied": {
+    "mode": "dry_run",
+    "existing_before": {
+      "catalog_products": 3,
+      "catalog_skus": 0,
+      "catalog_offers": 0,
+      "product_group_members": 3
+    },
+    "stale_delete_preview": {
+      "current_sku_rows": 6,
+      "current_offer_rows": 3,
+      "planned_stale_sku_deletes": 6,
+      "planned_stale_offer_deletes": 3,
+      "sample_stale_skus": [
+        {
+          "title": "BALANCEFUL Cleansing Foam",
+          "sku_key": "prod::external_seed::external_seed::ext_0c9e0c08d0b589e678089851::canonical",
+          "product_key": "prod::external_seed::external_seed::ext_0c9e0c08d0b589e678089851",
+          "source_variant_id": "prod::external_seed::external_seed::ext_0c9e0c08d0b589e678089851",
+          "visible_attributes": {}
+        },
+        {
+          "title": "Single item",
+          "sku_key": "prod::external_seed::external_seed::ext_0c9e0c08d0b589e678089851::v::52228525359470",
+          "product_key": "prod::external_seed::external_seed::ext_0c9e0c08d0b589e678089851",
+          "source_variant_id": "52228525359470",
+          "visible_attributes": {
+            "format": "Single item"
+          }
+        },
+        {
+          "title": "BALANCEFUL Control Pack Cleanser",
+          "sku_key": "prod::external_seed::external_seed::ext_83560e40d4ad54cc173e1ee7::canonical",
+          "product_key": "prod::external_seed::external_seed::ext_83560e40d4ad54cc173e1ee7",
+          "source_variant_id": "prod::external_seed::external_seed::ext_83560e40d4ad54cc173e1ee7",
+          "visible_attributes": {}
+        },
+        {
+          "title": "Single item",
+          "sku_key": "prod::external_seed::external_seed::ext_83560e40d4ad54cc173e1ee7::v::53239345742190",
+          "product_key": "prod::external_seed::external_seed::ext_83560e40d4ad54cc173e1ee7",
+          "source_variant_id": "53239345742190",
+          "visible_attributes": {
+            "format": "Single item"
+          }
+        },
+        {
+          "title": "BALANCEFUL Cleansing Gel",
+          "sku_key": "prod::external_seed::external_seed::ext_fb9f59a32d115d60a02ab5b8::canonical",
+          "product_key": "prod::external_seed::external_seed::ext_fb9f59a32d115d60a02ab5b8",
+          "source_variant_id": "prod::external_seed::external_seed::ext_fb9f59a32d115d60a02ab5b8",
+          "visible_attributes": {}
+        },
+        {
+          "title": "Single item",
+          "sku_key": "prod::external_seed::external_seed::ext_fb9f59a32d115d60a02ab5b8::v::52228525293934",
+          "product_key": "prod::external_seed::external_seed::ext_fb9f59a32d115d60a02ab5b8",
+          "source_variant_id": "52228525293934",
+          "visible_attributes": {
+            "format": "Single item"
+          }
+        }
+      ],
+      "sample_stale_offers": [
+        {
+          "sku_key": "prod::external_seed::external_seed::ext_0c9e0c08d0b589e678089851::canonical",
+          "offer_id": "offer:external_seed:3b893a86b72f0f14f5cce594c914b368",
+          "list_price": 17,
+          "product_key": "prod::external_seed::external_seed::ext_0c9e0c08d0b589e678089851",
+          "merchant_effective_price": 17
+        },
+        {
+          "sku_key": "prod::external_seed::external_seed::ext_83560e40d4ad54cc173e1ee7::canonical",
+          "offer_id": "offer:external_seed:e04c9720c3f6b972aea03a90fcea95f8",
+          "list_price": 21,
+          "product_key": "prod::external_seed::external_seed::ext_83560e40d4ad54cc173e1ee7",
+          "merchant_effective_price": 21
+        },
+        {
+          "sku_key": "prod::external_seed::external_seed::ext_fb9f59a32d115d60a02ab5b8::canonical",
+          "offer_id": "offer:external_seed:33e84626012dedecd64555e97740b4d4",
+          "list_price": 18.7,
+          "product_key": "prod::external_seed::external_seed::ext_fb9f59a32d115d60a02ab5b8",
+          "merchant_effective_price": 18.7
+        }
+      ]
+    },
+    "batch_size": null,
+    "batches": 1,
+    "audit_reasons": {
+      "no_strong_identifier": 3
+    },
+    "product_upserts": 0,
+    "sku_upserts": 0,
+    "offer_upserts": 0,
+    "group_member_upserts": 0,
+    "group_member_preserved_existing_merges": 0,
+    "seed_attachment_updates": 0,
+    "index_state_upserts": 0,
+    "identity_live_read_updates": 0,
+    "catalog_row_trust_upserts": 0,
+    "stale_offer_deletes": 0,
+    "stale_sku_deletes": 0
+  },
+  "sample": [
+    {
+      "external_product_id": "ext_0c9e0c08d0b589e678089851",
+      "product_key": "prod::external_seed::external_seed::ext_0c9e0c08d0b589e678089851",
+      "product_group_id": "sig_2a665c4b82668ebc546a8f67d75394ca",
+      "title": "BALANCEFUL Cleansing Foam",
+      "brand": "Torriden",
+      "product_type": "Beauty Product",
+      "category": "Beauty Product",
+      "category_path": "beauty",
+      "canonical_url": "https://torriden.us/products/balanceful-cleansing-foam",
+      "pivota_signature_id": "sig_2a665c4b82668ebc546a8f67d75394ca",
+      "sku_rows": 1,
+      "first_sku": {
+        "sku_key": "prod::external_seed::external_seed::ext_0c9e0c08d0b589e678089851::sku_9d84c4bfc5fde740f05b",
+        "product_key": "prod::external_seed::external_seed::ext_0c9e0c08d0b589e678089851",
+        "merchant_id": "external_seed",
+        "platform": "external_seed",
+        "source_product_id": "ext_0c9e0c08d0b589e678089851",
+        "source_variant_id": "ext_0c9e0c08d0b589e678089851:52228525359470",
+        "source_domain": "torriden.us",
+        "sku": "S_8809784602309",
+        "barcode": null,
+        "title": "Format: Single item",
+        "currency": "USD",
+        "image_url": "https://cdn.shopify.com/s/files/1/0920/1644/3758/files/01_f2bcf484-1bf4-4633-99de-b88295101cb4.jpg?v=1753418353",
+        "visible_attributes": {
+          "Format": "Format: Single item"
+        },
+        "visible_option_labels": {
+          "Format": "Format: Single item"
+        },
+        "ingredient_ids": [],
+        "sku_payload": {
+          "source": "external_product_seeds_mirror_v1",
+          "external_product_id": "ext_0c9e0c08d0b589e678089851",
+          "raw_variant_id": "52228525359470",
+          "source_variant_id": "ext_0c9e0c08d0b589e678089851:52228525359470",
+          "variant_sku": "S_8809784602309",
+          "barcode": null,
+          "strong_identifier_kind": null,
+          "source_url": "https://torriden.us/products/balanceful-cleansing-foam",
+          "external_redirect_url": "https://torriden.us/products/balanceful-cleansing-foam",
+          "price": "17",
+          "price_amount": 17,
+          "currency": "USD",
+          "availability": "in_stock",
+          "image_url": "https://cdn.shopify.com/s/files/1/0920/1644/3758/files/01_f2bcf484-1bf4-4633-99de-b88295101cb4.jpg?v=1753418353",
+          "swatch_image_url": null,
+          "label_image_url": null,
+          "options": {
+            "Format": "Format: Single item"
+          },
+          "raw_variant": {
+            "sku": "S_8809784602309",
+            "url": "https://torriden.us/products/balanceful-cleansing-foam",
+            "price": "17",
+            "stock": "In Stock",
+            "title": "Format: Single item",
+            "options": [
+              {
+                "name": "Format",
+                "value": "Single item",
+                "axis_kind": "format"
+              }
+            ],
+            "currency": "USD",
+            "axis_kind": "format",
+            "image_url": "https://cdn.shopify.com/s/files/1/0920/1644/3758/files/01_f2bcf484-1bf4-4633-99de-b88295101cb4.jpg?v=1753418353",
+            "image_urls": [
+              "https://cdn.shopify.com/s/files/1/0920/1644/3758/files/01_f2bcf484-1bf4-4633-99de-b88295101cb4.jpg?v=1753418353",
+              "https://cdn.shopify.com/s/files/1/0920/1644/3758/files/02_378ebfa5-3a88-4dc2-9f9e-c04b75f24b2b.jpg?v=1753418353",
+              "https://cdn.shopify.com/s/files/1/0920/1644/3758/files/03_13cc07b2-cd40-4dfd-9ed4-99f652de4e4a.jpg?v=1753418353",
+              "https://cdn.shopify.com/s/files/1/0920/1644/3758/files/04_03c50628-3dcf-4181-b502-5b0ac3bc8018.jpg?v=1753418354",
+              "https://cdn.shopify.com/s/files/1/0920/1644/3758/files/05_7ec16ea2-7f07-4176-8382-28fa14276c7b.jpg?v=1753418353",
+              "https://cdn.shopify.com/s/files/1/0920/1644/3758/files/06_aa0f2ebe-9a89-4ed2-88bb-9002ff0e10a5.jpg?v=1753418353",
+              "https://cdn.shopify.com/s/files/1/0920/1644/3758/files/07_732c3e68-7d39-4633-9f7f-1fce8a245543.jpg?v=1753418353",
+              "https://cdn.shopify.com/s/files/1/0920/1644/3758/files/08.jpg?v=1753418354"
+            ],
+            "variant_id": "52228525359470",
+            "description": "Low-irritant cleansing foam including 5 types of centella asiatica extract ingredients and salicylic acid cleans sebum and impurities in clogged pores.\n\n✔ Skin Relief: Soothes and calms troubled skin with salicylic acid\n\n✔ Deep Cleansing: Effectively removes dead skin cells and impurities with rich, fine foam\n\n✔ Gentle Formula: Suitable even for sensitive skin\n\n✔ Texture: Soft, dense foam for a refreshing and non-drying cleanse",
+            "option_name": "Format",
+            "option_value": "Single item",
+            "display_label": "Format: Single item",
+            "display_sanitized_at": "2026-05-20T05:09:29.087Z",
+            "source_quality_status": "captured",
+            "display_sanitizer_version": "external_seed.variant_label_sanitizer.v1",
+            "display_sanitized_from_title": "Single item"
+          }
+        },
+        "readiness_tier": "referral_only"
+      },
+      "first_offer": {
+        "offer_id": "offer:external_seed:bfc8ad1e857e80e837a8aa16603d873f",
+        "sku_key": "prod::external_seed::external_seed::ext_0c9e0c08d0b589e678089851::sku_9d84c4bfc5fde740f05b",
+        "product_key": "prod::external_seed::external_seed::ext_0c9e0c08d0b589e678089851",
+        "merchant_id": "external_seed",
+        "catalog_track": "external_referral",
+        "truth_tier": "observed",
+        "readiness_tier": "referral_only",
+        "offer_mode": "redirect",
+        "channel": "external_referral",
+        "availability": "in_stock",
+        "currency": "USD",
+        "list_price": 17,
+        "merchant_effective_price": 17,
+        "estimated_best_price": 17,
+        "price_confidence": 1,
+        "source_system": "external_product_seeds_mirror_v1",
+        "source_ref": "eps_d6f6b53ffdb55f0d440b98a0",
+        "source_domain": "torriden.us",
+        "offer_payload": {
+          "source": "external_product_seeds_mirror_v1",
+          "external_seed_id": "eps_d6f6b53ffdb55f0d440b98a0",
+          "external_product_id": "ext_0c9e0c08d0b589e678089851",
+          "domain": "torriden.us",
+          "market": "US",
+          "product_title": "BALANCEFUL Cleansing Foam",
+          "variant_title": "Format: Single item",
+          "variant_sku": "S_8809784602309",
+          "raw_variant_id": "52228525359470",
+          "url": "https://torriden.us/products/balanceful-cleansing-foam",
+          "offer_url": "https://torriden.us/products/balanceful-cleansing-foam",
+          "canonical_url": "https://torriden.us/products/balanceful-cleansing-foam",
+          "destination_url": "https://torriden.us/products/balanceful-cleansing-foam",
+          "external_redirect_url": "https://torriden.us/products/balanceful-cleansing-foam",
+          "merchant_display_name": "Torriden",
+          "price": "17",
+          "price_amount": 17,
+          "price_currency": "USD",
+          "availability": "in_stock",
+          "commerce_facts_v1": null
+        }
+      },
+      "serving_readiness": {
+        "servingEligible": false,
+        "contentQualityScore": 70,
+        "blockerCode": "identity_not_live_approved",
+        "blockerDetail": "identity_not_live_approved",
+        "identityResolved": false,
+        "identityLiveReadResolved": false,
+        "identityBootstrapEligible": false,
+        "terminalHold": false,
+        "terminalHoldReason": "",
+        "hasImage": true,
+        "hasPrice": true,
+        "descriptionLength": 431
+      }
+    },
+    {
+      "external_product_id": "ext_fb9f59a32d115d60a02ab5b8",
+      "product_key": "prod::external_seed::external_seed::ext_fb9f59a32d115d60a02ab5b8",
+      "product_group_id": "sig_81bbe67d0d15a6d77230913370180508",
+      "title": "BALANCEFUL Cleansing Gel",
+      "brand": "Torriden",
+      "product_type": "Cleanser",
+      "category": "Cleanser",
+      "category_path": "beauty/skincare/cleanser",
+      "canonical_url": "https://torriden.us/products/balanceful-cleansing-gel",
+      "pivota_signature_id": "sig_81bbe67d0d15a6d77230913370180508",
+      "sku_rows": 1,
+      "first_sku": {
+        "sku_key": "prod::external_seed::external_seed::ext_fb9f59a32d115d60a02ab5b8::sku_4915dab5cb19246ce30d",
+        "product_key": "prod::external_seed::external_seed::ext_fb9f59a32d115d60a02ab5b8",
+        "merchant_id": "external_seed",
+        "platform": "external_seed",
+        "source_product_id": "ext_fb9f59a32d115d60a02ab5b8",
+        "source_variant_id": "ext_fb9f59a32d115d60a02ab5b8:52228525293934",
+        "source_domain": "torriden.us",
+        "sku": "S_8809784600824",
+        "barcode": null,
+        "title": "Format: Single item",
+        "currency": "USD",
+        "image_url": "https://cdn.shopify.com/s/files/1/0920/1644/3758/files/01_497bc017-7188-419d-bb0c-eb1c1cbe7075.jpg?v=1753418388",
+        "visible_attributes": {
+          "Format": "Format: Single item"
+        },
+        "visible_option_labels": {
+          "Format": "Format: Single item"
+        },
+        "ingredient_ids": [],
+        "sku_payload": {
+          "source": "external_product_seeds_mirror_v1",
+          "external_product_id": "ext_fb9f59a32d115d60a02ab5b8",
+          "raw_variant_id": "52228525293934",
+          "source_variant_id": "ext_fb9f59a32d115d60a02ab5b8:52228525293934",
+          "variant_sku": "S_8809784600824",
+          "barcode": null,
+          "strong_identifier_kind": null,
+          "source_url": "https://torriden.us/products/balanceful-cleansing-gel",
+          "external_redirect_url": "https://torriden.us/products/balanceful-cleansing-gel",
+          "price": "18.7",
+          "price_amount": 18.7,
+          "currency": "USD",
+          "availability": "in_stock",
+          "image_url": "https://cdn.shopify.com/s/files/1/0920/1644/3758/files/01_497bc017-7188-419d-bb0c-eb1c1cbe7075.jpg?v=1753418388",
+          "swatch_image_url": null,
+          "label_image_url": null,
+          "options": {
+            "Format": "Format: Single item"
+          },
+          "raw_variant": {
+            "sku": "S_8809784600824",
+            "url": "https://torriden.us/products/balanceful-cleansing-gel",
+            "price": "18.7",
+            "stock": "In Stock",
+            "title": "Format: Single item",
+            "options": [
+              {
+                "name": "Format",
+                "value": "Single item",
+                "axis_kind": "format"
+              }
+            ],
+            "currency": "USD",
+            "axis_kind": "format",
+            "image_url": "https://cdn.shopify.com/s/files/1/0920/1644/3758/files/01_497bc017-7188-419d-bb0c-eb1c1cbe7075.jpg?v=1753418388",
+            "image_urls": [
+              "https://cdn.shopify.com/s/files/1/0920/1644/3758/files/01_497bc017-7188-419d-bb0c-eb1c1cbe7075.jpg?v=1753418388",
+              "https://cdn.shopify.com/s/files/1/0920/1644/3758/files/05_267bd2e2-cb7c-4d7b-a2fd-823502043047.jpg?v=1754488431",
+              "https://cdn.shopify.com/s/files/1/0920/1644/3758/files/02_322e4d7d-5248-4738-8c2c-59b1f08c8969.jpg?v=1754488431",
+              "https://cdn.shopify.com/s/files/1/0920/1644/3758/files/03_344a3a51-7019-404d-b912-7398cca5766a.jpg?v=1754488431",
+              "https://cdn.shopify.com/s/files/1/0920/1644/3758/files/04_053b271c-8211-4544-89ae-cae49f16379e.jpg?v=1754488431"
+            ],
+            "variant_id": "52228525293934",
+            "description": "Soft gel cleanser including 5 types of centella asiatica extract ingredients and LHA helps to remove sebum and dirt inside skin pores.\n\n✔ Skin Calming: Soothes sensitive skin with a gentle gel texture and 5D Cica complex\n\n✔ Oil Control: Helps balance excess sebum and oil for refreshed, combination skin\n\n✔ Pore Purifying: Gently clears pores and sebum buildup without irritation\n\n✔ Gentle Formula: Suitable even for sensitive skin\n\n✔ Dense Foam Texture: Thick, cushiony bubbles provide a deep, pore-cleansing experience",
+            "option_name": "Format",
+            "option_value": "Single item",
+            "display_label": "Format: Single item",
+            "display_sanitized_at": "2026-05-20T05:09:29.105Z",
+            "source_quality_status": "captured",
+            "display_sanitizer_version": "external_seed.variant_label_sanitizer.v1",
+            "display_sanitized_from_title": "Single item"
+          }
+        },
+        "readiness_tier": "referral_only"
+      },
+      "first_offer": {
+        "offer_id": "offer:external_seed:bdfc556347c1af59cbd8dccb72c6a8f8",
+        "sku_key": "prod::external_seed::external_seed::ext_fb9f59a32d115d60a02ab5b8::sku_4915dab5cb19246ce30d",
+        "product_key": "prod::external_seed::external_seed::ext_fb9f59a32d115d60a02ab5b8",
+        "merchant_id": "external_seed",
+        "catalog_track": "external_referral",
+        "truth_tier": "observed",
+        "readiness_tier": "referral_only",
+        "offer_mode": "redirect",
+        "channel": "external_referral",
+        "availability": "in_stock",
+        "currency": "USD",
+        "list_price": 18.7,
+        "merchant_effective_price": 18.7,
+        "estimated_best_price": 18.7,
+        "price_confidence": 1,
+        "source_system": "external_product_seeds_mirror_v1",
+        "source_ref": "eps_65d9795176e0fe665d891da3",
+        "source_domain": "torriden.us",
+        "offer_payload": {
+          "source": "external_product_seeds_mirror_v1",
+          "external_seed_id": "eps_65d9795176e0fe665d891da3",
+          "external_product_id": "ext_fb9f59a32d115d60a02ab5b8",
+          "domain": "torriden.us",
+          "market": "US",
+          "product_title": "BALANCEFUL Cleansing Gel",
+          "variant_title": "Format: Single item",
+          "variant_sku": "S_8809784600824",
+          "raw_variant_id": "52228525293934",
+          "url": "https://torriden.us/products/balanceful-cleansing-gel",
+          "offer_url": "https://torriden.us/products/balanceful-cleansing-gel",
+          "canonical_url": "https://torriden.us/products/balanceful-cleansing-gel",
+          "destination_url": "https://torriden.us/products/balanceful-cleansing-gel",
+          "external_redirect_url": "https://torriden.us/products/balanceful-cleansing-gel",
+          "merchant_display_name": "Torriden",
+          "price": "18.7",
+          "price_amount": 18.7,
+          "price_currency": "USD",
+          "availability": "in_stock",
+          "commerce_facts_v1": null
+        }
+      },
+      "serving_readiness": {
+        "servingEligible": false,
+        "contentQualityScore": 70,
+        "blockerCode": "identity_not_live_approved",
+        "blockerDetail": "identity_not_live_approved",
+        "identityResolved": false,
+        "identityLiveReadResolved": false,
+        "identityBootstrapEligible": false,
+        "terminalHold": false,
+        "terminalHoldReason": "",
+        "hasImage": true,
+        "hasPrice": true,
+        "descriptionLength": 520
+      }
+    },
+    {
+      "external_product_id": "ext_83560e40d4ad54cc173e1ee7",
+      "product_key": "prod::external_seed::external_seed::ext_83560e40d4ad54cc173e1ee7",
+      "product_group_id": "sig_bdffb1924e044ccb21abefd5a82343ea",
+      "title": "BALANCEFUL Control Pack Cleanser",
+      "brand": "Torriden",
+      "product_type": "Cleanser",
+      "category": "Cleanser",
+      "category_path": "beauty/skincare/cleanser",
+      "canonical_url": "https://torriden.us/products/balanceful-control-pack-cleanser",
+      "pivota_signature_id": "sig_bdffb1924e044ccb21abefd5a82343ea",
+      "sku_rows": 1,
+      "first_sku": {
+        "sku_key": "prod::external_seed::external_seed::ext_83560e40d4ad54cc173e1ee7::sku_c705a642d8745f18affb",
+        "product_key": "prod::external_seed::external_seed::ext_83560e40d4ad54cc173e1ee7",
+        "merchant_id": "external_seed",
+        "platform": "external_seed",
+        "source_product_id": "ext_83560e40d4ad54cc173e1ee7",
+        "source_variant_id": "ext_83560e40d4ad54cc173e1ee7:53239345742190",
+        "source_domain": "torriden.us",
+        "sku": "S_8809784605973",
+        "barcode": null,
+        "title": "Format: Single item",
+        "currency": "USD",
+        "image_url": "https://cdn.shopify.com/s/files/1/0920/1644/3758/files/03.BALANCEFULControlPackCleanser.jpg?v=1769412367",
+        "visible_attributes": {
+          "Format": "Format: Single item"
+        },
+        "visible_option_labels": {
+          "Format": "Format: Single item"
+        },
+        "ingredient_ids": [],
+        "sku_payload": {
+          "source": "external_product_seeds_mirror_v1",
+          "external_product_id": "ext_83560e40d4ad54cc173e1ee7",
+          "raw_variant_id": "53239345742190",
+          "source_variant_id": "ext_83560e40d4ad54cc173e1ee7:53239345742190",
+          "variant_sku": "S_8809784605973",
+          "barcode": null,
+          "strong_identifier_kind": null,
+          "source_url": "https://torriden.us/products/balanceful-control-pack-cleanser",
+          "external_redirect_url": "https://torriden.us/products/balanceful-control-pack-cleanser",
+          "price": "21",
+          "price_amount": 21,
+          "currency": "USD",
+          "availability": "in_stock",
+          "image_url": "https://cdn.shopify.com/s/files/1/0920/1644/3758/files/03.BALANCEFULControlPackCleanser.jpg?v=1769412367",
+          "swatch_image_url": null,
+          "label_image_url": null,
+          "options": {
+            "Format": "Format: Single item"
+          },
+          "raw_variant": {
+            "sku": "S_8809784605973",
+            "url": "https://torriden.us/products/balanceful-control-pack-cleanser",
+            "price": "21",
+            "stock": "In Stock",
+            "title": "Format: Single item",
+            "options": [
+              {
+                "name": "Format",
+                "value": "Single item",
+                "axis_kind": "format"
+              }
+            ],
+            "currency": "USD",
+            "axis_kind": "format",
+            "image_url": "https://cdn.shopify.com/s/files/1/0920/1644/3758/files/03.BALANCEFULControlPackCleanser.jpg?v=1769412367",
+            "image_urls": [
+              "https://cdn.shopify.com/s/files/1/0920/1644/3758/files/03.BALANCEFULControlPackCleanser.jpg?v=1769412367",
+              "https://cdn.shopify.com/s/files/1/0920/1644/3758/files/03.BALANCEFULControlPackCleanser_over.jpg?v=1769412366",
+              "https://cdn.shopify.com/s/files/1/0920/1644/3758/files/BALANCEFUL_Control_Pack_Cleanser-02.jpg?v=1769412380",
+              "https://cdn.shopify.com/s/files/1/0920/1644/3758/files/BALANCEFUL_Control_Pack_Cleanser-03.jpg?v=1769412380",
+              "https://cdn.shopify.com/s/files/1/0920/1644/3758/files/BALANCEFUL_Control_Pack_Cleanser-04.jpg?v=1769412380",
+              "https://cdn.shopify.com/s/files/1/0920/1644/3758/files/BALANCEFUL_Control_Pack_Cleanser-05.jpg?v=1769412380",
+              "https://cdn.shopify.com/s/files/1/0920/1644/3758/files/BALANCEFUL_Control_Pack_Cleanser-06.jpg?v=1769412380"
+            ],
+            "variant_id": "53239345742190",
+            "description": "Low-irritation pack cleanser with 5 types of centella asiatica extract ingredients and exfoliating capsules helps remove dead skin cells and visibly refine pores for a squeaky-clean finish.\n\n✔ Skin Calming: Soothes sensitive skin with 5D Cica complex\n✔ Daily Exfoliation: Red Beads and clear Konjac scrubs gently exfoliate to remove dead skin cells without irritation\n✔ Deep Cleansing: Gently removes dead skin cells and surface impurities that can clog pores\n✔ Texture : A transforming sherbet-to-foam pack cleanser that absorbs excess heat and impurities while delivering rich hydration",
+            "option_name": "Format",
+            "option_value": "Single item",
+            "display_label": "Format: Single item",
+            "display_sanitized_at": "2026-05-20T05:09:29.093Z",
+            "source_quality_status": "captured",
+            "display_sanitizer_version": "external_seed.variant_label_sanitizer.v1",
+            "display_sanitized_from_title": "Single item"
+          }
+        },
+        "readiness_tier": "referral_only"
+      },
+      "first_offer": {
+        "offer_id": "offer:external_seed:a3794abdfc74e4a7ce4b6833f5a20e6b",
+        "sku_key": "prod::external_seed::external_seed::ext_83560e40d4ad54cc173e1ee7::sku_c705a642d8745f18affb",
+        "product_key": "prod::external_seed::external_seed::ext_83560e40d4ad54cc173e1ee7",
+        "merchant_id": "external_seed",
+        "catalog_track": "external_referral",
+        "truth_tier": "observed",
+        "readiness_tier": "referral_only",
+        "offer_mode": "redirect",
+        "channel": "external_referral",
+        "availability": "in_stock",
+        "currency": "USD",
+        "list_price": 21,
+        "merchant_effective_price": 21,
+        "estimated_best_price": 21,
+        "price_confidence": 1,
+        "source_system": "external_product_seeds_mirror_v1",
+        "source_ref": "eps_d5b0dd72ea9c71b359ed092b",
+        "source_domain": "torriden.us",
+        "offer_payload": {
+          "source": "external_product_seeds_mirror_v1",
+          "external_seed_id": "eps_d5b0dd72ea9c71b359ed092b",
+          "external_product_id": "ext_83560e40d4ad54cc173e1ee7",
+          "domain": "torriden.us",
+          "market": "US",
+          "product_title": "BALANCEFUL Control Pack Cleanser",
+          "variant_title": "Format: Single item",
+          "variant_sku": "S_8809784605973",
+          "raw_variant_id": "53239345742190",
+          "url": "https://torriden.us/products/balanceful-control-pack-cleanser",
+          "offer_url": "https://torriden.us/products/balanceful-control-pack-cleanser",
+          "canonical_url": "https://torriden.us/products/balanceful-control-pack-cleanser",
+          "destination_url": "https://torriden.us/products/balanceful-control-pack-cleanser",
+          "external_redirect_url": "https://torriden.us/products/balanceful-control-pack-cleanser",
+          "merchant_display_name": "Torriden",
+          "price": "21",
+          "price_amount": 21,
+          "price_currency": "USD",
+          "availability": "in_stock",
+          "commerce_facts_v1": null
+        }
+      },
+      "serving_readiness": {
+        "servingEligible": false,
+        "contentQualityScore": 70,
+        "blockerCode": "identity_not_live_approved",
+        "blockerDetail": "identity_not_live_approved",
+        "identityResolved": false,
+        "identityLiveReadResolved": false,
+        "identityBootstrapEligible": false,
+        "terminalHold": false,
+        "terminalHoldReason": "",
+        "hasImage": true,
+        "hasPrice": true,
+        "descriptionLength": 588
+      }
+    }
+  ]
+}

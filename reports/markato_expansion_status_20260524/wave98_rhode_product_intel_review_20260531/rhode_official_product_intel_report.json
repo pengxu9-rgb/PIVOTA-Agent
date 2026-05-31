@@ -1,0 +1,1044 @@
+{
+  "meta": {
+    "generated_at": "2026-05-31T15:18:26.262Z",
+    "source": "reviewed_official_seed_product_intel_report",
+    "batch_name": "wave98_rhode_official_product_intel_review_20260531",
+    "inventory": "reports/markato_expansion_status_20260524/wave98_rhode_product_intel_review_20260531/readiness_after_category_patch/commerce_index_kb_readiness_inventory.json",
+    "selected_cases": 4,
+    "reviewer": "codex_human_quality_reviewer",
+    "reviewer_kind": "assistant",
+    "candidate_quality_summary": {
+      "public_ready": 4,
+      "high_quality_ready": 4,
+      "evidence_profile": {
+        "seller_plus_formula": 4
+      }
+    }
+  },
+  "rows": [
+    {
+      "case_id": "live_ext_2591b74dda0b54e9c70dd47c",
+      "review_status": "completed",
+      "review_decision": "rewrite",
+      "reviewer": "codex_human_quality_reviewer",
+      "reviewer_kind": "assistant",
+      "reviewed_at": "2026-05-31T15:18:26.262Z",
+      "notes": "Approved official-PDP-seed rewrite for peptide lip tint jelly bean; evidence_profile=seller_plus_formula; source_url=https://www.rhodeskin.com/products/peptide-lip-tint-jelly-bean",
+      "owner_delegated_review": {
+        "contract_version": "pivota.owner_delegated_review.v1",
+        "delegated_to": "codex_human_quality_reviewer",
+        "reviewer_kind": "assistant",
+        "owner_instruction": "User delegated Codex to perform high-quality human review for Pivota Insights quality improvement.",
+        "guardrails": [
+          "Do not overwrite good content with lower-quality content.",
+          "No commerce-state claims in Pivota Insights.",
+          "Use official source facts only; keep evidence confidence explicit."
+        ]
+      },
+      "quality_improvement_review": {
+        "decision": "approved_replacement",
+        "reviewer_kind": "assistant",
+        "owner_delegated": true,
+        "reason": "Owner-delegated assistant review confirms the replacement uses official PDP seed facts, avoids commerce and unsupported evidence claims, and explicitly marks evidence gaps instead of inventing claims."
+      },
+      "baseline": {
+        "canonical_product_ref": {
+          "merchant_id": "external_seed",
+          "product_id": "ext_2591b74dda0b54e9c70dd47c",
+          "platform": "external_seed"
+        }
+      },
+      "selected": {
+        "selected_mode": "manual_reviewed_rewrite",
+        "selected_field_count": 7,
+        "field_sources": {
+          "what_it_is": "official_seed_description",
+          "best_for": "reviewed_category_and_official_title",
+          "why_it_stands_out": "official_seed_description_and_formula",
+          "routine_fit": "reviewed_category_and_official_title",
+          "watchouts": "owner_delegated_assistant_review",
+          "texture_finish": "reviewed_category_and_official_title",
+          "source_coverage": "official_pdp_seed_snapshot",
+          "community_signals": "not_collected"
+        },
+        "bundle": {
+          "contract_version": "pivota.product_intel.v1",
+          "display_name": "Pivota Insights",
+          "canonical_product_ref": {
+            "merchant_id": "external_seed",
+            "product_id": "ext_2591b74dda0b54e9c70dd47c",
+            "platform": "external_seed"
+          },
+          "product_group_id": "sig_8b6ac0d7d9d707ac69475361",
+          "product_intel_core": {
+            "display_name": "Pivota Insights",
+            "what_it_is": {
+              "headline": "Lip product identity",
+              "body": "A Rhode lip product listed on the brand source page as peptide lip tint jelly bean. The source description identifies: Peptide Lip Tint in Jelly Bean is a nourishing formula with a hint of tint and shimmer that hydrates and replenishes lips while leaving a glossy, high-shine finish."
+            },
+            "best_for": [
+              {
+                "tag": "lip_shoppers",
+                "label": "Lip product shoppers",
+                "confidence": "moderate"
+              },
+              {
+                "tag": "official_source_comparison",
+                "label": "Official-source comparison",
+                "confidence": "moderate"
+              }
+            ],
+            "why_it_stands_out": [
+              {
+                "headline": "Source-backed product detail",
+                "body": "Peptide Lip Tint in Jelly Bean is a nourishing formula with a hint of tint and shimmer that hydrates and replenishes lips while leaving a glossy, high-shine finish.",
+                "evidence_strength": "seller_plus_formula"
+              },
+              {
+                "headline": "Formula context captured",
+                "body": "Captured formula fields include Hydrogenated Polyisobutene, Diisostearyl Malate, Butyrospermum Parkii (Shea) Butter, Polybutene, Microcrystalline Wax (Cera Microcristallina) (Cire microcristalline). Agents should keep composition claims within those source fields.",
+                "evidence_strength": "seller_plus_formula"
+              }
+            ],
+            "routine_fit": {
+              "step": "lip_color",
+              "am_pm": [
+                "as_needed"
+              ],
+              "pairing_notes": [
+                "Use within the lip product context; avoid inferring benefits not present in the source fields."
+              ]
+            },
+            "watchouts": [
+              {
+                "type": "formula_scope",
+                "label": "Formula details are source-derived; avoid medical, safety, or suitability claims not present in the source.",
+                "severity": "medium"
+              },
+              {
+                "type": "evidence_gap",
+                "label": "No independent review or community evidence was approved for this row; keep public copy source-bound.",
+                "severity": "medium"
+              },
+              {
+                "type": "scope_guardrail",
+                "label": "Use the commerce mainline for offer facts; keep this insight focused on source-backed product identity.",
+                "severity": "medium"
+              }
+            ],
+            "confidence": {
+              "overall": "moderate",
+              "fields": {
+                "what_it_is": "high",
+                "best_for": "moderate",
+                "why_it_stands_out": "moderate",
+                "routine_fit": "moderate",
+                "watchouts": "moderate"
+              }
+            },
+            "freshness": {
+              "generated_at": "2026-05-31T15:18:26.262Z",
+              "source_version": "wave98_rhode_official_product_intel_review_20260531"
+            },
+            "quality_state": "reviewed",
+            "evidence_profile": "seller_plus_formula",
+            "source_coverage": {
+              "seller": {
+                "available": true,
+                "source_url": "https://www.rhodeskin.com/products/peptide-lip-tint-jelly-bean"
+              },
+              "formula": {
+                "available": true,
+                "ingredient_count": 35,
+                "source_url": "https://www.rhodeskin.com/products/peptide-lip-tint-jelly-bean"
+              },
+              "reviews": {
+                "available": false,
+                "count": 0
+              },
+              "creator": {
+                "available": false,
+                "count": 0
+              },
+              "editorial": {
+                "available": false,
+                "count": 0
+              }
+            }
+          },
+          "texture_finish": {
+            "finish": "lip product",
+            "texture": "lip",
+            "source": "reviewed_category_and_official_title"
+          },
+          "community_signals": {
+            "status": "unavailable",
+            "reason": "not_collected_for_this_review_batch"
+          },
+          "recommendation_intents": {
+            "similar": [],
+            "complementary": [],
+            "routine_pairing": [],
+            "underfill_reason": null,
+            "confidence": "low"
+          },
+          "market_signal_badges": [],
+          "external_highlight_signals": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "seller_plus_formula",
+          "source_coverage": {
+            "seller": {
+              "available": true,
+              "source_url": "https://www.rhodeskin.com/products/peptide-lip-tint-jelly-bean"
+            },
+            "formula": {
+              "available": true,
+              "ingredient_count": 35,
+              "source_url": "https://www.rhodeskin.com/products/peptide-lip-tint-jelly-bean"
+            },
+            "reviews": {
+              "available": false,
+              "count": 0
+            },
+            "creator": {
+              "available": false,
+              "count": 0
+            },
+            "editorial": {
+              "available": false,
+              "count": 0
+            }
+          },
+          "confidence": {
+            "overall": "moderate",
+            "fields": {
+              "what_it_is": "high",
+              "best_for": "moderate",
+              "why_it_stands_out": "moderate",
+              "routine_fit": "moderate",
+              "watchouts": "moderate"
+            }
+          },
+          "freshness": {
+            "generated_at": "2026-05-31T15:18:26.262Z",
+            "source_version": "wave98_rhode_official_product_intel_review_20260531"
+          },
+          "offer_pointers": {
+            "offers_count": 0,
+            "default_offer_id": null,
+            "best_price_offer_id": null,
+            "commerce_modes": []
+          },
+          "provenance": {
+            "source": "owner_delegated_official_seed_rewrite",
+            "generator": "owner_delegated_assistant_reviewed_rewrite",
+            "selection_strategy": "official_pdp_seed_guarded_manual_review",
+            "field_sources": {
+              "what_it_is": "official_seed_description",
+              "best_for": "reviewed_category_and_official_title",
+              "why_it_stands_out": "official_seed_description_and_formula",
+              "routine_fit": "reviewed_category_and_official_title",
+              "watchouts": "owner_delegated_assistant_review",
+              "texture_finish": "reviewed_category_and_official_title",
+              "source_coverage": "official_pdp_seed_snapshot",
+              "community_signals": "not_collected"
+            },
+            "review_status": "completed",
+            "review_decision": "rewrite",
+            "reviewer": "codex_human_quality_reviewer",
+            "reviewer_kind": "assistant",
+            "reviewed_at": "2026-05-31T15:18:26.262Z",
+            "external_highlight_review_status": "rewrite",
+            "external_review_batch": "wave98_rhode_official_product_intel_review_20260531",
+            "official_source_url": "https://www.rhodeskin.com/products/peptide-lip-tint-jelly-bean",
+            "official_source_ingredient_count": 35,
+            "rewrite_reason": "Owner-delegated assistant review: official PDP seed rewrite; no commerce-state, community, medical, or unsupported safety claims added."
+          },
+          "shopping_card": {
+            "contract_version": "pivota.shopping_card.v1",
+            "title": "peptide lip tint jelly bean",
+            "subtitle": "Lip Product",
+            "highlight": "Lip tint format detail",
+            "intro": "A Rhode lip product listed on the brand source page as peptide lip tint jelly bean. The source description identifies: Peptide Lip Tint in Jelly Bean is a nourishing formula with a hint of tint and shimmer that hydrates and replenishes lips while leaving a glossy, high-shine finish.",
+            "evidence_profile": "seller_plus_formula"
+          },
+          "search_card": {
+            "title_candidate": "peptide lip tint jelly bean",
+            "compact_candidate": "Lip Product",
+            "highlight_candidate": "Lip tint format detail",
+            "intro_candidate": "A Rhode lip product listed on the brand source page as peptide lip tint jelly bean. The source description identifies: Peptide Lip Tint in Jelly Bean is a nourishing formula with a hint of tint and shimmer that hydrates and replenishes lips while leaving a glossy, high-shine finish.",
+            "proof_badge_candidate": ""
+          }
+        }
+      }
+    },
+    {
+      "case_id": "live_ext_843a33f7d9ccb23c6ae227ee",
+      "review_status": "completed",
+      "review_decision": "rewrite",
+      "reviewer": "codex_human_quality_reviewer",
+      "reviewer_kind": "assistant",
+      "reviewed_at": "2026-05-31T15:18:26.262Z",
+      "notes": "Approved official-PDP-seed rewrite for glazing milk; evidence_profile=seller_plus_formula; source_url=https://www.rhodeskin.com/products/glazing-milk",
+      "owner_delegated_review": {
+        "contract_version": "pivota.owner_delegated_review.v1",
+        "delegated_to": "codex_human_quality_reviewer",
+        "reviewer_kind": "assistant",
+        "owner_instruction": "User delegated Codex to perform high-quality human review for Pivota Insights quality improvement.",
+        "guardrails": [
+          "Do not overwrite good content with lower-quality content.",
+          "No commerce-state claims in Pivota Insights.",
+          "Use official source facts only; keep evidence confidence explicit."
+        ]
+      },
+      "quality_improvement_review": {
+        "decision": "approved_replacement",
+        "reviewer_kind": "assistant",
+        "owner_delegated": true,
+        "reason": "Owner-delegated assistant review confirms the replacement uses official PDP seed facts, avoids commerce and unsupported evidence claims, and explicitly marks evidence gaps instead of inventing claims."
+      },
+      "baseline": {
+        "canonical_product_ref": {
+          "merchant_id": "external_seed",
+          "product_id": "ext_843a33f7d9ccb23c6ae227ee",
+          "platform": "external_seed"
+        }
+      },
+      "selected": {
+        "selected_mode": "manual_reviewed_rewrite",
+        "selected_field_count": 7,
+        "field_sources": {
+          "what_it_is": "official_seed_description",
+          "best_for": "reviewed_category_and_official_title",
+          "why_it_stands_out": "official_seed_description_and_formula",
+          "routine_fit": "reviewed_category_and_official_title",
+          "watchouts": "owner_delegated_assistant_review",
+          "texture_finish": "reviewed_category_and_official_title",
+          "source_coverage": "official_pdp_seed_snapshot",
+          "community_signals": "not_collected"
+        },
+        "bundle": {
+          "contract_version": "pivota.product_intel.v1",
+          "display_name": "Pivota Insights",
+          "canonical_product_ref": {
+            "merchant_id": "external_seed",
+            "product_id": "ext_843a33f7d9ccb23c6ae227ee",
+            "platform": "external_seed"
+          },
+          "product_group_id": "sig_b299c4e351eb0cc655c7f4c6",
+          "product_intel_core": {
+            "display_name": "Pivota Insights",
+            "what_it_is": {
+              "headline": "Skincare product identity",
+              "body": "A Rhode skincare product listed on the brand source page as glazing milk. The source description identifies: Glazing Milk is a potent, nutrient-rich complex with a milky texture that leaves skin feeling hydrated and glowy while boosting the skin barrier over time."
+            },
+            "best_for": [
+              {
+                "tag": "skincare_shoppers",
+                "label": "Skincare product shoppers",
+                "confidence": "moderate"
+              },
+              {
+                "tag": "official_source_comparison",
+                "label": "Official-source comparison",
+                "confidence": "moderate"
+              }
+            ],
+            "why_it_stands_out": [
+              {
+                "headline": "Source-backed product detail",
+                "body": "Glazing Milk is a potent, nutrient-rich complex with a milky texture that leaves skin feeling hydrated and glowy while boosting the skin barrier over time.",
+                "evidence_strength": "seller_plus_formula"
+              },
+              {
+                "headline": "Formula context captured",
+                "body": "Captured formula fields include Click an ingredient to learn more about it. water (aqua) (eau), c12-15 alkyl benzoate, coconut alkanes, glycerin, polyglyceryl-3 oleate. Agents should keep composition claims within those source fields.",
+                "evidence_strength": "seller_plus_formula"
+              }
+            ],
+            "routine_fit": {
+              "step": "skin_care",
+              "am_pm": [
+                "as_needed"
+              ],
+              "pairing_notes": [
+                "Use within the skincare product context; avoid inferring benefits not present in the source fields."
+              ]
+            },
+            "watchouts": [
+              {
+                "type": "formula_scope",
+                "label": "Formula details are source-derived; avoid medical, safety, or suitability claims not present in the source.",
+                "severity": "medium"
+              },
+              {
+                "type": "evidence_gap",
+                "label": "No independent review or community evidence was approved for this row; keep public copy source-bound.",
+                "severity": "medium"
+              },
+              {
+                "type": "scope_guardrail",
+                "label": "Use the commerce mainline for offer facts; keep this insight focused on source-backed product identity.",
+                "severity": "medium"
+              }
+            ],
+            "confidence": {
+              "overall": "moderate",
+              "fields": {
+                "what_it_is": "high",
+                "best_for": "moderate",
+                "why_it_stands_out": "moderate",
+                "routine_fit": "moderate",
+                "watchouts": "moderate"
+              }
+            },
+            "freshness": {
+              "generated_at": "2026-05-31T15:18:26.262Z",
+              "source_version": "wave98_rhode_official_product_intel_review_20260531"
+            },
+            "quality_state": "reviewed",
+            "evidence_profile": "seller_plus_formula",
+            "source_coverage": {
+              "seller": {
+                "available": true,
+                "source_url": "https://www.rhodeskin.com/products/glazing-milk"
+              },
+              "formula": {
+                "available": true,
+                "ingredient_count": 41,
+                "source_url": "https://www.rhodeskin.com/products/glazing-milk"
+              },
+              "reviews": {
+                "available": false,
+                "count": 0
+              },
+              "creator": {
+                "available": false,
+                "count": 0
+              },
+              "editorial": {
+                "available": false,
+                "count": 0
+              }
+            }
+          },
+          "texture_finish": {
+            "finish": "skincare product",
+            "texture": "skincare",
+            "source": "reviewed_category_and_official_title"
+          },
+          "community_signals": {
+            "status": "unavailable",
+            "reason": "not_collected_for_this_review_batch"
+          },
+          "recommendation_intents": {
+            "similar": [],
+            "complementary": [],
+            "routine_pairing": [],
+            "underfill_reason": null,
+            "confidence": "low"
+          },
+          "market_signal_badges": [],
+          "external_highlight_signals": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "seller_plus_formula",
+          "source_coverage": {
+            "seller": {
+              "available": true,
+              "source_url": "https://www.rhodeskin.com/products/glazing-milk"
+            },
+            "formula": {
+              "available": true,
+              "ingredient_count": 41,
+              "source_url": "https://www.rhodeskin.com/products/glazing-milk"
+            },
+            "reviews": {
+              "available": false,
+              "count": 0
+            },
+            "creator": {
+              "available": false,
+              "count": 0
+            },
+            "editorial": {
+              "available": false,
+              "count": 0
+            }
+          },
+          "confidence": {
+            "overall": "moderate",
+            "fields": {
+              "what_it_is": "high",
+              "best_for": "moderate",
+              "why_it_stands_out": "moderate",
+              "routine_fit": "moderate",
+              "watchouts": "moderate"
+            }
+          },
+          "freshness": {
+            "generated_at": "2026-05-31T15:18:26.262Z",
+            "source_version": "wave98_rhode_official_product_intel_review_20260531"
+          },
+          "offer_pointers": {
+            "offers_count": 0,
+            "default_offer_id": null,
+            "best_price_offer_id": null,
+            "commerce_modes": []
+          },
+          "provenance": {
+            "source": "owner_delegated_official_seed_rewrite",
+            "generator": "owner_delegated_assistant_reviewed_rewrite",
+            "selection_strategy": "official_pdp_seed_guarded_manual_review",
+            "field_sources": {
+              "what_it_is": "official_seed_description",
+              "best_for": "reviewed_category_and_official_title",
+              "why_it_stands_out": "official_seed_description_and_formula",
+              "routine_fit": "reviewed_category_and_official_title",
+              "watchouts": "owner_delegated_assistant_review",
+              "texture_finish": "reviewed_category_and_official_title",
+              "source_coverage": "official_pdp_seed_snapshot",
+              "community_signals": "not_collected"
+            },
+            "review_status": "completed",
+            "review_decision": "rewrite",
+            "reviewer": "codex_human_quality_reviewer",
+            "reviewer_kind": "assistant",
+            "reviewed_at": "2026-05-31T15:18:26.262Z",
+            "external_highlight_review_status": "rewrite",
+            "external_review_batch": "wave98_rhode_official_product_intel_review_20260531",
+            "official_source_url": "https://www.rhodeskin.com/products/glazing-milk",
+            "official_source_ingredient_count": 41,
+            "rewrite_reason": "Owner-delegated assistant review: official PDP seed rewrite; no commerce-state, community, medical, or unsupported safety claims added."
+          },
+          "shopping_card": {
+            "contract_version": "pivota.shopping_card.v1",
+            "title": "glazing milk",
+            "subtitle": "Essence",
+            "highlight": "Oil-essence formula detail",
+            "intro": "A Rhode skincare product listed on the brand source page as glazing milk. The source description identifies: Glazing Milk is a potent, nutrient-rich complex with a milky texture that leaves skin feeling hydrated and glowy while boosting the skin barrier over time.",
+            "evidence_profile": "seller_plus_formula"
+          },
+          "search_card": {
+            "title_candidate": "glazing milk",
+            "compact_candidate": "Essence",
+            "highlight_candidate": "Oil-essence formula detail",
+            "intro_candidate": "A Rhode skincare product listed on the brand source page as glazing milk. The source description identifies: Glazing Milk is a potent, nutrient-rich complex with a milky texture that leaves skin feeling hydrated and glowy while boosting the skin barrier over time.",
+            "proof_badge_candidate": ""
+          }
+        }
+      }
+    },
+    {
+      "case_id": "live_ext_2aee0dd4eafdbcae677997f0",
+      "review_status": "completed",
+      "review_decision": "rewrite",
+      "reviewer": "codex_human_quality_reviewer",
+      "reviewer_kind": "assistant",
+      "reviewed_at": "2026-05-31T15:18:26.262Z",
+      "notes": "Approved official-PDP-seed rewrite for peptide lip tint pretzel; evidence_profile=seller_plus_formula; source_url=https://www.rhodeskin.com/products/peptide-lip-tint-pretzel",
+      "owner_delegated_review": {
+        "contract_version": "pivota.owner_delegated_review.v1",
+        "delegated_to": "codex_human_quality_reviewer",
+        "reviewer_kind": "assistant",
+        "owner_instruction": "User delegated Codex to perform high-quality human review for Pivota Insights quality improvement.",
+        "guardrails": [
+          "Do not overwrite good content with lower-quality content.",
+          "No commerce-state claims in Pivota Insights.",
+          "Use official source facts only; keep evidence confidence explicit."
+        ]
+      },
+      "quality_improvement_review": {
+        "decision": "approved_replacement",
+        "reviewer_kind": "assistant",
+        "owner_delegated": true,
+        "reason": "Owner-delegated assistant review confirms the replacement uses official PDP seed facts, avoids commerce and unsupported evidence claims, and explicitly marks evidence gaps instead of inventing claims."
+      },
+      "baseline": {
+        "canonical_product_ref": {
+          "merchant_id": "external_seed",
+          "product_id": "ext_2aee0dd4eafdbcae677997f0",
+          "platform": "external_seed"
+        }
+      },
+      "selected": {
+        "selected_mode": "manual_reviewed_rewrite",
+        "selected_field_count": 7,
+        "field_sources": {
+          "what_it_is": "official_seed_description",
+          "best_for": "reviewed_category_and_official_title",
+          "why_it_stands_out": "official_seed_description_and_formula",
+          "routine_fit": "reviewed_category_and_official_title",
+          "watchouts": "owner_delegated_assistant_review",
+          "texture_finish": "reviewed_category_and_official_title",
+          "source_coverage": "official_pdp_seed_snapshot",
+          "community_signals": "not_collected"
+        },
+        "bundle": {
+          "contract_version": "pivota.product_intel.v1",
+          "display_name": "Pivota Insights",
+          "canonical_product_ref": {
+            "merchant_id": "external_seed",
+            "product_id": "ext_2aee0dd4eafdbcae677997f0",
+            "platform": "external_seed"
+          },
+          "product_group_id": "sig_cd8610468490f28450d70c7d",
+          "product_intel_core": {
+            "display_name": "Pivota Insights",
+            "what_it_is": {
+              "headline": "Lip product identity",
+              "body": "A Rhode lip product listed on the brand source page as peptide lip tint pretzel. The source description identifies: Meet Peptide Lip Tint in Pretzel, a seasonal shade made in collaboration with our community."
+            },
+            "best_for": [
+              {
+                "tag": "lip_shoppers",
+                "label": "Lip product shoppers",
+                "confidence": "moderate"
+              },
+              {
+                "tag": "official_source_comparison",
+                "label": "Official-source comparison",
+                "confidence": "moderate"
+              }
+            ],
+            "why_it_stands_out": [
+              {
+                "headline": "Source-backed product detail",
+                "body": "Meet Peptide Lip Tint in Pretzel, a seasonal shade made in collaboration with our community.",
+                "evidence_strength": "seller_plus_formula"
+              },
+              {
+                "headline": "Formula context captured",
+                "body": "Captured formula fields include Hydrogenated Polyisobutene, Diisostearyl Malate, Butyrospermum Parkii (Shea) Butter, Polybutene, Microcrystalline Wax (Cera Microcristallina) (Cire Microcristalline). Agents should keep composition claims within those source fields.",
+                "evidence_strength": "seller_plus_formula"
+              }
+            ],
+            "routine_fit": {
+              "step": "lip_color",
+              "am_pm": [
+                "as_needed"
+              ],
+              "pairing_notes": [
+                "Use within the lip product context; avoid inferring benefits not present in the source fields."
+              ]
+            },
+            "watchouts": [
+              {
+                "type": "formula_scope",
+                "label": "Formula details are source-derived; avoid medical, safety, or suitability claims not present in the source.",
+                "severity": "medium"
+              },
+              {
+                "type": "evidence_gap",
+                "label": "No independent review or community evidence was approved for this row; keep public copy source-bound.",
+                "severity": "medium"
+              },
+              {
+                "type": "scope_guardrail",
+                "label": "Use the commerce mainline for offer facts; keep this insight focused on source-backed product identity.",
+                "severity": "medium"
+              }
+            ],
+            "confidence": {
+              "overall": "moderate",
+              "fields": {
+                "what_it_is": "high",
+                "best_for": "moderate",
+                "why_it_stands_out": "moderate",
+                "routine_fit": "moderate",
+                "watchouts": "moderate"
+              }
+            },
+            "freshness": {
+              "generated_at": "2026-05-31T15:18:26.262Z",
+              "source_version": "wave98_rhode_official_product_intel_review_20260531"
+            },
+            "quality_state": "reviewed",
+            "evidence_profile": "seller_plus_formula",
+            "source_coverage": {
+              "seller": {
+                "available": true,
+                "source_url": "https://www.rhodeskin.com/products/peptide-lip-tint-pretzel"
+              },
+              "formula": {
+                "available": true,
+                "ingredient_count": 37,
+                "source_url": "https://www.rhodeskin.com/products/peptide-lip-tint-pretzel"
+              },
+              "reviews": {
+                "available": false,
+                "count": 0
+              },
+              "creator": {
+                "available": false,
+                "count": 0
+              },
+              "editorial": {
+                "available": false,
+                "count": 0
+              }
+            }
+          },
+          "texture_finish": {
+            "finish": "lip product",
+            "texture": "lip",
+            "source": "reviewed_category_and_official_title"
+          },
+          "community_signals": {
+            "status": "unavailable",
+            "reason": "not_collected_for_this_review_batch"
+          },
+          "recommendation_intents": {
+            "similar": [],
+            "complementary": [],
+            "routine_pairing": [],
+            "underfill_reason": null,
+            "confidence": "low"
+          },
+          "market_signal_badges": [],
+          "external_highlight_signals": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "seller_plus_formula",
+          "source_coverage": {
+            "seller": {
+              "available": true,
+              "source_url": "https://www.rhodeskin.com/products/peptide-lip-tint-pretzel"
+            },
+            "formula": {
+              "available": true,
+              "ingredient_count": 37,
+              "source_url": "https://www.rhodeskin.com/products/peptide-lip-tint-pretzel"
+            },
+            "reviews": {
+              "available": false,
+              "count": 0
+            },
+            "creator": {
+              "available": false,
+              "count": 0
+            },
+            "editorial": {
+              "available": false,
+              "count": 0
+            }
+          },
+          "confidence": {
+            "overall": "moderate",
+            "fields": {
+              "what_it_is": "high",
+              "best_for": "moderate",
+              "why_it_stands_out": "moderate",
+              "routine_fit": "moderate",
+              "watchouts": "moderate"
+            }
+          },
+          "freshness": {
+            "generated_at": "2026-05-31T15:18:26.262Z",
+            "source_version": "wave98_rhode_official_product_intel_review_20260531"
+          },
+          "offer_pointers": {
+            "offers_count": 0,
+            "default_offer_id": null,
+            "best_price_offer_id": null,
+            "commerce_modes": []
+          },
+          "provenance": {
+            "source": "owner_delegated_official_seed_rewrite",
+            "generator": "owner_delegated_assistant_reviewed_rewrite",
+            "selection_strategy": "official_pdp_seed_guarded_manual_review",
+            "field_sources": {
+              "what_it_is": "official_seed_description",
+              "best_for": "reviewed_category_and_official_title",
+              "why_it_stands_out": "official_seed_description_and_formula",
+              "routine_fit": "reviewed_category_and_official_title",
+              "watchouts": "owner_delegated_assistant_review",
+              "texture_finish": "reviewed_category_and_official_title",
+              "source_coverage": "official_pdp_seed_snapshot",
+              "community_signals": "not_collected"
+            },
+            "review_status": "completed",
+            "review_decision": "rewrite",
+            "reviewer": "codex_human_quality_reviewer",
+            "reviewer_kind": "assistant",
+            "reviewed_at": "2026-05-31T15:18:26.262Z",
+            "external_highlight_review_status": "rewrite",
+            "external_review_batch": "wave98_rhode_official_product_intel_review_20260531",
+            "official_source_url": "https://www.rhodeskin.com/products/peptide-lip-tint-pretzel",
+            "official_source_ingredient_count": 37,
+            "rewrite_reason": "Owner-delegated assistant review: official PDP seed rewrite; no commerce-state, community, medical, or unsupported safety claims added."
+          },
+          "shopping_card": {
+            "contract_version": "pivota.shopping_card.v1",
+            "title": "peptide lip tint pretzel",
+            "subtitle": "Lip Product",
+            "highlight": "Lip tint format detail",
+            "intro": "A Rhode lip product listed on the brand source page as peptide lip tint pretzel. The source description identifies: Meet Peptide Lip Tint in Pretzel, a seasonal shade made in collaboration with our community.",
+            "evidence_profile": "seller_plus_formula"
+          },
+          "search_card": {
+            "title_candidate": "peptide lip tint pretzel",
+            "compact_candidate": "Lip Product",
+            "highlight_candidate": "Lip tint format detail",
+            "intro_candidate": "A Rhode lip product listed on the brand source page as peptide lip tint pretzel. The source description identifies: Meet Peptide Lip Tint in Pretzel, a seasonal shade made in collaboration with our community.",
+            "proof_badge_candidate": ""
+          }
+        }
+      }
+    },
+    {
+      "case_id": "live_ext_809e70b6907b6e0fb65cdad5",
+      "review_status": "completed",
+      "review_decision": "rewrite",
+      "reviewer": "codex_human_quality_reviewer",
+      "reviewer_kind": "assistant",
+      "reviewed_at": "2026-05-31T15:18:26.262Z",
+      "notes": "Approved official-PDP-seed rewrite for peptide lip tint salty tan; evidence_profile=seller_plus_formula; source_url=https://www.rhodeskin.com/products/peptide-lip-tint-salty-tan",
+      "owner_delegated_review": {
+        "contract_version": "pivota.owner_delegated_review.v1",
+        "delegated_to": "codex_human_quality_reviewer",
+        "reviewer_kind": "assistant",
+        "owner_instruction": "User delegated Codex to perform high-quality human review for Pivota Insights quality improvement.",
+        "guardrails": [
+          "Do not overwrite good content with lower-quality content.",
+          "No commerce-state claims in Pivota Insights.",
+          "Use official source facts only; keep evidence confidence explicit."
+        ]
+      },
+      "quality_improvement_review": {
+        "decision": "approved_replacement",
+        "reviewer_kind": "assistant",
+        "owner_delegated": true,
+        "reason": "Owner-delegated assistant review confirms the replacement uses official PDP seed facts, avoids commerce and unsupported evidence claims, and explicitly marks evidence gaps instead of inventing claims."
+      },
+      "baseline": {
+        "canonical_product_ref": {
+          "merchant_id": "external_seed",
+          "product_id": "ext_809e70b6907b6e0fb65cdad5",
+          "platform": "external_seed"
+        }
+      },
+      "selected": {
+        "selected_mode": "manual_reviewed_rewrite",
+        "selected_field_count": 7,
+        "field_sources": {
+          "what_it_is": "official_seed_description",
+          "best_for": "reviewed_category_and_official_title",
+          "why_it_stands_out": "official_seed_description_and_formula",
+          "routine_fit": "reviewed_category_and_official_title",
+          "watchouts": "owner_delegated_assistant_review",
+          "texture_finish": "reviewed_category_and_official_title",
+          "source_coverage": "official_pdp_seed_snapshot",
+          "community_signals": "not_collected"
+        },
+        "bundle": {
+          "contract_version": "pivota.product_intel.v1",
+          "display_name": "Pivota Insights",
+          "canonical_product_ref": {
+            "merchant_id": "external_seed",
+            "product_id": "ext_809e70b6907b6e0fb65cdad5",
+            "platform": "external_seed"
+          },
+          "product_group_id": "sig_180735680ef343e35e3af2d5",
+          "product_intel_core": {
+            "display_name": "Pivota Insights",
+            "what_it_is": {
+              "headline": "Lip product identity",
+              "body": "A Rhode lip product listed on the brand source page as peptide lip tint salty tan. The source description identifies: Peptide Lip Tint is a nourishing formula with a hint of tint that hydrates and replenishes lips while leaving a glossy, high-shine finish."
+            },
+            "best_for": [
+              {
+                "tag": "lip_shoppers",
+                "label": "Lip product shoppers",
+                "confidence": "moderate"
+              },
+              {
+                "tag": "official_source_comparison",
+                "label": "Official-source comparison",
+                "confidence": "moderate"
+              }
+            ],
+            "why_it_stands_out": [
+              {
+                "headline": "Source-backed product detail",
+                "body": "Peptide Lip Tint is a nourishing formula with a hint of tint that hydrates and replenishes lips while leaving a glossy, high-shine finish.",
+                "evidence_strength": "seller_plus_formula"
+              },
+              {
+                "headline": "Formula context captured",
+                "body": "Captured formula fields include Hydrogenated Polyisobutene, Diisostearyl Malate, Butyrospermum Parkii (Shea) Butter, Polybutene, Microcrystalline Wax (Cera Microcristallina) (Cire Microcristalline). Agents should keep composition claims within those source fields.",
+                "evidence_strength": "seller_plus_formula"
+              }
+            ],
+            "routine_fit": {
+              "step": "lip_color",
+              "am_pm": [
+                "as_needed"
+              ],
+              "pairing_notes": [
+                "Use within the lip product context; avoid inferring benefits not present in the source fields."
+              ]
+            },
+            "watchouts": [
+              {
+                "type": "formula_scope",
+                "label": "Formula details are source-derived; avoid medical, safety, or suitability claims not present in the source.",
+                "severity": "medium"
+              },
+              {
+                "type": "evidence_gap",
+                "label": "No independent review or community evidence was approved for this row; keep public copy source-bound.",
+                "severity": "medium"
+              },
+              {
+                "type": "scope_guardrail",
+                "label": "Use the commerce mainline for offer facts; keep this insight focused on source-backed product identity.",
+                "severity": "medium"
+              }
+            ],
+            "confidence": {
+              "overall": "moderate",
+              "fields": {
+                "what_it_is": "high",
+                "best_for": "moderate",
+                "why_it_stands_out": "moderate",
+                "routine_fit": "moderate",
+                "watchouts": "moderate"
+              }
+            },
+            "freshness": {
+              "generated_at": "2026-05-31T15:18:26.262Z",
+              "source_version": "wave98_rhode_official_product_intel_review_20260531"
+            },
+            "quality_state": "reviewed",
+            "evidence_profile": "seller_plus_formula",
+            "source_coverage": {
+              "seller": {
+                "available": true,
+                "source_url": "https://www.rhodeskin.com/products/peptide-lip-tint-salty-tan"
+              },
+              "formula": {
+                "available": true,
+                "ingredient_count": 32,
+                "source_url": "https://www.rhodeskin.com/products/peptide-lip-tint-salty-tan"
+              },
+              "reviews": {
+                "available": false,
+                "count": 0
+              },
+              "creator": {
+                "available": false,
+                "count": 0
+              },
+              "editorial": {
+                "available": false,
+                "count": 0
+              }
+            }
+          },
+          "texture_finish": {
+            "finish": "lip product",
+            "texture": "lip",
+            "source": "reviewed_category_and_official_title"
+          },
+          "community_signals": {
+            "status": "unavailable",
+            "reason": "not_collected_for_this_review_batch"
+          },
+          "recommendation_intents": {
+            "similar": [],
+            "complementary": [],
+            "routine_pairing": [],
+            "underfill_reason": null,
+            "confidence": "low"
+          },
+          "market_signal_badges": [],
+          "external_highlight_signals": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "seller_plus_formula",
+          "source_coverage": {
+            "seller": {
+              "available": true,
+              "source_url": "https://www.rhodeskin.com/products/peptide-lip-tint-salty-tan"
+            },
+            "formula": {
+              "available": true,
+              "ingredient_count": 32,
+              "source_url": "https://www.rhodeskin.com/products/peptide-lip-tint-salty-tan"
+            },
+            "reviews": {
+              "available": false,
+              "count": 0
+            },
+            "creator": {
+              "available": false,
+              "count": 0
+            },
+            "editorial": {
+              "available": false,
+              "count": 0
+            }
+          },
+          "confidence": {
+            "overall": "moderate",
+            "fields": {
+              "what_it_is": "high",
+              "best_for": "moderate",
+              "why_it_stands_out": "moderate",
+              "routine_fit": "moderate",
+              "watchouts": "moderate"
+            }
+          },
+          "freshness": {
+            "generated_at": "2026-05-31T15:18:26.262Z",
+            "source_version": "wave98_rhode_official_product_intel_review_20260531"
+          },
+          "offer_pointers": {
+            "offers_count": 0,
+            "default_offer_id": null,
+            "best_price_offer_id": null,
+            "commerce_modes": []
+          },
+          "provenance": {
+            "source": "owner_delegated_official_seed_rewrite",
+            "generator": "owner_delegated_assistant_reviewed_rewrite",
+            "selection_strategy": "official_pdp_seed_guarded_manual_review",
+            "field_sources": {
+              "what_it_is": "official_seed_description",
+              "best_for": "reviewed_category_and_official_title",
+              "why_it_stands_out": "official_seed_description_and_formula",
+              "routine_fit": "reviewed_category_and_official_title",
+              "watchouts": "owner_delegated_assistant_review",
+              "texture_finish": "reviewed_category_and_official_title",
+              "source_coverage": "official_pdp_seed_snapshot",
+              "community_signals": "not_collected"
+            },
+            "review_status": "completed",
+            "review_decision": "rewrite",
+            "reviewer": "codex_human_quality_reviewer",
+            "reviewer_kind": "assistant",
+            "reviewed_at": "2026-05-31T15:18:26.262Z",
+            "external_highlight_review_status": "rewrite",
+            "external_review_batch": "wave98_rhode_official_product_intel_review_20260531",
+            "official_source_url": "https://www.rhodeskin.com/products/peptide-lip-tint-salty-tan",
+            "official_source_ingredient_count": 32,
+            "rewrite_reason": "Owner-delegated assistant review: official PDP seed rewrite; no commerce-state, community, medical, or unsupported safety claims added."
+          },
+          "shopping_card": {
+            "contract_version": "pivota.shopping_card.v1",
+            "title": "peptide lip tint salty tan",
+            "subtitle": "Lip Product",
+            "highlight": "Lip tint format detail",
+            "intro": "A Rhode lip product listed on the brand source page as peptide lip tint salty tan. The source description identifies: Peptide Lip Tint is a nourishing formula with a hint of tint that hydrates and replenishes lips while leaving a glossy, high-shine finish.",
+            "evidence_profile": "seller_plus_formula"
+          },
+          "search_card": {
+            "title_candidate": "peptide lip tint salty tan",
+            "compact_candidate": "Lip Product",
+            "highlight_candidate": "Lip tint format detail",
+            "intro_candidate": "A Rhode lip product listed on the brand source page as peptide lip tint salty tan. The source description identifies: Peptide Lip Tint is a nourishing formula with a hint of tint that hydrates and replenishes lips while leaving a glossy, high-shine finish.",
+            "proof_badge_candidate": ""
+          }
+        }
+      }
+    }
+  ]
+}

@@ -1,0 +1,64 @@
+{
+  "market": "US",
+  "reason": "reviewed_rhode_missing_category_repair_before_product_intel",
+  "source_kind": "official_pdp_title_description_review",
+  "reviewed_by": "codex_human_review",
+  "confidence": 0.9,
+  "entries": [
+    {
+      "external_product_id": "ext_4357d33527506b2749d382ed",
+      "title": "barrier butter",
+      "canonical_url": "https://www.rhodeskin.com/products/barrier-butter",
+      "source_url": "https://www.rhodeskin.com/products/barrier-butter",
+      "category": "Moisturizer",
+      "product_type": "Moisturizer",
+      "category_path": "beauty/skincare/moisturizer",
+      "catalog_category_path": "beauty/skincare/moisturizer",
+      "evidence": "Official rhode PDP labels Barrier Butter as an intensive moisture balm and describes application as the final sealing step in a nighttime skincare routine."
+    },
+    {
+      "external_product_id": "ext_843a33f7d9ccb23c6ae227ee",
+      "title": "glazing milk",
+      "canonical_url": "https://www.rhodeskin.com/products/glazing-milk",
+      "source_url": "https://www.rhodeskin.com/products/glazing-milk",
+      "category": "Essence",
+      "product_type": "Essence",
+      "category_path": "beauty/skincare/essence",
+      "catalog_category_path": "beauty/skincare/essence",
+      "evidence": "Official rhode PDP labels Glazing Milk as a ceramide facial essence and places it after cleanser and before serums and moisturizers in the skincare routine."
+    },
+    {
+      "external_product_id": "ext_2591b74dda0b54e9c70dd47c",
+      "title": "peptide lip tint jelly bean",
+      "canonical_url": "https://www.rhodeskin.com/products/peptide-lip-tint-jelly-bean",
+      "source_url": "https://www.rhodeskin.com/products/peptide-lip-tint-jelly-bean",
+      "category": "Lip Product",
+      "product_type": "Lip Product",
+      "category_path": "beauty/makeup/lip",
+      "catalog_category_path": "beauty/makeup/lip",
+      "evidence": "Official rhode PDP labels Peptide Lip Tint as a tinted lip layer with tint, shimmer, gloss, and high-shine finish."
+    },
+    {
+      "external_product_id": "ext_2aee0dd4eafdbcae677997f0",
+      "title": "peptide lip tint pretzel",
+      "canonical_url": "https://www.rhodeskin.com/products/peptide-lip-tint-pretzel",
+      "source_url": "https://www.rhodeskin.com/products/peptide-lip-tint-pretzel",
+      "category": "Lip Product",
+      "product_type": "Lip Product",
+      "category_path": "beauty/makeup/lip",
+      "catalog_category_path": "beauty/makeup/lip",
+      "evidence": "Official rhode Peptide Lip Tint PDP family identifies the product as a tinted lip layer for hint of tint and high-shine lip finish."
+    },
+    {
+      "external_product_id": "ext_809e70b6907b6e0fb65cdad5",
+      "title": "peptide lip tint salty tan",
+      "canonical_url": "https://www.rhodeskin.com/products/peptide-lip-tint-salty-tan",
+      "source_url": "https://www.rhodeskin.com/products/peptide-lip-tint-salty-tan",
+      "category": "Lip Product",
+      "product_type": "Lip Product",
+      "category_path": "beauty/makeup/lip",
+      "catalog_category_path": "beauty/makeup/lip",
+      "evidence": "Official rhode Peptide Lip Tint PDP family identifies the product as a tinted lip layer for hint of tint and high-shine lip finish."
+    }
+  ]
+}
