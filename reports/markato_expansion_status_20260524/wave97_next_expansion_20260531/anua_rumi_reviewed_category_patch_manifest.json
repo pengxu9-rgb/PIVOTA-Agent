@@ -1,0 +1,20 @@
+{
+  "market": "US",
+  "reason": "reviewed_anua_rumi_spot_patch_category_repair_after_identity_refresh",
+  "source_kind": "official_pdp_title_description_review",
+  "reviewed_by": "codex_human_review",
+  "confidence": 0.92,
+  "entries": [
+    {
+      "external_product_id": "ext_a406636157366f31879c4cbe",
+      "title": "Rumi Ultra-thin Spot Cover Patch (55ea)",
+      "canonical_url": "https://anua.com/products/rumi-ultra-thin-spot-cover-patch-55ea",
+      "source_url": "https://anua.com/products/rumi-ultra-thin-spot-cover-patch-55ea",
+      "category": "Blemish Patch",
+      "product_type": "Blemish Patch",
+      "category_path": "beauty/skincare/acne-treatment",
+      "catalog_category_path": "beauty/skincare/acne-treatment",
+      "evidence": "Official Anua PDP title and description identify this as an ultra-thin hydrocolloid spot patch for covering blemish areas and shielding post-extraction spots."
+    }
+  ]
+}
