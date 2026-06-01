@@ -1,0 +1,1283 @@
+{
+  "generated_at": "2026-06-01T04:37:15.030Z",
+  "source": "pivota_insights_official_pdp_manual_review_v1",
+  "mode": "dry_run",
+  "filters": {
+    "brand": "Murad",
+    "product_ids": [],
+    "limit": 15,
+    "include_strong": false,
+    "include_url_key": false,
+    "apply_chunk_size": null
+  },
+  "summary": {
+    "scanned": 15,
+    "changed_products": 2,
+    "blocked_products": 1,
+    "skipped_products": 12,
+    "write_actions": {
+      "skip": 24,
+      "update": 4
+    },
+    "skip_reasons": {
+      "no_safe_writes": 12,
+      "protected_high_quality_existing:reviewed": 20,
+      "protected_evidence_profile_existing:community_supported": 4,
+      "candidate_failed_manual_quality_gate:insufficient_official_pdp_specificity": 1
+    },
+    "evidence_profiles": {
+      "official_pdp_reviewed_formula_and_usage": 12,
+      "official_pdp_reviewed_limited": 3
+    }
+  },
+  "plans": [
+    {
+      "external_product_id": "ext_d04777cb89d14e942a1caa38",
+      "pivota_signature_id": "sig_3f6776c72a251bccf1b21739c8377e9a",
+      "title": "Acne Control Clarifying Cleanser",
+      "brand": "Murad",
+      "canonical_url": "https://www.murad.com/products/clarifying-acne-cleanser",
+      "changed": false,
+      "blocked": false,
+      "skip_reason": "no_safe_writes",
+      "candidate_hash": "86bad5d9418ac01b2b4eddbed9d9441765a8ec9a6b4df7ac538e811777b67dbe",
+      "evidence_profile": "official_pdp_reviewed_formula_and_usage",
+      "source_coverage": {
+        "source": "official_pdp",
+        "canonical_url": "https://www.murad.com/products/clarifying-acne-cleanser",
+        "fields": {
+          "description": true,
+          "ingredients": 1,
+          "active_ingredients": 1,
+          "how_to": 1,
+          "details": 2,
+          "variants": 1
+        }
+      },
+      "preview": {
+        "headline": "Face cleanser",
+        "what_it_is": "Acne Control Clarifying Cleanser is a face cleanser from Murad in 5 oz, with source-backed cues around cleansing and dirt, oil, and impurity removal.",
+        "why_it_stands_out": [
+          {
+            "headline": "Product cues are source-backed",
+            "body": "Reviewed PDP cues such as daily cleansing, pore cleansing, 5 oz give shoppers specific comparison points within Murad, rather than category-only copy.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Ingredient list is available",
+            "body": "Full INCI is present for formula-sensitive review, which makes this PDP safer to evaluate than a claim-only listing.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Shade and size are explicit",
+            "body": "Variant labels such as 5 oz, Size: 5 oz are visible, reducing ambiguity around the product format before a shopper clicks through.",
+            "evidence_strength": "official_pdp_reviewed"
+          }
+        ],
+        "best_for": [
+          {
+            "tag": "daily_cleansing",
+            "label": "daily cleansing",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "pore_cleansing",
+            "label": "pore cleansing",
+            "confidence": "moderate"
+          }
+        ],
+        "shopping_highlight": "daily cleansing, pore cleansing, 5 oz"
+      },
+      "writes": [
+        {
+          "kb_key": "product:ext_d04777cb89d14e942a1caa38",
+          "action": "skip",
+          "reason": "protected_high_quality_existing:reviewed",
+          "old_hash": "f31286afc37cb4c1121c9000ff504d773c008284f720eff7668ce5a4ced550d1",
+          "existing_weak": false
+        },
+        {
+          "kb_key": "product:sig_3f6776c72a251bccf1b21739c8377e9a",
+          "action": "skip",
+          "reason": "protected_high_quality_existing:reviewed",
+          "old_hash": "f31286afc37cb4c1121c9000ff504d773c008284f720eff7668ce5a4ced550d1",
+          "existing_weak": false
+        }
+      ]
+    },
+    {
+      "external_product_id": "ext_16fcb6b2a82bb4b62d8c8451",
+      "pivota_signature_id": "sig_8c1870c66c77ba14bdb7483cee35b74c",
+      "title": "AHA/BHA Exfoliating Cleanser",
+      "brand": "Murad",
+      "canonical_url": "https://www.murad.com/products/aha-bha-exfoliating-cleanser",
+      "changed": false,
+      "blocked": false,
+      "skip_reason": "no_safe_writes",
+      "candidate_hash": "65ee119f63a6043f4647992b6e63677b4b68c05e24afa8e18c5985b1de7b4d7c",
+      "evidence_profile": "official_pdp_reviewed_formula_and_usage",
+      "source_coverage": {
+        "source": "official_pdp",
+        "canonical_url": "https://www.murad.com/products/aha-bha-exfoliating-cleanser",
+        "fields": {
+          "description": true,
+          "ingredients": 1,
+          "active_ingredients": 3,
+          "how_to": 1,
+          "details": 2,
+          "variants": 1
+        }
+      },
+      "preview": {
+        "headline": "Face cleanser",
+        "what_it_is": "AHA/BHA Exfoliating Cleanser is a face cleanser from Murad, with source-backed cues around cleansing.",
+        "why_it_stands_out": [
+          {
+            "headline": "Product cues are source-backed",
+            "body": "Reviewed PDP cues such as daily cleansing give shoppers specific comparison points within Murad, rather than category-only copy.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Ingredient list is available",
+            "body": "Full INCI is present for formula-sensitive review, which makes this PDP safer to evaluate than a claim-only listing.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Usage instructions available",
+            "body": "Reviewed usage context is present, including: To use: 2-3x a week Massage a small amount of AHA/BHA Exfoliating Cleanser over dampened face and neck.",
+            "evidence_strength": "official_pdp_reviewed"
+          }
+        ],
+        "best_for": [
+          {
+            "tag": "daily_cleansing",
+            "label": "daily cleansing",
+            "confidence": "moderate"
+          }
+        ],
+        "shopping_highlight": "daily cleansing, full INCI available"
+      },
+      "writes": [
+        {
+          "kb_key": "product:ext_16fcb6b2a82bb4b62d8c8451",
+          "action": "skip",
+          "reason": "protected_high_quality_existing:reviewed",
+          "old_hash": "7d2b7b3cb9dde01677844730eb52e4c853ba87a20f985c4ae440b46e41eca564",
+          "existing_weak": false
+        },
+        {
+          "kb_key": "product:sig_8c1870c66c77ba14bdb7483cee35b74c",
+          "action": "skip",
+          "reason": "protected_high_quality_existing:reviewed",
+          "old_hash": "7d2b7b3cb9dde01677844730eb52e4c853ba87a20f985c4ae440b46e41eca564",
+          "existing_weak": false
+        }
+      ]
+    },
+    {
+      "external_product_id": "ulta:2c011e3bdf32f71e",
+      "pivota_signature_id": "sig_a1820de91ce80369a0bccdd5b9544033",
+      "title": "AHA/BHA Exfoliating Cleanser - 5.0 oz",
+      "brand": "Murad",
+      "canonical_url": "https://www.ulta.com/p/ahabha-exfoliating-cleanser-pimprod2049019?sku=2631727",
+      "changed": false,
+      "blocked": false,
+      "skip_reason": "no_safe_writes",
+      "candidate_hash": "0134543765be8eb7a78544c6a342160cedc819e91bea52255ed34f78e44eea83",
+      "evidence_profile": "official_pdp_reviewed_formula_and_usage",
+      "source_coverage": {
+        "source": "official_pdp",
+        "canonical_url": "https://www.ulta.com/p/ahabha-exfoliating-cleanser-pimprod2049019?sku=2631727",
+        "fields": {
+          "description": true,
+          "ingredients": 1,
+          "active_ingredients": 1,
+          "how_to": 1,
+          "details": 2,
+          "variants": 1
+        }
+      },
+      "preview": {
+        "headline": "Face cleanser",
+        "what_it_is": "AHA/BHA Exfoliating Cleanser - 5.0 oz is a face cleanser from Murad, with source-backed cues around cleansing.",
+        "why_it_stands_out": [
+          {
+            "headline": "Product cues are source-backed",
+            "body": "Reviewed PDP cues such as daily cleansing give shoppers specific comparison points within Murad, rather than category-only copy.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Ingredient list is available",
+            "body": "Full INCI is present for formula-sensitive review, which makes this PDP safer to evaluate than a claim-only listing.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Usage instructions available",
+            "body": "Reviewed usage context is present, including: To Use: AM or PM Massage a small amount over dampened face and neck.",
+            "evidence_strength": "official_pdp_reviewed"
+          }
+        ],
+        "best_for": [
+          {
+            "tag": "daily_cleansing",
+            "label": "daily cleansing",
+            "confidence": "moderate"
+          }
+        ],
+        "shopping_highlight": "daily cleansing, full INCI available"
+      },
+      "writes": [
+        {
+          "kb_key": "product:ulta:2c011e3bdf32f71e",
+          "action": "skip",
+          "reason": "protected_high_quality_existing:reviewed",
+          "old_hash": "c9a67b4a17367c38816adc8563e28b0906da1b4fcb71e476000d29e84b7c1367",
+          "existing_weak": false
+        },
+        {
+          "kb_key": "product:sig_a1820de91ce80369a0bccdd5b9544033",
+          "action": "skip",
+          "reason": "protected_high_quality_existing:reviewed",
+          "old_hash": "1aefc06a6d4a8560d5f7b3304fdbbef20b098dd8797e9e362b776c05dc549ca5",
+          "existing_weak": false
+        }
+      ]
+    },
+    {
+      "external_product_id": "ext_b61c6774eb9f83b91d7416e5",
+      "pivota_signature_id": "sig_bea4e6824b6e1d08b3cf426647fd119b",
+      "title": "AHA/BHA Exfoliating Cleanser Travel Size",
+      "brand": "Murad",
+      "canonical_url": "https://www.murad.com/products/travel-size-aha-bha-exfoliating-cleanser",
+      "changed": false,
+      "blocked": false,
+      "skip_reason": "no_safe_writes",
+      "candidate_hash": "48d46fe3668e38bd58bfb55d0a1bb11795490feb183fa064eec6a1ad467750ff",
+      "evidence_profile": "official_pdp_reviewed_formula_and_usage",
+      "source_coverage": {
+        "source": "official_pdp",
+        "canonical_url": "https://www.murad.com/products/travel-size-aha-bha-exfoliating-cleanser",
+        "fields": {
+          "description": true,
+          "ingredients": 1,
+          "active_ingredients": 3,
+          "how_to": 1,
+          "details": 2,
+          "variants": 1
+        }
+      },
+      "preview": {
+        "headline": "Face cleanser",
+        "what_it_is": "AHA/BHA Exfoliating Cleanser Travel Size is a face cleanser from Murad, with source-backed cues around cleansing.",
+        "why_it_stands_out": [
+          {
+            "headline": "Ingredient list is available",
+            "body": "Full INCI is present for formula-sensitive review, which makes this sample safer to evaluate than a claim-only listing.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Usage instructions available",
+            "body": "Reviewed usage context is present, including: To use: 2-3x a week Massage a small amount of AHA/BHA Exfoliating Cleanser over dampened face and neck.",
+            "evidence_strength": "official_pdp_reviewed"
+          }
+        ],
+        "best_for": [
+          {
+            "tag": "daily_cleansing",
+            "label": "daily cleansing",
+            "confidence": "moderate"
+          }
+        ],
+        "shopping_highlight": "daily cleansing"
+      },
+      "writes": [
+        {
+          "kb_key": "product:ext_b61c6774eb9f83b91d7416e5",
+          "action": "skip",
+          "reason": "protected_evidence_profile_existing:community_supported",
+          "old_hash": "be1513911243725f01124e4e7434530eb669582b47d2cbf328a034e03201a3ab",
+          "existing_weak": true
+        },
+        {
+          "kb_key": "product:sig_bea4e6824b6e1d08b3cf426647fd119b",
+          "action": "skip",
+          "reason": "protected_high_quality_existing:reviewed",
+          "old_hash": "0d79832ef98f0c998482e45096589cb83acd0d04368f28cd81cb9983ee0492b3",
+          "existing_weak": false
+        }
+      ]
+    },
+    {
+      "external_product_id": "ext_e205349c0d5f38dfa83c6be4",
+      "pivota_signature_id": "sig_273bbba72c933ab0ea27940699e8dde0",
+      "title": "AHA/BHA Exfoliating Cleanser Value Size",
+      "brand": "Murad",
+      "canonical_url": "https://www.murad.com/products/aha-bha-exfoliating-cleanser-professional-size",
+      "changed": false,
+      "blocked": false,
+      "skip_reason": "no_safe_writes",
+      "candidate_hash": "e4d396d7acd6d942d4578b3b82fedd14583a9556a5ececa8f7d532854295c008",
+      "evidence_profile": "official_pdp_reviewed_formula_and_usage",
+      "source_coverage": {
+        "source": "official_pdp",
+        "canonical_url": "https://www.murad.com/products/aha-bha-exfoliating-cleanser-professional-size",
+        "fields": {
+          "description": true,
+          "ingredients": 1,
+          "active_ingredients": 3,
+          "how_to": 1,
+          "details": 2,
+          "variants": 1
+        }
+      },
+      "preview": {
+        "headline": "Face cleanser",
+        "what_it_is": "AHA/BHA Exfoliating Cleanser Value Size is a face cleanser from Murad in 16.9 oz, with source-backed cues around cleansing.",
+        "why_it_stands_out": [
+          {
+            "headline": "Product cues are source-backed",
+            "body": "Reviewed PDP cues such as daily cleansing, 16.9 oz give shoppers specific comparison points within Murad, rather than category-only copy.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Ingredient list is available",
+            "body": "Full INCI is present for formula-sensitive review, which makes this PDP safer to evaluate than a claim-only listing.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Shade and size are explicit",
+            "body": "Variant labels such as 16.9 oz, Size: 16.9 oz are visible, reducing ambiguity around the product format before a shopper clicks through.",
+            "evidence_strength": "official_pdp_reviewed"
+          }
+        ],
+        "best_for": [
+          {
+            "tag": "daily_cleansing",
+            "label": "daily cleansing",
+            "confidence": "moderate"
+          }
+        ],
+        "shopping_highlight": "daily cleansing, 16.9 oz"
+      },
+      "writes": [
+        {
+          "kb_key": "product:ext_e205349c0d5f38dfa83c6be4",
+          "action": "skip",
+          "reason": "protected_evidence_profile_existing:community_supported",
+          "old_hash": "f35571e6c3f5344e505108da27b7bd3c000f23b1222141dd6c49a9d5f3b4f1f5",
+          "existing_weak": true
+        },
+        {
+          "kb_key": "product:sig_273bbba72c933ab0ea27940699e8dde0",
+          "action": "skip",
+          "reason": "protected_high_quality_existing:reviewed",
+          "old_hash": "b548e0ad417bab667ef767224415623e176061266ced76fd4fecb33e791e7725",
+          "existing_weak": false
+        }
+      ]
+    },
+    {
+      "external_product_id": "ext_f1ad58993e889b377a11b062",
+      "pivota_signature_id": "sig_9f4ee3c9aabf7dbc7e6db69e7432acdc",
+      "title": "AHA/BHA/Retinoid Daily Clarifying Peel",
+      "brand": "Murad",
+      "canonical_url": "https://www.murad.com/products/daily-clarifying-peel",
+      "changed": false,
+      "blocked": false,
+      "skip_reason": "no_safe_writes",
+      "candidate_hash": "5c60aa316f98a2249f26b6a24bd3c5ad7e5dd9e11a632a8d596a08c0c9bec1f4",
+      "evidence_profile": "official_pdp_reviewed_formula_and_usage",
+      "source_coverage": {
+        "source": "official_pdp",
+        "canonical_url": "https://www.murad.com/products/daily-clarifying-peel",
+        "fields": {
+          "description": true,
+          "ingredients": 1,
+          "active_ingredients": 5,
+          "how_to": 1,
+          "details": 2,
+          "variants": 1
+        }
+      },
+      "preview": {
+        "headline": "Face cleanser",
+        "what_it_is": "AHA/BHA/Retinoid Daily Clarifying Peel is a face cleanser from Murad, with source-backed cues around cleansing and dirt, oil, and impurity removal.",
+        "why_it_stands_out": [
+          {
+            "headline": "Product cues are source-backed",
+            "body": "Reviewed PDP cues such as daily cleansing, pore cleansing give shoppers specific comparison points within Murad, rather than category-only copy.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Ingredient list is available",
+            "body": "Full INCI is present for formula-sensitive review, which makes this PDP safer to evaluate than a claim-only listing.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Usage instructions available",
+            "body": "Reviewed usage context is present, including: To Use: PM Cleanse with Clarifying Cleanser Shake Daily Clarifying Peel and dispense onto cotton pad.",
+            "evidence_strength": "official_pdp_reviewed"
+          }
+        ],
+        "best_for": [
+          {
+            "tag": "daily_cleansing",
+            "label": "daily cleansing",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "pore_cleansing",
+            "label": "pore cleansing",
+            "confidence": "moderate"
+          }
+        ],
+        "shopping_highlight": "daily cleansing, pore cleansing"
+      },
+      "writes": [
+        {
+          "kb_key": "product:ext_f1ad58993e889b377a11b062",
+          "action": "skip",
+          "reason": "protected_high_quality_existing:reviewed",
+          "old_hash": "bfb86b08335bb4dddb93315ad89666c5f2250ba381710b8a07118ea921de124e",
+          "existing_weak": false
+        },
+        {
+          "kb_key": "product:sig_9f4ee3c9aabf7dbc7e6db69e7432acdc",
+          "action": "skip",
+          "reason": "protected_high_quality_existing:reviewed",
+          "old_hash": "bfb86b08335bb4dddb93315ad89666c5f2250ba381710b8a07118ea921de124e",
+          "existing_weak": false
+        }
+      ]
+    },
+    {
+      "external_product_id": "ext_6fe2953f048a8a9a9d4dca8b",
+      "pivota_signature_id": "sig_c43ea408a23f4a023ae9b57a0427f14f",
+      "title": "Biome-Balancing Clear & Prevent Acne Treatment Serum",
+      "brand": "Murad",
+      "canonical_url": "https://www.murad.com/products/biome-balancing-acne-treatment-serum",
+      "changed": false,
+      "blocked": false,
+      "skip_reason": "no_safe_writes",
+      "candidate_hash": "8b6313e0aae2762b6ca3ecf00a259ef605f64645697dac5eb4bbb9a6e0d237d2",
+      "evidence_profile": "official_pdp_reviewed_formula_and_usage",
+      "source_coverage": {
+        "source": "official_pdp",
+        "canonical_url": "https://www.murad.com/products/biome-balancing-acne-treatment-serum",
+        "fields": {
+          "description": true,
+          "ingredients": 1,
+          "active_ingredients": 1,
+          "how_to": 2,
+          "details": 4,
+          "variants": 1
+        }
+      },
+      "preview": {
+        "headline": "Treatment serum",
+        "what_it_is": "Biome-Balancing Clear & Prevent Acne Treatment Serum is a treatment serum from Murad.",
+        "why_it_stands_out": [
+          {
+            "headline": "Routine step cues are specific",
+            "body": "Reviewed skincare cues such as BHA/salicylic acid, AHA exfoliation, aloe juice identify the routine role or key ingredient context without inventing unsupported benefits.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Ingredient list is available",
+            "body": "Full INCI is present for formula-sensitive review, which makes this PDP safer to evaluate than a claim-only listing.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Usage instructions available",
+            "body": "Reviewed usage context is present, including: Massage Clarifying Cleanser or Clarifying Cream Cleanser over dampened face and neck.",
+            "evidence_strength": "official_pdp_reviewed"
+          }
+        ],
+        "best_for": [
+          {
+            "tag": "exfoliating_toner_step",
+            "label": "exfoliating toner step",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "sun_protection",
+            "label": "sun protection",
+            "confidence": "moderate"
+          }
+        ],
+        "shopping_highlight": "BHA/salicylic acid, AHA exfoliation"
+      },
+      "writes": [
+        {
+          "kb_key": "product:ext_6fe2953f048a8a9a9d4dca8b",
+          "action": "skip",
+          "reason": "protected_high_quality_existing:reviewed",
+          "old_hash": "dc718a8ad09596b6e819627d13b2798aaf9a88367859396ef6da25a037962e18",
+          "existing_weak": false
+        },
+        {
+          "kb_key": "product:sig_c43ea408a23f4a023ae9b57a0427f14f",
+          "action": "skip",
+          "reason": "protected_high_quality_existing:reviewed",
+          "old_hash": "165ce88434f9bdcba0ad77ef95a04c4f051fc15b62b08c1d3829bf29c6f2c517",
+          "existing_weak": false
+        }
+      ]
+    },
+    {
+      "external_product_id": "ulta:f350d8e6e3fad78d",
+      "pivota_signature_id": "sig_33b05815439faed3e67c09b1eef94db4",
+      "title": "Biome-Balancing Clear & Prevent Acne Treatment Serum",
+      "brand": "Murad",
+      "canonical_url": "https://www.ulta.com/p/biome-balancing-clear-prevent-acne-treatment-serum-pimprod2051953?sku=2642507",
+      "changed": false,
+      "blocked": true,
+      "skip_reason": "candidate_failed_manual_quality_gate:insufficient_official_pdp_specificity",
+      "candidate_hash": "62701750ba4e9fb59909e8362d5202f63d0c157847337a948870c481061c8476",
+      "evidence_profile": "official_pdp_reviewed_limited",
+      "source_coverage": {
+        "source": "official_pdp",
+        "canonical_url": "https://www.ulta.com/p/biome-balancing-clear-prevent-acne-treatment-serum-pimprod2051953?sku=2642507",
+        "fields": {
+          "description": true,
+          "ingredients": 0,
+          "active_ingredients": 0,
+          "how_to": 0,
+          "details": 0,
+          "variants": 1
+        }
+      },
+      "preview": {
+        "headline": "Treatment serum",
+        "what_it_is": "Biome-Balancing Clear & Prevent Acne Treatment Serum is a treatment serum from Murad.",
+        "why_it_stands_out": [
+          {
+            "headline": "Official PDP evidence only",
+            "body": "This insight is limited to the official product fields currently available for Biome-Balancing Clear & Prevent Acne Treatment Serum.",
+            "evidence_strength": "official_pdp_reviewed_limited"
+          }
+        ],
+        "best_for": [
+          {
+            "tag": "treatment_serum",
+            "label": "Treatment serum",
+            "confidence": "moderate"
+          }
+        ],
+        "shopping_highlight": "Treatment serum"
+      },
+      "writes": []
+    },
+    {
+      "external_product_id": "ulta:9065a39a4d2eeac5",
+      "pivota_signature_id": "sig_6eb3c59114c207d7dda8afdee91430d4",
+      "title": "Cellular Hydration Barrier Repair Cream",
+      "brand": "Murad",
+      "canonical_url": "https://www.ulta.com/p/cellular-hydration-barrier-repair-cream-pimprod2042756?sku=2617753",
+      "changed": true,
+      "blocked": false,
+      "skip_reason": null,
+      "candidate_hash": "78fc53216702ad6622e06d93cdaf038f60c8c4f85700eb84341c68b76167e048",
+      "evidence_profile": "official_pdp_reviewed_limited",
+      "source_coverage": {
+        "source": "official_pdp",
+        "canonical_url": "https://www.ulta.com/p/cellular-hydration-barrier-repair-cream-pimprod2042756?sku=2617753",
+        "fields": {
+          "description": true,
+          "ingredients": 0,
+          "active_ingredients": 0,
+          "how_to": 0,
+          "details": 0,
+          "variants": 1
+        }
+      },
+      "preview": {
+        "headline": "Body care treatment",
+        "what_it_is": "Cellular Hydration Barrier Repair Cream is a body care treatment from Murad, with source-backed cues around hydration.",
+        "why_it_stands_out": [
+          {
+            "headline": "Routine step cues are specific",
+            "body": "Reviewed skincare cues such as hydration, barrier support identify the routine role or key ingredient context without inventing unsupported benefits.",
+            "evidence_strength": "official_pdp_reviewed"
+          }
+        ],
+        "best_for": [
+          {
+            "tag": "hydration",
+            "label": "hydration",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "barrier_support",
+            "label": "barrier support",
+            "confidence": "moderate"
+          }
+        ],
+        "shopping_highlight": "hydration, barrier support"
+      },
+      "writes": [
+        {
+          "kb_key": "product:ulta:9065a39a4d2eeac5",
+          "action": "update",
+          "reason": "explicit_owner_delegated_assistant_replacement_review",
+          "old_hash": "95aabdc44fd2971c0e1c148dc9e034932186626157142e8a527e5500370eaada",
+          "candidate_hash": "9c951945a30203249737dd5386e5593f9362d9e10f59209b9ba1bc1ac58fd88e",
+          "existing_weak": true,
+          "source": "pivota_insights_official_pdp_manual_review_v1",
+          "after_inventory": {
+            "product_id": "ulta:9065a39a4d2eeac5",
+            "kb_key": "product:ulta:9065a39a4d2eeac5",
+            "source": "pivota_insights_official_pdp_manual_review_v1",
+            "updated_at": "",
+            "last_success_at": "",
+            "title": "Cellular Hydration Barrier Repair Cream",
+            "canonical_url": "",
+            "bundle_hash": "78fc53216702ad6622e06d93cdaf038f60c8c4f85700eb84341c68b76167e048",
+            "lane": "keep",
+            "reason": "protected_good_content",
+            "priority": 0,
+            "protected": true,
+            "displayable": true,
+            "high_quality_ready": true,
+            "human_reviewed": true,
+            "issues": [],
+            "blocking_issues": [],
+            "quality_state": "reviewed",
+            "evidence_profile": "official_pdp_reviewed_limited",
+            "evidence_rank": 1,
+            "review_tier": "assistant_reviewed",
+            "agent_readable": true,
+            "public_ready": true
+          },
+          "source_meta": {
+            "evidence_profile": "official_pdp_reviewed_limited",
+            "quality_state": "reviewed",
+            "source_origin": "official_pdp_fields",
+            "source_url": "https://www.ulta.com/p/cellular-hydration-barrier-repair-cream-pimprod2042756?sku=2617753",
+            "quality_improvement": {
+              "previous_bundle_hash": "bb3ed14aa91593823342e176de59420680a6d6b006d3b7f209f80b32e0836632",
+              "candidate_bundle_hash": "78fc53216702ad6622e06d93cdaf038f60c8c4f85700eb84341c68b76167e048",
+              "replacement_decision": "explicit_owner_delegated_assistant_replacement_review",
+              "existing_quality_lane": "keep",
+              "candidate_quality_lane": "keep",
+              "existing_evidence_profile": "official_pdp_reviewed_limited",
+              "candidate_evidence_profile": "official_pdp_reviewed_limited"
+            }
+          }
+        },
+        {
+          "kb_key": "product:sig_6eb3c59114c207d7dda8afdee91430d4",
+          "action": "update",
+          "reason": "explicit_owner_delegated_assistant_replacement_review",
+          "old_hash": "95aabdc44fd2971c0e1c148dc9e034932186626157142e8a527e5500370eaada",
+          "candidate_hash": "9c951945a30203249737dd5386e5593f9362d9e10f59209b9ba1bc1ac58fd88e",
+          "existing_weak": true,
+          "source": "pivota_insights_official_pdp_manual_review_v1",
+          "after_inventory": {
+            "product_id": "ulta:9065a39a4d2eeac5",
+            "kb_key": "product:sig_6eb3c59114c207d7dda8afdee91430d4",
+            "source": "pivota_insights_official_pdp_manual_review_v1",
+            "updated_at": "",
+            "last_success_at": "",
+            "title": "Cellular Hydration Barrier Repair Cream",
+            "canonical_url": "",
+            "bundle_hash": "78fc53216702ad6622e06d93cdaf038f60c8c4f85700eb84341c68b76167e048",
+            "lane": "keep",
+            "reason": "protected_good_content",
+            "priority": 0,
+            "protected": true,
+            "displayable": true,
+            "high_quality_ready": true,
+            "human_reviewed": true,
+            "issues": [],
+            "blocking_issues": [],
+            "quality_state": "reviewed",
+            "evidence_profile": "official_pdp_reviewed_limited",
+            "evidence_rank": 1,
+            "review_tier": "assistant_reviewed",
+            "agent_readable": true,
+            "public_ready": true
+          },
+          "source_meta": {
+            "evidence_profile": "official_pdp_reviewed_limited",
+            "quality_state": "reviewed",
+            "source_origin": "official_pdp_fields",
+            "source_url": "https://www.ulta.com/p/cellular-hydration-barrier-repair-cream-pimprod2042756?sku=2617753",
+            "quality_improvement": {
+              "previous_bundle_hash": "bb3ed14aa91593823342e176de59420680a6d6b006d3b7f209f80b32e0836632",
+              "candidate_bundle_hash": "78fc53216702ad6622e06d93cdaf038f60c8c4f85700eb84341c68b76167e048",
+              "replacement_decision": "explicit_owner_delegated_assistant_replacement_review",
+              "existing_quality_lane": "keep",
+              "candidate_quality_lane": "keep",
+              "existing_evidence_profile": "official_pdp_reviewed_limited",
+              "candidate_evidence_profile": "official_pdp_reviewed_limited"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "external_product_id": "ext_b9487dbdc5b3b075d109c530",
+      "pivota_signature_id": "sig_7f3de0d7ccd775f721d9763c9c62f5ee",
+      "title": "Cellular Hydration Barrier Repair Cream Moisturizer",
+      "brand": "Murad",
+      "canonical_url": "https://www.murad.com/products/cellular-hydration-barrier-repair-cream",
+      "changed": false,
+      "blocked": false,
+      "skip_reason": "no_safe_writes",
+      "candidate_hash": "61d29d0cc3b1a801fa3429ce65f4a3652128ac3622490ed70b54c2314a9c8fce",
+      "evidence_profile": "official_pdp_reviewed_formula_and_usage",
+      "source_coverage": {
+        "source": "official_pdp",
+        "canonical_url": "https://www.murad.com/products/cellular-hydration-barrier-repair-cream",
+        "fields": {
+          "description": true,
+          "ingredients": 1,
+          "active_ingredients": 3,
+          "how_to": 1,
+          "details": 5,
+          "variants": 1
+        }
+      },
+      "preview": {
+        "headline": "Body care treatment",
+        "what_it_is": "Cellular Hydration Barrier Repair Cream Moisturizer is a body care treatment from Murad, with source-backed cues around cleansing, hydration and brightening support.",
+        "why_it_stands_out": [
+          {
+            "headline": "Routine step cues are specific",
+            "body": "Reviewed skincare cues such as hydration, barrier support identify the routine role or key ingredient context without inventing unsupported benefits.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Ingredient list is available",
+            "body": "Full INCI is present for formula-sensitive review, which makes this PDP safer to evaluate than a claim-only listing.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Usage instructions available",
+            "body": "Reviewed usage context is present, including: To Use: AM and PM Massage a gentle cleanser or your favorite Murad cleanser over dampened face and neck.",
+            "evidence_strength": "official_pdp_reviewed"
+          }
+        ],
+        "best_for": [
+          {
+            "tag": "hydration",
+            "label": "hydration",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "radiance",
+            "label": "radiance",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "barrier_support",
+            "label": "barrier support",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "sun_protection",
+            "label": "sun protection",
+            "confidence": "moderate"
+          }
+        ],
+        "shopping_highlight": "hydration, barrier support"
+      },
+      "writes": [
+        {
+          "kb_key": "product:ext_b9487dbdc5b3b075d109c530",
+          "action": "skip",
+          "reason": "protected_high_quality_existing:reviewed",
+          "old_hash": "dd00c174aee6f8aeed78a064b62dc5400c5aa8f18324f2d961becfa397331698",
+          "existing_weak": false
+        },
+        {
+          "kb_key": "product:sig_7f3de0d7ccd775f721d9763c9c62f5ee",
+          "action": "skip",
+          "reason": "protected_high_quality_existing:reviewed",
+          "old_hash": "2570892b9756350a5a3d920e4e4502b5c76c44c17ec115a76c881a25778f97c0",
+          "existing_weak": false
+        }
+      ]
+    },
+    {
+      "external_product_id": "ext_e7baa6029854a9ec234d152f",
+      "pivota_signature_id": "sig_f721fdab45dd179778b069a7a0c89183",
+      "title": "Cellular Hydration Barrier Repair Serum",
+      "brand": "Murad",
+      "canonical_url": "https://www.murad.com/products/cellular-hydration-barrier-repair-serum",
+      "changed": false,
+      "blocked": false,
+      "skip_reason": "no_safe_writes",
+      "candidate_hash": "39a23b53fda0539216d858c19ab5d3dfb41a33fd048c049d5f57c0a6ded766f6",
+      "evidence_profile": "official_pdp_reviewed_formula_and_usage",
+      "source_coverage": {
+        "source": "official_pdp",
+        "canonical_url": "https://www.murad.com/products/cellular-hydration-barrier-repair-serum",
+        "fields": {
+          "description": true,
+          "ingredients": 1,
+          "active_ingredients": 3,
+          "how_to": 1,
+          "details": 5,
+          "variants": 1
+        }
+      },
+      "preview": {
+        "headline": "Treatment serum",
+        "what_it_is": "Cellular Hydration Barrier Repair Serum is a treatment serum from Murad, with source-backed ingredient cues around peptides and barrier support.",
+        "why_it_stands_out": [
+          {
+            "headline": "Routine step cues are specific",
+            "body": "Reviewed skincare cues such as peptides, hydration, barrier support identify the routine role or key ingredient context without inventing unsupported benefits.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Ingredient list is available",
+            "body": "Full INCI is present for formula-sensitive review, which makes this PDP safer to evaluate than a claim-only listing.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Usage instructions available",
+            "body": "Reviewed usage context is present, including: To Use: AM and PM Massage a gentle cleanser or your favorite Murad cleanser over dampened face and neck.",
+            "evidence_strength": "official_pdp_reviewed"
+          }
+        ],
+        "best_for": [
+          {
+            "tag": "hydration",
+            "label": "hydration",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "firmness",
+            "label": "firmness",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "barrier_support",
+            "label": "barrier support",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "sun_protection",
+            "label": "sun protection",
+            "confidence": "moderate"
+          }
+        ],
+        "shopping_highlight": "peptides, hydration, barrier support"
+      },
+      "writes": [
+        {
+          "kb_key": "product:ext_e7baa6029854a9ec234d152f",
+          "action": "skip",
+          "reason": "protected_high_quality_existing:reviewed",
+          "old_hash": "2f30c254f5335e0730731f6aecb82e667fc8b9b539ab5143218f21655cac6b73",
+          "existing_weak": false
+        },
+        {
+          "kb_key": "product:sig_f721fdab45dd179778b069a7a0c89183",
+          "action": "skip",
+          "reason": "protected_high_quality_existing:reviewed",
+          "old_hash": "22dbef1f15bdcdef4aacac1b06c8274c206dcd3cb2aa0c5d0ca7e5789195c58a",
+          "existing_weak": false
+        }
+      ]
+    },
+    {
+      "external_product_id": "ulta:6676e009707c98f9",
+      "pivota_signature_id": "sig_4071963df33d905252cf29e5d5f3eb84",
+      "title": "Cellular Hydration Barrier Repair Serum",
+      "brand": "Murad",
+      "canonical_url": "https://www.ulta.com/p/cellular-hydration-barrier-repair-serum-pimprod2042760?sku=2617677",
+      "changed": true,
+      "blocked": false,
+      "skip_reason": null,
+      "candidate_hash": "d8d7a9a7d84002f6135311926e8fa643af4870da97df0949112f726283ded84b",
+      "evidence_profile": "official_pdp_reviewed_limited",
+      "source_coverage": {
+        "source": "official_pdp",
+        "canonical_url": "https://www.ulta.com/p/cellular-hydration-barrier-repair-serum-pimprod2042760?sku=2617677",
+        "fields": {
+          "description": true,
+          "ingredients": 0,
+          "active_ingredients": 0,
+          "how_to": 0,
+          "details": 0,
+          "variants": 1
+        }
+      },
+      "preview": {
+        "headline": "Treatment serum",
+        "what_it_is": "Cellular Hydration Barrier Repair Serum is a treatment serum from Murad, with source-backed ingredient cues around barrier support.",
+        "why_it_stands_out": [
+          {
+            "headline": "Routine step cues are specific",
+            "body": "Reviewed skincare cues such as hydration, barrier support identify the routine role or key ingredient context without inventing unsupported benefits.",
+            "evidence_strength": "official_pdp_reviewed"
+          }
+        ],
+        "best_for": [
+          {
+            "tag": "hydration",
+            "label": "hydration",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "barrier_support",
+            "label": "barrier support",
+            "confidence": "moderate"
+          }
+        ],
+        "shopping_highlight": "hydration, barrier support"
+      },
+      "writes": [
+        {
+          "kb_key": "product:ulta:6676e009707c98f9",
+          "action": "update",
+          "reason": "explicit_owner_delegated_assistant_replacement_review",
+          "old_hash": "ab2e2d1bb89cfd3ad2c5203254ec9e34ce2253172e2f02462f9d9d853509b301",
+          "candidate_hash": "cf7b5f53617f469901004f29b876a41edb27dbf210d346d64498a7d53f9f1e8e",
+          "existing_weak": true,
+          "source": "pivota_insights_official_pdp_manual_review_v1",
+          "after_inventory": {
+            "product_id": "ulta:6676e009707c98f9",
+            "kb_key": "product:ulta:6676e009707c98f9",
+            "source": "pivota_insights_official_pdp_manual_review_v1",
+            "updated_at": "",
+            "last_success_at": "",
+            "title": "Cellular Hydration Barrier Repair Serum",
+            "canonical_url": "",
+            "bundle_hash": "d8d7a9a7d84002f6135311926e8fa643af4870da97df0949112f726283ded84b",
+            "lane": "keep",
+            "reason": "protected_good_content",
+            "priority": 0,
+            "protected": true,
+            "displayable": true,
+            "high_quality_ready": true,
+            "human_reviewed": true,
+            "issues": [],
+            "blocking_issues": [],
+            "quality_state": "reviewed",
+            "evidence_profile": "official_pdp_reviewed_limited",
+            "evidence_rank": 1,
+            "review_tier": "assistant_reviewed",
+            "agent_readable": true,
+            "public_ready": true
+          },
+          "source_meta": {
+            "evidence_profile": "official_pdp_reviewed_limited",
+            "quality_state": "reviewed",
+            "source_origin": "official_pdp_fields",
+            "source_url": "https://www.ulta.com/p/cellular-hydration-barrier-repair-serum-pimprod2042760?sku=2617677",
+            "quality_improvement": {
+              "previous_bundle_hash": "4f1f39de5d8e5b6be188f2159a44efcd59868106d86b91e491b699435db2d8d5",
+              "candidate_bundle_hash": "d8d7a9a7d84002f6135311926e8fa643af4870da97df0949112f726283ded84b",
+              "replacement_decision": "explicit_owner_delegated_assistant_replacement_review",
+              "existing_quality_lane": "keep",
+              "candidate_quality_lane": "keep",
+              "existing_evidence_profile": "official_pdp_reviewed_limited",
+              "candidate_evidence_profile": "official_pdp_reviewed_limited"
+            }
+          }
+        },
+        {
+          "kb_key": "product:sig_4071963df33d905252cf29e5d5f3eb84",
+          "action": "update",
+          "reason": "explicit_owner_delegated_assistant_replacement_review",
+          "old_hash": "ab2e2d1bb89cfd3ad2c5203254ec9e34ce2253172e2f02462f9d9d853509b301",
+          "candidate_hash": "cf7b5f53617f469901004f29b876a41edb27dbf210d346d64498a7d53f9f1e8e",
+          "existing_weak": true,
+          "source": "pivota_insights_official_pdp_manual_review_v1",
+          "after_inventory": {
+            "product_id": "ulta:6676e009707c98f9",
+            "kb_key": "product:sig_4071963df33d905252cf29e5d5f3eb84",
+            "source": "pivota_insights_official_pdp_manual_review_v1",
+            "updated_at": "",
+            "last_success_at": "",
+            "title": "Cellular Hydration Barrier Repair Serum",
+            "canonical_url": "",
+            "bundle_hash": "d8d7a9a7d84002f6135311926e8fa643af4870da97df0949112f726283ded84b",
+            "lane": "keep",
+            "reason": "protected_good_content",
+            "priority": 0,
+            "protected": true,
+            "displayable": true,
+            "high_quality_ready": true,
+            "human_reviewed": true,
+            "issues": [],
+            "blocking_issues": [],
+            "quality_state": "reviewed",
+            "evidence_profile": "official_pdp_reviewed_limited",
+            "evidence_rank": 1,
+            "review_tier": "assistant_reviewed",
+            "agent_readable": true,
+            "public_ready": true
+          },
+          "source_meta": {
+            "evidence_profile": "official_pdp_reviewed_limited",
+            "quality_state": "reviewed",
+            "source_origin": "official_pdp_fields",
+            "source_url": "https://www.ulta.com/p/cellular-hydration-barrier-repair-serum-pimprod2042760?sku=2617677",
+            "quality_improvement": {
+              "previous_bundle_hash": "4f1f39de5d8e5b6be188f2159a44efcd59868106d86b91e491b699435db2d8d5",
+              "candidate_bundle_hash": "d8d7a9a7d84002f6135311926e8fa643af4870da97df0949112f726283ded84b",
+              "replacement_decision": "explicit_owner_delegated_assistant_replacement_review",
+              "existing_quality_lane": "keep",
+              "candidate_quality_lane": "keep",
+              "existing_evidence_profile": "official_pdp_reviewed_limited",
+              "candidate_evidence_profile": "official_pdp_reviewed_limited"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "external_product_id": "ext_6c7de77555d3d57ee61e8ac7",
+      "pivota_signature_id": "sig_158182271b5e6d2126f1d783fd5a8016",
+      "title": "Cellular Hydration Barrier Repair Serum Refill",
+      "brand": "Murad",
+      "canonical_url": "https://www.murad.com/products/cellular-hydration-barrier-repair-serum-refill",
+      "changed": false,
+      "blocked": false,
+      "skip_reason": "no_safe_writes",
+      "candidate_hash": "8497f76a1249efbf48108f8d74e1a21795150636d917506113426e5d0dec94aa",
+      "evidence_profile": "official_pdp_reviewed_formula_and_usage",
+      "source_coverage": {
+        "source": "official_pdp",
+        "canonical_url": "https://www.murad.com/products/cellular-hydration-barrier-repair-serum-refill",
+        "fields": {
+          "description": true,
+          "ingredients": 1,
+          "active_ingredients": 1,
+          "how_to": 1,
+          "details": 2,
+          "variants": 1
+        }
+      },
+      "preview": {
+        "headline": "Treatment serum",
+        "what_it_is": "Cellular Hydration Barrier Repair Serum Refill is a treatment serum from Murad, with source-backed ingredient cues around barrier support.",
+        "why_it_stands_out": [
+          {
+            "headline": "Routine step cues are specific",
+            "body": "Reviewed skincare cues such as hydration, barrier support identify the routine role or key ingredient context without inventing unsupported benefits.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Ingredient list is available",
+            "body": "Full INCI is present for formula-sensitive review, which makes this PDP safer to evaluate than a claim-only listing.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Usage instructions available",
+            "body": "Reviewed usage context is present, including: To Use: AM and PM Massage a gentle cleanser or your favorite Murad cleanser over dampened face and neck.",
+            "evidence_strength": "official_pdp_reviewed"
+          }
+        ],
+        "best_for": [
+          {
+            "tag": "hydration",
+            "label": "hydration",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "firmness",
+            "label": "firmness",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "barrier_support",
+            "label": "barrier support",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "sun_protection",
+            "label": "sun protection",
+            "confidence": "moderate"
+          }
+        ],
+        "shopping_highlight": "hydration, barrier support"
+      },
+      "writes": [
+        {
+          "kb_key": "product:ext_6c7de77555d3d57ee61e8ac7",
+          "action": "skip",
+          "reason": "protected_evidence_profile_existing:community_supported",
+          "old_hash": "399ddbbc8a7b73a28ad11239b35f69def269e818934afb72093ebc6d17448cad",
+          "existing_weak": true
+        },
+        {
+          "kb_key": "product:sig_158182271b5e6d2126f1d783fd5a8016",
+          "action": "skip",
+          "reason": "protected_high_quality_existing:reviewed",
+          "old_hash": "8560bf385c898698478e4ead3146d1c47d094bf0b1faf7ebabfc2dab306d4507",
+          "existing_weak": false
+        }
+      ]
+    },
+    {
+      "external_product_id": "ext_8fe2637e9276a176957434f1",
+      "pivota_signature_id": "sig_fc946b7509b41fc4b16b0d40b469d514",
+      "title": "Cellular Hydration Barrier Repair Sleep Mask",
+      "brand": "Murad",
+      "canonical_url": "https://www.murad.com/products/cellular-hydration-barrier-repair-mask",
+      "changed": false,
+      "blocked": false,
+      "skip_reason": "no_safe_writes",
+      "candidate_hash": "4f63a5370447f49adbbb8afbd23e0a676300fd97ea3e3733c5675ca8bbb9b06c",
+      "evidence_profile": "official_pdp_reviewed_formula_and_usage",
+      "source_coverage": {
+        "source": "official_pdp",
+        "canonical_url": "https://www.murad.com/products/cellular-hydration-barrier-repair-mask",
+        "fields": {
+          "description": true,
+          "ingredients": 1,
+          "active_ingredients": 1,
+          "how_to": 1,
+          "details": 2,
+          "variants": 1
+        }
+      },
+      "preview": {
+        "headline": "Treatment mask",
+        "what_it_is": "Cellular Hydration Barrier Repair Sleep Mask is a treatment mask from Murad in Single mask, with source-backed cues around cleansing and hydration.",
+        "why_it_stands_out": [
+          {
+            "headline": "Product cues are source-backed",
+            "body": "Reviewed PDP cues such as shea butter, Single mask give shoppers specific comparison points within Murad, rather than category-only copy.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Ingredient list is available",
+            "body": "Full INCI is present for formula-sensitive review, which makes this PDP safer to evaluate than a claim-only listing.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Shade and size are explicit",
+            "body": "Variant labels such as Single mask, Format: Single mask are visible, reducing ambiguity around the product format before a shopper clicks through.",
+            "evidence_strength": "official_pdp_reviewed"
+          }
+        ],
+        "best_for": [
+          {
+            "tag": "shea_butter",
+            "label": "shea butter",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "single_mask",
+            "label": "Single mask",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "full_inci_available",
+            "label": "full INCI available",
+            "confidence": "moderate"
+          }
+        ],
+        "shopping_highlight": "shea butter, Single mask"
+      },
+      "writes": [
+        {
+          "kb_key": "product:ext_8fe2637e9276a176957434f1",
+          "action": "skip",
+          "reason": "protected_evidence_profile_existing:community_supported",
+          "old_hash": "0b37614de8f0936a5e66417254bbb0bebfdaf03331a7d2939c901af8014038c7",
+          "existing_weak": true
+        },
+        {
+          "kb_key": "product:sig_fc946b7509b41fc4b16b0d40b469d514",
+          "action": "skip",
+          "reason": "protected_high_quality_existing:reviewed",
+          "old_hash": "86765128057689d29d1424ea293c87034fc196143e6be10fd70792c75f3819a4",
+          "existing_weak": false
+        }
+      ]
+    },
+    {
+      "external_product_id": "ext_3f62442d95c89cdcabffae69",
+      "pivota_signature_id": "sig_2978863826777cee497f2b45800065db",
+      "title": "Cellular Hydration Repair Face Oil Drops",
+      "brand": "Murad",
+      "canonical_url": "https://www.murad.com/products/cellular-hydration-repair-oil-drops",
+      "changed": false,
+      "blocked": false,
+      "skip_reason": "no_safe_writes",
+      "candidate_hash": "aa46c9f519f2470eed73073c2f1f0e7ace78d0af5b6a8b6140f4560acffc5d90",
+      "evidence_profile": "official_pdp_reviewed_formula_and_usage",
+      "source_coverage": {
+        "source": "official_pdp",
+        "canonical_url": "https://www.murad.com/products/cellular-hydration-repair-oil-drops",
+        "fields": {
+          "description": true,
+          "ingredients": 1,
+          "active_ingredients": 1,
+          "how_to": 1,
+          "details": 4,
+          "variants": 1
+        }
+      },
+      "preview": {
+        "headline": "Face oil",
+        "what_it_is": "Cellular Hydration Repair Face Oil Drops is a face oil from Murad, with source-backed cues around cleansing and hydration.",
+        "why_it_stands_out": [
+          {
+            "headline": "Routine step cues are specific",
+            "body": "Reviewed skincare cues such as BHA/salicylic acid, hydration, barrier support identify the routine role or key ingredient context without inventing unsupported benefits.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Ingredient list is available",
+            "body": "Full INCI is present for formula-sensitive review, which makes this PDP safer to evaluate than a claim-only listing.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Usage instructions available",
+            "body": "Reviewed usage context is present, including: To Use: AM or PM Massage your favorite Murad cleanser over dampened face and neck.",
+            "evidence_strength": "official_pdp_reviewed"
+          }
+        ],
+        "best_for": [
+          {
+            "tag": "exfoliating_toner_step",
+            "label": "exfoliating toner step",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "hydration",
+            "label": "hydration",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "radiance",
+            "label": "radiance",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "barrier_support",
+            "label": "barrier support",
+            "confidence": "moderate"
+          }
+        ],
+        "shopping_highlight": "BHA/salicylic acid, hydration"
+      },
+      "writes": [
+        {
+          "kb_key": "product:ext_3f62442d95c89cdcabffae69",
+          "action": "skip",
+          "reason": "protected_high_quality_existing:reviewed",
+          "old_hash": "47ee99ec60e9819599224c555defb6d91668a2d8e9727af25070cdd26d649375",
+          "existing_weak": false
+        },
+        {
+          "kb_key": "product:sig_2978863826777cee497f2b45800065db",
+          "action": "skip",
+          "reason": "protected_high_quality_existing:reviewed",
+          "old_hash": "efbf41e62c3024bb963cff57aac9b92039ea52f516689456527578c7cfc6e3bf",
+          "existing_weak": false
+        }
+      ]
+    }
+  ]
+}

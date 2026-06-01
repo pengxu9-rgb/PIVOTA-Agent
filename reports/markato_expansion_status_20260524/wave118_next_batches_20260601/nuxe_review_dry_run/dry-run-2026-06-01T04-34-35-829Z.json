@@ -1,0 +1,912 @@
+{
+  "generated_at": "2026-06-01T04:34:35.829Z",
+  "source": "pivota_insights_official_pdp_manual_review_v1",
+  "mode": "dry_run",
+  "filters": {
+    "brand": "Nuxe",
+    "product_ids": [],
+    "limit": 10,
+    "include_strong": false,
+    "include_url_key": false,
+    "apply_chunk_size": null
+  },
+  "summary": {
+    "scanned": 10,
+    "changed_products": 2,
+    "blocked_products": 0,
+    "skipped_products": 8,
+    "write_actions": {
+      "skip": 16,
+      "update": 4
+    },
+    "skip_reasons": {
+      "no_safe_writes": 8,
+      "protected_high_quality_existing:reviewed": 16
+    },
+    "evidence_profiles": {
+      "official_pdp_reviewed_formula_and_usage": 4,
+      "official_pdp_reviewed_key_ingredients_and_usage": 1,
+      "official_pdp_reviewed_line": 5
+    }
+  },
+  "plans": [
+    {
+      "external_product_id": "ext_9bf12158247c3a26eb082765",
+      "pivota_signature_id": "sig_4af0592ff15646e03aa8c24d5df3192b",
+      "title": "24h Protection Deodorant",
+      "brand": "Nuxe",
+      "canonical_url": "https://us.nuxe.com/products/24h-protection-deodorant",
+      "changed": false,
+      "blocked": false,
+      "skip_reason": "no_safe_writes",
+      "candidate_hash": "425f91b0656cef552d897bca970b138c83999b842780e47a385912461b552627",
+      "evidence_profile": "official_pdp_reviewed_formula_and_usage",
+      "source_coverage": {
+        "source": "official_pdp",
+        "canonical_url": "https://us.nuxe.com/products/24h-protection-deodorant",
+        "fields": {
+          "description": true,
+          "ingredients": 1,
+          "active_ingredients": 1,
+          "how_to": 1,
+          "details": 3,
+          "variants": 1
+        }
+      },
+      "preview": {
+        "headline": "Deodorant",
+        "what_it_is": "24h Protection Deodorant is a deodorant from Nuxe, with source-backed cues around hydration.",
+        "why_it_stands_out": [
+          {
+            "headline": "Routine step cues are specific",
+            "body": "Reviewed skincare cues such as hydration identify the routine role or key ingredient context without inventing unsupported benefits.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Ingredient list is available",
+            "body": "Full INCI is present for formula-sensitive review, which makes this PDP safer to evaluate than a claim-only listing.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Usage instructions available",
+            "body": "Reviewed usage context is present, including: Apply the deodorant to clean, dry skin.",
+            "evidence_strength": "official_pdp_reviewed"
+          }
+        ],
+        "best_for": [
+          {
+            "tag": "hydration",
+            "label": "hydration",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "aromatherapy",
+            "label": "aromatherapy",
+            "confidence": "moderate"
+          }
+        ],
+        "shopping_highlight": "hydration, full INCI available"
+      },
+      "writes": [
+        {
+          "kb_key": "product:ext_9bf12158247c3a26eb082765",
+          "action": "skip",
+          "reason": "protected_high_quality_existing:reviewed",
+          "old_hash": "de8383d7f7754b057be8b9ee0d6002f6596d2e24bd6c181e0adcb51088904d05",
+          "existing_weak": false
+        },
+        {
+          "kb_key": "product:sig_4af0592ff15646e03aa8c24d5df3192b",
+          "action": "skip",
+          "reason": "protected_high_quality_existing:reviewed",
+          "old_hash": "de8383d7f7754b057be8b9ee0d6002f6596d2e24bd6c181e0adcb51088904d05",
+          "existing_weak": false
+        }
+      ]
+    },
+    {
+      "external_product_id": "ext_f347150859186bb01e1c6d92",
+      "pivota_signature_id": "sig_99ee2436468213f6ace9bac7103d0fcf",
+      "title": "24hr Fresh-Feel Deodorant, Rêve de Thé",
+      "brand": "Nuxe",
+      "canonical_url": "https://us.nuxe.com/products/24hr-fresh-feel-deodorant-r-ve-de-th-50-ml",
+      "changed": false,
+      "blocked": false,
+      "skip_reason": "no_safe_writes",
+      "candidate_hash": "c5b6b443a77c142f8c688d2609bf02a5614ca0c07c8d3b88a728cc3cc2a18e84",
+      "evidence_profile": "official_pdp_reviewed_key_ingredients_and_usage",
+      "source_coverage": {
+        "source": "official_pdp",
+        "canonical_url": "https://us.nuxe.com/products/24hr-fresh-feel-deodorant-r-ve-de-th-50-ml",
+        "fields": {
+          "description": true,
+          "ingredients": 0,
+          "active_ingredients": 2,
+          "how_to": 1,
+          "details": 3,
+          "variants": 1
+        }
+      },
+      "preview": {
+        "headline": "Deodorant",
+        "what_it_is": "24hr Fresh-Feel Deodorant, Rêve de Thé is a deodorant from Nuxe in 50ml.",
+        "why_it_stands_out": [
+          {
+            "headline": "Routine step cues are specific",
+            "body": "Reviewed skincare cues such as 50ml identify the routine role or key ingredient context without inventing unsupported benefits.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Key ingredients are identified",
+            "body": "Zinc PCA, Glycerin are identified, enough for a cautious high-level formula read without inventing unsupported actives.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Shade and size are explicit",
+            "body": "Variant labels such as 50ml, Size: 50ml are visible, reducing ambiguity around the product format before a shopper clicks through.",
+            "evidence_strength": "official_pdp_reviewed"
+          }
+        ],
+        "best_for": [
+          {
+            "tag": "aromatherapy",
+            "label": "aromatherapy",
+            "confidence": "moderate"
+          }
+        ],
+        "shopping_highlight": "50ml"
+      },
+      "writes": [
+        {
+          "kb_key": "product:ext_f347150859186bb01e1c6d92",
+          "action": "skip",
+          "reason": "protected_high_quality_existing:reviewed",
+          "old_hash": "5b0cbfa4de2ac703025f46de17456b2dda7467bf49967ec02a8f77eb9eb51888",
+          "existing_weak": false
+        },
+        {
+          "kb_key": "product:sig_99ee2436468213f6ace9bac7103d0fcf",
+          "action": "skip",
+          "reason": "protected_high_quality_existing:reviewed",
+          "old_hash": "5b0cbfa4de2ac703025f46de17456b2dda7467bf49967ec02a8f77eb9eb51888",
+          "existing_weak": false
+        }
+      ]
+    },
+    {
+      "external_product_id": "ext_a75e4db085eb7c5f07d9098f",
+      "pivota_signature_id": "sig_e70dc28e051c1e94eb024369750efff0",
+      "title": "Anti-Aging Routine, Super Serum [10]",
+      "brand": "Nuxe",
+      "canonical_url": "https://us.nuxe.com/products/anti-aging-routine-super-serum-10",
+      "changed": true,
+      "blocked": false,
+      "skip_reason": null,
+      "candidate_hash": "6b5147e47c4dcad23bbc761d53eaab759e4082da8e14cd2008c78cb60ec12c5d",
+      "evidence_profile": "official_pdp_reviewed_line",
+      "source_coverage": {
+        "source": "official_pdp",
+        "canonical_url": "https://us.nuxe.com/products/anti-aging-routine-super-serum-10",
+        "fields": {
+          "description": true,
+          "ingredients": 0,
+          "active_ingredients": 0,
+          "how_to": 1,
+          "details": 1,
+          "variants": 1
+        }
+      },
+      "preview": {
+        "headline": "Treatment serum",
+        "what_it_is": "Anti-Aging Routine, Super Serum [10] is a treatment serum from Nuxe.",
+        "why_it_stands_out": [
+          {
+            "headline": "Usage instructions available",
+            "body": "Reviewed usage context is present, including: Apply a small amount after cleansing and toning, before moisturizer.",
+            "evidence_strength": "official_pdp_reviewed"
+          }
+        ],
+        "best_for": [
+          {
+            "tag": "treatment_serum",
+            "label": "Treatment serum",
+            "confidence": "moderate"
+          }
+        ],
+        "shopping_highlight": "Treatment serum"
+      },
+      "writes": [
+        {
+          "kb_key": "product:ext_a75e4db085eb7c5f07d9098f",
+          "action": "update",
+          "reason": "explicit_owner_delegated_assistant_replacement_review",
+          "old_hash": "8fa28891bdd56669ce2725090146618ee56147873af9dc247d65f7bc5580bb1b",
+          "candidate_hash": "cbffad6db9b3dbf1ee91425cd22be605922e13fdcca082787d8219a22a7c492d",
+          "existing_weak": true,
+          "source": "pivota_insights_official_pdp_manual_review_v1",
+          "after_inventory": {
+            "product_id": "ext_a75e4db085eb7c5f07d9098f",
+            "kb_key": "product:ext_a75e4db085eb7c5f07d9098f",
+            "source": "pivota_insights_official_pdp_manual_review_v1",
+            "updated_at": "",
+            "last_success_at": "",
+            "title": "Anti-Aging Routine, Super Serum [10]",
+            "canonical_url": "",
+            "bundle_hash": "6b5147e47c4dcad23bbc761d53eaab759e4082da8e14cd2008c78cb60ec12c5d",
+            "lane": "keep",
+            "reason": "protected_good_content",
+            "priority": 0,
+            "protected": true,
+            "displayable": true,
+            "high_quality_ready": true,
+            "human_reviewed": true,
+            "issues": [],
+            "blocking_issues": [],
+            "quality_state": "reviewed",
+            "evidence_profile": "official_pdp_reviewed_line",
+            "evidence_rank": 3,
+            "review_tier": "assistant_reviewed",
+            "agent_readable": true,
+            "public_ready": true
+          },
+          "source_meta": {
+            "evidence_profile": "official_pdp_reviewed_line",
+            "quality_state": "reviewed",
+            "source_origin": "official_pdp_fields",
+            "source_url": "https://us.nuxe.com/products/anti-aging-routine-super-serum-10",
+            "quality_improvement": {
+              "previous_bundle_hash": "82b1baead4b7ef928544f042ca57a0135a175db5ec6fadf13103f2f2bfab2891",
+              "candidate_bundle_hash": "6b5147e47c4dcad23bbc761d53eaab759e4082da8e14cd2008c78cb60ec12c5d",
+              "replacement_decision": "explicit_owner_delegated_assistant_replacement_review",
+              "existing_quality_lane": "keep",
+              "candidate_quality_lane": "keep",
+              "existing_evidence_profile": "official_pdp_reviewed_line",
+              "candidate_evidence_profile": "official_pdp_reviewed_line"
+            }
+          }
+        },
+        {
+          "kb_key": "product:sig_e70dc28e051c1e94eb024369750efff0",
+          "action": "update",
+          "reason": "explicit_owner_delegated_assistant_replacement_review",
+          "old_hash": "8fa28891bdd56669ce2725090146618ee56147873af9dc247d65f7bc5580bb1b",
+          "candidate_hash": "cbffad6db9b3dbf1ee91425cd22be605922e13fdcca082787d8219a22a7c492d",
+          "existing_weak": true,
+          "source": "pivota_insights_official_pdp_manual_review_v1",
+          "after_inventory": {
+            "product_id": "ext_a75e4db085eb7c5f07d9098f",
+            "kb_key": "product:sig_e70dc28e051c1e94eb024369750efff0",
+            "source": "pivota_insights_official_pdp_manual_review_v1",
+            "updated_at": "",
+            "last_success_at": "",
+            "title": "Anti-Aging Routine, Super Serum [10]",
+            "canonical_url": "",
+            "bundle_hash": "6b5147e47c4dcad23bbc761d53eaab759e4082da8e14cd2008c78cb60ec12c5d",
+            "lane": "keep",
+            "reason": "protected_good_content",
+            "priority": 0,
+            "protected": true,
+            "displayable": true,
+            "high_quality_ready": true,
+            "human_reviewed": true,
+            "issues": [],
+            "blocking_issues": [],
+            "quality_state": "reviewed",
+            "evidence_profile": "official_pdp_reviewed_line",
+            "evidence_rank": 3,
+            "review_tier": "assistant_reviewed",
+            "agent_readable": true,
+            "public_ready": true
+          },
+          "source_meta": {
+            "evidence_profile": "official_pdp_reviewed_line",
+            "quality_state": "reviewed",
+            "source_origin": "official_pdp_fields",
+            "source_url": "https://us.nuxe.com/products/anti-aging-routine-super-serum-10",
+            "quality_improvement": {
+              "previous_bundle_hash": "82b1baead4b7ef928544f042ca57a0135a175db5ec6fadf13103f2f2bfab2891",
+              "candidate_bundle_hash": "6b5147e47c4dcad23bbc761d53eaab759e4082da8e14cd2008c78cb60ec12c5d",
+              "replacement_decision": "explicit_owner_delegated_assistant_replacement_review",
+              "existing_quality_lane": "keep",
+              "candidate_quality_lane": "keep",
+              "existing_evidence_profile": "official_pdp_reviewed_line",
+              "candidate_evidence_profile": "official_pdp_reviewed_line"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "external_product_id": "ext_f569fb1faa96a7762500cfd2",
+      "pivota_signature_id": "sig_c610d5e2de258097d80cee9f8e3fcd2f",
+      "title": "Anti-Aging Trio Super Serum & Day-Night Merveillance Lift",
+      "brand": "Nuxe",
+      "canonical_url": "https://us.nuxe.com/products/anti-aging-trio-super-serum-day-night-merveillance-lift",
+      "changed": false,
+      "blocked": false,
+      "skip_reason": "no_safe_writes",
+      "candidate_hash": "e4219192215b9504b05e55865c5404393afc8ee115341eeef312b84b094e6153",
+      "evidence_profile": "official_pdp_reviewed_line",
+      "source_coverage": {
+        "source": "official_pdp",
+        "canonical_url": "https://us.nuxe.com/products/anti-aging-trio-super-serum-day-night-merveillance-lift",
+        "fields": {
+          "description": true,
+          "ingredients": 0,
+          "active_ingredients": 0,
+          "how_to": 1,
+          "details": 1,
+          "variants": 1
+        }
+      },
+      "preview": {
+        "headline": "Skincare set",
+        "what_it_is": "Anti-Aging Trio Super Serum & Day-Night Merveillance Lift is a skincare set from Nuxe in Trio, with source-backed cues around brightening support.",
+        "why_it_stands_out": [
+          {
+            "headline": "Routine step cues are specific",
+            "body": "Reviewed skincare cues such as Trio identify the routine role or key ingredient context without inventing unsupported benefits.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Shade and size are explicit",
+            "body": "Variant labels such as Trio, Format: Trio are visible, reducing ambiguity around the product format before a shopper clicks through.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Usage instructions available",
+            "body": "Reviewed usage context is present, including: Apply a small amount after cleansing and toning, before moisturizer.",
+            "evidence_strength": "official_pdp_reviewed"
+          }
+        ],
+        "best_for": [
+          {
+            "tag": "firmness",
+            "label": "firmness",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "radiance",
+            "label": "radiance",
+            "confidence": "moderate"
+          }
+        ],
+        "shopping_highlight": "Skincare routine set"
+      },
+      "writes": [
+        {
+          "kb_key": "product:ext_f569fb1faa96a7762500cfd2",
+          "action": "skip",
+          "reason": "protected_high_quality_existing:reviewed",
+          "old_hash": "bc95c1c219aa8aa97768b492d64b5712ed44130ec265a074cfca5f0b08bf631f",
+          "existing_weak": false
+        },
+        {
+          "kb_key": "product:sig_c610d5e2de258097d80cee9f8e3fcd2f",
+          "action": "skip",
+          "reason": "protected_high_quality_existing:reviewed",
+          "old_hash": "bc95c1c219aa8aa97768b492d64b5712ed44130ec265a074cfca5f0b08bf631f",
+          "existing_weak": false
+        }
+      ]
+    },
+    {
+      "external_product_id": "ext_cbce48b42065d0304f823d2b",
+      "pivota_signature_id": "sig_dd34ad5c35a634b7c729155b93080d40",
+      "title": "Candle Prodigieuse® 60g",
+      "brand": "Nuxe",
+      "canonical_url": "https://us.nuxe.com/products/candle-prodigieuse®-60g",
+      "changed": false,
+      "blocked": false,
+      "skip_reason": "no_safe_writes",
+      "candidate_hash": "7158932881f360a038d5061ff517160b0d8adcf5466f02addccd4e70c65a76eb",
+      "evidence_profile": "official_pdp_reviewed_line",
+      "source_coverage": {
+        "source": "official_pdp",
+        "canonical_url": "https://us.nuxe.com/products/candle-prodigieuse®-60g",
+        "fields": {
+          "description": false,
+          "ingredients": 0,
+          "active_ingredients": 0,
+          "how_to": 1,
+          "details": 0,
+          "variants": 1
+        }
+      },
+      "preview": {
+        "headline": "Scented candle",
+        "what_it_is": "Candle Prodigieuse® 60g is a home fragrance item from Nuxe in 60g.",
+        "why_it_stands_out": [
+          {
+            "headline": "Scent profile cues",
+            "body": "Reviewed scent cues such as 60g help shoppers compare the fragrance profile without relying on generic scent copy.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Configuration is explicit",
+            "body": "Variant labels such as 60g, Size: 60g are visible, reducing ambiguity around the product format before a shopper clicks through.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Usage instructions available",
+            "body": "Reviewed usage context is present, including: Use according to the merchant directions for this product.",
+            "evidence_strength": "official_pdp_reviewed"
+          }
+        ],
+        "best_for": [
+          {
+            "tag": "home_scent",
+            "label": "home scent",
+            "confidence": "moderate"
+          }
+        ],
+        "shopping_highlight": "60g"
+      },
+      "writes": [
+        {
+          "kb_key": "product:ext_cbce48b42065d0304f823d2b",
+          "action": "skip",
+          "reason": "protected_high_quality_existing:reviewed",
+          "old_hash": "434b69b40d6b5d98db676439b003240231268aee98412ca7959fb987ec33190f",
+          "existing_weak": false
+        },
+        {
+          "kb_key": "product:sig_dd34ad5c35a634b7c729155b93080d40",
+          "action": "skip",
+          "reason": "protected_high_quality_existing:reviewed",
+          "old_hash": "434b69b40d6b5d98db676439b003240231268aee98412ca7959fb987ec33190f",
+          "existing_weak": false
+        }
+      ]
+    },
+    {
+      "external_product_id": "ext_ced1df8672a58a29b933c812",
+      "pivota_signature_id": "sig_306e2f54075d51ea8800814d02a26176",
+      "title": "Complete Huile Prodigeuse®  Travel Set",
+      "brand": "Nuxe",
+      "canonical_url": "https://us.nuxe.com/products/complete-huile-prodigeuse-travel-set",
+      "changed": false,
+      "blocked": false,
+      "skip_reason": "no_safe_writes",
+      "candidate_hash": "027ba3f5de04bbbe4f4a59e23c98bc67f4c297b80d7fec8638f4c04be549a0ae",
+      "evidence_profile": "official_pdp_reviewed_line",
+      "source_coverage": {
+        "source": "official_pdp",
+        "canonical_url": "https://us.nuxe.com/products/complete-huile-prodigeuse-travel-set",
+        "fields": {
+          "description": true,
+          "ingredients": 0,
+          "active_ingredients": 0,
+          "how_to": 1,
+          "details": 1,
+          "variants": 1
+        }
+      },
+      "preview": {
+        "headline": "Beauty product",
+        "what_it_is": "Complete Huile Prodigeuse® Travel Set is a beauty product from Nuxe. This bundle constists of : - 1 Huile Prodigieuse Multi-Purpose Dry Oil - 1 Huile Prodigieuse OR Multi-Purpose Dry Oil - 1 Huile Prodigieuse Florale Multi-Purpose Dry Oil Please note that your order may arrive in multiple shipments.",
+        "why_it_stands_out": [
+          {
+            "headline": "Product cues are source-backed",
+            "body": "Reviewed PDP cues such as travel organization, Set give shoppers specific comparison points within Nuxe, rather than category-only copy.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Accessory format is explicit",
+            "body": "Variant labels such as Set, Format: Set are visible, reducing ambiguity around the product format before a shopper clicks through.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Usage instructions available",
+            "body": "Reviewed usage context is present, including: Use according to the merchant directions for this product.",
+            "evidence_strength": "official_pdp_reviewed"
+          }
+        ],
+        "best_for": [
+          {
+            "tag": "travel",
+            "label": "travel",
+            "confidence": "moderate"
+          }
+        ],
+        "shopping_highlight": "travel organization, Set"
+      },
+      "writes": [
+        {
+          "kb_key": "product:ext_ced1df8672a58a29b933c812",
+          "action": "skip",
+          "reason": "protected_high_quality_existing:reviewed",
+          "old_hash": "ec8c96f3f05e424da18590cd0914ee1e8ec7d23be73666962f04f1c0b2e71c7c",
+          "existing_weak": false
+        },
+        {
+          "kb_key": "product:sig_306e2f54075d51ea8800814d02a26176",
+          "action": "skip",
+          "reason": "protected_high_quality_existing:reviewed",
+          "old_hash": "ec8c96f3f05e424da18590cd0914ee1e8ec7d23be73666962f04f1c0b2e71c7c",
+          "existing_weak": false
+        }
+      ]
+    },
+    {
+      "external_product_id": "ext_7aa6a29c71b2e582b47ed587",
+      "pivota_signature_id": "sig_37041f34a5c06362b6f09242a864e8ac",
+      "title": "Concentrated Night Cream",
+      "brand": "Nuxe",
+      "canonical_url": "https://us.nuxe.com/products/concentrated-night-cream",
+      "changed": false,
+      "blocked": false,
+      "skip_reason": "no_safe_writes",
+      "candidate_hash": "8a3ed06dec876fc8c252e963b58ee92c2ec804b7d0fd3777dd5dc89891b60878",
+      "evidence_profile": "official_pdp_reviewed_formula_and_usage",
+      "source_coverage": {
+        "source": "official_pdp",
+        "canonical_url": "https://us.nuxe.com/products/concentrated-night-cream",
+        "fields": {
+          "description": true,
+          "ingredients": 1,
+          "active_ingredients": 2,
+          "how_to": 1,
+          "details": 3,
+          "variants": 1
+        }
+      },
+      "preview": {
+        "headline": "Body care treatment",
+        "what_it_is": "Concentrated Night Cream is a body care treatment from Nuxe, with source-backed cues around hydration.",
+        "why_it_stands_out": [
+          {
+            "headline": "Routine step cues are specific",
+            "body": "Reviewed skincare cues such as barrier support identify the routine role or key ingredient context without inventing unsupported benefits.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Ingredient list is available",
+            "body": "Full INCI is present for formula-sensitive review, which makes this PDP safer to evaluate than a claim-only listing.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Usage instructions available",
+            "body": "Reviewed usage context is present, including: Take up a generous drop of product and warm it in your hands.",
+            "evidence_strength": "official_pdp_reviewed"
+          }
+        ],
+        "best_for": [
+          {
+            "tag": "firmness",
+            "label": "firmness",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "barrier_support",
+            "label": "barrier support",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "aromatherapy",
+            "label": "aromatherapy",
+            "confidence": "moderate"
+          }
+        ],
+        "shopping_highlight": "barrier support, full INCI available"
+      },
+      "writes": [
+        {
+          "kb_key": "product:ext_7aa6a29c71b2e582b47ed587",
+          "action": "skip",
+          "reason": "protected_high_quality_existing:reviewed",
+          "old_hash": "4c230b3f07778af2358196197320fd5c81b4559add5f632361801b930569fc2b",
+          "existing_weak": false
+        },
+        {
+          "kb_key": "product:sig_37041f34a5c06362b6f09242a864e8ac",
+          "action": "skip",
+          "reason": "protected_high_quality_existing:reviewed",
+          "old_hash": "4c230b3f07778af2358196197320fd5c81b4559add5f632361801b930569fc2b",
+          "existing_weak": false
+        }
+      ]
+    },
+    {
+      "external_product_id": "ext_8fa0fe72d3794b89c76fbca8",
+      "pivota_signature_id": "sig_3182d0603f64f242b313162f6ad1f5b1",
+      "title": "Creamy cleansing milk",
+      "brand": "Nuxe",
+      "canonical_url": "https://us.nuxe.com/products/creamy-cleansing-milk",
+      "changed": false,
+      "blocked": false,
+      "skip_reason": "no_safe_writes",
+      "candidate_hash": "8dde59c6980a3eece85f8c77b23740a80f70403d3e17846044ea265dc749a30e",
+      "evidence_profile": "official_pdp_reviewed_formula_and_usage",
+      "source_coverage": {
+        "source": "official_pdp",
+        "canonical_url": "https://us.nuxe.com/products/creamy-cleansing-milk",
+        "fields": {
+          "description": true,
+          "ingredients": 1,
+          "active_ingredients": 1,
+          "how_to": 1,
+          "details": 4,
+          "variants": 1
+        }
+      },
+      "preview": {
+        "headline": "Face cleanser",
+        "what_it_is": "Creamy cleansing milk is a face cleanser from Nuxe in 200 mL, with source-backed cues around cleansing and dirt, oil, and impurity removal.",
+        "why_it_stands_out": [
+          {
+            "headline": "Product cues are source-backed",
+            "body": "Reviewed PDP cues such as daily cleansing, pore cleansing, 200 mL give shoppers specific comparison points within Nuxe, rather than category-only copy.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Ingredient list is available",
+            "body": "Full INCI is present for formula-sensitive review, which makes this PDP safer to evaluate than a claim-only listing.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Shade and size are explicit",
+            "body": "Variant labels such as 200 mL, Size: 200 mL are visible, reducing ambiguity around the product format before a shopper clicks through.",
+            "evidence_strength": "official_pdp_reviewed"
+          }
+        ],
+        "best_for": [
+          {
+            "tag": "daily_cleansing",
+            "label": "daily cleansing",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "pore_cleansing",
+            "label": "pore cleansing",
+            "confidence": "moderate"
+          }
+        ],
+        "shopping_highlight": "daily cleansing, pore cleansing, 200 mL"
+      },
+      "writes": [
+        {
+          "kb_key": "product:ext_8fa0fe72d3794b89c76fbca8",
+          "action": "skip",
+          "reason": "protected_high_quality_existing:reviewed",
+          "old_hash": "cfc9ebf44d6d51fa5810761e56c2fe9dd5a057a851e24f7317accb6a4527a099",
+          "existing_weak": false
+        },
+        {
+          "kb_key": "product:sig_3182d0603f64f242b313162f6ad1f5b1",
+          "action": "skip",
+          "reason": "protected_high_quality_existing:reviewed",
+          "old_hash": "cfc9ebf44d6d51fa5810761e56c2fe9dd5a057a851e24f7317accb6a4527a099",
+          "existing_weak": false
+        }
+      ]
+    },
+    {
+      "external_product_id": "ext_a9f35e3b9ac4b24df195045f",
+      "pivota_signature_id": "sig_896f637e499f2679f2d95ef4b159446f",
+      "title": "Deliciously Nourishing Body Scrub",
+      "brand": "Nuxe",
+      "canonical_url": "https://us.nuxe.com/products/deliciously-nourishing-body-scrub",
+      "changed": false,
+      "blocked": false,
+      "skip_reason": "no_safe_writes",
+      "candidate_hash": "7fdf94784abe26df3b77917bc912c6fce98e8188e4f1bcc1f2d89774dada824d",
+      "evidence_profile": "official_pdp_reviewed_formula_and_usage",
+      "source_coverage": {
+        "source": "official_pdp",
+        "canonical_url": "https://us.nuxe.com/products/deliciously-nourishing-body-scrub",
+        "fields": {
+          "description": true,
+          "ingredients": 1,
+          "active_ingredients": 1,
+          "how_to": 1,
+          "details": 1,
+          "variants": 1
+        }
+      },
+      "preview": {
+        "headline": "Body scrub",
+        "what_it_is": "Deliciously Nourishing Body Scrub is a body scrub from Nuxe in 175ml, with source-backed cues around hydration.",
+        "why_it_stands_out": [
+          {
+            "headline": "Routine step cues are specific",
+            "body": "Reviewed skincare cues such as exfoliating scrub, barrier support, 175ml identify the routine role or key ingredient context without inventing unsupported benefits.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Ingredient list is available",
+            "body": "Full INCI is present for formula-sensitive review, which makes this PDP safer to evaluate than a claim-only listing.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Shade and size are explicit",
+            "body": "Variant labels such as 175ml, Size: 175ml are visible, reducing ambiguity around the product format before a shopper clicks through.",
+            "evidence_strength": "official_pdp_reviewed"
+          }
+        ],
+        "best_for": [
+          {
+            "tag": "firmness",
+            "label": "firmness",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "barrier_support",
+            "label": "barrier support",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "body_routine",
+            "label": "body routine",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "aromatherapy",
+            "label": "aromatherapy",
+            "confidence": "moderate"
+          }
+        ],
+        "shopping_highlight": "exfoliating scrub, barrier support"
+      },
+      "writes": [
+        {
+          "kb_key": "product:ext_a9f35e3b9ac4b24df195045f",
+          "action": "skip",
+          "reason": "protected_high_quality_existing:reviewed",
+          "old_hash": "598a582a3aeedaadb671a603f156dfac6b09c1b3d62fef8b3d2b2570cc856d6c",
+          "existing_weak": false
+        },
+        {
+          "kb_key": "product:sig_896f637e499f2679f2d95ef4b159446f",
+          "action": "skip",
+          "reason": "protected_high_quality_existing:reviewed",
+          "old_hash": "598a582a3aeedaadb671a603f156dfac6b09c1b3d62fef8b3d2b2570cc856d6c",
+          "existing_weak": false
+        }
+      ]
+    },
+    {
+      "external_product_id": "ext_a88deef3fdce8d7c74077c0f",
+      "pivota_signature_id": "sig_f4f37442a5be0c2cd9317f4b266238dc",
+      "title": "Detangling Hair Brush",
+      "brand": "Nuxe",
+      "canonical_url": "https://us.nuxe.com/products/detangling-hair-brush",
+      "changed": true,
+      "blocked": false,
+      "skip_reason": null,
+      "candidate_hash": "133219c70019eada1b6f578ff9c1d2df6683198883f470b6fde86557ed982952",
+      "evidence_profile": "official_pdp_reviewed_line",
+      "source_coverage": {
+        "source": "official_pdp",
+        "canonical_url": "https://us.nuxe.com/products/detangling-hair-brush",
+        "fields": {
+          "description": false,
+          "ingredients": 0,
+          "active_ingredients": 0,
+          "how_to": 1,
+          "details": 0,
+          "variants": 1
+        }
+      },
+      "preview": {
+        "headline": "Makeup brush",
+        "what_it_is": "Detangling Hair Brush is a makeup brush from Nuxe.",
+        "why_it_stands_out": [
+          {
+            "headline": "Product cues are source-backed",
+            "body": "Reviewed PDP cues such as precision application give shoppers specific comparison points within Nuxe, rather than category-only copy.",
+            "evidence_strength": "official_pdp_reviewed"
+          }
+        ],
+        "best_for": [
+          {
+            "tag": "precision_application",
+            "label": "precision application",
+            "confidence": "moderate"
+          }
+        ],
+        "shopping_highlight": "precision application"
+      },
+      "writes": [
+        {
+          "kb_key": "product:ext_a88deef3fdce8d7c74077c0f",
+          "action": "update",
+          "reason": "explicit_owner_delegated_assistant_replacement_review",
+          "old_hash": "f97d760d32573a15bd6fb37be55c2b4f6b2436ea50ea7bb5f7fd0c40f81487dd",
+          "candidate_hash": "47cd2ecbbf5e4656ea37f183bc3a848260180d604c0043b4f35217078b3ca7c7",
+          "existing_weak": true,
+          "source": "pivota_insights_official_pdp_manual_review_v1",
+          "after_inventory": {
+            "product_id": "ext_a88deef3fdce8d7c74077c0f",
+            "kb_key": "product:ext_a88deef3fdce8d7c74077c0f",
+            "source": "pivota_insights_official_pdp_manual_review_v1",
+            "updated_at": "",
+            "last_success_at": "",
+            "title": "Detangling Hair Brush",
+            "canonical_url": "",
+            "bundle_hash": "133219c70019eada1b6f578ff9c1d2df6683198883f470b6fde86557ed982952",
+            "lane": "keep",
+            "reason": "protected_good_content",
+            "priority": 0,
+            "protected": true,
+            "displayable": true,
+            "high_quality_ready": true,
+            "human_reviewed": true,
+            "issues": [],
+            "blocking_issues": [],
+            "quality_state": "reviewed",
+            "evidence_profile": "official_pdp_reviewed_line",
+            "evidence_rank": 3,
+            "review_tier": "assistant_reviewed",
+            "agent_readable": true,
+            "public_ready": true
+          },
+          "source_meta": {
+            "evidence_profile": "official_pdp_reviewed_line",
+            "quality_state": "reviewed",
+            "source_origin": "official_pdp_fields",
+            "source_url": "https://us.nuxe.com/products/detangling-hair-brush",
+            "quality_improvement": {
+              "previous_bundle_hash": "ebd3a7db08d3a04071cbd343a46547af35f22245fc7e443ed2dea4efbf79dff5",
+              "candidate_bundle_hash": "133219c70019eada1b6f578ff9c1d2df6683198883f470b6fde86557ed982952",
+              "replacement_decision": "explicit_owner_delegated_assistant_replacement_review",
+              "existing_quality_lane": "keep",
+              "candidate_quality_lane": "keep",
+              "existing_evidence_profile": "official_pdp_reviewed_line",
+              "candidate_evidence_profile": "official_pdp_reviewed_line"
+            }
+          }
+        },
+        {
+          "kb_key": "product:sig_f4f37442a5be0c2cd9317f4b266238dc",
+          "action": "update",
+          "reason": "explicit_owner_delegated_assistant_replacement_review",
+          "old_hash": "f97d760d32573a15bd6fb37be55c2b4f6b2436ea50ea7bb5f7fd0c40f81487dd",
+          "candidate_hash": "47cd2ecbbf5e4656ea37f183bc3a848260180d604c0043b4f35217078b3ca7c7",
+          "existing_weak": true,
+          "source": "pivota_insights_official_pdp_manual_review_v1",
+          "after_inventory": {
+            "product_id": "ext_a88deef3fdce8d7c74077c0f",
+            "kb_key": "product:sig_f4f37442a5be0c2cd9317f4b266238dc",
+            "source": "pivota_insights_official_pdp_manual_review_v1",
+            "updated_at": "",
+            "last_success_at": "",
+            "title": "Detangling Hair Brush",
+            "canonical_url": "",
+            "bundle_hash": "133219c70019eada1b6f578ff9c1d2df6683198883f470b6fde86557ed982952",
+            "lane": "keep",
+            "reason": "protected_good_content",
+            "priority": 0,
+            "protected": true,
+            "displayable": true,
+            "high_quality_ready": true,
+            "human_reviewed": true,
+            "issues": [],
+            "blocking_issues": [],
+            "quality_state": "reviewed",
+            "evidence_profile": "official_pdp_reviewed_line",
+            "evidence_rank": 3,
+            "review_tier": "assistant_reviewed",
+            "agent_readable": true,
+            "public_ready": true
+          },
+          "source_meta": {
+            "evidence_profile": "official_pdp_reviewed_line",
+            "quality_state": "reviewed",
+            "source_origin": "official_pdp_fields",
+            "source_url": "https://us.nuxe.com/products/detangling-hair-brush",
+            "quality_improvement": {
+              "previous_bundle_hash": "ebd3a7db08d3a04071cbd343a46547af35f22245fc7e443ed2dea4efbf79dff5",
+              "candidate_bundle_hash": "133219c70019eada1b6f578ff9c1d2df6683198883f470b6fde86557ed982952",
+              "replacement_decision": "explicit_owner_delegated_assistant_replacement_review",
+              "existing_quality_lane": "keep",
+              "candidate_quality_lane": "keep",
+              "existing_evidence_profile": "official_pdp_reviewed_line",
+              "candidate_evidence_profile": "official_pdp_reviewed_line"
+            }
+          }
+        }
+      ]
+    }
+  ]
+}

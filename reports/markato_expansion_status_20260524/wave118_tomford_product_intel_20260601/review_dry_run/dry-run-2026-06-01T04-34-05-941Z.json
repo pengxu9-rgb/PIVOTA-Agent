@@ -1,0 +1,846 @@
+{
+  "generated_at": "2026-06-01T04:34:05.941Z",
+  "source": "pivota_insights_official_pdp_manual_review_v1",
+  "mode": "dry_run",
+  "filters": {
+    "brand": "Tom Ford Beauty",
+    "product_ids": [],
+    "limit": 10,
+    "include_strong": false,
+    "include_url_key": false,
+    "apply_chunk_size": null
+  },
+  "summary": {
+    "scanned": 10,
+    "changed_products": 0,
+    "blocked_products": 0,
+    "skipped_products": 10,
+    "write_actions": {
+      "skip": 20
+    },
+    "skip_reasons": {
+      "no_safe_writes": 10,
+      "protected_high_quality_existing:reviewed": 20
+    },
+    "evidence_profiles": {
+      "official_pdp_reviewed_formula_and_usage": 10
+    }
+  },
+  "plans": [
+    {
+      "external_product_id": "ext_37079b26e48b93a48cb8f683",
+      "pivota_signature_id": "sig_9b0d3541cce6e3437312b1a49852ed52",
+      "title": "Architecture Brow Pencil",
+      "brand": "Tom Ford Beauty",
+      "canonical_url": "https://www.tomfordbeauty.com/products/architecture-brow-pencil",
+      "changed": false,
+      "blocked": false,
+      "skip_reason": "no_safe_writes",
+      "candidate_hash": "b47fe78941679e1dfa2772f7fbc99ca28e1c15b424a4daa06cd8d8336368b4b0",
+      "evidence_profile": "official_pdp_reviewed_formula_and_usage",
+      "source_coverage": {
+        "source": "official_pdp",
+        "canonical_url": "https://www.tomfordbeauty.com/products/architecture-brow-pencil",
+        "fields": {
+          "description": true,
+          "ingredients": 1,
+          "active_ingredients": 1,
+          "how_to": 1,
+          "details": 3,
+          "variants": 5
+        }
+      },
+      "preview": {
+        "headline": "Brow product",
+        "what_it_is": "Architecture Brow Pencil is a brow product from Tom Ford Beauty in 0.05 g, with source-backed cues around eye makeup grooming.",
+        "why_it_stands_out": [
+          {
+            "headline": "Product cues are source-backed",
+            "body": "Reviewed PDP cues such as brow definition, precision application, shade matching, 02 Taupe / 0.05 g give shoppers specific comparison points within Tom Ford Beauty, rather than category-only copy.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Ingredient list is available",
+            "body": "Full INCI is present for formula-sensitive review, which makes this PDP safer to evaluate than a claim-only listing.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Shade and size are explicit",
+            "body": "Variant labels such as 02 Taupe / 0.05 g, Color: 02 Taupe, Size: 0.05 g, 01 Blonde / 0.05 g are visible, reducing ambiguity around the product format before a shopper clicks through.",
+            "evidence_strength": "official_pdp_reviewed"
+          }
+        ],
+        "best_for": [
+          {
+            "tag": "brow_definition",
+            "label": "brow definition",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "precision_application",
+            "label": "precision application",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "shade_matching",
+            "label": "shade matching",
+            "confidence": "moderate"
+          }
+        ],
+        "shopping_highlight": "brow definition, precision application"
+      },
+      "writes": [
+        {
+          "kb_key": "product:ext_37079b26e48b93a48cb8f683",
+          "action": "skip",
+          "reason": "protected_high_quality_existing:reviewed",
+          "old_hash": "243df5500c5bb8dde0155c3e7c6ba25d650cfccc6cf4a94a0849db0a684333cb",
+          "existing_weak": false
+        },
+        {
+          "kb_key": "product:sig_9b0d3541cce6e3437312b1a49852ed52",
+          "action": "skip",
+          "reason": "protected_high_quality_existing:reviewed",
+          "old_hash": "243df5500c5bb8dde0155c3e7c6ba25d650cfccc6cf4a94a0849db0a684333cb",
+          "existing_weak": false
+        }
+      ]
+    },
+    {
+      "external_product_id": "ext_7d63f28b9b59185ddd5cfcfe",
+      "pivota_signature_id": "sig_19c18275b9741c32a369ce1cb1f6bfe9",
+      "title": "Architecture Brow Pencil",
+      "brand": "Tom Ford Beauty",
+      "canonical_url": "https://www.tomfordbeauty.com/products/architecture-brow-pencil",
+      "changed": false,
+      "blocked": false,
+      "skip_reason": "no_safe_writes",
+      "candidate_hash": "6c435a1d2d39cbba7274b1a561da389276f355aa7ef137469289d1461a73398c",
+      "evidence_profile": "official_pdp_reviewed_formula_and_usage",
+      "source_coverage": {
+        "source": "official_pdp",
+        "canonical_url": "https://www.tomfordbeauty.com/products/architecture-brow-pencil",
+        "fields": {
+          "description": true,
+          "ingredients": 1,
+          "active_ingredients": 1,
+          "how_to": 1,
+          "details": 3,
+          "variants": 5
+        }
+      },
+      "preview": {
+        "headline": "Brow product",
+        "what_it_is": "Architecture Brow Pencil is a brow product from Tom Ford Beauty in 0.05 g, with source-backed cues around eye makeup grooming.",
+        "why_it_stands_out": [
+          {
+            "headline": "Product cues are source-backed",
+            "body": "Reviewed PDP cues such as brow definition, precision application, shade matching, 02 Taupe / 0.05 g give shoppers specific comparison points within Tom Ford Beauty, rather than category-only copy.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Ingredient list is available",
+            "body": "Full INCI is present for formula-sensitive review, which makes this PDP safer to evaluate than a claim-only listing.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Shade and size are explicit",
+            "body": "Variant labels such as 02 Taupe / 0.05 g, Shade: 02 Taupe, Size: 0.05 g, 01 Blonde / 0.05 g are visible, reducing ambiguity around the product format before a shopper clicks through.",
+            "evidence_strength": "official_pdp_reviewed"
+          }
+        ],
+        "best_for": [
+          {
+            "tag": "brow_definition",
+            "label": "brow definition",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "precision_application",
+            "label": "precision application",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "shade_matching",
+            "label": "shade matching",
+            "confidence": "moderate"
+          }
+        ],
+        "shopping_highlight": "brow definition, precision application"
+      },
+      "writes": [
+        {
+          "kb_key": "product:ext_7d63f28b9b59185ddd5cfcfe",
+          "action": "skip",
+          "reason": "protected_high_quality_existing:reviewed",
+          "old_hash": "3618e58fd5a6c75c196485406a909ae2b34770d32f2d5be2a7a105bf14f8e3e4",
+          "existing_weak": false
+        },
+        {
+          "kb_key": "product:sig_19c18275b9741c32a369ce1cb1f6bfe9",
+          "action": "skip",
+          "reason": "protected_high_quality_existing:reviewed",
+          "old_hash": "3618e58fd5a6c75c196485406a909ae2b34770d32f2d5be2a7a105bf14f8e3e4",
+          "existing_weak": false
+        }
+      ]
+    },
+    {
+      "external_product_id": "ext_893e9d3915abaa11f4420b7b",
+      "pivota_signature_id": "sig_bba7cab46892df4df82aeea10a28b746",
+      "title": "Architecture Brow Pencil",
+      "brand": "Tom Ford Beauty",
+      "canonical_url": "https://www.tomfordbeauty.com/products/architecture-brow-pencil",
+      "changed": false,
+      "blocked": false,
+      "skip_reason": "no_safe_writes",
+      "candidate_hash": "56221839acf43a264b095fb77591269e62c6d57819d641bf21c4051441e0fd55",
+      "evidence_profile": "official_pdp_reviewed_formula_and_usage",
+      "source_coverage": {
+        "source": "official_pdp",
+        "canonical_url": "https://www.tomfordbeauty.com/products/architecture-brow-pencil",
+        "fields": {
+          "description": true,
+          "ingredients": 1,
+          "active_ingredients": 1,
+          "how_to": 1,
+          "details": 3,
+          "variants": 5
+        }
+      },
+      "preview": {
+        "headline": "Brow product",
+        "what_it_is": "Architecture Brow Pencil is a brow product from Tom Ford Beauty in 0.05 g, with source-backed cues around eye makeup grooming.",
+        "why_it_stands_out": [
+          {
+            "headline": "Product cues are source-backed",
+            "body": "Reviewed PDP cues such as brow definition, precision application, shade matching, 02 Taupe / 0.05 g give shoppers specific comparison points within Tom Ford Beauty, rather than category-only copy.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Ingredient list is available",
+            "body": "Full INCI is present for formula-sensitive review, which makes this PDP safer to evaluate than a claim-only listing.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Shade and size are explicit",
+            "body": "Variant labels such as 02 Taupe / 0.05 g, Shade: 02 Taupe, Size: 0.05 g, 01 Blonde / 0.05 g are visible, reducing ambiguity around the product format before a shopper clicks through.",
+            "evidence_strength": "official_pdp_reviewed"
+          }
+        ],
+        "best_for": [
+          {
+            "tag": "brow_definition",
+            "label": "brow definition",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "precision_application",
+            "label": "precision application",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "shade_matching",
+            "label": "shade matching",
+            "confidence": "moderate"
+          }
+        ],
+        "shopping_highlight": "brow definition, precision application"
+      },
+      "writes": [
+        {
+          "kb_key": "product:ext_893e9d3915abaa11f4420b7b",
+          "action": "skip",
+          "reason": "protected_high_quality_existing:reviewed",
+          "old_hash": "f8c2be1b8b2126a4bfbc86ce6fc186347824979c13bb9896cea3a69404ee4636",
+          "existing_weak": false
+        },
+        {
+          "kb_key": "product:sig_bba7cab46892df4df82aeea10a28b746",
+          "action": "skip",
+          "reason": "protected_high_quality_existing:reviewed",
+          "old_hash": "f8c2be1b8b2126a4bfbc86ce6fc186347824979c13bb9896cea3a69404ee4636",
+          "existing_weak": false
+        }
+      ]
+    },
+    {
+      "external_product_id": "ext_c03c020393a1036dc9071955",
+      "pivota_signature_id": "sig_5d0c2862b27252bb4b3cb9a5d4f5401c",
+      "title": "Architecture Brow Pencil",
+      "brand": "Tom Ford Beauty",
+      "canonical_url": "https://www.tomfordbeauty.com/products/architecture-brow-pencil",
+      "changed": false,
+      "blocked": false,
+      "skip_reason": "no_safe_writes",
+      "candidate_hash": "83b3e2e375d03d128f9997179b6d526e091fd85bd01d074bf99d8deaef7d58c8",
+      "evidence_profile": "official_pdp_reviewed_formula_and_usage",
+      "source_coverage": {
+        "source": "official_pdp",
+        "canonical_url": "https://www.tomfordbeauty.com/products/architecture-brow-pencil",
+        "fields": {
+          "description": true,
+          "ingredients": 1,
+          "active_ingredients": 1,
+          "how_to": 1,
+          "details": 3,
+          "variants": 5
+        }
+      },
+      "preview": {
+        "headline": "Brow product",
+        "what_it_is": "Architecture Brow Pencil is a brow product from Tom Ford Beauty in 0.05 g, with source-backed cues around eye makeup grooming.",
+        "why_it_stands_out": [
+          {
+            "headline": "Product cues are source-backed",
+            "body": "Reviewed PDP cues such as brow definition, precision application, shade matching, 02 Taupe / 0.05 g give shoppers specific comparison points within Tom Ford Beauty, rather than category-only copy.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Ingredient list is available",
+            "body": "Full INCI is present for formula-sensitive review, which makes this PDP safer to evaluate than a claim-only listing.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Shade and size are explicit",
+            "body": "Variant labels such as 02 Taupe / 0.05 g, Shade: 02 Taupe, Size: 0.05 g, 01 Blonde / 0.05 g are visible, reducing ambiguity around the product format before a shopper clicks through.",
+            "evidence_strength": "official_pdp_reviewed"
+          }
+        ],
+        "best_for": [
+          {
+            "tag": "brow_definition",
+            "label": "brow definition",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "precision_application",
+            "label": "precision application",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "shade_matching",
+            "label": "shade matching",
+            "confidence": "moderate"
+          }
+        ],
+        "shopping_highlight": "brow definition, precision application"
+      },
+      "writes": [
+        {
+          "kb_key": "product:ext_c03c020393a1036dc9071955",
+          "action": "skip",
+          "reason": "protected_high_quality_existing:reviewed",
+          "old_hash": "d1490264ca840560a04398d0474b69176b96c4afa4085c00eb1b847a86035ff3",
+          "existing_weak": false
+        },
+        {
+          "kb_key": "product:sig_5d0c2862b27252bb4b3cb9a5d4f5401c",
+          "action": "skip",
+          "reason": "protected_high_quality_existing:reviewed",
+          "old_hash": "d1490264ca840560a04398d0474b69176b96c4afa4085c00eb1b847a86035ff3",
+          "existing_weak": false
+        }
+      ]
+    },
+    {
+      "external_product_id": "ext_ca456111c78a9d272a900def",
+      "pivota_signature_id": "sig_8da587f31a7c5e664e186517440e65c9",
+      "title": "Architecture Brow Pencil",
+      "brand": "Tom Ford Beauty",
+      "canonical_url": "https://www.tomfordbeauty.com/products/architecture-brow-pencil",
+      "changed": false,
+      "blocked": false,
+      "skip_reason": "no_safe_writes",
+      "candidate_hash": "1609e433fb1932a9a5915b59a9fdcfec0c58e712e1ed341541108744b192e5b9",
+      "evidence_profile": "official_pdp_reviewed_formula_and_usage",
+      "source_coverage": {
+        "source": "official_pdp",
+        "canonical_url": "https://www.tomfordbeauty.com/products/architecture-brow-pencil",
+        "fields": {
+          "description": true,
+          "ingredients": 1,
+          "active_ingredients": 1,
+          "how_to": 1,
+          "details": 3,
+          "variants": 5
+        }
+      },
+      "preview": {
+        "headline": "Brow product",
+        "what_it_is": "Architecture Brow Pencil is a brow product from Tom Ford Beauty in 0.05 g, with source-backed cues around eye makeup grooming.",
+        "why_it_stands_out": [
+          {
+            "headline": "Product cues are source-backed",
+            "body": "Reviewed PDP cues such as brow definition, precision application, shade matching, 02 Taupe / 0.05 g give shoppers specific comparison points within Tom Ford Beauty, rather than category-only copy.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Ingredient list is available",
+            "body": "Full INCI is present for formula-sensitive review, which makes this PDP safer to evaluate than a claim-only listing.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Shade and size are explicit",
+            "body": "Variant labels such as 02 Taupe / 0.05 g, Shade: 02 Taupe, Size: 0.05 g, 01 Blonde / 0.05 g are visible, reducing ambiguity around the product format before a shopper clicks through.",
+            "evidence_strength": "official_pdp_reviewed"
+          }
+        ],
+        "best_for": [
+          {
+            "tag": "brow_definition",
+            "label": "brow definition",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "precision_application",
+            "label": "precision application",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "shade_matching",
+            "label": "shade matching",
+            "confidence": "moderate"
+          }
+        ],
+        "shopping_highlight": "brow definition, precision application"
+      },
+      "writes": [
+        {
+          "kb_key": "product:ext_ca456111c78a9d272a900def",
+          "action": "skip",
+          "reason": "protected_high_quality_existing:reviewed",
+          "old_hash": "35ffa1055641863accfbbf22f6332ceb6b07584a949f8af523d52bfb9c014560",
+          "existing_weak": false
+        },
+        {
+          "kb_key": "product:sig_8da587f31a7c5e664e186517440e65c9",
+          "action": "skip",
+          "reason": "protected_high_quality_existing:reviewed",
+          "old_hash": "35ffa1055641863accfbbf22f6332ceb6b07584a949f8af523d52bfb9c014560",
+          "existing_weak": false
+        }
+      ]
+    },
+    {
+      "external_product_id": "ext_0feb1c58f18d9f6694955e7e",
+      "pivota_signature_id": "sig_4b293ca523b2a6ac9708dc758fc03b19",
+      "title": "Architecture Radiance Hydrating Foundation Broad Spectrum SPF 50+",
+      "brand": "Tom Ford Beauty",
+      "canonical_url": "https://www.tomfordbeauty.com/products/architecture-radiance-hydrating-foundation-broad-spectrum-spf-50",
+      "changed": false,
+      "blocked": false,
+      "skip_reason": "no_safe_writes",
+      "candidate_hash": "d745e76e7d99efea9e4906826bb40e1ffc84d29346f17ccca3c2cd82fc642ecb",
+      "evidence_profile": "official_pdp_reviewed_formula_and_usage",
+      "source_coverage": {
+        "source": "official_pdp",
+        "canonical_url": "https://www.tomfordbeauty.com/products/architecture-radiance-hydrating-foundation-broad-spectrum-spf-50",
+        "fields": {
+          "description": true,
+          "ingredients": 1,
+          "active_ingredients": 4,
+          "how_to": 1,
+          "details": 4,
+          "variants": 40
+        }
+      },
+      "preview": {
+        "headline": "Complexion makeup",
+        "what_it_is": "Architecture Radiance Hydrating Foundation Broad Spectrum SPF 50+ is a foundation from Tom Ford Beauty in 8.5N Vellum, with source-backed cues around coverage control.",
+        "why_it_stands_out": [
+          {
+            "headline": "Coverage and finish cues are clear",
+            "body": "Reviewed complexion cues such as coverage control, shade range, 8.5N Vellum / 30.0 ml, 30.0 ml support a more precise read on coverage, finish, or shade fit.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Ingredient list is available",
+            "body": "Full INCI is present for formula-sensitive review, which makes this PDP safer to evaluate than a claim-only listing.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Shade and size are explicit",
+            "body": "Variant labels such as 8.5N Vellum / 30.0 ml, Shade: 8.5N Vellum, Size: 30.0 ml, 0.5C Pearl / 30.0 ml are visible, reducing ambiguity around the product format before a shopper clicks through.",
+            "evidence_strength": "official_pdp_reviewed"
+          }
+        ],
+        "best_for": [
+          {
+            "tag": "base_makeup_prep",
+            "label": "base makeup prep",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "complexion_coverage",
+            "label": "complexion coverage",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "soft_focus_finish",
+            "label": "soft-focus finish",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "radiant_finish",
+            "label": "radiant finish",
+            "confidence": "moderate"
+          }
+        ],
+        "shopping_highlight": "coverage control, shade range"
+      },
+      "writes": [
+        {
+          "kb_key": "product:ext_0feb1c58f18d9f6694955e7e",
+          "action": "skip",
+          "reason": "protected_high_quality_existing:reviewed",
+          "old_hash": "6f621577ca0bcf4709e67d6dab5692ac36e98d8a7bb4affa560e135102bbdc89",
+          "existing_weak": false
+        },
+        {
+          "kb_key": "product:sig_4b293ca523b2a6ac9708dc758fc03b19",
+          "action": "skip",
+          "reason": "protected_high_quality_existing:reviewed",
+          "old_hash": "6f621577ca0bcf4709e67d6dab5692ac36e98d8a7bb4affa560e135102bbdc89",
+          "existing_weak": false
+        }
+      ]
+    },
+    {
+      "external_product_id": "ext_10456dc9745e5a27d3e48f1b",
+      "pivota_signature_id": "sig_45363c97d7de085336e83bd1c913bfdd",
+      "title": "Architecture Radiance Hydrating Foundation Broad Spectrum SPF 50+",
+      "brand": "Tom Ford Beauty",
+      "canonical_url": "https://www.tomfordbeauty.com/products/architecture-radiance-hydrating-foundation-broad-spectrum-spf-50",
+      "changed": false,
+      "blocked": false,
+      "skip_reason": "no_safe_writes",
+      "candidate_hash": "39ddd1c2ef4c1d96a92bd5f457b4de5572e167cae7354bdd5a7673f1b92d9c21",
+      "evidence_profile": "official_pdp_reviewed_formula_and_usage",
+      "source_coverage": {
+        "source": "official_pdp",
+        "canonical_url": "https://www.tomfordbeauty.com/products/architecture-radiance-hydrating-foundation-broad-spectrum-spf-50",
+        "fields": {
+          "description": true,
+          "ingredients": 1,
+          "active_ingredients": 4,
+          "how_to": 1,
+          "details": 4,
+          "variants": 40
+        }
+      },
+      "preview": {
+        "headline": "Complexion makeup",
+        "what_it_is": "Architecture Radiance Hydrating Foundation Broad Spectrum SPF 50+ is a foundation from Tom Ford Beauty in 8.5N Vellum, with source-backed cues around coverage control.",
+        "why_it_stands_out": [
+          {
+            "headline": "Coverage and finish cues are clear",
+            "body": "Reviewed complexion cues such as coverage control, shade range, 8.5N Vellum / 30.0 ml, 30.0 ml support a more precise read on coverage, finish, or shade fit.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Ingredient list is available",
+            "body": "Full INCI is present for formula-sensitive review, which makes this PDP safer to evaluate than a claim-only listing.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Shade and size are explicit",
+            "body": "Variant labels such as 8.5N Vellum / 30.0 ml, Shade: 8.5N Vellum, Size: 30.0 ml, 0.5C Pearl / 30.0 ml are visible, reducing ambiguity around the product format before a shopper clicks through.",
+            "evidence_strength": "official_pdp_reviewed"
+          }
+        ],
+        "best_for": [
+          {
+            "tag": "base_makeup_prep",
+            "label": "base makeup prep",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "complexion_coverage",
+            "label": "complexion coverage",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "soft_focus_finish",
+            "label": "soft-focus finish",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "radiant_finish",
+            "label": "radiant finish",
+            "confidence": "moderate"
+          }
+        ],
+        "shopping_highlight": "coverage control, shade range"
+      },
+      "writes": [
+        {
+          "kb_key": "product:ext_10456dc9745e5a27d3e48f1b",
+          "action": "skip",
+          "reason": "protected_high_quality_existing:reviewed",
+          "old_hash": "1dfd2f3cb9f0c0ea4ebed29576b4a27d29e6f52ee2e83b3098b5aab43700d247",
+          "existing_weak": false
+        },
+        {
+          "kb_key": "product:sig_45363c97d7de085336e83bd1c913bfdd",
+          "action": "skip",
+          "reason": "protected_high_quality_existing:reviewed",
+          "old_hash": "1dfd2f3cb9f0c0ea4ebed29576b4a27d29e6f52ee2e83b3098b5aab43700d247",
+          "existing_weak": false
+        }
+      ]
+    },
+    {
+      "external_product_id": "ext_1a5c7c01e42108d25d893b27",
+      "pivota_signature_id": "sig_b1b9693a0fdfbc67fee189ba94ed5b9f",
+      "title": "Architecture Radiance Hydrating Foundation Broad Spectrum SPF 50+",
+      "brand": "Tom Ford Beauty",
+      "canonical_url": "https://www.tomfordbeauty.com/products/architecture-radiance-hydrating-foundation-broad-spectrum-spf-50",
+      "changed": false,
+      "blocked": false,
+      "skip_reason": "no_safe_writes",
+      "candidate_hash": "99902c8f477a6637bf65c5bbd5f58301a05ea9564c3252e19464d8bffc7deb95",
+      "evidence_profile": "official_pdp_reviewed_formula_and_usage",
+      "source_coverage": {
+        "source": "official_pdp",
+        "canonical_url": "https://www.tomfordbeauty.com/products/architecture-radiance-hydrating-foundation-broad-spectrum-spf-50",
+        "fields": {
+          "description": true,
+          "ingredients": 1,
+          "active_ingredients": 4,
+          "how_to": 1,
+          "details": 4,
+          "variants": 40
+        }
+      },
+      "preview": {
+        "headline": "Complexion makeup",
+        "what_it_is": "Architecture Radiance Hydrating Foundation Broad Spectrum SPF 50+ is a foundation from Tom Ford Beauty in 8.5N Vellum, with source-backed cues around coverage control.",
+        "why_it_stands_out": [
+          {
+            "headline": "Coverage and finish cues are clear",
+            "body": "Reviewed complexion cues such as coverage control, shade range, 8.5N Vellum / 30.0 ml, 30.0 ml support a more precise read on coverage, finish, or shade fit.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Ingredient list is available",
+            "body": "Full INCI is present for formula-sensitive review, which makes this PDP safer to evaluate than a claim-only listing.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Shade and size are explicit",
+            "body": "Variant labels such as 8.5N Vellum / 30.0 ml, Shade: 8.5N Vellum, Size: 30.0 ml, 0.5C Pearl / 30.0 ml are visible, reducing ambiguity around the product format before a shopper clicks through.",
+            "evidence_strength": "official_pdp_reviewed"
+          }
+        ],
+        "best_for": [
+          {
+            "tag": "base_makeup_prep",
+            "label": "base makeup prep",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "complexion_coverage",
+            "label": "complexion coverage",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "soft_focus_finish",
+            "label": "soft-focus finish",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "radiant_finish",
+            "label": "radiant finish",
+            "confidence": "moderate"
+          }
+        ],
+        "shopping_highlight": "coverage control, shade range"
+      },
+      "writes": [
+        {
+          "kb_key": "product:ext_1a5c7c01e42108d25d893b27",
+          "action": "skip",
+          "reason": "protected_high_quality_existing:reviewed",
+          "old_hash": "3afe82f522c16696ef99c5a1229283a67e06de7ef6723bafed37e31c971c32d0",
+          "existing_weak": false
+        },
+        {
+          "kb_key": "product:sig_b1b9693a0fdfbc67fee189ba94ed5b9f",
+          "action": "skip",
+          "reason": "protected_high_quality_existing:reviewed",
+          "old_hash": "3afe82f522c16696ef99c5a1229283a67e06de7ef6723bafed37e31c971c32d0",
+          "existing_weak": false
+        }
+      ]
+    },
+    {
+      "external_product_id": "ext_1addb33792df4a32c58a4a7d",
+      "pivota_signature_id": "sig_cd87205db074fb1a38e6a13dc5ff3ccd",
+      "title": "Architecture Radiance Hydrating Foundation Broad Spectrum SPF 50+",
+      "brand": "Tom Ford Beauty",
+      "canonical_url": "https://www.tomfordbeauty.com/products/architecture-radiance-hydrating-foundation-broad-spectrum-spf-50",
+      "changed": false,
+      "blocked": false,
+      "skip_reason": "no_safe_writes",
+      "candidate_hash": "685f6dad0b90d3c22d50d0b549ae19543b1ddbd5ebb31600a983b71c9db85020",
+      "evidence_profile": "official_pdp_reviewed_formula_and_usage",
+      "source_coverage": {
+        "source": "official_pdp",
+        "canonical_url": "https://www.tomfordbeauty.com/products/architecture-radiance-hydrating-foundation-broad-spectrum-spf-50",
+        "fields": {
+          "description": true,
+          "ingredients": 1,
+          "active_ingredients": 4,
+          "how_to": 1,
+          "details": 4,
+          "variants": 40
+        }
+      },
+      "preview": {
+        "headline": "Complexion makeup",
+        "what_it_is": "Architecture Radiance Hydrating Foundation Broad Spectrum SPF 50+ is a foundation from Tom Ford Beauty in 8.5N Vellum, with source-backed cues around coverage control.",
+        "why_it_stands_out": [
+          {
+            "headline": "Coverage and finish cues are clear",
+            "body": "Reviewed complexion cues such as coverage control, shade range, 8.5N Vellum / 30.0 ml, 30.0 ml support a more precise read on coverage, finish, or shade fit.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Ingredient list is available",
+            "body": "Full INCI is present for formula-sensitive review, which makes this PDP safer to evaluate than a claim-only listing.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Shade and size are explicit",
+            "body": "Variant labels such as 8.5N Vellum / 30.0 ml, Shade: 8.5N Vellum, Size: 30.0 ml, 0.5C Pearl / 30.0 ml are visible, reducing ambiguity around the product format before a shopper clicks through.",
+            "evidence_strength": "official_pdp_reviewed"
+          }
+        ],
+        "best_for": [
+          {
+            "tag": "base_makeup_prep",
+            "label": "base makeup prep",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "complexion_coverage",
+            "label": "complexion coverage",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "soft_focus_finish",
+            "label": "soft-focus finish",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "radiant_finish",
+            "label": "radiant finish",
+            "confidence": "moderate"
+          }
+        ],
+        "shopping_highlight": "coverage control, shade range"
+      },
+      "writes": [
+        {
+          "kb_key": "product:ext_1addb33792df4a32c58a4a7d",
+          "action": "skip",
+          "reason": "protected_high_quality_existing:reviewed",
+          "old_hash": "179147ac34945d1227c2ac733d3baa13b8cabbf145708f05fc39600d4d15aecf",
+          "existing_weak": false
+        },
+        {
+          "kb_key": "product:sig_cd87205db074fb1a38e6a13dc5ff3ccd",
+          "action": "skip",
+          "reason": "protected_high_quality_existing:reviewed",
+          "old_hash": "179147ac34945d1227c2ac733d3baa13b8cabbf145708f05fc39600d4d15aecf",
+          "existing_weak": false
+        }
+      ]
+    },
+    {
+      "external_product_id": "ext_1fd3d137386f41efb970fc59",
+      "pivota_signature_id": "sig_45fb03f77c4fd219f558a685cfc702e8",
+      "title": "Architecture Radiance Hydrating Foundation Broad Spectrum SPF 50+",
+      "brand": "Tom Ford Beauty",
+      "canonical_url": "https://www.tomfordbeauty.com/products/architecture-radiance-hydrating-foundation-broad-spectrum-spf-50",
+      "changed": false,
+      "blocked": false,
+      "skip_reason": "no_safe_writes",
+      "candidate_hash": "33567677aca2eac018982a58f4dfd57e191f6bb56e4e5581f93fed07cae4026e",
+      "evidence_profile": "official_pdp_reviewed_formula_and_usage",
+      "source_coverage": {
+        "source": "official_pdp",
+        "canonical_url": "https://www.tomfordbeauty.com/products/architecture-radiance-hydrating-foundation-broad-spectrum-spf-50",
+        "fields": {
+          "description": true,
+          "ingredients": 1,
+          "active_ingredients": 4,
+          "how_to": 1,
+          "details": 4,
+          "variants": 40
+        }
+      },
+      "preview": {
+        "headline": "Complexion makeup",
+        "what_it_is": "Architecture Radiance Hydrating Foundation Broad Spectrum SPF 50+ is a foundation from Tom Ford Beauty in 8.5N Vellum, with source-backed cues around coverage control.",
+        "why_it_stands_out": [
+          {
+            "headline": "Coverage and finish cues are clear",
+            "body": "Reviewed complexion cues such as coverage control, shade range, 8.5N Vellum / 30.0 ml, 30.0 ml support a more precise read on coverage, finish, or shade fit.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Ingredient list is available",
+            "body": "Full INCI is present for formula-sensitive review, which makes this PDP safer to evaluate than a claim-only listing.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Shade and size are explicit",
+            "body": "Variant labels such as 8.5N Vellum / 30.0 ml, Shade: 8.5N Vellum, Size: 30.0 ml, 0.5C Pearl / 30.0 ml are visible, reducing ambiguity around the product format before a shopper clicks through.",
+            "evidence_strength": "official_pdp_reviewed"
+          }
+        ],
+        "best_for": [
+          {
+            "tag": "base_makeup_prep",
+            "label": "base makeup prep",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "complexion_coverage",
+            "label": "complexion coverage",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "soft_focus_finish",
+            "label": "soft-focus finish",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "radiant_finish",
+            "label": "radiant finish",
+            "confidence": "moderate"
+          }
+        ],
+        "shopping_highlight": "coverage control, shade range"
+      },
+      "writes": [
+        {
+          "kb_key": "product:ext_1fd3d137386f41efb970fc59",
+          "action": "skip",
+          "reason": "protected_high_quality_existing:reviewed",
+          "old_hash": "fa29a1108339a6d7422e6cfa37a9633470e1ba13c3946927cbfbd3443049cd8c",
+          "existing_weak": false
+        },
+        {
+          "kb_key": "product:sig_45fb03f77c4fd219f558a685cfc702e8",
+          "action": "skip",
+          "reason": "protected_high_quality_existing:reviewed",
+          "old_hash": "fa29a1108339a6d7422e6cfa37a9633470e1ba13c3946927cbfbd3443049cd8c",
+          "existing_weak": false
+        }
+      ]
+    }
+  ]
+}
