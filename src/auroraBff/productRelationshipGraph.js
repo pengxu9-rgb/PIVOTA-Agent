@@ -626,13 +626,68 @@ async function listApprovedRelationshipEdgesForAnchor({
   }
 }
 
+// Read-time alias expansion (per docs/SIG_EXT_FRONT_FACING_FIX.md). A queried
+// product may be a NON-PRIMARY listing in a product group whose relation-graph
+// edges live on a sibling listing's `product:ext_<hash>` anchor. Without
+// expansion, that listing returns zero edges even though its product group has
+// them (measured: 432 listings across 144 groups). Resolve the queried product's
+// group via `product_group_members` and add every sibling `ext_*` to the anchor
+// ref list. Edges stay stored on `ext_*`; identity is resolved at read time and
+// never stamped. Standalone products (no group) get no siblings — a safe no-op.
+//
+// NOTE: adds one product_group_members lookup per anchor resolution. A versioned
+// cache keyed on group-membership version is the follow-up for hot paths.
+async function expandAnchorRefsWithGroupSiblings(baseRefs = [], { queryFn = query } = {}) {
+  const refs = Array.isArray(baseRefs) ? baseRefs.slice() : [];
+  const extKeys = Array.from(new Set(
+    refs
+      .map((r) => String(r || '').replace(/^product:/i, ''))
+      .filter((k) => /^ext_/i.test(k)),
+  ));
+  if (!extKeys.length) return refs;
+  try {
+    const res = await queryFn(
+      `
+        WITH anchor_keys AS (SELECT unnest($1::text[]) AS k),
+        groups AS (
+          SELECT DISTINCT pgm.product_group_id
+          FROM product_group_members pgm
+          JOIN anchor_keys ak ON ak.k = pgm.platform_product_id
+          WHERE pgm.product_group_id IS NOT NULL
+        )
+        SELECT DISTINCT pgm.platform_product_id AS sibling
+        FROM product_group_members pgm
+        JOIN groups g ON g.product_group_id = pgm.product_group_id
+      `,
+      [extKeys],
+    );
+    const seen = new Set(refs.map((r) => String(r).toLowerCase()));
+    for (const row of (Array.isArray(res?.rows) ? res.rows : [])) {
+      const sibling = normalizeString(row.sibling, 260);
+      if (!sibling) continue;
+      for (const ref of [`product:${sibling}`, sibling]) {
+        if (!seen.has(ref.toLowerCase())) {
+          refs.push(ref);
+          seen.add(ref.toLowerCase());
+        }
+      }
+    }
+  } catch (err) {
+    const code = normalizeString(err && err.code, 20);
+    // Missing table / no DB → no expansion (graph still serves base refs).
+    if (code !== 'NO_DATABASE' && code !== '42P01') throw err;
+  }
+  return refs;
+}
+
 async function getRelationshipGraphCandidatesForAnchor({
   anchor,
   market = DEFAULT_MARKET,
   limit = 120,
   queryFn = query,
 } = {}) {
-  const anchorRefs = buildAnchorRefsFromProduct(anchor);
+  const baseRefs = buildAnchorRefsFromProduct(anchor);
+  const anchorRefs = await expandAnchorRefsWithGroupSiblings(baseRefs, { queryFn });
   const edges = await listApprovedRelationshipEdgesForAnchor({
     anchorType: 'product',
     anchorRefs,
@@ -948,6 +1003,7 @@ module.exports = {
   relationshipEdgeToSimilarItem,
   stripRelationshipRefPrefix,
   buildAnchorRefsFromProduct,
+  expandAnchorRefsWithGroupSiblings,
   listApprovedRelationshipEdgesForAnchor,
   getRelationshipGraphCandidatesForAnchor,
   upsertRelationshipEdge,
