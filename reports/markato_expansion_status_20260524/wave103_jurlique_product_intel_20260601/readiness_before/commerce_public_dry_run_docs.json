@@ -1,0 +1,344 @@
+{
+  "generated_at": "2026-06-01T02:04:41.288Z",
+  "market": "US",
+  "include_non_public": false,
+  "docs_built": 6,
+  "source_build_failures": [],
+  "docs": [
+    {
+      "doc_id": "sellable:sig_71208fddc56f43c805e8647b",
+      "sellable_item_group_id": "sig_71208fddc56f43c805e8647b",
+      "product_line_id": "pl_cd28d8d7b849bd745a3d2dc6",
+      "review_family_id": "rf_cd28d8d7b849bd745a3d2dc6",
+      "brand_name": "Jurlique",
+      "category_paths": [
+        "Serum"
+      ],
+      "market": "US",
+      "availability_state": "available",
+      "publish_state": "public",
+      "title": "Herbal Recovery Duo",
+      "subtitle": "Smooth, hydrate & refresh with Jurlique's Perfect Prep Duo - Herbal Recovery Bi-Phase Serum & Eye Oil Roll-On for radiant skin.",
+      "variant_axes": {
+        "pack": "2pack",
+        "multi_variant": false
+      },
+      "size": null,
+      "shade": null,
+      "pack": null,
+      "hero_media": {
+        "url": "https://cdn.shopify.com/s/files/1/0638/6535/6538/files/HerbalRecoveryDuo.jpg?v=1745004062",
+        "source_kind": "catalog",
+        "source_tier": "catalog"
+      },
+      "preview_media": [
+        "https://cdn.shopify.com/s/files/1/0638/6535/6538/files/HerbalRecoveryDuo.jpg?v=1745004062",
+        "https://cdn.shopify.com/s/files/1/0638/6535/6538/files/Screenshot_2025-04-18_155639.png?v=1745006245",
+        "https://cdn.shopify.com/s/files/1/0638/6535/6538/files/Screenshot_2025-04-18_155650.png?v=1745006245",
+        "https://cdn.shopify.com/s/files/1/0638/6535/6538/files/Screenshot_2025-04-18_155737.png?v=1745006269",
+        "https://cdn.shopify.com/s/files/1/0638/6535/6538/files/Screenshot_2025-04-18_155759.png?v=1745006301"
+      ],
+      "price_min": 136,
+      "price_max": 136,
+      "default_offer_id": "external_seed:ext_1e20d9aa6fe78b783fddf311",
+      "internal_offer_exists": false,
+      "external_offer_exists": true,
+      "pivota_insight_status": "missing",
+      "pivota_insight_summary": null,
+      "quality_score": null,
+      "browse_score": null,
+      "facet_tokens": [
+        "Jurlique",
+        "Serum"
+      ],
+      "sort_keys": {
+        "price_min": 136,
+        "price_max": 136,
+        "updated_at": null
+      },
+      "updated_at": null,
+      "source_refs": [
+        "external_seed:ext_1e20d9aa6fe78b783fddf311"
+      ]
+    },
+    {
+      "doc_id": "sellable:sig_340a594830b6bfe99a56e9d2",
+      "sellable_item_group_id": "sig_340a594830b6bfe99a56e9d2",
+      "product_line_id": "pl_cbef72af6b7b6d2af0b0185c",
+      "review_family_id": "rf_cbef72af6b7b6d2af0b0185c",
+      "brand_name": "Jurlique",
+      "category_paths": [
+        "Face Oil"
+      ],
+      "market": "US",
+      "availability_state": "available",
+      "publish_state": "public",
+      "title": "8+2 Firm & Hydrate Duo",
+      "subtitle": "A hydration-focused skin-care set that groups face or body moisture steps for a coordinated routine.",
+      "variant_axes": {
+        "pack": "2pack",
+        "multi_variant": false
+      },
+      "size": null,
+      "shade": null,
+      "pack": null,
+      "hero_media": {
+        "url": "https://cdn.shopify.com/s/files/1/0638/6535/6538/files/8_2Firm_HydrateDuo.jpg?v=1745003491",
+        "source_kind": "catalog",
+        "source_tier": "catalog"
+      },
+      "preview_media": [
+        "https://cdn.shopify.com/s/files/1/0638/6535/6538/files/8_2Firm_HydrateDuo.jpg?v=1745003491",
+        "https://cdn.shopify.com/s/files/1/0638/6535/6538/files/Activating_Water_Essence_Skin_Benefits_9220ed4a-d9f9-49e0-a7a9-7d024c9a625f.jpg?v=1745007543",
+        "https://cdn.shopify.com/s/files/1/0638/6535/6538/files/ef104b4a088849f3e0535c326d6ed081622c08f4c7f53c224f87784c5865e7a8_c112f0db-1c76-4636-a897-2f247d1e51d9.jpg?v=1745007989",
+        "https://cdn.shopify.com/s/files/1/0638/6535/6538/files/4185d9e0fec8ae9b1fa2dea8374e124a698ed6b845fb6dbda4ea9de6c7b50f78_678aa0b9-0b98-4c6e-a43f-ecaf6d0dfe17.jpg?v=1745007861",
+        "https://cdn.shopify.com/s/files/1/0638/6535/6538/files/0e847a78ea4d6f1e36018402a2b32f67148648a65440b0eb7cd6e12228740d53_e3ea1d1d-931e-4d86-845c-268baa4c8a9d.jpg?v=1745007989"
+      ],
+      "price_min": 125,
+      "price_max": 125,
+      "default_offer_id": "external_seed:ext_63ac501ca2ee5eb62b04dc41",
+      "internal_offer_exists": false,
+      "external_offer_exists": true,
+      "pivota_insight_status": "missing",
+      "pivota_insight_summary": null,
+      "quality_score": null,
+      "browse_score": null,
+      "facet_tokens": [
+        "Jurlique",
+        "Face Oil"
+      ],
+      "sort_keys": {
+        "price_min": 125,
+        "price_max": 125,
+        "updated_at": null
+      },
+      "updated_at": null,
+      "source_refs": [
+        "external_seed:ext_63ac501ca2ee5eb62b04dc41"
+      ]
+    },
+    {
+      "doc_id": "sellable:sig_2558cecdc6702ec92f6f2229",
+      "sellable_item_group_id": "sig_2558cecdc6702ec92f6f2229",
+      "product_line_id": "pl_b3936a158758a2b7c67860fc",
+      "review_family_id": "rf_b3936a158758a2b7c67860fc",
+      "brand_name": "Jurlique",
+      "category_paths": [
+        "Foundation"
+      ],
+      "market": "US",
+      "availability_state": "available",
+      "publish_state": "public",
+      "title": "Perfect Prep Duo",
+      "subtitle": "Perfectly prep your skin with the transformative Perfect Prep Duo bundle, a must-have for achieving a refreshed and radiant complexion. This luxurious pairing features the Radiant Skin Foaming Cleanser 80g and Activating Water Essence 75ml, two essential steps for an effective skincare routine. ​​​\n\nBegin with the Radiant Skin Foaming Cleanser 80g, designed to gently remove impurities, excess oil, and makeup, leaving your skin feeling clean, balanced, and refreshed.\n\nFollow with Activating Water Essence 75ml, a hydrating powerhouse that nourishes and primes your skin, enhancing its ability to absorb subsequent skincare products.\n\nTogether, this dynamic duo cleanses, hydrates, and prepares your skin, creating the ideal foundation for a healthy-looking glow.\n\nElevate your skincare ritual with the Perfect Prep Duo and experience the harmony of radiant results and luxurious care.",
+      "variant_axes": {
+        "pack": "2pack",
+        "multi_variant": false
+      },
+      "size": null,
+      "shade": null,
+      "pack": null,
+      "hero_media": {
+        "url": "https://cdn.shopify.com/s/files/1/0638/6535/6538/files/PerfectPrepDuo.jpg?v=1744924850",
+        "source_kind": "catalog",
+        "source_tier": "catalog"
+      },
+      "preview_media": [
+        "https://cdn.shopify.com/s/files/1/0638/6535/6538/files/PerfectPrepDuo.jpg?v=1744924850",
+        "https://cdn.shopify.com/s/files/1/0638/6535/6538/files/Activating_Water_Essence_Skin_Benefits_9220ed4a-d9f9-49e0-a7a9-7d024c9a625f.jpg?v=1745007543"
+      ],
+      "price_min": 75,
+      "price_max": 75,
+      "default_offer_id": "external_seed:ext_a4457d05bf56f811a88becf3",
+      "internal_offer_exists": false,
+      "external_offer_exists": true,
+      "pivota_insight_status": "missing",
+      "pivota_insight_summary": null,
+      "quality_score": null,
+      "browse_score": null,
+      "facet_tokens": [
+        "Jurlique",
+        "Foundation"
+      ],
+      "sort_keys": {
+        "price_min": 75,
+        "price_max": 75,
+        "updated_at": null
+      },
+      "updated_at": null,
+      "source_refs": [
+        "external_seed:ext_a4457d05bf56f811a88becf3"
+      ]
+    },
+    {
+      "doc_id": "sellable:sig_8e8c59ac4e5adb7026b88cd2",
+      "sellable_item_group_id": "sig_8e8c59ac4e5adb7026b88cd2",
+      "product_line_id": "pl_54f3af29dbcca28c3a92f3d8",
+      "review_family_id": "rf_54f3af29dbcca28c3a92f3d8",
+      "brand_name": "Jurlique",
+      "category_paths": [
+        "Face Oil"
+      ],
+      "market": "US",
+      "availability_state": "available",
+      "publish_state": "public",
+      "title": "Iconic Duo Bundle",
+      "subtitle": "A multi-product skin-care set that groups routine steps so shoppers compare the bundle as a regimen, not a single formula.",
+      "variant_axes": {
+        "pack": "2pack",
+        "multi_variant": false
+      },
+      "size": null,
+      "shade": null,
+      "pack": null,
+      "hero_media": {
+        "url": "https://cdn.shopify.com/s/files/1/0638/6535/6538/files/IconicDuo.jpg?v=1745004464",
+        "source_kind": "catalog",
+        "source_tier": "catalog"
+      },
+      "preview_media": [
+        "https://cdn.shopify.com/s/files/1/0638/6535/6538/files/IconicDuo.jpg?v=1745004464",
+        "https://cdn.shopify.com/s/files/1/0638/6535/6538/files/0ba3433519814d2eab2adf0d2a536f3b_824eaafd-e012-4685-b3f3-539ebb74a9fa.jpg?v=1745007824",
+        "https://cdn.shopify.com/s/files/1/0638/6535/6538/files/ef104b4a088849f3e0535c326d6ed081622c08f4c7f53c224f87784c5865e7a8_c112f0db-1c76-4636-a897-2f247d1e51d9.jpg?v=1745007989",
+        "https://cdn.shopify.com/s/files/1/0638/6535/6538/files/1b3e08d80b0f47fe82609bf3d3e849ac_4f50ed88-231e-4b5d-be45-3dd14ee19852.jpg?v=1745007861",
+        "https://cdn.shopify.com/s/files/1/0638/6535/6538/files/84a0d1ce2eef41aa9670fca5adbf0bf7_c0d9100b-a702-4b38-8010-6e500a247fb3.jpg?v=1745007861",
+        "https://cdn.shopify.com/s/files/1/0638/6535/6538/files/4185d9e0fec8ae9b1fa2dea8374e124a698ed6b845fb6dbda4ea9de6c7b50f78_678aa0b9-0b98-4c6e-a43f-ecaf6d0dfe17.jpg?v=1745007861",
+        "https://cdn.shopify.com/s/files/1/0638/6535/6538/files/c031efaff34741e387087fcc59bb37eb_56e1fb85-ca65-44f3-ae80-1a5d48f98aa0.jpg?v=1745007861"
+      ],
+      "price_min": 170,
+      "price_max": 170,
+      "default_offer_id": "external_seed:ext_b0f9384195c88efc4aa0114e",
+      "internal_offer_exists": false,
+      "external_offer_exists": true,
+      "pivota_insight_status": "missing",
+      "pivota_insight_summary": null,
+      "quality_score": null,
+      "browse_score": null,
+      "facet_tokens": [
+        "Jurlique",
+        "Face Oil"
+      ],
+      "sort_keys": {
+        "price_min": 170,
+        "price_max": 170,
+        "updated_at": null
+      },
+      "updated_at": null,
+      "source_refs": [
+        "external_seed:ext_b0f9384195c88efc4aa0114e"
+      ]
+    },
+    {
+      "doc_id": "sellable:sig_9737bf95405dfa1fc19217e7",
+      "sellable_item_group_id": "sig_9737bf95405dfa1fc19217e7",
+      "product_line_id": "pl_bfaab2ddda6bf0daa984dc2e",
+      "review_family_id": "rf_bfaab2ddda6bf0daa984dc2e",
+      "brand_name": "Jurlique",
+      "category_paths": [
+        "Face Oil"
+      ],
+      "market": "US",
+      "availability_state": "available",
+      "publish_state": "public",
+      "title": "Rejuvenating Duo",
+      "subtitle": "Rediscover youthful, radiant skin with the Rejuvenating Duo, featuring the Nutri-Define Supreme Rejuvenating Rich Cream 50ml and Purely Age-Defying Firming Face Oil 50ml. This luxurious skincare bundle is designed to nourish, firm, and rejuvenate your complexion.\n\nThe Nutri-Define Supreme Rejuvenating Rich Cream 50ml offers hydration and advanced anti-aging benefits, targeting fine lines and wrinkles while restoring skin elasticity and firmness.\n\nComplementing the cream, the Purely Age-Defying Firming Face Oil 50ml is enriched with botanical ingredients to further improve skin tone, promote smoothness, and enhance your natural glow.\n\nTogether, this dynamic duo delivers visible results, leaving your skin revitalized, firmer, and beautifully radiant. Indulge in this premium skincare pairing for a transformative experience and the confidence of healthier-looking, glowing skin.",
+      "variant_axes": {
+        "pack": "2pack",
+        "multi_variant": false
+      },
+      "size": null,
+      "shade": null,
+      "pack": null,
+      "hero_media": {
+        "url": "https://cdn.shopify.com/s/files/1/0638/6535/6538/files/Rejuvenating_Duo.jpg?v=1745004658",
+        "source_kind": "catalog",
+        "source_tier": "catalog"
+      },
+      "preview_media": [
+        "https://cdn.shopify.com/s/files/1/0638/6535/6538/files/Rejuvenating_Duo.jpg?v=1745004658",
+        "https://cdn.shopify.com/s/files/1/0638/6535/6538/files/4d4ce5bd3c0d109cd052a11038de808e2d834fc6d7d7e4a38ce8ff30e439c66e_854a0fc0-079f-445c-9c10-a44664a643ce.jpg?v=1745007989",
+        "https://cdn.shopify.com/s/files/1/0638/6535/6538/files/ef104b4a088849f3e0535c326d6ed081622c08f4c7f53c224f87784c5865e7a8_c112f0db-1c76-4636-a897-2f247d1e51d9.jpg?v=1745007989",
+        "https://cdn.shopify.com/s/files/1/0638/6535/6538/files/8da7f663a1d5039f7078b8e4824017c7802e611c9b9b1fd35009fa1bafbb5c79_94cf95aa-940a-4862-9e5f-00b707885c76.jpg?v=1745007989",
+        "https://cdn.shopify.com/s/files/1/0638/6535/6538/files/0e847a78ea4d6f1e36018402a2b32f67148648a65440b0eb7cd6e12228740d53_e3ea1d1d-931e-4d86-845c-268baa4c8a9d.jpg?v=1745007989",
+        "https://cdn.shopify.com/s/files/1/0638/6535/6538/files/2650d3bd7259dfa27d5f93d5912a739ee2b2795e98416857bee9866bbe98473a_f27611bb-85e6-4715-a2d2-8a11c4998b9d.jpg?v=1745007989",
+        "https://cdn.shopify.com/s/files/1/0638/6535/6538/files/dea966ee0889edc49d7f0fc4e3fc0474d5153f29aea7c615a17454812719a550_c5724cd0-f658-4297-8732-15b71144328a.jpg?v=1745007989"
+      ],
+      "price_min": 200,
+      "price_max": 200,
+      "default_offer_id": "external_seed:ext_59d1d0f9b80d3ad401ad4862",
+      "internal_offer_exists": false,
+      "external_offer_exists": true,
+      "pivota_insight_status": "missing",
+      "pivota_insight_summary": null,
+      "quality_score": null,
+      "browse_score": null,
+      "facet_tokens": [
+        "Jurlique",
+        "Face Oil"
+      ],
+      "sort_keys": {
+        "price_min": 200,
+        "price_max": 200,
+        "updated_at": null
+      },
+      "updated_at": null,
+      "source_refs": [
+        "external_seed:ext_59d1d0f9b80d3ad401ad4862"
+      ]
+    },
+    {
+      "doc_id": "sellable:sig_58f9922f7393a278db105a87",
+      "sellable_item_group_id": "sig_58f9922f7393a278db105a87",
+      "product_line_id": "pl_780efffbc2e72a2ad8631968",
+      "review_family_id": "rf_780efffbc2e72a2ad8631968",
+      "brand_name": "Jurlique",
+      "category_paths": [
+        "Hand Cream"
+      ],
+      "market": "US",
+      "availability_state": "available",
+      "publish_state": "public",
+      "title": "Soft Hand & Body Bundle",
+      "subtitle": "Pamper your skin with the luxurious Soft Hand & Body Bundle, featuring the Rose Body Lotion 300ml and Rose Hand Cream 125ml. This indulgent duo is designed to deliver hydration and nourishment, leaving your skin feeling soft, smooth, and beautifully scented.\n\nThe Rose Body Lotion 300ml provides all-over hydration, enriched with botanical extracts to moisturize and nourish your skin, while imparting a delicate rose fragrance.\n\nThe Rose Hand Cream 125ml complements it perfectly, targeting dry and rough hands with its rich, creamy formula that helps soothe and rejuvenate.\n\nTogether, this bundle offers a complete care solution for silky-soft skin from head to toe. Treat yourself or a loved one to this elegant skincare pair and enjoy the lasting benefits of hydrated, radiant skin.",
+      "variant_axes": {
+        "multi_variant": false
+      },
+      "size": null,
+      "shade": null,
+      "pack": null,
+      "hero_media": {
+        "url": "https://cdn.shopify.com/s/files/1/0638/6535/6538/files/SoftHand_BodyBundle.jpg?v=1745004296",
+        "source_kind": "catalog",
+        "source_tier": "catalog"
+      },
+      "preview_media": [
+        "https://cdn.shopify.com/s/files/1/0638/6535/6538/files/SoftHand_BodyBundle.jpg?v=1745004296",
+        "https://cdn.shopify.com/s/files/1/0638/6535/6538/files/Rose_Hand_Cream_Key_Ingredients_536cc78c-3557-4548-9b97-cc6fd491b30c.jpg?v=1745007730",
+        "https://cdn.shopify.com/s/files/1/0638/6535/6538/files/Rose_Hand_Cream_Lifestyle_Shot_635f1c4f-b77a-4bf1-a74a-70cb35028b4b.jpg?v=1745007730",
+        "https://cdn.shopify.com/s/files/1/0638/6535/6538/files/Rose_Hand_Cream_USP_Shot_f8f26dd8-61f0-4601-b944-4820e4e7d757.jpg?v=1745007730"
+      ],
+      "price_min": 100,
+      "price_max": 100,
+      "default_offer_id": "external_seed:ext_4da676febaab206c32ffac68",
+      "internal_offer_exists": false,
+      "external_offer_exists": true,
+      "pivota_insight_status": "missing",
+      "pivota_insight_summary": null,
+      "quality_score": null,
+      "browse_score": null,
+      "facet_tokens": [
+        "Jurlique",
+        "Hand Cream"
+      ],
+      "sort_keys": {
+        "price_min": 100,
+        "price_max": 100,
+        "updated_at": null
+      },
+      "updated_at": null,
+      "source_refs": [
+        "external_seed:ext_4da676febaab206c32ffac68"
+      ]
+    }
+  ]
+}
