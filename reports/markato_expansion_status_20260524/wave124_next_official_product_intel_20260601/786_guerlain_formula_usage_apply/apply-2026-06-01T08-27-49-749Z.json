@@ -1,0 +1,1843 @@
+{
+  "generated_at": "2026-06-01T08:27:49.749Z",
+  "source": "pivota_insights_official_pdp_manual_review_v1",
+  "mode": "apply",
+  "filters": {
+    "brand": null,
+    "product_ids": [
+      "ext_0d844fc65fd3348e35a09c80",
+      "ext_151aebc5b6246b8d2d9a877b",
+      "ext_faf89834933316df0d8da973",
+      "ext_2fc7cc1ac3370464b4b923d3",
+      "ext_33fa1a749060cefdd3e0dc2b",
+      "ext_36b452da1e0dde5c19bd2ed0",
+      "ext_5f55c01bae5cd6b5f0a0e78e",
+      "ext_efe7512de8c6df9f75ca19e0",
+      "ext_abd25039dea2189dfcca8079",
+      "ext_55b774d3c57906a77a7167f0",
+      "ext_dc290a89c2c5daa2a5eab5cf"
+    ],
+    "limit": null,
+    "include_strong": false,
+    "include_url_key": false,
+    "apply_chunk_size": 20
+  },
+  "summary": {
+    "scanned": 11,
+    "changed_products": 11,
+    "blocked_products": 0,
+    "skipped_products": 0,
+    "write_actions": {
+      "update": 12,
+      "insert": 10
+    },
+    "skip_reasons": {},
+    "evidence_profiles": {
+      "official_pdp_reviewed_formula_and_usage": 11
+    }
+  },
+  "plans": [
+    {
+      "external_product_id": "ext_0d844fc65fd3348e35a09c80",
+      "pivota_signature_id": "sig_8b6a01382b49a71e45aff8ac",
+      "title": "Abu Dhabi - Breathable Nail Polish",
+      "brand": "786 Cosmetics",
+      "canonical_url": "https://786cosmetics.com/products/abu-dhabi-breathable-nail-polish",
+      "changed": true,
+      "blocked": false,
+      "skip_reason": null,
+      "candidate_hash": "d5517c23a7d7ab39f7f93b3b101c2043ef2bb6be447d1c58de0fba1447aea1aa",
+      "evidence_profile": "official_pdp_reviewed_formula_and_usage",
+      "source_coverage": {
+        "source": "official_pdp",
+        "canonical_url": "https://786cosmetics.com/products/abu-dhabi-breathable-nail-polish",
+        "fields": {
+          "description": true,
+          "ingredients": 1,
+          "active_ingredients": 0,
+          "how_to": 1,
+          "details": 3,
+          "variants": 1
+        }
+      },
+      "preview": {
+        "headline": "Nail color",
+        "what_it_is": "Abu Dhabi - Breathable Nail Polish is a nail polish from 786 Cosmetics in shade Abu Dhabi, with source-backed cues around a breathable polish format, thin-coat application and long-wear color.",
+        "why_it_stands_out": [
+          {
+            "headline": "Nail color cues are specific",
+            "body": "Reviewed nail-polish cues such as breathable polish format, thin-coat application, long-wear color, shade clarity help shoppers compare shade, application format, or wear context without inventing unsupported formula claims.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Ingredient list is available",
+            "body": "Full INCI is present for formula-sensitive review, which makes this PDP safer to evaluate than a claim-only listing.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Shade and size are explicit",
+            "body": "Variant labels such as Shade: Abu Dhabi are visible, reducing ambiguity around the product format before a shopper clicks through.",
+            "evidence_strength": "official_pdp_reviewed"
+          }
+        ],
+        "best_for": [
+          {
+            "tag": "breathable_polish_format",
+            "label": "breathable polish format",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "thin_coat_application",
+            "label": "thin-coat application",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "long_wear_color",
+            "label": "long-wear color",
+            "confidence": "moderate"
+          }
+        ],
+        "shopping_highlight": "breathable polish format"
+      },
+      "writes": [
+        {
+          "kb_key": "product:ext_0d844fc65fd3348e35a09c80",
+          "action": "update",
+          "reason": "explicit_owner_delegated_assistant_replacement_review",
+          "old_hash": "2f1806321c7333af7f17041590eeb83be20b35498a510e154a0090dca98dfa7a",
+          "candidate_hash": "c5132001e557aef8be4c5fe125347700428cd85c2e23b46b636e538311600493",
+          "existing_weak": true,
+          "source": "pivota_insights_official_pdp_manual_review_v1",
+          "after_inventory": {
+            "product_id": "ext_0d844fc65fd3348e35a09c80",
+            "kb_key": "product:ext_0d844fc65fd3348e35a09c80",
+            "source": "pivota_insights_official_pdp_manual_review_v1",
+            "updated_at": "",
+            "last_success_at": "",
+            "title": "Abu Dhabi - Breathable Nail Polish",
+            "canonical_url": "",
+            "bundle_hash": "d5517c23a7d7ab39f7f93b3b101c2043ef2bb6be447d1c58de0fba1447aea1aa",
+            "lane": "keep",
+            "reason": "protected_good_content",
+            "priority": 0,
+            "protected": true,
+            "displayable": true,
+            "high_quality_ready": true,
+            "human_reviewed": true,
+            "issues": [],
+            "blocking_issues": [],
+            "quality_state": "reviewed",
+            "evidence_profile": "official_pdp_reviewed_formula_and_usage",
+            "evidence_rank": 1,
+            "review_tier": "assistant_reviewed",
+            "agent_readable": true,
+            "public_ready": true
+          },
+          "source_meta": {
+            "evidence_profile": "official_pdp_reviewed_formula_and_usage",
+            "quality_state": "reviewed",
+            "source_origin": "official_pdp_fields",
+            "source_url": "https://786cosmetics.com/products/abu-dhabi-breathable-nail-polish",
+            "quality_improvement": {
+              "previous_bundle_hash": "08ea33a983af4f8e908098ae108e4cca18600519b11c0ee6ddb2cbde5b4704e0",
+              "candidate_bundle_hash": "d5517c23a7d7ab39f7f93b3b101c2043ef2bb6be447d1c58de0fba1447aea1aa",
+              "replacement_decision": "explicit_owner_delegated_assistant_replacement_review",
+              "existing_quality_lane": "keep",
+              "candidate_quality_lane": "keep",
+              "existing_evidence_profile": "seller_plus_formula",
+              "candidate_evidence_profile": "official_pdp_reviewed_formula_and_usage"
+            }
+          }
+        },
+        {
+          "kb_key": "product:sig_8b6a01382b49a71e45aff8ac",
+          "action": "insert",
+          "reason": "new_product_intel_bundle",
+          "old_hash": null,
+          "candidate_hash": "c5132001e557aef8be4c5fe125347700428cd85c2e23b46b636e538311600493",
+          "existing_weak": true,
+          "source": "pivota_insights_official_pdp_manual_review_v1",
+          "after_inventory": {
+            "product_id": "ext_0d844fc65fd3348e35a09c80",
+            "kb_key": "product:sig_8b6a01382b49a71e45aff8ac",
+            "source": "pivota_insights_official_pdp_manual_review_v1",
+            "updated_at": "",
+            "last_success_at": "",
+            "title": "Abu Dhabi - Breathable Nail Polish",
+            "canonical_url": "",
+            "bundle_hash": "d5517c23a7d7ab39f7f93b3b101c2043ef2bb6be447d1c58de0fba1447aea1aa",
+            "lane": "keep",
+            "reason": "protected_good_content",
+            "priority": 0,
+            "protected": true,
+            "displayable": true,
+            "high_quality_ready": true,
+            "human_reviewed": true,
+            "issues": [],
+            "blocking_issues": [],
+            "quality_state": "reviewed",
+            "evidence_profile": "official_pdp_reviewed_formula_and_usage",
+            "evidence_rank": 1,
+            "review_tier": "assistant_reviewed",
+            "agent_readable": true,
+            "public_ready": true
+          },
+          "source_meta": {
+            "evidence_profile": "official_pdp_reviewed_formula_and_usage",
+            "quality_state": "reviewed",
+            "source_origin": "official_pdp_fields",
+            "source_url": "https://786cosmetics.com/products/abu-dhabi-breathable-nail-polish",
+            "quality_improvement": {
+              "previous_bundle_hash": null,
+              "candidate_bundle_hash": "d5517c23a7d7ab39f7f93b3b101c2043ef2bb6be447d1c58de0fba1447aea1aa",
+              "replacement_decision": "new_product_intel_bundle",
+              "existing_quality_lane": null,
+              "candidate_quality_lane": "keep",
+              "existing_evidence_profile": null,
+              "candidate_evidence_profile": "official_pdp_reviewed_formula_and_usage"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "external_product_id": "ext_151aebc5b6246b8d2d9a877b",
+      "pivota_signature_id": "sig_f4c7019e2286dbb023363806",
+      "title": "Agra - Breathable Nail Polish",
+      "brand": "786 Cosmetics",
+      "canonical_url": "https://786cosmetics.com/products/agra-breathable-nail-polish",
+      "changed": true,
+      "blocked": false,
+      "skip_reason": null,
+      "candidate_hash": "28d0c75888aa98c6e28c46c1297075613ebd90600d37857fff01522be8ab964e",
+      "evidence_profile": "official_pdp_reviewed_formula_and_usage",
+      "source_coverage": {
+        "source": "official_pdp",
+        "canonical_url": "https://786cosmetics.com/products/agra-breathable-nail-polish",
+        "fields": {
+          "description": true,
+          "ingredients": 1,
+          "active_ingredients": 0,
+          "how_to": 1,
+          "details": 3,
+          "variants": 1
+        }
+      },
+      "preview": {
+        "headline": "Nail color",
+        "what_it_is": "Agra - Breathable Nail Polish is a nail polish from 786 Cosmetics in shade Agra, with source-backed cues around a breathable polish format, thin-coat application and long-wear color.",
+        "why_it_stands_out": [
+          {
+            "headline": "Nail color cues are specific",
+            "body": "Reviewed nail-polish cues such as breathable polish format, thin-coat application, long-wear color, shade clarity help shoppers compare shade, application format, or wear context without inventing unsupported formula claims.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Ingredient list is available",
+            "body": "Full INCI is present for formula-sensitive review, which makes this PDP safer to evaluate than a claim-only listing.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Shade and size are explicit",
+            "body": "Variant labels such as Shade: Agra are visible, reducing ambiguity around the product format before a shopper clicks through.",
+            "evidence_strength": "official_pdp_reviewed"
+          }
+        ],
+        "best_for": [
+          {
+            "tag": "breathable_polish_format",
+            "label": "breathable polish format",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "thin_coat_application",
+            "label": "thin-coat application",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "long_wear_color",
+            "label": "long-wear color",
+            "confidence": "moderate"
+          }
+        ],
+        "shopping_highlight": "breathable polish format"
+      },
+      "writes": [
+        {
+          "kb_key": "product:ext_151aebc5b6246b8d2d9a877b",
+          "action": "update",
+          "reason": "explicit_owner_delegated_assistant_replacement_review",
+          "old_hash": "73df449b2c74240f3a630c83c37a7dfc787cb7ec2440452b0c7044407e754a9d",
+          "candidate_hash": "9bbf1ac681f324261acf170b8681c06786a9b4891ccd69ff9956586c64891cf8",
+          "existing_weak": true,
+          "source": "pivota_insights_official_pdp_manual_review_v1",
+          "after_inventory": {
+            "product_id": "ext_151aebc5b6246b8d2d9a877b",
+            "kb_key": "product:ext_151aebc5b6246b8d2d9a877b",
+            "source": "pivota_insights_official_pdp_manual_review_v1",
+            "updated_at": "",
+            "last_success_at": "",
+            "title": "Agra - Breathable Nail Polish",
+            "canonical_url": "",
+            "bundle_hash": "28d0c75888aa98c6e28c46c1297075613ebd90600d37857fff01522be8ab964e",
+            "lane": "keep",
+            "reason": "protected_good_content",
+            "priority": 0,
+            "protected": true,
+            "displayable": true,
+            "high_quality_ready": true,
+            "human_reviewed": true,
+            "issues": [],
+            "blocking_issues": [],
+            "quality_state": "reviewed",
+            "evidence_profile": "official_pdp_reviewed_formula_and_usage",
+            "evidence_rank": 1,
+            "review_tier": "assistant_reviewed",
+            "agent_readable": true,
+            "public_ready": true
+          },
+          "source_meta": {
+            "evidence_profile": "official_pdp_reviewed_formula_and_usage",
+            "quality_state": "reviewed",
+            "source_origin": "official_pdp_fields",
+            "source_url": "https://786cosmetics.com/products/agra-breathable-nail-polish",
+            "quality_improvement": {
+              "previous_bundle_hash": "cfaeadf7faec2f5c9d7a3cad9f889b7a31d8654362e7bb6ea26743b0c863902f",
+              "candidate_bundle_hash": "28d0c75888aa98c6e28c46c1297075613ebd90600d37857fff01522be8ab964e",
+              "replacement_decision": "explicit_owner_delegated_assistant_replacement_review",
+              "existing_quality_lane": "keep",
+              "candidate_quality_lane": "keep",
+              "existing_evidence_profile": "seller_plus_formula",
+              "candidate_evidence_profile": "official_pdp_reviewed_formula_and_usage"
+            }
+          }
+        },
+        {
+          "kb_key": "product:sig_f4c7019e2286dbb023363806",
+          "action": "insert",
+          "reason": "new_product_intel_bundle",
+          "old_hash": null,
+          "candidate_hash": "9bbf1ac681f324261acf170b8681c06786a9b4891ccd69ff9956586c64891cf8",
+          "existing_weak": true,
+          "source": "pivota_insights_official_pdp_manual_review_v1",
+          "after_inventory": {
+            "product_id": "ext_151aebc5b6246b8d2d9a877b",
+            "kb_key": "product:sig_f4c7019e2286dbb023363806",
+            "source": "pivota_insights_official_pdp_manual_review_v1",
+            "updated_at": "",
+            "last_success_at": "",
+            "title": "Agra - Breathable Nail Polish",
+            "canonical_url": "",
+            "bundle_hash": "28d0c75888aa98c6e28c46c1297075613ebd90600d37857fff01522be8ab964e",
+            "lane": "keep",
+            "reason": "protected_good_content",
+            "priority": 0,
+            "protected": true,
+            "displayable": true,
+            "high_quality_ready": true,
+            "human_reviewed": true,
+            "issues": [],
+            "blocking_issues": [],
+            "quality_state": "reviewed",
+            "evidence_profile": "official_pdp_reviewed_formula_and_usage",
+            "evidence_rank": 1,
+            "review_tier": "assistant_reviewed",
+            "agent_readable": true,
+            "public_ready": true
+          },
+          "source_meta": {
+            "evidence_profile": "official_pdp_reviewed_formula_and_usage",
+            "quality_state": "reviewed",
+            "source_origin": "official_pdp_fields",
+            "source_url": "https://786cosmetics.com/products/agra-breathable-nail-polish",
+            "quality_improvement": {
+              "previous_bundle_hash": null,
+              "candidate_bundle_hash": "28d0c75888aa98c6e28c46c1297075613ebd90600d37857fff01522be8ab964e",
+              "replacement_decision": "new_product_intel_bundle",
+              "existing_quality_lane": null,
+              "candidate_quality_lane": "keep",
+              "existing_evidence_profile": null,
+              "candidate_evidence_profile": "official_pdp_reviewed_formula_and_usage"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "external_product_id": "ext_faf89834933316df0d8da973",
+      "pivota_signature_id": "sig_e86eacac8d29e3f2ea6c369a",
+      "title": "Azores - Breathable Nail Polish",
+      "brand": "786 Cosmetics",
+      "canonical_url": "https://786cosmetics.com/products/azores-breathable-nail-polish",
+      "changed": true,
+      "blocked": false,
+      "skip_reason": null,
+      "candidate_hash": "caa47cc8d6f3fe0554bcc843a7979473fe13413e85477a61eb897705a43aaaca",
+      "evidence_profile": "official_pdp_reviewed_formula_and_usage",
+      "source_coverage": {
+        "source": "official_pdp",
+        "canonical_url": "https://786cosmetics.com/products/azores-breathable-nail-polish",
+        "fields": {
+          "description": true,
+          "ingredients": 1,
+          "active_ingredients": 0,
+          "how_to": 1,
+          "details": 3,
+          "variants": 1
+        }
+      },
+      "preview": {
+        "headline": "Nail color",
+        "what_it_is": "Azores - Breathable Nail Polish is a nail polish from 786 Cosmetics in shade Azores, with source-backed cues around a breathable polish format, thin-coat application and long-wear color.",
+        "why_it_stands_out": [
+          {
+            "headline": "Nail color cues are specific",
+            "body": "Reviewed nail-polish cues such as breathable polish format, thin-coat application, long-wear color, shade clarity help shoppers compare shade, application format, or wear context without inventing unsupported formula claims.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Ingredient list is available",
+            "body": "Full INCI is present for formula-sensitive review, which makes this PDP safer to evaluate than a claim-only listing.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Shade and size are explicit",
+            "body": "Variant labels such as Shade: Azores are visible, reducing ambiguity around the product format before a shopper clicks through.",
+            "evidence_strength": "official_pdp_reviewed"
+          }
+        ],
+        "best_for": [
+          {
+            "tag": "breathable_polish_format",
+            "label": "breathable polish format",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "thin_coat_application",
+            "label": "thin-coat application",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "long_wear_color",
+            "label": "long-wear color",
+            "confidence": "moderate"
+          }
+        ],
+        "shopping_highlight": "breathable polish format"
+      },
+      "writes": [
+        {
+          "kb_key": "product:ext_faf89834933316df0d8da973",
+          "action": "update",
+          "reason": "explicit_owner_delegated_assistant_replacement_review",
+          "old_hash": "c4a79d5f342f97f5d8f8d37b78e60f31532752fcc48a017cc841ab08707b4a9e",
+          "candidate_hash": "15ac57a63decfdb9cc7b30495d6c8270a30c053cd3d75f645525f2d5a7daacda",
+          "existing_weak": true,
+          "source": "pivota_insights_official_pdp_manual_review_v1",
+          "after_inventory": {
+            "product_id": "ext_faf89834933316df0d8da973",
+            "kb_key": "product:ext_faf89834933316df0d8da973",
+            "source": "pivota_insights_official_pdp_manual_review_v1",
+            "updated_at": "",
+            "last_success_at": "",
+            "title": "Azores - Breathable Nail Polish",
+            "canonical_url": "",
+            "bundle_hash": "caa47cc8d6f3fe0554bcc843a7979473fe13413e85477a61eb897705a43aaaca",
+            "lane": "keep",
+            "reason": "protected_good_content",
+            "priority": 0,
+            "protected": true,
+            "displayable": true,
+            "high_quality_ready": true,
+            "human_reviewed": true,
+            "issues": [],
+            "blocking_issues": [],
+            "quality_state": "reviewed",
+            "evidence_profile": "official_pdp_reviewed_formula_and_usage",
+            "evidence_rank": 1,
+            "review_tier": "assistant_reviewed",
+            "agent_readable": true,
+            "public_ready": true
+          },
+          "source_meta": {
+            "evidence_profile": "official_pdp_reviewed_formula_and_usage",
+            "quality_state": "reviewed",
+            "source_origin": "official_pdp_fields",
+            "source_url": "https://786cosmetics.com/products/azores-breathable-nail-polish",
+            "quality_improvement": {
+              "previous_bundle_hash": "c563065804a18139f08c165c1d2053bce10cbf6f1b75063aeee909c3575d0aff",
+              "candidate_bundle_hash": "caa47cc8d6f3fe0554bcc843a7979473fe13413e85477a61eb897705a43aaaca",
+              "replacement_decision": "explicit_owner_delegated_assistant_replacement_review",
+              "existing_quality_lane": "keep",
+              "candidate_quality_lane": "keep",
+              "existing_evidence_profile": "seller_plus_formula",
+              "candidate_evidence_profile": "official_pdp_reviewed_formula_and_usage"
+            }
+          }
+        },
+        {
+          "kb_key": "product:sig_e86eacac8d29e3f2ea6c369a",
+          "action": "insert",
+          "reason": "new_product_intel_bundle",
+          "old_hash": null,
+          "candidate_hash": "15ac57a63decfdb9cc7b30495d6c8270a30c053cd3d75f645525f2d5a7daacda",
+          "existing_weak": true,
+          "source": "pivota_insights_official_pdp_manual_review_v1",
+          "after_inventory": {
+            "product_id": "ext_faf89834933316df0d8da973",
+            "kb_key": "product:sig_e86eacac8d29e3f2ea6c369a",
+            "source": "pivota_insights_official_pdp_manual_review_v1",
+            "updated_at": "",
+            "last_success_at": "",
+            "title": "Azores - Breathable Nail Polish",
+            "canonical_url": "",
+            "bundle_hash": "caa47cc8d6f3fe0554bcc843a7979473fe13413e85477a61eb897705a43aaaca",
+            "lane": "keep",
+            "reason": "protected_good_content",
+            "priority": 0,
+            "protected": true,
+            "displayable": true,
+            "high_quality_ready": true,
+            "human_reviewed": true,
+            "issues": [],
+            "blocking_issues": [],
+            "quality_state": "reviewed",
+            "evidence_profile": "official_pdp_reviewed_formula_and_usage",
+            "evidence_rank": 1,
+            "review_tier": "assistant_reviewed",
+            "agent_readable": true,
+            "public_ready": true
+          },
+          "source_meta": {
+            "evidence_profile": "official_pdp_reviewed_formula_and_usage",
+            "quality_state": "reviewed",
+            "source_origin": "official_pdp_fields",
+            "source_url": "https://786cosmetics.com/products/azores-breathable-nail-polish",
+            "quality_improvement": {
+              "previous_bundle_hash": null,
+              "candidate_bundle_hash": "caa47cc8d6f3fe0554bcc843a7979473fe13413e85477a61eb897705a43aaaca",
+              "replacement_decision": "new_product_intel_bundle",
+              "existing_quality_lane": null,
+              "candidate_quality_lane": "keep",
+              "existing_evidence_profile": null,
+              "candidate_evidence_profile": "official_pdp_reviewed_formula_and_usage"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "external_product_id": "ext_2fc7cc1ac3370464b4b923d3",
+      "pivota_signature_id": "sig_f09b74bb65313b362fb669d6",
+      "title": "Bahrain - Breathable Nail Polish",
+      "brand": "786 Cosmetics",
+      "canonical_url": "https://786cosmetics.com/products/bahrain-breathable-nail-polish",
+      "changed": true,
+      "blocked": false,
+      "skip_reason": null,
+      "candidate_hash": "f2ac6418d7ffd321806038212d36d43560b791ef63c42dfe680c73b5067413e4",
+      "evidence_profile": "official_pdp_reviewed_formula_and_usage",
+      "source_coverage": {
+        "source": "official_pdp",
+        "canonical_url": "https://786cosmetics.com/products/bahrain-breathable-nail-polish",
+        "fields": {
+          "description": true,
+          "ingredients": 1,
+          "active_ingredients": 0,
+          "how_to": 1,
+          "details": 3,
+          "variants": 1
+        }
+      },
+      "preview": {
+        "headline": "Nail color",
+        "what_it_is": "Bahrain - Breathable Nail Polish is a nail polish from 786 Cosmetics in shade Bahrain, with source-backed cues around a breathable polish format, thin-coat application and long-wear color.",
+        "why_it_stands_out": [
+          {
+            "headline": "Nail color cues are specific",
+            "body": "Reviewed nail-polish cues such as breathable polish format, thin-coat application, long-wear color, shade clarity help shoppers compare shade, application format, or wear context without inventing unsupported formula claims.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Ingredient list is available",
+            "body": "Full INCI is present for formula-sensitive review, which makes this PDP safer to evaluate than a claim-only listing.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Shade and size are explicit",
+            "body": "Variant labels such as Shade: Bahrain are visible, reducing ambiguity around the product format before a shopper clicks through.",
+            "evidence_strength": "official_pdp_reviewed"
+          }
+        ],
+        "best_for": [
+          {
+            "tag": "breathable_polish_format",
+            "label": "breathable polish format",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "thin_coat_application",
+            "label": "thin-coat application",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "long_wear_color",
+            "label": "long-wear color",
+            "confidence": "moderate"
+          }
+        ],
+        "shopping_highlight": "breathable polish format"
+      },
+      "writes": [
+        {
+          "kb_key": "product:ext_2fc7cc1ac3370464b4b923d3",
+          "action": "update",
+          "reason": "explicit_owner_delegated_assistant_replacement_review",
+          "old_hash": "e6eaef489a7cf24d22636ee25db3c3e9f37534745dc7c6752c1118bf57ae898d",
+          "candidate_hash": "188cbbcb1b0614a8c523385afab3574301c4798eae08aef6fbe27bf95cc75f83",
+          "existing_weak": true,
+          "source": "pivota_insights_official_pdp_manual_review_v1",
+          "after_inventory": {
+            "product_id": "ext_2fc7cc1ac3370464b4b923d3",
+            "kb_key": "product:ext_2fc7cc1ac3370464b4b923d3",
+            "source": "pivota_insights_official_pdp_manual_review_v1",
+            "updated_at": "",
+            "last_success_at": "",
+            "title": "Bahrain - Breathable Nail Polish",
+            "canonical_url": "",
+            "bundle_hash": "f2ac6418d7ffd321806038212d36d43560b791ef63c42dfe680c73b5067413e4",
+            "lane": "keep",
+            "reason": "protected_good_content",
+            "priority": 0,
+            "protected": true,
+            "displayable": true,
+            "high_quality_ready": true,
+            "human_reviewed": true,
+            "issues": [],
+            "blocking_issues": [],
+            "quality_state": "reviewed",
+            "evidence_profile": "official_pdp_reviewed_formula_and_usage",
+            "evidence_rank": 1,
+            "review_tier": "assistant_reviewed",
+            "agent_readable": true,
+            "public_ready": true
+          },
+          "source_meta": {
+            "evidence_profile": "official_pdp_reviewed_formula_and_usage",
+            "quality_state": "reviewed",
+            "source_origin": "official_pdp_fields",
+            "source_url": "https://786cosmetics.com/products/bahrain-breathable-nail-polish",
+            "quality_improvement": {
+              "previous_bundle_hash": "b274f03738537b4547d6d837cd62d52dfc6efc4c669eb1b81367023b38f14ed0",
+              "candidate_bundle_hash": "f2ac6418d7ffd321806038212d36d43560b791ef63c42dfe680c73b5067413e4",
+              "replacement_decision": "explicit_owner_delegated_assistant_replacement_review",
+              "existing_quality_lane": "keep",
+              "candidate_quality_lane": "keep",
+              "existing_evidence_profile": "seller_plus_formula",
+              "candidate_evidence_profile": "official_pdp_reviewed_formula_and_usage"
+            }
+          }
+        },
+        {
+          "kb_key": "product:sig_f09b74bb65313b362fb669d6",
+          "action": "insert",
+          "reason": "new_product_intel_bundle",
+          "old_hash": null,
+          "candidate_hash": "188cbbcb1b0614a8c523385afab3574301c4798eae08aef6fbe27bf95cc75f83",
+          "existing_weak": true,
+          "source": "pivota_insights_official_pdp_manual_review_v1",
+          "after_inventory": {
+            "product_id": "ext_2fc7cc1ac3370464b4b923d3",
+            "kb_key": "product:sig_f09b74bb65313b362fb669d6",
+            "source": "pivota_insights_official_pdp_manual_review_v1",
+            "updated_at": "",
+            "last_success_at": "",
+            "title": "Bahrain - Breathable Nail Polish",
+            "canonical_url": "",
+            "bundle_hash": "f2ac6418d7ffd321806038212d36d43560b791ef63c42dfe680c73b5067413e4",
+            "lane": "keep",
+            "reason": "protected_good_content",
+            "priority": 0,
+            "protected": true,
+            "displayable": true,
+            "high_quality_ready": true,
+            "human_reviewed": true,
+            "issues": [],
+            "blocking_issues": [],
+            "quality_state": "reviewed",
+            "evidence_profile": "official_pdp_reviewed_formula_and_usage",
+            "evidence_rank": 1,
+            "review_tier": "assistant_reviewed",
+            "agent_readable": true,
+            "public_ready": true
+          },
+          "source_meta": {
+            "evidence_profile": "official_pdp_reviewed_formula_and_usage",
+            "quality_state": "reviewed",
+            "source_origin": "official_pdp_fields",
+            "source_url": "https://786cosmetics.com/products/bahrain-breathable-nail-polish",
+            "quality_improvement": {
+              "previous_bundle_hash": null,
+              "candidate_bundle_hash": "f2ac6418d7ffd321806038212d36d43560b791ef63c42dfe680c73b5067413e4",
+              "replacement_decision": "new_product_intel_bundle",
+              "existing_quality_lane": null,
+              "candidate_quality_lane": "keep",
+              "existing_evidence_profile": null,
+              "candidate_evidence_profile": "official_pdp_reviewed_formula_and_usage"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "external_product_id": "ext_33fa1a749060cefdd3e0dc2b",
+      "pivota_signature_id": "sig_80adec5b3460ba6136c3ae68",
+      "title": "Beirut - Breathable Nail Polish",
+      "brand": "786 Cosmetics",
+      "canonical_url": "https://786cosmetics.com/products/beirut-breathable-nail-polish",
+      "changed": true,
+      "blocked": false,
+      "skip_reason": null,
+      "candidate_hash": "ff551a91236087ff628e3c440f329a40ac92d603d2e9fd00ba7c7a3857baf454",
+      "evidence_profile": "official_pdp_reviewed_formula_and_usage",
+      "source_coverage": {
+        "source": "official_pdp",
+        "canonical_url": "https://786cosmetics.com/products/beirut-breathable-nail-polish",
+        "fields": {
+          "description": true,
+          "ingredients": 1,
+          "active_ingredients": 0,
+          "how_to": 1,
+          "details": 3,
+          "variants": 1
+        }
+      },
+      "preview": {
+        "headline": "Nail color",
+        "what_it_is": "Beirut - Breathable Nail Polish is a nail polish from 786 Cosmetics in shade Beirut, with source-backed cues around a breathable polish format, thin-coat application and long-wear color.",
+        "why_it_stands_out": [
+          {
+            "headline": "Nail color cues are specific",
+            "body": "Reviewed nail-polish cues such as breathable polish format, thin-coat application, long-wear color, shade clarity help shoppers compare shade, application format, or wear context without inventing unsupported formula claims.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Ingredient list is available",
+            "body": "Full INCI is present for formula-sensitive review, which makes this PDP safer to evaluate than a claim-only listing.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Shade and size are explicit",
+            "body": "Variant labels such as Shade: Beirut are visible, reducing ambiguity around the product format before a shopper clicks through.",
+            "evidence_strength": "official_pdp_reviewed"
+          }
+        ],
+        "best_for": [
+          {
+            "tag": "breathable_polish_format",
+            "label": "breathable polish format",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "thin_coat_application",
+            "label": "thin-coat application",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "long_wear_color",
+            "label": "long-wear color",
+            "confidence": "moderate"
+          }
+        ],
+        "shopping_highlight": "breathable polish format"
+      },
+      "writes": [
+        {
+          "kb_key": "product:ext_33fa1a749060cefdd3e0dc2b",
+          "action": "update",
+          "reason": "explicit_owner_delegated_assistant_replacement_review",
+          "old_hash": "b94f098b3ccbc2eb3a97d2e72d3bb20de6aec714c05f71b7cf414c7b5dfe6fc9",
+          "candidate_hash": "680fb2a349b6ce139b96fa06b02ab2549b7f3194d37472020a15007f6a913d25",
+          "existing_weak": true,
+          "source": "pivota_insights_official_pdp_manual_review_v1",
+          "after_inventory": {
+            "product_id": "ext_33fa1a749060cefdd3e0dc2b",
+            "kb_key": "product:ext_33fa1a749060cefdd3e0dc2b",
+            "source": "pivota_insights_official_pdp_manual_review_v1",
+            "updated_at": "",
+            "last_success_at": "",
+            "title": "Beirut - Breathable Nail Polish",
+            "canonical_url": "",
+            "bundle_hash": "ff551a91236087ff628e3c440f329a40ac92d603d2e9fd00ba7c7a3857baf454",
+            "lane": "keep",
+            "reason": "protected_good_content",
+            "priority": 0,
+            "protected": true,
+            "displayable": true,
+            "high_quality_ready": true,
+            "human_reviewed": true,
+            "issues": [],
+            "blocking_issues": [],
+            "quality_state": "reviewed",
+            "evidence_profile": "official_pdp_reviewed_formula_and_usage",
+            "evidence_rank": 1,
+            "review_tier": "assistant_reviewed",
+            "agent_readable": true,
+            "public_ready": true
+          },
+          "source_meta": {
+            "evidence_profile": "official_pdp_reviewed_formula_and_usage",
+            "quality_state": "reviewed",
+            "source_origin": "official_pdp_fields",
+            "source_url": "https://786cosmetics.com/products/beirut-breathable-nail-polish",
+            "quality_improvement": {
+              "previous_bundle_hash": "b23faf0e4fc3cbddc50601a1daf91f90f1be0946ea1ae0588416e9538c1114a2",
+              "candidate_bundle_hash": "ff551a91236087ff628e3c440f329a40ac92d603d2e9fd00ba7c7a3857baf454",
+              "replacement_decision": "explicit_owner_delegated_assistant_replacement_review",
+              "existing_quality_lane": "keep",
+              "candidate_quality_lane": "keep",
+              "existing_evidence_profile": "seller_plus_formula",
+              "candidate_evidence_profile": "official_pdp_reviewed_formula_and_usage"
+            }
+          }
+        },
+        {
+          "kb_key": "product:sig_80adec5b3460ba6136c3ae68",
+          "action": "insert",
+          "reason": "new_product_intel_bundle",
+          "old_hash": null,
+          "candidate_hash": "680fb2a349b6ce139b96fa06b02ab2549b7f3194d37472020a15007f6a913d25",
+          "existing_weak": true,
+          "source": "pivota_insights_official_pdp_manual_review_v1",
+          "after_inventory": {
+            "product_id": "ext_33fa1a749060cefdd3e0dc2b",
+            "kb_key": "product:sig_80adec5b3460ba6136c3ae68",
+            "source": "pivota_insights_official_pdp_manual_review_v1",
+            "updated_at": "",
+            "last_success_at": "",
+            "title": "Beirut - Breathable Nail Polish",
+            "canonical_url": "",
+            "bundle_hash": "ff551a91236087ff628e3c440f329a40ac92d603d2e9fd00ba7c7a3857baf454",
+            "lane": "keep",
+            "reason": "protected_good_content",
+            "priority": 0,
+            "protected": true,
+            "displayable": true,
+            "high_quality_ready": true,
+            "human_reviewed": true,
+            "issues": [],
+            "blocking_issues": [],
+            "quality_state": "reviewed",
+            "evidence_profile": "official_pdp_reviewed_formula_and_usage",
+            "evidence_rank": 1,
+            "review_tier": "assistant_reviewed",
+            "agent_readable": true,
+            "public_ready": true
+          },
+          "source_meta": {
+            "evidence_profile": "official_pdp_reviewed_formula_and_usage",
+            "quality_state": "reviewed",
+            "source_origin": "official_pdp_fields",
+            "source_url": "https://786cosmetics.com/products/beirut-breathable-nail-polish",
+            "quality_improvement": {
+              "previous_bundle_hash": null,
+              "candidate_bundle_hash": "ff551a91236087ff628e3c440f329a40ac92d603d2e9fd00ba7c7a3857baf454",
+              "replacement_decision": "new_product_intel_bundle",
+              "existing_quality_lane": null,
+              "candidate_quality_lane": "keep",
+              "existing_evidence_profile": null,
+              "candidate_evidence_profile": "official_pdp_reviewed_formula_and_usage"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "external_product_id": "ext_36b452da1e0dde5c19bd2ed0",
+      "pivota_signature_id": "sig_38239666ff461573fb2a2e97",
+      "title": "Casablanca - Breathable Nail Polish",
+      "brand": "786 Cosmetics",
+      "canonical_url": "https://786cosmetics.com/products/casablanca-breathable-nail-polish",
+      "changed": true,
+      "blocked": false,
+      "skip_reason": null,
+      "candidate_hash": "6c9031be8096ea0c1e7b7c1250f1135b3970c301ed81ec37acc0d47ac6e7fea8",
+      "evidence_profile": "official_pdp_reviewed_formula_and_usage",
+      "source_coverage": {
+        "source": "official_pdp",
+        "canonical_url": "https://786cosmetics.com/products/casablanca-breathable-nail-polish",
+        "fields": {
+          "description": true,
+          "ingredients": 1,
+          "active_ingredients": 0,
+          "how_to": 1,
+          "details": 3,
+          "variants": 1
+        }
+      },
+      "preview": {
+        "headline": "Nail color",
+        "what_it_is": "Casablanca - Breathable Nail Polish is a nail polish from 786 Cosmetics in shade Casablanca, with source-backed cues around a breathable polish format, thin-coat application and long-wear color.",
+        "why_it_stands_out": [
+          {
+            "headline": "Nail color cues are specific",
+            "body": "Reviewed nail-polish cues such as breathable polish format, thin-coat application, long-wear color, shade clarity help shoppers compare shade, application format, or wear context without inventing unsupported formula claims.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Ingredient list is available",
+            "body": "Full INCI is present for formula-sensitive review, which makes this PDP safer to evaluate than a claim-only listing.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Shade and size are explicit",
+            "body": "Variant labels such as Shade: Casablanca are visible, reducing ambiguity around the product format before a shopper clicks through.",
+            "evidence_strength": "official_pdp_reviewed"
+          }
+        ],
+        "best_for": [
+          {
+            "tag": "breathable_polish_format",
+            "label": "breathable polish format",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "thin_coat_application",
+            "label": "thin-coat application",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "long_wear_color",
+            "label": "long-wear color",
+            "confidence": "moderate"
+          }
+        ],
+        "shopping_highlight": "breathable polish format"
+      },
+      "writes": [
+        {
+          "kb_key": "product:ext_36b452da1e0dde5c19bd2ed0",
+          "action": "update",
+          "reason": "explicit_owner_delegated_assistant_replacement_review",
+          "old_hash": "83cf6c8e61ca208b95f0c317ea27431edfc47d19bd0402a3ca37d8ccc88a0a1a",
+          "candidate_hash": "62280b9a14462b1e80765ec28e92d20dfc9abc81f69a8bf4e0a60d460ca5e841",
+          "existing_weak": true,
+          "source": "pivota_insights_official_pdp_manual_review_v1",
+          "after_inventory": {
+            "product_id": "ext_36b452da1e0dde5c19bd2ed0",
+            "kb_key": "product:ext_36b452da1e0dde5c19bd2ed0",
+            "source": "pivota_insights_official_pdp_manual_review_v1",
+            "updated_at": "",
+            "last_success_at": "",
+            "title": "Casablanca - Breathable Nail Polish",
+            "canonical_url": "",
+            "bundle_hash": "6c9031be8096ea0c1e7b7c1250f1135b3970c301ed81ec37acc0d47ac6e7fea8",
+            "lane": "keep",
+            "reason": "protected_good_content",
+            "priority": 0,
+            "protected": true,
+            "displayable": true,
+            "high_quality_ready": true,
+            "human_reviewed": true,
+            "issues": [],
+            "blocking_issues": [],
+            "quality_state": "reviewed",
+            "evidence_profile": "official_pdp_reviewed_formula_and_usage",
+            "evidence_rank": 1,
+            "review_tier": "assistant_reviewed",
+            "agent_readable": true,
+            "public_ready": true
+          },
+          "source_meta": {
+            "evidence_profile": "official_pdp_reviewed_formula_and_usage",
+            "quality_state": "reviewed",
+            "source_origin": "official_pdp_fields",
+            "source_url": "https://786cosmetics.com/products/casablanca-breathable-nail-polish",
+            "quality_improvement": {
+              "previous_bundle_hash": "ff8b320d8a889a845ae0baae712c547df0776b8931a511533af40f7e1b524017",
+              "candidate_bundle_hash": "6c9031be8096ea0c1e7b7c1250f1135b3970c301ed81ec37acc0d47ac6e7fea8",
+              "replacement_decision": "explicit_owner_delegated_assistant_replacement_review",
+              "existing_quality_lane": "keep",
+              "candidate_quality_lane": "keep",
+              "existing_evidence_profile": "seller_plus_formula",
+              "candidate_evidence_profile": "official_pdp_reviewed_formula_and_usage"
+            }
+          }
+        },
+        {
+          "kb_key": "product:sig_38239666ff461573fb2a2e97",
+          "action": "insert",
+          "reason": "new_product_intel_bundle",
+          "old_hash": null,
+          "candidate_hash": "62280b9a14462b1e80765ec28e92d20dfc9abc81f69a8bf4e0a60d460ca5e841",
+          "existing_weak": true,
+          "source": "pivota_insights_official_pdp_manual_review_v1",
+          "after_inventory": {
+            "product_id": "ext_36b452da1e0dde5c19bd2ed0",
+            "kb_key": "product:sig_38239666ff461573fb2a2e97",
+            "source": "pivota_insights_official_pdp_manual_review_v1",
+            "updated_at": "",
+            "last_success_at": "",
+            "title": "Casablanca - Breathable Nail Polish",
+            "canonical_url": "",
+            "bundle_hash": "6c9031be8096ea0c1e7b7c1250f1135b3970c301ed81ec37acc0d47ac6e7fea8",
+            "lane": "keep",
+            "reason": "protected_good_content",
+            "priority": 0,
+            "protected": true,
+            "displayable": true,
+            "high_quality_ready": true,
+            "human_reviewed": true,
+            "issues": [],
+            "blocking_issues": [],
+            "quality_state": "reviewed",
+            "evidence_profile": "official_pdp_reviewed_formula_and_usage",
+            "evidence_rank": 1,
+            "review_tier": "assistant_reviewed",
+            "agent_readable": true,
+            "public_ready": true
+          },
+          "source_meta": {
+            "evidence_profile": "official_pdp_reviewed_formula_and_usage",
+            "quality_state": "reviewed",
+            "source_origin": "official_pdp_fields",
+            "source_url": "https://786cosmetics.com/products/casablanca-breathable-nail-polish",
+            "quality_improvement": {
+              "previous_bundle_hash": null,
+              "candidate_bundle_hash": "6c9031be8096ea0c1e7b7c1250f1135b3970c301ed81ec37acc0d47ac6e7fea8",
+              "replacement_decision": "new_product_intel_bundle",
+              "existing_quality_lane": null,
+              "candidate_quality_lane": "keep",
+              "existing_evidence_profile": null,
+              "candidate_evidence_profile": "official_pdp_reviewed_formula_and_usage"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "external_product_id": "ext_5f55c01bae5cd6b5f0a0e78e",
+      "pivota_signature_id": "sig_6ab9aef32646e31b8520db08",
+      "title": "Dakar - Breathable Nail Polish",
+      "brand": "786 Cosmetics",
+      "canonical_url": "https://786cosmetics.com/products/dakar-breathable-nail-polish",
+      "changed": true,
+      "blocked": false,
+      "skip_reason": null,
+      "candidate_hash": "2f2e50ab377d4d025613769d8d5b4d05551ef6f82fc910593786073dfb2dbc0e",
+      "evidence_profile": "official_pdp_reviewed_formula_and_usage",
+      "source_coverage": {
+        "source": "official_pdp",
+        "canonical_url": "https://786cosmetics.com/products/dakar-breathable-nail-polish",
+        "fields": {
+          "description": true,
+          "ingredients": 1,
+          "active_ingredients": 0,
+          "how_to": 1,
+          "details": 3,
+          "variants": 1
+        }
+      },
+      "preview": {
+        "headline": "Nail color",
+        "what_it_is": "Dakar - Breathable Nail Polish is a nail polish from 786 Cosmetics in shade Dakar, with source-backed cues around a breathable polish format, thin-coat application, long-wear color and high-pigment payoff.",
+        "why_it_stands_out": [
+          {
+            "headline": "Nail color cues are specific",
+            "body": "Reviewed nail-polish cues such as breathable polish format, thin-coat application, long-wear color, high-pigment payoff help shoppers compare shade, application format, or wear context without inventing unsupported formula claims.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Ingredient list is available",
+            "body": "Full INCI is present for formula-sensitive review, which makes this PDP safer to evaluate than a claim-only listing.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Shade and size are explicit",
+            "body": "Variant labels such as Shade: Dakar are visible, reducing ambiguity around the product format before a shopper clicks through.",
+            "evidence_strength": "official_pdp_reviewed"
+          }
+        ],
+        "best_for": [
+          {
+            "tag": "breathable_polish_format",
+            "label": "breathable polish format",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "thin_coat_application",
+            "label": "thin-coat application",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "long_wear_color",
+            "label": "long-wear color",
+            "confidence": "moderate"
+          }
+        ],
+        "shopping_highlight": "breathable polish format"
+      },
+      "writes": [
+        {
+          "kb_key": "product:ext_5f55c01bae5cd6b5f0a0e78e",
+          "action": "update",
+          "reason": "explicit_owner_delegated_assistant_replacement_review",
+          "old_hash": "e38995430d131dd6167034977d6200307ff5d0b07dabb4f24c982667401c66aa",
+          "candidate_hash": "9ec6bff2f682c030b563539138cbdf56bfc472041ef082708e0b19b29471f708",
+          "existing_weak": true,
+          "source": "pivota_insights_official_pdp_manual_review_v1",
+          "after_inventory": {
+            "product_id": "ext_5f55c01bae5cd6b5f0a0e78e",
+            "kb_key": "product:ext_5f55c01bae5cd6b5f0a0e78e",
+            "source": "pivota_insights_official_pdp_manual_review_v1",
+            "updated_at": "",
+            "last_success_at": "",
+            "title": "Dakar - Breathable Nail Polish",
+            "canonical_url": "",
+            "bundle_hash": "2f2e50ab377d4d025613769d8d5b4d05551ef6f82fc910593786073dfb2dbc0e",
+            "lane": "keep",
+            "reason": "protected_good_content",
+            "priority": 0,
+            "protected": true,
+            "displayable": true,
+            "high_quality_ready": true,
+            "human_reviewed": true,
+            "issues": [],
+            "blocking_issues": [],
+            "quality_state": "reviewed",
+            "evidence_profile": "official_pdp_reviewed_formula_and_usage",
+            "evidence_rank": 1,
+            "review_tier": "assistant_reviewed",
+            "agent_readable": true,
+            "public_ready": true
+          },
+          "source_meta": {
+            "evidence_profile": "official_pdp_reviewed_formula_and_usage",
+            "quality_state": "reviewed",
+            "source_origin": "official_pdp_fields",
+            "source_url": "https://786cosmetics.com/products/dakar-breathable-nail-polish",
+            "quality_improvement": {
+              "previous_bundle_hash": "788b4dd56cb98407adc3402184278f865ad849d8fd438ecba29ad1324b45ff2d",
+              "candidate_bundle_hash": "2f2e50ab377d4d025613769d8d5b4d05551ef6f82fc910593786073dfb2dbc0e",
+              "replacement_decision": "explicit_owner_delegated_assistant_replacement_review",
+              "existing_quality_lane": "keep",
+              "candidate_quality_lane": "keep",
+              "existing_evidence_profile": "seller_plus_formula",
+              "candidate_evidence_profile": "official_pdp_reviewed_formula_and_usage"
+            }
+          }
+        },
+        {
+          "kb_key": "product:sig_6ab9aef32646e31b8520db08",
+          "action": "insert",
+          "reason": "new_product_intel_bundle",
+          "old_hash": null,
+          "candidate_hash": "9ec6bff2f682c030b563539138cbdf56bfc472041ef082708e0b19b29471f708",
+          "existing_weak": true,
+          "source": "pivota_insights_official_pdp_manual_review_v1",
+          "after_inventory": {
+            "product_id": "ext_5f55c01bae5cd6b5f0a0e78e",
+            "kb_key": "product:sig_6ab9aef32646e31b8520db08",
+            "source": "pivota_insights_official_pdp_manual_review_v1",
+            "updated_at": "",
+            "last_success_at": "",
+            "title": "Dakar - Breathable Nail Polish",
+            "canonical_url": "",
+            "bundle_hash": "2f2e50ab377d4d025613769d8d5b4d05551ef6f82fc910593786073dfb2dbc0e",
+            "lane": "keep",
+            "reason": "protected_good_content",
+            "priority": 0,
+            "protected": true,
+            "displayable": true,
+            "high_quality_ready": true,
+            "human_reviewed": true,
+            "issues": [],
+            "blocking_issues": [],
+            "quality_state": "reviewed",
+            "evidence_profile": "official_pdp_reviewed_formula_and_usage",
+            "evidence_rank": 1,
+            "review_tier": "assistant_reviewed",
+            "agent_readable": true,
+            "public_ready": true
+          },
+          "source_meta": {
+            "evidence_profile": "official_pdp_reviewed_formula_and_usage",
+            "quality_state": "reviewed",
+            "source_origin": "official_pdp_fields",
+            "source_url": "https://786cosmetics.com/products/dakar-breathable-nail-polish",
+            "quality_improvement": {
+              "previous_bundle_hash": null,
+              "candidate_bundle_hash": "2f2e50ab377d4d025613769d8d5b4d05551ef6f82fc910593786073dfb2dbc0e",
+              "replacement_decision": "new_product_intel_bundle",
+              "existing_quality_lane": null,
+              "candidate_quality_lane": "keep",
+              "existing_evidence_profile": null,
+              "candidate_evidence_profile": "official_pdp_reviewed_formula_and_usage"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "external_product_id": "ext_efe7512de8c6df9f75ca19e0",
+      "pivota_signature_id": "sig_334c164a037b883cdb4e9078",
+      "title": "Dubrovnik - Breathable Nail Polish",
+      "brand": "786 Cosmetics",
+      "canonical_url": "https://786cosmetics.com/products/dubrovnik-breathable-nail-polish",
+      "changed": true,
+      "blocked": false,
+      "skip_reason": null,
+      "candidate_hash": "f3386c66ab172918666230b5cab302b5260b0afa1126fc92ee70a5214129c20a",
+      "evidence_profile": "official_pdp_reviewed_formula_and_usage",
+      "source_coverage": {
+        "source": "official_pdp",
+        "canonical_url": "https://786cosmetics.com/products/dubrovnik-breathable-nail-polish",
+        "fields": {
+          "description": true,
+          "ingredients": 1,
+          "active_ingredients": 0,
+          "how_to": 1,
+          "details": 3,
+          "variants": 1
+        }
+      },
+      "preview": {
+        "headline": "Nail color",
+        "what_it_is": "Dubrovnik - Breathable Nail Polish is a nail polish from 786 Cosmetics in shade Dubrovnik, with source-backed cues around a breathable polish format, thin-coat application and long-wear color.",
+        "why_it_stands_out": [
+          {
+            "headline": "Nail color cues are specific",
+            "body": "Reviewed nail-polish cues such as breathable polish format, thin-coat application, long-wear color, shade clarity help shoppers compare shade, application format, or wear context without inventing unsupported formula claims.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Ingredient list is available",
+            "body": "Full INCI is present for formula-sensitive review, which makes this PDP safer to evaluate than a claim-only listing.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Shade and size are explicit",
+            "body": "Variant labels such as Shade: Dubrovnik are visible, reducing ambiguity around the product format before a shopper clicks through.",
+            "evidence_strength": "official_pdp_reviewed"
+          }
+        ],
+        "best_for": [
+          {
+            "tag": "breathable_polish_format",
+            "label": "breathable polish format",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "thin_coat_application",
+            "label": "thin-coat application",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "long_wear_color",
+            "label": "long-wear color",
+            "confidence": "moderate"
+          }
+        ],
+        "shopping_highlight": "breathable polish format"
+      },
+      "writes": [
+        {
+          "kb_key": "product:ext_efe7512de8c6df9f75ca19e0",
+          "action": "update",
+          "reason": "explicit_owner_delegated_assistant_replacement_review",
+          "old_hash": "c339f111df94974a07994d19cdf0b4ab7f4755a58c2d81ba0e2214462fdc2065",
+          "candidate_hash": "3a5ea1899931eb41f3451df123543c0923b5f3ee46fb58ba310bdd25c47d36e9",
+          "existing_weak": true,
+          "source": "pivota_insights_official_pdp_manual_review_v1",
+          "after_inventory": {
+            "product_id": "ext_efe7512de8c6df9f75ca19e0",
+            "kb_key": "product:ext_efe7512de8c6df9f75ca19e0",
+            "source": "pivota_insights_official_pdp_manual_review_v1",
+            "updated_at": "",
+            "last_success_at": "",
+            "title": "Dubrovnik - Breathable Nail Polish",
+            "canonical_url": "",
+            "bundle_hash": "f3386c66ab172918666230b5cab302b5260b0afa1126fc92ee70a5214129c20a",
+            "lane": "keep",
+            "reason": "protected_good_content",
+            "priority": 0,
+            "protected": true,
+            "displayable": true,
+            "high_quality_ready": true,
+            "human_reviewed": true,
+            "issues": [],
+            "blocking_issues": [],
+            "quality_state": "reviewed",
+            "evidence_profile": "official_pdp_reviewed_formula_and_usage",
+            "evidence_rank": 1,
+            "review_tier": "assistant_reviewed",
+            "agent_readable": true,
+            "public_ready": true
+          },
+          "source_meta": {
+            "evidence_profile": "official_pdp_reviewed_formula_and_usage",
+            "quality_state": "reviewed",
+            "source_origin": "official_pdp_fields",
+            "source_url": "https://786cosmetics.com/products/dubrovnik-breathable-nail-polish",
+            "quality_improvement": {
+              "previous_bundle_hash": "384b6ccf60c1ec637bcfabe8ba12342a5a662d6dab05e44c337b9f095f18dfb1",
+              "candidate_bundle_hash": "f3386c66ab172918666230b5cab302b5260b0afa1126fc92ee70a5214129c20a",
+              "replacement_decision": "explicit_owner_delegated_assistant_replacement_review",
+              "existing_quality_lane": "keep",
+              "candidate_quality_lane": "keep",
+              "existing_evidence_profile": "seller_plus_formula",
+              "candidate_evidence_profile": "official_pdp_reviewed_formula_and_usage"
+            }
+          }
+        },
+        {
+          "kb_key": "product:sig_334c164a037b883cdb4e9078",
+          "action": "insert",
+          "reason": "new_product_intel_bundle",
+          "old_hash": null,
+          "candidate_hash": "3a5ea1899931eb41f3451df123543c0923b5f3ee46fb58ba310bdd25c47d36e9",
+          "existing_weak": true,
+          "source": "pivota_insights_official_pdp_manual_review_v1",
+          "after_inventory": {
+            "product_id": "ext_efe7512de8c6df9f75ca19e0",
+            "kb_key": "product:sig_334c164a037b883cdb4e9078",
+            "source": "pivota_insights_official_pdp_manual_review_v1",
+            "updated_at": "",
+            "last_success_at": "",
+            "title": "Dubrovnik - Breathable Nail Polish",
+            "canonical_url": "",
+            "bundle_hash": "f3386c66ab172918666230b5cab302b5260b0afa1126fc92ee70a5214129c20a",
+            "lane": "keep",
+            "reason": "protected_good_content",
+            "priority": 0,
+            "protected": true,
+            "displayable": true,
+            "high_quality_ready": true,
+            "human_reviewed": true,
+            "issues": [],
+            "blocking_issues": [],
+            "quality_state": "reviewed",
+            "evidence_profile": "official_pdp_reviewed_formula_and_usage",
+            "evidence_rank": 1,
+            "review_tier": "assistant_reviewed",
+            "agent_readable": true,
+            "public_ready": true
+          },
+          "source_meta": {
+            "evidence_profile": "official_pdp_reviewed_formula_and_usage",
+            "quality_state": "reviewed",
+            "source_origin": "official_pdp_fields",
+            "source_url": "https://786cosmetics.com/products/dubrovnik-breathable-nail-polish",
+            "quality_improvement": {
+              "previous_bundle_hash": null,
+              "candidate_bundle_hash": "f3386c66ab172918666230b5cab302b5260b0afa1126fc92ee70a5214129c20a",
+              "replacement_decision": "new_product_intel_bundle",
+              "existing_quality_lane": null,
+              "candidate_quality_lane": "keep",
+              "existing_evidence_profile": null,
+              "candidate_evidence_profile": "official_pdp_reviewed_formula_and_usage"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "external_product_id": "ext_abd25039dea2189dfcca8079",
+      "pivota_signature_id": "sig_0b9d23782833ad5356ac276a",
+      "title": "Patagonia - Breathable Nail Polish",
+      "brand": "786 Cosmetics",
+      "canonical_url": "https://786cosmetics.com/products/patagonia-breathable-nail-polish",
+      "changed": true,
+      "blocked": false,
+      "skip_reason": null,
+      "candidate_hash": "fda2759223d47ea11910bc5296a29495db64df7e203a94824ccda67c40c5a88a",
+      "evidence_profile": "official_pdp_reviewed_formula_and_usage",
+      "source_coverage": {
+        "source": "official_pdp",
+        "canonical_url": "https://786cosmetics.com/products/patagonia-breathable-nail-polish",
+        "fields": {
+          "description": true,
+          "ingredients": 1,
+          "active_ingredients": 0,
+          "how_to": 1,
+          "details": 3,
+          "variants": 1
+        }
+      },
+      "preview": {
+        "headline": "Nail color",
+        "what_it_is": "Patagonia - Breathable Nail Polish is a nail polish from 786 Cosmetics in shade Patagonia, with source-backed cues around a breathable polish format, thin-coat application and long-wear color.",
+        "why_it_stands_out": [
+          {
+            "headline": "Nail color cues are specific",
+            "body": "Reviewed nail-polish cues such as breathable polish format, thin-coat application, long-wear color, shade clarity help shoppers compare shade, application format, or wear context without inventing unsupported formula claims.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Ingredient list is available",
+            "body": "Full INCI is present for formula-sensitive review, which makes this PDP safer to evaluate than a claim-only listing.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Shade and size are explicit",
+            "body": "Variant labels such as Shade: Patagonia are visible, reducing ambiguity around the product format before a shopper clicks through.",
+            "evidence_strength": "official_pdp_reviewed"
+          }
+        ],
+        "best_for": [
+          {
+            "tag": "breathable_polish_format",
+            "label": "breathable polish format",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "thin_coat_application",
+            "label": "thin-coat application",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "long_wear_color",
+            "label": "long-wear color",
+            "confidence": "moderate"
+          }
+        ],
+        "shopping_highlight": "breathable polish format"
+      },
+      "writes": [
+        {
+          "kb_key": "product:ext_abd25039dea2189dfcca8079",
+          "action": "update",
+          "reason": "explicit_owner_delegated_assistant_replacement_review",
+          "old_hash": "1f1d18597db417e7fdb9d47ab42591139c8cbe792e3f56755bce5931a36b24d3",
+          "candidate_hash": "659700d308ff361983987ccb3279177858ce98d42281a0082c4543fdc293cccb",
+          "existing_weak": true,
+          "source": "pivota_insights_official_pdp_manual_review_v1",
+          "after_inventory": {
+            "product_id": "ext_abd25039dea2189dfcca8079",
+            "kb_key": "product:ext_abd25039dea2189dfcca8079",
+            "source": "pivota_insights_official_pdp_manual_review_v1",
+            "updated_at": "",
+            "last_success_at": "",
+            "title": "Patagonia - Breathable Nail Polish",
+            "canonical_url": "",
+            "bundle_hash": "fda2759223d47ea11910bc5296a29495db64df7e203a94824ccda67c40c5a88a",
+            "lane": "keep",
+            "reason": "protected_good_content",
+            "priority": 0,
+            "protected": true,
+            "displayable": true,
+            "high_quality_ready": true,
+            "human_reviewed": true,
+            "issues": [],
+            "blocking_issues": [],
+            "quality_state": "reviewed",
+            "evidence_profile": "official_pdp_reviewed_formula_and_usage",
+            "evidence_rank": 1,
+            "review_tier": "assistant_reviewed",
+            "agent_readable": true,
+            "public_ready": true
+          },
+          "source_meta": {
+            "evidence_profile": "official_pdp_reviewed_formula_and_usage",
+            "quality_state": "reviewed",
+            "source_origin": "official_pdp_fields",
+            "source_url": "https://786cosmetics.com/products/patagonia-breathable-nail-polish",
+            "quality_improvement": {
+              "previous_bundle_hash": "5771b937ece092e4d7bf463dc0b08ad55b49e229abd2a28553232f16f36bb06e",
+              "candidate_bundle_hash": "fda2759223d47ea11910bc5296a29495db64df7e203a94824ccda67c40c5a88a",
+              "replacement_decision": "explicit_owner_delegated_assistant_replacement_review",
+              "existing_quality_lane": "keep",
+              "candidate_quality_lane": "keep",
+              "existing_evidence_profile": "seller_plus_formula",
+              "candidate_evidence_profile": "official_pdp_reviewed_formula_and_usage"
+            }
+          }
+        },
+        {
+          "kb_key": "product:sig_0b9d23782833ad5356ac276a",
+          "action": "insert",
+          "reason": "new_product_intel_bundle",
+          "old_hash": null,
+          "candidate_hash": "659700d308ff361983987ccb3279177858ce98d42281a0082c4543fdc293cccb",
+          "existing_weak": true,
+          "source": "pivota_insights_official_pdp_manual_review_v1",
+          "after_inventory": {
+            "product_id": "ext_abd25039dea2189dfcca8079",
+            "kb_key": "product:sig_0b9d23782833ad5356ac276a",
+            "source": "pivota_insights_official_pdp_manual_review_v1",
+            "updated_at": "",
+            "last_success_at": "",
+            "title": "Patagonia - Breathable Nail Polish",
+            "canonical_url": "",
+            "bundle_hash": "fda2759223d47ea11910bc5296a29495db64df7e203a94824ccda67c40c5a88a",
+            "lane": "keep",
+            "reason": "protected_good_content",
+            "priority": 0,
+            "protected": true,
+            "displayable": true,
+            "high_quality_ready": true,
+            "human_reviewed": true,
+            "issues": [],
+            "blocking_issues": [],
+            "quality_state": "reviewed",
+            "evidence_profile": "official_pdp_reviewed_formula_and_usage",
+            "evidence_rank": 1,
+            "review_tier": "assistant_reviewed",
+            "agent_readable": true,
+            "public_ready": true
+          },
+          "source_meta": {
+            "evidence_profile": "official_pdp_reviewed_formula_and_usage",
+            "quality_state": "reviewed",
+            "source_origin": "official_pdp_fields",
+            "source_url": "https://786cosmetics.com/products/patagonia-breathable-nail-polish",
+            "quality_improvement": {
+              "previous_bundle_hash": null,
+              "candidate_bundle_hash": "fda2759223d47ea11910bc5296a29495db64df7e203a94824ccda67c40c5a88a",
+              "replacement_decision": "new_product_intel_bundle",
+              "existing_quality_lane": null,
+              "candidate_quality_lane": "keep",
+              "existing_evidence_profile": null,
+              "candidate_evidence_profile": "official_pdp_reviewed_formula_and_usage"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "external_product_id": "ext_dc290a89c2c5daa2a5eab5cf",
+      "pivota_signature_id": "sig_497f2d38cfa7e9db99abec9f7ad42aa6",
+      "title": "ROUGE G THE CUSTOMIZABLE ULTRA-CARE LIPSTICK",
+      "brand": "Guerlain",
+      "canonical_url": "https://www.guerlain.com/us/en-us/p/rouge-g-the-customizable-ultra-care-lipstick-S000050.html",
+      "changed": true,
+      "blocked": false,
+      "skip_reason": null,
+      "candidate_hash": "b7ee8ac4551f764a3361ad5e510fd196b6b63d3ce2b4b8f5123ffb6f56b53576",
+      "evidence_profile": "official_pdp_reviewed_formula_and_usage",
+      "source_coverage": {
+        "source": "official_pdp",
+        "canonical_url": "https://www.guerlain.com/us/en-us/p/rouge-g-the-customizable-ultra-care-lipstick-S000050.html",
+        "fields": {
+          "description": true,
+          "ingredients": 1,
+          "active_ingredients": 0,
+          "how_to": 1,
+          "details": 1,
+          "variants": 1
+        }
+      },
+      "preview": {
+        "headline": "Lip color",
+        "what_it_is": "ROUGE G THE CUSTOMIZABLE ULTRA-CARE LIPSTICK is a lip color from Guerlain, with source-backed cues around satin finish, matte finish, shade clarity and comfort-oriented lip care.",
+        "why_it_stands_out": [
+          {
+            "headline": "Lip finish cues are specific",
+            "body": "Reviewed lip cues such as squalane, matte finish, satin finish, refillable format identify finish, shade, or formula context before the shopper leaves Pivota.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Ingredient list is available",
+            "body": "Full INCI is present for formula-sensitive review, which makes this PDP safer to evaluate than a claim-only listing.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Shade and size are explicit",
+            "body": "Variant labels such as ROUGE G THE CUSTOMIZABLE ULTRA-CARE LIPSTICK, Format: 3.5 g lipstick refill + customizable case are visible, reducing ambiguity around the product format before a shopper clicks through.",
+            "evidence_strength": "official_pdp_reviewed"
+          }
+        ],
+        "best_for": [
+          {
+            "tag": "refillable_lip_color",
+            "label": "refillable lip color",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "color_payoff",
+            "label": "color payoff",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "lip_comfort",
+            "label": "lip comfort",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "matte_finish",
+            "label": "matte finish",
+            "confidence": "moderate"
+          }
+        ],
+        "shopping_highlight": "squalane, matte finish, satin finish"
+      },
+      "writes": [
+        {
+          "kb_key": "product:ext_dc290a89c2c5daa2a5eab5cf",
+          "action": "update",
+          "reason": "explicit_owner_delegated_assistant_replacement_review",
+          "old_hash": "66416054d0a19f99d95ae0d589606213e911065f0a0e7ff61cbe59cbe5ab6891",
+          "candidate_hash": "9c34ee25b94138cd24fb7593be2970e25a681647a5ce4de9dc7e0623d964d0a3",
+          "existing_weak": true,
+          "source": "pivota_insights_official_pdp_manual_review_v1",
+          "after_inventory": {
+            "product_id": "ext_dc290a89c2c5daa2a5eab5cf",
+            "kb_key": "product:ext_dc290a89c2c5daa2a5eab5cf",
+            "source": "pivota_insights_official_pdp_manual_review_v1",
+            "updated_at": "",
+            "last_success_at": "",
+            "title": "ROUGE G THE CUSTOMIZABLE ULTRA-CARE LIPSTICK",
+            "canonical_url": "",
+            "bundle_hash": "b7ee8ac4551f764a3361ad5e510fd196b6b63d3ce2b4b8f5123ffb6f56b53576",
+            "lane": "keep",
+            "reason": "protected_good_content",
+            "priority": 0,
+            "protected": true,
+            "displayable": true,
+            "high_quality_ready": true,
+            "human_reviewed": true,
+            "issues": [],
+            "blocking_issues": [],
+            "quality_state": "reviewed",
+            "evidence_profile": "official_pdp_reviewed_formula_and_usage",
+            "evidence_rank": 1,
+            "review_tier": "assistant_reviewed",
+            "agent_readable": true,
+            "public_ready": true
+          },
+          "source_meta": {
+            "evidence_profile": "official_pdp_reviewed_formula_and_usage",
+            "quality_state": "reviewed",
+            "source_origin": "official_pdp_fields",
+            "source_url": "https://www.guerlain.com/us/en-us/p/rouge-g-the-customizable-ultra-care-lipstick-S000050.html",
+            "quality_improvement": {
+              "previous_bundle_hash": "7249e2feabf366e9df401ee846c6b90009e964a420e97b9678c9edc4a71a6443",
+              "candidate_bundle_hash": "b7ee8ac4551f764a3361ad5e510fd196b6b63d3ce2b4b8f5123ffb6f56b53576",
+              "replacement_decision": "explicit_owner_delegated_assistant_replacement_review",
+              "existing_quality_lane": "keep",
+              "candidate_quality_lane": "keep",
+              "existing_evidence_profile": "official_pdp_reviewed_formula_and_usage",
+              "candidate_evidence_profile": "official_pdp_reviewed_formula_and_usage"
+            }
+          }
+        },
+        {
+          "kb_key": "product:sig_497f2d38cfa7e9db99abec9f7ad42aa6",
+          "action": "update",
+          "reason": "explicit_owner_delegated_assistant_replacement_review",
+          "old_hash": "66416054d0a19f99d95ae0d589606213e911065f0a0e7ff61cbe59cbe5ab6891",
+          "candidate_hash": "9c34ee25b94138cd24fb7593be2970e25a681647a5ce4de9dc7e0623d964d0a3",
+          "existing_weak": true,
+          "source": "pivota_insights_official_pdp_manual_review_v1",
+          "after_inventory": {
+            "product_id": "ext_dc290a89c2c5daa2a5eab5cf",
+            "kb_key": "product:sig_497f2d38cfa7e9db99abec9f7ad42aa6",
+            "source": "pivota_insights_official_pdp_manual_review_v1",
+            "updated_at": "",
+            "last_success_at": "",
+            "title": "ROUGE G THE CUSTOMIZABLE ULTRA-CARE LIPSTICK",
+            "canonical_url": "",
+            "bundle_hash": "b7ee8ac4551f764a3361ad5e510fd196b6b63d3ce2b4b8f5123ffb6f56b53576",
+            "lane": "keep",
+            "reason": "protected_good_content",
+            "priority": 0,
+            "protected": true,
+            "displayable": true,
+            "high_quality_ready": true,
+            "human_reviewed": true,
+            "issues": [],
+            "blocking_issues": [],
+            "quality_state": "reviewed",
+            "evidence_profile": "official_pdp_reviewed_formula_and_usage",
+            "evidence_rank": 1,
+            "review_tier": "assistant_reviewed",
+            "agent_readable": true,
+            "public_ready": true
+          },
+          "source_meta": {
+            "evidence_profile": "official_pdp_reviewed_formula_and_usage",
+            "quality_state": "reviewed",
+            "source_origin": "official_pdp_fields",
+            "source_url": "https://www.guerlain.com/us/en-us/p/rouge-g-the-customizable-ultra-care-lipstick-S000050.html",
+            "quality_improvement": {
+              "previous_bundle_hash": "7249e2feabf366e9df401ee846c6b90009e964a420e97b9678c9edc4a71a6443",
+              "candidate_bundle_hash": "b7ee8ac4551f764a3361ad5e510fd196b6b63d3ce2b4b8f5123ffb6f56b53576",
+              "replacement_decision": "explicit_owner_delegated_assistant_replacement_review",
+              "existing_quality_lane": "keep",
+              "candidate_quality_lane": "keep",
+              "existing_evidence_profile": "official_pdp_reviewed_formula_and_usage",
+              "candidate_evidence_profile": "official_pdp_reviewed_formula_and_usage"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "external_product_id": "ext_55b774d3c57906a77a7167f0",
+      "pivota_signature_id": "sig_337355ebd00dcd80367973fb",
+      "title": "Sorrento - Breathable Nail Polish",
+      "brand": "786 Cosmetics",
+      "canonical_url": "https://786cosmetics.com/products/sorrento-breathable-nail-polish",
+      "changed": true,
+      "blocked": false,
+      "skip_reason": null,
+      "candidate_hash": "8ce4b392bcfb8291a21874516a7ba58f339881c3765b73b47190d8636b2d5078",
+      "evidence_profile": "official_pdp_reviewed_formula_and_usage",
+      "source_coverage": {
+        "source": "official_pdp",
+        "canonical_url": "https://786cosmetics.com/products/sorrento-breathable-nail-polish",
+        "fields": {
+          "description": true,
+          "ingredients": 1,
+          "active_ingredients": 0,
+          "how_to": 1,
+          "details": 3,
+          "variants": 1
+        }
+      },
+      "preview": {
+        "headline": "Nail color",
+        "what_it_is": "Sorrento - Breathable Nail Polish is a nail polish from 786 Cosmetics in shade Sorrento, with source-backed cues around a breathable polish format, thin-coat application and long-wear color.",
+        "why_it_stands_out": [
+          {
+            "headline": "Nail color cues are specific",
+            "body": "Reviewed nail-polish cues such as breathable polish format, thin-coat application, long-wear color, shade clarity help shoppers compare shade, application format, or wear context without inventing unsupported formula claims.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Ingredient list is available",
+            "body": "Full INCI is present for formula-sensitive review, which makes this PDP safer to evaluate than a claim-only listing.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Shade and size are explicit",
+            "body": "Variant labels such as Shade: Sorrento are visible, reducing ambiguity around the product format before a shopper clicks through.",
+            "evidence_strength": "official_pdp_reviewed"
+          }
+        ],
+        "best_for": [
+          {
+            "tag": "breathable_polish_format",
+            "label": "breathable polish format",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "thin_coat_application",
+            "label": "thin-coat application",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "long_wear_color",
+            "label": "long-wear color",
+            "confidence": "moderate"
+          }
+        ],
+        "shopping_highlight": "breathable polish format"
+      },
+      "writes": [
+        {
+          "kb_key": "product:ext_55b774d3c57906a77a7167f0",
+          "action": "update",
+          "reason": "explicit_owner_delegated_assistant_replacement_review",
+          "old_hash": "bc1ac9cc53aa1233ec56e0eb00d9956a5ea950b75e32d640ca9dce9b53c59486",
+          "candidate_hash": "2a0e907f9b7eb4bc162c879762ebdc7e2a834d996d34101f4a457c7b032917de",
+          "existing_weak": true,
+          "source": "pivota_insights_official_pdp_manual_review_v1",
+          "after_inventory": {
+            "product_id": "ext_55b774d3c57906a77a7167f0",
+            "kb_key": "product:ext_55b774d3c57906a77a7167f0",
+            "source": "pivota_insights_official_pdp_manual_review_v1",
+            "updated_at": "",
+            "last_success_at": "",
+            "title": "Sorrento - Breathable Nail Polish",
+            "canonical_url": "",
+            "bundle_hash": "8ce4b392bcfb8291a21874516a7ba58f339881c3765b73b47190d8636b2d5078",
+            "lane": "keep",
+            "reason": "protected_good_content",
+            "priority": 0,
+            "protected": true,
+            "displayable": true,
+            "high_quality_ready": true,
+            "human_reviewed": true,
+            "issues": [],
+            "blocking_issues": [],
+            "quality_state": "reviewed",
+            "evidence_profile": "official_pdp_reviewed_formula_and_usage",
+            "evidence_rank": 1,
+            "review_tier": "assistant_reviewed",
+            "agent_readable": true,
+            "public_ready": true
+          },
+          "source_meta": {
+            "evidence_profile": "official_pdp_reviewed_formula_and_usage",
+            "quality_state": "reviewed",
+            "source_origin": "official_pdp_fields",
+            "source_url": "https://786cosmetics.com/products/sorrento-breathable-nail-polish",
+            "quality_improvement": {
+              "previous_bundle_hash": "dd13f355bbc76bb449a25782e66a2ccec86db3150d6f8b114e5e6f459fe6fadb",
+              "candidate_bundle_hash": "8ce4b392bcfb8291a21874516a7ba58f339881c3765b73b47190d8636b2d5078",
+              "replacement_decision": "explicit_owner_delegated_assistant_replacement_review",
+              "existing_quality_lane": "keep",
+              "candidate_quality_lane": "keep",
+              "existing_evidence_profile": "seller_plus_formula",
+              "candidate_evidence_profile": "official_pdp_reviewed_formula_and_usage"
+            }
+          }
+        },
+        {
+          "kb_key": "product:sig_337355ebd00dcd80367973fb",
+          "action": "insert",
+          "reason": "new_product_intel_bundle",
+          "old_hash": null,
+          "candidate_hash": "2a0e907f9b7eb4bc162c879762ebdc7e2a834d996d34101f4a457c7b032917de",
+          "existing_weak": true,
+          "source": "pivota_insights_official_pdp_manual_review_v1",
+          "after_inventory": {
+            "product_id": "ext_55b774d3c57906a77a7167f0",
+            "kb_key": "product:sig_337355ebd00dcd80367973fb",
+            "source": "pivota_insights_official_pdp_manual_review_v1",
+            "updated_at": "",
+            "last_success_at": "",
+            "title": "Sorrento - Breathable Nail Polish",
+            "canonical_url": "",
+            "bundle_hash": "8ce4b392bcfb8291a21874516a7ba58f339881c3765b73b47190d8636b2d5078",
+            "lane": "keep",
+            "reason": "protected_good_content",
+            "priority": 0,
+            "protected": true,
+            "displayable": true,
+            "high_quality_ready": true,
+            "human_reviewed": true,
+            "issues": [],
+            "blocking_issues": [],
+            "quality_state": "reviewed",
+            "evidence_profile": "official_pdp_reviewed_formula_and_usage",
+            "evidence_rank": 1,
+            "review_tier": "assistant_reviewed",
+            "agent_readable": true,
+            "public_ready": true
+          },
+          "source_meta": {
+            "evidence_profile": "official_pdp_reviewed_formula_and_usage",
+            "quality_state": "reviewed",
+            "source_origin": "official_pdp_fields",
+            "source_url": "https://786cosmetics.com/products/sorrento-breathable-nail-polish",
+            "quality_improvement": {
+              "previous_bundle_hash": null,
+              "candidate_bundle_hash": "8ce4b392bcfb8291a21874516a7ba58f339881c3765b73b47190d8636b2d5078",
+              "replacement_decision": "new_product_intel_bundle",
+              "existing_quality_lane": null,
+              "candidate_quality_lane": "keep",
+              "existing_evidence_profile": null,
+              "candidate_evidence_profile": "official_pdp_reviewed_formula_and_usage"
+            }
+          }
+        }
+      ]
+    }
+  ],
+  "apply_result": {
+    "upserts": 22,
+    "chunks": 2
+  }
+}

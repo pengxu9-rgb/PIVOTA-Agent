@@ -1,0 +1,68 @@
+{
+  "generated_at": "2026-06-01T08:28:30.189Z",
+  "market": "US",
+  "include_non_public": false,
+  "docs_built": 1,
+  "source_build_failures": [],
+  "docs": [
+    {
+      "doc_id": "sellable:sig_effd0eafb4a267a3c7181349",
+      "sellable_item_group_id": "sig_effd0eafb4a267a3c7181349",
+      "product_line_id": "pl_a64661bebd6658b6432bb85f",
+      "review_family_id": "rf_a64661bebd6658b6432bb85f",
+      "brand_name": "Guerlain",
+      "category_paths": [
+        "Lipstick"
+      ],
+      "market": "US",
+      "availability_state": "out_of_stock",
+      "publish_state": "public",
+      "title": "ROUGE G THE CUSTOMIZABLE ULTRA-CARE LIPSTICK",
+      "subtitle": "Rouge G, Guerlain’s iconic jewel lipstick, has been reinvented in an ultra-care version paired with a wide range of highly pigmented, long-wearing shades available in a satin or velvet matte version. 89% skincare-based¹, its formula exclusively developed with natural-origin waxes includes a lily oleo extract with smoothing and rejuvenating properties for exceptional comfort².\n\nThis iconic lipstick’s design has also been modernized with an array of customizable double-mirror jewel cases that can be refilled as desired, showcasing Guerlain’s know-how and commitment.\n\nThe new Rouge G cases are only compatible with the new-generation refills and vice versa.\n\nCapacity: 3.5 g\n\n¹Average skincare base percentage, excluding pigments and shimmer, in the Rouge G range: Rouge G Velvet – minimum of 81%, Rouge G Satin – minimum of 89%.\n²In vitro ingredient test.",
+      "variant_axes": {
+        "shade": "g044301",
+        "multi_variant": false
+      },
+      "size": null,
+      "shade": null,
+      "pack": null,
+      "hero_media": {
+        "url": "https://www.guerlain.com/dw/image/v2/BDCZ_PRD/on/demandware.static/-/Sites-GSA_master_catalog/default/dw7f1a13c1/01-ProductsViewer/P062396/P062396_G062396_E01_hi-res.png?sw=655&sh=655",
+        "source_kind": "catalog",
+        "source_tier": "catalog"
+      },
+      "preview_media": [
+        "https://www.guerlain.com/dw/image/v2/BDCZ_PRD/on/demandware.static/-/Sites-GSA_master_catalog/default/dw7f1a13c1/01-ProductsViewer/P062396/P062396_G062396_E01_hi-res.png?sw=655&sh=655",
+        "https://www.guerlain.com/dw/image/v2/BDCZ_PRD/on/demandware.static/-/Sites-GSA_master_catalog/default/dwc7fe5521/01-ProductsViewer/P062396/P062396_G062396_E02_hi-res.png?sw=655&sh=655",
+        "https://www.guerlain.com/dw/image/v2/BDCZ_PRD/on/demandware.static/-/Sites-GSA_master_catalog/default/dw6c23e847/01-ProductsViewer/P062396/P062396_G062396_E03_hi-res.png?sw=655&sh=655",
+        "https://www.guerlain.com/dw/image/v2/BDCZ_PRD/on/demandware.static/-/Sites-GSA_master_catalog/default/dw4db3f895/01-ProductsViewer/P043935/P043935_G044301_E01_hi-res.png?sw=655&sh=655",
+        "https://www.guerlain.com/dw/image/v2/BDCZ_PRD/on/demandware.static/-/Sites-GSA_master_catalog/default/dw9044dc8b/01-ProductsViewer/P043935/P043935_G044301_E02_hi-res.png?sw=655&sh=655",
+        "https://www.guerlain.com/dw/image/v2/BDCZ_PRD/on/demandware.static/-/Sites-GSA_master_catalog/default/dwccd41519/01-ProductsViewer/P043935/P043935_G044301_E03_hi-res.jpg?sw=655&sh=655",
+        "https://www.guerlain.com/dw/image/v2/BDCZ_PRD/on/demandware.static/-/Sites-GSA_master_catalog/default/dw8fb930be/01-ProductsViewer/P043935/P043935_E04_hi-res.jpg?sw=655&sh=655",
+        "https://www.guerlain.com/dw/image/v2/BDCZ_PRD/on/demandware.static/-/Sites-GSA_master_catalog/default/dw548b198d/01-ProductsViewer/P043935/P043935_E05_hi-res.jpg?sw=655&sh=655"
+      ],
+      "price_min": 87,
+      "price_max": 87,
+      "default_offer_id": "external_seed:ext_dc290a89c2c5daa2a5eab5cf",
+      "internal_offer_exists": false,
+      "external_offer_exists": true,
+      "pivota_insight_status": "available",
+      "pivota_insight_summary": "ROUGE G THE CUSTOMIZABLE ULTRA-CARE LIPSTICK is a lip color from Guerlain, with source-backed cues around satin finish, matte finish, shade clarity and comfort-oriented lip care.",
+      "quality_score": null,
+      "browse_score": null,
+      "facet_tokens": [
+        "Guerlain",
+        "Lipstick"
+      ],
+      "sort_keys": {
+        "price_min": 87,
+        "price_max": 87,
+        "updated_at": null
+      },
+      "updated_at": null,
+      "source_refs": [
+        "external_seed:ext_dc290a89c2c5daa2a5eab5cf"
+      ]
+    }
+  ]
+}
