@@ -1,0 +1,532 @@
+{
+  "meta": {
+    "generated_at": "2026-06-01T02:08:23.832Z",
+    "source": "reviewed_official_seed_product_intel_report",
+    "batch_name": "wave104_embryolisse_reviewed_seller_20260601",
+    "inventory": "reports/markato_expansion_status_20260524/wave104_embryolisse_reviewed_seller_20260601/readiness_before/commerce_index_kb_readiness_inventory.json",
+    "selected_cases": 2,
+    "reviewer": "codex_human_quality_reviewer",
+    "reviewer_kind": "assistant",
+    "candidate_quality_summary": {
+      "public_ready": 2,
+      "high_quality_ready": 2,
+      "evidence_profile": {
+        "official_pdp_seed": 2
+      }
+    }
+  },
+  "rows": [
+    {
+      "case_id": "live_ext_fcf56da89f53b3a37076606a",
+      "review_status": "completed",
+      "review_decision": "rewrite",
+      "reviewer": "codex_human_quality_reviewer",
+      "reviewer_kind": "assistant",
+      "reviewed_at": "2026-06-01T02:08:23.832Z",
+      "notes": "Approved official-PDP-seed rewrite for AM/PM routine; evidence_profile=official_pdp_seed; source_url=https://us.embryolisse.com/products/ampm-routine",
+      "owner_delegated_review": {
+        "contract_version": "pivota.owner_delegated_review.v1",
+        "delegated_to": "codex_human_quality_reviewer",
+        "reviewer_kind": "assistant",
+        "owner_instruction": "User delegated Codex to perform high-quality human review for Pivota Insights quality improvement.",
+        "guardrails": [
+          "Do not overwrite good content with lower-quality content.",
+          "No commerce-state claims in Pivota Insights.",
+          "Use official source facts only; keep evidence confidence explicit."
+        ]
+      },
+      "quality_improvement_review": {
+        "decision": "approved_replacement",
+        "reviewer_kind": "assistant",
+        "owner_delegated": true,
+        "reason": "Owner-delegated assistant review confirms the replacement uses official PDP seed facts, avoids commerce and unsupported evidence claims, and explicitly marks evidence gaps instead of inventing claims."
+      },
+      "baseline": {
+        "canonical_product_ref": {
+          "merchant_id": "external_seed",
+          "product_id": "ext_fcf56da89f53b3a37076606a",
+          "platform": "external_seed"
+        }
+      },
+      "selected": {
+        "selected_mode": "manual_reviewed_rewrite",
+        "selected_field_count": 7,
+        "field_sources": {
+          "what_it_is": "official_seed_description",
+          "best_for": "reviewed_category_and_official_title",
+          "why_it_stands_out": "official_seed_description",
+          "routine_fit": "reviewed_category_and_official_title",
+          "watchouts": "owner_delegated_assistant_review",
+          "texture_finish": "reviewed_category_and_official_title",
+          "source_coverage": "official_pdp_seed_snapshot",
+          "community_signals": "not_collected"
+        },
+        "bundle": {
+          "contract_version": "pivota.product_intel.v1",
+          "display_name": "Pivota Insights",
+          "canonical_product_ref": {
+            "merchant_id": "external_seed",
+            "product_id": "ext_fcf56da89f53b3a37076606a",
+            "platform": "external_seed"
+          },
+          "product_group_id": "sig_6b3a6a922282894b1eabe5e4",
+          "product_intel_core": {
+            "display_name": "Pivota Insights",
+            "what_it_is": {
+              "headline": "Makeup set identity",
+              "body": "An EMBRYOLISSE makeup set listed on the brand source page as AM/PM routine. The source description identifies: Vitamin-Rich Hydration & Glow The perfect 1-month reset for your skin during seasonal transitions."
+            },
+            "best_for": [
+              {
+                "tag": "makeup_set_shoppers",
+                "label": "Makeup set shoppers",
+                "confidence": "moderate"
+              },
+              {
+                "tag": "official_source_comparison",
+                "label": "Official-source comparison",
+                "confidence": "moderate"
+              }
+            ],
+            "why_it_stands_out": [
+              {
+                "headline": "Source-backed product detail",
+                "body": "Vitamin-Rich Hydration & Glow The perfect 1-month reset for your skin during seasonal transitions.",
+                "evidence_strength": "official_pdp_seed"
+              },
+              {
+                "headline": "Evidence gaps kept explicit",
+                "body": "No complete ingredient list was captured for this review batch, so formula-level claims stay unavailable.",
+                "evidence_strength": "official_pdp_seed"
+              }
+            ],
+            "routine_fit": {
+              "step": "set",
+              "am_pm": [
+                "as_needed"
+              ],
+              "pairing_notes": [
+                "Use within the makeup set context; avoid inferring benefits not present in the source fields."
+              ]
+            },
+            "watchouts": [
+              {
+                "type": "formula_gap",
+                "label": "No complete ingredient list was captured for this review batch; avoid formula-level or safety claims.",
+                "severity": "medium"
+              },
+              {
+                "type": "evidence_gap",
+                "label": "No independent review or community evidence was approved for this row; keep public copy source-bound.",
+                "severity": "medium"
+              },
+              {
+                "type": "scope_guardrail",
+                "label": "Use the commerce mainline for offer facts; keep this insight focused on source-backed product identity.",
+                "severity": "medium"
+              }
+            ],
+            "confidence": {
+              "overall": "moderate",
+              "fields": {
+                "what_it_is": "high",
+                "best_for": "moderate",
+                "why_it_stands_out": "moderate",
+                "routine_fit": "moderate",
+                "watchouts": "moderate"
+              }
+            },
+            "freshness": {
+              "generated_at": "2026-06-01T02:08:23.832Z",
+              "source_version": "wave104_embryolisse_reviewed_seller_20260601"
+            },
+            "quality_state": "reviewed",
+            "evidence_profile": "official_pdp_seed",
+            "source_coverage": {
+              "seller": {
+                "available": true,
+                "source_url": "https://us.embryolisse.com/products/ampm-routine"
+              },
+              "formula": {
+                "available": false,
+                "ingredient_count": 0,
+                "source_url": "https://us.embryolisse.com/products/ampm-routine"
+              },
+              "reviews": {
+                "available": false,
+                "count": 0
+              },
+              "creator": {
+                "available": false,
+                "count": 0
+              },
+              "editorial": {
+                "available": false,
+                "count": 0
+              }
+            }
+          },
+          "texture_finish": {
+            "finish": "makeup set",
+            "texture": "makeup_set",
+            "source": "reviewed_category_and_official_title"
+          },
+          "community_signals": {
+            "status": "unavailable",
+            "reason": "not_collected_for_this_review_batch"
+          },
+          "recommendation_intents": {
+            "similar": [],
+            "complementary": [],
+            "routine_pairing": [],
+            "underfill_reason": null,
+            "confidence": "low"
+          },
+          "market_signal_badges": [],
+          "external_highlight_signals": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "official_pdp_seed",
+          "source_coverage": {
+            "seller": {
+              "available": true,
+              "source_url": "https://us.embryolisse.com/products/ampm-routine"
+            },
+            "formula": {
+              "available": false,
+              "ingredient_count": 0,
+              "source_url": "https://us.embryolisse.com/products/ampm-routine"
+            },
+            "reviews": {
+              "available": false,
+              "count": 0
+            },
+            "creator": {
+              "available": false,
+              "count": 0
+            },
+            "editorial": {
+              "available": false,
+              "count": 0
+            }
+          },
+          "confidence": {
+            "overall": "moderate",
+            "fields": {
+              "what_it_is": "high",
+              "best_for": "moderate",
+              "why_it_stands_out": "moderate",
+              "routine_fit": "moderate",
+              "watchouts": "moderate"
+            }
+          },
+          "freshness": {
+            "generated_at": "2026-06-01T02:08:23.832Z",
+            "source_version": "wave104_embryolisse_reviewed_seller_20260601"
+          },
+          "offer_pointers": {
+            "offers_count": 0,
+            "default_offer_id": null,
+            "best_price_offer_id": null,
+            "commerce_modes": []
+          },
+          "provenance": {
+            "source": "owner_delegated_official_seed_rewrite",
+            "generator": "owner_delegated_assistant_reviewed_rewrite",
+            "selection_strategy": "official_pdp_seed_guarded_manual_review",
+            "field_sources": {
+              "what_it_is": "official_seed_description",
+              "best_for": "reviewed_category_and_official_title",
+              "why_it_stands_out": "official_seed_description",
+              "routine_fit": "reviewed_category_and_official_title",
+              "watchouts": "owner_delegated_assistant_review",
+              "texture_finish": "reviewed_category_and_official_title",
+              "source_coverage": "official_pdp_seed_snapshot",
+              "community_signals": "not_collected"
+            },
+            "review_status": "completed",
+            "review_decision": "rewrite",
+            "reviewer": "codex_human_quality_reviewer",
+            "reviewer_kind": "assistant",
+            "reviewed_at": "2026-06-01T02:08:23.832Z",
+            "external_highlight_review_status": "rewrite",
+            "external_review_batch": "wave104_embryolisse_reviewed_seller_20260601",
+            "official_source_url": "https://us.embryolisse.com/products/ampm-routine",
+            "official_source_ingredient_count": 0,
+            "rewrite_reason": "Owner-delegated assistant review: official PDP seed rewrite; no commerce-state, community, medical, or unsupported safety claims added."
+          },
+          "shopping_card": {
+            "contract_version": "pivota.shopping_card.v1",
+            "title": "AM/PM routine",
+            "subtitle": "Makeup Set",
+            "highlight": "Complexion routine set",
+            "intro": "An EMBRYOLISSE makeup set listed on the brand source page as AM/PM routine. The source description identifies: Vitamin-Rich Hydration & Glow The perfect 1-month reset for your skin during seasonal transitions.",
+            "evidence_profile": "official_pdp_seed"
+          },
+          "search_card": {
+            "title_candidate": "AM/PM routine",
+            "compact_candidate": "Makeup Set",
+            "highlight_candidate": "Complexion routine set",
+            "intro_candidate": "An EMBRYOLISSE makeup set listed on the brand source page as AM/PM routine. The source description identifies: Vitamin-Rich Hydration & Glow The perfect 1-month reset for your skin during seasonal transitions.",
+            "proof_badge_candidate": ""
+          }
+        }
+      }
+    },
+    {
+      "case_id": "live_ext_5e2a19baf6e9780ad5e8ff66",
+      "review_status": "completed",
+      "review_decision": "rewrite",
+      "reviewer": "codex_human_quality_reviewer",
+      "reviewer_kind": "assistant",
+      "reviewed_at": "2026-06-01T02:08:23.832Z",
+      "notes": "Approved official-PDP-seed rewrite for Carry-on Lait-Crème Set; evidence_profile=official_pdp_seed; source_url=https://us.embryolisse.com/products/carry-on-lait-creme-set",
+      "owner_delegated_review": {
+        "contract_version": "pivota.owner_delegated_review.v1",
+        "delegated_to": "codex_human_quality_reviewer",
+        "reviewer_kind": "assistant",
+        "owner_instruction": "User delegated Codex to perform high-quality human review for Pivota Insights quality improvement.",
+        "guardrails": [
+          "Do not overwrite good content with lower-quality content.",
+          "No commerce-state claims in Pivota Insights.",
+          "Use official source facts only; keep evidence confidence explicit."
+        ]
+      },
+      "quality_improvement_review": {
+        "decision": "approved_replacement",
+        "reviewer_kind": "assistant",
+        "owner_delegated": true,
+        "reason": "Owner-delegated assistant review confirms the replacement uses official PDP seed facts, avoids commerce and unsupported evidence claims, and explicitly marks evidence gaps instead of inventing claims."
+      },
+      "baseline": {
+        "canonical_product_ref": {
+          "merchant_id": "external_seed",
+          "product_id": "ext_5e2a19baf6e9780ad5e8ff66",
+          "platform": "external_seed"
+        }
+      },
+      "selected": {
+        "selected_mode": "manual_reviewed_rewrite",
+        "selected_field_count": 7,
+        "field_sources": {
+          "what_it_is": "official_seed_description",
+          "best_for": "reviewed_category_and_official_title",
+          "why_it_stands_out": "official_seed_description",
+          "routine_fit": "reviewed_category_and_official_title",
+          "watchouts": "owner_delegated_assistant_review",
+          "texture_finish": "reviewed_category_and_official_title",
+          "source_coverage": "official_pdp_seed_snapshot",
+          "community_signals": "not_collected"
+        },
+        "bundle": {
+          "contract_version": "pivota.product_intel.v1",
+          "display_name": "Pivota Insights",
+          "canonical_product_ref": {
+            "merchant_id": "external_seed",
+            "product_id": "ext_5e2a19baf6e9780ad5e8ff66",
+            "platform": "external_seed"
+          },
+          "product_group_id": "sig_7171ab4af85c45ebc43ff569",
+          "product_intel_core": {
+            "display_name": "Pivota Insights",
+            "what_it_is": {
+              "headline": "Makeup set identity",
+              "body": "An EMBRYOLISSE makeup set listed on the brand source page as Carry-on Lait-Crème Set. The source description identifies: The skincare routine while traveling Never get on a plane without your travel-sized Lait-Crème Setmicellar lotion, face, and body moisturizers."
+            },
+            "best_for": [
+              {
+                "tag": "makeup_set_shoppers",
+                "label": "Makeup set shoppers",
+                "confidence": "moderate"
+              },
+              {
+                "tag": "official_source_comparison",
+                "label": "Official-source comparison",
+                "confidence": "moderate"
+              }
+            ],
+            "why_it_stands_out": [
+              {
+                "headline": "Source-backed product detail",
+                "body": "The skincare routine while traveling Never get on a plane without your travel-sized Lait-Crème Setmicellar lotion, face, and body moisturizers.",
+                "evidence_strength": "official_pdp_seed"
+              },
+              {
+                "headline": "Evidence gaps kept explicit",
+                "body": "No complete ingredient list was captured for this review batch, so formula-level claims stay unavailable.",
+                "evidence_strength": "official_pdp_seed"
+              }
+            ],
+            "routine_fit": {
+              "step": "set",
+              "am_pm": [
+                "as_needed"
+              ],
+              "pairing_notes": [
+                "Use within the makeup set context; avoid inferring benefits not present in the source fields."
+              ]
+            },
+            "watchouts": [
+              {
+                "type": "formula_gap",
+                "label": "No complete ingredient list was captured for this review batch; avoid formula-level or safety claims.",
+                "severity": "medium"
+              },
+              {
+                "type": "evidence_gap",
+                "label": "No independent review or community evidence was approved for this row; keep public copy source-bound.",
+                "severity": "medium"
+              },
+              {
+                "type": "scope_guardrail",
+                "label": "Use the commerce mainline for offer facts; keep this insight focused on source-backed product identity.",
+                "severity": "medium"
+              }
+            ],
+            "confidence": {
+              "overall": "moderate",
+              "fields": {
+                "what_it_is": "high",
+                "best_for": "moderate",
+                "why_it_stands_out": "moderate",
+                "routine_fit": "moderate",
+                "watchouts": "moderate"
+              }
+            },
+            "freshness": {
+              "generated_at": "2026-06-01T02:08:23.832Z",
+              "source_version": "wave104_embryolisse_reviewed_seller_20260601"
+            },
+            "quality_state": "reviewed",
+            "evidence_profile": "official_pdp_seed",
+            "source_coverage": {
+              "seller": {
+                "available": true,
+                "source_url": "https://us.embryolisse.com/products/carry-on-lait-creme-set"
+              },
+              "formula": {
+                "available": false,
+                "ingredient_count": 0,
+                "source_url": "https://us.embryolisse.com/products/carry-on-lait-creme-set"
+              },
+              "reviews": {
+                "available": false,
+                "count": 0
+              },
+              "creator": {
+                "available": false,
+                "count": 0
+              },
+              "editorial": {
+                "available": false,
+                "count": 0
+              }
+            }
+          },
+          "texture_finish": {
+            "finish": "makeup set",
+            "texture": "makeup_set",
+            "source": "reviewed_category_and_official_title"
+          },
+          "community_signals": {
+            "status": "unavailable",
+            "reason": "not_collected_for_this_review_batch"
+          },
+          "recommendation_intents": {
+            "similar": [],
+            "complementary": [],
+            "routine_pairing": [],
+            "underfill_reason": null,
+            "confidence": "low"
+          },
+          "market_signal_badges": [],
+          "external_highlight_signals": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "official_pdp_seed",
+          "source_coverage": {
+            "seller": {
+              "available": true,
+              "source_url": "https://us.embryolisse.com/products/carry-on-lait-creme-set"
+            },
+            "formula": {
+              "available": false,
+              "ingredient_count": 0,
+              "source_url": "https://us.embryolisse.com/products/carry-on-lait-creme-set"
+            },
+            "reviews": {
+              "available": false,
+              "count": 0
+            },
+            "creator": {
+              "available": false,
+              "count": 0
+            },
+            "editorial": {
+              "available": false,
+              "count": 0
+            }
+          },
+          "confidence": {
+            "overall": "moderate",
+            "fields": {
+              "what_it_is": "high",
+              "best_for": "moderate",
+              "why_it_stands_out": "moderate",
+              "routine_fit": "moderate",
+              "watchouts": "moderate"
+            }
+          },
+          "freshness": {
+            "generated_at": "2026-06-01T02:08:23.832Z",
+            "source_version": "wave104_embryolisse_reviewed_seller_20260601"
+          },
+          "offer_pointers": {
+            "offers_count": 0,
+            "default_offer_id": null,
+            "best_price_offer_id": null,
+            "commerce_modes": []
+          },
+          "provenance": {
+            "source": "owner_delegated_official_seed_rewrite",
+            "generator": "owner_delegated_assistant_reviewed_rewrite",
+            "selection_strategy": "official_pdp_seed_guarded_manual_review",
+            "field_sources": {
+              "what_it_is": "official_seed_description",
+              "best_for": "reviewed_category_and_official_title",
+              "why_it_stands_out": "official_seed_description",
+              "routine_fit": "reviewed_category_and_official_title",
+              "watchouts": "owner_delegated_assistant_review",
+              "texture_finish": "reviewed_category_and_official_title",
+              "source_coverage": "official_pdp_seed_snapshot",
+              "community_signals": "not_collected"
+            },
+            "review_status": "completed",
+            "review_decision": "rewrite",
+            "reviewer": "codex_human_quality_reviewer",
+            "reviewer_kind": "assistant",
+            "reviewed_at": "2026-06-01T02:08:23.832Z",
+            "external_highlight_review_status": "rewrite",
+            "external_review_batch": "wave104_embryolisse_reviewed_seller_20260601",
+            "official_source_url": "https://us.embryolisse.com/products/carry-on-lait-creme-set",
+            "official_source_ingredient_count": 0,
+            "rewrite_reason": "Owner-delegated assistant review: official PDP seed rewrite; no commerce-state, community, medical, or unsupported safety claims added."
+          },
+          "shopping_card": {
+            "contract_version": "pivota.shopping_card.v1",
+            "title": "Carry-on Lait-Crème Set",
+            "subtitle": "Makeup Set",
+            "highlight": "Makeup routine set",
+            "intro": "An EMBRYOLISSE makeup set listed on the brand source page as Carry-on Lait-Crème Set. The source description identifies: The skincare routine while traveling Never get on a plane without your travel-sized Lait-Crème Setmicellar lotion, face, and body moisturizers.",
+            "evidence_profile": "official_pdp_seed"
+          },
+          "search_card": {
+            "title_candidate": "Carry-on Lait-Crème Set",
+            "compact_candidate": "Makeup Set",
+            "highlight_candidate": "Makeup routine set",
+            "intro_candidate": "An EMBRYOLISSE makeup set listed on the brand source page as Carry-on Lait-Crème Set. The source description identifies: The skincare routine while traveling Never get on a plane without your travel-sized Lait-Crème Setmicellar lotion, face, and body moisturizers.",
+            "proof_badge_candidate": ""
+          }
+        }
+      }
+    }
+  ]
+}
