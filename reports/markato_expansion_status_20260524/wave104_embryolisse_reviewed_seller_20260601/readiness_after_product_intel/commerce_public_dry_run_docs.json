@@ -1,0 +1,119 @@
+{
+  "generated_at": "2026-06-01T02:09:27.643Z",
+  "market": "US",
+  "include_non_public": false,
+  "docs_built": 2,
+  "source_build_failures": [],
+  "docs": [
+    {
+      "doc_id": "sellable:sig_6b3a6a922282894b1eabe5e4",
+      "sellable_item_group_id": "sig_6b3a6a922282894b1eabe5e4",
+      "product_line_id": "pl_9d3f19d1746eb154ae3a640f",
+      "review_family_id": "rf_9d3f19d1746eb154ae3a640f",
+      "brand_name": "EMBRYOLISSE",
+      "category_paths": [
+        "Moisturizer"
+      ],
+      "market": "US",
+      "availability_state": "available",
+      "publish_state": "public",
+      "title": "AM/PM routine",
+      "subtitle": "Vitamin-Rich Hydration & Glow\nThe perfect 1-month reset for your skin during seasonal transitions.\nAM: Detoxify, hydrate, and achieve an immediate golden glow with Radiant Complexion Cream (Apricot). \nPM: Deeply hydrate, energize, and protect with the antioxidant-rich Hydra-Cream Energizing.",
+      "variant_axes": {
+        "multi_variant": false
+      },
+      "size": null,
+      "shade": null,
+      "pack": null,
+      "hero_media": {
+        "url": "https://cdn.shopify.com/s/files/1/0752/5643/0881/files/Detox_and_Glow_Duo.jpg?v=1772119096",
+        "source_kind": "catalog",
+        "source_tier": "catalog"
+      },
+      "preview_media": [
+        "https://cdn.shopify.com/s/files/1/0752/5643/0881/files/Detox_and_Glow_Duo.jpg?v=1772119096",
+        "https://cdn.shopify.com/s/files/1/0752/5643/0881/files/temp_G7pqx3d.jpg?v=1772119096",
+        "https://cdn.shopify.com/s/files/1/0752/5643/0881/files/temp_TknHz8I.jpg?v=1772119096",
+        "https://cdn.shopify.com/s/files/1/0752/5643/0881/files/temp_MYyny8s.jpg?v=1772119096",
+        "https://cdn.shopify.com/s/files/1/0752/5643/0881/files/temp_TVdhhzm.jpg?v=1772119096"
+      ],
+      "price_min": 53.6,
+      "price_max": 53.6,
+      "default_offer_id": "external_seed:ext_fcf56da89f53b3a37076606a",
+      "internal_offer_exists": false,
+      "external_offer_exists": true,
+      "pivota_insight_status": "available",
+      "pivota_insight_summary": "An EMBRYOLISSE makeup set listed on the brand source page as AM/PM routine.",
+      "quality_score": null,
+      "browse_score": null,
+      "facet_tokens": [
+        "EMBRYOLISSE",
+        "Moisturizer"
+      ],
+      "sort_keys": {
+        "price_min": 53.6,
+        "price_max": 53.6,
+        "updated_at": null
+      },
+      "updated_at": null,
+      "source_refs": [
+        "external_seed:ext_fcf56da89f53b3a37076606a"
+      ]
+    },
+    {
+      "doc_id": "sellable:sig_7171ab4af85c45ebc43ff569",
+      "sellable_item_group_id": "sig_7171ab4af85c45ebc43ff569",
+      "product_line_id": "pl_50e1126bc6abd92d80089365",
+      "review_family_id": "rf_50e1126bc6abd92d80089365",
+      "brand_name": "EMBRYOLISSE",
+      "category_paths": [
+        "Makeup Remover"
+      ],
+      "market": "US",
+      "availability_state": "available",
+      "publish_state": "public",
+      "title": "Carry-on Lait-Crème Set",
+      "subtitle": "The bestselling skincare routine while traveling\nNever get on a plane without your travel-sized Lait-Crème Setmicellar lotion, face, and body moisturizers.\nThe Lait-Crème Concentré is a multi-tasking moisturizer suitable for all skin types.\nThe Lait-Crème Fluid+ offers a large moisturizer for the whole family with 98% natural ingredients. \nThe Micellar Lotion is a gentle makeup remover with 95% natural ingredients and soothing floral waters. \nMade in France, this Carry-on Lait-Crème Set provides everything you need for clean, nourished skin while traveling.",
+      "variant_axes": {
+        "multi_variant": false
+      },
+      "size": null,
+      "shade": null,
+      "pack": null,
+      "hero_media": {
+        "url": "https://cdn.shopify.com/s/files/1/0752/5643/0881/files/carry-on-skincare-set.jpg?v=1742570162",
+        "source_kind": "catalog",
+        "source_tier": "catalog"
+      },
+      "preview_media": [
+        "https://cdn.shopify.com/s/files/1/0752/5643/0881/files/carry-on-skincare-set.jpg?v=1742570162",
+        "https://cdn.shopify.com/s/files/1/0752/5643/0881/products/EB256000_01_470d4464-6ab2-4dad-bbc3-52b8d10173c7.jpg?v=1742570162",
+        "https://cdn.shopify.com/s/files/1/0752/5643/0881/products/EB230000_01_e45479d7-2feb-43d5-afd7-42ab3576244f.jpg?v=1742570162",
+        "https://cdn.shopify.com/s/files/1/0752/5643/0881/files/Small_Lait-Cr_me_Fluid_with_organic_Aloe_Vera.jpg?v=1742570162",
+        "https://us.embryolisse.com/cdn/shop/files/carry-on-skincare-set.jpg?crop=center&v=1742570162"
+      ],
+      "price_min": 36,
+      "price_max": 36,
+      "default_offer_id": "external_seed:ext_5e2a19baf6e9780ad5e8ff66",
+      "internal_offer_exists": false,
+      "external_offer_exists": true,
+      "pivota_insight_status": "available",
+      "pivota_insight_summary": "An EMBRYOLISSE makeup set listed on the brand source page as Carry-on Lait-Crème Set.",
+      "quality_score": null,
+      "browse_score": null,
+      "facet_tokens": [
+        "EMBRYOLISSE",
+        "Makeup Remover"
+      ],
+      "sort_keys": {
+        "price_min": 36,
+        "price_max": 36,
+        "updated_at": null
+      },
+      "updated_at": null,
+      "source_refs": [
+        "external_seed:ext_5e2a19baf6e9780ad5e8ff66"
+      ]
+    }
+  ]
+}
