@@ -1,0 +1,563 @@
+{
+  "generated_at": "2026-06-01T02:44:39.902Z",
+  "market": "US",
+  "include_non_public": false,
+  "docs_built": 10,
+  "source_build_failures": [],
+  "docs": [
+    {
+      "doc_id": "sellable:sig_72114b5729413304768d9d69",
+      "sellable_item_group_id": "sig_72114b5729413304768d9d69",
+      "product_line_id": "pl_98117809c09ae9e31faf406d",
+      "review_family_id": "rf_98117809c09ae9e31faf406d",
+      "brand_name": "sigma beauty",
+      "category_paths": [
+        "Foundation"
+      ],
+      "market": "US",
+      "availability_state": "available",
+      "publish_state": "public",
+      "title": "3DHD® Kabuki Brush",
+      "subtitle": "You'll achieve perfect skin on every curve and contour using the angles and Sigmax® fibers designed to prime, conceal, sculpt and highlight. As Seen in Vogue India",
+      "variant_axes": {
+        "multi_variant": false
+      },
+      "size": null,
+      "shade": null,
+      "pack": null,
+      "hero_media": {
+        "url": "https://pivota-agent-production.up.railway.app/catalog-image-cache/81/81f4096182fdfe7e067e19aff279996446c2ac1072c8a2c391aa8065b9119972.webp",
+        "source_kind": "catalog",
+        "source_tier": "catalog"
+      },
+      "preview_media": [
+        "https://pivota-agent-production.up.railway.app/catalog-image-cache/81/81f4096182fdfe7e067e19aff279996446c2ac1072c8a2c391aa8065b9119972.webp",
+        "https://pivota-agent-production.up.railway.app/catalog-image-cache/a8/a87ba15bb6ec5a2cd105b8135d7274cdfa5850ca615f2f2609a6f0469fb7d765.webp",
+        "https://pivota-agent-production.up.railway.app/catalog-image-cache/de/de16f3159858275a4f253e3482efaf1575e2bf11f412322e87d94c5601787006.webp",
+        "https://pivota-agent-production.up.railway.app/catalog-image-cache/b0/b0e125149c731b833668d9b9770c1ff2af0038dc68c591d12c86520971630742.webp"
+      ],
+      "price_min": 38,
+      "price_max": 38,
+      "default_offer_id": "external_seed:ext_4cf0e36c371cd934b3bbff7b",
+      "internal_offer_exists": false,
+      "external_offer_exists": true,
+      "pivota_insight_status": "missing",
+      "pivota_insight_summary": null,
+      "quality_score": null,
+      "browse_score": null,
+      "facet_tokens": [
+        "sigma beauty",
+        "Foundation"
+      ],
+      "sort_keys": {
+        "price_min": 38,
+        "price_max": 38,
+        "updated_at": null
+      },
+      "updated_at": null,
+      "source_refs": [
+        "external_seed:ext_4cf0e36c371cd934b3bbff7b"
+      ]
+    },
+    {
+      "doc_id": "sellable:sig_6865c87da2f0f141899f0979",
+      "sellable_item_group_id": "sig_6865c87da2f0f141899f0979",
+      "product_line_id": "pl_98117809c09ae9e31faf406d",
+      "review_family_id": "rf_98117809c09ae9e31faf406d",
+      "brand_name": "sigma beauty",
+      "category_paths": [
+        "Foundation"
+      ],
+      "market": "US",
+      "availability_state": "available",
+      "publish_state": "public",
+      "title": "3DHD® Kabuki Brush",
+      "subtitle": "You'll achieve perfect skin on every curve and contour using the angles and Sigmax® fibers designed to prime, conceal, sculpt and highlight. As Seen in Vogue India",
+      "variant_axes": {
+        "shade": "3dhd kabuki brush",
+        "multi_variant": false
+      },
+      "size": null,
+      "shade": null,
+      "pack": null,
+      "hero_media": {
+        "url": "https://pivota-agent-production.up.railway.app/catalog-image-cache/81/81f4096182fdfe7e067e19aff279996446c2ac1072c8a2c391aa8065b9119972.webp",
+        "source_kind": "catalog",
+        "source_tier": "catalog"
+      },
+      "preview_media": [
+        "https://pivota-agent-production.up.railway.app/catalog-image-cache/81/81f4096182fdfe7e067e19aff279996446c2ac1072c8a2c391aa8065b9119972.webp",
+        "https://pivota-agent-production.up.railway.app/catalog-image-cache/a8/a87ba15bb6ec5a2cd105b8135d7274cdfa5850ca615f2f2609a6f0469fb7d765.webp",
+        "https://pivota-agent-production.up.railway.app/catalog-image-cache/de/de16f3159858275a4f253e3482efaf1575e2bf11f412322e87d94c5601787006.webp",
+        "https://pivota-agent-production.up.railway.app/catalog-image-cache/b0/b0e125149c731b833668d9b9770c1ff2af0038dc68c591d12c86520971630742.webp"
+      ],
+      "price_min": 38,
+      "price_max": 38,
+      "default_offer_id": "external_seed:ext_32e78c6c9c240bda0f24a93d",
+      "internal_offer_exists": false,
+      "external_offer_exists": true,
+      "pivota_insight_status": "missing",
+      "pivota_insight_summary": null,
+      "quality_score": null,
+      "browse_score": null,
+      "facet_tokens": [
+        "sigma beauty",
+        "Foundation"
+      ],
+      "sort_keys": {
+        "price_min": 38,
+        "price_max": 38,
+        "updated_at": null
+      },
+      "updated_at": null,
+      "source_refs": [
+        "external_seed:ext_32e78c6c9c240bda0f24a93d"
+      ]
+    },
+    {
+      "doc_id": "sellable:sig_7d860b7cbceb91875d7c5380fc41a356",
+      "sellable_item_group_id": "sig_7d860b7cbceb91875d7c5380fc41a356",
+      "product_line_id": "pl_c51bf9799db85e51ce3562aa",
+      "review_family_id": "rf_c51bf9799db85e51ce3562aa",
+      "brand_name": "sigma beauty",
+      "category_paths": [
+        "Eyeshadow"
+      ],
+      "market": "US",
+      "availability_state": "available",
+      "publish_state": "public",
+      "title": "Best-Selling Eye Brush Trio",
+      "subtitle": "$74 Value\nAchieve flawless eye looks with ease using the Best-Selling Eye Brush Trio by Sigma Beauty—an exclusive bundle available only at Ulta Beauty. Hand-picked for their versatility and performance, these three pro-level brushes are your must-haves for everything from soft, everyday looks to bold, smoky eyes. Featuring ultra-soft synthetic fibers and sleek, durable handles, this trio helps you pack, blend, and buff like a pro.",
+      "variant_axes": {
+        "pack": "3pack",
+        "multi_variant": false
+      },
+      "size": null,
+      "shade": null,
+      "pack": null,
+      "hero_media": {
+        "url": "https://pivota-agent-production.up.railway.app/catalog-image-cache/20/20f4e53b265fac9a5ee125e57233529d73dfa8fe2aeec650c15c21f3ce627515.webp",
+        "source_kind": "catalog",
+        "source_tier": "catalog"
+      },
+      "preview_media": [
+        "https://pivota-agent-production.up.railway.app/catalog-image-cache/20/20f4e53b265fac9a5ee125e57233529d73dfa8fe2aeec650c15c21f3ce627515.webp"
+      ],
+      "price_min": 59,
+      "price_max": 59,
+      "default_offer_id": "external_seed:ext_86636b43d15301c1bce77f5e",
+      "internal_offer_exists": false,
+      "external_offer_exists": true,
+      "pivota_insight_status": "missing",
+      "pivota_insight_summary": null,
+      "quality_score": null,
+      "browse_score": null,
+      "facet_tokens": [
+        "sigma beauty",
+        "Eyeshadow"
+      ],
+      "sort_keys": {
+        "price_min": 59,
+        "price_max": 59,
+        "updated_at": null
+      },
+      "updated_at": null,
+      "source_refs": [
+        "external_seed:ext_86636b43d15301c1bce77f5e"
+      ]
+    },
+    {
+      "doc_id": "sellable:sig_b0527238d129609f0c969f57",
+      "sellable_item_group_id": "sig_b0527238d129609f0c969f57",
+      "product_line_id": "pl_b29ded69eb1b3e34822de5f8",
+      "review_family_id": "rf_b29ded69eb1b3e34822de5f8",
+      "brand_name": "sigma beauty",
+      "category_paths": [
+        "Makeup Sponge"
+      ],
+      "market": "US",
+      "availability_state": "available",
+      "publish_state": "public",
+      "title": "The Soft Blend Brush Set",
+      "subtitle": "Blend your way to flawless with The Soft Blend Brush Set. Featuring two ultra-soft face brushes and a versatile blending sponge, this trio is designed to effortlessly apply and diffuse liquid, cream, or powder products. Whether you're perfecting your base or adding finishing touches, these tools deliver seamless results every time.",
+      "variant_axes": {
+        "shade": "the soft blend brush set",
+        "multi_variant": false
+      },
+      "size": null,
+      "shade": null,
+      "pack": null,
+      "hero_media": {
+        "url": "https://pivota-agent-production.up.railway.app/catalog-image-cache/53/53aa3aee020937a5c8a5772071e7e5707e94b87f39da9ee6acdb966ab3c276b0.webp",
+        "source_kind": "catalog",
+        "source_tier": "catalog"
+      },
+      "preview_media": [
+        "https://pivota-agent-production.up.railway.app/catalog-image-cache/53/53aa3aee020937a5c8a5772071e7e5707e94b87f39da9ee6acdb966ab3c276b0.webp"
+      ],
+      "price_min": 47,
+      "price_max": 47,
+      "default_offer_id": "external_seed:ext_7f1c98209c32ca048865bf00",
+      "internal_offer_exists": false,
+      "external_offer_exists": true,
+      "pivota_insight_status": "missing",
+      "pivota_insight_summary": null,
+      "quality_score": null,
+      "browse_score": null,
+      "facet_tokens": [
+        "sigma beauty",
+        "Makeup Sponge"
+      ],
+      "sort_keys": {
+        "price_min": 47,
+        "price_max": 47,
+        "updated_at": null
+      },
+      "updated_at": null,
+      "source_refs": [
+        "external_seed:ext_7f1c98209c32ca048865bf00"
+      ]
+    },
+    {
+      "doc_id": "sellable:sig_3d03a9f30d7d6518c298176d",
+      "sellable_item_group_id": "sig_3d03a9f30d7d6518c298176d",
+      "product_line_id": "pl_4fee4f5a91dbeb7f377d747b",
+      "review_family_id": "rf_4fee4f5a91dbeb7f377d747b",
+      "brand_name": "sigma beauty",
+      "category_paths": [
+        "Makeup Brush"
+      ],
+      "market": "US",
+      "availability_state": "available",
+      "publish_state": "public",
+      "title": "Soft Coverage Brush Set",
+      "subtitle": "Create a flawless, airbrushed look with the Soft Coverage Brush Set by Sigma Beauty. This curated collection features four ultra-soft face brushes designed to deliver sheer, buildable coverage with powder, cream, or liquid formulas. Perfect for those who prefer a natural finish, each brush effortlessly blends product for a smooth, diffused glow. Whether you're sculpting, setting, or adding a soft flush of color, these brushes offer precision and comfort for everyday artistry.",
+      "variant_axes": {
+        "shade": "soft coverage brush set",
+        "multi_variant": false
+      },
+      "size": null,
+      "shade": null,
+      "pack": null,
+      "hero_media": {
+        "url": "https://pivota-agent-production.up.railway.app/catalog-image-cache/22/22b411d6586c6dbe3f9192977bb9e35f34a896cbca92c58872fda0aae6f6058b.webp",
+        "source_kind": "catalog",
+        "source_tier": "catalog"
+      },
+      "preview_media": [
+        "https://pivota-agent-production.up.railway.app/catalog-image-cache/22/22b411d6586c6dbe3f9192977bb9e35f34a896cbca92c58872fda0aae6f6058b.webp",
+        "https://pivota-agent-production.up.railway.app/catalog-image-cache/3c/3c8976119a61d371abfd7016e196d9d40dc852bc5d08bcb0f755770e59a3d408.webp",
+        "https://pivota-agent-production.up.railway.app/catalog-image-cache/ea/ea79d8e23a02c6c72cd3eca4580efb5ba4f387ec00f266fc3298d9b43f8e6106.webp",
+        "https://pivota-agent-production.up.railway.app/catalog-image-cache/7b/7be00427aa6baf9ffd1065398be2cfa6aac3584d23792392b7232f9451faaf96.webp",
+        "https://pivota-agent-production.up.railway.app/catalog-image-cache/1f/1fcdf9070d25e5e3e527aefe234836eecfeaa509685a54c826010132910d0d9e.webp",
+        "https://pivota-agent-production.up.railway.app/catalog-image-cache/ee/ee3260c1646b76b67462abe0f8524ec80c7d694343e9b211da668b89ebe03177.webp",
+        "https://pivota-agent-production.up.railway.app/catalog-image-cache/54/54057ae175a337c4c58a7ed83f0d1c46d91d655a11e7c750158afe9d6679ea49.webp",
+        "https://pivota-agent-production.up.railway.app/catalog-image-cache/94/94d9393d425a1ced3f8bb7e09ee75777f294c539c2d70efb2b3f04875b933494.webp"
+      ],
+      "price_min": 117,
+      "price_max": 117,
+      "default_offer_id": "external_seed:ext_60ceac004c5e9db024f0b197",
+      "internal_offer_exists": false,
+      "external_offer_exists": true,
+      "pivota_insight_status": "missing",
+      "pivota_insight_summary": null,
+      "quality_score": null,
+      "browse_score": null,
+      "facet_tokens": [
+        "sigma beauty",
+        "Makeup Brush"
+      ],
+      "sort_keys": {
+        "price_min": 117,
+        "price_max": 117,
+        "updated_at": null
+      },
+      "updated_at": null,
+      "source_refs": [
+        "external_seed:ext_60ceac004c5e9db024f0b197"
+      ]
+    },
+    {
+      "doc_id": "sellable:sig_f9e6bc91b656f81ae2d7c657",
+      "sellable_item_group_id": "sig_f9e6bc91b656f81ae2d7c657",
+      "product_line_id": "pl_d90f18b46253d0ba7a6a4593",
+      "review_family_id": "rf_d90f18b46253d0ba7a6a4593",
+      "brand_name": "sigma beauty",
+      "category_paths": [
+        "Moisturizer"
+      ],
+      "market": "US",
+      "availability_state": "out_of_stock",
+      "publish_state": "public",
+      "title": "Flawless Finish Brush Set",
+      "subtitle": "Achieve a flawless, airbrushed complexion with the Flawless Finish Brush Set by Sigma Beauty. This duo features two versatile Kabuki brushes designed to effortlessly apply and blend liquid, cream, and powder products for a smooth, radiant finish. Perfect for foundation, setting powder, or finishing touches, these brushes deliver professional results with every use. \n\nHOW TO USE \nUse the 4DHD™ Kabuki Brush to apply and blend foundation or setting powder for full, even coverage with a natural finish. Follow with the F82 Round Kabuki™ Brush to buff and perfect your makeup, ensuring a seamless, streak-free look. \n\nDETAILS \nBrushes Included: \n4DHD™ Kabuki Brush\nF82 Round Kabuki™ Brush\n\nTECHNOLOGY \nHIGHEST-QUALITY FIBERS: \nExclusive synthetic antimicrobial fibers to protect skin\nEngineered to better hold, apply + blend product\n\nFERRULES WITH UNMATCHED STRENGTH: \nDurable + corrosion-resistant SigmaAlloy™\nPrecious metal plating for shine + strength\nExclusive, patented interlocking technology\nDouble-threaded engineering\n\nSLEEK, DURABLE HANDLES: \nSolid polymer-based handles are waterproof + unbreakable\nOutlasts all product formulas + frequent brush care\n\nUS Patent D801,058\nUS Patent D718,060\nZL 201730430935.8\nZL 201730430472.5\nAdditional Patents Pending\n\nFor more information, visit our Patents page .",
+      "variant_axes": {
+        "shade": "flawless finish brush set",
+        "multi_variant": false
+      },
+      "size": null,
+      "shade": null,
+      "pack": null,
+      "hero_media": {
+        "url": "https://pivota-agent-production.up.railway.app/catalog-image-cache/9a/9a2867523e372ba5f3f73420d35266680e3afeb63341d6a513fd3a4cc129abbf.webp",
+        "source_kind": "catalog",
+        "source_tier": "catalog"
+      },
+      "preview_media": [
+        "https://pivota-agent-production.up.railway.app/catalog-image-cache/9a/9a2867523e372ba5f3f73420d35266680e3afeb63341d6a513fd3a4cc129abbf.webp",
+        "https://pivota-agent-production.up.railway.app/catalog-image-cache/8e/8e4f8030d3d0da4462ad24a0dc35580a229758fcb7adf907290c4cc732088e67.webp",
+        "https://pivota-agent-production.up.railway.app/catalog-image-cache/c6/c644036cafacc89ad14396efc9c43e18cf692da4a661c5673feca3a7bc9c8316.webp",
+        "https://pivota-agent-production.up.railway.app/catalog-image-cache/b4/b43cdef1fed8ed033002779d248532539d9ec046b979216f7ebfb35edfa7e05c.webp",
+        "https://pivota-agent-production.up.railway.app/catalog-image-cache/0a/0a3b5b9b4ecc94379e22369cfc65be6ec12f5f5bbea144f6dcd86ea42e4fe7eb.webp",
+        "https://pivota-agent-production.up.railway.app/catalog-image-cache/f3/f3c45035d9088df850abefa6aeb334463f43259d84e13db097280dd293b20b97.webp",
+        "https://pivota-agent-production.up.railway.app/catalog-image-cache/e3/e3ca8f711c1ff40a8dddcef3ba05701172bdf641e75f1d3c2d87e0f57758ce1b.webp",
+        "https://pivota-agent-production.up.railway.app/catalog-image-cache/cc/ccf35e507387266f817d1dfca277711341e7cce769ea951a7a9ff06749492771.webp"
+      ],
+      "price_min": 61,
+      "price_max": 61,
+      "default_offer_id": "external_seed:ext_04d58dae990499187f5b6aa2",
+      "internal_offer_exists": false,
+      "external_offer_exists": true,
+      "pivota_insight_status": "missing",
+      "pivota_insight_summary": null,
+      "quality_score": null,
+      "browse_score": null,
+      "facet_tokens": [
+        "sigma beauty",
+        "Moisturizer"
+      ],
+      "sort_keys": {
+        "price_min": 61,
+        "price_max": 61,
+        "updated_at": null
+      },
+      "updated_at": null,
+      "source_refs": [
+        "external_seed:ext_04d58dae990499187f5b6aa2"
+      ]
+    },
+    {
+      "doc_id": "sellable:sig_58aaf30e8964409b3b465f80",
+      "sellable_item_group_id": "sig_58aaf30e8964409b3b465f80",
+      "product_line_id": "pl_197cd3af7861563880d42c6a",
+      "review_family_id": "rf_197cd3af7861563880d42c6a",
+      "brand_name": "sigma beauty",
+      "category_paths": [
+        "Powder"
+      ],
+      "market": "US",
+      "availability_state": "out_of_stock",
+      "publish_state": "public",
+      "title": "Flawless Brow Sculpting Brush Set",
+      "subtitle": "Achieve perfectly sculpted brows with the Flawless Brow Sculpting Set. Designed for precision and definition, this set includes the essential brushes for shaping, filling, and enhancing your eyebrows. Whether you’re looking for natural, defined brows or a more dramatic, bold look, these brushes help you create a flawless finish that stays in place all day. Say goodbye to uneven brows and hello to a perfectly groomed, symmetrical look with every application.",
+      "variant_axes": {
+        "shade": "flawless brow sculpting brush set",
+        "multi_variant": false
+      },
+      "size": null,
+      "shade": null,
+      "pack": null,
+      "hero_media": {
+        "url": "https://pivota-agent-production.up.railway.app/catalog-image-cache/fb/fb64f57308bb1f305238b7f1914552a4d8b6fc7462603fd5559f45af2616905a.webp",
+        "source_kind": "catalog",
+        "source_tier": "catalog"
+      },
+      "preview_media": [
+        "https://pivota-agent-production.up.railway.app/catalog-image-cache/fb/fb64f57308bb1f305238b7f1914552a4d8b6fc7462603fd5559f45af2616905a.webp",
+        "https://pivota-agent-production.up.railway.app/catalog-image-cache/f5/f52ddea0d328319c688c24ed422bc29d27689ff5b632940a77a36a0f8f74f59e.webp",
+        "https://pivota-agent-production.up.railway.app/catalog-image-cache/3e/3ed49fbe98b64403897af7d5ff2ab28037b85159ee049c3040a795bdaf8c4335.webp",
+        "https://pivota-agent-production.up.railway.app/catalog-image-cache/1b/1b1a6c66f0d533b23fd37f1a048ed336a5cf8ab5cd7f3c6939b46ec257346086.webp",
+        "https://pivota-agent-production.up.railway.app/catalog-image-cache/3b/3b5473b0c882fb3c9a5bfa2ad4d5b6710887445a1d9a22b688557cebd8781ad1.webp",
+        "https://pivota-agent-production.up.railway.app/catalog-image-cache/73/73a1a7fbf6fd9b17c1220785d53e262434db03a2e8c3fb6745d6f3e991c348e8.webp"
+      ],
+      "price_min": 35,
+      "price_max": 35,
+      "default_offer_id": "external_seed:ext_515512e3a0235423f827cbe1",
+      "internal_offer_exists": false,
+      "external_offer_exists": true,
+      "pivota_insight_status": "missing",
+      "pivota_insight_summary": null,
+      "quality_score": null,
+      "browse_score": null,
+      "facet_tokens": [
+        "sigma beauty",
+        "Powder"
+      ],
+      "sort_keys": {
+        "price_min": 35,
+        "price_max": 35,
+        "updated_at": null
+      },
+      "updated_at": null,
+      "source_refs": [
+        "external_seed:ext_515512e3a0235423f827cbe1"
+      ]
+    },
+    {
+      "doc_id": "sellable:sig_71e9b1b4258ee3f013eac930",
+      "sellable_item_group_id": "sig_71e9b1b4258ee3f013eac930",
+      "product_line_id": "pl_2625a82f2c12a455a39fa627",
+      "review_family_id": "rf_2625a82f2c12a455a39fa627",
+      "brand_name": "sigma beauty",
+      "category_paths": [
+        "Foundation"
+      ],
+      "market": "US",
+      "availability_state": "available",
+      "publish_state": "public",
+      "title": "Best-Selling Face Brush Trio",
+      "subtitle": "$110 Value\nCreate flawless, airbrushed finishes with the Best-Selling Face Brush Trio by Sigma Beauty—an exclusive bundle available only at Ulta Beauty. This expertly curated set features three essential brushes designed to help you apply foundation, contour, and conceal with professional precision. Made with Sigma’s signature synthetic fibers, each brush delivers smooth, even coverage for a polished, natural look every time.",
+      "variant_axes": {
+        "pack": "3pack",
+        "multi_variant": false
+      },
+      "size": null,
+      "shade": null,
+      "pack": null,
+      "hero_media": {
+        "url": "https://pivota-agent-production.up.railway.app/catalog-image-cache/8d/8db5a8ab071364014681b4a9cf4bdb8109c8eea6510a814df6acdcdab7e2eca0.webp",
+        "source_kind": "catalog",
+        "source_tier": "catalog"
+      },
+      "preview_media": [
+        "https://pivota-agent-production.up.railway.app/catalog-image-cache/8d/8db5a8ab071364014681b4a9cf4bdb8109c8eea6510a814df6acdcdab7e2eca0.webp"
+      ],
+      "price_min": 88,
+      "price_max": 88,
+      "default_offer_id": "external_seed:ext_20396d956232fc08a1d08c5d",
+      "internal_offer_exists": false,
+      "external_offer_exists": true,
+      "pivota_insight_status": "missing",
+      "pivota_insight_summary": null,
+      "quality_score": null,
+      "browse_score": null,
+      "facet_tokens": [
+        "sigma beauty",
+        "Foundation"
+      ],
+      "sort_keys": {
+        "price_min": 88,
+        "price_max": 88,
+        "updated_at": null
+      },
+      "updated_at": null,
+      "source_refs": [
+        "external_seed:ext_20396d956232fc08a1d08c5d"
+      ]
+    },
+    {
+      "doc_id": "sellable:sig_cd3edd1d724a383b0083c4ca",
+      "sellable_item_group_id": "sig_cd3edd1d724a383b0083c4ca",
+      "product_line_id": "pl_f9b7967e70b99fc6d25cf9d0",
+      "review_family_id": "rf_f9b7967e70b99fc6d25cf9d0",
+      "brand_name": "sigma beauty",
+      "category_paths": [
+        "Makeup Brush"
+      ],
+      "market": "US",
+      "availability_state": "available",
+      "publish_state": "public",
+      "title": "F79 Concealer Blend Kabuki™ Brush",
+      "subtitle": "Look well-rested and flawless every day with this Sigmax® fiber brush designed for stippling on any color-correcting or concealing formula.",
+      "variant_axes": {
+        "shade": "f79 concealer blend kabukitm brush",
+        "multi_variant": false
+      },
+      "size": null,
+      "shade": null,
+      "pack": null,
+      "hero_media": {
+        "url": "https://pivota-agent-production.up.railway.app/catalog-image-cache/ca/ca2366a228c94c32421f9b5a41ce65c37ac6f841d3eeffec4f1e7b3924a99288.webp",
+        "source_kind": "catalog",
+        "source_tier": "catalog"
+      },
+      "preview_media": [
+        "https://pivota-agent-production.up.railway.app/catalog-image-cache/ca/ca2366a228c94c32421f9b5a41ce65c37ac6f841d3eeffec4f1e7b3924a99288.webp",
+        "https://pivota-agent-production.up.railway.app/catalog-image-cache/0d/0d7c73df65e79135644ef7ecf8f89b2d1992b1e0ad88d8b7ae091f8b17f8c2c6.webp",
+        "https://pivota-agent-production.up.railway.app/catalog-image-cache/0c/0cab1a8028dc2643bb10bd7cadc28452b46f485e3260db1580f5c82fb1929429.webp",
+        "https://pivota-agent-production.up.railway.app/catalog-image-cache/45/4592663f466b867e9801a78846d670c0fa0b03e84630ff97211d00f84da4987f.webp"
+      ],
+      "price_min": 36,
+      "price_max": 36,
+      "default_offer_id": "external_seed:ext_22a1d804a55d6c321d33674f",
+      "internal_offer_exists": false,
+      "external_offer_exists": true,
+      "pivota_insight_status": "missing",
+      "pivota_insight_summary": null,
+      "quality_score": null,
+      "browse_score": null,
+      "facet_tokens": [
+        "sigma beauty",
+        "Makeup Brush"
+      ],
+      "sort_keys": {
+        "price_min": 36,
+        "price_max": 36,
+        "updated_at": null
+      },
+      "updated_at": null,
+      "source_refs": [
+        "external_seed:ext_22a1d804a55d6c321d33674f"
+      ]
+    },
+    {
+      "doc_id": "sellable:sig_a5a5f13b990a1ff2c6eb314c",
+      "sellable_item_group_id": "sig_a5a5f13b990a1ff2c6eb314c",
+      "product_line_id": "pl_9b77e50900a9019b487dfa0c",
+      "review_family_id": "rf_9b77e50900a9019b487dfa0c",
+      "brand_name": "sigma beauty",
+      "category_paths": [
+        "Cleanser"
+      ],
+      "market": "US",
+      "availability_state": "out_of_stock",
+      "publish_state": "public",
+      "title": "Sigma Signature Set",
+      "subtitle": "Discover the ultimate multitasking brush set with the Sigma Signature Set – a curated collection of must-haves for flawless application from face to eyes. Featuring three of Sigma Beauty’s best-selling brushes and the innovative Sigma Switch, this set makes makeup application and brush cleaning effortless. Perfect for both beginners and pros, the Signature Set gives you the tools to blend, buff, and switch shades without missing a beat.\n\nHOW TO USE \nStart by applying your foundation with the F80 Flat Kabuki™ Brush using circular motions for a smooth, even base. Use the F79 Concealer Blend Kabuki™ Brush to seamlessly blend concealer under the eyes or around the nose. Define and blend eyeshadow with the E25 Blending Brush for a flawless eye look. Between shades or products, gently sweep your brush across the Sigma ® Switch to remove pigment instantly—no water or cleanser needed. \n\nDETAILS \nProducts Included: \n\nF80 Flat Kabuki™ Brush\n\nF79 Concealer Blend Kabuki™ Brush\n\nE25 Blending Brush\n\nSigma ® Switch \n\nTECHNOLOGY \nHIGHEST-QUALITY FIBERS: \nExclusive synthetic antimicrobial fibers\nEngineered to better hold, apply + blend products\n\nFERRULES WITH UNMATCHED STRENGTH: \nDurable + corrosion-resistant SigmaAlloy™\nPrecious metal plating for shine + strength\nExclusive, patented interlocking technology\nDouble-threaded engineering\n\nSLEEK, DURABLE HANDLES: \nSolid polymer-based handles are waterproof\nOutlasts all product formulas + frequent brush care \n\n \n\nFormulated without: Latex, BPA, Lead\nNon-toxic material\nMade of high-grade silicone \n\n \n\nUS Patent No. D862,901 \n\nUS Patent No. 9,888,764\nUS Patent No. 9,474,361\nEU Registered Design 005782018-0001 \n\nEuropean Patent No. 3009032\nZL 201830331890.3 \nAustralian Patent No. 2015221549 \nAdditional Patents Pending \n\nFor more information, visit our Patents page .",
+      "variant_axes": {
+        "shade": "sigma signature set",
+        "multi_variant": false
+      },
+      "size": null,
+      "shade": null,
+      "pack": null,
+      "hero_media": {
+        "url": "https://pivota-agent-production.up.railway.app/catalog-image-cache/7e/7e5c2216a8a5f6f0c121edb6e29422d5a697ee9b2ab9e3bf39e24dd6fd24ca3f.webp",
+        "source_kind": "catalog",
+        "source_tier": "catalog"
+      },
+      "preview_media": [
+        "https://pivota-agent-production.up.railway.app/catalog-image-cache/7e/7e5c2216a8a5f6f0c121edb6e29422d5a697ee9b2ab9e3bf39e24dd6fd24ca3f.webp",
+        "https://pivota-agent-production.up.railway.app/catalog-image-cache/8e/8e4f8030d3d0da4462ad24a0dc35580a229758fcb7adf907290c4cc732088e67.webp",
+        "https://pivota-agent-production.up.railway.app/catalog-image-cache/c6/c644036cafacc89ad14396efc9c43e18cf692da4a661c5673feca3a7bc9c8316.webp",
+        "https://pivota-agent-production.up.railway.app/catalog-image-cache/b4/b43cdef1fed8ed033002779d248532539d9ec046b979216f7ebfb35edfa7e05c.webp",
+        "https://pivota-agent-production.up.railway.app/catalog-image-cache/0a/0a3b5b9b4ecc94379e22369cfc65be6ec12f5f5bbea144f6dcd86ea42e4fe7eb.webp",
+        "https://pivota-agent-production.up.railway.app/catalog-image-cache/f3/f3c45035d9088df850abefa6aeb334463f43259d84e13db097280dd293b20b97.webp",
+        "https://pivota-agent-production.up.railway.app/catalog-image-cache/d5/d50a058abc8bcf8a428a50ba9f09790c9161f65e2a239dab3ea26a1d156017bb.webp",
+        "https://pivota-agent-production.up.railway.app/catalog-image-cache/4a/4a92652c0155b49166eaaf0eda09a6694c654fbf3d56283abe6b653a622f4dcf.webp"
+      ],
+      "price_min": 98,
+      "price_max": 98,
+      "default_offer_id": "external_seed:ext_6881b94fb4dd6dcf5a08fb60",
+      "internal_offer_exists": false,
+      "external_offer_exists": true,
+      "pivota_insight_status": "missing",
+      "pivota_insight_summary": null,
+      "quality_score": null,
+      "browse_score": null,
+      "facet_tokens": [
+        "sigma beauty",
+        "Cleanser"
+      ],
+      "sort_keys": {
+        "price_min": 98,
+        "price_max": 98,
+        "updated_at": null
+      },
+      "updated_at": null,
+      "source_refs": [
+        "external_seed:ext_6881b94fb4dd6dcf5a08fb60"
+      ]
+    }
+  ]
+}

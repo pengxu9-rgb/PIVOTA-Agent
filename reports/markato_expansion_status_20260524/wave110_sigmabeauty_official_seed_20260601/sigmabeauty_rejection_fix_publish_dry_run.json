@@ -1,0 +1,30 @@
+{
+  "status": "ok",
+  "mode": "dry_run_validate_replacements",
+  "report": "/Users/pengchydan/dev/_worktrees/pivota-agent-markato-wave25-786-20260527/reports/markato_expansion_status_20260524/wave110_sigmabeauty_official_seed_20260601/sigmabeauty_rejection_fix_product_intel_report.json",
+  "rows": [
+    "live_ext_4cf0e36c371cd934b3bbff7b",
+    "live_ext_32e78c6c9c240bda0f24a93d",
+    "live_ext_86636b43d15301c1bce77f5e",
+    "live_ext_7f1c98209c32ca048865bf00",
+    "live_ext_60ceac004c5e9db024f0b197",
+    "live_ext_04d58dae990499187f5b6aa2",
+    "live_ext_515512e3a0235423f827cbe1",
+    "live_ext_20396d956232fc08a1d08c5d",
+    "live_ext_22a1d804a55d6c321d33674f",
+    "live_ext_6881b94fb4dd6dcf5a08fb60"
+  ],
+  "entries": [
+    "product:ext_4cf0e36c371cd934b3bbff7b",
+    "product:ext_32e78c6c9c240bda0f24a93d",
+    "product:ext_86636b43d15301c1bce77f5e",
+    "product:ext_7f1c98209c32ca048865bf00",
+    "product:ext_60ceac004c5e9db024f0b197",
+    "product:ext_04d58dae990499187f5b6aa2",
+    "product:ext_515512e3a0235423f827cbe1",
+    "product:ext_20396d956232fc08a1d08c5d",
+    "product:ext_22a1d804a55d6c321d33674f",
+    "product:ext_6881b94fb4dd6dcf5a08fb60"
+  ],
+  "skipped_rows": []
+}

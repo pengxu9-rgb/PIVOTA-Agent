@@ -1,0 +1,12 @@
+{
+  "status": "ok",
+  "mode": "write",
+  "report": "/Users/pengchydan/dev/_worktrees/pivota-agent-markato-wave25-786-20260527/reports/markato_expansion_status_20260524/wave113_kravebeauty_product_intel_20260601/kravebeauty_rejection_fix_product_intel_report.json",
+  "rows": [
+    "live_ext_5ffe1c0b5195b36d2bdcffa9"
+  ],
+  "entries": [
+    "product:ext_5ffe1c0b5195b36d2bdcffa9"
+  ],
+  "skipped_rows": []
+}

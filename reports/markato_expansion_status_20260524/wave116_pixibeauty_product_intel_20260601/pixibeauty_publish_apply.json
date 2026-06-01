@@ -1,0 +1,16 @@
+{
+  "status": "ok",
+  "mode": "write",
+  "report": "/Users/pengchydan/dev/_worktrees/pivota-agent-markato-wave25-786-20260527/reports/markato_expansion_status_20260524/wave116_pixibeauty_product_intel_20260601/pixibeauty_product_intel_report.json",
+  "rows": [
+    "live_ext_ce06dc6cf523109b638508e1",
+    "live_ext_b608b51bc66708d27e81473e",
+    "live_ext_e36414c7892f92c40d7f6026"
+  ],
+  "entries": [
+    "product:ext_ce06dc6cf523109b638508e1",
+    "product:ext_b608b51bc66708d27e81473e",
+    "product:ext_e36414c7892f92c40d7f6026"
+  ],
+  "skipped_rows": []
+}

@@ -1,0 +1,2837 @@
+{
+  "meta": {
+    "generated_at": "2026-06-01T03:12:14.713Z",
+    "source": "reviewed_official_seed_product_intel_report",
+    "batch_name": "wave115_sigmabeauty_continuation_20260601",
+    "inventory": "reports/markato_expansion_status_20260524/wave115_sigmabeauty_continuation_20260601/readiness_before/commerce_index_kb_readiness_inventory.json",
+    "selected_cases": 11,
+    "reviewer": "codex_human_quality_reviewer",
+    "reviewer_kind": "assistant",
+    "candidate_quality_summary": {
+      "public_ready": 11,
+      "high_quality_ready": 11,
+      "evidence_profile": {
+        "official_pdp_seed": 8,
+        "seller_plus_formula": 3
+      }
+    }
+  },
+  "rows": [
+    {
+      "case_id": "live_ext_a5b987fc8aaf5f746b522ada",
+      "review_status": "completed",
+      "review_decision": "rewrite",
+      "reviewer": "codex_human_quality_reviewer",
+      "reviewer_kind": "assistant",
+      "reviewed_at": "2026-06-01T03:12:14.713Z",
+      "notes": "Approved official-PDP-seed rewrite for Polish & Perfect Brush Set; evidence_profile=official_pdp_seed; source_url=https://sigmabeauty.com/products/the-polish-perfect-brush-set",
+      "owner_delegated_review": {
+        "contract_version": "pivota.owner_delegated_review.v1",
+        "delegated_to": "codex_human_quality_reviewer",
+        "reviewer_kind": "assistant",
+        "owner_instruction": "User delegated Codex to perform high-quality human review for Pivota Insights quality improvement.",
+        "guardrails": [
+          "Do not overwrite good content with lower-quality content.",
+          "No commerce-state claims in Pivota Insights.",
+          "Use official source facts only; keep evidence confidence explicit."
+        ]
+      },
+      "quality_improvement_review": {
+        "decision": "approved_replacement",
+        "reviewer_kind": "assistant",
+        "owner_delegated": true,
+        "reason": "Owner-delegated assistant review confirms the replacement uses official PDP seed facts, avoids commerce and unsupported evidence claims, and explicitly marks evidence gaps instead of inventing claims."
+      },
+      "baseline": {
+        "canonical_product_ref": {
+          "merchant_id": "external_seed",
+          "product_id": "ext_a5b987fc8aaf5f746b522ada",
+          "platform": "external_seed"
+        }
+      },
+      "selected": {
+        "selected_mode": "manual_reviewed_rewrite",
+        "selected_field_count": 7,
+        "field_sources": {
+          "what_it_is": "official_seed_description",
+          "best_for": "reviewed_category_and_official_title",
+          "why_it_stands_out": "official_seed_description",
+          "routine_fit": "reviewed_category_and_official_title",
+          "watchouts": "owner_delegated_assistant_review",
+          "texture_finish": "reviewed_category_and_official_title",
+          "source_coverage": "official_pdp_seed_snapshot",
+          "community_signals": "not_collected"
+        },
+        "bundle": {
+          "contract_version": "pivota.product_intel.v1",
+          "display_name": "Pivota Insights",
+          "canonical_product_ref": {
+            "merchant_id": "external_seed",
+            "product_id": "ext_a5b987fc8aaf5f746b522ada",
+            "platform": "external_seed"
+          },
+          "product_group_id": "sig_c97230142c8140c1f33240cb",
+          "product_intel_core": {
+            "display_name": "Pivota Insights",
+            "what_it_is": {
+              "headline": "Brush set identity",
+              "body": "A Sigma Beauty brush set listed on the brand source page as Polish & Perfect Brush Set. The source description identifies: Achieve a even-looking finish with the Polish & precise Brush Set."
+            },
+            "best_for": [
+              {
+                "tag": "brush_set_shoppers",
+                "label": "Brush set shoppers",
+                "confidence": "moderate"
+              },
+              {
+                "tag": "official_source_comparison",
+                "label": "Official-source comparison",
+                "confidence": "moderate"
+              }
+            ],
+            "why_it_stands_out": [
+              {
+                "headline": "Source-backed product detail",
+                "body": "Achieve a even-looking finish with the Polish & precise Brush Set.",
+                "evidence_strength": "official_pdp_seed"
+              },
+              {
+                "headline": "Evidence gaps kept explicit",
+                "body": "No complete ingredient list was captured for this review batch, so formula-level claims stay unavailable.",
+                "evidence_strength": "official_pdp_seed"
+              }
+            ],
+            "routine_fit": {
+              "step": "tool",
+              "am_pm": [
+                "as_needed"
+              ],
+              "pairing_notes": [
+                "Use within the brush set context; avoid inferring benefits not present in the source fields."
+              ]
+            },
+            "watchouts": [
+              {
+                "type": "formula_gap",
+                "label": "No complete ingredient list was captured for this review batch; avoid formula-level or safety claims.",
+                "severity": "medium"
+              },
+              {
+                "type": "evidence_gap",
+                "label": "No independent review or community evidence was approved for this row; keep public copy source-bound.",
+                "severity": "medium"
+              },
+              {
+                "type": "scope_guardrail",
+                "label": "Use the commerce mainline for offer facts; keep this insight focused on source-backed product identity.",
+                "severity": "medium"
+              }
+            ],
+            "confidence": {
+              "overall": "moderate",
+              "fields": {
+                "what_it_is": "high",
+                "best_for": "moderate",
+                "why_it_stands_out": "moderate",
+                "routine_fit": "moderate",
+                "watchouts": "moderate"
+              }
+            },
+            "freshness": {
+              "generated_at": "2026-06-01T03:12:14.713Z",
+              "source_version": "wave115_sigmabeauty_continuation_20260601"
+            },
+            "quality_state": "reviewed",
+            "evidence_profile": "official_pdp_seed",
+            "source_coverage": {
+              "seller": {
+                "available": true,
+                "source_url": "https://sigmabeauty.com/products/the-polish-perfect-brush-set"
+              },
+              "formula": {
+                "available": false,
+                "ingredient_count": 0,
+                "source_url": "https://sigmabeauty.com/products/the-polish-perfect-brush-set"
+              },
+              "reviews": {
+                "available": false,
+                "count": 0
+              },
+              "creator": {
+                "available": false,
+                "count": 0
+              },
+              "editorial": {
+                "available": false,
+                "count": 0
+              }
+            }
+          },
+          "texture_finish": {
+            "finish": "brush set",
+            "texture": "brush_set",
+            "source": "reviewed_category_and_official_title"
+          },
+          "community_signals": {
+            "status": "unavailable",
+            "reason": "not_collected_for_this_review_batch"
+          },
+          "recommendation_intents": {
+            "similar": [],
+            "complementary": [],
+            "routine_pairing": [],
+            "underfill_reason": null,
+            "confidence": "low"
+          },
+          "market_signal_badges": [],
+          "external_highlight_signals": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "official_pdp_seed",
+          "source_coverage": {
+            "seller": {
+              "available": true,
+              "source_url": "https://sigmabeauty.com/products/the-polish-perfect-brush-set"
+            },
+            "formula": {
+              "available": false,
+              "ingredient_count": 0,
+              "source_url": "https://sigmabeauty.com/products/the-polish-perfect-brush-set"
+            },
+            "reviews": {
+              "available": false,
+              "count": 0
+            },
+            "creator": {
+              "available": false,
+              "count": 0
+            },
+            "editorial": {
+              "available": false,
+              "count": 0
+            }
+          },
+          "confidence": {
+            "overall": "moderate",
+            "fields": {
+              "what_it_is": "high",
+              "best_for": "moderate",
+              "why_it_stands_out": "moderate",
+              "routine_fit": "moderate",
+              "watchouts": "moderate"
+            }
+          },
+          "freshness": {
+            "generated_at": "2026-06-01T03:12:14.713Z",
+            "source_version": "wave115_sigmabeauty_continuation_20260601"
+          },
+          "offer_pointers": {
+            "offers_count": 0,
+            "default_offer_id": null,
+            "best_price_offer_id": null,
+            "commerce_modes": []
+          },
+          "provenance": {
+            "source": "owner_delegated_official_seed_rewrite",
+            "generator": "owner_delegated_assistant_reviewed_rewrite",
+            "selection_strategy": "official_pdp_seed_guarded_manual_review",
+            "field_sources": {
+              "what_it_is": "official_seed_description",
+              "best_for": "reviewed_category_and_official_title",
+              "why_it_stands_out": "official_seed_description",
+              "routine_fit": "reviewed_category_and_official_title",
+              "watchouts": "owner_delegated_assistant_review",
+              "texture_finish": "reviewed_category_and_official_title",
+              "source_coverage": "official_pdp_seed_snapshot",
+              "community_signals": "not_collected"
+            },
+            "review_status": "completed",
+            "review_decision": "rewrite",
+            "reviewer": "codex_human_quality_reviewer",
+            "reviewer_kind": "assistant",
+            "reviewed_at": "2026-06-01T03:12:14.713Z",
+            "external_highlight_review_status": "rewrite",
+            "external_review_batch": "wave115_sigmabeauty_continuation_20260601",
+            "official_source_url": "https://sigmabeauty.com/products/the-polish-perfect-brush-set",
+            "official_source_ingredient_count": 0,
+            "rewrite_reason": "Owner-delegated assistant review: official PDP seed rewrite; no commerce-state, community, medical, or unsupported safety claims added."
+          },
+          "shopping_card": {
+            "contract_version": "pivota.shopping_card.v1",
+            "title": "Polish & Perfect Brush Set",
+            "subtitle": "Brush Set",
+            "highlight": "Brush set format detail",
+            "intro": "A Sigma Beauty brush set listed on the brand source page as Polish & Perfect Brush Set. The source description identifies: Achieve a even-looking finish with the Polish & precise Brush Set.",
+            "evidence_profile": "official_pdp_seed"
+          },
+          "search_card": {
+            "title_candidate": "Polish & Perfect Brush Set",
+            "compact_candidate": "Brush Set",
+            "highlight_candidate": "Brush set format detail",
+            "intro_candidate": "A Sigma Beauty brush set listed on the brand source page as Polish & Perfect Brush Set. The source description identifies: Achieve a even-looking finish with the Polish & precise Brush Set.",
+            "proof_badge_candidate": ""
+          }
+        }
+      }
+    },
+    {
+      "case_id": "live_ext_f4ca7bdecaa68310675ac54d",
+      "review_status": "completed",
+      "review_decision": "rewrite",
+      "reviewer": "codex_human_quality_reviewer",
+      "reviewer_kind": "assistant",
+      "reviewed_at": "2026-06-01T03:12:14.713Z",
+      "notes": "Approved official-PDP-seed rewrite for F26 Domed Concealer Brush; evidence_profile=official_pdp_seed; source_url=https://sigmabeauty.com/products/f26-domed-concealer",
+      "owner_delegated_review": {
+        "contract_version": "pivota.owner_delegated_review.v1",
+        "delegated_to": "codex_human_quality_reviewer",
+        "reviewer_kind": "assistant",
+        "owner_instruction": "User delegated Codex to perform high-quality human review for Pivota Insights quality improvement.",
+        "guardrails": [
+          "Do not overwrite good content with lower-quality content.",
+          "No commerce-state claims in Pivota Insights.",
+          "Use official source facts only; keep evidence confidence explicit."
+        ]
+      },
+      "quality_improvement_review": {
+        "decision": "approved_replacement",
+        "reviewer_kind": "assistant",
+        "owner_delegated": true,
+        "reason": "Owner-delegated assistant review confirms the replacement uses official PDP seed facts, avoids commerce and unsupported evidence claims, and explicitly marks evidence gaps instead of inventing claims."
+      },
+      "baseline": {
+        "canonical_product_ref": {
+          "merchant_id": "external_seed",
+          "product_id": "ext_f4ca7bdecaa68310675ac54d",
+          "platform": "external_seed"
+        }
+      },
+      "selected": {
+        "selected_mode": "manual_reviewed_rewrite",
+        "selected_field_count": 7,
+        "field_sources": {
+          "what_it_is": "official_seed_description",
+          "best_for": "reviewed_category_and_official_title",
+          "why_it_stands_out": "official_seed_description",
+          "routine_fit": "reviewed_category_and_official_title",
+          "watchouts": "owner_delegated_assistant_review",
+          "texture_finish": "reviewed_category_and_official_title",
+          "source_coverage": "official_pdp_seed_snapshot",
+          "community_signals": "not_collected"
+        },
+        "bundle": {
+          "contract_version": "pivota.product_intel.v1",
+          "display_name": "Pivota Insights",
+          "canonical_product_ref": {
+            "merchant_id": "external_seed",
+            "product_id": "ext_f4ca7bdecaa68310675ac54d",
+            "platform": "external_seed"
+          },
+          "product_group_id": "sig_f1f30435d67c6c79e65a0a62",
+          "product_intel_core": {
+            "display_name": "Pivota Insights",
+            "what_it_is": {
+              "headline": "Brush identity",
+              "body": "A Sigma Beauty brush listed on the brand source page as F26 Domed Concealer Brush. The source description identifies: Achieve a even-looking complexion with this domed concealer brush."
+            },
+            "best_for": [
+              {
+                "tag": "brush_shoppers",
+                "label": "Brush shoppers",
+                "confidence": "moderate"
+              },
+              {
+                "tag": "official_source_comparison",
+                "label": "Official-source comparison",
+                "confidence": "moderate"
+              }
+            ],
+            "why_it_stands_out": [
+              {
+                "headline": "Source-backed product detail",
+                "body": "Achieve a even-looking complexion with this domed concealer brush.",
+                "evidence_strength": "official_pdp_seed"
+              },
+              {
+                "headline": "Evidence gaps kept explicit",
+                "body": "No complete ingredient list was captured for this review batch, so formula-level claims stay unavailable.",
+                "evidence_strength": "official_pdp_seed"
+              }
+            ],
+            "routine_fit": {
+              "step": "tool",
+              "am_pm": [
+                "as_needed"
+              ],
+              "pairing_notes": [
+                "Use within the brush context; avoid inferring benefits not present in the source fields."
+              ]
+            },
+            "watchouts": [
+              {
+                "type": "formula_gap",
+                "label": "No complete ingredient list was captured for this review batch; avoid formula-level or safety claims.",
+                "severity": "medium"
+              },
+              {
+                "type": "evidence_gap",
+                "label": "No independent review or community evidence was approved for this row; keep public copy source-bound.",
+                "severity": "medium"
+              },
+              {
+                "type": "scope_guardrail",
+                "label": "Use the commerce mainline for offer facts; keep this insight focused on source-backed product identity.",
+                "severity": "medium"
+              }
+            ],
+            "confidence": {
+              "overall": "moderate",
+              "fields": {
+                "what_it_is": "high",
+                "best_for": "moderate",
+                "why_it_stands_out": "moderate",
+                "routine_fit": "moderate",
+                "watchouts": "moderate"
+              }
+            },
+            "freshness": {
+              "generated_at": "2026-06-01T03:12:14.713Z",
+              "source_version": "wave115_sigmabeauty_continuation_20260601"
+            },
+            "quality_state": "reviewed",
+            "evidence_profile": "official_pdp_seed",
+            "source_coverage": {
+              "seller": {
+                "available": true,
+                "source_url": "https://sigmabeauty.com/products/f26-domed-concealer"
+              },
+              "formula": {
+                "available": false,
+                "ingredient_count": 0,
+                "source_url": "https://sigmabeauty.com/products/f26-domed-concealer"
+              },
+              "reviews": {
+                "available": false,
+                "count": 0
+              },
+              "creator": {
+                "available": false,
+                "count": 0
+              },
+              "editorial": {
+                "available": false,
+                "count": 0
+              }
+            }
+          },
+          "texture_finish": {
+            "finish": "brush",
+            "texture": "brush",
+            "source": "reviewed_category_and_official_title"
+          },
+          "community_signals": {
+            "status": "unavailable",
+            "reason": "not_collected_for_this_review_batch"
+          },
+          "recommendation_intents": {
+            "similar": [],
+            "complementary": [],
+            "routine_pairing": [],
+            "underfill_reason": null,
+            "confidence": "low"
+          },
+          "market_signal_badges": [],
+          "external_highlight_signals": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "official_pdp_seed",
+          "source_coverage": {
+            "seller": {
+              "available": true,
+              "source_url": "https://sigmabeauty.com/products/f26-domed-concealer"
+            },
+            "formula": {
+              "available": false,
+              "ingredient_count": 0,
+              "source_url": "https://sigmabeauty.com/products/f26-domed-concealer"
+            },
+            "reviews": {
+              "available": false,
+              "count": 0
+            },
+            "creator": {
+              "available": false,
+              "count": 0
+            },
+            "editorial": {
+              "available": false,
+              "count": 0
+            }
+          },
+          "confidence": {
+            "overall": "moderate",
+            "fields": {
+              "what_it_is": "high",
+              "best_for": "moderate",
+              "why_it_stands_out": "moderate",
+              "routine_fit": "moderate",
+              "watchouts": "moderate"
+            }
+          },
+          "freshness": {
+            "generated_at": "2026-06-01T03:12:14.713Z",
+            "source_version": "wave115_sigmabeauty_continuation_20260601"
+          },
+          "offer_pointers": {
+            "offers_count": 0,
+            "default_offer_id": null,
+            "best_price_offer_id": null,
+            "commerce_modes": []
+          },
+          "provenance": {
+            "source": "owner_delegated_official_seed_rewrite",
+            "generator": "owner_delegated_assistant_reviewed_rewrite",
+            "selection_strategy": "official_pdp_seed_guarded_manual_review",
+            "field_sources": {
+              "what_it_is": "official_seed_description",
+              "best_for": "reviewed_category_and_official_title",
+              "why_it_stands_out": "official_seed_description",
+              "routine_fit": "reviewed_category_and_official_title",
+              "watchouts": "owner_delegated_assistant_review",
+              "texture_finish": "reviewed_category_and_official_title",
+              "source_coverage": "official_pdp_seed_snapshot",
+              "community_signals": "not_collected"
+            },
+            "review_status": "completed",
+            "review_decision": "rewrite",
+            "reviewer": "codex_human_quality_reviewer",
+            "reviewer_kind": "assistant",
+            "reviewed_at": "2026-06-01T03:12:14.713Z",
+            "external_highlight_review_status": "rewrite",
+            "external_review_batch": "wave115_sigmabeauty_continuation_20260601",
+            "official_source_url": "https://sigmabeauty.com/products/f26-domed-concealer",
+            "official_source_ingredient_count": 0,
+            "rewrite_reason": "Owner-delegated assistant review: official PDP seed rewrite; no commerce-state, community, medical, or unsupported safety claims added."
+          },
+          "shopping_card": {
+            "contract_version": "pivota.shopping_card.v1",
+            "title": "F26 Domed Concealer Brush",
+            "subtitle": "Beauty Brush",
+            "highlight": "Brush format detail",
+            "intro": "A Sigma Beauty brush listed on the brand source page as F26 Domed Concealer Brush. The source description identifies: Achieve a even-looking complexion with this domed concealer brush.",
+            "evidence_profile": "official_pdp_seed"
+          },
+          "search_card": {
+            "title_candidate": "F26 Domed Concealer Brush",
+            "compact_candidate": "Beauty Brush",
+            "highlight_candidate": "Brush format detail",
+            "intro_candidate": "A Sigma Beauty brush listed on the brand source page as F26 Domed Concealer Brush. The source description identifies: Achieve a even-looking complexion with this domed concealer brush.",
+            "proof_badge_candidate": ""
+          }
+        }
+      }
+    },
+    {
+      "case_id": "live_ext_f0c0337789be945a8b85a360",
+      "review_status": "completed",
+      "review_decision": "rewrite",
+      "reviewer": "codex_human_quality_reviewer",
+      "reviewer_kind": "assistant",
+      "reviewed_at": "2026-06-01T03:12:14.713Z",
+      "notes": "Approved official-PDP-seed rewrite for Essential Travel Brush Set; evidence_profile=official_pdp_seed; source_url=https://sigmabeauty.com/products/essential-travel-brush-set",
+      "owner_delegated_review": {
+        "contract_version": "pivota.owner_delegated_review.v1",
+        "delegated_to": "codex_human_quality_reviewer",
+        "reviewer_kind": "assistant",
+        "owner_instruction": "User delegated Codex to perform high-quality human review for Pivota Insights quality improvement.",
+        "guardrails": [
+          "Do not overwrite good content with lower-quality content.",
+          "No commerce-state claims in Pivota Insights.",
+          "Use official source facts only; keep evidence confidence explicit."
+        ]
+      },
+      "quality_improvement_review": {
+        "decision": "approved_replacement",
+        "reviewer_kind": "assistant",
+        "owner_delegated": true,
+        "reason": "Owner-delegated assistant review confirms the replacement uses official PDP seed facts, avoids commerce and unsupported evidence claims, and explicitly marks evidence gaps instead of inventing claims."
+      },
+      "baseline": {
+        "canonical_product_ref": {
+          "merchant_id": "external_seed",
+          "product_id": "ext_f0c0337789be945a8b85a360",
+          "platform": "external_seed"
+        }
+      },
+      "selected": {
+        "selected_mode": "manual_reviewed_rewrite",
+        "selected_field_count": 7,
+        "field_sources": {
+          "what_it_is": "official_seed_description",
+          "best_for": "reviewed_category_and_official_title",
+          "why_it_stands_out": "official_seed_description",
+          "routine_fit": "reviewed_category_and_official_title",
+          "watchouts": "owner_delegated_assistant_review",
+          "texture_finish": "reviewed_category_and_official_title",
+          "source_coverage": "official_pdp_seed_snapshot",
+          "community_signals": "not_collected"
+        },
+        "bundle": {
+          "contract_version": "pivota.product_intel.v1",
+          "display_name": "Pivota Insights",
+          "canonical_product_ref": {
+            "merchant_id": "external_seed",
+            "product_id": "ext_f0c0337789be945a8b85a360",
+            "platform": "external_seed"
+          },
+          "product_group_id": "sig_5fb0081594135848d1daeba4",
+          "product_intel_core": {
+            "display_name": "Pivota Insights",
+            "what_it_is": {
+              "headline": "Brush set identity",
+              "body": "A Sigma Beauty brush set listed on the brand source page as Essential Travel Brush Set. The source description identifies: Create even-looking looks anytime, anywhere using this elite set of 7 basic, travel-size brushes for the face and eyes."
+            },
+            "best_for": [
+              {
+                "tag": "brush_set_shoppers",
+                "label": "Brush set shoppers",
+                "confidence": "moderate"
+              },
+              {
+                "tag": "official_source_comparison",
+                "label": "Official-source comparison",
+                "confidence": "moderate"
+              }
+            ],
+            "why_it_stands_out": [
+              {
+                "headline": "Source-backed product detail",
+                "body": "Create even-looking looks anytime, anywhere using this elite set of 7 basic, travel-size brushes for the face and eyes.",
+                "evidence_strength": "official_pdp_seed"
+              },
+              {
+                "headline": "Evidence gaps kept explicit",
+                "body": "No complete ingredient list was captured for this review batch, so formula-level claims stay unavailable.",
+                "evidence_strength": "official_pdp_seed"
+              }
+            ],
+            "routine_fit": {
+              "step": "tool",
+              "am_pm": [
+                "as_needed"
+              ],
+              "pairing_notes": [
+                "Use within the brush set context; avoid inferring benefits not present in the source fields."
+              ]
+            },
+            "watchouts": [
+              {
+                "type": "formula_gap",
+                "label": "No complete ingredient list was captured for this review batch; avoid formula-level or safety claims.",
+                "severity": "medium"
+              },
+              {
+                "type": "evidence_gap",
+                "label": "No independent review or community evidence was approved for this row; keep public copy source-bound.",
+                "severity": "medium"
+              },
+              {
+                "type": "scope_guardrail",
+                "label": "Use the commerce mainline for offer facts; keep this insight focused on source-backed product identity.",
+                "severity": "medium"
+              }
+            ],
+            "confidence": {
+              "overall": "moderate",
+              "fields": {
+                "what_it_is": "high",
+                "best_for": "moderate",
+                "why_it_stands_out": "moderate",
+                "routine_fit": "moderate",
+                "watchouts": "moderate"
+              }
+            },
+            "freshness": {
+              "generated_at": "2026-06-01T03:12:14.713Z",
+              "source_version": "wave115_sigmabeauty_continuation_20260601"
+            },
+            "quality_state": "reviewed",
+            "evidence_profile": "official_pdp_seed",
+            "source_coverage": {
+              "seller": {
+                "available": true,
+                "source_url": "https://sigmabeauty.com/products/essential-travel-brush-set"
+              },
+              "formula": {
+                "available": false,
+                "ingredient_count": 0,
+                "source_url": "https://sigmabeauty.com/products/essential-travel-brush-set"
+              },
+              "reviews": {
+                "available": false,
+                "count": 0
+              },
+              "creator": {
+                "available": false,
+                "count": 0
+              },
+              "editorial": {
+                "available": false,
+                "count": 0
+              }
+            }
+          },
+          "texture_finish": {
+            "finish": "brush set",
+            "texture": "brush_set",
+            "source": "reviewed_category_and_official_title"
+          },
+          "community_signals": {
+            "status": "unavailable",
+            "reason": "not_collected_for_this_review_batch"
+          },
+          "recommendation_intents": {
+            "similar": [],
+            "complementary": [],
+            "routine_pairing": [],
+            "underfill_reason": null,
+            "confidence": "low"
+          },
+          "market_signal_badges": [],
+          "external_highlight_signals": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "official_pdp_seed",
+          "source_coverage": {
+            "seller": {
+              "available": true,
+              "source_url": "https://sigmabeauty.com/products/essential-travel-brush-set"
+            },
+            "formula": {
+              "available": false,
+              "ingredient_count": 0,
+              "source_url": "https://sigmabeauty.com/products/essential-travel-brush-set"
+            },
+            "reviews": {
+              "available": false,
+              "count": 0
+            },
+            "creator": {
+              "available": false,
+              "count": 0
+            },
+            "editorial": {
+              "available": false,
+              "count": 0
+            }
+          },
+          "confidence": {
+            "overall": "moderate",
+            "fields": {
+              "what_it_is": "high",
+              "best_for": "moderate",
+              "why_it_stands_out": "moderate",
+              "routine_fit": "moderate",
+              "watchouts": "moderate"
+            }
+          },
+          "freshness": {
+            "generated_at": "2026-06-01T03:12:14.713Z",
+            "source_version": "wave115_sigmabeauty_continuation_20260601"
+          },
+          "offer_pointers": {
+            "offers_count": 0,
+            "default_offer_id": null,
+            "best_price_offer_id": null,
+            "commerce_modes": []
+          },
+          "provenance": {
+            "source": "owner_delegated_official_seed_rewrite",
+            "generator": "owner_delegated_assistant_reviewed_rewrite",
+            "selection_strategy": "official_pdp_seed_guarded_manual_review",
+            "field_sources": {
+              "what_it_is": "official_seed_description",
+              "best_for": "reviewed_category_and_official_title",
+              "why_it_stands_out": "official_seed_description",
+              "routine_fit": "reviewed_category_and_official_title",
+              "watchouts": "owner_delegated_assistant_review",
+              "texture_finish": "reviewed_category_and_official_title",
+              "source_coverage": "official_pdp_seed_snapshot",
+              "community_signals": "not_collected"
+            },
+            "review_status": "completed",
+            "review_decision": "rewrite",
+            "reviewer": "codex_human_quality_reviewer",
+            "reviewer_kind": "assistant",
+            "reviewed_at": "2026-06-01T03:12:14.713Z",
+            "external_highlight_review_status": "rewrite",
+            "external_review_batch": "wave115_sigmabeauty_continuation_20260601",
+            "official_source_url": "https://sigmabeauty.com/products/essential-travel-brush-set",
+            "official_source_ingredient_count": 0,
+            "rewrite_reason": "Owner-delegated assistant review: official PDP seed rewrite; no commerce-state, community, medical, or unsupported safety claims added."
+          },
+          "shopping_card": {
+            "contract_version": "pivota.shopping_card.v1",
+            "title": "Essential Travel Brush Set",
+            "subtitle": "Brush Set",
+            "highlight": "Curated favorites brush set",
+            "intro": "A Sigma Beauty brush set listed on the brand source page as Essential Travel Brush Set. The source description identifies: Create even-looking looks anytime, anywhere using this elite set of 7 basic, travel-size brushes for the face and eyes.",
+            "evidence_profile": "official_pdp_seed"
+          },
+          "search_card": {
+            "title_candidate": "Essential Travel Brush Set",
+            "compact_candidate": "Brush Set",
+            "highlight_candidate": "Curated favorites brush set",
+            "intro_candidate": "A Sigma Beauty brush set listed on the brand source page as Essential Travel Brush Set. The source description identifies: Create even-looking looks anytime, anywhere using this elite set of 7 basic, travel-size brushes for the face and eyes.",
+            "proof_badge_candidate": ""
+          }
+        }
+      }
+    },
+    {
+      "case_id": "live_ext_2fa17c7f0417769ff2e9abb8",
+      "review_status": "completed",
+      "review_decision": "rewrite",
+      "reviewer": "codex_human_quality_reviewer",
+      "reviewer_kind": "assistant",
+      "reviewed_at": "2026-06-01T03:12:14.713Z",
+      "notes": "Approved official-PDP-seed rewrite for Sigma x Face Foundrié Beautiful Base Set; evidence_profile=seller_plus_formula; source_url=https://sigmabeauty.com/products/sigma-x-face-foundrie-beautiful-base-set",
+      "owner_delegated_review": {
+        "contract_version": "pivota.owner_delegated_review.v1",
+        "delegated_to": "codex_human_quality_reviewer",
+        "reviewer_kind": "assistant",
+        "owner_instruction": "User delegated Codex to perform high-quality human review for Pivota Insights quality improvement.",
+        "guardrails": [
+          "Do not overwrite good content with lower-quality content.",
+          "No commerce-state claims in Pivota Insights.",
+          "Use official source facts only; keep evidence confidence explicit."
+        ]
+      },
+      "quality_improvement_review": {
+        "decision": "approved_replacement",
+        "reviewer_kind": "assistant",
+        "owner_delegated": true,
+        "reason": "Owner-delegated assistant review confirms the replacement uses official PDP seed facts, avoids commerce and unsupported evidence claims, and explicitly marks evidence gaps instead of inventing claims."
+      },
+      "baseline": {
+        "canonical_product_ref": {
+          "merchant_id": "external_seed",
+          "product_id": "ext_2fa17c7f0417769ff2e9abb8",
+          "platform": "external_seed"
+        }
+      },
+      "selected": {
+        "selected_mode": "manual_reviewed_rewrite",
+        "selected_field_count": 7,
+        "field_sources": {
+          "what_it_is": "official_seed_description",
+          "best_for": "reviewed_category_and_official_title",
+          "why_it_stands_out": "official_seed_description_and_formula",
+          "routine_fit": "reviewed_category_and_official_title",
+          "watchouts": "owner_delegated_assistant_review",
+          "texture_finish": "reviewed_category_and_official_title",
+          "source_coverage": "official_pdp_seed_snapshot",
+          "community_signals": "not_collected"
+        },
+        "bundle": {
+          "contract_version": "pivota.product_intel.v1",
+          "display_name": "Pivota Insights",
+          "canonical_product_ref": {
+            "merchant_id": "external_seed",
+            "product_id": "ext_2fa17c7f0417769ff2e9abb8",
+            "platform": "external_seed"
+          },
+          "product_group_id": "sig_1755e0bf1e5e2e29bcb39b55",
+          "product_intel_core": {
+            "display_name": "Pivota Insights",
+            "what_it_is": {
+              "headline": "Makeup set identity",
+              "body": "A Sigma Beauty makeup set listed on the brand source page as Sigma x Face Foundrié Beautiful Base Set. The source description identifies: Elevate your skincare and makeup routine with this luxurious set, featuring source-detailed skincare brushes, complexion brushes, and a nourishing lip mask."
+            },
+            "best_for": [
+              {
+                "tag": "makeup_set_shoppers",
+                "label": "Makeup set shoppers",
+                "confidence": "moderate"
+              },
+              {
+                "tag": "official_source_comparison",
+                "label": "Official-source comparison",
+                "confidence": "moderate"
+              }
+            ],
+            "why_it_stands_out": [
+              {
+                "headline": "Source-backed product detail",
+                "body": "Elevate your skincare and makeup routine with this luxurious set, featuring source-detailed skincare brushes, complexion brushes, and a nourishing lip mask.",
+                "evidence_strength": "seller_plus_formula"
+              },
+              {
+                "headline": "Formula context captured",
+                "body": "Captured formula fields include Hyaluronic AcidLocks in moisture to ensure all day hydration Deeply moisturizes lips Helps lips hold onto water longer for softer skin Restores damaged skin cells Gives lips a natural plump and increases suppleness Soothes dry, chapped, or sunburnt lips Jojoba OilNourishes and hydrates lips while promoting a healthy glow Hydrates lips without clogging pores Nourishing antioxidant and Promotes healthy glow Helps prevent growth of bacteria Great for sensitive and/or acne-prone skin Shares many benefits with vitamin E as it's a main ingredient in jojoba oil Shea ButterRejuvenate, restore, protect Powerful lip protection A bountiful source of antioxidants Healthy source of topical skin-soothing benefits Said to have anti-inflammatory properties Can heal and prevent chapped lips Vitamin EProtects skin. Agents should keep composition claims within those source fields.",
+                "evidence_strength": "seller_plus_formula"
+              }
+            ],
+            "routine_fit": {
+              "step": "set",
+              "am_pm": [
+                "as_needed"
+              ],
+              "pairing_notes": [
+                "Use within the makeup set context; avoid inferring benefits not present in the source fields."
+              ]
+            },
+            "watchouts": [
+              {
+                "type": "formula_scope",
+                "label": "Formula details are source-derived; avoid medical, safety, or suitability claims not present in the source.",
+                "severity": "medium"
+              },
+              {
+                "type": "evidence_gap",
+                "label": "No independent review or community evidence was approved for this row; keep public copy source-bound.",
+                "severity": "medium"
+              },
+              {
+                "type": "scope_guardrail",
+                "label": "Use the commerce mainline for offer facts; keep this insight focused on source-backed product identity.",
+                "severity": "medium"
+              }
+            ],
+            "confidence": {
+              "overall": "moderate",
+              "fields": {
+                "what_it_is": "high",
+                "best_for": "moderate",
+                "why_it_stands_out": "moderate",
+                "routine_fit": "moderate",
+                "watchouts": "moderate"
+              }
+            },
+            "freshness": {
+              "generated_at": "2026-06-01T03:12:14.713Z",
+              "source_version": "wave115_sigmabeauty_continuation_20260601"
+            },
+            "quality_state": "reviewed",
+            "evidence_profile": "seller_plus_formula",
+            "source_coverage": {
+              "seller": {
+                "available": true,
+                "source_url": "https://sigmabeauty.com/products/sigma-x-face-foundrie-beautiful-base-set"
+              },
+              "formula": {
+                "available": true,
+                "ingredient_count": 38,
+                "source_url": "https://sigmabeauty.com/products/sigma-x-face-foundrie-beautiful-base-set"
+              },
+              "reviews": {
+                "available": false,
+                "count": 0
+              },
+              "creator": {
+                "available": false,
+                "count": 0
+              },
+              "editorial": {
+                "available": false,
+                "count": 0
+              }
+            }
+          },
+          "texture_finish": {
+            "finish": "makeup set",
+            "texture": "makeup_set",
+            "source": "reviewed_category_and_official_title"
+          },
+          "community_signals": {
+            "status": "unavailable",
+            "reason": "not_collected_for_this_review_batch"
+          },
+          "recommendation_intents": {
+            "similar": [],
+            "complementary": [],
+            "routine_pairing": [],
+            "underfill_reason": null,
+            "confidence": "low"
+          },
+          "market_signal_badges": [],
+          "external_highlight_signals": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "seller_plus_formula",
+          "source_coverage": {
+            "seller": {
+              "available": true,
+              "source_url": "https://sigmabeauty.com/products/sigma-x-face-foundrie-beautiful-base-set"
+            },
+            "formula": {
+              "available": true,
+              "ingredient_count": 38,
+              "source_url": "https://sigmabeauty.com/products/sigma-x-face-foundrie-beautiful-base-set"
+            },
+            "reviews": {
+              "available": false,
+              "count": 0
+            },
+            "creator": {
+              "available": false,
+              "count": 0
+            },
+            "editorial": {
+              "available": false,
+              "count": 0
+            }
+          },
+          "confidence": {
+            "overall": "moderate",
+            "fields": {
+              "what_it_is": "high",
+              "best_for": "moderate",
+              "why_it_stands_out": "moderate",
+              "routine_fit": "moderate",
+              "watchouts": "moderate"
+            }
+          },
+          "freshness": {
+            "generated_at": "2026-06-01T03:12:14.713Z",
+            "source_version": "wave115_sigmabeauty_continuation_20260601"
+          },
+          "offer_pointers": {
+            "offers_count": 0,
+            "default_offer_id": null,
+            "best_price_offer_id": null,
+            "commerce_modes": []
+          },
+          "provenance": {
+            "source": "owner_delegated_official_seed_rewrite",
+            "generator": "owner_delegated_assistant_reviewed_rewrite",
+            "selection_strategy": "official_pdp_seed_guarded_manual_review",
+            "field_sources": {
+              "what_it_is": "official_seed_description",
+              "best_for": "reviewed_category_and_official_title",
+              "why_it_stands_out": "official_seed_description_and_formula",
+              "routine_fit": "reviewed_category_and_official_title",
+              "watchouts": "owner_delegated_assistant_review",
+              "texture_finish": "reviewed_category_and_official_title",
+              "source_coverage": "official_pdp_seed_snapshot",
+              "community_signals": "not_collected"
+            },
+            "review_status": "completed",
+            "review_decision": "rewrite",
+            "reviewer": "codex_human_quality_reviewer",
+            "reviewer_kind": "assistant",
+            "reviewed_at": "2026-06-01T03:12:14.713Z",
+            "external_highlight_review_status": "rewrite",
+            "external_review_batch": "wave115_sigmabeauty_continuation_20260601",
+            "official_source_url": "https://sigmabeauty.com/products/sigma-x-face-foundrie-beautiful-base-set",
+            "official_source_ingredient_count": 38,
+            "rewrite_reason": "Owner-delegated assistant review: official PDP seed rewrite; no commerce-state, community, medical, or unsupported safety claims added."
+          },
+          "shopping_card": {
+            "contract_version": "pivota.shopping_card.v1",
+            "title": "Sigma x Face Foundrié Beautiful Base Set",
+            "subtitle": "Makeup Set",
+            "highlight": "Complexion routine set",
+            "intro": "A Sigma Beauty makeup set listed on the brand source page as Sigma x Face Foundrié Beautiful Base Set. The source description identifies: Elevate your skincare and makeup routine with this luxurious set, featuring source-detailed skincare brushes, complexion brushes, and a nourishing lip mask.",
+            "evidence_profile": "seller_plus_formula"
+          },
+          "search_card": {
+            "title_candidate": "Sigma x Face Foundrié Beautiful Base Set",
+            "compact_candidate": "Makeup Set",
+            "highlight_candidate": "Complexion routine set",
+            "intro_candidate": "A Sigma Beauty makeup set listed on the brand source page as Sigma x Face Foundrié Beautiful Base Set. The source description identifies: Elevate your skincare and makeup routine with this luxurious set, featuring source-detailed skincare brushes, complexion brushes, and a nourishing lip mask.",
+            "proof_badge_candidate": ""
+          }
+        }
+      }
+    },
+    {
+      "case_id": "live_ext_d45ccb74956c1ef9c9637352",
+      "review_status": "completed",
+      "review_decision": "rewrite",
+      "reviewer": "codex_human_quality_reviewer",
+      "reviewer_kind": "assistant",
+      "reviewed_at": "2026-06-01T03:12:14.713Z",
+      "notes": "Approved official-PDP-seed rewrite for F08 Precision Powder Brush; evidence_profile=official_pdp_seed; source_url=https://sigmabeauty.com/products/f08-precision-powder",
+      "owner_delegated_review": {
+        "contract_version": "pivota.owner_delegated_review.v1",
+        "delegated_to": "codex_human_quality_reviewer",
+        "reviewer_kind": "assistant",
+        "owner_instruction": "User delegated Codex to perform high-quality human review for Pivota Insights quality improvement.",
+        "guardrails": [
+          "Do not overwrite good content with lower-quality content.",
+          "No commerce-state claims in Pivota Insights.",
+          "Use official source facts only; keep evidence confidence explicit."
+        ]
+      },
+      "quality_improvement_review": {
+        "decision": "approved_replacement",
+        "reviewer_kind": "assistant",
+        "owner_delegated": true,
+        "reason": "Owner-delegated assistant review confirms the replacement uses official PDP seed facts, avoids commerce and unsupported evidence claims, and explicitly marks evidence gaps instead of inventing claims."
+      },
+      "baseline": {
+        "canonical_product_ref": {
+          "merchant_id": "external_seed",
+          "product_id": "ext_d45ccb74956c1ef9c9637352",
+          "platform": "external_seed"
+        }
+      },
+      "selected": {
+        "selected_mode": "manual_reviewed_rewrite",
+        "selected_field_count": 7,
+        "field_sources": {
+          "what_it_is": "official_seed_description",
+          "best_for": "reviewed_category_and_official_title",
+          "why_it_stands_out": "official_seed_description",
+          "routine_fit": "reviewed_category_and_official_title",
+          "watchouts": "owner_delegated_assistant_review",
+          "texture_finish": "reviewed_category_and_official_title",
+          "source_coverage": "official_pdp_seed_snapshot",
+          "community_signals": "not_collected"
+        },
+        "bundle": {
+          "contract_version": "pivota.product_intel.v1",
+          "display_name": "Pivota Insights",
+          "canonical_product_ref": {
+            "merchant_id": "external_seed",
+            "product_id": "ext_d45ccb74956c1ef9c9637352",
+            "platform": "external_seed"
+          },
+          "product_group_id": "sig_1070c642344232e3836d598b",
+          "product_intel_core": {
+            "display_name": "Pivota Insights",
+            "what_it_is": {
+              "headline": "Brush identity",
+              "body": "A Sigma Beauty brush listed on the brand source page as F08 Precision Powder Brush. The source description identifies: Keep your face fresh and dewy! This dense, tapered powder brush is positioned for precisely setting makeup on smaller areas of the face, such as under the eyes or in the t-zone area."
+            },
+            "best_for": [
+              {
+                "tag": "brush_shoppers",
+                "label": "Brush shoppers",
+                "confidence": "moderate"
+              },
+              {
+                "tag": "official_source_comparison",
+                "label": "Official-source comparison",
+                "confidence": "moderate"
+              }
+            ],
+            "why_it_stands_out": [
+              {
+                "headline": "Source-backed product detail",
+                "body": "Keep your face fresh and dewy! This dense, tapered powder brush is positioned for precisely setting makeup on smaller areas of the face, such as under the eyes or in the t-zone area.",
+                "evidence_strength": "official_pdp_seed"
+              },
+              {
+                "headline": "Evidence gaps kept explicit",
+                "body": "No complete ingredient list was captured for this review batch, so formula-level claims stay unavailable.",
+                "evidence_strength": "official_pdp_seed"
+              }
+            ],
+            "routine_fit": {
+              "step": "tool",
+              "am_pm": [
+                "as_needed"
+              ],
+              "pairing_notes": [
+                "Use within the brush context; avoid inferring benefits not present in the source fields."
+              ]
+            },
+            "watchouts": [
+              {
+                "type": "formula_gap",
+                "label": "No complete ingredient list was captured for this review batch; avoid formula-level or safety claims.",
+                "severity": "medium"
+              },
+              {
+                "type": "evidence_gap",
+                "label": "No independent review or community evidence was approved for this row; keep public copy source-bound.",
+                "severity": "medium"
+              },
+              {
+                "type": "scope_guardrail",
+                "label": "Use the commerce mainline for offer facts; keep this insight focused on source-backed product identity.",
+                "severity": "medium"
+              }
+            ],
+            "confidence": {
+              "overall": "moderate",
+              "fields": {
+                "what_it_is": "high",
+                "best_for": "moderate",
+                "why_it_stands_out": "moderate",
+                "routine_fit": "moderate",
+                "watchouts": "moderate"
+              }
+            },
+            "freshness": {
+              "generated_at": "2026-06-01T03:12:14.713Z",
+              "source_version": "wave115_sigmabeauty_continuation_20260601"
+            },
+            "quality_state": "reviewed",
+            "evidence_profile": "official_pdp_seed",
+            "source_coverage": {
+              "seller": {
+                "available": true,
+                "source_url": "https://sigmabeauty.com/products/f08-precision-powder"
+              },
+              "formula": {
+                "available": false,
+                "ingredient_count": 0,
+                "source_url": "https://sigmabeauty.com/products/f08-precision-powder"
+              },
+              "reviews": {
+                "available": false,
+                "count": 0
+              },
+              "creator": {
+                "available": false,
+                "count": 0
+              },
+              "editorial": {
+                "available": false,
+                "count": 0
+              }
+            }
+          },
+          "texture_finish": {
+            "finish": "brush",
+            "texture": "brush",
+            "source": "reviewed_category_and_official_title"
+          },
+          "community_signals": {
+            "status": "unavailable",
+            "reason": "not_collected_for_this_review_batch"
+          },
+          "recommendation_intents": {
+            "similar": [],
+            "complementary": [],
+            "routine_pairing": [],
+            "underfill_reason": null,
+            "confidence": "low"
+          },
+          "market_signal_badges": [],
+          "external_highlight_signals": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "official_pdp_seed",
+          "source_coverage": {
+            "seller": {
+              "available": true,
+              "source_url": "https://sigmabeauty.com/products/f08-precision-powder"
+            },
+            "formula": {
+              "available": false,
+              "ingredient_count": 0,
+              "source_url": "https://sigmabeauty.com/products/f08-precision-powder"
+            },
+            "reviews": {
+              "available": false,
+              "count": 0
+            },
+            "creator": {
+              "available": false,
+              "count": 0
+            },
+            "editorial": {
+              "available": false,
+              "count": 0
+            }
+          },
+          "confidence": {
+            "overall": "moderate",
+            "fields": {
+              "what_it_is": "high",
+              "best_for": "moderate",
+              "why_it_stands_out": "moderate",
+              "routine_fit": "moderate",
+              "watchouts": "moderate"
+            }
+          },
+          "freshness": {
+            "generated_at": "2026-06-01T03:12:14.713Z",
+            "source_version": "wave115_sigmabeauty_continuation_20260601"
+          },
+          "offer_pointers": {
+            "offers_count": 0,
+            "default_offer_id": null,
+            "best_price_offer_id": null,
+            "commerce_modes": []
+          },
+          "provenance": {
+            "source": "owner_delegated_official_seed_rewrite",
+            "generator": "owner_delegated_assistant_reviewed_rewrite",
+            "selection_strategy": "official_pdp_seed_guarded_manual_review",
+            "field_sources": {
+              "what_it_is": "official_seed_description",
+              "best_for": "reviewed_category_and_official_title",
+              "why_it_stands_out": "official_seed_description",
+              "routine_fit": "reviewed_category_and_official_title",
+              "watchouts": "owner_delegated_assistant_review",
+              "texture_finish": "reviewed_category_and_official_title",
+              "source_coverage": "official_pdp_seed_snapshot",
+              "community_signals": "not_collected"
+            },
+            "review_status": "completed",
+            "review_decision": "rewrite",
+            "reviewer": "codex_human_quality_reviewer",
+            "reviewer_kind": "assistant",
+            "reviewed_at": "2026-06-01T03:12:14.713Z",
+            "external_highlight_review_status": "rewrite",
+            "external_review_batch": "wave115_sigmabeauty_continuation_20260601",
+            "official_source_url": "https://sigmabeauty.com/products/f08-precision-powder",
+            "official_source_ingredient_count": 0,
+            "rewrite_reason": "Owner-delegated assistant review: official PDP seed rewrite; no commerce-state, community, medical, or unsupported safety claims added."
+          },
+          "shopping_card": {
+            "contract_version": "pivota.shopping_card.v1",
+            "title": "F08 Precision Powder Brush",
+            "subtitle": "Beauty Brush",
+            "highlight": "Brush format detail",
+            "intro": "A Sigma Beauty brush listed on the brand source page as F08 Precision Powder Brush. The source description identifies: Keep your face fresh and dewy! This dense, tapered powder brush is positioned for precisely setting makeup on smaller areas of the face, such as under the eyes or in the t-zone area.",
+            "evidence_profile": "official_pdp_seed"
+          },
+          "search_card": {
+            "title_candidate": "F08 Precision Powder Brush",
+            "compact_candidate": "Beauty Brush",
+            "highlight_candidate": "Brush format detail",
+            "intro_candidate": "A Sigma Beauty brush listed on the brand source page as F08 Precision Powder Brush. The source description identifies: Keep your face fresh and dewy! This dense, tapered powder brush is positioned for precisely setting makeup on smaller areas of the face, such as under the eyes or in the t-zone area.",
+            "proof_badge_candidate": ""
+          }
+        }
+      }
+    },
+    {
+      "case_id": "live_ext_d1d97a9ff67e0354f391856c",
+      "review_status": "completed",
+      "review_decision": "rewrite",
+      "reviewer": "codex_human_quality_reviewer",
+      "reviewer_kind": "assistant",
+      "reviewed_at": "2026-06-01T03:12:14.713Z",
+      "notes": "Approved official-PDP-seed rewrite for F23 Soft Angle Contour™ Brush; evidence_profile=official_pdp_seed; source_url=https://sigmabeauty.com/products/f23-soft-angled-contour",
+      "owner_delegated_review": {
+        "contract_version": "pivota.owner_delegated_review.v1",
+        "delegated_to": "codex_human_quality_reviewer",
+        "reviewer_kind": "assistant",
+        "owner_instruction": "User delegated Codex to perform high-quality human review for Pivota Insights quality improvement.",
+        "guardrails": [
+          "Do not overwrite good content with lower-quality content.",
+          "No commerce-state claims in Pivota Insights.",
+          "Use official source facts only; keep evidence confidence explicit."
+        ]
+      },
+      "quality_improvement_review": {
+        "decision": "approved_replacement",
+        "reviewer_kind": "assistant",
+        "owner_delegated": true,
+        "reason": "Owner-delegated assistant review confirms the replacement uses official PDP seed facts, avoids commerce and unsupported evidence claims, and explicitly marks evidence gaps instead of inventing claims."
+      },
+      "baseline": {
+        "canonical_product_ref": {
+          "merchant_id": "external_seed",
+          "product_id": "ext_d1d97a9ff67e0354f391856c",
+          "platform": "external_seed"
+        }
+      },
+      "selected": {
+        "selected_mode": "manual_reviewed_rewrite",
+        "selected_field_count": 7,
+        "field_sources": {
+          "what_it_is": "official_seed_description",
+          "best_for": "reviewed_category_and_official_title",
+          "why_it_stands_out": "official_seed_description",
+          "routine_fit": "reviewed_category_and_official_title",
+          "watchouts": "owner_delegated_assistant_review",
+          "texture_finish": "reviewed_category_and_official_title",
+          "source_coverage": "official_pdp_seed_snapshot",
+          "community_signals": "not_collected"
+        },
+        "bundle": {
+          "contract_version": "pivota.product_intel.v1",
+          "display_name": "Pivota Insights",
+          "canonical_product_ref": {
+            "merchant_id": "external_seed",
+            "product_id": "ext_d1d97a9ff67e0354f391856c",
+            "platform": "external_seed"
+          },
+          "product_group_id": "sig_ac075db9f00771ad4c64f3e6",
+          "product_intel_core": {
+            "display_name": "Pivota Insights",
+            "what_it_is": {
+              "headline": "Brush identity",
+              "body": "A Sigma Beauty brush listed on the brand source page as F23 Soft Angle Contour™ Brush. The source description identifies: Say hello to your new contour brush! positioned for creating a gentle, everyday contour, this fluffy SigmaTech® fiber brush lets you quickly sweep on blush or bronzer."
+            },
+            "best_for": [
+              {
+                "tag": "brush_shoppers",
+                "label": "Brush shoppers",
+                "confidence": "moderate"
+              },
+              {
+                "tag": "official_source_comparison",
+                "label": "Official-source comparison",
+                "confidence": "moderate"
+              }
+            ],
+            "why_it_stands_out": [
+              {
+                "headline": "Source-backed product detail",
+                "body": "Say hello to your new contour brush! positioned for creating a gentle, everyday contour, this fluffy SigmaTech® fiber brush lets you quickly sweep on blush or bronzer.",
+                "evidence_strength": "official_pdp_seed"
+              },
+              {
+                "headline": "Evidence gaps kept explicit",
+                "body": "No complete ingredient list was captured for this review batch, so formula-level claims stay unavailable.",
+                "evidence_strength": "official_pdp_seed"
+              }
+            ],
+            "routine_fit": {
+              "step": "tool",
+              "am_pm": [
+                "as_needed"
+              ],
+              "pairing_notes": [
+                "Use within the brush context; avoid inferring benefits not present in the source fields."
+              ]
+            },
+            "watchouts": [
+              {
+                "type": "formula_gap",
+                "label": "No complete ingredient list was captured for this review batch; avoid formula-level or safety claims.",
+                "severity": "medium"
+              },
+              {
+                "type": "evidence_gap",
+                "label": "No independent review or community evidence was approved for this row; keep public copy source-bound.",
+                "severity": "medium"
+              },
+              {
+                "type": "scope_guardrail",
+                "label": "Use the commerce mainline for offer facts; keep this insight focused on source-backed product identity.",
+                "severity": "medium"
+              }
+            ],
+            "confidence": {
+              "overall": "moderate",
+              "fields": {
+                "what_it_is": "high",
+                "best_for": "moderate",
+                "why_it_stands_out": "moderate",
+                "routine_fit": "moderate",
+                "watchouts": "moderate"
+              }
+            },
+            "freshness": {
+              "generated_at": "2026-06-01T03:12:14.713Z",
+              "source_version": "wave115_sigmabeauty_continuation_20260601"
+            },
+            "quality_state": "reviewed",
+            "evidence_profile": "official_pdp_seed",
+            "source_coverage": {
+              "seller": {
+                "available": true,
+                "source_url": "https://sigmabeauty.com/products/f23-soft-angled-contour"
+              },
+              "formula": {
+                "available": false,
+                "ingredient_count": 0,
+                "source_url": "https://sigmabeauty.com/products/f23-soft-angled-contour"
+              },
+              "reviews": {
+                "available": false,
+                "count": 0
+              },
+              "creator": {
+                "available": false,
+                "count": 0
+              },
+              "editorial": {
+                "available": false,
+                "count": 0
+              }
+            }
+          },
+          "texture_finish": {
+            "finish": "brush",
+            "texture": "brush",
+            "source": "reviewed_category_and_official_title"
+          },
+          "community_signals": {
+            "status": "unavailable",
+            "reason": "not_collected_for_this_review_batch"
+          },
+          "recommendation_intents": {
+            "similar": [],
+            "complementary": [],
+            "routine_pairing": [],
+            "underfill_reason": null,
+            "confidence": "low"
+          },
+          "market_signal_badges": [],
+          "external_highlight_signals": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "official_pdp_seed",
+          "source_coverage": {
+            "seller": {
+              "available": true,
+              "source_url": "https://sigmabeauty.com/products/f23-soft-angled-contour"
+            },
+            "formula": {
+              "available": false,
+              "ingredient_count": 0,
+              "source_url": "https://sigmabeauty.com/products/f23-soft-angled-contour"
+            },
+            "reviews": {
+              "available": false,
+              "count": 0
+            },
+            "creator": {
+              "available": false,
+              "count": 0
+            },
+            "editorial": {
+              "available": false,
+              "count": 0
+            }
+          },
+          "confidence": {
+            "overall": "moderate",
+            "fields": {
+              "what_it_is": "high",
+              "best_for": "moderate",
+              "why_it_stands_out": "moderate",
+              "routine_fit": "moderate",
+              "watchouts": "moderate"
+            }
+          },
+          "freshness": {
+            "generated_at": "2026-06-01T03:12:14.713Z",
+            "source_version": "wave115_sigmabeauty_continuation_20260601"
+          },
+          "offer_pointers": {
+            "offers_count": 0,
+            "default_offer_id": null,
+            "best_price_offer_id": null,
+            "commerce_modes": []
+          },
+          "provenance": {
+            "source": "owner_delegated_official_seed_rewrite",
+            "generator": "owner_delegated_assistant_reviewed_rewrite",
+            "selection_strategy": "official_pdp_seed_guarded_manual_review",
+            "field_sources": {
+              "what_it_is": "official_seed_description",
+              "best_for": "reviewed_category_and_official_title",
+              "why_it_stands_out": "official_seed_description",
+              "routine_fit": "reviewed_category_and_official_title",
+              "watchouts": "owner_delegated_assistant_review",
+              "texture_finish": "reviewed_category_and_official_title",
+              "source_coverage": "official_pdp_seed_snapshot",
+              "community_signals": "not_collected"
+            },
+            "review_status": "completed",
+            "review_decision": "rewrite",
+            "reviewer": "codex_human_quality_reviewer",
+            "reviewer_kind": "assistant",
+            "reviewed_at": "2026-06-01T03:12:14.713Z",
+            "external_highlight_review_status": "rewrite",
+            "external_review_batch": "wave115_sigmabeauty_continuation_20260601",
+            "official_source_url": "https://sigmabeauty.com/products/f23-soft-angled-contour",
+            "official_source_ingredient_count": 0,
+            "rewrite_reason": "Owner-delegated assistant review: official PDP seed rewrite; no commerce-state, community, medical, or unsupported safety claims added."
+          },
+          "shopping_card": {
+            "contract_version": "pivota.shopping_card.v1",
+            "title": "F23 Soft Angle Contour™ Brush",
+            "subtitle": "Beauty Brush",
+            "highlight": "Brush format detail",
+            "intro": "A Sigma Beauty brush listed on the brand source page as F23 Soft Angle Contour™ Brush. The source description identifies: Say hello to your new contour brush! positioned for creating a gentle, everyday contour, this fluffy SigmaTech® fiber brush lets you quickly sweep on blush or bronzer.",
+            "evidence_profile": "official_pdp_seed"
+          },
+          "search_card": {
+            "title_candidate": "F23 Soft Angle Contour™ Brush",
+            "compact_candidate": "Beauty Brush",
+            "highlight_candidate": "Brush format detail",
+            "intro_candidate": "A Sigma Beauty brush listed on the brand source page as F23 Soft Angle Contour™ Brush. The source description identifies: Say hello to your new contour brush! positioned for creating a gentle, everyday contour, this fluffy SigmaTech® fiber brush lets you quickly sweep on blush or bronzer.",
+            "proof_badge_candidate": ""
+          }
+        }
+      }
+    },
+    {
+      "case_id": "live_ext_b96a6d6c33e2547fc31aca0d",
+      "review_status": "completed",
+      "review_decision": "rewrite",
+      "reviewer": "codex_human_quality_reviewer",
+      "reviewer_kind": "assistant",
+      "reviewed_at": "2026-06-01T03:12:14.713Z",
+      "notes": "Approved official-PDP-seed rewrite for E28 Detailed Buffer™ Brush; evidence_profile=official_pdp_seed; source_url=https://sigmabeauty.com/products/e28-detail-buffer",
+      "owner_delegated_review": {
+        "contract_version": "pivota.owner_delegated_review.v1",
+        "delegated_to": "codex_human_quality_reviewer",
+        "reviewer_kind": "assistant",
+        "owner_instruction": "User delegated Codex to perform high-quality human review for Pivota Insights quality improvement.",
+        "guardrails": [
+          "Do not overwrite good content with lower-quality content.",
+          "No commerce-state claims in Pivota Insights.",
+          "Use official source facts only; keep evidence confidence explicit."
+        ]
+      },
+      "quality_improvement_review": {
+        "decision": "approved_replacement",
+        "reviewer_kind": "assistant",
+        "owner_delegated": true,
+        "reason": "Owner-delegated assistant review confirms the replacement uses official PDP seed facts, avoids commerce and unsupported evidence claims, and explicitly marks evidence gaps instead of inventing claims."
+      },
+      "baseline": {
+        "canonical_product_ref": {
+          "merchant_id": "external_seed",
+          "product_id": "ext_b96a6d6c33e2547fc31aca0d",
+          "platform": "external_seed"
+        }
+      },
+      "selected": {
+        "selected_mode": "manual_reviewed_rewrite",
+        "selected_field_count": 7,
+        "field_sources": {
+          "what_it_is": "official_seed_description",
+          "best_for": "reviewed_category_and_official_title",
+          "why_it_stands_out": "official_seed_description",
+          "routine_fit": "reviewed_category_and_official_title",
+          "watchouts": "owner_delegated_assistant_review",
+          "texture_finish": "reviewed_category_and_official_title",
+          "source_coverage": "official_pdp_seed_snapshot",
+          "community_signals": "not_collected"
+        },
+        "bundle": {
+          "contract_version": "pivota.product_intel.v1",
+          "display_name": "Pivota Insights",
+          "canonical_product_ref": {
+            "merchant_id": "external_seed",
+            "product_id": "ext_b96a6d6c33e2547fc31aca0d",
+            "platform": "external_seed"
+          },
+          "product_group_id": "sig_7a81ac1a49fd3c182a861e02",
+          "product_intel_core": {
+            "display_name": "Pivota Insights",
+            "what_it_is": {
+              "headline": "Brush identity",
+              "body": "A Sigma Beauty brush listed on the brand source page as E28 Detailed Buffer™ Brush. The source description identifies: A truly versatile eye brush, this elite beauty tool features a wide, rounded shape that’s positioned for everything."
+            },
+            "best_for": [
+              {
+                "tag": "brush_shoppers",
+                "label": "Brush shoppers",
+                "confidence": "moderate"
+              },
+              {
+                "tag": "official_source_comparison",
+                "label": "Official-source comparison",
+                "confidence": "moderate"
+              }
+            ],
+            "why_it_stands_out": [
+              {
+                "headline": "Source-backed product detail",
+                "body": "A truly versatile eye brush, this elite beauty tool features a wide, rounded shape that’s positioned for everything.",
+                "evidence_strength": "official_pdp_seed"
+              },
+              {
+                "headline": "Evidence gaps kept explicit",
+                "body": "No complete ingredient list was captured for this review batch, so formula-level claims stay unavailable.",
+                "evidence_strength": "official_pdp_seed"
+              }
+            ],
+            "routine_fit": {
+              "step": "tool",
+              "am_pm": [
+                "as_needed"
+              ],
+              "pairing_notes": [
+                "Use within the brush context; avoid inferring benefits not present in the source fields."
+              ]
+            },
+            "watchouts": [
+              {
+                "type": "formula_gap",
+                "label": "No complete ingredient list was captured for this review batch; avoid formula-level or safety claims.",
+                "severity": "medium"
+              },
+              {
+                "type": "evidence_gap",
+                "label": "No independent review or community evidence was approved for this row; keep public copy source-bound.",
+                "severity": "medium"
+              },
+              {
+                "type": "scope_guardrail",
+                "label": "Use the commerce mainline for offer facts; keep this insight focused on source-backed product identity.",
+                "severity": "medium"
+              }
+            ],
+            "confidence": {
+              "overall": "moderate",
+              "fields": {
+                "what_it_is": "high",
+                "best_for": "moderate",
+                "why_it_stands_out": "moderate",
+                "routine_fit": "moderate",
+                "watchouts": "moderate"
+              }
+            },
+            "freshness": {
+              "generated_at": "2026-06-01T03:12:14.713Z",
+              "source_version": "wave115_sigmabeauty_continuation_20260601"
+            },
+            "quality_state": "reviewed",
+            "evidence_profile": "official_pdp_seed",
+            "source_coverage": {
+              "seller": {
+                "available": true,
+                "source_url": "https://sigmabeauty.com/products/e28-detail-buffer"
+              },
+              "formula": {
+                "available": false,
+                "ingredient_count": 0,
+                "source_url": "https://sigmabeauty.com/products/e28-detail-buffer"
+              },
+              "reviews": {
+                "available": false,
+                "count": 0
+              },
+              "creator": {
+                "available": false,
+                "count": 0
+              },
+              "editorial": {
+                "available": false,
+                "count": 0
+              }
+            }
+          },
+          "texture_finish": {
+            "finish": "brush",
+            "texture": "brush",
+            "source": "reviewed_category_and_official_title"
+          },
+          "community_signals": {
+            "status": "unavailable",
+            "reason": "not_collected_for_this_review_batch"
+          },
+          "recommendation_intents": {
+            "similar": [],
+            "complementary": [],
+            "routine_pairing": [],
+            "underfill_reason": null,
+            "confidence": "low"
+          },
+          "market_signal_badges": [],
+          "external_highlight_signals": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "official_pdp_seed",
+          "source_coverage": {
+            "seller": {
+              "available": true,
+              "source_url": "https://sigmabeauty.com/products/e28-detail-buffer"
+            },
+            "formula": {
+              "available": false,
+              "ingredient_count": 0,
+              "source_url": "https://sigmabeauty.com/products/e28-detail-buffer"
+            },
+            "reviews": {
+              "available": false,
+              "count": 0
+            },
+            "creator": {
+              "available": false,
+              "count": 0
+            },
+            "editorial": {
+              "available": false,
+              "count": 0
+            }
+          },
+          "confidence": {
+            "overall": "moderate",
+            "fields": {
+              "what_it_is": "high",
+              "best_for": "moderate",
+              "why_it_stands_out": "moderate",
+              "routine_fit": "moderate",
+              "watchouts": "moderate"
+            }
+          },
+          "freshness": {
+            "generated_at": "2026-06-01T03:12:14.713Z",
+            "source_version": "wave115_sigmabeauty_continuation_20260601"
+          },
+          "offer_pointers": {
+            "offers_count": 0,
+            "default_offer_id": null,
+            "best_price_offer_id": null,
+            "commerce_modes": []
+          },
+          "provenance": {
+            "source": "owner_delegated_official_seed_rewrite",
+            "generator": "owner_delegated_assistant_reviewed_rewrite",
+            "selection_strategy": "official_pdp_seed_guarded_manual_review",
+            "field_sources": {
+              "what_it_is": "official_seed_description",
+              "best_for": "reviewed_category_and_official_title",
+              "why_it_stands_out": "official_seed_description",
+              "routine_fit": "reviewed_category_and_official_title",
+              "watchouts": "owner_delegated_assistant_review",
+              "texture_finish": "reviewed_category_and_official_title",
+              "source_coverage": "official_pdp_seed_snapshot",
+              "community_signals": "not_collected"
+            },
+            "review_status": "completed",
+            "review_decision": "rewrite",
+            "reviewer": "codex_human_quality_reviewer",
+            "reviewer_kind": "assistant",
+            "reviewed_at": "2026-06-01T03:12:14.713Z",
+            "external_highlight_review_status": "rewrite",
+            "external_review_batch": "wave115_sigmabeauty_continuation_20260601",
+            "official_source_url": "https://sigmabeauty.com/products/e28-detail-buffer",
+            "official_source_ingredient_count": 0,
+            "rewrite_reason": "Owner-delegated assistant review: official PDP seed rewrite; no commerce-state, community, medical, or unsupported safety claims added."
+          },
+          "shopping_card": {
+            "contract_version": "pivota.shopping_card.v1",
+            "title": "E28 Detailed Buffer™ Brush",
+            "subtitle": "Beauty Brush",
+            "highlight": "Brush format detail",
+            "intro": "A Sigma Beauty brush listed on the brand source page as E28 Detailed Buffer™ Brush. The source description identifies: A truly versatile eye brush, this elite beauty tool features a wide, rounded shape that’s positioned for everything.",
+            "evidence_profile": "official_pdp_seed"
+          },
+          "search_card": {
+            "title_candidate": "E28 Detailed Buffer™ Brush",
+            "compact_candidate": "Beauty Brush",
+            "highlight_candidate": "Brush format detail",
+            "intro_candidate": "A Sigma Beauty brush listed on the brand source page as E28 Detailed Buffer™ Brush. The source description identifies: A truly versatile eye brush, this elite beauty tool features a wide, rounded shape that’s positioned for everything.",
+            "proof_badge_candidate": ""
+          }
+        }
+      }
+    },
+    {
+      "case_id": "live_ext_e09ac3e79003532a24a50e29",
+      "review_status": "completed",
+      "review_decision": "rewrite",
+      "reviewer": "codex_human_quality_reviewer",
+      "reviewer_kind": "assistant",
+      "reviewed_at": "2026-06-01T03:12:14.713Z",
+      "notes": "Approved official-PDP-seed rewrite for F81 Blend Kabuki™ Brush; evidence_profile=official_pdp_seed; source_url=https://sigmabeauty.com/products/f81-blend-kabuki™-brush",
+      "owner_delegated_review": {
+        "contract_version": "pivota.owner_delegated_review.v1",
+        "delegated_to": "codex_human_quality_reviewer",
+        "reviewer_kind": "assistant",
+        "owner_instruction": "User delegated Codex to perform high-quality human review for Pivota Insights quality improvement.",
+        "guardrails": [
+          "Do not overwrite good content with lower-quality content.",
+          "No commerce-state claims in Pivota Insights.",
+          "Use official source facts only; keep evidence confidence explicit."
+        ]
+      },
+      "quality_improvement_review": {
+        "decision": "approved_replacement",
+        "reviewer_kind": "assistant",
+        "owner_delegated": true,
+        "reason": "Owner-delegated assistant review confirms the replacement uses official PDP seed facts, avoids commerce and unsupported evidence claims, and explicitly marks evidence gaps instead of inventing claims."
+      },
+      "baseline": {
+        "canonical_product_ref": {
+          "merchant_id": "external_seed",
+          "product_id": "ext_e09ac3e79003532a24a50e29",
+          "platform": "external_seed"
+        }
+      },
+      "selected": {
+        "selected_mode": "manual_reviewed_rewrite",
+        "selected_field_count": 7,
+        "field_sources": {
+          "what_it_is": "official_seed_description",
+          "best_for": "reviewed_category_and_official_title",
+          "why_it_stands_out": "official_seed_description",
+          "routine_fit": "reviewed_category_and_official_title",
+          "watchouts": "owner_delegated_assistant_review",
+          "texture_finish": "reviewed_category_and_official_title",
+          "source_coverage": "official_pdp_seed_snapshot",
+          "community_signals": "not_collected"
+        },
+        "bundle": {
+          "contract_version": "pivota.product_intel.v1",
+          "display_name": "Pivota Insights",
+          "canonical_product_ref": {
+            "merchant_id": "external_seed",
+            "product_id": "ext_e09ac3e79003532a24a50e29",
+            "platform": "external_seed"
+          },
+          "product_group_id": "sig_d7fb8e8f6e215a51f99b700b",
+          "product_intel_core": {
+            "display_name": "Pivota Insights",
+            "what_it_is": {
+              "headline": "Brush identity",
+              "body": "A Sigma Beauty brush listed on the brand source page as F81 Blend Kabuki™ Brush. The source description identifies: Achieve a even-looking finish with your selected liquid or powder foundation, Featuring soft, dense bristles, this easy-to-use face brush provides a seamless finish and buildable coverage."
+            },
+            "best_for": [
+              {
+                "tag": "brush_shoppers",
+                "label": "Brush shoppers",
+                "confidence": "moderate"
+              },
+              {
+                "tag": "official_source_comparison",
+                "label": "Official-source comparison",
+                "confidence": "moderate"
+              }
+            ],
+            "why_it_stands_out": [
+              {
+                "headline": "Source-backed product detail",
+                "body": "Achieve a even-looking finish with your selected liquid or powder foundation, Featuring soft, dense bristles, this easy-to-use face brush provides a seamless finish and buildable coverage.",
+                "evidence_strength": "official_pdp_seed"
+              },
+              {
+                "headline": "Evidence gaps kept explicit",
+                "body": "No complete ingredient list was captured for this review batch, so formula-level claims stay unavailable.",
+                "evidence_strength": "official_pdp_seed"
+              }
+            ],
+            "routine_fit": {
+              "step": "tool",
+              "am_pm": [
+                "as_needed"
+              ],
+              "pairing_notes": [
+                "Use within the brush context; avoid inferring benefits not present in the source fields."
+              ]
+            },
+            "watchouts": [
+              {
+                "type": "formula_gap",
+                "label": "No complete ingredient list was captured for this review batch; avoid formula-level or safety claims.",
+                "severity": "medium"
+              },
+              {
+                "type": "evidence_gap",
+                "label": "No independent review or community evidence was approved for this row; keep public copy source-bound.",
+                "severity": "medium"
+              },
+              {
+                "type": "scope_guardrail",
+                "label": "Use the commerce mainline for offer facts; keep this insight focused on source-backed product identity.",
+                "severity": "medium"
+              }
+            ],
+            "confidence": {
+              "overall": "moderate",
+              "fields": {
+                "what_it_is": "high",
+                "best_for": "moderate",
+                "why_it_stands_out": "moderate",
+                "routine_fit": "moderate",
+                "watchouts": "moderate"
+              }
+            },
+            "freshness": {
+              "generated_at": "2026-06-01T03:12:14.713Z",
+              "source_version": "wave115_sigmabeauty_continuation_20260601"
+            },
+            "quality_state": "reviewed",
+            "evidence_profile": "official_pdp_seed",
+            "source_coverage": {
+              "seller": {
+                "available": true,
+                "source_url": "https://sigmabeauty.com/products/f81-blend-kabuki™-brush"
+              },
+              "formula": {
+                "available": false,
+                "ingredient_count": 0,
+                "source_url": "https://sigmabeauty.com/products/f81-blend-kabuki™-brush"
+              },
+              "reviews": {
+                "available": false,
+                "count": 0
+              },
+              "creator": {
+                "available": false,
+                "count": 0
+              },
+              "editorial": {
+                "available": false,
+                "count": 0
+              }
+            }
+          },
+          "texture_finish": {
+            "finish": "brush",
+            "texture": "brush",
+            "source": "reviewed_category_and_official_title"
+          },
+          "community_signals": {
+            "status": "unavailable",
+            "reason": "not_collected_for_this_review_batch"
+          },
+          "recommendation_intents": {
+            "similar": [],
+            "complementary": [],
+            "routine_pairing": [],
+            "underfill_reason": null,
+            "confidence": "low"
+          },
+          "market_signal_badges": [],
+          "external_highlight_signals": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "official_pdp_seed",
+          "source_coverage": {
+            "seller": {
+              "available": true,
+              "source_url": "https://sigmabeauty.com/products/f81-blend-kabuki™-brush"
+            },
+            "formula": {
+              "available": false,
+              "ingredient_count": 0,
+              "source_url": "https://sigmabeauty.com/products/f81-blend-kabuki™-brush"
+            },
+            "reviews": {
+              "available": false,
+              "count": 0
+            },
+            "creator": {
+              "available": false,
+              "count": 0
+            },
+            "editorial": {
+              "available": false,
+              "count": 0
+            }
+          },
+          "confidence": {
+            "overall": "moderate",
+            "fields": {
+              "what_it_is": "high",
+              "best_for": "moderate",
+              "why_it_stands_out": "moderate",
+              "routine_fit": "moderate",
+              "watchouts": "moderate"
+            }
+          },
+          "freshness": {
+            "generated_at": "2026-06-01T03:12:14.713Z",
+            "source_version": "wave115_sigmabeauty_continuation_20260601"
+          },
+          "offer_pointers": {
+            "offers_count": 0,
+            "default_offer_id": null,
+            "best_price_offer_id": null,
+            "commerce_modes": []
+          },
+          "provenance": {
+            "source": "owner_delegated_official_seed_rewrite",
+            "generator": "owner_delegated_assistant_reviewed_rewrite",
+            "selection_strategy": "official_pdp_seed_guarded_manual_review",
+            "field_sources": {
+              "what_it_is": "official_seed_description",
+              "best_for": "reviewed_category_and_official_title",
+              "why_it_stands_out": "official_seed_description",
+              "routine_fit": "reviewed_category_and_official_title",
+              "watchouts": "owner_delegated_assistant_review",
+              "texture_finish": "reviewed_category_and_official_title",
+              "source_coverage": "official_pdp_seed_snapshot",
+              "community_signals": "not_collected"
+            },
+            "review_status": "completed",
+            "review_decision": "rewrite",
+            "reviewer": "codex_human_quality_reviewer",
+            "reviewer_kind": "assistant",
+            "reviewed_at": "2026-06-01T03:12:14.713Z",
+            "external_highlight_review_status": "rewrite",
+            "external_review_batch": "wave115_sigmabeauty_continuation_20260601",
+            "official_source_url": "https://sigmabeauty.com/products/f81-blend-kabuki™-brush",
+            "official_source_ingredient_count": 0,
+            "rewrite_reason": "Owner-delegated assistant review: official PDP seed rewrite; no commerce-state, community, medical, or unsupported safety claims added."
+          },
+          "shopping_card": {
+            "contract_version": "pivota.shopping_card.v1",
+            "title": "F81 Blend Kabuki™ Brush",
+            "subtitle": "Beauty Brush",
+            "highlight": "Brush format detail",
+            "intro": "A Sigma Beauty brush listed on the brand source page as F81 Blend Kabuki™ Brush. The source description identifies: Achieve a even-looking finish with your selected liquid or powder foundation, Featuring soft, dense bristles, this easy-to-use face brush provides a seamless finish and buildable coverage.",
+            "evidence_profile": "official_pdp_seed"
+          },
+          "search_card": {
+            "title_candidate": "F81 Blend Kabuki™ Brush",
+            "compact_candidate": "Beauty Brush",
+            "highlight_candidate": "Brush format detail",
+            "intro_candidate": "A Sigma Beauty brush listed on the brand source page as F81 Blend Kabuki™ Brush. The source description identifies: Achieve a even-looking finish with your selected liquid or powder foundation, Featuring soft, dense bristles, this easy-to-use face brush provides a seamless finish and buildable coverage.",
+            "proof_badge_candidate": ""
+          }
+        }
+      }
+    },
+    {
+      "case_id": "live_ext_a17b2f2ec278dd6d32210b21",
+      "review_status": "completed",
+      "review_decision": "rewrite",
+      "reviewer": "codex_human_quality_reviewer",
+      "reviewer_kind": "assistant",
+      "reviewed_at": "2026-06-01T03:12:14.713Z",
+      "notes": "Approved official-PDP-seed rewrite for 3DHD™ Blender; evidence_profile=official_pdp_seed; source_url=https://sigmabeauty.com/products/3dhdtm-blender",
+      "owner_delegated_review": {
+        "contract_version": "pivota.owner_delegated_review.v1",
+        "delegated_to": "codex_human_quality_reviewer",
+        "reviewer_kind": "assistant",
+        "owner_instruction": "User delegated Codex to perform high-quality human review for Pivota Insights quality improvement.",
+        "guardrails": [
+          "Do not overwrite good content with lower-quality content.",
+          "No commerce-state claims in Pivota Insights.",
+          "Use official source facts only; keep evidence confidence explicit."
+        ]
+      },
+      "quality_improvement_review": {
+        "decision": "approved_replacement",
+        "reviewer_kind": "assistant",
+        "owner_delegated": true,
+        "reason": "Owner-delegated assistant review confirms the replacement uses official PDP seed facts, avoids commerce and unsupported evidence claims, and explicitly marks evidence gaps instead of inventing claims."
+      },
+      "baseline": {
+        "canonical_product_ref": {
+          "merchant_id": "external_seed",
+          "product_id": "ext_a17b2f2ec278dd6d32210b21",
+          "platform": "external_seed"
+        }
+      },
+      "selected": {
+        "selected_mode": "manual_reviewed_rewrite",
+        "selected_field_count": 7,
+        "field_sources": {
+          "what_it_is": "official_seed_description",
+          "best_for": "reviewed_category_and_official_title",
+          "why_it_stands_out": "official_seed_description",
+          "routine_fit": "reviewed_category_and_official_title",
+          "watchouts": "owner_delegated_assistant_review",
+          "texture_finish": "reviewed_category_and_official_title",
+          "source_coverage": "official_pdp_seed_snapshot",
+          "community_signals": "not_collected"
+        },
+        "bundle": {
+          "contract_version": "pivota.product_intel.v1",
+          "display_name": "Pivota Insights",
+          "canonical_product_ref": {
+            "merchant_id": "external_seed",
+            "product_id": "ext_a17b2f2ec278dd6d32210b21",
+            "platform": "external_seed"
+          },
+          "product_group_id": "sig_776d6cb52d7eae9349793e75",
+          "product_intel_core": {
+            "display_name": "Pivota Insights",
+            "what_it_is": {
+              "headline": "Makeup applicator identity",
+              "body": "A Sigma Beauty makeup applicator listed on the brand source page as 3DHD™ Blender. The source description identifies: Reach your every edge and contour with specific angles designed to prime, conceal, sculpt and highlight with any formula for even-looking skin."
+            },
+            "best_for": [
+              {
+                "tag": "makeup_applicator_shoppers",
+                "label": "Makeup applicator shoppers",
+                "confidence": "moderate"
+              },
+              {
+                "tag": "official_source_comparison",
+                "label": "Official-source comparison",
+                "confidence": "moderate"
+              }
+            ],
+            "why_it_stands_out": [
+              {
+                "headline": "Source-backed product detail",
+                "body": "Reach your every edge and contour with specific angles designed to prime, conceal, sculpt and highlight with any formula for even-looking skin.",
+                "evidence_strength": "official_pdp_seed"
+              },
+              {
+                "headline": "Evidence gaps kept explicit",
+                "body": "No complete ingredient list was captured for this review batch, so formula-level claims stay unavailable.",
+                "evidence_strength": "official_pdp_seed"
+              }
+            ],
+            "routine_fit": {
+              "step": "tool",
+              "am_pm": [
+                "as_needed"
+              ],
+              "pairing_notes": [
+                "Use within the makeup applicator context; avoid inferring benefits not present in the source fields."
+              ]
+            },
+            "watchouts": [
+              {
+                "type": "formula_gap",
+                "label": "No complete ingredient list was captured for this review batch; avoid formula-level or safety claims.",
+                "severity": "medium"
+              },
+              {
+                "type": "evidence_gap",
+                "label": "No independent review or community evidence was approved for this row; keep public copy source-bound.",
+                "severity": "medium"
+              },
+              {
+                "type": "scope_guardrail",
+                "label": "Use the commerce mainline for offer facts; keep this insight focused on source-backed product identity.",
+                "severity": "medium"
+              }
+            ],
+            "confidence": {
+              "overall": "moderate",
+              "fields": {
+                "what_it_is": "high",
+                "best_for": "moderate",
+                "why_it_stands_out": "moderate",
+                "routine_fit": "moderate",
+                "watchouts": "moderate"
+              }
+            },
+            "freshness": {
+              "generated_at": "2026-06-01T03:12:14.713Z",
+              "source_version": "wave115_sigmabeauty_continuation_20260601"
+            },
+            "quality_state": "reviewed",
+            "evidence_profile": "official_pdp_seed",
+            "source_coverage": {
+              "seller": {
+                "available": true,
+                "source_url": "https://sigmabeauty.com/products/3dhdtm-blender"
+              },
+              "formula": {
+                "available": false,
+                "ingredient_count": 0,
+                "source_url": "https://sigmabeauty.com/products/3dhdtm-blender"
+              },
+              "reviews": {
+                "available": false,
+                "count": 0
+              },
+              "creator": {
+                "available": false,
+                "count": 0
+              },
+              "editorial": {
+                "available": false,
+                "count": 0
+              }
+            }
+          },
+          "texture_finish": {
+            "finish": "makeup applicator",
+            "texture": "makeup_applicator",
+            "source": "reviewed_category_and_official_title"
+          },
+          "community_signals": {
+            "status": "unavailable",
+            "reason": "not_collected_for_this_review_batch"
+          },
+          "recommendation_intents": {
+            "similar": [],
+            "complementary": [],
+            "routine_pairing": [],
+            "underfill_reason": null,
+            "confidence": "low"
+          },
+          "market_signal_badges": [],
+          "external_highlight_signals": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "official_pdp_seed",
+          "source_coverage": {
+            "seller": {
+              "available": true,
+              "source_url": "https://sigmabeauty.com/products/3dhdtm-blender"
+            },
+            "formula": {
+              "available": false,
+              "ingredient_count": 0,
+              "source_url": "https://sigmabeauty.com/products/3dhdtm-blender"
+            },
+            "reviews": {
+              "available": false,
+              "count": 0
+            },
+            "creator": {
+              "available": false,
+              "count": 0
+            },
+            "editorial": {
+              "available": false,
+              "count": 0
+            }
+          },
+          "confidence": {
+            "overall": "moderate",
+            "fields": {
+              "what_it_is": "high",
+              "best_for": "moderate",
+              "why_it_stands_out": "moderate",
+              "routine_fit": "moderate",
+              "watchouts": "moderate"
+            }
+          },
+          "freshness": {
+            "generated_at": "2026-06-01T03:12:14.713Z",
+            "source_version": "wave115_sigmabeauty_continuation_20260601"
+          },
+          "offer_pointers": {
+            "offers_count": 0,
+            "default_offer_id": null,
+            "best_price_offer_id": null,
+            "commerce_modes": []
+          },
+          "provenance": {
+            "source": "owner_delegated_official_seed_rewrite",
+            "generator": "owner_delegated_assistant_reviewed_rewrite",
+            "selection_strategy": "official_pdp_seed_guarded_manual_review",
+            "field_sources": {
+              "what_it_is": "official_seed_description",
+              "best_for": "reviewed_category_and_official_title",
+              "why_it_stands_out": "official_seed_description",
+              "routine_fit": "reviewed_category_and_official_title",
+              "watchouts": "owner_delegated_assistant_review",
+              "texture_finish": "reviewed_category_and_official_title",
+              "source_coverage": "official_pdp_seed_snapshot",
+              "community_signals": "not_collected"
+            },
+            "review_status": "completed",
+            "review_decision": "rewrite",
+            "reviewer": "codex_human_quality_reviewer",
+            "reviewer_kind": "assistant",
+            "reviewed_at": "2026-06-01T03:12:14.713Z",
+            "external_highlight_review_status": "rewrite",
+            "external_review_batch": "wave115_sigmabeauty_continuation_20260601",
+            "official_source_url": "https://sigmabeauty.com/products/3dhdtm-blender",
+            "official_source_ingredient_count": 0,
+            "rewrite_reason": "Owner-delegated assistant review: official PDP seed rewrite; no commerce-state, community, medical, or unsupported safety claims added."
+          },
+          "shopping_card": {
+            "contract_version": "pivota.shopping_card.v1",
+            "title": "3DHD™ Blender",
+            "subtitle": "Makeup Applicator",
+            "highlight": "Makeup sponge format detail",
+            "intro": "A Sigma Beauty makeup applicator listed on the brand source page as 3DHD™ Blender. The source description identifies: Reach your every edge and contour with specific angles designed to prime, conceal, sculpt and highlight with any formula for even-looking skin.",
+            "evidence_profile": "official_pdp_seed"
+          },
+          "search_card": {
+            "title_candidate": "3DHD™ Blender",
+            "compact_candidate": "Makeup Applicator",
+            "highlight_candidate": "Makeup sponge format detail",
+            "intro_candidate": "A Sigma Beauty makeup applicator listed on the brand source page as 3DHD™ Blender. The source description identifies: Reach your every edge and contour with specific angles designed to prime, conceal, sculpt and highlight with any formula for even-looking skin.",
+            "proof_badge_candidate": ""
+          }
+        }
+      }
+    },
+    {
+      "case_id": "live_ext_68f54cb97689f84e81809010",
+      "review_status": "completed",
+      "review_decision": "rewrite",
+      "reviewer": "codex_human_quality_reviewer",
+      "reviewer_kind": "assistant",
+      "reviewed_at": "2026-06-01T03:12:14.713Z",
+      "notes": "Approved official-PDP-seed rewrite for Renew Lip Oil; evidence_profile=seller_plus_formula; source_url=https://sigmabeauty.com/products/renew-lip-oil",
+      "owner_delegated_review": {
+        "contract_version": "pivota.owner_delegated_review.v1",
+        "delegated_to": "codex_human_quality_reviewer",
+        "reviewer_kind": "assistant",
+        "owner_instruction": "User delegated Codex to perform high-quality human review for Pivota Insights quality improvement.",
+        "guardrails": [
+          "Do not overwrite good content with lower-quality content.",
+          "No commerce-state claims in Pivota Insights.",
+          "Use official source facts only; keep evidence confidence explicit."
+        ]
+      },
+      "quality_improvement_review": {
+        "decision": "approved_replacement",
+        "reviewer_kind": "assistant",
+        "owner_delegated": true,
+        "reason": "Owner-delegated assistant review confirms the replacement uses official PDP seed facts, avoids commerce and unsupported evidence claims, and explicitly marks evidence gaps instead of inventing claims."
+      },
+      "baseline": {
+        "canonical_product_ref": {
+          "merchant_id": "external_seed",
+          "product_id": "ext_68f54cb97689f84e81809010",
+          "platform": "external_seed"
+        }
+      },
+      "selected": {
+        "selected_mode": "manual_reviewed_rewrite",
+        "selected_field_count": 7,
+        "field_sources": {
+          "what_it_is": "official_seed_description",
+          "best_for": "reviewed_category_and_official_title",
+          "why_it_stands_out": "official_seed_description_and_formula",
+          "routine_fit": "reviewed_category_and_official_title",
+          "watchouts": "owner_delegated_assistant_review",
+          "texture_finish": "reviewed_category_and_official_title",
+          "source_coverage": "official_pdp_seed_snapshot",
+          "community_signals": "not_collected"
+        },
+        "bundle": {
+          "contract_version": "pivota.product_intel.v1",
+          "display_name": "Pivota Insights",
+          "canonical_product_ref": {
+            "merchant_id": "external_seed",
+            "product_id": "ext_68f54cb97689f84e81809010",
+            "platform": "external_seed"
+          },
+          "product_group_id": "sig_5c6184dc7afa8ad5b0643c09",
+          "product_intel_core": {
+            "display_name": "Pivota Insights",
+            "what_it_is": {
+              "headline": "Lip product identity",
+              "body": "A Sigma Beauty lip product listed on the brand source page as Renew Lip Oil. The source description identifies: Get the nourishment of a lip balm and the shine of a lip gloss in one precise product."
+            },
+            "best_for": [
+              {
+                "tag": "lip_shoppers",
+                "label": "Lip product shoppers",
+                "confidence": "moderate"
+              },
+              {
+                "tag": "official_source_comparison",
+                "label": "Official-source comparison",
+                "confidence": "moderate"
+              }
+            ],
+            "why_it_stands_out": [
+              {
+                "headline": "Source-backed product detail",
+                "body": "Get the nourishment of a lip balm and the shine of a lip gloss in one precise product.",
+                "evidence_strength": "seller_plus_formula"
+              },
+              {
+                "headline": "Formula context captured",
+                "body": "Captured formula fields include Jojoba Oil Nourishes and hydrates lips while promoting a healthy glow Hydrates lips without clogging pores Nourishing antioxidant and Promotes healthy glow Helps prevent growth of bacteria Great for sensitive and/or acne-prone skin Shares many benefits with vitamin E as it's a main ingredient in jojoba oil Sunflower Seed Oil Helps lips retain moisture to keep lips feeling soft and smooth Protects dry or chapped lips Nourishing antioxidant and Helps lips heal and reduces signs of aging Great for those with sensitive and/or acne-prone skin Shares many benefits with vitamin E as it's a main ingredient in sunflower seed oil Vitamin E Protects skin, restores damaged skin cells, and soothes dry, chapped, or sunburned lips Restores damaged skin cells Nourishing antioxidant Helps boost immune system Fades wrinkles and fine lines Protects skin from pollutants and Soothes dry. Agents should keep composition claims within those source fields.",
+                "evidence_strength": "seller_plus_formula"
+              }
+            ],
+            "routine_fit": {
+              "step": "lip_color",
+              "am_pm": [
+                "as_needed"
+              ],
+              "pairing_notes": [
+                "Use within the lip product context; avoid inferring benefits not present in the source fields."
+              ]
+            },
+            "watchouts": [
+              {
+                "type": "formula_scope",
+                "label": "Formula details are source-derived; avoid medical, safety, or suitability claims not present in the source.",
+                "severity": "medium"
+              },
+              {
+                "type": "evidence_gap",
+                "label": "No independent review or community evidence was approved for this row; keep public copy source-bound.",
+                "severity": "medium"
+              },
+              {
+                "type": "scope_guardrail",
+                "label": "Use the commerce mainline for offer facts; keep this insight focused on source-backed product identity.",
+                "severity": "medium"
+              }
+            ],
+            "confidence": {
+              "overall": "moderate",
+              "fields": {
+                "what_it_is": "high",
+                "best_for": "moderate",
+                "why_it_stands_out": "moderate",
+                "routine_fit": "moderate",
+                "watchouts": "moderate"
+              }
+            },
+            "freshness": {
+              "generated_at": "2026-06-01T03:12:14.713Z",
+              "source_version": "wave115_sigmabeauty_continuation_20260601"
+            },
+            "quality_state": "reviewed",
+            "evidence_profile": "seller_plus_formula",
+            "source_coverage": {
+              "seller": {
+                "available": true,
+                "source_url": "https://sigmabeauty.com/products/renew-lip-oil"
+              },
+              "formula": {
+                "available": true,
+                "ingredient_count": 25,
+                "source_url": "https://sigmabeauty.com/products/renew-lip-oil"
+              },
+              "reviews": {
+                "available": false,
+                "count": 0
+              },
+              "creator": {
+                "available": false,
+                "count": 0
+              },
+              "editorial": {
+                "available": false,
+                "count": 0
+              }
+            }
+          },
+          "texture_finish": {
+            "finish": "lip product",
+            "texture": "lip",
+            "source": "reviewed_category_and_official_title"
+          },
+          "community_signals": {
+            "status": "unavailable",
+            "reason": "not_collected_for_this_review_batch"
+          },
+          "recommendation_intents": {
+            "similar": [],
+            "complementary": [],
+            "routine_pairing": [],
+            "underfill_reason": null,
+            "confidence": "low"
+          },
+          "market_signal_badges": [],
+          "external_highlight_signals": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "seller_plus_formula",
+          "source_coverage": {
+            "seller": {
+              "available": true,
+              "source_url": "https://sigmabeauty.com/products/renew-lip-oil"
+            },
+            "formula": {
+              "available": true,
+              "ingredient_count": 25,
+              "source_url": "https://sigmabeauty.com/products/renew-lip-oil"
+            },
+            "reviews": {
+              "available": false,
+              "count": 0
+            },
+            "creator": {
+              "available": false,
+              "count": 0
+            },
+            "editorial": {
+              "available": false,
+              "count": 0
+            }
+          },
+          "confidence": {
+            "overall": "moderate",
+            "fields": {
+              "what_it_is": "high",
+              "best_for": "moderate",
+              "why_it_stands_out": "moderate",
+              "routine_fit": "moderate",
+              "watchouts": "moderate"
+            }
+          },
+          "freshness": {
+            "generated_at": "2026-06-01T03:12:14.713Z",
+            "source_version": "wave115_sigmabeauty_continuation_20260601"
+          },
+          "offer_pointers": {
+            "offers_count": 0,
+            "default_offer_id": null,
+            "best_price_offer_id": null,
+            "commerce_modes": []
+          },
+          "provenance": {
+            "source": "owner_delegated_official_seed_rewrite",
+            "generator": "owner_delegated_assistant_reviewed_rewrite",
+            "selection_strategy": "official_pdp_seed_guarded_manual_review",
+            "field_sources": {
+              "what_it_is": "official_seed_description",
+              "best_for": "reviewed_category_and_official_title",
+              "why_it_stands_out": "official_seed_description_and_formula",
+              "routine_fit": "reviewed_category_and_official_title",
+              "watchouts": "owner_delegated_assistant_review",
+              "texture_finish": "reviewed_category_and_official_title",
+              "source_coverage": "official_pdp_seed_snapshot",
+              "community_signals": "not_collected"
+            },
+            "review_status": "completed",
+            "review_decision": "rewrite",
+            "reviewer": "codex_human_quality_reviewer",
+            "reviewer_kind": "assistant",
+            "reviewed_at": "2026-06-01T03:12:14.713Z",
+            "external_highlight_review_status": "rewrite",
+            "external_review_batch": "wave115_sigmabeauty_continuation_20260601",
+            "official_source_url": "https://sigmabeauty.com/products/renew-lip-oil",
+            "official_source_ingredient_count": 25,
+            "rewrite_reason": "Owner-delegated assistant review: official PDP seed rewrite; no commerce-state, community, medical, or unsupported safety claims added."
+          },
+          "shopping_card": {
+            "contract_version": "pivota.shopping_card.v1",
+            "title": "Renew Lip Oil",
+            "subtitle": "Lip Product",
+            "highlight": "Creamy lip formula detail",
+            "intro": "A Sigma Beauty lip product listed on the brand source page as Renew Lip Oil. The source description identifies: Get the nourishment of a lip balm and the shine of a lip gloss in one precise product.",
+            "evidence_profile": "seller_plus_formula"
+          },
+          "search_card": {
+            "title_candidate": "Renew Lip Oil",
+            "compact_candidate": "Lip Product",
+            "highlight_candidate": "Creamy lip formula detail",
+            "intro_candidate": "A Sigma Beauty lip product listed on the brand source page as Renew Lip Oil. The source description identifies: Get the nourishment of a lip balm and the shine of a lip gloss in one precise product.",
+            "proof_badge_candidate": ""
+          }
+        }
+      }
+    },
+    {
+      "case_id": "live_ext_683bce84d49887a3f4a83038",
+      "review_status": "completed",
+      "review_decision": "rewrite",
+      "reviewer": "codex_human_quality_reviewer",
+      "reviewer_kind": "assistant",
+      "reviewed_at": "2026-06-01T03:12:14.713Z",
+      "notes": "Approved official-PDP-seed rewrite for Perfect Brow Set; evidence_profile=seller_plus_formula; source_url=https://sigmabeauty.com/products/the-perfect-brow-set",
+      "owner_delegated_review": {
+        "contract_version": "pivota.owner_delegated_review.v1",
+        "delegated_to": "codex_human_quality_reviewer",
+        "reviewer_kind": "assistant",
+        "owner_instruction": "User delegated Codex to perform high-quality human review for Pivota Insights quality improvement.",
+        "guardrails": [
+          "Do not overwrite good content with lower-quality content.",
+          "No commerce-state claims in Pivota Insights.",
+          "Use official source facts only; keep evidence confidence explicit."
+        ]
+      },
+      "quality_improvement_review": {
+        "decision": "approved_replacement",
+        "reviewer_kind": "assistant",
+        "owner_delegated": true,
+        "reason": "Owner-delegated assistant review confirms the replacement uses official PDP seed facts, avoids commerce and unsupported evidence claims, and explicitly marks evidence gaps instead of inventing claims."
+      },
+      "baseline": {
+        "canonical_product_ref": {
+          "merchant_id": "external_seed",
+          "product_id": "ext_683bce84d49887a3f4a83038",
+          "platform": "external_seed"
+        }
+      },
+      "selected": {
+        "selected_mode": "manual_reviewed_rewrite",
+        "selected_field_count": 7,
+        "field_sources": {
+          "what_it_is": "official_seed_description",
+          "best_for": "reviewed_category_and_official_title",
+          "why_it_stands_out": "official_seed_description_and_formula",
+          "routine_fit": "reviewed_category_and_official_title",
+          "watchouts": "owner_delegated_assistant_review",
+          "texture_finish": "reviewed_category_and_official_title",
+          "source_coverage": "official_pdp_seed_snapshot",
+          "community_signals": "not_collected"
+        },
+        "bundle": {
+          "contract_version": "pivota.product_intel.v1",
+          "display_name": "Pivota Insights",
+          "canonical_product_ref": {
+            "merchant_id": "external_seed",
+            "product_id": "ext_683bce84d49887a3f4a83038",
+            "platform": "external_seed"
+          },
+          "product_group_id": "sig_677d4052ca32fa5a3f1c8be3",
+          "product_intel_core": {
+            "display_name": "Pivota Insights",
+            "what_it_is": {
+              "headline": "Makeup set identity",
+              "body": "A Sigma Beauty makeup set listed on the brand source page as Perfect Brow Set. The source description identifies: Achieve even-looking, framed brows with this all-in-one set."
+            },
+            "best_for": [
+              {
+                "tag": "makeup_set_shoppers",
+                "label": "Makeup set shoppers",
+                "confidence": "moderate"
+              },
+              {
+                "tag": "official_source_comparison",
+                "label": "Official-source comparison",
+                "confidence": "moderate"
+              }
+            ],
+            "why_it_stands_out": [
+              {
+                "headline": "Source-backed product detail",
+                "body": "Achieve even-looking, framed brows with this all-in-one set.",
+                "evidence_strength": "seller_plus_formula"
+              },
+              {
+                "headline": "Formula context captured",
+                "body": "Captured formula fields include Color + Shape Brow Powder Light: Talc, Mica, Magnesium Stearate, Nylon-12, Dimethicone. Agents should keep composition claims within those source fields.",
+                "evidence_strength": "seller_plus_formula"
+              }
+            ],
+            "routine_fit": {
+              "step": "set",
+              "am_pm": [
+                "as_needed"
+              ],
+              "pairing_notes": [
+                "Use within the makeup set context; avoid inferring benefits not present in the source fields."
+              ]
+            },
+            "watchouts": [
+              {
+                "type": "formula_scope",
+                "label": "Formula details are source-derived; avoid medical, safety, or suitability claims not present in the source.",
+                "severity": "medium"
+              },
+              {
+                "type": "evidence_gap",
+                "label": "No independent review or community evidence was approved for this row; keep public copy source-bound.",
+                "severity": "medium"
+              },
+              {
+                "type": "scope_guardrail",
+                "label": "Use the commerce mainline for offer facts; keep this insight focused on source-backed product identity.",
+                "severity": "medium"
+              }
+            ],
+            "confidence": {
+              "overall": "moderate",
+              "fields": {
+                "what_it_is": "high",
+                "best_for": "moderate",
+                "why_it_stands_out": "moderate",
+                "routine_fit": "moderate",
+                "watchouts": "moderate"
+              }
+            },
+            "freshness": {
+              "generated_at": "2026-06-01T03:12:14.713Z",
+              "source_version": "wave115_sigmabeauty_continuation_20260601"
+            },
+            "quality_state": "reviewed",
+            "evidence_profile": "seller_plus_formula",
+            "source_coverage": {
+              "seller": {
+                "available": true,
+                "source_url": "https://sigmabeauty.com/products/the-perfect-brow-set"
+              },
+              "formula": {
+                "available": true,
+                "ingredient_count": 13,
+                "source_url": "https://sigmabeauty.com/products/the-perfect-brow-set"
+              },
+              "reviews": {
+                "available": false,
+                "count": 0
+              },
+              "creator": {
+                "available": false,
+                "count": 0
+              },
+              "editorial": {
+                "available": false,
+                "count": 0
+              }
+            }
+          },
+          "texture_finish": {
+            "finish": "makeup set",
+            "texture": "makeup_set",
+            "source": "reviewed_category_and_official_title"
+          },
+          "community_signals": {
+            "status": "unavailable",
+            "reason": "not_collected_for_this_review_batch"
+          },
+          "recommendation_intents": {
+            "similar": [],
+            "complementary": [],
+            "routine_pairing": [],
+            "underfill_reason": null,
+            "confidence": "low"
+          },
+          "market_signal_badges": [],
+          "external_highlight_signals": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "seller_plus_formula",
+          "source_coverage": {
+            "seller": {
+              "available": true,
+              "source_url": "https://sigmabeauty.com/products/the-perfect-brow-set"
+            },
+            "formula": {
+              "available": true,
+              "ingredient_count": 13,
+              "source_url": "https://sigmabeauty.com/products/the-perfect-brow-set"
+            },
+            "reviews": {
+              "available": false,
+              "count": 0
+            },
+            "creator": {
+              "available": false,
+              "count": 0
+            },
+            "editorial": {
+              "available": false,
+              "count": 0
+            }
+          },
+          "confidence": {
+            "overall": "moderate",
+            "fields": {
+              "what_it_is": "high",
+              "best_for": "moderate",
+              "why_it_stands_out": "moderate",
+              "routine_fit": "moderate",
+              "watchouts": "moderate"
+            }
+          },
+          "freshness": {
+            "generated_at": "2026-06-01T03:12:14.713Z",
+            "source_version": "wave115_sigmabeauty_continuation_20260601"
+          },
+          "offer_pointers": {
+            "offers_count": 0,
+            "default_offer_id": null,
+            "best_price_offer_id": null,
+            "commerce_modes": []
+          },
+          "provenance": {
+            "source": "owner_delegated_official_seed_rewrite",
+            "generator": "owner_delegated_assistant_reviewed_rewrite",
+            "selection_strategy": "official_pdp_seed_guarded_manual_review",
+            "field_sources": {
+              "what_it_is": "official_seed_description",
+              "best_for": "reviewed_category_and_official_title",
+              "why_it_stands_out": "official_seed_description_and_formula",
+              "routine_fit": "reviewed_category_and_official_title",
+              "watchouts": "owner_delegated_assistant_review",
+              "texture_finish": "reviewed_category_and_official_title",
+              "source_coverage": "official_pdp_seed_snapshot",
+              "community_signals": "not_collected"
+            },
+            "review_status": "completed",
+            "review_decision": "rewrite",
+            "reviewer": "codex_human_quality_reviewer",
+            "reviewer_kind": "assistant",
+            "reviewed_at": "2026-06-01T03:12:14.713Z",
+            "external_highlight_review_status": "rewrite",
+            "external_review_batch": "wave115_sigmabeauty_continuation_20260601",
+            "official_source_url": "https://sigmabeauty.com/products/the-perfect-brow-set",
+            "official_source_ingredient_count": 13,
+            "rewrite_reason": "Owner-delegated assistant review: official PDP seed rewrite; no commerce-state, community, medical, or unsupported safety claims added."
+          },
+          "shopping_card": {
+            "contract_version": "pivota.shopping_card.v1",
+            "title": "Perfect Brow Set",
+            "subtitle": "Makeup Set",
+            "highlight": "Makeup routine set",
+            "intro": "A Sigma Beauty makeup set listed on the brand source page as Perfect Brow Set. The source description identifies: Achieve even-looking, framed brows with this all-in-one set.",
+            "evidence_profile": "seller_plus_formula"
+          },
+          "search_card": {
+            "title_candidate": "Perfect Brow Set",
+            "compact_candidate": "Makeup Set",
+            "highlight_candidate": "Makeup routine set",
+            "intro_candidate": "A Sigma Beauty makeup set listed on the brand source page as Perfect Brow Set. The source description identifies: Achieve even-looking, framed brows with this all-in-one set.",
+            "proof_badge_candidate": ""
+          }
+        }
+      }
+    }
+  ]
+}

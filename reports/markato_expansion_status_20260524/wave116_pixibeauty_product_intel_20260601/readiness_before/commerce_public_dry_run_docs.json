@@ -1,0 +1,183 @@
+{
+  "generated_at": "2026-06-01T03:11:46.627Z",
+  "market": "US",
+  "include_non_public": false,
+  "docs_built": 3,
+  "source_build_failures": [],
+  "docs": [
+    {
+      "doc_id": "sellable:sig_a28c883e8279b6d17b942d25",
+      "sellable_item_group_id": "sig_a28c883e8279b6d17b942d25",
+      "product_line_id": "pl_a43946d01c4de607795f0a12",
+      "review_family_id": "rf_a43946d01c4de607795f0a12",
+      "brand_name": "PIXI BEAUTY",
+      "category_paths": [
+        "Foundation"
+      ],
+      "market": "US",
+      "availability_state": "available",
+      "publish_state": "public",
+      "title": "Ultimate BASE Bundle",
+      "subtitle": "On-the-Glow BASE \n• \"One swipe of this tinted moisturizer in a stick instantly perfects complexion & deeply hydrates.”- Petra\n• Infused with Ceramide NP, Superfood Berries and Fruit Oils \n• Use all-over on bare skin or specifically in areas where more coverage is needed\n• Suitable for all skin types\n• Available in a broad spectrum of 18 new shades\n• Vegan\n• Paraben-free\n• Cruelty-free\n• Volume: 19 g / 0.6 oz\n\nFlawless Beauty Primer \n• \"This keeps dry skin hydrated, adds a lit-from-within glow, and evens out skin tone perfectly!\" - Petra \n• Smooths, hydrates, naturally luminates skin \n• Anti-aging and skin-fortifying benefits\n• Evens skin tone\n• Suitable for all skin types\n• Use alone, mixed with moisturizer, or under foundation\n• Paraben-free\n• Cruelty-free\n• Volume: 19 g / 0.6 oz",
+      "variant_axes": {
+        "multi_variant": false
+      },
+      "size": null,
+      "shade": null,
+      "pack": null,
+      "hero_media": {
+        "url": "https://pivota-agent-production.up.railway.app/catalog-image-cache/bd/bd552c8d878349993015d5c07dac01334a0e656ab2fb826f93b0a55cb1800a38.webp",
+        "source_kind": "catalog",
+        "source_tier": "catalog"
+      },
+      "preview_media": [
+        "https://pivota-agent-production.up.railway.app/catalog-image-cache/bd/bd552c8d878349993015d5c07dac01334a0e656ab2fb826f93b0a55cb1800a38.webp",
+        "https://pivota-agent-production.up.railway.app/catalog-image-cache/96/9649c3b14cd1f58fb8a799601e1638d9d2ea86b44907c076a706f201fdc82dc2.webp",
+        "https://pivota-agent-production.up.railway.app/catalog-image-cache/8e/8e226d27375e812c5626251a01d3983ad6f1b26315089eb2b9d55f354afe9af7.webp",
+        "https://pivota-agent-production.up.railway.app/catalog-image-cache/bd/bd0ed97e5809761ca21db2f234482a392ab022e9a823a0ba7dd807ec92b6989d.webp",
+        "https://pivota-agent-production.up.railway.app/catalog-image-cache/1d/1da6e7b363fb062d210808069453da6a01d845ac265782e9f14d078e5a37b19e.webp",
+        "https://pivota-agent-production.up.railway.app/catalog-image-cache/92/9248b1f8f2cf2d41aa12cf34031acf4a83de10adb4227cf00975a3c7bdc3ba3a.webp",
+        "https://pivota-agent-production.up.railway.app/catalog-image-cache/78/789d3e83ac9ae13ce525c3eccabbaccb9b79c5cbc35aa1a85a34d89347a40c37.webp",
+        "https://pivota-agent-production.up.railway.app/catalog-image-cache/cd/cd3317ee43c46479c5c690fadd83760563a73f309dc5953e3e573eaeb2c19f57.webp"
+      ],
+      "price_min": 45,
+      "price_max": 45,
+      "default_offer_id": "external_seed:ext_ce06dc6cf523109b638508e1",
+      "internal_offer_exists": false,
+      "external_offer_exists": true,
+      "pivota_insight_status": "missing",
+      "pivota_insight_summary": null,
+      "quality_score": null,
+      "browse_score": null,
+      "facet_tokens": [
+        "PIXI BEAUTY",
+        "Foundation"
+      ],
+      "sort_keys": {
+        "price_min": 45,
+        "price_max": 45,
+        "updated_at": null
+      },
+      "updated_at": null,
+      "source_refs": [
+        "external_seed:ext_ce06dc6cf523109b638508e1"
+      ]
+    },
+    {
+      "doc_id": "sellable:sig_987a20e03de9ea2df616afe1",
+      "sellable_item_group_id": "sig_987a20e03de9ea2df616afe1",
+      "product_line_id": "pl_150fb4515cfb61bcc943c760",
+      "review_family_id": "rf_150fb4515cfb61bcc943c760",
+      "brand_name": "PIXI BEAUTY",
+      "category_paths": [
+        "Foundation"
+      ],
+      "market": "US",
+      "availability_state": "available",
+      "publish_state": "public",
+      "title": "Complexion Collection",
+      "subtitle": "H2O SkinTint \n• \"Not your normal tinted moisturizer, this gel is feather-light, yet provides enough coverage to disguise redness & uneven skin tone.\" - Petra \n• Lightweight, breathable texture\n• Hydrating and water-resistant\n• Natural-looking, buildable coverage\n• Events out skin tone and disguises redness\n• Cooling and refreshing finish \n• Vegan\n• Fragrance-free\n• Paraben-free\n• Cruelty-free\n• Volume: 35 ml / 1.2 fl oz\n\nFlawless Beauty Primer \n• \"This keeps dry skin hydrated, adds a lit-from-within glow, and evens out skin tone perfectly!\" - Petra \n• Smooths, hydrates, naturally luminates skin \n• Anti-aging and skin-fortifying benefits\n• Evens skin tone\n• Suitable for all skin types\n• Use alone, mixed with moisturizer, or under foundation\n• Paraben-free\n• Cruelty-free\n• Volume: 19 g / 0.6 oz\n\nOn-the-Glow BASE \n• \"One swipe of this tinted moisturizer in a stick instantly perfects complexion & deeply hydrates.”- Petra\n• Infused with Ceramide NP, Superfood Berries and Fruit Oils \n• Use all-over on bare skin or specifically in areas where more coverage is needed\n• Suitable for all skin types\n• Available in a broad spectrum of 18 new shades\n• Vegan\n• Paraben-free\n• Cruelty-free\n• Volume: 19 g / 0.6 oz",
+      "variant_axes": {
+        "multi_variant": false
+      },
+      "size": null,
+      "shade": null,
+      "pack": null,
+      "hero_media": {
+        "url": "https://pivota-agent-production.up.railway.app/catalog-image-cache/e6/e624785d60bc52898f747c0989d3ab992c2058606acad985ce8e8fb43552e6cf.webp",
+        "source_kind": "catalog",
+        "source_tier": "catalog"
+      },
+      "preview_media": [
+        "https://pivota-agent-production.up.railway.app/catalog-image-cache/e6/e624785d60bc52898f747c0989d3ab992c2058606acad985ce8e8fb43552e6cf.webp",
+        "https://pivota-agent-production.up.railway.app/catalog-image-cache/e1/e11f47158fed75ee1dde255ba9c7778765c391741d7c0740cb3ebdac9b4a1239.webp",
+        "https://pivota-agent-production.up.railway.app/catalog-image-cache/99/9945ed2fcdc948f9b2d027d897d025a8531b28451cd18da3042de4b2989fe3d7.webp",
+        "https://pivota-agent-production.up.railway.app/catalog-image-cache/9c/9c62e64ac335e7331d6b876fe6812b14766d5a639da157d8dda13076c8e11f15.webp",
+        "https://pivota-agent-production.up.railway.app/catalog-image-cache/54/54c8f495869df6b1106a6d2455d35d16eab5541e91e8887ba9f050dd76b548b4.webp",
+        "https://pivota-agent-production.up.railway.app/catalog-image-cache/78/789d3e83ac9ae13ce525c3eccabbaccb9b79c5cbc35aa1a85a34d89347a40c37.webp",
+        "https://pivota-agent-production.up.railway.app/catalog-image-cache/be/bec0e60aa814a37d95c2f6e30def30a845aa63c857c86177b665349154815ee1.webp",
+        "https://pivota-agent-production.up.railway.app/catalog-image-cache/cd/cd3317ee43c46479c5c690fadd83760563a73f309dc5953e3e573eaeb2c19f57.webp"
+      ],
+      "price_min": 52,
+      "price_max": 52,
+      "default_offer_id": "external_seed:ext_b608b51bc66708d27e81473e",
+      "internal_offer_exists": false,
+      "external_offer_exists": true,
+      "pivota_insight_status": "missing",
+      "pivota_insight_summary": null,
+      "quality_score": null,
+      "browse_score": null,
+      "facet_tokens": [
+        "PIXI BEAUTY",
+        "Foundation"
+      ],
+      "sort_keys": {
+        "price_min": 52,
+        "price_max": 52,
+        "updated_at": null
+      },
+      "updated_at": null,
+      "source_refs": [
+        "external_seed:ext_b608b51bc66708d27e81473e"
+      ]
+    },
+    {
+      "doc_id": "sellable:sig_33a36eeeb59a25321186b470",
+      "sellable_item_group_id": "sig_33a36eeeb59a25321186b470",
+      "product_line_id": "pl_87b832204d1563c9cb37491b",
+      "review_family_id": "rf_87b832204d1563c9cb37491b",
+      "brand_name": "PIXI BEAUTY",
+      "category_paths": [
+        "Foundation"
+      ],
+      "market": "US",
+      "availability_state": "available",
+      "publish_state": "public",
+      "title": "Ultimate Complexion Besties",
+      "subtitle": "On-the-Glow BASE \n• \"One swipe of this tinted moisturizer in a stick instantly perfects complexion & deeply hydrates.”- Petra\n• Infused with dewy flattering pigment, meaning that you can create a base that enhances and perfects in one sweep, to make you look like you are wearing no makeup!\n• Unique, sheer, nourishing and protecting base that feels much lighter & more breathable than a traditional foundation.\n• Use all-over on bare skin or specifically in areas where more coverage is needed.\n• Suitable for all skin types\n• Available in a broad spectrum of 18 new shades. Use a single shade or blend 2 for a bespoke shade match.\n• Vegan\n• Not tested on animals\n• Volume: 0.6 oz / 19g\n\nFlawless Beauty Primer \n• \"This keeps dry skin hydrated, adds a lit-from-within glow, and evens out skintone perfectly!\" - Petra \n• Even, flawless skin tone is the sign of youthful healthy skin\n• This primer is the perfect solution; the formula is loaded with skin-loving ingredients\n• Formula contains powerful anti-aging and skin fortifying benefits\n• Suitable for all skin types\n• Paraben-free\n• Not tested on animals\n• Volume: 30 ml / 1 fl. oz\n\nOn-the Glow BLUSH Petite \n• “This petite blush is proof that good things really do come in small, glow-filled packages.”- Petra \n• Hydrating solid cheek tint.\n• Use on cheeks & lips.\n• Vitamin packed for antioxidant benefits.\n• One sweep colour payoff.\n• Complements all skin tones\n• Paraben-free\n• Vegan\n• Not tested on animals.\n• Volume: 0.3oz / 10g",
+      "variant_axes": {
+        "multi_variant": false
+      },
+      "size": null,
+      "shade": null,
+      "pack": null,
+      "hero_media": {
+        "url": "https://pivota-agent-production.up.railway.app/catalog-image-cache/24/24afb26e9c574276f92a51449c254dd0d41cc38ac0af4a05133a5918a78d60f5.webp",
+        "source_kind": "catalog",
+        "source_tier": "catalog"
+      },
+      "preview_media": [
+        "https://pivota-agent-production.up.railway.app/catalog-image-cache/24/24afb26e9c574276f92a51449c254dd0d41cc38ac0af4a05133a5918a78d60f5.webp",
+        "https://pivota-agent-production.up.railway.app/catalog-image-cache/ed/ed3a9b40ea3ddaddec94ae95d71baa138ffa951482813ffdd73d779bb9f92b98.webp",
+        "https://pivota-agent-production.up.railway.app/catalog-image-cache/cd/cd3317ee43c46479c5c690fadd83760563a73f309dc5953e3e573eaeb2c19f57.webp",
+        "https://pivota-agent-production.up.railway.app/catalog-image-cache/bd/bd878c39fa4ee77101ebdc93b6655aaaf15c6208a220623b89f844a8a08a0bc1.webp",
+        "https://pivota-agent-production.up.railway.app/catalog-image-cache/d7/d71bd270a08a92cc5375a935c28c4ca51b2b10a93138c11e36e1db2d9106cd72.webp",
+        "https://pivota-agent-production.up.railway.app/catalog-image-cache/a6/a63eb1a4ca19b9755df922db3bde4927684ad835f2bf05c855c997eb017d939e.webp",
+        "https://pivota-agent-production.up.railway.app/catalog-image-cache/a6/a6a613cc12536b355b9deb0dcf3ba54f42e946b95c38f764eaacc7e553f2c983.webp",
+        "https://pivota-agent-production.up.railway.app/catalog-image-cache/91/916f801d1da7e06c93ef98e49613bd27613f4898a972be27adf5df0392204d79.webp"
+      ],
+      "price_min": 54,
+      "price_max": 54,
+      "default_offer_id": "external_seed:ext_e36414c7892f92c40d7f6026",
+      "internal_offer_exists": false,
+      "external_offer_exists": true,
+      "pivota_insight_status": "missing",
+      "pivota_insight_summary": null,
+      "quality_score": null,
+      "browse_score": null,
+      "facet_tokens": [
+        "PIXI BEAUTY",
+        "Foundation"
+      ],
+      "sort_keys": {
+        "price_min": 54,
+        "price_max": 54,
+        "updated_at": null
+      },
+      "updated_at": null,
+      "source_refs": [
+        "external_seed:ext_e36414c7892f92c40d7f6026"
+      ]
+    }
+  ]
+}

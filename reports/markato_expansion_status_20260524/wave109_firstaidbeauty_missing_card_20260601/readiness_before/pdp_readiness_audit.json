@@ -1,0 +1,617 @@
+{
+  "generated_at": "2026-06-01T02:30:54.566Z",
+  "options": {
+    "market": "US",
+    "includeAttached": true,
+    "domain": null,
+    "externalProductIds": [
+      "ext_509af4ff581a6ee8211c5b18",
+      "ext_95582fd1ed491684223018bb",
+      "ext_9bc7ff02d709cc5383cc78ec"
+    ],
+    "limit": 20,
+    "sampleLimit": 20,
+    "checkpointDir": "/Users/pengchydan/dev/_worktrees/pivota-agent-markato-wave25-786-20260527/reports/markato_expansion_status_20260524/wave109_firstaidbeauty_missing_card_20260601/readiness_before/pdp_readiness_checkpoint",
+    "checkpointMode": "domain",
+    "resume": false,
+    "force": false,
+    "continueOnError": true,
+    "pageSize": 500,
+    "format": "json"
+  },
+  "warnings": [],
+  "summary": {
+    "scanned": 3,
+    "by_market": {
+      "US": 3
+    },
+    "by_domain": [
+      {
+        "key": "firstaidbeauty.com",
+        "count": 3
+      }
+    ],
+    "by_product_family": [
+      {
+        "key": "single_formula",
+        "count": 3
+      }
+    ],
+    "coverage": {
+      "missing_inci": 0,
+      "missing_active_raw": 1,
+      "missing_details": 0,
+      "missing_how_to": 0,
+      "missing_faq": 1
+    },
+    "pivota_insights": {
+      "direct": {
+        "displayable": 0,
+        "high_quality_ready": 0,
+        "missing_kb": 0,
+        "not_displayable": 3
+      },
+      "effective": {
+        "displayable": 0,
+        "high_quality_ready": 0,
+        "missing_kb": 0,
+        "not_displayable": 3,
+        "borrowed_from_sibling": 0
+      },
+      "effective_issues": [
+        {
+          "key": "missing_card_highlight",
+          "count": 3
+        },
+        {
+          "key": "not_displayable_gate",
+          "count": 3
+        },
+        {
+          "key": "not_reviewed",
+          "count": 3
+        },
+        {
+          "key": "quality_limited",
+          "count": 3
+        },
+        {
+          "key": "seller_only_evidence",
+          "count": 3
+        }
+      ],
+      "effective_issue_domains": [
+        {
+          "key": "firstaidbeauty.com::missing_card_highlight",
+          "count": 3
+        },
+        {
+          "key": "firstaidbeauty.com::not_displayable_gate",
+          "count": 3
+        },
+        {
+          "key": "firstaidbeauty.com::not_reviewed",
+          "count": 3
+        },
+        {
+          "key": "firstaidbeauty.com::quality_limited",
+          "count": 3
+        },
+        {
+          "key": "firstaidbeauty.com::seller_only_evidence",
+          "count": 3
+        }
+      ],
+      "quality_state": [
+        {
+          "key": "limited",
+          "count": 3
+        }
+      ],
+      "evidence_profile": [
+        {
+          "key": "seller_only",
+          "count": 3
+        }
+      ],
+      "samples": {
+        "not_reviewed": [
+          {
+            "external_product_id": "ext_95582fd1ed491684223018bb",
+            "domain": "firstaidbeauty.com",
+            "title": "Ultra Repair Oil-Control Moisturizer",
+            "used_product_id": "ext_95582fd1ed491684223018bb",
+            "quality_state": "limited",
+            "evidence_profile": "seller_only"
+          },
+          {
+            "external_product_id": "ext_9bc7ff02d709cc5383cc78ec",
+            "domain": "firstaidbeauty.com",
+            "title": "Ultra Repair Face Lotion with Colloidal Oatmeal",
+            "used_product_id": "ext_9bc7ff02d709cc5383cc78ec",
+            "quality_state": "limited",
+            "evidence_profile": "seller_only"
+          },
+          {
+            "external_product_id": "ext_509af4ff581a6ee8211c5b18",
+            "domain": "firstaidbeauty.com",
+            "title": "Ultra Repair Rescue Barrier Balm with Dimethicone",
+            "used_product_id": "ext_509af4ff581a6ee8211c5b18",
+            "quality_state": "limited",
+            "evidence_profile": "seller_only"
+          }
+        ],
+        "not_displayable_gate": [
+          {
+            "external_product_id": "ext_95582fd1ed491684223018bb",
+            "domain": "firstaidbeauty.com",
+            "title": "Ultra Repair Oil-Control Moisturizer",
+            "used_product_id": "ext_95582fd1ed491684223018bb",
+            "quality_state": "limited",
+            "evidence_profile": "seller_only"
+          },
+          {
+            "external_product_id": "ext_9bc7ff02d709cc5383cc78ec",
+            "domain": "firstaidbeauty.com",
+            "title": "Ultra Repair Face Lotion with Colloidal Oatmeal",
+            "used_product_id": "ext_9bc7ff02d709cc5383cc78ec",
+            "quality_state": "limited",
+            "evidence_profile": "seller_only"
+          },
+          {
+            "external_product_id": "ext_509af4ff581a6ee8211c5b18",
+            "domain": "firstaidbeauty.com",
+            "title": "Ultra Repair Rescue Barrier Balm with Dimethicone",
+            "used_product_id": "ext_509af4ff581a6ee8211c5b18",
+            "quality_state": "limited",
+            "evidence_profile": "seller_only"
+          }
+        ],
+        "missing_card_highlight": [
+          {
+            "external_product_id": "ext_95582fd1ed491684223018bb",
+            "domain": "firstaidbeauty.com",
+            "title": "Ultra Repair Oil-Control Moisturizer",
+            "used_product_id": "ext_95582fd1ed491684223018bb",
+            "quality_state": "limited",
+            "evidence_profile": "seller_only"
+          },
+          {
+            "external_product_id": "ext_9bc7ff02d709cc5383cc78ec",
+            "domain": "firstaidbeauty.com",
+            "title": "Ultra Repair Face Lotion with Colloidal Oatmeal",
+            "used_product_id": "ext_9bc7ff02d709cc5383cc78ec",
+            "quality_state": "limited",
+            "evidence_profile": "seller_only"
+          },
+          {
+            "external_product_id": "ext_509af4ff581a6ee8211c5b18",
+            "domain": "firstaidbeauty.com",
+            "title": "Ultra Repair Rescue Barrier Balm with Dimethicone",
+            "used_product_id": "ext_509af4ff581a6ee8211c5b18",
+            "quality_state": "limited",
+            "evidence_profile": "seller_only"
+          }
+        ],
+        "seller_only_evidence": [
+          {
+            "external_product_id": "ext_95582fd1ed491684223018bb",
+            "domain": "firstaidbeauty.com",
+            "title": "Ultra Repair Oil-Control Moisturizer",
+            "used_product_id": "ext_95582fd1ed491684223018bb",
+            "quality_state": "limited",
+            "evidence_profile": "seller_only"
+          },
+          {
+            "external_product_id": "ext_9bc7ff02d709cc5383cc78ec",
+            "domain": "firstaidbeauty.com",
+            "title": "Ultra Repair Face Lotion with Colloidal Oatmeal",
+            "used_product_id": "ext_9bc7ff02d709cc5383cc78ec",
+            "quality_state": "limited",
+            "evidence_profile": "seller_only"
+          },
+          {
+            "external_product_id": "ext_509af4ff581a6ee8211c5b18",
+            "domain": "firstaidbeauty.com",
+            "title": "Ultra Repair Rescue Barrier Balm with Dimethicone",
+            "used_product_id": "ext_509af4ff581a6ee8211c5b18",
+            "quality_state": "limited",
+            "evidence_profile": "seller_only"
+          }
+        ]
+      }
+    },
+    "active_ingredients": {
+      "regulatory_expected": 0,
+      "hero_expected": 1,
+      "any_active_items": 3,
+      "status": [
+        {
+          "key": "ready_other",
+          "count": 2
+        },
+        {
+          "key": "ready_hero",
+          "count": 1
+        }
+      ],
+      "issues": [],
+      "issue_domains": [],
+      "source_origin": [
+        {
+          "key": "pdp_section",
+          "count": 3
+        }
+      ],
+      "samples": {}
+    },
+    "variants": {
+      "status": [
+        {
+          "key": "ready",
+          "count": 3
+        }
+      ],
+      "issues": [],
+      "issue_domains": [],
+      "samples": {}
+    }
+  },
+  "rows": [
+    {
+      "seed_id": "eps_ba2d960f7cf7ccbba6c739a6",
+      "external_product_id": "ext_95582fd1ed491684223018bb",
+      "market": "US",
+      "domain": "firstaidbeauty.com",
+      "title": "Ultra Repair Oil-Control Moisturizer",
+      "canonical_url": "https://www.firstaidbeauty.com/products/ultra-repair-oil-control-moisturizer",
+      "product_family": "single_formula",
+      "product_line_id": "pl_0f14e2cf22a61730a45ccb62",
+      "identity_variant_axes": {
+        "multi_variant": false
+      },
+      "pivota_insights": {
+        "direct": {
+          "product_id": "ext_95582fd1ed491684223018bb",
+          "kb_key": "product:ext_95582fd1ed491684223018bb",
+          "status": "not_displayable",
+          "kb_exists": true,
+          "displayable": false,
+          "high_quality_ready": false,
+          "human_reviewed": false,
+          "issues": [
+            "not_reviewed",
+            "not_displayable_gate",
+            "missing_card_highlight",
+            "quality_limited",
+            "seller_only_evidence"
+          ],
+          "blocking_issues": [
+            "not_reviewed",
+            "not_displayable_gate",
+            "missing_card_highlight"
+          ],
+          "quality_state": "limited",
+          "evidence_profile": "seller_only",
+          "has_card_highlight": false
+        },
+        "effective": {
+          "product_id": "ext_95582fd1ed491684223018bb",
+          "kb_key": "product:ext_95582fd1ed491684223018bb",
+          "status": "not_displayable",
+          "kb_exists": true,
+          "displayable": false,
+          "high_quality_ready": false,
+          "human_reviewed": false,
+          "issues": [
+            "not_reviewed",
+            "not_displayable_gate",
+            "missing_card_highlight",
+            "quality_limited",
+            "seller_only_evidence"
+          ],
+          "blocking_issues": [
+            "not_reviewed",
+            "not_displayable_gate",
+            "missing_card_highlight"
+          ],
+          "quality_state": "limited",
+          "evidence_profile": "seller_only",
+          "has_card_highlight": false
+        },
+        "product_line_id": "pl_0f14e2cf22a61730a45ccb62",
+        "borrowed_from_sibling": false
+      },
+      "active_ingredients": {
+        "status": "ready_other",
+        "issues": [],
+        "regulatory_expected": false,
+        "hero_expected": false,
+        "active_items": [
+          "featuring Niacinamide"
+        ],
+        "source_origin": "pdp_section",
+        "source_quality_status": "captured",
+        "coverage": {
+          "details_sections_count": 6,
+          "faq_count": 2,
+          "how_to_chars": 62,
+          "inci_chars": 1283,
+          "active_ingredients_chars": 200,
+          "inci_applicability_status": "",
+          "ingredient_review_status": "",
+          "ingredient_remediation_action": "",
+          "bundle_component_refs_count": 0,
+          "effective_inci_chars": 1283,
+          "inci_borrowed_from_product_id": ""
+        },
+        "invalid_fragments": [],
+        "suppressed_reason": null
+      },
+      "variants": {
+        "status": "ready",
+        "issues": [],
+        "visible_variant_rows": 1,
+        "examples": {
+          "identity_option_visible": [],
+          "wrong_axis_for_category": [],
+          "makeup_shade_missing_visual": [],
+          "size_value_generic_axis": [],
+          "default_option_size_evidence_missing_axis": [],
+          "identity_default_title_axis": []
+        }
+      },
+      "coverage": {
+        "details_sections_count": 6,
+        "faq_count": 2,
+        "how_to_chars": 62,
+        "inci_chars": 1283,
+        "active_ingredients_chars": 200,
+        "inci_applicability_status": "",
+        "ingredient_review_status": "",
+        "ingredient_remediation_action": "",
+        "bundle_component_refs_count": 0,
+        "effective_inci_chars": 1283,
+        "inci_borrowed_from_product_id": ""
+      }
+    },
+    {
+      "seed_id": "eps_e1cdce1c40b3369326fb3f5b",
+      "external_product_id": "ext_9bc7ff02d709cc5383cc78ec",
+      "market": "US",
+      "domain": "firstaidbeauty.com",
+      "title": "Ultra Repair Face Lotion with Colloidal Oatmeal",
+      "canonical_url": "https://www.firstaidbeauty.com/products/ultra-repair-face-moisturizer",
+      "product_family": "single_formula",
+      "product_line_id": "pl_7ef922e654d96b9aa6fed717",
+      "identity_variant_axes": {
+        "multi_variant": false
+      },
+      "pivota_insights": {
+        "direct": {
+          "product_id": "ext_9bc7ff02d709cc5383cc78ec",
+          "kb_key": "product:ext_9bc7ff02d709cc5383cc78ec",
+          "status": "not_displayable",
+          "kb_exists": true,
+          "displayable": false,
+          "high_quality_ready": false,
+          "human_reviewed": false,
+          "issues": [
+            "not_reviewed",
+            "not_displayable_gate",
+            "missing_card_highlight",
+            "quality_limited",
+            "seller_only_evidence"
+          ],
+          "blocking_issues": [
+            "not_reviewed",
+            "not_displayable_gate",
+            "missing_card_highlight"
+          ],
+          "quality_state": "limited",
+          "evidence_profile": "seller_only",
+          "has_card_highlight": false
+        },
+        "effective": {
+          "product_id": "ext_9bc7ff02d709cc5383cc78ec",
+          "kb_key": "product:ext_9bc7ff02d709cc5383cc78ec",
+          "status": "not_displayable",
+          "kb_exists": true,
+          "displayable": false,
+          "high_quality_ready": false,
+          "human_reviewed": false,
+          "issues": [
+            "not_reviewed",
+            "not_displayable_gate",
+            "missing_card_highlight",
+            "quality_limited",
+            "seller_only_evidence"
+          ],
+          "blocking_issues": [
+            "not_reviewed",
+            "not_displayable_gate",
+            "missing_card_highlight"
+          ],
+          "quality_state": "limited",
+          "evidence_profile": "seller_only",
+          "has_card_highlight": false
+        },
+        "product_line_id": "pl_7ef922e654d96b9aa6fed717",
+        "borrowed_from_sibling": false
+      },
+      "active_ingredients": {
+        "status": "ready_hero",
+        "issues": [],
+        "regulatory_expected": false,
+        "hero_expected": true,
+        "active_items": [
+          "Ceramide NP",
+          "Squalane"
+        ],
+        "source_origin": "pdp_section",
+        "source_quality_status": "captured",
+        "coverage": {
+          "details_sections_count": 10,
+          "faq_count": 2,
+          "how_to_chars": 60,
+          "inci_chars": 891,
+          "active_ingredients_chars": 0,
+          "inci_applicability_status": "",
+          "ingredient_review_status": "",
+          "ingredient_remediation_action": "",
+          "bundle_component_refs_count": 0,
+          "effective_inci_chars": 891,
+          "inci_borrowed_from_product_id": ""
+        },
+        "invalid_fragments": [],
+        "suppressed_reason": null
+      },
+      "variants": {
+        "status": "ready",
+        "issues": [],
+        "visible_variant_rows": 1,
+        "examples": {
+          "identity_option_visible": [],
+          "wrong_axis_for_category": [],
+          "makeup_shade_missing_visual": [],
+          "size_value_generic_axis": [],
+          "default_option_size_evidence_missing_axis": [],
+          "identity_default_title_axis": []
+        }
+      },
+      "coverage": {
+        "details_sections_count": 10,
+        "faq_count": 2,
+        "how_to_chars": 60,
+        "inci_chars": 891,
+        "active_ingredients_chars": 0,
+        "inci_applicability_status": "",
+        "ingredient_review_status": "",
+        "ingredient_remediation_action": "",
+        "bundle_component_refs_count": 0,
+        "effective_inci_chars": 891,
+        "inci_borrowed_from_product_id": ""
+      }
+    },
+    {
+      "seed_id": "eps_e9f9c6161a2be1f06ab32dc0",
+      "external_product_id": "ext_509af4ff581a6ee8211c5b18",
+      "market": "US",
+      "domain": "firstaidbeauty.com",
+      "title": "Ultra Repair Rescue Barrier Balm with Dimethicone",
+      "canonical_url": "https://www.firstaidbeauty.com/products/ultra-repair-rescue-barrier-balm-with-dimethicone",
+      "product_family": "single_formula",
+      "product_line_id": "pl_c2e51d8059b23b77ba00ff89",
+      "identity_variant_axes": {
+        "size": "2 25 oz",
+        "volume": "25oz",
+        "multi_variant": true
+      },
+      "pivota_insights": {
+        "direct": {
+          "product_id": "ext_509af4ff581a6ee8211c5b18",
+          "kb_key": "product:ext_509af4ff581a6ee8211c5b18",
+          "status": "not_displayable",
+          "kb_exists": true,
+          "displayable": false,
+          "high_quality_ready": false,
+          "human_reviewed": false,
+          "issues": [
+            "not_reviewed",
+            "not_displayable_gate",
+            "missing_card_highlight",
+            "quality_limited",
+            "seller_only_evidence"
+          ],
+          "blocking_issues": [
+            "not_reviewed",
+            "not_displayable_gate",
+            "missing_card_highlight"
+          ],
+          "quality_state": "limited",
+          "evidence_profile": "seller_only",
+          "has_card_highlight": false
+        },
+        "effective": {
+          "product_id": "ext_509af4ff581a6ee8211c5b18",
+          "kb_key": "product:ext_509af4ff581a6ee8211c5b18",
+          "status": "not_displayable",
+          "kb_exists": true,
+          "displayable": false,
+          "high_quality_ready": false,
+          "human_reviewed": false,
+          "issues": [
+            "not_reviewed",
+            "not_displayable_gate",
+            "missing_card_highlight",
+            "quality_limited",
+            "seller_only_evidence"
+          ],
+          "blocking_issues": [
+            "not_reviewed",
+            "not_displayable_gate",
+            "missing_card_highlight"
+          ],
+          "quality_state": "limited",
+          "evidence_profile": "seller_only",
+          "has_card_highlight": false
+        },
+        "product_line_id": "pl_c2e51d8059b23b77ba00ff89",
+        "borrowed_from_sibling": false
+      },
+      "active_ingredients": {
+        "status": "ready_other",
+        "issues": [],
+        "regulatory_expected": false,
+        "hero_expected": false,
+        "active_items": [
+          "Ceramide NP",
+          "Centella asiatica"
+        ],
+        "source_origin": "pdp_section",
+        "source_quality_status": "captured",
+        "coverage": {
+          "details_sections_count": 6,
+          "faq_count": 0,
+          "how_to_chars": 314,
+          "inci_chars": 1118,
+          "active_ingredients_chars": 19,
+          "inci_applicability_status": "",
+          "ingredient_review_status": "",
+          "ingredient_remediation_action": "",
+          "bundle_component_refs_count": 0,
+          "effective_inci_chars": 1118,
+          "inci_borrowed_from_product_id": ""
+        },
+        "invalid_fragments": [],
+        "suppressed_reason": null
+      },
+      "variants": {
+        "status": "ready",
+        "issues": [],
+        "visible_variant_rows": 2,
+        "examples": {
+          "identity_option_visible": [],
+          "wrong_axis_for_category": [],
+          "makeup_shade_missing_visual": [],
+          "size_value_generic_axis": [],
+          "default_option_size_evidence_missing_axis": [],
+          "identity_default_title_axis": []
+        }
+      },
+      "coverage": {
+        "details_sections_count": 6,
+        "faq_count": 0,
+        "how_to_chars": 314,
+        "inci_chars": 1118,
+        "active_ingredients_chars": 19,
+        "inci_applicability_status": "",
+        "ingredient_review_status": "",
+        "ingredient_remediation_action": "",
+        "bundle_component_refs_count": 0,
+        "effective_inci_chars": 1118,
+        "inci_borrowed_from_product_id": ""
+      }
+    }
+  ]
+}

@@ -1,0 +1,16 @@
+{
+  "status": "ok",
+  "mode": "write",
+  "report": "/Users/pengchydan/dev/_worktrees/pivota-agent-markato-wave25-786-20260527/reports/markato_expansion_status_20260524/wave111_lunanectar_official_seed_20260601/lunanectar_rejection_fix_product_intel_report.json",
+  "rows": [
+    "live_ext_60b9ad953781f0fa6bf4b61e",
+    "live_ext_c10190a05ba9f5bd651d3385",
+    "live_ext_31649f8f88272f3a8d522c4d"
+  ],
+  "entries": [
+    "product:ext_60b9ad953781f0fa6bf4b61e",
+    "product:ext_c10190a05ba9f5bd651d3385",
+    "product:ext_31649f8f88272f3a8d522c4d"
+  ],
+  "skipped_rows": []
+}

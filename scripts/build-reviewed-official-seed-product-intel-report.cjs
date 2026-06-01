@@ -179,6 +179,18 @@ function sanitizePublicSourceText(value) {
     .replace(/\breduces\s+puffiness\b/gi, 'addresses the look of puffiness')
     .replace(/\breducing\s+puffiness\b/gi, 'addressing the look of puffiness')
     .replace(/\b(?:best[-\s]?selling|bestselling|viral|cult[-\s]?favorite)\b/gi, '')
+    .replace(/\b(?:flawless|ultimate|must[-\s]?have|go[-\s]?to|ready[-\s]?to[-\s]?go|unique|popular|high[-\s]?quality|perfect)\b/gi, (match) => {
+      const normalized = match.toLowerCase().replace(/\s+/g, '-');
+      if (normalized === 'flawless') return 'even-looking';
+      if (normalized === 'ultimate') return 'complete';
+      if (normalized === 'go-to') return 'routine';
+      if (normalized === 'ready-to-go') return 'portable';
+      if (normalized === 'unique') return 'specific';
+      if (normalized === 'popular') return 'source-listed';
+      if (normalized === 'high-quality') return 'source-detailed';
+      if (normalized === 'perfect') return 'precise';
+      return 'source-listed';
+    })
     .replace(/\blimited[-\s]?edition\b/gi, 'seasonal')
     .replace(/\baward[-\s]?winning\b(?!\s+brush\s+set)/gi, '')
     .replace(/\bPROPOWAX™?\s+SERIES\s+ANTIOXIDANT\s*(?:•|\/)\s*ANTIPOLLUTION\b[./\s]*/gi, '')
@@ -205,7 +217,8 @@ function sanitizePublicSourceText(value) {
     )
     .replace(/\b100%\s*clean,\s*sustainable,\s*cruelty[-\s]?free\s+beauty\b[.!]?/gi, '')
     .replace(/\bclean,\s*vegan,\s*cruelty[-\s]?free(?:,\s*and\s*dermatologist[-\s]?tested)?\b[.!]?/gi, '')
-    .replace(/\b(?:vegan|gluten[-\s]?free|paraben[-\s]?free)\b[.!]?/gi, '')
+    .replace(/\b(?:vegan|cruelty[-\s]?free|gluten[-\s]?free|paraben[-\s]?free|dermatologist[-\s]?tested|ophthalmologist[-\s]?tested|non[-\s]?comedogenic|hypoallergenic|pregnancy[-\s]?safe|reef[-\s]?safe|clean\s+beauty)\b[.!]?/gi, '')
+    .replace(/\bsafe\s+for\s+sensitive\s+skin\b[.!]?/gi, 'positioned for sensitive-skin routines')
     .replace(/\bdouble up and save with this jumbo size of our\b/gi, "This jumbo size is the brand's")
     .replace(/\b\d+(?:\.\d+)?\s*(?:fl\.?\s*oz|ml|oz)\b/gi, '')
     .replace(/\bhighlighte\s+r\b/gi, 'highlighter')
@@ -406,6 +419,8 @@ function sanitizeFormulaSummary(value) {
     )
     .replace(/\b(Salicylic acid,\s*Glycolic acid,\s*Lactic acid)\s+Clarity Cleanser\b/gi, '$1')
     .replace(/\bsoothes\s*&\s*hydrates\b/gi, 'is listed for soothing and hydrating positioning')
+    .replace(/\bflawless\b/gi, 'even-looking')
+    .replace(/\b(?:ultimate|must[-\s]?have|go[-\s]?to|ready[-\s]?to[-\s]?go|unique|popular|high[-\s]?quality|perfect)\b/gi, 'source-listed')
     .replace(/\bFeaturing\s+yet\s+gentle\s+formulas\b/gi, 'Featuring gentle formulas')
     .replace(/\bpowerful\s+yet\s+gentle\s+formulas\b/gi, 'gentle formulas')
     .replace(/\bworks\s+to\s+purify,\s*smooth\s+and\s+soothe\s+while\s+targeting\s+excess\s+oil\b/gi, 'is positioned around purifying-looking, smoothing, soothing, and excess-oil routine support')
@@ -413,6 +428,8 @@ function sanitizeFormulaSummary(value) {
     .replace(/\breduces\s+puffiness\b/gi, 'addresses the look of puffiness')
     .replace(/\breducing\s+puffiness\b/gi, 'addressing the look of puffiness')
     .replace(/\b(?:vegan|gluten[-\s]?free|paraben[-\s]?free)\b[.!]?/gi, ' ')
+    .replace(/\b(?:cruelty[-\s]?free|dermatologist[-\s]?tested|ophthalmologist[-\s]?tested|non[-\s]?comedogenic|hypoallergenic|pregnancy[-\s]?safe|reef[-\s]?safe|clean\s+beauty)\b[.!]?/gi, ' ')
+    .replace(/\bsafe\s+for\s+sensitive\s+skin\b[.!]?/gi, 'positioned for sensitive-skin routines')
     .replace(/\bhelps reduce the appearance of fine lines and wrinkles\b/gi, 'addresses the look of fine lines and wrinkles')
     .replace(/\bpromotes skin elasticity\b/gi, 'is positioned around skin elasticity')
     .replace(/\bhelps repair damage caused by environmental stressors and UV radiation\b/gi, 'is positioned around environmental-stressor care')
@@ -1179,11 +1196,20 @@ function sourceDescription(seedData) {
 
 const RISKY_PUBLIC_DESCRIPTION_RE =
   /\b(?:https?:\/\/|acne|inflamed|anti[-\s]?inflammatory|therapeutic|healing?|wrinkles?|analgesic|pain|clinically\s+proven|breakthrough|revolutionary|superior\s+alternative|prevent\s+premature\s+aging|collagen\s+production|damaged\s+skin\s+cells|tighten\s+pores|anti[-\s]?aging|anti[-\s]?ageing)\b/i;
+const TRUNCATED_PUBLIC_COPY_RE =
+  /(?:…|\.{3}|(?:^|\s)-\s*\.?$|\b(?:with|featuring|including|includes?|and|or|for|to|of|the|a|an|plus|mini)\s*[,.]?\s*$)/i;
 
 function safeOfficialDescriptionSentence({ title, label, description, ingredient, formulaPreview = '' }) {
   const descriptionHasSourceUrl = /\bhttps?:\/\//i.test(text(description));
   const sentence = firstSentence(sanitizePublicSourceText(description));
-  if (sentence && !descriptionHasSourceUrl && !RISKY_PUBLIC_DESCRIPTION_RE.test(sentence)) return sentence;
+  if (
+    sentence &&
+    !descriptionHasSourceUrl &&
+    !RISKY_PUBLIC_DESCRIPTION_RE.test(sentence) &&
+    !TRUNCATED_PUBLIC_COPY_RE.test(sentence)
+  ) {
+    return sentence;
+  }
   const formula = text(formulaPreview) || (ingredient.available ? sentenceFragment(ingredient.summary) : '');
   if (formula) {
     return `The source page lists ${title} as ${articleFor(label).toLowerCase()} ${label} with formula fields including ${formula}.`;

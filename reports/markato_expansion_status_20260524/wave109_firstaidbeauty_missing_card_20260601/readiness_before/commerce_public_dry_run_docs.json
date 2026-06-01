@@ -1,0 +1,183 @@
+{
+  "generated_at": "2026-06-01T02:30:56.187Z",
+  "market": "US",
+  "include_non_public": false,
+  "docs_built": 3,
+  "source_build_failures": [],
+  "docs": [
+    {
+      "doc_id": "sellable:sig_a79c17e14d5f2801a17f6eea",
+      "sellable_item_group_id": "sig_a79c17e14d5f2801a17f6eea",
+      "product_line_id": "pl_0f14e2cf22a61730a45ccb62",
+      "review_family_id": "rf_0f14e2cf22a61730a45ccb62",
+      "brand_name": "First Aid Beauty",
+      "category_paths": [
+        "Moisturizer"
+      ],
+      "market": "US",
+      "availability_state": "out_of_stock",
+      "publish_state": "public",
+      "title": "Ultra Repair Oil-Control Moisturizer",
+      "subtitle": "Lightweight mattifying face cream hydrates and reduces excess oil.\n\nUltra-light formula provides optimal hydration for oily skin without leaving a greasy afterfeel\nOil-controlling ingredients deliver a powder soft finish, help minimize the appearance of pores and keep skin shine-free all day\nVegan, Non-Comedogenic, Gluten-Free, Nut-Free, Nano-Free, Parthenolide-Free",
+      "variant_axes": {
+        "multi_variant": false
+      },
+      "size": null,
+      "shade": null,
+      "pack": null,
+      "hero_media": {
+        "url": "https://cdn.shopify.com/s/files/1/0615/7352/9653/files/Oil-ControlMoisturizer_Lead_2000x200_4bd0566e-f39a-4ae7-bc23-1838fb920041.jpg?v=1762439873",
+        "source_kind": "catalog",
+        "source_tier": "catalog"
+      },
+      "preview_media": [
+        "https://cdn.shopify.com/s/files/1/0615/7352/9653/files/Oil-ControlMoisturizer_Lead_2000x200_4bd0566e-f39a-4ae7-bc23-1838fb920041.jpg?v=1762439873",
+        "https://cdn.shopify.com/s/files/1/0615/7352/9653/files/4.PACK.jpg?v=1716319425",
+        "https://cdn.shopify.com/s/files/1/0615/7352/9653/files/2.TEXTUREONFACE_1.jpg?v=1716319416",
+        "https://cdn.shopify.com/s/files/1/0615/7352/9653/files/3.INGREDIENT.jpg?v=1716319421",
+        "https://cdn.shopify.com/s/files/1/0615/7352/9653/files/5.SCALE.jpg?v=1716319429",
+        "https://cdn.shopify.com/s/files/1/0615/7352/9653/files/6.EXTRA.jpg?v=1716319433"
+      ],
+      "price_min": 36,
+      "price_max": 36,
+      "default_offer_id": "external_seed:ext_95582fd1ed491684223018bb",
+      "internal_offer_exists": false,
+      "external_offer_exists": true,
+      "pivota_insight_status": "missing",
+      "pivota_insight_summary": null,
+      "quality_score": null,
+      "browse_score": null,
+      "facet_tokens": [
+        "First Aid Beauty",
+        "Moisturizer"
+      ],
+      "sort_keys": {
+        "price_min": 36,
+        "price_max": 36,
+        "updated_at": null
+      },
+      "updated_at": null,
+      "source_refs": [
+        "external_seed:ext_95582fd1ed491684223018bb"
+      ]
+    },
+    {
+      "doc_id": "sellable:sig_d12a9b81a5fa854b0baa1fcc",
+      "sellable_item_group_id": "sig_d12a9b81a5fa854b0baa1fcc",
+      "product_line_id": "pl_7ef922e654d96b9aa6fed717",
+      "review_family_id": "rf_7ef922e654d96b9aa6fed717",
+      "brand_name": "First Aid Beauty",
+      "category_paths": [
+        "Moisturizer"
+      ],
+      "market": "US",
+      "availability_state": "available",
+      "publish_state": "public",
+      "title": "Ultra Repair Face Lotion with Colloidal Oatmeal",
+      "subtitle": "This lightweight + quick-absorbing moisturizer provides instant hydration with a velvety finish. Formula with Colloidal Oatmeal helps the skin appear smooth + soothed, while providing support to skin's moisture barrier.\n\nColloidal Oatmeal, Shea Butter and Avocado Oil soften & nourish skin while Ceramides help support skin's protective barrier\nSkin appears beautifully smooth & perfectly prepped for makeup or no makeup days\nAllergen-Free, Vegan, Non-Comedogenic, Gluten-Free, Soy-Free, Nut-Free, Nano-Free, Parthenolide-Free",
+      "variant_axes": {
+        "multi_variant": false
+      },
+      "size": null,
+      "shade": null,
+      "pack": null,
+      "hero_media": {
+        "url": "https://cdn.shopify.com/s/files/1/0615/7352/9653/files/Face-Lotion_2026-Refresh_FAB_Alt-01_1.jpg?v=1773768156",
+        "source_kind": "catalog",
+        "source_tier": "catalog"
+      },
+      "preview_media": [
+        "https://cdn.shopify.com/s/files/1/0615/7352/9653/files/Face-Lotion_2026-Refresh_FAB_Alt-01_1.jpg?v=1773768156",
+        "https://cdn.shopify.com/s/files/1/0615/7352/9653/files/Face-Lotion_2026-Refresh_FAB_Alt-02.jpg?v=1773768156",
+        "https://cdn.shopify.com/s/files/1/0615/7352/9653/files/Face-Lotion_2026-Refresh_FAB_Alt-03.jpg?v=1773768156",
+        "https://cdn.shopify.com/s/files/1/0615/7352/9653/files/Face-Lotion_2026-Refresh_FAB_Alt-04.jpg?v=1773768156",
+        "https://cdn.shopify.com/s/files/1/0615/7352/9653/files/Face-Lotion_2026-Refresh_FAB_Alt-05.jpg?v=1773768156",
+        "https://cdn.shopify.com/s/files/1/0615/7352/9653/files/Face-Lotion_2026-Refresh_FAB_Alt-06.jpg?v=1773768156",
+        "https://cdn.shopify.com/s/files/1/0615/7352/9653/files/Face-Lotion_2026-Refresh_FAB_Alt-07.jpg?v=1773768156",
+        "https://cdn.shopify.com/s/files/1/0615/7352/9653/files/Face-Lotion_2026-Refresh_FAB_Alt-08.jpg?v=1773768156"
+      ],
+      "price_min": 28,
+      "price_max": 28,
+      "default_offer_id": "external_seed:ext_9bc7ff02d709cc5383cc78ec",
+      "internal_offer_exists": false,
+      "external_offer_exists": true,
+      "pivota_insight_status": "missing",
+      "pivota_insight_summary": null,
+      "quality_score": null,
+      "browse_score": null,
+      "facet_tokens": [
+        "First Aid Beauty",
+        "Moisturizer"
+      ],
+      "sort_keys": {
+        "price_min": 28,
+        "price_max": 28,
+        "updated_at": null
+      },
+      "updated_at": null,
+      "source_refs": [
+        "external_seed:ext_9bc7ff02d709cc5383cc78ec"
+      ]
+    },
+    {
+      "doc_id": "sellable:sig_f93d4e4f096acac1d386dc49",
+      "sellable_item_group_id": "sig_f93d4e4f096acac1d386dc49",
+      "product_line_id": "pl_c2e51d8059b23b77ba00ff89",
+      "review_family_id": "rf_c2e51d8059b23b77ba00ff89",
+      "brand_name": "First Aid Beauty",
+      "category_paths": [
+        "Treatment"
+      ],
+      "market": "US",
+      "availability_state": "available",
+      "publish_state": "public",
+      "title": "Ultra Repair Rescue Barrier Balm with Dimethicone",
+      "subtitle": "Help rescue red + irritated, cracked, chapped skin with a breathable, non-pore-clogging layer.\n\nFormula strengthens skin's moisture barrier to improve resilience\nIdeal for use after damage caused by environmental exposure or drying side effects of prescription-strength acne and retinoid treatments\nDermatologist Tested, Nano-Free, Parthenolide Free, Suitable for Sensitive Skin, Vegan",
+      "variant_axes": {
+        "size": "2 25 oz",
+        "volume": "25oz",
+        "multi_variant": true
+      },
+      "size": null,
+      "shade": null,
+      "pack": null,
+      "hero_media": {
+        "url": "https://cdn.shopify.com/s/files/1/0615/7352/9653/files/UltraRepairRescueBarrierBalm_2.25oz_Lead_2000x2000_6ea4d000-bfd4-41a6-9f6d-c10a80ac6d08.jpg?v=1762443859",
+        "source_kind": "catalog",
+        "source_tier": "catalog"
+      },
+      "preview_media": [
+        "https://cdn.shopify.com/s/files/1/0615/7352/9653/files/UltraRepairRescueBarrierBalm_2.25oz_Lead_2000x2000_6ea4d000-bfd4-41a6-9f6d-c10a80ac6d08.jpg?v=1762443859",
+        "https://cdn.shopify.com/s/files/1/0615/7352/9653/files/01_URRescueBarrierBalm_US_AltImage_2000x2000_1479de80-e639-4e4a-8fb1-738ebf328c0f.jpg?v=1736368592",
+        "https://cdn.shopify.com/s/files/1/0615/7352/9653/files/02_URRescueBarrierBalm_US_AltImage_2000x2000_1ecc4048-82b9-4f6f-8a8e-27f7d8da2c70.jpg?v=1751998691",
+        "https://cdn.shopify.com/s/files/1/0615/7352/9653/files/03_URRescueBarrierBalm_US_AltImage_2000x2000_4e2f124f-9d56-4f9b-9b62-ebeb6beb90fc.jpg?v=1772816305",
+        "https://cdn.shopify.com/s/files/1/0615/7352/9653/files/04_URRescueBarrierBalm_US_AltImage_2000x2000_4b51ef31-310f-4ebc-9700-72cc2c252be9.jpg?v=1772816305",
+        "https://cdn.shopify.com/s/files/1/0615/7352/9653/files/05_URRescueBarrierBalm_US_AltImage_2000x2000_e177e4b5-5ce9-4ea1-b797-a1a6b3b5311c.jpg?v=1751998731",
+        "https://cdn.shopify.com/s/files/1/0615/7352/9653/files/06_URRescueBarrierBalm_GLB_AltImage_2000x2000_2f957201-c670-4c61-a5b1-7c87687405bc.jpg?v=1772816305",
+        "https://cdn.shopify.com/s/files/1/0615/7352/9653/files/07_URRescueBarrierBalm_US_AltImage_2000x2000_a71b4b9b-a0b3-45a4-9c7a-21886e35f3b8.jpg?v=1751998731"
+      ],
+      "price_min": 36,
+      "price_max": 36,
+      "default_offer_id": "external_seed:ext_509af4ff581a6ee8211c5b18",
+      "internal_offer_exists": false,
+      "external_offer_exists": true,
+      "pivota_insight_status": "missing",
+      "pivota_insight_summary": null,
+      "quality_score": null,
+      "browse_score": null,
+      "facet_tokens": [
+        "First Aid Beauty",
+        "Treatment"
+      ],
+      "sort_keys": {
+        "price_min": 36,
+        "price_max": 36,
+        "updated_at": null
+      },
+      "updated_at": null,
+      "source_refs": [
+        "external_seed:ext_509af4ff581a6ee8211c5b18"
+      ]
+    }
+  ]
+}

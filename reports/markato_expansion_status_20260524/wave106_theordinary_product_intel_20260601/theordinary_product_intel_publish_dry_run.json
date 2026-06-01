@@ -1,0 +1,26 @@
+{
+  "status": "ok",
+  "mode": "dry_run_validate_replacements",
+  "report": "/Users/pengchydan/dev/_worktrees/pivota-agent-markato-wave25-786-20260527/reports/markato_expansion_status_20260524/wave106_theordinary_product_intel_20260601/theordinary_product_intel_report.json",
+  "rows": [
+    "live_ext_86c02b71c4f8576cafdea079",
+    "live_ext_40d86163d7cbfc82039b5a24",
+    "live_ext_b23ef7c54e22270375fd7b4e",
+    "live_ext_83513127a7a7cac50726b5cd",
+    "live_ext_a7d1193f64e8e78bf1ef9741",
+    "live_ext_3ddd25b09118f4eb30df093a",
+    "live_ext_fd447e3ddace65210a62d6e1",
+    "live_ext_906f8e7c7685d563a502787b"
+  ],
+  "entries": [
+    "product:ext_86c02b71c4f8576cafdea079",
+    "product:ext_40d86163d7cbfc82039b5a24",
+    "product:ext_b23ef7c54e22270375fd7b4e",
+    "product:ext_83513127a7a7cac50726b5cd",
+    "product:ext_a7d1193f64e8e78bf1ef9741",
+    "product:ext_3ddd25b09118f4eb30df093a",
+    "product:ext_fd447e3ddace65210a62d6e1",
+    "product:ext_906f8e7c7685d563a502787b"
+  ],
+  "skipped_rows": []
+}

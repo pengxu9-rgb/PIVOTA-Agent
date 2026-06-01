@@ -1,0 +1,438 @@
+{
+  "generated_at": "2026-06-01T02:26:12.886Z",
+  "market": "US",
+  "include_non_public": false,
+  "docs_built": 8,
+  "source_build_failures": [],
+  "docs": [
+    {
+      "doc_id": "sellable:sig_a5e731c5b70a8b79cf1fbdde",
+      "sellable_item_group_id": "sig_a5e731c5b70a8b79cf1fbdde",
+      "product_line_id": "pl_3e55af83ed7246d8aa8f21f1",
+      "review_family_id": "rf_3e55af83ed7246d8aa8f21f1",
+      "brand_name": "the ordinary",
+      "category_paths": [
+        "Moisturizer"
+      ],
+      "market": "US",
+      "availability_state": "out_of_stock",
+      "publish_state": "public",
+      "title": "The Face & Body Set",
+      "subtitle": "The Face & Body Set includes a collection of targeted formulations to apply ingredient-led skincare to both your face and body.\nThis set includes...\n\nNiacinamide 5% Face and Body Emulsion: a multi-functional, full-size formula that helps fade the look of dark spots on the face and body, for a more even-looking skin tone. Tested on all skin tones, it targets the appearance of dark spots across the face, neck, chest and arms - key areas prone to uneven skin tone - for a more uniform tone across face and body.\nNatural Moisturizing Factors + Inulin Body Lotion: a lightweight body moisturizer for all skin types formulated to keep skin hydrated, even after washing. The lotion-textured formulation provides instant and all day hydration, and strengthens the skin barrier after one application.\nNatural Moisturizing Factors + HA: a daily moisturizer, suitable for all skin types, that strengthens the skin's barrier whilst providing immediate and all-day hydration.\n\nTo use the formulations together in a regimen:\n\nAfter cleansing, apply a few drops of Niacinamide 5% Face and Body Emulsion to the desired areas.\nNext, apply Natural Moisturizing Factors + Inulin across the body.\nApply a small amount of Natural Moisturizing Factors + HA to the face.",
+      "variant_axes": {
+        "multi_variant": false
+      },
+      "size": null,
+      "shade": null,
+      "pack": null,
+      "hero_media": {
+        "url": "https://theordinary.com/dw/image/v2/BFKJ_PRD/on/demandware.static/-/Sites-deciem-master/default/dwb86544f3/Images/products/The%20Ordinary/ord-the-face-and-body-set.png?sw=900&sh=900&sm=fit",
+        "source_kind": "catalog",
+        "source_tier": "catalog"
+      },
+      "preview_media": [
+        "https://theordinary.com/dw/image/v2/BFKJ_PRD/on/demandware.static/-/Sites-deciem-master/default/dwb86544f3/Images/products/The%20Ordinary/ord-the-face-and-body-set.png?sw=900&sh=900&sm=fit",
+        "https://theordinary.com/dw/image/v2/BFKJ_PRD/on/demandware.static/-/Sites-deciem-master/default/dw9affc8f4/Images/products/The%20Ordinary/infographics/rdn-the-face-and-body-set-regimen-graphic.jpg?sw=900&sh=900&sm=fit",
+        "https://theordinary.com/dw/image/v2/BFKJ_PRD/on/demandware.static/-/Sites-deciem-master/default/dwbdedab27/Images/products/The%20Ordinary/infographics/rdn-the-face-and-body-set-graphic-01.jpg?sw=900&sh=900&sm=fit"
+      ],
+      "price_min": 19,
+      "price_max": 19,
+      "default_offer_id": "external_seed:ext_86c02b71c4f8576cafdea079",
+      "internal_offer_exists": false,
+      "external_offer_exists": true,
+      "pivota_insight_status": "missing",
+      "pivota_insight_summary": null,
+      "quality_score": null,
+      "browse_score": null,
+      "facet_tokens": [
+        "the ordinary",
+        "Moisturizer"
+      ],
+      "sort_keys": {
+        "price_min": 19,
+        "price_max": 19,
+        "updated_at": null
+      },
+      "updated_at": null,
+      "source_refs": [
+        "external_seed:ext_86c02b71c4f8576cafdea079"
+      ]
+    },
+    {
+      "doc_id": "sellable:sig_cb1bab0b0c2c552c9a92a051",
+      "sellable_item_group_id": "sig_cb1bab0b0c2c552c9a92a051",
+      "product_line_id": "pl_204be324a1dc815b85b1d986",
+      "review_family_id": "rf_204be324a1dc815b85b1d986",
+      "brand_name": "the ordinary",
+      "category_paths": [
+        "Cleanser"
+      ],
+      "market": "US",
+      "availability_state": "out_of_stock",
+      "publish_state": "public",
+      "title": "The Mini Icons Set",
+      "subtitle": "The Mini Icons Set includes three miniature sizes of some of our most-loved formulations, ideal for travel.\n\nGlycolic Acid 7% Exfoliating Toner: a water-based, exfoliating toner formulated with 7% glycolic acid, a proven alpha-hydroxy acid (AHA) that effectively exfoliates the skin. The daily surface exfoliator helps to remove dead skin cells to smooth skin texture, even tone and boost luminosity.\nNiacinamide 10% + Zinc 1%: a universal serum that balances excess oil to help prevent the appearance of blemishes. Niacinamide 10% + Zinc 1% heroes a high concentration of niacinamide, supported with complementary Zinc PCA, for enhanced penetration of this multi-functional ingredient.\nHyaluronic Acid 2% + B5 (with Ceramides): a lightweight hyaluronic acid serum that brings together five forms of hyaluronic acid to provide instant plumping hydration, while smoothing texture. The additional supporting ingredients of ceramides and pro-vitamin B5 help to restore the moisture barrier to keep hydration locked in.\n\nThe set also includes The Ordinary's complimentary reusable cotton pads to support the application of Glycolic Acid 7% Exfoliating Toner.\nTo use the formulations together in a regimen:\n\nAfter cleansing, saturate a cotton pad with Glycolic Acid 7% Exfoliating Toner and apply to the face and neck. Apply Glycolic Acid 7% Exfoliating Toner once daily, ideally in the evening.\nAfter cleansing and toning, apply a few drops of Niacinamide 10% + Zinc 1%\nOnce dry, follow with a few drops of Hyaluronic Acid 2% + B5.",
+      "variant_axes": {
+        "size": "mini",
+        "multi_variant": false
+      },
+      "size": null,
+      "shade": null,
+      "pack": null,
+      "hero_media": {
+        "url": "https://theordinary.com/dw/image/v2/BFKJ_PRD/on/demandware.static/-/Sites-deciem-master/default/dw51379046/Images/products/The%20Ordinary/ord-the-mini-icons-set.png?sw=900&sh=900&sm=fit",
+        "source_kind": "catalog",
+        "source_tier": "catalog"
+      },
+      "preview_media": [
+        "https://theordinary.com/dw/image/v2/BFKJ_PRD/on/demandware.static/-/Sites-deciem-master/default/dw51379046/Images/products/The%20Ordinary/ord-the-mini-icons-set.png?sw=900&sh=900&sm=fit",
+        "https://theordinary.com/dw/image/v2/BFKJ_PRD/on/demandware.static/-/Sites-deciem-master/default/dw35b6fb2f/Images/products/The%20Ordinary/infographics/ord-mini-icons-benefits-graphic.jpg?sw=900&sh=900&sm=fit",
+        "https://theordinary.com/dw/image/v2/BFKJ_PRD/on/demandware.static/-/Sites-deciem-master/default/dw9c9c8f7d/Images/products/The%20Ordinary/infographics/ord-mini-icons-regimen-graphic.jpg?sw=900&sh=900&sm=fit"
+      ],
+      "price_min": 19.9,
+      "price_max": 19.9,
+      "default_offer_id": "external_seed:ext_40d86163d7cbfc82039b5a24",
+      "internal_offer_exists": false,
+      "external_offer_exists": true,
+      "pivota_insight_status": "missing",
+      "pivota_insight_summary": null,
+      "quality_score": null,
+      "browse_score": null,
+      "facet_tokens": [
+        "the ordinary",
+        "Cleanser"
+      ],
+      "sort_keys": {
+        "price_min": 19.9,
+        "price_max": 19.9,
+        "updated_at": null
+      },
+      "updated_at": null,
+      "source_refs": [
+        "external_seed:ext_40d86163d7cbfc82039b5a24"
+      ]
+    },
+    {
+      "doc_id": "sellable:sig_fddc945e1d5e659f292f0cbb",
+      "sellable_item_group_id": "sig_fddc945e1d5e659f292f0cbb",
+      "product_line_id": "pl_4ec4e8c5368948a1f2fc0fd5",
+      "review_family_id": "rf_4ec4e8c5368948a1f2fc0fd5",
+      "brand_name": "the ordinary",
+      "category_paths": [
+        "Cleanser"
+      ],
+      "market": "US",
+      "availability_state": "available",
+      "publish_state": "public",
+      "title": "The Bright Set",
+      "subtitle": "The Bright Set contains three targeted formulations that contain well-studied brightening ingredients to help visibly target uneven skin tone, while brightening dull skin.\n\nGlycolic Acid 7% Exfoliating Toner is a daily AHA exfoliating toner that helps prep the skin by exfoliating skin's surface. The formulation helps to boost skin brightness, while also smoothing the feel of skin texture and reducing the appearance of fine lines and wrinkles.\n\nAlpha Arbutin 2% + HA is a daily serum that helps even skin tone appearance, while reducing the look of dark spots. The formulation contains a high 2% concentration of alpha arbutin, and boosts radiance while also improving the overall appearance of skin quality.\n\nCaffeine Solution 5% + EGCG is a depuffing eye serum that helps brighten tired eyes. With a 5% concentration of caffeine combined with a highly-purified EGCG, the formulation helps brighten the appearance of dark circles around the eye area, while also reducing the look of puffiness.\n\nHow to use The Bright Set as a regimen:\nIn the morning:\nPrep the skin with your preferred Cleanser\nTreat with Apply Alpha Arbutin 2% + HA\nFollowed by Caffeine Solution 5% + EGCG\nSeal with your preferred moisturizer and sunscreen\n\nIn the evening:\nPrep the skin with your preferred Cleanser\nFollowed by Glycolic Acid 7% Exfoliating Toner\nTreat with Alpha Arbutin 2% + HA\nFollowed by Caffeine Solution 5% + EGCG\nSeal with your preferred moisturizer",
+      "variant_axes": {
+        "multi_variant": false
+      },
+      "size": null,
+      "shade": null,
+      "pack": null,
+      "hero_media": {
+        "url": "https://theordinary.com/dw/image/v2/BFKJ_PRD/on/demandware.static/-/Sites-deciem-master/default/dw473e829e/Images/products/The%20Ordinary/ord-the-bright-set.png?sw=900&sh=900&sm=fit",
+        "source_kind": "catalog",
+        "source_tier": "catalog"
+      },
+      "preview_media": [
+        "https://theordinary.com/dw/image/v2/BFKJ_PRD/on/demandware.static/-/Sites-deciem-master/default/dw473e829e/Images/products/The%20Ordinary/ord-the-bright-set.png?sw=900&sh=900&sm=fit",
+        "https://theordinary.com/dw/image/v2/BFKJ_PRD/on/demandware.static/-/Sites-deciem-master/default/dwb9d0ca44/Images/products/The%20Ordinary/lifestyle/ord-the-bright-set-pdp-lifestyle-evergreen-01.jpg?sw=900&sh=900&sm=fit",
+        "https://theordinary.com/dw/image/v2/BFKJ_PRD/on/demandware.static/-/Sites-deciem-master/default/dw18057be1/Images/products/The%20Ordinary/lifestyle/ORD-the-bright-set-lifestyle1.jpg?sw=900&sh=900&sm=fit"
+      ],
+      "price_min": 18.33,
+      "price_max": 18.33,
+      "default_offer_id": "external_seed:ext_b23ef7c54e22270375fd7b4e",
+      "internal_offer_exists": false,
+      "external_offer_exists": true,
+      "pivota_insight_status": "missing",
+      "pivota_insight_summary": null,
+      "quality_score": null,
+      "browse_score": null,
+      "facet_tokens": [
+        "the ordinary",
+        "Cleanser"
+      ],
+      "sort_keys": {
+        "price_min": 18.33,
+        "price_max": 18.33,
+        "updated_at": null
+      },
+      "updated_at": null,
+      "source_refs": [
+        "external_seed:ext_b23ef7c54e22270375fd7b4e"
+      ]
+    },
+    {
+      "doc_id": "sellable:sig_f8ec53fd4f2898c780ccbb76",
+      "sellable_item_group_id": "sig_f8ec53fd4f2898c780ccbb76",
+      "product_line_id": "pl_d629dc306c330ff89ce7428b",
+      "review_family_id": "rf_d629dc306c330ff89ce7428b",
+      "brand_name": "the ordinary",
+      "category_paths": [
+        "Serum"
+      ],
+      "market": "US",
+      "availability_state": "out_of_stock",
+      "publish_state": "public",
+      "title": "Soothing & Barrier Support Serum Set",
+      "subtitle": "The Soothing & Barrier Support Serum 15ml set includes a reusable keychain pouch for fast skin repair on-the-go. Customise your Soothing & Barrier Support Serum pouch with complimentary stickers included in the set.\nSoothing & Barrier Support Serum is a multi-active solution specifically formulated to address damaged skin barrier concerns. It helps recover and strengthen the skin barrier repair, providing an immediate boost in hydration to soothe discomfort and reduce signs of irritation-induced redness. This formulation works effectively to improve uneven skin texture, promoting a smoother, more radiant appearance.\nSuitable for all skin types, including sensitive skin, this multi-active formulation combines 8 key technologies:\n\nVitamin B12: Reduces dryness and the look of redness, while giving the serum a pink hue.\nGallic Acid Derivatives: Helps soothes the appearance of irritated skin, reducing the look of redness.\nBisabolol: Calms look of redness and soothes the skin.\nSoothing Complex: Alleviates tightness and discomfort from dry skin.\nCeramide Complex: Provides essential skin lipids for skin barrier repair.\n2% Niacinamide: Promotes hydration and supports key skin components.\nSugar-based Hydrators: Boost hydration and support the skin barrier.\nCentella Asiatica Phytotechnologies: Protect the skin from irritants and promotes skin barrier repair.",
+      "variant_axes": {
+        "multi_variant": false
+      },
+      "size": null,
+      "shade": null,
+      "pack": null,
+      "hero_media": {
+        "url": "https://theordinary.com/dw/image/v2/BFKJ_PRD/on/demandware.static/-/Sites-deciem-master/default/dw46324f4d/Images/products/The%20Ordinary/ord-soothing-barrier-support-serum-gift-set.png?sw=900&sh=900&sm=fit",
+        "source_kind": "catalog",
+        "source_tier": "catalog"
+      },
+      "preview_media": [
+        "https://theordinary.com/dw/image/v2/BFKJ_PRD/on/demandware.static/-/Sites-deciem-master/default/dw46324f4d/Images/products/The%20Ordinary/ord-soothing-barrier-support-serum-gift-set.png?sw=900&sh=900&sm=fit",
+        "https://theordinary.com/dw/image/v2/BFKJ_PRD/on/demandware.static/-/Sites-deciem-master/default/dw97319a27/Images/products/The%20Ordinary/infographics/rdn-soothing-barrier-support-serum-graphic-01.jpg?sw=900&sh=900&sm=fit",
+        "https://theordinary.com/dw/image/v2/BFKJ_PRD/on/demandware.static/-/Sites-deciem-master/default/dw7781310b/Images/products/The%20Ordinary/application/ord-soothing-barrier-support-serum-model-application-with-benefits.jpg?sw=900&sh=900&sm=fit",
+        "https://theordinary.com/dw/image/v2/BFKJ_PRD/on/demandware.static/-/Sites-deciem-master/default/dw24fc5c13/Images/products/The%20Ordinary/infographics/ord-soothing-barrier-support-serum-benefits-graphic.jpg?sw=900&sh=900&sm=fit",
+        "https://theordinary.com/dw/image/v2/BFKJ_PRD/on/demandware.static/-/Sites-deciem-master/default/dw7c08fa2e/Images/products/The%20Ordinary/infographics/ord-soothing-barrier-support-serum-ingredients-graphic.jpg?sw=900&sh=900&sm=fit"
+      ],
+      "price_min": 7.31,
+      "price_max": 7.31,
+      "default_offer_id": "external_seed:ext_83513127a7a7cac50726b5cd",
+      "internal_offer_exists": false,
+      "external_offer_exists": true,
+      "pivota_insight_status": "missing",
+      "pivota_insight_summary": null,
+      "quality_score": null,
+      "browse_score": null,
+      "facet_tokens": [
+        "the ordinary",
+        "Serum"
+      ],
+      "sort_keys": {
+        "price_min": 7.31,
+        "price_max": 7.31,
+        "updated_at": null
+      },
+      "updated_at": null,
+      "source_refs": [
+        "external_seed:ext_83513127a7a7cac50726b5cd"
+      ]
+    },
+    {
+      "doc_id": "sellable:sig_d335ce798d12d64727c1493c",
+      "sellable_item_group_id": "sig_d335ce798d12d64727c1493c",
+      "product_line_id": "pl_8c229f8967fd4d5507b6b0e9",
+      "review_family_id": "rf_8c229f8967fd4d5507b6b0e9",
+      "brand_name": "the ordinary",
+      "category_paths": [
+        "Bronzer"
+      ],
+      "market": "US",
+      "availability_state": "available",
+      "publish_state": "public",
+      "title": "The Mini Discovery Set",
+      "subtitle": "The Mini Discovery Set is the ideal place to begin with The Ordinary. It features miniature sizes of some of our most popular formulations for a complete skincare regimen. The set includes a cleanser, exfoliating toner, face serums, an eye serum and a moisturizer, which can be used together in a daily regimen.\n\nSqualane Cleanser is a moisturizing cleanser that helps dissolve makeup, dirt and impurities. The balm-like texture includes squalane - a well-studied moisturizing ingredient - and leaves skin feeling smooth and soft as it dissolves makeup. The formulation is suitable for all skin types, and can be used twice daily.\n\nGlycolic Acid 7% Exfoliating Toner is a daily AHA exfoliating toner that exfoliates skin surface, for smoother, brighter-looking skin. The formulation contains a 7% concentration of glycolic acid, and helps to boost skin radiance as well as promoting more even-looking skin, making it suitable for those with concerns around dullness or uneven tone.\n\nNiacinamide 10% + Zinc 1% is a universal serum that helps smooth the feel of skin texture and visibly brighten skin tone. The formulation includes a high concentration of niacinamide, complemented by zinc PCA, and also helps reduce the appearance of excess shine.\n\nHyaluronic Acid 2% + B5 is our most-loved hydration serum, offering instant hydration and plumping. The lightweight formulation contains five forms of hyaluronic acid, pro-vitamin b5 and ceramides, and helps replenish skin's hydration levels, while also helping the skin retain moisture to replump dry, dehydrated skin.\n\nCaffeine Solution 5% + EGCG is a depuffing eye serum that helps brighten tired eyes. With a 5% concentration of caffeine combined with a highly-purified EGCG, the formulation helps brighten the appearance of dark circles around the eye area, while also reducing the look of puffiness.\n\nNatural Moisturizing Factors + HA is a daily moisturizer, suitable for all skin types, that works with your skin to support its natural hydration barrier. By using a collection of ingredients that appear naturally in your skin - such as amino acids, phospholipids and hyaluronic acid - this cream keeps the outer layer of your skin protected and well-hydrated, without feeling greasy.\n\nTo use the formulations together in a regimen, cleanse morning and evening with Squalane Cleanser, and in the evening follow with Glycolic Acid 7% Exfoliating Toner. After cleansing and toning, apply a few drops of Niacinamide 10% + Zinc 1% and once dry follow with a few drops of Hyaluronic Acid 2% + B5. Apply a small amount of Caffeine Solution 5% + EGCG to the eye contour, and finish your regimen with a small about of Natural Moisturizing Factors + HA.",
+      "variant_axes": {
+        "size": "mini",
+        "shade": "set",
+        "multi_variant": false
+      },
+      "size": null,
+      "shade": null,
+      "pack": null,
+      "hero_media": {
+        "url": "https://theordinary.com/dw/image/v2/BFKJ_PRD/on/demandware.static/-/Sites-deciem-master/default/dwb1b30d27/Images/products/The%20Ordinary/ord-the-mini-discovery-set.png?sw=900&sh=900&sm=fit",
+        "source_kind": "catalog",
+        "source_tier": "catalog"
+      },
+      "preview_media": [
+        "https://theordinary.com/dw/image/v2/BFKJ_PRD/on/demandware.static/-/Sites-deciem-master/default/dwb1b30d27/Images/products/The%20Ordinary/ord-the-mini-discovery-set.png?sw=900&sh=900&sm=fit",
+        "https://theordinary.com/dw/image/v2/BFKJ_PRD/on/demandware.static/-/Sites-deciem-master/default/dw718d8a4b/Images/products/The%20Ordinary/infographics/ord-mini-discovery-set-benefits-graphic.jpg?sw=900&sh=900&sm=fit",
+        "https://theordinary.com/dw/image/v2/BFKJ_PRD/on/demandware.static/-/Sites-deciem-master/default/dw3152824f/Images/products/The%20Ordinary/infographics/ord-mini-discoevery-set-layering-graphic.jpg?sw=900&sh=900&sm=fit",
+        "https://theordinary.com/dw/image/v2/BFKJ_PRD/on/demandware.static/-/Sites-deciem-master/default/dw10b16b86/Images/products/The%20Ordinary/lifestyle/ord-the-mini-discovery-set-pdp-lifestyle-01.jpg?sw=900&sh=900&sm=fit"
+      ],
+      "price_min": 22.41,
+      "price_max": 22.41,
+      "default_offer_id": "external_seed:ext_a7d1193f64e8e78bf1ef9741",
+      "internal_offer_exists": false,
+      "external_offer_exists": true,
+      "pivota_insight_status": "missing",
+      "pivota_insight_summary": null,
+      "quality_score": null,
+      "browse_score": null,
+      "facet_tokens": [
+        "the ordinary",
+        "Bronzer"
+      ],
+      "sort_keys": {
+        "price_min": 22.41,
+        "price_max": 22.41,
+        "updated_at": null
+      },
+      "updated_at": null,
+      "source_refs": [
+        "external_seed:ext_a7d1193f64e8e78bf1ef9741"
+      ]
+    },
+    {
+      "doc_id": "sellable:sig_ddacbb74757f89d1a564d7c8",
+      "sellable_item_group_id": "sig_ddacbb74757f89d1a564d7c8",
+      "product_line_id": "pl_40a26a1466ea80c600c066ba",
+      "review_family_id": "rf_40a26a1466ea80c600c066ba",
+      "brand_name": "the ordinary",
+      "category_paths": [
+        "Serum"
+      ],
+      "market": "US",
+      "availability_state": "available",
+      "publish_state": "public",
+      "title": "The Multi-Peptide Collection",
+      "subtitle": "The Multi-Peptide Collection includes two of our quintessential age-support formulas to offer a wide range of benefits to reduce signs of aging. The pairing includes our Multi-Peptide + HA Serum for the face, and Multi-Peptide Eye Serum for the eyes, to offer a holistic approach to age support.\n\nMulti-Peptide + HA Serum is a universal face serum for all skin types that helps to smooth skin, while significantly improving the feel of skin elasticity and firmness. The water-based serum utilizes four well-studied peptide technologies - SYN™-AKE, Matrixyl™ synthe'6™, Matrixyl™ 3000, and ARGIRELOX™ peptide - as well as multiple hyaluornic acid complexes and skin-friendly amino acids.\n\nMulti-Peptide Eye Serum targets several common signs of aging around the eye area, working to reduce the look of crows feet and under-eye wrinkles, eye bags, puffiness and dark circles. This light, water-based serum leaves the eye area looking brighter, smoother, and less puffy, thanks to a range of technologies including Palmitoyl Tripeptide-38, a combination of niacinamide and fraxinus excelsior bark extract, and a blend of propyl gallate, gallyl glucoside, and epigallocatechin gallatyl glucoside.",
+      "variant_axes": {
+        "multi_variant": false
+      },
+      "size": null,
+      "shade": null,
+      "pack": null,
+      "hero_media": {
+        "url": "https://theordinary.com/dw/image/v2/BFKJ_PRD/on/demandware.static/-/Sites-deciem-master/default/dw93508281/Images/products/The%20Ordinary/ord-multi-peptide-collection.png?sw=900&sh=900&sm=fit",
+        "source_kind": "catalog",
+        "source_tier": "catalog"
+      },
+      "preview_media": [
+        "https://theordinary.com/dw/image/v2/BFKJ_PRD/on/demandware.static/-/Sites-deciem-master/default/dw93508281/Images/products/The%20Ordinary/ord-multi-peptide-collection.png?sw=900&sh=900&sm=fit",
+        "https://theordinary.com/dw/image/v2/BFKJ_PRD/on/demandware.static/-/Sites-deciem-master/default/dw61ab1ccc/Images/products/The%20Ordinary/swatch/ORD-Swatch-Mlt-Pptd+Mlt-Pptd-Eye.png?sw=900&sh=900&sm=fit"
+      ],
+      "price_min": 44.9,
+      "price_max": 44.9,
+      "default_offer_id": "external_seed:ext_3ddd25b09118f4eb30df093a",
+      "internal_offer_exists": false,
+      "external_offer_exists": true,
+      "pivota_insight_status": "missing",
+      "pivota_insight_summary": null,
+      "quality_score": null,
+      "browse_score": null,
+      "facet_tokens": [
+        "the ordinary",
+        "Serum"
+      ],
+      "sort_keys": {
+        "price_min": 44.9,
+        "price_max": 44.9,
+        "updated_at": null
+      },
+      "updated_at": null,
+      "source_refs": [
+        "external_seed:ext_3ddd25b09118f4eb30df093a"
+      ]
+    },
+    {
+      "doc_id": "sellable:sig_414cc90f9f60baf858349d97",
+      "sellable_item_group_id": "sig_414cc90f9f60baf858349d97",
+      "product_line_id": "pl_4944530f950535e71125fcf0",
+      "review_family_id": "rf_4944530f950535e71125fcf0",
+      "brand_name": "the ordinary",
+      "category_paths": [
+        "Cleanser"
+      ],
+      "market": "US",
+      "availability_state": "available",
+      "publish_state": "public",
+      "title": "The Daily Set",
+      "subtitle": "If you're new to The Ordinary, start here. The Daily Set features three products that can be used in a daily skincare routine.\n\nThe Squalane Cleanser - 50ml removes makeup and cleanses the skin while supporting your skin's moisture barrier through hydration.\n\nHyaluronic Acid 2% + B5 (with Ceramides) - 30ml uses five forms of hyaluronic acid to support hydration to multiple layers of your skin's surface.\n\nFinally, Natural Moisturizing Factors + HA - 30ml is a daily moisturizer that works with your skin to support its natural hydration barrier. They're the fundamental formulas for any skincare regimen.\n\nIngredients and Safety: Squalane Cleanser - 50ml\nSqualane, Aqua (Water), Coco-Caprylate/Caprate, Glycerin, Sucrose Stearate, Ethyl Macadamiate, Caprylic/Capric Triglyceride, Hydrogenated Starch Hydrolysate, Sucrose Laurate, Polyacrylate Crosspolymer-6, Isoceteth-20, Sodium Polyacrylate, Tocopherol, Hydroxymethoxyphenyl Decanone, Trisodium Ethylenediamine Disuccinate, Malic Acid, Ethylhexylglycerin, Chlorphenesin.",
+      "variant_axes": {
+        "multi_variant": false
+      },
+      "size": null,
+      "shade": null,
+      "pack": null,
+      "hero_media": {
+        "url": "https://theordinary.com/dw/image/v2/BFKJ_PRD/on/demandware.static/-/Sites-deciem-master/default/dw5614e0a0/Images/products/The%20Ordinary/ord-the-daily-set.png?sw=900&sh=900&sm=fit",
+        "source_kind": "catalog",
+        "source_tier": "catalog"
+      },
+      "preview_media": [
+        "https://theordinary.com/dw/image/v2/BFKJ_PRD/on/demandware.static/-/Sites-deciem-master/default/dw5614e0a0/Images/products/The%20Ordinary/ord-the-daily-set.png?sw=900&sh=900&sm=fit",
+        "https://theordinary.com/dw/image/v2/BFKJ_PRD/on/demandware.static/-/Sites-deciem-master/default/dw2f3de922/Images/products/The%20Ordinary/swatch/rdn-daily-set-swatch.png?sw=900&sh=900&sm=fit",
+        "https://theordinary.com/dw/image/v2/BFKJ_PRD/on/demandware.static/-/Sites-deciem-master/default/dwa57eb1d6/Images/products/The%20Ordinary/lifestyle/ORD-Lifestyle-TheDailySet-rezised.jpg?sw=900&sh=900&sm=fit"
+      ],
+      "price_min": 16.71,
+      "price_max": 16.71,
+      "default_offer_id": "external_seed:ext_fd447e3ddace65210a62d6e1",
+      "internal_offer_exists": false,
+      "external_offer_exists": true,
+      "pivota_insight_status": "missing",
+      "pivota_insight_summary": null,
+      "quality_score": null,
+      "browse_score": null,
+      "facet_tokens": [
+        "the ordinary",
+        "Cleanser"
+      ],
+      "sort_keys": {
+        "price_min": 16.71,
+        "price_max": 16.71,
+        "updated_at": null
+      },
+      "updated_at": null,
+      "source_refs": [
+        "external_seed:ext_fd447e3ddace65210a62d6e1"
+      ]
+    },
+    {
+      "doc_id": "sellable:sig_ebddc666cfa8ed444ba42420",
+      "sellable_item_group_id": "sig_ebddc666cfa8ed444ba42420",
+      "product_line_id": "pl_963ba6b43f758010cecd0be5",
+      "review_family_id": "rf_963ba6b43f758010cecd0be5",
+      "brand_name": "the ordinary",
+      "category_paths": [
+        "Cleanser"
+      ],
+      "market": "US",
+      "availability_state": "available",
+      "publish_state": "public",
+      "title": "The Age Support Set",
+      "subtitle": "The Age Support Set includes some most loved peptide formulations to target signs of aging across the face and around the eyes. Including a face serum, eye serum, and rich hydrating moisturizer, this set minimises the appearance of fine lines and crow's feet, while boosting skin's elasticity and replenishing its hydration.\nThis set includes...\n\nMulti-Peptide + HA Serum: a face serum designed to minimise the appearance of early signs of aging, including the look of fine lines, and the feel of skin elasticity and firmness. It includes four well-studied peptide technologies, as well as skin-friendly amino acids and multiple hyaluronic acid complexes, and helps significantly improve the appearance of wrinkles, as well as improving skin smoothness.\nMulti-Peptide Eye Serum: offers a similar multi-technology approach to signs of aging, and is designed specifically for the eye area. It helps to reduce the appearance of crow's feet and under-eye wrinkles, eye bags, puffiness, and dark circles, leaving the eye area looking brighter, smoother and less puffy. Key ingredients include palmitoyl tripeptide-38, as well as a combination of niacinamide and fraxinus excelsior bark extract, and propyl gallate, gallyl glucoside, and epigallocatechin gallatyl glucoside.\nNatural Moisturizing Factors + PhytoCeramides: a rich, replenishing moisturizer that delivers instant hydration to complete the regimen. It offers a triple action approach to targeting dryness through the inclusion of skin-identical natural moisturizing factors, phytoceramides and skin lipids. When applied, it offers an instant 68%* boost in skin hydration, and strengthens the skin barrier to keep skin hydrated all day, while the phytoceramides help improve the look of skin quality for a fresher, more plump appearance.\n\nTo use the formulations together in a regimen:\n\nAfter cleansing with your preferred cleanser, apply a few drops of Multi-Peptide + HA Serum and massage into skin.\nFollow with a small amount of Multi-Peptide Eye Serum around the eye contour.\nFinish with a small amount of Natural Moisturizing Factors + PhytoCeramides.\n\n*Clinical testing on 30 people after single application.",
+      "variant_axes": {
+        "shade": "set",
+        "multi_variant": false
+      },
+      "size": null,
+      "shade": null,
+      "pack": null,
+      "hero_media": {
+        "url": "https://theordinary.com/dw/image/v2/BFKJ_PRD/on/demandware.static/-/Sites-deciem-master/default/dw5498de07/Images/products/The%20Ordinary/ORD-Box-Product-TheAgeSupportSet-RGB-min.png?sw=900&sh=900&sm=fit",
+        "source_kind": "catalog",
+        "source_tier": "catalog"
+      },
+      "preview_media": [
+        "https://theordinary.com/dw/image/v2/BFKJ_PRD/on/demandware.static/-/Sites-deciem-master/default/dw5498de07/Images/products/The%20Ordinary/ORD-Box-Product-TheAgeSupportSet-RGB-min.png?sw=900&sh=900&sm=fit",
+        "https://theordinary.com/dw/image/v2/BFKJ_PRD/on/demandware.static/-/Sites-deciem-master/default/dw4bda97fa/Images/products/The%20Ordinary/lifestyle/ORD-Lifestyle-AgeSupportSet-resized.jpg?sw=900&sh=900&sm=fit"
+      ],
+      "price_min": 33,
+      "price_max": 33,
+      "default_offer_id": "external_seed:ext_906f8e7c7685d563a502787b",
+      "internal_offer_exists": false,
+      "external_offer_exists": true,
+      "pivota_insight_status": "missing",
+      "pivota_insight_summary": null,
+      "quality_score": null,
+      "browse_score": null,
+      "facet_tokens": [
+        "the ordinary",
+        "Cleanser"
+      ],
+      "sort_keys": {
+        "price_min": 33,
+        "price_max": 33,
+        "updated_at": null
+      },
+      "updated_at": null,
+      "source_refs": [
+        "external_seed:ext_906f8e7c7685d563a502787b"
+      ]
+    }
+  ]
+}
