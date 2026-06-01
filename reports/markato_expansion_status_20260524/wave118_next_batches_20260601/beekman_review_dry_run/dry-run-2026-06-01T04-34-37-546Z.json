@@ -1,0 +1,816 @@
+{
+  "generated_at": "2026-06-01T04:34:37.546Z",
+  "source": "pivota_insights_official_pdp_manual_review_v1",
+  "mode": "dry_run",
+  "filters": {
+    "brand": "Beekman",
+    "product_ids": [],
+    "limit": 10,
+    "include_strong": false,
+    "include_url_key": false,
+    "apply_chunk_size": null
+  },
+  "summary": {
+    "scanned": 10,
+    "changed_products": 0,
+    "blocked_products": 0,
+    "skipped_products": 10,
+    "write_actions": {
+      "skip": 20
+    },
+    "skip_reasons": {
+      "no_safe_writes": 10,
+      "protected_high_quality_existing:reviewed": 20
+    },
+    "evidence_profiles": {
+      "official_pdp_reviewed_formula_and_usage": 10
+    }
+  },
+  "plans": [
+    {
+      "external_product_id": "ext_47adf77863adf9b80951a3f3",
+      "pivota_signature_id": "sig_f85eca404dc342d1654f431ce7f7396f",
+      "title": "Almond Honey Cookie Face Wipes",
+      "brand": "Beekman 1802",
+      "canonical_url": "https://beekman1802.com/products/almond-honey-cookie-face-wipes",
+      "changed": false,
+      "blocked": false,
+      "skip_reason": "no_safe_writes",
+      "candidate_hash": "05b3931ee724e86dafdd8074bf65cb399658262a27173e1edcd3f8e3e5378305",
+      "evidence_profile": "official_pdp_reviewed_formula_and_usage",
+      "source_coverage": {
+        "source": "official_pdp",
+        "canonical_url": "https://beekman1802.com/products/almond-honey-cookie-face-wipes",
+        "fields": {
+          "description": true,
+          "ingredients": 1,
+          "active_ingredients": 0,
+          "how_to": 1,
+          "details": 3,
+          "variants": 1
+        }
+      },
+      "preview": {
+        "headline": "Face cleanser",
+        "what_it_is": "Almond Honey Cookie Face Wipes is a face cleanser from Beekman 1802, with source-backed cues around cleansing.",
+        "why_it_stands_out": [
+          {
+            "headline": "Product cues are source-backed",
+            "body": "Reviewed PDP cues such as daily cleansing give shoppers specific comparison points within Beekman 1802, rather than category-only copy.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Ingredient list is available",
+            "body": "Full INCI is present for formula-sensitive review, which makes this PDP safer to evaluate than a claim-only listing.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Usage instructions available",
+            "body": "Reviewed usage context is present, including: Lift seal & remove wipe.",
+            "evidence_strength": "official_pdp_reviewed"
+          }
+        ],
+        "best_for": [
+          {
+            "tag": "daily_cleansing",
+            "label": "daily cleansing",
+            "confidence": "moderate"
+          }
+        ],
+        "shopping_highlight": "daily cleansing, full INCI available"
+      },
+      "writes": [
+        {
+          "kb_key": "product:ext_47adf77863adf9b80951a3f3",
+          "action": "skip",
+          "reason": "protected_high_quality_existing:reviewed",
+          "old_hash": "4dd25bafce57a573cc345d4911802c4deb34311165efa964d5267eb2d04572ad",
+          "existing_weak": false
+        },
+        {
+          "kb_key": "product:sig_f85eca404dc342d1654f431ce7f7396f",
+          "action": "skip",
+          "reason": "protected_high_quality_existing:reviewed",
+          "old_hash": "4dd25bafce57a573cc345d4911802c4deb34311165efa964d5267eb2d04572ad",
+          "existing_weak": false
+        }
+      ]
+    },
+    {
+      "external_product_id": "ext_05015cd89f03f3e8263ac380",
+      "pivota_signature_id": "sig_a4cc2c4cd1ea054282b015cbd527f765",
+      "title": "Almond Honey Cookie Hand Cream",
+      "brand": "Beekman 1802",
+      "canonical_url": "https://beekman1802.com/products/almond-honey-cookie-hand-cream",
+      "changed": false,
+      "blocked": false,
+      "skip_reason": "no_safe_writes",
+      "candidate_hash": "d7e90723468ec3ab0e68b2350c485a32e376d809ffd0b03d809a402c6bec0d64",
+      "evidence_profile": "official_pdp_reviewed_formula_and_usage",
+      "source_coverage": {
+        "source": "official_pdp",
+        "canonical_url": "https://beekman1802.com/products/almond-honey-cookie-hand-cream",
+        "fields": {
+          "description": true,
+          "ingredients": 1,
+          "active_ingredients": 2,
+          "how_to": 1,
+          "details": 3,
+          "variants": 1
+        }
+      },
+      "preview": {
+        "headline": "Body care treatment",
+        "what_it_is": "Almond Honey Cookie Hand Cream is a body care treatment from Beekman 1802, with source-backed cues around hydration.",
+        "why_it_stands_out": [
+          {
+            "headline": "Routine step cues are specific",
+            "body": "Reviewed skincare cues such as hydration, barrier support identify the routine role or key ingredient context without inventing unsupported benefits.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Ingredient list is available",
+            "body": "Full INCI is present for formula-sensitive review, which makes this PDP safer to evaluate than a claim-only listing.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Usage instructions available",
+            "body": "Reviewed usage context is present, including: Apply generously to your hands as needed.",
+            "evidence_strength": "official_pdp_reviewed"
+          }
+        ],
+        "best_for": [
+          {
+            "tag": "hydration",
+            "label": "hydration",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "barrier_support",
+            "label": "barrier support",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "aromatherapy",
+            "label": "aromatherapy",
+            "confidence": "moderate"
+          }
+        ],
+        "shopping_highlight": "hydration, barrier support"
+      },
+      "writes": [
+        {
+          "kb_key": "product:ext_05015cd89f03f3e8263ac380",
+          "action": "skip",
+          "reason": "protected_high_quality_existing:reviewed",
+          "old_hash": "9aa292c4309deabc8b5d6ce01803308b96e8b198fdd9a237c6768290125e7869",
+          "existing_weak": false
+        },
+        {
+          "kb_key": "product:sig_a4cc2c4cd1ea054282b015cbd527f765",
+          "action": "skip",
+          "reason": "protected_high_quality_existing:reviewed",
+          "old_hash": "9aa292c4309deabc8b5d6ce01803308b96e8b198fdd9a237c6768290125e7869",
+          "existing_weak": false
+        }
+      ]
+    },
+    {
+      "external_product_id": "ext_82f082065005538cb466ed5c",
+      "pivota_signature_id": "sig_ffcd68a6a367708197cf6ef7593343e6",
+      "title": "Almond Honey Cookie Lotion",
+      "brand": "Beekman 1802",
+      "canonical_url": "https://beekman1802.com/products/almond-honey-cookie-lotion",
+      "changed": false,
+      "blocked": false,
+      "skip_reason": "no_safe_writes",
+      "candidate_hash": "0c901208b1f8b92e50e0b01cace3e7f81fd6657e837973faff429a92b58784f2",
+      "evidence_profile": "official_pdp_reviewed_formula_and_usage",
+      "source_coverage": {
+        "source": "official_pdp",
+        "canonical_url": "https://beekman1802.com/products/almond-honey-cookie-lotion",
+        "fields": {
+          "description": true,
+          "ingredients": 1,
+          "active_ingredients": 2,
+          "how_to": 1,
+          "details": 3,
+          "variants": 1
+        }
+      },
+      "preview": {
+        "headline": "Body care treatment",
+        "what_it_is": "Almond Honey Cookie Lotion is a body care treatment from Beekman 1802, with source-backed cues around hydration.",
+        "why_it_stands_out": [
+          {
+            "headline": "Routine step cues are specific",
+            "body": "Reviewed skincare cues such as barrier support identify the routine role or key ingredient context without inventing unsupported benefits.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Ingredient list is available",
+            "body": "Full INCI is present for formula-sensitive review, which makes this PDP safer to evaluate than a claim-only listing.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Usage instructions available",
+            "body": "Reviewed usage context is present, including: For first use, pull to remove the leak-prevention clip from under the nozzle of the pump and discard.",
+            "evidence_strength": "official_pdp_reviewed"
+          }
+        ],
+        "best_for": [
+          {
+            "tag": "barrier_support",
+            "label": "barrier support",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "body_routine",
+            "label": "body routine",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "aromatherapy",
+            "label": "aromatherapy",
+            "confidence": "moderate"
+          }
+        ],
+        "shopping_highlight": "barrier support, full INCI available"
+      },
+      "writes": [
+        {
+          "kb_key": "product:ext_82f082065005538cb466ed5c",
+          "action": "skip",
+          "reason": "protected_high_quality_existing:reviewed",
+          "old_hash": "9d652f174b05290238d989853f559fe191814c933e6d9f66eaca1d25cde1424e",
+          "existing_weak": false
+        },
+        {
+          "kb_key": "product:sig_ffcd68a6a367708197cf6ef7593343e6",
+          "action": "skip",
+          "reason": "protected_high_quality_existing:reviewed",
+          "old_hash": "9d652f174b05290238d989853f559fe191814c933e6d9f66eaca1d25cde1424e",
+          "existing_weak": false
+        }
+      ]
+    },
+    {
+      "external_product_id": "ext_9d9fcee4ed13e17a8cda2889",
+      "pivota_signature_id": "sig_00cdf303eacc8b476247f9f6d0621e46",
+      "title": "Almond Honey Cookie Whipped Body Cream",
+      "brand": "Beekman 1802",
+      "canonical_url": "https://beekman1802.com/products/almond-honey-cookie-whipped-body-cream-1",
+      "changed": false,
+      "blocked": false,
+      "skip_reason": "no_safe_writes",
+      "candidate_hash": "f96f536d1ce5b9c0162371775a3de95de9cdf2f09933e05cc6bd023c1e33bf4f",
+      "evidence_profile": "official_pdp_reviewed_formula_and_usage",
+      "source_coverage": {
+        "source": "official_pdp",
+        "canonical_url": "https://beekman1802.com/products/almond-honey-cookie-whipped-body-cream-1",
+        "fields": {
+          "description": true,
+          "ingredients": 1,
+          "active_ingredients": 1,
+          "how_to": 1,
+          "details": 3,
+          "variants": 2
+        }
+      },
+      "preview": {
+        "headline": "Body care treatment",
+        "what_it_is": "Almond Honey Cookie Whipped Body Cream is a body care treatment from Beekman 1802 in Regular, with source-backed cues around hydration.",
+        "why_it_stands_out": [
+          {
+            "headline": "Routine step cues are specific",
+            "body": "Reviewed skincare cues such as aloe juice, hydration, barrier support, Regular identify the routine role or key ingredient context without inventing unsupported benefits.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Ingredient list is available",
+            "body": "Full INCI is present for formula-sensitive review, which makes this PDP safer to evaluate than a claim-only listing.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Shade and size are explicit",
+            "body": "Variant labels such as Regular, Size: Regular, Mini, Size: Mini are visible, reducing ambiguity around the product format before a shopper clicks through.",
+            "evidence_strength": "official_pdp_reviewed"
+          }
+        ],
+        "best_for": [
+          {
+            "tag": "hydration",
+            "label": "hydration",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "barrier_support",
+            "label": "barrier support",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "body_routine",
+            "label": "body routine",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "aromatherapy",
+            "label": "aromatherapy",
+            "confidence": "moderate"
+          }
+        ],
+        "shopping_highlight": "aloe juice, hydration, barrier support"
+      },
+      "writes": [
+        {
+          "kb_key": "product:ext_9d9fcee4ed13e17a8cda2889",
+          "action": "skip",
+          "reason": "protected_high_quality_existing:reviewed",
+          "old_hash": "87deb1828d63a4cb3e0aa5c5ed3043ea71864d7d6b61974cb1154581235ec8b6",
+          "existing_weak": false
+        },
+        {
+          "kb_key": "product:sig_00cdf303eacc8b476247f9f6d0621e46",
+          "action": "skip",
+          "reason": "protected_high_quality_existing:reviewed",
+          "old_hash": "87deb1828d63a4cb3e0aa5c5ed3043ea71864d7d6b61974cb1154581235ec8b6",
+          "existing_weak": false
+        }
+      ]
+    },
+    {
+      "external_product_id": "ext_4caeb1b3915d276921ef864c",
+      "pivota_signature_id": "sig_8d1335b93e4e3dca9df0c1d2529869fa",
+      "title": "Apricot & Honey Tea Lip Balm",
+      "brand": "Beekman 1802",
+      "canonical_url": "https://beekman1802.com/products/apricot-honey-lip-balm",
+      "changed": false,
+      "blocked": false,
+      "skip_reason": "no_safe_writes",
+      "candidate_hash": "54233fa3fa0419414dae06e0bed51e235efa56fe6fcca1bd0a294a45931f76ac",
+      "evidence_profile": "official_pdp_reviewed_formula_and_usage",
+      "source_coverage": {
+        "source": "official_pdp",
+        "canonical_url": "https://beekman1802.com/products/apricot-honey-lip-balm",
+        "fields": {
+          "description": true,
+          "ingredients": 1,
+          "active_ingredients": 0,
+          "how_to": 1,
+          "details": 3,
+          "variants": 1
+        }
+      },
+      "preview": {
+        "headline": "Lip treatment",
+        "what_it_is": "Apricot & Honey Tea Lip Balm is a lip set from Beekman 1802 built around Apricot + Honey Tea Lip Balm.",
+        "why_it_stands_out": [
+          {
+            "headline": "Component pairing is clear",
+            "body": "The PDP identifies the paired components as Apricot and Honey Tea Lip Balm, so a shopper can tell whether this is liner-plus-color, gloss-plus-liner, or a fuller lip set before leaving the page.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Application order is explicit",
+            "body": "The reviewed directions explain the sequence: Apply to lips as needed.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Ingredient list is available",
+            "body": "Full INCI is present for formula-sensitive review, which makes this PDP safer to evaluate than a claim-only listing.",
+            "evidence_strength": "official_pdp_reviewed"
+          }
+        ],
+        "best_for": [
+          {
+            "tag": "lip_comfort",
+            "label": "lip comfort",
+            "confidence": "moderate"
+          }
+        ],
+        "shopping_highlight": "Apricot + Honey Tea Lip Balm"
+      },
+      "writes": [
+        {
+          "kb_key": "product:ext_4caeb1b3915d276921ef864c",
+          "action": "skip",
+          "reason": "protected_high_quality_existing:reviewed",
+          "old_hash": "e3bda0857a830eac7e7d5d4decf9f589011b4190c551e6b443a22eeb115bbd76",
+          "existing_weak": false
+        },
+        {
+          "kb_key": "product:sig_8d1335b93e4e3dca9df0c1d2529869fa",
+          "action": "skip",
+          "reason": "protected_high_quality_existing:reviewed",
+          "old_hash": "e3bda0857a830eac7e7d5d4decf9f589011b4190c551e6b443a22eeb115bbd76",
+          "existing_weak": false
+        }
+      ]
+    },
+    {
+      "external_product_id": "ext_0e1be8a7d102fa6249e292aa",
+      "pivota_signature_id": "sig_dbbd239c1f0deeefc7e23ea762925678",
+      "title": "Beekman 1802 x Libby’s® Classic Pumpkin Pie & Cream Whipped Body Cream",
+      "brand": "Beekman 1802",
+      "canonical_url": "https://beekman1802.com/products/libbys-classic-pumpkin-whipped-body-cream",
+      "changed": false,
+      "blocked": false,
+      "skip_reason": "no_safe_writes",
+      "candidate_hash": "9f712eccea1808589ee7b09c83073725e6ae4c0f0f4d72c0bcf73e4cc504b8c5",
+      "evidence_profile": "official_pdp_reviewed_formula_and_usage",
+      "source_coverage": {
+        "source": "official_pdp",
+        "canonical_url": "https://beekman1802.com/products/libbys-classic-pumpkin-whipped-body-cream",
+        "fields": {
+          "description": true,
+          "ingredients": 1,
+          "active_ingredients": 1,
+          "how_to": 1,
+          "details": 3,
+          "variants": 1
+        }
+      },
+      "preview": {
+        "headline": "Body care treatment",
+        "what_it_is": "Beekman 1802 x Libby’s® Classic Pumpkin Pie & Cream Whipped Body Cream is a body care treatment from Beekman 1802, with source-backed cues around hydration.",
+        "why_it_stands_out": [
+          {
+            "headline": "Routine step cues are specific",
+            "body": "Reviewed skincare cues such as aloe juice, hydration, barrier support identify the routine role or key ingredient context without inventing unsupported benefits.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Ingredient list is available",
+            "body": "Full INCI is present for formula-sensitive review, which makes this PDP safer to evaluate than a claim-only listing.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Usage instructions available",
+            "body": "Reviewed usage context is present, including: Massage desired amount from neck to toes, concentrating on dry areas such as elbows and knees.",
+            "evidence_strength": "official_pdp_reviewed"
+          }
+        ],
+        "best_for": [
+          {
+            "tag": "hydration",
+            "label": "hydration",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "barrier_support",
+            "label": "barrier support",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "body_routine",
+            "label": "body routine",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "aromatherapy",
+            "label": "aromatherapy",
+            "confidence": "moderate"
+          }
+        ],
+        "shopping_highlight": "aloe juice, hydration, barrier support"
+      },
+      "writes": [
+        {
+          "kb_key": "product:ext_0e1be8a7d102fa6249e292aa",
+          "action": "skip",
+          "reason": "protected_high_quality_existing:reviewed",
+          "old_hash": "6032f64efee46eaa91574d012d63fbe90ae9134d66b1250c81ec621815cf6a28",
+          "existing_weak": false
+        },
+        {
+          "kb_key": "product:sig_dbbd239c1f0deeefc7e23ea762925678",
+          "action": "skip",
+          "reason": "protected_high_quality_existing:reviewed",
+          "old_hash": "6032f64efee46eaa91574d012d63fbe90ae9134d66b1250c81ec621815cf6a28",
+          "existing_weak": false
+        }
+      ]
+    },
+    {
+      "external_product_id": "ext_6529814903eff07706e19dae",
+      "pivota_signature_id": "sig_5fad4655acbccc370976571013d9bcca",
+      "title": "Beekman 1802 x MacKenzie-Childs Covent Garden Hand Cream",
+      "brand": "Beekman 1802",
+      "canonical_url": "https://beekman1802.com/products/beekman-1802-x-mackenzie-childs-covent-garden-hand-cream",
+      "changed": false,
+      "blocked": false,
+      "skip_reason": "no_safe_writes",
+      "candidate_hash": "7541396cde7c02bdf2e33ae326f551c2613b5d163dfd78b591940212b0bd6cb0",
+      "evidence_profile": "official_pdp_reviewed_formula_and_usage",
+      "source_coverage": {
+        "source": "official_pdp",
+        "canonical_url": "https://beekman1802.com/products/beekman-1802-x-mackenzie-childs-covent-garden-hand-cream",
+        "fields": {
+          "description": true,
+          "ingredients": 1,
+          "active_ingredients": 2,
+          "how_to": 1,
+          "details": 3,
+          "variants": 1
+        }
+      },
+      "preview": {
+        "headline": "Body care treatment",
+        "what_it_is": "Beekman 1802 x MacKenzie-Childs Covent Garden Hand Cream is a body care treatment from Beekman 1802, with source-backed cues around hydration.",
+        "why_it_stands_out": [
+          {
+            "headline": "Routine step cues are specific",
+            "body": "Reviewed skincare cues such as hydration, barrier support identify the routine role or key ingredient context without inventing unsupported benefits.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Ingredient list is available",
+            "body": "Full INCI is present for formula-sensitive review, which makes this PDP safer to evaluate than a claim-only listing.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Usage instructions available",
+            "body": "Reviewed usage context is present, including: Apply generously to your hands as needed.",
+            "evidence_strength": "official_pdp_reviewed"
+          }
+        ],
+        "best_for": [
+          {
+            "tag": "hydration",
+            "label": "hydration",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "barrier_support",
+            "label": "barrier support",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "aromatherapy",
+            "label": "aromatherapy",
+            "confidence": "moderate"
+          }
+        ],
+        "shopping_highlight": "hydration, barrier support"
+      },
+      "writes": [
+        {
+          "kb_key": "product:ext_6529814903eff07706e19dae",
+          "action": "skip",
+          "reason": "protected_high_quality_existing:reviewed",
+          "old_hash": "200222c5646244650d8bcfb9da4d44328633321b874677d53aa455ccae14e94e",
+          "existing_weak": false
+        },
+        {
+          "kb_key": "product:sig_5fad4655acbccc370976571013d9bcca",
+          "action": "skip",
+          "reason": "protected_high_quality_existing:reviewed",
+          "old_hash": "200222c5646244650d8bcfb9da4d44328633321b874677d53aa455ccae14e94e",
+          "existing_weak": false
+        }
+      ]
+    },
+    {
+      "external_product_id": "ext_6f684c85da73df4e46f235a0",
+      "pivota_signature_id": "sig_e9326532214b6d8b641052e4892f2331",
+      "title": "Beekman 1802 x MacKenzie-Childs Covent Garden Whipped Body Cream",
+      "brand": "Beekman 1802",
+      "canonical_url": "https://beekman1802.com/products/beekman-1802-x-mackenzie-childs-covent-garden-whipped-body-cream",
+      "changed": false,
+      "blocked": false,
+      "skip_reason": "no_safe_writes",
+      "candidate_hash": "0b78067f335d03dcd633ba86b886021a19f0057bc7cd5c7cbe92697585d30ab3",
+      "evidence_profile": "official_pdp_reviewed_formula_and_usage",
+      "source_coverage": {
+        "source": "official_pdp",
+        "canonical_url": "https://beekman1802.com/products/beekman-1802-x-mackenzie-childs-covent-garden-whipped-body-cream",
+        "fields": {
+          "description": true,
+          "ingredients": 1,
+          "active_ingredients": 1,
+          "how_to": 1,
+          "details": 3,
+          "variants": 1
+        }
+      },
+      "preview": {
+        "headline": "Body care treatment",
+        "what_it_is": "Beekman 1802 x MacKenzie-Childs Covent Garden Whipped Body Cream is a body care treatment from Beekman 1802, with source-backed cues around hydration.",
+        "why_it_stands_out": [
+          {
+            "headline": "Routine step cues are specific",
+            "body": "Reviewed skincare cues such as aloe juice, hydration, barrier support identify the routine role or key ingredient context without inventing unsupported benefits.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Ingredient list is available",
+            "body": "Full INCI is present for formula-sensitive review, which makes this PDP safer to evaluate than a claim-only listing.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Usage instructions available",
+            "body": "Reviewed usage context is present, including: Massage desired amount from neck to toes, concentrating on dry areas such as elbows and knees.",
+            "evidence_strength": "official_pdp_reviewed"
+          }
+        ],
+        "best_for": [
+          {
+            "tag": "hydration",
+            "label": "hydration",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "barrier_support",
+            "label": "barrier support",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "body_routine",
+            "label": "body routine",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "aromatherapy",
+            "label": "aromatherapy",
+            "confidence": "moderate"
+          }
+        ],
+        "shopping_highlight": "aloe juice, hydration, barrier support"
+      },
+      "writes": [
+        {
+          "kb_key": "product:ext_6f684c85da73df4e46f235a0",
+          "action": "skip",
+          "reason": "protected_high_quality_existing:reviewed",
+          "old_hash": "ea9ba850aed6db6d3b0befd80d0a51ad54b63e611e5448eff5d658aedefda01c",
+          "existing_weak": false
+        },
+        {
+          "kb_key": "product:sig_e9326532214b6d8b641052e4892f2331",
+          "action": "skip",
+          "reason": "protected_high_quality_existing:reviewed",
+          "old_hash": "ea9ba850aed6db6d3b0befd80d0a51ad54b63e611e5448eff5d658aedefda01c",
+          "existing_weak": false
+        }
+      ]
+    },
+    {
+      "external_product_id": "ext_e8aeff56895f1e5f9056b7ba",
+      "pivota_signature_id": "sig_5641c97ab140d0f397c926ef2eef15bb",
+      "title": "Bloom Cream Daily Moisturizer",
+      "brand": "Beekman 1802",
+      "canonical_url": "https://beekman1802.com/products/bloom-cream-moisturizer",
+      "changed": false,
+      "blocked": false,
+      "skip_reason": "no_safe_writes",
+      "candidate_hash": "4df9723c86e220c941863aa1a181e1377816928dd510c5400cf54e31ceacfb20",
+      "evidence_profile": "official_pdp_reviewed_formula_and_usage",
+      "source_coverage": {
+        "source": "official_pdp",
+        "canonical_url": "https://beekman1802.com/products/bloom-cream-moisturizer",
+        "fields": {
+          "description": true,
+          "ingredients": 1,
+          "active_ingredients": 3,
+          "how_to": 1,
+          "details": 3,
+          "variants": 4
+        }
+      },
+      "preview": {
+        "headline": "Body care treatment",
+        "what_it_is": "Bloom Cream Daily Moisturizer is a body care treatment from Beekman 1802 in Jumbo Bottle, with source-backed cues around cleansing, hydration and brightening support.",
+        "why_it_stands_out": [
+          {
+            "headline": "Routine step cues are specific",
+            "body": "Reviewed skincare cues such as aloe juice, hydration, barrier support, Jumbo Bottle identify the routine role or key ingredient context without inventing unsupported benefits.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Ingredient list is available",
+            "body": "Full INCI is present for formula-sensitive review, which makes this PDP safer to evaluate than a claim-only listing.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Shade and size are explicit",
+            "body": "Variant labels such as Jumbo Bottle, Size: Jumbo Bottle, Jumbo Refill Pod, Size: Jumbo Refill Pod are visible, reducing ambiguity around the product format before a shopper clicks through.",
+            "evidence_strength": "official_pdp_reviewed"
+          }
+        ],
+        "best_for": [
+          {
+            "tag": "hydration",
+            "label": "hydration",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "radiance",
+            "label": "radiance",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "barrier_support",
+            "label": "barrier support",
+            "confidence": "moderate"
+          }
+        ],
+        "shopping_highlight": "aloe juice, hydration, barrier support"
+      },
+      "writes": [
+        {
+          "kb_key": "product:ext_e8aeff56895f1e5f9056b7ba",
+          "action": "skip",
+          "reason": "protected_high_quality_existing:reviewed",
+          "old_hash": "cf96046c40558fb151c715eae1e35c2e865e236bcbfd4698e36e74898afe2560",
+          "existing_weak": false
+        },
+        {
+          "kb_key": "product:sig_5641c97ab140d0f397c926ef2eef15bb",
+          "action": "skip",
+          "reason": "protected_high_quality_existing:reviewed",
+          "old_hash": "cf96046c40558fb151c715eae1e35c2e865e236bcbfd4698e36e74898afe2560",
+          "existing_weak": false
+        }
+      ]
+    },
+    {
+      "external_product_id": "ulta:2f22593dd125b1d7",
+      "pivota_signature_id": "sig_6b30f934a714b4fac5cd0257fb21b047",
+      "title": "Bloom Cream Daily Moisturizer - 1.69 oz Jar",
+      "brand": "Beekman 1802",
+      "canonical_url": "https://www.ulta.com/p/bloom-cream-daily-moisturizer-pimprod2017582?sku=2569244",
+      "changed": false,
+      "blocked": false,
+      "skip_reason": "no_safe_writes",
+      "candidate_hash": "19f9d5808d035ae684bf9b6700b69279c2e5b135e60a8937fe2bf7c55faedb9c",
+      "evidence_profile": "official_pdp_reviewed_formula_and_usage",
+      "source_coverage": {
+        "source": "official_pdp",
+        "canonical_url": "https://www.ulta.com/p/bloom-cream-daily-moisturizer-pimprod2017582?sku=2569244",
+        "fields": {
+          "description": true,
+          "ingredients": 1,
+          "active_ingredients": 1,
+          "how_to": 1,
+          "details": 2,
+          "variants": 1
+        }
+      },
+      "preview": {
+        "headline": "Body care treatment",
+        "what_it_is": "Bloom Cream Daily Moisturizer - 1.69 oz Jar is a body care treatment from Beekman 1802, with source-backed cues around hydration and brightening support.",
+        "why_it_stands_out": [
+          {
+            "headline": "Routine step cues are specific",
+            "body": "Reviewed skincare cues such as aloe juice, hydration, barrier support identify the routine role or key ingredient context without inventing unsupported benefits.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Ingredient list is available",
+            "body": "Full INCI is present for formula-sensitive review, which makes this PDP safer to evaluate than a claim-only listing.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Usage instructions available",
+            "body": "Reviewed usage context is present, including: Directions: Apply morning and night daily.",
+            "evidence_strength": "official_pdp_reviewed"
+          }
+        ],
+        "best_for": [
+          {
+            "tag": "hydration",
+            "label": "hydration",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "radiance",
+            "label": "radiance",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "barrier_support",
+            "label": "barrier support",
+            "confidence": "moderate"
+          }
+        ],
+        "shopping_highlight": "aloe juice, hydration, barrier support"
+      },
+      "writes": [
+        {
+          "kb_key": "product:ulta:2f22593dd125b1d7",
+          "action": "skip",
+          "reason": "protected_high_quality_existing:reviewed",
+          "old_hash": "937b7ae166b2fbe0259fc4e3cc830a3245dc37df92a29aa219d4de46b4f86c14",
+          "existing_weak": false
+        },
+        {
+          "kb_key": "product:sig_6b30f934a714b4fac5cd0257fb21b047",
+          "action": "skip",
+          "reason": "protected_high_quality_existing:reviewed",
+          "old_hash": "99f6de23697f64c0e7b1d24a03d4641287009893e0a5013cf4656bd22309dc46",
+          "existing_weak": false
+        }
+      ]
+    }
+  ]
+}

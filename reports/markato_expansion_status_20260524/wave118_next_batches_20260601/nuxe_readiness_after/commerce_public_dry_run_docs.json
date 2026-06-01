@@ -1,0 +1,61 @@
+{
+  "generated_at": "2026-06-01T04:35:41.009Z",
+  "market": "US",
+  "include_non_public": false,
+  "docs_built": 1,
+  "source_build_failures": [],
+  "docs": [
+    {
+      "doc_id": "sellable:sig_f0add601893c412c01bc39d1",
+      "sellable_item_group_id": "sig_f0add601893c412c01bc39d1",
+      "product_line_id": "pl_c7e735bbd6803f16106e5c67",
+      "review_family_id": "rf_c7e735bbd6803f16106e5c67",
+      "brand_name": "NUXE",
+      "category_paths": [
+        "Serum"
+      ],
+      "market": "US",
+      "availability_state": "available",
+      "publish_state": "public",
+      "title": "Anti-Aging Routine, Super Serum [10]",
+      "subtitle": "Discover the Super Serum [10] Face and Super Serum [10] Eye routines \n\nKit contains :\n\n- 1 Super Serum [10], Universal anti-aging concentrate \n- 1 Super Serum [10] Yeux - Universal anti-aging eye concentrate \n\nPlease note that your order may arrive in multiple shipments. This is to ensure that you receive your items as quickly as possible. \nIf you have any questions or concerns about your order, please feel free to reach out to our customer support team. Thank you for your understanding.\n\nNon-contractual visual.",
+      "variant_axes": {
+        "multi_variant": false
+      },
+      "size": null,
+      "shade": null,
+      "pack": null,
+      "hero_media": {
+        "url": "https://cdn.shopify.com/s/files/1/0651/8449/7835/files/BU00353US_-_Routine_Anti-Age_-_Super_Serum.jpg?v=1768984071",
+        "source_kind": "catalog",
+        "source_tier": "catalog"
+      },
+      "preview_media": [
+        "https://cdn.shopify.com/s/files/1/0651/8449/7835/files/BU00353US_-_Routine_Anti-Age_-_Super_Serum.jpg?v=1768984071",
+        "https://us.nuxe.com/cdn/shop/files/BU00353US_-_Routine_Anti-Age_-_Super_Serum.jpg?crop=center&v=1768984071"
+      ],
+      "price_min": 145,
+      "price_max": 145,
+      "default_offer_id": "external_seed:ext_a75e4db085eb7c5f07d9098f",
+      "internal_offer_exists": false,
+      "external_offer_exists": true,
+      "pivota_insight_status": "available",
+      "pivota_insight_summary": "Anti-Aging Routine, Super Serum [10] is a treatment serum from Nuxe.",
+      "quality_score": null,
+      "browse_score": null,
+      "facet_tokens": [
+        "NUXE",
+        "Serum"
+      ],
+      "sort_keys": {
+        "price_min": 145,
+        "price_max": 145,
+        "updated_at": null
+      },
+      "updated_at": null,
+      "source_refs": [
+        "external_seed:ext_a75e4db085eb7c5f07d9098f"
+      ]
+    }
+  ]
+}
