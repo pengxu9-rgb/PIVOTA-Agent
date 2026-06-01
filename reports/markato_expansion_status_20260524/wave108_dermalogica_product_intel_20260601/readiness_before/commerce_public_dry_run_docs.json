@@ -1,0 +1,129 @@
+{
+  "generated_at": "2026-06-01T02:30:34.952Z",
+  "market": "US",
+  "include_non_public": false,
+  "docs_built": 2,
+  "source_build_failures": [],
+  "docs": [
+    {
+      "doc_id": "sellable:sig_f4159c6e42b2b7ca2b4fe193",
+      "sellable_item_group_id": "sig_f4159c6e42b2b7ca2b4fe193",
+      "product_line_id": "pl_049ecf4e07637fdc01e75479",
+      "review_family_id": "rf_049ecf4e07637fdc01e75479",
+      "brand_name": "Dermalogica",
+      "category_paths": [
+        "Powder Exfoliant"
+      ],
+      "market": "US",
+      "availability_state": "available",
+      "publish_state": "public",
+      "title": "daily microfoliant exfoliator",
+      "subtitle": "recommended for:\n\ndullness\n\nuneven texture\n\nuneven skin tone\n\nAchieve brighter, smoother skin every day with this iconic exfoliating powder. Rice-based powder, rich in Alpha Hydroxy Acids (AHAs), activates upon contact with water, releasing Papain , Salicylic Acid and Rice Bran to polish skin to perfection. A Skin Brightening Complex of Phytic Acid from Rice Bran , White Tea and Licorice helps balance uneven skin tone while a super-soothing blend of Colloidal Oatmeal and Allantoin helps calm skin. Gentle enough for daily use.",
+      "variant_axes": {
+        "size": "0 45 oz",
+        "volume": "45oz",
+        "multi_variant": true
+      },
+      "size": null,
+      "shade": null,
+      "pack": null,
+      "hero_media": {
+        "url": "https://cdn.shopify.com/s/files/1/0420/7683/1896/files/01_DailyMicCampaign_PDP_benefits_Tile01.jpg?v=1762197961",
+        "source_kind": "catalog",
+        "source_tier": "catalog"
+      },
+      "preview_media": [
+        "https://cdn.shopify.com/s/files/1/0420/7683/1896/files/01_DailyMicCampaign_PDP_benefits_Tile01.jpg?v=1762197961",
+        "https://cdn.shopify.com/s/files/1/0420/7683/1896/files/DailyMicrofoliant_powertofoam.jpg?v=1766525326",
+        "https://cdn.shopify.com/s/files/1/0420/7683/1896/files/DailyMicrofoliant_ClinicalProof_681ce10b-f97d-41da-8072-6b1a0a9000f8.jpg?v=1766525330",
+        "https://cdn.shopify.com/s/files/1/0420/7683/1896/files/DailyMicrofoliant_Model.jpg?v=1766525335",
+        "https://cdn.shopify.com/s/files/1/0420/7683/1896/files/DailyMicrofoliant_Body.jpg?v=1766525338",
+        "https://cdn.shopify.com/s/files/1/0420/7683/1896/files/DailyMicrofoliant_BA1_8f35c797-ee4c-4862-afc7-e515eda62a25.jpg?v=1766525338",
+        "https://cdn.shopify.com/s/files/1/0420/7683/1896/files/DailyMicrofoliant_BA2_31cb3fa9-f62c-472a-981b-05891853e87d.jpg?v=1766525341",
+        "https://cdn.shopify.com/s/files/1/0420/7683/1896/files/DailyMicrofoliant_Routine_9b2ff103-c79d-49b7-b456-cc592b3b37f5.jpg?v=1766525344"
+      ],
+      "price_min": 19.5,
+      "price_max": 19.5,
+      "default_offer_id": "external_seed:ext_406df819ae18fad866eff5b8",
+      "internal_offer_exists": false,
+      "external_offer_exists": true,
+      "pivota_insight_status": "available",
+      "pivota_insight_summary": "A Dermalogica water-activated powder exfoliant.",
+      "quality_score": null,
+      "browse_score": null,
+      "facet_tokens": [
+        "Dermalogica",
+        "Powder Exfoliant"
+      ],
+      "sort_keys": {
+        "price_min": 19.5,
+        "price_max": 19.5,
+        "updated_at": null
+      },
+      "updated_at": null,
+      "source_refs": [
+        "external_seed:ext_406df819ae18fad866eff5b8"
+      ]
+    },
+    {
+      "doc_id": "sellable:sig_8da06e146bbeee546afd8d4c",
+      "sellable_item_group_id": "sig_8da06e146bbeee546afd8d4c",
+      "product_line_id": "pl_7e962b82a3a7beb80b205ddc",
+      "review_family_id": "rf_7e962b82a3a7beb80b205ddc",
+      "brand_name": "Dermalogica",
+      "category_paths": [
+        "Liquid Peel"
+      ],
+      "market": "US",
+      "availability_state": "available",
+      "publish_state": "public",
+      "title": "liquid peelfoliant",
+      "subtitle": "recommended for:\n\ndullness\n\nfine lines and wrinkles\n\npores\n\nDaily peel with a potent blend of 15% AHA + BHA + PHA + 10% fruit enzymes + 5% phytic acid + tranexamic acid smooths the appearance of fine lines while helping to visibly minimize pores and even skin tone.\n\nProfessional-grade at-home peel with a blend of 30% acids and enzymes (Glycolic, Lactic, Salicylic, Phytic and Tranexamic acids plus Gluconolactone and fermented Pomegranate Enzyme) works at different layers of skin's surface to thoroughly exfoliate, help unclog pores and reveal smoother, brighter skin. A lipid-rich blend with upcycled Cranberry Extract promotes long-lasting hydration.",
+      "variant_axes": {
+        "size": "2 0 oz",
+        "shade": "2 0 oz",
+        "multi_variant": false
+      },
+      "size": null,
+      "shade": null,
+      "pack": null,
+      "hero_media": {
+        "url": "https://cdn.shopify.com/s/files/1/0420/7683/1896/files/liquid-peelfoliant_main-with-benefits.jpg?v=1762198037",
+        "source_kind": "catalog",
+        "source_tier": "catalog"
+      },
+      "preview_media": [
+        "https://cdn.shopify.com/s/files/1/0420/7683/1896/files/liquid-peelfoliant_main-with-benefits.jpg?v=1762198037",
+        "https://cdn.shopify.com/s/files/1/0420/7683/1896/files/liquid-peelfoliant_Ingredients_2.jpg?v=1698103976",
+        "https://cdn.shopify.com/s/files/1/0420/7683/1896/files/Liquid-Peelfoliant_ClinicalClaim.jpg?v=1701112177",
+        "https://cdn.shopify.com/s/files/1/0420/7683/1896/files/liquid-peelfoliant_drip.jpg?v=1701112085",
+        "https://cdn.shopify.com/s/files/1/0420/7683/1896/files/liquid-peelfoliant_dispense.jpg?v=1701112085",
+        "https://cdn.shopify.com/s/files/1/0420/7683/1896/files/liquid-peelfoliant_model-apply.jpg?v=1701112085",
+        "https://cdn.shopify.com/s/files/1/0420/7683/1896/files/liquid-peelfoliant_acids-and-enzymes.jpg?v=1701112085",
+        "https://cdn.shopify.com/s/files/1/0420/7683/1896/files/liquid-peelfoliant_b_a-2.jpg?v=1701112085"
+      ],
+      "price_min": 69,
+      "price_max": 69,
+      "default_offer_id": "external_seed:ext_41364d441031f658a7c1d79b",
+      "internal_offer_exists": false,
+      "external_offer_exists": true,
+      "pivota_insight_status": "available",
+      "pivota_insight_summary": "The official page positions it for exfoliation-focused routines.",
+      "quality_score": null,
+      "browse_score": null,
+      "facet_tokens": [
+        "Dermalogica",
+        "Liquid Peel"
+      ],
+      "sort_keys": {
+        "price_min": 69,
+        "price_max": 69,
+        "updated_at": null
+      },
+      "updated_at": null,
+      "source_refs": [
+        "external_seed:ext_41364d441031f658a7c1d79b"
+      ]
+    }
+  ]
+}

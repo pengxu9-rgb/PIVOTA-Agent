@@ -1,0 +1,17 @@
+{
+  "meta": {
+    "generated_at": "2026-06-01T02:30:03.475Z",
+    "source": "reviewed_official_seed_product_intel_report",
+    "batch_name": "wave107_byoma_product_intel_20260601",
+    "inventory": "reports/markato_expansion_status_20260524/wave107_byoma_product_intel_20260601/readiness_before/commerce_index_kb_readiness_inventory.json",
+    "selected_cases": 0,
+    "reviewer": "codex_human_quality_reviewer",
+    "reviewer_kind": "assistant",
+    "candidate_quality_summary": {
+      "public_ready": 0,
+      "high_quality_ready": 0,
+      "evidence_profile": {}
+    }
+  },
+  "rows": []
+}

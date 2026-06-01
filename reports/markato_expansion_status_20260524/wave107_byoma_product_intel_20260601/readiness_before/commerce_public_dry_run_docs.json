@@ -1,0 +1,124 @@
+{
+  "generated_at": "2026-06-01T02:30:03.405Z",
+  "market": "US",
+  "include_non_public": false,
+  "docs_built": 2,
+  "source_build_failures": [],
+  "docs": [
+    {
+      "doc_id": "sellable:sig_e8dc63b0deeabd8a3463f1ba",
+      "sellable_item_group_id": "sig_e8dc63b0deeabd8a3463f1ba",
+      "product_line_id": "pl_1da40fe1aa6e0cdf0c92e804",
+      "review_family_id": "rf_1da40fe1aa6e0cdf0c92e804",
+      "brand_name": "BYOMA",
+      "category_paths": [
+        "Face Oil"
+      ],
+      "market": "US",
+      "availability_state": "available",
+      "publish_state": "public",
+      "title": "Hydrating Recovery Oil",
+      "subtitle": "This ultra-lightweight oil nourishes, brightens and balances skin, helping to effectively hydrate and protect the skin barrier from first use.\nOur Barrier Lipid Complex supports skin barrier function, while hydrating squalane works with 8 antioxidant rich botanical oils including jojoba, rosehip, sunflower and sea buckthorn.\nThink instantly glowing, radiant results for all skin types -even oily skin - without the clogged pores or greasiness you'd expect from an oil.\nDermatologist tested and approved, soap-free, non-comedogenic, alcohol and fragrance-free, vegan and cruelty free.",
+      "variant_axes": {
+        "multi_variant": false
+      },
+      "size": null,
+      "shade": null,
+      "pack": null,
+      "hero_media": {
+        "url": "https://cdn.shopify.com/s/files/1/0851/5030/2550/files/610046D_1_8f5b4437-981a-4843-a7ec-ba814a12a077.png?v=1737567141",
+        "source_kind": "catalog",
+        "source_tier": "catalog"
+      },
+      "preview_media": [
+        "https://cdn.shopify.com/s/files/1/0851/5030/2550/files/610046D_1_8f5b4437-981a-4843-a7ec-ba814a12a077.png?v=1737567141",
+        "https://cdn.shopify.com/s/files/1/0851/5030/2550/files/610046D_2_3beba3b2-980e-4b7c-af0d-5e07c6aa937e.jpg?v=1771511853",
+        "https://cdn.shopify.com/s/files/1/0851/5030/2550/files/RecoveryOil_2.jpg?v=1763987780",
+        "https://cdn.shopify.com/s/files/1/0851/5030/2550/files/RecoveryOil_1.jpg?v=1763987779",
+        "https://cdn.shopify.com/s/files/1/0851/5030/2550/files/RecoveryOil_3.jpg?v=1771511893",
+        "https://cdn.shopify.com/s/files/1/0851/5030/2550/files/RecoveryOil_5.jpg?v=1771511893",
+        "https://cdn.shopify.com/s/files/1/0851/5030/2550/files/RecoveryOil_4.jpg?v=1763987781"
+      ],
+      "price_min": 18.99,
+      "price_max": 18.99,
+      "default_offer_id": "external_seed:ext_161b26bf56e2ddee4a9ae6cb",
+      "internal_offer_exists": false,
+      "external_offer_exists": true,
+      "pivota_insight_status": "available",
+      "pivota_insight_summary": "A BYOMA face oil with source-captured squalane, ceramide NP, and botanical oils.",
+      "quality_score": null,
+      "browse_score": null,
+      "facet_tokens": [
+        "BYOMA",
+        "Face Oil"
+      ],
+      "sort_keys": {
+        "price_min": 18.99,
+        "price_max": 18.99,
+        "updated_at": null
+      },
+      "updated_at": null,
+      "source_refs": [
+        "external_seed:ext_161b26bf56e2ddee4a9ae6cb"
+      ]
+    },
+    {
+      "doc_id": "sellable:sig_de92f85536f2c6ca9235bd99",
+      "sellable_item_group_id": "sig_de92f85536f2c6ca9235bd99",
+      "product_line_id": "pl_3fb092e1b1f7fa9668346f11",
+      "review_family_id": "rf_3fb092e1b1f7fa9668346f11",
+      "brand_name": "BYOMA",
+      "category_paths": [
+        "Serum"
+      ],
+      "market": "US",
+      "availability_state": "available",
+      "publish_state": "public",
+      "title": "Phyto-Mucin Glow Serum",
+      "subtitle": "This daily super-serum is your one-step solution for glass skin. Think bouncier, boosted skin + a stronger skin barrier. The lightweight, non-sticky formula absorbs quickly and acts as a primer for seamless makeup application - leaving skin smooth and radiant, with improved elasticity.\nDermatologist tested and approved, alcohol and fragrance-free, vegan and cruelty free.",
+      "variant_axes": {
+        "multi_variant": false
+      },
+      "size": null,
+      "shade": null,
+      "pack": null,
+      "hero_media": {
+        "url": "https://cdn.shopify.com/s/files/1/0851/5030/2550/files/610118D_1.png?v=1737135717",
+        "source_kind": "catalog",
+        "source_tier": "catalog"
+      },
+      "preview_media": [
+        "https://cdn.shopify.com/s/files/1/0851/5030/2550/files/610118D_1.png?v=1737135717",
+        "https://cdn.shopify.com/s/files/1/0851/5030/2550/files/610118D_2_7653f872-99dc-474e-ac45-9c85fe5e38b7.jpg?v=1743422195",
+        "https://cdn.shopify.com/s/files/1/0851/5030/2550/files/610118D_4.jpg?v=1743422195",
+        "https://cdn.shopify.com/s/files/1/0851/5030/2550/files/PhytoMucin_3.jpg?v=1771410229",
+        "https://cdn.shopify.com/s/files/1/0851/5030/2550/files/PhytoMucin_2.jpg?v=1771410229",
+        "https://cdn.shopify.com/s/files/1/0851/5030/2550/files/PhytoMucin_1.jpg?v=1771410229",
+        "https://cdn.shopify.com/s/files/1/0851/5030/2550/files/PhytoMucin_5.jpg?v=1771410229",
+        "https://cdn.shopify.com/s/files/1/0851/5030/2550/files/PhytoMucin_4.jpg?v=1771410229"
+      ],
+      "price_min": 15.99,
+      "price_max": 15.99,
+      "default_offer_id": "external_seed:ext_cc01e1770b6a534313ecb9a3",
+      "internal_offer_exists": false,
+      "external_offer_exists": true,
+      "pivota_insight_status": "available",
+      "pivota_insight_summary": "The official page describes a lightweight, non-sticky texture.",
+      "quality_score": null,
+      "browse_score": null,
+      "facet_tokens": [
+        "BYOMA",
+        "Serum"
+      ],
+      "sort_keys": {
+        "price_min": 15.99,
+        "price_max": 15.99,
+        "updated_at": null
+      },
+      "updated_at": null,
+      "source_refs": [
+        "external_seed:ext_cc01e1770b6a534313ecb9a3"
+      ]
+    }
+  ]
+}

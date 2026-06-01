@@ -1,0 +1,788 @@
+{
+  "meta": {
+    "generated_at": "2026-06-01T02:31:14.452Z",
+    "source": "reviewed_official_seed_product_intel_report",
+    "batch_name": "wave109_firstaidbeauty_missing_card_20260601",
+    "inventory": "reports/markato_expansion_status_20260524/wave109_firstaidbeauty_missing_card_20260601/readiness_before/commerce_index_kb_readiness_inventory.json",
+    "selected_cases": 3,
+    "reviewer": "codex_human_quality_reviewer",
+    "reviewer_kind": "assistant",
+    "candidate_quality_summary": {
+      "public_ready": 3,
+      "high_quality_ready": 3,
+      "evidence_profile": {
+        "seller_plus_formula": 3
+      }
+    }
+  },
+  "rows": [
+    {
+      "case_id": "live_ext_95582fd1ed491684223018bb",
+      "review_status": "completed",
+      "review_decision": "rewrite",
+      "reviewer": "codex_human_quality_reviewer",
+      "reviewer_kind": "assistant",
+      "reviewed_at": "2026-06-01T02:31:14.452Z",
+      "notes": "Approved official-PDP-seed rewrite for Ultra Repair Oil-Control Moisturizer; evidence_profile=seller_plus_formula; source_url=https://www.firstaidbeauty.com/products/ultra-repair-oil-control-moisturizer",
+      "owner_delegated_review": {
+        "contract_version": "pivota.owner_delegated_review.v1",
+        "delegated_to": "codex_human_quality_reviewer",
+        "reviewer_kind": "assistant",
+        "owner_instruction": "User delegated Codex to perform high-quality human review for Pivota Insights quality improvement.",
+        "guardrails": [
+          "Do not overwrite good content with lower-quality content.",
+          "No commerce-state claims in Pivota Insights.",
+          "Use official source facts only; keep evidence confidence explicit."
+        ]
+      },
+      "quality_improvement_review": {
+        "decision": "approved_replacement",
+        "reviewer_kind": "assistant",
+        "owner_delegated": true,
+        "reason": "Owner-delegated assistant review confirms the replacement uses official PDP seed facts, avoids commerce and unsupported evidence claims, and explicitly marks evidence gaps instead of inventing claims."
+      },
+      "baseline": {
+        "canonical_product_ref": {
+          "merchant_id": "external_seed",
+          "product_id": "ext_95582fd1ed491684223018bb",
+          "platform": "external_seed"
+        }
+      },
+      "selected": {
+        "selected_mode": "manual_reviewed_rewrite",
+        "selected_field_count": 7,
+        "field_sources": {
+          "what_it_is": "official_seed_description",
+          "best_for": "reviewed_category_and_official_title",
+          "why_it_stands_out": "official_seed_description_and_formula",
+          "routine_fit": "reviewed_category_and_official_title",
+          "watchouts": "owner_delegated_assistant_review",
+          "texture_finish": "reviewed_category_and_official_title",
+          "source_coverage": "official_pdp_seed_snapshot",
+          "community_signals": "not_collected"
+        },
+        "bundle": {
+          "contract_version": "pivota.product_intel.v1",
+          "display_name": "Pivota Insights",
+          "canonical_product_ref": {
+            "merchant_id": "external_seed",
+            "product_id": "ext_95582fd1ed491684223018bb",
+            "platform": "external_seed"
+          },
+          "product_group_id": "sig_a79c17e14d5f2801a17f6eea",
+          "product_intel_core": {
+            "display_name": "Pivota Insights",
+            "what_it_is": {
+              "headline": "Moisturizer identity",
+              "body": "A First Aid Beauty moisturizer listed on the brand source page as Ultra Repair Oil-Control Moisturizer. The source description identifies: Lightweight mattifying face cream hydrates and reduces excess oil."
+            },
+            "best_for": [
+              {
+                "tag": "moisturizer_shoppers",
+                "label": "Moisturizer shoppers",
+                "confidence": "moderate"
+              },
+              {
+                "tag": "official_source_comparison",
+                "label": "Official-source comparison",
+                "confidence": "moderate"
+              }
+            ],
+            "why_it_stands_out": [
+              {
+                "headline": "Source-backed product detail",
+                "body": "Lightweight mattifying face cream hydrates and reduces excess oil.",
+                "evidence_strength": "seller_plus_formula"
+              },
+              {
+                "headline": "Formula context captured",
+                "body": "Captured formula fields include Ingredient HighlightsHyaluronic Acid: Boosts skin’s moisture and reduces appearance of fine lines and wrinkles.Oil-Absorbing Microspheres: Mineral powders that impart an instant matte finish to skin.Oil-Control Technology: A blend of active ingredients, featuring Niacinamide, that work together to help control sebum production, minimize pores and reduce shine over time.Oat Extract: A botanical extract that helps nourish, calm and soothe skin.Full IngredientsAqua (Water. Agents should keep composition claims within those source fields.",
+                "evidence_strength": "seller_plus_formula"
+              }
+            ],
+            "routine_fit": {
+              "step": "skin_care",
+              "am_pm": [
+                "as_needed"
+              ],
+              "pairing_notes": [
+                "Use within the moisturizer context; avoid inferring benefits not present in the source fields."
+              ]
+            },
+            "watchouts": [
+              {
+                "type": "formula_scope",
+                "label": "Formula details are source-derived; avoid medical, safety, or suitability claims not present in the source.",
+                "severity": "medium"
+              },
+              {
+                "type": "evidence_gap",
+                "label": "No independent review or community evidence was approved for this row; keep public copy source-bound.",
+                "severity": "medium"
+              },
+              {
+                "type": "scope_guardrail",
+                "label": "Use the commerce mainline for offer facts; keep this insight focused on source-backed product identity.",
+                "severity": "medium"
+              }
+            ],
+            "confidence": {
+              "overall": "moderate",
+              "fields": {
+                "what_it_is": "high",
+                "best_for": "moderate",
+                "why_it_stands_out": "moderate",
+                "routine_fit": "moderate",
+                "watchouts": "moderate"
+              }
+            },
+            "freshness": {
+              "generated_at": "2026-06-01T02:31:14.452Z",
+              "source_version": "wave109_firstaidbeauty_missing_card_20260601"
+            },
+            "quality_state": "reviewed",
+            "evidence_profile": "seller_plus_formula",
+            "source_coverage": {
+              "seller": {
+                "available": true,
+                "source_url": "https://www.firstaidbeauty.com/products/ultra-repair-oil-control-moisturizer"
+              },
+              "formula": {
+                "available": true,
+                "ingredient_count": 38,
+                "source_url": "https://www.firstaidbeauty.com/products/ultra-repair-oil-control-moisturizer"
+              },
+              "reviews": {
+                "available": false,
+                "count": 0
+              },
+              "creator": {
+                "available": false,
+                "count": 0
+              },
+              "editorial": {
+                "available": false,
+                "count": 0
+              }
+            }
+          },
+          "texture_finish": {
+            "finish": "moisturizer",
+            "texture": "moisturizer",
+            "source": "reviewed_category_and_official_title"
+          },
+          "community_signals": {
+            "status": "unavailable",
+            "reason": "not_collected_for_this_review_batch"
+          },
+          "recommendation_intents": {
+            "similar": [],
+            "complementary": [],
+            "routine_pairing": [],
+            "underfill_reason": null,
+            "confidence": "low"
+          },
+          "market_signal_badges": [],
+          "external_highlight_signals": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "seller_plus_formula",
+          "source_coverage": {
+            "seller": {
+              "available": true,
+              "source_url": "https://www.firstaidbeauty.com/products/ultra-repair-oil-control-moisturizer"
+            },
+            "formula": {
+              "available": true,
+              "ingredient_count": 38,
+              "source_url": "https://www.firstaidbeauty.com/products/ultra-repair-oil-control-moisturizer"
+            },
+            "reviews": {
+              "available": false,
+              "count": 0
+            },
+            "creator": {
+              "available": false,
+              "count": 0
+            },
+            "editorial": {
+              "available": false,
+              "count": 0
+            }
+          },
+          "confidence": {
+            "overall": "moderate",
+            "fields": {
+              "what_it_is": "high",
+              "best_for": "moderate",
+              "why_it_stands_out": "moderate",
+              "routine_fit": "moderate",
+              "watchouts": "moderate"
+            }
+          },
+          "freshness": {
+            "generated_at": "2026-06-01T02:31:14.452Z",
+            "source_version": "wave109_firstaidbeauty_missing_card_20260601"
+          },
+          "offer_pointers": {
+            "offers_count": 0,
+            "default_offer_id": null,
+            "best_price_offer_id": null,
+            "commerce_modes": []
+          },
+          "provenance": {
+            "source": "owner_delegated_official_seed_rewrite",
+            "generator": "owner_delegated_assistant_reviewed_rewrite",
+            "selection_strategy": "official_pdp_seed_guarded_manual_review",
+            "field_sources": {
+              "what_it_is": "official_seed_description",
+              "best_for": "reviewed_category_and_official_title",
+              "why_it_stands_out": "official_seed_description_and_formula",
+              "routine_fit": "reviewed_category_and_official_title",
+              "watchouts": "owner_delegated_assistant_review",
+              "texture_finish": "reviewed_category_and_official_title",
+              "source_coverage": "official_pdp_seed_snapshot",
+              "community_signals": "not_collected"
+            },
+            "review_status": "completed",
+            "review_decision": "rewrite",
+            "reviewer": "codex_human_quality_reviewer",
+            "reviewer_kind": "assistant",
+            "reviewed_at": "2026-06-01T02:31:14.452Z",
+            "external_highlight_review_status": "rewrite",
+            "external_review_batch": "wave109_firstaidbeauty_missing_card_20260601",
+            "official_source_url": "https://www.firstaidbeauty.com/products/ultra-repair-oil-control-moisturizer",
+            "official_source_ingredient_count": 38,
+            "rewrite_reason": "Owner-delegated assistant review: official PDP seed rewrite; no commerce-state, community, medical, or unsupported safety claims added."
+          },
+          "shopping_card": {
+            "contract_version": "pivota.shopping_card.v1",
+            "title": "Ultra Repair Oil-Control Moisturizer",
+            "subtitle": "Moisturizer",
+            "highlight": "Moisturizer formula detail",
+            "intro": "A First Aid Beauty moisturizer listed on the brand source page as Ultra Repair Oil-Control Moisturizer. The source description identifies: Lightweight mattifying face cream hydrates and reduces excess oil.",
+            "evidence_profile": "seller_plus_formula"
+          },
+          "search_card": {
+            "title_candidate": "Ultra Repair Oil-Control Moisturizer",
+            "compact_candidate": "Moisturizer",
+            "highlight_candidate": "Moisturizer formula detail",
+            "intro_candidate": "A First Aid Beauty moisturizer listed on the brand source page as Ultra Repair Oil-Control Moisturizer. The source description identifies: Lightweight mattifying face cream hydrates and reduces excess oil.",
+            "proof_badge_candidate": ""
+          }
+        }
+      }
+    },
+    {
+      "case_id": "live_ext_9bc7ff02d709cc5383cc78ec",
+      "review_status": "completed",
+      "review_decision": "rewrite",
+      "reviewer": "codex_human_quality_reviewer",
+      "reviewer_kind": "assistant",
+      "reviewed_at": "2026-06-01T02:31:14.452Z",
+      "notes": "Approved official-PDP-seed rewrite for Ultra Repair Face Lotion with Colloidal Oatmeal; evidence_profile=seller_plus_formula; source_url=https://www.firstaidbeauty.com/products/ultra-repair-face-moisturizer",
+      "owner_delegated_review": {
+        "contract_version": "pivota.owner_delegated_review.v1",
+        "delegated_to": "codex_human_quality_reviewer",
+        "reviewer_kind": "assistant",
+        "owner_instruction": "User delegated Codex to perform high-quality human review for Pivota Insights quality improvement.",
+        "guardrails": [
+          "Do not overwrite good content with lower-quality content.",
+          "No commerce-state claims in Pivota Insights.",
+          "Use official source facts only; keep evidence confidence explicit."
+        ]
+      },
+      "quality_improvement_review": {
+        "decision": "approved_replacement",
+        "reviewer_kind": "assistant",
+        "owner_delegated": true,
+        "reason": "Owner-delegated assistant review confirms the replacement uses official PDP seed facts, avoids commerce and unsupported evidence claims, and explicitly marks evidence gaps instead of inventing claims."
+      },
+      "baseline": {
+        "canonical_product_ref": {
+          "merchant_id": "external_seed",
+          "product_id": "ext_9bc7ff02d709cc5383cc78ec",
+          "platform": "external_seed"
+        }
+      },
+      "selected": {
+        "selected_mode": "manual_reviewed_rewrite",
+        "selected_field_count": 7,
+        "field_sources": {
+          "what_it_is": "official_seed_description",
+          "best_for": "reviewed_category_and_official_title",
+          "why_it_stands_out": "official_seed_description_and_formula",
+          "routine_fit": "reviewed_category_and_official_title",
+          "watchouts": "owner_delegated_assistant_review",
+          "texture_finish": "reviewed_category_and_official_title",
+          "source_coverage": "official_pdp_seed_snapshot",
+          "community_signals": "not_collected"
+        },
+        "bundle": {
+          "contract_version": "pivota.product_intel.v1",
+          "display_name": "Pivota Insights",
+          "canonical_product_ref": {
+            "merchant_id": "external_seed",
+            "product_id": "ext_9bc7ff02d709cc5383cc78ec",
+            "platform": "external_seed"
+          },
+          "product_group_id": "sig_d12a9b81a5fa854b0baa1fcc",
+          "product_intel_core": {
+            "display_name": "Pivota Insights",
+            "what_it_is": {
+              "headline": "Moisturizer identity",
+              "body": "A First Aid Beauty moisturizer listed on the brand source page as Ultra Repair Face Lotion with Colloidal Oatmeal. The source description identifies: This lightweight + quick-absorbing moisturizer provides instant hydration with a velvety finish."
+            },
+            "best_for": [
+              {
+                "tag": "moisturizer_shoppers",
+                "label": "Moisturizer shoppers",
+                "confidence": "moderate"
+              },
+              {
+                "tag": "official_source_comparison",
+                "label": "Official-source comparison",
+                "confidence": "moderate"
+              }
+            ],
+            "why_it_stands_out": [
+              {
+                "headline": "Source-backed product detail",
+                "body": "This lightweight + quick-absorbing moisturizer provides instant hydration with a velvety finish.",
+                "evidence_strength": "seller_plus_formula"
+              },
+              {
+                "headline": "Formula context captured",
+                "body": "Captured formula fields include Ingredient HighlightsColloidal Oatmeal: A soothing ingredient that helps calm and relieve dry or distressed skin.Shea Butter: An emollient rich in vitamins, minerals, and essential fatty acids, helps moisturize and protect the skin barrier.Avocado Oil: A natural oil that helps hydrate, nourish and soften skin.Meadowfoam Seed Oil: A natural emollient that helps moisturize and soften skin.Full Ingredients: Aqua/Water/Eau. Agents should keep composition claims within those source fields.",
+                "evidence_strength": "seller_plus_formula"
+              }
+            ],
+            "routine_fit": {
+              "step": "skin_care",
+              "am_pm": [
+                "as_needed"
+              ],
+              "pairing_notes": [
+                "Use within the moisturizer context; avoid inferring benefits not present in the source fields."
+              ]
+            },
+            "watchouts": [
+              {
+                "type": "formula_scope",
+                "label": "Formula details are source-derived; avoid medical, safety, or suitability claims not present in the source.",
+                "severity": "medium"
+              },
+              {
+                "type": "evidence_gap",
+                "label": "No independent review or community evidence was approved for this row; keep public copy source-bound.",
+                "severity": "medium"
+              },
+              {
+                "type": "scope_guardrail",
+                "label": "Use the commerce mainline for offer facts; keep this insight focused on source-backed product identity.",
+                "severity": "medium"
+              }
+            ],
+            "confidence": {
+              "overall": "moderate",
+              "fields": {
+                "what_it_is": "high",
+                "best_for": "moderate",
+                "why_it_stands_out": "moderate",
+                "routine_fit": "moderate",
+                "watchouts": "moderate"
+              }
+            },
+            "freshness": {
+              "generated_at": "2026-06-01T02:31:14.452Z",
+              "source_version": "wave109_firstaidbeauty_missing_card_20260601"
+            },
+            "quality_state": "reviewed",
+            "evidence_profile": "seller_plus_formula",
+            "source_coverage": {
+              "seller": {
+                "available": true,
+                "source_url": "https://www.firstaidbeauty.com/products/ultra-repair-face-moisturizer"
+              },
+              "formula": {
+                "available": true,
+                "ingredient_count": 26,
+                "source_url": "https://www.firstaidbeauty.com/products/ultra-repair-face-moisturizer"
+              },
+              "reviews": {
+                "available": false,
+                "count": 0
+              },
+              "creator": {
+                "available": false,
+                "count": 0
+              },
+              "editorial": {
+                "available": false,
+                "count": 0
+              }
+            }
+          },
+          "texture_finish": {
+            "finish": "moisturizer",
+            "texture": "moisturizer",
+            "source": "reviewed_category_and_official_title"
+          },
+          "community_signals": {
+            "status": "unavailable",
+            "reason": "not_collected_for_this_review_batch"
+          },
+          "recommendation_intents": {
+            "similar": [],
+            "complementary": [],
+            "routine_pairing": [],
+            "underfill_reason": null,
+            "confidence": "low"
+          },
+          "market_signal_badges": [],
+          "external_highlight_signals": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "seller_plus_formula",
+          "source_coverage": {
+            "seller": {
+              "available": true,
+              "source_url": "https://www.firstaidbeauty.com/products/ultra-repair-face-moisturizer"
+            },
+            "formula": {
+              "available": true,
+              "ingredient_count": 26,
+              "source_url": "https://www.firstaidbeauty.com/products/ultra-repair-face-moisturizer"
+            },
+            "reviews": {
+              "available": false,
+              "count": 0
+            },
+            "creator": {
+              "available": false,
+              "count": 0
+            },
+            "editorial": {
+              "available": false,
+              "count": 0
+            }
+          },
+          "confidence": {
+            "overall": "moderate",
+            "fields": {
+              "what_it_is": "high",
+              "best_for": "moderate",
+              "why_it_stands_out": "moderate",
+              "routine_fit": "moderate",
+              "watchouts": "moderate"
+            }
+          },
+          "freshness": {
+            "generated_at": "2026-06-01T02:31:14.452Z",
+            "source_version": "wave109_firstaidbeauty_missing_card_20260601"
+          },
+          "offer_pointers": {
+            "offers_count": 0,
+            "default_offer_id": null,
+            "best_price_offer_id": null,
+            "commerce_modes": []
+          },
+          "provenance": {
+            "source": "owner_delegated_official_seed_rewrite",
+            "generator": "owner_delegated_assistant_reviewed_rewrite",
+            "selection_strategy": "official_pdp_seed_guarded_manual_review",
+            "field_sources": {
+              "what_it_is": "official_seed_description",
+              "best_for": "reviewed_category_and_official_title",
+              "why_it_stands_out": "official_seed_description_and_formula",
+              "routine_fit": "reviewed_category_and_official_title",
+              "watchouts": "owner_delegated_assistant_review",
+              "texture_finish": "reviewed_category_and_official_title",
+              "source_coverage": "official_pdp_seed_snapshot",
+              "community_signals": "not_collected"
+            },
+            "review_status": "completed",
+            "review_decision": "rewrite",
+            "reviewer": "codex_human_quality_reviewer",
+            "reviewer_kind": "assistant",
+            "reviewed_at": "2026-06-01T02:31:14.452Z",
+            "external_highlight_review_status": "rewrite",
+            "external_review_batch": "wave109_firstaidbeauty_missing_card_20260601",
+            "official_source_url": "https://www.firstaidbeauty.com/products/ultra-repair-face-moisturizer",
+            "official_source_ingredient_count": 26,
+            "rewrite_reason": "Owner-delegated assistant review: official PDP seed rewrite; no commerce-state, community, medical, or unsupported safety claims added."
+          },
+          "shopping_card": {
+            "contract_version": "pivota.shopping_card.v1",
+            "title": "Ultra Repair Face Lotion with Colloidal Oatmeal",
+            "subtitle": "Moisturizer",
+            "highlight": "Moisturizer formula detail",
+            "intro": "A First Aid Beauty moisturizer listed on the brand source page as Ultra Repair Face Lotion with Colloidal Oatmeal. The source description identifies: This lightweight + quick-absorbing moisturizer provides instant hydration with a velvety finish.",
+            "evidence_profile": "seller_plus_formula"
+          },
+          "search_card": {
+            "title_candidate": "Ultra Repair Face Lotion with Colloidal Oatmeal",
+            "compact_candidate": "Moisturizer",
+            "highlight_candidate": "Moisturizer formula detail",
+            "intro_candidate": "A First Aid Beauty moisturizer listed on the brand source page as Ultra Repair Face Lotion with Colloidal Oatmeal. The source description identifies: This lightweight + quick-absorbing moisturizer provides instant hydration with a velvety finish.",
+            "proof_badge_candidate": ""
+          }
+        }
+      }
+    },
+    {
+      "case_id": "live_ext_509af4ff581a6ee8211c5b18",
+      "review_status": "completed",
+      "review_decision": "rewrite",
+      "reviewer": "codex_human_quality_reviewer",
+      "reviewer_kind": "assistant",
+      "reviewed_at": "2026-06-01T02:31:14.452Z",
+      "notes": "Approved official-PDP-seed rewrite for Ultra Repair Rescue Barrier Balm with Dimethicone; evidence_profile=seller_plus_formula; source_url=https://www.firstaidbeauty.com/products/ultra-repair-rescue-barrier-balm-with-dimethicone",
+      "owner_delegated_review": {
+        "contract_version": "pivota.owner_delegated_review.v1",
+        "delegated_to": "codex_human_quality_reviewer",
+        "reviewer_kind": "assistant",
+        "owner_instruction": "User delegated Codex to perform high-quality human review for Pivota Insights quality improvement.",
+        "guardrails": [
+          "Do not overwrite good content with lower-quality content.",
+          "No commerce-state claims in Pivota Insights.",
+          "Use official source facts only; keep evidence confidence explicit."
+        ]
+      },
+      "quality_improvement_review": {
+        "decision": "approved_replacement",
+        "reviewer_kind": "assistant",
+        "owner_delegated": true,
+        "reason": "Owner-delegated assistant review confirms the replacement uses official PDP seed facts, avoids commerce and unsupported evidence claims, and explicitly marks evidence gaps instead of inventing claims."
+      },
+      "baseline": {
+        "canonical_product_ref": {
+          "merchant_id": "external_seed",
+          "product_id": "ext_509af4ff581a6ee8211c5b18",
+          "platform": "external_seed"
+        }
+      },
+      "selected": {
+        "selected_mode": "manual_reviewed_rewrite",
+        "selected_field_count": 7,
+        "field_sources": {
+          "what_it_is": "official_seed_description",
+          "best_for": "reviewed_category_and_official_title",
+          "why_it_stands_out": "official_seed_description_and_formula",
+          "routine_fit": "reviewed_category_and_official_title",
+          "watchouts": "owner_delegated_assistant_review",
+          "texture_finish": "reviewed_category_and_official_title",
+          "source_coverage": "official_pdp_seed_snapshot",
+          "community_signals": "not_collected"
+        },
+        "bundle": {
+          "contract_version": "pivota.product_intel.v1",
+          "display_name": "Pivota Insights",
+          "canonical_product_ref": {
+            "merchant_id": "external_seed",
+            "product_id": "ext_509af4ff581a6ee8211c5b18",
+            "platform": "external_seed"
+          },
+          "product_group_id": "sig_f93d4e4f096acac1d386dc49",
+          "product_intel_core": {
+            "display_name": "Pivota Insights",
+            "what_it_is": {
+              "headline": "Moisturizer identity",
+              "body": "A First Aid Beauty moisturizer listed on the brand source page as Ultra Repair Rescue Barrier Balm with Dimethicone. The source description identifies: Help rescue red + irritated, cracked, chapped skin with a breathable, non-pore-clogging layer."
+            },
+            "best_for": [
+              {
+                "tag": "moisturizer_shoppers",
+                "label": "Moisturizer shoppers",
+                "confidence": "moderate"
+              },
+              {
+                "tag": "official_source_comparison",
+                "label": "Official-source comparison",
+                "confidence": "moderate"
+              }
+            ],
+            "why_it_stands_out": [
+              {
+                "headline": "Source-backed product detail",
+                "body": "Help rescue red + irritated, cracked, chapped skin with a breathable, non-pore-clogging layer.",
+                "evidence_strength": "seller_plus_formula"
+              },
+              {
+                "headline": "Formula context captured",
+                "body": "Captured formula fields include Ingredient Highlights1% Dimethicone (OTC): Skin protectant that helps temporarily protect + relieve compromised skin.Colloidal Oatmeal: Improves skin surface renewal 2x faster (vs no treat).Glycerin: A natural humectant that helps hydrate and smooth skin’s appearance.Full IngredientsActive Ingredient: Dimethicone - 1.00% Inactive Ingredients: Water, Butylene Glycol, Caprylic/Capric Triglyceride, Dicaprylyl Carbonate, Glycerin. Agents should keep composition claims within those source fields.",
+                "evidence_strength": "seller_plus_formula"
+              }
+            ],
+            "routine_fit": {
+              "step": "skin_care",
+              "am_pm": [
+                "as_needed"
+              ],
+              "pairing_notes": [
+                "Use within the moisturizer context; avoid inferring benefits not present in the source fields."
+              ]
+            },
+            "watchouts": [
+              {
+                "type": "formula_scope",
+                "label": "Formula details are source-derived; avoid medical, safety, or suitability claims not present in the source.",
+                "severity": "medium"
+              },
+              {
+                "type": "evidence_gap",
+                "label": "No independent review or community evidence was approved for this row; keep public copy source-bound.",
+                "severity": "medium"
+              },
+              {
+                "type": "scope_guardrail",
+                "label": "Use the commerce mainline for offer facts; keep this insight focused on source-backed product identity.",
+                "severity": "medium"
+              }
+            ],
+            "confidence": {
+              "overall": "moderate",
+              "fields": {
+                "what_it_is": "high",
+                "best_for": "moderate",
+                "why_it_stands_out": "moderate",
+                "routine_fit": "moderate",
+                "watchouts": "moderate"
+              }
+            },
+            "freshness": {
+              "generated_at": "2026-06-01T02:31:14.452Z",
+              "source_version": "wave109_firstaidbeauty_missing_card_20260601"
+            },
+            "quality_state": "reviewed",
+            "evidence_profile": "seller_plus_formula",
+            "source_coverage": {
+              "seller": {
+                "available": true,
+                "source_url": "https://www.firstaidbeauty.com/products/ultra-repair-rescue-barrier-balm-with-dimethicone"
+              },
+              "formula": {
+                "available": true,
+                "ingredient_count": 39,
+                "source_url": "https://www.firstaidbeauty.com/products/ultra-repair-rescue-barrier-balm-with-dimethicone"
+              },
+              "reviews": {
+                "available": false,
+                "count": 0
+              },
+              "creator": {
+                "available": false,
+                "count": 0
+              },
+              "editorial": {
+                "available": false,
+                "count": 0
+              }
+            }
+          },
+          "texture_finish": {
+            "finish": "moisturizer",
+            "texture": "moisturizer",
+            "source": "reviewed_category_and_official_title"
+          },
+          "community_signals": {
+            "status": "unavailable",
+            "reason": "not_collected_for_this_review_batch"
+          },
+          "recommendation_intents": {
+            "similar": [],
+            "complementary": [],
+            "routine_pairing": [],
+            "underfill_reason": null,
+            "confidence": "low"
+          },
+          "market_signal_badges": [],
+          "external_highlight_signals": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "seller_plus_formula",
+          "source_coverage": {
+            "seller": {
+              "available": true,
+              "source_url": "https://www.firstaidbeauty.com/products/ultra-repair-rescue-barrier-balm-with-dimethicone"
+            },
+            "formula": {
+              "available": true,
+              "ingredient_count": 39,
+              "source_url": "https://www.firstaidbeauty.com/products/ultra-repair-rescue-barrier-balm-with-dimethicone"
+            },
+            "reviews": {
+              "available": false,
+              "count": 0
+            },
+            "creator": {
+              "available": false,
+              "count": 0
+            },
+            "editorial": {
+              "available": false,
+              "count": 0
+            }
+          },
+          "confidence": {
+            "overall": "moderate",
+            "fields": {
+              "what_it_is": "high",
+              "best_for": "moderate",
+              "why_it_stands_out": "moderate",
+              "routine_fit": "moderate",
+              "watchouts": "moderate"
+            }
+          },
+          "freshness": {
+            "generated_at": "2026-06-01T02:31:14.452Z",
+            "source_version": "wave109_firstaidbeauty_missing_card_20260601"
+          },
+          "offer_pointers": {
+            "offers_count": 0,
+            "default_offer_id": null,
+            "best_price_offer_id": null,
+            "commerce_modes": []
+          },
+          "provenance": {
+            "source": "owner_delegated_official_seed_rewrite",
+            "generator": "owner_delegated_assistant_reviewed_rewrite",
+            "selection_strategy": "official_pdp_seed_guarded_manual_review",
+            "field_sources": {
+              "what_it_is": "official_seed_description",
+              "best_for": "reviewed_category_and_official_title",
+              "why_it_stands_out": "official_seed_description_and_formula",
+              "routine_fit": "reviewed_category_and_official_title",
+              "watchouts": "owner_delegated_assistant_review",
+              "texture_finish": "reviewed_category_and_official_title",
+              "source_coverage": "official_pdp_seed_snapshot",
+              "community_signals": "not_collected"
+            },
+            "review_status": "completed",
+            "review_decision": "rewrite",
+            "reviewer": "codex_human_quality_reviewer",
+            "reviewer_kind": "assistant",
+            "reviewed_at": "2026-06-01T02:31:14.452Z",
+            "external_highlight_review_status": "rewrite",
+            "external_review_batch": "wave109_firstaidbeauty_missing_card_20260601",
+            "official_source_url": "https://www.firstaidbeauty.com/products/ultra-repair-rescue-barrier-balm-with-dimethicone",
+            "official_source_ingredient_count": 39,
+            "rewrite_reason": "Owner-delegated assistant review: official PDP seed rewrite; no commerce-state, community, medical, or unsupported safety claims added."
+          },
+          "shopping_card": {
+            "contract_version": "pivota.shopping_card.v1",
+            "title": "Ultra Repair Rescue Barrier Balm with Dimethicone",
+            "subtitle": "Moisturizer",
+            "highlight": "Moisturizer formula detail",
+            "intro": "A First Aid Beauty moisturizer listed on the brand source page as Ultra Repair Rescue Barrier Balm with Dimethicone. The source description identifies: Help rescue red + irritated, cracked, chapped skin with a breathable, non-pore-clogging layer.",
+            "evidence_profile": "seller_plus_formula"
+          },
+          "search_card": {
+            "title_candidate": "Ultra Repair Rescue Barrier Balm with Dimethicone",
+            "compact_candidate": "Moisturizer",
+            "highlight_candidate": "Moisturizer formula detail",
+            "intro_candidate": "A First Aid Beauty moisturizer listed on the brand source page as Ultra Repair Rescue Barrier Balm with Dimethicone. The source description identifies: Help rescue red + irritated, cracked, chapped skin with a breathable, non-pore-clogging layer.",
+            "proof_badge_candidate": ""
+          }
+        }
+      }
+    }
+  ]
+}
