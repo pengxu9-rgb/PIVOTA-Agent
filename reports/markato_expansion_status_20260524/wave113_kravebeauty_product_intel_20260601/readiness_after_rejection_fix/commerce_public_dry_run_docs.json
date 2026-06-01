@@ -1,0 +1,191 @@
+{
+  "generated_at": "2026-06-01T03:02:43.399Z",
+  "market": "US",
+  "include_non_public": false,
+  "docs_built": 3,
+  "source_build_failures": [],
+  "docs": [
+    {
+      "doc_id": "sellable:sig_20ce9b814d1d8573779a849a",
+      "sellable_item_group_id": "sig_20ce9b814d1d8573779a849a",
+      "product_line_id": "pl_fe095f5829a6d7724401bd81",
+      "review_family_id": "rf_fe095f5829a6d7724401bd81",
+      "brand_name": "KraveBeauty",
+      "category_paths": [
+        "Skincare Set/Face Oil Duo",
+        "Face Oil Duo"
+      ],
+      "market": "US",
+      "availability_state": "available",
+      "publish_state": "public",
+      "title": "Duo Oil La La",
+      "subtitle": ".tag-badge{\ndisplay:none;\n}\n\nTreat your skin like something you love.\n\nDon't believe the rumors. Oils aren't the enemy of oily, breakout-prone skin. Oil La La uses a blend of nourishing oils that are non-comedogenic to create balance, preventing and soothing breakouts.\n\nWhy is it different: Targets the root cause of breakouts by transforming acne-causing sebum with linoleic acid-rich oils to soothe and prevent breakouts - prioritizing balance and barrier health above all else.\n\nHelps with: Balancing sebum production to prevent future breakouts, supporting a healthy skin barrier, and targeting congestion without harsh ingredients.\n\nMade for: All skin types, especially oily, breakout-prone skin.\n\nClinically Proven:\n\nDecrease in sebum production over time after regular use.\n\nImproved barrier function and soothed redness after one use.\n\nBased on an independent clinical study on 20 participants.\n\nConsumer Trial Test:\n\n98% noticed an overall clearer complexion after using this serum.\n\n96% agreed the serum layered well with other skincare products.\n\n88% noticed their skin looked clearer & more balanced.\n\n88% agreed their skin feels noticeably smoother.\n\nResults from consumer trial on 25 participants over 4 weeks. Individual results may vary.\n\nBonus: Our packaging allows you to use up every last drop!\n\nIncludes:\n\n2 full-size Oil La La (45 mL / 1.52 fl oz)\n\nNOTE: Not recommended for those with psoriasis or a history of skin cancer. Please consult with your doctor or dermatologist first!",
+      "variant_axes": {
+        "pack": "2pack",
+        "multi_variant": false
+      },
+      "size": null,
+      "shade": null,
+      "pack": null,
+      "hero_media": {
+        "url": "https://kravebeauty.com/cdn/shop/files/OLLDuo1.png?v=1774031799",
+        "source_kind": "catalog",
+        "source_tier": "catalog"
+      },
+      "preview_media": [
+        "https://kravebeauty.com/cdn/shop/files/OLLDuo1.png?v=1774031799",
+        "https://kravebeauty.com/cdn/shop/files/OLLDuo2.png?v=1774032378",
+        "https://kravebeauty.com/cdn/shop/files/OLLDuo3.png?v=1774032378",
+        "https://kravebeauty.com/cdn/shop/files/OLLDuo4.png?v=1774032378",
+        "https://kravebeauty.com/cdn/shop/files/OLLDuo7.png?v=1774032378",
+        "https://kravebeauty.com/cdn/shop/files/OLLDuo5.png?v=1774032378",
+        "https://kravebeauty.com/cdn/shop/files/OLLDuo6.png?v=1774032378",
+        "https://kravebeauty.com/cdn/shop/files/OLLDuo8.png?v=1774032378"
+      ],
+      "price_min": 50,
+      "price_max": 50,
+      "default_offer_id": "external_seed:ext_8bfea10f1af2ab628a5ad6ba",
+      "internal_offer_exists": false,
+      "external_offer_exists": true,
+      "pivota_insight_status": "available",
+      "pivota_insight_summary": "A KraveBeauty skincare set listed on the brand source page as Duo Oil La La.",
+      "quality_score": null,
+      "browse_score": null,
+      "facet_tokens": [
+        "KraveBeauty",
+        "Skincare Set/Face Oil Duo",
+        "Face Oil Duo"
+      ],
+      "sort_keys": {
+        "price_min": 50,
+        "price_max": 50,
+        "updated_at": null
+      },
+      "updated_at": null,
+      "source_refs": [
+        "external_seed:ext_8bfea10f1af2ab628a5ad6ba"
+      ]
+    },
+    {
+      "doc_id": "sellable:sig_1288409f7429c8560aee83a4",
+      "sellable_item_group_id": "sig_1288409f7429c8560aee83a4",
+      "product_line_id": "pl_14a37185d05ed6470739584f",
+      "review_family_id": "rf_14a37185d05ed6470739584f",
+      "brand_name": "KraveBeauty",
+      "category_paths": [
+        "Serum"
+      ],
+      "market": "US",
+      "availability_state": "out_of_stock",
+      "publish_state": "public",
+      "title": "Jumbo Great Barrier Relief",
+      "subtitle": "Your favorite serum just got bigger! Great Barrier Relief is a skin-soothing serum that restores your damaged skin barrier while evening out your complexion. This nourishing formula offers irritated skin a reset button by using tamanu oil and other ingredients that mimic a healthy barrier to replenish what your skin lacks.",
+      "variant_axes": {
+        "size": "jumbo 100 ml",
+        "volume": "100ml",
+        "multi_variant": false
+      },
+      "size": null,
+      "shade": null,
+      "pack": null,
+      "hero_media": {
+        "url": "https://cdn.shopify.com/s/files/1/2090/8057/files/Jumbo_GBR_01_1.png",
+        "source_kind": "catalog",
+        "source_tier": "catalog"
+      },
+      "preview_media": [
+        "https://cdn.shopify.com/s/files/1/2090/8057/files/Jumbo_GBR_01_1.png",
+        "https://cdn.shopify.com/s/files/1/2090/8057/files/GBR13_59d39c84-5e26-4e7b-b0af-d1ee05ca30d9.png",
+        "https://cdn.shopify.com/s/files/1/2090/8057/files/GBR_02.png",
+        "https://cdn.shopify.com/s/files/1/2090/8057/files/GBR_03.png",
+        "https://cdn.shopify.com/s/files/1/2090/8057/files/GBR_05.png",
+        "https://cdn.shopify.com/s/files/1/2090/8057/files/GBR_04.png",
+        "https://cdn.shopify.com/s/files/1/2090/8057/files/GBR_07.png",
+        "https://cdn.shopify.com/s/files/1/2090/8057/files/GBR_06_148bb3b2-21f5-45fb-b6fd-203eec83fd3e.png"
+      ],
+      "price_min": 50,
+      "price_max": 50,
+      "default_offer_id": "external_seed:ext_593de56f9237926b73ba43ef",
+      "internal_offer_exists": false,
+      "external_offer_exists": true,
+      "pivota_insight_status": "available",
+      "pivota_insight_summary": "A KraveBeauty serum listed on the brand source page as Jumbo Great Barrier Relief.",
+      "quality_score": null,
+      "browse_score": null,
+      "facet_tokens": [
+        "KraveBeauty",
+        "Serum"
+      ],
+      "sort_keys": {
+        "price_min": 50,
+        "price_max": 50,
+        "updated_at": null
+      },
+      "updated_at": null,
+      "source_refs": [
+        "external_seed:ext_593de56f9237926b73ba43ef"
+      ]
+    },
+    {
+      "doc_id": "sellable:sig_58018df066484875596c92e5",
+      "sellable_item_group_id": "sig_58018df066484875596c92e5",
+      "product_line_id": "pl_0a351d12f980b932df6e9432",
+      "review_family_id": "rf_0a351d12f980b932df6e9432",
+      "brand_name": "KraveBeauty",
+      "category_paths": [
+        "Cleanser"
+      ],
+      "market": "US",
+      "availability_state": "available",
+      "publish_state": "public",
+      "title": "Oil La La",
+      "subtitle": "A lightweight facial oil-serum for breakout-prone or unbalanced skin, built around non-comedogenic oils that aim to nourish without leaving a heavy finish.",
+      "variant_axes": {
+        "pack": "1pack",
+        "size": "1 pack 45 ml",
+        "volume": "45ml",
+        "multi_variant": true
+      },
+      "size": null,
+      "shade": null,
+      "pack": null,
+      "hero_media": {
+        "url": "https://kravebeauty.com/cdn/shop/files/Oil_La_La_275e03a8-590c-4f05-9dbc-e48834d359ba.png?v=1773685790",
+        "source_kind": "catalog",
+        "source_tier": "catalog"
+      },
+      "preview_media": [
+        "https://kravebeauty.com/cdn/shop/files/Oil_La_La_275e03a8-590c-4f05-9dbc-e48834d359ba.png?v=1773685790",
+        "https://kravebeauty.com/cdn/shop/files/Rectangle_178.png?v=1773694214",
+        "https://kravebeauty.com/cdn/shop/files/OLL2.02_00347fab-b2e8-4d46-a0fc-5d8cd096bf82.png?v=1773694214",
+        "https://kravebeauty.com/cdn/shop/files/OLL2.03.png?v=1773694214",
+        "https://kravebeauty.com/cdn/shop/files/OLL_2.0_17.png?v=1774386021",
+        "https://kravebeauty.com/cdn/shop/files/OLL_2.0_18.png?v=1774386021",
+        "https://kravebeauty.com/cdn/shop/files/OLL2.04.png?v=1774386021",
+        "https://kravebeauty.com/cdn/shop/files/OLL2.08.png?v=1774386021"
+      ],
+      "price_min": 28,
+      "price_max": 28,
+      "default_offer_id": "external_seed:ext_5ffe1c0b5195b36d2bdcffa9",
+      "internal_offer_exists": false,
+      "external_offer_exists": true,
+      "pivota_insight_status": "available",
+      "pivota_insight_summary": "A KraveBeauty face oil listed on the brand source page as Oil La La.",
+      "quality_score": null,
+      "browse_score": null,
+      "facet_tokens": [
+        "KraveBeauty",
+        "Cleanser"
+      ],
+      "sort_keys": {
+        "price_min": 28,
+        "price_max": 28,
+        "updated_at": null
+      },
+      "updated_at": null,
+      "source_refs": [
+        "external_seed:ext_5ffe1c0b5195b36d2bdcffa9"
+      ]
+    }
+  ]
+}

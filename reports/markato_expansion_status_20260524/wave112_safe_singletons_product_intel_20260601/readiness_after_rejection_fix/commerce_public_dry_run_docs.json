@@ -1,0 +1,183 @@
+{
+  "generated_at": "2026-06-01T03:02:31.527Z",
+  "market": "US",
+  "include_non_public": false,
+  "docs_built": 3,
+  "source_build_failures": [],
+  "docs": [
+    {
+      "doc_id": "sellable:sig_9d2b954cef1646e521b23142",
+      "sellable_item_group_id": "sig_9d2b954cef1646e521b23142",
+      "product_line_id": "pl_c38410a5188e58a240eb2485",
+      "review_family_id": "rf_c38410a5188e58a240eb2485",
+      "brand_name": "Fable & Mane",
+      "category_paths": [
+        "Hair Oil"
+      ],
+      "market": "US",
+      "availability_state": "available",
+      "publish_state": "public",
+      "title": "MahaMane™ Smooth & Shine Hair Oil",
+      "subtitle": "Adds instant shine \nReduces frizz for up to 48 hours \nProtects hair from heat up to 450°F and UV rays \nFor all hair and scalp types\n\nInfused with a potent blend of Ayurvedic roots and fruits, such as Shikakai, Ashwagandha and six nourishing fruit oils, this lightweight styling oil provides instant shine, 48-hour frizz control and heat protection for a luscious, glossy and healthy mane.",
+      "variant_axes": {
+        "multi_variant": false
+      },
+      "size": null,
+      "shade": null,
+      "pack": null,
+      "hero_media": {
+        "url": "https://cdn.shopify.com/s/files/1/0587/3801/6450/files/MMOIL_634196e8-6d30-4508-94c4-d6cf1afb2890.png?v=1758033410",
+        "source_kind": "catalog",
+        "source_tier": "catalog"
+      },
+      "preview_media": [
+        "https://cdn.shopify.com/s/files/1/0587/3801/6450/files/MMOIL_634196e8-6d30-4508-94c4-d6cf1afb2890.png?v=1758033410",
+        "https://cdn.shopify.com/s/files/1/0587/3801/6450/files/Mahamane_oil_Carton.png?v=1758033410",
+        "https://cdn.shopify.com/s/files/1/0587/3801/6450/files/MMOIL.png?v=1758033410",
+        "https://cdn.shopify.com/s/files/1/0587/3801/6450/files/03_Benefits_ee05a76c-fdbd-4f28-b279-a82bda20cfd2.jpg?v=1758109775",
+        "https://cdn.shopify.com/s/files/1/0587/3801/6450/files/09_BeforeAfter_289d07c4-8cd6-42f1-87ae-e6f1dda86ca7.jpg?v=1758796978",
+        "https://cdn.shopify.com/s/files/1/0587/3801/6450/files/02_Ritual2_eba996b3-692a-463d-a1c5-fac71120b8a1.jpg?v=1758109775",
+        "https://cdn.shopify.com/s/files/1/0587/3801/6450/files/05_Ingredients_87571045-55c4-4833-bd8e-1767513cd103_product_page.jpg?v=1758109775",
+        "https://cdn.shopify.com/s/files/1/0587/3801/6450/files/06_Usage_f095d84b-fe66-4f5d-b8aa-11fff1486bc3.jpg?v=1758109775"
+      ],
+      "price_min": 38,
+      "price_max": 38,
+      "default_offer_id": "external_seed:ext_82cf2c0eaaeab715088ca5a7",
+      "internal_offer_exists": false,
+      "external_offer_exists": true,
+      "pivota_insight_status": "available",
+      "pivota_insight_summary": "A Fable & Mane lightweight hair oil for styling or finishing routines.",
+      "quality_score": null,
+      "browse_score": null,
+      "facet_tokens": [
+        "Fable & Mane",
+        "Hair Oil"
+      ],
+      "sort_keys": {
+        "price_min": 38,
+        "price_max": 38,
+        "updated_at": null
+      },
+      "updated_at": null,
+      "source_refs": [
+        "external_seed:ext_82cf2c0eaaeab715088ca5a7"
+      ]
+    },
+    {
+      "doc_id": "sellable:sig_14d6d1be0d5a6f9373706a2f",
+      "sellable_item_group_id": "sig_14d6d1be0d5a6f9373706a2f",
+      "product_line_id": "pl_b387c1200fb9d7583d5bdff2",
+      "review_family_id": "rf_b387c1200fb9d7583d5bdff2",
+      "brand_name": "R+Co",
+      "category_paths": [
+        "Hair Oil"
+      ],
+      "market": "US",
+      "availability_state": "available",
+      "publish_state": "public",
+      "title": "ON A CLOUD Bond Building + Repair Styling Oil",
+      "subtitle": "Like heaven for your hair. This lightweight, silicone-free oil combines a powerful blend of vegan oils to offer repair, protection and styling benefits. Grapeseed, Jojoba and Rice oils tame frizz, add shine and protect against UV and 450F heat, while antioxidant-rich Baobab oil and our unique Bonding Complex help repair and build bonds. The result: silky-smooth and shiny hair that is 20 times stronger.",
+      "variant_axes": {
+        "size": "1 4 oz",
+        "volume": "4oz",
+        "multi_variant": false
+      },
+      "size": null,
+      "shade": null,
+      "pack": null,
+      "hero_media": {
+        "url": "https://cdn.shopify.com/s/files/1/0576/7888/9155/files/R_Co_On-A-Cloud-Bond-Building-Repair-Styling-Oil_web.png?v=1753302949",
+        "source_kind": "catalog",
+        "source_tier": "catalog"
+      },
+      "preview_media": [
+        "https://cdn.shopify.com/s/files/1/0576/7888/9155/files/R_Co_On-A-Cloud-Bond-Building-Repair-Styling-Oil_web.png?v=1753302949",
+        "https://cdn.shopify.com/s/files/1/0576/7888/9155/files/OAC-Oil_Ingredients_1060x1260_1eded1f2-e16f-4999-a989-3d6b4e71580c.jpg?v=1757438126",
+        "https://cdn.shopify.com/s/files/1/0576/7888/9155/files/R_Co-OAC-Oil-PDP-Social-Image_Key-Message.jpg?v=1757438126",
+        "https://cdn.shopify.com/s/files/1/0576/7888/9155/files/OAC-Oil-Model_1060x1260_d38981b4-695d-44f9-beff-8c28fbaab320.jpg?v=1757438126",
+        "https://cdn.shopify.com/s/files/1/0576/7888/9155/files/OAC-Oil_OilSplatter_1060x1260_2017313b-da1a-4688-85d1-0c3118d59e97.jpg?v=1757438106",
+        "https://cdn.shopify.com/s/files/1/0576/7888/9155/files/OAC-Oil-Infographic_1060x1260_b954da13-cdad-446f-8a72-abcf90f490d5.jpg?v=1757438119"
+      ],
+      "price_min": 38,
+      "price_max": 38,
+      "default_offer_id": "external_seed:ext_3088e75b19f5e9bd85df5432",
+      "internal_offer_exists": false,
+      "external_offer_exists": true,
+      "pivota_insight_status": "available",
+      "pivota_insight_summary": "The source description identifies: Like heaven for your hair.",
+      "quality_score": null,
+      "browse_score": null,
+      "facet_tokens": [
+        "R+Co",
+        "Hair Oil"
+      ],
+      "sort_keys": {
+        "price_min": 38,
+        "price_max": 38,
+        "updated_at": null
+      },
+      "updated_at": null,
+      "source_refs": [
+        "external_seed:ext_3088e75b19f5e9bd85df5432"
+      ]
+    },
+    {
+      "doc_id": "sellable:sig_d74129e83c1412acf72ef14e",
+      "sellable_item_group_id": "sig_d74129e83c1412acf72ef14e",
+      "product_line_id": "pl_6ff1cee360b2b92d00198904",
+      "review_family_id": "rf_6ff1cee360b2b92d00198904",
+      "brand_name": "Sofie Pavitt Face",
+      "category_paths": [
+        "Moisturizer"
+      ],
+      "market": "US",
+      "availability_state": "available",
+      "publish_state": "public",
+      "title": "Omega Rich Moisturizer",
+      "subtitle": "A rich non-comedogenic moisturizer for dewy, hydrated skin Deeply hydrates Smoothes texture Helps balance oil production Fragrance-free formula packed with Omega-3 and Omega-6 fatty acids",
+      "variant_axes": {
+        "multi_variant": false
+      },
+      "size": null,
+      "shade": null,
+      "pack": null,
+      "hero_media": {
+        "url": "https://cdn.shopify.com/s/files/1/0663/5077/6532/files/SPF_DTC_PDP_Omega.png?v=1774372417",
+        "source_kind": "catalog",
+        "source_tier": "catalog"
+      },
+      "preview_media": [
+        "https://cdn.shopify.com/s/files/1/0663/5077/6532/files/SPF_DTC_PDP_Omega.png?v=1774372417",
+        "https://cdn.shopify.com/s/files/1/0663/5077/6532/files/SPF_DTC_PDP_Omega_02.jpg?v=1774372417",
+        "https://cdn.shopify.com/s/files/1/0663/5077/6532/files/SPF_DTC_PDP_Omega_04.jpg?v=1774372417",
+        "https://cdn.shopify.com/s/files/1/0663/5077/6532/files/SPF_DTC_PDP_Omega_07.jpg?v=1774372417",
+        "https://cdn.shopify.com/s/files/1/0663/5077/6532/files/SPF_DTC_PDP_Omega_06.jpg?v=1774372417",
+        "https://cdn.shopify.com/s/files/1/0663/5077/6532/files/SPF_DTC_PDP_Omega_08.jpg?v=1774372417",
+        "https://cdn.shopify.com/s/files/1/0663/5077/6532/files/SPF_DTC_PDP_Omega_05.jpg?v=1774372417",
+        "https://cdn.shopify.com/s/files/1/0663/5077/6532/files/SPF_DTC_PDP_Omega_09.jpg?v=1774372417"
+      ],
+      "price_min": 64,
+      "price_max": 64,
+      "default_offer_id": "external_seed:ext_6c7b1ee909303169dc9c2ee4",
+      "internal_offer_exists": false,
+      "external_offer_exists": true,
+      "pivota_insight_status": "available",
+      "pivota_insight_summary": "A Sofie Pavitt Face moisturizer listed on the brand source page as Omega Rich Moisturizer.",
+      "quality_score": null,
+      "browse_score": null,
+      "facet_tokens": [
+        "Sofie Pavitt Face",
+        "Moisturizer"
+      ],
+      "sort_keys": {
+        "price_min": 64,
+        "price_max": 64,
+        "updated_at": null
+      },
+      "updated_at": null,
+      "source_refs": [
+        "external_seed:ext_6c7b1ee909303169dc9c2ee4"
+      ]
+    }
+  ]
+}

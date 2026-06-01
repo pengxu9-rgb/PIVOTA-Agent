@@ -1,0 +1,12 @@
+{
+  "status": "ok",
+  "mode": "write",
+  "report": "/Users/pengchydan/dev/_worktrees/pivota-agent-markato-wave25-786-20260527/reports/markato_expansion_status_20260524/wave112_safe_singletons_product_intel_20260601/sofiepavittface_rejection_fix_product_intel_report.json",
+  "rows": [
+    "live_ext_6c7b1ee909303169dc9c2ee4"
+  ],
+  "entries": [
+    "product:ext_6c7b1ee909303169dc9c2ee4"
+  ],
+  "skipped_rows": []
+}
