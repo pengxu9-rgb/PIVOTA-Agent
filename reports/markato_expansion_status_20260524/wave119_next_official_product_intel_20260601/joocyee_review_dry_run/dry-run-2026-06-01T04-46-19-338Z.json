@@ -1,0 +1,1608 @@
+{
+  "generated_at": "2026-06-01T04:46:19.338Z",
+  "source": "pivota_insights_official_pdp_manual_review_v1",
+  "mode": "dry_run",
+  "filters": {
+    "brand": "Joocyee",
+    "product_ids": [],
+    "limit": 20,
+    "include_strong": false,
+    "include_url_key": false,
+    "apply_chunk_size": null
+  },
+  "summary": {
+    "scanned": 18,
+    "changed_products": 2,
+    "blocked_products": 0,
+    "skipped_products": 16,
+    "write_actions": {
+      "skip": 32,
+      "update": 2,
+      "insert": 2
+    },
+    "skip_reasons": {
+      "no_safe_writes": 16,
+      "protected_high_quality_existing:reviewed": 32
+    },
+    "evidence_profiles": {
+      "official_pdp_reviewed_formula_and_usage": 18
+    }
+  },
+  "plans": [
+    {
+      "external_product_id": "ext_3ca7c85748b01b4bc8e2f3bb",
+      "pivota_signature_id": "sig_21ec476a97152c0c4323f3068e07eabf",
+      "title": "Color-correcting Primer",
+      "brand": "Joocyee",
+      "canonical_url": "https://joocyee.com/products/color-correcting-primer",
+      "changed": false,
+      "blocked": false,
+      "skip_reason": "no_safe_writes",
+      "candidate_hash": "726e12f4fcf1742e92ec1048018f1b86ba843523438568cbb47f9fe1cdc5b8e6",
+      "evidence_profile": "official_pdp_reviewed_formula_and_usage",
+      "source_coverage": {
+        "source": "official_pdp",
+        "canonical_url": "https://joocyee.com/products/color-correcting-primer",
+        "fields": {
+          "description": true,
+          "ingredients": 1,
+          "active_ingredients": 2,
+          "how_to": 1,
+          "details": 3,
+          "variants": 1
+        }
+      },
+      "preview": {
+        "headline": "Makeup primer",
+        "what_it_is": "Color-correcting Primer is a makeup primer from Joocyee, with source-backed cues around hydrating prep.",
+        "why_it_stands_out": [
+          {
+            "headline": "Primer prep cues are specific",
+            "body": "Reviewed primer cues such as makeup prep, hydration clarify how it preps skin for smoother makeup laydown without making unsupported coverage claims.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Ingredient list is available",
+            "body": "Full INCI is present for formula-sensitive review, which makes this PDP safer to evaluate than a claim-only listing.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Shade and size are explicit",
+            "body": "Variant labels such as Soft Light Green, Color: Soft Light Green are visible, reducing ambiguity around the product format before a shopper clicks through.",
+            "evidence_strength": "official_pdp_reviewed"
+          }
+        ],
+        "best_for": [
+          {
+            "tag": "base_makeup_prep",
+            "label": "base makeup prep",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "hydrating_primer_feel",
+            "label": "hydrating primer feel",
+            "confidence": "moderate"
+          }
+        ],
+        "shopping_highlight": "makeup prep, hydration"
+      },
+      "writes": [
+        {
+          "kb_key": "product:ext_3ca7c85748b01b4bc8e2f3bb",
+          "action": "skip",
+          "reason": "protected_high_quality_existing:reviewed",
+          "old_hash": "91fdd7b60c1a560bf753ce577c55a0b3afd0398b3ed5f45b9a13bcbad6a226ca",
+          "existing_weak": false
+        },
+        {
+          "kb_key": "product:sig_21ec476a97152c0c4323f3068e07eabf",
+          "action": "skip",
+          "reason": "protected_high_quality_existing:reviewed",
+          "old_hash": "91fdd7b60c1a560bf753ce577c55a0b3afd0398b3ed5f45b9a13bcbad6a226ca",
+          "existing_weak": false
+        }
+      ]
+    },
+    {
+      "external_product_id": "ext_794deab047eb4a75225329df",
+      "pivota_signature_id": "sig_6c0ec349bd054178a2d4de2e237c7b1f",
+      "title": "Color-correcting Primer",
+      "brand": "Joocyee",
+      "canonical_url": "https://joocyee.com/products/color-correcting-primer",
+      "changed": false,
+      "blocked": false,
+      "skip_reason": "no_safe_writes",
+      "candidate_hash": "7069e4325ef895f9da9aa5fbc9ec5cfd2ac3a2559b64dd1e4bf0c9714a388f7e",
+      "evidence_profile": "official_pdp_reviewed_formula_and_usage",
+      "source_coverage": {
+        "source": "official_pdp",
+        "canonical_url": "https://joocyee.com/products/color-correcting-primer",
+        "fields": {
+          "description": true,
+          "ingredients": 1,
+          "active_ingredients": 2,
+          "how_to": 1,
+          "details": 3,
+          "variants": 2
+        }
+      },
+      "preview": {
+        "headline": "Makeup primer",
+        "what_it_is": "Color-correcting Primer is a makeup primer from Joocyee, with source-backed cues around hydrating prep.",
+        "why_it_stands_out": [
+          {
+            "headline": "Primer prep cues are specific",
+            "body": "Reviewed primer cues such as makeup prep, hydration clarify how it preps skin for smoother makeup laydown without making unsupported coverage claims.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Ingredient list is available",
+            "body": "Full INCI is present for formula-sensitive review, which makes this PDP safer to evaluate than a claim-only listing.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Shade and size are explicit",
+            "body": "Variant labels such as Soft Light Purple, Color: Soft Light Purple, Soft Light Green, Color: Soft Light Green are visible, reducing ambiguity around the product format before a shopper clicks through.",
+            "evidence_strength": "official_pdp_reviewed"
+          }
+        ],
+        "best_for": [
+          {
+            "tag": "base_makeup_prep",
+            "label": "base makeup prep",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "hydrating_primer_feel",
+            "label": "hydrating primer feel",
+            "confidence": "moderate"
+          }
+        ],
+        "shopping_highlight": "makeup prep, hydration"
+      },
+      "writes": [
+        {
+          "kb_key": "product:ext_794deab047eb4a75225329df",
+          "action": "skip",
+          "reason": "protected_high_quality_existing:reviewed",
+          "old_hash": "ecc3f3d890c946257b58a74882cb9233a17ea7669254c0fa45c40987a5611a3d",
+          "existing_weak": false
+        },
+        {
+          "kb_key": "product:sig_6c0ec349bd054178a2d4de2e237c7b1f",
+          "action": "skip",
+          "reason": "protected_high_quality_existing:reviewed",
+          "old_hash": "ecc3f3d890c946257b58a74882cb9233a17ea7669254c0fa45c40987a5611a3d",
+          "existing_weak": false
+        }
+      ]
+    },
+    {
+      "external_product_id": "ext_8bced3f34a8100c3cfa62377",
+      "pivota_signature_id": "sig_f6f452fb0f01fb07be5487f10add516f",
+      "title": "Color-correcting Primer",
+      "brand": "Joocyee",
+      "canonical_url": "https://joocyee.com/products/color-correcting-primer",
+      "changed": false,
+      "blocked": false,
+      "skip_reason": "no_safe_writes",
+      "candidate_hash": "c118523303e5f964ca2c764d75643c81506f33344a7a472ea2a68b55816e79b2",
+      "evidence_profile": "official_pdp_reviewed_formula_and_usage",
+      "source_coverage": {
+        "source": "official_pdp",
+        "canonical_url": "https://joocyee.com/products/color-correcting-primer",
+        "fields": {
+          "description": true,
+          "ingredients": 1,
+          "active_ingredients": 2,
+          "how_to": 1,
+          "details": 3,
+          "variants": 1
+        }
+      },
+      "preview": {
+        "headline": "Makeup primer",
+        "what_it_is": "Color-correcting Primer is a makeup primer from Joocyee, with source-backed cues around hydrating prep.",
+        "why_it_stands_out": [
+          {
+            "headline": "Primer prep cues are specific",
+            "body": "Reviewed primer cues such as makeup prep, hydration clarify how it preps skin for smoother makeup laydown without making unsupported coverage claims.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Ingredient list is available",
+            "body": "Full INCI is present for formula-sensitive review, which makes this PDP safer to evaluate than a claim-only listing.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Shade and size are explicit",
+            "body": "Variant labels such as Soft Light Purple, Color: Soft Light Purple are visible, reducing ambiguity around the product format before a shopper clicks through.",
+            "evidence_strength": "official_pdp_reviewed"
+          }
+        ],
+        "best_for": [
+          {
+            "tag": "base_makeup_prep",
+            "label": "base makeup prep",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "hydrating_primer_feel",
+            "label": "hydrating primer feel",
+            "confidence": "moderate"
+          }
+        ],
+        "shopping_highlight": "makeup prep, hydration"
+      },
+      "writes": [
+        {
+          "kb_key": "product:ext_8bced3f34a8100c3cfa62377",
+          "action": "skip",
+          "reason": "protected_high_quality_existing:reviewed",
+          "old_hash": "84027d6c6b6087311f806801eceb7ac120c1f63737e8bef3effe2ba59c3d7c6a",
+          "existing_weak": false
+        },
+        {
+          "kb_key": "product:sig_f6f452fb0f01fb07be5487f10add516f",
+          "action": "skip",
+          "reason": "protected_high_quality_existing:reviewed",
+          "old_hash": "84027d6c6b6087311f806801eceb7ac120c1f63737e8bef3effe2ba59c3d7c6a",
+          "existing_weak": false
+        }
+      ]
+    },
+    {
+      "external_product_id": "ext_10d91302e0cbb32d89cb0cb7",
+      "pivota_signature_id": "sig_5f620fa7bfc91cd1817f331a6771a8b7",
+      "title": "Dual-Ended Eyebrow Pencil & Cream 2.0",
+      "brand": "Joocyee",
+      "canonical_url": "https://joocyee.com/products/dual-ended-eyebrow-pencil-cream-2-0",
+      "changed": true,
+      "blocked": false,
+      "skip_reason": null,
+      "candidate_hash": "9b195b335dfaa7ada6a2c20776cd0f3b35fc0bebe3c6cdbbce5729031daa6d52",
+      "evidence_profile": "official_pdp_reviewed_formula_and_usage",
+      "source_coverage": {
+        "source": "official_pdp",
+        "canonical_url": "https://joocyee.com/products/dual-ended-eyebrow-pencil-cream-2-0",
+        "fields": {
+          "description": true,
+          "ingredients": 1,
+          "active_ingredients": 1,
+          "how_to": 1,
+          "details": 3,
+          "variants": 3
+        }
+      },
+      "preview": {
+        "headline": "Brow product",
+        "what_it_is": "Dual-Ended Eyebrow Pencil & Cream 2.0 is a brow product from Joocyee, with source-backed cues around eye makeup grooming.",
+        "why_it_stands_out": [
+          {
+            "headline": "Product cues are source-backed",
+            "body": "Reviewed PDP cues such as brow definition, precision application, shade matching, built-in brow brush give shoppers specific comparison points within Joocyee, rather than category-only copy.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Ingredient list is available",
+            "body": "Full INCI is present for formula-sensitive review, which makes this PDP safer to evaluate than a claim-only listing.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Shade and size are explicit",
+            "body": "Variant labels such as 01 Light Ash Blonde, Color: 01 Light Ash Blonde, 02 Soft Mocha Brown, Color: 02 Soft Mocha Brown are visible, reducing ambiguity around the product format before a shopper clicks through.",
+            "evidence_strength": "official_pdp_reviewed"
+          }
+        ],
+        "best_for": [
+          {
+            "tag": "brow_definition",
+            "label": "brow definition",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "precision_application",
+            "label": "precision application",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "shade_matching",
+            "label": "shade matching",
+            "confidence": "moderate"
+          }
+        ],
+        "shopping_highlight": "brow definition, precision application"
+      },
+      "writes": [
+        {
+          "kb_key": "product:ext_10d91302e0cbb32d89cb0cb7",
+          "action": "update",
+          "reason": "explicit_owner_delegated_assistant_replacement_review",
+          "old_hash": "5b107f131ed9ed14871d2338744cffa1231a7670fb0d1463761aaa589d09adb7",
+          "candidate_hash": "2635637e60371e195eeff2d6a7d1db16820f2767ee5b49207325f7d90b9043fb",
+          "existing_weak": true,
+          "source": "pivota_insights_official_pdp_manual_review_v1",
+          "after_inventory": {
+            "product_id": "ext_10d91302e0cbb32d89cb0cb7",
+            "kb_key": "product:ext_10d91302e0cbb32d89cb0cb7",
+            "source": "pivota_insights_official_pdp_manual_review_v1",
+            "updated_at": "",
+            "last_success_at": "",
+            "title": "Dual-Ended Eyebrow Pencil & Cream 2.0",
+            "canonical_url": "",
+            "bundle_hash": "9b195b335dfaa7ada6a2c20776cd0f3b35fc0bebe3c6cdbbce5729031daa6d52",
+            "lane": "keep",
+            "reason": "protected_good_content",
+            "priority": 0,
+            "protected": true,
+            "displayable": true,
+            "high_quality_ready": true,
+            "human_reviewed": true,
+            "issues": [],
+            "blocking_issues": [],
+            "quality_state": "reviewed",
+            "evidence_profile": "official_pdp_reviewed_formula_and_usage",
+            "evidence_rank": 1,
+            "review_tier": "assistant_reviewed",
+            "agent_readable": true,
+            "public_ready": true
+          },
+          "source_meta": {
+            "evidence_profile": "official_pdp_reviewed_formula_and_usage",
+            "quality_state": "reviewed",
+            "source_origin": "official_pdp_fields",
+            "source_url": "https://joocyee.com/products/dual-ended-eyebrow-pencil-cream-2-0",
+            "quality_improvement": {
+              "previous_bundle_hash": "c131f2be00cd110315ad5658b17f074ccd44d456e3194a08022332f247920a9c",
+              "candidate_bundle_hash": "9b195b335dfaa7ada6a2c20776cd0f3b35fc0bebe3c6cdbbce5729031daa6d52",
+              "replacement_decision": "explicit_owner_delegated_assistant_replacement_review",
+              "existing_quality_lane": "keep",
+              "candidate_quality_lane": "keep",
+              "existing_evidence_profile": "seller_plus_formula",
+              "candidate_evidence_profile": "official_pdp_reviewed_formula_and_usage"
+            }
+          }
+        },
+        {
+          "kb_key": "product:sig_5f620fa7bfc91cd1817f331a6771a8b7",
+          "action": "insert",
+          "reason": "new_product_intel_bundle",
+          "old_hash": null,
+          "candidate_hash": "2635637e60371e195eeff2d6a7d1db16820f2767ee5b49207325f7d90b9043fb",
+          "existing_weak": true,
+          "source": "pivota_insights_official_pdp_manual_review_v1",
+          "after_inventory": {
+            "product_id": "ext_10d91302e0cbb32d89cb0cb7",
+            "kb_key": "product:sig_5f620fa7bfc91cd1817f331a6771a8b7",
+            "source": "pivota_insights_official_pdp_manual_review_v1",
+            "updated_at": "",
+            "last_success_at": "",
+            "title": "Dual-Ended Eyebrow Pencil & Cream 2.0",
+            "canonical_url": "",
+            "bundle_hash": "9b195b335dfaa7ada6a2c20776cd0f3b35fc0bebe3c6cdbbce5729031daa6d52",
+            "lane": "keep",
+            "reason": "protected_good_content",
+            "priority": 0,
+            "protected": true,
+            "displayable": true,
+            "high_quality_ready": true,
+            "human_reviewed": true,
+            "issues": [],
+            "blocking_issues": [],
+            "quality_state": "reviewed",
+            "evidence_profile": "official_pdp_reviewed_formula_and_usage",
+            "evidence_rank": 1,
+            "review_tier": "assistant_reviewed",
+            "agent_readable": true,
+            "public_ready": true
+          },
+          "source_meta": {
+            "evidence_profile": "official_pdp_reviewed_formula_and_usage",
+            "quality_state": "reviewed",
+            "source_origin": "official_pdp_fields",
+            "source_url": "https://joocyee.com/products/dual-ended-eyebrow-pencil-cream-2-0",
+            "quality_improvement": {
+              "previous_bundle_hash": null,
+              "candidate_bundle_hash": "9b195b335dfaa7ada6a2c20776cd0f3b35fc0bebe3c6cdbbce5729031daa6d52",
+              "replacement_decision": "new_product_intel_bundle",
+              "existing_quality_lane": null,
+              "candidate_quality_lane": "keep",
+              "existing_evidence_profile": null,
+              "candidate_evidence_profile": "official_pdp_reviewed_formula_and_usage"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "external_product_id": "ext_4fe791cb17f27395a25f91ee",
+      "pivota_signature_id": "sig_d1722698c8ea060c26ac9a0c758c3c6c",
+      "title": "Dual-Ended Eyebrow Pencil & Cream 2.0",
+      "brand": "Joocyee",
+      "canonical_url": "https://joocyee.com/products/dual-ended-eyebrow-pencil-cream-2-0",
+      "changed": false,
+      "blocked": false,
+      "skip_reason": "no_safe_writes",
+      "candidate_hash": "3f53bc2d312e0270650cb9a2c008912487056f03a363e20a13dd94a2356e2d2b",
+      "evidence_profile": "official_pdp_reviewed_formula_and_usage",
+      "source_coverage": {
+        "source": "official_pdp",
+        "canonical_url": "https://joocyee.com/products/dual-ended-eyebrow-pencil-cream-2-0",
+        "fields": {
+          "description": true,
+          "ingredients": 1,
+          "active_ingredients": 1,
+          "how_to": 1,
+          "details": 3,
+          "variants": 1
+        }
+      },
+      "preview": {
+        "headline": "Brow product",
+        "what_it_is": "Dual-Ended Eyebrow Pencil & Cream 2.0 is a brow product from Joocyee, with source-backed cues around eye makeup grooming.",
+        "why_it_stands_out": [
+          {
+            "headline": "Product cues are source-backed",
+            "body": "Reviewed PDP cues such as brow definition, precision application, shade matching, built-in brow brush give shoppers specific comparison points within Joocyee, rather than category-only copy.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Ingredient list is available",
+            "body": "Full INCI is present for formula-sensitive review, which makes this PDP safer to evaluate than a claim-only listing.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Shade and size are explicit",
+            "body": "Variant labels such as 03 Cool Misty Brown, Color: 03 Cool Misty Brown are visible, reducing ambiguity around the product format before a shopper clicks through.",
+            "evidence_strength": "official_pdp_reviewed"
+          }
+        ],
+        "best_for": [
+          {
+            "tag": "brow_definition",
+            "label": "brow definition",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "precision_application",
+            "label": "precision application",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "shade_matching",
+            "label": "shade matching",
+            "confidence": "moderate"
+          }
+        ],
+        "shopping_highlight": "brow definition, precision application"
+      },
+      "writes": [
+        {
+          "kb_key": "product:ext_4fe791cb17f27395a25f91ee",
+          "action": "skip",
+          "reason": "protected_high_quality_existing:reviewed",
+          "old_hash": "5279f8b2cacac0dd2d84425fecca573cc66c07d5961e23ee369c52bdb7e6131c",
+          "existing_weak": false
+        },
+        {
+          "kb_key": "product:sig_d1722698c8ea060c26ac9a0c758c3c6c",
+          "action": "skip",
+          "reason": "protected_high_quality_existing:reviewed",
+          "old_hash": "5279f8b2cacac0dd2d84425fecca573cc66c07d5961e23ee369c52bdb7e6131c",
+          "existing_weak": false
+        }
+      ]
+    },
+    {
+      "external_product_id": "ext_613e3bbbf834dcce655539b3",
+      "pivota_signature_id": "sig_56a8c1b7e168f383bd02589ea7a8cbf9",
+      "title": "Dual-Ended Eyebrow Pencil & Cream 2.0",
+      "brand": "Joocyee",
+      "canonical_url": "https://joocyee.com/products/dual-ended-eyebrow-pencil-cream-2-0",
+      "changed": false,
+      "blocked": false,
+      "skip_reason": "no_safe_writes",
+      "candidate_hash": "c2a1cebe29742aeb50e3ec0449f4c47fffc9c13a67f2434d9978776a95d9c628",
+      "evidence_profile": "official_pdp_reviewed_formula_and_usage",
+      "source_coverage": {
+        "source": "official_pdp",
+        "canonical_url": "https://joocyee.com/products/dual-ended-eyebrow-pencil-cream-2-0",
+        "fields": {
+          "description": true,
+          "ingredients": 1,
+          "active_ingredients": 1,
+          "how_to": 1,
+          "details": 3,
+          "variants": 1
+        }
+      },
+      "preview": {
+        "headline": "Brow product",
+        "what_it_is": "Dual-Ended Eyebrow Pencil & Cream 2.0 is a brow product from Joocyee, with source-backed cues around eye makeup grooming.",
+        "why_it_stands_out": [
+          {
+            "headline": "Product cues are source-backed",
+            "body": "Reviewed PDP cues such as brow definition, precision application, shade matching, built-in brow brush give shoppers specific comparison points within Joocyee, rather than category-only copy.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Ingredient list is available",
+            "body": "Full INCI is present for formula-sensitive review, which makes this PDP safer to evaluate than a claim-only listing.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Shade and size are explicit",
+            "body": "Variant labels such as 02 Soft Mocha Brown, Color: 02 Soft Mocha Brown are visible, reducing ambiguity around the product format before a shopper clicks through.",
+            "evidence_strength": "official_pdp_reviewed"
+          }
+        ],
+        "best_for": [
+          {
+            "tag": "brow_definition",
+            "label": "brow definition",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "precision_application",
+            "label": "precision application",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "shade_matching",
+            "label": "shade matching",
+            "confidence": "moderate"
+          }
+        ],
+        "shopping_highlight": "brow definition, precision application"
+      },
+      "writes": [
+        {
+          "kb_key": "product:ext_613e3bbbf834dcce655539b3",
+          "action": "skip",
+          "reason": "protected_high_quality_existing:reviewed",
+          "old_hash": "e604d5623e660ee54c0604358735b07090fcad790640ba191a7b9f3d96ec797c",
+          "existing_weak": false
+        },
+        {
+          "kb_key": "product:sig_56a8c1b7e168f383bd02589ea7a8cbf9",
+          "action": "skip",
+          "reason": "protected_high_quality_existing:reviewed",
+          "old_hash": "e604d5623e660ee54c0604358735b07090fcad790640ba191a7b9f3d96ec797c",
+          "existing_weak": false
+        }
+      ]
+    },
+    {
+      "external_product_id": "ext_d479efb9a5fafb985e19bd3c",
+      "pivota_signature_id": "sig_65f85d63e8c8ea6cd6fd6cf569d88680",
+      "title": "Dual-Ended Eyebrow Pencil & Cream 2.0",
+      "brand": "Joocyee",
+      "canonical_url": "https://joocyee.com/products/dual-ended-eyebrow-pencil-cream-2-0",
+      "changed": false,
+      "blocked": false,
+      "skip_reason": "no_safe_writes",
+      "candidate_hash": "a4b39af60de854ae147bc6f28b4d4ffffdb2253b55852470bc6a5e43cd56c5b7",
+      "evidence_profile": "official_pdp_reviewed_formula_and_usage",
+      "source_coverage": {
+        "source": "official_pdp",
+        "canonical_url": "https://joocyee.com/products/dual-ended-eyebrow-pencil-cream-2-0",
+        "fields": {
+          "description": true,
+          "ingredients": 1,
+          "active_ingredients": 1,
+          "how_to": 1,
+          "details": 3,
+          "variants": 1
+        }
+      },
+      "preview": {
+        "headline": "Brow product",
+        "what_it_is": "Dual-Ended Eyebrow Pencil & Cream 2.0 is a brow product from Joocyee, with source-backed cues around eye makeup grooming.",
+        "why_it_stands_out": [
+          {
+            "headline": "Product cues are source-backed",
+            "body": "Reviewed PDP cues such as brow definition, precision application, shade matching, built-in brow brush give shoppers specific comparison points within Joocyee, rather than category-only copy.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Ingredient list is available",
+            "body": "Full INCI is present for formula-sensitive review, which makes this PDP safer to evaluate than a claim-only listing.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Shade and size are explicit",
+            "body": "Variant labels such as 01 Light Ash Blonde, Color: 01 Light Ash Blonde are visible, reducing ambiguity around the product format before a shopper clicks through.",
+            "evidence_strength": "official_pdp_reviewed"
+          }
+        ],
+        "best_for": [
+          {
+            "tag": "brow_definition",
+            "label": "brow definition",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "precision_application",
+            "label": "precision application",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "shade_matching",
+            "label": "shade matching",
+            "confidence": "moderate"
+          }
+        ],
+        "shopping_highlight": "brow definition, precision application"
+      },
+      "writes": [
+        {
+          "kb_key": "product:ext_d479efb9a5fafb985e19bd3c",
+          "action": "skip",
+          "reason": "protected_high_quality_existing:reviewed",
+          "old_hash": "f6a5d2c5cbdfd17cd4d70ca6f7e4b59600749af50f40cfddeb9a243658cb6da3",
+          "existing_weak": false
+        },
+        {
+          "kb_key": "product:sig_65f85d63e8c8ea6cd6fd6cf569d88680",
+          "action": "skip",
+          "reason": "protected_high_quality_existing:reviewed",
+          "old_hash": "f6a5d2c5cbdfd17cd4d70ca6f7e4b59600749af50f40cfddeb9a243658cb6da3",
+          "existing_weak": false
+        }
+      ]
+    },
+    {
+      "external_product_id": "ext_2881559170714581057e21eb",
+      "pivota_signature_id": "sig_a3ebadbf45258ce2f0d2603ce28b3a2d",
+      "title": "Glazed Lip Gloss",
+      "brand": "Joocyee",
+      "canonical_url": "https://joocyee.com/products/glazed-lip-gloss",
+      "changed": false,
+      "blocked": false,
+      "skip_reason": "no_safe_writes",
+      "candidate_hash": "fbbdf540e841c8a7df9989c080d7f1eb314592e1f9eefe22f711a09edc586fc8",
+      "evidence_profile": "official_pdp_reviewed_formula_and_usage",
+      "source_coverage": {
+        "source": "official_pdp",
+        "canonical_url": "https://joocyee.com/products/glazed-lip-gloss",
+        "fields": {
+          "description": true,
+          "ingredients": 1,
+          "active_ingredients": 3,
+          "how_to": 1,
+          "details": 3,
+          "variants": 1
+        }
+      },
+      "preview": {
+        "headline": "Lip color",
+        "what_it_is": "Glazed Lip Gloss is a lip gloss from Joocyee in 26 Lilac Glow, with source-backed cues around shine finish and shade clarity.",
+        "why_it_stands_out": [
+          {
+            "headline": "Lip finish cues are specific",
+            "body": "Reviewed lip cues such as hyaluronic acid, squalane, shine finish, shade range identify finish, shade, or formula context before the shopper leaves Pivota.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Ingredient list is available",
+            "body": "Full INCI is present for formula-sensitive review, which makes this PDP safer to evaluate than a claim-only listing.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Shade and size are explicit",
+            "body": "Variant labels such as 26 Lilac Glow, Shade: 26 Lilac Glow are visible, reducing ambiguity around the product format before a shopper clicks through.",
+            "evidence_strength": "official_pdp_reviewed"
+          }
+        ],
+        "best_for": [
+          {
+            "tag": "color_payoff",
+            "label": "color payoff",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "lip_comfort",
+            "label": "lip comfort",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "shine_finish",
+            "label": "shine finish",
+            "confidence": "moderate"
+          }
+        ],
+        "shopping_highlight": "hyaluronic acid, squalane, shine finish"
+      },
+      "writes": [
+        {
+          "kb_key": "product:ext_2881559170714581057e21eb",
+          "action": "skip",
+          "reason": "protected_high_quality_existing:reviewed",
+          "old_hash": "ba176201a706078dfa8f24ad3af14e273dcfa5c7b1f7be3269aa3df59f1245c1",
+          "existing_weak": false
+        },
+        {
+          "kb_key": "product:sig_a3ebadbf45258ce2f0d2603ce28b3a2d",
+          "action": "skip",
+          "reason": "protected_high_quality_existing:reviewed",
+          "old_hash": "ba176201a706078dfa8f24ad3af14e273dcfa5c7b1f7be3269aa3df59f1245c1",
+          "existing_weak": false
+        }
+      ]
+    },
+    {
+      "external_product_id": "ext_35ffa71281354a958ef30f7e",
+      "pivota_signature_id": "sig_26fb6163c7fefb4e75ad2f1b2d903e42",
+      "title": "Glazed Lip Gloss",
+      "brand": "Joocyee",
+      "canonical_url": "https://joocyee.com/products/glazed-lip-gloss",
+      "changed": false,
+      "blocked": false,
+      "skip_reason": "no_safe_writes",
+      "candidate_hash": "7b93431a6a7e5125f601dc2a36af7fa7d54a3e2149a60112d9b59a5393f7764a",
+      "evidence_profile": "official_pdp_reviewed_formula_and_usage",
+      "source_coverage": {
+        "source": "official_pdp",
+        "canonical_url": "https://joocyee.com/products/glazed-lip-gloss",
+        "fields": {
+          "description": true,
+          "ingredients": 1,
+          "active_ingredients": 3,
+          "how_to": 1,
+          "details": 3,
+          "variants": 1
+        }
+      },
+      "preview": {
+        "headline": "Lip color",
+        "what_it_is": "Glazed Lip Gloss is a lip gloss from Joocyee in 82 Amber Glow, with source-backed cues around shine finish and shade clarity.",
+        "why_it_stands_out": [
+          {
+            "headline": "Lip finish cues are specific",
+            "body": "Reviewed lip cues such as hyaluronic acid, squalane, shine finish, shade range identify finish, shade, or formula context before the shopper leaves Pivota.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Ingredient list is available",
+            "body": "Full INCI is present for formula-sensitive review, which makes this PDP safer to evaluate than a claim-only listing.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Shade and size are explicit",
+            "body": "Variant labels such as 82 Amber Glow, Shade: 82 Amber Glow are visible, reducing ambiguity around the product format before a shopper clicks through.",
+            "evidence_strength": "official_pdp_reviewed"
+          }
+        ],
+        "best_for": [
+          {
+            "tag": "color_payoff",
+            "label": "color payoff",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "lip_comfort",
+            "label": "lip comfort",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "shine_finish",
+            "label": "shine finish",
+            "confidence": "moderate"
+          }
+        ],
+        "shopping_highlight": "hyaluronic acid, squalane, shine finish"
+      },
+      "writes": [
+        {
+          "kb_key": "product:ext_35ffa71281354a958ef30f7e",
+          "action": "skip",
+          "reason": "protected_high_quality_existing:reviewed",
+          "old_hash": "bfa06523dc42a1efca2a67a417c81fd10290f6a6c05cdf4f9fd57305339d45f5",
+          "existing_weak": false
+        },
+        {
+          "kb_key": "product:sig_26fb6163c7fefb4e75ad2f1b2d903e42",
+          "action": "skip",
+          "reason": "protected_high_quality_existing:reviewed",
+          "old_hash": "bfa06523dc42a1efca2a67a417c81fd10290f6a6c05cdf4f9fd57305339d45f5",
+          "existing_weak": false
+        }
+      ]
+    },
+    {
+      "external_product_id": "ext_3c9980e0455d648c3173c14e",
+      "pivota_signature_id": "sig_1662cfba549972c0c5ad0d9c05179f88",
+      "title": "Glazed Lip Gloss",
+      "brand": "Joocyee",
+      "canonical_url": "https://joocyee.com/products/glazed-lip-gloss",
+      "changed": false,
+      "blocked": false,
+      "skip_reason": "no_safe_writes",
+      "candidate_hash": "2ee06786f6351dbefc3b47cb82f163d00ccb27591bd2c2b026cbe7ac28d410fb",
+      "evidence_profile": "official_pdp_reviewed_formula_and_usage",
+      "source_coverage": {
+        "source": "official_pdp",
+        "canonical_url": "https://joocyee.com/products/glazed-lip-gloss",
+        "fields": {
+          "description": true,
+          "ingredients": 1,
+          "active_ingredients": 3,
+          "how_to": 1,
+          "details": 3,
+          "variants": 1
+        }
+      },
+      "preview": {
+        "headline": "Lip color",
+        "what_it_is": "Glazed Lip Gloss is a lip gloss from Joocyee in 85 Dune Glow, with source-backed cues around shine finish and shade clarity.",
+        "why_it_stands_out": [
+          {
+            "headline": "Lip finish cues are specific",
+            "body": "Reviewed lip cues such as hyaluronic acid, squalane, shine finish, shade range identify finish, shade, or formula context before the shopper leaves Pivota.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Ingredient list is available",
+            "body": "Full INCI is present for formula-sensitive review, which makes this PDP safer to evaluate than a claim-only listing.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Shade and size are explicit",
+            "body": "Variant labels such as 85 Dune Glow, Shade: 85 Dune Glow are visible, reducing ambiguity around the product format before a shopper clicks through.",
+            "evidence_strength": "official_pdp_reviewed"
+          }
+        ],
+        "best_for": [
+          {
+            "tag": "color_payoff",
+            "label": "color payoff",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "lip_comfort",
+            "label": "lip comfort",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "shine_finish",
+            "label": "shine finish",
+            "confidence": "moderate"
+          }
+        ],
+        "shopping_highlight": "hyaluronic acid, squalane, shine finish"
+      },
+      "writes": [
+        {
+          "kb_key": "product:ext_3c9980e0455d648c3173c14e",
+          "action": "skip",
+          "reason": "protected_high_quality_existing:reviewed",
+          "old_hash": "18fb3a9b4423cd40ac8a77d7d5acd49f70faa1eebd7971aacc90143253537ec9",
+          "existing_weak": false
+        },
+        {
+          "kb_key": "product:sig_1662cfba549972c0c5ad0d9c05179f88",
+          "action": "skip",
+          "reason": "protected_high_quality_existing:reviewed",
+          "old_hash": "18fb3a9b4423cd40ac8a77d7d5acd49f70faa1eebd7971aacc90143253537ec9",
+          "existing_weak": false
+        }
+      ]
+    },
+    {
+      "external_product_id": "ext_41c98523b6fc0a8279c3095c",
+      "pivota_signature_id": "sig_368da5fec1204a9186cdff833b6666c9",
+      "title": "Glazed Lip Gloss",
+      "brand": "Joocyee",
+      "canonical_url": "https://joocyee.com/products/glazed-lip-gloss",
+      "changed": false,
+      "blocked": false,
+      "skip_reason": "no_safe_writes",
+      "candidate_hash": "5f2a18e635d6a52b509873a442090f1c16577cd54e02174eced51079aa91d9b6",
+      "evidence_profile": "official_pdp_reviewed_formula_and_usage",
+      "source_coverage": {
+        "source": "official_pdp",
+        "canonical_url": "https://joocyee.com/products/glazed-lip-gloss",
+        "fields": {
+          "description": true,
+          "ingredients": 1,
+          "active_ingredients": 3,
+          "how_to": 1,
+          "details": 3,
+          "variants": 1
+        }
+      },
+      "preview": {
+        "headline": "Lip color",
+        "what_it_is": "Glazed Lip Gloss is a lip gloss from Joocyee in 66 Oolong Glow, with source-backed cues around shine finish and shade clarity.",
+        "why_it_stands_out": [
+          {
+            "headline": "Lip finish cues are specific",
+            "body": "Reviewed lip cues such as hyaluronic acid, squalane, shine finish, shade range identify finish, shade, or formula context before the shopper leaves Pivota.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Ingredient list is available",
+            "body": "Full INCI is present for formula-sensitive review, which makes this PDP safer to evaluate than a claim-only listing.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Shade and size are explicit",
+            "body": "Variant labels such as 66 Oolong Glow, Shade: 66 Oolong Glow are visible, reducing ambiguity around the product format before a shopper clicks through.",
+            "evidence_strength": "official_pdp_reviewed"
+          }
+        ],
+        "best_for": [
+          {
+            "tag": "color_payoff",
+            "label": "color payoff",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "lip_comfort",
+            "label": "lip comfort",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "shine_finish",
+            "label": "shine finish",
+            "confidence": "moderate"
+          }
+        ],
+        "shopping_highlight": "hyaluronic acid, squalane, shine finish"
+      },
+      "writes": [
+        {
+          "kb_key": "product:ext_41c98523b6fc0a8279c3095c",
+          "action": "skip",
+          "reason": "protected_high_quality_existing:reviewed",
+          "old_hash": "6085ef8d368f78c940d900315e188482df9b3ffdf6359a4a368e1064e7b00082",
+          "existing_weak": false
+        },
+        {
+          "kb_key": "product:sig_368da5fec1204a9186cdff833b6666c9",
+          "action": "skip",
+          "reason": "protected_high_quality_existing:reviewed",
+          "old_hash": "6085ef8d368f78c940d900315e188482df9b3ffdf6359a4a368e1064e7b00082",
+          "existing_weak": false
+        }
+      ]
+    },
+    {
+      "external_product_id": "ext_4888a0d0940daa58fc77af80",
+      "pivota_signature_id": "sig_6c8f44c03421239b6bdcc9b89c2389f3",
+      "title": "Glazed Lip Gloss",
+      "brand": "Joocyee",
+      "canonical_url": "https://joocyee.com/products/glazed-lip-gloss",
+      "changed": false,
+      "blocked": false,
+      "skip_reason": "no_safe_writes",
+      "candidate_hash": "faf9516be93127c67f318f12f7bdda536e2d78b13db925ee795e4a44ce5b406f",
+      "evidence_profile": "official_pdp_reviewed_formula_and_usage",
+      "source_coverage": {
+        "source": "official_pdp",
+        "canonical_url": "https://joocyee.com/products/glazed-lip-gloss",
+        "fields": {
+          "description": true,
+          "ingredients": 1,
+          "active_ingredients": 3,
+          "how_to": 1,
+          "details": 3,
+          "variants": 1
+        }
+      },
+      "preview": {
+        "headline": "Lip color",
+        "what_it_is": "Glazed Lip Gloss is a lip gloss from Joocyee in 28 Strawberry Glow, with source-backed cues around shine finish and shade clarity.",
+        "why_it_stands_out": [
+          {
+            "headline": "Lip finish cues are specific",
+            "body": "Reviewed lip cues such as hyaluronic acid, squalane, shine finish, shade range identify finish, shade, or formula context before the shopper leaves Pivota.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Ingredient list is available",
+            "body": "Full INCI is present for formula-sensitive review, which makes this PDP safer to evaluate than a claim-only listing.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Shade and size are explicit",
+            "body": "Variant labels such as 28 Strawberry Glow, Shade: 28 Strawberry Glow are visible, reducing ambiguity around the product format before a shopper clicks through.",
+            "evidence_strength": "official_pdp_reviewed"
+          }
+        ],
+        "best_for": [
+          {
+            "tag": "color_payoff",
+            "label": "color payoff",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "lip_comfort",
+            "label": "lip comfort",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "shine_finish",
+            "label": "shine finish",
+            "confidence": "moderate"
+          }
+        ],
+        "shopping_highlight": "hyaluronic acid, squalane, shine finish"
+      },
+      "writes": [
+        {
+          "kb_key": "product:ext_4888a0d0940daa58fc77af80",
+          "action": "skip",
+          "reason": "protected_high_quality_existing:reviewed",
+          "old_hash": "e6a53c72dc1d3a67a63ce67032757384af199d61c4b1d62ee56ef386a9c5ebdc",
+          "existing_weak": false
+        },
+        {
+          "kb_key": "product:sig_6c8f44c03421239b6bdcc9b89c2389f3",
+          "action": "skip",
+          "reason": "protected_high_quality_existing:reviewed",
+          "old_hash": "e6a53c72dc1d3a67a63ce67032757384af199d61c4b1d62ee56ef386a9c5ebdc",
+          "existing_weak": false
+        }
+      ]
+    },
+    {
+      "external_product_id": "ext_52a27acd606756dea463a717",
+      "pivota_signature_id": "sig_83cfd3add20106b149d3976278fa41fb",
+      "title": "Glazed Lip Gloss",
+      "brand": "Joocyee",
+      "canonical_url": "https://joocyee.com/products/glazed-lip-gloss",
+      "changed": false,
+      "blocked": false,
+      "skip_reason": "no_safe_writes",
+      "candidate_hash": "516a2a3c7faf4009c2d7e87f858d54fd08c531135aac2175d9196915a25ae6c5",
+      "evidence_profile": "official_pdp_reviewed_formula_and_usage",
+      "source_coverage": {
+        "source": "official_pdp",
+        "canonical_url": "https://joocyee.com/products/glazed-lip-gloss",
+        "fields": {
+          "description": true,
+          "ingredients": 1,
+          "active_ingredients": 3,
+          "how_to": 1,
+          "details": 3,
+          "variants": 1
+        }
+      },
+      "preview": {
+        "headline": "Lip color",
+        "what_it_is": "Glazed Lip Gloss is a lip gloss from Joocyee in 20 Cherry Blossom Glow, with source-backed cues around shine finish and shade clarity.",
+        "why_it_stands_out": [
+          {
+            "headline": "Lip finish cues are specific",
+            "body": "Reviewed lip cues such as hyaluronic acid, squalane, shine finish, shade range identify finish, shade, or formula context before the shopper leaves Pivota.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Ingredient list is available",
+            "body": "Full INCI is present for formula-sensitive review, which makes this PDP safer to evaluate than a claim-only listing.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Shade and size are explicit",
+            "body": "Variant labels such as 20 Cherry Blossom Glow, Shade: 20 Cherry Blossom Glow are visible, reducing ambiguity around the product format before a shopper clicks through.",
+            "evidence_strength": "official_pdp_reviewed"
+          }
+        ],
+        "best_for": [
+          {
+            "tag": "color_payoff",
+            "label": "color payoff",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "lip_comfort",
+            "label": "lip comfort",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "shine_finish",
+            "label": "shine finish",
+            "confidence": "moderate"
+          }
+        ],
+        "shopping_highlight": "hyaluronic acid, squalane, shine finish"
+      },
+      "writes": [
+        {
+          "kb_key": "product:ext_52a27acd606756dea463a717",
+          "action": "skip",
+          "reason": "protected_high_quality_existing:reviewed",
+          "old_hash": "1908096d397eac3547aae9c6cd21bbef33c872c5ad41e5670e69627acfd9afe8",
+          "existing_weak": false
+        },
+        {
+          "kb_key": "product:sig_83cfd3add20106b149d3976278fa41fb",
+          "action": "skip",
+          "reason": "protected_high_quality_existing:reviewed",
+          "old_hash": "1908096d397eac3547aae9c6cd21bbef33c872c5ad41e5670e69627acfd9afe8",
+          "existing_weak": false
+        }
+      ]
+    },
+    {
+      "external_product_id": "ext_70a0b0b3c68a48630060c7ff",
+      "pivota_signature_id": "sig_210560c0f7eb3d437dc292faaf1a85f8",
+      "title": "Glazed Lip Gloss",
+      "brand": "Joocyee",
+      "canonical_url": "https://joocyee.com/products/glazed-lip-gloss",
+      "changed": false,
+      "blocked": false,
+      "skip_reason": "no_safe_writes",
+      "candidate_hash": "ba97eb4405d034d19c285e47ba51576594c866dfa78893ca68e84577fed3925e",
+      "evidence_profile": "official_pdp_reviewed_formula_and_usage",
+      "source_coverage": {
+        "source": "official_pdp",
+        "canonical_url": "https://joocyee.com/products/glazed-lip-gloss",
+        "fields": {
+          "description": true,
+          "ingredients": 1,
+          "active_ingredients": 3,
+          "how_to": 1,
+          "details": 3,
+          "variants": 1
+        }
+      },
+      "preview": {
+        "headline": "Lip color",
+        "what_it_is": "Glazed Lip Gloss is a lip gloss from Joocyee in 80 Moonlight Glow, with source-backed cues around shine finish and shade clarity.",
+        "why_it_stands_out": [
+          {
+            "headline": "Lip finish cues are specific",
+            "body": "Reviewed lip cues such as hyaluronic acid, squalane, shine finish, shade range identify finish, shade, or formula context before the shopper leaves Pivota.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Ingredient list is available",
+            "body": "Full INCI is present for formula-sensitive review, which makes this PDP safer to evaluate than a claim-only listing.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Shade and size are explicit",
+            "body": "Variant labels such as 80 Moonlight Glow, Shade: 80 Moonlight Glow are visible, reducing ambiguity around the product format before a shopper clicks through.",
+            "evidence_strength": "official_pdp_reviewed"
+          }
+        ],
+        "best_for": [
+          {
+            "tag": "color_payoff",
+            "label": "color payoff",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "lip_comfort",
+            "label": "lip comfort",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "shine_finish",
+            "label": "shine finish",
+            "confidence": "moderate"
+          }
+        ],
+        "shopping_highlight": "hyaluronic acid, squalane, shine finish"
+      },
+      "writes": [
+        {
+          "kb_key": "product:ext_70a0b0b3c68a48630060c7ff",
+          "action": "skip",
+          "reason": "protected_high_quality_existing:reviewed",
+          "old_hash": "9640fdc945786491e82733052c2b56ebc2bc6cf006bb1b347a088fd52dadb0db",
+          "existing_weak": false
+        },
+        {
+          "kb_key": "product:sig_210560c0f7eb3d437dc292faaf1a85f8",
+          "action": "skip",
+          "reason": "protected_high_quality_existing:reviewed",
+          "old_hash": "9640fdc945786491e82733052c2b56ebc2bc6cf006bb1b347a088fd52dadb0db",
+          "existing_weak": false
+        }
+      ]
+    },
+    {
+      "external_product_id": "ext_75c1cd3bbad92bbdbc6ab010",
+      "pivota_signature_id": "sig_8657d8ef8b0079198df3ec71e4859a3a",
+      "title": "Glazed Lip Gloss",
+      "brand": "Joocyee",
+      "canonical_url": "https://joocyee.com/products/glazed-lip-gloss",
+      "changed": false,
+      "blocked": false,
+      "skip_reason": "no_safe_writes",
+      "candidate_hash": "aed5fc6590e59bae98f9afdc7a84f1c97511809c8611478b5333937dab6dafe0",
+      "evidence_profile": "official_pdp_reviewed_formula_and_usage",
+      "source_coverage": {
+        "source": "official_pdp",
+        "canonical_url": "https://joocyee.com/products/glazed-lip-gloss",
+        "fields": {
+          "description": true,
+          "ingredients": 1,
+          "active_ingredients": 3,
+          "how_to": 1,
+          "details": 3,
+          "variants": 1
+        }
+      },
+      "preview": {
+        "headline": "Lip color",
+        "what_it_is": "Glazed Lip Gloss is a lip gloss from Joocyee in 68 Black Tea Glow, with source-backed cues around shine finish and shade clarity.",
+        "why_it_stands_out": [
+          {
+            "headline": "Lip finish cues are specific",
+            "body": "Reviewed lip cues such as hyaluronic acid, squalane, shine finish, shade range identify finish, shade, or formula context before the shopper leaves Pivota.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Ingredient list is available",
+            "body": "Full INCI is present for formula-sensitive review, which makes this PDP safer to evaluate than a claim-only listing.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Shade and size are explicit",
+            "body": "Variant labels such as 68 Black Tea Glow, Shade: 68 Black Tea Glow are visible, reducing ambiguity around the product format before a shopper clicks through.",
+            "evidence_strength": "official_pdp_reviewed"
+          }
+        ],
+        "best_for": [
+          {
+            "tag": "color_payoff",
+            "label": "color payoff",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "lip_comfort",
+            "label": "lip comfort",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "shine_finish",
+            "label": "shine finish",
+            "confidence": "moderate"
+          }
+        ],
+        "shopping_highlight": "hyaluronic acid, squalane, shine finish"
+      },
+      "writes": [
+        {
+          "kb_key": "product:ext_75c1cd3bbad92bbdbc6ab010",
+          "action": "skip",
+          "reason": "protected_high_quality_existing:reviewed",
+          "old_hash": "ad4d24847566093334900ef7d78576381d07ce8ac10abf51496762692fe2b44a",
+          "existing_weak": false
+        },
+        {
+          "kb_key": "product:sig_8657d8ef8b0079198df3ec71e4859a3a",
+          "action": "skip",
+          "reason": "protected_high_quality_existing:reviewed",
+          "old_hash": "ad4d24847566093334900ef7d78576381d07ce8ac10abf51496762692fe2b44a",
+          "existing_weak": false
+        }
+      ]
+    },
+    {
+      "external_product_id": "ext_a9a9d873995dc784e34cb222",
+      "pivota_signature_id": "sig_b872dfd76e3fe0ed0309e308229e532c",
+      "title": "Glazed Lip Gloss",
+      "brand": "Joocyee",
+      "canonical_url": "https://joocyee.com/products/glazed-lip-gloss",
+      "changed": false,
+      "blocked": false,
+      "skip_reason": "no_safe_writes",
+      "candidate_hash": "a1fcd4d40e03af5a166fea7c95848bd0efcce045ed180d9065cfca499ff62fdc",
+      "evidence_profile": "official_pdp_reviewed_formula_and_usage",
+      "source_coverage": {
+        "source": "official_pdp",
+        "canonical_url": "https://joocyee.com/products/glazed-lip-gloss",
+        "fields": {
+          "description": true,
+          "ingredients": 1,
+          "active_ingredients": 3,
+          "how_to": 1,
+          "details": 3,
+          "variants": 1
+        }
+      },
+      "preview": {
+        "headline": "Lip color",
+        "what_it_is": "Glazed Lip Gloss is a lip gloss from Joocyee in 22 Rose Glow, with source-backed cues around shine finish and shade clarity.",
+        "why_it_stands_out": [
+          {
+            "headline": "Lip finish cues are specific",
+            "body": "Reviewed lip cues such as hyaluronic acid, squalane, shine finish, shade range identify finish, shade, or formula context before the shopper leaves Pivota.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Ingredient list is available",
+            "body": "Full INCI is present for formula-sensitive review, which makes this PDP safer to evaluate than a claim-only listing.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Shade and size are explicit",
+            "body": "Variant labels such as 22 Rose Glow, Shade: 22 Rose Glow are visible, reducing ambiguity around the product format before a shopper clicks through.",
+            "evidence_strength": "official_pdp_reviewed"
+          }
+        ],
+        "best_for": [
+          {
+            "tag": "color_payoff",
+            "label": "color payoff",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "lip_comfort",
+            "label": "lip comfort",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "shine_finish",
+            "label": "shine finish",
+            "confidence": "moderate"
+          }
+        ],
+        "shopping_highlight": "hyaluronic acid, squalane, shine finish"
+      },
+      "writes": [
+        {
+          "kb_key": "product:ext_a9a9d873995dc784e34cb222",
+          "action": "skip",
+          "reason": "protected_high_quality_existing:reviewed",
+          "old_hash": "081ce07eb6728490404c04aecf3534f18d1444615126ca028644bb8a20bf89f2",
+          "existing_weak": false
+        },
+        {
+          "kb_key": "product:sig_b872dfd76e3fe0ed0309e308229e532c",
+          "action": "skip",
+          "reason": "protected_high_quality_existing:reviewed",
+          "old_hash": "081ce07eb6728490404c04aecf3534f18d1444615126ca028644bb8a20bf89f2",
+          "existing_weak": false
+        }
+      ]
+    },
+    {
+      "external_product_id": "ext_bb9685457f5a919c945ee9ce",
+      "pivota_signature_id": "sig_dd7b1e29d9f60d048b5ced2dbdbb9b6b",
+      "title": "Glazed Lip Gloss",
+      "brand": "Joocyee",
+      "canonical_url": "https://joocyee.com/products/glazed-lip-gloss",
+      "changed": true,
+      "blocked": false,
+      "skip_reason": null,
+      "candidate_hash": "fac4e122b93f82d625f0e775360c00cca6991e4bc9b2f705f927b82c0aa2a30e",
+      "evidence_profile": "official_pdp_reviewed_formula_and_usage",
+      "source_coverage": {
+        "source": "official_pdp",
+        "canonical_url": "https://joocyee.com/products/glazed-lip-gloss",
+        "fields": {
+          "description": true,
+          "ingredients": 1,
+          "active_ingredients": 3,
+          "how_to": 1,
+          "details": 3,
+          "variants": 10
+        }
+      },
+      "preview": {
+        "headline": "Lip color",
+        "what_it_is": "Glazed Lip Gloss is a lip gloss from Joocyee in 20 Cherry Blossom Glow, with source-backed cues around shine finish and shade clarity.",
+        "why_it_stands_out": [
+          {
+            "headline": "Lip finish cues are specific",
+            "body": "Reviewed lip cues such as hyaluronic acid, squalane, shine finish, shade range identify finish, shade, or formula context before the shopper leaves Pivota.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Ingredient list is available",
+            "body": "Full INCI is present for formula-sensitive review, which makes this PDP safer to evaluate than a claim-only listing.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Shade and size are explicit",
+            "body": "Variant labels such as 20 Cherry Blossom Glow, Color: 20 Cherry Blossom Glow, 22 Rose Glow, Color: 22 Rose Glow are visible, reducing ambiguity around the product format before a shopper clicks through.",
+            "evidence_strength": "official_pdp_reviewed"
+          }
+        ],
+        "best_for": [
+          {
+            "tag": "color_payoff",
+            "label": "color payoff",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "lip_comfort",
+            "label": "lip comfort",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "shine_finish",
+            "label": "shine finish",
+            "confidence": "moderate"
+          }
+        ],
+        "shopping_highlight": "hyaluronic acid, squalane, shine finish"
+      },
+      "writes": [
+        {
+          "kb_key": "product:ext_bb9685457f5a919c945ee9ce",
+          "action": "update",
+          "reason": "explicit_owner_delegated_assistant_replacement_review",
+          "old_hash": "9e7770f51bdda4992c2af33a73e9d2ee6788434d4088150d337e20bd28a41893",
+          "candidate_hash": "a67ea1c01fbffb9748f249b5527b57b05f9231e48b26fc84b634d27b5138835e",
+          "existing_weak": true,
+          "source": "pivota_insights_official_pdp_manual_review_v1",
+          "after_inventory": {
+            "product_id": "ext_bb9685457f5a919c945ee9ce",
+            "kb_key": "product:ext_bb9685457f5a919c945ee9ce",
+            "source": "pivota_insights_official_pdp_manual_review_v1",
+            "updated_at": "",
+            "last_success_at": "",
+            "title": "Glazed Lip Gloss",
+            "canonical_url": "",
+            "bundle_hash": "fac4e122b93f82d625f0e775360c00cca6991e4bc9b2f705f927b82c0aa2a30e",
+            "lane": "keep",
+            "reason": "protected_good_content",
+            "priority": 0,
+            "protected": true,
+            "displayable": true,
+            "high_quality_ready": true,
+            "human_reviewed": true,
+            "issues": [],
+            "blocking_issues": [],
+            "quality_state": "reviewed",
+            "evidence_profile": "official_pdp_reviewed_formula_and_usage",
+            "evidence_rank": 1,
+            "review_tier": "assistant_reviewed",
+            "agent_readable": true,
+            "public_ready": true
+          },
+          "source_meta": {
+            "evidence_profile": "official_pdp_reviewed_formula_and_usage",
+            "quality_state": "reviewed",
+            "source_origin": "official_pdp_fields",
+            "source_url": "https://joocyee.com/products/glazed-lip-gloss",
+            "quality_improvement": {
+              "previous_bundle_hash": "ad15052d56e99323c5eeec503cebe1552d9766eea856841ba807ab3747dae299",
+              "candidate_bundle_hash": "fac4e122b93f82d625f0e775360c00cca6991e4bc9b2f705f927b82c0aa2a30e",
+              "replacement_decision": "explicit_owner_delegated_assistant_replacement_review",
+              "existing_quality_lane": "keep",
+              "candidate_quality_lane": "keep",
+              "existing_evidence_profile": "seller_plus_formula",
+              "candidate_evidence_profile": "official_pdp_reviewed_formula_and_usage"
+            }
+          }
+        },
+        {
+          "kb_key": "product:sig_dd7b1e29d9f60d048b5ced2dbdbb9b6b",
+          "action": "insert",
+          "reason": "new_product_intel_bundle",
+          "old_hash": null,
+          "candidate_hash": "a67ea1c01fbffb9748f249b5527b57b05f9231e48b26fc84b634d27b5138835e",
+          "existing_weak": true,
+          "source": "pivota_insights_official_pdp_manual_review_v1",
+          "after_inventory": {
+            "product_id": "ext_bb9685457f5a919c945ee9ce",
+            "kb_key": "product:sig_dd7b1e29d9f60d048b5ced2dbdbb9b6b",
+            "source": "pivota_insights_official_pdp_manual_review_v1",
+            "updated_at": "",
+            "last_success_at": "",
+            "title": "Glazed Lip Gloss",
+            "canonical_url": "",
+            "bundle_hash": "fac4e122b93f82d625f0e775360c00cca6991e4bc9b2f705f927b82c0aa2a30e",
+            "lane": "keep",
+            "reason": "protected_good_content",
+            "priority": 0,
+            "protected": true,
+            "displayable": true,
+            "high_quality_ready": true,
+            "human_reviewed": true,
+            "issues": [],
+            "blocking_issues": [],
+            "quality_state": "reviewed",
+            "evidence_profile": "official_pdp_reviewed_formula_and_usage",
+            "evidence_rank": 1,
+            "review_tier": "assistant_reviewed",
+            "agent_readable": true,
+            "public_ready": true
+          },
+          "source_meta": {
+            "evidence_profile": "official_pdp_reviewed_formula_and_usage",
+            "quality_state": "reviewed",
+            "source_origin": "official_pdp_fields",
+            "source_url": "https://joocyee.com/products/glazed-lip-gloss",
+            "quality_improvement": {
+              "previous_bundle_hash": null,
+              "candidate_bundle_hash": "fac4e122b93f82d625f0e775360c00cca6991e4bc9b2f705f927b82c0aa2a30e",
+              "replacement_decision": "new_product_intel_bundle",
+              "existing_quality_lane": null,
+              "candidate_quality_lane": "keep",
+              "existing_evidence_profile": null,
+              "candidate_evidence_profile": "official_pdp_reviewed_formula_and_usage"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "external_product_id": "ext_c037778265747b32fc52a16c",
+      "pivota_signature_id": "sig_27d0ea38139fc5afc27c9013cbd56493",
+      "title": "Glazed Lip Gloss",
+      "brand": "Joocyee",
+      "canonical_url": "https://joocyee.com/products/glazed-lip-gloss",
+      "changed": false,
+      "blocked": false,
+      "skip_reason": "no_safe_writes",
+      "candidate_hash": "daa1b63e3b044774be6499245059da09680a25242efabea0f8aca87c66991bd5",
+      "evidence_profile": "official_pdp_reviewed_formula_and_usage",
+      "source_coverage": {
+        "source": "official_pdp",
+        "canonical_url": "https://joocyee.com/products/glazed-lip-gloss",
+        "fields": {
+          "description": true,
+          "ingredients": 1,
+          "active_ingredients": 3,
+          "how_to": 1,
+          "details": 3,
+          "variants": 1
+        }
+      },
+      "preview": {
+        "headline": "Lip color",
+        "what_it_is": "Glazed Lip Gloss is a lip gloss from Joocyee in 60 Grape Glow, with source-backed cues around shine finish and shade clarity.",
+        "why_it_stands_out": [
+          {
+            "headline": "Lip finish cues are specific",
+            "body": "Reviewed lip cues such as hyaluronic acid, squalane, shine finish, shade range identify finish, shade, or formula context before the shopper leaves Pivota.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Ingredient list is available",
+            "body": "Full INCI is present for formula-sensitive review, which makes this PDP safer to evaluate than a claim-only listing.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Shade and size are explicit",
+            "body": "Variant labels such as 60 Grape Glow, Shade: 60 Grape Glow are visible, reducing ambiguity around the product format before a shopper clicks through.",
+            "evidence_strength": "official_pdp_reviewed"
+          }
+        ],
+        "best_for": [
+          {
+            "tag": "color_payoff",
+            "label": "color payoff",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "lip_comfort",
+            "label": "lip comfort",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "shine_finish",
+            "label": "shine finish",
+            "confidence": "moderate"
+          }
+        ],
+        "shopping_highlight": "hyaluronic acid, squalane, shine finish"
+      },
+      "writes": [
+        {
+          "kb_key": "product:ext_c037778265747b32fc52a16c",
+          "action": "skip",
+          "reason": "protected_high_quality_existing:reviewed",
+          "old_hash": "10d000b8bf9264afc2a341741d788a0c8aa4804e99b50d1c2a71de6e9bc7795c",
+          "existing_weak": false
+        },
+        {
+          "kb_key": "product:sig_27d0ea38139fc5afc27c9013cbd56493",
+          "action": "skip",
+          "reason": "protected_high_quality_existing:reviewed",
+          "old_hash": "10d000b8bf9264afc2a341741d788a0c8aa4804e99b50d1c2a71de6e9bc7795c",
+          "existing_weak": false
+        }
+      ]
+    }
+  ]
+}

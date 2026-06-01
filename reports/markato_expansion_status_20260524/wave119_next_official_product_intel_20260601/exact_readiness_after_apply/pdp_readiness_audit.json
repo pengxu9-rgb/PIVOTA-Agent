@@ -1,0 +1,1931 @@
+{
+  "generated_at": "2026-06-01T04:47:54.686Z",
+  "options": {
+    "market": "US",
+    "includeAttached": true,
+    "domain": null,
+    "externalProductIds": [
+      "ext_fa7c10a18a8ee11fa3d1d68a",
+      "ext_cb315ad422dd53f36c31904e",
+      "ext_d4821c6edda6594aed724f35",
+      "ext_a931bd8cc0a35f9557bbc381",
+      "ext_1d8c27b856564035c82f3c6b",
+      "ext_93bc270bdddd0b29e2097dd9",
+      "ext_8cfa0e837e468e79ecd6cc3a",
+      "ext_59e20f5ac3693f442e3bdfd2",
+      "ext_b0c69b8e4b3b439d52f4b8bb",
+      "ext_4968167c701faea363cf29ba",
+      "ext_4e8c76f135dacc76b2653045",
+      "ext_cab1810f4fae3a388fd00c9b",
+      "ext_c7334c30ca5401f2ea0aa01f",
+      "ext_5b2a492be891f19ac5b998c9",
+      "ext_19eb840d0184fc50040ca660",
+      "ext_10d91302e0cbb32d89cb0cb7",
+      "ext_bb9685457f5a919c945ee9ce"
+    ],
+    "limit": 20000,
+    "sampleLimit": 10,
+    "checkpointDir": "/Users/pengchydan/dev/_worktrees/pivota-agent-markato-wave25-786-20260527/reports/markato_expansion_status_20260524/wave119_next_official_product_intel_20260601/exact_readiness_after_apply/pdp_readiness_checkpoint",
+    "checkpointMode": "domain",
+    "resume": false,
+    "force": false,
+    "continueOnError": true,
+    "pageSize": 500,
+    "format": "json"
+  },
+  "warnings": [],
+  "summary": {
+    "scanned": 17,
+    "by_market": {
+      "US": 17
+    },
+    "by_domain": [
+      {
+        "key": "tirtir.global",
+        "count": 15
+      },
+      {
+        "key": "joocyee.com",
+        "count": 2
+      }
+    ],
+    "by_product_family": [
+      {
+        "key": "single_formula",
+        "count": 16
+      },
+      {
+        "key": "set_or_collection",
+        "count": 1
+      }
+    ],
+    "coverage": {
+      "missing_inci": 0,
+      "missing_active_raw": 2,
+      "missing_details": 0,
+      "missing_how_to": 0,
+      "missing_faq": 17
+    },
+    "pivota_insights": {
+      "direct": {
+        "displayable": 17,
+        "high_quality_ready": 17,
+        "missing_kb": 0,
+        "not_displayable": 0
+      },
+      "effective": {
+        "displayable": 17,
+        "high_quality_ready": 17,
+        "missing_kb": 0,
+        "not_displayable": 0,
+        "borrowed_from_sibling": 0
+      },
+      "effective_issues": [],
+      "effective_issue_domains": [],
+      "quality_state": [
+        {
+          "key": "reviewed",
+          "count": 9
+        },
+        {
+          "key": "verified",
+          "count": 8
+        }
+      ],
+      "evidence_profile": [
+        {
+          "key": "official_pdp_reviewed_formula_and_usage",
+          "count": 6
+        },
+        {
+          "key": "seller_plus_formula_reviews",
+          "count": 5
+        },
+        {
+          "key": "official_pdp_reviewed_key_ingredients_and_usage",
+          "count": 2
+        },
+        {
+          "key": "seller_plus_reviews",
+          "count": 2
+        },
+        {
+          "key": "community_supported",
+          "count": 1
+        },
+        {
+          "key": "seller_plus_formula",
+          "count": 1
+        }
+      ],
+      "samples": {}
+    },
+    "active_ingredients": {
+      "regulatory_expected": 0,
+      "hero_expected": 13,
+      "any_active_items": 14,
+      "status": [
+        {
+          "key": "ready_hero",
+          "count": 12
+        },
+        {
+          "key": "not_expected_missing",
+          "count": 2
+        },
+        {
+          "key": "possibly_inci_guess",
+          "count": 2
+        },
+        {
+          "key": "not_applicable_product_family",
+          "count": 1
+        }
+      ],
+      "issues": [
+        {
+          "key": "possibly_inci_guess",
+          "count": 2
+        }
+      ],
+      "issue_domains": [
+        {
+          "key": "tirtir.global::possibly_inci_guess",
+          "count": 2
+        }
+      ],
+      "source_origin": [
+        {
+          "key": "pdp_section",
+          "count": 14
+        },
+        {
+          "key": "active_block",
+          "count": 2
+        },
+        {
+          "key": "none",
+          "count": 1
+        }
+      ],
+      "samples": {
+        "possibly_inci_guess": [
+          {
+            "external_product_id": "ext_b0c69b8e4b3b439d52f4b8bb",
+            "domain": "tirtir.global",
+            "title": "Collagen Firming Gel Mask",
+            "status": "possibly_inci_guess",
+            "active_items": [
+              "Hydrolyzed Collagen"
+            ],
+            "source_origin": "active_block"
+          },
+          {
+            "external_product_id": "ext_4e8c76f135dacc76b2653045",
+            "domain": "tirtir.global",
+            "title": "Flawless Pore Prep Primer",
+            "status": "possibly_inci_guess",
+            "active_items": [
+              "Guaiazulene",
+              "Chamomilla Recutita (Matricaria) Flower Water",
+              "Enantia Chlorantha Bark Extract",
+              "Silybum Marianum Extract",
+              "Zingiber Officinale (Ginger) Root Extract",
+              "Mentha Piperita (Peppermint) Leaf Extract"
+            ],
+            "source_origin": "pdp_section"
+          }
+        ]
+      }
+    },
+    "variants": {
+      "status": [
+        {
+          "key": "ready",
+          "count": 16
+        },
+        {
+          "key": "flagged",
+          "count": 1
+        }
+      ],
+      "issues": [
+        {
+          "key": "default_option_size_evidence_missing_axis",
+          "count": 1
+        }
+      ],
+      "issue_domains": [
+        {
+          "key": "joocyee.com::default_option_size_evidence_missing_axis",
+          "count": 1
+        }
+      ],
+      "samples": {
+        "default_option_size_evidence_missing_axis": [
+          {
+            "external_product_id": "ext_10d91302e0cbb32d89cb0cb7",
+            "domain": "joocyee.com",
+            "title": "Dual-Ended Eyebrow Pencil & Cream 2.0",
+            "status": "flagged",
+            "examples": [
+              {
+                "axis_name": "default",
+                "axis_kind": "volume",
+                "value": "2 g",
+                "visual": false
+              }
+            ]
+          }
+        ]
+      }
+    }
+  },
+  "rows": [
+    {
+      "seed_id": "eps_149485663962e89576847e45",
+      "external_product_id": "ext_4968167c701faea363cf29ba",
+      "market": "US",
+      "domain": "tirtir.global",
+      "title": "Collagen Lifting Eye Cream",
+      "canonical_url": "https://tirtir.global/products/collagen-lifting-eye-cream",
+      "product_family": "single_formula",
+      "product_line_id": "pl_890f8f66f6e334869a74dc17",
+      "identity_variant_axes": {
+        "volume": "100ml",
+        "multi_variant": false
+      },
+      "pivota_insights": {
+        "direct": {
+          "product_id": "ext_4968167c701faea363cf29ba",
+          "kb_key": "product:ext_4968167c701faea363cf29ba",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "verified",
+          "evidence_profile": "seller_plus_reviews",
+          "has_card_highlight": true
+        },
+        "effective": {
+          "product_id": "ext_4968167c701faea363cf29ba",
+          "kb_key": "product:ext_4968167c701faea363cf29ba",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "verified",
+          "evidence_profile": "seller_plus_reviews",
+          "has_card_highlight": true
+        },
+        "product_line_id": "pl_890f8f66f6e334869a74dc17",
+        "borrowed_from_sibling": false
+      },
+      "active_ingredients": {
+        "status": "ready_hero",
+        "issues": [],
+        "regulatory_expected": false,
+        "hero_expected": true,
+        "active_items": [
+          "Collagen",
+          "Peptides",
+          "Niacinamide"
+        ],
+        "source_origin": "pdp_section",
+        "source_quality_status": "captured",
+        "coverage": {
+          "details_sections_count": 2,
+          "faq_count": 0,
+          "how_to_chars": 292,
+          "inci_chars": 1246,
+          "active_ingredients_chars": 31,
+          "inci_applicability_status": "",
+          "ingredient_review_status": "",
+          "ingredient_remediation_action": "",
+          "bundle_component_refs_count": 0,
+          "effective_inci_chars": 1246,
+          "inci_borrowed_from_product_id": ""
+        },
+        "invalid_fragments": [],
+        "suppressed_reason": null
+      },
+      "variants": {
+        "status": "ready",
+        "issues": [],
+        "visible_variant_rows": 1,
+        "examples": {
+          "identity_option_visible": [],
+          "wrong_axis_for_category": [],
+          "makeup_shade_missing_visual": [],
+          "size_value_generic_axis": [],
+          "default_option_size_evidence_missing_axis": [],
+          "identity_default_title_axis": []
+        }
+      },
+      "coverage": {
+        "details_sections_count": 2,
+        "faq_count": 0,
+        "how_to_chars": 292,
+        "inci_chars": 1246,
+        "active_ingredients_chars": 31,
+        "inci_applicability_status": "",
+        "ingredient_review_status": "",
+        "ingredient_remediation_action": "",
+        "bundle_component_refs_count": 0,
+        "effective_inci_chars": 1246,
+        "inci_borrowed_from_product_id": ""
+      }
+    },
+    {
+      "seed_id": "eps_3e4d53a27bda62515cb4bac0",
+      "external_product_id": "ext_5b2a492be891f19ac5b998c9",
+      "market": "US",
+      "domain": "tirtir.global",
+      "title": "Hydro Boost Enzyme Cleansing Balm",
+      "canonical_url": "https://tirtir.global/products/hydro-boost-enzyme-cleansing-balm",
+      "product_family": "single_formula",
+      "product_line_id": "pl_195a23b067d5853ae14948a7",
+      "identity_variant_axes": {
+        "size": "120ml",
+        "volume": "120ml",
+        "multi_variant": true
+      },
+      "pivota_insights": {
+        "direct": {
+          "product_id": "ext_5b2a492be891f19ac5b998c9",
+          "kb_key": "product:ext_5b2a492be891f19ac5b998c9",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "official_pdp_reviewed_formula_and_usage",
+          "has_card_highlight": true
+        },
+        "effective": {
+          "product_id": "ext_5b2a492be891f19ac5b998c9",
+          "kb_key": "product:ext_5b2a492be891f19ac5b998c9",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "official_pdp_reviewed_formula_and_usage",
+          "has_card_highlight": true
+        },
+        "product_line_id": "pl_195a23b067d5853ae14948a7",
+        "borrowed_from_sibling": false
+      },
+      "active_ingredients": {
+        "status": "ready_hero",
+        "issues": [],
+        "regulatory_expected": false,
+        "hero_expected": true,
+        "active_items": [
+          "Rice Extract",
+          "Niacinamide"
+        ],
+        "source_origin": "pdp_section",
+        "source_quality_status": "captured",
+        "coverage": {
+          "details_sections_count": 2,
+          "faq_count": 0,
+          "how_to_chars": 130,
+          "inci_chars": 912,
+          "active_ingredients_chars": 25,
+          "inci_applicability_status": "",
+          "ingredient_review_status": "",
+          "ingredient_remediation_action": "",
+          "bundle_component_refs_count": 0,
+          "effective_inci_chars": 912,
+          "inci_borrowed_from_product_id": ""
+        },
+        "invalid_fragments": [],
+        "suppressed_reason": null
+      },
+      "variants": {
+        "status": "ready",
+        "issues": [],
+        "visible_variant_rows": 3,
+        "examples": {
+          "identity_option_visible": [],
+          "wrong_axis_for_category": [],
+          "makeup_shade_missing_visual": [],
+          "size_value_generic_axis": [],
+          "default_option_size_evidence_missing_axis": [],
+          "identity_default_title_axis": []
+        }
+      },
+      "coverage": {
+        "details_sections_count": 2,
+        "faq_count": 0,
+        "how_to_chars": 130,
+        "inci_chars": 912,
+        "active_ingredients_chars": 25,
+        "inci_applicability_status": "",
+        "ingredient_review_status": "",
+        "ingredient_remediation_action": "",
+        "bundle_component_refs_count": 0,
+        "effective_inci_chars": 912,
+        "inci_borrowed_from_product_id": ""
+      }
+    },
+    {
+      "seed_id": "eps_c9ebefb990ea73c5b5622afc",
+      "external_product_id": "ext_c7334c30ca5401f2ea0aa01f",
+      "market": "US",
+      "domain": "tirtir.global",
+      "title": "Glossy Coating Mist",
+      "canonical_url": "https://tirtir.global/products/glossy-coating-mist",
+      "product_family": "single_formula",
+      "product_line_id": "pl_c2dd2c30730d7c03d6c4af7b",
+      "identity_variant_axes": {
+        "volume": "100ml",
+        "multi_variant": false
+      },
+      "pivota_insights": {
+        "direct": {
+          "product_id": "ext_c7334c30ca5401f2ea0aa01f",
+          "kb_key": "product:ext_c7334c30ca5401f2ea0aa01f",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "community_supported",
+          "has_card_highlight": true
+        },
+        "effective": {
+          "product_id": "ext_c7334c30ca5401f2ea0aa01f",
+          "kb_key": "product:ext_c7334c30ca5401f2ea0aa01f",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "community_supported",
+          "has_card_highlight": true
+        },
+        "product_line_id": "pl_c2dd2c30730d7c03d6c4af7b",
+        "borrowed_from_sibling": false
+      },
+      "active_ingredients": {
+        "status": "not_expected_missing",
+        "issues": [],
+        "regulatory_expected": false,
+        "hero_expected": false,
+        "active_items": [],
+        "source_origin": "pdp_section",
+        "source_quality_status": "blocked",
+        "coverage": {
+          "details_sections_count": 2,
+          "faq_count": 0,
+          "how_to_chars": 171,
+          "inci_chars": 695,
+          "active_ingredients_chars": 0,
+          "inci_applicability_status": "",
+          "ingredient_review_status": "",
+          "ingredient_remediation_action": "",
+          "bundle_component_refs_count": 0,
+          "effective_inci_chars": 695,
+          "inci_borrowed_from_product_id": ""
+        },
+        "invalid_fragments": [],
+        "suppressed_reason": null
+      },
+      "variants": {
+        "status": "ready",
+        "issues": [],
+        "visible_variant_rows": 1,
+        "examples": {
+          "identity_option_visible": [],
+          "wrong_axis_for_category": [],
+          "makeup_shade_missing_visual": [],
+          "size_value_generic_axis": [],
+          "default_option_size_evidence_missing_axis": [],
+          "identity_default_title_axis": []
+        }
+      },
+      "coverage": {
+        "details_sections_count": 2,
+        "faq_count": 0,
+        "how_to_chars": 171,
+        "inci_chars": 695,
+        "active_ingredients_chars": 0,
+        "inci_applicability_status": "",
+        "ingredient_review_status": "",
+        "ingredient_remediation_action": "",
+        "bundle_component_refs_count": 0,
+        "effective_inci_chars": 695,
+        "inci_borrowed_from_product_id": ""
+      }
+    },
+    {
+      "seed_id": "eps_045c86298b3f262f544f3fc3",
+      "external_product_id": "ext_bb9685457f5a919c945ee9ce",
+      "market": "US",
+      "domain": "joocyee.com",
+      "title": "Glazed Lip Gloss",
+      "canonical_url": "https://joocyee.com/products/glazed-lip-gloss",
+      "product_family": "single_formula",
+      "product_line_id": "pl_a9dd2b8037facbb9eac8520c",
+      "identity_variant_axes": {
+        "color": "20 cherry blossom glow",
+        "multi_variant": true
+      },
+      "pivota_insights": {
+        "direct": {
+          "product_id": "ext_bb9685457f5a919c945ee9ce",
+          "kb_key": "product:ext_bb9685457f5a919c945ee9ce",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "official_pdp_reviewed_formula_and_usage",
+          "has_card_highlight": true
+        },
+        "effective": {
+          "product_id": "ext_bb9685457f5a919c945ee9ce",
+          "kb_key": "product:ext_bb9685457f5a919c945ee9ce",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "official_pdp_reviewed_formula_and_usage",
+          "has_card_highlight": true
+        },
+        "product_line_id": "pl_a9dd2b8037facbb9eac8520c",
+        "borrowed_from_sibling": false
+      },
+      "active_ingredients": {
+        "status": "ready_hero",
+        "issues": [],
+        "regulatory_expected": false,
+        "hero_expected": true,
+        "active_items": [
+          "Squalane"
+        ],
+        "source_origin": "pdp_section",
+        "source_quality_status": "captured",
+        "coverage": {
+          "details_sections_count": 6,
+          "faq_count": 0,
+          "how_to_chars": 163,
+          "inci_chars": 10145,
+          "active_ingredients_chars": 35,
+          "inci_applicability_status": "",
+          "ingredient_review_status": "",
+          "ingredient_remediation_action": "",
+          "bundle_component_refs_count": 0,
+          "effective_inci_chars": 10145,
+          "inci_borrowed_from_product_id": ""
+        },
+        "invalid_fragments": [],
+        "suppressed_reason": null
+      },
+      "variants": {
+        "status": "ready",
+        "issues": [],
+        "visible_variant_rows": 10,
+        "examples": {
+          "identity_option_visible": [],
+          "wrong_axis_for_category": [],
+          "makeup_shade_missing_visual": [],
+          "size_value_generic_axis": [],
+          "default_option_size_evidence_missing_axis": [],
+          "identity_default_title_axis": []
+        }
+      },
+      "coverage": {
+        "details_sections_count": 6,
+        "faq_count": 0,
+        "how_to_chars": 163,
+        "inci_chars": 10145,
+        "active_ingredients_chars": 35,
+        "inci_applicability_status": "",
+        "ingredient_review_status": "",
+        "ingredient_remediation_action": "",
+        "bundle_component_refs_count": 0,
+        "effective_inci_chars": 10145,
+        "inci_borrowed_from_product_id": ""
+      }
+    },
+    {
+      "seed_id": "eps_c4fba571d4949c5fba99e6aa",
+      "external_product_id": "ext_10d91302e0cbb32d89cb0cb7",
+      "market": "US",
+      "domain": "joocyee.com",
+      "title": "Dual-Ended Eyebrow Pencil & Cream 2.0",
+      "canonical_url": "https://joocyee.com/products/dual-ended-eyebrow-pencil-cream-2-0",
+      "product_family": "single_formula",
+      "product_line_id": "pl_4a81a80c10e64082efb00773",
+      "identity_variant_axes": {
+        "size": "2 g",
+        "volume": "2g",
+        "multi_variant": true
+      },
+      "pivota_insights": {
+        "direct": {
+          "product_id": "ext_10d91302e0cbb32d89cb0cb7",
+          "kb_key": "product:ext_10d91302e0cbb32d89cb0cb7",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "official_pdp_reviewed_formula_and_usage",
+          "has_card_highlight": true
+        },
+        "effective": {
+          "product_id": "ext_10d91302e0cbb32d89cb0cb7",
+          "kb_key": "product:ext_10d91302e0cbb32d89cb0cb7",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "official_pdp_reviewed_formula_and_usage",
+          "has_card_highlight": true
+        },
+        "product_line_id": "pl_4a81a80c10e64082efb00773",
+        "borrowed_from_sibling": false
+      },
+      "active_ingredients": {
+        "status": "not_expected_missing",
+        "issues": [],
+        "regulatory_expected": false,
+        "hero_expected": false,
+        "active_items": [],
+        "source_origin": "pdp_section",
+        "source_quality_status": "blocked",
+        "coverage": {
+          "details_sections_count": 6,
+          "faq_count": 0,
+          "how_to_chars": 225,
+          "inci_chars": 3012,
+          "active_ingredients_chars": 0,
+          "inci_applicability_status": "",
+          "ingredient_review_status": "",
+          "ingredient_remediation_action": "",
+          "bundle_component_refs_count": 0,
+          "effective_inci_chars": 3012,
+          "inci_borrowed_from_product_id": ""
+        },
+        "invalid_fragments": [],
+        "suppressed_reason": "active_items_not_displayable"
+      },
+      "variants": {
+        "status": "flagged",
+        "issues": [
+          "default_option_size_evidence_missing_axis"
+        ],
+        "visible_variant_rows": 0,
+        "examples": {
+          "identity_option_visible": [],
+          "wrong_axis_for_category": [],
+          "makeup_shade_missing_visual": [],
+          "size_value_generic_axis": [],
+          "default_option_size_evidence_missing_axis": [
+            {
+              "axis_name": "default",
+              "axis_kind": "volume",
+              "value": "2 g",
+              "visual": false
+            }
+          ],
+          "identity_default_title_axis": []
+        }
+      },
+      "coverage": {
+        "details_sections_count": 6,
+        "faq_count": 0,
+        "how_to_chars": 225,
+        "inci_chars": 3012,
+        "active_ingredients_chars": 0,
+        "inci_applicability_status": "",
+        "ingredient_review_status": "",
+        "ingredient_remediation_action": "",
+        "bundle_component_refs_count": 0,
+        "effective_inci_chars": 3012,
+        "inci_borrowed_from_product_id": ""
+      }
+    },
+    {
+      "seed_id": "eps_abab0e8a09351c50216d60b8",
+      "external_product_id": "ext_59e20f5ac3693f442e3bdfd2",
+      "market": "US",
+      "domain": "tirtir.global",
+      "title": "Ceramide Moisture Gel Mask",
+      "canonical_url": "https://tirtir.global/products/ceramide-moisture-gel-mask",
+      "product_family": "single_formula",
+      "product_line_id": "pl_55f3110e41661b171aa4b3ed",
+      "identity_variant_axes": {
+        "multi_variant": false
+      },
+      "pivota_insights": {
+        "direct": {
+          "product_id": "ext_59e20f5ac3693f442e3bdfd2",
+          "kb_key": "product:ext_59e20f5ac3693f442e3bdfd2",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "official_pdp_reviewed_key_ingredients_and_usage",
+          "has_card_highlight": true
+        },
+        "effective": {
+          "product_id": "ext_59e20f5ac3693f442e3bdfd2",
+          "kb_key": "product:ext_59e20f5ac3693f442e3bdfd2",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "official_pdp_reviewed_key_ingredients_and_usage",
+          "has_card_highlight": true
+        },
+        "product_line_id": "pl_55f3110e41661b171aa4b3ed",
+        "borrowed_from_sibling": false
+      },
+      "active_ingredients": {
+        "status": "ready_hero",
+        "issues": [],
+        "regulatory_expected": false,
+        "hero_expected": true,
+        "active_items": [
+          "Ceramides"
+        ],
+        "source_origin": "active_block",
+        "source_quality_status": "captured",
+        "coverage": {
+          "details_sections_count": 8,
+          "faq_count": 0,
+          "how_to_chars": 270,
+          "inci_chars": 30,
+          "active_ingredients_chars": 8,
+          "inci_applicability_status": "",
+          "ingredient_review_status": "manual_source_review_required",
+          "ingredient_remediation_action": "manual_source_review_required",
+          "bundle_component_refs_count": 0,
+          "effective_inci_chars": 30,
+          "inci_borrowed_from_product_id": ""
+        },
+        "invalid_fragments": [],
+        "suppressed_reason": "full_inci_low_purity"
+      },
+      "variants": {
+        "status": "ready",
+        "issues": [],
+        "visible_variant_rows": 1,
+        "examples": {
+          "identity_option_visible": [],
+          "wrong_axis_for_category": [],
+          "makeup_shade_missing_visual": [],
+          "size_value_generic_axis": [],
+          "default_option_size_evidence_missing_axis": [],
+          "identity_default_title_axis": []
+        }
+      },
+      "coverage": {
+        "details_sections_count": 8,
+        "faq_count": 0,
+        "how_to_chars": 270,
+        "inci_chars": 30,
+        "active_ingredients_chars": 8,
+        "inci_applicability_status": "",
+        "ingredient_review_status": "manual_source_review_required",
+        "ingredient_remediation_action": "manual_source_review_required",
+        "bundle_component_refs_count": 0,
+        "effective_inci_chars": 30,
+        "inci_borrowed_from_product_id": ""
+      }
+    },
+    {
+      "seed_id": "eps_f89450deb86eefebdbfb8e0f",
+      "external_product_id": "ext_b0c69b8e4b3b439d52f4b8bb",
+      "market": "US",
+      "domain": "tirtir.global",
+      "title": "Collagen Firming Gel Mask",
+      "canonical_url": "https://tirtir.global/products/collagen-firming-gel-mask",
+      "product_family": "single_formula",
+      "product_line_id": "pl_a712b26119065348ead56f48",
+      "identity_variant_axes": {
+        "multi_variant": false
+      },
+      "pivota_insights": {
+        "direct": {
+          "product_id": "ext_b0c69b8e4b3b439d52f4b8bb",
+          "kb_key": "product:ext_b0c69b8e4b3b439d52f4b8bb",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "official_pdp_reviewed_key_ingredients_and_usage",
+          "has_card_highlight": true
+        },
+        "effective": {
+          "product_id": "ext_b0c69b8e4b3b439d52f4b8bb",
+          "kb_key": "product:ext_b0c69b8e4b3b439d52f4b8bb",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "official_pdp_reviewed_key_ingredients_and_usage",
+          "has_card_highlight": true
+        },
+        "product_line_id": "pl_a712b26119065348ead56f48",
+        "borrowed_from_sibling": false
+      },
+      "active_ingredients": {
+        "status": "possibly_inci_guess",
+        "issues": [
+          "possibly_inci_guess"
+        ],
+        "regulatory_expected": false,
+        "hero_expected": true,
+        "active_items": [
+          "Hydrolyzed Collagen"
+        ],
+        "source_origin": "active_block",
+        "source_quality_status": "blocked",
+        "coverage": {
+          "details_sections_count": 8,
+          "faq_count": 0,
+          "how_to_chars": 283,
+          "inci_chars": 84,
+          "active_ingredients_chars": 19,
+          "inci_applicability_status": "",
+          "ingredient_review_status": "manual_source_review_required",
+          "ingredient_remediation_action": "manual_source_review_required",
+          "bundle_component_refs_count": 0,
+          "effective_inci_chars": 84,
+          "inci_borrowed_from_product_id": ""
+        },
+        "invalid_fragments": [],
+        "suppressed_reason": "full_inci_low_purity"
+      },
+      "variants": {
+        "status": "ready",
+        "issues": [],
+        "visible_variant_rows": 1,
+        "examples": {
+          "identity_option_visible": [],
+          "wrong_axis_for_category": [],
+          "makeup_shade_missing_visual": [],
+          "size_value_generic_axis": [],
+          "default_option_size_evidence_missing_axis": [],
+          "identity_default_title_axis": []
+        }
+      },
+      "coverage": {
+        "details_sections_count": 8,
+        "faq_count": 0,
+        "how_to_chars": 283,
+        "inci_chars": 84,
+        "active_ingredients_chars": 19,
+        "inci_applicability_status": "",
+        "ingredient_review_status": "manual_source_review_required",
+        "ingredient_remediation_action": "manual_source_review_required",
+        "bundle_component_refs_count": 0,
+        "effective_inci_chars": 84,
+        "inci_borrowed_from_product_id": ""
+      }
+    },
+    {
+      "seed_id": "eps_51fd38811998998b6fbcf7da",
+      "external_product_id": "ext_d4821c6edda6594aed724f35",
+      "market": "US",
+      "domain": "tirtir.global",
+      "title": "Banana BDRN Eye Mask ( 7ea )",
+      "canonical_url": "https://tirtir.global/products/banana-bdrn-eye-mask",
+      "product_family": "single_formula",
+      "product_line_id": "pl_cd211faf863795455d459d12",
+      "identity_variant_axes": {
+        "multi_variant": false
+      },
+      "pivota_insights": {
+        "direct": {
+          "product_id": "ext_d4821c6edda6594aed724f35",
+          "kb_key": "product:ext_d4821c6edda6594aed724f35",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "verified",
+          "evidence_profile": "seller_plus_formula_reviews",
+          "has_card_highlight": true
+        },
+        "effective": {
+          "product_id": "ext_d4821c6edda6594aed724f35",
+          "kb_key": "product:ext_d4821c6edda6594aed724f35",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "verified",
+          "evidence_profile": "seller_plus_formula_reviews",
+          "has_card_highlight": true
+        },
+        "product_line_id": "pl_cd211faf863795455d459d12",
+        "borrowed_from_sibling": false
+      },
+      "active_ingredients": {
+        "status": "ready_hero",
+        "issues": [],
+        "regulatory_expected": false,
+        "hero_expected": true,
+        "active_items": [
+          "Hyaluronic Acid"
+        ],
+        "source_origin": "pdp_section",
+        "source_quality_status": "captured",
+        "coverage": {
+          "details_sections_count": 2,
+          "faq_count": 0,
+          "how_to_chars": 155,
+          "inci_chars": 1140,
+          "active_ingredients_chars": 15,
+          "inci_applicability_status": "",
+          "ingredient_review_status": "",
+          "ingredient_remediation_action": "",
+          "bundle_component_refs_count": 0,
+          "effective_inci_chars": 1140,
+          "inci_borrowed_from_product_id": ""
+        },
+        "invalid_fragments": [],
+        "suppressed_reason": null
+      },
+      "variants": {
+        "status": "ready",
+        "issues": [],
+        "visible_variant_rows": 1,
+        "examples": {
+          "identity_option_visible": [],
+          "wrong_axis_for_category": [],
+          "makeup_shade_missing_visual": [],
+          "size_value_generic_axis": [],
+          "default_option_size_evidence_missing_axis": [],
+          "identity_default_title_axis": []
+        }
+      },
+      "coverage": {
+        "details_sections_count": 2,
+        "faq_count": 0,
+        "how_to_chars": 155,
+        "inci_chars": 1140,
+        "active_ingredients_chars": 15,
+        "inci_applicability_status": "",
+        "ingredient_review_status": "",
+        "ingredient_remediation_action": "",
+        "bundle_component_refs_count": 0,
+        "effective_inci_chars": 1140,
+        "inci_borrowed_from_product_id": ""
+      }
+    },
+    {
+      "seed_id": "eps_5b8d6cf57658ef6031fd5bb9",
+      "external_product_id": "ext_19eb840d0184fc50040ca660",
+      "market": "US",
+      "domain": "tirtir.global",
+      "title": "Hydro Boost Enzyme Powder Wash",
+      "canonical_url": "https://tirtir.global/products/hydro-boost-enzyme-powder-wash",
+      "product_family": "single_formula",
+      "product_line_id": "pl_5c74ba5a6ac3e6ef204c773a",
+      "identity_variant_axes": {
+        "size": "75g",
+        "volume": "75g",
+        "multi_variant": true
+      },
+      "pivota_insights": {
+        "direct": {
+          "product_id": "ext_19eb840d0184fc50040ca660",
+          "kb_key": "product:ext_19eb840d0184fc50040ca660",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "official_pdp_reviewed_formula_and_usage",
+          "has_card_highlight": true
+        },
+        "effective": {
+          "product_id": "ext_19eb840d0184fc50040ca660",
+          "kb_key": "product:ext_19eb840d0184fc50040ca660",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "official_pdp_reviewed_formula_and_usage",
+          "has_card_highlight": true
+        },
+        "product_line_id": "pl_5c74ba5a6ac3e6ef204c773a",
+        "borrowed_from_sibling": false
+      },
+      "active_ingredients": {
+        "status": "ready_hero",
+        "issues": [],
+        "regulatory_expected": false,
+        "hero_expected": true,
+        "active_items": [
+          "Hyaluronic Acid",
+          "PHA"
+        ],
+        "source_origin": "pdp_section",
+        "source_quality_status": "captured",
+        "coverage": {
+          "details_sections_count": 2,
+          "faq_count": 0,
+          "how_to_chars": 215,
+          "inci_chars": 388,
+          "active_ingredients_chars": 20,
+          "inci_applicability_status": "",
+          "ingredient_review_status": "",
+          "ingredient_remediation_action": "",
+          "bundle_component_refs_count": 0,
+          "effective_inci_chars": 388,
+          "inci_borrowed_from_product_id": ""
+        },
+        "invalid_fragments": [],
+        "suppressed_reason": null
+      },
+      "variants": {
+        "status": "ready",
+        "issues": [],
+        "visible_variant_rows": 2,
+        "examples": {
+          "identity_option_visible": [],
+          "wrong_axis_for_category": [],
+          "makeup_shade_missing_visual": [],
+          "size_value_generic_axis": [],
+          "default_option_size_evidence_missing_axis": [],
+          "identity_default_title_axis": []
+        }
+      },
+      "coverage": {
+        "details_sections_count": 2,
+        "faq_count": 0,
+        "how_to_chars": 215,
+        "inci_chars": 388,
+        "active_ingredients_chars": 20,
+        "inci_applicability_status": "",
+        "ingredient_review_status": "",
+        "ingredient_remediation_action": "",
+        "bundle_component_refs_count": 0,
+        "effective_inci_chars": 388,
+        "inci_borrowed_from_product_id": ""
+      }
+    },
+    {
+      "seed_id": "eps_5cdaf635c668bcab813e5756",
+      "external_product_id": "ext_4e8c76f135dacc76b2653045",
+      "market": "US",
+      "domain": "tirtir.global",
+      "title": "Flawless Pore Prep Primer",
+      "canonical_url": "https://tirtir.global/products/flawless-pore-prep-primer",
+      "product_family": "single_formula",
+      "product_line_id": "pl_3bb9157eafb3b2669e01e3fb",
+      "identity_variant_axes": {
+        "multi_variant": false
+      },
+      "pivota_insights": {
+        "direct": {
+          "product_id": "ext_4e8c76f135dacc76b2653045",
+          "kb_key": "product:ext_4e8c76f135dacc76b2653045",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "verified",
+          "evidence_profile": "seller_plus_formula",
+          "has_card_highlight": true
+        },
+        "effective": {
+          "product_id": "ext_4e8c76f135dacc76b2653045",
+          "kb_key": "product:ext_4e8c76f135dacc76b2653045",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "verified",
+          "evidence_profile": "seller_plus_formula",
+          "has_card_highlight": true
+        },
+        "product_line_id": "pl_3bb9157eafb3b2669e01e3fb",
+        "borrowed_from_sibling": false
+      },
+      "active_ingredients": {
+        "status": "possibly_inci_guess",
+        "issues": [
+          "possibly_inci_guess"
+        ],
+        "regulatory_expected": false,
+        "hero_expected": false,
+        "active_items": [
+          "Guaiazulene",
+          "Chamomilla Recutita (Matricaria) Flower Water",
+          "Enantia Chlorantha Bark Extract",
+          "Silybum Marianum Extract",
+          "Zingiber Officinale (Ginger) Root Extract",
+          "Mentha Piperita (Peppermint) Leaf Extract"
+        ],
+        "source_origin": "pdp_section",
+        "source_quality_status": "blocked",
+        "coverage": {
+          "details_sections_count": 16,
+          "faq_count": 0,
+          "how_to_chars": 228,
+          "inci_chars": 365,
+          "active_ingredients_chars": 203,
+          "inci_applicability_status": "",
+          "ingredient_review_status": "",
+          "ingredient_remediation_action": "",
+          "bundle_component_refs_count": 0,
+          "effective_inci_chars": 365,
+          "inci_borrowed_from_product_id": ""
+        },
+        "invalid_fragments": [],
+        "suppressed_reason": null
+      },
+      "variants": {
+        "status": "ready",
+        "issues": [],
+        "visible_variant_rows": 1,
+        "examples": {
+          "identity_option_visible": [],
+          "wrong_axis_for_category": [],
+          "makeup_shade_missing_visual": [],
+          "size_value_generic_axis": [],
+          "default_option_size_evidence_missing_axis": [],
+          "identity_default_title_axis": []
+        }
+      },
+      "coverage": {
+        "details_sections_count": 16,
+        "faq_count": 0,
+        "how_to_chars": 228,
+        "inci_chars": 365,
+        "active_ingredients_chars": 203,
+        "inci_applicability_status": "",
+        "ingredient_review_status": "",
+        "ingredient_remediation_action": "",
+        "bundle_component_refs_count": 0,
+        "effective_inci_chars": 365,
+        "inci_borrowed_from_product_id": ""
+      }
+    },
+    {
+      "seed_id": "eps_87d9624f650d51e52cfa7262",
+      "external_product_id": "ext_93bc270bdddd0b29e2097dd9",
+      "market": "US",
+      "domain": "tirtir.global",
+      "title": "Ceramic Cream Light",
+      "canonical_url": "https://tirtir.global/products/ceramic-cream-light",
+      "product_family": "single_formula",
+      "product_line_id": "pl_af996ab522c6b00c6e5cb7a0",
+      "identity_variant_axes": {
+        "multi_variant": false
+      },
+      "pivota_insights": {
+        "direct": {
+          "product_id": "ext_93bc270bdddd0b29e2097dd9",
+          "kb_key": "product:ext_93bc270bdddd0b29e2097dd9",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "official_pdp_reviewed_formula_and_usage",
+          "has_card_highlight": true
+        },
+        "effective": {
+          "product_id": "ext_93bc270bdddd0b29e2097dd9",
+          "kb_key": "product:ext_93bc270bdddd0b29e2097dd9",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "official_pdp_reviewed_formula_and_usage",
+          "has_card_highlight": true
+        },
+        "product_line_id": "pl_af996ab522c6b00c6e5cb7a0",
+        "borrowed_from_sibling": false
+      },
+      "active_ingredients": {
+        "status": "ready_hero",
+        "issues": [],
+        "regulatory_expected": false,
+        "hero_expected": true,
+        "active_items": [
+          "Ceramides",
+          "Hyaluronic Acid",
+          "Centella"
+        ],
+        "source_origin": "pdp_section",
+        "source_quality_status": "captured",
+        "coverage": {
+          "details_sections_count": 2,
+          "faq_count": 0,
+          "how_to_chars": 169,
+          "inci_chars": 1046,
+          "active_ingredients_chars": 36,
+          "inci_applicability_status": "",
+          "ingredient_review_status": "",
+          "ingredient_remediation_action": "",
+          "bundle_component_refs_count": 0,
+          "effective_inci_chars": 1046,
+          "inci_borrowed_from_product_id": ""
+        },
+        "invalid_fragments": [],
+        "suppressed_reason": null
+      },
+      "variants": {
+        "status": "ready",
+        "issues": [],
+        "visible_variant_rows": 1,
+        "examples": {
+          "identity_option_visible": [],
+          "wrong_axis_for_category": [],
+          "makeup_shade_missing_visual": [],
+          "size_value_generic_axis": [],
+          "default_option_size_evidence_missing_axis": [],
+          "identity_default_title_axis": []
+        }
+      },
+      "coverage": {
+        "details_sections_count": 2,
+        "faq_count": 0,
+        "how_to_chars": 169,
+        "inci_chars": 1046,
+        "active_ingredients_chars": 36,
+        "inci_applicability_status": "",
+        "ingredient_review_status": "",
+        "ingredient_remediation_action": "",
+        "bundle_component_refs_count": 0,
+        "effective_inci_chars": 1046,
+        "inci_borrowed_from_product_id": ""
+      }
+    },
+    {
+      "seed_id": "eps_89b0150b922d1b29050e00da",
+      "external_product_id": "ext_fa7c10a18a8ee11fa3d1d68a",
+      "market": "US",
+      "domain": "tirtir.global",
+      "title": "Airy Bloom Mesh Blush",
+      "canonical_url": "https://tirtir.global/products/airy-bloom-mesh-blush",
+      "product_family": "single_formula",
+      "product_line_id": "pl_c2fd4b619b6fa99cefd989ca",
+      "identity_variant_axes": {
+        "color": "04 melty peach",
+        "multi_variant": true
+      },
+      "pivota_insights": {
+        "direct": {
+          "product_id": "ext_fa7c10a18a8ee11fa3d1d68a",
+          "kb_key": "product:ext_fa7c10a18a8ee11fa3d1d68a",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "verified",
+          "evidence_profile": "seller_plus_formula_reviews",
+          "has_card_highlight": true
+        },
+        "effective": {
+          "product_id": "ext_fa7c10a18a8ee11fa3d1d68a",
+          "kb_key": "product:ext_fa7c10a18a8ee11fa3d1d68a",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "verified",
+          "evidence_profile": "seller_plus_formula_reviews",
+          "has_card_highlight": true
+        },
+        "product_line_id": "pl_c2fd4b619b6fa99cefd989ca",
+        "borrowed_from_sibling": false
+      },
+      "active_ingredients": {
+        "status": "ready_hero",
+        "issues": [],
+        "regulatory_expected": false,
+        "hero_expected": true,
+        "active_items": [
+          "Hyaluronic Acid",
+          "Vitamin C"
+        ],
+        "source_origin": "pdp_section",
+        "source_quality_status": "captured",
+        "coverage": {
+          "details_sections_count": 6,
+          "faq_count": 0,
+          "how_to_chars": 155,
+          "inci_chars": 947,
+          "active_ingredients_chars": 26,
+          "inci_applicability_status": "",
+          "ingredient_review_status": "",
+          "ingredient_remediation_action": "",
+          "bundle_component_refs_count": 0,
+          "effective_inci_chars": 947,
+          "inci_borrowed_from_product_id": ""
+        },
+        "invalid_fragments": [],
+        "suppressed_reason": null
+      },
+      "variants": {
+        "status": "ready",
+        "issues": [],
+        "visible_variant_rows": 7,
+        "examples": {
+          "identity_option_visible": [],
+          "wrong_axis_for_category": [],
+          "makeup_shade_missing_visual": [],
+          "size_value_generic_axis": [],
+          "default_option_size_evidence_missing_axis": [],
+          "identity_default_title_axis": []
+        }
+      },
+      "coverage": {
+        "details_sections_count": 6,
+        "faq_count": 0,
+        "how_to_chars": 155,
+        "inci_chars": 947,
+        "active_ingredients_chars": 26,
+        "inci_applicability_status": "",
+        "ingredient_review_status": "",
+        "ingredient_remediation_action": "",
+        "bundle_component_refs_count": 0,
+        "effective_inci_chars": 947,
+        "inci_borrowed_from_product_id": ""
+      }
+    },
+    {
+      "seed_id": "eps_bb5c2a8165700ddba381494f",
+      "external_product_id": "ext_cb315ad422dd53f36c31904e",
+      "market": "US",
+      "domain": "tirtir.global",
+      "title": "Ampoule Mask Packs",
+      "canonical_url": "https://tirtir.global/products/ampoule-mask-packs",
+      "product_family": "set_or_collection",
+      "product_line_id": null,
+      "pivota_insights": {
+        "direct": {
+          "product_id": "ext_cb315ad422dd53f36c31904e",
+          "kb_key": "product:ext_cb315ad422dd53f36c31904e",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "verified",
+          "evidence_profile": "seller_plus_formula_reviews",
+          "has_card_highlight": true
+        },
+        "effective": {
+          "product_id": "ext_cb315ad422dd53f36c31904e",
+          "kb_key": "product:ext_cb315ad422dd53f36c31904e",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "verified",
+          "evidence_profile": "seller_plus_formula_reviews",
+          "has_card_highlight": true
+        },
+        "product_line_id": null,
+        "borrowed_from_sibling": false
+      },
+      "active_ingredients": {
+        "status": "not_applicable_product_family",
+        "issues": [],
+        "regulatory_expected": false,
+        "hero_expected": false,
+        "active_items": [],
+        "source_origin": "none",
+        "source_quality_status": "blocked",
+        "coverage": {
+          "details_sections_count": 4,
+          "faq_count": 0,
+          "how_to_chars": 198,
+          "inci_chars": 608,
+          "active_ingredients_chars": 0,
+          "inci_applicability_status": "",
+          "ingredient_review_status": "",
+          "ingredient_remediation_action": "",
+          "bundle_component_refs_count": 0,
+          "effective_inci_chars": 608,
+          "inci_borrowed_from_product_id": ""
+        },
+        "invalid_fragments": [],
+        "suppressed_reason": "set_or_collection"
+      },
+      "variants": {
+        "status": "ready",
+        "issues": [],
+        "visible_variant_rows": 4,
+        "examples": {
+          "identity_option_visible": [],
+          "wrong_axis_for_category": [],
+          "makeup_shade_missing_visual": [],
+          "size_value_generic_axis": [],
+          "default_option_size_evidence_missing_axis": [],
+          "identity_default_title_axis": []
+        }
+      },
+      "coverage": {
+        "details_sections_count": 4,
+        "faq_count": 0,
+        "how_to_chars": 198,
+        "inci_chars": 608,
+        "active_ingredients_chars": 0,
+        "inci_applicability_status": "",
+        "ingredient_review_status": "",
+        "ingredient_remediation_action": "",
+        "bundle_component_refs_count": 0,
+        "effective_inci_chars": 608,
+        "inci_borrowed_from_product_id": ""
+      }
+    },
+    {
+      "seed_id": "eps_b008eb93d4fc11d2f2c41f66",
+      "external_product_id": "ext_1d8c27b856564035c82f3c6b",
+      "market": "US",
+      "domain": "tirtir.global",
+      "title": "Ceramic Cream",
+      "canonical_url": "https://tirtir.global/products/ceramic-cream",
+      "product_family": "single_formula",
+      "product_line_id": "pl_f6cd13e8421a97a947425b92",
+      "identity_variant_axes": {
+        "size": "50 ml 1 69 fl oz",
+        "volume": "50ml",
+        "multi_variant": true
+      },
+      "pivota_insights": {
+        "direct": {
+          "product_id": "ext_1d8c27b856564035c82f3c6b",
+          "kb_key": "product:ext_1d8c27b856564035c82f3c6b",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "verified",
+          "evidence_profile": "seller_plus_reviews",
+          "has_card_highlight": true
+        },
+        "effective": {
+          "product_id": "ext_1d8c27b856564035c82f3c6b",
+          "kb_key": "product:ext_1d8c27b856564035c82f3c6b",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "verified",
+          "evidence_profile": "seller_plus_reviews",
+          "has_card_highlight": true
+        },
+        "product_line_id": "pl_f6cd13e8421a97a947425b92",
+        "borrowed_from_sibling": false
+      },
+      "active_ingredients": {
+        "status": "ready_hero",
+        "issues": [],
+        "regulatory_expected": false,
+        "hero_expected": true,
+        "active_items": [
+          "Ceramides",
+          "Peptides",
+          "Centella",
+          "Niacinamide"
+        ],
+        "source_origin": "pdp_section",
+        "source_quality_status": "captured",
+        "coverage": {
+          "details_sections_count": 2,
+          "faq_count": 0,
+          "how_to_chars": 195,
+          "inci_chars": 888,
+          "active_ingredients_chars": 42,
+          "inci_applicability_status": "",
+          "ingredient_review_status": "",
+          "ingredient_remediation_action": "",
+          "bundle_component_refs_count": 0,
+          "effective_inci_chars": 888,
+          "inci_borrowed_from_product_id": ""
+        },
+        "invalid_fragments": [],
+        "suppressed_reason": null
+      },
+      "variants": {
+        "status": "ready",
+        "issues": [],
+        "visible_variant_rows": 2,
+        "examples": {
+          "identity_option_visible": [],
+          "wrong_axis_for_category": [],
+          "makeup_shade_missing_visual": [],
+          "size_value_generic_axis": [],
+          "default_option_size_evidence_missing_axis": [],
+          "identity_default_title_axis": []
+        }
+      },
+      "coverage": {
+        "details_sections_count": 2,
+        "faq_count": 0,
+        "how_to_chars": 195,
+        "inci_chars": 888,
+        "active_ingredients_chars": 42,
+        "inci_applicability_status": "",
+        "ingredient_review_status": "",
+        "ingredient_remediation_action": "",
+        "bundle_component_refs_count": 0,
+        "effective_inci_chars": 888,
+        "inci_borrowed_from_product_id": ""
+      }
+    },
+    {
+      "seed_id": "eps_22a698de29534a7755360f13",
+      "external_product_id": "ext_cab1810f4fae3a388fd00c9b",
+      "market": "US",
+      "domain": "tirtir.global",
+      "title": "Glide & Hide Blurring Concealer",
+      "canonical_url": "https://tirtir.global/products/glide-hide-blurring-concealer",
+      "product_family": "single_formula",
+      "product_line_id": "pl_e72e07b93ee62dbec8c6e96e",
+      "identity_variant_axes": {
+        "color": "0 5 n",
+        "multi_variant": true
+      },
+      "pivota_insights": {
+        "direct": {
+          "product_id": "ext_cab1810f4fae3a388fd00c9b",
+          "kb_key": "product:ext_cab1810f4fae3a388fd00c9b",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "verified",
+          "evidence_profile": "seller_plus_formula_reviews",
+          "has_card_highlight": true
+        },
+        "effective": {
+          "product_id": "ext_cab1810f4fae3a388fd00c9b",
+          "kb_key": "product:ext_cab1810f4fae3a388fd00c9b",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "verified",
+          "evidence_profile": "seller_plus_formula_reviews",
+          "has_card_highlight": true
+        },
+        "product_line_id": "pl_e72e07b93ee62dbec8c6e96e",
+        "borrowed_from_sibling": false
+      },
+      "active_ingredients": {
+        "status": "ready_hero",
+        "issues": [],
+        "regulatory_expected": false,
+        "hero_expected": true,
+        "active_items": [
+          "Hyaluronic Acid"
+        ],
+        "source_origin": "pdp_section",
+        "source_quality_status": "captured",
+        "coverage": {
+          "details_sections_count": 6,
+          "faq_count": 0,
+          "how_to_chars": 93,
+          "inci_chars": 1570,
+          "active_ingredients_chars": 15,
+          "inci_applicability_status": "",
+          "ingredient_review_status": "",
+          "ingredient_remediation_action": "",
+          "bundle_component_refs_count": 0,
+          "effective_inci_chars": 1570,
+          "inci_borrowed_from_product_id": ""
+        },
+        "invalid_fragments": [],
+        "suppressed_reason": null
+      },
+      "variants": {
+        "status": "ready",
+        "issues": [],
+        "visible_variant_rows": 23,
+        "examples": {
+          "identity_option_visible": [],
+          "wrong_axis_for_category": [],
+          "makeup_shade_missing_visual": [],
+          "size_value_generic_axis": [],
+          "default_option_size_evidence_missing_axis": [],
+          "identity_default_title_axis": []
+        }
+      },
+      "coverage": {
+        "details_sections_count": 6,
+        "faq_count": 0,
+        "how_to_chars": 93,
+        "inci_chars": 1570,
+        "active_ingredients_chars": 15,
+        "inci_applicability_status": "",
+        "ingredient_review_status": "",
+        "ingredient_remediation_action": "",
+        "bundle_component_refs_count": 0,
+        "effective_inci_chars": 1570,
+        "inci_borrowed_from_product_id": ""
+      }
+    },
+    {
+      "seed_id": "eps_079bdf9ce31ffd213d5432b8",
+      "external_product_id": "ext_8cfa0e837e468e79ecd6cc3a",
+      "market": "US",
+      "domain": "tirtir.global",
+      "title": "Ceramic Milk Ampoule",
+      "canonical_url": "https://tirtir.global/products/ceramic-milk-ampoule",
+      "product_family": "single_formula",
+      "product_line_id": "pl_de4017bdef3b37bd19a1bafa",
+      "identity_variant_axes": {
+        "size": "10 ml 0 33 fl oz",
+        "volume": "10ml",
+        "multi_variant": true
+      },
+      "pivota_insights": {
+        "direct": {
+          "product_id": "ext_8cfa0e837e468e79ecd6cc3a",
+          "kb_key": "product:ext_8cfa0e837e468e79ecd6cc3a",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "official_pdp_reviewed_formula_and_usage",
+          "has_card_highlight": true
+        },
+        "effective": {
+          "product_id": "ext_8cfa0e837e468e79ecd6cc3a",
+          "kb_key": "product:ext_8cfa0e837e468e79ecd6cc3a",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "official_pdp_reviewed_formula_and_usage",
+          "has_card_highlight": true
+        },
+        "product_line_id": "pl_de4017bdef3b37bd19a1bafa",
+        "borrowed_from_sibling": false
+      },
+      "active_ingredients": {
+        "status": "ready_hero",
+        "issues": [],
+        "regulatory_expected": false,
+        "hero_expected": true,
+        "active_items": [
+          "Squalane",
+          "Rice Bran Oil"
+        ],
+        "source_origin": "pdp_section",
+        "source_quality_status": "captured",
+        "coverage": {
+          "details_sections_count": 2,
+          "faq_count": 0,
+          "how_to_chars": 152,
+          "inci_chars": 1470,
+          "active_ingredients_chars": 23,
+          "inci_applicability_status": "",
+          "ingredient_review_status": "",
+          "ingredient_remediation_action": "",
+          "bundle_component_refs_count": 0,
+          "effective_inci_chars": 1470,
+          "inci_borrowed_from_product_id": ""
+        },
+        "invalid_fragments": [],
+        "suppressed_reason": null
+      },
+      "variants": {
+        "status": "ready",
+        "issues": [],
+        "visible_variant_rows": 3,
+        "examples": {
+          "identity_option_visible": [],
+          "wrong_axis_for_category": [],
+          "makeup_shade_missing_visual": [],
+          "size_value_generic_axis": [],
+          "default_option_size_evidence_missing_axis": [],
+          "identity_default_title_axis": []
+        }
+      },
+      "coverage": {
+        "details_sections_count": 2,
+        "faq_count": 0,
+        "how_to_chars": 152,
+        "inci_chars": 1470,
+        "active_ingredients_chars": 23,
+        "inci_applicability_status": "",
+        "ingredient_review_status": "",
+        "ingredient_remediation_action": "",
+        "bundle_component_refs_count": 0,
+        "effective_inci_chars": 1470,
+        "inci_borrowed_from_product_id": ""
+      }
+    },
+    {
+      "seed_id": "eps_182c6e2ff4fd005f0c8715ae",
+      "external_product_id": "ext_a931bd8cc0a35f9557bbc381",
+      "market": "US",
+      "domain": "tirtir.global",
+      "title": "Banana BDRN Eye Serum",
+      "canonical_url": "https://tirtir.global/products/banana-bdrn-eye-serum",
+      "product_family": "single_formula",
+      "product_line_id": "pl_35b3e78117b65e115da3b87c",
+      "identity_variant_axes": {
+        "multi_variant": false
+      },
+      "pivota_insights": {
+        "direct": {
+          "product_id": "ext_a931bd8cc0a35f9557bbc381",
+          "kb_key": "product:ext_a931bd8cc0a35f9557bbc381",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "verified",
+          "evidence_profile": "seller_plus_formula_reviews",
+          "has_card_highlight": true
+        },
+        "effective": {
+          "product_id": "ext_a931bd8cc0a35f9557bbc381",
+          "kb_key": "product:ext_a931bd8cc0a35f9557bbc381",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "verified",
+          "evidence_profile": "seller_plus_formula_reviews",
+          "has_card_highlight": true
+        },
+        "product_line_id": "pl_35b3e78117b65e115da3b87c",
+        "borrowed_from_sibling": false
+      },
+      "active_ingredients": {
+        "status": "ready_hero",
+        "issues": [],
+        "regulatory_expected": false,
+        "hero_expected": true,
+        "active_items": [
+          "Caffeine",
+          "Peptide"
+        ],
+        "source_origin": "pdp_section",
+        "source_quality_status": "captured",
+        "coverage": {
+          "details_sections_count": 2,
+          "faq_count": 0,
+          "how_to_chars": 155,
+          "inci_chars": 1103,
+          "active_ingredients_chars": 17,
+          "inci_applicability_status": "",
+          "ingredient_review_status": "",
+          "ingredient_remediation_action": "",
+          "bundle_component_refs_count": 0,
+          "effective_inci_chars": 1103,
+          "inci_borrowed_from_product_id": ""
+        },
+        "invalid_fragments": [],
+        "suppressed_reason": null
+      },
+      "variants": {
+        "status": "ready",
+        "issues": [],
+        "visible_variant_rows": 1,
+        "examples": {
+          "identity_option_visible": [],
+          "wrong_axis_for_category": [],
+          "makeup_shade_missing_visual": [],
+          "size_value_generic_axis": [],
+          "default_option_size_evidence_missing_axis": [],
+          "identity_default_title_axis": []
+        }
+      },
+      "coverage": {
+        "details_sections_count": 2,
+        "faq_count": 0,
+        "how_to_chars": 155,
+        "inci_chars": 1103,
+        "active_ingredients_chars": 17,
+        "inci_applicability_status": "",
+        "ingredient_review_status": "",
+        "ingredient_remediation_action": "",
+        "bundle_component_refs_count": 0,
+        "effective_inci_chars": 1103,
+        "inci_borrowed_from_product_id": ""
+      }
+    }
+  ]
+}

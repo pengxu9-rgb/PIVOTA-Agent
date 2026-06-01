@@ -1,0 +1,3195 @@
+{
+  "generated_at": "2026-06-01T04:45:12.721Z",
+  "source": "pivota_insights_official_pdp_manual_review_v1",
+  "mode": "dry_run",
+  "filters": {
+    "brand": "Catkin",
+    "product_ids": [],
+    "limit": 20,
+    "include_strong": false,
+    "include_url_key": false,
+    "apply_chunk_size": null
+  },
+  "summary": {
+    "scanned": 20,
+    "changed_products": 19,
+    "blocked_products": 0,
+    "skipped_products": 1,
+    "write_actions": {
+      "skip": 2,
+      "update": 19,
+      "insert": 19
+    },
+    "skip_reasons": {
+      "no_safe_writes": 1,
+      "protected_high_quality_existing:reviewed": 2
+    },
+    "evidence_profiles": {
+      "official_pdp_reviewed_line": 1,
+      "official_pdp_reviewed_formula": 19
+    }
+  },
+  "plans": [
+    {
+      "external_product_id": "ext_03ad2bbe708c54ce6330d3c2",
+      "pivota_signature_id": "sig_a7d1d1766fc4bb355bedd0ee",
+      "title": "CATKIN Black Chic Luxury Mascara",
+      "brand": "Catkin",
+      "canonical_url": "https://www.catkin.com/products/catkin-black-chic-luxury-mascara",
+      "changed": false,
+      "blocked": false,
+      "skip_reason": "no_safe_writes",
+      "candidate_hash": "5a7f4d3d940dd23e30d6df1886a345f34de8523053257f645202faa55f601b4c",
+      "evidence_profile": "official_pdp_reviewed_line",
+      "source_coverage": {
+        "source": "official_pdp",
+        "canonical_url": "https://www.catkin.com/products/catkin-black-chic-luxury-mascara",
+        "fields": {
+          "description": true,
+          "ingredients": 0,
+          "active_ingredients": 0,
+          "how_to": 0,
+          "details": 1,
+          "variants": 1
+        }
+      },
+      "preview": {
+        "headline": "Eye makeup",
+        "what_it_is": "CATKIN Black Chic Luxury Mascara is an eye makeup product from Catkin in C01 Black, with source-backed cues around multi-shade color selection.",
+        "why_it_stands_out": [
+          {
+            "headline": "Product cues are source-backed",
+            "body": "Reviewed PDP cues such as multi-shade color story give shoppers specific comparison points within Catkin, rather than category-only copy.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Shade and size are explicit",
+            "body": "Variant labels such as C01 Black, Color: C01 Black are visible, reducing ambiguity around the product format before a shopper clicks through.",
+            "evidence_strength": "official_pdp_reviewed"
+          }
+        ],
+        "best_for": [
+          {
+            "tag": "multi_shade_color_story",
+            "label": "multi-shade color story",
+            "confidence": "moderate"
+          }
+        ],
+        "shopping_highlight": "multi-shade color story"
+      },
+      "writes": [
+        {
+          "kb_key": "product:ext_03ad2bbe708c54ce6330d3c2",
+          "action": "skip",
+          "reason": "protected_high_quality_existing:reviewed",
+          "old_hash": "8433b1bed6bf32a57c0d5932b17bb8112f6daf298079ec1fd3c2571d142547d9",
+          "existing_weak": false
+        },
+        {
+          "kb_key": "product:sig_a7d1d1766fc4bb355bedd0ee",
+          "action": "skip",
+          "reason": "protected_high_quality_existing:reviewed",
+          "old_hash": "8433b1bed6bf32a57c0d5932b17bb8112f6daf298079ec1fd3c2571d142547d9",
+          "existing_weak": false
+        }
+      ]
+    },
+    {
+      "external_product_id": "ext_13acff62a3a3f94bfad16251",
+      "pivota_signature_id": "sig_caeaa41ca588b88400b49f5f827bd43d",
+      "title": "CATKIN Moonlight Lip Balm",
+      "brand": "Catkin",
+      "canonical_url": "https://www.catkin.com/products/catkin-moonlight-lip-balm",
+      "changed": true,
+      "blocked": false,
+      "skip_reason": null,
+      "candidate_hash": "0bfa422a39fcbec15f17af1d854c86403861300c415d2155683665ac0c72c0e0",
+      "evidence_profile": "official_pdp_reviewed_formula",
+      "source_coverage": {
+        "source": "official_pdp",
+        "canonical_url": "https://www.catkin.com/products/catkin-moonlight-lip-balm",
+        "fields": {
+          "description": true,
+          "ingredients": 1,
+          "active_ingredients": 0,
+          "how_to": 0,
+          "details": 1,
+          "variants": 1
+        }
+      },
+      "preview": {
+        "headline": "Lip treatment",
+        "what_it_is": "CATKIN Moonlight Lip Balm is a tinted lip balm from Catkin in C04 Rainbow, with source-backed cues around shine finish, shade clarity and comfort-oriented lip care.",
+        "why_it_stands_out": [
+          {
+            "headline": "Product cues are source-backed",
+            "body": "Reviewed PDP cues such as squalane, shine finish, shade range give shoppers specific comparison points within Catkin, rather than category-only copy.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Ingredient list is available",
+            "body": "Full INCI is present for formula-sensitive review, which makes this PDP safer to evaluate than a claim-only listing.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Shade and size are explicit",
+            "body": "Variant labels such as C04 Rainbow, Shade: C04 Rainbow are visible, reducing ambiguity around the product format before a shopper clicks through.",
+            "evidence_strength": "official_pdp_reviewed"
+          }
+        ],
+        "best_for": [
+          {
+            "tag": "color_payoff",
+            "label": "color payoff",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "lip_comfort",
+            "label": "lip comfort",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "shine_finish",
+            "label": "shine finish",
+            "confidence": "moderate"
+          }
+        ],
+        "shopping_highlight": "squalane, shine finish, shade range"
+      },
+      "writes": [
+        {
+          "kb_key": "product:ext_13acff62a3a3f94bfad16251",
+          "action": "update",
+          "reason": "explicit_owner_delegated_assistant_replacement_review",
+          "old_hash": "a97084bb996e047c3ecf79fb9b4c215594aba50cb28e1d9fb81f38fa465bf0cf",
+          "candidate_hash": "fd5cad4aab94180aa173b73607d52498cdcffa8024dc266106e6337d1778562a",
+          "existing_weak": true,
+          "source": "pivota_insights_official_pdp_manual_review_v1",
+          "after_inventory": {
+            "product_id": "ext_13acff62a3a3f94bfad16251",
+            "kb_key": "product:ext_13acff62a3a3f94bfad16251",
+            "source": "pivota_insights_official_pdp_manual_review_v1",
+            "updated_at": "",
+            "last_success_at": "",
+            "title": "CATKIN Moonlight Lip Balm",
+            "canonical_url": "",
+            "bundle_hash": "0bfa422a39fcbec15f17af1d854c86403861300c415d2155683665ac0c72c0e0",
+            "lane": "keep",
+            "reason": "protected_good_content",
+            "priority": 0,
+            "protected": true,
+            "displayable": true,
+            "high_quality_ready": true,
+            "human_reviewed": true,
+            "issues": [],
+            "blocking_issues": [],
+            "quality_state": "reviewed",
+            "evidence_profile": "official_pdp_reviewed_formula",
+            "evidence_rank": 1,
+            "review_tier": "assistant_reviewed",
+            "agent_readable": true,
+            "public_ready": true
+          },
+          "source_meta": {
+            "evidence_profile": "official_pdp_reviewed_formula",
+            "quality_state": "reviewed",
+            "source_origin": "official_pdp_fields",
+            "source_url": "https://www.catkin.com/products/catkin-moonlight-lip-balm",
+            "quality_improvement": {
+              "previous_bundle_hash": "6ea3a1a3930abf7da453379c4ae48c4efd5c0405726a093b177866c712c3111c",
+              "candidate_bundle_hash": "0bfa422a39fcbec15f17af1d854c86403861300c415d2155683665ac0c72c0e0",
+              "replacement_decision": "explicit_owner_delegated_assistant_replacement_review",
+              "existing_quality_lane": "keep",
+              "candidate_quality_lane": "keep",
+              "existing_evidence_profile": "seller_plus_formula",
+              "candidate_evidence_profile": "official_pdp_reviewed_formula"
+            }
+          }
+        },
+        {
+          "kb_key": "product:sig_caeaa41ca588b88400b49f5f827bd43d",
+          "action": "insert",
+          "reason": "new_product_intel_bundle",
+          "old_hash": null,
+          "candidate_hash": "fd5cad4aab94180aa173b73607d52498cdcffa8024dc266106e6337d1778562a",
+          "existing_weak": true,
+          "source": "pivota_insights_official_pdp_manual_review_v1",
+          "after_inventory": {
+            "product_id": "ext_13acff62a3a3f94bfad16251",
+            "kb_key": "product:sig_caeaa41ca588b88400b49f5f827bd43d",
+            "source": "pivota_insights_official_pdp_manual_review_v1",
+            "updated_at": "",
+            "last_success_at": "",
+            "title": "CATKIN Moonlight Lip Balm",
+            "canonical_url": "",
+            "bundle_hash": "0bfa422a39fcbec15f17af1d854c86403861300c415d2155683665ac0c72c0e0",
+            "lane": "keep",
+            "reason": "protected_good_content",
+            "priority": 0,
+            "protected": true,
+            "displayable": true,
+            "high_quality_ready": true,
+            "human_reviewed": true,
+            "issues": [],
+            "blocking_issues": [],
+            "quality_state": "reviewed",
+            "evidence_profile": "official_pdp_reviewed_formula",
+            "evidence_rank": 1,
+            "review_tier": "assistant_reviewed",
+            "agent_readable": true,
+            "public_ready": true
+          },
+          "source_meta": {
+            "evidence_profile": "official_pdp_reviewed_formula",
+            "quality_state": "reviewed",
+            "source_origin": "official_pdp_fields",
+            "source_url": "https://www.catkin.com/products/catkin-moonlight-lip-balm",
+            "quality_improvement": {
+              "previous_bundle_hash": null,
+              "candidate_bundle_hash": "0bfa422a39fcbec15f17af1d854c86403861300c415d2155683665ac0c72c0e0",
+              "replacement_decision": "new_product_intel_bundle",
+              "existing_quality_lane": null,
+              "candidate_quality_lane": "keep",
+              "existing_evidence_profile": null,
+              "candidate_evidence_profile": "official_pdp_reviewed_formula"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "external_product_id": "ext_2c7d4987e757613ee7759e74",
+      "pivota_signature_id": "sig_65a74274fa009d1612fba40bf212d8c3",
+      "title": "CATKIN Moonlight Lip Balm",
+      "brand": "Catkin",
+      "canonical_url": "https://www.catkin.com/products/catkin-moonlight-lip-balm",
+      "changed": true,
+      "blocked": false,
+      "skip_reason": null,
+      "candidate_hash": "14428344c6b8f2a27c4cbb610d8144b67b1d2d4b68b505f2900a92e8be58bb4a",
+      "evidence_profile": "official_pdp_reviewed_formula",
+      "source_coverage": {
+        "source": "official_pdp",
+        "canonical_url": "https://www.catkin.com/products/catkin-moonlight-lip-balm",
+        "fields": {
+          "description": true,
+          "ingredients": 1,
+          "active_ingredients": 0,
+          "how_to": 0,
+          "details": 1,
+          "variants": 1
+        }
+      },
+      "preview": {
+        "headline": "Lip treatment",
+        "what_it_is": "CATKIN Moonlight Lip Balm is a tinted lip balm from Catkin in C20 Garnet Mirage, with source-backed cues around shine finish, shade clarity and comfort-oriented lip care.",
+        "why_it_stands_out": [
+          {
+            "headline": "Product cues are source-backed",
+            "body": "Reviewed PDP cues such as squalane, shine finish, shade range give shoppers specific comparison points within Catkin, rather than category-only copy.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Ingredient list is available",
+            "body": "Full INCI is present for formula-sensitive review, which makes this PDP safer to evaluate than a claim-only listing.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Shade and size are explicit",
+            "body": "Variant labels such as C20 Garnet Mirage, Shade: C20 Garnet Mirage are visible, reducing ambiguity around the product format before a shopper clicks through.",
+            "evidence_strength": "official_pdp_reviewed"
+          }
+        ],
+        "best_for": [
+          {
+            "tag": "color_payoff",
+            "label": "color payoff",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "lip_comfort",
+            "label": "lip comfort",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "shine_finish",
+            "label": "shine finish",
+            "confidence": "moderate"
+          }
+        ],
+        "shopping_highlight": "squalane, shine finish, shade range"
+      },
+      "writes": [
+        {
+          "kb_key": "product:ext_2c7d4987e757613ee7759e74",
+          "action": "update",
+          "reason": "explicit_owner_delegated_assistant_replacement_review",
+          "old_hash": "f6cfdbafabb13ab2179635e5167b8fe067e6558bd04de527af66ed298f572728",
+          "candidate_hash": "2a49720a72821d2043931750449e28ad247647ff814a3f429d8e8e8151361dbf",
+          "existing_weak": true,
+          "source": "pivota_insights_official_pdp_manual_review_v1",
+          "after_inventory": {
+            "product_id": "ext_2c7d4987e757613ee7759e74",
+            "kb_key": "product:ext_2c7d4987e757613ee7759e74",
+            "source": "pivota_insights_official_pdp_manual_review_v1",
+            "updated_at": "",
+            "last_success_at": "",
+            "title": "CATKIN Moonlight Lip Balm",
+            "canonical_url": "",
+            "bundle_hash": "14428344c6b8f2a27c4cbb610d8144b67b1d2d4b68b505f2900a92e8be58bb4a",
+            "lane": "keep",
+            "reason": "protected_good_content",
+            "priority": 0,
+            "protected": true,
+            "displayable": true,
+            "high_quality_ready": true,
+            "human_reviewed": true,
+            "issues": [],
+            "blocking_issues": [],
+            "quality_state": "reviewed",
+            "evidence_profile": "official_pdp_reviewed_formula",
+            "evidence_rank": 1,
+            "review_tier": "assistant_reviewed",
+            "agent_readable": true,
+            "public_ready": true
+          },
+          "source_meta": {
+            "evidence_profile": "official_pdp_reviewed_formula",
+            "quality_state": "reviewed",
+            "source_origin": "official_pdp_fields",
+            "source_url": "https://www.catkin.com/products/catkin-moonlight-lip-balm",
+            "quality_improvement": {
+              "previous_bundle_hash": "7a69e59431e0971cdd11afccd7aacc20d2417c89626ecd2a4d7096b4410a3b60",
+              "candidate_bundle_hash": "14428344c6b8f2a27c4cbb610d8144b67b1d2d4b68b505f2900a92e8be58bb4a",
+              "replacement_decision": "explicit_owner_delegated_assistant_replacement_review",
+              "existing_quality_lane": "keep",
+              "candidate_quality_lane": "keep",
+              "existing_evidence_profile": "seller_plus_formula",
+              "candidate_evidence_profile": "official_pdp_reviewed_formula"
+            }
+          }
+        },
+        {
+          "kb_key": "product:sig_65a74274fa009d1612fba40bf212d8c3",
+          "action": "insert",
+          "reason": "new_product_intel_bundle",
+          "old_hash": null,
+          "candidate_hash": "2a49720a72821d2043931750449e28ad247647ff814a3f429d8e8e8151361dbf",
+          "existing_weak": true,
+          "source": "pivota_insights_official_pdp_manual_review_v1",
+          "after_inventory": {
+            "product_id": "ext_2c7d4987e757613ee7759e74",
+            "kb_key": "product:sig_65a74274fa009d1612fba40bf212d8c3",
+            "source": "pivota_insights_official_pdp_manual_review_v1",
+            "updated_at": "",
+            "last_success_at": "",
+            "title": "CATKIN Moonlight Lip Balm",
+            "canonical_url": "",
+            "bundle_hash": "14428344c6b8f2a27c4cbb610d8144b67b1d2d4b68b505f2900a92e8be58bb4a",
+            "lane": "keep",
+            "reason": "protected_good_content",
+            "priority": 0,
+            "protected": true,
+            "displayable": true,
+            "high_quality_ready": true,
+            "human_reviewed": true,
+            "issues": [],
+            "blocking_issues": [],
+            "quality_state": "reviewed",
+            "evidence_profile": "official_pdp_reviewed_formula",
+            "evidence_rank": 1,
+            "review_tier": "assistant_reviewed",
+            "agent_readable": true,
+            "public_ready": true
+          },
+          "source_meta": {
+            "evidence_profile": "official_pdp_reviewed_formula",
+            "quality_state": "reviewed",
+            "source_origin": "official_pdp_fields",
+            "source_url": "https://www.catkin.com/products/catkin-moonlight-lip-balm",
+            "quality_improvement": {
+              "previous_bundle_hash": null,
+              "candidate_bundle_hash": "14428344c6b8f2a27c4cbb610d8144b67b1d2d4b68b505f2900a92e8be58bb4a",
+              "replacement_decision": "new_product_intel_bundle",
+              "existing_quality_lane": null,
+              "candidate_quality_lane": "keep",
+              "existing_evidence_profile": null,
+              "candidate_evidence_profile": "official_pdp_reviewed_formula"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "external_product_id": "ext_2d5e5882bc1e6af38492bcac",
+      "pivota_signature_id": "sig_8354636a0d0483adc6a6f6de5cba8367",
+      "title": "CATKIN Moonlight Lip Balm",
+      "brand": "Catkin",
+      "canonical_url": "https://www.catkin.com/products/catkin-moonlight-lip-balm",
+      "changed": true,
+      "blocked": false,
+      "skip_reason": null,
+      "candidate_hash": "82e5fd64a73d321c9a721fdc2fbab6cd4018b674ed5f30f31bfd5e53059a801a",
+      "evidence_profile": "official_pdp_reviewed_formula",
+      "source_coverage": {
+        "source": "official_pdp",
+        "canonical_url": "https://www.catkin.com/products/catkin-moonlight-lip-balm",
+        "fields": {
+          "description": true,
+          "ingredients": 1,
+          "active_ingredients": 0,
+          "how_to": 0,
+          "details": 1,
+          "variants": 1
+        }
+      },
+      "preview": {
+        "headline": "Lip treatment",
+        "what_it_is": "CATKIN Moonlight Lip Balm is a tinted lip balm from Catkin in C11 Fairy, with source-backed cues around shine finish, shade clarity and comfort-oriented lip care.",
+        "why_it_stands_out": [
+          {
+            "headline": "Product cues are source-backed",
+            "body": "Reviewed PDP cues such as squalane, shine finish, shade range give shoppers specific comparison points within Catkin, rather than category-only copy.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Ingredient list is available",
+            "body": "Full INCI is present for formula-sensitive review, which makes this PDP safer to evaluate than a claim-only listing.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Shade and size are explicit",
+            "body": "Variant labels such as C11 Fairy, Shade: C11 Fairy are visible, reducing ambiguity around the product format before a shopper clicks through.",
+            "evidence_strength": "official_pdp_reviewed"
+          }
+        ],
+        "best_for": [
+          {
+            "tag": "color_payoff",
+            "label": "color payoff",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "lip_comfort",
+            "label": "lip comfort",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "shine_finish",
+            "label": "shine finish",
+            "confidence": "moderate"
+          }
+        ],
+        "shopping_highlight": "squalane, shine finish, shade range"
+      },
+      "writes": [
+        {
+          "kb_key": "product:ext_2d5e5882bc1e6af38492bcac",
+          "action": "update",
+          "reason": "explicit_owner_delegated_assistant_replacement_review",
+          "old_hash": "e1a2f6e09e9e6a176050ea7efdbd1eb9a0a3b425406a1ad6ee482218dfa08868",
+          "candidate_hash": "fb8a8910adf605255ecd86c746e4ab71dd23f45360944c0f4e6d0aa9dc82faa4",
+          "existing_weak": true,
+          "source": "pivota_insights_official_pdp_manual_review_v1",
+          "after_inventory": {
+            "product_id": "ext_2d5e5882bc1e6af38492bcac",
+            "kb_key": "product:ext_2d5e5882bc1e6af38492bcac",
+            "source": "pivota_insights_official_pdp_manual_review_v1",
+            "updated_at": "",
+            "last_success_at": "",
+            "title": "CATKIN Moonlight Lip Balm",
+            "canonical_url": "",
+            "bundle_hash": "82e5fd64a73d321c9a721fdc2fbab6cd4018b674ed5f30f31bfd5e53059a801a",
+            "lane": "keep",
+            "reason": "protected_good_content",
+            "priority": 0,
+            "protected": true,
+            "displayable": true,
+            "high_quality_ready": true,
+            "human_reviewed": true,
+            "issues": [],
+            "blocking_issues": [],
+            "quality_state": "reviewed",
+            "evidence_profile": "official_pdp_reviewed_formula",
+            "evidence_rank": 1,
+            "review_tier": "assistant_reviewed",
+            "agent_readable": true,
+            "public_ready": true
+          },
+          "source_meta": {
+            "evidence_profile": "official_pdp_reviewed_formula",
+            "quality_state": "reviewed",
+            "source_origin": "official_pdp_fields",
+            "source_url": "https://www.catkin.com/products/catkin-moonlight-lip-balm",
+            "quality_improvement": {
+              "previous_bundle_hash": "f1044cf7580e8261c6b8720098d751e5936a040185a9abae473eeb6b9869700b",
+              "candidate_bundle_hash": "82e5fd64a73d321c9a721fdc2fbab6cd4018b674ed5f30f31bfd5e53059a801a",
+              "replacement_decision": "explicit_owner_delegated_assistant_replacement_review",
+              "existing_quality_lane": "keep",
+              "candidate_quality_lane": "keep",
+              "existing_evidence_profile": "seller_plus_formula",
+              "candidate_evidence_profile": "official_pdp_reviewed_formula"
+            }
+          }
+        },
+        {
+          "kb_key": "product:sig_8354636a0d0483adc6a6f6de5cba8367",
+          "action": "insert",
+          "reason": "new_product_intel_bundle",
+          "old_hash": null,
+          "candidate_hash": "fb8a8910adf605255ecd86c746e4ab71dd23f45360944c0f4e6d0aa9dc82faa4",
+          "existing_weak": true,
+          "source": "pivota_insights_official_pdp_manual_review_v1",
+          "after_inventory": {
+            "product_id": "ext_2d5e5882bc1e6af38492bcac",
+            "kb_key": "product:sig_8354636a0d0483adc6a6f6de5cba8367",
+            "source": "pivota_insights_official_pdp_manual_review_v1",
+            "updated_at": "",
+            "last_success_at": "",
+            "title": "CATKIN Moonlight Lip Balm",
+            "canonical_url": "",
+            "bundle_hash": "82e5fd64a73d321c9a721fdc2fbab6cd4018b674ed5f30f31bfd5e53059a801a",
+            "lane": "keep",
+            "reason": "protected_good_content",
+            "priority": 0,
+            "protected": true,
+            "displayable": true,
+            "high_quality_ready": true,
+            "human_reviewed": true,
+            "issues": [],
+            "blocking_issues": [],
+            "quality_state": "reviewed",
+            "evidence_profile": "official_pdp_reviewed_formula",
+            "evidence_rank": 1,
+            "review_tier": "assistant_reviewed",
+            "agent_readable": true,
+            "public_ready": true
+          },
+          "source_meta": {
+            "evidence_profile": "official_pdp_reviewed_formula",
+            "quality_state": "reviewed",
+            "source_origin": "official_pdp_fields",
+            "source_url": "https://www.catkin.com/products/catkin-moonlight-lip-balm",
+            "quality_improvement": {
+              "previous_bundle_hash": null,
+              "candidate_bundle_hash": "82e5fd64a73d321c9a721fdc2fbab6cd4018b674ed5f30f31bfd5e53059a801a",
+              "replacement_decision": "new_product_intel_bundle",
+              "existing_quality_lane": null,
+              "candidate_quality_lane": "keep",
+              "existing_evidence_profile": null,
+              "candidate_evidence_profile": "official_pdp_reviewed_formula"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "external_product_id": "ext_3d63311d7364ab4c4d369840",
+      "pivota_signature_id": "sig_8aa381e3fb312d42fb9a72f772aa6604",
+      "title": "CATKIN Moonlight Lip Balm",
+      "brand": "Catkin",
+      "canonical_url": "https://www.catkin.com/products/catkin-moonlight-lip-balm",
+      "changed": true,
+      "blocked": false,
+      "skip_reason": null,
+      "candidate_hash": "15bc9e94942ff1d22624dcb230380b0f93a0a9067f956cc195127cd0d8e10c59",
+      "evidence_profile": "official_pdp_reviewed_formula",
+      "source_coverage": {
+        "source": "official_pdp",
+        "canonical_url": "https://www.catkin.com/products/catkin-moonlight-lip-balm",
+        "fields": {
+          "description": true,
+          "ingredients": 1,
+          "active_ingredients": 0,
+          "how_to": 0,
+          "details": 1,
+          "variants": 1
+        }
+      },
+      "preview": {
+        "headline": "Lip treatment",
+        "what_it_is": "CATKIN Moonlight Lip Balm is a tinted lip balm from Catkin in C15 Destiny, with source-backed cues around shine finish, shade clarity and comfort-oriented lip care.",
+        "why_it_stands_out": [
+          {
+            "headline": "Product cues are source-backed",
+            "body": "Reviewed PDP cues such as squalane, shine finish, shade range give shoppers specific comparison points within Catkin, rather than category-only copy.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Ingredient list is available",
+            "body": "Full INCI is present for formula-sensitive review, which makes this PDP safer to evaluate than a claim-only listing.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Shade and size are explicit",
+            "body": "Variant labels such as C15 Destiny, Shade: C15 Destiny are visible, reducing ambiguity around the product format before a shopper clicks through.",
+            "evidence_strength": "official_pdp_reviewed"
+          }
+        ],
+        "best_for": [
+          {
+            "tag": "color_payoff",
+            "label": "color payoff",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "lip_comfort",
+            "label": "lip comfort",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "shine_finish",
+            "label": "shine finish",
+            "confidence": "moderate"
+          }
+        ],
+        "shopping_highlight": "squalane, shine finish, shade range"
+      },
+      "writes": [
+        {
+          "kb_key": "product:ext_3d63311d7364ab4c4d369840",
+          "action": "update",
+          "reason": "explicit_owner_delegated_assistant_replacement_review",
+          "old_hash": "5f40294435cbc94b5ca2a4629a9ca348909024752e1389ce5be206ed4ea0b51e",
+          "candidate_hash": "6fa9032050e8c7f17a6c78c56aa860a83ab0aa073b0e425cc7446bd6311c8018",
+          "existing_weak": true,
+          "source": "pivota_insights_official_pdp_manual_review_v1",
+          "after_inventory": {
+            "product_id": "ext_3d63311d7364ab4c4d369840",
+            "kb_key": "product:ext_3d63311d7364ab4c4d369840",
+            "source": "pivota_insights_official_pdp_manual_review_v1",
+            "updated_at": "",
+            "last_success_at": "",
+            "title": "CATKIN Moonlight Lip Balm",
+            "canonical_url": "",
+            "bundle_hash": "15bc9e94942ff1d22624dcb230380b0f93a0a9067f956cc195127cd0d8e10c59",
+            "lane": "keep",
+            "reason": "protected_good_content",
+            "priority": 0,
+            "protected": true,
+            "displayable": true,
+            "high_quality_ready": true,
+            "human_reviewed": true,
+            "issues": [],
+            "blocking_issues": [],
+            "quality_state": "reviewed",
+            "evidence_profile": "official_pdp_reviewed_formula",
+            "evidence_rank": 1,
+            "review_tier": "assistant_reviewed",
+            "agent_readable": true,
+            "public_ready": true
+          },
+          "source_meta": {
+            "evidence_profile": "official_pdp_reviewed_formula",
+            "quality_state": "reviewed",
+            "source_origin": "official_pdp_fields",
+            "source_url": "https://www.catkin.com/products/catkin-moonlight-lip-balm",
+            "quality_improvement": {
+              "previous_bundle_hash": "e048e89675bf41933ae925cd2883d00daf0727a4db1234df9bf89ae5058ef251",
+              "candidate_bundle_hash": "15bc9e94942ff1d22624dcb230380b0f93a0a9067f956cc195127cd0d8e10c59",
+              "replacement_decision": "explicit_owner_delegated_assistant_replacement_review",
+              "existing_quality_lane": "keep",
+              "candidate_quality_lane": "keep",
+              "existing_evidence_profile": "seller_plus_formula",
+              "candidate_evidence_profile": "official_pdp_reviewed_formula"
+            }
+          }
+        },
+        {
+          "kb_key": "product:sig_8aa381e3fb312d42fb9a72f772aa6604",
+          "action": "insert",
+          "reason": "new_product_intel_bundle",
+          "old_hash": null,
+          "candidate_hash": "6fa9032050e8c7f17a6c78c56aa860a83ab0aa073b0e425cc7446bd6311c8018",
+          "existing_weak": true,
+          "source": "pivota_insights_official_pdp_manual_review_v1",
+          "after_inventory": {
+            "product_id": "ext_3d63311d7364ab4c4d369840",
+            "kb_key": "product:sig_8aa381e3fb312d42fb9a72f772aa6604",
+            "source": "pivota_insights_official_pdp_manual_review_v1",
+            "updated_at": "",
+            "last_success_at": "",
+            "title": "CATKIN Moonlight Lip Balm",
+            "canonical_url": "",
+            "bundle_hash": "15bc9e94942ff1d22624dcb230380b0f93a0a9067f956cc195127cd0d8e10c59",
+            "lane": "keep",
+            "reason": "protected_good_content",
+            "priority": 0,
+            "protected": true,
+            "displayable": true,
+            "high_quality_ready": true,
+            "human_reviewed": true,
+            "issues": [],
+            "blocking_issues": [],
+            "quality_state": "reviewed",
+            "evidence_profile": "official_pdp_reviewed_formula",
+            "evidence_rank": 1,
+            "review_tier": "assistant_reviewed",
+            "agent_readable": true,
+            "public_ready": true
+          },
+          "source_meta": {
+            "evidence_profile": "official_pdp_reviewed_formula",
+            "quality_state": "reviewed",
+            "source_origin": "official_pdp_fields",
+            "source_url": "https://www.catkin.com/products/catkin-moonlight-lip-balm",
+            "quality_improvement": {
+              "previous_bundle_hash": null,
+              "candidate_bundle_hash": "15bc9e94942ff1d22624dcb230380b0f93a0a9067f956cc195127cd0d8e10c59",
+              "replacement_decision": "new_product_intel_bundle",
+              "existing_quality_lane": null,
+              "candidate_quality_lane": "keep",
+              "existing_evidence_profile": null,
+              "candidate_evidence_profile": "official_pdp_reviewed_formula"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "external_product_id": "ext_3e8302ccda00b345c33ce900",
+      "pivota_signature_id": "sig_c380777921e8bcb890296d6162d0cc9b",
+      "title": "CATKIN Moonlight Lip Balm",
+      "brand": "Catkin",
+      "canonical_url": "https://www.catkin.com/products/catkin-moonlight-lip-balm",
+      "changed": true,
+      "blocked": false,
+      "skip_reason": null,
+      "candidate_hash": "34345e4950d148b7d2ff1dc8443c6cc1c10f384c308ec58b74aee0fd12142a9e",
+      "evidence_profile": "official_pdp_reviewed_formula",
+      "source_coverage": {
+        "source": "official_pdp",
+        "canonical_url": "https://www.catkin.com/products/catkin-moonlight-lip-balm",
+        "fields": {
+          "description": true,
+          "ingredients": 1,
+          "active_ingredients": 0,
+          "how_to": 0,
+          "details": 1,
+          "variants": 1
+        }
+      },
+      "preview": {
+        "headline": "Lip treatment",
+        "what_it_is": "CATKIN Moonlight Lip Balm is a tinted lip balm from Catkin in C02 Spearmint, with source-backed cues around shine finish, shade clarity and comfort-oriented lip care.",
+        "why_it_stands_out": [
+          {
+            "headline": "Product cues are source-backed",
+            "body": "Reviewed PDP cues such as squalane, shine finish, shade range give shoppers specific comparison points within Catkin, rather than category-only copy.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Ingredient list is available",
+            "body": "Full INCI is present for formula-sensitive review, which makes this PDP safer to evaluate than a claim-only listing.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Shade and size are explicit",
+            "body": "Variant labels such as C02 Spearmint, Shade: C02 Spearmint are visible, reducing ambiguity around the product format before a shopper clicks through.",
+            "evidence_strength": "official_pdp_reviewed"
+          }
+        ],
+        "best_for": [
+          {
+            "tag": "color_payoff",
+            "label": "color payoff",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "lip_comfort",
+            "label": "lip comfort",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "shine_finish",
+            "label": "shine finish",
+            "confidence": "moderate"
+          }
+        ],
+        "shopping_highlight": "squalane, shine finish, shade range"
+      },
+      "writes": [
+        {
+          "kb_key": "product:ext_3e8302ccda00b345c33ce900",
+          "action": "update",
+          "reason": "explicit_owner_delegated_assistant_replacement_review",
+          "old_hash": "962e5c9e0d48ef428feb8e9bd54900174403a73e7f61ecab53d11ce19ad386d0",
+          "candidate_hash": "a4785c2bf5890fe3c80236743ce9166ac16fde2e00a9f58f7be8ba828002d266",
+          "existing_weak": true,
+          "source": "pivota_insights_official_pdp_manual_review_v1",
+          "after_inventory": {
+            "product_id": "ext_3e8302ccda00b345c33ce900",
+            "kb_key": "product:ext_3e8302ccda00b345c33ce900",
+            "source": "pivota_insights_official_pdp_manual_review_v1",
+            "updated_at": "",
+            "last_success_at": "",
+            "title": "CATKIN Moonlight Lip Balm",
+            "canonical_url": "",
+            "bundle_hash": "34345e4950d148b7d2ff1dc8443c6cc1c10f384c308ec58b74aee0fd12142a9e",
+            "lane": "keep",
+            "reason": "protected_good_content",
+            "priority": 0,
+            "protected": true,
+            "displayable": true,
+            "high_quality_ready": true,
+            "human_reviewed": true,
+            "issues": [],
+            "blocking_issues": [],
+            "quality_state": "reviewed",
+            "evidence_profile": "official_pdp_reviewed_formula",
+            "evidence_rank": 1,
+            "review_tier": "assistant_reviewed",
+            "agent_readable": true,
+            "public_ready": true
+          },
+          "source_meta": {
+            "evidence_profile": "official_pdp_reviewed_formula",
+            "quality_state": "reviewed",
+            "source_origin": "official_pdp_fields",
+            "source_url": "https://www.catkin.com/products/catkin-moonlight-lip-balm",
+            "quality_improvement": {
+              "previous_bundle_hash": "c8597ac2e722fd1cdfa487abf82a51cb3ab236b3a8220e77f31cfd46def3af26",
+              "candidate_bundle_hash": "34345e4950d148b7d2ff1dc8443c6cc1c10f384c308ec58b74aee0fd12142a9e",
+              "replacement_decision": "explicit_owner_delegated_assistant_replacement_review",
+              "existing_quality_lane": "keep",
+              "candidate_quality_lane": "keep",
+              "existing_evidence_profile": "seller_plus_formula",
+              "candidate_evidence_profile": "official_pdp_reviewed_formula"
+            }
+          }
+        },
+        {
+          "kb_key": "product:sig_c380777921e8bcb890296d6162d0cc9b",
+          "action": "insert",
+          "reason": "new_product_intel_bundle",
+          "old_hash": null,
+          "candidate_hash": "a4785c2bf5890fe3c80236743ce9166ac16fde2e00a9f58f7be8ba828002d266",
+          "existing_weak": true,
+          "source": "pivota_insights_official_pdp_manual_review_v1",
+          "after_inventory": {
+            "product_id": "ext_3e8302ccda00b345c33ce900",
+            "kb_key": "product:sig_c380777921e8bcb890296d6162d0cc9b",
+            "source": "pivota_insights_official_pdp_manual_review_v1",
+            "updated_at": "",
+            "last_success_at": "",
+            "title": "CATKIN Moonlight Lip Balm",
+            "canonical_url": "",
+            "bundle_hash": "34345e4950d148b7d2ff1dc8443c6cc1c10f384c308ec58b74aee0fd12142a9e",
+            "lane": "keep",
+            "reason": "protected_good_content",
+            "priority": 0,
+            "protected": true,
+            "displayable": true,
+            "high_quality_ready": true,
+            "human_reviewed": true,
+            "issues": [],
+            "blocking_issues": [],
+            "quality_state": "reviewed",
+            "evidence_profile": "official_pdp_reviewed_formula",
+            "evidence_rank": 1,
+            "review_tier": "assistant_reviewed",
+            "agent_readable": true,
+            "public_ready": true
+          },
+          "source_meta": {
+            "evidence_profile": "official_pdp_reviewed_formula",
+            "quality_state": "reviewed",
+            "source_origin": "official_pdp_fields",
+            "source_url": "https://www.catkin.com/products/catkin-moonlight-lip-balm",
+            "quality_improvement": {
+              "previous_bundle_hash": null,
+              "candidate_bundle_hash": "34345e4950d148b7d2ff1dc8443c6cc1c10f384c308ec58b74aee0fd12142a9e",
+              "replacement_decision": "new_product_intel_bundle",
+              "existing_quality_lane": null,
+              "candidate_quality_lane": "keep",
+              "existing_evidence_profile": null,
+              "candidate_evidence_profile": "official_pdp_reviewed_formula"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "external_product_id": "ext_4524030a332be820e1f53d28",
+      "pivota_signature_id": "sig_472cdd782636309c157ee5296aee648a",
+      "title": "CATKIN Moonlight Lip Balm",
+      "brand": "Catkin",
+      "canonical_url": "https://www.catkin.com/products/catkin-moonlight-lip-balm",
+      "changed": true,
+      "blocked": false,
+      "skip_reason": null,
+      "candidate_hash": "d6ed83b2b0e302b487576f8621c10141439151bcaf2fc73905db5c1a4867b461",
+      "evidence_profile": "official_pdp_reviewed_formula",
+      "source_coverage": {
+        "source": "official_pdp",
+        "canonical_url": "https://www.catkin.com/products/catkin-moonlight-lip-balm",
+        "fields": {
+          "description": true,
+          "ingredients": 1,
+          "active_ingredients": 0,
+          "how_to": 0,
+          "details": 1,
+          "variants": 1
+        }
+      },
+      "preview": {
+        "headline": "Lip treatment",
+        "what_it_is": "CATKIN Moonlight Lip Balm is a tinted lip balm from Catkin in C18 Isaro, with source-backed cues around shine finish, shade clarity and comfort-oriented lip care.",
+        "why_it_stands_out": [
+          {
+            "headline": "Product cues are source-backed",
+            "body": "Reviewed PDP cues such as squalane, shine finish, shade range give shoppers specific comparison points within Catkin, rather than category-only copy.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Ingredient list is available",
+            "body": "Full INCI is present for formula-sensitive review, which makes this PDP safer to evaluate than a claim-only listing.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Shade and size are explicit",
+            "body": "Variant labels such as C18 Isaro, Shade: C18 Isaro are visible, reducing ambiguity around the product format before a shopper clicks through.",
+            "evidence_strength": "official_pdp_reviewed"
+          }
+        ],
+        "best_for": [
+          {
+            "tag": "color_payoff",
+            "label": "color payoff",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "lip_comfort",
+            "label": "lip comfort",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "shine_finish",
+            "label": "shine finish",
+            "confidence": "moderate"
+          }
+        ],
+        "shopping_highlight": "squalane, shine finish, shade range"
+      },
+      "writes": [
+        {
+          "kb_key": "product:ext_4524030a332be820e1f53d28",
+          "action": "update",
+          "reason": "explicit_owner_delegated_assistant_replacement_review",
+          "old_hash": "2e4cb1f2fe523f82f2ed16055cddd1dbf8b069619c847d06513371b66ed7679b",
+          "candidate_hash": "09f41223088bfa05343ad5ab30901d35dc99202d056c092d5b1ef6771888ffe4",
+          "existing_weak": true,
+          "source": "pivota_insights_official_pdp_manual_review_v1",
+          "after_inventory": {
+            "product_id": "ext_4524030a332be820e1f53d28",
+            "kb_key": "product:ext_4524030a332be820e1f53d28",
+            "source": "pivota_insights_official_pdp_manual_review_v1",
+            "updated_at": "",
+            "last_success_at": "",
+            "title": "CATKIN Moonlight Lip Balm",
+            "canonical_url": "",
+            "bundle_hash": "d6ed83b2b0e302b487576f8621c10141439151bcaf2fc73905db5c1a4867b461",
+            "lane": "keep",
+            "reason": "protected_good_content",
+            "priority": 0,
+            "protected": true,
+            "displayable": true,
+            "high_quality_ready": true,
+            "human_reviewed": true,
+            "issues": [],
+            "blocking_issues": [],
+            "quality_state": "reviewed",
+            "evidence_profile": "official_pdp_reviewed_formula",
+            "evidence_rank": 1,
+            "review_tier": "assistant_reviewed",
+            "agent_readable": true,
+            "public_ready": true
+          },
+          "source_meta": {
+            "evidence_profile": "official_pdp_reviewed_formula",
+            "quality_state": "reviewed",
+            "source_origin": "official_pdp_fields",
+            "source_url": "https://www.catkin.com/products/catkin-moonlight-lip-balm",
+            "quality_improvement": {
+              "previous_bundle_hash": "c2b861868acefd085ae6721ac91767fa54399670908b8471e31fbdd54322f5e1",
+              "candidate_bundle_hash": "d6ed83b2b0e302b487576f8621c10141439151bcaf2fc73905db5c1a4867b461",
+              "replacement_decision": "explicit_owner_delegated_assistant_replacement_review",
+              "existing_quality_lane": "keep",
+              "candidate_quality_lane": "keep",
+              "existing_evidence_profile": "seller_plus_formula",
+              "candidate_evidence_profile": "official_pdp_reviewed_formula"
+            }
+          }
+        },
+        {
+          "kb_key": "product:sig_472cdd782636309c157ee5296aee648a",
+          "action": "insert",
+          "reason": "new_product_intel_bundle",
+          "old_hash": null,
+          "candidate_hash": "09f41223088bfa05343ad5ab30901d35dc99202d056c092d5b1ef6771888ffe4",
+          "existing_weak": true,
+          "source": "pivota_insights_official_pdp_manual_review_v1",
+          "after_inventory": {
+            "product_id": "ext_4524030a332be820e1f53d28",
+            "kb_key": "product:sig_472cdd782636309c157ee5296aee648a",
+            "source": "pivota_insights_official_pdp_manual_review_v1",
+            "updated_at": "",
+            "last_success_at": "",
+            "title": "CATKIN Moonlight Lip Balm",
+            "canonical_url": "",
+            "bundle_hash": "d6ed83b2b0e302b487576f8621c10141439151bcaf2fc73905db5c1a4867b461",
+            "lane": "keep",
+            "reason": "protected_good_content",
+            "priority": 0,
+            "protected": true,
+            "displayable": true,
+            "high_quality_ready": true,
+            "human_reviewed": true,
+            "issues": [],
+            "blocking_issues": [],
+            "quality_state": "reviewed",
+            "evidence_profile": "official_pdp_reviewed_formula",
+            "evidence_rank": 1,
+            "review_tier": "assistant_reviewed",
+            "agent_readable": true,
+            "public_ready": true
+          },
+          "source_meta": {
+            "evidence_profile": "official_pdp_reviewed_formula",
+            "quality_state": "reviewed",
+            "source_origin": "official_pdp_fields",
+            "source_url": "https://www.catkin.com/products/catkin-moonlight-lip-balm",
+            "quality_improvement": {
+              "previous_bundle_hash": null,
+              "candidate_bundle_hash": "d6ed83b2b0e302b487576f8621c10141439151bcaf2fc73905db5c1a4867b461",
+              "replacement_decision": "new_product_intel_bundle",
+              "existing_quality_lane": null,
+              "candidate_quality_lane": "keep",
+              "existing_evidence_profile": null,
+              "candidate_evidence_profile": "official_pdp_reviewed_formula"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "external_product_id": "ext_469e3a19c65efbbed3f0e892",
+      "pivota_signature_id": "sig_5d987ad317d4a889ea72de24c0a59f43",
+      "title": "CATKIN Moonlight Lip Balm",
+      "brand": "Catkin",
+      "canonical_url": "https://www.catkin.com/products/catkin-moonlight-lip-balm",
+      "changed": true,
+      "blocked": false,
+      "skip_reason": null,
+      "candidate_hash": "83c1baa4f5e7c1d51dc33326d277ba518d47772babe04f3e9922ddd78e7681b3",
+      "evidence_profile": "official_pdp_reviewed_formula",
+      "source_coverage": {
+        "source": "official_pdp",
+        "canonical_url": "https://www.catkin.com/products/catkin-moonlight-lip-balm",
+        "fields": {
+          "description": true,
+          "ingredients": 1,
+          "active_ingredients": 0,
+          "how_to": 0,
+          "details": 1,
+          "variants": 1
+        }
+      },
+      "preview": {
+        "headline": "Lip treatment",
+        "what_it_is": "CATKIN Moonlight Lip Balm is a tinted lip balm from Catkin in C12 Sirius, with source-backed cues around shine finish, shade clarity and comfort-oriented lip care.",
+        "why_it_stands_out": [
+          {
+            "headline": "Product cues are source-backed",
+            "body": "Reviewed PDP cues such as squalane, shine finish, shade range give shoppers specific comparison points within Catkin, rather than category-only copy.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Ingredient list is available",
+            "body": "Full INCI is present for formula-sensitive review, which makes this PDP safer to evaluate than a claim-only listing.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Shade and size are explicit",
+            "body": "Variant labels such as C12 Sirius, Shade: C12 Sirius are visible, reducing ambiguity around the product format before a shopper clicks through.",
+            "evidence_strength": "official_pdp_reviewed"
+          }
+        ],
+        "best_for": [
+          {
+            "tag": "color_payoff",
+            "label": "color payoff",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "lip_comfort",
+            "label": "lip comfort",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "shine_finish",
+            "label": "shine finish",
+            "confidence": "moderate"
+          }
+        ],
+        "shopping_highlight": "squalane, shine finish, shade range"
+      },
+      "writes": [
+        {
+          "kb_key": "product:ext_469e3a19c65efbbed3f0e892",
+          "action": "update",
+          "reason": "explicit_owner_delegated_assistant_replacement_review",
+          "old_hash": "5fa7744f481e57a6ed61591469c7fc8836f13defb9d11b68d0be5e08d4ba64ab",
+          "candidate_hash": "5b994aedfa4210b058fd999d6e015fef986cfca68bbd6cb10fab96fc483818d7",
+          "existing_weak": true,
+          "source": "pivota_insights_official_pdp_manual_review_v1",
+          "after_inventory": {
+            "product_id": "ext_469e3a19c65efbbed3f0e892",
+            "kb_key": "product:ext_469e3a19c65efbbed3f0e892",
+            "source": "pivota_insights_official_pdp_manual_review_v1",
+            "updated_at": "",
+            "last_success_at": "",
+            "title": "CATKIN Moonlight Lip Balm",
+            "canonical_url": "",
+            "bundle_hash": "83c1baa4f5e7c1d51dc33326d277ba518d47772babe04f3e9922ddd78e7681b3",
+            "lane": "keep",
+            "reason": "protected_good_content",
+            "priority": 0,
+            "protected": true,
+            "displayable": true,
+            "high_quality_ready": true,
+            "human_reviewed": true,
+            "issues": [],
+            "blocking_issues": [],
+            "quality_state": "reviewed",
+            "evidence_profile": "official_pdp_reviewed_formula",
+            "evidence_rank": 1,
+            "review_tier": "assistant_reviewed",
+            "agent_readable": true,
+            "public_ready": true
+          },
+          "source_meta": {
+            "evidence_profile": "official_pdp_reviewed_formula",
+            "quality_state": "reviewed",
+            "source_origin": "official_pdp_fields",
+            "source_url": "https://www.catkin.com/products/catkin-moonlight-lip-balm",
+            "quality_improvement": {
+              "previous_bundle_hash": "2c01f763ab8857c1376c42f980e98a9ecde28632b158a84493d9e949e9ca7c3c",
+              "candidate_bundle_hash": "83c1baa4f5e7c1d51dc33326d277ba518d47772babe04f3e9922ddd78e7681b3",
+              "replacement_decision": "explicit_owner_delegated_assistant_replacement_review",
+              "existing_quality_lane": "keep",
+              "candidate_quality_lane": "keep",
+              "existing_evidence_profile": "seller_plus_formula",
+              "candidate_evidence_profile": "official_pdp_reviewed_formula"
+            }
+          }
+        },
+        {
+          "kb_key": "product:sig_5d987ad317d4a889ea72de24c0a59f43",
+          "action": "insert",
+          "reason": "new_product_intel_bundle",
+          "old_hash": null,
+          "candidate_hash": "5b994aedfa4210b058fd999d6e015fef986cfca68bbd6cb10fab96fc483818d7",
+          "existing_weak": true,
+          "source": "pivota_insights_official_pdp_manual_review_v1",
+          "after_inventory": {
+            "product_id": "ext_469e3a19c65efbbed3f0e892",
+            "kb_key": "product:sig_5d987ad317d4a889ea72de24c0a59f43",
+            "source": "pivota_insights_official_pdp_manual_review_v1",
+            "updated_at": "",
+            "last_success_at": "",
+            "title": "CATKIN Moonlight Lip Balm",
+            "canonical_url": "",
+            "bundle_hash": "83c1baa4f5e7c1d51dc33326d277ba518d47772babe04f3e9922ddd78e7681b3",
+            "lane": "keep",
+            "reason": "protected_good_content",
+            "priority": 0,
+            "protected": true,
+            "displayable": true,
+            "high_quality_ready": true,
+            "human_reviewed": true,
+            "issues": [],
+            "blocking_issues": [],
+            "quality_state": "reviewed",
+            "evidence_profile": "official_pdp_reviewed_formula",
+            "evidence_rank": 1,
+            "review_tier": "assistant_reviewed",
+            "agent_readable": true,
+            "public_ready": true
+          },
+          "source_meta": {
+            "evidence_profile": "official_pdp_reviewed_formula",
+            "quality_state": "reviewed",
+            "source_origin": "official_pdp_fields",
+            "source_url": "https://www.catkin.com/products/catkin-moonlight-lip-balm",
+            "quality_improvement": {
+              "previous_bundle_hash": null,
+              "candidate_bundle_hash": "83c1baa4f5e7c1d51dc33326d277ba518d47772babe04f3e9922ddd78e7681b3",
+              "replacement_decision": "new_product_intel_bundle",
+              "existing_quality_lane": null,
+              "candidate_quality_lane": "keep",
+              "existing_evidence_profile": null,
+              "candidate_evidence_profile": "official_pdp_reviewed_formula"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "external_product_id": "ext_5998f59bd635720652c58089",
+      "pivota_signature_id": "sig_755d8892530e8178eeec4023baf5c988",
+      "title": "CATKIN Moonlight Lip Balm",
+      "brand": "Catkin",
+      "canonical_url": "https://www.catkin.com/products/catkin-moonlight-lip-balm",
+      "changed": true,
+      "blocked": false,
+      "skip_reason": null,
+      "candidate_hash": "20e931c10a97ade15b9b26e64ab3b34711def391beba3b241b0d400072432f74",
+      "evidence_profile": "official_pdp_reviewed_formula",
+      "source_coverage": {
+        "source": "official_pdp",
+        "canonical_url": "https://www.catkin.com/products/catkin-moonlight-lip-balm",
+        "fields": {
+          "description": true,
+          "ingredients": 1,
+          "active_ingredients": 0,
+          "how_to": 0,
+          "details": 1,
+          "variants": 1
+        }
+      },
+      "preview": {
+        "headline": "Lip treatment",
+        "what_it_is": "CATKIN Moonlight Lip Balm is a tinted lip balm from Catkin in C05 Dusty Rose, with source-backed cues around shine finish, shade clarity and comfort-oriented lip care.",
+        "why_it_stands_out": [
+          {
+            "headline": "Product cues are source-backed",
+            "body": "Reviewed PDP cues such as squalane, shine finish, shade range give shoppers specific comparison points within Catkin, rather than category-only copy.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Ingredient list is available",
+            "body": "Full INCI is present for formula-sensitive review, which makes this PDP safer to evaluate than a claim-only listing.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Shade and size are explicit",
+            "body": "Variant labels such as C05 Dusty Rose, Shade: C05 Dusty Rose are visible, reducing ambiguity around the product format before a shopper clicks through.",
+            "evidence_strength": "official_pdp_reviewed"
+          }
+        ],
+        "best_for": [
+          {
+            "tag": "color_payoff",
+            "label": "color payoff",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "lip_comfort",
+            "label": "lip comfort",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "shine_finish",
+            "label": "shine finish",
+            "confidence": "moderate"
+          }
+        ],
+        "shopping_highlight": "squalane, shine finish, shade range"
+      },
+      "writes": [
+        {
+          "kb_key": "product:ext_5998f59bd635720652c58089",
+          "action": "update",
+          "reason": "explicit_owner_delegated_assistant_replacement_review",
+          "old_hash": "3a35bb61e41cb28e04982b23af902aa0cf2d60acff4f0db7bcdf38cf63cceba2",
+          "candidate_hash": "fcf4ac22e9f6d08aa286ffd89e57357e43b07521585640718b9a9e904497a34a",
+          "existing_weak": true,
+          "source": "pivota_insights_official_pdp_manual_review_v1",
+          "after_inventory": {
+            "product_id": "ext_5998f59bd635720652c58089",
+            "kb_key": "product:ext_5998f59bd635720652c58089",
+            "source": "pivota_insights_official_pdp_manual_review_v1",
+            "updated_at": "",
+            "last_success_at": "",
+            "title": "CATKIN Moonlight Lip Balm",
+            "canonical_url": "",
+            "bundle_hash": "20e931c10a97ade15b9b26e64ab3b34711def391beba3b241b0d400072432f74",
+            "lane": "keep",
+            "reason": "protected_good_content",
+            "priority": 0,
+            "protected": true,
+            "displayable": true,
+            "high_quality_ready": true,
+            "human_reviewed": true,
+            "issues": [],
+            "blocking_issues": [],
+            "quality_state": "reviewed",
+            "evidence_profile": "official_pdp_reviewed_formula",
+            "evidence_rank": 1,
+            "review_tier": "assistant_reviewed",
+            "agent_readable": true,
+            "public_ready": true
+          },
+          "source_meta": {
+            "evidence_profile": "official_pdp_reviewed_formula",
+            "quality_state": "reviewed",
+            "source_origin": "official_pdp_fields",
+            "source_url": "https://www.catkin.com/products/catkin-moonlight-lip-balm",
+            "quality_improvement": {
+              "previous_bundle_hash": "d02f3003f6478abe11eb4c6c4d30ed2005b76229237860a5208843ab54274477",
+              "candidate_bundle_hash": "20e931c10a97ade15b9b26e64ab3b34711def391beba3b241b0d400072432f74",
+              "replacement_decision": "explicit_owner_delegated_assistant_replacement_review",
+              "existing_quality_lane": "keep",
+              "candidate_quality_lane": "keep",
+              "existing_evidence_profile": "seller_plus_formula",
+              "candidate_evidence_profile": "official_pdp_reviewed_formula"
+            }
+          }
+        },
+        {
+          "kb_key": "product:sig_755d8892530e8178eeec4023baf5c988",
+          "action": "insert",
+          "reason": "new_product_intel_bundle",
+          "old_hash": null,
+          "candidate_hash": "fcf4ac22e9f6d08aa286ffd89e57357e43b07521585640718b9a9e904497a34a",
+          "existing_weak": true,
+          "source": "pivota_insights_official_pdp_manual_review_v1",
+          "after_inventory": {
+            "product_id": "ext_5998f59bd635720652c58089",
+            "kb_key": "product:sig_755d8892530e8178eeec4023baf5c988",
+            "source": "pivota_insights_official_pdp_manual_review_v1",
+            "updated_at": "",
+            "last_success_at": "",
+            "title": "CATKIN Moonlight Lip Balm",
+            "canonical_url": "",
+            "bundle_hash": "20e931c10a97ade15b9b26e64ab3b34711def391beba3b241b0d400072432f74",
+            "lane": "keep",
+            "reason": "protected_good_content",
+            "priority": 0,
+            "protected": true,
+            "displayable": true,
+            "high_quality_ready": true,
+            "human_reviewed": true,
+            "issues": [],
+            "blocking_issues": [],
+            "quality_state": "reviewed",
+            "evidence_profile": "official_pdp_reviewed_formula",
+            "evidence_rank": 1,
+            "review_tier": "assistant_reviewed",
+            "agent_readable": true,
+            "public_ready": true
+          },
+          "source_meta": {
+            "evidence_profile": "official_pdp_reviewed_formula",
+            "quality_state": "reviewed",
+            "source_origin": "official_pdp_fields",
+            "source_url": "https://www.catkin.com/products/catkin-moonlight-lip-balm",
+            "quality_improvement": {
+              "previous_bundle_hash": null,
+              "candidate_bundle_hash": "20e931c10a97ade15b9b26e64ab3b34711def391beba3b241b0d400072432f74",
+              "replacement_decision": "new_product_intel_bundle",
+              "existing_quality_lane": null,
+              "candidate_quality_lane": "keep",
+              "existing_evidence_profile": null,
+              "candidate_evidence_profile": "official_pdp_reviewed_formula"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "external_product_id": "ext_5dd437de8dca28eba6df0f9c",
+      "pivota_signature_id": "sig_efe5788ea49796fcb209015f2371a7ef",
+      "title": "CATKIN Moonlight Lip Balm",
+      "brand": "Catkin",
+      "canonical_url": "https://www.catkin.com/products/catkin-moonlight-lip-balm",
+      "changed": true,
+      "blocked": false,
+      "skip_reason": null,
+      "candidate_hash": "84318b8c21c025ee7b53710bec0d3613ae77e8a6e514740a1ba2f5eeff654add",
+      "evidence_profile": "official_pdp_reviewed_formula",
+      "source_coverage": {
+        "source": "official_pdp",
+        "canonical_url": "https://www.catkin.com/products/catkin-moonlight-lip-balm",
+        "fields": {
+          "description": true,
+          "ingredients": 1,
+          "active_ingredients": 0,
+          "how_to": 0,
+          "details": 1,
+          "variants": 1
+        }
+      },
+      "preview": {
+        "headline": "Lip treatment",
+        "what_it_is": "CATKIN Moonlight Lip Balm is a tinted lip balm from Catkin in C10 Venus, with source-backed cues around shine finish, shade clarity and comfort-oriented lip care.",
+        "why_it_stands_out": [
+          {
+            "headline": "Product cues are source-backed",
+            "body": "Reviewed PDP cues such as squalane, shine finish, shade range give shoppers specific comparison points within Catkin, rather than category-only copy.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Ingredient list is available",
+            "body": "Full INCI is present for formula-sensitive review, which makes this PDP safer to evaluate than a claim-only listing.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Shade and size are explicit",
+            "body": "Variant labels such as C10 Venus, Shade: C10 Venus are visible, reducing ambiguity around the product format before a shopper clicks through.",
+            "evidence_strength": "official_pdp_reviewed"
+          }
+        ],
+        "best_for": [
+          {
+            "tag": "color_payoff",
+            "label": "color payoff",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "lip_comfort",
+            "label": "lip comfort",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "shine_finish",
+            "label": "shine finish",
+            "confidence": "moderate"
+          }
+        ],
+        "shopping_highlight": "squalane, shine finish, shade range"
+      },
+      "writes": [
+        {
+          "kb_key": "product:ext_5dd437de8dca28eba6df0f9c",
+          "action": "update",
+          "reason": "explicit_owner_delegated_assistant_replacement_review",
+          "old_hash": "a12b22d17268561c74e7d15ad99a52ebe6afc05830d22599a11aa0fb431d9568",
+          "candidate_hash": "78ac65411dae2125cc032e159b5146cbd5b26284e877cf613e014426f0a1692a",
+          "existing_weak": true,
+          "source": "pivota_insights_official_pdp_manual_review_v1",
+          "after_inventory": {
+            "product_id": "ext_5dd437de8dca28eba6df0f9c",
+            "kb_key": "product:ext_5dd437de8dca28eba6df0f9c",
+            "source": "pivota_insights_official_pdp_manual_review_v1",
+            "updated_at": "",
+            "last_success_at": "",
+            "title": "CATKIN Moonlight Lip Balm",
+            "canonical_url": "",
+            "bundle_hash": "84318b8c21c025ee7b53710bec0d3613ae77e8a6e514740a1ba2f5eeff654add",
+            "lane": "keep",
+            "reason": "protected_good_content",
+            "priority": 0,
+            "protected": true,
+            "displayable": true,
+            "high_quality_ready": true,
+            "human_reviewed": true,
+            "issues": [],
+            "blocking_issues": [],
+            "quality_state": "reviewed",
+            "evidence_profile": "official_pdp_reviewed_formula",
+            "evidence_rank": 1,
+            "review_tier": "assistant_reviewed",
+            "agent_readable": true,
+            "public_ready": true
+          },
+          "source_meta": {
+            "evidence_profile": "official_pdp_reviewed_formula",
+            "quality_state": "reviewed",
+            "source_origin": "official_pdp_fields",
+            "source_url": "https://www.catkin.com/products/catkin-moonlight-lip-balm",
+            "quality_improvement": {
+              "previous_bundle_hash": "eeac674c77a2f70e9d655ea54b838039e32ee9a086dda9f1116cb307f11cee2a",
+              "candidate_bundle_hash": "84318b8c21c025ee7b53710bec0d3613ae77e8a6e514740a1ba2f5eeff654add",
+              "replacement_decision": "explicit_owner_delegated_assistant_replacement_review",
+              "existing_quality_lane": "keep",
+              "candidate_quality_lane": "keep",
+              "existing_evidence_profile": "seller_plus_formula",
+              "candidate_evidence_profile": "official_pdp_reviewed_formula"
+            }
+          }
+        },
+        {
+          "kb_key": "product:sig_efe5788ea49796fcb209015f2371a7ef",
+          "action": "insert",
+          "reason": "new_product_intel_bundle",
+          "old_hash": null,
+          "candidate_hash": "78ac65411dae2125cc032e159b5146cbd5b26284e877cf613e014426f0a1692a",
+          "existing_weak": true,
+          "source": "pivota_insights_official_pdp_manual_review_v1",
+          "after_inventory": {
+            "product_id": "ext_5dd437de8dca28eba6df0f9c",
+            "kb_key": "product:sig_efe5788ea49796fcb209015f2371a7ef",
+            "source": "pivota_insights_official_pdp_manual_review_v1",
+            "updated_at": "",
+            "last_success_at": "",
+            "title": "CATKIN Moonlight Lip Balm",
+            "canonical_url": "",
+            "bundle_hash": "84318b8c21c025ee7b53710bec0d3613ae77e8a6e514740a1ba2f5eeff654add",
+            "lane": "keep",
+            "reason": "protected_good_content",
+            "priority": 0,
+            "protected": true,
+            "displayable": true,
+            "high_quality_ready": true,
+            "human_reviewed": true,
+            "issues": [],
+            "blocking_issues": [],
+            "quality_state": "reviewed",
+            "evidence_profile": "official_pdp_reviewed_formula",
+            "evidence_rank": 1,
+            "review_tier": "assistant_reviewed",
+            "agent_readable": true,
+            "public_ready": true
+          },
+          "source_meta": {
+            "evidence_profile": "official_pdp_reviewed_formula",
+            "quality_state": "reviewed",
+            "source_origin": "official_pdp_fields",
+            "source_url": "https://www.catkin.com/products/catkin-moonlight-lip-balm",
+            "quality_improvement": {
+              "previous_bundle_hash": null,
+              "candidate_bundle_hash": "84318b8c21c025ee7b53710bec0d3613ae77e8a6e514740a1ba2f5eeff654add",
+              "replacement_decision": "new_product_intel_bundle",
+              "existing_quality_lane": null,
+              "candidate_quality_lane": "keep",
+              "existing_evidence_profile": null,
+              "candidate_evidence_profile": "official_pdp_reviewed_formula"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "external_product_id": "ext_67b3dcb2e7e86829225da82f",
+      "pivota_signature_id": "sig_09075b09637ee25d5b827b4e39b5275d",
+      "title": "CATKIN Moonlight Lip Balm",
+      "brand": "Catkin",
+      "canonical_url": "https://www.catkin.com/products/catkin-moonlight-lip-balm",
+      "changed": true,
+      "blocked": false,
+      "skip_reason": null,
+      "candidate_hash": "a30a0e7411c7f270d428f95740fa71c16ced2e579ff2801780606fb8f5121942",
+      "evidence_profile": "official_pdp_reviewed_formula",
+      "source_coverage": {
+        "source": "official_pdp",
+        "canonical_url": "https://www.catkin.com/products/catkin-moonlight-lip-balm",
+        "fields": {
+          "description": true,
+          "ingredients": 1,
+          "active_ingredients": 0,
+          "how_to": 0,
+          "details": 1,
+          "variants": 1
+        }
+      },
+      "preview": {
+        "headline": "Lip treatment",
+        "what_it_is": "CATKIN Moonlight Lip Balm is a tinted lip balm from Catkin in C03 Diamond Ocean, with source-backed cues around shine finish, shade clarity and comfort-oriented lip care.",
+        "why_it_stands_out": [
+          {
+            "headline": "Product cues are source-backed",
+            "body": "Reviewed PDP cues such as squalane, shine finish, shade range give shoppers specific comparison points within Catkin, rather than category-only copy.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Ingredient list is available",
+            "body": "Full INCI is present for formula-sensitive review, which makes this PDP safer to evaluate than a claim-only listing.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Shade and size are explicit",
+            "body": "Variant labels such as C03 Diamond Ocean, Shade: C03 Diamond Ocean are visible, reducing ambiguity around the product format before a shopper clicks through.",
+            "evidence_strength": "official_pdp_reviewed"
+          }
+        ],
+        "best_for": [
+          {
+            "tag": "color_payoff",
+            "label": "color payoff",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "lip_comfort",
+            "label": "lip comfort",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "shine_finish",
+            "label": "shine finish",
+            "confidence": "moderate"
+          }
+        ],
+        "shopping_highlight": "squalane, shine finish, shade range"
+      },
+      "writes": [
+        {
+          "kb_key": "product:ext_67b3dcb2e7e86829225da82f",
+          "action": "update",
+          "reason": "explicit_owner_delegated_assistant_replacement_review",
+          "old_hash": "c2e6ad2b1cd3172aa462668ee54b684a7196bfa8a1c63a7552bb1bc6a6d8f01f",
+          "candidate_hash": "9cb3e540122f9c69366ffc3dee81a80af648eb515a0fc0c07508d49170e9ecb3",
+          "existing_weak": true,
+          "source": "pivota_insights_official_pdp_manual_review_v1",
+          "after_inventory": {
+            "product_id": "ext_67b3dcb2e7e86829225da82f",
+            "kb_key": "product:ext_67b3dcb2e7e86829225da82f",
+            "source": "pivota_insights_official_pdp_manual_review_v1",
+            "updated_at": "",
+            "last_success_at": "",
+            "title": "CATKIN Moonlight Lip Balm",
+            "canonical_url": "",
+            "bundle_hash": "a30a0e7411c7f270d428f95740fa71c16ced2e579ff2801780606fb8f5121942",
+            "lane": "keep",
+            "reason": "protected_good_content",
+            "priority": 0,
+            "protected": true,
+            "displayable": true,
+            "high_quality_ready": true,
+            "human_reviewed": true,
+            "issues": [],
+            "blocking_issues": [],
+            "quality_state": "reviewed",
+            "evidence_profile": "official_pdp_reviewed_formula",
+            "evidence_rank": 1,
+            "review_tier": "assistant_reviewed",
+            "agent_readable": true,
+            "public_ready": true
+          },
+          "source_meta": {
+            "evidence_profile": "official_pdp_reviewed_formula",
+            "quality_state": "reviewed",
+            "source_origin": "official_pdp_fields",
+            "source_url": "https://www.catkin.com/products/catkin-moonlight-lip-balm",
+            "quality_improvement": {
+              "previous_bundle_hash": "cb4993de36cfcfad4d60b8816c04bafef5c0260968012bc0a951fcdefc23d2a0",
+              "candidate_bundle_hash": "a30a0e7411c7f270d428f95740fa71c16ced2e579ff2801780606fb8f5121942",
+              "replacement_decision": "explicit_owner_delegated_assistant_replacement_review",
+              "existing_quality_lane": "keep",
+              "candidate_quality_lane": "keep",
+              "existing_evidence_profile": "seller_plus_formula",
+              "candidate_evidence_profile": "official_pdp_reviewed_formula"
+            }
+          }
+        },
+        {
+          "kb_key": "product:sig_09075b09637ee25d5b827b4e39b5275d",
+          "action": "insert",
+          "reason": "new_product_intel_bundle",
+          "old_hash": null,
+          "candidate_hash": "9cb3e540122f9c69366ffc3dee81a80af648eb515a0fc0c07508d49170e9ecb3",
+          "existing_weak": true,
+          "source": "pivota_insights_official_pdp_manual_review_v1",
+          "after_inventory": {
+            "product_id": "ext_67b3dcb2e7e86829225da82f",
+            "kb_key": "product:sig_09075b09637ee25d5b827b4e39b5275d",
+            "source": "pivota_insights_official_pdp_manual_review_v1",
+            "updated_at": "",
+            "last_success_at": "",
+            "title": "CATKIN Moonlight Lip Balm",
+            "canonical_url": "",
+            "bundle_hash": "a30a0e7411c7f270d428f95740fa71c16ced2e579ff2801780606fb8f5121942",
+            "lane": "keep",
+            "reason": "protected_good_content",
+            "priority": 0,
+            "protected": true,
+            "displayable": true,
+            "high_quality_ready": true,
+            "human_reviewed": true,
+            "issues": [],
+            "blocking_issues": [],
+            "quality_state": "reviewed",
+            "evidence_profile": "official_pdp_reviewed_formula",
+            "evidence_rank": 1,
+            "review_tier": "assistant_reviewed",
+            "agent_readable": true,
+            "public_ready": true
+          },
+          "source_meta": {
+            "evidence_profile": "official_pdp_reviewed_formula",
+            "quality_state": "reviewed",
+            "source_origin": "official_pdp_fields",
+            "source_url": "https://www.catkin.com/products/catkin-moonlight-lip-balm",
+            "quality_improvement": {
+              "previous_bundle_hash": null,
+              "candidate_bundle_hash": "a30a0e7411c7f270d428f95740fa71c16ced2e579ff2801780606fb8f5121942",
+              "replacement_decision": "new_product_intel_bundle",
+              "existing_quality_lane": null,
+              "candidate_quality_lane": "keep",
+              "existing_evidence_profile": null,
+              "candidate_evidence_profile": "official_pdp_reviewed_formula"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "external_product_id": "ext_707e19d25ed706b441ea43d2",
+      "pivota_signature_id": "sig_b3f2d18bb9e5fb09653a5a1cb87d16ce",
+      "title": "CATKIN Moonlight Lip Balm",
+      "brand": "Catkin",
+      "canonical_url": "https://www.catkin.com/products/catkin-moonlight-lip-balm",
+      "changed": true,
+      "blocked": false,
+      "skip_reason": null,
+      "candidate_hash": "4d8e7c3a1430a3c8b584305249ed72ccab53b6875eee005134abefe71daf45f7",
+      "evidence_profile": "official_pdp_reviewed_formula",
+      "source_coverage": {
+        "source": "official_pdp",
+        "canonical_url": "https://www.catkin.com/products/catkin-moonlight-lip-balm",
+        "fields": {
+          "description": true,
+          "ingredients": 1,
+          "active_ingredients": 0,
+          "how_to": 0,
+          "details": 1,
+          "variants": 1
+        }
+      },
+      "preview": {
+        "headline": "Lip treatment",
+        "what_it_is": "CATKIN Moonlight Lip Balm is a tinted lip balm from Catkin in C07 Amethyst, with source-backed cues around shine finish, shade clarity and comfort-oriented lip care.",
+        "why_it_stands_out": [
+          {
+            "headline": "Product cues are source-backed",
+            "body": "Reviewed PDP cues such as squalane, shine finish, shade range give shoppers specific comparison points within Catkin, rather than category-only copy.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Ingredient list is available",
+            "body": "Full INCI is present for formula-sensitive review, which makes this PDP safer to evaluate than a claim-only listing.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Shade and size are explicit",
+            "body": "Variant labels such as C07 Amethyst, Shade: C07 Amethyst are visible, reducing ambiguity around the product format before a shopper clicks through.",
+            "evidence_strength": "official_pdp_reviewed"
+          }
+        ],
+        "best_for": [
+          {
+            "tag": "color_payoff",
+            "label": "color payoff",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "lip_comfort",
+            "label": "lip comfort",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "shine_finish",
+            "label": "shine finish",
+            "confidence": "moderate"
+          }
+        ],
+        "shopping_highlight": "squalane, shine finish, shade range"
+      },
+      "writes": [
+        {
+          "kb_key": "product:ext_707e19d25ed706b441ea43d2",
+          "action": "update",
+          "reason": "explicit_owner_delegated_assistant_replacement_review",
+          "old_hash": "30aaa668deafb8f7d17374aace7a53c73927cb0b662a3ce8913826b70888bd96",
+          "candidate_hash": "252ae1ed361495afb8ccd081f6af3a94a05c6c82812aaa6ffc9aa2658e91f1ce",
+          "existing_weak": true,
+          "source": "pivota_insights_official_pdp_manual_review_v1",
+          "after_inventory": {
+            "product_id": "ext_707e19d25ed706b441ea43d2",
+            "kb_key": "product:ext_707e19d25ed706b441ea43d2",
+            "source": "pivota_insights_official_pdp_manual_review_v1",
+            "updated_at": "",
+            "last_success_at": "",
+            "title": "CATKIN Moonlight Lip Balm",
+            "canonical_url": "",
+            "bundle_hash": "4d8e7c3a1430a3c8b584305249ed72ccab53b6875eee005134abefe71daf45f7",
+            "lane": "keep",
+            "reason": "protected_good_content",
+            "priority": 0,
+            "protected": true,
+            "displayable": true,
+            "high_quality_ready": true,
+            "human_reviewed": true,
+            "issues": [],
+            "blocking_issues": [],
+            "quality_state": "reviewed",
+            "evidence_profile": "official_pdp_reviewed_formula",
+            "evidence_rank": 1,
+            "review_tier": "assistant_reviewed",
+            "agent_readable": true,
+            "public_ready": true
+          },
+          "source_meta": {
+            "evidence_profile": "official_pdp_reviewed_formula",
+            "quality_state": "reviewed",
+            "source_origin": "official_pdp_fields",
+            "source_url": "https://www.catkin.com/products/catkin-moonlight-lip-balm",
+            "quality_improvement": {
+              "previous_bundle_hash": "71a9cf108af0f7410702fa37990f372a493036187ac83e3bfeb76c3640d7887c",
+              "candidate_bundle_hash": "4d8e7c3a1430a3c8b584305249ed72ccab53b6875eee005134abefe71daf45f7",
+              "replacement_decision": "explicit_owner_delegated_assistant_replacement_review",
+              "existing_quality_lane": "keep",
+              "candidate_quality_lane": "keep",
+              "existing_evidence_profile": "seller_plus_formula",
+              "candidate_evidence_profile": "official_pdp_reviewed_formula"
+            }
+          }
+        },
+        {
+          "kb_key": "product:sig_b3f2d18bb9e5fb09653a5a1cb87d16ce",
+          "action": "insert",
+          "reason": "new_product_intel_bundle",
+          "old_hash": null,
+          "candidate_hash": "252ae1ed361495afb8ccd081f6af3a94a05c6c82812aaa6ffc9aa2658e91f1ce",
+          "existing_weak": true,
+          "source": "pivota_insights_official_pdp_manual_review_v1",
+          "after_inventory": {
+            "product_id": "ext_707e19d25ed706b441ea43d2",
+            "kb_key": "product:sig_b3f2d18bb9e5fb09653a5a1cb87d16ce",
+            "source": "pivota_insights_official_pdp_manual_review_v1",
+            "updated_at": "",
+            "last_success_at": "",
+            "title": "CATKIN Moonlight Lip Balm",
+            "canonical_url": "",
+            "bundle_hash": "4d8e7c3a1430a3c8b584305249ed72ccab53b6875eee005134abefe71daf45f7",
+            "lane": "keep",
+            "reason": "protected_good_content",
+            "priority": 0,
+            "protected": true,
+            "displayable": true,
+            "high_quality_ready": true,
+            "human_reviewed": true,
+            "issues": [],
+            "blocking_issues": [],
+            "quality_state": "reviewed",
+            "evidence_profile": "official_pdp_reviewed_formula",
+            "evidence_rank": 1,
+            "review_tier": "assistant_reviewed",
+            "agent_readable": true,
+            "public_ready": true
+          },
+          "source_meta": {
+            "evidence_profile": "official_pdp_reviewed_formula",
+            "quality_state": "reviewed",
+            "source_origin": "official_pdp_fields",
+            "source_url": "https://www.catkin.com/products/catkin-moonlight-lip-balm",
+            "quality_improvement": {
+              "previous_bundle_hash": null,
+              "candidate_bundle_hash": "4d8e7c3a1430a3c8b584305249ed72ccab53b6875eee005134abefe71daf45f7",
+              "replacement_decision": "new_product_intel_bundle",
+              "existing_quality_lane": null,
+              "candidate_quality_lane": "keep",
+              "existing_evidence_profile": null,
+              "candidate_evidence_profile": "official_pdp_reviewed_formula"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "external_product_id": "ext_70953ec893366e869f2e7ca8",
+      "pivota_signature_id": "sig_ecc7e3452a459fea5659f39221fbf6c8",
+      "title": "CATKIN Moonlight Lip Balm",
+      "brand": "Catkin",
+      "canonical_url": "https://www.catkin.com/products/catkin-moonlight-lip-balm",
+      "changed": true,
+      "blocked": false,
+      "skip_reason": null,
+      "candidate_hash": "f20df7fa2c7084a21f757a8ba4922e7b6cd6bcaa97b3a8744b413c475e8ec82a",
+      "evidence_profile": "official_pdp_reviewed_formula",
+      "source_coverage": {
+        "source": "official_pdp",
+        "canonical_url": "https://www.catkin.com/products/catkin-moonlight-lip-balm",
+        "fields": {
+          "description": true,
+          "ingredients": 1,
+          "active_ingredients": 0,
+          "how_to": 0,
+          "details": 1,
+          "variants": 1
+        }
+      },
+      "preview": {
+        "headline": "Lip treatment",
+        "what_it_is": "CATKIN Moonlight Lip Balm is a tinted lip balm from Catkin in C14 Unicorn, with source-backed cues around shine finish, shade clarity and comfort-oriented lip care.",
+        "why_it_stands_out": [
+          {
+            "headline": "Product cues are source-backed",
+            "body": "Reviewed PDP cues such as squalane, shine finish, shade range give shoppers specific comparison points within Catkin, rather than category-only copy.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Ingredient list is available",
+            "body": "Full INCI is present for formula-sensitive review, which makes this PDP safer to evaluate than a claim-only listing.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Shade and size are explicit",
+            "body": "Variant labels such as C14 Unicorn, Shade: C14 Unicorn are visible, reducing ambiguity around the product format before a shopper clicks through.",
+            "evidence_strength": "official_pdp_reviewed"
+          }
+        ],
+        "best_for": [
+          {
+            "tag": "color_payoff",
+            "label": "color payoff",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "lip_comfort",
+            "label": "lip comfort",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "shine_finish",
+            "label": "shine finish",
+            "confidence": "moderate"
+          }
+        ],
+        "shopping_highlight": "squalane, shine finish, shade range"
+      },
+      "writes": [
+        {
+          "kb_key": "product:ext_70953ec893366e869f2e7ca8",
+          "action": "update",
+          "reason": "explicit_owner_delegated_assistant_replacement_review",
+          "old_hash": "f8493693df679148c4878d5af58da5ce213a2fa04c2c3d8a51efd39d686f1eb1",
+          "candidate_hash": "f1801bd03ee1fdcbc4ba1feb3f7a9a06a3b4028e9827368f992801fd6c9711c2",
+          "existing_weak": true,
+          "source": "pivota_insights_official_pdp_manual_review_v1",
+          "after_inventory": {
+            "product_id": "ext_70953ec893366e869f2e7ca8",
+            "kb_key": "product:ext_70953ec893366e869f2e7ca8",
+            "source": "pivota_insights_official_pdp_manual_review_v1",
+            "updated_at": "",
+            "last_success_at": "",
+            "title": "CATKIN Moonlight Lip Balm",
+            "canonical_url": "",
+            "bundle_hash": "f20df7fa2c7084a21f757a8ba4922e7b6cd6bcaa97b3a8744b413c475e8ec82a",
+            "lane": "keep",
+            "reason": "protected_good_content",
+            "priority": 0,
+            "protected": true,
+            "displayable": true,
+            "high_quality_ready": true,
+            "human_reviewed": true,
+            "issues": [],
+            "blocking_issues": [],
+            "quality_state": "reviewed",
+            "evidence_profile": "official_pdp_reviewed_formula",
+            "evidence_rank": 1,
+            "review_tier": "assistant_reviewed",
+            "agent_readable": true,
+            "public_ready": true
+          },
+          "source_meta": {
+            "evidence_profile": "official_pdp_reviewed_formula",
+            "quality_state": "reviewed",
+            "source_origin": "official_pdp_fields",
+            "source_url": "https://www.catkin.com/products/catkin-moonlight-lip-balm",
+            "quality_improvement": {
+              "previous_bundle_hash": "155f0dedf3e91602267e97debf2fb01e22c1167db88a76ebe0900c1e4badf527",
+              "candidate_bundle_hash": "f20df7fa2c7084a21f757a8ba4922e7b6cd6bcaa97b3a8744b413c475e8ec82a",
+              "replacement_decision": "explicit_owner_delegated_assistant_replacement_review",
+              "existing_quality_lane": "keep",
+              "candidate_quality_lane": "keep",
+              "existing_evidence_profile": "seller_plus_formula",
+              "candidate_evidence_profile": "official_pdp_reviewed_formula"
+            }
+          }
+        },
+        {
+          "kb_key": "product:sig_ecc7e3452a459fea5659f39221fbf6c8",
+          "action": "insert",
+          "reason": "new_product_intel_bundle",
+          "old_hash": null,
+          "candidate_hash": "f1801bd03ee1fdcbc4ba1feb3f7a9a06a3b4028e9827368f992801fd6c9711c2",
+          "existing_weak": true,
+          "source": "pivota_insights_official_pdp_manual_review_v1",
+          "after_inventory": {
+            "product_id": "ext_70953ec893366e869f2e7ca8",
+            "kb_key": "product:sig_ecc7e3452a459fea5659f39221fbf6c8",
+            "source": "pivota_insights_official_pdp_manual_review_v1",
+            "updated_at": "",
+            "last_success_at": "",
+            "title": "CATKIN Moonlight Lip Balm",
+            "canonical_url": "",
+            "bundle_hash": "f20df7fa2c7084a21f757a8ba4922e7b6cd6bcaa97b3a8744b413c475e8ec82a",
+            "lane": "keep",
+            "reason": "protected_good_content",
+            "priority": 0,
+            "protected": true,
+            "displayable": true,
+            "high_quality_ready": true,
+            "human_reviewed": true,
+            "issues": [],
+            "blocking_issues": [],
+            "quality_state": "reviewed",
+            "evidence_profile": "official_pdp_reviewed_formula",
+            "evidence_rank": 1,
+            "review_tier": "assistant_reviewed",
+            "agent_readable": true,
+            "public_ready": true
+          },
+          "source_meta": {
+            "evidence_profile": "official_pdp_reviewed_formula",
+            "quality_state": "reviewed",
+            "source_origin": "official_pdp_fields",
+            "source_url": "https://www.catkin.com/products/catkin-moonlight-lip-balm",
+            "quality_improvement": {
+              "previous_bundle_hash": null,
+              "candidate_bundle_hash": "f20df7fa2c7084a21f757a8ba4922e7b6cd6bcaa97b3a8744b413c475e8ec82a",
+              "replacement_decision": "new_product_intel_bundle",
+              "existing_quality_lane": null,
+              "candidate_quality_lane": "keep",
+              "existing_evidence_profile": null,
+              "candidate_evidence_profile": "official_pdp_reviewed_formula"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "external_product_id": "ext_827f055c533e5da19c5e5faf",
+      "pivota_signature_id": "sig_bc02dbc0aae0862a7771db38f4b3008b",
+      "title": "CATKIN Moonlight Lip Balm",
+      "brand": "Catkin",
+      "canonical_url": "https://www.catkin.com/products/catkin-moonlight-lip-balm",
+      "changed": true,
+      "blocked": false,
+      "skip_reason": null,
+      "candidate_hash": "1915ec523cdef031b27476f0916b1e467f3769dc836378a59cec8a06a905e6bf",
+      "evidence_profile": "official_pdp_reviewed_formula",
+      "source_coverage": {
+        "source": "official_pdp",
+        "canonical_url": "https://www.catkin.com/products/catkin-moonlight-lip-balm",
+        "fields": {
+          "description": true,
+          "ingredients": 1,
+          "active_ingredients": 0,
+          "how_to": 0,
+          "details": 1,
+          "variants": 1
+        }
+      },
+      "preview": {
+        "headline": "Lip treatment",
+        "what_it_is": "CATKIN Moonlight Lip Balm is a tinted lip balm from Catkin in C22 Sunstone, with source-backed cues around shine finish, shade clarity and comfort-oriented lip care.",
+        "why_it_stands_out": [
+          {
+            "headline": "Product cues are source-backed",
+            "body": "Reviewed PDP cues such as squalane, shine finish, shade range give shoppers specific comparison points within Catkin, rather than category-only copy.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Ingredient list is available",
+            "body": "Full INCI is present for formula-sensitive review, which makes this PDP safer to evaluate than a claim-only listing.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Shade and size are explicit",
+            "body": "Variant labels such as C22 Sunstone, Shade: C22 Sunstone are visible, reducing ambiguity around the product format before a shopper clicks through.",
+            "evidence_strength": "official_pdp_reviewed"
+          }
+        ],
+        "best_for": [
+          {
+            "tag": "color_payoff",
+            "label": "color payoff",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "lip_comfort",
+            "label": "lip comfort",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "shine_finish",
+            "label": "shine finish",
+            "confidence": "moderate"
+          }
+        ],
+        "shopping_highlight": "squalane, shine finish, shade range"
+      },
+      "writes": [
+        {
+          "kb_key": "product:ext_827f055c533e5da19c5e5faf",
+          "action": "update",
+          "reason": "explicit_owner_delegated_assistant_replacement_review",
+          "old_hash": "fac1008dcb5263e5cbb21341839ebc60acef206567ca808decf03e7b0e47b121",
+          "candidate_hash": "3a8e8e9b85f0f1075e8fb564855cde0e686f0412a9fc9e2fe39f5b3dbc4bff1f",
+          "existing_weak": true,
+          "source": "pivota_insights_official_pdp_manual_review_v1",
+          "after_inventory": {
+            "product_id": "ext_827f055c533e5da19c5e5faf",
+            "kb_key": "product:ext_827f055c533e5da19c5e5faf",
+            "source": "pivota_insights_official_pdp_manual_review_v1",
+            "updated_at": "",
+            "last_success_at": "",
+            "title": "CATKIN Moonlight Lip Balm",
+            "canonical_url": "",
+            "bundle_hash": "1915ec523cdef031b27476f0916b1e467f3769dc836378a59cec8a06a905e6bf",
+            "lane": "keep",
+            "reason": "protected_good_content",
+            "priority": 0,
+            "protected": true,
+            "displayable": true,
+            "high_quality_ready": true,
+            "human_reviewed": true,
+            "issues": [],
+            "blocking_issues": [],
+            "quality_state": "reviewed",
+            "evidence_profile": "official_pdp_reviewed_formula",
+            "evidence_rank": 1,
+            "review_tier": "assistant_reviewed",
+            "agent_readable": true,
+            "public_ready": true
+          },
+          "source_meta": {
+            "evidence_profile": "official_pdp_reviewed_formula",
+            "quality_state": "reviewed",
+            "source_origin": "official_pdp_fields",
+            "source_url": "https://www.catkin.com/products/catkin-moonlight-lip-balm",
+            "quality_improvement": {
+              "previous_bundle_hash": "f4924417f70eecbca97266480ad6e41e071dbff90c6013af9dcf131c2e75f1e4",
+              "candidate_bundle_hash": "1915ec523cdef031b27476f0916b1e467f3769dc836378a59cec8a06a905e6bf",
+              "replacement_decision": "explicit_owner_delegated_assistant_replacement_review",
+              "existing_quality_lane": "keep",
+              "candidate_quality_lane": "keep",
+              "existing_evidence_profile": "seller_plus_formula",
+              "candidate_evidence_profile": "official_pdp_reviewed_formula"
+            }
+          }
+        },
+        {
+          "kb_key": "product:sig_bc02dbc0aae0862a7771db38f4b3008b",
+          "action": "insert",
+          "reason": "new_product_intel_bundle",
+          "old_hash": null,
+          "candidate_hash": "3a8e8e9b85f0f1075e8fb564855cde0e686f0412a9fc9e2fe39f5b3dbc4bff1f",
+          "existing_weak": true,
+          "source": "pivota_insights_official_pdp_manual_review_v1",
+          "after_inventory": {
+            "product_id": "ext_827f055c533e5da19c5e5faf",
+            "kb_key": "product:sig_bc02dbc0aae0862a7771db38f4b3008b",
+            "source": "pivota_insights_official_pdp_manual_review_v1",
+            "updated_at": "",
+            "last_success_at": "",
+            "title": "CATKIN Moonlight Lip Balm",
+            "canonical_url": "",
+            "bundle_hash": "1915ec523cdef031b27476f0916b1e467f3769dc836378a59cec8a06a905e6bf",
+            "lane": "keep",
+            "reason": "protected_good_content",
+            "priority": 0,
+            "protected": true,
+            "displayable": true,
+            "high_quality_ready": true,
+            "human_reviewed": true,
+            "issues": [],
+            "blocking_issues": [],
+            "quality_state": "reviewed",
+            "evidence_profile": "official_pdp_reviewed_formula",
+            "evidence_rank": 1,
+            "review_tier": "assistant_reviewed",
+            "agent_readable": true,
+            "public_ready": true
+          },
+          "source_meta": {
+            "evidence_profile": "official_pdp_reviewed_formula",
+            "quality_state": "reviewed",
+            "source_origin": "official_pdp_fields",
+            "source_url": "https://www.catkin.com/products/catkin-moonlight-lip-balm",
+            "quality_improvement": {
+              "previous_bundle_hash": null,
+              "candidate_bundle_hash": "1915ec523cdef031b27476f0916b1e467f3769dc836378a59cec8a06a905e6bf",
+              "replacement_decision": "new_product_intel_bundle",
+              "existing_quality_lane": null,
+              "candidate_quality_lane": "keep",
+              "existing_evidence_profile": null,
+              "candidate_evidence_profile": "official_pdp_reviewed_formula"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "external_product_id": "ext_88a32f0127a743d38658259b",
+      "pivota_signature_id": "sig_4fabbadd6789dafebfc0f49fd4bd4c2c",
+      "title": "CATKIN Moonlight Lip Balm",
+      "brand": "Catkin",
+      "canonical_url": "https://www.catkin.com/products/catkin-moonlight-lip-balm",
+      "changed": true,
+      "blocked": false,
+      "skip_reason": null,
+      "candidate_hash": "ffbdf34d972acd5d46a99b3d324d9f38fed4b18a1aa8ef6e6091ccf031b70cea",
+      "evidence_profile": "official_pdp_reviewed_formula",
+      "source_coverage": {
+        "source": "official_pdp",
+        "canonical_url": "https://www.catkin.com/products/catkin-moonlight-lip-balm",
+        "fields": {
+          "description": true,
+          "ingredients": 1,
+          "active_ingredients": 0,
+          "how_to": 0,
+          "details": 1,
+          "variants": 1
+        }
+      },
+      "preview": {
+        "headline": "Lip treatment",
+        "what_it_is": "CATKIN Moonlight Lip Balm is a tinted lip balm from Catkin in C13 Sea Of Stars, with source-backed cues around shine finish, shade clarity and comfort-oriented lip care.",
+        "why_it_stands_out": [
+          {
+            "headline": "Product cues are source-backed",
+            "body": "Reviewed PDP cues such as squalane, shine finish, shade range give shoppers specific comparison points within Catkin, rather than category-only copy.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Ingredient list is available",
+            "body": "Full INCI is present for formula-sensitive review, which makes this PDP safer to evaluate than a claim-only listing.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Shade and size are explicit",
+            "body": "Variant labels such as C13 Sea Of Stars, Shade: C13 Sea Of Stars are visible, reducing ambiguity around the product format before a shopper clicks through.",
+            "evidence_strength": "official_pdp_reviewed"
+          }
+        ],
+        "best_for": [
+          {
+            "tag": "color_payoff",
+            "label": "color payoff",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "lip_comfort",
+            "label": "lip comfort",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "shine_finish",
+            "label": "shine finish",
+            "confidence": "moderate"
+          }
+        ],
+        "shopping_highlight": "squalane, shine finish, shade range"
+      },
+      "writes": [
+        {
+          "kb_key": "product:ext_88a32f0127a743d38658259b",
+          "action": "update",
+          "reason": "explicit_owner_delegated_assistant_replacement_review",
+          "old_hash": "ffeb331d4b3c6f7ff57037ebc3db3cecc8f3a309bf4ab370330ac5118264f86e",
+          "candidate_hash": "2d511a3bcf0517840b27999f94da3721f213f93890d0d8c3d0d440cc2da8864f",
+          "existing_weak": true,
+          "source": "pivota_insights_official_pdp_manual_review_v1",
+          "after_inventory": {
+            "product_id": "ext_88a32f0127a743d38658259b",
+            "kb_key": "product:ext_88a32f0127a743d38658259b",
+            "source": "pivota_insights_official_pdp_manual_review_v1",
+            "updated_at": "",
+            "last_success_at": "",
+            "title": "CATKIN Moonlight Lip Balm",
+            "canonical_url": "",
+            "bundle_hash": "ffbdf34d972acd5d46a99b3d324d9f38fed4b18a1aa8ef6e6091ccf031b70cea",
+            "lane": "keep",
+            "reason": "protected_good_content",
+            "priority": 0,
+            "protected": true,
+            "displayable": true,
+            "high_quality_ready": true,
+            "human_reviewed": true,
+            "issues": [],
+            "blocking_issues": [],
+            "quality_state": "reviewed",
+            "evidence_profile": "official_pdp_reviewed_formula",
+            "evidence_rank": 1,
+            "review_tier": "assistant_reviewed",
+            "agent_readable": true,
+            "public_ready": true
+          },
+          "source_meta": {
+            "evidence_profile": "official_pdp_reviewed_formula",
+            "quality_state": "reviewed",
+            "source_origin": "official_pdp_fields",
+            "source_url": "https://www.catkin.com/products/catkin-moonlight-lip-balm",
+            "quality_improvement": {
+              "previous_bundle_hash": "381dd4230495d1128233eed2723a06ce7db53f61546ddf4a0d5a840217962c83",
+              "candidate_bundle_hash": "ffbdf34d972acd5d46a99b3d324d9f38fed4b18a1aa8ef6e6091ccf031b70cea",
+              "replacement_decision": "explicit_owner_delegated_assistant_replacement_review",
+              "existing_quality_lane": "keep",
+              "candidate_quality_lane": "keep",
+              "existing_evidence_profile": "seller_plus_formula",
+              "candidate_evidence_profile": "official_pdp_reviewed_formula"
+            }
+          }
+        },
+        {
+          "kb_key": "product:sig_4fabbadd6789dafebfc0f49fd4bd4c2c",
+          "action": "insert",
+          "reason": "new_product_intel_bundle",
+          "old_hash": null,
+          "candidate_hash": "2d511a3bcf0517840b27999f94da3721f213f93890d0d8c3d0d440cc2da8864f",
+          "existing_weak": true,
+          "source": "pivota_insights_official_pdp_manual_review_v1",
+          "after_inventory": {
+            "product_id": "ext_88a32f0127a743d38658259b",
+            "kb_key": "product:sig_4fabbadd6789dafebfc0f49fd4bd4c2c",
+            "source": "pivota_insights_official_pdp_manual_review_v1",
+            "updated_at": "",
+            "last_success_at": "",
+            "title": "CATKIN Moonlight Lip Balm",
+            "canonical_url": "",
+            "bundle_hash": "ffbdf34d972acd5d46a99b3d324d9f38fed4b18a1aa8ef6e6091ccf031b70cea",
+            "lane": "keep",
+            "reason": "protected_good_content",
+            "priority": 0,
+            "protected": true,
+            "displayable": true,
+            "high_quality_ready": true,
+            "human_reviewed": true,
+            "issues": [],
+            "blocking_issues": [],
+            "quality_state": "reviewed",
+            "evidence_profile": "official_pdp_reviewed_formula",
+            "evidence_rank": 1,
+            "review_tier": "assistant_reviewed",
+            "agent_readable": true,
+            "public_ready": true
+          },
+          "source_meta": {
+            "evidence_profile": "official_pdp_reviewed_formula",
+            "quality_state": "reviewed",
+            "source_origin": "official_pdp_fields",
+            "source_url": "https://www.catkin.com/products/catkin-moonlight-lip-balm",
+            "quality_improvement": {
+              "previous_bundle_hash": null,
+              "candidate_bundle_hash": "ffbdf34d972acd5d46a99b3d324d9f38fed4b18a1aa8ef6e6091ccf031b70cea",
+              "replacement_decision": "new_product_intel_bundle",
+              "existing_quality_lane": null,
+              "candidate_quality_lane": "keep",
+              "existing_evidence_profile": null,
+              "candidate_evidence_profile": "official_pdp_reviewed_formula"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "external_product_id": "ext_abf9745f2420373fe0deb7c0",
+      "pivota_signature_id": "sig_d1f645a1daf40cfaf44b47cc21e9a464",
+      "title": "CATKIN Moonlight Lip Balm",
+      "brand": "Catkin",
+      "canonical_url": "https://www.catkin.com/products/catkin-moonlight-lip-balm",
+      "changed": true,
+      "blocked": false,
+      "skip_reason": null,
+      "candidate_hash": "3e6c2d6c39f0f1af5f289bd70ae45201a659c4e5ae3cbe91b14d2de2117bfb99",
+      "evidence_profile": "official_pdp_reviewed_formula",
+      "source_coverage": {
+        "source": "official_pdp",
+        "canonical_url": "https://www.catkin.com/products/catkin-moonlight-lip-balm",
+        "fields": {
+          "description": true,
+          "ingredients": 1,
+          "active_ingredients": 0,
+          "how_to": 0,
+          "details": 1,
+          "variants": 1
+        }
+      },
+      "preview": {
+        "headline": "Lip treatment",
+        "what_it_is": "CATKIN Moonlight Lip Balm is a tinted lip balm from Catkin in C19 Orchid Aurora, with source-backed cues around shine finish, shade clarity and comfort-oriented lip care.",
+        "why_it_stands_out": [
+          {
+            "headline": "Product cues are source-backed",
+            "body": "Reviewed PDP cues such as orchid, squalane, shine finish, shade range give shoppers specific comparison points within Catkin, rather than category-only copy.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Ingredient list is available",
+            "body": "Full INCI is present for formula-sensitive review, which makes this PDP safer to evaluate than a claim-only listing.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Shade and size are explicit",
+            "body": "Variant labels such as C19 Orchid Aurora, Shade: C19 Orchid Aurora are visible, reducing ambiguity around the product format before a shopper clicks through.",
+            "evidence_strength": "official_pdp_reviewed"
+          }
+        ],
+        "best_for": [
+          {
+            "tag": "color_payoff",
+            "label": "color payoff",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "lip_comfort",
+            "label": "lip comfort",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "shine_finish",
+            "label": "shine finish",
+            "confidence": "moderate"
+          }
+        ],
+        "shopping_highlight": "orchid, squalane, shine finish"
+      },
+      "writes": [
+        {
+          "kb_key": "product:ext_abf9745f2420373fe0deb7c0",
+          "action": "update",
+          "reason": "explicit_owner_delegated_assistant_replacement_review",
+          "old_hash": "f07b3269981323a95795dc94feed8ed4036064c290a065cff1587f4401976217",
+          "candidate_hash": "c86f7f5ba8b2deaa796657b5a223e82edc9a4cbf252550ad88db0e23b1c8ef45",
+          "existing_weak": true,
+          "source": "pivota_insights_official_pdp_manual_review_v1",
+          "after_inventory": {
+            "product_id": "ext_abf9745f2420373fe0deb7c0",
+            "kb_key": "product:ext_abf9745f2420373fe0deb7c0",
+            "source": "pivota_insights_official_pdp_manual_review_v1",
+            "updated_at": "",
+            "last_success_at": "",
+            "title": "CATKIN Moonlight Lip Balm",
+            "canonical_url": "",
+            "bundle_hash": "3e6c2d6c39f0f1af5f289bd70ae45201a659c4e5ae3cbe91b14d2de2117bfb99",
+            "lane": "keep",
+            "reason": "protected_good_content",
+            "priority": 0,
+            "protected": true,
+            "displayable": true,
+            "high_quality_ready": true,
+            "human_reviewed": true,
+            "issues": [],
+            "blocking_issues": [],
+            "quality_state": "reviewed",
+            "evidence_profile": "official_pdp_reviewed_formula",
+            "evidence_rank": 1,
+            "review_tier": "assistant_reviewed",
+            "agent_readable": true,
+            "public_ready": true
+          },
+          "source_meta": {
+            "evidence_profile": "official_pdp_reviewed_formula",
+            "quality_state": "reviewed",
+            "source_origin": "official_pdp_fields",
+            "source_url": "https://www.catkin.com/products/catkin-moonlight-lip-balm",
+            "quality_improvement": {
+              "previous_bundle_hash": "cf8c5c78cc3ad2bf358f669c1bbd1fc355755304477768c537e929b20b6c02cc",
+              "candidate_bundle_hash": "3e6c2d6c39f0f1af5f289bd70ae45201a659c4e5ae3cbe91b14d2de2117bfb99",
+              "replacement_decision": "explicit_owner_delegated_assistant_replacement_review",
+              "existing_quality_lane": "keep",
+              "candidate_quality_lane": "keep",
+              "existing_evidence_profile": "seller_plus_formula",
+              "candidate_evidence_profile": "official_pdp_reviewed_formula"
+            }
+          }
+        },
+        {
+          "kb_key": "product:sig_d1f645a1daf40cfaf44b47cc21e9a464",
+          "action": "insert",
+          "reason": "new_product_intel_bundle",
+          "old_hash": null,
+          "candidate_hash": "c86f7f5ba8b2deaa796657b5a223e82edc9a4cbf252550ad88db0e23b1c8ef45",
+          "existing_weak": true,
+          "source": "pivota_insights_official_pdp_manual_review_v1",
+          "after_inventory": {
+            "product_id": "ext_abf9745f2420373fe0deb7c0",
+            "kb_key": "product:sig_d1f645a1daf40cfaf44b47cc21e9a464",
+            "source": "pivota_insights_official_pdp_manual_review_v1",
+            "updated_at": "",
+            "last_success_at": "",
+            "title": "CATKIN Moonlight Lip Balm",
+            "canonical_url": "",
+            "bundle_hash": "3e6c2d6c39f0f1af5f289bd70ae45201a659c4e5ae3cbe91b14d2de2117bfb99",
+            "lane": "keep",
+            "reason": "protected_good_content",
+            "priority": 0,
+            "protected": true,
+            "displayable": true,
+            "high_quality_ready": true,
+            "human_reviewed": true,
+            "issues": [],
+            "blocking_issues": [],
+            "quality_state": "reviewed",
+            "evidence_profile": "official_pdp_reviewed_formula",
+            "evidence_rank": 1,
+            "review_tier": "assistant_reviewed",
+            "agent_readable": true,
+            "public_ready": true
+          },
+          "source_meta": {
+            "evidence_profile": "official_pdp_reviewed_formula",
+            "quality_state": "reviewed",
+            "source_origin": "official_pdp_fields",
+            "source_url": "https://www.catkin.com/products/catkin-moonlight-lip-balm",
+            "quality_improvement": {
+              "previous_bundle_hash": null,
+              "candidate_bundle_hash": "3e6c2d6c39f0f1af5f289bd70ae45201a659c4e5ae3cbe91b14d2de2117bfb99",
+              "replacement_decision": "new_product_intel_bundle",
+              "existing_quality_lane": null,
+              "candidate_quality_lane": "keep",
+              "existing_evidence_profile": null,
+              "candidate_evidence_profile": "official_pdp_reviewed_formula"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "external_product_id": "ext_baeba4a9a1dd47990638125e",
+      "pivota_signature_id": "sig_806f8660d4d0e88e01ff3b8c59ae0bb4",
+      "title": "CATKIN Moonlight Lip Balm",
+      "brand": "Catkin",
+      "canonical_url": "https://www.catkin.com/products/catkin-moonlight-lip-balm",
+      "changed": true,
+      "blocked": false,
+      "skip_reason": null,
+      "candidate_hash": "c627b3ac9161bf92bb68c091afde5edb7bd726d2775647e7bf2b16e201d9c5a5",
+      "evidence_profile": "official_pdp_reviewed_formula",
+      "source_coverage": {
+        "source": "official_pdp",
+        "canonical_url": "https://www.catkin.com/products/catkin-moonlight-lip-balm",
+        "fields": {
+          "description": true,
+          "ingredients": 1,
+          "active_ingredients": 0,
+          "how_to": 0,
+          "details": 1,
+          "variants": 1
+        }
+      },
+      "preview": {
+        "headline": "Lip treatment",
+        "what_it_is": "CATKIN Moonlight Lip Balm is a tinted lip balm from Catkin in C06 Camellia, with source-backed cues around shine finish, shade clarity and comfort-oriented lip care.",
+        "why_it_stands_out": [
+          {
+            "headline": "Product cues are source-backed",
+            "body": "Reviewed PDP cues such as squalane, shine finish, shade range give shoppers specific comparison points within Catkin, rather than category-only copy.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Ingredient list is available",
+            "body": "Full INCI is present for formula-sensitive review, which makes this PDP safer to evaluate than a claim-only listing.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Shade and size are explicit",
+            "body": "Variant labels such as C06 Camellia, Shade: C06 Camellia are visible, reducing ambiguity around the product format before a shopper clicks through.",
+            "evidence_strength": "official_pdp_reviewed"
+          }
+        ],
+        "best_for": [
+          {
+            "tag": "color_payoff",
+            "label": "color payoff",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "lip_comfort",
+            "label": "lip comfort",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "shine_finish",
+            "label": "shine finish",
+            "confidence": "moderate"
+          }
+        ],
+        "shopping_highlight": "squalane, shine finish, shade range"
+      },
+      "writes": [
+        {
+          "kb_key": "product:ext_baeba4a9a1dd47990638125e",
+          "action": "update",
+          "reason": "explicit_owner_delegated_assistant_replacement_review",
+          "old_hash": "91cb2a5487d50de4e83254c54d16016956c9943cfd44aa5568eb460942d7df03",
+          "candidate_hash": "00761b3deb1703b917c06e9e6a3cf3d79ff2fe7f334bc0e6511638564c392990",
+          "existing_weak": true,
+          "source": "pivota_insights_official_pdp_manual_review_v1",
+          "after_inventory": {
+            "product_id": "ext_baeba4a9a1dd47990638125e",
+            "kb_key": "product:ext_baeba4a9a1dd47990638125e",
+            "source": "pivota_insights_official_pdp_manual_review_v1",
+            "updated_at": "",
+            "last_success_at": "",
+            "title": "CATKIN Moonlight Lip Balm",
+            "canonical_url": "",
+            "bundle_hash": "c627b3ac9161bf92bb68c091afde5edb7bd726d2775647e7bf2b16e201d9c5a5",
+            "lane": "keep",
+            "reason": "protected_good_content",
+            "priority": 0,
+            "protected": true,
+            "displayable": true,
+            "high_quality_ready": true,
+            "human_reviewed": true,
+            "issues": [],
+            "blocking_issues": [],
+            "quality_state": "reviewed",
+            "evidence_profile": "official_pdp_reviewed_formula",
+            "evidence_rank": 1,
+            "review_tier": "assistant_reviewed",
+            "agent_readable": true,
+            "public_ready": true
+          },
+          "source_meta": {
+            "evidence_profile": "official_pdp_reviewed_formula",
+            "quality_state": "reviewed",
+            "source_origin": "official_pdp_fields",
+            "source_url": "https://www.catkin.com/products/catkin-moonlight-lip-balm",
+            "quality_improvement": {
+              "previous_bundle_hash": "39d079706e19c5822e4fa39c92402045d81297db2717e748a0ec83ae285ea770",
+              "candidate_bundle_hash": "c627b3ac9161bf92bb68c091afde5edb7bd726d2775647e7bf2b16e201d9c5a5",
+              "replacement_decision": "explicit_owner_delegated_assistant_replacement_review",
+              "existing_quality_lane": "keep",
+              "candidate_quality_lane": "keep",
+              "existing_evidence_profile": "seller_plus_formula",
+              "candidate_evidence_profile": "official_pdp_reviewed_formula"
+            }
+          }
+        },
+        {
+          "kb_key": "product:sig_806f8660d4d0e88e01ff3b8c59ae0bb4",
+          "action": "insert",
+          "reason": "new_product_intel_bundle",
+          "old_hash": null,
+          "candidate_hash": "00761b3deb1703b917c06e9e6a3cf3d79ff2fe7f334bc0e6511638564c392990",
+          "existing_weak": true,
+          "source": "pivota_insights_official_pdp_manual_review_v1",
+          "after_inventory": {
+            "product_id": "ext_baeba4a9a1dd47990638125e",
+            "kb_key": "product:sig_806f8660d4d0e88e01ff3b8c59ae0bb4",
+            "source": "pivota_insights_official_pdp_manual_review_v1",
+            "updated_at": "",
+            "last_success_at": "",
+            "title": "CATKIN Moonlight Lip Balm",
+            "canonical_url": "",
+            "bundle_hash": "c627b3ac9161bf92bb68c091afde5edb7bd726d2775647e7bf2b16e201d9c5a5",
+            "lane": "keep",
+            "reason": "protected_good_content",
+            "priority": 0,
+            "protected": true,
+            "displayable": true,
+            "high_quality_ready": true,
+            "human_reviewed": true,
+            "issues": [],
+            "blocking_issues": [],
+            "quality_state": "reviewed",
+            "evidence_profile": "official_pdp_reviewed_formula",
+            "evidence_rank": 1,
+            "review_tier": "assistant_reviewed",
+            "agent_readable": true,
+            "public_ready": true
+          },
+          "source_meta": {
+            "evidence_profile": "official_pdp_reviewed_formula",
+            "quality_state": "reviewed",
+            "source_origin": "official_pdp_fields",
+            "source_url": "https://www.catkin.com/products/catkin-moonlight-lip-balm",
+            "quality_improvement": {
+              "previous_bundle_hash": null,
+              "candidate_bundle_hash": "c627b3ac9161bf92bb68c091afde5edb7bd726d2775647e7bf2b16e201d9c5a5",
+              "replacement_decision": "new_product_intel_bundle",
+              "existing_quality_lane": null,
+              "candidate_quality_lane": "keep",
+              "existing_evidence_profile": null,
+              "candidate_evidence_profile": "official_pdp_reviewed_formula"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "external_product_id": "ext_cf5fa9ea239b6209f87465a4",
+      "pivota_signature_id": "sig_7341673571eb56c70c61265e5d265940",
+      "title": "CATKIN Moonlight Lip Balm",
+      "brand": "Catkin",
+      "canonical_url": "https://www.catkin.com/products/catkin-moonlight-lip-balm",
+      "changed": true,
+      "blocked": false,
+      "skip_reason": null,
+      "candidate_hash": "1862f6e228f2510a6149a392d9fb6584e36580b284711917ab8fe8b701ea3f04",
+      "evidence_profile": "official_pdp_reviewed_formula",
+      "source_coverage": {
+        "source": "official_pdp",
+        "canonical_url": "https://www.catkin.com/products/catkin-moonlight-lip-balm",
+        "fields": {
+          "description": true,
+          "ingredients": 1,
+          "active_ingredients": 0,
+          "how_to": 0,
+          "details": 1,
+          "variants": 1
+        }
+      },
+      "preview": {
+        "headline": "Lip treatment",
+        "what_it_is": "CATKIN Moonlight Lip Balm is a tinted lip balm from Catkin in C16 Cinnamon, with source-backed cues around shine finish, shade clarity and comfort-oriented lip care.",
+        "why_it_stands_out": [
+          {
+            "headline": "Product cues are source-backed",
+            "body": "Reviewed PDP cues such as squalane, shine finish, shade range give shoppers specific comparison points within Catkin, rather than category-only copy.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Ingredient list is available",
+            "body": "Full INCI is present for formula-sensitive review, which makes this PDP safer to evaluate than a claim-only listing.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Shade and size are explicit",
+            "body": "Variant labels such as C16 Cinnamon, Shade: C16 Cinnamon are visible, reducing ambiguity around the product format before a shopper clicks through.",
+            "evidence_strength": "official_pdp_reviewed"
+          }
+        ],
+        "best_for": [
+          {
+            "tag": "color_payoff",
+            "label": "color payoff",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "lip_comfort",
+            "label": "lip comfort",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "shine_finish",
+            "label": "shine finish",
+            "confidence": "moderate"
+          }
+        ],
+        "shopping_highlight": "squalane, shine finish, shade range"
+      },
+      "writes": [
+        {
+          "kb_key": "product:ext_cf5fa9ea239b6209f87465a4",
+          "action": "update",
+          "reason": "explicit_owner_delegated_assistant_replacement_review",
+          "old_hash": "ef020ae32b0ae01a2d9e02bcbc91e61a280300cb37876b70a791dd5326b73cbd",
+          "candidate_hash": "b0dec4f7fa692119381c430067d50d7be34b8ac7ee2e72d39bfeafc1577f6547",
+          "existing_weak": true,
+          "source": "pivota_insights_official_pdp_manual_review_v1",
+          "after_inventory": {
+            "product_id": "ext_cf5fa9ea239b6209f87465a4",
+            "kb_key": "product:ext_cf5fa9ea239b6209f87465a4",
+            "source": "pivota_insights_official_pdp_manual_review_v1",
+            "updated_at": "",
+            "last_success_at": "",
+            "title": "CATKIN Moonlight Lip Balm",
+            "canonical_url": "",
+            "bundle_hash": "1862f6e228f2510a6149a392d9fb6584e36580b284711917ab8fe8b701ea3f04",
+            "lane": "keep",
+            "reason": "protected_good_content",
+            "priority": 0,
+            "protected": true,
+            "displayable": true,
+            "high_quality_ready": true,
+            "human_reviewed": true,
+            "issues": [],
+            "blocking_issues": [],
+            "quality_state": "reviewed",
+            "evidence_profile": "official_pdp_reviewed_formula",
+            "evidence_rank": 1,
+            "review_tier": "assistant_reviewed",
+            "agent_readable": true,
+            "public_ready": true
+          },
+          "source_meta": {
+            "evidence_profile": "official_pdp_reviewed_formula",
+            "quality_state": "reviewed",
+            "source_origin": "official_pdp_fields",
+            "source_url": "https://www.catkin.com/products/catkin-moonlight-lip-balm",
+            "quality_improvement": {
+              "previous_bundle_hash": "4debc5755932067d0c35464fe83d7a57becb684ffbefba917f23f13bb999d805",
+              "candidate_bundle_hash": "1862f6e228f2510a6149a392d9fb6584e36580b284711917ab8fe8b701ea3f04",
+              "replacement_decision": "explicit_owner_delegated_assistant_replacement_review",
+              "existing_quality_lane": "keep",
+              "candidate_quality_lane": "keep",
+              "existing_evidence_profile": "seller_plus_formula",
+              "candidate_evidence_profile": "official_pdp_reviewed_formula"
+            }
+          }
+        },
+        {
+          "kb_key": "product:sig_7341673571eb56c70c61265e5d265940",
+          "action": "insert",
+          "reason": "new_product_intel_bundle",
+          "old_hash": null,
+          "candidate_hash": "b0dec4f7fa692119381c430067d50d7be34b8ac7ee2e72d39bfeafc1577f6547",
+          "existing_weak": true,
+          "source": "pivota_insights_official_pdp_manual_review_v1",
+          "after_inventory": {
+            "product_id": "ext_cf5fa9ea239b6209f87465a4",
+            "kb_key": "product:sig_7341673571eb56c70c61265e5d265940",
+            "source": "pivota_insights_official_pdp_manual_review_v1",
+            "updated_at": "",
+            "last_success_at": "",
+            "title": "CATKIN Moonlight Lip Balm",
+            "canonical_url": "",
+            "bundle_hash": "1862f6e228f2510a6149a392d9fb6584e36580b284711917ab8fe8b701ea3f04",
+            "lane": "keep",
+            "reason": "protected_good_content",
+            "priority": 0,
+            "protected": true,
+            "displayable": true,
+            "high_quality_ready": true,
+            "human_reviewed": true,
+            "issues": [],
+            "blocking_issues": [],
+            "quality_state": "reviewed",
+            "evidence_profile": "official_pdp_reviewed_formula",
+            "evidence_rank": 1,
+            "review_tier": "assistant_reviewed",
+            "agent_readable": true,
+            "public_ready": true
+          },
+          "source_meta": {
+            "evidence_profile": "official_pdp_reviewed_formula",
+            "quality_state": "reviewed",
+            "source_origin": "official_pdp_fields",
+            "source_url": "https://www.catkin.com/products/catkin-moonlight-lip-balm",
+            "quality_improvement": {
+              "previous_bundle_hash": null,
+              "candidate_bundle_hash": "1862f6e228f2510a6149a392d9fb6584e36580b284711917ab8fe8b701ea3f04",
+              "replacement_decision": "new_product_intel_bundle",
+              "existing_quality_lane": null,
+              "candidate_quality_lane": "keep",
+              "existing_evidence_profile": null,
+              "candidate_evidence_profile": "official_pdp_reviewed_formula"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "external_product_id": "ext_e69c04cadb270144a9b52530",
+      "pivota_signature_id": "sig_c98807585750d25141902716798c7f13",
+      "title": "CATKIN Moonlight Lip Balm",
+      "brand": "Catkin",
+      "canonical_url": "https://www.catkin.com/products/catkin-moonlight-lip-balm",
+      "changed": true,
+      "blocked": false,
+      "skip_reason": null,
+      "candidate_hash": "703caf0c4eed9c2ee57a069c758190d1ef8b5c1eff2a9c7d9a033385de17b05b",
+      "evidence_profile": "official_pdp_reviewed_formula",
+      "source_coverage": {
+        "source": "official_pdp",
+        "canonical_url": "https://www.catkin.com/products/catkin-moonlight-lip-balm",
+        "fields": {
+          "description": true,
+          "ingredients": 1,
+          "active_ingredients": 0,
+          "how_to": 0,
+          "details": 1,
+          "variants": 1
+        }
+      },
+      "preview": {
+        "headline": "Lip treatment",
+        "what_it_is": "CATKIN Moonlight Lip Balm is a tinted lip balm from Catkin in C08 Mermaid, with source-backed cues around shine finish, shade clarity and comfort-oriented lip care.",
+        "why_it_stands_out": [
+          {
+            "headline": "Product cues are source-backed",
+            "body": "Reviewed PDP cues such as squalane, shine finish, shade range give shoppers specific comparison points within Catkin, rather than category-only copy.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Ingredient list is available",
+            "body": "Full INCI is present for formula-sensitive review, which makes this PDP safer to evaluate than a claim-only listing.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Shade and size are explicit",
+            "body": "Variant labels such as C08 Mermaid, Shade: C08 Mermaid are visible, reducing ambiguity around the product format before a shopper clicks through.",
+            "evidence_strength": "official_pdp_reviewed"
+          }
+        ],
+        "best_for": [
+          {
+            "tag": "color_payoff",
+            "label": "color payoff",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "lip_comfort",
+            "label": "lip comfort",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "shine_finish",
+            "label": "shine finish",
+            "confidence": "moderate"
+          }
+        ],
+        "shopping_highlight": "squalane, shine finish, shade range"
+      },
+      "writes": [
+        {
+          "kb_key": "product:ext_e69c04cadb270144a9b52530",
+          "action": "update",
+          "reason": "explicit_owner_delegated_assistant_replacement_review",
+          "old_hash": "4a0fb01b96762f1249f96562032734e368c8cfecce3ba2f698e9d305befbf463",
+          "candidate_hash": "26e0f8d2ceff6bf2107ac84d55395389d28f7648eef5f79da2e88c1805d85c88",
+          "existing_weak": true,
+          "source": "pivota_insights_official_pdp_manual_review_v1",
+          "after_inventory": {
+            "product_id": "ext_e69c04cadb270144a9b52530",
+            "kb_key": "product:ext_e69c04cadb270144a9b52530",
+            "source": "pivota_insights_official_pdp_manual_review_v1",
+            "updated_at": "",
+            "last_success_at": "",
+            "title": "CATKIN Moonlight Lip Balm",
+            "canonical_url": "",
+            "bundle_hash": "703caf0c4eed9c2ee57a069c758190d1ef8b5c1eff2a9c7d9a033385de17b05b",
+            "lane": "keep",
+            "reason": "protected_good_content",
+            "priority": 0,
+            "protected": true,
+            "displayable": true,
+            "high_quality_ready": true,
+            "human_reviewed": true,
+            "issues": [],
+            "blocking_issues": [],
+            "quality_state": "reviewed",
+            "evidence_profile": "official_pdp_reviewed_formula",
+            "evidence_rank": 1,
+            "review_tier": "assistant_reviewed",
+            "agent_readable": true,
+            "public_ready": true
+          },
+          "source_meta": {
+            "evidence_profile": "official_pdp_reviewed_formula",
+            "quality_state": "reviewed",
+            "source_origin": "official_pdp_fields",
+            "source_url": "https://www.catkin.com/products/catkin-moonlight-lip-balm",
+            "quality_improvement": {
+              "previous_bundle_hash": "094630d7802dece49e8dbc6272b70c4956b9f82c7a626b40bf2dd46f8c960f2d",
+              "candidate_bundle_hash": "703caf0c4eed9c2ee57a069c758190d1ef8b5c1eff2a9c7d9a033385de17b05b",
+              "replacement_decision": "explicit_owner_delegated_assistant_replacement_review",
+              "existing_quality_lane": "keep",
+              "candidate_quality_lane": "keep",
+              "existing_evidence_profile": "seller_plus_formula",
+              "candidate_evidence_profile": "official_pdp_reviewed_formula"
+            }
+          }
+        },
+        {
+          "kb_key": "product:sig_c98807585750d25141902716798c7f13",
+          "action": "insert",
+          "reason": "new_product_intel_bundle",
+          "old_hash": null,
+          "candidate_hash": "26e0f8d2ceff6bf2107ac84d55395389d28f7648eef5f79da2e88c1805d85c88",
+          "existing_weak": true,
+          "source": "pivota_insights_official_pdp_manual_review_v1",
+          "after_inventory": {
+            "product_id": "ext_e69c04cadb270144a9b52530",
+            "kb_key": "product:sig_c98807585750d25141902716798c7f13",
+            "source": "pivota_insights_official_pdp_manual_review_v1",
+            "updated_at": "",
+            "last_success_at": "",
+            "title": "CATKIN Moonlight Lip Balm",
+            "canonical_url": "",
+            "bundle_hash": "703caf0c4eed9c2ee57a069c758190d1ef8b5c1eff2a9c7d9a033385de17b05b",
+            "lane": "keep",
+            "reason": "protected_good_content",
+            "priority": 0,
+            "protected": true,
+            "displayable": true,
+            "high_quality_ready": true,
+            "human_reviewed": true,
+            "issues": [],
+            "blocking_issues": [],
+            "quality_state": "reviewed",
+            "evidence_profile": "official_pdp_reviewed_formula",
+            "evidence_rank": 1,
+            "review_tier": "assistant_reviewed",
+            "agent_readable": true,
+            "public_ready": true
+          },
+          "source_meta": {
+            "evidence_profile": "official_pdp_reviewed_formula",
+            "quality_state": "reviewed",
+            "source_origin": "official_pdp_fields",
+            "source_url": "https://www.catkin.com/products/catkin-moonlight-lip-balm",
+            "quality_improvement": {
+              "previous_bundle_hash": null,
+              "candidate_bundle_hash": "703caf0c4eed9c2ee57a069c758190d1ef8b5c1eff2a9c7d9a033385de17b05b",
+              "replacement_decision": "new_product_intel_bundle",
+              "existing_quality_lane": null,
+              "candidate_quality_lane": "keep",
+              "existing_evidence_profile": null,
+              "candidate_evidence_profile": "official_pdp_reviewed_formula"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "external_product_id": "ext_eb6db4917191d328df75b280",
+      "pivota_signature_id": "sig_41715c7d32984e77141bbf7e9fc9026e",
+      "title": "CATKIN Moonlight Lip Balm",
+      "brand": "Catkin",
+      "canonical_url": "https://www.catkin.com/products/catkin-moonlight-lip-balm",
+      "changed": true,
+      "blocked": false,
+      "skip_reason": null,
+      "candidate_hash": "775cdf64867103556eb44ea8208a57b83efd7907e268f74a794144b026448771",
+      "evidence_profile": "official_pdp_reviewed_formula",
+      "source_coverage": {
+        "source": "official_pdp",
+        "canonical_url": "https://www.catkin.com/products/catkin-moonlight-lip-balm",
+        "fields": {
+          "description": true,
+          "ingredients": 1,
+          "active_ingredients": 0,
+          "how_to": 0,
+          "details": 1,
+          "variants": 1
+        }
+      },
+      "preview": {
+        "headline": "Lip treatment",
+        "what_it_is": "CATKIN Moonlight Lip Balm is a tinted lip balm from Catkin in C01 Luna, with source-backed cues around shine finish, shade clarity and comfort-oriented lip care.",
+        "why_it_stands_out": [
+          {
+            "headline": "Product cues are source-backed",
+            "body": "Reviewed PDP cues such as squalane, shine finish, shade range give shoppers specific comparison points within Catkin, rather than category-only copy.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Ingredient list is available",
+            "body": "Full INCI is present for formula-sensitive review, which makes this PDP safer to evaluate than a claim-only listing.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Shade and size are explicit",
+            "body": "Variant labels such as C01 Luna, Shade: C01 Luna are visible, reducing ambiguity around the product format before a shopper clicks through.",
+            "evidence_strength": "official_pdp_reviewed"
+          }
+        ],
+        "best_for": [
+          {
+            "tag": "color_payoff",
+            "label": "color payoff",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "lip_comfort",
+            "label": "lip comfort",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "shine_finish",
+            "label": "shine finish",
+            "confidence": "moderate"
+          }
+        ],
+        "shopping_highlight": "squalane, shine finish, shade range"
+      },
+      "writes": [
+        {
+          "kb_key": "product:ext_eb6db4917191d328df75b280",
+          "action": "update",
+          "reason": "explicit_owner_delegated_assistant_replacement_review",
+          "old_hash": "000887b8c57de176d48c5476b2565c3e254b72ca35a7e7805baa2dd40b653806",
+          "candidate_hash": "983b3f3f05e4f2cb679362c42f1371cd67ccc04895c6ff7fd104528a5f4c6b1e",
+          "existing_weak": true,
+          "source": "pivota_insights_official_pdp_manual_review_v1",
+          "after_inventory": {
+            "product_id": "ext_eb6db4917191d328df75b280",
+            "kb_key": "product:ext_eb6db4917191d328df75b280",
+            "source": "pivota_insights_official_pdp_manual_review_v1",
+            "updated_at": "",
+            "last_success_at": "",
+            "title": "CATKIN Moonlight Lip Balm",
+            "canonical_url": "",
+            "bundle_hash": "775cdf64867103556eb44ea8208a57b83efd7907e268f74a794144b026448771",
+            "lane": "keep",
+            "reason": "protected_good_content",
+            "priority": 0,
+            "protected": true,
+            "displayable": true,
+            "high_quality_ready": true,
+            "human_reviewed": true,
+            "issues": [],
+            "blocking_issues": [],
+            "quality_state": "reviewed",
+            "evidence_profile": "official_pdp_reviewed_formula",
+            "evidence_rank": 1,
+            "review_tier": "assistant_reviewed",
+            "agent_readable": true,
+            "public_ready": true
+          },
+          "source_meta": {
+            "evidence_profile": "official_pdp_reviewed_formula",
+            "quality_state": "reviewed",
+            "source_origin": "official_pdp_fields",
+            "source_url": "https://www.catkin.com/products/catkin-moonlight-lip-balm",
+            "quality_improvement": {
+              "previous_bundle_hash": "11e07cf87ac2e121b919912f77c351c727655e31500ea899ee59163dcc784995",
+              "candidate_bundle_hash": "775cdf64867103556eb44ea8208a57b83efd7907e268f74a794144b026448771",
+              "replacement_decision": "explicit_owner_delegated_assistant_replacement_review",
+              "existing_quality_lane": "keep",
+              "candidate_quality_lane": "keep",
+              "existing_evidence_profile": "seller_plus_formula",
+              "candidate_evidence_profile": "official_pdp_reviewed_formula"
+            }
+          }
+        },
+        {
+          "kb_key": "product:sig_41715c7d32984e77141bbf7e9fc9026e",
+          "action": "insert",
+          "reason": "new_product_intel_bundle",
+          "old_hash": null,
+          "candidate_hash": "983b3f3f05e4f2cb679362c42f1371cd67ccc04895c6ff7fd104528a5f4c6b1e",
+          "existing_weak": true,
+          "source": "pivota_insights_official_pdp_manual_review_v1",
+          "after_inventory": {
+            "product_id": "ext_eb6db4917191d328df75b280",
+            "kb_key": "product:sig_41715c7d32984e77141bbf7e9fc9026e",
+            "source": "pivota_insights_official_pdp_manual_review_v1",
+            "updated_at": "",
+            "last_success_at": "",
+            "title": "CATKIN Moonlight Lip Balm",
+            "canonical_url": "",
+            "bundle_hash": "775cdf64867103556eb44ea8208a57b83efd7907e268f74a794144b026448771",
+            "lane": "keep",
+            "reason": "protected_good_content",
+            "priority": 0,
+            "protected": true,
+            "displayable": true,
+            "high_quality_ready": true,
+            "human_reviewed": true,
+            "issues": [],
+            "blocking_issues": [],
+            "quality_state": "reviewed",
+            "evidence_profile": "official_pdp_reviewed_formula",
+            "evidence_rank": 1,
+            "review_tier": "assistant_reviewed",
+            "agent_readable": true,
+            "public_ready": true
+          },
+          "source_meta": {
+            "evidence_profile": "official_pdp_reviewed_formula",
+            "quality_state": "reviewed",
+            "source_origin": "official_pdp_fields",
+            "source_url": "https://www.catkin.com/products/catkin-moonlight-lip-balm",
+            "quality_improvement": {
+              "previous_bundle_hash": null,
+              "candidate_bundle_hash": "775cdf64867103556eb44ea8208a57b83efd7907e268f74a794144b026448771",
+              "replacement_decision": "new_product_intel_bundle",
+              "existing_quality_lane": null,
+              "candidate_quality_lane": "keep",
+              "existing_evidence_profile": null,
+              "candidate_evidence_profile": "official_pdp_reviewed_formula"
+            }
+          }
+        }
+      ]
+    }
+  ]
+}
