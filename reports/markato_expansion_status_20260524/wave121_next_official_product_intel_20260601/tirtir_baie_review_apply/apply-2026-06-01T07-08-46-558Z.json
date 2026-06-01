@@ -1,0 +1,2093 @@
+{
+  "generated_at": "2026-06-01T07:08:46.558Z",
+  "source": "pivota_insights_official_pdp_manual_review_v1",
+  "mode": "apply",
+  "filters": {
+    "brand": null,
+    "product_ids": [
+      "ext_2ed925c42fe7f2dfd73f98db",
+      "ext_d368298110b2622b6aa73530",
+      "ext_768ca6b8f29b99645a02a72d",
+      "ext_a6d24d905734889cd2a91fde",
+      "ext_48efa66217f45990e58a3b50",
+      "ext_daab8cbcc38d218fdb6d7d22",
+      "ext_1c44481f8143059d23195915",
+      "ext_582d80fdcf353c0e8c0edd9d",
+      "ext_de52f233645e757f2fcf89b0",
+      "ext_02bd3cd623ef5dfb6e46d0d3",
+      "ext_62f7f0e601b4a7076878dcc2",
+      "ext_f11383c339335d64f05a964e",
+      "ext_60ded78effb04e9d6389bfce",
+      "ext_1d312f4c2dac999920d9b936"
+    ],
+    "limit": null,
+    "include_strong": false,
+    "include_url_key": false,
+    "apply_chunk_size": null
+  },
+  "summary": {
+    "scanned": 14,
+    "changed_products": 14,
+    "blocked_products": 0,
+    "skipped_products": 0,
+    "write_actions": {
+      "update": 10,
+      "insert": 12,
+      "skip": 6
+    },
+    "skip_reasons": {
+      "protected_high_quality_existing:verified": 5,
+      "protected_evidence_profile_existing:community_supported": 1
+    },
+    "evidence_profiles": {
+      "official_pdp_reviewed_formula_and_usage": 13,
+      "official_pdp_reviewed_formula": 1
+    }
+  },
+  "plans": [
+    {
+      "external_product_id": "ext_2ed925c42fe7f2dfd73f98db",
+      "pivota_signature_id": "sig_4d1350a019453aaab84a0311c5599944",
+      "title": "Matcha Tea Pads",
+      "brand": "TIRTIR Global",
+      "canonical_url": "https://tirtir.global/products/matcha-tea-pad",
+      "changed": true,
+      "blocked": false,
+      "skip_reason": null,
+      "candidate_hash": "950a69514ccf00c007766746f9f00ac80b6ee9786e07cd9b56ebb084c57edc2c",
+      "evidence_profile": "official_pdp_reviewed_formula_and_usage",
+      "source_coverage": {
+        "source": "official_pdp",
+        "canonical_url": "https://tirtir.global/products/matcha-tea-pad",
+        "fields": {
+          "description": true,
+          "ingredients": 1,
+          "active_ingredients": 1,
+          "how_to": 1,
+          "details": 3,
+          "variants": 1
+        }
+      },
+      "preview": {
+        "headline": "Treatment serum",
+        "what_it_is": "Matcha Tea Pads is a treatment serum from TIRTIR Global in 70 pads / 160 mL, with source-backed ingredient cues around centella and barrier support.",
+        "why_it_stands_out": [
+          {
+            "headline": "Routine step cues are specific",
+            "body": "Reviewed skincare cues such as centella, hydration, barrier support, 70 pads / 160 mL identify the routine role or key ingredient context without inventing unsupported benefits.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Ingredient list is available",
+            "body": "Full INCI is present for formula-sensitive review, which makes this PDP safer to evaluate than a claim-only listing.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Shade and size are explicit",
+            "body": "Variant labels such as 70 pads / 160 mL, Size: 70 pads / 160 mL are visible, reducing ambiguity around the product format before a shopper clicks through.",
+            "evidence_strength": "official_pdp_reviewed"
+          }
+        ],
+        "best_for": [
+          {
+            "tag": "hydration",
+            "label": "hydration",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "barrier_support",
+            "label": "barrier support",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "aromatherapy",
+            "label": "aromatherapy",
+            "confidence": "moderate"
+          }
+        ],
+        "shopping_highlight": "centella, hydration, barrier support"
+      },
+      "writes": [
+        {
+          "kb_key": "product:ext_2ed925c42fe7f2dfd73f98db",
+          "action": "update",
+          "reason": "explicit_owner_delegated_assistant_replacement_review",
+          "old_hash": "0d77ec1c993c648005421045b28d2b64c871eb7db75b4d41b6cc3e1c78b0db2e",
+          "candidate_hash": "0a9f5391332b182107ff4b782abb347b6b7ed15e4606c3fb35a8a1ddcdb337f0",
+          "existing_weak": true,
+          "source": "pivota_insights_official_pdp_manual_review_v1",
+          "after_inventory": {
+            "product_id": "ext_2ed925c42fe7f2dfd73f98db",
+            "kb_key": "product:ext_2ed925c42fe7f2dfd73f98db",
+            "source": "pivota_insights_official_pdp_manual_review_v1",
+            "updated_at": "",
+            "last_success_at": "",
+            "title": "Matcha Tea Pads",
+            "canonical_url": "",
+            "bundle_hash": "950a69514ccf00c007766746f9f00ac80b6ee9786e07cd9b56ebb084c57edc2c",
+            "lane": "keep",
+            "reason": "protected_good_content",
+            "priority": 0,
+            "protected": true,
+            "displayable": true,
+            "high_quality_ready": true,
+            "human_reviewed": true,
+            "issues": [],
+            "blocking_issues": [],
+            "quality_state": "reviewed",
+            "evidence_profile": "official_pdp_reviewed_formula_and_usage",
+            "evidence_rank": 1,
+            "review_tier": "assistant_reviewed",
+            "agent_readable": true,
+            "public_ready": true
+          },
+          "source_meta": {
+            "evidence_profile": "official_pdp_reviewed_formula_and_usage",
+            "quality_state": "reviewed",
+            "source_origin": "official_pdp_fields",
+            "source_url": "https://tirtir.global/products/matcha-tea-pad",
+            "quality_improvement": {
+              "previous_bundle_hash": "7bcba2700b367d243394cf8e04790b5708431a5496fbaeebc078167e884e3449",
+              "candidate_bundle_hash": "950a69514ccf00c007766746f9f00ac80b6ee9786e07cd9b56ebb084c57edc2c",
+              "replacement_decision": "explicit_owner_delegated_assistant_replacement_review",
+              "existing_quality_lane": "keep",
+              "candidate_quality_lane": "keep",
+              "existing_evidence_profile": "seller_plus_formula",
+              "candidate_evidence_profile": "official_pdp_reviewed_formula_and_usage"
+            }
+          }
+        },
+        {
+          "kb_key": "product:sig_4d1350a019453aaab84a0311c5599944",
+          "action": "insert",
+          "reason": "new_product_intel_bundle",
+          "old_hash": null,
+          "candidate_hash": "0a9f5391332b182107ff4b782abb347b6b7ed15e4606c3fb35a8a1ddcdb337f0",
+          "existing_weak": true,
+          "source": "pivota_insights_official_pdp_manual_review_v1",
+          "after_inventory": {
+            "product_id": "ext_2ed925c42fe7f2dfd73f98db",
+            "kb_key": "product:sig_4d1350a019453aaab84a0311c5599944",
+            "source": "pivota_insights_official_pdp_manual_review_v1",
+            "updated_at": "",
+            "last_success_at": "",
+            "title": "Matcha Tea Pads",
+            "canonical_url": "",
+            "bundle_hash": "950a69514ccf00c007766746f9f00ac80b6ee9786e07cd9b56ebb084c57edc2c",
+            "lane": "keep",
+            "reason": "protected_good_content",
+            "priority": 0,
+            "protected": true,
+            "displayable": true,
+            "high_quality_ready": true,
+            "human_reviewed": true,
+            "issues": [],
+            "blocking_issues": [],
+            "quality_state": "reviewed",
+            "evidence_profile": "official_pdp_reviewed_formula_and_usage",
+            "evidence_rank": 1,
+            "review_tier": "assistant_reviewed",
+            "agent_readable": true,
+            "public_ready": true
+          },
+          "source_meta": {
+            "evidence_profile": "official_pdp_reviewed_formula_and_usage",
+            "quality_state": "reviewed",
+            "source_origin": "official_pdp_fields",
+            "source_url": "https://tirtir.global/products/matcha-tea-pad",
+            "quality_improvement": {
+              "previous_bundle_hash": null,
+              "candidate_bundle_hash": "950a69514ccf00c007766746f9f00ac80b6ee9786e07cd9b56ebb084c57edc2c",
+              "replacement_decision": "new_product_intel_bundle",
+              "existing_quality_lane": null,
+              "candidate_quality_lane": "keep",
+              "existing_evidence_profile": null,
+              "candidate_evidence_profile": "official_pdp_reviewed_formula_and_usage"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "external_product_id": "ext_d368298110b2622b6aa73530",
+      "pivota_signature_id": "sig_a4d7c69b49dd05ee84f1ba75a31585c9",
+      "title": "Milk Creamy Foam Cleanser",
+      "brand": "TIRTIR Global",
+      "canonical_url": "https://tirtir.global/products/milk-creamy-foam-cleanser",
+      "changed": true,
+      "blocked": false,
+      "skip_reason": null,
+      "candidate_hash": "89771e196b80073da7c69bd54ef1b9ef2d8bace516144d1e1a0eea1203b1d16b",
+      "evidence_profile": "official_pdp_reviewed_formula_and_usage",
+      "source_coverage": {
+        "source": "official_pdp",
+        "canonical_url": "https://tirtir.global/products/milk-creamy-foam-cleanser",
+        "fields": {
+          "description": true,
+          "ingredients": 1,
+          "active_ingredients": 5,
+          "how_to": 1,
+          "details": 1,
+          "variants": 1
+        }
+      },
+      "preview": {
+        "headline": "Face cleanser",
+        "what_it_is": "Milk Creamy Foam Cleanser is a face cleanser from TIRTIR Global in 90 g, with source-backed cues around cleansing, makeup removal and dirt, oil, and impurity removal.",
+        "why_it_stands_out": [
+          {
+            "headline": "Product cues are source-backed",
+            "body": "Reviewed PDP cues such as daily cleansing, pore cleansing, makeup removal, 90 g give shoppers specific comparison points within TIRTIR Global, rather than category-only copy.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Ingredient list is available",
+            "body": "Full INCI is present for formula-sensitive review, which makes this PDP safer to evaluate than a claim-only listing.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Shade and size are explicit",
+            "body": "Variant labels such as 90 g, Size: 90 g are visible, reducing ambiguity around the product format before a shopper clicks through.",
+            "evidence_strength": "official_pdp_reviewed"
+          }
+        ],
+        "best_for": [
+          {
+            "tag": "daily_cleansing",
+            "label": "daily cleansing",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "pore_cleansing",
+            "label": "pore cleansing",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "makeup_removal",
+            "label": "makeup removal",
+            "confidence": "moderate"
+          }
+        ],
+        "shopping_highlight": "daily cleansing, pore cleansing"
+      },
+      "writes": [
+        {
+          "kb_key": "product:ext_d368298110b2622b6aa73530",
+          "action": "skip",
+          "reason": "protected_high_quality_existing:verified",
+          "old_hash": "97887e8d0d56e00b8c604b2485fceb95831bd2fbf70bdb35c2b9285e7dcfcb62",
+          "existing_weak": false
+        },
+        {
+          "kb_key": "product:sig_a4d7c69b49dd05ee84f1ba75a31585c9",
+          "action": "insert",
+          "reason": "new_product_intel_bundle",
+          "old_hash": null,
+          "candidate_hash": "995b3bc33632417770af26154c316ef213206c19a7c6c3d52ac969214ca6f8d8",
+          "existing_weak": true,
+          "source": "pivota_insights_official_pdp_manual_review_v1",
+          "after_inventory": {
+            "product_id": "ext_d368298110b2622b6aa73530",
+            "kb_key": "product:sig_a4d7c69b49dd05ee84f1ba75a31585c9",
+            "source": "pivota_insights_official_pdp_manual_review_v1",
+            "updated_at": "",
+            "last_success_at": "",
+            "title": "Milk Creamy Foam Cleanser",
+            "canonical_url": "",
+            "bundle_hash": "89771e196b80073da7c69bd54ef1b9ef2d8bace516144d1e1a0eea1203b1d16b",
+            "lane": "keep",
+            "reason": "protected_good_content",
+            "priority": 0,
+            "protected": true,
+            "displayable": true,
+            "high_quality_ready": true,
+            "human_reviewed": true,
+            "issues": [],
+            "blocking_issues": [],
+            "quality_state": "reviewed",
+            "evidence_profile": "official_pdp_reviewed_formula_and_usage",
+            "evidence_rank": 1,
+            "review_tier": "assistant_reviewed",
+            "agent_readable": true,
+            "public_ready": true
+          },
+          "source_meta": {
+            "evidence_profile": "official_pdp_reviewed_formula_and_usage",
+            "quality_state": "reviewed",
+            "source_origin": "official_pdp_fields",
+            "source_url": "https://tirtir.global/products/milk-creamy-foam-cleanser",
+            "quality_improvement": {
+              "previous_bundle_hash": null,
+              "candidate_bundle_hash": "89771e196b80073da7c69bd54ef1b9ef2d8bace516144d1e1a0eea1203b1d16b",
+              "replacement_decision": "new_product_intel_bundle",
+              "existing_quality_lane": null,
+              "candidate_quality_lane": "keep",
+              "existing_evidence_profile": null,
+              "candidate_evidence_profile": "official_pdp_reviewed_formula_and_usage"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "external_product_id": "ext_768ca6b8f29b99645a02a72d",
+      "pivota_signature_id": "sig_7c8b8d65616b059680f54213759b8870",
+      "title": "Milk Skin Toner",
+      "brand": "TIRTIR Global",
+      "canonical_url": "https://tirtir.global/products/milk-skin-toner",
+      "changed": true,
+      "blocked": false,
+      "skip_reason": null,
+      "candidate_hash": "e6504b8f624f1258c22b4083c9333b66391e0d0c4b0feaaec6772be2dfbd43fd",
+      "evidence_profile": "official_pdp_reviewed_formula_and_usage",
+      "source_coverage": {
+        "source": "official_pdp",
+        "canonical_url": "https://tirtir.global/products/milk-skin-toner",
+        "fields": {
+          "description": true,
+          "ingredients": 1,
+          "active_ingredients": 1,
+          "how_to": 1,
+          "details": 1,
+          "variants": 3
+        }
+      },
+      "preview": {
+        "headline": "Face toner",
+        "what_it_is": "Milk Skin Toner is a face toner from TIRTIR Global in 150ml, with source-backed cues around toning, hydration and brightening support.",
+        "why_it_stands_out": [
+          {
+            "headline": "Routine step cues are specific",
+            "body": "Reviewed skincare cues such as centella, toning step, hydration, barrier support identify the routine role or key ingredient context without inventing unsupported benefits.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Ingredient list is available",
+            "body": "Full INCI is present for formula-sensitive review, which makes this PDP safer to evaluate than a claim-only listing.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Shade and size are explicit",
+            "body": "Variant labels such as 150ml, Size: 150ml, 50ml, Size: 50ml are visible, reducing ambiguity around the product format before a shopper clicks through.",
+            "evidence_strength": "official_pdp_reviewed"
+          }
+        ],
+        "best_for": [
+          {
+            "tag": "exfoliating_toner_step",
+            "label": "exfoliating toner step",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "hydration",
+            "label": "hydration",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "firmness",
+            "label": "firmness",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "radiance",
+            "label": "radiance",
+            "confidence": "moderate"
+          }
+        ],
+        "shopping_highlight": "centella, toning step, hydration"
+      },
+      "writes": [
+        {
+          "kb_key": "product:ext_768ca6b8f29b99645a02a72d",
+          "action": "skip",
+          "reason": "protected_high_quality_existing:verified",
+          "old_hash": "abfef9bafc5a4a0dd85dd3db14ec8aa0fcc3716fe7ee2e4e0b63b604d2dc1a3c",
+          "existing_weak": false
+        },
+        {
+          "kb_key": "product:sig_7c8b8d65616b059680f54213759b8870",
+          "action": "insert",
+          "reason": "new_product_intel_bundle",
+          "old_hash": null,
+          "candidate_hash": "165a4da295241e535a17ba0c17b5575ca251765706f6ed97f1c199f0fbbbaa40",
+          "existing_weak": true,
+          "source": "pivota_insights_official_pdp_manual_review_v1",
+          "after_inventory": {
+            "product_id": "ext_768ca6b8f29b99645a02a72d",
+            "kb_key": "product:sig_7c8b8d65616b059680f54213759b8870",
+            "source": "pivota_insights_official_pdp_manual_review_v1",
+            "updated_at": "",
+            "last_success_at": "",
+            "title": "Milk Skin Toner",
+            "canonical_url": "",
+            "bundle_hash": "e6504b8f624f1258c22b4083c9333b66391e0d0c4b0feaaec6772be2dfbd43fd",
+            "lane": "keep",
+            "reason": "protected_good_content",
+            "priority": 0,
+            "protected": true,
+            "displayable": true,
+            "high_quality_ready": true,
+            "human_reviewed": true,
+            "issues": [],
+            "blocking_issues": [],
+            "quality_state": "reviewed",
+            "evidence_profile": "official_pdp_reviewed_formula_and_usage",
+            "evidence_rank": 1,
+            "review_tier": "assistant_reviewed",
+            "agent_readable": true,
+            "public_ready": true
+          },
+          "source_meta": {
+            "evidence_profile": "official_pdp_reviewed_formula_and_usage",
+            "quality_state": "reviewed",
+            "source_origin": "official_pdp_fields",
+            "source_url": "https://tirtir.global/products/milk-skin-toner",
+            "quality_improvement": {
+              "previous_bundle_hash": null,
+              "candidate_bundle_hash": "e6504b8f624f1258c22b4083c9333b66391e0d0c4b0feaaec6772be2dfbd43fd",
+              "replacement_decision": "new_product_intel_bundle",
+              "existing_quality_lane": null,
+              "candidate_quality_lane": "keep",
+              "existing_evidence_profile": null,
+              "candidate_evidence_profile": "official_pdp_reviewed_formula_and_usage"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "external_product_id": "ext_a6d24d905734889cd2a91fde",
+      "pivota_signature_id": "sig_e6307ec846a2db563d9fb10b64858d8c",
+      "title": "Milk Skin Toner Light",
+      "brand": "TIRTIR Global",
+      "canonical_url": "https://tirtir.global/products/milk-skin-toner-light",
+      "changed": true,
+      "blocked": false,
+      "skip_reason": null,
+      "candidate_hash": "e5ed4a52bcb6c34e3baacd0b73cfaff853e5b6821aadebb217bd3ad7868d0215",
+      "evidence_profile": "official_pdp_reviewed_formula_and_usage",
+      "source_coverage": {
+        "source": "official_pdp",
+        "canonical_url": "https://tirtir.global/products/milk-skin-toner-light",
+        "fields": {
+          "description": true,
+          "ingredients": 1,
+          "active_ingredients": 1,
+          "how_to": 1,
+          "details": 1,
+          "variants": 3
+        }
+      },
+      "preview": {
+        "headline": "Face toner",
+        "what_it_is": "Milk Skin Toner Light is a face toner from TIRTIR Global in 150ml, with source-backed cues around toning, hydration and brightening support.",
+        "why_it_stands_out": [
+          {
+            "headline": "Routine step cues are specific",
+            "body": "Reviewed skincare cues such as centella, toning step, hydration, barrier support identify the routine role or key ingredient context without inventing unsupported benefits.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Ingredient list is available",
+            "body": "Full INCI is present for formula-sensitive review, which makes this PDP safer to evaluate than a claim-only listing.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Shade and size are explicit",
+            "body": "Variant labels such as 150ml, Size: 150ml, 50ml, Size: 50ml are visible, reducing ambiguity around the product format before a shopper clicks through.",
+            "evidence_strength": "official_pdp_reviewed"
+          }
+        ],
+        "best_for": [
+          {
+            "tag": "exfoliating_toner_step",
+            "label": "exfoliating toner step",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "hydration",
+            "label": "hydration",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "firmness",
+            "label": "firmness",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "radiance",
+            "label": "radiance",
+            "confidence": "moderate"
+          }
+        ],
+        "shopping_highlight": "centella, toning step, hydration"
+      },
+      "writes": [
+        {
+          "kb_key": "product:ext_a6d24d905734889cd2a91fde",
+          "action": "update",
+          "reason": "explicit_owner_delegated_assistant_replacement_review",
+          "old_hash": "580c452c0df5fbb14f7a23a468f8c12242b99f2780f37e5282869d54894124e9",
+          "candidate_hash": "48f898e0b6fafa3e3c4914ccb14d4e8f58db29e36635a2b3d53da772882bae5c",
+          "existing_weak": true,
+          "source": "pivota_insights_official_pdp_manual_review_v1",
+          "after_inventory": {
+            "product_id": "ext_a6d24d905734889cd2a91fde",
+            "kb_key": "product:ext_a6d24d905734889cd2a91fde",
+            "source": "pivota_insights_official_pdp_manual_review_v1",
+            "updated_at": "",
+            "last_success_at": "",
+            "title": "Milk Skin Toner Light",
+            "canonical_url": "",
+            "bundle_hash": "e5ed4a52bcb6c34e3baacd0b73cfaff853e5b6821aadebb217bd3ad7868d0215",
+            "lane": "keep",
+            "reason": "protected_good_content",
+            "priority": 0,
+            "protected": true,
+            "displayable": true,
+            "high_quality_ready": true,
+            "human_reviewed": true,
+            "issues": [],
+            "blocking_issues": [],
+            "quality_state": "reviewed",
+            "evidence_profile": "official_pdp_reviewed_formula_and_usage",
+            "evidence_rank": 1,
+            "review_tier": "assistant_reviewed",
+            "agent_readable": true,
+            "public_ready": true
+          },
+          "source_meta": {
+            "evidence_profile": "official_pdp_reviewed_formula_and_usage",
+            "quality_state": "reviewed",
+            "source_origin": "official_pdp_fields",
+            "source_url": "https://tirtir.global/products/milk-skin-toner-light",
+            "quality_improvement": {
+              "previous_bundle_hash": "3d8d70c70744804a8d0da2b2a3ed6ffd0581930fcba648edb4ef9962d3ad7715",
+              "candidate_bundle_hash": "e5ed4a52bcb6c34e3baacd0b73cfaff853e5b6821aadebb217bd3ad7868d0215",
+              "replacement_decision": "explicit_owner_delegated_assistant_replacement_review",
+              "existing_quality_lane": "keep",
+              "candidate_quality_lane": "keep",
+              "existing_evidence_profile": "seller_plus_formula",
+              "candidate_evidence_profile": "official_pdp_reviewed_formula_and_usage"
+            }
+          }
+        },
+        {
+          "kb_key": "product:sig_e6307ec846a2db563d9fb10b64858d8c",
+          "action": "insert",
+          "reason": "new_product_intel_bundle",
+          "old_hash": null,
+          "candidate_hash": "48f898e0b6fafa3e3c4914ccb14d4e8f58db29e36635a2b3d53da772882bae5c",
+          "existing_weak": true,
+          "source": "pivota_insights_official_pdp_manual_review_v1",
+          "after_inventory": {
+            "product_id": "ext_a6d24d905734889cd2a91fde",
+            "kb_key": "product:sig_e6307ec846a2db563d9fb10b64858d8c",
+            "source": "pivota_insights_official_pdp_manual_review_v1",
+            "updated_at": "",
+            "last_success_at": "",
+            "title": "Milk Skin Toner Light",
+            "canonical_url": "",
+            "bundle_hash": "e5ed4a52bcb6c34e3baacd0b73cfaff853e5b6821aadebb217bd3ad7868d0215",
+            "lane": "keep",
+            "reason": "protected_good_content",
+            "priority": 0,
+            "protected": true,
+            "displayable": true,
+            "high_quality_ready": true,
+            "human_reviewed": true,
+            "issues": [],
+            "blocking_issues": [],
+            "quality_state": "reviewed",
+            "evidence_profile": "official_pdp_reviewed_formula_and_usage",
+            "evidence_rank": 1,
+            "review_tier": "assistant_reviewed",
+            "agent_readable": true,
+            "public_ready": true
+          },
+          "source_meta": {
+            "evidence_profile": "official_pdp_reviewed_formula_and_usage",
+            "quality_state": "reviewed",
+            "source_origin": "official_pdp_fields",
+            "source_url": "https://tirtir.global/products/milk-skin-toner-light",
+            "quality_improvement": {
+              "previous_bundle_hash": null,
+              "candidate_bundle_hash": "e5ed4a52bcb6c34e3baacd0b73cfaff853e5b6821aadebb217bd3ad7868d0215",
+              "replacement_decision": "new_product_intel_bundle",
+              "existing_quality_lane": null,
+              "candidate_quality_lane": "keep",
+              "existing_evidence_profile": null,
+              "candidate_evidence_profile": "official_pdp_reviewed_formula_and_usage"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "external_product_id": "ext_48efa66217f45990e58a3b50",
+      "pivota_signature_id": "sig_2efc08d1024784294478c587dbbc8ff1",
+      "title": "Mood Glider Lip And Blush Stick",
+      "brand": "TIRTIR Global",
+      "canonical_url": "https://tirtir.global/products/mood-glider-lip-and-blush-stick",
+      "changed": true,
+      "blocked": false,
+      "skip_reason": null,
+      "candidate_hash": "d70ade66f192d73549f868ab87f15f8f4fcedeb06a321562512f91d614d04250",
+      "evidence_profile": "official_pdp_reviewed_formula_and_usage",
+      "source_coverage": {
+        "source": "official_pdp",
+        "canonical_url": "https://tirtir.global/products/mood-glider-lip-and-blush-stick",
+        "fields": {
+          "description": true,
+          "ingredients": 1,
+          "active_ingredients": 0,
+          "how_to": 1,
+          "details": 3,
+          "variants": 6
+        }
+      },
+      "preview": {
+        "headline": "Face color makeup",
+        "what_it_is": "Mood Glider Lip And Blush Stick is a blush from TIRTIR Global in shade Peach Mingle, with source-backed cues around glow payoff.",
+        "why_it_stands_out": [
+          {
+            "headline": "Color payoff cues are specific",
+            "body": "Reviewed color cues such as glow payoff, shade range help shoppers compare shade, finish, or texture instead of seeing a generic blush/bronzer/highlighter card.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Ingredient list is available",
+            "body": "Full INCI is present for formula-sensitive review, which makes this PDP safer to evaluate than a claim-only listing.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Shade and size are explicit",
+            "body": "Variant labels such as Peach Mingle, Color: Peach Mingle, Rose Drizzle, Color: Rose Drizzle are visible, reducing ambiguity around the product format before a shopper clicks through.",
+            "evidence_strength": "official_pdp_reviewed"
+          }
+        ],
+        "best_for": [
+          {
+            "tag": "base_makeup_prep",
+            "label": "base makeup prep",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "soft_focus_finish",
+            "label": "soft-focus finish",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "radiant_finish",
+            "label": "radiant finish",
+            "confidence": "moderate"
+          }
+        ],
+        "shopping_highlight": "glow payoff, shade range"
+      },
+      "writes": [
+        {
+          "kb_key": "product:ext_48efa66217f45990e58a3b50",
+          "action": "skip",
+          "reason": "protected_high_quality_existing:verified",
+          "old_hash": "d9efa5a7eeaab6dcd513901560d0417272044d443f7e4dbe23f049a5a1af3158",
+          "existing_weak": false
+        },
+        {
+          "kb_key": "product:sig_2efc08d1024784294478c587dbbc8ff1",
+          "action": "insert",
+          "reason": "new_product_intel_bundle",
+          "old_hash": null,
+          "candidate_hash": "5f2edc182966b126bdae567af3325d9b5a8b1458ce6cd1807a813861663c3c47",
+          "existing_weak": true,
+          "source": "pivota_insights_official_pdp_manual_review_v1",
+          "after_inventory": {
+            "product_id": "ext_48efa66217f45990e58a3b50",
+            "kb_key": "product:sig_2efc08d1024784294478c587dbbc8ff1",
+            "source": "pivota_insights_official_pdp_manual_review_v1",
+            "updated_at": "",
+            "last_success_at": "",
+            "title": "Mood Glider Lip And Blush Stick",
+            "canonical_url": "",
+            "bundle_hash": "d70ade66f192d73549f868ab87f15f8f4fcedeb06a321562512f91d614d04250",
+            "lane": "keep",
+            "reason": "protected_good_content",
+            "priority": 0,
+            "protected": true,
+            "displayable": true,
+            "high_quality_ready": true,
+            "human_reviewed": true,
+            "issues": [],
+            "blocking_issues": [],
+            "quality_state": "reviewed",
+            "evidence_profile": "official_pdp_reviewed_formula_and_usage",
+            "evidence_rank": 1,
+            "review_tier": "assistant_reviewed",
+            "agent_readable": true,
+            "public_ready": true
+          },
+          "source_meta": {
+            "evidence_profile": "official_pdp_reviewed_formula_and_usage",
+            "quality_state": "reviewed",
+            "source_origin": "official_pdp_fields",
+            "source_url": "https://tirtir.global/products/mood-glider-lip-and-blush-stick",
+            "quality_improvement": {
+              "previous_bundle_hash": null,
+              "candidate_bundle_hash": "d70ade66f192d73549f868ab87f15f8f4fcedeb06a321562512f91d614d04250",
+              "replacement_decision": "new_product_intel_bundle",
+              "existing_quality_lane": null,
+              "candidate_quality_lane": "keep",
+              "existing_evidence_profile": null,
+              "candidate_evidence_profile": "official_pdp_reviewed_formula_and_usage"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "external_product_id": "ext_daab8cbcc38d218fdb6d7d22",
+      "pivota_signature_id": "sig_64f032f01d52ccc7b553770f8c72cdd9",
+      "title": "My Glow Ampoule Highlighter",
+      "brand": "TIRTIR Global",
+      "canonical_url": "https://tirtir.global/products/my-glow-ampoule-highlighter",
+      "changed": true,
+      "blocked": false,
+      "skip_reason": null,
+      "candidate_hash": "14acf1e0afde374bf6436875e84e6f741c1fe5dfffc6f898ef27cdb7f5fd50fd",
+      "evidence_profile": "official_pdp_reviewed_formula_and_usage",
+      "source_coverage": {
+        "source": "official_pdp",
+        "canonical_url": "https://tirtir.global/products/my-glow-ampoule-highlighter",
+        "fields": {
+          "description": true,
+          "ingredients": 1,
+          "active_ingredients": 0,
+          "how_to": 1,
+          "details": 1,
+          "variants": 1
+        }
+      },
+      "preview": {
+        "headline": "Face color makeup",
+        "what_it_is": "My Glow Ampoule Highlighter is a highlighter from TIRTIR Global, with source-backed cues around glow payoff.",
+        "why_it_stands_out": [
+          {
+            "headline": "Color payoff cues are specific",
+            "body": "Reviewed color cues such as glow payoff, Ampoule highlighter help shoppers compare shade, finish, or texture instead of seeing a generic blush/bronzer/highlighter card.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Ingredient list is available",
+            "body": "Full INCI is present for formula-sensitive review, which makes this PDP safer to evaluate than a claim-only listing.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Shade and size are explicit",
+            "body": "Variant labels such as Ampoule highlighter, Format: Ampoule highlighter are visible, reducing ambiguity around the product format before a shopper clicks through.",
+            "evidence_strength": "official_pdp_reviewed"
+          }
+        ],
+        "best_for": [
+          {
+            "tag": "base_makeup_prep",
+            "label": "base makeup prep",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "radiant_finish",
+            "label": "radiant finish",
+            "confidence": "moderate"
+          }
+        ],
+        "shopping_highlight": "glow payoff, Ampoule highlighter"
+      },
+      "writes": [
+        {
+          "kb_key": "product:ext_daab8cbcc38d218fdb6d7d22",
+          "action": "update",
+          "reason": "explicit_owner_delegated_assistant_replacement_review",
+          "old_hash": "5b8bba65d81e4fb0232ea3d7a37e7350f0cec289e0fc3d44bd5a20a06c731136",
+          "candidate_hash": "65e2c7e39429bfe195aeb5d681ec04d8d1a17b9233d7288abfca587e7090465d",
+          "existing_weak": true,
+          "source": "pivota_insights_official_pdp_manual_review_v1",
+          "after_inventory": {
+            "product_id": "ext_daab8cbcc38d218fdb6d7d22",
+            "kb_key": "product:ext_daab8cbcc38d218fdb6d7d22",
+            "source": "pivota_insights_official_pdp_manual_review_v1",
+            "updated_at": "",
+            "last_success_at": "",
+            "title": "My Glow Ampoule Highlighter",
+            "canonical_url": "",
+            "bundle_hash": "14acf1e0afde374bf6436875e84e6f741c1fe5dfffc6f898ef27cdb7f5fd50fd",
+            "lane": "keep",
+            "reason": "protected_good_content",
+            "priority": 0,
+            "protected": true,
+            "displayable": true,
+            "high_quality_ready": true,
+            "human_reviewed": true,
+            "issues": [],
+            "blocking_issues": [],
+            "quality_state": "reviewed",
+            "evidence_profile": "official_pdp_reviewed_formula_and_usage",
+            "evidence_rank": 1,
+            "review_tier": "assistant_reviewed",
+            "agent_readable": true,
+            "public_ready": true
+          },
+          "source_meta": {
+            "evidence_profile": "official_pdp_reviewed_formula_and_usage",
+            "quality_state": "reviewed",
+            "source_origin": "official_pdp_fields",
+            "source_url": "https://tirtir.global/products/my-glow-ampoule-highlighter",
+            "quality_improvement": {
+              "previous_bundle_hash": "17404e5cd24f3963c7439272386b729f3b72d5b15a47a9b6ddc966d1bd217c53",
+              "candidate_bundle_hash": "14acf1e0afde374bf6436875e84e6f741c1fe5dfffc6f898ef27cdb7f5fd50fd",
+              "replacement_decision": "explicit_owner_delegated_assistant_replacement_review",
+              "existing_quality_lane": "keep",
+              "candidate_quality_lane": "keep",
+              "existing_evidence_profile": "seller_plus_reviews",
+              "candidate_evidence_profile": "official_pdp_reviewed_formula_and_usage"
+            }
+          }
+        },
+        {
+          "kb_key": "product:sig_64f032f01d52ccc7b553770f8c72cdd9",
+          "action": "update",
+          "reason": "explicit_owner_delegated_assistant_replacement_review",
+          "old_hash": "190a8eeff096fce932dade96ff1ecce7175c78f951d62288e24965b7786f6f34",
+          "candidate_hash": "65e2c7e39429bfe195aeb5d681ec04d8d1a17b9233d7288abfca587e7090465d",
+          "existing_weak": true,
+          "source": "pivota_insights_official_pdp_manual_review_v1",
+          "after_inventory": {
+            "product_id": "ext_daab8cbcc38d218fdb6d7d22",
+            "kb_key": "product:sig_64f032f01d52ccc7b553770f8c72cdd9",
+            "source": "pivota_insights_official_pdp_manual_review_v1",
+            "updated_at": "",
+            "last_success_at": "",
+            "title": "My Glow Ampoule Highlighter",
+            "canonical_url": "",
+            "bundle_hash": "14acf1e0afde374bf6436875e84e6f741c1fe5dfffc6f898ef27cdb7f5fd50fd",
+            "lane": "keep",
+            "reason": "protected_good_content",
+            "priority": 0,
+            "protected": true,
+            "displayable": true,
+            "high_quality_ready": true,
+            "human_reviewed": true,
+            "issues": [],
+            "blocking_issues": [],
+            "quality_state": "reviewed",
+            "evidence_profile": "official_pdp_reviewed_formula_and_usage",
+            "evidence_rank": 1,
+            "review_tier": "assistant_reviewed",
+            "agent_readable": true,
+            "public_ready": true
+          },
+          "source_meta": {
+            "evidence_profile": "official_pdp_reviewed_formula_and_usage",
+            "quality_state": "reviewed",
+            "source_origin": "official_pdp_fields",
+            "source_url": "https://tirtir.global/products/my-glow-ampoule-highlighter",
+            "quality_improvement": {
+              "previous_bundle_hash": "2fc802e3a1ffb6f0a03b82dedacb7b4dc954e16e5e65684a2e98f589c733eb54",
+              "candidate_bundle_hash": "14acf1e0afde374bf6436875e84e6f741c1fe5dfffc6f898ef27cdb7f5fd50fd",
+              "replacement_decision": "explicit_owner_delegated_assistant_replacement_review",
+              "existing_quality_lane": "suppress_public",
+              "candidate_quality_lane": "keep",
+              "existing_evidence_profile": "seller_only",
+              "candidate_evidence_profile": "official_pdp_reviewed_formula_and_usage"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "external_product_id": "ext_1c44481f8143059d23195915",
+      "pivota_signature_id": "sig_376e8fbf56550c3ca3f59cc21b48a673",
+      "title": "My Glow Lip Oil",
+      "brand": "TIRTIR Global",
+      "canonical_url": "https://tirtir.global/products/my-glow-lip-oil",
+      "changed": true,
+      "blocked": false,
+      "skip_reason": null,
+      "candidate_hash": "2e3da8b825ee98dec73df266cf02ae16459448d438e731d102385a4a7cdbdccb",
+      "evidence_profile": "official_pdp_reviewed_formula_and_usage",
+      "source_coverage": {
+        "source": "official_pdp",
+        "canonical_url": "https://tirtir.global/products/my-glow-lip-oil",
+        "fields": {
+          "description": true,
+          "ingredients": 1,
+          "active_ingredients": 0,
+          "how_to": 1,
+          "details": 3,
+          "variants": 2
+        }
+      },
+      "preview": {
+        "headline": "Lip treatment",
+        "what_it_is": "My Glow Lip Oil is a lip treatment from TIRTIR Global in Honey, with source-backed cues around shine finish, shade clarity and comfort-oriented lip care.",
+        "why_it_stands_out": [
+          {
+            "headline": "Product cues are source-backed",
+            "body": "Reviewed PDP cues such as honey, shine finish, shade range give shoppers specific comparison points within TIRTIR Global, rather than category-only copy.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Ingredient list is available",
+            "body": "Full INCI is present for formula-sensitive review, which makes this PDP safer to evaluate than a claim-only listing.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Shade and size are explicit",
+            "body": "Variant labels such as Honey, Color: Honey, Mint, Color: Mint are visible, reducing ambiguity around the product format before a shopper clicks through.",
+            "evidence_strength": "official_pdp_reviewed"
+          }
+        ],
+        "best_for": [
+          {
+            "tag": "color_payoff",
+            "label": "color payoff",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "lip_comfort",
+            "label": "lip comfort",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "shine_finish",
+            "label": "shine finish",
+            "confidence": "moderate"
+          }
+        ],
+        "shopping_highlight": "honey, shine finish, shade range"
+      },
+      "writes": [
+        {
+          "kb_key": "product:ext_1c44481f8143059d23195915",
+          "action": "skip",
+          "reason": "protected_high_quality_existing:verified",
+          "old_hash": "c69779654a87ce0ea4e84ca021e1c67c4acf35204f944feecda9b54c9960d36d",
+          "existing_weak": false
+        },
+        {
+          "kb_key": "product:sig_376e8fbf56550c3ca3f59cc21b48a673",
+          "action": "insert",
+          "reason": "new_product_intel_bundle",
+          "old_hash": null,
+          "candidate_hash": "864f4e0e3cc91c0d8a6a64022ab57fed7cefe7130709ca4a87d96c653c321563",
+          "existing_weak": true,
+          "source": "pivota_insights_official_pdp_manual_review_v1",
+          "after_inventory": {
+            "product_id": "ext_1c44481f8143059d23195915",
+            "kb_key": "product:sig_376e8fbf56550c3ca3f59cc21b48a673",
+            "source": "pivota_insights_official_pdp_manual_review_v1",
+            "updated_at": "",
+            "last_success_at": "",
+            "title": "My Glow Lip Oil",
+            "canonical_url": "",
+            "bundle_hash": "2e3da8b825ee98dec73df266cf02ae16459448d438e731d102385a4a7cdbdccb",
+            "lane": "keep",
+            "reason": "protected_good_content",
+            "priority": 0,
+            "protected": true,
+            "displayable": true,
+            "high_quality_ready": true,
+            "human_reviewed": true,
+            "issues": [],
+            "blocking_issues": [],
+            "quality_state": "reviewed",
+            "evidence_profile": "official_pdp_reviewed_formula_and_usage",
+            "evidence_rank": 1,
+            "review_tier": "assistant_reviewed",
+            "agent_readable": true,
+            "public_ready": true
+          },
+          "source_meta": {
+            "evidence_profile": "official_pdp_reviewed_formula_and_usage",
+            "quality_state": "reviewed",
+            "source_origin": "official_pdp_fields",
+            "source_url": "https://tirtir.global/products/my-glow-lip-oil",
+            "quality_improvement": {
+              "previous_bundle_hash": null,
+              "candidate_bundle_hash": "2e3da8b825ee98dec73df266cf02ae16459448d438e731d102385a4a7cdbdccb",
+              "replacement_decision": "new_product_intel_bundle",
+              "existing_quality_lane": null,
+              "candidate_quality_lane": "keep",
+              "existing_evidence_profile": null,
+              "candidate_evidence_profile": "official_pdp_reviewed_formula_and_usage"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "external_product_id": "ext_62f7f0e601b4a7076878dcc2",
+      "pivota_signature_id": "sig_776e287a2be9430ebbd632b15e78e50a",
+      "title": "Reflect Glow Prep Primer",
+      "brand": "TIRTIR Global",
+      "canonical_url": "https://tirtir.global/products/reflect-glow-prep-primer",
+      "changed": true,
+      "blocked": false,
+      "skip_reason": null,
+      "candidate_hash": "ecc7c730f4272f357fb5ac30984e9eca674e4acfa238e137322a21092013af0f",
+      "evidence_profile": "official_pdp_reviewed_formula_and_usage",
+      "source_coverage": {
+        "source": "official_pdp",
+        "canonical_url": "https://tirtir.global/products/reflect-glow-prep-primer",
+        "fields": {
+          "description": true,
+          "ingredients": 1,
+          "active_ingredients": 2,
+          "how_to": 1,
+          "details": 1,
+          "variants": 1
+        }
+      },
+      "preview": {
+        "headline": "Makeup primer",
+        "what_it_is": "Reflect Glow Prep Primer is a makeup primer from TIRTIR Global in 30ml.",
+        "why_it_stands_out": [
+          {
+            "headline": "Primer prep cues are specific",
+            "body": "Reviewed primer cues such as makeup prep, 30ml clarify how it preps skin for smoother makeup laydown without making unsupported coverage claims.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Ingredient list is available",
+            "body": "Full INCI is present for formula-sensitive review, which makes this PDP safer to evaluate than a claim-only listing.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Shade and size are explicit",
+            "body": "Variant labels such as 30ml, Size: 30ml are visible, reducing ambiguity around the product format before a shopper clicks through.",
+            "evidence_strength": "official_pdp_reviewed"
+          }
+        ],
+        "best_for": [
+          {
+            "tag": "base_makeup_prep",
+            "label": "base makeup prep",
+            "confidence": "moderate"
+          }
+        ],
+        "shopping_highlight": "makeup prep, 30ml, full INCI available"
+      },
+      "writes": [
+        {
+          "kb_key": "product:ext_62f7f0e601b4a7076878dcc2",
+          "action": "skip",
+          "reason": "protected_high_quality_existing:verified",
+          "old_hash": "6e8dbcb80eb42c14049869b6cb6185f40bd5b77df42c7bd9dfe491ac6ce90b54",
+          "existing_weak": false
+        },
+        {
+          "kb_key": "product:sig_776e287a2be9430ebbd632b15e78e50a",
+          "action": "insert",
+          "reason": "new_product_intel_bundle",
+          "old_hash": null,
+          "candidate_hash": "0628f3a8b7cdc61df571d7010d53d944b39098f45cfdcfbea0e7082ec4cc8929",
+          "existing_weak": true,
+          "source": "pivota_insights_official_pdp_manual_review_v1",
+          "after_inventory": {
+            "product_id": "ext_62f7f0e601b4a7076878dcc2",
+            "kb_key": "product:sig_776e287a2be9430ebbd632b15e78e50a",
+            "source": "pivota_insights_official_pdp_manual_review_v1",
+            "updated_at": "",
+            "last_success_at": "",
+            "title": "Reflect Glow Prep Primer",
+            "canonical_url": "",
+            "bundle_hash": "ecc7c730f4272f357fb5ac30984e9eca674e4acfa238e137322a21092013af0f",
+            "lane": "keep",
+            "reason": "protected_good_content",
+            "priority": 0,
+            "protected": true,
+            "displayable": true,
+            "high_quality_ready": true,
+            "human_reviewed": true,
+            "issues": [],
+            "blocking_issues": [],
+            "quality_state": "reviewed",
+            "evidence_profile": "official_pdp_reviewed_formula_and_usage",
+            "evidence_rank": 1,
+            "review_tier": "assistant_reviewed",
+            "agent_readable": true,
+            "public_ready": true
+          },
+          "source_meta": {
+            "evidence_profile": "official_pdp_reviewed_formula_and_usage",
+            "quality_state": "reviewed",
+            "source_origin": "official_pdp_fields",
+            "source_url": "https://tirtir.global/products/reflect-glow-prep-primer",
+            "quality_improvement": {
+              "previous_bundle_hash": null,
+              "candidate_bundle_hash": "ecc7c730f4272f357fb5ac30984e9eca674e4acfa238e137322a21092013af0f",
+              "replacement_decision": "new_product_intel_bundle",
+              "existing_quality_lane": null,
+              "candidate_quality_lane": "keep",
+              "existing_evidence_profile": null,
+              "candidate_evidence_profile": "official_pdp_reviewed_formula_and_usage"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "external_product_id": "ext_f11383c339335d64f05a964e",
+      "pivota_signature_id": "sig_f5a4d54a743f913ebfbff3b2",
+      "title": "Regenerating Eye Cream",
+      "brand": "Baie Botanique",
+      "canonical_url": "https://www.baiebotanique.com/products/regenerating-eye-cream-sns",
+      "changed": true,
+      "blocked": false,
+      "skip_reason": null,
+      "candidate_hash": "ca6fb4a6e9bbb7cc7d49917bbb9d46b909e71a9fd76b64300e0c0848e8098ec5",
+      "evidence_profile": "official_pdp_reviewed_formula_and_usage",
+      "source_coverage": {
+        "source": "official_pdp",
+        "canonical_url": "https://www.baiebotanique.com/products/regenerating-eye-cream-sns",
+        "fields": {
+          "description": true,
+          "ingredients": 1,
+          "active_ingredients": 0,
+          "how_to": 1,
+          "details": 6,
+          "variants": 1
+        }
+      },
+      "preview": {
+        "headline": "Body care treatment",
+        "what_it_is": "Regenerating Eye Cream is a body care treatment from Baie Botanique in 15ml, with source-backed cues around hydration and brightening support.",
+        "why_it_stands_out": [
+          {
+            "headline": "Routine step cues are specific",
+            "body": "Reviewed skincare cues such as hydration, barrier support, 15ml identify the routine role or key ingredient context without inventing unsupported benefits.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Ingredient list is available",
+            "body": "Full INCI is present for formula-sensitive review, which makes this PDP safer to evaluate than a claim-only listing.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Shade and size are explicit",
+            "body": "Variant labels such as 15ml, Size: 15ml are visible, reducing ambiguity around the product format before a shopper clicks through.",
+            "evidence_strength": "official_pdp_reviewed"
+          }
+        ],
+        "best_for": [
+          {
+            "tag": "hydration",
+            "label": "hydration",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "firmness",
+            "label": "firmness",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "radiance",
+            "label": "radiance",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "barrier_support",
+            "label": "barrier support",
+            "confidence": "moderate"
+          }
+        ],
+        "shopping_highlight": "hydration, barrier support, 15ml"
+      },
+      "writes": [
+        {
+          "kb_key": "product:ext_f11383c339335d64f05a964e",
+          "action": "update",
+          "reason": "explicit_owner_delegated_assistant_replacement_review",
+          "old_hash": "cb1ed064addcf7974f66ae65e186e5d97fd85bf421bebb076a8b834a9e08c668",
+          "candidate_hash": "62abdf7888c5080374c35ca86002bee083689326ccf2cae0b1b60e82fc8764ee",
+          "existing_weak": true,
+          "source": "pivota_insights_official_pdp_manual_review_v1",
+          "after_inventory": {
+            "product_id": "ext_f11383c339335d64f05a964e",
+            "kb_key": "product:ext_f11383c339335d64f05a964e",
+            "source": "pivota_insights_official_pdp_manual_review_v1",
+            "updated_at": "",
+            "last_success_at": "",
+            "title": "Regenerating Eye Cream",
+            "canonical_url": "",
+            "bundle_hash": "ca6fb4a6e9bbb7cc7d49917bbb9d46b909e71a9fd76b64300e0c0848e8098ec5",
+            "lane": "keep",
+            "reason": "protected_good_content",
+            "priority": 0,
+            "protected": true,
+            "displayable": true,
+            "high_quality_ready": true,
+            "human_reviewed": true,
+            "issues": [],
+            "blocking_issues": [],
+            "quality_state": "reviewed",
+            "evidence_profile": "official_pdp_reviewed_formula_and_usage",
+            "evidence_rank": 1,
+            "review_tier": "assistant_reviewed",
+            "agent_readable": true,
+            "public_ready": true
+          },
+          "source_meta": {
+            "evidence_profile": "official_pdp_reviewed_formula_and_usage",
+            "quality_state": "reviewed",
+            "source_origin": "official_pdp_fields",
+            "source_url": "https://www.baiebotanique.com/products/regenerating-eye-cream-sns",
+            "quality_improvement": {
+              "previous_bundle_hash": "774e5b7667adf1fa9e2c83f06d61fbfe144b157fd3eea4a4f0c6c249333b318d",
+              "candidate_bundle_hash": "ca6fb4a6e9bbb7cc7d49917bbb9d46b909e71a9fd76b64300e0c0848e8098ec5",
+              "replacement_decision": "explicit_owner_delegated_assistant_replacement_review",
+              "existing_quality_lane": "keep",
+              "candidate_quality_lane": "keep",
+              "existing_evidence_profile": "seller_plus_formula",
+              "candidate_evidence_profile": "official_pdp_reviewed_formula_and_usage"
+            }
+          }
+        },
+        {
+          "kb_key": "product:sig_f5a4d54a743f913ebfbff3b2",
+          "action": "insert",
+          "reason": "new_product_intel_bundle",
+          "old_hash": null,
+          "candidate_hash": "62abdf7888c5080374c35ca86002bee083689326ccf2cae0b1b60e82fc8764ee",
+          "existing_weak": true,
+          "source": "pivota_insights_official_pdp_manual_review_v1",
+          "after_inventory": {
+            "product_id": "ext_f11383c339335d64f05a964e",
+            "kb_key": "product:sig_f5a4d54a743f913ebfbff3b2",
+            "source": "pivota_insights_official_pdp_manual_review_v1",
+            "updated_at": "",
+            "last_success_at": "",
+            "title": "Regenerating Eye Cream",
+            "canonical_url": "",
+            "bundle_hash": "ca6fb4a6e9bbb7cc7d49917bbb9d46b909e71a9fd76b64300e0c0848e8098ec5",
+            "lane": "keep",
+            "reason": "protected_good_content",
+            "priority": 0,
+            "protected": true,
+            "displayable": true,
+            "high_quality_ready": true,
+            "human_reviewed": true,
+            "issues": [],
+            "blocking_issues": [],
+            "quality_state": "reviewed",
+            "evidence_profile": "official_pdp_reviewed_formula_and_usage",
+            "evidence_rank": 1,
+            "review_tier": "assistant_reviewed",
+            "agent_readable": true,
+            "public_ready": true
+          },
+          "source_meta": {
+            "evidence_profile": "official_pdp_reviewed_formula_and_usage",
+            "quality_state": "reviewed",
+            "source_origin": "official_pdp_fields",
+            "source_url": "https://www.baiebotanique.com/products/regenerating-eye-cream-sns",
+            "quality_improvement": {
+              "previous_bundle_hash": null,
+              "candidate_bundle_hash": "ca6fb4a6e9bbb7cc7d49917bbb9d46b909e71a9fd76b64300e0c0848e8098ec5",
+              "replacement_decision": "new_product_intel_bundle",
+              "existing_quality_lane": null,
+              "candidate_quality_lane": "keep",
+              "existing_evidence_profile": null,
+              "candidate_evidence_profile": "official_pdp_reviewed_formula_and_usage"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "external_product_id": "ext_60ded78effb04e9d6389bfce",
+      "pivota_signature_id": "sig_9098683c7baaa3849d51e544",
+      "title": "Rose & Cupuaçu Enzyme Cleanser",
+      "brand": "Baie Botanique",
+      "canonical_url": "https://www.baiebotanique.com/products/rose-cupuacu-enzyme-cleanser-sns",
+      "changed": true,
+      "blocked": false,
+      "skip_reason": null,
+      "candidate_hash": "a4403ad2b7b3bdc96dc11966e8e014087cc348a65e20f82c6d9fc3d0cfb928b3",
+      "evidence_profile": "official_pdp_reviewed_formula_and_usage",
+      "source_coverage": {
+        "source": "official_pdp",
+        "canonical_url": "https://www.baiebotanique.com/products/rose-cupuacu-enzyme-cleanser-sns",
+        "fields": {
+          "description": true,
+          "ingredients": 1,
+          "active_ingredients": 0,
+          "how_to": 1,
+          "details": 4,
+          "variants": 1
+        }
+      },
+      "preview": {
+        "headline": "Face cleanser",
+        "what_it_is": "Rose & Cupuaçu Enzyme Cleanser is a face cleanser from Baie Botanique in 120ML, with source-backed cues around cleansing, makeup removal, a non-stripping feel and dirt, oil, and impurity removal.",
+        "why_it_stands_out": [
+          {
+            "headline": "Product cues are source-backed",
+            "body": "Reviewed PDP cues such as daily cleansing, pore cleansing, non-stripping cleanse, makeup removal give shoppers specific comparison points within Baie Botanique, rather than category-only copy.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Ingredient list is available",
+            "body": "Full INCI is present for formula-sensitive review, which makes this PDP safer to evaluate than a claim-only listing.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Shade and size are explicit",
+            "body": "Variant labels such as 120ML, Size: 120ML are visible, reducing ambiguity around the product format before a shopper clicks through.",
+            "evidence_strength": "official_pdp_reviewed"
+          }
+        ],
+        "best_for": [
+          {
+            "tag": "daily_cleansing",
+            "label": "daily cleansing",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "pore_cleansing",
+            "label": "pore cleansing",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "non_stripping_cleanse",
+            "label": "non-stripping cleanse",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "makeup_removal",
+            "label": "makeup removal",
+            "confidence": "moderate"
+          }
+        ],
+        "shopping_highlight": "daily cleansing, pore cleansing"
+      },
+      "writes": [
+        {
+          "kb_key": "product:ext_60ded78effb04e9d6389bfce",
+          "action": "update",
+          "reason": "explicit_owner_delegated_assistant_replacement_review",
+          "old_hash": "f74d98cacec6509732ac00c6d5bd6d9b4bdc7469951ca41a9fb7cbddcb146caf",
+          "candidate_hash": "0411c95d37b6bd519b3c02d18013f6c35f63c1629c9ab7adf492412bd843e970",
+          "existing_weak": true,
+          "source": "pivota_insights_official_pdp_manual_review_v1",
+          "after_inventory": {
+            "product_id": "ext_60ded78effb04e9d6389bfce",
+            "kb_key": "product:ext_60ded78effb04e9d6389bfce",
+            "source": "pivota_insights_official_pdp_manual_review_v1",
+            "updated_at": "",
+            "last_success_at": "",
+            "title": "Rose & Cupuaçu Enzyme Cleanser",
+            "canonical_url": "",
+            "bundle_hash": "a4403ad2b7b3bdc96dc11966e8e014087cc348a65e20f82c6d9fc3d0cfb928b3",
+            "lane": "keep",
+            "reason": "protected_good_content",
+            "priority": 0,
+            "protected": true,
+            "displayable": true,
+            "high_quality_ready": true,
+            "human_reviewed": true,
+            "issues": [],
+            "blocking_issues": [],
+            "quality_state": "reviewed",
+            "evidence_profile": "official_pdp_reviewed_formula_and_usage",
+            "evidence_rank": 1,
+            "review_tier": "assistant_reviewed",
+            "agent_readable": true,
+            "public_ready": true
+          },
+          "source_meta": {
+            "evidence_profile": "official_pdp_reviewed_formula_and_usage",
+            "quality_state": "reviewed",
+            "source_origin": "official_pdp_fields",
+            "source_url": "https://www.baiebotanique.com/products/rose-cupuacu-enzyme-cleanser-sns",
+            "quality_improvement": {
+              "previous_bundle_hash": "4f3a9bc5c13dbed694f0715cc5baa2712ba8f6ee510e9d74b4a72078dea03a49",
+              "candidate_bundle_hash": "a4403ad2b7b3bdc96dc11966e8e014087cc348a65e20f82c6d9fc3d0cfb928b3",
+              "replacement_decision": "explicit_owner_delegated_assistant_replacement_review",
+              "existing_quality_lane": "keep",
+              "candidate_quality_lane": "keep",
+              "existing_evidence_profile": "seller_plus_formula",
+              "candidate_evidence_profile": "official_pdp_reviewed_formula_and_usage"
+            }
+          }
+        },
+        {
+          "kb_key": "product:sig_9098683c7baaa3849d51e544",
+          "action": "insert",
+          "reason": "new_product_intel_bundle",
+          "old_hash": null,
+          "candidate_hash": "0411c95d37b6bd519b3c02d18013f6c35f63c1629c9ab7adf492412bd843e970",
+          "existing_weak": true,
+          "source": "pivota_insights_official_pdp_manual_review_v1",
+          "after_inventory": {
+            "product_id": "ext_60ded78effb04e9d6389bfce",
+            "kb_key": "product:sig_9098683c7baaa3849d51e544",
+            "source": "pivota_insights_official_pdp_manual_review_v1",
+            "updated_at": "",
+            "last_success_at": "",
+            "title": "Rose & Cupuaçu Enzyme Cleanser",
+            "canonical_url": "",
+            "bundle_hash": "a4403ad2b7b3bdc96dc11966e8e014087cc348a65e20f82c6d9fc3d0cfb928b3",
+            "lane": "keep",
+            "reason": "protected_good_content",
+            "priority": 0,
+            "protected": true,
+            "displayable": true,
+            "high_quality_ready": true,
+            "human_reviewed": true,
+            "issues": [],
+            "blocking_issues": [],
+            "quality_state": "reviewed",
+            "evidence_profile": "official_pdp_reviewed_formula_and_usage",
+            "evidence_rank": 1,
+            "review_tier": "assistant_reviewed",
+            "agent_readable": true,
+            "public_ready": true
+          },
+          "source_meta": {
+            "evidence_profile": "official_pdp_reviewed_formula_and_usage",
+            "quality_state": "reviewed",
+            "source_origin": "official_pdp_fields",
+            "source_url": "https://www.baiebotanique.com/products/rose-cupuacu-enzyme-cleanser-sns",
+            "quality_improvement": {
+              "previous_bundle_hash": null,
+              "candidate_bundle_hash": "a4403ad2b7b3bdc96dc11966e8e014087cc348a65e20f82c6d9fc3d0cfb928b3",
+              "replacement_decision": "new_product_intel_bundle",
+              "existing_quality_lane": null,
+              "candidate_quality_lane": "keep",
+              "existing_evidence_profile": null,
+              "candidate_evidence_profile": "official_pdp_reviewed_formula_and_usage"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "external_product_id": "ext_1d312f4c2dac999920d9b936",
+      "pivota_signature_id": "sig_6698aecb2197d16ddf91ec00",
+      "title": "Rose Renew Face Wash",
+      "brand": "Baie Botanique",
+      "canonical_url": "https://www.baiebotanique.com/products/rose-renew-face-wash-125ml-sns",
+      "changed": true,
+      "blocked": false,
+      "skip_reason": null,
+      "candidate_hash": "088c37e58da8b2549d2da0e32d596573eb95fd58fb11abd66fe822b71c09b736",
+      "evidence_profile": "official_pdp_reviewed_formula",
+      "source_coverage": {
+        "source": "official_pdp",
+        "canonical_url": "https://www.baiebotanique.com/products/rose-renew-face-wash-125ml-sns",
+        "fields": {
+          "description": true,
+          "ingredients": 1,
+          "active_ingredients": 0,
+          "how_to": 0,
+          "details": 4,
+          "variants": 1
+        }
+      },
+      "preview": {
+        "headline": "Face cleanser",
+        "what_it_is": "Rose Renew Face Wash is a face cleanser from Baie Botanique in 125ml, with source-backed cues around cleansing, a non-stripping feel and dirt, oil, and impurity removal.",
+        "why_it_stands_out": [
+          {
+            "headline": "Product cues are source-backed",
+            "body": "Reviewed PDP cues such as daily cleansing, pore cleansing, non-stripping cleanse, 125ml give shoppers specific comparison points within Baie Botanique, rather than category-only copy.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Ingredient list is available",
+            "body": "Full INCI is present for formula-sensitive review, which makes this PDP safer to evaluate than a claim-only listing.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Shade and size are explicit",
+            "body": "Variant labels such as 125ml, Size: 125ml are visible, reducing ambiguity around the product format before a shopper clicks through.",
+            "evidence_strength": "official_pdp_reviewed"
+          }
+        ],
+        "best_for": [
+          {
+            "tag": "daily_cleansing",
+            "label": "daily cleansing",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "pore_cleansing",
+            "label": "pore cleansing",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "non_stripping_cleanse",
+            "label": "non-stripping cleanse",
+            "confidence": "moderate"
+          }
+        ],
+        "shopping_highlight": "daily cleansing, pore cleansing"
+      },
+      "writes": [
+        {
+          "kb_key": "product:ext_1d312f4c2dac999920d9b936",
+          "action": "update",
+          "reason": "explicit_owner_delegated_assistant_replacement_review",
+          "old_hash": "db36811b957f783a2a7ef2f2c444a31c88a59b9d626e91b448b60b968558a577",
+          "candidate_hash": "0dcd0c160c7189cb03d5c4ce471176fa4d905aaf6f69f51f20d09496df8a673b",
+          "existing_weak": true,
+          "source": "pivota_insights_official_pdp_manual_review_v1",
+          "after_inventory": {
+            "product_id": "ext_1d312f4c2dac999920d9b936",
+            "kb_key": "product:ext_1d312f4c2dac999920d9b936",
+            "source": "pivota_insights_official_pdp_manual_review_v1",
+            "updated_at": "",
+            "last_success_at": "",
+            "title": "Rose Renew Face Wash",
+            "canonical_url": "",
+            "bundle_hash": "088c37e58da8b2549d2da0e32d596573eb95fd58fb11abd66fe822b71c09b736",
+            "lane": "keep",
+            "reason": "protected_good_content",
+            "priority": 0,
+            "protected": true,
+            "displayable": true,
+            "high_quality_ready": true,
+            "human_reviewed": true,
+            "issues": [],
+            "blocking_issues": [],
+            "quality_state": "reviewed",
+            "evidence_profile": "official_pdp_reviewed_formula",
+            "evidence_rank": 1,
+            "review_tier": "assistant_reviewed",
+            "agent_readable": true,
+            "public_ready": true
+          },
+          "source_meta": {
+            "evidence_profile": "official_pdp_reviewed_formula",
+            "quality_state": "reviewed",
+            "source_origin": "official_pdp_fields",
+            "source_url": "https://www.baiebotanique.com/products/rose-renew-face-wash-125ml-sns",
+            "quality_improvement": {
+              "previous_bundle_hash": "ca6cb56a0abec977057891e02ea1087a229186c164de4a52445578be1e814917",
+              "candidate_bundle_hash": "088c37e58da8b2549d2da0e32d596573eb95fd58fb11abd66fe822b71c09b736",
+              "replacement_decision": "explicit_owner_delegated_assistant_replacement_review",
+              "existing_quality_lane": "keep",
+              "candidate_quality_lane": "keep",
+              "existing_evidence_profile": "seller_plus_formula",
+              "candidate_evidence_profile": "official_pdp_reviewed_formula"
+            }
+          }
+        },
+        {
+          "kb_key": "product:sig_6698aecb2197d16ddf91ec00",
+          "action": "update",
+          "reason": "explicit_owner_delegated_assistant_replacement_review",
+          "old_hash": "0adcf217b66ba8fffd8dcd58689622ae6656f0d46a86d64825f159c233c73df7",
+          "candidate_hash": "0dcd0c160c7189cb03d5c4ce471176fa4d905aaf6f69f51f20d09496df8a673b",
+          "existing_weak": true,
+          "source": "pivota_insights_official_pdp_manual_review_v1",
+          "after_inventory": {
+            "product_id": "ext_1d312f4c2dac999920d9b936",
+            "kb_key": "product:sig_6698aecb2197d16ddf91ec00",
+            "source": "pivota_insights_official_pdp_manual_review_v1",
+            "updated_at": "",
+            "last_success_at": "",
+            "title": "Rose Renew Face Wash",
+            "canonical_url": "",
+            "bundle_hash": "088c37e58da8b2549d2da0e32d596573eb95fd58fb11abd66fe822b71c09b736",
+            "lane": "keep",
+            "reason": "protected_good_content",
+            "priority": 0,
+            "protected": true,
+            "displayable": true,
+            "high_quality_ready": true,
+            "human_reviewed": true,
+            "issues": [],
+            "blocking_issues": [],
+            "quality_state": "reviewed",
+            "evidence_profile": "official_pdp_reviewed_formula",
+            "evidence_rank": 1,
+            "review_tier": "assistant_reviewed",
+            "agent_readable": true,
+            "public_ready": true
+          },
+          "source_meta": {
+            "evidence_profile": "official_pdp_reviewed_formula",
+            "quality_state": "reviewed",
+            "source_origin": "official_pdp_fields",
+            "source_url": "https://www.baiebotanique.com/products/rose-renew-face-wash-125ml-sns",
+            "quality_improvement": {
+              "previous_bundle_hash": "17df912efc0c02b804468a4cfaccfe2a8ce89da197c66a4ef73858d0c11894da",
+              "candidate_bundle_hash": "088c37e58da8b2549d2da0e32d596573eb95fd58fb11abd66fe822b71c09b736",
+              "replacement_decision": "explicit_owner_delegated_assistant_replacement_review",
+              "existing_quality_lane": "keep",
+              "candidate_quality_lane": "keep",
+              "existing_evidence_profile": "seller_plus_formula",
+              "candidate_evidence_profile": "official_pdp_reviewed_formula"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "external_product_id": "ext_582d80fdcf353c0e8c0edd9d",
+      "pivota_signature_id": "sig_e152c6f72e40024b911522781259f04e",
+      "title": "Waterism Glow Melting Balm",
+      "brand": "TIRTIR Global",
+      "canonical_url": "https://tirtir.global/products/waterism-glow-melting-balm",
+      "changed": true,
+      "blocked": false,
+      "skip_reason": null,
+      "candidate_hash": "db8f56e6a74d6ef3b13c6e58eda05ca91ad1478f73d646415b5a486b087c07c6",
+      "evidence_profile": "official_pdp_reviewed_formula_and_usage",
+      "source_coverage": {
+        "source": "official_pdp",
+        "canonical_url": "https://tirtir.global/products/waterism-glow-melting-balm",
+        "fields": {
+          "description": true,
+          "ingredients": 1,
+          "active_ingredients": 0,
+          "how_to": 1,
+          "details": 1,
+          "variants": 9
+        }
+      },
+      "preview": {
+        "headline": "Lip treatment",
+        "what_it_is": "Waterism Glow Melting Balm is a tinted lip balm from TIRTIR Global in 01 Mauve Rose Pearls, with source-backed cues around shine finish, shade clarity and comfort-oriented lip care.",
+        "why_it_stands_out": [
+          {
+            "headline": "Product cues are source-backed",
+            "body": "Reviewed PDP cues such as shea butter, shine finish, shade range give shoppers specific comparison points within TIRTIR Global, rather than category-only copy.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Ingredient list is available",
+            "body": "Full INCI is present for formula-sensitive review, which makes this PDP safer to evaluate than a claim-only listing.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Shade and size are explicit",
+            "body": "Variant labels such as 01 Mauve Rose Pearls, Color: 01 Mauve Rose Pearls, 02 Merry Coral, Color: 02 Merry Coral are visible, reducing ambiguity around the product format before a shopper clicks through.",
+            "evidence_strength": "official_pdp_reviewed"
+          }
+        ],
+        "best_for": [
+          {
+            "tag": "defined_lip_looks",
+            "label": "defined lip looks",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "color_payoff",
+            "label": "color payoff",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "lip_comfort",
+            "label": "lip comfort",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "shine_finish",
+            "label": "shine finish",
+            "confidence": "moderate"
+          }
+        ],
+        "shopping_highlight": "shea butter, shine finish, shade range"
+      },
+      "writes": [
+        {
+          "kb_key": "product:ext_582d80fdcf353c0e8c0edd9d",
+          "action": "update",
+          "reason": "explicit_owner_delegated_assistant_replacement_review",
+          "old_hash": "a86a75073ecf229a2bcdc8064534ee700cfbe49537b8810020a881188e8d8779",
+          "candidate_hash": "5bfd7d1c44ad78411efb48c967b3a78d6b773ad05039b8f7cf5532649e1d8296",
+          "existing_weak": true,
+          "source": "pivota_insights_official_pdp_manual_review_v1",
+          "after_inventory": {
+            "product_id": "ext_582d80fdcf353c0e8c0edd9d",
+            "kb_key": "product:ext_582d80fdcf353c0e8c0edd9d",
+            "source": "pivota_insights_official_pdp_manual_review_v1",
+            "updated_at": "",
+            "last_success_at": "",
+            "title": "Waterism Glow Melting Balm",
+            "canonical_url": "",
+            "bundle_hash": "db8f56e6a74d6ef3b13c6e58eda05ca91ad1478f73d646415b5a486b087c07c6",
+            "lane": "keep",
+            "reason": "protected_good_content",
+            "priority": 0,
+            "protected": true,
+            "displayable": true,
+            "high_quality_ready": true,
+            "human_reviewed": true,
+            "issues": [],
+            "blocking_issues": [],
+            "quality_state": "reviewed",
+            "evidence_profile": "official_pdp_reviewed_formula_and_usage",
+            "evidence_rank": 1,
+            "review_tier": "assistant_reviewed",
+            "agent_readable": true,
+            "public_ready": true
+          },
+          "source_meta": {
+            "evidence_profile": "official_pdp_reviewed_formula_and_usage",
+            "quality_state": "reviewed",
+            "source_origin": "official_pdp_fields",
+            "source_url": "https://tirtir.global/products/waterism-glow-melting-balm",
+            "quality_improvement": {
+              "previous_bundle_hash": "5e36c88c93a57e3ab8e25e98281fd777f0039911e16923322d4439281f21fe7f",
+              "candidate_bundle_hash": "db8f56e6a74d6ef3b13c6e58eda05ca91ad1478f73d646415b5a486b087c07c6",
+              "replacement_decision": "explicit_owner_delegated_assistant_replacement_review",
+              "existing_quality_lane": "keep",
+              "candidate_quality_lane": "keep",
+              "existing_evidence_profile": "seller_plus_reviews",
+              "candidate_evidence_profile": "official_pdp_reviewed_formula_and_usage"
+            }
+          }
+        },
+        {
+          "kb_key": "product:sig_e152c6f72e40024b911522781259f04e",
+          "action": "insert",
+          "reason": "new_product_intel_bundle",
+          "old_hash": null,
+          "candidate_hash": "5bfd7d1c44ad78411efb48c967b3a78d6b773ad05039b8f7cf5532649e1d8296",
+          "existing_weak": true,
+          "source": "pivota_insights_official_pdp_manual_review_v1",
+          "after_inventory": {
+            "product_id": "ext_582d80fdcf353c0e8c0edd9d",
+            "kb_key": "product:sig_e152c6f72e40024b911522781259f04e",
+            "source": "pivota_insights_official_pdp_manual_review_v1",
+            "updated_at": "",
+            "last_success_at": "",
+            "title": "Waterism Glow Melting Balm",
+            "canonical_url": "",
+            "bundle_hash": "db8f56e6a74d6ef3b13c6e58eda05ca91ad1478f73d646415b5a486b087c07c6",
+            "lane": "keep",
+            "reason": "protected_good_content",
+            "priority": 0,
+            "protected": true,
+            "displayable": true,
+            "high_quality_ready": true,
+            "human_reviewed": true,
+            "issues": [],
+            "blocking_issues": [],
+            "quality_state": "reviewed",
+            "evidence_profile": "official_pdp_reviewed_formula_and_usage",
+            "evidence_rank": 1,
+            "review_tier": "assistant_reviewed",
+            "agent_readable": true,
+            "public_ready": true
+          },
+          "source_meta": {
+            "evidence_profile": "official_pdp_reviewed_formula_and_usage",
+            "quality_state": "reviewed",
+            "source_origin": "official_pdp_fields",
+            "source_url": "https://tirtir.global/products/waterism-glow-melting-balm",
+            "quality_improvement": {
+              "previous_bundle_hash": null,
+              "candidate_bundle_hash": "db8f56e6a74d6ef3b13c6e58eda05ca91ad1478f73d646415b5a486b087c07c6",
+              "replacement_decision": "new_product_intel_bundle",
+              "existing_quality_lane": null,
+              "candidate_quality_lane": "keep",
+              "existing_evidence_profile": null,
+              "candidate_evidence_profile": "official_pdp_reviewed_formula_and_usage"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "external_product_id": "ext_de52f233645e757f2fcf89b0",
+      "pivota_signature_id": "sig_8f0ba555af0eff9168dfe404d468d195",
+      "title": "Waterism Lip Plumper",
+      "brand": "TIRTIR Global",
+      "canonical_url": "https://tirtir.global/products/waterism-lip-plumper",
+      "changed": true,
+      "blocked": false,
+      "skip_reason": null,
+      "candidate_hash": "41d4df635c36f27144a38bc9701f027522f47ee7402aa51f8fe585f6b561ab5b",
+      "evidence_profile": "official_pdp_reviewed_formula_and_usage",
+      "source_coverage": {
+        "source": "official_pdp",
+        "canonical_url": "https://tirtir.global/products/waterism-lip-plumper",
+        "fields": {
+          "description": true,
+          "ingredients": 1,
+          "active_ingredients": 0,
+          "how_to": 1,
+          "details": 1,
+          "variants": 1
+        }
+      },
+      "preview": {
+        "headline": "Fine fragrance",
+        "what_it_is": "Waterism Lip Plumper is a fine fragrance from TIRTIR Global in 3.3 g.",
+        "why_it_stands_out": [
+          {
+            "headline": "Scent profile cues",
+            "body": "Reviewed scent cues such as hyaluronic acid, shine finish, 3.3 g help shoppers compare the fragrance profile without relying on generic scent copy.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Ingredient list is available",
+            "body": "Full INCI is present for formula-sensitive review, which makes this PDP safer to evaluate than a claim-only listing.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Shade and size are explicit",
+            "body": "Variant labels such as 3.3 g, Size: 3.3 g are visible, reducing ambiguity around the product format before a shopper clicks through.",
+            "evidence_strength": "official_pdp_reviewed"
+          }
+        ],
+        "best_for": [
+          {
+            "tag": "hyaluronic_acid",
+            "label": "hyaluronic acid",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "shine_finish",
+            "label": "shine finish",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "3_3_g",
+            "label": "3.3 g",
+            "confidence": "moderate"
+          }
+        ],
+        "shopping_highlight": "hyaluronic acid, shine finish, 3.3 g"
+      },
+      "writes": [
+        {
+          "kb_key": "product:ext_de52f233645e757f2fcf89b0",
+          "action": "update",
+          "reason": "explicit_owner_delegated_assistant_replacement_review",
+          "old_hash": "803a436b1a92fde9292616d67eece6f6b48bea093719045ea33d78d1c7460dd4",
+          "candidate_hash": "d026ea71345d422499b522d59ae78b07aace8998f588518befdfa3a14f3f1387",
+          "existing_weak": true,
+          "source": "pivota_insights_official_pdp_manual_review_v1",
+          "after_inventory": {
+            "product_id": "ext_de52f233645e757f2fcf89b0",
+            "kb_key": "product:ext_de52f233645e757f2fcf89b0",
+            "source": "pivota_insights_official_pdp_manual_review_v1",
+            "updated_at": "",
+            "last_success_at": "",
+            "title": "Waterism Lip Plumper",
+            "canonical_url": "",
+            "bundle_hash": "41d4df635c36f27144a38bc9701f027522f47ee7402aa51f8fe585f6b561ab5b",
+            "lane": "keep",
+            "reason": "protected_good_content",
+            "priority": 0,
+            "protected": true,
+            "displayable": true,
+            "high_quality_ready": true,
+            "human_reviewed": true,
+            "issues": [],
+            "blocking_issues": [],
+            "quality_state": "reviewed",
+            "evidence_profile": "official_pdp_reviewed_formula_and_usage",
+            "evidence_rank": 1,
+            "review_tier": "assistant_reviewed",
+            "agent_readable": true,
+            "public_ready": true
+          },
+          "source_meta": {
+            "evidence_profile": "official_pdp_reviewed_formula_and_usage",
+            "quality_state": "reviewed",
+            "source_origin": "official_pdp_fields",
+            "source_url": "https://tirtir.global/products/waterism-lip-plumper",
+            "quality_improvement": {
+              "previous_bundle_hash": "4cf93d2b3fe3322811a117aceed19751b5ff6319141a9b8eaa7e02a41a1031d8",
+              "candidate_bundle_hash": "41d4df635c36f27144a38bc9701f027522f47ee7402aa51f8fe585f6b561ab5b",
+              "replacement_decision": "explicit_owner_delegated_assistant_replacement_review",
+              "existing_quality_lane": "keep",
+              "candidate_quality_lane": "keep",
+              "existing_evidence_profile": "mixed",
+              "candidate_evidence_profile": "official_pdp_reviewed_formula_and_usage"
+            }
+          }
+        },
+        {
+          "kb_key": "product:sig_8f0ba555af0eff9168dfe404d468d195",
+          "action": "insert",
+          "reason": "new_product_intel_bundle",
+          "old_hash": null,
+          "candidate_hash": "d026ea71345d422499b522d59ae78b07aace8998f588518befdfa3a14f3f1387",
+          "existing_weak": true,
+          "source": "pivota_insights_official_pdp_manual_review_v1",
+          "after_inventory": {
+            "product_id": "ext_de52f233645e757f2fcf89b0",
+            "kb_key": "product:sig_8f0ba555af0eff9168dfe404d468d195",
+            "source": "pivota_insights_official_pdp_manual_review_v1",
+            "updated_at": "",
+            "last_success_at": "",
+            "title": "Waterism Lip Plumper",
+            "canonical_url": "",
+            "bundle_hash": "41d4df635c36f27144a38bc9701f027522f47ee7402aa51f8fe585f6b561ab5b",
+            "lane": "keep",
+            "reason": "protected_good_content",
+            "priority": 0,
+            "protected": true,
+            "displayable": true,
+            "high_quality_ready": true,
+            "human_reviewed": true,
+            "issues": [],
+            "blocking_issues": [],
+            "quality_state": "reviewed",
+            "evidence_profile": "official_pdp_reviewed_formula_and_usage",
+            "evidence_rank": 1,
+            "review_tier": "assistant_reviewed",
+            "agent_readable": true,
+            "public_ready": true
+          },
+          "source_meta": {
+            "evidence_profile": "official_pdp_reviewed_formula_and_usage",
+            "quality_state": "reviewed",
+            "source_origin": "official_pdp_fields",
+            "source_url": "https://tirtir.global/products/waterism-lip-plumper",
+            "quality_improvement": {
+              "previous_bundle_hash": null,
+              "candidate_bundle_hash": "41d4df635c36f27144a38bc9701f027522f47ee7402aa51f8fe585f6b561ab5b",
+              "replacement_decision": "new_product_intel_bundle",
+              "existing_quality_lane": null,
+              "candidate_quality_lane": "keep",
+              "existing_evidence_profile": null,
+              "candidate_evidence_profile": "official_pdp_reviewed_formula_and_usage"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "external_product_id": "ext_02bd3cd623ef5dfb6e46d0d3",
+      "pivota_signature_id": "sig_733e83eaea81bb6c2f350882a3cb5e48",
+      "title": "Water Mellow Lip Balm",
+      "brand": "TIRTIR Global",
+      "canonical_url": "https://tirtir.global/products/water-mellow-lip-balm",
+      "changed": true,
+      "blocked": false,
+      "skip_reason": null,
+      "candidate_hash": "023a5f74e6c2c00680d72929c84d25e5c72b522c78aafebda755891ca70b7f50",
+      "evidence_profile": "official_pdp_reviewed_formula_and_usage",
+      "source_coverage": {
+        "source": "official_pdp",
+        "canonical_url": "https://tirtir.global/products/water-mellow-lip-balm",
+        "fields": {
+          "description": true,
+          "ingredients": 1,
+          "active_ingredients": 0,
+          "how_to": 1,
+          "details": 3,
+          "variants": 4
+        }
+      },
+      "preview": {
+        "headline": "Lip treatment",
+        "what_it_is": "Water Mellow Lip Balm is a tinted lip balm from TIRTIR Global in 01 Icy Blue, with source-backed cues around shine finish, shade clarity and comfort-oriented lip care.",
+        "why_it_stands_out": [
+          {
+            "headline": "Product cues are source-backed",
+            "body": "Reviewed PDP cues such as shea butter, squalane, shine finish, shade range give shoppers specific comparison points within TIRTIR Global, rather than category-only copy.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Ingredient list is available",
+            "body": "Full INCI is present for formula-sensitive review, which makes this PDP safer to evaluate than a claim-only listing.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Shade and size are explicit",
+            "body": "Variant labels such as 01 Icy Blue, Color: 01 Icy Blue, 02 Mauve Berry, Color: 02 Mauve Berry are visible, reducing ambiguity around the product format before a shopper clicks through.",
+            "evidence_strength": "official_pdp_reviewed"
+          }
+        ],
+        "best_for": [
+          {
+            "tag": "color_payoff",
+            "label": "color payoff",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "lip_comfort",
+            "label": "lip comfort",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "shine_finish",
+            "label": "shine finish",
+            "confidence": "moderate"
+          }
+        ],
+        "shopping_highlight": "shea butter, squalane, shine finish"
+      },
+      "writes": [
+        {
+          "kb_key": "product:ext_02bd3cd623ef5dfb6e46d0d3",
+          "action": "skip",
+          "reason": "protected_evidence_profile_existing:community_supported",
+          "old_hash": "41ffc64c1c527ce7ca208c89699a4f4e076bdd9fbc9bf3ee0ae83548b32de999",
+          "existing_weak": true
+        },
+        {
+          "kb_key": "product:sig_733e83eaea81bb6c2f350882a3cb5e48",
+          "action": "insert",
+          "reason": "new_product_intel_bundle",
+          "old_hash": null,
+          "candidate_hash": "5a93326641044b999433cb9c44fea96932369c075c4cd283c91c3db45e49427b",
+          "existing_weak": true,
+          "source": "pivota_insights_official_pdp_manual_review_v1",
+          "after_inventory": {
+            "product_id": "ext_02bd3cd623ef5dfb6e46d0d3",
+            "kb_key": "product:sig_733e83eaea81bb6c2f350882a3cb5e48",
+            "source": "pivota_insights_official_pdp_manual_review_v1",
+            "updated_at": "",
+            "last_success_at": "",
+            "title": "Water Mellow Lip Balm",
+            "canonical_url": "",
+            "bundle_hash": "023a5f74e6c2c00680d72929c84d25e5c72b522c78aafebda755891ca70b7f50",
+            "lane": "keep",
+            "reason": "protected_good_content",
+            "priority": 0,
+            "protected": true,
+            "displayable": true,
+            "high_quality_ready": true,
+            "human_reviewed": true,
+            "issues": [],
+            "blocking_issues": [],
+            "quality_state": "reviewed",
+            "evidence_profile": "official_pdp_reviewed_formula_and_usage",
+            "evidence_rank": 1,
+            "review_tier": "assistant_reviewed",
+            "agent_readable": true,
+            "public_ready": true
+          },
+          "source_meta": {
+            "evidence_profile": "official_pdp_reviewed_formula_and_usage",
+            "quality_state": "reviewed",
+            "source_origin": "official_pdp_fields",
+            "source_url": "https://tirtir.global/products/water-mellow-lip-balm",
+            "quality_improvement": {
+              "previous_bundle_hash": null,
+              "candidate_bundle_hash": "023a5f74e6c2c00680d72929c84d25e5c72b522c78aafebda755891ca70b7f50",
+              "replacement_decision": "new_product_intel_bundle",
+              "existing_quality_lane": null,
+              "candidate_quality_lane": "keep",
+              "existing_evidence_profile": null,
+              "candidate_evidence_profile": "official_pdp_reviewed_formula_and_usage"
+            }
+          }
+        }
+      ]
+    }
+  ],
+  "apply_result": {
+    "upserts": 22,
+    "chunks": 1
+  }
+}

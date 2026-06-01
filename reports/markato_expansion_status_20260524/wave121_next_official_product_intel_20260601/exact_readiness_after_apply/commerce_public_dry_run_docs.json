@@ -1,0 +1,641 @@
+{
+  "generated_at": "2026-06-01T07:09:18.693Z",
+  "market": "US",
+  "include_non_public": false,
+  "docs_built": 11,
+  "source_build_failures": [],
+  "docs": [
+    {
+      "doc_id": "sellable:sig_ec980a0cc118ab875dfec40e",
+      "sellable_item_group_id": "sig_ec980a0cc118ab875dfec40e",
+      "product_line_id": "pl_da4a4855114c04c5ee939a11",
+      "review_family_id": "rf_da4a4855114c04c5ee939a11",
+      "brand_name": "TIRTIR Global",
+      "category_paths": [
+        "Lip Balm"
+      ],
+      "market": "US",
+      "availability_state": "available",
+      "publish_state": "public",
+      "title": "Water Mellow Lip Balm",
+      "subtitle": "A lip balm for moisture comfort, soft-feeling lips, and easy reapplication through the day.",
+      "variant_axes": {
+        "color": "01 icy blue",
+        "multi_variant": true
+      },
+      "size": null,
+      "shade": null,
+      "pack": null,
+      "hero_media": {
+        "url": "https://tirtir.global/cdn/shop/files/ThumbnailWatermellowLipbalm_5.jpg?v=1762200848",
+        "source_kind": "catalog",
+        "source_tier": "catalog"
+      },
+      "preview_media": [
+        "https://tirtir.global/cdn/shop/files/ThumbnailWatermellowLipbalm_5.jpg?v=1762200848",
+        "https://tirtir.global/cdn/shop/files/1_bf47b3b3-3e5e-4bc0-87a8-0e68babd587a.jpg?v=1742799893",
+        "https://tirtir.global/cdn/shop/files/01_6cf8899c-0a5f-4546-a901-e0229e43f4d3.jpg?v=1742799893",
+        "https://tirtir.global/cdn/shop/files/02_4e9840a4-21d5-46f8-9eb4-7b18729d5d49.jpg?v=1742799893",
+        "https://tirtir.global/cdn/shop/files/03_8fbccbdc-3ea2-4754-845e-354081c3f7ae.jpg?v=1742799893",
+        "https://tirtir.global/cdn/shop/files/04_813a02d5-0af8-4244-b9d2-b762fff3d5d0.jpg?v=1742799893",
+        "https://tirtir.global/cdn/shop/files/05_ef925060-f5c8-4c92-9c90-79289647bcbc.jpg?v=1742799893",
+        "https://tirtir.global/cdn/shop/files/06_b2a7557b-f7fc-4270-828c-de4d843669ef.jpg?v=1742799893"
+      ],
+      "price_min": 15,
+      "price_max": 15,
+      "default_offer_id": "external_seed:ext_02bd3cd623ef5dfb6e46d0d3",
+      "internal_offer_exists": false,
+      "external_offer_exists": true,
+      "pivota_insight_status": "available",
+      "pivota_insight_summary": "A lip balm built around humectants such as glycerin/propanediol for soft-feeling lips, moisture comfort, and reapplication through the day.",
+      "quality_score": null,
+      "browse_score": null,
+      "facet_tokens": [
+        "TIRTIR Global",
+        "Lip Balm"
+      ],
+      "sort_keys": {
+        "price_min": 15,
+        "price_max": 15,
+        "updated_at": null
+      },
+      "updated_at": null,
+      "source_refs": [
+        "external_seed:ext_02bd3cd623ef5dfb6e46d0d3"
+      ]
+    },
+    {
+      "doc_id": "sellable:sig_6698aecb2197d16ddf91ec00",
+      "sellable_item_group_id": "sig_6698aecb2197d16ddf91ec00",
+      "product_line_id": "pl_b3aafdecda449b92471f2037",
+      "review_family_id": "rf_b3aafdecda449b92471f2037",
+      "brand_name": "Baie Botanique",
+      "category_paths": [
+        "Cleanser"
+      ],
+      "market": "US",
+      "availability_state": "available",
+      "publish_state": "public",
+      "title": "Rose Renew Face Wash",
+      "subtitle": "Winner of \"Best Cleanser\" Top Santé awards 2019\n\nThis gentle, regenerating face wash cleanses the skin without stripping, leaving it fresh, balanced and comfortable. Formulated with aloe vera, rose water and antioxidant-rich botanicals, it helps support skin health and daily hydration. Use after the Exfoliating Rose & Cupuaçu Enzyme Cleanser as the second step in a double cleanse to remove residual impurities and refresh the skin. Suitable for daily use, morning and evening.",
+      "variant_axes": {
+        "volume": "125ml",
+        "multi_variant": false
+      },
+      "size": null,
+      "shade": null,
+      "pack": null,
+      "hero_media": {
+        "url": "https://www.baiebotanique.com/cdn/shop/files/BaieBotaniqueregeneratingrosefacewashpackagingwithproducttubeandboxonwhitebackground.webp?v=1768379686",
+        "source_kind": "catalog",
+        "source_tier": "catalog"
+      },
+      "preview_media": [
+        "https://www.baiebotanique.com/cdn/shop/files/BaieBotaniqueregeneratingrosefacewashpackagingwithproducttubeandboxonwhitebackground.webp?v=1768379686",
+        "https://www.baiebotanique.com/cdn/shop/files/Modelwithclean_freshskindemonstratingthegentlecleansingbenefitsofBaieBotaniqueregeneratingrosefacewash.webp?v=1768379686",
+        "https://www.baiebotanique.com/cdn/shop/files/ConsumersurveyresultsforBaieBotaniqueregeneratingrosefacewashhighlightinggentle_non-dryingcleanse.webp?v=1768379686",
+        "https://www.baiebotanique.com/cdn/shop/files/Aloevera_rosewater_greentea_seabuckthornoilandraspberryseedoilusedinBaieBotaniqueregeneratingrosefacewash.webp?v=1768379686",
+        "https://www.baiebotanique.com/cdn/shop/files/ModelholdingBaieBotaniqueregeneratingrosefacewashshowinggentledailycleanserforfresh_balancedskin.webp?v=1768379686",
+        "https://www.baiebotanique.com/cdn/shop/files/CustomertestimonialforBaieBotaniqueregeneratingrosefacewashshowinghealthy_balancedskinafterdailyuse.webp?v=1768379686",
+        "https://www.baiebotanique.com/cdn/shop/files/RealcustomersusingBaieBotaniqueregeneratingrosefacewashaspartoftheirdailyskincareroutine.webp?v=1768379686",
+        "https://www.baiebotanique.com/cdn/shop/files/HowtouseRoseRenewFaceWashinaskincareroutine.webp?v=1768379686"
+      ],
+      "price_min": 27,
+      "price_max": 27,
+      "default_offer_id": "external_seed:ext_1d312f4c2dac999920d9b936",
+      "internal_offer_exists": false,
+      "external_offer_exists": true,
+      "pivota_insight_status": "available",
+      "pivota_insight_summary": "Rose Renew Face Wash is a face cleanser from Baie Botanique in 125ml, with source-backed cues around cleansing, a non-stripping feel and dirt, oil, and impurity removal.",
+      "quality_score": null,
+      "browse_score": null,
+      "facet_tokens": [
+        "Baie Botanique",
+        "Cleanser"
+      ],
+      "sort_keys": {
+        "price_min": 27,
+        "price_max": 27,
+        "updated_at": null
+      },
+      "updated_at": null,
+      "source_refs": [
+        "external_seed:ext_1d312f4c2dac999920d9b936"
+      ]
+    },
+    {
+      "doc_id": "sellable:sig_ddf72d7417dcb6a84fe7230f",
+      "sellable_item_group_id": "sig_ddf72d7417dcb6a84fe7230f",
+      "product_line_id": "pl_6258734f628b48639f18c9ff",
+      "review_family_id": "rf_6258734f628b48639f18c9ff",
+      "brand_name": "TIRTIR Global",
+      "category_paths": [
+        "Cleanser"
+      ],
+      "market": "US",
+      "availability_state": "available",
+      "publish_state": "public",
+      "title": "Milk Creamy Foam Cleanser",
+      "subtitle": "A cream-to-foam cleanser positioned as a gentle, hydrating cleanse with mild exfoliation cues and a whipped creamy texture.",
+      "variant_axes": {
+        "multi_variant": false
+      },
+      "size": null,
+      "shade": null,
+      "pack": null,
+      "hero_media": {
+        "url": "https://cdn.shopify.com/s/files/1/0663/2757/6795/files/milkcreamyfoamcleanserthumbanil.png?v=1762236808",
+        "source_kind": "catalog",
+        "source_tier": "catalog"
+      },
+      "preview_media": [
+        "https://cdn.shopify.com/s/files/1/0663/2757/6795/files/milkcreamyfoamcleanserthumbanil.png?v=1762236808",
+        "https://cdn.shopify.com/s/files/1/0663/2757/6795/files/milk_creamy_2.png?v=1762481278",
+        "https://cdn.shopify.com/s/files/1/0663/2757/6795/files/4_dc1ed0a5-2164-4206-9679-d60db3726d48.png?v=1762481278",
+        "https://cdn.shopify.com/s/files/1/0663/2757/6795/files/milk_creamy_cleanser.png?v=1762481278",
+        "https://cdn.shopify.com/s/files/1/0663/2757/6795/files/3_a59b4a09-0851-4c48-aaeb-ec9dc6e5c1cd.png?v=1762481278",
+        "https://cdn.shopify.com/s/files/1/0663/2757/6795/files/2_15ee1b6b-e058-445d-872b-e5e2b6945aed.png?v=1762481278"
+      ],
+      "price_min": 16,
+      "price_max": 16,
+      "default_offer_id": "external_seed:ext_d368298110b2622b6aa73530",
+      "internal_offer_exists": false,
+      "external_offer_exists": true,
+      "pivota_insight_status": "available",
+      "pivota_insight_summary": "Cream-to-foam cleanser for a cushioned daily cleanse.",
+      "quality_score": null,
+      "browse_score": null,
+      "facet_tokens": [
+        "TIRTIR Global",
+        "Cleanser"
+      ],
+      "sort_keys": {
+        "price_min": 16,
+        "price_max": 16,
+        "updated_at": null
+      },
+      "updated_at": null,
+      "source_refs": [
+        "external_seed:ext_d368298110b2622b6aa73530"
+      ]
+    },
+    {
+      "doc_id": "sellable:sig_2d00562df6124ffef286ace5",
+      "sellable_item_group_id": "sig_2d00562df6124ffef286ace5",
+      "product_line_id": "pl_fcdaf383c3006c0fbe8d1089",
+      "review_family_id": "rf_fcdaf383c3006c0fbe8d1089",
+      "brand_name": "TIRTIR Global",
+      "category_paths": [
+        "Toner"
+      ],
+      "market": "US",
+      "availability_state": "available",
+      "publish_state": "public",
+      "title": "Milk Skin Toner",
+      "subtitle": "A post-cleanse toner positioned around hydration, glow, and barrier support, with 2% niacinamide, rice bran extract, ceramide, and panthenol called out by the official product page.",
+      "variant_axes": {
+        "size": "150ml",
+        "volume": "150ml",
+        "multi_variant": true
+      },
+      "size": null,
+      "shade": null,
+      "pack": null,
+      "hero_media": {
+        "url": "https://tirtir.global/cdn/shop/files/8_30db1d99-f6f2-4762-9bc3-4e761c933acc.png?v=1770347983",
+        "source_kind": "catalog",
+        "source_tier": "catalog"
+      },
+      "preview_media": [
+        "https://tirtir.global/cdn/shop/files/8_30db1d99-f6f2-4762-9bc3-4e761c933acc.png?v=1770347983",
+        "https://tirtir.global/cdn/shop/files/Artboard_11_2x_56e841b2-567f-4680-942f-b6c584baae7d.jpg?v=1770347983",
+        "https://tirtir.global/cdn/shop/files/2x_ac76fca7-2840-4518-8111-9e8a36866976.png?v=1770347983",
+        "https://tirtir.global/cdn/shop/files/01_2x_16739c5f-c9eb-4169-8012-f495491f809c.png?v=1770347983",
+        "https://tirtir.global/cdn/shop/files/02_2x_c496ea2b-e5f3-4441-8d1d-15e82ae287ac.png?v=1770347983",
+        "https://tirtir.global/cdn/shop/files/03_2x_aa478320-8ca4-4474-8249-5c68227f7158.png?v=1770347983",
+        "https://tirtir.global/cdn/shop/files/04_2x_72740d9c-064f-4ec8-a605-6633cf550105.png?v=1770347983",
+        "https://tirtir.global/cdn/shop/files/05_2x_b2b73076-11c1-489c-b7d2-65bfdace600b.png?v=1770347983"
+      ],
+      "price_min": 13,
+      "price_max": 13,
+      "default_offer_id": "external_seed:ext_768ca6b8f29b99645a02a72d",
+      "internal_offer_exists": false,
+      "external_offer_exists": true,
+      "pivota_insight_status": "available",
+      "pivota_insight_summary": "Hydrating toner for post-cleanse layering and dewy barrier support.",
+      "quality_score": null,
+      "browse_score": null,
+      "facet_tokens": [
+        "TIRTIR Global",
+        "Toner"
+      ],
+      "sort_keys": {
+        "price_min": 13,
+        "price_max": 13,
+        "updated_at": null
+      },
+      "updated_at": null,
+      "source_refs": [
+        "external_seed:ext_768ca6b8f29b99645a02a72d"
+      ]
+    },
+    {
+      "doc_id": "sellable:sig_6d86de562c264fd937ab6bcf",
+      "sellable_item_group_id": "sig_6d86de562c264fd937ab6bcf",
+      "product_line_id": "pl_e0ca6c04e65414e1b4593c7b",
+      "review_family_id": "rf_e0ca6c04e65414e1b4593c7b",
+      "brand_name": "TIRTIR Global",
+      "category_paths": [
+        "Lip Oil"
+      ],
+      "market": "US",
+      "availability_state": "out_of_stock",
+      "publish_state": "public",
+      "title": "My Glow Lip Oil",
+      "subtitle": "A lip oil for glossy shine and comfort, with the official page calling out jojoba seed oil and vitamin E in a lightweight, non-sticky positioning.",
+      "variant_axes": {
+        "color": "honey",
+        "multi_variant": true
+      },
+      "size": null,
+      "shade": null,
+      "pack": null,
+      "hero_media": {
+        "url": "https://tirtir.global/cdn/shop/files/Honey_3be18def-3000-4eae-9d94-3928c7f5689c.png?v=1772503215",
+        "source_kind": "catalog",
+        "source_tier": "catalog"
+      },
+      "preview_media": [
+        "https://tirtir.global/cdn/shop/files/Honey_3be18def-3000-4eae-9d94-3928c7f5689c.png?v=1772503215",
+        "https://tirtir.global/cdn/shop/files/Mint_6724f81e-78e8-44e3-8424-a84b0c3c9ad7.png?v=1772503215",
+        "https://tirtir.global/cdn/shop/files/MyGlowLipOil_b2889bd5-5c6a-4ff0-8144-ffaae8579b9c.png?v=1772503215",
+        "https://tirtir.global/cdn/shop/files/black.png?v=1763012769",
+        "https://tirtir.global/cdn/shop/files/black.png?crop=center&v=1763012769",
+        "https://tirtir.global/cdn/shop/files/0000_Layer_Comp_1.jpg?v=1744680200",
+        "https://tirtir.global/cdn/shop/files/0000_Layer_Comp_1.jpg?crop=center&v=1744680200",
+        "https://tirtir.global/cdn/shop/files/Virtual-try-on.png?v=1744681200"
+      ],
+      "price_min": 13,
+      "price_max": 13,
+      "default_offer_id": "external_seed:ext_1c44481f8143059d23195915",
+      "internal_offer_exists": false,
+      "external_offer_exists": true,
+      "pivota_insight_status": "available",
+      "pivota_insight_summary": "Glossy lip oil for shine, comfort, and layering over lip color.",
+      "quality_score": null,
+      "browse_score": null,
+      "facet_tokens": [
+        "TIRTIR Global",
+        "Lip Oil"
+      ],
+      "sort_keys": {
+        "price_min": 13,
+        "price_max": 13,
+        "updated_at": null
+      },
+      "updated_at": null,
+      "source_refs": [
+        "external_seed:ext_1c44481f8143059d23195915"
+      ]
+    },
+    {
+      "doc_id": "sellable:sig_a2f4143e2460871c91cc9d61",
+      "sellable_item_group_id": "sig_a2f4143e2460871c91cc9d61",
+      "product_line_id": "pl_aa65156266c0d833c4570437",
+      "review_family_id": "rf_aa65156266c0d833c4570437",
+      "brand_name": "TIRTIR Global",
+      "category_paths": [
+        "Blush"
+      ],
+      "market": "US",
+      "availability_state": "available",
+      "publish_state": "public",
+      "title": "Mood Glider Lip And Blush Stick",
+      "subtitle": "A multi-use color stick for lips and cheeks, positioned around buildable transparent color, a skin-like hybrid texture, and quick blending.",
+      "variant_axes": {
+        "color": "peach mingle",
+        "multi_variant": true
+      },
+      "size": null,
+      "shade": null,
+      "pack": null,
+      "hero_media": {
+        "url": "https://tirtir.global/cdn/shop/files/LIP_CHEEK_THUMBANAIL_2_2x_f736b42a-1467-40e8-8aab-32411f14c927.jpg?v=1770791672",
+        "source_kind": "catalog",
+        "source_tier": "catalog"
+      },
+      "preview_media": [
+        "https://tirtir.global/cdn/shop/files/LIP_CHEEK_THUMBANAIL_2_2x_f736b42a-1467-40e8-8aab-32411f14c927.jpg?v=1770791672",
+        "https://tirtir.global/cdn/shop/files/PEACH_MINGLE___01.png?v=1770791672",
+        "https://tirtir.global/cdn/shop/files/ROSE_DRIZZLE___01.png?v=1770791672",
+        "https://tirtir.global/cdn/shop/files/TANGERING_GLOW___01.png?v=1770791672",
+        "https://tirtir.global/cdn/shop/files/CHILLY_BLAZE___01.png?v=1770791672",
+        "https://tirtir.global/cdn/shop/files/MULBERRY_POTION___01.png?v=1770791672",
+        "https://tirtir.global/cdn/shop/files/FUCHSIA_FLASH___01.png?v=1770791672",
+        "https://tirtir.global/cdn/shop/files/01_022ea95b-2ee0-485f-8b16-03add6c94bbb.png?v=1770791672"
+      ],
+      "price_min": 18,
+      "price_max": 18,
+      "default_offer_id": "external_seed:ext_48efa66217f45990e58a3b50",
+      "internal_offer_exists": false,
+      "external_offer_exists": true,
+      "pivota_insight_status": "available",
+      "pivota_insight_summary": "Multi-use color stick for lips, cheeks, and buildable soft color.",
+      "quality_score": null,
+      "browse_score": null,
+      "facet_tokens": [
+        "TIRTIR Global",
+        "Blush"
+      ],
+      "sort_keys": {
+        "price_min": 18,
+        "price_max": 18,
+        "updated_at": null
+      },
+      "updated_at": null,
+      "source_refs": [
+        "external_seed:ext_48efa66217f45990e58a3b50"
+      ]
+    },
+    {
+      "doc_id": "sellable:sig_59adf6d8e8510bb9c885ce17",
+      "sellable_item_group_id": "sig_59adf6d8e8510bb9c885ce17",
+      "product_line_id": "pl_5deec656b219a9c371581940",
+      "review_family_id": "rf_5deec656b219a9c371581940",
+      "brand_name": "TIRTIR Global",
+      "category_paths": [
+        "Essence"
+      ],
+      "market": "US",
+      "availability_state": "available",
+      "publish_state": "public",
+      "title": "Matcha Tea Pads",
+      "subtitle": "Pre-soaked dual-sided pads for swipe-on skin prep, redness-prone routines, and quick calming use rather than a serum step.",
+      "variant_axes": {
+        "multi_variant": false
+      },
+      "size": null,
+      "shade": null,
+      "pack": null,
+      "hero_media": {
+        "url": "https://tirtir.global/cdn/shop/files/Group_118_b8275f9e-4e72-4fb0-a2ae-c1d00dcfb4a6.png?v=1775194213",
+        "source_kind": "catalog",
+        "source_tier": "catalog"
+      },
+      "preview_media": [
+        "https://tirtir.global/cdn/shop/files/Group_118_b8275f9e-4e72-4fb0-a2ae-c1d00dcfb4a6.png?v=1775194213",
+        "https://tirtir.global/cdn/shop/files/01_9646ae60-2e72-425d-90b2-87667b6383df.jpg?v=1775194213",
+        "https://tirtir.global/cdn/shop/files/02_0b625ff6-de18-498d-8350-1379a94e39fb.jpg?v=1775194213",
+        "https://tirtir.global/cdn/shop/files/03_7c0c068d-38ab-4093-99da-458382c9726a.jpg?v=1775194213",
+        "https://tirtir.global/cdn/shop/files/04_dd0b8758-fd6b-4098-8483-313a33900aa4.jpg?v=1775194213",
+        "https://tirtir.global/cdn/shop/files/05_021d8578-c35e-4c16-a23f-7486bfedcf75.jpg?v=1775194213",
+        "https://tirtir.global/cdn/shop/files/06_29d7079e-9a65-48bd-8d6f-66a1a5640849.jpg?v=1775194213"
+      ],
+      "price_min": 23,
+      "price_max": 23,
+      "default_offer_id": "external_seed:ext_2ed925c42fe7f2dfd73f98db",
+      "internal_offer_exists": false,
+      "external_offer_exists": true,
+      "pivota_insight_status": "available",
+      "pivota_insight_summary": "Matcha Tea Pads is a treatment serum from TIRTIR Global in 70 pads / 160 mL, with source-backed ingredient cues around centella and barrier support.",
+      "quality_score": null,
+      "browse_score": null,
+      "facet_tokens": [
+        "TIRTIR Global",
+        "Essence"
+      ],
+      "sort_keys": {
+        "price_min": 23,
+        "price_max": 23,
+        "updated_at": null
+      },
+      "updated_at": null,
+      "source_refs": [
+        "external_seed:ext_2ed925c42fe7f2dfd73f98db"
+      ]
+    },
+    {
+      "doc_id": "sellable:sig_13c64924cebb756fa2f2bdcd",
+      "sellable_item_group_id": "sig_13c64924cebb756fa2f2bdcd",
+      "product_line_id": "pl_f890ca1d0e0866dc635f676e",
+      "review_family_id": "rf_f890ca1d0e0866dc635f676e",
+      "brand_name": "TIRTIR Global",
+      "category_paths": [
+        "Highlighter"
+      ],
+      "market": "US",
+      "availability_state": "out_of_stock",
+      "publish_state": "public",
+      "title": "My Glow Ampoule Highlighter",
+      "subtitle": "Combining skincare and makeup in one, this liquid highlighter contains glow ampoule ingredients to hydrate while delivering a dewy, luminous finish. It can be used alone for a natural sheen or mixed with base makeup for a radiant, glass-skin effect.",
+      "variant_axes": {
+        "multi_variant": false
+      },
+      "size": null,
+      "shade": null,
+      "pack": null,
+      "hero_media": {
+        "url": "https://cdn.shopify.com/s/files/1/0663/2757/6795/files/MyGlowAmpouleHighlighter1.png?v=1760503970",
+        "source_kind": "catalog",
+        "source_tier": "catalog"
+      },
+      "preview_media": [
+        "https://cdn.shopify.com/s/files/1/0663/2757/6795/files/MyGlowAmpouleHighlighter1.png?v=1760503970",
+        "https://cdn.shopify.com/s/files/1/0663/2757/6795/files/My_Glow_Ampoule_Highlighter_2.png?v=1760503970"
+      ],
+      "price_min": 3,
+      "price_max": 3,
+      "default_offer_id": "external_seed:ext_daab8cbcc38d218fdb6d7d22",
+      "internal_offer_exists": false,
+      "external_offer_exists": true,
+      "pivota_insight_status": "available",
+      "pivota_insight_summary": "My Glow Ampoule Highlighter is a highlighter from TIRTIR Global, with source-backed cues around glow payoff.",
+      "quality_score": null,
+      "browse_score": null,
+      "facet_tokens": [
+        "TIRTIR Global",
+        "Highlighter"
+      ],
+      "sort_keys": {
+        "price_min": 3,
+        "price_max": 3,
+        "updated_at": null
+      },
+      "updated_at": null,
+      "source_refs": [
+        "external_seed:ext_daab8cbcc38d218fdb6d7d22"
+      ]
+    },
+    {
+      "doc_id": "sellable:sig_28cbb86071dbb9905754d0d0",
+      "sellable_item_group_id": "sig_28cbb86071dbb9905754d0d0",
+      "product_line_id": "pl_489f55ef4c77aee2f31dad0a",
+      "review_family_id": "rf_489f55ef4c77aee2f31dad0a",
+      "brand_name": "TIRTIR Global",
+      "category_paths": [
+        "Treatment"
+      ],
+      "market": "US",
+      "availability_state": "available",
+      "publish_state": "public",
+      "title": "Waterism Lip Plumper",
+      "subtitle": "A lip plumper for glossy shine, fuller-looking lips, and shade-based lip finishing.",
+      "variant_axes": {
+        "multi_variant": false
+      },
+      "size": null,
+      "shade": null,
+      "pack": null,
+      "hero_media": {
+        "url": "https://tirtir.global/cdn/shop/files/Thumbnailtest_0030_WaterismLipPlumpler.jpg?v=1762200196",
+        "source_kind": "catalog",
+        "source_tier": "catalog"
+      },
+      "preview_media": [
+        "https://tirtir.global/cdn/shop/files/Thumbnailtest_0030_WaterismLipPlumpler.jpg?v=1762200196",
+        "https://tirtir.global/cdn/shop/files/7_2937a711-2139-4a28-ac7a-33014875a0fb.jpg?v=1742797751",
+        "https://tirtir.global/cdn/shop/files/black.png?v=1763012769",
+        "https://tirtir.global/cdn/shop/files/black.png?crop=center&v=1763012769",
+        "https://tirtir.global/cdn/shop/files/0000_Layer_Comp_1.jpg?v=1744680200",
+        "https://tirtir.global/cdn/shop/files/0000_Layer_Comp_1.jpg?crop=center&v=1744680200",
+        "https://tirtir.global/cdn/shop/files/Virtual-try-on.png?v=1744681200",
+        "https://tirtir.global/cdn/shop/files/Virtual-try-on.png?crop=center&v=1744681200"
+      ],
+      "price_min": 15,
+      "price_max": 15,
+      "default_offer_id": "external_seed:ext_de52f233645e757f2fcf89b0",
+      "internal_offer_exists": false,
+      "external_offer_exists": true,
+      "pivota_insight_status": "available",
+      "pivota_insight_summary": "Waterism Lip Plumper is a fine fragrance from TIRTIR Global in 3.3 g.",
+      "quality_score": null,
+      "browse_score": null,
+      "facet_tokens": [
+        "TIRTIR Global",
+        "Treatment"
+      ],
+      "sort_keys": {
+        "price_min": 15,
+        "price_max": 15,
+        "updated_at": null
+      },
+      "updated_at": null,
+      "source_refs": [
+        "external_seed:ext_de52f233645e757f2fcf89b0"
+      ]
+    },
+    {
+      "doc_id": "sellable:sig_96a72831df8e1f128fb82f62",
+      "sellable_item_group_id": "sig_96a72831df8e1f128fb82f62",
+      "product_line_id": "pl_ba43657930368840c2ba89af",
+      "review_family_id": "rf_ba43657930368840c2ba89af",
+      "brand_name": "TIRTIR Global",
+      "category_paths": [
+        "Toner"
+      ],
+      "market": "US",
+      "availability_state": "available",
+      "publish_state": "public",
+      "title": "Milk Skin Toner Light",
+      "subtitle": "A lighter toner in the Milk Skin line for hydration, soft skin prep, and oily or sensitive routines that do not want a heavy milky layer.",
+      "variant_axes": {
+        "size": "150ml",
+        "volume": "150ml",
+        "multi_variant": true
+      },
+      "size": null,
+      "shade": null,
+      "pack": null,
+      "hero_media": {
+        "url": "https://tirtir.global/cdn/shop/files/Thumbnail_2x_9cf0fdb9-3ece-497f-baa6-15f479f4bd41.png?v=1770863123",
+        "source_kind": "catalog",
+        "source_tier": "catalog"
+      },
+      "preview_media": [
+        "https://tirtir.global/cdn/shop/files/Thumbnail_2x_9cf0fdb9-3ece-497f-baa6-15f479f4bd41.png?v=1770863123",
+        "https://tirtir.global/cdn/shop/files/Thumbnailtest_0018_MilkSkinTonerLight50ml.jpg?v=1770863123",
+        "https://tirtir.global/cdn/shop/files/Thumbnailtest_0019_MilkSkinTonerLight20ml.jpg?v=1770863123",
+        "https://tirtir.global/cdn/shop/files/01_44cbab51-5218-4b8e-ba26-dbdbfdf70dec.png?v=1770863123",
+        "https://tirtir.global/cdn/shop/files/02_0494d2d2-4c9b-4189-ad44-8451d225936f.png?v=1770863123",
+        "https://tirtir.global/cdn/shop/files/03_24392c35-948e-4a4c-8e3e-fb9cf9f3c490.png?v=1770863123",
+        "https://tirtir.global/cdn/shop/files/04_4c70e2a1-551c-4326-a566-4f2bf896b0db.png?v=1770863123",
+        "https://tirtir.global/cdn/shop/files/05_331869ed-e94c-4360-b194-ba435bee5290.png?v=1770863123"
+      ],
+      "price_min": 13,
+      "price_max": 13,
+      "default_offer_id": "external_seed:ext_a6d24d905734889cd2a91fde",
+      "internal_offer_exists": false,
+      "external_offer_exists": true,
+      "pivota_insight_status": "available",
+      "pivota_insight_summary": "Milk Skin Toner Light is a face toner from TIRTIR Global in 150ml, with source-backed cues around toning, hydration and brightening support.",
+      "quality_score": null,
+      "browse_score": null,
+      "facet_tokens": [
+        "TIRTIR Global",
+        "Toner"
+      ],
+      "sort_keys": {
+        "price_min": 13,
+        "price_max": 13,
+        "updated_at": null
+      },
+      "updated_at": null,
+      "source_refs": [
+        "external_seed:ext_a6d24d905734889cd2a91fde"
+      ]
+    },
+    {
+      "doc_id": "sellable:sig_dd09ef39eac7d31e8c6b3baa",
+      "sellable_item_group_id": "sig_dd09ef39eac7d31e8c6b3baa",
+      "product_line_id": "pl_d10fa909518181488a691ed9",
+      "review_family_id": "rf_d10fa909518181488a691ed9",
+      "brand_name": "TIRTIR Global",
+      "category_paths": [
+        "Primer"
+      ],
+      "market": "US",
+      "availability_state": "available",
+      "publish_state": "public",
+      "title": "Reflect Glow Prep Primer",
+      "subtitle": "95% skincare-infused* red serum primer for crystal glow, plumping & grip. Light-catching glow with a crystal-clear, glass-skin prep. Glow | Plump | Grip | Non-sticky.",
+      "variant_axes": {
+        "volume": "30ml",
+        "multi_variant": false
+      },
+      "size": null,
+      "shade": null,
+      "pack": null,
+      "hero_media": {
+        "url": "https://cdn.shopify.com/s/files/1/0663/2757/6795/files/Group_437.png?v=1777254869",
+        "source_kind": "catalog",
+        "source_tier": "catalog"
+      },
+      "preview_media": [
+        "https://cdn.shopify.com/s/files/1/0663/2757/6795/files/Group_437.png?v=1777254869",
+        "https://cdn.shopify.com/s/files/1/0663/2757/6795/files/85834_R1_1.png?v=1777248764"
+      ],
+      "price_min": 17.6,
+      "price_max": 17.6,
+      "default_offer_id": "external_seed:ext_62f7f0e601b4a7076878dcc2",
+      "internal_offer_exists": false,
+      "external_offer_exists": true,
+      "pivota_insight_status": "available",
+      "pivota_insight_summary": "30ml glow primer for a dewier-looking base.",
+      "quality_score": null,
+      "browse_score": null,
+      "facet_tokens": [
+        "TIRTIR Global",
+        "Primer"
+      ],
+      "sort_keys": {
+        "price_min": 17.6,
+        "price_max": 17.6,
+        "updated_at": null
+      },
+      "updated_at": null,
+      "source_refs": [
+        "external_seed:ext_62f7f0e601b4a7076878dcc2"
+      ]
+    }
+  ]
+}

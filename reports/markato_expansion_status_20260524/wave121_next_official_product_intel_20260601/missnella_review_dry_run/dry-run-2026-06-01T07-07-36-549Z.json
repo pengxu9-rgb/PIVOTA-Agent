@@ -1,0 +1,1880 @@
+{
+  "generated_at": "2026-06-01T07:07:36.549Z",
+  "source": "pivota_insights_official_pdp_manual_review_v1",
+  "mode": "dry_run",
+  "filters": {
+    "brand": "Miss Nella",
+    "product_ids": [],
+    "limit": 30,
+    "include_strong": false,
+    "include_url_key": false,
+    "apply_chunk_size": null
+  },
+  "summary": {
+    "scanned": 30,
+    "changed_products": 9,
+    "blocked_products": 19,
+    "skipped_products": 2,
+    "write_actions": {
+      "update": 7,
+      "skip": 4,
+      "insert": 2
+    },
+    "skip_reasons": {
+      "candidate_failed_manual_quality_gate:insufficient_official_pdp_specificity": 19,
+      "protected_high_quality_existing:reviewed": 4,
+      "no_safe_writes": 2
+    },
+    "evidence_profiles": {
+      "official_pdp_reviewed_limited": 28,
+      "official_pdp_reviewed_formula_and_usage": 2
+    }
+  },
+  "plans": [
+    {
+      "external_product_id": "ext_9431ebc91685248f841adc6d",
+      "pivota_signature_id": null,
+      "title": "Add Blueberry Smoothie - Deep Lilac",
+      "brand": "Miss Nella",
+      "canonical_url": "https://www.missnella.com/products/blueberry-smoothie-deep-lilac",
+      "changed": false,
+      "blocked": true,
+      "skip_reason": "candidate_failed_manual_quality_gate:insufficient_official_pdp_specificity",
+      "candidate_hash": "075f258ef41655d198de0a4089dc6b8eeddf9de32b6daff8bdaac82842f79851",
+      "evidence_profile": "official_pdp_reviewed_limited",
+      "source_coverage": {
+        "source": "official_pdp",
+        "canonical_url": "https://www.missnella.com/products/blueberry-smoothie-deep-lilac",
+        "fields": {
+          "description": true,
+          "ingredients": 0,
+          "active_ingredients": 0,
+          "how_to": 0,
+          "details": 0,
+          "variants": 1
+        }
+      },
+      "preview": {
+        "headline": "Nail color",
+        "what_it_is": "Add Blueberry Smoothie - Deep Lilac is a nail polish from Miss Nella.",
+        "why_it_stands_out": [
+          {
+            "headline": "Official PDP evidence only",
+            "body": "This insight is limited to the official product fields currently available for Add Blueberry Smoothie - Deep Lilac.",
+            "evidence_strength": "official_pdp_reviewed_limited"
+          }
+        ],
+        "best_for": [
+          {
+            "tag": "nail_color",
+            "label": "Nail color",
+            "confidence": "moderate"
+          }
+        ],
+        "shopping_highlight": "Nail color"
+      },
+      "writes": []
+    },
+    {
+      "external_product_id": "ext_02f16f8ae0e642d8f6599640",
+      "pivota_signature_id": null,
+      "title": "Add Blush?",
+      "brand": "Miss Nella",
+      "canonical_url": "https://www.missnella.com/products/add-blush",
+      "changed": false,
+      "blocked": true,
+      "skip_reason": "candidate_failed_manual_quality_gate:insufficient_official_pdp_specificity",
+      "candidate_hash": "9c5f8728ea54668aef22cd24f92dbe4a095ffd0c7d8074343969b08ded8cb4a2",
+      "evidence_profile": "official_pdp_reviewed_limited",
+      "source_coverage": {
+        "source": "official_pdp",
+        "canonical_url": "https://www.missnella.com/products/add-blush",
+        "fields": {
+          "description": true,
+          "ingredients": 0,
+          "active_ingredients": 0,
+          "how_to": 0,
+          "details": 0,
+          "variants": 3
+        }
+      },
+      "preview": {
+        "headline": "Face color makeup",
+        "what_it_is": "Blush is a blush from Miss Nella.",
+        "why_it_stands_out": [
+          {
+            "headline": "Official PDP evidence only",
+            "body": "This insight is limited to the official product fields currently available for Add Blush?",
+            "evidence_strength": "official_pdp_reviewed_limited"
+          }
+        ],
+        "best_for": [
+          {
+            "tag": "face_color_makeup",
+            "label": "Face color makeup",
+            "confidence": "moderate"
+          }
+        ],
+        "shopping_highlight": "Face color makeup"
+      },
+      "writes": []
+    },
+    {
+      "external_product_id": "ext_fb538b176ea055fb4e7a4f36",
+      "pivota_signature_id": null,
+      "title": "Add Body Glitter?",
+      "brand": "Miss Nella",
+      "canonical_url": "https://www.missnella.com/products/add-body-glitter",
+      "changed": true,
+      "blocked": false,
+      "skip_reason": null,
+      "candidate_hash": "be074eb8c9f71c5f8765a88801ad68c8e84dbbaa4032472b77b05f32cdf4f2bf",
+      "evidence_profile": "official_pdp_reviewed_limited",
+      "source_coverage": {
+        "source": "official_pdp",
+        "canonical_url": "https://www.missnella.com/products/add-body-glitter",
+        "fields": {
+          "description": true,
+          "ingredients": 0,
+          "active_ingredients": 0,
+          "how_to": 0,
+          "details": 0,
+          "variants": 3
+        }
+      },
+      "preview": {
+        "headline": "Body shimmer",
+        "what_it_is": "Body Glitter is a body shimmer product from Miss Nella, with source-backed cues around body shimmer finish.",
+        "why_it_stands_out": [
+          {
+            "headline": "Body-shimmer cues are specific",
+            "body": "Reviewed shimmer cues such as body shimmer finish identify the format and finish without treating it like a skincare formula.",
+            "evidence_strength": "official_pdp_reviewed"
+          }
+        ],
+        "best_for": [
+          {
+            "tag": "body_shimmer_finish",
+            "label": "body shimmer finish",
+            "confidence": "moderate"
+          }
+        ],
+        "shopping_highlight": "body shimmer finish"
+      },
+      "writes": [
+        {
+          "kb_key": "product:ext_fb538b176ea055fb4e7a4f36",
+          "action": "update",
+          "reason": "explicit_owner_delegated_assistant_replacement_review",
+          "old_hash": "c459a6952d8d118731a7c354acbe147c1848543f9353893fa21f8341b11dda95",
+          "candidate_hash": "1a67765863137b53c849cbb1630b79fbe2603c00d1c79c8c6f0e69c1bf70b4b8",
+          "existing_weak": true,
+          "source": "pivota_insights_official_pdp_manual_review_v1",
+          "after_inventory": {
+            "product_id": "ext_fb538b176ea055fb4e7a4f36",
+            "kb_key": "product:ext_fb538b176ea055fb4e7a4f36",
+            "source": "pivota_insights_official_pdp_manual_review_v1",
+            "updated_at": "",
+            "last_success_at": "",
+            "title": "Add Body Glitter?",
+            "canonical_url": "",
+            "bundle_hash": "be074eb8c9f71c5f8765a88801ad68c8e84dbbaa4032472b77b05f32cdf4f2bf",
+            "lane": "keep",
+            "reason": "protected_good_content",
+            "priority": 0,
+            "protected": true,
+            "displayable": true,
+            "high_quality_ready": true,
+            "human_reviewed": true,
+            "issues": [],
+            "blocking_issues": [],
+            "quality_state": "reviewed",
+            "evidence_profile": "official_pdp_reviewed_limited",
+            "evidence_rank": 1,
+            "review_tier": "assistant_reviewed",
+            "agent_readable": true,
+            "public_ready": true
+          },
+          "source_meta": {
+            "evidence_profile": "official_pdp_reviewed_limited",
+            "quality_state": "reviewed",
+            "source_origin": "official_pdp_fields",
+            "source_url": "https://www.missnella.com/products/add-body-glitter",
+            "quality_improvement": {
+              "previous_bundle_hash": "07047a4d501b9ba9b7d2dc1bbde33d5f69348038712b8a6fe4ea3bb54effcf46",
+              "candidate_bundle_hash": "be074eb8c9f71c5f8765a88801ad68c8e84dbbaa4032472b77b05f32cdf4f2bf",
+              "replacement_decision": "explicit_owner_delegated_assistant_replacement_review",
+              "existing_quality_lane": "keep",
+              "candidate_quality_lane": "keep",
+              "existing_evidence_profile": "official_pdp_reviewed_limited",
+              "candidate_evidence_profile": "official_pdp_reviewed_limited"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "external_product_id": "ext_01be4f25b14e8f0ed5212903",
+      "pivota_signature_id": null,
+      "title": "Add Brush Set?",
+      "brand": "Miss Nella",
+      "canonical_url": "https://www.missnella.com/products/add-brush-set",
+      "changed": true,
+      "blocked": false,
+      "skip_reason": null,
+      "candidate_hash": "ff7917081b690b92669c6fc4b8268fdb8d389eeb9459061508ee1b4e9b412dc8",
+      "evidence_profile": "official_pdp_reviewed_limited",
+      "source_coverage": {
+        "source": "official_pdp",
+        "canonical_url": "https://www.missnella.com/products/add-brush-set",
+        "fields": {
+          "description": true,
+          "ingredients": 0,
+          "active_ingredients": 0,
+          "how_to": 0,
+          "details": 0,
+          "variants": 1
+        }
+      },
+      "preview": {
+        "headline": "Makeup brush",
+        "what_it_is": "Brush Set is a makeup brush from Miss Nella.",
+        "why_it_stands_out": [
+          {
+            "headline": "Product cues are source-backed",
+            "body": "Reviewed PDP cues such as precision application give shoppers specific comparison points within Miss Nella, rather than category-only copy.",
+            "evidence_strength": "official_pdp_reviewed"
+          }
+        ],
+        "best_for": [
+          {
+            "tag": "precision_application",
+            "label": "precision application",
+            "confidence": "moderate"
+          }
+        ],
+        "shopping_highlight": "precision application"
+      },
+      "writes": [
+        {
+          "kb_key": "product:ext_01be4f25b14e8f0ed5212903",
+          "action": "update",
+          "reason": "explicit_owner_delegated_assistant_replacement_review",
+          "old_hash": "67aef63b57d61c7ce5c00f63767a525881638c8ad97b75b54a19013e6800d955",
+          "candidate_hash": "bd9bce501d20b09c9a7de5d89a7bb65e97c46f15dcfef84cb1d28d71540895b1",
+          "existing_weak": true,
+          "source": "pivota_insights_official_pdp_manual_review_v1",
+          "after_inventory": {
+            "product_id": "ext_01be4f25b14e8f0ed5212903",
+            "kb_key": "product:ext_01be4f25b14e8f0ed5212903",
+            "source": "pivota_insights_official_pdp_manual_review_v1",
+            "updated_at": "",
+            "last_success_at": "",
+            "title": "Add Brush Set?",
+            "canonical_url": "",
+            "bundle_hash": "ff7917081b690b92669c6fc4b8268fdb8d389eeb9459061508ee1b4e9b412dc8",
+            "lane": "keep",
+            "reason": "protected_good_content",
+            "priority": 0,
+            "protected": true,
+            "displayable": true,
+            "high_quality_ready": true,
+            "human_reviewed": true,
+            "issues": [],
+            "blocking_issues": [],
+            "quality_state": "reviewed",
+            "evidence_profile": "official_pdp_reviewed_limited",
+            "evidence_rank": 1,
+            "review_tier": "assistant_reviewed",
+            "agent_readable": true,
+            "public_ready": true
+          },
+          "source_meta": {
+            "evidence_profile": "official_pdp_reviewed_limited",
+            "quality_state": "reviewed",
+            "source_origin": "official_pdp_fields",
+            "source_url": "https://www.missnella.com/products/add-brush-set",
+            "quality_improvement": {
+              "previous_bundle_hash": "ae4f770ce144a4b2bb47338141db3214e0bb5ec44afc904ae0cd1216d23ec225",
+              "candidate_bundle_hash": "ff7917081b690b92669c6fc4b8268fdb8d389eeb9459061508ee1b4e9b412dc8",
+              "replacement_decision": "explicit_owner_delegated_assistant_replacement_review",
+              "existing_quality_lane": "keep",
+              "candidate_quality_lane": "keep",
+              "existing_evidence_profile": "official_pdp_reviewed_limited",
+              "candidate_evidence_profile": "official_pdp_reviewed_limited"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "external_product_id": "ext_d893e9b6d0da41c7c7e88a3b",
+      "pivota_signature_id": null,
+      "title": "Add Bubble Gum - Lilac",
+      "brand": "Miss Nella",
+      "canonical_url": "https://www.missnella.com/products/bubble-gum",
+      "changed": false,
+      "blocked": true,
+      "skip_reason": "candidate_failed_manual_quality_gate:insufficient_official_pdp_specificity",
+      "candidate_hash": "fcdda68d6c59595f46821a5456e437835903a97f54634de03d4e350e688483f6",
+      "evidence_profile": "official_pdp_reviewed_limited",
+      "source_coverage": {
+        "source": "official_pdp",
+        "canonical_url": "https://www.missnella.com/products/bubble-gum",
+        "fields": {
+          "description": true,
+          "ingredients": 0,
+          "active_ingredients": 0,
+          "how_to": 0,
+          "details": 0,
+          "variants": 1
+        }
+      },
+      "preview": {
+        "headline": "Nail color",
+        "what_it_is": "Add Bubble Gum - Lilac is a nail polish from Miss Nella.",
+        "why_it_stands_out": [
+          {
+            "headline": "Official PDP evidence only",
+            "body": "This insight is limited to the official product fields currently available for Add Bubble Gum - Lilac.",
+            "evidence_strength": "official_pdp_reviewed_limited"
+          }
+        ],
+        "best_for": [
+          {
+            "tag": "nail_color",
+            "label": "Nail color",
+            "confidence": "moderate"
+          }
+        ],
+        "shopping_highlight": "Nail color"
+      },
+      "writes": []
+    },
+    {
+      "external_product_id": "ext_4713d5b3212c995a012b8395",
+      "pivota_signature_id": null,
+      "title": "Add Canvas Bag?",
+      "brand": "Miss Nella",
+      "canonical_url": "https://www.missnella.com/products/add-canvas-bag",
+      "changed": true,
+      "blocked": false,
+      "skip_reason": null,
+      "candidate_hash": "176b02c00419e3906d90814161a1c55d23ae102c620515d7774f78d5fc1d4a6b",
+      "evidence_profile": "official_pdp_reviewed_limited",
+      "source_coverage": {
+        "source": "official_pdp",
+        "canonical_url": "https://www.missnella.com/products/add-canvas-bag",
+        "fields": {
+          "description": true,
+          "ingredients": 0,
+          "active_ingredients": 0,
+          "how_to": 0,
+          "details": 0,
+          "variants": 1
+        }
+      },
+      "preview": {
+        "headline": "Beauty accessory",
+        "what_it_is": "Canvas Bag is a beauty accessory from Miss Nella. ***This is a hidden product used with the Product Options application, Please do not delete this product.",
+        "why_it_stands_out": [
+          {
+            "headline": "Product cues are source-backed",
+            "body": "Reviewed PDP cues such as travel organization give shoppers specific comparison points within Miss Nella, rather than category-only copy.",
+            "evidence_strength": "official_pdp_reviewed"
+          }
+        ],
+        "best_for": [
+          {
+            "tag": "makeup_organization",
+            "label": "makeup organization",
+            "confidence": "moderate"
+          }
+        ],
+        "shopping_highlight": "travel organization"
+      },
+      "writes": [
+        {
+          "kb_key": "product:ext_4713d5b3212c995a012b8395",
+          "action": "update",
+          "reason": "explicit_owner_delegated_assistant_replacement_review",
+          "old_hash": "f4e37d6abd17301dd5fdbe552e49d8e3c927e88ee790b563dc6bc61eeeb4cb61",
+          "candidate_hash": "8e08c1d63086406b19acd987e4bea7ada77e37d48be258144fe07c1452e389e2",
+          "existing_weak": true,
+          "source": "pivota_insights_official_pdp_manual_review_v1",
+          "after_inventory": {
+            "product_id": "ext_4713d5b3212c995a012b8395",
+            "kb_key": "product:ext_4713d5b3212c995a012b8395",
+            "source": "pivota_insights_official_pdp_manual_review_v1",
+            "updated_at": "",
+            "last_success_at": "",
+            "title": "Add Canvas Bag?",
+            "canonical_url": "",
+            "bundle_hash": "176b02c00419e3906d90814161a1c55d23ae102c620515d7774f78d5fc1d4a6b",
+            "lane": "keep",
+            "reason": "protected_good_content",
+            "priority": 0,
+            "protected": true,
+            "displayable": true,
+            "high_quality_ready": true,
+            "human_reviewed": true,
+            "issues": [],
+            "blocking_issues": [],
+            "quality_state": "reviewed",
+            "evidence_profile": "official_pdp_reviewed_limited",
+            "evidence_rank": 1,
+            "review_tier": "assistant_reviewed",
+            "agent_readable": true,
+            "public_ready": true
+          },
+          "source_meta": {
+            "evidence_profile": "official_pdp_reviewed_limited",
+            "quality_state": "reviewed",
+            "source_origin": "official_pdp_fields",
+            "source_url": "https://www.missnella.com/products/add-canvas-bag",
+            "quality_improvement": {
+              "previous_bundle_hash": "d1433ff5bf9da26a4beea4f30fd6ce329bd75c7f9384527d9da3172ff8cce3cd",
+              "candidate_bundle_hash": "176b02c00419e3906d90814161a1c55d23ae102c620515d7774f78d5fc1d4a6b",
+              "replacement_decision": "explicit_owner_delegated_assistant_replacement_review",
+              "existing_quality_lane": "keep",
+              "candidate_quality_lane": "keep",
+              "existing_evidence_profile": "official_pdp_reviewed_limited",
+              "candidate_evidence_profile": "official_pdp_reviewed_limited"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "external_product_id": "ext_bd7750e02cfbb1f09468e1d6",
+      "pivota_signature_id": null,
+      "title": "Add Cheeky Bunny - Light Pink",
+      "brand": "Miss Nella",
+      "canonical_url": "https://www.missnella.com/products/add-cheeky-bunny-light-pink",
+      "changed": false,
+      "blocked": true,
+      "skip_reason": "candidate_failed_manual_quality_gate:insufficient_official_pdp_specificity",
+      "candidate_hash": "67f375838fbb7e55303b61624f09d2c96cae33f65c28a095fb23612a83968ed2",
+      "evidence_profile": "official_pdp_reviewed_limited",
+      "source_coverage": {
+        "source": "official_pdp",
+        "canonical_url": "https://www.missnella.com/products/add-cheeky-bunny-light-pink",
+        "fields": {
+          "description": true,
+          "ingredients": 0,
+          "active_ingredients": 0,
+          "how_to": 0,
+          "details": 0,
+          "variants": 1
+        }
+      },
+      "preview": {
+        "headline": "Nail color",
+        "what_it_is": "Add Cheeky Bunny - Light Pink is a nail polish from Miss Nella.",
+        "why_it_stands_out": [
+          {
+            "headline": "Official PDP evidence only",
+            "body": "This insight is limited to the official product fields currently available for Add Cheeky Bunny - Light Pink.",
+            "evidence_strength": "official_pdp_reviewed_limited"
+          }
+        ],
+        "best_for": [
+          {
+            "tag": "nail_color",
+            "label": "Nail color",
+            "confidence": "moderate"
+          }
+        ],
+        "shopping_highlight": "Nail color"
+      },
+      "writes": []
+    },
+    {
+      "external_product_id": "ext_0af0a85217a1844d7f8c4174",
+      "pivota_signature_id": null,
+      "title": "Add Cool Kid - Deep Blue",
+      "brand": "Miss Nella",
+      "canonical_url": "https://www.missnella.com/products/cool-kid-deep-blue",
+      "changed": false,
+      "blocked": true,
+      "skip_reason": "candidate_failed_manual_quality_gate:insufficient_official_pdp_specificity",
+      "candidate_hash": "2023e07d2133e9c05a8b10949b6f6665edaaa7235b2499c09282c353d99a5a97",
+      "evidence_profile": "official_pdp_reviewed_limited",
+      "source_coverage": {
+        "source": "official_pdp",
+        "canonical_url": "https://www.missnella.com/products/cool-kid-deep-blue",
+        "fields": {
+          "description": true,
+          "ingredients": 0,
+          "active_ingredients": 0,
+          "how_to": 0,
+          "details": 0,
+          "variants": 1
+        }
+      },
+      "preview": {
+        "headline": "Nail color",
+        "what_it_is": "Add Cool Kid - Deep Blue is a nail polish from Miss Nella.",
+        "why_it_stands_out": [
+          {
+            "headline": "Official PDP evidence only",
+            "body": "This insight is limited to the official product fields currently available for Add Cool Kid - Deep Blue.",
+            "evidence_strength": "official_pdp_reviewed_limited"
+          }
+        ],
+        "best_for": [
+          {
+            "tag": "nail_color",
+            "label": "Nail color",
+            "confidence": "moderate"
+          }
+        ],
+        "shopping_highlight": "Nail color"
+      },
+      "writes": []
+    },
+    {
+      "external_product_id": "ext_5d152578766f6dafde6361fb",
+      "pivota_signature_id": null,
+      "title": "Add Croco Dazzle - Glittery Red",
+      "brand": "Miss Nella",
+      "canonical_url": "https://www.missnella.com/products/croco-dazzle-glittery-red",
+      "changed": false,
+      "blocked": true,
+      "skip_reason": "candidate_failed_manual_quality_gate:insufficient_official_pdp_specificity",
+      "candidate_hash": "ce85106485ebaf94f65cd0afe8dbc8ada5d557815f2e85271b3ef673b622caf5",
+      "evidence_profile": "official_pdp_reviewed_limited",
+      "source_coverage": {
+        "source": "official_pdp",
+        "canonical_url": "https://www.missnella.com/products/croco-dazzle-glittery-red",
+        "fields": {
+          "description": true,
+          "ingredients": 0,
+          "active_ingredients": 0,
+          "how_to": 0,
+          "details": 0,
+          "variants": 1
+        }
+      },
+      "preview": {
+        "headline": "Nail color",
+        "what_it_is": "Add Croco Dazzle - Glittery Red is a nail polish from Miss Nella.",
+        "why_it_stands_out": [
+          {
+            "headline": "Official PDP evidence only",
+            "body": "This insight is limited to the official product fields currently available for Add Croco Dazzle - Glittery Red.",
+            "evidence_strength": "official_pdp_reviewed_limited"
+          }
+        ],
+        "best_for": [
+          {
+            "tag": "nail_color",
+            "label": "Nail color",
+            "confidence": "moderate"
+          }
+        ],
+        "shopping_highlight": "Nail color"
+      },
+      "writes": []
+    },
+    {
+      "external_product_id": "ext_9cac58cbc9b211cd22548fb5",
+      "pivota_signature_id": null,
+      "title": "Add Duo Nail Stickers?",
+      "brand": "Miss Nella",
+      "canonical_url": "https://www.missnella.com/products/add-nail-stickers",
+      "changed": true,
+      "blocked": false,
+      "skip_reason": null,
+      "candidate_hash": "89bd09e2519df451e642de3dbd1fe9cedc12a788a78e9b8133b5632ed304ab8d",
+      "evidence_profile": "official_pdp_reviewed_limited",
+      "source_coverage": {
+        "source": "official_pdp",
+        "canonical_url": "https://www.missnella.com/products/add-nail-stickers",
+        "fields": {
+          "description": true,
+          "ingredients": 0,
+          "active_ingredients": 0,
+          "how_to": 0,
+          "details": 0,
+          "variants": 1
+        }
+      },
+      "preview": {
+        "headline": "Beauty accessory",
+        "what_it_is": "Duo Nail Stickers is a beauty accessory from Miss Nella. ***This is a hidden product used with the Product Options application, Please do not delete this product.",
+        "why_it_stands_out": [
+          {
+            "headline": "Product cues are source-backed",
+            "body": "Reviewed PDP cues such as collectible format give shoppers specific comparison points within Miss Nella, rather than category-only copy.",
+            "evidence_strength": "official_pdp_reviewed"
+          }
+        ],
+        "best_for": [
+          {
+            "tag": "collecting",
+            "label": "collecting",
+            "confidence": "moderate"
+          }
+        ],
+        "shopping_highlight": "collectible format"
+      },
+      "writes": [
+        {
+          "kb_key": "product:ext_9cac58cbc9b211cd22548fb5",
+          "action": "update",
+          "reason": "explicit_owner_delegated_assistant_replacement_review",
+          "old_hash": "28f90b19fd5e447e6c3e565a0bf1671cfde82c19e7af0acaa6920ecbb4d8e916",
+          "candidate_hash": "85754febcf1573f4e5ac5ad4b60c4c072f3c7cbcdd054845aba1d146872db9e2",
+          "existing_weak": true,
+          "source": "pivota_insights_official_pdp_manual_review_v1",
+          "after_inventory": {
+            "product_id": "ext_9cac58cbc9b211cd22548fb5",
+            "kb_key": "product:ext_9cac58cbc9b211cd22548fb5",
+            "source": "pivota_insights_official_pdp_manual_review_v1",
+            "updated_at": "",
+            "last_success_at": "",
+            "title": "Add Duo Nail Stickers?",
+            "canonical_url": "",
+            "bundle_hash": "89bd09e2519df451e642de3dbd1fe9cedc12a788a78e9b8133b5632ed304ab8d",
+            "lane": "keep",
+            "reason": "protected_good_content",
+            "priority": 0,
+            "protected": true,
+            "displayable": true,
+            "high_quality_ready": true,
+            "human_reviewed": true,
+            "issues": [],
+            "blocking_issues": [],
+            "quality_state": "reviewed",
+            "evidence_profile": "official_pdp_reviewed_limited",
+            "evidence_rank": 1,
+            "review_tier": "assistant_reviewed",
+            "agent_readable": true,
+            "public_ready": true
+          },
+          "source_meta": {
+            "evidence_profile": "official_pdp_reviewed_limited",
+            "quality_state": "reviewed",
+            "source_origin": "official_pdp_fields",
+            "source_url": "https://www.missnella.com/products/add-nail-stickers",
+            "quality_improvement": {
+              "previous_bundle_hash": "64eb8841be014f32be06ecb7d812a8932ba90734d1c5175a061de62e9c2830b1",
+              "candidate_bundle_hash": "89bd09e2519df451e642de3dbd1fe9cedc12a788a78e9b8133b5632ed304ab8d",
+              "replacement_decision": "explicit_owner_delegated_assistant_replacement_review",
+              "existing_quality_lane": "keep",
+              "candidate_quality_lane": "keep",
+              "existing_evidence_profile": "official_pdp_reviewed_limited",
+              "candidate_evidence_profile": "official_pdp_reviewed_limited"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "external_product_id": "ext_1fc4f0b1653b5758dffae560",
+      "pivota_signature_id": null,
+      "title": "Add Eye Shadow?",
+      "brand": "Miss Nella",
+      "canonical_url": "https://www.missnella.com/products/add-eye-shadow",
+      "changed": false,
+      "blocked": true,
+      "skip_reason": "candidate_failed_manual_quality_gate:insufficient_official_pdp_specificity",
+      "candidate_hash": "656b2b0538b655f9b76a5db61e220b8664d06029cc6273eb292874a706c15071",
+      "evidence_profile": "official_pdp_reviewed_limited",
+      "source_coverage": {
+        "source": "official_pdp",
+        "canonical_url": "https://www.missnella.com/products/add-eye-shadow",
+        "fields": {
+          "description": true,
+          "ingredients": 0,
+          "active_ingredients": 0,
+          "how_to": 0,
+          "details": 0,
+          "variants": 3
+        }
+      },
+      "preview": {
+        "headline": "Eye makeup",
+        "what_it_is": "Eye Shadow is an eye makeup product from Miss Nella.",
+        "why_it_stands_out": [
+          {
+            "headline": "Official PDP evidence only",
+            "body": "This insight is limited to the official product fields currently available for Add Eye Shadow?",
+            "evidence_strength": "official_pdp_reviewed_limited"
+          }
+        ],
+        "best_for": [
+          {
+            "tag": "eye_makeup",
+            "label": "Eye makeup",
+            "confidence": "moderate"
+          }
+        ],
+        "shopping_highlight": "Eye makeup"
+      },
+      "writes": []
+    },
+    {
+      "external_product_id": "ext_03a1be488da4fcfb06118956",
+      "pivota_signature_id": null,
+      "title": "Add Field Trips - Green",
+      "brand": "Miss Nella",
+      "canonical_url": "https://www.missnella.com/products/field-trips",
+      "changed": false,
+      "blocked": true,
+      "skip_reason": "candidate_failed_manual_quality_gate:insufficient_official_pdp_specificity",
+      "candidate_hash": "80acb333083b8fef0ead91c316688362533011b2a3ad412589f9ad34f0e04359",
+      "evidence_profile": "official_pdp_reviewed_limited",
+      "source_coverage": {
+        "source": "official_pdp",
+        "canonical_url": "https://www.missnella.com/products/field-trips",
+        "fields": {
+          "description": true,
+          "ingredients": 0,
+          "active_ingredients": 0,
+          "how_to": 0,
+          "details": 0,
+          "variants": 1
+        }
+      },
+      "preview": {
+        "headline": "Nail color",
+        "what_it_is": "Add Field Trips - Green is a nail polish from Miss Nella.",
+        "why_it_stands_out": [
+          {
+            "headline": "Official PDP evidence only",
+            "body": "This insight is limited to the official product fields currently available for Add Field Trips - Green.",
+            "evidence_strength": "official_pdp_reviewed_limited"
+          }
+        ],
+        "best_for": [
+          {
+            "tag": "nail_color",
+            "label": "Nail color",
+            "confidence": "moderate"
+          }
+        ],
+        "shopping_highlight": "Nail color"
+      },
+      "writes": []
+    },
+    {
+      "external_product_id": "ext_e95d981ef7dc3b7520bd24d9",
+      "pivota_signature_id": null,
+      "title": "Add Galactic Unicorn - Deep Purple",
+      "brand": "Miss Nella",
+      "canonical_url": "https://www.missnella.com/products/galactic-unicorn-deep-purple",
+      "changed": false,
+      "blocked": true,
+      "skip_reason": "candidate_failed_manual_quality_gate:insufficient_official_pdp_specificity",
+      "candidate_hash": "220d76d3ff368ae4766a288e0177686841f9a890217b50eaf62d15c5a0f9b784",
+      "evidence_profile": "official_pdp_reviewed_limited",
+      "source_coverage": {
+        "source": "official_pdp",
+        "canonical_url": "https://www.missnella.com/products/galactic-unicorn-deep-purple",
+        "fields": {
+          "description": true,
+          "ingredients": 0,
+          "active_ingredients": 0,
+          "how_to": 0,
+          "details": 0,
+          "variants": 1
+        }
+      },
+      "preview": {
+        "headline": "Nail color",
+        "what_it_is": "Add Galactic Unicorn - Deep Purple is a nail polish from Miss Nella.",
+        "why_it_stands_out": [
+          {
+            "headline": "Official PDP evidence only",
+            "body": "This insight is limited to the official product fields currently available for Add Galactic Unicorn - Deep Purple.",
+            "evidence_strength": "official_pdp_reviewed_limited"
+          }
+        ],
+        "best_for": [
+          {
+            "tag": "nail_color",
+            "label": "Nail color",
+            "confidence": "moderate"
+          }
+        ],
+        "shopping_highlight": "Nail color"
+      },
+      "writes": []
+    },
+    {
+      "external_product_id": "ext_f1922bf969828996ea3764d4",
+      "pivota_signature_id": null,
+      "title": "Add Gift Packaging?",
+      "brand": "Miss Nella",
+      "canonical_url": "https://www.missnella.com/products/add-gift-packaging",
+      "changed": false,
+      "blocked": true,
+      "skip_reason": "candidate_failed_manual_quality_gate:insufficient_official_pdp_specificity",
+      "candidate_hash": "7fc526f02e7308ae9bdb0f5f92c7b269c05deb440bf0e0d2c08e428829e8f4f4",
+      "evidence_profile": "official_pdp_reviewed_limited",
+      "source_coverage": {
+        "source": "official_pdp",
+        "canonical_url": "https://www.missnella.com/products/add-gift-packaging",
+        "fields": {
+          "description": true,
+          "ingredients": 0,
+          "active_ingredients": 0,
+          "how_to": 0,
+          "details": 0,
+          "variants": 2
+        }
+      },
+      "preview": {
+        "headline": "Beauty product",
+        "what_it_is": "Gift Packaging is a beauty product from Miss Nella. ***This is a hidden product used with the Product Options application, Please do not delete this product.",
+        "why_it_stands_out": [
+          {
+            "headline": "Official PDP evidence only",
+            "body": "This insight is limited to the official product fields currently available for Add Gift Packaging?",
+            "evidence_strength": "official_pdp_reviewed_limited"
+          }
+        ],
+        "best_for": [
+          {
+            "tag": "beauty_product",
+            "label": "Beauty product",
+            "confidence": "moderate"
+          }
+        ],
+        "shopping_highlight": "Beauty product"
+      },
+      "writes": []
+    },
+    {
+      "external_product_id": "ext_f6e3b1c7406648333731334e",
+      "pivota_signature_id": null,
+      "title": "Add Headband?",
+      "brand": "Miss Nella",
+      "canonical_url": "https://www.missnella.com/products/add-headband",
+      "changed": true,
+      "blocked": false,
+      "skip_reason": null,
+      "candidate_hash": "f1f726a9a852ea54f418c4885c3aa0625642ec9000c08180ac169c3ed8b9970b",
+      "evidence_profile": "official_pdp_reviewed_limited",
+      "source_coverage": {
+        "source": "official_pdp",
+        "canonical_url": "https://www.missnella.com/products/add-headband",
+        "fields": {
+          "description": true,
+          "ingredients": 0,
+          "active_ingredients": 0,
+          "how_to": 0,
+          "details": 0,
+          "variants": 1
+        }
+      },
+      "preview": {
+        "headline": "Beauty accessory",
+        "what_it_is": "Headband is a beauty accessory from Miss Nella. ***This is a hidden product used with the Product Options application, Please do not delete this product.",
+        "why_it_stands_out": [
+          {
+            "headline": "Product cues are source-backed",
+            "body": "Reviewed PDP cues such as hair control give shoppers specific comparison points within Miss Nella, rather than category-only copy.",
+            "evidence_strength": "official_pdp_reviewed"
+          }
+        ],
+        "best_for": [
+          {
+            "tag": "hair_hold",
+            "label": "hair hold",
+            "confidence": "moderate"
+          }
+        ],
+        "shopping_highlight": "hair control"
+      },
+      "writes": [
+        {
+          "kb_key": "product:ext_f6e3b1c7406648333731334e",
+          "action": "update",
+          "reason": "explicit_owner_delegated_assistant_replacement_review",
+          "old_hash": "a7b19966490346d30ba598f0a8fdea355f9a27ee5ecfd44082241bd1af914a1a",
+          "candidate_hash": "6195550101b312f196234913c1c00ed02e5de159217e3ed78787fdb4381bab87",
+          "existing_weak": true,
+          "source": "pivota_insights_official_pdp_manual_review_v1",
+          "after_inventory": {
+            "product_id": "ext_f6e3b1c7406648333731334e",
+            "kb_key": "product:ext_f6e3b1c7406648333731334e",
+            "source": "pivota_insights_official_pdp_manual_review_v1",
+            "updated_at": "",
+            "last_success_at": "",
+            "title": "Add Headband?",
+            "canonical_url": "",
+            "bundle_hash": "f1f726a9a852ea54f418c4885c3aa0625642ec9000c08180ac169c3ed8b9970b",
+            "lane": "keep",
+            "reason": "protected_good_content",
+            "priority": 0,
+            "protected": true,
+            "displayable": true,
+            "high_quality_ready": true,
+            "human_reviewed": true,
+            "issues": [],
+            "blocking_issues": [],
+            "quality_state": "reviewed",
+            "evidence_profile": "official_pdp_reviewed_limited",
+            "evidence_rank": 1,
+            "review_tier": "assistant_reviewed",
+            "agent_readable": true,
+            "public_ready": true
+          },
+          "source_meta": {
+            "evidence_profile": "official_pdp_reviewed_limited",
+            "quality_state": "reviewed",
+            "source_origin": "official_pdp_fields",
+            "source_url": "https://www.missnella.com/products/add-headband",
+            "quality_improvement": {
+              "previous_bundle_hash": "0c161bec0a5512de41edc6ec9e73492472e6c1e119dde60a646dc1a5c6695035",
+              "candidate_bundle_hash": "f1f726a9a852ea54f418c4885c3aa0625642ec9000c08180ac169c3ed8b9970b",
+              "replacement_decision": "explicit_owner_delegated_assistant_replacement_review",
+              "existing_quality_lane": "keep",
+              "candidate_quality_lane": "keep",
+              "existing_evidence_profile": "official_pdp_reviewed_limited",
+              "candidate_evidence_profile": "official_pdp_reviewed_limited"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "external_product_id": "ext_dfc8cb7a965b06dd2aec3949",
+      "pivota_signature_id": null,
+      "title": "Add Lip Balm?",
+      "brand": "Miss Nella",
+      "canonical_url": "https://www.missnella.com/products/add-lip-balm",
+      "changed": false,
+      "blocked": true,
+      "skip_reason": "candidate_failed_manual_quality_gate:insufficient_official_pdp_specificity",
+      "candidate_hash": "5c7dc73c4e720a416f0b1c3fa7473630eb1f3b1dab221c346490ae007a3d845c",
+      "evidence_profile": "official_pdp_reviewed_limited",
+      "source_coverage": {
+        "source": "official_pdp",
+        "canonical_url": "https://www.missnella.com/products/add-lip-balm",
+        "fields": {
+          "description": true,
+          "ingredients": 0,
+          "active_ingredients": 0,
+          "how_to": 0,
+          "details": 0,
+          "variants": 5
+        }
+      },
+      "preview": {
+        "headline": "Lip treatment",
+        "what_it_is": "Lip Balm is a lip balm from Miss Nella, with source-backed cues around comfort-oriented lip care.",
+        "why_it_stands_out": [
+          {
+            "headline": "Official PDP evidence only",
+            "body": "This insight is limited to the official product fields currently available for Add Lip Balm?",
+            "evidence_strength": "official_pdp_reviewed_limited"
+          }
+        ],
+        "best_for": [
+          {
+            "tag": "lip_comfort",
+            "label": "lip comfort",
+            "confidence": "moderate"
+          }
+        ],
+        "shopping_highlight": "lip comfort"
+      },
+      "writes": []
+    },
+    {
+      "external_product_id": "ext_02231ffa7b089b4f9ba83a1f",
+      "pivota_signature_id": null,
+      "title": "Add Lip Gloss?",
+      "brand": "Miss Nella",
+      "canonical_url": "https://www.missnella.com/products/add-lip-gloss-copy",
+      "changed": true,
+      "blocked": false,
+      "skip_reason": null,
+      "candidate_hash": "c4dde54775dff1346184981b7d5a2a5d97e2050b7e1c11ee6837d3ab3dc10518",
+      "evidence_profile": "official_pdp_reviewed_limited",
+      "source_coverage": {
+        "source": "official_pdp",
+        "canonical_url": "https://www.missnella.com/products/add-lip-gloss-copy",
+        "fields": {
+          "description": true,
+          "ingredients": 0,
+          "active_ingredients": 0,
+          "how_to": 0,
+          "details": 0,
+          "variants": 3
+        }
+      },
+      "preview": {
+        "headline": "Lip color",
+        "what_it_is": "Lip Gloss is a lip gloss from Miss Nella, with source-backed cues around shine finish.",
+        "why_it_stands_out": [
+          {
+            "headline": "Lip finish cues are specific",
+            "body": "Reviewed lip cues such as shine finish identify finish, shade, or formula context before the shopper leaves Pivota.",
+            "evidence_strength": "official_pdp_reviewed"
+          }
+        ],
+        "best_for": [
+          {
+            "tag": "color_payoff",
+            "label": "color payoff",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "shine_finish",
+            "label": "shine finish",
+            "confidence": "moderate"
+          }
+        ],
+        "shopping_highlight": "shine finish"
+      },
+      "writes": [
+        {
+          "kb_key": "product:ext_02231ffa7b089b4f9ba83a1f",
+          "action": "update",
+          "reason": "explicit_owner_delegated_assistant_replacement_review",
+          "old_hash": "39e75a90c6b105b65434b81878ad2601c0cacb9a5455082002d840895054663d",
+          "candidate_hash": "a76583e894c33128cf02b16ec3cd4ddeff72443105fc3b2adf4176722c6a8ff6",
+          "existing_weak": true,
+          "source": "pivota_insights_official_pdp_manual_review_v1",
+          "after_inventory": {
+            "product_id": "ext_02231ffa7b089b4f9ba83a1f",
+            "kb_key": "product:ext_02231ffa7b089b4f9ba83a1f",
+            "source": "pivota_insights_official_pdp_manual_review_v1",
+            "updated_at": "",
+            "last_success_at": "",
+            "title": "Add Lip Gloss?",
+            "canonical_url": "",
+            "bundle_hash": "c4dde54775dff1346184981b7d5a2a5d97e2050b7e1c11ee6837d3ab3dc10518",
+            "lane": "keep",
+            "reason": "protected_good_content",
+            "priority": 0,
+            "protected": true,
+            "displayable": true,
+            "high_quality_ready": true,
+            "human_reviewed": true,
+            "issues": [],
+            "blocking_issues": [],
+            "quality_state": "reviewed",
+            "evidence_profile": "official_pdp_reviewed_limited",
+            "evidence_rank": 1,
+            "review_tier": "assistant_reviewed",
+            "agent_readable": true,
+            "public_ready": true
+          },
+          "source_meta": {
+            "evidence_profile": "official_pdp_reviewed_limited",
+            "quality_state": "reviewed",
+            "source_origin": "official_pdp_fields",
+            "source_url": "https://www.missnella.com/products/add-lip-gloss-copy",
+            "quality_improvement": {
+              "previous_bundle_hash": "4c16b63b29c6aa52722b190a0410db2aa5328e9396403c830d1322594f4107ad",
+              "candidate_bundle_hash": "c4dde54775dff1346184981b7d5a2a5d97e2050b7e1c11ee6837d3ab3dc10518",
+              "replacement_decision": "explicit_owner_delegated_assistant_replacement_review",
+              "existing_quality_lane": "keep",
+              "candidate_quality_lane": "keep",
+              "existing_evidence_profile": "official_pdp_reviewed_limited",
+              "candidate_evidence_profile": "official_pdp_reviewed_limited"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "external_product_id": "ext_bcc0f6591eb59d00bcb2021a",
+      "pivota_signature_id": null,
+      "title": "Add Nail Dryer?",
+      "brand": "Miss Nella",
+      "canonical_url": "https://www.missnella.com/products/add-nail-dryer",
+      "changed": false,
+      "blocked": true,
+      "skip_reason": "candidate_failed_manual_quality_gate:insufficient_official_pdp_specificity",
+      "candidate_hash": "d80351ff1168afe2c7c1e923a506136339fde79e71e4af6b237dae5fcbfe0aac",
+      "evidence_profile": "official_pdp_reviewed_limited",
+      "source_coverage": {
+        "source": "official_pdp",
+        "canonical_url": "https://www.missnella.com/products/add-nail-dryer",
+        "fields": {
+          "description": true,
+          "ingredients": 0,
+          "active_ingredients": 0,
+          "how_to": 0,
+          "details": 0,
+          "variants": 1
+        }
+      },
+      "preview": {
+        "headline": "Beauty accessory",
+        "what_it_is": "Nail Dryer is a beauty accessory from Miss Nella. ***This is a hidden product used with the Product Options application, Please do not delete this product.",
+        "why_it_stands_out": [
+          {
+            "headline": "Official PDP evidence only",
+            "body": "This insight is limited to the official product fields currently available for Add Nail Dryer?",
+            "evidence_strength": "official_pdp_reviewed_limited"
+          }
+        ],
+        "best_for": [
+          {
+            "tag": "beauty_accessory",
+            "label": "Beauty accessory",
+            "confidence": "moderate"
+          }
+        ],
+        "shopping_highlight": "Beauty accessory"
+      },
+      "writes": []
+    },
+    {
+      "external_product_id": "ext_af6bd9de8eb5057fb8c49d3e",
+      "pivota_signature_id": null,
+      "title": "Add Nails and Accessories Set?",
+      "brand": "Miss Nella",
+      "canonical_url": "https://www.missnella.com/products/add-nails-and-accessories-set",
+      "changed": false,
+      "blocked": true,
+      "skip_reason": "candidate_failed_manual_quality_gate:insufficient_official_pdp_specificity",
+      "candidate_hash": "99555718c61dec08b3c0df0ab7c9003a42d380e83281278b3eea9766972a4cc8",
+      "evidence_profile": "official_pdp_reviewed_limited",
+      "source_coverage": {
+        "source": "official_pdp",
+        "canonical_url": "https://www.missnella.com/products/add-nails-and-accessories-set",
+        "fields": {
+          "description": true,
+          "ingredients": 0,
+          "active_ingredients": 0,
+          "how_to": 0,
+          "details": 0,
+          "variants": 1
+        }
+      },
+      "preview": {
+        "headline": "Beauty product",
+        "what_it_is": "Nails and Accessories Set is a beauty product from Miss Nella. ***This is a hidden product used with the Product Options application, Please do not delete this product.",
+        "why_it_stands_out": [
+          {
+            "headline": "Official PDP evidence only",
+            "body": "This insight is limited to the official product fields currently available for Add Nails and Accessories Set?",
+            "evidence_strength": "official_pdp_reviewed_limited"
+          }
+        ],
+        "best_for": [
+          {
+            "tag": "beauty_product",
+            "label": "Beauty product",
+            "confidence": "moderate"
+          }
+        ],
+        "shopping_highlight": "Beauty product"
+      },
+      "writes": []
+    },
+    {
+      "external_product_id": "ext_2b1c7ff14265ce72c4284a87",
+      "pivota_signature_id": null,
+      "title": "Add on Perfume",
+      "brand": "Miss Nella",
+      "canonical_url": "https://www.missnella.com/products/perfume",
+      "changed": false,
+      "blocked": true,
+      "skip_reason": "candidate_failed_manual_quality_gate:insufficient_official_pdp_specificity",
+      "candidate_hash": "32fb625406080cb18300ceab10956bdd9ebd818573b78b315c1b3e89841005a6",
+      "evidence_profile": "official_pdp_reviewed_limited",
+      "source_coverage": {
+        "source": "official_pdp",
+        "canonical_url": "https://www.missnella.com/products/perfume",
+        "fields": {
+          "description": true,
+          "ingredients": 0,
+          "active_ingredients": 0,
+          "how_to": 0,
+          "details": 0,
+          "variants": 2
+        }
+      },
+      "preview": {
+        "headline": "Fine fragrance",
+        "what_it_is": "Add on Perfume is a fine fragrance from Miss Nella.",
+        "why_it_stands_out": [
+          {
+            "headline": "Official PDP evidence only",
+            "body": "This insight is limited to the official product fields currently available for Add on Perfume.",
+            "evidence_strength": "official_pdp_reviewed_limited"
+          }
+        ],
+        "best_for": [
+          {
+            "tag": "fine_fragrance",
+            "label": "Fine fragrance",
+            "confidence": "moderate"
+          }
+        ],
+        "shopping_highlight": "Fine fragrance"
+      },
+      "writes": []
+    },
+    {
+      "external_product_id": "ext_4381e05894d121b912035175",
+      "pivota_signature_id": null,
+      "title": "Add Pink Bag?",
+      "brand": "Miss Nella",
+      "canonical_url": "https://www.missnella.com/products/add-pink-bag",
+      "changed": true,
+      "blocked": false,
+      "skip_reason": null,
+      "candidate_hash": "acfb8cafcafa2a02b425d81f2b4fbb2130e4b3539c04e736d0b6ae864e048226",
+      "evidence_profile": "official_pdp_reviewed_limited",
+      "source_coverage": {
+        "source": "official_pdp",
+        "canonical_url": "https://www.missnella.com/products/add-pink-bag",
+        "fields": {
+          "description": true,
+          "ingredients": 0,
+          "active_ingredients": 0,
+          "how_to": 0,
+          "details": 0,
+          "variants": 1
+        }
+      },
+      "preview": {
+        "headline": "Beauty accessory",
+        "what_it_is": "Pink Bag is a beauty accessory from Miss Nella. ***This is a hidden product used with the Product Options application, Please do not delete this product.",
+        "why_it_stands_out": [
+          {
+            "headline": "Product cues are source-backed",
+            "body": "Reviewed PDP cues such as travel organization give shoppers specific comparison points within Miss Nella, rather than category-only copy.",
+            "evidence_strength": "official_pdp_reviewed"
+          }
+        ],
+        "best_for": [
+          {
+            "tag": "makeup_organization",
+            "label": "makeup organization",
+            "confidence": "moderate"
+          }
+        ],
+        "shopping_highlight": "travel organization"
+      },
+      "writes": [
+        {
+          "kb_key": "product:ext_4381e05894d121b912035175",
+          "action": "update",
+          "reason": "explicit_owner_delegated_assistant_replacement_review",
+          "old_hash": "218f4d17e188ff3e56377cba6c747a416e7033a87f8f43f28d0b1b72b40790fe",
+          "candidate_hash": "9537e9d85fbfe03ea7460613cde8bdb2ff2c152c2af854f46b22328e01e2db49",
+          "existing_weak": true,
+          "source": "pivota_insights_official_pdp_manual_review_v1",
+          "after_inventory": {
+            "product_id": "ext_4381e05894d121b912035175",
+            "kb_key": "product:ext_4381e05894d121b912035175",
+            "source": "pivota_insights_official_pdp_manual_review_v1",
+            "updated_at": "",
+            "last_success_at": "",
+            "title": "Add Pink Bag?",
+            "canonical_url": "",
+            "bundle_hash": "acfb8cafcafa2a02b425d81f2b4fbb2130e4b3539c04e736d0b6ae864e048226",
+            "lane": "keep",
+            "reason": "protected_good_content",
+            "priority": 0,
+            "protected": true,
+            "displayable": true,
+            "high_quality_ready": true,
+            "human_reviewed": true,
+            "issues": [],
+            "blocking_issues": [],
+            "quality_state": "reviewed",
+            "evidence_profile": "official_pdp_reviewed_limited",
+            "evidence_rank": 1,
+            "review_tier": "assistant_reviewed",
+            "agent_readable": true,
+            "public_ready": true
+          },
+          "source_meta": {
+            "evidence_profile": "official_pdp_reviewed_limited",
+            "quality_state": "reviewed",
+            "source_origin": "official_pdp_fields",
+            "source_url": "https://www.missnella.com/products/add-pink-bag",
+            "quality_improvement": {
+              "previous_bundle_hash": "650ce6545175a284a84c600144f4482e510f1761670ad9d5d05ed9886f99831f",
+              "candidate_bundle_hash": "acfb8cafcafa2a02b425d81f2b4fbb2130e4b3539c04e736d0b6ae864e048226",
+              "replacement_decision": "explicit_owner_delegated_assistant_replacement_review",
+              "existing_quality_lane": "keep",
+              "candidate_quality_lane": "keep",
+              "existing_evidence_profile": "official_pdp_reviewed_limited",
+              "candidate_evidence_profile": "official_pdp_reviewed_limited"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "external_product_id": "ext_fe45f8982e1887f0a70453b3",
+      "pivota_signature_id": null,
+      "title": "Add Silicon Mat?",
+      "brand": "Miss Nella",
+      "canonical_url": "https://www.missnella.com/products/add-silicon-mat",
+      "changed": false,
+      "blocked": true,
+      "skip_reason": "candidate_failed_manual_quality_gate:insufficient_official_pdp_specificity",
+      "candidate_hash": "a6741887597d807fce32767e602fc81f55df91607a71c7163d0fb7b66c328151",
+      "evidence_profile": "official_pdp_reviewed_limited",
+      "source_coverage": {
+        "source": "official_pdp",
+        "canonical_url": "https://www.missnella.com/products/add-silicon-mat",
+        "fields": {
+          "description": true,
+          "ingredients": 0,
+          "active_ingredients": 0,
+          "how_to": 0,
+          "details": 0,
+          "variants": 1
+        }
+      },
+      "preview": {
+        "headline": "Beauty accessory",
+        "what_it_is": "Silicon Mat is a beauty accessory from Miss Nella. ***This is a hidden product used with the Product Options application, Please do not delete this product.",
+        "why_it_stands_out": [
+          {
+            "headline": "Official PDP evidence only",
+            "body": "This insight is limited to the official product fields currently available for Add Silicon Mat?",
+            "evidence_strength": "official_pdp_reviewed_limited"
+          }
+        ],
+        "best_for": [
+          {
+            "tag": "beauty_accessory",
+            "label": "Beauty accessory",
+            "confidence": "moderate"
+          }
+        ],
+        "shopping_highlight": "Beauty accessory"
+      },
+      "writes": []
+    },
+    {
+      "external_product_id": "ext_7394df14e8953abbbc735a3e",
+      "pivota_signature_id": null,
+      "title": "Add Strawberry'n'Cream - Red",
+      "brand": "Miss Nella",
+      "canonical_url": "https://www.missnella.com/products/strawberryncream-red",
+      "changed": false,
+      "blocked": true,
+      "skip_reason": "candidate_failed_manual_quality_gate:insufficient_official_pdp_specificity",
+      "candidate_hash": "6e1c7a49f9a965703a3dab49a69434a8c7ddedb5600bec0072e6839c2060112f",
+      "evidence_profile": "official_pdp_reviewed_limited",
+      "source_coverage": {
+        "source": "official_pdp",
+        "canonical_url": "https://www.missnella.com/products/strawberryncream-red",
+        "fields": {
+          "description": true,
+          "ingredients": 0,
+          "active_ingredients": 0,
+          "how_to": 0,
+          "details": 0,
+          "variants": 1
+        }
+      },
+      "preview": {
+        "headline": "Nail color",
+        "what_it_is": "Add Strawberry'n'Cream - Red is a nail polish from Miss Nella.",
+        "why_it_stands_out": [
+          {
+            "headline": "Official PDP evidence only",
+            "body": "This insight is limited to the official product fields currently available for Add Strawberry'n'Cream - Red.",
+            "evidence_strength": "official_pdp_reviewed_limited"
+          }
+        ],
+        "best_for": [
+          {
+            "tag": "nail_color",
+            "label": "Nail color",
+            "confidence": "moderate"
+          }
+        ],
+        "shopping_highlight": "Nail color"
+      },
+      "writes": []
+    },
+    {
+      "external_product_id": "ext_e4a8b943e473eef365341f36",
+      "pivota_signature_id": null,
+      "title": "Add Sugar Hugs - Deep Pink",
+      "brand": "Miss Nella",
+      "canonical_url": "https://www.missnella.com/products/sugar-hugs-deep-pink",
+      "changed": false,
+      "blocked": true,
+      "skip_reason": "candidate_failed_manual_quality_gate:insufficient_official_pdp_specificity",
+      "candidate_hash": "1f916c7092490f4519679ed5e265e5bd92d65c351a21c6a9740d3592975c1ae2",
+      "evidence_profile": "official_pdp_reviewed_limited",
+      "source_coverage": {
+        "source": "official_pdp",
+        "canonical_url": "https://www.missnella.com/products/sugar-hugs-deep-pink",
+        "fields": {
+          "description": true,
+          "ingredients": 0,
+          "active_ingredients": 0,
+          "how_to": 0,
+          "details": 0,
+          "variants": 1
+        }
+      },
+      "preview": {
+        "headline": "Nail color",
+        "what_it_is": "Add Sugar Hugs - Deep Pink is a nail polish from Miss Nella.",
+        "why_it_stands_out": [
+          {
+            "headline": "Official PDP evidence only",
+            "body": "This insight is limited to the official product fields currently available for Add Sugar Hugs - Deep Pink.",
+            "evidence_strength": "official_pdp_reviewed_limited"
+          }
+        ],
+        "best_for": [
+          {
+            "tag": "nail_color",
+            "label": "Nail color",
+            "confidence": "moderate"
+          }
+        ],
+        "shopping_highlight": "Nail color"
+      },
+      "writes": []
+    },
+    {
+      "external_product_id": "ext_3061ddf912667b725b4e0be0",
+      "pivota_signature_id": null,
+      "title": "Add Surprise Party - Black",
+      "brand": "Miss Nella",
+      "canonical_url": "https://www.missnella.com/products/class-clown-red-copy",
+      "changed": false,
+      "blocked": true,
+      "skip_reason": "candidate_failed_manual_quality_gate:insufficient_official_pdp_specificity",
+      "candidate_hash": "1927b71d4399cf8569d95afbba25fb741842dbe1a5f1ef0ae4a558b48d6942a4",
+      "evidence_profile": "official_pdp_reviewed_limited",
+      "source_coverage": {
+        "source": "official_pdp",
+        "canonical_url": "https://www.missnella.com/products/class-clown-red-copy",
+        "fields": {
+          "description": true,
+          "ingredients": 0,
+          "active_ingredients": 0,
+          "how_to": 0,
+          "details": 0,
+          "variants": 1
+        }
+      },
+      "preview": {
+        "headline": "Nail color",
+        "what_it_is": "Add Surprise Party - Black is a nail polish from Miss Nella.",
+        "why_it_stands_out": [
+          {
+            "headline": "Official PDP evidence only",
+            "body": "This insight is limited to the official product fields currently available for Add Surprise Party - Black.",
+            "evidence_strength": "official_pdp_reviewed_limited"
+          }
+        ],
+        "best_for": [
+          {
+            "tag": "nail_color",
+            "label": "Nail color",
+            "confidence": "moderate"
+          }
+        ],
+        "shopping_highlight": "Nail color"
+      },
+      "writes": []
+    },
+    {
+      "external_product_id": "ext_5b4820a93b2ff42fde402c6e",
+      "pivota_signature_id": "sig_3220cab04a8dffba3c8fb4c2",
+      "title": "Alien Poo: Chrome Green Peel Off Nail Polish",
+      "brand": "Miss Nella",
+      "canonical_url": "https://www.missnella.com/products/alien-poo-4ml-peel-off-kids-nail-polish",
+      "changed": true,
+      "blocked": false,
+      "skip_reason": null,
+      "candidate_hash": "f92ccff86767b5815ee87298ee342156fc0a4349490602a2343b8e1364d43129",
+      "evidence_profile": "official_pdp_reviewed_formula_and_usage",
+      "source_coverage": {
+        "source": "official_pdp",
+        "canonical_url": "https://www.missnella.com/products/alien-poo-4ml-peel-off-kids-nail-polish",
+        "fields": {
+          "description": true,
+          "ingredients": 1,
+          "active_ingredients": 0,
+          "how_to": 1,
+          "details": 4,
+          "variants": 1
+        }
+      },
+      "preview": {
+        "headline": "Nail color",
+        "what_it_is": "Alien Poo: Chrome Green Peel Off Nail Polish is a nail polish from Miss Nella.",
+        "why_it_stands_out": [
+          {
+            "headline": "Nail color cues are specific",
+            "body": "Reviewed nail-polish cues such as shade clarity help shoppers compare shade, application format, or wear context without inventing unsupported formula claims.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Ingredient list is available",
+            "body": "Full INCI is present for formula-sensitive review, which makes this PDP safer to evaluate than a claim-only listing.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Usage instructions available",
+            "body": "Reviewed usage context is present, including: Peel-Off Nail Polish Apply the nail polish to clean the nails and let it dry.",
+            "evidence_strength": "official_pdp_reviewed"
+          }
+        ],
+        "best_for": [
+          {
+            "tag": "shade_clarity",
+            "label": "shade clarity",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "full_inci_available",
+            "label": "full INCI available",
+            "confidence": "moderate"
+          }
+        ],
+        "shopping_highlight": "shade clarity, full INCI available"
+      },
+      "writes": [
+        {
+          "kb_key": "product:ext_5b4820a93b2ff42fde402c6e",
+          "action": "skip",
+          "reason": "protected_high_quality_existing:reviewed",
+          "old_hash": "197eb3778012fcab5438c664f473ad146e522c267d5a3d10b7ac28ecd8002001",
+          "existing_weak": false
+        },
+        {
+          "kb_key": "product:sig_3220cab04a8dffba3c8fb4c2",
+          "action": "insert",
+          "reason": "new_product_intel_bundle",
+          "old_hash": null,
+          "candidate_hash": "4e5c9c61eff5b3697c7732a0cb19bafdeb4a7c5d899202e4e6bf8163dbca6c6c",
+          "existing_weak": true,
+          "source": "pivota_insights_official_pdp_manual_review_v1",
+          "after_inventory": {
+            "product_id": "ext_5b4820a93b2ff42fde402c6e",
+            "kb_key": "product:sig_3220cab04a8dffba3c8fb4c2",
+            "source": "pivota_insights_official_pdp_manual_review_v1",
+            "updated_at": "",
+            "last_success_at": "",
+            "title": "Alien Poo: Chrome Green Peel Off Nail Polish",
+            "canonical_url": "",
+            "bundle_hash": "f92ccff86767b5815ee87298ee342156fc0a4349490602a2343b8e1364d43129",
+            "lane": "keep",
+            "reason": "protected_good_content",
+            "priority": 0,
+            "protected": true,
+            "displayable": true,
+            "high_quality_ready": true,
+            "human_reviewed": true,
+            "issues": [],
+            "blocking_issues": [],
+            "quality_state": "reviewed",
+            "evidence_profile": "official_pdp_reviewed_formula_and_usage",
+            "evidence_rank": 1,
+            "review_tier": "assistant_reviewed",
+            "agent_readable": true,
+            "public_ready": true
+          },
+          "source_meta": {
+            "evidence_profile": "official_pdp_reviewed_formula_and_usage",
+            "quality_state": "reviewed",
+            "source_origin": "official_pdp_fields",
+            "source_url": "https://www.missnella.com/products/alien-poo-4ml-peel-off-kids-nail-polish",
+            "quality_improvement": {
+              "previous_bundle_hash": null,
+              "candidate_bundle_hash": "f92ccff86767b5815ee87298ee342156fc0a4349490602a2343b8e1364d43129",
+              "replacement_decision": "new_product_intel_bundle",
+              "existing_quality_lane": null,
+              "candidate_quality_lane": "keep",
+              "existing_evidence_profile": null,
+              "candidate_evidence_profile": "official_pdp_reviewed_formula_and_usage"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "external_product_id": "ext_d196b3b74c16cc368764ecb0",
+      "pivota_signature_id": null,
+      "title": "Balm & Gloss Pick N Mix",
+      "brand": "Miss Nella",
+      "canonical_url": "https://www.missnella.com/products/lip-duo-set",
+      "changed": false,
+      "blocked": false,
+      "skip_reason": "no_safe_writes",
+      "candidate_hash": "2d2aea95bf4d3986c870f857bcb0112a0335a31ff657e563a2a3e93b0f346964",
+      "evidence_profile": "official_pdp_reviewed_limited",
+      "source_coverage": {
+        "source": "official_pdp",
+        "canonical_url": "https://www.missnella.com/products/lip-duo-set",
+        "fields": {
+          "description": true,
+          "ingredients": 0,
+          "active_ingredients": 0,
+          "how_to": 0,
+          "details": 0,
+          "variants": 2
+        }
+      },
+      "preview": {
+        "headline": "Lip color",
+        "what_it_is": "Balm & Gloss Pick N Mix is a lip gloss from Miss Nella, with source-backed cues around shine finish and comfort-oriented lip care.",
+        "why_it_stands_out": [
+          {
+            "headline": "Lip finish cues are specific",
+            "body": "Reviewed lip cues such as shine finish identify finish, shade, or formula context before the shopper leaves Pivota.",
+            "evidence_strength": "official_pdp_reviewed"
+          }
+        ],
+        "best_for": [
+          {
+            "tag": "color_payoff",
+            "label": "color payoff",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "lip_comfort",
+            "label": "lip comfort",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "shine_finish",
+            "label": "shine finish",
+            "confidence": "moderate"
+          }
+        ],
+        "shopping_highlight": "shine finish"
+      },
+      "writes": [
+        {
+          "kb_key": "product:ext_d196b3b74c16cc368764ecb0",
+          "action": "skip",
+          "reason": "protected_high_quality_existing:reviewed",
+          "old_hash": "f669dc08e0c97ccf98b05cdf0e31f3fab1ff1325a604de1bb1a91fa1e4425638",
+          "existing_weak": false
+        }
+      ]
+    },
+    {
+      "external_product_id": "ext_33466da0907b256ffc53783b",
+      "pivota_signature_id": "sig_a00b1fa0b5b4decd373fa5a9",
+      "title": "Blush",
+      "brand": "Miss Nella",
+      "canonical_url": "https://www.missnella.com/products/blush",
+      "changed": true,
+      "blocked": false,
+      "skip_reason": null,
+      "candidate_hash": "0cf8f791607eddc095d077e6c309fdce08c44bf2052c2857bdef4522bb391ea1",
+      "evidence_profile": "official_pdp_reviewed_formula_and_usage",
+      "source_coverage": {
+        "source": "official_pdp",
+        "canonical_url": "https://www.missnella.com/products/blush",
+        "fields": {
+          "description": true,
+          "ingredients": 1,
+          "active_ingredients": 0,
+          "how_to": 1,
+          "details": 3,
+          "variants": 3
+        }
+      },
+      "preview": {
+        "headline": "Face color makeup",
+        "what_it_is": "Blush is a blush from Miss Nella, with source-backed cues around glow payoff.",
+        "why_it_stands_out": [
+          {
+            "headline": "Color payoff cues are specific",
+            "body": "Reviewed color cues such as glow payoff, shade range help shoppers compare shade, finish, or texture instead of seeing a generic blush/bronzer/highlighter card.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Ingredient list is available",
+            "body": "Full INCI is present for formula-sensitive review, which makes this PDP safer to evaluate than a claim-only listing.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Usage instructions available",
+            "body": "Reviewed usage context is present, including: Apply to the apples of your cheeks and blend for a natural, rosy glow, building layers for desired intensity.",
+            "evidence_strength": "official_pdp_reviewed"
+          }
+        ],
+        "best_for": [
+          {
+            "tag": "radiant_finish",
+            "label": "radiant finish",
+            "confidence": "moderate"
+          }
+        ],
+        "shopping_highlight": "glow payoff, shade range"
+      },
+      "writes": [
+        {
+          "kb_key": "product:ext_33466da0907b256ffc53783b",
+          "action": "skip",
+          "reason": "protected_high_quality_existing:reviewed",
+          "old_hash": "408cc4b461077164f093c82ce834f391cb76c6b9ba9bad3d0669519cd0f87214",
+          "existing_weak": false
+        },
+        {
+          "kb_key": "product:sig_a00b1fa0b5b4decd373fa5a9",
+          "action": "insert",
+          "reason": "new_product_intel_bundle",
+          "old_hash": null,
+          "candidate_hash": "e1965af3520c541de88920b38e633a8ed664f34e5fd86e76aa465af15dc3acba",
+          "existing_weak": true,
+          "source": "pivota_insights_official_pdp_manual_review_v1",
+          "after_inventory": {
+            "product_id": "ext_33466da0907b256ffc53783b",
+            "kb_key": "product:sig_a00b1fa0b5b4decd373fa5a9",
+            "source": "pivota_insights_official_pdp_manual_review_v1",
+            "updated_at": "",
+            "last_success_at": "",
+            "title": "Blush",
+            "canonical_url": "",
+            "bundle_hash": "0cf8f791607eddc095d077e6c309fdce08c44bf2052c2857bdef4522bb391ea1",
+            "lane": "keep",
+            "reason": "protected_good_content",
+            "priority": 0,
+            "protected": true,
+            "displayable": true,
+            "high_quality_ready": true,
+            "human_reviewed": true,
+            "issues": [],
+            "blocking_issues": [],
+            "quality_state": "reviewed",
+            "evidence_profile": "official_pdp_reviewed_formula_and_usage",
+            "evidence_rank": 1,
+            "review_tier": "assistant_reviewed",
+            "agent_readable": true,
+            "public_ready": true
+          },
+          "source_meta": {
+            "evidence_profile": "official_pdp_reviewed_formula_and_usage",
+            "quality_state": "reviewed",
+            "source_origin": "official_pdp_fields",
+            "source_url": "https://www.missnella.com/products/blush",
+            "quality_improvement": {
+              "previous_bundle_hash": null,
+              "candidate_bundle_hash": "0cf8f791607eddc095d077e6c309fdce08c44bf2052c2857bdef4522bb391ea1",
+              "replacement_decision": "new_product_intel_bundle",
+              "existing_quality_lane": null,
+              "candidate_quality_lane": "keep",
+              "existing_evidence_profile": null,
+              "candidate_evidence_profile": "official_pdp_reviewed_formula_and_usage"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "external_product_id": "ext_1b8d8d4433e5bf026a27d032",
+      "pivota_signature_id": null,
+      "title": "Candy Fantasy Eye & Cheek Palette Kids Toxic-free Makeup",
+      "brand": "Miss Nella",
+      "canonical_url": "https://www.missnella.com/products/candy-fantasy-eye-cheek-palette-kids-toxic-free-makeup-set",
+      "changed": false,
+      "blocked": false,
+      "skip_reason": "no_safe_writes",
+      "candidate_hash": "0f2da730ced96c2c0b9a0bb9b2484b6f57b4545729b7c35d6b4cccf9ed704a1b",
+      "evidence_profile": "official_pdp_reviewed_limited",
+      "source_coverage": {
+        "source": "official_pdp",
+        "canonical_url": "https://www.missnella.com/products/candy-fantasy-eye-cheek-palette-kids-toxic-free-makeup-set",
+        "fields": {
+          "description": true,
+          "ingredients": 0,
+          "active_ingredients": 0,
+          "how_to": 0,
+          "details": 0,
+          "variants": 1
+        }
+      },
+      "preview": {
+        "headline": "Eye makeup",
+        "what_it_is": "Candy Fantasy Eye & Cheek Palette Kids Toxic-free Makeup is an eye makeup palette from Miss Nella, with source-backed cues around a palette format and multi-shade color selection.",
+        "why_it_stands_out": [
+          {
+            "headline": "Product cues are source-backed",
+            "body": "Reviewed PDP cues such as palette format, multi-shade color story give shoppers specific comparison points within Miss Nella, rather than category-only copy.",
+            "evidence_strength": "official_pdp_reviewed"
+          }
+        ],
+        "best_for": [
+          {
+            "tag": "palette_format",
+            "label": "palette format",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "multi_shade_color_story",
+            "label": "multi-shade color story",
+            "confidence": "moderate"
+          }
+        ],
+        "shopping_highlight": "palette format, multi-shade color story"
+      },
+      "writes": [
+        {
+          "kb_key": "product:ext_1b8d8d4433e5bf026a27d032",
+          "action": "skip",
+          "reason": "protected_high_quality_existing:reviewed",
+          "old_hash": "8e1f542240974d7863e5a1eae62a0172832bc708cc71893a1cfc357664af6267",
+          "existing_weak": false
+        }
+      ]
+    },
+    {
+      "external_product_id": "ext_6c9b4f0d837153efab9f32f3",
+      "pivota_signature_id": null,
+      "title": "Complete Eye & Cheek Collection",
+      "brand": "Miss Nella",
+      "canonical_url": "https://www.missnella.com/products/complete-eye-cheek-collection",
+      "changed": false,
+      "blocked": true,
+      "skip_reason": "candidate_failed_manual_quality_gate:insufficient_official_pdp_specificity",
+      "candidate_hash": "375de618cc9c8c07f09fde959465342af2b0b46884e47ef68012f971a573c669",
+      "evidence_profile": "official_pdp_reviewed_limited",
+      "source_coverage": {
+        "source": "official_pdp",
+        "canonical_url": "https://www.missnella.com/products/complete-eye-cheek-collection",
+        "fields": {
+          "description": true,
+          "ingredients": 0,
+          "active_ingredients": 0,
+          "how_to": 0,
+          "details": 0,
+          "variants": 1
+        }
+      },
+      "preview": {
+        "headline": "Face color makeup",
+        "what_it_is": "Complete Eye & Cheek Collection is a face color product from Miss Nella.",
+        "why_it_stands_out": [
+          {
+            "headline": "Official PDP evidence only",
+            "body": "This insight is limited to the official product fields currently available for Complete Eye & Cheek Collection.",
+            "evidence_strength": "official_pdp_reviewed_limited"
+          }
+        ],
+        "best_for": [
+          {
+            "tag": "face_color_makeup",
+            "label": "Face color makeup",
+            "confidence": "moderate"
+          }
+        ],
+        "shopping_highlight": "Face color makeup"
+      },
+      "writes": []
+    }
+  ]
+}
