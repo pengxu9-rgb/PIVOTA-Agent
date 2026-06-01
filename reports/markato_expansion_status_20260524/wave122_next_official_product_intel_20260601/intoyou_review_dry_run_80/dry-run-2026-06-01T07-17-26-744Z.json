@@ -1,0 +1,852 @@
+{
+  "generated_at": "2026-06-01T07:17:26.744Z",
+  "source": "pivota_insights_official_pdp_manual_review_v1",
+  "mode": "dry_run",
+  "filters": {
+    "brand": "Into You",
+    "product_ids": [],
+    "limit": 80,
+    "include_strong": false,
+    "include_url_key": false,
+    "apply_chunk_size": null
+  },
+  "summary": {
+    "scanned": 9,
+    "changed_products": 2,
+    "blocked_products": 0,
+    "skipped_products": 7,
+    "write_actions": {
+      "update": 3,
+      "insert": 1,
+      "skip": 14
+    },
+    "skip_reasons": {
+      "no_safe_writes": 7,
+      "protected_high_quality_existing:reviewed": 14
+    },
+    "evidence_profiles": {
+      "official_pdp_reviewed_line": 9
+    }
+  },
+  "plans": [
+    {
+      "external_product_id": "ext_2201bce05162b80c06453f99",
+      "pivota_signature_id": "sig_3ae9b6bdac346f38223886b0373e923d",
+      "title": "INTO YOU Aqua Burst Lip Glaze",
+      "brand": "INTO YOU",
+      "canonical_url": "https://www.intoyoucosmetics.com/products/into-you-aqua-burst-lip-glaze",
+      "changed": true,
+      "blocked": false,
+      "skip_reason": null,
+      "candidate_hash": "8a64653c94c7f749f24be63f1fca7b2e1f66b214e17fd021271127008e00aa16",
+      "evidence_profile": "official_pdp_reviewed_line",
+      "source_coverage": {
+        "source": "official_pdp",
+        "canonical_url": "https://www.intoyoucosmetics.com/products/into-you-aqua-burst-lip-glaze",
+        "fields": {
+          "description": true,
+          "ingredients": 0,
+          "active_ingredients": 0,
+          "how_to": 0,
+          "details": 2,
+          "variants": 6
+        }
+      },
+      "preview": {
+        "headline": "Lip color",
+        "what_it_is": "INTO YOU Aqua Burst Lip Glaze is a lip gloss from INTO YOU in AB04, with source-backed cues around shine finish, shade clarity and comfort-oriented lip care.",
+        "why_it_stands_out": [
+          {
+            "headline": "Lip finish cues are specific",
+            "body": "Reviewed lip cues such as shine finish, shade range, shade clarity identify finish, shade, or formula context before the shopper leaves Pivota.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Shade and size are explicit",
+            "body": "Variant labels such as AB04, Color: AB04, AB01, Color: AB01 are visible, reducing ambiguity around the product format before a shopper clicks through.",
+            "evidence_strength": "official_pdp_reviewed"
+          }
+        ],
+        "best_for": [
+          {
+            "tag": "color_payoff",
+            "label": "color payoff",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "lip_comfort",
+            "label": "lip comfort",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "shine_finish",
+            "label": "shine finish",
+            "confidence": "moderate"
+          }
+        ],
+        "shopping_highlight": "shine finish, shade range, shade clarity"
+      },
+      "writes": [
+        {
+          "kb_key": "product:ext_2201bce05162b80c06453f99",
+          "action": "update",
+          "reason": "explicit_owner_delegated_assistant_replacement_review",
+          "old_hash": "1c5fd58d4317a1f573eebff2bb3952aba751325744856e72a0551109b6bd86f5",
+          "candidate_hash": "f7c3bfa1ac40fafb34fa3734f80f0aa45e17940f5cb9e15b3c4d546aad5260bb",
+          "existing_weak": true,
+          "source": "pivota_insights_official_pdp_manual_review_v1",
+          "after_inventory": {
+            "product_id": "ext_2201bce05162b80c06453f99",
+            "kb_key": "product:ext_2201bce05162b80c06453f99",
+            "source": "pivota_insights_official_pdp_manual_review_v1",
+            "updated_at": "",
+            "last_success_at": "",
+            "title": "INTO YOU Aqua Burst Lip Glaze",
+            "canonical_url": "",
+            "bundle_hash": "8a64653c94c7f749f24be63f1fca7b2e1f66b214e17fd021271127008e00aa16",
+            "lane": "keep",
+            "reason": "protected_good_content",
+            "priority": 0,
+            "protected": true,
+            "displayable": true,
+            "high_quality_ready": true,
+            "human_reviewed": true,
+            "issues": [],
+            "blocking_issues": [],
+            "quality_state": "reviewed",
+            "evidence_profile": "official_pdp_reviewed_line",
+            "evidence_rank": 3,
+            "review_tier": "assistant_reviewed",
+            "agent_readable": true,
+            "public_ready": true
+          },
+          "source_meta": {
+            "evidence_profile": "official_pdp_reviewed_line",
+            "quality_state": "reviewed",
+            "source_origin": "official_pdp_fields",
+            "source_url": "https://www.intoyoucosmetics.com/products/into-you-aqua-burst-lip-glaze",
+            "quality_improvement": {
+              "previous_bundle_hash": "543c6a322a89e8438cb57ef057ce6710af30a207d869de0dc0cb7eed1710cb2e",
+              "candidate_bundle_hash": "8a64653c94c7f749f24be63f1fca7b2e1f66b214e17fd021271127008e00aa16",
+              "replacement_decision": "explicit_owner_delegated_assistant_replacement_review",
+              "existing_quality_lane": "keep",
+              "candidate_quality_lane": "keep",
+              "existing_evidence_profile": "seller_plus_formula",
+              "candidate_evidence_profile": "official_pdp_reviewed_line"
+            }
+          }
+        },
+        {
+          "kb_key": "product:sig_3ae9b6bdac346f38223886b0373e923d",
+          "action": "insert",
+          "reason": "new_product_intel_bundle",
+          "old_hash": null,
+          "candidate_hash": "f7c3bfa1ac40fafb34fa3734f80f0aa45e17940f5cb9e15b3c4d546aad5260bb",
+          "existing_weak": true,
+          "source": "pivota_insights_official_pdp_manual_review_v1",
+          "after_inventory": {
+            "product_id": "ext_2201bce05162b80c06453f99",
+            "kb_key": "product:sig_3ae9b6bdac346f38223886b0373e923d",
+            "source": "pivota_insights_official_pdp_manual_review_v1",
+            "updated_at": "",
+            "last_success_at": "",
+            "title": "INTO YOU Aqua Burst Lip Glaze",
+            "canonical_url": "",
+            "bundle_hash": "8a64653c94c7f749f24be63f1fca7b2e1f66b214e17fd021271127008e00aa16",
+            "lane": "keep",
+            "reason": "protected_good_content",
+            "priority": 0,
+            "protected": true,
+            "displayable": true,
+            "high_quality_ready": true,
+            "human_reviewed": true,
+            "issues": [],
+            "blocking_issues": [],
+            "quality_state": "reviewed",
+            "evidence_profile": "official_pdp_reviewed_line",
+            "evidence_rank": 3,
+            "review_tier": "assistant_reviewed",
+            "agent_readable": true,
+            "public_ready": true
+          },
+          "source_meta": {
+            "evidence_profile": "official_pdp_reviewed_line",
+            "quality_state": "reviewed",
+            "source_origin": "official_pdp_fields",
+            "source_url": "https://www.intoyoucosmetics.com/products/into-you-aqua-burst-lip-glaze",
+            "quality_improvement": {
+              "previous_bundle_hash": null,
+              "candidate_bundle_hash": "8a64653c94c7f749f24be63f1fca7b2e1f66b214e17fd021271127008e00aa16",
+              "replacement_decision": "new_product_intel_bundle",
+              "existing_quality_lane": null,
+              "candidate_quality_lane": "keep",
+              "existing_evidence_profile": null,
+              "candidate_evidence_profile": "official_pdp_reviewed_line"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "external_product_id": "ext_46c7212838c83d7ab2202fde",
+      "pivota_signature_id": "sig_fff3790bee3ea30bbd9fd1393eaba525",
+      "title": "INTO YOU Aqua Burst Lip Glaze",
+      "brand": "INTO YOU",
+      "canonical_url": "https://www.intoyoucosmetics.com/products/into-you-aqua-burst-lip-glaze",
+      "changed": false,
+      "blocked": false,
+      "skip_reason": "no_safe_writes",
+      "candidate_hash": "ab34be7ce38d6be72775457ee64ebbae2f932c6c109c24bf6be4872645b2fb49",
+      "evidence_profile": "official_pdp_reviewed_line",
+      "source_coverage": {
+        "source": "official_pdp",
+        "canonical_url": "https://www.intoyoucosmetics.com/products/into-you-aqua-burst-lip-glaze",
+        "fields": {
+          "description": true,
+          "ingredients": 0,
+          "active_ingredients": 0,
+          "how_to": 0,
+          "details": 2,
+          "variants": 6
+        }
+      },
+      "preview": {
+        "headline": "Lip color",
+        "what_it_is": "INTO YOU Aqua Burst Lip Glaze is a lip gloss from INTO YOU in AB04, with source-backed cues around shine finish, shade clarity and comfort-oriented lip care.",
+        "why_it_stands_out": [
+          {
+            "headline": "Lip finish cues are specific",
+            "body": "Reviewed lip cues such as shine finish, shade range, shade clarity identify finish, shade, or formula context before the shopper leaves Pivota.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Shade and size are explicit",
+            "body": "Variant labels such as AB04, Color: AB04, AB01, Color: AB01 are visible, reducing ambiguity around the product format before a shopper clicks through.",
+            "evidence_strength": "official_pdp_reviewed"
+          }
+        ],
+        "best_for": [
+          {
+            "tag": "color_payoff",
+            "label": "color payoff",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "lip_comfort",
+            "label": "lip comfort",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "shine_finish",
+            "label": "shine finish",
+            "confidence": "moderate"
+          }
+        ],
+        "shopping_highlight": "shine finish, shade range, shade clarity"
+      },
+      "writes": [
+        {
+          "kb_key": "product:ext_46c7212838c83d7ab2202fde",
+          "action": "skip",
+          "reason": "protected_high_quality_existing:reviewed",
+          "old_hash": "2fc86b27b97f5a41c2707ca3459dda7c4c0045fefddaca93c646ecd97006abd9",
+          "existing_weak": false
+        },
+        {
+          "kb_key": "product:sig_fff3790bee3ea30bbd9fd1393eaba525",
+          "action": "skip",
+          "reason": "protected_high_quality_existing:reviewed",
+          "old_hash": "2fc86b27b97f5a41c2707ca3459dda7c4c0045fefddaca93c646ecd97006abd9",
+          "existing_weak": false
+        }
+      ]
+    },
+    {
+      "external_product_id": "ext_74cd8d46b227d189f49f68e4",
+      "pivota_signature_id": "sig_e6ec9e57c3be1134dd2ca62800a0ce88",
+      "title": "INTO YOU Aqua Burst Lip Glaze",
+      "brand": "INTO YOU",
+      "canonical_url": "https://www.intoyoucosmetics.com/products/into-you-aqua-burst-lip-glaze",
+      "changed": false,
+      "blocked": false,
+      "skip_reason": "no_safe_writes",
+      "candidate_hash": "0bf2f92b396b7a40689e1bdd6fae2cc83f965c9f5f47e17cd485dbf7192a70a6",
+      "evidence_profile": "official_pdp_reviewed_line",
+      "source_coverage": {
+        "source": "official_pdp",
+        "canonical_url": "https://www.intoyoucosmetics.com/products/into-you-aqua-burst-lip-glaze",
+        "fields": {
+          "description": true,
+          "ingredients": 0,
+          "active_ingredients": 0,
+          "how_to": 0,
+          "details": 2,
+          "variants": 1
+        }
+      },
+      "preview": {
+        "headline": "Lip color",
+        "what_it_is": "INTO YOU Aqua Burst Lip Glaze is a lip gloss from INTO YOU in AB02, with source-backed cues around shine finish, shade clarity and comfort-oriented lip care.",
+        "why_it_stands_out": [
+          {
+            "headline": "Lip finish cues are specific",
+            "body": "Reviewed lip cues such as shine finish, shade range, shade clarity identify finish, shade, or formula context before the shopper leaves Pivota.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Shade and size are explicit",
+            "body": "Variant labels such as AB02, Color: AB02 are visible, reducing ambiguity around the product format before a shopper clicks through.",
+            "evidence_strength": "official_pdp_reviewed"
+          }
+        ],
+        "best_for": [
+          {
+            "tag": "color_payoff",
+            "label": "color payoff",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "lip_comfort",
+            "label": "lip comfort",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "shine_finish",
+            "label": "shine finish",
+            "confidence": "moderate"
+          }
+        ],
+        "shopping_highlight": "shine finish, shade range, shade clarity"
+      },
+      "writes": [
+        {
+          "kb_key": "product:ext_74cd8d46b227d189f49f68e4",
+          "action": "skip",
+          "reason": "protected_high_quality_existing:reviewed",
+          "old_hash": "900454c1e618e73e82f9e4048632c730772d4fa49867eebea204be8d8679f2b0",
+          "existing_weak": false
+        },
+        {
+          "kb_key": "product:sig_e6ec9e57c3be1134dd2ca62800a0ce88",
+          "action": "skip",
+          "reason": "protected_high_quality_existing:reviewed",
+          "old_hash": "900454c1e618e73e82f9e4048632c730772d4fa49867eebea204be8d8679f2b0",
+          "existing_weak": false
+        }
+      ]
+    },
+    {
+      "external_product_id": "ext_9b152916f4280aff2d280ec1",
+      "pivota_signature_id": "sig_c69a4f0228f35f9a4b245ac8dafb2608",
+      "title": "INTO YOU Aqua Burst Lip Glaze",
+      "brand": "INTO YOU",
+      "canonical_url": "https://www.intoyoucosmetics.com/products/into-you-aqua-burst-lip-glaze",
+      "changed": false,
+      "blocked": false,
+      "skip_reason": "no_safe_writes",
+      "candidate_hash": "0ec0c0c54d13f451f9560187fa5613199c8edb0fb968cbe3f6b023bacb63d678",
+      "evidence_profile": "official_pdp_reviewed_line",
+      "source_coverage": {
+        "source": "official_pdp",
+        "canonical_url": "https://www.intoyoucosmetics.com/products/into-you-aqua-burst-lip-glaze",
+        "fields": {
+          "description": true,
+          "ingredients": 0,
+          "active_ingredients": 0,
+          "how_to": 0,
+          "details": 2,
+          "variants": 1
+        }
+      },
+      "preview": {
+        "headline": "Lip color",
+        "what_it_is": "INTO YOU Aqua Burst Lip Glaze is a lip gloss from INTO YOU in AB05, with source-backed cues around shine finish, shade clarity and comfort-oriented lip care.",
+        "why_it_stands_out": [
+          {
+            "headline": "Lip finish cues are specific",
+            "body": "Reviewed lip cues such as shine finish, shade range, shade clarity identify finish, shade, or formula context before the shopper leaves Pivota.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Shade and size are explicit",
+            "body": "Variant labels such as AB05, Color: AB05 are visible, reducing ambiguity around the product format before a shopper clicks through.",
+            "evidence_strength": "official_pdp_reviewed"
+          }
+        ],
+        "best_for": [
+          {
+            "tag": "color_payoff",
+            "label": "color payoff",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "lip_comfort",
+            "label": "lip comfort",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "shine_finish",
+            "label": "shine finish",
+            "confidence": "moderate"
+          }
+        ],
+        "shopping_highlight": "shine finish, shade range, shade clarity"
+      },
+      "writes": [
+        {
+          "kb_key": "product:ext_9b152916f4280aff2d280ec1",
+          "action": "skip",
+          "reason": "protected_high_quality_existing:reviewed",
+          "old_hash": "bf0f742f48432dbc204d10f51d22e765bc65b83317d82bb9c85c33792ac77b92",
+          "existing_weak": false
+        },
+        {
+          "kb_key": "product:sig_c69a4f0228f35f9a4b245ac8dafb2608",
+          "action": "skip",
+          "reason": "protected_high_quality_existing:reviewed",
+          "old_hash": "bf0f742f48432dbc204d10f51d22e765bc65b83317d82bb9c85c33792ac77b92",
+          "existing_weak": false
+        }
+      ]
+    },
+    {
+      "external_product_id": "ext_ab35f3574af6ed7dfab2051a",
+      "pivota_signature_id": "sig_3ac5efd2437e58a6177a0b21b7b835e0",
+      "title": "INTO YOU Aqua Burst Lip Glaze",
+      "brand": "INTO YOU",
+      "canonical_url": "https://www.intoyoucosmetics.com/products/into-you-aqua-burst-lip-glaze",
+      "changed": false,
+      "blocked": false,
+      "skip_reason": "no_safe_writes",
+      "candidate_hash": "fe11d242feb308dbc65373bc84ab5de403cb7d2a4f482847d3a841c2b527e91e",
+      "evidence_profile": "official_pdp_reviewed_line",
+      "source_coverage": {
+        "source": "official_pdp",
+        "canonical_url": "https://www.intoyoucosmetics.com/products/into-you-aqua-burst-lip-glaze",
+        "fields": {
+          "description": true,
+          "ingredients": 0,
+          "active_ingredients": 0,
+          "how_to": 0,
+          "details": 2,
+          "variants": 1
+        }
+      },
+      "preview": {
+        "headline": "Lip color",
+        "what_it_is": "INTO YOU Aqua Burst Lip Glaze is a lip gloss from INTO YOU in AB01, with source-backed cues around shine finish, shade clarity and comfort-oriented lip care.",
+        "why_it_stands_out": [
+          {
+            "headline": "Lip finish cues are specific",
+            "body": "Reviewed lip cues such as shine finish, shade range, shade clarity identify finish, shade, or formula context before the shopper leaves Pivota.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Shade and size are explicit",
+            "body": "Variant labels such as AB01, Color: AB01 are visible, reducing ambiguity around the product format before a shopper clicks through.",
+            "evidence_strength": "official_pdp_reviewed"
+          }
+        ],
+        "best_for": [
+          {
+            "tag": "color_payoff",
+            "label": "color payoff",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "lip_comfort",
+            "label": "lip comfort",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "shine_finish",
+            "label": "shine finish",
+            "confidence": "moderate"
+          }
+        ],
+        "shopping_highlight": "shine finish, shade range, shade clarity"
+      },
+      "writes": [
+        {
+          "kb_key": "product:ext_ab35f3574af6ed7dfab2051a",
+          "action": "skip",
+          "reason": "protected_high_quality_existing:reviewed",
+          "old_hash": "75cf78eb521753d6b7cdbfa57e10df6d80ab53d2e0e88a2084b63826c4f1b3cd",
+          "existing_weak": false
+        },
+        {
+          "kb_key": "product:sig_3ac5efd2437e58a6177a0b21b7b835e0",
+          "action": "skip",
+          "reason": "protected_high_quality_existing:reviewed",
+          "old_hash": "75cf78eb521753d6b7cdbfa57e10df6d80ab53d2e0e88a2084b63826c4f1b3cd",
+          "existing_weak": false
+        }
+      ]
+    },
+    {
+      "external_product_id": "ext_b4e1aabb2ce6450b86e0567b",
+      "pivota_signature_id": "sig_269ef1986cdc01f631dccb0277dcd27a",
+      "title": "INTO YOU Aqua Burst Lip Glaze",
+      "brand": "INTO YOU",
+      "canonical_url": "https://www.intoyoucosmetics.com/products/into-you-aqua-burst-lip-glaze",
+      "changed": false,
+      "blocked": false,
+      "skip_reason": "no_safe_writes",
+      "candidate_hash": "6df2b6db6a02d9968e9d21d6f2aeeb70af0b6ed2a34ce37e8bd33447f4982317",
+      "evidence_profile": "official_pdp_reviewed_line",
+      "source_coverage": {
+        "source": "official_pdp",
+        "canonical_url": "https://www.intoyoucosmetics.com/products/into-you-aqua-burst-lip-glaze",
+        "fields": {
+          "description": true,
+          "ingredients": 0,
+          "active_ingredients": 0,
+          "how_to": 0,
+          "details": 2,
+          "variants": 1
+        }
+      },
+      "preview": {
+        "headline": "Lip color",
+        "what_it_is": "INTO YOU Aqua Burst Lip Glaze is a lip gloss from INTO YOU in AB04, with source-backed cues around shine finish, shade clarity and comfort-oriented lip care.",
+        "why_it_stands_out": [
+          {
+            "headline": "Lip finish cues are specific",
+            "body": "Reviewed lip cues such as shine finish, shade range, shade clarity identify finish, shade, or formula context before the shopper leaves Pivota.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Shade and size are explicit",
+            "body": "Variant labels such as AB04, Color: AB04 are visible, reducing ambiguity around the product format before a shopper clicks through.",
+            "evidence_strength": "official_pdp_reviewed"
+          }
+        ],
+        "best_for": [
+          {
+            "tag": "color_payoff",
+            "label": "color payoff",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "lip_comfort",
+            "label": "lip comfort",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "shine_finish",
+            "label": "shine finish",
+            "confidence": "moderate"
+          }
+        ],
+        "shopping_highlight": "shine finish, shade range, shade clarity"
+      },
+      "writes": [
+        {
+          "kb_key": "product:ext_b4e1aabb2ce6450b86e0567b",
+          "action": "skip",
+          "reason": "protected_high_quality_existing:reviewed",
+          "old_hash": "42f399165f29d9a6d286a074a3738dde1d17eda0bb190186da9cc1e0af9e4c51",
+          "existing_weak": false
+        },
+        {
+          "kb_key": "product:sig_269ef1986cdc01f631dccb0277dcd27a",
+          "action": "skip",
+          "reason": "protected_high_quality_existing:reviewed",
+          "old_hash": "42f399165f29d9a6d286a074a3738dde1d17eda0bb190186da9cc1e0af9e4c51",
+          "existing_weak": false
+        }
+      ]
+    },
+    {
+      "external_product_id": "ext_eb5f5e1a44508b3b59ffa449",
+      "pivota_signature_id": "sig_afe42ee429a06e8df438708fae7d8148",
+      "title": "INTO YOU Aqua Burst Lip Glaze",
+      "brand": "INTO YOU",
+      "canonical_url": "https://www.intoyoucosmetics.com/products/into-you-aqua-burst-lip-glaze",
+      "changed": false,
+      "blocked": false,
+      "skip_reason": "no_safe_writes",
+      "candidate_hash": "58f38a99870c437ebf10ccb33b6c00aed367a7b5c8c8c86c8fa0f32ce23c143b",
+      "evidence_profile": "official_pdp_reviewed_line",
+      "source_coverage": {
+        "source": "official_pdp",
+        "canonical_url": "https://www.intoyoucosmetics.com/products/into-you-aqua-burst-lip-glaze",
+        "fields": {
+          "description": true,
+          "ingredients": 0,
+          "active_ingredients": 0,
+          "how_to": 0,
+          "details": 2,
+          "variants": 1
+        }
+      },
+      "preview": {
+        "headline": "Lip color",
+        "what_it_is": "INTO YOU Aqua Burst Lip Glaze is a lip gloss from INTO YOU in AB03, with source-backed cues around shine finish, shade clarity and comfort-oriented lip care.",
+        "why_it_stands_out": [
+          {
+            "headline": "Lip finish cues are specific",
+            "body": "Reviewed lip cues such as shine finish, shade range, shade clarity identify finish, shade, or formula context before the shopper leaves Pivota.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Shade and size are explicit",
+            "body": "Variant labels such as AB03, Color: AB03 are visible, reducing ambiguity around the product format before a shopper clicks through.",
+            "evidence_strength": "official_pdp_reviewed"
+          }
+        ],
+        "best_for": [
+          {
+            "tag": "color_payoff",
+            "label": "color payoff",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "lip_comfort",
+            "label": "lip comfort",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "shine_finish",
+            "label": "shine finish",
+            "confidence": "moderate"
+          }
+        ],
+        "shopping_highlight": "shine finish, shade range, shade clarity"
+      },
+      "writes": [
+        {
+          "kb_key": "product:ext_eb5f5e1a44508b3b59ffa449",
+          "action": "skip",
+          "reason": "protected_high_quality_existing:reviewed",
+          "old_hash": "4dc65a46a35452cab5e9368f0971f72c3964bd84c5812348d4ed6e8ac9c844bf",
+          "existing_weak": false
+        },
+        {
+          "kb_key": "product:sig_afe42ee429a06e8df438708fae7d8148",
+          "action": "skip",
+          "reason": "protected_high_quality_existing:reviewed",
+          "old_hash": "4dc65a46a35452cab5e9368f0971f72c3964bd84c5812348d4ed6e8ac9c844bf",
+          "existing_weak": false
+        }
+      ]
+    },
+    {
+      "external_product_id": "ext_e0a185b77e19838284a2f05b",
+      "pivota_signature_id": "sig_737ea98f390d146781b6dc41",
+      "title": "INTO YOU Tinted Repair Lip Serum - Custom Shade TR88",
+      "brand": "INTO YOU",
+      "canonical_url": "https://www.intoyoucosmetics.com/products/into-you-tinted-repair-lip-serum-custom-shade-tr88",
+      "changed": false,
+      "blocked": false,
+      "skip_reason": "no_safe_writes",
+      "candidate_hash": "7b4066bc0951932ddc4c32814c31af8ba4b8cc0b7df91f537118b5c6ff16426f",
+      "evidence_profile": "official_pdp_reviewed_line",
+      "source_coverage": {
+        "source": "official_pdp",
+        "canonical_url": "https://www.intoyoucosmetics.com/products/into-you-tinted-repair-lip-serum-custom-shade-tr88",
+        "fields": {
+          "description": true,
+          "ingredients": 0,
+          "active_ingredients": 0,
+          "how_to": 0,
+          "details": 1,
+          "variants": 1
+        }
+      },
+      "preview": {
+        "headline": "Lip treatment",
+        "what_it_is": "INTO YOU Tinted Repair Lip Serum - Custom Shade TR88 is a lip treatment from INTO YOU in TR88, with source-backed cues around shine finish and shade clarity.",
+        "why_it_stands_out": [
+          {
+            "headline": "Product cues are source-backed",
+            "body": "Reviewed PDP cues such as shine finish, shade range give shoppers specific comparison points within INTO YOU, rather than category-only copy.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Shade and size are explicit",
+            "body": "Variant labels such as TR88, Color: TR88 are visible, reducing ambiguity around the product format before a shopper clicks through.",
+            "evidence_strength": "official_pdp_reviewed"
+          }
+        ],
+        "best_for": [
+          {
+            "tag": "color_payoff",
+            "label": "color payoff",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "lip_comfort",
+            "label": "lip comfort",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "shine_finish",
+            "label": "shine finish",
+            "confidence": "moderate"
+          }
+        ],
+        "shopping_highlight": "shine finish, shade range"
+      },
+      "writes": [
+        {
+          "kb_key": "product:ext_e0a185b77e19838284a2f05b",
+          "action": "skip",
+          "reason": "protected_high_quality_existing:reviewed",
+          "old_hash": "a8fe44c648ca685ee8703142ee9c5f5857a5e4fa57313ba32f403509480c4dda",
+          "existing_weak": false
+        },
+        {
+          "kb_key": "product:sig_737ea98f390d146781b6dc41",
+          "action": "skip",
+          "reason": "protected_high_quality_existing:reviewed",
+          "old_hash": "a8fe44c648ca685ee8703142ee9c5f5857a5e4fa57313ba32f403509480c4dda",
+          "existing_weak": false
+        }
+      ]
+    },
+    {
+      "external_product_id": "ext_0e45d0874a4b34180e0747df",
+      "pivota_signature_id": "sig_1a310126e75795655997ed9e",
+      "title": "INTO YOU Watery Lip Matt - Custom Shade W725",
+      "brand": "INTO YOU",
+      "canonical_url": "https://www.intoyoucosmetics.com/products/into-you-watery-lip-matt-custom-shade-w725",
+      "changed": true,
+      "blocked": false,
+      "skip_reason": null,
+      "candidate_hash": "d8b5d4396d0dec5e2dbcd147acc1130217e7a63a8a7c2ca02b4a687e1e84a380",
+      "evidence_profile": "official_pdp_reviewed_line",
+      "source_coverage": {
+        "source": "official_pdp",
+        "canonical_url": "https://www.intoyoucosmetics.com/products/into-you-watery-lip-matt-custom-shade-w725",
+        "fields": {
+          "description": true,
+          "ingredients": 0,
+          "active_ingredients": 0,
+          "how_to": 0,
+          "details": 1,
+          "variants": 1
+        }
+      },
+      "preview": {
+        "headline": "Beauty product",
+        "what_it_is": "INTO YOU Watery Lip Matt - Custom Shade W725 is a beauty product from INTO YOU. A fresh, lightweight lip matt with a breathable watery feel.",
+        "why_it_stands_out": [
+          {
+            "headline": "Accessory format is explicit",
+            "body": "Variant labels such as W725, Color: W725 are visible, reducing ambiguity around the product format before a shopper clicks through.",
+            "evidence_strength": "official_pdp_reviewed"
+          }
+        ],
+        "best_for": [
+          {
+            "tag": "beauty_product",
+            "label": "Beauty product",
+            "confidence": "moderate"
+          }
+        ],
+        "shopping_highlight": "Beauty product"
+      },
+      "writes": [
+        {
+          "kb_key": "product:ext_0e45d0874a4b34180e0747df",
+          "action": "update",
+          "reason": "explicit_owner_delegated_assistant_replacement_review",
+          "old_hash": "50fb32f5327c6bab8dda416f3b88196b787e6d77310a58138b67f3c7eeca6672",
+          "candidate_hash": "0d7d5ef37718523c147c8b9fa214083a7718005ef4d9adfdb172c97340ce838f",
+          "existing_weak": true,
+          "source": "pivota_insights_official_pdp_manual_review_v1",
+          "after_inventory": {
+            "product_id": "ext_0e45d0874a4b34180e0747df",
+            "kb_key": "product:ext_0e45d0874a4b34180e0747df",
+            "source": "pivota_insights_official_pdp_manual_review_v1",
+            "updated_at": "",
+            "last_success_at": "",
+            "title": "INTO YOU Watery Lip Matt - Custom Shade W725",
+            "canonical_url": "",
+            "bundle_hash": "d8b5d4396d0dec5e2dbcd147acc1130217e7a63a8a7c2ca02b4a687e1e84a380",
+            "lane": "keep",
+            "reason": "protected_good_content",
+            "priority": 0,
+            "protected": true,
+            "displayable": true,
+            "high_quality_ready": true,
+            "human_reviewed": true,
+            "issues": [],
+            "blocking_issues": [],
+            "quality_state": "reviewed",
+            "evidence_profile": "official_pdp_reviewed_line",
+            "evidence_rank": 3,
+            "review_tier": "assistant_reviewed",
+            "agent_readable": true,
+            "public_ready": true
+          },
+          "source_meta": {
+            "evidence_profile": "official_pdp_reviewed_line",
+            "quality_state": "reviewed",
+            "source_origin": "official_pdp_fields",
+            "source_url": "https://www.intoyoucosmetics.com/products/into-you-watery-lip-matt-custom-shade-w725",
+            "quality_improvement": {
+              "previous_bundle_hash": "fdf5b1f613a2422c1d0a3254c960f04298ac5a962a11679e9cb44a3f7c32d3c4",
+              "candidate_bundle_hash": "d8b5d4396d0dec5e2dbcd147acc1130217e7a63a8a7c2ca02b4a687e1e84a380",
+              "replacement_decision": "explicit_owner_delegated_assistant_replacement_review",
+              "existing_quality_lane": "keep",
+              "candidate_quality_lane": "keep",
+              "existing_evidence_profile": "official_pdp_reviewed_line",
+              "candidate_evidence_profile": "official_pdp_reviewed_line"
+            }
+          }
+        },
+        {
+          "kb_key": "product:sig_1a310126e75795655997ed9e",
+          "action": "update",
+          "reason": "explicit_owner_delegated_assistant_replacement_review",
+          "old_hash": "50fb32f5327c6bab8dda416f3b88196b787e6d77310a58138b67f3c7eeca6672",
+          "candidate_hash": "0d7d5ef37718523c147c8b9fa214083a7718005ef4d9adfdb172c97340ce838f",
+          "existing_weak": true,
+          "source": "pivota_insights_official_pdp_manual_review_v1",
+          "after_inventory": {
+            "product_id": "ext_0e45d0874a4b34180e0747df",
+            "kb_key": "product:sig_1a310126e75795655997ed9e",
+            "source": "pivota_insights_official_pdp_manual_review_v1",
+            "updated_at": "",
+            "last_success_at": "",
+            "title": "INTO YOU Watery Lip Matt - Custom Shade W725",
+            "canonical_url": "",
+            "bundle_hash": "d8b5d4396d0dec5e2dbcd147acc1130217e7a63a8a7c2ca02b4a687e1e84a380",
+            "lane": "keep",
+            "reason": "protected_good_content",
+            "priority": 0,
+            "protected": true,
+            "displayable": true,
+            "high_quality_ready": true,
+            "human_reviewed": true,
+            "issues": [],
+            "blocking_issues": [],
+            "quality_state": "reviewed",
+            "evidence_profile": "official_pdp_reviewed_line",
+            "evidence_rank": 3,
+            "review_tier": "assistant_reviewed",
+            "agent_readable": true,
+            "public_ready": true
+          },
+          "source_meta": {
+            "evidence_profile": "official_pdp_reviewed_line",
+            "quality_state": "reviewed",
+            "source_origin": "official_pdp_fields",
+            "source_url": "https://www.intoyoucosmetics.com/products/into-you-watery-lip-matt-custom-shade-w725",
+            "quality_improvement": {
+              "previous_bundle_hash": "fdf5b1f613a2422c1d0a3254c960f04298ac5a962a11679e9cb44a3f7c32d3c4",
+              "candidate_bundle_hash": "d8b5d4396d0dec5e2dbcd147acc1130217e7a63a8a7c2ca02b4a687e1e84a380",
+              "replacement_decision": "explicit_owner_delegated_assistant_replacement_review",
+              "existing_quality_lane": "keep",
+              "candidate_quality_lane": "keep",
+              "existing_evidence_profile": "official_pdp_reviewed_line",
+              "candidate_evidence_profile": "official_pdp_reviewed_line"
+            }
+          }
+        }
+      ]
+    }
+  ]
+}

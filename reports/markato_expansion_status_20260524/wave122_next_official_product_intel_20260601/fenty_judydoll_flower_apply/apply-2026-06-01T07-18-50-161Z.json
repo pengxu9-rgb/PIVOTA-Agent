@@ -1,0 +1,855 @@
+{
+  "generated_at": "2026-06-01T07:18:50.161Z",
+  "source": "pivota_insights_official_pdp_manual_review_v1",
+  "mode": "apply",
+  "filters": {
+    "brand": null,
+    "product_ids": [
+      "ext_7c53e5f5c69608226b1fb7ec",
+      "ext_653963915647e224ebd70d69",
+      "ext_d5a818c5447b62e0ed8f8f61",
+      "ext_a8cb47c391f90a8f35814c38",
+      "ext_d1c304ee3edc262cb0d914e9"
+    ],
+    "limit": null,
+    "include_strong": false,
+    "include_url_key": false,
+    "apply_chunk_size": 20
+  },
+  "summary": {
+    "scanned": 5,
+    "changed_products": 5,
+    "blocked_products": 0,
+    "skipped_products": 0,
+    "write_actions": {
+      "update": 7,
+      "insert": 3
+    },
+    "skip_reasons": {},
+    "evidence_profiles": {
+      "official_pdp_reviewed_formula_and_usage": 2,
+      "official_pdp_reviewed_line": 3
+    }
+  },
+  "plans": [
+    {
+      "external_product_id": "ext_7c53e5f5c69608226b1fb7ec",
+      "pivota_signature_id": "sig_f1e97cd5e20c045c09b3d834ee665def",
+      "title": "Bright Fix Instant Brightening + Blurring Powder — Cinnamon",
+      "brand": "Fenty Beauty",
+      "canonical_url": "https://fentybeauty.com/products/bright-fix-instant-brightening-blurring-powder-cinnamon",
+      "changed": true,
+      "blocked": false,
+      "skip_reason": null,
+      "candidate_hash": "4c91a38e53b6791148320a11386ce51bbe61f193acc878b82ce8e91d7bd89af7",
+      "evidence_profile": "official_pdp_reviewed_formula_and_usage",
+      "source_coverage": {
+        "source": "official_pdp",
+        "canonical_url": "https://fentybeauty.com/products/bright-fix-instant-brightening-blurring-powder-cinnamon",
+        "fields": {
+          "description": true,
+          "ingredients": 1,
+          "active_ingredients": 1,
+          "how_to": 1,
+          "details": 3,
+          "variants": 1
+        }
+      },
+      "preview": {
+        "headline": "Face color makeup",
+        "what_it_is": "Bright Fix Instant Brightening + Blurring Powder — Cinnamon is a face color product from Fenty Beauty in shade Cinnamon, with source-backed cues around long-wear color, a cream-powder texture and glow payoff.",
+        "why_it_stands_out": [
+          {
+            "headline": "Color payoff cues are specific",
+            "body": "Reviewed color cues such as long-wear color, cream-powder texture, glow payoff, shade range help shoppers compare shade, finish, or texture instead of seeing a generic blush/bronzer/highlighter card.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Ingredient list is available",
+            "body": "Full INCI is present for formula-sensitive review, which makes this PDP safer to evaluate than a claim-only listing.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Shade and size are explicit",
+            "body": "Variant labels such as Cinnamon, Shade: Cinnamon are visible, reducing ambiguity around the product format before a shopper clicks through.",
+            "evidence_strength": "official_pdp_reviewed"
+          }
+        ],
+        "best_for": [
+          {
+            "tag": "base_makeup_prep",
+            "label": "base makeup prep",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "complexion_coverage",
+            "label": "complexion coverage",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "soft_focus_finish",
+            "label": "soft-focus finish",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "radiant_finish",
+            "label": "radiant finish",
+            "confidence": "moderate"
+          }
+        ],
+        "shopping_highlight": "long-wear color, cream-powder texture"
+      },
+      "writes": [
+        {
+          "kb_key": "product:ext_7c53e5f5c69608226b1fb7ec",
+          "action": "update",
+          "reason": "explicit_owner_delegated_assistant_replacement_review",
+          "old_hash": "18357dec85fea88c8fe6b28b71fdd58088ed3dc92d85dc6767619748b7bb7f74",
+          "candidate_hash": "6af28926432ec7818b820c359aeb1356638f3a42b639505eb0b40f9e8e846613",
+          "existing_weak": true,
+          "source": "pivota_insights_official_pdp_manual_review_v1",
+          "after_inventory": {
+            "product_id": "ext_7c53e5f5c69608226b1fb7ec",
+            "kb_key": "product:ext_7c53e5f5c69608226b1fb7ec",
+            "source": "pivota_insights_official_pdp_manual_review_v1",
+            "updated_at": "",
+            "last_success_at": "",
+            "title": "Bright Fix Instant Brightening + Blurring Powder — Cinnamon",
+            "canonical_url": "",
+            "bundle_hash": "4c91a38e53b6791148320a11386ce51bbe61f193acc878b82ce8e91d7bd89af7",
+            "lane": "keep",
+            "reason": "protected_good_content",
+            "priority": 0,
+            "protected": true,
+            "displayable": true,
+            "high_quality_ready": true,
+            "human_reviewed": true,
+            "issues": [],
+            "blocking_issues": [],
+            "quality_state": "reviewed",
+            "evidence_profile": "official_pdp_reviewed_formula_and_usage",
+            "evidence_rank": 1,
+            "review_tier": "assistant_reviewed",
+            "agent_readable": true,
+            "public_ready": true
+          },
+          "source_meta": {
+            "evidence_profile": "official_pdp_reviewed_formula_and_usage",
+            "quality_state": "reviewed",
+            "source_origin": "official_pdp_fields",
+            "source_url": "https://fentybeauty.com/products/bright-fix-instant-brightening-blurring-powder-cinnamon",
+            "quality_improvement": {
+              "previous_bundle_hash": "b045e97419228e373b364c23b0ec7c6b0bb5790ef1ee308118bd9294d97adba8",
+              "candidate_bundle_hash": "4c91a38e53b6791148320a11386ce51bbe61f193acc878b82ce8e91d7bd89af7",
+              "replacement_decision": "explicit_owner_delegated_assistant_replacement_review",
+              "existing_quality_lane": "keep",
+              "candidate_quality_lane": "keep",
+              "existing_evidence_profile": "seller_plus_formula",
+              "candidate_evidence_profile": "official_pdp_reviewed_formula_and_usage"
+            }
+          }
+        },
+        {
+          "kb_key": "product:sig_f1e97cd5e20c045c09b3d834ee665def",
+          "action": "update",
+          "reason": "explicit_owner_delegated_assistant_replacement_review",
+          "old_hash": "f80a10a8d7441a6333bf5046aea176f5da628c5a8ccbee657337599dd8c339b7",
+          "candidate_hash": "6af28926432ec7818b820c359aeb1356638f3a42b639505eb0b40f9e8e846613",
+          "existing_weak": true,
+          "source": "pivota_insights_official_pdp_manual_review_v1",
+          "after_inventory": {
+            "product_id": "ext_7c53e5f5c69608226b1fb7ec",
+            "kb_key": "product:sig_f1e97cd5e20c045c09b3d834ee665def",
+            "source": "pivota_insights_official_pdp_manual_review_v1",
+            "updated_at": "",
+            "last_success_at": "",
+            "title": "Bright Fix Instant Brightening + Blurring Powder — Cinnamon",
+            "canonical_url": "",
+            "bundle_hash": "4c91a38e53b6791148320a11386ce51bbe61f193acc878b82ce8e91d7bd89af7",
+            "lane": "keep",
+            "reason": "protected_good_content",
+            "priority": 0,
+            "protected": true,
+            "displayable": true,
+            "high_quality_ready": true,
+            "human_reviewed": true,
+            "issues": [],
+            "blocking_issues": [],
+            "quality_state": "reviewed",
+            "evidence_profile": "official_pdp_reviewed_formula_and_usage",
+            "evidence_rank": 1,
+            "review_tier": "assistant_reviewed",
+            "agent_readable": true,
+            "public_ready": true
+          },
+          "source_meta": {
+            "evidence_profile": "official_pdp_reviewed_formula_and_usage",
+            "quality_state": "reviewed",
+            "source_origin": "official_pdp_fields",
+            "source_url": "https://fentybeauty.com/products/bright-fix-instant-brightening-blurring-powder-cinnamon",
+            "quality_improvement": {
+              "previous_bundle_hash": "0bff5ffd2d8addbcc7214c6f47fe1cc54e78f20955c9c4d5f37775319d5c65c7",
+              "candidate_bundle_hash": "4c91a38e53b6791148320a11386ce51bbe61f193acc878b82ce8e91d7bd89af7",
+              "replacement_decision": "explicit_owner_delegated_assistant_replacement_review",
+              "existing_quality_lane": "keep",
+              "candidate_quality_lane": "keep",
+              "existing_evidence_profile": "seller_plus_formula",
+              "candidate_evidence_profile": "official_pdp_reviewed_formula_and_usage"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "external_product_id": "ext_653963915647e224ebd70d69",
+      "pivota_signature_id": "sig_cfaaa9a3188d0e1ad49ff258542fd614",
+      "title": "Bright Fix Instant Brightening + Blurring Powder — Rose Quartz",
+      "brand": "Fenty Beauty",
+      "canonical_url": "https://fentybeauty.com/products/bright-fix-instant-brightening-blurring-powder-rose-quartz",
+      "changed": true,
+      "blocked": false,
+      "skip_reason": null,
+      "candidate_hash": "f7e06cb8adffcd138a3e4e0227761077159d2c3b319f8ee5a406cc2e85d942d2",
+      "evidence_profile": "official_pdp_reviewed_formula_and_usage",
+      "source_coverage": {
+        "source": "official_pdp",
+        "canonical_url": "https://fentybeauty.com/products/bright-fix-instant-brightening-blurring-powder-rose-quartz",
+        "fields": {
+          "description": true,
+          "ingredients": 1,
+          "active_ingredients": 1,
+          "how_to": 1,
+          "details": 3,
+          "variants": 1
+        }
+      },
+      "preview": {
+        "headline": "Face color makeup",
+        "what_it_is": "Bright Fix Instant Brightening + Blurring Powder — Rose Quartz is a face color product from Fenty Beauty in shade Rose Quartz, with source-backed cues around long-wear color, a cream-powder texture and glow payoff.",
+        "why_it_stands_out": [
+          {
+            "headline": "Color payoff cues are specific",
+            "body": "Reviewed color cues such as long-wear color, cream-powder texture, glow payoff, shade range help shoppers compare shade, finish, or texture instead of seeing a generic blush/bronzer/highlighter card.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Ingredient list is available",
+            "body": "Full INCI is present for formula-sensitive review, which makes this PDP safer to evaluate than a claim-only listing.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Shade and size are explicit",
+            "body": "Variant labels such as Rose Quartz, Shade: Rose Quartz are visible, reducing ambiguity around the product format before a shopper clicks through.",
+            "evidence_strength": "official_pdp_reviewed"
+          }
+        ],
+        "best_for": [
+          {
+            "tag": "base_makeup_prep",
+            "label": "base makeup prep",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "complexion_coverage",
+            "label": "complexion coverage",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "soft_focus_finish",
+            "label": "soft-focus finish",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "radiant_finish",
+            "label": "radiant finish",
+            "confidence": "moderate"
+          }
+        ],
+        "shopping_highlight": "long-wear color, cream-powder texture"
+      },
+      "writes": [
+        {
+          "kb_key": "product:ext_653963915647e224ebd70d69",
+          "action": "update",
+          "reason": "explicit_owner_delegated_assistant_replacement_review",
+          "old_hash": "3ea8eead50f15af0da58827dfeb0b53651e5c69d8610b483b7787afc95b94965",
+          "candidate_hash": "829f49dc953d4e71a8a8075594e7a1b5771f377c1ccca3397632755c5b0116b4",
+          "existing_weak": true,
+          "source": "pivota_insights_official_pdp_manual_review_v1",
+          "after_inventory": {
+            "product_id": "ext_653963915647e224ebd70d69",
+            "kb_key": "product:ext_653963915647e224ebd70d69",
+            "source": "pivota_insights_official_pdp_manual_review_v1",
+            "updated_at": "",
+            "last_success_at": "",
+            "title": "Bright Fix Instant Brightening + Blurring Powder — Rose Quartz",
+            "canonical_url": "",
+            "bundle_hash": "f7e06cb8adffcd138a3e4e0227761077159d2c3b319f8ee5a406cc2e85d942d2",
+            "lane": "keep",
+            "reason": "protected_good_content",
+            "priority": 0,
+            "protected": true,
+            "displayable": true,
+            "high_quality_ready": true,
+            "human_reviewed": true,
+            "issues": [],
+            "blocking_issues": [],
+            "quality_state": "reviewed",
+            "evidence_profile": "official_pdp_reviewed_formula_and_usage",
+            "evidence_rank": 1,
+            "review_tier": "assistant_reviewed",
+            "agent_readable": true,
+            "public_ready": true
+          },
+          "source_meta": {
+            "evidence_profile": "official_pdp_reviewed_formula_and_usage",
+            "quality_state": "reviewed",
+            "source_origin": "official_pdp_fields",
+            "source_url": "https://fentybeauty.com/products/bright-fix-instant-brightening-blurring-powder-rose-quartz",
+            "quality_improvement": {
+              "previous_bundle_hash": "657f5064cc2912ec1439dc8317e60e7f0309303756de8d13966f99083d05b41a",
+              "candidate_bundle_hash": "f7e06cb8adffcd138a3e4e0227761077159d2c3b319f8ee5a406cc2e85d942d2",
+              "replacement_decision": "explicit_owner_delegated_assistant_replacement_review",
+              "existing_quality_lane": "keep",
+              "candidate_quality_lane": "keep",
+              "existing_evidence_profile": "seller_plus_formula",
+              "candidate_evidence_profile": "official_pdp_reviewed_formula_and_usage"
+            }
+          }
+        },
+        {
+          "kb_key": "product:sig_cfaaa9a3188d0e1ad49ff258542fd614",
+          "action": "update",
+          "reason": "explicit_owner_delegated_assistant_replacement_review",
+          "old_hash": "b0f3e764d259d88fdf35561a793dc0c2eb38ae234240e8a6093a0e5ffed59484",
+          "candidate_hash": "829f49dc953d4e71a8a8075594e7a1b5771f377c1ccca3397632755c5b0116b4",
+          "existing_weak": true,
+          "source": "pivota_insights_official_pdp_manual_review_v1",
+          "after_inventory": {
+            "product_id": "ext_653963915647e224ebd70d69",
+            "kb_key": "product:sig_cfaaa9a3188d0e1ad49ff258542fd614",
+            "source": "pivota_insights_official_pdp_manual_review_v1",
+            "updated_at": "",
+            "last_success_at": "",
+            "title": "Bright Fix Instant Brightening + Blurring Powder — Rose Quartz",
+            "canonical_url": "",
+            "bundle_hash": "f7e06cb8adffcd138a3e4e0227761077159d2c3b319f8ee5a406cc2e85d942d2",
+            "lane": "keep",
+            "reason": "protected_good_content",
+            "priority": 0,
+            "protected": true,
+            "displayable": true,
+            "high_quality_ready": true,
+            "human_reviewed": true,
+            "issues": [],
+            "blocking_issues": [],
+            "quality_state": "reviewed",
+            "evidence_profile": "official_pdp_reviewed_formula_and_usage",
+            "evidence_rank": 1,
+            "review_tier": "assistant_reviewed",
+            "agent_readable": true,
+            "public_ready": true
+          },
+          "source_meta": {
+            "evidence_profile": "official_pdp_reviewed_formula_and_usage",
+            "quality_state": "reviewed",
+            "source_origin": "official_pdp_fields",
+            "source_url": "https://fentybeauty.com/products/bright-fix-instant-brightening-blurring-powder-rose-quartz",
+            "quality_improvement": {
+              "previous_bundle_hash": "94c2868061179d102aee8ddfd6795a0ace5e824bff0de6ebb7f0118bb1303a50",
+              "candidate_bundle_hash": "f7e06cb8adffcd138a3e4e0227761077159d2c3b319f8ee5a406cc2e85d942d2",
+              "replacement_decision": "explicit_owner_delegated_assistant_replacement_review",
+              "existing_quality_lane": "keep",
+              "candidate_quality_lane": "keep",
+              "existing_evidence_profile": "seller_plus_formula",
+              "candidate_evidence_profile": "official_pdp_reviewed_formula_and_usage"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "external_product_id": "ext_a8cb47c391f90a8f35814c38",
+      "pivota_signature_id": "sig_803e6a0f603940b3942fbacfdd5cf240",
+      "title": "Midsummer Fairytales Embossed Five-Color Makeup Palette",
+      "brand": "Flower Knows",
+      "canonical_url": "https://flowerknows.co/products/midsummer-fairytales-embossed-five-color-makeup-palette-usa",
+      "changed": true,
+      "blocked": false,
+      "skip_reason": null,
+      "candidate_hash": "dba0e6cba1652e0a4d8fc1664da5b8dca9e8aa41cb342299b1c88b58ffd883e0",
+      "evidence_profile": "official_pdp_reviewed_line",
+      "source_coverage": {
+        "source": "official_pdp",
+        "canonical_url": "https://flowerknows.co/products/midsummer-fairytales-embossed-five-color-makeup-palette-usa",
+        "fields": {
+          "description": true,
+          "ingredients": 0,
+          "active_ingredients": 0,
+          "how_to": 0,
+          "details": 2,
+          "variants": 3
+        }
+      },
+      "preview": {
+        "headline": "Eye makeup",
+        "what_it_is": "Midsummer Fairytales Embossed Five-Color Makeup Palette is an eye makeup palette from Flower Knows, with source-backed cues around a palette format, multi-shade color selection and embossed pan detail.",
+        "why_it_stands_out": [
+          {
+            "headline": "Product cues are source-backed",
+            "body": "Reviewed PDP cues such as palette format, multi-shade color story, embossed finish give shoppers specific comparison points within Flower Knows, rather than category-only copy.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Shade and size are explicit",
+            "body": "Variant labels such as 01 Hazel Fawn, Midsummer Fairytales Embossed Five-Color Makeup Palette - 01 Hazel Fawn, 02 Flora Hermitage, Midsummer Fairytales Embossed Five-Color Makeup Palette - 02 Flora Hermitage are visible, reducing ambiguity around the product format before a shopper clicks through.",
+            "evidence_strength": "official_pdp_reviewed"
+          }
+        ],
+        "best_for": [
+          {
+            "tag": "palette_format",
+            "label": "palette format",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "multi_shade_color_story",
+            "label": "multi-shade color story",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "embossed_finish",
+            "label": "embossed finish",
+            "confidence": "moderate"
+          }
+        ],
+        "shopping_highlight": "palette format, multi-shade color story"
+      },
+      "writes": [
+        {
+          "kb_key": "product:ext_a8cb47c391f90a8f35814c38",
+          "action": "update",
+          "reason": "explicit_owner_delegated_assistant_replacement_review",
+          "old_hash": "b0f05ad4fe1a4fe0c6887fcd06fb8be69d93dea5ddaa1b9ea2c2bd930c3a77c2",
+          "candidate_hash": "9b8f3e187e709a9630611619ed22edf0d60c7b490cc57ac38ceea07a9b88024b",
+          "existing_weak": true,
+          "source": "pivota_insights_official_pdp_manual_review_v1",
+          "after_inventory": {
+            "product_id": "ext_a8cb47c391f90a8f35814c38",
+            "kb_key": "product:ext_a8cb47c391f90a8f35814c38",
+            "source": "pivota_insights_official_pdp_manual_review_v1",
+            "updated_at": "",
+            "last_success_at": "",
+            "title": "Midsummer Fairytales Embossed Five-Color Makeup Palette",
+            "canonical_url": "",
+            "bundle_hash": "dba0e6cba1652e0a4d8fc1664da5b8dca9e8aa41cb342299b1c88b58ffd883e0",
+            "lane": "keep",
+            "reason": "protected_good_content",
+            "priority": 0,
+            "protected": true,
+            "displayable": true,
+            "high_quality_ready": true,
+            "human_reviewed": true,
+            "issues": [],
+            "blocking_issues": [],
+            "quality_state": "reviewed",
+            "evidence_profile": "official_pdp_reviewed_line",
+            "evidence_rank": 3,
+            "review_tier": "assistant_reviewed",
+            "agent_readable": true,
+            "public_ready": true
+          },
+          "source_meta": {
+            "evidence_profile": "official_pdp_reviewed_line",
+            "quality_state": "reviewed",
+            "source_origin": "official_pdp_fields",
+            "source_url": "https://flowerknows.co/products/midsummer-fairytales-embossed-five-color-makeup-palette-usa",
+            "quality_improvement": {
+              "previous_bundle_hash": "000eb9810e8963a3331f8685ef89c6b97421cdee0196e233a030664b12efe453",
+              "candidate_bundle_hash": "dba0e6cba1652e0a4d8fc1664da5b8dca9e8aa41cb342299b1c88b58ffd883e0",
+              "replacement_decision": "explicit_owner_delegated_assistant_replacement_review",
+              "existing_quality_lane": "keep",
+              "candidate_quality_lane": "keep",
+              "existing_evidence_profile": "seller_plus_formula",
+              "candidate_evidence_profile": "official_pdp_reviewed_line"
+            }
+          }
+        },
+        {
+          "kb_key": "product:sig_803e6a0f603940b3942fbacfdd5cf240",
+          "action": "insert",
+          "reason": "new_product_intel_bundle",
+          "old_hash": null,
+          "candidate_hash": "9b8f3e187e709a9630611619ed22edf0d60c7b490cc57ac38ceea07a9b88024b",
+          "existing_weak": true,
+          "source": "pivota_insights_official_pdp_manual_review_v1",
+          "after_inventory": {
+            "product_id": "ext_a8cb47c391f90a8f35814c38",
+            "kb_key": "product:sig_803e6a0f603940b3942fbacfdd5cf240",
+            "source": "pivota_insights_official_pdp_manual_review_v1",
+            "updated_at": "",
+            "last_success_at": "",
+            "title": "Midsummer Fairytales Embossed Five-Color Makeup Palette",
+            "canonical_url": "",
+            "bundle_hash": "dba0e6cba1652e0a4d8fc1664da5b8dca9e8aa41cb342299b1c88b58ffd883e0",
+            "lane": "keep",
+            "reason": "protected_good_content",
+            "priority": 0,
+            "protected": true,
+            "displayable": true,
+            "high_quality_ready": true,
+            "human_reviewed": true,
+            "issues": [],
+            "blocking_issues": [],
+            "quality_state": "reviewed",
+            "evidence_profile": "official_pdp_reviewed_line",
+            "evidence_rank": 3,
+            "review_tier": "assistant_reviewed",
+            "agent_readable": true,
+            "public_ready": true
+          },
+          "source_meta": {
+            "evidence_profile": "official_pdp_reviewed_line",
+            "quality_state": "reviewed",
+            "source_origin": "official_pdp_fields",
+            "source_url": "https://flowerknows.co/products/midsummer-fairytales-embossed-five-color-makeup-palette-usa",
+            "quality_improvement": {
+              "previous_bundle_hash": null,
+              "candidate_bundle_hash": "dba0e6cba1652e0a4d8fc1664da5b8dca9e8aa41cb342299b1c88b58ffd883e0",
+              "replacement_decision": "new_product_intel_bundle",
+              "existing_quality_lane": null,
+              "candidate_quality_lane": "keep",
+              "existing_evidence_profile": null,
+              "candidate_evidence_profile": "official_pdp_reviewed_line"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "external_product_id": "ext_d1c304ee3edc262cb0d914e9",
+      "pivota_signature_id": "sig_8ab095c41b27338d3cff50a10cbc1616",
+      "title": "Midsummer Fairytales Embossed Five-Color Makeup Palette",
+      "brand": "Flower Knows",
+      "canonical_url": "https://flowerknows.co/products/midsummer-fairytales-embossed-five-color-makeup-palette-usa",
+      "changed": true,
+      "blocked": false,
+      "skip_reason": null,
+      "candidate_hash": "800533b6a62d6804d6b7480df35e3d1c243e079c1598ec15e0dfccb16dca9a3a",
+      "evidence_profile": "official_pdp_reviewed_line",
+      "source_coverage": {
+        "source": "official_pdp",
+        "canonical_url": "https://flowerknows.co/products/midsummer-fairytales-embossed-five-color-makeup-palette-usa",
+        "fields": {
+          "description": true,
+          "ingredients": 0,
+          "active_ingredients": 0,
+          "how_to": 0,
+          "details": 1,
+          "variants": 3
+        }
+      },
+      "preview": {
+        "headline": "Eye makeup",
+        "what_it_is": "Midsummer Fairytales Embossed Five-Color Makeup Palette is an eye makeup palette from Flower Knows in 01 Hazel Fawn, with source-backed cues around a palette format, multi-shade color selection and embossed pan detail.",
+        "why_it_stands_out": [
+          {
+            "headline": "Product cues are source-backed",
+            "body": "Reviewed PDP cues such as palette format, multi-shade color story, embossed finish give shoppers specific comparison points within Flower Knows, rather than category-only copy.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Shade and size are explicit",
+            "body": "Variant labels such as 01 Hazel Fawn, Color: 01 Hazel Fawn, 02 Flora Hermitage, Color: 02 Flora Hermitage are visible, reducing ambiguity around the product format before a shopper clicks through.",
+            "evidence_strength": "official_pdp_reviewed"
+          }
+        ],
+        "best_for": [
+          {
+            "tag": "palette_format",
+            "label": "palette format",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "multi_shade_color_story",
+            "label": "multi-shade color story",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "embossed_finish",
+            "label": "embossed finish",
+            "confidence": "moderate"
+          }
+        ],
+        "shopping_highlight": "palette format, multi-shade color story"
+      },
+      "writes": [
+        {
+          "kb_key": "product:ext_d1c304ee3edc262cb0d914e9",
+          "action": "update",
+          "reason": "explicit_owner_delegated_assistant_replacement_review",
+          "old_hash": "a8369b49f77629a481acceccd589d5565e347e47e7e08f5626706da1798cbed3",
+          "candidate_hash": "96c75be555c02db32130b88b5fc4611aee0960d2025e7d662d598be95219d21e",
+          "existing_weak": true,
+          "source": "pivota_insights_official_pdp_manual_review_v1",
+          "after_inventory": {
+            "product_id": "ext_d1c304ee3edc262cb0d914e9",
+            "kb_key": "product:ext_d1c304ee3edc262cb0d914e9",
+            "source": "pivota_insights_official_pdp_manual_review_v1",
+            "updated_at": "",
+            "last_success_at": "",
+            "title": "Midsummer Fairytales Embossed Five-Color Makeup Palette",
+            "canonical_url": "",
+            "bundle_hash": "800533b6a62d6804d6b7480df35e3d1c243e079c1598ec15e0dfccb16dca9a3a",
+            "lane": "keep",
+            "reason": "protected_good_content",
+            "priority": 0,
+            "protected": true,
+            "displayable": true,
+            "high_quality_ready": true,
+            "human_reviewed": true,
+            "issues": [],
+            "blocking_issues": [],
+            "quality_state": "reviewed",
+            "evidence_profile": "official_pdp_reviewed_line",
+            "evidence_rank": 3,
+            "review_tier": "assistant_reviewed",
+            "agent_readable": true,
+            "public_ready": true
+          },
+          "source_meta": {
+            "evidence_profile": "official_pdp_reviewed_line",
+            "quality_state": "reviewed",
+            "source_origin": "official_pdp_fields",
+            "source_url": "https://flowerknows.co/products/midsummer-fairytales-embossed-five-color-makeup-palette-usa",
+            "quality_improvement": {
+              "previous_bundle_hash": "43f36365827b98a6ba6d181e3224162fac212a62b938706672f480cbf16f7250",
+              "candidate_bundle_hash": "800533b6a62d6804d6b7480df35e3d1c243e079c1598ec15e0dfccb16dca9a3a",
+              "replacement_decision": "explicit_owner_delegated_assistant_replacement_review",
+              "existing_quality_lane": "keep",
+              "candidate_quality_lane": "keep",
+              "existing_evidence_profile": "seller_plus_formula",
+              "candidate_evidence_profile": "official_pdp_reviewed_line"
+            }
+          }
+        },
+        {
+          "kb_key": "product:sig_8ab095c41b27338d3cff50a10cbc1616",
+          "action": "insert",
+          "reason": "new_product_intel_bundle",
+          "old_hash": null,
+          "candidate_hash": "96c75be555c02db32130b88b5fc4611aee0960d2025e7d662d598be95219d21e",
+          "existing_weak": true,
+          "source": "pivota_insights_official_pdp_manual_review_v1",
+          "after_inventory": {
+            "product_id": "ext_d1c304ee3edc262cb0d914e9",
+            "kb_key": "product:sig_8ab095c41b27338d3cff50a10cbc1616",
+            "source": "pivota_insights_official_pdp_manual_review_v1",
+            "updated_at": "",
+            "last_success_at": "",
+            "title": "Midsummer Fairytales Embossed Five-Color Makeup Palette",
+            "canonical_url": "",
+            "bundle_hash": "800533b6a62d6804d6b7480df35e3d1c243e079c1598ec15e0dfccb16dca9a3a",
+            "lane": "keep",
+            "reason": "protected_good_content",
+            "priority": 0,
+            "protected": true,
+            "displayable": true,
+            "high_quality_ready": true,
+            "human_reviewed": true,
+            "issues": [],
+            "blocking_issues": [],
+            "quality_state": "reviewed",
+            "evidence_profile": "official_pdp_reviewed_line",
+            "evidence_rank": 3,
+            "review_tier": "assistant_reviewed",
+            "agent_readable": true,
+            "public_ready": true
+          },
+          "source_meta": {
+            "evidence_profile": "official_pdp_reviewed_line",
+            "quality_state": "reviewed",
+            "source_origin": "official_pdp_fields",
+            "source_url": "https://flowerknows.co/products/midsummer-fairytales-embossed-five-color-makeup-palette-usa",
+            "quality_improvement": {
+              "previous_bundle_hash": null,
+              "candidate_bundle_hash": "800533b6a62d6804d6b7480df35e3d1c243e079c1598ec15e0dfccb16dca9a3a",
+              "replacement_decision": "new_product_intel_bundle",
+              "existing_quality_lane": null,
+              "candidate_quality_lane": "keep",
+              "existing_evidence_profile": null,
+              "candidate_evidence_profile": "official_pdp_reviewed_line"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "external_product_id": "ext_d5a818c5447b62e0ed8f8f61",
+      "pivota_signature_id": "sig_a61631ee336c5ccdec6b2b33ce48bdd3",
+      "title": "Silky Matte Lip Ink",
+      "brand": "Judydoll",
+      "canonical_url": "https://judydoll.com/products/silky-matte-lip-ink",
+      "changed": true,
+      "blocked": false,
+      "skip_reason": null,
+      "candidate_hash": "18ff50d7db45ad91550e2e5ece127d2ba97347c8a4a8bd967144b8491a7231b5",
+      "evidence_profile": "official_pdp_reviewed_line",
+      "source_coverage": {
+        "source": "official_pdp",
+        "canonical_url": "https://judydoll.com/products/silky-matte-lip-ink",
+        "fields": {
+          "description": true,
+          "ingredients": 0,
+          "active_ingredients": 0,
+          "how_to": 1,
+          "details": 2,
+          "variants": 8
+        }
+      },
+      "preview": {
+        "headline": "Lip color",
+        "what_it_is": "Silky Matte Lip Ink is a lip color from Judydoll in 01 PETAL INK, with source-backed cues around matte finish and shade clarity.",
+        "why_it_stands_out": [
+          {
+            "headline": "Lip finish cues are specific",
+            "body": "Reviewed lip cues such as matte finish, shade range, shade clarity identify finish, shade, or formula context before the shopper leaves Pivota.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Shade and size are explicit",
+            "body": "Variant labels such as 01 PETAL INK, Color: 01 PETAL INK, 02 PEACH INK, Color: 02 PEACH INK are visible, reducing ambiguity around the product format before a shopper clicks through.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Usage instructions available",
+            "body": "Reviewed usage context is present, including: Step 1: Start from the center of your lips and apply outward Step 2: Wait 20 to 30 seconds for formula to set a transfer-proof film Tips: Use angled tip to trace your lip line,.",
+            "evidence_strength": "official_pdp_reviewed"
+          }
+        ],
+        "best_for": [
+          {
+            "tag": "color_payoff",
+            "label": "color payoff",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "lip_comfort",
+            "label": "lip comfort",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "matte_finish",
+            "label": "matte finish",
+            "confidence": "moderate"
+          }
+        ],
+        "shopping_highlight": "matte finish, shade range, shade clarity"
+      },
+      "writes": [
+        {
+          "kb_key": "product:ext_d5a818c5447b62e0ed8f8f61",
+          "action": "update",
+          "reason": "explicit_owner_delegated_assistant_replacement_review",
+          "old_hash": "de805ed24583be6e9193e4d70d5150c3f0cc22dc3920a44c9973190650a36374",
+          "candidate_hash": "1e1da8e85fdd2b009dfaa1fffc4b01c2739075ee5830bda571031c3034cfda87",
+          "existing_weak": true,
+          "source": "pivota_insights_official_pdp_manual_review_v1",
+          "after_inventory": {
+            "product_id": "ext_d5a818c5447b62e0ed8f8f61",
+            "kb_key": "product:ext_d5a818c5447b62e0ed8f8f61",
+            "source": "pivota_insights_official_pdp_manual_review_v1",
+            "updated_at": "",
+            "last_success_at": "",
+            "title": "Silky Matte Lip Ink",
+            "canonical_url": "",
+            "bundle_hash": "18ff50d7db45ad91550e2e5ece127d2ba97347c8a4a8bd967144b8491a7231b5",
+            "lane": "keep",
+            "reason": "protected_good_content",
+            "priority": 0,
+            "protected": true,
+            "displayable": true,
+            "high_quality_ready": true,
+            "human_reviewed": true,
+            "issues": [],
+            "blocking_issues": [],
+            "quality_state": "reviewed",
+            "evidence_profile": "official_pdp_reviewed_line",
+            "evidence_rank": 3,
+            "review_tier": "assistant_reviewed",
+            "agent_readable": true,
+            "public_ready": true
+          },
+          "source_meta": {
+            "evidence_profile": "official_pdp_reviewed_line",
+            "quality_state": "reviewed",
+            "source_origin": "official_pdp_fields",
+            "source_url": "https://judydoll.com/products/silky-matte-lip-ink",
+            "quality_improvement": {
+              "previous_bundle_hash": "17492f1a513b631445e5cc9d33fb2a60193750fd69e05d9ee83ae222ed4b3c61",
+              "candidate_bundle_hash": "18ff50d7db45ad91550e2e5ece127d2ba97347c8a4a8bd967144b8491a7231b5",
+              "replacement_decision": "explicit_owner_delegated_assistant_replacement_review",
+              "existing_quality_lane": "keep",
+              "candidate_quality_lane": "keep",
+              "existing_evidence_profile": "seller_plus_formula",
+              "candidate_evidence_profile": "official_pdp_reviewed_line"
+            }
+          }
+        },
+        {
+          "kb_key": "product:sig_a61631ee336c5ccdec6b2b33ce48bdd3",
+          "action": "insert",
+          "reason": "new_product_intel_bundle",
+          "old_hash": null,
+          "candidate_hash": "1e1da8e85fdd2b009dfaa1fffc4b01c2739075ee5830bda571031c3034cfda87",
+          "existing_weak": true,
+          "source": "pivota_insights_official_pdp_manual_review_v1",
+          "after_inventory": {
+            "product_id": "ext_d5a818c5447b62e0ed8f8f61",
+            "kb_key": "product:sig_a61631ee336c5ccdec6b2b33ce48bdd3",
+            "source": "pivota_insights_official_pdp_manual_review_v1",
+            "updated_at": "",
+            "last_success_at": "",
+            "title": "Silky Matte Lip Ink",
+            "canonical_url": "",
+            "bundle_hash": "18ff50d7db45ad91550e2e5ece127d2ba97347c8a4a8bd967144b8491a7231b5",
+            "lane": "keep",
+            "reason": "protected_good_content",
+            "priority": 0,
+            "protected": true,
+            "displayable": true,
+            "high_quality_ready": true,
+            "human_reviewed": true,
+            "issues": [],
+            "blocking_issues": [],
+            "quality_state": "reviewed",
+            "evidence_profile": "official_pdp_reviewed_line",
+            "evidence_rank": 3,
+            "review_tier": "assistant_reviewed",
+            "agent_readable": true,
+            "public_ready": true
+          },
+          "source_meta": {
+            "evidence_profile": "official_pdp_reviewed_line",
+            "quality_state": "reviewed",
+            "source_origin": "official_pdp_fields",
+            "source_url": "https://judydoll.com/products/silky-matte-lip-ink",
+            "quality_improvement": {
+              "previous_bundle_hash": null,
+              "candidate_bundle_hash": "18ff50d7db45ad91550e2e5ece127d2ba97347c8a4a8bd967144b8491a7231b5",
+              "replacement_decision": "new_product_intel_bundle",
+              "existing_quality_lane": null,
+              "candidate_quality_lane": "keep",
+              "existing_evidence_profile": null,
+              "candidate_evidence_profile": "official_pdp_reviewed_line"
+            }
+          }
+        }
+      ]
+    }
+  ],
+  "apply_result": {
+    "upserts": 10,
+    "chunks": 1
+  }
+}

@@ -1,0 +1,555 @@
+{
+  "generated_at": "2026-06-01T07:19:30.588Z",
+  "source": "external_seed_live_pdp_modules_audit",
+  "query": {
+    "market": "US",
+    "domain": null,
+    "brand": null,
+    "external_product_id": null,
+    "external_product_ids": [
+      "ext_7c53e5f5c69608226b1fb7ec",
+      "ext_653963915647e224ebd70d69",
+      "ext_d5a818c5447b62e0ed8f8f61",
+      "ext_a8cb47c391f90a8f35814c38",
+      "ext_d1c304ee3edc262cb0d914e9"
+    ],
+    "include_attached": true,
+    "limit": 10,
+    "offset": 0,
+    "include_similar": true,
+    "use_sig": false
+  },
+  "summary": {
+    "scanned": 5,
+    "ready": 2,
+    "thin": 0,
+    "not_conversion_ready": 3,
+    "by_domain": [
+      {
+        "key": "fentybeauty.com",
+        "count": 2
+      },
+      {
+        "key": "flowerknows.co",
+        "count": 2
+      },
+      {
+        "key": "judydoll.com",
+        "count": 1
+      }
+    ],
+    "blocker_counts": [
+      {
+        "key": "gallery_missing_or_bloated",
+        "count": 3
+      },
+      {
+        "key": "missing_details",
+        "count": 3
+      },
+      {
+        "key": "missing_or_weak_insights",
+        "count": 3
+      },
+      {
+        "key": "missing_overview",
+        "count": 3
+      },
+      {
+        "key": "missing_how_to",
+        "count": 2
+      },
+      {
+        "key": "missing_ingredients",
+        "count": 2
+      }
+    ],
+    "weak_insights_ids": [
+      "ext_a8cb47c391f90a8f35814c38",
+      "ext_d1c304ee3edc262cb0d914e9",
+      "ext_d5a818c5447b62e0ed8f8f61"
+    ],
+    "seller_only_insights_ids": [],
+    "force_filled_ids": [],
+    "content_gap_ids": [
+      "ext_a8cb47c391f90a8f35814c38",
+      "ext_d1c304ee3edc262cb0d914e9",
+      "ext_d5a818c5447b62e0ed8f8f61"
+    ]
+  },
+  "rows": [
+    {
+      "external_product_id": "ext_653963915647e224ebd70d69",
+      "pivota_signature_id": "sig_cfaaa9a3188d0e1ad49ff258542fd614",
+      "probed_product_id": "ext_653963915647e224ebd70d69",
+      "probed_id_type": "ext",
+      "seed_id": "eps_c21d0535b58c487ba8c6b9c3",
+      "market": "US",
+      "domain": "fentybeauty.com",
+      "title": "Bright Fix Instant Brightening + Blurring Powder — Rose Quartz",
+      "canonical_url": "https://fentybeauty.com/products/bright-fix-instant-brightening-blurring-powder-rose-quartz",
+      "http_status": 200,
+      "pdp_status": "success",
+      "build_id": "8c8e57e17309",
+      "module_types": [
+        "canonical",
+        "variant_selector",
+        "offers",
+        "product_intel",
+        "active_ingredients",
+        "ingredients_inci",
+        "how_to_use",
+        "product_overview",
+        "product_facts",
+        "supplemental_details",
+        "product_details",
+        "reviews_preview",
+        "similar"
+      ],
+      "missing_modules": [
+        "active_ingredients",
+        "product_facts"
+      ],
+      "gallery": {
+        "image_count": 3,
+        "duplicate_url_count": 1,
+        "image_hosts": [
+          "cdn.shopify.com"
+        ],
+        "ok": true
+      },
+      "variant": {
+        "module_present": true,
+        "variant_count": 1,
+        "label_count": 2,
+        "labels": [
+          "Shade: Rose Quartz",
+          "Rose Quartz"
+        ],
+        "bad_labels": [],
+        "ok": true
+      },
+      "reviews": {
+        "module_present": true,
+        "rating": 4.603358,
+        "review_count": 953,
+        "chart_present": true,
+        "chart_estimated": false,
+        "preview_count": 6,
+        "ok": true
+      },
+      "insights": {
+        "module_present": true,
+        "quality_state": "reviewed",
+        "evidence_profile": "official_pdp_reviewed_formula_and_usage",
+        "seller_only_evidence": false,
+        "seller_grounded_reviewed": false,
+        "headline": "Face color makeup",
+        "why_count": 3,
+        "ok": true
+      },
+      "content": {
+        "ingredients_present": true,
+        "ingredients_text_count": 26,
+        "ingredients_source_origin": "pdp_section",
+        "ingredients_source_quality_status": "authoritative",
+        "ingredients_force_filled": false,
+        "active_ingredients_present": false,
+        "active_ingredients_source_origin": null,
+        "active_ingredients_source_quality_status": null,
+        "active_ingredients_force_filled": false,
+        "how_to_present": true,
+        "how_to_text_count": 10,
+        "overview_present": true,
+        "details_present": true,
+        "details_text_count": 23
+      },
+      "similar": {
+        "module_present": true,
+        "count": 0,
+        "status": "deferred"
+      },
+      "product_kind": {
+        "family": "single_formula",
+        "reasons": [
+          "formula_category_path_signal"
+        ],
+        "pdp_schema_profile": "beauty_formula",
+        "formula_content_required": true,
+        "merchandising_content_applicable": true
+      },
+      "blocking_reasons": [],
+      "pdp_quality_bucket": "ready",
+      "conversion_ready": true
+    },
+    {
+      "external_product_id": "ext_7c53e5f5c69608226b1fb7ec",
+      "pivota_signature_id": "sig_f1e97cd5e20c045c09b3d834ee665def",
+      "probed_product_id": "ext_7c53e5f5c69608226b1fb7ec",
+      "probed_id_type": "ext",
+      "seed_id": "eps_6b6327febb914c04bec89edc",
+      "market": "US",
+      "domain": "fentybeauty.com",
+      "title": "Bright Fix Instant Brightening + Blurring Powder — Cinnamon",
+      "canonical_url": "https://fentybeauty.com/products/bright-fix-instant-brightening-blurring-powder-cinnamon",
+      "http_status": 200,
+      "pdp_status": "success",
+      "build_id": "8c8e57e17309",
+      "module_types": [
+        "canonical",
+        "variant_selector",
+        "offers",
+        "product_intel",
+        "active_ingredients",
+        "ingredients_inci",
+        "how_to_use",
+        "product_overview",
+        "product_facts",
+        "supplemental_details",
+        "product_details",
+        "reviews_preview",
+        "similar"
+      ],
+      "missing_modules": [
+        "active_ingredients",
+        "product_facts"
+      ],
+      "gallery": {
+        "image_count": 3,
+        "duplicate_url_count": 1,
+        "image_hosts": [
+          "cdn.shopify.com"
+        ],
+        "ok": true
+      },
+      "variant": {
+        "module_present": true,
+        "variant_count": 1,
+        "label_count": 2,
+        "labels": [
+          "Shade: Cinnamon",
+          "Cinnamon"
+        ],
+        "bad_labels": [],
+        "ok": true
+      },
+      "reviews": {
+        "module_present": true,
+        "rating": 4.602941,
+        "review_count": 952,
+        "chart_present": true,
+        "chart_estimated": false,
+        "preview_count": 6,
+        "ok": true
+      },
+      "insights": {
+        "module_present": true,
+        "quality_state": "reviewed",
+        "evidence_profile": "official_pdp_reviewed_formula_and_usage",
+        "seller_only_evidence": false,
+        "seller_grounded_reviewed": false,
+        "headline": "Face color makeup",
+        "why_count": 3,
+        "ok": true
+      },
+      "content": {
+        "ingredients_present": true,
+        "ingredients_text_count": 22,
+        "ingredients_source_origin": "pdp_section",
+        "ingredients_source_quality_status": "authoritative",
+        "ingredients_force_filled": false,
+        "active_ingredients_present": false,
+        "active_ingredients_source_origin": null,
+        "active_ingredients_source_quality_status": null,
+        "active_ingredients_force_filled": false,
+        "how_to_present": true,
+        "how_to_text_count": 10,
+        "overview_present": true,
+        "details_present": true,
+        "details_text_count": 23
+      },
+      "similar": {
+        "module_present": true,
+        "count": 0,
+        "status": "deferred"
+      },
+      "product_kind": {
+        "family": "single_formula",
+        "reasons": [
+          "formula_category_path_signal"
+        ],
+        "pdp_schema_profile": "beauty_formula",
+        "formula_content_required": true,
+        "merchandising_content_applicable": true
+      },
+      "blocking_reasons": [],
+      "pdp_quality_bucket": "ready",
+      "conversion_ready": true
+    },
+    {
+      "external_product_id": "ext_a8cb47c391f90a8f35814c38",
+      "pivota_signature_id": "sig_803e6a0f603940b3942fbacfdd5cf240",
+      "probed_product_id": "ext_a8cb47c391f90a8f35814c38",
+      "probed_id_type": "ext",
+      "seed_id": "epsv_cd6f1f79051023abce438ce4",
+      "market": "US",
+      "domain": "flowerknows.co",
+      "title": "Midsummer Fairytales Embossed Five-Color Makeup Palette",
+      "canonical_url": "https://flowerknows.co/products/midsummer-fairytales-embossed-five-color-makeup-palette-usa",
+      "http_status": 404,
+      "pdp_status": "",
+      "build_id": "",
+      "module_types": [],
+      "missing_modules": [],
+      "gallery": {
+        "image_count": 0,
+        "duplicate_url_count": 0,
+        "image_hosts": [],
+        "ok": false
+      },
+      "variant": {
+        "module_present": false,
+        "variant_count": 0,
+        "label_count": 0,
+        "labels": [],
+        "bad_labels": [],
+        "ok": false
+      },
+      "reviews": {
+        "module_present": false,
+        "rating": null,
+        "review_count": 0,
+        "chart_present": false,
+        "chart_estimated": false,
+        "preview_count": 0,
+        "ok": true
+      },
+      "insights": {
+        "module_present": false,
+        "quality_state": null,
+        "evidence_profile": null,
+        "seller_only_evidence": false,
+        "seller_grounded_reviewed": false,
+        "headline": null,
+        "why_count": 0,
+        "ok": false
+      },
+      "content": {
+        "ingredients_present": false,
+        "ingredients_text_count": 0,
+        "ingredients_source_origin": null,
+        "ingredients_source_quality_status": null,
+        "ingredients_force_filled": false,
+        "active_ingredients_present": false,
+        "active_ingredients_source_origin": null,
+        "active_ingredients_source_quality_status": null,
+        "active_ingredients_force_filled": false,
+        "how_to_present": false,
+        "how_to_text_count": 0,
+        "overview_present": false,
+        "details_present": false,
+        "details_text_count": 0
+      },
+      "similar": {
+        "module_present": false,
+        "count": 0,
+        "status": null
+      },
+      "product_kind": {
+        "family": "single_formula",
+        "reasons": [
+          "explicit_product_kind_signal"
+        ],
+        "pdp_schema_profile": null,
+        "formula_content_required": true,
+        "merchandising_content_applicable": true
+      },
+      "blocking_reasons": [
+        "gallery_missing_or_bloated",
+        "missing_or_weak_insights",
+        "missing_ingredients",
+        "missing_how_to",
+        "missing_overview",
+        "missing_details"
+      ],
+      "pdp_quality_bucket": "not_conversion_ready",
+      "conversion_ready": false
+    },
+    {
+      "external_product_id": "ext_d1c304ee3edc262cb0d914e9",
+      "pivota_signature_id": "sig_8ab095c41b27338d3cff50a10cbc1616",
+      "probed_product_id": "ext_d1c304ee3edc262cb0d914e9",
+      "probed_id_type": "ext",
+      "seed_id": "eps_77b3d6c0bc70703018e36bf6",
+      "market": "US",
+      "domain": "flowerknows.co",
+      "title": "Midsummer Fairytales Embossed Five-Color Makeup Palette",
+      "canonical_url": "https://flowerknows.co/products/midsummer-fairytales-embossed-five-color-makeup-palette-usa",
+      "http_status": 404,
+      "pdp_status": "",
+      "build_id": "",
+      "module_types": [],
+      "missing_modules": [],
+      "gallery": {
+        "image_count": 0,
+        "duplicate_url_count": 0,
+        "image_hosts": [],
+        "ok": false
+      },
+      "variant": {
+        "module_present": false,
+        "variant_count": 0,
+        "label_count": 0,
+        "labels": [],
+        "bad_labels": [],
+        "ok": false
+      },
+      "reviews": {
+        "module_present": false,
+        "rating": null,
+        "review_count": 0,
+        "chart_present": false,
+        "chart_estimated": false,
+        "preview_count": 0,
+        "ok": true
+      },
+      "insights": {
+        "module_present": false,
+        "quality_state": null,
+        "evidence_profile": null,
+        "seller_only_evidence": false,
+        "seller_grounded_reviewed": false,
+        "headline": null,
+        "why_count": 0,
+        "ok": false
+      },
+      "content": {
+        "ingredients_present": false,
+        "ingredients_text_count": 0,
+        "ingredients_source_origin": null,
+        "ingredients_source_quality_status": null,
+        "ingredients_force_filled": false,
+        "active_ingredients_present": false,
+        "active_ingredients_source_origin": null,
+        "active_ingredients_source_quality_status": null,
+        "active_ingredients_force_filled": false,
+        "how_to_present": false,
+        "how_to_text_count": 0,
+        "overview_present": false,
+        "details_present": false,
+        "details_text_count": 0
+      },
+      "similar": {
+        "module_present": false,
+        "count": 0,
+        "status": null
+      },
+      "product_kind": {
+        "family": "single_formula",
+        "reasons": [
+          "explicit_product_kind_signal"
+        ],
+        "pdp_schema_profile": null,
+        "formula_content_required": true,
+        "merchandising_content_applicable": true
+      },
+      "blocking_reasons": [
+        "gallery_missing_or_bloated",
+        "missing_or_weak_insights",
+        "missing_ingredients",
+        "missing_how_to",
+        "missing_overview",
+        "missing_details"
+      ],
+      "pdp_quality_bucket": "not_conversion_ready",
+      "conversion_ready": false
+    },
+    {
+      "external_product_id": "ext_d5a818c5447b62e0ed8f8f61",
+      "pivota_signature_id": "sig_a61631ee336c5ccdec6b2b33ce48bdd3",
+      "probed_product_id": "ext_d5a818c5447b62e0ed8f8f61",
+      "probed_id_type": "ext",
+      "seed_id": "eps_b2294fde05dfa07dd952c2a7",
+      "market": "US",
+      "domain": "judydoll.com",
+      "title": "Silky Matte Lip Ink",
+      "canonical_url": "https://judydoll.com/products/silky-matte-lip-ink",
+      "http_status": 404,
+      "pdp_status": "",
+      "build_id": "",
+      "module_types": [],
+      "missing_modules": [],
+      "gallery": {
+        "image_count": 0,
+        "duplicate_url_count": 0,
+        "image_hosts": [],
+        "ok": false
+      },
+      "variant": {
+        "module_present": false,
+        "variant_count": 0,
+        "label_count": 0,
+        "labels": [],
+        "bad_labels": [],
+        "ok": false
+      },
+      "reviews": {
+        "module_present": false,
+        "rating": null,
+        "review_count": 0,
+        "chart_present": false,
+        "chart_estimated": false,
+        "preview_count": 0,
+        "ok": true
+      },
+      "insights": {
+        "module_present": false,
+        "quality_state": null,
+        "evidence_profile": null,
+        "seller_only_evidence": false,
+        "seller_grounded_reviewed": false,
+        "headline": null,
+        "why_count": 0,
+        "ok": false
+      },
+      "content": {
+        "ingredients_present": false,
+        "ingredients_text_count": 0,
+        "ingredients_source_origin": null,
+        "ingredients_source_quality_status": null,
+        "ingredients_force_filled": false,
+        "active_ingredients_present": false,
+        "active_ingredients_source_origin": null,
+        "active_ingredients_source_quality_status": null,
+        "active_ingredients_force_filled": false,
+        "how_to_present": false,
+        "how_to_text_count": 0,
+        "overview_present": false,
+        "details_present": false,
+        "details_text_count": 0
+      },
+      "similar": {
+        "module_present": false,
+        "count": 0,
+        "status": null
+      },
+      "product_kind": {
+        "family": "set_or_collection",
+        "reasons": [
+          "explicit_product_kind_signal"
+        ],
+        "pdp_schema_profile": null,
+        "formula_content_required": false,
+        "merchandising_content_applicable": true
+      },
+      "blocking_reasons": [
+        "gallery_missing_or_bloated",
+        "missing_or_weak_insights",
+        "missing_overview",
+        "missing_details"
+      ],
+      "pdp_quality_bucket": "not_conversion_ready",
+      "conversion_ready": false
+    }
+  ]
+}
