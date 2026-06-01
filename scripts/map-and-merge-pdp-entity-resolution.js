@@ -8,6 +8,7 @@ const path = require('node:path');
 const { closePool, query, withClient } = require('../src/db');
 
 const REVIEW_CONFIRM_TOKEN = 'MERGE_CROSS_MERCHANT_PDP';
+const SIG_PROPAGATION_LOCK_ID = 8823991;
 
 function readArg(name, fallback = '') {
   const prefix = `--${name}=`;
@@ -198,6 +199,8 @@ function buildClusterReport(contentKey, rows) {
       existing_is_primary: row.is_primary === true,
       needs_write:
         asString(row.internal_product_group_id) !== productGroupId || (row.is_primary === true) !== isPrimary,
+      needs_sig_propagation:
+        isSigId(canonicalSigId) && asString(row.pivota_signature_id) !== canonicalSigId,
     };
   });
 
@@ -230,7 +233,8 @@ function buildClusterReport(contentKey, rows) {
 
   const action = !isReady
     ? 'hold_manual_review'
-    : groupMemberUpserts.some((row) => row.needs_write) || identityAliasUpdates.some((row) => row.needs_update)
+    : groupMemberUpserts.some((row) => row.needs_write || row.needs_sig_propagation) ||
+        identityAliasUpdates.some((row) => row.needs_update)
       ? 'auto_merge_ready'
       : 'already_canonical';
 
@@ -425,6 +429,7 @@ async function applyCluster(client, cluster) {
   const primary = cluster.product_group_upserts.find((row) => row.is_primary) || cluster.product_group_upserts[0];
   let groupWrites = 0;
   let aliasWrites = 0;
+  let catalogSigWrites = 0;
   for (const row of cluster.product_group_upserts) {
     await client.query(
       `
@@ -459,6 +464,36 @@ async function applyCluster(client, cluster) {
       `,
       [cluster.product_group_id, primary.merchant_id, primary.platform, primary.platform_product_id],
     );
+  }
+
+  // Propagate the canonical sig to ALL group members in catalog_products so
+  // that every platform listing of the same product shares one pivota_signature_id.
+  // This is the root-cause fix: without it, each member keeps its own independently-
+  // minted sig, breaking any consumer that resolves products by sig.
+  if (cluster.canonical_sig_id && cluster.product_group_upserts.length > 0) {
+    const memberMerchantIds = cluster.product_group_upserts.map((row) => row.merchant_id);
+    const memberPlatforms = cluster.product_group_upserts.map((row) => row.platform);
+    const memberProductIds = cluster.product_group_upserts.map((row) => row.platform_product_id);
+    const sigResult = await client.query(
+      `
+        UPDATE catalog_products cp
+        SET pivota_signature_id       = $1,
+            pivota_signature_minted_at = COALESCE(cp.pivota_signature_minted_at, now()),
+            updated_at                = now()
+        FROM (
+          SELECT
+            unnest($2::text[]) AS merchant_id,
+            unnest($3::text[]) AS platform,
+            unnest($4::text[]) AS source_product_id
+        ) member
+        WHERE cp.merchant_id = member.merchant_id
+          AND cp.platform = member.platform
+          AND cp.source_product_id = member.source_product_id
+          AND cp.pivota_signature_id IS DISTINCT FROM $1
+      `,
+      [cluster.canonical_sig_id, memberMerchantIds, memberPlatforms, memberProductIds],
+    );
+    catalogSigWrites += Number(sigResult.rowCount || 0);
   }
 
   for (const row of cluster.identity_alias_updates.filter((item) => item.needs_update)) {
@@ -535,21 +570,32 @@ async function applyCluster(client, cluster) {
     );
     aliasWrites += 1;
   }
-  return { group_writes: groupWrites, identity_alias_writes: aliasWrites };
+  return {
+    group_writes: groupWrites,
+    identity_alias_writes: aliasWrites,
+    catalog_sig_writes: catalogSigWrites,
+  };
 }
 
 async function applyReadyClusters(clusters, { maxApply = 25 } = {}) {
   const ready = clusters.filter((cluster) => cluster.action === 'auto_merge_ready').slice(0, maxApply);
-  const totals = { clusters_applied: 0, group_writes: 0, identity_alias_writes: 0 };
+  const totals = {
+    clusters_applied: 0,
+    group_writes: 0,
+    identity_alias_writes: 0,
+    catalog_sig_writes: 0,
+  };
   if (!ready.length) return totals;
   await withClient(async (client) => {
     await client.query('BEGIN');
     try {
+      await client.query('SELECT pg_advisory_xact_lock($1)', [SIG_PROPAGATION_LOCK_ID]);
       for (const cluster of ready) {
         const applied = await applyCluster(client, cluster);
         totals.clusters_applied += 1;
         totals.group_writes += applied.group_writes;
         totals.identity_alias_writes += applied.identity_alias_writes;
+        totals.catalog_sig_writes += applied.catalog_sig_writes;
       }
       await client.query('COMMIT');
     } catch (err) {
@@ -594,6 +640,10 @@ async function mapAndMerge(options = {}) {
     hold_manual_review_count: held.length,
     product_group_upserts_ready: ready.reduce(
       (sum, cluster) => sum + cluster.product_group_upserts.filter((row) => row.needs_write).length,
+      0,
+    ),
+    catalog_sig_propagations_ready: ready.reduce(
+      (sum, cluster) => sum + cluster.product_group_upserts.filter((row) => row.needs_sig_propagation).length,
       0,
     ),
     identity_alias_updates_ready: ready.reduce(

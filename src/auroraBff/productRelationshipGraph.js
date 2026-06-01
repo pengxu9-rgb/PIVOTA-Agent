@@ -440,10 +440,14 @@ function buildAnchorRefsFromProduct(anchor = {}) {
   };
   push(src.product_id || src.productId || src.sku_id || src.skuId || src.id, 'product');
   push(src.product_id || src.productId || src.sku_id || src.skuId || src.id);
-  // External-seed anchors are stored as `product:ext_<hash>`. At serving time the
-  // canonical product_id may be a pivota signature while the ext_ key lives on
-  // external_product_id/source_product_id — derive a ref from it too so curated
-  // edges match regardless of which identity the upstream resolver selected.
+  // sig_* is the canonical product identity. Edges rekeyed to sig_* (migration 052+)
+  // are served via these refs when the upstream resolver returns a pivota_signature_id.
+  const sigId = src.pivota_signature_id || src.pivotaSignatureId;
+  push(sigId, 'product');
+  push(sigId);
+  // Backwards-compat: external-seed anchors stored as `product:ext_<hash>` before
+  // rekeying. Retained so existing ext_*-keyed human_approved edges continue to serve
+  // during the transition window (Phase 6b rekey). Remove after rekey is complete.
   const externalId =
     src.external_product_id ||
     src.externalProductId ||
@@ -458,6 +462,51 @@ function buildAnchorRefsFromProduct(anchor = {}) {
   const name = extractProductName(src);
   if (brand && name) push(`${brand}:${name}`, 'text');
   return refs;
+}
+
+function relationshipEdgeCandidateTokens(edgeInput = {}) {
+  const edge = coerceRelationshipEdge(edgeInput);
+  const snapshot = isPlainObject(edge.candidate_snapshot) ? edge.candidate_snapshot : {};
+  const values = [
+    snapshot.pivota_signature_id,
+    snapshot.pivotaSignatureId,
+    snapshot.signature_id,
+    snapshot.signatureId,
+    snapshot.product_id,
+    snapshot.productId,
+    snapshot.external_product_id,
+    snapshot.externalProductId,
+    snapshot.source_product_id,
+    snapshot.sourceProductId,
+    snapshot.id,
+    snapshot.url,
+    snapshot.canonical_url,
+    snapshot.canonicalUrl,
+    stripRelationshipRefPrefix(edge.candidate_product_ref),
+    edge.candidate_product_ref,
+  ];
+  const tokens = [];
+  const seen = new Set();
+  for (const value of values) {
+    const token = normalizeLower(value, 512);
+    if (!token || seen.has(token)) continue;
+    seen.add(token);
+    tokens.push(token);
+  }
+  return tokens.length ? tokens : [normalizeLower(edge.id, 160)].filter(Boolean);
+}
+
+function dedupeApprovedRelationshipEdges(edges = []) {
+  const out = [];
+  const seen = new Set();
+  for (const edge of Array.isArray(edges) ? edges : []) {
+    const relationType = normalizeLower(edge.relation_type, 64);
+    const keys = relationshipEdgeCandidateTokens(edge).map((token) => `${relationType}|${token}`);
+    if (keys.some((key) => seen.has(key))) continue;
+    out.push(edge);
+    for (const key of keys) seen.add(key);
+  }
+  return out;
 }
 
 function edgeToRecoCandidate(edgeInput) {
@@ -618,7 +667,8 @@ async function listApprovedRelationshipEdgesForAnchor({
       `,
       params,
     );
-    return (Array.isArray(res?.rows) ? res.rows : []).map(mapRowToEdge).filter(Boolean);
+    const edges = (Array.isArray(res?.rows) ? res.rows : []).map(mapRowToEdge).filter(Boolean);
+    return dedupeApprovedRelationshipEdges(edges);
   } catch (err) {
     const code = normalizeString(err && err.code, 20);
     if (code === 'NO_DATABASE' || code === '42P01') return [];
@@ -962,5 +1012,7 @@ module.exports = {
     normalizeSourceRefs,
     countAuthoritativeSources,
     buildEdgeId,
+    dedupeApprovedRelationshipEdges,
+    relationshipEdgeCandidateTokens,
   },
 };

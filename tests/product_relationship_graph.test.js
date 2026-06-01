@@ -321,6 +321,43 @@ describe('product relationship graph store helpers', () => {
     expect(edges[0].source_refs).toEqual([{ type: 'products_cache', authoritative: true }]);
   });
 
+  test('listApprovedRelationshipEdgesForAnchor dedupes ext and sig keyed transition duplicates', async () => {
+    const extEdge = approvedDupe({
+      id: 'prel_ext',
+      anchor_ref: 'product:ext_anchor',
+      candidate_product_ref: 'product:ext_candidate',
+      candidate_snapshot: {
+        ...approvedDupe().candidate_snapshot,
+        product_id: 'ext_candidate',
+      },
+    });
+    const sigEdge = approvedDupe({
+      id: 'prel_sig',
+      anchor_ref: 'product:sig_anchor',
+      candidate_product_ref: 'product:sig_candidate',
+      candidate_snapshot: {
+        ...approvedDupe().candidate_snapshot,
+        product_id: 'ext_candidate',
+        pivota_signature_id: 'sig_candidate',
+      },
+    });
+    const queryFn = jest.fn(async () => ({
+      rows: [
+        { ...sigEdge, vertical: 'beauty', created_at: NOW_ISO, updated_at: NOW_ISO },
+        { ...extEdge, vertical: 'beauty', created_at: NOW_ISO, updated_at: NOW_ISO },
+      ],
+    }));
+
+    const edges = await listApprovedRelationshipEdgesForAnchor({
+      anchorRefs: ['product:sig_anchor', 'product:ext_anchor'],
+      market: 'US',
+      queryFn,
+    });
+
+    expect(edges).toHaveLength(1);
+    expect(edges[0].id).toBe('prel_sig');
+  });
+
   test('upsertRelationshipEdge writes only validated reviewed edges', async () => {
     const queryFn = jest.fn(async () => ({ rowCount: 1, rows: [] }));
 

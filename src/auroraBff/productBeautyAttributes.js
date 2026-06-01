@@ -35,7 +35,7 @@ function isPlainObject(value) {
 
 function rowToAttributes(row) {
   if (!row) return null;
-  const out = { product_key: row.product_key };
+  const out = { product_key: row.product_key, sig_id: row.sig_id || null };
   for (const field of BEAUTY_ATTRIBUTE_FIELDS) {
     out[field] = row[field];
     out[`${field}_source`] = row[`${field}_source`];
@@ -66,17 +66,39 @@ async function lookupBeautyAttributes(productKey, { queryFn = query } = {}) {
 
 async function lookupBeautyAttributesBatch(productKeys, { queryFn = query } = {}) {
   if (!Array.isArray(productKeys) || !productKeys.length) return new Map();
-  const keys = Array.from(new Set(
-    productKeys.map(normalizeKey).filter(Boolean),
-  ));
-  if (!keys.length) return new Map();
-  const res = await queryFn(
-    'SELECT * FROM product_beauty_attributes WHERE product_key = ANY($1::text[])',
-    [keys],
-  );
-  const rows = Array.isArray(res?.rows) ? res.rows : [];
+  const normalized = Array.from(new Set(productKeys.map(normalizeKey).filter(Boolean)));
+  if (!normalized.length) return new Map();
+
+  // Split into ext_* / product_key lookups vs sig_* lookups (requires sig_id column,
+  // added in migration 052 after graph rekeying to sig_*).
+  const sigKeys = normalized.filter((k) => k.startsWith('sig_'));
+  const extKeys = normalized.filter((k) => !k.startsWith('sig_'));
+
   const out = new Map();
-  for (const row of rows) out.set(row.product_key, rowToAttributes(row));
+
+  if (extKeys.length) {
+    const res = await queryFn(
+      'SELECT * FROM product_beauty_attributes WHERE product_key = ANY($1::text[])',
+      [extKeys],
+    );
+    for (const row of (Array.isArray(res?.rows) ? res.rows : [])) {
+      out.set(row.product_key, rowToAttributes(row));
+    }
+  }
+
+  if (sigKeys.length) {
+    const res = await queryFn(
+      'SELECT * FROM product_beauty_attributes WHERE sig_id = ANY($1::text[])',
+      [sigKeys],
+    );
+    for (const row of (Array.isArray(res?.rows) ? res.rows : [])) {
+      // Index by sig_id so callers that looked up by sig_* find their result.
+      if (row.sig_id) out.set(row.sig_id, rowToAttributes(row));
+      // Also index by product_key for backwards-compat callers that join via ext_*.
+      out.set(row.product_key, rowToAttributes(row));
+    }
+  }
+
   return out;
 }
 
