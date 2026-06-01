@@ -1,0 +1,1675 @@
+{
+  "generated_at": "2026-06-01T07:07:48.654Z",
+  "source": "pivota_insights_official_pdp_manual_review_v1",
+  "mode": "dry_run",
+  "filters": {
+    "brand": "Baie Botanique",
+    "product_ids": [],
+    "limit": 30,
+    "include_strong": false,
+    "include_url_key": false,
+    "apply_chunk_size": null
+  },
+  "summary": {
+    "scanned": 12,
+    "changed_products": 8,
+    "blocked_products": 0,
+    "skipped_products": 4,
+    "write_actions": {
+      "skip": 7,
+      "update": 9,
+      "insert": 7
+    },
+    "skip_reasons": {
+      "no_safe_writes": 4,
+      "protected_high_quality_existing:reviewed": 7
+    },
+    "evidence_profiles": {
+      "official_pdp_reviewed_line": 4,
+      "official_pdp_reviewed_key_ingredients": 1,
+      "official_pdp_reviewed_key_ingredients_and_usage": 3,
+      "official_pdp_reviewed_formula_and_usage": 3,
+      "official_pdp_reviewed_formula": 1
+    }
+  },
+  "plans": [
+    {
+      "external_product_id": "ext_20f729741a92bbaccfca7eee",
+      "pivota_signature_id": "sig_8605e99d2dbc37a7a6f5e795",
+      "title": "4-in-1 Hyaluronic Face Serum",
+      "brand": "Baie Botanique",
+      "canonical_url": "https://www.baiebotanique.com/products/regenerating-serum",
+      "changed": false,
+      "blocked": false,
+      "skip_reason": "no_safe_writes",
+      "candidate_hash": "bb0ba5bbccbe3b8b532761b5a5eec7f1aebe6d788f65ee2b07cf433ec7340a4f",
+      "evidence_profile": "official_pdp_reviewed_line",
+      "source_coverage": {
+        "source": "official_pdp",
+        "canonical_url": "https://www.baiebotanique.com/products/regenerating-serum",
+        "fields": {
+          "description": true,
+          "ingredients": 0,
+          "active_ingredients": 0,
+          "how_to": 1,
+          "details": 2,
+          "variants": 3
+        }
+      },
+      "preview": {
+        "headline": "Treatment serum",
+        "what_it_is": "4-in-1 Hyaluronic Face Serum is a treatment serum from Baie Botanique in 30ML.",
+        "why_it_stands_out": [
+          {
+            "headline": "Routine step cues are specific",
+            "body": "Reviewed skincare cues such as AHA exfoliation, hydration, 30ML, 50ML identify the routine role or key ingredient context without inventing unsupported benefits.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Shade and size are explicit",
+            "body": "Variant labels such as 30ML, Size: 30ML, 50ML, Size: 50ML are visible, reducing ambiguity around the product format before a shopper clicks through.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Usage instructions available",
+            "body": "Reviewed usage context is present, including: 3 pumps to clean, slightly damp skin.",
+            "evidence_strength": "official_pdp_reviewed"
+          }
+        ],
+        "best_for": [
+          {
+            "tag": "exfoliating_toner_step",
+            "label": "exfoliating toner step",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "hydration",
+            "label": "hydration",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "firmness",
+            "label": "firmness",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "radiance",
+            "label": "radiance",
+            "confidence": "moderate"
+          }
+        ],
+        "shopping_highlight": "AHA exfoliation, hydration, 30ML, 50ML"
+      },
+      "writes": [
+        {
+          "kb_key": "product:ext_20f729741a92bbaccfca7eee",
+          "action": "skip",
+          "reason": "protected_high_quality_existing:reviewed",
+          "old_hash": "23185917af475c5c7b1fa4aaf0731f8bca06c0135419c0f145dae4e50d49d6c8",
+          "existing_weak": false
+        },
+        {
+          "kb_key": "product:sig_8605e99d2dbc37a7a6f5e795",
+          "action": "skip",
+          "reason": "protected_high_quality_existing:reviewed",
+          "old_hash": "e42941bff1e97f488d61691b01b3af6d95ba64afef81bf36bd096f390e26c838",
+          "existing_weak": false
+        }
+      ]
+    },
+    {
+      "external_product_id": "ext_2f6e77ac2e199c3e0f177606",
+      "pivota_signature_id": "sig_e4f509d1252f9306f5b0c901",
+      "title": "Face & Body Mineral Sunscreen SPF 30 with Vitamin C",
+      "brand": "Baie Botanique",
+      "canonical_url": "https://www.baiebotanique.com/products/face-body-mineral-sunscreen-spf-30-with-vitamin-c-sns",
+      "changed": true,
+      "blocked": false,
+      "skip_reason": null,
+      "candidate_hash": "0535f01057e457dfdb92d80603cb2eb6be158492a241d34a4120067378393b1f",
+      "evidence_profile": "official_pdp_reviewed_key_ingredients",
+      "source_coverage": {
+        "source": "official_pdp",
+        "canonical_url": "https://www.baiebotanique.com/products/face-body-mineral-sunscreen-spf-30-with-vitamin-c-sns",
+        "fields": {
+          "description": true,
+          "ingredients": 0,
+          "active_ingredients": 1,
+          "how_to": 0,
+          "details": 4,
+          "variants": 2
+        }
+      },
+      "preview": {
+        "headline": "Daily sunscreen",
+        "what_it_is": "Face & Body Mineral Sunscreen SPF 30 with Vitamin C is a mineral SPF moisturizer from Baie Botanique, with source-backed cues around zinc oxide mineral SPF and hydrating ingredients.",
+        "why_it_stands_out": [
+          {
+            "headline": "SPF format cues are clear",
+            "body": "Reviewed SPF cues such as sun protection, hydration, mineral SPF, 100g clarify protection format, hydration support, or refill status without replacing the official sunscreen facts.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Key ingredients are identified",
+            "body": "UV filters is identified, enough for a cautious high-level formula read without inventing unsupported actives.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Shade and size are explicit",
+            "body": "Variant labels such as 100g, Size: 100g, 240g, Size: 240g are visible, reducing ambiguity around the product format before a shopper clicks through.",
+            "evidence_strength": "official_pdp_reviewed"
+          }
+        ],
+        "best_for": [
+          {
+            "tag": "hydration",
+            "label": "hydration",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "sun_protection",
+            "label": "sun protection",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "body_routine",
+            "label": "body routine",
+            "confidence": "moderate"
+          }
+        ],
+        "shopping_highlight": "sun protection, hydration, mineral SPF"
+      },
+      "writes": [
+        {
+          "kb_key": "product:ext_2f6e77ac2e199c3e0f177606",
+          "action": "update",
+          "reason": "explicit_owner_delegated_assistant_replacement_review",
+          "old_hash": "de77c3a7711b1681ffe821c55279439103344519c7322be75e83727ecf37f046",
+          "candidate_hash": "1df835db0806d5e5588200f2cdfef207c3e966b6adeed9b9b87dced02ee7c1f3",
+          "existing_weak": true,
+          "source": "pivota_insights_official_pdp_manual_review_v1",
+          "after_inventory": {
+            "product_id": "ext_2f6e77ac2e199c3e0f177606",
+            "kb_key": "product:ext_2f6e77ac2e199c3e0f177606",
+            "source": "pivota_insights_official_pdp_manual_review_v1",
+            "updated_at": "",
+            "last_success_at": "",
+            "title": "Face & Body Mineral Sunscreen SPF 30 with Vitamin C",
+            "canonical_url": "",
+            "bundle_hash": "0535f01057e457dfdb92d80603cb2eb6be158492a241d34a4120067378393b1f",
+            "lane": "keep",
+            "reason": "protected_good_content",
+            "priority": 0,
+            "protected": true,
+            "displayable": true,
+            "high_quality_ready": true,
+            "human_reviewed": true,
+            "issues": [],
+            "blocking_issues": [],
+            "quality_state": "reviewed",
+            "evidence_profile": "official_pdp_reviewed_key_ingredients",
+            "evidence_rank": 1,
+            "review_tier": "assistant_reviewed",
+            "agent_readable": true,
+            "public_ready": true
+          },
+          "source_meta": {
+            "evidence_profile": "official_pdp_reviewed_key_ingredients",
+            "quality_state": "reviewed",
+            "source_origin": "official_pdp_fields",
+            "source_url": "https://www.baiebotanique.com/products/face-body-mineral-sunscreen-spf-30-with-vitamin-c-sns",
+            "quality_improvement": {
+              "previous_bundle_hash": "14f003472c9be78fbcc77d831391fb01ac620ae66cd84f41ce61d8952de8e231",
+              "candidate_bundle_hash": "0535f01057e457dfdb92d80603cb2eb6be158492a241d34a4120067378393b1f",
+              "replacement_decision": "explicit_owner_delegated_assistant_replacement_review",
+              "existing_quality_lane": "keep",
+              "candidate_quality_lane": "keep",
+              "existing_evidence_profile": "official_pdp_seed",
+              "candidate_evidence_profile": "official_pdp_reviewed_key_ingredients"
+            }
+          }
+        },
+        {
+          "kb_key": "product:sig_e4f509d1252f9306f5b0c901",
+          "action": "insert",
+          "reason": "new_product_intel_bundle",
+          "old_hash": null,
+          "candidate_hash": "1df835db0806d5e5588200f2cdfef207c3e966b6adeed9b9b87dced02ee7c1f3",
+          "existing_weak": true,
+          "source": "pivota_insights_official_pdp_manual_review_v1",
+          "after_inventory": {
+            "product_id": "ext_2f6e77ac2e199c3e0f177606",
+            "kb_key": "product:sig_e4f509d1252f9306f5b0c901",
+            "source": "pivota_insights_official_pdp_manual_review_v1",
+            "updated_at": "",
+            "last_success_at": "",
+            "title": "Face & Body Mineral Sunscreen SPF 30 with Vitamin C",
+            "canonical_url": "",
+            "bundle_hash": "0535f01057e457dfdb92d80603cb2eb6be158492a241d34a4120067378393b1f",
+            "lane": "keep",
+            "reason": "protected_good_content",
+            "priority": 0,
+            "protected": true,
+            "displayable": true,
+            "high_quality_ready": true,
+            "human_reviewed": true,
+            "issues": [],
+            "blocking_issues": [],
+            "quality_state": "reviewed",
+            "evidence_profile": "official_pdp_reviewed_key_ingredients",
+            "evidence_rank": 1,
+            "review_tier": "assistant_reviewed",
+            "agent_readable": true,
+            "public_ready": true
+          },
+          "source_meta": {
+            "evidence_profile": "official_pdp_reviewed_key_ingredients",
+            "quality_state": "reviewed",
+            "source_origin": "official_pdp_fields",
+            "source_url": "https://www.baiebotanique.com/products/face-body-mineral-sunscreen-spf-30-with-vitamin-c-sns",
+            "quality_improvement": {
+              "previous_bundle_hash": null,
+              "candidate_bundle_hash": "0535f01057e457dfdb92d80603cb2eb6be158492a241d34a4120067378393b1f",
+              "replacement_decision": "new_product_intel_bundle",
+              "existing_quality_lane": null,
+              "candidate_quality_lane": "keep",
+              "existing_evidence_profile": null,
+              "candidate_evidence_profile": "official_pdp_reviewed_key_ingredients"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "external_product_id": "ext_26db09ae52153e40764132e9",
+      "pivota_signature_id": "sig_33a43d9ce12fb28ef2112115",
+      "title": "Organic Mineral Face and Body Sunscreen SPF 50",
+      "brand": "Baie Botanique",
+      "canonical_url": "https://www.baiebotanique.com/products/organic-mineral-face-and-body-sunscreen-spf-50-sns",
+      "changed": true,
+      "blocked": false,
+      "skip_reason": null,
+      "candidate_hash": "91a116f254c9259f1347d431c0513a5c7117d046d20e1c9b811b3f67b266a15b",
+      "evidence_profile": "official_pdp_reviewed_key_ingredients_and_usage",
+      "source_coverage": {
+        "source": "official_pdp",
+        "canonical_url": "https://www.baiebotanique.com/products/organic-mineral-face-and-body-sunscreen-spf-50-sns",
+        "fields": {
+          "description": true,
+          "ingredients": 0,
+          "active_ingredients": 1,
+          "how_to": 1,
+          "details": 2,
+          "variants": 2
+        }
+      },
+      "preview": {
+        "headline": "Daily sunscreen",
+        "what_it_is": "Organic Mineral Face and Body Sunscreen SPF 50 is a mineral SPF moisturizer from Baie Botanique, with source-backed cues around zinc oxide mineral SPF and hydrating ingredients.",
+        "why_it_stands_out": [
+          {
+            "headline": "SPF format cues are clear",
+            "body": "Reviewed SPF cues such as sun protection, hydration, mineral SPF, 110g clarify protection format, hydration support, or refill status without replacing the official sunscreen facts.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Key ingredients are identified",
+            "body": "UV filters is identified, enough for a cautious high-level formula read without inventing unsupported actives.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Shade and size are explicit",
+            "body": "Variant labels such as 110g, Size: 110g, 240g, Size: 240g are visible, reducing ambiguity around the product format before a shopper clicks through.",
+            "evidence_strength": "official_pdp_reviewed"
+          }
+        ],
+        "best_for": [
+          {
+            "tag": "hydration",
+            "label": "hydration",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "sun_protection",
+            "label": "sun protection",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "body_routine",
+            "label": "body routine",
+            "confidence": "moderate"
+          }
+        ],
+        "shopping_highlight": "sun protection, hydration, mineral SPF"
+      },
+      "writes": [
+        {
+          "kb_key": "product:ext_26db09ae52153e40764132e9",
+          "action": "update",
+          "reason": "explicit_owner_delegated_assistant_replacement_review",
+          "old_hash": "cbe56afdb0bbfcfed9da2a23aaf9b688b317fe2951ed22fce61a48bb7b2006c4",
+          "candidate_hash": "13160f31a69f5540d924d4166db98bd0380fd356b1eaecf9a8d3d20b5836e283",
+          "existing_weak": true,
+          "source": "pivota_insights_official_pdp_manual_review_v1",
+          "after_inventory": {
+            "product_id": "ext_26db09ae52153e40764132e9",
+            "kb_key": "product:ext_26db09ae52153e40764132e9",
+            "source": "pivota_insights_official_pdp_manual_review_v1",
+            "updated_at": "",
+            "last_success_at": "",
+            "title": "Organic Mineral Face and Body Sunscreen SPF 50",
+            "canonical_url": "",
+            "bundle_hash": "91a116f254c9259f1347d431c0513a5c7117d046d20e1c9b811b3f67b266a15b",
+            "lane": "keep",
+            "reason": "protected_good_content",
+            "priority": 0,
+            "protected": true,
+            "displayable": true,
+            "high_quality_ready": true,
+            "human_reviewed": true,
+            "issues": [],
+            "blocking_issues": [],
+            "quality_state": "reviewed",
+            "evidence_profile": "official_pdp_reviewed_key_ingredients_and_usage",
+            "evidence_rank": 1,
+            "review_tier": "assistant_reviewed",
+            "agent_readable": true,
+            "public_ready": true
+          },
+          "source_meta": {
+            "evidence_profile": "official_pdp_reviewed_key_ingredients_and_usage",
+            "quality_state": "reviewed",
+            "source_origin": "official_pdp_fields",
+            "source_url": "https://www.baiebotanique.com/products/organic-mineral-face-and-body-sunscreen-spf-50-sns",
+            "quality_improvement": {
+              "previous_bundle_hash": "5b9e3d75efa46cfe5f93cde22528d9889869727668524aadf8c33b59050b2624",
+              "candidate_bundle_hash": "91a116f254c9259f1347d431c0513a5c7117d046d20e1c9b811b3f67b266a15b",
+              "replacement_decision": "explicit_owner_delegated_assistant_replacement_review",
+              "existing_quality_lane": "keep",
+              "candidate_quality_lane": "keep",
+              "existing_evidence_profile": "official_pdp_seed",
+              "candidate_evidence_profile": "official_pdp_reviewed_key_ingredients_and_usage"
+            }
+          }
+        },
+        {
+          "kb_key": "product:sig_33a43d9ce12fb28ef2112115",
+          "action": "insert",
+          "reason": "new_product_intel_bundle",
+          "old_hash": null,
+          "candidate_hash": "13160f31a69f5540d924d4166db98bd0380fd356b1eaecf9a8d3d20b5836e283",
+          "existing_weak": true,
+          "source": "pivota_insights_official_pdp_manual_review_v1",
+          "after_inventory": {
+            "product_id": "ext_26db09ae52153e40764132e9",
+            "kb_key": "product:sig_33a43d9ce12fb28ef2112115",
+            "source": "pivota_insights_official_pdp_manual_review_v1",
+            "updated_at": "",
+            "last_success_at": "",
+            "title": "Organic Mineral Face and Body Sunscreen SPF 50",
+            "canonical_url": "",
+            "bundle_hash": "91a116f254c9259f1347d431c0513a5c7117d046d20e1c9b811b3f67b266a15b",
+            "lane": "keep",
+            "reason": "protected_good_content",
+            "priority": 0,
+            "protected": true,
+            "displayable": true,
+            "high_quality_ready": true,
+            "human_reviewed": true,
+            "issues": [],
+            "blocking_issues": [],
+            "quality_state": "reviewed",
+            "evidence_profile": "official_pdp_reviewed_key_ingredients_and_usage",
+            "evidence_rank": 1,
+            "review_tier": "assistant_reviewed",
+            "agent_readable": true,
+            "public_ready": true
+          },
+          "source_meta": {
+            "evidence_profile": "official_pdp_reviewed_key_ingredients_and_usage",
+            "quality_state": "reviewed",
+            "source_origin": "official_pdp_fields",
+            "source_url": "https://www.baiebotanique.com/products/organic-mineral-face-and-body-sunscreen-spf-50-sns",
+            "quality_improvement": {
+              "previous_bundle_hash": null,
+              "candidate_bundle_hash": "91a116f254c9259f1347d431c0513a5c7117d046d20e1c9b811b3f67b266a15b",
+              "replacement_decision": "new_product_intel_bundle",
+              "existing_quality_lane": null,
+              "candidate_quality_lane": "keep",
+              "existing_evidence_profile": null,
+              "candidate_evidence_profile": "official_pdp_reviewed_key_ingredients_and_usage"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "external_product_id": "ext_7d663ae73f6672beca8a3346",
+      "pivota_signature_id": "sig_03f71f193704f63d18ac1b54",
+      "title": "Organic Mineral Face Sunscreen SPF 50 70g",
+      "brand": "Baie Botanique",
+      "canonical_url": "https://www.baiebotanique.com/products/organic-mineral-face-sunscreen-spf-50-sns",
+      "changed": true,
+      "blocked": false,
+      "skip_reason": null,
+      "candidate_hash": "452e4f98ab9b1c92d38e9a51bcf2c6426f15a217f37570b5972987c0ec7c530e",
+      "evidence_profile": "official_pdp_reviewed_key_ingredients_and_usage",
+      "source_coverage": {
+        "source": "official_pdp",
+        "canonical_url": "https://www.baiebotanique.com/products/organic-mineral-face-sunscreen-spf-50-sns",
+        "fields": {
+          "description": true,
+          "ingredients": 0,
+          "active_ingredients": 1,
+          "how_to": 1,
+          "details": 2,
+          "variants": 2
+        }
+      },
+      "preview": {
+        "headline": "Daily sunscreen",
+        "what_it_is": "Organic Mineral Face Sunscreen SPF 50 70g is a tinted mineral SPF moisturizer from Baie Botanique in shade Non-Tinted, with source-backed cues around zinc oxide mineral SPF, hydrating ingredients and tinted coverage.",
+        "why_it_stands_out": [
+          {
+            "headline": "SPF format cues are clear",
+            "body": "Reviewed SPF cues such as sun protection, hydration, mineral SPF, tinted coverage clarify protection format, hydration support, or refill status without replacing the official sunscreen facts.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Key ingredients are identified",
+            "body": "UV filters is identified, enough for a cautious high-level formula read without inventing unsupported actives.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Shade and size are explicit",
+            "body": "Variant labels such as Non-Tinted, Color: Non-Tinted, Light Tint, Color: Light Tint are visible, reducing ambiguity around the product format before a shopper clicks through.",
+            "evidence_strength": "official_pdp_reviewed"
+          }
+        ],
+        "best_for": [
+          {
+            "tag": "hydration",
+            "label": "hydration",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "sun_protection",
+            "label": "sun protection",
+            "confidence": "moderate"
+          }
+        ],
+        "shopping_highlight": "sun protection, hydration, mineral SPF"
+      },
+      "writes": [
+        {
+          "kb_key": "product:ext_7d663ae73f6672beca8a3346",
+          "action": "update",
+          "reason": "explicit_owner_delegated_assistant_replacement_review",
+          "old_hash": "17b7fecc5928b91c36fb8c6c057b413ebf0fa0c86e3cb24e1c337670e34a42de",
+          "candidate_hash": "367a6cc1f46438ace305b8ccef248be36b7fb54fb40aa05542a1df860073283b",
+          "existing_weak": true,
+          "source": "pivota_insights_official_pdp_manual_review_v1",
+          "after_inventory": {
+            "product_id": "ext_7d663ae73f6672beca8a3346",
+            "kb_key": "product:ext_7d663ae73f6672beca8a3346",
+            "source": "pivota_insights_official_pdp_manual_review_v1",
+            "updated_at": "",
+            "last_success_at": "",
+            "title": "Organic Mineral Face Sunscreen SPF 50 70g",
+            "canonical_url": "",
+            "bundle_hash": "452e4f98ab9b1c92d38e9a51bcf2c6426f15a217f37570b5972987c0ec7c530e",
+            "lane": "keep",
+            "reason": "protected_good_content",
+            "priority": 0,
+            "protected": true,
+            "displayable": true,
+            "high_quality_ready": true,
+            "human_reviewed": true,
+            "issues": [],
+            "blocking_issues": [],
+            "quality_state": "reviewed",
+            "evidence_profile": "official_pdp_reviewed_key_ingredients_and_usage",
+            "evidence_rank": 1,
+            "review_tier": "assistant_reviewed",
+            "agent_readable": true,
+            "public_ready": true
+          },
+          "source_meta": {
+            "evidence_profile": "official_pdp_reviewed_key_ingredients_and_usage",
+            "quality_state": "reviewed",
+            "source_origin": "official_pdp_fields",
+            "source_url": "https://www.baiebotanique.com/products/organic-mineral-face-sunscreen-spf-50-sns",
+            "quality_improvement": {
+              "previous_bundle_hash": "9f07dc62b2b139a8aa5a24a03fd770f958a5db8dfa5882ba55f11a68cb06342b",
+              "candidate_bundle_hash": "452e4f98ab9b1c92d38e9a51bcf2c6426f15a217f37570b5972987c0ec7c530e",
+              "replacement_decision": "explicit_owner_delegated_assistant_replacement_review",
+              "existing_quality_lane": "keep",
+              "candidate_quality_lane": "keep",
+              "existing_evidence_profile": "official_pdp_seed",
+              "candidate_evidence_profile": "official_pdp_reviewed_key_ingredients_and_usage"
+            }
+          }
+        },
+        {
+          "kb_key": "product:sig_03f71f193704f63d18ac1b54",
+          "action": "insert",
+          "reason": "new_product_intel_bundle",
+          "old_hash": null,
+          "candidate_hash": "367a6cc1f46438ace305b8ccef248be36b7fb54fb40aa05542a1df860073283b",
+          "existing_weak": true,
+          "source": "pivota_insights_official_pdp_manual_review_v1",
+          "after_inventory": {
+            "product_id": "ext_7d663ae73f6672beca8a3346",
+            "kb_key": "product:sig_03f71f193704f63d18ac1b54",
+            "source": "pivota_insights_official_pdp_manual_review_v1",
+            "updated_at": "",
+            "last_success_at": "",
+            "title": "Organic Mineral Face Sunscreen SPF 50 70g",
+            "canonical_url": "",
+            "bundle_hash": "452e4f98ab9b1c92d38e9a51bcf2c6426f15a217f37570b5972987c0ec7c530e",
+            "lane": "keep",
+            "reason": "protected_good_content",
+            "priority": 0,
+            "protected": true,
+            "displayable": true,
+            "high_quality_ready": true,
+            "human_reviewed": true,
+            "issues": [],
+            "blocking_issues": [],
+            "quality_state": "reviewed",
+            "evidence_profile": "official_pdp_reviewed_key_ingredients_and_usage",
+            "evidence_rank": 1,
+            "review_tier": "assistant_reviewed",
+            "agent_readable": true,
+            "public_ready": true
+          },
+          "source_meta": {
+            "evidence_profile": "official_pdp_reviewed_key_ingredients_and_usage",
+            "quality_state": "reviewed",
+            "source_origin": "official_pdp_fields",
+            "source_url": "https://www.baiebotanique.com/products/organic-mineral-face-sunscreen-spf-50-sns",
+            "quality_improvement": {
+              "previous_bundle_hash": null,
+              "candidate_bundle_hash": "452e4f98ab9b1c92d38e9a51bcf2c6426f15a217f37570b5972987c0ec7c530e",
+              "replacement_decision": "new_product_intel_bundle",
+              "existing_quality_lane": null,
+              "candidate_quality_lane": "keep",
+              "existing_evidence_profile": null,
+              "candidate_evidence_profile": "official_pdp_reviewed_key_ingredients_and_usage"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "external_product_id": "ext_7cdc2272352dad8a62ba2b81",
+      "pivota_signature_id": "sig_a0ebcb2a3d0d678bc5bfebbc",
+      "title": "Organic Mineral Sunscreen Baby & Children SPF 50",
+      "brand": "Baie Botanique",
+      "canonical_url": "https://www.baiebotanique.com/products/organic-mineral-sunscreen-baby-children-spf-50",
+      "changed": true,
+      "blocked": false,
+      "skip_reason": null,
+      "candidate_hash": "4655ba85f39bcbf4afd95c55e1b5bf77d80fd6e2610d803d8f8ba712e61d32c5",
+      "evidence_profile": "official_pdp_reviewed_key_ingredients_and_usage",
+      "source_coverage": {
+        "source": "official_pdp",
+        "canonical_url": "https://www.baiebotanique.com/products/organic-mineral-sunscreen-baby-children-spf-50",
+        "fields": {
+          "description": true,
+          "ingredients": 0,
+          "active_ingredients": 1,
+          "how_to": 1,
+          "details": 2,
+          "variants": 2
+        }
+      },
+      "preview": {
+        "headline": "Daily sunscreen",
+        "what_it_is": "Organic Mineral Sunscreen Baby & Children SPF 50 is a mineral SPF moisturizer from Baie Botanique, with source-backed cues around zinc oxide mineral SPF and hydrating ingredients.",
+        "why_it_stands_out": [
+          {
+            "headline": "SPF format cues are clear",
+            "body": "Reviewed SPF cues such as sun protection, hydration, mineral SPF, 100g clarify protection format, hydration support, or refill status without replacing the official sunscreen facts.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Key ingredients are identified",
+            "body": "UV filters is identified, enough for a cautious high-level formula read without inventing unsupported actives.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Shade and size are explicit",
+            "body": "Variant labels such as 100g, Size: 100g, 240g, Size: 240g are visible, reducing ambiguity around the product format before a shopper clicks through.",
+            "evidence_strength": "official_pdp_reviewed"
+          }
+        ],
+        "best_for": [
+          {
+            "tag": "hydration",
+            "label": "hydration",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "sun_protection",
+            "label": "sun protection",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "aromatherapy",
+            "label": "aromatherapy",
+            "confidence": "moderate"
+          }
+        ],
+        "shopping_highlight": "sun protection, hydration, mineral SPF"
+      },
+      "writes": [
+        {
+          "kb_key": "product:ext_7cdc2272352dad8a62ba2b81",
+          "action": "update",
+          "reason": "explicit_owner_delegated_assistant_replacement_review",
+          "old_hash": "7c278d88496e9345fc4ac00c6e3476a622a98a019548fa108f80eb2ae9784011",
+          "candidate_hash": "cd12ed63e25b63a3ef452a4e2f3e5e7fc9766a8a2461d5a46d650debb08afe03",
+          "existing_weak": true,
+          "source": "pivota_insights_official_pdp_manual_review_v1",
+          "after_inventory": {
+            "product_id": "ext_7cdc2272352dad8a62ba2b81",
+            "kb_key": "product:ext_7cdc2272352dad8a62ba2b81",
+            "source": "pivota_insights_official_pdp_manual_review_v1",
+            "updated_at": "",
+            "last_success_at": "",
+            "title": "Organic Mineral Sunscreen Baby & Children SPF 50",
+            "canonical_url": "",
+            "bundle_hash": "4655ba85f39bcbf4afd95c55e1b5bf77d80fd6e2610d803d8f8ba712e61d32c5",
+            "lane": "keep",
+            "reason": "protected_good_content",
+            "priority": 0,
+            "protected": true,
+            "displayable": true,
+            "high_quality_ready": true,
+            "human_reviewed": true,
+            "issues": [],
+            "blocking_issues": [],
+            "quality_state": "reviewed",
+            "evidence_profile": "official_pdp_reviewed_key_ingredients_and_usage",
+            "evidence_rank": 1,
+            "review_tier": "assistant_reviewed",
+            "agent_readable": true,
+            "public_ready": true
+          },
+          "source_meta": {
+            "evidence_profile": "official_pdp_reviewed_key_ingredients_and_usage",
+            "quality_state": "reviewed",
+            "source_origin": "official_pdp_fields",
+            "source_url": "https://www.baiebotanique.com/products/organic-mineral-sunscreen-baby-children-spf-50",
+            "quality_improvement": {
+              "previous_bundle_hash": "53ed4bf07302d16570ca22e5f894c4760e32b1b47ef64cc2ea3e4b2857239989",
+              "candidate_bundle_hash": "4655ba85f39bcbf4afd95c55e1b5bf77d80fd6e2610d803d8f8ba712e61d32c5",
+              "replacement_decision": "explicit_owner_delegated_assistant_replacement_review",
+              "existing_quality_lane": "keep",
+              "candidate_quality_lane": "keep",
+              "existing_evidence_profile": "official_pdp_seed",
+              "candidate_evidence_profile": "official_pdp_reviewed_key_ingredients_and_usage"
+            }
+          }
+        },
+        {
+          "kb_key": "product:sig_a0ebcb2a3d0d678bc5bfebbc",
+          "action": "insert",
+          "reason": "new_product_intel_bundle",
+          "old_hash": null,
+          "candidate_hash": "cd12ed63e25b63a3ef452a4e2f3e5e7fc9766a8a2461d5a46d650debb08afe03",
+          "existing_weak": true,
+          "source": "pivota_insights_official_pdp_manual_review_v1",
+          "after_inventory": {
+            "product_id": "ext_7cdc2272352dad8a62ba2b81",
+            "kb_key": "product:sig_a0ebcb2a3d0d678bc5bfebbc",
+            "source": "pivota_insights_official_pdp_manual_review_v1",
+            "updated_at": "",
+            "last_success_at": "",
+            "title": "Organic Mineral Sunscreen Baby & Children SPF 50",
+            "canonical_url": "",
+            "bundle_hash": "4655ba85f39bcbf4afd95c55e1b5bf77d80fd6e2610d803d8f8ba712e61d32c5",
+            "lane": "keep",
+            "reason": "protected_good_content",
+            "priority": 0,
+            "protected": true,
+            "displayable": true,
+            "high_quality_ready": true,
+            "human_reviewed": true,
+            "issues": [],
+            "blocking_issues": [],
+            "quality_state": "reviewed",
+            "evidence_profile": "official_pdp_reviewed_key_ingredients_and_usage",
+            "evidence_rank": 1,
+            "review_tier": "assistant_reviewed",
+            "agent_readable": true,
+            "public_ready": true
+          },
+          "source_meta": {
+            "evidence_profile": "official_pdp_reviewed_key_ingredients_and_usage",
+            "quality_state": "reviewed",
+            "source_origin": "official_pdp_fields",
+            "source_url": "https://www.baiebotanique.com/products/organic-mineral-sunscreen-baby-children-spf-50",
+            "quality_improvement": {
+              "previous_bundle_hash": null,
+              "candidate_bundle_hash": "4655ba85f39bcbf4afd95c55e1b5bf77d80fd6e2610d803d8f8ba712e61d32c5",
+              "replacement_decision": "new_product_intel_bundle",
+              "existing_quality_lane": null,
+              "candidate_quality_lane": "keep",
+              "existing_evidence_profile": null,
+              "candidate_evidence_profile": "official_pdp_reviewed_key_ingredients_and_usage"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "external_product_id": "ext_baffc5e63cbbcc0ecc9fb0f0",
+      "pivota_signature_id": null,
+      "title": "Organic Mineral Sunscreen for Baby & Children SPF 50",
+      "brand": "Baie Botanique",
+      "canonical_url": "https://www.baiebotanique.com/products/organic-mineral-sunscreen-for-baby-children-spf-50",
+      "changed": false,
+      "blocked": false,
+      "skip_reason": "no_safe_writes",
+      "candidate_hash": "b50c2fbc28c2676c51a33b37bbbd005b7dd68767ddc703f0b62fc8391075f836",
+      "evidence_profile": "official_pdp_reviewed_formula_and_usage",
+      "source_coverage": {
+        "source": "official_pdp",
+        "canonical_url": "https://www.baiebotanique.com/products/organic-mineral-sunscreen-for-baby-children-spf-50",
+        "fields": {
+          "description": true,
+          "ingredients": 1,
+          "active_ingredients": 1,
+          "how_to": 1,
+          "details": 4,
+          "variants": 2
+        }
+      },
+      "preview": {
+        "headline": "Daily sunscreen",
+        "what_it_is": "Organic Mineral Sunscreen for Baby & Children SPF 50 is a mineral SPF moisturizer from Baie Botanique, with source-backed cues around zinc oxide mineral SPF and hydrating ingredients.",
+        "why_it_stands_out": [
+          {
+            "headline": "SPF format cues are clear",
+            "body": "Reviewed SPF cues such as sun protection, hydration, mineral SPF, 100g clarify protection format, hydration support, or refill status without replacing the official sunscreen facts.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Ingredient list is available",
+            "body": "Full INCI is present for formula-sensitive review, which makes this PDP safer to evaluate than a claim-only listing.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Shade and size are explicit",
+            "body": "Variant labels such as 100g, Size: 100g, 240g, Size: 240g are visible, reducing ambiguity around the product format before a shopper clicks through.",
+            "evidence_strength": "official_pdp_reviewed"
+          }
+        ],
+        "best_for": [
+          {
+            "tag": "hydration",
+            "label": "hydration",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "sun_protection",
+            "label": "sun protection",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "body_routine",
+            "label": "body routine",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "aromatherapy",
+            "label": "aromatherapy",
+            "confidence": "moderate"
+          }
+        ],
+        "shopping_highlight": "sun protection, hydration, mineral SPF"
+      },
+      "writes": [
+        {
+          "kb_key": "product:ext_baffc5e63cbbcc0ecc9fb0f0",
+          "action": "skip",
+          "reason": "protected_high_quality_existing:reviewed",
+          "old_hash": "4cbb6e861e4899ad449f87c35765a6bc080d2bd01dc3658ffd693e91a435731b",
+          "existing_weak": false
+        }
+      ]
+    },
+    {
+      "external_product_id": "ext_f11383c339335d64f05a964e",
+      "pivota_signature_id": "sig_f5a4d54a743f913ebfbff3b2",
+      "title": "Regenerating Eye Cream",
+      "brand": "Baie Botanique",
+      "canonical_url": "https://www.baiebotanique.com/products/regenerating-eye-cream-sns",
+      "changed": true,
+      "blocked": false,
+      "skip_reason": null,
+      "candidate_hash": "85f4d3a05b8e21954f7dc87dd985f9b92db94d44700cbf2b04109f59495bd075",
+      "evidence_profile": "official_pdp_reviewed_formula_and_usage",
+      "source_coverage": {
+        "source": "official_pdp",
+        "canonical_url": "https://www.baiebotanique.com/products/regenerating-eye-cream-sns",
+        "fields": {
+          "description": true,
+          "ingredients": 1,
+          "active_ingredients": 0,
+          "how_to": 1,
+          "details": 6,
+          "variants": 1
+        }
+      },
+      "preview": {
+        "headline": "Body care treatment",
+        "what_it_is": "Regenerating Eye Cream is a body care treatment from Baie Botanique in 15ml, with source-backed cues around hydration and brightening support.",
+        "why_it_stands_out": [
+          {
+            "headline": "Routine step cues are specific",
+            "body": "Reviewed skincare cues such as hydration, barrier support, 15ml identify the routine role or key ingredient context without inventing unsupported benefits.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Ingredient list is available",
+            "body": "Full INCI is present for formula-sensitive review, which makes this PDP safer to evaluate than a claim-only listing.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Shade and size are explicit",
+            "body": "Variant labels such as 15ml, Size: 15ml are visible, reducing ambiguity around the product format before a shopper clicks through.",
+            "evidence_strength": "official_pdp_reviewed"
+          }
+        ],
+        "best_for": [
+          {
+            "tag": "hydration",
+            "label": "hydration",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "firmness",
+            "label": "firmness",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "radiance",
+            "label": "radiance",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "barrier_support",
+            "label": "barrier support",
+            "confidence": "moderate"
+          }
+        ],
+        "shopping_highlight": "hydration, barrier support, 15ml"
+      },
+      "writes": [
+        {
+          "kb_key": "product:ext_f11383c339335d64f05a964e",
+          "action": "update",
+          "reason": "explicit_owner_delegated_assistant_replacement_review",
+          "old_hash": "cb1ed064addcf7974f66ae65e186e5d97fd85bf421bebb076a8b834a9e08c668",
+          "candidate_hash": "000a22583c660a6e75603bc663709fea602ff127ebcd9c8d7ac8300c1b3a39bf",
+          "existing_weak": true,
+          "source": "pivota_insights_official_pdp_manual_review_v1",
+          "after_inventory": {
+            "product_id": "ext_f11383c339335d64f05a964e",
+            "kb_key": "product:ext_f11383c339335d64f05a964e",
+            "source": "pivota_insights_official_pdp_manual_review_v1",
+            "updated_at": "",
+            "last_success_at": "",
+            "title": "Regenerating Eye Cream",
+            "canonical_url": "",
+            "bundle_hash": "85f4d3a05b8e21954f7dc87dd985f9b92db94d44700cbf2b04109f59495bd075",
+            "lane": "keep",
+            "reason": "protected_good_content",
+            "priority": 0,
+            "protected": true,
+            "displayable": true,
+            "high_quality_ready": true,
+            "human_reviewed": true,
+            "issues": [],
+            "blocking_issues": [],
+            "quality_state": "reviewed",
+            "evidence_profile": "official_pdp_reviewed_formula_and_usage",
+            "evidence_rank": 1,
+            "review_tier": "assistant_reviewed",
+            "agent_readable": true,
+            "public_ready": true
+          },
+          "source_meta": {
+            "evidence_profile": "official_pdp_reviewed_formula_and_usage",
+            "quality_state": "reviewed",
+            "source_origin": "official_pdp_fields",
+            "source_url": "https://www.baiebotanique.com/products/regenerating-eye-cream-sns",
+            "quality_improvement": {
+              "previous_bundle_hash": "774e5b7667adf1fa9e2c83f06d61fbfe144b157fd3eea4a4f0c6c249333b318d",
+              "candidate_bundle_hash": "85f4d3a05b8e21954f7dc87dd985f9b92db94d44700cbf2b04109f59495bd075",
+              "replacement_decision": "explicit_owner_delegated_assistant_replacement_review",
+              "existing_quality_lane": "keep",
+              "candidate_quality_lane": "keep",
+              "existing_evidence_profile": "seller_plus_formula",
+              "candidate_evidence_profile": "official_pdp_reviewed_formula_and_usage"
+            }
+          }
+        },
+        {
+          "kb_key": "product:sig_f5a4d54a743f913ebfbff3b2",
+          "action": "insert",
+          "reason": "new_product_intel_bundle",
+          "old_hash": null,
+          "candidate_hash": "000a22583c660a6e75603bc663709fea602ff127ebcd9c8d7ac8300c1b3a39bf",
+          "existing_weak": true,
+          "source": "pivota_insights_official_pdp_manual_review_v1",
+          "after_inventory": {
+            "product_id": "ext_f11383c339335d64f05a964e",
+            "kb_key": "product:sig_f5a4d54a743f913ebfbff3b2",
+            "source": "pivota_insights_official_pdp_manual_review_v1",
+            "updated_at": "",
+            "last_success_at": "",
+            "title": "Regenerating Eye Cream",
+            "canonical_url": "",
+            "bundle_hash": "85f4d3a05b8e21954f7dc87dd985f9b92db94d44700cbf2b04109f59495bd075",
+            "lane": "keep",
+            "reason": "protected_good_content",
+            "priority": 0,
+            "protected": true,
+            "displayable": true,
+            "high_quality_ready": true,
+            "human_reviewed": true,
+            "issues": [],
+            "blocking_issues": [],
+            "quality_state": "reviewed",
+            "evidence_profile": "official_pdp_reviewed_formula_and_usage",
+            "evidence_rank": 1,
+            "review_tier": "assistant_reviewed",
+            "agent_readable": true,
+            "public_ready": true
+          },
+          "source_meta": {
+            "evidence_profile": "official_pdp_reviewed_formula_and_usage",
+            "quality_state": "reviewed",
+            "source_origin": "official_pdp_fields",
+            "source_url": "https://www.baiebotanique.com/products/regenerating-eye-cream-sns",
+            "quality_improvement": {
+              "previous_bundle_hash": null,
+              "candidate_bundle_hash": "85f4d3a05b8e21954f7dc87dd985f9b92db94d44700cbf2b04109f59495bd075",
+              "replacement_decision": "new_product_intel_bundle",
+              "existing_quality_lane": null,
+              "candidate_quality_lane": "keep",
+              "existing_evidence_profile": null,
+              "candidate_evidence_profile": "official_pdp_reviewed_formula_and_usage"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "external_product_id": "ext_60ded78effb04e9d6389bfce",
+      "pivota_signature_id": "sig_9098683c7baaa3849d51e544",
+      "title": "Rose & Cupuaçu Enzyme Cleanser",
+      "brand": "Baie Botanique",
+      "canonical_url": "https://www.baiebotanique.com/products/rose-cupuacu-enzyme-cleanser-sns",
+      "changed": true,
+      "blocked": false,
+      "skip_reason": null,
+      "candidate_hash": "88e965641bed3dff3ba6a218a72cc4260cbb5d2c75a73c83239794bb1ef02677",
+      "evidence_profile": "official_pdp_reviewed_formula_and_usage",
+      "source_coverage": {
+        "source": "official_pdp",
+        "canonical_url": "https://www.baiebotanique.com/products/rose-cupuacu-enzyme-cleanser-sns",
+        "fields": {
+          "description": true,
+          "ingredients": 1,
+          "active_ingredients": 0,
+          "how_to": 1,
+          "details": 4,
+          "variants": 1
+        }
+      },
+      "preview": {
+        "headline": "Face cleanser",
+        "what_it_is": "Rose & Cupuaçu Enzyme Cleanser is a face cleanser from Baie Botanique in 120ML, with source-backed cues around cleansing, makeup removal, a non-stripping feel and dirt, oil, and impurity removal.",
+        "why_it_stands_out": [
+          {
+            "headline": "Product cues are source-backed",
+            "body": "Reviewed PDP cues such as daily cleansing, pore cleansing, non-stripping cleanse, makeup removal give shoppers specific comparison points within Baie Botanique, rather than category-only copy.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Ingredient list is available",
+            "body": "Full INCI is present for formula-sensitive review, which makes this PDP safer to evaluate than a claim-only listing.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Shade and size are explicit",
+            "body": "Variant labels such as 120ML, Size: 120ML are visible, reducing ambiguity around the product format before a shopper clicks through.",
+            "evidence_strength": "official_pdp_reviewed"
+          }
+        ],
+        "best_for": [
+          {
+            "tag": "daily_cleansing",
+            "label": "daily cleansing",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "pore_cleansing",
+            "label": "pore cleansing",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "non_stripping_cleanse",
+            "label": "non-stripping cleanse",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "makeup_removal",
+            "label": "makeup removal",
+            "confidence": "moderate"
+          }
+        ],
+        "shopping_highlight": "daily cleansing, pore cleansing"
+      },
+      "writes": [
+        {
+          "kb_key": "product:ext_60ded78effb04e9d6389bfce",
+          "action": "update",
+          "reason": "explicit_owner_delegated_assistant_replacement_review",
+          "old_hash": "f74d98cacec6509732ac00c6d5bd6d9b4bdc7469951ca41a9fb7cbddcb146caf",
+          "candidate_hash": "e27181f7f805ccae6844a2e051fd3af3c9d2503cf29de63a3b7e8810a718329f",
+          "existing_weak": true,
+          "source": "pivota_insights_official_pdp_manual_review_v1",
+          "after_inventory": {
+            "product_id": "ext_60ded78effb04e9d6389bfce",
+            "kb_key": "product:ext_60ded78effb04e9d6389bfce",
+            "source": "pivota_insights_official_pdp_manual_review_v1",
+            "updated_at": "",
+            "last_success_at": "",
+            "title": "Rose & Cupuaçu Enzyme Cleanser",
+            "canonical_url": "",
+            "bundle_hash": "88e965641bed3dff3ba6a218a72cc4260cbb5d2c75a73c83239794bb1ef02677",
+            "lane": "keep",
+            "reason": "protected_good_content",
+            "priority": 0,
+            "protected": true,
+            "displayable": true,
+            "high_quality_ready": true,
+            "human_reviewed": true,
+            "issues": [],
+            "blocking_issues": [],
+            "quality_state": "reviewed",
+            "evidence_profile": "official_pdp_reviewed_formula_and_usage",
+            "evidence_rank": 1,
+            "review_tier": "assistant_reviewed",
+            "agent_readable": true,
+            "public_ready": true
+          },
+          "source_meta": {
+            "evidence_profile": "official_pdp_reviewed_formula_and_usage",
+            "quality_state": "reviewed",
+            "source_origin": "official_pdp_fields",
+            "source_url": "https://www.baiebotanique.com/products/rose-cupuacu-enzyme-cleanser-sns",
+            "quality_improvement": {
+              "previous_bundle_hash": "4f3a9bc5c13dbed694f0715cc5baa2712ba8f6ee510e9d74b4a72078dea03a49",
+              "candidate_bundle_hash": "88e965641bed3dff3ba6a218a72cc4260cbb5d2c75a73c83239794bb1ef02677",
+              "replacement_decision": "explicit_owner_delegated_assistant_replacement_review",
+              "existing_quality_lane": "keep",
+              "candidate_quality_lane": "keep",
+              "existing_evidence_profile": "seller_plus_formula",
+              "candidate_evidence_profile": "official_pdp_reviewed_formula_and_usage"
+            }
+          }
+        },
+        {
+          "kb_key": "product:sig_9098683c7baaa3849d51e544",
+          "action": "insert",
+          "reason": "new_product_intel_bundle",
+          "old_hash": null,
+          "candidate_hash": "e27181f7f805ccae6844a2e051fd3af3c9d2503cf29de63a3b7e8810a718329f",
+          "existing_weak": true,
+          "source": "pivota_insights_official_pdp_manual_review_v1",
+          "after_inventory": {
+            "product_id": "ext_60ded78effb04e9d6389bfce",
+            "kb_key": "product:sig_9098683c7baaa3849d51e544",
+            "source": "pivota_insights_official_pdp_manual_review_v1",
+            "updated_at": "",
+            "last_success_at": "",
+            "title": "Rose & Cupuaçu Enzyme Cleanser",
+            "canonical_url": "",
+            "bundle_hash": "88e965641bed3dff3ba6a218a72cc4260cbb5d2c75a73c83239794bb1ef02677",
+            "lane": "keep",
+            "reason": "protected_good_content",
+            "priority": 0,
+            "protected": true,
+            "displayable": true,
+            "high_quality_ready": true,
+            "human_reviewed": true,
+            "issues": [],
+            "blocking_issues": [],
+            "quality_state": "reviewed",
+            "evidence_profile": "official_pdp_reviewed_formula_and_usage",
+            "evidence_rank": 1,
+            "review_tier": "assistant_reviewed",
+            "agent_readable": true,
+            "public_ready": true
+          },
+          "source_meta": {
+            "evidence_profile": "official_pdp_reviewed_formula_and_usage",
+            "quality_state": "reviewed",
+            "source_origin": "official_pdp_fields",
+            "source_url": "https://www.baiebotanique.com/products/rose-cupuacu-enzyme-cleanser-sns",
+            "quality_improvement": {
+              "previous_bundle_hash": null,
+              "candidate_bundle_hash": "88e965641bed3dff3ba6a218a72cc4260cbb5d2c75a73c83239794bb1ef02677",
+              "replacement_decision": "new_product_intel_bundle",
+              "existing_quality_lane": null,
+              "candidate_quality_lane": "keep",
+              "existing_evidence_profile": null,
+              "candidate_evidence_profile": "official_pdp_reviewed_formula_and_usage"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "external_product_id": "ext_d063539b9d43b44093117f24",
+      "pivota_signature_id": "sig_9aa7d55c091896289148f82e",
+      "title": "Rose Renew Face Cream",
+      "brand": "Baie Botanique",
+      "canonical_url": "https://www.baiebotanique.com/products/rose-renew-face-cream-sns",
+      "changed": false,
+      "blocked": false,
+      "skip_reason": "no_safe_writes",
+      "candidate_hash": "ee2b36707741b7cbb2b63cd08e737ade3ac772d36e4237a4995b5ec42456a9f6",
+      "evidence_profile": "official_pdp_reviewed_line",
+      "source_coverage": {
+        "source": "official_pdp",
+        "canonical_url": "https://www.baiebotanique.com/products/rose-renew-face-cream-sns",
+        "fields": {
+          "description": true,
+          "ingredients": 0,
+          "active_ingredients": 0,
+          "how_to": 1,
+          "details": 1,
+          "variants": 1
+        }
+      },
+      "preview": {
+        "headline": "Body care treatment",
+        "what_it_is": "Rose Renew Face Cream is a body care treatment from Baie Botanique in 50ml, with source-backed cues around hydration.",
+        "why_it_stands_out": [
+          {
+            "headline": "Routine step cues are specific",
+            "body": "Reviewed skincare cues such as hydration, barrier support, 50ml identify the routine role or key ingredient context without inventing unsupported benefits.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Shade and size are explicit",
+            "body": "Variant labels such as 50ml, Size: 50ml are visible, reducing ambiguity around the product format before a shopper clicks through.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Usage instructions available",
+            "body": "Reviewed usage context is present, including: Gently massage onto face and neck after cleansing, morning and evening.",
+            "evidence_strength": "official_pdp_reviewed"
+          }
+        ],
+        "best_for": [
+          {
+            "tag": "hydration",
+            "label": "hydration",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "firmness",
+            "label": "firmness",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "radiance",
+            "label": "radiance",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "barrier_support",
+            "label": "barrier support",
+            "confidence": "moderate"
+          }
+        ],
+        "shopping_highlight": "hydration, barrier support, 50ml"
+      },
+      "writes": [
+        {
+          "kb_key": "product:ext_d063539b9d43b44093117f24",
+          "action": "skip",
+          "reason": "protected_high_quality_existing:reviewed",
+          "old_hash": "572efa59fcef2bcf6cf764a837960c426559ad7497029e5758fef1986d01e95b",
+          "existing_weak": false
+        },
+        {
+          "kb_key": "product:sig_9aa7d55c091896289148f82e",
+          "action": "skip",
+          "reason": "protected_high_quality_existing:reviewed",
+          "old_hash": "48fe3b1f7b28a9b816842f0a16c44b55bafe0a7fe8b09e42df8189a5ccd418fb",
+          "existing_weak": false
+        }
+      ]
+    },
+    {
+      "external_product_id": "ext_1d312f4c2dac999920d9b936",
+      "pivota_signature_id": "sig_6698aecb2197d16ddf91ec00",
+      "title": "Rose Renew Face Wash",
+      "brand": "Baie Botanique",
+      "canonical_url": "https://www.baiebotanique.com/products/rose-renew-face-wash-125ml-sns",
+      "changed": true,
+      "blocked": false,
+      "skip_reason": null,
+      "candidate_hash": "982cc3b4bdf1599dfe69cbeec06d7d1d879b69102cbbce24e7b465e1b4664a93",
+      "evidence_profile": "official_pdp_reviewed_formula",
+      "source_coverage": {
+        "source": "official_pdp",
+        "canonical_url": "https://www.baiebotanique.com/products/rose-renew-face-wash-125ml-sns",
+        "fields": {
+          "description": true,
+          "ingredients": 1,
+          "active_ingredients": 0,
+          "how_to": 0,
+          "details": 4,
+          "variants": 1
+        }
+      },
+      "preview": {
+        "headline": "Face cleanser",
+        "what_it_is": "Rose Renew Face Wash is a face cleanser from Baie Botanique in 125ml, with source-backed cues around cleansing, a non-stripping feel and dirt, oil, and impurity removal.",
+        "why_it_stands_out": [
+          {
+            "headline": "Product cues are source-backed",
+            "body": "Reviewed PDP cues such as daily cleansing, pore cleansing, non-stripping cleanse, 125ml give shoppers specific comparison points within Baie Botanique, rather than category-only copy.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Ingredient list is available",
+            "body": "Full INCI is present for formula-sensitive review, which makes this PDP safer to evaluate than a claim-only listing.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Shade and size are explicit",
+            "body": "Variant labels such as 125ml, Size: 125ml are visible, reducing ambiguity around the product format before a shopper clicks through.",
+            "evidence_strength": "official_pdp_reviewed"
+          }
+        ],
+        "best_for": [
+          {
+            "tag": "daily_cleansing",
+            "label": "daily cleansing",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "pore_cleansing",
+            "label": "pore cleansing",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "non_stripping_cleanse",
+            "label": "non-stripping cleanse",
+            "confidence": "moderate"
+          }
+        ],
+        "shopping_highlight": "daily cleansing, pore cleansing"
+      },
+      "writes": [
+        {
+          "kb_key": "product:ext_1d312f4c2dac999920d9b936",
+          "action": "update",
+          "reason": "explicit_owner_delegated_assistant_replacement_review",
+          "old_hash": "db36811b957f783a2a7ef2f2c444a31c88a59b9d626e91b448b60b968558a577",
+          "candidate_hash": "7b48d3a00efc026b73fcccd6955c0b4bef77d2dc7a887b70d0ed91511cbb4072",
+          "existing_weak": true,
+          "source": "pivota_insights_official_pdp_manual_review_v1",
+          "after_inventory": {
+            "product_id": "ext_1d312f4c2dac999920d9b936",
+            "kb_key": "product:ext_1d312f4c2dac999920d9b936",
+            "source": "pivota_insights_official_pdp_manual_review_v1",
+            "updated_at": "",
+            "last_success_at": "",
+            "title": "Rose Renew Face Wash",
+            "canonical_url": "",
+            "bundle_hash": "982cc3b4bdf1599dfe69cbeec06d7d1d879b69102cbbce24e7b465e1b4664a93",
+            "lane": "keep",
+            "reason": "protected_good_content",
+            "priority": 0,
+            "protected": true,
+            "displayable": true,
+            "high_quality_ready": true,
+            "human_reviewed": true,
+            "issues": [],
+            "blocking_issues": [],
+            "quality_state": "reviewed",
+            "evidence_profile": "official_pdp_reviewed_formula",
+            "evidence_rank": 1,
+            "review_tier": "assistant_reviewed",
+            "agent_readable": true,
+            "public_ready": true
+          },
+          "source_meta": {
+            "evidence_profile": "official_pdp_reviewed_formula",
+            "quality_state": "reviewed",
+            "source_origin": "official_pdp_fields",
+            "source_url": "https://www.baiebotanique.com/products/rose-renew-face-wash-125ml-sns",
+            "quality_improvement": {
+              "previous_bundle_hash": "ca6cb56a0abec977057891e02ea1087a229186c164de4a52445578be1e814917",
+              "candidate_bundle_hash": "982cc3b4bdf1599dfe69cbeec06d7d1d879b69102cbbce24e7b465e1b4664a93",
+              "replacement_decision": "explicit_owner_delegated_assistant_replacement_review",
+              "existing_quality_lane": "keep",
+              "candidate_quality_lane": "keep",
+              "existing_evidence_profile": "seller_plus_formula",
+              "candidate_evidence_profile": "official_pdp_reviewed_formula"
+            }
+          }
+        },
+        {
+          "kb_key": "product:sig_6698aecb2197d16ddf91ec00",
+          "action": "update",
+          "reason": "explicit_owner_delegated_assistant_replacement_review",
+          "old_hash": "0adcf217b66ba8fffd8dcd58689622ae6656f0d46a86d64825f159c233c73df7",
+          "candidate_hash": "7b48d3a00efc026b73fcccd6955c0b4bef77d2dc7a887b70d0ed91511cbb4072",
+          "existing_weak": true,
+          "source": "pivota_insights_official_pdp_manual_review_v1",
+          "after_inventory": {
+            "product_id": "ext_1d312f4c2dac999920d9b936",
+            "kb_key": "product:sig_6698aecb2197d16ddf91ec00",
+            "source": "pivota_insights_official_pdp_manual_review_v1",
+            "updated_at": "",
+            "last_success_at": "",
+            "title": "Rose Renew Face Wash",
+            "canonical_url": "",
+            "bundle_hash": "982cc3b4bdf1599dfe69cbeec06d7d1d879b69102cbbce24e7b465e1b4664a93",
+            "lane": "keep",
+            "reason": "protected_good_content",
+            "priority": 0,
+            "protected": true,
+            "displayable": true,
+            "high_quality_ready": true,
+            "human_reviewed": true,
+            "issues": [],
+            "blocking_issues": [],
+            "quality_state": "reviewed",
+            "evidence_profile": "official_pdp_reviewed_formula",
+            "evidence_rank": 1,
+            "review_tier": "assistant_reviewed",
+            "agent_readable": true,
+            "public_ready": true
+          },
+          "source_meta": {
+            "evidence_profile": "official_pdp_reviewed_formula",
+            "quality_state": "reviewed",
+            "source_origin": "official_pdp_fields",
+            "source_url": "https://www.baiebotanique.com/products/rose-renew-face-wash-125ml-sns",
+            "quality_improvement": {
+              "previous_bundle_hash": "17df912efc0c02b804468a4cfaccfe2a8ce89da197c66a4ef73858d0c11894da",
+              "candidate_bundle_hash": "982cc3b4bdf1599dfe69cbeec06d7d1d879b69102cbbce24e7b465e1b4664a93",
+              "replacement_decision": "explicit_owner_delegated_assistant_replacement_review",
+              "existing_quality_lane": "keep",
+              "candidate_quality_lane": "keep",
+              "existing_evidence_profile": "seller_plus_formula",
+              "candidate_evidence_profile": "official_pdp_reviewed_formula"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "external_product_id": "ext_00346a3a72bec785209bede4",
+      "pivota_signature_id": "sig_1b8c7768a301daa91cb62ee9",
+      "title": "Rose Renew Facial Oil",
+      "brand": "Baie Botanique",
+      "canonical_url": "https://www.baiebotanique.com/products/rose-renew-facial-oil-sns",
+      "changed": false,
+      "blocked": false,
+      "skip_reason": "no_safe_writes",
+      "candidate_hash": "e89adae231c472530fa4dd04f862e38660b8bffc164052022da3738092014eae",
+      "evidence_profile": "official_pdp_reviewed_line",
+      "source_coverage": {
+        "source": "official_pdp",
+        "canonical_url": "https://www.baiebotanique.com/products/rose-renew-facial-oil-sns",
+        "fields": {
+          "description": true,
+          "ingredients": 0,
+          "active_ingredients": 0,
+          "how_to": 1,
+          "details": 1,
+          "variants": 2
+        }
+      },
+      "preview": {
+        "headline": "Face oil",
+        "what_it_is": "Rose Renew Facial Oil is a face oil from Baie Botanique in 15ml, with source-backed cues around hydration.",
+        "why_it_stands_out": [
+          {
+            "headline": "Routine step cues are specific",
+            "body": "Reviewed skincare cues such as hydration, barrier support, 15ml, 30ml identify the routine role or key ingredient context without inventing unsupported benefits.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Shade and size are explicit",
+            "body": "Variant labels such as 15ml, Size: 15ml, 30ml, Size: 30ml are visible, reducing ambiguity around the product format before a shopper clicks through.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Usage instructions available",
+            "body": "Reviewed usage context is present, including: Gently pat 1 pump onto skin and glide over in an upward and outward motion, use palm of hand or closed fingers to spread oil over the skin.",
+            "evidence_strength": "official_pdp_reviewed"
+          }
+        ],
+        "best_for": [
+          {
+            "tag": "hydration",
+            "label": "hydration",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "firmness",
+            "label": "firmness",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "radiance",
+            "label": "radiance",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "barrier_support",
+            "label": "barrier support",
+            "confidence": "moderate"
+          }
+        ],
+        "shopping_highlight": "hydration, barrier support, 15ml, 30ml"
+      },
+      "writes": [
+        {
+          "kb_key": "product:ext_00346a3a72bec785209bede4",
+          "action": "skip",
+          "reason": "protected_high_quality_existing:reviewed",
+          "old_hash": "510b1a1628e59b8c889e2e19a2024a199be514e1211f4007f0acb9059093e0f9",
+          "existing_weak": false
+        },
+        {
+          "kb_key": "product:sig_1b8c7768a301daa91cb62ee9",
+          "action": "skip",
+          "reason": "protected_high_quality_existing:reviewed",
+          "old_hash": "ef54e17c671c7c0045247e8bc4307bf4f32e4e2a7661c6760dd95a7cd0ea8a65",
+          "existing_weak": false
+        }
+      ]
+    },
+    {
+      "external_product_id": "ext_a128466e0b34f043b8e78adf",
+      "pivota_signature_id": "sig_989713c8d949775955bcba14",
+      "title": "Rose Renew Regenerating Serum",
+      "brand": "Baie Botanique",
+      "canonical_url": "https://www.baiebotanique.com/products/rose-renew-regenerating-serum-sns",
+      "changed": true,
+      "blocked": false,
+      "skip_reason": null,
+      "candidate_hash": "69af0693deeb149f983dd15a252c6bfd3624dbaf26cacb93d5c65c578d7eb47b",
+      "evidence_profile": "official_pdp_reviewed_line",
+      "source_coverage": {
+        "source": "official_pdp",
+        "canonical_url": "https://www.baiebotanique.com/products/rose-renew-regenerating-serum-sns",
+        "fields": {
+          "description": true,
+          "ingredients": 0,
+          "active_ingredients": 0,
+          "how_to": 1,
+          "details": 0,
+          "variants": 2
+        }
+      },
+      "preview": {
+        "headline": "Treatment serum",
+        "what_it_is": "Rose Renew Regenerating Serum is a treatment serum from Baie Botanique in 30ML.",
+        "why_it_stands_out": [
+          {
+            "headline": "Routine step cues are specific",
+            "body": "Reviewed skincare cues such as hydration, 30ML, 50ML identify the routine role or key ingredient context without inventing unsupported benefits.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Shade and size are explicit",
+            "body": "Variant labels such as 30ML, Size: 30ML, 50ML, Size: 50ML are visible, reducing ambiguity around the product format before a shopper clicks through.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Usage instructions available",
+            "body": "Reviewed usage context is present, including: Apply a small amount to face and neck.",
+            "evidence_strength": "official_pdp_reviewed"
+          }
+        ],
+        "best_for": [
+          {
+            "tag": "hydration",
+            "label": "hydration",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "firmness",
+            "label": "firmness",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "radiance",
+            "label": "radiance",
+            "confidence": "moderate"
+          }
+        ],
+        "shopping_highlight": "hydration, 30ML, 50ML"
+      },
+      "writes": [
+        {
+          "kb_key": "product:ext_a128466e0b34f043b8e78adf",
+          "action": "update",
+          "reason": "explicit_owner_delegated_assistant_replacement_review",
+          "old_hash": "76cbdf4b5c569f475dc69826e5bb9ea6ed24167ea87345521103cea959adab5b",
+          "candidate_hash": "948f8977497d340181b775778cfd05a609156a70bb0d09d26998e1e7feb96612",
+          "existing_weak": true,
+          "source": "pivota_insights_official_pdp_manual_review_v1",
+          "after_inventory": {
+            "product_id": "ext_a128466e0b34f043b8e78adf",
+            "kb_key": "product:ext_a128466e0b34f043b8e78adf",
+            "source": "pivota_insights_official_pdp_manual_review_v1",
+            "updated_at": "",
+            "last_success_at": "",
+            "title": "Rose Renew Regenerating Serum",
+            "canonical_url": "",
+            "bundle_hash": "69af0693deeb149f983dd15a252c6bfd3624dbaf26cacb93d5c65c578d7eb47b",
+            "lane": "keep",
+            "reason": "protected_good_content",
+            "priority": 0,
+            "protected": true,
+            "displayable": true,
+            "high_quality_ready": true,
+            "human_reviewed": true,
+            "issues": [],
+            "blocking_issues": [],
+            "quality_state": "reviewed",
+            "evidence_profile": "official_pdp_reviewed_line",
+            "evidence_rank": 3,
+            "review_tier": "assistant_reviewed",
+            "agent_readable": true,
+            "public_ready": true
+          },
+          "source_meta": {
+            "evidence_profile": "official_pdp_reviewed_line",
+            "quality_state": "reviewed",
+            "source_origin": "official_pdp_fields",
+            "source_url": "https://www.baiebotanique.com/products/rose-renew-regenerating-serum-sns",
+            "quality_improvement": {
+              "previous_bundle_hash": "b54f28cf12286fb00817542b9bc1b0ebff87631970415db4da90a82713380e7b",
+              "candidate_bundle_hash": "69af0693deeb149f983dd15a252c6bfd3624dbaf26cacb93d5c65c578d7eb47b",
+              "replacement_decision": "explicit_owner_delegated_assistant_replacement_review",
+              "existing_quality_lane": "keep",
+              "candidate_quality_lane": "keep",
+              "existing_evidence_profile": "official_pdp_seed",
+              "candidate_evidence_profile": "official_pdp_reviewed_line"
+            }
+          }
+        },
+        {
+          "kb_key": "product:sig_989713c8d949775955bcba14",
+          "action": "insert",
+          "reason": "new_product_intel_bundle",
+          "old_hash": null,
+          "candidate_hash": "948f8977497d340181b775778cfd05a609156a70bb0d09d26998e1e7feb96612",
+          "existing_weak": true,
+          "source": "pivota_insights_official_pdp_manual_review_v1",
+          "after_inventory": {
+            "product_id": "ext_a128466e0b34f043b8e78adf",
+            "kb_key": "product:sig_989713c8d949775955bcba14",
+            "source": "pivota_insights_official_pdp_manual_review_v1",
+            "updated_at": "",
+            "last_success_at": "",
+            "title": "Rose Renew Regenerating Serum",
+            "canonical_url": "",
+            "bundle_hash": "69af0693deeb149f983dd15a252c6bfd3624dbaf26cacb93d5c65c578d7eb47b",
+            "lane": "keep",
+            "reason": "protected_good_content",
+            "priority": 0,
+            "protected": true,
+            "displayable": true,
+            "high_quality_ready": true,
+            "human_reviewed": true,
+            "issues": [],
+            "blocking_issues": [],
+            "quality_state": "reviewed",
+            "evidence_profile": "official_pdp_reviewed_line",
+            "evidence_rank": 3,
+            "review_tier": "assistant_reviewed",
+            "agent_readable": true,
+            "public_ready": true
+          },
+          "source_meta": {
+            "evidence_profile": "official_pdp_reviewed_line",
+            "quality_state": "reviewed",
+            "source_origin": "official_pdp_fields",
+            "source_url": "https://www.baiebotanique.com/products/rose-renew-regenerating-serum-sns",
+            "quality_improvement": {
+              "previous_bundle_hash": null,
+              "candidate_bundle_hash": "69af0693deeb149f983dd15a252c6bfd3624dbaf26cacb93d5c65c578d7eb47b",
+              "replacement_decision": "new_product_intel_bundle",
+              "existing_quality_lane": null,
+              "candidate_quality_lane": "keep",
+              "existing_evidence_profile": null,
+              "candidate_evidence_profile": "official_pdp_reviewed_line"
+            }
+          }
+        }
+      ]
+    }
+  ]
+}

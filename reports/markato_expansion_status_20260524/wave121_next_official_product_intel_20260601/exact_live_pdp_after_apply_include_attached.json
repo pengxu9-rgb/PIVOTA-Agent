@@ -1,0 +1,1571 @@
+{
+  "generated_at": "2026-06-01T07:09:56.351Z",
+  "source": "external_seed_live_pdp_modules_audit",
+  "query": {
+    "market": "US",
+    "domain": null,
+    "brand": null,
+    "external_product_id": null,
+    "external_product_ids": [
+      "ext_2ed925c42fe7f2dfd73f98db",
+      "ext_d368298110b2622b6aa73530",
+      "ext_768ca6b8f29b99645a02a72d",
+      "ext_a6d24d905734889cd2a91fde",
+      "ext_48efa66217f45990e58a3b50",
+      "ext_daab8cbcc38d218fdb6d7d22",
+      "ext_1c44481f8143059d23195915",
+      "ext_582d80fdcf353c0e8c0edd9d",
+      "ext_de52f233645e757f2fcf89b0",
+      "ext_02bd3cd623ef5dfb6e46d0d3",
+      "ext_62f7f0e601b4a7076878dcc2",
+      "ext_f11383c339335d64f05a964e",
+      "ext_60ded78effb04e9d6389bfce",
+      "ext_1d312f4c2dac999920d9b936"
+    ],
+    "include_attached": true,
+    "limit": 50,
+    "offset": 0,
+    "include_similar": true,
+    "use_sig": false
+  },
+  "summary": {
+    "scanned": 14,
+    "ready": 11,
+    "thin": 2,
+    "not_conversion_ready": 1,
+    "by_domain": [
+      {
+        "key": "tirtir.global",
+        "count": 11
+      },
+      {
+        "key": "baiebotanique.com",
+        "count": 3
+      }
+    ],
+    "blocker_counts": [
+      {
+        "key": "missing_how_to",
+        "count": 3
+      },
+      {
+        "key": "gallery_missing_or_bloated",
+        "count": 1
+      },
+      {
+        "key": "missing_details",
+        "count": 1
+      },
+      {
+        "key": "missing_ingredients",
+        "count": 1
+      },
+      {
+        "key": "missing_or_weak_insights",
+        "count": 1
+      },
+      {
+        "key": "missing_overview",
+        "count": 1
+      }
+    ],
+    "weak_insights_ids": [
+      "ext_60ded78effb04e9d6389bfce"
+    ],
+    "seller_only_insights_ids": [],
+    "force_filled_ids": [],
+    "content_gap_ids": [
+      "ext_1d312f4c2dac999920d9b936",
+      "ext_60ded78effb04e9d6389bfce",
+      "ext_62f7f0e601b4a7076878dcc2"
+    ]
+  },
+  "rows": [
+    {
+      "external_product_id": "ext_1d312f4c2dac999920d9b936",
+      "pivota_signature_id": "sig_6698aecb2197d16ddf91ec00",
+      "probed_product_id": "ext_1d312f4c2dac999920d9b936",
+      "probed_id_type": "ext",
+      "seed_id": "eps_9ed6c100606e0ba2470514b3",
+      "market": "US",
+      "domain": "baiebotanique.com",
+      "title": "Rose Renew Face Wash",
+      "canonical_url": "https://www.baiebotanique.com/products/rose-renew-face-wash-125ml-sns",
+      "http_status": 200,
+      "pdp_status": "success",
+      "build_id": "606355788d43",
+      "module_types": [
+        "canonical",
+        "variant_selector",
+        "offers",
+        "product_intel",
+        "active_ingredients",
+        "ingredients_inci",
+        "how_to_use",
+        "product_overview",
+        "product_facts",
+        "supplemental_details",
+        "product_details",
+        "reviews_preview",
+        "similar"
+      ],
+      "missing_modules": [
+        "active_ingredients",
+        "how_to_use"
+      ],
+      "gallery": {
+        "image_count": 10,
+        "duplicate_url_count": 1,
+        "image_hosts": [
+          "www.baiebotanique.com"
+        ],
+        "ok": true
+      },
+      "variant": {
+        "module_present": true,
+        "variant_count": 1,
+        "label_count": 2,
+        "labels": [
+          "Size: 125 mL",
+          "125 mL"
+        ],
+        "bad_labels": [],
+        "ok": true
+      },
+      "reviews": {
+        "module_present": true,
+        "rating": null,
+        "review_count": 0,
+        "chart_present": false,
+        "chart_estimated": false,
+        "preview_count": 0,
+        "ok": true
+      },
+      "insights": {
+        "module_present": true,
+        "quality_state": "reviewed",
+        "evidence_profile": "official_pdp_reviewed_formula",
+        "seller_only_evidence": false,
+        "seller_grounded_reviewed": false,
+        "headline": "Face cleanser",
+        "why_count": 3,
+        "ok": true
+      },
+      "content": {
+        "ingredients_present": true,
+        "ingredients_text_count": 41,
+        "ingredients_source_origin": "pdp_section",
+        "ingredients_source_quality_status": "authoritative",
+        "ingredients_force_filled": false,
+        "active_ingredients_present": false,
+        "active_ingredients_source_origin": null,
+        "active_ingredients_source_quality_status": null,
+        "active_ingredients_force_filled": false,
+        "how_to_present": false,
+        "how_to_text_count": 0,
+        "overview_present": true,
+        "details_present": true,
+        "details_text_count": 43
+      },
+      "similar": {
+        "module_present": true,
+        "count": 0,
+        "status": "deferred"
+      },
+      "product_kind": {
+        "family": "single_formula",
+        "reasons": [
+          "explicit_product_kind_signal"
+        ],
+        "pdp_schema_profile": "beauty_formula",
+        "formula_content_required": true,
+        "merchandising_content_applicable": true
+      },
+      "blocking_reasons": [
+        "missing_how_to"
+      ],
+      "pdp_quality_bucket": "thin",
+      "conversion_ready": false
+    },
+    {
+      "external_product_id": "ext_60ded78effb04e9d6389bfce",
+      "pivota_signature_id": "sig_9098683c7baaa3849d51e544",
+      "probed_product_id": "ext_60ded78effb04e9d6389bfce",
+      "probed_id_type": "ext",
+      "seed_id": "eps_3493fc417686894791fde351",
+      "market": "US",
+      "domain": "baiebotanique.com",
+      "title": "Rose & Cupuaçu Enzyme Cleanser",
+      "canonical_url": "https://www.baiebotanique.com/products/rose-cupuacu-enzyme-cleanser-sns",
+      "http_status": 404,
+      "pdp_status": "",
+      "build_id": "",
+      "module_types": [],
+      "missing_modules": [],
+      "gallery": {
+        "image_count": 0,
+        "duplicate_url_count": 0,
+        "image_hosts": [],
+        "ok": false
+      },
+      "variant": {
+        "module_present": false,
+        "variant_count": 0,
+        "label_count": 0,
+        "labels": [],
+        "bad_labels": [],
+        "ok": false
+      },
+      "reviews": {
+        "module_present": false,
+        "rating": null,
+        "review_count": 0,
+        "chart_present": false,
+        "chart_estimated": false,
+        "preview_count": 0,
+        "ok": true
+      },
+      "insights": {
+        "module_present": false,
+        "quality_state": null,
+        "evidence_profile": null,
+        "seller_only_evidence": false,
+        "seller_grounded_reviewed": false,
+        "headline": null,
+        "why_count": 0,
+        "ok": false
+      },
+      "content": {
+        "ingredients_present": false,
+        "ingredients_text_count": 0,
+        "ingredients_source_origin": null,
+        "ingredients_source_quality_status": null,
+        "ingredients_force_filled": false,
+        "active_ingredients_present": false,
+        "active_ingredients_source_origin": null,
+        "active_ingredients_source_quality_status": null,
+        "active_ingredients_force_filled": false,
+        "how_to_present": false,
+        "how_to_text_count": 0,
+        "overview_present": false,
+        "details_present": false,
+        "details_text_count": 0
+      },
+      "similar": {
+        "module_present": false,
+        "count": 0,
+        "status": null
+      },
+      "product_kind": {
+        "family": "single_formula",
+        "reasons": [
+          "explicit_product_kind_signal"
+        ],
+        "pdp_schema_profile": null,
+        "formula_content_required": true,
+        "merchandising_content_applicable": true
+      },
+      "blocking_reasons": [
+        "gallery_missing_or_bloated",
+        "missing_or_weak_insights",
+        "missing_ingredients",
+        "missing_how_to",
+        "missing_overview",
+        "missing_details"
+      ],
+      "pdp_quality_bucket": "not_conversion_ready",
+      "conversion_ready": false
+    },
+    {
+      "external_product_id": "ext_daab8cbcc38d218fdb6d7d22",
+      "pivota_signature_id": "sig_64f032f01d52ccc7b553770f8c72cdd9",
+      "probed_product_id": "ext_daab8cbcc38d218fdb6d7d22",
+      "probed_id_type": "ext",
+      "seed_id": "eps_acaafbb51018bbdcfac3e521",
+      "market": "US",
+      "domain": "tirtir.global",
+      "title": "My Glow Ampoule Highlighter",
+      "canonical_url": "https://tirtir.global/products/my-glow-ampoule-highlighter",
+      "http_status": 200,
+      "pdp_status": "success",
+      "build_id": "606355788d43",
+      "module_types": [
+        "canonical",
+        "variant_selector",
+        "offers",
+        "product_intel",
+        "active_ingredients",
+        "ingredients_inci",
+        "how_to_use",
+        "product_overview",
+        "product_facts",
+        "supplemental_details",
+        "product_details",
+        "reviews_preview",
+        "similar"
+      ],
+      "missing_modules": [
+        "active_ingredients",
+        "product_facts",
+        "supplemental_details"
+      ],
+      "gallery": {
+        "image_count": 2,
+        "duplicate_url_count": 1,
+        "image_hosts": [
+          "cdn.shopify.com"
+        ],
+        "ok": true
+      },
+      "variant": {
+        "module_present": true,
+        "variant_count": 1,
+        "label_count": 2,
+        "labels": [
+          "Format: Ampoule highlighter",
+          "Ampoule highlighter"
+        ],
+        "bad_labels": [],
+        "ok": true
+      },
+      "reviews": {
+        "module_present": true,
+        "rating": null,
+        "review_count": 0,
+        "chart_present": false,
+        "chart_estimated": false,
+        "preview_count": 0,
+        "ok": true
+      },
+      "insights": {
+        "module_present": true,
+        "quality_state": "reviewed",
+        "evidence_profile": "official_pdp_reviewed_formula_and_usage",
+        "seller_only_evidence": false,
+        "seller_grounded_reviewed": false,
+        "headline": "Face color makeup",
+        "why_count": 3,
+        "ok": true
+      },
+      "content": {
+        "ingredients_present": true,
+        "ingredients_text_count": 27,
+        "ingredients_source_origin": "pdp_section",
+        "ingredients_source_quality_status": "authoritative",
+        "ingredients_force_filled": false,
+        "active_ingredients_present": false,
+        "active_ingredients_source_origin": null,
+        "active_ingredients_source_quality_status": null,
+        "active_ingredients_force_filled": false,
+        "how_to_present": true,
+        "how_to_text_count": 6,
+        "overview_present": true,
+        "details_present": true,
+        "details_text_count": 4
+      },
+      "similar": {
+        "module_present": true,
+        "count": 0,
+        "status": "deferred"
+      },
+      "product_kind": {
+        "family": "single_formula",
+        "reasons": [
+          "formula_category_path_signal"
+        ],
+        "pdp_schema_profile": "beauty_formula",
+        "formula_content_required": true,
+        "merchandising_content_applicable": true
+      },
+      "blocking_reasons": [],
+      "pdp_quality_bucket": "ready",
+      "conversion_ready": true
+    },
+    {
+      "external_product_id": "ext_62f7f0e601b4a7076878dcc2",
+      "pivota_signature_id": "sig_776e287a2be9430ebbd632b15e78e50a",
+      "probed_product_id": "ext_62f7f0e601b4a7076878dcc2",
+      "probed_id_type": "ext",
+      "seed_id": "eps_e64219943833ac73aa7ac6b4",
+      "market": "US",
+      "domain": "tirtir.global",
+      "title": "Reflect Glow Prep Primer",
+      "canonical_url": "https://tirtir.global/products/reflect-glow-prep-primer",
+      "http_status": 200,
+      "pdp_status": "success",
+      "build_id": "606355788d43",
+      "module_types": [
+        "canonical",
+        "variant_selector",
+        "offers",
+        "product_intel",
+        "active_ingredients",
+        "ingredients_inci",
+        "how_to_use",
+        "product_overview",
+        "product_facts",
+        "supplemental_details",
+        "product_details",
+        "reviews_preview",
+        "similar"
+      ],
+      "missing_modules": [
+        "active_ingredients",
+        "how_to_use",
+        "product_facts",
+        "supplemental_details"
+      ],
+      "gallery": {
+        "image_count": 2,
+        "duplicate_url_count": 1,
+        "image_hosts": [
+          "cdn.shopify.com"
+        ],
+        "ok": true
+      },
+      "variant": {
+        "module_present": true,
+        "variant_count": 1,
+        "label_count": 2,
+        "labels": [
+          "Size: 30 mL",
+          "30 mL"
+        ],
+        "bad_labels": [],
+        "ok": true
+      },
+      "reviews": {
+        "module_present": true,
+        "rating": 5,
+        "review_count": 1,
+        "chart_present": true,
+        "chart_estimated": true,
+        "preview_count": 1,
+        "ok": true
+      },
+      "insights": {
+        "module_present": true,
+        "quality_state": "reviewed",
+        "evidence_profile": "official_pdp_reviewed_formula_and_usage",
+        "seller_only_evidence": false,
+        "seller_grounded_reviewed": false,
+        "headline": "Makeup primer",
+        "why_count": 3,
+        "ok": true
+      },
+      "content": {
+        "ingredients_present": true,
+        "ingredients_text_count": 34,
+        "ingredients_source_origin": "pdp_section",
+        "ingredients_source_quality_status": "authoritative",
+        "ingredients_force_filled": false,
+        "active_ingredients_present": false,
+        "active_ingredients_source_origin": null,
+        "active_ingredients_source_quality_status": null,
+        "active_ingredients_force_filled": false,
+        "how_to_present": false,
+        "how_to_text_count": 0,
+        "overview_present": true,
+        "details_present": true,
+        "details_text_count": 5
+      },
+      "similar": {
+        "module_present": true,
+        "count": 0,
+        "status": "deferred"
+      },
+      "product_kind": {
+        "family": "single_formula",
+        "reasons": [
+          "explicit_product_kind_signal"
+        ],
+        "pdp_schema_profile": "beauty_formula",
+        "formula_content_required": true,
+        "merchandising_content_applicable": true
+      },
+      "blocking_reasons": [
+        "missing_how_to"
+      ],
+      "pdp_quality_bucket": "thin",
+      "conversion_ready": false
+    },
+    {
+      "external_product_id": "ext_de52f233645e757f2fcf89b0",
+      "pivota_signature_id": "sig_8f0ba555af0eff9168dfe404d468d195",
+      "probed_product_id": "ext_de52f233645e757f2fcf89b0",
+      "probed_id_type": "ext",
+      "seed_id": "eps_bf457224d6b051ca08779c9e",
+      "market": "US",
+      "domain": "tirtir.global",
+      "title": "Waterism Lip Plumper",
+      "canonical_url": "https://tirtir.global/products/waterism-lip-plumper",
+      "http_status": 200,
+      "pdp_status": "success",
+      "build_id": "606355788d43",
+      "module_types": [
+        "canonical",
+        "variant_selector",
+        "offers",
+        "product_intel",
+        "active_ingredients",
+        "ingredients_inci",
+        "how_to_use",
+        "product_overview",
+        "product_facts",
+        "supplemental_details",
+        "product_details",
+        "reviews_preview",
+        "similar"
+      ],
+      "missing_modules": [
+        "active_ingredients",
+        "product_facts",
+        "supplemental_details"
+      ],
+      "gallery": {
+        "image_count": 14,
+        "duplicate_url_count": 1,
+        "image_hosts": [
+          "tirtir.global"
+        ],
+        "ok": true
+      },
+      "variant": {
+        "module_present": true,
+        "variant_count": 1,
+        "label_count": 2,
+        "labels": [
+          "Size: 3.3 g",
+          "3.3 g"
+        ],
+        "bad_labels": [],
+        "ok": true
+      },
+      "reviews": {
+        "module_present": true,
+        "rating": 4.9,
+        "review_count": 8,
+        "chart_present": true,
+        "chart_estimated": false,
+        "preview_count": 6,
+        "ok": true
+      },
+      "insights": {
+        "module_present": true,
+        "quality_state": "reviewed",
+        "evidence_profile": "official_pdp_reviewed_formula_and_usage",
+        "seller_only_evidence": false,
+        "seller_grounded_reviewed": false,
+        "headline": "Fine fragrance",
+        "why_count": 3,
+        "ok": true
+      },
+      "content": {
+        "ingredients_present": true,
+        "ingredients_text_count": 41,
+        "ingredients_source_origin": "pdp_section",
+        "ingredients_source_quality_status": "authoritative",
+        "ingredients_force_filled": false,
+        "active_ingredients_present": false,
+        "active_ingredients_source_origin": null,
+        "active_ingredients_source_quality_status": null,
+        "active_ingredients_force_filled": false,
+        "how_to_present": true,
+        "how_to_text_count": 5,
+        "overview_present": true,
+        "details_present": true,
+        "details_text_count": 4
+      },
+      "similar": {
+        "module_present": true,
+        "count": 0,
+        "status": "deferred"
+      },
+      "product_kind": {
+        "family": "single_formula",
+        "reasons": [
+          "explicit_product_kind_signal"
+        ],
+        "pdp_schema_profile": "beauty_formula",
+        "formula_content_required": true,
+        "merchandising_content_applicable": true
+      },
+      "blocking_reasons": [],
+      "pdp_quality_bucket": "ready",
+      "conversion_ready": true
+    },
+    {
+      "external_product_id": "ext_1c44481f8143059d23195915",
+      "pivota_signature_id": "sig_376e8fbf56550c3ca3f59cc21b48a673",
+      "probed_product_id": "ext_1c44481f8143059d23195915",
+      "probed_id_type": "ext",
+      "seed_id": "eps_62a3e03246591085f6e096d6",
+      "market": "US",
+      "domain": "tirtir.global",
+      "title": "My Glow Lip Oil",
+      "canonical_url": "https://tirtir.global/products/my-glow-lip-oil",
+      "http_status": 200,
+      "pdp_status": "success",
+      "build_id": "606355788d43",
+      "module_types": [
+        "canonical",
+        "variant_selector",
+        "offers",
+        "product_intel",
+        "active_ingredients",
+        "ingredients_inci",
+        "how_to_use",
+        "product_overview",
+        "product_facts",
+        "supplemental_details",
+        "product_details",
+        "reviews_preview",
+        "similar"
+      ],
+      "missing_modules": [
+        "active_ingredients",
+        "product_facts",
+        "supplemental_details"
+      ],
+      "gallery": {
+        "image_count": 16,
+        "duplicate_url_count": 1,
+        "image_hosts": [
+          "cdn.shopify.com",
+          "tirtir.global"
+        ],
+        "ok": true
+      },
+      "variant": {
+        "module_present": true,
+        "variant_count": 2,
+        "label_count": 4,
+        "labels": [
+          "Color: Honey",
+          "Color: Mint",
+          "Honey",
+          "Mint"
+        ],
+        "bad_labels": [],
+        "ok": true
+      },
+      "reviews": {
+        "module_present": true,
+        "rating": 4.9,
+        "review_count": 57,
+        "chart_present": true,
+        "chart_estimated": false,
+        "preview_count": 6,
+        "ok": true
+      },
+      "insights": {
+        "module_present": true,
+        "quality_state": "reviewed",
+        "evidence_profile": "official_pdp_reviewed_formula_and_usage",
+        "seller_only_evidence": false,
+        "seller_grounded_reviewed": false,
+        "headline": "Lip treatment",
+        "why_count": 3,
+        "ok": true
+      },
+      "content": {
+        "ingredients_present": true,
+        "ingredients_text_count": 20,
+        "ingredients_source_origin": "pdp_section",
+        "ingredients_source_quality_status": "authoritative",
+        "ingredients_force_filled": false,
+        "active_ingredients_present": false,
+        "active_ingredients_source_origin": null,
+        "active_ingredients_source_quality_status": null,
+        "active_ingredients_force_filled": false,
+        "how_to_present": true,
+        "how_to_text_count": 6,
+        "overview_present": true,
+        "details_present": true,
+        "details_text_count": 4
+      },
+      "similar": {
+        "module_present": true,
+        "count": 0,
+        "status": "deferred"
+      },
+      "product_kind": {
+        "family": "single_formula",
+        "reasons": [
+          "stale_bundle_kind_overridden_by_formula_variant_title"
+        ],
+        "pdp_schema_profile": "beauty_formula",
+        "formula_content_required": true,
+        "merchandising_content_applicable": true
+      },
+      "blocking_reasons": [],
+      "pdp_quality_bucket": "ready",
+      "conversion_ready": true
+    },
+    {
+      "external_product_id": "ext_d368298110b2622b6aa73530",
+      "pivota_signature_id": "sig_a4d7c69b49dd05ee84f1ba75a31585c9",
+      "probed_product_id": "ext_d368298110b2622b6aa73530",
+      "probed_id_type": "ext",
+      "seed_id": "eps_b21a45145421e3f901651add",
+      "market": "US",
+      "domain": "tirtir.global",
+      "title": "Milk Creamy Foam Cleanser",
+      "canonical_url": "https://tirtir.global/products/milk-creamy-foam-cleanser",
+      "http_status": 200,
+      "pdp_status": "success",
+      "build_id": "606355788d43",
+      "module_types": [
+        "canonical",
+        "variant_selector",
+        "offers",
+        "product_intel",
+        "active_ingredients",
+        "ingredients_inci",
+        "how_to_use",
+        "product_overview",
+        "product_facts",
+        "supplemental_details",
+        "product_details",
+        "reviews_preview",
+        "similar"
+      ],
+      "missing_modules": [
+        "product_facts",
+        "supplemental_details"
+      ],
+      "gallery": {
+        "image_count": 6,
+        "duplicate_url_count": 1,
+        "image_hosts": [
+          "cdn.shopify.com"
+        ],
+        "ok": true
+      },
+      "variant": {
+        "module_present": true,
+        "variant_count": 1,
+        "label_count": 2,
+        "labels": [
+          "Size: 90 g",
+          "90 g"
+        ],
+        "bad_labels": [],
+        "ok": true
+      },
+      "reviews": {
+        "module_present": true,
+        "rating": 5,
+        "review_count": 20,
+        "chart_present": true,
+        "chart_estimated": true,
+        "preview_count": 2,
+        "ok": true
+      },
+      "insights": {
+        "module_present": true,
+        "quality_state": "reviewed",
+        "evidence_profile": "official_pdp_reviewed_formula_and_usage",
+        "seller_only_evidence": false,
+        "seller_grounded_reviewed": false,
+        "headline": "Face cleanser",
+        "why_count": 3,
+        "ok": true
+      },
+      "content": {
+        "ingredients_present": true,
+        "ingredients_text_count": 53,
+        "ingredients_source_origin": "pdp_section",
+        "ingredients_source_quality_status": "authoritative",
+        "ingredients_force_filled": false,
+        "active_ingredients_present": true,
+        "active_ingredients_source_origin": "reviewed_active_ingredients",
+        "active_ingredients_source_quality_status": "high",
+        "active_ingredients_force_filled": false,
+        "how_to_present": true,
+        "how_to_text_count": 6,
+        "overview_present": true,
+        "details_present": true,
+        "details_text_count": 4
+      },
+      "similar": {
+        "module_present": true,
+        "count": 0,
+        "status": "deferred"
+      },
+      "product_kind": {
+        "family": "single_formula",
+        "reasons": [
+          "explicit_product_kind_signal"
+        ],
+        "pdp_schema_profile": "beauty_formula",
+        "formula_content_required": true,
+        "merchandising_content_applicable": true
+      },
+      "blocking_reasons": [],
+      "pdp_quality_bucket": "ready",
+      "conversion_ready": true
+    },
+    {
+      "external_product_id": "ext_2ed925c42fe7f2dfd73f98db",
+      "pivota_signature_id": "sig_4d1350a019453aaab84a0311c5599944",
+      "probed_product_id": "ext_2ed925c42fe7f2dfd73f98db",
+      "probed_id_type": "ext",
+      "seed_id": "eps_980f1a0ca8435efe2c35806c",
+      "market": "US",
+      "domain": "tirtir.global",
+      "title": "Matcha Tea Pads",
+      "canonical_url": "https://tirtir.global/products/matcha-tea-pad",
+      "http_status": 200,
+      "pdp_status": "success",
+      "build_id": "606355788d43",
+      "module_types": [
+        "canonical",
+        "variant_selector",
+        "offers",
+        "product_intel",
+        "active_ingredients",
+        "ingredients_inci",
+        "how_to_use",
+        "product_overview",
+        "product_facts",
+        "supplemental_details",
+        "product_details",
+        "reviews_preview",
+        "similar"
+      ],
+      "missing_modules": [],
+      "gallery": {
+        "image_count": 7,
+        "duplicate_url_count": 1,
+        "image_hosts": [
+          "tirtir.global"
+        ],
+        "ok": true
+      },
+      "variant": {
+        "module_present": true,
+        "variant_count": 1,
+        "label_count": 2,
+        "labels": [
+          "Size: 70 pads / 160 mL",
+          "70 pads / 160 mL"
+        ],
+        "bad_labels": [],
+        "ok": true
+      },
+      "reviews": {
+        "module_present": true,
+        "rating": 5,
+        "review_count": 3,
+        "chart_present": true,
+        "chart_estimated": false,
+        "preview_count": 3,
+        "ok": true
+      },
+      "insights": {
+        "module_present": true,
+        "quality_state": "reviewed",
+        "evidence_profile": "official_pdp_reviewed_formula_and_usage",
+        "seller_only_evidence": false,
+        "seller_grounded_reviewed": false,
+        "headline": "Treatment serum",
+        "why_count": 3,
+        "ok": true
+      },
+      "content": {
+        "ingredients_present": true,
+        "ingredients_text_count": 45,
+        "ingredients_source_origin": "pdp_section",
+        "ingredients_source_quality_status": "authoritative",
+        "ingredients_force_filled": false,
+        "active_ingredients_present": true,
+        "active_ingredients_source_origin": "reviewed_active_ingredients",
+        "active_ingredients_source_quality_status": "high",
+        "active_ingredients_force_filled": false,
+        "how_to_present": true,
+        "how_to_text_count": 8,
+        "overview_present": true,
+        "details_present": true,
+        "details_text_count": 28
+      },
+      "similar": {
+        "module_present": true,
+        "count": 0,
+        "status": "deferred"
+      },
+      "product_kind": {
+        "family": "single_formula",
+        "reasons": [
+          "explicit_product_kind_signal"
+        ],
+        "pdp_schema_profile": "beauty_formula",
+        "formula_content_required": true,
+        "merchandising_content_applicable": true
+      },
+      "blocking_reasons": [],
+      "pdp_quality_bucket": "ready",
+      "conversion_ready": true
+    },
+    {
+      "external_product_id": "ext_a6d24d905734889cd2a91fde",
+      "pivota_signature_id": "sig_e6307ec846a2db563d9fb10b64858d8c",
+      "probed_product_id": "ext_a6d24d905734889cd2a91fde",
+      "probed_id_type": "ext",
+      "seed_id": "eps_f2bf8f0fa4a54c290c6af490",
+      "market": "US",
+      "domain": "tirtir.global",
+      "title": "Milk Skin Toner Light",
+      "canonical_url": "https://tirtir.global/products/milk-skin-toner-light",
+      "http_status": 200,
+      "pdp_status": "success",
+      "build_id": "606355788d43",
+      "module_types": [
+        "canonical",
+        "variant_selector",
+        "offers",
+        "product_intel",
+        "active_ingredients",
+        "ingredients_inci",
+        "how_to_use",
+        "product_overview",
+        "product_facts",
+        "supplemental_details",
+        "product_details",
+        "reviews_preview",
+        "similar"
+      ],
+      "missing_modules": [
+        "product_facts",
+        "supplemental_details"
+      ],
+      "gallery": {
+        "image_count": 8,
+        "duplicate_url_count": 1,
+        "image_hosts": [
+          "tirtir.global"
+        ],
+        "ok": true
+      },
+      "variant": {
+        "module_present": true,
+        "variant_count": 3,
+        "label_count": 6,
+        "labels": [
+          "Size: 150 mL",
+          "Size: 50 mL",
+          "Size: 20 mL",
+          "150 mL",
+          "50 mL",
+          "20 mL"
+        ],
+        "bad_labels": [],
+        "ok": true
+      },
+      "reviews": {
+        "module_present": true,
+        "rating": 4.9,
+        "review_count": 70,
+        "chart_present": true,
+        "chart_estimated": false,
+        "preview_count": 6,
+        "ok": true
+      },
+      "insights": {
+        "module_present": true,
+        "quality_state": "reviewed",
+        "evidence_profile": "official_pdp_reviewed_formula_and_usage",
+        "seller_only_evidence": false,
+        "seller_grounded_reviewed": false,
+        "headline": "Face toner",
+        "why_count": 3,
+        "ok": true
+      },
+      "content": {
+        "ingredients_present": true,
+        "ingredients_text_count": 47,
+        "ingredients_source_origin": "pdp_section",
+        "ingredients_source_quality_status": "authoritative",
+        "ingredients_force_filled": false,
+        "active_ingredients_present": true,
+        "active_ingredients_source_origin": "reviewed_active_ingredients",
+        "active_ingredients_source_quality_status": "high",
+        "active_ingredients_force_filled": false,
+        "how_to_present": true,
+        "how_to_text_count": 6,
+        "overview_present": true,
+        "details_present": true,
+        "details_text_count": 4
+      },
+      "similar": {
+        "module_present": true,
+        "count": 0,
+        "status": "deferred"
+      },
+      "product_kind": {
+        "family": "single_formula",
+        "reasons": [
+          "explicit_product_kind_signal"
+        ],
+        "pdp_schema_profile": "beauty_formula",
+        "formula_content_required": true,
+        "merchandising_content_applicable": true
+      },
+      "blocking_reasons": [],
+      "pdp_quality_bucket": "ready",
+      "conversion_ready": true
+    },
+    {
+      "external_product_id": "ext_768ca6b8f29b99645a02a72d",
+      "pivota_signature_id": "sig_7c8b8d65616b059680f54213759b8870",
+      "probed_product_id": "ext_768ca6b8f29b99645a02a72d",
+      "probed_id_type": "ext",
+      "seed_id": "eps_41eb8c559b8ce68749d30dfd",
+      "market": "US",
+      "domain": "tirtir.global",
+      "title": "Milk Skin Toner",
+      "canonical_url": "https://tirtir.global/products/milk-skin-toner",
+      "http_status": 200,
+      "pdp_status": "success",
+      "build_id": "606355788d43",
+      "module_types": [
+        "canonical",
+        "variant_selector",
+        "offers",
+        "product_intel",
+        "active_ingredients",
+        "ingredients_inci",
+        "how_to_use",
+        "product_overview",
+        "product_facts",
+        "supplemental_details",
+        "product_details",
+        "reviews_preview",
+        "similar"
+      ],
+      "missing_modules": [
+        "product_facts",
+        "supplemental_details"
+      ],
+      "gallery": {
+        "image_count": 10,
+        "duplicate_url_count": 1,
+        "image_hosts": [
+          "tirtir.global"
+        ],
+        "ok": true
+      },
+      "variant": {
+        "module_present": true,
+        "variant_count": 3,
+        "label_count": 6,
+        "labels": [
+          "Size: 150 mL",
+          "Size: 50 mL",
+          "Size: 20 mL",
+          "150 mL",
+          "50 mL",
+          "20 mL"
+        ],
+        "bad_labels": [],
+        "ok": true
+      },
+      "reviews": {
+        "module_present": true,
+        "rating": 4.9,
+        "review_count": 311,
+        "chart_present": true,
+        "chart_estimated": false,
+        "preview_count": 6,
+        "ok": true
+      },
+      "insights": {
+        "module_present": true,
+        "quality_state": "reviewed",
+        "evidence_profile": "official_pdp_reviewed_formula_and_usage",
+        "seller_only_evidence": false,
+        "seller_grounded_reviewed": false,
+        "headline": "Face toner",
+        "why_count": 3,
+        "ok": true
+      },
+      "content": {
+        "ingredients_present": true,
+        "ingredients_text_count": 48,
+        "ingredients_source_origin": "pdp_section",
+        "ingredients_source_quality_status": "authoritative",
+        "ingredients_force_filled": false,
+        "active_ingredients_present": true,
+        "active_ingredients_source_origin": "reviewed_active_ingredients",
+        "active_ingredients_source_quality_status": "high",
+        "active_ingredients_force_filled": false,
+        "how_to_present": true,
+        "how_to_text_count": 6,
+        "overview_present": true,
+        "details_present": true,
+        "details_text_count": 4
+      },
+      "similar": {
+        "module_present": true,
+        "count": 0,
+        "status": "deferred"
+      },
+      "product_kind": {
+        "family": "single_formula",
+        "reasons": [
+          "explicit_product_kind_signal"
+        ],
+        "pdp_schema_profile": "beauty_formula",
+        "formula_content_required": true,
+        "merchandising_content_applicable": true
+      },
+      "blocking_reasons": [],
+      "pdp_quality_bucket": "ready",
+      "conversion_ready": true
+    },
+    {
+      "external_product_id": "ext_48efa66217f45990e58a3b50",
+      "pivota_signature_id": "sig_2efc08d1024784294478c587dbbc8ff1",
+      "probed_product_id": "ext_48efa66217f45990e58a3b50",
+      "probed_id_type": "ext",
+      "seed_id": "eps_752185164a25553c8ab67b29",
+      "market": "US",
+      "domain": "tirtir.global",
+      "title": "Mood Glider Lip And Blush Stick",
+      "canonical_url": "https://tirtir.global/products/mood-glider-lip-and-blush-stick",
+      "http_status": 200,
+      "pdp_status": "success",
+      "build_id": "606355788d43",
+      "module_types": [
+        "canonical",
+        "variant_selector",
+        "offers",
+        "product_intel",
+        "active_ingredients",
+        "ingredients_inci",
+        "how_to_use",
+        "product_overview",
+        "product_facts",
+        "supplemental_details",
+        "product_details",
+        "reviews_preview",
+        "similar"
+      ],
+      "missing_modules": [
+        "active_ingredients",
+        "product_facts"
+      ],
+      "gallery": {
+        "image_count": 14,
+        "duplicate_url_count": 1,
+        "image_hosts": [
+          "cdn.shopify.com",
+          "tirtir.global"
+        ],
+        "ok": true
+      },
+      "variant": {
+        "module_present": true,
+        "variant_count": 6,
+        "label_count": 12,
+        "labels": [
+          "Color: Peach Mingle",
+          "Color: Rose Drizzle",
+          "Color: Tangerine Glow",
+          "Color: Chilli Blaze",
+          "Color: Mulberry Potion",
+          "Color: Fuchsia Flash",
+          "Peach Mingle",
+          "Rose Drizzle",
+          "Tangerine Glow",
+          "Chilli Blaze",
+          "Mulberry Potion",
+          "Fuchsia Flash"
+        ],
+        "bad_labels": [],
+        "ok": true
+      },
+      "reviews": {
+        "module_present": true,
+        "rating": 4.8,
+        "review_count": 55,
+        "chart_present": true,
+        "chart_estimated": false,
+        "preview_count": 6,
+        "ok": true
+      },
+      "insights": {
+        "module_present": true,
+        "quality_state": "reviewed",
+        "evidence_profile": "official_pdp_reviewed_formula_and_usage",
+        "seller_only_evidence": false,
+        "seller_grounded_reviewed": false,
+        "headline": "Face color makeup",
+        "why_count": 3,
+        "ok": true
+      },
+      "content": {
+        "ingredients_present": true,
+        "ingredients_text_count": 43,
+        "ingredients_source_origin": "pdp_section",
+        "ingredients_source_quality_status": "authoritative",
+        "ingredients_force_filled": false,
+        "active_ingredients_present": false,
+        "active_ingredients_source_origin": null,
+        "active_ingredients_source_quality_status": null,
+        "active_ingredients_force_filled": false,
+        "how_to_present": true,
+        "how_to_text_count": 6,
+        "overview_present": true,
+        "details_present": true,
+        "details_text_count": 16
+      },
+      "similar": {
+        "module_present": true,
+        "count": 0,
+        "status": "deferred"
+      },
+      "product_kind": {
+        "family": "single_formula",
+        "reasons": [
+          "explicit_product_kind_signal"
+        ],
+        "pdp_schema_profile": "beauty_formula",
+        "formula_content_required": true,
+        "merchandising_content_applicable": true
+      },
+      "blocking_reasons": [],
+      "pdp_quality_bucket": "ready",
+      "conversion_ready": true
+    },
+    {
+      "external_product_id": "ext_02bd3cd623ef5dfb6e46d0d3",
+      "pivota_signature_id": "sig_733e83eaea81bb6c2f350882a3cb5e48",
+      "probed_product_id": "ext_02bd3cd623ef5dfb6e46d0d3",
+      "probed_id_type": "ext",
+      "seed_id": "eps_1210d03d41a77984a2305883",
+      "market": "US",
+      "domain": "tirtir.global",
+      "title": "Water Mellow Lip Balm",
+      "canonical_url": "https://tirtir.global/products/water-mellow-lip-balm",
+      "http_status": 200,
+      "pdp_status": "success",
+      "build_id": "606355788d43",
+      "module_types": [
+        "canonical",
+        "variant_selector",
+        "offers",
+        "product_intel",
+        "active_ingredients",
+        "ingredients_inci",
+        "how_to_use",
+        "product_overview",
+        "product_facts",
+        "supplemental_details",
+        "product_details",
+        "reviews_preview",
+        "similar"
+      ],
+      "missing_modules": [
+        "active_ingredients",
+        "product_facts"
+      ],
+      "gallery": {
+        "image_count": 13,
+        "duplicate_url_count": 1,
+        "image_hosts": [
+          "cdn.shopify.com",
+          "tirtir.global"
+        ],
+        "ok": true
+      },
+      "variant": {
+        "module_present": true,
+        "variant_count": 4,
+        "label_count": 8,
+        "labels": [
+          "Color: 01 Icy Blue",
+          "Color: 02 Mauve Berry",
+          "Color: 03 Peach Lemony",
+          "Color: 04 Greeny Apple",
+          "01 Icy Blue",
+          "02 Mauve Berry",
+          "03 Peach Lemony",
+          "04 Greeny Apple"
+        ],
+        "bad_labels": [],
+        "ok": true
+      },
+      "reviews": {
+        "module_present": true,
+        "rating": 4.9,
+        "review_count": 37,
+        "chart_present": true,
+        "chart_estimated": false,
+        "preview_count": 6,
+        "ok": true
+      },
+      "insights": {
+        "module_present": true,
+        "quality_state": "reviewed",
+        "evidence_profile": "official_pdp_reviewed_formula_and_usage",
+        "seller_only_evidence": false,
+        "seller_grounded_reviewed": false,
+        "headline": "Lip treatment",
+        "why_count": 3,
+        "ok": true
+      },
+      "content": {
+        "ingredients_present": true,
+        "ingredients_text_count": 53,
+        "ingredients_source_origin": "pdp_section",
+        "ingredients_source_quality_status": "authoritative",
+        "ingredients_force_filled": false,
+        "active_ingredients_present": false,
+        "active_ingredients_source_origin": null,
+        "active_ingredients_source_quality_status": null,
+        "active_ingredients_force_filled": false,
+        "how_to_present": true,
+        "how_to_text_count": 6,
+        "overview_present": true,
+        "details_present": true,
+        "details_text_count": 16
+      },
+      "similar": {
+        "module_present": true,
+        "count": 0,
+        "status": "deferred"
+      },
+      "product_kind": {
+        "family": "single_formula",
+        "reasons": [
+          "explicit_product_kind_signal"
+        ],
+        "pdp_schema_profile": "beauty_formula",
+        "formula_content_required": true,
+        "merchandising_content_applicable": true
+      },
+      "blocking_reasons": [],
+      "pdp_quality_bucket": "ready",
+      "conversion_ready": true
+    },
+    {
+      "external_product_id": "ext_582d80fdcf353c0e8c0edd9d",
+      "pivota_signature_id": "sig_e152c6f72e40024b911522781259f04e",
+      "probed_product_id": "ext_582d80fdcf353c0e8c0edd9d",
+      "probed_id_type": "ext",
+      "seed_id": "eps_bbb1bb6c35511fb16362f45a",
+      "market": "US",
+      "domain": "tirtir.global",
+      "title": "Waterism Glow Melting Balm",
+      "canonical_url": "https://tirtir.global/products/waterism-glow-melting-balm",
+      "http_status": 200,
+      "pdp_status": "success",
+      "build_id": "606355788d43",
+      "module_types": [
+        "canonical",
+        "variant_selector",
+        "offers",
+        "product_intel",
+        "active_ingredients",
+        "ingredients_inci",
+        "how_to_use",
+        "product_overview",
+        "product_facts",
+        "supplemental_details",
+        "product_details",
+        "reviews_preview",
+        "similar"
+      ],
+      "missing_modules": [
+        "active_ingredients",
+        "product_facts",
+        "supplemental_details"
+      ],
+      "gallery": {
+        "image_count": 16,
+        "duplicate_url_count": 1,
+        "image_hosts": [
+          "tirtir.global"
+        ],
+        "ok": true
+      },
+      "variant": {
+        "module_present": true,
+        "variant_count": 9,
+        "label_count": 18,
+        "labels": [
+          "Color: 01 Mauve Rose Pearls",
+          "Color: 02 Merry Coral",
+          "Color: 03 Sand Mond Pearls",
+          "Color: 04 Fig Peach Pearls",
+          "Color: 05 Scotch Shot Pearls",
+          "Color: 06 Honey Nut",
+          "Color: 07 Classic Plum",
+          "Color: 08 Summer Pumpkin",
+          "Color: 09 Salmon Syrup",
+          "01 Mauve Rose Pearls",
+          "02 Merry Coral",
+          "03 Sand Mond Pearls"
+        ],
+        "bad_labels": [],
+        "ok": true
+      },
+      "reviews": {
+        "module_present": true,
+        "rating": 4.9,
+        "review_count": 77,
+        "chart_present": true,
+        "chart_estimated": false,
+        "preview_count": 6,
+        "ok": true
+      },
+      "insights": {
+        "module_present": true,
+        "quality_state": "reviewed",
+        "evidence_profile": "official_pdp_reviewed_formula_and_usage",
+        "seller_only_evidence": false,
+        "seller_grounded_reviewed": false,
+        "headline": "Lip treatment",
+        "why_count": 3,
+        "ok": true
+      },
+      "content": {
+        "ingredients_present": true,
+        "ingredients_text_count": 42,
+        "ingredients_source_origin": "pdp_section",
+        "ingredients_source_quality_status": "authoritative",
+        "ingredients_force_filled": false,
+        "active_ingredients_present": false,
+        "active_ingredients_source_origin": null,
+        "active_ingredients_source_quality_status": null,
+        "active_ingredients_force_filled": false,
+        "how_to_present": true,
+        "how_to_text_count": 6,
+        "overview_present": true,
+        "details_present": true,
+        "details_text_count": 4
+      },
+      "similar": {
+        "module_present": true,
+        "count": 0,
+        "status": "deferred"
+      },
+      "product_kind": {
+        "family": "single_formula",
+        "reasons": [
+          "explicit_product_kind_signal"
+        ],
+        "pdp_schema_profile": "beauty_formula",
+        "formula_content_required": true,
+        "merchandising_content_applicable": true
+      },
+      "blocking_reasons": [],
+      "pdp_quality_bucket": "ready",
+      "conversion_ready": true
+    },
+    {
+      "external_product_id": "ext_f11383c339335d64f05a964e",
+      "pivota_signature_id": "sig_f5a4d54a743f913ebfbff3b2",
+      "probed_product_id": "ext_f11383c339335d64f05a964e",
+      "probed_id_type": "ext",
+      "seed_id": "eps_53a02baae8cea980284fd65c",
+      "market": "US",
+      "domain": "baiebotanique.com",
+      "title": "Regenerating Eye Cream",
+      "canonical_url": "https://www.baiebotanique.com/products/regenerating-eye-cream-sns",
+      "http_status": 200,
+      "pdp_status": "success",
+      "build_id": "606355788d43",
+      "module_types": [
+        "canonical",
+        "variant_selector",
+        "offers",
+        "product_intel",
+        "active_ingredients",
+        "ingredients_inci",
+        "how_to_use",
+        "product_overview",
+        "product_facts",
+        "supplemental_details",
+        "product_details",
+        "reviews_preview",
+        "similar"
+      ],
+      "missing_modules": [
+        "active_ingredients"
+      ],
+      "gallery": {
+        "image_count": 11,
+        "duplicate_url_count": 1,
+        "image_hosts": [
+          "www.baiebotanique.com"
+        ],
+        "ok": true
+      },
+      "variant": {
+        "module_present": true,
+        "variant_count": 1,
+        "label_count": 2,
+        "labels": [
+          "Size: 15 mL",
+          "15 mL"
+        ],
+        "bad_labels": [],
+        "ok": true
+      },
+      "reviews": {
+        "module_present": true,
+        "rating": null,
+        "review_count": 0,
+        "chart_present": false,
+        "chart_estimated": false,
+        "preview_count": 0,
+        "ok": true
+      },
+      "insights": {
+        "module_present": true,
+        "quality_state": "reviewed",
+        "evidence_profile": "official_pdp_reviewed_formula_and_usage",
+        "seller_only_evidence": false,
+        "seller_grounded_reviewed": false,
+        "headline": "Body care treatment",
+        "why_count": 3,
+        "ok": true
+      },
+      "content": {
+        "ingredients_present": true,
+        "ingredients_text_count": 43,
+        "ingredients_source_origin": "pdp_section",
+        "ingredients_source_quality_status": "authoritative",
+        "ingredients_force_filled": false,
+        "active_ingredients_present": false,
+        "active_ingredients_source_origin": null,
+        "active_ingredients_source_quality_status": null,
+        "active_ingredients_force_filled": false,
+        "how_to_present": true,
+        "how_to_text_count": 9,
+        "overview_present": true,
+        "details_present": true,
+        "details_text_count": 43
+      },
+      "similar": {
+        "module_present": true,
+        "count": 0,
+        "status": "deferred"
+      },
+      "product_kind": {
+        "family": "single_formula",
+        "reasons": [
+          "explicit_product_kind_signal"
+        ],
+        "pdp_schema_profile": "beauty_formula",
+        "formula_content_required": true,
+        "merchandising_content_applicable": true
+      },
+      "blocking_reasons": [],
+      "pdp_quality_bucket": "ready",
+      "conversion_ready": true
+    }
+  ]
+}
