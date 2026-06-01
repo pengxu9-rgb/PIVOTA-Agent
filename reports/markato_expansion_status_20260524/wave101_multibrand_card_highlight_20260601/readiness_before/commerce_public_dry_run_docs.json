@@ -1,0 +1,127 @@
+{
+  "generated_at": "2026-06-01T01:29:08.067Z",
+  "market": "US",
+  "include_non_public": false,
+  "docs_built": 2,
+  "source_build_failures": [],
+  "docs": [
+    {
+      "doc_id": "sellable:sig_9eea2edaaca8b2a0b15e3dde",
+      "sellable_item_group_id": "sig_9eea2edaaca8b2a0b15e3dde",
+      "product_line_id": "pl_eb37a69446e17a1fb0e12c5b",
+      "review_family_id": "rf_eb37a69446e17a1fb0e12c5b",
+      "brand_name": "EMBRYOLISSE",
+      "category_paths": [
+        "Moisturizer"
+      ],
+      "market": "US",
+      "availability_state": "available",
+      "publish_state": "public",
+      "title": "Active Night Peeling",
+      "subtitle": "This peeling skin care gently but effectively stimulates the skin’s natural exfoliating process overnight thanks to a caviar lemon extract microdosed in fruit acid in an original combination of vegetable oils, wax and butter. From the moment you wake up, your skin is softer. Night after night, the skin’s texture is refined, and the complexion is fresh and radiant.\n\nBENEFITS:\n\n“New skin” effect\n\nReduced skin irregularities\n\nEven and radiant complexion",
+      "variant_axes": {
+        "size": "1 35 fl oz",
+        "volume": "35floz",
+        "multi_variant": false
+      },
+      "size": null,
+      "shade": null,
+      "pack": null,
+      "hero_media": {
+        "url": "https://cdn.shopify.com/s/files/1/0752/5643/0881/products/EB108000_01_63b73009-827b-4240-9a8d-ea31555251a5.jpg?v=1689112065",
+        "source_kind": "catalog",
+        "source_tier": "catalog"
+      },
+      "preview_media": [
+        "https://cdn.shopify.com/s/files/1/0752/5643/0881/products/EB108000_01_63b73009-827b-4240-9a8d-ea31555251a5.jpg?v=1689112065",
+        "https://cdn.shopify.com/s/files/1/0752/5643/0881/files/active-night-peeling-results.jpg?v=1772131688",
+        "https://cdn.shopify.com/s/files/1/0752/5643/0881/files/active-line-peeling-eye-care.jpg?v=1772131688",
+        "https://cdn.shopify.com/s/files/1/0752/5643/0881/files/active-night-peeling-ingredients.jpg?v=1772131688",
+        "https://cdn.shopify.com/s/files/1/0752/5643/0881/files/active-night-peeling-texture.jpg?v=1772131594",
+        "https://us.embryolisse.com/cdn/shop/files/active-night-peeling-results.jpg?v=1772131688&width=1500"
+      ],
+      "price_min": 38,
+      "price_max": 38,
+      "default_offer_id": "external_seed:ext_eea510adf58c3c3b5b906b1c",
+      "internal_offer_exists": false,
+      "external_offer_exists": true,
+      "pivota_insight_status": "missing",
+      "pivota_insight_summary": null,
+      "quality_score": null,
+      "browse_score": null,
+      "facet_tokens": [
+        "EMBRYOLISSE",
+        "Moisturizer"
+      ],
+      "sort_keys": {
+        "price_min": 38,
+        "price_max": 38,
+        "updated_at": null
+      },
+      "updated_at": null,
+      "source_refs": [
+        "external_seed:ext_eea510adf58c3c3b5b906b1c"
+      ]
+    },
+    {
+      "doc_id": "sellable:sig_c7f11d398e4f007a048edd09",
+      "sellable_item_group_id": "sig_c7f11d398e4f007a048edd09",
+      "product_line_id": "pl_3497ad6cc2e42c628437ea0f",
+      "review_family_id": "rf_3497ad6cc2e42c628437ea0f",
+      "brand_name": "EMBRYOLISSE",
+      "category_paths": [
+        "Fragrance"
+      ],
+      "market": "US",
+      "availability_state": "available",
+      "publish_state": "public",
+      "title": "Lait-Crème Sensitive - Fragrance free",
+      "subtitle": "The Lait-Crème Sensitive shares the same moisturizing and nourishing properties in a new formulation developed for sensitive skin. It remains rich in essential fatty acids and vitamins, which provide the skin with essential nutrients, retain water, and protect it from aggressions.\n\nIt leaves a comfortable, soothing, and silky-soft veil over even the most fragile, sensitive, and reactive skin, such as babies.\n\nBENEFITS:\n\nMoisturized skin regains suppleness and elasticity\n\nPlumped, smooth, and soft skin\n\nConsistently soothes hypersensitive skin\n\nReduces skin sensitivity\n\nProvides an immediate feeling of comfort\n\nRESULTS:\n\nNourishes face and body skin and reduces signs of dryness – 89%*\n\nFace and body skin are immediately and durably moisturized – 87%*\n\nThe product calms/soothes feelings of discomfort, tightness, skin irritation and redness – 88%**\n\nThe product protects the skin from external aggressions – 84%*\n\nSkin regains its suppleness and elasticity – 94%**\n\nThe product calms and soothes my baby's/child's fragile skin – 100%***\n\n*Self-evaluation, 100% sensitive skin, 28 days of use on 38 people, under dermatological control.\n\n**Self-evaluation, 100% sensitive skin, 28 days of use on 34 people, dermatologically monitored.\n\n***Self-evaluation, 100% sensitive skin, 28 days of use on 20 babies, under pediatric control.",
+      "variant_axes": {
+        "size": "3 38 fl oz",
+        "volume": "38floz",
+        "multi_variant": true
+      },
+      "size": null,
+      "shade": null,
+      "pack": null,
+      "hero_media": {
+        "url": "https://cdn.shopify.com/s/files/1/0752/5643/0881/products/EB203000_01_32033547-8a63-45e7-8b33-a10b4a6e62f1.jpg?v=1685993556",
+        "source_kind": "catalog",
+        "source_tier": "catalog"
+      },
+      "preview_media": [
+        "https://cdn.shopify.com/s/files/1/0752/5643/0881/products/EB203000_01_32033547-8a63-45e7-8b33-a10b4a6e62f1.jpg?v=1685993556",
+        "https://cdn.shopify.com/s/files/1/0752/5643/0881/files/Lait-Cr_me_Sensitive_Benefits.jpg?v=1772146174",
+        "https://cdn.shopify.com/s/files/1/0752/5643/0881/files/LCS-travel2-website.jpg?v=1772043284",
+        "https://cdn.shopify.com/s/files/1/0752/5643/0881/files/Lait-Cr_me-Sensitive-multifunctions.jpg?v=1772146174",
+        "https://cdn.shopify.com/s/files/1/0752/5643/0881/products/EB203000_03_c268a7e0-92c0-47d5-ba8b-af2430b90a58.jpg?v=1772043284",
+        "https://cdn.shopify.com/s/files/1/0752/5643/0881/files/Lait-Cr_me-Sensitive-ingredients.jpg?v=1772146174",
+        "https://cdn.shopify.com/s/files/1/0752/5643/0881/files/LCS-2-sizes.jpg?v=1772828355",
+        "https://us.embryolisse.com/cdn/shop/files/Lait-Cr_me_Sensitive_Benefits.jpg?v=1772146174&width=1500"
+      ],
+      "price_min": 35,
+      "price_max": 35,
+      "default_offer_id": "external_seed:ext_f39b95a6360df6259d96ea82",
+      "internal_offer_exists": false,
+      "external_offer_exists": true,
+      "pivota_insight_status": "missing",
+      "pivota_insight_summary": null,
+      "quality_score": null,
+      "browse_score": null,
+      "facet_tokens": [
+        "EMBRYOLISSE",
+        "Fragrance"
+      ],
+      "sort_keys": {
+        "price_min": 35,
+        "price_max": 35,
+        "updated_at": null
+      },
+      "updated_at": null,
+      "source_refs": [
+        "external_seed:ext_f39b95a6360df6259d96ea82"
+      ]
+    }
+  ]
+}

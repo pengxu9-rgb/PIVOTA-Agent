@@ -1,0 +1,128 @@
+{
+  "generated_at": "2026-06-01T01:48:00.713Z",
+  "market": "US",
+  "include_non_public": false,
+  "docs_built": 2,
+  "source_build_failures": [],
+  "docs": [
+    {
+      "doc_id": "sellable:sig_2b0b5a51150245dd2101f988",
+      "sellable_item_group_id": "sig_2b0b5a51150245dd2101f988",
+      "product_line_id": "pl_696825950c4eeeba588ad751",
+      "review_family_id": "rf_696825950c4eeeba588ad751",
+      "brand_name": "First Aid Beauty",
+      "category_paths": [
+        "Moisturizer"
+      ],
+      "market": "US",
+      "availability_state": "available",
+      "publish_state": "public",
+      "title": "Ultra Repair Cream Intense Hydration",
+      "subtitle": "An award-winning moisturizer that instantly relieves dry, distressed skin and eczema, plus strengthens skin's moisture barrier. Recognized by the National Eczema Association, National Psoriasis Foundation and National Rosacea Society with the seal of acceptance.\n\nThe barrier-building fast - absorbing formula provides 24-hr hydration and is made with Ceramides and skin protectant 0.5% Colloidal Oatmeal that treats eczema. Designed for sensitive skin and good for use on face + body .\n\nAllergen-Free, Vegan, Gluten-Free, Soy-Free, Nut-Free, Nano-Free, Parthenolide-Free\n\nSafe for sensitive skin",
+      "variant_axes": {
+        "volume": "6oz",
+        "multi_variant": true
+      },
+      "size": null,
+      "shade": null,
+      "pack": null,
+      "hero_media": {
+        "url": "https://cdn.shopify.com/s/files/1/0615/7352/9653/files/Ultra-Repair-Cream_2026-Refresh_FAB_Lead_6oz_Fab_3.webp?v=1765900779",
+        "source_kind": "catalog",
+        "source_tier": "catalog"
+      },
+      "preview_media": [
+        "https://cdn.shopify.com/s/files/1/0615/7352/9653/files/Ultra-Repair-Cream_2026-Refresh_FAB_Lead_6oz_Fab_3.webp?v=1765900779",
+        "https://cdn.shopify.com/s/files/1/0615/7352/9653/files/Ultra-Repair-Cream_2026-Refresh_FAB_Alt-02_9a0cafe7-0dae-4d6a-a0c0-eeac2342e12c.webp?v=1773680844",
+        "https://cdn.shopify.com/s/files/1/0615/7352/9653/files/Ultra-Repair-Cream_2026-Refresh_FAB_Alt-03_c834c0a8-7d05-4c7f-98c9-4555713244bc.webp?v=1773680844",
+        "https://cdn.shopify.com/s/files/1/0615/7352/9653/files/Ultra-Repair-Cream_2026-Refresh_FAB_Alt-04_28d51d69-853f-46c7-9a17-99125741053f.webp?v=1773680844",
+        "https://cdn.shopify.com/s/files/1/0615/7352/9653/files/Ultra-Repair-Cream_2026-Refresh_FAB_Alt-05_be9e692e-2a3e-489a-9029-217baa88b35b.webp?v=1773680844",
+        "https://cdn.shopify.com/s/files/1/0615/7352/9653/files/Ultra-Repair-Cream_2026-Refresh_FAB_Alt-06_229e9c6d-29a7-410e-9aa3-8fe0258c92e4.webp?v=1773680844",
+        "https://cdn.shopify.com/s/files/1/0615/7352/9653/files/Ultra-Repair-Cream_2026-Refresh_FAB_Alt-07_aa3e1aab-fa3a-4ccc-8651-a145fd0f0ada.webp?v=1773680844",
+        "https://cdn.shopify.com/s/files/1/0615/7352/9653/files/Ultra-Repair-Cream_2026-Refresh_FAB_Alt-08_113b206b-7c4c-4a91-b08a-93bd0db5eaa8.webp?v=1773680844"
+      ],
+      "price_min": 42,
+      "price_max": 42,
+      "default_offer_id": "external_seed:ext_8a021870d9ebe7c3dd0cb802",
+      "internal_offer_exists": false,
+      "external_offer_exists": true,
+      "pivota_insight_status": "available",
+      "pivota_insight_summary": "A First Aid Beauty foundation listed on the brand source page as Ultra Repair Cream Intense Hydration. The source description identifies: An moisturizer that instantly relieves dry, distressed skin and eczema, plus strengthens skin's moisture barrier.",
+      "quality_score": null,
+      "browse_score": null,
+      "facet_tokens": [
+        "First Aid Beauty",
+        "Moisturizer"
+      ],
+      "sort_keys": {
+        "price_min": 42,
+        "price_max": 42,
+        "updated_at": null
+      },
+      "updated_at": null,
+      "source_refs": [
+        "external_seed:ext_8a021870d9ebe7c3dd0cb802"
+      ]
+    },
+    {
+      "doc_id": "sellable:sig_2729c32ffa968fe507623c8c",
+      "sellable_item_group_id": "sig_2729c32ffa968fe507623c8c",
+      "product_line_id": "pl_edd290e942d4cd5ea4291c7c",
+      "review_family_id": "rf_edd290e942d4cd5ea4291c7c",
+      "brand_name": "First Aid Beauty",
+      "category_paths": [
+        "Moisturizer"
+      ],
+      "market": "US",
+      "availability_state": "available",
+      "publish_state": "public",
+      "title": "Ultra Repair Cream Intense Hydration Jumbo",
+      "subtitle": "An award-winning moisturizer that instantly relieves dry, distressed skin and eczema, plus strengthens skin's moisture barrier. Recognized by the National Eczema Association, National Psoriasis Foundation and National Rosacea Society with the seal of acceptance.\n\nThe barrier-building fast - absorbing formula provides 24-hr hydration and is made with Ceramides and skin protectant 0.5% Colloidal Oatmeal that treats eczema. Designed for sensitive skin and good for use on face + body .",
+      "variant_axes": {
+        "size": "jumbo",
+        "volume": "12oz",
+        "multi_variant": false
+      },
+      "size": null,
+      "shade": null,
+      "pack": null,
+      "hero_media": {
+        "url": "https://cdn.shopify.com/s/files/1/0615/7352/9653/files/URC_FAB_12oz_lead_2000x2000_9001600b-af7c-4cad-b04a-62a280854a6f.jpg?v=1771623732",
+        "source_kind": "catalog",
+        "source_tier": "catalog"
+      },
+      "preview_media": [
+        "https://cdn.shopify.com/s/files/1/0615/7352/9653/files/URC_FAB_12oz_lead_2000x2000_9001600b-af7c-4cad-b04a-62a280854a6f.jpg?v=1771623732",
+        "https://cdn.shopify.com/s/files/1/0615/7352/9653/files/Ultra-Repair-Cream_2026-Refresh_FAB_Alt-02_1a590ebc-b101-4928-a1da-1688103e5031.webp?v=1771623631",
+        "https://cdn.shopify.com/s/files/1/0615/7352/9653/files/Ultra-Repair-Cream_2026-Refresh_FAB_Alt-03_d0e1a7b6-b6cb-4838-bcf8-c57b1aa43bfd.webp?v=1771623635",
+        "https://cdn.shopify.com/s/files/1/0615/7352/9653/files/Ultra-Repair-Cream_2026-Refresh_FAB_Alt-04_08078dcf-5261-4c9f-b687-5c778af69738.webp?v=1771623637",
+        "https://cdn.shopify.com/s/files/1/0615/7352/9653/files/Ultra-Repair-Cream_2026-Refresh_FAB_Alt-05_81e10398-8423-4b5e-b0cf-3bbe68893d71.webp?v=1771623639",
+        "https://cdn.shopify.com/s/files/1/0615/7352/9653/files/Ultra-Repair-Cream_2026-Refresh_FAB_Alt-06_ea248c40-36b7-42fc-b863-55c6eeed3c3c.webp?v=1771623641",
+        "https://cdn.shopify.com/s/files/1/0615/7352/9653/files/Ultra-Repair-Cream_2026-Refresh_FAB_Alt-07_887e5fa9-06b1-4f5d-bf24-bbd100a67042.webp?v=1771623643",
+        "https://cdn.shopify.com/s/files/1/0615/7352/9653/files/Ultra-Repair-Cream_2026-Refresh_FAB_Alt-08_f7b95158-096e-4033-9e3c-ab939a4f5974.webp?v=1771623645"
+      ],
+      "price_min": 66,
+      "price_max": 66,
+      "default_offer_id": "external_seed:ext_df3aa47a3d320882d6fe3ae3",
+      "internal_offer_exists": false,
+      "external_offer_exists": true,
+      "pivota_insight_status": "available",
+      "pivota_insight_summary": "A First Aid Beauty foundation listed on the brand source page as Ultra Repair Cream Intense Hydration Jumbo. The source description identifies: An moisturizer that instantly relieves dry, distressed skin and eczema, plus strengthens skin's moisture barrier.",
+      "quality_score": null,
+      "browse_score": null,
+      "facet_tokens": [
+        "First Aid Beauty",
+        "Moisturizer"
+      ],
+      "sort_keys": {
+        "price_min": 66,
+        "price_max": 66,
+        "updated_at": null
+      },
+      "updated_at": null,
+      "source_refs": [
+        "external_seed:ext_df3aa47a3d320882d6fe3ae3"
+      ]
+    }
+  ]
+}

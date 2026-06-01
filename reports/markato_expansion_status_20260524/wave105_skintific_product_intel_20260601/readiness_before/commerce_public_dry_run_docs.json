@@ -1,0 +1,70 @@
+{
+  "generated_at": "2026-06-01T02:11:12.190Z",
+  "market": "US",
+  "include_non_public": false,
+  "docs_built": 1,
+  "source_build_failures": [],
+  "docs": [
+    {
+      "doc_id": "sellable:sig_46d151db21fbfe9b9c88dd79",
+      "sellable_item_group_id": "sig_46d151db21fbfe9b9c88dd79",
+      "product_line_id": "pl_3ac54a170ff62cb447751bea",
+      "review_family_id": "rf_3ac54a170ff62cb447751bea",
+      "brand_name": "SKINTIFIC",
+      "category_paths": [
+        "Serum"
+      ],
+      "market": "US",
+      "availability_state": "available",
+      "publish_state": "public",
+      "title": "Glow Cushion & Serum Spray Set 2pcs",
+      "subtitle": "Why This Set Works Better Together\n\nUsing a serum spray before and during cushion application helps the base sit more smoothly and maintain a fresh glow for longer.\n\nRadiance Booster Serum Spray helps hydrate skin before makeup\n\nCushion applies more evenly on moisturized skin\n\nSerum mist helps refresh makeup during the day\n\nCushion delivers radiant coverage without heavy buildup\n\nTogether, this creates a balanced hydrating makeup set for glowing skin , especially for users looking for a natural luminous finish.\n\nKey Benefits\n\nInstantly boosts skin glow\n\nHelps cushion blend smoothly\n\nSupports longer, fresh-looking makeup\n\nHydrates skin during wear\n\nGives radiant natural coverage\n\nComfortable lightweight finish\n\nCore result:\n\nRadiant • Hydrating • Seamless\n\nWho It's Best For\n\nRecommended for:\n\ndry skin\n\ncombination skin\n\ndull skin\n\nmakeup beginners\n\nusers who prefer dewy base makeup\n\nEspecially suitable for users searching for:\n\nbest glow cushion for dry skin\n\nradiant cushion foundation with serum mist\n\ndewy makeup set for daily use",
+      "variant_axes": {
+        "pack": "2pack",
+        "color": "3 3 fl oz 00 porcelain",
+        "volume": "3floz",
+        "multi_variant": true
+      },
+      "size": null,
+      "shade": null,
+      "pack": null,
+      "hero_media": {
+        "url": "https://skintific.com/cdn/shop/files/SKINTIFIC-3262_170_2a3f664e-bce3-4fd6-9b92-ff78ea7d17b8.jpg?v=1767606248",
+        "source_kind": "catalog",
+        "source_tier": "catalog"
+      },
+      "preview_media": [
+        "https://skintific.com/cdn/shop/files/SKINTIFIC-3262_170_2a3f664e-bce3-4fd6-9b92-ff78ea7d17b8.jpg?v=1767606248",
+        "https://cdn.shopify.com/s/files/1/0563/1701/8217/files/1-1_fb371ad2-1fcf-433c-bad1-879b2c694f19.png?v=1775813606",
+        "https://cdn.shopify.com/s/files/1/0563/1701/8217/files/09_050f11f0-6eb4-4e07-a9da-3848803b3446.jpg?v=1775813428",
+        "https://cdn.shopify.com/s/files/1/0563/1701/8217/files/1_9e63d511-7efb-4420-b1b2-cbe40c54f3cc.jpg?v=1773235628",
+        "https://cdn.shopify.com/s/files/1/0563/1701/8217/files/1_84fffcf9-803a-4b62-89ce-9f35e14a0b01.png?v=1775813428",
+        "https://cdn.shopify.com/s/files/1/0563/1701/8217/files/3_ca0565b0-1865-4b83-8321-634acccb229f.jpg?v=1775813635",
+        "https://cdn.shopify.com/s/files/1/0563/1701/8217/files/6_f8d039db-50ba-49f7-8614-63ae69fa789e.jpg?v=1774418374",
+        "https://cdn.shopify.com/s/files/1/0563/1701/8217/files/2-USP.jpg?v=1774418374"
+      ],
+      "price_min": 28.5,
+      "price_max": 28.5,
+      "default_offer_id": "external_seed:ext_4f3abc692059299f1ac3f12b",
+      "internal_offer_exists": false,
+      "external_offer_exists": true,
+      "pivota_insight_status": "missing",
+      "pivota_insight_summary": null,
+      "quality_score": null,
+      "browse_score": null,
+      "facet_tokens": [
+        "SKINTIFIC",
+        "Serum"
+      ],
+      "sort_keys": {
+        "price_min": 28.5,
+        "price_max": 28.5,
+        "updated_at": null
+      },
+      "updated_at": null,
+      "source_refs": [
+        "external_seed:ext_4f3abc692059299f1ac3f12b"
+      ]
+    }
+  ]
+}

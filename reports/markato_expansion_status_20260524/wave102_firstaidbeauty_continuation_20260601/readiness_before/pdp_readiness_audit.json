@@ -1,0 +1,442 @@
+{
+  "generated_at": "2026-06-01T01:46:51.796Z",
+  "options": {
+    "market": "US",
+    "includeAttached": true,
+    "domain": null,
+    "externalProductIds": [
+      "ext_8a021870d9ebe7c3dd0cb802",
+      "ext_df3aa47a3d320882d6fe3ae3"
+    ],
+    "limit": 20,
+    "sampleLimit": 20,
+    "checkpointDir": "/Users/pengchydan/dev/_worktrees/pivota-agent-markato-wave25-786-20260527/reports/markato_expansion_status_20260524/wave102_firstaidbeauty_continuation_20260601/readiness_before/pdp_readiness_checkpoint",
+    "checkpointMode": "domain",
+    "resume": false,
+    "force": true,
+    "continueOnError": true,
+    "pageSize": 500,
+    "format": "json"
+  },
+  "warnings": [],
+  "summary": {
+    "scanned": 2,
+    "by_market": {
+      "US": 2
+    },
+    "by_domain": [
+      {
+        "key": "firstaidbeauty.com",
+        "count": 2
+      }
+    ],
+    "by_product_family": [
+      {
+        "key": "single_formula",
+        "count": 2
+      }
+    ],
+    "coverage": {
+      "missing_inci": 0,
+      "missing_active_raw": 2,
+      "missing_details": 0,
+      "missing_how_to": 0,
+      "missing_faq": 1
+    },
+    "pivota_insights": {
+      "direct": {
+        "displayable": 0,
+        "high_quality_ready": 0,
+        "missing_kb": 0,
+        "not_displayable": 2
+      },
+      "effective": {
+        "displayable": 0,
+        "high_quality_ready": 0,
+        "missing_kb": 0,
+        "not_displayable": 2,
+        "borrowed_from_sibling": 0
+      },
+      "effective_issues": [
+        {
+          "key": "empty_watchouts",
+          "count": 2
+        },
+        {
+          "key": "not_displayable_gate",
+          "count": 2
+        },
+        {
+          "key": "not_reviewed",
+          "count": 2
+        },
+        {
+          "key": "quality_limited",
+          "count": 2
+        },
+        {
+          "key": "seller_only_evidence",
+          "count": 2
+        }
+      ],
+      "effective_issue_domains": [
+        {
+          "key": "firstaidbeauty.com::empty_watchouts",
+          "count": 2
+        },
+        {
+          "key": "firstaidbeauty.com::not_displayable_gate",
+          "count": 2
+        },
+        {
+          "key": "firstaidbeauty.com::not_reviewed",
+          "count": 2
+        },
+        {
+          "key": "firstaidbeauty.com::quality_limited",
+          "count": 2
+        },
+        {
+          "key": "firstaidbeauty.com::seller_only_evidence",
+          "count": 2
+        }
+      ],
+      "quality_state": [
+        {
+          "key": "limited",
+          "count": 2
+        }
+      ],
+      "evidence_profile": [
+        {
+          "key": "seller_only",
+          "count": 2
+        }
+      ],
+      "samples": {
+        "not_reviewed": [
+          {
+            "external_product_id": "ext_8a021870d9ebe7c3dd0cb802",
+            "domain": "firstaidbeauty.com",
+            "title": "Ultra Repair Cream Intense Hydration",
+            "used_product_id": "ext_8a021870d9ebe7c3dd0cb802",
+            "quality_state": "limited",
+            "evidence_profile": "seller_only"
+          },
+          {
+            "external_product_id": "ext_df3aa47a3d320882d6fe3ae3",
+            "domain": "firstaidbeauty.com",
+            "title": "Ultra Repair Cream Intense Hydration Jumbo",
+            "used_product_id": "ext_df3aa47a3d320882d6fe3ae3",
+            "quality_state": "limited",
+            "evidence_profile": "seller_only"
+          }
+        ],
+        "not_displayable_gate": [
+          {
+            "external_product_id": "ext_8a021870d9ebe7c3dd0cb802",
+            "domain": "firstaidbeauty.com",
+            "title": "Ultra Repair Cream Intense Hydration",
+            "used_product_id": "ext_8a021870d9ebe7c3dd0cb802",
+            "quality_state": "limited",
+            "evidence_profile": "seller_only"
+          },
+          {
+            "external_product_id": "ext_df3aa47a3d320882d6fe3ae3",
+            "domain": "firstaidbeauty.com",
+            "title": "Ultra Repair Cream Intense Hydration Jumbo",
+            "used_product_id": "ext_df3aa47a3d320882d6fe3ae3",
+            "quality_state": "limited",
+            "evidence_profile": "seller_only"
+          }
+        ],
+        "seller_only_evidence": [
+          {
+            "external_product_id": "ext_8a021870d9ebe7c3dd0cb802",
+            "domain": "firstaidbeauty.com",
+            "title": "Ultra Repair Cream Intense Hydration",
+            "used_product_id": "ext_8a021870d9ebe7c3dd0cb802",
+            "quality_state": "limited",
+            "evidence_profile": "seller_only"
+          },
+          {
+            "external_product_id": "ext_df3aa47a3d320882d6fe3ae3",
+            "domain": "firstaidbeauty.com",
+            "title": "Ultra Repair Cream Intense Hydration Jumbo",
+            "used_product_id": "ext_df3aa47a3d320882d6fe3ae3",
+            "quality_state": "limited",
+            "evidence_profile": "seller_only"
+          }
+        ]
+      }
+    },
+    "active_ingredients": {
+      "regulatory_expected": 0,
+      "hero_expected": 2,
+      "any_active_items": 2,
+      "status": [
+        {
+          "key": "ready_hero",
+          "count": 2
+        }
+      ],
+      "issues": [],
+      "issue_domains": [],
+      "source_origin": [
+        {
+          "key": "pdp_section",
+          "count": 2
+        }
+      ],
+      "samples": {}
+    },
+    "variants": {
+      "status": [
+        {
+          "key": "ready",
+          "count": 2
+        }
+      ],
+      "issues": [],
+      "issue_domains": [],
+      "samples": {}
+    }
+  },
+  "rows": [
+    {
+      "seed_id": "eps_07409d649c54a02b539b11b8",
+      "external_product_id": "ext_8a021870d9ebe7c3dd0cb802",
+      "market": "US",
+      "domain": "firstaidbeauty.com",
+      "title": "Ultra Repair Cream Intense Hydration",
+      "canonical_url": "https://www.firstaidbeauty.com/products/ultra-repair-cream-intense-hydration",
+      "product_family": "single_formula",
+      "product_line_id": "pl_696825950c4eeeba588ad751",
+      "identity_variant_axes": {
+        "volume": "6oz",
+        "multi_variant": true
+      },
+      "pivota_insights": {
+        "direct": {
+          "product_id": "ext_8a021870d9ebe7c3dd0cb802",
+          "kb_key": "product:ext_8a021870d9ebe7c3dd0cb802",
+          "status": "not_displayable",
+          "kb_exists": true,
+          "displayable": false,
+          "high_quality_ready": false,
+          "human_reviewed": false,
+          "issues": [
+            "not_reviewed",
+            "not_displayable_gate",
+            "empty_watchouts",
+            "quality_limited",
+            "seller_only_evidence"
+          ],
+          "blocking_issues": [
+            "not_reviewed",
+            "not_displayable_gate"
+          ],
+          "quality_state": "limited",
+          "evidence_profile": "seller_only",
+          "has_card_highlight": true
+        },
+        "effective": {
+          "product_id": "ext_8a021870d9ebe7c3dd0cb802",
+          "kb_key": "product:ext_8a021870d9ebe7c3dd0cb802",
+          "status": "not_displayable",
+          "kb_exists": true,
+          "displayable": false,
+          "high_quality_ready": false,
+          "human_reviewed": false,
+          "issues": [
+            "not_reviewed",
+            "not_displayable_gate",
+            "empty_watchouts",
+            "quality_limited",
+            "seller_only_evidence"
+          ],
+          "blocking_issues": [
+            "not_reviewed",
+            "not_displayable_gate"
+          ],
+          "quality_state": "limited",
+          "evidence_profile": "seller_only",
+          "has_card_highlight": true
+        },
+        "product_line_id": "pl_696825950c4eeeba588ad751",
+        "borrowed_from_sibling": false
+      },
+      "active_ingredients": {
+        "status": "ready_hero",
+        "issues": [],
+        "regulatory_expected": false,
+        "hero_expected": true,
+        "active_items": [
+          "Ceramide NP",
+          "Squalane"
+        ],
+        "source_origin": "pdp_section",
+        "source_quality_status": "captured",
+        "coverage": {
+          "details_sections_count": 6,
+          "faq_count": 0,
+          "how_to_chars": 57,
+          "inci_chars": 746,
+          "active_ingredients_chars": 0,
+          "inci_applicability_status": "",
+          "ingredient_review_status": "",
+          "ingredient_remediation_action": "",
+          "bundle_component_refs_count": 0,
+          "effective_inci_chars": 746,
+          "inci_borrowed_from_product_id": ""
+        },
+        "invalid_fragments": [],
+        "suppressed_reason": null
+      },
+      "variants": {
+        "status": "ready",
+        "issues": [],
+        "visible_variant_rows": 5,
+        "examples": {
+          "identity_option_visible": [],
+          "wrong_axis_for_category": [],
+          "makeup_shade_missing_visual": [],
+          "size_value_generic_axis": [],
+          "default_option_size_evidence_missing_axis": [],
+          "identity_default_title_axis": []
+        }
+      },
+      "coverage": {
+        "details_sections_count": 6,
+        "faq_count": 0,
+        "how_to_chars": 57,
+        "inci_chars": 746,
+        "active_ingredients_chars": 0,
+        "inci_applicability_status": "",
+        "ingredient_review_status": "",
+        "ingredient_remediation_action": "",
+        "bundle_component_refs_count": 0,
+        "effective_inci_chars": 746,
+        "inci_borrowed_from_product_id": ""
+      }
+    },
+    {
+      "seed_id": "eps_5a64a3a5fc84a9ffb608556c",
+      "external_product_id": "ext_df3aa47a3d320882d6fe3ae3",
+      "market": "US",
+      "domain": "firstaidbeauty.com",
+      "title": "Ultra Repair Cream Intense Hydration Jumbo",
+      "canonical_url": "https://www.firstaidbeauty.com/products/ultra-repair-cream-intense-hydration-12oz",
+      "product_family": "single_formula",
+      "product_line_id": "pl_edd290e942d4cd5ea4291c7c",
+      "identity_variant_axes": {
+        "size": "jumbo",
+        "volume": "12oz",
+        "multi_variant": false
+      },
+      "pivota_insights": {
+        "direct": {
+          "product_id": "ext_df3aa47a3d320882d6fe3ae3",
+          "kb_key": "product:ext_df3aa47a3d320882d6fe3ae3",
+          "status": "not_displayable",
+          "kb_exists": true,
+          "displayable": false,
+          "high_quality_ready": false,
+          "human_reviewed": false,
+          "issues": [
+            "not_reviewed",
+            "not_displayable_gate",
+            "empty_watchouts",
+            "quality_limited",
+            "seller_only_evidence"
+          ],
+          "blocking_issues": [
+            "not_reviewed",
+            "not_displayable_gate"
+          ],
+          "quality_state": "limited",
+          "evidence_profile": "seller_only",
+          "has_card_highlight": true
+        },
+        "effective": {
+          "product_id": "ext_df3aa47a3d320882d6fe3ae3",
+          "kb_key": "product:ext_df3aa47a3d320882d6fe3ae3",
+          "status": "not_displayable",
+          "kb_exists": true,
+          "displayable": false,
+          "high_quality_ready": false,
+          "human_reviewed": false,
+          "issues": [
+            "not_reviewed",
+            "not_displayable_gate",
+            "empty_watchouts",
+            "quality_limited",
+            "seller_only_evidence"
+          ],
+          "blocking_issues": [
+            "not_reviewed",
+            "not_displayable_gate"
+          ],
+          "quality_state": "limited",
+          "evidence_profile": "seller_only",
+          "has_card_highlight": true
+        },
+        "product_line_id": "pl_edd290e942d4cd5ea4291c7c",
+        "borrowed_from_sibling": false
+      },
+      "active_ingredients": {
+        "status": "ready_hero",
+        "issues": [],
+        "regulatory_expected": false,
+        "hero_expected": true,
+        "active_items": [
+          "Ceramide NP",
+          "Squalane"
+        ],
+        "source_origin": "pdp_section",
+        "source_quality_status": "captured",
+        "coverage": {
+          "details_sections_count": 10,
+          "faq_count": 2,
+          "how_to_chars": 57,
+          "inci_chars": 623,
+          "active_ingredients_chars": 0,
+          "inci_applicability_status": "",
+          "ingredient_review_status": "",
+          "ingredient_remediation_action": "",
+          "bundle_component_refs_count": 0,
+          "effective_inci_chars": 623,
+          "inci_borrowed_from_product_id": ""
+        },
+        "invalid_fragments": [],
+        "suppressed_reason": null
+      },
+      "variants": {
+        "status": "ready",
+        "issues": [],
+        "visible_variant_rows": 1,
+        "examples": {
+          "identity_option_visible": [],
+          "wrong_axis_for_category": [],
+          "makeup_shade_missing_visual": [],
+          "size_value_generic_axis": [],
+          "default_option_size_evidence_missing_axis": [],
+          "identity_default_title_axis": []
+        }
+      },
+      "coverage": {
+        "details_sections_count": 10,
+        "faq_count": 2,
+        "how_to_chars": 57,
+        "inci_chars": 623,
+        "active_ingredients_chars": 0,
+        "inci_applicability_status": "",
+        "ingredient_review_status": "",
+        "ingredient_remediation_action": "",
+        "bundle_component_refs_count": 0,
+        "effective_inci_chars": 623,
+        "inci_borrowed_from_product_id": ""
+      }
+    }
+  ]
+}
