@@ -24,37 +24,6 @@ const {
   lookupBeautyAttributesBatch,
   normalizeKey,
 } = require('../src/auroraBff/productBeautyAttributes');
-const { computeReviewPriority } = require('../src/auroraBff/relationshipReviewPriority');
-
-// Lever-2: order the review-pending report highest-predicted-approval first so
-// reviewers work the highest-yield candidates first. Pure: attaches
-// edge.review_priority and returns a stably-sorted copy (priority DESC, unscored
-// edges last). No-op (original order) when no model artifact is present.
-function reviewPriorityBrand(snapshot) {
-  return (snapshot && (snapshot.brand || snapshot.brand_name || snapshot.vendor)) || null;
-}
-
-function orderEdgesByReviewPriority(edges = [], attrsByKey = new Map()) {
-  const scored = edges.map((edge, index) => {
-    const priority = computeReviewPriority({
-      anchorAttrs: attrsByKey.get(normalizeKey(edge.anchor_ref)),
-      candidateAttrs: attrsByKey.get(normalizeKey(edge.candidate_product_ref)),
-      relationType: edge.relation_type,
-      scoreTotal: edge.score_total,
-      anchorBrand: reviewPriorityBrand(edge.anchor_snapshot),
-      candidateBrand: reviewPriorityBrand(edge.candidate_snapshot),
-    });
-    const next = priority == null ? edge : { ...edge, review_priority: priority };
-    return { edge: next, priority, index };
-  });
-  scored.sort((a, b) => {
-    if (a.priority == null && b.priority == null) return a.index - b.index;
-    if (a.priority == null) return 1;
-    if (b.priority == null) return -1;
-    return b.priority - a.priority || a.index - b.index;
-  });
-  return scored.map((s) => s.edge);
-}
 
 function argValue(name) {
   const idx = process.argv.indexOf(`--${name}`);
@@ -188,25 +157,34 @@ async function fetchProductsCacheBeautyRows(limit) {
     const res = await query(
       `
         SELECT
-          COALESCE(NULLIF(platform_product_id, ''), NULLIF(product_data->>'id', ''), id::text) AS product_ref,
-          product_data,
-          cached_at,
-          updated_at
-        FROM products_cache
+          COALESCE(NULLIF(pc.platform_product_id, ''), NULLIF(pc.product_data->>'id', ''), pc.id::text) AS product_ref,
+          pc.product_data,
+          pc.cached_at,
+          pc.updated_at,
+          cp.pivota_signature_id
+        FROM products_cache pc
+        LEFT JOIN catalog_products cp ON cp.source_product_id =
+          COALESCE(NULLIF(pc.platform_product_id, ''), NULLIF(pc.product_data->>'id', ''))
         WHERE (
-          lower(to_jsonb(product_data)::text) LIKE '%beauty%'
-          OR lower(to_jsonb(product_data)::text) LIKE '%skincare%'
-          OR lower(to_jsonb(product_data)::text) LIKE '%serum%'
-          OR lower(to_jsonb(product_data)::text) LIKE '%moisturizer%'
-          OR lower(to_jsonb(product_data)::text) LIKE '%cleanser%'
-          OR lower(to_jsonb(product_data)::text) LIKE '%sunscreen%'
+          lower(to_jsonb(pc.product_data)::text) LIKE '%beauty%'
+          OR lower(to_jsonb(pc.product_data)::text) LIKE '%skincare%'
+          OR lower(to_jsonb(pc.product_data)::text) LIKE '%serum%'
+          OR lower(to_jsonb(pc.product_data)::text) LIKE '%moisturizer%'
+          OR lower(to_jsonb(pc.product_data)::text) LIKE '%cleanser%'
+          OR lower(to_jsonb(pc.product_data)::text) LIKE '%sunscreen%'
         )
-        ORDER BY cached_at DESC NULLS LAST, id DESC
+        ORDER BY pc.cached_at DESC NULLS LAST, pc.id DESC
         LIMIT $1
       `,
       [Math.max(20, Math.min(Number(limit) || 1000, 5000))],
     );
-    return (Array.isArray(res?.rows) ? res.rows : []).map((row) => normalizeProductDataRow(row, 'products_cache'));
+    return (Array.isArray(res?.rows) ? res.rows : []).map((row) => {
+      const product = normalizeProductDataRow(row, 'products_cache');
+      return {
+        ...product,
+        ...(row.pivota_signature_id ? { product_ref: `product:${row.pivota_signature_id}` } : {}),
+      };
+    });
   } catch (err) {
     if (['NO_DATABASE', '42P01'].includes(String(err?.code || ''))) return [];
     throw err;
@@ -218,27 +196,29 @@ async function fetchExternalSeedBeautyRows(limit) {
     const res = await query(
       `
         SELECT
-          id,
-          external_product_id,
-          title,
-          price_amount,
-          market,
-          seed_data,
-          canonical_url,
-          updated_at,
-          created_at
-        FROM external_product_seeds
-        WHERE COALESCE(status, 'active') = 'active'
-          AND upper(COALESCE(market, 'US')) = 'US'
+          eps.id,
+          eps.external_product_id,
+          eps.title,
+          eps.price_amount,
+          eps.market,
+          eps.seed_data,
+          eps.canonical_url,
+          eps.updated_at,
+          eps.created_at,
+          cp.pivota_signature_id
+        FROM external_product_seeds eps
+        LEFT JOIN catalog_products cp ON cp.source_product_id = eps.external_product_id
+        WHERE COALESCE(eps.status, 'active') = 'active'
+          AND upper(COALESCE(eps.market, 'US')) = 'US'
           AND (
-            lower(to_jsonb(seed_data)::text) LIKE '%beauty%'
-            OR lower(to_jsonb(seed_data)::text) LIKE '%skincare%'
-            OR lower(to_jsonb(seed_data)::text) LIKE '%serum%'
-            OR lower(to_jsonb(seed_data)::text) LIKE '%moisturizer%'
-            OR lower(to_jsonb(seed_data)::text) LIKE '%cleanser%'
-            OR lower(to_jsonb(seed_data)::text) LIKE '%sunscreen%'
+            lower(to_jsonb(eps.seed_data)::text) LIKE '%beauty%'
+            OR lower(to_jsonb(eps.seed_data)::text) LIKE '%skincare%'
+            OR lower(to_jsonb(eps.seed_data)::text) LIKE '%serum%'
+            OR lower(to_jsonb(eps.seed_data)::text) LIKE '%moisturizer%'
+            OR lower(to_jsonb(eps.seed_data)::text) LIKE '%cleanser%'
+            OR lower(to_jsonb(eps.seed_data)::text) LIKE '%sunscreen%'
           )
-        ORDER BY updated_at DESC NULLS LAST, created_at DESC NULLS LAST
+        ORDER BY eps.updated_at DESC NULLS LAST, eps.created_at DESC NULLS LAST
         LIMIT $1
       `,
       [Math.max(20, Math.min(Number(limit) || 1000, 5000))],
@@ -247,7 +227,11 @@ async function fetchExternalSeedBeautyRows(limit) {
       const product = normalizeProductDataRow(row, 'external_product_seed');
       return {
         ...product,
-        product_ref: product.product_ref || `external:${normalizeString(row.external_product_id || row.id)}`,
+        // Use canonical sig_* ref when available so all platform listings of the
+        // same product generate edges under one shared identity.
+        product_ref: row.pivota_signature_id
+          ? `product:${row.pivota_signature_id}`
+          : (product.product_ref || `external:${normalizeString(row.external_product_id || row.id)}`),
         name: product.name || normalizeString(row.title),
         url: normalizeString(row.canonical_url || product.url),
         price: toNumberOrNull(product.price ?? row.price_amount),
@@ -430,11 +414,8 @@ async function main() {
   //
   // Explicit reviewer decisions (--review-status approved|rejected|pending)
   // bypass the gate — the reviewer's call is authoritative.
-  // Resolve beauty attributes for the whole generated batch once. Used by the
-  // prefilter gate (apply only) AND by review-priority ordering (always, so the
-  // dry-run report is ranked too).
   let attrsByKey = new Map();
-  if (defaultLabelState === 'generated' && report.edges.length) {
+  if (hasFlag('apply') && defaultLabelState === 'generated' && report.edges.length) {
     const productKeys = new Set();
     for (const edge of report.edges) {
       const aKey = normalizeKey(edge.anchor_ref);
@@ -476,12 +457,6 @@ async function main() {
     }
   }
 
-  // Lever-2: rank the review-pending report highest-predicted-approval first.
-  const reviewPriorityOrdered = defaultLabelState === 'generated' && attrsByKey.size > 0;
-  if (reviewPriorityOrdered) {
-    report.edges = orderEdgesByReviewPriority(report.edges, attrsByKey);
-  }
-
   const finalReport = {
     ...report,
     summary: {
@@ -494,7 +469,6 @@ async function main() {
       prefilter_rejected_count: prefilterRejected,
       prefilter_passed_count: prefilterPassed,
       prefilter_skipped_count: prefilterSkipped,
-      review_priority_ordered: reviewPriorityOrdered,
     },
   };
   if (hasFlag('require-anchors') && Number(finalReport.summary.anchor_count || 0) <= 0) {
@@ -530,5 +504,4 @@ module.exports = {
   numberArg,
   classifyEdgeForPrefilter,
   resolveDefaultLabelState,
-  orderEdgesByReviewPriority,
 };

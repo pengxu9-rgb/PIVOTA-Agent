@@ -15,10 +15,6 @@ const AUDIT_STATUSES = new Set(['pending', 'codex_reviewed', 'manually_corrected
 
 const SPF_OTC_VALUES = new Set(['cosmetic', 'spf', 'otc_drug', 'spf_otc', 'unknown']);
 const CLAIM_RISK_VALUES = new Set(['low', 'medium', 'high']);
-const TARGET_AREA_VALUES = new Set([
-  'face', 'lips', 'body', 'hair', 'eyes', 'brows', 'cheeks',
-  'hands', 'nails', 'scalp', 'oral', 'fragrance', 'multi_area', 'unknown',
-]);
 
 function normalizeKey(value) {
   if (value == null) return '';
@@ -66,17 +62,39 @@ async function lookupBeautyAttributes(productKey, { queryFn = query } = {}) {
 
 async function lookupBeautyAttributesBatch(productKeys, { queryFn = query } = {}) {
   if (!Array.isArray(productKeys) || !productKeys.length) return new Map();
-  const keys = Array.from(new Set(
-    productKeys.map(normalizeKey).filter(Boolean),
-  ));
-  if (!keys.length) return new Map();
-  const res = await queryFn(
-    'SELECT * FROM product_beauty_attributes WHERE product_key = ANY($1::text[])',
-    [keys],
-  );
-  const rows = Array.isArray(res?.rows) ? res.rows : [];
+  const normalized = Array.from(new Set(productKeys.map(normalizeKey).filter(Boolean)));
+  if (!normalized.length) return new Map();
+
+  // Split into ext_* / product_key lookups vs sig_* lookups (requires sig_id column,
+  // added in migration 052 after graph rekeying to sig_*).
+  const sigKeys = normalized.filter((k) => k.startsWith('sig_'));
+  const extKeys = normalized.filter((k) => !k.startsWith('sig_'));
+
   const out = new Map();
-  for (const row of rows) out.set(row.product_key, rowToAttributes(row));
+
+  if (extKeys.length) {
+    const res = await queryFn(
+      'SELECT * FROM product_beauty_attributes WHERE product_key = ANY($1::text[])',
+      [extKeys],
+    );
+    for (const row of (Array.isArray(res?.rows) ? res.rows : [])) {
+      out.set(row.product_key, rowToAttributes(row));
+    }
+  }
+
+  if (sigKeys.length) {
+    const res = await queryFn(
+      'SELECT * FROM product_beauty_attributes WHERE sig_id = ANY($1::text[])',
+      [sigKeys],
+    );
+    for (const row of (Array.isArray(res?.rows) ? res.rows : [])) {
+      // Index by sig_id so callers that looked up by sig_* find their result.
+      if (row.sig_id) out.set(row.sig_id, rowToAttributes(row));
+      // Also index by product_key for backwards-compat callers that join via ext_*.
+      out.set(row.product_key, rowToAttributes(row));
+    }
+  }
+
   return out;
 }
 
@@ -112,9 +130,6 @@ function validateExtractionPayload(payload) {
   }
   if (payload.claim_risk_level != null && !CLAIM_RISK_VALUES.has(payload.claim_risk_level)) {
     errors.push(`invalid_claim_risk_level:${payload.claim_risk_level}`);
-  }
-  if (payload.target_area != null && !TARGET_AREA_VALUES.has(payload.target_area)) {
-    errors.push(`invalid_target_area:${payload.target_area}`);
   }
   if (payload.skin_concern != null && !Array.isArray(payload.skin_concern)) {
     errors.push('skin_concern_not_array');
@@ -194,7 +209,6 @@ module.exports = {
   AUDIT_STATUSES,
   SPF_OTC_VALUES,
   CLAIM_RISK_VALUES,
-  TARGET_AREA_VALUES,
   normalizeKey,
   lookupBeautyAttributes,
   lookupBeautyAttributesBatch,

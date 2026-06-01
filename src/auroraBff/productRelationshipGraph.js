@@ -440,10 +440,14 @@ function buildAnchorRefsFromProduct(anchor = {}) {
   };
   push(src.product_id || src.productId || src.sku_id || src.skuId || src.id, 'product');
   push(src.product_id || src.productId || src.sku_id || src.skuId || src.id);
-  // External-seed anchors are stored as `product:ext_<hash>`. At serving time the
-  // canonical product_id may be a pivota signature while the ext_ key lives on
-  // external_product_id/source_product_id — derive a ref from it too so curated
-  // edges match regardless of which identity the upstream resolver selected.
+  // sig_* is the canonical product identity. Edges rekeyed to sig_* (migration 052+)
+  // are served via these refs when the upstream resolver returns a pivota_signature_id.
+  const sigId = src.pivota_signature_id || src.pivotaSignatureId;
+  push(sigId, 'product');
+  push(sigId);
+  // Backwards-compat: external-seed anchors stored as `product:ext_<hash>` before
+  // rekeying. Retained so existing ext_*-keyed human_approved edges continue to serve
+  // during the transition window (Phase 6b rekey). Remove after rekey is complete.
   const externalId =
     src.external_product_id ||
     src.externalProductId ||

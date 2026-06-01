@@ -461,6 +461,25 @@ async function applyCluster(client, cluster) {
     );
   }
 
+  // Propagate the canonical sig to ALL group members in catalog_products so
+  // that every platform listing of the same product shares one pivota_signature_id.
+  // This is the root-cause fix: without it, each member keeps its own independently-
+  // minted sig, breaking any consumer that resolves products by sig.
+  if (cluster.canonical_sig_id && cluster.product_group_upserts.length > 0) {
+    const memberProductIds = cluster.product_group_upserts.map((row) => row.platform_product_id);
+    await client.query(
+      `
+        UPDATE catalog_products
+        SET pivota_signature_id       = $1,
+            pivota_signature_minted_at = COALESCE(pivota_signature_minted_at, now()),
+            updated_at                = now()
+        WHERE source_product_id = ANY($2::text[])
+          AND pivota_signature_id IS DISTINCT FROM $1
+      `,
+      [cluster.canonical_sig_id, memberProductIds],
+    );
+  }
+
   for (const row of cluster.identity_alias_updates.filter((item) => item.needs_update)) {
     const payload = {
       source_listing_ref: row.source_listing_ref,
