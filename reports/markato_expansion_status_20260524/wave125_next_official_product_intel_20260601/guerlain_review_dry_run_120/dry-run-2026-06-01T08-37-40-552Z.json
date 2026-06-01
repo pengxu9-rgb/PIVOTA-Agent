@@ -1,0 +1,3053 @@
+{
+  "generated_at": "2026-06-01T08:37:40.552Z",
+  "source": "pivota_insights_official_pdp_manual_review_v1",
+  "mode": "dry_run",
+  "filters": {
+    "brand": "Guerlain",
+    "product_ids": [],
+    "limit": 120,
+    "include_strong": false,
+    "include_url_key": false,
+    "apply_chunk_size": null
+  },
+  "summary": {
+    "scanned": 39,
+    "changed_products": 0,
+    "blocked_products": 0,
+    "skipped_products": 39,
+    "write_actions": {
+      "skip": 78
+    },
+    "skip_reasons": {
+      "no_safe_writes": 39,
+      "protected_high_quality_existing:reviewed": 78
+    },
+    "evidence_profiles": {
+      "official_pdp_reviewed_formula_and_usage": 38,
+      "official_pdp_reviewed_line": 1
+    }
+  },
+  "plans": [
+    {
+      "external_product_id": "ext_dfe4c10ed6a41b4745c18bd5",
+      "pivota_signature_id": "sig_1115415c4918c99c46497d164d9c48f1",
+      "title": "ABEILLE ROYALE YOUTH REPAIR EYE CARE 15 ML / 0.50 OZ",
+      "brand": "Guerlain",
+      "canonical_url": "https://www.guerlain.com/us/en-us/p/abeille-royale-youth-repair-eye-care-P062209.html",
+      "changed": false,
+      "blocked": false,
+      "skip_reason": "no_safe_writes",
+      "candidate_hash": "6eb9d66b9d3ab569c8b4a845d0bb594fa76faf1803beaafde175aff2dc626e98",
+      "evidence_profile": "official_pdp_reviewed_formula_and_usage",
+      "source_coverage": {
+        "source": "official_pdp",
+        "canonical_url": "https://www.guerlain.com/us/en-us/p/abeille-royale-youth-repair-eye-care-P062209.html",
+        "fields": {
+          "description": true,
+          "ingredients": 40,
+          "active_ingredients": 1,
+          "how_to": 1,
+          "details": 1,
+          "variants": 1
+        }
+      },
+      "preview": {
+        "headline": "Body care treatment",
+        "what_it_is": "ABEILLE ROYALE YOUTH REPAIR EYE CARE 15 ML / 0.50 OZ is a body care treatment from Guerlain in 15ml, with source-backed cues around hydration.",
+        "why_it_stands_out": [
+          {
+            "headline": "Routine step cues are specific",
+            "body": "Reviewed skincare cues such as hydration, barrier support, 15ml identify the routine role or key ingredient context without inventing unsupported benefits.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Ingredient list is available",
+            "body": "Full INCI is present for formula-sensitive review, which makes this PDP safer to evaluate than a claim-only listing.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Shade and size are explicit",
+            "body": "Variant labels such as 15ml, Size: 15ml are visible, reducing ambiguity around the product format before a shopper clicks through.",
+            "evidence_strength": "official_pdp_reviewed"
+          }
+        ],
+        "best_for": [
+          {
+            "tag": "hydration",
+            "label": "hydration",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "barrier_support",
+            "label": "barrier support",
+            "confidence": "moderate"
+          }
+        ],
+        "shopping_highlight": "hydration, barrier support, 15ml"
+      },
+      "writes": [
+        {
+          "kb_key": "product:ext_dfe4c10ed6a41b4745c18bd5",
+          "action": "skip",
+          "reason": "protected_high_quality_existing:reviewed",
+          "old_hash": "d7f12bdc7c1634cabf55bad383a468147b968a672d2d21a25b867a51fdd730d6",
+          "existing_weak": false
+        },
+        {
+          "kb_key": "product:sig_1115415c4918c99c46497d164d9c48f1",
+          "action": "skip",
+          "reason": "protected_high_quality_existing:reviewed",
+          "old_hash": "d7f12bdc7c1634cabf55bad383a468147b968a672d2d21a25b867a51fdd730d6",
+          "existing_weak": false
+        }
+      ]
+    },
+    {
+      "external_product_id": "ext_41f7f2155ba136c3a37dc7a3",
+      "pivota_signature_id": "sig_b871fd0e9cabaf0fa73e55baf1b22a27",
+      "title": "Abeille Royale YOUTH WATERY OIL SERUM",
+      "brand": "Guerlain",
+      "canonical_url": "https://www.guerlain.com/us/en-us/p/abeille-royale-youth-watery-oil-serum-P062033.html",
+      "changed": false,
+      "blocked": false,
+      "skip_reason": "no_safe_writes",
+      "candidate_hash": "9941d820e174e58593cb24f06407ef667c4871fc2c453fb249405ef839986e92",
+      "evidence_profile": "official_pdp_reviewed_formula_and_usage",
+      "source_coverage": {
+        "source": "official_pdp",
+        "canonical_url": "https://www.guerlain.com/us/en-us/p/abeille-royale-youth-watery-oil-serum-P062033.html",
+        "fields": {
+          "description": true,
+          "ingredients": 39,
+          "active_ingredients": 1,
+          "how_to": 1,
+          "details": 3,
+          "variants": 4
+        }
+      },
+      "preview": {
+        "headline": "Treatment serum",
+        "what_it_is": "Abeille Royale YOUTH WATERY OIL SERUM is a treatment serum from Guerlain in 30 ML / 1.01 OZ.",
+        "why_it_stands_out": [
+          {
+            "headline": "Routine step cues are specific",
+            "body": "Reviewed skincare cues such as hydration, 30 ML / 1.01 OZ, 15 ML / 0.50 OZ identify the routine role or key ingredient context without inventing unsupported benefits.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Ingredient list is available",
+            "body": "Full INCI is present for formula-sensitive review, which makes this PDP safer to evaluate than a claim-only listing.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Shade and size are explicit",
+            "body": "Variant labels such as 30 ML / 1.01 OZ, Size: 30 ML / 1.01 OZ, 15 ML / 0.50 OZ, Size: 15 ML / 0.50 OZ are visible, reducing ambiguity around the product format before a shopper clicks through.",
+            "evidence_strength": "official_pdp_reviewed"
+          }
+        ],
+        "best_for": [
+          {
+            "tag": "hydration",
+            "label": "hydration",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "radiance",
+            "label": "radiance",
+            "confidence": "moderate"
+          }
+        ],
+        "shopping_highlight": "hydration, 30 ML / 1.01 OZ"
+      },
+      "writes": [
+        {
+          "kb_key": "product:ext_41f7f2155ba136c3a37dc7a3",
+          "action": "skip",
+          "reason": "protected_high_quality_existing:reviewed",
+          "old_hash": "6acb0d0a262e36428d2dd15a30e70ba40dc678494577e75e5195d09945f55ff2",
+          "existing_weak": false
+        },
+        {
+          "kb_key": "product:sig_b871fd0e9cabaf0fa73e55baf1b22a27",
+          "action": "skip",
+          "reason": "protected_high_quality_existing:reviewed",
+          "old_hash": "5324a6fa86ac4b450d7b7d0d2a54fc3890acac2cd3165791612c6cd4ea804aca",
+          "existing_weak": false
+        }
+      ]
+    },
+    {
+      "external_product_id": "ext_b361fbdd0bc0fa335a1038d1",
+      "pivota_signature_id": "sig_44b124e5e5b69db13f09e0b2eaa8f66a",
+      "title": "Abeille Royale YOUTH WATERY OIL SERUM",
+      "brand": "Guerlain",
+      "canonical_url": "https://www.guerlain.com/us/en-us/p/abeille-royale-youth-watery-oil-serum-P062033.html",
+      "changed": false,
+      "blocked": false,
+      "skip_reason": "no_safe_writes",
+      "candidate_hash": "feb37d13e9426e861133f394f07f691879c523d0712d8a44411f7d81dc79342f",
+      "evidence_profile": "official_pdp_reviewed_formula_and_usage",
+      "source_coverage": {
+        "source": "official_pdp",
+        "canonical_url": "https://www.guerlain.com/us/en-us/p/abeille-royale-youth-watery-oil-serum-P062033.html",
+        "fields": {
+          "description": true,
+          "ingredients": 39,
+          "active_ingredients": 1,
+          "how_to": 1,
+          "details": 2,
+          "variants": 4
+        }
+      },
+      "preview": {
+        "headline": "Treatment serum",
+        "what_it_is": "Abeille Royale YOUTH WATERY OIL SERUM is a treatment serum from Guerlain in 30 ML / 1.01 OZ.",
+        "why_it_stands_out": [
+          {
+            "headline": "Routine step cues are specific",
+            "body": "Reviewed skincare cues such as hydration, 30 ML / 1.01 OZ, 75 ML / 2.53 OZ identify the routine role or key ingredient context without inventing unsupported benefits.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Ingredient list is available",
+            "body": "Full INCI is present for formula-sensitive review, which makes this PDP safer to evaluate than a claim-only listing.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Shade and size are explicit",
+            "body": "Variant labels such as 30 ML / 1.01 OZ, Size: 30 ML / 1.01 OZ, 75 ML / 2.53 OZ, Size: 75 ML / 2.53 OZ are visible, reducing ambiguity around the product format before a shopper clicks through.",
+            "evidence_strength": "official_pdp_reviewed"
+          }
+        ],
+        "best_for": [
+          {
+            "tag": "hydration",
+            "label": "hydration",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "radiance",
+            "label": "radiance",
+            "confidence": "moderate"
+          }
+        ],
+        "shopping_highlight": "hydration, 30 ML / 1.01 OZ"
+      },
+      "writes": [
+        {
+          "kb_key": "product:ext_b361fbdd0bc0fa335a1038d1",
+          "action": "skip",
+          "reason": "protected_high_quality_existing:reviewed",
+          "old_hash": "06d13b102b5966cdbd12fb12942511a344272279637f27d8db4822b293a3cf56",
+          "existing_weak": false
+        },
+        {
+          "kb_key": "product:sig_44b124e5e5b69db13f09e0b2eaa8f66a",
+          "action": "skip",
+          "reason": "protected_high_quality_existing:reviewed",
+          "old_hash": "d3b058931c072d8ce371f3617427ab910888467c2f9434bb8b6fcea07bfc4c24",
+          "existing_weak": false
+        }
+      ]
+    },
+    {
+      "external_product_id": "ext_dbf232b0c403893b604b1245",
+      "pivota_signature_id": "sig_86541691592e0a8aca668399c57a5793",
+      "title": "Abeille Royale YOUTH WATERY OIL SERUM",
+      "brand": "Guerlain",
+      "canonical_url": "https://www.guerlain.com/us/en-us/p/abeille-royale-youth-watery-oil-serum-P062033.html",
+      "changed": false,
+      "blocked": false,
+      "skip_reason": "no_safe_writes",
+      "candidate_hash": "7276a6655370f13ea55768da929b1bc5d3f2ed80dce773f794c37e09e537d48f",
+      "evidence_profile": "official_pdp_reviewed_formula_and_usage",
+      "source_coverage": {
+        "source": "official_pdp",
+        "canonical_url": "https://www.guerlain.com/us/en-us/p/abeille-royale-youth-watery-oil-serum-P062033.html",
+        "fields": {
+          "description": true,
+          "ingredients": 39,
+          "active_ingredients": 1,
+          "how_to": 1,
+          "details": 2,
+          "variants": 4
+        }
+      },
+      "preview": {
+        "headline": "Treatment serum",
+        "what_it_is": "Abeille Royale YOUTH WATERY OIL SERUM is a treatment serum from Guerlain in 30 ML / 1.01 OZ.",
+        "why_it_stands_out": [
+          {
+            "headline": "Routine step cues are specific",
+            "body": "Reviewed skincare cues such as hydration, 30 ML / 1.01 OZ, 75 ML / 2.53 OZ identify the routine role or key ingredient context without inventing unsupported benefits.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Ingredient list is available",
+            "body": "Full INCI is present for formula-sensitive review, which makes this PDP safer to evaluate than a claim-only listing.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Shade and size are explicit",
+            "body": "Variant labels such as 30 ML / 1.01 OZ, Size: 30 ML / 1.01 OZ, 75 ML / 2.53 OZ, Size: 75 ML / 2.53 OZ are visible, reducing ambiguity around the product format before a shopper clicks through.",
+            "evidence_strength": "official_pdp_reviewed"
+          }
+        ],
+        "best_for": [
+          {
+            "tag": "hydration",
+            "label": "hydration",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "radiance",
+            "label": "radiance",
+            "confidence": "moderate"
+          }
+        ],
+        "shopping_highlight": "hydration, 30 ML / 1.01 OZ"
+      },
+      "writes": [
+        {
+          "kb_key": "product:ext_dbf232b0c403893b604b1245",
+          "action": "skip",
+          "reason": "protected_high_quality_existing:reviewed",
+          "old_hash": "5e67a918577e80e23194e94b5636c607e5c7fd4e946ddec0d2508c19f7df0fe2",
+          "existing_weak": false
+        },
+        {
+          "kb_key": "product:sig_86541691592e0a8aca668399c57a5793",
+          "action": "skip",
+          "reason": "protected_high_quality_existing:reviewed",
+          "old_hash": "d347a88a3030416ced3e611ac57c4dda24fc878da41d39b81877729a7c9d8325",
+          "existing_weak": false
+        }
+      ]
+    },
+    {
+      "external_product_id": "ext_e0394506a3ce54c7d4683fe5",
+      "pivota_signature_id": "sig_f48fed90a780079635e37aa96ccabdbd",
+      "title": "Abeille Royale YOUTH WATERY OIL SERUM",
+      "brand": "Guerlain",
+      "canonical_url": "https://www.guerlain.com/us/en-us/p/abeille-royale-youth-watery-oil-serum-P062033.html",
+      "changed": false,
+      "blocked": false,
+      "skip_reason": "no_safe_writes",
+      "candidate_hash": "09ccc180318d13a4ebe64e849dc232b1148d26c1b7fb5d2d3b681eaa4db272e5",
+      "evidence_profile": "official_pdp_reviewed_formula_and_usage",
+      "source_coverage": {
+        "source": "official_pdp",
+        "canonical_url": "https://www.guerlain.com/us/en-us/p/abeille-royale-youth-watery-oil-serum-P062033.html",
+        "fields": {
+          "description": true,
+          "ingredients": 39,
+          "active_ingredients": 1,
+          "how_to": 1,
+          "details": 2,
+          "variants": 4
+        }
+      },
+      "preview": {
+        "headline": "Treatment serum",
+        "what_it_is": "Abeille Royale YOUTH WATERY OIL SERUM is a treatment serum from Guerlain in 30 ML / 1.01 OZ.",
+        "why_it_stands_out": [
+          {
+            "headline": "Routine step cues are specific",
+            "body": "Reviewed skincare cues such as hydration, 30 ML / 1.01 OZ, 75 ML / 2.53 OZ identify the routine role or key ingredient context without inventing unsupported benefits.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Ingredient list is available",
+            "body": "Full INCI is present for formula-sensitive review, which makes this PDP safer to evaluate than a claim-only listing.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Shade and size are explicit",
+            "body": "Variant labels such as 30 ML / 1.01 OZ, Size: 30 ML / 1.01 OZ, 75 ML / 2.53 OZ, Size: 75 ML / 2.53 OZ are visible, reducing ambiguity around the product format before a shopper clicks through.",
+            "evidence_strength": "official_pdp_reviewed"
+          }
+        ],
+        "best_for": [
+          {
+            "tag": "hydration",
+            "label": "hydration",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "radiance",
+            "label": "radiance",
+            "confidence": "moderate"
+          }
+        ],
+        "shopping_highlight": "hydration, 30 ML / 1.01 OZ"
+      },
+      "writes": [
+        {
+          "kb_key": "product:ext_e0394506a3ce54c7d4683fe5",
+          "action": "skip",
+          "reason": "protected_high_quality_existing:reviewed",
+          "old_hash": "2affa1156d5e52434034548a1de3900474377ebb172dfb8a70c0c70a2c1e682f",
+          "existing_weak": false
+        },
+        {
+          "kb_key": "product:sig_f48fed90a780079635e37aa96ccabdbd",
+          "action": "skip",
+          "reason": "protected_high_quality_existing:reviewed",
+          "old_hash": "e1dd0e0d90cab21add3f52fdc89e5d87082ad3c76dc95925e62d69e99a2dd729",
+          "existing_weak": false
+        }
+      ]
+    },
+    {
+      "external_product_id": "ext_cedb632443eca062978bc18e",
+      "pivota_signature_id": "sig_241a5f40fbc4c7666c3bf225e9e0df87",
+      "title": "ABSOLUS ALLEGORIA Tabac Sahara - Eau de Parfum",
+      "brand": "Guerlain",
+      "canonical_url": "https://www.guerlain.com/us/en-us/p/absolus-allegoria-tabac-sahara---eau-de-parfum-P062386.html",
+      "changed": false,
+      "blocked": false,
+      "skip_reason": "no_safe_writes",
+      "candidate_hash": "abbbb9362b30e721193bc8159a98ce303571c795f1f2ea250422b56465d55892",
+      "evidence_profile": "official_pdp_reviewed_formula_and_usage",
+      "source_coverage": {
+        "source": "official_pdp",
+        "canonical_url": "https://www.guerlain.com/us/en-us/p/absolus-allegoria-tabac-sahara---eau-de-parfum-P062386.html",
+        "fields": {
+          "description": true,
+          "ingredients": 25,
+          "active_ingredients": 0,
+          "how_to": 1,
+          "details": 2,
+          "variants": 1
+        }
+      },
+      "preview": {
+        "headline": "Fine fragrance",
+        "what_it_is": "ABSOLUS ALLEGORIA Tabac Sahara - Eau de Parfum is a fine fragrance from Guerlain in 125 ML / 4.22 OZ, with source-backed scent cues including rose and amber.",
+        "why_it_stands_out": [
+          {
+            "headline": "Scent profile cues",
+            "body": "Reviewed scent cues such as rose, amber, tobacco, 125 ML / 4.22 OZ help shoppers compare the fragrance profile without relying on generic scent copy.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Ingredient list is available",
+            "body": "Full INCI is present for formula-sensitive review, which makes this PDP safer to evaluate than a claim-only listing.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Shade and size are explicit",
+            "body": "Variant labels such as 125 ML / 4.22 OZ, Size: 125 ML / 4.22 OZ are visible, reducing ambiguity around the product format before a shopper clicks through.",
+            "evidence_strength": "official_pdp_reviewed"
+          }
+        ],
+        "best_for": [
+          {
+            "tag": "warm_fragrance_profiles",
+            "label": "warm fragrance profiles",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "floral_fragrance_profiles",
+            "label": "floral fragrance profiles",
+            "confidence": "moderate"
+          }
+        ],
+        "shopping_highlight": "rose, amber, tobacco, 125 ML / 4.22 OZ"
+      },
+      "writes": [
+        {
+          "kb_key": "product:ext_cedb632443eca062978bc18e",
+          "action": "skip",
+          "reason": "protected_high_quality_existing:reviewed",
+          "old_hash": "2e95d0f9f89b2430dbf260e13a6140cf172314db413b27ef1daadfbf4cdc4598",
+          "existing_weak": false
+        },
+        {
+          "kb_key": "product:sig_241a5f40fbc4c7666c3bf225e9e0df87",
+          "action": "skip",
+          "reason": "protected_high_quality_existing:reviewed",
+          "old_hash": "876bd90e77a238afeb4bf39f22eb2a6c240741b719ad553eaefddf02031cd221",
+          "existing_weak": false
+        }
+      ]
+    },
+    {
+      "external_product_id": "ext_fcc3acdfd39492888e5df3e5",
+      "pivota_signature_id": "sig_942eeee478a19cdd7bfb8834251aa0d5",
+      "title": "AQUA ALLEGORIA PERLE Florabloom Perle - Eau de Parfum 125 ML / 4.22 OZ",
+      "brand": "Guerlain",
+      "canonical_url": "https://www.guerlain.com/us/en-us/p/aqua-allegoria-perle-florabloom-perle---eau-de-parfum-P062203.html",
+      "changed": false,
+      "blocked": false,
+      "skip_reason": "no_safe_writes",
+      "candidate_hash": "3a622ac9a6c89a3ee0d3b94fc62aa4a6b403c3c7b6afe5dc2da30bd4aff1eb6e",
+      "evidence_profile": "official_pdp_reviewed_formula_and_usage",
+      "source_coverage": {
+        "source": "official_pdp",
+        "canonical_url": "https://www.guerlain.com/us/en-us/p/aqua-allegoria-perle-florabloom-perle---eau-de-parfum-P062203.html",
+        "fields": {
+          "description": true,
+          "ingredients": 49,
+          "active_ingredients": 0,
+          "how_to": 1,
+          "details": 2,
+          "variants": 1
+        }
+      },
+      "preview": {
+        "headline": "Fine fragrance",
+        "what_it_is": "AQUA ALLEGORIA PERLE Florabloom Perle - Eau de Parfum 125 ML / 4.22 OZ is a fine fragrance from Guerlain in 125ml, with source-backed scent cues including rose, sandalwood and citrus.",
+        "why_it_stands_out": [
+          {
+            "headline": "Scent profile cues",
+            "body": "Reviewed scent cues such as rose, sandalwood, citrus, 125ml help shoppers compare the fragrance profile without relying on generic scent copy.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Ingredient list is available",
+            "body": "Full INCI is present for formula-sensitive review, which makes this PDP safer to evaluate than a claim-only listing.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Shade and size are explicit",
+            "body": "Variant labels such as 125ml, Size: 125ml are visible, reducing ambiguity around the product format before a shopper clicks through.",
+            "evidence_strength": "official_pdp_reviewed"
+          }
+        ],
+        "best_for": [
+          {
+            "tag": "warm_fragrance_profiles",
+            "label": "warm fragrance profiles",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "floral_fragrance_profiles",
+            "label": "floral fragrance profiles",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "fresh_citrus_profiles",
+            "label": "fresh citrus profiles",
+            "confidence": "moderate"
+          }
+        ],
+        "shopping_highlight": "rose, sandalwood, citrus, 125ml"
+      },
+      "writes": [
+        {
+          "kb_key": "product:ext_fcc3acdfd39492888e5df3e5",
+          "action": "skip",
+          "reason": "protected_high_quality_existing:reviewed",
+          "old_hash": "23c320134eea44643faa9ae20ef897bd42bb9801f8f12385e4481e7ade269353",
+          "existing_weak": false
+        },
+        {
+          "kb_key": "product:sig_942eeee478a19cdd7bfb8834251aa0d5",
+          "action": "skip",
+          "reason": "protected_high_quality_existing:reviewed",
+          "old_hash": "4a6011b4fc5e8cc61de82a1087ec3d57a14ae0bd4ab9e968c783894de5ad5b06",
+          "existing_weak": false
+        }
+      ]
+    },
+    {
+      "external_product_id": "ext_8185e760985d23d77dedcd34",
+      "pivota_signature_id": "sig_c1b9f8fc5bf813239e9c2396262b0954",
+      "title": "BROW G BROW PENCIL",
+      "brand": "Guerlain",
+      "canonical_url": "https://www.guerlain.com/us/en-us/p/brow-g-brow-pencil-P043971.html",
+      "changed": false,
+      "blocked": false,
+      "skip_reason": "no_safe_writes",
+      "candidate_hash": "6a92d09c97c71e3a8d27eb3d1bd5f7161cfb8458c5916ef3d6c05f01161fed49",
+      "evidence_profile": "official_pdp_reviewed_formula_and_usage",
+      "source_coverage": {
+        "source": "official_pdp",
+        "canonical_url": "https://www.guerlain.com/us/en-us/p/brow-g-brow-pencil-P043971.html",
+        "fields": {
+          "description": true,
+          "ingredients": 12,
+          "active_ingredients": 0,
+          "how_to": 1,
+          "details": 1,
+          "variants": 2
+        }
+      },
+      "preview": {
+        "headline": "Brow product",
+        "what_it_is": "BROW G BROW PENCIL is a brow product from Guerlain, with source-backed cues around eye makeup grooming.",
+        "why_it_stands_out": [
+          {
+            "headline": "Product cues are source-backed",
+            "body": "Reviewed PDP cues such as brow definition, precision application, shade matching, built-in brow brush give shoppers specific comparison points within Guerlain, rather than category-only copy.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Ingredient list is available",
+            "body": "Full INCI is present for formula-sensitive review, which makes this PDP safer to evaluate than a claim-only listing.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Shade and size are explicit",
+            "body": "Variant labels such as 02 Auburn, Shade: 02 Auburn, 05 Granite, Shade: 05 Granite are visible, reducing ambiguity around the product format before a shopper clicks through.",
+            "evidence_strength": "official_pdp_reviewed"
+          }
+        ],
+        "best_for": [
+          {
+            "tag": "brow_definition",
+            "label": "brow definition",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "precision_application",
+            "label": "precision application",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "shade_matching",
+            "label": "shade matching",
+            "confidence": "moderate"
+          }
+        ],
+        "shopping_highlight": "brow definition, precision application"
+      },
+      "writes": [
+        {
+          "kb_key": "product:ext_8185e760985d23d77dedcd34",
+          "action": "skip",
+          "reason": "protected_high_quality_existing:reviewed",
+          "old_hash": "68436c54185c6c506c5c96666089504a74694ba42de2765f4daa7d49098b3614",
+          "existing_weak": false
+        },
+        {
+          "kb_key": "product:sig_c1b9f8fc5bf813239e9c2396262b0954",
+          "action": "skip",
+          "reason": "protected_high_quality_existing:reviewed",
+          "old_hash": "aa75de53209bb8c532daf42dadae298301b6d02ab1239f0487884d98172e89e0",
+          "existing_weak": false
+        }
+      ]
+    },
+    {
+      "external_product_id": "ext_cccdeedaa2f3666c2722adb7",
+      "pivota_signature_id": "sig_c0df456411b1f854278e35558cd95c5f",
+      "title": "BROW G BROW PENCIL",
+      "brand": "Guerlain",
+      "canonical_url": "https://www.guerlain.com/us/en-us/p/brow-g-brow-pencil-P043971.html",
+      "changed": false,
+      "blocked": false,
+      "skip_reason": "no_safe_writes",
+      "candidate_hash": "33ceb6b1fea9d15067e2e03c80a0d98896ab2286285f4ea87186cd1e9134718f",
+      "evidence_profile": "official_pdp_reviewed_formula_and_usage",
+      "source_coverage": {
+        "source": "official_pdp",
+        "canonical_url": "https://www.guerlain.com/us/en-us/p/brow-g-brow-pencil-P043971.html",
+        "fields": {
+          "description": true,
+          "ingredients": 12,
+          "active_ingredients": 0,
+          "how_to": 1,
+          "details": 1,
+          "variants": 2
+        }
+      },
+      "preview": {
+        "headline": "Brow product",
+        "what_it_is": "BROW G BROW PENCIL is a brow product from Guerlain, with source-backed cues around eye makeup grooming.",
+        "why_it_stands_out": [
+          {
+            "headline": "Product cues are source-backed",
+            "body": "Reviewed PDP cues such as brow definition, precision application, shade matching, built-in brow brush give shoppers specific comparison points within Guerlain, rather than category-only copy.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Ingredient list is available",
+            "body": "Full INCI is present for formula-sensitive review, which makes this PDP safer to evaluate than a claim-only listing.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Shade and size are explicit",
+            "body": "Variant labels such as 02 Auburn, Shade: 02 Auburn, 05 Granite, Shade: 05 Granite are visible, reducing ambiguity around the product format before a shopper clicks through.",
+            "evidence_strength": "official_pdp_reviewed"
+          }
+        ],
+        "best_for": [
+          {
+            "tag": "brow_definition",
+            "label": "brow definition",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "precision_application",
+            "label": "precision application",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "shade_matching",
+            "label": "shade matching",
+            "confidence": "moderate"
+          }
+        ],
+        "shopping_highlight": "brow definition, precision application"
+      },
+      "writes": [
+        {
+          "kb_key": "product:ext_cccdeedaa2f3666c2722adb7",
+          "action": "skip",
+          "reason": "protected_high_quality_existing:reviewed",
+          "old_hash": "170d25f91a9ebe0877722e3fd2c987c6477efb02d7f162d273b5a56a8f86eaa9",
+          "existing_weak": false
+        },
+        {
+          "kb_key": "product:sig_c0df456411b1f854278e35558cd95c5f",
+          "action": "skip",
+          "reason": "protected_high_quality_existing:reviewed",
+          "old_hash": "939284c00d613c2d131e7d05121007a7b3a97cc522a91af6496456da8d706c40",
+          "existing_weak": false
+        }
+      ]
+    },
+    {
+      "external_product_id": "ext_f036949ec5d8218bc686d082",
+      "pivota_signature_id": "sig_4807c48fe8a79ed96bd6fd92f9cc5d35",
+      "title": "BROW G BROW PENCIL",
+      "brand": "Guerlain",
+      "canonical_url": "https://www.guerlain.com/us/en-us/p/brow-g-brow-pencil-P043971.html",
+      "changed": false,
+      "blocked": false,
+      "skip_reason": "no_safe_writes",
+      "candidate_hash": "9ae6519a64ad98d78ea5cf6d5a089d372834b9bc39cc948288e3ea2e386dff39",
+      "evidence_profile": "official_pdp_reviewed_formula_and_usage",
+      "source_coverage": {
+        "source": "official_pdp",
+        "canonical_url": "https://www.guerlain.com/us/en-us/p/brow-g-brow-pencil-P043971.html",
+        "fields": {
+          "description": true,
+          "ingredients": 12,
+          "active_ingredients": 0,
+          "how_to": 1,
+          "details": 1,
+          "variants": 2
+        }
+      },
+      "preview": {
+        "headline": "Brow product",
+        "what_it_is": "BROW G BROW PENCIL is a brow product from Guerlain, with source-backed cues around eye makeup grooming.",
+        "why_it_stands_out": [
+          {
+            "headline": "Product cues are source-backed",
+            "body": "Reviewed PDP cues such as brow definition, precision application, shade matching, built-in brow brush give shoppers specific comparison points within Guerlain, rather than category-only copy.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Ingredient list is available",
+            "body": "Full INCI is present for formula-sensitive review, which makes this PDP safer to evaluate than a claim-only listing.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Shade and size are explicit",
+            "body": "Variant labels such as 02 Auburn, Shade: 02 Auburn, 05 Granite, Shade: 05 Granite are visible, reducing ambiguity around the product format before a shopper clicks through.",
+            "evidence_strength": "official_pdp_reviewed"
+          }
+        ],
+        "best_for": [
+          {
+            "tag": "brow_definition",
+            "label": "brow definition",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "precision_application",
+            "label": "precision application",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "shade_matching",
+            "label": "shade matching",
+            "confidence": "moderate"
+          }
+        ],
+        "shopping_highlight": "brow definition, precision application"
+      },
+      "writes": [
+        {
+          "kb_key": "product:ext_f036949ec5d8218bc686d082",
+          "action": "skip",
+          "reason": "protected_high_quality_existing:reviewed",
+          "old_hash": "0f6751fc374487ea21cf05606b6e38ffef6c775fa88be6e039ebc6493950cf6a",
+          "existing_weak": false
+        },
+        {
+          "kb_key": "product:sig_4807c48fe8a79ed96bd6fd92f9cc5d35",
+          "action": "skip",
+          "reason": "protected_high_quality_existing:reviewed",
+          "old_hash": "bf986de2fe5e8f7f7be8c8b67ffccaa7c7c2460a07ef2da842de282f9b668040",
+          "existing_weak": false
+        }
+      ]
+    },
+    {
+      "external_product_id": "ext_2252928db50ba8800843a039",
+      "pivota_signature_id": "sig_e1221e5b78ffaff5fb0f0fd6a928251e",
+      "title": "CONTOUR G LIP PENCIL",
+      "brand": "Guerlain",
+      "canonical_url": "https://www.guerlain.com/us/en-us/p/contour-g-lip-pencil-P043986.html",
+      "changed": false,
+      "blocked": false,
+      "skip_reason": "no_safe_writes",
+      "candidate_hash": "4e291fd534fe0edf03631dd4866afc88c811ac0b5ae7eeb027226c6e3e4f6d7e",
+      "evidence_profile": "official_pdp_reviewed_formula_and_usage",
+      "source_coverage": {
+        "source": "official_pdp",
+        "canonical_url": "https://www.guerlain.com/us/en-us/p/contour-g-lip-pencil-P043986.html",
+        "fields": {
+          "description": true,
+          "ingredients": 13,
+          "active_ingredients": 0,
+          "how_to": 1,
+          "details": 2,
+          "variants": 6
+        }
+      },
+      "preview": {
+        "headline": "Lip liner",
+        "what_it_is": "CONTOUR G LIP PENCIL is a lip liner from Guerlain for defining the lip edge and supporting cleaner lipstick or gloss wear. It is positioned around transfer- and feather-resistant wear. This SKU is 05 Le Rouge Rubis.",
+        "why_it_stands_out": [
+          {
+            "headline": "Wear claims are specific",
+            "body": "The reviewed PDP supports concrete lip-liner claims around long wear and resistance to transfer, feathering, or fading, which is more useful than generic color-copy.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Application sequence is explicit",
+            "body": "The reviewed directions explain how to use the pencil in sequence: Gently outline the lips with the Contour G pencil, following the natural lip contour before applying lipstick or wearing it alone.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Formula disclosure is available",
+            "body": "A full INCI list is attached, so shoppers can screen the liner formula before leaving Pivota.",
+            "evidence_strength": "official_pdp_reviewed"
+          }
+        ],
+        "best_for": [
+          {
+            "tag": "defined_lip_looks",
+            "label": "defined lip looks",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "color_payoff",
+            "label": "color payoff",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "lip_comfort",
+            "label": "lip comfort",
+            "confidence": "moderate"
+          }
+        ],
+        "shopping_highlight": "transfer-resistant wear"
+      },
+      "writes": [
+        {
+          "kb_key": "product:ext_2252928db50ba8800843a039",
+          "action": "skip",
+          "reason": "protected_high_quality_existing:reviewed",
+          "old_hash": "577280fa4f9095a5bce846705be0cab54978cafa95e6b6791fdf180455a76a5f",
+          "existing_weak": false
+        },
+        {
+          "kb_key": "product:sig_e1221e5b78ffaff5fb0f0fd6a928251e",
+          "action": "skip",
+          "reason": "protected_high_quality_existing:reviewed",
+          "old_hash": "c3aed357fde96f1a45e3de91ab48c7c296409ea6e74de63889d5743120e69946",
+          "existing_weak": false
+        }
+      ]
+    },
+    {
+      "external_product_id": "ext_2fa9481b07f8384748c3e7e0",
+      "pivota_signature_id": "sig_8f9264a54628a1a7173d11134a3f2727",
+      "title": "CONTOUR G LIP PENCIL",
+      "brand": "Guerlain",
+      "canonical_url": "https://www.guerlain.com/us/en-us/p/contour-g-lip-pencil-P043986.html",
+      "changed": false,
+      "blocked": false,
+      "skip_reason": "no_safe_writes",
+      "candidate_hash": "3bd586193214f0a1b58f88bdf063777c75ec040ab0ceec754327a38d6b6dc715",
+      "evidence_profile": "official_pdp_reviewed_formula_and_usage",
+      "source_coverage": {
+        "source": "official_pdp",
+        "canonical_url": "https://www.guerlain.com/us/en-us/p/contour-g-lip-pencil-P043986.html",
+        "fields": {
+          "description": true,
+          "ingredients": 13,
+          "active_ingredients": 0,
+          "how_to": 1,
+          "details": 2,
+          "variants": 6
+        }
+      },
+      "preview": {
+        "headline": "Lip liner",
+        "what_it_is": "CONTOUR G LIP PENCIL is a lip liner from Guerlain for defining the lip edge and supporting cleaner lipstick or gloss wear. It is positioned around transfer- and feather-resistant wear. This SKU is 05 Le Rouge Rubis.",
+        "why_it_stands_out": [
+          {
+            "headline": "Wear claims are specific",
+            "body": "The reviewed PDP supports concrete lip-liner claims around long wear and resistance to transfer, feathering, or fading, which is more useful than generic color-copy.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Application sequence is explicit",
+            "body": "The reviewed directions explain how to use the pencil in sequence: Gently outline the lips with the Contour G pencil, following the natural lip contour before applying lipstick or wearing it alone.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Formula disclosure is available",
+            "body": "A full INCI list is attached, so shoppers can screen the liner formula before leaving Pivota.",
+            "evidence_strength": "official_pdp_reviewed"
+          }
+        ],
+        "best_for": [
+          {
+            "tag": "defined_lip_looks",
+            "label": "defined lip looks",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "color_payoff",
+            "label": "color payoff",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "lip_comfort",
+            "label": "lip comfort",
+            "confidence": "moderate"
+          }
+        ],
+        "shopping_highlight": "transfer-resistant wear"
+      },
+      "writes": [
+        {
+          "kb_key": "product:ext_2fa9481b07f8384748c3e7e0",
+          "action": "skip",
+          "reason": "protected_high_quality_existing:reviewed",
+          "old_hash": "8675b835b18dfcf6ac219a32f6a3bc26d2ea15bcc381d2f256d132e71693d2b2",
+          "existing_weak": false
+        },
+        {
+          "kb_key": "product:sig_8f9264a54628a1a7173d11134a3f2727",
+          "action": "skip",
+          "reason": "protected_high_quality_existing:reviewed",
+          "old_hash": "17ada27f9a6e61d9d6b348a339f420b460721f1b6e897fa64af767d7529e8009",
+          "existing_weak": false
+        }
+      ]
+    },
+    {
+      "external_product_id": "ext_62a32bcd27e021cbbc57532a",
+      "pivota_signature_id": "sig_13ce410168339b1362013cb1dbe62241",
+      "title": "CONTOUR G LIP PENCIL",
+      "brand": "Guerlain",
+      "canonical_url": "https://www.guerlain.com/us/en-us/p/contour-g-lip-pencil-P043986.html",
+      "changed": false,
+      "blocked": false,
+      "skip_reason": "no_safe_writes",
+      "candidate_hash": "12f167e548c8f96209cfabf274762ff3e4cf5c517dcd3f7b31dda6fdf19c1376",
+      "evidence_profile": "official_pdp_reviewed_formula_and_usage",
+      "source_coverage": {
+        "source": "official_pdp",
+        "canonical_url": "https://www.guerlain.com/us/en-us/p/contour-g-lip-pencil-P043986.html",
+        "fields": {
+          "description": true,
+          "ingredients": 13,
+          "active_ingredients": 0,
+          "how_to": 1,
+          "details": 2,
+          "variants": 6
+        }
+      },
+      "preview": {
+        "headline": "Lip liner",
+        "what_it_is": "CONTOUR G LIP PENCIL is a lip liner from Guerlain for defining the lip edge and supporting cleaner lipstick or gloss wear. It is positioned around transfer- and feather-resistant wear. This SKU is 05 Le Rouge Rubis.",
+        "why_it_stands_out": [
+          {
+            "headline": "Wear claims are specific",
+            "body": "The reviewed PDP supports concrete lip-liner claims around long wear and resistance to transfer, feathering, or fading, which is more useful than generic color-copy.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Application sequence is explicit",
+            "body": "The reviewed directions explain how to use the pencil in sequence: Gently outline the lips with the Contour G pencil, following the natural lip contour before applying lipstick or wearing it alone.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Formula disclosure is available",
+            "body": "A full INCI list is attached, so shoppers can screen the liner formula before leaving Pivota.",
+            "evidence_strength": "official_pdp_reviewed"
+          }
+        ],
+        "best_for": [
+          {
+            "tag": "defined_lip_looks",
+            "label": "defined lip looks",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "color_payoff",
+            "label": "color payoff",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "lip_comfort",
+            "label": "lip comfort",
+            "confidence": "moderate"
+          }
+        ],
+        "shopping_highlight": "transfer-resistant wear"
+      },
+      "writes": [
+        {
+          "kb_key": "product:ext_62a32bcd27e021cbbc57532a",
+          "action": "skip",
+          "reason": "protected_high_quality_existing:reviewed",
+          "old_hash": "fb8ed311571e66ba8b7da7279b843208fc63970c5207dd273c863d5bd4735a0a",
+          "existing_weak": false
+        },
+        {
+          "kb_key": "product:sig_13ce410168339b1362013cb1dbe62241",
+          "action": "skip",
+          "reason": "protected_high_quality_existing:reviewed",
+          "old_hash": "a001a958bb43879807e25f825db721883d1696dcd5e2537899d8abc50c8ad56b",
+          "existing_weak": false
+        }
+      ]
+    },
+    {
+      "external_product_id": "ext_6b3ca4ce51c16dae564ceb7d",
+      "pivota_signature_id": "sig_f6f4127df3daa24bc1e38a9630611cd8",
+      "title": "CONTOUR G LIP PENCIL",
+      "brand": "Guerlain",
+      "canonical_url": "https://www.guerlain.com/us/en-us/p/contour-g-lip-pencil-P043986.html",
+      "changed": false,
+      "blocked": false,
+      "skip_reason": "no_safe_writes",
+      "candidate_hash": "432a5ef7e29aa576b44838bcc1fb9741b72131effa056d9a28475a69928b1aa9",
+      "evidence_profile": "official_pdp_reviewed_formula_and_usage",
+      "source_coverage": {
+        "source": "official_pdp",
+        "canonical_url": "https://www.guerlain.com/us/en-us/p/contour-g-lip-pencil-P043986.html",
+        "fields": {
+          "description": true,
+          "ingredients": 13,
+          "active_ingredients": 0,
+          "how_to": 1,
+          "details": 2,
+          "variants": 6
+        }
+      },
+      "preview": {
+        "headline": "Lip liner",
+        "what_it_is": "CONTOUR G LIP PENCIL is a lip liner from Guerlain for defining the lip edge and supporting cleaner lipstick or gloss wear. It is positioned around transfer- and feather-resistant wear. This SKU is 05 Le Rouge Rubis.",
+        "why_it_stands_out": [
+          {
+            "headline": "Wear claims are specific",
+            "body": "The reviewed PDP supports concrete lip-liner claims around long wear and resistance to transfer, feathering, or fading, which is more useful than generic color-copy.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Application sequence is explicit",
+            "body": "The reviewed directions explain how to use the pencil in sequence: Gently outline the lips with the Contour G pencil, following the natural lip contour before applying lipstick or wearing it alone.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Formula disclosure is available",
+            "body": "A full INCI list is attached, so shoppers can screen the liner formula before leaving Pivota.",
+            "evidence_strength": "official_pdp_reviewed"
+          }
+        ],
+        "best_for": [
+          {
+            "tag": "defined_lip_looks",
+            "label": "defined lip looks",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "color_payoff",
+            "label": "color payoff",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "lip_comfort",
+            "label": "lip comfort",
+            "confidence": "moderate"
+          }
+        ],
+        "shopping_highlight": "transfer-resistant wear"
+      },
+      "writes": [
+        {
+          "kb_key": "product:ext_6b3ca4ce51c16dae564ceb7d",
+          "action": "skip",
+          "reason": "protected_high_quality_existing:reviewed",
+          "old_hash": "83faa649c4aece7da8fb8a034aa6aa67129d6beefb3517b8dcb3ba9d0db72af3",
+          "existing_weak": false
+        },
+        {
+          "kb_key": "product:sig_f6f4127df3daa24bc1e38a9630611cd8",
+          "action": "skip",
+          "reason": "protected_high_quality_existing:reviewed",
+          "old_hash": "7fc28a127203cce2863a70d7272a7b584c2b21ae2c198eaf5eb16bc4eaa1f73c",
+          "existing_weak": false
+        }
+      ]
+    },
+    {
+      "external_product_id": "ext_8a3286d1295151af95c7c597",
+      "pivota_signature_id": "sig_f9488f3b27977e252cd58cb799fba4bf",
+      "title": "CONTOUR G LIP PENCIL",
+      "brand": "Guerlain",
+      "canonical_url": "https://www.guerlain.com/us/en-us/p/contour-g-lip-pencil-P043986.html",
+      "changed": false,
+      "blocked": false,
+      "skip_reason": "no_safe_writes",
+      "candidate_hash": "7fcf16e52a3184dbca2e89a1c860ced6795b80cd9660ec15e05f5a6819fd1774",
+      "evidence_profile": "official_pdp_reviewed_formula_and_usage",
+      "source_coverage": {
+        "source": "official_pdp",
+        "canonical_url": "https://www.guerlain.com/us/en-us/p/contour-g-lip-pencil-P043986.html",
+        "fields": {
+          "description": true,
+          "ingredients": 13,
+          "active_ingredients": 0,
+          "how_to": 1,
+          "details": 2,
+          "variants": 6
+        }
+      },
+      "preview": {
+        "headline": "Lip liner",
+        "what_it_is": "CONTOUR G LIP PENCIL is a lip liner from Guerlain for defining the lip edge and supporting cleaner lipstick or gloss wear. It is positioned around transfer- and feather-resistant wear. This SKU is 05 Le Rouge Rubis.",
+        "why_it_stands_out": [
+          {
+            "headline": "Wear claims are specific",
+            "body": "The reviewed PDP supports concrete lip-liner claims around long wear and resistance to transfer, feathering, or fading, which is more useful than generic color-copy.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Application sequence is explicit",
+            "body": "The reviewed directions explain how to use the pencil in sequence: Gently outline the lips with the Contour G pencil, following the natural lip contour before applying lipstick or wearing it alone.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Formula disclosure is available",
+            "body": "A full INCI list is attached, so shoppers can screen the liner formula before leaving Pivota.",
+            "evidence_strength": "official_pdp_reviewed"
+          }
+        ],
+        "best_for": [
+          {
+            "tag": "defined_lip_looks",
+            "label": "defined lip looks",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "color_payoff",
+            "label": "color payoff",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "lip_comfort",
+            "label": "lip comfort",
+            "confidence": "moderate"
+          }
+        ],
+        "shopping_highlight": "transfer-resistant wear"
+      },
+      "writes": [
+        {
+          "kb_key": "product:ext_8a3286d1295151af95c7c597",
+          "action": "skip",
+          "reason": "protected_high_quality_existing:reviewed",
+          "old_hash": "b15f860e32e70cc7b4d3badbcff7f9e797700dbf4157e53498629c9eab402636",
+          "existing_weak": false
+        },
+        {
+          "kb_key": "product:sig_f9488f3b27977e252cd58cb799fba4bf",
+          "action": "skip",
+          "reason": "protected_high_quality_existing:reviewed",
+          "old_hash": "b96ea5c7c2d00450fda2ae5be811dcd0b8eda4d0af49a0f964865c044fbf8459",
+          "existing_weak": false
+        }
+      ]
+    },
+    {
+      "external_product_id": "ext_c0ae88b265459781aa743815",
+      "pivota_signature_id": "sig_b990065eeb770a20b687880a2e8a920b",
+      "title": "CONTOUR G LIP PENCIL",
+      "brand": "Guerlain",
+      "canonical_url": "https://www.guerlain.com/us/en-us/p/contour-g-lip-pencil-P043986.html",
+      "changed": false,
+      "blocked": false,
+      "skip_reason": "no_safe_writes",
+      "candidate_hash": "0372ae3093bcf2d6740ccce4c6863702ae9c106b4137edef2b8f280ea208f9bd",
+      "evidence_profile": "official_pdp_reviewed_formula_and_usage",
+      "source_coverage": {
+        "source": "official_pdp",
+        "canonical_url": "https://www.guerlain.com/us/en-us/p/contour-g-lip-pencil-P043986.html",
+        "fields": {
+          "description": true,
+          "ingredients": 13,
+          "active_ingredients": 0,
+          "how_to": 1,
+          "details": 2,
+          "variants": 6
+        }
+      },
+      "preview": {
+        "headline": "Lip liner",
+        "what_it_is": "CONTOUR G LIP PENCIL is a lip liner from Guerlain for defining the lip edge and supporting cleaner lipstick or gloss wear. It is positioned around transfer- and feather-resistant wear. This SKU is 05 Le Rouge Rubis.",
+        "why_it_stands_out": [
+          {
+            "headline": "Wear claims are specific",
+            "body": "The reviewed PDP supports concrete lip-liner claims around long wear and resistance to transfer, feathering, or fading, which is more useful than generic color-copy.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Application sequence is explicit",
+            "body": "The reviewed directions explain how to use the pencil in sequence: Gently outline the lips with the Contour G pencil, following the natural lip contour before applying lipstick or wearing it alone.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Formula disclosure is available",
+            "body": "A full INCI list is attached, so shoppers can screen the liner formula before leaving Pivota.",
+            "evidence_strength": "official_pdp_reviewed"
+          }
+        ],
+        "best_for": [
+          {
+            "tag": "defined_lip_looks",
+            "label": "defined lip looks",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "color_payoff",
+            "label": "color payoff",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "lip_comfort",
+            "label": "lip comfort",
+            "confidence": "moderate"
+          }
+        ],
+        "shopping_highlight": "transfer-resistant wear"
+      },
+      "writes": [
+        {
+          "kb_key": "product:ext_c0ae88b265459781aa743815",
+          "action": "skip",
+          "reason": "protected_high_quality_existing:reviewed",
+          "old_hash": "8cfab867eac0294e91e09d7597a22c0ef928375c5be35d05bb22c9a2fc9d1e21",
+          "existing_weak": false
+        },
+        {
+          "kb_key": "product:sig_b990065eeb770a20b687880a2e8a920b",
+          "action": "skip",
+          "reason": "protected_high_quality_existing:reviewed",
+          "old_hash": "6321eee30486a63964bb6427f273686defcd781cad19d6e7e27214e5e54a9657",
+          "existing_weak": false
+        }
+      ]
+    },
+    {
+      "external_product_id": "ext_efb23ae72bc3a9af3c81b1a0",
+      "pivota_signature_id": "sig_9cf585299c3d4848522a07c0e1332bce",
+      "title": "EXCEPTIONAL RENDEZVOUS CHERRY BLOSSOM 155 ML / 5.24 OZ",
+      "brand": "Guerlain",
+      "canonical_url": "https://www.guerlain.com/us/en-us/p/exceptional-rendezvous-cherry-blossom-P062280.html",
+      "changed": false,
+      "blocked": false,
+      "skip_reason": "no_safe_writes",
+      "candidate_hash": "b94e78c928d1aeea5788a15cf5f7bce1635fbdc671cc9dbe87fbc2beac1cd8b1",
+      "evidence_profile": "official_pdp_reviewed_formula_and_usage",
+      "source_coverage": {
+        "source": "official_pdp",
+        "canonical_url": "https://www.guerlain.com/us/en-us/p/exceptional-rendezvous-cherry-blossom-P062280.html",
+        "fields": {
+          "description": true,
+          "ingredients": 30,
+          "active_ingredients": 0,
+          "how_to": 1,
+          "details": 1,
+          "variants": 1
+        }
+      },
+      "preview": {
+        "headline": "Fine fragrance",
+        "what_it_is": "EXCEPTIONAL RENDEZVOUS CHERRY BLOSSOM 155 ML / 5.24 OZ is a fine fragrance from Guerlain in 155ml, with source-backed scent cues including rose, citrus and jasmine.",
+        "why_it_stands_out": [
+          {
+            "headline": "Scent profile cues",
+            "body": "Reviewed scent cues such as rose, cherry, jasmine, citrus help shoppers compare the fragrance profile without relying on generic scent copy.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Ingredient list is available",
+            "body": "Full INCI is present for formula-sensitive review, which makes this PDP safer to evaluate than a claim-only listing.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Shade and size are explicit",
+            "body": "Variant labels such as 155ml, Size: 155ml are visible, reducing ambiguity around the product format before a shopper clicks through.",
+            "evidence_strength": "official_pdp_reviewed"
+          }
+        ],
+        "best_for": [
+          {
+            "tag": "warm_fragrance_profiles",
+            "label": "warm fragrance profiles",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "floral_fragrance_profiles",
+            "label": "floral fragrance profiles",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "fresh_citrus_profiles",
+            "label": "fresh citrus profiles",
+            "confidence": "moderate"
+          }
+        ],
+        "shopping_highlight": "rose, cherry, jasmine, citrus, 155ml"
+      },
+      "writes": [
+        {
+          "kb_key": "product:ext_efb23ae72bc3a9af3c81b1a0",
+          "action": "skip",
+          "reason": "protected_high_quality_existing:reviewed",
+          "old_hash": "9b88836909bfd710f8c86b43d736cb099e3906dc39323866afc0119c4dec7150",
+          "existing_weak": false
+        },
+        {
+          "kb_key": "product:sig_9cf585299c3d4848522a07c0e1332bce",
+          "action": "skip",
+          "reason": "protected_high_quality_existing:reviewed",
+          "old_hash": "9b88836909bfd710f8c86b43d736cb099e3906dc39323866afc0119c4dec7150",
+          "existing_weak": false
+        }
+      ]
+    },
+    {
+      "external_product_id": "ext_229e21acf38e2b3de8a63b06",
+      "pivota_signature_id": "sig_02b88597b902a7fbbe72c0b8042953d1",
+      "title": "KISSKISS BEE GLOW 98% naturally-derived¹ honey tint balm",
+      "brand": "Guerlain",
+      "canonical_url": "https://www.guerlain.com/us/en-us/p/kisskiss-bee-glow-98-naturally-derived%C2%B9-honey-tint-balm-P043570.html",
+      "changed": false,
+      "blocked": false,
+      "skip_reason": "no_safe_writes",
+      "candidate_hash": "524d021bbc51d968f38ab869f79b318dbffd64d6993758b2efffdbc93df045e7",
+      "evidence_profile": "official_pdp_reviewed_formula_and_usage",
+      "source_coverage": {
+        "source": "official_pdp",
+        "canonical_url": "https://www.guerlain.com/us/en-us/p/kisskiss-bee-glow-98-naturally-derived%C2%B9-honey-tint-balm-P043570.html",
+        "fields": {
+          "description": true,
+          "ingredients": 42,
+          "active_ingredients": 0,
+          "how_to": 1,
+          "details": 5,
+          "variants": 8
+        }
+      },
+      "preview": {
+        "headline": "Lip color",
+        "what_it_is": "KISSKISS BEE GLOW 98% naturally-derived¹ honey tint balm is a lip color from Guerlain in 458 POP ROSE GLOW, with source-backed cues around shine finish, shade clarity and comfort-oriented lip care.",
+        "why_it_stands_out": [
+          {
+            "headline": "Lip finish cues are specific",
+            "body": "Reviewed lip cues such as honey, shea butter, shine finish, shade range identify finish, shade, or formula context before the shopper leaves Pivota.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Ingredient list is available",
+            "body": "Full INCI is present for formula-sensitive review, which makes this PDP safer to evaluate than a claim-only listing.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Shade and size are explicit",
+            "body": "Variant labels such as 458 POP ROSE GLOW, Shade: 458 POP ROSE GLOW, 129 BLOSSOM GLOW, Shade: 129 BLOSSOM GLOW are visible, reducing ambiguity around the product format before a shopper clicks through.",
+            "evidence_strength": "official_pdp_reviewed"
+          }
+        ],
+        "best_for": [
+          {
+            "tag": "color_payoff",
+            "label": "color payoff",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "lip_comfort",
+            "label": "lip comfort",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "shine_finish",
+            "label": "shine finish",
+            "confidence": "moderate"
+          }
+        ],
+        "shopping_highlight": "honey, shea butter, shine finish"
+      },
+      "writes": [
+        {
+          "kb_key": "product:ext_229e21acf38e2b3de8a63b06",
+          "action": "skip",
+          "reason": "protected_high_quality_existing:reviewed",
+          "old_hash": "5c066c4e08013641f2eaacbd9403ff1dc896818dc092ee0eed8e5d2aedb424ee",
+          "existing_weak": false
+        },
+        {
+          "kb_key": "product:sig_02b88597b902a7fbbe72c0b8042953d1",
+          "action": "skip",
+          "reason": "protected_high_quality_existing:reviewed",
+          "old_hash": "704f424470bfe5679e577457f5fba20b9e807f006610b51d18bd8a80443c0b65",
+          "existing_weak": false
+        }
+      ]
+    },
+    {
+      "external_product_id": "ext_445ae587cfe825bf170bb2b9",
+      "pivota_signature_id": "sig_f2fbb862aeadf7e461613d4ec67f8c2b",
+      "title": "KISSKISS BEE GLOW 98% naturally-derived¹ honey tint balm",
+      "brand": "Guerlain",
+      "canonical_url": "https://www.guerlain.com/us/en-us/p/kisskiss-bee-glow-98-naturally-derived%C2%B9-honey-tint-balm-P043570.html",
+      "changed": false,
+      "blocked": false,
+      "skip_reason": "no_safe_writes",
+      "candidate_hash": "ddb6bf7000b182cb97b8a592c66a847d10e1844b02c3228c7a9b1576d2787a48",
+      "evidence_profile": "official_pdp_reviewed_formula_and_usage",
+      "source_coverage": {
+        "source": "official_pdp",
+        "canonical_url": "https://www.guerlain.com/us/en-us/p/kisskiss-bee-glow-98-naturally-derived%C2%B9-honey-tint-balm-P043570.html",
+        "fields": {
+          "description": true,
+          "ingredients": 42,
+          "active_ingredients": 0,
+          "how_to": 1,
+          "details": 5,
+          "variants": 8
+        }
+      },
+      "preview": {
+        "headline": "Lip color",
+        "what_it_is": "KISSKISS BEE GLOW 98% naturally-derived¹ honey tint balm is a lip color from Guerlain in 458 POP ROSE GLOW, with source-backed cues around shine finish, shade clarity and comfort-oriented lip care.",
+        "why_it_stands_out": [
+          {
+            "headline": "Lip finish cues are specific",
+            "body": "Reviewed lip cues such as honey, shea butter, shine finish, shade range identify finish, shade, or formula context before the shopper leaves Pivota.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Ingredient list is available",
+            "body": "Full INCI is present for formula-sensitive review, which makes this PDP safer to evaluate than a claim-only listing.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Shade and size are explicit",
+            "body": "Variant labels such as 458 POP ROSE GLOW, Shade: 458 POP ROSE GLOW, 129 BLOSSOM GLOW, Shade: 129 BLOSSOM GLOW are visible, reducing ambiguity around the product format before a shopper clicks through.",
+            "evidence_strength": "official_pdp_reviewed"
+          }
+        ],
+        "best_for": [
+          {
+            "tag": "color_payoff",
+            "label": "color payoff",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "lip_comfort",
+            "label": "lip comfort",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "shine_finish",
+            "label": "shine finish",
+            "confidence": "moderate"
+          }
+        ],
+        "shopping_highlight": "honey, shea butter, shine finish"
+      },
+      "writes": [
+        {
+          "kb_key": "product:ext_445ae587cfe825bf170bb2b9",
+          "action": "skip",
+          "reason": "protected_high_quality_existing:reviewed",
+          "old_hash": "4d35426d778b36f4d0bd6eee3a3b9d8be2b8921555a036c27a7d43a98c93118a",
+          "existing_weak": false
+        },
+        {
+          "kb_key": "product:sig_f2fbb862aeadf7e461613d4ec67f8c2b",
+          "action": "skip",
+          "reason": "protected_high_quality_existing:reviewed",
+          "old_hash": "acbd52c6cee14576f48c03c046ac718f9694cc8ad903a1002f8848ffb434251e",
+          "existing_weak": false
+        }
+      ]
+    },
+    {
+      "external_product_id": "ext_5afc9c9cd09ed3315faf8aa8",
+      "pivota_signature_id": "sig_9777c4d3ea7f3bcd133bdf9d00f642b8",
+      "title": "KISSKISS BEE GLOW 98% naturally-derived¹ honey tint balm",
+      "brand": "Guerlain",
+      "canonical_url": "https://www.guerlain.com/us/en-us/p/kisskiss-bee-glow-98-naturally-derived%C2%B9-honey-tint-balm-P043570.html",
+      "changed": false,
+      "blocked": false,
+      "skip_reason": "no_safe_writes",
+      "candidate_hash": "807048f7f211b508a4d9a9f234306e02683594608e118b8a567072d6e59891ea",
+      "evidence_profile": "official_pdp_reviewed_formula_and_usage",
+      "source_coverage": {
+        "source": "official_pdp",
+        "canonical_url": "https://www.guerlain.com/us/en-us/p/kisskiss-bee-glow-98-naturally-derived%C2%B9-honey-tint-balm-P043570.html",
+        "fields": {
+          "description": true,
+          "ingredients": 42,
+          "active_ingredients": 0,
+          "how_to": 1,
+          "details": 5,
+          "variants": 8
+        }
+      },
+      "preview": {
+        "headline": "Lip color",
+        "what_it_is": "KISSKISS BEE GLOW 98% naturally-derived¹ honey tint balm is a lip color from Guerlain in 458 POP ROSE GLOW, with source-backed cues around shine finish, shade clarity and comfort-oriented lip care.",
+        "why_it_stands_out": [
+          {
+            "headline": "Lip finish cues are specific",
+            "body": "Reviewed lip cues such as honey, shea butter, shine finish, shade range identify finish, shade, or formula context before the shopper leaves Pivota.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Ingredient list is available",
+            "body": "Full INCI is present for formula-sensitive review, which makes this PDP safer to evaluate than a claim-only listing.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Shade and size are explicit",
+            "body": "Variant labels such as 458 POP ROSE GLOW, Shade: 458 POP ROSE GLOW, 129 BLOSSOM GLOW, Shade: 129 BLOSSOM GLOW are visible, reducing ambiguity around the product format before a shopper clicks through.",
+            "evidence_strength": "official_pdp_reviewed"
+          }
+        ],
+        "best_for": [
+          {
+            "tag": "color_payoff",
+            "label": "color payoff",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "lip_comfort",
+            "label": "lip comfort",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "shine_finish",
+            "label": "shine finish",
+            "confidence": "moderate"
+          }
+        ],
+        "shopping_highlight": "honey, shea butter, shine finish"
+      },
+      "writes": [
+        {
+          "kb_key": "product:ext_5afc9c9cd09ed3315faf8aa8",
+          "action": "skip",
+          "reason": "protected_high_quality_existing:reviewed",
+          "old_hash": "0df3d8537395f78f4c07e69769c9e3bc90d0ee98ee8d59999bdea1d45bd93839",
+          "existing_weak": false
+        },
+        {
+          "kb_key": "product:sig_9777c4d3ea7f3bcd133bdf9d00f642b8",
+          "action": "skip",
+          "reason": "protected_high_quality_existing:reviewed",
+          "old_hash": "a4cd291a7b41375d7b35c6da90e4f895e0fce1a39fea393394ce46cc36fd32a8",
+          "existing_weak": false
+        }
+      ]
+    },
+    {
+      "external_product_id": "ext_68ffcd382f55a1cf8fdc5197",
+      "pivota_signature_id": "sig_e14700bdbf477d7ed36acf78ba8ad1f1",
+      "title": "KISSKISS BEE GLOW 98% naturally-derived¹ honey tint balm",
+      "brand": "Guerlain",
+      "canonical_url": "https://www.guerlain.com/us/en-us/p/kisskiss-bee-glow-98-naturally-derived%C2%B9-honey-tint-balm-P043570.html",
+      "changed": false,
+      "blocked": false,
+      "skip_reason": "no_safe_writes",
+      "candidate_hash": "d7f4fa8aed2f76073f749ae7dc67c65042dfe1704739767a5f1d90bb9a47f41d",
+      "evidence_profile": "official_pdp_reviewed_formula_and_usage",
+      "source_coverage": {
+        "source": "official_pdp",
+        "canonical_url": "https://www.guerlain.com/us/en-us/p/kisskiss-bee-glow-98-naturally-derived%C2%B9-honey-tint-balm-P043570.html",
+        "fields": {
+          "description": true,
+          "ingredients": 42,
+          "active_ingredients": 0,
+          "how_to": 1,
+          "details": 5,
+          "variants": 8
+        }
+      },
+      "preview": {
+        "headline": "Lip color",
+        "what_it_is": "KISSKISS BEE GLOW 98% naturally-derived¹ honey tint balm is a lip color from Guerlain in 458 POP ROSE GLOW, with source-backed cues around shine finish, shade clarity and comfort-oriented lip care.",
+        "why_it_stands_out": [
+          {
+            "headline": "Lip finish cues are specific",
+            "body": "Reviewed lip cues such as honey, shea butter, shine finish, shade range identify finish, shade, or formula context before the shopper leaves Pivota.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Ingredient list is available",
+            "body": "Full INCI is present for formula-sensitive review, which makes this PDP safer to evaluate than a claim-only listing.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Shade and size are explicit",
+            "body": "Variant labels such as 458 POP ROSE GLOW, Shade: 458 POP ROSE GLOW, 129 BLOSSOM GLOW, Shade: 129 BLOSSOM GLOW are visible, reducing ambiguity around the product format before a shopper clicks through.",
+            "evidence_strength": "official_pdp_reviewed"
+          }
+        ],
+        "best_for": [
+          {
+            "tag": "color_payoff",
+            "label": "color payoff",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "lip_comfort",
+            "label": "lip comfort",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "shine_finish",
+            "label": "shine finish",
+            "confidence": "moderate"
+          }
+        ],
+        "shopping_highlight": "honey, shea butter, shine finish"
+      },
+      "writes": [
+        {
+          "kb_key": "product:ext_68ffcd382f55a1cf8fdc5197",
+          "action": "skip",
+          "reason": "protected_high_quality_existing:reviewed",
+          "old_hash": "c96a9f79c7162fe87e8e4c566233fcd1a22f7d48d93b588e7c7199304634968e",
+          "existing_weak": false
+        },
+        {
+          "kb_key": "product:sig_e14700bdbf477d7ed36acf78ba8ad1f1",
+          "action": "skip",
+          "reason": "protected_high_quality_existing:reviewed",
+          "old_hash": "d8421644933b75c8312954115b594c7c5d9e20687e13003df5c1c0f570bcb3b5",
+          "existing_weak": false
+        }
+      ]
+    },
+    {
+      "external_product_id": "ext_9048f4e2df53ee1d70001730",
+      "pivota_signature_id": "sig_5de391cc92517989d35c38ba99170998",
+      "title": "KISSKISS BEE GLOW 98% naturally-derived¹ honey tint balm",
+      "brand": "Guerlain",
+      "canonical_url": "https://www.guerlain.com/us/en-us/p/kisskiss-bee-glow-98-naturally-derived%C2%B9-honey-tint-balm-P043570.html",
+      "changed": false,
+      "blocked": false,
+      "skip_reason": "no_safe_writes",
+      "candidate_hash": "2a5d27168589c3fadf7b2ca7e9c3f6b5a40e4435abbc92e4da308f8419c86001",
+      "evidence_profile": "official_pdp_reviewed_formula_and_usage",
+      "source_coverage": {
+        "source": "official_pdp",
+        "canonical_url": "https://www.guerlain.com/us/en-us/p/kisskiss-bee-glow-98-naturally-derived%C2%B9-honey-tint-balm-P043570.html",
+        "fields": {
+          "description": true,
+          "ingredients": 42,
+          "active_ingredients": 0,
+          "how_to": 1,
+          "details": 5,
+          "variants": 8
+        }
+      },
+      "preview": {
+        "headline": "Lip color",
+        "what_it_is": "KISSKISS BEE GLOW 98% naturally-derived¹ honey tint balm is a lip color from Guerlain in 458 POP ROSE GLOW, with source-backed cues around shine finish, shade clarity and comfort-oriented lip care.",
+        "why_it_stands_out": [
+          {
+            "headline": "Lip finish cues are specific",
+            "body": "Reviewed lip cues such as honey, shea butter, shine finish, shade range identify finish, shade, or formula context before the shopper leaves Pivota.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Ingredient list is available",
+            "body": "Full INCI is present for formula-sensitive review, which makes this PDP safer to evaluate than a claim-only listing.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Shade and size are explicit",
+            "body": "Variant labels such as 458 POP ROSE GLOW, Shade: 458 POP ROSE GLOW, 129 BLOSSOM GLOW, Shade: 129 BLOSSOM GLOW are visible, reducing ambiguity around the product format before a shopper clicks through.",
+            "evidence_strength": "official_pdp_reviewed"
+          }
+        ],
+        "best_for": [
+          {
+            "tag": "color_payoff",
+            "label": "color payoff",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "lip_comfort",
+            "label": "lip comfort",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "shine_finish",
+            "label": "shine finish",
+            "confidence": "moderate"
+          }
+        ],
+        "shopping_highlight": "honey, shea butter, shine finish"
+      },
+      "writes": [
+        {
+          "kb_key": "product:ext_9048f4e2df53ee1d70001730",
+          "action": "skip",
+          "reason": "protected_high_quality_existing:reviewed",
+          "old_hash": "de17d21074fc99ec307a8f1d8bdc5ae0b6a7279dcb3d6436f1c07d0422e25331",
+          "existing_weak": false
+        },
+        {
+          "kb_key": "product:sig_5de391cc92517989d35c38ba99170998",
+          "action": "skip",
+          "reason": "protected_high_quality_existing:reviewed",
+          "old_hash": "3695efd26b34e91c8d2fedc4c43cbeeece1db2373ac9bc64379dbabe54bddfc8",
+          "existing_weak": false
+        }
+      ]
+    },
+    {
+      "external_product_id": "ext_93dffaabfe274c8f1b348649",
+      "pivota_signature_id": "sig_82f80ba1b14b6db3e4bf2c3c1f126c29",
+      "title": "KISSKISS BEE GLOW 98% naturally-derived¹ honey tint balm",
+      "brand": "Guerlain",
+      "canonical_url": "https://www.guerlain.com/us/en-us/p/kisskiss-bee-glow-98-naturally-derived%C2%B9-honey-tint-balm-P043570.html",
+      "changed": false,
+      "blocked": false,
+      "skip_reason": "no_safe_writes",
+      "candidate_hash": "ca86017142f1b7528195c49393a93ee450bf080676a3972462fdf35700e6881c",
+      "evidence_profile": "official_pdp_reviewed_formula_and_usage",
+      "source_coverage": {
+        "source": "official_pdp",
+        "canonical_url": "https://www.guerlain.com/us/en-us/p/kisskiss-bee-glow-98-naturally-derived%C2%B9-honey-tint-balm-P043570.html",
+        "fields": {
+          "description": true,
+          "ingredients": 42,
+          "active_ingredients": 0,
+          "how_to": 1,
+          "details": 5,
+          "variants": 8
+        }
+      },
+      "preview": {
+        "headline": "Lip color",
+        "what_it_is": "KISSKISS BEE GLOW 98% naturally-derived¹ honey tint balm is a lip color from Guerlain in 458 POP ROSE GLOW, with source-backed cues around shine finish, shade clarity and comfort-oriented lip care.",
+        "why_it_stands_out": [
+          {
+            "headline": "Lip finish cues are specific",
+            "body": "Reviewed lip cues such as honey, shea butter, shine finish, shade range identify finish, shade, or formula context before the shopper leaves Pivota.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Ingredient list is available",
+            "body": "Full INCI is present for formula-sensitive review, which makes this PDP safer to evaluate than a claim-only listing.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Shade and size are explicit",
+            "body": "Variant labels such as 458 POP ROSE GLOW, Shade: 458 POP ROSE GLOW, 129 BLOSSOM GLOW, Shade: 129 BLOSSOM GLOW are visible, reducing ambiguity around the product format before a shopper clicks through.",
+            "evidence_strength": "official_pdp_reviewed"
+          }
+        ],
+        "best_for": [
+          {
+            "tag": "color_payoff",
+            "label": "color payoff",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "lip_comfort",
+            "label": "lip comfort",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "shine_finish",
+            "label": "shine finish",
+            "confidence": "moderate"
+          }
+        ],
+        "shopping_highlight": "honey, shea butter, shine finish"
+      },
+      "writes": [
+        {
+          "kb_key": "product:ext_93dffaabfe274c8f1b348649",
+          "action": "skip",
+          "reason": "protected_high_quality_existing:reviewed",
+          "old_hash": "98ca0d2683a9cea91898c7758058e86f07459ba405bc8446d265cc725551fb5d",
+          "existing_weak": false
+        },
+        {
+          "kb_key": "product:sig_82f80ba1b14b6db3e4bf2c3c1f126c29",
+          "action": "skip",
+          "reason": "protected_high_quality_existing:reviewed",
+          "old_hash": "edb11f1110ca135eb7c450cf71173db39d583794ed4ced96c25af802b89bc68e",
+          "existing_weak": false
+        }
+      ]
+    },
+    {
+      "external_product_id": "ext_a808c15060dd5d2b48d07e85",
+      "pivota_signature_id": "sig_9484b772db0527b6b9e60f043378c5f4",
+      "title": "KISSKISS BEE GLOW 98% naturally-derived¹ honey tint balm",
+      "brand": "Guerlain",
+      "canonical_url": "https://www.guerlain.com/us/en-us/p/kisskiss-bee-glow-98-naturally-derived%C2%B9-honey-tint-balm-P043570.html",
+      "changed": false,
+      "blocked": false,
+      "skip_reason": "no_safe_writes",
+      "candidate_hash": "1cd53f9331b97bbc310fffc4f1b07bab9ba317861e166dd4172900b2755343a2",
+      "evidence_profile": "official_pdp_reviewed_formula_and_usage",
+      "source_coverage": {
+        "source": "official_pdp",
+        "canonical_url": "https://www.guerlain.com/us/en-us/p/kisskiss-bee-glow-98-naturally-derived%C2%B9-honey-tint-balm-P043570.html",
+        "fields": {
+          "description": true,
+          "ingredients": 42,
+          "active_ingredients": 0,
+          "how_to": 1,
+          "details": 5,
+          "variants": 8
+        }
+      },
+      "preview": {
+        "headline": "Lip color",
+        "what_it_is": "KISSKISS BEE GLOW 98% naturally-derived¹ honey tint balm is a lip color from Guerlain in 458 POP ROSE GLOW, with source-backed cues around shine finish, shade clarity and comfort-oriented lip care.",
+        "why_it_stands_out": [
+          {
+            "headline": "Lip finish cues are specific",
+            "body": "Reviewed lip cues such as honey, shea butter, shine finish, shade range identify finish, shade, or formula context before the shopper leaves Pivota.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Ingredient list is available",
+            "body": "Full INCI is present for formula-sensitive review, which makes this PDP safer to evaluate than a claim-only listing.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Shade and size are explicit",
+            "body": "Variant labels such as 458 POP ROSE GLOW, Shade: 458 POP ROSE GLOW, 129 BLOSSOM GLOW, Shade: 129 BLOSSOM GLOW are visible, reducing ambiguity around the product format before a shopper clicks through.",
+            "evidence_strength": "official_pdp_reviewed"
+          }
+        ],
+        "best_for": [
+          {
+            "tag": "color_payoff",
+            "label": "color payoff",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "lip_comfort",
+            "label": "lip comfort",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "shine_finish",
+            "label": "shine finish",
+            "confidence": "moderate"
+          }
+        ],
+        "shopping_highlight": "honey, shea butter, shine finish"
+      },
+      "writes": [
+        {
+          "kb_key": "product:ext_a808c15060dd5d2b48d07e85",
+          "action": "skip",
+          "reason": "protected_high_quality_existing:reviewed",
+          "old_hash": "3bca16185d7736682d054eaef079555a5f672baa16018e4b1a73c719229dbfb5",
+          "existing_weak": false
+        },
+        {
+          "kb_key": "product:sig_9484b772db0527b6b9e60f043378c5f4",
+          "action": "skip",
+          "reason": "protected_high_quality_existing:reviewed",
+          "old_hash": "367adbb54e31d7afe7df0e751c83eadb328aa8db049bca08bcb996e3cf488a39",
+          "existing_weak": false
+        }
+      ]
+    },
+    {
+      "external_product_id": "ext_e3d4365481cd9dbecaed0640",
+      "pivota_signature_id": "sig_750eb4393b60dc1941e68264f256b62d",
+      "title": "KISSKISS BEE GLOW 98% naturally-derived¹ honey tint balm",
+      "brand": "Guerlain",
+      "canonical_url": "https://www.guerlain.com/us/en-us/p/kisskiss-bee-glow-98-naturally-derived%C2%B9-honey-tint-balm-P043570.html",
+      "changed": false,
+      "blocked": false,
+      "skip_reason": "no_safe_writes",
+      "candidate_hash": "0935dcc61ce460bac4a182f047d40e339a79fe86ff3ce324e8669d8c2760c853",
+      "evidence_profile": "official_pdp_reviewed_formula_and_usage",
+      "source_coverage": {
+        "source": "official_pdp",
+        "canonical_url": "https://www.guerlain.com/us/en-us/p/kisskiss-bee-glow-98-naturally-derived%C2%B9-honey-tint-balm-P043570.html",
+        "fields": {
+          "description": true,
+          "ingredients": 42,
+          "active_ingredients": 0,
+          "how_to": 1,
+          "details": 5,
+          "variants": 8
+        }
+      },
+      "preview": {
+        "headline": "Lip color",
+        "what_it_is": "KISSKISS BEE GLOW 98% naturally-derived¹ honey tint balm is a lip color from Guerlain in 458 POP ROSE GLOW, with source-backed cues around shine finish, shade clarity and comfort-oriented lip care.",
+        "why_it_stands_out": [
+          {
+            "headline": "Lip finish cues are specific",
+            "body": "Reviewed lip cues such as honey, shea butter, shine finish, shade range identify finish, shade, or formula context before the shopper leaves Pivota.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Ingredient list is available",
+            "body": "Full INCI is present for formula-sensitive review, which makes this PDP safer to evaluate than a claim-only listing.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Shade and size are explicit",
+            "body": "Variant labels such as 458 POP ROSE GLOW, Shade: 458 POP ROSE GLOW, 129 BLOSSOM GLOW, Shade: 129 BLOSSOM GLOW are visible, reducing ambiguity around the product format before a shopper clicks through.",
+            "evidence_strength": "official_pdp_reviewed"
+          }
+        ],
+        "best_for": [
+          {
+            "tag": "color_payoff",
+            "label": "color payoff",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "lip_comfort",
+            "label": "lip comfort",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "shine_finish",
+            "label": "shine finish",
+            "confidence": "moderate"
+          }
+        ],
+        "shopping_highlight": "honey, shea butter, shine finish"
+      },
+      "writes": [
+        {
+          "kb_key": "product:ext_e3d4365481cd9dbecaed0640",
+          "action": "skip",
+          "reason": "protected_high_quality_existing:reviewed",
+          "old_hash": "7b1d4d0280aef839ad8c734c563e9517f3cc16ce6eb0c18f2c002ed964d441f2",
+          "existing_weak": false
+        },
+        {
+          "kb_key": "product:sig_750eb4393b60dc1941e68264f256b62d",
+          "action": "skip",
+          "reason": "protected_high_quality_existing:reviewed",
+          "old_hash": "92435bd1e09bfe74217532b5a3c79c42026c6c23df638e84de29b08792461983",
+          "existing_weak": false
+        }
+      ]
+    },
+    {
+      "external_product_id": "ext_f62900c5f9c885cd0d26f031",
+      "pivota_signature_id": "sig_1bcec2bce7792e458b8928063e61948e",
+      "title": "KISSKISS BEE LIFT Beautifying lip care primer, 95% natural origin Universal shade",
+      "brand": "Guerlain",
+      "canonical_url": "https://www.guerlain.com/us/en-us/p/kisskiss-bee-lift-beautifying-lip-care-primer-95-natural-origin-P044087.html",
+      "changed": false,
+      "blocked": false,
+      "skip_reason": "no_safe_writes",
+      "candidate_hash": "0ea76c9244b468cab975852815fcf7df322fde80ff5bfaef617f3fa0c1aaa73f",
+      "evidence_profile": "official_pdp_reviewed_formula_and_usage",
+      "source_coverage": {
+        "source": "official_pdp",
+        "canonical_url": "https://www.guerlain.com/us/en-us/p/kisskiss-bee-lift-beautifying-lip-care-primer-95-natural-origin-P044087.html",
+        "fields": {
+          "description": true,
+          "ingredients": 39,
+          "active_ingredients": 0,
+          "how_to": 1,
+          "details": 2,
+          "variants": 1
+        }
+      },
+      "preview": {
+        "headline": "Lip color",
+        "what_it_is": "KISSKISS BEE LIFT Beautifying lip care primer, 95% natural origin Universal shade is a lip color from Guerlain in Universal shade, with source-backed cues around shade clarity and comfort-oriented lip care.",
+        "why_it_stands_out": [
+          {
+            "headline": "Lip finish cues are specific",
+            "body": "Reviewed lip cues such as honey, shea butter, shade range, shade clarity identify finish, shade, or formula context before the shopper leaves Pivota.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Ingredient list is available",
+            "body": "Full INCI is present for formula-sensitive review, which makes this PDP safer to evaluate than a claim-only listing.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Shade and size are explicit",
+            "body": "Variant labels such as KISSKISS BEE LIFT Beautifying lip care primer, 95% natural origin Universal shade, Shade: Universal shade are visible, reducing ambiguity around the product format before a shopper clicks through.",
+            "evidence_strength": "official_pdp_reviewed"
+          }
+        ],
+        "best_for": [
+          {
+            "tag": "color_payoff",
+            "label": "color payoff",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "lip_comfort",
+            "label": "lip comfort",
+            "confidence": "moderate"
+          }
+        ],
+        "shopping_highlight": "honey, shea butter, shade range"
+      },
+      "writes": [
+        {
+          "kb_key": "product:ext_f62900c5f9c885cd0d26f031",
+          "action": "skip",
+          "reason": "protected_high_quality_existing:reviewed",
+          "old_hash": "d540527e108bbba4214dc8cb8f5f49ff34dcdb025f0a8af6f103b2560b462678",
+          "existing_weak": false
+        },
+        {
+          "kb_key": "product:sig_1bcec2bce7792e458b8928063e61948e",
+          "action": "skip",
+          "reason": "protected_high_quality_existing:reviewed",
+          "old_hash": "43050314a517aefcb1c0cbb5816ea9806902a0b8c0d4ba71aaf3ba68a22f4a99",
+          "existing_weak": false
+        }
+      ]
+    },
+    {
+      "external_product_id": "ext_f3bca5a5f941c618dbbabb0d",
+      "pivota_signature_id": "sig_277807e1b93430fe53c864e56329d6e1",
+      "title": "L’ART & LA MATIÈRE CUSTOMIZABLE SCENTED CANDLE",
+      "brand": "Guerlain",
+      "canonical_url": "https://www.guerlain.com/us/en-us/p/l%E2%80%99art-la-matiere-customizable-scented-candle-B000003.html",
+      "changed": false,
+      "blocked": false,
+      "skip_reason": "no_safe_writes",
+      "candidate_hash": "c5fb5c59150fc99f4bf4256b157f4b738f625cfc96efd23609c77cf5d61dc74a",
+      "evidence_profile": "official_pdp_reviewed_line",
+      "source_coverage": {
+        "source": "official_pdp",
+        "canonical_url": "https://www.guerlain.com/us/en-us/p/l%E2%80%99art-la-matiere-customizable-scented-candle-B000003.html",
+        "fields": {
+          "description": true,
+          "ingredients": 0,
+          "active_ingredients": 0,
+          "how_to": 1,
+          "details": 3,
+          "variants": 1
+        }
+      },
+      "preview": {
+        "headline": "Scented candle",
+        "what_it_is": "L’ART & LA MATIÈRE CUSTOMIZABLE SCENTED CANDLE is a home fragrance item from Guerlain.",
+        "why_it_stands_out": [
+          {
+            "headline": "Scent profile cues",
+            "body": "Reviewed scent cues such as refillable format help shoppers compare the fragrance profile without relying on generic scent copy.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Configuration is explicit",
+            "body": "Variant labels such as Mahogany Brown jar / Tonka Sarrapia - 220g scent, Jar: Mahogany Brown, Scent: Tonka Sarrapia - 220g are visible, reducing ambiguity around the product format before a shopper clicks through.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Usage instructions available",
+            "body": "Reviewed usage context is present, including: Upon first use, remove the wax refill from its protective plastic carton and place it into the empty candle jar.",
+            "evidence_strength": "official_pdp_reviewed"
+          }
+        ],
+        "best_for": [
+          {
+            "tag": "home_scent",
+            "label": "home scent",
+            "confidence": "moderate"
+          }
+        ],
+        "shopping_highlight": "refillable format"
+      },
+      "writes": [
+        {
+          "kb_key": "product:ext_f3bca5a5f941c618dbbabb0d",
+          "action": "skip",
+          "reason": "protected_high_quality_existing:reviewed",
+          "old_hash": "35dbe5818e436234fb309177292c1c2586040d0089ef213920ff2147b9cd8531",
+          "existing_weak": false
+        },
+        {
+          "kb_key": "product:sig_277807e1b93430fe53c864e56329d6e1",
+          "action": "skip",
+          "reason": "protected_high_quality_existing:reviewed",
+          "old_hash": "35dbe5818e436234fb309177292c1c2586040d0089ef213920ff2147b9cd8531",
+          "existing_weak": false
+        }
+      ]
+    },
+    {
+      "external_product_id": "ext_b746e92220b128bb2f834ae0",
+      "pivota_signature_id": "sig_0b742e367d36408caa6df8bd193dc6b1",
+      "title": "L’ART & LA MATIÈRE DISCOVERY SET – EAUX DE PARFUM 2 ML / 0.06 OZ",
+      "brand": "Guerlain",
+      "canonical_url": "https://www.guerlain.com/us/en-us/p/l%E2%80%99art-la-matiere-discovery-set-eaux-de-parfum-P062288.html",
+      "changed": false,
+      "blocked": false,
+      "skip_reason": "no_safe_writes",
+      "candidate_hash": "39999f1a528daf0de2d7367a367701309f8971659a48daa88ed2bb1719385452",
+      "evidence_profile": "official_pdp_reviewed_formula_and_usage",
+      "source_coverage": {
+        "source": "official_pdp",
+        "canonical_url": "https://www.guerlain.com/us/en-us/p/l%E2%80%99art-la-matiere-discovery-set-eaux-de-parfum-P062288.html",
+        "fields": {
+          "description": true,
+          "ingredients": 15,
+          "active_ingredients": 0,
+          "how_to": 1,
+          "details": 2,
+          "variants": 1
+        }
+      },
+      "preview": {
+        "headline": "Fine fragrance",
+        "what_it_is": "L’ART & LA MATIÈRE DISCOVERY SET – EAUX DE PARFUM 2 ML / 0.06 OZ is a fine fragrance from Guerlain in 2ml, with source-backed scent cues including vanilla, amber and leather.",
+        "why_it_stands_out": [
+          {
+            "headline": "Scent profile cues",
+            "body": "Reviewed scent cues such as leather, vanilla, amber, tobacco help shoppers compare the fragrance profile without relying on generic scent copy.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Ingredient list is available",
+            "body": "Full INCI is present for formula-sensitive review, which makes this PDP safer to evaluate than a claim-only listing.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Shade and size are explicit",
+            "body": "Variant labels such as 2ml, Size: 2ml are visible, reducing ambiguity around the product format before a shopper clicks through.",
+            "evidence_strength": "official_pdp_reviewed"
+          }
+        ],
+        "best_for": [
+          {
+            "tag": "warm_fragrance_profiles",
+            "label": "warm fragrance profiles",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "floral_fragrance_profiles",
+            "label": "floral fragrance profiles",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "fresh_citrus_profiles",
+            "label": "fresh citrus profiles",
+            "confidence": "moderate"
+          }
+        ],
+        "shopping_highlight": "leather, vanilla, amber, tobacco, 2ml"
+      },
+      "writes": [
+        {
+          "kb_key": "product:ext_b746e92220b128bb2f834ae0",
+          "action": "skip",
+          "reason": "protected_high_quality_existing:reviewed",
+          "old_hash": "67f40aed9e60cf549eb952486dfd780332462951de8f59a4922bf6349542e340",
+          "existing_weak": false
+        },
+        {
+          "kb_key": "product:sig_0b742e367d36408caa6df8bd193dc6b1",
+          "action": "skip",
+          "reason": "protected_high_quality_existing:reviewed",
+          "old_hash": "67f40aed9e60cf549eb952486dfd780332462951de8f59a4922bf6349542e340",
+          "existing_weak": false
+        }
+      ]
+    },
+    {
+      "external_product_id": "ext_385b43904fb335dfdf36ff77",
+      "pivota_signature_id": "sig_cc26bf111d80d85105ff1b0f41df6740",
+      "title": "L'Art & La Matière Spiritueuse Double Vanille – Eau de Parfum",
+      "brand": "Guerlain",
+      "canonical_url": "https://www.guerlain.com/us/en-us/p/lart-la-matiere-spiritueuse-double-vanille-eau-de-parfum-P017906.html",
+      "changed": false,
+      "blocked": false,
+      "skip_reason": "no_safe_writes",
+      "candidate_hash": "639b642dafb9005167f7ccc78a08502c502670a8709c53429f3fd9a4cc74e8e8",
+      "evidence_profile": "official_pdp_reviewed_formula_and_usage",
+      "source_coverage": {
+        "source": "official_pdp",
+        "canonical_url": "https://www.guerlain.com/us/en-us/p/lart-la-matiere-spiritueuse-double-vanille-eau-de-parfum-P017906.html",
+        "fields": {
+          "description": true,
+          "ingredients": 19,
+          "active_ingredients": 0,
+          "how_to": 1,
+          "details": 2,
+          "variants": 3
+        }
+      },
+      "preview": {
+        "headline": "Fine fragrance",
+        "what_it_is": "L'Art & La Matière Spiritueuse Double Vanille – Eau de Parfum is a fine fragrance from Guerlain in 200 ML / 6.76 OZ, with source-backed scent cues including vanilla and jasmine.",
+        "why_it_stands_out": [
+          {
+            "headline": "Scent profile cues",
+            "body": "Reviewed scent cues such as vanilla, jasmine, 200 ML / 6.76 OZ, 50 ML / 1.69 OZ help shoppers compare the fragrance profile without relying on generic scent copy.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Ingredient list is available",
+            "body": "Full INCI is present for formula-sensitive review, which makes this PDP safer to evaluate than a claim-only listing.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Shade and size are explicit",
+            "body": "Variant labels such as 200 ML / 6.76 OZ, Size: 200 ML / 6.76 OZ, 50 ML / 1.69 OZ, Size: 50 ML / 1.69 OZ are visible, reducing ambiguity around the product format before a shopper clicks through.",
+            "evidence_strength": "official_pdp_reviewed"
+          }
+        ],
+        "best_for": [
+          {
+            "tag": "warm_fragrance_profiles",
+            "label": "warm fragrance profiles",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "floral_fragrance_profiles",
+            "label": "floral fragrance profiles",
+            "confidence": "moderate"
+          }
+        ],
+        "shopping_highlight": "vanilla, jasmine, 200 ML / 6.76 OZ"
+      },
+      "writes": [
+        {
+          "kb_key": "product:ext_385b43904fb335dfdf36ff77",
+          "action": "skip",
+          "reason": "protected_high_quality_existing:reviewed",
+          "old_hash": "f7580c259a77dc0b1654c8cfef03fa56a9ca9a1721af2fe89ea86a3240d701d2",
+          "existing_weak": false
+        },
+        {
+          "kb_key": "product:sig_cc26bf111d80d85105ff1b0f41df6740",
+          "action": "skip",
+          "reason": "protected_high_quality_existing:reviewed",
+          "old_hash": "f9f72a42142ec80a1ec45e7cc59b926e5acd577d362febe95504355d61596ee5",
+          "existing_weak": false
+        }
+      ]
+    },
+    {
+      "external_product_id": "ext_97700a82ce0548b19f2aae29",
+      "pivota_signature_id": "sig_2c75d0ad9efd023a5d90b625c758a1af",
+      "title": "L'Art & La Matière Spiritueuse Double Vanille – Eau de Parfum",
+      "brand": "Guerlain",
+      "canonical_url": "https://www.guerlain.com/us/en-us/p/lart-la-matiere-spiritueuse-double-vanille-eau-de-parfum-P017906.html",
+      "changed": false,
+      "blocked": false,
+      "skip_reason": "no_safe_writes",
+      "candidate_hash": "e50b8713ea3f04308a3835ee128053baa64320d6952a961ac7309e90729135d1",
+      "evidence_profile": "official_pdp_reviewed_formula_and_usage",
+      "source_coverage": {
+        "source": "official_pdp",
+        "canonical_url": "https://www.guerlain.com/us/en-us/p/lart-la-matiere-spiritueuse-double-vanille-eau-de-parfum-P017906.html",
+        "fields": {
+          "description": true,
+          "ingredients": 19,
+          "active_ingredients": 0,
+          "how_to": 1,
+          "details": 2,
+          "variants": 3
+        }
+      },
+      "preview": {
+        "headline": "Fine fragrance",
+        "what_it_is": "L'Art & La Matière Spiritueuse Double Vanille – Eau de Parfum is a fine fragrance from Guerlain in 200 ML / 6.76 OZ, with source-backed scent cues including vanilla and jasmine.",
+        "why_it_stands_out": [
+          {
+            "headline": "Scent profile cues",
+            "body": "Reviewed scent cues such as vanilla, jasmine, 200 ML / 6.76 OZ, 50 ML / 1.69 OZ help shoppers compare the fragrance profile without relying on generic scent copy.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Ingredient list is available",
+            "body": "Full INCI is present for formula-sensitive review, which makes this PDP safer to evaluate than a claim-only listing.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Shade and size are explicit",
+            "body": "Variant labels such as 200 ML / 6.76 OZ, Size: 200 ML / 6.76 OZ, 50 ML / 1.69 OZ, Size: 50 ML / 1.69 OZ are visible, reducing ambiguity around the product format before a shopper clicks through.",
+            "evidence_strength": "official_pdp_reviewed"
+          }
+        ],
+        "best_for": [
+          {
+            "tag": "warm_fragrance_profiles",
+            "label": "warm fragrance profiles",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "floral_fragrance_profiles",
+            "label": "floral fragrance profiles",
+            "confidence": "moderate"
+          }
+        ],
+        "shopping_highlight": "vanilla, jasmine, 200 ML / 6.76 OZ"
+      },
+      "writes": [
+        {
+          "kb_key": "product:ext_97700a82ce0548b19f2aae29",
+          "action": "skip",
+          "reason": "protected_high_quality_existing:reviewed",
+          "old_hash": "00359ea86092fd85cba857980d5307cc7dfaa80257aa466e5c1c7510714569d8",
+          "existing_weak": false
+        },
+        {
+          "kb_key": "product:sig_2c75d0ad9efd023a5d90b625c758a1af",
+          "action": "skip",
+          "reason": "protected_high_quality_existing:reviewed",
+          "old_hash": "05e1c3cbd42bbf44d1c76c235eb37ba6d410d5b4778c096bf0329bbd53ab7b94",
+          "existing_weak": false
+        }
+      ]
+    },
+    {
+      "external_product_id": "ext_a3f78e027338948889af3568",
+      "pivota_signature_id": "sig_dab4b96fe97cf297707347757a331ac6",
+      "title": "L'Art & La Matière Spiritueuse Double Vanille – Eau de Parfum",
+      "brand": "Guerlain",
+      "canonical_url": "https://www.guerlain.com/us/en-us/p/lart-la-matiere-spiritueuse-double-vanille-eau-de-parfum-P017906.html",
+      "changed": false,
+      "blocked": false,
+      "skip_reason": "no_safe_writes",
+      "candidate_hash": "7031c62f1f1f0d4748fc69b2d803d4e9957020a42a70ba2e23e9681bd9f490f0",
+      "evidence_profile": "official_pdp_reviewed_formula_and_usage",
+      "source_coverage": {
+        "source": "official_pdp",
+        "canonical_url": "https://www.guerlain.com/us/en-us/p/lart-la-matiere-spiritueuse-double-vanille-eau-de-parfum-P017906.html",
+        "fields": {
+          "description": true,
+          "ingredients": 19,
+          "active_ingredients": 0,
+          "how_to": 1,
+          "details": 2,
+          "variants": 3
+        }
+      },
+      "preview": {
+        "headline": "Fine fragrance",
+        "what_it_is": "L'Art & La Matière Spiritueuse Double Vanille – Eau de Parfum is a fine fragrance from Guerlain in 200 ML / 6.76 OZ, with source-backed scent cues including vanilla and jasmine.",
+        "why_it_stands_out": [
+          {
+            "headline": "Scent profile cues",
+            "body": "Reviewed scent cues such as vanilla, jasmine, 200 ML / 6.76 OZ, 50 ML / 1.69 OZ help shoppers compare the fragrance profile without relying on generic scent copy.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Ingredient list is available",
+            "body": "Full INCI is present for formula-sensitive review, which makes this PDP safer to evaluate than a claim-only listing.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Shade and size are explicit",
+            "body": "Variant labels such as 200 ML / 6.76 OZ, Size: 200 ML / 6.76 OZ, 50 ML / 1.69 OZ, Size: 50 ML / 1.69 OZ are visible, reducing ambiguity around the product format before a shopper clicks through.",
+            "evidence_strength": "official_pdp_reviewed"
+          }
+        ],
+        "best_for": [
+          {
+            "tag": "warm_fragrance_profiles",
+            "label": "warm fragrance profiles",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "floral_fragrance_profiles",
+            "label": "floral fragrance profiles",
+            "confidence": "moderate"
+          }
+        ],
+        "shopping_highlight": "vanilla, jasmine, 200 ML / 6.76 OZ"
+      },
+      "writes": [
+        {
+          "kb_key": "product:ext_a3f78e027338948889af3568",
+          "action": "skip",
+          "reason": "protected_high_quality_existing:reviewed",
+          "old_hash": "d4a034bb61186d34b764260ab39f97c93c3034dcd1469943e4c650b69d356daa",
+          "existing_weak": false
+        },
+        {
+          "kb_key": "product:sig_dab4b96fe97cf297707347757a331ac6",
+          "action": "skip",
+          "reason": "protected_high_quality_existing:reviewed",
+          "old_hash": "a5a5c6c3701f6b8a04b8957e7d47da249e1d861467b3b3cbdffe0db03012a711",
+          "existing_weak": false
+        }
+      ]
+    },
+    {
+      "external_product_id": "ext_0f81c32bc5ed9ee976fb96a0",
+      "pivota_signature_id": "sig_fb20004335a5b08dbbcf9c4d269384c8",
+      "title": "L'Art & La Matière VANILLE PLANIFOLIA EXTRAIT 21 – EXTRACT 50 ML / 1.69 OZ",
+      "brand": "Guerlain",
+      "canonical_url": "https://www.guerlain.com/us/en-us/p/lart-la-matiere-vanille-planifolia-extrait-21-extract-P014754.html",
+      "changed": false,
+      "blocked": false,
+      "skip_reason": "no_safe_writes",
+      "candidate_hash": "835c441a6dd12f9db7c2dd275e123317edee9ee64afb505baf6fce039105d4f8",
+      "evidence_profile": "official_pdp_reviewed_formula_and_usage",
+      "source_coverage": {
+        "source": "official_pdp",
+        "canonical_url": "https://www.guerlain.com/us/en-us/p/lart-la-matiere-vanille-planifolia-extrait-21-extract-P014754.html",
+        "fields": {
+          "description": true,
+          "ingredients": 18,
+          "active_ingredients": 0,
+          "how_to": 1,
+          "details": 2,
+          "variants": 1
+        }
+      },
+      "preview": {
+        "headline": "Fine fragrance",
+        "what_it_is": "L'Art & La Matière VANILLE PLANIFOLIA EXTRAIT 21 – EXTRACT 50 ML / 1.69 OZ is a fine fragrance from Guerlain in 50ml, with source-backed scent cues including vanilla.",
+        "why_it_stands_out": [
+          {
+            "headline": "Scent profile cues",
+            "body": "Reviewed scent cues such as vanilla, 50ml help shoppers compare the fragrance profile without relying on generic scent copy.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Ingredient list is available",
+            "body": "Full INCI is present for formula-sensitive review, which makes this PDP safer to evaluate than a claim-only listing.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Shade and size are explicit",
+            "body": "Variant labels such as 50ml, Size: 50ml are visible, reducing ambiguity around the product format before a shopper clicks through.",
+            "evidence_strength": "official_pdp_reviewed"
+          }
+        ],
+        "best_for": [
+          {
+            "tag": "warm_fragrance_profiles",
+            "label": "warm fragrance profiles",
+            "confidence": "moderate"
+          }
+        ],
+        "shopping_highlight": "vanilla, 50ml, full INCI available"
+      },
+      "writes": [
+        {
+          "kb_key": "product:ext_0f81c32bc5ed9ee976fb96a0",
+          "action": "skip",
+          "reason": "protected_high_quality_existing:reviewed",
+          "old_hash": "2297e8cc89c1822c600f3deb8344b03e3d534d43367e693e9a4d9a42bb84575e",
+          "existing_weak": false
+        },
+        {
+          "kb_key": "product:sig_fb20004335a5b08dbbcf9c4d269384c8",
+          "action": "skip",
+          "reason": "protected_high_quality_existing:reviewed",
+          "old_hash": "c26c132aed384b2acd60d9283581c2de33bc45f64dd678e0c85a7f04a260a580",
+          "existing_weak": false
+        }
+      ]
+    },
+    {
+      "external_product_id": "ext_721aa5c9d9e71a28b9d4fef3",
+      "pivota_signature_id": "sig_f3768e8dc1364b6fefd3900b89a15658",
+      "title": "ORCHIDÉE IMPÉRIALE THE LONGEVITY LIGHT CREAM",
+      "brand": "Guerlain",
+      "canonical_url": "https://www.guerlain.com/us/en-us/p/orchidee-imperiale-the-longevity-light-cream-P062025.html",
+      "changed": false,
+      "blocked": false,
+      "skip_reason": "no_safe_writes",
+      "candidate_hash": "c58e70294c5fabb4026ffe08b14a150a2f97d2d09a530bef988e2945dd522497",
+      "evidence_profile": "official_pdp_reviewed_formula_and_usage",
+      "source_coverage": {
+        "source": "official_pdp",
+        "canonical_url": "https://www.guerlain.com/us/en-us/p/orchidee-imperiale-the-longevity-light-cream-P062025.html",
+        "fields": {
+          "description": true,
+          "ingredients": 52,
+          "active_ingredients": 0,
+          "how_to": 1,
+          "details": 2,
+          "variants": 2
+        }
+      },
+      "preview": {
+        "headline": "Body care treatment",
+        "what_it_is": "ORCHIDÉE IMPÉRIALE THE LONGEVITY LIGHT CREAM is a body care treatment from Guerlain in 30 ML / 1.01 OZ, with source-backed cues around hydration.",
+        "why_it_stands_out": [
+          {
+            "headline": "Routine step cues are specific",
+            "body": "Reviewed skincare cues such as hydration, barrier support, 30 ML / 1.01 OZ, 50 ML / 1.69 OZ identify the routine role or key ingredient context without inventing unsupported benefits.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Ingredient list is available",
+            "body": "Full INCI is present for formula-sensitive review, which makes this PDP safer to evaluate than a claim-only listing.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Shade and size are explicit",
+            "body": "Variant labels such as 30 ML / 1.01 OZ, Size: 30 ML / 1.01 OZ, 50 ML / 1.69 OZ, Size: 50 ML / 1.69 OZ are visible, reducing ambiguity around the product format before a shopper clicks through.",
+            "evidence_strength": "official_pdp_reviewed"
+          }
+        ],
+        "best_for": [
+          {
+            "tag": "hydration",
+            "label": "hydration",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "firmness",
+            "label": "firmness",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "barrier_support",
+            "label": "barrier support",
+            "confidence": "moderate"
+          }
+        ],
+        "shopping_highlight": "hydration, barrier support"
+      },
+      "writes": [
+        {
+          "kb_key": "product:ext_721aa5c9d9e71a28b9d4fef3",
+          "action": "skip",
+          "reason": "protected_high_quality_existing:reviewed",
+          "old_hash": "a7911865d638c94144e121ce2795967c265e37a2050374551cd68b582eeab99f",
+          "existing_weak": false
+        },
+        {
+          "kb_key": "product:sig_f3768e8dc1364b6fefd3900b89a15658",
+          "action": "skip",
+          "reason": "protected_high_quality_existing:reviewed",
+          "old_hash": "ddd84007b19b8dfb055f5f9fe3a2e441c688050d8c86ac3818158ee4855fc671",
+          "existing_weak": false
+        }
+      ]
+    },
+    {
+      "external_product_id": "ext_c6b96c732b2a0e2c1b508ad2",
+      "pivota_signature_id": "sig_2132976eb0d5fee44978bd2c20103220",
+      "title": "ORCHIDÉE IMPÉRIALE THE LONGEVITY LIGHT CREAM",
+      "brand": "Guerlain",
+      "canonical_url": "https://www.guerlain.com/us/en-us/p/orchidee-imperiale-the-longevity-light-cream-P062025.html",
+      "changed": false,
+      "blocked": false,
+      "skip_reason": "no_safe_writes",
+      "candidate_hash": "80407e9287edd6f8ff328ca40176c0b8c0f587617287b52041e7e1f985a60710",
+      "evidence_profile": "official_pdp_reviewed_formula_and_usage",
+      "source_coverage": {
+        "source": "official_pdp",
+        "canonical_url": "https://www.guerlain.com/us/en-us/p/orchidee-imperiale-the-longevity-light-cream-P062025.html",
+        "fields": {
+          "description": true,
+          "ingredients": 52,
+          "active_ingredients": 0,
+          "how_to": 1,
+          "details": 2,
+          "variants": 2
+        }
+      },
+      "preview": {
+        "headline": "Body care treatment",
+        "what_it_is": "ORCHIDÉE IMPÉRIALE THE LONGEVITY LIGHT CREAM is a body care treatment from Guerlain in 30 ML / 1.01 OZ, with source-backed cues around hydration.",
+        "why_it_stands_out": [
+          {
+            "headline": "Routine step cues are specific",
+            "body": "Reviewed skincare cues such as hydration, barrier support, 30 ML / 1.01 OZ, 50 ML / 1.69 OZ identify the routine role or key ingredient context without inventing unsupported benefits.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Ingredient list is available",
+            "body": "Full INCI is present for formula-sensitive review, which makes this PDP safer to evaluate than a claim-only listing.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Shade and size are explicit",
+            "body": "Variant labels such as 30 ML / 1.01 OZ, Size: 30 ML / 1.01 OZ, 50 ML / 1.69 OZ, Size: 50 ML / 1.69 OZ are visible, reducing ambiguity around the product format before a shopper clicks through.",
+            "evidence_strength": "official_pdp_reviewed"
+          }
+        ],
+        "best_for": [
+          {
+            "tag": "hydration",
+            "label": "hydration",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "firmness",
+            "label": "firmness",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "barrier_support",
+            "label": "barrier support",
+            "confidence": "moderate"
+          }
+        ],
+        "shopping_highlight": "hydration, barrier support"
+      },
+      "writes": [
+        {
+          "kb_key": "product:ext_c6b96c732b2a0e2c1b508ad2",
+          "action": "skip",
+          "reason": "protected_high_quality_existing:reviewed",
+          "old_hash": "4927d1d06cc25f05e0f01d86c11b6e75e5bddb1801f604d208bee50a9b93018e",
+          "existing_weak": false
+        },
+        {
+          "kb_key": "product:sig_2132976eb0d5fee44978bd2c20103220",
+          "action": "skip",
+          "reason": "protected_high_quality_existing:reviewed",
+          "old_hash": "98841225c5842f3d8b81a2a28df7974f2f9f3de84bd82bc0f971445fa3e726d2",
+          "existing_weak": false
+        }
+      ]
+    },
+    {
+      "external_product_id": "ext_be76ad4c1e89a5bfaaba08d3",
+      "pivota_signature_id": "sig_4defe57e0caa22216d8552a089d2cf4d",
+      "title": "ROUGE G THE CUSTOMIZABLE ULTRA-CARE LIPSTICK",
+      "brand": "Guerlain",
+      "canonical_url": "https://www.guerlain.com/us/en-us/p/rouge-g-the-customizable-ultra-care-lipstick-S000070.html",
+      "changed": false,
+      "blocked": false,
+      "skip_reason": "no_safe_writes",
+      "candidate_hash": "c8617f7be5c9c000bb34de000d3c66e839497b5907e7a43eac4e96e5d18866b5",
+      "evidence_profile": "official_pdp_reviewed_formula_and_usage",
+      "source_coverage": {
+        "source": "official_pdp",
+        "canonical_url": "https://www.guerlain.com/us/en-us/p/rouge-g-the-customizable-ultra-care-lipstick-S000070.html",
+        "fields": {
+          "description": true,
+          "ingredients": 1,
+          "active_ingredients": 0,
+          "how_to": 1,
+          "details": 1,
+          "variants": 1
+        }
+      },
+      "preview": {
+        "headline": "Lip color",
+        "what_it_is": "ROUGE G THE CUSTOMIZABLE ULTRA-CARE LIPSTICK is a lip color from Guerlain, with source-backed cues around satin finish, matte finish, shade clarity and comfort-oriented lip care.",
+        "why_it_stands_out": [
+          {
+            "headline": "Lip finish cues are specific",
+            "body": "Reviewed lip cues such as squalane, matte finish, satin finish, refillable format identify finish, shade, or formula context before the shopper leaves Pivota.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Ingredient list is available",
+            "body": "Full INCI is present for formula-sensitive review, which makes this PDP safer to evaluate than a claim-only listing.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Shade and size are explicit",
+            "body": "Variant labels such as ROUGE G THE CUSTOMIZABLE ULTRA-CARE LIPSTICK, Format: 3.5 g lipstick refill + customizable case are visible, reducing ambiguity around the product format before a shopper clicks through.",
+            "evidence_strength": "official_pdp_reviewed"
+          }
+        ],
+        "best_for": [
+          {
+            "tag": "refillable_lip_color",
+            "label": "refillable lip color",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "color_payoff",
+            "label": "color payoff",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "lip_comfort",
+            "label": "lip comfort",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "matte_finish",
+            "label": "matte finish",
+            "confidence": "moderate"
+          }
+        ],
+        "shopping_highlight": "squalane, matte finish, satin finish"
+      },
+      "writes": [
+        {
+          "kb_key": "product:ext_be76ad4c1e89a5bfaaba08d3",
+          "action": "skip",
+          "reason": "protected_high_quality_existing:reviewed",
+          "old_hash": "59110f20fd77102a4acbd8beda63db7fb3af7af2d1e637546f4b1f14824258c9",
+          "existing_weak": false
+        },
+        {
+          "kb_key": "product:sig_4defe57e0caa22216d8552a089d2cf4d",
+          "action": "skip",
+          "reason": "protected_high_quality_existing:reviewed",
+          "old_hash": "677cee54fdb1ac2544fb897873aea5469a92a3a79db9f44b551b585d41992a62",
+          "existing_weak": false
+        }
+      ]
+    },
+    {
+      "external_product_id": "ext_dc290a89c2c5daa2a5eab5cf",
+      "pivota_signature_id": "sig_497f2d38cfa7e9db99abec9f7ad42aa6",
+      "title": "ROUGE G THE CUSTOMIZABLE ULTRA-CARE LIPSTICK",
+      "brand": "Guerlain",
+      "canonical_url": "https://www.guerlain.com/us/en-us/p/rouge-g-the-customizable-ultra-care-lipstick-S000050.html",
+      "changed": false,
+      "blocked": false,
+      "skip_reason": "no_safe_writes",
+      "candidate_hash": "d6ca5e4e68c84f4a72ed2c1b79bd8ff957605f60368c1eb1b02136c054e017a7",
+      "evidence_profile": "official_pdp_reviewed_formula_and_usage",
+      "source_coverage": {
+        "source": "official_pdp",
+        "canonical_url": "https://www.guerlain.com/us/en-us/p/rouge-g-the-customizable-ultra-care-lipstick-S000050.html",
+        "fields": {
+          "description": true,
+          "ingredients": 1,
+          "active_ingredients": 0,
+          "how_to": 1,
+          "details": 1,
+          "variants": 1
+        }
+      },
+      "preview": {
+        "headline": "Lip color",
+        "what_it_is": "ROUGE G THE CUSTOMIZABLE ULTRA-CARE LIPSTICK is a lip color from Guerlain, with source-backed cues around satin finish, matte finish, shade clarity and comfort-oriented lip care.",
+        "why_it_stands_out": [
+          {
+            "headline": "Lip finish cues are specific",
+            "body": "Reviewed lip cues such as squalane, matte finish, satin finish, refillable format identify finish, shade, or formula context before the shopper leaves Pivota.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Ingredient list is available",
+            "body": "Full INCI is present for formula-sensitive review, which makes this PDP safer to evaluate than a claim-only listing.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Shade and size are explicit",
+            "body": "Variant labels such as ROUGE G THE CUSTOMIZABLE ULTRA-CARE LIPSTICK, Format: 3.5 g lipstick refill + customizable case are visible, reducing ambiguity around the product format before a shopper clicks through.",
+            "evidence_strength": "official_pdp_reviewed"
+          }
+        ],
+        "best_for": [
+          {
+            "tag": "refillable_lip_color",
+            "label": "refillable lip color",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "color_payoff",
+            "label": "color payoff",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "lip_comfort",
+            "label": "lip comfort",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "matte_finish",
+            "label": "matte finish",
+            "confidence": "moderate"
+          }
+        ],
+        "shopping_highlight": "squalane, matte finish, satin finish"
+      },
+      "writes": [
+        {
+          "kb_key": "product:ext_dc290a89c2c5daa2a5eab5cf",
+          "action": "skip",
+          "reason": "protected_high_quality_existing:reviewed",
+          "old_hash": "9c34ee25b94138cd24fb7593be2970e25a681647a5ce4de9dc7e0623d964d0a3",
+          "existing_weak": false
+        },
+        {
+          "kb_key": "product:sig_497f2d38cfa7e9db99abec9f7ad42aa6",
+          "action": "skip",
+          "reason": "protected_high_quality_existing:reviewed",
+          "old_hash": "9c34ee25b94138cd24fb7593be2970e25a681647a5ce4de9dc7e0623d964d0a3",
+          "existing_weak": false
+        }
+      ]
+    },
+    {
+      "external_product_id": "ext_232c7fd9a3ff4dbf55e3fe90",
+      "pivota_signature_id": "sig_c69add69a5390ad379c2d49419064792",
+      "title": "TERRACOTTA LIGHT THE SUN-KISSED NATURAL HEALTHY GLOW POWDER - 96% NATURALLY-DERIVED INGREDIENTS",
+      "brand": "Guerlain",
+      "canonical_url": "https://www.guerlain.com/us/en-us/p/terracotta-light-the-sun-kissed-natural-healthy-glow-powder---96-naturally-derived-ingredients-P062484.html",
+      "changed": false,
+      "blocked": false,
+      "skip_reason": "no_safe_writes",
+      "candidate_hash": "6966b6cafeb0a72be640c29fc00adfb55d1cc26e2a6a3be2492fe9850ab1f15d",
+      "evidence_profile": "official_pdp_reviewed_formula_and_usage",
+      "source_coverage": {
+        "source": "official_pdp",
+        "canonical_url": "https://www.guerlain.com/us/en-us/p/terracotta-light-the-sun-kissed-natural-healthy-glow-powder---96-naturally-derived-ingredients-P062484.html",
+        "fields": {
+          "description": true,
+          "ingredients": 37,
+          "active_ingredients": 0,
+          "how_to": 1,
+          "details": 1,
+          "variants": 3
+        }
+      },
+      "preview": {
+        "headline": "Fine fragrance",
+        "what_it_is": "TERRACOTTA LIGHT THE SUN-KISSED NATURAL HEALTHY GLOW POWDER - 96% NATURALLY-DERIVED INGREDIENTS is a fine fragrance from Guerlain.",
+        "why_it_stands_out": [
+          {
+            "headline": "Scent profile cues",
+            "body": "Reviewed scent cues such as shea butter, refillable format help shoppers compare the fragrance profile without relying on generic scent copy.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Ingredient list is available",
+            "body": "Full INCI is present for formula-sensitive review, which makes this PDP safer to evaluate than a claim-only listing.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Shade and size are explicit",
+            "body": "Variant labels such as RED ZAGORA CASE, Shade: RED ZAGORA CASE, BLUE DAKHLA CASE, Shade: BLUE DAKHLA CASE are visible, reducing ambiguity around the product format before a shopper clicks through.",
+            "evidence_strength": "official_pdp_reviewed"
+          }
+        ],
+        "best_for": [
+          {
+            "tag": "shea_butter",
+            "label": "shea butter",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "refillable_format",
+            "label": "refillable format",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "full_inci_available",
+            "label": "full INCI available",
+            "confidence": "moderate"
+          }
+        ],
+        "shopping_highlight": "shea butter, refillable format"
+      },
+      "writes": [
+        {
+          "kb_key": "product:ext_232c7fd9a3ff4dbf55e3fe90",
+          "action": "skip",
+          "reason": "protected_high_quality_existing:reviewed",
+          "old_hash": "aaa0bb3a9e59c6fd0ad1fd94a31d751fedcfcab1aeabeff47a3e84f4feeec6be",
+          "existing_weak": false
+        },
+        {
+          "kb_key": "product:sig_c69add69a5390ad379c2d49419064792",
+          "action": "skip",
+          "reason": "protected_high_quality_existing:reviewed",
+          "old_hash": "aaa0bb3a9e59c6fd0ad1fd94a31d751fedcfcab1aeabeff47a3e84f4feeec6be",
+          "existing_weak": false
+        }
+      ]
+    },
+    {
+      "external_product_id": "ext_2ba8b5cca33caf8eab8537d8",
+      "pivota_signature_id": "sig_477433e8dc2cc4f267ef87c6daa43a09",
+      "title": "TERRACOTTA LIGHT THE SUN-KISSED NATURAL HEALTHY GLOW POWDER - 96% NATURALLY-DERIVED INGREDIENTS",
+      "brand": "Guerlain",
+      "canonical_url": "https://www.guerlain.com/us/en-us/p/terracotta-light-the-sun-kissed-natural-healthy-glow-powder---96-naturally-derived-ingredients-P062484.html",
+      "changed": false,
+      "blocked": false,
+      "skip_reason": "no_safe_writes",
+      "candidate_hash": "d1f8474207b98f97353f42f867764d0fcfe7dda94e19592a310cafe5133a9dce",
+      "evidence_profile": "official_pdp_reviewed_formula_and_usage",
+      "source_coverage": {
+        "source": "official_pdp",
+        "canonical_url": "https://www.guerlain.com/us/en-us/p/terracotta-light-the-sun-kissed-natural-healthy-glow-powder---96-naturally-derived-ingredients-P062484.html",
+        "fields": {
+          "description": true,
+          "ingredients": 37,
+          "active_ingredients": 0,
+          "how_to": 1,
+          "details": 1,
+          "variants": 3
+        }
+      },
+      "preview": {
+        "headline": "Fine fragrance",
+        "what_it_is": "TERRACOTTA LIGHT THE SUN-KISSED NATURAL HEALTHY GLOW POWDER - 96% NATURALLY-DERIVED INGREDIENTS is a fine fragrance from Guerlain.",
+        "why_it_stands_out": [
+          {
+            "headline": "Scent profile cues",
+            "body": "Reviewed scent cues such as shea butter, refillable format help shoppers compare the fragrance profile without relying on generic scent copy.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Ingredient list is available",
+            "body": "Full INCI is present for formula-sensitive review, which makes this PDP safer to evaluate than a claim-only listing.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Shade and size are explicit",
+            "body": "Variant labels such as RED ZAGORA CASE, Shade: RED ZAGORA CASE, BLUE DAKHLA CASE, Shade: BLUE DAKHLA CASE are visible, reducing ambiguity around the product format before a shopper clicks through.",
+            "evidence_strength": "official_pdp_reviewed"
+          }
+        ],
+        "best_for": [
+          {
+            "tag": "shea_butter",
+            "label": "shea butter",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "refillable_format",
+            "label": "refillable format",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "full_inci_available",
+            "label": "full INCI available",
+            "confidence": "moderate"
+          }
+        ],
+        "shopping_highlight": "shea butter, refillable format"
+      },
+      "writes": [
+        {
+          "kb_key": "product:ext_2ba8b5cca33caf8eab8537d8",
+          "action": "skip",
+          "reason": "protected_high_quality_existing:reviewed",
+          "old_hash": "938353acc9b3ef567981b3eff734aaf28cc16036f504024a28f2d4003911f2b3",
+          "existing_weak": false
+        },
+        {
+          "kb_key": "product:sig_477433e8dc2cc4f267ef87c6daa43a09",
+          "action": "skip",
+          "reason": "protected_high_quality_existing:reviewed",
+          "old_hash": "938353acc9b3ef567981b3eff734aaf28cc16036f504024a28f2d4003911f2b3",
+          "existing_weak": false
+        }
+      ]
+    },
+    {
+      "external_product_id": "ext_c1bccfd93f24c0048028fac0",
+      "pivota_signature_id": "sig_721e27dab0aac53ba50357fa88264475",
+      "title": "TERRACOTTA LIGHT THE SUN-KISSED NATURAL HEALTHY GLOW POWDER - 96% NATURALLY-DERIVED INGREDIENTS",
+      "brand": "Guerlain",
+      "canonical_url": "https://www.guerlain.com/us/en-us/p/terracotta-light-the-sun-kissed-natural-healthy-glow-powder---96-naturally-derived-ingredients-P062484.html",
+      "changed": false,
+      "blocked": false,
+      "skip_reason": "no_safe_writes",
+      "candidate_hash": "a39da4bade46a15d77269b5b9be7a492bef8438457b03a490b391f8add26809a",
+      "evidence_profile": "official_pdp_reviewed_formula_and_usage",
+      "source_coverage": {
+        "source": "official_pdp",
+        "canonical_url": "https://www.guerlain.com/us/en-us/p/terracotta-light-the-sun-kissed-natural-healthy-glow-powder---96-naturally-derived-ingredients-P062484.html",
+        "fields": {
+          "description": true,
+          "ingredients": 37,
+          "active_ingredients": 0,
+          "how_to": 1,
+          "details": 1,
+          "variants": 3
+        }
+      },
+      "preview": {
+        "headline": "Fine fragrance",
+        "what_it_is": "TERRACOTTA LIGHT THE SUN-KISSED NATURAL HEALTHY GLOW POWDER - 96% NATURALLY-DERIVED INGREDIENTS is a fine fragrance from Guerlain.",
+        "why_it_stands_out": [
+          {
+            "headline": "Scent profile cues",
+            "body": "Reviewed scent cues such as shea butter, refillable format help shoppers compare the fragrance profile without relying on generic scent copy.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Ingredient list is available",
+            "body": "Full INCI is present for formula-sensitive review, which makes this PDP safer to evaluate than a claim-only listing.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Shade and size are explicit",
+            "body": "Variant labels such as RED ZAGORA CASE, Shade: RED ZAGORA CASE, BLUE DAKHLA CASE, Shade: BLUE DAKHLA CASE are visible, reducing ambiguity around the product format before a shopper clicks through.",
+            "evidence_strength": "official_pdp_reviewed"
+          }
+        ],
+        "best_for": [
+          {
+            "tag": "shea_butter",
+            "label": "shea butter",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "refillable_format",
+            "label": "refillable format",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "full_inci_available",
+            "label": "full INCI available",
+            "confidence": "moderate"
+          }
+        ],
+        "shopping_highlight": "shea butter, refillable format"
+      },
+      "writes": [
+        {
+          "kb_key": "product:ext_c1bccfd93f24c0048028fac0",
+          "action": "skip",
+          "reason": "protected_high_quality_existing:reviewed",
+          "old_hash": "1bced4e7d70675d97edf0d914a2ba070c6c217078aaef4a654e5b6177eb048e9",
+          "existing_weak": false
+        },
+        {
+          "kb_key": "product:sig_721e27dab0aac53ba50357fa88264475",
+          "action": "skip",
+          "reason": "protected_high_quality_existing:reviewed",
+          "old_hash": "1bced4e7d70675d97edf0d914a2ba070c6c217078aaef4a654e5b6177eb048e9",
+          "existing_weak": false
+        }
+      ]
+    }
+  ]
+}

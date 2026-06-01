@@ -1,0 +1,1212 @@
+{
+  "generated_at": "2026-06-01T08:39:18.623Z",
+  "options": {
+    "market": "US",
+    "includeAttached": true,
+    "domain": null,
+    "externalProductIds": [
+      "ext_8573685e1cc94840934c764d",
+      "ext_ab5107f3a835da10508757c6",
+      "ext_41aeeb470016979417c8637d",
+      "ext_a36359795b89961a7c052b21",
+      "ext_69dcb156e335cb9756e016b2",
+      "ext_c6d113bff874c00abfb4ba33",
+      "ext_da3b149ed322142c187224b6",
+      "ext_f56010dd5bf971f7b7f644a6",
+      "ext_2c4793f5f96ec2d4680fd55b",
+      "ext_79da6167f30f91d77e4d018b",
+      "ext_b0cae796baeb2e52326f7643"
+    ],
+    "limit": 20000,
+    "sampleLimit": 10,
+    "checkpointDir": "/Users/pengchydan/dev/_worktrees/pivota-agent-markato-wave25-786-20260527/reports/markato_expansion_status_20260524/wave125_next_official_product_intel_20260601/exact_readiness_after_apply/pdp_readiness_checkpoint",
+    "checkpointMode": "domain",
+    "resume": false,
+    "force": true,
+    "continueOnError": true,
+    "pageSize": 500,
+    "format": "json"
+  },
+  "warnings": [],
+  "summary": {
+    "scanned": 11,
+    "by_market": {
+      "US": 11
+    },
+    "by_domain": [
+      {
+        "key": "786cosmetics.com",
+        "count": 9
+      },
+      {
+        "key": "fentybeauty.com",
+        "count": 2
+      }
+    ],
+    "by_product_family": [
+      {
+        "key": "single_formula",
+        "count": 11
+      }
+    ],
+    "coverage": {
+      "missing_inci": 0,
+      "missing_active_raw": 11,
+      "missing_details": 0,
+      "missing_how_to": 0,
+      "missing_faq": 2
+    },
+    "pivota_insights": {
+      "direct": {
+        "displayable": 11,
+        "high_quality_ready": 11,
+        "missing_kb": 0,
+        "not_displayable": 0
+      },
+      "effective": {
+        "displayable": 11,
+        "high_quality_ready": 11,
+        "missing_kb": 0,
+        "not_displayable": 0,
+        "borrowed_from_sibling": 0
+      },
+      "effective_issues": [],
+      "effective_issue_domains": [],
+      "quality_state": [
+        {
+          "key": "reviewed",
+          "count": 11
+        }
+      ],
+      "evidence_profile": [
+        {
+          "key": "official_pdp_reviewed_formula_and_usage",
+          "count": 11
+        }
+      ],
+      "samples": {}
+    },
+    "active_ingredients": {
+      "regulatory_expected": 0,
+      "hero_expected": 2,
+      "any_active_items": 0,
+      "status": [
+        {
+          "key": "not_expected_missing",
+          "count": 9
+        },
+        {
+          "key": "low_signal_active",
+          "count": 2
+        }
+      ],
+      "issues": [
+        {
+          "key": "low_signal_active",
+          "count": 2
+        }
+      ],
+      "issue_domains": [
+        {
+          "key": "fentybeauty.com::low_signal_active",
+          "count": 2
+        }
+      ],
+      "source_origin": [
+        {
+          "key": "pdp_section",
+          "count": 11
+        }
+      ],
+      "samples": {
+        "low_signal_active": [
+          {
+            "external_product_id": "ext_b0cae796baeb2e52326f7643",
+            "domain": "fentybeauty.com",
+            "title": "Butta Drop Whipped Oil Body Cream with Tropical Oils + Shea Butter — Vanilla Dream",
+            "status": "low_signal_active",
+            "active_items": [],
+            "source_origin": "pdp_section"
+          },
+          {
+            "external_product_id": "ext_79da6167f30f91d77e4d018b",
+            "domain": "fentybeauty.com",
+            "title": "Butta Drop Whipped Oil Body Cream with Tropical Oils + Shea Butter — Fenty Fresh",
+            "status": "low_signal_active",
+            "active_items": [],
+            "source_origin": "pdp_section"
+          }
+        ]
+      }
+    },
+    "variants": {
+      "status": [
+        {
+          "key": "ready",
+          "count": 10
+        },
+        {
+          "key": "no_visible_variant_axis",
+          "count": 1
+        }
+      ],
+      "issues": [],
+      "issue_domains": [],
+      "samples": {}
+    }
+  },
+  "rows": [
+    {
+      "seed_id": "eps_6aa3f87f415c9e2832cfd266",
+      "external_product_id": "ext_ab5107f3a835da10508757c6",
+      "market": "US",
+      "domain": "786cosmetics.com",
+      "title": "Havana - Breathable Nail Polish",
+      "canonical_url": "https://786cosmetics.com/products/havana-breathable-nail-polish",
+      "product_family": "single_formula",
+      "product_line_id": "pl_90650b64494b23181d2b7dc7",
+      "identity_variant_axes": {
+        "shade": "Havana"
+      },
+      "pivota_insights": {
+        "direct": {
+          "product_id": "ext_ab5107f3a835da10508757c6",
+          "kb_key": "product:ext_ab5107f3a835da10508757c6",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "official_pdp_reviewed_formula_and_usage",
+          "has_card_highlight": true
+        },
+        "effective": {
+          "product_id": "ext_ab5107f3a835da10508757c6",
+          "kb_key": "product:ext_ab5107f3a835da10508757c6",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "official_pdp_reviewed_formula_and_usage",
+          "has_card_highlight": true
+        },
+        "product_line_id": "pl_90650b64494b23181d2b7dc7",
+        "borrowed_from_sibling": false
+      },
+      "active_ingredients": {
+        "status": "not_expected_missing",
+        "issues": [],
+        "regulatory_expected": false,
+        "hero_expected": false,
+        "active_items": [],
+        "source_origin": "pdp_section",
+        "source_quality_status": "blocked",
+        "coverage": {
+          "details_sections_count": 6,
+          "faq_count": 8,
+          "how_to_chars": 202,
+          "inci_chars": 804,
+          "active_ingredients_chars": 0,
+          "inci_applicability_status": "",
+          "ingredient_review_status": "",
+          "ingredient_remediation_action": "",
+          "bundle_component_refs_count": 0,
+          "effective_inci_chars": 804,
+          "inci_borrowed_from_product_id": ""
+        },
+        "invalid_fragments": [],
+        "suppressed_reason": null
+      },
+      "variants": {
+        "status": "ready",
+        "issues": [],
+        "visible_variant_rows": 1,
+        "examples": {
+          "identity_option_visible": [],
+          "wrong_axis_for_category": [],
+          "makeup_shade_missing_visual": [],
+          "size_value_generic_axis": [],
+          "default_option_size_evidence_missing_axis": [],
+          "identity_default_title_axis": []
+        }
+      },
+      "coverage": {
+        "details_sections_count": 6,
+        "faq_count": 8,
+        "how_to_chars": 202,
+        "inci_chars": 804,
+        "active_ingredients_chars": 0,
+        "inci_applicability_status": "",
+        "ingredient_review_status": "",
+        "ingredient_remediation_action": "",
+        "bundle_component_refs_count": 0,
+        "effective_inci_chars": 804,
+        "inci_borrowed_from_product_id": ""
+      }
+    },
+    {
+      "seed_id": "eps_c69c4b71c68c6374ce744af3",
+      "external_product_id": "ext_69dcb156e335cb9756e016b2",
+      "market": "US",
+      "domain": "786cosmetics.com",
+      "title": "Kashmir - Breathable Nail Polish",
+      "canonical_url": "https://786cosmetics.com/products/kashmir-breathable-nail-polish",
+      "product_family": "single_formula",
+      "product_line_id": "pl_b95bcdad5b83bae208e72b26",
+      "identity_variant_axes": {
+        "shade": "Kashmir"
+      },
+      "pivota_insights": {
+        "direct": {
+          "product_id": "ext_69dcb156e335cb9756e016b2",
+          "kb_key": "product:ext_69dcb156e335cb9756e016b2",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "official_pdp_reviewed_formula_and_usage",
+          "has_card_highlight": true
+        },
+        "effective": {
+          "product_id": "ext_69dcb156e335cb9756e016b2",
+          "kb_key": "product:ext_69dcb156e335cb9756e016b2",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "official_pdp_reviewed_formula_and_usage",
+          "has_card_highlight": true
+        },
+        "product_line_id": "pl_b95bcdad5b83bae208e72b26",
+        "borrowed_from_sibling": false
+      },
+      "active_ingredients": {
+        "status": "not_expected_missing",
+        "issues": [],
+        "regulatory_expected": false,
+        "hero_expected": false,
+        "active_items": [],
+        "source_origin": "pdp_section",
+        "source_quality_status": "blocked",
+        "coverage": {
+          "details_sections_count": 6,
+          "faq_count": 8,
+          "how_to_chars": 202,
+          "inci_chars": 804,
+          "active_ingredients_chars": 0,
+          "inci_applicability_status": "",
+          "ingredient_review_status": "",
+          "ingredient_remediation_action": "",
+          "bundle_component_refs_count": 0,
+          "effective_inci_chars": 804,
+          "inci_borrowed_from_product_id": ""
+        },
+        "invalid_fragments": [],
+        "suppressed_reason": null
+      },
+      "variants": {
+        "status": "ready",
+        "issues": [],
+        "visible_variant_rows": 1,
+        "examples": {
+          "identity_option_visible": [],
+          "wrong_axis_for_category": [],
+          "makeup_shade_missing_visual": [],
+          "size_value_generic_axis": [],
+          "default_option_size_evidence_missing_axis": [],
+          "identity_default_title_axis": []
+        }
+      },
+      "coverage": {
+        "details_sections_count": 6,
+        "faq_count": 8,
+        "how_to_chars": 202,
+        "inci_chars": 804,
+        "active_ingredients_chars": 0,
+        "inci_applicability_status": "",
+        "ingredient_review_status": "",
+        "ingredient_remediation_action": "",
+        "bundle_component_refs_count": 0,
+        "effective_inci_chars": 804,
+        "inci_borrowed_from_product_id": ""
+      }
+    },
+    {
+      "seed_id": "eps_ba9d87db33c29227071a7202",
+      "external_product_id": "ext_8573685e1cc94840934c764d",
+      "market": "US",
+      "domain": "786cosmetics.com",
+      "title": "Goychay - Breathable Nail Polish",
+      "canonical_url": "https://786cosmetics.com/products/goychay-breathable-nail-polish",
+      "product_family": "single_formula",
+      "product_line_id": "pl_b2bb131f7ea363c54b2aaf17",
+      "identity_variant_axes": {
+        "shade": "Goychay"
+      },
+      "pivota_insights": {
+        "direct": {
+          "product_id": "ext_8573685e1cc94840934c764d",
+          "kb_key": "product:ext_8573685e1cc94840934c764d",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "official_pdp_reviewed_formula_and_usage",
+          "has_card_highlight": true
+        },
+        "effective": {
+          "product_id": "ext_8573685e1cc94840934c764d",
+          "kb_key": "product:ext_8573685e1cc94840934c764d",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "official_pdp_reviewed_formula_and_usage",
+          "has_card_highlight": true
+        },
+        "product_line_id": "pl_b2bb131f7ea363c54b2aaf17",
+        "borrowed_from_sibling": false
+      },
+      "active_ingredients": {
+        "status": "not_expected_missing",
+        "issues": [],
+        "regulatory_expected": false,
+        "hero_expected": false,
+        "active_items": [],
+        "source_origin": "pdp_section",
+        "source_quality_status": "blocked",
+        "coverage": {
+          "details_sections_count": 6,
+          "faq_count": 8,
+          "how_to_chars": 202,
+          "inci_chars": 804,
+          "active_ingredients_chars": 0,
+          "inci_applicability_status": "",
+          "ingredient_review_status": "",
+          "ingredient_remediation_action": "",
+          "bundle_component_refs_count": 0,
+          "effective_inci_chars": 804,
+          "inci_borrowed_from_product_id": ""
+        },
+        "invalid_fragments": [],
+        "suppressed_reason": null
+      },
+      "variants": {
+        "status": "ready",
+        "issues": [],
+        "visible_variant_rows": 1,
+        "examples": {
+          "identity_option_visible": [],
+          "wrong_axis_for_category": [],
+          "makeup_shade_missing_visual": [],
+          "size_value_generic_axis": [],
+          "default_option_size_evidence_missing_axis": [],
+          "identity_default_title_axis": []
+        }
+      },
+      "coverage": {
+        "details_sections_count": 6,
+        "faq_count": 8,
+        "how_to_chars": 202,
+        "inci_chars": 804,
+        "active_ingredients_chars": 0,
+        "inci_applicability_status": "",
+        "ingredient_review_status": "",
+        "ingredient_remediation_action": "",
+        "bundle_component_refs_count": 0,
+        "effective_inci_chars": 804,
+        "inci_borrowed_from_product_id": ""
+      }
+    },
+    {
+      "seed_id": "eps_dd8fcffb22e044802c744bc0",
+      "external_product_id": "ext_c6d113bff874c00abfb4ba33",
+      "market": "US",
+      "domain": "786cosmetics.com",
+      "title": "Tallinn - Breathable Nail Polish",
+      "canonical_url": "https://786cosmetics.com/products/tallinn-breathable-nail-polish",
+      "product_family": "single_formula",
+      "product_line_id": "pl_9ef24885c14be9bc9561a265",
+      "identity_variant_axes": {
+        "shade": "Tallinn"
+      },
+      "pivota_insights": {
+        "direct": {
+          "product_id": "ext_c6d113bff874c00abfb4ba33",
+          "kb_key": "product:ext_c6d113bff874c00abfb4ba33",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "official_pdp_reviewed_formula_and_usage",
+          "has_card_highlight": true
+        },
+        "effective": {
+          "product_id": "ext_c6d113bff874c00abfb4ba33",
+          "kb_key": "product:ext_c6d113bff874c00abfb4ba33",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "official_pdp_reviewed_formula_and_usage",
+          "has_card_highlight": true
+        },
+        "product_line_id": "pl_9ef24885c14be9bc9561a265",
+        "borrowed_from_sibling": false
+      },
+      "active_ingredients": {
+        "status": "not_expected_missing",
+        "issues": [],
+        "regulatory_expected": false,
+        "hero_expected": false,
+        "active_items": [],
+        "source_origin": "pdp_section",
+        "source_quality_status": "blocked",
+        "coverage": {
+          "details_sections_count": 6,
+          "faq_count": 8,
+          "how_to_chars": 202,
+          "inci_chars": 804,
+          "active_ingredients_chars": 0,
+          "inci_applicability_status": "",
+          "ingredient_review_status": "",
+          "ingredient_remediation_action": "",
+          "bundle_component_refs_count": 0,
+          "effective_inci_chars": 804,
+          "inci_borrowed_from_product_id": ""
+        },
+        "invalid_fragments": [],
+        "suppressed_reason": null
+      },
+      "variants": {
+        "status": "ready",
+        "issues": [],
+        "visible_variant_rows": 1,
+        "examples": {
+          "identity_option_visible": [],
+          "wrong_axis_for_category": [],
+          "makeup_shade_missing_visual": [],
+          "size_value_generic_axis": [],
+          "default_option_size_evidence_missing_axis": [],
+          "identity_default_title_axis": []
+        }
+      },
+      "coverage": {
+        "details_sections_count": 6,
+        "faq_count": 8,
+        "how_to_chars": 202,
+        "inci_chars": 804,
+        "active_ingredients_chars": 0,
+        "inci_applicability_status": "",
+        "ingredient_review_status": "",
+        "ingredient_remediation_action": "",
+        "bundle_component_refs_count": 0,
+        "effective_inci_chars": 804,
+        "inci_borrowed_from_product_id": ""
+      }
+    },
+    {
+      "seed_id": "eps_fdca90dd7c8f74589690222f",
+      "external_product_id": "ext_f56010dd5bf971f7b7f644a6",
+      "market": "US",
+      "domain": "786cosmetics.com",
+      "title": "Uluru - Breathable Nail Polish",
+      "canonical_url": "https://786cosmetics.com/products/uluru-breathable-nail-polish",
+      "product_family": "single_formula",
+      "product_line_id": "pl_7ba9be0e2c5ad6a61c37e181",
+      "identity_variant_axes": {
+        "shade": "Uluru"
+      },
+      "pivota_insights": {
+        "direct": {
+          "product_id": "ext_f56010dd5bf971f7b7f644a6",
+          "kb_key": "product:ext_f56010dd5bf971f7b7f644a6",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "official_pdp_reviewed_formula_and_usage",
+          "has_card_highlight": true
+        },
+        "effective": {
+          "product_id": "ext_f56010dd5bf971f7b7f644a6",
+          "kb_key": "product:ext_f56010dd5bf971f7b7f644a6",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "official_pdp_reviewed_formula_and_usage",
+          "has_card_highlight": true
+        },
+        "product_line_id": "pl_7ba9be0e2c5ad6a61c37e181",
+        "borrowed_from_sibling": false
+      },
+      "active_ingredients": {
+        "status": "not_expected_missing",
+        "issues": [],
+        "regulatory_expected": false,
+        "hero_expected": false,
+        "active_items": [],
+        "source_origin": "pdp_section",
+        "source_quality_status": "blocked",
+        "coverage": {
+          "details_sections_count": 6,
+          "faq_count": 8,
+          "how_to_chars": 202,
+          "inci_chars": 804,
+          "active_ingredients_chars": 0,
+          "inci_applicability_status": "",
+          "ingredient_review_status": "",
+          "ingredient_remediation_action": "",
+          "bundle_component_refs_count": 0,
+          "effective_inci_chars": 804,
+          "inci_borrowed_from_product_id": ""
+        },
+        "invalid_fragments": [],
+        "suppressed_reason": null
+      },
+      "variants": {
+        "status": "ready",
+        "issues": [],
+        "visible_variant_rows": 1,
+        "examples": {
+          "identity_option_visible": [],
+          "wrong_axis_for_category": [],
+          "makeup_shade_missing_visual": [],
+          "size_value_generic_axis": [],
+          "default_option_size_evidence_missing_axis": [],
+          "identity_default_title_axis": []
+        }
+      },
+      "coverage": {
+        "details_sections_count": 6,
+        "faq_count": 8,
+        "how_to_chars": 202,
+        "inci_chars": 804,
+        "active_ingredients_chars": 0,
+        "inci_applicability_status": "",
+        "ingredient_review_status": "",
+        "ingredient_remediation_action": "",
+        "bundle_component_refs_count": 0,
+        "effective_inci_chars": 804,
+        "inci_borrowed_from_product_id": ""
+      }
+    },
+    {
+      "seed_id": "eps_7228bc7956277aee0ed2b5de",
+      "external_product_id": "ext_41aeeb470016979417c8637d",
+      "market": "US",
+      "domain": "786cosmetics.com",
+      "title": "Kabul - Breathable Nail Polish",
+      "canonical_url": "https://786cosmetics.com/products/kabul-breathable-nail-polish",
+      "product_family": "single_formula",
+      "product_line_id": "pl_95eb80a40be2c6f38332ab85",
+      "identity_variant_axes": {
+        "shade": "Kabul"
+      },
+      "pivota_insights": {
+        "direct": {
+          "product_id": "ext_41aeeb470016979417c8637d",
+          "kb_key": "product:ext_41aeeb470016979417c8637d",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "official_pdp_reviewed_formula_and_usage",
+          "has_card_highlight": true
+        },
+        "effective": {
+          "product_id": "ext_41aeeb470016979417c8637d",
+          "kb_key": "product:ext_41aeeb470016979417c8637d",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "official_pdp_reviewed_formula_and_usage",
+          "has_card_highlight": true
+        },
+        "product_line_id": "pl_95eb80a40be2c6f38332ab85",
+        "borrowed_from_sibling": false
+      },
+      "active_ingredients": {
+        "status": "not_expected_missing",
+        "issues": [],
+        "regulatory_expected": false,
+        "hero_expected": false,
+        "active_items": [],
+        "source_origin": "pdp_section",
+        "source_quality_status": "blocked",
+        "coverage": {
+          "details_sections_count": 6,
+          "faq_count": 8,
+          "how_to_chars": 202,
+          "inci_chars": 804,
+          "active_ingredients_chars": 0,
+          "inci_applicability_status": "",
+          "ingredient_review_status": "",
+          "ingredient_remediation_action": "",
+          "bundle_component_refs_count": 0,
+          "effective_inci_chars": 804,
+          "inci_borrowed_from_product_id": ""
+        },
+        "invalid_fragments": [],
+        "suppressed_reason": null
+      },
+      "variants": {
+        "status": "ready",
+        "issues": [],
+        "visible_variant_rows": 1,
+        "examples": {
+          "identity_option_visible": [],
+          "wrong_axis_for_category": [],
+          "makeup_shade_missing_visual": [],
+          "size_value_generic_axis": [],
+          "default_option_size_evidence_missing_axis": [],
+          "identity_default_title_axis": []
+        }
+      },
+      "coverage": {
+        "details_sections_count": 6,
+        "faq_count": 8,
+        "how_to_chars": 202,
+        "inci_chars": 804,
+        "active_ingredients_chars": 0,
+        "inci_applicability_status": "",
+        "ingredient_review_status": "",
+        "ingredient_remediation_action": "",
+        "bundle_component_refs_count": 0,
+        "effective_inci_chars": 804,
+        "inci_borrowed_from_product_id": ""
+      }
+    },
+    {
+      "seed_id": "eps_01040fa8d8fbd5ee897c68b3",
+      "external_product_id": "ext_da3b149ed322142c187224b6",
+      "market": "US",
+      "domain": "786cosmetics.com",
+      "title": "Toulouse - Breathable Nail Polish",
+      "canonical_url": "https://786cosmetics.com/products/toulouse-breathable-nail-polish",
+      "product_family": "single_formula",
+      "product_line_id": "pl_4f7f6cd23be6bb759786b202",
+      "identity_variant_axes": {
+        "shade": "Toulouse"
+      },
+      "pivota_insights": {
+        "direct": {
+          "product_id": "ext_da3b149ed322142c187224b6",
+          "kb_key": "product:ext_da3b149ed322142c187224b6",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "official_pdp_reviewed_formula_and_usage",
+          "has_card_highlight": true
+        },
+        "effective": {
+          "product_id": "ext_da3b149ed322142c187224b6",
+          "kb_key": "product:ext_da3b149ed322142c187224b6",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "official_pdp_reviewed_formula_and_usage",
+          "has_card_highlight": true
+        },
+        "product_line_id": "pl_4f7f6cd23be6bb759786b202",
+        "borrowed_from_sibling": false
+      },
+      "active_ingredients": {
+        "status": "not_expected_missing",
+        "issues": [],
+        "regulatory_expected": false,
+        "hero_expected": false,
+        "active_items": [],
+        "source_origin": "pdp_section",
+        "source_quality_status": "blocked",
+        "coverage": {
+          "details_sections_count": 6,
+          "faq_count": 8,
+          "how_to_chars": 202,
+          "inci_chars": 804,
+          "active_ingredients_chars": 0,
+          "inci_applicability_status": "",
+          "ingredient_review_status": "",
+          "ingredient_remediation_action": "",
+          "bundle_component_refs_count": 0,
+          "effective_inci_chars": 804,
+          "inci_borrowed_from_product_id": ""
+        },
+        "invalid_fragments": [],
+        "suppressed_reason": null
+      },
+      "variants": {
+        "status": "ready",
+        "issues": [],
+        "visible_variant_rows": 1,
+        "examples": {
+          "identity_option_visible": [],
+          "wrong_axis_for_category": [],
+          "makeup_shade_missing_visual": [],
+          "size_value_generic_axis": [],
+          "default_option_size_evidence_missing_axis": [],
+          "identity_default_title_axis": []
+        }
+      },
+      "coverage": {
+        "details_sections_count": 6,
+        "faq_count": 8,
+        "how_to_chars": 202,
+        "inci_chars": 804,
+        "active_ingredients_chars": 0,
+        "inci_applicability_status": "",
+        "ingredient_review_status": "",
+        "ingredient_remediation_action": "",
+        "bundle_component_refs_count": 0,
+        "effective_inci_chars": 804,
+        "inci_borrowed_from_product_id": ""
+      }
+    },
+    {
+      "seed_id": "eps_3a7d482f6d21bc6949d24143",
+      "external_product_id": "ext_2c4793f5f96ec2d4680fd55b",
+      "market": "US",
+      "domain": "786cosmetics.com",
+      "title": "Zhangye - Breathable Nail Polish",
+      "canonical_url": "https://786cosmetics.com/products/zhangye-breathable-nail-polish",
+      "product_family": "single_formula",
+      "product_line_id": "pl_1ebc8d43c06b50578fed2321",
+      "identity_variant_axes": {
+        "shade": "Zhangye"
+      },
+      "pivota_insights": {
+        "direct": {
+          "product_id": "ext_2c4793f5f96ec2d4680fd55b",
+          "kb_key": "product:ext_2c4793f5f96ec2d4680fd55b",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "official_pdp_reviewed_formula_and_usage",
+          "has_card_highlight": true
+        },
+        "effective": {
+          "product_id": "ext_2c4793f5f96ec2d4680fd55b",
+          "kb_key": "product:ext_2c4793f5f96ec2d4680fd55b",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "official_pdp_reviewed_formula_and_usage",
+          "has_card_highlight": true
+        },
+        "product_line_id": "pl_1ebc8d43c06b50578fed2321",
+        "borrowed_from_sibling": false
+      },
+      "active_ingredients": {
+        "status": "not_expected_missing",
+        "issues": [],
+        "regulatory_expected": false,
+        "hero_expected": false,
+        "active_items": [],
+        "source_origin": "pdp_section",
+        "source_quality_status": "blocked",
+        "coverage": {
+          "details_sections_count": 6,
+          "faq_count": 8,
+          "how_to_chars": 202,
+          "inci_chars": 804,
+          "active_ingredients_chars": 0,
+          "inci_applicability_status": "",
+          "ingredient_review_status": "",
+          "ingredient_remediation_action": "",
+          "bundle_component_refs_count": 0,
+          "effective_inci_chars": 804,
+          "inci_borrowed_from_product_id": ""
+        },
+        "invalid_fragments": [],
+        "suppressed_reason": null
+      },
+      "variants": {
+        "status": "ready",
+        "issues": [],
+        "visible_variant_rows": 1,
+        "examples": {
+          "identity_option_visible": [],
+          "wrong_axis_for_category": [],
+          "makeup_shade_missing_visual": [],
+          "size_value_generic_axis": [],
+          "default_option_size_evidence_missing_axis": [],
+          "identity_default_title_axis": []
+        }
+      },
+      "coverage": {
+        "details_sections_count": 6,
+        "faq_count": 8,
+        "how_to_chars": 202,
+        "inci_chars": 804,
+        "active_ingredients_chars": 0,
+        "inci_applicability_status": "",
+        "ingredient_review_status": "",
+        "ingredient_remediation_action": "",
+        "bundle_component_refs_count": 0,
+        "effective_inci_chars": 804,
+        "inci_borrowed_from_product_id": ""
+      }
+    },
+    {
+      "seed_id": "eps_1f011a75f01a2fa4f1aea4cb",
+      "external_product_id": "ext_a36359795b89961a7c052b21",
+      "market": "US",
+      "domain": "786cosmetics.com",
+      "title": "Karachi - Breathable Nail Polish",
+      "canonical_url": "https://786cosmetics.com/products/karachi-breathable-nail-polish",
+      "product_family": "single_formula",
+      "product_line_id": "pl_6c9759747eca9ed92ee9bafe",
+      "identity_variant_axes": {
+        "shade": "Karachi"
+      },
+      "pivota_insights": {
+        "direct": {
+          "product_id": "ext_a36359795b89961a7c052b21",
+          "kb_key": "product:ext_a36359795b89961a7c052b21",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "official_pdp_reviewed_formula_and_usage",
+          "has_card_highlight": true
+        },
+        "effective": {
+          "product_id": "ext_a36359795b89961a7c052b21",
+          "kb_key": "product:ext_a36359795b89961a7c052b21",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "official_pdp_reviewed_formula_and_usage",
+          "has_card_highlight": true
+        },
+        "product_line_id": "pl_6c9759747eca9ed92ee9bafe",
+        "borrowed_from_sibling": false
+      },
+      "active_ingredients": {
+        "status": "not_expected_missing",
+        "issues": [],
+        "regulatory_expected": false,
+        "hero_expected": false,
+        "active_items": [],
+        "source_origin": "pdp_section",
+        "source_quality_status": "blocked",
+        "coverage": {
+          "details_sections_count": 6,
+          "faq_count": 8,
+          "how_to_chars": 202,
+          "inci_chars": 804,
+          "active_ingredients_chars": 0,
+          "inci_applicability_status": "",
+          "ingredient_review_status": "",
+          "ingredient_remediation_action": "",
+          "bundle_component_refs_count": 0,
+          "effective_inci_chars": 804,
+          "inci_borrowed_from_product_id": ""
+        },
+        "invalid_fragments": [],
+        "suppressed_reason": null
+      },
+      "variants": {
+        "status": "ready",
+        "issues": [],
+        "visible_variant_rows": 1,
+        "examples": {
+          "identity_option_visible": [],
+          "wrong_axis_for_category": [],
+          "makeup_shade_missing_visual": [],
+          "size_value_generic_axis": [],
+          "default_option_size_evidence_missing_axis": [],
+          "identity_default_title_axis": []
+        }
+      },
+      "coverage": {
+        "details_sections_count": 6,
+        "faq_count": 8,
+        "how_to_chars": 202,
+        "inci_chars": 804,
+        "active_ingredients_chars": 0,
+        "inci_applicability_status": "",
+        "ingredient_review_status": "",
+        "ingredient_remediation_action": "",
+        "bundle_component_refs_count": 0,
+        "effective_inci_chars": 804,
+        "inci_borrowed_from_product_id": ""
+      }
+    },
+    {
+      "seed_id": "eps_c4c2bfbeaa0d475bac916968",
+      "external_product_id": "ext_b0cae796baeb2e52326f7643",
+      "market": "US",
+      "domain": "fentybeauty.com",
+      "title": "Butta Drop Whipped Oil Body Cream with Tropical Oils + Shea Butter — Vanilla Dream",
+      "canonical_url": "https://fentybeauty.com/products/butta-drop-whipped-oil-body-cream-with-tropical-oils-shea-butter-vanilla-dream-1",
+      "product_family": "single_formula",
+      "product_line_id": "pl_5e4e4b430bc2ab8fc61bb2d2",
+      "identity_variant_axes": {
+        "color": "vanilla dream",
+        "multi_variant": true
+      },
+      "pivota_insights": {
+        "direct": {
+          "product_id": "ext_b0cae796baeb2e52326f7643",
+          "kb_key": "product:ext_b0cae796baeb2e52326f7643",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "official_pdp_reviewed_formula_and_usage",
+          "has_card_highlight": true
+        },
+        "effective": {
+          "product_id": "ext_b0cae796baeb2e52326f7643",
+          "kb_key": "product:ext_b0cae796baeb2e52326f7643",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "official_pdp_reviewed_formula_and_usage",
+          "has_card_highlight": true
+        },
+        "product_line_id": "pl_5e4e4b430bc2ab8fc61bb2d2",
+        "borrowed_from_sibling": false
+      },
+      "active_ingredients": {
+        "status": "low_signal_active",
+        "issues": [
+          "low_signal_active"
+        ],
+        "regulatory_expected": false,
+        "hero_expected": true,
+        "active_items": [],
+        "source_origin": "pdp_section",
+        "source_quality_status": "blocked",
+        "coverage": {
+          "details_sections_count": 8,
+          "faq_count": 0,
+          "how_to_chars": 109,
+          "inci_chars": 937,
+          "active_ingredients_chars": 0,
+          "inci_applicability_status": "",
+          "ingredient_review_status": "",
+          "ingredient_remediation_action": "",
+          "bundle_component_refs_count": 0,
+          "effective_inci_chars": 937,
+          "inci_borrowed_from_product_id": ""
+        },
+        "invalid_fragments": [],
+        "suppressed_reason": "active_items_low_signal"
+      },
+      "variants": {
+        "status": "no_visible_variant_axis",
+        "issues": [],
+        "visible_variant_rows": 0,
+        "examples": {
+          "identity_option_visible": [],
+          "wrong_axis_for_category": [],
+          "makeup_shade_missing_visual": [],
+          "size_value_generic_axis": [],
+          "default_option_size_evidence_missing_axis": [],
+          "identity_default_title_axis": []
+        }
+      },
+      "coverage": {
+        "details_sections_count": 8,
+        "faq_count": 0,
+        "how_to_chars": 109,
+        "inci_chars": 937,
+        "active_ingredients_chars": 0,
+        "inci_applicability_status": "",
+        "ingredient_review_status": "",
+        "ingredient_remediation_action": "",
+        "bundle_component_refs_count": 0,
+        "effective_inci_chars": 937,
+        "inci_borrowed_from_product_id": ""
+      }
+    },
+    {
+      "seed_id": "eps_ee34edc285914846b0fc3db7",
+      "external_product_id": "ext_79da6167f30f91d77e4d018b",
+      "market": "US",
+      "domain": "fentybeauty.com",
+      "title": "Butta Drop Whipped Oil Body Cream with Tropical Oils + Shea Butter — Fenty Fresh",
+      "canonical_url": "https://fentybeauty.com/products/butta-drop-whipped-oil-body-cream-with-tropical-oils-shea-butter-fenty-fresh",
+      "product_family": "single_formula",
+      "product_line_id": "pl_5e4e4b430bc2ab8fc61bb2d2",
+      "identity_variant_axes": {
+        "size": "standard",
+        "color": "fenty fresh",
+        "multi_variant": true
+      },
+      "pivota_insights": {
+        "direct": {
+          "product_id": "ext_79da6167f30f91d77e4d018b",
+          "kb_key": "product:ext_79da6167f30f91d77e4d018b",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "official_pdp_reviewed_formula_and_usage",
+          "has_card_highlight": true
+        },
+        "effective": {
+          "product_id": "ext_79da6167f30f91d77e4d018b",
+          "kb_key": "product:ext_79da6167f30f91d77e4d018b",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "official_pdp_reviewed_formula_and_usage",
+          "has_card_highlight": true
+        },
+        "product_line_id": "pl_5e4e4b430bc2ab8fc61bb2d2",
+        "borrowed_from_sibling": false
+      },
+      "active_ingredients": {
+        "status": "low_signal_active",
+        "issues": [
+          "low_signal_active"
+        ],
+        "regulatory_expected": false,
+        "hero_expected": true,
+        "active_items": [],
+        "source_origin": "pdp_section",
+        "source_quality_status": "blocked",
+        "coverage": {
+          "details_sections_count": 18,
+          "faq_count": 0,
+          "how_to_chars": 109,
+          "inci_chars": 1023,
+          "active_ingredients_chars": 0,
+          "inci_applicability_status": "",
+          "ingredient_review_status": "",
+          "ingredient_remediation_action": "",
+          "bundle_component_refs_count": 0,
+          "effective_inci_chars": 1023,
+          "inci_borrowed_from_product_id": ""
+        },
+        "invalid_fragments": [],
+        "suppressed_reason": "active_items_low_signal"
+      },
+      "variants": {
+        "status": "ready",
+        "issues": [],
+        "visible_variant_rows": 6,
+        "examples": {
+          "identity_option_visible": [],
+          "wrong_axis_for_category": [],
+          "makeup_shade_missing_visual": [],
+          "size_value_generic_axis": [],
+          "default_option_size_evidence_missing_axis": [],
+          "identity_default_title_axis": []
+        }
+      },
+      "coverage": {
+        "details_sections_count": 18,
+        "faq_count": 0,
+        "how_to_chars": 109,
+        "inci_chars": 1023,
+        "active_ingredients_chars": 0,
+        "inci_applicability_status": "",
+        "ingredient_review_status": "",
+        "ingredient_remediation_action": "",
+        "bundle_component_refs_count": 0,
+        "effective_inci_chars": 1023,
+        "inci_borrowed_from_product_id": ""
+      }
+    }
+  ]
+}
