@@ -1,0 +1,1441 @@
+{
+  "generated_at": "2026-06-01T03:11:39.883Z",
+  "options": {
+    "market": "US",
+    "includeAttached": true,
+    "domain": null,
+    "externalProductIds": [
+      "ext_2fa17c7f0417769ff2e9abb8",
+      "ext_683bce84d49887a3f4a83038",
+      "ext_68f54cb97689f84e81809010",
+      "ext_a17b2f2ec278dd6d32210b21",
+      "ext_a5b987fc8aaf5f746b522ada",
+      "ext_b96a6d6c33e2547fc31aca0d",
+      "ext_d1d97a9ff67e0354f391856c",
+      "ext_d45ccb74956c1ef9c9637352",
+      "ext_e09ac3e79003532a24a50e29",
+      "ext_f0c0337789be945a8b85a360",
+      "ext_f4ca7bdecaa68310675ac54d"
+    ],
+    "limit": 20,
+    "sampleLimit": 20,
+    "checkpointDir": "/Users/pengchydan/dev/_worktrees/pivota-agent-markato-wave25-786-20260527/reports/markato_expansion_status_20260524/wave115_sigmabeauty_continuation_20260601/readiness_before/pdp_readiness_checkpoint",
+    "checkpointMode": "domain",
+    "resume": false,
+    "force": false,
+    "continueOnError": true,
+    "pageSize": 500,
+    "format": "json"
+  },
+  "warnings": [],
+  "summary": {
+    "scanned": 11,
+    "by_market": {
+      "US": 11
+    },
+    "by_domain": [
+      {
+        "key": "sigmabeauty.com",
+        "count": 11
+      }
+    ],
+    "by_product_family": [
+      {
+        "key": "accessory",
+        "count": 6
+      },
+      {
+        "key": "set_or_collection",
+        "count": 3
+      },
+      {
+        "key": "single_formula",
+        "count": 1
+      },
+      {
+        "key": "unknown_product",
+        "count": 1
+      }
+    ],
+    "coverage": {
+      "missing_inci": 8,
+      "missing_active_raw": 1,
+      "missing_details": 1,
+      "missing_how_to": 1,
+      "missing_faq": 11
+    },
+    "pivota_insights": {
+      "direct": {
+        "displayable": 11,
+        "high_quality_ready": 0,
+        "missing_kb": 0,
+        "not_displayable": 0
+      },
+      "effective": {
+        "displayable": 11,
+        "high_quality_ready": 0,
+        "missing_kb": 0,
+        "not_displayable": 0,
+        "borrowed_from_sibling": 0
+      },
+      "effective_issues": [
+        {
+          "key": "public_generic_marketing_copy",
+          "count": 10
+        },
+        {
+          "key": "public_sensitive_claim",
+          "count": 1
+        }
+      ],
+      "effective_issue_domains": [
+        {
+          "key": "sigmabeauty.com::public_generic_marketing_copy",
+          "count": 10
+        },
+        {
+          "key": "sigmabeauty.com::public_sensitive_claim",
+          "count": 1
+        }
+      ],
+      "quality_state": [
+        {
+          "key": "reviewed",
+          "count": 11
+        }
+      ],
+      "evidence_profile": [
+        {
+          "key": "official_pdp_seed",
+          "count": 8
+        },
+        {
+          "key": "seller_plus_formula",
+          "count": 3
+        }
+      ],
+      "samples": {
+        "public_generic_marketing_copy": [
+          {
+            "external_product_id": "ext_a5b987fc8aaf5f746b522ada",
+            "domain": "sigmabeauty.com",
+            "title": "Polish & Perfect Brush Set",
+            "used_product_id": "ext_a5b987fc8aaf5f746b522ada",
+            "quality_state": "reviewed",
+            "evidence_profile": "official_pdp_seed"
+          },
+          {
+            "external_product_id": "ext_f4ca7bdecaa68310675ac54d",
+            "domain": "sigmabeauty.com",
+            "title": "F26 Domed Concealer Brush",
+            "used_product_id": "ext_f4ca7bdecaa68310675ac54d",
+            "quality_state": "reviewed",
+            "evidence_profile": "official_pdp_seed"
+          },
+          {
+            "external_product_id": "ext_f0c0337789be945a8b85a360",
+            "domain": "sigmabeauty.com",
+            "title": "Essential Travel Brush Set",
+            "used_product_id": "ext_f0c0337789be945a8b85a360",
+            "quality_state": "reviewed",
+            "evidence_profile": "official_pdp_seed"
+          },
+          {
+            "external_product_id": "ext_2fa17c7f0417769ff2e9abb8",
+            "domain": "sigmabeauty.com",
+            "title": "Sigma x Face Foundrié Beautiful Base Set",
+            "used_product_id": "ext_2fa17c7f0417769ff2e9abb8",
+            "quality_state": "reviewed",
+            "evidence_profile": "seller_plus_formula"
+          },
+          {
+            "external_product_id": "ext_d45ccb74956c1ef9c9637352",
+            "domain": "sigmabeauty.com",
+            "title": "F08 Precision Powder Brush",
+            "used_product_id": "ext_d45ccb74956c1ef9c9637352",
+            "quality_state": "reviewed",
+            "evidence_profile": "official_pdp_seed"
+          },
+          {
+            "external_product_id": "ext_d1d97a9ff67e0354f391856c",
+            "domain": "sigmabeauty.com",
+            "title": "F23 Soft Angle Contour™ Brush",
+            "used_product_id": "ext_d1d97a9ff67e0354f391856c",
+            "quality_state": "reviewed",
+            "evidence_profile": "official_pdp_seed"
+          },
+          {
+            "external_product_id": "ext_b96a6d6c33e2547fc31aca0d",
+            "domain": "sigmabeauty.com",
+            "title": "E28 Detailed Buffer™ Brush",
+            "used_product_id": "ext_b96a6d6c33e2547fc31aca0d",
+            "quality_state": "reviewed",
+            "evidence_profile": "official_pdp_seed"
+          },
+          {
+            "external_product_id": "ext_e09ac3e79003532a24a50e29",
+            "domain": "sigmabeauty.com",
+            "title": "F81 Blend Kabuki™ Brush",
+            "used_product_id": "ext_e09ac3e79003532a24a50e29",
+            "quality_state": "reviewed",
+            "evidence_profile": "official_pdp_seed"
+          },
+          {
+            "external_product_id": "ext_a17b2f2ec278dd6d32210b21",
+            "domain": "sigmabeauty.com",
+            "title": "3DHD™ Blender",
+            "used_product_id": "ext_a17b2f2ec278dd6d32210b21",
+            "quality_state": "reviewed",
+            "evidence_profile": "official_pdp_seed"
+          },
+          {
+            "external_product_id": "ext_683bce84d49887a3f4a83038",
+            "domain": "sigmabeauty.com",
+            "title": "Perfect Brow Set",
+            "used_product_id": "ext_683bce84d49887a3f4a83038",
+            "quality_state": "reviewed",
+            "evidence_profile": "seller_plus_formula"
+          }
+        ],
+        "public_sensitive_claim": [
+          {
+            "external_product_id": "ext_68f54cb97689f84e81809010",
+            "domain": "sigmabeauty.com",
+            "title": "Renew Lip Oil",
+            "used_product_id": "ext_68f54cb97689f84e81809010",
+            "quality_state": "reviewed",
+            "evidence_profile": "seller_plus_formula"
+          }
+        ]
+      }
+    },
+    "active_ingredients": {
+      "regulatory_expected": 0,
+      "hero_expected": 0,
+      "any_active_items": 0,
+      "status": [
+        {
+          "key": "not_applicable_product_family",
+          "count": 9
+        },
+        {
+          "key": "not_expected_missing",
+          "count": 2
+        }
+      ],
+      "issues": [
+        {
+          "key": "active_raw_may_be_full_inci",
+          "count": 1
+        },
+        {
+          "key": "active_raw_too_long",
+          "count": 1
+        }
+      ],
+      "issue_domains": [
+        {
+          "key": "sigmabeauty.com::active_raw_may_be_full_inci",
+          "count": 1
+        },
+        {
+          "key": "sigmabeauty.com::active_raw_too_long",
+          "count": 1
+        }
+      ],
+      "source_origin": [
+        {
+          "key": "none",
+          "count": 10
+        },
+        {
+          "key": "pdp_section",
+          "count": 1
+        }
+      ],
+      "samples": {
+        "active_raw_too_long": [
+          {
+            "external_product_id": "ext_68f54cb97689f84e81809010",
+            "domain": "sigmabeauty.com",
+            "title": "Renew Lip Oil",
+            "status": "not_expected_missing",
+            "active_items": [],
+            "source_origin": "pdp_section"
+          }
+        ],
+        "active_raw_may_be_full_inci": [
+          {
+            "external_product_id": "ext_68f54cb97689f84e81809010",
+            "domain": "sigmabeauty.com",
+            "title": "Renew Lip Oil",
+            "status": "not_expected_missing",
+            "active_items": [],
+            "source_origin": "pdp_section"
+          }
+        ]
+      }
+    },
+    "variants": {
+      "status": [
+        {
+          "key": "ready",
+          "count": 10
+        },
+        {
+          "key": "no_visible_variant_axis",
+          "count": 1
+        }
+      ],
+      "issues": [],
+      "issue_domains": [],
+      "samples": {}
+    }
+  },
+  "rows": [
+    {
+      "seed_id": "eps_e13857348e5a4162b20cbdb9",
+      "external_product_id": "ext_a5b987fc8aaf5f746b522ada",
+      "market": "US",
+      "domain": "sigmabeauty.com",
+      "title": "Polish & Perfect Brush Set",
+      "canonical_url": "https://sigmabeauty.com/products/the-polish-perfect-brush-set",
+      "product_family": "accessory",
+      "product_line_id": "pl_10ae7d24f045720b3479d802",
+      "identity_variant_axes": {
+        "shade": "the polish and perfect brush set",
+        "multi_variant": false
+      },
+      "pivota_insights": {
+        "direct": {
+          "product_id": "ext_a5b987fc8aaf5f746b522ada",
+          "kb_key": "product:ext_a5b987fc8aaf5f746b522ada",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": false,
+          "human_reviewed": true,
+          "issues": [
+            "public_generic_marketing_copy"
+          ],
+          "blocking_issues": [
+            "public_generic_marketing_copy"
+          ],
+          "quality_state": "reviewed",
+          "evidence_profile": "official_pdp_seed",
+          "has_card_highlight": true
+        },
+        "effective": {
+          "product_id": "ext_a5b987fc8aaf5f746b522ada",
+          "kb_key": "product:ext_a5b987fc8aaf5f746b522ada",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": false,
+          "human_reviewed": true,
+          "issues": [
+            "public_generic_marketing_copy"
+          ],
+          "blocking_issues": [
+            "public_generic_marketing_copy"
+          ],
+          "quality_state": "reviewed",
+          "evidence_profile": "official_pdp_seed",
+          "has_card_highlight": true
+        },
+        "product_line_id": "pl_10ae7d24f045720b3479d802",
+        "borrowed_from_sibling": false
+      },
+      "active_ingredients": {
+        "status": "not_applicable_product_family",
+        "issues": [],
+        "regulatory_expected": false,
+        "hero_expected": false,
+        "active_items": [],
+        "source_origin": "none",
+        "source_quality_status": "blocked",
+        "coverage": {
+          "details_sections_count": 0,
+          "faq_count": 0,
+          "how_to_chars": 0,
+          "inci_chars": 0,
+          "active_ingredients_chars": 0,
+          "inci_applicability_status": "",
+          "ingredient_review_status": "",
+          "ingredient_remediation_action": "",
+          "bundle_component_refs_count": 0,
+          "effective_inci_chars": 0,
+          "inci_borrowed_from_product_id": ""
+        },
+        "invalid_fragments": [],
+        "suppressed_reason": "accessory"
+      },
+      "variants": {
+        "status": "no_visible_variant_axis",
+        "issues": [],
+        "visible_variant_rows": 0,
+        "examples": {
+          "identity_option_visible": [],
+          "wrong_axis_for_category": [],
+          "makeup_shade_missing_visual": [],
+          "size_value_generic_axis": [],
+          "default_option_size_evidence_missing_axis": [],
+          "identity_default_title_axis": []
+        }
+      },
+      "coverage": {
+        "details_sections_count": 0,
+        "faq_count": 0,
+        "how_to_chars": 0,
+        "inci_chars": 0,
+        "active_ingredients_chars": 0,
+        "inci_applicability_status": "",
+        "ingredient_review_status": "",
+        "ingredient_remediation_action": "",
+        "bundle_component_refs_count": 0,
+        "effective_inci_chars": 0,
+        "inci_borrowed_from_product_id": ""
+      }
+    },
+    {
+      "seed_id": "eps_155a99f1ccdb473a8e576235",
+      "external_product_id": "ext_f4ca7bdecaa68310675ac54d",
+      "market": "US",
+      "domain": "sigmabeauty.com",
+      "title": "F26 Domed Concealer Brush",
+      "canonical_url": "https://sigmabeauty.com/products/f26-domed-concealer",
+      "product_family": "accessory",
+      "product_line_id": "pl_b9deae0363b069a0e6f9646f",
+      "identity_variant_axes": {
+        "shade": "f26 domed concealer brush",
+        "multi_variant": false
+      },
+      "pivota_insights": {
+        "direct": {
+          "product_id": "ext_f4ca7bdecaa68310675ac54d",
+          "kb_key": "product:ext_f4ca7bdecaa68310675ac54d",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": false,
+          "human_reviewed": true,
+          "issues": [
+            "public_generic_marketing_copy"
+          ],
+          "blocking_issues": [
+            "public_generic_marketing_copy"
+          ],
+          "quality_state": "reviewed",
+          "evidence_profile": "official_pdp_seed",
+          "has_card_highlight": true
+        },
+        "effective": {
+          "product_id": "ext_f4ca7bdecaa68310675ac54d",
+          "kb_key": "product:ext_f4ca7bdecaa68310675ac54d",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": false,
+          "human_reviewed": true,
+          "issues": [
+            "public_generic_marketing_copy"
+          ],
+          "blocking_issues": [
+            "public_generic_marketing_copy"
+          ],
+          "quality_state": "reviewed",
+          "evidence_profile": "official_pdp_seed",
+          "has_card_highlight": true
+        },
+        "product_line_id": "pl_b9deae0363b069a0e6f9646f",
+        "borrowed_from_sibling": false
+      },
+      "active_ingredients": {
+        "status": "not_applicable_product_family",
+        "issues": [],
+        "regulatory_expected": false,
+        "hero_expected": false,
+        "active_items": [],
+        "source_origin": "none",
+        "source_quality_status": "blocked",
+        "coverage": {
+          "details_sections_count": 6,
+          "faq_count": 0,
+          "how_to_chars": 154,
+          "inci_chars": 0,
+          "active_ingredients_chars": 0,
+          "inci_applicability_status": "",
+          "ingredient_review_status": "",
+          "ingredient_remediation_action": "",
+          "bundle_component_refs_count": 0,
+          "effective_inci_chars": 0,
+          "inci_borrowed_from_product_id": ""
+        },
+        "invalid_fragments": [],
+        "suppressed_reason": "accessory"
+      },
+      "variants": {
+        "status": "ready",
+        "issues": [],
+        "visible_variant_rows": 1,
+        "examples": {
+          "identity_option_visible": [],
+          "wrong_axis_for_category": [],
+          "makeup_shade_missing_visual": [],
+          "size_value_generic_axis": [],
+          "default_option_size_evidence_missing_axis": [],
+          "identity_default_title_axis": []
+        }
+      },
+      "coverage": {
+        "details_sections_count": 6,
+        "faq_count": 0,
+        "how_to_chars": 154,
+        "inci_chars": 0,
+        "active_ingredients_chars": 0,
+        "inci_applicability_status": "",
+        "ingredient_review_status": "",
+        "ingredient_remediation_action": "",
+        "bundle_component_refs_count": 0,
+        "effective_inci_chars": 0,
+        "inci_borrowed_from_product_id": ""
+      }
+    },
+    {
+      "seed_id": "eps_2a834b303e154953ac8dc13a",
+      "external_product_id": "ext_f0c0337789be945a8b85a360",
+      "market": "US",
+      "domain": "sigmabeauty.com",
+      "title": "Essential Travel Brush Set",
+      "canonical_url": "https://sigmabeauty.com/products/essential-travel-brush-set",
+      "product_family": "set_or_collection",
+      "product_line_id": "pl_da84326b31c27c92119fd812",
+      "identity_variant_axes": {
+        "shade": "essential travel brush set",
+        "multi_variant": false
+      },
+      "pivota_insights": {
+        "direct": {
+          "product_id": "ext_f0c0337789be945a8b85a360",
+          "kb_key": "product:ext_f0c0337789be945a8b85a360",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": false,
+          "human_reviewed": true,
+          "issues": [
+            "public_generic_marketing_copy"
+          ],
+          "blocking_issues": [
+            "public_generic_marketing_copy"
+          ],
+          "quality_state": "reviewed",
+          "evidence_profile": "official_pdp_seed",
+          "has_card_highlight": true
+        },
+        "effective": {
+          "product_id": "ext_f0c0337789be945a8b85a360",
+          "kb_key": "product:ext_f0c0337789be945a8b85a360",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": false,
+          "human_reviewed": true,
+          "issues": [
+            "public_generic_marketing_copy"
+          ],
+          "blocking_issues": [
+            "public_generic_marketing_copy"
+          ],
+          "quality_state": "reviewed",
+          "evidence_profile": "official_pdp_seed",
+          "has_card_highlight": true
+        },
+        "product_line_id": "pl_da84326b31c27c92119fd812",
+        "borrowed_from_sibling": false
+      },
+      "active_ingredients": {
+        "status": "not_applicable_product_family",
+        "issues": [],
+        "regulatory_expected": false,
+        "hero_expected": false,
+        "active_items": [],
+        "source_origin": "none",
+        "source_quality_status": "blocked",
+        "coverage": {
+          "details_sections_count": 6,
+          "faq_count": 0,
+          "how_to_chars": 473,
+          "inci_chars": 0,
+          "active_ingredients_chars": 0,
+          "inci_applicability_status": "",
+          "ingredient_review_status": "",
+          "ingredient_remediation_action": "",
+          "bundle_component_refs_count": 1,
+          "effective_inci_chars": 0,
+          "inci_borrowed_from_product_id": ""
+        },
+        "invalid_fragments": [],
+        "suppressed_reason": "set_or_collection"
+      },
+      "variants": {
+        "status": "ready",
+        "issues": [],
+        "visible_variant_rows": 1,
+        "examples": {
+          "identity_option_visible": [],
+          "wrong_axis_for_category": [],
+          "makeup_shade_missing_visual": [],
+          "size_value_generic_axis": [],
+          "default_option_size_evidence_missing_axis": [],
+          "identity_default_title_axis": []
+        }
+      },
+      "coverage": {
+        "details_sections_count": 6,
+        "faq_count": 0,
+        "how_to_chars": 473,
+        "inci_chars": 0,
+        "active_ingredients_chars": 0,
+        "inci_applicability_status": "",
+        "ingredient_review_status": "",
+        "ingredient_remediation_action": "",
+        "bundle_component_refs_count": 1,
+        "effective_inci_chars": 0,
+        "inci_borrowed_from_product_id": ""
+      }
+    },
+    {
+      "seed_id": "eps_35d4dec8d7de4878a606836f",
+      "external_product_id": "ext_2fa17c7f0417769ff2e9abb8",
+      "market": "US",
+      "domain": "sigmabeauty.com",
+      "title": "Sigma x Face Foundrié Beautiful Base Set",
+      "canonical_url": "https://sigmabeauty.com/products/sigma-x-face-foundrie-beautiful-base-set",
+      "product_family": "set_or_collection",
+      "product_line_id": "pl_61dae764895632679e354e21",
+      "identity_variant_axes": {
+        "shade": "sigma x face foundrié beautiful base set",
+        "multi_variant": false
+      },
+      "pivota_insights": {
+        "direct": {
+          "product_id": "ext_2fa17c7f0417769ff2e9abb8",
+          "kb_key": "product:ext_2fa17c7f0417769ff2e9abb8",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": false,
+          "human_reviewed": true,
+          "issues": [
+            "public_generic_marketing_copy"
+          ],
+          "blocking_issues": [
+            "public_generic_marketing_copy"
+          ],
+          "quality_state": "reviewed",
+          "evidence_profile": "seller_plus_formula",
+          "has_card_highlight": true
+        },
+        "effective": {
+          "product_id": "ext_2fa17c7f0417769ff2e9abb8",
+          "kb_key": "product:ext_2fa17c7f0417769ff2e9abb8",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": false,
+          "human_reviewed": true,
+          "issues": [
+            "public_generic_marketing_copy"
+          ],
+          "blocking_issues": [
+            "public_generic_marketing_copy"
+          ],
+          "quality_state": "reviewed",
+          "evidence_profile": "seller_plus_formula",
+          "has_card_highlight": true
+        },
+        "product_line_id": "pl_61dae764895632679e354e21",
+        "borrowed_from_sibling": false
+      },
+      "active_ingredients": {
+        "status": "not_applicable_product_family",
+        "issues": [],
+        "regulatory_expected": false,
+        "hero_expected": false,
+        "active_items": [],
+        "source_origin": "none",
+        "source_quality_status": "blocked",
+        "coverage": {
+          "details_sections_count": 8,
+          "faq_count": 0,
+          "how_to_chars": 761,
+          "inci_chars": 1904,
+          "active_ingredients_chars": 0,
+          "inci_applicability_status": "",
+          "ingredient_review_status": "",
+          "ingredient_remediation_action": "",
+          "bundle_component_refs_count": 0,
+          "effective_inci_chars": 1904,
+          "inci_borrowed_from_product_id": ""
+        },
+        "invalid_fragments": [],
+        "suppressed_reason": "set_or_collection"
+      },
+      "variants": {
+        "status": "ready",
+        "issues": [],
+        "visible_variant_rows": 1,
+        "examples": {
+          "identity_option_visible": [],
+          "wrong_axis_for_category": [],
+          "makeup_shade_missing_visual": [],
+          "size_value_generic_axis": [],
+          "default_option_size_evidence_missing_axis": [],
+          "identity_default_title_axis": []
+        }
+      },
+      "coverage": {
+        "details_sections_count": 8,
+        "faq_count": 0,
+        "how_to_chars": 761,
+        "inci_chars": 1904,
+        "active_ingredients_chars": 0,
+        "inci_applicability_status": "",
+        "ingredient_review_status": "",
+        "ingredient_remediation_action": "",
+        "bundle_component_refs_count": 0,
+        "effective_inci_chars": 1904,
+        "inci_borrowed_from_product_id": ""
+      }
+    },
+    {
+      "seed_id": "eps_38b17a66408645d8ae514764",
+      "external_product_id": "ext_d45ccb74956c1ef9c9637352",
+      "market": "US",
+      "domain": "sigmabeauty.com",
+      "title": "F08 Precision Powder Brush",
+      "canonical_url": "https://sigmabeauty.com/products/f08-precision-powder",
+      "product_family": "accessory",
+      "product_line_id": "pl_cec2dcb67fd7b995430ae4a3",
+      "identity_variant_axes": {
+        "shade": "f08 precision powder brush",
+        "multi_variant": false
+      },
+      "pivota_insights": {
+        "direct": {
+          "product_id": "ext_d45ccb74956c1ef9c9637352",
+          "kb_key": "product:ext_d45ccb74956c1ef9c9637352",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": false,
+          "human_reviewed": true,
+          "issues": [
+            "public_generic_marketing_copy"
+          ],
+          "blocking_issues": [
+            "public_generic_marketing_copy"
+          ],
+          "quality_state": "reviewed",
+          "evidence_profile": "official_pdp_seed",
+          "has_card_highlight": true
+        },
+        "effective": {
+          "product_id": "ext_d45ccb74956c1ef9c9637352",
+          "kb_key": "product:ext_d45ccb74956c1ef9c9637352",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": false,
+          "human_reviewed": true,
+          "issues": [
+            "public_generic_marketing_copy"
+          ],
+          "blocking_issues": [
+            "public_generic_marketing_copy"
+          ],
+          "quality_state": "reviewed",
+          "evidence_profile": "official_pdp_seed",
+          "has_card_highlight": true
+        },
+        "product_line_id": "pl_cec2dcb67fd7b995430ae4a3",
+        "borrowed_from_sibling": false
+      },
+      "active_ingredients": {
+        "status": "not_applicable_product_family",
+        "issues": [],
+        "regulatory_expected": false,
+        "hero_expected": false,
+        "active_items": [],
+        "source_origin": "none",
+        "source_quality_status": "blocked",
+        "coverage": {
+          "details_sections_count": 6,
+          "faq_count": 0,
+          "how_to_chars": 93,
+          "inci_chars": 0,
+          "active_ingredients_chars": 0,
+          "inci_applicability_status": "",
+          "ingredient_review_status": "",
+          "ingredient_remediation_action": "",
+          "bundle_component_refs_count": 0,
+          "effective_inci_chars": 0,
+          "inci_borrowed_from_product_id": ""
+        },
+        "invalid_fragments": [],
+        "suppressed_reason": "accessory"
+      },
+      "variants": {
+        "status": "ready",
+        "issues": [],
+        "visible_variant_rows": 1,
+        "examples": {
+          "identity_option_visible": [],
+          "wrong_axis_for_category": [],
+          "makeup_shade_missing_visual": [],
+          "size_value_generic_axis": [],
+          "default_option_size_evidence_missing_axis": [],
+          "identity_default_title_axis": []
+        }
+      },
+      "coverage": {
+        "details_sections_count": 6,
+        "faq_count": 0,
+        "how_to_chars": 93,
+        "inci_chars": 0,
+        "active_ingredients_chars": 0,
+        "inci_applicability_status": "",
+        "ingredient_review_status": "",
+        "ingredient_remediation_action": "",
+        "bundle_component_refs_count": 0,
+        "effective_inci_chars": 0,
+        "inci_borrowed_from_product_id": ""
+      }
+    },
+    {
+      "seed_id": "eps_68f8f5851f9549ee8b0f9669",
+      "external_product_id": "ext_d1d97a9ff67e0354f391856c",
+      "market": "US",
+      "domain": "sigmabeauty.com",
+      "title": "F23 Soft Angle Contour™ Brush",
+      "canonical_url": "https://sigmabeauty.com/products/f23-soft-angled-contour",
+      "product_family": "accessory",
+      "product_line_id": "pl_e8dc24733c275a53bc7d1d5c",
+      "identity_variant_axes": {
+        "shade": "f23 soft angle contourtm brush",
+        "multi_variant": false
+      },
+      "pivota_insights": {
+        "direct": {
+          "product_id": "ext_d1d97a9ff67e0354f391856c",
+          "kb_key": "product:ext_d1d97a9ff67e0354f391856c",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": false,
+          "human_reviewed": true,
+          "issues": [
+            "public_generic_marketing_copy"
+          ],
+          "blocking_issues": [
+            "public_generic_marketing_copy"
+          ],
+          "quality_state": "reviewed",
+          "evidence_profile": "official_pdp_seed",
+          "has_card_highlight": true
+        },
+        "effective": {
+          "product_id": "ext_d1d97a9ff67e0354f391856c",
+          "kb_key": "product:ext_d1d97a9ff67e0354f391856c",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": false,
+          "human_reviewed": true,
+          "issues": [
+            "public_generic_marketing_copy"
+          ],
+          "blocking_issues": [
+            "public_generic_marketing_copy"
+          ],
+          "quality_state": "reviewed",
+          "evidence_profile": "official_pdp_seed",
+          "has_card_highlight": true
+        },
+        "product_line_id": "pl_e8dc24733c275a53bc7d1d5c",
+        "borrowed_from_sibling": false
+      },
+      "active_ingredients": {
+        "status": "not_applicable_product_family",
+        "issues": [],
+        "regulatory_expected": false,
+        "hero_expected": false,
+        "active_items": [],
+        "source_origin": "none",
+        "source_quality_status": "blocked",
+        "coverage": {
+          "details_sections_count": 6,
+          "faq_count": 0,
+          "how_to_chars": 216,
+          "inci_chars": 0,
+          "active_ingredients_chars": 0,
+          "inci_applicability_status": "",
+          "ingredient_review_status": "",
+          "ingredient_remediation_action": "",
+          "bundle_component_refs_count": 0,
+          "effective_inci_chars": 0,
+          "inci_borrowed_from_product_id": ""
+        },
+        "invalid_fragments": [],
+        "suppressed_reason": "accessory"
+      },
+      "variants": {
+        "status": "ready",
+        "issues": [],
+        "visible_variant_rows": 1,
+        "examples": {
+          "identity_option_visible": [],
+          "wrong_axis_for_category": [],
+          "makeup_shade_missing_visual": [],
+          "size_value_generic_axis": [],
+          "default_option_size_evidence_missing_axis": [],
+          "identity_default_title_axis": []
+        }
+      },
+      "coverage": {
+        "details_sections_count": 6,
+        "faq_count": 0,
+        "how_to_chars": 216,
+        "inci_chars": 0,
+        "active_ingredients_chars": 0,
+        "inci_applicability_status": "",
+        "ingredient_review_status": "",
+        "ingredient_remediation_action": "",
+        "bundle_component_refs_count": 0,
+        "effective_inci_chars": 0,
+        "inci_borrowed_from_product_id": ""
+      }
+    },
+    {
+      "seed_id": "eps_8ee9e152272e4f49a66e9fe7",
+      "external_product_id": "ext_b96a6d6c33e2547fc31aca0d",
+      "market": "US",
+      "domain": "sigmabeauty.com",
+      "title": "E28 Detailed Buffer™ Brush",
+      "canonical_url": "https://sigmabeauty.com/products/e28-detail-buffer",
+      "product_family": "accessory",
+      "product_line_id": "pl_3a062708f246fd19b9abf751",
+      "identity_variant_axes": {
+        "shade": "e28 detailed buffertm brush",
+        "multi_variant": false
+      },
+      "pivota_insights": {
+        "direct": {
+          "product_id": "ext_b96a6d6c33e2547fc31aca0d",
+          "kb_key": "product:ext_b96a6d6c33e2547fc31aca0d",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": false,
+          "human_reviewed": true,
+          "issues": [
+            "public_generic_marketing_copy"
+          ],
+          "blocking_issues": [
+            "public_generic_marketing_copy"
+          ],
+          "quality_state": "reviewed",
+          "evidence_profile": "official_pdp_seed",
+          "has_card_highlight": true
+        },
+        "effective": {
+          "product_id": "ext_b96a6d6c33e2547fc31aca0d",
+          "kb_key": "product:ext_b96a6d6c33e2547fc31aca0d",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": false,
+          "human_reviewed": true,
+          "issues": [
+            "public_generic_marketing_copy"
+          ],
+          "blocking_issues": [
+            "public_generic_marketing_copy"
+          ],
+          "quality_state": "reviewed",
+          "evidence_profile": "official_pdp_seed",
+          "has_card_highlight": true
+        },
+        "product_line_id": "pl_3a062708f246fd19b9abf751",
+        "borrowed_from_sibling": false
+      },
+      "active_ingredients": {
+        "status": "not_applicable_product_family",
+        "issues": [],
+        "regulatory_expected": false,
+        "hero_expected": false,
+        "active_items": [],
+        "source_origin": "none",
+        "source_quality_status": "blocked",
+        "coverage": {
+          "details_sections_count": 6,
+          "faq_count": 0,
+          "how_to_chars": 286,
+          "inci_chars": 0,
+          "active_ingredients_chars": 0,
+          "inci_applicability_status": "",
+          "ingredient_review_status": "",
+          "ingredient_remediation_action": "",
+          "bundle_component_refs_count": 0,
+          "effective_inci_chars": 0,
+          "inci_borrowed_from_product_id": ""
+        },
+        "invalid_fragments": [],
+        "suppressed_reason": "accessory"
+      },
+      "variants": {
+        "status": "ready",
+        "issues": [],
+        "visible_variant_rows": 1,
+        "examples": {
+          "identity_option_visible": [],
+          "wrong_axis_for_category": [],
+          "makeup_shade_missing_visual": [],
+          "size_value_generic_axis": [],
+          "default_option_size_evidence_missing_axis": [],
+          "identity_default_title_axis": []
+        }
+      },
+      "coverage": {
+        "details_sections_count": 6,
+        "faq_count": 0,
+        "how_to_chars": 286,
+        "inci_chars": 0,
+        "active_ingredients_chars": 0,
+        "inci_applicability_status": "",
+        "ingredient_review_status": "",
+        "ingredient_remediation_action": "",
+        "bundle_component_refs_count": 0,
+        "effective_inci_chars": 0,
+        "inci_borrowed_from_product_id": ""
+      }
+    },
+    {
+      "seed_id": "eps_c2f6a6fc7487418c88712603",
+      "external_product_id": "ext_e09ac3e79003532a24a50e29",
+      "market": "US",
+      "domain": "sigmabeauty.com",
+      "title": "F81 Blend Kabuki™ Brush",
+      "canonical_url": "https://sigmabeauty.com/products/f81-blend-kabuki™-brush",
+      "product_family": "accessory",
+      "product_line_id": "pl_6b60c6fdeb25bd861ebe0cc4",
+      "identity_variant_axes": {
+        "shade": "f81 blend kabukitm brush",
+        "multi_variant": false
+      },
+      "pivota_insights": {
+        "direct": {
+          "product_id": "ext_e09ac3e79003532a24a50e29",
+          "kb_key": "product:ext_e09ac3e79003532a24a50e29",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": false,
+          "human_reviewed": true,
+          "issues": [
+            "public_generic_marketing_copy"
+          ],
+          "blocking_issues": [
+            "public_generic_marketing_copy"
+          ],
+          "quality_state": "reviewed",
+          "evidence_profile": "official_pdp_seed",
+          "has_card_highlight": true
+        },
+        "effective": {
+          "product_id": "ext_e09ac3e79003532a24a50e29",
+          "kb_key": "product:ext_e09ac3e79003532a24a50e29",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": false,
+          "human_reviewed": true,
+          "issues": [
+            "public_generic_marketing_copy"
+          ],
+          "blocking_issues": [
+            "public_generic_marketing_copy"
+          ],
+          "quality_state": "reviewed",
+          "evidence_profile": "official_pdp_seed",
+          "has_card_highlight": true
+        },
+        "product_line_id": "pl_6b60c6fdeb25bd861ebe0cc4",
+        "borrowed_from_sibling": false
+      },
+      "active_ingredients": {
+        "status": "not_applicable_product_family",
+        "issues": [],
+        "regulatory_expected": false,
+        "hero_expected": false,
+        "active_items": [],
+        "source_origin": "none",
+        "source_quality_status": "blocked",
+        "coverage": {
+          "details_sections_count": 4,
+          "faq_count": 0,
+          "how_to_chars": 86,
+          "inci_chars": 0,
+          "active_ingredients_chars": 0,
+          "inci_applicability_status": "",
+          "ingredient_review_status": "",
+          "ingredient_remediation_action": "",
+          "bundle_component_refs_count": 0,
+          "effective_inci_chars": 0,
+          "inci_borrowed_from_product_id": ""
+        },
+        "invalid_fragments": [],
+        "suppressed_reason": "accessory"
+      },
+      "variants": {
+        "status": "ready",
+        "issues": [],
+        "visible_variant_rows": 1,
+        "examples": {
+          "identity_option_visible": [],
+          "wrong_axis_for_category": [],
+          "makeup_shade_missing_visual": [],
+          "size_value_generic_axis": [],
+          "default_option_size_evidence_missing_axis": [],
+          "identity_default_title_axis": []
+        }
+      },
+      "coverage": {
+        "details_sections_count": 4,
+        "faq_count": 0,
+        "how_to_chars": 86,
+        "inci_chars": 0,
+        "active_ingredients_chars": 0,
+        "inci_applicability_status": "",
+        "ingredient_review_status": "",
+        "ingredient_remediation_action": "",
+        "bundle_component_refs_count": 0,
+        "effective_inci_chars": 0,
+        "inci_borrowed_from_product_id": ""
+      }
+    },
+    {
+      "seed_id": "eps_ca77c0c5a6c5486bbe0433a7",
+      "external_product_id": "ext_a17b2f2ec278dd6d32210b21",
+      "market": "US",
+      "domain": "sigmabeauty.com",
+      "title": "3DHD™ Blender",
+      "canonical_url": "https://sigmabeauty.com/products/3dhdtm-blender",
+      "product_family": "unknown_product",
+      "product_line_id": "pl_fe69e40476841991a80f5cc6",
+      "identity_variant_axes": {
+        "multi_variant": true
+      },
+      "pivota_insights": {
+        "direct": {
+          "product_id": "ext_a17b2f2ec278dd6d32210b21",
+          "kb_key": "product:ext_a17b2f2ec278dd6d32210b21",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": false,
+          "human_reviewed": true,
+          "issues": [
+            "public_generic_marketing_copy"
+          ],
+          "blocking_issues": [
+            "public_generic_marketing_copy"
+          ],
+          "quality_state": "reviewed",
+          "evidence_profile": "official_pdp_seed",
+          "has_card_highlight": true
+        },
+        "effective": {
+          "product_id": "ext_a17b2f2ec278dd6d32210b21",
+          "kb_key": "product:ext_a17b2f2ec278dd6d32210b21",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": false,
+          "human_reviewed": true,
+          "issues": [
+            "public_generic_marketing_copy"
+          ],
+          "blocking_issues": [
+            "public_generic_marketing_copy"
+          ],
+          "quality_state": "reviewed",
+          "evidence_profile": "official_pdp_seed",
+          "has_card_highlight": true
+        },
+        "product_line_id": "pl_fe69e40476841991a80f5cc6",
+        "borrowed_from_sibling": false
+      },
+      "active_ingredients": {
+        "status": "not_expected_missing",
+        "issues": [],
+        "regulatory_expected": false,
+        "hero_expected": false,
+        "active_items": [],
+        "source_origin": "none",
+        "source_quality_status": "blocked",
+        "coverage": {
+          "details_sections_count": 6,
+          "faq_count": 0,
+          "how_to_chars": 276,
+          "inci_chars": 0,
+          "active_ingredients_chars": 0,
+          "inci_applicability_status": "",
+          "ingredient_review_status": "",
+          "ingredient_remediation_action": "",
+          "bundle_component_refs_count": 0,
+          "effective_inci_chars": 0,
+          "inci_borrowed_from_product_id": ""
+        },
+        "invalid_fragments": [],
+        "suppressed_reason": "no_authoritative_source"
+      },
+      "variants": {
+        "status": "ready",
+        "issues": [],
+        "visible_variant_rows": 2,
+        "examples": {
+          "identity_option_visible": [],
+          "wrong_axis_for_category": [],
+          "makeup_shade_missing_visual": [],
+          "size_value_generic_axis": [],
+          "default_option_size_evidence_missing_axis": [],
+          "identity_default_title_axis": []
+        }
+      },
+      "coverage": {
+        "details_sections_count": 6,
+        "faq_count": 0,
+        "how_to_chars": 276,
+        "inci_chars": 0,
+        "active_ingredients_chars": 0,
+        "inci_applicability_status": "",
+        "ingredient_review_status": "",
+        "ingredient_remediation_action": "",
+        "bundle_component_refs_count": 0,
+        "effective_inci_chars": 0,
+        "inci_borrowed_from_product_id": ""
+      }
+    },
+    {
+      "seed_id": "eps_e2ba36a4a24541788df19667",
+      "external_product_id": "ext_68f54cb97689f84e81809010",
+      "market": "US",
+      "domain": "sigmabeauty.com",
+      "title": "Renew Lip Oil",
+      "canonical_url": "https://sigmabeauty.com/products/renew-lip-oil",
+      "product_family": "single_formula",
+      "product_line_id": "pl_9394fb5a386ba7737a1ca252",
+      "identity_variant_axes": {
+        "multi_variant": true
+      },
+      "pivota_insights": {
+        "direct": {
+          "product_id": "ext_68f54cb97689f84e81809010",
+          "kb_key": "product:ext_68f54cb97689f84e81809010",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": false,
+          "human_reviewed": true,
+          "issues": [
+            "public_sensitive_claim"
+          ],
+          "blocking_issues": [
+            "public_sensitive_claim"
+          ],
+          "quality_state": "reviewed",
+          "evidence_profile": "seller_plus_formula",
+          "has_card_highlight": true
+        },
+        "effective": {
+          "product_id": "ext_68f54cb97689f84e81809010",
+          "kb_key": "product:ext_68f54cb97689f84e81809010",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": false,
+          "human_reviewed": true,
+          "issues": [
+            "public_sensitive_claim"
+          ],
+          "blocking_issues": [
+            "public_sensitive_claim"
+          ],
+          "quality_state": "reviewed",
+          "evidence_profile": "seller_plus_formula",
+          "has_card_highlight": true
+        },
+        "product_line_id": "pl_9394fb5a386ba7737a1ca252",
+        "borrowed_from_sibling": false
+      },
+      "active_ingredients": {
+        "status": "not_expected_missing",
+        "issues": [
+          "active_raw_too_long",
+          "active_raw_may_be_full_inci"
+        ],
+        "regulatory_expected": false,
+        "hero_expected": false,
+        "active_items": [],
+        "source_origin": "pdp_section",
+        "source_quality_status": "blocked",
+        "coverage": {
+          "details_sections_count": 6,
+          "faq_count": 0,
+          "how_to_chars": 296,
+          "inci_chars": 3428,
+          "active_ingredients_chars": 3428,
+          "inci_applicability_status": "",
+          "ingredient_review_status": "",
+          "ingredient_remediation_action": "",
+          "bundle_component_refs_count": 0,
+          "effective_inci_chars": 3428,
+          "inci_borrowed_from_product_id": ""
+        },
+        "invalid_fragments": [],
+        "suppressed_reason": null
+      },
+      "variants": {
+        "status": "ready",
+        "issues": [],
+        "visible_variant_rows": 4,
+        "examples": {
+          "identity_option_visible": [],
+          "wrong_axis_for_category": [],
+          "makeup_shade_missing_visual": [],
+          "size_value_generic_axis": [],
+          "default_option_size_evidence_missing_axis": [],
+          "identity_default_title_axis": []
+        }
+      },
+      "coverage": {
+        "details_sections_count": 6,
+        "faq_count": 0,
+        "how_to_chars": 296,
+        "inci_chars": 3428,
+        "active_ingredients_chars": 3428,
+        "inci_applicability_status": "",
+        "ingredient_review_status": "",
+        "ingredient_remediation_action": "",
+        "bundle_component_refs_count": 0,
+        "effective_inci_chars": 3428,
+        "inci_borrowed_from_product_id": ""
+      }
+    },
+    {
+      "seed_id": "eps_ea1b8f795c9f4ba588dbd0f2",
+      "external_product_id": "ext_683bce84d49887a3f4a83038",
+      "market": "US",
+      "domain": "sigmabeauty.com",
+      "title": "Perfect Brow Set",
+      "canonical_url": "https://sigmabeauty.com/products/the-perfect-brow-set",
+      "product_family": "set_or_collection",
+      "product_line_id": "pl_b679e956aba714b1c1a00bec",
+      "identity_variant_axes": {
+        "multi_variant": true
+      },
+      "pivota_insights": {
+        "direct": {
+          "product_id": "ext_683bce84d49887a3f4a83038",
+          "kb_key": "product:ext_683bce84d49887a3f4a83038",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": false,
+          "human_reviewed": true,
+          "issues": [
+            "public_generic_marketing_copy"
+          ],
+          "blocking_issues": [
+            "public_generic_marketing_copy"
+          ],
+          "quality_state": "reviewed",
+          "evidence_profile": "seller_plus_formula",
+          "has_card_highlight": true
+        },
+        "effective": {
+          "product_id": "ext_683bce84d49887a3f4a83038",
+          "kb_key": "product:ext_683bce84d49887a3f4a83038",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": false,
+          "human_reviewed": true,
+          "issues": [
+            "public_generic_marketing_copy"
+          ],
+          "blocking_issues": [
+            "public_generic_marketing_copy"
+          ],
+          "quality_state": "reviewed",
+          "evidence_profile": "seller_plus_formula",
+          "has_card_highlight": true
+        },
+        "product_line_id": "pl_b679e956aba714b1c1a00bec",
+        "borrowed_from_sibling": false
+      },
+      "active_ingredients": {
+        "status": "not_applicable_product_family",
+        "issues": [],
+        "regulatory_expected": false,
+        "hero_expected": false,
+        "active_items": [],
+        "source_origin": "none",
+        "source_quality_status": "blocked",
+        "coverage": {
+          "details_sections_count": 6,
+          "faq_count": 0,
+          "how_to_chars": 295,
+          "inci_chars": 3864,
+          "active_ingredients_chars": 0,
+          "inci_applicability_status": "",
+          "ingredient_review_status": "",
+          "ingredient_remediation_action": "",
+          "bundle_component_refs_count": 0,
+          "effective_inci_chars": 3864,
+          "inci_borrowed_from_product_id": ""
+        },
+        "invalid_fragments": [],
+        "suppressed_reason": "set_or_collection"
+      },
+      "variants": {
+        "status": "ready",
+        "issues": [],
+        "visible_variant_rows": 81,
+        "examples": {
+          "identity_option_visible": [],
+          "wrong_axis_for_category": [],
+          "makeup_shade_missing_visual": [],
+          "size_value_generic_axis": [],
+          "default_option_size_evidence_missing_axis": [],
+          "identity_default_title_axis": []
+        }
+      },
+      "coverage": {
+        "details_sections_count": 6,
+        "faq_count": 0,
+        "how_to_chars": 295,
+        "inci_chars": 3864,
+        "active_ingredients_chars": 0,
+        "inci_applicability_status": "",
+        "ingredient_review_status": "",
+        "ingredient_remediation_action": "",
+        "bundle_component_refs_count": 0,
+        "effective_inci_chars": 3864,
+        "inci_borrowed_from_product_id": ""
+      }
+    }
+  ]
+}

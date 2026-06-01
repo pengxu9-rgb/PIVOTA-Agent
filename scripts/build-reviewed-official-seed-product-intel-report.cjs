@@ -419,6 +419,8 @@ function sanitizeFormulaSummary(value) {
     )
     .replace(/\b(Salicylic acid,\s*Glycolic acid,\s*Lactic acid)\s+Clarity Cleanser\b/gi, '$1')
     .replace(/\bsoothes\s*&\s*hydrates\b/gi, 'is listed for soothing and hydrating positioning')
+    .replace(/\bflawless\b/gi, 'even-looking')
+    .replace(/\b(?:ultimate|must[-\s]?have|go[-\s]?to|ready[-\s]?to[-\s]?go|unique|popular|high[-\s]?quality|perfect)\b/gi, 'source-listed')
     .replace(/\bFeaturing\s+yet\s+gentle\s+formulas\b/gi, 'Featuring gentle formulas')
     .replace(/\bpowerful\s+yet\s+gentle\s+formulas\b/gi, 'gentle formulas')
     .replace(/\bworks\s+to\s+purify,\s*smooth\s+and\s+soothe\s+while\s+targeting\s+excess\s+oil\b/gi, 'is positioned around purifying-looking, smoothing, soothing, and excess-oil routine support')

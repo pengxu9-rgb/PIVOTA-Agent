@@ -1,0 +1,486 @@
+{
+  "generated_at": "2026-06-01T03:11:49.706Z",
+  "options": {
+    "market": "US",
+    "includeAttached": true,
+    "domain": null,
+    "externalProductIds": [
+      "ext_539c5068c2d9cc9f5f471093",
+      "ext_eca8959862245d5af16ab206"
+    ],
+    "limit": 10,
+    "sampleLimit": 10,
+    "checkpointDir": "/Users/pengchydan/dev/_worktrees/pivota-agent-markato-wave25-786-20260527/reports/markato_expansion_status_20260524/wave117_dermalogica_continuation_20260601/readiness_before/pdp_readiness_checkpoint",
+    "checkpointMode": "domain",
+    "resume": false,
+    "force": false,
+    "continueOnError": true,
+    "pageSize": 500,
+    "format": "json"
+  },
+  "warnings": [],
+  "summary": {
+    "scanned": 2,
+    "by_market": {
+      "US": 2
+    },
+    "by_domain": [
+      {
+        "key": "dermalogica.com",
+        "count": 2
+      }
+    ],
+    "by_product_family": [
+      {
+        "key": "single_formula",
+        "count": 2
+      }
+    ],
+    "coverage": {
+      "missing_inci": 0,
+      "missing_active_raw": 1,
+      "missing_details": 0,
+      "missing_how_to": 0,
+      "missing_faq": 1
+    },
+    "pivota_insights": {
+      "direct": {
+        "displayable": 1,
+        "high_quality_ready": 1,
+        "missing_kb": 0,
+        "not_displayable": 1
+      },
+      "effective": {
+        "displayable": 1,
+        "high_quality_ready": 1,
+        "missing_kb": 0,
+        "not_displayable": 1,
+        "borrowed_from_sibling": 0
+      },
+      "effective_issues": [
+        {
+          "key": "ellipsis_or_truncated",
+          "count": 1
+        },
+        {
+          "key": "generic_copy_signal",
+          "count": 1
+        },
+        {
+          "key": "not_displayable_gate",
+          "count": 1
+        },
+        {
+          "key": "not_reviewed",
+          "count": 1
+        },
+        {
+          "key": "public_sensitive_claim",
+          "count": 1
+        },
+        {
+          "key": "public_truncated_copy",
+          "count": 1
+        },
+        {
+          "key": "quality_limited",
+          "count": 1
+        },
+        {
+          "key": "seller_only_evidence",
+          "count": 1
+        }
+      ],
+      "effective_issue_domains": [
+        {
+          "key": "dermalogica.com::ellipsis_or_truncated",
+          "count": 1
+        },
+        {
+          "key": "dermalogica.com::generic_copy_signal",
+          "count": 1
+        },
+        {
+          "key": "dermalogica.com::not_displayable_gate",
+          "count": 1
+        },
+        {
+          "key": "dermalogica.com::not_reviewed",
+          "count": 1
+        },
+        {
+          "key": "dermalogica.com::public_sensitive_claim",
+          "count": 1
+        },
+        {
+          "key": "dermalogica.com::public_truncated_copy",
+          "count": 1
+        },
+        {
+          "key": "dermalogica.com::quality_limited",
+          "count": 1
+        },
+        {
+          "key": "dermalogica.com::seller_only_evidence",
+          "count": 1
+        }
+      ],
+      "quality_state": [
+        {
+          "key": "limited",
+          "count": 1
+        },
+        {
+          "key": "reviewed",
+          "count": 1
+        }
+      ],
+      "evidence_profile": [
+        {
+          "key": "seller_only",
+          "count": 1
+        },
+        {
+          "key": "seller_plus_formula",
+          "count": 1
+        }
+      ],
+      "samples": {
+        "not_reviewed": [
+          {
+            "external_product_id": "ext_eca8959862245d5af16ab206",
+            "domain": "dermalogica.com",
+            "title": "daily milkfoliant exfoliator",
+            "used_product_id": "ext_eca8959862245d5af16ab206",
+            "quality_state": "limited",
+            "evidence_profile": "seller_only"
+          }
+        ],
+        "not_displayable_gate": [
+          {
+            "external_product_id": "ext_eca8959862245d5af16ab206",
+            "domain": "dermalogica.com",
+            "title": "daily milkfoliant exfoliator",
+            "used_product_id": "ext_eca8959862245d5af16ab206",
+            "quality_state": "limited",
+            "evidence_profile": "seller_only"
+          }
+        ],
+        "ellipsis_or_truncated": [
+          {
+            "external_product_id": "ext_eca8959862245d5af16ab206",
+            "domain": "dermalogica.com",
+            "title": "daily milkfoliant exfoliator",
+            "used_product_id": "ext_eca8959862245d5af16ab206",
+            "quality_state": "limited",
+            "evidence_profile": "seller_only"
+          }
+        ],
+        "generic_copy_signal": [
+          {
+            "external_product_id": "ext_eca8959862245d5af16ab206",
+            "domain": "dermalogica.com",
+            "title": "daily milkfoliant exfoliator",
+            "used_product_id": "ext_eca8959862245d5af16ab206",
+            "quality_state": "limited",
+            "evidence_profile": "seller_only"
+          }
+        ],
+        "public_sensitive_claim": [
+          {
+            "external_product_id": "ext_eca8959862245d5af16ab206",
+            "domain": "dermalogica.com",
+            "title": "daily milkfoliant exfoliator",
+            "used_product_id": "ext_eca8959862245d5af16ab206",
+            "quality_state": "limited",
+            "evidence_profile": "seller_only"
+          }
+        ],
+        "public_truncated_copy": [
+          {
+            "external_product_id": "ext_eca8959862245d5af16ab206",
+            "domain": "dermalogica.com",
+            "title": "daily milkfoliant exfoliator",
+            "used_product_id": "ext_eca8959862245d5af16ab206",
+            "quality_state": "limited",
+            "evidence_profile": "seller_only"
+          }
+        ],
+        "seller_only_evidence": [
+          {
+            "external_product_id": "ext_eca8959862245d5af16ab206",
+            "domain": "dermalogica.com",
+            "title": "daily milkfoliant exfoliator",
+            "used_product_id": "ext_eca8959862245d5af16ab206",
+            "quality_state": "limited",
+            "evidence_profile": "seller_only"
+          }
+        ]
+      }
+    },
+    "active_ingredients": {
+      "regulatory_expected": 0,
+      "hero_expected": 2,
+      "any_active_items": 2,
+      "status": [
+        {
+          "key": "ready_hero",
+          "count": 2
+        }
+      ],
+      "issues": [],
+      "issue_domains": [],
+      "source_origin": [
+        {
+          "key": "pdp_section",
+          "count": 2
+        }
+      ],
+      "samples": {}
+    },
+    "variants": {
+      "status": [
+        {
+          "key": "ready",
+          "count": 2
+        }
+      ],
+      "issues": [],
+      "issue_domains": [],
+      "samples": {}
+    }
+  },
+  "rows": [
+    {
+      "seed_id": "eps_62b6e0c4e016440088a58b45",
+      "external_product_id": "ext_eca8959862245d5af16ab206",
+      "market": "US",
+      "domain": "dermalogica.com",
+      "title": "daily milkfoliant exfoliator",
+      "canonical_url": "https://dermalogica.com/products/daily-milkfoliant",
+      "product_family": "single_formula",
+      "product_line_id": "pl_8d20d8e163cf4d377216614e",
+      "identity_variant_axes": {
+        "size": "0 45 oz",
+        "volume": "45oz",
+        "multi_variant": true
+      },
+      "pivota_insights": {
+        "direct": {
+          "product_id": "ext_eca8959862245d5af16ab206",
+          "kb_key": "product:ext_eca8959862245d5af16ab206",
+          "status": "not_displayable",
+          "kb_exists": true,
+          "displayable": false,
+          "high_quality_ready": false,
+          "human_reviewed": false,
+          "issues": [
+            "not_reviewed",
+            "not_displayable_gate",
+            "ellipsis_or_truncated",
+            "generic_copy_signal",
+            "public_sensitive_claim",
+            "public_truncated_copy",
+            "quality_limited",
+            "seller_only_evidence"
+          ],
+          "blocking_issues": [
+            "not_reviewed",
+            "not_displayable_gate",
+            "ellipsis_or_truncated",
+            "generic_copy_signal",
+            "public_sensitive_claim",
+            "public_truncated_copy"
+          ],
+          "quality_state": "limited",
+          "evidence_profile": "seller_only",
+          "has_card_highlight": true
+        },
+        "effective": {
+          "product_id": "ext_eca8959862245d5af16ab206",
+          "kb_key": "product:ext_eca8959862245d5af16ab206",
+          "status": "not_displayable",
+          "kb_exists": true,
+          "displayable": false,
+          "high_quality_ready": false,
+          "human_reviewed": false,
+          "issues": [
+            "not_reviewed",
+            "not_displayable_gate",
+            "ellipsis_or_truncated",
+            "generic_copy_signal",
+            "public_sensitive_claim",
+            "public_truncated_copy",
+            "quality_limited",
+            "seller_only_evidence"
+          ],
+          "blocking_issues": [
+            "not_reviewed",
+            "not_displayable_gate",
+            "ellipsis_or_truncated",
+            "generic_copy_signal",
+            "public_sensitive_claim",
+            "public_truncated_copy"
+          ],
+          "quality_state": "limited",
+          "evidence_profile": "seller_only",
+          "has_card_highlight": true
+        },
+        "product_line_id": "pl_8d20d8e163cf4d377216614e",
+        "borrowed_from_sibling": false
+      },
+      "active_ingredients": {
+        "status": "ready_hero",
+        "issues": [],
+        "regulatory_expected": false,
+        "hero_expected": true,
+        "active_items": [
+          "Hyaluronic acid"
+        ],
+        "source_origin": "pdp_section",
+        "source_quality_status": "captured",
+        "coverage": {
+          "details_sections_count": 18,
+          "faq_count": 0,
+          "how_to_chars": 205,
+          "inci_chars": 1923,
+          "active_ingredients_chars": 595,
+          "inci_applicability_status": "",
+          "ingredient_review_status": "",
+          "ingredient_remediation_action": "",
+          "bundle_component_refs_count": 0,
+          "effective_inci_chars": 1923,
+          "inci_borrowed_from_product_id": ""
+        },
+        "invalid_fragments": [],
+        "suppressed_reason": null
+      },
+      "variants": {
+        "status": "ready",
+        "issues": [],
+        "visible_variant_rows": 3,
+        "examples": {
+          "identity_option_visible": [],
+          "wrong_axis_for_category": [],
+          "makeup_shade_missing_visual": [],
+          "size_value_generic_axis": [],
+          "default_option_size_evidence_missing_axis": [],
+          "identity_default_title_axis": []
+        }
+      },
+      "coverage": {
+        "details_sections_count": 18,
+        "faq_count": 0,
+        "how_to_chars": 205,
+        "inci_chars": 1923,
+        "active_ingredients_chars": 595,
+        "inci_applicability_status": "",
+        "ingredient_review_status": "",
+        "ingredient_remediation_action": "",
+        "bundle_component_refs_count": 0,
+        "effective_inci_chars": 1923,
+        "inci_borrowed_from_product_id": ""
+      }
+    },
+    {
+      "seed_id": "eps_8c0032d7b8644420954d0df2",
+      "external_product_id": "ext_539c5068c2d9cc9f5f471093",
+      "market": "US",
+      "domain": "dermalogica.com",
+      "title": "biolumin-c night restore serum",
+      "canonical_url": "https://dermalogica.com/products/biolumin-c-night-restore-serum",
+      "product_family": "single_formula",
+      "product_line_id": "pl_3a82e8e889d147eb9bc8d441",
+      "identity_variant_axes": {
+        "size": "0 85 oz",
+        "volume": "85oz",
+        "multi_variant": false
+      },
+      "pivota_insights": {
+        "direct": {
+          "product_id": "ext_539c5068c2d9cc9f5f471093",
+          "kb_key": "product:ext_539c5068c2d9cc9f5f471093",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "seller_plus_formula",
+          "has_card_highlight": true
+        },
+        "effective": {
+          "product_id": "ext_539c5068c2d9cc9f5f471093",
+          "kb_key": "product:ext_539c5068c2d9cc9f5f471093",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "seller_plus_formula",
+          "has_card_highlight": true
+        },
+        "product_line_id": "pl_3a82e8e889d147eb9bc8d441",
+        "borrowed_from_sibling": false
+      },
+      "active_ingredients": {
+        "status": "ready_hero",
+        "issues": [],
+        "regulatory_expected": false,
+        "hero_expected": true,
+        "active_items": [
+          "Squalane",
+          "Tranexamic acid"
+        ],
+        "source_origin": "pdp_section",
+        "source_quality_status": "captured",
+        "coverage": {
+          "details_sections_count": 14,
+          "faq_count": 28,
+          "how_to_chars": 155,
+          "inci_chars": 1175,
+          "active_ingredients_chars": 0,
+          "inci_applicability_status": "",
+          "ingredient_review_status": "",
+          "ingredient_remediation_action": "",
+          "bundle_component_refs_count": 0,
+          "effective_inci_chars": 1175,
+          "inci_borrowed_from_product_id": ""
+        },
+        "invalid_fragments": [],
+        "suppressed_reason": null
+      },
+      "variants": {
+        "status": "ready",
+        "issues": [],
+        "visible_variant_rows": 1,
+        "examples": {
+          "identity_option_visible": [],
+          "wrong_axis_for_category": [],
+          "makeup_shade_missing_visual": [],
+          "size_value_generic_axis": [],
+          "default_option_size_evidence_missing_axis": [],
+          "identity_default_title_axis": []
+        }
+      },
+      "coverage": {
+        "details_sections_count": 14,
+        "faq_count": 28,
+        "how_to_chars": 155,
+        "inci_chars": 1175,
+        "active_ingredients_chars": 0,
+        "inci_applicability_status": "",
+        "ingredient_review_status": "",
+        "ingredient_remediation_action": "",
+        "bundle_component_refs_count": 0,
+        "effective_inci_chars": 1175,
+        "inci_borrowed_from_product_id": ""
+      }
+    }
+  ]
+}

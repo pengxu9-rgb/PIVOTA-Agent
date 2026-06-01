@@ -1,0 +1,788 @@
+{
+  "meta": {
+    "generated_at": "2026-06-01T03:13:51.793Z",
+    "source": "reviewed_official_seed_product_intel_report",
+    "batch_name": "wave116_pixibeauty_product_intel_20260601",
+    "inventory": "reports/markato_expansion_status_20260524/wave116_pixibeauty_product_intel_20260601/readiness_before/commerce_index_kb_readiness_inventory.json",
+    "selected_cases": 3,
+    "reviewer": "codex_human_quality_reviewer",
+    "reviewer_kind": "assistant",
+    "candidate_quality_summary": {
+      "public_ready": 3,
+      "high_quality_ready": 3,
+      "evidence_profile": {
+        "seller_plus_formula": 3
+      }
+    }
+  },
+  "rows": [
+    {
+      "case_id": "live_ext_ce06dc6cf523109b638508e1",
+      "review_status": "completed",
+      "review_decision": "rewrite",
+      "reviewer": "codex_human_quality_reviewer",
+      "reviewer_kind": "assistant",
+      "reviewed_at": "2026-06-01T03:13:51.793Z",
+      "notes": "Approved official-PDP-seed rewrite for Ultimate BASE Bundle; evidence_profile=seller_plus_formula; source_url=https://pixibeauty.com/products/ultimate-base-bundle",
+      "owner_delegated_review": {
+        "contract_version": "pivota.owner_delegated_review.v1",
+        "delegated_to": "codex_human_quality_reviewer",
+        "reviewer_kind": "assistant",
+        "owner_instruction": "User delegated Codex to perform high-quality human review for Pivota Insights quality improvement.",
+        "guardrails": [
+          "Do not overwrite good content with lower-quality content.",
+          "No commerce-state claims in Pivota Insights.",
+          "Use official source facts only; keep evidence confidence explicit."
+        ]
+      },
+      "quality_improvement_review": {
+        "decision": "approved_replacement",
+        "reviewer_kind": "assistant",
+        "owner_delegated": true,
+        "reason": "Owner-delegated assistant review confirms the replacement uses official PDP seed facts, avoids commerce and unsupported evidence claims, and explicitly marks evidence gaps instead of inventing claims."
+      },
+      "baseline": {
+        "canonical_product_ref": {
+          "merchant_id": "external_seed",
+          "product_id": "ext_ce06dc6cf523109b638508e1",
+          "platform": "external_seed"
+        }
+      },
+      "selected": {
+        "selected_mode": "manual_reviewed_rewrite",
+        "selected_field_count": 7,
+        "field_sources": {
+          "what_it_is": "official_seed_description",
+          "best_for": "reviewed_category_and_official_title",
+          "why_it_stands_out": "official_seed_description_and_formula",
+          "routine_fit": "reviewed_category_and_official_title",
+          "watchouts": "owner_delegated_assistant_review",
+          "texture_finish": "reviewed_category_and_official_title",
+          "source_coverage": "official_pdp_seed_snapshot",
+          "community_signals": "not_collected"
+        },
+        "bundle": {
+          "contract_version": "pivota.product_intel.v1",
+          "display_name": "Pivota Insights",
+          "canonical_product_ref": {
+            "merchant_id": "external_seed",
+            "product_id": "ext_ce06dc6cf523109b638508e1",
+            "platform": "external_seed"
+          },
+          "product_group_id": "sig_a28c883e8279b6d17b942d25",
+          "product_intel_core": {
+            "display_name": "Pivota Insights",
+            "what_it_is": {
+              "headline": "Makeup set identity",
+              "body": "A PIXI BEAUTY makeup set listed on the brand source page as Ultimate BASE Bundle. The source description identifies: Infused with Ceramide NP, Superfood Berries and Fruit Oils."
+            },
+            "best_for": [
+              {
+                "tag": "makeup_set_shoppers",
+                "label": "Makeup set shoppers",
+                "confidence": "moderate"
+              },
+              {
+                "tag": "official_source_comparison",
+                "label": "Official-source comparison",
+                "confidence": "moderate"
+              }
+            ],
+            "why_it_stands_out": [
+              {
+                "headline": "Source-backed product detail",
+                "body": "Infused with Ceramide NP, Superfood Berries and Fruit Oils.",
+                "evidence_strength": "seller_plus_formula"
+              },
+              {
+                "headline": "Formula context captured",
+                "body": "Captured formula fields include On-the Glow Base • Ceramide NP locks in hydration to keep skin glowing & soft all day • Super Food Berries protect with antioxidants & boost healthy radiance • Fruit Oils smooth & condition the skin for a even-looking, lush finish even-looking Beauty Primer • Jojoba nourishes & moisturizes • Rose Extract is listed for soothing and hydrating positioning • Vitamin E nourishes & protects Full Ingredient List, Ceramide NP. Agents should keep composition claims within those source fields.",
+                "evidence_strength": "seller_plus_formula"
+              }
+            ],
+            "routine_fit": {
+              "step": "set",
+              "am_pm": [
+                "as_needed"
+              ],
+              "pairing_notes": [
+                "Use within the makeup set context; avoid inferring benefits not present in the source fields."
+              ]
+            },
+            "watchouts": [
+              {
+                "type": "formula_scope",
+                "label": "Formula details are source-derived; avoid medical, safety, or suitability claims not present in the source.",
+                "severity": "medium"
+              },
+              {
+                "type": "evidence_gap",
+                "label": "No independent review or community evidence was approved for this row; keep public copy source-bound.",
+                "severity": "medium"
+              },
+              {
+                "type": "scope_guardrail",
+                "label": "Use the commerce mainline for offer facts; keep this insight focused on source-backed product identity.",
+                "severity": "medium"
+              }
+            ],
+            "confidence": {
+              "overall": "moderate",
+              "fields": {
+                "what_it_is": "high",
+                "best_for": "moderate",
+                "why_it_stands_out": "moderate",
+                "routine_fit": "moderate",
+                "watchouts": "moderate"
+              }
+            },
+            "freshness": {
+              "generated_at": "2026-06-01T03:13:51.793Z",
+              "source_version": "wave116_pixibeauty_product_intel_20260601"
+            },
+            "quality_state": "reviewed",
+            "evidence_profile": "seller_plus_formula",
+            "source_coverage": {
+              "seller": {
+                "available": true,
+                "source_url": "https://pixibeauty.com/products/ultimate-base-bundle"
+              },
+              "formula": {
+                "available": true,
+                "ingredient_count": 3,
+                "source_url": "https://pixibeauty.com/products/ultimate-base-bundle"
+              },
+              "reviews": {
+                "available": false,
+                "count": 0
+              },
+              "creator": {
+                "available": false,
+                "count": 0
+              },
+              "editorial": {
+                "available": false,
+                "count": 0
+              }
+            }
+          },
+          "texture_finish": {
+            "finish": "makeup set",
+            "texture": "makeup_set",
+            "source": "reviewed_category_and_official_title"
+          },
+          "community_signals": {
+            "status": "unavailable",
+            "reason": "not_collected_for_this_review_batch"
+          },
+          "recommendation_intents": {
+            "similar": [],
+            "complementary": [],
+            "routine_pairing": [],
+            "underfill_reason": null,
+            "confidence": "low"
+          },
+          "market_signal_badges": [],
+          "external_highlight_signals": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "seller_plus_formula",
+          "source_coverage": {
+            "seller": {
+              "available": true,
+              "source_url": "https://pixibeauty.com/products/ultimate-base-bundle"
+            },
+            "formula": {
+              "available": true,
+              "ingredient_count": 3,
+              "source_url": "https://pixibeauty.com/products/ultimate-base-bundle"
+            },
+            "reviews": {
+              "available": false,
+              "count": 0
+            },
+            "creator": {
+              "available": false,
+              "count": 0
+            },
+            "editorial": {
+              "available": false,
+              "count": 0
+            }
+          },
+          "confidence": {
+            "overall": "moderate",
+            "fields": {
+              "what_it_is": "high",
+              "best_for": "moderate",
+              "why_it_stands_out": "moderate",
+              "routine_fit": "moderate",
+              "watchouts": "moderate"
+            }
+          },
+          "freshness": {
+            "generated_at": "2026-06-01T03:13:51.793Z",
+            "source_version": "wave116_pixibeauty_product_intel_20260601"
+          },
+          "offer_pointers": {
+            "offers_count": 0,
+            "default_offer_id": null,
+            "best_price_offer_id": null,
+            "commerce_modes": []
+          },
+          "provenance": {
+            "source": "owner_delegated_official_seed_rewrite",
+            "generator": "owner_delegated_assistant_reviewed_rewrite",
+            "selection_strategy": "official_pdp_seed_guarded_manual_review",
+            "field_sources": {
+              "what_it_is": "official_seed_description",
+              "best_for": "reviewed_category_and_official_title",
+              "why_it_stands_out": "official_seed_description_and_formula",
+              "routine_fit": "reviewed_category_and_official_title",
+              "watchouts": "owner_delegated_assistant_review",
+              "texture_finish": "reviewed_category_and_official_title",
+              "source_coverage": "official_pdp_seed_snapshot",
+              "community_signals": "not_collected"
+            },
+            "review_status": "completed",
+            "review_decision": "rewrite",
+            "reviewer": "codex_human_quality_reviewer",
+            "reviewer_kind": "assistant",
+            "reviewed_at": "2026-06-01T03:13:51.793Z",
+            "external_highlight_review_status": "rewrite",
+            "external_review_batch": "wave116_pixibeauty_product_intel_20260601",
+            "official_source_url": "https://pixibeauty.com/products/ultimate-base-bundle",
+            "official_source_ingredient_count": 3,
+            "rewrite_reason": "Owner-delegated assistant review: official PDP seed rewrite; no commerce-state, community, medical, or unsupported safety claims added."
+          },
+          "shopping_card": {
+            "contract_version": "pivota.shopping_card.v1",
+            "title": "Ultimate BASE Bundle",
+            "subtitle": "Makeup Set",
+            "highlight": "Complexion routine set",
+            "intro": "A PIXI BEAUTY makeup set listed on the brand source page as Ultimate BASE Bundle. The source description identifies: Infused with Ceramide NP, Superfood Berries and Fruit Oils.",
+            "evidence_profile": "seller_plus_formula"
+          },
+          "search_card": {
+            "title_candidate": "Ultimate BASE Bundle",
+            "compact_candidate": "Makeup Set",
+            "highlight_candidate": "Complexion routine set",
+            "intro_candidate": "A PIXI BEAUTY makeup set listed on the brand source page as Ultimate BASE Bundle. The source description identifies: Infused with Ceramide NP, Superfood Berries and Fruit Oils.",
+            "proof_badge_candidate": ""
+          }
+        }
+      }
+    },
+    {
+      "case_id": "live_ext_b608b51bc66708d27e81473e",
+      "review_status": "completed",
+      "review_decision": "rewrite",
+      "reviewer": "codex_human_quality_reviewer",
+      "reviewer_kind": "assistant",
+      "reviewed_at": "2026-06-01T03:13:51.793Z",
+      "notes": "Approved official-PDP-seed rewrite for Complexion Collection; evidence_profile=seller_plus_formula; source_url=https://pixibeauty.com/products/complexion-collection",
+      "owner_delegated_review": {
+        "contract_version": "pivota.owner_delegated_review.v1",
+        "delegated_to": "codex_human_quality_reviewer",
+        "reviewer_kind": "assistant",
+        "owner_instruction": "User delegated Codex to perform high-quality human review for Pivota Insights quality improvement.",
+        "guardrails": [
+          "Do not overwrite good content with lower-quality content.",
+          "No commerce-state claims in Pivota Insights.",
+          "Use official source facts only; keep evidence confidence explicit."
+        ]
+      },
+      "quality_improvement_review": {
+        "decision": "approved_replacement",
+        "reviewer_kind": "assistant",
+        "owner_delegated": true,
+        "reason": "Owner-delegated assistant review confirms the replacement uses official PDP seed facts, avoids commerce and unsupported evidence claims, and explicitly marks evidence gaps instead of inventing claims."
+      },
+      "baseline": {
+        "canonical_product_ref": {
+          "merchant_id": "external_seed",
+          "product_id": "ext_b608b51bc66708d27e81473e",
+          "platform": "external_seed"
+        }
+      },
+      "selected": {
+        "selected_mode": "manual_reviewed_rewrite",
+        "selected_field_count": 7,
+        "field_sources": {
+          "what_it_is": "official_seed_description",
+          "best_for": "reviewed_category_and_official_title",
+          "why_it_stands_out": "official_seed_description_and_formula",
+          "routine_fit": "reviewed_category_and_official_title",
+          "watchouts": "owner_delegated_assistant_review",
+          "texture_finish": "reviewed_category_and_official_title",
+          "source_coverage": "official_pdp_seed_snapshot",
+          "community_signals": "not_collected"
+        },
+        "bundle": {
+          "contract_version": "pivota.product_intel.v1",
+          "display_name": "Pivota Insights",
+          "canonical_product_ref": {
+            "merchant_id": "external_seed",
+            "product_id": "ext_b608b51bc66708d27e81473e",
+            "platform": "external_seed"
+          },
+          "product_group_id": "sig_987a20e03de9ea2df616afe1",
+          "product_intel_core": {
+            "display_name": "Pivota Insights",
+            "what_it_is": {
+              "headline": "Makeup set identity",
+              "body": "A PIXI BEAUTY makeup set listed on the brand source page as Complexion Collection. The source description identifies: Natural-looking, buildable coverage."
+            },
+            "best_for": [
+              {
+                "tag": "makeup_set_shoppers",
+                "label": "Makeup set shoppers",
+                "confidence": "moderate"
+              },
+              {
+                "tag": "official_source_comparison",
+                "label": "Official-source comparison",
+                "confidence": "moderate"
+              }
+            ],
+            "why_it_stands_out": [
+              {
+                "headline": "Source-backed product detail",
+                "body": "Natural-looking, buildable coverage.",
+                "evidence_strength": "seller_plus_formula"
+              },
+              {
+                "headline": "Formula context captured",
+                "body": "Captured formula fields include On-the Glow Base • Ceramide NP locks in hydration to keep skin glowing & soft all day • Super Food Berries protect with antioxidants & boost healthy radiance • Fruit Oils smooth & condition the skin for a even-looking, lush finish H2O SkinTint • Green Tea provides antioxidants • Rose Water hydrates • Lavender soothes even-looking Beauty Primer • Jojoba nourishes & moisturizes • Rose Extract is listed for soothing and hydrating positioning • Vitamin E nourishes & protects Full Ingredient List, Ceramide NP. Agents should keep composition claims within those source fields.",
+                "evidence_strength": "seller_plus_formula"
+              }
+            ],
+            "routine_fit": {
+              "step": "set",
+              "am_pm": [
+                "as_needed"
+              ],
+              "pairing_notes": [
+                "Use within the makeup set context; avoid inferring benefits not present in the source fields."
+              ]
+            },
+            "watchouts": [
+              {
+                "type": "formula_scope",
+                "label": "Formula details are source-derived; avoid medical, safety, or suitability claims not present in the source.",
+                "severity": "medium"
+              },
+              {
+                "type": "evidence_gap",
+                "label": "No independent review or community evidence was approved for this row; keep public copy source-bound.",
+                "severity": "medium"
+              },
+              {
+                "type": "scope_guardrail",
+                "label": "Use the commerce mainline for offer facts; keep this insight focused on source-backed product identity.",
+                "severity": "medium"
+              }
+            ],
+            "confidence": {
+              "overall": "moderate",
+              "fields": {
+                "what_it_is": "high",
+                "best_for": "moderate",
+                "why_it_stands_out": "moderate",
+                "routine_fit": "moderate",
+                "watchouts": "moderate"
+              }
+            },
+            "freshness": {
+              "generated_at": "2026-06-01T03:13:51.793Z",
+              "source_version": "wave116_pixibeauty_product_intel_20260601"
+            },
+            "quality_state": "reviewed",
+            "evidence_profile": "seller_plus_formula",
+            "source_coverage": {
+              "seller": {
+                "available": true,
+                "source_url": "https://pixibeauty.com/products/complexion-collection"
+              },
+              "formula": {
+                "available": true,
+                "ingredient_count": 3,
+                "source_url": "https://pixibeauty.com/products/complexion-collection"
+              },
+              "reviews": {
+                "available": false,
+                "count": 0
+              },
+              "creator": {
+                "available": false,
+                "count": 0
+              },
+              "editorial": {
+                "available": false,
+                "count": 0
+              }
+            }
+          },
+          "texture_finish": {
+            "finish": "makeup set",
+            "texture": "makeup_set",
+            "source": "reviewed_category_and_official_title"
+          },
+          "community_signals": {
+            "status": "unavailable",
+            "reason": "not_collected_for_this_review_batch"
+          },
+          "recommendation_intents": {
+            "similar": [],
+            "complementary": [],
+            "routine_pairing": [],
+            "underfill_reason": null,
+            "confidence": "low"
+          },
+          "market_signal_badges": [],
+          "external_highlight_signals": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "seller_plus_formula",
+          "source_coverage": {
+            "seller": {
+              "available": true,
+              "source_url": "https://pixibeauty.com/products/complexion-collection"
+            },
+            "formula": {
+              "available": true,
+              "ingredient_count": 3,
+              "source_url": "https://pixibeauty.com/products/complexion-collection"
+            },
+            "reviews": {
+              "available": false,
+              "count": 0
+            },
+            "creator": {
+              "available": false,
+              "count": 0
+            },
+            "editorial": {
+              "available": false,
+              "count": 0
+            }
+          },
+          "confidence": {
+            "overall": "moderate",
+            "fields": {
+              "what_it_is": "high",
+              "best_for": "moderate",
+              "why_it_stands_out": "moderate",
+              "routine_fit": "moderate",
+              "watchouts": "moderate"
+            }
+          },
+          "freshness": {
+            "generated_at": "2026-06-01T03:13:51.793Z",
+            "source_version": "wave116_pixibeauty_product_intel_20260601"
+          },
+          "offer_pointers": {
+            "offers_count": 0,
+            "default_offer_id": null,
+            "best_price_offer_id": null,
+            "commerce_modes": []
+          },
+          "provenance": {
+            "source": "owner_delegated_official_seed_rewrite",
+            "generator": "owner_delegated_assistant_reviewed_rewrite",
+            "selection_strategy": "official_pdp_seed_guarded_manual_review",
+            "field_sources": {
+              "what_it_is": "official_seed_description",
+              "best_for": "reviewed_category_and_official_title",
+              "why_it_stands_out": "official_seed_description_and_formula",
+              "routine_fit": "reviewed_category_and_official_title",
+              "watchouts": "owner_delegated_assistant_review",
+              "texture_finish": "reviewed_category_and_official_title",
+              "source_coverage": "official_pdp_seed_snapshot",
+              "community_signals": "not_collected"
+            },
+            "review_status": "completed",
+            "review_decision": "rewrite",
+            "reviewer": "codex_human_quality_reviewer",
+            "reviewer_kind": "assistant",
+            "reviewed_at": "2026-06-01T03:13:51.793Z",
+            "external_highlight_review_status": "rewrite",
+            "external_review_batch": "wave116_pixibeauty_product_intel_20260601",
+            "official_source_url": "https://pixibeauty.com/products/complexion-collection",
+            "official_source_ingredient_count": 3,
+            "rewrite_reason": "Owner-delegated assistant review: official PDP seed rewrite; no commerce-state, community, medical, or unsupported safety claims added."
+          },
+          "shopping_card": {
+            "contract_version": "pivota.shopping_card.v1",
+            "title": "Complexion Collection",
+            "subtitle": "Makeup Set",
+            "highlight": "Complexion routine set",
+            "intro": "A PIXI BEAUTY makeup set listed on the brand source page as Complexion Collection. The source description identifies: Natural-looking, buildable coverage.",
+            "evidence_profile": "seller_plus_formula"
+          },
+          "search_card": {
+            "title_candidate": "Complexion Collection",
+            "compact_candidate": "Makeup Set",
+            "highlight_candidate": "Complexion routine set",
+            "intro_candidate": "A PIXI BEAUTY makeup set listed on the brand source page as Complexion Collection. The source description identifies: Natural-looking, buildable coverage.",
+            "proof_badge_candidate": ""
+          }
+        }
+      }
+    },
+    {
+      "case_id": "live_ext_e36414c7892f92c40d7f6026",
+      "review_status": "completed",
+      "review_decision": "rewrite",
+      "reviewer": "codex_human_quality_reviewer",
+      "reviewer_kind": "assistant",
+      "reviewed_at": "2026-06-01T03:13:51.793Z",
+      "notes": "Approved official-PDP-seed rewrite for Ultimate Complexion Besties; evidence_profile=seller_plus_formula; source_url=https://pixibeauty.com/products/ultimate-complexion-besties",
+      "owner_delegated_review": {
+        "contract_version": "pivota.owner_delegated_review.v1",
+        "delegated_to": "codex_human_quality_reviewer",
+        "reviewer_kind": "assistant",
+        "owner_instruction": "User delegated Codex to perform high-quality human review for Pivota Insights quality improvement.",
+        "guardrails": [
+          "Do not overwrite good content with lower-quality content.",
+          "No commerce-state claims in Pivota Insights.",
+          "Use official source facts only; keep evidence confidence explicit."
+        ]
+      },
+      "quality_improvement_review": {
+        "decision": "approved_replacement",
+        "reviewer_kind": "assistant",
+        "owner_delegated": true,
+        "reason": "Owner-delegated assistant review confirms the replacement uses official PDP seed facts, avoids commerce and unsupported evidence claims, and explicitly marks evidence gaps instead of inventing claims."
+      },
+      "baseline": {
+        "canonical_product_ref": {
+          "merchant_id": "external_seed",
+          "product_id": "ext_e36414c7892f92c40d7f6026",
+          "platform": "external_seed"
+        }
+      },
+      "selected": {
+        "selected_mode": "manual_reviewed_rewrite",
+        "selected_field_count": 7,
+        "field_sources": {
+          "what_it_is": "official_seed_description",
+          "best_for": "reviewed_category_and_official_title",
+          "why_it_stands_out": "official_seed_description_and_formula",
+          "routine_fit": "reviewed_category_and_official_title",
+          "watchouts": "owner_delegated_assistant_review",
+          "texture_finish": "reviewed_category_and_official_title",
+          "source_coverage": "official_pdp_seed_snapshot",
+          "community_signals": "not_collected"
+        },
+        "bundle": {
+          "contract_version": "pivota.product_intel.v1",
+          "display_name": "Pivota Insights",
+          "canonical_product_ref": {
+            "merchant_id": "external_seed",
+            "product_id": "ext_e36414c7892f92c40d7f6026",
+            "platform": "external_seed"
+          },
+          "product_group_id": "sig_33a36eeeb59a25321186b470",
+          "product_intel_core": {
+            "display_name": "Pivota Insights",
+            "what_it_is": {
+              "headline": "Primer identity",
+              "body": "A PIXI BEAUTY primer listed on the brand source page as Ultimate Complexion Besties. The source description identifies: On-the-Glow BASE • \"One swipe of this tinted moisturizer in a stick instantly perfects complexion & deeply hydrates.”- Petra • Infused with dewy flattering pigment, meaning that you can create a base that enhances."
+            },
+            "best_for": [
+              {
+                "tag": "primer_shoppers",
+                "label": "Primer shoppers",
+                "confidence": "moderate"
+              },
+              {
+                "tag": "official_source_comparison",
+                "label": "Official-source comparison",
+                "confidence": "moderate"
+              }
+            ],
+            "why_it_stands_out": [
+              {
+                "headline": "Source-backed product detail",
+                "body": "On-the-Glow BASE • \"One swipe of this tinted moisturizer in a stick instantly perfects complexion & deeply hydrates.”- Petra • Infused with dewy flattering pigment, meaning that you can create a base that enhances.",
+                "evidence_strength": "seller_plus_formula"
+              },
+              {
+                "headline": "Formula context captured",
+                "body": "Captured formula fields include On-the Glow Base • Ceramide NP locks in hydration to keep skin glowing & soft all day • Super Food Berries protect with antioxidants & boost healthy radiance • Fruit Oils smooth & condition the skin for a even-looking, lush finish even-looking Beauty Primer • Jojoba nourishes & moisturizes • Rose Extract is listed for soothing and hydrating positioning • Vitamin E nourishes & protects On-the Glow BLUSH Petite • Ginseng revitalizes & balances • Aloe Vera soothes & calms • Fruit Extracts nourish & renew Full Ingredient List, Ceramide NP. Agents should keep composition claims within those source fields.",
+                "evidence_strength": "seller_plus_formula"
+              }
+            ],
+            "routine_fit": {
+              "step": "complexion",
+              "am_pm": [
+                "as_needed"
+              ],
+              "pairing_notes": [
+                "Use within the primer context; avoid inferring benefits not present in the source fields."
+              ]
+            },
+            "watchouts": [
+              {
+                "type": "formula_scope",
+                "label": "Formula details are source-derived; avoid medical, safety, or suitability claims not present in the source.",
+                "severity": "medium"
+              },
+              {
+                "type": "evidence_gap",
+                "label": "No independent review or community evidence was approved for this row; keep public copy source-bound.",
+                "severity": "medium"
+              },
+              {
+                "type": "scope_guardrail",
+                "label": "Use the commerce mainline for offer facts; keep this insight focused on source-backed product identity.",
+                "severity": "medium"
+              }
+            ],
+            "confidence": {
+              "overall": "moderate",
+              "fields": {
+                "what_it_is": "high",
+                "best_for": "moderate",
+                "why_it_stands_out": "moderate",
+                "routine_fit": "moderate",
+                "watchouts": "moderate"
+              }
+            },
+            "freshness": {
+              "generated_at": "2026-06-01T03:13:51.793Z",
+              "source_version": "wave116_pixibeauty_product_intel_20260601"
+            },
+            "quality_state": "reviewed",
+            "evidence_profile": "seller_plus_formula",
+            "source_coverage": {
+              "seller": {
+                "available": true,
+                "source_url": "https://pixibeauty.com/products/ultimate-complexion-besties"
+              },
+              "formula": {
+                "available": true,
+                "ingredient_count": 3,
+                "source_url": "https://pixibeauty.com/products/ultimate-complexion-besties"
+              },
+              "reviews": {
+                "available": false,
+                "count": 0
+              },
+              "creator": {
+                "available": false,
+                "count": 0
+              },
+              "editorial": {
+                "available": false,
+                "count": 0
+              }
+            }
+          },
+          "texture_finish": {
+            "finish": "primer",
+            "texture": "primer",
+            "source": "reviewed_category_and_official_title"
+          },
+          "community_signals": {
+            "status": "unavailable",
+            "reason": "not_collected_for_this_review_batch"
+          },
+          "recommendation_intents": {
+            "similar": [],
+            "complementary": [],
+            "routine_pairing": [],
+            "underfill_reason": null,
+            "confidence": "low"
+          },
+          "market_signal_badges": [],
+          "external_highlight_signals": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "seller_plus_formula",
+          "source_coverage": {
+            "seller": {
+              "available": true,
+              "source_url": "https://pixibeauty.com/products/ultimate-complexion-besties"
+            },
+            "formula": {
+              "available": true,
+              "ingredient_count": 3,
+              "source_url": "https://pixibeauty.com/products/ultimate-complexion-besties"
+            },
+            "reviews": {
+              "available": false,
+              "count": 0
+            },
+            "creator": {
+              "available": false,
+              "count": 0
+            },
+            "editorial": {
+              "available": false,
+              "count": 0
+            }
+          },
+          "confidence": {
+            "overall": "moderate",
+            "fields": {
+              "what_it_is": "high",
+              "best_for": "moderate",
+              "why_it_stands_out": "moderate",
+              "routine_fit": "moderate",
+              "watchouts": "moderate"
+            }
+          },
+          "freshness": {
+            "generated_at": "2026-06-01T03:13:51.793Z",
+            "source_version": "wave116_pixibeauty_product_intel_20260601"
+          },
+          "offer_pointers": {
+            "offers_count": 0,
+            "default_offer_id": null,
+            "best_price_offer_id": null,
+            "commerce_modes": []
+          },
+          "provenance": {
+            "source": "owner_delegated_official_seed_rewrite",
+            "generator": "owner_delegated_assistant_reviewed_rewrite",
+            "selection_strategy": "official_pdp_seed_guarded_manual_review",
+            "field_sources": {
+              "what_it_is": "official_seed_description",
+              "best_for": "reviewed_category_and_official_title",
+              "why_it_stands_out": "official_seed_description_and_formula",
+              "routine_fit": "reviewed_category_and_official_title",
+              "watchouts": "owner_delegated_assistant_review",
+              "texture_finish": "reviewed_category_and_official_title",
+              "source_coverage": "official_pdp_seed_snapshot",
+              "community_signals": "not_collected"
+            },
+            "review_status": "completed",
+            "review_decision": "rewrite",
+            "reviewer": "codex_human_quality_reviewer",
+            "reviewer_kind": "assistant",
+            "reviewed_at": "2026-06-01T03:13:51.793Z",
+            "external_highlight_review_status": "rewrite",
+            "external_review_batch": "wave116_pixibeauty_product_intel_20260601",
+            "official_source_url": "https://pixibeauty.com/products/ultimate-complexion-besties",
+            "official_source_ingredient_count": 3,
+            "rewrite_reason": "Owner-delegated assistant review: official PDP seed rewrite; no commerce-state, community, medical, or unsupported safety claims added."
+          },
+          "shopping_card": {
+            "contract_version": "pivota.shopping_card.v1",
+            "title": "Ultimate Complexion Besties",
+            "subtitle": "Primer",
+            "highlight": "Primer format detail",
+            "intro": "A PIXI BEAUTY primer listed on the brand source page as Ultimate Complexion Besties. The source description identifies: On-the-Glow BASE • \"One swipe of this tinted moisturizer in a stick instantly perfects complexion & deeply hydrates.”- Petra • Infused with dewy flattering pigment, meaning that you can create a base that enhances.",
+            "evidence_profile": "seller_plus_formula"
+          },
+          "search_card": {
+            "title_candidate": "Ultimate Complexion Besties",
+            "compact_candidate": "Primer",
+            "highlight_candidate": "Primer format detail",
+            "intro_candidate": "A PIXI BEAUTY primer listed on the brand source page as Ultimate Complexion Besties. The source description identifies: On-the-Glow BASE • \"One swipe of this tinted moisturizer in a stick instantly perfects complexion & deeply hydrates.”- Petra • Infused with dewy flattering pigment, meaning that you can create a base that enhances.",
+            "proof_badge_candidate": ""
+          }
+        }
+      }
+    }
+  ]
+}

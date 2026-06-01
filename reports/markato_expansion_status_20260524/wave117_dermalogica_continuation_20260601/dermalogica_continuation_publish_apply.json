@@ -1,0 +1,12 @@
+{
+  "status": "ok",
+  "mode": "write",
+  "report": "/Users/pengchydan/dev/_worktrees/pivota-agent-markato-wave25-786-20260527/reports/markato_expansion_status_20260524/wave117_dermalogica_continuation_20260601/dermalogica_continuation_product_intel_report.json",
+  "rows": [
+    "live_ext_eca8959862245d5af16ab206"
+  ],
+  "entries": [
+    "product:ext_eca8959862245d5af16ab206"
+  ],
+  "skipped_rows": []
+}
