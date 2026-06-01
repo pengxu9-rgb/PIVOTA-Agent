@@ -1,0 +1,14 @@
+{
+  "status": "ok",
+  "mode": "dry_run_validate_replacements",
+  "report": "/Users/pengchydan/dev/_worktrees/pivota-agent-markato-wave25-786-20260527/reports/markato_expansion_status_20260524/wave102_firstaidbeauty_continuation_20260601/firstaidbeauty_continuation_product_intel_report.json",
+  "rows": [
+    "live_ext_8a021870d9ebe7c3dd0cb802",
+    "live_ext_df3aa47a3d320882d6fe3ae3"
+  ],
+  "entries": [
+    "product:ext_8a021870d9ebe7c3dd0cb802",
+    "product:ext_df3aa47a3d320882d6fe3ae3"
+  ],
+  "skipped_rows": []
+}
