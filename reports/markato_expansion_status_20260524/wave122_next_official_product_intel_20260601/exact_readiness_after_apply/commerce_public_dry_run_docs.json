@@ -1,0 +1,129 @@
+{
+  "generated_at": "2026-06-01T07:19:21.877Z",
+  "market": "US",
+  "include_non_public": false,
+  "docs_built": 2,
+  "source_build_failures": [],
+  "docs": [
+    {
+      "doc_id": "sellable:sig_fd72c457c99db62a60155ce6",
+      "sellable_item_group_id": "sig_fd72c457c99db62a60155ce6",
+      "product_line_id": "pl_b78327593a649fb469293fb1",
+      "review_family_id": "rf_b78327593a649fb469293fb1",
+      "brand_name": "Fenty Beauty",
+      "category_paths": [
+        "Face Powder"
+      ],
+      "market": "US",
+      "availability_state": "available",
+      "publish_state": "public",
+      "title": "Bright Fix Instant Brightening + Blurring Powder — Cinnamon",
+      "subtitle": "A setting powder for setting complexion makeup, soft-focus blur, and finish control.",
+      "variant_axes": {
+        "color": "cinnamon",
+        "shade": "cinnamon",
+        "multi_variant": false
+      },
+      "size": null,
+      "shade": null,
+      "pack": null,
+      "hero_media": {
+        "url": "https://cdn.shopify.com/s/files/1/0341/3458/9485/files/FB_SMR25_T2PRODUCT_ECOMM_BRIGHTFIX_COMPACT_REFILL_CINNAMON_1200x1500_72DPI.jpg?v=1762295437",
+        "source_kind": "catalog",
+        "source_tier": "catalog"
+      },
+      "preview_media": [
+        "https://cdn.shopify.com/s/files/1/0341/3458/9485/files/FB_SMR25_T2PRODUCT_ECOMM_BRIGHTFIX_COMPACT_REFILL_CINNAMON_1200x1500_72DPI.jpg?v=1762295437",
+        "https://cdn.shopify.com/s/files/1/0341/3458/9485/files/FB854150GLOBAL_BRIGHTFIX_INFOGRAPHICS_1200x1500_B_A_CINNAMON.jpg?v=1751330656",
+        "https://cdn.shopify.com/s/files/1/0341/3458/9485/files/FB854150-GLOBAL_BRIGHT-FIX_INFOGRAPHICS_1200x1500_Editorial-Swatches.jpg?v=1752085211",
+        "https://cdn.shopify.com/s/files/1/0341/3458/9485/files/FB854150-GLOBAL_BRIGHT-FIX_INFOGRAPHICS_1200x1500_Benefits.jpg?v=1752085211",
+        "https://cdn.shopify.com/s/files/1/0341/3458/9485/files/FB854150-GLOBAL_BRIGHT-FIX_INFOGRAPHICS_1200x1500_Ingredients.jpg?v=1752085211",
+        "https://cdn.shopify.com/s/files/1/0341/3458/9485/files/FB854150-GLOBAL_BRIGHT-FIX_INFOGRAPHICS_1200x1500_Shade-Conversion-Guide.jpg?v=1752085211",
+        "https://cdn.shopify.com/s/files/1/0341/3458/9485/files/FB854150-GLOBAL_BRIGHT-FIX_INFOGRAPHICS_1200x1500_Consumer-Perception.jpg?v=1752085211",
+        "https://cdn.shopify.com/s/files/1/0341/3458/9485/files/FB854150-GLOBAL_BRIGHT-FIX_INFOGRAPHICS_1200x1500_Formula-Placement-Guide.jpg?v=1752085211"
+      ],
+      "price_min": 39,
+      "price_max": 39,
+      "default_offer_id": "external_seed:ext_7c53e5f5c69608226b1fb7ec",
+      "internal_offer_exists": false,
+      "external_offer_exists": true,
+      "pivota_insight_status": "available",
+      "pivota_insight_summary": "Bright Fix Instant Brightening + Blurring Powder — Cinnamon is a face color product from Fenty Beauty in shade Cinnamon, with source-backed cues around long-wear color, a cream-powder texture and glow payoff.",
+      "quality_score": null,
+      "browse_score": null,
+      "facet_tokens": [
+        "Fenty Beauty",
+        "Face Powder"
+      ],
+      "sort_keys": {
+        "price_min": 39,
+        "price_max": 39,
+        "updated_at": null
+      },
+      "updated_at": null,
+      "source_refs": [
+        "external_seed:ext_7c53e5f5c69608226b1fb7ec"
+      ]
+    },
+    {
+      "doc_id": "sellable:sig_79b6d4bdc88b5ffdbbcc89f1",
+      "sellable_item_group_id": "sig_79b6d4bdc88b5ffdbbcc89f1",
+      "product_line_id": "pl_b78327593a649fb469293fb1",
+      "review_family_id": "rf_b78327593a649fb469293fb1",
+      "brand_name": "Fenty Beauty",
+      "category_paths": [
+        "Face Powder"
+      ],
+      "market": "US",
+      "availability_state": "available",
+      "publish_state": "public",
+      "title": "Bright Fix Instant Brightening + Blurring Powder — Rose Quartz",
+      "subtitle": "A brightening and blurring powder for targeted soft-focus complexion touchups.",
+      "variant_axes": {
+        "color": "rose quartz",
+        "shade": "rose quartz",
+        "multi_variant": false
+      },
+      "size": null,
+      "shade": null,
+      "pack": null,
+      "hero_media": {
+        "url": "https://cdn.shopify.com/s/files/1/0341/3458/9485/files/FB_SMR25_T2PRODUCT_ECOMM_BRIGHTFIX_COMPACT_REFILL_ROSE-QUARTZ_1200x1500_72DPI.jpg?v=1762295434",
+        "source_kind": "catalog",
+        "source_tier": "catalog"
+      },
+      "preview_media": [
+        "https://cdn.shopify.com/s/files/1/0341/3458/9485/files/FB_SMR25_T2PRODUCT_ECOMM_BRIGHTFIX_COMPACT_REFILL_ROSE-QUARTZ_1200x1500_72DPI.jpg?v=1762295434",
+        "https://cdn.shopify.com/s/files/1/0341/3458/9485/files/FB854150GLOBAL_BRIGHTFIX_INFOGRAPHICS_1200x1500_B_A_ROSEQUARTZ.jpg?v=1751330698",
+        "https://cdn.shopify.com/s/files/1/0341/3458/9485/files/FB854150-GLOBAL_BRIGHT-FIX_INFOGRAPHICS_1200x1500_Editorial-Swatches.jpg?v=1752085211",
+        "https://cdn.shopify.com/s/files/1/0341/3458/9485/files/FB854150-GLOBAL_BRIGHT-FIX_INFOGRAPHICS_1200x1500_Benefits.jpg?v=1752085211",
+        "https://cdn.shopify.com/s/files/1/0341/3458/9485/files/FB854150-GLOBAL_BRIGHT-FIX_INFOGRAPHICS_1200x1500_Ingredients.jpg?v=1752085211",
+        "https://cdn.shopify.com/s/files/1/0341/3458/9485/files/FB854150-GLOBAL_BRIGHT-FIX_INFOGRAPHICS_1200x1500_Shade-Conversion-Guide.jpg?v=1752085211",
+        "https://cdn.shopify.com/s/files/1/0341/3458/9485/files/FB854150-GLOBAL_BRIGHT-FIX_INFOGRAPHICS_1200x1500_Consumer-Perception.jpg?v=1752085211",
+        "https://cdn.shopify.com/s/files/1/0341/3458/9485/files/FB854150-GLOBAL_BRIGHT-FIX_INFOGRAPHICS_1200x1500_Formula-Placement-Guide.jpg?v=1752085211"
+      ],
+      "price_min": 39,
+      "price_max": 39,
+      "default_offer_id": "external_seed:ext_653963915647e224ebd70d69",
+      "internal_offer_exists": false,
+      "external_offer_exists": true,
+      "pivota_insight_status": "available",
+      "pivota_insight_summary": "Bright Fix Instant Brightening + Blurring Powder — Rose Quartz is a face color product from Fenty Beauty in shade Rose Quartz, with source-backed cues around long-wear color, a cream-powder texture and glow payoff.",
+      "quality_score": null,
+      "browse_score": null,
+      "facet_tokens": [
+        "Fenty Beauty",
+        "Face Powder"
+      ],
+      "sort_keys": {
+        "price_min": 39,
+        "price_max": 39,
+        "updated_at": null
+      },
+      "updated_at": null,
+      "source_refs": [
+        "external_seed:ext_653963915647e224ebd70d69"
+      ]
+    }
+  ]
+}

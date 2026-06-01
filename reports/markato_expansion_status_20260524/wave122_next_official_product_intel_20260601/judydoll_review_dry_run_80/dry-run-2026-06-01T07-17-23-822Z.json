@@ -1,0 +1,1420 @@
+{
+  "generated_at": "2026-06-01T07:17:23.822Z",
+  "source": "pivota_insights_official_pdp_manual_review_v1",
+  "mode": "dry_run",
+  "filters": {
+    "brand": "Judydoll",
+    "product_ids": [],
+    "limit": 80,
+    "include_strong": false,
+    "include_url_key": false,
+    "apply_chunk_size": null
+  },
+  "summary": {
+    "scanned": 17,
+    "changed_products": 1,
+    "blocked_products": 0,
+    "skipped_products": 16,
+    "write_actions": {
+      "skip": 32,
+      "update": 1,
+      "insert": 1
+    },
+    "skip_reasons": {
+      "no_safe_writes": 16,
+      "protected_high_quality_existing:reviewed": 32
+    },
+    "evidence_profiles": {
+      "official_pdp_reviewed_line": 17
+    }
+  },
+  "plans": [
+    {
+      "external_product_id": "ext_099e4c00131eb4c6520c4c3d",
+      "pivota_signature_id": "sig_f15748a12c2929ca5ced9c263ff3c1b2",
+      "title": "Dual-Ended Contour Stick",
+      "brand": "Judydoll",
+      "canonical_url": "https://judydoll.com/products/dual-ended-contour-stick",
+      "changed": false,
+      "blocked": false,
+      "skip_reason": "no_safe_writes",
+      "candidate_hash": "86adf11236c3fa594e860171b737d2d319ede93a55a1fb6ae23dbea246048be9",
+      "evidence_profile": "official_pdp_reviewed_line",
+      "source_coverage": {
+        "source": "official_pdp",
+        "canonical_url": "https://judydoll.com/products/dual-ended-contour-stick",
+        "fields": {
+          "description": true,
+          "ingredients": 0,
+          "active_ingredients": 0,
+          "how_to": 1,
+          "details": 2,
+          "variants": 1
+        }
+      },
+      "preview": {
+        "headline": "Face color makeup",
+        "what_it_is": "Dual-Ended Contour Stick is a face color product from Judydoll in shade #02 Warm Yellow Undertones, with source-backed cues around a cream-powder texture and bronzing or contour definition.",
+        "why_it_stands_out": [
+          {
+            "headline": "Color payoff cues are specific",
+            "body": "Reviewed color cues such as bronzing/contour role, cream-powder texture, shade range help shoppers compare shade, finish, or texture instead of seeing a generic blush/bronzer/highlighter card.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Shade and size are explicit",
+            "body": "Variant labels such as #02 Warm Yellow Undertones, Color: #02 Warm Yellow Undertones are visible, reducing ambiguity around the product format before a shopper clicks through.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Usage instructions available",
+            "body": "Reviewed usage context is present, including: Step 1: Contour Apply the contour end to the nose, cheekbones, and jawline, then blend with fingertips for natural definition.",
+            "evidence_strength": "official_pdp_reviewed"
+          }
+        ],
+        "best_for": [
+          {
+            "tag": "base_makeup_prep",
+            "label": "base makeup prep",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "soft_focus_finish",
+            "label": "soft-focus finish",
+            "confidence": "moderate"
+          }
+        ],
+        "shopping_highlight": "bronzing/contour role"
+      },
+      "writes": [
+        {
+          "kb_key": "product:ext_099e4c00131eb4c6520c4c3d",
+          "action": "skip",
+          "reason": "protected_high_quality_existing:reviewed",
+          "old_hash": "d39484a4d1639ac557948a32c0d34840f6b48a715a92a48c6a44cf86238e1063",
+          "existing_weak": false
+        },
+        {
+          "kb_key": "product:sig_f15748a12c2929ca5ced9c263ff3c1b2",
+          "action": "skip",
+          "reason": "protected_high_quality_existing:reviewed",
+          "old_hash": "d39484a4d1639ac557948a32c0d34840f6b48a715a92a48c6a44cf86238e1063",
+          "existing_weak": false
+        }
+      ]
+    },
+    {
+      "external_product_id": "ext_41a7eddd8d898d4dd82bc845",
+      "pivota_signature_id": "sig_2753ab036f5e80a07c8ff64e0c799605",
+      "title": "Dual-Ended Contour Stick",
+      "brand": "Judydoll",
+      "canonical_url": "https://judydoll.com/products/dual-ended-contour-stick",
+      "changed": false,
+      "blocked": false,
+      "skip_reason": "no_safe_writes",
+      "candidate_hash": "717243329e1f9aab1ee95db29b9a4b183869179eb67c5eb5e6d9435dca14afdd",
+      "evidence_profile": "official_pdp_reviewed_line",
+      "source_coverage": {
+        "source": "official_pdp",
+        "canonical_url": "https://judydoll.com/products/dual-ended-contour-stick",
+        "fields": {
+          "description": true,
+          "ingredients": 0,
+          "active_ingredients": 0,
+          "how_to": 1,
+          "details": 2,
+          "variants": 2
+        }
+      },
+      "preview": {
+        "headline": "Face color makeup",
+        "what_it_is": "Dual-Ended Contour Stick is a face color product from Judydoll in shade #01 Cool & Olive Undertones, with source-backed cues around a cream-powder texture and bronzing or contour definition.",
+        "why_it_stands_out": [
+          {
+            "headline": "Color payoff cues are specific",
+            "body": "Reviewed color cues such as bronzing/contour role, cream-powder texture, shade range help shoppers compare shade, finish, or texture instead of seeing a generic blush/bronzer/highlighter card.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Shade and size are explicit",
+            "body": "Variant labels such as #01 Cool & Olive Undertones, Color: #01 Cool & Olive Undertones, #02 Warm Yellow Undertones, Color: #02 Warm Yellow Undertones are visible, reducing ambiguity around the product format before a shopper clicks through.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Usage instructions available",
+            "body": "Reviewed usage context is present, including: Step 1: Contour Apply the contour end to the nose, cheekbones, and jawline, then blend with fingertips for natural definition.",
+            "evidence_strength": "official_pdp_reviewed"
+          }
+        ],
+        "best_for": [
+          {
+            "tag": "base_makeup_prep",
+            "label": "base makeup prep",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "soft_focus_finish",
+            "label": "soft-focus finish",
+            "confidence": "moderate"
+          }
+        ],
+        "shopping_highlight": "bronzing/contour role"
+      },
+      "writes": [
+        {
+          "kb_key": "product:ext_41a7eddd8d898d4dd82bc845",
+          "action": "skip",
+          "reason": "protected_high_quality_existing:reviewed",
+          "old_hash": "fc824a23d012d2e492fdbdc4de682fa5ada39ca73c1295b5c337bc852294a6ca",
+          "existing_weak": false
+        },
+        {
+          "kb_key": "product:sig_2753ab036f5e80a07c8ff64e0c799605",
+          "action": "skip",
+          "reason": "protected_high_quality_existing:reviewed",
+          "old_hash": "fc824a23d012d2e492fdbdc4de682fa5ada39ca73c1295b5c337bc852294a6ca",
+          "existing_weak": false
+        }
+      ]
+    },
+    {
+      "external_product_id": "ext_84f57607693c20c1e9f835f5",
+      "pivota_signature_id": "sig_ad0abcf9b6e2e7b88e5f517e18bc40e0",
+      "title": "Dual-Ended Contour Stick",
+      "brand": "Judydoll",
+      "canonical_url": "https://judydoll.com/products/dual-ended-contour-stick",
+      "changed": false,
+      "blocked": false,
+      "skip_reason": "no_safe_writes",
+      "candidate_hash": "2020b752f7b86fdad9e60240c58c7f6561fe6f90830f4d2f30e2e0fff11c5c53",
+      "evidence_profile": "official_pdp_reviewed_line",
+      "source_coverage": {
+        "source": "official_pdp",
+        "canonical_url": "https://judydoll.com/products/dual-ended-contour-stick",
+        "fields": {
+          "description": true,
+          "ingredients": 0,
+          "active_ingredients": 0,
+          "how_to": 1,
+          "details": 2,
+          "variants": 1
+        }
+      },
+      "preview": {
+        "headline": "Face color makeup",
+        "what_it_is": "Dual-Ended Contour Stick is a face color product from Judydoll in shade #01 Cool & Olive Undertones, with source-backed cues around a cream-powder texture and bronzing or contour definition.",
+        "why_it_stands_out": [
+          {
+            "headline": "Color payoff cues are specific",
+            "body": "Reviewed color cues such as bronzing/contour role, cream-powder texture, shade range help shoppers compare shade, finish, or texture instead of seeing a generic blush/bronzer/highlighter card.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Shade and size are explicit",
+            "body": "Variant labels such as #01 Cool & Olive Undertones, Color: #01 Cool & Olive Undertones are visible, reducing ambiguity around the product format before a shopper clicks through.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Usage instructions available",
+            "body": "Reviewed usage context is present, including: Step 1: Contour Apply the contour end to the nose, cheekbones, and jawline, then blend with fingertips for natural definition.",
+            "evidence_strength": "official_pdp_reviewed"
+          }
+        ],
+        "best_for": [
+          {
+            "tag": "base_makeup_prep",
+            "label": "base makeup prep",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "soft_focus_finish",
+            "label": "soft-focus finish",
+            "confidence": "moderate"
+          }
+        ],
+        "shopping_highlight": "bronzing/contour role"
+      },
+      "writes": [
+        {
+          "kb_key": "product:ext_84f57607693c20c1e9f835f5",
+          "action": "skip",
+          "reason": "protected_high_quality_existing:reviewed",
+          "old_hash": "e2559e2973c39e9f13f5e3d525feef32421ea005ea472bff5e59b0b5ee67e19e",
+          "existing_weak": false
+        },
+        {
+          "kb_key": "product:sig_ad0abcf9b6e2e7b88e5f517e18bc40e0",
+          "action": "skip",
+          "reason": "protected_high_quality_existing:reviewed",
+          "old_hash": "e2559e2973c39e9f13f5e3d525feef32421ea005ea472bff5e59b0b5ee67e19e",
+          "existing_weak": false
+        }
+      ]
+    },
+    {
+      "external_product_id": "ext_0df9915385884526f17021e2",
+      "pivota_signature_id": "sig_d4f93c2b9b88ac7bd32f44d13ebe9d31",
+      "title": "Sheer Tinted Highlighter",
+      "brand": "Judydoll",
+      "canonical_url": "https://judydoll.com/products/sheer-tinted-highlighter",
+      "changed": false,
+      "blocked": false,
+      "skip_reason": "no_safe_writes",
+      "candidate_hash": "3c60f8599530e21e64059b82f08b198e59fe48086ec3d443b441ba06fac8f7cb",
+      "evidence_profile": "official_pdp_reviewed_line",
+      "source_coverage": {
+        "source": "official_pdp",
+        "canonical_url": "https://judydoll.com/products/sheer-tinted-highlighter",
+        "fields": {
+          "description": true,
+          "ingredients": 0,
+          "active_ingredients": 0,
+          "how_to": 1,
+          "details": 2,
+          "variants": 1
+        }
+      },
+      "preview": {
+        "headline": "Face color makeup",
+        "what_it_is": "Sheer Tinted Highlighter is a highlighter from Judydoll in shade #03 Peach Sorbet, with source-backed cues around a cream-powder texture and glow payoff.",
+        "why_it_stands_out": [
+          {
+            "headline": "Color payoff cues are specific",
+            "body": "Reviewed color cues such as cream-powder texture, glow payoff, shade range help shoppers compare shade, finish, or texture instead of seeing a generic blush/bronzer/highlighter card.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Shade and size are explicit",
+            "body": "Variant labels such as #03 Peach Sorbet, Color: #03 Peach Sorbet are visible, reducing ambiguity around the product format before a shopper clicks through.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Usage instructions available",
+            "body": "Reviewed usage context is present, including: After setting, use puff press in circular motionStep 2: Tap.",
+            "evidence_strength": "official_pdp_reviewed"
+          }
+        ],
+        "best_for": [
+          {
+            "tag": "soft_focus_finish",
+            "label": "soft-focus finish",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "radiant_finish",
+            "label": "radiant finish",
+            "confidence": "moderate"
+          }
+        ],
+        "shopping_highlight": "cream-powder texture, glow payoff"
+      },
+      "writes": [
+        {
+          "kb_key": "product:ext_0df9915385884526f17021e2",
+          "action": "skip",
+          "reason": "protected_high_quality_existing:reviewed",
+          "old_hash": "afc428de3233566a5133448ed649e8d2943af0ec96d07ca333c23e53b791ece0",
+          "existing_weak": false
+        },
+        {
+          "kb_key": "product:sig_d4f93c2b9b88ac7bd32f44d13ebe9d31",
+          "action": "skip",
+          "reason": "protected_high_quality_existing:reviewed",
+          "old_hash": "afc428de3233566a5133448ed649e8d2943af0ec96d07ca333c23e53b791ece0",
+          "existing_weak": false
+        }
+      ]
+    },
+    {
+      "external_product_id": "ext_144de838627e3b1c5fe78af0",
+      "pivota_signature_id": "sig_491e15ac0d843b25ea30672a4bb7c406",
+      "title": "Sheer Tinted Highlighter",
+      "brand": "Judydoll",
+      "canonical_url": "https://judydoll.com/products/sheer-tinted-highlighter",
+      "changed": false,
+      "blocked": false,
+      "skip_reason": "no_safe_writes",
+      "candidate_hash": "3d20b633b8b71a05bf67c4d36894a8a5a048ca3f83f28147cc90f6b51672d075",
+      "evidence_profile": "official_pdp_reviewed_line",
+      "source_coverage": {
+        "source": "official_pdp",
+        "canonical_url": "https://judydoll.com/products/sheer-tinted-highlighter",
+        "fields": {
+          "description": true,
+          "ingredients": 0,
+          "active_ingredients": 0,
+          "how_to": 1,
+          "details": 2,
+          "variants": 1
+        }
+      },
+      "preview": {
+        "headline": "Face color makeup",
+        "what_it_is": "Sheer Tinted Highlighter is a highlighter from Judydoll in shade #04 Gold Fish, with source-backed cues around a cream-powder texture and glow payoff.",
+        "why_it_stands_out": [
+          {
+            "headline": "Color payoff cues are specific",
+            "body": "Reviewed color cues such as cream-powder texture, glow payoff, shade range help shoppers compare shade, finish, or texture instead of seeing a generic blush/bronzer/highlighter card.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Shade and size are explicit",
+            "body": "Variant labels such as #04 Gold Fish, Color: #04 Gold Fish are visible, reducing ambiguity around the product format before a shopper clicks through.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Usage instructions available",
+            "body": "Reviewed usage context is present, including: After setting, use puff press in circular motionStep 2: Tap.",
+            "evidence_strength": "official_pdp_reviewed"
+          }
+        ],
+        "best_for": [
+          {
+            "tag": "soft_focus_finish",
+            "label": "soft-focus finish",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "radiant_finish",
+            "label": "radiant finish",
+            "confidence": "moderate"
+          }
+        ],
+        "shopping_highlight": "cream-powder texture, glow payoff"
+      },
+      "writes": [
+        {
+          "kb_key": "product:ext_144de838627e3b1c5fe78af0",
+          "action": "skip",
+          "reason": "protected_high_quality_existing:reviewed",
+          "old_hash": "f27844f13909b84f4d3801c5e36d29b35a53de457135a4e5beb74af0c4681223",
+          "existing_weak": false
+        },
+        {
+          "kb_key": "product:sig_491e15ac0d843b25ea30672a4bb7c406",
+          "action": "skip",
+          "reason": "protected_high_quality_existing:reviewed",
+          "old_hash": "f27844f13909b84f4d3801c5e36d29b35a53de457135a4e5beb74af0c4681223",
+          "existing_weak": false
+        }
+      ]
+    },
+    {
+      "external_product_id": "ext_63de31b54ab7d2f26ace71fa",
+      "pivota_signature_id": "sig_f6455431e9e629420902b25515066178",
+      "title": "Sheer Tinted Highlighter",
+      "brand": "Judydoll",
+      "canonical_url": "https://judydoll.com/products/sheer-tinted-highlighter",
+      "changed": false,
+      "blocked": false,
+      "skip_reason": "no_safe_writes",
+      "candidate_hash": "1d999dd4178ef5b8c87ecef8d5d922ab8dca4e9e7170a940f42bd2f4da64d661",
+      "evidence_profile": "official_pdp_reviewed_line",
+      "source_coverage": {
+        "source": "official_pdp",
+        "canonical_url": "https://judydoll.com/products/sheer-tinted-highlighter",
+        "fields": {
+          "description": true,
+          "ingredients": 0,
+          "active_ingredients": 0,
+          "how_to": 1,
+          "details": 2,
+          "variants": 1
+        }
+      },
+      "preview": {
+        "headline": "Face color makeup",
+        "what_it_is": "Sheer Tinted Highlighter is a highlighter from Judydoll in shade #02 Violet Muse, with source-backed cues around a cream-powder texture and glow payoff.",
+        "why_it_stands_out": [
+          {
+            "headline": "Color payoff cues are specific",
+            "body": "Reviewed color cues such as cream-powder texture, glow payoff, shade range help shoppers compare shade, finish, or texture instead of seeing a generic blush/bronzer/highlighter card.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Shade and size are explicit",
+            "body": "Variant labels such as #02 Violet Muse, Color: #02 Violet Muse are visible, reducing ambiguity around the product format before a shopper clicks through.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Usage instructions available",
+            "body": "Reviewed usage context is present, including: After setting, use puff press in circular motionStep 2: Tap.",
+            "evidence_strength": "official_pdp_reviewed"
+          }
+        ],
+        "best_for": [
+          {
+            "tag": "soft_focus_finish",
+            "label": "soft-focus finish",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "radiant_finish",
+            "label": "radiant finish",
+            "confidence": "moderate"
+          }
+        ],
+        "shopping_highlight": "cream-powder texture, glow payoff"
+      },
+      "writes": [
+        {
+          "kb_key": "product:ext_63de31b54ab7d2f26ace71fa",
+          "action": "skip",
+          "reason": "protected_high_quality_existing:reviewed",
+          "old_hash": "111633ca3243fcdb102ed95593a9dbed0e11d27bd9fad598be8336794609defd",
+          "existing_weak": false
+        },
+        {
+          "kb_key": "product:sig_f6455431e9e629420902b25515066178",
+          "action": "skip",
+          "reason": "protected_high_quality_existing:reviewed",
+          "old_hash": "111633ca3243fcdb102ed95593a9dbed0e11d27bd9fad598be8336794609defd",
+          "existing_weak": false
+        }
+      ]
+    },
+    {
+      "external_product_id": "ext_9db2bd33792ddff94669aae8",
+      "pivota_signature_id": "sig_00fe16da1d44aac47536a7b616f5cd3a",
+      "title": "Sheer Tinted Highlighter",
+      "brand": "Judydoll",
+      "canonical_url": "https://judydoll.com/products/sheer-tinted-highlighter",
+      "changed": false,
+      "blocked": false,
+      "skip_reason": "no_safe_writes",
+      "candidate_hash": "016697308aafb428a4198634f151f24bc7c1de26727973fe3b719ca855941688",
+      "evidence_profile": "official_pdp_reviewed_line",
+      "source_coverage": {
+        "source": "official_pdp",
+        "canonical_url": "https://judydoll.com/products/sheer-tinted-highlighter",
+        "fields": {
+          "description": true,
+          "ingredients": 0,
+          "active_ingredients": 0,
+          "how_to": 1,
+          "details": 2,
+          "variants": 4
+        }
+      },
+      "preview": {
+        "headline": "Face color makeup",
+        "what_it_is": "Sheer Tinted Highlighter is a highlighter from Judydoll in shade #01 Pink Sands, with source-backed cues around a cream-powder texture and glow payoff.",
+        "why_it_stands_out": [
+          {
+            "headline": "Color payoff cues are specific",
+            "body": "Reviewed color cues such as cream-powder texture, glow payoff, shade range help shoppers compare shade, finish, or texture instead of seeing a generic blush/bronzer/highlighter card.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Shade and size are explicit",
+            "body": "Variant labels such as #01 Pink Sands, Color: #01 Pink Sands, #02 Violet Muse, Color: #02 Violet Muse are visible, reducing ambiguity around the product format before a shopper clicks through.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Usage instructions available",
+            "body": "Reviewed usage context is present, including: After setting, use puff press in circular motionStep 2: Tap.",
+            "evidence_strength": "official_pdp_reviewed"
+          }
+        ],
+        "best_for": [
+          {
+            "tag": "soft_focus_finish",
+            "label": "soft-focus finish",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "radiant_finish",
+            "label": "radiant finish",
+            "confidence": "moderate"
+          }
+        ],
+        "shopping_highlight": "cream-powder texture, glow payoff"
+      },
+      "writes": [
+        {
+          "kb_key": "product:ext_9db2bd33792ddff94669aae8",
+          "action": "skip",
+          "reason": "protected_high_quality_existing:reviewed",
+          "old_hash": "5d9a1013ae45bf58b68b5235bbf4bd66ce98da3cb5c37acc1766b67536c3f06f",
+          "existing_weak": false
+        },
+        {
+          "kb_key": "product:sig_00fe16da1d44aac47536a7b616f5cd3a",
+          "action": "skip",
+          "reason": "protected_high_quality_existing:reviewed",
+          "old_hash": "5d9a1013ae45bf58b68b5235bbf4bd66ce98da3cb5c37acc1766b67536c3f06f",
+          "existing_weak": false
+        }
+      ]
+    },
+    {
+      "external_product_id": "ext_bd23c4e2fb60d0727b326eb3",
+      "pivota_signature_id": "sig_10eba28f559c37c15383314afb302929",
+      "title": "Sheer Tinted Highlighter",
+      "brand": "Judydoll",
+      "canonical_url": "https://judydoll.com/products/sheer-tinted-highlighter",
+      "changed": false,
+      "blocked": false,
+      "skip_reason": "no_safe_writes",
+      "candidate_hash": "b16ca94f0cc72c7121df7736ebba2aa6c5b65ff8de93bafd4eae36e9087d9dd3",
+      "evidence_profile": "official_pdp_reviewed_line",
+      "source_coverage": {
+        "source": "official_pdp",
+        "canonical_url": "https://judydoll.com/products/sheer-tinted-highlighter",
+        "fields": {
+          "description": true,
+          "ingredients": 0,
+          "active_ingredients": 0,
+          "how_to": 1,
+          "details": 2,
+          "variants": 4
+        }
+      },
+      "preview": {
+        "headline": "Face color makeup",
+        "what_it_is": "Sheer Tinted Highlighter is a highlighter from Judydoll in shade #01 Pink Sands, with source-backed cues around a cream-powder texture and glow payoff.",
+        "why_it_stands_out": [
+          {
+            "headline": "Color payoff cues are specific",
+            "body": "Reviewed color cues such as cream-powder texture, glow payoff, shade range help shoppers compare shade, finish, or texture instead of seeing a generic blush/bronzer/highlighter card.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Shade and size are explicit",
+            "body": "Variant labels such as #01 Pink Sands, Color: #01 Pink Sands, #02 Violet Muse, Color: #02 Violet Muse are visible, reducing ambiguity around the product format before a shopper clicks through.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Usage instructions available",
+            "body": "Reviewed usage context is present, including: After setting, use puff press in circular motionStep 2: Tap.",
+            "evidence_strength": "official_pdp_reviewed"
+          }
+        ],
+        "best_for": [
+          {
+            "tag": "soft_focus_finish",
+            "label": "soft-focus finish",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "radiant_finish",
+            "label": "radiant finish",
+            "confidence": "moderate"
+          }
+        ],
+        "shopping_highlight": "cream-powder texture, glow payoff"
+      },
+      "writes": [
+        {
+          "kb_key": "product:ext_bd23c4e2fb60d0727b326eb3",
+          "action": "skip",
+          "reason": "protected_high_quality_existing:reviewed",
+          "old_hash": "b35e43ae6e56a7f910892d5373801d593e3507180ac78208b2ffc0dcfa5d7746",
+          "existing_weak": false
+        },
+        {
+          "kb_key": "product:sig_10eba28f559c37c15383314afb302929",
+          "action": "skip",
+          "reason": "protected_high_quality_existing:reviewed",
+          "old_hash": "b35e43ae6e56a7f910892d5373801d593e3507180ac78208b2ffc0dcfa5d7746",
+          "existing_weak": false
+        }
+      ]
+    },
+    {
+      "external_product_id": "ext_0f95730ee5ba05a6b7957ada",
+      "pivota_signature_id": "sig_6433c8107859a484fb72d14861e84690",
+      "title": "Silky Matte Lip Ink",
+      "brand": "Judydoll",
+      "canonical_url": "https://judydoll.com/products/silky-matte-lip-ink",
+      "changed": false,
+      "blocked": false,
+      "skip_reason": "no_safe_writes",
+      "candidate_hash": "17bbfdd2646d9562b7da82476358b09c4749809a0c02a17aef07920289138b2d",
+      "evidence_profile": "official_pdp_reviewed_line",
+      "source_coverage": {
+        "source": "official_pdp",
+        "canonical_url": "https://judydoll.com/products/silky-matte-lip-ink",
+        "fields": {
+          "description": true,
+          "ingredients": 0,
+          "active_ingredients": 0,
+          "how_to": 1,
+          "details": 2,
+          "variants": 1
+        }
+      },
+      "preview": {
+        "headline": "Lip color",
+        "what_it_is": "Silky Matte Lip Ink is a lip color from Judydoll in 07 BURGUNDY INK, with source-backed cues around matte finish and shade clarity.",
+        "why_it_stands_out": [
+          {
+            "headline": "Lip finish cues are specific",
+            "body": "Reviewed lip cues such as matte finish, shade range, shade clarity identify finish, shade, or formula context before the shopper leaves Pivota.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Shade and size are explicit",
+            "body": "Variant labels such as 07 BURGUNDY INK, Shade: 07 BURGUNDY INK are visible, reducing ambiguity around the product format before a shopper clicks through.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Usage instructions available",
+            "body": "Reviewed usage context is present, including: Step 1: Start from the center of your lips and apply outward Step 2: Wait 20 to 30 seconds for formula to set a transfer-proof film Tips: Use angled tip to trace your lip line,.",
+            "evidence_strength": "official_pdp_reviewed"
+          }
+        ],
+        "best_for": [
+          {
+            "tag": "color_payoff",
+            "label": "color payoff",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "lip_comfort",
+            "label": "lip comfort",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "matte_finish",
+            "label": "matte finish",
+            "confidence": "moderate"
+          }
+        ],
+        "shopping_highlight": "matte finish, shade range, shade clarity"
+      },
+      "writes": [
+        {
+          "kb_key": "product:ext_0f95730ee5ba05a6b7957ada",
+          "action": "skip",
+          "reason": "protected_high_quality_existing:reviewed",
+          "old_hash": "cd62a692f3ca1fda62911867c9a0a9b948cb07546f92e699de2b3138dcb7e3f1",
+          "existing_weak": false
+        },
+        {
+          "kb_key": "product:sig_6433c8107859a484fb72d14861e84690",
+          "action": "skip",
+          "reason": "protected_high_quality_existing:reviewed",
+          "old_hash": "cd62a692f3ca1fda62911867c9a0a9b948cb07546f92e699de2b3138dcb7e3f1",
+          "existing_weak": false
+        }
+      ]
+    },
+    {
+      "external_product_id": "ext_23b1af7bb7242f75d35f5996",
+      "pivota_signature_id": "sig_0cc9b19a768c9644e16d2132705253d0",
+      "title": "Silky Matte Lip Ink",
+      "brand": "Judydoll",
+      "canonical_url": "https://judydoll.com/products/silky-matte-lip-ink",
+      "changed": false,
+      "blocked": false,
+      "skip_reason": "no_safe_writes",
+      "candidate_hash": "da54a63d34876ebdbdd9ec031cc408144eb5571a807b12c24f8757e1fdc80534",
+      "evidence_profile": "official_pdp_reviewed_line",
+      "source_coverage": {
+        "source": "official_pdp",
+        "canonical_url": "https://judydoll.com/products/silky-matte-lip-ink",
+        "fields": {
+          "description": true,
+          "ingredients": 0,
+          "active_ingredients": 0,
+          "how_to": 1,
+          "details": 2,
+          "variants": 1
+        }
+      },
+      "preview": {
+        "headline": "Lip color",
+        "what_it_is": "Silky Matte Lip Ink is a lip color from Judydoll in 01 PETAL INK, with source-backed cues around matte finish and shade clarity.",
+        "why_it_stands_out": [
+          {
+            "headline": "Lip finish cues are specific",
+            "body": "Reviewed lip cues such as matte finish, shade range, shade clarity identify finish, shade, or formula context before the shopper leaves Pivota.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Shade and size are explicit",
+            "body": "Variant labels such as 01 PETAL INK, Shade: 01 PETAL INK are visible, reducing ambiguity around the product format before a shopper clicks through.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Usage instructions available",
+            "body": "Reviewed usage context is present, including: Step 1: Start from the center of your lips and apply outward Step 2: Wait 20 to 30 seconds for formula to set a transfer-proof film Tips: Use angled tip to trace your lip line,.",
+            "evidence_strength": "official_pdp_reviewed"
+          }
+        ],
+        "best_for": [
+          {
+            "tag": "color_payoff",
+            "label": "color payoff",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "lip_comfort",
+            "label": "lip comfort",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "matte_finish",
+            "label": "matte finish",
+            "confidence": "moderate"
+          }
+        ],
+        "shopping_highlight": "matte finish, shade range, shade clarity"
+      },
+      "writes": [
+        {
+          "kb_key": "product:ext_23b1af7bb7242f75d35f5996",
+          "action": "skip",
+          "reason": "protected_high_quality_existing:reviewed",
+          "old_hash": "3e9753d4ad51282cc3887ee1f75168ca8de1b0a19ba7895af3a27d5c9b7669f1",
+          "existing_weak": false
+        },
+        {
+          "kb_key": "product:sig_0cc9b19a768c9644e16d2132705253d0",
+          "action": "skip",
+          "reason": "protected_high_quality_existing:reviewed",
+          "old_hash": "3e9753d4ad51282cc3887ee1f75168ca8de1b0a19ba7895af3a27d5c9b7669f1",
+          "existing_weak": false
+        }
+      ]
+    },
+    {
+      "external_product_id": "ext_3a06910375840950792e98ce",
+      "pivota_signature_id": "sig_5a86a8658b3e2de552bbb02952df5197",
+      "title": "Silky Matte Lip Ink",
+      "brand": "Judydoll",
+      "canonical_url": "https://judydoll.com/products/silky-matte-lip-ink",
+      "changed": false,
+      "blocked": false,
+      "skip_reason": "no_safe_writes",
+      "candidate_hash": "01bc2fac5f42a70a657709ac2fd1b0987cefef9ea69cc9fe485b0be6e848e557",
+      "evidence_profile": "official_pdp_reviewed_line",
+      "source_coverage": {
+        "source": "official_pdp",
+        "canonical_url": "https://judydoll.com/products/silky-matte-lip-ink",
+        "fields": {
+          "description": true,
+          "ingredients": 0,
+          "active_ingredients": 0,
+          "how_to": 1,
+          "details": 2,
+          "variants": 1
+        }
+      },
+      "preview": {
+        "headline": "Lip color",
+        "what_it_is": "Silky Matte Lip Ink is a lip color from Judydoll in 05 ROSY INK, with source-backed cues around matte finish and shade clarity.",
+        "why_it_stands_out": [
+          {
+            "headline": "Lip finish cues are specific",
+            "body": "Reviewed lip cues such as matte finish, shade range, shade clarity identify finish, shade, or formula context before the shopper leaves Pivota.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Shade and size are explicit",
+            "body": "Variant labels such as 05 ROSY INK, Shade: 05 ROSY INK are visible, reducing ambiguity around the product format before a shopper clicks through.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Usage instructions available",
+            "body": "Reviewed usage context is present, including: Step 1: Start from the center of your lips and apply outward Step 2: Wait 20 to 30 seconds for formula to set a transfer-proof film Tips: Use angled tip to trace your lip line,.",
+            "evidence_strength": "official_pdp_reviewed"
+          }
+        ],
+        "best_for": [
+          {
+            "tag": "color_payoff",
+            "label": "color payoff",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "lip_comfort",
+            "label": "lip comfort",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "matte_finish",
+            "label": "matte finish",
+            "confidence": "moderate"
+          }
+        ],
+        "shopping_highlight": "matte finish, shade range, shade clarity"
+      },
+      "writes": [
+        {
+          "kb_key": "product:ext_3a06910375840950792e98ce",
+          "action": "skip",
+          "reason": "protected_high_quality_existing:reviewed",
+          "old_hash": "31fd6c3966b9cdfb313f53bdb47fad44450ac936ce873f8c34ac4e036e952e76",
+          "existing_weak": false
+        },
+        {
+          "kb_key": "product:sig_5a86a8658b3e2de552bbb02952df5197",
+          "action": "skip",
+          "reason": "protected_high_quality_existing:reviewed",
+          "old_hash": "31fd6c3966b9cdfb313f53bdb47fad44450ac936ce873f8c34ac4e036e952e76",
+          "existing_weak": false
+        }
+      ]
+    },
+    {
+      "external_product_id": "ext_51f4838b4139b67400f37d3d",
+      "pivota_signature_id": "sig_1c5ee5e8e2a169ba0bfaa6508afcc25f",
+      "title": "Silky Matte Lip Ink",
+      "brand": "Judydoll",
+      "canonical_url": "https://judydoll.com/products/silky-matte-lip-ink",
+      "changed": false,
+      "blocked": false,
+      "skip_reason": "no_safe_writes",
+      "candidate_hash": "ac2236a0ae8e47a427385a591f23d299a6a26877d429fbc7d36e48b4f23f7b79",
+      "evidence_profile": "official_pdp_reviewed_line",
+      "source_coverage": {
+        "source": "official_pdp",
+        "canonical_url": "https://judydoll.com/products/silky-matte-lip-ink",
+        "fields": {
+          "description": true,
+          "ingredients": 0,
+          "active_ingredients": 0,
+          "how_to": 1,
+          "details": 2,
+          "variants": 1
+        }
+      },
+      "preview": {
+        "headline": "Lip color",
+        "what_it_is": "Silky Matte Lip Ink is a lip color from Judydoll in 02 PEACH INK, with source-backed cues around matte finish and shade clarity.",
+        "why_it_stands_out": [
+          {
+            "headline": "Lip finish cues are specific",
+            "body": "Reviewed lip cues such as matte finish, shade range, shade clarity identify finish, shade, or formula context before the shopper leaves Pivota.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Shade and size are explicit",
+            "body": "Variant labels such as 02 PEACH INK, Shade: 02 PEACH INK are visible, reducing ambiguity around the product format before a shopper clicks through.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Usage instructions available",
+            "body": "Reviewed usage context is present, including: Step 1: Start from the center of your lips and apply outward Step 2: Wait 20 to 30 seconds for formula to set a transfer-proof film Tips: Use angled tip to trace your lip line,.",
+            "evidence_strength": "official_pdp_reviewed"
+          }
+        ],
+        "best_for": [
+          {
+            "tag": "color_payoff",
+            "label": "color payoff",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "lip_comfort",
+            "label": "lip comfort",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "matte_finish",
+            "label": "matte finish",
+            "confidence": "moderate"
+          }
+        ],
+        "shopping_highlight": "matte finish, shade range, shade clarity"
+      },
+      "writes": [
+        {
+          "kb_key": "product:ext_51f4838b4139b67400f37d3d",
+          "action": "skip",
+          "reason": "protected_high_quality_existing:reviewed",
+          "old_hash": "91d154fa580fb62f6dff7122bf46ab26c0765ee7d392fe287ad2e421807cfb77",
+          "existing_weak": false
+        },
+        {
+          "kb_key": "product:sig_1c5ee5e8e2a169ba0bfaa6508afcc25f",
+          "action": "skip",
+          "reason": "protected_high_quality_existing:reviewed",
+          "old_hash": "91d154fa580fb62f6dff7122bf46ab26c0765ee7d392fe287ad2e421807cfb77",
+          "existing_weak": false
+        }
+      ]
+    },
+    {
+      "external_product_id": "ext_53115a427801a8eb73335365",
+      "pivota_signature_id": "sig_4e023552a2d1e45cd123bd2f9e557b6f",
+      "title": "Silky Matte Lip Ink",
+      "brand": "Judydoll",
+      "canonical_url": "https://judydoll.com/products/silky-matte-lip-ink",
+      "changed": false,
+      "blocked": false,
+      "skip_reason": "no_safe_writes",
+      "candidate_hash": "8a48647c6e77fe0870c470c34373e9812c3e70c698fbc4d5bf6ec12cc09d3ecf",
+      "evidence_profile": "official_pdp_reviewed_line",
+      "source_coverage": {
+        "source": "official_pdp",
+        "canonical_url": "https://judydoll.com/products/silky-matte-lip-ink",
+        "fields": {
+          "description": true,
+          "ingredients": 0,
+          "active_ingredients": 0,
+          "how_to": 1,
+          "details": 2,
+          "variants": 1
+        }
+      },
+      "preview": {
+        "headline": "Lip color",
+        "what_it_is": "Silky Matte Lip Ink is a lip color from Judydoll in 09 MULBERRY INK, with source-backed cues around matte finish and shade clarity.",
+        "why_it_stands_out": [
+          {
+            "headline": "Lip finish cues are specific",
+            "body": "Reviewed lip cues such as matte finish, shade range, shade clarity identify finish, shade, or formula context before the shopper leaves Pivota.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Shade and size are explicit",
+            "body": "Variant labels such as 09 MULBERRY INK, Shade: 09 MULBERRY INK are visible, reducing ambiguity around the product format before a shopper clicks through.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Usage instructions available",
+            "body": "Reviewed usage context is present, including: Step 1: Start from the center of your lips and apply outward Step 2: Wait 20 to 30 seconds for formula to set a transfer-proof film Tips: Use angled tip to trace your lip line,.",
+            "evidence_strength": "official_pdp_reviewed"
+          }
+        ],
+        "best_for": [
+          {
+            "tag": "color_payoff",
+            "label": "color payoff",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "lip_comfort",
+            "label": "lip comfort",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "matte_finish",
+            "label": "matte finish",
+            "confidence": "moderate"
+          }
+        ],
+        "shopping_highlight": "matte finish, shade range, shade clarity"
+      },
+      "writes": [
+        {
+          "kb_key": "product:ext_53115a427801a8eb73335365",
+          "action": "skip",
+          "reason": "protected_high_quality_existing:reviewed",
+          "old_hash": "3b5b34325fa1cc81d48cbef411670bd8b450b2f2d0c20ede48ff944bde9baad0",
+          "existing_weak": false
+        },
+        {
+          "kb_key": "product:sig_4e023552a2d1e45cd123bd2f9e557b6f",
+          "action": "skip",
+          "reason": "protected_high_quality_existing:reviewed",
+          "old_hash": "3b5b34325fa1cc81d48cbef411670bd8b450b2f2d0c20ede48ff944bde9baad0",
+          "existing_weak": false
+        }
+      ]
+    },
+    {
+      "external_product_id": "ext_5d2151f0eb46e68cd8d2219f",
+      "pivota_signature_id": "sig_50aebe86a923a6ccf0da3f89870eacd4",
+      "title": "Silky Matte Lip Ink",
+      "brand": "Judydoll",
+      "canonical_url": "https://judydoll.com/products/silky-matte-lip-ink",
+      "changed": false,
+      "blocked": false,
+      "skip_reason": "no_safe_writes",
+      "candidate_hash": "73c676e0f556e463c1bebe3d708a4a38df932488c63b8acd619bc476749dd9e5",
+      "evidence_profile": "official_pdp_reviewed_line",
+      "source_coverage": {
+        "source": "official_pdp",
+        "canonical_url": "https://judydoll.com/products/silky-matte-lip-ink",
+        "fields": {
+          "description": true,
+          "ingredients": 0,
+          "active_ingredients": 0,
+          "how_to": 1,
+          "details": 2,
+          "variants": 1
+        }
+      },
+      "preview": {
+        "headline": "Lip color",
+        "what_it_is": "Silky Matte Lip Ink is a lip color from Judydoll in 03 SAND INK, with source-backed cues around matte finish and shade clarity.",
+        "why_it_stands_out": [
+          {
+            "headline": "Lip finish cues are specific",
+            "body": "Reviewed lip cues such as matte finish, shade range, shade clarity identify finish, shade, or formula context before the shopper leaves Pivota.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Shade and size are explicit",
+            "body": "Variant labels such as 03 SAND INK, Shade: 03 SAND INK are visible, reducing ambiguity around the product format before a shopper clicks through.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Usage instructions available",
+            "body": "Reviewed usage context is present, including: Step 1: Start from the center of your lips and apply outward Step 2: Wait 20 to 30 seconds for formula to set a transfer-proof film Tips: Use angled tip to trace your lip line,.",
+            "evidence_strength": "official_pdp_reviewed"
+          }
+        ],
+        "best_for": [
+          {
+            "tag": "color_payoff",
+            "label": "color payoff",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "lip_comfort",
+            "label": "lip comfort",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "matte_finish",
+            "label": "matte finish",
+            "confidence": "moderate"
+          }
+        ],
+        "shopping_highlight": "matte finish, shade range, shade clarity"
+      },
+      "writes": [
+        {
+          "kb_key": "product:ext_5d2151f0eb46e68cd8d2219f",
+          "action": "skip",
+          "reason": "protected_high_quality_existing:reviewed",
+          "old_hash": "b8b8d74957e173570cb8477eb6c20acb3855aa72eef60df5e765e37c962f8bd1",
+          "existing_weak": false
+        },
+        {
+          "kb_key": "product:sig_50aebe86a923a6ccf0da3f89870eacd4",
+          "action": "skip",
+          "reason": "protected_high_quality_existing:reviewed",
+          "old_hash": "b8b8d74957e173570cb8477eb6c20acb3855aa72eef60df5e765e37c962f8bd1",
+          "existing_weak": false
+        }
+      ]
+    },
+    {
+      "external_product_id": "ext_6ea851dac5691fa0e380a3a5",
+      "pivota_signature_id": "sig_fab5ec050f1b8371364e2d1f3f089955",
+      "title": "Silky Matte Lip Ink",
+      "brand": "Judydoll",
+      "canonical_url": "https://judydoll.com/products/silky-matte-lip-ink",
+      "changed": false,
+      "blocked": false,
+      "skip_reason": "no_safe_writes",
+      "candidate_hash": "0cd807fd0570eeb6e80060561a2708cd6faa454cfd97493b8f3388eeeb8b6bff",
+      "evidence_profile": "official_pdp_reviewed_line",
+      "source_coverage": {
+        "source": "official_pdp",
+        "canonical_url": "https://judydoll.com/products/silky-matte-lip-ink",
+        "fields": {
+          "description": true,
+          "ingredients": 0,
+          "active_ingredients": 0,
+          "how_to": 1,
+          "details": 2,
+          "variants": 1
+        }
+      },
+      "preview": {
+        "headline": "Lip color",
+        "what_it_is": "Silky Matte Lip Ink is a lip color from Judydoll in 08 BERRY INK, with source-backed cues around matte finish and shade clarity.",
+        "why_it_stands_out": [
+          {
+            "headline": "Lip finish cues are specific",
+            "body": "Reviewed lip cues such as matte finish, shade range, shade clarity identify finish, shade, or formula context before the shopper leaves Pivota.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Shade and size are explicit",
+            "body": "Variant labels such as 08 BERRY INK, Shade: 08 BERRY INK are visible, reducing ambiguity around the product format before a shopper clicks through.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Usage instructions available",
+            "body": "Reviewed usage context is present, including: Step 1: Start from the center of your lips and apply outward Step 2: Wait 20 to 30 seconds for formula to set a transfer-proof film Tips: Use angled tip to trace your lip line,.",
+            "evidence_strength": "official_pdp_reviewed"
+          }
+        ],
+        "best_for": [
+          {
+            "tag": "color_payoff",
+            "label": "color payoff",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "lip_comfort",
+            "label": "lip comfort",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "matte_finish",
+            "label": "matte finish",
+            "confidence": "moderate"
+          }
+        ],
+        "shopping_highlight": "matte finish, shade range, shade clarity"
+      },
+      "writes": [
+        {
+          "kb_key": "product:ext_6ea851dac5691fa0e380a3a5",
+          "action": "skip",
+          "reason": "protected_high_quality_existing:reviewed",
+          "old_hash": "1fd136f0a9298360212bd716cdf864acf7dd686c3c2008cc77bdc320121fbe27",
+          "existing_weak": false
+        },
+        {
+          "kb_key": "product:sig_fab5ec050f1b8371364e2d1f3f089955",
+          "action": "skip",
+          "reason": "protected_high_quality_existing:reviewed",
+          "old_hash": "1fd136f0a9298360212bd716cdf864acf7dd686c3c2008cc77bdc320121fbe27",
+          "existing_weak": false
+        }
+      ]
+    },
+    {
+      "external_product_id": "ext_b3fd10c582e60eb5c4716bd7",
+      "pivota_signature_id": "sig_1a87b84115e5f080095a1006fcc7bc59",
+      "title": "Silky Matte Lip Ink",
+      "brand": "Judydoll",
+      "canonical_url": "https://judydoll.com/products/silky-matte-lip-ink",
+      "changed": false,
+      "blocked": false,
+      "skip_reason": "no_safe_writes",
+      "candidate_hash": "60811d80b7bd89654f04e35be9c0d47e411671950924ee33cb630e7da5a5cc19",
+      "evidence_profile": "official_pdp_reviewed_line",
+      "source_coverage": {
+        "source": "official_pdp",
+        "canonical_url": "https://judydoll.com/products/silky-matte-lip-ink",
+        "fields": {
+          "description": true,
+          "ingredients": 0,
+          "active_ingredients": 0,
+          "how_to": 1,
+          "details": 2,
+          "variants": 1
+        }
+      },
+      "preview": {
+        "headline": "Lip color",
+        "what_it_is": "Silky Matte Lip Ink is a lip color from Judydoll in 10 TERRA INK, with source-backed cues around matte finish and shade clarity.",
+        "why_it_stands_out": [
+          {
+            "headline": "Lip finish cues are specific",
+            "body": "Reviewed lip cues such as matte finish, shade range, shade clarity identify finish, shade, or formula context before the shopper leaves Pivota.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Shade and size are explicit",
+            "body": "Variant labels such as 10 TERRA INK, Shade: 10 TERRA INK are visible, reducing ambiguity around the product format before a shopper clicks through.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Usage instructions available",
+            "body": "Reviewed usage context is present, including: Step 1: Start from the center of your lips and apply outward Step 2: Wait 20 to 30 seconds for formula to set a transfer-proof film Tips: Use angled tip to trace your lip line,.",
+            "evidence_strength": "official_pdp_reviewed"
+          }
+        ],
+        "best_for": [
+          {
+            "tag": "color_payoff",
+            "label": "color payoff",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "lip_comfort",
+            "label": "lip comfort",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "matte_finish",
+            "label": "matte finish",
+            "confidence": "moderate"
+          }
+        ],
+        "shopping_highlight": "matte finish, shade range, shade clarity"
+      },
+      "writes": [
+        {
+          "kb_key": "product:ext_b3fd10c582e60eb5c4716bd7",
+          "action": "skip",
+          "reason": "protected_high_quality_existing:reviewed",
+          "old_hash": "f5fe3fa308e74b7d4540a1f287378f0d6ad1008bcabb57713003d1487c38a943",
+          "existing_weak": false
+        },
+        {
+          "kb_key": "product:sig_1a87b84115e5f080095a1006fcc7bc59",
+          "action": "skip",
+          "reason": "protected_high_quality_existing:reviewed",
+          "old_hash": "f5fe3fa308e74b7d4540a1f287378f0d6ad1008bcabb57713003d1487c38a943",
+          "existing_weak": false
+        }
+      ]
+    },
+    {
+      "external_product_id": "ext_d5a818c5447b62e0ed8f8f61",
+      "pivota_signature_id": "sig_a61631ee336c5ccdec6b2b33ce48bdd3",
+      "title": "Silky Matte Lip Ink",
+      "brand": "Judydoll",
+      "canonical_url": "https://judydoll.com/products/silky-matte-lip-ink",
+      "changed": true,
+      "blocked": false,
+      "skip_reason": null,
+      "candidate_hash": "8cd5f15e82f4524ffbcb365f3a8c84f63d40f506885da9de77ddaa0b8216547e",
+      "evidence_profile": "official_pdp_reviewed_line",
+      "source_coverage": {
+        "source": "official_pdp",
+        "canonical_url": "https://judydoll.com/products/silky-matte-lip-ink",
+        "fields": {
+          "description": true,
+          "ingredients": 0,
+          "active_ingredients": 0,
+          "how_to": 1,
+          "details": 2,
+          "variants": 8
+        }
+      },
+      "preview": {
+        "headline": "Lip color",
+        "what_it_is": "Silky Matte Lip Ink is a lip color from Judydoll in 01 PETAL INK, with source-backed cues around matte finish and shade clarity.",
+        "why_it_stands_out": [
+          {
+            "headline": "Lip finish cues are specific",
+            "body": "Reviewed lip cues such as matte finish, shade range, shade clarity identify finish, shade, or formula context before the shopper leaves Pivota.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Shade and size are explicit",
+            "body": "Variant labels such as 01 PETAL INK, Color: 01 PETAL INK, 02 PEACH INK, Color: 02 PEACH INK are visible, reducing ambiguity around the product format before a shopper clicks through.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Usage instructions available",
+            "body": "Reviewed usage context is present, including: Step 1: Start from the center of your lips and apply outward Step 2: Wait 20 to 30 seconds for formula to set a transfer-proof film Tips: Use angled tip to trace your lip line,.",
+            "evidence_strength": "official_pdp_reviewed"
+          }
+        ],
+        "best_for": [
+          {
+            "tag": "color_payoff",
+            "label": "color payoff",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "lip_comfort",
+            "label": "lip comfort",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "matte_finish",
+            "label": "matte finish",
+            "confidence": "moderate"
+          }
+        ],
+        "shopping_highlight": "matte finish, shade range, shade clarity"
+      },
+      "writes": [
+        {
+          "kb_key": "product:ext_d5a818c5447b62e0ed8f8f61",
+          "action": "update",
+          "reason": "explicit_owner_delegated_assistant_replacement_review",
+          "old_hash": "de805ed24583be6e9193e4d70d5150c3f0cc22dc3920a44c9973190650a36374",
+          "candidate_hash": "81d4b58b9482881fb379680e41ee1c2eda9d464c36bc5881d5d23576621c0404",
+          "existing_weak": true,
+          "source": "pivota_insights_official_pdp_manual_review_v1",
+          "after_inventory": {
+            "product_id": "ext_d5a818c5447b62e0ed8f8f61",
+            "kb_key": "product:ext_d5a818c5447b62e0ed8f8f61",
+            "source": "pivota_insights_official_pdp_manual_review_v1",
+            "updated_at": "",
+            "last_success_at": "",
+            "title": "Silky Matte Lip Ink",
+            "canonical_url": "",
+            "bundle_hash": "8cd5f15e82f4524ffbcb365f3a8c84f63d40f506885da9de77ddaa0b8216547e",
+            "lane": "keep",
+            "reason": "protected_good_content",
+            "priority": 0,
+            "protected": true,
+            "displayable": true,
+            "high_quality_ready": true,
+            "human_reviewed": true,
+            "issues": [],
+            "blocking_issues": [],
+            "quality_state": "reviewed",
+            "evidence_profile": "official_pdp_reviewed_line",
+            "evidence_rank": 3,
+            "review_tier": "assistant_reviewed",
+            "agent_readable": true,
+            "public_ready": true
+          },
+          "source_meta": {
+            "evidence_profile": "official_pdp_reviewed_line",
+            "quality_state": "reviewed",
+            "source_origin": "official_pdp_fields",
+            "source_url": "https://judydoll.com/products/silky-matte-lip-ink",
+            "quality_improvement": {
+              "previous_bundle_hash": "17492f1a513b631445e5cc9d33fb2a60193750fd69e05d9ee83ae222ed4b3c61",
+              "candidate_bundle_hash": "8cd5f15e82f4524ffbcb365f3a8c84f63d40f506885da9de77ddaa0b8216547e",
+              "replacement_decision": "explicit_owner_delegated_assistant_replacement_review",
+              "existing_quality_lane": "keep",
+              "candidate_quality_lane": "keep",
+              "existing_evidence_profile": "seller_plus_formula",
+              "candidate_evidence_profile": "official_pdp_reviewed_line"
+            }
+          }
+        },
+        {
+          "kb_key": "product:sig_a61631ee336c5ccdec6b2b33ce48bdd3",
+          "action": "insert",
+          "reason": "new_product_intel_bundle",
+          "old_hash": null,
+          "candidate_hash": "81d4b58b9482881fb379680e41ee1c2eda9d464c36bc5881d5d23576621c0404",
+          "existing_weak": true,
+          "source": "pivota_insights_official_pdp_manual_review_v1",
+          "after_inventory": {
+            "product_id": "ext_d5a818c5447b62e0ed8f8f61",
+            "kb_key": "product:sig_a61631ee336c5ccdec6b2b33ce48bdd3",
+            "source": "pivota_insights_official_pdp_manual_review_v1",
+            "updated_at": "",
+            "last_success_at": "",
+            "title": "Silky Matte Lip Ink",
+            "canonical_url": "",
+            "bundle_hash": "8cd5f15e82f4524ffbcb365f3a8c84f63d40f506885da9de77ddaa0b8216547e",
+            "lane": "keep",
+            "reason": "protected_good_content",
+            "priority": 0,
+            "protected": true,
+            "displayable": true,
+            "high_quality_ready": true,
+            "human_reviewed": true,
+            "issues": [],
+            "blocking_issues": [],
+            "quality_state": "reviewed",
+            "evidence_profile": "official_pdp_reviewed_line",
+            "evidence_rank": 3,
+            "review_tier": "assistant_reviewed",
+            "agent_readable": true,
+            "public_ready": true
+          },
+          "source_meta": {
+            "evidence_profile": "official_pdp_reviewed_line",
+            "quality_state": "reviewed",
+            "source_origin": "official_pdp_fields",
+            "source_url": "https://judydoll.com/products/silky-matte-lip-ink",
+            "quality_improvement": {
+              "previous_bundle_hash": null,
+              "candidate_bundle_hash": "8cd5f15e82f4524ffbcb365f3a8c84f63d40f506885da9de77ddaa0b8216547e",
+              "replacement_decision": "new_product_intel_bundle",
+              "existing_quality_lane": null,
+              "candidate_quality_lane": "keep",
+              "existing_evidence_profile": null,
+              "candidate_evidence_profile": "official_pdp_reviewed_line"
+            }
+          }
+        }
+      ]
+    }
+  ]
+}

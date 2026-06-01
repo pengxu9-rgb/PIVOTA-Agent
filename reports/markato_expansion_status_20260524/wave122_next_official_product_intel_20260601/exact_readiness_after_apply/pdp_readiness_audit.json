@@ -1,0 +1,615 @@
+{
+  "generated_at": "2026-06-01T07:19:20.195Z",
+  "options": {
+    "market": "US",
+    "includeAttached": true,
+    "domain": null,
+    "externalProductIds": [
+      "ext_7c53e5f5c69608226b1fb7ec",
+      "ext_653963915647e224ebd70d69",
+      "ext_d5a818c5447b62e0ed8f8f61",
+      "ext_a8cb47c391f90a8f35814c38",
+      "ext_d1c304ee3edc262cb0d914e9"
+    ],
+    "limit": 20000,
+    "sampleLimit": 10,
+    "checkpointDir": "/Users/pengchydan/dev/_worktrees/pivota-agent-markato-wave25-786-20260527/reports/markato_expansion_status_20260524/wave122_next_official_product_intel_20260601/exact_readiness_after_apply/pdp_readiness_checkpoint",
+    "checkpointMode": "domain",
+    "resume": false,
+    "force": true,
+    "continueOnError": true,
+    "pageSize": 500,
+    "format": "json"
+  },
+  "warnings": [],
+  "summary": {
+    "scanned": 5,
+    "by_market": {
+      "US": 5
+    },
+    "by_domain": [
+      {
+        "key": "fentybeauty.com",
+        "count": 2
+      },
+      {
+        "key": "flowerknows.co",
+        "count": 2
+      },
+      {
+        "key": "judydoll.com",
+        "count": 1
+      }
+    ],
+    "by_product_family": [
+      {
+        "key": "single_formula",
+        "count": 4
+      },
+      {
+        "key": "set_or_collection",
+        "count": 1
+      }
+    ],
+    "coverage": {
+      "missing_inci": 3,
+      "missing_active_raw": 4,
+      "missing_details": 0,
+      "missing_how_to": 2,
+      "missing_faq": 5
+    },
+    "pivota_insights": {
+      "direct": {
+        "displayable": 5,
+        "high_quality_ready": 5,
+        "missing_kb": 0,
+        "not_displayable": 0
+      },
+      "effective": {
+        "displayable": 5,
+        "high_quality_ready": 5,
+        "missing_kb": 0,
+        "not_displayable": 0,
+        "borrowed_from_sibling": 0
+      },
+      "effective_issues": [],
+      "effective_issue_domains": [],
+      "quality_state": [
+        {
+          "key": "reviewed",
+          "count": 5
+        }
+      ],
+      "evidence_profile": [
+        {
+          "key": "official_pdp_reviewed_line",
+          "count": 3
+        },
+        {
+          "key": "official_pdp_reviewed_formula_and_usage",
+          "count": 2
+        }
+      ],
+      "samples": {}
+    },
+    "active_ingredients": {
+      "regulatory_expected": 0,
+      "hero_expected": 2,
+      "any_active_items": 2,
+      "status": [
+        {
+          "key": "not_expected_missing",
+          "count": 2
+        },
+        {
+          "key": "ready_hero",
+          "count": 2
+        },
+        {
+          "key": "not_applicable_product_family",
+          "count": 1
+        }
+      ],
+      "issues": [],
+      "issue_domains": [],
+      "source_origin": [
+        {
+          "key": "none",
+          "count": 3
+        },
+        {
+          "key": "pdp_section",
+          "count": 2
+        }
+      ],
+      "samples": {}
+    },
+    "variants": {
+      "status": [
+        {
+          "key": "ready",
+          "count": 5
+        }
+      ],
+      "issues": [],
+      "issue_domains": [],
+      "samples": {}
+    }
+  },
+  "rows": [
+    {
+      "seed_id": "eps_77b3d6c0bc70703018e36bf6",
+      "external_product_id": "ext_d1c304ee3edc262cb0d914e9",
+      "market": "US",
+      "domain": "flowerknows.co",
+      "title": "Midsummer Fairytales Embossed Five-Color Makeup Palette",
+      "canonical_url": "https://flowerknows.co/products/midsummer-fairytales-embossed-five-color-makeup-palette-usa",
+      "product_family": "single_formula",
+      "product_line_id": null,
+      "pivota_insights": {
+        "direct": {
+          "product_id": "ext_d1c304ee3edc262cb0d914e9",
+          "kb_key": "product:ext_d1c304ee3edc262cb0d914e9",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "official_pdp_reviewed_line",
+          "has_card_highlight": true
+        },
+        "effective": {
+          "product_id": "ext_d1c304ee3edc262cb0d914e9",
+          "kb_key": "product:ext_d1c304ee3edc262cb0d914e9",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "official_pdp_reviewed_line",
+          "has_card_highlight": true
+        },
+        "product_line_id": null,
+        "borrowed_from_sibling": false
+      },
+      "active_ingredients": {
+        "status": "not_expected_missing",
+        "issues": [],
+        "regulatory_expected": false,
+        "hero_expected": false,
+        "active_items": [],
+        "source_origin": "none",
+        "source_quality_status": "blocked",
+        "coverage": {
+          "details_sections_count": 2,
+          "faq_count": 0,
+          "how_to_chars": 0,
+          "inci_chars": 0,
+          "active_ingredients_chars": 0,
+          "inci_applicability_status": "",
+          "ingredient_review_status": "",
+          "ingredient_remediation_action": "",
+          "bundle_component_refs_count": 0,
+          "effective_inci_chars": 0,
+          "inci_borrowed_from_product_id": ""
+        },
+        "invalid_fragments": [],
+        "suppressed_reason": "no_authoritative_source"
+      },
+      "variants": {
+        "status": "ready",
+        "issues": [],
+        "visible_variant_rows": 3,
+        "examples": {
+          "identity_option_visible": [],
+          "wrong_axis_for_category": [],
+          "makeup_shade_missing_visual": [],
+          "size_value_generic_axis": [],
+          "default_option_size_evidence_missing_axis": [],
+          "identity_default_title_axis": []
+        }
+      },
+      "coverage": {
+        "details_sections_count": 2,
+        "faq_count": 0,
+        "how_to_chars": 0,
+        "inci_chars": 0,
+        "active_ingredients_chars": 0,
+        "inci_applicability_status": "",
+        "ingredient_review_status": "",
+        "ingredient_remediation_action": "",
+        "bundle_component_refs_count": 0,
+        "effective_inci_chars": 0,
+        "inci_borrowed_from_product_id": ""
+      }
+    },
+    {
+      "seed_id": "eps_b2294fde05dfa07dd952c2a7",
+      "external_product_id": "ext_d5a818c5447b62e0ed8f8f61",
+      "market": "US",
+      "domain": "judydoll.com",
+      "title": "Silky Matte Lip Ink",
+      "canonical_url": "https://judydoll.com/products/silky-matte-lip-ink",
+      "product_family": "set_or_collection",
+      "product_line_id": null,
+      "pivota_insights": {
+        "direct": {
+          "product_id": "ext_d5a818c5447b62e0ed8f8f61",
+          "kb_key": "product:ext_d5a818c5447b62e0ed8f8f61",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "official_pdp_reviewed_line",
+          "has_card_highlight": true
+        },
+        "effective": {
+          "product_id": "ext_d5a818c5447b62e0ed8f8f61",
+          "kb_key": "product:ext_d5a818c5447b62e0ed8f8f61",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "official_pdp_reviewed_line",
+          "has_card_highlight": true
+        },
+        "product_line_id": null,
+        "borrowed_from_sibling": false
+      },
+      "active_ingredients": {
+        "status": "not_applicable_product_family",
+        "issues": [],
+        "regulatory_expected": false,
+        "hero_expected": false,
+        "active_items": [],
+        "source_origin": "none",
+        "source_quality_status": "blocked",
+        "coverage": {
+          "details_sections_count": 4,
+          "faq_count": 0,
+          "how_to_chars": 224,
+          "inci_chars": 0,
+          "active_ingredients_chars": 0,
+          "inci_applicability_status": "",
+          "ingredient_review_status": "",
+          "ingredient_remediation_action": "",
+          "bundle_component_refs_count": 0,
+          "effective_inci_chars": 0,
+          "inci_borrowed_from_product_id": ""
+        },
+        "invalid_fragments": [],
+        "suppressed_reason": "set_or_collection"
+      },
+      "variants": {
+        "status": "ready",
+        "issues": [],
+        "visible_variant_rows": 8,
+        "examples": {
+          "identity_option_visible": [],
+          "wrong_axis_for_category": [],
+          "makeup_shade_missing_visual": [],
+          "size_value_generic_axis": [],
+          "default_option_size_evidence_missing_axis": [],
+          "identity_default_title_axis": []
+        }
+      },
+      "coverage": {
+        "details_sections_count": 4,
+        "faq_count": 0,
+        "how_to_chars": 224,
+        "inci_chars": 0,
+        "active_ingredients_chars": 0,
+        "inci_applicability_status": "",
+        "ingredient_review_status": "",
+        "ingredient_remediation_action": "",
+        "bundle_component_refs_count": 0,
+        "effective_inci_chars": 0,
+        "inci_borrowed_from_product_id": ""
+      }
+    },
+    {
+      "seed_id": "epsv_cd6f1f79051023abce438ce4",
+      "external_product_id": "ext_a8cb47c391f90a8f35814c38",
+      "market": "US",
+      "domain": "flowerknows.co",
+      "title": "Midsummer Fairytales Embossed Five-Color Makeup Palette",
+      "canonical_url": "https://flowerknows.co/products/midsummer-fairytales-embossed-five-color-makeup-palette-usa",
+      "product_family": "single_formula",
+      "product_line_id": null,
+      "pivota_insights": {
+        "direct": {
+          "product_id": "ext_a8cb47c391f90a8f35814c38",
+          "kb_key": "product:ext_a8cb47c391f90a8f35814c38",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "official_pdp_reviewed_line",
+          "has_card_highlight": true
+        },
+        "effective": {
+          "product_id": "ext_a8cb47c391f90a8f35814c38",
+          "kb_key": "product:ext_a8cb47c391f90a8f35814c38",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "official_pdp_reviewed_line",
+          "has_card_highlight": true
+        },
+        "product_line_id": null,
+        "borrowed_from_sibling": false
+      },
+      "active_ingredients": {
+        "status": "not_expected_missing",
+        "issues": [],
+        "regulatory_expected": false,
+        "hero_expected": false,
+        "active_items": [],
+        "source_origin": "none",
+        "source_quality_status": "blocked",
+        "coverage": {
+          "details_sections_count": 4,
+          "faq_count": 0,
+          "how_to_chars": 0,
+          "inci_chars": 0,
+          "active_ingredients_chars": 0,
+          "inci_applicability_status": "",
+          "ingredient_review_status": "",
+          "ingredient_remediation_action": "",
+          "bundle_component_refs_count": 0,
+          "effective_inci_chars": 0,
+          "inci_borrowed_from_product_id": ""
+        },
+        "invalid_fragments": [],
+        "suppressed_reason": "no_authoritative_source"
+      },
+      "variants": {
+        "status": "ready",
+        "issues": [],
+        "visible_variant_rows": 3,
+        "examples": {
+          "identity_option_visible": [],
+          "wrong_axis_for_category": [],
+          "makeup_shade_missing_visual": [],
+          "size_value_generic_axis": [],
+          "default_option_size_evidence_missing_axis": [],
+          "identity_default_title_axis": []
+        }
+      },
+      "coverage": {
+        "details_sections_count": 4,
+        "faq_count": 0,
+        "how_to_chars": 0,
+        "inci_chars": 0,
+        "active_ingredients_chars": 0,
+        "inci_applicability_status": "",
+        "ingredient_review_status": "",
+        "ingredient_remediation_action": "",
+        "bundle_component_refs_count": 0,
+        "effective_inci_chars": 0,
+        "inci_borrowed_from_product_id": ""
+      }
+    },
+    {
+      "seed_id": "eps_6b6327febb914c04bec89edc",
+      "external_product_id": "ext_7c53e5f5c69608226b1fb7ec",
+      "market": "US",
+      "domain": "fentybeauty.com",
+      "title": "Bright Fix Instant Brightening + Blurring Powder — Cinnamon",
+      "canonical_url": "https://fentybeauty.com/products/bright-fix-instant-brightening-blurring-powder-cinnamon",
+      "product_family": "single_formula",
+      "product_line_id": "pl_b78327593a649fb469293fb1",
+      "identity_variant_axes": {
+        "color": "cinnamon",
+        "shade": "cinnamon",
+        "multi_variant": false
+      },
+      "pivota_insights": {
+        "direct": {
+          "product_id": "ext_7c53e5f5c69608226b1fb7ec",
+          "kb_key": "product:ext_7c53e5f5c69608226b1fb7ec",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "official_pdp_reviewed_formula_and_usage",
+          "has_card_highlight": true
+        },
+        "effective": {
+          "product_id": "ext_7c53e5f5c69608226b1fb7ec",
+          "kb_key": "product:ext_7c53e5f5c69608226b1fb7ec",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "official_pdp_reviewed_formula_and_usage",
+          "has_card_highlight": true
+        },
+        "product_line_id": "pl_b78327593a649fb469293fb1",
+        "borrowed_from_sibling": false
+      },
+      "active_ingredients": {
+        "status": "ready_hero",
+        "issues": [],
+        "regulatory_expected": false,
+        "hero_expected": true,
+        "active_items": [
+          "Squalane"
+        ],
+        "source_origin": "pdp_section",
+        "source_quality_status": "captured",
+        "coverage": {
+          "details_sections_count": 6,
+          "faq_count": 0,
+          "how_to_chars": 404,
+          "inci_chars": 372,
+          "active_ingredients_chars": 0,
+          "inci_applicability_status": "",
+          "ingredient_review_status": "",
+          "ingredient_remediation_action": "",
+          "bundle_component_refs_count": 0,
+          "effective_inci_chars": 372,
+          "inci_borrowed_from_product_id": ""
+        },
+        "invalid_fragments": [],
+        "suppressed_reason": null
+      },
+      "variants": {
+        "status": "ready",
+        "issues": [],
+        "visible_variant_rows": 1,
+        "examples": {
+          "identity_option_visible": [],
+          "wrong_axis_for_category": [],
+          "makeup_shade_missing_visual": [],
+          "size_value_generic_axis": [],
+          "default_option_size_evidence_missing_axis": [],
+          "identity_default_title_axis": []
+        }
+      },
+      "coverage": {
+        "details_sections_count": 6,
+        "faq_count": 0,
+        "how_to_chars": 404,
+        "inci_chars": 372,
+        "active_ingredients_chars": 0,
+        "inci_applicability_status": "",
+        "ingredient_review_status": "",
+        "ingredient_remediation_action": "",
+        "bundle_component_refs_count": 0,
+        "effective_inci_chars": 372,
+        "inci_borrowed_from_product_id": ""
+      }
+    },
+    {
+      "seed_id": "eps_c21d0535b58c487ba8c6b9c3",
+      "external_product_id": "ext_653963915647e224ebd70d69",
+      "market": "US",
+      "domain": "fentybeauty.com",
+      "title": "Bright Fix Instant Brightening + Blurring Powder — Rose Quartz",
+      "canonical_url": "https://fentybeauty.com/products/bright-fix-instant-brightening-blurring-powder-rose-quartz",
+      "product_family": "single_formula",
+      "product_line_id": "pl_b78327593a649fb469293fb1",
+      "identity_variant_axes": {
+        "color": "rose quartz",
+        "shade": "rose quartz",
+        "multi_variant": false
+      },
+      "pivota_insights": {
+        "direct": {
+          "product_id": "ext_653963915647e224ebd70d69",
+          "kb_key": "product:ext_653963915647e224ebd70d69",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "official_pdp_reviewed_formula_and_usage",
+          "has_card_highlight": true
+        },
+        "effective": {
+          "product_id": "ext_653963915647e224ebd70d69",
+          "kb_key": "product:ext_653963915647e224ebd70d69",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "official_pdp_reviewed_formula_and_usage",
+          "has_card_highlight": true
+        },
+        "product_line_id": "pl_b78327593a649fb469293fb1",
+        "borrowed_from_sibling": false
+      },
+      "active_ingredients": {
+        "status": "ready_hero",
+        "issues": [],
+        "regulatory_expected": false,
+        "hero_expected": true,
+        "active_items": [
+          "Squalane"
+        ],
+        "source_origin": "pdp_section",
+        "source_quality_status": "captured",
+        "coverage": {
+          "details_sections_count": 6,
+          "faq_count": 0,
+          "how_to_chars": 404,
+          "inci_chars": 457,
+          "active_ingredients_chars": 0,
+          "inci_applicability_status": "",
+          "ingredient_review_status": "",
+          "ingredient_remediation_action": "",
+          "bundle_component_refs_count": 0,
+          "effective_inci_chars": 457,
+          "inci_borrowed_from_product_id": ""
+        },
+        "invalid_fragments": [],
+        "suppressed_reason": null
+      },
+      "variants": {
+        "status": "ready",
+        "issues": [],
+        "visible_variant_rows": 1,
+        "examples": {
+          "identity_option_visible": [],
+          "wrong_axis_for_category": [],
+          "makeup_shade_missing_visual": [],
+          "size_value_generic_axis": [],
+          "default_option_size_evidence_missing_axis": [],
+          "identity_default_title_axis": []
+        }
+      },
+      "coverage": {
+        "details_sections_count": 6,
+        "faq_count": 0,
+        "how_to_chars": 404,
+        "inci_chars": 457,
+        "active_ingredients_chars": 0,
+        "inci_applicability_status": "",
+        "ingredient_review_status": "",
+        "ingredient_remediation_action": "",
+        "bundle_component_refs_count": 0,
+        "effective_inci_chars": 457,
+        "inci_borrowed_from_product_id": ""
+      }
+    }
+  ]
+}

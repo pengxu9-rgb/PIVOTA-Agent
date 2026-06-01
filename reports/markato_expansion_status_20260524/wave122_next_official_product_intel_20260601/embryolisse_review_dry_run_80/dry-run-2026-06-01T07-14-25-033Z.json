@@ -1,0 +1,3970 @@
+{
+  "generated_at": "2026-06-01T07:14:25.033Z",
+  "source": "pivota_insights_official_pdp_manual_review_v1",
+  "mode": "dry_run",
+  "filters": {
+    "brand": "Embryolisse",
+    "product_ids": [],
+    "limit": 80,
+    "include_strong": false,
+    "include_url_key": false,
+    "apply_chunk_size": null
+  },
+  "summary": {
+    "scanned": 65,
+    "changed_products": 0,
+    "blocked_products": 65,
+    "skipped_products": 0,
+    "write_actions": {},
+    "skip_reasons": {
+      "unsupported_brand_for_manual_template": 65
+    },
+    "evidence_profiles": {
+      "official_pdp_reviewed_formula_and_usage": 37,
+      "official_pdp_reviewed_key_ingredients_and_usage": 14,
+      "official_pdp_reviewed_line": 14
+    }
+  },
+  "plans": [
+    {
+      "external_product_id": "ext_3a04dcee79f96ee9570e93f3",
+      "pivota_signature_id": "sig_8e0238c0d30c40da700d06052a7dff77",
+      "title": "3-in-1 Secret Paste",
+      "brand": "EMBRYOLISSE",
+      "canonical_url": "https://us.embryolisse.com/products/3-in-1-secret-paste",
+      "changed": false,
+      "blocked": true,
+      "skip_reason": "unsupported_brand_for_manual_template",
+      "candidate_hash": "3f83b3bf7050c9a8c0bd1da9876a90c9fc64ee6e3517ea471eeaee24fd4c8162",
+      "evidence_profile": "official_pdp_reviewed_formula_and_usage",
+      "source_coverage": {
+        "source": "official_pdp",
+        "canonical_url": "https://us.embryolisse.com/products/3-in-1-secret-paste",
+        "fields": {
+          "description": true,
+          "ingredients": 1,
+          "active_ingredients": 1,
+          "how_to": 1,
+          "details": 3,
+          "variants": 1
+        }
+      },
+      "preview": {
+        "headline": "Fine fragrance",
+        "what_it_is": "3-in-1 Secret Paste is a fine fragrance from EMBRYOLISSE in 3.38 fl oz.",
+        "why_it_stands_out": [
+          {
+            "headline": "Scent profile cues",
+            "body": "Reviewed scent cues such as shine finish, 3.38 fl oz help shoppers compare the fragrance profile without relying on generic scent copy.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Ingredient list is available",
+            "body": "Full INCI is present for formula-sensitive review, which makes this PDP safer to evaluate than a claim-only listing.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Shade and size are explicit",
+            "body": "Variant labels such as 3.38 fl oz, Size: 3.38 fl oz are visible, reducing ambiguity around the product format before a shopper clicks through.",
+            "evidence_strength": "official_pdp_reviewed"
+          }
+        ],
+        "best_for": [
+          {
+            "tag": "fragrance_layering",
+            "label": "fragrance layering",
+            "confidence": "moderate"
+          }
+        ],
+        "shopping_highlight": "shine finish, 3.38 fl oz"
+      },
+      "writes": []
+    },
+    {
+      "external_product_id": "ext_eea510adf58c3c3b5b906b1c",
+      "pivota_signature_id": "sig_52ae60d0609d543c9fb3f3e095991db4",
+      "title": "Active Night Peeling",
+      "brand": "EMBRYOLISSE",
+      "canonical_url": "https://us.embryolisse.com/products/active-night-peeling",
+      "changed": false,
+      "blocked": true,
+      "skip_reason": "unsupported_brand_for_manual_template",
+      "candidate_hash": "4ea82fac2dad308ee42bafba5a11c8e7a481223431a45b4883d4a816f64a0b4a",
+      "evidence_profile": "official_pdp_reviewed_key_ingredients_and_usage",
+      "source_coverage": {
+        "source": "official_pdp",
+        "canonical_url": "https://us.embryolisse.com/products/active-night-peeling",
+        "fields": {
+          "description": true,
+          "ingredients": 0,
+          "active_ingredients": 1,
+          "how_to": 1,
+          "details": 3,
+          "variants": 1
+        }
+      },
+      "preview": {
+        "headline": "Fine fragrance",
+        "what_it_is": "Active Night Peeling is a fine fragrance from EMBRYOLISSE in 1.35 fl oz, with source-backed scent cues including citrus.",
+        "why_it_stands_out": [
+          {
+            "headline": "Scent profile cues",
+            "body": "Reviewed scent cues such as citrus, shea butter, 1.35 fl oz help shoppers compare the fragrance profile without relying on generic scent copy.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Key ingredients are identified",
+            "body": "Lemon caviar extract is identified, enough for a cautious high-level formula read without inventing unsupported actives.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Shade and size are explicit",
+            "body": "Variant labels such as 1.35 fl oz, Size: 1.35 fl oz are visible, reducing ambiguity around the product format before a shopper clicks through.",
+            "evidence_strength": "official_pdp_reviewed"
+          }
+        ],
+        "best_for": [
+          {
+            "tag": "fresh_citrus_profiles",
+            "label": "fresh citrus profiles",
+            "confidence": "moderate"
+          }
+        ],
+        "shopping_highlight": "citrus, shea butter, 1.35 fl oz"
+      },
+      "writes": []
+    },
+    {
+      "external_product_id": "ext_fcf56da89f53b3a37076606a",
+      "pivota_signature_id": "sig_65da9fae882cf73376f4bb445c738880",
+      "title": "AM/PM routine",
+      "brand": "EMBRYOLISSE",
+      "canonical_url": "https://us.embryolisse.com/products/ampm-routine",
+      "changed": false,
+      "blocked": true,
+      "skip_reason": "unsupported_brand_for_manual_template",
+      "candidate_hash": "483ba33820b7709468251b77fdeefee57d1bdc225d1a619872568e4bb59b4075",
+      "evidence_profile": "official_pdp_reviewed_line",
+      "source_coverage": {
+        "source": "official_pdp",
+        "canonical_url": "https://us.embryolisse.com/products/ampm-routine",
+        "fields": {
+          "description": true,
+          "ingredients": 0,
+          "active_ingredients": 0,
+          "how_to": 1,
+          "details": 0,
+          "variants": 1
+        }
+      },
+      "preview": {
+        "headline": "Face moisturizer",
+        "what_it_is": "AM/PM routine is a face moisturizer from EMBRYOLISSE, with source-backed cues around hydration.",
+        "why_it_stands_out": [
+          {
+            "headline": "Routine step cues are specific",
+            "body": "Reviewed skincare cues such as hydration identify the routine role or key ingredient context without inventing unsupported benefits.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Usage instructions available",
+            "body": "Reviewed usage context is present, including: Apply to clean skin after treatment steps.",
+            "evidence_strength": "official_pdp_reviewed"
+          }
+        ],
+        "best_for": [
+          {
+            "tag": "hydration",
+            "label": "hydration",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "radiance",
+            "label": "radiance",
+            "confidence": "moderate"
+          }
+        ],
+        "shopping_highlight": "hydration"
+      },
+      "writes": []
+    },
+    {
+      "external_product_id": "ext_565bec2c67aab760ba7271a8",
+      "pivota_signature_id": "sig_4e9439543813a108775d4494c53e25f4",
+      "title": "Anti-Age Comfort Mask - Face Anti-Aging Mask",
+      "brand": "EMBRYOLISSE",
+      "canonical_url": "https://us.embryolisse.com/products/anti-age-comfort-mask-face-anti-aging-mask",
+      "changed": false,
+      "blocked": true,
+      "skip_reason": "unsupported_brand_for_manual_template",
+      "candidate_hash": "471a35c2b5acf8c0abe87b748ec3a6d5cd8b47f9b93d5b05fe7dc1ef3d004c2f",
+      "evidence_profile": "official_pdp_reviewed_formula_and_usage",
+      "source_coverage": {
+        "source": "official_pdp",
+        "canonical_url": "https://us.embryolisse.com/products/anti-age-comfort-mask-face-anti-aging-mask",
+        "fields": {
+          "description": true,
+          "ingredients": 1,
+          "active_ingredients": 1,
+          "how_to": 1,
+          "details": 3,
+          "variants": 1
+        }
+      },
+      "preview": {
+        "headline": "Treatment mask",
+        "what_it_is": "Anti-Age Comfort Mask - Face Anti-Aging Mask is a treatment mask from EMBRYOLISSE in 2.03 fl oz, with source-backed cues around hydration.",
+        "why_it_stands_out": [
+          {
+            "headline": "Product cues are source-backed",
+            "body": "Reviewed PDP cues such as hyaluronic acid, shea butter, 2.03 fl oz give shoppers specific comparison points within EMBRYOLISSE, rather than category-only copy.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Ingredient list is available",
+            "body": "Full INCI is present for formula-sensitive review, which makes this PDP safer to evaluate than a claim-only listing.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Shade and size are explicit",
+            "body": "Variant labels such as 2.03 fl oz, Size: 2.03 fl oz are visible, reducing ambiguity around the product format before a shopper clicks through.",
+            "evidence_strength": "official_pdp_reviewed"
+          }
+        ],
+        "best_for": [
+          {
+            "tag": "hyaluronic_acid",
+            "label": "hyaluronic acid",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "shea_butter",
+            "label": "shea butter",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "2_03_fl_oz",
+            "label": "2.03 fl oz",
+            "confidence": "moderate"
+          }
+        ],
+        "shopping_highlight": "hyaluronic acid, shea butter, 2.03 fl oz"
+      },
+      "writes": []
+    },
+    {
+      "external_product_id": "ext_9890f6a4d6419f0f30fdf2db",
+      "pivota_signature_id": "sig_6367543dc684ec3e94109fbfd8e9a47e",
+      "title": "Anti-Aging Trio",
+      "brand": "EMBRYOLISSE",
+      "canonical_url": "https://us.embryolisse.com/products/anti-aging-trio",
+      "changed": false,
+      "blocked": true,
+      "skip_reason": "unsupported_brand_for_manual_template",
+      "candidate_hash": "56b99bdd9c9379d8a071e3b9423bac1a64b512f0d449fa068fd6bf19d5b9d02c",
+      "evidence_profile": "official_pdp_reviewed_line",
+      "source_coverage": {
+        "source": "official_pdp",
+        "canonical_url": "https://us.embryolisse.com/products/anti-aging-trio",
+        "fields": {
+          "description": true,
+          "ingredients": 0,
+          "active_ingredients": 0,
+          "how_to": 1,
+          "details": 0,
+          "variants": 1
+        }
+      },
+      "preview": {
+        "headline": "Skincare set",
+        "what_it_is": "Anti-Aging Trio is a skincare set from EMBRYOLISSE in Trio.",
+        "why_it_stands_out": [
+          {
+            "headline": "Routine step cues are specific",
+            "body": "Reviewed skincare cues such as Trio identify the routine role or key ingredient context without inventing unsupported benefits.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Shade and size are explicit",
+            "body": "Variant labels such as Trio, Format: Trio are visible, reducing ambiguity around the product format before a shopper clicks through.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Usage instructions available",
+            "body": "Reviewed usage context is present, including: Apply a small amount after cleansing and toning, before moisturizer.",
+            "evidence_strength": "official_pdp_reviewed"
+          }
+        ],
+        "best_for": [
+          {
+            "tag": "firmness",
+            "label": "firmness",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "radiance",
+            "label": "radiance",
+            "confidence": "moderate"
+          }
+        ],
+        "shopping_highlight": "Skincare routine set"
+      },
+      "writes": []
+    },
+    {
+      "external_product_id": "ext_960f6e9f78e9dd1b43256ba5",
+      "pivota_signature_id": "sig_9d658b3ad88ba0b193080619a3900301",
+      "title": "Anti-Blemish Routine",
+      "brand": "EMBRYOLISSE",
+      "canonical_url": "https://us.embryolisse.com/products/anti-blemish-routine",
+      "changed": false,
+      "blocked": true,
+      "skip_reason": "unsupported_brand_for_manual_template",
+      "candidate_hash": "8dea82abacd662cbad5c376bd7fa298dbf462238ef01b85fbeda82d7171fa5ea",
+      "evidence_profile": "official_pdp_reviewed_key_ingredients_and_usage",
+      "source_coverage": {
+        "source": "official_pdp",
+        "canonical_url": "https://us.embryolisse.com/products/anti-blemish-routine",
+        "fields": {
+          "description": true,
+          "ingredients": 0,
+          "active_ingredients": 2,
+          "how_to": 1,
+          "details": 1,
+          "variants": 1
+        }
+      },
+      "preview": {
+        "headline": "Skincare set",
+        "what_it_is": "Anti-Blemish Routine is a skincare set from EMBRYOLISSE, with source-backed cues around cleansing and hydration.",
+        "why_it_stands_out": [
+          {
+            "headline": "Routine step cues are specific",
+            "body": "Reviewed skincare cues such as hydration, barrier support identify the routine role or key ingredient context without inventing unsupported benefits.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Key ingredients are identified",
+            "body": "Glycerin, Squalane are identified, enough for a cautious high-level formula read without inventing unsupported actives.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Usage instructions available",
+            "body": "Reviewed usage context is present, including: Massage onto damp skin, then rinse thoroughly.",
+            "evidence_strength": "official_pdp_reviewed"
+          }
+        ],
+        "best_for": [
+          {
+            "tag": "hydration",
+            "label": "hydration",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "barrier_support",
+            "label": "barrier support",
+            "confidence": "moderate"
+          }
+        ],
+        "shopping_highlight": "Skincare routine set"
+      },
+      "writes": []
+    },
+    {
+      "external_product_id": "ext_af50b9fc91fabe08ab67a7b4",
+      "pivota_signature_id": "sig_0f53f5abac7863b6eb2affef09129b5f",
+      "title": "Anti-Blemish Serum",
+      "brand": "EMBRYOLISSE",
+      "canonical_url": "https://us.embryolisse.com/products/anti-blemish-serum",
+      "changed": false,
+      "blocked": true,
+      "skip_reason": "unsupported_brand_for_manual_template",
+      "candidate_hash": "9a3e40dd0b6c5f1b7364b4c766c409fdc30edbed1a74d02bb610a6ec6fa3e0fb",
+      "evidence_profile": "official_pdp_reviewed_formula_and_usage",
+      "source_coverage": {
+        "source": "official_pdp",
+        "canonical_url": "https://us.embryolisse.com/products/anti-blemish-serum",
+        "fields": {
+          "description": true,
+          "ingredients": 1,
+          "active_ingredients": 1,
+          "how_to": 1,
+          "details": 3,
+          "variants": 1
+        }
+      },
+      "preview": {
+        "headline": "Treatment serum",
+        "what_it_is": "Anti-Blemish Serum is a treatment serum from EMBRYOLISSE in 1.01 fl oz.",
+        "why_it_stands_out": [
+          {
+            "headline": "Routine step cues are specific",
+            "body": "Reviewed skincare cues such as 1.01 fl oz identify the routine role or key ingredient context without inventing unsupported benefits.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Ingredient list is available",
+            "body": "Full INCI is present for formula-sensitive review, which makes this PDP safer to evaluate than a claim-only listing.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Shade and size are explicit",
+            "body": "Variant labels such as 1.01 fl oz, Size: 1.01 fl oz are visible, reducing ambiguity around the product format before a shopper clicks through.",
+            "evidence_strength": "official_pdp_reviewed"
+          }
+        ],
+        "best_for": [
+          {
+            "tag": "body_routine",
+            "label": "body routine",
+            "confidence": "moderate"
+          }
+        ],
+        "shopping_highlight": "1.01 fl oz, full INCI available"
+      },
+      "writes": []
+    },
+    {
+      "external_product_id": "ext_cb6400b313356219c6ec83a4",
+      "pivota_signature_id": "sig_284b2cfb021881bb36f393bdf96c2371",
+      "title": "Beauty Oil",
+      "brand": "EMBRYOLISSE",
+      "canonical_url": "https://us.embryolisse.com/products/beauty-oil",
+      "changed": false,
+      "blocked": true,
+      "skip_reason": "unsupported_brand_for_manual_template",
+      "candidate_hash": "716f9eabc82e8b669df7beb2e73f002dd06dfb752ade2579e8cd5bc2cd967ec1",
+      "evidence_profile": "official_pdp_reviewed_key_ingredients_and_usage",
+      "source_coverage": {
+        "source": "official_pdp",
+        "canonical_url": "https://us.embryolisse.com/products/beauty-oil",
+        "fields": {
+          "description": true,
+          "ingredients": 0,
+          "active_ingredients": 1,
+          "how_to": 1,
+          "details": 3,
+          "variants": 1
+        }
+      },
+      "preview": {
+        "headline": "Face oil",
+        "what_it_is": "Beauty Oil is a face oil from EMBRYOLISSE in 3.38 fl oz, with source-backed cues around hydration.",
+        "why_it_stands_out": [
+          {
+            "headline": "Routine step cues are specific",
+            "body": "Reviewed skincare cues such as hydration, barrier support, 3.38 fl oz identify the routine role or key ingredient context without inventing unsupported benefits.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Key ingredients are identified",
+            "body": "Apricot oil is identified, enough for a cautious high-level formula read without inventing unsupported actives.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Shade and size are explicit",
+            "body": "Variant labels such as 3.38 fl oz, Size: 3.38 fl oz are visible, reducing ambiguity around the product format before a shopper clicks through.",
+            "evidence_strength": "official_pdp_reviewed"
+          }
+        ],
+        "best_for": [
+          {
+            "tag": "hydration",
+            "label": "hydration",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "firmness",
+            "label": "firmness",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "radiance",
+            "label": "radiance",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "barrier_support",
+            "label": "barrier support",
+            "confidence": "moderate"
+          }
+        ],
+        "shopping_highlight": "hydration, barrier support, 3.38 fl oz"
+      },
+      "writes": []
+    },
+    {
+      "external_product_id": "ext_2166989c86cdafc0619894e2",
+      "pivota_signature_id": "sig_6d4de7647096f0d1986aa89f99b329fd",
+      "title": "Camera Ready Set",
+      "brand": "EMBRYOLISSE",
+      "canonical_url": "https://us.embryolisse.com/products/camera-ready-set",
+      "changed": false,
+      "blocked": true,
+      "skip_reason": "unsupported_brand_for_manual_template",
+      "candidate_hash": "f55796b43db549bdac5199f882606babb70c447d2dd0177d718b310437bd1dc0",
+      "evidence_profile": "official_pdp_reviewed_key_ingredients_and_usage",
+      "source_coverage": {
+        "source": "official_pdp",
+        "canonical_url": "https://us.embryolisse.com/products/camera-ready-set",
+        "fields": {
+          "description": true,
+          "ingredients": 0,
+          "active_ingredients": 1,
+          "how_to": 1,
+          "details": 3,
+          "variants": 1
+        }
+      },
+      "preview": {
+        "headline": "Exfoliating toner",
+        "what_it_is": "Camera Ready Set is an exfoliating toner from EMBRYOLISSE in Set, with source-backed cues around cleansing, toning, hydration and brightening support.",
+        "why_it_stands_out": [
+          {
+            "headline": "Routine step cues are specific",
+            "body": "Reviewed skincare cues such as AHA exfoliation, aloe juice, toning step, hydration identify the routine role or key ingredient context without inventing unsupported benefits.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Key ingredients are identified",
+            "body": "EAUT DE BEAUTÉ ROSAMÉLIS Organic rose and cornflower waters is identified, enough for a cautious high-level formula read without inventing unsupported actives.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Shade and size are explicit",
+            "body": "Variant labels such as Set, Format: Set are visible, reducing ambiguity around the product format before a shopper clicks through.",
+            "evidence_strength": "official_pdp_reviewed"
+          }
+        ],
+        "best_for": [
+          {
+            "tag": "exfoliating_toner_step",
+            "label": "exfoliating toner step",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "hydration",
+            "label": "hydration",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "radiance",
+            "label": "radiance",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "barrier_support",
+            "label": "barrier support",
+            "confidence": "moderate"
+          }
+        ],
+        "shopping_highlight": "AHA exfoliation, aloe juice, toning step"
+      },
+      "writes": []
+    },
+    {
+      "external_product_id": "ext_5e2a19baf6e9780ad5e8ff66",
+      "pivota_signature_id": "sig_54c747a1d4025bf49bfb2c0028225eb8",
+      "title": "Carry-on Lait-Crème Set",
+      "brand": "EMBRYOLISSE",
+      "canonical_url": "https://us.embryolisse.com/products/carry-on-lait-creme-set",
+      "changed": false,
+      "blocked": true,
+      "skip_reason": "unsupported_brand_for_manual_template",
+      "candidate_hash": "82a140c6a43641efc72355e33708144776c4702c7b5755d16eff7cd0a4124f7a",
+      "evidence_profile": "official_pdp_reviewed_line",
+      "source_coverage": {
+        "source": "official_pdp",
+        "canonical_url": "https://us.embryolisse.com/products/carry-on-lait-creme-set",
+        "fields": {
+          "description": true,
+          "ingredients": 0,
+          "active_ingredients": 0,
+          "how_to": 1,
+          "details": 0,
+          "variants": 1
+        }
+      },
+      "preview": {
+        "headline": "Face cleanser",
+        "what_it_is": "Carry-on Lait-Crème Set is a face cleanser from EMBRYOLISSE in Set, with source-backed cues around makeup removal.",
+        "why_it_stands_out": [
+          {
+            "headline": "Product cues are source-backed",
+            "body": "Reviewed PDP cues such as makeup removal, Set give shoppers specific comparison points within EMBRYOLISSE, rather than category-only copy.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Shade and size are explicit",
+            "body": "Variant labels such as Set, Format: Set are visible, reducing ambiguity around the product format before a shopper clicks through.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Usage instructions available",
+            "body": "Reviewed usage context is present, including: Apply to clean skin after treatment steps.",
+            "evidence_strength": "official_pdp_reviewed"
+          }
+        ],
+        "best_for": [
+          {
+            "tag": "makeup_removal",
+            "label": "makeup removal",
+            "confidence": "moderate"
+          }
+        ],
+        "shopping_highlight": "makeup removal, Set"
+      },
+      "writes": []
+    },
+    {
+      "external_product_id": "ext_4df267da6c48f581bf6ff5f4",
+      "pivota_signature_id": "sig_c194ad8eb7bd10576526bc4387d11804",
+      "title": "Cicalisse Hands and Nails",
+      "brand": "EMBRYOLISSE",
+      "canonical_url": "https://us.embryolisse.com/products/cicalisse-hands-and-nails",
+      "changed": false,
+      "blocked": true,
+      "skip_reason": "unsupported_brand_for_manual_template",
+      "candidate_hash": "b38a091237952b21f5d6f3f4a24300dd849b247d9783a9ba2d5b300858b4e9ef",
+      "evidence_profile": "official_pdp_reviewed_formula_and_usage",
+      "source_coverage": {
+        "source": "official_pdp",
+        "canonical_url": "https://us.embryolisse.com/products/cicalisse-hands-and-nails",
+        "fields": {
+          "description": true,
+          "ingredients": 1,
+          "active_ingredients": 1,
+          "how_to": 1,
+          "details": 3,
+          "variants": 1
+        }
+      },
+      "preview": {
+        "headline": "Fine fragrance",
+        "what_it_is": "Cicalisse Hands and Nails is a fine fragrance from EMBRYOLISSE in 1.01 fl oz.",
+        "why_it_stands_out": [
+          {
+            "headline": "Scent profile cues",
+            "body": "Reviewed scent cues such as shea butter, 1.01 fl oz help shoppers compare the fragrance profile without relying on generic scent copy.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Ingredient list is available",
+            "body": "Full INCI is present for formula-sensitive review, which makes this PDP safer to evaluate than a claim-only listing.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Shade and size are explicit",
+            "body": "Variant labels such as 1.01 fl oz, Size: 1.01 fl oz are visible, reducing ambiguity around the product format before a shopper clicks through.",
+            "evidence_strength": "official_pdp_reviewed"
+          }
+        ],
+        "best_for": [
+          {
+            "tag": "fragrance_layering",
+            "label": "fragrance layering",
+            "confidence": "moderate"
+          }
+        ],
+        "shopping_highlight": "shea butter, 1.01 fl oz"
+      },
+      "writes": []
+    },
+    {
+      "external_product_id": "ext_0ca9028735950c69f7efb2ce",
+      "pivota_signature_id": "sig_83e8cfc4c3efa7c30704f42458096ecc",
+      "title": "Cicalisse Protective Skin & Hand Care Set",
+      "brand": "EMBRYOLISSE",
+      "canonical_url": "https://us.embryolisse.com/products/cicalisse-skin-hands-set",
+      "changed": false,
+      "blocked": true,
+      "skip_reason": "unsupported_brand_for_manual_template",
+      "candidate_hash": "047b5bb0869784dd7be3fc73a7434be0bae32bc749af307a11c2d420f43c445c",
+      "evidence_profile": "official_pdp_reviewed_key_ingredients_and_usage",
+      "source_coverage": {
+        "source": "official_pdp",
+        "canonical_url": "https://us.embryolisse.com/products/cicalisse-skin-hands-set",
+        "fields": {
+          "description": true,
+          "ingredients": 0,
+          "active_ingredients": 1,
+          "how_to": 1,
+          "details": 3,
+          "variants": 1
+        }
+      },
+      "preview": {
+        "headline": "Skincare set",
+        "what_it_is": "Cicalisse Protective Skin & Hand Care Set is a skincare set from EMBRYOLISSE in Set, with source-backed cues around hydration.",
+        "why_it_stands_out": [
+          {
+            "headline": "Routine step cues are specific",
+            "body": "Reviewed skincare cues such as barrier support, Set identify the routine role or key ingredient context without inventing unsupported benefits.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Key ingredients are identified",
+            "body": "Glycerin is identified, enough for a cautious high-level formula read without inventing unsupported actives.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Shade and size are explicit",
+            "body": "Variant labels such as Set, Format: Set are visible, reducing ambiguity around the product format before a shopper clicks through.",
+            "evidence_strength": "official_pdp_reviewed"
+          }
+        ],
+        "best_for": [
+          {
+            "tag": "barrier_support",
+            "label": "barrier support",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "body_routine",
+            "label": "body routine",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "aromatherapy",
+            "label": "aromatherapy",
+            "confidence": "moderate"
+          }
+        ],
+        "shopping_highlight": "Skincare routine set"
+      },
+      "writes": []
+    },
+    {
+      "external_product_id": "ext_1f01309541611d783b7fd63c",
+      "pivota_signature_id": "sig_01965af1a295d4ac533e097afa8506b6",
+      "title": "Cicalisse - Restorative & Protective skin Cream - Face, Body, Lip",
+      "brand": "EMBRYOLISSE",
+      "canonical_url": "https://us.embryolisse.com/products/cicalisse-restorative-protective-skin-cream-face-body-lip",
+      "changed": false,
+      "blocked": true,
+      "skip_reason": "unsupported_brand_for_manual_template",
+      "candidate_hash": "a8c1e2068ad30c9b4646ad39a42d507db934986597b896aa536280cd9a4b4ee0",
+      "evidence_profile": "official_pdp_reviewed_formula_and_usage",
+      "source_coverage": {
+        "source": "official_pdp",
+        "canonical_url": "https://us.embryolisse.com/products/cicalisse-restorative-protective-skin-cream-face-body-lip",
+        "fields": {
+          "description": true,
+          "ingredients": 1,
+          "active_ingredients": 1,
+          "how_to": 1,
+          "details": 3,
+          "variants": 1
+        }
+      },
+      "preview": {
+        "headline": "Body care treatment",
+        "what_it_is": "Cicalisse - Restorative & Protective skin Cream - Face, Body, Lip is a lip set from EMBRYOLISSE built around Cicalisse - Restorative + Protective skin Cream - Face, Body,.",
+        "why_it_stands_out": [
+          {
+            "headline": "Component pairing is clear",
+            "body": "The PDP identifies the paired components as Cicalisse - Restorative and Protective skin Cream - Face, Body, Lip, so a shopper can tell whether this is liner-plus-color, gloss-plus-liner, or a fuller lip set before leaving the page.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Application order is explicit",
+            "body": "The reviewed directions explain the sequence: Apply Cicalisse Restorative & Protective Skin Cream to clean, dry skin on the face, body, or lips as often as needed.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Ingredient list is available",
+            "body": "Full INCI is present for formula-sensitive review, which makes this PDP safer to evaluate than a claim-only listing.",
+            "evidence_strength": "official_pdp_reviewed"
+          }
+        ],
+        "best_for": [
+          {
+            "tag": "barrier_support",
+            "label": "barrier support",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "body_routine",
+            "label": "body routine",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "aromatherapy",
+            "label": "aromatherapy",
+            "confidence": "moderate"
+          }
+        ],
+        "shopping_highlight": "Cicalisse - Restorative + Protective skin Cream - Face, Body,"
+      },
+      "writes": []
+    },
+    {
+      "external_product_id": "ext_d958447ab530ef57a92b5095",
+      "pivota_signature_id": "sig_8d8a89fe27cdc64c6b347008c62edaa4",
+      "title": "Color Balm 3-in-1 Stick - Mocha",
+      "brand": "EMBRYOLISSE",
+      "canonical_url": "https://us.embryolisse.com/products/color-balm-3-in-1-stick-mocha",
+      "changed": false,
+      "blocked": true,
+      "skip_reason": "unsupported_brand_for_manual_template",
+      "candidate_hash": "584207e901ba6b2e0a30d82da7fa28135e153401f99149d7e34886200558fcdb",
+      "evidence_profile": "official_pdp_reviewed_formula_and_usage",
+      "source_coverage": {
+        "source": "official_pdp",
+        "canonical_url": "https://us.embryolisse.com/products/color-balm-3-in-1-stick-mocha",
+        "fields": {
+          "description": true,
+          "ingredients": 1,
+          "active_ingredients": 1,
+          "how_to": 1,
+          "details": 3,
+          "variants": 1
+        }
+      },
+      "preview": {
+        "headline": "Face color makeup",
+        "what_it_is": "Color Balm 3-in-1 Stick - Mocha is a face color product from EMBRYOLISSE, with source-backed cues around a cream-powder texture.",
+        "why_it_stands_out": [
+          {
+            "headline": "Color payoff cues are specific",
+            "body": "Reviewed color cues such as cream-powder texture, shade range, 0.088 oz help shoppers compare shade, finish, or texture instead of seeing a generic blush/bronzer/highlighter card.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Ingredient list is available",
+            "body": "Full INCI is present for formula-sensitive review, which makes this PDP safer to evaluate than a claim-only listing.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Shade and size are explicit",
+            "body": "Variant labels such as 0.088 oz, Size: 0.088 oz are visible, reducing ambiguity around the product format before a shopper clicks through.",
+            "evidence_strength": "official_pdp_reviewed"
+          }
+        ],
+        "best_for": [
+          {
+            "tag": "base_makeup_prep",
+            "label": "base makeup prep",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "complexion_coverage",
+            "label": "complexion coverage",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "soft_focus_finish",
+            "label": "soft-focus finish",
+            "confidence": "moderate"
+          }
+        ],
+        "shopping_highlight": "cream-powder texture, shade range"
+      },
+      "writes": []
+    },
+    {
+      "external_product_id": "ext_dfa3f8b63d8bfcf91e7617fd",
+      "pivota_signature_id": "sig_488a5b0c6341b0964fc8277c5d8cb38a",
+      "title": "Complete Serum",
+      "brand": "EMBRYOLISSE",
+      "canonical_url": "https://us.embryolisse.com/products/complete-serum",
+      "changed": false,
+      "blocked": true,
+      "skip_reason": "unsupported_brand_for_manual_template",
+      "candidate_hash": "66da040e91958975b39ed96d03b606ebc3036c70c2c901ff2cb7584eefc29f9b",
+      "evidence_profile": "official_pdp_reviewed_formula_and_usage",
+      "source_coverage": {
+        "source": "official_pdp",
+        "canonical_url": "https://us.embryolisse.com/products/complete-serum",
+        "fields": {
+          "description": true,
+          "ingredients": 1,
+          "active_ingredients": 1,
+          "how_to": 1,
+          "details": 3,
+          "variants": 1
+        }
+      },
+      "preview": {
+        "headline": "Treatment serum",
+        "what_it_is": "Complete Serum is a treatment serum from EMBRYOLISSE in 1.01 fl oz.",
+        "why_it_stands_out": [
+          {
+            "headline": "Routine step cues are specific",
+            "body": "Reviewed skincare cues such as hydration, 1.01 fl oz identify the routine role or key ingredient context without inventing unsupported benefits.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Ingredient list is available",
+            "body": "Full INCI is present for formula-sensitive review, which makes this PDP safer to evaluate than a claim-only listing.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Shade and size are explicit",
+            "body": "Variant labels such as 1.01 fl oz, Size: 1.01 fl oz are visible, reducing ambiguity around the product format before a shopper clicks through.",
+            "evidence_strength": "official_pdp_reviewed"
+          }
+        ],
+        "best_for": [
+          {
+            "tag": "hydration",
+            "label": "hydration",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "firmness",
+            "label": "firmness",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "radiance",
+            "label": "radiance",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "aromatherapy",
+            "label": "aromatherapy",
+            "confidence": "moderate"
+          }
+        ],
+        "shopping_highlight": "hydration, 1.01 fl oz"
+      },
+      "writes": []
+    },
+    {
+      "external_product_id": "ext_45a2a1a31ebedbf20212a92a",
+      "pivota_signature_id": "sig_2c4e71911d2d0754eb26d7268bef8fee",
+      "title": "Concealer Correcting Care - Beige",
+      "brand": "EMBRYOLISSE",
+      "canonical_url": "https://us.embryolisse.com/products/concealer-correcting-care-beige-for-all-skin-types",
+      "changed": false,
+      "blocked": true,
+      "skip_reason": "unsupported_brand_for_manual_template",
+      "candidate_hash": "2ba91aa0724da1ffec168f886cb1fcc764157525d7738adbdf00564105bb7d1d",
+      "evidence_profile": "official_pdp_reviewed_formula_and_usage",
+      "source_coverage": {
+        "source": "official_pdp",
+        "canonical_url": "https://us.embryolisse.com/products/concealer-correcting-care-beige-for-all-skin-types",
+        "fields": {
+          "description": true,
+          "ingredients": 1,
+          "active_ingredients": 1,
+          "how_to": 1,
+          "details": 3,
+          "variants": 1
+        }
+      },
+      "preview": {
+        "headline": "Complexion makeup",
+        "what_it_is": "Concealer Correcting Care - Beige is a concealer from EMBRYOLISSE in 0.27 fl oz, with source-backed cues around a soft-matte finish and coverage control.",
+        "why_it_stands_out": [
+          {
+            "headline": "Coverage and finish cues are clear",
+            "body": "Reviewed complexion cues such as soft-matte finish, coverage control, shade range, 0.27 fl oz support a more precise read on coverage, finish, or shade fit.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Ingredient list is available",
+            "body": "Full INCI is present for formula-sensitive review, which makes this PDP safer to evaluate than a claim-only listing.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Shade and size are explicit",
+            "body": "Variant labels such as 0.27 fl oz, Size: 0.27 fl oz are visible, reducing ambiguity around the product format before a shopper clicks through.",
+            "evidence_strength": "official_pdp_reviewed"
+          }
+        ],
+        "best_for": [
+          {
+            "tag": "complexion_coverage",
+            "label": "complexion coverage",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "soft_focus_finish",
+            "label": "soft-focus finish",
+            "confidence": "moderate"
+          }
+        ],
+        "shopping_highlight": "soft-matte finish, coverage control"
+      },
+      "writes": []
+    },
+    {
+      "external_product_id": "ext_507dd4a259ded3578535d423",
+      "pivota_signature_id": "sig_b4a21cb2ce429d4b298292581e46fbe7",
+      "title": "Concealer Correcting Care - Pink",
+      "brand": "EMBRYOLISSE",
+      "canonical_url": "https://us.embryolisse.com/products/concealer-correcting-care-pink-for-all-skin-types",
+      "changed": false,
+      "blocked": true,
+      "skip_reason": "unsupported_brand_for_manual_template",
+      "candidate_hash": "f151bdbd8c0679715cb38acc20ca392ce4af9672a41b56dd9411c8880c975a63",
+      "evidence_profile": "official_pdp_reviewed_formula_and_usage",
+      "source_coverage": {
+        "source": "official_pdp",
+        "canonical_url": "https://us.embryolisse.com/products/concealer-correcting-care-pink-for-all-skin-types",
+        "fields": {
+          "description": true,
+          "ingredients": 1,
+          "active_ingredients": 1,
+          "how_to": 1,
+          "details": 3,
+          "variants": 1
+        }
+      },
+      "preview": {
+        "headline": "Complexion makeup",
+        "what_it_is": "Concealer Correcting Care - Pink is a concealer from EMBRYOLISSE in 0.27 fl oz, with source-backed cues around a soft-matte finish and coverage control.",
+        "why_it_stands_out": [
+          {
+            "headline": "Coverage and finish cues are clear",
+            "body": "Reviewed complexion cues such as soft-matte finish, coverage control, shade range, 0.27 fl oz support a more precise read on coverage, finish, or shade fit.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Ingredient list is available",
+            "body": "Full INCI is present for formula-sensitive review, which makes this PDP safer to evaluate than a claim-only listing.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Shade and size are explicit",
+            "body": "Variant labels such as 0.27 fl oz, Size: 0.27 fl oz are visible, reducing ambiguity around the product format before a shopper clicks through.",
+            "evidence_strength": "official_pdp_reviewed"
+          }
+        ],
+        "best_for": [
+          {
+            "tag": "complexion_coverage",
+            "label": "complexion coverage",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "soft_focus_finish",
+            "label": "soft-focus finish",
+            "confidence": "moderate"
+          }
+        ],
+        "shopping_highlight": "soft-matte finish, coverage control"
+      },
+      "writes": []
+    },
+    {
+      "external_product_id": "ext_c1500b3f3dc2f472066a861c",
+      "pivota_signature_id": "sig_f9ed367cdc37c64f0550ea10067e7261",
+      "title": "Cult Fragrance-Free Skincare Routine",
+      "brand": "EMBRYOLISSE",
+      "canonical_url": "https://us.embryolisse.com/products/natural-beauty-set",
+      "changed": false,
+      "blocked": true,
+      "skip_reason": "unsupported_brand_for_manual_template",
+      "candidate_hash": "c41b97b6d9fc7a75469bca4c9e393aada439a5e0295e6e0daf64e0cb5669df4d",
+      "evidence_profile": "official_pdp_reviewed_line",
+      "source_coverage": {
+        "source": "official_pdp",
+        "canonical_url": "https://us.embryolisse.com/products/natural-beauty-set",
+        "fields": {
+          "description": true,
+          "ingredients": 0,
+          "active_ingredients": 0,
+          "how_to": 1,
+          "details": 0,
+          "variants": 1
+        }
+      },
+      "preview": {
+        "headline": "Fine fragrance",
+        "what_it_is": "Cult Fragrance-Free Skincare Routine is a fine fragrance from EMBRYOLISSE in Single bottle.",
+        "why_it_stands_out": [
+          {
+            "headline": "Scent profile cues",
+            "body": "Reviewed scent cues such as Single bottle help shoppers compare the fragrance profile without relying on generic scent copy.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Shade and size are explicit",
+            "body": "Variant labels such as Single bottle, Format: Single bottle are visible, reducing ambiguity around the product format before a shopper clicks through.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Usage instructions available",
+            "body": "Reviewed usage context is present, including: Apply a small amount after cleansing and toning, before moisturizer.",
+            "evidence_strength": "official_pdp_reviewed"
+          }
+        ],
+        "best_for": [
+          {
+            "tag": "single_bottle",
+            "label": "Single bottle",
+            "confidence": "moderate"
+          }
+        ],
+        "shopping_highlight": "Single bottle"
+      },
+      "writes": []
+    },
+    {
+      "external_product_id": "ext_cfb6caddad727d248ae46950",
+      "pivota_signature_id": "sig_93f48e15bac49cf42725a1070d3a6768",
+      "title": "Cult Skincare Routine",
+      "brand": "EMBRYOLISSE",
+      "canonical_url": "https://us.embryolisse.com/products/cult-skincare-routine",
+      "changed": false,
+      "blocked": true,
+      "skip_reason": "unsupported_brand_for_manual_template",
+      "candidate_hash": "f4af2d71b205a403e53b4bde366db426b259bbb8c60bf2bf450c571da30aceb6",
+      "evidence_profile": "official_pdp_reviewed_line",
+      "source_coverage": {
+        "source": "official_pdp",
+        "canonical_url": "https://us.embryolisse.com/products/cult-skincare-routine",
+        "fields": {
+          "description": true,
+          "ingredients": 0,
+          "active_ingredients": 0,
+          "how_to": 1,
+          "details": 0,
+          "variants": 1
+        }
+      },
+      "preview": {
+        "headline": "Skincare set",
+        "what_it_is": "Cult Skincare Routine is a skincare set from EMBRYOLISSE, with source-backed cues around cleansing and hydration.",
+        "why_it_stands_out": [
+          {
+            "headline": "Routine step cues are specific",
+            "body": "Reviewed skincare cues such as aloe juice identify the routine role or key ingredient context without inventing unsupported benefits.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Usage instructions available",
+            "body": "Reviewed usage context is present, including: Massage onto damp skin, then rinse thoroughly.",
+            "evidence_strength": "official_pdp_reviewed"
+          }
+        ],
+        "best_for": [
+          {
+            "tag": "aromatherapy",
+            "label": "aromatherapy",
+            "confidence": "moderate"
+          }
+        ],
+        "shopping_highlight": "Skincare routine set"
+      },
+      "writes": []
+    },
+    {
+      "external_product_id": "ext_5e3f586979d659b38c73e16d",
+      "pivota_signature_id": "sig_4521e4884305f51267d66602cccd4871",
+      "title": "Discovery Routine",
+      "brand": "EMBRYOLISSE",
+      "canonical_url": "https://us.embryolisse.com/products/discovery-routine",
+      "changed": false,
+      "blocked": true,
+      "skip_reason": "unsupported_brand_for_manual_template",
+      "candidate_hash": "ce88a41195f34e9bc25c3729565cd3ebb8f31482f7d79eace5325f18e50b17cd",
+      "evidence_profile": "official_pdp_reviewed_line",
+      "source_coverage": {
+        "source": "official_pdp",
+        "canonical_url": "https://us.embryolisse.com/products/discovery-routine",
+        "fields": {
+          "description": true,
+          "ingredients": 0,
+          "active_ingredients": 0,
+          "how_to": 1,
+          "details": 0,
+          "variants": 1
+        }
+      },
+      "preview": {
+        "headline": "Skincare set",
+        "what_it_is": "Discovery Routine is a skincare set from EMBRYOLISSE, with source-backed cues around cleansing and hydration.",
+        "why_it_stands_out": [
+          {
+            "headline": "Usage instructions available",
+            "body": "Reviewed usage context is present, including: Massage onto damp skin, then rinse thoroughly.",
+            "evidence_strength": "official_pdp_reviewed"
+          }
+        ],
+        "best_for": [
+          {
+            "tag": "skincare_set",
+            "label": "Skincare set",
+            "confidence": "moderate"
+          }
+        ],
+        "shopping_highlight": "Skincare routine set"
+      },
+      "writes": []
+    },
+    {
+      "external_product_id": "ext_20a7c25532777f964d7f16b9",
+      "pivota_signature_id": "sig_4cca6c4685dca54ec853e7bc28688fdd",
+      "title": "Eau de Beaute Rosamelis - Face Toner For All Skin Types",
+      "brand": "EMBRYOLISSE",
+      "canonical_url": "https://us.embryolisse.com/products/eau-de-beaute-rosamelis-face-toner-for-all-skin-types",
+      "changed": false,
+      "blocked": true,
+      "skip_reason": "unsupported_brand_for_manual_template",
+      "candidate_hash": "07dc44df4d4b814629da14a09462566e922d448b8b715621456cabb0755469d7",
+      "evidence_profile": "official_pdp_reviewed_key_ingredients_and_usage",
+      "source_coverage": {
+        "source": "official_pdp",
+        "canonical_url": "https://us.embryolisse.com/products/eau-de-beaute-rosamelis-face-toner-for-all-skin-types",
+        "fields": {
+          "description": true,
+          "ingredients": 0,
+          "active_ingredients": 1,
+          "how_to": 1,
+          "details": 3,
+          "variants": 1
+        }
+      },
+      "preview": {
+        "headline": "Face toner",
+        "what_it_is": "Eau de Beaute Rosamelis - Face Toner For All Skin Types is a face toner from EMBRYOLISSE in 6.76 fl oz, with source-backed cues around cleansing and toning.",
+        "why_it_stands_out": [
+          {
+            "headline": "Routine step cues are specific",
+            "body": "Reviewed skincare cues such as AHA exfoliation, toning step, 6.76 fl oz identify the routine role or key ingredient context without inventing unsupported benefits.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Key ingredients are identified",
+            "body": "Organic rose and cornflower waters is identified, enough for a cautious high-level formula read without inventing unsupported actives.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Shade and size are explicit",
+            "body": "Variant labels such as 6.76 fl oz, Size: 6.76 fl oz are visible, reducing ambiguity around the product format before a shopper clicks through.",
+            "evidence_strength": "official_pdp_reviewed"
+          }
+        ],
+        "best_for": [
+          {
+            "tag": "exfoliating_toner_step",
+            "label": "exfoliating toner step",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "body_routine",
+            "label": "body routine",
+            "confidence": "moderate"
+          }
+        ],
+        "shopping_highlight": "AHA exfoliation, toning step, 6.76 fl oz"
+      },
+      "writes": []
+    },
+    {
+      "external_product_id": "ext_17287ce2bace0b2ec7067394",
+      "pivota_signature_id": "sig_c7376474e1c4ea49206d42667e42a5f3",
+      "title": "Eco-Refill Moisturizing Duo",
+      "brand": "EMBRYOLISSE",
+      "canonical_url": "https://us.embryolisse.com/products/eco-refill-moisturizing-duo",
+      "changed": false,
+      "blocked": true,
+      "skip_reason": "unsupported_brand_for_manual_template",
+      "candidate_hash": "021c3d3f635519440f99a768c75f10dd90f239a0d406bf92f7e26a56ff6ec384",
+      "evidence_profile": "official_pdp_reviewed_line",
+      "source_coverage": {
+        "source": "official_pdp",
+        "canonical_url": "https://us.embryolisse.com/products/eco-refill-moisturizing-duo",
+        "fields": {
+          "description": true,
+          "ingredients": 0,
+          "active_ingredients": 0,
+          "how_to": 1,
+          "details": 0,
+          "variants": 1
+        }
+      },
+      "preview": {
+        "headline": "Beauty product",
+        "what_it_is": "Eco-Refill Moisturizing Duo is a beauty product from EMBRYOLISSE. Multi-purpose moisturizing duo The first multi-purpose face and body eco-refill, and its large format is in a refillable pump bottle.",
+        "why_it_stands_out": [
+          {
+            "headline": "Product cues are source-backed",
+            "body": "Reviewed PDP cues such as Duo give shoppers specific comparison points within EMBRYOLISSE, rather than category-only copy.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Accessory format is explicit",
+            "body": "Variant labels such as Duo, Format: Duo are visible, reducing ambiguity around the product format before a shopper clicks through.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Usage instructions available",
+            "body": "Reviewed usage context is present, including: Use according to the merchant directions for this product.",
+            "evidence_strength": "official_pdp_reviewed"
+          }
+        ],
+        "best_for": [
+          {
+            "tag": "duo",
+            "label": "Duo",
+            "confidence": "moderate"
+          }
+        ],
+        "shopping_highlight": "Duo"
+      },
+      "writes": []
+    },
+    {
+      "external_product_id": "ext_1204da285323c4c294847daf",
+      "pivota_signature_id": "sig_e7773e5a92267f16cdeb73aa5ddbcc88",
+      "title": "Exfoliating Milk Powder",
+      "brand": "EMBRYOLISSE",
+      "canonical_url": "https://us.embryolisse.com/products/exfoliating-milk-powder",
+      "changed": false,
+      "blocked": true,
+      "skip_reason": "unsupported_brand_for_manual_template",
+      "candidate_hash": "9f79963709437a61edf05147e5516772fa6c7bd1fb39c88c2fe608a03845984c",
+      "evidence_profile": "official_pdp_reviewed_formula_and_usage",
+      "source_coverage": {
+        "source": "official_pdp",
+        "canonical_url": "https://us.embryolisse.com/products/exfoliating-milk-powder",
+        "fields": {
+          "description": true,
+          "ingredients": 1,
+          "active_ingredients": 1,
+          "how_to": 1,
+          "details": 4,
+          "variants": 1
+        }
+      },
+      "preview": {
+        "headline": "Fine fragrance",
+        "what_it_is": "Exfoliating Milk Powder is a fine fragrance from EMBRYOLISSE in 1.41 oz.",
+        "why_it_stands_out": [
+          {
+            "headline": "Scent profile cues",
+            "body": "Reviewed scent cues such as refillable format, 1.41 oz help shoppers compare the fragrance profile without relying on generic scent copy.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Ingredient list is available",
+            "body": "Full INCI is present for formula-sensitive review, which makes this PDP safer to evaluate than a claim-only listing.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Shade and size are explicit",
+            "body": "Variant labels such as 1.41 oz, Size: 1.41 oz are visible, reducing ambiguity around the product format before a shopper clicks through.",
+            "evidence_strength": "official_pdp_reviewed"
+          }
+        ],
+        "best_for": [
+          {
+            "tag": "warm_fragrance_profiles",
+            "label": "warm fragrance profiles",
+            "confidence": "moderate"
+          }
+        ],
+        "shopping_highlight": "refillable format, 1.41 oz"
+      },
+      "writes": []
+    },
+    {
+      "external_product_id": "ext_1b4a85868ba125bc6b7040e0",
+      "pivota_signature_id": "sig_3be37aeebd622b3e220614cce40d942c",
+      "title": "Filaderme Emulsion - Face Lotion For Dry Skin",
+      "brand": "EMBRYOLISSE",
+      "canonical_url": "https://us.embryolisse.com/products/filaderme-emulsion-face-lotion-for-dry-skin",
+      "changed": false,
+      "blocked": true,
+      "skip_reason": "unsupported_brand_for_manual_template",
+      "candidate_hash": "ddbc6713164dec6db23d6728ad742550a272cf95fe16b42dba819cb013fafc35",
+      "evidence_profile": "official_pdp_reviewed_formula_and_usage",
+      "source_coverage": {
+        "source": "official_pdp",
+        "canonical_url": "https://us.embryolisse.com/products/filaderme-emulsion-face-lotion-for-dry-skin",
+        "fields": {
+          "description": true,
+          "ingredients": 1,
+          "active_ingredients": 1,
+          "how_to": 1,
+          "details": 3,
+          "variants": 1
+        }
+      },
+      "preview": {
+        "headline": "Body care treatment",
+        "what_it_is": "Filaderme Emulsion - Face Lotion For Dry Skin is a body care treatment from EMBRYOLISSE in 2.54 fl oz, with source-backed cues around hydration.",
+        "why_it_stands_out": [
+          {
+            "headline": "Routine step cues are specific",
+            "body": "Reviewed skincare cues such as aloe juice, hydration, barrier support, 2.54 fl oz identify the routine role or key ingredient context without inventing unsupported benefits.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Ingredient list is available",
+            "body": "Full INCI is present for formula-sensitive review, which makes this PDP safer to evaluate than a claim-only listing.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Shade and size are explicit",
+            "body": "Variant labels such as 2.54 fl oz, Size: 2.54 fl oz are visible, reducing ambiguity around the product format before a shopper clicks through.",
+            "evidence_strength": "official_pdp_reviewed"
+          }
+        ],
+        "best_for": [
+          {
+            "tag": "hydration",
+            "label": "hydration",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "barrier_support",
+            "label": "barrier support",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "body_routine",
+            "label": "body routine",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "aromatherapy",
+            "label": "aromatherapy",
+            "confidence": "moderate"
+          }
+        ],
+        "shopping_highlight": "aloe juice, hydration, barrier support"
+      },
+      "writes": []
+    },
+    {
+      "external_product_id": "ext_0b12b5f5480fe781b166ded4",
+      "pivota_signature_id": "sig_b4f8605c60ec4777f621cca2f44ee9b7",
+      "title": "Firming-Lifting Cream",
+      "brand": "EMBRYOLISSE",
+      "canonical_url": "https://us.embryolisse.com/products/firming-lifting-cream",
+      "changed": false,
+      "blocked": true,
+      "skip_reason": "unsupported_brand_for_manual_template",
+      "candidate_hash": "49dd562490bb634cd6b482b16024b609d4d39774e4871b43825c8d27290e9511",
+      "evidence_profile": "official_pdp_reviewed_formula_and_usage",
+      "source_coverage": {
+        "source": "official_pdp",
+        "canonical_url": "https://us.embryolisse.com/products/firming-lifting-cream",
+        "fields": {
+          "description": true,
+          "ingredients": 1,
+          "active_ingredients": 1,
+          "how_to": 1,
+          "details": 3,
+          "variants": 1
+        }
+      },
+      "preview": {
+        "headline": "Face color makeup",
+        "what_it_is": "Firming-Lifting Cream is a face color product from EMBRYOLISSE, with source-backed cues around bronzing or contour definition.",
+        "why_it_stands_out": [
+          {
+            "headline": "Color payoff cues are specific",
+            "body": "Reviewed color cues such as bronzing/contour role, 1.69 fl oz help shoppers compare shade, finish, or texture instead of seeing a generic blush/bronzer/highlighter card.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Ingredient list is available",
+            "body": "Full INCI is present for formula-sensitive review, which makes this PDP safer to evaluate than a claim-only listing.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Shade and size are explicit",
+            "body": "Variant labels such as 1.69 fl oz, Size: 1.69 fl oz are visible, reducing ambiguity around the product format before a shopper clicks through.",
+            "evidence_strength": "official_pdp_reviewed"
+          }
+        ],
+        "best_for": [
+          {
+            "tag": "bronzing_contour_role",
+            "label": "bronzing/contour role",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "1_69_fl_oz",
+            "label": "1.69 fl oz",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "full_inci_available",
+            "label": "full INCI available",
+            "confidence": "moderate"
+          }
+        ],
+        "shopping_highlight": "bronzing/contour role, 1.69 fl oz"
+      },
+      "writes": []
+    },
+    {
+      "external_product_id": "ext_f05bfaa43ffce612725c3f29",
+      "pivota_signature_id": "sig_00fbe0c9c20cf71008b1ea6a4ff447fc",
+      "title": "Foaming Cream Milk - Face and Body Cleanser",
+      "brand": "EMBRYOLISSE",
+      "canonical_url": "https://us.embryolisse.com/products/foaming-cream-milk-face-and-body-cleanser",
+      "changed": false,
+      "blocked": true,
+      "skip_reason": "unsupported_brand_for_manual_template",
+      "candidate_hash": "20677b36daad079806994a0b660716ef9c3999f76ccb2ed46e589f852a897670",
+      "evidence_profile": "official_pdp_reviewed_key_ingredients_and_usage",
+      "source_coverage": {
+        "source": "official_pdp",
+        "canonical_url": "https://us.embryolisse.com/products/foaming-cream-milk-face-and-body-cleanser",
+        "fields": {
+          "description": true,
+          "ingredients": 0,
+          "active_ingredients": 1,
+          "how_to": 1,
+          "details": 3,
+          "variants": 1
+        }
+      },
+      "preview": {
+        "headline": "Face cleanser",
+        "what_it_is": "Foaming Cream Milk - Face and Body Cleanser is a face cleanser from EMBRYOLISSE in 6.76 fl oz, with source-backed cues around cleansing and dirt, oil, and impurity removal.",
+        "why_it_stands_out": [
+          {
+            "headline": "Product cues are source-backed",
+            "body": "Reviewed PDP cues such as daily cleansing, pore cleansing, 6.76 fl oz give shoppers specific comparison points within EMBRYOLISSE, rather than category-only copy.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Key ingredients are identified",
+            "body": "Prickly Pear extract is identified, enough for a cautious high-level formula read without inventing unsupported actives.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Shade and size are explicit",
+            "body": "Variant labels such as 6.76 fl oz, Size: 6.76 fl oz are visible, reducing ambiguity around the product format before a shopper clicks through.",
+            "evidence_strength": "official_pdp_reviewed"
+          }
+        ],
+        "best_for": [
+          {
+            "tag": "daily_cleansing",
+            "label": "daily cleansing",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "pore_cleansing",
+            "label": "pore cleansing",
+            "confidence": "moderate"
+          }
+        ],
+        "shopping_highlight": "daily cleansing, pore cleansing"
+      },
+      "writes": []
+    },
+    {
+      "external_product_id": "ext_bfa237d4b8fe9c8b976f2d44",
+      "pivota_signature_id": "sig_8759714f473c5ff3e44bd31f465e56e4",
+      "title": "Gentle Energizing Exfoliant Duo",
+      "brand": "EMBRYOLISSE",
+      "canonical_url": "https://us.embryolisse.com/products/gentle-energizing-exfoliant-duo",
+      "changed": false,
+      "blocked": true,
+      "skip_reason": "unsupported_brand_for_manual_template",
+      "candidate_hash": "883d75790adfe10de1f8bcf5744a05c81811534dd7d54b1df3210f0959cd32ee",
+      "evidence_profile": "official_pdp_reviewed_formula_and_usage",
+      "source_coverage": {
+        "source": "official_pdp",
+        "canonical_url": "https://us.embryolisse.com/products/gentle-energizing-exfoliant-duo",
+        "fields": {
+          "description": true,
+          "ingredients": 1,
+          "active_ingredients": 2,
+          "how_to": 1,
+          "details": 3,
+          "variants": 1
+        }
+      },
+      "preview": {
+        "headline": "Skincare set",
+        "what_it_is": "Gentle Energizing Exfoliant Duo is a skincare set from EMBRYOLISSE in Duo, with source-backed cues around cleansing, hydration and brightening support.",
+        "why_it_stands_out": [
+          {
+            "headline": "Routine step cues are specific",
+            "body": "Reviewed skincare cues such as vitamin C, hydration, Duo identify the routine role or key ingredient context without inventing unsupported benefits.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Ingredient list is available",
+            "body": "Full INCI is present for formula-sensitive review, which makes this PDP safer to evaluate than a claim-only listing.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Shade and size are explicit",
+            "body": "Variant labels such as Duo, Format: Duo are visible, reducing ambiguity around the product format before a shopper clicks through.",
+            "evidence_strength": "official_pdp_reviewed"
+          }
+        ],
+        "best_for": [
+          {
+            "tag": "hydration",
+            "label": "hydration",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "firmness",
+            "label": "firmness",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "radiance",
+            "label": "radiance",
+            "confidence": "moderate"
+          }
+        ],
+        "shopping_highlight": "Skincare routine set"
+      },
+      "writes": []
+    },
+    {
+      "external_product_id": "ext_e17801df4b4176180b1fa4be",
+      "pivota_signature_id": "sig_b4e2919077397cbb46daf4ed8881df18",
+      "title": "Gentle Waterproof Makeup Remover Milk Cream",
+      "brand": "EMBRYOLISSE",
+      "canonical_url": "https://us.embryolisse.com/products/gentle-waterproof-make-up-remover-milk",
+      "changed": false,
+      "blocked": true,
+      "skip_reason": "unsupported_brand_for_manual_template",
+      "candidate_hash": "55d90fdafde47c690eec9f740a54d0ba80e164d47232e2d54f6f36f6d8ad1ed4",
+      "evidence_profile": "official_pdp_reviewed_formula_and_usage",
+      "source_coverage": {
+        "source": "official_pdp",
+        "canonical_url": "https://us.embryolisse.com/products/gentle-waterproof-make-up-remover-milk",
+        "fields": {
+          "description": true,
+          "ingredients": 1,
+          "active_ingredients": 1,
+          "how_to": 1,
+          "details": 3,
+          "variants": 1
+        }
+      },
+      "preview": {
+        "headline": "Face cleanser",
+        "what_it_is": "Gentle Waterproof Makeup Remover Milk Cream is a face cleanser from EMBRYOLISSE in 6.76 fl oz, with source-backed cues around cleansing, makeup removal and dirt, oil, and impurity removal.",
+        "why_it_stands_out": [
+          {
+            "headline": "Product cues are source-backed",
+            "body": "Reviewed PDP cues such as daily cleansing, pore cleansing, makeup removal, 6.76 fl oz give shoppers specific comparison points within EMBRYOLISSE, rather than category-only copy.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Ingredient list is available",
+            "body": "Full INCI is present for formula-sensitive review, which makes this PDP safer to evaluate than a claim-only listing.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Shade and size are explicit",
+            "body": "Variant labels such as 6.76 fl oz, Size: 6.76 fl oz are visible, reducing ambiguity around the product format before a shopper clicks through.",
+            "evidence_strength": "official_pdp_reviewed"
+          }
+        ],
+        "best_for": [
+          {
+            "tag": "daily_cleansing",
+            "label": "daily cleansing",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "pore_cleansing",
+            "label": "pore cleansing",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "makeup_removal",
+            "label": "makeup removal",
+            "confidence": "moderate"
+          }
+        ],
+        "shopping_highlight": "daily cleansing, pore cleansing"
+      },
+      "writes": []
+    },
+    {
+      "external_product_id": "ext_5a86ce4cf0605bb408f9b7a8",
+      "pivota_signature_id": "sig_743378f169996aa188de2b994eeb2000",
+      "title": "Glow & Hydration Duo APRICOT",
+      "brand": "EMBRYOLISSE",
+      "canonical_url": "https://us.embryolisse.com/products/glow-hydration-duo-apricot",
+      "changed": false,
+      "blocked": true,
+      "skip_reason": "unsupported_brand_for_manual_template",
+      "candidate_hash": "abb6b3d6837ef99a35e2e6d985d0332b2ed831e7d78c82bd02bf08c680799feb",
+      "evidence_profile": "official_pdp_reviewed_formula_and_usage",
+      "source_coverage": {
+        "source": "official_pdp",
+        "canonical_url": "https://us.embryolisse.com/products/glow-hydration-duo-apricot",
+        "fields": {
+          "description": true,
+          "ingredients": 1,
+          "active_ingredients": 1,
+          "how_to": 1,
+          "details": 3,
+          "variants": 1
+        }
+      },
+      "preview": {
+        "headline": "Skincare set",
+        "what_it_is": "Glow & Hydration Duo APRICOT is a skincare set from EMBRYOLISSE in 1 fl oz, with source-backed cues around cleansing and hydration.",
+        "why_it_stands_out": [
+          {
+            "headline": "Routine step cues are specific",
+            "body": "Reviewed skincare cues such as aloe juice, hydration, barrier support, 1 fl oz identify the routine role or key ingredient context without inventing unsupported benefits.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Ingredient list is available",
+            "body": "Full INCI is present for formula-sensitive review, which makes this PDP safer to evaluate than a claim-only listing.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Shade and size are explicit",
+            "body": "Variant labels such as 1 fl oz, Size: 1 fl oz are visible, reducing ambiguity around the product format before a shopper clicks through.",
+            "evidence_strength": "official_pdp_reviewed"
+          }
+        ],
+        "best_for": [
+          {
+            "tag": "hydration",
+            "label": "hydration",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "radiance",
+            "label": "radiance",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "barrier_support",
+            "label": "barrier support",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "aromatherapy",
+            "label": "aromatherapy",
+            "confidence": "moderate"
+          }
+        ],
+        "shopping_highlight": "Brightening skincare set"
+      },
+      "writes": []
+    },
+    {
+      "external_product_id": "ext_3f3b5301f0b871ea28325626",
+      "pivota_signature_id": "sig_73b4d117876395b4f82b33d0514e8611",
+      "title": "Glow & Hydration Duo PINK",
+      "brand": "EMBRYOLISSE",
+      "canonical_url": "https://us.embryolisse.com/products/glow-hydration-duo-pink",
+      "changed": false,
+      "blocked": true,
+      "skip_reason": "unsupported_brand_for_manual_template",
+      "candidate_hash": "b83dc308576cf52aa86194605406c3453ac0273dcb6c3051c583991c2f501ead",
+      "evidence_profile": "official_pdp_reviewed_formula_and_usage",
+      "source_coverage": {
+        "source": "official_pdp",
+        "canonical_url": "https://us.embryolisse.com/products/glow-hydration-duo-pink",
+        "fields": {
+          "description": true,
+          "ingredients": 1,
+          "active_ingredients": 1,
+          "how_to": 1,
+          "details": 3,
+          "variants": 1
+        }
+      },
+      "preview": {
+        "headline": "Skincare set",
+        "what_it_is": "Glow & Hydration Duo PINK is a skincare set from EMBRYOLISSE in Duo, with source-backed cues around cleansing and hydration.",
+        "why_it_stands_out": [
+          {
+            "headline": "Routine step cues are specific",
+            "body": "Reviewed skincare cues such as vitamin C, retinol, peptides, aloe juice identify the routine role or key ingredient context without inventing unsupported benefits.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Ingredient list is available",
+            "body": "Full INCI is present for formula-sensitive review, which makes this PDP safer to evaluate than a claim-only listing.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Shade and size are explicit",
+            "body": "Variant labels such as Duo, Format: Duo are visible, reducing ambiguity around the product format before a shopper clicks through.",
+            "evidence_strength": "official_pdp_reviewed"
+          }
+        ],
+        "best_for": [
+          {
+            "tag": "hydration",
+            "label": "hydration",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "firmness",
+            "label": "firmness",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "radiance",
+            "label": "radiance",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "barrier_support",
+            "label": "barrier support",
+            "confidence": "moderate"
+          }
+        ],
+        "shopping_highlight": "Brightening skincare set"
+      },
+      "writes": []
+    },
+    {
+      "external_product_id": "ext_5b92b5a3bba7691c78c10576",
+      "pivota_signature_id": "sig_4950fe91928e7697e47eb1b2305fa612",
+      "title": "Glowing & Healthy Skin Routine",
+      "brand": "EMBRYOLISSE",
+      "canonical_url": "https://us.embryolisse.com/products/glowing-healthy-skin-routine",
+      "changed": false,
+      "blocked": true,
+      "skip_reason": "unsupported_brand_for_manual_template",
+      "candidate_hash": "0742ca0b0665757970567b859b7b915471e20714f311181e53419a73988841f6",
+      "evidence_profile": "official_pdp_reviewed_line",
+      "source_coverage": {
+        "source": "official_pdp",
+        "canonical_url": "https://us.embryolisse.com/products/glowing-healthy-skin-routine",
+        "fields": {
+          "description": true,
+          "ingredients": 0,
+          "active_ingredients": 0,
+          "how_to": 1,
+          "details": 0,
+          "variants": 1
+        }
+      },
+      "preview": {
+        "headline": "Skincare set",
+        "what_it_is": "Glowing & Healthy Skin Routine is a skincare set from EMBRYOLISSE, with source-backed cues around cleansing, toning and hydration.",
+        "why_it_stands_out": [
+          {
+            "headline": "Routine step cues are specific",
+            "body": "Reviewed skincare cues such as toning step identify the routine role or key ingredient context without inventing unsupported benefits.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Usage instructions available",
+            "body": "Reviewed usage context is present, including: Massage onto damp skin, then rinse thoroughly.",
+            "evidence_strength": "official_pdp_reviewed"
+          }
+        ],
+        "best_for": [
+          {
+            "tag": "exfoliating_toner_step",
+            "label": "exfoliating toner step",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "body_routine",
+            "label": "body routine",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "aromatherapy",
+            "label": "aromatherapy",
+            "confidence": "moderate"
+          }
+        ],
+        "shopping_highlight": "Brightening skincare set"
+      },
+      "writes": []
+    },
+    {
+      "external_product_id": "ext_06b861e43ccc33e9fb1f87db",
+      "pivota_signature_id": "sig_59ac17cf22cb578ea2149cdda12e9e97",
+      "title": "Hydra Cream Energizing",
+      "brand": "EMBRYOLISSE",
+      "canonical_url": "https://us.embryolisse.com/products/hydra-cream-energizing",
+      "changed": false,
+      "blocked": true,
+      "skip_reason": "unsupported_brand_for_manual_template",
+      "candidate_hash": "de6484ed02329e743f787701a7a1a78d8fb17a1a3cce5483d5454f785a6dbe70",
+      "evidence_profile": "official_pdp_reviewed_formula_and_usage",
+      "source_coverage": {
+        "source": "official_pdp",
+        "canonical_url": "https://us.embryolisse.com/products/hydra-cream-energizing",
+        "fields": {
+          "description": true,
+          "ingredients": 1,
+          "active_ingredients": 2,
+          "how_to": 1,
+          "details": 3,
+          "variants": 1
+        }
+      },
+      "preview": {
+        "headline": "Body care treatment",
+        "what_it_is": "Hydra Cream Energizing is a body care treatment from EMBRYOLISSE in 1.35 fl oz, with source-backed cues around cleansing, toning, hydration and brightening support.",
+        "why_it_stands_out": [
+          {
+            "headline": "Routine step cues are specific",
+            "body": "Reviewed skincare cues such as vitamin C, toning step, hydration, 1.35 fl oz identify the routine role or key ingredient context without inventing unsupported benefits.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Ingredient list is available",
+            "body": "Full INCI is present for formula-sensitive review, which makes this PDP safer to evaluate than a claim-only listing.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Shade and size are explicit",
+            "body": "Variant labels such as 1.35 fl oz, Size: 1.35 fl oz are visible, reducing ambiguity around the product format before a shopper clicks through.",
+            "evidence_strength": "official_pdp_reviewed"
+          }
+        ],
+        "best_for": [
+          {
+            "tag": "hydration",
+            "label": "hydration",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "radiance",
+            "label": "radiance",
+            "confidence": "moderate"
+          }
+        ],
+        "shopping_highlight": "vitamin C, toning step, hydration"
+      },
+      "writes": []
+    },
+    {
+      "external_product_id": "ext_4ef904ddbeede88b4dbc8937",
+      "pivota_signature_id": "sig_5100d1cd521a9f1a1dd672a04c386912",
+      "title": "Hydra Cream Light - Lightweight active hydration",
+      "brand": "EMBRYOLISSE",
+      "canonical_url": "https://us.embryolisse.com/products/hydra-cream-light-lightweight-active-hydration",
+      "changed": false,
+      "blocked": true,
+      "skip_reason": "unsupported_brand_for_manual_template",
+      "candidate_hash": "0b9b6ee4e2292ab17ffd81f620c4f26a1c74bfac4e753f90c95fcc2e5e0c460e",
+      "evidence_profile": "official_pdp_reviewed_formula_and_usage",
+      "source_coverage": {
+        "source": "official_pdp",
+        "canonical_url": "https://us.embryolisse.com/products/hydra-cream-light-lightweight-active-hydration",
+        "fields": {
+          "description": true,
+          "ingredients": 1,
+          "active_ingredients": 1,
+          "how_to": 1,
+          "details": 3,
+          "variants": 1
+        }
+      },
+      "preview": {
+        "headline": "Body care treatment",
+        "what_it_is": "Hydra Cream Light - Lightweight active hydration is a body care treatment from EMBRYOLISSE in 1.35 fl oz, with source-backed cues around cleansing, hydration and brightening support.",
+        "why_it_stands_out": [
+          {
+            "headline": "Routine step cues are specific",
+            "body": "Reviewed skincare cues such as hydration, 1.35 fl oz identify the routine role or key ingredient context without inventing unsupported benefits.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Ingredient list is available",
+            "body": "Full INCI is present for formula-sensitive review, which makes this PDP safer to evaluate than a claim-only listing.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Shade and size are explicit",
+            "body": "Variant labels such as 1.35 fl oz, Size: 1.35 fl oz are visible, reducing ambiguity around the product format before a shopper clicks through.",
+            "evidence_strength": "official_pdp_reviewed"
+          }
+        ],
+        "best_for": [
+          {
+            "tag": "hydration",
+            "label": "hydration",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "radiance",
+            "label": "radiance",
+            "confidence": "moderate"
+          }
+        ],
+        "shopping_highlight": "hydration, 1.35 fl oz"
+      },
+      "writes": []
+    },
+    {
+      "external_product_id": "ext_35893b4355884432afefc590",
+      "pivota_signature_id": "sig_4a8411cd23d2326629f6358b1de8df17",
+      "title": "Hydra Serum - Hydration Booster",
+      "brand": "EMBRYOLISSE",
+      "canonical_url": "https://us.embryolisse.com/products/hydra-serum-hydration-booster",
+      "changed": false,
+      "blocked": true,
+      "skip_reason": "unsupported_brand_for_manual_template",
+      "candidate_hash": "5dee5401bca3050c27303617f5d7edbd33f09a29ce64b6ee7e588a23c9039b10",
+      "evidence_profile": "official_pdp_reviewed_formula_and_usage",
+      "source_coverage": {
+        "source": "official_pdp",
+        "canonical_url": "https://us.embryolisse.com/products/hydra-serum-hydration-booster",
+        "fields": {
+          "description": true,
+          "ingredients": 1,
+          "active_ingredients": 1,
+          "how_to": 1,
+          "details": 3,
+          "variants": 1
+        }
+      },
+      "preview": {
+        "headline": "Treatment serum",
+        "what_it_is": "Hydra Serum - Hydration Booster is a treatment serum from EMBRYOLISSE in 1.01 fl oz.",
+        "why_it_stands_out": [
+          {
+            "headline": "Routine step cues are specific",
+            "body": "Reviewed skincare cues such as hydration, 1.01 fl oz identify the routine role or key ingredient context without inventing unsupported benefits.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Ingredient list is available",
+            "body": "Full INCI is present for formula-sensitive review, which makes this PDP safer to evaluate than a claim-only listing.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Shade and size are explicit",
+            "body": "Variant labels such as 1.01 fl oz, Size: 1.01 fl oz are visible, reducing ambiguity around the product format before a shopper clicks through.",
+            "evidence_strength": "official_pdp_reviewed"
+          }
+        ],
+        "best_for": [
+          {
+            "tag": "hydration",
+            "label": "hydration",
+            "confidence": "moderate"
+          }
+        ],
+        "shopping_highlight": "hydration, 1.01 fl oz"
+      },
+      "writes": []
+    },
+    {
+      "external_product_id": "ext_371ba11fd89bb1b1d2e5bb12",
+      "pivota_signature_id": "sig_5cfb64cd349a041fb92b15d77b78c001",
+      "title": "Hydra Set",
+      "brand": "EMBRYOLISSE",
+      "canonical_url": "https://us.embryolisse.com/products/hydra-set",
+      "changed": false,
+      "blocked": true,
+      "skip_reason": "unsupported_brand_for_manual_template",
+      "candidate_hash": "ddfaf4ee5bfa2543d80faabf81ac845e209262c6f660bf40b67c976b74c251b9",
+      "evidence_profile": "official_pdp_reviewed_line",
+      "source_coverage": {
+        "source": "official_pdp",
+        "canonical_url": "https://us.embryolisse.com/products/hydra-set",
+        "fields": {
+          "description": true,
+          "ingredients": 0,
+          "active_ingredients": 0,
+          "how_to": 1,
+          "details": 0,
+          "variants": 1
+        }
+      },
+      "preview": {
+        "headline": "Beauty product",
+        "what_it_is": "Hydra Set is a beauty product from EMBRYOLISSE. Combination skins will choose Hydra Set, with two types of hyaluronic acids, not too nourishing and mattifying textures.",
+        "why_it_stands_out": [
+          {
+            "headline": "Product cues are source-backed",
+            "body": "Reviewed PDP cues such as Set give shoppers specific comparison points within EMBRYOLISSE, rather than category-only copy.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Accessory format is explicit",
+            "body": "Variant labels such as Set, Format: Set are visible, reducing ambiguity around the product format before a shopper clicks through.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Usage instructions available",
+            "body": "Reviewed usage context is present, including: Use according to the merchant directions for this product.",
+            "evidence_strength": "official_pdp_reviewed"
+          }
+        ],
+        "best_for": [
+          {
+            "tag": "set",
+            "label": "Set",
+            "confidence": "moderate"
+          }
+        ],
+        "shopping_highlight": "Set"
+      },
+      "writes": []
+    },
+    {
+      "external_product_id": "ext_5c57e77cc936ca5641d7038b",
+      "pivota_signature_id": "sig_3b29031e1674a7f8660817cc5e4c6b45",
+      "title": "Intense Lift Eye Cream",
+      "brand": "EMBRYOLISSE",
+      "canonical_url": "https://us.embryolisse.com/products/intense-lift-eye-cream",
+      "changed": false,
+      "blocked": true,
+      "skip_reason": "unsupported_brand_for_manual_template",
+      "candidate_hash": "bc218c33dca0aca1d991d1bc9e4efee916c8f7a6de8eab89eff6339349a64085",
+      "evidence_profile": "official_pdp_reviewed_formula_and_usage",
+      "source_coverage": {
+        "source": "official_pdp",
+        "canonical_url": "https://us.embryolisse.com/products/intense-lift-eye-cream",
+        "fields": {
+          "description": true,
+          "ingredients": 1,
+          "active_ingredients": 1,
+          "how_to": 1,
+          "details": 3,
+          "variants": 1
+        }
+      },
+      "preview": {
+        "headline": "Body care treatment",
+        "what_it_is": "Intense Lift Eye Cream is a body care treatment from EMBRYOLISSE in 0.5 fl oz, with source-backed cues around hydration and brightening support.",
+        "why_it_stands_out": [
+          {
+            "headline": "Routine step cues are specific",
+            "body": "Reviewed skincare cues such as hydration, barrier support, 0.5 fl oz identify the routine role or key ingredient context without inventing unsupported benefits.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Ingredient list is available",
+            "body": "Full INCI is present for formula-sensitive review, which makes this PDP safer to evaluate than a claim-only listing.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Shade and size are explicit",
+            "body": "Variant labels such as 0.5 fl oz, Size: 0.5 fl oz are visible, reducing ambiguity around the product format before a shopper clicks through.",
+            "evidence_strength": "official_pdp_reviewed"
+          }
+        ],
+        "best_for": [
+          {
+            "tag": "hydration",
+            "label": "hydration",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "firmness",
+            "label": "firmness",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "radiance",
+            "label": "radiance",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "barrier_support",
+            "label": "barrier support",
+            "confidence": "moderate"
+          }
+        ],
+        "shopping_highlight": "hydration, barrier support, 0.5 fl oz"
+      },
+      "writes": []
+    },
+    {
+      "external_product_id": "ext_a375c99d59a191687f4c3ca8",
+      "pivota_signature_id": "sig_4befbd793db4183e8f71bc3521702ef3",
+      "title": "Intense Moisturizing Mask",
+      "brand": "EMBRYOLISSE",
+      "canonical_url": "https://us.embryolisse.com/products/intense-moisturizing-mask",
+      "changed": false,
+      "blocked": true,
+      "skip_reason": "unsupported_brand_for_manual_template",
+      "candidate_hash": "9859623f77c04ec9dcc4d05b44fe37cfc444f32c3f34e4b617f821feb387a915",
+      "evidence_profile": "official_pdp_reviewed_formula_and_usage",
+      "source_coverage": {
+        "source": "official_pdp",
+        "canonical_url": "https://us.embryolisse.com/products/intense-moisturizing-mask",
+        "fields": {
+          "description": true,
+          "ingredients": 1,
+          "active_ingredients": 2,
+          "how_to": 1,
+          "details": 3,
+          "variants": 1
+        }
+      },
+      "preview": {
+        "headline": "Treatment mask",
+        "what_it_is": "Intense Moisturizing Mask is a treatment mask from EMBRYOLISSE in 1.69 fl oz, with source-backed cues around hydration.",
+        "why_it_stands_out": [
+          {
+            "headline": "Product cues are source-backed",
+            "body": "Reviewed PDP cues such as hyaluronic acid, 1.69 fl oz give shoppers specific comparison points within EMBRYOLISSE, rather than category-only copy.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Ingredient list is available",
+            "body": "Full INCI is present for formula-sensitive review, which makes this PDP safer to evaluate than a claim-only listing.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Shade and size are explicit",
+            "body": "Variant labels such as 1.69 fl oz, Size: 1.69 fl oz are visible, reducing ambiguity around the product format before a shopper clicks through.",
+            "evidence_strength": "official_pdp_reviewed"
+          }
+        ],
+        "best_for": [
+          {
+            "tag": "hyaluronic_acid",
+            "label": "hyaluronic acid",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "1_69_fl_oz",
+            "label": "1.69 fl oz",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "full_inci_available",
+            "label": "full INCI available",
+            "confidence": "moderate"
+          }
+        ],
+        "shopping_highlight": "hyaluronic acid, 1.69 fl oz"
+      },
+      "writes": []
+    },
+    {
+      "external_product_id": "ext_b7e89181abe1dd0e9b702546",
+      "pivota_signature_id": "sig_901c291a2c04dd9f8407a58b35185e31",
+      "title": "Lait-Crème Concentré - #1 Bestseller Moisturizer",
+      "brand": "EMBRYOLISSE",
+      "canonical_url": "https://us.embryolisse.com/products/lait-creme-concentre-daily-face-and-body-cream",
+      "changed": false,
+      "blocked": true,
+      "skip_reason": "unsupported_brand_for_manual_template",
+      "candidate_hash": "2673c0b72c4d407091159bcea09e2a42842a69b24678339d9cc605714a401fc6",
+      "evidence_profile": "official_pdp_reviewed_formula_and_usage",
+      "source_coverage": {
+        "source": "official_pdp",
+        "canonical_url": "https://us.embryolisse.com/products/lait-creme-concentre-daily-face-and-body-cream",
+        "fields": {
+          "description": true,
+          "ingredients": 1,
+          "active_ingredients": 1,
+          "how_to": 1,
+          "details": 3,
+          "variants": 2
+        }
+      },
+      "preview": {
+        "headline": "Body care treatment",
+        "what_it_is": "Lait-Crème Concentré - #1 Bestseller Moisturizer is a body care treatment from EMBRYOLISSE in 2.54 Fl.oz, with source-backed cues around cleansing and hydration.",
+        "why_it_stands_out": [
+          {
+            "headline": "Routine step cues are specific",
+            "body": "Reviewed skincare cues such as aloe juice, barrier support, 2.54 Fl.oz, 1.01 Fl.oz identify the routine role or key ingredient context without inventing unsupported benefits.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Ingredient list is available",
+            "body": "Full INCI is present for formula-sensitive review, which makes this PDP safer to evaluate than a claim-only listing.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Shade and size are explicit",
+            "body": "Variant labels such as 2.54 Fl.oz, Size: 2.54 Fl.oz, 1.01 Fl.oz, Size: 1.01 Fl.oz are visible, reducing ambiguity around the product format before a shopper clicks through.",
+            "evidence_strength": "official_pdp_reviewed"
+          }
+        ],
+        "best_for": [
+          {
+            "tag": "firmness",
+            "label": "firmness",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "barrier_support",
+            "label": "barrier support",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "body_routine",
+            "label": "body routine",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "aromatherapy",
+            "label": "aromatherapy",
+            "confidence": "moderate"
+          }
+        ],
+        "shopping_highlight": "aloe juice, barrier support, 2.54 Fl.oz"
+      },
+      "writes": []
+    },
+    {
+      "external_product_id": "ext_4437e09d130c9385a1c60f0b",
+      "pivota_signature_id": "sig_d3c2c085011503789c7a3c70f9dba0c7",
+      "title": "Lait-Crème Duo: Concentré + Retinol-like",
+      "brand": "EMBRYOLISSE",
+      "canonical_url": "https://us.embryolisse.com/products/lait-creme-duo-concentre-retinol-like",
+      "changed": false,
+      "blocked": true,
+      "skip_reason": "unsupported_brand_for_manual_template",
+      "candidate_hash": "73ad9f5060260575298917870f35875844e913090b72131c3f694d4b007a4e55",
+      "evidence_profile": "official_pdp_reviewed_key_ingredients_and_usage",
+      "source_coverage": {
+        "source": "official_pdp",
+        "canonical_url": "https://us.embryolisse.com/products/lait-creme-duo-concentre-retinol-like",
+        "fields": {
+          "description": true,
+          "ingredients": 0,
+          "active_ingredients": 1,
+          "how_to": 1,
+          "details": 3,
+          "variants": 1
+        }
+      },
+      "preview": {
+        "headline": "Skincare set",
+        "what_it_is": "Lait-Crème Duo: Concentré + Retinol-like is a skincare set from EMBRYOLISSE in Duo, with source-backed cues around cleansing and hydration.",
+        "why_it_stands_out": [
+          {
+            "headline": "Routine step cues are specific",
+            "body": "Reviewed skincare cues such as retinol, aloe juice, hydration, barrier support identify the routine role or key ingredient context without inventing unsupported benefits.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Key ingredients are identified",
+            "body": "Retinol is identified, enough for a cautious high-level formula read without inventing unsupported actives.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Shade and size are explicit",
+            "body": "Variant labels such as Duo, Format: Duo are visible, reducing ambiguity around the product format before a shopper clicks through.",
+            "evidence_strength": "official_pdp_reviewed"
+          }
+        ],
+        "best_for": [
+          {
+            "tag": "hydration",
+            "label": "hydration",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "firmness",
+            "label": "firmness",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "barrier_support",
+            "label": "barrier support",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "body_routine",
+            "label": "body routine",
+            "confidence": "moderate"
+          }
+        ],
+        "shopping_highlight": "Skincare routine set"
+      },
+      "writes": []
+    },
+    {
+      "external_product_id": "ext_54e411ece40eb37df4ad86f5",
+      "pivota_signature_id": "sig_089a96fb63ee7d3c0125b987bd6ad7d9",
+      "title": "Lait-Crème Fluid+",
+      "brand": "EMBRYOLISSE",
+      "canonical_url": "https://us.embryolisse.com/products/lait-creme-fluid",
+      "changed": false,
+      "blocked": true,
+      "skip_reason": "unsupported_brand_for_manual_template",
+      "candidate_hash": "113774ccc576d75fc707e457314473064a20020fd1fe44f08c4436a1eb06a283",
+      "evidence_profile": "official_pdp_reviewed_formula_and_usage",
+      "source_coverage": {
+        "source": "official_pdp",
+        "canonical_url": "https://us.embryolisse.com/products/lait-creme-fluid",
+        "fields": {
+          "description": true,
+          "ingredients": 1,
+          "active_ingredients": 1,
+          "how_to": 1,
+          "details": 3,
+          "variants": 2
+        }
+      },
+      "preview": {
+        "headline": "Body care treatment",
+        "what_it_is": "Lait-Crème Fluid+ is a body care treatment from EMBRYOLISSE in 13.52 Fl.oz, with source-backed cues around cleansing and hydration.",
+        "why_it_stands_out": [
+          {
+            "headline": "Routine step cues are specific",
+            "body": "Reviewed skincare cues such as aloe juice, hydration, barrier support, 13.52 Fl.oz identify the routine role or key ingredient context without inventing unsupported benefits.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Ingredient list is available",
+            "body": "Full INCI is present for formula-sensitive review, which makes this PDP safer to evaluate than a claim-only listing.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Shade and size are explicit",
+            "body": "Variant labels such as 13.52 Fl.oz, Size: 13.52 Fl.oz, 2.54 Fl.oz, Size: 2.54 Fl.oz are visible, reducing ambiguity around the product format before a shopper clicks through.",
+            "evidence_strength": "official_pdp_reviewed"
+          }
+        ],
+        "best_for": [
+          {
+            "tag": "hydration",
+            "label": "hydration",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "barrier_support",
+            "label": "barrier support",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "body_routine",
+            "label": "body routine",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "aromatherapy",
+            "label": "aromatherapy",
+            "confidence": "moderate"
+          }
+        ],
+        "shopping_highlight": "aloe juice, hydration, barrier support"
+      },
+      "writes": []
+    },
+    {
+      "external_product_id": "ext_a47933ea068521800615641f",
+      "pivota_signature_id": "sig_70638599831860e954adc18e0e2ce840",
+      "title": "Lait-Crème Fluid+ Eco-Refill",
+      "brand": "EMBRYOLISSE",
+      "canonical_url": "https://us.embryolisse.com/products/lait-creme-fluid-eco-refill",
+      "changed": false,
+      "blocked": true,
+      "skip_reason": "unsupported_brand_for_manual_template",
+      "candidate_hash": "c3dac44c74e341e597e430225d5553981408307b1e382dafef74678c819122e9",
+      "evidence_profile": "official_pdp_reviewed_formula_and_usage",
+      "source_coverage": {
+        "source": "official_pdp",
+        "canonical_url": "https://us.embryolisse.com/products/lait-creme-fluid-eco-refill",
+        "fields": {
+          "description": true,
+          "ingredients": 1,
+          "active_ingredients": 1,
+          "how_to": 1,
+          "details": 4,
+          "variants": 1
+        }
+      },
+      "preview": {
+        "headline": "Body care treatment",
+        "what_it_is": "Lait-Crème Fluid+ Eco-Refill is a body care treatment from EMBRYOLISSE in 13.52 fl oz, with source-backed cues around cleansing and hydration.",
+        "why_it_stands_out": [
+          {
+            "headline": "Routine step cues are specific",
+            "body": "Reviewed skincare cues such as aloe juice, hydration, barrier support, 13.52 fl oz identify the routine role or key ingredient context without inventing unsupported benefits.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Ingredient list is available",
+            "body": "Full INCI is present for formula-sensitive review, which makes this PDP safer to evaluate than a claim-only listing.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Shade and size are explicit",
+            "body": "Variant labels such as 13.52 fl oz, Size: 13.52 fl oz are visible, reducing ambiguity around the product format before a shopper clicks through.",
+            "evidence_strength": "official_pdp_reviewed"
+          }
+        ],
+        "best_for": [
+          {
+            "tag": "hydration",
+            "label": "hydration",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "radiance",
+            "label": "radiance",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "barrier_support",
+            "label": "barrier support",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "body_routine",
+            "label": "body routine",
+            "confidence": "moderate"
+          }
+        ],
+        "shopping_highlight": "aloe juice, hydration, barrier support"
+      },
+      "writes": []
+    },
+    {
+      "external_product_id": "ext_fb2cb31c4c327cd9385d80f4",
+      "pivota_signature_id": "sig_110acce313f78b4f3e1e1629bc8cd9f8",
+      "title": "Lait-Crème Retinol-Like",
+      "brand": "EMBRYOLISSE",
+      "canonical_url": "https://us.embryolisse.com/products/lait-creme-retinol-like",
+      "changed": false,
+      "blocked": true,
+      "skip_reason": "unsupported_brand_for_manual_template",
+      "candidate_hash": "92a68950155d457a6db107d6b59fd9d145ca223cdd6f110a385383789acd95be",
+      "evidence_profile": "official_pdp_reviewed_formula_and_usage",
+      "source_coverage": {
+        "source": "official_pdp",
+        "canonical_url": "https://us.embryolisse.com/products/lait-creme-retinol-like",
+        "fields": {
+          "description": true,
+          "ingredients": 1,
+          "active_ingredients": 1,
+          "how_to": 1,
+          "details": 3,
+          "variants": 1
+        }
+      },
+      "preview": {
+        "headline": "Treatment serum",
+        "what_it_is": "Lait-Crème Retinol-Like is a treatment serum from EMBRYOLISSE in 2.54 fl oz, with source-backed ingredient cues around retinol.",
+        "why_it_stands_out": [
+          {
+            "headline": "Routine step cues are specific",
+            "body": "Reviewed skincare cues such as retinol, aloe juice, hydration, barrier support identify the routine role or key ingredient context without inventing unsupported benefits.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Ingredient list is available",
+            "body": "Full INCI is present for formula-sensitive review, which makes this PDP safer to evaluate than a claim-only listing.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Shade and size are explicit",
+            "body": "Variant labels such as 2.54 fl oz, Size: 2.54 fl oz are visible, reducing ambiguity around the product format before a shopper clicks through.",
+            "evidence_strength": "official_pdp_reviewed"
+          }
+        ],
+        "best_for": [
+          {
+            "tag": "hydration",
+            "label": "hydration",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "barrier_support",
+            "label": "barrier support",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "body_routine",
+            "label": "body routine",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "aromatherapy",
+            "label": "aromatherapy",
+            "confidence": "moderate"
+          }
+        ],
+        "shopping_highlight": "retinol, aloe juice, hydration"
+      },
+      "writes": []
+    },
+    {
+      "external_product_id": "ext_f39b95a6360df6259d96ea82",
+      "pivota_signature_id": "sig_0737b5f8154db1453a62f1718920c5d1",
+      "title": "Lait-Crème Sensitive - Fragrance free",
+      "brand": "EMBRYOLISSE",
+      "canonical_url": "https://us.embryolisse.com/products/lait-creme-sensitive-fragrance-free",
+      "changed": false,
+      "blocked": true,
+      "skip_reason": "unsupported_brand_for_manual_template",
+      "candidate_hash": "6113170fe5bfaa68af8650eb7c436f827fd154de34ef2d61188bbbb591a5c5db",
+      "evidence_profile": "official_pdp_reviewed_formula_and_usage",
+      "source_coverage": {
+        "source": "official_pdp",
+        "canonical_url": "https://us.embryolisse.com/products/lait-creme-sensitive-fragrance-free",
+        "fields": {
+          "description": true,
+          "ingredients": 1,
+          "active_ingredients": 1,
+          "how_to": 1,
+          "details": 3,
+          "variants": 2
+        }
+      },
+      "preview": {
+        "headline": "Fine fragrance",
+        "what_it_is": "Lait-Crème Sensitive - Fragrance free is a fine fragrance from EMBRYOLISSE in 3.38 Fl.oz.",
+        "why_it_stands_out": [
+          {
+            "headline": "Scent profile cues",
+            "body": "Reviewed scent cues such as shea butter, 3.38 Fl.oz, 1.01 fl.oz help shoppers compare the fragrance profile without relying on generic scent copy.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Ingredient list is available",
+            "body": "Full INCI is present for formula-sensitive review, which makes this PDP safer to evaluate than a claim-only listing.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Shade and size are explicit",
+            "body": "Variant labels such as 3.38 Fl.oz, Size: 3.38 Fl.oz, 1.01 fl.oz, Size: 1.01 fl.oz are visible, reducing ambiguity around the product format before a shopper clicks through.",
+            "evidence_strength": "official_pdp_reviewed"
+          }
+        ],
+        "best_for": [
+          {
+            "tag": "floral_fragrance_profiles",
+            "label": "floral fragrance profiles",
+            "confidence": "moderate"
+          }
+        ],
+        "shopping_highlight": "shea butter, 3.38 Fl.oz, 1.01 fl.oz"
+      },
+      "writes": []
+    },
+    {
+      "external_product_id": "ext_b365b5c73a03231b144165c2",
+      "pivota_signature_id": "sig_518f2b331ffbb4e22f17446cdbe612fd",
+      "title": "Lait-Crème Set",
+      "brand": "EMBRYOLISSE",
+      "canonical_url": "https://us.embryolisse.com/products/lait-creme-set",
+      "changed": false,
+      "blocked": true,
+      "skip_reason": "unsupported_brand_for_manual_template",
+      "candidate_hash": "772b79ed9b9a52a1a3ca660883b34f1316fa9d241349391eb5518c9c07748b52",
+      "evidence_profile": "official_pdp_reviewed_key_ingredients_and_usage",
+      "source_coverage": {
+        "source": "official_pdp",
+        "canonical_url": "https://us.embryolisse.com/products/lait-creme-set",
+        "fields": {
+          "description": true,
+          "ingredients": 0,
+          "active_ingredients": 1,
+          "how_to": 1,
+          "details": 3,
+          "variants": 1
+        }
+      },
+      "preview": {
+        "headline": "Skincare set",
+        "what_it_is": "Lait-Crème Set is a skincare set from EMBRYOLISSE in Set, with source-backed cues around hydration.",
+        "why_it_stands_out": [
+          {
+            "headline": "Routine step cues are specific",
+            "body": "Reviewed skincare cues such as aloe juice, hydration, barrier support, Set identify the routine role or key ingredient context without inventing unsupported benefits.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Key ingredients are identified",
+            "body": "LAIT-CREME CONCENTRE 202I01 - INGREDIENTS is identified, enough for a cautious high-level formula read without inventing unsupported actives.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Shade and size are explicit",
+            "body": "Variant labels such as Set, Format: Set are visible, reducing ambiguity around the product format before a shopper clicks through.",
+            "evidence_strength": "official_pdp_reviewed"
+          }
+        ],
+        "best_for": [
+          {
+            "tag": "hydration",
+            "label": "hydration",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "barrier_support",
+            "label": "barrier support",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "body_routine",
+            "label": "body routine",
+            "confidence": "moderate"
+          }
+        ],
+        "shopping_highlight": "Skincare routine set"
+      },
+      "writes": []
+    },
+    {
+      "external_product_id": "ext_45ecd7181e45b2c031ec2b30",
+      "pivota_signature_id": "sig_2a17566cfd09f28cf91b6b6b9c6a43db",
+      "title": "Lait-Crème Trio",
+      "brand": "EMBRYOLISSE",
+      "canonical_url": "https://us.embryolisse.com/products/24-hour-miracle-cream",
+      "changed": false,
+      "blocked": true,
+      "skip_reason": "unsupported_brand_for_manual_template",
+      "candidate_hash": "a780e4a57271b15dfec39578e2de2348b19375eaf44f3291058db80efd5f40db",
+      "evidence_profile": "official_pdp_reviewed_formula_and_usage",
+      "source_coverage": {
+        "source": "official_pdp",
+        "canonical_url": "https://us.embryolisse.com/products/24-hour-miracle-cream",
+        "fields": {
+          "description": true,
+          "ingredients": 1,
+          "active_ingredients": 1,
+          "how_to": 1,
+          "details": 3,
+          "variants": 1
+        }
+      },
+      "preview": {
+        "headline": "Skincare set",
+        "what_it_is": "Lait-Crème Trio is a skincare set from EMBRYOLISSE in Trio, with source-backed cues around cleansing and hydration.",
+        "why_it_stands_out": [
+          {
+            "headline": "Routine step cues are specific",
+            "body": "Reviewed skincare cues such as aloe juice, hydration, barrier support, Trio identify the routine role or key ingredient context without inventing unsupported benefits.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Ingredient list is available",
+            "body": "Full INCI is present for formula-sensitive review, which makes this PDP safer to evaluate than a claim-only listing.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Shade and size are explicit",
+            "body": "Variant labels such as Trio, Format: Trio are visible, reducing ambiguity around the product format before a shopper clicks through.",
+            "evidence_strength": "official_pdp_reviewed"
+          }
+        ],
+        "best_for": [
+          {
+            "tag": "hydration",
+            "label": "hydration",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "barrier_support",
+            "label": "barrier support",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "aromatherapy",
+            "label": "aromatherapy",
+            "confidence": "moderate"
+          }
+        ],
+        "shopping_highlight": "Skincare routine set"
+      },
+      "writes": []
+    },
+    {
+      "external_product_id": "ext_06208936e6f1604520a55354",
+      "pivota_signature_id": "sig_a96cdde7f9255d0254f0811410f495b8",
+      "title": "Lightweight Hydration Set",
+      "brand": "EMBRYOLISSE",
+      "canonical_url": "https://us.embryolisse.com/products/lightweight-hydration-set",
+      "changed": false,
+      "blocked": true,
+      "skip_reason": "unsupported_brand_for_manual_template",
+      "candidate_hash": "4ba32a433efd90a476dfee471b65e47b359d86ec179736d1a9a4aa1c44f43fc9",
+      "evidence_profile": "official_pdp_reviewed_line",
+      "source_coverage": {
+        "source": "official_pdp",
+        "canonical_url": "https://us.embryolisse.com/products/lightweight-hydration-set",
+        "fields": {
+          "description": true,
+          "ingredients": 0,
+          "active_ingredients": 0,
+          "how_to": 1,
+          "details": 0,
+          "variants": 1
+        }
+      },
+      "preview": {
+        "headline": "Skincare set",
+        "what_it_is": "Lightweight Hydration Set is a skincare set from EMBRYOLISSE in Set, with source-backed cues around hydration.",
+        "why_it_stands_out": [
+          {
+            "headline": "Routine step cues are specific",
+            "body": "Reviewed skincare cues such as hydration, Set identify the routine role or key ingredient context without inventing unsupported benefits.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Shade and size are explicit",
+            "body": "Variant labels such as Set, Format: Set are visible, reducing ambiguity around the product format before a shopper clicks through.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Usage instructions available",
+            "body": "Reviewed usage context is present, including: Apply a small amount after cleansing and toning, before moisturizer.",
+            "evidence_strength": "official_pdp_reviewed"
+          }
+        ],
+        "best_for": [
+          {
+            "tag": "hydration",
+            "label": "hydration",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "aromatherapy",
+            "label": "aromatherapy",
+            "confidence": "moderate"
+          }
+        ],
+        "shopping_highlight": "Skincare routine set"
+      },
+      "writes": []
+    },
+    {
+      "external_product_id": "ext_3315d0c49732036280f42862",
+      "pivota_signature_id": "sig_d72d16e761e0763c85f7917942fe1ffa",
+      "title": "Mattifying Moisturizer",
+      "brand": "EMBRYOLISSE",
+      "canonical_url": "https://us.embryolisse.com/products/mattifying-moisturizer",
+      "changed": false,
+      "blocked": true,
+      "skip_reason": "unsupported_brand_for_manual_template",
+      "candidate_hash": "109a839b99beacd27ac8414cb840717565e697163b8df23b2e6b34815cea499e",
+      "evidence_profile": "official_pdp_reviewed_formula_and_usage",
+      "source_coverage": {
+        "source": "official_pdp",
+        "canonical_url": "https://us.embryolisse.com/products/mattifying-moisturizer",
+        "fields": {
+          "description": true,
+          "ingredients": 1,
+          "active_ingredients": 1,
+          "how_to": 1,
+          "details": 3,
+          "variants": 1
+        }
+      },
+      "preview": {
+        "headline": "Body care treatment",
+        "what_it_is": "Mattifying Moisturizer is a body care treatment from EMBRYOLISSE in 1.69 fl oz, with source-backed cues around hydration.",
+        "why_it_stands_out": [
+          {
+            "headline": "Routine step cues are specific",
+            "body": "Reviewed skincare cues such as hydration, barrier support, 1.69 fl oz identify the routine role or key ingredient context without inventing unsupported benefits.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Ingredient list is available",
+            "body": "Full INCI is present for formula-sensitive review, which makes this PDP safer to evaluate than a claim-only listing.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Shade and size are explicit",
+            "body": "Variant labels such as 1.69 fl oz, Size: 1.69 fl oz are visible, reducing ambiguity around the product format before a shopper clicks through.",
+            "evidence_strength": "official_pdp_reviewed"
+          }
+        ],
+        "best_for": [
+          {
+            "tag": "hydration",
+            "label": "hydration",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "barrier_support",
+            "label": "barrier support",
+            "confidence": "moderate"
+          }
+        ],
+        "shopping_highlight": "hydration, barrier support, 1.69 fl oz"
+      },
+      "writes": []
+    },
+    {
+      "external_product_id": "ext_d57ce4ac9c4612b5762c7701",
+      "pivota_signature_id": "sig_ff13fe1a0202750a8230ad7226df5c7f",
+      "title": "Micellar Lotion - Cleansing and Make-up Remover",
+      "brand": "EMBRYOLISSE",
+      "canonical_url": "https://us.embryolisse.com/products/micellar-lotion-cleansing-and-make-up-remover",
+      "changed": false,
+      "blocked": true,
+      "skip_reason": "unsupported_brand_for_manual_template",
+      "candidate_hash": "8e1eb7a5ff5e1b6309ee5dff10b6145d19319b856d192507c838326194adaec2",
+      "evidence_profile": "official_pdp_reviewed_formula_and_usage",
+      "source_coverage": {
+        "source": "official_pdp",
+        "canonical_url": "https://us.embryolisse.com/products/micellar-lotion-cleansing-and-make-up-remover",
+        "fields": {
+          "description": true,
+          "ingredients": 1,
+          "active_ingredients": 1,
+          "how_to": 1,
+          "details": 3,
+          "variants": 2
+        }
+      },
+      "preview": {
+        "headline": "Face cleanser",
+        "what_it_is": "Micellar Lotion - Cleansing and Make-up Remover is a face cleanser from EMBRYOLISSE in 8.45 Fl.oz, with source-backed cues around cleansing, makeup removal and dirt, oil, and impurity removal.",
+        "why_it_stands_out": [
+          {
+            "headline": "Product cues are source-backed",
+            "body": "Reviewed PDP cues such as daily cleansing, pore cleansing, makeup removal, 8.45 Fl.oz give shoppers specific comparison points within EMBRYOLISSE, rather than category-only copy.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Ingredient list is available",
+            "body": "Full INCI is present for formula-sensitive review, which makes this PDP safer to evaluate than a claim-only listing.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Shade and size are explicit",
+            "body": "Variant labels such as 8.45 Fl.oz, Size: 8.45 Fl.oz, 3.38 Fl.oz, Size: 3.38 Fl.oz are visible, reducing ambiguity around the product format before a shopper clicks through.",
+            "evidence_strength": "official_pdp_reviewed"
+          }
+        ],
+        "best_for": [
+          {
+            "tag": "daily_cleansing",
+            "label": "daily cleansing",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "pore_cleansing",
+            "label": "pore cleansing",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "makeup_removal",
+            "label": "makeup removal",
+            "confidence": "moderate"
+          }
+        ],
+        "shopping_highlight": "daily cleansing, pore cleansing"
+      },
+      "writes": []
+    },
+    {
+      "external_product_id": "ext_49f1d7df319fde0d97e00cd5",
+      "pivota_signature_id": "sig_30893b06c10e2e9c5cfaef38942d2bf1",
+      "title": "Nourishing Set",
+      "brand": "EMBRYOLISSE",
+      "canonical_url": "https://us.embryolisse.com/products/nourishing-set",
+      "changed": false,
+      "blocked": true,
+      "skip_reason": "unsupported_brand_for_manual_template",
+      "candidate_hash": "a31ab092dd773274fedae724c8dd6b7253753f371bd26c62562fcbc5ef7435b0",
+      "evidence_profile": "official_pdp_reviewed_key_ingredients_and_usage",
+      "source_coverage": {
+        "source": "official_pdp",
+        "canonical_url": "https://us.embryolisse.com/products/nourishing-set",
+        "fields": {
+          "description": true,
+          "ingredients": 0,
+          "active_ingredients": 1,
+          "how_to": 1,
+          "details": 3,
+          "variants": 1
+        }
+      },
+      "preview": {
+        "headline": "Skincare set",
+        "what_it_is": "Nourishing Set is a skincare set from EMBRYOLISSE in Set, with source-backed cues around hydration.",
+        "why_it_stands_out": [
+          {
+            "headline": "Routine step cues are specific",
+            "body": "Reviewed skincare cues such as hydration, barrier support, Set identify the routine role or key ingredient context without inventing unsupported benefits.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Key ingredients are identified",
+            "body": "Ingredients is identified, enough for a cautious high-level formula read without inventing unsupported actives.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Shade and size are explicit",
+            "body": "Variant labels such as Set, Format: Set are visible, reducing ambiguity around the product format before a shopper clicks through.",
+            "evidence_strength": "official_pdp_reviewed"
+          }
+        ],
+        "best_for": [
+          {
+            "tag": "hydration",
+            "label": "hydration",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "barrier_support",
+            "label": "barrier support",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "body_routine",
+            "label": "body routine",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "aromatherapy",
+            "label": "aromatherapy",
+            "confidence": "moderate"
+          }
+        ],
+        "shopping_highlight": "Skincare routine set"
+      },
+      "writes": []
+    },
+    {
+      "external_product_id": "ext_0710779df8a090847f91f967",
+      "pivota_signature_id": "sig_7d370ad464172427631f413b5a58d385",
+      "title": "Nutri-Revitalizing Duo",
+      "brand": "EMBRYOLISSE",
+      "canonical_url": "https://us.embryolisse.com/products/nutri-revitalizing-skincare-duo",
+      "changed": false,
+      "blocked": true,
+      "skip_reason": "unsupported_brand_for_manual_template",
+      "candidate_hash": "0100089eb89dadcb6a789b949e70d4293a197f6579a48540b76002de7efedc3b",
+      "evidence_profile": "official_pdp_reviewed_key_ingredients_and_usage",
+      "source_coverage": {
+        "source": "official_pdp",
+        "canonical_url": "https://us.embryolisse.com/products/nutri-revitalizing-skincare-duo",
+        "fields": {
+          "description": true,
+          "ingredients": 0,
+          "active_ingredients": 1,
+          "how_to": 1,
+          "details": 2,
+          "variants": 1
+        }
+      },
+      "preview": {
+        "headline": "Skincare set",
+        "what_it_is": "Nutri-Revitalizing Duo is a skincare set from EMBRYOLISSE in Duo, with source-backed cues around hydration.",
+        "why_it_stands_out": [
+          {
+            "headline": "Routine step cues are specific",
+            "body": "Reviewed skincare cues such as aloe juice, hydration, barrier support, Duo identify the routine role or key ingredient context without inventing unsupported benefits.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Key ingredients are identified",
+            "body": "LAIT-CRÈME CONCENTRÉ is identified, enough for a cautious high-level formula read without inventing unsupported actives.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Shade and size are explicit",
+            "body": "Variant labels such as Duo, Format: Duo are visible, reducing ambiguity around the product format before a shopper clicks through.",
+            "evidence_strength": "official_pdp_reviewed"
+          }
+        ],
+        "best_for": [
+          {
+            "tag": "hydration",
+            "label": "hydration",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "barrier_support",
+            "label": "barrier support",
+            "confidence": "moderate"
+          }
+        ],
+        "shopping_highlight": "Skincare routine set"
+      },
+      "writes": []
+    },
+    {
+      "external_product_id": "ext_7503fa3f85a629ddc35fff71",
+      "pivota_signature_id": "sig_847e1f293ad3a384581c741c13e271d5",
+      "title": "Nutri-Vitality Cream",
+      "brand": "EMBRYOLISSE",
+      "canonical_url": "https://us.embryolisse.com/products/nutri-vitality-cream",
+      "changed": false,
+      "blocked": true,
+      "skip_reason": "unsupported_brand_for_manual_template",
+      "candidate_hash": "99a639f8ef8006c86ddf97cf2a57188e577d59d924fbd1a758b0834f271a9c8d",
+      "evidence_profile": "official_pdp_reviewed_formula_and_usage",
+      "source_coverage": {
+        "source": "official_pdp",
+        "canonical_url": "https://us.embryolisse.com/products/nutri-vitality-cream",
+        "fields": {
+          "description": true,
+          "ingredients": 1,
+          "active_ingredients": 1,
+          "how_to": 1,
+          "details": 3,
+          "variants": 1
+        }
+      },
+      "preview": {
+        "headline": "Body care treatment",
+        "what_it_is": "Nutri-Vitality Cream is a body care treatment from EMBRYOLISSE in 1.69 fl oz, with source-backed cues around hydration.",
+        "why_it_stands_out": [
+          {
+            "headline": "Routine step cues are specific",
+            "body": "Reviewed skincare cues such as barrier support, 1.69 fl oz identify the routine role or key ingredient context without inventing unsupported benefits.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Ingredient list is available",
+            "body": "Full INCI is present for formula-sensitive review, which makes this PDP safer to evaluate than a claim-only listing.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Shade and size are explicit",
+            "body": "Variant labels such as 1.69 fl oz, Size: 1.69 fl oz are visible, reducing ambiguity around the product format before a shopper clicks through.",
+            "evidence_strength": "official_pdp_reviewed"
+          }
+        ],
+        "best_for": [
+          {
+            "tag": "radiance",
+            "label": "radiance",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "barrier_support",
+            "label": "barrier support",
+            "confidence": "moderate"
+          }
+        ],
+        "shopping_highlight": "barrier support, 1.69 fl oz"
+      },
+      "writes": []
+    },
+    {
+      "external_product_id": "ext_347eabe33e31ac43240fd9ed",
+      "pivota_signature_id": "sig_a73daf29340c57bbfa3a7e3b61020401",
+      "title": "Parisian Skin Prep Routine",
+      "brand": "EMBRYOLISSE",
+      "canonical_url": "https://us.embryolisse.com/products/parisian-skin-prep-routine",
+      "changed": false,
+      "blocked": true,
+      "skip_reason": "unsupported_brand_for_manual_template",
+      "candidate_hash": "c139f650f34d3bafeb63661ef3d409331d107aa6d1fd18b6f8baff7c570548d9",
+      "evidence_profile": "official_pdp_reviewed_key_ingredients_and_usage",
+      "source_coverage": {
+        "source": "official_pdp",
+        "canonical_url": "https://us.embryolisse.com/products/parisian-skin-prep-routine",
+        "fields": {
+          "description": true,
+          "ingredients": 0,
+          "active_ingredients": 1,
+          "how_to": 1,
+          "details": 1,
+          "variants": 1
+        }
+      },
+      "preview": {
+        "headline": "Skincare set",
+        "what_it_is": "Parisian Skin Prep Routine is a skincare set from EMBRYOLISSE, with source-backed cues around hydration.",
+        "why_it_stands_out": [
+          {
+            "headline": "Routine step cues are specific",
+            "body": "Reviewed skincare cues such as AHA exfoliation, aloe juice, hydration, barrier support identify the routine role or key ingredient context without inventing unsupported benefits.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Key ingredients are identified",
+            "body": "Eau de Beauté Rosamélis is identified, enough for a cautious high-level formula read without inventing unsupported actives.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Usage instructions available",
+            "body": "Reviewed usage context is present, including: Apply to clean skin after treatment steps.",
+            "evidence_strength": "official_pdp_reviewed"
+          }
+        ],
+        "best_for": [
+          {
+            "tag": "exfoliating_toner_step",
+            "label": "exfoliating toner step",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "hydration",
+            "label": "hydration",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "barrier_support",
+            "label": "barrier support",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "body_routine",
+            "label": "body routine",
+            "confidence": "moderate"
+          }
+        ],
+        "shopping_highlight": "Skincare routine set"
+      },
+      "writes": []
+    },
+    {
+      "external_product_id": "ext_313ebe3e8ae16e1c8982eaed",
+      "pivota_signature_id": "sig_da339de8235e1c9cc60a53d534dffcab",
+      "title": "Perfect Nude Makeup Look",
+      "brand": "EMBRYOLISSE",
+      "canonical_url": "https://us.embryolisse.com/products/perfect-nude-makeup-look",
+      "changed": false,
+      "blocked": true,
+      "skip_reason": "unsupported_brand_for_manual_template",
+      "candidate_hash": "e2eb919602d1efebc06b64a4939bdf7e155d9964f37c428ece102befbb29c287",
+      "evidence_profile": "official_pdp_reviewed_formula_and_usage",
+      "source_coverage": {
+        "source": "official_pdp",
+        "canonical_url": "https://us.embryolisse.com/products/perfect-nude-makeup-look",
+        "fields": {
+          "description": true,
+          "ingredients": 1,
+          "active_ingredients": 3,
+          "how_to": 1,
+          "details": 3,
+          "variants": 1
+        }
+      },
+      "preview": {
+        "headline": "Fine fragrance",
+        "what_it_is": "Perfect Nude Makeup Look is a fine fragrance from EMBRYOLISSE in 1 fl oz, with source-backed scent cues including rose and citrus.",
+        "why_it_stands_out": [
+          {
+            "headline": "Scent profile cues",
+            "body": "Reviewed scent cues such as rose, citrus, hyaluronic acid, shea butter help shoppers compare the fragrance profile without relying on generic scent copy.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Ingredient list is available",
+            "body": "Full INCI is present for formula-sensitive review, which makes this PDP safer to evaluate than a claim-only listing.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Shade and size are explicit",
+            "body": "Variant labels such as 1 fl oz, Size: 1 fl oz are visible, reducing ambiguity around the product format before a shopper clicks through.",
+            "evidence_strength": "official_pdp_reviewed"
+          }
+        ],
+        "best_for": [
+          {
+            "tag": "floral_fragrance_profiles",
+            "label": "floral fragrance profiles",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "fresh_citrus_profiles",
+            "label": "fresh citrus profiles",
+            "confidence": "moderate"
+          }
+        ],
+        "shopping_highlight": "rose, citrus, hyaluronic acid"
+      },
+      "writes": []
+    },
+    {
+      "external_product_id": "ext_78a31a564bc9e88233286829",
+      "pivota_signature_id": "sig_3291b8a4c30c5a72f7f5520ec04f3112",
+      "title": "Premium Skincare Duo",
+      "brand": "EMBRYOLISSE",
+      "canonical_url": "https://us.embryolisse.com/products/premium-skincare-duo",
+      "changed": false,
+      "blocked": true,
+      "skip_reason": "unsupported_brand_for_manual_template",
+      "candidate_hash": "932de4a2210be169188d7bb254418f25a2a64bfdbbfe1c67970333aa4282fd4e",
+      "evidence_profile": "official_pdp_reviewed_line",
+      "source_coverage": {
+        "source": "official_pdp",
+        "canonical_url": "https://us.embryolisse.com/products/premium-skincare-duo",
+        "fields": {
+          "description": true,
+          "ingredients": 0,
+          "active_ingredients": 0,
+          "how_to": 1,
+          "details": 0,
+          "variants": 1
+        }
+      },
+      "preview": {
+        "headline": "Skincare set",
+        "what_it_is": "Premium Skincare Duo is a skincare set from EMBRYOLISSE in Duo, with source-backed cues around cleansing and hydration.",
+        "why_it_stands_out": [
+          {
+            "headline": "Routine step cues are specific",
+            "body": "Reviewed skincare cues such as hydration, Duo identify the routine role or key ingredient context without inventing unsupported benefits.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Shade and size are explicit",
+            "body": "Variant labels such as Duo, Format: Duo are visible, reducing ambiguity around the product format before a shopper clicks through.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Usage instructions available",
+            "body": "Reviewed usage context is present, including: Massage onto damp skin, then rinse thoroughly.",
+            "evidence_strength": "official_pdp_reviewed"
+          }
+        ],
+        "best_for": [
+          {
+            "tag": "hydration",
+            "label": "hydration",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "aromatherapy",
+            "label": "aromatherapy",
+            "confidence": "moderate"
+          }
+        ],
+        "shopping_highlight": "Skincare routine set"
+      },
+      "writes": []
+    },
+    {
+      "external_product_id": "ext_26fda1d244b5cd80d8901211",
+      "pivota_signature_id": "sig_0fff7c68655486e34d99566c0ca272d3",
+      "title": "Protective & Nourishing Lip Balm",
+      "brand": "EMBRYOLISSE",
+      "canonical_url": "https://us.embryolisse.com/products/protective-nourishing-lip-balm",
+      "changed": false,
+      "blocked": true,
+      "skip_reason": "unsupported_brand_for_manual_template",
+      "candidate_hash": "076e47036470d11d479ab55526162a11580e4f647003e2ed88dbbd899ac5daa2",
+      "evidence_profile": "official_pdp_reviewed_formula_and_usage",
+      "source_coverage": {
+        "source": "official_pdp",
+        "canonical_url": "https://us.embryolisse.com/products/protective-nourishing-lip-balm",
+        "fields": {
+          "description": true,
+          "ingredients": 1,
+          "active_ingredients": 1,
+          "how_to": 1,
+          "details": 3,
+          "variants": 1
+        }
+      },
+      "preview": {
+        "headline": "Lip treatment",
+        "what_it_is": "Protective & Nourishing Lip Balm is a lip set from EMBRYOLISSE built around Protective + Nourishing Lip Balm.",
+        "why_it_stands_out": [
+          {
+            "headline": "Component pairing is clear",
+            "body": "The PDP identifies the paired components as Protective and Nourishing Lip Balm, so a shopper can tell whether this is liner-plus-color, gloss-plus-liner, or a fuller lip set before leaving the page.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Application order is explicit",
+            "body": "The reviewed directions explain the sequence: Apply the Protective & Nourishing Lip Balm to clean, dry lips as often as needed throughout the day.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Ingredient list is available",
+            "body": "Full INCI is present for formula-sensitive review, which makes this PDP safer to evaluate than a claim-only listing.",
+            "evidence_strength": "official_pdp_reviewed"
+          }
+        ],
+        "best_for": [
+          {
+            "tag": "color_payoff",
+            "label": "color payoff",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "lip_comfort",
+            "label": "lip comfort",
+            "confidence": "moderate"
+          }
+        ],
+        "shopping_highlight": "Protective + Nourishing Lip Balm"
+      },
+      "writes": []
+    },
+    {
+      "external_product_id": "ext_04a5386edad9f55dbb397179",
+      "pivota_signature_id": "sig_c627020f575e49248645284ce43411b1",
+      "title": "Radiant Complexion Cream - Apricot Glow",
+      "brand": "EMBRYOLISSE",
+      "canonical_url": "https://us.embryolisse.com/products/radiant-complexion-cream-apricot-glow",
+      "changed": false,
+      "blocked": true,
+      "skip_reason": "unsupported_brand_for_manual_template",
+      "candidate_hash": "5ec88e5e0132cd30876e4af7c3efef14fc6c7e477f2670ba844b85653c8d3e06",
+      "evidence_profile": "official_pdp_reviewed_formula_and_usage",
+      "source_coverage": {
+        "source": "official_pdp",
+        "canonical_url": "https://us.embryolisse.com/products/radiant-complexion-cream-apricot-glow",
+        "fields": {
+          "description": true,
+          "ingredients": 1,
+          "active_ingredients": 2,
+          "how_to": 1,
+          "details": 3,
+          "variants": 1
+        }
+      },
+      "preview": {
+        "headline": "Complexion makeup",
+        "what_it_is": "Radiant Complexion Cream - Apricot Glow is a complexion product from EMBRYOLISSE in 1.01 fl oz.",
+        "why_it_stands_out": [
+          {
+            "headline": "Coverage and finish cues are clear",
+            "body": "Reviewed complexion cues such as shade range, 1.01 fl oz support a more precise read on coverage, finish, or shade fit.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Ingredient list is available",
+            "body": "Full INCI is present for formula-sensitive review, which makes this PDP safer to evaluate than a claim-only listing.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Shade and size are explicit",
+            "body": "Variant labels such as 1.01 fl oz, Size: 1.01 fl oz are visible, reducing ambiguity around the product format before a shopper clicks through.",
+            "evidence_strength": "official_pdp_reviewed"
+          }
+        ],
+        "best_for": [
+          {
+            "tag": "base_makeup_prep",
+            "label": "base makeup prep",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "soft_focus_finish",
+            "label": "soft-focus finish",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "radiant_finish",
+            "label": "radiant finish",
+            "confidence": "moderate"
+          }
+        ],
+        "shopping_highlight": "shade range, 1.01 fl oz"
+      },
+      "writes": []
+    },
+    {
+      "external_product_id": "ext_0d13a1cd60d47c00537e69ef",
+      "pivota_signature_id": "sig_ef99b2baa5763e3918823f20b09e6b3f",
+      "title": "Radiant Complexion Cream - Pink Glow",
+      "brand": "EMBRYOLISSE",
+      "canonical_url": "https://us.embryolisse.com/products/radiant-complexion-cream-pink",
+      "changed": false,
+      "blocked": true,
+      "skip_reason": "unsupported_brand_for_manual_template",
+      "candidate_hash": "7aa56e881ada49fd21811b033e0e3a515ff3203eb48e921c968473cbf062f42b",
+      "evidence_profile": "official_pdp_reviewed_key_ingredients_and_usage",
+      "source_coverage": {
+        "source": "official_pdp",
+        "canonical_url": "https://us.embryolisse.com/products/radiant-complexion-cream-pink",
+        "fields": {
+          "description": true,
+          "ingredients": 0,
+          "active_ingredients": 2,
+          "how_to": 1,
+          "details": 3,
+          "variants": 1
+        }
+      },
+      "preview": {
+        "headline": "Complexion makeup",
+        "what_it_is": "Radiant Complexion Cream - Pink Glow is a complexion product from EMBRYOLISSE in 1.01 fl oz.",
+        "why_it_stands_out": [
+          {
+            "headline": "Coverage and finish cues are clear",
+            "body": "Reviewed complexion cues such as shade range, 1.01 fl oz support a more precise read on coverage, finish, or shade fit.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Key ingredients are identified",
+            "body": "Glycerin, Hyaluronic acid are identified, enough for a cautious high-level formula read without inventing unsupported actives.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Shade and size are explicit",
+            "body": "Variant labels such as 1.01 fl oz, Size: 1.01 fl oz are visible, reducing ambiguity around the product format before a shopper clicks through.",
+            "evidence_strength": "official_pdp_reviewed"
+          }
+        ],
+        "best_for": [
+          {
+            "tag": "base_makeup_prep",
+            "label": "base makeup prep",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "radiant_finish",
+            "label": "radiant finish",
+            "confidence": "moderate"
+          }
+        ],
+        "shopping_highlight": "shade range, 1.01 fl oz"
+      },
+      "writes": []
+    },
+    {
+      "external_product_id": "ext_76bfd11a0bea190f4c9d32c7",
+      "pivota_signature_id": "sig_791172e7a73621be30aefea5542752e9",
+      "title": "Radiant Eye Stick - Cool Treatment For A Brighter Look",
+      "brand": "EMBRYOLISSE",
+      "canonical_url": "https://us.embryolisse.com/products/radiant-eye-stick-cool-treatment-for-a-brighter-look",
+      "changed": false,
+      "blocked": true,
+      "skip_reason": "unsupported_brand_for_manual_template",
+      "candidate_hash": "43ecdfdd09c9e17bfbfd8e799e4e18ad10de7ba96b40b1db72b4b86fc5edb284",
+      "evidence_profile": "official_pdp_reviewed_formula_and_usage",
+      "source_coverage": {
+        "source": "official_pdp",
+        "canonical_url": "https://us.embryolisse.com/products/radiant-eye-stick-cool-treatment-for-a-brighter-look",
+        "fields": {
+          "description": true,
+          "ingredients": 1,
+          "active_ingredients": 1,
+          "how_to": 1,
+          "details": 3,
+          "variants": 1
+        }
+      },
+      "preview": {
+        "headline": "Body care treatment",
+        "what_it_is": "Radiant Eye Stick - Cool Treatment For A Brighter Look is a body care treatment from EMBRYOLISSE in 0.15 oz, with source-backed cues around hydration and brightening support.",
+        "why_it_stands_out": [
+          {
+            "headline": "Routine step cues are specific",
+            "body": "Reviewed skincare cues such as aloe juice, 0.15 oz identify the routine role or key ingredient context without inventing unsupported benefits.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Ingredient list is available",
+            "body": "Full INCI is present for formula-sensitive review, which makes this PDP safer to evaluate than a claim-only listing.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Shade and size are explicit",
+            "body": "Variant labels such as 0.15 oz, Size: 0.15 oz are visible, reducing ambiguity around the product format before a shopper clicks through.",
+            "evidence_strength": "official_pdp_reviewed"
+          }
+        ],
+        "best_for": [
+          {
+            "tag": "radiance",
+            "label": "radiance",
+            "confidence": "moderate"
+          }
+        ],
+        "shopping_highlight": "aloe juice, 0.15 oz, full INCI available"
+      },
+      "writes": []
+    },
+    {
+      "external_product_id": "ext_7c778fdb1800c82c194ddbf2",
+      "pivota_signature_id": "sig_09a11b1470a0d50c160893e36e1b2ace",
+      "title": "Retinol-Like Duo",
+      "brand": "EMBRYOLISSE",
+      "canonical_url": "https://us.embryolisse.com/products/retinol-like-duo",
+      "changed": false,
+      "blocked": true,
+      "skip_reason": "unsupported_brand_for_manual_template",
+      "candidate_hash": "eb5ab18abae43ff4c3dc294b66583445531343dad95cbff0e489df5a57ad6361",
+      "evidence_profile": "official_pdp_reviewed_key_ingredients_and_usage",
+      "source_coverage": {
+        "source": "official_pdp",
+        "canonical_url": "https://us.embryolisse.com/products/retinol-like-duo",
+        "fields": {
+          "description": true,
+          "ingredients": 0,
+          "active_ingredients": 1,
+          "how_to": 1,
+          "details": 0,
+          "variants": 1
+        }
+      },
+      "preview": {
+        "headline": "Skincare set",
+        "what_it_is": "Retinol-Like Duo is a skincare set from EMBRYOLISSE in Duo, with source-backed cues around hydration.",
+        "why_it_stands_out": [
+          {
+            "headline": "Routine step cues are specific",
+            "body": "Reviewed skincare cues such as retinol, Duo identify the routine role or key ingredient context without inventing unsupported benefits.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Key ingredients are identified",
+            "body": "Retinol is identified, enough for a cautious high-level formula read without inventing unsupported actives.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Shade and size are explicit",
+            "body": "Variant labels such as Duo, Format: Duo are visible, reducing ambiguity around the product format before a shopper clicks through.",
+            "evidence_strength": "official_pdp_reviewed"
+          }
+        ],
+        "best_for": [
+          {
+            "tag": "retinol",
+            "label": "retinol",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "duo",
+            "label": "Duo",
+            "confidence": "moderate"
+          }
+        ],
+        "shopping_highlight": "Skincare routine set"
+      },
+      "writes": []
+    },
+    {
+      "external_product_id": "ext_a0f9ee6194eca588686355d6",
+      "pivota_signature_id": "sig_62104492c1f2b394a80fb70d56698a8c",
+      "title": "Retinol-like & Pink Glow",
+      "brand": "EMBRYOLISSE",
+      "canonical_url": "https://us.embryolisse.com/products/retinol-like-pink-glow",
+      "changed": false,
+      "blocked": true,
+      "skip_reason": "unsupported_brand_for_manual_template",
+      "candidate_hash": "5adb15bacec72ff98763812c6d5a7fec978801af1f8115b41d056a7d1bb9545e",
+      "evidence_profile": "official_pdp_reviewed_formula_and_usage",
+      "source_coverage": {
+        "source": "official_pdp",
+        "canonical_url": "https://us.embryolisse.com/products/retinol-like-pink-glow",
+        "fields": {
+          "description": true,
+          "ingredients": 1,
+          "active_ingredients": 2,
+          "how_to": 1,
+          "details": 3,
+          "variants": 1
+        }
+      },
+      "preview": {
+        "headline": "Skincare set",
+        "what_it_is": "Retinol-like & Pink Glow is a skincare set from EMBRYOLISSE, with source-backed cues around hydration and brightening support.",
+        "why_it_stands_out": [
+          {
+            "headline": "Routine step cues are specific",
+            "body": "Reviewed skincare cues such as retinol, hydration identify the routine role or key ingredient context without inventing unsupported benefits.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Ingredient list is available",
+            "body": "Full INCI is present for formula-sensitive review, which makes this PDP safer to evaluate than a claim-only listing.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Usage instructions available",
+            "body": "Reviewed usage context is present, including: OPTION 1: SEPARATE APPLICATION 1.",
+            "evidence_strength": "official_pdp_reviewed"
+          }
+        ],
+        "best_for": [
+          {
+            "tag": "hydration",
+            "label": "hydration",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "radiance",
+            "label": "radiance",
+            "confidence": "moderate"
+          }
+        ],
+        "shopping_highlight": "Brightening skincare set"
+      },
+      "writes": []
+    },
+    {
+      "external_product_id": "ext_d2aa28ddf2aef2f3b89015be",
+      "pivota_signature_id": "sig_dca71e5f47419b330730ada233b46347",
+      "title": "Sensitive Skin Set",
+      "brand": "EMBRYOLISSE",
+      "canonical_url": "https://us.embryolisse.com/products/sensitive-skin-set",
+      "changed": false,
+      "blocked": true,
+      "skip_reason": "unsupported_brand_for_manual_template",
+      "candidate_hash": "50a03be9785ed486fadfa847c425a33b7cd9b658fdffe21c0d5fb6cc8ad78761",
+      "evidence_profile": "official_pdp_reviewed_line",
+      "source_coverage": {
+        "source": "official_pdp",
+        "canonical_url": "https://us.embryolisse.com/products/sensitive-skin-set",
+        "fields": {
+          "description": true,
+          "ingredients": 0,
+          "active_ingredients": 0,
+          "how_to": 1,
+          "details": 0,
+          "variants": 1
+        }
+      },
+      "preview": {
+        "headline": "Skincare set",
+        "what_it_is": "Sensitive Skin Set is a skincare set from EMBRYOLISSE in Set, with source-backed cues around hydration.",
+        "why_it_stands_out": [
+          {
+            "headline": "Routine step cues are specific",
+            "body": "Reviewed skincare cues such as Set identify the routine role or key ingredient context without inventing unsupported benefits.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Shade and size are explicit",
+            "body": "Variant labels such as Set, Format: Set are visible, reducing ambiguity around the product format before a shopper clicks through.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Usage instructions available",
+            "body": "Reviewed usage context is present, including: Apply to clean skin after treatment steps.",
+            "evidence_strength": "official_pdp_reviewed"
+          }
+        ],
+        "best_for": [
+          {
+            "tag": "set",
+            "label": "Set",
+            "confidence": "moderate"
+          }
+        ],
+        "shopping_highlight": "Skincare routine set"
+      },
+      "writes": []
+    },
+    {
+      "external_product_id": "ext_3ff8dc1f77316b6eca557bc7",
+      "pivota_signature_id": "sig_65ad44c72ea5258a33d42314276d937a",
+      "title": "Skin Essentials Kit",
+      "brand": "EMBRYOLISSE",
+      "canonical_url": "https://us.embryolisse.com/products/skin-essentials-kit",
+      "changed": false,
+      "blocked": true,
+      "skip_reason": "unsupported_brand_for_manual_template",
+      "candidate_hash": "7b45750842b3efc182e7a84c014800cd47a11e7082c340e45ec4c622d9bf1e90",
+      "evidence_profile": "official_pdp_reviewed_line",
+      "source_coverage": {
+        "source": "official_pdp",
+        "canonical_url": "https://us.embryolisse.com/products/skin-essentials-kit",
+        "fields": {
+          "description": true,
+          "ingredients": 0,
+          "active_ingredients": 0,
+          "how_to": 1,
+          "details": 0,
+          "variants": 1
+        }
+      },
+      "preview": {
+        "headline": "Skincare set",
+        "what_it_is": "Skin Essentials Kit is a skincare set from EMBRYOLISSE in Set, with source-backed cues around cleansing and hydration.",
+        "why_it_stands_out": [
+          {
+            "headline": "Routine step cues are specific",
+            "body": "Reviewed skincare cues such as hydration, Set identify the routine role or key ingredient context without inventing unsupported benefits.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Shade and size are explicit",
+            "body": "Variant labels such as Set, Format: Set are visible, reducing ambiguity around the product format before a shopper clicks through.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Usage instructions available",
+            "body": "Reviewed usage context is present, including: Massage onto damp skin, then rinse thoroughly.",
+            "evidence_strength": "official_pdp_reviewed"
+          }
+        ],
+        "best_for": [
+          {
+            "tag": "hydration",
+            "label": "hydration",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "radiance",
+            "label": "radiance",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "body_routine",
+            "label": "body routine",
+            "confidence": "moderate"
+          }
+        ],
+        "shopping_highlight": "Skincare routine set"
+      },
+      "writes": []
+    },
+    {
+      "external_product_id": "ext_7947573b26aeed2cffb52272",
+      "pivota_signature_id": "sig_f0bb8901ce92a182bceb876d0d8600ad",
+      "title": "Smoothing Eye Contour Care",
+      "brand": "EMBRYOLISSE",
+      "canonical_url": "https://us.embryolisse.com/products/smoothing-eye-contour-care",
+      "changed": false,
+      "blocked": true,
+      "skip_reason": "unsupported_brand_for_manual_template",
+      "candidate_hash": "487ada19ac6d6f2ce1f8ced72b1b4fabf39c4e49fbd613fdeda74cf0c1eee2b9",
+      "evidence_profile": "official_pdp_reviewed_formula_and_usage",
+      "source_coverage": {
+        "source": "official_pdp",
+        "canonical_url": "https://us.embryolisse.com/products/smoothing-eye-contour-care",
+        "fields": {
+          "description": true,
+          "ingredients": 1,
+          "active_ingredients": 1,
+          "how_to": 1,
+          "details": 3,
+          "variants": 1
+        }
+      },
+      "preview": {
+        "headline": "Body care treatment",
+        "what_it_is": "Smoothing Eye Contour Care is a body care treatment from EMBRYOLISSE in 0.5 fl oz, with source-backed cues around hydration and brightening support.",
+        "why_it_stands_out": [
+          {
+            "headline": "Routine step cues are specific",
+            "body": "Reviewed skincare cues such as hydration, 0.5 fl oz identify the routine role or key ingredient context without inventing unsupported benefits.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Ingredient list is available",
+            "body": "Full INCI is present for formula-sensitive review, which makes this PDP safer to evaluate than a claim-only listing.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Shade and size are explicit",
+            "body": "Variant labels such as 0.5 fl oz, Size: 0.5 fl oz are visible, reducing ambiguity around the product format before a shopper clicks through.",
+            "evidence_strength": "official_pdp_reviewed"
+          }
+        ],
+        "best_for": [
+          {
+            "tag": "hydration",
+            "label": "hydration",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "radiance",
+            "label": "radiance",
+            "confidence": "moderate"
+          }
+        ],
+        "shopping_highlight": "hydration, 0.5 fl oz"
+      },
+      "writes": []
+    },
+    {
+      "external_product_id": "ext_e13d80b8bf9b8dfe44042064",
+      "pivota_signature_id": "sig_f9eed1c71af5d1fcd3ac805118316a91",
+      "title": "SOS Corrective Cream",
+      "brand": "EMBRYOLISSE",
+      "canonical_url": "https://us.embryolisse.com/products/sos-corrective-cream",
+      "changed": false,
+      "blocked": true,
+      "skip_reason": "unsupported_brand_for_manual_template",
+      "candidate_hash": "c7c62f55ba3455fb512f4b57c9dd190a46a458ef0750c986a0e6da6f1043bd4e",
+      "evidence_profile": "official_pdp_reviewed_formula_and_usage",
+      "source_coverage": {
+        "source": "official_pdp",
+        "canonical_url": "https://us.embryolisse.com/products/sos-corrective-cream",
+        "fields": {
+          "description": true,
+          "ingredients": 1,
+          "active_ingredients": 2,
+          "how_to": 1,
+          "details": 3,
+          "variants": 1
+        }
+      },
+      "preview": {
+        "headline": "Body care treatment",
+        "what_it_is": "SOS Corrective Cream is a body care treatment from EMBRYOLISSE in 1.01 fl oz, with source-backed cues around hydration.",
+        "why_it_stands_out": [
+          {
+            "headline": "Routine step cues are specific",
+            "body": "Reviewed skincare cues such as hydration, barrier support, 1.01 fl oz identify the routine role or key ingredient context without inventing unsupported benefits.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Ingredient list is available",
+            "body": "Full INCI is present for formula-sensitive review, which makes this PDP safer to evaluate than a claim-only listing.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Shade and size are explicit",
+            "body": "Variant labels such as 1.01 fl oz, Size: 1.01 fl oz are visible, reducing ambiguity around the product format before a shopper clicks through.",
+            "evidence_strength": "official_pdp_reviewed"
+          }
+        ],
+        "best_for": [
+          {
+            "tag": "hydration",
+            "label": "hydration",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "barrier_support",
+            "label": "barrier support",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "aromatherapy",
+            "label": "aromatherapy",
+            "confidence": "moderate"
+          }
+        ],
+        "shopping_highlight": "hydration, barrier support, 1.01 fl oz"
+      },
+      "writes": []
+    },
+    {
+      "external_product_id": "ext_de43f31326b08248ea1072a7",
+      "pivota_signature_id": "sig_703d73287ccfae98cef44958868a6114",
+      "title": "Winter Dry Skin Essentials",
+      "brand": "EMBRYOLISSE",
+      "canonical_url": "https://us.embryolisse.com/products/winter-dry-skin-essentials",
+      "changed": false,
+      "blocked": true,
+      "skip_reason": "unsupported_brand_for_manual_template",
+      "candidate_hash": "ebb44d98e6f9c281faa6db88066165bf78dd73178eaca4cd639a565a82b9c026",
+      "evidence_profile": "official_pdp_reviewed_line",
+      "source_coverage": {
+        "source": "official_pdp",
+        "canonical_url": "https://us.embryolisse.com/products/winter-dry-skin-essentials",
+        "fields": {
+          "description": true,
+          "ingredients": 0,
+          "active_ingredients": 0,
+          "how_to": 1,
+          "details": 3,
+          "variants": 1
+        }
+      },
+      "preview": {
+        "headline": "Skincare set",
+        "what_it_is": "Winter Dry Skin Essentials is a skincare set from EMBRYOLISSE.",
+        "why_it_stands_out": [
+          {
+            "headline": "Usage instructions available",
+            "body": "Reviewed usage context is present, including: Winter Dry Skin Essentials Face: Apply Filaderme Emulsion daily (AM and/or PM) to clean, dry face.",
+            "evidence_strength": "official_pdp_reviewed"
+          }
+        ],
+        "best_for": [
+          {
+            "tag": "body_routine",
+            "label": "body routine",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "aromatherapy",
+            "label": "aromatherapy",
+            "confidence": "moderate"
+          }
+        ],
+        "shopping_highlight": "Skincare routine set"
+      },
+      "writes": []
+    }
+  ]
+}
