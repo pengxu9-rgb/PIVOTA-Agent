@@ -1,0 +1,818 @@
+{
+  "generated_at": "2026-06-01T04:47:56.424Z",
+  "market": "US",
+  "include_non_public": false,
+  "docs_built": 14,
+  "source_build_failures": [],
+  "docs": [
+    {
+      "doc_id": "sellable:sig_89d5f6f6603c6a4197087ea7",
+      "sellable_item_group_id": "sig_89d5f6f6603c6a4197087ea7",
+      "product_line_id": "pl_890f8f66f6e334869a74dc17",
+      "review_family_id": "rf_890f8f66f6e334869a74dc17",
+      "brand_name": "TIRTIR Global",
+      "category_paths": [
+        "Eye Cream"
+      ],
+      "market": "US",
+      "availability_state": "available",
+      "publish_state": "public",
+      "title": "Collagen Lifting Eye Cream",
+      "subtitle": "A targeted eye-area cream with a metal-ball applicator; the official page positions it around plant-derived collagen complex, peptides, niacinamide, and hydration for the delicate eye area.",
+      "variant_axes": {
+        "volume": "100ml",
+        "multi_variant": false
+      },
+      "size": null,
+      "shade": null,
+      "pack": null,
+      "hero_media": {
+        "url": "https://tirtir.global/cdn/shop/files/Thumbnailtest_0010_EyeCream_fe2632a9-1793-4f89-9bca-f810d1f683a9.jpg?v=1762199178",
+        "source_kind": "catalog",
+        "source_tier": "catalog"
+      },
+      "preview_media": [
+        "https://tirtir.global/cdn/shop/files/Thumbnailtest_0010_EyeCream_fe2632a9-1793-4f89-9bca-f810d1f683a9.jpg?v=1762199178",
+        "https://tirtir.global/cdn/shop/files/01_3c5b8b7e-25f5-406b-acc7-3638d3f43bd2.png?v=1765256984",
+        "https://tirtir.global/cdn/shop/files/02_ffe97a96-dd3c-4207-9f74-abe6f7190d08.png?v=1765256984",
+        "https://tirtir.global/cdn/shop/files/03_e6dbcbe7-07d7-4b5e-bb26-228e747033b3.png?v=1765256984",
+        "https://tirtir.global/cdn/shop/files/04_7fbcccc1-c2e1-4f88-9761-9271b8c91e52.png?v=1765256984",
+        "https://tirtir.global/cdn/shop/files/05_ca9d1d45-a418-4593-aacc-54b0df801aba.png?v=1765256984",
+        "https://tirtir.global/cdn/shop/files/06_a2116c53-bd46-40c6-939e-537ada72b358.png?v=1765256984"
+      ],
+      "price_min": 24,
+      "price_max": 24,
+      "default_offer_id": "external_seed:ext_4968167c701faea363cf29ba",
+      "internal_offer_exists": false,
+      "external_offer_exists": true,
+      "pivota_insight_status": "available",
+      "pivota_insight_summary": "Eye cream with a cooling applicator and firming-hydration positioning.",
+      "quality_score": null,
+      "browse_score": null,
+      "facet_tokens": [
+        "TIRTIR Global",
+        "Eye Cream"
+      ],
+      "sort_keys": {
+        "price_min": 24,
+        "price_max": 24,
+        "updated_at": null
+      },
+      "updated_at": null,
+      "source_refs": [
+        "external_seed:ext_4968167c701faea363cf29ba"
+      ]
+    },
+    {
+      "doc_id": "sellable:sig_8d99e78a95f808ef09b9d977",
+      "sellable_item_group_id": "sig_8d99e78a95f808ef09b9d977",
+      "product_line_id": "pl_195a23b067d5853ae14948a7",
+      "review_family_id": "rf_195a23b067d5853ae14948a7",
+      "brand_name": "TIRTIR Global",
+      "category_paths": [
+        "Cleanser"
+      ],
+      "market": "US",
+      "availability_state": "available",
+      "publish_state": "public",
+      "title": "Hydro Boost Enzyme Cleansing Balm",
+      "subtitle": "A balm cleanser for makeup, sunscreen, and daily buildup removal with enzyme and brightening-positioned source claims.",
+      "variant_axes": {
+        "size": "120ml",
+        "volume": "120ml",
+        "multi_variant": true
+      },
+      "size": null,
+      "shade": null,
+      "pack": null,
+      "hero_media": {
+        "url": "https://tirtir.global/cdn/shop/files/9_2300290a-348c-428d-bfc5-11c2099d6730.png?v=1770348016",
+        "source_kind": "catalog",
+        "source_tier": "catalog"
+      },
+      "preview_media": [
+        "https://tirtir.global/cdn/shop/files/9_2300290a-348c-428d-bfc5-11c2099d6730.png?v=1770348016",
+        "https://tirtir.global/cdn/shop/files/dc8b64a5198df49f831882e0656b060c.png?v=1770348016",
+        "https://tirtir.global/cdn/shop/files/01_4ed8a0b6-b07a-4dab-92a4-a9ceb243f24b.png?v=1770348016",
+        "https://tirtir.global/cdn/shop/files/02_aa194582-19f8-4fe8-9855-962ee3196820.png?v=1770348016",
+        "https://tirtir.global/cdn/shop/files/03_84491131-cd09-402a-abbf-1b5b92d51bdd.png?v=1770348016",
+        "https://tirtir.global/cdn/shop/files/04_bf6eb674-f2ba-4c03-a6c8-e3bee091ef77.png?v=1770348016",
+        "https://tirtir.global/cdn/shop/files/05_6f91798f-a9e6-4c26-bad8-739c2aa5bd4a.png?v=1770348016",
+        "https://tirtir.global/cdn/shop/files/06_c155ea4f-9ca5-461b-bab0-7e7da1512817.png?v=1770348016"
+      ],
+      "price_min": 25,
+      "price_max": 25,
+      "default_offer_id": "external_seed:ext_5b2a492be891f19ac5b998c9",
+      "internal_offer_exists": false,
+      "external_offer_exists": true,
+      "pivota_insight_status": "available",
+      "pivota_insight_summary": "Hydro Boost Enzyme Cleansing Balm is a face cleanser from TIRTIR Global in 120ml, with source-backed cues around cleansing, makeup removal, a non-stripping feel and dirt, oil, and impurity removal.",
+      "quality_score": null,
+      "browse_score": null,
+      "facet_tokens": [
+        "TIRTIR Global",
+        "Cleanser"
+      ],
+      "sort_keys": {
+        "price_min": 25,
+        "price_max": 25,
+        "updated_at": null
+      },
+      "updated_at": null,
+      "source_refs": [
+        "external_seed:ext_5b2a492be891f19ac5b998c9"
+      ]
+    },
+    {
+      "doc_id": "sellable:sig_da18e657b64017a8951c943b",
+      "sellable_item_group_id": "sig_da18e657b64017a8951c943b",
+      "product_line_id": "pl_c2dd2c30730d7c03d6c4af7b",
+      "review_family_id": "rf_c2dd2c30730d7c03d6c4af7b",
+      "brand_name": "TIRTIR Global",
+      "category_paths": [
+        "Setting Spray"
+      ],
+      "market": "US",
+      "availability_state": "available",
+      "publish_state": "public",
+      "title": "Glossy Coating Mist",
+      "subtitle": "A setting and glow mist for refreshing makeup and adding a glossy-looking finish after complexion steps.",
+      "variant_axes": {
+        "volume": "100ml",
+        "multi_variant": false
+      },
+      "size": null,
+      "shade": null,
+      "pack": null,
+      "hero_media": {
+        "url": "https://tirtir.global/cdn/shop/files/Glossy_Coating_Mist_100ml_1.jpg?v=1762200609",
+        "source_kind": "catalog",
+        "source_tier": "catalog"
+      },
+      "preview_media": [
+        "https://tirtir.global/cdn/shop/files/Glossy_Coating_Mist_100ml_1.jpg?v=1762200609",
+        "https://tirtir.global/cdn/shop/files/GlossyCoatingMist100ml_2.jpg?v=1732177416",
+        "https://tirtir.global/cdn/shop/files/GlossyCoatingMist100ml_3.jpg?v=1732177416",
+        "https://tirtir.global/cdn/shop/files/GlossyCoatingMist100ml_4.jpg?v=1732177416",
+        "https://tirtir.global/cdn/shop/files/GlossyCoatingMist100ml_5.jpg?v=1742797091",
+        "https://tirtir.global/cdn/shop/files/GlossyCoatingMist100ml_1.png?v=1742797091"
+      ],
+      "price_min": 25,
+      "price_max": 25,
+      "default_offer_id": "external_seed:ext_c7334c30ca5401f2ea0aa01f",
+      "internal_offer_exists": false,
+      "external_offer_exists": true,
+      "pivota_insight_status": "available",
+      "pivota_insight_summary": "A hydrating toner built around niacinamide, panthenol and calming extracts plus humectants such as glycerin/propanediol for post-cleanse skin prep, soft feel, and dewy routine layering.",
+      "quality_score": null,
+      "browse_score": null,
+      "facet_tokens": [
+        "TIRTIR Global",
+        "Setting Spray"
+      ],
+      "sort_keys": {
+        "price_min": 25,
+        "price_max": 25,
+        "updated_at": null
+      },
+      "updated_at": null,
+      "source_refs": [
+        "external_seed:ext_c7334c30ca5401f2ea0aa01f"
+      ]
+    },
+    {
+      "doc_id": "sellable:sig_cd509237d31b767fe06ad161",
+      "sellable_item_group_id": "sig_cd509237d31b767fe06ad161",
+      "product_line_id": "pl_55f3110e41661b171aa4b3ed",
+      "review_family_id": "rf_55f3110e41661b171aa4b3ed",
+      "brand_name": "TIRTIR Global",
+      "category_paths": [
+        "Mask"
+      ],
+      "market": "US",
+      "availability_state": "out_of_stock",
+      "publish_state": "public",
+      "title": "Ceramide Moisture Gel Mask",
+      "subtitle": "A moisture-replenishing gel mask infused with ceramides to restore and strengthen the skin barrier. Its refreshing texture instantly cools and hydrates, making it ideal for dry, sensitive, or dehydrated skin.",
+      "variant_axes": {
+        "multi_variant": false
+      },
+      "size": null,
+      "shade": null,
+      "pack": null,
+      "hero_media": {
+        "url": "https://cdn.shopify.com/s/files/1/0663/2757/6795/files/CeramideMoistureGelMask.png?v=1760497187",
+        "source_kind": "catalog",
+        "source_tier": "catalog"
+      },
+      "preview_media": [
+        "https://cdn.shopify.com/s/files/1/0663/2757/6795/files/CeramideMoistureGelMask.png?v=1760497187",
+        "https://cdn.shopify.com/s/files/1/0663/2757/6795/files/Ceramide_Moisture_Gel_Mask_-_box.png?v=1760497203"
+      ],
+      "price_min": 7,
+      "price_max": 7,
+      "default_offer_id": "external_seed:ext_59e20f5ac3693f442e3bdfd2",
+      "internal_offer_exists": false,
+      "external_offer_exists": true,
+      "pivota_insight_status": "available",
+      "pivota_insight_summary": "Ceramide Moisture Gel Mask is a treatment mask from TIRTIR Global, with source-backed cues around hydration.",
+      "quality_score": null,
+      "browse_score": null,
+      "facet_tokens": [
+        "TIRTIR Global",
+        "Mask"
+      ],
+      "sort_keys": {
+        "price_min": 7,
+        "price_max": 7,
+        "updated_at": null
+      },
+      "updated_at": null,
+      "source_refs": [
+        "external_seed:ext_59e20f5ac3693f442e3bdfd2"
+      ]
+    },
+    {
+      "doc_id": "sellable:sig_303709f8e32759aa4cd0223f",
+      "sellable_item_group_id": "sig_303709f8e32759aa4cd0223f",
+      "product_line_id": "pl_a712b26119065348ead56f48",
+      "review_family_id": "rf_a712b26119065348ead56f48",
+      "brand_name": "TIRTIR Global",
+      "category_paths": [
+        "Mask"
+      ],
+      "market": "US",
+      "availability_state": "out_of_stock",
+      "publish_state": "public",
+      "title": "Collagen Firming Gel Mask",
+      "subtitle": "A cooling gel-type mask formulated with hydrolyzed collagen to improve elasticity and plumpness. It revitalizes tired skin, enhances firmness, and leaves a smooth, bouncy finish after each use.",
+      "variant_axes": {
+        "multi_variant": false
+      },
+      "size": null,
+      "shade": null,
+      "pack": null,
+      "hero_media": {
+        "url": "https://cdn.shopify.com/s/files/1/0663/2757/6795/files/CollagenFirmingGelMask.png?v=1760497456",
+        "source_kind": "catalog",
+        "source_tier": "catalog"
+      },
+      "preview_media": [
+        "https://cdn.shopify.com/s/files/1/0663/2757/6795/files/CollagenFirmingGelMask.png?v=1760497456",
+        "https://cdn.shopify.com/s/files/1/0663/2757/6795/files/Collagen_Firming_Gel_Mask_-_box.png?v=1760497456"
+      ],
+      "price_min": 7,
+      "price_max": 7,
+      "default_offer_id": "external_seed:ext_b0c69b8e4b3b439d52f4b8bb",
+      "internal_offer_exists": false,
+      "external_offer_exists": true,
+      "pivota_insight_status": "available",
+      "pivota_insight_summary": "Collagen Firming Gel Mask is a treatment mask from TIRTIR Global, with source-backed cues around hydration.",
+      "quality_score": null,
+      "browse_score": null,
+      "facet_tokens": [
+        "TIRTIR Global",
+        "Mask"
+      ],
+      "sort_keys": {
+        "price_min": 7,
+        "price_max": 7,
+        "updated_at": null
+      },
+      "updated_at": null,
+      "source_refs": [
+        "external_seed:ext_b0c69b8e4b3b439d52f4b8bb"
+      ]
+    },
+    {
+      "doc_id": "sellable:sig_d8c3e8a25e9824b608210785",
+      "sellable_item_group_id": "sig_d8c3e8a25e9824b608210785",
+      "product_line_id": "pl_cd211faf863795455d459d12",
+      "review_family_id": "rf_cd211faf863795455d459d12",
+      "brand_name": "TIRTIR Global",
+      "category_paths": [
+        "Treatment"
+      ],
+      "market": "US",
+      "availability_state": "available",
+      "publish_state": "public",
+      "title": "Banana BDRN Eye Mask ( 7ea )",
+      "subtitle": "A 7-count eye-mask format in the Banana BDRN line, better understood as an occasional targeted patch step than as a daily eye serum.",
+      "variant_axes": {
+        "multi_variant": false
+      },
+      "size": null,
+      "shade": null,
+      "pack": null,
+      "hero_media": {
+        "url": "https://tirtir.global/cdn/shop/files/Thumbnail_2_2x_0b176192-09ac-424c-ada2-63006c506061.png?v=1770262035",
+        "source_kind": "catalog",
+        "source_tier": "catalog"
+      },
+      "preview_media": [
+        "https://tirtir.global/cdn/shop/files/Thumbnail_2_2x_0b176192-09ac-424c-ada2-63006c506061.png?v=1770262035",
+        "https://tirtir.global/cdn/shop/files/BDRN____01_257ba188-9dda-4075-8ccc-e7566c35fdb3.jpg?v=1770262035",
+        "https://tirtir.global/cdn/shop/files/BDRN____06_92c87f40-5c42-45e4-9811-8e1ccb975ded.jpg?v=1770262035",
+        "https://tirtir.global/cdn/shop/files/BDRN____05_89d9227b-d748-45d1-9529-222d26381f7f.jpg?v=1770262035",
+        "https://tirtir.global/cdn/shop/files/BDRN____04_7eef7d08-ce05-4132-9956-9c2f6791cfd1.jpg?v=1770262035",
+        "https://tirtir.global/cdn/shop/files/BDRN____03_37b62556-ea97-4f02-8936-c5cf2985b7d8.jpg?v=1770262035",
+        "https://tirtir.global/cdn/shop/files/BDRN____02_e7129a3a-79bd-4dc7-bbcb-c8b8b55aa5df.jpg?v=1770262035",
+        "https://tirtir.global/cdn/shop/files/A_MO__01_2x_8ea2828a-9c73-4dbf-ac63-5f0a04a44af2.jpg?v=1770264326"
+      ],
+      "price_min": 18,
+      "price_max": 18,
+      "default_offer_id": "external_seed:ext_d4821c6edda6594aed724f35",
+      "internal_offer_exists": false,
+      "external_offer_exists": true,
+      "pivota_insight_status": "available",
+      "pivota_insight_summary": "7ea eye-mask format for targeted under-eye care.",
+      "quality_score": null,
+      "browse_score": null,
+      "facet_tokens": [
+        "TIRTIR Global",
+        "Treatment"
+      ],
+      "sort_keys": {
+        "price_min": 18,
+        "price_max": 18,
+        "updated_at": null
+      },
+      "updated_at": null,
+      "source_refs": [
+        "external_seed:ext_d4821c6edda6594aed724f35"
+      ]
+    },
+    {
+      "doc_id": "sellable:sig_87b703b376e276c06148ef41",
+      "sellable_item_group_id": "sig_87b703b376e276c06148ef41",
+      "product_line_id": "pl_5c74ba5a6ac3e6ef204c773a",
+      "review_family_id": "rf_5c74ba5a6ac3e6ef204c773a",
+      "brand_name": "TIRTIR Global",
+      "category_paths": [
+        "Powder"
+      ],
+      "market": "US",
+      "availability_state": "available",
+      "publish_state": "public",
+      "title": "Hydro Boost Enzyme Powder Wash",
+      "subtitle": "A powder-to-foam cleanser for daily buildup and gentle texture care, with source claims around enzymes and blackhead or whitehead improvement.",
+      "variant_axes": {
+        "size": "75g",
+        "volume": "75g",
+        "multi_variant": true
+      },
+      "size": null,
+      "shade": null,
+      "pack": null,
+      "hero_media": {
+        "url": "https://tirtir.global/cdn/shop/files/3_2d526776-503b-444a-88fe-3fee14d4439d.png?v=1770347763",
+        "source_kind": "catalog",
+        "source_tier": "catalog"
+      },
+      "preview_media": [
+        "https://tirtir.global/cdn/shop/files/3_2d526776-503b-444a-88fe-3fee14d4439d.png?v=1770347763",
+        "https://tirtir.global/cdn/shop/files/1_eb478ba1-d5fa-4276-8d04-268020dff35a.jpg?v=1770347763",
+        "https://tirtir.global/cdn/shop/files/2_6e6412a6-0caf-487d-b59a-52cffb471bec.jpg?v=1770347763",
+        "https://tirtir.global/cdn/shop/files/3_2611ab60-5958-4bfc-bbdf-b64ae6813b86.jpg?v=1770347763",
+        "https://tirtir.global/cdn/shop/files/4_eebf6737-9456-4246-a01d-bd3164941a5f.jpg?v=1770347763",
+        "https://tirtir.global/cdn/shop/files/5_d8e163af-8dc4-433f-8112-49fe37dba739.jpg?v=1770347763",
+        "https://tirtir.global/cdn/shop/files/6_aa79a9fe-0aa7-459b-bdbe-9ad58eeffb01.jpg?v=1770347763",
+        "https://tirtir.global/cdn/shop/files/1g-powder-wash.jpg?v=1770347763"
+      ],
+      "price_min": 15,
+      "price_max": 15,
+      "default_offer_id": "external_seed:ext_19eb840d0184fc50040ca660",
+      "internal_offer_exists": false,
+      "external_offer_exists": true,
+      "pivota_insight_status": "available",
+      "pivota_insight_summary": "Hydro Boost Enzyme Powder Wash is a face cleanser from TIRTIR Global in 75g, with source-backed cues around cleansing and dirt, oil, and impurity removal.",
+      "quality_score": null,
+      "browse_score": null,
+      "facet_tokens": [
+        "TIRTIR Global",
+        "Powder"
+      ],
+      "sort_keys": {
+        "price_min": 15,
+        "price_max": 15,
+        "updated_at": null
+      },
+      "updated_at": null,
+      "source_refs": [
+        "external_seed:ext_19eb840d0184fc50040ca660"
+      ]
+    },
+    {
+      "doc_id": "sellable:sig_9bbdc2c3f3af2eed9f2c14bc",
+      "sellable_item_group_id": "sig_9bbdc2c3f3af2eed9f2c14bc",
+      "product_line_id": "pl_3bb9157eafb3b2669e01e3fb",
+      "review_family_id": "rf_3bb9157eafb3b2669e01e3fb",
+      "brand_name": "TIRTIR Global",
+      "category_paths": [
+        "Primer"
+      ],
+      "market": "US",
+      "availability_state": "available",
+      "publish_state": "public",
+      "title": "Flawless Pore Prep Primer",
+      "subtitle": "COOL THE HEAT. KEEP IT BLUR. For calm skin and a flawless, soft-focus canvas",
+      "variant_axes": {
+        "multi_variant": false
+      },
+      "size": null,
+      "shade": null,
+      "pack": null,
+      "hero_media": {
+        "url": "https://cdn.shopify.com/s/files/1/0663/2757/6795/files/Group_438.png?v=1777254907",
+        "source_kind": "catalog",
+        "source_tier": "catalog"
+      },
+      "preview_media": [
+        "https://cdn.shopify.com/s/files/1/0663/2757/6795/files/Group_438.png?v=1777254907",
+        "https://cdn.shopify.com/s/files/1/0663/2757/6795/files/86045_R1_1.png?v=1777248764",
+        "https://cdn.shopify.com/s/files/1/0663/2757/6795/files/01_493c4807-bcce-41c0-bd89-a2cb98caa7d7.png?v=1776852250",
+        "https://cdn.shopify.com/s/files/1/0663/2757/6795/files/03_4c619539-b10d-436d-a79c-bee85a5201a3.png?v=1776852250",
+        "https://cdn.shopify.com/s/files/1/0663/2757/6795/files/06_3355130b-6fd1-4599-84bc-5bda6cf64882.png?v=1776852250",
+        "https://cdn.shopify.com/s/files/1/0663/2757/6795/files/04_6fef4414-3aa2-4460-98f8-5fbf2d8cf8ac.png?v=1776852250",
+        "https://cdn.shopify.com/s/files/1/0663/2757/6795/files/05_205d1d3d-6743-41bb-a116-b1af664687b7.jpg?v=1776852250",
+        "https://cdn.shopify.com/s/files/1/0663/2757/6795/files/02_b4095fac-ad72-49b2-99f5-8b7e268c54de.png?v=1776852250"
+      ],
+      "price_min": 17.6,
+      "price_max": 17.6,
+      "default_offer_id": "external_seed:ext_4e8c76f135dacc76b2653045",
+      "internal_offer_exists": false,
+      "external_offer_exists": true,
+      "pivota_insight_status": "available",
+      "pivota_insight_summary": "Pore-prep primer for a smoother-looking base.",
+      "quality_score": null,
+      "browse_score": null,
+      "facet_tokens": [
+        "TIRTIR Global",
+        "Primer"
+      ],
+      "sort_keys": {
+        "price_min": 17.6,
+        "price_max": 17.6,
+        "updated_at": null
+      },
+      "updated_at": null,
+      "source_refs": [
+        "external_seed:ext_4e8c76f135dacc76b2653045"
+      ]
+    },
+    {
+      "doc_id": "sellable:sig_595e60ab5a69ce0dece50799",
+      "sellable_item_group_id": "sig_595e60ab5a69ce0dece50799",
+      "product_line_id": "pl_af996ab522c6b00c6e5cb7a0",
+      "review_family_id": "rf_af996ab522c6b00c6e5cb7a0",
+      "brand_name": "TIRTIR Global",
+      "category_paths": [
+        "Moisturizer"
+      ],
+      "market": "US",
+      "availability_state": "available",
+      "publish_state": "public",
+      "title": "Ceramic Cream Light",
+      "subtitle": "A lighter moisturizer for hydration and barrier comfort, positioned for people who want cream support without a heavy finish.",
+      "variant_axes": {
+        "multi_variant": false
+      },
+      "size": null,
+      "shade": null,
+      "pack": null,
+      "hero_media": {
+        "url": "https://tirtir.global/cdn/shop/files/Thumbnail_CreamLight.jpg?v=1762200536",
+        "source_kind": "catalog",
+        "source_tier": "catalog"
+      },
+      "preview_media": [
+        "https://tirtir.global/cdn/shop/files/Thumbnail_CreamLight.jpg?v=1762200536",
+        "https://tirtir.global/cdn/shop/files/1_5780bbf1-10fb-4b83-90e9-c2ec36bc0ecd.jpg?v=1742800324",
+        "https://tirtir.global/cdn/shop/files/2_e61e9a36-2b83-45f7-aaab-99f0c4dd36fe.jpg?v=1742800324",
+        "https://tirtir.global/cdn/shop/files/3_031098eb-c4a7-4e11-95b3-9f4a41082495.jpg?v=1742800324",
+        "https://tirtir.global/cdn/shop/files/4_a487258a-3238-461f-8ae3-e0d93feb33a9.jpg?v=1742800324",
+        "https://tirtir.global/cdn/shop/files/5_b233a271-f2af-43b4-b41a-61d8c6ab898b.jpg?v=1742800324",
+        "https://tirtir.global/cdn/shop/files/6_e98a0735-74a1-4c44-8bf9-f4a4dd3a3928.jpg?v=1742800324",
+        "https://tirtir.global/cdn/shop/files/A__mo_page1_ffe64d50-01d4-4467-98ed-bae4990c3936.jpg?v=1748310659"
+      ],
+      "price_min": 25,
+      "price_max": 25,
+      "default_offer_id": "external_seed:ext_93bc270bdddd0b29e2097dd9",
+      "internal_offer_exists": false,
+      "external_offer_exists": true,
+      "pivota_insight_status": "available",
+      "pivota_insight_summary": "Ceramic Cream Light is a body care treatment from TIRTIR Global in 1.",
+      "quality_score": null,
+      "browse_score": null,
+      "facet_tokens": [
+        "TIRTIR Global",
+        "Moisturizer"
+      ],
+      "sort_keys": {
+        "price_min": 25,
+        "price_max": 25,
+        "updated_at": null
+      },
+      "updated_at": null,
+      "source_refs": [
+        "external_seed:ext_93bc270bdddd0b29e2097dd9"
+      ]
+    },
+    {
+      "doc_id": "sellable:sig_11a1bdbc4af40638cedb79b1",
+      "sellable_item_group_id": "sig_11a1bdbc4af40638cedb79b1",
+      "product_line_id": "pl_c2fd4b619b6fa99cefd989ca",
+      "review_family_id": "rf_c2fd4b619b6fa99cefd989ca",
+      "brand_name": "TIRTIR Global",
+      "category_paths": [
+        "Blush"
+      ],
+      "market": "US",
+      "availability_state": "available",
+      "publish_state": "public",
+      "title": "Airy Bloom Mesh Blush",
+      "subtitle": "A mesh-format blush with multiple shade options, best read as a color-control makeup step rather than a skincare treatment.",
+      "variant_axes": {
+        "color": "04 melty peach",
+        "multi_variant": true
+      },
+      "size": null,
+      "shade": null,
+      "pack": null,
+      "hero_media": {
+        "url": "https://tirtir.global/cdn/shop/files/4_07b2e19e-2a5e-458c-8ee6-9881fd7b1d70.jpg?v=1770267431",
+        "source_kind": "catalog",
+        "source_tier": "catalog"
+      },
+      "preview_media": [
+        "https://tirtir.global/cdn/shop/files/4_07b2e19e-2a5e-458c-8ee6-9881fd7b1d70.jpg?v=1770267431",
+        "https://tirtir.global/cdn/shop/files/3_cb117571-963a-43c9-9d31-a46c2642b5c8.jpg?v=1770272429",
+        "https://tirtir.global/cdn/shop/files/1_bfa73563-2028-486b-bda0-fb85e15afc46.jpg?v=1770272429",
+        "https://tirtir.global/cdn/shop/files/5_04dd3539-ce43-40c7-b2df-2aecca94d166.jpg?v=1770272429",
+        "https://tirtir.global/cdn/shop/files/4_80f54390-0c97-48f4-8886-565e7c5d6a8f.jpg?v=1770272429",
+        "https://tirtir.global/cdn/shop/files/6_b74079b1-2faf-4dbb-81f3-deffebf91f6f.jpg?v=1770272429",
+        "https://tirtir.global/cdn/shop/files/7_bae762b5-a60a-437e-9a7b-c4fdc8770589.jpg?v=1770272429",
+        "https://tirtir.global/cdn/shop/files/5_f39e7946-5559-4e33-acfd-282955cf1d9b.jpg?v=1770272429"
+      ],
+      "price_min": 18,
+      "price_max": 18,
+      "default_offer_id": "external_seed:ext_fa7c10a18a8ee11fa3d1d68a",
+      "internal_offer_exists": false,
+      "external_offer_exists": true,
+      "pivota_insight_status": "available",
+      "pivota_insight_summary": "Mesh blush where shade selection is the main buying decision.",
+      "quality_score": null,
+      "browse_score": null,
+      "facet_tokens": [
+        "TIRTIR Global",
+        "Blush"
+      ],
+      "sort_keys": {
+        "price_min": 18,
+        "price_max": 18,
+        "updated_at": null
+      },
+      "updated_at": null,
+      "source_refs": [
+        "external_seed:ext_fa7c10a18a8ee11fa3d1d68a"
+      ]
+    },
+    {
+      "doc_id": "sellable:sig_f9f63cbed20e68bdb3e9272c",
+      "sellable_item_group_id": "sig_f9f63cbed20e68bdb3e9272c",
+      "product_line_id": "pl_f6cd13e8421a97a947425b92",
+      "review_family_id": "rf_f6cd13e8421a97a947425b92",
+      "brand_name": "TIRTIR Global",
+      "category_paths": [
+        "Moisturizer"
+      ],
+      "market": "US",
+      "availability_state": "available",
+      "publish_state": "public",
+      "title": "Ceramic Cream",
+      "subtitle": "A rich moisturizer positioned around deep hydration and barrier support, with the official page calling out ceramides, peptides, centella, shea butter, avocado oil, collagen, and niacinamide.",
+      "variant_axes": {
+        "size": "50 ml 1 69 fl oz",
+        "volume": "50ml",
+        "multi_variant": true
+      },
+      "size": null,
+      "shade": null,
+      "pack": null,
+      "hero_media": {
+        "url": "https://tirtir.global/cdn/shop/files/01_ff30e791-38d3-408d-94b2-d6d6800222f7.jpg?v=1764573331",
+        "source_kind": "catalog",
+        "source_tier": "catalog"
+      },
+      "preview_media": [
+        "https://tirtir.global/cdn/shop/files/01_ff30e791-38d3-408d-94b2-d6d6800222f7.jpg?v=1764573331",
+        "https://tirtir.global/cdn/shop/files/02_b612bbd8-827e-4fb8-935a-f5e6351d1068.jpg?v=1764573331",
+        "https://tirtir.global/cdn/shop/files/03_bb7b5984-ff94-48f8-b2d0-04c696c53602.jpg?v=1764573331",
+        "https://tirtir.global/cdn/shop/files/04_067de1eb-f470-431e-9e9d-fab38a877f11.jpg?v=1764573331",
+        "https://tirtir.global/cdn/shop/files/05_c3b81903-497a-471a-a819-e29c69e85cf6.jpg?v=1764573331",
+        "https://tirtir.global/cdn/shop/files/06_22809a14-3f3b-4820-b97c-3c3a14bd8716.jpg?v=1764573331"
+      ],
+      "price_min": 25,
+      "price_max": 25,
+      "default_offer_id": "external_seed:ext_1d8c27b856564035c82f3c6b",
+      "internal_offer_exists": false,
+      "external_offer_exists": true,
+      "pivota_insight_status": "available",
+      "pivota_insight_summary": "Rich moisturizer for dry days and barrier-support routines.",
+      "quality_score": null,
+      "browse_score": null,
+      "facet_tokens": [
+        "TIRTIR Global",
+        "Moisturizer"
+      ],
+      "sort_keys": {
+        "price_min": 25,
+        "price_max": 25,
+        "updated_at": null
+      },
+      "updated_at": null,
+      "source_refs": [
+        "external_seed:ext_1d8c27b856564035c82f3c6b"
+      ]
+    },
+    {
+      "doc_id": "sellable:sig_569519965601039854ba5f71",
+      "sellable_item_group_id": "sig_569519965601039854ba5f71",
+      "product_line_id": "pl_e72e07b93ee62dbec8c6e96e",
+      "review_family_id": "rf_e72e07b93ee62dbec8c6e96e",
+      "brand_name": "TIRTIR Global",
+      "category_paths": [
+        "Face Makeup/Concealer",
+        "Concealer"
+      ],
+      "market": "US",
+      "availability_state": "available",
+      "publish_state": "public",
+      "title": "Glide & Hide Blurring Concealer",
+      "subtitle": "A dual-ended concealer with a liquid tint side and balm blur side, positioned for targeted coverage, brightening, contouring, and texture softening.",
+      "variant_axes": {
+        "color": "0 5 n",
+        "multi_variant": true
+      },
+      "size": null,
+      "shade": null,
+      "pack": null,
+      "hero_media": {
+        "url": "https://tirtir.global/cdn/shop/files/Thumbnail_2x_d55e2ad4-eb4d-480c-9408-e96663ddcb79.png?v=1770794101",
+        "source_kind": "catalog",
+        "source_tier": "catalog"
+      },
+      "preview_media": [
+        "https://tirtir.global/cdn/shop/files/Thumbnail_2x_d55e2ad4-eb4d-480c-9408-e96663ddcb79.png?v=1770794101",
+        "https://tirtir.global/cdn/shop/files/Artboard_1_2x_409ca639-7957-459b-a84d-9844fe6a0c43.jpg?v=1770794101",
+        "https://tirtir.global/cdn/shop/files/01_8538a265-c448-404e-bca1-502f065b26c9.jpg?v=1770794101",
+        "https://tirtir.global/cdn/shop/files/02_12060687-2a42-4621-80fd-2e2f0d7d9a44.jpg?v=1770794101",
+        "https://tirtir.global/cdn/shop/files/03_ed1266b7-04d3-4648-bad7-93952d461e10.jpg?v=1770794101",
+        "https://tirtir.global/cdn/shop/files/04_a28980da-8635-4eed-b34d-f0f59afde46e.jpg?v=1770794101",
+        "https://tirtir.global/cdn/shop/files/05_6fdcaabd-19a9-4aa1-a523-83ef0832a63a.jpg?v=1770794101",
+        "https://tirtir.global/cdn/shop/files/06_26999069-11ae-4d40-825e-bd4ffc57422d.jpg?v=1770794101"
+      ],
+      "price_min": 15.2,
+      "price_max": 15.2,
+      "default_offer_id": "external_seed:ext_cab1810f4fae3a388fd00c9b",
+      "internal_offer_exists": false,
+      "external_offer_exists": true,
+      "pivota_insight_status": "available",
+      "pivota_insight_summary": "Dual-ended concealer for targeted coverage plus soft blur.",
+      "quality_score": null,
+      "browse_score": null,
+      "facet_tokens": [
+        "TIRTIR Global",
+        "Face Makeup/Concealer",
+        "Concealer"
+      ],
+      "sort_keys": {
+        "price_min": 15.2,
+        "price_max": 15.2,
+        "updated_at": null
+      },
+      "updated_at": null,
+      "source_refs": [
+        "external_seed:ext_cab1810f4fae3a388fd00c9b"
+      ]
+    },
+    {
+      "doc_id": "sellable:sig_d8523f1027dc35a659ac5176",
+      "sellable_item_group_id": "sig_d8523f1027dc35a659ac5176",
+      "product_line_id": "pl_de4017bdef3b37bd19a1bafa",
+      "review_family_id": "rf_de4017bdef3b37bd19a1bafa",
+      "brand_name": "TIRTIR Global",
+      "category_paths": [
+        "Essence"
+      ],
+      "market": "US",
+      "availability_state": "available",
+      "publish_state": "public",
+      "title": "Ceramic Milk Ampoule",
+      "subtitle": "A milky ampoule with richer oil and emollient cues, suited to barrier comfort, nourishment, and dry-feeling skin routines.",
+      "variant_axes": {
+        "size": "10 ml 0 33 fl oz",
+        "volume": "10ml",
+        "multi_variant": true
+      },
+      "size": null,
+      "shade": null,
+      "pack": null,
+      "hero_media": {
+        "url": "https://tirtir.global/cdn/shop/files/Thumbnailtestserum_0000_LayerComp1.jpg?v=1762199368",
+        "source_kind": "catalog",
+        "source_tier": "catalog"
+      },
+      "preview_media": [
+        "https://tirtir.global/cdn/shop/files/Thumbnailtestserum_0000_LayerComp1.jpg?v=1762199368",
+        "https://tirtir.global/cdn/shop/files/Artboard_10_2x_483beb1c-1cda-446a-aeea-d09865940523.jpg?v=1766995645",
+        "https://tirtir.global/cdn/shop/files/1_105982fa-cfe5-443f-b13b-cad0f6355e8b.jpg?v=1766995645",
+        "https://tirtir.global/cdn/shop/files/2_13f58f38-51c0-465b-b179-83f574dc86b1.jpg?v=1766995645",
+        "https://tirtir.global/cdn/shop/files/3_be573199-2337-4dcc-b5cb-55271ed18cfe.jpg?v=1766995645",
+        "https://tirtir.global/cdn/shop/files/4_f22eaad1-0235-40f5-ae36-b8610ccd840f.jpg?v=1766995645",
+        "https://tirtir.global/cdn/shop/files/6_93ea12a4-fda0-4e08-9d19-aa9374d8f5b0.jpg?v=1766995645",
+        "https://tirtir.global/cdn/shop/files/7_834a8fc4-1715-4da3-98ab-11f9b9700540.jpg?v=1766995645"
+      ],
+      "price_min": 13,
+      "price_max": 13,
+      "default_offer_id": "external_seed:ext_8cfa0e837e468e79ecd6cc3a",
+      "internal_offer_exists": false,
+      "external_offer_exists": true,
+      "pivota_insight_status": "available",
+      "pivota_insight_summary": "Ceramic Milk Ampoule is a treatment serum from TIRTIR Global in 10 ml / 0.",
+      "quality_score": null,
+      "browse_score": null,
+      "facet_tokens": [
+        "TIRTIR Global",
+        "Essence"
+      ],
+      "sort_keys": {
+        "price_min": 13,
+        "price_max": 13,
+        "updated_at": null
+      },
+      "updated_at": null,
+      "source_refs": [
+        "external_seed:ext_8cfa0e837e468e79ecd6cc3a"
+      ]
+    },
+    {
+      "doc_id": "sellable:sig_7fe9b849c72afbd9d40501fb",
+      "sellable_item_group_id": "sig_7fe9b849c72afbd9d40501fb",
+      "product_line_id": "pl_35b3e78117b65e115da3b87c",
+      "review_family_id": "rf_35b3e78117b65e115da3b87c",
+      "brand_name": "TIRTIR Global",
+      "category_paths": [
+        "Serum"
+      ],
+      "market": "US",
+      "availability_state": "available",
+      "publish_state": "public",
+      "title": "Banana BDRN Eye Serum",
+      "subtitle": "An eye-area serum in the Banana BDRN line, positioned as a targeted treatment step for the under-eye area rather than a full-face moisturizer.",
+      "variant_axes": {
+        "multi_variant": false
+      },
+      "size": null,
+      "shade": null,
+      "pack": null,
+      "hero_media": {
+        "url": "https://tirtir.global/cdn/shop/files/Thumbnail_2x_a5ced91a-6179-4a59-b5cf-03cf4caefc3f.png?v=1770261828",
+        "source_kind": "catalog",
+        "source_tier": "catalog"
+      },
+      "preview_media": [
+        "https://tirtir.global/cdn/shop/files/Thumbnail_2x_a5ced91a-6179-4a59-b5cf-03cf4caefc3f.png?v=1770261828",
+        "https://tirtir.global/cdn/shop/files/BDRN____01.jpg?v=1770261828",
+        "https://tirtir.global/cdn/shop/files/BDRN____02.jpg?v=1770261828",
+        "https://tirtir.global/cdn/shop/files/BDRN____03.jpg?v=1770261828",
+        "https://tirtir.global/cdn/shop/files/BDRN____04.jpg?v=1770261828",
+        "https://tirtir.global/cdn/shop/files/BDRN____05.jpg?v=1770261828",
+        "https://tirtir.global/cdn/shop/files/BDRN____06.jpg?v=1770261828",
+        "https://tirtir.global/cdn/shop/files/A_MO__01_2x_eedeb4f5-fc01-474e-ba2b-040126a59c1f.jpg?v=1770263112"
+      ],
+      "price_min": 25,
+      "price_max": 25,
+      "default_offer_id": "external_seed:ext_a931bd8cc0a35f9557bbc381",
+      "internal_offer_exists": false,
+      "external_offer_exists": true,
+      "pivota_insight_status": "available",
+      "pivota_insight_summary": "Targeted eye serum with a small merchant-review signal.",
+      "quality_score": null,
+      "browse_score": null,
+      "facet_tokens": [
+        "TIRTIR Global",
+        "Serum"
+      ],
+      "sort_keys": {
+        "price_min": 25,
+        "price_max": 25,
+        "updated_at": null
+      },
+      "updated_at": null,
+      "source_refs": [
+        "external_seed:ext_a931bd8cc0a35f9557bbc381"
+      ]
+    }
+  ]
+}
