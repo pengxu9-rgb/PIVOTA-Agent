@@ -1,0 +1,689 @@
+{
+  "generated_at": "2026-06-01T02:06:03.239Z",
+  "options": {
+    "market": "US",
+    "includeAttached": true,
+    "domain": null,
+    "externalProductIds": [
+      "ext_1e20d9aa6fe78b783fddf311",
+      "ext_4da676febaab206c32ffac68",
+      "ext_59d1d0f9b80d3ad401ad4862",
+      "ext_63ac501ca2ee5eb62b04dc41",
+      "ext_a4457d05bf56f811a88becf3",
+      "ext_b0f9384195c88efc4aa0114e"
+    ],
+    "limit": 20,
+    "sampleLimit": 20,
+    "checkpointDir": "/Users/pengchydan/dev/_worktrees/pivota-agent-markato-wave25-786-20260527/reports/markato_expansion_status_20260524/wave103_jurlique_product_intel_20260601/readiness_after_product_intel/pdp_readiness_checkpoint",
+    "checkpointMode": "domain",
+    "resume": false,
+    "force": false,
+    "continueOnError": true,
+    "pageSize": 500,
+    "format": "json"
+  },
+  "warnings": [],
+  "summary": {
+    "scanned": 6,
+    "by_market": {
+      "US": 6
+    },
+    "by_domain": [
+      {
+        "key": "www.jurlique.com",
+        "count": 6
+      }
+    ],
+    "by_product_family": [
+      {
+        "key": "set_or_collection",
+        "count": 6
+      }
+    ],
+    "coverage": {
+      "missing_inci": 2,
+      "missing_active_raw": 0,
+      "missing_details": 0,
+      "missing_how_to": 0,
+      "missing_faq": 6
+    },
+    "pivota_insights": {
+      "direct": {
+        "displayable": 6,
+        "high_quality_ready": 6,
+        "missing_kb": 0,
+        "not_displayable": 0
+      },
+      "effective": {
+        "displayable": 6,
+        "high_quality_ready": 6,
+        "missing_kb": 0,
+        "not_displayable": 0,
+        "borrowed_from_sibling": 0
+      },
+      "effective_issues": [],
+      "effective_issue_domains": [],
+      "quality_state": [
+        {
+          "key": "reviewed",
+          "count": 6
+        }
+      ],
+      "evidence_profile": [
+        {
+          "key": "seller_plus_formula",
+          "count": 6
+        }
+      ],
+      "samples": {}
+    },
+    "active_ingredients": {
+      "regulatory_expected": 0,
+      "hero_expected": 0,
+      "any_active_items": 0,
+      "status": [
+        {
+          "key": "not_applicable_product_family",
+          "count": 6
+        }
+      ],
+      "issues": [],
+      "issue_domains": [],
+      "source_origin": [
+        {
+          "key": "none",
+          "count": 6
+        }
+      ],
+      "samples": {}
+    },
+    "variants": {
+      "status": [
+        {
+          "key": "ready",
+          "count": 6
+        }
+      ],
+      "issues": [],
+      "issue_domains": [],
+      "samples": {}
+    }
+  },
+  "rows": [
+    {
+      "seed_id": "eps_7170deb149fb49f8a36737dc",
+      "external_product_id": "ext_1e20d9aa6fe78b783fddf311",
+      "market": "US",
+      "domain": "www.jurlique.com",
+      "title": "Herbal Recovery Duo",
+      "canonical_url": "https://www.jurlique.com/products/herbal-recovery-duo",
+      "product_family": "set_or_collection",
+      "product_line_id": "pl_cd28d8d7b849bd745a3d2dc6",
+      "identity_variant_axes": {
+        "pack": "2pack",
+        "multi_variant": false
+      },
+      "pivota_insights": {
+        "direct": {
+          "product_id": "ext_1e20d9aa6fe78b783fddf311",
+          "kb_key": "product:ext_1e20d9aa6fe78b783fddf311",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "seller_plus_formula",
+          "has_card_highlight": true
+        },
+        "effective": {
+          "product_id": "ext_1e20d9aa6fe78b783fddf311",
+          "kb_key": "product:ext_1e20d9aa6fe78b783fddf311",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "seller_plus_formula",
+          "has_card_highlight": true
+        },
+        "product_line_id": "pl_cd28d8d7b849bd745a3d2dc6",
+        "borrowed_from_sibling": false
+      },
+      "active_ingredients": {
+        "status": "not_applicable_product_family",
+        "issues": [],
+        "regulatory_expected": false,
+        "hero_expected": false,
+        "active_items": [],
+        "source_origin": "none",
+        "source_quality_status": "blocked",
+        "coverage": {
+          "details_sections_count": 2,
+          "faq_count": 0,
+          "how_to_chars": 379,
+          "inci_chars": 0,
+          "active_ingredients_chars": 0,
+          "inci_applicability_status": "",
+          "ingredient_review_status": "component_ref_review_required",
+          "ingredient_remediation_action": "component_ref_review_required",
+          "bundle_component_refs_count": 2,
+          "effective_inci_chars": 0,
+          "inci_borrowed_from_product_id": ""
+        },
+        "invalid_fragments": [],
+        "suppressed_reason": "set_or_collection"
+      },
+      "variants": {
+        "status": "ready",
+        "issues": [],
+        "visible_variant_rows": 1,
+        "examples": {
+          "identity_option_visible": [],
+          "wrong_axis_for_category": [],
+          "makeup_shade_missing_visual": [],
+          "size_value_generic_axis": [],
+          "default_option_size_evidence_missing_axis": [],
+          "identity_default_title_axis": []
+        }
+      },
+      "coverage": {
+        "details_sections_count": 2,
+        "faq_count": 0,
+        "how_to_chars": 379,
+        "inci_chars": 0,
+        "active_ingredients_chars": 0,
+        "inci_applicability_status": "",
+        "ingredient_review_status": "component_ref_review_required",
+        "ingredient_remediation_action": "component_ref_review_required",
+        "bundle_component_refs_count": 2,
+        "effective_inci_chars": 0,
+        "inci_borrowed_from_product_id": ""
+      }
+    },
+    {
+      "seed_id": "eps_9b3bd5d4789c44ab88d90c98",
+      "external_product_id": "ext_63ac501ca2ee5eb62b04dc41",
+      "market": "US",
+      "domain": "www.jurlique.com",
+      "title": "8+2 Firm & Hydrate Duo",
+      "canonical_url": "https://www.jurlique.com/products/8-2-firm-hydrate-duo",
+      "product_family": "set_or_collection",
+      "product_line_id": "pl_cbef72af6b7b6d2af0b0185c",
+      "identity_variant_axes": {
+        "pack": "2pack",
+        "multi_variant": false
+      },
+      "pivota_insights": {
+        "direct": {
+          "product_id": "ext_63ac501ca2ee5eb62b04dc41",
+          "kb_key": "product:ext_63ac501ca2ee5eb62b04dc41",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "seller_plus_formula",
+          "has_card_highlight": true
+        },
+        "effective": {
+          "product_id": "ext_63ac501ca2ee5eb62b04dc41",
+          "kb_key": "product:ext_63ac501ca2ee5eb62b04dc41",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "seller_plus_formula",
+          "has_card_highlight": true
+        },
+        "product_line_id": "pl_cbef72af6b7b6d2af0b0185c",
+        "borrowed_from_sibling": false
+      },
+      "active_ingredients": {
+        "status": "not_applicable_product_family",
+        "issues": [],
+        "regulatory_expected": false,
+        "hero_expected": false,
+        "active_items": [],
+        "source_origin": "none",
+        "source_quality_status": "blocked",
+        "coverage": {
+          "details_sections_count": 2,
+          "faq_count": 0,
+          "how_to_chars": 301,
+          "inci_chars": 1265,
+          "active_ingredients_chars": 0,
+          "inci_applicability_status": "",
+          "ingredient_review_status": "",
+          "ingredient_remediation_action": "",
+          "bundle_component_refs_count": 0,
+          "effective_inci_chars": 1265,
+          "inci_borrowed_from_product_id": ""
+        },
+        "invalid_fragments": [],
+        "suppressed_reason": "set_or_collection"
+      },
+      "variants": {
+        "status": "ready",
+        "issues": [],
+        "visible_variant_rows": 1,
+        "examples": {
+          "identity_option_visible": [],
+          "wrong_axis_for_category": [],
+          "makeup_shade_missing_visual": [],
+          "size_value_generic_axis": [],
+          "default_option_size_evidence_missing_axis": [],
+          "identity_default_title_axis": []
+        }
+      },
+      "coverage": {
+        "details_sections_count": 2,
+        "faq_count": 0,
+        "how_to_chars": 301,
+        "inci_chars": 1265,
+        "active_ingredients_chars": 0,
+        "inci_applicability_status": "",
+        "ingredient_review_status": "",
+        "ingredient_remediation_action": "",
+        "bundle_component_refs_count": 0,
+        "effective_inci_chars": 1265,
+        "inci_borrowed_from_product_id": ""
+      }
+    },
+    {
+      "seed_id": "eps_b0307b56eeb742e09b6d43f5",
+      "external_product_id": "ext_a4457d05bf56f811a88becf3",
+      "market": "US",
+      "domain": "www.jurlique.com",
+      "title": "Perfect Prep Duo",
+      "canonical_url": "https://www.jurlique.com/products/perfect-prep-duo",
+      "product_family": "set_or_collection",
+      "product_line_id": "pl_b3936a158758a2b7c67860fc",
+      "identity_variant_axes": {
+        "pack": "2pack",
+        "multi_variant": false
+      },
+      "pivota_insights": {
+        "direct": {
+          "product_id": "ext_a4457d05bf56f811a88becf3",
+          "kb_key": "product:ext_a4457d05bf56f811a88becf3",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "seller_plus_formula",
+          "has_card_highlight": true
+        },
+        "effective": {
+          "product_id": "ext_a4457d05bf56f811a88becf3",
+          "kb_key": "product:ext_a4457d05bf56f811a88becf3",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "seller_plus_formula",
+          "has_card_highlight": true
+        },
+        "product_line_id": "pl_b3936a158758a2b7c67860fc",
+        "borrowed_from_sibling": false
+      },
+      "active_ingredients": {
+        "status": "not_applicable_product_family",
+        "issues": [],
+        "regulatory_expected": false,
+        "hero_expected": false,
+        "active_items": [],
+        "source_origin": "none",
+        "source_quality_status": "blocked",
+        "coverage": {
+          "details_sections_count": 2,
+          "faq_count": 0,
+          "how_to_chars": 424,
+          "inci_chars": 1305,
+          "active_ingredients_chars": 0,
+          "inci_applicability_status": "",
+          "ingredient_review_status": "",
+          "ingredient_remediation_action": "",
+          "bundle_component_refs_count": 2,
+          "effective_inci_chars": 1305,
+          "inci_borrowed_from_product_id": ""
+        },
+        "invalid_fragments": [],
+        "suppressed_reason": "set_or_collection"
+      },
+      "variants": {
+        "status": "ready",
+        "issues": [],
+        "visible_variant_rows": 1,
+        "examples": {
+          "identity_option_visible": [],
+          "wrong_axis_for_category": [],
+          "makeup_shade_missing_visual": [],
+          "size_value_generic_axis": [],
+          "default_option_size_evidence_missing_axis": [],
+          "identity_default_title_axis": []
+        }
+      },
+      "coverage": {
+        "details_sections_count": 2,
+        "faq_count": 0,
+        "how_to_chars": 424,
+        "inci_chars": 1305,
+        "active_ingredients_chars": 0,
+        "inci_applicability_status": "",
+        "ingredient_review_status": "",
+        "ingredient_remediation_action": "",
+        "bundle_component_refs_count": 2,
+        "effective_inci_chars": 1305,
+        "inci_borrowed_from_product_id": ""
+      }
+    },
+    {
+      "seed_id": "eps_d255bf5140994944b9b08f72",
+      "external_product_id": "ext_b0f9384195c88efc4aa0114e",
+      "market": "US",
+      "domain": "www.jurlique.com",
+      "title": "Iconic Duo Bundle",
+      "canonical_url": "https://www.jurlique.com/products/iconic-duo-bundle",
+      "product_family": "set_or_collection",
+      "product_line_id": "pl_54f3af29dbcca28c3a92f3d8",
+      "identity_variant_axes": {
+        "pack": "2pack",
+        "multi_variant": false
+      },
+      "pivota_insights": {
+        "direct": {
+          "product_id": "ext_b0f9384195c88efc4aa0114e",
+          "kb_key": "product:ext_b0f9384195c88efc4aa0114e",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "seller_plus_formula",
+          "has_card_highlight": true
+        },
+        "effective": {
+          "product_id": "ext_b0f9384195c88efc4aa0114e",
+          "kb_key": "product:ext_b0f9384195c88efc4aa0114e",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "seller_plus_formula",
+          "has_card_highlight": true
+        },
+        "product_line_id": "pl_54f3af29dbcca28c3a92f3d8",
+        "borrowed_from_sibling": false
+      },
+      "active_ingredients": {
+        "status": "not_applicable_product_family",
+        "issues": [],
+        "regulatory_expected": false,
+        "hero_expected": false,
+        "active_items": [],
+        "source_origin": "none",
+        "source_quality_status": "blocked",
+        "coverage": {
+          "details_sections_count": 2,
+          "faq_count": 0,
+          "how_to_chars": 110,
+          "inci_chars": 2054,
+          "active_ingredients_chars": 0,
+          "inci_applicability_status": "",
+          "ingredient_review_status": "",
+          "ingredient_remediation_action": "",
+          "bundle_component_refs_count": 0,
+          "effective_inci_chars": 2054,
+          "inci_borrowed_from_product_id": ""
+        },
+        "invalid_fragments": [],
+        "suppressed_reason": "set_or_collection"
+      },
+      "variants": {
+        "status": "ready",
+        "issues": [],
+        "visible_variant_rows": 1,
+        "examples": {
+          "identity_option_visible": [],
+          "wrong_axis_for_category": [],
+          "makeup_shade_missing_visual": [],
+          "size_value_generic_axis": [],
+          "default_option_size_evidence_missing_axis": [],
+          "identity_default_title_axis": []
+        }
+      },
+      "coverage": {
+        "details_sections_count": 2,
+        "faq_count": 0,
+        "how_to_chars": 110,
+        "inci_chars": 2054,
+        "active_ingredients_chars": 0,
+        "inci_applicability_status": "",
+        "ingredient_review_status": "",
+        "ingredient_remediation_action": "",
+        "bundle_component_refs_count": 0,
+        "effective_inci_chars": 2054,
+        "inci_borrowed_from_product_id": ""
+      }
+    },
+    {
+      "seed_id": "eps_da736120dad64addae857d0c",
+      "external_product_id": "ext_59d1d0f9b80d3ad401ad4862",
+      "market": "US",
+      "domain": "www.jurlique.com",
+      "title": "Rejuvenating Duo",
+      "canonical_url": "https://www.jurlique.com/products/rejuvenating-duo",
+      "product_family": "set_or_collection",
+      "product_line_id": "pl_bfaab2ddda6bf0daa984dc2e",
+      "identity_variant_axes": {
+        "pack": "2pack",
+        "multi_variant": false
+      },
+      "pivota_insights": {
+        "direct": {
+          "product_id": "ext_59d1d0f9b80d3ad401ad4862",
+          "kb_key": "product:ext_59d1d0f9b80d3ad401ad4862",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "seller_plus_formula",
+          "has_card_highlight": true
+        },
+        "effective": {
+          "product_id": "ext_59d1d0f9b80d3ad401ad4862",
+          "kb_key": "product:ext_59d1d0f9b80d3ad401ad4862",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "seller_plus_formula",
+          "has_card_highlight": true
+        },
+        "product_line_id": "pl_bfaab2ddda6bf0daa984dc2e",
+        "borrowed_from_sibling": false
+      },
+      "active_ingredients": {
+        "status": "not_applicable_product_family",
+        "issues": [],
+        "regulatory_expected": false,
+        "hero_expected": false,
+        "active_items": [],
+        "source_origin": "none",
+        "source_quality_status": "blocked",
+        "coverage": {
+          "details_sections_count": 2,
+          "faq_count": 0,
+          "how_to_chars": 110,
+          "inci_chars": 1630,
+          "active_ingredients_chars": 0,
+          "inci_applicability_status": "",
+          "ingredient_review_status": "",
+          "ingredient_remediation_action": "",
+          "bundle_component_refs_count": 2,
+          "effective_inci_chars": 1630,
+          "inci_borrowed_from_product_id": ""
+        },
+        "invalid_fragments": [],
+        "suppressed_reason": "set_or_collection"
+      },
+      "variants": {
+        "status": "ready",
+        "issues": [],
+        "visible_variant_rows": 1,
+        "examples": {
+          "identity_option_visible": [],
+          "wrong_axis_for_category": [],
+          "makeup_shade_missing_visual": [],
+          "size_value_generic_axis": [],
+          "default_option_size_evidence_missing_axis": [],
+          "identity_default_title_axis": []
+        }
+      },
+      "coverage": {
+        "details_sections_count": 2,
+        "faq_count": 0,
+        "how_to_chars": 110,
+        "inci_chars": 1630,
+        "active_ingredients_chars": 0,
+        "inci_applicability_status": "",
+        "ingredient_review_status": "",
+        "ingredient_remediation_action": "",
+        "bundle_component_refs_count": 2,
+        "effective_inci_chars": 1630,
+        "inci_borrowed_from_product_id": ""
+      }
+    },
+    {
+      "seed_id": "eps_ff8dceb3748740dcbcfa2dd2",
+      "external_product_id": "ext_4da676febaab206c32ffac68",
+      "market": "US",
+      "domain": "www.jurlique.com",
+      "title": "Soft Hand & Body Bundle",
+      "canonical_url": "https://www.jurlique.com/products/soft-hand-body-bundle",
+      "product_family": "set_or_collection",
+      "product_line_id": "pl_780efffbc2e72a2ad8631968",
+      "identity_variant_axes": {
+        "multi_variant": false
+      },
+      "pivota_insights": {
+        "direct": {
+          "product_id": "ext_4da676febaab206c32ffac68",
+          "kb_key": "product:ext_4da676febaab206c32ffac68",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "seller_plus_formula",
+          "has_card_highlight": true
+        },
+        "effective": {
+          "product_id": "ext_4da676febaab206c32ffac68",
+          "kb_key": "product:ext_4da676febaab206c32ffac68",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "seller_plus_formula",
+          "has_card_highlight": true
+        },
+        "product_line_id": "pl_780efffbc2e72a2ad8631968",
+        "borrowed_from_sibling": false
+      },
+      "active_ingredients": {
+        "status": "not_applicable_product_family",
+        "issues": [],
+        "regulatory_expected": false,
+        "hero_expected": false,
+        "active_items": [],
+        "source_origin": "none",
+        "source_quality_status": "blocked",
+        "coverage": {
+          "details_sections_count": 2,
+          "faq_count": 0,
+          "how_to_chars": 110,
+          "inci_chars": 0,
+          "active_ingredients_chars": 0,
+          "inci_applicability_status": "",
+          "ingredient_review_status": "component_ref_review_required",
+          "ingredient_remediation_action": "component_ref_review_required",
+          "bundle_component_refs_count": 2,
+          "effective_inci_chars": 0,
+          "inci_borrowed_from_product_id": ""
+        },
+        "invalid_fragments": [],
+        "suppressed_reason": "set_or_collection"
+      },
+      "variants": {
+        "status": "ready",
+        "issues": [],
+        "visible_variant_rows": 1,
+        "examples": {
+          "identity_option_visible": [],
+          "wrong_axis_for_category": [],
+          "makeup_shade_missing_visual": [],
+          "size_value_generic_axis": [],
+          "default_option_size_evidence_missing_axis": [],
+          "identity_default_title_axis": []
+        }
+      },
+      "coverage": {
+        "details_sections_count": 2,
+        "faq_count": 0,
+        "how_to_chars": 110,
+        "inci_chars": 0,
+        "active_ingredients_chars": 0,
+        "inci_applicability_status": "",
+        "ingredient_review_status": "component_ref_review_required",
+        "ingredient_remediation_action": "component_ref_review_required",
+        "bundle_component_refs_count": 2,
+        "effective_inci_chars": 0,
+        "inci_borrowed_from_product_id": ""
+      }
+    }
+  ]
+}

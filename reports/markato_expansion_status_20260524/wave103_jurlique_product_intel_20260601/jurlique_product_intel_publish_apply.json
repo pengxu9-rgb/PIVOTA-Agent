@@ -1,0 +1,22 @@
+{
+  "status": "ok",
+  "mode": "write",
+  "report": "/Users/pengchydan/dev/_worktrees/pivota-agent-markato-wave25-786-20260527/reports/markato_expansion_status_20260524/wave103_jurlique_product_intel_20260601/jurlique_product_intel_report.json",
+  "rows": [
+    "live_ext_1e20d9aa6fe78b783fddf311",
+    "live_ext_63ac501ca2ee5eb62b04dc41",
+    "live_ext_a4457d05bf56f811a88becf3",
+    "live_ext_b0f9384195c88efc4aa0114e",
+    "live_ext_59d1d0f9b80d3ad401ad4862",
+    "live_ext_4da676febaab206c32ffac68"
+  ],
+  "entries": [
+    "product:ext_1e20d9aa6fe78b783fddf311",
+    "product:ext_63ac501ca2ee5eb62b04dc41",
+    "product:ext_a4457d05bf56f811a88becf3",
+    "product:ext_b0f9384195c88efc4aa0114e",
+    "product:ext_59d1d0f9b80d3ad401ad4862",
+    "product:ext_4da676febaab206c32ffac68"
+  ],
+  "skipped_rows": []
+}
