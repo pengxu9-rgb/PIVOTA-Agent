@@ -1,0 +1,1663 @@
+{
+  "generated_at": "2026-06-01T04:52:37.827Z",
+  "source": "pivota_insights_official_pdp_manual_review_v1",
+  "mode": "dry_run",
+  "filters": {
+    "brand": "INNBeauty",
+    "product_ids": [],
+    "limit": 20,
+    "include_strong": false,
+    "include_url_key": false,
+    "apply_chunk_size": null
+  },
+  "summary": {
+    "scanned": 20,
+    "changed_products": 0,
+    "blocked_products": 0,
+    "skipped_products": 20,
+    "write_actions": {
+      "skip": 40
+    },
+    "skip_reasons": {
+      "no_safe_writes": 20,
+      "protected_high_quality_existing:reviewed": 38,
+      "protected_evidence_profile_existing:community_supported": 2
+    },
+    "evidence_profiles": {
+      "official_pdp_reviewed_formula_and_usage": 7,
+      "official_pdp_reviewed_key_ingredients_and_usage": 13
+    }
+  },
+  "plans": [
+    {
+      "external_product_id": "ext_f030ae4fee39a2a25d1aadd1",
+      "pivota_signature_id": "sig_85422475ab4e150e011b4347922419b1",
+      "title": "10+10 Daily Moisturizer",
+      "brand": "INNBeauty Project",
+      "canonical_url": "https://www.innbeautyproject.com/products/10-10-daily-moisturizer-vitamin-c-peptides",
+      "changed": false,
+      "blocked": false,
+      "skip_reason": "no_safe_writes",
+      "candidate_hash": "7e2a813463df4dc048823c7fc8d7e996ef5c970a3a1c6cedc505076a28727fe7",
+      "evidence_profile": "official_pdp_reviewed_formula_and_usage",
+      "source_coverage": {
+        "source": "official_pdp",
+        "canonical_url": "https://www.innbeautyproject.com/products/10-10-daily-moisturizer-vitamin-c-peptides",
+        "fields": {
+          "description": true,
+          "ingredients": 1,
+          "active_ingredients": 4,
+          "how_to": 1,
+          "details": 7,
+          "variants": 1
+        }
+      },
+      "preview": {
+        "headline": "Body care treatment",
+        "what_it_is": "10+10 Daily Moisturizer is a body care treatment from INNBeauty Project, with source-backed cues around hydration and brightening support.",
+        "why_it_stands_out": [
+          {
+            "headline": "Routine step cues are specific",
+            "body": "Reviewed skincare cues such as vitamin C, peptides, hydration, barrier support identify the routine role or key ingredient context without inventing unsupported benefits.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Ingredient list is available",
+            "body": "Full INCI is present for formula-sensitive review, which makes this PDP safer to evaluate than a claim-only listing.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Usage instructions available",
+            "body": "Reviewed usage context is present, including: Apply AM + PM as your moisturizer step.",
+            "evidence_strength": "official_pdp_reviewed"
+          }
+        ],
+        "best_for": [
+          {
+            "tag": "hydration",
+            "label": "hydration",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "firmness",
+            "label": "firmness",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "radiance",
+            "label": "radiance",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "barrier_support",
+            "label": "barrier support",
+            "confidence": "moderate"
+          }
+        ],
+        "shopping_highlight": "vitamin C, peptides, hydration"
+      },
+      "writes": [
+        {
+          "kb_key": "product:ext_f030ae4fee39a2a25d1aadd1",
+          "action": "skip",
+          "reason": "protected_high_quality_existing:reviewed",
+          "old_hash": "bff064919ed285e6ca92c42dc6f3f60d2b2dc77b2fb318f53b54dc91d9bd1a33",
+          "existing_weak": false
+        },
+        {
+          "kb_key": "product:sig_85422475ab4e150e011b4347922419b1",
+          "action": "skip",
+          "reason": "protected_high_quality_existing:reviewed",
+          "old_hash": "bff064919ed285e6ca92c42dc6f3f60d2b2dc77b2fb318f53b54dc91d9bd1a33",
+          "existing_weak": false
+        }
+      ]
+    },
+    {
+      "external_product_id": "ext_99675d005eac750d31ff3ef2",
+      "pivota_signature_id": "sig_60817f501044f9179ec294016e5a592f",
+      "title": "Acne Serum",
+      "brand": "INNBeauty Project",
+      "canonical_url": "https://www.innbeautyproject.com/products/acne-serum",
+      "changed": false,
+      "blocked": false,
+      "skip_reason": "no_safe_writes",
+      "candidate_hash": "de5ec545320dd889bd21567c8e3104b128500f4f9d5e93cadbf4352bfa170bac",
+      "evidence_profile": "official_pdp_reviewed_formula_and_usage",
+      "source_coverage": {
+        "source": "official_pdp",
+        "canonical_url": "https://www.innbeautyproject.com/products/acne-serum",
+        "fields": {
+          "description": true,
+          "ingredients": 3,
+          "active_ingredients": 1,
+          "how_to": 1,
+          "details": 6,
+          "variants": 1
+        }
+      },
+      "preview": {
+        "headline": "Treatment serum",
+        "what_it_is": "Acne Serum is a treatment serum from INNBeauty Project, with source-backed ingredient cues around retinol, vitamin C, tranexamic acid and barrier support.",
+        "why_it_stands_out": [
+          {
+            "headline": "Routine step cues are specific",
+            "body": "Reviewed skincare cues such as vitamin C, retinol, tranexamic acid, BHA/salicylic acid identify the routine role or key ingredient context without inventing unsupported benefits.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Ingredient list is available",
+            "body": "Full INCI is present for formula-sensitive review, which makes this PDP safer to evaluate than a claim-only listing.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Usage instructions available",
+            "body": "Reviewed usage context is present, including: Apply a thin layer on clean skin, all over the face, or concentrate on affected areas.",
+            "evidence_strength": "official_pdp_reviewed"
+          }
+        ],
+        "best_for": [
+          {
+            "tag": "exfoliating_toner_step",
+            "label": "exfoliating toner step",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "hydration",
+            "label": "hydration",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "radiance",
+            "label": "radiance",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "barrier_support",
+            "label": "barrier support",
+            "confidence": "moderate"
+          }
+        ],
+        "shopping_highlight": "vitamin C, retinol, tranexamic acid"
+      },
+      "writes": [
+        {
+          "kb_key": "product:ext_99675d005eac750d31ff3ef2",
+          "action": "skip",
+          "reason": "protected_high_quality_existing:reviewed",
+          "old_hash": "a1e26786e438e53388714ec13c84b026d7a041dff80b77cb5ff314b7ed828229",
+          "existing_weak": false
+        },
+        {
+          "kb_key": "product:sig_60817f501044f9179ec294016e5a592f",
+          "action": "skip",
+          "reason": "protected_high_quality_existing:reviewed",
+          "old_hash": "a1e26786e438e53388714ec13c84b026d7a041dff80b77cb5ff314b7ed828229",
+          "existing_weak": false
+        }
+      ]
+    },
+    {
+      "external_product_id": "ext_04d84cf4fb65a656508b86e9",
+      "pivota_signature_id": "sig_a01d9340b3fcc721a6fe16148c3dc6fb",
+      "title": "Bright & Tight Eye Cream",
+      "brand": "INNBeauty Project",
+      "canonical_url": "https://www.innbeautyproject.com/products/bright-tight-eye-cream",
+      "changed": false,
+      "blocked": false,
+      "skip_reason": "no_safe_writes",
+      "candidate_hash": "194e6447302a4540bd6addb828fb42618bae34ca67b5dfee5eb6ff287896af33",
+      "evidence_profile": "official_pdp_reviewed_formula_and_usage",
+      "source_coverage": {
+        "source": "official_pdp",
+        "canonical_url": "https://www.innbeautyproject.com/products/bright-tight-eye-cream",
+        "fields": {
+          "description": true,
+          "ingredients": 1,
+          "active_ingredients": 3,
+          "how_to": 1,
+          "details": 5,
+          "variants": 1
+        }
+      },
+      "preview": {
+        "headline": "Body care treatment",
+        "what_it_is": "Bright & Tight Eye Cream is a body care treatment from INNBeauty Project in Refill, with source-backed cues around hydration and brightening support.",
+        "why_it_stands_out": [
+          {
+            "headline": "Routine step cues are specific",
+            "body": "Reviewed skincare cues such as vitamin C, tranexamic acid, peptides, hydration identify the routine role or key ingredient context without inventing unsupported benefits.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Ingredient list is available",
+            "body": "Full INCI is present for formula-sensitive review, which makes this PDP safer to evaluate than a claim-only listing.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Shade and size are explicit",
+            "body": "Variant labels such as Refill, Format: Refill are visible, reducing ambiguity around the product format before a shopper clicks through.",
+            "evidence_strength": "official_pdp_reviewed"
+          }
+        ],
+        "best_for": [
+          {
+            "tag": "hydration",
+            "label": "hydration",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "firmness",
+            "label": "firmness",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "radiance",
+            "label": "radiance",
+            "confidence": "moderate"
+          }
+        ],
+        "shopping_highlight": "vitamin C, tranexamic acid, peptides"
+      },
+      "writes": [
+        {
+          "kb_key": "product:ext_04d84cf4fb65a656508b86e9",
+          "action": "skip",
+          "reason": "protected_high_quality_existing:reviewed",
+          "old_hash": "0a6b5be3b85c96947cf15bfcc4a14dee0405370cc86915b4a0b10ba2fc04cab5",
+          "existing_weak": false
+        },
+        {
+          "kb_key": "product:sig_a01d9340b3fcc721a6fe16148c3dc6fb",
+          "action": "skip",
+          "reason": "protected_high_quality_existing:reviewed",
+          "old_hash": "0a6b5be3b85c96947cf15bfcc4a14dee0405370cc86915b4a0b10ba2fc04cab5",
+          "existing_weak": false
+        }
+      ]
+    },
+    {
+      "external_product_id": "ext_2c8d1aa18e96e90118d6d480",
+      "pivota_signature_id": "sig_eb3be57a296548d703891298253d7a7d",
+      "title": "Bright & Tight Eye Cream",
+      "brand": "INNBeauty Project",
+      "canonical_url": "https://www.innbeautyproject.com/products/bright-tight-eye-cream",
+      "changed": false,
+      "blocked": false,
+      "skip_reason": "no_safe_writes",
+      "candidate_hash": "1d536549873b6fc72b9f70c1847a6ab9f47bfa844b773cb9567145d0005ca91a",
+      "evidence_profile": "official_pdp_reviewed_formula_and_usage",
+      "source_coverage": {
+        "source": "official_pdp",
+        "canonical_url": "https://www.innbeautyproject.com/products/bright-tight-eye-cream",
+        "fields": {
+          "description": true,
+          "ingredients": 1,
+          "active_ingredients": 3,
+          "how_to": 1,
+          "details": 5,
+          "variants": 1
+        }
+      },
+      "preview": {
+        "headline": "Body care treatment",
+        "what_it_is": "Bright & Tight Eye Cream is a body care treatment from INNBeauty Project in Full Size, with source-backed cues around hydration and brightening support.",
+        "why_it_stands_out": [
+          {
+            "headline": "Routine step cues are specific",
+            "body": "Reviewed skincare cues such as vitamin C, tranexamic acid, peptides, hydration identify the routine role or key ingredient context without inventing unsupported benefits.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Ingredient list is available",
+            "body": "Full INCI is present for formula-sensitive review, which makes this PDP safer to evaluate than a claim-only listing.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Shade and size are explicit",
+            "body": "Variant labels such as Full Size, Format: Full Size are visible, reducing ambiguity around the product format before a shopper clicks through.",
+            "evidence_strength": "official_pdp_reviewed"
+          }
+        ],
+        "best_for": [
+          {
+            "tag": "hydration",
+            "label": "hydration",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "firmness",
+            "label": "firmness",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "radiance",
+            "label": "radiance",
+            "confidence": "moderate"
+          }
+        ],
+        "shopping_highlight": "vitamin C, tranexamic acid, peptides"
+      },
+      "writes": [
+        {
+          "kb_key": "product:ext_2c8d1aa18e96e90118d6d480",
+          "action": "skip",
+          "reason": "protected_high_quality_existing:reviewed",
+          "old_hash": "22aed229ad81254a439bea34d576fbad82d8326bb9866c0bffae425f66e16a9d",
+          "existing_weak": false
+        },
+        {
+          "kb_key": "product:sig_eb3be57a296548d703891298253d7a7d",
+          "action": "skip",
+          "reason": "protected_high_quality_existing:reviewed",
+          "old_hash": "22aed229ad81254a439bea34d576fbad82d8326bb9866c0bffae425f66e16a9d",
+          "existing_weak": false
+        }
+      ]
+    },
+    {
+      "external_product_id": "ext_f52ed300f7d9c83bd06adb55",
+      "pivota_signature_id": "sig_93ad9d824ffac22af39498c2cfa12e8a",
+      "title": "Bright & Tight Eye Cream",
+      "brand": "INNBeauty Project",
+      "canonical_url": "https://www.innbeautyproject.com/products/bright-tight-eye-cream",
+      "changed": false,
+      "blocked": false,
+      "skip_reason": "no_safe_writes",
+      "candidate_hash": "0bcc5e672ab318b2ad057e9786bf83bba1d4a69a6a2d98aef20be53ed935da75",
+      "evidence_profile": "official_pdp_reviewed_formula_and_usage",
+      "source_coverage": {
+        "source": "official_pdp",
+        "canonical_url": "https://www.innbeautyproject.com/products/bright-tight-eye-cream",
+        "fields": {
+          "description": true,
+          "ingredients": 1,
+          "active_ingredients": 3,
+          "how_to": 1,
+          "details": 5,
+          "variants": 2
+        }
+      },
+      "preview": {
+        "headline": "Body care treatment",
+        "what_it_is": "Bright & Tight Eye Cream is a body care treatment from INNBeauty Project in Full Size, with source-backed cues around hydration and brightening support.",
+        "why_it_stands_out": [
+          {
+            "headline": "Routine step cues are specific",
+            "body": "Reviewed skincare cues such as vitamin C, tranexamic acid, peptides, hydration identify the routine role or key ingredient context without inventing unsupported benefits.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Ingredient list is available",
+            "body": "Full INCI is present for formula-sensitive review, which makes this PDP safer to evaluate than a claim-only listing.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Shade and size are explicit",
+            "body": "Variant labels such as Full Size, Format: Full Size, Refill, Format: Refill are visible, reducing ambiguity around the product format before a shopper clicks through.",
+            "evidence_strength": "official_pdp_reviewed"
+          }
+        ],
+        "best_for": [
+          {
+            "tag": "hydration",
+            "label": "hydration",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "firmness",
+            "label": "firmness",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "radiance",
+            "label": "radiance",
+            "confidence": "moderate"
+          }
+        ],
+        "shopping_highlight": "vitamin C, tranexamic acid, peptides"
+      },
+      "writes": [
+        {
+          "kb_key": "product:ext_f52ed300f7d9c83bd06adb55",
+          "action": "skip",
+          "reason": "protected_high_quality_existing:reviewed",
+          "old_hash": "3258dc20e07fe4fd6110caba05b064844e16ac52d8e35b14a30694fdb4532f82",
+          "existing_weak": false
+        },
+        {
+          "kb_key": "product:sig_93ad9d824ffac22af39498c2cfa12e8a",
+          "action": "skip",
+          "reason": "protected_high_quality_existing:reviewed",
+          "old_hash": "3258dc20e07fe4fd6110caba05b064844e16ac52d8e35b14a30694fdb4532f82",
+          "existing_weak": false
+        }
+      ]
+    },
+    {
+      "external_product_id": "ext_40c794ef87f24e59443e24d2",
+      "pivota_signature_id": "sig_5b45bb9272bab845f2424b667b8b695c",
+      "title": "Bronze Body Glow Oil",
+      "brand": "INNBeauty Project",
+      "canonical_url": "https://www.innbeautyproject.com/products/bronze-body-glow-oil",
+      "changed": false,
+      "blocked": false,
+      "skip_reason": "no_safe_writes",
+      "candidate_hash": "05995163bf303bdad0e34fe4fe1eedf04a93552bf19075e1e07129bbeed22c62",
+      "evidence_profile": "official_pdp_reviewed_key_ingredients_and_usage",
+      "source_coverage": {
+        "source": "official_pdp",
+        "canonical_url": "https://www.innbeautyproject.com/products/bronze-body-glow-oil",
+        "fields": {
+          "description": true,
+          "ingredients": 0,
+          "active_ingredients": 1,
+          "how_to": 1,
+          "details": 4,
+          "variants": 1
+        }
+      },
+      "preview": {
+        "headline": "Treatment serum",
+        "what_it_is": "Bronze Body Glow Oil is a treatment serum from INNBeauty Project, with source-backed ingredient cues around barrier support.",
+        "why_it_stands_out": [
+          {
+            "headline": "Routine step cues are specific",
+            "body": "Reviewed skincare cues such as hydration, barrier support identify the routine role or key ingredient context without inventing unsupported benefits.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Key ingredients are identified",
+            "body": "Squalane is identified, enough for a cautious high-level formula read without inventing unsupported actives.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Usage instructions available",
+            "body": "Reviewed usage context is present, including: Apply to clean, dry skin.",
+            "evidence_strength": "official_pdp_reviewed"
+          }
+        ],
+        "best_for": [
+          {
+            "tag": "hydration",
+            "label": "hydration",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "firmness",
+            "label": "firmness",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "radiance",
+            "label": "radiance",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "barrier_support",
+            "label": "barrier support",
+            "confidence": "moderate"
+          }
+        ],
+        "shopping_highlight": "hydration, barrier support"
+      },
+      "writes": [
+        {
+          "kb_key": "product:ext_40c794ef87f24e59443e24d2",
+          "action": "skip",
+          "reason": "protected_high_quality_existing:reviewed",
+          "old_hash": "ff5a53283f0efa11d3c268869703240d32b11ad66d438151f862c85a4301b39b",
+          "existing_weak": false
+        },
+        {
+          "kb_key": "product:sig_5b45bb9272bab845f2424b667b8b695c",
+          "action": "skip",
+          "reason": "protected_high_quality_existing:reviewed",
+          "old_hash": "ff5a53283f0efa11d3c268869703240d32b11ad66d438151f862c85a4301b39b",
+          "existing_weak": false
+        }
+      ]
+    },
+    {
+      "external_product_id": "ext_90f1fc76cdfa267739e97f74",
+      "pivota_signature_id": "sig_65effdece83500b5e26fdda040ec2b16",
+      "title": "Calm The Red Down",
+      "brand": "INNBeauty Project",
+      "canonical_url": "https://innbeautyproject.com/products/calm-the-red-down",
+      "changed": false,
+      "blocked": false,
+      "skip_reason": "no_safe_writes",
+      "candidate_hash": "56237727a6d98f07f507e7790122c28b62bf28db593ca622a7a24187fda10746",
+      "evidence_profile": "official_pdp_reviewed_key_ingredients_and_usage",
+      "source_coverage": {
+        "source": "official_pdp",
+        "canonical_url": "https://innbeautyproject.com/products/calm-the-red-down",
+        "fields": {
+          "description": true,
+          "ingredients": 0,
+          "active_ingredients": 3,
+          "how_to": 1,
+          "details": 5,
+          "variants": 1
+        }
+      },
+      "preview": {
+        "headline": "Treatment serum",
+        "what_it_is": "Calm The Red Down is a treatment serum from INNBeauty Project, with source-backed ingredient cues around azelaic acid, peptides, centella and barrier support.",
+        "why_it_stands_out": [
+          {
+            "headline": "Routine step cues are specific",
+            "body": "Reviewed skincare cues such as azelaic acid, peptides, centella, hydration identify the routine role or key ingredient context without inventing unsupported benefits.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Key ingredients are identified",
+            "body": "Azelaic acid, Centella asiatica, Peptides are identified, enough for a cautious high-level formula read without inventing unsupported actives.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Usage instructions available",
+            "body": "Reviewed usage context is present, including: For first time use, press pump fully a few times until product dispenses Side 1: Redness Repair Barrier Treatment.",
+            "evidence_strength": "official_pdp_reviewed"
+          }
+        ],
+        "best_for": [
+          {
+            "tag": "hydration",
+            "label": "hydration",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "firmness",
+            "label": "firmness",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "barrier_support",
+            "label": "barrier support",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "aromatherapy",
+            "label": "aromatherapy",
+            "confidence": "moderate"
+          }
+        ],
+        "shopping_highlight": "azelaic acid, peptides, centella"
+      },
+      "writes": [
+        {
+          "kb_key": "product:ext_90f1fc76cdfa267739e97f74",
+          "action": "skip",
+          "reason": "protected_high_quality_existing:reviewed",
+          "old_hash": "b938fad4e8056bcf1ce2957c61115cd9b20a294f1412fca3fe683b68452c8a65",
+          "existing_weak": false
+        },
+        {
+          "kb_key": "product:sig_65effdece83500b5e26fdda040ec2b16",
+          "action": "skip",
+          "reason": "protected_high_quality_existing:reviewed",
+          "old_hash": "b938fad4e8056bcf1ce2957c61115cd9b20a294f1412fca3fe683b68452c8a65",
+          "existing_weak": false
+        }
+      ]
+    },
+    {
+      "external_product_id": "ext_f68ae6b7ff74dc3ee8f517f4",
+      "pivota_signature_id": "sig_4e59ae703a6f49c237d099e466f13856",
+      "title": "Calm The Red Down",
+      "brand": "INNBeauty Project",
+      "canonical_url": "https://www.innbeautyproject.com/products/calm-the-red-down",
+      "changed": false,
+      "blocked": false,
+      "skip_reason": "no_safe_writes",
+      "candidate_hash": "478dcf543e023cc9144ade721e4db17755ebf87ffc4a32cb1d676e05c27668c2",
+      "evidence_profile": "official_pdp_reviewed_key_ingredients_and_usage",
+      "source_coverage": {
+        "source": "official_pdp",
+        "canonical_url": "https://www.innbeautyproject.com/products/calm-the-red-down",
+        "fields": {
+          "description": true,
+          "ingredients": 0,
+          "active_ingredients": 3,
+          "how_to": 1,
+          "details": 5,
+          "variants": 1
+        }
+      },
+      "preview": {
+        "headline": "Treatment serum",
+        "what_it_is": "Calm The Red Down is a treatment serum from INNBeauty Project, with source-backed ingredient cues around azelaic acid, peptides, centella and barrier support.",
+        "why_it_stands_out": [
+          {
+            "headline": "Routine step cues are specific",
+            "body": "Reviewed skincare cues such as azelaic acid, peptides, centella, hydration identify the routine role or key ingredient context without inventing unsupported benefits.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Key ingredients are identified",
+            "body": "Azelaic acid, Centella asiatica, Peptides are identified, enough for a cautious high-level formula read without inventing unsupported actives.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Usage instructions available",
+            "body": "Reviewed usage context is present, including: For first time use, press pump fully a few times until product dispenses Side 1: Redness Repair Barrier Treatment.",
+            "evidence_strength": "official_pdp_reviewed"
+          }
+        ],
+        "best_for": [
+          {
+            "tag": "hydration",
+            "label": "hydration",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "firmness",
+            "label": "firmness",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "barrier_support",
+            "label": "barrier support",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "aromatherapy",
+            "label": "aromatherapy",
+            "confidence": "moderate"
+          }
+        ],
+        "shopping_highlight": "azelaic acid, peptides, centella"
+      },
+      "writes": [
+        {
+          "kb_key": "product:ext_f68ae6b7ff74dc3ee8f517f4",
+          "action": "skip",
+          "reason": "protected_high_quality_existing:reviewed",
+          "old_hash": "502e342064099f3c7fca0a318b2f42773b3ea52f59ce057091b2a07c9cb723f5",
+          "existing_weak": false
+        },
+        {
+          "kb_key": "product:sig_4e59ae703a6f49c237d099e466f13856",
+          "action": "skip",
+          "reason": "protected_high_quality_existing:reviewed",
+          "old_hash": "502e342064099f3c7fca0a318b2f42773b3ea52f59ce057091b2a07c9cb723f5",
+          "existing_weak": false
+        }
+      ]
+    },
+    {
+      "external_product_id": "ext_76e0ce7d026222f5f33caa5a",
+      "pivota_signature_id": "sig_6c3c4e861bd5625bd8ef74f2b282bac8",
+      "title": "Drying Paste",
+      "brand": "INNBeauty Project",
+      "canonical_url": "https://www.innbeautyproject.com/products/pimple-paste-2",
+      "changed": false,
+      "blocked": false,
+      "skip_reason": "no_safe_writes",
+      "candidate_hash": "0379f8b6499dd57e042d2d440aa399d721de6da77eeedee1d0c8ed58ac87aa1f",
+      "evidence_profile": "official_pdp_reviewed_key_ingredients_and_usage",
+      "source_coverage": {
+        "source": "official_pdp",
+        "canonical_url": "https://www.innbeautyproject.com/products/pimple-paste-2",
+        "fields": {
+          "description": true,
+          "ingredients": 0,
+          "active_ingredients": 1,
+          "how_to": 1,
+          "details": 5,
+          "variants": 1
+        }
+      },
+      "preview": {
+        "headline": "Body care treatment",
+        "what_it_is": "Drying Paste is a body care treatment from INNBeauty Project, with source-backed cues around hydration.",
+        "why_it_stands_out": [
+          {
+            "headline": "Routine step cues are specific",
+            "body": "Reviewed skincare cues such as vitamin C, azelaic acid, aloe juice, hydration identify the routine role or key ingredient context without inventing unsupported benefits.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Key ingredients are identified",
+            "body": "Azelaic acid is identified, enough for a cautious high-level formula read without inventing unsupported actives.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Usage instructions available",
+            "body": "Reviewed usage context is present, including: Apply a thick layer directly onto blemish and leave on overnight.",
+            "evidence_strength": "official_pdp_reviewed"
+          }
+        ],
+        "best_for": [
+          {
+            "tag": "hydration",
+            "label": "hydration",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "body_routine",
+            "label": "body routine",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "aromatherapy",
+            "label": "aromatherapy",
+            "confidence": "moderate"
+          }
+        ],
+        "shopping_highlight": "vitamin C, azelaic acid, aloe juice"
+      },
+      "writes": [
+        {
+          "kb_key": "product:ext_76e0ce7d026222f5f33caa5a",
+          "action": "skip",
+          "reason": "protected_high_quality_existing:reviewed",
+          "old_hash": "4a79afd05dbae5edba9db541e4ae45011206cac0d653586f92a23248ef4c9fb0",
+          "existing_weak": false
+        },
+        {
+          "kb_key": "product:sig_6c3c4e861bd5625bd8ef74f2b282bac8",
+          "action": "skip",
+          "reason": "protected_high_quality_existing:reviewed",
+          "old_hash": "4a79afd05dbae5edba9db541e4ae45011206cac0d653586f92a23248ef4c9fb0",
+          "existing_weak": false
+        }
+      ]
+    },
+    {
+      "external_product_id": "ext_20eeee45c79d42cc5cf95b50",
+      "pivota_signature_id": "sig_f27ea1be072811ecaa23338055fcd5e2",
+      "title": "Elastic Skin",
+      "brand": "INNBeauty Project",
+      "canonical_url": "https://innbeautyproject.com/products/elastic-skin",
+      "changed": false,
+      "blocked": false,
+      "skip_reason": "no_safe_writes",
+      "candidate_hash": "e3f158d920caf925da5e1e810ef9f7cfb68946e42fae15c2140723ba340c6d71",
+      "evidence_profile": "official_pdp_reviewed_formula_and_usage",
+      "source_coverage": {
+        "source": "official_pdp",
+        "canonical_url": "https://innbeautyproject.com/products/elastic-skin",
+        "fields": {
+          "description": true,
+          "ingredients": 1,
+          "active_ingredients": 2,
+          "how_to": 1,
+          "details": 8,
+          "variants": 2
+        }
+      },
+      "preview": {
+        "headline": "Treatment serum",
+        "what_it_is": "Elastic Skin is a treatment serum from INNBeauty Project, with source-backed ingredient cues around peptides, centella and barrier support.",
+        "why_it_stands_out": [
+          {
+            "headline": "Routine step cues are specific",
+            "body": "Reviewed skincare cues such as peptides, centella, hydration, barrier support identify the routine role or key ingredient context without inventing unsupported benefits.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Ingredient list is available",
+            "body": "Full INCI is present for formula-sensitive review, which makes this PDP safer to evaluate than a claim-only listing.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Shade and size are explicit",
+            "body": "Variant labels such as Full Size, Option: Full Size, Refill, Option: Refill are visible, reducing ambiguity around the product format before a shopper clicks through.",
+            "evidence_strength": "official_pdp_reviewed"
+          }
+        ],
+        "best_for": [
+          {
+            "tag": "hydration",
+            "label": "hydration",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "firmness",
+            "label": "firmness",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "barrier_support",
+            "label": "barrier support",
+            "confidence": "moderate"
+          }
+        ],
+        "shopping_highlight": "peptides, centella, hydration"
+      },
+      "writes": [
+        {
+          "kb_key": "product:ext_20eeee45c79d42cc5cf95b50",
+          "action": "skip",
+          "reason": "protected_high_quality_existing:reviewed",
+          "old_hash": "fbb58d260deaac454cbc4451ffdbddde7cbfaed77891ecf7fc42215c99593d09",
+          "existing_weak": false
+        },
+        {
+          "kb_key": "product:sig_f27ea1be072811ecaa23338055fcd5e2",
+          "action": "skip",
+          "reason": "protected_high_quality_existing:reviewed",
+          "old_hash": "fbb58d260deaac454cbc4451ffdbddde7cbfaed77891ecf7fc42215c99593d09",
+          "existing_weak": false
+        }
+      ]
+    },
+    {
+      "external_product_id": "ext_2eb4c3afe19f09afbb6756d0",
+      "pivota_signature_id": "sig_7e75c88c4c1cfaf86010ec6c807e2e24",
+      "title": "Elastic Skin",
+      "brand": "INNBeauty Project",
+      "canonical_url": "https://www.innbeautyproject.com/products/elastic-skin",
+      "changed": false,
+      "blocked": false,
+      "skip_reason": "no_safe_writes",
+      "candidate_hash": "a0d329029601c3c940cf43b052fffcd0e670a925716c5259bdb317b1056b5d76",
+      "evidence_profile": "official_pdp_reviewed_key_ingredients_and_usage",
+      "source_coverage": {
+        "source": "official_pdp",
+        "canonical_url": "https://www.innbeautyproject.com/products/elastic-skin",
+        "fields": {
+          "description": true,
+          "ingredients": 0,
+          "active_ingredients": 2,
+          "how_to": 1,
+          "details": 5,
+          "variants": 2
+        }
+      },
+      "preview": {
+        "headline": "Treatment serum",
+        "what_it_is": "Elastic Skin is a treatment serum from INNBeauty Project in Full Size, with source-backed ingredient cues around peptides and barrier support.",
+        "why_it_stands_out": [
+          {
+            "headline": "Routine step cues are specific",
+            "body": "Reviewed skincare cues such as peptides, hydration, barrier support, Full Size identify the routine role or key ingredient context without inventing unsupported benefits.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Key ingredients are identified",
+            "body": "Ceramide NP, Peptides are identified, enough for a cautious high-level formula read without inventing unsupported actives.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Shade and size are explicit",
+            "body": "Variant labels such as Full Size, Format: Full Size, Refill, Format: Refill are visible, reducing ambiguity around the product format before a shopper clicks through.",
+            "evidence_strength": "official_pdp_reviewed"
+          }
+        ],
+        "best_for": [
+          {
+            "tag": "hydration",
+            "label": "hydration",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "firmness",
+            "label": "firmness",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "barrier_support",
+            "label": "barrier support",
+            "confidence": "moderate"
+          }
+        ],
+        "shopping_highlight": "peptides, hydration, barrier support"
+      },
+      "writes": [
+        {
+          "kb_key": "product:ext_2eb4c3afe19f09afbb6756d0",
+          "action": "skip",
+          "reason": "protected_high_quality_existing:reviewed",
+          "old_hash": "fa029c3f536bf016e551e64979030a94779e1bdb302606adeb9cb84395c8433d",
+          "existing_weak": false
+        },
+        {
+          "kb_key": "product:sig_7e75c88c4c1cfaf86010ec6c807e2e24",
+          "action": "skip",
+          "reason": "protected_high_quality_existing:reviewed",
+          "old_hash": "fa029c3f536bf016e551e64979030a94779e1bdb302606adeb9cb84395c8433d",
+          "existing_weak": false
+        }
+      ]
+    },
+    {
+      "external_product_id": "ext_4b204c1181964df4e411f196",
+      "pivota_signature_id": "sig_754d9267168244b07830c94ea6f89c70",
+      "title": "Elastic Skin",
+      "brand": "INNBeauty Project",
+      "canonical_url": "https://innbeautyproject.com/products/elastic-skin",
+      "changed": false,
+      "blocked": false,
+      "skip_reason": "no_safe_writes",
+      "candidate_hash": "2577b31bd220499d50e748d756387c321972ee95c9889c86ba36de5ee0971968",
+      "evidence_profile": "official_pdp_reviewed_key_ingredients_and_usage",
+      "source_coverage": {
+        "source": "official_pdp",
+        "canonical_url": "https://innbeautyproject.com/products/elastic-skin",
+        "fields": {
+          "description": true,
+          "ingredients": 0,
+          "active_ingredients": 2,
+          "how_to": 1,
+          "details": 5,
+          "variants": 2
+        }
+      },
+      "preview": {
+        "headline": "Treatment serum",
+        "what_it_is": "Elastic Skin is a treatment serum from INNBeauty Project in Full Size, with source-backed ingredient cues around peptides and barrier support.",
+        "why_it_stands_out": [
+          {
+            "headline": "Routine step cues are specific",
+            "body": "Reviewed skincare cues such as peptides, hydration, barrier support, Full Size identify the routine role or key ingredient context without inventing unsupported benefits.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Key ingredients are identified",
+            "body": "Ceramide NP, Peptides are identified, enough for a cautious high-level formula read without inventing unsupported actives.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Shade and size are explicit",
+            "body": "Variant labels such as Full Size, Format: Full Size, Refill, Format: Refill are visible, reducing ambiguity around the product format before a shopper clicks through.",
+            "evidence_strength": "official_pdp_reviewed"
+          }
+        ],
+        "best_for": [
+          {
+            "tag": "hydration",
+            "label": "hydration",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "firmness",
+            "label": "firmness",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "barrier_support",
+            "label": "barrier support",
+            "confidence": "moderate"
+          }
+        ],
+        "shopping_highlight": "peptides, hydration, barrier support"
+      },
+      "writes": [
+        {
+          "kb_key": "product:ext_4b204c1181964df4e411f196",
+          "action": "skip",
+          "reason": "protected_high_quality_existing:reviewed",
+          "old_hash": "53970657b28a6c60d0aa108955f5ff7dee80fce1ff78a7dddc713096050cc796",
+          "existing_weak": false
+        },
+        {
+          "kb_key": "product:sig_754d9267168244b07830c94ea6f89c70",
+          "action": "skip",
+          "reason": "protected_high_quality_existing:reviewed",
+          "old_hash": "53970657b28a6c60d0aa108955f5ff7dee80fce1ff78a7dddc713096050cc796",
+          "existing_weak": false
+        }
+      ]
+    },
+    {
+      "external_product_id": "ext_55a14b19400b28300b0d6ac7",
+      "pivota_signature_id": "sig_01afda83eda18efe356f0051aa04077f",
+      "title": "Elastic Skin",
+      "brand": "INNBeauty Project",
+      "canonical_url": "https://www.innbeautyproject.com/products/elastic-skin",
+      "changed": false,
+      "blocked": false,
+      "skip_reason": "no_safe_writes",
+      "candidate_hash": "3f424781e027f2e78f0ff0e42a84f62717c7abaaeb8a7c7b29321b5bd3158d24",
+      "evidence_profile": "official_pdp_reviewed_key_ingredients_and_usage",
+      "source_coverage": {
+        "source": "official_pdp",
+        "canonical_url": "https://www.innbeautyproject.com/products/elastic-skin",
+        "fields": {
+          "description": true,
+          "ingredients": 0,
+          "active_ingredients": 2,
+          "how_to": 1,
+          "details": 5,
+          "variants": 1
+        }
+      },
+      "preview": {
+        "headline": "Treatment serum",
+        "what_it_is": "Elastic Skin is a treatment serum from INNBeauty Project in Refill, with source-backed ingredient cues around peptides and barrier support.",
+        "why_it_stands_out": [
+          {
+            "headline": "Routine step cues are specific",
+            "body": "Reviewed skincare cues such as peptides, hydration, barrier support, Refill identify the routine role or key ingredient context without inventing unsupported benefits.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Key ingredients are identified",
+            "body": "Ceramide NP, Peptides are identified, enough for a cautious high-level formula read without inventing unsupported actives.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Shade and size are explicit",
+            "body": "Variant labels such as Refill, Format: Refill are visible, reducing ambiguity around the product format before a shopper clicks through.",
+            "evidence_strength": "official_pdp_reviewed"
+          }
+        ],
+        "best_for": [
+          {
+            "tag": "hydration",
+            "label": "hydration",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "firmness",
+            "label": "firmness",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "barrier_support",
+            "label": "barrier support",
+            "confidence": "moderate"
+          }
+        ],
+        "shopping_highlight": "peptides, hydration, barrier support"
+      },
+      "writes": [
+        {
+          "kb_key": "product:ext_55a14b19400b28300b0d6ac7",
+          "action": "skip",
+          "reason": "protected_high_quality_existing:reviewed",
+          "old_hash": "871cb3a405152c8e44d82a704f10b4c801ed8347cf09e718522fc37e30fa8f14",
+          "existing_weak": false
+        },
+        {
+          "kb_key": "product:sig_01afda83eda18efe356f0051aa04077f",
+          "action": "skip",
+          "reason": "protected_high_quality_existing:reviewed",
+          "old_hash": "871cb3a405152c8e44d82a704f10b4c801ed8347cf09e718522fc37e30fa8f14",
+          "existing_weak": false
+        }
+      ]
+    },
+    {
+      "external_product_id": "ext_973009fd21d5337a5a2fa01f",
+      "pivota_signature_id": "sig_7adbe9dc9f896c199aea9fa0949f176d",
+      "title": "Elastic Skin",
+      "brand": "INNBeauty Project",
+      "canonical_url": "https://www.innbeautyproject.com/products/elastic-skin",
+      "changed": false,
+      "blocked": false,
+      "skip_reason": "no_safe_writes",
+      "candidate_hash": "93f75e1aff8ef5564503ae437191bf1b45dfc56d2a320d2a9c8888401593a029",
+      "evidence_profile": "official_pdp_reviewed_key_ingredients_and_usage",
+      "source_coverage": {
+        "source": "official_pdp",
+        "canonical_url": "https://www.innbeautyproject.com/products/elastic-skin",
+        "fields": {
+          "description": true,
+          "ingredients": 0,
+          "active_ingredients": 2,
+          "how_to": 1,
+          "details": 5,
+          "variants": 1
+        }
+      },
+      "preview": {
+        "headline": "Treatment serum",
+        "what_it_is": "Elastic Skin is a treatment serum from INNBeauty Project in Full Size, with source-backed ingredient cues around peptides and barrier support.",
+        "why_it_stands_out": [
+          {
+            "headline": "Routine step cues are specific",
+            "body": "Reviewed skincare cues such as peptides, hydration, barrier support, Full Size identify the routine role or key ingredient context without inventing unsupported benefits.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Key ingredients are identified",
+            "body": "Ceramide NP, Peptides are identified, enough for a cautious high-level formula read without inventing unsupported actives.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Shade and size are explicit",
+            "body": "Variant labels such as Full Size, Format: Full Size are visible, reducing ambiguity around the product format before a shopper clicks through.",
+            "evidence_strength": "official_pdp_reviewed"
+          }
+        ],
+        "best_for": [
+          {
+            "tag": "hydration",
+            "label": "hydration",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "firmness",
+            "label": "firmness",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "barrier_support",
+            "label": "barrier support",
+            "confidence": "moderate"
+          }
+        ],
+        "shopping_highlight": "peptides, hydration, barrier support"
+      },
+      "writes": [
+        {
+          "kb_key": "product:ext_973009fd21d5337a5a2fa01f",
+          "action": "skip",
+          "reason": "protected_high_quality_existing:reviewed",
+          "old_hash": "b8b5b22713b706dc5ef38fd44c8db451973a159a1194fcafbb62f756aa07c9ab",
+          "existing_weak": false
+        },
+        {
+          "kb_key": "product:sig_7adbe9dc9f896c199aea9fa0949f176d",
+          "action": "skip",
+          "reason": "protected_high_quality_existing:reviewed",
+          "old_hash": "b8b5b22713b706dc5ef38fd44c8db451973a159a1194fcafbb62f756aa07c9ab",
+          "existing_weak": false
+        }
+      ]
+    },
+    {
+      "external_product_id": "ext_a650e8388ffbf2f5a64a8277",
+      "pivota_signature_id": "sig_e763dfbbada2df33c345b78d5fba7eef",
+      "title": "Elastic Skin",
+      "brand": "INNBeauty Project",
+      "canonical_url": "https://innbeautyproject.com/products/elastic-skin",
+      "changed": false,
+      "blocked": false,
+      "skip_reason": "no_safe_writes",
+      "candidate_hash": "e5cb0171eb65deb68518f83ca0f40445200c6f193e3820a5b8efc2606111e93a",
+      "evidence_profile": "official_pdp_reviewed_formula_and_usage",
+      "source_coverage": {
+        "source": "official_pdp",
+        "canonical_url": "https://innbeautyproject.com/products/elastic-skin",
+        "fields": {
+          "description": true,
+          "ingredients": 1,
+          "active_ingredients": 2,
+          "how_to": 1,
+          "details": 8,
+          "variants": 2
+        }
+      },
+      "preview": {
+        "headline": "Treatment serum",
+        "what_it_is": "Elastic Skin is a treatment serum from INNBeauty Project, with source-backed ingredient cues around peptides, centella and barrier support.",
+        "why_it_stands_out": [
+          {
+            "headline": "Routine step cues are specific",
+            "body": "Reviewed skincare cues such as peptides, centella, hydration, barrier support identify the routine role or key ingredient context without inventing unsupported benefits.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Ingredient list is available",
+            "body": "Full INCI is present for formula-sensitive review, which makes this PDP safer to evaluate than a claim-only listing.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Shade and size are explicit",
+            "body": "Variant labels such as Full Size, Option: Full Size, Refill, Option: Refill are visible, reducing ambiguity around the product format before a shopper clicks through.",
+            "evidence_strength": "official_pdp_reviewed"
+          }
+        ],
+        "best_for": [
+          {
+            "tag": "hydration",
+            "label": "hydration",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "firmness",
+            "label": "firmness",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "barrier_support",
+            "label": "barrier support",
+            "confidence": "moderate"
+          }
+        ],
+        "shopping_highlight": "peptides, centella, hydration"
+      },
+      "writes": [
+        {
+          "kb_key": "product:ext_a650e8388ffbf2f5a64a8277",
+          "action": "skip",
+          "reason": "protected_high_quality_existing:reviewed",
+          "old_hash": "1f26f9c7eebb120d7bfbe646bd257bf751fe66d47541721c0a84fe9d6746584c",
+          "existing_weak": false
+        },
+        {
+          "kb_key": "product:sig_e763dfbbada2df33c345b78d5fba7eef",
+          "action": "skip",
+          "reason": "protected_high_quality_existing:reviewed",
+          "old_hash": "1f26f9c7eebb120d7bfbe646bd257bf751fe66d47541721c0a84fe9d6746584c",
+          "existing_weak": false
+        }
+      ]
+    },
+    {
+      "external_product_id": "ext_83ebbc4b513cab870fb73669",
+      "pivota_signature_id": "sig_9e4335601adcfbd2413ce31f8bc5d9af",
+      "title": "Extreme Cream",
+      "brand": "INNBeauty Project",
+      "canonical_url": "https://innbeautyproject.com/products/extreme-cream",
+      "changed": false,
+      "blocked": false,
+      "skip_reason": "no_safe_writes",
+      "candidate_hash": "99c7de168020704b1a39222f194c229ef746980916e56b5f8e73a1270af281b7",
+      "evidence_profile": "official_pdp_reviewed_key_ingredients_and_usage",
+      "source_coverage": {
+        "source": "official_pdp",
+        "canonical_url": "https://innbeautyproject.com/products/extreme-cream",
+        "fields": {
+          "description": true,
+          "ingredients": 0,
+          "active_ingredients": 1,
+          "how_to": 1,
+          "details": 6,
+          "variants": 1
+        }
+      },
+      "preview": {
+        "headline": "Body care treatment",
+        "what_it_is": "Extreme Cream is a body care treatment from INNBeauty Project in Refill, with source-backed cues around hydration.",
+        "why_it_stands_out": [
+          {
+            "headline": "Routine step cues are specific",
+            "body": "Reviewed skincare cues such as vitamin C, retinol, peptides, hydration identify the routine role or key ingredient context without inventing unsupported benefits.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Key ingredient section is present",
+            "body": "Reviewed key-ingredient fields are present, but public copy is kept to ingredient-level context rather than unsupported benefit claims.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Shade and size are explicit",
+            "body": "Variant labels such as Refill, Format: Refill are visible, reducing ambiguity around the product format before a shopper clicks through.",
+            "evidence_strength": "official_pdp_reviewed"
+          }
+        ],
+        "best_for": [
+          {
+            "tag": "hydration",
+            "label": "hydration",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "firmness",
+            "label": "firmness",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "radiance",
+            "label": "radiance",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "barrier_support",
+            "label": "barrier support",
+            "confidence": "moderate"
+          }
+        ],
+        "shopping_highlight": "vitamin C, retinol, peptides, hydration"
+      },
+      "writes": [
+        {
+          "kb_key": "product:ext_83ebbc4b513cab870fb73669",
+          "action": "skip",
+          "reason": "protected_evidence_profile_existing:community_supported",
+          "old_hash": "7e657c677810bc3def8fb6d086b70ccf372c82764b0890e1536372e2d37df043",
+          "existing_weak": true
+        },
+        {
+          "kb_key": "product:sig_9e4335601adcfbd2413ce31f8bc5d9af",
+          "action": "skip",
+          "reason": "protected_high_quality_existing:reviewed",
+          "old_hash": "6c7607384b3a10692e2b579e06a32a6dbe70539f3490c2e7251d75ac5125a9e8",
+          "existing_weak": false
+        }
+      ]
+    },
+    {
+      "external_product_id": "ext_87e80f3d4671abe2836772cd",
+      "pivota_signature_id": "sig_b472511d0a49ee263b14fc6e87db8cc6",
+      "title": "Extreme Cream",
+      "brand": "INNBeauty Project",
+      "canonical_url": "https://innbeautyproject.com/products/extreme-cream",
+      "changed": false,
+      "blocked": false,
+      "skip_reason": "no_safe_writes",
+      "candidate_hash": "cec608531a0f509b8c5987bdd19ec7534384be27fc215701273f7a9335200dba",
+      "evidence_profile": "official_pdp_reviewed_key_ingredients_and_usage",
+      "source_coverage": {
+        "source": "official_pdp",
+        "canonical_url": "https://innbeautyproject.com/products/extreme-cream",
+        "fields": {
+          "description": true,
+          "ingredients": 0,
+          "active_ingredients": 1,
+          "how_to": 1,
+          "details": 6,
+          "variants": 1
+        }
+      },
+      "preview": {
+        "headline": "Body care treatment",
+        "what_it_is": "Extreme Cream is a body care treatment from INNBeauty Project in Full Size, with source-backed cues around hydration.",
+        "why_it_stands_out": [
+          {
+            "headline": "Routine step cues are specific",
+            "body": "Reviewed skincare cues such as vitamin C, retinol, peptides, hydration identify the routine role or key ingredient context without inventing unsupported benefits.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Key ingredient section is present",
+            "body": "Reviewed key-ingredient fields are present, but public copy is kept to ingredient-level context rather than unsupported benefit claims.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Shade and size are explicit",
+            "body": "Variant labels such as Full Size, Format: Full Size are visible, reducing ambiguity around the product format before a shopper clicks through.",
+            "evidence_strength": "official_pdp_reviewed"
+          }
+        ],
+        "best_for": [
+          {
+            "tag": "hydration",
+            "label": "hydration",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "firmness",
+            "label": "firmness",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "radiance",
+            "label": "radiance",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "barrier_support",
+            "label": "barrier support",
+            "confidence": "moderate"
+          }
+        ],
+        "shopping_highlight": "vitamin C, retinol, peptides, hydration"
+      },
+      "writes": [
+        {
+          "kb_key": "product:ext_87e80f3d4671abe2836772cd",
+          "action": "skip",
+          "reason": "protected_high_quality_existing:reviewed",
+          "old_hash": "2534885ebeafa2b8d0d497b4f047e2f9de0954eb54786580c33599fa926d7eaf",
+          "existing_weak": false
+        },
+        {
+          "kb_key": "product:sig_b472511d0a49ee263b14fc6e87db8cc6",
+          "action": "skip",
+          "reason": "protected_high_quality_existing:reviewed",
+          "old_hash": "2534885ebeafa2b8d0d497b4f047e2f9de0954eb54786580c33599fa926d7eaf",
+          "existing_weak": false
+        }
+      ]
+    },
+    {
+      "external_product_id": "ext_99954e44d33d9e13042db1eb",
+      "pivota_signature_id": "sig_64cdea250493d588703f6d245eeff4c7",
+      "title": "Extreme Cream",
+      "brand": "INNBeauty Project",
+      "canonical_url": "https://www.innbeautyproject.com/products/extreme-cream",
+      "changed": false,
+      "blocked": false,
+      "skip_reason": "no_safe_writes",
+      "candidate_hash": "c4230323ecae0c112b98eb3ea7e299848e60546be618cdda80d8df8c71cab2f8",
+      "evidence_profile": "official_pdp_reviewed_key_ingredients_and_usage",
+      "source_coverage": {
+        "source": "official_pdp",
+        "canonical_url": "https://www.innbeautyproject.com/products/extreme-cream",
+        "fields": {
+          "description": true,
+          "ingredients": 0,
+          "active_ingredients": 1,
+          "how_to": 1,
+          "details": 6,
+          "variants": 2
+        }
+      },
+      "preview": {
+        "headline": "Body care treatment",
+        "what_it_is": "Extreme Cream is a body care treatment from INNBeauty Project in Full Size, with source-backed cues around hydration.",
+        "why_it_stands_out": [
+          {
+            "headline": "Routine step cues are specific",
+            "body": "Reviewed skincare cues such as vitamin C, retinol, peptides, hydration identify the routine role or key ingredient context without inventing unsupported benefits.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Key ingredient section is present",
+            "body": "Reviewed key-ingredient fields are present, but public copy is kept to ingredient-level context rather than unsupported benefit claims.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Shade and size are explicit",
+            "body": "Variant labels such as Full Size, Format: Full Size, Refill, Format: Refill are visible, reducing ambiguity around the product format before a shopper clicks through.",
+            "evidence_strength": "official_pdp_reviewed"
+          }
+        ],
+        "best_for": [
+          {
+            "tag": "hydration",
+            "label": "hydration",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "firmness",
+            "label": "firmness",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "radiance",
+            "label": "radiance",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "barrier_support",
+            "label": "barrier support",
+            "confidence": "moderate"
+          }
+        ],
+        "shopping_highlight": "vitamin C, retinol, peptides, hydration"
+      },
+      "writes": [
+        {
+          "kb_key": "product:ext_99954e44d33d9e13042db1eb",
+          "action": "skip",
+          "reason": "protected_high_quality_existing:reviewed",
+          "old_hash": "5e4801a2c73e7e99c45f72abc3d64334f9b11954c397dd511f6bfd1295e5caab",
+          "existing_weak": false
+        },
+        {
+          "kb_key": "product:sig_64cdea250493d588703f6d245eeff4c7",
+          "action": "skip",
+          "reason": "protected_high_quality_existing:reviewed",
+          "old_hash": "5e4801a2c73e7e99c45f72abc3d64334f9b11954c397dd511f6bfd1295e5caab",
+          "existing_weak": false
+        }
+      ]
+    },
+    {
+      "external_product_id": "ext_ace231d19402268a9871a0fa",
+      "pivota_signature_id": "sig_4dab159a00283cf4958fe3401845fa40",
+      "title": "Extreme Cream",
+      "brand": "INNBeauty Project",
+      "canonical_url": "https://innbeautyproject.com/products/extreme-cream",
+      "changed": false,
+      "blocked": false,
+      "skip_reason": "no_safe_writes",
+      "candidate_hash": "fe778f5c928d5181e64fe36b8026dc60abf513a0ac8c4a3da1e7f82911323afc",
+      "evidence_profile": "official_pdp_reviewed_key_ingredients_and_usage",
+      "source_coverage": {
+        "source": "official_pdp",
+        "canonical_url": "https://innbeautyproject.com/products/extreme-cream",
+        "fields": {
+          "description": true,
+          "ingredients": 0,
+          "active_ingredients": 1,
+          "how_to": 1,
+          "details": 6,
+          "variants": 2
+        }
+      },
+      "preview": {
+        "headline": "Body care treatment",
+        "what_it_is": "Extreme Cream is a body care treatment from INNBeauty Project in Full Size, with source-backed cues around hydration.",
+        "why_it_stands_out": [
+          {
+            "headline": "Routine step cues are specific",
+            "body": "Reviewed skincare cues such as vitamin C, retinol, peptides, hydration identify the routine role or key ingredient context without inventing unsupported benefits.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Key ingredient section is present",
+            "body": "Reviewed key-ingredient fields are present, but public copy is kept to ingredient-level context rather than unsupported benefit claims.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Shade and size are explicit",
+            "body": "Variant labels such as Full Size, Format: Full Size, Refill, Format: Refill are visible, reducing ambiguity around the product format before a shopper clicks through.",
+            "evidence_strength": "official_pdp_reviewed"
+          }
+        ],
+        "best_for": [
+          {
+            "tag": "hydration",
+            "label": "hydration",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "firmness",
+            "label": "firmness",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "radiance",
+            "label": "radiance",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "barrier_support",
+            "label": "barrier support",
+            "confidence": "moderate"
+          }
+        ],
+        "shopping_highlight": "vitamin C, retinol, peptides, hydration"
+      },
+      "writes": [
+        {
+          "kb_key": "product:ext_ace231d19402268a9871a0fa",
+          "action": "skip",
+          "reason": "protected_high_quality_existing:reviewed",
+          "old_hash": "d3044856f1e4eea9526b6800603c85b90fa76d0981d2b409192628469c94c70d",
+          "existing_weak": false
+        },
+        {
+          "kb_key": "product:sig_4dab159a00283cf4958fe3401845fa40",
+          "action": "skip",
+          "reason": "protected_high_quality_existing:reviewed",
+          "old_hash": "d3044856f1e4eea9526b6800603c85b90fa76d0981d2b409192628469c94c70d",
+          "existing_weak": false
+        }
+      ]
+    },
+    {
+      "external_product_id": "ext_d67c47b6fa16c37757316dd7",
+      "pivota_signature_id": "sig_efd55e257b1458a69a369cdce09ebc46",
+      "title": "Extreme Cream",
+      "brand": "INNBeauty Project",
+      "canonical_url": "https://www.innbeautyproject.com/products/extreme-cream",
+      "changed": false,
+      "blocked": false,
+      "skip_reason": "no_safe_writes",
+      "candidate_hash": "a8776ba9d23f28e123d24f79cd1b568653bf319642e8dc3484ff6480038b209a",
+      "evidence_profile": "official_pdp_reviewed_key_ingredients_and_usage",
+      "source_coverage": {
+        "source": "official_pdp",
+        "canonical_url": "https://www.innbeautyproject.com/products/extreme-cream",
+        "fields": {
+          "description": true,
+          "ingredients": 0,
+          "active_ingredients": 1,
+          "how_to": 1,
+          "details": 6,
+          "variants": 1
+        }
+      },
+      "preview": {
+        "headline": "Body care treatment",
+        "what_it_is": "Extreme Cream is a body care treatment from INNBeauty Project in Refill, with source-backed cues around hydration.",
+        "why_it_stands_out": [
+          {
+            "headline": "Routine step cues are specific",
+            "body": "Reviewed skincare cues such as vitamin C, retinol, peptides, hydration identify the routine role or key ingredient context without inventing unsupported benefits.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Key ingredient section is present",
+            "body": "Reviewed key-ingredient fields are present, but public copy is kept to ingredient-level context rather than unsupported benefit claims.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Shade and size are explicit",
+            "body": "Variant labels such as Refill, Format: Refill are visible, reducing ambiguity around the product format before a shopper clicks through.",
+            "evidence_strength": "official_pdp_reviewed"
+          }
+        ],
+        "best_for": [
+          {
+            "tag": "hydration",
+            "label": "hydration",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "firmness",
+            "label": "firmness",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "radiance",
+            "label": "radiance",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "barrier_support",
+            "label": "barrier support",
+            "confidence": "moderate"
+          }
+        ],
+        "shopping_highlight": "vitamin C, retinol, peptides, hydration"
+      },
+      "writes": [
+        {
+          "kb_key": "product:ext_d67c47b6fa16c37757316dd7",
+          "action": "skip",
+          "reason": "protected_evidence_profile_existing:community_supported",
+          "old_hash": "bc44fef965271d75d41aa6c0f9d460196745c3aadd41a2e32f913e1817f20c22",
+          "existing_weak": true
+        },
+        {
+          "kb_key": "product:sig_efd55e257b1458a69a369cdce09ebc46",
+          "action": "skip",
+          "reason": "protected_high_quality_existing:reviewed",
+          "old_hash": "24af6b3eb079878a476eb6440a357c35530923181461a70efdb94b64fffe537f",
+          "existing_weak": false
+        }
+      ]
+    }
+  ]
+}

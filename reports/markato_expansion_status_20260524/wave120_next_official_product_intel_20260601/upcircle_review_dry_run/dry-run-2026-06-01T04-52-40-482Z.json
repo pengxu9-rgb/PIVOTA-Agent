@@ -1,0 +1,2812 @@
+{
+  "generated_at": "2026-06-01T04:52:40.482Z",
+  "source": "pivota_insights_official_pdp_manual_review_v1",
+  "mode": "dry_run",
+  "filters": {
+    "brand": "UpCircle",
+    "product_ids": [],
+    "limit": 20,
+    "include_strong": false,
+    "include_url_key": false,
+    "apply_chunk_size": null
+  },
+  "summary": {
+    "scanned": 20,
+    "changed_products": 17,
+    "blocked_products": 1,
+    "skipped_products": 2,
+    "write_actions": {
+      "update": 30,
+      "insert": 3,
+      "skip": 4
+    },
+    "skip_reasons": {
+      "no_safe_writes": 2,
+      "candidate_not_publish_quality_ready": 2,
+      "candidate_failed_manual_quality_gate:insufficient_official_pdp_specificity": 1,
+      "protected_high_quality_existing:reviewed": 2
+    },
+    "evidence_profiles": {
+      "official_pdp_reviewed_limited": 14,
+      "official_pdp_reviewed_line": 1,
+      "official_pdp_reviewed_formula_and_usage": 4,
+      "official_pdp_reviewed_key_ingredients": 1
+    }
+  },
+  "plans": [
+    {
+      "external_product_id": "ext_081591c7477c5396a90e5c80",
+      "pivota_signature_id": "sig_17a894205866b6e546f44bb1",
+      "title": "1x Deodorant Refill Tester with Macadamia + Bergamot",
+      "brand": "UpCircle Beauty",
+      "canonical_url": "https://upcirclebeauty.com/products/deodorant-refill-tester",
+      "changed": true,
+      "blocked": false,
+      "skip_reason": null,
+      "candidate_hash": "0f1570a904db661e3503af745b03eb3cf4eadcf2691824e68bca68ed2eddb427",
+      "evidence_profile": "official_pdp_reviewed_limited",
+      "source_coverage": {
+        "source": "official_pdp",
+        "canonical_url": "https://upcirclebeauty.com/products/deodorant-refill-tester",
+        "fields": {
+          "description": true,
+          "ingredients": 0,
+          "active_ingredients": 0,
+          "how_to": 0,
+          "details": 0,
+          "variants": 1
+        }
+      },
+      "preview": {
+        "headline": "Deodorant",
+        "what_it_is": "1x Deodorant Refill Tester with Macadamia + Bergamot is a deodorant from UpCircle Beauty, with source-backed cues around hydration.",
+        "why_it_stands_out": [
+          {
+            "headline": "Routine step cues are specific",
+            "body": "Reviewed skincare cues such as hydration identify the routine role or key ingredient context without inventing unsupported benefits.",
+            "evidence_strength": "official_pdp_reviewed"
+          }
+        ],
+        "best_for": [
+          {
+            "tag": "hydration",
+            "label": "hydration",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "aromatherapy",
+            "label": "aromatherapy",
+            "confidence": "moderate"
+          }
+        ],
+        "shopping_highlight": "hydration"
+      },
+      "writes": [
+        {
+          "kb_key": "product:ext_081591c7477c5396a90e5c80",
+          "action": "update",
+          "reason": "explicit_owner_delegated_assistant_replacement_review",
+          "old_hash": "5c3e5edd7ee1ea32c06442250d8183c2920db743df59b16d4f52b9efb571ff6d",
+          "candidate_hash": "0ee620d06fa0f946feb765b854a5da12d88c8c495018ddcb6817d8994fa83a8b",
+          "existing_weak": true,
+          "source": "pivota_insights_official_pdp_manual_review_v1",
+          "after_inventory": {
+            "product_id": "ext_081591c7477c5396a90e5c80",
+            "kb_key": "product:ext_081591c7477c5396a90e5c80",
+            "source": "pivota_insights_official_pdp_manual_review_v1",
+            "updated_at": "",
+            "last_success_at": "",
+            "title": "1x Deodorant Refill Tester with Macadamia + Bergamot",
+            "canonical_url": "",
+            "bundle_hash": "0f1570a904db661e3503af745b03eb3cf4eadcf2691824e68bca68ed2eddb427",
+            "lane": "keep",
+            "reason": "protected_good_content",
+            "priority": 0,
+            "protected": true,
+            "displayable": true,
+            "high_quality_ready": true,
+            "human_reviewed": true,
+            "issues": [],
+            "blocking_issues": [],
+            "quality_state": "reviewed",
+            "evidence_profile": "official_pdp_reviewed_limited",
+            "evidence_rank": 1,
+            "review_tier": "assistant_reviewed",
+            "agent_readable": true,
+            "public_ready": true
+          },
+          "source_meta": {
+            "evidence_profile": "official_pdp_reviewed_limited",
+            "quality_state": "reviewed",
+            "source_origin": "official_pdp_fields",
+            "source_url": "https://upcirclebeauty.com/products/deodorant-refill-tester",
+            "quality_improvement": {
+              "previous_bundle_hash": "7ea4859c801beb66a0d45aaa035c1ef727efa78709e0cc4c1d8f61a4673fcb75",
+              "candidate_bundle_hash": "0f1570a904db661e3503af745b03eb3cf4eadcf2691824e68bca68ed2eddb427",
+              "replacement_decision": "explicit_owner_delegated_assistant_replacement_review",
+              "existing_quality_lane": "keep",
+              "candidate_quality_lane": "keep",
+              "existing_evidence_profile": "official_pdp_reviewed_limited",
+              "candidate_evidence_profile": "official_pdp_reviewed_limited"
+            }
+          }
+        },
+        {
+          "kb_key": "product:sig_17a894205866b6e546f44bb1",
+          "action": "update",
+          "reason": "explicit_owner_delegated_assistant_replacement_review",
+          "old_hash": "5c3e5edd7ee1ea32c06442250d8183c2920db743df59b16d4f52b9efb571ff6d",
+          "candidate_hash": "0ee620d06fa0f946feb765b854a5da12d88c8c495018ddcb6817d8994fa83a8b",
+          "existing_weak": true,
+          "source": "pivota_insights_official_pdp_manual_review_v1",
+          "after_inventory": {
+            "product_id": "ext_081591c7477c5396a90e5c80",
+            "kb_key": "product:sig_17a894205866b6e546f44bb1",
+            "source": "pivota_insights_official_pdp_manual_review_v1",
+            "updated_at": "",
+            "last_success_at": "",
+            "title": "1x Deodorant Refill Tester with Macadamia + Bergamot",
+            "canonical_url": "",
+            "bundle_hash": "0f1570a904db661e3503af745b03eb3cf4eadcf2691824e68bca68ed2eddb427",
+            "lane": "keep",
+            "reason": "protected_good_content",
+            "priority": 0,
+            "protected": true,
+            "displayable": true,
+            "high_quality_ready": true,
+            "human_reviewed": true,
+            "issues": [],
+            "blocking_issues": [],
+            "quality_state": "reviewed",
+            "evidence_profile": "official_pdp_reviewed_limited",
+            "evidence_rank": 1,
+            "review_tier": "assistant_reviewed",
+            "agent_readable": true,
+            "public_ready": true
+          },
+          "source_meta": {
+            "evidence_profile": "official_pdp_reviewed_limited",
+            "quality_state": "reviewed",
+            "source_origin": "official_pdp_fields",
+            "source_url": "https://upcirclebeauty.com/products/deodorant-refill-tester",
+            "quality_improvement": {
+              "previous_bundle_hash": "7ea4859c801beb66a0d45aaa035c1ef727efa78709e0cc4c1d8f61a4673fcb75",
+              "candidate_bundle_hash": "0f1570a904db661e3503af745b03eb3cf4eadcf2691824e68bca68ed2eddb427",
+              "replacement_decision": "explicit_owner_delegated_assistant_replacement_review",
+              "existing_quality_lane": "keep",
+              "candidate_quality_lane": "keep",
+              "existing_evidence_profile": "official_pdp_reviewed_limited",
+              "candidate_evidence_profile": "official_pdp_reviewed_limited"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "external_product_id": "ext_30f8ad46a88ee763b7e38d70",
+      "pivota_signature_id": "sig_3d9fd5c71780eb782977357e",
+      "title": "3x Deodorant Refills with Macadamia + Bergamot",
+      "brand": "UpCircle Beauty",
+      "canonical_url": "https://upcirclebeauty.com/products/deodorant-refill",
+      "changed": true,
+      "blocked": false,
+      "skip_reason": null,
+      "candidate_hash": "ac7197be99d66ae738a8c7d2049b722c0b5f33f878ef0acb41e24343cfc7a545",
+      "evidence_profile": "official_pdp_reviewed_limited",
+      "source_coverage": {
+        "source": "official_pdp",
+        "canonical_url": "https://upcirclebeauty.com/products/deodorant-refill",
+        "fields": {
+          "description": true,
+          "ingredients": 0,
+          "active_ingredients": 0,
+          "how_to": 0,
+          "details": 0,
+          "variants": 1
+        }
+      },
+      "preview": {
+        "headline": "Deodorant",
+        "what_it_is": "3x Deodorant Refills with Macadamia + Bergamot is a deodorant from UpCircle Beauty, with source-backed cues around hydration.",
+        "why_it_stands_out": [
+          {
+            "headline": "Routine step cues are specific",
+            "body": "Reviewed skincare cues such as hydration identify the routine role or key ingredient context without inventing unsupported benefits.",
+            "evidence_strength": "official_pdp_reviewed"
+          }
+        ],
+        "best_for": [
+          {
+            "tag": "hydration",
+            "label": "hydration",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "aromatherapy",
+            "label": "aromatherapy",
+            "confidence": "moderate"
+          }
+        ],
+        "shopping_highlight": "hydration"
+      },
+      "writes": [
+        {
+          "kb_key": "product:ext_30f8ad46a88ee763b7e38d70",
+          "action": "update",
+          "reason": "explicit_owner_delegated_assistant_replacement_review",
+          "old_hash": "c3faf896baf4d9ac7b5cd549b2f9cd8910c6c6d9d6a6459f27da4f32f390278b",
+          "candidate_hash": "7e479b5163df29e14c5ea88793f155bcd63a47ddf7211fed2b8586483a00386a",
+          "existing_weak": true,
+          "source": "pivota_insights_official_pdp_manual_review_v1",
+          "after_inventory": {
+            "product_id": "ext_30f8ad46a88ee763b7e38d70",
+            "kb_key": "product:ext_30f8ad46a88ee763b7e38d70",
+            "source": "pivota_insights_official_pdp_manual_review_v1",
+            "updated_at": "",
+            "last_success_at": "",
+            "title": "3x Deodorant Refills with Macadamia + Bergamot",
+            "canonical_url": "",
+            "bundle_hash": "ac7197be99d66ae738a8c7d2049b722c0b5f33f878ef0acb41e24343cfc7a545",
+            "lane": "keep",
+            "reason": "protected_good_content",
+            "priority": 0,
+            "protected": true,
+            "displayable": true,
+            "high_quality_ready": true,
+            "human_reviewed": true,
+            "issues": [],
+            "blocking_issues": [],
+            "quality_state": "reviewed",
+            "evidence_profile": "official_pdp_reviewed_limited",
+            "evidence_rank": 1,
+            "review_tier": "assistant_reviewed",
+            "agent_readable": true,
+            "public_ready": true
+          },
+          "source_meta": {
+            "evidence_profile": "official_pdp_reviewed_limited",
+            "quality_state": "reviewed",
+            "source_origin": "official_pdp_fields",
+            "source_url": "https://upcirclebeauty.com/products/deodorant-refill",
+            "quality_improvement": {
+              "previous_bundle_hash": "a2d89ca2441e807e7ebae5eb7a181cff07ab43c76c2d85500633b213a5ce5d3c",
+              "candidate_bundle_hash": "ac7197be99d66ae738a8c7d2049b722c0b5f33f878ef0acb41e24343cfc7a545",
+              "replacement_decision": "explicit_owner_delegated_assistant_replacement_review",
+              "existing_quality_lane": "keep",
+              "candidate_quality_lane": "keep",
+              "existing_evidence_profile": "official_pdp_reviewed_limited",
+              "candidate_evidence_profile": "official_pdp_reviewed_limited"
+            }
+          }
+        },
+        {
+          "kb_key": "product:sig_3d9fd5c71780eb782977357e",
+          "action": "update",
+          "reason": "explicit_owner_delegated_assistant_replacement_review",
+          "old_hash": "c3faf896baf4d9ac7b5cd549b2f9cd8910c6c6d9d6a6459f27da4f32f390278b",
+          "candidate_hash": "7e479b5163df29e14c5ea88793f155bcd63a47ddf7211fed2b8586483a00386a",
+          "existing_weak": true,
+          "source": "pivota_insights_official_pdp_manual_review_v1",
+          "after_inventory": {
+            "product_id": "ext_30f8ad46a88ee763b7e38d70",
+            "kb_key": "product:sig_3d9fd5c71780eb782977357e",
+            "source": "pivota_insights_official_pdp_manual_review_v1",
+            "updated_at": "",
+            "last_success_at": "",
+            "title": "3x Deodorant Refills with Macadamia + Bergamot",
+            "canonical_url": "",
+            "bundle_hash": "ac7197be99d66ae738a8c7d2049b722c0b5f33f878ef0acb41e24343cfc7a545",
+            "lane": "keep",
+            "reason": "protected_good_content",
+            "priority": 0,
+            "protected": true,
+            "displayable": true,
+            "high_quality_ready": true,
+            "human_reviewed": true,
+            "issues": [],
+            "blocking_issues": [],
+            "quality_state": "reviewed",
+            "evidence_profile": "official_pdp_reviewed_limited",
+            "evidence_rank": 1,
+            "review_tier": "assistant_reviewed",
+            "agent_readable": true,
+            "public_ready": true
+          },
+          "source_meta": {
+            "evidence_profile": "official_pdp_reviewed_limited",
+            "quality_state": "reviewed",
+            "source_origin": "official_pdp_fields",
+            "source_url": "https://upcirclebeauty.com/products/deodorant-refill",
+            "quality_improvement": {
+              "previous_bundle_hash": "a2d89ca2441e807e7ebae5eb7a181cff07ab43c76c2d85500633b213a5ce5d3c",
+              "candidate_bundle_hash": "ac7197be99d66ae738a8c7d2049b722c0b5f33f878ef0acb41e24343cfc7a545",
+              "replacement_decision": "explicit_owner_delegated_assistant_replacement_review",
+              "existing_quality_lane": "keep",
+              "candidate_quality_lane": "keep",
+              "existing_evidence_profile": "official_pdp_reviewed_limited",
+              "candidate_evidence_profile": "official_pdp_reviewed_limited"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "external_product_id": "ext_1cda9c24b48f506aa8b9fd7a",
+      "pivota_signature_id": "sig_600d974d9334512364d4c876",
+      "title": "Acne-Prone Skincare Bundle",
+      "brand": "UpCircle Beauty",
+      "canonical_url": "https://upcirclebeauty.com/products/acne-attacker-bundle",
+      "changed": true,
+      "blocked": false,
+      "skip_reason": null,
+      "candidate_hash": "902317247bd04d14e9c264edfe0fa42be87560cb385fa67c9584f5fc13b50313",
+      "evidence_profile": "official_pdp_reviewed_limited",
+      "source_coverage": {
+        "source": "official_pdp",
+        "canonical_url": "https://upcirclebeauty.com/products/acne-attacker-bundle",
+        "fields": {
+          "description": true,
+          "ingredients": 0,
+          "active_ingredients": 0,
+          "how_to": 0,
+          "details": 0,
+          "variants": 1
+        }
+      },
+      "preview": {
+        "headline": "Skincare set",
+        "what_it_is": "Acne-Prone Skincare Bundle is a skincare set from UpCircle Beauty, with source-backed cues around cleansing, toning, hydration and brightening support.",
+        "why_it_stands_out": [
+          {
+            "headline": "Routine step cues are specific",
+            "body": "Reviewed skincare cues such as BHA/salicylic acid, exfoliating scrub, aloe juice, toning step identify the routine role or key ingredient context without inventing unsupported benefits.",
+            "evidence_strength": "official_pdp_reviewed"
+          }
+        ],
+        "best_for": [
+          {
+            "tag": "exfoliating_toner_step",
+            "label": "exfoliating toner step",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "hydration",
+            "label": "hydration",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "barrier_support",
+            "label": "barrier support",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "aromatherapy",
+            "label": "aromatherapy",
+            "confidence": "moderate"
+          }
+        ],
+        "shopping_highlight": "Skincare routine set"
+      },
+      "writes": [
+        {
+          "kb_key": "product:ext_1cda9c24b48f506aa8b9fd7a",
+          "action": "update",
+          "reason": "explicit_owner_delegated_assistant_replacement_review",
+          "old_hash": "52c72a4c01a6c633553912387259f4268617f9838e73aff327e453ff22ac9e16",
+          "candidate_hash": "60330b654ad62f77662fae01db2d2466afee28f1a9a3ceaaa2ce4b8db6aa3789",
+          "existing_weak": true,
+          "source": "pivota_insights_official_pdp_manual_review_v1",
+          "after_inventory": {
+            "product_id": "ext_1cda9c24b48f506aa8b9fd7a",
+            "kb_key": "product:ext_1cda9c24b48f506aa8b9fd7a",
+            "source": "pivota_insights_official_pdp_manual_review_v1",
+            "updated_at": "",
+            "last_success_at": "",
+            "title": "Acne-Prone Skincare Bundle",
+            "canonical_url": "",
+            "bundle_hash": "902317247bd04d14e9c264edfe0fa42be87560cb385fa67c9584f5fc13b50313",
+            "lane": "keep",
+            "reason": "protected_good_content",
+            "priority": 0,
+            "protected": true,
+            "displayable": true,
+            "high_quality_ready": true,
+            "human_reviewed": true,
+            "issues": [],
+            "blocking_issues": [],
+            "quality_state": "reviewed",
+            "evidence_profile": "official_pdp_reviewed_limited",
+            "evidence_rank": 1,
+            "review_tier": "assistant_reviewed",
+            "agent_readable": true,
+            "public_ready": true
+          },
+          "source_meta": {
+            "evidence_profile": "official_pdp_reviewed_limited",
+            "quality_state": "reviewed",
+            "source_origin": "official_pdp_fields",
+            "source_url": "https://upcirclebeauty.com/products/acne-attacker-bundle",
+            "quality_improvement": {
+              "previous_bundle_hash": "dafbcba4822b1bbeb8f7ea6d560136d29d9a5398935d758bd0812854a67c174a",
+              "candidate_bundle_hash": "902317247bd04d14e9c264edfe0fa42be87560cb385fa67c9584f5fc13b50313",
+              "replacement_decision": "explicit_owner_delegated_assistant_replacement_review",
+              "existing_quality_lane": "keep",
+              "candidate_quality_lane": "keep",
+              "existing_evidence_profile": "official_pdp_reviewed_limited",
+              "candidate_evidence_profile": "official_pdp_reviewed_limited"
+            }
+          }
+        },
+        {
+          "kb_key": "product:sig_600d974d9334512364d4c876",
+          "action": "update",
+          "reason": "explicit_owner_delegated_assistant_replacement_review",
+          "old_hash": "52c72a4c01a6c633553912387259f4268617f9838e73aff327e453ff22ac9e16",
+          "candidate_hash": "60330b654ad62f77662fae01db2d2466afee28f1a9a3ceaaa2ce4b8db6aa3789",
+          "existing_weak": true,
+          "source": "pivota_insights_official_pdp_manual_review_v1",
+          "after_inventory": {
+            "product_id": "ext_1cda9c24b48f506aa8b9fd7a",
+            "kb_key": "product:sig_600d974d9334512364d4c876",
+            "source": "pivota_insights_official_pdp_manual_review_v1",
+            "updated_at": "",
+            "last_success_at": "",
+            "title": "Acne-Prone Skincare Bundle",
+            "canonical_url": "",
+            "bundle_hash": "902317247bd04d14e9c264edfe0fa42be87560cb385fa67c9584f5fc13b50313",
+            "lane": "keep",
+            "reason": "protected_good_content",
+            "priority": 0,
+            "protected": true,
+            "displayable": true,
+            "high_quality_ready": true,
+            "human_reviewed": true,
+            "issues": [],
+            "blocking_issues": [],
+            "quality_state": "reviewed",
+            "evidence_profile": "official_pdp_reviewed_limited",
+            "evidence_rank": 1,
+            "review_tier": "assistant_reviewed",
+            "agent_readable": true,
+            "public_ready": true
+          },
+          "source_meta": {
+            "evidence_profile": "official_pdp_reviewed_limited",
+            "quality_state": "reviewed",
+            "source_origin": "official_pdp_fields",
+            "source_url": "https://upcirclebeauty.com/products/acne-attacker-bundle",
+            "quality_improvement": {
+              "previous_bundle_hash": "dafbcba4822b1bbeb8f7ea6d560136d29d9a5398935d758bd0812854a67c174a",
+              "candidate_bundle_hash": "902317247bd04d14e9c264edfe0fa42be87560cb385fa67c9584f5fc13b50313",
+              "replacement_decision": "explicit_owner_delegated_assistant_replacement_review",
+              "existing_quality_lane": "keep",
+              "candidate_quality_lane": "keep",
+              "existing_evidence_profile": "official_pdp_reviewed_limited",
+              "candidate_evidence_profile": "official_pdp_reviewed_limited"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "external_product_id": "ext_6ee1ea8ad1d657ce0f5982a0",
+      "pivota_signature_id": "sig_050525c9ccad2cb3583dbcde",
+      "title": "Ageing Gracefully Skincare Bundle",
+      "brand": "UpCircle Beauty",
+      "canonical_url": "https://upcirclebeauty.com/products/mature-skin-bundle",
+      "changed": true,
+      "blocked": false,
+      "skip_reason": null,
+      "candidate_hash": "26b304b215aa00d04841a135269dbc17c48d2291b391c30464de1b0636a93759",
+      "evidence_profile": "official_pdp_reviewed_limited",
+      "source_coverage": {
+        "source": "official_pdp",
+        "canonical_url": "https://upcirclebeauty.com/products/mature-skin-bundle",
+        "fields": {
+          "description": true,
+          "ingredients": 0,
+          "active_ingredients": 0,
+          "how_to": 0,
+          "details": 0,
+          "variants": 1
+        }
+      },
+      "preview": {
+        "headline": "Skincare set",
+        "what_it_is": "Ageing Gracefully Skincare Bundle is a skincare set from UpCircle Beauty, with source-backed cues around cleansing, hydration and brightening support.",
+        "why_it_stands_out": [
+          {
+            "headline": "Routine step cues are specific",
+            "body": "Reviewed skincare cues such as retinol, peptides, aloe juice, hydration identify the routine role or key ingredient context without inventing unsupported benefits.",
+            "evidence_strength": "official_pdp_reviewed"
+          }
+        ],
+        "best_for": [
+          {
+            "tag": "hydration",
+            "label": "hydration",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "firmness",
+            "label": "firmness",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "radiance",
+            "label": "radiance",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "barrier_support",
+            "label": "barrier support",
+            "confidence": "moderate"
+          }
+        ],
+        "shopping_highlight": "Skincare routine set"
+      },
+      "writes": [
+        {
+          "kb_key": "product:ext_6ee1ea8ad1d657ce0f5982a0",
+          "action": "update",
+          "reason": "explicit_owner_delegated_assistant_replacement_review",
+          "old_hash": "a5a4af47eb159fa9138d0453f52d8d6f418dcebfef964c9f5f3479a0165a314e",
+          "candidate_hash": "68d787c5aa80fa2458921995720133f238ceb01cdbb39aeede37280e568ec4e0",
+          "existing_weak": true,
+          "source": "pivota_insights_official_pdp_manual_review_v1",
+          "after_inventory": {
+            "product_id": "ext_6ee1ea8ad1d657ce0f5982a0",
+            "kb_key": "product:ext_6ee1ea8ad1d657ce0f5982a0",
+            "source": "pivota_insights_official_pdp_manual_review_v1",
+            "updated_at": "",
+            "last_success_at": "",
+            "title": "Ageing Gracefully Skincare Bundle",
+            "canonical_url": "",
+            "bundle_hash": "26b304b215aa00d04841a135269dbc17c48d2291b391c30464de1b0636a93759",
+            "lane": "keep",
+            "reason": "protected_good_content",
+            "priority": 0,
+            "protected": true,
+            "displayable": true,
+            "high_quality_ready": true,
+            "human_reviewed": true,
+            "issues": [],
+            "blocking_issues": [],
+            "quality_state": "reviewed",
+            "evidence_profile": "official_pdp_reviewed_limited",
+            "evidence_rank": 1,
+            "review_tier": "assistant_reviewed",
+            "agent_readable": true,
+            "public_ready": true
+          },
+          "source_meta": {
+            "evidence_profile": "official_pdp_reviewed_limited",
+            "quality_state": "reviewed",
+            "source_origin": "official_pdp_fields",
+            "source_url": "https://upcirclebeauty.com/products/mature-skin-bundle",
+            "quality_improvement": {
+              "previous_bundle_hash": "a7682f768d88fae6218c8184425a3e96d620162e98ea853db39e8f769dc7e2d6",
+              "candidate_bundle_hash": "26b304b215aa00d04841a135269dbc17c48d2291b391c30464de1b0636a93759",
+              "replacement_decision": "explicit_owner_delegated_assistant_replacement_review",
+              "existing_quality_lane": "keep",
+              "candidate_quality_lane": "keep",
+              "existing_evidence_profile": "official_pdp_reviewed_limited",
+              "candidate_evidence_profile": "official_pdp_reviewed_limited"
+            }
+          }
+        },
+        {
+          "kb_key": "product:sig_050525c9ccad2cb3583dbcde",
+          "action": "insert",
+          "reason": "new_product_intel_bundle",
+          "old_hash": null,
+          "candidate_hash": "68d787c5aa80fa2458921995720133f238ceb01cdbb39aeede37280e568ec4e0",
+          "existing_weak": true,
+          "source": "pivota_insights_official_pdp_manual_review_v1",
+          "after_inventory": {
+            "product_id": "ext_6ee1ea8ad1d657ce0f5982a0",
+            "kb_key": "product:sig_050525c9ccad2cb3583dbcde",
+            "source": "pivota_insights_official_pdp_manual_review_v1",
+            "updated_at": "",
+            "last_success_at": "",
+            "title": "Ageing Gracefully Skincare Bundle",
+            "canonical_url": "",
+            "bundle_hash": "26b304b215aa00d04841a135269dbc17c48d2291b391c30464de1b0636a93759",
+            "lane": "keep",
+            "reason": "protected_good_content",
+            "priority": 0,
+            "protected": true,
+            "displayable": true,
+            "high_quality_ready": true,
+            "human_reviewed": true,
+            "issues": [],
+            "blocking_issues": [],
+            "quality_state": "reviewed",
+            "evidence_profile": "official_pdp_reviewed_limited",
+            "evidence_rank": 1,
+            "review_tier": "assistant_reviewed",
+            "agent_readable": true,
+            "public_ready": true
+          },
+          "source_meta": {
+            "evidence_profile": "official_pdp_reviewed_limited",
+            "quality_state": "reviewed",
+            "source_origin": "official_pdp_fields",
+            "source_url": "https://upcirclebeauty.com/products/mature-skin-bundle",
+            "quality_improvement": {
+              "previous_bundle_hash": null,
+              "candidate_bundle_hash": "26b304b215aa00d04841a135269dbc17c48d2291b391c30464de1b0636a93759",
+              "replacement_decision": "new_product_intel_bundle",
+              "existing_quality_lane": null,
+              "candidate_quality_lane": "keep",
+              "existing_evidence_profile": null,
+              "candidate_evidence_profile": "official_pdp_reviewed_limited"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "external_product_id": "ext_092b6aa9139491c529586778",
+      "pivota_signature_id": "sig_a7f55f854a3936a31ca7f9f5",
+      "title": "Bamboo Cotton Buds - 200 Pieces",
+      "brand": "UpCircle Beauty",
+      "canonical_url": "https://upcirclebeauty.com/products/bamboo-cotton-buds",
+      "changed": false,
+      "blocked": false,
+      "skip_reason": "no_safe_writes",
+      "candidate_hash": "1a509c157a832e1bf55cafb9f7209ddad911216d6ba19983e7f5bdcbcbec36da",
+      "evidence_profile": "official_pdp_reviewed_line",
+      "source_coverage": {
+        "source": "official_pdp",
+        "canonical_url": "https://upcirclebeauty.com/products/bamboo-cotton-buds",
+        "fields": {
+          "description": true,
+          "ingredients": 0,
+          "active_ingredients": 0,
+          "how_to": 1,
+          "details": 3,
+          "variants": 1
+        }
+      },
+      "preview": {
+        "headline": "Beauty accessory",
+        "what_it_is": "Bamboo Cotton Buds - 200 Pieces is a beauty accessory from UpCircle Beauty. A staple for any bathroom - 200 high quality bamboo sticks that make an excellent, sustainable alternative to plastic buds.",
+        "why_it_stands_out": [
+          {
+            "headline": "Usage instructions available",
+            "body": "Reviewed usage context is present, including: You can use these cotton buds for either applying, removing or neatening up makeup.",
+            "evidence_strength": "official_pdp_reviewed"
+          }
+        ],
+        "best_for": [
+          {
+            "tag": "beauty_accessory",
+            "label": "Beauty accessory",
+            "confidence": "moderate"
+          }
+        ],
+        "shopping_highlight": "Beauty accessory"
+      },
+      "writes": [
+        {
+          "kb_key": "product:ext_092b6aa9139491c529586778",
+          "action": "skip",
+          "reason": "candidate_not_publish_quality_ready",
+          "old_hash": null,
+          "candidate_hash": "c1a68c505bfd2fd96dc499227202274758adb5d24cd5531bd7a82ca9a19ea84f",
+          "existing_weak": true,
+          "assessment": {
+            "allowed": false,
+            "reason": "candidate_not_publish_quality_ready",
+            "candidate": {
+              "lane": "regenerate",
+              "reason": "requires_regeneration",
+              "priority": 95,
+              "protected": false,
+              "displayable": true,
+              "high_quality_ready": false,
+              "human_reviewed": true,
+              "issues": [
+                "public_generic_marketing_copy"
+              ],
+              "blocking_issues": [
+                "public_generic_marketing_copy"
+              ],
+              "quality_state": "reviewed",
+              "evidence_profile": "official_pdp_reviewed_line",
+              "evidence_rank": 3,
+              "review_tier": "assistant_reviewed"
+            },
+            "candidate_bundle_hash": "1a509c157a832e1bf55cafb9f7209ddad911216d6ba19983e7f5bdcbcbec36da"
+          }
+        },
+        {
+          "kb_key": "product:sig_a7f55f854a3936a31ca7f9f5",
+          "action": "skip",
+          "reason": "candidate_not_publish_quality_ready",
+          "old_hash": null,
+          "candidate_hash": "c1a68c505bfd2fd96dc499227202274758adb5d24cd5531bd7a82ca9a19ea84f",
+          "existing_weak": true,
+          "assessment": {
+            "allowed": false,
+            "reason": "candidate_not_publish_quality_ready",
+            "candidate": {
+              "lane": "regenerate",
+              "reason": "requires_regeneration",
+              "priority": 95,
+              "protected": false,
+              "displayable": true,
+              "high_quality_ready": false,
+              "human_reviewed": true,
+              "issues": [
+                "public_generic_marketing_copy"
+              ],
+              "blocking_issues": [
+                "public_generic_marketing_copy"
+              ],
+              "quality_state": "reviewed",
+              "evidence_profile": "official_pdp_reviewed_line",
+              "evidence_rank": 3,
+              "review_tier": "assistant_reviewed"
+            },
+            "candidate_bundle_hash": "1a509c157a832e1bf55cafb9f7209ddad911216d6ba19983e7f5bdcbcbec36da"
+          }
+        }
+      ]
+    },
+    {
+      "external_product_id": "ext_28e7b97160d704fb74718d3b",
+      "pivota_signature_id": "sig_5352ebb21092af9df856f247",
+      "title": "Bamboo Wide Tooth Comb",
+      "brand": "UpCircle Beauty",
+      "canonical_url": "https://upcirclebeauty.com/products/bamboo-wide-tooth-comb",
+      "changed": true,
+      "blocked": false,
+      "skip_reason": null,
+      "candidate_hash": "dc90b6e6c20a844d4b894abf82979af7c7ffcf1d77e7820e3cacdd4331924455",
+      "evidence_profile": "official_pdp_reviewed_limited",
+      "source_coverage": {
+        "source": "official_pdp",
+        "canonical_url": "https://upcirclebeauty.com/products/bamboo-wide-tooth-comb",
+        "fields": {
+          "description": true,
+          "ingredients": 0,
+          "active_ingredients": 0,
+          "how_to": 0,
+          "details": 0,
+          "variants": 1
+        }
+      },
+      "preview": {
+        "headline": "Hair tool",
+        "what_it_is": "Bamboo Wide Tooth Comb is a hair comb from UpCircle Beauty.",
+        "why_it_stands_out": [
+          {
+            "headline": "Hair-tool cues are specific",
+            "body": "Reviewed tool cues such as wide-tooth comb format, hair sectioning identify how the accessory fits into a hair or scalp routine without treating it like a formula product.",
+            "evidence_strength": "official_pdp_reviewed"
+          }
+        ],
+        "best_for": [
+          {
+            "tag": "wide_tooth_comb_format",
+            "label": "wide-tooth comb format",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "hair_sectioning",
+            "label": "hair sectioning",
+            "confidence": "moderate"
+          }
+        ],
+        "shopping_highlight": "wide-tooth comb format, hair sectioning"
+      },
+      "writes": [
+        {
+          "kb_key": "product:ext_28e7b97160d704fb74718d3b",
+          "action": "update",
+          "reason": "explicit_owner_delegated_assistant_replacement_review",
+          "old_hash": "2ebe747bc002cdf37ab9d40c19e974603a46d839841bccf5744a66badc57b9bc",
+          "candidate_hash": "1b48f07295ce6070738b319efa887405c263e4f3af213d0935557090552f1416",
+          "existing_weak": true,
+          "source": "pivota_insights_official_pdp_manual_review_v1",
+          "after_inventory": {
+            "product_id": "ext_28e7b97160d704fb74718d3b",
+            "kb_key": "product:ext_28e7b97160d704fb74718d3b",
+            "source": "pivota_insights_official_pdp_manual_review_v1",
+            "updated_at": "",
+            "last_success_at": "",
+            "title": "Bamboo Wide Tooth Comb",
+            "canonical_url": "",
+            "bundle_hash": "dc90b6e6c20a844d4b894abf82979af7c7ffcf1d77e7820e3cacdd4331924455",
+            "lane": "keep",
+            "reason": "protected_good_content",
+            "priority": 0,
+            "protected": true,
+            "displayable": true,
+            "high_quality_ready": true,
+            "human_reviewed": true,
+            "issues": [],
+            "blocking_issues": [],
+            "quality_state": "reviewed",
+            "evidence_profile": "official_pdp_reviewed_limited",
+            "evidence_rank": 1,
+            "review_tier": "assistant_reviewed",
+            "agent_readable": true,
+            "public_ready": true
+          },
+          "source_meta": {
+            "evidence_profile": "official_pdp_reviewed_limited",
+            "quality_state": "reviewed",
+            "source_origin": "official_pdp_fields",
+            "source_url": "https://upcirclebeauty.com/products/bamboo-wide-tooth-comb",
+            "quality_improvement": {
+              "previous_bundle_hash": "56984ed5e2f6ecb9150940d62f806dc98e69ea56d77b862459021b18524e8a21",
+              "candidate_bundle_hash": "dc90b6e6c20a844d4b894abf82979af7c7ffcf1d77e7820e3cacdd4331924455",
+              "replacement_decision": "explicit_owner_delegated_assistant_replacement_review",
+              "existing_quality_lane": "keep",
+              "candidate_quality_lane": "keep",
+              "existing_evidence_profile": "official_pdp_reviewed_limited",
+              "candidate_evidence_profile": "official_pdp_reviewed_limited"
+            }
+          }
+        },
+        {
+          "kb_key": "product:sig_5352ebb21092af9df856f247",
+          "action": "update",
+          "reason": "explicit_owner_delegated_assistant_replacement_review",
+          "old_hash": "2ebe747bc002cdf37ab9d40c19e974603a46d839841bccf5744a66badc57b9bc",
+          "candidate_hash": "1b48f07295ce6070738b319efa887405c263e4f3af213d0935557090552f1416",
+          "existing_weak": true,
+          "source": "pivota_insights_official_pdp_manual_review_v1",
+          "after_inventory": {
+            "product_id": "ext_28e7b97160d704fb74718d3b",
+            "kb_key": "product:sig_5352ebb21092af9df856f247",
+            "source": "pivota_insights_official_pdp_manual_review_v1",
+            "updated_at": "",
+            "last_success_at": "",
+            "title": "Bamboo Wide Tooth Comb",
+            "canonical_url": "",
+            "bundle_hash": "dc90b6e6c20a844d4b894abf82979af7c7ffcf1d77e7820e3cacdd4331924455",
+            "lane": "keep",
+            "reason": "protected_good_content",
+            "priority": 0,
+            "protected": true,
+            "displayable": true,
+            "high_quality_ready": true,
+            "human_reviewed": true,
+            "issues": [],
+            "blocking_issues": [],
+            "quality_state": "reviewed",
+            "evidence_profile": "official_pdp_reviewed_limited",
+            "evidence_rank": 1,
+            "review_tier": "assistant_reviewed",
+            "agent_readable": true,
+            "public_ready": true
+          },
+          "source_meta": {
+            "evidence_profile": "official_pdp_reviewed_limited",
+            "quality_state": "reviewed",
+            "source_origin": "official_pdp_fields",
+            "source_url": "https://upcirclebeauty.com/products/bamboo-wide-tooth-comb",
+            "quality_improvement": {
+              "previous_bundle_hash": "56984ed5e2f6ecb9150940d62f806dc98e69ea56d77b862459021b18524e8a21",
+              "candidate_bundle_hash": "dc90b6e6c20a844d4b894abf82979af7c7ffcf1d77e7820e3cacdd4331924455",
+              "replacement_decision": "explicit_owner_delegated_assistant_replacement_review",
+              "existing_quality_lane": "keep",
+              "candidate_quality_lane": "keep",
+              "existing_evidence_profile": "official_pdp_reviewed_limited",
+              "candidate_evidence_profile": "official_pdp_reviewed_limited"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "external_product_id": "ext_3462b4f4f20fd6e5c790899f",
+      "pivota_signature_id": "sig_c76d733c8dceb41650173fd8",
+      "title": "Bath Salts with Epsom, Sea + Himalayan Pink Salt",
+      "brand": "UpCircle Beauty",
+      "canonical_url": "https://upcirclebeauty.com/products/natural-epsom-bath-salts",
+      "changed": false,
+      "blocked": true,
+      "skip_reason": "candidate_failed_manual_quality_gate:insufficient_official_pdp_specificity",
+      "candidate_hash": "473474e1b1499e66c119f59c4c4b6494d3d5bd5029e6f6dc0edbbf9d4880c17b",
+      "evidence_profile": "official_pdp_reviewed_limited",
+      "source_coverage": {
+        "source": "official_pdp",
+        "canonical_url": "https://upcirclebeauty.com/products/natural-epsom-bath-salts",
+        "fields": {
+          "description": true,
+          "ingredients": 0,
+          "active_ingredients": 0,
+          "how_to": 0,
+          "details": 0,
+          "variants": 1
+        }
+      },
+      "preview": {
+        "headline": "Bath and shower soak",
+        "what_it_is": "Bath Salts with Epsom, Sea + Himalayan Pink Salt is a bath and shower soak from UpCircle Beauty.",
+        "why_it_stands_out": [
+          {
+            "headline": "Official PDP evidence only",
+            "body": "This insight is limited to the official product fields currently available for Bath Salts with Epsom, Sea + Himalayan Pink Salt.",
+            "evidence_strength": "official_pdp_reviewed_limited"
+          }
+        ],
+        "best_for": [
+          {
+            "tag": "body_routine",
+            "label": "body routine",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "aromatherapy",
+            "label": "aromatherapy",
+            "confidence": "moderate"
+          }
+        ],
+        "shopping_highlight": "body routine, aromatherapy"
+      },
+      "writes": []
+    },
+    {
+      "external_product_id": "ext_55d9bf7aa2f7f83e8a960e8e",
+      "pivota_signature_id": "sig_eae1c28957757bd6c96f15be",
+      "title": "Best-Sellers Bundle",
+      "brand": "UpCircle Beauty",
+      "canonical_url": "https://upcirclebeauty.com/products/best-sellers-bundle",
+      "changed": true,
+      "blocked": false,
+      "skip_reason": null,
+      "candidate_hash": "ce433000843f4e966b7aa5623bdcea10769405f7ec97777f5dd91acce332f547",
+      "evidence_profile": "official_pdp_reviewed_limited",
+      "source_coverage": {
+        "source": "official_pdp",
+        "canonical_url": "https://upcirclebeauty.com/products/best-sellers-bundle",
+        "fields": {
+          "description": true,
+          "ingredients": 0,
+          "active_ingredients": 0,
+          "how_to": 0,
+          "details": 0,
+          "variants": 1
+        }
+      },
+      "preview": {
+        "headline": "Hair treatment",
+        "what_it_is": "Best-Sellers Bundle is a leave-in hair treatment from UpCircle Beauty, with source-backed cues around between-wash refresh and leave-in care.",
+        "why_it_stands_out": [
+          {
+            "headline": "Product cues are source-backed",
+            "body": "Reviewed PDP cues such as leave-in care, scalp or style refresh give shoppers specific comparison points within UpCircle Beauty, rather than category-only copy.",
+            "evidence_strength": "official_pdp_reviewed"
+          }
+        ],
+        "best_for": [
+          {
+            "tag": "hair_hydration",
+            "label": "hair hydration",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "style_refresh",
+            "label": "style refresh",
+            "confidence": "moderate"
+          }
+        ],
+        "shopping_highlight": "leave-in care, scalp or style refresh"
+      },
+      "writes": [
+        {
+          "kb_key": "product:ext_55d9bf7aa2f7f83e8a960e8e",
+          "action": "update",
+          "reason": "explicit_owner_delegated_assistant_replacement_review",
+          "old_hash": "175c24055da1be5f5a203f5f2d1a359b4aaaad490ec2bf5c9af0d9c0af0f01e8",
+          "candidate_hash": "45f70fb7604dbe68ebb993d0c399d8561b5a70de9a6430b61fe284730811ff25",
+          "existing_weak": true,
+          "source": "pivota_insights_official_pdp_manual_review_v1",
+          "after_inventory": {
+            "product_id": "ext_55d9bf7aa2f7f83e8a960e8e",
+            "kb_key": "product:ext_55d9bf7aa2f7f83e8a960e8e",
+            "source": "pivota_insights_official_pdp_manual_review_v1",
+            "updated_at": "",
+            "last_success_at": "",
+            "title": "Best-Sellers Bundle",
+            "canonical_url": "",
+            "bundle_hash": "ce433000843f4e966b7aa5623bdcea10769405f7ec97777f5dd91acce332f547",
+            "lane": "keep",
+            "reason": "protected_good_content",
+            "priority": 0,
+            "protected": true,
+            "displayable": true,
+            "high_quality_ready": true,
+            "human_reviewed": true,
+            "issues": [],
+            "blocking_issues": [],
+            "quality_state": "reviewed",
+            "evidence_profile": "official_pdp_reviewed_limited",
+            "evidence_rank": 1,
+            "review_tier": "assistant_reviewed",
+            "agent_readable": true,
+            "public_ready": true
+          },
+          "source_meta": {
+            "evidence_profile": "official_pdp_reviewed_limited",
+            "quality_state": "reviewed",
+            "source_origin": "official_pdp_fields",
+            "source_url": "https://upcirclebeauty.com/products/best-sellers-bundle",
+            "quality_improvement": {
+              "previous_bundle_hash": "07ed9555faefe5cc57359564efaff9d279695323848cf6834cdc4dc41e5961d8",
+              "candidate_bundle_hash": "ce433000843f4e966b7aa5623bdcea10769405f7ec97777f5dd91acce332f547",
+              "replacement_decision": "explicit_owner_delegated_assistant_replacement_review",
+              "existing_quality_lane": "keep",
+              "candidate_quality_lane": "keep",
+              "existing_evidence_profile": "official_pdp_reviewed_limited",
+              "candidate_evidence_profile": "official_pdp_reviewed_limited"
+            }
+          }
+        },
+        {
+          "kb_key": "product:sig_eae1c28957757bd6c96f15be",
+          "action": "insert",
+          "reason": "new_product_intel_bundle",
+          "old_hash": null,
+          "candidate_hash": "45f70fb7604dbe68ebb993d0c399d8561b5a70de9a6430b61fe284730811ff25",
+          "existing_weak": true,
+          "source": "pivota_insights_official_pdp_manual_review_v1",
+          "after_inventory": {
+            "product_id": "ext_55d9bf7aa2f7f83e8a960e8e",
+            "kb_key": "product:sig_eae1c28957757bd6c96f15be",
+            "source": "pivota_insights_official_pdp_manual_review_v1",
+            "updated_at": "",
+            "last_success_at": "",
+            "title": "Best-Sellers Bundle",
+            "canonical_url": "",
+            "bundle_hash": "ce433000843f4e966b7aa5623bdcea10769405f7ec97777f5dd91acce332f547",
+            "lane": "keep",
+            "reason": "protected_good_content",
+            "priority": 0,
+            "protected": true,
+            "displayable": true,
+            "high_quality_ready": true,
+            "human_reviewed": true,
+            "issues": [],
+            "blocking_issues": [],
+            "quality_state": "reviewed",
+            "evidence_profile": "official_pdp_reviewed_limited",
+            "evidence_rank": 1,
+            "review_tier": "assistant_reviewed",
+            "agent_readable": true,
+            "public_ready": true
+          },
+          "source_meta": {
+            "evidence_profile": "official_pdp_reviewed_limited",
+            "quality_state": "reviewed",
+            "source_origin": "official_pdp_fields",
+            "source_url": "https://upcirclebeauty.com/products/best-sellers-bundle",
+            "quality_improvement": {
+              "previous_bundle_hash": null,
+              "candidate_bundle_hash": "ce433000843f4e966b7aa5623bdcea10769405f7ec97777f5dd91acce332f547",
+              "replacement_decision": "new_product_intel_bundle",
+              "existing_quality_lane": null,
+              "candidate_quality_lane": "keep",
+              "existing_evidence_profile": null,
+              "candidate_evidence_profile": "official_pdp_reviewed_limited"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "external_product_id": "ext_dda95ac9e82124df9c478ef3",
+      "pivota_signature_id": "sig_92d0b398527e3807194c4b6b",
+      "title": "Bodycare Bundle",
+      "brand": "UpCircle Beauty",
+      "canonical_url": "https://upcirclebeauty.com/products/body-care-bundle",
+      "changed": true,
+      "blocked": false,
+      "skip_reason": null,
+      "candidate_hash": "e15c3247ba351fccffb59b9a33627aaca037021179aa4b8a6040b1d95fb663ad",
+      "evidence_profile": "official_pdp_reviewed_limited",
+      "source_coverage": {
+        "source": "official_pdp",
+        "canonical_url": "https://upcirclebeauty.com/products/body-care-bundle",
+        "fields": {
+          "description": true,
+          "ingredients": 0,
+          "active_ingredients": 0,
+          "how_to": 0,
+          "details": 0,
+          "variants": 1
+        }
+      },
+      "preview": {
+        "headline": "Skincare set",
+        "what_it_is": "Bodycare Bundle is a skincare set from UpCircle Beauty, with source-backed cues around cleansing and hydration.",
+        "why_it_stands_out": [
+          {
+            "headline": "Routine step cues are specific",
+            "body": "Reviewed skincare cues such as exfoliating scrub, aloe juice, hydration, barrier support identify the routine role or key ingredient context without inventing unsupported benefits.",
+            "evidence_strength": "official_pdp_reviewed"
+          }
+        ],
+        "best_for": [
+          {
+            "tag": "hydration",
+            "label": "hydration",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "barrier_support",
+            "label": "barrier support",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "body_routine",
+            "label": "body routine",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "aromatherapy",
+            "label": "aromatherapy",
+            "confidence": "moderate"
+          }
+        ],
+        "shopping_highlight": "Skincare routine set"
+      },
+      "writes": [
+        {
+          "kb_key": "product:ext_dda95ac9e82124df9c478ef3",
+          "action": "update",
+          "reason": "explicit_owner_delegated_assistant_replacement_review",
+          "old_hash": "72f5a91eb3476b558bdada8c24a05ee17293feb47b774154665d3f4afaa4671b",
+          "candidate_hash": "216706bfa916c19f4ff9095dde4d78f71cd864751bef9b3bf85b52ce1fa7c6af",
+          "existing_weak": true,
+          "source": "pivota_insights_official_pdp_manual_review_v1",
+          "after_inventory": {
+            "product_id": "ext_dda95ac9e82124df9c478ef3",
+            "kb_key": "product:ext_dda95ac9e82124df9c478ef3",
+            "source": "pivota_insights_official_pdp_manual_review_v1",
+            "updated_at": "",
+            "last_success_at": "",
+            "title": "Bodycare Bundle",
+            "canonical_url": "",
+            "bundle_hash": "e15c3247ba351fccffb59b9a33627aaca037021179aa4b8a6040b1d95fb663ad",
+            "lane": "keep",
+            "reason": "protected_good_content",
+            "priority": 0,
+            "protected": true,
+            "displayable": true,
+            "high_quality_ready": true,
+            "human_reviewed": true,
+            "issues": [],
+            "blocking_issues": [],
+            "quality_state": "reviewed",
+            "evidence_profile": "official_pdp_reviewed_limited",
+            "evidence_rank": 1,
+            "review_tier": "assistant_reviewed",
+            "agent_readable": true,
+            "public_ready": true
+          },
+          "source_meta": {
+            "evidence_profile": "official_pdp_reviewed_limited",
+            "quality_state": "reviewed",
+            "source_origin": "official_pdp_fields",
+            "source_url": "https://upcirclebeauty.com/products/body-care-bundle",
+            "quality_improvement": {
+              "previous_bundle_hash": "aed50ee54cf858974f56548b059c04e799f9e8e13133290b736fbf445af02437",
+              "candidate_bundle_hash": "e15c3247ba351fccffb59b9a33627aaca037021179aa4b8a6040b1d95fb663ad",
+              "replacement_decision": "explicit_owner_delegated_assistant_replacement_review",
+              "existing_quality_lane": "keep",
+              "candidate_quality_lane": "keep",
+              "existing_evidence_profile": "official_pdp_reviewed_limited",
+              "candidate_evidence_profile": "official_pdp_reviewed_limited"
+            }
+          }
+        },
+        {
+          "kb_key": "product:sig_92d0b398527e3807194c4b6b",
+          "action": "update",
+          "reason": "explicit_owner_delegated_assistant_replacement_review",
+          "old_hash": "72f5a91eb3476b558bdada8c24a05ee17293feb47b774154665d3f4afaa4671b",
+          "candidate_hash": "216706bfa916c19f4ff9095dde4d78f71cd864751bef9b3bf85b52ce1fa7c6af",
+          "existing_weak": true,
+          "source": "pivota_insights_official_pdp_manual_review_v1",
+          "after_inventory": {
+            "product_id": "ext_dda95ac9e82124df9c478ef3",
+            "kb_key": "product:sig_92d0b398527e3807194c4b6b",
+            "source": "pivota_insights_official_pdp_manual_review_v1",
+            "updated_at": "",
+            "last_success_at": "",
+            "title": "Bodycare Bundle",
+            "canonical_url": "",
+            "bundle_hash": "e15c3247ba351fccffb59b9a33627aaca037021179aa4b8a6040b1d95fb663ad",
+            "lane": "keep",
+            "reason": "protected_good_content",
+            "priority": 0,
+            "protected": true,
+            "displayable": true,
+            "high_quality_ready": true,
+            "human_reviewed": true,
+            "issues": [],
+            "blocking_issues": [],
+            "quality_state": "reviewed",
+            "evidence_profile": "official_pdp_reviewed_limited",
+            "evidence_rank": 1,
+            "review_tier": "assistant_reviewed",
+            "agent_readable": true,
+            "public_ready": true
+          },
+          "source_meta": {
+            "evidence_profile": "official_pdp_reviewed_limited",
+            "quality_state": "reviewed",
+            "source_origin": "official_pdp_fields",
+            "source_url": "https://upcirclebeauty.com/products/body-care-bundle",
+            "quality_improvement": {
+              "previous_bundle_hash": "aed50ee54cf858974f56548b059c04e799f9e8e13133290b736fbf445af02437",
+              "candidate_bundle_hash": "e15c3247ba351fccffb59b9a33627aaca037021179aa4b8a6040b1d95fb663ad",
+              "replacement_decision": "explicit_owner_delegated_assistant_replacement_review",
+              "existing_quality_lane": "keep",
+              "candidate_quality_lane": "keep",
+              "existing_evidence_profile": "official_pdp_reviewed_limited",
+              "candidate_evidence_profile": "official_pdp_reviewed_limited"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "external_product_id": "ext_664b859ce2599a57c3f1f7ce",
+      "pivota_signature_id": "sig_e434b90902740f110390a11d",
+      "title": "Body Oil with Passion Fruit Oil",
+      "brand": "UpCircle Beauty",
+      "canonical_url": "https://upcirclebeauty.com/products/natural-body-oil",
+      "changed": true,
+      "blocked": false,
+      "skip_reason": null,
+      "candidate_hash": "805e8e7ba0e4344c861385dea3ad419118e96d0517946f87f3710e0efe1f61a3",
+      "evidence_profile": "official_pdp_reviewed_formula_and_usage",
+      "source_coverage": {
+        "source": "official_pdp",
+        "canonical_url": "https://upcirclebeauty.com/products/natural-body-oil",
+        "fields": {
+          "description": true,
+          "ingredients": 1,
+          "active_ingredients": 0,
+          "how_to": 1,
+          "details": 3,
+          "variants": 2
+        }
+      },
+      "preview": {
+        "headline": "Body oil",
+        "what_it_is": "Body Oil with Passion Fruit Oil is a body oil from UpCircle Beauty, with source-backed cues around hydration.",
+        "why_it_stands_out": [
+          {
+            "headline": "Routine step cues are specific",
+            "body": "Reviewed skincare cues such as hydration identify the routine role or key ingredient context without inventing unsupported benefits.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Ingredient list is available",
+            "body": "Full INCI is present for formula-sensitive review, which makes this PDP safer to evaluate than a claim-only listing.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Usage instructions available",
+            "body": "Reviewed usage context is present, including: Apply a small amount of body oil onto either damp or dry skin, massaging in circular motions until absorbed.",
+            "evidence_strength": "official_pdp_reviewed"
+          }
+        ],
+        "best_for": [
+          {
+            "tag": "hydration",
+            "label": "hydration",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "radiance",
+            "label": "radiance",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "body_routine",
+            "label": "body routine",
+            "confidence": "moderate"
+          }
+        ],
+        "shopping_highlight": "hydration, full INCI available"
+      },
+      "writes": [
+        {
+          "kb_key": "product:ext_664b859ce2599a57c3f1f7ce",
+          "action": "update",
+          "reason": "explicit_owner_delegated_assistant_replacement_review",
+          "old_hash": "e14a398cc6848dbed7dc1b68be05de7852687dcdd4d336616dbed3d0d015233f",
+          "candidate_hash": "a78b78ccd1e178c552f008161af06ca0fad1bf92873d14563f4ca77c3f7e6bc4",
+          "existing_weak": true,
+          "source": "pivota_insights_official_pdp_manual_review_v1",
+          "after_inventory": {
+            "product_id": "ext_664b859ce2599a57c3f1f7ce",
+            "kb_key": "product:ext_664b859ce2599a57c3f1f7ce",
+            "source": "pivota_insights_official_pdp_manual_review_v1",
+            "updated_at": "",
+            "last_success_at": "",
+            "title": "Body Oil with Passion Fruit Oil",
+            "canonical_url": "",
+            "bundle_hash": "805e8e7ba0e4344c861385dea3ad419118e96d0517946f87f3710e0efe1f61a3",
+            "lane": "keep",
+            "reason": "protected_good_content",
+            "priority": 0,
+            "protected": true,
+            "displayable": true,
+            "high_quality_ready": true,
+            "human_reviewed": true,
+            "issues": [],
+            "blocking_issues": [],
+            "quality_state": "reviewed",
+            "evidence_profile": "official_pdp_reviewed_formula_and_usage",
+            "evidence_rank": 1,
+            "review_tier": "assistant_reviewed",
+            "agent_readable": true,
+            "public_ready": true
+          },
+          "source_meta": {
+            "evidence_profile": "official_pdp_reviewed_formula_and_usage",
+            "quality_state": "reviewed",
+            "source_origin": "official_pdp_fields",
+            "source_url": "https://upcirclebeauty.com/products/natural-body-oil",
+            "quality_improvement": {
+              "previous_bundle_hash": "da12115add7e5f85cf6ee2a6fdbdfa843c73570ea5816e0924e789519b8eee89",
+              "candidate_bundle_hash": "805e8e7ba0e4344c861385dea3ad419118e96d0517946f87f3710e0efe1f61a3",
+              "replacement_decision": "explicit_owner_delegated_assistant_replacement_review",
+              "existing_quality_lane": "keep",
+              "candidate_quality_lane": "keep",
+              "existing_evidence_profile": "official_pdp_reviewed_limited",
+              "candidate_evidence_profile": "official_pdp_reviewed_formula_and_usage"
+            }
+          }
+        },
+        {
+          "kb_key": "product:sig_e434b90902740f110390a11d",
+          "action": "update",
+          "reason": "explicit_owner_delegated_assistant_replacement_review",
+          "old_hash": "e14a398cc6848dbed7dc1b68be05de7852687dcdd4d336616dbed3d0d015233f",
+          "candidate_hash": "a78b78ccd1e178c552f008161af06ca0fad1bf92873d14563f4ca77c3f7e6bc4",
+          "existing_weak": true,
+          "source": "pivota_insights_official_pdp_manual_review_v1",
+          "after_inventory": {
+            "product_id": "ext_664b859ce2599a57c3f1f7ce",
+            "kb_key": "product:sig_e434b90902740f110390a11d",
+            "source": "pivota_insights_official_pdp_manual_review_v1",
+            "updated_at": "",
+            "last_success_at": "",
+            "title": "Body Oil with Passion Fruit Oil",
+            "canonical_url": "",
+            "bundle_hash": "805e8e7ba0e4344c861385dea3ad419118e96d0517946f87f3710e0efe1f61a3",
+            "lane": "keep",
+            "reason": "protected_good_content",
+            "priority": 0,
+            "protected": true,
+            "displayable": true,
+            "high_quality_ready": true,
+            "human_reviewed": true,
+            "issues": [],
+            "blocking_issues": [],
+            "quality_state": "reviewed",
+            "evidence_profile": "official_pdp_reviewed_formula_and_usage",
+            "evidence_rank": 1,
+            "review_tier": "assistant_reviewed",
+            "agent_readable": true,
+            "public_ready": true
+          },
+          "source_meta": {
+            "evidence_profile": "official_pdp_reviewed_formula_and_usage",
+            "quality_state": "reviewed",
+            "source_origin": "official_pdp_fields",
+            "source_url": "https://upcirclebeauty.com/products/natural-body-oil",
+            "quality_improvement": {
+              "previous_bundle_hash": "da12115add7e5f85cf6ee2a6fdbdfa843c73570ea5816e0924e789519b8eee89",
+              "candidate_bundle_hash": "805e8e7ba0e4344c861385dea3ad419118e96d0517946f87f3710e0efe1f61a3",
+              "replacement_decision": "explicit_owner_delegated_assistant_replacement_review",
+              "existing_quality_lane": "keep",
+              "candidate_quality_lane": "keep",
+              "existing_evidence_profile": "official_pdp_reviewed_limited",
+              "candidate_evidence_profile": "official_pdp_reviewed_formula_and_usage"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "external_product_id": "ext_23ae4c5d9d8f2a8be363f2cc",
+      "pivota_signature_id": "sig_82b28455d7df7a1f79243cc8",
+      "title": "Body Scrub with Coffee + Lemongrass",
+      "brand": "UpCircle Beauty",
+      "canonical_url": "https://upcirclebeauty.com/products/coffee-body-scrub-with-lemongrass-200ml",
+      "changed": true,
+      "blocked": false,
+      "skip_reason": null,
+      "candidate_hash": "904b4e5f15b74641fba068f880f6929d92484d5997258ea911ab593e587c75e3",
+      "evidence_profile": "official_pdp_reviewed_formula_and_usage",
+      "source_coverage": {
+        "source": "official_pdp",
+        "canonical_url": "https://upcirclebeauty.com/products/coffee-body-scrub-with-lemongrass-200ml",
+        "fields": {
+          "description": true,
+          "ingredients": 1,
+          "active_ingredients": 0,
+          "how_to": 1,
+          "details": 3,
+          "variants": 2
+        }
+      },
+      "preview": {
+        "headline": "Body scrub",
+        "what_it_is": "Body Scrub with Coffee + Lemongrass is a body scrub from UpCircle Beauty, with source-backed cues around hydration.",
+        "why_it_stands_out": [
+          {
+            "headline": "Routine step cues are specific",
+            "body": "Reviewed skincare cues such as exfoliating scrub, barrier support identify the routine role or key ingredient context without inventing unsupported benefits.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Ingredient list is available",
+            "body": "Full INCI is present for formula-sensitive review, which makes this PDP safer to evaluate than a claim-only listing.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Usage instructions available",
+            "body": "Reviewed usage context is present, including: Mix scrub in jar before applying to damp skin in circular motions.",
+            "evidence_strength": "official_pdp_reviewed"
+          }
+        ],
+        "best_for": [
+          {
+            "tag": "barrier_support",
+            "label": "barrier support",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "body_routine",
+            "label": "body routine",
+            "confidence": "moderate"
+          }
+        ],
+        "shopping_highlight": "exfoliating scrub, barrier support"
+      },
+      "writes": [
+        {
+          "kb_key": "product:ext_23ae4c5d9d8f2a8be363f2cc",
+          "action": "update",
+          "reason": "explicit_owner_delegated_assistant_replacement_review",
+          "old_hash": "a34e49ed548c17b92d6329b20f54a03f798f7f1bea7799731a23e568a3238788",
+          "candidate_hash": "ce7f93293ec427913f1bca9f2b2facb0bf882bfb9ce1491e40490a95fb4e0fcb",
+          "existing_weak": true,
+          "source": "pivota_insights_official_pdp_manual_review_v1",
+          "after_inventory": {
+            "product_id": "ext_23ae4c5d9d8f2a8be363f2cc",
+            "kb_key": "product:ext_23ae4c5d9d8f2a8be363f2cc",
+            "source": "pivota_insights_official_pdp_manual_review_v1",
+            "updated_at": "",
+            "last_success_at": "",
+            "title": "Body Scrub with Coffee + Lemongrass",
+            "canonical_url": "",
+            "bundle_hash": "904b4e5f15b74641fba068f880f6929d92484d5997258ea911ab593e587c75e3",
+            "lane": "keep",
+            "reason": "protected_good_content",
+            "priority": 0,
+            "protected": true,
+            "displayable": true,
+            "high_quality_ready": true,
+            "human_reviewed": true,
+            "issues": [],
+            "blocking_issues": [],
+            "quality_state": "reviewed",
+            "evidence_profile": "official_pdp_reviewed_formula_and_usage",
+            "evidence_rank": 1,
+            "review_tier": "assistant_reviewed",
+            "agent_readable": true,
+            "public_ready": true
+          },
+          "source_meta": {
+            "evidence_profile": "official_pdp_reviewed_formula_and_usage",
+            "quality_state": "reviewed",
+            "source_origin": "official_pdp_fields",
+            "source_url": "https://upcirclebeauty.com/products/coffee-body-scrub-with-lemongrass-200ml",
+            "quality_improvement": {
+              "previous_bundle_hash": "610211f41906e4d7dab857273701dc0c26905d51272f990a4d4f81696c82165f",
+              "candidate_bundle_hash": "904b4e5f15b74641fba068f880f6929d92484d5997258ea911ab593e587c75e3",
+              "replacement_decision": "explicit_owner_delegated_assistant_replacement_review",
+              "existing_quality_lane": "keep",
+              "candidate_quality_lane": "keep",
+              "existing_evidence_profile": "official_pdp_reviewed_limited",
+              "candidate_evidence_profile": "official_pdp_reviewed_formula_and_usage"
+            }
+          }
+        },
+        {
+          "kb_key": "product:sig_82b28455d7df7a1f79243cc8",
+          "action": "update",
+          "reason": "explicit_owner_delegated_assistant_replacement_review",
+          "old_hash": "a34e49ed548c17b92d6329b20f54a03f798f7f1bea7799731a23e568a3238788",
+          "candidate_hash": "ce7f93293ec427913f1bca9f2b2facb0bf882bfb9ce1491e40490a95fb4e0fcb",
+          "existing_weak": true,
+          "source": "pivota_insights_official_pdp_manual_review_v1",
+          "after_inventory": {
+            "product_id": "ext_23ae4c5d9d8f2a8be363f2cc",
+            "kb_key": "product:sig_82b28455d7df7a1f79243cc8",
+            "source": "pivota_insights_official_pdp_manual_review_v1",
+            "updated_at": "",
+            "last_success_at": "",
+            "title": "Body Scrub with Coffee + Lemongrass",
+            "canonical_url": "",
+            "bundle_hash": "904b4e5f15b74641fba068f880f6929d92484d5997258ea911ab593e587c75e3",
+            "lane": "keep",
+            "reason": "protected_good_content",
+            "priority": 0,
+            "protected": true,
+            "displayable": true,
+            "high_quality_ready": true,
+            "human_reviewed": true,
+            "issues": [],
+            "blocking_issues": [],
+            "quality_state": "reviewed",
+            "evidence_profile": "official_pdp_reviewed_formula_and_usage",
+            "evidence_rank": 1,
+            "review_tier": "assistant_reviewed",
+            "agent_readable": true,
+            "public_ready": true
+          },
+          "source_meta": {
+            "evidence_profile": "official_pdp_reviewed_formula_and_usage",
+            "quality_state": "reviewed",
+            "source_origin": "official_pdp_fields",
+            "source_url": "https://upcirclebeauty.com/products/coffee-body-scrub-with-lemongrass-200ml",
+            "quality_improvement": {
+              "previous_bundle_hash": "610211f41906e4d7dab857273701dc0c26905d51272f990a4d4f81696c82165f",
+              "candidate_bundle_hash": "904b4e5f15b74641fba068f880f6929d92484d5997258ea911ab593e587c75e3",
+              "replacement_decision": "explicit_owner_delegated_assistant_replacement_review",
+              "existing_quality_lane": "keep",
+              "candidate_quality_lane": "keep",
+              "existing_evidence_profile": "official_pdp_reviewed_limited",
+              "candidate_evidence_profile": "official_pdp_reviewed_formula_and_usage"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "external_product_id": "ext_2a63ec1f5bf916b6f024ca00",
+      "pivota_signature_id": "sig_6f9ced0491bc7959bb185f13",
+      "title": "Chai Soap Cleansing Duo",
+      "brand": "UpCircle Beauty",
+      "canonical_url": "https://upcirclebeauty.com/products/chai-soap-double-trouble-2-x-100g",
+      "changed": true,
+      "blocked": false,
+      "skip_reason": null,
+      "candidate_hash": "05e4e87d3503f08f4bf8ef530a793538a2bef9cd496f0a112bbae4e9cc563fda",
+      "evidence_profile": "official_pdp_reviewed_limited",
+      "source_coverage": {
+        "source": "official_pdp",
+        "canonical_url": "https://upcirclebeauty.com/products/chai-soap-double-trouble-2-x-100g",
+        "fields": {
+          "description": true,
+          "ingredients": 0,
+          "active_ingredients": 0,
+          "how_to": 0,
+          "details": 0,
+          "variants": 1
+        }
+      },
+      "preview": {
+        "headline": "Face cleanser",
+        "what_it_is": "Chai Soap Cleansing Duo is a face cleanser from UpCircle Beauty, with source-backed cues around cleansing and dirt, oil, and impurity removal.",
+        "why_it_stands_out": [
+          {
+            "headline": "Product cues are source-backed",
+            "body": "Reviewed PDP cues such as daily cleansing, pore cleansing give shoppers specific comparison points within UpCircle Beauty, rather than category-only copy.",
+            "evidence_strength": "official_pdp_reviewed"
+          }
+        ],
+        "best_for": [
+          {
+            "tag": "daily_cleansing",
+            "label": "daily cleansing",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "pore_cleansing",
+            "label": "pore cleansing",
+            "confidence": "moderate"
+          }
+        ],
+        "shopping_highlight": "daily cleansing, pore cleansing"
+      },
+      "writes": [
+        {
+          "kb_key": "product:ext_2a63ec1f5bf916b6f024ca00",
+          "action": "update",
+          "reason": "explicit_owner_delegated_assistant_replacement_review",
+          "old_hash": "b09594da09396a59adfe38bd2db355d9145ba02714b8111df5ad5b91c451f54b",
+          "candidate_hash": "4fb23fa2136ea2d715cb758f6274713924ccd0048fc60758ab6e0d3cf9527352",
+          "existing_weak": true,
+          "source": "pivota_insights_official_pdp_manual_review_v1",
+          "after_inventory": {
+            "product_id": "ext_2a63ec1f5bf916b6f024ca00",
+            "kb_key": "product:ext_2a63ec1f5bf916b6f024ca00",
+            "source": "pivota_insights_official_pdp_manual_review_v1",
+            "updated_at": "",
+            "last_success_at": "",
+            "title": "Chai Soap Cleansing Duo",
+            "canonical_url": "",
+            "bundle_hash": "05e4e87d3503f08f4bf8ef530a793538a2bef9cd496f0a112bbae4e9cc563fda",
+            "lane": "keep",
+            "reason": "protected_good_content",
+            "priority": 0,
+            "protected": true,
+            "displayable": true,
+            "high_quality_ready": true,
+            "human_reviewed": true,
+            "issues": [],
+            "blocking_issues": [],
+            "quality_state": "reviewed",
+            "evidence_profile": "official_pdp_reviewed_limited",
+            "evidence_rank": 1,
+            "review_tier": "assistant_reviewed",
+            "agent_readable": true,
+            "public_ready": true
+          },
+          "source_meta": {
+            "evidence_profile": "official_pdp_reviewed_limited",
+            "quality_state": "reviewed",
+            "source_origin": "official_pdp_fields",
+            "source_url": "https://upcirclebeauty.com/products/chai-soap-double-trouble-2-x-100g",
+            "quality_improvement": {
+              "previous_bundle_hash": "e9ebefd31a6b13b01d9b72e7e4623976790c97641f937603d41a95c8dbd6efac",
+              "candidate_bundle_hash": "05e4e87d3503f08f4bf8ef530a793538a2bef9cd496f0a112bbae4e9cc563fda",
+              "replacement_decision": "explicit_owner_delegated_assistant_replacement_review",
+              "existing_quality_lane": "keep",
+              "candidate_quality_lane": "keep",
+              "existing_evidence_profile": "official_pdp_reviewed_limited",
+              "candidate_evidence_profile": "official_pdp_reviewed_limited"
+            }
+          }
+        },
+        {
+          "kb_key": "product:sig_6f9ced0491bc7959bb185f13",
+          "action": "update",
+          "reason": "explicit_owner_delegated_assistant_replacement_review",
+          "old_hash": "b09594da09396a59adfe38bd2db355d9145ba02714b8111df5ad5b91c451f54b",
+          "candidate_hash": "4fb23fa2136ea2d715cb758f6274713924ccd0048fc60758ab6e0d3cf9527352",
+          "existing_weak": true,
+          "source": "pivota_insights_official_pdp_manual_review_v1",
+          "after_inventory": {
+            "product_id": "ext_2a63ec1f5bf916b6f024ca00",
+            "kb_key": "product:sig_6f9ced0491bc7959bb185f13",
+            "source": "pivota_insights_official_pdp_manual_review_v1",
+            "updated_at": "",
+            "last_success_at": "",
+            "title": "Chai Soap Cleansing Duo",
+            "canonical_url": "",
+            "bundle_hash": "05e4e87d3503f08f4bf8ef530a793538a2bef9cd496f0a112bbae4e9cc563fda",
+            "lane": "keep",
+            "reason": "protected_good_content",
+            "priority": 0,
+            "protected": true,
+            "displayable": true,
+            "high_quality_ready": true,
+            "human_reviewed": true,
+            "issues": [],
+            "blocking_issues": [],
+            "quality_state": "reviewed",
+            "evidence_profile": "official_pdp_reviewed_limited",
+            "evidence_rank": 1,
+            "review_tier": "assistant_reviewed",
+            "agent_readable": true,
+            "public_ready": true
+          },
+          "source_meta": {
+            "evidence_profile": "official_pdp_reviewed_limited",
+            "quality_state": "reviewed",
+            "source_origin": "official_pdp_fields",
+            "source_url": "https://upcirclebeauty.com/products/chai-soap-double-trouble-2-x-100g",
+            "quality_improvement": {
+              "previous_bundle_hash": "e9ebefd31a6b13b01d9b72e7e4623976790c97641f937603d41a95c8dbd6efac",
+              "candidate_bundle_hash": "05e4e87d3503f08f4bf8ef530a793538a2bef9cd496f0a112bbae4e9cc563fda",
+              "replacement_decision": "explicit_owner_delegated_assistant_replacement_review",
+              "existing_quality_lane": "keep",
+              "candidate_quality_lane": "keep",
+              "existing_evidence_profile": "official_pdp_reviewed_limited",
+              "candidate_evidence_profile": "official_pdp_reviewed_limited"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "external_product_id": "ext_f1f3ce59fac13141b98a911f",
+      "pivota_signature_id": "sig_226946a6ba84e4cda0525ac6",
+      "title": "Cinnamon + Ginger Chai Cleansing Bar",
+      "brand": "UpCircle Beauty",
+      "canonical_url": "https://upcirclebeauty.com/products/cinnamon-ginger-chai-soap-bar",
+      "changed": true,
+      "blocked": false,
+      "skip_reason": null,
+      "candidate_hash": "d545f0c5bb1dad3c7c59e1fc968b34eb40400e80a215f8c900445e8fd5287642",
+      "evidence_profile": "official_pdp_reviewed_formula_and_usage",
+      "source_coverage": {
+        "source": "official_pdp",
+        "canonical_url": "https://upcirclebeauty.com/products/cinnamon-ginger-chai-soap-bar",
+        "fields": {
+          "description": true,
+          "ingredients": 3,
+          "active_ingredients": 0,
+          "how_to": 1,
+          "details": 3,
+          "variants": 1
+        }
+      },
+      "preview": {
+        "headline": "Face cleanser",
+        "what_it_is": "Cinnamon + Ginger Chai Cleansing Bar is a face cleanser from UpCircle Beauty, with source-backed cues around cleansing and dirt, oil, and impurity removal.",
+        "why_it_stands_out": [
+          {
+            "headline": "Product cues are source-backed",
+            "body": "Reviewed PDP cues such as daily cleansing, pore cleansing give shoppers specific comparison points within UpCircle Beauty, rather than category-only copy.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Ingredient list is available",
+            "body": "Full INCI is present for formula-sensitive review, which makes this PDP safer to evaluate than a claim-only listing.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Usage instructions available",
+            "body": "Reviewed usage context is present, including: Apply with water to create a creamy lather.",
+            "evidence_strength": "official_pdp_reviewed"
+          }
+        ],
+        "best_for": [
+          {
+            "tag": "daily_cleansing",
+            "label": "daily cleansing",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "pore_cleansing",
+            "label": "pore cleansing",
+            "confidence": "moderate"
+          }
+        ],
+        "shopping_highlight": "daily cleansing, pore cleansing"
+      },
+      "writes": [
+        {
+          "kb_key": "product:ext_f1f3ce59fac13141b98a911f",
+          "action": "update",
+          "reason": "explicit_owner_delegated_assistant_replacement_review",
+          "old_hash": "6b79dd1e78f139e28b46361e708913e76766ecb135cf721b824f68c467e982ec",
+          "candidate_hash": "37c803f47ce01f1f36316da3769768341320e310665106513b278c52e2b0de1a",
+          "existing_weak": true,
+          "source": "pivota_insights_official_pdp_manual_review_v1",
+          "after_inventory": {
+            "product_id": "ext_f1f3ce59fac13141b98a911f",
+            "kb_key": "product:ext_f1f3ce59fac13141b98a911f",
+            "source": "pivota_insights_official_pdp_manual_review_v1",
+            "updated_at": "",
+            "last_success_at": "",
+            "title": "Cinnamon + Ginger Chai Cleansing Bar",
+            "canonical_url": "",
+            "bundle_hash": "d545f0c5bb1dad3c7c59e1fc968b34eb40400e80a215f8c900445e8fd5287642",
+            "lane": "keep",
+            "reason": "protected_good_content",
+            "priority": 0,
+            "protected": true,
+            "displayable": true,
+            "high_quality_ready": true,
+            "human_reviewed": true,
+            "issues": [],
+            "blocking_issues": [],
+            "quality_state": "reviewed",
+            "evidence_profile": "official_pdp_reviewed_formula_and_usage",
+            "evidence_rank": 1,
+            "review_tier": "assistant_reviewed",
+            "agent_readable": true,
+            "public_ready": true
+          },
+          "source_meta": {
+            "evidence_profile": "official_pdp_reviewed_formula_and_usage",
+            "quality_state": "reviewed",
+            "source_origin": "official_pdp_fields",
+            "source_url": "https://upcirclebeauty.com/products/cinnamon-ginger-chai-soap-bar",
+            "quality_improvement": {
+              "previous_bundle_hash": "b9c58cbafca5d85e0a6eabba85bcc6cf734abe8a6ca9e502dd45959214091cfb",
+              "candidate_bundle_hash": "d545f0c5bb1dad3c7c59e1fc968b34eb40400e80a215f8c900445e8fd5287642",
+              "replacement_decision": "explicit_owner_delegated_assistant_replacement_review",
+              "existing_quality_lane": "keep",
+              "candidate_quality_lane": "keep",
+              "existing_evidence_profile": "official_pdp_reviewed_limited",
+              "candidate_evidence_profile": "official_pdp_reviewed_formula_and_usage"
+            }
+          }
+        },
+        {
+          "kb_key": "product:sig_226946a6ba84e4cda0525ac6",
+          "action": "update",
+          "reason": "explicit_owner_delegated_assistant_replacement_review",
+          "old_hash": "6b79dd1e78f139e28b46361e708913e76766ecb135cf721b824f68c467e982ec",
+          "candidate_hash": "37c803f47ce01f1f36316da3769768341320e310665106513b278c52e2b0de1a",
+          "existing_weak": true,
+          "source": "pivota_insights_official_pdp_manual_review_v1",
+          "after_inventory": {
+            "product_id": "ext_f1f3ce59fac13141b98a911f",
+            "kb_key": "product:sig_226946a6ba84e4cda0525ac6",
+            "source": "pivota_insights_official_pdp_manual_review_v1",
+            "updated_at": "",
+            "last_success_at": "",
+            "title": "Cinnamon + Ginger Chai Cleansing Bar",
+            "canonical_url": "",
+            "bundle_hash": "d545f0c5bb1dad3c7c59e1fc968b34eb40400e80a215f8c900445e8fd5287642",
+            "lane": "keep",
+            "reason": "protected_good_content",
+            "priority": 0,
+            "protected": true,
+            "displayable": true,
+            "high_quality_ready": true,
+            "human_reviewed": true,
+            "issues": [],
+            "blocking_issues": [],
+            "quality_state": "reviewed",
+            "evidence_profile": "official_pdp_reviewed_formula_and_usage",
+            "evidence_rank": 1,
+            "review_tier": "assistant_reviewed",
+            "agent_readable": true,
+            "public_ready": true
+          },
+          "source_meta": {
+            "evidence_profile": "official_pdp_reviewed_formula_and_usage",
+            "quality_state": "reviewed",
+            "source_origin": "official_pdp_fields",
+            "source_url": "https://upcirclebeauty.com/products/cinnamon-ginger-chai-soap-bar",
+            "quality_improvement": {
+              "previous_bundle_hash": "b9c58cbafca5d85e0a6eabba85bcc6cf734abe8a6ca9e502dd45959214091cfb",
+              "candidate_bundle_hash": "d545f0c5bb1dad3c7c59e1fc968b34eb40400e80a215f8c900445e8fd5287642",
+              "replacement_decision": "explicit_owner_delegated_assistant_replacement_review",
+              "existing_quality_lane": "keep",
+              "candidate_quality_lane": "keep",
+              "existing_evidence_profile": "official_pdp_reviewed_limited",
+              "candidate_evidence_profile": "official_pdp_reviewed_formula_and_usage"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "external_product_id": "ext_e82364b05ad60a2fa5daf71d",
+      "pivota_signature_id": "sig_f9617fcbb1d2324730e18bcb",
+      "title": "Cleanse, Tone + Moisturise Set",
+      "brand": "UpCircle Beauty",
+      "canonical_url": "https://upcirclebeauty.com/products/cleanse-tone-moisturise-bundle",
+      "changed": true,
+      "blocked": false,
+      "skip_reason": null,
+      "candidate_hash": "4517b3ce053c8d8745e26768e039a5827f42619c5efc4818ac45eac228aed720",
+      "evidence_profile": "official_pdp_reviewed_limited",
+      "source_coverage": {
+        "source": "official_pdp",
+        "canonical_url": "https://upcirclebeauty.com/products/cleanse-tone-moisturise-bundle",
+        "fields": {
+          "description": true,
+          "ingredients": 0,
+          "active_ingredients": 0,
+          "how_to": 0,
+          "details": 0,
+          "variants": 1
+        }
+      },
+      "preview": {
+        "headline": "Skincare set",
+        "what_it_is": "Cleanse, Tone + Moisturise Set is a skincare set from UpCircle Beauty, with source-backed cues around cleansing, toning and hydration.",
+        "why_it_stands_out": [
+          {
+            "headline": "Routine step cues are specific",
+            "body": "Reviewed skincare cues such as BHA/salicylic acid, toning step, hydration identify the routine role or key ingredient context without inventing unsupported benefits.",
+            "evidence_strength": "official_pdp_reviewed"
+          }
+        ],
+        "best_for": [
+          {
+            "tag": "exfoliating_toner_step",
+            "label": "exfoliating toner step",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "hydration",
+            "label": "hydration",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "sun_protection",
+            "label": "sun protection",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "aromatherapy",
+            "label": "aromatherapy",
+            "confidence": "moderate"
+          }
+        ],
+        "shopping_highlight": "Skincare routine set"
+      },
+      "writes": [
+        {
+          "kb_key": "product:ext_e82364b05ad60a2fa5daf71d",
+          "action": "update",
+          "reason": "explicit_owner_delegated_assistant_replacement_review",
+          "old_hash": "0e38b93687158357ac40009468f5a1a2503ce09f9897a1275582ff2469005cba",
+          "candidate_hash": "b06c5e39f2cfb62c0028a7b91577daadae87eeccc3774f263e537993039baa45",
+          "existing_weak": true,
+          "source": "pivota_insights_official_pdp_manual_review_v1",
+          "after_inventory": {
+            "product_id": "ext_e82364b05ad60a2fa5daf71d",
+            "kb_key": "product:ext_e82364b05ad60a2fa5daf71d",
+            "source": "pivota_insights_official_pdp_manual_review_v1",
+            "updated_at": "",
+            "last_success_at": "",
+            "title": "Cleanse, Tone + Moisturise Set",
+            "canonical_url": "",
+            "bundle_hash": "4517b3ce053c8d8745e26768e039a5827f42619c5efc4818ac45eac228aed720",
+            "lane": "keep",
+            "reason": "protected_good_content",
+            "priority": 0,
+            "protected": true,
+            "displayable": true,
+            "high_quality_ready": true,
+            "human_reviewed": true,
+            "issues": [],
+            "blocking_issues": [],
+            "quality_state": "reviewed",
+            "evidence_profile": "official_pdp_reviewed_limited",
+            "evidence_rank": 1,
+            "review_tier": "assistant_reviewed",
+            "agent_readable": true,
+            "public_ready": true
+          },
+          "source_meta": {
+            "evidence_profile": "official_pdp_reviewed_limited",
+            "quality_state": "reviewed",
+            "source_origin": "official_pdp_fields",
+            "source_url": "https://upcirclebeauty.com/products/cleanse-tone-moisturise-bundle",
+            "quality_improvement": {
+              "previous_bundle_hash": "443bf74d514a14aa1b71268f2a6f68f982ff1f5b0fca45e5b39d1c18b1c703e1",
+              "candidate_bundle_hash": "4517b3ce053c8d8745e26768e039a5827f42619c5efc4818ac45eac228aed720",
+              "replacement_decision": "explicit_owner_delegated_assistant_replacement_review",
+              "existing_quality_lane": "keep",
+              "candidate_quality_lane": "keep",
+              "existing_evidence_profile": "official_pdp_reviewed_limited",
+              "candidate_evidence_profile": "official_pdp_reviewed_limited"
+            }
+          }
+        },
+        {
+          "kb_key": "product:sig_f9617fcbb1d2324730e18bcb",
+          "action": "insert",
+          "reason": "new_product_intel_bundle",
+          "old_hash": null,
+          "candidate_hash": "b06c5e39f2cfb62c0028a7b91577daadae87eeccc3774f263e537993039baa45",
+          "existing_weak": true,
+          "source": "pivota_insights_official_pdp_manual_review_v1",
+          "after_inventory": {
+            "product_id": "ext_e82364b05ad60a2fa5daf71d",
+            "kb_key": "product:sig_f9617fcbb1d2324730e18bcb",
+            "source": "pivota_insights_official_pdp_manual_review_v1",
+            "updated_at": "",
+            "last_success_at": "",
+            "title": "Cleanse, Tone + Moisturise Set",
+            "canonical_url": "",
+            "bundle_hash": "4517b3ce053c8d8745e26768e039a5827f42619c5efc4818ac45eac228aed720",
+            "lane": "keep",
+            "reason": "protected_good_content",
+            "priority": 0,
+            "protected": true,
+            "displayable": true,
+            "high_quality_ready": true,
+            "human_reviewed": true,
+            "issues": [],
+            "blocking_issues": [],
+            "quality_state": "reviewed",
+            "evidence_profile": "official_pdp_reviewed_limited",
+            "evidence_rank": 1,
+            "review_tier": "assistant_reviewed",
+            "agent_readable": true,
+            "public_ready": true
+          },
+          "source_meta": {
+            "evidence_profile": "official_pdp_reviewed_limited",
+            "quality_state": "reviewed",
+            "source_origin": "official_pdp_fields",
+            "source_url": "https://upcirclebeauty.com/products/cleanse-tone-moisturise-bundle",
+            "quality_improvement": {
+              "previous_bundle_hash": null,
+              "candidate_bundle_hash": "4517b3ce053c8d8745e26768e039a5827f42619c5efc4818ac45eac228aed720",
+              "replacement_decision": "new_product_intel_bundle",
+              "existing_quality_lane": null,
+              "candidate_quality_lane": "keep",
+              "existing_evidence_profile": null,
+              "candidate_evidence_profile": "official_pdp_reviewed_limited"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "external_product_id": "ext_4af55919211e973733297b92",
+      "pivota_signature_id": "sig_dfb6820a9862da9f5a307c29",
+      "title": "Cleansing Face Balm with Oat Oil + Vitamin E - Travel Size",
+      "brand": "UpCircle Beauty",
+      "canonical_url": "https://upcirclebeauty.com/products/travel-size-cleanser",
+      "changed": true,
+      "blocked": false,
+      "skip_reason": null,
+      "candidate_hash": "383eca8ac8f8dcd56f51c8bd33971c09a6f0fe2fbefdc28b874437f29d209ab0",
+      "evidence_profile": "official_pdp_reviewed_limited",
+      "source_coverage": {
+        "source": "official_pdp",
+        "canonical_url": "https://upcirclebeauty.com/products/travel-size-cleanser",
+        "fields": {
+          "description": true,
+          "ingredients": 0,
+          "active_ingredients": 0,
+          "how_to": 0,
+          "details": 0,
+          "variants": 1
+        }
+      },
+      "preview": {
+        "headline": "Face cleanser",
+        "what_it_is": "Cleansing Face Balm with Oat Oil + Vitamin E - Travel Size is a face cleanser from UpCircle Beauty, with source-backed cues around cleansing, makeup removal and dirt, oil, and impurity removal.",
+        "why_it_stands_out": [
+          {
+            "headline": "Product cues are source-backed",
+            "body": "Reviewed PDP cues such as daily cleansing, pore cleansing, makeup removal give shoppers specific comparison points within UpCircle Beauty, rather than category-only copy.",
+            "evidence_strength": "official_pdp_reviewed"
+          }
+        ],
+        "best_for": [
+          {
+            "tag": "daily_cleansing",
+            "label": "daily cleansing",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "pore_cleansing",
+            "label": "pore cleansing",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "makeup_removal",
+            "label": "makeup removal",
+            "confidence": "moderate"
+          }
+        ],
+        "shopping_highlight": "daily cleansing, pore cleansing"
+      },
+      "writes": [
+        {
+          "kb_key": "product:ext_4af55919211e973733297b92",
+          "action": "update",
+          "reason": "explicit_owner_delegated_assistant_replacement_review",
+          "old_hash": "2a9d7fc6f571cb6e517953da699b3fdcbb90343b75a61f0077e7fe32a7a02e67",
+          "candidate_hash": "166c8384f9c6dd52ea8ffe9d6342e3e683fe76c01c0d40a2b38631835991242d",
+          "existing_weak": true,
+          "source": "pivota_insights_official_pdp_manual_review_v1",
+          "after_inventory": {
+            "product_id": "ext_4af55919211e973733297b92",
+            "kb_key": "product:ext_4af55919211e973733297b92",
+            "source": "pivota_insights_official_pdp_manual_review_v1",
+            "updated_at": "",
+            "last_success_at": "",
+            "title": "Cleansing Face Balm with Oat Oil + Vitamin E - Travel Size",
+            "canonical_url": "",
+            "bundle_hash": "383eca8ac8f8dcd56f51c8bd33971c09a6f0fe2fbefdc28b874437f29d209ab0",
+            "lane": "keep",
+            "reason": "protected_good_content",
+            "priority": 0,
+            "protected": true,
+            "displayable": true,
+            "high_quality_ready": true,
+            "human_reviewed": true,
+            "issues": [],
+            "blocking_issues": [],
+            "quality_state": "reviewed",
+            "evidence_profile": "official_pdp_reviewed_limited",
+            "evidence_rank": 1,
+            "review_tier": "assistant_reviewed",
+            "agent_readable": true,
+            "public_ready": true
+          },
+          "source_meta": {
+            "evidence_profile": "official_pdp_reviewed_limited",
+            "quality_state": "reviewed",
+            "source_origin": "official_pdp_fields",
+            "source_url": "https://upcirclebeauty.com/products/travel-size-cleanser",
+            "quality_improvement": {
+              "previous_bundle_hash": "38a0586aa0dc8261255d7b38d32fcf594fe9bd49c10a26301108ff530d9e43f9",
+              "candidate_bundle_hash": "383eca8ac8f8dcd56f51c8bd33971c09a6f0fe2fbefdc28b874437f29d209ab0",
+              "replacement_decision": "explicit_owner_delegated_assistant_replacement_review",
+              "existing_quality_lane": "keep",
+              "candidate_quality_lane": "keep",
+              "existing_evidence_profile": "official_pdp_reviewed_limited",
+              "candidate_evidence_profile": "official_pdp_reviewed_limited"
+            }
+          }
+        },
+        {
+          "kb_key": "product:sig_dfb6820a9862da9f5a307c29",
+          "action": "update",
+          "reason": "explicit_owner_delegated_assistant_replacement_review",
+          "old_hash": "2a9d7fc6f571cb6e517953da699b3fdcbb90343b75a61f0077e7fe32a7a02e67",
+          "candidate_hash": "166c8384f9c6dd52ea8ffe9d6342e3e683fe76c01c0d40a2b38631835991242d",
+          "existing_weak": true,
+          "source": "pivota_insights_official_pdp_manual_review_v1",
+          "after_inventory": {
+            "product_id": "ext_4af55919211e973733297b92",
+            "kb_key": "product:sig_dfb6820a9862da9f5a307c29",
+            "source": "pivota_insights_official_pdp_manual_review_v1",
+            "updated_at": "",
+            "last_success_at": "",
+            "title": "Cleansing Face Balm with Oat Oil + Vitamin E - Travel Size",
+            "canonical_url": "",
+            "bundle_hash": "383eca8ac8f8dcd56f51c8bd33971c09a6f0fe2fbefdc28b874437f29d209ab0",
+            "lane": "keep",
+            "reason": "protected_good_content",
+            "priority": 0,
+            "protected": true,
+            "displayable": true,
+            "high_quality_ready": true,
+            "human_reviewed": true,
+            "issues": [],
+            "blocking_issues": [],
+            "quality_state": "reviewed",
+            "evidence_profile": "official_pdp_reviewed_limited",
+            "evidence_rank": 1,
+            "review_tier": "assistant_reviewed",
+            "agent_readable": true,
+            "public_ready": true
+          },
+          "source_meta": {
+            "evidence_profile": "official_pdp_reviewed_limited",
+            "quality_state": "reviewed",
+            "source_origin": "official_pdp_fields",
+            "source_url": "https://upcirclebeauty.com/products/travel-size-cleanser",
+            "quality_improvement": {
+              "previous_bundle_hash": "38a0586aa0dc8261255d7b38d32fcf594fe9bd49c10a26301108ff530d9e43f9",
+              "candidate_bundle_hash": "383eca8ac8f8dcd56f51c8bd33971c09a6f0fe2fbefdc28b874437f29d209ab0",
+              "replacement_decision": "explicit_owner_delegated_assistant_replacement_review",
+              "existing_quality_lane": "keep",
+              "candidate_quality_lane": "keep",
+              "existing_evidence_profile": "official_pdp_reviewed_limited",
+              "candidate_evidence_profile": "official_pdp_reviewed_limited"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "external_product_id": "ext_75ab5149b5ed4ead3c77b21f",
+      "pivota_signature_id": "sig_9c931eb71cb81bdd134db4ea",
+      "title": "Cleansing Face Balm with Vitamin E",
+      "brand": "UpCircle Beauty",
+      "canonical_url": "https://upcirclebeauty.com/products/cleansing-face-balm",
+      "changed": true,
+      "blocked": false,
+      "skip_reason": null,
+      "candidate_hash": "435d62a1c449bf86bb62df4d29826114a5dd69b6575e47f3fdb2ad36cf2d5bda",
+      "evidence_profile": "official_pdp_reviewed_limited",
+      "source_coverage": {
+        "source": "official_pdp",
+        "canonical_url": "https://upcirclebeauty.com/products/cleansing-face-balm",
+        "fields": {
+          "description": true,
+          "ingredients": 0,
+          "active_ingredients": 0,
+          "how_to": 0,
+          "details": 0,
+          "variants": 1
+        }
+      },
+      "preview": {
+        "headline": "Face cleanser",
+        "what_it_is": "Cleansing Face Balm with Vitamin E is a face cleanser from UpCircle Beauty, with source-backed cues around cleansing, makeup removal and dirt, oil, and impurity removal.",
+        "why_it_stands_out": [
+          {
+            "headline": "Product cues are source-backed",
+            "body": "Reviewed PDP cues such as daily cleansing, pore cleansing, makeup removal give shoppers specific comparison points within UpCircle Beauty, rather than category-only copy.",
+            "evidence_strength": "official_pdp_reviewed"
+          }
+        ],
+        "best_for": [
+          {
+            "tag": "daily_cleansing",
+            "label": "daily cleansing",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "pore_cleansing",
+            "label": "pore cleansing",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "makeup_removal",
+            "label": "makeup removal",
+            "confidence": "moderate"
+          }
+        ],
+        "shopping_highlight": "daily cleansing, pore cleansing"
+      },
+      "writes": [
+        {
+          "kb_key": "product:ext_75ab5149b5ed4ead3c77b21f",
+          "action": "update",
+          "reason": "explicit_owner_delegated_assistant_replacement_review",
+          "old_hash": "10a2570df75c7ab0c6a5d7bbaa618e94c6e9f49db626e984f3a0ffb833ee3e68",
+          "candidate_hash": "075aa86ba5b7ed809a541d4e01f45046f38c6f55f0ee6f8f94e0367e3551e4ba",
+          "existing_weak": true,
+          "source": "pivota_insights_official_pdp_manual_review_v1",
+          "after_inventory": {
+            "product_id": "ext_75ab5149b5ed4ead3c77b21f",
+            "kb_key": "product:ext_75ab5149b5ed4ead3c77b21f",
+            "source": "pivota_insights_official_pdp_manual_review_v1",
+            "updated_at": "",
+            "last_success_at": "",
+            "title": "Cleansing Face Balm with Vitamin E",
+            "canonical_url": "",
+            "bundle_hash": "435d62a1c449bf86bb62df4d29826114a5dd69b6575e47f3fdb2ad36cf2d5bda",
+            "lane": "keep",
+            "reason": "protected_good_content",
+            "priority": 0,
+            "protected": true,
+            "displayable": true,
+            "high_quality_ready": true,
+            "human_reviewed": true,
+            "issues": [],
+            "blocking_issues": [],
+            "quality_state": "reviewed",
+            "evidence_profile": "official_pdp_reviewed_limited",
+            "evidence_rank": 1,
+            "review_tier": "assistant_reviewed",
+            "agent_readable": true,
+            "public_ready": true
+          },
+          "source_meta": {
+            "evidence_profile": "official_pdp_reviewed_limited",
+            "quality_state": "reviewed",
+            "source_origin": "official_pdp_fields",
+            "source_url": "https://upcirclebeauty.com/products/cleansing-face-balm",
+            "quality_improvement": {
+              "previous_bundle_hash": "11b999d8e2a993971a0a1c4586dde7ee3e4ba1a622f2ec515864f1d87df526a2",
+              "candidate_bundle_hash": "435d62a1c449bf86bb62df4d29826114a5dd69b6575e47f3fdb2ad36cf2d5bda",
+              "replacement_decision": "explicit_owner_delegated_assistant_replacement_review",
+              "existing_quality_lane": "keep",
+              "candidate_quality_lane": "keep",
+              "existing_evidence_profile": "official_pdp_reviewed_limited",
+              "candidate_evidence_profile": "official_pdp_reviewed_limited"
+            }
+          }
+        },
+        {
+          "kb_key": "product:sig_9c931eb71cb81bdd134db4ea",
+          "action": "update",
+          "reason": "explicit_owner_delegated_assistant_replacement_review",
+          "old_hash": "10a2570df75c7ab0c6a5d7bbaa618e94c6e9f49db626e984f3a0ffb833ee3e68",
+          "candidate_hash": "075aa86ba5b7ed809a541d4e01f45046f38c6f55f0ee6f8f94e0367e3551e4ba",
+          "existing_weak": true,
+          "source": "pivota_insights_official_pdp_manual_review_v1",
+          "after_inventory": {
+            "product_id": "ext_75ab5149b5ed4ead3c77b21f",
+            "kb_key": "product:sig_9c931eb71cb81bdd134db4ea",
+            "source": "pivota_insights_official_pdp_manual_review_v1",
+            "updated_at": "",
+            "last_success_at": "",
+            "title": "Cleansing Face Balm with Vitamin E",
+            "canonical_url": "",
+            "bundle_hash": "435d62a1c449bf86bb62df4d29826114a5dd69b6575e47f3fdb2ad36cf2d5bda",
+            "lane": "keep",
+            "reason": "protected_good_content",
+            "priority": 0,
+            "protected": true,
+            "displayable": true,
+            "high_quality_ready": true,
+            "human_reviewed": true,
+            "issues": [],
+            "blocking_issues": [],
+            "quality_state": "reviewed",
+            "evidence_profile": "official_pdp_reviewed_limited",
+            "evidence_rank": 1,
+            "review_tier": "assistant_reviewed",
+            "agent_readable": true,
+            "public_ready": true
+          },
+          "source_meta": {
+            "evidence_profile": "official_pdp_reviewed_limited",
+            "quality_state": "reviewed",
+            "source_origin": "official_pdp_fields",
+            "source_url": "https://upcirclebeauty.com/products/cleansing-face-balm",
+            "quality_improvement": {
+              "previous_bundle_hash": "11b999d8e2a993971a0a1c4586dde7ee3e4ba1a622f2ec515864f1d87df526a2",
+              "candidate_bundle_hash": "435d62a1c449bf86bb62df4d29826114a5dd69b6575e47f3fdb2ad36cf2d5bda",
+              "replacement_decision": "explicit_owner_delegated_assistant_replacement_review",
+              "existing_quality_lane": "keep",
+              "candidate_quality_lane": "keep",
+              "existing_evidence_profile": "official_pdp_reviewed_limited",
+              "candidate_evidence_profile": "official_pdp_reviewed_limited"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "external_product_id": "ext_6815bee1060ef71d9a99ce5b",
+      "pivota_signature_id": "sig_69612c2d0788a9296c85e6ef",
+      "title": "Cleansing Face Milk with Oat Powder + Aloe Vera",
+      "brand": "UpCircle Beauty",
+      "canonical_url": "https://upcirclebeauty.com/products/oat-face-cleanser",
+      "changed": true,
+      "blocked": false,
+      "skip_reason": null,
+      "candidate_hash": "4b88910669928a4b2e3d830f3bfddb0abb10da8d890ee41913240da2cf730fca",
+      "evidence_profile": "official_pdp_reviewed_formula_and_usage",
+      "source_coverage": {
+        "source": "official_pdp",
+        "canonical_url": "https://upcirclebeauty.com/products/oat-face-cleanser",
+        "fields": {
+          "description": true,
+          "ingredients": 1,
+          "active_ingredients": 0,
+          "how_to": 1,
+          "details": 3,
+          "variants": 2
+        }
+      },
+      "preview": {
+        "headline": "Face cleanser",
+        "what_it_is": "Cleansing Face Milk with Oat Powder + Aloe Vera is a face cleanser from UpCircle Beauty, with source-backed cues around cleansing and dirt, oil, and impurity removal.",
+        "why_it_stands_out": [
+          {
+            "headline": "Product cues are source-backed",
+            "body": "Reviewed PDP cues such as daily cleansing, pore cleansing give shoppers specific comparison points within UpCircle Beauty, rather than category-only copy.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Ingredient list is available",
+            "body": "Full INCI is present for formula-sensitive review, which makes this PDP safer to evaluate than a claim-only listing.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Usage instructions available",
+            "body": "Reviewed usage context is present, including: Massage between your fingers and onto damp face in upward circular motions.",
+            "evidence_strength": "official_pdp_reviewed"
+          }
+        ],
+        "best_for": [
+          {
+            "tag": "daily_cleansing",
+            "label": "daily cleansing",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "pore_cleansing",
+            "label": "pore cleansing",
+            "confidence": "moderate"
+          }
+        ],
+        "shopping_highlight": "daily cleansing, pore cleansing"
+      },
+      "writes": [
+        {
+          "kb_key": "product:ext_6815bee1060ef71d9a99ce5b",
+          "action": "update",
+          "reason": "explicit_owner_delegated_assistant_replacement_review",
+          "old_hash": "2dfbb514ee53b6517fae6440251e6e9a4a5d02338ccd57b8a6fec92f198c2e61",
+          "candidate_hash": "8125d556003a27d6463c3ae857d1ab45ee1eb1f5a4a49abcab610185b6cfe80f",
+          "existing_weak": true,
+          "source": "pivota_insights_official_pdp_manual_review_v1",
+          "after_inventory": {
+            "product_id": "ext_6815bee1060ef71d9a99ce5b",
+            "kb_key": "product:ext_6815bee1060ef71d9a99ce5b",
+            "source": "pivota_insights_official_pdp_manual_review_v1",
+            "updated_at": "",
+            "last_success_at": "",
+            "title": "Cleansing Face Milk with Oat Powder + Aloe Vera",
+            "canonical_url": "",
+            "bundle_hash": "4b88910669928a4b2e3d830f3bfddb0abb10da8d890ee41913240da2cf730fca",
+            "lane": "keep",
+            "reason": "protected_good_content",
+            "priority": 0,
+            "protected": true,
+            "displayable": true,
+            "high_quality_ready": true,
+            "human_reviewed": true,
+            "issues": [],
+            "blocking_issues": [],
+            "quality_state": "reviewed",
+            "evidence_profile": "official_pdp_reviewed_formula_and_usage",
+            "evidence_rank": 1,
+            "review_tier": "assistant_reviewed",
+            "agent_readable": true,
+            "public_ready": true
+          },
+          "source_meta": {
+            "evidence_profile": "official_pdp_reviewed_formula_and_usage",
+            "quality_state": "reviewed",
+            "source_origin": "official_pdp_fields",
+            "source_url": "https://upcirclebeauty.com/products/oat-face-cleanser",
+            "quality_improvement": {
+              "previous_bundle_hash": "622de2d51c07d06acefdcca4b4004696295c38edb9c44b0f2b004d3d79bee24c",
+              "candidate_bundle_hash": "4b88910669928a4b2e3d830f3bfddb0abb10da8d890ee41913240da2cf730fca",
+              "replacement_decision": "explicit_owner_delegated_assistant_replacement_review",
+              "existing_quality_lane": "keep",
+              "candidate_quality_lane": "keep",
+              "existing_evidence_profile": "official_pdp_reviewed_limited",
+              "candidate_evidence_profile": "official_pdp_reviewed_formula_and_usage"
+            }
+          }
+        },
+        {
+          "kb_key": "product:sig_69612c2d0788a9296c85e6ef",
+          "action": "update",
+          "reason": "explicit_owner_delegated_assistant_replacement_review",
+          "old_hash": "2dfbb514ee53b6517fae6440251e6e9a4a5d02338ccd57b8a6fec92f198c2e61",
+          "candidate_hash": "8125d556003a27d6463c3ae857d1ab45ee1eb1f5a4a49abcab610185b6cfe80f",
+          "existing_weak": true,
+          "source": "pivota_insights_official_pdp_manual_review_v1",
+          "after_inventory": {
+            "product_id": "ext_6815bee1060ef71d9a99ce5b",
+            "kb_key": "product:sig_69612c2d0788a9296c85e6ef",
+            "source": "pivota_insights_official_pdp_manual_review_v1",
+            "updated_at": "",
+            "last_success_at": "",
+            "title": "Cleansing Face Milk with Oat Powder + Aloe Vera",
+            "canonical_url": "",
+            "bundle_hash": "4b88910669928a4b2e3d830f3bfddb0abb10da8d890ee41913240da2cf730fca",
+            "lane": "keep",
+            "reason": "protected_good_content",
+            "priority": 0,
+            "protected": true,
+            "displayable": true,
+            "high_quality_ready": true,
+            "human_reviewed": true,
+            "issues": [],
+            "blocking_issues": [],
+            "quality_state": "reviewed",
+            "evidence_profile": "official_pdp_reviewed_formula_and_usage",
+            "evidence_rank": 1,
+            "review_tier": "assistant_reviewed",
+            "agent_readable": true,
+            "public_ready": true
+          },
+          "source_meta": {
+            "evidence_profile": "official_pdp_reviewed_formula_and_usage",
+            "quality_state": "reviewed",
+            "source_origin": "official_pdp_fields",
+            "source_url": "https://upcirclebeauty.com/products/oat-face-cleanser",
+            "quality_improvement": {
+              "previous_bundle_hash": "622de2d51c07d06acefdcca4b4004696295c38edb9c44b0f2b004d3d79bee24c",
+              "candidate_bundle_hash": "4b88910669928a4b2e3d830f3bfddb0abb10da8d890ee41913240da2cf730fca",
+              "replacement_decision": "explicit_owner_delegated_assistant_replacement_review",
+              "existing_quality_lane": "keep",
+              "candidate_quality_lane": "keep",
+              "existing_evidence_profile": "official_pdp_reviewed_limited",
+              "candidate_evidence_profile": "official_pdp_reviewed_formula_and_usage"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "external_product_id": "ext_a458099561826c43619cfeab",
+      "pivota_signature_id": "sig_f3449241810e3622cac3a3ba",
+      "title": "Cleansing Face Milk with Oat Powder - Travel Size",
+      "brand": "UpCircle Beauty",
+      "canonical_url": "https://upcirclebeauty.com/products/cleansing-face-milk-with-oat-powder-travel-size",
+      "changed": true,
+      "blocked": false,
+      "skip_reason": null,
+      "candidate_hash": "52453363bef7f0addbc9c2cfd42abb2c4749dc7923fb89cabae3229558c6e887",
+      "evidence_profile": "official_pdp_reviewed_limited",
+      "source_coverage": {
+        "source": "official_pdp",
+        "canonical_url": "https://upcirclebeauty.com/products/cleansing-face-milk-with-oat-powder-travel-size",
+        "fields": {
+          "description": true,
+          "ingredients": 0,
+          "active_ingredients": 0,
+          "how_to": 0,
+          "details": 0,
+          "variants": 1
+        }
+      },
+      "preview": {
+        "headline": "Face cleanser",
+        "what_it_is": "Cleansing Face Milk with Oat Powder - Travel Size is a face cleanser from UpCircle Beauty, with source-backed cues around cleansing.",
+        "why_it_stands_out": [
+          {
+            "headline": "Product cues are source-backed",
+            "body": "Reviewed PDP cues such as daily cleansing give shoppers specific comparison points within UpCircle Beauty, rather than category-only copy.",
+            "evidence_strength": "official_pdp_reviewed"
+          }
+        ],
+        "best_for": [
+          {
+            "tag": "daily_cleansing",
+            "label": "daily cleansing",
+            "confidence": "moderate"
+          }
+        ],
+        "shopping_highlight": "daily cleansing"
+      },
+      "writes": [
+        {
+          "kb_key": "product:ext_a458099561826c43619cfeab",
+          "action": "update",
+          "reason": "explicit_owner_delegated_assistant_replacement_review",
+          "old_hash": "48adb5c9b67215f3d41f7be4d5dec7f2fcc409b01e4c2faebe9bb756b06f9024",
+          "candidate_hash": "b7e855045a8ab8c8764b6ac2b0db10634038d0b1330614f052e0c1b140c7137f",
+          "existing_weak": true,
+          "source": "pivota_insights_official_pdp_manual_review_v1",
+          "after_inventory": {
+            "product_id": "ext_a458099561826c43619cfeab",
+            "kb_key": "product:ext_a458099561826c43619cfeab",
+            "source": "pivota_insights_official_pdp_manual_review_v1",
+            "updated_at": "",
+            "last_success_at": "",
+            "title": "Cleansing Face Milk with Oat Powder - Travel Size",
+            "canonical_url": "",
+            "bundle_hash": "52453363bef7f0addbc9c2cfd42abb2c4749dc7923fb89cabae3229558c6e887",
+            "lane": "keep",
+            "reason": "protected_good_content",
+            "priority": 0,
+            "protected": true,
+            "displayable": true,
+            "high_quality_ready": true,
+            "human_reviewed": true,
+            "issues": [],
+            "blocking_issues": [],
+            "quality_state": "reviewed",
+            "evidence_profile": "official_pdp_reviewed_limited",
+            "evidence_rank": 1,
+            "review_tier": "assistant_reviewed",
+            "agent_readable": true,
+            "public_ready": true
+          },
+          "source_meta": {
+            "evidence_profile": "official_pdp_reviewed_limited",
+            "quality_state": "reviewed",
+            "source_origin": "official_pdp_fields",
+            "source_url": "https://upcirclebeauty.com/products/cleansing-face-milk-with-oat-powder-travel-size",
+            "quality_improvement": {
+              "previous_bundle_hash": "186f3d6e126d8ba9063e07f2c797cffb5f680e2cfea111696b6d98c6f1886efe",
+              "candidate_bundle_hash": "52453363bef7f0addbc9c2cfd42abb2c4749dc7923fb89cabae3229558c6e887",
+              "replacement_decision": "explicit_owner_delegated_assistant_replacement_review",
+              "existing_quality_lane": "keep",
+              "candidate_quality_lane": "keep",
+              "existing_evidence_profile": "official_pdp_reviewed_limited",
+              "candidate_evidence_profile": "official_pdp_reviewed_limited"
+            }
+          }
+        },
+        {
+          "kb_key": "product:sig_f3449241810e3622cac3a3ba",
+          "action": "update",
+          "reason": "explicit_owner_delegated_assistant_replacement_review",
+          "old_hash": "48adb5c9b67215f3d41f7be4d5dec7f2fcc409b01e4c2faebe9bb756b06f9024",
+          "candidate_hash": "b7e855045a8ab8c8764b6ac2b0db10634038d0b1330614f052e0c1b140c7137f",
+          "existing_weak": true,
+          "source": "pivota_insights_official_pdp_manual_review_v1",
+          "after_inventory": {
+            "product_id": "ext_a458099561826c43619cfeab",
+            "kb_key": "product:sig_f3449241810e3622cac3a3ba",
+            "source": "pivota_insights_official_pdp_manual_review_v1",
+            "updated_at": "",
+            "last_success_at": "",
+            "title": "Cleansing Face Milk with Oat Powder - Travel Size",
+            "canonical_url": "",
+            "bundle_hash": "52453363bef7f0addbc9c2cfd42abb2c4749dc7923fb89cabae3229558c6e887",
+            "lane": "keep",
+            "reason": "protected_good_content",
+            "priority": 0,
+            "protected": true,
+            "displayable": true,
+            "high_quality_ready": true,
+            "human_reviewed": true,
+            "issues": [],
+            "blocking_issues": [],
+            "quality_state": "reviewed",
+            "evidence_profile": "official_pdp_reviewed_limited",
+            "evidence_rank": 1,
+            "review_tier": "assistant_reviewed",
+            "agent_readable": true,
+            "public_ready": true
+          },
+          "source_meta": {
+            "evidence_profile": "official_pdp_reviewed_limited",
+            "quality_state": "reviewed",
+            "source_origin": "official_pdp_fields",
+            "source_url": "https://upcirclebeauty.com/products/cleansing-face-milk-with-oat-powder-travel-size",
+            "quality_improvement": {
+              "previous_bundle_hash": "186f3d6e126d8ba9063e07f2c797cffb5f680e2cfea111696b6d98c6f1886efe",
+              "candidate_bundle_hash": "52453363bef7f0addbc9c2cfd42abb2c4749dc7923fb89cabae3229558c6e887",
+              "replacement_decision": "explicit_owner_delegated_assistant_replacement_review",
+              "existing_quality_lane": "keep",
+              "candidate_quality_lane": "keep",
+              "existing_evidence_profile": "official_pdp_reviewed_limited",
+              "candidate_evidence_profile": "official_pdp_reviewed_limited"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "external_product_id": "ext_ff5086dc964895397ee7cdfb",
+      "pivota_signature_id": "sig_34a463ceac2747a441d52d9d",
+      "title": "Conditioner Crème with Plant Keratin + Panthenol",
+      "brand": "UpCircle Beauty",
+      "canonical_url": "https://upcirclebeauty.com/products/refillable-conditioner",
+      "changed": false,
+      "blocked": false,
+      "skip_reason": "no_safe_writes",
+      "candidate_hash": "80bec5dd529870b11c7bec67e165ec061588aad48cde781437f9e436fbd4622a",
+      "evidence_profile": "official_pdp_reviewed_key_ingredients",
+      "source_coverage": {
+        "source": "official_pdp",
+        "canonical_url": "https://upcirclebeauty.com/products/refillable-conditioner",
+        "fields": {
+          "description": true,
+          "ingredients": 0,
+          "active_ingredients": 1,
+          "how_to": 0,
+          "details": 0,
+          "variants": 1
+        }
+      },
+      "preview": {
+        "headline": "Hair treatment",
+        "what_it_is": "Conditioner Crème with Plant Keratin + Panthenol is a leave-in hair treatment from UpCircle Beauty, with source-backed cues around leave-in care.",
+        "why_it_stands_out": [
+          {
+            "headline": "Product cues are source-backed",
+            "body": "Reviewed PDP cues such as leave-in care give shoppers specific comparison points within UpCircle Beauty, rather than category-only copy.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Key ingredients are identified",
+            "body": "Panthenol (B5) is identified, enough for a cautious high-level formula read without inventing unsupported actives.",
+            "evidence_strength": "official_pdp_reviewed"
+          }
+        ],
+        "best_for": [
+          {
+            "tag": "hair_hydration",
+            "label": "hair hydration",
+            "confidence": "moderate"
+          }
+        ],
+        "shopping_highlight": "leave-in care"
+      },
+      "writes": [
+        {
+          "kb_key": "product:ext_ff5086dc964895397ee7cdfb",
+          "action": "skip",
+          "reason": "protected_high_quality_existing:reviewed",
+          "old_hash": "29e0ee34719d5be5018bc7e6e7e74996c194ed3cfc4cb3b6337682ed874b2df4",
+          "existing_weak": false
+        },
+        {
+          "kb_key": "product:sig_34a463ceac2747a441d52d9d",
+          "action": "skip",
+          "reason": "protected_high_quality_existing:reviewed",
+          "old_hash": "29e0ee34719d5be5018bc7e6e7e74996c194ed3cfc4cb3b6337682ed874b2df4",
+          "existing_weak": false
+        }
+      ]
+    },
+    {
+      "external_product_id": "ext_7088a575c50a93b6c1aba802",
+      "pivota_signature_id": null,
+      "title": "Cosmetic Spatulas - 2 Pieces",
+      "brand": "UpCircle Beauty",
+      "canonical_url": "https://upcirclebeauty.com/products/mini-metal-scoops-2-pieces",
+      "changed": true,
+      "blocked": false,
+      "skip_reason": null,
+      "candidate_hash": "340acd4a003861808de2029ff3df1cf3d486f2acb35a43ce4056ec4eab397e2e",
+      "evidence_profile": "official_pdp_reviewed_limited",
+      "source_coverage": {
+        "source": "official_pdp",
+        "canonical_url": "https://upcirclebeauty.com/products/mini-metal-scoops-2-pieces",
+        "fields": {
+          "description": true,
+          "ingredients": 0,
+          "active_ingredients": 0,
+          "how_to": 0,
+          "details": 0,
+          "variants": 1
+        }
+      },
+      "preview": {
+        "headline": "Beauty accessory",
+        "what_it_is": "Cosmetic Spatulas - 2 Pieces is a beauty accessory from UpCircle Beauty. Two cosmetic spatulas in two different sizes.",
+        "why_it_stands_out": [
+          {
+            "headline": "Product cues are source-backed",
+            "body": "Reviewed PDP cues such as compact accessory give shoppers specific comparison points within UpCircle Beauty, rather than category-only copy.",
+            "evidence_strength": "official_pdp_reviewed"
+          }
+        ],
+        "best_for": [
+          {
+            "tag": "compact_accessory",
+            "label": "compact accessory",
+            "confidence": "moderate"
+          }
+        ],
+        "shopping_highlight": "compact accessory"
+      },
+      "writes": [
+        {
+          "kb_key": "product:ext_7088a575c50a93b6c1aba802",
+          "action": "update",
+          "reason": "explicit_owner_delegated_assistant_replacement_review",
+          "old_hash": "efe02683519951001098a3a4b72488e63a1986f6ebfbd681e60f0c877803bf1e",
+          "candidate_hash": "5374d122d12e4eb953803e18f03f8bf0572c2639e3841d6195a6b20dc61834a4",
+          "existing_weak": true,
+          "source": "pivota_insights_official_pdp_manual_review_v1",
+          "after_inventory": {
+            "product_id": "ext_7088a575c50a93b6c1aba802",
+            "kb_key": "product:ext_7088a575c50a93b6c1aba802",
+            "source": "pivota_insights_official_pdp_manual_review_v1",
+            "updated_at": "",
+            "last_success_at": "",
+            "title": "Cosmetic Spatulas - 2 Pieces",
+            "canonical_url": "",
+            "bundle_hash": "340acd4a003861808de2029ff3df1cf3d486f2acb35a43ce4056ec4eab397e2e",
+            "lane": "keep",
+            "reason": "protected_good_content",
+            "priority": 0,
+            "protected": true,
+            "displayable": true,
+            "high_quality_ready": true,
+            "human_reviewed": true,
+            "issues": [],
+            "blocking_issues": [],
+            "quality_state": "reviewed",
+            "evidence_profile": "official_pdp_reviewed_limited",
+            "evidence_rank": 1,
+            "review_tier": "assistant_reviewed",
+            "agent_readable": true,
+            "public_ready": true
+          },
+          "source_meta": {
+            "evidence_profile": "official_pdp_reviewed_limited",
+            "quality_state": "reviewed",
+            "source_origin": "official_pdp_fields",
+            "source_url": "https://upcirclebeauty.com/products/mini-metal-scoops-2-pieces",
+            "quality_improvement": {
+              "previous_bundle_hash": "7dffae530f62a6924acf32b42acde5db93e72b6c2005efd93262c3831b512cb7",
+              "candidate_bundle_hash": "340acd4a003861808de2029ff3df1cf3d486f2acb35a43ce4056ec4eab397e2e",
+              "replacement_decision": "explicit_owner_delegated_assistant_replacement_review",
+              "existing_quality_lane": "keep",
+              "candidate_quality_lane": "keep",
+              "existing_evidence_profile": "official_pdp_reviewed_limited",
+              "candidate_evidence_profile": "official_pdp_reviewed_limited"
+            }
+          }
+        }
+      ]
+    }
+  ]
+}

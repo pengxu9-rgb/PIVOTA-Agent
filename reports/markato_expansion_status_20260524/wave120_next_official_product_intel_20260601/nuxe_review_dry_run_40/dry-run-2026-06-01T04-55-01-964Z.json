@@ -1,0 +1,3369 @@
+{
+  "generated_at": "2026-06-01T04:55:01.964Z",
+  "source": "pivota_insights_official_pdp_manual_review_v1",
+  "mode": "dry_run",
+  "filters": {
+    "brand": "Nuxe",
+    "product_ids": [],
+    "limit": 40,
+    "include_strong": false,
+    "include_url_key": false,
+    "apply_chunk_size": null
+  },
+  "summary": {
+    "scanned": 40,
+    "changed_products": 6,
+    "blocked_products": 0,
+    "skipped_products": 34,
+    "write_actions": {
+      "skip": 68,
+      "update": 12
+    },
+    "skip_reasons": {
+      "no_safe_writes": 34,
+      "protected_high_quality_existing:reviewed": 68
+    },
+    "evidence_profiles": {
+      "official_pdp_reviewed_formula_and_usage": 13,
+      "official_pdp_reviewed_key_ingredients_and_usage": 6,
+      "official_pdp_reviewed_line": 20,
+      "official_pdp_reviewed_formula": 1
+    }
+  },
+  "plans": [
+    {
+      "external_product_id": "ext_9bf12158247c3a26eb082765",
+      "pivota_signature_id": "sig_4af0592ff15646e03aa8c24d5df3192b",
+      "title": "24h Protection Deodorant",
+      "brand": "Nuxe",
+      "canonical_url": "https://us.nuxe.com/products/24h-protection-deodorant",
+      "changed": false,
+      "blocked": false,
+      "skip_reason": "no_safe_writes",
+      "candidate_hash": "6fa92f28cba42f9c56e72c657f67b9eb5f324c2925ec65b28bdbc9dedae3ddde",
+      "evidence_profile": "official_pdp_reviewed_formula_and_usage",
+      "source_coverage": {
+        "source": "official_pdp",
+        "canonical_url": "https://us.nuxe.com/products/24h-protection-deodorant",
+        "fields": {
+          "description": true,
+          "ingredients": 1,
+          "active_ingredients": 1,
+          "how_to": 1,
+          "details": 3,
+          "variants": 1
+        }
+      },
+      "preview": {
+        "headline": "Deodorant",
+        "what_it_is": "24h Protection Deodorant is a deodorant from Nuxe, with source-backed cues around hydration.",
+        "why_it_stands_out": [
+          {
+            "headline": "Routine step cues are specific",
+            "body": "Reviewed skincare cues such as hydration identify the routine role or key ingredient context without inventing unsupported benefits.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Ingredient list is available",
+            "body": "Full INCI is present for formula-sensitive review, which makes this PDP safer to evaluate than a claim-only listing.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Usage instructions available",
+            "body": "Reviewed usage context is present, including: Apply the deodorant to clean, dry skin.",
+            "evidence_strength": "official_pdp_reviewed"
+          }
+        ],
+        "best_for": [
+          {
+            "tag": "hydration",
+            "label": "hydration",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "aromatherapy",
+            "label": "aromatherapy",
+            "confidence": "moderate"
+          }
+        ],
+        "shopping_highlight": "hydration, full INCI available"
+      },
+      "writes": [
+        {
+          "kb_key": "product:ext_9bf12158247c3a26eb082765",
+          "action": "skip",
+          "reason": "protected_high_quality_existing:reviewed",
+          "old_hash": "de8383d7f7754b057be8b9ee0d6002f6596d2e24bd6c181e0adcb51088904d05",
+          "existing_weak": false
+        },
+        {
+          "kb_key": "product:sig_4af0592ff15646e03aa8c24d5df3192b",
+          "action": "skip",
+          "reason": "protected_high_quality_existing:reviewed",
+          "old_hash": "de8383d7f7754b057be8b9ee0d6002f6596d2e24bd6c181e0adcb51088904d05",
+          "existing_weak": false
+        }
+      ]
+    },
+    {
+      "external_product_id": "ext_f347150859186bb01e1c6d92",
+      "pivota_signature_id": "sig_99ee2436468213f6ace9bac7103d0fcf",
+      "title": "24hr Fresh-Feel Deodorant, Rêve de Thé",
+      "brand": "Nuxe",
+      "canonical_url": "https://us.nuxe.com/products/24hr-fresh-feel-deodorant-r-ve-de-th-50-ml",
+      "changed": false,
+      "blocked": false,
+      "skip_reason": "no_safe_writes",
+      "candidate_hash": "28eca17de522d99addf6de6ce266abb2304d34111ecb4b42792a9d4c5e7adfde",
+      "evidence_profile": "official_pdp_reviewed_key_ingredients_and_usage",
+      "source_coverage": {
+        "source": "official_pdp",
+        "canonical_url": "https://us.nuxe.com/products/24hr-fresh-feel-deodorant-r-ve-de-th-50-ml",
+        "fields": {
+          "description": true,
+          "ingredients": 0,
+          "active_ingredients": 2,
+          "how_to": 1,
+          "details": 3,
+          "variants": 1
+        }
+      },
+      "preview": {
+        "headline": "Deodorant",
+        "what_it_is": "24hr Fresh-Feel Deodorant, Rêve de Thé is a deodorant from Nuxe in 50ml.",
+        "why_it_stands_out": [
+          {
+            "headline": "Routine step cues are specific",
+            "body": "Reviewed skincare cues such as 50ml identify the routine role or key ingredient context without inventing unsupported benefits.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Key ingredients are identified",
+            "body": "Zinc PCA, Glycerin are identified, enough for a cautious high-level formula read without inventing unsupported actives.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Shade and size are explicit",
+            "body": "Variant labels such as 50ml, Size: 50ml are visible, reducing ambiguity around the product format before a shopper clicks through.",
+            "evidence_strength": "official_pdp_reviewed"
+          }
+        ],
+        "best_for": [
+          {
+            "tag": "aromatherapy",
+            "label": "aromatherapy",
+            "confidence": "moderate"
+          }
+        ],
+        "shopping_highlight": "50ml"
+      },
+      "writes": [
+        {
+          "kb_key": "product:ext_f347150859186bb01e1c6d92",
+          "action": "skip",
+          "reason": "protected_high_quality_existing:reviewed",
+          "old_hash": "5b0cbfa4de2ac703025f46de17456b2dda7467bf49967ec02a8f77eb9eb51888",
+          "existing_weak": false
+        },
+        {
+          "kb_key": "product:sig_99ee2436468213f6ace9bac7103d0fcf",
+          "action": "skip",
+          "reason": "protected_high_quality_existing:reviewed",
+          "old_hash": "5b0cbfa4de2ac703025f46de17456b2dda7467bf49967ec02a8f77eb9eb51888",
+          "existing_weak": false
+        }
+      ]
+    },
+    {
+      "external_product_id": "ext_a75e4db085eb7c5f07d9098f",
+      "pivota_signature_id": "sig_e70dc28e051c1e94eb024369750efff0",
+      "title": "Anti-Aging Routine, Super Serum [10]",
+      "brand": "Nuxe",
+      "canonical_url": "https://us.nuxe.com/products/anti-aging-routine-super-serum-10",
+      "changed": true,
+      "blocked": false,
+      "skip_reason": null,
+      "candidate_hash": "f45e05fd56d8e3186f0770dfc572e179eed6afcd448eef8d8ebd1877d01e010b",
+      "evidence_profile": "official_pdp_reviewed_line",
+      "source_coverage": {
+        "source": "official_pdp",
+        "canonical_url": "https://us.nuxe.com/products/anti-aging-routine-super-serum-10",
+        "fields": {
+          "description": true,
+          "ingredients": 0,
+          "active_ingredients": 0,
+          "how_to": 1,
+          "details": 1,
+          "variants": 1
+        }
+      },
+      "preview": {
+        "headline": "Treatment serum",
+        "what_it_is": "Anti-Aging Routine, Super Serum [10] is a treatment serum from Nuxe.",
+        "why_it_stands_out": [
+          {
+            "headline": "Usage instructions available",
+            "body": "Reviewed usage context is present, including: Apply a small amount after cleansing and toning, before moisturizer.",
+            "evidence_strength": "official_pdp_reviewed"
+          }
+        ],
+        "best_for": [
+          {
+            "tag": "treatment_serum",
+            "label": "Treatment serum",
+            "confidence": "moderate"
+          }
+        ],
+        "shopping_highlight": "Treatment serum"
+      },
+      "writes": [
+        {
+          "kb_key": "product:ext_a75e4db085eb7c5f07d9098f",
+          "action": "update",
+          "reason": "explicit_owner_delegated_assistant_replacement_review",
+          "old_hash": "19aaca704fe43b3178672a94b6cb35aceb70e4cd15c35e15e415e1e138b01cff",
+          "candidate_hash": "4236f07e2731e278dbb24b3bb22aa61085148db5805c9c68353d2a1dee744338",
+          "existing_weak": true,
+          "source": "pivota_insights_official_pdp_manual_review_v1",
+          "after_inventory": {
+            "product_id": "ext_a75e4db085eb7c5f07d9098f",
+            "kb_key": "product:ext_a75e4db085eb7c5f07d9098f",
+            "source": "pivota_insights_official_pdp_manual_review_v1",
+            "updated_at": "",
+            "last_success_at": "",
+            "title": "Anti-Aging Routine, Super Serum [10]",
+            "canonical_url": "",
+            "bundle_hash": "f45e05fd56d8e3186f0770dfc572e179eed6afcd448eef8d8ebd1877d01e010b",
+            "lane": "keep",
+            "reason": "protected_good_content",
+            "priority": 0,
+            "protected": true,
+            "displayable": true,
+            "high_quality_ready": true,
+            "human_reviewed": true,
+            "issues": [],
+            "blocking_issues": [],
+            "quality_state": "reviewed",
+            "evidence_profile": "official_pdp_reviewed_line",
+            "evidence_rank": 3,
+            "review_tier": "assistant_reviewed",
+            "agent_readable": true,
+            "public_ready": true
+          },
+          "source_meta": {
+            "evidence_profile": "official_pdp_reviewed_line",
+            "quality_state": "reviewed",
+            "source_origin": "official_pdp_fields",
+            "source_url": "https://us.nuxe.com/products/anti-aging-routine-super-serum-10",
+            "quality_improvement": {
+              "previous_bundle_hash": "0b454a2910a5fe4d3256ce046689bed0d03e5cf7acb504d67b7e2c366721910e",
+              "candidate_bundle_hash": "f45e05fd56d8e3186f0770dfc572e179eed6afcd448eef8d8ebd1877d01e010b",
+              "replacement_decision": "explicit_owner_delegated_assistant_replacement_review",
+              "existing_quality_lane": "keep",
+              "candidate_quality_lane": "keep",
+              "existing_evidence_profile": "official_pdp_reviewed_line",
+              "candidate_evidence_profile": "official_pdp_reviewed_line"
+            }
+          }
+        },
+        {
+          "kb_key": "product:sig_e70dc28e051c1e94eb024369750efff0",
+          "action": "update",
+          "reason": "explicit_owner_delegated_assistant_replacement_review",
+          "old_hash": "19aaca704fe43b3178672a94b6cb35aceb70e4cd15c35e15e415e1e138b01cff",
+          "candidate_hash": "4236f07e2731e278dbb24b3bb22aa61085148db5805c9c68353d2a1dee744338",
+          "existing_weak": true,
+          "source": "pivota_insights_official_pdp_manual_review_v1",
+          "after_inventory": {
+            "product_id": "ext_a75e4db085eb7c5f07d9098f",
+            "kb_key": "product:sig_e70dc28e051c1e94eb024369750efff0",
+            "source": "pivota_insights_official_pdp_manual_review_v1",
+            "updated_at": "",
+            "last_success_at": "",
+            "title": "Anti-Aging Routine, Super Serum [10]",
+            "canonical_url": "",
+            "bundle_hash": "f45e05fd56d8e3186f0770dfc572e179eed6afcd448eef8d8ebd1877d01e010b",
+            "lane": "keep",
+            "reason": "protected_good_content",
+            "priority": 0,
+            "protected": true,
+            "displayable": true,
+            "high_quality_ready": true,
+            "human_reviewed": true,
+            "issues": [],
+            "blocking_issues": [],
+            "quality_state": "reviewed",
+            "evidence_profile": "official_pdp_reviewed_line",
+            "evidence_rank": 3,
+            "review_tier": "assistant_reviewed",
+            "agent_readable": true,
+            "public_ready": true
+          },
+          "source_meta": {
+            "evidence_profile": "official_pdp_reviewed_line",
+            "quality_state": "reviewed",
+            "source_origin": "official_pdp_fields",
+            "source_url": "https://us.nuxe.com/products/anti-aging-routine-super-serum-10",
+            "quality_improvement": {
+              "previous_bundle_hash": "0b454a2910a5fe4d3256ce046689bed0d03e5cf7acb504d67b7e2c366721910e",
+              "candidate_bundle_hash": "f45e05fd56d8e3186f0770dfc572e179eed6afcd448eef8d8ebd1877d01e010b",
+              "replacement_decision": "explicit_owner_delegated_assistant_replacement_review",
+              "existing_quality_lane": "keep",
+              "candidate_quality_lane": "keep",
+              "existing_evidence_profile": "official_pdp_reviewed_line",
+              "candidate_evidence_profile": "official_pdp_reviewed_line"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "external_product_id": "ext_f569fb1faa96a7762500cfd2",
+      "pivota_signature_id": "sig_c610d5e2de258097d80cee9f8e3fcd2f",
+      "title": "Anti-Aging Trio Super Serum & Day-Night Merveillance Lift",
+      "brand": "Nuxe",
+      "canonical_url": "https://us.nuxe.com/products/anti-aging-trio-super-serum-day-night-merveillance-lift",
+      "changed": false,
+      "blocked": false,
+      "skip_reason": "no_safe_writes",
+      "candidate_hash": "fee3bdea3bfe31831243a1e03f3c087914a2e8f5815bcfc51c9d76afc41e7262",
+      "evidence_profile": "official_pdp_reviewed_line",
+      "source_coverage": {
+        "source": "official_pdp",
+        "canonical_url": "https://us.nuxe.com/products/anti-aging-trio-super-serum-day-night-merveillance-lift",
+        "fields": {
+          "description": true,
+          "ingredients": 0,
+          "active_ingredients": 0,
+          "how_to": 1,
+          "details": 1,
+          "variants": 1
+        }
+      },
+      "preview": {
+        "headline": "Skincare set",
+        "what_it_is": "Anti-Aging Trio Super Serum & Day-Night Merveillance Lift is a skincare set from Nuxe in Trio, with source-backed cues around brightening support.",
+        "why_it_stands_out": [
+          {
+            "headline": "Routine step cues are specific",
+            "body": "Reviewed skincare cues such as Trio identify the routine role or key ingredient context without inventing unsupported benefits.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Shade and size are explicit",
+            "body": "Variant labels such as Trio, Format: Trio are visible, reducing ambiguity around the product format before a shopper clicks through.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Usage instructions available",
+            "body": "Reviewed usage context is present, including: Apply a small amount after cleansing and toning, before moisturizer.",
+            "evidence_strength": "official_pdp_reviewed"
+          }
+        ],
+        "best_for": [
+          {
+            "tag": "firmness",
+            "label": "firmness",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "radiance",
+            "label": "radiance",
+            "confidence": "moderate"
+          }
+        ],
+        "shopping_highlight": "Skincare routine set"
+      },
+      "writes": [
+        {
+          "kb_key": "product:ext_f569fb1faa96a7762500cfd2",
+          "action": "skip",
+          "reason": "protected_high_quality_existing:reviewed",
+          "old_hash": "bc95c1c219aa8aa97768b492d64b5712ed44130ec265a074cfca5f0b08bf631f",
+          "existing_weak": false
+        },
+        {
+          "kb_key": "product:sig_c610d5e2de258097d80cee9f8e3fcd2f",
+          "action": "skip",
+          "reason": "protected_high_quality_existing:reviewed",
+          "old_hash": "bc95c1c219aa8aa97768b492d64b5712ed44130ec265a074cfca5f0b08bf631f",
+          "existing_weak": false
+        }
+      ]
+    },
+    {
+      "external_product_id": "ext_cbce48b42065d0304f823d2b",
+      "pivota_signature_id": "sig_dd34ad5c35a634b7c729155b93080d40",
+      "title": "Candle Prodigieuse® 60g",
+      "brand": "Nuxe",
+      "canonical_url": "https://us.nuxe.com/products/candle-prodigieuse®-60g",
+      "changed": false,
+      "blocked": false,
+      "skip_reason": "no_safe_writes",
+      "candidate_hash": "b9eb92fa67c008cf4fb86682a061ba89692eb1c1b6437e77ab7b9c6abaadce7a",
+      "evidence_profile": "official_pdp_reviewed_line",
+      "source_coverage": {
+        "source": "official_pdp",
+        "canonical_url": "https://us.nuxe.com/products/candle-prodigieuse®-60g",
+        "fields": {
+          "description": false,
+          "ingredients": 0,
+          "active_ingredients": 0,
+          "how_to": 1,
+          "details": 0,
+          "variants": 1
+        }
+      },
+      "preview": {
+        "headline": "Scented candle",
+        "what_it_is": "Candle Prodigieuse® 60g is a home fragrance item from Nuxe in 60g.",
+        "why_it_stands_out": [
+          {
+            "headline": "Scent profile cues",
+            "body": "Reviewed scent cues such as 60g help shoppers compare the fragrance profile without relying on generic scent copy.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Configuration is explicit",
+            "body": "Variant labels such as 60g, Size: 60g are visible, reducing ambiguity around the product format before a shopper clicks through.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Usage instructions available",
+            "body": "Reviewed usage context is present, including: Use according to the merchant directions for this product.",
+            "evidence_strength": "official_pdp_reviewed"
+          }
+        ],
+        "best_for": [
+          {
+            "tag": "home_scent",
+            "label": "home scent",
+            "confidence": "moderate"
+          }
+        ],
+        "shopping_highlight": "60g"
+      },
+      "writes": [
+        {
+          "kb_key": "product:ext_cbce48b42065d0304f823d2b",
+          "action": "skip",
+          "reason": "protected_high_quality_existing:reviewed",
+          "old_hash": "434b69b40d6b5d98db676439b003240231268aee98412ca7959fb987ec33190f",
+          "existing_weak": false
+        },
+        {
+          "kb_key": "product:sig_dd34ad5c35a634b7c729155b93080d40",
+          "action": "skip",
+          "reason": "protected_high_quality_existing:reviewed",
+          "old_hash": "434b69b40d6b5d98db676439b003240231268aee98412ca7959fb987ec33190f",
+          "existing_weak": false
+        }
+      ]
+    },
+    {
+      "external_product_id": "ext_ced1df8672a58a29b933c812",
+      "pivota_signature_id": "sig_306e2f54075d51ea8800814d02a26176",
+      "title": "Complete Huile Prodigeuse®  Travel Set",
+      "brand": "Nuxe",
+      "canonical_url": "https://us.nuxe.com/products/complete-huile-prodigeuse-travel-set",
+      "changed": false,
+      "blocked": false,
+      "skip_reason": "no_safe_writes",
+      "candidate_hash": "c41c4701921fc3bdd2f11207b70d8bdb477ccd6dbc1145b7a6072753e13641dd",
+      "evidence_profile": "official_pdp_reviewed_line",
+      "source_coverage": {
+        "source": "official_pdp",
+        "canonical_url": "https://us.nuxe.com/products/complete-huile-prodigeuse-travel-set",
+        "fields": {
+          "description": true,
+          "ingredients": 0,
+          "active_ingredients": 0,
+          "how_to": 1,
+          "details": 1,
+          "variants": 1
+        }
+      },
+      "preview": {
+        "headline": "Beauty product",
+        "what_it_is": "Complete Huile Prodigeuse® Travel Set is a beauty product from Nuxe. This bundle constists of : - 1 Huile Prodigieuse Multi-Purpose Dry Oil - 1 Huile Prodigieuse OR Multi-Purpose Dry Oil - 1 Huile Prodigieuse Florale Multi-Purpose Dry Oil Please note that your order may arrive in multiple shipments.",
+        "why_it_stands_out": [
+          {
+            "headline": "Product cues are source-backed",
+            "body": "Reviewed PDP cues such as travel organization, Set give shoppers specific comparison points within Nuxe, rather than category-only copy.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Accessory format is explicit",
+            "body": "Variant labels such as Set, Format: Set are visible, reducing ambiguity around the product format before a shopper clicks through.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Usage instructions available",
+            "body": "Reviewed usage context is present, including: Use according to the merchant directions for this product.",
+            "evidence_strength": "official_pdp_reviewed"
+          }
+        ],
+        "best_for": [
+          {
+            "tag": "travel",
+            "label": "travel",
+            "confidence": "moderate"
+          }
+        ],
+        "shopping_highlight": "travel organization, Set"
+      },
+      "writes": [
+        {
+          "kb_key": "product:ext_ced1df8672a58a29b933c812",
+          "action": "skip",
+          "reason": "protected_high_quality_existing:reviewed",
+          "old_hash": "ec8c96f3f05e424da18590cd0914ee1e8ec7d23be73666962f04f1c0b2e71c7c",
+          "existing_weak": false
+        },
+        {
+          "kb_key": "product:sig_306e2f54075d51ea8800814d02a26176",
+          "action": "skip",
+          "reason": "protected_high_quality_existing:reviewed",
+          "old_hash": "ec8c96f3f05e424da18590cd0914ee1e8ec7d23be73666962f04f1c0b2e71c7c",
+          "existing_weak": false
+        }
+      ]
+    },
+    {
+      "external_product_id": "ext_7aa6a29c71b2e582b47ed587",
+      "pivota_signature_id": "sig_37041f34a5c06362b6f09242a864e8ac",
+      "title": "Concentrated Night Cream",
+      "brand": "Nuxe",
+      "canonical_url": "https://us.nuxe.com/products/concentrated-night-cream",
+      "changed": false,
+      "blocked": false,
+      "skip_reason": "no_safe_writes",
+      "candidate_hash": "c2baa244aecd87f9a12cf6a38ca72ac08dfe780f6532cc11ec1342fc6ef70388",
+      "evidence_profile": "official_pdp_reviewed_formula_and_usage",
+      "source_coverage": {
+        "source": "official_pdp",
+        "canonical_url": "https://us.nuxe.com/products/concentrated-night-cream",
+        "fields": {
+          "description": true,
+          "ingredients": 1,
+          "active_ingredients": 2,
+          "how_to": 1,
+          "details": 3,
+          "variants": 1
+        }
+      },
+      "preview": {
+        "headline": "Body care treatment",
+        "what_it_is": "Concentrated Night Cream is a body care treatment from Nuxe, with source-backed cues around hydration.",
+        "why_it_stands_out": [
+          {
+            "headline": "Routine step cues are specific",
+            "body": "Reviewed skincare cues such as barrier support identify the routine role or key ingredient context without inventing unsupported benefits.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Ingredient list is available",
+            "body": "Full INCI is present for formula-sensitive review, which makes this PDP safer to evaluate than a claim-only listing.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Usage instructions available",
+            "body": "Reviewed usage context is present, including: Take up a generous drop of product and warm it in your hands.",
+            "evidence_strength": "official_pdp_reviewed"
+          }
+        ],
+        "best_for": [
+          {
+            "tag": "firmness",
+            "label": "firmness",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "barrier_support",
+            "label": "barrier support",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "aromatherapy",
+            "label": "aromatherapy",
+            "confidence": "moderate"
+          }
+        ],
+        "shopping_highlight": "barrier support, full INCI available"
+      },
+      "writes": [
+        {
+          "kb_key": "product:ext_7aa6a29c71b2e582b47ed587",
+          "action": "skip",
+          "reason": "protected_high_quality_existing:reviewed",
+          "old_hash": "4c230b3f07778af2358196197320fd5c81b4559add5f632361801b930569fc2b",
+          "existing_weak": false
+        },
+        {
+          "kb_key": "product:sig_37041f34a5c06362b6f09242a864e8ac",
+          "action": "skip",
+          "reason": "protected_high_quality_existing:reviewed",
+          "old_hash": "4c230b3f07778af2358196197320fd5c81b4559add5f632361801b930569fc2b",
+          "existing_weak": false
+        }
+      ]
+    },
+    {
+      "external_product_id": "ext_8fa0fe72d3794b89c76fbca8",
+      "pivota_signature_id": "sig_3182d0603f64f242b313162f6ad1f5b1",
+      "title": "Creamy cleansing milk",
+      "brand": "Nuxe",
+      "canonical_url": "https://us.nuxe.com/products/creamy-cleansing-milk",
+      "changed": false,
+      "blocked": false,
+      "skip_reason": "no_safe_writes",
+      "candidate_hash": "7de566d1be885d49bb83fdd4c81b3e9236b8d9dd31a18b007dcb8a05ef7b0645",
+      "evidence_profile": "official_pdp_reviewed_formula_and_usage",
+      "source_coverage": {
+        "source": "official_pdp",
+        "canonical_url": "https://us.nuxe.com/products/creamy-cleansing-milk",
+        "fields": {
+          "description": true,
+          "ingredients": 1,
+          "active_ingredients": 1,
+          "how_to": 1,
+          "details": 4,
+          "variants": 1
+        }
+      },
+      "preview": {
+        "headline": "Face cleanser",
+        "what_it_is": "Creamy cleansing milk is a face cleanser from Nuxe in 200 mL, with source-backed cues around cleansing and dirt, oil, and impurity removal.",
+        "why_it_stands_out": [
+          {
+            "headline": "Product cues are source-backed",
+            "body": "Reviewed PDP cues such as daily cleansing, pore cleansing, 200 mL give shoppers specific comparison points within Nuxe, rather than category-only copy.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Ingredient list is available",
+            "body": "Full INCI is present for formula-sensitive review, which makes this PDP safer to evaluate than a claim-only listing.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Shade and size are explicit",
+            "body": "Variant labels such as 200 mL, Size: 200 mL are visible, reducing ambiguity around the product format before a shopper clicks through.",
+            "evidence_strength": "official_pdp_reviewed"
+          }
+        ],
+        "best_for": [
+          {
+            "tag": "daily_cleansing",
+            "label": "daily cleansing",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "pore_cleansing",
+            "label": "pore cleansing",
+            "confidence": "moderate"
+          }
+        ],
+        "shopping_highlight": "daily cleansing, pore cleansing, 200 mL"
+      },
+      "writes": [
+        {
+          "kb_key": "product:ext_8fa0fe72d3794b89c76fbca8",
+          "action": "skip",
+          "reason": "protected_high_quality_existing:reviewed",
+          "old_hash": "cfc9ebf44d6d51fa5810761e56c2fe9dd5a057a851e24f7317accb6a4527a099",
+          "existing_weak": false
+        },
+        {
+          "kb_key": "product:sig_3182d0603f64f242b313162f6ad1f5b1",
+          "action": "skip",
+          "reason": "protected_high_quality_existing:reviewed",
+          "old_hash": "cfc9ebf44d6d51fa5810761e56c2fe9dd5a057a851e24f7317accb6a4527a099",
+          "existing_weak": false
+        }
+      ]
+    },
+    {
+      "external_product_id": "ext_a9f35e3b9ac4b24df195045f",
+      "pivota_signature_id": "sig_896f637e499f2679f2d95ef4b159446f",
+      "title": "Deliciously Nourishing Body Scrub",
+      "brand": "Nuxe",
+      "canonical_url": "https://us.nuxe.com/products/deliciously-nourishing-body-scrub",
+      "changed": false,
+      "blocked": false,
+      "skip_reason": "no_safe_writes",
+      "candidate_hash": "cc93916529e1fc71ee9b109331336f055ab1344010e2aa1d3b133bef67aefb15",
+      "evidence_profile": "official_pdp_reviewed_formula_and_usage",
+      "source_coverage": {
+        "source": "official_pdp",
+        "canonical_url": "https://us.nuxe.com/products/deliciously-nourishing-body-scrub",
+        "fields": {
+          "description": true,
+          "ingredients": 1,
+          "active_ingredients": 1,
+          "how_to": 1,
+          "details": 1,
+          "variants": 1
+        }
+      },
+      "preview": {
+        "headline": "Body scrub",
+        "what_it_is": "Deliciously Nourishing Body Scrub is a body scrub from Nuxe in 175ml, with source-backed cues around hydration.",
+        "why_it_stands_out": [
+          {
+            "headline": "Routine step cues are specific",
+            "body": "Reviewed skincare cues such as exfoliating scrub, barrier support, 175ml identify the routine role or key ingredient context without inventing unsupported benefits.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Ingredient list is available",
+            "body": "Full INCI is present for formula-sensitive review, which makes this PDP safer to evaluate than a claim-only listing.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Shade and size are explicit",
+            "body": "Variant labels such as 175ml, Size: 175ml are visible, reducing ambiguity around the product format before a shopper clicks through.",
+            "evidence_strength": "official_pdp_reviewed"
+          }
+        ],
+        "best_for": [
+          {
+            "tag": "firmness",
+            "label": "firmness",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "barrier_support",
+            "label": "barrier support",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "body_routine",
+            "label": "body routine",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "aromatherapy",
+            "label": "aromatherapy",
+            "confidence": "moderate"
+          }
+        ],
+        "shopping_highlight": "exfoliating scrub, barrier support"
+      },
+      "writes": [
+        {
+          "kb_key": "product:ext_a9f35e3b9ac4b24df195045f",
+          "action": "skip",
+          "reason": "protected_high_quality_existing:reviewed",
+          "old_hash": "598a582a3aeedaadb671a603f156dfac6b09c1b3d62fef8b3d2b2570cc856d6c",
+          "existing_weak": false
+        },
+        {
+          "kb_key": "product:sig_896f637e499f2679f2d95ef4b159446f",
+          "action": "skip",
+          "reason": "protected_high_quality_existing:reviewed",
+          "old_hash": "598a582a3aeedaadb671a603f156dfac6b09c1b3d62fef8b3d2b2570cc856d6c",
+          "existing_weak": false
+        }
+      ]
+    },
+    {
+      "external_product_id": "ext_a88deef3fdce8d7c74077c0f",
+      "pivota_signature_id": "sig_f4f37442a5be0c2cd9317f4b266238dc",
+      "title": "Detangling Hair Brush",
+      "brand": "Nuxe",
+      "canonical_url": "https://us.nuxe.com/products/detangling-hair-brush",
+      "changed": true,
+      "blocked": false,
+      "skip_reason": null,
+      "candidate_hash": "3dec97a9c8a4ee0e75370d1c1d7a566e71995e821e1109180937ae4f376c91c0",
+      "evidence_profile": "official_pdp_reviewed_line",
+      "source_coverage": {
+        "source": "official_pdp",
+        "canonical_url": "https://us.nuxe.com/products/detangling-hair-brush",
+        "fields": {
+          "description": false,
+          "ingredients": 0,
+          "active_ingredients": 0,
+          "how_to": 1,
+          "details": 0,
+          "variants": 1
+        }
+      },
+      "preview": {
+        "headline": "Makeup brush",
+        "what_it_is": "Detangling Hair Brush is a makeup brush from Nuxe.",
+        "why_it_stands_out": [
+          {
+            "headline": "Product cues are source-backed",
+            "body": "Reviewed PDP cues such as precision application give shoppers specific comparison points within Nuxe, rather than category-only copy.",
+            "evidence_strength": "official_pdp_reviewed"
+          }
+        ],
+        "best_for": [
+          {
+            "tag": "precision_application",
+            "label": "precision application",
+            "confidence": "moderate"
+          }
+        ],
+        "shopping_highlight": "precision application"
+      },
+      "writes": [
+        {
+          "kb_key": "product:ext_a88deef3fdce8d7c74077c0f",
+          "action": "update",
+          "reason": "explicit_owner_delegated_assistant_replacement_review",
+          "old_hash": "f2b56c2aac146f2b9e1b58c89f570614bacda9b29ba1bf82324adbdd118d9ac3",
+          "candidate_hash": "30f02f20233679c5cf426ecb2becc9aeb533603f5e1214e322188c359796397b",
+          "existing_weak": true,
+          "source": "pivota_insights_official_pdp_manual_review_v1",
+          "after_inventory": {
+            "product_id": "ext_a88deef3fdce8d7c74077c0f",
+            "kb_key": "product:ext_a88deef3fdce8d7c74077c0f",
+            "source": "pivota_insights_official_pdp_manual_review_v1",
+            "updated_at": "",
+            "last_success_at": "",
+            "title": "Detangling Hair Brush",
+            "canonical_url": "",
+            "bundle_hash": "3dec97a9c8a4ee0e75370d1c1d7a566e71995e821e1109180937ae4f376c91c0",
+            "lane": "keep",
+            "reason": "protected_good_content",
+            "priority": 0,
+            "protected": true,
+            "displayable": true,
+            "high_quality_ready": true,
+            "human_reviewed": true,
+            "issues": [],
+            "blocking_issues": [],
+            "quality_state": "reviewed",
+            "evidence_profile": "official_pdp_reviewed_line",
+            "evidence_rank": 3,
+            "review_tier": "assistant_reviewed",
+            "agent_readable": true,
+            "public_ready": true
+          },
+          "source_meta": {
+            "evidence_profile": "official_pdp_reviewed_line",
+            "quality_state": "reviewed",
+            "source_origin": "official_pdp_fields",
+            "source_url": "https://us.nuxe.com/products/detangling-hair-brush",
+            "quality_improvement": {
+              "previous_bundle_hash": "83632d92ce8d1c67b3ca49ece4b7e1e56852eba1dcc005d219b8d7d5145f0373",
+              "candidate_bundle_hash": "3dec97a9c8a4ee0e75370d1c1d7a566e71995e821e1109180937ae4f376c91c0",
+              "replacement_decision": "explicit_owner_delegated_assistant_replacement_review",
+              "existing_quality_lane": "keep",
+              "candidate_quality_lane": "keep",
+              "existing_evidence_profile": "official_pdp_reviewed_line",
+              "candidate_evidence_profile": "official_pdp_reviewed_line"
+            }
+          }
+        },
+        {
+          "kb_key": "product:sig_f4f37442a5be0c2cd9317f4b266238dc",
+          "action": "update",
+          "reason": "explicit_owner_delegated_assistant_replacement_review",
+          "old_hash": "f2b56c2aac146f2b9e1b58c89f570614bacda9b29ba1bf82324adbdd118d9ac3",
+          "candidate_hash": "30f02f20233679c5cf426ecb2becc9aeb533603f5e1214e322188c359796397b",
+          "existing_weak": true,
+          "source": "pivota_insights_official_pdp_manual_review_v1",
+          "after_inventory": {
+            "product_id": "ext_a88deef3fdce8d7c74077c0f",
+            "kb_key": "product:sig_f4f37442a5be0c2cd9317f4b266238dc",
+            "source": "pivota_insights_official_pdp_manual_review_v1",
+            "updated_at": "",
+            "last_success_at": "",
+            "title": "Detangling Hair Brush",
+            "canonical_url": "",
+            "bundle_hash": "3dec97a9c8a4ee0e75370d1c1d7a566e71995e821e1109180937ae4f376c91c0",
+            "lane": "keep",
+            "reason": "protected_good_content",
+            "priority": 0,
+            "protected": true,
+            "displayable": true,
+            "high_quality_ready": true,
+            "human_reviewed": true,
+            "issues": [],
+            "blocking_issues": [],
+            "quality_state": "reviewed",
+            "evidence_profile": "official_pdp_reviewed_line",
+            "evidence_rank": 3,
+            "review_tier": "assistant_reviewed",
+            "agent_readable": true,
+            "public_ready": true
+          },
+          "source_meta": {
+            "evidence_profile": "official_pdp_reviewed_line",
+            "quality_state": "reviewed",
+            "source_origin": "official_pdp_fields",
+            "source_url": "https://us.nuxe.com/products/detangling-hair-brush",
+            "quality_improvement": {
+              "previous_bundle_hash": "83632d92ce8d1c67b3ca49ece4b7e1e56852eba1dcc005d219b8d7d5145f0373",
+              "candidate_bundle_hash": "3dec97a9c8a4ee0e75370d1c1d7a566e71995e821e1109180937ae4f376c91c0",
+              "replacement_decision": "explicit_owner_delegated_assistant_replacement_review",
+              "existing_quality_lane": "keep",
+              "candidate_quality_lane": "keep",
+              "existing_evidence_profile": "official_pdp_reviewed_line",
+              "candidate_evidence_profile": "official_pdp_reviewed_line"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "external_product_id": "ext_ef9963d1ae8ae3d848f0b5e4",
+      "pivota_signature_id": "sig_a67ceccf9ada7f7bf37c37f1b243486e",
+      "title": "Detangling Leave-in Hair Milk",
+      "brand": "Nuxe",
+      "canonical_url": "https://us.nuxe.com/products/detangling-leave-in-hair-milk",
+      "changed": false,
+      "blocked": false,
+      "skip_reason": "no_safe_writes",
+      "candidate_hash": "e10a45d3b2b6d7fc4d9bab8b8b8ebcc78c96930a71f76a9fef7f22100cb62b94",
+      "evidence_profile": "official_pdp_reviewed_formula_and_usage",
+      "source_coverage": {
+        "source": "official_pdp",
+        "canonical_url": "https://us.nuxe.com/products/detangling-leave-in-hair-milk",
+        "fields": {
+          "description": true,
+          "ingredients": 1,
+          "active_ingredients": 2,
+          "how_to": 1,
+          "details": 4,
+          "variants": 1
+        }
+      },
+      "preview": {
+        "headline": "Hair treatment",
+        "what_it_is": "Detangling Leave-in Hair Milk is a leave-in hair treatment from Nuxe, with source-backed cues around volume-texture boost and leave-in care.",
+        "why_it_stands_out": [
+          {
+            "headline": "Product cues are source-backed",
+            "body": "Reviewed PDP cues such as leave-in care, scalp or style refresh give shoppers specific comparison points within Nuxe, rather than category-only copy.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Ingredient list is available",
+            "body": "Full INCI is present for formula-sensitive review, which makes this PDP safer to evaluate than a claim-only listing.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Usage instructions available",
+            "body": "Reviewed usage context is present, including: Apply daily on damp hair by spraying on lengths and ends or on dry hair by spraying into palm of hand before distributing.",
+            "evidence_strength": "official_pdp_reviewed"
+          }
+        ],
+        "best_for": [
+          {
+            "tag": "hair_hydration",
+            "label": "hair hydration",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "style_refresh",
+            "label": "style refresh",
+            "confidence": "moderate"
+          }
+        ],
+        "shopping_highlight": "leave-in care, scalp or style refresh"
+      },
+      "writes": [
+        {
+          "kb_key": "product:ext_ef9963d1ae8ae3d848f0b5e4",
+          "action": "skip",
+          "reason": "protected_high_quality_existing:reviewed",
+          "old_hash": "9c7debfa023fbb70b3a92cd9c165ba7a1ef253b5b873fba5804cec03f5d8c2a6",
+          "existing_weak": false
+        },
+        {
+          "kb_key": "product:sig_a67ceccf9ada7f7bf37c37f1b243486e",
+          "action": "skip",
+          "reason": "protected_high_quality_existing:reviewed",
+          "old_hash": "9c7debfa023fbb70b3a92cd9c165ba7a1ef253b5b873fba5804cec03f5d8c2a6",
+          "existing_weak": false
+        }
+      ]
+    },
+    {
+      "external_product_id": "ext_fab3ef71c298a6a9d205d016",
+      "pivota_signature_id": "sig_dd6bfb18bc3b3fdc3c887e2d242190aa",
+      "title": "Dry and Shimmering Oil Duo Huile Prodigieuse® Floral & Floral Gold",
+      "brand": "Nuxe",
+      "canonical_url": "https://us.nuxe.com/products/dry-and-shimmering-oil-duo-huile-prodigieuse-floral-floral-gold",
+      "changed": false,
+      "blocked": false,
+      "skip_reason": "no_safe_writes",
+      "candidate_hash": "e632d303bf72eea0f49a3cdd253a07f5bf13aee2ba7b43c12dcf55c816e0b672",
+      "evidence_profile": "official_pdp_reviewed_line",
+      "source_coverage": {
+        "source": "official_pdp",
+        "canonical_url": "https://us.nuxe.com/products/dry-and-shimmering-oil-duo-huile-prodigieuse-floral-floral-gold",
+        "fields": {
+          "description": true,
+          "ingredients": 0,
+          "active_ingredients": 0,
+          "how_to": 1,
+          "details": 1,
+          "variants": 1
+        }
+      },
+      "preview": {
+        "headline": "Beauty product",
+        "what_it_is": "Dry and Shimmering Oil Duo Huile Prodigieuse® Floral & Floral Gold is a beauty product from Nuxe. Fall in love with this duo of Huile Prodigieuse® best-sellers.",
+        "why_it_stands_out": [
+          {
+            "headline": "Product cues are source-backed",
+            "body": "Reviewed PDP cues such as Duo give shoppers specific comparison points within Nuxe, rather than category-only copy.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Accessory format is explicit",
+            "body": "Variant labels such as Duo, Format: Duo are visible, reducing ambiguity around the product format before a shopper clicks through.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Usage instructions available",
+            "body": "Reviewed usage context is present, including: Use according to the merchant directions for this product.",
+            "evidence_strength": "official_pdp_reviewed"
+          }
+        ],
+        "best_for": [
+          {
+            "tag": "duo",
+            "label": "Duo",
+            "confidence": "moderate"
+          }
+        ],
+        "shopping_highlight": "Duo"
+      },
+      "writes": [
+        {
+          "kb_key": "product:ext_fab3ef71c298a6a9d205d016",
+          "action": "skip",
+          "reason": "protected_high_quality_existing:reviewed",
+          "old_hash": "10963e5e4d7b26dcb0acd2ee402d50690876d0ab3c1e30cccfbd9ce35a740c4a",
+          "existing_weak": false
+        },
+        {
+          "kb_key": "product:sig_dd6bfb18bc3b3fdc3c887e2d242190aa",
+          "action": "skip",
+          "reason": "protected_high_quality_existing:reviewed",
+          "old_hash": "10963e5e4d7b26dcb0acd2ee402d50690876d0ab3c1e30cccfbd9ce35a740c4a",
+          "existing_weak": false
+        }
+      ]
+    },
+    {
+      "external_product_id": "ext_f0e393fd9fb760ed52a7a7a7",
+      "pivota_signature_id": "sig_258436a65c2e7065f50d090bf34b714a",
+      "title": "Dry Skin Routine Cosmekit",
+      "brand": "Nuxe",
+      "canonical_url": "https://us.nuxe.com/products/dry-skin-routine",
+      "changed": false,
+      "blocked": false,
+      "skip_reason": "no_safe_writes",
+      "candidate_hash": "60e76893d00a62005927cf8976fb1b6dd445a06fba995f401a790c7dac67997d",
+      "evidence_profile": "official_pdp_reviewed_line",
+      "source_coverage": {
+        "source": "official_pdp",
+        "canonical_url": "https://us.nuxe.com/products/dry-skin-routine",
+        "fields": {
+          "description": true,
+          "ingredients": 0,
+          "active_ingredients": 0,
+          "how_to": 1,
+          "details": 1,
+          "variants": 1
+        }
+      },
+      "preview": {
+        "headline": "Skincare set",
+        "what_it_is": "Dry Skin Routine Cosmekit is a skincare set from Nuxe, with source-backed cues around cleansing.",
+        "why_it_stands_out": [
+          {
+            "headline": "Usage instructions available",
+            "body": "Reviewed usage context is present, including: Massage onto damp skin, then rinse thoroughly.",
+            "evidence_strength": "official_pdp_reviewed"
+          }
+        ],
+        "best_for": [
+          {
+            "tag": "body_routine",
+            "label": "body routine",
+            "confidence": "moderate"
+          }
+        ],
+        "shopping_highlight": "Skincare routine set"
+      },
+      "writes": [
+        {
+          "kb_key": "product:ext_f0e393fd9fb760ed52a7a7a7",
+          "action": "skip",
+          "reason": "protected_high_quality_existing:reviewed",
+          "old_hash": "53bfab2fdeaa9fc414a6b893a2746d9d1cf58c1f618404b5218da366c3ac4ca0",
+          "existing_weak": false
+        },
+        {
+          "kb_key": "product:sig_258436a65c2e7065f50d090bf34b714a",
+          "action": "skip",
+          "reason": "protected_high_quality_existing:reviewed",
+          "old_hash": "53bfab2fdeaa9fc414a6b893a2746d9d1cf58c1f618404b5218da366c3ac4ca0",
+          "existing_weak": false
+        }
+      ]
+    },
+    {
+      "external_product_id": "ext_76f431168134c95664952700",
+      "pivota_signature_id": "sig_27603f3f7500e8dd28243583e190c234",
+      "title": "Duo Day-Night & Eyes, Merveillance Lift",
+      "brand": "Nuxe",
+      "canonical_url": "https://us.nuxe.com/products/duo-day-night-eyes-merveillance-lift",
+      "changed": false,
+      "blocked": false,
+      "skip_reason": "no_safe_writes",
+      "candidate_hash": "e179c73d8e8aa6d2d11a84f739b954f1dffcdaaa2d1efd745ccaaf6c9c387097",
+      "evidence_profile": "official_pdp_reviewed_line",
+      "source_coverage": {
+        "source": "official_pdp",
+        "canonical_url": "https://us.nuxe.com/products/duo-day-night-eyes-merveillance-lift",
+        "fields": {
+          "description": true,
+          "ingredients": 0,
+          "active_ingredients": 0,
+          "how_to": 1,
+          "details": 1,
+          "variants": 1
+        }
+      },
+      "preview": {
+        "headline": "Treatment serum",
+        "what_it_is": "Duo Day-Night & Eyes, Merveillance Lift is a treatment serum from Nuxe in Duo.",
+        "why_it_stands_out": [
+          {
+            "headline": "Routine step cues are specific",
+            "body": "Reviewed skincare cues such as Duo identify the routine role or key ingredient context without inventing unsupported benefits.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Shade and size are explicit",
+            "body": "Variant labels such as Duo, Format: Duo are visible, reducing ambiguity around the product format before a shopper clicks through.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Usage instructions available",
+            "body": "Reviewed usage context is present, including: Apply a small amount after cleansing and toning, before moisturizer.",
+            "evidence_strength": "official_pdp_reviewed"
+          }
+        ],
+        "best_for": [
+          {
+            "tag": "firmness",
+            "label": "firmness",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "radiance",
+            "label": "radiance",
+            "confidence": "moderate"
+          }
+        ],
+        "shopping_highlight": "Duo"
+      },
+      "writes": [
+        {
+          "kb_key": "product:ext_76f431168134c95664952700",
+          "action": "skip",
+          "reason": "protected_high_quality_existing:reviewed",
+          "old_hash": "876ea5ca7d9b083b04f113ef46417c5048d1a8c087d86a8552a11f731bad27b3",
+          "existing_weak": false
+        },
+        {
+          "kb_key": "product:sig_27603f3f7500e8dd28243583e190c234",
+          "action": "skip",
+          "reason": "protected_high_quality_existing:reviewed",
+          "old_hash": "876ea5ca7d9b083b04f113ef46417c5048d1a8c087d86a8552a11f731bad27b3",
+          "existing_weak": false
+        }
+      ]
+    },
+    {
+      "external_product_id": "ext_97cb6b5bbeb4dcc95b1009a6",
+      "pivota_signature_id": "sig_43f0342f82bdcbafd39fae0061bf9615",
+      "title": "Duo Roll-On",
+      "brand": "Nuxe",
+      "canonical_url": "https://us.nuxe.com/products/duo-roll-on",
+      "changed": false,
+      "blocked": false,
+      "skip_reason": "no_safe_writes",
+      "candidate_hash": "25a9f55e61a8a56528c5c0f64eac8e105abfd70157fbe11b35b76573aee41924",
+      "evidence_profile": "official_pdp_reviewed_line",
+      "source_coverage": {
+        "source": "official_pdp",
+        "canonical_url": "https://us.nuxe.com/products/duo-roll-on",
+        "fields": {
+          "description": true,
+          "ingredients": 0,
+          "active_ingredients": 0,
+          "how_to": 1,
+          "details": 1,
+          "variants": 1
+        }
+      },
+      "preview": {
+        "headline": "Beauty product",
+        "what_it_is": "Duo Roll-On is a beauty product from Nuxe. This bundle consists of:- 1 Huile Prodigieuse® Roll-On - 1 Huile Prodigieuse® Or Roll-OnPlease note that your order may arrive in multiple shipments.",
+        "why_it_stands_out": [
+          {
+            "headline": "Product cues are source-backed",
+            "body": "Reviewed PDP cues such as Duo give shoppers specific comparison points within Nuxe, rather than category-only copy.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Accessory format is explicit",
+            "body": "Variant labels such as Duo, Format: Duo are visible, reducing ambiguity around the product format before a shopper clicks through.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Usage instructions available",
+            "body": "Reviewed usage context is present, including: Use according to the merchant directions for this product.",
+            "evidence_strength": "official_pdp_reviewed"
+          }
+        ],
+        "best_for": [
+          {
+            "tag": "duo",
+            "label": "Duo",
+            "confidence": "moderate"
+          }
+        ],
+        "shopping_highlight": "Duo"
+      },
+      "writes": [
+        {
+          "kb_key": "product:ext_97cb6b5bbeb4dcc95b1009a6",
+          "action": "skip",
+          "reason": "protected_high_quality_existing:reviewed",
+          "old_hash": "bf6bd518442de441ea588502461e3e346945ee79b0c1859b2748ed3113b83355",
+          "existing_weak": false
+        },
+        {
+          "kb_key": "product:sig_43f0342f82bdcbafd39fae0061bf9615",
+          "action": "skip",
+          "reason": "protected_high_quality_existing:reviewed",
+          "old_hash": "bf6bd518442de441ea588502461e3e346945ee79b0c1859b2748ed3113b83355",
+          "existing_weak": false
+        }
+      ]
+    },
+    {
+      "external_product_id": "ext_2cf874ed0f3b51a11a907da8",
+      "pivota_signature_id": "sig_f9aeb362bd710597bc5579bc8552bb19",
+      "title": "Essential Anti-Aging Set",
+      "brand": "Nuxe",
+      "canonical_url": "https://us.nuxe.com/products/essential-anti-aging-set",
+      "changed": false,
+      "blocked": false,
+      "skip_reason": "no_safe_writes",
+      "candidate_hash": "64c6faedac6553aa1e4e00fa495485ae6b80e9dc14f843b9ccd33a6a7064fa32",
+      "evidence_profile": "official_pdp_reviewed_line",
+      "source_coverage": {
+        "source": "official_pdp",
+        "canonical_url": "https://us.nuxe.com/products/essential-anti-aging-set",
+        "fields": {
+          "description": true,
+          "ingredients": 0,
+          "active_ingredients": 0,
+          "how_to": 1,
+          "details": 1,
+          "variants": 1
+        }
+      },
+      "preview": {
+        "headline": "Treatment serum",
+        "what_it_is": "Essential Anti-Aging Set is a treatment serum from Nuxe in Set.",
+        "why_it_stands_out": [
+          {
+            "headline": "Routine step cues are specific",
+            "body": "Reviewed skincare cues such as Set identify the routine role or key ingredient context without inventing unsupported benefits.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Shade and size are explicit",
+            "body": "Variant labels such as Set, Format: Set are visible, reducing ambiguity around the product format before a shopper clicks through.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Usage instructions available",
+            "body": "Reviewed usage context is present, including: Apply a small amount after cleansing and toning, before moisturizer.",
+            "evidence_strength": "official_pdp_reviewed"
+          }
+        ],
+        "best_for": [
+          {
+            "tag": "set",
+            "label": "Set",
+            "confidence": "moderate"
+          }
+        ],
+        "shopping_highlight": "Set"
+      },
+      "writes": [
+        {
+          "kb_key": "product:ext_2cf874ed0f3b51a11a907da8",
+          "action": "skip",
+          "reason": "protected_high_quality_existing:reviewed",
+          "old_hash": "6daffc35ff2ed649f28c43f318405b4de07be5f7133ce0344b87227581af6e41",
+          "existing_weak": false
+        },
+        {
+          "kb_key": "product:sig_f9aeb362bd710597bc5579bc8552bb19",
+          "action": "skip",
+          "reason": "protected_high_quality_existing:reviewed",
+          "old_hash": "6daffc35ff2ed649f28c43f318405b4de07be5f7133ce0344b87227581af6e41",
+          "existing_weak": false
+        }
+      ]
+    },
+    {
+      "external_product_id": "ext_e32879c1e3fbc362f8888daa",
+      "pivota_signature_id": "sig_ad936b0ef060c9629b3cda0676aef9fc",
+      "title": "Eye Lighter Serum",
+      "brand": "Nuxe",
+      "canonical_url": "https://us.nuxe.com/products/eye-lighter-serum",
+      "changed": false,
+      "blocked": false,
+      "skip_reason": "no_safe_writes",
+      "candidate_hash": "060d919b17aa59cd3480eddece9584939affc6d3e591d38a85f192575dd197ec",
+      "evidence_profile": "official_pdp_reviewed_formula_and_usage",
+      "source_coverage": {
+        "source": "official_pdp",
+        "canonical_url": "https://us.nuxe.com/products/eye-lighter-serum",
+        "fields": {
+          "description": true,
+          "ingredients": 1,
+          "active_ingredients": 1,
+          "how_to": 1,
+          "details": 3,
+          "variants": 1
+        }
+      },
+      "preview": {
+        "headline": "Treatment serum",
+        "what_it_is": "Eye Lighter Serum is a treatment serum from Nuxe, with source-backed ingredient cues around barrier support.",
+        "why_it_stands_out": [
+          {
+            "headline": "Routine step cues are specific",
+            "body": "Reviewed skincare cues such as hydration, barrier support identify the routine role or key ingredient context without inventing unsupported benefits.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Ingredient list is available",
+            "body": "Full INCI is present for formula-sensitive review, which makes this PDP safer to evaluate than a claim-only listing.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Usage instructions available",
+            "body": "Reviewed usage context is present, including: Apply morning and/or evening to the eye contour area using its expert, ultra-precise foam applicator.",
+            "evidence_strength": "official_pdp_reviewed"
+          }
+        ],
+        "best_for": [
+          {
+            "tag": "hydration",
+            "label": "hydration",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "firmness",
+            "label": "firmness",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "radiance",
+            "label": "radiance",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "barrier_support",
+            "label": "barrier support",
+            "confidence": "moderate"
+          }
+        ],
+        "shopping_highlight": "hydration, barrier support"
+      },
+      "writes": [
+        {
+          "kb_key": "product:ext_e32879c1e3fbc362f8888daa",
+          "action": "skip",
+          "reason": "protected_high_quality_existing:reviewed",
+          "old_hash": "ce901ec4961021e54de273cd8a1752cd8e8ef62fa4dffacb56f8a05ad75b8785",
+          "existing_weak": false
+        },
+        {
+          "kb_key": "product:sig_ad936b0ef060c9629b3cda0676aef9fc",
+          "action": "skip",
+          "reason": "protected_high_quality_existing:reviewed",
+          "old_hash": "ce901ec4961021e54de273cd8a1752cd8e8ef62fa4dffacb56f8a05ad75b8785",
+          "existing_weak": false
+        }
+      ]
+    },
+    {
+      "external_product_id": "ext_db0f658b7b60adfdfc1729bb",
+      "pivota_signature_id": "sig_014ba641b7786ece75f073388183c7e0",
+      "title": "Face and Body Ultra-Rich Cleansing Gel",
+      "brand": "Nuxe",
+      "canonical_url": "https://us.nuxe.com/products/face-and-body-ultra-rich-cleansing-gel",
+      "changed": false,
+      "blocked": false,
+      "skip_reason": "no_safe_writes",
+      "candidate_hash": "f0959ed67686ad5daa1fd484f60ca4454241b0530ec242403ecdfd4d2705f981",
+      "evidence_profile": "official_pdp_reviewed_key_ingredients_and_usage",
+      "source_coverage": {
+        "source": "official_pdp",
+        "canonical_url": "https://us.nuxe.com/products/face-and-body-ultra-rich-cleansing-gel",
+        "fields": {
+          "description": true,
+          "ingredients": 0,
+          "active_ingredients": 1,
+          "how_to": 1,
+          "details": 3,
+          "variants": 1
+        }
+      },
+      "preview": {
+        "headline": "Face cleanser",
+        "what_it_is": "Face and Body Ultra-Rich Cleansing Gel is a face cleanser from Nuxe in 400ml, with source-backed cues around cleansing and a non-stripping feel.",
+        "why_it_stands_out": [
+          {
+            "headline": "Product cues are source-backed",
+            "body": "Reviewed PDP cues such as daily cleansing, non-stripping cleanse, 400ml give shoppers specific comparison points within Nuxe, rather than category-only copy.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Key ingredients are identified",
+            "body": "Glycerin is identified, enough for a cautious high-level formula read without inventing unsupported actives.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Shade and size are explicit",
+            "body": "Variant labels such as 400ml, Size: 400ml are visible, reducing ambiguity around the product format before a shopper clicks through.",
+            "evidence_strength": "official_pdp_reviewed"
+          }
+        ],
+        "best_for": [
+          {
+            "tag": "daily_cleansing",
+            "label": "daily cleansing",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "non_stripping_cleanse",
+            "label": "non-stripping cleanse",
+            "confidence": "moderate"
+          }
+        ],
+        "shopping_highlight": "daily cleansing, non-stripping cleanse"
+      },
+      "writes": [
+        {
+          "kb_key": "product:ext_db0f658b7b60adfdfc1729bb",
+          "action": "skip",
+          "reason": "protected_high_quality_existing:reviewed",
+          "old_hash": "bb852848d57e352e23557e9ec8929f592321034b58fa16092fbff34cd6ad5b93",
+          "existing_weak": false
+        },
+        {
+          "kb_key": "product:sig_014ba641b7786ece75f073388183c7e0",
+          "action": "skip",
+          "reason": "protected_high_quality_existing:reviewed",
+          "old_hash": "bb852848d57e352e23557e9ec8929f592321034b58fa16092fbff34cd6ad5b93",
+          "existing_weak": false
+        }
+      ]
+    },
+    {
+      "external_product_id": "ext_c19c2de6d311d942203c4c27",
+      "pivota_signature_id": "sig_48b4ac4c14f151e18361bafdf4693d31",
+      "title": "Face Cleansing and Make-Up Removing Gel",
+      "brand": "Nuxe",
+      "canonical_url": "https://us.nuxe.com/products/face-cleansing-and-make-up-removing-gel",
+      "changed": false,
+      "blocked": false,
+      "skip_reason": "no_safe_writes",
+      "candidate_hash": "f296ce45d1117158b5c4be5ee6a4e9286f3a92f3f6d52d48c549fb3e20b0ef28",
+      "evidence_profile": "official_pdp_reviewed_key_ingredients_and_usage",
+      "source_coverage": {
+        "source": "official_pdp",
+        "canonical_url": "https://us.nuxe.com/products/face-cleansing-and-make-up-removing-gel",
+        "fields": {
+          "description": true,
+          "ingredients": 0,
+          "active_ingredients": 1,
+          "how_to": 1,
+          "details": 3,
+          "variants": 1
+        }
+      },
+      "preview": {
+        "headline": "Face cleanser",
+        "what_it_is": "Face Cleansing and Make-Up Removing Gel is a face cleanser from Nuxe in 200ml, with source-backed cues around cleansing and dirt, oil, and impurity removal.",
+        "why_it_stands_out": [
+          {
+            "headline": "Product cues are source-backed",
+            "body": "Reviewed PDP cues such as daily cleansing, pore cleansing, 200ml give shoppers specific comparison points within Nuxe, rather than category-only copy.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Key ingredients are identified",
+            "body": "Glycerin is identified, enough for a cautious high-level formula read without inventing unsupported actives.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Shade and size are explicit",
+            "body": "Variant labels such as 200ml, Size: 200ml are visible, reducing ambiguity around the product format before a shopper clicks through.",
+            "evidence_strength": "official_pdp_reviewed"
+          }
+        ],
+        "best_for": [
+          {
+            "tag": "daily_cleansing",
+            "label": "daily cleansing",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "pore_cleansing",
+            "label": "pore cleansing",
+            "confidence": "moderate"
+          }
+        ],
+        "shopping_highlight": "daily cleansing, pore cleansing, 200ml"
+      },
+      "writes": [
+        {
+          "kb_key": "product:ext_c19c2de6d311d942203c4c27",
+          "action": "skip",
+          "reason": "protected_high_quality_existing:reviewed",
+          "old_hash": "b4e9f0446ad189977adfacfa12df9e68041ad72463aafc2933e063d9e71c5fd8",
+          "existing_weak": false
+        },
+        {
+          "kb_key": "product:sig_48b4ac4c14f151e18361bafdf4693d31",
+          "action": "skip",
+          "reason": "protected_high_quality_existing:reviewed",
+          "old_hash": "b4e9f0446ad189977adfacfa12df9e68041ad72463aafc2933e063d9e71c5fd8",
+          "existing_weak": false
+        }
+      ]
+    },
+    {
+      "external_product_id": "ext_43283d5920391d265c6c07bf",
+      "pivota_signature_id": "sig_11f4a93d37b114f54fcc56f44df6ba56",
+      "title": "Firming Activating Oil-Serum",
+      "brand": "Nuxe",
+      "canonical_url": "https://us.nuxe.com/products/firming-activating-oil-serum",
+      "changed": false,
+      "blocked": false,
+      "skip_reason": "no_safe_writes",
+      "candidate_hash": "e9e50f01f2a7cec490bddbcfa32e17e6bf47deb9830179951f00619b43a9ec72",
+      "evidence_profile": "official_pdp_reviewed_formula_and_usage",
+      "source_coverage": {
+        "source": "official_pdp",
+        "canonical_url": "https://us.nuxe.com/products/firming-activating-oil-serum",
+        "fields": {
+          "description": true,
+          "ingredients": 1,
+          "active_ingredients": 0,
+          "how_to": 1,
+          "details": 3,
+          "variants": 1
+        }
+      },
+      "preview": {
+        "headline": "Treatment serum",
+        "what_it_is": "Firming Activating Oil-Serum is a treatment serum from Nuxe.",
+        "why_it_stands_out": [
+          {
+            "headline": "Ingredient list is available",
+            "body": "Full INCI is present for formula-sensitive review, which makes this PDP safer to evaluate than a claim-only listing.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Usage instructions available",
+            "body": "Reviewed usage context is present, including: Dispense a small drop of serum or half a pipette and spread the product over your fingers.",
+            "evidence_strength": "official_pdp_reviewed"
+          }
+        ],
+        "best_for": [
+          {
+            "tag": "firmness",
+            "label": "firmness",
+            "confidence": "moderate"
+          }
+        ],
+        "shopping_highlight": "full INCI available"
+      },
+      "writes": [
+        {
+          "kb_key": "product:ext_43283d5920391d265c6c07bf",
+          "action": "skip",
+          "reason": "protected_high_quality_existing:reviewed",
+          "old_hash": "1041efee1fbd25454c673c1fbf31991adb19fcb8f38398717b7c482dc9b1b216",
+          "existing_weak": false
+        },
+        {
+          "kb_key": "product:sig_11f4a93d37b114f54fcc56f44df6ba56",
+          "action": "skip",
+          "reason": "protected_high_quality_existing:reviewed",
+          "old_hash": "1041efee1fbd25454c673c1fbf31991adb19fcb8f38398717b7c482dc9b1b216",
+          "existing_weak": false
+        }
+      ]
+    },
+    {
+      "external_product_id": "ext_4c53c1e78f3738405cfc76fb",
+      "pivota_signature_id": "sig_e7f2840dc9fd7ca9a4f4ab7d6fe309dc",
+      "title": "Firming Powdery Cream, Merveillance Lift 50 ml",
+      "brand": "Nuxe",
+      "canonical_url": "https://us.nuxe.com/products/firming-powdery-cream-merveillance-lift-50-ml",
+      "changed": false,
+      "blocked": false,
+      "skip_reason": "no_safe_writes",
+      "candidate_hash": "f306dcfce7cb0002e907dd5ff356a9941a7cb25cdc4c17085a4da38a5c0d00c3",
+      "evidence_profile": "official_pdp_reviewed_formula_and_usage",
+      "source_coverage": {
+        "source": "official_pdp",
+        "canonical_url": "https://us.nuxe.com/products/firming-powdery-cream-merveillance-lift-50-ml",
+        "fields": {
+          "description": true,
+          "ingredients": 1,
+          "active_ingredients": 3,
+          "how_to": 1,
+          "details": 3,
+          "variants": 1
+        }
+      },
+      "preview": {
+        "headline": "Body care treatment",
+        "what_it_is": "Firming Powdery Cream, Merveillance Lift 50 ml is a body care treatment from Nuxe in 50ml, with source-backed cues around hydration.",
+        "why_it_stands_out": [
+          {
+            "headline": "Routine step cues are specific",
+            "body": "Reviewed skincare cues such as peptides, barrier support, 50ml identify the routine role or key ingredient context without inventing unsupported benefits.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Ingredient list is available",
+            "body": "Full INCI is present for formula-sensitive review, which makes this PDP safer to evaluate than a claim-only listing.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Shade and size are explicit",
+            "body": "Variant labels such as 50ml, Size: 50ml are visible, reducing ambiguity around the product format before a shopper clicks through.",
+            "evidence_strength": "official_pdp_reviewed"
+          }
+        ],
+        "best_for": [
+          {
+            "tag": "firmness",
+            "label": "firmness",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "radiance",
+            "label": "radiance",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "barrier_support",
+            "label": "barrier support",
+            "confidence": "moderate"
+          }
+        ],
+        "shopping_highlight": "peptides, barrier support, 50ml"
+      },
+      "writes": [
+        {
+          "kb_key": "product:ext_4c53c1e78f3738405cfc76fb",
+          "action": "skip",
+          "reason": "protected_high_quality_existing:reviewed",
+          "old_hash": "1259984250348fb095b2dce6510a84c58d98b9c163b391f4bc698c59b95341d5",
+          "existing_weak": false
+        },
+        {
+          "kb_key": "product:sig_e7f2840dc9fd7ca9a4f4ab7d6fe309dc",
+          "action": "skip",
+          "reason": "protected_high_quality_existing:reviewed",
+          "old_hash": "1259984250348fb095b2dce6510a84c58d98b9c163b391f4bc698c59b95341d5",
+          "existing_weak": false
+        }
+      ]
+    },
+    {
+      "external_product_id": "ext_d3bcdbf62406401a1c993001",
+      "pivota_signature_id": "sig_ca47aa38d03cc6cfc0a91f7e1d649e04",
+      "title": "Firming Velvet Cream",
+      "brand": "Nuxe",
+      "canonical_url": "https://us.nuxe.com/products/firming-velvet-cream",
+      "changed": false,
+      "blocked": false,
+      "skip_reason": "no_safe_writes",
+      "candidate_hash": "a887743f541b9fbe4fdb9f9e453f9fd53aff82761ae71d0c97a4a3413dac7f22",
+      "evidence_profile": "official_pdp_reviewed_formula_and_usage",
+      "source_coverage": {
+        "source": "official_pdp",
+        "canonical_url": "https://us.nuxe.com/products/firming-velvet-cream",
+        "fields": {
+          "description": true,
+          "ingredients": 1,
+          "active_ingredients": 2,
+          "how_to": 1,
+          "details": 3,
+          "variants": 1
+        }
+      },
+      "preview": {
+        "headline": "Body care treatment",
+        "what_it_is": "Firming Velvet Cream is a body care treatment from Nuxe, with source-backed cues around hydration.",
+        "why_it_stands_out": [
+          {
+            "headline": "Routine step cues are specific",
+            "body": "Reviewed skincare cues such as barrier support identify the routine role or key ingredient context without inventing unsupported benefits.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Ingredient list is available",
+            "body": "Full INCI is present for formula-sensitive review, which makes this PDP safer to evaluate than a claim-only listing.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Usage instructions available",
+            "body": "Reviewed usage context is present, including: Take up a generous drop of product and warm it in your hands.",
+            "evidence_strength": "official_pdp_reviewed"
+          }
+        ],
+        "best_for": [
+          {
+            "tag": "firmness",
+            "label": "firmness",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "radiance",
+            "label": "radiance",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "barrier_support",
+            "label": "barrier support",
+            "confidence": "moderate"
+          }
+        ],
+        "shopping_highlight": "barrier support, full INCI available"
+      },
+      "writes": [
+        {
+          "kb_key": "product:ext_d3bcdbf62406401a1c993001",
+          "action": "skip",
+          "reason": "protected_high_quality_existing:reviewed",
+          "old_hash": "cbb4faf488d6d93e7d93cd147d642c9d21b8d3e9d039727b2595619045a59e29",
+          "existing_weak": false
+        },
+        {
+          "kb_key": "product:sig_ca47aa38d03cc6cfc0a91f7e1d649e04",
+          "action": "skip",
+          "reason": "protected_high_quality_existing:reviewed",
+          "old_hash": "cbb4faf488d6d93e7d93cd147d642c9d21b8d3e9d039727b2595619045a59e29",
+          "existing_weak": false
+        }
+      ]
+    },
+    {
+      "external_product_id": "ext_734928a31b636857e7700d44",
+      "pivota_signature_id": "sig_aaba633c7606af800489eef529ff8872",
+      "title": "Fresh Bloom Cleansing Set",
+      "brand": "Nuxe",
+      "canonical_url": "https://us.nuxe.com/products/fresh-bloom-cleansing-set",
+      "changed": false,
+      "blocked": false,
+      "skip_reason": "no_safe_writes",
+      "candidate_hash": "8be393d7da1929513f058bf5ec9e3a45716d8731e471a6984f94b044b928c606",
+      "evidence_profile": "official_pdp_reviewed_line",
+      "source_coverage": {
+        "source": "official_pdp",
+        "canonical_url": "https://us.nuxe.com/products/fresh-bloom-cleansing-set",
+        "fields": {
+          "description": true,
+          "ingredients": 0,
+          "active_ingredients": 0,
+          "how_to": 1,
+          "details": 1,
+          "variants": 1
+        }
+      },
+      "preview": {
+        "headline": "Skincare set",
+        "what_it_is": "Fresh Bloom Cleansing Set is a skincare set from Nuxe in Set, with source-backed cues around cleansing.",
+        "why_it_stands_out": [
+          {
+            "headline": "Routine step cues are specific",
+            "body": "Reviewed skincare cues such as Set identify the routine role or key ingredient context without inventing unsupported benefits.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Shade and size are explicit",
+            "body": "Variant labels such as Set, Format: Set are visible, reducing ambiguity around the product format before a shopper clicks through.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Usage instructions available",
+            "body": "Reviewed usage context is present, including: Massage onto damp skin, then rinse thoroughly.",
+            "evidence_strength": "official_pdp_reviewed"
+          }
+        ],
+        "best_for": [
+          {
+            "tag": "set",
+            "label": "Set",
+            "confidence": "moderate"
+          }
+        ],
+        "shopping_highlight": "Skincare routine set"
+      },
+      "writes": [
+        {
+          "kb_key": "product:ext_734928a31b636857e7700d44",
+          "action": "skip",
+          "reason": "protected_high_quality_existing:reviewed",
+          "old_hash": "8492b408e02b557bb8be2d48157f5dd094f5bf12a1aa6625a34ffe3cd6dcc240",
+          "existing_weak": false
+        },
+        {
+          "kb_key": "product:sig_aaba633c7606af800489eef529ff8872",
+          "action": "skip",
+          "reason": "protected_high_quality_existing:reviewed",
+          "old_hash": "8492b408e02b557bb8be2d48157f5dd094f5bf12a1aa6625a34ffe3cd6dcc240",
+          "existing_weak": false
+        }
+      ]
+    },
+    {
+      "external_product_id": "ext_43d6092f7455071507fc005c",
+      "pivota_signature_id": "sig_5b1f267016818236648a246720aa3d1e",
+      "title": "Giftset The Iconics",
+      "brand": "Nuxe",
+      "canonical_url": "https://us.nuxe.com/products/holidays-giftset-the-iconics",
+      "changed": true,
+      "blocked": false,
+      "skip_reason": null,
+      "candidate_hash": "de6028e211d438b474c99b82c2733635def3d6a541640a772cc371254a043abb",
+      "evidence_profile": "official_pdp_reviewed_line",
+      "source_coverage": {
+        "source": "official_pdp",
+        "canonical_url": "https://us.nuxe.com/products/holidays-giftset-the-iconics",
+        "fields": {
+          "description": true,
+          "ingredients": 0,
+          "active_ingredients": 0,
+          "how_to": 1,
+          "details": 1,
+          "variants": 1
+        }
+      },
+      "preview": {
+        "headline": "Hair treatment",
+        "what_it_is": "Giftset The Iconics is a hair treatment from Nuxe.",
+        "why_it_stands_out": [
+          {
+            "headline": "Usage instructions available",
+            "body": "Reviewed usage context is present, including: Apply to clean skin after treatment steps.",
+            "evidence_strength": "official_pdp_reviewed"
+          }
+        ],
+        "best_for": [
+          {
+            "tag": "hair_treatment",
+            "label": "Hair treatment",
+            "confidence": "moderate"
+          }
+        ],
+        "shopping_highlight": "Hair treatment"
+      },
+      "writes": [
+        {
+          "kb_key": "product:ext_43d6092f7455071507fc005c",
+          "action": "update",
+          "reason": "explicit_owner_delegated_assistant_replacement_review",
+          "old_hash": "53b697d189b7f36aa248c56cfacaf2a8d47ee1d088a79ea2cc8962dfe8f59dfc",
+          "candidate_hash": "74ad047d0919f664815b452167d847f6ab29e5e5a8695d13139b462e42bc0ddb",
+          "existing_weak": true,
+          "source": "pivota_insights_official_pdp_manual_review_v1",
+          "after_inventory": {
+            "product_id": "ext_43d6092f7455071507fc005c",
+            "kb_key": "product:ext_43d6092f7455071507fc005c",
+            "source": "pivota_insights_official_pdp_manual_review_v1",
+            "updated_at": "",
+            "last_success_at": "",
+            "title": "Giftset The Iconics",
+            "canonical_url": "",
+            "bundle_hash": "de6028e211d438b474c99b82c2733635def3d6a541640a772cc371254a043abb",
+            "lane": "keep",
+            "reason": "protected_good_content",
+            "priority": 0,
+            "protected": true,
+            "displayable": true,
+            "high_quality_ready": true,
+            "human_reviewed": true,
+            "issues": [],
+            "blocking_issues": [],
+            "quality_state": "reviewed",
+            "evidence_profile": "official_pdp_reviewed_line",
+            "evidence_rank": 3,
+            "review_tier": "assistant_reviewed",
+            "agent_readable": true,
+            "public_ready": true
+          },
+          "source_meta": {
+            "evidence_profile": "official_pdp_reviewed_line",
+            "quality_state": "reviewed",
+            "source_origin": "official_pdp_fields",
+            "source_url": "https://us.nuxe.com/products/holidays-giftset-the-iconics",
+            "quality_improvement": {
+              "previous_bundle_hash": "5620ad5f5a00c1157667b4257457c67ff2c58e4c2fd6285783730b4515589e20",
+              "candidate_bundle_hash": "de6028e211d438b474c99b82c2733635def3d6a541640a772cc371254a043abb",
+              "replacement_decision": "explicit_owner_delegated_assistant_replacement_review",
+              "existing_quality_lane": "keep",
+              "candidate_quality_lane": "keep",
+              "existing_evidence_profile": "official_pdp_reviewed_line",
+              "candidate_evidence_profile": "official_pdp_reviewed_line"
+            }
+          }
+        },
+        {
+          "kb_key": "product:sig_5b1f267016818236648a246720aa3d1e",
+          "action": "update",
+          "reason": "explicit_owner_delegated_assistant_replacement_review",
+          "old_hash": "53b697d189b7f36aa248c56cfacaf2a8d47ee1d088a79ea2cc8962dfe8f59dfc",
+          "candidate_hash": "74ad047d0919f664815b452167d847f6ab29e5e5a8695d13139b462e42bc0ddb",
+          "existing_weak": true,
+          "source": "pivota_insights_official_pdp_manual_review_v1",
+          "after_inventory": {
+            "product_id": "ext_43d6092f7455071507fc005c",
+            "kb_key": "product:sig_5b1f267016818236648a246720aa3d1e",
+            "source": "pivota_insights_official_pdp_manual_review_v1",
+            "updated_at": "",
+            "last_success_at": "",
+            "title": "Giftset The Iconics",
+            "canonical_url": "",
+            "bundle_hash": "de6028e211d438b474c99b82c2733635def3d6a541640a772cc371254a043abb",
+            "lane": "keep",
+            "reason": "protected_good_content",
+            "priority": 0,
+            "protected": true,
+            "displayable": true,
+            "high_quality_ready": true,
+            "human_reviewed": true,
+            "issues": [],
+            "blocking_issues": [],
+            "quality_state": "reviewed",
+            "evidence_profile": "official_pdp_reviewed_line",
+            "evidence_rank": 3,
+            "review_tier": "assistant_reviewed",
+            "agent_readable": true,
+            "public_ready": true
+          },
+          "source_meta": {
+            "evidence_profile": "official_pdp_reviewed_line",
+            "quality_state": "reviewed",
+            "source_origin": "official_pdp_fields",
+            "source_url": "https://us.nuxe.com/products/holidays-giftset-the-iconics",
+            "quality_improvement": {
+              "previous_bundle_hash": "5620ad5f5a00c1157667b4257457c67ff2c58e4c2fd6285783730b4515589e20",
+              "candidate_bundle_hash": "de6028e211d438b474c99b82c2733635def3d6a541640a772cc371254a043abb",
+              "replacement_decision": "explicit_owner_delegated_assistant_replacement_review",
+              "existing_quality_lane": "keep",
+              "candidate_quality_lane": "keep",
+              "existing_evidence_profile": "official_pdp_reviewed_line",
+              "candidate_evidence_profile": "official_pdp_reviewed_line"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "external_product_id": "ext_70a8a19acc55ed7354a1542e",
+      "pivota_signature_id": "sig_9123cf6892a24f88f284b67015c4a585",
+      "title": "Giftset The Iconics",
+      "brand": "Nuxe",
+      "canonical_url": "https://us.nuxe.com/products/holidays-giftset-the-iconics",
+      "changed": true,
+      "blocked": false,
+      "skip_reason": null,
+      "candidate_hash": "41406d62e8a50e5b2d7a47a334ca31164383b51dd314bec4c7524c9b2b2cf195",
+      "evidence_profile": "official_pdp_reviewed_line",
+      "source_coverage": {
+        "source": "official_pdp",
+        "canonical_url": "https://us.nuxe.com/products/holidays-giftset-the-iconics",
+        "fields": {
+          "description": true,
+          "ingredients": 0,
+          "active_ingredients": 0,
+          "how_to": 1,
+          "details": 1,
+          "variants": 1
+        }
+      },
+      "preview": {
+        "headline": "Hair treatment",
+        "what_it_is": "Giftset The Iconics is a hair treatment from Nuxe.",
+        "why_it_stands_out": [
+          {
+            "headline": "Usage instructions available",
+            "body": "Reviewed usage context is present, including: Apply to clean skin after treatment steps.",
+            "evidence_strength": "official_pdp_reviewed"
+          }
+        ],
+        "best_for": [
+          {
+            "tag": "hair_treatment",
+            "label": "Hair treatment",
+            "confidence": "moderate"
+          }
+        ],
+        "shopping_highlight": "Hair treatment"
+      },
+      "writes": [
+        {
+          "kb_key": "product:ext_70a8a19acc55ed7354a1542e",
+          "action": "update",
+          "reason": "explicit_owner_delegated_assistant_replacement_review",
+          "old_hash": "8c6b1b418b5fe9e2d46b53f8dbabb9adf3da50ef68010674f47144583f49876c",
+          "candidate_hash": "2d47ca147f058aec0396890adbf88b74a08e8a5ff2215ae2b4da3e00c0dc4ae4",
+          "existing_weak": true,
+          "source": "pivota_insights_official_pdp_manual_review_v1",
+          "after_inventory": {
+            "product_id": "ext_70a8a19acc55ed7354a1542e",
+            "kb_key": "product:ext_70a8a19acc55ed7354a1542e",
+            "source": "pivota_insights_official_pdp_manual_review_v1",
+            "updated_at": "",
+            "last_success_at": "",
+            "title": "Giftset The Iconics",
+            "canonical_url": "",
+            "bundle_hash": "41406d62e8a50e5b2d7a47a334ca31164383b51dd314bec4c7524c9b2b2cf195",
+            "lane": "keep",
+            "reason": "protected_good_content",
+            "priority": 0,
+            "protected": true,
+            "displayable": true,
+            "high_quality_ready": true,
+            "human_reviewed": true,
+            "issues": [],
+            "blocking_issues": [],
+            "quality_state": "reviewed",
+            "evidence_profile": "official_pdp_reviewed_line",
+            "evidence_rank": 3,
+            "review_tier": "assistant_reviewed",
+            "agent_readable": true,
+            "public_ready": true
+          },
+          "source_meta": {
+            "evidence_profile": "official_pdp_reviewed_line",
+            "quality_state": "reviewed",
+            "source_origin": "official_pdp_fields",
+            "source_url": "https://us.nuxe.com/products/holidays-giftset-the-iconics",
+            "quality_improvement": {
+              "previous_bundle_hash": "f91dc76988ca5880ab18399907a134cc3af05d254fc26edfcf00342973845c00",
+              "candidate_bundle_hash": "41406d62e8a50e5b2d7a47a334ca31164383b51dd314bec4c7524c9b2b2cf195",
+              "replacement_decision": "explicit_owner_delegated_assistant_replacement_review",
+              "existing_quality_lane": "keep",
+              "candidate_quality_lane": "keep",
+              "existing_evidence_profile": "official_pdp_reviewed_line",
+              "candidate_evidence_profile": "official_pdp_reviewed_line"
+            }
+          }
+        },
+        {
+          "kb_key": "product:sig_9123cf6892a24f88f284b67015c4a585",
+          "action": "update",
+          "reason": "explicit_owner_delegated_assistant_replacement_review",
+          "old_hash": "8c6b1b418b5fe9e2d46b53f8dbabb9adf3da50ef68010674f47144583f49876c",
+          "candidate_hash": "2d47ca147f058aec0396890adbf88b74a08e8a5ff2215ae2b4da3e00c0dc4ae4",
+          "existing_weak": true,
+          "source": "pivota_insights_official_pdp_manual_review_v1",
+          "after_inventory": {
+            "product_id": "ext_70a8a19acc55ed7354a1542e",
+            "kb_key": "product:sig_9123cf6892a24f88f284b67015c4a585",
+            "source": "pivota_insights_official_pdp_manual_review_v1",
+            "updated_at": "",
+            "last_success_at": "",
+            "title": "Giftset The Iconics",
+            "canonical_url": "",
+            "bundle_hash": "41406d62e8a50e5b2d7a47a334ca31164383b51dd314bec4c7524c9b2b2cf195",
+            "lane": "keep",
+            "reason": "protected_good_content",
+            "priority": 0,
+            "protected": true,
+            "displayable": true,
+            "high_quality_ready": true,
+            "human_reviewed": true,
+            "issues": [],
+            "blocking_issues": [],
+            "quality_state": "reviewed",
+            "evidence_profile": "official_pdp_reviewed_line",
+            "evidence_rank": 3,
+            "review_tier": "assistant_reviewed",
+            "agent_readable": true,
+            "public_ready": true
+          },
+          "source_meta": {
+            "evidence_profile": "official_pdp_reviewed_line",
+            "quality_state": "reviewed",
+            "source_origin": "official_pdp_fields",
+            "source_url": "https://us.nuxe.com/products/holidays-giftset-the-iconics",
+            "quality_improvement": {
+              "previous_bundle_hash": "f91dc76988ca5880ab18399907a134cc3af05d254fc26edfcf00342973845c00",
+              "candidate_bundle_hash": "41406d62e8a50e5b2d7a47a334ca31164383b51dd314bec4c7524c9b2b2cf195",
+              "replacement_decision": "explicit_owner_delegated_assistant_replacement_review",
+              "existing_quality_lane": "keep",
+              "candidate_quality_lane": "keep",
+              "existing_evidence_profile": "official_pdp_reviewed_line",
+              "candidate_evidence_profile": "official_pdp_reviewed_line"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "external_product_id": "ext_6381e7e7e06a08baef5021ee",
+      "pivota_signature_id": "sig_8d450b6fcfd7a4d8be1e4fe25526695f",
+      "title": "Global Anti-Aging Day & Night Duo, Nuxuriance Ultra",
+      "brand": "Nuxe",
+      "canonical_url": "https://us.nuxe.com/products/global-anti-aging-day-night-duo-nuxuriance-ultra",
+      "changed": false,
+      "blocked": false,
+      "skip_reason": "no_safe_writes",
+      "candidate_hash": "381a409dae378fea14c1c7ad361e7eb133d0e8a13b4ec050f969e8493a964262",
+      "evidence_profile": "official_pdp_reviewed_line",
+      "source_coverage": {
+        "source": "official_pdp",
+        "canonical_url": "https://us.nuxe.com/products/global-anti-aging-day-night-duo-nuxuriance-ultra",
+        "fields": {
+          "description": true,
+          "ingredients": 0,
+          "active_ingredients": 0,
+          "how_to": 1,
+          "details": 1,
+          "variants": 1
+        }
+      },
+      "preview": {
+        "headline": "Face moisturizer",
+        "what_it_is": "Global Anti-Aging Day & Night Duo, Nuxuriance Ultra is a face moisturizer from Nuxe in Duo.",
+        "why_it_stands_out": [
+          {
+            "headline": "Routine step cues are specific",
+            "body": "Reviewed skincare cues such as Duo identify the routine role or key ingredient context without inventing unsupported benefits.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Shade and size are explicit",
+            "body": "Variant labels such as Duo, Format: Duo are visible, reducing ambiguity around the product format before a shopper clicks through.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Usage instructions available",
+            "body": "Reviewed usage context is present, including: Apply to clean skin after treatment steps.",
+            "evidence_strength": "official_pdp_reviewed"
+          }
+        ],
+        "best_for": [
+          {
+            "tag": "duo",
+            "label": "Duo",
+            "confidence": "moderate"
+          }
+        ],
+        "shopping_highlight": "Duo"
+      },
+      "writes": [
+        {
+          "kb_key": "product:ext_6381e7e7e06a08baef5021ee",
+          "action": "skip",
+          "reason": "protected_high_quality_existing:reviewed",
+          "old_hash": "b89afca1123fefb00abc695f981cb1cc0ab1d3a21156af0ca68df4487721fb7f",
+          "existing_weak": false
+        },
+        {
+          "kb_key": "product:sig_8d450b6fcfd7a4d8be1e4fe25526695f",
+          "action": "skip",
+          "reason": "protected_high_quality_existing:reviewed",
+          "old_hash": "b89afca1123fefb00abc695f981cb1cc0ab1d3a21156af0ca68df4487721fb7f",
+          "existing_weak": false
+        }
+      ]
+    },
+    {
+      "external_product_id": "ext_48e54cd8869516e36d8ea33d",
+      "pivota_signature_id": "sig_3474757ae11a5dc697b4bbb843f4958e",
+      "title": "Glow Like a Goddess",
+      "brand": "Nuxe",
+      "canonical_url": "https://us.nuxe.com/products/glow-like-a-goddess",
+      "changed": true,
+      "blocked": false,
+      "skip_reason": null,
+      "candidate_hash": "0a69338e1a5084e3c4be979dbf026cec31ab93785da607dbc3220cf1a9d5d71c",
+      "evidence_profile": "official_pdp_reviewed_line",
+      "source_coverage": {
+        "source": "official_pdp",
+        "canonical_url": "https://us.nuxe.com/products/glow-like-a-goddess",
+        "fields": {
+          "description": true,
+          "ingredients": 0,
+          "active_ingredients": 0,
+          "how_to": 1,
+          "details": 1,
+          "variants": 1
+        }
+      },
+      "preview": {
+        "headline": "Beauty product",
+        "what_it_is": "Glow Like a Goddess is a beauty product from Nuxe. This bundle consists of:- 1 Huile Prodigieuse® Or Florale 1.6 fl.",
+        "why_it_stands_out": [
+          {
+            "headline": "Usage instructions available",
+            "body": "Reviewed usage context is present, including: Use according to the merchant directions for this product.",
+            "evidence_strength": "official_pdp_reviewed"
+          }
+        ],
+        "best_for": [
+          {
+            "tag": "beauty_product",
+            "label": "Beauty product",
+            "confidence": "moderate"
+          }
+        ],
+        "shopping_highlight": "Beauty product"
+      },
+      "writes": [
+        {
+          "kb_key": "product:ext_48e54cd8869516e36d8ea33d",
+          "action": "update",
+          "reason": "explicit_owner_delegated_assistant_replacement_review",
+          "old_hash": "fd233a0eaaa12e3381d897a4565c99be7af7d69e7e3a69397dd1ca25380c3d00",
+          "candidate_hash": "ab7361e97b47d9647466a6164b6e3e7885f716d965c70ad97854ff3aae14b7e2",
+          "existing_weak": true,
+          "source": "pivota_insights_official_pdp_manual_review_v1",
+          "after_inventory": {
+            "product_id": "ext_48e54cd8869516e36d8ea33d",
+            "kb_key": "product:ext_48e54cd8869516e36d8ea33d",
+            "source": "pivota_insights_official_pdp_manual_review_v1",
+            "updated_at": "",
+            "last_success_at": "",
+            "title": "Glow Like a Goddess",
+            "canonical_url": "",
+            "bundle_hash": "0a69338e1a5084e3c4be979dbf026cec31ab93785da607dbc3220cf1a9d5d71c",
+            "lane": "keep",
+            "reason": "protected_good_content",
+            "priority": 0,
+            "protected": true,
+            "displayable": true,
+            "high_quality_ready": true,
+            "human_reviewed": true,
+            "issues": [],
+            "blocking_issues": [],
+            "quality_state": "reviewed",
+            "evidence_profile": "official_pdp_reviewed_line",
+            "evidence_rank": 3,
+            "review_tier": "assistant_reviewed",
+            "agent_readable": true,
+            "public_ready": true
+          },
+          "source_meta": {
+            "evidence_profile": "official_pdp_reviewed_line",
+            "quality_state": "reviewed",
+            "source_origin": "official_pdp_fields",
+            "source_url": "https://us.nuxe.com/products/glow-like-a-goddess",
+            "quality_improvement": {
+              "previous_bundle_hash": "638ebe92fe4748098680f486a0b36e53b22edb98d2962fce62483104732c2ac7",
+              "candidate_bundle_hash": "0a69338e1a5084e3c4be979dbf026cec31ab93785da607dbc3220cf1a9d5d71c",
+              "replacement_decision": "explicit_owner_delegated_assistant_replacement_review",
+              "existing_quality_lane": "keep",
+              "candidate_quality_lane": "keep",
+              "existing_evidence_profile": "official_pdp_reviewed_line",
+              "candidate_evidence_profile": "official_pdp_reviewed_line"
+            }
+          }
+        },
+        {
+          "kb_key": "product:sig_3474757ae11a5dc697b4bbb843f4958e",
+          "action": "update",
+          "reason": "explicit_owner_delegated_assistant_replacement_review",
+          "old_hash": "fd233a0eaaa12e3381d897a4565c99be7af7d69e7e3a69397dd1ca25380c3d00",
+          "candidate_hash": "ab7361e97b47d9647466a6164b6e3e7885f716d965c70ad97854ff3aae14b7e2",
+          "existing_weak": true,
+          "source": "pivota_insights_official_pdp_manual_review_v1",
+          "after_inventory": {
+            "product_id": "ext_48e54cd8869516e36d8ea33d",
+            "kb_key": "product:sig_3474757ae11a5dc697b4bbb843f4958e",
+            "source": "pivota_insights_official_pdp_manual_review_v1",
+            "updated_at": "",
+            "last_success_at": "",
+            "title": "Glow Like a Goddess",
+            "canonical_url": "",
+            "bundle_hash": "0a69338e1a5084e3c4be979dbf026cec31ab93785da607dbc3220cf1a9d5d71c",
+            "lane": "keep",
+            "reason": "protected_good_content",
+            "priority": 0,
+            "protected": true,
+            "displayable": true,
+            "high_quality_ready": true,
+            "human_reviewed": true,
+            "issues": [],
+            "blocking_issues": [],
+            "quality_state": "reviewed",
+            "evidence_profile": "official_pdp_reviewed_line",
+            "evidence_rank": 3,
+            "review_tier": "assistant_reviewed",
+            "agent_readable": true,
+            "public_ready": true
+          },
+          "source_meta": {
+            "evidence_profile": "official_pdp_reviewed_line",
+            "quality_state": "reviewed",
+            "source_origin": "official_pdp_fields",
+            "source_url": "https://us.nuxe.com/products/glow-like-a-goddess",
+            "quality_improvement": {
+              "previous_bundle_hash": "638ebe92fe4748098680f486a0b36e53b22edb98d2962fce62483104732c2ac7",
+              "candidate_bundle_hash": "0a69338e1a5084e3c4be979dbf026cec31ab93785da607dbc3220cf1a9d5d71c",
+              "replacement_decision": "explicit_owner_delegated_assistant_replacement_review",
+              "existing_quality_lane": "keep",
+              "candidate_quality_lane": "keep",
+              "existing_evidence_profile": "official_pdp_reviewed_line",
+              "candidate_evidence_profile": "official_pdp_reviewed_line"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "external_product_id": "ext_a492e1b9df88c54b1124f095",
+      "pivota_signature_id": "sig_f32f379e3ae381e1304fbb5b3be879cf",
+      "title": "Glowy lips care duo, Rêve de Miel",
+      "brand": "Nuxe",
+      "canonical_url": "https://us.nuxe.com/products/glowy-lips-care-duo-reve-de-miel",
+      "changed": false,
+      "blocked": false,
+      "skip_reason": "no_safe_writes",
+      "candidate_hash": "88beb1b48e1709bf3b97c0e254bf4f15edfee195f9e94527ae0463cbd7bd8b6b",
+      "evidence_profile": "official_pdp_reviewed_line",
+      "source_coverage": {
+        "source": "official_pdp",
+        "canonical_url": "https://us.nuxe.com/products/glowy-lips-care-duo-reve-de-miel",
+        "fields": {
+          "description": true,
+          "ingredients": 0,
+          "active_ingredients": 0,
+          "how_to": 1,
+          "details": 1,
+          "variants": 1
+        }
+      },
+      "preview": {
+        "headline": "Lip treatment",
+        "what_it_is": "Glowy lips care duo, Rêve de Miel is a lip balm from Nuxe, with source-backed cues around comfort-oriented lip care.",
+        "why_it_stands_out": [
+          {
+            "headline": "Product cues are source-backed",
+            "body": "Reviewed PDP cues such as honey, Duo give shoppers specific comparison points within Nuxe, rather than category-only copy.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Shade and size are explicit",
+            "body": "Variant labels such as Duo, Format: Duo are visible, reducing ambiguity around the product format before a shopper clicks through.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Usage instructions available",
+            "body": "Reviewed usage context is present, including: Apply to clean skin after treatment steps.",
+            "evidence_strength": "official_pdp_reviewed"
+          }
+        ],
+        "best_for": [
+          {
+            "tag": "lip_comfort",
+            "label": "lip comfort",
+            "confidence": "moderate"
+          }
+        ],
+        "shopping_highlight": "honey, Duo"
+      },
+      "writes": [
+        {
+          "kb_key": "product:ext_a492e1b9df88c54b1124f095",
+          "action": "skip",
+          "reason": "protected_high_quality_existing:reviewed",
+          "old_hash": "99cd719c200fb469be7f5bc4231037b0cde06a4f0f7bc05adb11275a6aef257c",
+          "existing_weak": false
+        },
+        {
+          "kb_key": "product:sig_f32f379e3ae381e1304fbb5b3be879cf",
+          "action": "skip",
+          "reason": "protected_high_quality_existing:reviewed",
+          "old_hash": "99cd719c200fb469be7f5bc4231037b0cde06a4f0f7bc05adb11275a6aef257c",
+          "existing_weak": false
+        }
+      ]
+    },
+    {
+      "external_product_id": "ext_2b7041f5d56768ec6c9b6429",
+      "pivota_signature_id": "sig_443932537cbc9a2133595c627029a687",
+      "title": "Hair Care Duo Hair Prodigieux®",
+      "brand": "Nuxe",
+      "canonical_url": "https://us.nuxe.com/products/hair-care-duo-hair-prodigieux-its-detangling-brush",
+      "changed": false,
+      "blocked": false,
+      "skip_reason": "no_safe_writes",
+      "candidate_hash": "3b1f17cf0c7d749bc7d26efd3dc7c7ab4900bf7a1bfc610173e7893e9069c85e",
+      "evidence_profile": "official_pdp_reviewed_line",
+      "source_coverage": {
+        "source": "official_pdp",
+        "canonical_url": "https://us.nuxe.com/products/hair-care-duo-hair-prodigieux-its-detangling-brush",
+        "fields": {
+          "description": true,
+          "ingredients": 0,
+          "active_ingredients": 0,
+          "how_to": 1,
+          "details": 1,
+          "variants": 1
+        }
+      },
+      "preview": {
+        "headline": "Hair treatment",
+        "what_it_is": "Hair Care Duo Hair Prodigieux® is a leave-in hair treatment from Nuxe in Duo, with source-backed cues around leave-in care.",
+        "why_it_stands_out": [
+          {
+            "headline": "Product cues are source-backed",
+            "body": "Reviewed PDP cues such as leave-in care, Duo give shoppers specific comparison points within Nuxe, rather than category-only copy.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Shade and size are explicit",
+            "body": "Variant labels such as Duo, Format: Duo are visible, reducing ambiguity around the product format before a shopper clicks through.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Usage instructions available",
+            "body": "Reviewed usage context is present, including: Apply to hair or scalp as directed by the merchant, then rinse or style according to the product format.",
+            "evidence_strength": "official_pdp_reviewed"
+          }
+        ],
+        "best_for": [
+          {
+            "tag": "hair_hydration",
+            "label": "hair hydration",
+            "confidence": "moderate"
+          }
+        ],
+        "shopping_highlight": "leave-in care, Duo"
+      },
+      "writes": [
+        {
+          "kb_key": "product:ext_2b7041f5d56768ec6c9b6429",
+          "action": "skip",
+          "reason": "protected_high_quality_existing:reviewed",
+          "old_hash": "8514a38aba1da46cd271818b839139f88ae02b697e6898b598f39b9e745bcd32",
+          "existing_weak": false
+        },
+        {
+          "kb_key": "product:sig_443932537cbc9a2133595c627029a687",
+          "action": "skip",
+          "reason": "protected_high_quality_existing:reviewed",
+          "old_hash": "8514a38aba1da46cd271818b839139f88ae02b697e6898b598f39b9e745bcd32",
+          "existing_weak": false
+        }
+      ]
+    },
+    {
+      "external_product_id": "ext_01a1eb29115d49ad88f4b80c",
+      "pivota_signature_id": "sig_093222d0fbb63b044cfdf4a4d9c08e8e",
+      "title": "Hand and Nail Cream",
+      "brand": "Nuxe",
+      "canonical_url": "https://us.nuxe.com/products/hand-and-nail-cream-reve-de-miel",
+      "changed": false,
+      "blocked": false,
+      "skip_reason": "no_safe_writes",
+      "candidate_hash": "ce9b99b56da13426e03d79399d2828ba042669e37c9841693554c8644104084d",
+      "evidence_profile": "official_pdp_reviewed_formula_and_usage",
+      "source_coverage": {
+        "source": "official_pdp",
+        "canonical_url": "https://us.nuxe.com/products/hand-and-nail-cream-reve-de-miel",
+        "fields": {
+          "description": true,
+          "ingredients": 1,
+          "active_ingredients": 1,
+          "how_to": 1,
+          "details": 3,
+          "variants": 1
+        }
+      },
+      "preview": {
+        "headline": "Body care treatment",
+        "what_it_is": "Hand and Nail Cream is a body care treatment from Nuxe in 50ml, with source-backed cues around hydration.",
+        "why_it_stands_out": [
+          {
+            "headline": "Routine step cues are specific",
+            "body": "Reviewed skincare cues such as barrier support, 50ml identify the routine role or key ingredient context without inventing unsupported benefits.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Ingredient list is available",
+            "body": "Full INCI is present for formula-sensitive review, which makes this PDP safer to evaluate than a claim-only listing.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Shade and size are explicit",
+            "body": "Variant labels such as 50ml, Size: 50ml are visible, reducing ambiguity around the product format before a shopper clicks through.",
+            "evidence_strength": "official_pdp_reviewed"
+          }
+        ],
+        "best_for": [
+          {
+            "tag": "firmness",
+            "label": "firmness",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "barrier_support",
+            "label": "barrier support",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "aromatherapy",
+            "label": "aromatherapy",
+            "confidence": "moderate"
+          }
+        ],
+        "shopping_highlight": "barrier support, 50ml"
+      },
+      "writes": [
+        {
+          "kb_key": "product:ext_01a1eb29115d49ad88f4b80c",
+          "action": "skip",
+          "reason": "protected_high_quality_existing:reviewed",
+          "old_hash": "98ff825612f888debbd1ca774e124bb76aa8e551cf0ba1b735848b4fcf43fbf4",
+          "existing_weak": false
+        },
+        {
+          "kb_key": "product:sig_093222d0fbb63b044cfdf4a4d9c08e8e",
+          "action": "skip",
+          "reason": "protected_high_quality_existing:reviewed",
+          "old_hash": "98ff825612f888debbd1ca774e124bb76aa8e551cf0ba1b735848b4fcf43fbf4",
+          "existing_weak": false
+        }
+      ]
+    },
+    {
+      "external_product_id": "ext_4e0ed0757fcd6c17728dab19",
+      "pivota_signature_id": "sig_84a0919cd9bc3d3d43995dacbae2a520",
+      "title": "Hand and Nail Cream",
+      "brand": "Nuxe",
+      "canonical_url": "https://us.nuxe.com/products/hand-and-nail-cream-reve-de-miel",
+      "changed": false,
+      "blocked": false,
+      "skip_reason": "no_safe_writes",
+      "candidate_hash": "1cd222923a5c3a29ac13f471a29c514ce36d3a4b3a9fecdf472beadb2fad05ef",
+      "evidence_profile": "official_pdp_reviewed_formula",
+      "source_coverage": {
+        "source": "official_pdp",
+        "canonical_url": "https://us.nuxe.com/products/hand-and-nail-cream-reve-de-miel",
+        "fields": {
+          "description": true,
+          "ingredients": 16,
+          "active_ingredients": 1,
+          "how_to": 0,
+          "details": 0,
+          "variants": 1
+        }
+      },
+      "preview": {
+        "headline": "Body care treatment",
+        "what_it_is": "Hand and Nail Cream is a body care treatment from Nuxe in 50ml, with source-backed cues around hydration.",
+        "why_it_stands_out": [
+          {
+            "headline": "Routine step cues are specific",
+            "body": "Reviewed skincare cues such as 50ml identify the routine role or key ingredient context without inventing unsupported benefits.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Ingredient list is available",
+            "body": "Full INCI is present for formula-sensitive review, which makes this PDP safer to evaluate than a claim-only listing.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Shade and size are explicit",
+            "body": "Variant labels such as 50ml, Size: 50ml are visible, reducing ambiguity around the product format before a shopper clicks through.",
+            "evidence_strength": "official_pdp_reviewed"
+          }
+        ],
+        "best_for": [
+          {
+            "tag": "aromatherapy",
+            "label": "aromatherapy",
+            "confidence": "moderate"
+          }
+        ],
+        "shopping_highlight": "50ml, full INCI available"
+      },
+      "writes": [
+        {
+          "kb_key": "product:ext_4e0ed0757fcd6c17728dab19",
+          "action": "skip",
+          "reason": "protected_high_quality_existing:reviewed",
+          "old_hash": "214138add0985bfc6a9a64b5e756a92bd87bd1a9fbdfaf72cb42e993c72f6999",
+          "existing_weak": false
+        },
+        {
+          "kb_key": "product:sig_84a0919cd9bc3d3d43995dacbae2a520",
+          "action": "skip",
+          "reason": "protected_high_quality_existing:reviewed",
+          "old_hash": "214138add0985bfc6a9a64b5e756a92bd87bd1a9fbdfaf72cb42e993c72f6999",
+          "existing_weak": false
+        }
+      ]
+    },
+    {
+      "external_product_id": "ext_a98cda61908ffefabd10aba2",
+      "pivota_signature_id": "sig_383f0cdeafac106a0831f95e55669327",
+      "title": "Hands & lips Duo, Rêve de Miel",
+      "brand": "Nuxe",
+      "canonical_url": "https://us.nuxe.com/products/hands-lips-duo-reve-de-miel",
+      "changed": false,
+      "blocked": false,
+      "skip_reason": "no_safe_writes",
+      "candidate_hash": "50df40832e7d0ffd9f7a919753cc283c354cf6252f8a8faed38bdc84a01b7369",
+      "evidence_profile": "official_pdp_reviewed_line",
+      "source_coverage": {
+        "source": "official_pdp",
+        "canonical_url": "https://us.nuxe.com/products/hands-lips-duo-reve-de-miel",
+        "fields": {
+          "description": true,
+          "ingredients": 0,
+          "active_ingredients": 0,
+          "how_to": 1,
+          "details": 1,
+          "variants": 1
+        }
+      },
+      "preview": {
+        "headline": "Lip treatment",
+        "what_it_is": "Hands & lips Duo, Rêve de Miel is a lip balm from Nuxe, with source-backed cues around comfort-oriented lip care.",
+        "why_it_stands_out": [
+          {
+            "headline": "Product cues are source-backed",
+            "body": "Reviewed PDP cues such as honey, Duo give shoppers specific comparison points within Nuxe, rather than category-only copy.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Shade and size are explicit",
+            "body": "Variant labels such as Duo, Format: Duo are visible, reducing ambiguity around the product format before a shopper clicks through.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Usage instructions available",
+            "body": "Reviewed usage context is present, including: Apply to clean skin after treatment steps.",
+            "evidence_strength": "official_pdp_reviewed"
+          }
+        ],
+        "best_for": [
+          {
+            "tag": "lip_comfort",
+            "label": "lip comfort",
+            "confidence": "moderate"
+          }
+        ],
+        "shopping_highlight": "honey, Duo"
+      },
+      "writes": [
+        {
+          "kb_key": "product:ext_a98cda61908ffefabd10aba2",
+          "action": "skip",
+          "reason": "protected_high_quality_existing:reviewed",
+          "old_hash": "dc80edb3e01446be7b1171a85a11f36df7ad4b8137caad7f7db92575532c50c5",
+          "existing_weak": false
+        },
+        {
+          "kb_key": "product:sig_383f0cdeafac106a0831f95e55669327",
+          "action": "skip",
+          "reason": "protected_high_quality_existing:reviewed",
+          "old_hash": "dc80edb3e01446be7b1171a85a11f36df7ad4b8137caad7f7db92575532c50c5",
+          "existing_weak": false
+        }
+      ]
+    },
+    {
+      "external_product_id": "ext_c263be8545e14d59e4e6b394",
+      "pivota_signature_id": "sig_2ea6fb8ab318e93cdca261ba2502df29",
+      "title": "High Shine Conditioner",
+      "brand": "Nuxe",
+      "canonical_url": "https://us.nuxe.com/products/high-shine-conditioner",
+      "changed": false,
+      "blocked": false,
+      "skip_reason": "no_safe_writes",
+      "candidate_hash": "3df39e87b33d1a62500e72ea00bb3c163d085fb04bf285f76161f9110dd81c74",
+      "evidence_profile": "official_pdp_reviewed_formula_and_usage",
+      "source_coverage": {
+        "source": "official_pdp",
+        "canonical_url": "https://us.nuxe.com/products/high-shine-conditioner",
+        "fields": {
+          "description": true,
+          "ingredients": 1,
+          "active_ingredients": 1,
+          "how_to": 1,
+          "details": 3,
+          "variants": 1
+        }
+      },
+      "preview": {
+        "headline": "Hair treatment",
+        "what_it_is": "High Shine Conditioner is a leave-in hair treatment from Nuxe in 200 mL, with source-backed cues around volume-texture boost and leave-in care.",
+        "why_it_stands_out": [
+          {
+            "headline": "Product cues are source-backed",
+            "body": "Reviewed PDP cues such as leave-in care, 200 mL give shoppers specific comparison points within Nuxe, rather than category-only copy.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Ingredient list is available",
+            "body": "Full INCI is present for formula-sensitive review, which makes this PDP safer to evaluate than a claim-only listing.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Shade and size are explicit",
+            "body": "Variant labels such as 200 mL, Size: 200 mL are visible, reducing ambiguity around the product format before a shopper clicks through.",
+            "evidence_strength": "official_pdp_reviewed"
+          }
+        ],
+        "best_for": [
+          {
+            "tag": "hair_hydration",
+            "label": "hair hydration",
+            "confidence": "moderate"
+          }
+        ],
+        "shopping_highlight": "leave-in care, 200 mL"
+      },
+      "writes": [
+        {
+          "kb_key": "product:ext_c263be8545e14d59e4e6b394",
+          "action": "skip",
+          "reason": "protected_high_quality_existing:reviewed",
+          "old_hash": "d9096393b2f8429cfc213d7a68156f1f5c61c8f4de9488bb22940982f6c31eaf",
+          "existing_weak": false
+        },
+        {
+          "kb_key": "product:sig_2ea6fb8ab318e93cdca261ba2502df29",
+          "action": "skip",
+          "reason": "protected_high_quality_existing:reviewed",
+          "old_hash": "d9096393b2f8429cfc213d7a68156f1f5c61c8f4de9488bb22940982f6c31eaf",
+          "existing_weak": false
+        }
+      ]
+    },
+    {
+      "external_product_id": "ext_fdfe0741e3a322aad33a129d",
+      "pivota_signature_id": "sig_01a40687897c34d016976fe8da958410",
+      "title": "Holidays Giftset Pink Fever",
+      "brand": "Nuxe",
+      "canonical_url": "https://us.nuxe.com/products/holidays-giftset-pink-fever",
+      "changed": true,
+      "blocked": false,
+      "skip_reason": null,
+      "candidate_hash": "7b66d78f44013d8a7dc66ea3f3d763ae39ab8fea08d3ada671b653510e107b40",
+      "evidence_profile": "official_pdp_reviewed_line",
+      "source_coverage": {
+        "source": "official_pdp",
+        "canonical_url": "https://us.nuxe.com/products/holidays-giftset-pink-fever",
+        "fields": {
+          "description": true,
+          "ingredients": 0,
+          "active_ingredients": 0,
+          "how_to": 1,
+          "details": 1,
+          "variants": 1
+        }
+      },
+      "preview": {
+        "headline": "Lip treatment",
+        "what_it_is": "Holidays Giftset Pink Fever is a lip balm from Nuxe, with source-backed cues around comfort-oriented lip care.",
+        "why_it_stands_out": [
+          {
+            "headline": "Usage instructions available",
+            "body": "Reviewed usage context is present, including: Apply to clean skin after treatment steps.",
+            "evidence_strength": "official_pdp_reviewed"
+          }
+        ],
+        "best_for": [
+          {
+            "tag": "lip_comfort",
+            "label": "lip comfort",
+            "confidence": "moderate"
+          }
+        ],
+        "shopping_highlight": "lip comfort"
+      },
+      "writes": [
+        {
+          "kb_key": "product:ext_fdfe0741e3a322aad33a129d",
+          "action": "update",
+          "reason": "explicit_owner_delegated_assistant_replacement_review",
+          "old_hash": "74cb06865b635c4398433bf2b1f8f8d080943e516f42cd2388058808541bfadc",
+          "candidate_hash": "f4997375e8a1ae30f6584b20736826e69c6839e13c1bfa483c4e2d0a3244b823",
+          "existing_weak": true,
+          "source": "pivota_insights_official_pdp_manual_review_v1",
+          "after_inventory": {
+            "product_id": "ext_fdfe0741e3a322aad33a129d",
+            "kb_key": "product:ext_fdfe0741e3a322aad33a129d",
+            "source": "pivota_insights_official_pdp_manual_review_v1",
+            "updated_at": "",
+            "last_success_at": "",
+            "title": "Holidays Giftset Pink Fever",
+            "canonical_url": "",
+            "bundle_hash": "7b66d78f44013d8a7dc66ea3f3d763ae39ab8fea08d3ada671b653510e107b40",
+            "lane": "keep",
+            "reason": "protected_good_content",
+            "priority": 0,
+            "protected": true,
+            "displayable": true,
+            "high_quality_ready": true,
+            "human_reviewed": true,
+            "issues": [],
+            "blocking_issues": [],
+            "quality_state": "reviewed",
+            "evidence_profile": "official_pdp_reviewed_line",
+            "evidence_rank": 3,
+            "review_tier": "assistant_reviewed",
+            "agent_readable": true,
+            "public_ready": true
+          },
+          "source_meta": {
+            "evidence_profile": "official_pdp_reviewed_line",
+            "quality_state": "reviewed",
+            "source_origin": "official_pdp_fields",
+            "source_url": "https://us.nuxe.com/products/holidays-giftset-pink-fever",
+            "quality_improvement": {
+              "previous_bundle_hash": "8dbd9f5c9bde5e4364020e21df083b23dd9ee5f8bb366deb5f947f4c3bfd7977",
+              "candidate_bundle_hash": "7b66d78f44013d8a7dc66ea3f3d763ae39ab8fea08d3ada671b653510e107b40",
+              "replacement_decision": "explicit_owner_delegated_assistant_replacement_review",
+              "existing_quality_lane": "keep",
+              "candidate_quality_lane": "keep",
+              "existing_evidence_profile": "official_pdp_reviewed_line",
+              "candidate_evidence_profile": "official_pdp_reviewed_line"
+            }
+          }
+        },
+        {
+          "kb_key": "product:sig_01a40687897c34d016976fe8da958410",
+          "action": "update",
+          "reason": "explicit_owner_delegated_assistant_replacement_review",
+          "old_hash": "74cb06865b635c4398433bf2b1f8f8d080943e516f42cd2388058808541bfadc",
+          "candidate_hash": "f4997375e8a1ae30f6584b20736826e69c6839e13c1bfa483c4e2d0a3244b823",
+          "existing_weak": true,
+          "source": "pivota_insights_official_pdp_manual_review_v1",
+          "after_inventory": {
+            "product_id": "ext_fdfe0741e3a322aad33a129d",
+            "kb_key": "product:sig_01a40687897c34d016976fe8da958410",
+            "source": "pivota_insights_official_pdp_manual_review_v1",
+            "updated_at": "",
+            "last_success_at": "",
+            "title": "Holidays Giftset Pink Fever",
+            "canonical_url": "",
+            "bundle_hash": "7b66d78f44013d8a7dc66ea3f3d763ae39ab8fea08d3ada671b653510e107b40",
+            "lane": "keep",
+            "reason": "protected_good_content",
+            "priority": 0,
+            "protected": true,
+            "displayable": true,
+            "high_quality_ready": true,
+            "human_reviewed": true,
+            "issues": [],
+            "blocking_issues": [],
+            "quality_state": "reviewed",
+            "evidence_profile": "official_pdp_reviewed_line",
+            "evidence_rank": 3,
+            "review_tier": "assistant_reviewed",
+            "agent_readable": true,
+            "public_ready": true
+          },
+          "source_meta": {
+            "evidence_profile": "official_pdp_reviewed_line",
+            "quality_state": "reviewed",
+            "source_origin": "official_pdp_fields",
+            "source_url": "https://us.nuxe.com/products/holidays-giftset-pink-fever",
+            "quality_improvement": {
+              "previous_bundle_hash": "8dbd9f5c9bde5e4364020e21df083b23dd9ee5f8bb366deb5f947f4c3bfd7977",
+              "candidate_bundle_hash": "7b66d78f44013d8a7dc66ea3f3d763ae39ab8fea08d3ada671b653510e107b40",
+              "replacement_decision": "explicit_owner_delegated_assistant_replacement_review",
+              "existing_quality_lane": "keep",
+              "candidate_quality_lane": "keep",
+              "existing_evidence_profile": "official_pdp_reviewed_line",
+              "candidate_evidence_profile": "official_pdp_reviewed_line"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "external_product_id": "ext_1373e71b0e211a9192cbc0ab",
+      "pivota_signature_id": "sig_ef381c114d32e7a2bbaa9e6294c39c91",
+      "title": "Honey Lip Balm",
+      "brand": "Nuxe",
+      "canonical_url": "https://us.nuxe.com/products/honey-lip-balm",
+      "changed": false,
+      "blocked": false,
+      "skip_reason": "no_safe_writes",
+      "candidate_hash": "c4b14c8447ad0aac9a4a9a54d6ad66cfcddb9f25c8ae0e649ded56c972f2080f",
+      "evidence_profile": "official_pdp_reviewed_formula_and_usage",
+      "source_coverage": {
+        "source": "official_pdp",
+        "canonical_url": "https://us.nuxe.com/products/honey-lip-balm",
+        "fields": {
+          "description": true,
+          "ingredients": 1,
+          "active_ingredients": 0,
+          "how_to": 1,
+          "details": 3,
+          "variants": 1
+        }
+      },
+      "preview": {
+        "headline": "Lip treatment",
+        "what_it_is": "Honey Lip Balm is a tinted lip balm from Nuxe, with source-backed cues around shade clarity and comfort-oriented lip care.",
+        "why_it_stands_out": [
+          {
+            "headline": "Product cues are source-backed",
+            "body": "Reviewed PDP cues such as honey, shea butter, shade range, 15 mL give shoppers specific comparison points within Nuxe, rather than category-only copy.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Ingredient list is available",
+            "body": "Full INCI is present for formula-sensitive review, which makes this PDP safer to evaluate than a claim-only listing.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Shade and size are explicit",
+            "body": "Variant labels such as 15 mL, Size: 15 mL are visible, reducing ambiguity around the product format before a shopper clicks through.",
+            "evidence_strength": "official_pdp_reviewed"
+          }
+        ],
+        "best_for": [
+          {
+            "tag": "defined_lip_looks",
+            "label": "defined lip looks",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "color_payoff",
+            "label": "color payoff",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "lip_comfort",
+            "label": "lip comfort",
+            "confidence": "moderate"
+          }
+        ],
+        "shopping_highlight": "honey, shea butter, shade range, 15 mL"
+      },
+      "writes": [
+        {
+          "kb_key": "product:ext_1373e71b0e211a9192cbc0ab",
+          "action": "skip",
+          "reason": "protected_high_quality_existing:reviewed",
+          "old_hash": "2e246db5ab5181f29a00175b44d041614ec749831b225c1160d87b2914bf09d0",
+          "existing_weak": false
+        },
+        {
+          "kb_key": "product:sig_ef381c114d32e7a2bbaa9e6294c39c91",
+          "action": "skip",
+          "reason": "protected_high_quality_existing:reviewed",
+          "old_hash": "2e246db5ab5181f29a00175b44d041614ec749831b225c1160d87b2914bf09d0",
+          "existing_weak": false
+        }
+      ]
+    },
+    {
+      "external_product_id": "ext_b70cb3c31de512f0f3e33c9d",
+      "pivota_signature_id": "sig_06f6ce074e8049b0ee81711f32828ed6",
+      "title": "Honey Lip Care",
+      "brand": "Nuxe",
+      "canonical_url": "https://us.nuxe.com/products/honey-lip-care",
+      "changed": false,
+      "blocked": false,
+      "skip_reason": "no_safe_writes",
+      "candidate_hash": "d83a48bcc04732f3202eff982c86c18e7c5b1da93574ef2c4ea2021ea5d3d7c1",
+      "evidence_profile": "official_pdp_reviewed_formula_and_usage",
+      "source_coverage": {
+        "source": "official_pdp",
+        "canonical_url": "https://us.nuxe.com/products/honey-lip-care",
+        "fields": {
+          "description": true,
+          "ingredients": 1,
+          "active_ingredients": 0,
+          "how_to": 1,
+          "details": 3,
+          "variants": 1
+        }
+      },
+      "preview": {
+        "headline": "Fine fragrance",
+        "what_it_is": "Honey Lip Care is a fine fragrance from Nuxe in 10 mL, with source-backed scent cues including rose and citrus.",
+        "why_it_stands_out": [
+          {
+            "headline": "Scent profile cues",
+            "body": "Reviewed scent cues such as rose, citrus, shine finish, 10 mL help shoppers compare the fragrance profile without relying on generic scent copy.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Ingredient list is available",
+            "body": "Full INCI is present for formula-sensitive review, which makes this PDP safer to evaluate than a claim-only listing.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Shade and size are explicit",
+            "body": "Variant labels such as 10 mL, Size: 10 mL are visible, reducing ambiguity around the product format before a shopper clicks through.",
+            "evidence_strength": "official_pdp_reviewed"
+          }
+        ],
+        "best_for": [
+          {
+            "tag": "floral_fragrance_profiles",
+            "label": "floral fragrance profiles",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "fresh_citrus_profiles",
+            "label": "fresh citrus profiles",
+            "confidence": "moderate"
+          }
+        ],
+        "shopping_highlight": "rose, citrus, shine finish, 10 mL"
+      },
+      "writes": [
+        {
+          "kb_key": "product:ext_b70cb3c31de512f0f3e33c9d",
+          "action": "skip",
+          "reason": "protected_high_quality_existing:reviewed",
+          "old_hash": "e34fdf9da526bec5429f7a02f4b2bc6e1f7e6d46f87eec530eeca1fc756aca4f",
+          "existing_weak": false
+        },
+        {
+          "kb_key": "product:sig_06f6ce074e8049b0ee81711f32828ed6",
+          "action": "skip",
+          "reason": "protected_high_quality_existing:reviewed",
+          "old_hash": "e34fdf9da526bec5429f7a02f4b2bc6e1f7e6d46f87eec530eeca1fc756aca4f",
+          "existing_weak": false
+        }
+      ]
+    },
+    {
+      "external_product_id": "ext_a40f9db5b642d4d7040ec2d6",
+      "pivota_signature_id": "sig_dbef6a01a6cb42884fef7bc77ad25075",
+      "title": "Honey Routine",
+      "brand": "Nuxe",
+      "canonical_url": "https://us.nuxe.com/products/honey-routine",
+      "changed": false,
+      "blocked": false,
+      "skip_reason": "no_safe_writes",
+      "candidate_hash": "d85edcaf1fb82311a979d46aa3cf11b5b1900f74f37901edadc3967b633cac4a",
+      "evidence_profile": "official_pdp_reviewed_line",
+      "source_coverage": {
+        "source": "official_pdp",
+        "canonical_url": "https://us.nuxe.com/products/honey-routine",
+        "fields": {
+          "description": true,
+          "ingredients": 0,
+          "active_ingredients": 0,
+          "how_to": 1,
+          "details": 1,
+          "variants": 1
+        }
+      },
+      "preview": {
+        "headline": "Face cleanser",
+        "what_it_is": "Honey Routine is a face cleanser from Nuxe, with source-backed cues around cleansing.",
+        "why_it_stands_out": [
+          {
+            "headline": "Product cues are source-backed",
+            "body": "Reviewed PDP cues such as daily cleansing give shoppers specific comparison points within Nuxe, rather than category-only copy.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Usage instructions available",
+            "body": "Reviewed usage context is present, including: Massage onto damp skin, then rinse thoroughly.",
+            "evidence_strength": "official_pdp_reviewed"
+          }
+        ],
+        "best_for": [
+          {
+            "tag": "daily_cleansing",
+            "label": "daily cleansing",
+            "confidence": "moderate"
+          }
+        ],
+        "shopping_highlight": "daily cleansing"
+      },
+      "writes": [
+        {
+          "kb_key": "product:ext_a40f9db5b642d4d7040ec2d6",
+          "action": "skip",
+          "reason": "protected_high_quality_existing:reviewed",
+          "old_hash": "827b081d4be2ded3675dc7ac18fa2d31aed08b2de661544f233ad56c8b6bad3d",
+          "existing_weak": false
+        },
+        {
+          "kb_key": "product:sig_dbef6a01a6cb42884fef7bc77ad25075",
+          "action": "skip",
+          "reason": "protected_high_quality_existing:reviewed",
+          "old_hash": "827b081d4be2ded3675dc7ac18fa2d31aed08b2de661544f233ad56c8b6bad3d",
+          "existing_weak": false
+        }
+      ]
+    },
+    {
+      "external_product_id": "ext_43e07e8b8cbd254604b144c6",
+      "pivota_signature_id": "sig_e870f8ce913fc1680de76a2ffa334fc9",
+      "title": "Huile Prodigieuse®",
+      "brand": "Nuxe",
+      "canonical_url": "https://us.nuxe.com/products/huile-prodigieuse-100ml",
+      "changed": false,
+      "blocked": false,
+      "skip_reason": "no_safe_writes",
+      "candidate_hash": "6eae91e83a5a3c08e78a7df25ec6e54c0486c801d2b56dc7bb62675883191d7d",
+      "evidence_profile": "official_pdp_reviewed_key_ingredients_and_usage",
+      "source_coverage": {
+        "source": "official_pdp",
+        "canonical_url": "https://us.nuxe.com/products/huile-prodigieuse-100ml",
+        "fields": {
+          "description": true,
+          "ingredients": 0,
+          "active_ingredients": 1,
+          "how_to": 1,
+          "details": 3,
+          "variants": 1
+        }
+      },
+      "preview": {
+        "headline": "Face moisturizer",
+        "what_it_is": "Huile Prodigieuse® is a face moisturizer from Nuxe in 100ml, with source-backed cues around hydration.",
+        "why_it_stands_out": [
+          {
+            "headline": "Routine step cues are specific",
+            "body": "Reviewed skincare cues such as vitamin C, hydration, barrier support, 100ml identify the routine role or key ingredient context without inventing unsupported benefits.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Key ingredients are identified",
+            "body": "Vitamin C (Ascorbic acid) is identified, enough for a cautious high-level formula read without inventing unsupported actives.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Shade and size are explicit",
+            "body": "Variant labels such as 100ml, Size: 100ml are visible, reducing ambiguity around the product format before a shopper clicks through.",
+            "evidence_strength": "official_pdp_reviewed"
+          }
+        ],
+        "best_for": [
+          {
+            "tag": "hydration",
+            "label": "hydration",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "radiance",
+            "label": "radiance",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "barrier_support",
+            "label": "barrier support",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "body_routine",
+            "label": "body routine",
+            "confidence": "moderate"
+          }
+        ],
+        "shopping_highlight": "vitamin C, hydration, barrier support"
+      },
+      "writes": [
+        {
+          "kb_key": "product:ext_43e07e8b8cbd254604b144c6",
+          "action": "skip",
+          "reason": "protected_high_quality_existing:reviewed",
+          "old_hash": "7971f4ace87c9298541f2a81d43688a5aa586a8cf79b3add6bf8795374d0cb32",
+          "existing_weak": false
+        },
+        {
+          "kb_key": "product:sig_e870f8ce913fc1680de76a2ffa334fc9",
+          "action": "skip",
+          "reason": "protected_high_quality_existing:reviewed",
+          "old_hash": "7971f4ace87c9298541f2a81d43688a5aa586a8cf79b3add6bf8795374d0cb32",
+          "existing_weak": false
+        }
+      ]
+    },
+    {
+      "external_product_id": "ext_54c379a36988bff3283786b9",
+      "pivota_signature_id": "sig_93ed6d92d2779d2ed9ab9f9894c664f1",
+      "title": "Huile Prodigieuse®",
+      "brand": "Nuxe",
+      "canonical_url": "https://us.nuxe.com/products/huile-prodigieuse-50ml",
+      "changed": false,
+      "blocked": false,
+      "skip_reason": "no_safe_writes",
+      "candidate_hash": "6c20e217fe686ad8a576336914db92391ff1343297bb9f377dad94feeac3d2d7",
+      "evidence_profile": "official_pdp_reviewed_key_ingredients_and_usage",
+      "source_coverage": {
+        "source": "official_pdp",
+        "canonical_url": "https://us.nuxe.com/products/huile-prodigieuse-50ml",
+        "fields": {
+          "description": true,
+          "ingredients": 0,
+          "active_ingredients": 1,
+          "how_to": 1,
+          "details": 3,
+          "variants": 1
+        }
+      },
+      "preview": {
+        "headline": "Face moisturizer",
+        "what_it_is": "Huile Prodigieuse® is a face moisturizer from Nuxe in 50ml, with source-backed cues around hydration.",
+        "why_it_stands_out": [
+          {
+            "headline": "Routine step cues are specific",
+            "body": "Reviewed skincare cues such as vitamin C, hydration, barrier support, 50ml identify the routine role or key ingredient context without inventing unsupported benefits.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Key ingredients are identified",
+            "body": "Vitamin C (Ascorbic acid) is identified, enough for a cautious high-level formula read without inventing unsupported actives.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Shade and size are explicit",
+            "body": "Variant labels such as 50ml, Size: 50ml are visible, reducing ambiguity around the product format before a shopper clicks through.",
+            "evidence_strength": "official_pdp_reviewed"
+          }
+        ],
+        "best_for": [
+          {
+            "tag": "hydration",
+            "label": "hydration",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "radiance",
+            "label": "radiance",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "barrier_support",
+            "label": "barrier support",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "body_routine",
+            "label": "body routine",
+            "confidence": "moderate"
+          }
+        ],
+        "shopping_highlight": "vitamin C, hydration, barrier support"
+      },
+      "writes": [
+        {
+          "kb_key": "product:ext_54c379a36988bff3283786b9",
+          "action": "skip",
+          "reason": "protected_high_quality_existing:reviewed",
+          "old_hash": "5e24b3d071ae4a836540d5b565edde40aee1c25f491e35636ef92becaf9cddd9",
+          "existing_weak": false
+        },
+        {
+          "kb_key": "product:sig_93ed6d92d2779d2ed9ab9f9894c664f1",
+          "action": "skip",
+          "reason": "protected_high_quality_existing:reviewed",
+          "old_hash": "5e24b3d071ae4a836540d5b565edde40aee1c25f491e35636ef92becaf9cddd9",
+          "existing_weak": false
+        }
+      ]
+    },
+    {
+      "external_product_id": "ext_4a01fba5062f6315aa633095",
+      "pivota_signature_id": "sig_450f07e04681aac63b88f27340e04690",
+      "title": "Huile Prodigieuse® Florale",
+      "brand": "Nuxe",
+      "canonical_url": "https://us.nuxe.com/products/huile-prodigieuse-florale-100ml",
+      "changed": false,
+      "blocked": false,
+      "skip_reason": "no_safe_writes",
+      "candidate_hash": "a48a0aacefdd0138e3e835f7eae5a22d4f9c29cedcdaad81dcdd562c69e328a9",
+      "evidence_profile": "official_pdp_reviewed_key_ingredients_and_usage",
+      "source_coverage": {
+        "source": "official_pdp",
+        "canonical_url": "https://us.nuxe.com/products/huile-prodigieuse-florale-100ml",
+        "fields": {
+          "description": true,
+          "ingredients": 0,
+          "active_ingredients": 1,
+          "how_to": 1,
+          "details": 3,
+          "variants": 1
+        }
+      },
+      "preview": {
+        "headline": "Fine fragrance",
+        "what_it_is": "Huile Prodigieuse® Florale is a fine fragrance from Nuxe in 100ml.",
+        "why_it_stands_out": [
+          {
+            "headline": "Scent profile cues",
+            "body": "Reviewed scent cues such as 100ml help shoppers compare the fragrance profile without relying on generic scent copy.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Key ingredients are identified",
+            "body": "Vitamin C (Ascorbic acid) is identified, enough for a cautious high-level formula read without inventing unsupported actives.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Shade and size are explicit",
+            "body": "Variant labels such as 100ml, Size: 100ml are visible, reducing ambiguity around the product format before a shopper clicks through.",
+            "evidence_strength": "official_pdp_reviewed"
+          }
+        ],
+        "best_for": [
+          {
+            "tag": "floral_fragrance_profiles",
+            "label": "floral fragrance profiles",
+            "confidence": "moderate"
+          }
+        ],
+        "shopping_highlight": "100ml"
+      },
+      "writes": [
+        {
+          "kb_key": "product:ext_4a01fba5062f6315aa633095",
+          "action": "skip",
+          "reason": "protected_high_quality_existing:reviewed",
+          "old_hash": "334444b9f6a6dabbacb57d77edec9750a641048e57722759a6b9ec35756e2846",
+          "existing_weak": false
+        },
+        {
+          "kb_key": "product:sig_450f07e04681aac63b88f27340e04690",
+          "action": "skip",
+          "reason": "protected_high_quality_existing:reviewed",
+          "old_hash": "334444b9f6a6dabbacb57d77edec9750a641048e57722759a6b9ec35756e2846",
+          "existing_weak": false
+        }
+      ]
+    }
+  ]
+}

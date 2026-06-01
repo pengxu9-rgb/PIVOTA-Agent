@@ -1,0 +1,819 @@
+{
+  "generated_at": "2026-06-01T04:53:23.571Z",
+  "source": "pivota_insights_official_pdp_manual_review_v1",
+  "mode": "apply",
+  "filters": {
+    "brand": null,
+    "product_ids": [
+      "ext_0c7bfbaafb9eab5f2261f109",
+      "ext_664b859ce2599a57c3f1f7ce",
+      "ext_23ae4c5d9d8f2a8be363f2cc",
+      "ext_f1f3ce59fac13141b98a911f",
+      "ext_6815bee1060ef71d9a99ce5b"
+    ],
+    "limit": null,
+    "include_strong": false,
+    "include_url_key": false,
+    "apply_chunk_size": null
+  },
+  "summary": {
+    "scanned": 5,
+    "changed_products": 5,
+    "blocked_products": 0,
+    "skipped_products": 0,
+    "write_actions": {
+      "update": 10
+    },
+    "skip_reasons": {},
+    "evidence_profiles": {
+      "official_pdp_reviewed_line": 1,
+      "official_pdp_reviewed_formula_and_usage": 4
+    }
+  },
+  "plans": [
+    {
+      "external_product_id": "ext_0c7bfbaafb9eab5f2261f109",
+      "pivota_signature_id": "sig_562d932fce08dd276acab401e4996146",
+      "title": "Bare Necessities Lip Combo",
+      "brand": "Kylie Cosmetics",
+      "canonical_url": "https://kyliecosmetics.com/products/bare-necessities-lip-combo",
+      "changed": true,
+      "blocked": false,
+      "skip_reason": null,
+      "candidate_hash": "c5034a80bea471cdf5a8cd4c5aafc70f99ba7d86fdbd20551208433c130bbdd7",
+      "evidence_profile": "official_pdp_reviewed_line",
+      "source_coverage": {
+        "source": "official_pdp",
+        "canonical_url": "https://kyliecosmetics.com/products/bare-necessities-lip-combo",
+        "fields": {
+          "description": true,
+          "ingredients": 0,
+          "active_ingredients": 0,
+          "how_to": 1,
+          "details": 0,
+          "variants": 1
+        }
+      },
+      "preview": {
+        "headline": "Lip combo",
+        "what_it_is": "Bare Necessities Lip Combo is a lip set from Kylie Cosmetics.",
+        "why_it_stands_out": [
+          {
+            "headline": "Usage instructions available",
+            "body": "Reviewed usage context is present, including: Apply lightly to pulse points such as wrists, neck, or behind the ears.",
+            "evidence_strength": "official_pdp_reviewed"
+          }
+        ],
+        "best_for": [
+          {
+            "tag": "lip_comfort",
+            "label": "lip comfort",
+            "confidence": "moderate"
+          }
+        ],
+        "shopping_highlight": "lip comfort"
+      },
+      "writes": [
+        {
+          "kb_key": "product:ext_0c7bfbaafb9eab5f2261f109",
+          "action": "update",
+          "reason": "explicit_owner_delegated_assistant_replacement_review",
+          "old_hash": "ef6437c2095345167d3f187d4bb0e9ec1f4e2d530de71f8e6f60a77570486e00",
+          "candidate_hash": "1f766c2b161138caae315c35d6ab098be76ffdb06ec0c0d38d4ddbceff1dfec3",
+          "existing_weak": true,
+          "source": "pivota_insights_official_pdp_manual_review_v1",
+          "after_inventory": {
+            "product_id": "ext_0c7bfbaafb9eab5f2261f109",
+            "kb_key": "product:ext_0c7bfbaafb9eab5f2261f109",
+            "source": "pivota_insights_official_pdp_manual_review_v1",
+            "updated_at": "",
+            "last_success_at": "",
+            "title": "Bare Necessities Lip Combo",
+            "canonical_url": "",
+            "bundle_hash": "c5034a80bea471cdf5a8cd4c5aafc70f99ba7d86fdbd20551208433c130bbdd7",
+            "lane": "keep",
+            "reason": "protected_good_content",
+            "priority": 0,
+            "protected": true,
+            "displayable": true,
+            "high_quality_ready": true,
+            "human_reviewed": true,
+            "issues": [],
+            "blocking_issues": [],
+            "quality_state": "reviewed",
+            "evidence_profile": "official_pdp_reviewed_line",
+            "evidence_rank": 3,
+            "review_tier": "assistant_reviewed",
+            "agent_readable": true,
+            "public_ready": true
+          },
+          "source_meta": {
+            "evidence_profile": "official_pdp_reviewed_line",
+            "quality_state": "reviewed",
+            "source_origin": "official_pdp_fields",
+            "source_url": "https://kyliecosmetics.com/products/bare-necessities-lip-combo",
+            "quality_improvement": {
+              "previous_bundle_hash": "47ce56f5bd28b1468eb42e0a44c8d0101ab50e5cd4a3403a187f80914856030c",
+              "candidate_bundle_hash": "c5034a80bea471cdf5a8cd4c5aafc70f99ba7d86fdbd20551208433c130bbdd7",
+              "replacement_decision": "explicit_owner_delegated_assistant_replacement_review",
+              "existing_quality_lane": "keep",
+              "candidate_quality_lane": "keep",
+              "existing_evidence_profile": "official_pdp_reviewed_line",
+              "candidate_evidence_profile": "official_pdp_reviewed_line"
+            }
+          }
+        },
+        {
+          "kb_key": "product:sig_562d932fce08dd276acab401e4996146",
+          "action": "update",
+          "reason": "explicit_owner_delegated_assistant_replacement_review",
+          "old_hash": "ef6437c2095345167d3f187d4bb0e9ec1f4e2d530de71f8e6f60a77570486e00",
+          "candidate_hash": "1f766c2b161138caae315c35d6ab098be76ffdb06ec0c0d38d4ddbceff1dfec3",
+          "existing_weak": true,
+          "source": "pivota_insights_official_pdp_manual_review_v1",
+          "after_inventory": {
+            "product_id": "ext_0c7bfbaafb9eab5f2261f109",
+            "kb_key": "product:sig_562d932fce08dd276acab401e4996146",
+            "source": "pivota_insights_official_pdp_manual_review_v1",
+            "updated_at": "",
+            "last_success_at": "",
+            "title": "Bare Necessities Lip Combo",
+            "canonical_url": "",
+            "bundle_hash": "c5034a80bea471cdf5a8cd4c5aafc70f99ba7d86fdbd20551208433c130bbdd7",
+            "lane": "keep",
+            "reason": "protected_good_content",
+            "priority": 0,
+            "protected": true,
+            "displayable": true,
+            "high_quality_ready": true,
+            "human_reviewed": true,
+            "issues": [],
+            "blocking_issues": [],
+            "quality_state": "reviewed",
+            "evidence_profile": "official_pdp_reviewed_line",
+            "evidence_rank": 3,
+            "review_tier": "assistant_reviewed",
+            "agent_readable": true,
+            "public_ready": true
+          },
+          "source_meta": {
+            "evidence_profile": "official_pdp_reviewed_line",
+            "quality_state": "reviewed",
+            "source_origin": "official_pdp_fields",
+            "source_url": "https://kyliecosmetics.com/products/bare-necessities-lip-combo",
+            "quality_improvement": {
+              "previous_bundle_hash": "47ce56f5bd28b1468eb42e0a44c8d0101ab50e5cd4a3403a187f80914856030c",
+              "candidate_bundle_hash": "c5034a80bea471cdf5a8cd4c5aafc70f99ba7d86fdbd20551208433c130bbdd7",
+              "replacement_decision": "explicit_owner_delegated_assistant_replacement_review",
+              "existing_quality_lane": "keep",
+              "candidate_quality_lane": "keep",
+              "existing_evidence_profile": "official_pdp_reviewed_line",
+              "candidate_evidence_profile": "official_pdp_reviewed_line"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "external_product_id": "ext_664b859ce2599a57c3f1f7ce",
+      "pivota_signature_id": "sig_e434b90902740f110390a11d",
+      "title": "Body Oil with Passion Fruit Oil",
+      "brand": "UpCircle Beauty",
+      "canonical_url": "https://upcirclebeauty.com/products/natural-body-oil",
+      "changed": true,
+      "blocked": false,
+      "skip_reason": null,
+      "candidate_hash": "3b300a3a79b0c9abf1305b3afe94be93b2ba0585edd2dae5cf399ee628bc8f23",
+      "evidence_profile": "official_pdp_reviewed_formula_and_usage",
+      "source_coverage": {
+        "source": "official_pdp",
+        "canonical_url": "https://upcirclebeauty.com/products/natural-body-oil",
+        "fields": {
+          "description": true,
+          "ingredients": 1,
+          "active_ingredients": 0,
+          "how_to": 1,
+          "details": 3,
+          "variants": 2
+        }
+      },
+      "preview": {
+        "headline": "Body oil",
+        "what_it_is": "Body Oil with Passion Fruit Oil is a body oil from UpCircle Beauty, with source-backed cues around hydration.",
+        "why_it_stands_out": [
+          {
+            "headline": "Routine step cues are specific",
+            "body": "Reviewed skincare cues such as hydration identify the routine role or key ingredient context without inventing unsupported benefits.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Ingredient list is available",
+            "body": "Full INCI is present for formula-sensitive review, which makes this PDP safer to evaluate than a claim-only listing.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Usage instructions available",
+            "body": "Reviewed usage context is present, including: Apply a small amount of body oil onto either damp or dry skin, massaging in circular motions until absorbed.",
+            "evidence_strength": "official_pdp_reviewed"
+          }
+        ],
+        "best_for": [
+          {
+            "tag": "hydration",
+            "label": "hydration",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "radiance",
+            "label": "radiance",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "body_routine",
+            "label": "body routine",
+            "confidence": "moderate"
+          }
+        ],
+        "shopping_highlight": "hydration, full INCI available"
+      },
+      "writes": [
+        {
+          "kb_key": "product:ext_664b859ce2599a57c3f1f7ce",
+          "action": "update",
+          "reason": "explicit_owner_delegated_assistant_replacement_review",
+          "old_hash": "e14a398cc6848dbed7dc1b68be05de7852687dcdd4d336616dbed3d0d015233f",
+          "candidate_hash": "c32d5c7635f6f370442cec38d54f1faf4c0611ff9a21e7d91a99bef8f3d8b45c",
+          "existing_weak": true,
+          "source": "pivota_insights_official_pdp_manual_review_v1",
+          "after_inventory": {
+            "product_id": "ext_664b859ce2599a57c3f1f7ce",
+            "kb_key": "product:ext_664b859ce2599a57c3f1f7ce",
+            "source": "pivota_insights_official_pdp_manual_review_v1",
+            "updated_at": "",
+            "last_success_at": "",
+            "title": "Body Oil with Passion Fruit Oil",
+            "canonical_url": "",
+            "bundle_hash": "3b300a3a79b0c9abf1305b3afe94be93b2ba0585edd2dae5cf399ee628bc8f23",
+            "lane": "keep",
+            "reason": "protected_good_content",
+            "priority": 0,
+            "protected": true,
+            "displayable": true,
+            "high_quality_ready": true,
+            "human_reviewed": true,
+            "issues": [],
+            "blocking_issues": [],
+            "quality_state": "reviewed",
+            "evidence_profile": "official_pdp_reviewed_formula_and_usage",
+            "evidence_rank": 1,
+            "review_tier": "assistant_reviewed",
+            "agent_readable": true,
+            "public_ready": true
+          },
+          "source_meta": {
+            "evidence_profile": "official_pdp_reviewed_formula_and_usage",
+            "quality_state": "reviewed",
+            "source_origin": "official_pdp_fields",
+            "source_url": "https://upcirclebeauty.com/products/natural-body-oil",
+            "quality_improvement": {
+              "previous_bundle_hash": "da12115add7e5f85cf6ee2a6fdbdfa843c73570ea5816e0924e789519b8eee89",
+              "candidate_bundle_hash": "3b300a3a79b0c9abf1305b3afe94be93b2ba0585edd2dae5cf399ee628bc8f23",
+              "replacement_decision": "explicit_owner_delegated_assistant_replacement_review",
+              "existing_quality_lane": "keep",
+              "candidate_quality_lane": "keep",
+              "existing_evidence_profile": "official_pdp_reviewed_limited",
+              "candidate_evidence_profile": "official_pdp_reviewed_formula_and_usage"
+            }
+          }
+        },
+        {
+          "kb_key": "product:sig_e434b90902740f110390a11d",
+          "action": "update",
+          "reason": "explicit_owner_delegated_assistant_replacement_review",
+          "old_hash": "e14a398cc6848dbed7dc1b68be05de7852687dcdd4d336616dbed3d0d015233f",
+          "candidate_hash": "c32d5c7635f6f370442cec38d54f1faf4c0611ff9a21e7d91a99bef8f3d8b45c",
+          "existing_weak": true,
+          "source": "pivota_insights_official_pdp_manual_review_v1",
+          "after_inventory": {
+            "product_id": "ext_664b859ce2599a57c3f1f7ce",
+            "kb_key": "product:sig_e434b90902740f110390a11d",
+            "source": "pivota_insights_official_pdp_manual_review_v1",
+            "updated_at": "",
+            "last_success_at": "",
+            "title": "Body Oil with Passion Fruit Oil",
+            "canonical_url": "",
+            "bundle_hash": "3b300a3a79b0c9abf1305b3afe94be93b2ba0585edd2dae5cf399ee628bc8f23",
+            "lane": "keep",
+            "reason": "protected_good_content",
+            "priority": 0,
+            "protected": true,
+            "displayable": true,
+            "high_quality_ready": true,
+            "human_reviewed": true,
+            "issues": [],
+            "blocking_issues": [],
+            "quality_state": "reviewed",
+            "evidence_profile": "official_pdp_reviewed_formula_and_usage",
+            "evidence_rank": 1,
+            "review_tier": "assistant_reviewed",
+            "agent_readable": true,
+            "public_ready": true
+          },
+          "source_meta": {
+            "evidence_profile": "official_pdp_reviewed_formula_and_usage",
+            "quality_state": "reviewed",
+            "source_origin": "official_pdp_fields",
+            "source_url": "https://upcirclebeauty.com/products/natural-body-oil",
+            "quality_improvement": {
+              "previous_bundle_hash": "da12115add7e5f85cf6ee2a6fdbdfa843c73570ea5816e0924e789519b8eee89",
+              "candidate_bundle_hash": "3b300a3a79b0c9abf1305b3afe94be93b2ba0585edd2dae5cf399ee628bc8f23",
+              "replacement_decision": "explicit_owner_delegated_assistant_replacement_review",
+              "existing_quality_lane": "keep",
+              "candidate_quality_lane": "keep",
+              "existing_evidence_profile": "official_pdp_reviewed_limited",
+              "candidate_evidence_profile": "official_pdp_reviewed_formula_and_usage"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "external_product_id": "ext_23ae4c5d9d8f2a8be363f2cc",
+      "pivota_signature_id": "sig_82b28455d7df7a1f79243cc8",
+      "title": "Body Scrub with Coffee + Lemongrass",
+      "brand": "UpCircle Beauty",
+      "canonical_url": "https://upcirclebeauty.com/products/coffee-body-scrub-with-lemongrass-200ml",
+      "changed": true,
+      "blocked": false,
+      "skip_reason": null,
+      "candidate_hash": "3091475346bae0c143d7b295ca4c02e93997942cb4d2cdd20bee8b97733dd060",
+      "evidence_profile": "official_pdp_reviewed_formula_and_usage",
+      "source_coverage": {
+        "source": "official_pdp",
+        "canonical_url": "https://upcirclebeauty.com/products/coffee-body-scrub-with-lemongrass-200ml",
+        "fields": {
+          "description": true,
+          "ingredients": 1,
+          "active_ingredients": 0,
+          "how_to": 1,
+          "details": 3,
+          "variants": 2
+        }
+      },
+      "preview": {
+        "headline": "Body scrub",
+        "what_it_is": "Body Scrub with Coffee + Lemongrass is a body scrub from UpCircle Beauty, with source-backed cues around hydration.",
+        "why_it_stands_out": [
+          {
+            "headline": "Routine step cues are specific",
+            "body": "Reviewed skincare cues such as exfoliating scrub, barrier support identify the routine role or key ingredient context without inventing unsupported benefits.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Ingredient list is available",
+            "body": "Full INCI is present for formula-sensitive review, which makes this PDP safer to evaluate than a claim-only listing.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Usage instructions available",
+            "body": "Reviewed usage context is present, including: Mix scrub in jar before applying to damp skin in circular motions.",
+            "evidence_strength": "official_pdp_reviewed"
+          }
+        ],
+        "best_for": [
+          {
+            "tag": "barrier_support",
+            "label": "barrier support",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "body_routine",
+            "label": "body routine",
+            "confidence": "moderate"
+          }
+        ],
+        "shopping_highlight": "exfoliating scrub, barrier support"
+      },
+      "writes": [
+        {
+          "kb_key": "product:ext_23ae4c5d9d8f2a8be363f2cc",
+          "action": "update",
+          "reason": "explicit_owner_delegated_assistant_replacement_review",
+          "old_hash": "a34e49ed548c17b92d6329b20f54a03f798f7f1bea7799731a23e568a3238788",
+          "candidate_hash": "bc5ae57dfefed8f90de64b0517034cc7a9d6672ac5d4489bcf48c11cfa2d051b",
+          "existing_weak": true,
+          "source": "pivota_insights_official_pdp_manual_review_v1",
+          "after_inventory": {
+            "product_id": "ext_23ae4c5d9d8f2a8be363f2cc",
+            "kb_key": "product:ext_23ae4c5d9d8f2a8be363f2cc",
+            "source": "pivota_insights_official_pdp_manual_review_v1",
+            "updated_at": "",
+            "last_success_at": "",
+            "title": "Body Scrub with Coffee + Lemongrass",
+            "canonical_url": "",
+            "bundle_hash": "3091475346bae0c143d7b295ca4c02e93997942cb4d2cdd20bee8b97733dd060",
+            "lane": "keep",
+            "reason": "protected_good_content",
+            "priority": 0,
+            "protected": true,
+            "displayable": true,
+            "high_quality_ready": true,
+            "human_reviewed": true,
+            "issues": [],
+            "blocking_issues": [],
+            "quality_state": "reviewed",
+            "evidence_profile": "official_pdp_reviewed_formula_and_usage",
+            "evidence_rank": 1,
+            "review_tier": "assistant_reviewed",
+            "agent_readable": true,
+            "public_ready": true
+          },
+          "source_meta": {
+            "evidence_profile": "official_pdp_reviewed_formula_and_usage",
+            "quality_state": "reviewed",
+            "source_origin": "official_pdp_fields",
+            "source_url": "https://upcirclebeauty.com/products/coffee-body-scrub-with-lemongrass-200ml",
+            "quality_improvement": {
+              "previous_bundle_hash": "610211f41906e4d7dab857273701dc0c26905d51272f990a4d4f81696c82165f",
+              "candidate_bundle_hash": "3091475346bae0c143d7b295ca4c02e93997942cb4d2cdd20bee8b97733dd060",
+              "replacement_decision": "explicit_owner_delegated_assistant_replacement_review",
+              "existing_quality_lane": "keep",
+              "candidate_quality_lane": "keep",
+              "existing_evidence_profile": "official_pdp_reviewed_limited",
+              "candidate_evidence_profile": "official_pdp_reviewed_formula_and_usage"
+            }
+          }
+        },
+        {
+          "kb_key": "product:sig_82b28455d7df7a1f79243cc8",
+          "action": "update",
+          "reason": "explicit_owner_delegated_assistant_replacement_review",
+          "old_hash": "a34e49ed548c17b92d6329b20f54a03f798f7f1bea7799731a23e568a3238788",
+          "candidate_hash": "bc5ae57dfefed8f90de64b0517034cc7a9d6672ac5d4489bcf48c11cfa2d051b",
+          "existing_weak": true,
+          "source": "pivota_insights_official_pdp_manual_review_v1",
+          "after_inventory": {
+            "product_id": "ext_23ae4c5d9d8f2a8be363f2cc",
+            "kb_key": "product:sig_82b28455d7df7a1f79243cc8",
+            "source": "pivota_insights_official_pdp_manual_review_v1",
+            "updated_at": "",
+            "last_success_at": "",
+            "title": "Body Scrub with Coffee + Lemongrass",
+            "canonical_url": "",
+            "bundle_hash": "3091475346bae0c143d7b295ca4c02e93997942cb4d2cdd20bee8b97733dd060",
+            "lane": "keep",
+            "reason": "protected_good_content",
+            "priority": 0,
+            "protected": true,
+            "displayable": true,
+            "high_quality_ready": true,
+            "human_reviewed": true,
+            "issues": [],
+            "blocking_issues": [],
+            "quality_state": "reviewed",
+            "evidence_profile": "official_pdp_reviewed_formula_and_usage",
+            "evidence_rank": 1,
+            "review_tier": "assistant_reviewed",
+            "agent_readable": true,
+            "public_ready": true
+          },
+          "source_meta": {
+            "evidence_profile": "official_pdp_reviewed_formula_and_usage",
+            "quality_state": "reviewed",
+            "source_origin": "official_pdp_fields",
+            "source_url": "https://upcirclebeauty.com/products/coffee-body-scrub-with-lemongrass-200ml",
+            "quality_improvement": {
+              "previous_bundle_hash": "610211f41906e4d7dab857273701dc0c26905d51272f990a4d4f81696c82165f",
+              "candidate_bundle_hash": "3091475346bae0c143d7b295ca4c02e93997942cb4d2cdd20bee8b97733dd060",
+              "replacement_decision": "explicit_owner_delegated_assistant_replacement_review",
+              "existing_quality_lane": "keep",
+              "candidate_quality_lane": "keep",
+              "existing_evidence_profile": "official_pdp_reviewed_limited",
+              "candidate_evidence_profile": "official_pdp_reviewed_formula_and_usage"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "external_product_id": "ext_f1f3ce59fac13141b98a911f",
+      "pivota_signature_id": "sig_226946a6ba84e4cda0525ac6",
+      "title": "Cinnamon + Ginger Chai Cleansing Bar",
+      "brand": "UpCircle Beauty",
+      "canonical_url": "https://upcirclebeauty.com/products/cinnamon-ginger-chai-soap-bar",
+      "changed": true,
+      "blocked": false,
+      "skip_reason": null,
+      "candidate_hash": "6c6efa3093e463e9ff18256507e26473b961f92dd5dd948ef7a470dfdae510c7",
+      "evidence_profile": "official_pdp_reviewed_formula_and_usage",
+      "source_coverage": {
+        "source": "official_pdp",
+        "canonical_url": "https://upcirclebeauty.com/products/cinnamon-ginger-chai-soap-bar",
+        "fields": {
+          "description": true,
+          "ingredients": 3,
+          "active_ingredients": 0,
+          "how_to": 1,
+          "details": 3,
+          "variants": 1
+        }
+      },
+      "preview": {
+        "headline": "Face cleanser",
+        "what_it_is": "Cinnamon + Ginger Chai Cleansing Bar is a face cleanser from UpCircle Beauty, with source-backed cues around cleansing and dirt, oil, and impurity removal.",
+        "why_it_stands_out": [
+          {
+            "headline": "Product cues are source-backed",
+            "body": "Reviewed PDP cues such as daily cleansing, pore cleansing give shoppers specific comparison points within UpCircle Beauty, rather than category-only copy.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Ingredient list is available",
+            "body": "Full INCI is present for formula-sensitive review, which makes this PDP safer to evaluate than a claim-only listing.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Usage instructions available",
+            "body": "Reviewed usage context is present, including: Apply with water to create a creamy lather.",
+            "evidence_strength": "official_pdp_reviewed"
+          }
+        ],
+        "best_for": [
+          {
+            "tag": "daily_cleansing",
+            "label": "daily cleansing",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "pore_cleansing",
+            "label": "pore cleansing",
+            "confidence": "moderate"
+          }
+        ],
+        "shopping_highlight": "daily cleansing, pore cleansing"
+      },
+      "writes": [
+        {
+          "kb_key": "product:ext_f1f3ce59fac13141b98a911f",
+          "action": "update",
+          "reason": "explicit_owner_delegated_assistant_replacement_review",
+          "old_hash": "6b79dd1e78f139e28b46361e708913e76766ecb135cf721b824f68c467e982ec",
+          "candidate_hash": "9ce1a29a659af949dfc41d7c15c8464ebed4b9bd6e0e2a119e219a8f24749159",
+          "existing_weak": true,
+          "source": "pivota_insights_official_pdp_manual_review_v1",
+          "after_inventory": {
+            "product_id": "ext_f1f3ce59fac13141b98a911f",
+            "kb_key": "product:ext_f1f3ce59fac13141b98a911f",
+            "source": "pivota_insights_official_pdp_manual_review_v1",
+            "updated_at": "",
+            "last_success_at": "",
+            "title": "Cinnamon + Ginger Chai Cleansing Bar",
+            "canonical_url": "",
+            "bundle_hash": "6c6efa3093e463e9ff18256507e26473b961f92dd5dd948ef7a470dfdae510c7",
+            "lane": "keep",
+            "reason": "protected_good_content",
+            "priority": 0,
+            "protected": true,
+            "displayable": true,
+            "high_quality_ready": true,
+            "human_reviewed": true,
+            "issues": [],
+            "blocking_issues": [],
+            "quality_state": "reviewed",
+            "evidence_profile": "official_pdp_reviewed_formula_and_usage",
+            "evidence_rank": 1,
+            "review_tier": "assistant_reviewed",
+            "agent_readable": true,
+            "public_ready": true
+          },
+          "source_meta": {
+            "evidence_profile": "official_pdp_reviewed_formula_and_usage",
+            "quality_state": "reviewed",
+            "source_origin": "official_pdp_fields",
+            "source_url": "https://upcirclebeauty.com/products/cinnamon-ginger-chai-soap-bar",
+            "quality_improvement": {
+              "previous_bundle_hash": "b9c58cbafca5d85e0a6eabba85bcc6cf734abe8a6ca9e502dd45959214091cfb",
+              "candidate_bundle_hash": "6c6efa3093e463e9ff18256507e26473b961f92dd5dd948ef7a470dfdae510c7",
+              "replacement_decision": "explicit_owner_delegated_assistant_replacement_review",
+              "existing_quality_lane": "keep",
+              "candidate_quality_lane": "keep",
+              "existing_evidence_profile": "official_pdp_reviewed_limited",
+              "candidate_evidence_profile": "official_pdp_reviewed_formula_and_usage"
+            }
+          }
+        },
+        {
+          "kb_key": "product:sig_226946a6ba84e4cda0525ac6",
+          "action": "update",
+          "reason": "explicit_owner_delegated_assistant_replacement_review",
+          "old_hash": "6b79dd1e78f139e28b46361e708913e76766ecb135cf721b824f68c467e982ec",
+          "candidate_hash": "9ce1a29a659af949dfc41d7c15c8464ebed4b9bd6e0e2a119e219a8f24749159",
+          "existing_weak": true,
+          "source": "pivota_insights_official_pdp_manual_review_v1",
+          "after_inventory": {
+            "product_id": "ext_f1f3ce59fac13141b98a911f",
+            "kb_key": "product:sig_226946a6ba84e4cda0525ac6",
+            "source": "pivota_insights_official_pdp_manual_review_v1",
+            "updated_at": "",
+            "last_success_at": "",
+            "title": "Cinnamon + Ginger Chai Cleansing Bar",
+            "canonical_url": "",
+            "bundle_hash": "6c6efa3093e463e9ff18256507e26473b961f92dd5dd948ef7a470dfdae510c7",
+            "lane": "keep",
+            "reason": "protected_good_content",
+            "priority": 0,
+            "protected": true,
+            "displayable": true,
+            "high_quality_ready": true,
+            "human_reviewed": true,
+            "issues": [],
+            "blocking_issues": [],
+            "quality_state": "reviewed",
+            "evidence_profile": "official_pdp_reviewed_formula_and_usage",
+            "evidence_rank": 1,
+            "review_tier": "assistant_reviewed",
+            "agent_readable": true,
+            "public_ready": true
+          },
+          "source_meta": {
+            "evidence_profile": "official_pdp_reviewed_formula_and_usage",
+            "quality_state": "reviewed",
+            "source_origin": "official_pdp_fields",
+            "source_url": "https://upcirclebeauty.com/products/cinnamon-ginger-chai-soap-bar",
+            "quality_improvement": {
+              "previous_bundle_hash": "b9c58cbafca5d85e0a6eabba85bcc6cf734abe8a6ca9e502dd45959214091cfb",
+              "candidate_bundle_hash": "6c6efa3093e463e9ff18256507e26473b961f92dd5dd948ef7a470dfdae510c7",
+              "replacement_decision": "explicit_owner_delegated_assistant_replacement_review",
+              "existing_quality_lane": "keep",
+              "candidate_quality_lane": "keep",
+              "existing_evidence_profile": "official_pdp_reviewed_limited",
+              "candidate_evidence_profile": "official_pdp_reviewed_formula_and_usage"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "external_product_id": "ext_6815bee1060ef71d9a99ce5b",
+      "pivota_signature_id": "sig_69612c2d0788a9296c85e6ef",
+      "title": "Cleansing Face Milk with Oat Powder + Aloe Vera",
+      "brand": "UpCircle Beauty",
+      "canonical_url": "https://upcirclebeauty.com/products/oat-face-cleanser",
+      "changed": true,
+      "blocked": false,
+      "skip_reason": null,
+      "candidate_hash": "ca503203ec374ac526dea86604f3a547de0c3a350f78274c3e12cb9b8da902bf",
+      "evidence_profile": "official_pdp_reviewed_formula_and_usage",
+      "source_coverage": {
+        "source": "official_pdp",
+        "canonical_url": "https://upcirclebeauty.com/products/oat-face-cleanser",
+        "fields": {
+          "description": true,
+          "ingredients": 1,
+          "active_ingredients": 0,
+          "how_to": 1,
+          "details": 3,
+          "variants": 2
+        }
+      },
+      "preview": {
+        "headline": "Face cleanser",
+        "what_it_is": "Cleansing Face Milk with Oat Powder + Aloe Vera is a face cleanser from UpCircle Beauty, with source-backed cues around cleansing and dirt, oil, and impurity removal.",
+        "why_it_stands_out": [
+          {
+            "headline": "Product cues are source-backed",
+            "body": "Reviewed PDP cues such as daily cleansing, pore cleansing give shoppers specific comparison points within UpCircle Beauty, rather than category-only copy.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Ingredient list is available",
+            "body": "Full INCI is present for formula-sensitive review, which makes this PDP safer to evaluate than a claim-only listing.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Usage instructions available",
+            "body": "Reviewed usage context is present, including: Massage between your fingers and onto damp face in upward circular motions.",
+            "evidence_strength": "official_pdp_reviewed"
+          }
+        ],
+        "best_for": [
+          {
+            "tag": "daily_cleansing",
+            "label": "daily cleansing",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "pore_cleansing",
+            "label": "pore cleansing",
+            "confidence": "moderate"
+          }
+        ],
+        "shopping_highlight": "daily cleansing, pore cleansing"
+      },
+      "writes": [
+        {
+          "kb_key": "product:ext_6815bee1060ef71d9a99ce5b",
+          "action": "update",
+          "reason": "explicit_owner_delegated_assistant_replacement_review",
+          "old_hash": "2dfbb514ee53b6517fae6440251e6e9a4a5d02338ccd57b8a6fec92f198c2e61",
+          "candidate_hash": "5edc9e5a0798384bff0768494d1652084610d228fb6fe233560a366ebb61845c",
+          "existing_weak": true,
+          "source": "pivota_insights_official_pdp_manual_review_v1",
+          "after_inventory": {
+            "product_id": "ext_6815bee1060ef71d9a99ce5b",
+            "kb_key": "product:ext_6815bee1060ef71d9a99ce5b",
+            "source": "pivota_insights_official_pdp_manual_review_v1",
+            "updated_at": "",
+            "last_success_at": "",
+            "title": "Cleansing Face Milk with Oat Powder + Aloe Vera",
+            "canonical_url": "",
+            "bundle_hash": "ca503203ec374ac526dea86604f3a547de0c3a350f78274c3e12cb9b8da902bf",
+            "lane": "keep",
+            "reason": "protected_good_content",
+            "priority": 0,
+            "protected": true,
+            "displayable": true,
+            "high_quality_ready": true,
+            "human_reviewed": true,
+            "issues": [],
+            "blocking_issues": [],
+            "quality_state": "reviewed",
+            "evidence_profile": "official_pdp_reviewed_formula_and_usage",
+            "evidence_rank": 1,
+            "review_tier": "assistant_reviewed",
+            "agent_readable": true,
+            "public_ready": true
+          },
+          "source_meta": {
+            "evidence_profile": "official_pdp_reviewed_formula_and_usage",
+            "quality_state": "reviewed",
+            "source_origin": "official_pdp_fields",
+            "source_url": "https://upcirclebeauty.com/products/oat-face-cleanser",
+            "quality_improvement": {
+              "previous_bundle_hash": "622de2d51c07d06acefdcca4b4004696295c38edb9c44b0f2b004d3d79bee24c",
+              "candidate_bundle_hash": "ca503203ec374ac526dea86604f3a547de0c3a350f78274c3e12cb9b8da902bf",
+              "replacement_decision": "explicit_owner_delegated_assistant_replacement_review",
+              "existing_quality_lane": "keep",
+              "candidate_quality_lane": "keep",
+              "existing_evidence_profile": "official_pdp_reviewed_limited",
+              "candidate_evidence_profile": "official_pdp_reviewed_formula_and_usage"
+            }
+          }
+        },
+        {
+          "kb_key": "product:sig_69612c2d0788a9296c85e6ef",
+          "action": "update",
+          "reason": "explicit_owner_delegated_assistant_replacement_review",
+          "old_hash": "2dfbb514ee53b6517fae6440251e6e9a4a5d02338ccd57b8a6fec92f198c2e61",
+          "candidate_hash": "5edc9e5a0798384bff0768494d1652084610d228fb6fe233560a366ebb61845c",
+          "existing_weak": true,
+          "source": "pivota_insights_official_pdp_manual_review_v1",
+          "after_inventory": {
+            "product_id": "ext_6815bee1060ef71d9a99ce5b",
+            "kb_key": "product:sig_69612c2d0788a9296c85e6ef",
+            "source": "pivota_insights_official_pdp_manual_review_v1",
+            "updated_at": "",
+            "last_success_at": "",
+            "title": "Cleansing Face Milk with Oat Powder + Aloe Vera",
+            "canonical_url": "",
+            "bundle_hash": "ca503203ec374ac526dea86604f3a547de0c3a350f78274c3e12cb9b8da902bf",
+            "lane": "keep",
+            "reason": "protected_good_content",
+            "priority": 0,
+            "protected": true,
+            "displayable": true,
+            "high_quality_ready": true,
+            "human_reviewed": true,
+            "issues": [],
+            "blocking_issues": [],
+            "quality_state": "reviewed",
+            "evidence_profile": "official_pdp_reviewed_formula_and_usage",
+            "evidence_rank": 1,
+            "review_tier": "assistant_reviewed",
+            "agent_readable": true,
+            "public_ready": true
+          },
+          "source_meta": {
+            "evidence_profile": "official_pdp_reviewed_formula_and_usage",
+            "quality_state": "reviewed",
+            "source_origin": "official_pdp_fields",
+            "source_url": "https://upcirclebeauty.com/products/oat-face-cleanser",
+            "quality_improvement": {
+              "previous_bundle_hash": "622de2d51c07d06acefdcca4b4004696295c38edb9c44b0f2b004d3d79bee24c",
+              "candidate_bundle_hash": "ca503203ec374ac526dea86604f3a547de0c3a350f78274c3e12cb9b8da902bf",
+              "replacement_decision": "explicit_owner_delegated_assistant_replacement_review",
+              "existing_quality_lane": "keep",
+              "candidate_quality_lane": "keep",
+              "existing_evidence_profile": "official_pdp_reviewed_limited",
+              "candidate_evidence_profile": "official_pdp_reviewed_formula_and_usage"
+            }
+          }
+        }
+      ]
+    }
+  ],
+  "apply_result": {
+    "upserts": 10,
+    "chunks": 1
+  }
+}
