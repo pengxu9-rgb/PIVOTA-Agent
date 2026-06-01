@@ -560,23 +560,6 @@ function normalizeProductCandidateSnapshot(input = {}, options = {}) {
   return {
     product_ref: ref,
     product_id: productId || ref.replace(/^[a-z][a-z0-9_+-]*:/i, ''),
-    ...(pickFirstString(
-      row.pivota_signature_id,
-      row.pivotaSignatureId,
-      product.pivota_signature_id,
-      product.pivotaSignatureId,
-      canonicalProductRef.pivota_signature_id,
-      canonicalProductRef.pivotaSignatureId,
-    ) ? {
-      pivota_signature_id: pickFirstString(
-        row.pivota_signature_id,
-        row.pivotaSignatureId,
-        product.pivota_signature_id,
-        product.pivotaSignatureId,
-        canonicalProductRef.pivota_signature_id,
-        canonicalProductRef.pivotaSignatureId,
-      ),
-    } : {}),
     brand,
     name,
     category,
@@ -761,39 +744,16 @@ async function loadProductsCacheCandidates({ queryFn, limit = DEFAULT_SOURCE_LIM
   const rows = await guardedRows(
     queryFn,
     `
-      WITH catalog_sig AS (
-        SELECT
-          source_product_id,
-          MIN(pivota_signature_id) AS pivota_signature_id
-        FROM catalog_products
-        WHERE source_product_id IS NOT NULL
-          AND source_product_id <> ''
-          AND pivota_signature_id IS NOT NULL
-        GROUP BY source_product_id
-        HAVING COUNT(DISTINCT pivota_signature_id) = 1
-      )
       SELECT
         COALESCE(
-          CASE
-            WHEN cp_sig.pivota_signature_id IS NOT NULL
-              THEN concat('product:', cp_sig.pivota_signature_id)
-            ELSE NULL
-          END,
           NULLIF(platform_product_id, ''),
           NULLIF(product_data->>'product_id', ''),
           NULLIF(product_data->>'id', ''),
           id::text
         ) AS product_ref,
-        cp_sig.pivota_signature_id,
         product_data,
         cached_at
       FROM products_cache
-      LEFT JOIN catalog_sig cp_sig
-        ON cp_sig.source_product_id = COALESCE(
-          NULLIF(platform_product_id, ''),
-          NULLIF(product_data->>'product_id', ''),
-          NULLIF(product_data->>'id', '')
-        )
       WHERE lower(to_jsonb(product_data)::text) LIKE ANY($2::text[])
       ORDER BY cached_at DESC NULLS LAST, id DESC
       LIMIT $1
@@ -808,30 +768,9 @@ async function loadExternalProductSeedCandidates({ queryFn, limit = DEFAULT_SOUR
   const rows = await guardedRows(
     queryFn,
     `
-      WITH catalog_sig AS (
-        SELECT
-          source_product_id,
-          MIN(pivota_signature_id) AS pivota_signature_id
-        FROM catalog_products
-        WHERE merchant_id = 'external_seed'
-          AND source_product_id IS NOT NULL
-          AND source_product_id <> ''
-          AND pivota_signature_id IS NOT NULL
-        GROUP BY source_product_id
-        HAVING COUNT(DISTINCT pivota_signature_id) = 1
-      )
       SELECT
         id,
         external_product_id,
-        COALESCE(
-          CASE
-            WHEN cp_sig.pivota_signature_id IS NOT NULL
-              THEN concat('product:', cp_sig.pivota_signature_id)
-            ELSE NULL
-          END,
-          external_product_id
-        ) AS product_ref,
-        cp_sig.pivota_signature_id,
         attached_product_key,
         title,
         price_amount,
@@ -843,8 +782,6 @@ async function loadExternalProductSeedCandidates({ queryFn, limit = DEFAULT_SOUR
         updated_at,
         created_at
       FROM external_product_seeds
-      LEFT JOIN catalog_sig cp_sig
-        ON cp_sig.source_product_id = external_product_id
       WHERE COALESCE(status, 'active') = 'active'
         AND upper(COALESCE(market, $2)) = $2
         AND (
