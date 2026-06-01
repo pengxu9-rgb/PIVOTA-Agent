@@ -1,0 +1,128 @@
+{
+  "generated_at": "2026-06-01T08:39:20.385Z",
+  "market": "US",
+  "include_non_public": false,
+  "docs_built": 2,
+  "source_build_failures": [],
+  "docs": [
+    {
+      "doc_id": "sellable:sig_869678cd83f207f38bd39f70",
+      "sellable_item_group_id": "sig_869678cd83f207f38bd39f70",
+      "product_line_id": "pl_5e4e4b430bc2ab8fc61bb2d2",
+      "review_family_id": "rf_5e4e4b430bc2ab8fc61bb2d2",
+      "brand_name": "Fenty Beauty",
+      "category_paths": [
+        "Body Cream"
+      ],
+      "market": "US",
+      "availability_state": "out_of_stock",
+      "publish_state": "public",
+      "title": "Butta Drop Whipped Oil Body Cream with Tropical Oils + Shea Butter — Vanilla Dream",
+      "subtitle": "A body moisturizer for daily body-skin hydration and comfort.",
+      "variant_axes": {
+        "color": "vanilla dream",
+        "multi_variant": true
+      },
+      "size": null,
+      "shade": null,
+      "pack": null,
+      "hero_media": {
+        "url": "https://cdn.shopify.com/s/files/1/0341/3458/9485/files/FSB_S26_T2PRODUCT_PDPHERO_VANILLADREAM_BUTTADROP_BODYCREAM_FULLSIZE_1200X1500_60cfe93e-0023-4644-8de1-4c3727fe7565.jpg?v=1764094224",
+        "source_kind": "catalog",
+        "source_tier": "catalog"
+      },
+      "preview_media": [
+        "https://cdn.shopify.com/s/files/1/0341/3458/9485/files/FSB_S26_T2PRODUCT_PDPHERO_VANILLADREAM_BUTTADROP_BODYCREAM_FULLSIZE_1200X1500_60cfe93e-0023-4644-8de1-4c3727fe7565.jpg?v=1764094224",
+        "https://cdn.shopify.com/s/files/1/0341/3458/9485/files/FS1064600_GLOBAL_VANILLA_DREAM_BUTTA_DROP_CREAM_1200x1500_Benefits.jpg?v=1770094324",
+        "https://cdn.shopify.com/s/files/1/0341/3458/9485/files/FS1064600_GLOBAL_VANILLA_DREAM_BUTTA_DROP_CREAM_1200x1500_Scent_Notes.jpg?v=1770094386",
+        "https://cdn.shopify.com/s/files/1/0341/3458/9485/files/FS875800_GLOBAL_SUMMER_SCENT_EXT_INFOGRAPHICS_1200x1500_BUTTA_DROP_BANDA_V2.jpg?v=1770094324",
+        "https://cdn.shopify.com/s/files/1/0341/3458/9485/files/FS1064600_GLOBAL_VANILLA_DREAM_BUTTA_DROP_CREAM_1200x1500_Scent_Descriptor.jpg?v=1770094324",
+        "https://cdn.shopify.com/s/files/1/0341/3458/9485/files/FS875800_GLOBAL_SUMMER_SCENT_EXT_INFOGRAPHICS_1200x1500_BUTTA_DROP_BANDA_V1.jpg?v=1774393097",
+        "https://cdn.shopify.com/s/files/1/0341/3458/9485/files/FS741746_GLOBAL_HOL24_INFOGRAPHICS_1200x1500_Lil_Butta_Dropz_OG_Ingredients_1.jpg?v=1774393097",
+        "https://fentybeauty.com/cdn/shop/files/FSB_S26_T2PRODUCT_PDPHERO_VANILLADREAM_BUTTADROP_BODYCREAM_FULLSIZE_1200X1500_60cfe93e-0023-4644-8de1-4c3727fe7565_1200x.jpg?v=1764094224"
+      ],
+      "price_min": 46,
+      "price_max": 46,
+      "default_offer_id": "external_seed:ext_b0cae796baeb2e52326f7643",
+      "internal_offer_exists": false,
+      "external_offer_exists": true,
+      "pivota_insight_status": "available",
+      "pivota_insight_summary": "Butta Drop Whipped Oil Body Cream with Tropical Oils + Shea Butter — Vanilla Dream is a body care treatment from Fenty Beauty, with source-backed cues around hydration.",
+      "quality_score": null,
+      "browse_score": null,
+      "facet_tokens": [
+        "Fenty Beauty",
+        "Body Cream"
+      ],
+      "sort_keys": {
+        "price_min": 46,
+        "price_max": 46,
+        "updated_at": null
+      },
+      "updated_at": null,
+      "source_refs": [
+        "external_seed:ext_b0cae796baeb2e52326f7643"
+      ]
+    },
+    {
+      "doc_id": "sellable:sig_c34fc978ca0d30c802b908aa",
+      "sellable_item_group_id": "sig_c34fc978ca0d30c802b908aa",
+      "product_line_id": "pl_5e4e4b430bc2ab8fc61bb2d2",
+      "review_family_id": "rf_5e4e4b430bc2ab8fc61bb2d2",
+      "brand_name": "fenty beauty",
+      "category_paths": [
+        "Body Cream"
+      ],
+      "market": "US",
+      "availability_state": "available",
+      "publish_state": "public",
+      "title": "Butta Drop Whipped Oil Body Cream with Tropical Oils + Shea Butter — Fenty Fresh",
+      "subtitle": "A body cream built around humectants such as glycerin/propanediol plus rice/rice-bran extract for body-skin hydration, comfort, and daily post-shower moisture support.",
+      "variant_axes": {
+        "size": "standard",
+        "color": "fenty fresh",
+        "multi_variant": true
+      },
+      "size": null,
+      "shade": null,
+      "pack": null,
+      "hero_media": {
+        "url": "https://cdn.shopify.com/s/files/1/0341/3458/9485/files/FS_SUMMER_FALL_2021_ECom_ButtaDrop_Open_2914_FS_R2_RGB_1200x1500_72DPI.jpg?v=1762198629",
+        "source_kind": "catalog",
+        "source_tier": "catalog"
+      },
+      "preview_media": [
+        "https://cdn.shopify.com/s/files/1/0341/3458/9485/files/FS_SUMMER_FALL_2021_ECom_ButtaDrop_Open_2914_FS_R2_RGB_1200x1500_72DPI.jpg?v=1762198629",
+        "https://cdn.shopify.com/s/files/1/0341/3458/9485/files/FS_FALL25_T2BEAUTY_BUTTA-DROP_AYEN_DEEP_263_1200X1500_72DPI.jpg?v=1760569426",
+        "https://cdn.shopify.com/s/files/1/0341/3458/9485/files/FS_FALL25_T2BEAUTY_BUTTA-DROP_HAYLEY_MEDIUM_025_1200X1500_72DPI.jpg?v=1760568902",
+        "https://cdn.shopify.com/s/files/1/0341/3458/9485/files/FS_FALL25_T2BEAUTY_BUTTA-DROP_AYEN_DEEP_205_1200X1500_72DPI.jpg?v=1760568902",
+        "https://cdn.shopify.com/s/files/1/0341/3458/9485/files/FS875800_GLOBAL_SUMMER_SCENT_EXT_INFOGRAPHICS_1200x1500_BUTTA_DROP_BANDA_V1.jpg?v=1774393097",
+        "https://cdn.shopify.com/s/files/1/0341/3458/9485/files/FS875800_GLOBAL_SUMMER_SCENT_EXT_INFOGRAPHICS_1200x1500_BUTTA_DROP_BANDA_V2.jpg?v=1770094324",
+        "https://cdn.shopify.com/s/files/1/0341/3458/9485/files/FS689758_GLOBAL_FALL_24_INFOGRAPHICS_1200x1500_BUTTA_DROP_BODY_MILK_Scent_Profile_37da2e69-f2ec-49cc-a6bd-d0a4cd5beafc.jpg?v=1771006005",
+        "https://cdn.shopify.com/s/files/1/0341/3458/9485/files/FS_FALL25_T2BEAUTY_BUTTA-DROP_KYRSTEN_LIGHT_119_1200X1500_72DPI.jpg?v=1771006005"
+      ],
+      "price_min": 46,
+      "price_max": 46,
+      "default_offer_id": "external_seed:ext_79da6167f30f91d77e4d018b",
+      "internal_offer_exists": false,
+      "external_offer_exists": true,
+      "pivota_insight_status": "available",
+      "pivota_insight_summary": "Butta Drop Whipped Oil Body Cream with Tropical Oils + Shea Butter — Fenty Fresh is a body care treatment from Fenty Beauty in Standard, with source-backed cues around hydration.",
+      "quality_score": null,
+      "browse_score": null,
+      "facet_tokens": [
+        "fenty beauty",
+        "Body Cream"
+      ],
+      "sort_keys": {
+        "price_min": 46,
+        "price_max": 46,
+        "updated_at": null
+      },
+      "updated_at": null,
+      "source_refs": [
+        "external_seed:ext_79da6167f30f91d77e4d018b"
+      ]
+    }
+  ]
+}
