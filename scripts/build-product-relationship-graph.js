@@ -26,22 +26,10 @@ const {
 } = require('../src/auroraBff/productBeautyAttributes');
 const { computeReviewPriority } = require('../src/auroraBff/relationshipReviewPriority');
 
-function argValue(name) {
-  const idx = process.argv.indexOf(`--${name}`);
-  if (idx === -1) return null;
-  const value = process.argv[idx + 1];
-  if (!value || value.startsWith('--')) return null;
-  return value;
-}
-
-function hasFlag(name) {
-  return process.argv.includes(`--${name}`);
-}
-
 // Lever-2: order the review-pending report highest-predicted-approval first so
 // reviewers work the highest-yield candidates first. Pure: attaches
 // edge.review_priority and returns a stably-sorted copy (priority DESC, unscored
-// edges last). No-op ordering when no model artifact is present.
+// edges last). No-op (original order) when no model artifact is present.
 function reviewPriorityBrand(snapshot) {
   return (snapshot && (snapshot.brand || snapshot.brand_name || snapshot.vendor)) || null;
 }
@@ -66,6 +54,18 @@ function orderEdgesByReviewPriority(edges = [], attrsByKey = new Map()) {
     return b.priority - a.priority || a.index - b.index;
   });
   return scored.map((s) => s.edge);
+}
+
+function argValue(name) {
+  const idx = process.argv.indexOf(`--${name}`);
+  if (idx === -1) return null;
+  const value = process.argv[idx + 1];
+  if (!value || value.startsWith('--')) return null;
+  return value;
+}
+
+function hasFlag(name) {
+  return process.argv.includes(`--${name}`);
 }
 
 // Pure helper: derive the default label_state from the --review-status arg.
@@ -187,45 +187,26 @@ async function fetchProductsCacheBeautyRows(limit) {
   try {
     const res = await query(
       `
-        WITH catalog_sig AS (
-          SELECT
-            source_product_id,
-            MIN(pivota_signature_id) AS pivota_signature_id
-          FROM catalog_products
-          WHERE source_product_id IS NOT NULL
-            AND source_product_id <> ''
-            AND pivota_signature_id IS NOT NULL
-          GROUP BY source_product_id
-          HAVING COUNT(DISTINCT pivota_signature_id) = 1
-        )
         SELECT
-          COALESCE(NULLIF(pc.platform_product_id, ''), NULLIF(pc.product_data->>'id', ''), pc.id::text) AS product_ref,
-          pc.product_data,
-          pc.cached_at,
-          cp.pivota_signature_id
-        FROM products_cache pc
-        LEFT JOIN catalog_sig cp ON cp.source_product_id =
-          COALESCE(NULLIF(pc.platform_product_id, ''), NULLIF(pc.product_data->>'id', ''))
+          COALESCE(NULLIF(platform_product_id, ''), NULLIF(product_data->>'id', ''), id::text) AS product_ref,
+          product_data,
+          cached_at,
+          updated_at
+        FROM products_cache
         WHERE (
-          lower(to_jsonb(pc.product_data)::text) LIKE '%beauty%'
-          OR lower(to_jsonb(pc.product_data)::text) LIKE '%skincare%'
-          OR lower(to_jsonb(pc.product_data)::text) LIKE '%serum%'
-          OR lower(to_jsonb(pc.product_data)::text) LIKE '%moisturizer%'
-          OR lower(to_jsonb(pc.product_data)::text) LIKE '%cleanser%'
-          OR lower(to_jsonb(pc.product_data)::text) LIKE '%sunscreen%'
+          lower(to_jsonb(product_data)::text) LIKE '%beauty%'
+          OR lower(to_jsonb(product_data)::text) LIKE '%skincare%'
+          OR lower(to_jsonb(product_data)::text) LIKE '%serum%'
+          OR lower(to_jsonb(product_data)::text) LIKE '%moisturizer%'
+          OR lower(to_jsonb(product_data)::text) LIKE '%cleanser%'
+          OR lower(to_jsonb(product_data)::text) LIKE '%sunscreen%'
         )
-        ORDER BY pc.cached_at DESC NULLS LAST, pc.id DESC
+        ORDER BY cached_at DESC NULLS LAST, id DESC
         LIMIT $1
       `,
       [Math.max(20, Math.min(Number(limit) || 1000, 5000))],
     );
-    return (Array.isArray(res?.rows) ? res.rows : []).map((row) => {
-      const product = normalizeProductDataRow(row, 'products_cache');
-      return {
-        ...product,
-        ...(row.pivota_signature_id ? { product_ref: `product:${row.pivota_signature_id}` } : {}),
-      };
-    });
+    return (Array.isArray(res?.rows) ? res.rows : []).map((row) => normalizeProductDataRow(row, 'products_cache'));
   } catch (err) {
     if (['NO_DATABASE', '42P01'].includes(String(err?.code || ''))) return [];
     throw err;
@@ -236,42 +217,28 @@ async function fetchExternalSeedBeautyRows(limit) {
   try {
     const res = await query(
       `
-        WITH catalog_sig AS (
-          SELECT
-            source_product_id,
-            MIN(pivota_signature_id) AS pivota_signature_id
-          FROM catalog_products
-          WHERE merchant_id = 'external_seed'
-            AND source_product_id IS NOT NULL
-            AND source_product_id <> ''
-            AND pivota_signature_id IS NOT NULL
-          GROUP BY source_product_id
-          HAVING COUNT(DISTINCT pivota_signature_id) = 1
-        )
         SELECT
-          eps.id,
-          eps.external_product_id,
-          eps.title,
-          eps.price_amount,
-          eps.market,
-          eps.seed_data,
-          eps.canonical_url,
-          eps.updated_at,
-          eps.created_at,
-          cp.pivota_signature_id
-        FROM external_product_seeds eps
-        LEFT JOIN catalog_sig cp ON cp.source_product_id = eps.external_product_id
-        WHERE COALESCE(eps.status, 'active') = 'active'
-          AND upper(COALESCE(eps.market, 'US')) = 'US'
+          id,
+          external_product_id,
+          title,
+          price_amount,
+          market,
+          seed_data,
+          canonical_url,
+          updated_at,
+          created_at
+        FROM external_product_seeds
+        WHERE COALESCE(status, 'active') = 'active'
+          AND upper(COALESCE(market, 'US')) = 'US'
           AND (
-            lower(to_jsonb(eps.seed_data)::text) LIKE '%beauty%'
-            OR lower(to_jsonb(eps.seed_data)::text) LIKE '%skincare%'
-            OR lower(to_jsonb(eps.seed_data)::text) LIKE '%serum%'
-            OR lower(to_jsonb(eps.seed_data)::text) LIKE '%moisturizer%'
-            OR lower(to_jsonb(eps.seed_data)::text) LIKE '%cleanser%'
-            OR lower(to_jsonb(eps.seed_data)::text) LIKE '%sunscreen%'
+            lower(to_jsonb(seed_data)::text) LIKE '%beauty%'
+            OR lower(to_jsonb(seed_data)::text) LIKE '%skincare%'
+            OR lower(to_jsonb(seed_data)::text) LIKE '%serum%'
+            OR lower(to_jsonb(seed_data)::text) LIKE '%moisturizer%'
+            OR lower(to_jsonb(seed_data)::text) LIKE '%cleanser%'
+            OR lower(to_jsonb(seed_data)::text) LIKE '%sunscreen%'
           )
-        ORDER BY eps.updated_at DESC NULLS LAST, eps.created_at DESC NULLS LAST
+        ORDER BY updated_at DESC NULLS LAST, created_at DESC NULLS LAST
         LIMIT $1
       `,
       [Math.max(20, Math.min(Number(limit) || 1000, 5000))],
@@ -280,11 +247,7 @@ async function fetchExternalSeedBeautyRows(limit) {
       const product = normalizeProductDataRow(row, 'external_product_seed');
       return {
         ...product,
-        // Use canonical sig_* ref when available so all platform listings of the
-        // same product generate edges under one shared identity.
-        product_ref: row.pivota_signature_id
-          ? `product:${row.pivota_signature_id}`
-          : (product.product_ref || `external:${normalizeString(row.external_product_id || row.id)}`),
+        product_ref: product.product_ref || `external:${normalizeString(row.external_product_id || row.id)}`,
         name: product.name || normalizeString(row.title),
         url: normalizeString(row.canonical_url || product.url),
         price: toNumberOrNull(product.price ?? row.price_amount),
@@ -460,17 +423,16 @@ async function main() {
   // defaultLabelState resolution above (via resolveDefaultLabelState):
   //   - No --review-status  → 'generated' (Phase B gate runs).
   //   - --review-status set → mapped reviewer state (gate skipped).
-  // Resolve beauty attributes for the generated batch once. Used by the
-  // prefilter gate (apply only) AND review-priority ordering (dry-run too, so
-  // the report reviewers inspect is ranked).
-  //
-  // Phase B preflight gates. When defaultLabelState is 'generated' (no explicit
-  // reviewer decision), run applyAllGates on each edge using the anchor/candidate
-  // beauty attributes; gate failures are routed to 'prefilter_rejected' so they
-  // never reach the reviewer queue.
+  // Phase B preflight gates. When defaultLabelState is 'generated' (no
+  // explicit reviewer decision), run applyAllGates on each edge using the
+  // anchor/candidate beauty attributes; gate failures are routed to
+  // 'prefilter_rejected' so they never reach the reviewer queue.
   //
   // Explicit reviewer decisions (--review-status approved|rejected|pending)
   // bypass the gate — the reviewer's call is authoritative.
+  // Resolve beauty attributes for the whole generated batch once. Used by the
+  // prefilter gate (apply only) AND by review-priority ordering (always, so the
+  // dry-run report is ranked too).
   let attrsByKey = new Map();
   if (defaultLabelState === 'generated' && report.edges.length) {
     const productKeys = new Set();
@@ -483,11 +445,6 @@ async function main() {
     if (productKeys.size > 0) {
       attrsByKey = await lookupBeautyAttributesBatch(Array.from(productKeys));
     }
-  }
-
-  const reviewPriorityOrdered = defaultLabelState === 'generated' && attrsByKey.size > 0;
-  if (reviewPriorityOrdered) {
-    report.edges = orderEdgesByReviewPriority(report.edges, attrsByKey);
   }
 
   let applied = 0;
@@ -517,6 +474,12 @@ async function main() {
       });
       applied += 1;
     }
+  }
+
+  // Lever-2: rank the review-pending report highest-predicted-approval first.
+  const reviewPriorityOrdered = defaultLabelState === 'generated' && attrsByKey.size > 0;
+  if (reviewPriorityOrdered) {
+    report.edges = orderEdgesByReviewPriority(report.edges, attrsByKey);
   }
 
   const finalReport = {

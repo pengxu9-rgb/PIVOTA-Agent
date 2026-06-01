@@ -96,30 +96,6 @@ test('buildClusterReport holds clusters already split across product groups', ()
   assert.ok(report.blockers.includes('split_product_group_members'));
 });
 
-test('buildClusterReport treats existing groups with stale member sigs as ready for propagation', () => {
-  const report = buildClusterReport('ck_1234567890abcdef1234567890abcdef', [
-    row({ internal_product_group_id: 'pg_same', is_primary: true }),
-    row({
-      product_key: 'product_b',
-      merchant_id: 'merchant_b',
-      source_product_id: 'prod_b',
-      pivota_signature_id: 'sig_22222222222222222222222222222222',
-      source_listing_ref: 'merchant_b:prod_b',
-      // Identity listing already points at the canonical sig; catalog_products
-      // still needs the Phase 1 propagation update.
-      sellable_item_group_id: 'sig_11111111111111111111111111111111',
-      internal_product_group_id: 'pg_same',
-      is_primary: false,
-      pdp_lifecycle_stage: 'validated',
-    }),
-  ]);
-
-  assert.equal(report.action, 'auto_merge_ready');
-  assert.equal(report.identity_alias_updates.length, 0);
-  assert.equal(report.product_group_upserts.filter((item) => item.needs_write).length, 0);
-  assert.equal(report.product_group_upserts.filter((item) => item.needs_sig_propagation).length, 1);
-});
-
 test('serializeVariantAxes treats false multi_variant as empty but preserves real axes', () => {
   assert.equal(serializeVariantAxes({ multi_variant: false }), '');
   assert.equal(serializeVariantAxes({ size: '30ML', multi_variant: false }), '{"size":"30ml"}');
