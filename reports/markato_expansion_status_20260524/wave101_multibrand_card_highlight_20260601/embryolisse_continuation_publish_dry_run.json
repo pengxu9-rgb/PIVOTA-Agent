@@ -1,0 +1,14 @@
+{
+  "status": "ok",
+  "mode": "dry_run_validate_replacements",
+  "report": "/Users/pengchydan/dev/_worktrees/pivota-agent-markato-wave25-786-20260527/reports/markato_expansion_status_20260524/wave101_multibrand_card_highlight_20260601/embryolisse_continuation_product_intel_report.json",
+  "rows": [
+    "live_ext_eea510adf58c3c3b5b906b1c",
+    "live_ext_f39b95a6360df6259d96ea82"
+  ],
+  "entries": [
+    "product:ext_eea510adf58c3c3b5b906b1c",
+    "product:ext_f39b95a6360df6259d96ea82"
+  ],
+  "skipped_rows": []
+}

@@ -1,0 +1,472 @@
+{
+  "generated_at": "2026-06-01T01:29:06.266Z",
+  "options": {
+    "market": "US",
+    "includeAttached": true,
+    "domain": null,
+    "externalProductIds": [
+      "ext_eea510adf58c3c3b5b906b1c",
+      "ext_f39b95a6360df6259d96ea82"
+    ],
+    "limit": 20,
+    "sampleLimit": 20,
+    "checkpointDir": "/Users/pengchydan/dev/_worktrees/pivota-agent-markato-wave25-786-20260527/reports/markato_expansion_status_20260524/wave101_multibrand_card_highlight_20260601/readiness_before/pdp_readiness_checkpoint",
+    "checkpointMode": "domain",
+    "resume": false,
+    "force": true,
+    "continueOnError": true,
+    "pageSize": 500,
+    "format": "json"
+  },
+  "warnings": [],
+  "summary": {
+    "scanned": 2,
+    "by_market": {
+      "US": 2
+    },
+    "by_domain": [
+      {
+        "key": "us.embryolisse.com",
+        "count": 2
+      }
+    ],
+    "by_product_family": [
+      {
+        "key": "single_formula",
+        "count": 1
+      },
+      {
+        "key": "unknown_product",
+        "count": 1
+      }
+    ],
+    "coverage": {
+      "missing_inci": 0,
+      "missing_active_raw": 0,
+      "missing_details": 0,
+      "missing_how_to": 0,
+      "missing_faq": 2
+    },
+    "pivota_insights": {
+      "direct": {
+        "displayable": 0,
+        "high_quality_ready": 0,
+        "missing_kb": 0,
+        "not_displayable": 2
+      },
+      "effective": {
+        "displayable": 0,
+        "high_quality_ready": 0,
+        "missing_kb": 0,
+        "not_displayable": 2,
+        "borrowed_from_sibling": 0
+      },
+      "effective_issues": [
+        {
+          "key": "not_displayable_gate",
+          "count": 2
+        },
+        {
+          "key": "not_reviewed",
+          "count": 2
+        },
+        {
+          "key": "quality_limited",
+          "count": 2
+        },
+        {
+          "key": "seller_only_evidence",
+          "count": 2
+        },
+        {
+          "key": "empty_watchouts",
+          "count": 1
+        }
+      ],
+      "effective_issue_domains": [
+        {
+          "key": "us.embryolisse.com::not_displayable_gate",
+          "count": 2
+        },
+        {
+          "key": "us.embryolisse.com::not_reviewed",
+          "count": 2
+        },
+        {
+          "key": "us.embryolisse.com::quality_limited",
+          "count": 2
+        },
+        {
+          "key": "us.embryolisse.com::seller_only_evidence",
+          "count": 2
+        },
+        {
+          "key": "us.embryolisse.com::empty_watchouts",
+          "count": 1
+        }
+      ],
+      "quality_state": [
+        {
+          "key": "limited",
+          "count": 2
+        }
+      ],
+      "evidence_profile": [
+        {
+          "key": "seller_only",
+          "count": 2
+        }
+      ],
+      "samples": {
+        "not_reviewed": [
+          {
+            "external_product_id": "ext_eea510adf58c3c3b5b906b1c",
+            "domain": "us.embryolisse.com",
+            "title": "Active Night Peeling",
+            "used_product_id": "ext_eea510adf58c3c3b5b906b1c",
+            "quality_state": "limited",
+            "evidence_profile": "seller_only"
+          },
+          {
+            "external_product_id": "ext_f39b95a6360df6259d96ea82",
+            "domain": "us.embryolisse.com",
+            "title": "Lait-Crème Sensitive - Fragrance free",
+            "used_product_id": "ext_f39b95a6360df6259d96ea82",
+            "quality_state": "limited",
+            "evidence_profile": "seller_only"
+          }
+        ],
+        "not_displayable_gate": [
+          {
+            "external_product_id": "ext_eea510adf58c3c3b5b906b1c",
+            "domain": "us.embryolisse.com",
+            "title": "Active Night Peeling",
+            "used_product_id": "ext_eea510adf58c3c3b5b906b1c",
+            "quality_state": "limited",
+            "evidence_profile": "seller_only"
+          },
+          {
+            "external_product_id": "ext_f39b95a6360df6259d96ea82",
+            "domain": "us.embryolisse.com",
+            "title": "Lait-Crème Sensitive - Fragrance free",
+            "used_product_id": "ext_f39b95a6360df6259d96ea82",
+            "quality_state": "limited",
+            "evidence_profile": "seller_only"
+          }
+        ],
+        "seller_only_evidence": [
+          {
+            "external_product_id": "ext_eea510adf58c3c3b5b906b1c",
+            "domain": "us.embryolisse.com",
+            "title": "Active Night Peeling",
+            "used_product_id": "ext_eea510adf58c3c3b5b906b1c",
+            "quality_state": "limited",
+            "evidence_profile": "seller_only"
+          },
+          {
+            "external_product_id": "ext_f39b95a6360df6259d96ea82",
+            "domain": "us.embryolisse.com",
+            "title": "Lait-Crème Sensitive - Fragrance free",
+            "used_product_id": "ext_f39b95a6360df6259d96ea82",
+            "quality_state": "limited",
+            "evidence_profile": "seller_only"
+          }
+        ]
+      }
+    },
+    "active_ingredients": {
+      "regulatory_expected": 0,
+      "hero_expected": 0,
+      "any_active_items": 0,
+      "status": [
+        {
+          "key": "low_signal_active",
+          "count": 2
+        }
+      ],
+      "issues": [
+        {
+          "key": "low_signal_active",
+          "count": 2
+        }
+      ],
+      "issue_domains": [
+        {
+          "key": "us.embryolisse.com::low_signal_active",
+          "count": 2
+        }
+      ],
+      "source_origin": [
+        {
+          "key": "none",
+          "count": 2
+        }
+      ],
+      "samples": {
+        "low_signal_active": [
+          {
+            "external_product_id": "ext_eea510adf58c3c3b5b906b1c",
+            "domain": "us.embryolisse.com",
+            "title": "Active Night Peeling",
+            "status": "low_signal_active",
+            "active_items": [],
+            "source_origin": "none"
+          },
+          {
+            "external_product_id": "ext_f39b95a6360df6259d96ea82",
+            "domain": "us.embryolisse.com",
+            "title": "Lait-Crème Sensitive - Fragrance free",
+            "status": "low_signal_active",
+            "active_items": [],
+            "source_origin": "none"
+          }
+        ]
+      }
+    },
+    "variants": {
+      "status": [
+        {
+          "key": "ready",
+          "count": 2
+        }
+      ],
+      "issues": [],
+      "issue_domains": [],
+      "samples": {}
+    }
+  },
+  "rows": [
+    {
+      "seed_id": "eps_b59bea4b501a46b7a36d3278",
+      "external_product_id": "ext_eea510adf58c3c3b5b906b1c",
+      "market": "US",
+      "domain": "us.embryolisse.com",
+      "title": "Active Night Peeling",
+      "canonical_url": "https://us.embryolisse.com/products/active-night-peeling",
+      "product_family": "unknown_product",
+      "product_line_id": "pl_eb37a69446e17a1fb0e12c5b",
+      "identity_variant_axes": {
+        "size": "1 35 fl oz",
+        "volume": "35floz",
+        "multi_variant": false
+      },
+      "pivota_insights": {
+        "direct": {
+          "product_id": "ext_eea510adf58c3c3b5b906b1c",
+          "kb_key": "product:ext_eea510adf58c3c3b5b906b1c",
+          "status": "not_displayable",
+          "kb_exists": true,
+          "displayable": false,
+          "high_quality_ready": false,
+          "human_reviewed": false,
+          "issues": [
+            "not_reviewed",
+            "not_displayable_gate",
+            "quality_limited",
+            "seller_only_evidence"
+          ],
+          "blocking_issues": [
+            "not_reviewed",
+            "not_displayable_gate"
+          ],
+          "quality_state": "limited",
+          "evidence_profile": "seller_only",
+          "has_card_highlight": true
+        },
+        "effective": {
+          "product_id": "ext_eea510adf58c3c3b5b906b1c",
+          "kb_key": "product:ext_eea510adf58c3c3b5b906b1c",
+          "status": "not_displayable",
+          "kb_exists": true,
+          "displayable": false,
+          "high_quality_ready": false,
+          "human_reviewed": false,
+          "issues": [
+            "not_reviewed",
+            "not_displayable_gate",
+            "quality_limited",
+            "seller_only_evidence"
+          ],
+          "blocking_issues": [
+            "not_reviewed",
+            "not_displayable_gate"
+          ],
+          "quality_state": "limited",
+          "evidence_profile": "seller_only",
+          "has_card_highlight": true
+        },
+        "product_line_id": "pl_eb37a69446e17a1fb0e12c5b",
+        "borrowed_from_sibling": false
+      },
+      "active_ingredients": {
+        "status": "low_signal_active",
+        "issues": [
+          "low_signal_active"
+        ],
+        "regulatory_expected": false,
+        "hero_expected": false,
+        "active_items": [],
+        "source_origin": "none",
+        "source_quality_status": "blocked",
+        "coverage": {
+          "details_sections_count": 6,
+          "faq_count": 0,
+          "how_to_chars": 171,
+          "inci_chars": 1185,
+          "active_ingredients_chars": 228,
+          "inci_applicability_status": "",
+          "ingredient_review_status": "",
+          "ingredient_remediation_action": "",
+          "bundle_component_refs_count": 0,
+          "effective_inci_chars": 1185,
+          "inci_borrowed_from_product_id": ""
+        },
+        "invalid_fragments": [],
+        "suppressed_reason": "active_items_low_signal"
+      },
+      "variants": {
+        "status": "ready",
+        "issues": [],
+        "visible_variant_rows": 1,
+        "examples": {
+          "identity_option_visible": [],
+          "wrong_axis_for_category": [],
+          "makeup_shade_missing_visual": [],
+          "size_value_generic_axis": [],
+          "default_option_size_evidence_missing_axis": [],
+          "identity_default_title_axis": []
+        }
+      },
+      "coverage": {
+        "details_sections_count": 6,
+        "faq_count": 0,
+        "how_to_chars": 171,
+        "inci_chars": 1185,
+        "active_ingredients_chars": 228,
+        "inci_applicability_status": "",
+        "ingredient_review_status": "",
+        "ingredient_remediation_action": "",
+        "bundle_component_refs_count": 0,
+        "effective_inci_chars": 1185,
+        "inci_borrowed_from_product_id": ""
+      }
+    },
+    {
+      "seed_id": "eps_c3f4661ff00a40f1bb20b031",
+      "external_product_id": "ext_f39b95a6360df6259d96ea82",
+      "market": "US",
+      "domain": "us.embryolisse.com",
+      "title": "Lait-Crème Sensitive - Fragrance free",
+      "canonical_url": "https://us.embryolisse.com/products/lait-creme-sensitive-fragrance-free",
+      "product_family": "single_formula",
+      "product_line_id": "pl_3497ad6cc2e42c628437ea0f",
+      "identity_variant_axes": {
+        "size": "3 38 fl oz",
+        "volume": "38floz",
+        "multi_variant": true
+      },
+      "pivota_insights": {
+        "direct": {
+          "product_id": "ext_f39b95a6360df6259d96ea82",
+          "kb_key": "product:ext_f39b95a6360df6259d96ea82",
+          "status": "not_displayable",
+          "kb_exists": true,
+          "displayable": false,
+          "high_quality_ready": false,
+          "human_reviewed": false,
+          "issues": [
+            "not_reviewed",
+            "not_displayable_gate",
+            "empty_watchouts",
+            "quality_limited",
+            "seller_only_evidence"
+          ],
+          "blocking_issues": [
+            "not_reviewed",
+            "not_displayable_gate"
+          ],
+          "quality_state": "limited",
+          "evidence_profile": "seller_only",
+          "has_card_highlight": true
+        },
+        "effective": {
+          "product_id": "ext_f39b95a6360df6259d96ea82",
+          "kb_key": "product:ext_f39b95a6360df6259d96ea82",
+          "status": "not_displayable",
+          "kb_exists": true,
+          "displayable": false,
+          "high_quality_ready": false,
+          "human_reviewed": false,
+          "issues": [
+            "not_reviewed",
+            "not_displayable_gate",
+            "empty_watchouts",
+            "quality_limited",
+            "seller_only_evidence"
+          ],
+          "blocking_issues": [
+            "not_reviewed",
+            "not_displayable_gate"
+          ],
+          "quality_state": "limited",
+          "evidence_profile": "seller_only",
+          "has_card_highlight": true
+        },
+        "product_line_id": "pl_3497ad6cc2e42c628437ea0f",
+        "borrowed_from_sibling": false
+      },
+      "active_ingredients": {
+        "status": "low_signal_active",
+        "issues": [
+          "low_signal_active"
+        ],
+        "regulatory_expected": false,
+        "hero_expected": false,
+        "active_items": [],
+        "source_origin": "none",
+        "source_quality_status": "blocked",
+        "coverage": {
+          "details_sections_count": 6,
+          "faq_count": 0,
+          "how_to_chars": 132,
+          "inci_chars": 1037,
+          "active_ingredients_chars": 262,
+          "inci_applicability_status": "",
+          "ingredient_review_status": "",
+          "ingredient_remediation_action": "",
+          "bundle_component_refs_count": 0,
+          "effective_inci_chars": 1037,
+          "inci_borrowed_from_product_id": ""
+        },
+        "invalid_fragments": [],
+        "suppressed_reason": "active_items_low_signal"
+      },
+      "variants": {
+        "status": "ready",
+        "issues": [],
+        "visible_variant_rows": 2,
+        "examples": {
+          "identity_option_visible": [],
+          "wrong_axis_for_category": [],
+          "makeup_shade_missing_visual": [],
+          "size_value_generic_axis": [],
+          "default_option_size_evidence_missing_axis": [],
+          "identity_default_title_axis": []
+        }
+      },
+      "coverage": {
+        "details_sections_count": 6,
+        "faq_count": 0,
+        "how_to_chars": 132,
+        "inci_chars": 1037,
+        "active_ingredients_chars": 262,
+        "inci_applicability_status": "",
+        "ingredient_review_status": "",
+        "ingredient_remediation_action": "",
+        "bundle_component_refs_count": 0,
+        "effective_inci_chars": 1037,
+        "inci_borrowed_from_product_id": ""
+      }
+    }
+  ]
+}
