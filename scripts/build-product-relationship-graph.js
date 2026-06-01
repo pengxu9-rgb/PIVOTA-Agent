@@ -24,6 +24,7 @@ const {
   lookupBeautyAttributesBatch,
   normalizeKey,
 } = require('../src/auroraBff/productBeautyAttributes');
+const { computeReviewPriority } = require('../src/auroraBff/relationshipReviewPriority');
 
 function argValue(name) {
   const idx = process.argv.indexOf(`--${name}`);
@@ -35,6 +36,36 @@ function argValue(name) {
 
 function hasFlag(name) {
   return process.argv.includes(`--${name}`);
+}
+
+// Lever-2: order the review-pending report highest-predicted-approval first so
+// reviewers work the highest-yield candidates first. Pure: attaches
+// edge.review_priority and returns a stably-sorted copy (priority DESC, unscored
+// edges last). No-op ordering when no model artifact is present.
+function reviewPriorityBrand(snapshot) {
+  return (snapshot && (snapshot.brand || snapshot.brand_name || snapshot.vendor)) || null;
+}
+
+function orderEdgesByReviewPriority(edges = [], attrsByKey = new Map()) {
+  const scored = edges.map((edge, index) => {
+    const priority = computeReviewPriority({
+      anchorAttrs: attrsByKey.get(normalizeKey(edge.anchor_ref)),
+      candidateAttrs: attrsByKey.get(normalizeKey(edge.candidate_product_ref)),
+      relationType: edge.relation_type,
+      scoreTotal: edge.score_total,
+      anchorBrand: reviewPriorityBrand(edge.anchor_snapshot),
+      candidateBrand: reviewPriorityBrand(edge.candidate_snapshot),
+    });
+    const next = priority == null ? edge : { ...edge, review_priority: priority };
+    return { edge: next, priority, index };
+  });
+  scored.sort((a, b) => {
+    if (a.priority == null && b.priority == null) return a.index - b.index;
+    if (a.priority == null) return 1;
+    if (b.priority == null) return -1;
+    return b.priority - a.priority || a.index - b.index;
+  });
+  return scored.map((s) => s.edge);
 }
 
 // Pure helper: derive the default label_state from the --review-status arg.
@@ -156,14 +187,24 @@ async function fetchProductsCacheBeautyRows(limit) {
   try {
     const res = await query(
       `
+        WITH catalog_sig AS (
+          SELECT
+            source_product_id,
+            MIN(pivota_signature_id) AS pivota_signature_id
+          FROM catalog_products
+          WHERE source_product_id IS NOT NULL
+            AND source_product_id <> ''
+            AND pivota_signature_id IS NOT NULL
+          GROUP BY source_product_id
+          HAVING COUNT(DISTINCT pivota_signature_id) = 1
+        )
         SELECT
           COALESCE(NULLIF(pc.platform_product_id, ''), NULLIF(pc.product_data->>'id', ''), pc.id::text) AS product_ref,
           pc.product_data,
           pc.cached_at,
-          pc.updated_at,
           cp.pivota_signature_id
         FROM products_cache pc
-        LEFT JOIN catalog_products cp ON cp.source_product_id =
+        LEFT JOIN catalog_sig cp ON cp.source_product_id =
           COALESCE(NULLIF(pc.platform_product_id, ''), NULLIF(pc.product_data->>'id', ''))
         WHERE (
           lower(to_jsonb(pc.product_data)::text) LIKE '%beauty%'
@@ -195,6 +236,18 @@ async function fetchExternalSeedBeautyRows(limit) {
   try {
     const res = await query(
       `
+        WITH catalog_sig AS (
+          SELECT
+            source_product_id,
+            MIN(pivota_signature_id) AS pivota_signature_id
+          FROM catalog_products
+          WHERE merchant_id = 'external_seed'
+            AND source_product_id IS NOT NULL
+            AND source_product_id <> ''
+            AND pivota_signature_id IS NOT NULL
+          GROUP BY source_product_id
+          HAVING COUNT(DISTINCT pivota_signature_id) = 1
+        )
         SELECT
           eps.id,
           eps.external_product_id,
@@ -207,7 +260,7 @@ async function fetchExternalSeedBeautyRows(limit) {
           eps.created_at,
           cp.pivota_signature_id
         FROM external_product_seeds eps
-        LEFT JOIN catalog_products cp ON cp.source_product_id = eps.external_product_id
+        LEFT JOIN catalog_sig cp ON cp.source_product_id = eps.external_product_id
         WHERE COALESCE(eps.status, 'active') = 'active'
           AND upper(COALESCE(eps.market, 'US')) = 'US'
           AND (
@@ -407,15 +460,19 @@ async function main() {
   // defaultLabelState resolution above (via resolveDefaultLabelState):
   //   - No --review-status  → 'generated' (Phase B gate runs).
   //   - --review-status set → mapped reviewer state (gate skipped).
-  // Phase B preflight gates. When defaultLabelState is 'generated' (no
-  // explicit reviewer decision), run applyAllGates on each edge using the
-  // anchor/candidate beauty attributes; gate failures are routed to
-  // 'prefilter_rejected' so they never reach the reviewer queue.
+  // Resolve beauty attributes for the generated batch once. Used by the
+  // prefilter gate (apply only) AND review-priority ordering (dry-run too, so
+  // the report reviewers inspect is ranked).
+  //
+  // Phase B preflight gates. When defaultLabelState is 'generated' (no explicit
+  // reviewer decision), run applyAllGates on each edge using the anchor/candidate
+  // beauty attributes; gate failures are routed to 'prefilter_rejected' so they
+  // never reach the reviewer queue.
   //
   // Explicit reviewer decisions (--review-status approved|rejected|pending)
   // bypass the gate — the reviewer's call is authoritative.
   let attrsByKey = new Map();
-  if (hasFlag('apply') && defaultLabelState === 'generated' && report.edges.length) {
+  if (defaultLabelState === 'generated' && report.edges.length) {
     const productKeys = new Set();
     for (const edge of report.edges) {
       const aKey = normalizeKey(edge.anchor_ref);
@@ -426,6 +483,11 @@ async function main() {
     if (productKeys.size > 0) {
       attrsByKey = await lookupBeautyAttributesBatch(Array.from(productKeys));
     }
+  }
+
+  const reviewPriorityOrdered = defaultLabelState === 'generated' && attrsByKey.size > 0;
+  if (reviewPriorityOrdered) {
+    report.edges = orderEdgesByReviewPriority(report.edges, attrsByKey);
   }
 
   let applied = 0;
@@ -469,6 +531,7 @@ async function main() {
       prefilter_rejected_count: prefilterRejected,
       prefilter_passed_count: prefilterPassed,
       prefilter_skipped_count: prefilterSkipped,
+      review_priority_ordered: reviewPriorityOrdered,
     },
   };
   if (hasFlag('require-anchors') && Number(finalReport.summary.anchor_count || 0) <= 0) {
@@ -504,4 +567,5 @@ module.exports = {
   numberArg,
   classifyEdgeForPrefilter,
   resolveDefaultLabelState,
+  orderEdgesByReviewPriority,
 };

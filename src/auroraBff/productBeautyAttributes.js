@@ -15,6 +15,10 @@ const AUDIT_STATUSES = new Set(['pending', 'codex_reviewed', 'manually_corrected
 
 const SPF_OTC_VALUES = new Set(['cosmetic', 'spf', 'otc_drug', 'spf_otc', 'unknown']);
 const CLAIM_RISK_VALUES = new Set(['low', 'medium', 'high']);
+const TARGET_AREA_VALUES = new Set([
+  'face', 'lips', 'body', 'hair', 'eyes', 'brows', 'cheeks',
+  'hands', 'nails', 'scalp', 'oral', 'fragrance', 'multi_area', 'unknown',
+]);
 
 function normalizeKey(value) {
   if (value == null) return '';
@@ -31,7 +35,7 @@ function isPlainObject(value) {
 
 function rowToAttributes(row) {
   if (!row) return null;
-  const out = { product_key: row.product_key };
+  const out = { product_key: row.product_key, sig_id: row.sig_id || null };
   for (const field of BEAUTY_ATTRIBUTE_FIELDS) {
     out[field] = row[field];
     out[`${field}_source`] = row[`${field}_source`];
@@ -131,6 +135,9 @@ function validateExtractionPayload(payload) {
   if (payload.claim_risk_level != null && !CLAIM_RISK_VALUES.has(payload.claim_risk_level)) {
     errors.push(`invalid_claim_risk_level:${payload.claim_risk_level}`);
   }
+  if (payload.target_area != null && !TARGET_AREA_VALUES.has(payload.target_area)) {
+    errors.push(`invalid_target_area:${payload.target_area}`);
+  }
   if (payload.skin_concern != null && !Array.isArray(payload.skin_concern)) {
     errors.push('skin_concern_not_array');
   }
@@ -209,6 +216,7 @@ module.exports = {
   AUDIT_STATUSES,
   SPF_OTC_VALUES,
   CLAIM_RISK_VALUES,
+  TARGET_AREA_VALUES,
   normalizeKey,
   lookupBeautyAttributes,
   lookupBeautyAttributesBatch,

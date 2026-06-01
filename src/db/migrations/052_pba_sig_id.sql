@@ -13,11 +13,24 @@ CREATE INDEX IF NOT EXISTS idx_pba_sig_id
   ON product_beauty_attributes (sig_id)
   WHERE sig_id IS NOT NULL;
 
--- Backfill from catalog_products. Safe to re-run: updates only rows where
--- sig_id doesn't match the catalog (handles sig corrections from backfill-sig-propagation).
+-- Backfill from unambiguous external-seed catalog rows. Safe to re-run: updates
+-- only rows where sig_id doesn't match the catalog (handles sig corrections from
+-- backfill-sig-propagation). Duplicate source ids with conflicting sigs are
+-- skipped instead of letting UPDATE ... FROM choose an arbitrary source row.
+WITH catalog_sig AS (
+  SELECT
+    source_product_id,
+    MIN(pivota_signature_id) AS pivota_signature_id
+  FROM catalog_products
+  WHERE merchant_id = 'external_seed'
+    AND source_product_id IS NOT NULL
+    AND source_product_id <> ''
+    AND pivota_signature_id IS NOT NULL
+  GROUP BY source_product_id
+  HAVING COUNT(DISTINCT pivota_signature_id) = 1
+)
 UPDATE product_beauty_attributes pba
-SET sig_id = cp.pivota_signature_id
-FROM catalog_products cp
-WHERE cp.source_product_id = pba.product_key
-  AND cp.pivota_signature_id IS NOT NULL
-  AND pba.sig_id IS DISTINCT FROM cp.pivota_signature_id;
+SET sig_id = catalog_sig.pivota_signature_id
+FROM catalog_sig
+WHERE catalog_sig.source_product_id = pba.product_key
+  AND pba.sig_id IS DISTINCT FROM catalog_sig.pivota_signature_id;

@@ -464,6 +464,51 @@ function buildAnchorRefsFromProduct(anchor = {}) {
   return refs;
 }
 
+function relationshipEdgeCandidateTokens(edgeInput = {}) {
+  const edge = coerceRelationshipEdge(edgeInput);
+  const snapshot = isPlainObject(edge.candidate_snapshot) ? edge.candidate_snapshot : {};
+  const values = [
+    snapshot.pivota_signature_id,
+    snapshot.pivotaSignatureId,
+    snapshot.signature_id,
+    snapshot.signatureId,
+    snapshot.product_id,
+    snapshot.productId,
+    snapshot.external_product_id,
+    snapshot.externalProductId,
+    snapshot.source_product_id,
+    snapshot.sourceProductId,
+    snapshot.id,
+    snapshot.url,
+    snapshot.canonical_url,
+    snapshot.canonicalUrl,
+    stripRelationshipRefPrefix(edge.candidate_product_ref),
+    edge.candidate_product_ref,
+  ];
+  const tokens = [];
+  const seen = new Set();
+  for (const value of values) {
+    const token = normalizeLower(value, 512);
+    if (!token || seen.has(token)) continue;
+    seen.add(token);
+    tokens.push(token);
+  }
+  return tokens.length ? tokens : [normalizeLower(edge.id, 160)].filter(Boolean);
+}
+
+function dedupeApprovedRelationshipEdges(edges = []) {
+  const out = [];
+  const seen = new Set();
+  for (const edge of Array.isArray(edges) ? edges : []) {
+    const relationType = normalizeLower(edge.relation_type, 64);
+    const keys = relationshipEdgeCandidateTokens(edge).map((token) => `${relationType}|${token}`);
+    if (keys.some((key) => seen.has(key))) continue;
+    out.push(edge);
+    for (const key of keys) seen.add(key);
+  }
+  return out;
+}
+
 function edgeToRecoCandidate(edgeInput) {
   const edge = coerceRelationshipEdge(edgeInput);
   const snapshot = edge.candidate_snapshot || {};
@@ -622,7 +667,8 @@ async function listApprovedRelationshipEdgesForAnchor({
       `,
       params,
     );
-    return (Array.isArray(res?.rows) ? res.rows : []).map(mapRowToEdge).filter(Boolean);
+    const edges = (Array.isArray(res?.rows) ? res.rows : []).map(mapRowToEdge).filter(Boolean);
+    return dedupeApprovedRelationshipEdges(edges);
   } catch (err) {
     const code = normalizeString(err && err.code, 20);
     if (code === 'NO_DATABASE' || code === '42P01') return [];
@@ -966,5 +1012,7 @@ module.exports = {
     normalizeSourceRefs,
     countAuthoritativeSources,
     buildEdgeId,
+    dedupeApprovedRelationshipEdges,
+    relationshipEdgeCandidateTokens,
   },
 };

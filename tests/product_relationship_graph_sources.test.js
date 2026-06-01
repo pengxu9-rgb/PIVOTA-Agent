@@ -141,6 +141,49 @@ describe('product relationship graph source loaders', () => {
     expect(directIntel.product_ref).toBe(intelCandidate.product_ref);
   });
 
+  test('source loaders prefer unambiguous catalog sig refs when present', async () => {
+    const queryFn = jest.fn(async (sql) => {
+      if (String(sql).includes('FROM external_product_seeds')) {
+        return {
+          rows: [{
+            id: 'seed_1',
+            external_product_id: 'ext_barrier_serum',
+            product_ref: 'product:sig_barrier_serum',
+            pivota_signature_id: 'sig_barrier_serum',
+            title: 'Barrier Peptide Serum',
+            seed_data: { brand: 'Value Lab' },
+            updated_at: NOW,
+          }],
+        };
+      }
+      if (String(sql).includes('FROM products_cache')) {
+        return {
+          rows: [{
+            product_ref: 'product:sig_cache_serum',
+            pivota_signature_id: 'sig_cache_serum',
+            product_data: { id: 'ext_cache_serum', brand: 'Cache Lab', title: 'Cache Serum' },
+            cached_at: NOW,
+          }],
+        };
+      }
+      return { rows: [] };
+    });
+
+    const [seedCandidate] = await loadExternalProductSeedCandidates({ queryFn, market: 'US', limit: 5 });
+    const [cacheCandidate] = await loadProductsCacheCandidates({ queryFn, limit: 5 });
+
+    expect(seedCandidate).toEqual(expect.objectContaining({
+      product_ref: 'product:sig_barrier_serum',
+      product_id: 'ext_barrier_serum',
+      pivota_signature_id: 'sig_barrier_serum',
+    }));
+    expect(cacheCandidate).toEqual(expect.objectContaining({
+      product_ref: 'product:sig_cache_serum',
+      product_id: 'ext_cache_serum',
+      pivota_signature_id: 'sig_cache_serum',
+    }));
+  });
+
   test('infers brand and concrete title from official product-intel source when row fields are sparse', async () => {
     const { normalizeProductIntelKbRow } = require('../src/auroraBff/productRelationshipGraphSources');
     const row = {
