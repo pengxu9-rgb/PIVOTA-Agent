@@ -1,0 +1,2332 @@
+{
+  "generated_at": "2026-06-01T04:54:59.841Z",
+  "source": "pivota_insights_official_pdp_manual_review_v1",
+  "mode": "dry_run",
+  "filters": {
+    "brand": "Pixi",
+    "product_ids": [],
+    "limit": 30,
+    "include_strong": false,
+    "include_url_key": false,
+    "apply_chunk_size": null
+  },
+  "summary": {
+    "scanned": 30,
+    "changed_products": 0,
+    "blocked_products": 0,
+    "skipped_products": 30,
+    "write_actions": {
+      "skip": 60
+    },
+    "skip_reasons": {
+      "no_safe_writes": 30,
+      "protected_high_quality_existing:reviewed": 60
+    },
+    "evidence_profiles": {
+      "official_pdp_reviewed_key_ingredients_and_usage": 25,
+      "official_pdp_reviewed_line": 5
+    }
+  },
+  "plans": [
+    {
+      "external_product_id": "ext_a9ec7261c9f3c77391e2ba27",
+      "pivota_signature_id": "sig_7b6337f40ba352cf5321732a67044eaf",
+      "title": "12 Days of Icons Calendar",
+      "brand": "Pixi",
+      "canonical_url": "https://pixibeauty.com/products/welcome-to-the-festive-glow-hall-of-fame-12-days-of-icons",
+      "changed": false,
+      "blocked": false,
+      "skip_reason": "no_safe_writes",
+      "candidate_hash": "5ce3ed54a0d39fef513bc9a77de32375e14cc518eb3a85344030e2dd094430eb",
+      "evidence_profile": "official_pdp_reviewed_key_ingredients_and_usage",
+      "source_coverage": {
+        "source": "official_pdp",
+        "canonical_url": "https://pixibeauty.com/products/welcome-to-the-festive-glow-hall-of-fame-12-days-of-icons",
+        "fields": {
+          "description": true,
+          "ingredients": 0,
+          "active_ingredients": 36,
+          "how_to": 41,
+          "details": 3,
+          "variants": 1
+        }
+      },
+      "preview": {
+        "headline": "Brow product",
+        "what_it_is": "12 Days of Icons Calendar is a brow product from Pixi, with source-backed cues around cleansing, toning, hydration, brightening support and eye makeup grooming.",
+        "why_it_stands_out": [
+          {
+            "headline": "Product cues are source-backed",
+            "body": "Reviewed PDP cues such as brow definition, shade matching, built-in brow brush give shoppers specific comparison points within Pixi, rather than category-only copy.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Key ingredients are identified",
+            "body": "Glow Tonic Cleansing Gel, Moisclean Complex removes impurities & hydrates, Glycolic Acid are identified, enough for a cautious high-level formula read without inventing unsupported actives.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Usage instructions available",
+            "body": "Reviewed usage context is present, including: Glow Tonic Cleansing Gel.",
+            "evidence_strength": "official_pdp_reviewed"
+          }
+        ],
+        "best_for": [
+          {
+            "tag": "brow_definition",
+            "label": "brow definition",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "shade_matching",
+            "label": "shade matching",
+            "confidence": "moderate"
+          }
+        ],
+        "shopping_highlight": "brow definition, shade matching"
+      },
+      "writes": [
+        {
+          "kb_key": "product:ext_a9ec7261c9f3c77391e2ba27",
+          "action": "skip",
+          "reason": "protected_high_quality_existing:reviewed",
+          "old_hash": "715b30c63a6bae7399ffd4009193a359df2777ea9f31e26f213df309e4bd0894",
+          "existing_weak": false
+        },
+        {
+          "kb_key": "product:sig_7b6337f40ba352cf5321732a67044eaf",
+          "action": "skip",
+          "reason": "protected_high_quality_existing:reviewed",
+          "old_hash": "715b30c63a6bae7399ffd4009193a359df2777ea9f31e26f213df309e4bd0894",
+          "existing_weak": false
+        }
+      ]
+    },
+    {
+      "external_product_id": "ext_4b4ada4af8fe9be871feba45",
+      "pivota_signature_id": "sig_3dfe5816d344a180678e3330d26bf72d",
+      "title": "Aftersun Sheet Mask",
+      "brand": "Pixi",
+      "canonical_url": "https://pixibeauty.com/products/aftersun-sheet-mask",
+      "changed": false,
+      "blocked": false,
+      "skip_reason": "no_safe_writes",
+      "candidate_hash": "d70cb3f78d21dcf8547bf9a0d45ed92f8da9ff0532bc74498cb8961420d65a24",
+      "evidence_profile": "official_pdp_reviewed_key_ingredients_and_usage",
+      "source_coverage": {
+        "source": "official_pdp",
+        "canonical_url": "https://pixibeauty.com/products/aftersun-sheet-mask",
+        "fields": {
+          "description": true,
+          "ingredients": 0,
+          "active_ingredients": 3,
+          "how_to": 4,
+          "details": 3,
+          "variants": 1
+        }
+      },
+      "preview": {
+        "headline": "Treatment mask",
+        "what_it_is": "Aftersun Sheet Mask is a treatment mask from Pixi in 3 Masks, with source-backed cues around cleansing and hydration.",
+        "why_it_stands_out": [
+          {
+            "headline": "Product cues are source-backed",
+            "body": "Reviewed PDP cues such as 3 Masks give shoppers specific comparison points within Pixi, rather than category-only copy.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Key ingredients are identified",
+            "body": "Cucumber cools, Chamomile and Aloe Vera, Ceramides provide time-release moisture are identified, enough for a cautious high-level formula read without inventing unsupported actives.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Shade and size are explicit",
+            "body": "Variant labels such as 3 Masks, Size: 3 Masks are visible, reducing ambiguity around the product format before a shopper clicks through.",
+            "evidence_strength": "official_pdp_reviewed"
+          }
+        ],
+        "best_for": [
+          {
+            "tag": "3_masks",
+            "label": "3 Masks",
+            "confidence": "moderate"
+          }
+        ],
+        "shopping_highlight": "3 Masks"
+      },
+      "writes": [
+        {
+          "kb_key": "product:ext_4b4ada4af8fe9be871feba45",
+          "action": "skip",
+          "reason": "protected_high_quality_existing:reviewed",
+          "old_hash": "72505c6afd4eb0b3f964cb77028ef27b3a5fb20ce5da3e5bc89538184686540e",
+          "existing_weak": false
+        },
+        {
+          "kb_key": "product:sig_3dfe5816d344a180678e3330d26bf72d",
+          "action": "skip",
+          "reason": "protected_high_quality_existing:reviewed",
+          "old_hash": "72505c6afd4eb0b3f964cb77028ef27b3a5fb20ce5da3e5bc89538184686540e",
+          "existing_weak": false
+        }
+      ]
+    },
+    {
+      "external_product_id": "ext_89e6eb82511e6642db6fd1af",
+      "pivota_signature_id": "sig_80b4569987d2399486733ed4b6a4bc2a",
+      "title": "Antioxidant Duo",
+      "brand": "Pixi",
+      "canonical_url": "https://pixibeauty.com/products/antioxidant-duo",
+      "changed": false,
+      "blocked": false,
+      "skip_reason": "no_safe_writes",
+      "candidate_hash": "e3c0db7b2564a0db9bff87b2671b4e73a9e7d0a1661126d48609585c08764d17",
+      "evidence_profile": "official_pdp_reviewed_key_ingredients_and_usage",
+      "source_coverage": {
+        "source": "official_pdp",
+        "canonical_url": "https://pixibeauty.com/products/antioxidant-duo",
+        "fields": {
+          "description": true,
+          "ingredients": 0,
+          "active_ingredients": 3,
+          "how_to": 6,
+          "details": 3,
+          "variants": 1
+        }
+      },
+      "preview": {
+        "headline": "Fine fragrance",
+        "what_it_is": "Antioxidant Duo is a fine fragrance from Pixi in Duo.",
+        "why_it_stands_out": [
+          {
+            "headline": "Scent profile cues",
+            "body": "Reviewed scent cues such as Duo help shoppers compare the fragrance profile without relying on generic scent copy.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Key ingredients are identified",
+            "body": "Blueberry - Antioxidant protection, Ceramide NP - Provides time-release moisture, Camellia - Hydrating & nourishing are identified, enough for a cautious high-level formula read without inventing unsupported actives.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Shade and size are explicit",
+            "body": "Variant labels such as Duo, Format: Duo are visible, reducing ambiguity around the product format before a shopper clicks through.",
+            "evidence_strength": "official_pdp_reviewed"
+          }
+        ],
+        "best_for": [
+          {
+            "tag": "fresh_citrus_profiles",
+            "label": "fresh citrus profiles",
+            "confidence": "moderate"
+          }
+        ],
+        "shopping_highlight": "Duo"
+      },
+      "writes": [
+        {
+          "kb_key": "product:ext_89e6eb82511e6642db6fd1af",
+          "action": "skip",
+          "reason": "protected_high_quality_existing:reviewed",
+          "old_hash": "1801f66575f07d09bbfb006ccafba4ffa61a512b9e617d067fc7c21739172909",
+          "existing_weak": false
+        },
+        {
+          "kb_key": "product:sig_80b4569987d2399486733ed4b6a4bc2a",
+          "action": "skip",
+          "reason": "protected_high_quality_existing:reviewed",
+          "old_hash": "1801f66575f07d09bbfb006ccafba4ffa61a512b9e617d067fc7c21739172909",
+          "existing_weak": false
+        }
+      ]
+    },
+    {
+      "external_product_id": "ext_de5e72578fb609c79f8c0d7b",
+      "pivota_signature_id": "sig_1927e7ec33d00fcec61e16760eac4b6e",
+      "title": "Antioxidant Essentials",
+      "brand": "Pixi",
+      "canonical_url": "https://pixibeauty.com/products/antioxidant-essentials",
+      "changed": false,
+      "blocked": false,
+      "skip_reason": "no_safe_writes",
+      "candidate_hash": "938fbe6cac19abfd8a58607d0311a7280cddb2238e212d81a683e3f6d0a82163",
+      "evidence_profile": "official_pdp_reviewed_key_ingredients_and_usage",
+      "source_coverage": {
+        "source": "official_pdp",
+        "canonical_url": "https://pixibeauty.com/products/antioxidant-essentials",
+        "fields": {
+          "description": true,
+          "ingredients": 0,
+          "active_ingredients": 11,
+          "how_to": 11,
+          "details": 3,
+          "variants": 1
+        }
+      },
+      "preview": {
+        "headline": "Face toner",
+        "what_it_is": "Antioxidant Essentials is a face toner from Pixi in 80 mL, with source-backed cues around cleansing, toning and hydration.",
+        "why_it_stands_out": [
+          {
+            "headline": "Routine step cues are specific",
+            "body": "Reviewed skincare cues such as face mist, toning step, hydration, barrier support identify the routine role or key ingredient context without inventing unsupported benefits.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Key ingredients are identified",
+            "body": "SuperBerry Cleansing Whip, Red Bean Seeds, Green Tea are identified, enough for a cautious high-level formula read without inventing unsupported actives.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Shade and size are explicit",
+            "body": "Variant labels such as 80 mL, Size: 80 mL are visible, reducing ambiguity around the product format before a shopper clicks through.",
+            "evidence_strength": "official_pdp_reviewed"
+          }
+        ],
+        "best_for": [
+          {
+            "tag": "exfoliating_toner_step",
+            "label": "exfoliating toner step",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "hydration",
+            "label": "hydration",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "firmness",
+            "label": "firmness",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "radiance",
+            "label": "radiance",
+            "confidence": "moderate"
+          }
+        ],
+        "shopping_highlight": "face mist, toning step, hydration"
+      },
+      "writes": [
+        {
+          "kb_key": "product:ext_de5e72578fb609c79f8c0d7b",
+          "action": "skip",
+          "reason": "protected_high_quality_existing:reviewed",
+          "old_hash": "1a2c821639a94dcbeeeafc331bd1415b20f3a73f4d6da7615842284f4ca91cde",
+          "existing_weak": false
+        },
+        {
+          "kb_key": "product:sig_1927e7ec33d00fcec61e16760eac4b6e",
+          "action": "skip",
+          "reason": "protected_high_quality_existing:reviewed",
+          "old_hash": "1a2c821639a94dcbeeeafc331bd1415b20f3a73f4d6da7615842284f4ca91cde",
+          "existing_weak": false
+        }
+      ]
+    },
+    {
+      "external_product_id": "ext_cf265ec400746ce52efb9f8c",
+      "pivota_signature_id": "sig_e0596fcc83585e3f8dc29ed0e02530d9",
+      "title": "Antioxidant Mist Original Size",
+      "brand": "Pixi",
+      "canonical_url": "https://pixibeauty.com/products/antioxidant-mist-original-size",
+      "changed": false,
+      "blocked": false,
+      "skip_reason": "no_safe_writes",
+      "candidate_hash": "13d5d79f5e17145f288c4d36a75bbfee28a2e2bcb326dd244d7826457ea160d0",
+      "evidence_profile": "official_pdp_reviewed_key_ingredients_and_usage",
+      "source_coverage": {
+        "source": "official_pdp",
+        "canonical_url": "https://pixibeauty.com/products/antioxidant-mist-original-size",
+        "fields": {
+          "description": true,
+          "ingredients": 0,
+          "active_ingredients": 3,
+          "how_to": 3,
+          "details": 3,
+          "variants": 1
+        }
+      },
+      "preview": {
+        "headline": "Face toner",
+        "what_it_is": "Antioxidant Mist Original Size is a face toner from Pixi in 80 mL, with source-backed cues around toning and hydration.",
+        "why_it_stands_out": [
+          {
+            "headline": "Routine step cues are specific",
+            "body": "Reviewed skincare cues such as face mist, toning step, hydration, barrier support identify the routine role or key ingredient context without inventing unsupported benefits.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Key ingredients are identified",
+            "body": "Ceramide NP - Provides time-release moisture, Blueberry - Antioxidant protection, Super Berry Complex - Antioxidant protection are identified, enough for a cautious high-level formula read without inventing unsupported actives.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Shade and size are explicit",
+            "body": "Variant labels such as 80 mL, Size: 80 mL are visible, reducing ambiguity around the product format before a shopper clicks through.",
+            "evidence_strength": "official_pdp_reviewed"
+          }
+        ],
+        "best_for": [
+          {
+            "tag": "exfoliating_toner_step",
+            "label": "exfoliating toner step",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "hydration",
+            "label": "hydration",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "radiance",
+            "label": "radiance",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "barrier_support",
+            "label": "barrier support",
+            "confidence": "moderate"
+          }
+        ],
+        "shopping_highlight": "face mist, toning step, hydration"
+      },
+      "writes": [
+        {
+          "kb_key": "product:ext_cf265ec400746ce52efb9f8c",
+          "action": "skip",
+          "reason": "protected_high_quality_existing:reviewed",
+          "old_hash": "6d7b9fd9188af060c0211eac0ecfac49c10f90ab4354c7e734eed78a7551b777",
+          "existing_weak": false
+        },
+        {
+          "kb_key": "product:sig_e0596fcc83585e3f8dc29ed0e02530d9",
+          "action": "skip",
+          "reason": "protected_high_quality_existing:reviewed",
+          "old_hash": "6d7b9fd9188af060c0211eac0ecfac49c10f90ab4354c7e734eed78a7551b777",
+          "existing_weak": false
+        }
+      ]
+    },
+    {
+      "external_product_id": "ext_8ad59b1e60b7053a91e1b8b3",
+      "pivota_signature_id": "sig_f2d3d06e1aa8f35ebad67e20a4003fd4",
+      "title": "Antioxidant Mist Petite Size",
+      "brand": "Pixi",
+      "canonical_url": "https://pixibeauty.com/products/antioxidant-mist-petite-size",
+      "changed": false,
+      "blocked": false,
+      "skip_reason": "no_safe_writes",
+      "candidate_hash": "214785e16bcf550caa1ececd1a6d3f021b06595ffe6df9c8931e3e25ff9762fc",
+      "evidence_profile": "official_pdp_reviewed_key_ingredients_and_usage",
+      "source_coverage": {
+        "source": "official_pdp",
+        "canonical_url": "https://pixibeauty.com/products/antioxidant-mist-petite-size",
+        "fields": {
+          "description": true,
+          "ingredients": 0,
+          "active_ingredients": 3,
+          "how_to": 3,
+          "details": 3,
+          "variants": 1
+        }
+      },
+      "preview": {
+        "headline": "Face toner",
+        "what_it_is": "Antioxidant Mist Petite Size is a face toner from Pixi in 30 mL, with source-backed cues around toning and hydration.",
+        "why_it_stands_out": [
+          {
+            "headline": "Routine step cues are specific",
+            "body": "Reviewed skincare cues such as face mist, toning step, hydration, barrier support identify the routine role or key ingredient context without inventing unsupported benefits.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Key ingredients are identified",
+            "body": "Ceramide NP - Provides time-release moisture, Blueberry - Antioxidant protection, Super Berry Complex - Antioxidant protection are identified, enough for a cautious high-level formula read without inventing unsupported actives.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Shade and size are explicit",
+            "body": "Variant labels such as 30 mL, Size: 30 mL are visible, reducing ambiguity around the product format before a shopper clicks through.",
+            "evidence_strength": "official_pdp_reviewed"
+          }
+        ],
+        "best_for": [
+          {
+            "tag": "exfoliating_toner_step",
+            "label": "exfoliating toner step",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "hydration",
+            "label": "hydration",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "radiance",
+            "label": "radiance",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "barrier_support",
+            "label": "barrier support",
+            "confidence": "moderate"
+          }
+        ],
+        "shopping_highlight": "face mist, toning step, hydration"
+      },
+      "writes": [
+        {
+          "kb_key": "product:ext_8ad59b1e60b7053a91e1b8b3",
+          "action": "skip",
+          "reason": "protected_high_quality_existing:reviewed",
+          "old_hash": "40c473837f0aa2a6f86873580a50332cd2b319749433be0e28d215a8daa7a0ee",
+          "existing_weak": false
+        },
+        {
+          "kb_key": "product:sig_f2d3d06e1aa8f35ebad67e20a4003fd4",
+          "action": "skip",
+          "reason": "protected_high_quality_existing:reviewed",
+          "old_hash": "40c473837f0aa2a6f86873580a50332cd2b319749433be0e28d215a8daa7a0ee",
+          "existing_weak": false
+        }
+      ]
+    },
+    {
+      "external_product_id": "ext_91a10fe086714874e85ea46f",
+      "pivota_signature_id": "sig_48d4069024e8823186fb4d25db9288a2",
+      "title": "Antioxidant Radiance Quartet",
+      "brand": "Pixi",
+      "canonical_url": "https://pixibeauty.com/products/antioxidant-radiance-quartet",
+      "changed": false,
+      "blocked": false,
+      "skip_reason": "no_safe_writes",
+      "candidate_hash": "e1de44e5539d01339681f9179bb8dce75ed231a36cb9101ff3355feea85e5494",
+      "evidence_profile": "official_pdp_reviewed_key_ingredients_and_usage",
+      "source_coverage": {
+        "source": "official_pdp",
+        "canonical_url": "https://pixibeauty.com/products/antioxidant-radiance-quartet",
+        "fields": {
+          "description": true,
+          "ingredients": 0,
+          "active_ingredients": 10,
+          "how_to": 9,
+          "details": 3,
+          "variants": 1
+        }
+      },
+      "preview": {
+        "headline": "Skincare set",
+        "what_it_is": "Antioxidant Radiance Quartet is a skincare set from Pixi, with source-backed cues around cleansing, toning and hydration.",
+        "why_it_stands_out": [
+          {
+            "headline": "Routine step cues are specific",
+            "body": "Reviewed skincare cues such as toning step, hydration, barrier support identify the routine role or key ingredient context without inventing unsupported benefits.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Key ingredients are identified",
+            "body": "SuperBerry Cleansing Whip, Red Bean Seeds, Green Tea are identified, enough for a cautious high-level formula read without inventing unsupported actives.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Usage instructions available",
+            "body": "Reviewed usage context is present, including: SuperBerry Cleansing Whip.",
+            "evidence_strength": "official_pdp_reviewed"
+          }
+        ],
+        "best_for": [
+          {
+            "tag": "hydration",
+            "label": "hydration",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "firmness",
+            "label": "firmness",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "radiance",
+            "label": "radiance",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "barrier_support",
+            "label": "barrier support",
+            "confidence": "moderate"
+          }
+        ],
+        "shopping_highlight": "Skincare routine set"
+      },
+      "writes": [
+        {
+          "kb_key": "product:ext_91a10fe086714874e85ea46f",
+          "action": "skip",
+          "reason": "protected_high_quality_existing:reviewed",
+          "old_hash": "75417d8108a639220729b4e609f4cbcb63b88f92bccd86ab0ccfdd152e3c934e",
+          "existing_weak": false
+        },
+        {
+          "kb_key": "product:sig_48d4069024e8823186fb4d25db9288a2",
+          "action": "skip",
+          "reason": "protected_high_quality_existing:reviewed",
+          "old_hash": "75417d8108a639220729b4e609f4cbcb63b88f92bccd86ab0ccfdd152e3c934e",
+          "existing_weak": false
+        }
+      ]
+    },
+    {
+      "external_product_id": "ext_7d4411701feec44a4be836d0",
+      "pivota_signature_id": "sig_526e9770b4e264ab409511420bd3e3cb",
+      "title": "Antioxidant Tonic Original Size",
+      "brand": "Pixi",
+      "canonical_url": "https://pixibeauty.com/products/antioxidant-tonic-250ml",
+      "changed": false,
+      "blocked": false,
+      "skip_reason": "no_safe_writes",
+      "candidate_hash": "72cb2d756490e348156f76018a5db047465fdab9a97808a8a7b528d17cb93a70",
+      "evidence_profile": "official_pdp_reviewed_line",
+      "source_coverage": {
+        "source": "official_pdp",
+        "canonical_url": "https://pixibeauty.com/products/antioxidant-tonic-250ml",
+        "fields": {
+          "description": true,
+          "ingredients": 0,
+          "active_ingredients": 0,
+          "how_to": 1,
+          "details": 1,
+          "variants": 1
+        }
+      },
+      "preview": {
+        "headline": "Face toner",
+        "what_it_is": "Antioxidant Tonic Original Size is a face toner from Pixi in 250ml, with source-backed cues around toning and hydration.",
+        "why_it_stands_out": [
+          {
+            "headline": "Routine step cues are specific",
+            "body": "Reviewed skincare cues such as toning step, hydration, 250ml identify the routine role or key ingredient context without inventing unsupported benefits.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Shade and size are explicit",
+            "body": "Variant labels such as 250ml, Size: 250ml are visible, reducing ambiguity around the product format before a shopper clicks through.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Usage instructions available",
+            "body": "Reviewed usage context is present, including: Apply a small amount after cleansing and toning, before moisturizer.",
+            "evidence_strength": "official_pdp_reviewed"
+          }
+        ],
+        "best_for": [
+          {
+            "tag": "exfoliating_toner_step",
+            "label": "exfoliating toner step",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "hydration",
+            "label": "hydration",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "firmness",
+            "label": "firmness",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "radiance",
+            "label": "radiance",
+            "confidence": "moderate"
+          }
+        ],
+        "shopping_highlight": "toning step, hydration, 250ml"
+      },
+      "writes": [
+        {
+          "kb_key": "product:ext_7d4411701feec44a4be836d0",
+          "action": "skip",
+          "reason": "protected_high_quality_existing:reviewed",
+          "old_hash": "4cb13855b0fd981a7d28774f897a9fbdbec5670dbb431895f2f51b06e162a66d",
+          "existing_weak": false
+        },
+        {
+          "kb_key": "product:sig_526e9770b4e264ab409511420bd3e3cb",
+          "action": "skip",
+          "reason": "protected_high_quality_existing:reviewed",
+          "old_hash": "4cb13855b0fd981a7d28774f897a9fbdbec5670dbb431895f2f51b06e162a66d",
+          "existing_weak": false
+        }
+      ]
+    },
+    {
+      "external_product_id": "ext_b61a6a0e11611273654599b6",
+      "pivota_signature_id": "sig_ca7adf863fd65e8d3910fcb6ea8a4c0b",
+      "title": "Antioxidant Tonic Travel Size",
+      "brand": "Pixi",
+      "canonical_url": "https://pixibeauty.com/products/antioxidant-tonic",
+      "changed": false,
+      "blocked": false,
+      "skip_reason": "no_safe_writes",
+      "candidate_hash": "fbd5c24a3849f964aa6c3e12dbf7788ad212a530c5a2e2895be92104ad0805de",
+      "evidence_profile": "official_pdp_reviewed_key_ingredients_and_usage",
+      "source_coverage": {
+        "source": "official_pdp",
+        "canonical_url": "https://pixibeauty.com/products/antioxidant-tonic",
+        "fields": {
+          "description": true,
+          "ingredients": 0,
+          "active_ingredients": 3,
+          "how_to": 2,
+          "details": 3,
+          "variants": 1
+        }
+      },
+      "preview": {
+        "headline": "Face toner",
+        "what_it_is": "Antioxidant Tonic Travel Size is a face toner from Pixi in 100 mL, with source-backed cues around cleansing, toning and hydration.",
+        "why_it_stands_out": [
+          {
+            "headline": "Sample format is explicit",
+            "body": "The reviewed SKU fields identify 100 mL, Size: 100 mL, so shoppers can tell this is a sample or mini-size SKU rather than a hidden default variant.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Usage instructions available",
+            "body": "Reviewed usage context is present, including: Use: Either in the AM and PM or when needed.",
+            "evidence_strength": "official_pdp_reviewed"
+          }
+        ],
+        "best_for": [
+          {
+            "tag": "exfoliating_toner_step",
+            "label": "exfoliating toner step",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "hydration",
+            "label": "hydration",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "firmness",
+            "label": "firmness",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "body_routine",
+            "label": "body routine",
+            "confidence": "moderate"
+          }
+        ],
+        "shopping_highlight": "toning step, hydration, 100 mL"
+      },
+      "writes": [
+        {
+          "kb_key": "product:ext_b61a6a0e11611273654599b6",
+          "action": "skip",
+          "reason": "protected_high_quality_existing:reviewed",
+          "old_hash": "d4bd98b863d931596d78b6ab18d7095675d8200b486724e550ec8f05385adde9",
+          "existing_weak": false
+        },
+        {
+          "kb_key": "product:sig_ca7adf863fd65e8d3910fcb6ea8a4c0b",
+          "action": "skip",
+          "reason": "protected_high_quality_existing:reviewed",
+          "old_hash": "d4bd98b863d931596d78b6ab18d7095675d8200b486724e550ec8f05385adde9",
+          "existing_weak": false
+        }
+      ]
+    },
+    {
+      "external_product_id": "ext_c736316dab84e8c28eb7bbdc",
+      "pivota_signature_id": "sig_4438b26184e70f22dd5e0cf7767ff202",
+      "title": "AntioxifEYE Eye Mask Goggles (1 Mask)",
+      "brand": "Pixi",
+      "canonical_url": "https://pixibeauty.com/products/antioxifeye-eye-mask-goggles-1-mask",
+      "changed": false,
+      "blocked": false,
+      "skip_reason": "no_safe_writes",
+      "candidate_hash": "0ea104abf15824a645a0d589bf338a0fec994c9e480e98ed749edad60b600a4f",
+      "evidence_profile": "official_pdp_reviewed_key_ingredients_and_usage",
+      "source_coverage": {
+        "source": "official_pdp",
+        "canonical_url": "https://pixibeauty.com/products/antioxifeye-eye-mask-goggles-1-mask",
+        "fields": {
+          "description": true,
+          "ingredients": 0,
+          "active_ingredients": 3,
+          "how_to": 2,
+          "details": 3,
+          "variants": 1
+        }
+      },
+      "preview": {
+        "headline": "Treatment mask",
+        "what_it_is": "AntioxifEYE Eye Mask Goggles (1 Mask) is a treatment mask from Pixi in 1 mask, with source-backed cues around hydration.",
+        "why_it_stands_out": [
+          {
+            "headline": "Product cues are source-backed",
+            "body": "Reviewed PDP cues such as 1 mask give shoppers specific comparison points within Pixi, rather than category-only copy.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Key ingredients are identified",
+            "body": "Blueberry - Antioxidant protection, Ceramide NP - Provides time-release moisture, Camellia - Hydrating & nourishing are identified, enough for a cautious high-level formula read without inventing unsupported actives.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Shade and size are explicit",
+            "body": "Variant labels such as 1 mask, Size: 1 mask are visible, reducing ambiguity around the product format before a shopper clicks through.",
+            "evidence_strength": "official_pdp_reviewed"
+          }
+        ],
+        "best_for": [
+          {
+            "tag": "1_mask",
+            "label": "1 mask",
+            "confidence": "moderate"
+          }
+        ],
+        "shopping_highlight": "1 mask"
+      },
+      "writes": [
+        {
+          "kb_key": "product:ext_c736316dab84e8c28eb7bbdc",
+          "action": "skip",
+          "reason": "protected_high_quality_existing:reviewed",
+          "old_hash": "775e0c8b86a6fac2aadd19b19fa142a72b7c419e40c17ef12763a59e16c51e6c",
+          "existing_weak": false
+        },
+        {
+          "kb_key": "product:sig_4438b26184e70f22dd5e0cf7767ff202",
+          "action": "skip",
+          "reason": "protected_high_quality_existing:reviewed",
+          "old_hash": "775e0c8b86a6fac2aadd19b19fa142a72b7c419e40c17ef12763a59e16c51e6c",
+          "existing_weak": false
+        }
+      ]
+    },
+    {
+      "external_product_id": "ext_1f9b6daec36c9689348d4a6f",
+      "pivota_signature_id": "sig_39a2f1127e9000dfb3c42d22152b1078",
+      "title": "AntioxifEYE Eye Mask Goggles (Set of 3)",
+      "brand": "Pixi",
+      "canonical_url": "https://pixibeauty.com/products/antioxifeye-eye-mask-goggles-set-of-3",
+      "changed": false,
+      "blocked": false,
+      "skip_reason": "no_safe_writes",
+      "candidate_hash": "ffa865ecdd5f293a96d65db515a39029fc21338a73418b378a0e2f027ca25365",
+      "evidence_profile": "official_pdp_reviewed_key_ingredients_and_usage",
+      "source_coverage": {
+        "source": "official_pdp",
+        "canonical_url": "https://pixibeauty.com/products/antioxifeye-eye-mask-goggles-set-of-3",
+        "fields": {
+          "description": true,
+          "ingredients": 0,
+          "active_ingredients": 3,
+          "how_to": 2,
+          "details": 3,
+          "variants": 1
+        }
+      },
+      "preview": {
+        "headline": "Skincare set",
+        "what_it_is": "AntioxifEYE Eye Mask Goggles (Set of 3) is a skincare set from Pixi in Set, with source-backed cues around hydration.",
+        "why_it_stands_out": [
+          {
+            "headline": "Routine step cues are specific",
+            "body": "Reviewed skincare cues such as hydration, barrier support, Set identify the routine role or key ingredient context without inventing unsupported benefits.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Key ingredients are identified",
+            "body": "Blueberry - Antioxidant protection, Ceramide NP - Provides time-release moisture, Camellia - Hydrating & nourishing are identified, enough for a cautious high-level formula read without inventing unsupported actives.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Shade and size are explicit",
+            "body": "Variant labels such as Set, Format: Set are visible, reducing ambiguity around the product format before a shopper clicks through.",
+            "evidence_strength": "official_pdp_reviewed"
+          }
+        ],
+        "best_for": [
+          {
+            "tag": "hydration",
+            "label": "hydration",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "firmness",
+            "label": "firmness",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "barrier_support",
+            "label": "barrier support",
+            "confidence": "moderate"
+          }
+        ],
+        "shopping_highlight": "Skincare routine set"
+      },
+      "writes": [
+        {
+          "kb_key": "product:ext_1f9b6daec36c9689348d4a6f",
+          "action": "skip",
+          "reason": "protected_high_quality_existing:reviewed",
+          "old_hash": "784ed338e2473b3fb7ca38a1f6de3da7cc357d64dd861f3d4e4c35f2d0abf0ff",
+          "existing_weak": false
+        },
+        {
+          "kb_key": "product:sig_39a2f1127e9000dfb3c42d22152b1078",
+          "action": "skip",
+          "reason": "protected_high_quality_existing:reviewed",
+          "old_hash": "784ed338e2473b3fb7ca38a1f6de3da7cc357d64dd861f3d4e4c35f2d0abf0ff",
+          "existing_weak": false
+        }
+      ]
+    },
+    {
+      "external_product_id": "ext_c6478bccee2f1f5a8a192b97",
+      "pivota_signature_id": "sig_50951012dbb2750bce2bd8e7385f9a71",
+      "title": "Base Brush",
+      "brand": "Pixi",
+      "canonical_url": "https://pixibeauty.com/products/base-brush",
+      "changed": false,
+      "blocked": false,
+      "skip_reason": "no_safe_writes",
+      "candidate_hash": "effc9244799f938116929416f0811d0b25466708b3f199fb479da732a3be8176",
+      "evidence_profile": "official_pdp_reviewed_line",
+      "source_coverage": {
+        "source": "official_pdp",
+        "canonical_url": "https://pixibeauty.com/products/base-brush",
+        "fields": {
+          "description": true,
+          "ingredients": 0,
+          "active_ingredients": 0,
+          "how_to": 4,
+          "details": 3,
+          "variants": 1
+        }
+      },
+      "preview": {
+        "headline": "Makeup brush",
+        "what_it_is": "Base Brush is a makeup brush from Pixi, with source-backed cues around synthetic bristles, controlled product placement and targeted application area.",
+        "why_it_stands_out": [
+          {
+            "headline": "Product cues are source-backed",
+            "body": "Reviewed PDP cues such as synthetic bristles, precision application, face blending give shoppers specific comparison points within Pixi, rather than category-only copy.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Usage instructions available",
+            "body": "Reviewed usage context is present, including: Apply a small amount of your Pixi complexion treat to the back of your hand or a palette.",
+            "evidence_strength": "official_pdp_reviewed"
+          }
+        ],
+        "best_for": [
+          {
+            "tag": "synthetic_bristles",
+            "label": "synthetic bristles",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "precision_application",
+            "label": "precision application",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "face_blending",
+            "label": "face blending",
+            "confidence": "moderate"
+          }
+        ],
+        "shopping_highlight": "synthetic bristles"
+      },
+      "writes": [
+        {
+          "kb_key": "product:ext_c6478bccee2f1f5a8a192b97",
+          "action": "skip",
+          "reason": "protected_high_quality_existing:reviewed",
+          "old_hash": "4d1d8b9faab3e541276692523f39e171c37d014ad0024d88afb332c01e7eaf7d",
+          "existing_weak": false
+        },
+        {
+          "kb_key": "product:sig_50951012dbb2750bce2bd8e7385f9a71",
+          "action": "skip",
+          "reason": "protected_high_quality_existing:reviewed",
+          "old_hash": "4d1d8b9faab3e541276692523f39e171c37d014ad0024d88afb332c01e7eaf7d",
+          "existing_weak": false
+        }
+      ]
+    },
+    {
+      "external_product_id": "ext_01a73cafb33cd48b5565430a",
+      "pivota_signature_id": "sig_c4669c3feb1c5a4c9377fbae718f1bb4",
+      "title": "BeautifEYE",
+      "brand": "Pixi",
+      "canonical_url": "https://pixibeauty.com/products/beautifeye",
+      "changed": false,
+      "blocked": false,
+      "skip_reason": "no_safe_writes",
+      "candidate_hash": "a5cda5251c51f337b2947b9606e5760aa8f910f9dd9ceefffa25dd6358f0d5f9",
+      "evidence_profile": "official_pdp_reviewed_key_ingredients_and_usage",
+      "source_coverage": {
+        "source": "official_pdp",
+        "canonical_url": "https://pixibeauty.com/products/beautifeye",
+        "fields": {
+          "description": true,
+          "ingredients": 0,
+          "active_ingredients": 3,
+          "how_to": 9,
+          "details": 3,
+          "variants": 1
+        }
+      },
+      "preview": {
+        "headline": "Treatment serum",
+        "what_it_is": "BeautifEYE is a treatment serum from Pixi in 60 patches, with source-backed ingredient cues around vitamin C.",
+        "why_it_stands_out": [
+          {
+            "headline": "Routine step cues are specific",
+            "body": "Reviewed skincare cues such as vitamin C, 60 patches identify the routine role or key ingredient context without inventing unsupported benefits.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Key ingredients are identified",
+            "body": "Vitamin C, Licorice evens skin tone, Ginseng revitalizes & balances are identified, enough for a cautious high-level formula read without inventing unsupported actives.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Shade and size are explicit",
+            "body": "Variant labels such as 60 patches, Size: 60 patches are visible, reducing ambiguity around the product format before a shopper clicks through.",
+            "evidence_strength": "official_pdp_reviewed"
+          }
+        ],
+        "best_for": [
+          {
+            "tag": "firmness",
+            "label": "firmness",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "radiance",
+            "label": "radiance",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "body_routine",
+            "label": "body routine",
+            "confidence": "moderate"
+          }
+        ],
+        "shopping_highlight": "vitamin C, 60 patches"
+      },
+      "writes": [
+        {
+          "kb_key": "product:ext_01a73cafb33cd48b5565430a",
+          "action": "skip",
+          "reason": "protected_high_quality_existing:reviewed",
+          "old_hash": "b7896382471aae95cef0fcdd2470841d5a25efea3088951835e727189134fb1a",
+          "existing_weak": false
+        },
+        {
+          "kb_key": "product:sig_c4669c3feb1c5a4c9377fbae718f1bb4",
+          "action": "skip",
+          "reason": "protected_high_quality_existing:reviewed",
+          "old_hash": "b7896382471aae95cef0fcdd2470841d5a25efea3088951835e727189134fb1a",
+          "existing_weak": false
+        }
+      ]
+    },
+    {
+      "external_product_id": "ext_db75e6bdc4ab4bbbd3c2bf4c",
+      "pivota_signature_id": "sig_c3d0cb04f67a81cbc1180a14f8d0c2e9",
+      "title": "BeautifEYE Glow Essentials",
+      "brand": "Pixi",
+      "canonical_url": "https://pixibeauty.com/products/beautifeye-glow-essentials",
+      "changed": false,
+      "blocked": false,
+      "skip_reason": "no_safe_writes",
+      "candidate_hash": "7152c20d91ed016a424ca9278edb5117d99039fa5503380100c36abc5819577a",
+      "evidence_profile": "official_pdp_reviewed_key_ingredients_and_usage",
+      "source_coverage": {
+        "source": "official_pdp",
+        "canonical_url": "https://pixibeauty.com/products/beautifeye-glow-essentials",
+        "fields": {
+          "description": true,
+          "ingredients": 0,
+          "active_ingredients": 7,
+          "how_to": 16,
+          "details": 3,
+          "variants": 1
+        }
+      },
+      "preview": {
+        "headline": "Skincare set",
+        "what_it_is": "BeautifEYE Glow Essentials is a skincare set from Pixi, with source-backed cues around cleansing, toning, hydration and brightening support.",
+        "why_it_stands_out": [
+          {
+            "headline": "Routine step cues are specific",
+            "body": "Reviewed skincare cues such as vitamin C, AHA exfoliation, toning step, hydration identify the routine role or key ingredient context without inventing unsupported benefits.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Key ingredients are identified",
+            "body": "BeautifEYE Patches & Roll-On BeautifEYE Serum, Vitamin C, Niacinamide are identified, enough for a cautious high-level formula read without inventing unsupported actives.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Usage instructions available",
+            "body": "Reviewed usage context is present, including: BeautifEYE Patches.",
+            "evidence_strength": "official_pdp_reviewed"
+          }
+        ],
+        "best_for": [
+          {
+            "tag": "exfoliating_toner_step",
+            "label": "exfoliating toner step",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "hydration",
+            "label": "hydration",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "firmness",
+            "label": "firmness",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "radiance",
+            "label": "radiance",
+            "confidence": "moderate"
+          }
+        ],
+        "shopping_highlight": "Brightening skincare set"
+      },
+      "writes": [
+        {
+          "kb_key": "product:ext_db75e6bdc4ab4bbbd3c2bf4c",
+          "action": "skip",
+          "reason": "protected_high_quality_existing:reviewed",
+          "old_hash": "ce8c7663ed1b7820624084678e38cbf1f478f75d75f457ff880c4b4f58023f0f",
+          "existing_weak": false
+        },
+        {
+          "kb_key": "product:sig_c3d0cb04f67a81cbc1180a14f8d0c2e9",
+          "action": "skip",
+          "reason": "protected_high_quality_existing:reviewed",
+          "old_hash": "ce8c7663ed1b7820624084678e38cbf1f478f75d75f457ff880c4b4f58023f0f",
+          "existing_weak": false
+        }
+      ]
+    },
+    {
+      "external_product_id": "ext_d01b9562dca4bc3a468518d5",
+      "pivota_signature_id": "sig_fc7588fed2f2fc4756cab77c7eb92322",
+      "title": "BeautifEYE Single-Use Eye Patches",
+      "brand": "Pixi",
+      "canonical_url": "https://pixibeauty.com/products/beautifeye-single-use-eye-patches",
+      "changed": false,
+      "blocked": false,
+      "skip_reason": "no_safe_writes",
+      "candidate_hash": "3aeaeb8547170027a49ff746fa9542905d98ed23ce72a47b706a757a0b7887fa",
+      "evidence_profile": "official_pdp_reviewed_key_ingredients_and_usage",
+      "source_coverage": {
+        "source": "official_pdp",
+        "canonical_url": "https://pixibeauty.com/products/beautifeye-single-use-eye-patches",
+        "fields": {
+          "description": true,
+          "ingredients": 0,
+          "active_ingredients": 3,
+          "how_to": 9,
+          "details": 3,
+          "variants": 1
+        }
+      },
+      "preview": {
+        "headline": "Treatment mask",
+        "what_it_is": "BeautifEYE Single-Use Eye Patches is a treatment mask from Pixi, with source-backed cues around hydration and brightening support.",
+        "why_it_stands_out": [
+          {
+            "headline": "Key ingredients are identified",
+            "body": "Vitamin C, Licorice evens skin tone, Ginseng revitalizes & balances are identified, enough for a cautious high-level formula read without inventing unsupported actives.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Usage instructions available",
+            "body": "Reviewed usage context is present, including: Use daily, or as often as needed.",
+            "evidence_strength": "official_pdp_reviewed"
+          }
+        ],
+        "best_for": [
+          {
+            "tag": "treatment_mask",
+            "label": "Treatment mask",
+            "confidence": "moderate"
+          }
+        ],
+        "shopping_highlight": "Treatment mask"
+      },
+      "writes": [
+        {
+          "kb_key": "product:ext_d01b9562dca4bc3a468518d5",
+          "action": "skip",
+          "reason": "protected_high_quality_existing:reviewed",
+          "old_hash": "8ac3bcc6abc29c10d286210b7cb2f223e899c37c6711ef864e17a8571827269e",
+          "existing_weak": false
+        },
+        {
+          "kb_key": "product:sig_fc7588fed2f2fc4756cab77c7eb92322",
+          "action": "skip",
+          "reason": "protected_high_quality_existing:reviewed",
+          "old_hash": "8ac3bcc6abc29c10d286210b7cb2f223e899c37c6711ef864e17a8571827269e",
+          "existing_weak": false
+        }
+      ]
+    },
+    {
+      "external_product_id": "ext_fe3bf539f651e8b9efac056c",
+      "pivota_signature_id": "sig_d530c1d85c95c7025d577bdd3df83d76",
+      "title": "Beauty Balm",
+      "brand": "Pixi",
+      "canonical_url": "https://pixibeauty.com/products/beauty-balm",
+      "changed": false,
+      "blocked": false,
+      "skip_reason": "no_safe_writes",
+      "candidate_hash": "b4bf654efb03880fed39310eb1f33be08b557be895074c24b12dfbb25a3dc604",
+      "evidence_profile": "official_pdp_reviewed_key_ingredients_and_usage",
+      "source_coverage": {
+        "source": "official_pdp",
+        "canonical_url": "https://pixibeauty.com/products/beauty-balm",
+        "fields": {
+          "description": true,
+          "ingredients": 0,
+          "active_ingredients": 3,
+          "how_to": 3,
+          "details": 3,
+          "variants": 6
+        }
+      },
+      "preview": {
+        "headline": "Complexion makeup",
+        "what_it_is": "Beauty Balm is a complexion product from Pixi in Cream, with source-backed cues around coverage control.",
+        "why_it_stands_out": [
+          {
+            "headline": "Coverage and finish cues are clear",
+            "body": "Reviewed complexion cues such as coverage control, shade range support a more precise read on coverage, finish, or shade fit.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Key ingredients are identified",
+            "body": "Adenosine restores & smoothes, Ceramide NP provides time-release moisture, Chamomile calms & are identified, enough for a cautious high-level formula read without inventing unsupported actives.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Shade and size are explicit",
+            "body": "Variant labels such as Cream, Shade: Cream, Nude, Shade: Nude are visible, reducing ambiguity around the product format before a shopper clicks through.",
+            "evidence_strength": "official_pdp_reviewed"
+          }
+        ],
+        "best_for": [
+          {
+            "tag": "complexion_coverage",
+            "label": "complexion coverage",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "radiant_finish",
+            "label": "radiant finish",
+            "confidence": "moderate"
+          }
+        ],
+        "shopping_highlight": "coverage control, shade range"
+      },
+      "writes": [
+        {
+          "kb_key": "product:ext_fe3bf539f651e8b9efac056c",
+          "action": "skip",
+          "reason": "protected_high_quality_existing:reviewed",
+          "old_hash": "282c9d427d09c096fb888d4ea81c18fc97e311f081dff5902c1c4bde9cfa22cd",
+          "existing_weak": false
+        },
+        {
+          "kb_key": "product:sig_d530c1d85c95c7025d577bdd3df83d76",
+          "action": "skip",
+          "reason": "protected_high_quality_existing:reviewed",
+          "old_hash": "282c9d427d09c096fb888d4ea81c18fc97e311f081dff5902c1c4bde9cfa22cd",
+          "existing_weak": false
+        }
+      ]
+    },
+    {
+      "external_product_id": "ext_ff6ac56bcb2d966c7633ab97",
+      "pivota_signature_id": "sig_a508549f998b69ac226bf6452e207961",
+      "title": "Beauty Blush Duo + Kabuki",
+      "brand": "Pixi",
+      "canonical_url": "https://pixibeauty.com/products/beauty-blush-duo-kabuki",
+      "changed": false,
+      "blocked": false,
+      "skip_reason": "no_safe_writes",
+      "candidate_hash": "762b1958050b771807568202a888dec6c93d8624786e5c7be97e2a8c6b9fdd68",
+      "evidence_profile": "official_pdp_reviewed_key_ingredients_and_usage",
+      "source_coverage": {
+        "source": "official_pdp",
+        "canonical_url": "https://pixibeauty.com/products/beauty-blush-duo-kabuki",
+        "fields": {
+          "description": true,
+          "ingredients": 0,
+          "active_ingredients": 2,
+          "how_to": 2,
+          "details": 3,
+          "variants": 2
+        }
+      },
+      "preview": {
+        "headline": "Makeup brush",
+        "what_it_is": "Beauty Blush Duo + Kabuki is a makeup brush from Pixi, with source-backed cues around controlled product placement and targeted application area.",
+        "why_it_stands_out": [
+          {
+            "headline": "Product cues are source-backed",
+            "body": "Reviewed PDP cues such as precision application, face blending give shoppers specific comparison points within Pixi, rather than category-only copy.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Key ingredients are identified",
+            "body": "Mica provides dense natural pigment, Vitamin E protects the skin are identified, enough for a cautious high-level formula read without inventing unsupported actives.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Accessory format is explicit",
+            "body": "Variant labels such as Peach Honey, Shade: Peach Honey, Rose Gold, Shade: Rose Gold are visible, reducing ambiguity around the product format before a shopper clicks through.",
+            "evidence_strength": "official_pdp_reviewed"
+          }
+        ],
+        "best_for": [
+          {
+            "tag": "precision_application",
+            "label": "precision application",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "face_blending",
+            "label": "face blending",
+            "confidence": "moderate"
+          }
+        ],
+        "shopping_highlight": "precision application, face blending"
+      },
+      "writes": [
+        {
+          "kb_key": "product:ext_ff6ac56bcb2d966c7633ab97",
+          "action": "skip",
+          "reason": "protected_high_quality_existing:reviewed",
+          "old_hash": "d4e68193a69ccdad99f40bb8d60f36d3ff0f6b85cdf69d253beba3e3604b1d18",
+          "existing_weak": false
+        },
+        {
+          "kb_key": "product:sig_a508549f998b69ac226bf6452e207961",
+          "action": "skip",
+          "reason": "protected_high_quality_existing:reviewed",
+          "old_hash": "c775f8c3bf43627df8df244b964aeb2c7c5d8de29c8057c5fcd2e5db87de3d3a",
+          "existing_weak": false
+        }
+      ]
+    },
+    {
+      "external_product_id": "ext_eff1d83014e59b7192ff339f",
+      "pivota_signature_id": "sig_c098e02850f7d5b4c4ed093bacb62b9a",
+      "title": "Beauty Bronzer + Kabuki",
+      "brand": "Pixi",
+      "canonical_url": "https://pixibeauty.com/products/beauty-bronzer-kabuki",
+      "changed": false,
+      "blocked": false,
+      "skip_reason": "no_safe_writes",
+      "candidate_hash": "22f34c63029f7a682d66ba6282fd488540e3345d42edd9eac9f81f4af1b2e499",
+      "evidence_profile": "official_pdp_reviewed_key_ingredients_and_usage",
+      "source_coverage": {
+        "source": "official_pdp",
+        "canonical_url": "https://pixibeauty.com/products/beauty-bronzer-kabuki",
+        "fields": {
+          "description": true,
+          "ingredients": 0,
+          "active_ingredients": 2,
+          "how_to": 1,
+          "details": 3,
+          "variants": 1
+        }
+      },
+      "preview": {
+        "headline": "Makeup brush",
+        "what_it_is": "Beauty Bronzer + Kabuki is a makeup brush from Pixi, with source-backed cues around targeted application area.",
+        "why_it_stands_out": [
+          {
+            "headline": "Product cues are source-backed",
+            "body": "Reviewed PDP cues such as precision application give shoppers specific comparison points within Pixi, rather than category-only copy.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Key ingredients are identified",
+            "body": "Mica provides dense natural pigment, Vitamin E protects the skin are identified, enough for a cautious high-level formula read without inventing unsupported actives.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Usage instructions available",
+            "body": "Reviewed usage context is present, including: Use included kabuki to sweep bronzer where you would naturally tan – cheekbones, forehead, chin & bridge of nose.",
+            "evidence_strength": "official_pdp_reviewed"
+          }
+        ],
+        "best_for": [
+          {
+            "tag": "precision_application",
+            "label": "precision application",
+            "confidence": "moderate"
+          }
+        ],
+        "shopping_highlight": "precision application"
+      },
+      "writes": [
+        {
+          "kb_key": "product:ext_eff1d83014e59b7192ff339f",
+          "action": "skip",
+          "reason": "protected_high_quality_existing:reviewed",
+          "old_hash": "1ad3363e8244719bc5b201b313eae3a384aa97b19120b30db46b9401b39e2960",
+          "existing_weak": false
+        },
+        {
+          "kb_key": "product:sig_c098e02850f7d5b4c4ed093bacb62b9a",
+          "action": "skip",
+          "reason": "protected_high_quality_existing:reviewed",
+          "old_hash": "1ad3363e8244719bc5b201b313eae3a384aa97b19120b30db46b9401b39e2960",
+          "existing_weak": false
+        }
+      ]
+    },
+    {
+      "external_product_id": "ext_ce680ed70f5ad56c667c03ad",
+      "pivota_signature_id": "sig_74ab881a1cf34e739bfa14341543b8e3",
+      "title": "Best of Mists Duo",
+      "brand": "Pixi",
+      "canonical_url": "https://pixibeauty.com/products/best-of-pixi-facial-mist-duo",
+      "changed": false,
+      "blocked": false,
+      "skip_reason": "no_safe_writes",
+      "candidate_hash": "2c1466eda0a8e47db0e8437b80f31ce8be59f6a4f0f622b41c5b5048a043c369",
+      "evidence_profile": "official_pdp_reviewed_key_ingredients_and_usage",
+      "source_coverage": {
+        "source": "official_pdp",
+        "canonical_url": "https://pixibeauty.com/products/best-of-pixi-facial-mist-duo",
+        "fields": {
+          "description": true,
+          "ingredients": 0,
+          "active_ingredients": 6,
+          "how_to": 3,
+          "details": 3,
+          "variants": 1
+        }
+      },
+      "preview": {
+        "headline": "Treatment serum",
+        "what_it_is": "Best of Mists Duo is a treatment serum from Pixi in Duo, with source-backed ingredient cues around vitamin C.",
+        "why_it_stands_out": [
+          {
+            "headline": "Routine step cues are specific",
+            "body": "Reviewed skincare cues such as vitamin C, face mist, aloe juice, hydration identify the routine role or key ingredient context without inventing unsupported benefits.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Key ingredients are identified",
+            "body": "Glow Mist, Rose Flower Oil, Lavender Oil calms & are identified, enough for a cautious high-level formula read without inventing unsupported actives.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Shade and size are explicit",
+            "body": "Variant labels such as Duo, Format: Duo are visible, reducing ambiguity around the product format before a shopper clicks through.",
+            "evidence_strength": "official_pdp_reviewed"
+          }
+        ],
+        "best_for": [
+          {
+            "tag": "hydration",
+            "label": "hydration",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "radiance",
+            "label": "radiance",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "aromatherapy",
+            "label": "aromatherapy",
+            "confidence": "moderate"
+          }
+        ],
+        "shopping_highlight": "vitamin C, face mist, aloe juice"
+      },
+      "writes": [
+        {
+          "kb_key": "product:ext_ce680ed70f5ad56c667c03ad",
+          "action": "skip",
+          "reason": "protected_high_quality_existing:reviewed",
+          "old_hash": "98e8669e165c5a6558b2a330a9f64d3d48536cb1bc61c4638d6cd762d62c386d",
+          "existing_weak": false
+        },
+        {
+          "kb_key": "product:sig_74ab881a1cf34e739bfa14341543b8e3",
+          "action": "skip",
+          "reason": "protected_high_quality_existing:reviewed",
+          "old_hash": "98e8669e165c5a6558b2a330a9f64d3d48536cb1bc61c4638d6cd762d62c386d",
+          "existing_weak": false
+        }
+      ]
+    },
+    {
+      "external_product_id": "ext_698bca70a22e6c3569c5934c",
+      "pivota_signature_id": "sig_d0f778cd1cda305a9b9833bbab4e8127",
+      "title": "Best Of Pixi Bundle",
+      "brand": "Pixi",
+      "canonical_url": "https://pixibeauty.com/products/best-of-pixi-bundle",
+      "changed": false,
+      "blocked": false,
+      "skip_reason": "no_safe_writes",
+      "candidate_hash": "44d298eb23c083b48625353dba1170f2172c4151ce4e4736395aeb8c4599a652",
+      "evidence_profile": "official_pdp_reviewed_key_ingredients_and_usage",
+      "source_coverage": {
+        "source": "official_pdp",
+        "canonical_url": "https://pixibeauty.com/products/best-of-pixi-bundle",
+        "fields": {
+          "description": true,
+          "ingredients": 0,
+          "active_ingredients": 17,
+          "how_to": 15,
+          "details": 3,
+          "variants": 1
+        }
+      },
+      "preview": {
+        "headline": "Face color makeup",
+        "what_it_is": "Best Of Pixi Bundle is a face color product from Pixi, with source-backed cues around glow payoff.",
+        "why_it_stands_out": [
+          {
+            "headline": "Color payoff cues are specific",
+            "body": "Reviewed color cues such as glow payoff, shade range, 100 mL help shoppers compare shade, finish, or texture instead of seeing a generic blush/bronzer/highlighter card.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Key ingredients are identified",
+            "body": "On-the-Glow Blush CheekTone, Ginseng revitalizes & balances, Aloe Vera are identified, enough for a cautious high-level formula read without inventing unsupported actives.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Shade and size are explicit",
+            "body": "Variant labels such as 100 mL, Size: 100 mL are visible, reducing ambiguity around the product format before a shopper clicks through.",
+            "evidence_strength": "official_pdp_reviewed"
+          }
+        ],
+        "best_for": [
+          {
+            "tag": "base_makeup_prep",
+            "label": "base makeup prep",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "complexion_coverage",
+            "label": "complexion coverage",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "soft_focus_finish",
+            "label": "soft-focus finish",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "radiant_finish",
+            "label": "radiant finish",
+            "confidence": "moderate"
+          }
+        ],
+        "shopping_highlight": "glow payoff, shade range, 100 mL"
+      },
+      "writes": [
+        {
+          "kb_key": "product:ext_698bca70a22e6c3569c5934c",
+          "action": "skip",
+          "reason": "protected_high_quality_existing:reviewed",
+          "old_hash": "baf9abed92b4e538f28370c1e025fdc00f0d3f0d907532aaab01e098769e40b0",
+          "existing_weak": false
+        },
+        {
+          "kb_key": "product:sig_d0f778cd1cda305a9b9833bbab4e8127",
+          "action": "skip",
+          "reason": "protected_high_quality_existing:reviewed",
+          "old_hash": "baf9abed92b4e538f28370c1e025fdc00f0d3f0d907532aaab01e098769e40b0",
+          "existing_weak": false
+        }
+      ]
+    },
+    {
+      "external_product_id": "ext_0d3e3b647746cfe9a14b1b8a",
+      "pivota_signature_id": "sig_c8c5320e626b787931801fbe3c21759b",
+      "title": "Best of Pixi - Holiday Edition",
+      "brand": "Pixi",
+      "canonical_url": "https://pixibeauty.com/products/best-of-pixi-holiday-edition",
+      "changed": false,
+      "blocked": false,
+      "skip_reason": "no_safe_writes",
+      "candidate_hash": "c82696c649c1ef7f0cf3020fc6cf01db7d042d5bf11011cdc1c76cf6cc3ca0a5",
+      "evidence_profile": "official_pdp_reviewed_key_ingredients_and_usage",
+      "source_coverage": {
+        "source": "official_pdp",
+        "canonical_url": "https://pixibeauty.com/products/best-of-pixi-holiday-edition",
+        "fields": {
+          "description": true,
+          "ingredients": 0,
+          "active_ingredients": 16,
+          "how_to": 19,
+          "details": 3,
+          "variants": 1
+        }
+      },
+      "preview": {
+        "headline": "Face color makeup",
+        "what_it_is": "Best of Pixi - Holiday Edition is a face color product from Pixi in shade Holiday Edition, with source-backed cues around glow payoff.",
+        "why_it_stands_out": [
+          {
+            "headline": "Color payoff cues are specific",
+            "body": "Reviewed color cues such as glow payoff, shade range help shoppers compare shade, finish, or texture instead of seeing a generic blush/bronzer/highlighter card.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Key ingredients are identified",
+            "body": "Glow Tonic Cleansing Cloths:, Aloe Vera, Chamomile calms complexion are identified, enough for a cautious high-level formula read without inventing unsupported actives.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Shade and size are explicit",
+            "body": "Variant labels such as Holiday Edition, Shade: Holiday Edition are visible, reducing ambiguity around the product format before a shopper clicks through.",
+            "evidence_strength": "official_pdp_reviewed"
+          }
+        ],
+        "best_for": [
+          {
+            "tag": "base_makeup_prep",
+            "label": "base makeup prep",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "radiant_finish",
+            "label": "radiant finish",
+            "confidence": "moderate"
+          }
+        ],
+        "shopping_highlight": "glow payoff, shade range"
+      },
+      "writes": [
+        {
+          "kb_key": "product:ext_0d3e3b647746cfe9a14b1b8a",
+          "action": "skip",
+          "reason": "protected_high_quality_existing:reviewed",
+          "old_hash": "bc528b8b217d22c19226c8a3db2ffb66bf927ab09fc7bfe313d1b42acdb7fb94",
+          "existing_weak": false
+        },
+        {
+          "kb_key": "product:sig_c8c5320e626b787931801fbe3c21759b",
+          "action": "skip",
+          "reason": "protected_high_quality_existing:reviewed",
+          "old_hash": "bc528b8b217d22c19226c8a3db2ffb66bf927ab09fc7bfe313d1b42acdb7fb94",
+          "existing_weak": false
+        }
+      ]
+    },
+    {
+      "external_product_id": "ext_b7fd14a1e769e531537783e4",
+      "pivota_signature_id": "sig_a812ca856932917355fc8ef3bd139e87",
+      "title": "Best of Tonics Vault",
+      "brand": "Pixi",
+      "canonical_url": "https://pixibeauty.com/products/best-of-tonics-vault",
+      "changed": false,
+      "blocked": false,
+      "skip_reason": "no_safe_writes",
+      "candidate_hash": "139b8da7373f5a7bf773df18da506f2e1ca231a69c4881e65c69f80e21e7990a",
+      "evidence_profile": "official_pdp_reviewed_key_ingredients_and_usage",
+      "source_coverage": {
+        "source": "official_pdp",
+        "canonical_url": "https://pixibeauty.com/products/best-of-tonics-vault",
+        "fields": {
+          "description": true,
+          "ingredients": 0,
+          "active_ingredients": 3,
+          "how_to": 1,
+          "details": 1,
+          "variants": 1
+        }
+      },
+      "preview": {
+        "headline": "Skincare set",
+        "what_it_is": "Best of Tonics Vault is a skincare set from Pixi in 250ml, with source-backed cues around toning and brightening support.",
+        "why_it_stands_out": [
+          {
+            "headline": "Routine step cues are specific",
+            "body": "Reviewed skincare cues such as vitamin C, BHA/salicylic acid, AHA exfoliation, toning step identify the routine role or key ingredient context without inventing unsupported benefits.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Key ingredients are identified",
+            "body": "Salicylic acid, Vitamin C (Ascorbic acid), Glycolic acid are identified, enough for a cautious high-level formula read without inventing unsupported actives.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Shade and size are explicit",
+            "body": "Variant labels such as 250ml, Size: 250ml are visible, reducing ambiguity around the product format before a shopper clicks through.",
+            "evidence_strength": "official_pdp_reviewed"
+          }
+        ],
+        "best_for": [
+          {
+            "tag": "exfoliating_toner_step",
+            "label": "exfoliating toner step",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "radiance",
+            "label": "radiance",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "aromatherapy",
+            "label": "aromatherapy",
+            "confidence": "moderate"
+          }
+        ],
+        "shopping_highlight": "Skincare routine set"
+      },
+      "writes": [
+        {
+          "kb_key": "product:ext_b7fd14a1e769e531537783e4",
+          "action": "skip",
+          "reason": "protected_high_quality_existing:reviewed",
+          "old_hash": "9a7e182e312b5f6b0484d451636860330a2852e7782906dbeb2834e13516a0d4",
+          "existing_weak": false
+        },
+        {
+          "kb_key": "product:sig_a812ca856932917355fc8ef3bd139e87",
+          "action": "skip",
+          "reason": "protected_high_quality_existing:reviewed",
+          "old_hash": "9a7e182e312b5f6b0484d451636860330a2852e7782906dbeb2834e13516a0d4",
+          "existing_weak": false
+        }
+      ]
+    },
+    {
+      "external_product_id": "ext_c9139531cee4ced66cd2c6b7",
+      "pivota_signature_id": "sig_2460147a16ed52675620eb735d543c0c",
+      "title": "Blur, Colour & Set",
+      "brand": "Pixi",
+      "canonical_url": "https://pixibeauty.com/products/blur-colour-set",
+      "changed": false,
+      "blocked": false,
+      "skip_reason": "no_safe_writes",
+      "candidate_hash": "4c3e0c6bd017d81c61cb5301672bf24c720727921fa2eac22845d203ba08797f",
+      "evidence_profile": "official_pdp_reviewed_key_ingredients_and_usage",
+      "source_coverage": {
+        "source": "official_pdp",
+        "canonical_url": "https://pixibeauty.com/products/blur-colour-set",
+        "fields": {
+          "description": true,
+          "ingredients": 0,
+          "active_ingredients": 10,
+          "how_to": 4,
+          "details": 3,
+          "variants": 1
+        }
+      },
+      "preview": {
+        "headline": "Face color makeup",
+        "what_it_is": "Blur, Colour & Set is a face color product from Pixi, with source-backed cues around a cream-powder texture and glow payoff.",
+        "why_it_stands_out": [
+          {
+            "headline": "Color payoff cues are specific",
+            "body": "Reviewed color cues such as long-wear color, cream-powder texture, glow payoff, shade range help shoppers compare shade, finish, or texture instead of seeing a generic blush/bronzer/highlighter card.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Key ingredients are identified",
+            "body": "On-the Glow BASE, Ceramide NP locks in hydration to keep skin glowing & soft all day, Super Food Berries protect with antioxidants & boost healthy radiance are identified, enough for a cautious high-level formula read without inventing unsupported actives.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Shade and size are explicit",
+            "body": "Variant labels such as Set, Format: Set are visible, reducing ambiguity around the product format before a shopper clicks through.",
+            "evidence_strength": "official_pdp_reviewed"
+          }
+        ],
+        "best_for": [
+          {
+            "tag": "base_makeup_prep",
+            "label": "base makeup prep",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "complexion_coverage",
+            "label": "complexion coverage",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "soft_focus_finish",
+            "label": "soft-focus finish",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "radiant_finish",
+            "label": "radiant finish",
+            "confidence": "moderate"
+          }
+        ],
+        "shopping_highlight": "long-wear color, cream-powder texture"
+      },
+      "writes": [
+        {
+          "kb_key": "product:ext_c9139531cee4ced66cd2c6b7",
+          "action": "skip",
+          "reason": "protected_high_quality_existing:reviewed",
+          "old_hash": "76c40455baa13c27b60a48887dfa62f10879b68c0ca626451ac625c8b109ce4a",
+          "existing_weak": false
+        },
+        {
+          "kb_key": "product:sig_2460147a16ed52675620eb735d543c0c",
+          "action": "skip",
+          "reason": "protected_high_quality_existing:reviewed",
+          "old_hash": "76c40455baa13c27b60a48887dfa62f10879b68c0ca626451ac625c8b109ce4a",
+          "existing_weak": false
+        }
+      ]
+    },
+    {
+      "external_product_id": "ext_20eafdc483580d5448384542",
+      "pivota_signature_id": "sig_757bcf4246dc8f081a274e5f0749abc6",
+      "title": "Blur & Set Bundle",
+      "brand": "Pixi",
+      "canonical_url": "https://pixibeauty.com/products/blur-set-bundle",
+      "changed": false,
+      "blocked": false,
+      "skip_reason": "no_safe_writes",
+      "candidate_hash": "aa06d02e6cadca338e5fb7d13ea6afefd0f1ad525b8a1ca30f44a30326a55870",
+      "evidence_profile": "official_pdp_reviewed_key_ingredients_and_usage",
+      "source_coverage": {
+        "source": "official_pdp",
+        "canonical_url": "https://pixibeauty.com/products/blur-set-bundle",
+        "fields": {
+          "description": true,
+          "ingredients": 0,
+          "active_ingredients": 9,
+          "how_to": 4,
+          "details": 3,
+          "variants": 1
+        }
+      },
+      "preview": {
+        "headline": "Complexion makeup",
+        "what_it_is": "Blur & Set Bundle is a complexion product from Pixi in Set, with source-backed cues around coverage control.",
+        "why_it_stands_out": [
+          {
+            "headline": "Coverage and finish cues are clear",
+            "body": "Reviewed complexion cues such as coverage control, shade range, Set support a more precise read on coverage, finish, or shade fit.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Key ingredients are identified",
+            "body": "On-the Glow Base, Ceramide NP locks in hydration to keep skin glowing & soft all day, Super Food Berries protect with antioxidants & boost healthy radiance are identified, enough for a cautious high-level formula read without inventing unsupported actives.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Shade and size are explicit",
+            "body": "Variant labels such as Set, Format: Set are visible, reducing ambiguity around the product format before a shopper clicks through.",
+            "evidence_strength": "official_pdp_reviewed"
+          }
+        ],
+        "best_for": [
+          {
+            "tag": "base_makeup_prep",
+            "label": "base makeup prep",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "complexion_coverage",
+            "label": "complexion coverage",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "soft_focus_finish",
+            "label": "soft-focus finish",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "radiant_finish",
+            "label": "radiant finish",
+            "confidence": "moderate"
+          }
+        ],
+        "shopping_highlight": "coverage control, shade range, Set"
+      },
+      "writes": [
+        {
+          "kb_key": "product:ext_20eafdc483580d5448384542",
+          "action": "skip",
+          "reason": "protected_high_quality_existing:reviewed",
+          "old_hash": "5ca6a00dfc53938d86e2c3abf0500c54f4a6662bb0e953e1b136f3c14fe50310",
+          "existing_weak": false
+        },
+        {
+          "kb_key": "product:sig_757bcf4246dc8f081a274e5f0749abc6",
+          "action": "skip",
+          "reason": "protected_high_quality_existing:reviewed",
+          "old_hash": "5ca6a00dfc53938d86e2c3abf0500c54f4a6662bb0e953e1b136f3c14fe50310",
+          "existing_weak": false
+        }
+      ]
+    },
+    {
+      "external_product_id": "ext_2b0cfac23608265c7f8a06fa",
+      "pivota_signature_id": "sig_db76a86a7015c3fe29d4d663f642c68e",
+      "title": "Blush Brush",
+      "brand": "Pixi",
+      "canonical_url": "https://pixibeauty.com/products/blush-brush",
+      "changed": false,
+      "blocked": false,
+      "skip_reason": "no_safe_writes",
+      "candidate_hash": "bbbf8f041c93fd16b5bb09b4a25e1f2361443243fe0ed099a2b26c94051c1803",
+      "evidence_profile": "official_pdp_reviewed_line",
+      "source_coverage": {
+        "source": "official_pdp",
+        "canonical_url": "https://pixibeauty.com/products/blush-brush",
+        "fields": {
+          "description": true,
+          "ingredients": 0,
+          "active_ingredients": 0,
+          "how_to": 3,
+          "details": 3,
+          "variants": 1
+        }
+      },
+      "preview": {
+        "headline": "Makeup brush",
+        "what_it_is": "Blush Brush is a makeup brush from Pixi, with source-backed cues around synthetic bristles, controlled product placement and targeted application area.",
+        "why_it_stands_out": [
+          {
+            "headline": "Product cues are source-backed",
+            "body": "Reviewed PDP cues such as synthetic bristles, precision application, face blending give shoppers specific comparison points within Pixi, rather than category-only copy.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Usage instructions available",
+            "body": "Reviewed usage context is present, including: Apply your On-the-Glow Blush to the apples of your cheeks.",
+            "evidence_strength": "official_pdp_reviewed"
+          }
+        ],
+        "best_for": [
+          {
+            "tag": "synthetic_bristles",
+            "label": "synthetic bristles",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "precision_application",
+            "label": "precision application",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "face_blending",
+            "label": "face blending",
+            "confidence": "moderate"
+          }
+        ],
+        "shopping_highlight": "synthetic bristles"
+      },
+      "writes": [
+        {
+          "kb_key": "product:ext_2b0cfac23608265c7f8a06fa",
+          "action": "skip",
+          "reason": "protected_high_quality_existing:reviewed",
+          "old_hash": "968a40199b5ce06f1ef831a175cadcbf09402c2a2bf3ece82e16013a706ce138",
+          "existing_weak": false
+        },
+        {
+          "kb_key": "product:sig_db76a86a7015c3fe29d4d663f642c68e",
+          "action": "skip",
+          "reason": "protected_high_quality_existing:reviewed",
+          "old_hash": "968a40199b5ce06f1ef831a175cadcbf09402c2a2bf3ece82e16013a706ce138",
+          "existing_weak": false
+        }
+      ]
+    },
+    {
+      "external_product_id": "ext_e50dcef442d0d3425302f239",
+      "pivota_signature_id": "sig_e109b4cf287c31582c4e3307c89eaa2c",
+      "title": "Blush Brush",
+      "brand": "Pixi",
+      "canonical_url": "https://pixibeauty.com/products/blush-brush",
+      "changed": false,
+      "blocked": false,
+      "skip_reason": "no_safe_writes",
+      "candidate_hash": "a9d31ec5b084d0fed66344592b9a88359874d3b3bb65321ce04864d480d4194b",
+      "evidence_profile": "official_pdp_reviewed_line",
+      "source_coverage": {
+        "source": "official_pdp",
+        "canonical_url": "https://pixibeauty.com/products/blush-brush",
+        "fields": {
+          "description": true,
+          "ingredients": 0,
+          "active_ingredients": 0,
+          "how_to": 3,
+          "details": 3,
+          "variants": 1
+        }
+      },
+      "preview": {
+        "headline": "Makeup brush",
+        "what_it_is": "Blush Brush is a makeup brush from Pixi, with source-backed cues around synthetic bristles, controlled product placement and targeted application area.",
+        "why_it_stands_out": [
+          {
+            "headline": "Product cues are source-backed",
+            "body": "Reviewed PDP cues such as synthetic bristles, precision application, face blending give shoppers specific comparison points within Pixi, rather than category-only copy.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Usage instructions available",
+            "body": "Reviewed usage context is present, including: Apply your On-the-Glow Blush to the apples of your cheeks.",
+            "evidence_strength": "official_pdp_reviewed"
+          }
+        ],
+        "best_for": [
+          {
+            "tag": "synthetic_bristles",
+            "label": "synthetic bristles",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "precision_application",
+            "label": "precision application",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "face_blending",
+            "label": "face blending",
+            "confidence": "moderate"
+          }
+        ],
+        "shopping_highlight": "synthetic bristles"
+      },
+      "writes": [
+        {
+          "kb_key": "product:ext_e50dcef442d0d3425302f239",
+          "action": "skip",
+          "reason": "protected_high_quality_existing:reviewed",
+          "old_hash": "984d615559aaa118fb20fe712d633566636aee08adf669c1191a5a9041855e68",
+          "existing_weak": false
+        },
+        {
+          "kb_key": "product:sig_e109b4cf287c31582c4e3307c89eaa2c",
+          "action": "skip",
+          "reason": "protected_high_quality_existing:reviewed",
+          "old_hash": "984d615559aaa118fb20fe712d633566636aee08adf669c1191a5a9041855e68",
+          "existing_weak": false
+        }
+      ]
+    },
+    {
+      "external_product_id": "ext_e33869b4c7dc874933f2f280",
+      "pivota_signature_id": "sig_6666c9547253df09aef0fce0dfebc609",
+      "title": "‍Blush Brush (100% off)",
+      "brand": "Pixi",
+      "canonical_url": "https://pixibeauty.com/products/blush-brush-sca_clone_freegift",
+      "changed": false,
+      "blocked": false,
+      "skip_reason": "no_safe_writes",
+      "candidate_hash": "76cbe6a3f7184bc751d1980772af0eaa6e1f9c19865290d2e1034614d42ccbe9",
+      "evidence_profile": "official_pdp_reviewed_line",
+      "source_coverage": {
+        "source": "official_pdp",
+        "canonical_url": "https://pixibeauty.com/products/blush-brush-sca_clone_freegift",
+        "fields": {
+          "description": true,
+          "ingredients": 0,
+          "active_ingredients": 0,
+          "how_to": 3,
+          "details": 1,
+          "variants": 1
+        }
+      },
+      "preview": {
+        "headline": "Makeup brush",
+        "what_it_is": "‍Blush Brush is a makeup brush from Pixi, with source-backed cues around controlled product placement.",
+        "why_it_stands_out": [
+          {
+            "headline": "Product cues are source-backed",
+            "body": "Reviewed PDP cues such as precision application give shoppers specific comparison points within Pixi, rather than category-only copy.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Usage instructions available",
+            "body": "Reviewed usage context is present, including: Apply your On-the-Glow Blush to the apples of your cheeks.",
+            "evidence_strength": "official_pdp_reviewed"
+          }
+        ],
+        "best_for": [
+          {
+            "tag": "precision_application",
+            "label": "precision application",
+            "confidence": "moderate"
+          }
+        ],
+        "shopping_highlight": "precision application"
+      },
+      "writes": [
+        {
+          "kb_key": "product:ext_e33869b4c7dc874933f2f280",
+          "action": "skip",
+          "reason": "protected_high_quality_existing:reviewed",
+          "old_hash": "c8e97fffd10d771bf4f5c54f8902a7c44e3456ec9a7ac0280a3dc9f5c970a5da",
+          "existing_weak": false
+        },
+        {
+          "kb_key": "product:sig_6666c9547253df09aef0fce0dfebc609",
+          "action": "skip",
+          "reason": "protected_high_quality_existing:reviewed",
+          "old_hash": "c8e97fffd10d771bf4f5c54f8902a7c44e3456ec9a7ac0280a3dc9f5c970a5da",
+          "existing_weak": false
+        }
+      ]
+    },
+    {
+      "external_product_id": "ext_a169ae63bc7df95426bd12e1",
+      "pivota_signature_id": "sig_b12b50dfa62a0bf46e635e90cf7b7477",
+      "title": "Botanical Collagen Eye Serum",
+      "brand": "Pixi",
+      "canonical_url": "https://pixibeauty.com/products/collagen-eye-serum",
+      "changed": false,
+      "blocked": false,
+      "skip_reason": "no_safe_writes",
+      "candidate_hash": "6928ca4edd338ba3f20d651d0f1f447fa61d55b5acd1cf8a12cb38bd6784ff9b",
+      "evidence_profile": "official_pdp_reviewed_key_ingredients_and_usage",
+      "source_coverage": {
+        "source": "official_pdp",
+        "canonical_url": "https://pixibeauty.com/products/collagen-eye-serum",
+        "fields": {
+          "description": true,
+          "ingredients": 0,
+          "active_ingredients": 3,
+          "how_to": 2,
+          "details": 3,
+          "variants": 1
+        }
+      },
+      "preview": {
+        "headline": "Treatment serum",
+        "what_it_is": "Botanical Collagen Eye Serum is a treatment serum from Pixi.",
+        "why_it_stands_out": [
+          {
+            "headline": "Routine step cues are specific",
+            "body": "Reviewed skincare cues such as hydration identify the routine role or key ingredient context without inventing unsupported benefits.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Key ingredients are identified",
+            "body": "Acacia Collagen volumizes & rejuvenates, Hyaluronic Acid firms & hydrates, Adenosine are identified, enough for a cautious high-level formula read without inventing unsupported actives.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Usage instructions available",
+            "body": "Reviewed usage context is present, including: Use daily or when needed.",
+            "evidence_strength": "official_pdp_reviewed"
+          }
+        ],
+        "best_for": [
+          {
+            "tag": "hydration",
+            "label": "hydration",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "firmness",
+            "label": "firmness",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "radiance",
+            "label": "radiance",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "aromatherapy",
+            "label": "aromatherapy",
+            "confidence": "moderate"
+          }
+        ],
+        "shopping_highlight": "hydration"
+      },
+      "writes": [
+        {
+          "kb_key": "product:ext_a169ae63bc7df95426bd12e1",
+          "action": "skip",
+          "reason": "protected_high_quality_existing:reviewed",
+          "old_hash": "2728b66f30617b3c6e1265d3cad949dd34ddb09738520fc7970e4fc8981ce93c",
+          "existing_weak": false
+        },
+        {
+          "kb_key": "product:sig_b12b50dfa62a0bf46e635e90cf7b7477",
+          "action": "skip",
+          "reason": "protected_high_quality_existing:reviewed",
+          "old_hash": "2728b66f30617b3c6e1265d3cad949dd34ddb09738520fc7970e4fc8981ce93c",
+          "existing_weak": false
+        }
+      ]
+    },
+    {
+      "external_product_id": "ext_e1b504a13d318f3cfeefc50d",
+      "pivota_signature_id": "sig_3fc83882365b534c7fd19e872f046ea2",
+      "title": "Botanical Collagen LipGloss",
+      "brand": "Pixi",
+      "canonical_url": "https://pixibeauty.com/products/collagen-lipgloss",
+      "changed": false,
+      "blocked": false,
+      "skip_reason": "no_safe_writes",
+      "candidate_hash": "cfacffba3caa354a47197c67cd5a5c98341bb87bf49bfc8c09e99389e35899a5",
+      "evidence_profile": "official_pdp_reviewed_key_ingredients_and_usage",
+      "source_coverage": {
+        "source": "official_pdp",
+        "canonical_url": "https://pixibeauty.com/products/collagen-lipgloss",
+        "fields": {
+          "description": true,
+          "ingredients": 0,
+          "active_ingredients": 3,
+          "how_to": 2,
+          "details": 3,
+          "variants": 1
+        }
+      },
+      "preview": {
+        "headline": "Lip treatment",
+        "what_it_is": "Botanical Collagen LipGloss is a lip treatment from Pixi, with source-backed cues around shine finish and comfort-oriented lip care.",
+        "why_it_stands_out": [
+          {
+            "headline": "Product cues are source-backed",
+            "body": "Reviewed PDP cues such as shine finish give shoppers specific comparison points within Pixi, rather than category-only copy.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Key ingredients are identified",
+            "body": "Acacia Collagen volumizes & rejuvenates, Peptides tone & revitalize, Vitamin E nourishes & preserves are identified, enough for a cautious high-level formula read without inventing unsupported actives.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Usage instructions available",
+            "body": "Reviewed usage context is present, including: Apply to lips as needed.",
+            "evidence_strength": "official_pdp_reviewed"
+          }
+        ],
+        "best_for": [
+          {
+            "tag": "lip_comfort",
+            "label": "lip comfort",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "shine_finish",
+            "label": "shine finish",
+            "confidence": "moderate"
+          }
+        ],
+        "shopping_highlight": "shine finish"
+      },
+      "writes": [
+        {
+          "kb_key": "product:ext_e1b504a13d318f3cfeefc50d",
+          "action": "skip",
+          "reason": "protected_high_quality_existing:reviewed",
+          "old_hash": "3f001deb6ef97cd8ed0ecd51e17b96c02a1244aedc82532e54244d446ae8c56f",
+          "existing_weak": false
+        },
+        {
+          "kb_key": "product:sig_3fc83882365b534c7fd19e872f046ea2",
+          "action": "skip",
+          "reason": "protected_high_quality_existing:reviewed",
+          "old_hash": "3f001deb6ef97cd8ed0ecd51e17b96c02a1244aedc82532e54244d446ae8c56f",
+          "existing_weak": false
+        }
+      ]
+    },
+    {
+      "external_product_id": "ext_de6386ee340b37d4c7ec49f8",
+      "pivota_signature_id": "sig_bc5ed53f630a292a6593002150191ac9",
+      "title": "Botanical Collagen Mask",
+      "brand": "Pixi",
+      "canonical_url": "https://pixibeauty.com/products/collagen-plumping-mask",
+      "changed": false,
+      "blocked": false,
+      "skip_reason": "no_safe_writes",
+      "candidate_hash": "df922247762576a316227b9f8c2f3c7faec376fb885173b52e85fdbfdee0cf6f",
+      "evidence_profile": "official_pdp_reviewed_key_ingredients_and_usage",
+      "source_coverage": {
+        "source": "official_pdp",
+        "canonical_url": "https://pixibeauty.com/products/collagen-plumping-mask",
+        "fields": {
+          "description": true,
+          "ingredients": 0,
+          "active_ingredients": 3,
+          "how_to": 4,
+          "details": 3,
+          "variants": 1
+        }
+      },
+      "preview": {
+        "headline": "Treatment mask",
+        "what_it_is": "Botanical Collagen Mask is a treatment mask from Pixi in Single mask, with source-backed cues around cleansing and hydration.",
+        "why_it_stands_out": [
+          {
+            "headline": "Product cues are source-backed",
+            "body": "Reviewed PDP cues such as Single mask give shoppers specific comparison points within Pixi, rather than category-only copy.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Key ingredients are identified",
+            "body": "Acacia Collagen volumizes & boosts elasticity, Peptides firm & revitalize, Arginine is a smoothing amino acid are identified, enough for a cautious high-level formula read without inventing unsupported actives.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Shade and size are explicit",
+            "body": "Variant labels such as Single mask, Format: Single mask are visible, reducing ambiguity around the product format before a shopper clicks through.",
+            "evidence_strength": "official_pdp_reviewed"
+          }
+        ],
+        "best_for": [
+          {
+            "tag": "single_mask",
+            "label": "Single mask",
+            "confidence": "moderate"
+          }
+        ],
+        "shopping_highlight": "Single mask"
+      },
+      "writes": [
+        {
+          "kb_key": "product:ext_de6386ee340b37d4c7ec49f8",
+          "action": "skip",
+          "reason": "protected_high_quality_existing:reviewed",
+          "old_hash": "37f923f9d30d5d0fcff99313d933d5715fc43a4966e81ba7b4b1291196e7a555",
+          "existing_weak": false
+        },
+        {
+          "kb_key": "product:sig_bc5ed53f630a292a6593002150191ac9",
+          "action": "skip",
+          "reason": "protected_high_quality_existing:reviewed",
+          "old_hash": "a2fde3887a4a62c2268bf2dfcbd94d5e872d2d251f81cfeb43c585b459d29774",
+          "existing_weak": false
+        }
+      ]
+    }
+  ]
+}

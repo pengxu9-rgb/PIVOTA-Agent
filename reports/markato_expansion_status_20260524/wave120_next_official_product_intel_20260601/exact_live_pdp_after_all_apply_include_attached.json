@@ -1,0 +1,1952 @@
+{
+  "generated_at": "2026-06-01T04:57:18.357Z",
+  "source": "external_seed_live_pdp_modules_audit",
+  "query": {
+    "market": "US",
+    "domain": null,
+    "brand": null,
+    "external_product_id": null,
+    "external_product_ids": [
+      "ext_0c7bfbaafb9eab5f2261f109",
+      "ext_664b859ce2599a57c3f1f7ce",
+      "ext_23ae4c5d9d8f2a8be363f2cc",
+      "ext_f1f3ce59fac13141b98a911f",
+      "ext_6815bee1060ef71d9a99ce5b",
+      "ext_39b3cafe7938c761c8530f81",
+      "ext_07509f4743c82d62b2f15231",
+      "ext_0c5ff135e1e9209ad85ba45a",
+      "ext_a639cc92b3446b6eee7cabe7",
+      "ext_f547012d9e7a18a054240103",
+      "ext_68ad409f681f1278525ced16",
+      "ext_4f43738711dfea4e88975cf4",
+      "ext_263b61b2d374b255d121c928",
+      "ext_a663b50d44c3cc2c3f541e15",
+      "ext_7ba277de9baadb1584ae2a5a",
+      "ext_6df19f2224fec208ca6eeea7",
+      "ext_c989d8297287ad108ef57250",
+      "ext_fa03729895112b24e3687e85"
+    ],
+    "include_attached": true,
+    "limit": 50,
+    "offset": 0,
+    "include_similar": true,
+    "use_sig": false
+  },
+  "summary": {
+    "scanned": 18,
+    "ready": 9,
+    "thin": 4,
+    "not_conversion_ready": 5,
+    "by_domain": [
+      {
+        "key": "tirtir.global",
+        "count": 13
+      },
+      {
+        "key": "upcirclebeauty.com",
+        "count": 4
+      },
+      {
+        "key": "kyliecosmetics.com",
+        "count": 1
+      }
+    ],
+    "blocker_counts": [
+      {
+        "key": "missing_how_to",
+        "count": 7
+      },
+      {
+        "key": "gallery_missing_or_bloated",
+        "count": 5
+      },
+      {
+        "key": "missing_details",
+        "count": 5
+      },
+      {
+        "key": "missing_or_weak_insights",
+        "count": 5
+      },
+      {
+        "key": "missing_overview",
+        "count": 5
+      },
+      {
+        "key": "missing_ingredients",
+        "count": 3
+      }
+    ],
+    "weak_insights_ids": [
+      "ext_664b859ce2599a57c3f1f7ce",
+      "ext_23ae4c5d9d8f2a8be363f2cc",
+      "ext_6815bee1060ef71d9a99ce5b",
+      "ext_f1f3ce59fac13141b98a911f",
+      "ext_0c7bfbaafb9eab5f2261f109"
+    ],
+    "seller_only_insights_ids": [],
+    "force_filled_ids": [],
+    "content_gap_ids": [
+      "ext_664b859ce2599a57c3f1f7ce",
+      "ext_23ae4c5d9d8f2a8be363f2cc",
+      "ext_4f43738711dfea4e88975cf4",
+      "ext_f547012d9e7a18a054240103",
+      "ext_7ba277de9baadb1584ae2a5a",
+      "ext_6815bee1060ef71d9a99ce5b",
+      "ext_f1f3ce59fac13141b98a911f",
+      "ext_0c7bfbaafb9eab5f2261f109",
+      "ext_a663b50d44c3cc2c3f541e15"
+    ]
+  },
+  "rows": [
+    {
+      "external_product_id": "ext_664b859ce2599a57c3f1f7ce",
+      "pivota_signature_id": "sig_e434b90902740f110390a11d",
+      "probed_product_id": "ext_664b859ce2599a57c3f1f7ce",
+      "probed_id_type": "ext",
+      "seed_id": "eps_cf3ed51499e5db55536e1ce7",
+      "market": "US",
+      "domain": "upcirclebeauty.com",
+      "title": "Body Oil with Passion Fruit Oil",
+      "canonical_url": "https://upcirclebeauty.com/products/natural-body-oil",
+      "http_status": 404,
+      "pdp_status": "",
+      "build_id": "",
+      "module_types": [],
+      "missing_modules": [],
+      "gallery": {
+        "image_count": 0,
+        "duplicate_url_count": 0,
+        "image_hosts": [],
+        "ok": false
+      },
+      "variant": {
+        "module_present": false,
+        "variant_count": 0,
+        "label_count": 0,
+        "labels": [],
+        "bad_labels": [],
+        "ok": false
+      },
+      "reviews": {
+        "module_present": false,
+        "rating": null,
+        "review_count": 0,
+        "chart_present": false,
+        "chart_estimated": false,
+        "preview_count": 0,
+        "ok": true
+      },
+      "insights": {
+        "module_present": false,
+        "quality_state": null,
+        "evidence_profile": null,
+        "seller_only_evidence": false,
+        "seller_grounded_reviewed": false,
+        "headline": null,
+        "why_count": 0,
+        "ok": false
+      },
+      "content": {
+        "ingredients_present": false,
+        "ingredients_text_count": 0,
+        "ingredients_source_origin": null,
+        "ingredients_source_quality_status": null,
+        "ingredients_force_filled": false,
+        "active_ingredients_present": false,
+        "active_ingredients_source_origin": null,
+        "active_ingredients_source_quality_status": null,
+        "active_ingredients_force_filled": false,
+        "how_to_present": false,
+        "how_to_text_count": 0,
+        "overview_present": false,
+        "details_present": false,
+        "details_text_count": 0
+      },
+      "similar": {
+        "module_present": false,
+        "count": 0,
+        "status": null
+      },
+      "product_kind": {
+        "family": "single_formula",
+        "reasons": [
+          "formula_signal"
+        ],
+        "pdp_schema_profile": null,
+        "formula_content_required": true,
+        "merchandising_content_applicable": true
+      },
+      "blocking_reasons": [
+        "gallery_missing_or_bloated",
+        "missing_or_weak_insights",
+        "missing_ingredients",
+        "missing_how_to",
+        "missing_overview",
+        "missing_details"
+      ],
+      "pdp_quality_bucket": "not_conversion_ready",
+      "conversion_ready": false
+    },
+    {
+      "external_product_id": "ext_23ae4c5d9d8f2a8be363f2cc",
+      "pivota_signature_id": "sig_82b28455d7df7a1f79243cc8",
+      "probed_product_id": "ext_23ae4c5d9d8f2a8be363f2cc",
+      "probed_id_type": "ext",
+      "seed_id": "eps_8ecfa7102bfdc978accaca76",
+      "market": "US",
+      "domain": "upcirclebeauty.com",
+      "title": "Body Scrub with Coffee + Lemongrass",
+      "canonical_url": "https://upcirclebeauty.com/products/coffee-body-scrub-with-lemongrass-200ml",
+      "http_status": 404,
+      "pdp_status": "",
+      "build_id": "",
+      "module_types": [],
+      "missing_modules": [],
+      "gallery": {
+        "image_count": 0,
+        "duplicate_url_count": 0,
+        "image_hosts": [],
+        "ok": false
+      },
+      "variant": {
+        "module_present": false,
+        "variant_count": 0,
+        "label_count": 0,
+        "labels": [],
+        "bad_labels": [],
+        "ok": false
+      },
+      "reviews": {
+        "module_present": false,
+        "rating": null,
+        "review_count": 0,
+        "chart_present": false,
+        "chart_estimated": false,
+        "preview_count": 0,
+        "ok": true
+      },
+      "insights": {
+        "module_present": false,
+        "quality_state": null,
+        "evidence_profile": null,
+        "seller_only_evidence": false,
+        "seller_grounded_reviewed": false,
+        "headline": null,
+        "why_count": 0,
+        "ok": false
+      },
+      "content": {
+        "ingredients_present": false,
+        "ingredients_text_count": 0,
+        "ingredients_source_origin": null,
+        "ingredients_source_quality_status": null,
+        "ingredients_force_filled": false,
+        "active_ingredients_present": false,
+        "active_ingredients_source_origin": null,
+        "active_ingredients_source_quality_status": null,
+        "active_ingredients_force_filled": false,
+        "how_to_present": false,
+        "how_to_text_count": 0,
+        "overview_present": false,
+        "details_present": false,
+        "details_text_count": 0
+      },
+      "similar": {
+        "module_present": false,
+        "count": 0,
+        "status": null
+      },
+      "product_kind": {
+        "family": "unknown_product",
+        "reasons": [],
+        "pdp_schema_profile": null,
+        "formula_content_required": false,
+        "merchandising_content_applicable": true
+      },
+      "blocking_reasons": [
+        "gallery_missing_or_bloated",
+        "missing_or_weak_insights",
+        "missing_overview",
+        "missing_details"
+      ],
+      "pdp_quality_bucket": "not_conversion_ready",
+      "conversion_ready": false
+    },
+    {
+      "external_product_id": "ext_07509f4743c82d62b2f15231",
+      "pivota_signature_id": "sig_a7c812309160c479731dd853073b959b",
+      "probed_product_id": "ext_07509f4743c82d62b2f15231",
+      "probed_id_type": "ext",
+      "seed_id": "eps_e7fe6eef52aba0dcaafdd754",
+      "market": "US",
+      "domain": "tirtir.global",
+      "title": "Ice-Cooling Water Drop Serum",
+      "canonical_url": "https://tirtir.global/products/ice-cooling-water-drop-serum",
+      "http_status": 200,
+      "pdp_status": "success",
+      "build_id": "92607f1e8501",
+      "module_types": [
+        "canonical",
+        "variant_selector",
+        "offers",
+        "product_intel",
+        "active_ingredients",
+        "ingredients_inci",
+        "how_to_use",
+        "product_overview",
+        "product_facts",
+        "supplemental_details",
+        "product_details",
+        "reviews_preview",
+        "similar"
+      ],
+      "missing_modules": [
+        "product_facts",
+        "supplemental_details"
+      ],
+      "gallery": {
+        "image_count": 7,
+        "duplicate_url_count": 1,
+        "image_hosts": [
+          "cdn.shopify.com"
+        ],
+        "ok": true
+      },
+      "variant": {
+        "module_present": true,
+        "variant_count": 1,
+        "label_count": 2,
+        "labels": [
+          "Size: 30 mL",
+          "30 mL"
+        ],
+        "bad_labels": [],
+        "ok": true
+      },
+      "reviews": {
+        "module_present": true,
+        "rating": 4.9,
+        "review_count": 16,
+        "chart_present": true,
+        "chart_estimated": true,
+        "preview_count": 4,
+        "ok": true
+      },
+      "insights": {
+        "module_present": true,
+        "quality_state": "reviewed",
+        "evidence_profile": "official_pdp_reviewed_formula_and_usage",
+        "seller_only_evidence": false,
+        "seller_grounded_reviewed": false,
+        "headline": "Treatment serum",
+        "why_count": 3,
+        "ok": true
+      },
+      "content": {
+        "ingredients_present": true,
+        "ingredients_text_count": 83,
+        "ingredients_source_origin": "pdp_section",
+        "ingredients_source_quality_status": "authoritative",
+        "ingredients_force_filled": false,
+        "active_ingredients_present": true,
+        "active_ingredients_source_origin": "reviewed_active_ingredients",
+        "active_ingredients_source_quality_status": "high",
+        "active_ingredients_force_filled": false,
+        "how_to_present": true,
+        "how_to_text_count": 6,
+        "overview_present": true,
+        "details_present": true,
+        "details_text_count": 4
+      },
+      "similar": {
+        "module_present": true,
+        "count": 0,
+        "status": "deferred"
+      },
+      "product_kind": {
+        "family": "single_formula",
+        "reasons": [
+          "explicit_product_kind_signal"
+        ],
+        "pdp_schema_profile": "beauty_formula",
+        "formula_content_required": true,
+        "merchandising_content_applicable": true
+      },
+      "blocking_reasons": [],
+      "pdp_quality_bucket": "ready",
+      "conversion_ready": true
+    },
+    {
+      "external_product_id": "ext_39b3cafe7938c761c8530f81",
+      "pivota_signature_id": "sig_d90a27d714aeef23bf2f9fabf2123806",
+      "probed_product_id": "ext_39b3cafe7938c761c8530f81",
+      "probed_id_type": "ext",
+      "seed_id": "eps_3808ca165b1d8451d010511c",
+      "market": "US",
+      "domain": "tirtir.global",
+      "title": "Ice-Cooling Toner Pack Pads",
+      "canonical_url": "https://tirtir.global/products/ice-cooling-toner-pack-pads",
+      "http_status": 200,
+      "pdp_status": "success",
+      "build_id": "92607f1e8501",
+      "module_types": [
+        "canonical",
+        "variant_selector",
+        "offers",
+        "product_intel",
+        "active_ingredients",
+        "ingredients_inci",
+        "how_to_use",
+        "product_overview",
+        "product_facts",
+        "supplemental_details",
+        "product_details",
+        "reviews_preview",
+        "similar"
+      ],
+      "missing_modules": [
+        "product_facts"
+      ],
+      "gallery": {
+        "image_count": 7,
+        "duplicate_url_count": 1,
+        "image_hosts": [
+          "cdn.shopify.com"
+        ],
+        "ok": true
+      },
+      "variant": {
+        "module_present": true,
+        "variant_count": 1,
+        "label_count": 2,
+        "labels": [
+          "Size: 70 mm",
+          "70 mm"
+        ],
+        "bad_labels": [],
+        "ok": true
+      },
+      "reviews": {
+        "module_present": true,
+        "rating": 4.9,
+        "review_count": 12,
+        "chart_present": true,
+        "chart_estimated": true,
+        "preview_count": 3,
+        "ok": true
+      },
+      "insights": {
+        "module_present": true,
+        "quality_state": "reviewed",
+        "evidence_profile": "official_pdp_reviewed_formula_and_usage",
+        "seller_only_evidence": false,
+        "seller_grounded_reviewed": false,
+        "headline": "Face toner",
+        "why_count": 3,
+        "ok": true
+      },
+      "content": {
+        "ingredients_present": true,
+        "ingredients_text_count": 77,
+        "ingredients_source_origin": "pdp_section",
+        "ingredients_source_quality_status": "authoritative",
+        "ingredients_force_filled": false,
+        "active_ingredients_present": true,
+        "active_ingredients_source_origin": "reviewed_active_ingredients",
+        "active_ingredients_source_quality_status": "high",
+        "active_ingredients_force_filled": false,
+        "how_to_present": true,
+        "how_to_text_count": 6,
+        "overview_present": true,
+        "details_present": true,
+        "details_text_count": 16
+      },
+      "similar": {
+        "module_present": true,
+        "count": 0,
+        "status": "deferred"
+      },
+      "product_kind": {
+        "family": "single_formula",
+        "reasons": [
+          "explicit_product_kind_signal"
+        ],
+        "pdp_schema_profile": "beauty_formula",
+        "formula_content_required": true,
+        "merchandising_content_applicable": true
+      },
+      "blocking_reasons": [],
+      "pdp_quality_bucket": "ready",
+      "conversion_ready": true
+    },
+    {
+      "external_product_id": "ext_4f43738711dfea4e88975cf4",
+      "pivota_signature_id": "sig_685441dc77bd5b2ef22319b56256f305",
+      "probed_product_id": "ext_4f43738711dfea4e88975cf4",
+      "probed_id_type": "ext",
+      "seed_id": "eps_185727719f7da436bcc65331",
+      "market": "US",
+      "domain": "tirtir.global",
+      "title": "Mask Fit Cushion Refill",
+      "canonical_url": "https://tirtir.global/products/mask-fit-cushion-refill",
+      "http_status": 200,
+      "pdp_status": "success",
+      "build_id": "92607f1e8501",
+      "module_types": [
+        "canonical",
+        "variant_selector",
+        "offers",
+        "product_intel",
+        "active_ingredients",
+        "ingredients_inci",
+        "how_to_use",
+        "product_overview",
+        "product_facts",
+        "supplemental_details",
+        "product_details",
+        "reviews_preview",
+        "similar"
+      ],
+      "missing_modules": [
+        "active_ingredients",
+        "how_to_use",
+        "product_facts",
+        "supplemental_details"
+      ],
+      "gallery": {
+        "image_count": 1,
+        "duplicate_url_count": 1,
+        "image_hosts": [
+          "cdn.shopify.com"
+        ],
+        "ok": true
+      },
+      "variant": {
+        "module_present": true,
+        "variant_count": 2,
+        "label_count": 4,
+        "labels": [
+          "Color: 21N Ivory",
+          "Color: 23N Sand",
+          "21N Ivory",
+          "23N Sand"
+        ],
+        "bad_labels": [],
+        "ok": true
+      },
+      "reviews": {
+        "module_present": true,
+        "rating": 5,
+        "review_count": 5,
+        "chart_present": true,
+        "chart_estimated": true,
+        "preview_count": 0,
+        "ok": true
+      },
+      "insights": {
+        "module_present": true,
+        "quality_state": "reviewed",
+        "evidence_profile": "official_pdp_reviewed_formula_and_usage",
+        "seller_only_evidence": false,
+        "seller_grounded_reviewed": false,
+        "headline": "Complexion makeup",
+        "why_count": 3,
+        "ok": true
+      },
+      "content": {
+        "ingredients_present": true,
+        "ingredients_text_count": 63,
+        "ingredients_source_origin": "pdp_section",
+        "ingredients_source_quality_status": "authoritative",
+        "ingredients_force_filled": false,
+        "active_ingredients_present": false,
+        "active_ingredients_source_origin": null,
+        "active_ingredients_source_quality_status": null,
+        "active_ingredients_force_filled": false,
+        "how_to_present": false,
+        "how_to_text_count": 0,
+        "overview_present": true,
+        "details_present": true,
+        "details_text_count": 4
+      },
+      "similar": {
+        "module_present": true,
+        "count": 0,
+        "status": "deferred"
+      },
+      "product_kind": {
+        "family": "single_formula",
+        "reasons": [
+          "explicit_product_kind_signal"
+        ],
+        "pdp_schema_profile": "beauty_formula",
+        "formula_content_required": true,
+        "merchandising_content_applicable": true
+      },
+      "blocking_reasons": [
+        "missing_how_to"
+      ],
+      "pdp_quality_bucket": "thin",
+      "conversion_ready": false
+    },
+    {
+      "external_product_id": "ext_f547012d9e7a18a054240103",
+      "pivota_signature_id": "sig_9301697b68299489fe45c92d09a68279",
+      "probed_product_id": "ext_f547012d9e7a18a054240103",
+      "probed_id_type": "ext",
+      "seed_id": "eps_a7217452f437654dae65531e",
+      "market": "US",
+      "domain": "tirtir.global",
+      "title": "Mask Fit All Cover Cushion Refill",
+      "canonical_url": "https://tirtir.global/products/mask-fit-all-cover-cushion-refill",
+      "http_status": 200,
+      "pdp_status": "success",
+      "build_id": "92607f1e8501",
+      "module_types": [
+        "canonical",
+        "variant_selector",
+        "offers",
+        "product_intel",
+        "active_ingredients",
+        "ingredients_inci",
+        "how_to_use",
+        "product_overview",
+        "product_facts",
+        "supplemental_details",
+        "product_details",
+        "reviews_preview",
+        "similar"
+      ],
+      "missing_modules": [
+        "active_ingredients",
+        "how_to_use",
+        "product_facts"
+      ],
+      "gallery": {
+        "image_count": 1,
+        "duplicate_url_count": 1,
+        "image_hosts": [
+          "cdn.shopify.com"
+        ],
+        "ok": true
+      },
+      "variant": {
+        "module_present": true,
+        "variant_count": 1,
+        "label_count": 2,
+        "labels": [
+          "Color: 21N Ivory",
+          "21N Ivory"
+        ],
+        "bad_labels": [],
+        "ok": true
+      },
+      "reviews": {
+        "module_present": true,
+        "rating": 5,
+        "review_count": 3,
+        "chart_present": true,
+        "chart_estimated": true,
+        "preview_count": 0,
+        "ok": true
+      },
+      "insights": {
+        "module_present": true,
+        "quality_state": "reviewed",
+        "evidence_profile": "official_pdp_reviewed_formula_and_usage",
+        "seller_only_evidence": false,
+        "seller_grounded_reviewed": false,
+        "headline": "Complexion makeup",
+        "why_count": 3,
+        "ok": true
+      },
+      "content": {
+        "ingredients_present": true,
+        "ingredients_text_count": 48,
+        "ingredients_source_origin": "pdp_section",
+        "ingredients_source_quality_status": "authoritative",
+        "ingredients_force_filled": false,
+        "active_ingredients_present": false,
+        "active_ingredients_source_origin": null,
+        "active_ingredients_source_quality_status": null,
+        "active_ingredients_force_filled": false,
+        "how_to_present": false,
+        "how_to_text_count": 0,
+        "overview_present": true,
+        "details_present": true,
+        "details_text_count": 28
+      },
+      "similar": {
+        "module_present": true,
+        "count": 0,
+        "status": "deferred"
+      },
+      "product_kind": {
+        "family": "single_formula",
+        "reasons": [
+          "explicit_product_kind_signal"
+        ],
+        "pdp_schema_profile": "beauty_formula",
+        "formula_content_required": true,
+        "merchandising_content_applicable": true
+      },
+      "blocking_reasons": [
+        "missing_how_to"
+      ],
+      "pdp_quality_bucket": "thin",
+      "conversion_ready": false
+    },
+    {
+      "external_product_id": "ext_6df19f2224fec208ca6eeea7",
+      "pivota_signature_id": "sig_77734bc6a310849dc1f5451b8b020a29",
+      "probed_product_id": "ext_6df19f2224fec208ca6eeea7",
+      "probed_id_type": "ext",
+      "seed_id": "eps_d972bf748c6a7e5e4e2798b3",
+      "market": "US",
+      "domain": "tirtir.global",
+      "title": "Matcha Bubble Tea Scrub",
+      "canonical_url": "https://tirtir.global/products/matcha-bubble-tea-scrub",
+      "http_status": 200,
+      "pdp_status": "success",
+      "build_id": "92607f1e8501",
+      "module_types": [
+        "canonical",
+        "variant_selector",
+        "offers",
+        "product_intel",
+        "active_ingredients",
+        "ingredients_inci",
+        "how_to_use",
+        "product_overview",
+        "product_facts",
+        "supplemental_details",
+        "product_details",
+        "reviews_preview",
+        "similar"
+      ],
+      "missing_modules": [],
+      "gallery": {
+        "image_count": 7,
+        "duplicate_url_count": 1,
+        "image_hosts": [
+          "tirtir.global"
+        ],
+        "ok": true
+      },
+      "variant": {
+        "module_present": true,
+        "variant_count": 1,
+        "label_count": 2,
+        "labels": [
+          "Size: 95 g",
+          "95 g"
+        ],
+        "bad_labels": [],
+        "ok": true
+      },
+      "reviews": {
+        "module_present": true,
+        "rating": 4.4,
+        "review_count": 5,
+        "chart_present": true,
+        "chart_estimated": false,
+        "preview_count": 3,
+        "ok": true
+      },
+      "insights": {
+        "module_present": true,
+        "quality_state": "reviewed",
+        "evidence_profile": "official_pdp_reviewed_formula_and_usage",
+        "seller_only_evidence": false,
+        "seller_grounded_reviewed": false,
+        "headline": "Face scrub",
+        "why_count": 3,
+        "ok": true
+      },
+      "content": {
+        "ingredients_present": true,
+        "ingredients_text_count": 56,
+        "ingredients_source_origin": "pdp_section",
+        "ingredients_source_quality_status": "authoritative",
+        "ingredients_force_filled": false,
+        "active_ingredients_present": true,
+        "active_ingredients_source_origin": "reviewed_active_ingredients",
+        "active_ingredients_source_quality_status": "high",
+        "active_ingredients_force_filled": false,
+        "how_to_present": true,
+        "how_to_text_count": 9,
+        "overview_present": true,
+        "details_present": true,
+        "details_text_count": 28
+      },
+      "similar": {
+        "module_present": true,
+        "count": 0,
+        "status": "deferred"
+      },
+      "product_kind": {
+        "family": "single_formula",
+        "reasons": [
+          "explicit_product_kind_signal"
+        ],
+        "pdp_schema_profile": "beauty_formula",
+        "formula_content_required": true,
+        "merchandising_content_applicable": true
+      },
+      "blocking_reasons": [],
+      "pdp_quality_bucket": "ready",
+      "conversion_ready": true
+    },
+    {
+      "external_product_id": "ext_fa03729895112b24e3687e85",
+      "pivota_signature_id": "sig_d428c9fee8a1c8d47611aedea34fba8a",
+      "probed_product_id": "ext_fa03729895112b24e3687e85",
+      "probed_id_type": "ext",
+      "seed_id": "eps_b67ec34483c1cf73271e1ba5",
+      "market": "US",
+      "domain": "tirtir.global",
+      "title": "Matcha Pack Cleanser",
+      "canonical_url": "https://tirtir.global/products/matcha-pack-cleanser",
+      "http_status": 200,
+      "pdp_status": "success",
+      "build_id": "92607f1e8501",
+      "module_types": [
+        "canonical",
+        "variant_selector",
+        "offers",
+        "product_intel",
+        "active_ingredients",
+        "ingredients_inci",
+        "how_to_use",
+        "product_overview",
+        "product_facts",
+        "supplemental_details",
+        "product_details",
+        "reviews_preview",
+        "similar"
+      ],
+      "missing_modules": [],
+      "gallery": {
+        "image_count": 6,
+        "duplicate_url_count": 1,
+        "image_hosts": [
+          "tirtir.global"
+        ],
+        "ok": true
+      },
+      "variant": {
+        "module_present": true,
+        "variant_count": 1,
+        "label_count": 2,
+        "labels": [
+          "Size: 120 mL",
+          "120 mL"
+        ],
+        "bad_labels": [],
+        "ok": true
+      },
+      "reviews": {
+        "module_present": true,
+        "rating": 5,
+        "review_count": 3,
+        "chart_present": true,
+        "chart_estimated": false,
+        "preview_count": 3,
+        "ok": true
+      },
+      "insights": {
+        "module_present": true,
+        "quality_state": "reviewed",
+        "evidence_profile": "official_pdp_reviewed_formula_and_usage",
+        "seller_only_evidence": false,
+        "seller_grounded_reviewed": false,
+        "headline": "Face cleanser",
+        "why_count": 3,
+        "ok": true
+      },
+      "content": {
+        "ingredients_present": true,
+        "ingredients_text_count": 71,
+        "ingredients_source_origin": "pdp_section",
+        "ingredients_source_quality_status": "authoritative",
+        "ingredients_force_filled": false,
+        "active_ingredients_present": true,
+        "active_ingredients_source_origin": "reviewed_active_ingredients",
+        "active_ingredients_source_quality_status": "high",
+        "active_ingredients_force_filled": false,
+        "how_to_present": true,
+        "how_to_text_count": 7,
+        "overview_present": true,
+        "details_present": true,
+        "details_text_count": 25
+      },
+      "similar": {
+        "module_present": true,
+        "count": 0,
+        "status": "deferred"
+      },
+      "product_kind": {
+        "family": "set_or_collection",
+        "reasons": [
+          "explicit_product_kind_signal"
+        ],
+        "pdp_schema_profile": "beauty_formula",
+        "formula_content_required": false,
+        "merchandising_content_applicable": true
+      },
+      "blocking_reasons": [],
+      "pdp_quality_bucket": "ready",
+      "conversion_ready": true
+    },
+    {
+      "external_product_id": "ext_c989d8297287ad108ef57250",
+      "pivota_signature_id": "sig_5f7fac72c63001be2b64c95d879e7366",
+      "probed_product_id": "ext_c989d8297287ad108ef57250",
+      "probed_id_type": "ext",
+      "seed_id": "eps_829f1f6845e04c26a03c006f",
+      "market": "US",
+      "domain": "tirtir.global",
+      "title": "Matcha Dual Serum",
+      "canonical_url": "https://tirtir.global/products/matcha-dual-serum",
+      "http_status": 200,
+      "pdp_status": "success",
+      "build_id": "92607f1e8501",
+      "module_types": [
+        "canonical",
+        "variant_selector",
+        "offers",
+        "product_intel",
+        "active_ingredients",
+        "ingredients_inci",
+        "how_to_use",
+        "product_overview",
+        "product_facts",
+        "supplemental_details",
+        "product_details",
+        "reviews_preview",
+        "similar"
+      ],
+      "missing_modules": [],
+      "gallery": {
+        "image_count": 7,
+        "duplicate_url_count": 1,
+        "image_hosts": [
+          "tirtir.global"
+        ],
+        "ok": true
+      },
+      "variant": {
+        "module_present": true,
+        "variant_count": 1,
+        "label_count": 2,
+        "labels": [
+          "Size: 1.69 oz",
+          "1.69 oz"
+        ],
+        "bad_labels": [],
+        "ok": true
+      },
+      "reviews": {
+        "module_present": true,
+        "rating": 5,
+        "review_count": 1,
+        "chart_present": true,
+        "chart_estimated": false,
+        "preview_count": 1,
+        "ok": true
+      },
+      "insights": {
+        "module_present": true,
+        "quality_state": "reviewed",
+        "evidence_profile": "official_pdp_reviewed_formula_and_usage",
+        "seller_only_evidence": false,
+        "seller_grounded_reviewed": false,
+        "headline": "Treatment serum",
+        "why_count": 3,
+        "ok": true
+      },
+      "content": {
+        "ingredients_present": true,
+        "ingredients_text_count": 55,
+        "ingredients_source_origin": "pdp_section",
+        "ingredients_source_quality_status": "authoritative",
+        "ingredients_force_filled": false,
+        "active_ingredients_present": true,
+        "active_ingredients_source_origin": "reviewed_active_ingredients",
+        "active_ingredients_source_quality_status": "high",
+        "active_ingredients_force_filled": false,
+        "how_to_present": true,
+        "how_to_text_count": 10,
+        "overview_present": true,
+        "details_present": true,
+        "details_text_count": 28
+      },
+      "similar": {
+        "module_present": true,
+        "count": 0,
+        "status": "deferred"
+      },
+      "product_kind": {
+        "family": "single_formula",
+        "reasons": [
+          "explicit_product_kind_signal"
+        ],
+        "pdp_schema_profile": "beauty_formula",
+        "formula_content_required": true,
+        "merchandising_content_applicable": true
+      },
+      "blocking_reasons": [],
+      "pdp_quality_bucket": "ready",
+      "conversion_ready": true
+    },
+    {
+      "external_product_id": "ext_263b61b2d374b255d121c928",
+      "pivota_signature_id": "sig_bb76169d3839ad9ebfbb9ed3eefa1b2b",
+      "probed_product_id": "ext_263b61b2d374b255d121c928",
+      "probed_id_type": "ext",
+      "seed_id": "eps_511518c202575f113c1c6613",
+      "market": "US",
+      "domain": "tirtir.global",
+      "title": "Mask Fit Makeup Fixer",
+      "canonical_url": "https://tirtir.global/products/mask-fit-makeup-fixer",
+      "http_status": 200,
+      "pdp_status": "success",
+      "build_id": "92607f1e8501",
+      "module_types": [
+        "canonical",
+        "variant_selector",
+        "offers",
+        "product_intel",
+        "active_ingredients",
+        "ingredients_inci",
+        "how_to_use",
+        "product_overview",
+        "product_facts",
+        "supplemental_details",
+        "product_details",
+        "reviews_preview",
+        "similar"
+      ],
+      "missing_modules": [
+        "active_ingredients",
+        "product_facts"
+      ],
+      "gallery": {
+        "image_count": 8,
+        "duplicate_url_count": 1,
+        "image_hosts": [
+          "tirtir.global"
+        ],
+        "ok": true
+      },
+      "variant": {
+        "module_present": true,
+        "variant_count": 1,
+        "label_count": 2,
+        "labels": [
+          "Size: 80 mL",
+          "80 mL"
+        ],
+        "bad_labels": [],
+        "ok": true
+      },
+      "reviews": {
+        "module_present": true,
+        "rating": 4.8,
+        "review_count": 107,
+        "chart_present": true,
+        "chart_estimated": false,
+        "preview_count": 6,
+        "ok": true
+      },
+      "insights": {
+        "module_present": true,
+        "quality_state": "reviewed",
+        "evidence_profile": "official_pdp_reviewed_formula_and_usage",
+        "seller_only_evidence": false,
+        "seller_grounded_reviewed": false,
+        "headline": "Treatment mask",
+        "why_count": 3,
+        "ok": true
+      },
+      "content": {
+        "ingredients_present": true,
+        "ingredients_text_count": 19,
+        "ingredients_source_origin": "pdp_section",
+        "ingredients_source_quality_status": "authoritative",
+        "ingredients_force_filled": false,
+        "active_ingredients_present": false,
+        "active_ingredients_source_origin": null,
+        "active_ingredients_source_quality_status": null,
+        "active_ingredients_force_filled": false,
+        "how_to_present": true,
+        "how_to_text_count": 7,
+        "overview_present": true,
+        "details_present": true,
+        "details_text_count": 16
+      },
+      "similar": {
+        "module_present": true,
+        "count": 0,
+        "status": "deferred"
+      },
+      "product_kind": {
+        "family": "single_formula",
+        "reasons": [
+          "explicit_product_kind_signal"
+        ],
+        "pdp_schema_profile": "beauty_formula",
+        "formula_content_required": true,
+        "merchandising_content_applicable": true
+      },
+      "blocking_reasons": [],
+      "pdp_quality_bucket": "ready",
+      "conversion_ready": true
+    },
+    {
+      "external_product_id": "ext_7ba277de9baadb1584ae2a5a",
+      "pivota_signature_id": "sig_b7bc87695e503047ddab3d0d309bd6d3",
+      "probed_product_id": "ext_7ba277de9baadb1584ae2a5a",
+      "probed_id_type": "ext",
+      "seed_id": "eps_12af37897502654f3f50019c",
+      "market": "US",
+      "domain": "tirtir.global",
+      "title": "Mask Fit Red Foundation",
+      "canonical_url": "https://tirtir.global/products/mask-fit-red-foundation",
+      "http_status": 200,
+      "pdp_status": "success",
+      "build_id": "92607f1e8501",
+      "module_types": [
+        "canonical",
+        "variant_selector",
+        "offers",
+        "product_intel",
+        "active_ingredients",
+        "ingredients_inci",
+        "how_to_use",
+        "product_overview",
+        "product_facts",
+        "supplemental_details",
+        "product_details",
+        "reviews_preview",
+        "similar"
+      ],
+      "missing_modules": [
+        "how_to_use",
+        "product_facts"
+      ],
+      "gallery": {
+        "image_count": 38,
+        "duplicate_url_count": 1,
+        "image_hosts": [
+          "cdn.shopify.com",
+          "tirtir.global"
+        ],
+        "ok": true
+      },
+      "variant": {
+        "module_present": true,
+        "variant_count": 30,
+        "label_count": 60,
+        "labels": [
+          "Color: 10C Shell",
+          "Color: 11C Cool Rosy",
+          "Color: 13N Fair Ivory",
+          "Color: 15C Fair Porcelain",
+          "Color: 17C Porcelain",
+          "Color: 17N Vanilla",
+          "Color: 21C Cool Ivory",
+          "Color: 21N Ivory",
+          "Color: 21W Natural Ivory",
+          "Color: 22N Shell Beige",
+          "Color: 23N Sand",
+          "Color: 24N Latte"
+        ],
+        "bad_labels": [],
+        "ok": true
+      },
+      "reviews": {
+        "module_present": true,
+        "rating": 4.9,
+        "review_count": 150,
+        "chart_present": true,
+        "chart_estimated": false,
+        "preview_count": 6,
+        "ok": true
+      },
+      "insights": {
+        "module_present": true,
+        "quality_state": "reviewed",
+        "evidence_profile": "official_pdp_reviewed_formula_and_usage",
+        "seller_only_evidence": false,
+        "seller_grounded_reviewed": false,
+        "headline": "Complexion makeup",
+        "why_count": 3,
+        "ok": true
+      },
+      "content": {
+        "ingredients_present": true,
+        "ingredients_text_count": 53,
+        "ingredients_source_origin": "pdp_section",
+        "ingredients_source_quality_status": "authoritative",
+        "ingredients_force_filled": false,
+        "active_ingredients_present": true,
+        "active_ingredients_source_origin": "reviewed_active_ingredients",
+        "active_ingredients_source_quality_status": "high",
+        "active_ingredients_force_filled": false,
+        "how_to_present": false,
+        "how_to_text_count": 0,
+        "overview_present": true,
+        "details_present": true,
+        "details_text_count": 16
+      },
+      "similar": {
+        "module_present": true,
+        "count": 0,
+        "status": "deferred"
+      },
+      "product_kind": {
+        "family": "single_formula",
+        "reasons": [
+          "stale_bundle_kind_overridden_by_formula_category"
+        ],
+        "pdp_schema_profile": "beauty_formula",
+        "formula_content_required": true,
+        "merchandising_content_applicable": true
+      },
+      "blocking_reasons": [
+        "missing_how_to"
+      ],
+      "pdp_quality_bucket": "thin",
+      "conversion_ready": false
+    },
+    {
+      "external_product_id": "ext_6815bee1060ef71d9a99ce5b",
+      "pivota_signature_id": "sig_69612c2d0788a9296c85e6ef",
+      "probed_product_id": "ext_6815bee1060ef71d9a99ce5b",
+      "probed_id_type": "ext",
+      "seed_id": "eps_103c92b2eafaefa2e894f041",
+      "market": "US",
+      "domain": "upcirclebeauty.com",
+      "title": "Cleansing Face Milk with Oat Powder + Aloe Vera",
+      "canonical_url": "https://upcirclebeauty.com/products/oat-face-cleanser",
+      "http_status": 404,
+      "pdp_status": "",
+      "build_id": "",
+      "module_types": [],
+      "missing_modules": [],
+      "gallery": {
+        "image_count": 0,
+        "duplicate_url_count": 0,
+        "image_hosts": [],
+        "ok": false
+      },
+      "variant": {
+        "module_present": false,
+        "variant_count": 0,
+        "label_count": 0,
+        "labels": [],
+        "bad_labels": [],
+        "ok": false
+      },
+      "reviews": {
+        "module_present": false,
+        "rating": null,
+        "review_count": 0,
+        "chart_present": false,
+        "chart_estimated": false,
+        "preview_count": 0,
+        "ok": true
+      },
+      "insights": {
+        "module_present": false,
+        "quality_state": null,
+        "evidence_profile": null,
+        "seller_only_evidence": false,
+        "seller_grounded_reviewed": false,
+        "headline": null,
+        "why_count": 0,
+        "ok": false
+      },
+      "content": {
+        "ingredients_present": false,
+        "ingredients_text_count": 0,
+        "ingredients_source_origin": null,
+        "ingredients_source_quality_status": null,
+        "ingredients_force_filled": false,
+        "active_ingredients_present": false,
+        "active_ingredients_source_origin": null,
+        "active_ingredients_source_quality_status": null,
+        "active_ingredients_force_filled": false,
+        "how_to_present": false,
+        "how_to_text_count": 0,
+        "overview_present": false,
+        "details_present": false,
+        "details_text_count": 0
+      },
+      "similar": {
+        "module_present": false,
+        "count": 0,
+        "status": null
+      },
+      "product_kind": {
+        "family": "single_formula",
+        "reasons": [
+          "formula_category_path_signal"
+        ],
+        "pdp_schema_profile": null,
+        "formula_content_required": true,
+        "merchandising_content_applicable": true
+      },
+      "blocking_reasons": [
+        "gallery_missing_or_bloated",
+        "missing_or_weak_insights",
+        "missing_ingredients",
+        "missing_how_to",
+        "missing_overview",
+        "missing_details"
+      ],
+      "pdp_quality_bucket": "not_conversion_ready",
+      "conversion_ready": false
+    },
+    {
+      "external_product_id": "ext_f1f3ce59fac13141b98a911f",
+      "pivota_signature_id": "sig_226946a6ba84e4cda0525ac6",
+      "probed_product_id": "ext_f1f3ce59fac13141b98a911f",
+      "probed_id_type": "ext",
+      "seed_id": "eps_1bc6f7bd7c0610d438bb1e7f",
+      "market": "US",
+      "domain": "upcirclebeauty.com",
+      "title": "Cinnamon + Ginger Chai Cleansing Bar",
+      "canonical_url": "https://upcirclebeauty.com/products/cinnamon-ginger-chai-soap-bar",
+      "http_status": 404,
+      "pdp_status": "",
+      "build_id": "",
+      "module_types": [],
+      "missing_modules": [],
+      "gallery": {
+        "image_count": 0,
+        "duplicate_url_count": 0,
+        "image_hosts": [],
+        "ok": false
+      },
+      "variant": {
+        "module_present": false,
+        "variant_count": 0,
+        "label_count": 0,
+        "labels": [],
+        "bad_labels": [],
+        "ok": false
+      },
+      "reviews": {
+        "module_present": false,
+        "rating": null,
+        "review_count": 0,
+        "chart_present": false,
+        "chart_estimated": false,
+        "preview_count": 0,
+        "ok": true
+      },
+      "insights": {
+        "module_present": false,
+        "quality_state": null,
+        "evidence_profile": null,
+        "seller_only_evidence": false,
+        "seller_grounded_reviewed": false,
+        "headline": null,
+        "why_count": 0,
+        "ok": false
+      },
+      "content": {
+        "ingredients_present": false,
+        "ingredients_text_count": 0,
+        "ingredients_source_origin": null,
+        "ingredients_source_quality_status": null,
+        "ingredients_force_filled": false,
+        "active_ingredients_present": false,
+        "active_ingredients_source_origin": null,
+        "active_ingredients_source_quality_status": null,
+        "active_ingredients_force_filled": false,
+        "how_to_present": false,
+        "how_to_text_count": 0,
+        "overview_present": false,
+        "details_present": false,
+        "details_text_count": 0
+      },
+      "similar": {
+        "module_present": false,
+        "count": 0,
+        "status": null
+      },
+      "product_kind": {
+        "family": "single_formula",
+        "reasons": [
+          "formula_signal"
+        ],
+        "pdp_schema_profile": null,
+        "formula_content_required": true,
+        "merchandising_content_applicable": true
+      },
+      "blocking_reasons": [
+        "gallery_missing_or_bloated",
+        "missing_or_weak_insights",
+        "missing_ingredients",
+        "missing_how_to",
+        "missing_overview",
+        "missing_details"
+      ],
+      "pdp_quality_bucket": "not_conversion_ready",
+      "conversion_ready": false
+    },
+    {
+      "external_product_id": "ext_0c7bfbaafb9eab5f2261f109",
+      "pivota_signature_id": "sig_562d932fce08dd276acab401e4996146",
+      "probed_product_id": "ext_0c7bfbaafb9eab5f2261f109",
+      "probed_id_type": "ext",
+      "seed_id": "eps_66722b8a57d44ea5b98e0d9d",
+      "market": "US",
+      "domain": "kyliecosmetics.com",
+      "title": "Bare Necessities Lip Combo",
+      "canonical_url": "https://kyliecosmetics.com/products/bare-necessities-lip-combo",
+      "http_status": 404,
+      "pdp_status": "",
+      "build_id": "",
+      "module_types": [],
+      "missing_modules": [],
+      "gallery": {
+        "image_count": 0,
+        "duplicate_url_count": 0,
+        "image_hosts": [],
+        "ok": false
+      },
+      "variant": {
+        "module_present": false,
+        "variant_count": 0,
+        "label_count": 0,
+        "labels": [],
+        "bad_labels": [],
+        "ok": false
+      },
+      "reviews": {
+        "module_present": false,
+        "rating": null,
+        "review_count": 0,
+        "chart_present": false,
+        "chart_estimated": false,
+        "preview_count": 0,
+        "ok": true
+      },
+      "insights": {
+        "module_present": false,
+        "quality_state": null,
+        "evidence_profile": null,
+        "seller_only_evidence": false,
+        "seller_grounded_reviewed": false,
+        "headline": null,
+        "why_count": 0,
+        "ok": false
+      },
+      "content": {
+        "ingredients_present": false,
+        "ingredients_text_count": 0,
+        "ingredients_source_origin": null,
+        "ingredients_source_quality_status": null,
+        "ingredients_force_filled": false,
+        "active_ingredients_present": false,
+        "active_ingredients_source_origin": null,
+        "active_ingredients_source_quality_status": null,
+        "active_ingredients_force_filled": false,
+        "how_to_present": false,
+        "how_to_text_count": 0,
+        "overview_present": false,
+        "details_present": false,
+        "details_text_count": 0
+      },
+      "similar": {
+        "module_present": false,
+        "count": 0,
+        "status": null
+      },
+      "product_kind": {
+        "family": "set_or_collection",
+        "reasons": [
+          "explicit_product_kind_signal"
+        ],
+        "pdp_schema_profile": null,
+        "formula_content_required": false,
+        "merchandising_content_applicable": true
+      },
+      "blocking_reasons": [
+        "gallery_missing_or_bloated",
+        "missing_or_weak_insights",
+        "missing_overview",
+        "missing_details"
+      ],
+      "pdp_quality_bucket": "not_conversion_ready",
+      "conversion_ready": false
+    },
+    {
+      "external_product_id": "ext_0c5ff135e1e9209ad85ba45a",
+      "pivota_signature_id": "sig_90c6f108256d4a15780bfd821c513953",
+      "probed_product_id": "ext_0c5ff135e1e9209ad85ba45a",
+      "probed_id_type": "ext",
+      "seed_id": "eps_8808dfa901bd079abfd72446",
+      "market": "US",
+      "domain": "tirtir.global",
+      "title": "Mask Fit AI Filter Cushion",
+      "canonical_url": "https://tirtir.global/products/mask-fit-ai-filter-cushion",
+      "http_status": 200,
+      "pdp_status": "success",
+      "build_id": "92607f1e8501",
+      "module_types": [
+        "canonical",
+        "variant_selector",
+        "offers",
+        "product_intel",
+        "active_ingredients",
+        "ingredients_inci",
+        "how_to_use",
+        "product_overview",
+        "product_facts",
+        "supplemental_details",
+        "product_details",
+        "reviews_preview",
+        "similar"
+      ],
+      "missing_modules": [
+        "product_facts"
+      ],
+      "gallery": {
+        "image_count": 41,
+        "duplicate_url_count": 1,
+        "image_hosts": [
+          "cdn.shopify.com",
+          "tirtir.global"
+        ],
+        "ok": true
+      },
+      "variant": {
+        "module_present": true,
+        "variant_count": 30,
+        "label_count": 60,
+        "labels": [
+          "Color: 10C Shell",
+          "Color: 11C Cool Rosy",
+          "Color: 13N Fair Ivory",
+          "Color: 15C Fair Porcelain",
+          "Color: 17C Porcelain",
+          "Color: 17N Vanilla",
+          "Color: 19C Petal",
+          "Color: 21C Cool Ivory",
+          "Color: 21N Ivory",
+          "Color: 21W Natural Ivory",
+          "Color: 22N Shell Beige",
+          "Color: 23N Sand"
+        ],
+        "bad_labels": [],
+        "ok": true
+      },
+      "reviews": {
+        "module_present": true,
+        "rating": 4.8,
+        "review_count": 275,
+        "chart_present": true,
+        "chart_estimated": false,
+        "preview_count": 5,
+        "ok": true
+      },
+      "insights": {
+        "module_present": true,
+        "quality_state": "reviewed",
+        "evidence_profile": "official_pdp_reviewed_formula_and_usage",
+        "seller_only_evidence": false,
+        "seller_grounded_reviewed": false,
+        "headline": "Complexion makeup",
+        "why_count": 3,
+        "ok": true
+      },
+      "content": {
+        "ingredients_present": true,
+        "ingredients_text_count": 77,
+        "ingredients_source_origin": "pdp_section",
+        "ingredients_source_quality_status": "authoritative",
+        "ingredients_force_filled": false,
+        "active_ingredients_present": true,
+        "active_ingredients_source_origin": "reviewed_active_ingredients",
+        "active_ingredients_source_quality_status": "high",
+        "active_ingredients_force_filled": false,
+        "how_to_present": true,
+        "how_to_text_count": 6,
+        "overview_present": true,
+        "details_present": true,
+        "details_text_count": 16
+      },
+      "similar": {
+        "module_present": true,
+        "count": 0,
+        "status": "deferred"
+      },
+      "product_kind": {
+        "family": "single_formula",
+        "reasons": [
+          "explicit_product_kind_signal"
+        ],
+        "pdp_schema_profile": "beauty_formula",
+        "formula_content_required": true,
+        "merchandising_content_applicable": true
+      },
+      "blocking_reasons": [],
+      "pdp_quality_bucket": "ready",
+      "conversion_ready": true
+    },
+    {
+      "external_product_id": "ext_68ad409f681f1278525ced16",
+      "pivota_signature_id": "sig_89d2a421e74805310657f39220a17acc",
+      "probed_product_id": "ext_68ad409f681f1278525ced16",
+      "probed_id_type": "ext",
+      "seed_id": "eps_b45eb0c231876b76776cb754",
+      "market": "US",
+      "domain": "tirtir.global",
+      "title": "Mask Fit Aura Cushion",
+      "canonical_url": "https://tirtir.global/products/mask-fit-aura-cushion",
+      "http_status": 200,
+      "pdp_status": "success",
+      "build_id": "92607f1e8501",
+      "module_types": [
+        "canonical",
+        "variant_selector",
+        "offers",
+        "product_intel",
+        "active_ingredients",
+        "ingredients_inci",
+        "how_to_use",
+        "product_overview",
+        "product_facts",
+        "supplemental_details",
+        "product_details",
+        "reviews_preview",
+        "similar"
+      ],
+      "missing_modules": [
+        "active_ingredients",
+        "product_facts",
+        "supplemental_details"
+      ],
+      "gallery": {
+        "image_count": 25,
+        "duplicate_url_count": 1,
+        "image_hosts": [
+          "tirtir.global",
+          "cdn.shopify.com"
+        ],
+        "ok": true
+      },
+      "variant": {
+        "module_present": true,
+        "variant_count": 20,
+        "label_count": 40,
+        "labels": [
+          "Color: 13N Fair Ivory",
+          "Color: 15C Fair Porcelain",
+          "Color: 17C Porcelain",
+          "Color: 17W French Vanilla",
+          "Color: 21C Cool Ivory",
+          "Color: 21N Ivory",
+          "Color: 21W Natural Ivory",
+          "Color: 23N Sand",
+          "Color: 24N Latte",
+          "Color: 24W Soft Beige",
+          "Color: 25N Mocha",
+          "Color: 27C Cool Beige"
+        ],
+        "bad_labels": [],
+        "ok": true
+      },
+      "reviews": {
+        "module_present": true,
+        "rating": 4.6,
+        "review_count": 109,
+        "chart_present": true,
+        "chart_estimated": false,
+        "preview_count": 6,
+        "ok": true
+      },
+      "insights": {
+        "module_present": true,
+        "quality_state": "reviewed",
+        "evidence_profile": "official_pdp_reviewed_formula_and_usage",
+        "seller_only_evidence": false,
+        "seller_grounded_reviewed": false,
+        "headline": "Complexion makeup",
+        "why_count": 3,
+        "ok": true
+      },
+      "content": {
+        "ingredients_present": true,
+        "ingredients_text_count": 54,
+        "ingredients_source_origin": "pdp_section",
+        "ingredients_source_quality_status": "authoritative",
+        "ingredients_force_filled": false,
+        "active_ingredients_present": false,
+        "active_ingredients_source_origin": null,
+        "active_ingredients_source_quality_status": null,
+        "active_ingredients_force_filled": false,
+        "how_to_present": true,
+        "how_to_text_count": 5,
+        "overview_present": true,
+        "details_present": true,
+        "details_text_count": 4
+      },
+      "similar": {
+        "module_present": true,
+        "count": 0,
+        "status": "deferred"
+      },
+      "product_kind": {
+        "family": "single_formula",
+        "reasons": [
+          "explicit_product_kind_signal"
+        ],
+        "pdp_schema_profile": "beauty_formula",
+        "formula_content_required": true,
+        "merchandising_content_applicable": true
+      },
+      "blocking_reasons": [],
+      "pdp_quality_bucket": "ready",
+      "conversion_ready": true
+    },
+    {
+      "external_product_id": "ext_a639cc92b3446b6eee7cabe7",
+      "pivota_signature_id": "sig_db5567316aec66d85b329f68942386e9",
+      "probed_product_id": "ext_a639cc92b3446b6eee7cabe7",
+      "probed_id_type": "ext",
+      "seed_id": "eps_34b7ef822b56330aa4f3187e",
+      "market": "US",
+      "domain": "tirtir.global",
+      "title": "Mask Fit All Cover Cushion",
+      "canonical_url": "https://tirtir.global/products/mask-fit-all-cover-cushion",
+      "http_status": 200,
+      "pdp_status": "success",
+      "build_id": "92607f1e8501",
+      "module_types": [
+        "canonical",
+        "variant_selector",
+        "offers",
+        "product_intel",
+        "active_ingredients",
+        "ingredients_inci",
+        "how_to_use",
+        "product_overview",
+        "product_facts",
+        "supplemental_details",
+        "product_details",
+        "reviews_preview",
+        "similar"
+      ],
+      "missing_modules": [
+        "product_facts",
+        "supplemental_details"
+      ],
+      "gallery": {
+        "image_count": 26,
+        "duplicate_url_count": 1,
+        "image_hosts": [
+          "tirtir.global",
+          "cdn.shopify.com"
+        ],
+        "ok": true
+      },
+      "variant": {
+        "module_present": true,
+        "variant_count": 20,
+        "label_count": 40,
+        "labels": [
+          "Color: 13N Fair Ivory",
+          "Color: 15C Fair Porcelain",
+          "Color: 17C Porcelain",
+          "Color: 17W French Vanilla",
+          "Color: 21C Cool Ivory",
+          "Color: 21N Ivory",
+          "Color: 21W Natural Ivory",
+          "Color: 23N Sand",
+          "Color: 24N Latte",
+          "Color: 24W Soft Beige",
+          "Color: 25N Mocha",
+          "Color: 27C Cool Beige"
+        ],
+        "bad_labels": [],
+        "ok": true
+      },
+      "reviews": {
+        "module_present": true,
+        "rating": 4.8,
+        "review_count": 136,
+        "chart_present": true,
+        "chart_estimated": false,
+        "preview_count": 6,
+        "ok": true
+      },
+      "insights": {
+        "module_present": true,
+        "quality_state": "reviewed",
+        "evidence_profile": "official_pdp_reviewed_formula_and_usage",
+        "seller_only_evidence": false,
+        "seller_grounded_reviewed": false,
+        "headline": "Complexion makeup",
+        "why_count": 3,
+        "ok": true
+      },
+      "content": {
+        "ingredients_present": true,
+        "ingredients_text_count": 48,
+        "ingredients_source_origin": "pdp_section",
+        "ingredients_source_quality_status": "authoritative",
+        "ingredients_force_filled": false,
+        "active_ingredients_present": true,
+        "active_ingredients_source_origin": "reviewed_active_ingredients",
+        "active_ingredients_source_quality_status": "high",
+        "active_ingredients_force_filled": false,
+        "how_to_present": true,
+        "how_to_text_count": 6,
+        "overview_present": true,
+        "details_present": true,
+        "details_text_count": 4
+      },
+      "similar": {
+        "module_present": true,
+        "count": 0,
+        "status": "deferred"
+      },
+      "product_kind": {
+        "family": "single_formula",
+        "reasons": [
+          "explicit_product_kind_signal"
+        ],
+        "pdp_schema_profile": "beauty_formula",
+        "formula_content_required": true,
+        "merchandising_content_applicable": true
+      },
+      "blocking_reasons": [],
+      "pdp_quality_bucket": "ready",
+      "conversion_ready": true
+    },
+    {
+      "external_product_id": "ext_a663b50d44c3cc2c3f541e15",
+      "pivota_signature_id": "sig_3e8ce29488a13222d55223d067b9829a",
+      "probed_product_id": "ext_a663b50d44c3cc2c3f541e15",
+      "probed_id_type": "ext",
+      "seed_id": "eps_eee80293eda9e3097d023e34",
+      "market": "US",
+      "domain": "tirtir.global",
+      "title": "Mask Fit Red Cushion",
+      "canonical_url": "https://tirtir.global/products/mask-fit-red-cushion",
+      "http_status": 200,
+      "pdp_status": "success",
+      "build_id": "92607f1e8501",
+      "module_types": [
+        "canonical",
+        "variant_selector",
+        "offers",
+        "product_intel",
+        "active_ingredients",
+        "ingredients_inci",
+        "how_to_use",
+        "product_overview",
+        "product_facts",
+        "supplemental_details",
+        "product_details",
+        "reviews_preview",
+        "similar"
+      ],
+      "missing_modules": [
+        "how_to_use",
+        "product_facts"
+      ],
+      "gallery": {
+        "image_count": 48,
+        "duplicate_url_count": 1,
+        "image_hosts": [
+          "cdn.shopify.com",
+          "tirtir.global"
+        ],
+        "ok": true
+      },
+      "variant": {
+        "module_present": true,
+        "variant_count": 40,
+        "label_count": 80,
+        "labels": [
+          "Color: 10C Shell",
+          "Color: 13C Fair",
+          "Color: 13N Fair Ivory",
+          "Color: 13W Cream",
+          "Color: 15C Fair Porcelain",
+          "Color: 17C Porcelain",
+          "Color: 17N Vanilla",
+          "Color: 17W French Vanilla",
+          "Color: 21C Cool Ivory",
+          "Color: 21N Ivory",
+          "Color: 21W Natural Ivory",
+          "Color: 22C Peach Beige"
+        ],
+        "bad_labels": [],
+        "ok": true
+      },
+      "reviews": {
+        "module_present": true,
+        "rating": 4.8,
+        "review_count": 688,
+        "chart_present": true,
+        "chart_estimated": false,
+        "preview_count": 6,
+        "ok": true
+      },
+      "insights": {
+        "module_present": true,
+        "quality_state": "reviewed",
+        "evidence_profile": "official_pdp_reviewed_formula_and_usage",
+        "seller_only_evidence": false,
+        "seller_grounded_reviewed": false,
+        "headline": "Complexion makeup",
+        "why_count": 3,
+        "ok": true
+      },
+      "content": {
+        "ingredients_present": true,
+        "ingredients_text_count": 46,
+        "ingredients_source_origin": "pdp_section",
+        "ingredients_source_quality_status": "authoritative",
+        "ingredients_force_filled": false,
+        "active_ingredients_present": true,
+        "active_ingredients_source_origin": "reviewed_active_ingredients",
+        "active_ingredients_source_quality_status": "high",
+        "active_ingredients_force_filled": false,
+        "how_to_present": false,
+        "how_to_text_count": 0,
+        "overview_present": true,
+        "details_present": true,
+        "details_text_count": 16
+      },
+      "similar": {
+        "module_present": true,
+        "count": 0,
+        "status": "deferred"
+      },
+      "product_kind": {
+        "family": "single_formula",
+        "reasons": [
+          "explicit_product_kind_signal"
+        ],
+        "pdp_schema_profile": "beauty_formula",
+        "formula_content_required": true,
+        "merchandising_content_applicable": true
+      },
+      "blocking_reasons": [
+        "missing_how_to"
+      ],
+      "pdp_quality_bucket": "thin",
+      "conversion_ready": false
+    }
+  ]
+}

@@ -1,0 +1,1614 @@
+{
+  "generated_at": "2026-06-01T04:52:38.842Z",
+  "source": "pivota_insights_official_pdp_manual_review_v1",
+  "mode": "dry_run",
+  "filters": {
+    "brand": "Rare Beauty",
+    "product_ids": [],
+    "limit": 20,
+    "include_strong": false,
+    "include_url_key": false,
+    "apply_chunk_size": null
+  },
+  "summary": {
+    "scanned": 20,
+    "changed_products": 0,
+    "blocked_products": 0,
+    "skipped_products": 20,
+    "write_actions": {
+      "skip": 40
+    },
+    "skip_reasons": {
+      "no_safe_writes": 20,
+      "protected_high_quality_existing:reviewed": 38,
+      "candidate_not_publish_quality_ready": 2
+    },
+    "evidence_profiles": {
+      "official_pdp_reviewed_key_ingredients_and_usage": 3,
+      "official_pdp_reviewed_formula_and_usage": 8,
+      "official_pdp_reviewed_line": 9
+    }
+  },
+  "plans": [
+    {
+      "external_product_id": "ext_6421a5db3f2487dd74467ae4",
+      "pivota_signature_id": "sig_97fb56b60172af422102ee56e9996eac",
+      "title": "Always an Optimist 4-In-1 Mist",
+      "brand": "rare beauty",
+      "canonical_url": "https://rarebeauty.com/products/always-an-optimist-4-in-1-mist-translucent",
+      "changed": false,
+      "blocked": false,
+      "skip_reason": "no_safe_writes",
+      "candidate_hash": "9d909fc122bdc9e3f232a6e176d93a0547d5697557e73ca5d6ea87c486581a49",
+      "evidence_profile": "official_pdp_reviewed_key_ingredients_and_usage",
+      "source_coverage": {
+        "source": "official_pdp",
+        "canonical_url": "https://rarebeauty.com/products/always-an-optimist-4-in-1-mist-translucent",
+        "fields": {
+          "description": true,
+          "ingredients": 0,
+          "active_ingredients": 5,
+          "how_to": 1,
+          "details": 4,
+          "variants": 1
+        }
+      },
+      "preview": {
+        "headline": "Setting mist",
+        "what_it_is": "Always an Optimist 4-In-1 Mist is a setting mist from rare beauty in 28ml, with source-backed cues around mist format, radiance finish and hydrating cues.",
+        "why_it_stands_out": [
+          {
+            "headline": "Setting-mist cues are specific",
+            "body": "Reviewed mist cues such as setting mist format, radiance finish, hydration, 28ml identify finish, hydration, or makeup-set context without turning it into a toner.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Key ingredients are identified",
+            "body": "Panthenol (B5), Niacinamide, Glycerin are identified, enough for a cautious high-level formula read without inventing unsupported actives.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Shade and size are explicit",
+            "body": "Variant labels such as 28ml, Size: 28ml are visible, reducing ambiguity around the product format before a shopper clicks through.",
+            "evidence_strength": "official_pdp_reviewed"
+          }
+        ],
+        "best_for": [
+          {
+            "tag": "radiant_finish",
+            "label": "radiant finish",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "hydrating_mist_feel",
+            "label": "hydrating mist feel",
+            "confidence": "moderate"
+          }
+        ],
+        "shopping_highlight": "setting mist format, radiance finish"
+      },
+      "writes": [
+        {
+          "kb_key": "product:ext_6421a5db3f2487dd74467ae4",
+          "action": "skip",
+          "reason": "protected_high_quality_existing:reviewed",
+          "old_hash": "f7ed47fafe605bfc8f39633a5b2b40d2c8cba9064ec595dde69f097b33ce989e",
+          "existing_weak": false
+        },
+        {
+          "kb_key": "product:sig_97fb56b60172af422102ee56e9996eac",
+          "action": "skip",
+          "reason": "protected_high_quality_existing:reviewed",
+          "old_hash": "f7ed47fafe605bfc8f39633a5b2b40d2c8cba9064ec595dde69f097b33ce989e",
+          "existing_weak": false
+        }
+      ]
+    },
+    {
+      "external_product_id": "ext_97b1e0f0b48747e1ba03b1c4",
+      "pivota_signature_id": "sig_abe6f3086849b9be349bd28c1638acc5",
+      "title": "Always an Optimist 4-In-1 Mist Mini",
+      "brand": "rare beauty",
+      "canonical_url": "https://rarebeauty.com/products/always-an-optimist-4-in-1-mist-mini",
+      "changed": false,
+      "blocked": false,
+      "skip_reason": "no_safe_writes",
+      "candidate_hash": "869480aa7582c4dc5f4b394d5e2700a441cb7ad3a738142ae662bcae092d1902",
+      "evidence_profile": "official_pdp_reviewed_key_ingredients_and_usage",
+      "source_coverage": {
+        "source": "official_pdp",
+        "canonical_url": "https://rarebeauty.com/products/always-an-optimist-4-in-1-mist-mini",
+        "fields": {
+          "description": true,
+          "ingredients": 0,
+          "active_ingredients": 5,
+          "how_to": 1,
+          "details": 2,
+          "variants": 1
+        }
+      },
+      "preview": {
+        "headline": "Setting mist",
+        "what_it_is": "Always an Optimist 4-In-1 Mist Mini is a setting mist from rare beauty in 35ml, with source-backed cues around mist format, radiance finish and hydrating cues.",
+        "why_it_stands_out": [
+          {
+            "headline": "Setting-mist cues are specific",
+            "body": "Reviewed mist cues such as setting mist format, radiance finish, hydration, 35ml identify finish, hydration, or makeup-set context without turning it into a toner.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Key ingredients are identified",
+            "body": "Panthenol (B5), Niacinamide, Glycerin are identified, enough for a cautious high-level formula read without inventing unsupported actives.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Shade and size are explicit",
+            "body": "Variant labels such as 35ml, Size: 35ml are visible, reducing ambiguity around the product format before a shopper clicks through.",
+            "evidence_strength": "official_pdp_reviewed"
+          }
+        ],
+        "best_for": [
+          {
+            "tag": "radiant_finish",
+            "label": "radiant finish",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "hydrating_mist_feel",
+            "label": "hydrating mist feel",
+            "confidence": "moderate"
+          }
+        ],
+        "shopping_highlight": "setting mist format, radiance finish"
+      },
+      "writes": [
+        {
+          "kb_key": "product:ext_97b1e0f0b48747e1ba03b1c4",
+          "action": "skip",
+          "reason": "protected_high_quality_existing:reviewed",
+          "old_hash": "af01a275a894987e1c1dab9a103afd7daa0acb6e681ad91813036cf4f0f9fc64",
+          "existing_weak": false
+        },
+        {
+          "kb_key": "product:sig_abe6f3086849b9be349bd28c1638acc5",
+          "action": "skip",
+          "reason": "protected_high_quality_existing:reviewed",
+          "old_hash": "af01a275a894987e1c1dab9a103afd7daa0acb6e681ad91813036cf4f0f9fc64",
+          "existing_weak": false
+        }
+      ]
+    },
+    {
+      "external_product_id": "ext_130087c81c3036252b67b8e3",
+      "pivota_signature_id": "sig_4b446eba0968fd1e80f168b16339cfe8",
+      "title": "Always An Optimist Illuminating Primer Mini",
+      "brand": "rare beauty",
+      "canonical_url": "https://rarebeauty.com/products/always-an-optimist-illuminating-primer",
+      "changed": false,
+      "blocked": false,
+      "skip_reason": "no_safe_writes",
+      "candidate_hash": "56e5aaa8aef214348bbef28e2e4e87bad9203dad5f61e2b4f8eab21ddfde6d54",
+      "evidence_profile": "official_pdp_reviewed_formula_and_usage",
+      "source_coverage": {
+        "source": "official_pdp",
+        "canonical_url": "https://rarebeauty.com/products/always-an-optimist-illuminating-primer",
+        "fields": {
+          "description": true,
+          "ingredients": 1,
+          "active_ingredients": 1,
+          "how_to": 1,
+          "details": 5,
+          "variants": 1
+        }
+      },
+      "preview": {
+        "headline": "Makeup primer",
+        "what_it_is": "Always An Optimist Illuminating Primer Mini is a makeup primer from rare beauty in 15ml, with source-backed cues around hydrating prep and a smoother makeup canvas.",
+        "why_it_stands_out": [
+          {
+            "headline": "Primer prep cues are specific",
+            "body": "Reviewed primer cues such as makeup prep, hydration, soft-focus canvas, 15ml clarify how it preps skin for smoother makeup laydown without making unsupported coverage claims.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Ingredient list is available",
+            "body": "Full INCI is present for formula-sensitive review, which makes this PDP safer to evaluate than a claim-only listing.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Shade and size are explicit",
+            "body": "Variant labels such as 15ml, Size: 15ml are visible, reducing ambiguity around the product format before a shopper clicks through.",
+            "evidence_strength": "official_pdp_reviewed"
+          }
+        ],
+        "best_for": [
+          {
+            "tag": "base_makeup_prep",
+            "label": "base makeup prep",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "hydrating_primer_feel",
+            "label": "hydrating primer feel",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "smooth_makeup_laydown",
+            "label": "smooth makeup laydown",
+            "confidence": "moderate"
+          }
+        ],
+        "shopping_highlight": "makeup prep, hydration"
+      },
+      "writes": [
+        {
+          "kb_key": "product:ext_130087c81c3036252b67b8e3",
+          "action": "skip",
+          "reason": "protected_high_quality_existing:reviewed",
+          "old_hash": "9d930725f5c328a513fd1d7bb1d4903aaaa95ffa0cfe6fcc892ebf65534bab2c",
+          "existing_weak": false
+        },
+        {
+          "kb_key": "product:sig_4b446eba0968fd1e80f168b16339cfe8",
+          "action": "skip",
+          "reason": "protected_high_quality_existing:reviewed",
+          "old_hash": "9d930725f5c328a513fd1d7bb1d4903aaaa95ffa0cfe6fcc892ebf65534bab2c",
+          "existing_weak": false
+        }
+      ]
+    },
+    {
+      "external_product_id": "ext_b8136fc5c9432d1c729ef267",
+      "pivota_signature_id": "sig_1334c919ae09d6372a36ddddf196e577",
+      "title": "Always An Optimist Illuminating Primer Mini",
+      "brand": "rare beauty",
+      "canonical_url": "https://rarebeauty.com/products/always-an-optimist-illuminating-primer",
+      "changed": false,
+      "blocked": false,
+      "skip_reason": "no_safe_writes",
+      "candidate_hash": "50c25e6a8139334e03a73a5899342996d2087466374b826f6fbe133bac3776f2",
+      "evidence_profile": "official_pdp_reviewed_formula_and_usage",
+      "source_coverage": {
+        "source": "official_pdp",
+        "canonical_url": "https://rarebeauty.com/products/always-an-optimist-illuminating-primer",
+        "fields": {
+          "description": true,
+          "ingredients": 1,
+          "active_ingredients": 1,
+          "how_to": 1,
+          "details": 5,
+          "variants": 1
+        }
+      },
+      "preview": {
+        "headline": "Makeup primer",
+        "what_it_is": "Always An Optimist Illuminating Primer Mini is a makeup primer from rare beauty in 15ml, with source-backed cues around hydrating prep and a smoother makeup canvas.",
+        "why_it_stands_out": [
+          {
+            "headline": "Primer prep cues are specific",
+            "body": "Reviewed primer cues such as makeup prep, hydration, soft-focus canvas, 15ml clarify how it preps skin for smoother makeup laydown without making unsupported coverage claims.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Ingredient list is available",
+            "body": "Full INCI is present for formula-sensitive review, which makes this PDP safer to evaluate than a claim-only listing.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Shade and size are explicit",
+            "body": "Variant labels such as 15ml, Size: 15ml are visible, reducing ambiguity around the product format before a shopper clicks through.",
+            "evidence_strength": "official_pdp_reviewed"
+          }
+        ],
+        "best_for": [
+          {
+            "tag": "base_makeup_prep",
+            "label": "base makeup prep",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "hydrating_primer_feel",
+            "label": "hydrating primer feel",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "smooth_makeup_laydown",
+            "label": "smooth makeup laydown",
+            "confidence": "moderate"
+          }
+        ],
+        "shopping_highlight": "makeup prep, hydration"
+      },
+      "writes": [
+        {
+          "kb_key": "product:ext_b8136fc5c9432d1c729ef267",
+          "action": "skip",
+          "reason": "protected_high_quality_existing:reviewed",
+          "old_hash": "7be90b9f25796aadd6278ccfb8135cf7a56b05a02f206390d0ad4730d77465df",
+          "existing_weak": false
+        },
+        {
+          "kb_key": "product:sig_1334c919ae09d6372a36ddddf196e577",
+          "action": "skip",
+          "reason": "protected_high_quality_existing:reviewed",
+          "old_hash": "7be90b9f25796aadd6278ccfb8135cf7a56b05a02f206390d0ad4730d77465df",
+          "existing_weak": false
+        }
+      ]
+    },
+    {
+      "external_product_id": "ext_9a32be541c4044eb11ac8afb",
+      "pivota_signature_id": "sig_1a0779b4067372232a7325018d5d4ab4",
+      "title": "Always an Optimist Pore Diffusing Primer",
+      "brand": "rare beauty",
+      "canonical_url": "https://rarebeauty.com/products/always-an-optimist-pore-diffusing-primer",
+      "changed": false,
+      "blocked": false,
+      "skip_reason": "no_safe_writes",
+      "candidate_hash": "2ee03be41bf1655bdd674d89e4729b3f441f7552226136070bdc81c24882f394",
+      "evidence_profile": "official_pdp_reviewed_formula_and_usage",
+      "source_coverage": {
+        "source": "official_pdp",
+        "canonical_url": "https://rarebeauty.com/products/always-an-optimist-pore-diffusing-primer",
+        "fields": {
+          "description": true,
+          "ingredients": 1,
+          "active_ingredients": 2,
+          "how_to": 1,
+          "details": 5,
+          "variants": 1
+        }
+      },
+      "preview": {
+        "headline": "Makeup primer",
+        "what_it_is": "Always an Optimist Pore Diffusing Primer is a makeup primer from rare beauty in 28ml, with source-backed cues around hydrating prep, a smoother makeup canvas, makeup-wear support and pore-smoothing cues.",
+        "why_it_stands_out": [
+          {
+            "headline": "Primer prep cues are specific",
+            "body": "Reviewed primer cues such as makeup prep, hydration, soft-focus canvas, makeup-wear support clarify how it preps skin for smoother makeup laydown without making unsupported coverage claims.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Ingredient list is available",
+            "body": "Full INCI is present for formula-sensitive review, which makes this PDP safer to evaluate than a claim-only listing.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Shade and size are explicit",
+            "body": "Variant labels such as 28ml, Size: 28ml are visible, reducing ambiguity around the product format before a shopper clicks through.",
+            "evidence_strength": "official_pdp_reviewed"
+          }
+        ],
+        "best_for": [
+          {
+            "tag": "base_makeup_prep",
+            "label": "base makeup prep",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "hydrating_primer_feel",
+            "label": "hydrating primer feel",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "smooth_makeup_laydown",
+            "label": "smooth makeup laydown",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "makeup_wear_support",
+            "label": "makeup-wear support",
+            "confidence": "moderate"
+          }
+        ],
+        "shopping_highlight": "makeup prep, hydration"
+      },
+      "writes": [
+        {
+          "kb_key": "product:ext_9a32be541c4044eb11ac8afb",
+          "action": "skip",
+          "reason": "protected_high_quality_existing:reviewed",
+          "old_hash": "32883dc7fcf0b393321c0d46484dc6f60bba79324f24c2fab478fa569a4f4216",
+          "existing_weak": false
+        },
+        {
+          "kb_key": "product:sig_1a0779b4067372232a7325018d5d4ab4",
+          "action": "skip",
+          "reason": "protected_high_quality_existing:reviewed",
+          "old_hash": "32883dc7fcf0b393321c0d46484dc6f60bba79324f24c2fab478fa569a4f4216",
+          "existing_weak": false
+        }
+      ]
+    },
+    {
+      "external_product_id": "ext_8b3dac6d7c92583cf3356ae9",
+      "pivota_signature_id": "sig_78ac68d74d6f54712575a4cd2c679da3",
+      "title": "Always an Optimist Pore Diffusing Primer Mini",
+      "brand": "rare beauty",
+      "canonical_url": "https://rarebeauty.com/products/always-an-optimist-pore-diffusing-primer-mini",
+      "changed": false,
+      "blocked": false,
+      "skip_reason": "no_safe_writes",
+      "candidate_hash": "b5fc3c56e98394ce5b027d68c2009c745824937d326dfa78bea29090beddc5a9",
+      "evidence_profile": "official_pdp_reviewed_formula_and_usage",
+      "source_coverage": {
+        "source": "official_pdp",
+        "canonical_url": "https://rarebeauty.com/products/always-an-optimist-pore-diffusing-primer-mini",
+        "fields": {
+          "description": true,
+          "ingredients": 1,
+          "active_ingredients": 2,
+          "how_to": 1,
+          "details": 5,
+          "variants": 1
+        }
+      },
+      "preview": {
+        "headline": "Makeup primer",
+        "what_it_is": "Always an Optimist Pore Diffusing Primer Mini is a makeup primer from rare beauty in 15ml, with source-backed cues around hydrating prep, a smoother makeup canvas, makeup-wear support and pore-smoothing cues.",
+        "why_it_stands_out": [
+          {
+            "headline": "Primer prep cues are specific",
+            "body": "Reviewed primer cues such as makeup prep, hydration, soft-focus canvas, makeup-wear support clarify how it preps skin for smoother makeup laydown without making unsupported coverage claims.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Ingredient list is available",
+            "body": "Full INCI is present for formula-sensitive review, which makes this PDP safer to evaluate than a claim-only listing.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Shade and size are explicit",
+            "body": "Variant labels such as 15ml, Size: 15ml are visible, reducing ambiguity around the product format before a shopper clicks through.",
+            "evidence_strength": "official_pdp_reviewed"
+          }
+        ],
+        "best_for": [
+          {
+            "tag": "base_makeup_prep",
+            "label": "base makeup prep",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "hydrating_primer_feel",
+            "label": "hydrating primer feel",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "smooth_makeup_laydown",
+            "label": "smooth makeup laydown",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "makeup_wear_support",
+            "label": "makeup-wear support",
+            "confidence": "moderate"
+          }
+        ],
+        "shopping_highlight": "makeup prep, hydration"
+      },
+      "writes": [
+        {
+          "kb_key": "product:ext_8b3dac6d7c92583cf3356ae9",
+          "action": "skip",
+          "reason": "protected_high_quality_existing:reviewed",
+          "old_hash": "93fc3be31a81b8fd580cef4a87b0ab0ae3df55457cbd2c4e2c2851e55bbb4dcf",
+          "existing_weak": false
+        },
+        {
+          "kb_key": "product:sig_78ac68d74d6f54712575a4cd2c679da3",
+          "action": "skip",
+          "reason": "protected_high_quality_existing:reviewed",
+          "old_hash": "93fc3be31a81b8fd580cef4a87b0ab0ae3df55457cbd2c4e2c2851e55bbb4dcf",
+          "existing_weak": false
+        }
+      ]
+    },
+    {
+      "external_product_id": "ext_0a80e13eeb39dd20b4c463ec",
+      "pivota_signature_id": "sig_a21fc33cfb6e8e4d7b4e5e83231f80e2",
+      "title": "Always an Optimist Powder Brush",
+      "brand": "rare beauty",
+      "canonical_url": "https://rarebeauty.com/products/always-an-optimist-powder-brush",
+      "changed": false,
+      "blocked": false,
+      "skip_reason": "no_safe_writes",
+      "candidate_hash": "d425de3f06241c7d51910a066f5869860128af270cc7561bfca00944e4ad884f",
+      "evidence_profile": "official_pdp_reviewed_line",
+      "source_coverage": {
+        "source": "official_pdp",
+        "canonical_url": "https://rarebeauty.com/products/always-an-optimist-powder-brush",
+        "fields": {
+          "description": true,
+          "ingredients": 0,
+          "active_ingredients": 0,
+          "how_to": 1,
+          "details": 1,
+          "variants": 1
+        }
+      },
+      "preview": {
+        "headline": "Makeup brush",
+        "what_it_is": "Always an Optimist Powder Brush is a makeup brush from rare beauty, with source-backed cues around controlled product placement and targeted application area.",
+        "why_it_stands_out": [
+          {
+            "headline": "Product cues are source-backed",
+            "body": "Reviewed PDP cues such as precision application, face blending, 28ml give shoppers specific comparison points within rare beauty, rather than category-only copy.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Accessory format is explicit",
+            "body": "Variant labels such as 28ml, Size: 28ml are visible, reducing ambiguity around the product format before a shopper clicks through.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Usage instructions available",
+            "body": "Reviewed usage context is present, including: Use according to the merchant directions for this product.",
+            "evidence_strength": "official_pdp_reviewed"
+          }
+        ],
+        "best_for": [
+          {
+            "tag": "precision_application",
+            "label": "precision application",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "face_blending",
+            "label": "face blending",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "28ml",
+            "label": "28ml",
+            "confidence": "moderate"
+          }
+        ],
+        "shopping_highlight": "precision application, face blending"
+      },
+      "writes": [
+        {
+          "kb_key": "product:ext_0a80e13eeb39dd20b4c463ec",
+          "action": "skip",
+          "reason": "protected_high_quality_existing:reviewed",
+          "old_hash": "93063dcd163ebc3cc7935fadcf4c6e30d6a88a95f64a6bebf9c467e5abebff9f",
+          "existing_weak": false
+        },
+        {
+          "kb_key": "product:sig_a21fc33cfb6e8e4d7b4e5e83231f80e2",
+          "action": "skip",
+          "reason": "protected_high_quality_existing:reviewed",
+          "old_hash": "93063dcd163ebc3cc7935fadcf4c6e30d6a88a95f64a6bebf9c467e5abebff9f",
+          "existing_weak": false
+        }
+      ]
+    },
+    {
+      "external_product_id": "ext_a296df6ab15245c2e0b76740",
+      "pivota_signature_id": "sig_65607f910a0b076f764528e3b8260b3a",
+      "title": "Always an Optimist Soft Radiance Setting Powder",
+      "brand": "rare beauty",
+      "canonical_url": "https://rarebeauty.com/products/always-an-optimist-soft-radiance-setting-powder",
+      "changed": false,
+      "blocked": false,
+      "skip_reason": "no_safe_writes",
+      "candidate_hash": "abaa7a0873afa42c01c35870c3c099e0ac2dce6a07c4a0e0092d8386ef716b2d",
+      "evidence_profile": "official_pdp_reviewed_key_ingredients_and_usage",
+      "source_coverage": {
+        "source": "official_pdp",
+        "canonical_url": "https://rarebeauty.com/products/always-an-optimist-soft-radiance-setting-powder",
+        "fields": {
+          "description": true,
+          "ingredients": 0,
+          "active_ingredients": 1,
+          "how_to": 1,
+          "details": 3,
+          "variants": 5
+        }
+      },
+      "preview": {
+        "headline": "Face color makeup",
+        "what_it_is": "Always an Optimist Soft Radiance Setting Powder is a face color product from rare beauty in shade Light, with source-backed cues around a cream-powder texture.",
+        "why_it_stands_out": [
+          {
+            "headline": "Color payoff cues are specific",
+            "body": "Reviewed color cues such as long-wear color, cream-powder texture, glow payoff, shade range help shoppers compare shade, finish, or texture instead of seeing a generic blush/bronzer/highlighter card.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Key ingredients are identified",
+            "body": "Squalane is identified, enough for a cautious high-level formula read without inventing unsupported actives.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Shade and size are explicit",
+            "body": "Variant labels such as Light, Shade: Light, Light Medium, Shade: Light Medium are visible, reducing ambiguity around the product format before a shopper clicks through.",
+            "evidence_strength": "official_pdp_reviewed"
+          }
+        ],
+        "best_for": [
+          {
+            "tag": "complexion_coverage",
+            "label": "complexion coverage",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "soft_focus_finish",
+            "label": "soft-focus finish",
+            "confidence": "moderate"
+          }
+        ],
+        "shopping_highlight": "long-wear color, cream-powder texture"
+      },
+      "writes": [
+        {
+          "kb_key": "product:ext_a296df6ab15245c2e0b76740",
+          "action": "skip",
+          "reason": "protected_high_quality_existing:reviewed",
+          "old_hash": "d825537d4b47c99fac2732a384be56508dec6de9dd8e3d3c9e86ed4765828e42",
+          "existing_weak": false
+        },
+        {
+          "kb_key": "product:sig_65607f910a0b076f764528e3b8260b3a",
+          "action": "skip",
+          "reason": "protected_high_quality_existing:reviewed",
+          "old_hash": "d825537d4b47c99fac2732a384be56508dec6de9dd8e3d3c9e86ed4765828e42",
+          "existing_weak": false
+        }
+      ]
+    },
+    {
+      "external_product_id": "ext_71a8d4f9b7bc561522be1073",
+      "pivota_signature_id": "sig_165cd9ea4cd44640ae69134b8621aa6f",
+      "title": "Always an Optimist Weightless Eye Primer",
+      "brand": "rare beauty",
+      "canonical_url": "https://rarebeauty.com/products/always-an-optimist-weightless-eye-primer",
+      "changed": false,
+      "blocked": false,
+      "skip_reason": "no_safe_writes",
+      "candidate_hash": "5e1b1be54388db61dad9bb6b87b78475107339e7da0471d1fc5e03580c18c3a6",
+      "evidence_profile": "official_pdp_reviewed_formula_and_usage",
+      "source_coverage": {
+        "source": "official_pdp",
+        "canonical_url": "https://rarebeauty.com/products/always-an-optimist-weightless-eye-primer",
+        "fields": {
+          "description": true,
+          "ingredients": 7,
+          "active_ingredients": 1,
+          "how_to": 1,
+          "details": 4,
+          "variants": 1
+        }
+      },
+      "preview": {
+        "headline": "Makeup primer",
+        "what_it_is": "Always an Optimist Weightless Eye Primer is a makeup primer from rare beauty in 3ml, with source-backed cues around hydrating prep, a smoother makeup canvas and makeup-wear support.",
+        "why_it_stands_out": [
+          {
+            "headline": "Primer prep cues are specific",
+            "body": "Reviewed primer cues such as makeup prep, hydration, soft-focus canvas, makeup-wear support clarify how it preps skin for smoother makeup laydown without making unsupported coverage claims.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Ingredient list is available",
+            "body": "Full INCI is present for formula-sensitive review, which makes this PDP safer to evaluate than a claim-only listing.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Shade and size are explicit",
+            "body": "Variant labels such as 3ml, Size: 3ml are visible, reducing ambiguity around the product format before a shopper clicks through.",
+            "evidence_strength": "official_pdp_reviewed"
+          }
+        ],
+        "best_for": [
+          {
+            "tag": "base_makeup_prep",
+            "label": "base makeup prep",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "hydrating_primer_feel",
+            "label": "hydrating primer feel",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "smooth_makeup_laydown",
+            "label": "smooth makeup laydown",
+            "confidence": "moderate"
+          }
+        ],
+        "shopping_highlight": "makeup prep, hydration"
+      },
+      "writes": [
+        {
+          "kb_key": "product:ext_71a8d4f9b7bc561522be1073",
+          "action": "skip",
+          "reason": "protected_high_quality_existing:reviewed",
+          "old_hash": "7b67870399411e13de67d172a91f1303731d41b29f87912d814fe9579cce98c3",
+          "existing_weak": false
+        },
+        {
+          "kb_key": "product:sig_165cd9ea4cd44640ae69134b8621aa6f",
+          "action": "skip",
+          "reason": "protected_high_quality_existing:reviewed",
+          "old_hash": "7b67870399411e13de67d172a91f1303731d41b29f87912d814fe9579cce98c3",
+          "existing_weak": false
+        }
+      ]
+    },
+    {
+      "external_product_id": "ext_66cc5a505975c04c2d097d06",
+      "pivota_signature_id": "sig_4364c6e0f79ccf8165935f87a43a6ba4",
+      "title": "Angled Powder Brush",
+      "brand": "rare beauty",
+      "canonical_url": "https://rarebeauty.com/products/angled-powder-brush",
+      "changed": false,
+      "blocked": false,
+      "skip_reason": "no_safe_writes",
+      "candidate_hash": "8144f5db3b6b57af89bf0eae96db5357103fa3971124944dd650160bb0d989bf",
+      "evidence_profile": "official_pdp_reviewed_line",
+      "source_coverage": {
+        "source": "official_pdp",
+        "canonical_url": "https://rarebeauty.com/products/angled-powder-brush",
+        "fields": {
+          "description": true,
+          "ingredients": 0,
+          "active_ingredients": 0,
+          "how_to": 1,
+          "details": 3,
+          "variants": 1
+        }
+      },
+      "preview": {
+        "headline": "Makeup brush",
+        "what_it_is": "Angled Powder Brush is a makeup brush from rare beauty, with source-backed cues around synthetic bristles, controlled product placement and targeted application area.",
+        "why_it_stands_out": [
+          {
+            "headline": "Product cues are source-backed",
+            "body": "Reviewed PDP cues such as synthetic bristles, precision application, face blending give shoppers specific comparison points within rare beauty, rather than category-only copy.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Usage instructions available",
+            "body": "Reviewed usage context is present, including: Designed for use with the Warm Wishes Soft Matte Powder Bronzer, the Angled Powder Brush also works great with any powder and cream product.",
+            "evidence_strength": "official_pdp_reviewed"
+          }
+        ],
+        "best_for": [
+          {
+            "tag": "synthetic_bristles",
+            "label": "synthetic bristles",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "precision_application",
+            "label": "precision application",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "face_blending",
+            "label": "face blending",
+            "confidence": "moderate"
+          }
+        ],
+        "shopping_highlight": "synthetic bristles"
+      },
+      "writes": [
+        {
+          "kb_key": "product:ext_66cc5a505975c04c2d097d06",
+          "action": "skip",
+          "reason": "protected_high_quality_existing:reviewed",
+          "old_hash": "3b33fb1077fbc5dfc7a27f7e16e56f23664416e3f324b2aebf0b9e08d9b2bdd1",
+          "existing_weak": false
+        },
+        {
+          "kb_key": "product:sig_4364c6e0f79ccf8165935f87a43a6ba4",
+          "action": "skip",
+          "reason": "protected_high_quality_existing:reviewed",
+          "old_hash": "3b33fb1077fbc5dfc7a27f7e16e56f23664416e3f324b2aebf0b9e08d9b2bdd1",
+          "existing_weak": false
+        }
+      ]
+    },
+    {
+      "external_product_id": "ext_fc0baf3000d2a577b0102fae",
+      "pivota_signature_id": "sig_c58bd57e357b8949a3959e7974811ba0",
+      "title": "Awaken Confidence Scented Candle",
+      "brand": "rare beauty",
+      "canonical_url": "https://rarebeauty.com/products/awaken-confidence-scented-candle",
+      "changed": false,
+      "blocked": false,
+      "skip_reason": "no_safe_writes",
+      "candidate_hash": "3e18cdefbde676be25ce68f8223ba396a3aebbd02e62e190de410e31bf7ef90f",
+      "evidence_profile": "official_pdp_reviewed_formula_and_usage",
+      "source_coverage": {
+        "source": "official_pdp",
+        "canonical_url": "https://rarebeauty.com/products/awaken-confidence-scented-candle",
+        "fields": {
+          "description": true,
+          "ingredients": 1,
+          "active_ingredients": 0,
+          "how_to": 1,
+          "details": 4,
+          "variants": 1
+        }
+      },
+      "preview": {
+        "headline": "Scented candle",
+        "what_it_is": "Awaken Confidence Scented Candle is a home fragrance item from rare beauty, with source-backed scent cues including sandalwood and citrus.",
+        "why_it_stands_out": [
+          {
+            "headline": "Scent profile cues",
+            "body": "Reviewed scent cues such as sandalwood, citrus help shoppers compare the fragrance profile without relying on generic scent copy.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Usage instructions available",
+            "body": "Reviewed usage context is present, including: To prevent fire and serious injury: Burn within sight.",
+            "evidence_strength": "official_pdp_reviewed"
+          }
+        ],
+        "best_for": [
+          {
+            "tag": "warm_fragrance_profiles",
+            "label": "warm fragrance profiles",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "floral_fragrance_profiles",
+            "label": "floral fragrance profiles",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "fresh_citrus_profiles",
+            "label": "fresh citrus profiles",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "home_scent",
+            "label": "home scent",
+            "confidence": "moderate"
+          }
+        ],
+        "shopping_highlight": "sandalwood, citrus, full INCI available"
+      },
+      "writes": [
+        {
+          "kb_key": "product:ext_fc0baf3000d2a577b0102fae",
+          "action": "skip",
+          "reason": "protected_high_quality_existing:reviewed",
+          "old_hash": "82a9aed8ce2c308bee4b9b18ea0d1437fdaba703f12dd10bc41f23cb7617e221",
+          "existing_weak": false
+        },
+        {
+          "kb_key": "product:sig_c58bd57e357b8949a3959e7974811ba0",
+          "action": "skip",
+          "reason": "protected_high_quality_existing:reviewed",
+          "old_hash": "82a9aed8ce2c308bee4b9b18ea0d1437fdaba703f12dd10bc41f23cb7617e221",
+          "existing_weak": false
+        }
+      ]
+    },
+    {
+      "external_product_id": "ext_da7740d0de463e28bee7d91c",
+      "pivota_signature_id": "sig_1f70879aec372c0e298ff0acc40cff06",
+      "title": "Blot & Glow Blotting Paper Refill",
+      "brand": "rare beauty",
+      "canonical_url": "https://rarebeauty.com/products/blot-glow-blotting-paper-refill-100ct",
+      "changed": false,
+      "blocked": false,
+      "skip_reason": "no_safe_writes",
+      "candidate_hash": "935270192e188228cdbc44036f05c6041b320c5bd143c40ff988d15851e4c3f3",
+      "evidence_profile": "official_pdp_reviewed_line",
+      "source_coverage": {
+        "source": "official_pdp",
+        "canonical_url": "https://rarebeauty.com/products/blot-glow-blotting-paper-refill-100ct",
+        "fields": {
+          "description": true,
+          "ingredients": 0,
+          "active_ingredients": 0,
+          "how_to": 1,
+          "details": 1,
+          "variants": 1
+        }
+      },
+      "preview": {
+        "headline": "Beauty product",
+        "what_it_is": "Blot & Glow Blotting Paper Refill is a beauty product from rare beauty. This 100-pack of blotting sheets gently absorbs excess oil while keeping makeup in place.",
+        "why_it_stands_out": [
+          {
+            "headline": "Product cues are source-backed",
+            "body": "Reviewed PDP cues such as 100ct give shoppers specific comparison points within rare beauty, rather than category-only copy.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Accessory format is explicit",
+            "body": "Variant labels such as 100ct, Size: 100ct are visible, reducing ambiguity around the product format before a shopper clicks through.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Usage instructions available",
+            "body": "Reviewed usage context is present, including: Apply to the target area and build as needed.",
+            "evidence_strength": "official_pdp_reviewed"
+          }
+        ],
+        "best_for": [
+          {
+            "tag": "100ct",
+            "label": "100ct",
+            "confidence": "moderate"
+          }
+        ],
+        "shopping_highlight": "100ct"
+      },
+      "writes": [
+        {
+          "kb_key": "product:ext_da7740d0de463e28bee7d91c",
+          "action": "skip",
+          "reason": "protected_high_quality_existing:reviewed",
+          "old_hash": "91f80bd592f9a31bf005bf0f93dde731406c1fc45daf008b642279c145ae084e",
+          "existing_weak": false
+        },
+        {
+          "kb_key": "product:sig_1f70879aec372c0e298ff0acc40cff06",
+          "action": "skip",
+          "reason": "protected_high_quality_existing:reviewed",
+          "old_hash": "91f80bd592f9a31bf005bf0f93dde731406c1fc45daf008b642279c145ae084e",
+          "existing_weak": false
+        }
+      ]
+    },
+    {
+      "external_product_id": "ext_7bd3c3103cfff9d7385d8760",
+      "pivota_signature_id": "sig_c454ef1984601427447e613899b9e6e1",
+      "title": "Brow Harmony Flexible Lifting Gel",
+      "brand": "rare beauty",
+      "canonical_url": "https://rarebeauty.com/products/brow-harmony-flexible-lifting-gel",
+      "changed": false,
+      "blocked": false,
+      "skip_reason": "no_safe_writes",
+      "candidate_hash": "48728e235e447b5f7c816b09f5116d7c9cd61bbff201a874fd8a3c28aaded8cd",
+      "evidence_profile": "official_pdp_reviewed_formula_and_usage",
+      "source_coverage": {
+        "source": "official_pdp",
+        "canonical_url": "https://rarebeauty.com/products/brow-harmony-flexible-lifting-gel",
+        "fields": {
+          "description": true,
+          "ingredients": 1,
+          "active_ingredients": 1,
+          "how_to": 1,
+          "details": 5,
+          "variants": 1
+        }
+      },
+      "preview": {
+        "headline": "Brow product",
+        "what_it_is": "Brow Harmony Flexible Lifting Gel is a brow product from rare beauty, with source-backed cues around eye makeup grooming.",
+        "why_it_stands_out": [
+          {
+            "headline": "Product cues are source-backed",
+            "body": "Reviewed PDP cues such as brow definition, shade matching, built-in brow brush give shoppers specific comparison points within rare beauty, rather than category-only copy.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Ingredient list is available",
+            "body": "Full INCI is present for formula-sensitive review, which makes this PDP safer to evaluate than a claim-only listing.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Shade and size are explicit",
+            "body": "Variant labels such as Clear, Shade: Clear are visible, reducing ambiguity around the product format before a shopper clicks through.",
+            "evidence_strength": "official_pdp_reviewed"
+          }
+        ],
+        "best_for": [
+          {
+            "tag": "brow_definition",
+            "label": "brow definition",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "shade_matching",
+            "label": "shade matching",
+            "confidence": "moderate"
+          }
+        ],
+        "shopping_highlight": "brow definition, shade matching"
+      },
+      "writes": [
+        {
+          "kb_key": "product:ext_7bd3c3103cfff9d7385d8760",
+          "action": "skip",
+          "reason": "protected_high_quality_existing:reviewed",
+          "old_hash": "8e258c61144a4c7a699845f2f916972abf9efbcd0ffa24ab3a782cfb9ae6bf2e",
+          "existing_weak": false
+        },
+        {
+          "kb_key": "product:sig_c454ef1984601427447e613899b9e6e1",
+          "action": "skip",
+          "reason": "protected_high_quality_existing:reviewed",
+          "old_hash": "8e258c61144a4c7a699845f2f916972abf9efbcd0ffa24ab3a782cfb9ae6bf2e",
+          "existing_weak": false
+        }
+      ]
+    },
+    {
+      "external_product_id": "ulta:dadaf331e78a75d2",
+      "pivota_signature_id": "sig_c896222b435c8c416d7f79e976d74593",
+      "title": "Brow Harmony Flexible Lifting Gel - Clear",
+      "brand": "Rare Beauty",
+      "canonical_url": "https://www.ulta.com/p/brow-harmony-flexible-lifting-gel-pimprod2055886?sku=2647801",
+      "changed": false,
+      "blocked": false,
+      "skip_reason": "no_safe_writes",
+      "candidate_hash": "2ea02894f46c0bd57eef8cbe8728e550d68c1ef7bb060b989349aaabb7904b14",
+      "evidence_profile": "official_pdp_reviewed_line",
+      "source_coverage": {
+        "source": "official_pdp",
+        "canonical_url": "https://www.ulta.com/p/brow-harmony-flexible-lifting-gel-pimprod2055886?sku=2647801",
+        "fields": {
+          "description": true,
+          "ingredients": 0,
+          "active_ingredients": 0,
+          "how_to": 1,
+          "details": 5,
+          "variants": 1
+        }
+      },
+      "preview": {
+        "headline": "Brow product",
+        "what_it_is": "Brow Harmony Flexible Lifting Gel - Clear is a brow product from Rare Beauty, with source-backed cues around eye makeup grooming.",
+        "why_it_stands_out": [
+          {
+            "headline": "Product cues are source-backed",
+            "body": "Reviewed PDP cues such as brow definition, built-in brow brush give shoppers specific comparison points within Rare Beauty, rather than category-only copy.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Usage instructions available",
+            "body": "Reviewed usage context is present, including: Ingredients and Safety: Ingredients.",
+            "evidence_strength": "official_pdp_reviewed"
+          }
+        ],
+        "best_for": [
+          {
+            "tag": "brow_definition",
+            "label": "brow definition",
+            "confidence": "moderate"
+          }
+        ],
+        "shopping_highlight": "brow definition, built-in brow brush"
+      },
+      "writes": [
+        {
+          "kb_key": "product:ulta:dadaf331e78a75d2",
+          "action": "skip",
+          "reason": "protected_high_quality_existing:reviewed",
+          "old_hash": "11e70173cdb7b4eb14c7df31cdea00c98ea38aac8c5ef13e27498382937c60ec",
+          "existing_weak": false
+        },
+        {
+          "kb_key": "product:sig_c896222b435c8c416d7f79e976d74593",
+          "action": "skip",
+          "reason": "protected_high_quality_existing:reviewed",
+          "old_hash": "11e70173cdb7b4eb14c7df31cdea00c98ea38aac8c5ef13e27498382937c60ec",
+          "existing_weak": false
+        }
+      ]
+    },
+    {
+      "external_product_id": "ulta:a8ab4e8a645404bb",
+      "pivota_signature_id": "sig_48117db87e40150b9fa9d11b537811af",
+      "title": "Brow Harmony Precision Eyebrow Pencil - Soft Blonde",
+      "brand": "Rare Beauty",
+      "canonical_url": "https://www.ulta.com/p/brow-harmony-precision-eyebrow-pencil-pimprod2055900?sku=2647804",
+      "changed": false,
+      "blocked": false,
+      "skip_reason": "no_safe_writes",
+      "candidate_hash": "73e536e77e815c4ef3eea8863f46fe0a396b41a56fa73f57fb4cd80b96656a6c",
+      "evidence_profile": "official_pdp_reviewed_line",
+      "source_coverage": {
+        "source": "official_pdp",
+        "canonical_url": "https://www.ulta.com/p/brow-harmony-precision-eyebrow-pencil-pimprod2055900?sku=2647804",
+        "fields": {
+          "description": true,
+          "ingredients": 0,
+          "active_ingredients": 0,
+          "how_to": 1,
+          "details": 5,
+          "variants": 1
+        }
+      },
+      "preview": {
+        "headline": "Brow product",
+        "what_it_is": "Brow Harmony Precision Eyebrow Pencil - Soft Blonde is a brow product from Rare Beauty, with source-backed cues around eye makeup grooming.",
+        "why_it_stands_out": [
+          {
+            "headline": "Product cues are source-backed",
+            "body": "Reviewed PDP cues such as brow definition, precision application, shade matching, built-in brow brush give shoppers specific comparison points within Rare Beauty, rather than category-only copy.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Shade and size are explicit",
+            "body": "Variant labels such as Soft Blonde, Shade: Soft Blonde are visible, reducing ambiguity around the product format before a shopper clicks through.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Usage instructions available",
+            "body": "Reviewed usage context is present, including: Ingredients and Safety: Ingredients.",
+            "evidence_strength": "official_pdp_reviewed"
+          }
+        ],
+        "best_for": [
+          {
+            "tag": "brow_definition",
+            "label": "brow definition",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "precision_application",
+            "label": "precision application",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "shade_matching",
+            "label": "shade matching",
+            "confidence": "moderate"
+          }
+        ],
+        "shopping_highlight": "brow definition, precision application"
+      },
+      "writes": [
+        {
+          "kb_key": "product:ulta:a8ab4e8a645404bb",
+          "action": "skip",
+          "reason": "protected_high_quality_existing:reviewed",
+          "old_hash": "32934eda608c009e07d03202ecad6b9082a626e0db88c604db259569b1307095",
+          "existing_weak": false
+        },
+        {
+          "kb_key": "product:sig_48117db87e40150b9fa9d11b537811af",
+          "action": "skip",
+          "reason": "protected_high_quality_existing:reviewed",
+          "old_hash": "32934eda608c009e07d03202ecad6b9082a626e0db88c604db259569b1307095",
+          "existing_weak": false
+        }
+      ]
+    },
+    {
+      "external_product_id": "ext_6e3349327fdec55a2b1b8615",
+      "pivota_signature_id": "sig_5f0c14a3faee132349aff8c0a25e3b4c",
+      "title": "Brow Harmony Precision Pencil",
+      "brand": "rare beauty",
+      "canonical_url": "https://rarebeauty.com/products/brow-harmony-precision-pencil",
+      "changed": false,
+      "blocked": false,
+      "skip_reason": "no_safe_writes",
+      "candidate_hash": "664bba5206ae5e197f633d2d670416c1a5469a76836f2826572bd232a6452080",
+      "evidence_profile": "official_pdp_reviewed_formula_and_usage",
+      "source_coverage": {
+        "source": "official_pdp",
+        "canonical_url": "https://rarebeauty.com/products/brow-harmony-precision-pencil",
+        "fields": {
+          "description": true,
+          "ingredients": 1,
+          "active_ingredients": 1,
+          "how_to": 1,
+          "details": 5,
+          "variants": 6
+        }
+      },
+      "preview": {
+        "headline": "Brow product",
+        "what_it_is": "Brow Harmony Precision Pencil is a brow product from rare beauty, with source-backed cues around eye makeup grooming.",
+        "why_it_stands_out": [
+          {
+            "headline": "Product cues are source-backed",
+            "body": "Reviewed PDP cues such as brow definition, precision application, shade matching, built-in brow brush give shoppers specific comparison points within rare beauty, rather than category-only copy.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Ingredient list is available",
+            "body": "Full INCI is present for formula-sensitive review, which makes this PDP safer to evaluate than a claim-only listing.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Shade and size are explicit",
+            "body": "Variant labels such as Soft Blonde, Shade: Soft Blonde, Rich Taupe, Shade: Rich Taupe are visible, reducing ambiguity around the product format before a shopper clicks through.",
+            "evidence_strength": "official_pdp_reviewed"
+          }
+        ],
+        "best_for": [
+          {
+            "tag": "brow_definition",
+            "label": "brow definition",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "precision_application",
+            "label": "precision application",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "shade_matching",
+            "label": "shade matching",
+            "confidence": "moderate"
+          }
+        ],
+        "shopping_highlight": "brow definition, precision application"
+      },
+      "writes": [
+        {
+          "kb_key": "product:ext_6e3349327fdec55a2b1b8615",
+          "action": "skip",
+          "reason": "protected_high_quality_existing:reviewed",
+          "old_hash": "8c699f0c12c13394a5055e5f9d00cf3741e0b17423b768849de60503199c6141",
+          "existing_weak": false
+        },
+        {
+          "kb_key": "product:sig_5f0c14a3faee132349aff8c0a25e3b4c",
+          "action": "skip",
+          "reason": "protected_high_quality_existing:reviewed",
+          "old_hash": "8c699f0c12c13394a5055e5f9d00cf3741e0b17423b768849de60503199c6141",
+          "existing_weak": false
+        }
+      ]
+    },
+    {
+      "external_product_id": "ext_e8858f6a310da56af63c4fa6",
+      "pivota_signature_id": "sig_353e867338195fa989f81dfaec3278ff",
+      "title": "Comfy Hoodie",
+      "brand": "rare beauty",
+      "canonical_url": "https://rarebeauty.com/products/comfy-hoodie",
+      "changed": false,
+      "blocked": false,
+      "skip_reason": "no_safe_writes",
+      "candidate_hash": "1980de305563dbf88710cf0502562afef296550167db445746d9b2618674e552",
+      "evidence_profile": "official_pdp_reviewed_line",
+      "source_coverage": {
+        "source": "official_pdp",
+        "canonical_url": "https://rarebeauty.com/products/comfy-hoodie",
+        "fields": {
+          "description": true,
+          "ingredients": 0,
+          "active_ingredients": 0,
+          "how_to": 1,
+          "details": 2,
+          "variants": 7
+        }
+      },
+      "preview": {
+        "headline": "Branded apparel",
+        "what_it_is": "Comfy Hoodie is a branded apparel from rare beauty. Your go - to for staying comfy year round, thanks to a super soft fleece interior you just might want to live in.",
+        "why_it_stands_out": [
+          {
+            "headline": "Product cues are source-backed",
+            "body": "Reviewed PDP cues such as soft fleece, cotton feel, everyday layering give shoppers specific comparison points within rare beauty, rather than category-only copy.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Shade and size are explicit",
+            "body": "Variant labels such as X Small, Shade: X Small, Small, Shade: Small are visible, reducing ambiguity around the product format before a shopper clicks through.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Usage instructions available",
+            "body": "Reviewed usage context is present, including: Use according to the merchant directions for this product.",
+            "evidence_strength": "official_pdp_reviewed"
+          }
+        ],
+        "best_for": [
+          {
+            "tag": "casual_wear",
+            "label": "casual wear",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "soft_comfort",
+            "label": "soft comfort",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "everyday_layering",
+            "label": "everyday layering",
+            "confidence": "moderate"
+          }
+        ],
+        "shopping_highlight": "soft fleece, cotton feel"
+      },
+      "writes": [
+        {
+          "kb_key": "product:ext_e8858f6a310da56af63c4fa6",
+          "action": "skip",
+          "reason": "protected_high_quality_existing:reviewed",
+          "old_hash": "96d4317c89588a0f388c7a0b56a28d48ffaeaa53a712f18746c83a1f79e7380c",
+          "existing_weak": false
+        },
+        {
+          "kb_key": "product:sig_353e867338195fa989f81dfaec3278ff",
+          "action": "skip",
+          "reason": "protected_high_quality_existing:reviewed",
+          "old_hash": "96d4317c89588a0f388c7a0b56a28d48ffaeaa53a712f18746c83a1f79e7380c",
+          "existing_weak": false
+        }
+      ]
+    },
+    {
+      "external_product_id": "ext_860ea0aa7cbe57fbbf4b6491",
+      "pivota_signature_id": "sig_8206d7bbf40ee32e84958e692d9b55c1",
+      "title": "Comfy Sweatpants",
+      "brand": "rare beauty",
+      "canonical_url": "https://rarebeauty.com/products/comfy-sweatpant",
+      "changed": false,
+      "blocked": false,
+      "skip_reason": "no_safe_writes",
+      "candidate_hash": "c80b30cd93f22294e42130af8c1d304e4ea3bac6e7fce8ca73c235016a3cae8f",
+      "evidence_profile": "official_pdp_reviewed_line",
+      "source_coverage": {
+        "source": "official_pdp",
+        "canonical_url": "https://rarebeauty.com/products/comfy-sweatpant",
+        "fields": {
+          "description": true,
+          "ingredients": 0,
+          "active_ingredients": 0,
+          "how_to": 1,
+          "details": 2,
+          "variants": 7
+        }
+      },
+      "preview": {
+        "headline": "Branded apparel",
+        "what_it_is": "Comfy Sweatpants is a branded apparel from rare beauty. Cozy up year round - these super soft sweatpants keep you comfy and warm, while stretchy elastic cuffs add structure and style.",
+        "why_it_stands_out": [
+          {
+            "headline": "Product cues are source-backed",
+            "body": "Reviewed PDP cues such as soft fleece, cotton feel, everyday layering, X Small give shoppers specific comparison points within rare beauty, rather than category-only copy.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Shade and size are explicit",
+            "body": "Variant labels such as X Small, Size: X Small, Small, Size: Small are visible, reducing ambiguity around the product format before a shopper clicks through.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Usage instructions available",
+            "body": "Reviewed usage context is present, including: Use according to the merchant directions for this product.",
+            "evidence_strength": "official_pdp_reviewed"
+          }
+        ],
+        "best_for": [
+          {
+            "tag": "casual_wear",
+            "label": "casual wear",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "soft_comfort",
+            "label": "soft comfort",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "everyday_layering",
+            "label": "everyday layering",
+            "confidence": "moderate"
+          }
+        ],
+        "shopping_highlight": "soft fleece, cotton feel"
+      },
+      "writes": [
+        {
+          "kb_key": "product:ext_860ea0aa7cbe57fbbf4b6491",
+          "action": "skip",
+          "reason": "protected_high_quality_existing:reviewed",
+          "old_hash": "f339464504e15f75f4914edc94dd6b0d81315186b031497af5a3394b805a3985",
+          "existing_weak": false
+        },
+        {
+          "kb_key": "product:sig_8206d7bbf40ee32e84958e692d9b55c1",
+          "action": "skip",
+          "reason": "protected_high_quality_existing:reviewed",
+          "old_hash": "f339464504e15f75f4914edc94dd6b0d81315186b031497af5a3394b805a3985",
+          "existing_weak": false
+        }
+      ]
+    },
+    {
+      "external_product_id": "ulta:7c50c3d323bd8446",
+      "pivota_signature_id": "sig_5cc69f17e73ad4432f6aaf2de6badba4",
+      "title": "Essential Neutrals Eyeshadow Palette",
+      "brand": "Rare Beauty",
+      "canonical_url": "https://www.ulta.com/p/essential-neutrals-eyeshadow-palette-pimprod2057536?sku=2647814",
+      "changed": false,
+      "blocked": false,
+      "skip_reason": "no_safe_writes",
+      "candidate_hash": "ed54b79131967824877df59dbad784f6772d2e2fb991c55acf25da3dd8b6f5b6",
+      "evidence_profile": "official_pdp_reviewed_line",
+      "source_coverage": {
+        "source": "official_pdp",
+        "canonical_url": "https://www.ulta.com/p/essential-neutrals-eyeshadow-palette-pimprod2057536?sku=2647814",
+        "fields": {
+          "description": true,
+          "ingredients": 0,
+          "active_ingredients": 0,
+          "how_to": 1,
+          "details": 4,
+          "variants": 1
+        }
+      },
+      "preview": {
+        "headline": "Eye makeup",
+        "what_it_is": "Essential Neutrals Eyeshadow Palette is an eye makeup palette from Rare Beauty, with source-backed cues around a palette format and multi-shade color selection.",
+        "why_it_stands_out": [
+          {
+            "headline": "Product cues are source-backed",
+            "body": "Reviewed PDP cues such as palette format, multi-shade color story give shoppers specific comparison points within Rare Beauty, rather than category-only copy.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Usage instructions available",
+            "body": "Reviewed usage context is present, including: Ingredients and Safety: Ingredients.",
+            "evidence_strength": "official_pdp_reviewed"
+          }
+        ],
+        "best_for": [
+          {
+            "tag": "palette_format",
+            "label": "palette format",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "multi_shade_color_story",
+            "label": "multi-shade color story",
+            "confidence": "moderate"
+          }
+        ],
+        "shopping_highlight": "palette format, multi-shade color story"
+      },
+      "writes": [
+        {
+          "kb_key": "product:ulta:7c50c3d323bd8446",
+          "action": "skip",
+          "reason": "protected_high_quality_existing:reviewed",
+          "old_hash": "82b4de74f5d5227602e74f754327b5dcf7f574383403b0d962a12935c67c07f3",
+          "existing_weak": false
+        },
+        {
+          "kb_key": "product:sig_5cc69f17e73ad4432f6aaf2de6badba4",
+          "action": "skip",
+          "reason": "protected_high_quality_existing:reviewed",
+          "old_hash": "82b4de74f5d5227602e74f754327b5dcf7f574383403b0d962a12935c67c07f3",
+          "existing_weak": false
+        }
+      ]
+    },
+    {
+      "external_product_id": "ext_18a73ab558e5c15973a34541",
+      "pivota_signature_id": "sig_1c175186219c291e2962a9f6f6a7b245",
+      "title": "Everyday Quarter Zip Sweatshirt",
+      "brand": "rare beauty",
+      "canonical_url": "https://rarebeauty.com/products/everyday-quarter-zip-sweatshirt",
+      "changed": false,
+      "blocked": false,
+      "skip_reason": "no_safe_writes",
+      "candidate_hash": "1a8e8009b81b99d2fa7f7db4ddc580d826d66e4e5d1eecf4e188da5f0ab7aee4",
+      "evidence_profile": "official_pdp_reviewed_line",
+      "source_coverage": {
+        "source": "official_pdp",
+        "canonical_url": "https://rarebeauty.com/products/everyday-quarter-zip-sweatshirt",
+        "fields": {
+          "description": true,
+          "ingredients": 0,
+          "active_ingredients": 0,
+          "how_to": 1,
+          "details": 2,
+          "variants": 6
+        }
+      },
+      "preview": {
+        "headline": "Branded apparel",
+        "what_it_is": "Everyday Quarter Zip Sweatshirt is a branded apparel from rare beauty. Everything you need a sweatshirt to be: soft, comfy , and versatile, with an oversized fit for all the cozy feels and a quarter zip that lets you change up your style.",
+        "why_it_stands_out": [
+          {
+            "headline": "Product cues are source-backed",
+            "body": "Reviewed PDP cues such as soft fleece, cotton feel, everyday layering give shoppers specific comparison points within rare beauty, rather than category-only copy.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Shade and size are explicit",
+            "body": "Variant labels such as X Small, Shade: X Small, Small, Shade: Small are visible, reducing ambiguity around the product format before a shopper clicks through.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Usage instructions available",
+            "body": "Reviewed usage context is present, including: Use according to the merchant directions for this product.",
+            "evidence_strength": "official_pdp_reviewed"
+          }
+        ],
+        "best_for": [
+          {
+            "tag": "casual_wear",
+            "label": "casual wear",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "soft_comfort",
+            "label": "soft comfort",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "everyday_layering",
+            "label": "everyday layering",
+            "confidence": "moderate"
+          }
+        ],
+        "shopping_highlight": "soft fleece, cotton feel"
+      },
+      "writes": [
+        {
+          "kb_key": "product:ext_18a73ab558e5c15973a34541",
+          "action": "skip",
+          "reason": "candidate_not_publish_quality_ready",
+          "old_hash": "30fe50da6660488f9400db462889a94dd006bca91d3dcf50d0f932ab9bb805d4",
+          "candidate_hash": "29c2ccc118f89c55e36f0e93dbf112f5452369972bd9f3cb59c98d9d49fbddb1",
+          "existing_weak": true,
+          "assessment": {
+            "allowed": false,
+            "reason": "candidate_not_publish_quality_ready",
+            "candidate": {
+              "lane": "regenerate",
+              "reason": "requires_regeneration",
+              "priority": 95,
+              "protected": false,
+              "displayable": true,
+              "high_quality_ready": false,
+              "human_reviewed": true,
+              "issues": [
+                "public_generic_marketing_copy"
+              ],
+              "blocking_issues": [
+                "public_generic_marketing_copy"
+              ],
+              "quality_state": "reviewed",
+              "evidence_profile": "official_pdp_reviewed_line",
+              "evidence_rank": 3,
+              "review_tier": "assistant_reviewed"
+            },
+            "candidate_bundle_hash": "1a8e8009b81b99d2fa7f7db4ddc580d826d66e4e5d1eecf4e188da5f0ab7aee4"
+          }
+        },
+        {
+          "kb_key": "product:sig_1c175186219c291e2962a9f6f6a7b245",
+          "action": "skip",
+          "reason": "candidate_not_publish_quality_ready",
+          "old_hash": "30fe50da6660488f9400db462889a94dd006bca91d3dcf50d0f932ab9bb805d4",
+          "candidate_hash": "29c2ccc118f89c55e36f0e93dbf112f5452369972bd9f3cb59c98d9d49fbddb1",
+          "existing_weak": true,
+          "assessment": {
+            "allowed": false,
+            "reason": "candidate_not_publish_quality_ready",
+            "candidate": {
+              "lane": "regenerate",
+              "reason": "requires_regeneration",
+              "priority": 95,
+              "protected": false,
+              "displayable": true,
+              "high_quality_ready": false,
+              "human_reviewed": true,
+              "issues": [
+                "public_generic_marketing_copy"
+              ],
+              "blocking_issues": [
+                "public_generic_marketing_copy"
+              ],
+              "quality_state": "reviewed",
+              "evidence_profile": "official_pdp_reviewed_line",
+              "evidence_rank": 3,
+              "review_tier": "assistant_reviewed"
+            },
+            "candidate_bundle_hash": "1a8e8009b81b99d2fa7f7db4ddc580d826d66e4e5d1eecf4e188da5f0ab7aee4"
+          }
+        }
+      ]
+    }
+  ]
+}

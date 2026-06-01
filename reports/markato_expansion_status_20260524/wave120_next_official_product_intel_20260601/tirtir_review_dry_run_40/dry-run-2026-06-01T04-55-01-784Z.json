@@ -1,0 +1,4401 @@
+{
+  "generated_at": "2026-06-01T04:55:01.784Z",
+  "source": "pivota_insights_official_pdp_manual_review_v1",
+  "mode": "dry_run",
+  "filters": {
+    "brand": "TIRTIR",
+    "product_ids": [],
+    "limit": 40,
+    "include_strong": false,
+    "include_url_key": false,
+    "apply_chunk_size": null
+  },
+  "summary": {
+    "scanned": 40,
+    "changed_products": 19,
+    "blocked_products": 0,
+    "skipped_products": 21,
+    "write_actions": {
+      "skip": 53,
+      "insert": 17,
+      "update": 10
+    },
+    "skip_reasons": {
+      "no_safe_writes": 21,
+      "protected_high_quality_existing:verified": 19,
+      "protected_high_quality_existing:reviewed": 28,
+      "protected_evidence_profile_existing:community_supported": 2,
+      "candidate_not_publish_quality_ready": 4
+    },
+    "evidence_profiles": {
+      "official_pdp_reviewed_formula_and_usage": 37,
+      "official_pdp_reviewed_key_ingredients_and_usage": 3
+    }
+  },
+  "plans": [
+    {
+      "external_product_id": "ext_fa7c10a18a8ee11fa3d1d68a",
+      "pivota_signature_id": "sig_bb48b92135996995411f28d91a962642",
+      "title": "Airy Bloom Mesh Blush",
+      "brand": "TIRTIR Global",
+      "canonical_url": "https://tirtir.global/products/airy-bloom-mesh-blush",
+      "changed": false,
+      "blocked": false,
+      "skip_reason": "no_safe_writes",
+      "candidate_hash": "6766236b73455c5e5417160b6c55ccc9c3ac4b4a304fd406917f13c4c9c2042f",
+      "evidence_profile": "official_pdp_reviewed_formula_and_usage",
+      "source_coverage": {
+        "source": "official_pdp",
+        "canonical_url": "https://tirtir.global/products/airy-bloom-mesh-blush",
+        "fields": {
+          "description": true,
+          "ingredients": 1,
+          "active_ingredients": 1,
+          "how_to": 1,
+          "details": 3,
+          "variants": 7
+        }
+      },
+      "preview": {
+        "headline": "Face color makeup",
+        "what_it_is": "Airy Bloom Mesh Blush is a blush from TIRTIR Global in shade 04 Melty Peach, with source-backed cues around long-wear color.",
+        "why_it_stands_out": [
+          {
+            "headline": "Color payoff cues are specific",
+            "body": "Reviewed color cues such as long-wear color, glow payoff, matte finish, shade range help shoppers compare shade, finish, or texture instead of seeing a generic blush/bronzer/highlighter card.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Ingredient list is available",
+            "body": "Full INCI is present for formula-sensitive review, which makes this PDP safer to evaluate than a claim-only listing.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Shade and size are explicit",
+            "body": "Variant labels such as 04 Melty Peach, Color: 04 Melty Peach, 05 Roasted Coral, Color: 05 Roasted Coral are visible, reducing ambiguity around the product format before a shopper clicks through.",
+            "evidence_strength": "official_pdp_reviewed"
+          }
+        ],
+        "best_for": [
+          {
+            "tag": "soft_focus_finish",
+            "label": "soft-focus finish",
+            "confidence": "moderate"
+          }
+        ],
+        "shopping_highlight": "long-wear color, glow payoff"
+      },
+      "writes": [
+        {
+          "kb_key": "product:ext_fa7c10a18a8ee11fa3d1d68a",
+          "action": "skip",
+          "reason": "protected_high_quality_existing:verified",
+          "old_hash": "450da4b723c57101e4fb0594e42c644281f980f99d5b508ea4e3ae919dad5f96",
+          "existing_weak": false
+        },
+        {
+          "kb_key": "product:sig_bb48b92135996995411f28d91a962642",
+          "action": "skip",
+          "reason": "protected_high_quality_existing:reviewed",
+          "old_hash": "bca81db5422516dacfded2c0477a7dd73a3c72c75a7e980316b022087903992b",
+          "existing_weak": false
+        }
+      ]
+    },
+    {
+      "external_product_id": "ext_cb315ad422dd53f36c31904e",
+      "pivota_signature_id": "sig_f0f4df621d99143226849330dad70d55",
+      "title": "Ampoule Mask Packs",
+      "brand": "TIRTIR Global",
+      "canonical_url": "https://tirtir.global/products/ampoule-mask-packs",
+      "changed": false,
+      "blocked": false,
+      "skip_reason": "no_safe_writes",
+      "candidate_hash": "b82899c05ce0a414f3c531fb3371b270e49f0de8f8ddf679316cbf42e3fabd7a",
+      "evidence_profile": "official_pdp_reviewed_formula_and_usage",
+      "source_coverage": {
+        "source": "official_pdp",
+        "canonical_url": "https://tirtir.global/products/ampoule-mask-packs",
+        "fields": {
+          "description": true,
+          "ingredients": 1,
+          "active_ingredients": 0,
+          "how_to": 1,
+          "details": 2,
+          "variants": 4
+        }
+      },
+      "preview": {
+        "headline": "Treatment mask",
+        "what_it_is": "Ampoule Mask Packs is a treatment mask from TIRTIR Global, with source-backed cues around hydration and brightening support.",
+        "why_it_stands_out": [
+          {
+            "headline": "Product cues are source-backed",
+            "body": "Reviewed PDP cues such as niacinamide, shade range give shoppers specific comparison points within TIRTIR Global, rather than category-only copy.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Ingredient list is available",
+            "body": "Full INCI is present for formula-sensitive review, which makes this PDP safer to evaluate than a claim-only listing.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Shade and size are explicit",
+            "body": "Variant labels such as Perfect-C Vita Ampoule Mask Pack, Color: Perfect-C Vita Ampoule Mask Pack, Galactomyces Softening Ampoule Mask Pack, Color: Galactomyces Softening Ampoule Mask Pack are visible, reducing ambiguity around the product format before a shopper clicks through.",
+            "evidence_strength": "official_pdp_reviewed"
+          }
+        ],
+        "best_for": [
+          {
+            "tag": "niacinamide",
+            "label": "niacinamide",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "shade_range",
+            "label": "shade range",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "full_inci_available",
+            "label": "full INCI available",
+            "confidence": "moderate"
+          }
+        ],
+        "shopping_highlight": "niacinamide, shade range"
+      },
+      "writes": [
+        {
+          "kb_key": "product:ext_cb315ad422dd53f36c31904e",
+          "action": "skip",
+          "reason": "protected_high_quality_existing:verified",
+          "old_hash": "ec1a9d191b596780f65d7c6b58fb689b5833a00292409d4b5c1f4abd7526468d",
+          "existing_weak": false
+        },
+        {
+          "kb_key": "product:sig_f0f4df621d99143226849330dad70d55",
+          "action": "skip",
+          "reason": "protected_high_quality_existing:reviewed",
+          "old_hash": "bbf6e6a79fa073d479ef23954723042120469ef1c4cd6dddc4718d1d320c35ad",
+          "existing_weak": false
+        }
+      ]
+    },
+    {
+      "external_product_id": "ext_21d2c4d0ecbfe8289a755991",
+      "pivota_signature_id": "sig_b0ea10ee5c6cbbbab86b8505b2e8a93c",
+      "title": "Azelaic Acid 12% Serum",
+      "brand": "TIRTIR Global",
+      "canonical_url": "https://tirtir.global/products/azelaic-acid-12-serum",
+      "changed": true,
+      "blocked": false,
+      "skip_reason": null,
+      "candidate_hash": "00826721d3eae7d99b8750ff3d7dbd4e5d487f6c02567ac631d7d0cffd16b321",
+      "evidence_profile": "official_pdp_reviewed_formula_and_usage",
+      "source_coverage": {
+        "source": "official_pdp",
+        "canonical_url": "https://tirtir.global/products/azelaic-acid-12-serum",
+        "fields": {
+          "description": true,
+          "ingredients": 1,
+          "active_ingredients": 1,
+          "how_to": 1,
+          "details": 1,
+          "variants": 1
+        }
+      },
+      "preview": {
+        "headline": "Treatment serum",
+        "what_it_is": "Azelaic Acid 12% Serum is a treatment serum from TIRTIR Global in 30 mL, with source-backed ingredient cues around azelaic acid and barrier support.",
+        "why_it_stands_out": [
+          {
+            "headline": "Routine step cues are specific",
+            "body": "Reviewed skincare cues such as azelaic acid, hydration, barrier support, 30 mL identify the routine role or key ingredient context without inventing unsupported benefits.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Ingredient list is available",
+            "body": "Full INCI is present for formula-sensitive review, which makes this PDP safer to evaluate than a claim-only listing.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Shade and size are explicit",
+            "body": "Variant labels such as 30 mL, Size: 30 mL are visible, reducing ambiguity around the product format before a shopper clicks through.",
+            "evidence_strength": "official_pdp_reviewed"
+          }
+        ],
+        "best_for": [
+          {
+            "tag": "hydration",
+            "label": "hydration",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "barrier_support",
+            "label": "barrier support",
+            "confidence": "moderate"
+          }
+        ],
+        "shopping_highlight": "azelaic acid, hydration, barrier support"
+      },
+      "writes": [
+        {
+          "kb_key": "product:ext_21d2c4d0ecbfe8289a755991",
+          "action": "skip",
+          "reason": "protected_high_quality_existing:verified",
+          "old_hash": "7e2f2cbe0473ad2f79d12deb632d093d9ecf0432952da2a9f03198e8a41dd5ad",
+          "existing_weak": false
+        },
+        {
+          "kb_key": "product:sig_b0ea10ee5c6cbbbab86b8505b2e8a93c",
+          "action": "insert",
+          "reason": "new_product_intel_bundle",
+          "old_hash": null,
+          "candidate_hash": "4982708445cd1495573bbce88402dd72d0e82f3c18433345bfa4e3e9063f2fa8",
+          "existing_weak": true,
+          "source": "pivota_insights_official_pdp_manual_review_v1",
+          "after_inventory": {
+            "product_id": "ext_21d2c4d0ecbfe8289a755991",
+            "kb_key": "product:sig_b0ea10ee5c6cbbbab86b8505b2e8a93c",
+            "source": "pivota_insights_official_pdp_manual_review_v1",
+            "updated_at": "",
+            "last_success_at": "",
+            "title": "Azelaic Acid 12% Serum",
+            "canonical_url": "",
+            "bundle_hash": "00826721d3eae7d99b8750ff3d7dbd4e5d487f6c02567ac631d7d0cffd16b321",
+            "lane": "keep",
+            "reason": "protected_good_content",
+            "priority": 0,
+            "protected": true,
+            "displayable": true,
+            "high_quality_ready": true,
+            "human_reviewed": true,
+            "issues": [],
+            "blocking_issues": [],
+            "quality_state": "reviewed",
+            "evidence_profile": "official_pdp_reviewed_formula_and_usage",
+            "evidence_rank": 1,
+            "review_tier": "assistant_reviewed",
+            "agent_readable": true,
+            "public_ready": true
+          },
+          "source_meta": {
+            "evidence_profile": "official_pdp_reviewed_formula_and_usage",
+            "quality_state": "reviewed",
+            "source_origin": "official_pdp_fields",
+            "source_url": "https://tirtir.global/products/azelaic-acid-12-serum",
+            "quality_improvement": {
+              "previous_bundle_hash": null,
+              "candidate_bundle_hash": "00826721d3eae7d99b8750ff3d7dbd4e5d487f6c02567ac631d7d0cffd16b321",
+              "replacement_decision": "new_product_intel_bundle",
+              "existing_quality_lane": null,
+              "candidate_quality_lane": "keep",
+              "existing_evidence_profile": null,
+              "candidate_evidence_profile": "official_pdp_reviewed_formula_and_usage"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "external_product_id": "ext_d4821c6edda6594aed724f35",
+      "pivota_signature_id": "sig_61a0e0e0e0a23c851d8731d3f4694bab",
+      "title": "Banana BDRN Eye Mask ( 7ea )",
+      "brand": "TIRTIR Global",
+      "canonical_url": "https://tirtir.global/products/banana-bdrn-eye-mask",
+      "changed": false,
+      "blocked": false,
+      "skip_reason": "no_safe_writes",
+      "candidate_hash": "90a83a23e3d24aed3a112c686f15261da3f00c2792a38b2a6027d42b784eb026",
+      "evidence_profile": "official_pdp_reviewed_formula_and_usage",
+      "source_coverage": {
+        "source": "official_pdp",
+        "canonical_url": "https://tirtir.global/products/banana-bdrn-eye-mask",
+        "fields": {
+          "description": true,
+          "ingredients": 1,
+          "active_ingredients": 1,
+          "how_to": 1,
+          "details": 1,
+          "variants": 1
+        }
+      },
+      "preview": {
+        "headline": "Treatment mask",
+        "what_it_is": "Banana BDRN Eye Mask ( 7ea ) is a treatment mask from TIRTIR Global in 7ea, with source-backed cues around hydration and brightening support.",
+        "why_it_stands_out": [
+          {
+            "headline": "Product cues are source-backed",
+            "body": "Reviewed PDP cues such as hyaluronic acid, niacinamide, 7ea give shoppers specific comparison points within TIRTIR Global, rather than category-only copy.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Ingredient list is available",
+            "body": "Full INCI is present for formula-sensitive review, which makes this PDP safer to evaluate than a claim-only listing.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Shade and size are explicit",
+            "body": "Variant labels such as 7ea, Size: 7ea are visible, reducing ambiguity around the product format before a shopper clicks through.",
+            "evidence_strength": "official_pdp_reviewed"
+          }
+        ],
+        "best_for": [
+          {
+            "tag": "hyaluronic_acid",
+            "label": "hyaluronic acid",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "niacinamide",
+            "label": "niacinamide",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "7ea",
+            "label": "7ea",
+            "confidence": "moderate"
+          }
+        ],
+        "shopping_highlight": "hyaluronic acid, niacinamide, 7ea"
+      },
+      "writes": [
+        {
+          "kb_key": "product:ext_d4821c6edda6594aed724f35",
+          "action": "skip",
+          "reason": "protected_high_quality_existing:verified",
+          "old_hash": "9242203565aab896af5ab0690f968747b9a7621ef49dfc6a79ed073f90effb08",
+          "existing_weak": false
+        },
+        {
+          "kb_key": "product:sig_61a0e0e0e0a23c851d8731d3f4694bab",
+          "action": "skip",
+          "reason": "protected_high_quality_existing:reviewed",
+          "old_hash": "e44c00c26ea5817a1ec7dd82a9c2b3c77c62dfcaae225b84d3cf651093a52556",
+          "existing_weak": false
+        }
+      ]
+    },
+    {
+      "external_product_id": "ext_a931bd8cc0a35f9557bbc381",
+      "pivota_signature_id": "sig_c1f8272a1a1eda1ddb207ee91eb85577",
+      "title": "Banana BDRN Eye Serum",
+      "brand": "TIRTIR Global",
+      "canonical_url": "https://tirtir.global/products/banana-bdrn-eye-serum",
+      "changed": false,
+      "blocked": false,
+      "skip_reason": "no_safe_writes",
+      "candidate_hash": "6bcca14ecf1c8fcadf54329f505a257b9211354ae6516e78bd8154ce2cc08ce0",
+      "evidence_profile": "official_pdp_reviewed_formula_and_usage",
+      "source_coverage": {
+        "source": "official_pdp",
+        "canonical_url": "https://tirtir.global/products/banana-bdrn-eye-serum",
+        "fields": {
+          "description": true,
+          "ingredients": 1,
+          "active_ingredients": 1,
+          "how_to": 1,
+          "details": 1,
+          "variants": 1
+        }
+      },
+      "preview": {
+        "headline": "Treatment serum",
+        "what_it_is": "Banana BDRN Eye Serum is a treatment serum from TIRTIR Global in 20 mL, with source-backed ingredient cues around peptides.",
+        "why_it_stands_out": [
+          {
+            "headline": "Routine step cues are specific",
+            "body": "Reviewed skincare cues such as peptides, hydration, barrier support, 20 mL identify the routine role or key ingredient context without inventing unsupported benefits.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Ingredient list is available",
+            "body": "Full INCI is present for formula-sensitive review, which makes this PDP safer to evaluate than a claim-only listing.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Shade and size are explicit",
+            "body": "Variant labels such as 20 mL, Size: 20 mL are visible, reducing ambiguity around the product format before a shopper clicks through.",
+            "evidence_strength": "official_pdp_reviewed"
+          }
+        ],
+        "best_for": [
+          {
+            "tag": "hydration",
+            "label": "hydration",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "firmness",
+            "label": "firmness",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "radiance",
+            "label": "radiance",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "barrier_support",
+            "label": "barrier support",
+            "confidence": "moderate"
+          }
+        ],
+        "shopping_highlight": "peptides, hydration, barrier support"
+      },
+      "writes": [
+        {
+          "kb_key": "product:ext_a931bd8cc0a35f9557bbc381",
+          "action": "skip",
+          "reason": "protected_high_quality_existing:verified",
+          "old_hash": "8b1a2a905508e496de605a478db89d1b9d5794b2954c307af0159abe680b8da7",
+          "existing_weak": false
+        },
+        {
+          "kb_key": "product:sig_c1f8272a1a1eda1ddb207ee91eb85577",
+          "action": "skip",
+          "reason": "protected_high_quality_existing:reviewed",
+          "old_hash": "03d5c53acd1151bd68d20a55c4a4061e6d27b454cc39cad83183b85080eabfdc",
+          "existing_weak": false
+        }
+      ]
+    },
+    {
+      "external_product_id": "ext_13d1e7bc87a49618d8283bc5",
+      "pivota_signature_id": "sig_277c04f53fabdedc01a76d7d78f956a2",
+      "title": "Centella Foam Cleansing",
+      "brand": "TIRTIR Global",
+      "canonical_url": "https://tirtir.global/products/centella-foam-cleansing",
+      "changed": false,
+      "blocked": false,
+      "skip_reason": "no_safe_writes",
+      "candidate_hash": "c32e5c535f589d01cd206c54d33db16ee280d195eb95336aa66942d9de49692a",
+      "evidence_profile": "official_pdp_reviewed_formula_and_usage",
+      "source_coverage": {
+        "source": "official_pdp",
+        "canonical_url": "https://tirtir.global/products/centella-foam-cleansing",
+        "fields": {
+          "description": true,
+          "ingredients": 1,
+          "active_ingredients": 1,
+          "how_to": 1,
+          "details": 1,
+          "variants": 1
+        }
+      },
+      "preview": {
+        "headline": "Face cleanser",
+        "what_it_is": "Centella Foam Cleansing is a face cleanser from TIRTIR Global in 150ml, with source-backed cues around cleansing, a non-stripping feel and dirt, oil, and impurity removal.",
+        "why_it_stands_out": [
+          {
+            "headline": "Product cues are source-backed",
+            "body": "Reviewed PDP cues such as daily cleansing, pore cleansing, non-stripping cleanse, 150ml give shoppers specific comparison points within TIRTIR Global, rather than category-only copy.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Ingredient list is available",
+            "body": "Full INCI is present for formula-sensitive review, which makes this PDP safer to evaluate than a claim-only listing.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Shade and size are explicit",
+            "body": "Variant labels such as 150ml, Size: 150ml are visible, reducing ambiguity around the product format before a shopper clicks through.",
+            "evidence_strength": "official_pdp_reviewed"
+          }
+        ],
+        "best_for": [
+          {
+            "tag": "daily_cleansing",
+            "label": "daily cleansing",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "pore_cleansing",
+            "label": "pore cleansing",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "non_stripping_cleanse",
+            "label": "non-stripping cleanse",
+            "confidence": "moderate"
+          }
+        ],
+        "shopping_highlight": "daily cleansing, pore cleansing"
+      },
+      "writes": [
+        {
+          "kb_key": "product:ext_13d1e7bc87a49618d8283bc5",
+          "action": "skip",
+          "reason": "protected_high_quality_existing:reviewed",
+          "old_hash": "5d03594be1b886e014b57c008c84ba19a0e4345692559dda26177b096e213cf2",
+          "existing_weak": false
+        },
+        {
+          "kb_key": "product:sig_277c04f53fabdedc01a76d7d78f956a2",
+          "action": "skip",
+          "reason": "protected_high_quality_existing:reviewed",
+          "old_hash": "5d03594be1b886e014b57c008c84ba19a0e4345692559dda26177b096e213cf2",
+          "existing_weak": false
+        }
+      ]
+    },
+    {
+      "external_product_id": "ext_1d8c27b856564035c82f3c6b",
+      "pivota_signature_id": "sig_23bdd3f75df7f94909c6c97165f46022",
+      "title": "Ceramic Cream",
+      "brand": "TIRTIR Global",
+      "canonical_url": "https://tirtir.global/products/ceramic-cream",
+      "changed": false,
+      "blocked": false,
+      "skip_reason": "no_safe_writes",
+      "candidate_hash": "b35e8f5d9bf078a5fc5ea1e84b4e6df8dc7e89a34b18bd433ba9f8b78292e086",
+      "evidence_profile": "official_pdp_reviewed_formula_and_usage",
+      "source_coverage": {
+        "source": "official_pdp",
+        "canonical_url": "https://tirtir.global/products/ceramic-cream",
+        "fields": {
+          "description": true,
+          "ingredients": 1,
+          "active_ingredients": 1,
+          "how_to": 1,
+          "details": 1,
+          "variants": 2
+        }
+      },
+      "preview": {
+        "headline": "Body care treatment",
+        "what_it_is": "Ceramic Cream is a body care treatment from TIRTIR Global in 50 ml / 1.69 fl.oz., with source-backed cues around hydration and brightening support.",
+        "why_it_stands_out": [
+          {
+            "headline": "Routine step cues are specific",
+            "body": "Reviewed skincare cues such as peptides, centella, hydration, barrier support identify the routine role or key ingredient context without inventing unsupported benefits.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Ingredient list is available",
+            "body": "Full INCI is present for formula-sensitive review, which makes this PDP safer to evaluate than a claim-only listing.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Shade and size are explicit",
+            "body": "Variant labels such as 50 ml / 1.69 fl.oz., Size: 50 ml / 1.69 fl.oz., 100 ml / 3.38 fl.oz., Size: 100 ml / 3.38 fl.oz. are visible, reducing ambiguity around the product format before a shopper clicks through.",
+            "evidence_strength": "official_pdp_reviewed"
+          }
+        ],
+        "best_for": [
+          {
+            "tag": "hydration",
+            "label": "hydration",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "firmness",
+            "label": "firmness",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "radiance",
+            "label": "radiance",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "barrier_support",
+            "label": "barrier support",
+            "confidence": "moderate"
+          }
+        ],
+        "shopping_highlight": "peptides, centella, hydration"
+      },
+      "writes": [
+        {
+          "kb_key": "product:ext_1d8c27b856564035c82f3c6b",
+          "action": "skip",
+          "reason": "protected_high_quality_existing:verified",
+          "old_hash": "f37a5edd777fd9547c901aaf2abde418715a00fbc8803d9df706608dfca760f0",
+          "existing_weak": false
+        },
+        {
+          "kb_key": "product:sig_23bdd3f75df7f94909c6c97165f46022",
+          "action": "skip",
+          "reason": "protected_high_quality_existing:reviewed",
+          "old_hash": "271ff78605ef543095acdeb51941c3b7337b178d048f8fdffe7685dc9821dbe7",
+          "existing_weak": false
+        }
+      ]
+    },
+    {
+      "external_product_id": "ext_93bc270bdddd0b29e2097dd9",
+      "pivota_signature_id": "sig_a40ce9bf2eb4bacd268a1d2ae3044ff6",
+      "title": "Ceramic Cream Light",
+      "brand": "TIRTIR Global",
+      "canonical_url": "https://tirtir.global/products/ceramic-cream-light",
+      "changed": false,
+      "blocked": false,
+      "skip_reason": "no_safe_writes",
+      "candidate_hash": "37592d2e60eb104385f3c5ebe01e881fde3fa67d61f4ef3ff7521b855a247dd5",
+      "evidence_profile": "official_pdp_reviewed_formula_and_usage",
+      "source_coverage": {
+        "source": "official_pdp",
+        "canonical_url": "https://tirtir.global/products/ceramic-cream-light",
+        "fields": {
+          "description": true,
+          "ingredients": 1,
+          "active_ingredients": 1,
+          "how_to": 1,
+          "details": 1,
+          "variants": 1
+        }
+      },
+      "preview": {
+        "headline": "Body care treatment",
+        "what_it_is": "Ceramic Cream Light is a body care treatment from TIRTIR Global in 1.69 fl oz, with source-backed cues around hydration.",
+        "why_it_stands_out": [
+          {
+            "headline": "Routine step cues are specific",
+            "body": "Reviewed skincare cues such as centella, hydration, barrier support, 1.69 fl oz identify the routine role or key ingredient context without inventing unsupported benefits.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Ingredient list is available",
+            "body": "Full INCI is present for formula-sensitive review, which makes this PDP safer to evaluate than a claim-only listing.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Shade and size are explicit",
+            "body": "Variant labels such as 1.69 fl oz, Size: 1.69 fl oz are visible, reducing ambiguity around the product format before a shopper clicks through.",
+            "evidence_strength": "official_pdp_reviewed"
+          }
+        ],
+        "best_for": [
+          {
+            "tag": "hydration",
+            "label": "hydration",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "barrier_support",
+            "label": "barrier support",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "aromatherapy",
+            "label": "aromatherapy",
+            "confidence": "moderate"
+          }
+        ],
+        "shopping_highlight": "centella, hydration, barrier support"
+      },
+      "writes": [
+        {
+          "kb_key": "product:ext_93bc270bdddd0b29e2097dd9",
+          "action": "skip",
+          "reason": "protected_high_quality_existing:reviewed",
+          "old_hash": "007dc5a43fd760a24a5cbc4a190742ca04eae645923924d1cc1194c99d7d23c9",
+          "existing_weak": false
+        },
+        {
+          "kb_key": "product:sig_a40ce9bf2eb4bacd268a1d2ae3044ff6",
+          "action": "skip",
+          "reason": "protected_high_quality_existing:reviewed",
+          "old_hash": "007dc5a43fd760a24a5cbc4a190742ca04eae645923924d1cc1194c99d7d23c9",
+          "existing_weak": false
+        }
+      ]
+    },
+    {
+      "external_product_id": "ext_8cfa0e837e468e79ecd6cc3a",
+      "pivota_signature_id": "sig_7d82ccb1cf88626cc70da201e91dba01",
+      "title": "Ceramic Milk Ampoule",
+      "brand": "TIRTIR Global",
+      "canonical_url": "https://tirtir.global/products/ceramic-milk-ampoule",
+      "changed": false,
+      "blocked": false,
+      "skip_reason": "no_safe_writes",
+      "candidate_hash": "8a6734810a73f4e2566afb2c1f72920f384219bfd3555054ea46b35b4e29db5d",
+      "evidence_profile": "official_pdp_reviewed_formula_and_usage",
+      "source_coverage": {
+        "source": "official_pdp",
+        "canonical_url": "https://tirtir.global/products/ceramic-milk-ampoule",
+        "fields": {
+          "description": true,
+          "ingredients": 1,
+          "active_ingredients": 1,
+          "how_to": 1,
+          "details": 1,
+          "variants": 3
+        }
+      },
+      "preview": {
+        "headline": "Treatment serum",
+        "what_it_is": "Ceramic Milk Ampoule is a treatment serum from TIRTIR Global in 10 ml / 0.33 fl.oz., with source-backed ingredient cues around barrier support.",
+        "why_it_stands_out": [
+          {
+            "headline": "Routine step cues are specific",
+            "body": "Reviewed skincare cues such as hydration, barrier support, 10 ml / 0.33 fl.oz., 30ml / 1.01 fl.oz identify the routine role or key ingredient context without inventing unsupported benefits.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Ingredient list is available",
+            "body": "Full INCI is present for formula-sensitive review, which makes this PDP safer to evaluate than a claim-only listing.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Shade and size are explicit",
+            "body": "Variant labels such as 10 ml / 0.33 fl.oz., Size: 10 ml / 0.33 fl.oz., 30ml / 1.01 fl.oz, Size: 30ml / 1.01 fl.oz are visible, reducing ambiguity around the product format before a shopper clicks through.",
+            "evidence_strength": "official_pdp_reviewed"
+          }
+        ],
+        "best_for": [
+          {
+            "tag": "hydration",
+            "label": "hydration",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "radiance",
+            "label": "radiance",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "barrier_support",
+            "label": "barrier support",
+            "confidence": "moderate"
+          }
+        ],
+        "shopping_highlight": "hydration, barrier support"
+      },
+      "writes": [
+        {
+          "kb_key": "product:ext_8cfa0e837e468e79ecd6cc3a",
+          "action": "skip",
+          "reason": "protected_high_quality_existing:reviewed",
+          "old_hash": "be588a576939b2110405e2c3758c9cdbf921753a6f0e20a189c164583a1b2547",
+          "existing_weak": false
+        },
+        {
+          "kb_key": "product:sig_7d82ccb1cf88626cc70da201e91dba01",
+          "action": "skip",
+          "reason": "protected_high_quality_existing:reviewed",
+          "old_hash": "be588a576939b2110405e2c3758c9cdbf921753a6f0e20a189c164583a1b2547",
+          "existing_weak": false
+        }
+      ]
+    },
+    {
+      "external_product_id": "ext_59e20f5ac3693f442e3bdfd2",
+      "pivota_signature_id": "sig_4b1198c815f1396eb025af673d5353d4",
+      "title": "Ceramide Moisture Gel Mask",
+      "brand": "TIRTIR Global",
+      "canonical_url": "https://tirtir.global/products/ceramide-moisture-gel-mask",
+      "changed": false,
+      "blocked": false,
+      "skip_reason": "no_safe_writes",
+      "candidate_hash": "79a009ba5f074b713cb7e9971b74c24403fe93ffdae364e7c1bdafe68fe09190",
+      "evidence_profile": "official_pdp_reviewed_key_ingredients_and_usage",
+      "source_coverage": {
+        "source": "official_pdp",
+        "canonical_url": "https://tirtir.global/products/ceramide-moisture-gel-mask",
+        "fields": {
+          "description": true,
+          "ingredients": 0,
+          "active_ingredients": 1,
+          "how_to": 2,
+          "details": 4,
+          "variants": 1
+        }
+      },
+      "preview": {
+        "headline": "Treatment mask",
+        "what_it_is": "Ceramide Moisture Gel Mask is a treatment mask from TIRTIR Global, with source-backed cues around hydration.",
+        "why_it_stands_out": [
+          {
+            "headline": "Product cues are source-backed",
+            "body": "Reviewed PDP cues such as 28 g / 0.98 oz x 4 ea, Pack: 28 g / 0.98 oz x 4 ea give shoppers specific comparison points within TIRTIR Global, rather than category-only copy.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Key ingredients are identified",
+            "body": "Ceramide is identified, enough for a cautious high-level formula read without inventing unsupported actives.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Shade and size are explicit",
+            "body": "Variant labels such as 28 g / 0.98 oz x 4 ea, Pack: 28 g / 0.98 oz x 4 ea are visible, reducing ambiguity around the product format before a shopper clicks through.",
+            "evidence_strength": "official_pdp_reviewed"
+          }
+        ],
+        "best_for": [
+          {
+            "tag": "28_g_0_98_oz_x_4_ea",
+            "label": "28 g / 0.98 oz x 4 ea",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "pack_28_g_0_98_oz_x_4_ea",
+            "label": "Pack: 28 g / 0.98 oz x 4 ea",
+            "confidence": "moderate"
+          }
+        ],
+        "shopping_highlight": "28 g / 0.98 oz x 4 ea"
+      },
+      "writes": [
+        {
+          "kb_key": "product:ext_59e20f5ac3693f442e3bdfd2",
+          "action": "skip",
+          "reason": "protected_high_quality_existing:reviewed",
+          "old_hash": "f054d12cab00ac2f084b6cd7d4e3a663daedf912d8c591ff8b1e62785f03a35b",
+          "existing_weak": false
+        },
+        {
+          "kb_key": "product:sig_4b1198c815f1396eb025af673d5353d4",
+          "action": "skip",
+          "reason": "protected_high_quality_existing:reviewed",
+          "old_hash": "f054d12cab00ac2f084b6cd7d4e3a663daedf912d8c591ff8b1e62785f03a35b",
+          "existing_weak": false
+        }
+      ]
+    },
+    {
+      "external_product_id": "ext_b0c69b8e4b3b439d52f4b8bb",
+      "pivota_signature_id": "sig_0cd191a72bb0a39d793be41093db0c80",
+      "title": "Collagen Firming Gel Mask",
+      "brand": "TIRTIR Global",
+      "canonical_url": "https://tirtir.global/products/collagen-firming-gel-mask",
+      "changed": false,
+      "blocked": false,
+      "skip_reason": "no_safe_writes",
+      "candidate_hash": "6a74f48c8a33be9f38916ad3f078d4e0f00dd1a5db8ae11fcc740514a289f074",
+      "evidence_profile": "official_pdp_reviewed_key_ingredients_and_usage",
+      "source_coverage": {
+        "source": "official_pdp",
+        "canonical_url": "https://tirtir.global/products/collagen-firming-gel-mask",
+        "fields": {
+          "description": true,
+          "ingredients": 0,
+          "active_ingredients": 1,
+          "how_to": 2,
+          "details": 4,
+          "variants": 1
+        }
+      },
+      "preview": {
+        "headline": "Treatment mask",
+        "what_it_is": "Collagen Firming Gel Mask is a treatment mask from TIRTIR Global, with source-backed cues around hydration.",
+        "why_it_stands_out": [
+          {
+            "headline": "Product cues are source-backed",
+            "body": "Reviewed PDP cues such as peptide, 28 g / 0.98 oz x 4 ea, Pack: 28 g / 0.98 oz x 4 ea give shoppers specific comparison points within TIRTIR Global, rather than category-only copy.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Key ingredients are identified",
+            "body": "Hydrolyzed Collagen is identified, enough for a cautious high-level formula read without inventing unsupported actives.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Shade and size are explicit",
+            "body": "Variant labels such as 28 g / 0.98 oz x 4 ea, Pack: 28 g / 0.98 oz x 4 ea are visible, reducing ambiguity around the product format before a shopper clicks through.",
+            "evidence_strength": "official_pdp_reviewed"
+          }
+        ],
+        "best_for": [
+          {
+            "tag": "peptide",
+            "label": "peptide",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "28_g_0_98_oz_x_4_ea",
+            "label": "28 g / 0.98 oz x 4 ea",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "pack_28_g_0_98_oz_x_4_ea",
+            "label": "Pack: 28 g / 0.98 oz x 4 ea",
+            "confidence": "moderate"
+          }
+        ],
+        "shopping_highlight": "peptide, 28 g / 0.98 oz x 4 ea"
+      },
+      "writes": [
+        {
+          "kb_key": "product:ext_b0c69b8e4b3b439d52f4b8bb",
+          "action": "skip",
+          "reason": "protected_high_quality_existing:reviewed",
+          "old_hash": "eb9fa7a85539fa2c096f8aed69050f16cc8352f64d9a140bb1abee745ef06ce0",
+          "existing_weak": false
+        },
+        {
+          "kb_key": "product:sig_0cd191a72bb0a39d793be41093db0c80",
+          "action": "skip",
+          "reason": "protected_high_quality_existing:reviewed",
+          "old_hash": "eb9fa7a85539fa2c096f8aed69050f16cc8352f64d9a140bb1abee745ef06ce0",
+          "existing_weak": false
+        }
+      ]
+    },
+    {
+      "external_product_id": "ext_4968167c701faea363cf29ba",
+      "pivota_signature_id": "sig_94a72ce6f9981007a38ff78a15999197",
+      "title": "Collagen Lifting Eye Cream",
+      "brand": "TIRTIR Global",
+      "canonical_url": "https://tirtir.global/products/collagen-lifting-eye-cream",
+      "changed": false,
+      "blocked": false,
+      "skip_reason": "no_safe_writes",
+      "candidate_hash": "a0bedb7edd77e092c1fcd6b37d96d23df798804115a092bfa34c4af2147a3fe8",
+      "evidence_profile": "official_pdp_reviewed_formula_and_usage",
+      "source_coverage": {
+        "source": "official_pdp",
+        "canonical_url": "https://tirtir.global/products/collagen-lifting-eye-cream",
+        "fields": {
+          "description": true,
+          "ingredients": 1,
+          "active_ingredients": 1,
+          "how_to": 1,
+          "details": 1,
+          "variants": 1
+        }
+      },
+      "preview": {
+        "headline": "Body care treatment",
+        "what_it_is": "Collagen Lifting Eye Cream is a body care treatment from TIRTIR Global in 100ml, with source-backed cues around hydration and brightening support.",
+        "why_it_stands_out": [
+          {
+            "headline": "Routine step cues are specific",
+            "body": "Reviewed skincare cues such as vitamin C, peptides, hydration, barrier support identify the routine role or key ingredient context without inventing unsupported benefits.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Ingredient list is available",
+            "body": "Full INCI is present for formula-sensitive review, which makes this PDP safer to evaluate than a claim-only listing.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Shade and size are explicit",
+            "body": "Variant labels such as 100ml, Size: 100ml are visible, reducing ambiguity around the product format before a shopper clicks through.",
+            "evidence_strength": "official_pdp_reviewed"
+          }
+        ],
+        "best_for": [
+          {
+            "tag": "hydration",
+            "label": "hydration",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "firmness",
+            "label": "firmness",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "radiance",
+            "label": "radiance",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "barrier_support",
+            "label": "barrier support",
+            "confidence": "moderate"
+          }
+        ],
+        "shopping_highlight": "vitamin C, peptides, hydration"
+      },
+      "writes": [
+        {
+          "kb_key": "product:ext_4968167c701faea363cf29ba",
+          "action": "skip",
+          "reason": "protected_high_quality_existing:verified",
+          "old_hash": "abc45ed1b75eda386497f08f660ec38e383802858ea3bf1e0c788b782c6eedd7",
+          "existing_weak": false
+        },
+        {
+          "kb_key": "product:sig_94a72ce6f9981007a38ff78a15999197",
+          "action": "skip",
+          "reason": "protected_high_quality_existing:reviewed",
+          "old_hash": "a69ecfe0ac225b3ed76709d1856511fce814ee7ff62024bb2f9489616cce6922",
+          "existing_weak": false
+        }
+      ]
+    },
+    {
+      "external_product_id": "ext_03784852f86b262442d136a1",
+      "pivota_signature_id": "sig_2f179e8ddde7bf14c8c27db2a7141359",
+      "title": "Dermatir Intensive Lotion MD",
+      "brand": "TIRTIR Global",
+      "canonical_url": "https://tirtir.global/products/dermatir-intensive-lotion-md-1",
+      "changed": true,
+      "blocked": false,
+      "skip_reason": null,
+      "candidate_hash": "121fc406cbe996083ab8baef37d0885f08b987e4fd6a99af556dedc097fa0f56",
+      "evidence_profile": "official_pdp_reviewed_key_ingredients_and_usage",
+      "source_coverage": {
+        "source": "official_pdp",
+        "canonical_url": "https://tirtir.global/products/dermatir-intensive-lotion-md-1",
+        "fields": {
+          "description": true,
+          "ingredients": 0,
+          "active_ingredients": 1,
+          "how_to": 1,
+          "details": 3,
+          "variants": 1
+        }
+      },
+      "preview": {
+        "headline": "Body care treatment",
+        "what_it_is": "Dermatir Intensive Lotion MD is a body care treatment from TIRTIR Global in 200 g / 7.05 oz, with source-backed cues around cleansing and hydration.",
+        "why_it_stands_out": [
+          {
+            "headline": "Routine step cues are specific",
+            "body": "Reviewed skincare cues such as hydration, barrier support, 200 g / 7.05 oz identify the routine role or key ingredient context without inventing unsupported benefits.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Key ingredients are identified",
+            "body": "Ceramides, Panthenol is identified, enough for a cautious high-level formula read without inventing unsupported actives.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Shade and size are explicit",
+            "body": "Variant labels such as 200 g / 7.05 oz, Size: 200 g / 7.05 oz are visible, reducing ambiguity around the product format before a shopper clicks through.",
+            "evidence_strength": "official_pdp_reviewed"
+          }
+        ],
+        "best_for": [
+          {
+            "tag": "hydration",
+            "label": "hydration",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "barrier_support",
+            "label": "barrier support",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "body_routine",
+            "label": "body routine",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "aromatherapy",
+            "label": "aromatherapy",
+            "confidence": "moderate"
+          }
+        ],
+        "shopping_highlight": "hydration, barrier support"
+      },
+      "writes": [
+        {
+          "kb_key": "product:ext_03784852f86b262442d136a1",
+          "action": "update",
+          "reason": "explicit_owner_delegated_assistant_replacement_review",
+          "old_hash": "89b4dcd0f2d49f57d8d048c255cedecd7cb2993ad43128a5008dd41dbea61624",
+          "candidate_hash": "3384bb3c97bb8d78c4cb60950c1b58078a50bb81c914094696be07b595793d74",
+          "existing_weak": true,
+          "source": "pivota_insights_official_pdp_manual_review_v1",
+          "after_inventory": {
+            "product_id": "ext_03784852f86b262442d136a1",
+            "kb_key": "product:ext_03784852f86b262442d136a1",
+            "source": "pivota_insights_official_pdp_manual_review_v1",
+            "updated_at": "",
+            "last_success_at": "",
+            "title": "Dermatir Intensive Lotion MD",
+            "canonical_url": "",
+            "bundle_hash": "121fc406cbe996083ab8baef37d0885f08b987e4fd6a99af556dedc097fa0f56",
+            "lane": "keep",
+            "reason": "protected_good_content",
+            "priority": 0,
+            "protected": true,
+            "displayable": true,
+            "high_quality_ready": true,
+            "human_reviewed": true,
+            "issues": [],
+            "blocking_issues": [],
+            "quality_state": "reviewed",
+            "evidence_profile": "official_pdp_reviewed_key_ingredients_and_usage",
+            "evidence_rank": 1,
+            "review_tier": "assistant_reviewed",
+            "agent_readable": true,
+            "public_ready": true
+          },
+          "source_meta": {
+            "evidence_profile": "official_pdp_reviewed_key_ingredients_and_usage",
+            "quality_state": "reviewed",
+            "source_origin": "official_pdp_fields",
+            "source_url": "https://tirtir.global/products/dermatir-intensive-lotion-md-1",
+            "quality_improvement": {
+              "previous_bundle_hash": "3cf5dea64ddd521e9806ddf6ba05beab486a5a711cf816d5a74f2f472770df80",
+              "candidate_bundle_hash": "121fc406cbe996083ab8baef37d0885f08b987e4fd6a99af556dedc097fa0f56",
+              "replacement_decision": "explicit_owner_delegated_assistant_replacement_review",
+              "existing_quality_lane": "keep",
+              "candidate_quality_lane": "keep",
+              "existing_evidence_profile": "seller_plus_formula",
+              "candidate_evidence_profile": "official_pdp_reviewed_key_ingredients_and_usage"
+            }
+          }
+        },
+        {
+          "kb_key": "product:sig_2f179e8ddde7bf14c8c27db2a7141359",
+          "action": "update",
+          "reason": "explicit_owner_delegated_assistant_replacement_review",
+          "old_hash": "43b79a4e4ba0c1e34f92f1b348c096ef1f07374fddd06e13f812adfd1466d6ac",
+          "candidate_hash": "3384bb3c97bb8d78c4cb60950c1b58078a50bb81c914094696be07b595793d74",
+          "existing_weak": true,
+          "source": "pivota_insights_official_pdp_manual_review_v1",
+          "after_inventory": {
+            "product_id": "ext_03784852f86b262442d136a1",
+            "kb_key": "product:sig_2f179e8ddde7bf14c8c27db2a7141359",
+            "source": "pivota_insights_official_pdp_manual_review_v1",
+            "updated_at": "",
+            "last_success_at": "",
+            "title": "Dermatir Intensive Lotion MD",
+            "canonical_url": "",
+            "bundle_hash": "121fc406cbe996083ab8baef37d0885f08b987e4fd6a99af556dedc097fa0f56",
+            "lane": "keep",
+            "reason": "protected_good_content",
+            "priority": 0,
+            "protected": true,
+            "displayable": true,
+            "high_quality_ready": true,
+            "human_reviewed": true,
+            "issues": [],
+            "blocking_issues": [],
+            "quality_state": "reviewed",
+            "evidence_profile": "official_pdp_reviewed_key_ingredients_and_usage",
+            "evidence_rank": 1,
+            "review_tier": "assistant_reviewed",
+            "agent_readable": true,
+            "public_ready": true
+          },
+          "source_meta": {
+            "evidence_profile": "official_pdp_reviewed_key_ingredients_and_usage",
+            "quality_state": "reviewed",
+            "source_origin": "official_pdp_fields",
+            "source_url": "https://tirtir.global/products/dermatir-intensive-lotion-md-1",
+            "quality_improvement": {
+              "previous_bundle_hash": "569877b0771d70c1457d83a4c5d780ad256b5710acd24e79cdca1a983036fd80",
+              "candidate_bundle_hash": "121fc406cbe996083ab8baef37d0885f08b987e4fd6a99af556dedc097fa0f56",
+              "replacement_decision": "explicit_owner_delegated_assistant_replacement_review",
+              "existing_quality_lane": "suppress_public",
+              "candidate_quality_lane": "keep",
+              "existing_evidence_profile": "seller_only",
+              "candidate_evidence_profile": "official_pdp_reviewed_key_ingredients_and_usage"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "external_product_id": "ext_4e8c76f135dacc76b2653045",
+      "pivota_signature_id": "sig_60a6c2a99678539cffef3961c03226cb",
+      "title": "Flawless Pore Prep Primer",
+      "brand": "TIRTIR Global",
+      "canonical_url": "https://tirtir.global/products/flawless-pore-prep-primer",
+      "changed": false,
+      "blocked": false,
+      "skip_reason": "no_safe_writes",
+      "candidate_hash": "5e851a4bf18f32b173fa1fdd6213f0a9e8c8a6f5a35cb7f79254d6fd6d5e9d79",
+      "evidence_profile": "official_pdp_reviewed_formula_and_usage",
+      "source_coverage": {
+        "source": "official_pdp",
+        "canonical_url": "https://tirtir.global/products/flawless-pore-prep-primer",
+        "fields": {
+          "description": true,
+          "ingredients": 1,
+          "active_ingredients": 1,
+          "how_to": 1,
+          "details": 8,
+          "variants": 1
+        }
+      },
+      "preview": {
+        "headline": "Makeup primer",
+        "what_it_is": "Pore Prep Primer is a makeup primer from TIRTIR Global in Primer, with source-backed cues around a smoother makeup canvas and pore-smoothing cues.",
+        "why_it_stands_out": [
+          {
+            "headline": "Primer prep cues are specific",
+            "body": "Reviewed primer cues such as makeup prep, soft-focus canvas, pore-smoothing, Primer clarify how it preps skin for smoother makeup laydown without making unsupported coverage claims.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Ingredient list is available",
+            "body": "Full INCI is present for formula-sensitive review, which makes this PDP safer to evaluate than a claim-only listing.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Shade and size are explicit",
+            "body": "Variant labels such as Primer, Format: Primer are visible, reducing ambiguity around the product format before a shopper clicks through.",
+            "evidence_strength": "official_pdp_reviewed"
+          }
+        ],
+        "best_for": [
+          {
+            "tag": "base_makeup_prep",
+            "label": "base makeup prep",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "smooth_makeup_laydown",
+            "label": "smooth makeup laydown",
+            "confidence": "moderate"
+          }
+        ],
+        "shopping_highlight": "makeup prep, soft-focus canvas"
+      },
+      "writes": [
+        {
+          "kb_key": "product:ext_4e8c76f135dacc76b2653045",
+          "action": "skip",
+          "reason": "protected_high_quality_existing:verified",
+          "old_hash": "0883075ba600edc2195dc5718348a2bd11713f07ef1195a8d8f6b4c29fb3e2f6",
+          "existing_weak": false
+        },
+        {
+          "kb_key": "product:sig_60a6c2a99678539cffef3961c03226cb",
+          "action": "skip",
+          "reason": "protected_high_quality_existing:reviewed",
+          "old_hash": "67412238c673a0533e3d9e4130e644ab5769e278f00e1fb87482d65732e8f82e",
+          "existing_weak": false
+        }
+      ]
+    },
+    {
+      "external_product_id": "ext_cab1810f4fae3a388fd00c9b",
+      "pivota_signature_id": "sig_cb56a78f8c7d3611efd6231dcd137778",
+      "title": "Glide & Hide Blurring Concealer",
+      "brand": "TIRTIR Global",
+      "canonical_url": "https://tirtir.global/products/glide-hide-blurring-concealer",
+      "changed": false,
+      "blocked": false,
+      "skip_reason": "no_safe_writes",
+      "candidate_hash": "4ead1de6b3f8e751e33dd0b9f4a1ae863e42378d7fba371cbd996e8badaab174",
+      "evidence_profile": "official_pdp_reviewed_formula_and_usage",
+      "source_coverage": {
+        "source": "official_pdp",
+        "canonical_url": "https://tirtir.global/products/glide-hide-blurring-concealer",
+        "fields": {
+          "description": true,
+          "ingredients": 1,
+          "active_ingredients": 1,
+          "how_to": 1,
+          "details": 3,
+          "variants": 23
+        }
+      },
+      "preview": {
+        "headline": "Complexion makeup",
+        "what_it_is": "Glide & Hide Blurring Concealer is a concealer from TIRTIR Global in 0.5 N, with source-backed cues around coverage control.",
+        "why_it_stands_out": [
+          {
+            "headline": "Coverage and finish cues are clear",
+            "body": "Reviewed complexion cues such as coverage control, shade range support a more precise read on coverage, finish, or shade fit.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Ingredient list is available",
+            "body": "Full INCI is present for formula-sensitive review, which makes this PDP safer to evaluate than a claim-only listing.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Shade and size are explicit",
+            "body": "Variant labels such as 0.5 N, Color: 0.5 N, 1 N, Color: 1 N are visible, reducing ambiguity around the product format before a shopper clicks through.",
+            "evidence_strength": "official_pdp_reviewed"
+          }
+        ],
+        "best_for": [
+          {
+            "tag": "complexion_coverage",
+            "label": "complexion coverage",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "soft_focus_finish",
+            "label": "soft-focus finish",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "radiant_finish",
+            "label": "radiant finish",
+            "confidence": "moderate"
+          }
+        ],
+        "shopping_highlight": "coverage control, shade range"
+      },
+      "writes": [
+        {
+          "kb_key": "product:ext_cab1810f4fae3a388fd00c9b",
+          "action": "skip",
+          "reason": "protected_high_quality_existing:verified",
+          "old_hash": "122f2e332510773f60deabc2fc9fa458db99d18c2d16efc73998c14dbf1a55f4",
+          "existing_weak": false
+        },
+        {
+          "kb_key": "product:sig_cb56a78f8c7d3611efd6231dcd137778",
+          "action": "skip",
+          "reason": "protected_high_quality_existing:reviewed",
+          "old_hash": "e215452d8aef0c18cbdaeb8e182091c39389f1caa1a9f40a437fd32c92d0b822",
+          "existing_weak": false
+        }
+      ]
+    },
+    {
+      "external_product_id": "ext_c7334c30ca5401f2ea0aa01f",
+      "pivota_signature_id": "sig_4130a9e3eaa9023699e6e0d9987c69f7",
+      "title": "Glossy Coating Mist",
+      "brand": "TIRTIR Global",
+      "canonical_url": "https://tirtir.global/products/glossy-coating-mist",
+      "changed": false,
+      "blocked": false,
+      "skip_reason": "no_safe_writes",
+      "candidate_hash": "b9bb6369bbb8a77eac40157c7385b5d0c4ca91b4e3a0c0de4bc4586c8e23b578",
+      "evidence_profile": "official_pdp_reviewed_formula_and_usage",
+      "source_coverage": {
+        "source": "official_pdp",
+        "canonical_url": "https://tirtir.global/products/glossy-coating-mist",
+        "fields": {
+          "description": true,
+          "ingredients": 1,
+          "active_ingredients": 0,
+          "how_to": 1,
+          "details": 1,
+          "variants": 1
+        }
+      },
+      "preview": {
+        "headline": "Face toner",
+        "what_it_is": "Glossy Coating Mist is a face toner from TIRTIR Global in 100ml, with source-backed cues around toning, hydration and brightening support.",
+        "why_it_stands_out": [
+          {
+            "headline": "Routine step cues are specific",
+            "body": "Reviewed skincare cues such as centella, toning step, hydration, barrier support identify the routine role or key ingredient context without inventing unsupported benefits.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Ingredient list is available",
+            "body": "Full INCI is present for formula-sensitive review, which makes this PDP safer to evaluate than a claim-only listing.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Shade and size are explicit",
+            "body": "Variant labels such as 100ml, Size: 100ml are visible, reducing ambiguity around the product format before a shopper clicks through.",
+            "evidence_strength": "official_pdp_reviewed"
+          }
+        ],
+        "best_for": [
+          {
+            "tag": "exfoliating_toner_step",
+            "label": "exfoliating toner step",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "hydration",
+            "label": "hydration",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "firmness",
+            "label": "firmness",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "radiance",
+            "label": "radiance",
+            "confidence": "moderate"
+          }
+        ],
+        "shopping_highlight": "centella, toning step, hydration"
+      },
+      "writes": [
+        {
+          "kb_key": "product:ext_c7334c30ca5401f2ea0aa01f",
+          "action": "skip",
+          "reason": "protected_evidence_profile_existing:community_supported",
+          "old_hash": "bcbbf8dd6cdf3ff615a3dc8bd8dd15f76976362ab9083c5ea5b26c4bdd97773c",
+          "existing_weak": true
+        },
+        {
+          "kb_key": "product:sig_4130a9e3eaa9023699e6e0d9987c69f7",
+          "action": "skip",
+          "reason": "protected_high_quality_existing:reviewed",
+          "old_hash": "4dd6f5e647b5860246e980cbe67ba6240b1c10bd6c8d2da40b698fa855cc548e",
+          "existing_weak": false
+        }
+      ]
+    },
+    {
+      "external_product_id": "ext_76c0f966701116de62498f48",
+      "pivota_signature_id": "sig_1de0936f5f43671c84f4a18f5e5e24b4",
+      "title": "Glowy Jelly Tint",
+      "brand": "TIRTIR Global",
+      "canonical_url": "https://tirtir.global/products/glowy-jelly-tint-사본",
+      "changed": true,
+      "blocked": false,
+      "skip_reason": null,
+      "candidate_hash": "f68ab4dce985e5f45e920706fbccc2737207f71d2e75433c824bb21d26400342",
+      "evidence_profile": "official_pdp_reviewed_formula_and_usage",
+      "source_coverage": {
+        "source": "official_pdp",
+        "canonical_url": "https://tirtir.global/products/glowy-jelly-tint-사본",
+        "fields": {
+          "description": true,
+          "ingredients": 1,
+          "active_ingredients": 0,
+          "how_to": 1,
+          "details": 2,
+          "variants": 8
+        }
+      },
+      "preview": {
+        "headline": "Fine fragrance",
+        "what_it_is": "Glowy Jelly Tint is a fine fragrance from TIRTIR Global.",
+        "why_it_stands_out": [
+          {
+            "headline": "Scent profile cues",
+            "body": "Reviewed scent cues such as hyaluronic acid, squalane, shine finish help shoppers compare the fragrance profile without relying on generic scent copy.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Ingredient list is available",
+            "body": "Full INCI is present for formula-sensitive review, which makes this PDP safer to evaluate than a claim-only listing.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Shade and size are explicit",
+            "body": "Variant labels such as 01 Peach Beach, Color: 01 Peach Beach, 02 Pinkush, Color: 02 Pinkush are visible, reducing ambiguity around the product format before a shopper clicks through.",
+            "evidence_strength": "official_pdp_reviewed"
+          }
+        ],
+        "best_for": [
+          {
+            "tag": "floral_fragrance_profiles",
+            "label": "floral fragrance profiles",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "fragrance_layering",
+            "label": "fragrance layering",
+            "confidence": "moderate"
+          }
+        ],
+        "shopping_highlight": "hyaluronic acid, squalane, shine finish"
+      },
+      "writes": [
+        {
+          "kb_key": "product:ext_76c0f966701116de62498f48",
+          "action": "skip",
+          "reason": "protected_high_quality_existing:verified",
+          "old_hash": "847c4261459c441ae702045d0bdf03960402b188d3c6b39e4f4c67f98140b843",
+          "existing_weak": false
+        },
+        {
+          "kb_key": "product:sig_1de0936f5f43671c84f4a18f5e5e24b4",
+          "action": "insert",
+          "reason": "new_product_intel_bundle",
+          "old_hash": null,
+          "candidate_hash": "b9229b146628c2cad2deafa561280612a61df41fec489fc9a00018129ad99457",
+          "existing_weak": true,
+          "source": "pivota_insights_official_pdp_manual_review_v1",
+          "after_inventory": {
+            "product_id": "ext_76c0f966701116de62498f48",
+            "kb_key": "product:sig_1de0936f5f43671c84f4a18f5e5e24b4",
+            "source": "pivota_insights_official_pdp_manual_review_v1",
+            "updated_at": "",
+            "last_success_at": "",
+            "title": "Glowy Jelly Tint",
+            "canonical_url": "",
+            "bundle_hash": "f68ab4dce985e5f45e920706fbccc2737207f71d2e75433c824bb21d26400342",
+            "lane": "keep",
+            "reason": "protected_good_content",
+            "priority": 0,
+            "protected": true,
+            "displayable": true,
+            "high_quality_ready": true,
+            "human_reviewed": true,
+            "issues": [],
+            "blocking_issues": [],
+            "quality_state": "reviewed",
+            "evidence_profile": "official_pdp_reviewed_formula_and_usage",
+            "evidence_rank": 1,
+            "review_tier": "assistant_reviewed",
+            "agent_readable": true,
+            "public_ready": true
+          },
+          "source_meta": {
+            "evidence_profile": "official_pdp_reviewed_formula_and_usage",
+            "quality_state": "reviewed",
+            "source_origin": "official_pdp_fields",
+            "source_url": "https://tirtir.global/products/glowy-jelly-tint-사본",
+            "quality_improvement": {
+              "previous_bundle_hash": null,
+              "candidate_bundle_hash": "f68ab4dce985e5f45e920706fbccc2737207f71d2e75433c824bb21d26400342",
+              "replacement_decision": "new_product_intel_bundle",
+              "existing_quality_lane": null,
+              "candidate_quality_lane": "keep",
+              "existing_evidence_profile": null,
+              "candidate_evidence_profile": "official_pdp_reviewed_formula_and_usage"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "external_product_id": "ext_5b2a492be891f19ac5b998c9",
+      "pivota_signature_id": "sig_07baba0f1d0eded50bc48ac62747f022",
+      "title": "Hydro Boost Enzyme Cleansing Balm",
+      "brand": "TIRTIR Global",
+      "canonical_url": "https://tirtir.global/products/hydro-boost-enzyme-cleansing-balm",
+      "changed": false,
+      "blocked": false,
+      "skip_reason": "no_safe_writes",
+      "candidate_hash": "f613591e5149c44a6e3b64b1203752a3b19d730cb70cc617e3b8238f6dc6594a",
+      "evidence_profile": "official_pdp_reviewed_formula_and_usage",
+      "source_coverage": {
+        "source": "official_pdp",
+        "canonical_url": "https://tirtir.global/products/hydro-boost-enzyme-cleansing-balm",
+        "fields": {
+          "description": true,
+          "ingredients": 1,
+          "active_ingredients": 1,
+          "how_to": 1,
+          "details": 1,
+          "variants": 3
+        }
+      },
+      "preview": {
+        "headline": "Face cleanser",
+        "what_it_is": "Hydro Boost Enzyme Cleansing Balm is a face cleanser from TIRTIR Global in 120ml, with source-backed cues around cleansing, makeup removal, a non-stripping feel and dirt, oil, and impurity removal.",
+        "why_it_stands_out": [
+          {
+            "headline": "Product cues are source-backed",
+            "body": "Reviewed PDP cues such as daily cleansing, pore cleansing, non-stripping cleanse, makeup removal give shoppers specific comparison points within TIRTIR Global, rather than category-only copy.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Ingredient list is available",
+            "body": "Full INCI is present for formula-sensitive review, which makes this PDP safer to evaluate than a claim-only listing.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Shade and size are explicit",
+            "body": "Variant labels such as 120ml, Size: 120ml, 50ml, Size: 50ml are visible, reducing ambiguity around the product format before a shopper clicks through.",
+            "evidence_strength": "official_pdp_reviewed"
+          }
+        ],
+        "best_for": [
+          {
+            "tag": "daily_cleansing",
+            "label": "daily cleansing",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "pore_cleansing",
+            "label": "pore cleansing",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "non_stripping_cleanse",
+            "label": "non-stripping cleanse",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "makeup_removal",
+            "label": "makeup removal",
+            "confidence": "moderate"
+          }
+        ],
+        "shopping_highlight": "daily cleansing, pore cleansing"
+      },
+      "writes": [
+        {
+          "kb_key": "product:ext_5b2a492be891f19ac5b998c9",
+          "action": "skip",
+          "reason": "protected_high_quality_existing:reviewed",
+          "old_hash": "b4688cfe1fe026e5e570f0b90644d9f580a57520b1225838876e021ab14a746c",
+          "existing_weak": false
+        },
+        {
+          "kb_key": "product:sig_07baba0f1d0eded50bc48ac62747f022",
+          "action": "skip",
+          "reason": "protected_high_quality_existing:reviewed",
+          "old_hash": "b4688cfe1fe026e5e570f0b90644d9f580a57520b1225838876e021ab14a746c",
+          "existing_weak": false
+        }
+      ]
+    },
+    {
+      "external_product_id": "ext_19eb840d0184fc50040ca660",
+      "pivota_signature_id": "sig_e2d98f1599365133242cba749e7a4816",
+      "title": "Hydro Boost Enzyme Powder Wash",
+      "brand": "TIRTIR Global",
+      "canonical_url": "https://tirtir.global/products/hydro-boost-enzyme-powder-wash",
+      "changed": false,
+      "blocked": false,
+      "skip_reason": "no_safe_writes",
+      "candidate_hash": "89343112e6df4da78086850c61b91b411683372936c6d37cae84cff926e9883a",
+      "evidence_profile": "official_pdp_reviewed_formula_and_usage",
+      "source_coverage": {
+        "source": "official_pdp",
+        "canonical_url": "https://tirtir.global/products/hydro-boost-enzyme-powder-wash",
+        "fields": {
+          "description": true,
+          "ingredients": 1,
+          "active_ingredients": 1,
+          "how_to": 1,
+          "details": 1,
+          "variants": 2
+        }
+      },
+      "preview": {
+        "headline": "Face cleanser",
+        "what_it_is": "Hydro Boost Enzyme Powder Wash is a face cleanser from TIRTIR Global in 75g, with source-backed cues around cleansing and dirt, oil, and impurity removal.",
+        "why_it_stands_out": [
+          {
+            "headline": "Product cues are source-backed",
+            "body": "Reviewed PDP cues such as daily cleansing, pore cleansing, 75g, 1g give shoppers specific comparison points within TIRTIR Global, rather than category-only copy.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Ingredient list is available",
+            "body": "Full INCI is present for formula-sensitive review, which makes this PDP safer to evaluate than a claim-only listing.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Shade and size are explicit",
+            "body": "Variant labels such as 75g, Size: 75g, 1g, Size: 1g are visible, reducing ambiguity around the product format before a shopper clicks through.",
+            "evidence_strength": "official_pdp_reviewed"
+          }
+        ],
+        "best_for": [
+          {
+            "tag": "daily_cleansing",
+            "label": "daily cleansing",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "pore_cleansing",
+            "label": "pore cleansing",
+            "confidence": "moderate"
+          }
+        ],
+        "shopping_highlight": "daily cleansing, pore cleansing, 75g, 1g"
+      },
+      "writes": [
+        {
+          "kb_key": "product:ext_19eb840d0184fc50040ca660",
+          "action": "skip",
+          "reason": "protected_high_quality_existing:reviewed",
+          "old_hash": "10612586bc81b8b374983252aa0fcb85d40dbd1712a9d1c1b286827dc4a85751",
+          "existing_weak": false
+        },
+        {
+          "kb_key": "product:sig_e2d98f1599365133242cba749e7a4816",
+          "action": "skip",
+          "reason": "protected_high_quality_existing:reviewed",
+          "old_hash": "10612586bc81b8b374983252aa0fcb85d40dbd1712a9d1c1b286827dc4a85751",
+          "existing_weak": false
+        }
+      ]
+    },
+    {
+      "external_product_id": "ext_4dcc28e0f84ce9b3fcec9241",
+      "pivota_signature_id": "sig_bd4102ea62b61461eacfe440ae6dcddd",
+      "title": "Hydro UV Shield Sunscreen",
+      "brand": "TIRTIR Global",
+      "canonical_url": "https://tirtir.global/products/hydro-uv-shield-sunscreen",
+      "changed": true,
+      "blocked": false,
+      "skip_reason": null,
+      "candidate_hash": "f5995be43fa84a23071a24758e82ac222ceada2ec33a27edbe51fde1af45fd05",
+      "evidence_profile": "official_pdp_reviewed_formula_and_usage",
+      "source_coverage": {
+        "source": "official_pdp",
+        "canonical_url": "https://tirtir.global/products/hydro-uv-shield-sunscreen",
+        "fields": {
+          "description": true,
+          "ingredients": 1,
+          "active_ingredients": 1,
+          "how_to": 1,
+          "details": 1,
+          "variants": 2
+        }
+      },
+      "preview": {
+        "headline": "Daily sunscreen",
+        "what_it_is": "Hydro UV Shield Sunscreen is a daily SPF moisturizer from TIRTIR Global, with source-backed cues around hydrating ingredients.",
+        "why_it_stands_out": [
+          {
+            "headline": "SPF format cues are clear",
+            "body": "Reviewed SPF cues such as sun protection, hydration clarify protection format, hydration support, or refill status without replacing the official sunscreen facts.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Ingredient list is available",
+            "body": "Full INCI is present for formula-sensitive review, which makes this PDP safer to evaluate than a claim-only listing.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Shade and size are explicit",
+            "body": "Variant labels such as 1 Pack, Quantity: 1 Pack, 2 Pack, Quantity: 2 Pack are visible, reducing ambiguity around the product format before a shopper clicks through.",
+            "evidence_strength": "official_pdp_reviewed"
+          }
+        ],
+        "best_for": [
+          {
+            "tag": "hydration",
+            "label": "hydration",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "firmness",
+            "label": "firmness",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "sun_protection",
+            "label": "sun protection",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "aromatherapy",
+            "label": "aromatherapy",
+            "confidence": "moderate"
+          }
+        ],
+        "shopping_highlight": "sun protection, hydration"
+      },
+      "writes": [
+        {
+          "kb_key": "product:ext_4dcc28e0f84ce9b3fcec9241",
+          "action": "skip",
+          "reason": "protected_evidence_profile_existing:community_supported",
+          "old_hash": "0546a3f125f588a54dd01aa57708c0f3f75a9c494d085afe7b37f14177a7642f",
+          "existing_weak": true
+        },
+        {
+          "kb_key": "product:sig_bd4102ea62b61461eacfe440ae6dcddd",
+          "action": "insert",
+          "reason": "new_product_intel_bundle",
+          "old_hash": null,
+          "candidate_hash": "8ae63757c14d47dea3b5f7eb6ac725e9c704b10d53b232a475eebc696d1d1d0c",
+          "existing_weak": true,
+          "source": "pivota_insights_official_pdp_manual_review_v1",
+          "after_inventory": {
+            "product_id": "ext_4dcc28e0f84ce9b3fcec9241",
+            "kb_key": "product:sig_bd4102ea62b61461eacfe440ae6dcddd",
+            "source": "pivota_insights_official_pdp_manual_review_v1",
+            "updated_at": "",
+            "last_success_at": "",
+            "title": "Hydro UV Shield Sunscreen",
+            "canonical_url": "",
+            "bundle_hash": "f5995be43fa84a23071a24758e82ac222ceada2ec33a27edbe51fde1af45fd05",
+            "lane": "keep",
+            "reason": "protected_good_content",
+            "priority": 0,
+            "protected": true,
+            "displayable": true,
+            "high_quality_ready": true,
+            "human_reviewed": true,
+            "issues": [],
+            "blocking_issues": [],
+            "quality_state": "reviewed",
+            "evidence_profile": "official_pdp_reviewed_formula_and_usage",
+            "evidence_rank": 1,
+            "review_tier": "assistant_reviewed",
+            "agent_readable": true,
+            "public_ready": true
+          },
+          "source_meta": {
+            "evidence_profile": "official_pdp_reviewed_formula_and_usage",
+            "quality_state": "reviewed",
+            "source_origin": "official_pdp_fields",
+            "source_url": "https://tirtir.global/products/hydro-uv-shield-sunscreen",
+            "quality_improvement": {
+              "previous_bundle_hash": null,
+              "candidate_bundle_hash": "f5995be43fa84a23071a24758e82ac222ceada2ec33a27edbe51fde1af45fd05",
+              "replacement_decision": "new_product_intel_bundle",
+              "existing_quality_lane": null,
+              "candidate_quality_lane": "keep",
+              "existing_evidence_profile": null,
+              "candidate_evidence_profile": "official_pdp_reviewed_formula_and_usage"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "external_product_id": "ext_39b3cafe7938c761c8530f81",
+      "pivota_signature_id": "sig_d90a27d714aeef23bf2f9fabf2123806",
+      "title": "Ice-Cooling Toner Pack Pads",
+      "brand": "TIRTIR Global",
+      "canonical_url": "https://tirtir.global/products/ice-cooling-toner-pack-pads",
+      "changed": true,
+      "blocked": false,
+      "skip_reason": null,
+      "candidate_hash": "d546c5ed3818744a420017aa5aff8c296c6079993432e4ad742ee3bb4719812e",
+      "evidence_profile": "official_pdp_reviewed_formula_and_usage",
+      "source_coverage": {
+        "source": "official_pdp",
+        "canonical_url": "https://tirtir.global/products/ice-cooling-toner-pack-pads",
+        "fields": {
+          "description": true,
+          "ingredients": 1,
+          "active_ingredients": 1,
+          "how_to": 1,
+          "details": 1,
+          "variants": 1
+        }
+      },
+      "preview": {
+        "headline": "Face toner",
+        "what_it_is": "Ice-Cooling Toner Pack Pads is a face toner from TIRTIR Global in 70mm, with source-backed cues around toning, hydration and brightening support.",
+        "why_it_stands_out": [
+          {
+            "headline": "Routine step cues are specific",
+            "body": "Reviewed skincare cues such as centella, toning step, hydration, 70mm identify the routine role or key ingredient context without inventing unsupported benefits.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Ingredient list is available",
+            "body": "Full INCI is present for formula-sensitive review, which makes this PDP safer to evaluate than a claim-only listing.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Shade and size are explicit",
+            "body": "Variant labels such as 70mm, Size: 70mm are visible, reducing ambiguity around the product format before a shopper clicks through.",
+            "evidence_strength": "official_pdp_reviewed"
+          }
+        ],
+        "best_for": [
+          {
+            "tag": "exfoliating_toner_step",
+            "label": "exfoliating toner step",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "hydration",
+            "label": "hydration",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "aromatherapy",
+            "label": "aromatherapy",
+            "confidence": "moderate"
+          }
+        ],
+        "shopping_highlight": "centella, toning step, hydration, 70mm"
+      },
+      "writes": [
+        {
+          "kb_key": "product:ext_39b3cafe7938c761c8530f81",
+          "action": "skip",
+          "reason": "protected_high_quality_existing:verified",
+          "old_hash": "e78e5e1b795abfbfb52da48260dc1afee975798c3035cb58c527098f502821e0",
+          "existing_weak": false
+        },
+        {
+          "kb_key": "product:sig_d90a27d714aeef23bf2f9fabf2123806",
+          "action": "insert",
+          "reason": "new_product_intel_bundle",
+          "old_hash": null,
+          "candidate_hash": "d073be3dac4cfd059cdcdd4cafd0d97bd5794c0c3cb6c534c006a73a93042fb0",
+          "existing_weak": true,
+          "source": "pivota_insights_official_pdp_manual_review_v1",
+          "after_inventory": {
+            "product_id": "ext_39b3cafe7938c761c8530f81",
+            "kb_key": "product:sig_d90a27d714aeef23bf2f9fabf2123806",
+            "source": "pivota_insights_official_pdp_manual_review_v1",
+            "updated_at": "",
+            "last_success_at": "",
+            "title": "Ice-Cooling Toner Pack Pads",
+            "canonical_url": "",
+            "bundle_hash": "d546c5ed3818744a420017aa5aff8c296c6079993432e4ad742ee3bb4719812e",
+            "lane": "keep",
+            "reason": "protected_good_content",
+            "priority": 0,
+            "protected": true,
+            "displayable": true,
+            "high_quality_ready": true,
+            "human_reviewed": true,
+            "issues": [],
+            "blocking_issues": [],
+            "quality_state": "reviewed",
+            "evidence_profile": "official_pdp_reviewed_formula_and_usage",
+            "evidence_rank": 1,
+            "review_tier": "assistant_reviewed",
+            "agent_readable": true,
+            "public_ready": true
+          },
+          "source_meta": {
+            "evidence_profile": "official_pdp_reviewed_formula_and_usage",
+            "quality_state": "reviewed",
+            "source_origin": "official_pdp_fields",
+            "source_url": "https://tirtir.global/products/ice-cooling-toner-pack-pads",
+            "quality_improvement": {
+              "previous_bundle_hash": null,
+              "candidate_bundle_hash": "d546c5ed3818744a420017aa5aff8c296c6079993432e4ad742ee3bb4719812e",
+              "replacement_decision": "new_product_intel_bundle",
+              "existing_quality_lane": null,
+              "candidate_quality_lane": "keep",
+              "existing_evidence_profile": null,
+              "candidate_evidence_profile": "official_pdp_reviewed_formula_and_usage"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "external_product_id": "ext_07509f4743c82d62b2f15231",
+      "pivota_signature_id": "sig_a7c812309160c479731dd853073b959b",
+      "title": "Ice-Cooling Water Drop Serum",
+      "brand": "TIRTIR Global",
+      "canonical_url": "https://tirtir.global/products/ice-cooling-water-drop-serum",
+      "changed": true,
+      "blocked": false,
+      "skip_reason": null,
+      "candidate_hash": "bba4ff6e8afe71f60ca1597d2710419496d455795e6fec1d35d021ce6e78736f",
+      "evidence_profile": "official_pdp_reviewed_formula_and_usage",
+      "source_coverage": {
+        "source": "official_pdp",
+        "canonical_url": "https://tirtir.global/products/ice-cooling-water-drop-serum",
+        "fields": {
+          "description": true,
+          "ingredients": 1,
+          "active_ingredients": 1,
+          "how_to": 1,
+          "details": 1,
+          "variants": 1
+        }
+      },
+      "preview": {
+        "headline": "Treatment serum",
+        "what_it_is": "Ice-Cooling Water Drop Serum is a treatment serum from TIRTIR Global in 30 mL, with source-backed ingredient cues around retinol, centella and barrier support.",
+        "why_it_stands_out": [
+          {
+            "headline": "Routine step cues are specific",
+            "body": "Reviewed skincare cues such as retinol, centella, toning step, hydration identify the routine role or key ingredient context without inventing unsupported benefits.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Ingredient list is available",
+            "body": "Full INCI is present for formula-sensitive review, which makes this PDP safer to evaluate than a claim-only listing.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Shade and size are explicit",
+            "body": "Variant labels such as 30 mL, Size: 30 mL are visible, reducing ambiguity around the product format before a shopper clicks through.",
+            "evidence_strength": "official_pdp_reviewed"
+          }
+        ],
+        "best_for": [
+          {
+            "tag": "exfoliating_toner_step",
+            "label": "exfoliating toner step",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "hydration",
+            "label": "hydration",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "firmness",
+            "label": "firmness",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "barrier_support",
+            "label": "barrier support",
+            "confidence": "moderate"
+          }
+        ],
+        "shopping_highlight": "retinol, centella, toning step"
+      },
+      "writes": [
+        {
+          "kb_key": "product:ext_07509f4743c82d62b2f15231",
+          "action": "skip",
+          "reason": "protected_high_quality_existing:verified",
+          "old_hash": "b92eff797f1bffed3dc609d66e27ad4268dfd64661928c9e34f0356050f77b9e",
+          "existing_weak": false
+        },
+        {
+          "kb_key": "product:sig_a7c812309160c479731dd853073b959b",
+          "action": "insert",
+          "reason": "new_product_intel_bundle",
+          "old_hash": null,
+          "candidate_hash": "36fac8dc6b8b28a443ab7909bff19121115c4246c30b5ce924e9fd566e45538f",
+          "existing_weak": true,
+          "source": "pivota_insights_official_pdp_manual_review_v1",
+          "after_inventory": {
+            "product_id": "ext_07509f4743c82d62b2f15231",
+            "kb_key": "product:sig_a7c812309160c479731dd853073b959b",
+            "source": "pivota_insights_official_pdp_manual_review_v1",
+            "updated_at": "",
+            "last_success_at": "",
+            "title": "Ice-Cooling Water Drop Serum",
+            "canonical_url": "",
+            "bundle_hash": "bba4ff6e8afe71f60ca1597d2710419496d455795e6fec1d35d021ce6e78736f",
+            "lane": "keep",
+            "reason": "protected_good_content",
+            "priority": 0,
+            "protected": true,
+            "displayable": true,
+            "high_quality_ready": true,
+            "human_reviewed": true,
+            "issues": [],
+            "blocking_issues": [],
+            "quality_state": "reviewed",
+            "evidence_profile": "official_pdp_reviewed_formula_and_usage",
+            "evidence_rank": 1,
+            "review_tier": "assistant_reviewed",
+            "agent_readable": true,
+            "public_ready": true
+          },
+          "source_meta": {
+            "evidence_profile": "official_pdp_reviewed_formula_and_usage",
+            "quality_state": "reviewed",
+            "source_origin": "official_pdp_fields",
+            "source_url": "https://tirtir.global/products/ice-cooling-water-drop-serum",
+            "quality_improvement": {
+              "previous_bundle_hash": null,
+              "candidate_bundle_hash": "bba4ff6e8afe71f60ca1597d2710419496d455795e6fec1d35d021ce6e78736f",
+              "replacement_decision": "new_product_intel_bundle",
+              "existing_quality_lane": null,
+              "candidate_quality_lane": "keep",
+              "existing_evidence_profile": null,
+              "candidate_evidence_profile": "official_pdp_reviewed_formula_and_usage"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "external_product_id": "ext_0c5ff135e1e9209ad85ba45a",
+      "pivota_signature_id": "sig_90c6f108256d4a15780bfd821c513953",
+      "title": "Mask Fit AI Filter Cushion",
+      "brand": "TIRTIR Global",
+      "canonical_url": "https://tirtir.global/products/mask-fit-ai-filter-cushion",
+      "changed": true,
+      "blocked": false,
+      "skip_reason": null,
+      "candidate_hash": "187433f853770e06c2cd9aa60978b4c2d76bb8c986e9df4075b5320db5b38641",
+      "evidence_profile": "official_pdp_reviewed_formula_and_usage",
+      "source_coverage": {
+        "source": "official_pdp",
+        "canonical_url": "https://tirtir.global/products/mask-fit-ai-filter-cushion",
+        "fields": {
+          "description": true,
+          "ingredients": 1,
+          "active_ingredients": 1,
+          "how_to": 2,
+          "details": 3,
+          "variants": 30
+        }
+      },
+      "preview": {
+        "headline": "Complexion makeup",
+        "what_it_is": "Mask Fit AI Filter Cushion is a complexion product from TIRTIR Global in 10C Shell, with source-backed cues around a soft-matte finish and coverage control.",
+        "why_it_stands_out": [
+          {
+            "headline": "Coverage and finish cues are clear",
+            "body": "Reviewed complexion cues such as soft-matte finish, coverage control, shade range support a more precise read on coverage, finish, or shade fit.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Ingredient list is available",
+            "body": "Full INCI is present for formula-sensitive review, which makes this PDP safer to evaluate than a claim-only listing.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Shade and size are explicit",
+            "body": "Variant labels such as 10C Shell, Color: 10C Shell, 11C Cool Rosy, Color: 11C Cool Rosy are visible, reducing ambiguity around the product format before a shopper clicks through.",
+            "evidence_strength": "official_pdp_reviewed"
+          }
+        ],
+        "best_for": [
+          {
+            "tag": "complexion_coverage",
+            "label": "complexion coverage",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "soft_focus_finish",
+            "label": "soft-focus finish",
+            "confidence": "moderate"
+          }
+        ],
+        "shopping_highlight": "soft-matte finish, coverage control"
+      },
+      "writes": [
+        {
+          "kb_key": "product:ext_0c5ff135e1e9209ad85ba45a",
+          "action": "skip",
+          "reason": "protected_high_quality_existing:verified",
+          "old_hash": "aa0776d7f3cb78ecf8efa0b3fd7fbfee7ec259716b9a667f39aecce0d047960e",
+          "existing_weak": false
+        },
+        {
+          "kb_key": "product:sig_90c6f108256d4a15780bfd821c513953",
+          "action": "insert",
+          "reason": "new_product_intel_bundle",
+          "old_hash": null,
+          "candidate_hash": "04ce6b678ea300eb1c71bc081a8f95403123ce946f1fc7955db384260b5aea07",
+          "existing_weak": true,
+          "source": "pivota_insights_official_pdp_manual_review_v1",
+          "after_inventory": {
+            "product_id": "ext_0c5ff135e1e9209ad85ba45a",
+            "kb_key": "product:sig_90c6f108256d4a15780bfd821c513953",
+            "source": "pivota_insights_official_pdp_manual_review_v1",
+            "updated_at": "",
+            "last_success_at": "",
+            "title": "Mask Fit AI Filter Cushion",
+            "canonical_url": "",
+            "bundle_hash": "187433f853770e06c2cd9aa60978b4c2d76bb8c986e9df4075b5320db5b38641",
+            "lane": "keep",
+            "reason": "protected_good_content",
+            "priority": 0,
+            "protected": true,
+            "displayable": true,
+            "high_quality_ready": true,
+            "human_reviewed": true,
+            "issues": [],
+            "blocking_issues": [],
+            "quality_state": "reviewed",
+            "evidence_profile": "official_pdp_reviewed_formula_and_usage",
+            "evidence_rank": 1,
+            "review_tier": "assistant_reviewed",
+            "agent_readable": true,
+            "public_ready": true
+          },
+          "source_meta": {
+            "evidence_profile": "official_pdp_reviewed_formula_and_usage",
+            "quality_state": "reviewed",
+            "source_origin": "official_pdp_fields",
+            "source_url": "https://tirtir.global/products/mask-fit-ai-filter-cushion",
+            "quality_improvement": {
+              "previous_bundle_hash": null,
+              "candidate_bundle_hash": "187433f853770e06c2cd9aa60978b4c2d76bb8c986e9df4075b5320db5b38641",
+              "replacement_decision": "new_product_intel_bundle",
+              "existing_quality_lane": null,
+              "candidate_quality_lane": "keep",
+              "existing_evidence_profile": null,
+              "candidate_evidence_profile": "official_pdp_reviewed_formula_and_usage"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "external_product_id": "ext_a639cc92b3446b6eee7cabe7",
+      "pivota_signature_id": "sig_db5567316aec66d85b329f68942386e9",
+      "title": "Mask Fit All Cover Cushion",
+      "brand": "TIRTIR Global",
+      "canonical_url": "https://tirtir.global/products/mask-fit-all-cover-cushion",
+      "changed": true,
+      "blocked": false,
+      "skip_reason": null,
+      "candidate_hash": "45dfe899a3930d4ad8c11db2936b7de50f0f5766e98e88386b969a0cdd0e5d43",
+      "evidence_profile": "official_pdp_reviewed_formula_and_usage",
+      "source_coverage": {
+        "source": "official_pdp",
+        "canonical_url": "https://tirtir.global/products/mask-fit-all-cover-cushion",
+        "fields": {
+          "description": true,
+          "ingredients": 1,
+          "active_ingredients": 1,
+          "how_to": 1,
+          "details": 1,
+          "variants": 20
+        }
+      },
+      "preview": {
+        "headline": "Complexion makeup",
+        "what_it_is": "Mask Fit All Cover Cushion is a complexion product from TIRTIR Global in 13N Fair Ivory, with source-backed cues around coverage control.",
+        "why_it_stands_out": [
+          {
+            "headline": "Coverage and finish cues are clear",
+            "body": "Reviewed complexion cues such as coverage control, shade range support a more precise read on coverage, finish, or shade fit.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Ingredient list is available",
+            "body": "Full INCI is present for formula-sensitive review, which makes this PDP safer to evaluate than a claim-only listing.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Shade and size are explicit",
+            "body": "Variant labels such as 13N Fair Ivory, Color: 13N Fair Ivory, 15C Fair Porcelain, Color: 15C Fair Porcelain are visible, reducing ambiguity around the product format before a shopper clicks through.",
+            "evidence_strength": "official_pdp_reviewed"
+          }
+        ],
+        "best_for": [
+          {
+            "tag": "complexion_coverage",
+            "label": "complexion coverage",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "soft_focus_finish",
+            "label": "soft-focus finish",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "radiant_finish",
+            "label": "radiant finish",
+            "confidence": "moderate"
+          }
+        ],
+        "shopping_highlight": "coverage control, shade range"
+      },
+      "writes": [
+        {
+          "kb_key": "product:ext_a639cc92b3446b6eee7cabe7",
+          "action": "skip",
+          "reason": "protected_high_quality_existing:reviewed",
+          "old_hash": "6d678a51f7b5dcfe9593cd0e006d0d9eb13a89d8077c804f35965affb96f2e9c",
+          "existing_weak": false
+        },
+        {
+          "kb_key": "product:sig_db5567316aec66d85b329f68942386e9",
+          "action": "insert",
+          "reason": "new_product_intel_bundle",
+          "old_hash": null,
+          "candidate_hash": "1c5340e01d0a5412f7079a69475e4cc0b5a913cb9754b8a082086314c0dd3bc5",
+          "existing_weak": true,
+          "source": "pivota_insights_official_pdp_manual_review_v1",
+          "after_inventory": {
+            "product_id": "ext_a639cc92b3446b6eee7cabe7",
+            "kb_key": "product:sig_db5567316aec66d85b329f68942386e9",
+            "source": "pivota_insights_official_pdp_manual_review_v1",
+            "updated_at": "",
+            "last_success_at": "",
+            "title": "Mask Fit All Cover Cushion",
+            "canonical_url": "",
+            "bundle_hash": "45dfe899a3930d4ad8c11db2936b7de50f0f5766e98e88386b969a0cdd0e5d43",
+            "lane": "keep",
+            "reason": "protected_good_content",
+            "priority": 0,
+            "protected": true,
+            "displayable": true,
+            "high_quality_ready": true,
+            "human_reviewed": true,
+            "issues": [],
+            "blocking_issues": [],
+            "quality_state": "reviewed",
+            "evidence_profile": "official_pdp_reviewed_formula_and_usage",
+            "evidence_rank": 1,
+            "review_tier": "assistant_reviewed",
+            "agent_readable": true,
+            "public_ready": true
+          },
+          "source_meta": {
+            "evidence_profile": "official_pdp_reviewed_formula_and_usage",
+            "quality_state": "reviewed",
+            "source_origin": "official_pdp_fields",
+            "source_url": "https://tirtir.global/products/mask-fit-all-cover-cushion",
+            "quality_improvement": {
+              "previous_bundle_hash": null,
+              "candidate_bundle_hash": "45dfe899a3930d4ad8c11db2936b7de50f0f5766e98e88386b969a0cdd0e5d43",
+              "replacement_decision": "new_product_intel_bundle",
+              "existing_quality_lane": null,
+              "candidate_quality_lane": "keep",
+              "existing_evidence_profile": null,
+              "candidate_evidence_profile": "official_pdp_reviewed_formula_and_usage"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "external_product_id": "ext_f547012d9e7a18a054240103",
+      "pivota_signature_id": "sig_9301697b68299489fe45c92d09a68279",
+      "title": "Mask Fit All Cover Cushion Refill",
+      "brand": "TIRTIR Global",
+      "canonical_url": "https://tirtir.global/products/mask-fit-all-cover-cushion-refill",
+      "changed": true,
+      "blocked": false,
+      "skip_reason": null,
+      "candidate_hash": "95bc15d149f13feaa3ccfecbe6b0011e4becd96968316a5cdad12af4bc548898",
+      "evidence_profile": "official_pdp_reviewed_formula_and_usage",
+      "source_coverage": {
+        "source": "official_pdp",
+        "canonical_url": "https://tirtir.global/products/mask-fit-all-cover-cushion-refill",
+        "fields": {
+          "description": true,
+          "ingredients": 1,
+          "active_ingredients": 0,
+          "how_to": 1,
+          "details": 4,
+          "variants": 1
+        }
+      },
+      "preview": {
+        "headline": "Complexion makeup",
+        "what_it_is": "Mask Fit All Cover Cushion Refill is a complexion product from TIRTIR Global in 21N Ivory, with source-backed cues around coverage control.",
+        "why_it_stands_out": [
+          {
+            "headline": "Coverage and finish cues are clear",
+            "body": "Reviewed complexion cues such as coverage control, shade range support a more precise read on coverage, finish, or shade fit.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Ingredient list is available",
+            "body": "Full INCI is present for formula-sensitive review, which makes this PDP safer to evaluate than a claim-only listing.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Shade and size are explicit",
+            "body": "Variant labels such as 21N Ivory, Color: 21N Ivory are visible, reducing ambiguity around the product format before a shopper clicks through.",
+            "evidence_strength": "official_pdp_reviewed"
+          }
+        ],
+        "best_for": [
+          {
+            "tag": "complexion_coverage",
+            "label": "complexion coverage",
+            "confidence": "moderate"
+          }
+        ],
+        "shopping_highlight": "coverage control, shade range"
+      },
+      "writes": [
+        {
+          "kb_key": "product:ext_f547012d9e7a18a054240103",
+          "action": "update",
+          "reason": "explicit_owner_delegated_assistant_replacement_review",
+          "old_hash": "9146a1551f9c8d2053e6fa263ebb91d69fccfdc42abc2898da7c795f6daf1c80",
+          "candidate_hash": "ea878534145e99dfae9e4313d1066f873036fad841016117b75dea4d8af93a23",
+          "existing_weak": true,
+          "source": "pivota_insights_official_pdp_manual_review_v1",
+          "after_inventory": {
+            "product_id": "ext_f547012d9e7a18a054240103",
+            "kb_key": "product:ext_f547012d9e7a18a054240103",
+            "source": "pivota_insights_official_pdp_manual_review_v1",
+            "updated_at": "",
+            "last_success_at": "",
+            "title": "Mask Fit All Cover Cushion Refill",
+            "canonical_url": "",
+            "bundle_hash": "95bc15d149f13feaa3ccfecbe6b0011e4becd96968316a5cdad12af4bc548898",
+            "lane": "keep",
+            "reason": "protected_good_content",
+            "priority": 0,
+            "protected": true,
+            "displayable": true,
+            "high_quality_ready": true,
+            "human_reviewed": true,
+            "issues": [],
+            "blocking_issues": [],
+            "quality_state": "reviewed",
+            "evidence_profile": "official_pdp_reviewed_formula_and_usage",
+            "evidence_rank": 1,
+            "review_tier": "assistant_reviewed",
+            "agent_readable": true,
+            "public_ready": true
+          },
+          "source_meta": {
+            "evidence_profile": "official_pdp_reviewed_formula_and_usage",
+            "quality_state": "reviewed",
+            "source_origin": "official_pdp_fields",
+            "source_url": "https://tirtir.global/products/mask-fit-all-cover-cushion-refill",
+            "quality_improvement": {
+              "previous_bundle_hash": "0612f64ca2f9d573ff551865e07e9f07974093df0b50638ac1d5f9a3797b857a",
+              "candidate_bundle_hash": "95bc15d149f13feaa3ccfecbe6b0011e4becd96968316a5cdad12af4bc548898",
+              "replacement_decision": "explicit_owner_delegated_assistant_replacement_review",
+              "existing_quality_lane": "keep",
+              "candidate_quality_lane": "keep",
+              "existing_evidence_profile": "mixed",
+              "candidate_evidence_profile": "official_pdp_reviewed_formula_and_usage"
+            }
+          }
+        },
+        {
+          "kb_key": "product:sig_9301697b68299489fe45c92d09a68279",
+          "action": "insert",
+          "reason": "new_product_intel_bundle",
+          "old_hash": null,
+          "candidate_hash": "ea878534145e99dfae9e4313d1066f873036fad841016117b75dea4d8af93a23",
+          "existing_weak": true,
+          "source": "pivota_insights_official_pdp_manual_review_v1",
+          "after_inventory": {
+            "product_id": "ext_f547012d9e7a18a054240103",
+            "kb_key": "product:sig_9301697b68299489fe45c92d09a68279",
+            "source": "pivota_insights_official_pdp_manual_review_v1",
+            "updated_at": "",
+            "last_success_at": "",
+            "title": "Mask Fit All Cover Cushion Refill",
+            "canonical_url": "",
+            "bundle_hash": "95bc15d149f13feaa3ccfecbe6b0011e4becd96968316a5cdad12af4bc548898",
+            "lane": "keep",
+            "reason": "protected_good_content",
+            "priority": 0,
+            "protected": true,
+            "displayable": true,
+            "high_quality_ready": true,
+            "human_reviewed": true,
+            "issues": [],
+            "blocking_issues": [],
+            "quality_state": "reviewed",
+            "evidence_profile": "official_pdp_reviewed_formula_and_usage",
+            "evidence_rank": 1,
+            "review_tier": "assistant_reviewed",
+            "agent_readable": true,
+            "public_ready": true
+          },
+          "source_meta": {
+            "evidence_profile": "official_pdp_reviewed_formula_and_usage",
+            "quality_state": "reviewed",
+            "source_origin": "official_pdp_fields",
+            "source_url": "https://tirtir.global/products/mask-fit-all-cover-cushion-refill",
+            "quality_improvement": {
+              "previous_bundle_hash": null,
+              "candidate_bundle_hash": "95bc15d149f13feaa3ccfecbe6b0011e4becd96968316a5cdad12af4bc548898",
+              "replacement_decision": "new_product_intel_bundle",
+              "existing_quality_lane": null,
+              "candidate_quality_lane": "keep",
+              "existing_evidence_profile": null,
+              "candidate_evidence_profile": "official_pdp_reviewed_formula_and_usage"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "external_product_id": "ext_68ad409f681f1278525ced16",
+      "pivota_signature_id": "sig_89d2a421e74805310657f39220a17acc",
+      "title": "Mask Fit Aura Cushion",
+      "brand": "TIRTIR Global",
+      "canonical_url": "https://tirtir.global/products/mask-fit-aura-cushion",
+      "changed": true,
+      "blocked": false,
+      "skip_reason": null,
+      "candidate_hash": "993d938a3eff4d8953a4a4e7cdef9772ecc8ed4f283cc6e1ee105dd0b6c2c888",
+      "evidence_profile": "official_pdp_reviewed_formula_and_usage",
+      "source_coverage": {
+        "source": "official_pdp",
+        "canonical_url": "https://tirtir.global/products/mask-fit-aura-cushion",
+        "fields": {
+          "description": true,
+          "ingredients": 1,
+          "active_ingredients": 0,
+          "how_to": 1,
+          "details": 1,
+          "variants": 20
+        }
+      },
+      "preview": {
+        "headline": "Complexion makeup",
+        "what_it_is": "Mask Fit Aura Cushion is a complexion product from TIRTIR Global in 13N Fair Ivory, with source-backed cues around long-wear coverage and coverage control.",
+        "why_it_stands_out": [
+          {
+            "headline": "Coverage and finish cues are clear",
+            "body": "Reviewed complexion cues such as longwear coverage, coverage control, shade range support a more precise read on coverage, finish, or shade fit.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Ingredient list is available",
+            "body": "Full INCI is present for formula-sensitive review, which makes this PDP safer to evaluate than a claim-only listing.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Shade and size are explicit",
+            "body": "Variant labels such as 13N Fair Ivory, Color: 13N Fair Ivory, 15C Fair Porcelain, Color: 15C Fair Porcelain are visible, reducing ambiguity around the product format before a shopper clicks through.",
+            "evidence_strength": "official_pdp_reviewed"
+          }
+        ],
+        "best_for": [
+          {
+            "tag": "complexion_coverage",
+            "label": "complexion coverage",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "soft_focus_finish",
+            "label": "soft-focus finish",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "radiant_finish",
+            "label": "radiant finish",
+            "confidence": "moderate"
+          }
+        ],
+        "shopping_highlight": "longwear coverage, coverage control"
+      },
+      "writes": [
+        {
+          "kb_key": "product:ext_68ad409f681f1278525ced16",
+          "action": "update",
+          "reason": "explicit_owner_delegated_assistant_replacement_review",
+          "old_hash": "cf7cb62efac5ea744d6730ef2f4b1ef5902af4fd8d4b3c15e58bc1f196ab02b7",
+          "candidate_hash": "6d841d90da7c7266c1b5e975b92c564282a991d920c364179e5e24928d355a09",
+          "existing_weak": true,
+          "source": "pivota_insights_official_pdp_manual_review_v1",
+          "after_inventory": {
+            "product_id": "ext_68ad409f681f1278525ced16",
+            "kb_key": "product:ext_68ad409f681f1278525ced16",
+            "source": "pivota_insights_official_pdp_manual_review_v1",
+            "updated_at": "",
+            "last_success_at": "",
+            "title": "Mask Fit Aura Cushion",
+            "canonical_url": "",
+            "bundle_hash": "993d938a3eff4d8953a4a4e7cdef9772ecc8ed4f283cc6e1ee105dd0b6c2c888",
+            "lane": "keep",
+            "reason": "protected_good_content",
+            "priority": 0,
+            "protected": true,
+            "displayable": true,
+            "high_quality_ready": true,
+            "human_reviewed": true,
+            "issues": [],
+            "blocking_issues": [],
+            "quality_state": "reviewed",
+            "evidence_profile": "official_pdp_reviewed_formula_and_usage",
+            "evidence_rank": 1,
+            "review_tier": "assistant_reviewed",
+            "agent_readable": true,
+            "public_ready": true
+          },
+          "source_meta": {
+            "evidence_profile": "official_pdp_reviewed_formula_and_usage",
+            "quality_state": "reviewed",
+            "source_origin": "official_pdp_fields",
+            "source_url": "https://tirtir.global/products/mask-fit-aura-cushion",
+            "quality_improvement": {
+              "previous_bundle_hash": "3ab0be4caef7775da907c83c5a0fa258a3884bf803dc00206f9dfd50eb884ece",
+              "candidate_bundle_hash": "993d938a3eff4d8953a4a4e7cdef9772ecc8ed4f283cc6e1ee105dd0b6c2c888",
+              "replacement_decision": "explicit_owner_delegated_assistant_replacement_review",
+              "existing_quality_lane": "keep",
+              "candidate_quality_lane": "keep",
+              "existing_evidence_profile": "seller_plus_reviews",
+              "candidate_evidence_profile": "official_pdp_reviewed_formula_and_usage"
+            }
+          }
+        },
+        {
+          "kb_key": "product:sig_89d2a421e74805310657f39220a17acc",
+          "action": "insert",
+          "reason": "new_product_intel_bundle",
+          "old_hash": null,
+          "candidate_hash": "6d841d90da7c7266c1b5e975b92c564282a991d920c364179e5e24928d355a09",
+          "existing_weak": true,
+          "source": "pivota_insights_official_pdp_manual_review_v1",
+          "after_inventory": {
+            "product_id": "ext_68ad409f681f1278525ced16",
+            "kb_key": "product:sig_89d2a421e74805310657f39220a17acc",
+            "source": "pivota_insights_official_pdp_manual_review_v1",
+            "updated_at": "",
+            "last_success_at": "",
+            "title": "Mask Fit Aura Cushion",
+            "canonical_url": "",
+            "bundle_hash": "993d938a3eff4d8953a4a4e7cdef9772ecc8ed4f283cc6e1ee105dd0b6c2c888",
+            "lane": "keep",
+            "reason": "protected_good_content",
+            "priority": 0,
+            "protected": true,
+            "displayable": true,
+            "high_quality_ready": true,
+            "human_reviewed": true,
+            "issues": [],
+            "blocking_issues": [],
+            "quality_state": "reviewed",
+            "evidence_profile": "official_pdp_reviewed_formula_and_usage",
+            "evidence_rank": 1,
+            "review_tier": "assistant_reviewed",
+            "agent_readable": true,
+            "public_ready": true
+          },
+          "source_meta": {
+            "evidence_profile": "official_pdp_reviewed_formula_and_usage",
+            "quality_state": "reviewed",
+            "source_origin": "official_pdp_fields",
+            "source_url": "https://tirtir.global/products/mask-fit-aura-cushion",
+            "quality_improvement": {
+              "previous_bundle_hash": null,
+              "candidate_bundle_hash": "993d938a3eff4d8953a4a4e7cdef9772ecc8ed4f283cc6e1ee105dd0b6c2c888",
+              "replacement_decision": "new_product_intel_bundle",
+              "existing_quality_lane": null,
+              "candidate_quality_lane": "keep",
+              "existing_evidence_profile": null,
+              "candidate_evidence_profile": "official_pdp_reviewed_formula_and_usage"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "external_product_id": "ext_4f43738711dfea4e88975cf4",
+      "pivota_signature_id": "sig_685441dc77bd5b2ef22319b56256f305",
+      "title": "Mask Fit Cushion Refill",
+      "brand": "TIRTIR Global",
+      "canonical_url": "https://tirtir.global/products/mask-fit-cushion-refill",
+      "changed": true,
+      "blocked": false,
+      "skip_reason": null,
+      "candidate_hash": "31f9c0c4cd3f4bdf140b8180ff6ed1e7d8c7cbc120d0aba16f98171e29f309e7",
+      "evidence_profile": "official_pdp_reviewed_formula_and_usage",
+      "source_coverage": {
+        "source": "official_pdp",
+        "canonical_url": "https://tirtir.global/products/mask-fit-cushion-refill",
+        "fields": {
+          "description": false,
+          "ingredients": 1,
+          "active_ingredients": 0,
+          "how_to": 1,
+          "details": 1,
+          "variants": 2
+        }
+      },
+      "preview": {
+        "headline": "Complexion makeup",
+        "what_it_is": "Mask Fit Cushion Refill is a complexion product from TIRTIR Global in 21N Ivory.",
+        "why_it_stands_out": [
+          {
+            "headline": "Coverage and finish cues are clear",
+            "body": "Reviewed complexion cues such as shade range support a more precise read on coverage, finish, or shade fit.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Ingredient list is available",
+            "body": "Full INCI is present for formula-sensitive review, which makes this PDP safer to evaluate than a claim-only listing.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Shade and size are explicit",
+            "body": "Variant labels such as 21N Ivory, Color: 21N Ivory, 23N Sand, Color: 23N Sand are visible, reducing ambiguity around the product format before a shopper clicks through.",
+            "evidence_strength": "official_pdp_reviewed"
+          }
+        ],
+        "best_for": [
+          {
+            "tag": "complexion_coverage",
+            "label": "complexion coverage",
+            "confidence": "moderate"
+          }
+        ],
+        "shopping_highlight": "shade range, full INCI available"
+      },
+      "writes": [
+        {
+          "kb_key": "product:ext_4f43738711dfea4e88975cf4",
+          "action": "update",
+          "reason": "explicit_owner_delegated_assistant_replacement_review",
+          "old_hash": "c675465ccb72bc2695bee288d3cd21cdc4c32c4a10bec3dd418c093d7615ad8b",
+          "candidate_hash": "dd8dbf61f0691fb195237db726c5852477b3c092d7eff2ee75bd53c5b6ab6189",
+          "existing_weak": true,
+          "source": "pivota_insights_official_pdp_manual_review_v1",
+          "after_inventory": {
+            "product_id": "ext_4f43738711dfea4e88975cf4",
+            "kb_key": "product:ext_4f43738711dfea4e88975cf4",
+            "source": "pivota_insights_official_pdp_manual_review_v1",
+            "updated_at": "",
+            "last_success_at": "",
+            "title": "Mask Fit Cushion Refill",
+            "canonical_url": "",
+            "bundle_hash": "31f9c0c4cd3f4bdf140b8180ff6ed1e7d8c7cbc120d0aba16f98171e29f309e7",
+            "lane": "keep",
+            "reason": "protected_good_content",
+            "priority": 0,
+            "protected": true,
+            "displayable": true,
+            "high_quality_ready": true,
+            "human_reviewed": true,
+            "issues": [],
+            "blocking_issues": [],
+            "quality_state": "reviewed",
+            "evidence_profile": "official_pdp_reviewed_formula_and_usage",
+            "evidence_rank": 1,
+            "review_tier": "assistant_reviewed",
+            "agent_readable": true,
+            "public_ready": true
+          },
+          "source_meta": {
+            "evidence_profile": "official_pdp_reviewed_formula_and_usage",
+            "quality_state": "reviewed",
+            "source_origin": "official_pdp_fields",
+            "source_url": "https://tirtir.global/products/mask-fit-cushion-refill",
+            "quality_improvement": {
+              "previous_bundle_hash": "db99e4b1cd61085c9c0471ab97299f98a06203e80717919713765551559b4696",
+              "candidate_bundle_hash": "31f9c0c4cd3f4bdf140b8180ff6ed1e7d8c7cbc120d0aba16f98171e29f309e7",
+              "replacement_decision": "explicit_owner_delegated_assistant_replacement_review",
+              "existing_quality_lane": "keep",
+              "candidate_quality_lane": "keep",
+              "existing_evidence_profile": "mixed",
+              "candidate_evidence_profile": "official_pdp_reviewed_formula_and_usage"
+            }
+          }
+        },
+        {
+          "kb_key": "product:sig_685441dc77bd5b2ef22319b56256f305",
+          "action": "insert",
+          "reason": "new_product_intel_bundle",
+          "old_hash": null,
+          "candidate_hash": "dd8dbf61f0691fb195237db726c5852477b3c092d7eff2ee75bd53c5b6ab6189",
+          "existing_weak": true,
+          "source": "pivota_insights_official_pdp_manual_review_v1",
+          "after_inventory": {
+            "product_id": "ext_4f43738711dfea4e88975cf4",
+            "kb_key": "product:sig_685441dc77bd5b2ef22319b56256f305",
+            "source": "pivota_insights_official_pdp_manual_review_v1",
+            "updated_at": "",
+            "last_success_at": "",
+            "title": "Mask Fit Cushion Refill",
+            "canonical_url": "",
+            "bundle_hash": "31f9c0c4cd3f4bdf140b8180ff6ed1e7d8c7cbc120d0aba16f98171e29f309e7",
+            "lane": "keep",
+            "reason": "protected_good_content",
+            "priority": 0,
+            "protected": true,
+            "displayable": true,
+            "high_quality_ready": true,
+            "human_reviewed": true,
+            "issues": [],
+            "blocking_issues": [],
+            "quality_state": "reviewed",
+            "evidence_profile": "official_pdp_reviewed_formula_and_usage",
+            "evidence_rank": 1,
+            "review_tier": "assistant_reviewed",
+            "agent_readable": true,
+            "public_ready": true
+          },
+          "source_meta": {
+            "evidence_profile": "official_pdp_reviewed_formula_and_usage",
+            "quality_state": "reviewed",
+            "source_origin": "official_pdp_fields",
+            "source_url": "https://tirtir.global/products/mask-fit-cushion-refill",
+            "quality_improvement": {
+              "previous_bundle_hash": null,
+              "candidate_bundle_hash": "31f9c0c4cd3f4bdf140b8180ff6ed1e7d8c7cbc120d0aba16f98171e29f309e7",
+              "replacement_decision": "new_product_intel_bundle",
+              "existing_quality_lane": null,
+              "candidate_quality_lane": "keep",
+              "existing_evidence_profile": null,
+              "candidate_evidence_profile": "official_pdp_reviewed_formula_and_usage"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "external_product_id": "ext_263b61b2d374b255d121c928",
+      "pivota_signature_id": "sig_bb76169d3839ad9ebfbb9ed3eefa1b2b",
+      "title": "Mask Fit Makeup Fixer",
+      "brand": "TIRTIR Global",
+      "canonical_url": "https://tirtir.global/products/mask-fit-makeup-fixer",
+      "changed": true,
+      "blocked": false,
+      "skip_reason": null,
+      "candidate_hash": "ed2835fd03d965b194ba5ab479496501d3d7d2757bdfa63ec231a2e1229a7014",
+      "evidence_profile": "official_pdp_reviewed_formula_and_usage",
+      "source_coverage": {
+        "source": "official_pdp",
+        "canonical_url": "https://tirtir.global/products/mask-fit-makeup-fixer",
+        "fields": {
+          "description": true,
+          "ingredients": 1,
+          "active_ingredients": 0,
+          "how_to": 1,
+          "details": 1,
+          "variants": 1
+        }
+      },
+      "preview": {
+        "headline": "Treatment mask",
+        "what_it_is": "Mask Fit Makeup Fixer is a treatment mask from TIRTIR Global in 80 mL.",
+        "why_it_stands_out": [
+          {
+            "headline": "Product cues are source-backed",
+            "body": "Reviewed PDP cues such as shine finish, 80 mL give shoppers specific comparison points within TIRTIR Global, rather than category-only copy.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Ingredient list is available",
+            "body": "Full INCI is present for formula-sensitive review, which makes this PDP safer to evaluate than a claim-only listing.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Shade and size are explicit",
+            "body": "Variant labels such as 80 mL, Size: 80 mL are visible, reducing ambiguity around the product format before a shopper clicks through.",
+            "evidence_strength": "official_pdp_reviewed"
+          }
+        ],
+        "best_for": [
+          {
+            "tag": "shine_finish",
+            "label": "shine finish",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "80_ml",
+            "label": "80 mL",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "full_inci_available",
+            "label": "full INCI available",
+            "confidence": "moderate"
+          }
+        ],
+        "shopping_highlight": "shine finish, 80 mL, full INCI available"
+      },
+      "writes": [
+        {
+          "kb_key": "product:ext_263b61b2d374b255d121c928",
+          "action": "update",
+          "reason": "explicit_owner_delegated_assistant_replacement_review",
+          "old_hash": "c05d3a3f4f44a7dde6f7a96a51421c4989a556a9baaf4b581f2cbd37edefc75d",
+          "candidate_hash": "0cfe0661ff898cfcdc44a0fceaabb45508139d91d92d093e8dba634a27996eee",
+          "existing_weak": true,
+          "source": "pivota_insights_official_pdp_manual_review_v1",
+          "after_inventory": {
+            "product_id": "ext_263b61b2d374b255d121c928",
+            "kb_key": "product:ext_263b61b2d374b255d121c928",
+            "source": "pivota_insights_official_pdp_manual_review_v1",
+            "updated_at": "",
+            "last_success_at": "",
+            "title": "Mask Fit Makeup Fixer",
+            "canonical_url": "",
+            "bundle_hash": "ed2835fd03d965b194ba5ab479496501d3d7d2757bdfa63ec231a2e1229a7014",
+            "lane": "keep",
+            "reason": "protected_good_content",
+            "priority": 0,
+            "protected": true,
+            "displayable": true,
+            "high_quality_ready": true,
+            "human_reviewed": true,
+            "issues": [],
+            "blocking_issues": [],
+            "quality_state": "reviewed",
+            "evidence_profile": "official_pdp_reviewed_formula_and_usage",
+            "evidence_rank": 1,
+            "review_tier": "assistant_reviewed",
+            "agent_readable": true,
+            "public_ready": true
+          },
+          "source_meta": {
+            "evidence_profile": "official_pdp_reviewed_formula_and_usage",
+            "quality_state": "reviewed",
+            "source_origin": "official_pdp_fields",
+            "source_url": "https://tirtir.global/products/mask-fit-makeup-fixer",
+            "quality_improvement": {
+              "previous_bundle_hash": "bcad42802a0a6acde8fcaa939abbf42198f7b325afce2ca2a63640f43eeaaffd",
+              "candidate_bundle_hash": "ed2835fd03d965b194ba5ab479496501d3d7d2757bdfa63ec231a2e1229a7014",
+              "replacement_decision": "explicit_owner_delegated_assistant_replacement_review",
+              "existing_quality_lane": "keep",
+              "candidate_quality_lane": "keep",
+              "existing_evidence_profile": "seller_plus_formula",
+              "candidate_evidence_profile": "official_pdp_reviewed_formula_and_usage"
+            }
+          }
+        },
+        {
+          "kb_key": "product:sig_bb76169d3839ad9ebfbb9ed3eefa1b2b",
+          "action": "insert",
+          "reason": "new_product_intel_bundle",
+          "old_hash": null,
+          "candidate_hash": "0cfe0661ff898cfcdc44a0fceaabb45508139d91d92d093e8dba634a27996eee",
+          "existing_weak": true,
+          "source": "pivota_insights_official_pdp_manual_review_v1",
+          "after_inventory": {
+            "product_id": "ext_263b61b2d374b255d121c928",
+            "kb_key": "product:sig_bb76169d3839ad9ebfbb9ed3eefa1b2b",
+            "source": "pivota_insights_official_pdp_manual_review_v1",
+            "updated_at": "",
+            "last_success_at": "",
+            "title": "Mask Fit Makeup Fixer",
+            "canonical_url": "",
+            "bundle_hash": "ed2835fd03d965b194ba5ab479496501d3d7d2757bdfa63ec231a2e1229a7014",
+            "lane": "keep",
+            "reason": "protected_good_content",
+            "priority": 0,
+            "protected": true,
+            "displayable": true,
+            "high_quality_ready": true,
+            "human_reviewed": true,
+            "issues": [],
+            "blocking_issues": [],
+            "quality_state": "reviewed",
+            "evidence_profile": "official_pdp_reviewed_formula_and_usage",
+            "evidence_rank": 1,
+            "review_tier": "assistant_reviewed",
+            "agent_readable": true,
+            "public_ready": true
+          },
+          "source_meta": {
+            "evidence_profile": "official_pdp_reviewed_formula_and_usage",
+            "quality_state": "reviewed",
+            "source_origin": "official_pdp_fields",
+            "source_url": "https://tirtir.global/products/mask-fit-makeup-fixer",
+            "quality_improvement": {
+              "previous_bundle_hash": null,
+              "candidate_bundle_hash": "ed2835fd03d965b194ba5ab479496501d3d7d2757bdfa63ec231a2e1229a7014",
+              "replacement_decision": "new_product_intel_bundle",
+              "existing_quality_lane": null,
+              "candidate_quality_lane": "keep",
+              "existing_evidence_profile": null,
+              "candidate_evidence_profile": "official_pdp_reviewed_formula_and_usage"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "external_product_id": "ext_a663b50d44c3cc2c3f541e15",
+      "pivota_signature_id": "sig_3e8ce29488a13222d55223d067b9829a",
+      "title": "Mask Fit Red Cushion",
+      "brand": "TIRTIR Global",
+      "canonical_url": "https://tirtir.global/products/mask-fit-red-cushion",
+      "changed": true,
+      "blocked": false,
+      "skip_reason": null,
+      "candidate_hash": "2bad43f14e65d39fbe22878a1877d9c5dfde60d64a8b92065d1a45ab12fbfdaa",
+      "evidence_profile": "official_pdp_reviewed_formula_and_usage",
+      "source_coverage": {
+        "source": "official_pdp",
+        "canonical_url": "https://tirtir.global/products/mask-fit-red-cushion",
+        "fields": {
+          "description": true,
+          "ingredients": 1,
+          "active_ingredients": 1,
+          "how_to": 1,
+          "details": 3,
+          "variants": 40
+        }
+      },
+      "preview": {
+        "headline": "Complexion makeup",
+        "what_it_is": "Mask Fit Red Cushion is a complexion product from TIRTIR Global in 10C Shell, with source-backed cues around long-wear coverage, a soft-matte finish and coverage control.",
+        "why_it_stands_out": [
+          {
+            "headline": "Coverage and finish cues are clear",
+            "body": "Reviewed complexion cues such as longwear coverage, soft-matte finish, coverage control, shade range support a more precise read on coverage, finish, or shade fit.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Ingredient list is available",
+            "body": "Full INCI is present for formula-sensitive review, which makes this PDP safer to evaluate than a claim-only listing.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Shade and size are explicit",
+            "body": "Variant labels such as 10C Shell, Color: 10C Shell, 13C Fair, Color: 13C Fair are visible, reducing ambiguity around the product format before a shopper clicks through.",
+            "evidence_strength": "official_pdp_reviewed"
+          }
+        ],
+        "best_for": [
+          {
+            "tag": "complexion_coverage",
+            "label": "complexion coverage",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "soft_focus_finish",
+            "label": "soft-focus finish",
+            "confidence": "moderate"
+          }
+        ],
+        "shopping_highlight": "longwear coverage, soft-matte finish"
+      },
+      "writes": [
+        {
+          "kb_key": "product:ext_a663b50d44c3cc2c3f541e15",
+          "action": "skip",
+          "reason": "protected_high_quality_existing:reviewed",
+          "old_hash": "037d53166511ebdf1867713d12d65d0845dc059a8d93db11c037d856ed6b39fd",
+          "existing_weak": false
+        },
+        {
+          "kb_key": "product:sig_3e8ce29488a13222d55223d067b9829a",
+          "action": "insert",
+          "reason": "new_product_intel_bundle",
+          "old_hash": null,
+          "candidate_hash": "2b3271ebe1c83f7956252413070b6831a178d80f66f7bb2d4940557244b72e5c",
+          "existing_weak": true,
+          "source": "pivota_insights_official_pdp_manual_review_v1",
+          "after_inventory": {
+            "product_id": "ext_a663b50d44c3cc2c3f541e15",
+            "kb_key": "product:sig_3e8ce29488a13222d55223d067b9829a",
+            "source": "pivota_insights_official_pdp_manual_review_v1",
+            "updated_at": "",
+            "last_success_at": "",
+            "title": "Mask Fit Red Cushion",
+            "canonical_url": "",
+            "bundle_hash": "2bad43f14e65d39fbe22878a1877d9c5dfde60d64a8b92065d1a45ab12fbfdaa",
+            "lane": "keep",
+            "reason": "protected_good_content",
+            "priority": 0,
+            "protected": true,
+            "displayable": true,
+            "high_quality_ready": true,
+            "human_reviewed": true,
+            "issues": [],
+            "blocking_issues": [],
+            "quality_state": "reviewed",
+            "evidence_profile": "official_pdp_reviewed_formula_and_usage",
+            "evidence_rank": 1,
+            "review_tier": "assistant_reviewed",
+            "agent_readable": true,
+            "public_ready": true
+          },
+          "source_meta": {
+            "evidence_profile": "official_pdp_reviewed_formula_and_usage",
+            "quality_state": "reviewed",
+            "source_origin": "official_pdp_fields",
+            "source_url": "https://tirtir.global/products/mask-fit-red-cushion",
+            "quality_improvement": {
+              "previous_bundle_hash": null,
+              "candidate_bundle_hash": "2bad43f14e65d39fbe22878a1877d9c5dfde60d64a8b92065d1a45ab12fbfdaa",
+              "replacement_decision": "new_product_intel_bundle",
+              "existing_quality_lane": null,
+              "candidate_quality_lane": "keep",
+              "existing_evidence_profile": null,
+              "candidate_evidence_profile": "official_pdp_reviewed_formula_and_usage"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "external_product_id": "ext_a51a2dcca329114e7b6ea6a6",
+      "pivota_signature_id": "sig_a50a1f18aeddb0b1b40ac2ff9794ae4f",
+      "title": "Mask Fit Red Cushion (Clearance)",
+      "brand": "TIRTIR Global",
+      "canonical_url": "https://tirtir.global/products/mask-fit-red-cushion-clearance",
+      "changed": false,
+      "blocked": false,
+      "skip_reason": "no_safe_writes",
+      "candidate_hash": "99e59eb6a137a4a1c82fe4680fcd4d435c9f9c188bbd7bd4d3c2abb00ec57388",
+      "evidence_profile": "official_pdp_reviewed_formula_and_usage",
+      "source_coverage": {
+        "source": "official_pdp",
+        "canonical_url": "https://tirtir.global/products/mask-fit-red-cushion-clearance",
+        "fields": {
+          "description": true,
+          "ingredients": 1,
+          "active_ingredients": 1,
+          "how_to": 1,
+          "details": 1,
+          "variants": 5
+        }
+      },
+      "preview": {
+        "headline": "Complexion makeup",
+        "what_it_is": "Mask Fit Red Cushion (Clearance) is a complexion product from TIRTIR Global in 33N Macchiato, with source-backed cues around long-wear coverage, a soft-matte finish and coverage control.",
+        "why_it_stands_out": [
+          {
+            "headline": "Coverage and finish cues are clear",
+            "body": "Reviewed complexion cues such as longwear coverage, soft-matte finish, coverage control, shade range support a more precise read on coverage, finish, or shade fit.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Ingredient list is available",
+            "body": "Full INCI is present for formula-sensitive review, which makes this PDP safer to evaluate than a claim-only listing.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Shade and size are explicit",
+            "body": "Variant labels such as 33N Macchiato, Color: 33N Macchiato, 34C Amber, Color: 34C Amber are visible, reducing ambiguity around the product format before a shopper clicks through.",
+            "evidence_strength": "official_pdp_reviewed"
+          }
+        ],
+        "best_for": [
+          {
+            "tag": "complexion_coverage",
+            "label": "complexion coverage",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "soft_focus_finish",
+            "label": "soft-focus finish",
+            "confidence": "moderate"
+          }
+        ],
+        "shopping_highlight": "longwear coverage, soft-matte finish"
+      },
+      "writes": [
+        {
+          "kb_key": "product:ext_a51a2dcca329114e7b6ea6a6",
+          "action": "skip",
+          "reason": "candidate_not_publish_quality_ready",
+          "old_hash": "5cccde645505a8c432eaa2bd0532216f033944e6d8bb61c3d05d8106dbcc4740",
+          "candidate_hash": "d5958e9255eceaaea2eb982ac024d7a7a711112364b8113ea7d52d59827547f4",
+          "existing_weak": true,
+          "assessment": {
+            "allowed": false,
+            "reason": "candidate_not_publish_quality_ready",
+            "candidate": {
+              "lane": "repair",
+              "reason": "commerce_truth_claim_requires_mainline_source",
+              "priority": 75,
+              "protected": true,
+              "displayable": true,
+              "high_quality_ready": true,
+              "human_reviewed": true,
+              "issues": [
+                "commerce_truth_claim"
+              ],
+              "blocking_issues": [
+                "commerce_truth_claim"
+              ],
+              "quality_state": "reviewed",
+              "evidence_profile": "official_pdp_reviewed_formula_and_usage",
+              "evidence_rank": 1,
+              "review_tier": "assistant_reviewed"
+            },
+            "candidate_bundle_hash": "99e59eb6a137a4a1c82fe4680fcd4d435c9f9c188bbd7bd4d3c2abb00ec57388"
+          }
+        },
+        {
+          "kb_key": "product:sig_a50a1f18aeddb0b1b40ac2ff9794ae4f",
+          "action": "skip",
+          "reason": "candidate_not_publish_quality_ready",
+          "old_hash": "4dfec9f21f0fc6b9f2c842545b452c3aae3ec58cd1269ba25e27d52704ff2ee6",
+          "candidate_hash": "d5958e9255eceaaea2eb982ac024d7a7a711112364b8113ea7d52d59827547f4",
+          "existing_weak": true,
+          "assessment": {
+            "allowed": false,
+            "reason": "candidate_not_publish_quality_ready",
+            "candidate": {
+              "lane": "repair",
+              "reason": "commerce_truth_claim_requires_mainline_source",
+              "priority": 75,
+              "protected": true,
+              "displayable": true,
+              "high_quality_ready": true,
+              "human_reviewed": true,
+              "issues": [
+                "commerce_truth_claim"
+              ],
+              "blocking_issues": [
+                "commerce_truth_claim"
+              ],
+              "quality_state": "reviewed",
+              "evidence_profile": "official_pdp_reviewed_formula_and_usage",
+              "evidence_rank": 1,
+              "review_tier": "assistant_reviewed"
+            },
+            "candidate_bundle_hash": "99e59eb6a137a4a1c82fe4680fcd4d435c9f9c188bbd7bd4d3c2abb00ec57388"
+          }
+        }
+      ]
+    },
+    {
+      "external_product_id": "ext_35a4000d4e494c516a37642c",
+      "pivota_signature_id": "sig_cfe767136014ad1e339a588ee2a73b35",
+      "title": "Mask Fit Red Cushion Refill",
+      "brand": "TIRTIR Global",
+      "canonical_url": "https://tirtir.global/products/mask-fit-red-cushion-refill",
+      "changed": false,
+      "blocked": false,
+      "skip_reason": "no_safe_writes",
+      "candidate_hash": "3788e874a202c03af36774881923227809bed32e529dc96df715e531c7c34115",
+      "evidence_profile": "official_pdp_reviewed_formula_and_usage",
+      "source_coverage": {
+        "source": "official_pdp",
+        "canonical_url": "https://tirtir.global/products/mask-fit-red-cushion-refill",
+        "fields": {
+          "description": true,
+          "ingredients": 1,
+          "active_ingredients": 0,
+          "how_to": 1,
+          "details": 1,
+          "variants": 3
+        }
+      },
+      "preview": {
+        "headline": "Complexion makeup",
+        "what_it_is": "Mask Fit Red Cushion Refill is a complexion product from TIRTIR Global in 17C Porcelain, with source-backed cues around coverage control.",
+        "why_it_stands_out": [
+          {
+            "headline": "Coverage and finish cues are clear",
+            "body": "Reviewed complexion cues such as coverage control, shade range support a more precise read on coverage, finish, or shade fit.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Ingredient list is available",
+            "body": "Full INCI is present for formula-sensitive review, which makes this PDP safer to evaluate than a claim-only listing.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Shade and size are explicit",
+            "body": "Variant labels such as 17C Porcelain, Color: 17C Porcelain, 21N Ivory, Color: 21N Ivory are visible, reducing ambiguity around the product format before a shopper clicks through.",
+            "evidence_strength": "official_pdp_reviewed"
+          }
+        ],
+        "best_for": [
+          {
+            "tag": "complexion_coverage",
+            "label": "complexion coverage",
+            "confidence": "moderate"
+          }
+        ],
+        "shopping_highlight": "coverage control, shade range"
+      },
+      "writes": [
+        {
+          "kb_key": "product:ext_35a4000d4e494c516a37642c",
+          "action": "skip",
+          "reason": "protected_high_quality_existing:reviewed",
+          "old_hash": "a1b673ab0c64cb808e57fb867e263dab43bf0e64757816afbe04e65192f4179a",
+          "existing_weak": false
+        },
+        {
+          "kb_key": "product:sig_cfe767136014ad1e339a588ee2a73b35",
+          "action": "skip",
+          "reason": "protected_high_quality_existing:reviewed",
+          "old_hash": "a1b673ab0c64cb808e57fb867e263dab43bf0e64757816afbe04e65192f4179a",
+          "existing_weak": false
+        }
+      ]
+    },
+    {
+      "external_product_id": "ext_7bbe3ac9874ff5ea60e0494e",
+      "pivota_signature_id": "sig_7edaf7d05fc2d5e65da217364a7caa03",
+      "title": "Mask Fit Red Cushion Sachet",
+      "brand": "TIRTIR Global",
+      "canonical_url": "https://tirtir.global/products/mask-fit-red-cushion-sachet",
+      "changed": true,
+      "blocked": false,
+      "skip_reason": null,
+      "candidate_hash": "686d70e05f912a575390fb5a59beb11be9f487c11b6523893cb13a55d6b18a19",
+      "evidence_profile": "official_pdp_reviewed_formula_and_usage",
+      "source_coverage": {
+        "source": "official_pdp",
+        "canonical_url": "https://tirtir.global/products/mask-fit-red-cushion-sachet",
+        "fields": {
+          "description": true,
+          "ingredients": 1,
+          "active_ingredients": 0,
+          "how_to": 1,
+          "details": 1,
+          "variants": 7
+        }
+      },
+      "preview": {
+        "headline": "Complexion makeup",
+        "what_it_is": "Mask Fit Red Cushion Sachet is a complexion product from TIRTIR Global, with source-backed cues around coverage control.",
+        "why_it_stands_out": [
+          {
+            "headline": "Coverage and finish cues are clear",
+            "body": "Reviewed complexion cues such as coverage control, shade range support a more precise read on coverage, finish, or shade fit.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Ingredient list is available",
+            "body": "Full INCI is present for formula-sensitive review, which makes this PDP safer to evaluate than a claim-only listing.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Shade and size are explicit",
+            "body": "Variant labels such as 10C - 17C, Colors: 10C - 17C, 17N - 22C, Colors: 17N - 22C are visible, reducing ambiguity around the product format before a shopper clicks through.",
+            "evidence_strength": "official_pdp_reviewed"
+          }
+        ],
+        "best_for": [
+          {
+            "tag": "complexion_coverage",
+            "label": "complexion coverage",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "soft_focus_finish",
+            "label": "soft-focus finish",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "radiant_finish",
+            "label": "radiant finish",
+            "confidence": "moderate"
+          }
+        ],
+        "shopping_highlight": "coverage control, shade range"
+      },
+      "writes": [
+        {
+          "kb_key": "product:ext_7bbe3ac9874ff5ea60e0494e",
+          "action": "update",
+          "reason": "explicit_owner_delegated_assistant_replacement_review",
+          "old_hash": "4c8751d6494027b5d10ef08a6d058f8654050c30a3f63eabfc59da377121e5ab",
+          "candidate_hash": "4d94834770f992d56a7815dcfccdab56fa85615fbf99b3e8f983219369d41218",
+          "existing_weak": true,
+          "source": "pivota_insights_official_pdp_manual_review_v1",
+          "after_inventory": {
+            "product_id": "ext_7bbe3ac9874ff5ea60e0494e",
+            "kb_key": "product:ext_7bbe3ac9874ff5ea60e0494e",
+            "source": "pivota_insights_official_pdp_manual_review_v1",
+            "updated_at": "",
+            "last_success_at": "",
+            "title": "Mask Fit Red Cushion Sachet",
+            "canonical_url": "",
+            "bundle_hash": "686d70e05f912a575390fb5a59beb11be9f487c11b6523893cb13a55d6b18a19",
+            "lane": "keep",
+            "reason": "protected_good_content",
+            "priority": 0,
+            "protected": true,
+            "displayable": true,
+            "high_quality_ready": true,
+            "human_reviewed": true,
+            "issues": [],
+            "blocking_issues": [],
+            "quality_state": "reviewed",
+            "evidence_profile": "official_pdp_reviewed_formula_and_usage",
+            "evidence_rank": 1,
+            "review_tier": "assistant_reviewed",
+            "agent_readable": true,
+            "public_ready": true
+          },
+          "source_meta": {
+            "evidence_profile": "official_pdp_reviewed_formula_and_usage",
+            "quality_state": "reviewed",
+            "source_origin": "official_pdp_fields",
+            "source_url": "https://tirtir.global/products/mask-fit-red-cushion-sachet",
+            "quality_improvement": {
+              "previous_bundle_hash": "73d9bb6ef42cb5e80b6b2242302f0f18b50462e193a6cbd52b2d75f4e99de719",
+              "candidate_bundle_hash": "686d70e05f912a575390fb5a59beb11be9f487c11b6523893cb13a55d6b18a19",
+              "replacement_decision": "explicit_owner_delegated_assistant_replacement_review",
+              "existing_quality_lane": "keep",
+              "candidate_quality_lane": "keep",
+              "existing_evidence_profile": "seller_plus_reviews",
+              "candidate_evidence_profile": "official_pdp_reviewed_formula_and_usage"
+            }
+          }
+        },
+        {
+          "kb_key": "product:sig_7edaf7d05fc2d5e65da217364a7caa03",
+          "action": "update",
+          "reason": "explicit_owner_delegated_assistant_replacement_review",
+          "old_hash": "880ceaac65ecde776ba87ef64e735e42aec5261c80428f6c1929202596dbc176",
+          "candidate_hash": "4d94834770f992d56a7815dcfccdab56fa85615fbf99b3e8f983219369d41218",
+          "existing_weak": true,
+          "source": "pivota_insights_official_pdp_manual_review_v1",
+          "after_inventory": {
+            "product_id": "ext_7bbe3ac9874ff5ea60e0494e",
+            "kb_key": "product:sig_7edaf7d05fc2d5e65da217364a7caa03",
+            "source": "pivota_insights_official_pdp_manual_review_v1",
+            "updated_at": "",
+            "last_success_at": "",
+            "title": "Mask Fit Red Cushion Sachet",
+            "canonical_url": "",
+            "bundle_hash": "686d70e05f912a575390fb5a59beb11be9f487c11b6523893cb13a55d6b18a19",
+            "lane": "keep",
+            "reason": "protected_good_content",
+            "priority": 0,
+            "protected": true,
+            "displayable": true,
+            "high_quality_ready": true,
+            "human_reviewed": true,
+            "issues": [],
+            "blocking_issues": [],
+            "quality_state": "reviewed",
+            "evidence_profile": "official_pdp_reviewed_formula_and_usage",
+            "evidence_rank": 1,
+            "review_tier": "assistant_reviewed",
+            "agent_readable": true,
+            "public_ready": true
+          },
+          "source_meta": {
+            "evidence_profile": "official_pdp_reviewed_formula_and_usage",
+            "quality_state": "reviewed",
+            "source_origin": "official_pdp_fields",
+            "source_url": "https://tirtir.global/products/mask-fit-red-cushion-sachet",
+            "quality_improvement": {
+              "previous_bundle_hash": "85723f30dada147be291afeec6ca3daab95bf65aebd8cd9864b61687a105580c",
+              "candidate_bundle_hash": "686d70e05f912a575390fb5a59beb11be9f487c11b6523893cb13a55d6b18a19",
+              "replacement_decision": "explicit_owner_delegated_assistant_replacement_review",
+              "existing_quality_lane": "suppress_public",
+              "candidate_quality_lane": "keep",
+              "existing_evidence_profile": "seller_only",
+              "candidate_evidence_profile": "official_pdp_reviewed_formula_and_usage"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "external_product_id": "ext_d3617ff069081ea97f37e711",
+      "pivota_signature_id": "sig_2df8ddc67533c0410c62eca4722cb571",
+      "title": "Mask Fit Red Cushion Sachet",
+      "brand": "TIRTIR Global",
+      "canonical_url": "https://tirtir.global/products/mask-fit-red-cushion-sachet",
+      "changed": true,
+      "blocked": false,
+      "skip_reason": null,
+      "candidate_hash": "819d6864becdf69256aa33bc091dd7cf33ec6a21360f8a0b718976a239808465",
+      "evidence_profile": "official_pdp_reviewed_formula_and_usage",
+      "source_coverage": {
+        "source": "official_pdp",
+        "canonical_url": "https://tirtir.global/products/mask-fit-red-cushion-sachet",
+        "fields": {
+          "description": true,
+          "ingredients": 1,
+          "active_ingredients": 0,
+          "how_to": 1,
+          "details": 1,
+          "variants": 7
+        }
+      },
+      "preview": {
+        "headline": "Complexion makeup",
+        "what_it_is": "Mask Fit Red Cushion Sachet is a complexion product from TIRTIR Global, with source-backed cues around coverage control.",
+        "why_it_stands_out": [
+          {
+            "headline": "Coverage and finish cues are clear",
+            "body": "Reviewed complexion cues such as coverage control, shade range support a more precise read on coverage, finish, or shade fit.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Ingredient list is available",
+            "body": "Full INCI is present for formula-sensitive review, which makes this PDP safer to evaluate than a claim-only listing.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Shade and size are explicit",
+            "body": "Variant labels such as 10C - 17C, Colors: 10C - 17C, 17N - 22C, Colors: 17N - 22C are visible, reducing ambiguity around the product format before a shopper clicks through.",
+            "evidence_strength": "official_pdp_reviewed"
+          }
+        ],
+        "best_for": [
+          {
+            "tag": "complexion_coverage",
+            "label": "complexion coverage",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "soft_focus_finish",
+            "label": "soft-focus finish",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "radiant_finish",
+            "label": "radiant finish",
+            "confidence": "moderate"
+          }
+        ],
+        "shopping_highlight": "coverage control, shade range"
+      },
+      "writes": [
+        {
+          "kb_key": "product:ext_d3617ff069081ea97f37e711",
+          "action": "skip",
+          "reason": "protected_high_quality_existing:verified",
+          "old_hash": "39448d73b7ff51bb6cca72eb3d8b35511019da07a21f4d586edf6f70344a707c",
+          "existing_weak": false
+        },
+        {
+          "kb_key": "product:sig_2df8ddc67533c0410c62eca4722cb571",
+          "action": "insert",
+          "reason": "new_product_intel_bundle",
+          "old_hash": null,
+          "candidate_hash": "71035eed385437d68def4539c3ab5040a81ea1607e1e9315962ad748a0a82245",
+          "existing_weak": true,
+          "source": "pivota_insights_official_pdp_manual_review_v1",
+          "after_inventory": {
+            "product_id": "ext_d3617ff069081ea97f37e711",
+            "kb_key": "product:sig_2df8ddc67533c0410c62eca4722cb571",
+            "source": "pivota_insights_official_pdp_manual_review_v1",
+            "updated_at": "",
+            "last_success_at": "",
+            "title": "Mask Fit Red Cushion Sachet",
+            "canonical_url": "",
+            "bundle_hash": "819d6864becdf69256aa33bc091dd7cf33ec6a21360f8a0b718976a239808465",
+            "lane": "keep",
+            "reason": "protected_good_content",
+            "priority": 0,
+            "protected": true,
+            "displayable": true,
+            "high_quality_ready": true,
+            "human_reviewed": true,
+            "issues": [],
+            "blocking_issues": [],
+            "quality_state": "reviewed",
+            "evidence_profile": "official_pdp_reviewed_formula_and_usage",
+            "evidence_rank": 1,
+            "review_tier": "assistant_reviewed",
+            "agent_readable": true,
+            "public_ready": true
+          },
+          "source_meta": {
+            "evidence_profile": "official_pdp_reviewed_formula_and_usage",
+            "quality_state": "reviewed",
+            "source_origin": "official_pdp_fields",
+            "source_url": "https://tirtir.global/products/mask-fit-red-cushion-sachet",
+            "quality_improvement": {
+              "previous_bundle_hash": null,
+              "candidate_bundle_hash": "819d6864becdf69256aa33bc091dd7cf33ec6a21360f8a0b718976a239808465",
+              "replacement_decision": "new_product_intel_bundle",
+              "existing_quality_lane": null,
+              "candidate_quality_lane": "keep",
+              "existing_evidence_profile": null,
+              "candidate_evidence_profile": "official_pdp_reviewed_formula_and_usage"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "external_product_id": "ext_7ba277de9baadb1584ae2a5a",
+      "pivota_signature_id": "sig_b7bc87695e503047ddab3d0d309bd6d3",
+      "title": "Mask Fit Red Foundation",
+      "brand": "TIRTIR Global",
+      "canonical_url": "https://tirtir.global/products/mask-fit-red-foundation",
+      "changed": true,
+      "blocked": false,
+      "skip_reason": null,
+      "candidate_hash": "c006b18b3f9468c7550cc3ca6036ddfad5f39a5fd9b6a24ea48313575233032c",
+      "evidence_profile": "official_pdp_reviewed_formula_and_usage",
+      "source_coverage": {
+        "source": "official_pdp",
+        "canonical_url": "https://tirtir.global/products/mask-fit-red-foundation",
+        "fields": {
+          "description": true,
+          "ingredients": 1,
+          "active_ingredients": 1,
+          "how_to": 1,
+          "details": 3,
+          "variants": 30
+        }
+      },
+      "preview": {
+        "headline": "Complexion makeup",
+        "what_it_is": "Mask Fit Red Foundation is a foundation from TIRTIR Global in 10C Shell, with source-backed cues around long-wear coverage and coverage control.",
+        "why_it_stands_out": [
+          {
+            "headline": "Coverage and finish cues are clear",
+            "body": "Reviewed complexion cues such as longwear coverage, coverage control, shade range support a more precise read on coverage, finish, or shade fit.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Ingredient list is available",
+            "body": "Full INCI is present for formula-sensitive review, which makes this PDP safer to evaluate than a claim-only listing.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Shade and size are explicit",
+            "body": "Variant labels such as 10C Shell, Color: 10C Shell, 11C Cool Rosy, Color: 11C Cool Rosy are visible, reducing ambiguity around the product format before a shopper clicks through.",
+            "evidence_strength": "official_pdp_reviewed"
+          }
+        ],
+        "best_for": [
+          {
+            "tag": "complexion_coverage",
+            "label": "complexion coverage",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "soft_focus_finish",
+            "label": "soft-focus finish",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "radiant_finish",
+            "label": "radiant finish",
+            "confidence": "moderate"
+          }
+        ],
+        "shopping_highlight": "longwear coverage, coverage control"
+      },
+      "writes": [
+        {
+          "kb_key": "product:ext_7ba277de9baadb1584ae2a5a",
+          "action": "skip",
+          "reason": "protected_high_quality_existing:verified",
+          "old_hash": "60f48b958f4e604df381f988475092ff880cf1fe80496ffee149e1d9f5781281",
+          "existing_weak": false
+        },
+        {
+          "kb_key": "product:sig_b7bc87695e503047ddab3d0d309bd6d3",
+          "action": "insert",
+          "reason": "new_product_intel_bundle",
+          "old_hash": null,
+          "candidate_hash": "6f2937fceac90914b0c5ab1926717fd21bdc42a3c44ac4ea4eef841e5aff4e34",
+          "existing_weak": true,
+          "source": "pivota_insights_official_pdp_manual_review_v1",
+          "after_inventory": {
+            "product_id": "ext_7ba277de9baadb1584ae2a5a",
+            "kb_key": "product:sig_b7bc87695e503047ddab3d0d309bd6d3",
+            "source": "pivota_insights_official_pdp_manual_review_v1",
+            "updated_at": "",
+            "last_success_at": "",
+            "title": "Mask Fit Red Foundation",
+            "canonical_url": "",
+            "bundle_hash": "c006b18b3f9468c7550cc3ca6036ddfad5f39a5fd9b6a24ea48313575233032c",
+            "lane": "keep",
+            "reason": "protected_good_content",
+            "priority": 0,
+            "protected": true,
+            "displayable": true,
+            "high_quality_ready": true,
+            "human_reviewed": true,
+            "issues": [],
+            "blocking_issues": [],
+            "quality_state": "reviewed",
+            "evidence_profile": "official_pdp_reviewed_formula_and_usage",
+            "evidence_rank": 1,
+            "review_tier": "assistant_reviewed",
+            "agent_readable": true,
+            "public_ready": true
+          },
+          "source_meta": {
+            "evidence_profile": "official_pdp_reviewed_formula_and_usage",
+            "quality_state": "reviewed",
+            "source_origin": "official_pdp_fields",
+            "source_url": "https://tirtir.global/products/mask-fit-red-foundation",
+            "quality_improvement": {
+              "previous_bundle_hash": null,
+              "candidate_bundle_hash": "c006b18b3f9468c7550cc3ca6036ddfad5f39a5fd9b6a24ea48313575233032c",
+              "replacement_decision": "new_product_intel_bundle",
+              "existing_quality_lane": null,
+              "candidate_quality_lane": "keep",
+              "existing_evidence_profile": null,
+              "candidate_evidence_profile": "official_pdp_reviewed_formula_and_usage"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "external_product_id": "ext_377215c30d57e97163da6917",
+      "pivota_signature_id": "sig_74930a777604c5cceeebb65a3c6f7ad3",
+      "title": "Mask Fit Tone Up Essence",
+      "brand": "TIRTIR Global",
+      "canonical_url": "https://tirtir.global/products/mask-fit-tone-up-essence",
+      "changed": false,
+      "blocked": false,
+      "skip_reason": "no_safe_writes",
+      "candidate_hash": "67b126607a9efe24897453f52ed0dfd10a1cc5ad5f49d6339d3be7def6b19ee4",
+      "evidence_profile": "official_pdp_reviewed_formula_and_usage",
+      "source_coverage": {
+        "source": "official_pdp",
+        "canonical_url": "https://tirtir.global/products/mask-fit-tone-up-essence",
+        "fields": {
+          "description": true,
+          "ingredients": 1,
+          "active_ingredients": 0,
+          "how_to": 1,
+          "details": 1,
+          "variants": 3
+        }
+      },
+      "preview": {
+        "headline": "Treatment serum",
+        "what_it_is": "Mask Fit Tone Up Essence is a treatment serum from TIRTIR Global.",
+        "why_it_stands_out": [
+          {
+            "headline": "Routine step cues are specific",
+            "body": "Reviewed skincare cues such as hydration identify the routine role or key ingredient context without inventing unsupported benefits.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Ingredient list is available",
+            "body": "Full INCI is present for formula-sensitive review, which makes this PDP safer to evaluate than a claim-only listing.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Shade and size are explicit",
+            "body": "Variant labels such as Beige, color: Beige, Lavender, color: Lavender are visible, reducing ambiguity around the product format before a shopper clicks through.",
+            "evidence_strength": "official_pdp_reviewed"
+          }
+        ],
+        "best_for": [
+          {
+            "tag": "hydration",
+            "label": "hydration",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "radiance",
+            "label": "radiance",
+            "confidence": "moderate"
+          }
+        ],
+        "shopping_highlight": "hydration, full INCI available"
+      },
+      "writes": [
+        {
+          "kb_key": "product:ext_377215c30d57e97163da6917",
+          "action": "skip",
+          "reason": "protected_high_quality_existing:verified",
+          "old_hash": "21019ccf7a099d4b8f60f594452790dc8e8033c4a9122b7c812c7e692133ed0d",
+          "existing_weak": false
+        },
+        {
+          "kb_key": "product:sig_74930a777604c5cceeebb65a3c6f7ad3",
+          "action": "skip",
+          "reason": "candidate_not_publish_quality_ready",
+          "old_hash": null,
+          "candidate_hash": "7772378e2501ec0fe0c90df8361597c0c89162ea64d7f2cee80f87b516c5d0d3",
+          "existing_weak": true,
+          "assessment": {
+            "allowed": false,
+            "reason": "candidate_not_publish_quality_ready",
+            "candidate": {
+              "lane": "regenerate",
+              "reason": "requires_regeneration",
+              "priority": 95,
+              "protected": false,
+              "displayable": true,
+              "high_quality_ready": false,
+              "human_reviewed": true,
+              "issues": [
+                "public_generic_marketing_copy"
+              ],
+              "blocking_issues": [
+                "public_generic_marketing_copy"
+              ],
+              "quality_state": "reviewed",
+              "evidence_profile": "official_pdp_reviewed_formula_and_usage",
+              "evidence_rank": 1,
+              "review_tier": "assistant_reviewed"
+            },
+            "candidate_bundle_hash": "67b126607a9efe24897453f52ed0dfd10a1cc5ad5f49d6339d3be7def6b19ee4"
+          }
+        }
+      ]
+    },
+    {
+      "external_product_id": "ext_80fb8c6350ce460bd4ee4b43",
+      "pivota_signature_id": "sig_ed3748a733b5bf8cd712798ba6fcb3fe",
+      "title": "Mask Fit Waterproof Setting Spray",
+      "brand": "TIRTIR Global",
+      "canonical_url": "https://tirtir.global/products/mask-fit-waterproof-setting-spray",
+      "changed": false,
+      "blocked": false,
+      "skip_reason": "no_safe_writes",
+      "candidate_hash": "bcdc231a7a03254d8ac70b34314838783148893429278ee885b6ef7802163278",
+      "evidence_profile": "official_pdp_reviewed_formula_and_usage",
+      "source_coverage": {
+        "source": "official_pdp",
+        "canonical_url": "https://tirtir.global/products/mask-fit-waterproof-setting-spray",
+        "fields": {
+          "description": true,
+          "ingredients": 1,
+          "active_ingredients": 0,
+          "how_to": 1,
+          "details": 1,
+          "variants": 1
+        }
+      },
+      "preview": {
+        "headline": "Setting mist",
+        "what_it_is": "Mask Fit Waterproof Setting Spray is a setting mist from TIRTIR Global in 80 mL, with source-backed cues around mist format, radiance finish, hydrating cues and makeup-set support.",
+        "why_it_stands_out": [
+          {
+            "headline": "Setting-mist cues are specific",
+            "body": "Reviewed mist cues such as setting mist format, radiance finish, hydration, makeup-set support identify finish, hydration, or makeup-set context without turning it into a toner.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Ingredient list is available",
+            "body": "Full INCI is present for formula-sensitive review, which makes this PDP safer to evaluate than a claim-only listing.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Shade and size are explicit",
+            "body": "Variant labels such as 80 mL, Size: 80 mL are visible, reducing ambiguity around the product format before a shopper clicks through.",
+            "evidence_strength": "official_pdp_reviewed"
+          }
+        ],
+        "best_for": [
+          {
+            "tag": "makeup_setting",
+            "label": "makeup setting",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "radiant_finish",
+            "label": "radiant finish",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "hydrating_mist_feel",
+            "label": "hydrating mist feel",
+            "confidence": "moderate"
+          }
+        ],
+        "shopping_highlight": "setting mist format, radiance finish"
+      },
+      "writes": [
+        {
+          "kb_key": "product:ext_80fb8c6350ce460bd4ee4b43",
+          "action": "skip",
+          "reason": "protected_high_quality_existing:verified",
+          "old_hash": "cea2459336020bf76830b2d2670c16e9a08c13612fa8747aaffd2b7c02f43f2d",
+          "existing_weak": false
+        },
+        {
+          "kb_key": "product:sig_ed3748a733b5bf8cd712798ba6fcb3fe",
+          "action": "skip",
+          "reason": "protected_high_quality_existing:reviewed",
+          "old_hash": "b50ef0f0feafda2d4b887b0700580e8d2a87ed1bc28f11634aa6701638ea8e3d",
+          "existing_weak": false
+        }
+      ]
+    },
+    {
+      "external_product_id": "ext_6df19f2224fec208ca6eeea7",
+      "pivota_signature_id": "sig_77734bc6a310849dc1f5451b8b020a29",
+      "title": "Matcha Bubble Tea Scrub",
+      "brand": "TIRTIR Global",
+      "canonical_url": "https://tirtir.global/products/matcha-bubble-tea-scrub",
+      "changed": true,
+      "blocked": false,
+      "skip_reason": null,
+      "candidate_hash": "1e5421ff753300052de563c624181e5967b5e1733190049d8e2462d64776d62b",
+      "evidence_profile": "official_pdp_reviewed_formula_and_usage",
+      "source_coverage": {
+        "source": "official_pdp",
+        "canonical_url": "https://tirtir.global/products/matcha-bubble-tea-scrub",
+        "fields": {
+          "description": true,
+          "ingredients": 1,
+          "active_ingredients": 1,
+          "how_to": 3,
+          "details": 4,
+          "variants": 1
+        }
+      },
+      "preview": {
+        "headline": "Face scrub",
+        "what_it_is": "Matcha Bubble Tea Scrub is a face scrub from TIRTIR Global in 95 g, with source-backed cues around cleansing and hydration.",
+        "why_it_stands_out": [
+          {
+            "headline": "Routine step cues are specific",
+            "body": "Reviewed skincare cues such as centella, BHA/salicylic acid, AHA exfoliation, exfoliating scrub identify the routine role or key ingredient context without inventing unsupported benefits.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Ingredient list is available",
+            "body": "Full INCI is present for formula-sensitive review, which makes this PDP safer to evaluate than a claim-only listing.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Shade and size are explicit",
+            "body": "Variant labels such as 95 g, Size: 95 g are visible, reducing ambiguity around the product format before a shopper clicks through.",
+            "evidence_strength": "official_pdp_reviewed"
+          }
+        ],
+        "best_for": [
+          {
+            "tag": "exfoliating_toner_step",
+            "label": "exfoliating toner step",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "hydration",
+            "label": "hydration",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "barrier_support",
+            "label": "barrier support",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "aromatherapy",
+            "label": "aromatherapy",
+            "confidence": "moderate"
+          }
+        ],
+        "shopping_highlight": "centella, BHA/salicylic acid"
+      },
+      "writes": [
+        {
+          "kb_key": "product:ext_6df19f2224fec208ca6eeea7",
+          "action": "update",
+          "reason": "explicit_owner_delegated_assistant_replacement_review",
+          "old_hash": "1f9cf7625581e287414e1131d1856913df7f6f7e7f9f8afdc48e8a679fdd8bbd",
+          "candidate_hash": "1cc6c3a80758ffa944b29414a1e09fd23442fa2393b59b18db69efe18d5c6967",
+          "existing_weak": true,
+          "source": "pivota_insights_official_pdp_manual_review_v1",
+          "after_inventory": {
+            "product_id": "ext_6df19f2224fec208ca6eeea7",
+            "kb_key": "product:ext_6df19f2224fec208ca6eeea7",
+            "source": "pivota_insights_official_pdp_manual_review_v1",
+            "updated_at": "",
+            "last_success_at": "",
+            "title": "Matcha Bubble Tea Scrub",
+            "canonical_url": "",
+            "bundle_hash": "1e5421ff753300052de563c624181e5967b5e1733190049d8e2462d64776d62b",
+            "lane": "keep",
+            "reason": "protected_good_content",
+            "priority": 0,
+            "protected": true,
+            "displayable": true,
+            "high_quality_ready": true,
+            "human_reviewed": true,
+            "issues": [],
+            "blocking_issues": [],
+            "quality_state": "reviewed",
+            "evidence_profile": "official_pdp_reviewed_formula_and_usage",
+            "evidence_rank": 1,
+            "review_tier": "assistant_reviewed",
+            "agent_readable": true,
+            "public_ready": true
+          },
+          "source_meta": {
+            "evidence_profile": "official_pdp_reviewed_formula_and_usage",
+            "quality_state": "reviewed",
+            "source_origin": "official_pdp_fields",
+            "source_url": "https://tirtir.global/products/matcha-bubble-tea-scrub",
+            "quality_improvement": {
+              "previous_bundle_hash": "cd32272f3244a29b1ccf503c5fc496b925782cef945479b710ba347f85bab766",
+              "candidate_bundle_hash": "1e5421ff753300052de563c624181e5967b5e1733190049d8e2462d64776d62b",
+              "replacement_decision": "explicit_owner_delegated_assistant_replacement_review",
+              "existing_quality_lane": "keep",
+              "candidate_quality_lane": "keep",
+              "existing_evidence_profile": "seller_plus_formula",
+              "candidate_evidence_profile": "official_pdp_reviewed_formula_and_usage"
+            }
+          }
+        },
+        {
+          "kb_key": "product:sig_77734bc6a310849dc1f5451b8b020a29",
+          "action": "insert",
+          "reason": "new_product_intel_bundle",
+          "old_hash": null,
+          "candidate_hash": "1cc6c3a80758ffa944b29414a1e09fd23442fa2393b59b18db69efe18d5c6967",
+          "existing_weak": true,
+          "source": "pivota_insights_official_pdp_manual_review_v1",
+          "after_inventory": {
+            "product_id": "ext_6df19f2224fec208ca6eeea7",
+            "kb_key": "product:sig_77734bc6a310849dc1f5451b8b020a29",
+            "source": "pivota_insights_official_pdp_manual_review_v1",
+            "updated_at": "",
+            "last_success_at": "",
+            "title": "Matcha Bubble Tea Scrub",
+            "canonical_url": "",
+            "bundle_hash": "1e5421ff753300052de563c624181e5967b5e1733190049d8e2462d64776d62b",
+            "lane": "keep",
+            "reason": "protected_good_content",
+            "priority": 0,
+            "protected": true,
+            "displayable": true,
+            "high_quality_ready": true,
+            "human_reviewed": true,
+            "issues": [],
+            "blocking_issues": [],
+            "quality_state": "reviewed",
+            "evidence_profile": "official_pdp_reviewed_formula_and_usage",
+            "evidence_rank": 1,
+            "review_tier": "assistant_reviewed",
+            "agent_readable": true,
+            "public_ready": true
+          },
+          "source_meta": {
+            "evidence_profile": "official_pdp_reviewed_formula_and_usage",
+            "quality_state": "reviewed",
+            "source_origin": "official_pdp_fields",
+            "source_url": "https://tirtir.global/products/matcha-bubble-tea-scrub",
+            "quality_improvement": {
+              "previous_bundle_hash": null,
+              "candidate_bundle_hash": "1e5421ff753300052de563c624181e5967b5e1733190049d8e2462d64776d62b",
+              "replacement_decision": "new_product_intel_bundle",
+              "existing_quality_lane": null,
+              "candidate_quality_lane": "keep",
+              "existing_evidence_profile": null,
+              "candidate_evidence_profile": "official_pdp_reviewed_formula_and_usage"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "external_product_id": "ext_4741142a6d82d844c48e123b",
+      "pivota_signature_id": "sig_e8e40421323704b4dc861b49b3ce2bee",
+      "title": "Matcha Calming Cream",
+      "brand": "TIRTIR Global",
+      "canonical_url": "https://tirtir.global/products/matcha-calming-cream",
+      "changed": false,
+      "blocked": false,
+      "skip_reason": "no_safe_writes",
+      "candidate_hash": "b8ff720a0c270556f36cfe97c7c2fa88fa75b6d7cd98c5dda9a1490186b62949",
+      "evidence_profile": "official_pdp_reviewed_formula_and_usage",
+      "source_coverage": {
+        "source": "official_pdp",
+        "canonical_url": "https://tirtir.global/products/matcha-calming-cream",
+        "fields": {
+          "description": true,
+          "ingredients": 1,
+          "active_ingredients": 1,
+          "how_to": 1,
+          "details": 3,
+          "variants": 1
+        }
+      },
+      "preview": {
+        "headline": "Body care treatment",
+        "what_it_is": "Matcha Calming Cream is a body care treatment from TIRTIR Global in 50 mL, with source-backed cues around hydration and brightening support.",
+        "why_it_stands_out": [
+          {
+            "headline": "Routine step cues are specific",
+            "body": "Reviewed skincare cues such as peptides, centella, hydration, barrier support identify the routine role or key ingredient context without inventing unsupported benefits.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Ingredient list is available",
+            "body": "Full INCI is present for formula-sensitive review, which makes this PDP safer to evaluate than a claim-only listing.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Shade and size are explicit",
+            "body": "Variant labels such as 50 mL, Size: 50 mL are visible, reducing ambiguity around the product format before a shopper clicks through.",
+            "evidence_strength": "official_pdp_reviewed"
+          }
+        ],
+        "best_for": [
+          {
+            "tag": "hydration",
+            "label": "hydration",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "firmness",
+            "label": "firmness",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "barrier_support",
+            "label": "barrier support",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "aromatherapy",
+            "label": "aromatherapy",
+            "confidence": "moderate"
+          }
+        ],
+        "shopping_highlight": "peptides, centella, hydration"
+      },
+      "writes": [
+        {
+          "kb_key": "product:ext_4741142a6d82d844c48e123b",
+          "action": "skip",
+          "reason": "protected_high_quality_existing:verified",
+          "old_hash": "bd411cb5afd177012c17020ed161a48a7e7d46054334a02b0218be914b691968",
+          "existing_weak": false
+        },
+        {
+          "kb_key": "product:sig_e8e40421323704b4dc861b49b3ce2bee",
+          "action": "skip",
+          "reason": "candidate_not_publish_quality_ready",
+          "old_hash": null,
+          "candidate_hash": "b3e52b5f6b6c6546353c0f3be7d355aadd8e7a7a14246dd7279b6b1823d17373",
+          "existing_weak": true,
+          "assessment": {
+            "allowed": false,
+            "reason": "candidate_not_publish_quality_ready",
+            "candidate": {
+              "lane": "regenerate",
+              "reason": "requires_regeneration",
+              "priority": 95,
+              "protected": false,
+              "displayable": true,
+              "high_quality_ready": false,
+              "human_reviewed": true,
+              "issues": [
+                "public_generic_marketing_copy"
+              ],
+              "blocking_issues": [
+                "public_generic_marketing_copy"
+              ],
+              "quality_state": "reviewed",
+              "evidence_profile": "official_pdp_reviewed_formula_and_usage",
+              "evidence_rank": 1,
+              "review_tier": "assistant_reviewed"
+            },
+            "candidate_bundle_hash": "b8ff720a0c270556f36cfe97c7c2fa88fa75b6d7cd98c5dda9a1490186b62949"
+          }
+        }
+      ]
+    },
+    {
+      "external_product_id": "ext_c989d8297287ad108ef57250",
+      "pivota_signature_id": "sig_5f7fac72c63001be2b64c95d879e7366",
+      "title": "Matcha Dual Serum",
+      "brand": "TIRTIR Global",
+      "canonical_url": "https://tirtir.global/products/matcha-dual-serum",
+      "changed": true,
+      "blocked": false,
+      "skip_reason": null,
+      "candidate_hash": "7ac8db286ca6d7e598167a667e3ef8cb42d43d4829e69c155c66f372526deac6",
+      "evidence_profile": "official_pdp_reviewed_formula_and_usage",
+      "source_coverage": {
+        "source": "official_pdp",
+        "canonical_url": "https://tirtir.global/products/matcha-dual-serum",
+        "fields": {
+          "description": true,
+          "ingredients": 1,
+          "active_ingredients": 6,
+          "how_to": 1,
+          "details": 3,
+          "variants": 1
+        }
+      },
+      "preview": {
+        "headline": "Treatment serum",
+        "what_it_is": "Matcha Dual Serum is a treatment serum from TIRTIR Global in 1.69 oz, with source-backed ingredient cues around centella and barrier support.",
+        "why_it_stands_out": [
+          {
+            "headline": "Routine step cues are specific",
+            "body": "Reviewed skincare cues such as centella, hydration, barrier support, 1.69 oz identify the routine role or key ingredient context without inventing unsupported benefits.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Ingredient list is available",
+            "body": "Full INCI is present for formula-sensitive review, which makes this PDP safer to evaluate than a claim-only listing.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Shade and size are explicit",
+            "body": "Variant labels such as 1.69 oz, Size: 1.69 oz are visible, reducing ambiguity around the product format before a shopper clicks through.",
+            "evidence_strength": "official_pdp_reviewed"
+          }
+        ],
+        "best_for": [
+          {
+            "tag": "hydration",
+            "label": "hydration",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "radiance",
+            "label": "radiance",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "barrier_support",
+            "label": "barrier support",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "aromatherapy",
+            "label": "aromatherapy",
+            "confidence": "moderate"
+          }
+        ],
+        "shopping_highlight": "centella, hydration, barrier support"
+      },
+      "writes": [
+        {
+          "kb_key": "product:ext_c989d8297287ad108ef57250",
+          "action": "update",
+          "reason": "explicit_owner_delegated_assistant_replacement_review",
+          "old_hash": "8a5e622b1a1df60b48ed8da15450c712800cbe66de23e9a28dd9a4335c17f40d",
+          "candidate_hash": "25a9afc1bb6888b6a251ae721e85225efe47149c0f86243d893c7cda442d5f25",
+          "existing_weak": true,
+          "source": "pivota_insights_official_pdp_manual_review_v1",
+          "after_inventory": {
+            "product_id": "ext_c989d8297287ad108ef57250",
+            "kb_key": "product:ext_c989d8297287ad108ef57250",
+            "source": "pivota_insights_official_pdp_manual_review_v1",
+            "updated_at": "",
+            "last_success_at": "",
+            "title": "Matcha Dual Serum",
+            "canonical_url": "",
+            "bundle_hash": "7ac8db286ca6d7e598167a667e3ef8cb42d43d4829e69c155c66f372526deac6",
+            "lane": "keep",
+            "reason": "protected_good_content",
+            "priority": 0,
+            "protected": true,
+            "displayable": true,
+            "high_quality_ready": true,
+            "human_reviewed": true,
+            "issues": [],
+            "blocking_issues": [],
+            "quality_state": "reviewed",
+            "evidence_profile": "official_pdp_reviewed_formula_and_usage",
+            "evidence_rank": 1,
+            "review_tier": "assistant_reviewed",
+            "agent_readable": true,
+            "public_ready": true
+          },
+          "source_meta": {
+            "evidence_profile": "official_pdp_reviewed_formula_and_usage",
+            "quality_state": "reviewed",
+            "source_origin": "official_pdp_fields",
+            "source_url": "https://tirtir.global/products/matcha-dual-serum",
+            "quality_improvement": {
+              "previous_bundle_hash": "e4570c3e8a34f61e573039e26994bd589c440e2cf82021559386f4b44d301613",
+              "candidate_bundle_hash": "7ac8db286ca6d7e598167a667e3ef8cb42d43d4829e69c155c66f372526deac6",
+              "replacement_decision": "explicit_owner_delegated_assistant_replacement_review",
+              "existing_quality_lane": "keep",
+              "candidate_quality_lane": "keep",
+              "existing_evidence_profile": "seller_plus_formula",
+              "candidate_evidence_profile": "official_pdp_reviewed_formula_and_usage"
+            }
+          }
+        },
+        {
+          "kb_key": "product:sig_5f7fac72c63001be2b64c95d879e7366",
+          "action": "insert",
+          "reason": "new_product_intel_bundle",
+          "old_hash": null,
+          "candidate_hash": "25a9afc1bb6888b6a251ae721e85225efe47149c0f86243d893c7cda442d5f25",
+          "existing_weak": true,
+          "source": "pivota_insights_official_pdp_manual_review_v1",
+          "after_inventory": {
+            "product_id": "ext_c989d8297287ad108ef57250",
+            "kb_key": "product:sig_5f7fac72c63001be2b64c95d879e7366",
+            "source": "pivota_insights_official_pdp_manual_review_v1",
+            "updated_at": "",
+            "last_success_at": "",
+            "title": "Matcha Dual Serum",
+            "canonical_url": "",
+            "bundle_hash": "7ac8db286ca6d7e598167a667e3ef8cb42d43d4829e69c155c66f372526deac6",
+            "lane": "keep",
+            "reason": "protected_good_content",
+            "priority": 0,
+            "protected": true,
+            "displayable": true,
+            "high_quality_ready": true,
+            "human_reviewed": true,
+            "issues": [],
+            "blocking_issues": [],
+            "quality_state": "reviewed",
+            "evidence_profile": "official_pdp_reviewed_formula_and_usage",
+            "evidence_rank": 1,
+            "review_tier": "assistant_reviewed",
+            "agent_readable": true,
+            "public_ready": true
+          },
+          "source_meta": {
+            "evidence_profile": "official_pdp_reviewed_formula_and_usage",
+            "quality_state": "reviewed",
+            "source_origin": "official_pdp_fields",
+            "source_url": "https://tirtir.global/products/matcha-dual-serum",
+            "quality_improvement": {
+              "previous_bundle_hash": null,
+              "candidate_bundle_hash": "7ac8db286ca6d7e598167a667e3ef8cb42d43d4829e69c155c66f372526deac6",
+              "replacement_decision": "new_product_intel_bundle",
+              "existing_quality_lane": null,
+              "candidate_quality_lane": "keep",
+              "existing_evidence_profile": null,
+              "candidate_evidence_profile": "official_pdp_reviewed_formula_and_usage"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "external_product_id": "ext_fa03729895112b24e3687e85",
+      "pivota_signature_id": "sig_d428c9fee8a1c8d47611aedea34fba8a",
+      "title": "Matcha Pack Cleanser",
+      "brand": "TIRTIR Global",
+      "canonical_url": "https://tirtir.global/products/matcha-pack-cleanser",
+      "changed": true,
+      "blocked": false,
+      "skip_reason": null,
+      "candidate_hash": "57fa471423ecd1e978629cac347cb04251c96f89d491509c26318b74f3c8a04b",
+      "evidence_profile": "official_pdp_reviewed_formula_and_usage",
+      "source_coverage": {
+        "source": "official_pdp",
+        "canonical_url": "https://tirtir.global/products/matcha-pack-cleanser",
+        "fields": {
+          "description": true,
+          "ingredients": 1,
+          "active_ingredients": 1,
+          "how_to": 1,
+          "details": 2,
+          "variants": 1
+        }
+      },
+      "preview": {
+        "headline": "Face cleanser",
+        "what_it_is": "Matcha Pack Cleanser is a face cleanser from TIRTIR Global in 120 mL, with source-backed cues around cleansing, a non-stripping feel and dirt, oil, and impurity removal.",
+        "why_it_stands_out": [
+          {
+            "headline": "Product cues are source-backed",
+            "body": "Reviewed PDP cues such as daily cleansing, pore cleansing, non-stripping cleanse, 120 mL give shoppers specific comparison points within TIRTIR Global, rather than category-only copy.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Ingredient list is available",
+            "body": "Full INCI is present for formula-sensitive review, which makes this PDP safer to evaluate than a claim-only listing.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Shade and size are explicit",
+            "body": "Variant labels such as 120 mL, Size: 120 mL are visible, reducing ambiguity around the product format before a shopper clicks through.",
+            "evidence_strength": "official_pdp_reviewed"
+          }
+        ],
+        "best_for": [
+          {
+            "tag": "daily_cleansing",
+            "label": "daily cleansing",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "pore_cleansing",
+            "label": "pore cleansing",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "non_stripping_cleanse",
+            "label": "non-stripping cleanse",
+            "confidence": "moderate"
+          }
+        ],
+        "shopping_highlight": "daily cleansing, pore cleansing"
+      },
+      "writes": [
+        {
+          "kb_key": "product:ext_fa03729895112b24e3687e85",
+          "action": "skip",
+          "reason": "protected_high_quality_existing:verified",
+          "old_hash": "e00f52670dd786f04c87e5dd1d702936932f8725bcb228e9a685015db687b89e",
+          "existing_weak": false
+        },
+        {
+          "kb_key": "product:sig_d428c9fee8a1c8d47611aedea34fba8a",
+          "action": "insert",
+          "reason": "new_product_intel_bundle",
+          "old_hash": null,
+          "candidate_hash": "a4bc319fb06896eaabbc9890129724ca373fc1f78bde2e28c71572575172a25d",
+          "existing_weak": true,
+          "source": "pivota_insights_official_pdp_manual_review_v1",
+          "after_inventory": {
+            "product_id": "ext_fa03729895112b24e3687e85",
+            "kb_key": "product:sig_d428c9fee8a1c8d47611aedea34fba8a",
+            "source": "pivota_insights_official_pdp_manual_review_v1",
+            "updated_at": "",
+            "last_success_at": "",
+            "title": "Matcha Pack Cleanser",
+            "canonical_url": "",
+            "bundle_hash": "57fa471423ecd1e978629cac347cb04251c96f89d491509c26318b74f3c8a04b",
+            "lane": "keep",
+            "reason": "protected_good_content",
+            "priority": 0,
+            "protected": true,
+            "displayable": true,
+            "high_quality_ready": true,
+            "human_reviewed": true,
+            "issues": [],
+            "blocking_issues": [],
+            "quality_state": "reviewed",
+            "evidence_profile": "official_pdp_reviewed_formula_and_usage",
+            "evidence_rank": 1,
+            "review_tier": "assistant_reviewed",
+            "agent_readable": true,
+            "public_ready": true
+          },
+          "source_meta": {
+            "evidence_profile": "official_pdp_reviewed_formula_and_usage",
+            "quality_state": "reviewed",
+            "source_origin": "official_pdp_fields",
+            "source_url": "https://tirtir.global/products/matcha-pack-cleanser",
+            "quality_improvement": {
+              "previous_bundle_hash": null,
+              "candidate_bundle_hash": "57fa471423ecd1e978629cac347cb04251c96f89d491509c26318b74f3c8a04b",
+              "replacement_decision": "new_product_intel_bundle",
+              "existing_quality_lane": null,
+              "candidate_quality_lane": "keep",
+              "existing_evidence_profile": null,
+              "candidate_evidence_profile": "official_pdp_reviewed_formula_and_usage"
+            }
+          }
+        }
+      ]
+    }
+  ]
+}

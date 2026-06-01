@@ -1,0 +1,465 @@
+{
+  "generated_at": "2026-06-01T04:56:35.098Z",
+  "market": "US",
+  "include_non_public": false,
+  "docs_built": 8,
+  "source_build_failures": [],
+  "docs": [
+    {
+      "doc_id": "sellable:sig_5abe8ea9ba3e746fb2a44d8a",
+      "sellable_item_group_id": "sig_5abe8ea9ba3e746fb2a44d8a",
+      "product_line_id": "pl_9f06fc6e6e92e49cfa56bdc3",
+      "review_family_id": "rf_9f06fc6e6e92e49cfa56bdc3",
+      "brand_name": "TIRTIR Global",
+      "category_paths": [
+        "Exfoliant"
+      ],
+      "market": "US",
+      "availability_state": "available",
+      "publish_state": "public",
+      "title": "Matcha Bubble Tea Scrub",
+      "subtitle": "A rinse-off facial scrub for people who want physical exfoliation cues but still need a gentler, redness-aware cleanse step.",
+      "variant_axes": {
+        "multi_variant": false
+      },
+      "size": null,
+      "shade": null,
+      "pack": null,
+      "hero_media": {
+        "url": "https://tirtir.global/cdn/shop/files/Group_131_db34eba9-f5ba-4ad6-8a0e-31b572a9c0de.png?v=1775194045",
+        "source_kind": "catalog",
+        "source_tier": "catalog"
+      },
+      "preview_media": [
+        "https://tirtir.global/cdn/shop/files/Group_131_db34eba9-f5ba-4ad6-8a0e-31b572a9c0de.png?v=1775194045",
+        "https://tirtir.global/cdn/shop/files/260304___02.png?v=1775194045",
+        "https://tirtir.global/cdn/shop/files/260304___03.png?v=1775194045",
+        "https://tirtir.global/cdn/shop/files/260304___04_02.png?v=1775194045",
+        "https://tirtir.global/cdn/shop/files/260304___01.png?v=1775194045",
+        "https://tirtir.global/cdn/shop/files/260304___05.png?v=1775194045",
+        "https://tirtir.global/cdn/shop/files/260304___06.png?v=1775194045"
+      ],
+      "price_min": 20,
+      "price_max": 20,
+      "default_offer_id": "external_seed:ext_6df19f2224fec208ca6eeea7",
+      "internal_offer_exists": false,
+      "external_offer_exists": true,
+      "pivota_insight_status": "available",
+      "pivota_insight_summary": "Matcha Bubble Tea Scrub is a face scrub from TIRTIR Global in 95 g, with source-backed cues around cleansing and hydration.",
+      "quality_score": null,
+      "browse_score": null,
+      "facet_tokens": [
+        "TIRTIR Global",
+        "Exfoliant"
+      ],
+      "sort_keys": {
+        "price_min": 20,
+        "price_max": 20,
+        "updated_at": null
+      },
+      "updated_at": null,
+      "source_refs": [
+        "external_seed:ext_6df19f2224fec208ca6eeea7"
+      ]
+    },
+    {
+      "doc_id": "sellable:sig_e9eb4ad850a3605a4ca35916",
+      "sellable_item_group_id": "sig_e9eb4ad850a3605a4ca35916",
+      "product_line_id": "pl_3217d0ad5ded4c789401a91b",
+      "review_family_id": "rf_3217d0ad5ded4c789401a91b",
+      "brand_name": "TIRTIR Global",
+      "category_paths": [
+        "Face Makeup/Foundation",
+        "Foundation"
+      ],
+      "market": "US",
+      "availability_state": "available",
+      "publish_state": "public",
+      "title": "Mask Fit Red Foundation",
+      "subtitle": "A liquid foundation in the Mask Fit Red line, meant for complexion coverage, finish control, and shade matching rather than skincare treatment.",
+      "variant_axes": {
+        "color": "10c shell",
+        "multi_variant": true
+      },
+      "size": null,
+      "shade": null,
+      "pack": null,
+      "hero_media": {
+        "url": "https://tirtir.global/cdn/shop/files/Thumbnail_2x_2f511723-1d35-45f7-ae1d-4fcba3563164.png?v=1770794327",
+        "source_kind": "catalog",
+        "source_tier": "catalog"
+      },
+      "preview_media": [
+        "https://tirtir.global/cdn/shop/files/Thumbnail_2x_2f511723-1d35-45f7-ae1d-4fcba3563164.png?v=1770794327",
+        "https://tirtir.global/cdn/shop/files/Artboard_2_2x_d9b6cfd6-970e-421f-8dd0-cb595c9daa46.jpg?v=1770794327",
+        "https://tirtir.global/cdn/shop/files/Main_01.png?v=1770794327",
+        "https://tirtir.global/cdn/shop/files/Sub_02_da437237-aaf4-4003-9575-b2e86fd5fc70.png?v=1770794327",
+        "https://tirtir.global/cdn/shop/files/Sub_03_d517c795-684e-4e64-ac17-2adf8b1f3344.png?v=1770794327",
+        "https://tirtir.global/cdn/shop/files/Sub_04_829fe2d7-ef5c-437e-8c2d-444ff2c920cb.png?v=1770794327",
+        "https://tirtir.global/cdn/shop/files/Sub_05_4c77f80f-eda4-4c9b-b2d7-c83983c2942f.png?v=1770794327",
+        "https://tirtir.global/cdn/shop/files/Sub_06_57b97ab2-87b6-4fa8-ab58-892d6e49bf3c.png?v=1770794327"
+      ],
+      "price_min": 24.3,
+      "price_max": 24.3,
+      "default_offer_id": "external_seed:ext_7ba277de9baadb1584ae2a5a",
+      "internal_offer_exists": false,
+      "external_offer_exists": true,
+      "pivota_insight_status": "available",
+      "pivota_insight_summary": "Liquid foundation for comparing coverage, finish, and shade match.",
+      "quality_score": null,
+      "browse_score": null,
+      "facet_tokens": [
+        "TIRTIR Global",
+        "Face Makeup/Foundation",
+        "Foundation"
+      ],
+      "sort_keys": {
+        "price_min": 24.3,
+        "price_max": 24.3,
+        "updated_at": null
+      },
+      "updated_at": null,
+      "source_refs": [
+        "external_seed:ext_7ba277de9baadb1584ae2a5a"
+      ]
+    },
+    {
+      "doc_id": "sellable:sig_79cca2035b5b915d020b6c1a",
+      "sellable_item_group_id": "sig_79cca2035b5b915d020b6c1a",
+      "product_line_id": "pl_f97de0a07edadb9085d87f0c",
+      "review_family_id": "rf_f97de0a07edadb9085d87f0c",
+      "brand_name": "TIRTIR Global",
+      "category_paths": [
+        "Treatment"
+      ],
+      "market": "US",
+      "availability_state": "available",
+      "publish_state": "public",
+      "title": "Mask Fit Makeup Fixer",
+      "subtitle": "A makeup setting spray for locking down finished makeup, refreshing complexion layers, and controlling finish through the day.",
+      "variant_axes": {
+        "multi_variant": false
+      },
+      "size": null,
+      "shade": null,
+      "pack": null,
+      "hero_media": {
+        "url": "https://tirtir.global/cdn/shop/files/Thumbnail_2x_c74a8a8a-864d-41b7-942c-259b7f79357f.png?v=1770793736",
+        "source_kind": "catalog",
+        "source_tier": "catalog"
+      },
+      "preview_media": [
+        "https://tirtir.global/cdn/shop/files/Thumbnail_2x_c74a8a8a-864d-41b7-942c-259b7f79357f.png?v=1770793736",
+        "https://tirtir.global/cdn/shop/files/1_303453f3-aa17-45f8-a310-b5d7a483e1a1.jpg?v=1770793736",
+        "https://tirtir.global/cdn/shop/files/2-2_9a51c4aa-507a-4db9-af9b-7c51a6b65348.jpg?v=1770793736",
+        "https://tirtir.global/cdn/shop/files/3_ee07b81e-7afa-48cb-9ded-fd9569c041e7.jpg?v=1770793736",
+        "https://tirtir.global/cdn/shop/files/4_5fe3d444-8233-4cfc-8bac-b0f3b32dbda1.jpg?v=1770793736",
+        "https://tirtir.global/cdn/shop/files/5_ef8d6943-8fc0-40ae-8b42-f3f94f58486d.jpg?v=1770793736",
+        "https://tirtir.global/cdn/shop/files/6_381ba35f-ca71-4341-a223-e30e65ba4a25.jpg?v=1770793736",
+        "https://tirtir.global/cdn/shop/files/7_05eb28b4-6fe0-4b1a-8afc-f61878f946cd.jpg?v=1770793736"
+      ],
+      "price_min": 15,
+      "price_max": 15,
+      "default_offer_id": "external_seed:ext_263b61b2d374b255d121c928",
+      "internal_offer_exists": false,
+      "external_offer_exists": true,
+      "pivota_insight_status": "available",
+      "pivota_insight_summary": "Mask Fit Makeup Fixer is a treatment mask from TIRTIR Global in 80 mL.",
+      "quality_score": null,
+      "browse_score": null,
+      "facet_tokens": [
+        "TIRTIR Global",
+        "Treatment"
+      ],
+      "sort_keys": {
+        "price_min": 15,
+        "price_max": 15,
+        "updated_at": null
+      },
+      "updated_at": null,
+      "source_refs": [
+        "external_seed:ext_263b61b2d374b255d121c928"
+      ]
+    },
+    {
+      "doc_id": "sellable:sig_9440c44f3b2bf769f6944c44",
+      "sellable_item_group_id": "sig_9440c44f3b2bf769f6944c44",
+      "product_line_id": "pl_0be1a5bc73df794e41eecd46",
+      "review_family_id": "rf_0be1a5bc73df794e41eecd46",
+      "brand_name": "TIRTIR Global",
+      "category_paths": [
+        "Serum"
+      ],
+      "market": "US",
+      "availability_state": "available",
+      "publish_state": "public",
+      "title": "Matcha Dual Serum",
+      "subtitle": "A bi-phase serum positioned around redness care, hydration, and radiance, with niacinamide and humectant support visible in the available formula evidence.",
+      "variant_axes": {
+        "multi_variant": false
+      },
+      "size": null,
+      "shade": null,
+      "pack": null,
+      "hero_media": {
+        "url": "https://tirtir.global/cdn/shop/files/Group_133_703bdd41-493e-49c9-aa9d-d9f397205e46.png?v=1775194173",
+        "source_kind": "catalog",
+        "source_tier": "catalog"
+      },
+      "preview_media": [
+        "https://tirtir.global/cdn/shop/files/Group_133_703bdd41-493e-49c9-aa9d-d9f397205e46.png?v=1775194173",
+        "https://tirtir.global/cdn/shop/files/250303___02.png?v=1775194173",
+        "https://tirtir.global/cdn/shop/files/250303___01.png?v=1775194173",
+        "https://tirtir.global/cdn/shop/files/250303___03.png?v=1775194173",
+        "https://tirtir.global/cdn/shop/files/250303___04.png?v=1775194173",
+        "https://tirtir.global/cdn/shop/files/250303___05.png?v=1775194173",
+        "https://tirtir.global/cdn/shop/files/250303___06.png?v=1775194173"
+      ],
+      "price_min": 29,
+      "price_max": 29,
+      "default_offer_id": "external_seed:ext_c989d8297287ad108ef57250",
+      "internal_offer_exists": false,
+      "external_offer_exists": true,
+      "pivota_insight_status": "available",
+      "pivota_insight_summary": "Matcha Dual Serum is a treatment serum from TIRTIR Global in 1.",
+      "quality_score": null,
+      "browse_score": null,
+      "facet_tokens": [
+        "TIRTIR Global",
+        "Serum"
+      ],
+      "sort_keys": {
+        "price_min": 29,
+        "price_max": 29,
+        "updated_at": null
+      },
+      "updated_at": null,
+      "source_refs": [
+        "external_seed:ext_c989d8297287ad108ef57250"
+      ]
+    },
+    {
+      "doc_id": "sellable:sig_cc8fa73443e422de1c42bb77",
+      "sellable_item_group_id": "sig_cc8fa73443e422de1c42bb77",
+      "product_line_id": "pl_856ec244dd4732d748de12da",
+      "review_family_id": "rf_856ec244dd4732d748de12da",
+      "brand_name": "TIRTIR Global",
+      "category_paths": [
+        "Cleanser"
+      ],
+      "market": "US",
+      "availability_state": "available",
+      "publish_state": "public",
+      "title": "Matcha Pack Cleanser",
+      "subtitle": "A sticky pack-to-foam cleanser positioned for deep pore cleansing, gentle exfoliation, redness support, and a short contact-time cleanse.",
+      "variant_axes": {
+        "multi_variant": false
+      },
+      "size": null,
+      "shade": null,
+      "pack": null,
+      "hero_media": {
+        "url": "https://tirtir.global/cdn/shop/files/260303_cb79e54f-e79b-4a82-bc4c-688cd5290627.png?v=1775198947",
+        "source_kind": "catalog",
+        "source_tier": "catalog"
+      },
+      "preview_media": [
+        "https://tirtir.global/cdn/shop/files/260303_cb79e54f-e79b-4a82-bc4c-688cd5290627.png?v=1775198947",
+        "https://tirtir.global/cdn/shop/files/260303___01.png?v=1775198907",
+        "https://tirtir.global/cdn/shop/files/260303___02.png?v=1775198907",
+        "https://tirtir.global/cdn/shop/files/260303___03.png?v=1775198907",
+        "https://tirtir.global/cdn/shop/files/260303___04.png?v=1775198907",
+        "https://tirtir.global/cdn/shop/files/260303___05.png?v=1775198907"
+      ],
+      "price_min": 17,
+      "price_max": 17,
+      "default_offer_id": "external_seed:ext_fa03729895112b24e3687e85",
+      "internal_offer_exists": false,
+      "external_offer_exists": true,
+      "pivota_insight_status": "available",
+      "pivota_insight_summary": "Sticky pack-to-foam cleanser for pore-focused cleanse nights.",
+      "quality_score": null,
+      "browse_score": null,
+      "facet_tokens": [
+        "TIRTIR Global",
+        "Cleanser"
+      ],
+      "sort_keys": {
+        "price_min": 17,
+        "price_max": 17,
+        "updated_at": null
+      },
+      "updated_at": null,
+      "source_refs": [
+        "external_seed:ext_fa03729895112b24e3687e85"
+      ]
+    },
+    {
+      "doc_id": "sellable:sig_37cfc2558d69e61d0fe218ba",
+      "sellable_item_group_id": "sig_37cfc2558d69e61d0fe218ba",
+      "product_line_id": "pl_155142cbcecd63f89c68d180",
+      "review_family_id": "rf_155142cbcecd63f89c68d180",
+      "brand_name": "TIRTIR Global",
+      "category_paths": [
+        "Face Makeup/Cushion Foundation",
+        "Cushion Refill"
+      ],
+      "market": "US",
+      "availability_state": "available",
+      "publish_state": "public",
+      "title": "Mask Fit All Cover Cushion Refill",
+      "subtitle": "A refill listing for TIRTIR Mask Fit All Cover Cushion in shade 21N Ivory. This PDP represents the refill format, not the full cushion compact, with price, availability, image, and shade evidence from the TIRTIR product URL.",
+      "variant_axes": {
+        "multi_variant": false
+      },
+      "size": null,
+      "shade": null,
+      "pack": null,
+      "hero_media": {
+        "url": "https://cdn.shopify.com/s/files/1/0663/2757/6795/files/Untitleddesign_17_bb271289-aa4c-4504-a56b-345f02408b12.png?v=1770707225",
+        "source_kind": "catalog",
+        "source_tier": "catalog"
+      },
+      "preview_media": [
+        "https://cdn.shopify.com/s/files/1/0663/2757/6795/files/Untitleddesign_17_bb271289-aa4c-4504-a56b-345f02408b12.png?v=1770707225"
+      ],
+      "price_min": 3,
+      "price_max": 3,
+      "default_offer_id": "external_seed:ext_f547012d9e7a18a054240103",
+      "internal_offer_exists": false,
+      "external_offer_exists": true,
+      "pivota_insight_status": "available",
+      "pivota_insight_summary": "Mask Fit All Cover Cushion Refill is a complexion product from TIRTIR Global in 21N Ivory, with source-backed cues around coverage control.",
+      "quality_score": null,
+      "browse_score": null,
+      "facet_tokens": [
+        "TIRTIR Global",
+        "Face Makeup/Cushion Foundation",
+        "Cushion Refill"
+      ],
+      "sort_keys": {
+        "price_min": 3,
+        "price_max": 3,
+        "updated_at": null
+      },
+      "updated_at": null,
+      "source_refs": [
+        "external_seed:ext_f547012d9e7a18a054240103"
+      ]
+    },
+    {
+      "doc_id": "sellable:sig_9da7da09e26bef1936e399a7",
+      "sellable_item_group_id": "sig_9da7da09e26bef1936e399a7",
+      "product_line_id": "pl_ffcea1395325fd706a0dfe98",
+      "review_family_id": "rf_ffcea1395325fd706a0dfe98",
+      "brand_name": "TIRTIR Global",
+      "category_paths": [
+        "Toner"
+      ],
+      "market": "US",
+      "availability_state": "available",
+      "publish_state": "public",
+      "title": "Ice-Cooling Toner Pack Pads",
+      "subtitle": "Oversized 70mm toner pads positioned for cooling, puffiness, redness support, hydration, and quick masking over larger face areas.",
+      "variant_axes": {
+        "multi_variant": false
+      },
+      "size": null,
+      "shade": null,
+      "pack": null,
+      "hero_media": {
+        "url": "https://cdn.shopify.com/s/files/1/0663/2757/6795/files/pads.png?v=1775022196",
+        "source_kind": "catalog",
+        "source_tier": "catalog"
+      },
+      "preview_media": [
+        "https://cdn.shopify.com/s/files/1/0663/2757/6795/files/pads.png?v=1775022196",
+        "https://cdn.shopify.com/s/files/1/0663/2757/6795/files/02_a68ac6f3-4bcb-49c6-ac78-0bcc26c5c206.png?v=1775022196",
+        "https://cdn.shopify.com/s/files/1/0663/2757/6795/files/03_7f881046-a284-450a-9787-c0d30662067a.png?v=1775022196",
+        "https://cdn.shopify.com/s/files/1/0663/2757/6795/files/04_4e4d36fa-f2ba-4ecb-a4e3-3cad8a1bb1e5.png?v=1775022196",
+        "https://cdn.shopify.com/s/files/1/0663/2757/6795/files/05_55087cae-4893-455c-a241-bd90901607e3.png?v=1775022196",
+        "https://cdn.shopify.com/s/files/1/0663/2757/6795/files/06_116fff6b-c39b-4597-a2e5-0a85a8a7e8a3.png?v=1775022196",
+        "https://cdn.shopify.com/s/files/1/0663/2757/6795/files/07_4144c7c0-5196-4e17-ac6b-302cbad54205.png?v=1775022196"
+      ],
+      "price_min": 28,
+      "price_max": 28,
+      "default_offer_id": "external_seed:ext_39b3cafe7938c761c8530f81",
+      "internal_offer_exists": false,
+      "external_offer_exists": true,
+      "pivota_insight_status": "available",
+      "pivota_insight_summary": "Oversized cooling pads for quick heat-flushed skin comfort.",
+      "quality_score": null,
+      "browse_score": null,
+      "facet_tokens": [
+        "TIRTIR Global",
+        "Toner"
+      ],
+      "sort_keys": {
+        "price_min": 28,
+        "price_max": 28,
+        "updated_at": null
+      },
+      "updated_at": null,
+      "source_refs": [
+        "external_seed:ext_39b3cafe7938c761c8530f81"
+      ]
+    },
+    {
+      "doc_id": "sellable:sig_f5a515247ad90b55d66c29bf",
+      "sellable_item_group_id": "sig_f5a515247ad90b55d66c29bf",
+      "product_line_id": "pl_7e0705a893a60b6805438f63",
+      "review_family_id": "rf_7e0705a893a60b6805438f63",
+      "brand_name": "TIRTIR Global",
+      "category_paths": [
+        "Serum"
+      ],
+      "market": "US",
+      "availability_state": "available",
+      "publish_state": "public",
+      "title": "Ice-Cooling Water Drop Serum",
+      "subtitle": "A cooling serum positioned around Dual-Cool Sync technology, encapsulated spicules, hydration, elasticity support, and heat-related pore appearance.",
+      "variant_axes": {
+        "multi_variant": false
+      },
+      "size": null,
+      "shade": null,
+      "pack": null,
+      "hero_media": {
+        "url": "https://cdn.shopify.com/s/files/1/0663/2757/6795/files/2x.jpg?v=1757579812",
+        "source_kind": "catalog",
+        "source_tier": "catalog"
+      },
+      "preview_media": [
+        "https://cdn.shopify.com/s/files/1/0663/2757/6795/files/2x.jpg?v=1757579812",
+        "https://cdn.shopify.com/s/files/1/0663/2757/6795/files/01_147e8bf9-c57e-4f62-bce9-21ee0083c6d5.png?v=1757579812",
+        "https://cdn.shopify.com/s/files/1/0663/2757/6795/files/02_d6f187c3-9940-4975-8056-be88996a278c.png?v=1757579812",
+        "https://cdn.shopify.com/s/files/1/0663/2757/6795/files/03_74dcfc02-a658-451a-a3c2-38d6be82bea4.png?v=1757579812",
+        "https://cdn.shopify.com/s/files/1/0663/2757/6795/files/04_0ed1d13a-719c-4c22-9f1a-40c6884ec622.png?v=1757579812",
+        "https://cdn.shopify.com/s/files/1/0663/2757/6795/files/05_e00369b0-3ea9-4f98-a7c0-8fcc1fa5bc64.png?v=1757579812",
+        "https://cdn.shopify.com/s/files/1/0663/2757/6795/files/06_aa680239-ecf2-44cd-b9d4-6fc6b1e048c9.png?v=1757579812"
+      ],
+      "price_min": 19,
+      "price_max": 19,
+      "default_offer_id": "external_seed:ext_07509f4743c82d62b2f15231",
+      "internal_offer_exists": false,
+      "external_offer_exists": true,
+      "pivota_insight_status": "available",
+      "pivota_insight_summary": "Cooling serum for heat-flushed, puffy, or warm-weather skin days.",
+      "quality_score": null,
+      "browse_score": null,
+      "facet_tokens": [
+        "TIRTIR Global",
+        "Serum"
+      ],
+      "sort_keys": {
+        "price_min": 19,
+        "price_max": 19,
+        "updated_at": null
+      },
+      "updated_at": null,
+      "source_refs": [
+        "external_seed:ext_07509f4743c82d62b2f15231"
+      ]
+    }
+  ]
+}
