@@ -1,0 +1,462 @@
+{
+  "generated_at": "2026-06-01T02:48:44.144Z",
+  "options": {
+    "market": "US",
+    "includeAttached": true,
+    "domain": null,
+    "externalProductIds": [
+      "ext_593de56f9237926b73ba43ef",
+      "ext_5ffe1c0b5195b36d2bdcffa9",
+      "ext_8bfea10f1af2ab628a5ad6ba"
+    ],
+    "limit": 10,
+    "sampleLimit": 10,
+    "checkpointDir": "/Users/pengchydan/dev/_worktrees/pivota-agent-markato-wave25-786-20260527/reports/markato_expansion_status_20260524/wave113_kravebeauty_product_intel_20260601/readiness_after_product_intel/pdp_readiness_checkpoint",
+    "checkpointMode": "domain",
+    "resume": false,
+    "force": false,
+    "continueOnError": true,
+    "pageSize": 500,
+    "format": "json"
+  },
+  "warnings": [],
+  "summary": {
+    "scanned": 3,
+    "by_market": {
+      "US": 3
+    },
+    "by_domain": [
+      {
+        "key": "kravebeauty.com",
+        "count": 3
+      }
+    ],
+    "by_product_family": [
+      {
+        "key": "set_or_collection",
+        "count": 1
+      },
+      {
+        "key": "single_formula",
+        "count": 1
+      },
+      {
+        "key": "unknown_product",
+        "count": 1
+      }
+    ],
+    "coverage": {
+      "missing_inci": 2,
+      "missing_active_raw": 1,
+      "missing_details": 1,
+      "missing_how_to": 0,
+      "missing_faq": 1
+    },
+    "pivota_insights": {
+      "direct": {
+        "displayable": 3,
+        "high_quality_ready": 2,
+        "missing_kb": 0,
+        "not_displayable": 0
+      },
+      "effective": {
+        "displayable": 3,
+        "high_quality_ready": 2,
+        "missing_kb": 0,
+        "not_displayable": 0,
+        "borrowed_from_sibling": 0
+      },
+      "effective_issues": [
+        {
+          "key": "public_sensitive_claim",
+          "count": 1
+        }
+      ],
+      "effective_issue_domains": [
+        {
+          "key": "kravebeauty.com::public_sensitive_claim",
+          "count": 1
+        }
+      ],
+      "quality_state": [
+        {
+          "key": "reviewed",
+          "count": 3
+        }
+      ],
+      "evidence_profile": [
+        {
+          "key": "official_pdp_seed",
+          "count": 2
+        },
+        {
+          "key": "seller_plus_formula",
+          "count": 1
+        }
+      ],
+      "samples": {
+        "public_sensitive_claim": [
+          {
+            "external_product_id": "ext_5ffe1c0b5195b36d2bdcffa9",
+            "domain": "kravebeauty.com",
+            "title": "Oil La La",
+            "used_product_id": "ext_5ffe1c0b5195b36d2bdcffa9",
+            "quality_state": "reviewed",
+            "evidence_profile": "seller_plus_formula"
+          }
+        ]
+      }
+    },
+    "active_ingredients": {
+      "regulatory_expected": 0,
+      "hero_expected": 1,
+      "any_active_items": 1,
+      "status": [
+        {
+          "key": "not_applicable_product_family",
+          "count": 1
+        },
+        {
+          "key": "not_expected_missing",
+          "count": 1
+        },
+        {
+          "key": "ready_hero",
+          "count": 1
+        }
+      ],
+      "issues": [],
+      "issue_domains": [],
+      "source_origin": [
+        {
+          "key": "none",
+          "count": 2
+        },
+        {
+          "key": "pdp_section",
+          "count": 1
+        }
+      ],
+      "samples": {}
+    },
+    "variants": {
+      "status": [
+        {
+          "key": "ready",
+          "count": 3
+        }
+      ],
+      "issues": [],
+      "issue_domains": [],
+      "samples": {}
+    }
+  },
+  "rows": [
+    {
+      "seed_id": "eps_6a09cff753b91fda088bafb2",
+      "external_product_id": "ext_8bfea10f1af2ab628a5ad6ba",
+      "market": "US",
+      "domain": "kravebeauty.com",
+      "title": "Duo Oil La La",
+      "canonical_url": "https://kravebeauty.com/products/duo-oil-la-la",
+      "product_family": "set_or_collection",
+      "product_line_id": "pl_fe095f5829a6d7724401bd81",
+      "identity_variant_axes": {
+        "pack": "2pack",
+        "multi_variant": false
+      },
+      "pivota_insights": {
+        "direct": {
+          "product_id": "ext_8bfea10f1af2ab628a5ad6ba",
+          "kb_key": "product:ext_8bfea10f1af2ab628a5ad6ba",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "official_pdp_seed",
+          "has_card_highlight": true
+        },
+        "effective": {
+          "product_id": "ext_8bfea10f1af2ab628a5ad6ba",
+          "kb_key": "product:ext_8bfea10f1af2ab628a5ad6ba",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "official_pdp_seed",
+          "has_card_highlight": true
+        },
+        "product_line_id": "pl_fe095f5829a6d7724401bd81",
+        "borrowed_from_sibling": false
+      },
+      "active_ingredients": {
+        "status": "not_applicable_product_family",
+        "issues": [],
+        "regulatory_expected": false,
+        "hero_expected": false,
+        "active_items": [],
+        "source_origin": "none",
+        "source_quality_status": "blocked",
+        "coverage": {
+          "details_sections_count": 10,
+          "faq_count": 20,
+          "how_to_chars": 155,
+          "inci_chars": 0,
+          "active_ingredients_chars": 0,
+          "inci_applicability_status": "",
+          "ingredient_review_status": "",
+          "ingredient_remediation_action": "",
+          "bundle_component_refs_count": 1,
+          "effective_inci_chars": 0,
+          "inci_borrowed_from_product_id": ""
+        },
+        "invalid_fragments": [],
+        "suppressed_reason": "set_or_collection"
+      },
+      "variants": {
+        "status": "ready",
+        "issues": [],
+        "visible_variant_rows": 1,
+        "examples": {
+          "identity_option_visible": [],
+          "wrong_axis_for_category": [],
+          "makeup_shade_missing_visual": [],
+          "size_value_generic_axis": [],
+          "default_option_size_evidence_missing_axis": [],
+          "identity_default_title_axis": []
+        }
+      },
+      "coverage": {
+        "details_sections_count": 10,
+        "faq_count": 20,
+        "how_to_chars": 155,
+        "inci_chars": 0,
+        "active_ingredients_chars": 0,
+        "inci_applicability_status": "",
+        "ingredient_review_status": "",
+        "ingredient_remediation_action": "",
+        "bundle_component_refs_count": 1,
+        "effective_inci_chars": 0,
+        "inci_borrowed_from_product_id": ""
+      }
+    },
+    {
+      "seed_id": "eps_8a6b6bd4736869d09a776301",
+      "external_product_id": "ext_593de56f9237926b73ba43ef",
+      "market": "US",
+      "domain": "kravebeauty.com",
+      "title": "Jumbo Great Barrier Relief",
+      "canonical_url": "https://kravebeauty.com/products/jumbo-great-barrier-evergreen",
+      "product_family": "unknown_product",
+      "product_line_id": "pl_14a37185d05ed6470739584f",
+      "identity_variant_axes": {
+        "size": "jumbo 100 ml",
+        "volume": "100ml",
+        "multi_variant": false
+      },
+      "pivota_insights": {
+        "direct": {
+          "product_id": "ext_593de56f9237926b73ba43ef",
+          "kb_key": "product:ext_593de56f9237926b73ba43ef",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "official_pdp_seed",
+          "has_card_highlight": true
+        },
+        "effective": {
+          "product_id": "ext_593de56f9237926b73ba43ef",
+          "kb_key": "product:ext_593de56f9237926b73ba43ef",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "official_pdp_seed",
+          "has_card_highlight": true
+        },
+        "product_line_id": "pl_14a37185d05ed6470739584f",
+        "borrowed_from_sibling": false
+      },
+      "active_ingredients": {
+        "status": "not_expected_missing",
+        "issues": [],
+        "regulatory_expected": false,
+        "hero_expected": false,
+        "active_items": [],
+        "source_origin": "none",
+        "source_quality_status": "blocked",
+        "coverage": {
+          "details_sections_count": 0,
+          "faq_count": 0,
+          "how_to_chars": 155,
+          "inci_chars": 0,
+          "active_ingredients_chars": 0,
+          "inci_applicability_status": "",
+          "ingredient_review_status": "manual_source_review_required",
+          "ingredient_remediation_action": "manual_source_review_required",
+          "bundle_component_refs_count": 1,
+          "effective_inci_chars": 0,
+          "inci_borrowed_from_product_id": ""
+        },
+        "invalid_fragments": [],
+        "suppressed_reason": "no_authoritative_source"
+      },
+      "variants": {
+        "status": "ready",
+        "issues": [],
+        "visible_variant_rows": 1,
+        "examples": {
+          "identity_option_visible": [],
+          "wrong_axis_for_category": [],
+          "makeup_shade_missing_visual": [],
+          "size_value_generic_axis": [],
+          "default_option_size_evidence_missing_axis": [],
+          "identity_default_title_axis": []
+        }
+      },
+      "coverage": {
+        "details_sections_count": 0,
+        "faq_count": 0,
+        "how_to_chars": 155,
+        "inci_chars": 0,
+        "active_ingredients_chars": 0,
+        "inci_applicability_status": "",
+        "ingredient_review_status": "manual_source_review_required",
+        "ingredient_remediation_action": "manual_source_review_required",
+        "bundle_component_refs_count": 1,
+        "effective_inci_chars": 0,
+        "inci_borrowed_from_product_id": ""
+      }
+    },
+    {
+      "seed_id": "eps_f54dcf7532358e96d129e3fa",
+      "external_product_id": "ext_5ffe1c0b5195b36d2bdcffa9",
+      "market": "US",
+      "domain": "kravebeauty.com",
+      "title": "Oil La La",
+      "canonical_url": "https://kravebeauty.com/products/oil-la-la",
+      "product_family": "single_formula",
+      "product_line_id": "pl_0a351d12f980b932df6e9432",
+      "identity_variant_axes": {
+        "pack": "1pack",
+        "size": "1 pack 45 ml",
+        "volume": "45ml",
+        "multi_variant": true
+      },
+      "pivota_insights": {
+        "direct": {
+          "product_id": "ext_5ffe1c0b5195b36d2bdcffa9",
+          "kb_key": "product:ext_5ffe1c0b5195b36d2bdcffa9",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": false,
+          "human_reviewed": true,
+          "issues": [
+            "public_sensitive_claim"
+          ],
+          "blocking_issues": [
+            "public_sensitive_claim"
+          ],
+          "quality_state": "reviewed",
+          "evidence_profile": "seller_plus_formula",
+          "has_card_highlight": true
+        },
+        "effective": {
+          "product_id": "ext_5ffe1c0b5195b36d2bdcffa9",
+          "kb_key": "product:ext_5ffe1c0b5195b36d2bdcffa9",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": false,
+          "human_reviewed": true,
+          "issues": [
+            "public_sensitive_claim"
+          ],
+          "blocking_issues": [
+            "public_sensitive_claim"
+          ],
+          "quality_state": "reviewed",
+          "evidence_profile": "seller_plus_formula",
+          "has_card_highlight": true
+        },
+        "product_line_id": "pl_0a351d12f980b932df6e9432",
+        "borrowed_from_sibling": false
+      },
+      "active_ingredients": {
+        "status": "ready_hero",
+        "issues": [],
+        "regulatory_expected": false,
+        "hero_expected": true,
+        "active_items": [
+          "Madecassoside",
+          "Asiaticoside",
+          "Rosehip Oil",
+          "Grape Seed Oil",
+          "Hyaluronic Acid",
+          "Jojoba Seed Oil"
+        ],
+        "source_origin": "pdp_section",
+        "source_quality_status": "captured",
+        "coverage": {
+          "details_sections_count": 12,
+          "faq_count": 20,
+          "how_to_chars": 155,
+          "inci_chars": 1094,
+          "active_ingredients_chars": 90,
+          "inci_applicability_status": "",
+          "ingredient_review_status": "",
+          "ingredient_remediation_action": "",
+          "bundle_component_refs_count": 0,
+          "effective_inci_chars": 1094,
+          "inci_borrowed_from_product_id": ""
+        },
+        "invalid_fragments": [],
+        "suppressed_reason": null
+      },
+      "variants": {
+        "status": "ready",
+        "issues": [],
+        "visible_variant_rows": 2,
+        "examples": {
+          "identity_option_visible": [],
+          "wrong_axis_for_category": [],
+          "makeup_shade_missing_visual": [],
+          "size_value_generic_axis": [],
+          "default_option_size_evidence_missing_axis": [],
+          "identity_default_title_axis": []
+        }
+      },
+      "coverage": {
+        "details_sections_count": 12,
+        "faq_count": 20,
+        "how_to_chars": 155,
+        "inci_chars": 1094,
+        "active_ingredients_chars": 90,
+        "inci_applicability_status": "",
+        "ingredient_review_status": "",
+        "ingredient_remediation_action": "",
+        "bundle_component_refs_count": 0,
+        "effective_inci_chars": 1094,
+        "inci_borrowed_from_product_id": ""
+      }
+    }
+  ]
+}

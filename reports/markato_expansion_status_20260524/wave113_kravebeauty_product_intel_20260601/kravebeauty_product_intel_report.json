@@ -1,0 +1,532 @@
+{
+  "meta": {
+    "generated_at": "2026-06-01T02:48:17.355Z",
+    "source": "reviewed_official_seed_product_intel_report",
+    "batch_name": "wave113_kravebeauty_product_intel_20260601",
+    "inventory": "/private/tmp/wave113_kravebeauty_filtered_inventory.json",
+    "selected_cases": 2,
+    "reviewer": "codex_human_quality_reviewer",
+    "reviewer_kind": "assistant",
+    "candidate_quality_summary": {
+      "public_ready": 2,
+      "high_quality_ready": 2,
+      "evidence_profile": {
+        "official_pdp_seed": 2
+      }
+    }
+  },
+  "rows": [
+    {
+      "case_id": "live_ext_8bfea10f1af2ab628a5ad6ba",
+      "review_status": "completed",
+      "review_decision": "rewrite",
+      "reviewer": "codex_human_quality_reviewer",
+      "reviewer_kind": "assistant",
+      "reviewed_at": "2026-06-01T02:48:17.355Z",
+      "notes": "Approved official-PDP-seed rewrite for Duo Oil La La; evidence_profile=official_pdp_seed; source_url=https://kravebeauty.com/products/duo-oil-la-la",
+      "owner_delegated_review": {
+        "contract_version": "pivota.owner_delegated_review.v1",
+        "delegated_to": "codex_human_quality_reviewer",
+        "reviewer_kind": "assistant",
+        "owner_instruction": "User delegated Codex to perform high-quality human review for Pivota Insights quality improvement.",
+        "guardrails": [
+          "Do not overwrite good content with lower-quality content.",
+          "No commerce-state claims in Pivota Insights.",
+          "Use official source facts only; keep evidence confidence explicit."
+        ]
+      },
+      "quality_improvement_review": {
+        "decision": "approved_replacement",
+        "reviewer_kind": "assistant",
+        "owner_delegated": true,
+        "reason": "Owner-delegated assistant review confirms the replacement uses official PDP seed facts, avoids commerce and unsupported evidence claims, and explicitly marks evidence gaps instead of inventing claims."
+      },
+      "baseline": {
+        "canonical_product_ref": {
+          "merchant_id": "external_seed",
+          "product_id": "ext_8bfea10f1af2ab628a5ad6ba",
+          "platform": "external_seed"
+        }
+      },
+      "selected": {
+        "selected_mode": "manual_reviewed_rewrite",
+        "selected_field_count": 7,
+        "field_sources": {
+          "what_it_is": "official_seed_description",
+          "best_for": "reviewed_category_and_official_title",
+          "why_it_stands_out": "official_seed_description",
+          "routine_fit": "reviewed_category_and_official_title",
+          "watchouts": "owner_delegated_assistant_review",
+          "texture_finish": "reviewed_category_and_official_title",
+          "source_coverage": "official_pdp_seed_snapshot",
+          "community_signals": "not_collected"
+        },
+        "bundle": {
+          "contract_version": "pivota.product_intel.v1",
+          "display_name": "Pivota Insights",
+          "canonical_product_ref": {
+            "merchant_id": "external_seed",
+            "product_id": "ext_8bfea10f1af2ab628a5ad6ba",
+            "platform": "external_seed"
+          },
+          "product_group_id": "sig_20ce9b814d1d8573779a849a",
+          "product_intel_core": {
+            "display_name": "Pivota Insights",
+            "what_it_is": {
+              "headline": "Skincare set identity",
+              "body": "A KraveBeauty skincare set listed on the brand source page as Duo Oil La La. The source description identifies: tag-badge{ display:none; } Treat your skin like something you love."
+            },
+            "best_for": [
+              {
+                "tag": "skincare_set_shoppers",
+                "label": "Skincare set shoppers",
+                "confidence": "moderate"
+              },
+              {
+                "tag": "official_source_comparison",
+                "label": "Official-source comparison",
+                "confidence": "moderate"
+              }
+            ],
+            "why_it_stands_out": [
+              {
+                "headline": "Source-backed product detail",
+                "body": "tag-badge{ display:none; } Treat your skin like something you love.",
+                "evidence_strength": "official_pdp_seed"
+              },
+              {
+                "headline": "Evidence gaps kept explicit",
+                "body": "No complete ingredient list was captured for this review batch, so formula-level claims stay unavailable.",
+                "evidence_strength": "official_pdp_seed"
+              }
+            ],
+            "routine_fit": {
+              "step": "set",
+              "am_pm": [
+                "as_needed"
+              ],
+              "pairing_notes": [
+                "Use within the skincare set context; avoid inferring benefits not present in the source fields."
+              ]
+            },
+            "watchouts": [
+              {
+                "type": "formula_gap",
+                "label": "No complete ingredient list was captured for this review batch; avoid formula-level or safety claims.",
+                "severity": "medium"
+              },
+              {
+                "type": "evidence_gap",
+                "label": "No independent review or community evidence was approved for this row; keep public copy source-bound.",
+                "severity": "medium"
+              },
+              {
+                "type": "scope_guardrail",
+                "label": "Use the commerce mainline for offer facts; keep this insight focused on source-backed product identity.",
+                "severity": "medium"
+              }
+            ],
+            "confidence": {
+              "overall": "moderate",
+              "fields": {
+                "what_it_is": "high",
+                "best_for": "moderate",
+                "why_it_stands_out": "moderate",
+                "routine_fit": "moderate",
+                "watchouts": "moderate"
+              }
+            },
+            "freshness": {
+              "generated_at": "2026-06-01T02:48:17.355Z",
+              "source_version": "wave113_kravebeauty_product_intel_20260601"
+            },
+            "quality_state": "reviewed",
+            "evidence_profile": "official_pdp_seed",
+            "source_coverage": {
+              "seller": {
+                "available": true,
+                "source_url": "https://kravebeauty.com/products/duo-oil-la-la"
+              },
+              "formula": {
+                "available": false,
+                "ingredient_count": 0,
+                "source_url": "https://kravebeauty.com/products/duo-oil-la-la"
+              },
+              "reviews": {
+                "available": false,
+                "count": 0
+              },
+              "creator": {
+                "available": false,
+                "count": 0
+              },
+              "editorial": {
+                "available": false,
+                "count": 0
+              }
+            }
+          },
+          "texture_finish": {
+            "finish": "skincare set",
+            "texture": "skincare_set",
+            "source": "reviewed_category_and_official_title"
+          },
+          "community_signals": {
+            "status": "unavailable",
+            "reason": "not_collected_for_this_review_batch"
+          },
+          "recommendation_intents": {
+            "similar": [],
+            "complementary": [],
+            "routine_pairing": [],
+            "underfill_reason": null,
+            "confidence": "low"
+          },
+          "market_signal_badges": [],
+          "external_highlight_signals": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "official_pdp_seed",
+          "source_coverage": {
+            "seller": {
+              "available": true,
+              "source_url": "https://kravebeauty.com/products/duo-oil-la-la"
+            },
+            "formula": {
+              "available": false,
+              "ingredient_count": 0,
+              "source_url": "https://kravebeauty.com/products/duo-oil-la-la"
+            },
+            "reviews": {
+              "available": false,
+              "count": 0
+            },
+            "creator": {
+              "available": false,
+              "count": 0
+            },
+            "editorial": {
+              "available": false,
+              "count": 0
+            }
+          },
+          "confidence": {
+            "overall": "moderate",
+            "fields": {
+              "what_it_is": "high",
+              "best_for": "moderate",
+              "why_it_stands_out": "moderate",
+              "routine_fit": "moderate",
+              "watchouts": "moderate"
+            }
+          },
+          "freshness": {
+            "generated_at": "2026-06-01T02:48:17.355Z",
+            "source_version": "wave113_kravebeauty_product_intel_20260601"
+          },
+          "offer_pointers": {
+            "offers_count": 0,
+            "default_offer_id": null,
+            "best_price_offer_id": null,
+            "commerce_modes": []
+          },
+          "provenance": {
+            "source": "owner_delegated_official_seed_rewrite",
+            "generator": "owner_delegated_assistant_reviewed_rewrite",
+            "selection_strategy": "official_pdp_seed_guarded_manual_review",
+            "field_sources": {
+              "what_it_is": "official_seed_description",
+              "best_for": "reviewed_category_and_official_title",
+              "why_it_stands_out": "official_seed_description",
+              "routine_fit": "reviewed_category_and_official_title",
+              "watchouts": "owner_delegated_assistant_review",
+              "texture_finish": "reviewed_category_and_official_title",
+              "source_coverage": "official_pdp_seed_snapshot",
+              "community_signals": "not_collected"
+            },
+            "review_status": "completed",
+            "review_decision": "rewrite",
+            "reviewer": "codex_human_quality_reviewer",
+            "reviewer_kind": "assistant",
+            "reviewed_at": "2026-06-01T02:48:17.355Z",
+            "external_highlight_review_status": "rewrite",
+            "external_review_batch": "wave113_kravebeauty_product_intel_20260601",
+            "official_source_url": "https://kravebeauty.com/products/duo-oil-la-la",
+            "official_source_ingredient_count": 0,
+            "rewrite_reason": "Owner-delegated assistant review: official PDP seed rewrite; no commerce-state, community, medical, or unsupported safety claims added."
+          },
+          "shopping_card": {
+            "contract_version": "pivota.shopping_card.v1",
+            "title": "Duo Oil La La",
+            "subtitle": "Skincare Set",
+            "highlight": "Skincare routine set",
+            "intro": "A KraveBeauty skincare set listed on the brand source page as Duo Oil La La. The source description identifies: tag-badge{ display:none; } Treat your skin like something you love.",
+            "evidence_profile": "official_pdp_seed"
+          },
+          "search_card": {
+            "title_candidate": "Duo Oil La La",
+            "compact_candidate": "Skincare Set",
+            "highlight_candidate": "Skincare routine set",
+            "intro_candidate": "A KraveBeauty skincare set listed on the brand source page as Duo Oil La La. The source description identifies: tag-badge{ display:none; } Treat your skin like something you love.",
+            "proof_badge_candidate": ""
+          }
+        }
+      }
+    },
+    {
+      "case_id": "live_ext_593de56f9237926b73ba43ef",
+      "review_status": "completed",
+      "review_decision": "rewrite",
+      "reviewer": "codex_human_quality_reviewer",
+      "reviewer_kind": "assistant",
+      "reviewed_at": "2026-06-01T02:48:17.355Z",
+      "notes": "Approved official-PDP-seed rewrite for Jumbo Great Barrier Relief; evidence_profile=official_pdp_seed; source_url=https://kravebeauty.com/products/jumbo-great-barrier-evergreen",
+      "owner_delegated_review": {
+        "contract_version": "pivota.owner_delegated_review.v1",
+        "delegated_to": "codex_human_quality_reviewer",
+        "reviewer_kind": "assistant",
+        "owner_instruction": "User delegated Codex to perform high-quality human review for Pivota Insights quality improvement.",
+        "guardrails": [
+          "Do not overwrite good content with lower-quality content.",
+          "No commerce-state claims in Pivota Insights.",
+          "Use official source facts only; keep evidence confidence explicit."
+        ]
+      },
+      "quality_improvement_review": {
+        "decision": "approved_replacement",
+        "reviewer_kind": "assistant",
+        "owner_delegated": true,
+        "reason": "Owner-delegated assistant review confirms the replacement uses official PDP seed facts, avoids commerce and unsupported evidence claims, and explicitly marks evidence gaps instead of inventing claims."
+      },
+      "baseline": {
+        "canonical_product_ref": {
+          "merchant_id": "external_seed",
+          "product_id": "ext_593de56f9237926b73ba43ef",
+          "platform": "external_seed"
+        }
+      },
+      "selected": {
+        "selected_mode": "manual_reviewed_rewrite",
+        "selected_field_count": 7,
+        "field_sources": {
+          "what_it_is": "official_seed_description",
+          "best_for": "reviewed_category_and_official_title",
+          "why_it_stands_out": "official_seed_description",
+          "routine_fit": "reviewed_category_and_official_title",
+          "watchouts": "owner_delegated_assistant_review",
+          "texture_finish": "reviewed_category_and_official_title",
+          "source_coverage": "official_pdp_seed_snapshot",
+          "community_signals": "not_collected"
+        },
+        "bundle": {
+          "contract_version": "pivota.product_intel.v1",
+          "display_name": "Pivota Insights",
+          "canonical_product_ref": {
+            "merchant_id": "external_seed",
+            "product_id": "ext_593de56f9237926b73ba43ef",
+            "platform": "external_seed"
+          },
+          "product_group_id": "sig_1288409f7429c8560aee83a4",
+          "product_intel_core": {
+            "display_name": "Pivota Insights",
+            "what_it_is": {
+              "headline": "Serum identity",
+              "body": "A KraveBeauty serum listed on the brand source page as Jumbo Great Barrier Relief. The source description identifies: Your selected serum just got bigger! Great Barrier Relief is a skin-soothing serum that restores your damaged skin barrier while evening out your complexion."
+            },
+            "best_for": [
+              {
+                "tag": "serum_shoppers",
+                "label": "Serum shoppers",
+                "confidence": "moderate"
+              },
+              {
+                "tag": "official_source_comparison",
+                "label": "Official-source comparison",
+                "confidence": "moderate"
+              }
+            ],
+            "why_it_stands_out": [
+              {
+                "headline": "Source-backed product detail",
+                "body": "Your selected serum just got bigger! Great Barrier Relief is a skin-soothing serum that restores your damaged skin barrier while evening out your complexion.",
+                "evidence_strength": "official_pdp_seed"
+              },
+              {
+                "headline": "Evidence gaps kept explicit",
+                "body": "No complete ingredient list was captured for this review batch, so formula-level claims stay unavailable.",
+                "evidence_strength": "official_pdp_seed"
+              }
+            ],
+            "routine_fit": {
+              "step": "skin_care",
+              "am_pm": [
+                "as_needed"
+              ],
+              "pairing_notes": [
+                "Use within the serum context; avoid inferring benefits not present in the source fields."
+              ]
+            },
+            "watchouts": [
+              {
+                "type": "formula_gap",
+                "label": "No complete ingredient list was captured for this review batch; avoid formula-level or safety claims.",
+                "severity": "medium"
+              },
+              {
+                "type": "evidence_gap",
+                "label": "No independent review or community evidence was approved for this row; keep public copy source-bound.",
+                "severity": "medium"
+              },
+              {
+                "type": "scope_guardrail",
+                "label": "Use the commerce mainline for offer facts; keep this insight focused on source-backed product identity.",
+                "severity": "medium"
+              }
+            ],
+            "confidence": {
+              "overall": "moderate",
+              "fields": {
+                "what_it_is": "high",
+                "best_for": "moderate",
+                "why_it_stands_out": "moderate",
+                "routine_fit": "moderate",
+                "watchouts": "moderate"
+              }
+            },
+            "freshness": {
+              "generated_at": "2026-06-01T02:48:17.355Z",
+              "source_version": "wave113_kravebeauty_product_intel_20260601"
+            },
+            "quality_state": "reviewed",
+            "evidence_profile": "official_pdp_seed",
+            "source_coverage": {
+              "seller": {
+                "available": true,
+                "source_url": "https://kravebeauty.com/products/jumbo-great-barrier-evergreen"
+              },
+              "formula": {
+                "available": false,
+                "ingredient_count": 0,
+                "source_url": "https://kravebeauty.com/products/jumbo-great-barrier-evergreen"
+              },
+              "reviews": {
+                "available": false,
+                "count": 0
+              },
+              "creator": {
+                "available": false,
+                "count": 0
+              },
+              "editorial": {
+                "available": false,
+                "count": 0
+              }
+            }
+          },
+          "texture_finish": {
+            "finish": "serum",
+            "texture": "serum",
+            "source": "reviewed_category_and_official_title"
+          },
+          "community_signals": {
+            "status": "unavailable",
+            "reason": "not_collected_for_this_review_batch"
+          },
+          "recommendation_intents": {
+            "similar": [],
+            "complementary": [],
+            "routine_pairing": [],
+            "underfill_reason": null,
+            "confidence": "low"
+          },
+          "market_signal_badges": [],
+          "external_highlight_signals": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "official_pdp_seed",
+          "source_coverage": {
+            "seller": {
+              "available": true,
+              "source_url": "https://kravebeauty.com/products/jumbo-great-barrier-evergreen"
+            },
+            "formula": {
+              "available": false,
+              "ingredient_count": 0,
+              "source_url": "https://kravebeauty.com/products/jumbo-great-barrier-evergreen"
+            },
+            "reviews": {
+              "available": false,
+              "count": 0
+            },
+            "creator": {
+              "available": false,
+              "count": 0
+            },
+            "editorial": {
+              "available": false,
+              "count": 0
+            }
+          },
+          "confidence": {
+            "overall": "moderate",
+            "fields": {
+              "what_it_is": "high",
+              "best_for": "moderate",
+              "why_it_stands_out": "moderate",
+              "routine_fit": "moderate",
+              "watchouts": "moderate"
+            }
+          },
+          "freshness": {
+            "generated_at": "2026-06-01T02:48:17.355Z",
+            "source_version": "wave113_kravebeauty_product_intel_20260601"
+          },
+          "offer_pointers": {
+            "offers_count": 0,
+            "default_offer_id": null,
+            "best_price_offer_id": null,
+            "commerce_modes": []
+          },
+          "provenance": {
+            "source": "owner_delegated_official_seed_rewrite",
+            "generator": "owner_delegated_assistant_reviewed_rewrite",
+            "selection_strategy": "official_pdp_seed_guarded_manual_review",
+            "field_sources": {
+              "what_it_is": "official_seed_description",
+              "best_for": "reviewed_category_and_official_title",
+              "why_it_stands_out": "official_seed_description",
+              "routine_fit": "reviewed_category_and_official_title",
+              "watchouts": "owner_delegated_assistant_review",
+              "texture_finish": "reviewed_category_and_official_title",
+              "source_coverage": "official_pdp_seed_snapshot",
+              "community_signals": "not_collected"
+            },
+            "review_status": "completed",
+            "review_decision": "rewrite",
+            "reviewer": "codex_human_quality_reviewer",
+            "reviewer_kind": "assistant",
+            "reviewed_at": "2026-06-01T02:48:17.355Z",
+            "external_highlight_review_status": "rewrite",
+            "external_review_batch": "wave113_kravebeauty_product_intel_20260601",
+            "official_source_url": "https://kravebeauty.com/products/jumbo-great-barrier-evergreen",
+            "official_source_ingredient_count": 0,
+            "rewrite_reason": "Owner-delegated assistant review: official PDP seed rewrite; no commerce-state, community, medical, or unsupported safety claims added."
+          },
+          "shopping_card": {
+            "contract_version": "pivota.shopping_card.v1",
+            "title": "Jumbo Great Barrier Relief",
+            "subtitle": "Serum",
+            "highlight": "Treatment formula detail",
+            "intro": "A KraveBeauty serum listed on the brand source page as Jumbo Great Barrier Relief. The source description identifies: Your selected serum just got bigger! Great Barrier Relief is a skin-soothing serum that restores your damaged skin barrier while evening out your complexion.",
+            "evidence_profile": "official_pdp_seed"
+          },
+          "search_card": {
+            "title_candidate": "Jumbo Great Barrier Relief",
+            "compact_candidate": "Serum",
+            "highlight_candidate": "Treatment formula detail",
+            "intro_candidate": "A KraveBeauty serum listed on the brand source page as Jumbo Great Barrier Relief. The source description identifies: Your selected serum just got bigger! Great Barrier Relief is a skin-soothing serum that restores your damaged skin barrier while evening out your complexion.",
+            "proof_badge_candidate": ""
+          }
+        }
+      }
+    }
+  ]
+}
