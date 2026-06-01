@@ -1,0 +1,844 @@
+{
+  "generated_at": "2026-06-01T07:29:55.044Z",
+  "source": "pivota_insights_official_pdp_manual_review_v1",
+  "mode": "apply",
+  "filters": {
+    "brand": null,
+    "product_ids": [
+      "ext_4a83a2638c6cb6ca3c3df9e2",
+      "ext_aafb624684ba1a334a53a076",
+      "ext_5f63056adbcee15d15e2aba1",
+      "ext_b13a29406f82ff32d2cc2a32",
+      "ext_5195cd2ff341a491822447d9"
+    ],
+    "limit": null,
+    "include_strong": false,
+    "include_url_key": false,
+    "apply_chunk_size": 20
+  },
+  "summary": {
+    "scanned": 5,
+    "changed_products": 5,
+    "blocked_products": 0,
+    "skipped_products": 0,
+    "write_actions": {
+      "update": 9,
+      "insert": 1
+    },
+    "skip_reasons": {},
+    "evidence_profiles": {
+      "official_pdp_reviewed_formula_and_usage": 5
+    }
+  },
+  "plans": [
+    {
+      "external_product_id": "ext_4a83a2638c6cb6ca3c3df9e2",
+      "pivota_signature_id": "sig_6b4903ed828a444bad275d15",
+      "title": "Fennel + Cardamom Chai Cleansing Bar",
+      "brand": "UpCircle Beauty",
+      "canonical_url": "https://upcirclebeauty.com/products/fennel-cardamom-chai-soap-bar",
+      "changed": true,
+      "blocked": false,
+      "skip_reason": null,
+      "candidate_hash": "0c4d674c57bc74f37d9fcc19037d7cd35b632367375281a30634c28f6c4ce949",
+      "evidence_profile": "official_pdp_reviewed_formula_and_usage",
+      "source_coverage": {
+        "source": "official_pdp",
+        "canonical_url": "https://upcirclebeauty.com/products/fennel-cardamom-chai-soap-bar",
+        "fields": {
+          "description": true,
+          "ingredients": 3,
+          "active_ingredients": 0,
+          "how_to": 1,
+          "details": 3,
+          "variants": 1
+        }
+      },
+      "preview": {
+        "headline": "Face cleanser",
+        "what_it_is": "Fennel + Cardamom Chai Cleansing Bar is a face cleanser from UpCircle Beauty, with source-backed cues around cleansing and dirt, oil, and impurity removal.",
+        "why_it_stands_out": [
+          {
+            "headline": "Product cues are source-backed",
+            "body": "Reviewed PDP cues such as daily cleansing, pore cleansing give shoppers specific comparison points within UpCircle Beauty, rather than category-only copy.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Ingredient list is available",
+            "body": "Full INCI is present for formula-sensitive review, which makes this PDP safer to evaluate than a claim-only listing.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Usage instructions available",
+            "body": "Reviewed usage context is present, including: Apply with water to create a creamy lather.",
+            "evidence_strength": "official_pdp_reviewed"
+          }
+        ],
+        "best_for": [
+          {
+            "tag": "daily_cleansing",
+            "label": "daily cleansing",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "pore_cleansing",
+            "label": "pore cleansing",
+            "confidence": "moderate"
+          }
+        ],
+        "shopping_highlight": "daily cleansing, pore cleansing"
+      },
+      "writes": [
+        {
+          "kb_key": "product:ext_4a83a2638c6cb6ca3c3df9e2",
+          "action": "update",
+          "reason": "explicit_owner_delegated_assistant_replacement_review",
+          "old_hash": "25d8b83f0a4e7116e8e72ad7c45cece38cd17f7e8995c723167bd56260c97acd",
+          "candidate_hash": "86ed128a00af53b3168a86921e36b87c0751b1f05d450f5ed7d4abf2307d7c3d",
+          "existing_weak": true,
+          "source": "pivota_insights_official_pdp_manual_review_v1",
+          "after_inventory": {
+            "product_id": "ext_4a83a2638c6cb6ca3c3df9e2",
+            "kb_key": "product:ext_4a83a2638c6cb6ca3c3df9e2",
+            "source": "pivota_insights_official_pdp_manual_review_v1",
+            "updated_at": "",
+            "last_success_at": "",
+            "title": "Fennel + Cardamom Chai Cleansing Bar",
+            "canonical_url": "",
+            "bundle_hash": "0c4d674c57bc74f37d9fcc19037d7cd35b632367375281a30634c28f6c4ce949",
+            "lane": "keep",
+            "reason": "protected_good_content",
+            "priority": 0,
+            "protected": true,
+            "displayable": true,
+            "high_quality_ready": true,
+            "human_reviewed": true,
+            "issues": [],
+            "blocking_issues": [],
+            "quality_state": "reviewed",
+            "evidence_profile": "official_pdp_reviewed_formula_and_usage",
+            "evidence_rank": 1,
+            "review_tier": "assistant_reviewed",
+            "agent_readable": true,
+            "public_ready": true
+          },
+          "source_meta": {
+            "evidence_profile": "official_pdp_reviewed_formula_and_usage",
+            "quality_state": "reviewed",
+            "source_origin": "official_pdp_fields",
+            "source_url": "https://upcirclebeauty.com/products/fennel-cardamom-chai-soap-bar",
+            "quality_improvement": {
+              "previous_bundle_hash": "853cd083e22fefe5e96f3dadd4acd208e2a6ed0a4acbfa394b6b7b7b869aa957",
+              "candidate_bundle_hash": "0c4d674c57bc74f37d9fcc19037d7cd35b632367375281a30634c28f6c4ce949",
+              "replacement_decision": "explicit_owner_delegated_assistant_replacement_review",
+              "existing_quality_lane": "keep",
+              "candidate_quality_lane": "keep",
+              "existing_evidence_profile": "official_pdp_reviewed_limited",
+              "candidate_evidence_profile": "official_pdp_reviewed_formula_and_usage"
+            }
+          }
+        },
+        {
+          "kb_key": "product:sig_6b4903ed828a444bad275d15",
+          "action": "update",
+          "reason": "explicit_owner_delegated_assistant_replacement_review",
+          "old_hash": "25d8b83f0a4e7116e8e72ad7c45cece38cd17f7e8995c723167bd56260c97acd",
+          "candidate_hash": "86ed128a00af53b3168a86921e36b87c0751b1f05d450f5ed7d4abf2307d7c3d",
+          "existing_weak": true,
+          "source": "pivota_insights_official_pdp_manual_review_v1",
+          "after_inventory": {
+            "product_id": "ext_4a83a2638c6cb6ca3c3df9e2",
+            "kb_key": "product:sig_6b4903ed828a444bad275d15",
+            "source": "pivota_insights_official_pdp_manual_review_v1",
+            "updated_at": "",
+            "last_success_at": "",
+            "title": "Fennel + Cardamom Chai Cleansing Bar",
+            "canonical_url": "",
+            "bundle_hash": "0c4d674c57bc74f37d9fcc19037d7cd35b632367375281a30634c28f6c4ce949",
+            "lane": "keep",
+            "reason": "protected_good_content",
+            "priority": 0,
+            "protected": true,
+            "displayable": true,
+            "high_quality_ready": true,
+            "human_reviewed": true,
+            "issues": [],
+            "blocking_issues": [],
+            "quality_state": "reviewed",
+            "evidence_profile": "official_pdp_reviewed_formula_and_usage",
+            "evidence_rank": 1,
+            "review_tier": "assistant_reviewed",
+            "agent_readable": true,
+            "public_ready": true
+          },
+          "source_meta": {
+            "evidence_profile": "official_pdp_reviewed_formula_and_usage",
+            "quality_state": "reviewed",
+            "source_origin": "official_pdp_fields",
+            "source_url": "https://upcirclebeauty.com/products/fennel-cardamom-chai-soap-bar",
+            "quality_improvement": {
+              "previous_bundle_hash": "853cd083e22fefe5e96f3dadd4acd208e2a6ed0a4acbfa394b6b7b7b869aa957",
+              "candidate_bundle_hash": "0c4d674c57bc74f37d9fcc19037d7cd35b632367375281a30634c28f6c4ce949",
+              "replacement_decision": "explicit_owner_delegated_assistant_replacement_review",
+              "existing_quality_lane": "keep",
+              "candidate_quality_lane": "keep",
+              "existing_evidence_profile": "official_pdp_reviewed_limited",
+              "candidate_evidence_profile": "official_pdp_reviewed_formula_and_usage"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "external_product_id": "ext_aafb624684ba1a334a53a076",
+      "pivota_signature_id": "sig_b1d79d9991f0feddefa461ff",
+      "title": "Flaura Eau De Parfum",
+      "brand": "UpCircle Beauty",
+      "canonical_url": "https://upcirclebeauty.com/products/natural-floral-perfume",
+      "changed": true,
+      "blocked": false,
+      "skip_reason": null,
+      "candidate_hash": "0fbf1bf7e5689663bb5a58ba492a597ca493022c0e5768e014fdeeb5eb0658cd",
+      "evidence_profile": "official_pdp_reviewed_formula_and_usage",
+      "source_coverage": {
+        "source": "official_pdp",
+        "canonical_url": "https://upcirclebeauty.com/products/natural-floral-perfume",
+        "fields": {
+          "description": true,
+          "ingredients": 1,
+          "active_ingredients": 0,
+          "how_to": 1,
+          "details": 3,
+          "variants": 1
+        }
+      },
+      "preview": {
+        "headline": "Fine fragrance",
+        "what_it_is": "Flaura Eau De Parfum is a fine fragrance from UpCircle Beauty, with source-backed scent cues including vanilla, citrus and jasmine.",
+        "why_it_stands_out": [
+          {
+            "headline": "Scent profile cues",
+            "body": "Reviewed scent cues such as vanilla, jasmine, citrus, refillable format help shoppers compare the fragrance profile without relying on generic scent copy.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Ingredient list is available",
+            "body": "Full INCI is present for formula-sensitive review, which makes this PDP safer to evaluate than a claim-only listing.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Usage instructions available",
+            "body": "Reviewed usage context is present, including: Spritz behind ears and pulse points.",
+            "evidence_strength": "official_pdp_reviewed"
+          }
+        ],
+        "best_for": [
+          {
+            "tag": "warm_fragrance_profiles",
+            "label": "warm fragrance profiles",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "floral_fragrance_profiles",
+            "label": "floral fragrance profiles",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "fresh_citrus_profiles",
+            "label": "fresh citrus profiles",
+            "confidence": "moderate"
+          }
+        ],
+        "shopping_highlight": "vanilla, jasmine, citrus"
+      },
+      "writes": [
+        {
+          "kb_key": "product:ext_aafb624684ba1a334a53a076",
+          "action": "update",
+          "reason": "explicit_owner_delegated_assistant_replacement_review",
+          "old_hash": "d72ec40ee9fbb3df9f1e8ba3544b50debd61542f411b4b088786226a1ccfb527",
+          "candidate_hash": "998324cafb26d75c1a466c5a56ab921ebcefd6e32559f330a093aae196653a04",
+          "existing_weak": true,
+          "source": "pivota_insights_official_pdp_manual_review_v1",
+          "after_inventory": {
+            "product_id": "ext_aafb624684ba1a334a53a076",
+            "kb_key": "product:ext_aafb624684ba1a334a53a076",
+            "source": "pivota_insights_official_pdp_manual_review_v1",
+            "updated_at": "",
+            "last_success_at": "",
+            "title": "Flaura Eau De Parfum",
+            "canonical_url": "",
+            "bundle_hash": "0fbf1bf7e5689663bb5a58ba492a597ca493022c0e5768e014fdeeb5eb0658cd",
+            "lane": "keep",
+            "reason": "protected_good_content",
+            "priority": 0,
+            "protected": true,
+            "displayable": true,
+            "high_quality_ready": true,
+            "human_reviewed": true,
+            "issues": [],
+            "blocking_issues": [],
+            "quality_state": "reviewed",
+            "evidence_profile": "official_pdp_reviewed_formula_and_usage",
+            "evidence_rank": 1,
+            "review_tier": "assistant_reviewed",
+            "agent_readable": true,
+            "public_ready": true
+          },
+          "source_meta": {
+            "evidence_profile": "official_pdp_reviewed_formula_and_usage",
+            "quality_state": "reviewed",
+            "source_origin": "official_pdp_fields",
+            "source_url": "https://upcirclebeauty.com/products/natural-floral-perfume",
+            "quality_improvement": {
+              "previous_bundle_hash": "f7c7f28269526d908415ea30dfd20560f5a43cfbcd95bf9c59c47042f8c74bbc",
+              "candidate_bundle_hash": "0fbf1bf7e5689663bb5a58ba492a597ca493022c0e5768e014fdeeb5eb0658cd",
+              "replacement_decision": "explicit_owner_delegated_assistant_replacement_review",
+              "existing_quality_lane": "keep",
+              "candidate_quality_lane": "keep",
+              "existing_evidence_profile": "official_pdp_reviewed_limited",
+              "candidate_evidence_profile": "official_pdp_reviewed_formula_and_usage"
+            }
+          }
+        },
+        {
+          "kb_key": "product:sig_b1d79d9991f0feddefa461ff",
+          "action": "insert",
+          "reason": "new_product_intel_bundle",
+          "old_hash": null,
+          "candidate_hash": "998324cafb26d75c1a466c5a56ab921ebcefd6e32559f330a093aae196653a04",
+          "existing_weak": true,
+          "source": "pivota_insights_official_pdp_manual_review_v1",
+          "after_inventory": {
+            "product_id": "ext_aafb624684ba1a334a53a076",
+            "kb_key": "product:sig_b1d79d9991f0feddefa461ff",
+            "source": "pivota_insights_official_pdp_manual_review_v1",
+            "updated_at": "",
+            "last_success_at": "",
+            "title": "Flaura Eau De Parfum",
+            "canonical_url": "",
+            "bundle_hash": "0fbf1bf7e5689663bb5a58ba492a597ca493022c0e5768e014fdeeb5eb0658cd",
+            "lane": "keep",
+            "reason": "protected_good_content",
+            "priority": 0,
+            "protected": true,
+            "displayable": true,
+            "high_quality_ready": true,
+            "human_reviewed": true,
+            "issues": [],
+            "blocking_issues": [],
+            "quality_state": "reviewed",
+            "evidence_profile": "official_pdp_reviewed_formula_and_usage",
+            "evidence_rank": 1,
+            "review_tier": "assistant_reviewed",
+            "agent_readable": true,
+            "public_ready": true
+          },
+          "source_meta": {
+            "evidence_profile": "official_pdp_reviewed_formula_and_usage",
+            "quality_state": "reviewed",
+            "source_origin": "official_pdp_fields",
+            "source_url": "https://upcirclebeauty.com/products/natural-floral-perfume",
+            "quality_improvement": {
+              "previous_bundle_hash": null,
+              "candidate_bundle_hash": "0fbf1bf7e5689663bb5a58ba492a597ca493022c0e5768e014fdeeb5eb0658cd",
+              "replacement_decision": "new_product_intel_bundle",
+              "existing_quality_lane": null,
+              "candidate_quality_lane": "keep",
+              "existing_evidence_profile": null,
+              "candidate_evidence_profile": "official_pdp_reviewed_formula_and_usage"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "external_product_id": "ext_5f63056adbcee15d15e2aba1",
+      "pivota_signature_id": "sig_e6dce3a7da796a617c2d87f0",
+      "title": "Hand + Body Lotion with Bergamot Water",
+      "brand": "UpCircle Beauty",
+      "canonical_url": "https://upcirclebeauty.com/products/hand-body-lotion-with-bergamot-water",
+      "changed": true,
+      "blocked": false,
+      "skip_reason": null,
+      "candidate_hash": "fd39629178cded512bbf5ef2cb3208f623f7e5075ca9b6c6314b5ba4188f95e9",
+      "evidence_profile": "official_pdp_reviewed_formula_and_usage",
+      "source_coverage": {
+        "source": "official_pdp",
+        "canonical_url": "https://upcirclebeauty.com/products/hand-body-lotion-with-bergamot-water",
+        "fields": {
+          "description": true,
+          "ingredients": 1,
+          "active_ingredients": 0,
+          "how_to": 1,
+          "details": 3,
+          "variants": 2
+        }
+      },
+      "preview": {
+        "headline": "Body care treatment",
+        "what_it_is": "Hand + Body Lotion with Bergamot Water is a body care treatment from UpCircle Beauty, with source-backed cues around cleansing and hydration.",
+        "why_it_stands_out": [
+          {
+            "headline": "Routine step cues are specific",
+            "body": "Reviewed skincare cues such as aloe juice, hydration identify the routine role or key ingredient context without inventing unsupported benefits.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Ingredient list is available",
+            "body": "Full INCI is present for formula-sensitive review, which makes this PDP safer to evaluate than a claim-only listing.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Usage instructions available",
+            "body": "Reviewed usage context is present, including: Apply liberally to clean, dry skin.",
+            "evidence_strength": "official_pdp_reviewed"
+          }
+        ],
+        "best_for": [
+          {
+            "tag": "hydration",
+            "label": "hydration",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "firmness",
+            "label": "firmness",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "body_routine",
+            "label": "body routine",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "aromatherapy",
+            "label": "aromatherapy",
+            "confidence": "moderate"
+          }
+        ],
+        "shopping_highlight": "aloe juice, hydration"
+      },
+      "writes": [
+        {
+          "kb_key": "product:ext_5f63056adbcee15d15e2aba1",
+          "action": "update",
+          "reason": "explicit_owner_delegated_assistant_replacement_review",
+          "old_hash": "4eb1352d5f1f23abd7e49304756691ec578cec612047e76d5cd7d261f6a9ad94",
+          "candidate_hash": "98f2c58c5b8aca4546e1249abce22b206aa98530e981ed581030532007dfce36",
+          "existing_weak": true,
+          "source": "pivota_insights_official_pdp_manual_review_v1",
+          "after_inventory": {
+            "product_id": "ext_5f63056adbcee15d15e2aba1",
+            "kb_key": "product:ext_5f63056adbcee15d15e2aba1",
+            "source": "pivota_insights_official_pdp_manual_review_v1",
+            "updated_at": "",
+            "last_success_at": "",
+            "title": "Hand + Body Lotion with Bergamot Water",
+            "canonical_url": "",
+            "bundle_hash": "fd39629178cded512bbf5ef2cb3208f623f7e5075ca9b6c6314b5ba4188f95e9",
+            "lane": "keep",
+            "reason": "protected_good_content",
+            "priority": 0,
+            "protected": true,
+            "displayable": true,
+            "high_quality_ready": true,
+            "human_reviewed": true,
+            "issues": [],
+            "blocking_issues": [],
+            "quality_state": "reviewed",
+            "evidence_profile": "official_pdp_reviewed_formula_and_usage",
+            "evidence_rank": 1,
+            "review_tier": "assistant_reviewed",
+            "agent_readable": true,
+            "public_ready": true
+          },
+          "source_meta": {
+            "evidence_profile": "official_pdp_reviewed_formula_and_usage",
+            "quality_state": "reviewed",
+            "source_origin": "official_pdp_fields",
+            "source_url": "https://upcirclebeauty.com/products/hand-body-lotion-with-bergamot-water",
+            "quality_improvement": {
+              "previous_bundle_hash": "c65e8509151e1cee00abb01e3cd07d23439282073b5ada7d3ff6cd3d9d29bed5",
+              "candidate_bundle_hash": "fd39629178cded512bbf5ef2cb3208f623f7e5075ca9b6c6314b5ba4188f95e9",
+              "replacement_decision": "explicit_owner_delegated_assistant_replacement_review",
+              "existing_quality_lane": "keep",
+              "candidate_quality_lane": "keep",
+              "existing_evidence_profile": "official_pdp_reviewed_limited",
+              "candidate_evidence_profile": "official_pdp_reviewed_formula_and_usage"
+            }
+          }
+        },
+        {
+          "kb_key": "product:sig_e6dce3a7da796a617c2d87f0",
+          "action": "update",
+          "reason": "explicit_owner_delegated_assistant_replacement_review",
+          "old_hash": "4eb1352d5f1f23abd7e49304756691ec578cec612047e76d5cd7d261f6a9ad94",
+          "candidate_hash": "98f2c58c5b8aca4546e1249abce22b206aa98530e981ed581030532007dfce36",
+          "existing_weak": true,
+          "source": "pivota_insights_official_pdp_manual_review_v1",
+          "after_inventory": {
+            "product_id": "ext_5f63056adbcee15d15e2aba1",
+            "kb_key": "product:sig_e6dce3a7da796a617c2d87f0",
+            "source": "pivota_insights_official_pdp_manual_review_v1",
+            "updated_at": "",
+            "last_success_at": "",
+            "title": "Hand + Body Lotion with Bergamot Water",
+            "canonical_url": "",
+            "bundle_hash": "fd39629178cded512bbf5ef2cb3208f623f7e5075ca9b6c6314b5ba4188f95e9",
+            "lane": "keep",
+            "reason": "protected_good_content",
+            "priority": 0,
+            "protected": true,
+            "displayable": true,
+            "high_quality_ready": true,
+            "human_reviewed": true,
+            "issues": [],
+            "blocking_issues": [],
+            "quality_state": "reviewed",
+            "evidence_profile": "official_pdp_reviewed_formula_and_usage",
+            "evidence_rank": 1,
+            "review_tier": "assistant_reviewed",
+            "agent_readable": true,
+            "public_ready": true
+          },
+          "source_meta": {
+            "evidence_profile": "official_pdp_reviewed_formula_and_usage",
+            "quality_state": "reviewed",
+            "source_origin": "official_pdp_fields",
+            "source_url": "https://upcirclebeauty.com/products/hand-body-lotion-with-bergamot-water",
+            "quality_improvement": {
+              "previous_bundle_hash": "c65e8509151e1cee00abb01e3cd07d23439282073b5ada7d3ff6cd3d9d29bed5",
+              "candidate_bundle_hash": "fd39629178cded512bbf5ef2cb3208f623f7e5075ca9b6c6314b5ba4188f95e9",
+              "replacement_decision": "explicit_owner_delegated_assistant_replacement_review",
+              "existing_quality_lane": "keep",
+              "candidate_quality_lane": "keep",
+              "existing_evidence_profile": "official_pdp_reviewed_limited",
+              "candidate_evidence_profile": "official_pdp_reviewed_formula_and_usage"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "external_product_id": "ext_b13a29406f82ff32d2cc2a32",
+      "pivota_signature_id": "sig_e6c2fe5bb314ac580570d705",
+      "title": "Shampoo Crème with Pink Berry",
+      "brand": "UpCircle Beauty",
+      "canonical_url": "https://upcirclebeauty.com/products/refillable-shampoo",
+      "changed": true,
+      "blocked": false,
+      "skip_reason": null,
+      "candidate_hash": "83df8a3b050ec08d52a63416121499b7f6080e07f8f3c0ed6ede4e6d7ba61d30",
+      "evidence_profile": "official_pdp_reviewed_formula_and_usage",
+      "source_coverage": {
+        "source": "official_pdp",
+        "canonical_url": "https://upcirclebeauty.com/products/refillable-shampoo",
+        "fields": {
+          "description": true,
+          "ingredients": 1,
+          "active_ingredients": 0,
+          "how_to": 1,
+          "details": 3,
+          "variants": 1
+        }
+      },
+      "preview": {
+        "headline": "Hair treatment",
+        "what_it_is": "Shampoo Crème with Pink Berry is a hair treatment from UpCircle Beauty.",
+        "why_it_stands_out": [
+          {
+            "headline": "Product cues are source-backed",
+            "body": "Reviewed PDP cues such as scalp or style refresh give shoppers specific comparison points within UpCircle Beauty, rather than category-only copy.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Ingredient list is available",
+            "body": "Full INCI is present for formula-sensitive review, which makes this PDP safer to evaluate than a claim-only listing.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Usage instructions available",
+            "body": "Reviewed usage context is present, including: Wet hair, wash and massage into scalp.",
+            "evidence_strength": "official_pdp_reviewed"
+          }
+        ],
+        "best_for": [
+          {
+            "tag": "scalp_or_style_refresh",
+            "label": "scalp or style refresh",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "full_inci_available",
+            "label": "full INCI available",
+            "confidence": "moderate"
+          }
+        ],
+        "shopping_highlight": "scalp or style refresh"
+      },
+      "writes": [
+        {
+          "kb_key": "product:ext_b13a29406f82ff32d2cc2a32",
+          "action": "update",
+          "reason": "explicit_owner_delegated_assistant_replacement_review",
+          "old_hash": "a0f7683cd2c2319777c208eda748656867cc253014f4f38f5e3806f8b1c624a8",
+          "candidate_hash": "1816dddabc7e16cf379a694f41ba2e8534c983b3cf8860fac2f09d4a68d9ba42",
+          "existing_weak": true,
+          "source": "pivota_insights_official_pdp_manual_review_v1",
+          "after_inventory": {
+            "product_id": "ext_b13a29406f82ff32d2cc2a32",
+            "kb_key": "product:ext_b13a29406f82ff32d2cc2a32",
+            "source": "pivota_insights_official_pdp_manual_review_v1",
+            "updated_at": "",
+            "last_success_at": "",
+            "title": "Shampoo Crème with Pink Berry",
+            "canonical_url": "",
+            "bundle_hash": "83df8a3b050ec08d52a63416121499b7f6080e07f8f3c0ed6ede4e6d7ba61d30",
+            "lane": "keep",
+            "reason": "protected_good_content",
+            "priority": 0,
+            "protected": true,
+            "displayable": true,
+            "high_quality_ready": true,
+            "human_reviewed": true,
+            "issues": [],
+            "blocking_issues": [],
+            "quality_state": "reviewed",
+            "evidence_profile": "official_pdp_reviewed_formula_and_usage",
+            "evidence_rank": 1,
+            "review_tier": "assistant_reviewed",
+            "agent_readable": true,
+            "public_ready": true
+          },
+          "source_meta": {
+            "evidence_profile": "official_pdp_reviewed_formula_and_usage",
+            "quality_state": "reviewed",
+            "source_origin": "official_pdp_fields",
+            "source_url": "https://upcirclebeauty.com/products/refillable-shampoo",
+            "quality_improvement": {
+              "previous_bundle_hash": "8eec18d1af508c2b38e7e797977239e128174bb653cca93f906fdc704670af15",
+              "candidate_bundle_hash": "83df8a3b050ec08d52a63416121499b7f6080e07f8f3c0ed6ede4e6d7ba61d30",
+              "replacement_decision": "explicit_owner_delegated_assistant_replacement_review",
+              "existing_quality_lane": "keep",
+              "candidate_quality_lane": "keep",
+              "existing_evidence_profile": "official_pdp_reviewed_limited",
+              "candidate_evidence_profile": "official_pdp_reviewed_formula_and_usage"
+            }
+          }
+        },
+        {
+          "kb_key": "product:sig_e6c2fe5bb314ac580570d705",
+          "action": "update",
+          "reason": "explicit_owner_delegated_assistant_replacement_review",
+          "old_hash": "a0f7683cd2c2319777c208eda748656867cc253014f4f38f5e3806f8b1c624a8",
+          "candidate_hash": "1816dddabc7e16cf379a694f41ba2e8534c983b3cf8860fac2f09d4a68d9ba42",
+          "existing_weak": true,
+          "source": "pivota_insights_official_pdp_manual_review_v1",
+          "after_inventory": {
+            "product_id": "ext_b13a29406f82ff32d2cc2a32",
+            "kb_key": "product:sig_e6c2fe5bb314ac580570d705",
+            "source": "pivota_insights_official_pdp_manual_review_v1",
+            "updated_at": "",
+            "last_success_at": "",
+            "title": "Shampoo Crème with Pink Berry",
+            "canonical_url": "",
+            "bundle_hash": "83df8a3b050ec08d52a63416121499b7f6080e07f8f3c0ed6ede4e6d7ba61d30",
+            "lane": "keep",
+            "reason": "protected_good_content",
+            "priority": 0,
+            "protected": true,
+            "displayable": true,
+            "high_quality_ready": true,
+            "human_reviewed": true,
+            "issues": [],
+            "blocking_issues": [],
+            "quality_state": "reviewed",
+            "evidence_profile": "official_pdp_reviewed_formula_and_usage",
+            "evidence_rank": 1,
+            "review_tier": "assistant_reviewed",
+            "agent_readable": true,
+            "public_ready": true
+          },
+          "source_meta": {
+            "evidence_profile": "official_pdp_reviewed_formula_and_usage",
+            "quality_state": "reviewed",
+            "source_origin": "official_pdp_fields",
+            "source_url": "https://upcirclebeauty.com/products/refillable-shampoo",
+            "quality_improvement": {
+              "previous_bundle_hash": "8eec18d1af508c2b38e7e797977239e128174bb653cca93f906fdc704670af15",
+              "candidate_bundle_hash": "83df8a3b050ec08d52a63416121499b7f6080e07f8f3c0ed6ede4e6d7ba61d30",
+              "replacement_decision": "explicit_owner_delegated_assistant_replacement_review",
+              "existing_quality_lane": "keep",
+              "candidate_quality_lane": "keep",
+              "existing_evidence_profile": "official_pdp_reviewed_limited",
+              "candidate_evidence_profile": "official_pdp_reviewed_formula_and_usage"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "external_product_id": "ext_5195cd2ff341a491822447d9",
+      "pivota_signature_id": "sig_4295e978d473a2d173e29667",
+      "title": "Shampoo Crème with Pink Berry - Jumbo",
+      "brand": "UpCircle Beauty",
+      "canonical_url": "https://upcirclebeauty.com/products/jumbo-shampoo",
+      "changed": true,
+      "blocked": false,
+      "skip_reason": null,
+      "candidate_hash": "a3829fb49277767bb4f9d7ffc99b1273298b706fd83a6524ddeeeb234c27e5f2",
+      "evidence_profile": "official_pdp_reviewed_formula_and_usage",
+      "source_coverage": {
+        "source": "official_pdp",
+        "canonical_url": "https://upcirclebeauty.com/products/jumbo-shampoo",
+        "fields": {
+          "description": true,
+          "ingredients": 1,
+          "active_ingredients": 0,
+          "how_to": 1,
+          "details": 3,
+          "variants": 1
+        }
+      },
+      "preview": {
+        "headline": "Hair treatment",
+        "what_it_is": "Shampoo Crème with Pink Berry - Jumbo is a hair treatment from UpCircle Beauty.",
+        "why_it_stands_out": [
+          {
+            "headline": "Product cues are source-backed",
+            "body": "Reviewed PDP cues such as scalp or style refresh give shoppers specific comparison points within UpCircle Beauty, rather than category-only copy.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Ingredient list is available",
+            "body": "Full INCI is present for formula-sensitive review, which makes this PDP safer to evaluate than a claim-only listing.",
+            "evidence_strength": "official_pdp_reviewed"
+          },
+          {
+            "headline": "Usage instructions available",
+            "body": "Reviewed usage context is present, including: Wet hair, wash and massage into scalp.",
+            "evidence_strength": "official_pdp_reviewed"
+          }
+        ],
+        "best_for": [
+          {
+            "tag": "scalp_or_style_refresh",
+            "label": "scalp or style refresh",
+            "confidence": "moderate"
+          },
+          {
+            "tag": "full_inci_available",
+            "label": "full INCI available",
+            "confidence": "moderate"
+          }
+        ],
+        "shopping_highlight": "scalp or style refresh"
+      },
+      "writes": [
+        {
+          "kb_key": "product:ext_5195cd2ff341a491822447d9",
+          "action": "update",
+          "reason": "explicit_owner_delegated_assistant_replacement_review",
+          "old_hash": "9a2a4bee5671a26bbcfd9e997bdc753aa6361bdcd1148df706ff59fd92f1ac8b",
+          "candidate_hash": "9eba7884f24662a42eed9af192a3f248f8c0dc0f6ba809756a6bb6587122199e",
+          "existing_weak": true,
+          "source": "pivota_insights_official_pdp_manual_review_v1",
+          "after_inventory": {
+            "product_id": "ext_5195cd2ff341a491822447d9",
+            "kb_key": "product:ext_5195cd2ff341a491822447d9",
+            "source": "pivota_insights_official_pdp_manual_review_v1",
+            "updated_at": "",
+            "last_success_at": "",
+            "title": "Shampoo Crème with Pink Berry - Jumbo",
+            "canonical_url": "",
+            "bundle_hash": "a3829fb49277767bb4f9d7ffc99b1273298b706fd83a6524ddeeeb234c27e5f2",
+            "lane": "keep",
+            "reason": "protected_good_content",
+            "priority": 0,
+            "protected": true,
+            "displayable": true,
+            "high_quality_ready": true,
+            "human_reviewed": true,
+            "issues": [],
+            "blocking_issues": [],
+            "quality_state": "reviewed",
+            "evidence_profile": "official_pdp_reviewed_formula_and_usage",
+            "evidence_rank": 1,
+            "review_tier": "assistant_reviewed",
+            "agent_readable": true,
+            "public_ready": true
+          },
+          "source_meta": {
+            "evidence_profile": "official_pdp_reviewed_formula_and_usage",
+            "quality_state": "reviewed",
+            "source_origin": "official_pdp_fields",
+            "source_url": "https://upcirclebeauty.com/products/jumbo-shampoo",
+            "quality_improvement": {
+              "previous_bundle_hash": "f5428f354051910aea69cf6555caa7e3efbe3f71fe6e649b51f1f39ec5712a42",
+              "candidate_bundle_hash": "a3829fb49277767bb4f9d7ffc99b1273298b706fd83a6524ddeeeb234c27e5f2",
+              "replacement_decision": "explicit_owner_delegated_assistant_replacement_review",
+              "existing_quality_lane": "keep",
+              "candidate_quality_lane": "keep",
+              "existing_evidence_profile": "official_pdp_reviewed_limited",
+              "candidate_evidence_profile": "official_pdp_reviewed_formula_and_usage"
+            }
+          }
+        },
+        {
+          "kb_key": "product:sig_4295e978d473a2d173e29667",
+          "action": "update",
+          "reason": "explicit_owner_delegated_assistant_replacement_review",
+          "old_hash": "9a2a4bee5671a26bbcfd9e997bdc753aa6361bdcd1148df706ff59fd92f1ac8b",
+          "candidate_hash": "9eba7884f24662a42eed9af192a3f248f8c0dc0f6ba809756a6bb6587122199e",
+          "existing_weak": true,
+          "source": "pivota_insights_official_pdp_manual_review_v1",
+          "after_inventory": {
+            "product_id": "ext_5195cd2ff341a491822447d9",
+            "kb_key": "product:sig_4295e978d473a2d173e29667",
+            "source": "pivota_insights_official_pdp_manual_review_v1",
+            "updated_at": "",
+            "last_success_at": "",
+            "title": "Shampoo Crème with Pink Berry - Jumbo",
+            "canonical_url": "",
+            "bundle_hash": "a3829fb49277767bb4f9d7ffc99b1273298b706fd83a6524ddeeeb234c27e5f2",
+            "lane": "keep",
+            "reason": "protected_good_content",
+            "priority": 0,
+            "protected": true,
+            "displayable": true,
+            "high_quality_ready": true,
+            "human_reviewed": true,
+            "issues": [],
+            "blocking_issues": [],
+            "quality_state": "reviewed",
+            "evidence_profile": "official_pdp_reviewed_formula_and_usage",
+            "evidence_rank": 1,
+            "review_tier": "assistant_reviewed",
+            "agent_readable": true,
+            "public_ready": true
+          },
+          "source_meta": {
+            "evidence_profile": "official_pdp_reviewed_formula_and_usage",
+            "quality_state": "reviewed",
+            "source_origin": "official_pdp_fields",
+            "source_url": "https://upcirclebeauty.com/products/jumbo-shampoo",
+            "quality_improvement": {
+              "previous_bundle_hash": "f5428f354051910aea69cf6555caa7e3efbe3f71fe6e649b51f1f39ec5712a42",
+              "candidate_bundle_hash": "a3829fb49277767bb4f9d7ffc99b1273298b706fd83a6524ddeeeb234c27e5f2",
+              "replacement_decision": "explicit_owner_delegated_assistant_replacement_review",
+              "existing_quality_lane": "keep",
+              "candidate_quality_lane": "keep",
+              "existing_evidence_profile": "official_pdp_reviewed_limited",
+              "candidate_evidence_profile": "official_pdp_reviewed_formula_and_usage"
+            }
+          }
+        }
+      ]
+    }
+  ],
+  "apply_result": {
+    "upserts": 10,
+    "chunks": 1
+  }
+}

@@ -1,0 +1,23 @@
+{
+  "generated_at": "2026-06-01T07:29:14.447Z",
+  "source": "pivota_insights_official_pdp_manual_review_v1",
+  "mode": "dry_run",
+  "filters": {
+    "brand": "Fenty Skin",
+    "product_ids": [],
+    "limit": 100,
+    "include_strong": false,
+    "include_url_key": false,
+    "apply_chunk_size": null
+  },
+  "summary": {
+    "scanned": 0,
+    "changed_products": 0,
+    "blocked_products": 0,
+    "skipped_products": 0,
+    "write_actions": {},
+    "skip_reasons": {},
+    "evidence_profiles": {}
+  },
+  "plans": []
+}
