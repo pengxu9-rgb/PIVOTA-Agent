@@ -461,6 +461,10 @@ const PIVOT_BEAUTY_CONTRACT_V1_ENABLED = parseBooleanEnv(
   process.env.PIVOT_BEAUTY_CONTRACT_V1_ENABLED,
   true,
 );
+const CANONICAL_ENTITY_ID_PUBLIC_EMIT_ENABLED = parseBooleanEnv(
+  process.env.CANONICAL_ENTITY_ID_PUBLIC_EMIT_ENABLED,
+  false,
+);
 const PIVOT_BEAUTY_LEGACY_FALLBACK_ISOLATION_ENABLED = parseBooleanEnv(
   process.env.PIVOT_BEAUTY_LEGACY_FALLBACK_ISOLATION_ENABLED,
   true,
@@ -4795,12 +4799,19 @@ async function fetchExternalSeedSimilarCardSourcesFromDb(productIds = []) {
     for (const row of res?.rows || []) {
       const externalProductId = String(row?.external_product_id || '').trim();
       if (!externalProductId) continue;
+      const publicProductId = await resolvePublicExternalSeedProductId(externalProductId);
       const pdpDetailsSections = Array.isArray(row?.pdp_details_sections)
         ? row.pdp_details_sections
         : [];
       const priceAmount = Number(row?.price_amount);
       const hydratedSource = {
-        product_id: externalProductId,
+        product_id: publicProductId || externalProductId,
+        ...(CANONICAL_ENTITY_ID_PUBLIC_EMIT_ENABLED
+          ? {
+              external_product_id: externalProductId,
+              source_product_id: externalProductId,
+            }
+          : {}),
         brand: firstNonEmptyString(row?.brand),
         category: firstNonEmptyString(row?.category),
         product_type: firstNonEmptyString(row?.product_type),
@@ -5500,10 +5511,55 @@ function isPivotaSignatureProductId(value) {
   return /^sig_[a-z0-9]+$/i.test(String(value || '').trim());
 }
 
-function applyRequestedPivotaSignatureToPdpProduct(product, sigId, sourceProductId = '') {
+function buildPublicProductUrl(entityId) {
+  const normalizedEntityId = String(entityId || '').trim();
+  return `https://agent.pivota.cc/products/${normalizedEntityId}`;
+}
+
+function resolvePublicProductIdForEmit(fallbackProductId, canonicalEntityId = '') {
+  const normalizedFallbackProductId = String(fallbackProductId || '').trim();
+  const normalizedCanonicalEntityId = String(canonicalEntityId || '').trim();
+  return CANONICAL_ENTITY_ID_PUBLIC_EMIT_ENABLED && normalizedCanonicalEntityId
+    ? normalizedCanonicalEntityId
+    : normalizedFallbackProductId;
+}
+
+async function resolvePublicExternalSeedProductId(externalProductId, { canonicalEntityId = '' } = {}) {
+  const normalizedExternalProductId = String(externalProductId || '').trim();
+  if (!normalizedExternalProductId) return '';
+  const explicitCanonicalEntityId = String(canonicalEntityId || '').trim();
+  if (!CANONICAL_ENTITY_ID_PUBLIC_EMIT_ENABLED) return normalizedExternalProductId;
+  if (explicitCanonicalEntityId) return explicitCanonicalEntityId;
+
+  const group = await resolveProductGroupCached({ productId: normalizedExternalProductId }).catch((err) => {
+    logger.debug?.(
+      {
+        err: err?.message || String(err),
+        product_id: normalizedExternalProductId,
+      },
+      'Canonical entity public emit external-seed group resolution failed',
+    );
+    return null;
+  });
+  return firstNonEmptyString(group?.canonical_entity_id, normalizedExternalProductId);
+}
+
+function applyRequestedPivotaSignatureToPdpProduct(
+  product,
+  sigId,
+  sourceProductId = '',
+  canonicalEntityId = '',
+) {
   if (!product || typeof product !== 'object' || Array.isArray(product)) return product;
   const normalizedSigId = String(sigId || '').trim();
   if (!/^sig_[a-z0-9]+$/i.test(normalizedSigId)) return product;
+  const normalizedCanonicalEntityId = String(canonicalEntityId || '').trim();
+  const shouldEmitCanonicalEntityId =
+    CANONICAL_ENTITY_ID_PUBLIC_EMIT_ENABLED && Boolean(normalizedCanonicalEntityId);
+  const publicId = shouldEmitCanonicalEntityId
+    ? normalizedCanonicalEntityId
+    : normalizedSigId;
+  const publicUrl = buildPublicProductUrl(publicId);
 
   const resolvedSourceProductId = firstNonEmptyString(
     sourceProductId,
@@ -5520,15 +5576,14 @@ function applyRequestedPivotaSignatureToPdpProduct(product, sigId, sourceProduct
     product.destination_url,
     currentCanonicalUrl && !/\/products\/sig_/i.test(currentCanonicalUrl) ? currentCanonicalUrl : '',
   );
-  const pivotaCanonicalUrl = firstNonEmptyString(
-    product.pivota_canonical_url,
-    `https://agent.pivota.cc/products/${normalizedSigId}`,
-  );
+  const pivotaCanonicalUrl = shouldEmitCanonicalEntityId
+    ? publicUrl
+    : firstNonEmptyString(product.pivota_canonical_url, publicUrl);
 
   return {
     ...product,
-    id: normalizedSigId,
-    product_id: normalizedSigId,
+    id: publicId,
+    product_id: publicId,
     pivota_signature_id: product.pivota_signature_id || normalizedSigId,
     signature_id: product.signature_id || normalizedSigId,
     pivota_canonical_url: pivotaCanonicalUrl,
@@ -5761,6 +5816,11 @@ function applyCatalogIdentityToPdpProduct(product, identity = {}) {
   );
   const productKey = firstNonEmptyString(product.product_key, identity.product_key);
   const catalogCategoryPath = firstNonEmptyString(identity.category_path);
+  const identityCanonicalEntityId = firstNonEmptyString(identity.canonical_entity_id);
+  const shouldEmitCanonicalEntityId =
+    CANONICAL_ENTITY_ID_PUBLIC_EMIT_ENABLED && Boolean(identityCanonicalEntityId);
+  const publicId = resolvePublicProductIdForEmit(sigId, identityCanonicalEntityId);
+  const publicUrl = buildPublicProductUrl(publicId);
   const catalogCategoryParts = catalogCategoryPath
     ? catalogCategoryPath.split('/').map((part) => String(part || '').trim()).filter(Boolean)
     : [];
@@ -5793,7 +5853,7 @@ function applyCatalogIdentityToPdpProduct(product, identity = {}) {
     pivota_signature_id: product.pivota_signature_id || sigId,
     signature_id: product.signature_id || sigId,
     pivota_canonical_url:
-      product.pivota_canonical_url || `https://agent.pivota.cc/products/${sigId}`,
+      shouldEmitCanonicalEntityId ? publicUrl : product.pivota_canonical_url || publicUrl,
   };
 }
 
@@ -6446,7 +6506,7 @@ function signatureRefHasUsableCatalogDetailContent(signatureProductRef) {
   return hasTitle && (hasSourceUrl || hasVisualOrContent);
 }
 
-function buildExternalSeedProductFromSignatureCatalogRef(signatureProductRef) {
+async function buildExternalSeedProductFromSignatureCatalogRef(signatureProductRef) {
   if (!signatureProductRef || typeof signatureProductRef !== 'object') return null;
   if (signatureProductRef.source !== 'catalog_products_signature_exact') return null;
   const merchantId = firstNonEmptyString(signatureProductRef.merchant_id);
@@ -6565,6 +6625,9 @@ function buildExternalSeedProductFromSignatureCatalogRef(signatureProductRef) {
     externalSnapshot.review_summary,
     externalSnapshot.pdp_review_summary,
   ].find((value) => isPlainObject(value));
+  const publicProductId = await resolvePublicExternalSeedProductId(externalProductId, {
+    canonicalEntityId: firstNonEmptyString(signatureProductRef.canonical_entity_id),
+  });
   const imageUrls = [
     imageUrl,
     ...(Array.isArray(payloadSeedData.image_urls) ? payloadSeedData.image_urls : []),
@@ -6657,6 +6720,20 @@ function buildExternalSeedProductFromSignatureCatalogRef(signatureProductRef) {
 
   const product = buildExternalSeedProduct(row);
   if (!product) return null;
+  if (
+    CANONICAL_ENTITY_ID_PUBLIC_EMIT_ENABLED &&
+    publicProductId &&
+    publicProductId !== externalProductId
+  ) {
+    const publicUrl = buildPublicProductUrl(publicProductId);
+    product.id = publicProductId;
+    product.product_id = publicProductId;
+    product.canonical_entity_id = publicProductId;
+    product.pivota_canonical_url = publicUrl;
+    product.canonical_url = publicUrl;
+    product.url = publicUrl;
+    if (canonicalUrl) product.merchant_canonical_url = canonicalUrl;
+  }
   product.product_key = firstNonEmptyString(signatureProductRef.product_key) || product.product_key;
   product.content_key = firstNonEmptyString(signatureProductRef.content_key) || product.content_key;
   product.source_product_id = externalProductId;
@@ -8333,6 +8410,9 @@ async function resolveProductGroupCached(args) {
       sellable_item_group_id:
         canonicalCatalogGroup.sellable_item_group_id || canonicalCatalogGroup.product_group_id,
       canonical_sig_id: canonicalCatalogGroup.canonical_sig_id || canonicalCatalogGroup.product_group_id,
+      // Stable pg_*-first canonical product identity (sig_* fallback). See resolver.
+      canonical_entity_id:
+        canonicalCatalogGroup.canonical_entity_id || canonicalCatalogGroup.product_group_id,
       content_key: canonicalCatalogGroup.content_key || null,
       internal_product_group_id: canonicalCatalogGroup.internal_product_group_id || null,
       canonical_product_ref: canonicalCatalogGroup.canonical_product_ref,
@@ -8387,6 +8467,9 @@ async function resolveProductGroupCached(args) {
   const result = {
     status: 'success',
     ...(productGroupId ? { product_group_id: productGroupId } : {}),
+    // Upstream (non-catalog) path has no pg_*; fall back to the upstream group id so
+    // the field is always present for consumers.
+    ...(productGroupId ? { canonical_entity_id: productGroupId } : {}),
     canonical_product_ref: canonicalMember
       ? {
           merchant_id: canonicalMember.merchant_id,
@@ -14694,13 +14777,23 @@ function buildBeautyExternalSeedMainlineProduct(row) {
     seedData.pivota_signature_id,
     snapshot.pivota_signature_id,
   );
+  const canonicalEntityId = firstNonEmptyString(
+    row.canonical_entity_id,
+    seedData.canonical_entity_id,
+    snapshot.canonical_entity_id,
+  );
+  const publicPivotaProductId = pivotaSignatureId
+    ? resolvePublicProductIdForEmit(pivotaSignatureId, canonicalEntityId)
+    : '';
+  const publicPivotaUrl = publicPivotaProductId ? buildPublicProductUrl(publicPivotaProductId) : '';
   const pivotaCanonicalUrl = firstNonEmptyString(
+    CANONICAL_ENTITY_ID_PUBLIC_EMIT_ENABLED && canonicalEntityId ? publicPivotaUrl : '',
     row.pivota_canonical_url,
     seedData.pivota_canonical_url,
     snapshot.pivota_canonical_url,
-    pivotaSignatureId ? `https://agent.pivota.cc/products/${pivotaSignatureId}` : '',
+    publicPivotaUrl,
   );
-  const responseProductId = pivotaSignatureId || externalProductId;
+  const responseProductId = publicPivotaProductId || externalProductId;
   const title = firstNonEmptyString(
     recall.retrieval_title,
     snapshot.title,
@@ -16088,7 +16181,12 @@ function ensureSearchProductPdpOpen(product = {}) {
   };
   if (signatureId && !next.pivota_signature_id) next.pivota_signature_id = signatureId;
   if (signatureId && !next.pivota_canonical_url) {
-    next.pivota_canonical_url = `https://agent.pivota.cc/products/${signatureId}`;
+    next.pivota_canonical_url = buildPublicProductUrl(
+      resolvePublicProductIdForEmit(
+        signatureId,
+        firstNonEmptyString(product.canonical_entity_id, product.canonicalEntityId),
+      ),
+    );
   }
   return next;
 }
@@ -25314,25 +25412,28 @@ async function enrichSimilarProductsForPdpCards({
 
 function collectExternalSeedIdCandidatesForVisibleCatalogHydration(product = {}) {
   if (!product || typeof product !== 'object' || Array.isArray(product)) return [];
-  return Array.from(
-    new Set(
-      [
-        product.product_id,
-        product.productId,
-        product.id,
-        product.source_product_id,
-        product.sourceProductId,
-        product.external_product_id,
-        product.externalProductId,
-        product.external_seed_product_id,
-        product.externalSeedProductId,
-        product.platform_product_id,
-        product.platformProductId,
-      ]
-        .map((value) => firstNonEmptyString(value))
-        .filter((value) => isExternalSeedProductId(value) || isPivotaSignatureProductId(value)),
-    ),
-  );
+  const values = [
+    product.product_id,
+    product.productId,
+    product.id,
+    product.source_product_id,
+    product.sourceProductId,
+    product.external_product_id,
+    product.externalProductId,
+    product.external_seed_product_id,
+    product.externalSeedProductId,
+    product.platform_product_id,
+    product.platformProductId,
+  ].map((value) => firstNonEmptyString(value));
+  // Prefer real ext_* source ids. When both an ext_* and a sig_* are present, drop
+  // the sig_* (asserted by similar_visible_sig_ids.test.js). But a visible card may
+  // carry ONLY a sig_* (no ext_*) — the official-seed hydration resolves that via
+  // matched_signature_product_id, so fall back to the sig_* when it's the only id
+  // available (find_similar_products_mainline_wrapper.test.js). pg_* is never a
+  // hydration key, so it is excluded in both passes.
+  const extIds = Array.from(new Set(values.filter((value) => isExternalSeedProductId(value))));
+  if (extIds.length) return extIds;
+  return Array.from(new Set(values.filter((value) => isPivotaSignatureProductId(value))));
 }
 
 function identityReviewRequiredForVisibleSig(product = {}) {
@@ -25385,7 +25486,16 @@ function promoteVisibleSimilarProductSigId(product) {
   if (!isPivotaSignatureProductId(sigId)) return product;
 
   const currentProductId = firstNonEmptyString(product.product_id, product.productId, product.id);
-  const publicUrl = `https://agent.pivota.cc/products/${sigId}`;
+  const canonicalEntityId = firstNonEmptyString(product.canonical_entity_id, product.canonicalEntityId);
+  const publicId = resolvePublicProductIdForEmit(
+    sigId,
+    canonicalEntityId,
+  );
+  const publicUrl = buildPublicProductUrl(publicId);
+  const pivotaCanonicalUrl =
+    CANONICAL_ENTITY_ID_PUBLIC_EMIT_ENABLED && canonicalEntityId
+      ? publicUrl
+      : product.pivota_canonical_url || publicUrl;
   const currentCanonicalUrl = firstNonEmptyString(product.canonical_url, product.url);
   const merchantCanonicalUrl = firstNonEmptyString(
     product.merchant_canonical_url,
@@ -25403,11 +25513,11 @@ function promoteVisibleSimilarProductSigId(product) {
   if (currentProductId === sigId) {
     return {
       ...product,
-      product_id: sigId,
-      id: sigId,
+      product_id: publicId,
+      id: publicId,
       pivota_signature_id: product.pivota_signature_id || sigId,
       signature_id: product.signature_id || sigId,
-      pivota_canonical_url: product.pivota_canonical_url || publicUrl,
+      pivota_canonical_url: pivotaCanonicalUrl,
       canonical_url: publicUrl,
       url: publicUrl,
       ...(merchantCanonicalUrl ? { merchant_canonical_url: merchantCanonicalUrl } : {}),
@@ -25422,11 +25532,11 @@ function promoteVisibleSimilarProductSigId(product) {
 
   return {
     ...product,
-    product_id: sigId,
-    id: sigId,
+    product_id: publicId,
+    id: publicId,
     pivota_signature_id: product.pivota_signature_id || sigId,
     signature_id: product.signature_id || sigId,
-    pivota_canonical_url: product.pivota_canonical_url || publicUrl,
+    pivota_canonical_url: pivotaCanonicalUrl,
     canonical_url: publicUrl,
     url: publicUrl,
     ...(merchantCanonicalUrl ? { merchant_canonical_url: merchantCanonicalUrl } : {}),
@@ -25492,7 +25602,11 @@ function buildSimilarCatalogProductProjection(product = {}, catalogRow = {}) {
     product.canonical_url,
     product.url,
   );
-  const publicUrl = `https://agent.pivota.cc/products/${sigId}`;
+  const publicId = resolvePublicProductIdForEmit(
+    sigId,
+    firstNonEmptyString(catalogRow.canonical_entity_id, product.canonical_entity_id, product.canonicalEntityId),
+  );
+  const publicUrl = buildPublicProductUrl(publicId);
   const title = firstNonEmptyString(catalogRow.title, catalogPayload.title, product.title, product.name);
   const description = firstNonEmptyString(
     catalogRow.description,
@@ -25532,8 +25646,8 @@ function buildSimilarCatalogProductProjection(product = {}, catalogRow = {}) {
   const platform = firstNonEmptyString(catalogRow.platform, product.platform, EXTERNAL_SEED_MERCHANT_ID);
   const productKey = firstNonEmptyString(catalogRow.product_key, product.product_key);
   const catalogProductRef = {
-    product_id: sigId,
-    id: sigId,
+    product_id: publicId,
+    id: publicId,
     pivota_signature_id: sigId,
     source: 'catalog_products',
     entity_source: 'catalog_products',
@@ -25586,8 +25700,8 @@ function buildSimilarCatalogProductProjection(product = {}, catalogRow = {}) {
 
   return {
     ...catalogProductBase,
-    product_id: sigId,
-    id: sigId,
+    product_id: publicId,
+    id: publicId,
     pivota_signature_id: sigId,
     signature_id: sigId,
     source: 'catalog_products',
@@ -25934,9 +26048,13 @@ function collectPdpComponentSimilarCandidates(product = {}) {
     if (baseExternalId && externalProductId === baseExternalId) continue;
     if (seen.has(externalProductId)) continue;
     seen.add(externalProductId);
+    const publicProductId = resolvePublicProductIdForEmit(
+      externalProductId,
+      firstNonEmptyString(ref.canonical_entity_id, ref.canonicalEntityId),
+    );
     out.push({
       merchant_id: EXTERNAL_SEED_MERCHANT_ID,
-      product_id: externalProductId,
+      product_id: publicProductId,
       external_product_id: externalProductId,
       platform_product_id: externalProductId,
       source: 'external_seed',
@@ -35674,7 +35792,7 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
                 signaturePrefetchedServingEligibility =
                   buildPrefetchedPdpServingEligibilityFromSignatureRef(signatureProductRef);
                 signatureExternalSeedPrecheckProduct =
-                  buildExternalSeedProductFromSignatureCatalogRef(signatureProductRef);
+                  await buildExternalSeedProductFromSignatureCatalogRef(signatureProductRef);
                 if (signatureExternalSeedPrecheckProduct?.product_id) {
                   signaturePrefetchedPdpContentProductId = String(
                     signatureExternalSeedPrecheckProduct.product_id || '',
@@ -36619,10 +36737,33 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
           );
         }
         if (requestedPivotaSignatureId) {
+          let requestedCanonicalEntityIdForPublicEmit = '';
+          if (CANONICAL_ENTITY_ID_PUBLIC_EMIT_ENABLED) {
+            const publicEmitGroup = await resolveProductGroupCached({
+              productId: canonicalProductRef?.product_id || productId,
+              ...(canonicalProductRef?.merchant_id
+                ? { merchantId: canonicalProductRef.merchant_id }
+                : {}),
+            }).catch((err) => {
+              logger.debug?.(
+                {
+                  err: err?.message || String(err),
+                  product_id: canonicalProductRef?.product_id || productId || null,
+                  merchant_id: canonicalProductRef?.merchant_id || null,
+                },
+                'Canonical entity public emit PDP group resolution failed',
+              );
+              return null;
+            });
+            requestedCanonicalEntityIdForPublicEmit = firstNonEmptyString(
+              publicEmitGroup?.canonical_entity_id,
+            );
+          }
           canonicalProductForPdp = applyRequestedPivotaSignatureToPdpProduct(
             canonicalProductForPdp,
             requestedPivotaSignatureId,
             canonicalProductRef?.product_id || productId,
+            requestedCanonicalEntityIdForPublicEmit,
           );
         }
         if (!catalogIdentity) {
@@ -45367,6 +45508,11 @@ module.exports._debug = {
   loadCreatorSellableFromCache,
   searchCreatorSellableFromCache,
   searchCrossMerchantFromCache,
+  isCanonicalEntityIdPublicEmitEnabled: () => CANONICAL_ENTITY_ID_PUBLIC_EMIT_ENABLED,
+  buildPublicProductUrl,
+  resolvePublicProductIdForEmit,
+  resolvePublicExternalSeedProductId,
+  applyRequestedPivotaSignatureToPdpProduct,
   mergePublicBeautyUnifiedSearchProducts,
   resolvePublicBeautyCompoundIntent,
   shouldBridgePublicBeautySearchToDiscovery,
@@ -45398,6 +45544,7 @@ module.exports._debug = {
   buildFindProductsMultiDiscoveryBridgeResponse,
   fetchProductDetailForOffers,
   fetchExternalSeedProductDetailFromDb,
+  fetchExternalSeedSimilarCardSourcesFromDb,
   collectCatalogPdpContentSourceProductIds,
   classifyPdpV2ModuleHealth,
   hasExternalSeedRichPdpContent,

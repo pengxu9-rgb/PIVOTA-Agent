@@ -56,6 +56,8 @@ describe('catalogEntityResolution', () => {
 
     expect(group.product_group_id).toBe('sig_primaryalpha');
     expect(group.canonical_sig_id).toBe('sig_primaryalpha');
+    // canonical_entity_id is the stable pg_* (does not flip with the primary).
+    expect(group.canonical_entity_id).toBe('pg_alpha');
     expect(group.member_sig_ids).toEqual(['sig_primaryalpha', 'sig_memberalpha']);
     expect(group.members).toHaveLength(2);
     expect(group.members.find((member) => member.is_primary)).toEqual(
@@ -168,5 +170,43 @@ describe('catalogEntityResolution', () => {
         ],
       }),
     );
+  });
+
+  test('standalone product (no product group) falls back canonical_entity_id to sig', async () => {
+    process.env = {
+      ...ORIGINAL_ENV,
+      DATABASE_URL: 'postgres://test',
+    };
+    const { resolveCanonicalCatalogEntityGroup } = require('../../src/services/catalogEntityResolution');
+    const queryFn = jest.fn(async () => ({
+      rows: [
+        {
+          content_key: 'ck_lonely',
+          product_key: 'prod::external_seed::external_seed::ext_lonely',
+          merchant_id: 'external_seed',
+          merchant_name: 'Solo Store',
+          platform: 'external_seed',
+          source_product_id: 'ext_lonely',
+          product_title: 'Lonely Standalone Serum',
+          brand: 'Solo',
+          pivota_signature_id: 'sig_lonely',
+          internal_product_group_id: null, // ungrouped: no pg_*
+          is_primary: true,
+          offer_count: 1,
+          pdp_lifecycle_stage: 'published',
+          pivota_signature_minted_at: '2026-01-01T00:00:00.000Z',
+        },
+      ],
+    }));
+
+    const group = await resolveCanonicalCatalogEntityGroup({
+      productId: 'sig_lonely',
+      queryFn,
+    });
+
+    // No pg_* → canonical_entity_id falls back to the sig (which is stable for a singleton).
+    expect(group.canonical_entity_id).toBe('sig_lonely');
+    expect(group.canonical_sig_id).toBe('sig_lonely');
+    expect(group.internal_product_group_id).toBeNull();
   });
 });
