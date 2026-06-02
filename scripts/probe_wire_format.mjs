@@ -117,6 +117,7 @@ function loadConfig() {
     query: optionalEnv("PROBE_QUERY") || DEFAULT_QUERY,
     currency: (optionalEnv("PROBE_CURRENCY") || DEFAULT_CURRENCY).toUpperCase(),
     allowCharge: process.env.PROBE_ALLOW_CHARGE === "1",
+    chargeConfirm: optionalEnv("PROBE_CHARGE_CONFIRM"),
   };
 }
 
@@ -142,8 +143,10 @@ function validateSafety(flags, config) {
     throw new UsageError("Refusing --charge unless PROBE_ALLOW_CHARGE=1 is set.");
   }
 
-  if (flags.charge && !flags.dryRun && !process.stdin.isTTY) {
-    throw new UsageError("Refusing --charge without an interactive TTY for typed confirmation.");
+  // Confirmation: interactively a typed "yes" (TTY); non-interactively (CI) an explicit
+  // PROBE_CHARGE_CONFIRM=yes. Without one of those, refuse — so a charge can never fire by accident.
+  if (flags.charge && !flags.dryRun && !process.stdin.isTTY && config.chargeConfirm !== "yes") {
+    throw new UsageError("Refusing --charge non-interactively without PROBE_CHARGE_CONFIRM=yes (use this ONLY when the backend/PSP is in test mode).");
   }
 }
 
@@ -859,12 +862,18 @@ function printDryRun(config, flags) {
   return bodies;
 }
 
-async function confirmCharge() {
+async function confirmCharge(config) {
   console.error("");
   console.error("!!! WARNING: --charge can move REAL money unless the backend and PSP are in test mode.");
   console.error("!!! This script does not call Stripe. After submit_payment, verify the returned PSP ID and amount in the Stripe dashboard.");
-  console.error("!!! Type exactly \"yes\" to send submit_payment.");
 
+  // Non-interactive (CI): validateSafety already required PROBE_CHARGE_CONFIRM=yes. Log loudly and proceed.
+  if (!process.stdin.isTTY) {
+    console.error("!!! Non-interactive run: proceeding because PROBE_CHARGE_CONFIRM=yes (intended for TEST mode).");
+    return;
+  }
+
+  console.error("!!! Type exactly \"yes\" to send submit_payment.");
   const rl = createInterface({ input, output });
   try {
     const answer = await rl.question("Send submit_payment now? ");
@@ -1186,7 +1195,7 @@ async function main() {
           });
         }
 
-        await confirmCharge();
+        await confirmCharge(config);
 
         console.log("Step4 submit_payment: sending charge request.");
         const submitBody = buildSubmitPaymentBody(orderId, qInfo.quoteId, expectedMinor, orderCurrency || config.currency);

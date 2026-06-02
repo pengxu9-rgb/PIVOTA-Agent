@@ -44,6 +44,10 @@ on:
         description: "Currency code"
         type: string
         default: "USD"
+      charge:
+        description: "Phase 3: fire submit_payment (creates a PSP PaymentIntent). ONLY enable when the backend/PSP is in Stripe TEST mode — it is a real charge otherwise. Creates an order draft (forces create_order)."
+        type: boolean
+        default: false
       auth_header:
         description: "Auth header NAME (not a secret). Default Authorization (Bearer); set e.g. X-API-Key if needed."
         type: string
@@ -80,7 +84,7 @@ jobs:
           fi
           echo "Credentials present. Backend will be probed (host/token hidden)."
 
-      - name: Run probe (read-only${{ inputs.run_create_order && ' + create_order' || '' }}; NEVER charges)
+      - name: "Run probe${{ inputs.charge && ' (Phase 3 CHARGE - TEST MODE ONLY)' || (inputs.run_create_order && ' (read-only + create_order)' || ' (read-only)') }}"
         env:
           PROBE_BASE: ${{ inputs.base_url }}
           PROBE_KEY: ${{ secrets.PROBE_KEY || secrets.COMMERCE_CORE_PROD_AUTH_TOKEN }}
@@ -89,12 +93,19 @@ jobs:
           PROBE_MERCHANT_ID: ${{ inputs.merchant_id }}
           PROBE_QUERY: ${{ inputs.query }}
           PROBE_CURRENCY: ${{ inputs.currency }}
-          # Intentionally NOT set: PROBE_ALLOW_CHARGE. The --charge flag is never passed below.
+          # Charge is OFF unless the `charge` input is explicitly true (and the backend is in test mode).
+          PROBE_ALLOW_CHARGE: ${{ inputs.charge && '1' || '' }}
+          PROBE_CHARGE_CONFIRM: ${{ inputs.charge && 'yes' || '' }}
         run: |
           set -o pipefail
           FLAGS="--json"
-          if [ "${{ inputs.run_create_order }}" = "true" ]; then
+          # --charge implies create_order; force it on when charging.
+          if [ "${{ inputs.run_create_order }}" = "true" ] || [ "${{ inputs.charge }}" = "true" ]; then
             FLAGS="--create-order $FLAGS"
+          fi
+          if [ "${{ inputs.charge }}" = "true" ]; then
+            echo "::warning::Phase 3 charge enabled — submit_payment will create a PSP PaymentIntent. This is a REAL charge unless the backend/PSP is in Stripe TEST mode."
+            FLAGS="--charge $FLAGS"
           fi
           echo "Running: node scripts/probe_wire_format.mjs $FLAGS"
           node scripts/probe_wire_format.mjs $FLAGS 2>&1 | tee probe-output.txt
