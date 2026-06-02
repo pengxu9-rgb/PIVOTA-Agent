@@ -84,7 +84,7 @@ jobs:
           fi
           echo "Credentials present. Backend will be probed (host/token hidden)."
 
-      - name: Run probe${{ inputs.charge && ' (Phase 3: CHARGE — TEST MODE ONLY)' || (inputs.run_create_order && ' (read-only + create_order)' || ' (read-only)') }}
+      - name: "Run probe${{ inputs.charge && ' (Phase 3 CHARGE - TEST MODE ONLY)' || (inputs.run_create_order && ' (read-only + create_order)' || ' (read-only)') }}"
         env:
           PROBE_BASE: ${{ inputs.base_url }}
           PROBE_KEY: ${{ secrets.PROBE_KEY || secrets.COMMERCE_CORE_PROD_AUTH_TOKEN }}
