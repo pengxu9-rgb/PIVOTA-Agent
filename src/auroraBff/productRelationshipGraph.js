@@ -1163,12 +1163,28 @@ async function listApprovedRelationshipEdgesForAnchor(options = {}) {
     pushRef(edge.anchor_ref, edge.anchor_snapshot);
     pushRef(edge.candidate_product_ref, edge.candidate_snapshot);
   }
-  const resolutionMap = await resolveRelationshipGraphRefsToCanonicalEntities(refsToResolve, { queryFn });
-  const collapsed = collapseApprovedRelationshipEdgesToFamilies(rawEdges, {
-    resolutionMap,
-    anchorRefs: expandedRefs,
-    limit: requestedLimit,
-  });
+  let collapsed;
+  try {
+    const resolutionMap = await resolveRelationshipGraphRefsToCanonicalEntities(refsToResolve, { queryFn });
+    collapsed = collapseApprovedRelationshipEdgesToFamilies(rawEdges, {
+      resolutionMap,
+      anchorRefs: expandedRefs,
+      limit: requestedLimit,
+    });
+  } catch (err) {
+    // Fail closed to uncollapsed serving: flag-on must never be worse than flag-off.
+    // A transient resolver/collapse failure degrades to the raw (uncollapsed) edges
+    // rather than discarding them.
+    logger.warn?.(
+      {
+        kind: 'metric',
+        name: 'aurora_bff_relationship_graph_family_collapse_error',
+        error: err?.message,
+      },
+      'aurora bff: relationship graph family collapse failed; serving uncollapsed edges',
+    );
+    return rawEdges.slice(0, requestedLimit);
+  }
   const stats = collapsed.__collapse_stats || {};
   logger.info?.(
     {

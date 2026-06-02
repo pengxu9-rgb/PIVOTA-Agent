@@ -534,6 +534,49 @@ describe('product relationship graph store helpers', () => {
     }
   });
 
+  test('flag-on fails closed to uncollapsed edges when the resolver query throws', async () => {
+    const logger = require('../src/logger');
+    jest.spyOn(logger, 'info').mockImplementation(() => {});
+    jest.spyOn(logger, 'warn').mockImplementation(() => {});
+    const prevFamilyFlag = process.env.AURORA_BFF_RELATIONSHIP_GRAPH_FAMILY_COLLAPSE_ENABLED;
+    process.env.AURORA_BFF_RELATIONSHIP_GRAPH_FAMILY_COLLAPSE_ENABLED = 'true';
+    const rawRows = Array.from({ length: 5 }, (_, index) => ({
+      ...approvedDupe({
+        id: `prel_resolverfail_${index}`,
+        anchor_ref: 'product:ext_anchor',
+        candidate_product_ref: `product:ext_shade_${index}`,
+        candidate_snapshot: { product_id: `ext_shade_${index}`, brand: 'Value Brand', name: `Concealer - #${150 + index}` },
+        relation_type: 'competitive_alternative',
+        score_total: 0.95 - index * 0.01,
+      }),
+      vertical: 'beauty',
+      created_at: NOW_ISO,
+      updated_at: NOW_ISO,
+    }));
+    const queryFn = jest.fn(async (sql) => {
+      if (/FROM product_relationship_edges/.test(sql)) return { rows: rawRows };
+      if (/catalog_products/.test(sql)) throw new Error('Connection terminated unexpectedly');
+      return { rows: [] };
+    });
+    try {
+      const edges = await listApprovedRelationshipEdgesForAnchor({
+        anchorRefs: ['product:ext_anchor'],
+        market: 'US',
+        limit: 2,
+        queryFn,
+      });
+      // Must NOT throw; degrades to the raw uncollapsed edges sliced to the limit.
+      expect(edges).toHaveLength(2);
+      expect(edges.every((edge) => !edge.provenance?.relationship_family_collapse)).toBe(true);
+      expect(logger.warn).toHaveBeenCalled();
+    } finally {
+      if (prevFamilyFlag === undefined) delete process.env.AURORA_BFF_RELATIONSHIP_GRAPH_FAMILY_COLLAPSE_ENABLED;
+      else process.env.AURORA_BFF_RELATIONSHIP_GRAPH_FAMILY_COLLAPSE_ENABLED = prevFamilyFlag;
+      logger.info.mockRestore();
+      logger.warn.mockRestore();
+    }
+  });
+
   test('family collapse drops same-family product self-edges', () => {
     const edge = approvedDupe({
       id: 'prel_self',
