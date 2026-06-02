@@ -12,7 +12,7 @@ const {
 } = require('../src/auroraBff/productRelationshipGraphSources');
 
 const NOW = '2026-05-25T00:00:00.000Z';
-const { familyIdentityKey, familyIdentityKeysCompatible } = __internal;
+const { extractStructuredVariantShade, familyIdentityKey, familyIdentityKeysCompatible } = __internal;
 
 describe('product relationship graph family identity key', () => {
   test('merges recognized shade and size variants without requiring category', () => {
@@ -34,6 +34,120 @@ describe('product relationship graph family identity key', () => {
 
     expect(new Set(sizeKeys).size).toBe(1);
     expect(sizeKeys[0]).toBe('family:v1:value lab::hydrating barrier serum::');
+  });
+
+  test('extracts only labeled cosmetic structured variant values', () => {
+    expect(extractStructuredVariantShade({
+      variant_title: 'Shade: Karachi',
+      variant_detail_label: 'Shade: Seville',
+    })).toBe('Karachi');
+    expect(extractStructuredVariantShade({
+      variant_detail_label: 'Color: Rose Quartz',
+    })).toBe('Rose Quartz');
+    expect(extractStructuredVariantShade({
+      variant_title: 'Garden Gift Set',
+    })).toBe('');
+    expect(extractStructuredVariantShade({
+      variant_detail_label: 'Format: Single item',
+    })).toBe('');
+  });
+
+  test('merges prefix shade names from structured variant labels', () => {
+    const base = { brand: 'Nailkind', category: 'nail polish' };
+    const karachi = familyIdentityKey({
+      ...base,
+      product_id: 'nail_karachi',
+      name: 'Karachi - Breathable Nail Polish',
+      variant_title: 'Shade: Karachi',
+    });
+    const seville = familyIdentityKey({
+      ...base,
+      product_id: 'nail_seville',
+      name: 'Seville - Breathable Nail Polish',
+      variant_title: 'Shade: Seville',
+    });
+
+    expect(karachi).toBe(seville);
+    expect(karachi).toBe('family:v1:nailkind::breathable nail polish::nail polish');
+  });
+
+  test('merges suffix shade names from structured detail labels', () => {
+    const base = { brand: 'Fenty Beauty', category: 'highlighter' };
+    const ruby = familyIdentityKey({
+      ...base,
+      product_id: 'killawatt_ruby',
+      name: 'Killawatt Highlighter — Ruby Richez',
+      variant_detail_label: 'Shade: RUBY RICHEZ',
+    });
+    const mimosa = familyIdentityKey({
+      ...base,
+      product_id: 'killawatt_mimosa',
+      name: 'Killawatt Highlighter — Mimosa Sunrise',
+      variant_detail_label: 'Shade: Mimosa Sunrise',
+    });
+
+    expect(ruby).toBe(mimosa);
+    expect(ruby).toBe('family:v1:fenty beauty::killawatt highlighter::highlighter');
+  });
+
+  test('does not strip bare or block-listed structured variant fields', () => {
+    const giftSet = familyIdentityKey({
+      brand: 'Bundle Guard',
+      category: 'skincare',
+      product_id: 'garden_gift_set',
+      name: 'Hydration Serum Garden Gift Set',
+      variant_title: 'Garden Gift Set',
+    });
+    const single = familyIdentityKey({
+      brand: 'Bundle Guard',
+      category: 'skincare',
+      product_id: 'single_item',
+      name: 'Hydration Serum Single item',
+      variant_detail_label: 'Format: Single item',
+    });
+
+    expect(giftSet).toBe('family:v1:bundle guard::hydration serum garden gift set::skincare');
+    expect(single).toBe('family:v1:bundle guard::hydration serum single item::skincare');
+    expect(giftSet).not.toBe(single);
+    expect(familyIdentityKeysCompatible(giftSet, single)).toBe(false);
+  });
+
+  test('keeps structured stripping conservative for empty titles and word boundaries', () => {
+    expect(familyIdentityKey({
+      brand: 'Rose Lab',
+      category: 'lipstick',
+      product_id: 'rose_only',
+      name: 'Rose',
+      variant_title: 'Shade: Rose',
+    })).toBe('family:v1:rose lab::rose::lipstick');
+
+    expect(familyIdentityKey({
+      brand: 'Rose Lab',
+      category: 'serum',
+      product_id: 'rosewater_serum',
+      name: 'Rose - Rosewater Serum',
+      variant_title: 'Shade: Rose',
+    })).toBe('family:v1:rose lab::rosewater serum::serum');
+  });
+
+  test('structured variant stripping preserves brand isolation', () => {
+    const left = familyIdentityKey({
+      brand: 'Brand A',
+      category: 'nail polish',
+      product_id: 'brand_a_karachi',
+      name: 'Karachi - Breathable Nail Polish',
+      variant_title: 'Shade: Karachi',
+    });
+    const right = familyIdentityKey({
+      brand: 'Brand B',
+      category: 'nail polish',
+      product_id: 'brand_b_seville',
+      name: 'Seville - Breathable Nail Polish',
+      variant_title: 'Shade: Seville',
+    });
+
+    expect(left).not.toBe(right);
+    expect(familyIdentityKeysCompatible(left, right)).toBe(false);
   });
 
   test('keeps product-form words so unrelated products do not merge with null category', () => {

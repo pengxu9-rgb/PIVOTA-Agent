@@ -568,6 +568,8 @@ function familyKeyFromRelationshipSnapshot(snapshot = {}, ref = '') {
     ),
     category: pickFirstString(snap.category, snap.category_name, snap.categoryName),
     product_type: pickFirstString(snap.product_type, snap.productType),
+    variant_title: pickFirstString(snap.variant_title, snap.variantTitle),
+    variant_detail_label: pickFirstString(snap.variant_detail_label, snap.variantDetailLabel),
   };
   const explicitFamily = pickFirstString(
     shaped.product_family_id,

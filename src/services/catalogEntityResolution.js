@@ -227,6 +227,8 @@ function relationshipGraphResolutionContextFromRow(row = {}, fallbackSnapshot = 
     brand: firstNonEmptyString(row.brand),
     category: firstNonEmptyString(row.category),
     product_type: firstNonEmptyString(row.product_type),
+    variant_title: firstNonEmptyString(row.variant_title),
+    variant_detail_label: firstNonEmptyString(row.variant_detail_label),
   };
   let family = pickRelationshipGraphFamilyKey(product, normalized.normalized_ref);
   if (!family.family_key && fallbackSnapshot) {
@@ -533,6 +535,8 @@ async function resolveRelationshipGraphRefsToCanonicalEntities(refs = [], { quer
             cp.canonical_url,
             cp.image_url,
             cp.product_payload,
+            NULLIF(cp.product_payload->>'variant_title', '') AS variant_title,
+            NULLIF(cp.product_payload->>'variant_detail_label', '') AS variant_detail_label,
             cp.pdp_lifecycle_stage,
             cp.pivota_signature_id,
             cp.pivota_canonical_url,
@@ -582,6 +586,8 @@ async function resolveRelationshipGraphRefsToCanonicalEntities(refs = [], { quer
             cp.canonical_url,
             cp.image_url,
             cp.product_payload,
+            NULLIF(cp.product_payload->>'variant_title', '') AS variant_title,
+            NULLIF(cp.product_payload->>'variant_detail_label', '') AS variant_detail_label,
             cp.pdp_lifecycle_stage,
             cp.pivota_signature_id,
             cp.pivota_canonical_url,
@@ -611,7 +617,8 @@ async function resolveRelationshipGraphRefsToCanonicalEntities(refs = [], { quer
         SELECT DISTINCT ON (normalized_ref)
           input_ref, normalized_ref, ref_key, product_key, merchant_id, platform,
           source_product_id, title, brand, category, product_type, canonical_url,
-          image_url, product_payload, pdp_lifecycle_stage, pivota_signature_id,
+          image_url, product_payload, variant_title, variant_detail_label,
+          pdp_lifecycle_stage, pivota_signature_id,
           pivota_canonical_url, pivota_signature_minted_at, updated_at,
           product_family_id, product_group_id, is_primary
         FROM catalog_matches
