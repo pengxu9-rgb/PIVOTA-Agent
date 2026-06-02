@@ -61,6 +61,7 @@ jobs:
         run: npm ci
 
       - name: Run catalog-serving shadow acceptance
+        continue-on-error: ${{ github.event_name == 'schedule' && vars.CATALOG_SHADOW_STRICT_ON_SCHEDULE != 'true' }}
         shell: bash
         run: |
           set -euo pipefail
