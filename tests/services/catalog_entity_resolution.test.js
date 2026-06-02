@@ -209,4 +209,132 @@ describe('catalogEntityResolution', () => {
     expect(group.canonical_sig_id).toBe('sig_lonely');
     expect(group.internal_product_group_id).toBeNull();
   });
+
+  test('batch resolves relationship graph ext refs to one derived family key', async () => {
+    const {
+      resolveRelationshipGraphRefsToCanonicalEntities,
+      _internals,
+    } = require('../../src/services/catalogEntityResolution');
+    _internals.RELATIONSHIP_GRAPH_REF_RESOLUTION_CACHE.clear();
+    const queryFn = jest.fn(async (sql, params) => {
+      expect(sql).toMatch(/unnest\(\$1::text\[\]\)/);
+      expect(params[0]).toEqual(['product:ext_concealer_150', 'product:ext_concealer_160']);
+      return {
+        rows: [
+          {
+            input_ref: 'product:ext_concealer_150',
+            normalized_ref: 'product:ext_concealer_150',
+            source_product_id: 'ext_concealer_150',
+            title: "Pro Filt'r Instant Retouch Concealer - #150",
+            brand: 'Fenty Beauty',
+            category: 'concealer',
+            product_type: 'concealer',
+            product_payload: {},
+            pivota_signature_id: 'sig_concealer150',
+            product_group_id: 'pg_concealer150',
+            is_primary: true,
+            pdp_lifecycle_stage: 'published',
+          },
+          {
+            input_ref: 'product:ext_concealer_160',
+            normalized_ref: 'product:ext_concealer_160',
+            source_product_id: 'ext_concealer_160',
+            title: "Pro Filt'r Instant Retouch Concealer - #160",
+            brand: 'Fenty Beauty',
+            category: 'concealer',
+            product_type: 'concealer',
+            product_payload: {},
+            pivota_signature_id: 'sig_concealer160',
+            product_group_id: 'pg_concealer160',
+            is_primary: false,
+            pdp_lifecycle_stage: 'published',
+          },
+        ],
+      };
+    });
+
+    const resolved = await resolveRelationshipGraphRefsToCanonicalEntities(
+      ['product:ext_concealer_150', 'product:ext_concealer_160'],
+      { queryFn, bypassCache: true },
+    );
+
+    expect(queryFn).toHaveBeenCalledTimes(1);
+    expect(resolved.get('product:ext_concealer_150').family_key).toBe(
+      resolved.get('product:ext_concealer_160').family_key,
+    );
+    expect(resolved.get('product:ext_concealer_150')).toMatchObject({
+      family_key_source: 'derived_family_key',
+      product_group_id: 'pg_concealer150',
+      pivota_signature_id: 'sig_concealer150',
+      display_snapshot_source: 'product_group_primary',
+    });
+    expect(resolved.get('product:ext_concealer_150').family_key).toMatch(/^family:v1:/);
+  });
+
+  test('relationship graph resolver falls back to snapshot-derived family before bare ref', async () => {
+    const { resolveRelationshipGraphRefsToCanonicalEntities, _internals } = require('../../src/services/catalogEntityResolution');
+    _internals.RELATIONSHIP_GRAPH_REF_RESOLUTION_CACHE.clear();
+    const queryFn = jest.fn(async () => ({ rows: [] }));
+
+    const resolved = await resolveRelationshipGraphRefsToCanonicalEntities(
+      [
+        {
+          ref: 'product:ext_missing',
+          snapshot: {
+            product_id: 'ext_missing',
+            brand: 'Rare Beauty',
+            name: 'Soft Pinch Liquid Blush - Joy',
+            category: 'blush',
+          },
+        },
+        'product:sig_unresolved',
+      ],
+      { queryFn, bypassCache: true },
+    );
+
+    expect(resolved.get('product:ext_missing').family_key).toMatch(/^family:v1:/);
+    expect(resolved.get('product:ext_missing').family_key_source).toBe('derived_family_key');
+    expect(resolved.get('product:sig_unresolved')).toMatchObject({
+      family_key: 'ref:product:sig_unresolved',
+      family_key_source: 'fallback_ref',
+      display_snapshot_source: 'fallback_ref',
+    });
+  });
+
+  test('relationship graph resolver does not use sig or pg ids as family keys', async () => {
+    const { resolveRelationshipGraphRefsToCanonicalEntities, _internals } = require('../../src/services/catalogEntityResolution');
+    _internals.RELATIONSHIP_GRAPH_REF_RESOLUTION_CACHE.clear();
+    const queryFn = jest.fn(async (sql, params) => ({
+      rows: params[0].map((ref) => ({
+        input_ref: ref,
+        normalized_ref: String(ref).toLowerCase(),
+        source_product_id: 'ext_listing',
+        title: 'Gloss Bomb Universal Lip Luminizer - Fenty Glow',
+        brand: 'Fenty Beauty',
+        category: 'lip gloss',
+        product_type: 'lip gloss',
+        product_payload: {},
+        pivota_signature_id: 'sig_listing',
+        product_group_id: 'pg_offer',
+        is_primary: true,
+        pdp_lifecycle_stage: 'published',
+      })),
+    }));
+
+    const resolved = await resolveRelationshipGraphRefsToCanonicalEntities(
+      ['product:sig_listing', 'product:pg_offer'],
+      { queryFn, bypassCache: true },
+    );
+
+    const sigContext = resolved.get('product:sig_listing');
+    const pgContext = resolved.get('product:pg_offer');
+    expect(sigContext.family_key).toBe(pgContext.family_key);
+    expect(sigContext.family_key).toMatch(/^family:v1:/);
+    expect(sigContext.family_key).not.toBe('sig_listing');
+    expect(pgContext.family_key).not.toBe('pg_offer');
+    expect(sigContext).toMatchObject({
+      pivota_signature_id: 'sig_listing',
+      product_group_id: 'pg_offer',
+    });
+  });
 });

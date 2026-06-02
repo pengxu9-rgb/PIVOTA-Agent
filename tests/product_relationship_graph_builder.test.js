@@ -83,6 +83,49 @@ describe('product relationship graph dry-run builder', () => {
     expect(out.edges.filter((edge) => edge.candidate_product_ref.includes('value_serum'))).toHaveLength(1);
   });
 
+  test('emits one review edge for derived shade-family duplicates', () => {
+    const out = buildProductRelationshipGraphDryRun({
+      anchors: [
+        anchor({
+          product_id: 'anchor_concealer',
+          brand: 'Top Brand',
+          name: 'Precision Retouch Concealer',
+          category: 'complexion',
+          category_taxonomy: ['complexion', 'concealer'],
+          price: 32,
+        }),
+      ],
+      candidatesByAnchor: {
+        'product:anchor_concealer': [
+          candidate({
+            product_id: 'value_concealer_100',
+            brand: 'Value Brand',
+            name: 'Instant Retouch Concealer - 100',
+            category: null,
+            category_taxonomy: ['complexion', 'concealer'],
+            price: 12,
+            similarity_score: 0.86,
+          }),
+          candidate({
+            product_id: 'value_concealer_banana',
+            brand: 'Value Brand',
+            name: 'Instant Retouch Concealer - Banana',
+            category: null,
+            category_taxonomy: ['complexion', 'concealer'],
+            price: 11,
+            similarity_score: 0.88,
+          }),
+        ],
+      },
+      now: new Date(NOW),
+      reviewStatus: 'pending',
+    });
+
+    expect(out.summary.edge_count).toBe(1);
+    expect(out.edges).toHaveLength(1);
+    expect(out.edges[0].candidate_product_ref).toBe('product:value_concealer_100');
+  });
+
   test('adds curated need-node niche specialists with B-grade evidence', () => {
     const need = CURATED_NEED_NODES.find((item) => item.need_id === 'need:fragrance-free-barrier-repair');
     const out = buildProductRelationshipGraphDryRun({

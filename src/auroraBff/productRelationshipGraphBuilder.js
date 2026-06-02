@@ -3,6 +3,14 @@ const {
   validateRelationshipEdge,
   __internal: relationshipInternals,
 } = require('./productRelationshipGraph');
+const {
+  familyIdentityKey,
+  __internal: {
+    createFamilyDedupeIndex,
+    rememberFamilyDedupeKey,
+    resolveFamilyDedupeKey,
+  },
+} = require('./productRelationshipGraphSources');
 
 const CURATED_NEED_NODES = [
   {
@@ -1210,17 +1218,19 @@ function buildProductRelationshipGraphDryRun({
     ].filter(Boolean);
     const candidates = lookupKeys.flatMap((key) => (Array.isArray(candidatesByAnchor[key]) ? candidatesByAnchor[key] : []));
     const seenCandidate = new Set();
+    const familyDedupeIndex = createFamilyDedupeIndex();
     for (const candidate of candidates) {
       const candidateNorm = normalizeProductSnapshot(candidate);
-      const familyKey = normalizeLower(
-        candidate.product_family_id ||
-          candidate.productFamilyId ||
-          candidate.variant_of ||
-          candidate.variantOf ||
-          candidateNorm.product_ref,
-      );
-      if (familyKey && seenCandidate.has(familyKey)) continue;
-      if (familyKey) seenCandidate.add(familyKey);
+      const familyKey = familyIdentityKey(candidate);
+      const dedupeKey = resolveFamilyDedupeKey(familyDedupeIndex, familyKey);
+      if (dedupeKey && seenCandidate.has(dedupeKey)) {
+        rememberFamilyDedupeKey(familyDedupeIndex, dedupeKey, familyKey);
+        continue;
+      }
+      if (dedupeKey) {
+        seenCandidate.add(dedupeKey);
+        rememberFamilyDedupeKey(familyDedupeIndex, dedupeKey, familyKey);
+      }
       const built = buildEdgeForCandidate({ anchor, candidate, market, nowIso, reviewStatus });
       if (built.edge && !built.errors.length) {
         edges.push(built.edge);
