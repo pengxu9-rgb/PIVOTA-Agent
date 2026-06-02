@@ -113,6 +113,7 @@ function loadConfig() {
     authHeader: optionalEnv("PROBE_AUTH_HEADER") || "Authorization",
     merchantId: optionalEnv("PROBE_MERCHANT_ID"),
     productId: optionalEnv("PROBE_PRODUCT_ID"),
+    variantId: optionalEnv("PROBE_VARIANT_ID"),
     query: optionalEnv("PROBE_QUERY") || DEFAULT_QUERY,
     currency: (optionalEnv("PROBE_CURRENCY") || DEFAULT_CURRENCY).toUpperCase(),
     allowCharge: process.env.PROBE_ALLOW_CHARGE === "1",
@@ -172,13 +173,40 @@ function buildFindProductsBody(config) {
   });
 }
 
-function buildPreviewQuoteBody(selection) {
+function buildProductDetailBody(selection) {
+  return requestBody("get_product_detail", {
+    product: { merchant_id: selection.merchantId, product_id: selection.productId },
+  });
+}
+
+// Find a variants[] array anywhere in a get_product_detail response and return the first usable id.
+function extractVariantId(detail) {
+  const queue = [detail];
+  while (queue.length) {
+    const v = queue.shift();
+    if (!v || typeof v !== "object") continue;
+    if (Array.isArray(v)) { v.forEach((x) => queue.push(x)); continue; }
+    for (const [k, child] of Object.entries(v)) {
+      if (k === "variants" && Array.isArray(child)) {
+        for (const variant of child) {
+          const vid = variant && (variant.variant_id || variant.variantId || variant.id);
+          if (vid) return String(vid);
+        }
+      }
+      queue.push(child);
+    }
+  }
+  return undefined;
+}
+
+function buildPreviewQuoteBody(selection, variantId) {
   return requestBody("preview_quote", {
     quote: {
       merchant_id: selection.merchantId,
       items: [
         {
           product_id: selection.productId,
+          ...(variantId ? { variant_id: variantId } : {}),
           quantity: 1,
         },
       ],
@@ -186,7 +214,7 @@ function buildPreviewQuoteBody(selection) {
   });
 }
 
-function buildCreateOrderBody(selection, quoteId, majorPrice) {
+function buildCreateOrderBody(selection, quoteId, majorPrice, variantId) {
   return requestBody("create_order", {
     order: {
       quote_id: quoteId,
@@ -195,6 +223,7 @@ function buildCreateOrderBody(selection, quoteId, majorPrice) {
         {
           merchant_id: selection.merchantId,
           product_id: selection.productId,
+          ...(variantId ? { variant_id: variantId } : {}),
           product_title: selection.productTitle || "probe",
           quantity: 1,
           unit_price: majorPrice,
@@ -1029,16 +1058,27 @@ async function main() {
     console.log(`Step2 preview_quote: trying up to ${candidates.length} candidate(s) until one prices.`);
     let selection;
     let quoteResponse;
+    let selectedVariantId;
     const quoteFailures = [];
     for (const cand of candidates) {
       try {
-        const resp = await invoke(buildPreviewQuoteBody(cand), config);
+        // preview_quote needs a variant_id, but find_products does NOT return one — resolve it via
+        // get_product_detail (or the PROBE_VARIANT_ID override). Without it the backend can't map the
+        // product to a Shopify variant and returns "variant not found".
+        let variantId = config.variantId;
+        if (!variantId) {
+          try {
+            variantId = extractVariantId(await invoke(buildProductDetailBody(cand), config));
+          } catch (e) { /* fall through; try preview_quote anyway */ }
+        }
+        const resp = await invoke(buildPreviewQuoteBody(cand, variantId), config);
         const qi = quoteInfo(resp);
         if (!qi.quoteId && qi.pricingTotal === undefined) {
-          quoteFailures.push({ product_id: cand.productId, reason: "no_quote_id_or_pricing" });
+          quoteFailures.push({ product_id: cand.productId, variant_id_present: Boolean(variantId), reason: "no_quote_id_or_pricing" });
           continue;
         }
         selection = cand;
+        selectedVariantId = variantId;
         quoteResponse = resp;
         break;
       } catch (err) {
@@ -1115,7 +1155,7 @@ async function main() {
       }
 
       console.log("Step3 create_order: sending backend write with no charge.");
-      const createBody = buildCreateOrderBody(selection, qInfo.quoteId, unitPriceForBody);
+      const createBody = buildCreateOrderBody(selection, qInfo.quoteId, unitPriceForBody, selectedVariantId);
       const orderResponse = await invoke(createBody, config);
       responses.step3 = orderResponse;
 
