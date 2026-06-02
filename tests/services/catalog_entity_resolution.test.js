@@ -271,6 +271,71 @@ describe('catalogEntityResolution', () => {
     expect(resolved.get('product:ext_concealer_150').family_key).toMatch(/^family:v1:/);
   });
 
+  test('relationship graph resolver uses structured variant payload fields for read-time family key', async () => {
+    const {
+      resolveRelationshipGraphRefsToCanonicalEntities,
+      _internals,
+    } = require('../../src/services/catalogEntityResolution');
+    const { __internal: relationshipGraphSourcesInternal } = require('../../src/auroraBff/productRelationshipGraphSources');
+    _internals.RELATIONSHIP_GRAPH_REF_RESOLUTION_CACHE.clear();
+    const queryFn = jest.fn(async (sql, params) => {
+      expect(sql).toMatch(/cp\.product_payload->>'variant_title'/);
+      expect(sql).toMatch(/cp\.product_payload->>'variant_detail_label'/);
+      expect(params[0]).toEqual(['product:ext_karachi', 'product:ext_seville']);
+      return {
+        rows: [
+          {
+            input_ref: 'product:ext_karachi',
+            normalized_ref: 'product:ext_karachi',
+            source_product_id: 'ext_karachi',
+            title: 'Karachi - Breathable Nail Polish',
+            brand: 'Nailkind',
+            category: 'nail polish',
+            product_type: 'nail polish',
+            product_payload: { variant_title: 'Shade: Karachi' },
+            variant_title: 'Shade: Karachi',
+            pivota_signature_id: 'sig_karachi',
+            product_group_id: 'pg_karachi',
+            is_primary: true,
+            pdp_lifecycle_stage: 'published',
+          },
+          {
+            input_ref: 'product:ext_seville',
+            normalized_ref: 'product:ext_seville',
+            source_product_id: 'ext_seville',
+            title: 'Seville - Breathable Nail Polish',
+            brand: 'Nailkind',
+            category: 'nail polish',
+            product_type: 'nail polish',
+            product_payload: { variant_title: 'Shade: Seville' },
+            variant_title: 'Shade: Seville',
+            pivota_signature_id: 'sig_seville',
+            product_group_id: 'pg_seville',
+            is_primary: false,
+            pdp_lifecycle_stage: 'published',
+          },
+        ],
+      };
+    });
+
+    const resolved = await resolveRelationshipGraphRefsToCanonicalEntities(
+      ['product:ext_karachi', 'product:ext_seville'],
+      { queryFn, bypassCache: true },
+    );
+    const generatedKey = relationshipGraphSourcesInternal.familyIdentityKey({
+      product_ref: 'product:ext_karachi',
+      title: 'Karachi - Breathable Nail Polish',
+      brand: 'Nailkind',
+      category: 'nail polish',
+      product_type: 'nail polish',
+      variant_title: 'Shade: Karachi',
+    });
+
+    expect(resolved.get('product:ext_karachi').family_key).toBe(generatedKey);
+    expect(resolved.get('product:ext_seville').family_key).toBe(generatedKey);
+    expect(generatedKey).toBe('family:v1:nailkind::breathable nail polish::nail polish');
+  });
+
   test('relationship graph resolver falls back to snapshot-derived family before bare ref', async () => {
     const { resolveRelationshipGraphRefsToCanonicalEntities, _internals } = require('../../src/services/catalogEntityResolution');
     _internals.RELATIONSHIP_GRAPH_REF_RESOLUTION_CACHE.clear();

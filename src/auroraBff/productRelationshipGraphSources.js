@@ -358,9 +358,10 @@ function sourceStrength(sourceRefs) {
 
 function normalizeProductCandidateSnapshot(input = {}, options = {}) {
   const row = asPlainObject(input) || {};
+  const productPayload = firstObject(row.product_payload, row.productPayload);
   const productData = firstObject(row.product_data, row.productData, row.product, row.sku, row.item);
   const seedData = firstObject(row.seed_data, row.seedData);
-  const snapshot = firstObject(row.snapshot, productData.snapshot, seedData.snapshot, seedData.product, seedData.sku);
+  const snapshot = firstObject(row.snapshot, productPayload.snapshot, productData.snapshot, seedData.snapshot, seedData.product, seedData.sku);
   const product = {
     ...seedData,
     ...productData,
@@ -554,6 +555,30 @@ function normalizeProductCandidateSnapshot(input = {}, options = {}) {
     ].flat(),
     32,
   );
+  const variantTitle = pickFirstString(
+    row.variant_title,
+    row.variantTitle,
+    productPayload.variant_title,
+    productPayload.variantTitle,
+    product.variant_title,
+    product.variantTitle,
+    seedData.variant_title,
+    seedData.variantTitle,
+    snapshot.variant_title,
+    snapshot.variantTitle,
+  );
+  const variantDetailLabel = pickFirstString(
+    row.variant_detail_label,
+    row.variantDetailLabel,
+    productPayload.variant_detail_label,
+    productPayload.variantDetailLabel,
+    product.variant_detail_label,
+    product.variantDetailLabel,
+    seedData.variant_detail_label,
+    seedData.variantDetailLabel,
+    snapshot.variant_detail_label,
+    snapshot.variantDetailLabel,
+  );
   const ref = normalizeProductRef(rawRef || (brand && name ? `text:${brand}:${name}` : name ? `text:${name}` : ''));
   if (!ref) return null;
 
@@ -569,6 +594,8 @@ function normalizeProductCandidateSnapshot(input = {}, options = {}) {
     ...(description ? { description } : {}),
     ...(ingredientText ? { ingredient_text: ingredientText } : {}),
     ...(tags.length ? { tags } : {}),
+    ...(variantTitle ? { variant_title: variantTitle } : {}),
+    ...(variantDetailLabel ? { variant_detail_label: variantDetailLabel } : {}),
     source_refs: sourceRefs,
     evidence_grade: normalizeEvidenceGrade(
       options.evidenceGrade ||
@@ -1033,6 +1060,32 @@ const SHADE_DESCRIPTOR_LEXICON = new Set([
   'warm',
 ]);
 
+const STRUCTURED_VARIANT_ALLOW_LABELS = new Set([
+  'shade',
+  'color',
+  'colour',
+  'tone',
+  'finish',
+  'size',
+]);
+
+const STRUCTURED_VARIANT_BLOCK_LABELS = new Set([
+  'format',
+  'set',
+  'gift set',
+  'bundle',
+  'kit',
+  'routine',
+  'servings',
+  'serving',
+  'type',
+  'refill',
+  'edition',
+  'pack',
+  'scent',
+  'fragrance',
+]);
+
 function normalizeFamilyText(value, max = 512) {
   const text = normalizeString(value, max)
     .normalize('NFKD')
@@ -1070,6 +1123,10 @@ function shadeTokens(value) {
   return normalizeFamilyKeySegment(value, 256).split(/\s+/g).filter(Boolean);
 }
 
+function escapeRegExp(value) {
+  return String(value).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
 function isRecognizedNumericShadeSegment(value) {
   const tokens = shadeTokens(value);
   if (!tokens.length) return false;
@@ -1082,52 +1139,61 @@ function isRecognizedLexiconShadeSegment(value) {
   return Boolean(tokens.length) && tokens.every((token) => SHADE_LEXICON.has(token));
 }
 
-function collectStructuredVariantValues(raw = {}) {
+function pickStructuredVariantField(raw = {}, fields = []) {
   const row = asPlainObject(raw) || {};
+  const productPayload = firstObject(row.product_payload, row.productPayload);
   const productData = firstObject(row.product_data, row.productData, row.product, row.sku, row.item);
   const seedData = firstObject(row.seed_data, row.seedData);
-  const snapshot = firstObject(row.snapshot, productData.snapshot, seedData.snapshot, seedData.product, seedData.sku);
-  const variants = firstArray(row.variants, productData.variants, seedData.variants, snapshot.variants);
-  const firstVariant = firstObject(variants[0]);
-  const variantObjects = [row, productData, seedData, snapshot, firstVariant];
-  const fields = [
-    'shade',
-    'shade_name',
-    'shadeName',
-    'color',
-    'colour',
-    'color_name',
-    'colorName',
-    'colour_name',
-    'colourName',
-    'variant_title',
-    'variantTitle',
-    'option_name',
-    'optionName',
-    'option1',
-    'option2',
-    'option3',
-    'size',
-    'size_name',
-    'sizeName',
-    'net_content',
-    'netContent',
-    'volume',
-  ];
-  const values = [];
+  const snapshot = firstObject(row.snapshot, productPayload.snapshot, productData.snapshot, seedData.snapshot, seedData.product, seedData.sku);
+  const variantObjects = [row, productPayload, productData, seedData, snapshot];
   for (const source of variantObjects) {
     for (const field of fields) {
       const value = normalizeString(source[field], 256);
-      if (value) values.push(value);
+      if (value) return value;
     }
   }
-  return Array.from(new Set(values.map((value) => normalizeFamilyKeySegment(value, 256)).filter(Boolean)));
+  return '';
 }
 
-function isStructuredVariantSegment(segment, raw) {
-  const normalized = normalizeFamilyKeySegment(segment, 256);
-  if (!normalized) return false;
-  return collectStructuredVariantValues(raw).some((value) => value === normalized);
+function parseStructuredVariantLabelValue(rawValue) {
+  const text = normalizeString(rawValue, 256);
+  if (!text || !text.includes(':')) return null;
+  const colonIndex = text.indexOf(':');
+  const label = normalizeFamilyKeySegment(text.slice(0, colonIndex), 80);
+  const value = normalizeString(text.slice(colonIndex + 1), 256);
+  if (!label || !value) return null;
+  return { label, value };
+}
+
+function extractStructuredVariantShade(raw = {}) {
+  const variantTitle = pickStructuredVariantField(raw, ['variant_title', 'variantTitle']);
+  const variantDetailLabel = pickStructuredVariantField(raw, ['variant_detail_label', 'variantDetailLabel']);
+  for (const fieldValue of [variantTitle, variantDetailLabel]) {
+    if (!fieldValue) continue;
+    const parsed = parseStructuredVariantLabelValue(fieldValue);
+    if (!parsed) return '';
+    if (STRUCTURED_VARIANT_BLOCK_LABELS.has(parsed.label)) return '';
+    if (STRUCTURED_VARIANT_ALLOW_LABELS.has(parsed.label)) return parsed.value;
+    return '';
+  }
+  return '';
+}
+
+function stripStructuredVariantValueFromTitle(title, raw = {}) {
+  const variantValue = extractStructuredVariantShade(raw);
+  const normalizedValue = normalizeFamilyKeySegment(variantValue, 256);
+  if (!normalizedValue) return '';
+  const normalizedTitle = normalizeFamilyKeySegment(title, 512);
+  if (!normalizedTitle) return '';
+  const valueTokens = normalizedValue.split(/\s+/g).filter(Boolean);
+  if (!valueTokens.length) return '';
+  const phrasePattern = valueTokens.map(escapeRegExp).join('\\s+');
+  const pattern = new RegExp(`(^|\\s)${phrasePattern}(?=\\s|$)`, 'g');
+  const stripped = normalizedTitle.replace(pattern, ' ').replace(/\s+/g, ' ').trim();
+  if (stripped === normalizedTitle) return '';
+  const strippedTokens = stripped.split(/\s+/g).filter(Boolean);
+  if (stripped.length < 3 || strippedTokens.length < 2) return '';
+  return stripped;
 }
 
 function stripTerminalSizeSuffix(title) {
@@ -1137,6 +1203,9 @@ function stripTerminalSizeSuffix(title) {
 }
 
 function stripRecognizedShadeSizeSuffix(title, raw = {}) {
+  const withStructuredVariantStripped = stripStructuredVariantValueFromTitle(title, raw);
+  if (withStructuredVariantStripped) return withStructuredVariantStripped;
+
   const withSizeStripped = stripTerminalSizeSuffix(title);
   if (withSizeStripped && withSizeStripped !== normalizeString(title, 512)) return withSizeStripped;
 
@@ -1144,8 +1213,7 @@ function stripRecognizedShadeSizeSuffix(title, raw = {}) {
   if (!terminal || !terminal.base || !terminal.segment) return normalizeString(title, 512);
   if (
     isRecognizedNumericShadeSegment(terminal.segment) ||
-    isRecognizedLexiconShadeSegment(terminal.segment) ||
-    isStructuredVariantSegment(terminal.segment, raw)
+    isRecognizedLexiconShadeSegment(terminal.segment)
   ) {
     return terminal.base;
   }
@@ -1851,6 +1919,7 @@ module.exports = {
     clamp01,
     compareScoredCandidates,
     createFamilyDedupeIndex,
+    extractStructuredVariantShade,
     familyIdentityKey,
     familyIdentityKeyParts,
     familyIdentityKeysCompatible,

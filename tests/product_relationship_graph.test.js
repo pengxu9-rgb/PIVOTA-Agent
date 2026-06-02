@@ -591,6 +591,33 @@ describe('product relationship graph store helpers', () => {
     expect(collapsed.__collapse_stats.dropped_self_edge_count).toBe(1);
   });
 
+  test('snapshot fallback family key strips structured prefix shade values', () => {
+    const edge = approvedDupe({
+      id: 'prel_structured_prefix_self',
+      anchor_ref: 'product:ext_karachi',
+      anchor_snapshot: {
+        product_id: 'ext_karachi',
+        brand: 'Nailkind',
+        name: 'Karachi - Breathable Nail Polish',
+        category: 'nail polish',
+        variant_title: 'Shade: Karachi',
+      },
+      candidate_product_ref: 'product:ext_seville',
+      candidate_snapshot: {
+        product_id: 'ext_seville',
+        brand: 'Nailkind',
+        name: 'Seville - Breathable Nail Polish',
+        category: 'nail polish',
+        variant_title: 'Shade: Seville',
+      },
+      relation_type: 'related_product',
+    });
+
+    const collapsed = collapseApprovedRelationshipEdgesToFamilies([edge], { resolutionMap: new Map(), limit: 10 });
+    expect(collapsed).toHaveLength(0);
+    expect(collapsed.__collapse_stats.dropped_self_edge_count).toBe(1);
+  });
+
   test('flag-on serving drops sibling-expanded anchor edges back to queried family', async () => {
     const logger = require('../src/logger');
     jest.spyOn(logger, 'info').mockImplementation(() => {});
