@@ -1,0 +1,128 @@
+name: Agent Checkout Wire-Format Probe
+
+# MANUAL probe (workflow_dispatch only) that confirms the money-unit conventions the Safety Kernel depends
+# on, by running scripts/probe_wire_format.mjs against the LIVE gateway using credentials from CI secrets.
+#
+# Runs ONLY the non-charge phases:
+#   Phase 1 read-only : find_products + preview_quote
+#   Phase 2 write     : + create_order  (no money; leaves an unpaid order draft)  [toggle: run_create_order]
+#
+# It NEVER fires a charge: --charge is never passed and PROBE_ALLOW_CHARGE is never set. The charge phase
+# (Phase 3) + the Stripe-dashboard ground-truth check MUST be run by a human per
+# docs/agent-checkout/PROBE_RUNBOOK.md — it moves real money and needs test-mode + dashboard verification.
+#
+# CREDENTIALS: by default this reuses the SAME secret the existing prod smoke gate uses
+# (COMMERCE_CORE_PROD_AUTH_TOKEN, sent as Authorization: Bearer — see scripts/verify_deployed_commit_matches.sh
+# AUTH_MODE=bearer), against https://pivota-agent-production.up.railway.app. No new secrets required.
+# Override with the base_url input, or set a PROBE_KEY secret to use a different token.
+# Output (redacted by the script) goes to the job summary + an uploaded artifact.
+
+on:
+  workflow_dispatch:
+    inputs:
+      base_url:
+        description: "Gateway origin serving /agent/shop/v1/invoke"
+        type: string
+        default: "https://pivota-agent-production.up.railway.app"
+      run_create_order:
+        description: "Run Phase 2 create_order (a backend WRITE; creates an unpaid order draft; no charge)"
+        type: boolean
+        default: true
+      product_id:
+        description: "Optional: pin PROBE_PRODUCT_ID (prefer a cents-priced item, e.g. $0.99)"
+        type: string
+        default: ""
+      merchant_id:
+        description: "Optional: pin PROBE_MERCHANT_ID"
+        type: string
+        default: ""
+      query:
+        description: "Optional: product search query (used only if no product is pinned)"
+        type: string
+        default: ""
+      currency:
+        description: "Currency code"
+        type: string
+        default: "USD"
+      auth_header:
+        description: "Auth header NAME (not a secret). Default Authorization (Bearer); set e.g. X-API-Key if needed."
+        type: string
+        default: "Authorization"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: wire-format-probe
+  cancel-in-progress: false
+
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Preflight — credentials present
+        env:
+          PROBE_BASE: ${{ inputs.base_url }}
+          PROBE_KEY: ${{ secrets.PROBE_KEY || secrets.COMMERCE_CORE_PROD_AUTH_TOKEN }}
+        run: |
+          if [ -z "$PROBE_BASE" ]; then
+            echo "::error::base_url input is empty."
+            exit 1
+          fi
+          if [ -z "$PROBE_KEY" ]; then
+            echo "::error::No token available. Set a PROBE_KEY secret, or ensure COMMERCE_CORE_PROD_AUTH_TOKEN exists."
+            exit 1
+          fi
+          echo "Credentials present. Backend will be probed (host/token hidden)."
+
+      - name: Run probe (read-only${{ inputs.run_create_order && ' + create_order' || '' }}; NEVER charges)
+        env:
+          PROBE_BASE: ${{ inputs.base_url }}
+          PROBE_KEY: ${{ secrets.PROBE_KEY || secrets.COMMERCE_CORE_PROD_AUTH_TOKEN }}
+          PROBE_AUTH_HEADER: ${{ inputs.auth_header }}
+          PROBE_PRODUCT_ID: ${{ inputs.product_id }}
+          PROBE_MERCHANT_ID: ${{ inputs.merchant_id }}
+          PROBE_QUERY: ${{ inputs.query }}
+          PROBE_CURRENCY: ${{ inputs.currency }}
+          # Intentionally NOT set: PROBE_ALLOW_CHARGE. The --charge flag is never passed below.
+        run: |
+          set -o pipefail
+          FLAGS="--json"
+          if [ "${{ inputs.run_create_order }}" = "true" ]; then
+            FLAGS="--create-order $FLAGS"
+          fi
+          echo "Running: node scripts/probe_wire_format.mjs $FLAGS"
+          node scripts/probe_wire_format.mjs $FLAGS 2>&1 | tee probe-output.txt
+
+      - name: Publish verdict to job summary
+        if: always()
+        run: |
+          {
+            echo "## Wire-format probe results";
+            echo "";
+            echo '```';
+            # The script output is already redacted. On success, surface the results block; on failure
+            # (e.g. auth/connection error) surface the tail so the error is visible.
+            if grep -q '^Results to send back' probe-output.txt 2>/dev/null; then
+              sed -n '/^Results to send back/,/^What this means for our code:/p' probe-output.txt;
+            else
+              echo "Probe did not reach a verdict — last lines:";
+              tail -n 40 probe-output.txt 2>/dev/null || echo "(no output captured)";
+            fi
+            echo '```';
+            echo "";
+            echo "_Charge phase (Phase 3) + Stripe dashboard check were NOT run — do them manually per docs/agent-checkout/PROBE_RUNBOOK.md._";
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload probe output (redacted)
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: wire-format-probe-output
+          path: probe-output.txt
+          if-no-files-found: warn
