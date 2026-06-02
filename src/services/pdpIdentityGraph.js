@@ -3705,6 +3705,8 @@ async function maybeBuildLiveSyntheticPdp({
           product_group_id: catalogGroup.product_group_id,
           sellable_item_group_id: catalogGroup.sellable_item_group_id || catalogGroup.product_group_id,
           canonical_sig_id: catalogGroup.canonical_sig_id || catalogGroup.product_group_id,
+          // Stable pg_*-first canonical product identity (sig_* fallback).
+          canonical_entity_id: catalogGroup.canonical_entity_id || catalogGroup.product_group_id,
           content_key: catalogGroup.content_key || canonicalProduct.content_key || null,
           offer_source: 'group_fused',
           search_recall_source: 'canonical_catalog',
@@ -3901,6 +3903,7 @@ async function resolveLivePdpIdentityGroupForPdp({
           group_members: catalogGroup.group_members,
           content_key: catalogGroup.content_key || null,
           canonical_sig_id: catalogGroup.canonical_sig_id || catalogGroup.product_group_id || groupId,
+          canonical_entity_id: catalogGroup.canonical_entity_id || catalogGroup.product_group_id || groupId,
           source: 'canonical_catalog',
         };
       }

@@ -8333,6 +8333,9 @@ async function resolveProductGroupCached(args) {
       sellable_item_group_id:
         canonicalCatalogGroup.sellable_item_group_id || canonicalCatalogGroup.product_group_id,
       canonical_sig_id: canonicalCatalogGroup.canonical_sig_id || canonicalCatalogGroup.product_group_id,
+      // Stable pg_*-first canonical product identity (sig_* fallback). See resolver.
+      canonical_entity_id:
+        canonicalCatalogGroup.canonical_entity_id || canonicalCatalogGroup.product_group_id,
       content_key: canonicalCatalogGroup.content_key || null,
       internal_product_group_id: canonicalCatalogGroup.internal_product_group_id || null,
       canonical_product_ref: canonicalCatalogGroup.canonical_product_ref,
@@ -8387,6 +8390,9 @@ async function resolveProductGroupCached(args) {
   const result = {
     status: 'success',
     ...(productGroupId ? { product_group_id: productGroupId } : {}),
+    // Upstream (non-catalog) path has no pg_*; fall back to the upstream group id so
+    // the field is always present for consumers.
+    ...(productGroupId ? { canonical_entity_id: productGroupId } : {}),
     canonical_product_ref: canonicalMember
       ? {
           merchant_id: canonicalMember.merchant_id,

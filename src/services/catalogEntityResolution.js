@@ -182,6 +182,13 @@ function buildCanonicalCatalogGroup(rows, { productId = '' } = {}) {
     product_group_id: canonicalSigId,
     sellable_item_group_id: canonicalSigId,
     canonical_sig_id: canonicalSigId,
+    // Stable canonical product identity = the content-derived product group id
+    // (pg_*), with sig_* fallback for ungrouped (standalone) products. Unlike the
+    // primary listing's sig (above), pg_* does not change when the primary flips,
+    // so it is the durable front-facing key; sig_* remains a per-listing alias.
+    // Consumers should prefer canonical_entity_id for public product_id / URLs;
+    // the sig fields stay for signature lineage / offer matching. (Additive.)
+    canonical_entity_id: internalProductGroupIds[0] || canonicalSigId,
     internal_product_group_id: internalProductGroupIds[0] || null,
     internal_product_group_ids: internalProductGroupIds,
     content_key: firstNonEmptyString(primary?.content_key, safeRows[0]?.content_key) || null,
