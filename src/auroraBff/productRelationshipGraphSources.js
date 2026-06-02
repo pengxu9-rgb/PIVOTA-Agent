@@ -970,6 +970,215 @@ function productIdentityKeys(product = {}) {
   return Array.from(new Set(keys));
 }
 
+const SHADE_LEXICON = new Set([
+  'almond',
+  'amber',
+  'banana',
+  'beige',
+  'berry',
+  'black',
+  'bronze',
+  'brown',
+  'caramel',
+  'champagne',
+  'chestnut',
+  'clear',
+  'cocoa',
+  'cool',
+  'copper',
+  'coral',
+  'dark',
+  'deep',
+  'espresso',
+  'fair',
+  'golden',
+  'honey',
+  'ivory',
+  'light',
+  'maple',
+  'mauve',
+  'medium',
+  'mocha',
+  'neutral',
+  'nude',
+  'olive',
+  'opal',
+  'peach',
+  'pearl',
+  'pink',
+  'plum',
+  'porcelain',
+  'red',
+  'rose',
+  'sand',
+  'tan',
+  'translucent',
+  'vanilla',
+  'warm',
+  'white',
+  'wine',
+]);
+
+const SHADE_DESCRIPTOR_LEXICON = new Set([
+  'beige',
+  'cool',
+  'dark',
+  'deep',
+  'fair',
+  'golden',
+  'light',
+  'medium',
+  'neutral',
+  'tan',
+  'warm',
+]);
+
+function normalizeFamilyText(value, max = 512) {
+  const text = normalizeString(value, max)
+    .normalize('NFKD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/[\u2010-\u2015]/g, '-')
+    .replace(/[\u2018\u2019\u201a\u201b]/g, "'")
+    .replace(/[\u201c\u201d\u201e\u201f]/g, '"')
+    .toLowerCase()
+    .replace(/&/g, ' and ')
+    .replace(/[^a-z0-9#./'-]+/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+  return text.length > max ? text.slice(0, max).trim() : text;
+}
+
+function normalizeFamilyKeySegment(value, max = 512) {
+  return normalizeFamilyText(value, max)
+    .replace(/#/g, '')
+    .replace(/[^a-z0-9]+/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function terminalVariantSegment(title) {
+  const text = normalizeString(title, 512).replace(/[\u2010-\u2015]/g, '-');
+  const match = text.match(/\s(?:-{1,2})\s*([^-\u2010-\u2015]+?)\s*$/);
+  if (!match) return null;
+  return {
+    base: text.slice(0, match.index).trim(),
+    segment: match[1].trim(),
+  };
+}
+
+function shadeTokens(value) {
+  return normalizeFamilyKeySegment(value, 256).split(/\s+/g).filter(Boolean);
+}
+
+function isRecognizedNumericShadeSegment(value) {
+  const tokens = shadeTokens(value);
+  if (!tokens.length) return false;
+  if (!/^\d+(?:\.\d+)?[a-z]?$/.test(tokens[0])) return false;
+  return tokens.slice(1).every((token) => SHADE_DESCRIPTOR_LEXICON.has(token));
+}
+
+function isRecognizedLexiconShadeSegment(value) {
+  const tokens = shadeTokens(value);
+  return Boolean(tokens.length) && tokens.every((token) => SHADE_LEXICON.has(token));
+}
+
+function collectStructuredVariantValues(raw = {}) {
+  const row = asPlainObject(raw) || {};
+  const productData = firstObject(row.product_data, row.productData, row.product, row.sku, row.item);
+  const seedData = firstObject(row.seed_data, row.seedData);
+  const snapshot = firstObject(row.snapshot, productData.snapshot, seedData.snapshot, seedData.product, seedData.sku);
+  const variants = firstArray(row.variants, productData.variants, seedData.variants, snapshot.variants);
+  const firstVariant = firstObject(variants[0]);
+  const variantObjects = [row, productData, seedData, snapshot, firstVariant];
+  const fields = [
+    'shade',
+    'shade_name',
+    'shadeName',
+    'color',
+    'colour',
+    'color_name',
+    'colorName',
+    'colour_name',
+    'colourName',
+    'variant_title',
+    'variantTitle',
+    'option_name',
+    'optionName',
+    'option1',
+    'option2',
+    'option3',
+    'size',
+    'size_name',
+    'sizeName',
+    'net_content',
+    'netContent',
+    'volume',
+  ];
+  const values = [];
+  for (const source of variantObjects) {
+    for (const field of fields) {
+      const value = normalizeString(source[field], 256);
+      if (value) values.push(value);
+    }
+  }
+  return Array.from(new Set(values.map((value) => normalizeFamilyKeySegment(value, 256)).filter(Boolean)));
+}
+
+function isStructuredVariantSegment(segment, raw) {
+  const normalized = normalizeFamilyKeySegment(segment, 256);
+  if (!normalized) return false;
+  return collectStructuredVariantValues(raw).some((value) => value === normalized);
+}
+
+function stripTerminalSizeSuffix(title) {
+  const sizePattern = String.raw`\d+(?:\.\d+)?\s*(?:fl\s*oz|oz|ml|g)`;
+  const pattern = new RegExp(String.raw`(?:\s+|(?:\s*[-\u2010-\u2015]\s*))${sizePattern}(?:\s*/\s*${sizePattern})?\s*$`, 'i');
+  return normalizeString(title, 512).replace(pattern, '').replace(/\s*[-\u2010-\u2015]\s*$/, '').trim();
+}
+
+function stripRecognizedShadeSizeSuffix(title, raw = {}) {
+  const withSizeStripped = stripTerminalSizeSuffix(title);
+  if (withSizeStripped && withSizeStripped !== normalizeString(title, 512)) return withSizeStripped;
+
+  const terminal = terminalVariantSegment(title);
+  if (!terminal || !terminal.base || !terminal.segment) return normalizeString(title, 512);
+  if (
+    isRecognizedNumericShadeSegment(terminal.segment) ||
+    isRecognizedLexiconShadeSegment(terminal.segment) ||
+    isStructuredVariantSegment(terminal.segment, raw)
+  ) {
+    return terminal.base;
+  }
+  return normalizeString(title, 512);
+}
+
+function familyCategoryGuard(item = {}, raw = {}) {
+  const rawObj = asPlainObject(raw) || {};
+  const productData = firstObject(rawObj.product_data, rawObj.productData, rawObj.product, rawObj.sku, rawObj.item);
+  const seedData = firstObject(rawObj.seed_data, rawObj.seedData);
+  const snapshot = firstObject(rawObj.snapshot, productData.snapshot, seedData.snapshot, seedData.product, seedData.sku);
+  return normalizeFamilyKeySegment(
+    pickFirstString(
+      item.category,
+      item.product_type,
+      item.productType,
+      rawObj.category,
+      rawObj.product_type,
+      rawObj.productType,
+      productData.category,
+      productData.product_type,
+      productData.productType,
+      seedData.category,
+      seedData.product_type,
+      seedData.productType,
+      snapshot.category,
+      snapshot.product_type,
+      snapshot.productType,
+    ),
+    160,
+  );
+}
+
 function familyIdentityKey(product = {}) {
   const item = normalizeProductCandidateSnapshot(product) || product;
   const family = pickFirstString(
@@ -983,9 +1192,98 @@ function familyIdentityKey(product = {}) {
   if (family) return `family:${normalizeLower(family, 512)}`;
   const brand = pickFirstString(item.brand, item.brand_name, item.brandName, item.vendor);
   const name = pickFirstString(item.name, item.title, item.product_name, item.productName);
-  if (brand && name) return `text:${normalizeLower(`${brand}:${name}`, 512)}`;
+  if (brand && name) {
+    const normalizedBrand = normalizeFamilyKeySegment(brand, 160);
+    const strippedTitle = normalizeFamilyKeySegment(stripRecognizedShadeSizeSuffix(name, product), 512);
+    if (normalizedBrand && strippedTitle) {
+      return `family:v1:${normalizedBrand}::${strippedTitle}::${familyCategoryGuard(item, product)}`;
+    }
+  }
   if (item.url) return `url:${normalizeLower(item.url, 512)}`;
   return `ref:${normalizeLower(item.product_ref, 512)}`;
+}
+
+function familyIdentityKeyParts(key) {
+  const text = normalizeString(key, 1200);
+  if (!text.startsWith('family:v1:')) {
+    return { key: text, base_key: text, category_guard: '', derived: false };
+  }
+  const rest = text.slice('family:v1:'.length);
+  const parts = rest.split('::');
+  if (parts.length < 3) {
+    return { key: text, base_key: text, category_guard: '', derived: false };
+  }
+  const brand = parts[0] || '';
+  const title = parts[1] || '';
+  const category = parts.slice(2).join('::') || '';
+  return {
+    key: text,
+    base_key: `family:v1:${brand}::${title}`,
+    category_guard: category,
+    derived: true,
+  };
+}
+
+function familyIdentityKeysCompatible(leftKey, rightKey) {
+  const left = familyIdentityKeyParts(leftKey);
+  const right = familyIdentityKeyParts(rightKey);
+  if (!left.key || !right.key) return false;
+  if (left.key === right.key) return true;
+  if (!left.derived || !right.derived || left.base_key !== right.base_key) return false;
+  return !left.category_guard || !right.category_guard || left.category_guard === right.category_guard;
+}
+
+function createFamilyDedupeIndex() {
+  return {
+    keysByBase: new Map(),
+    categoriesByKey: new Map(),
+  };
+}
+
+function groupCompatibleWithFamilyKey(index, groupKey, familyKey) {
+  const groupCategories = index.categoriesByKey.get(groupKey) || new Set();
+  const candidateCategory = familyIdentityKeyParts(familyKey).category_guard;
+  if (!candidateCategory) return true;
+  if (!groupCategories.size) return true;
+  return groupCategories.has(candidateCategory);
+}
+
+function resolveFamilyDedupeKey(index, familyKey) {
+  const parts = familyIdentityKeyParts(familyKey);
+  const existingKeys = index.keysByBase.get(parts.base_key) || [];
+  for (const existingKey of existingKeys) {
+    if (
+      familyIdentityKeysCompatible(existingKey, familyKey) &&
+      groupCompatibleWithFamilyKey(index, existingKey, familyKey)
+    ) {
+      return existingKey;
+    }
+  }
+  return familyKey;
+}
+
+function rememberFamilyDedupeKey(index, groupKey, familyKey = groupKey) {
+  const parts = familyIdentityKeyParts(groupKey);
+  const keys = index.keysByBase.get(parts.base_key) || [];
+  if (!keys.includes(groupKey)) {
+    keys.push(groupKey);
+    index.keysByBase.set(parts.base_key, keys);
+  }
+  const familyParts = familyIdentityKeyParts(familyKey);
+  if (familyParts.category_guard) {
+    if (!index.categoriesByKey.has(groupKey)) index.categoriesByKey.set(groupKey, new Set());
+    index.categoriesByKey.get(groupKey).add(familyParts.category_guard);
+  } else if (!index.categoriesByKey.has(groupKey)) {
+    index.categoriesByKey.set(groupKey, new Set());
+  }
+}
+
+function mergeFamilyDedupeCandidate(byFamily, index, candidate) {
+  const familyKey = familyIdentityKey(candidate);
+  const key = resolveFamilyDedupeKey(index, familyKey);
+  byFamily.set(key, mergeDuplicateCandidate(byFamily.get(key), candidate));
+  rememberFamilyDedupeKey(index, key, familyKey);
+  return key;
 }
 
 function tokenSet(value) {
@@ -1191,11 +1489,11 @@ function mergeDuplicateCandidate(existing, candidate) {
 
 function dedupeNormalizedProducts(products = []) {
   const byKey = new Map();
+  const familyIndex = createFamilyDedupeIndex();
   for (const raw of Array.isArray(products) ? products : []) {
     const product = normalizeProductCandidateSnapshot(raw);
     if (!product) continue;
-    const key = familyIdentityKey(product);
-    byKey.set(key, mergeDuplicateCandidate(byKey.get(key), product));
+    mergeFamilyDedupeCandidate(byKey, familyIndex, product);
   }
   return Array.from(byKey.values()).sort((a, b) => normalizeLower(a.product_ref).localeCompare(normalizeLower(b.product_ref)));
 }
@@ -1214,6 +1512,7 @@ function buildCandidatesByAnchorFromSources({
   const normalizedAnchors = (Array.isArray(anchors) ? anchors : [])
     .map((anchor) => normalizeProductCandidateSnapshot(anchor))
     .filter(Boolean);
+  const familyDedupedAnchors = dedupeNormalizedProducts(normalizedAnchors);
   const normalizedProducts = (Array.isArray(products) ? products : [])
     .map((product) => normalizeProductCandidateSnapshot(product))
     .filter(Boolean);
@@ -1224,22 +1523,50 @@ function buildCandidatesByAnchorFromSources({
   const legacyRows = normalizeLegacyRows(legacyDupes);
   const out = {};
 
-  for (const anchor of normalizedAnchors) {
+  for (const anchor of familyDedupedAnchors) {
+    const anchorFamilyKey = familyIdentityKey(anchor);
     const legacy = legacySignalsForAnchor(anchor, legacyRows);
     const rawPool = [...normalizedProducts, ...normalizedIntelRows, ...legacy.explicitCandidates];
-    const byFamily = new Map();
+    const rawByFamily = new Map();
+    const rawFamilyIndex = createFamilyDedupeIndex();
     const identityToFamilyKey = new Map();
     for (const rawCandidate of rawPool) {
       const baseCandidate = normalizeProductCandidateSnapshot(rawCandidate);
       if (!baseCandidate) continue;
+      if (familyIdentityKeysCompatible(anchorFamilyKey, familyIdentityKey(baseCandidate))) continue;
       if (hasIntersectingIdentity(anchor, baseCandidate)) continue;
       const intelMatches = findIntelForCandidate(baseCandidate, intelIndex);
       const enriched = mergeCandidateWithIntel(baseCandidate, intelMatches);
+      if (familyIdentityKeysCompatible(anchorFamilyKey, familyIdentityKey(enriched))) continue;
       const candidateKeys = productIdentityKeys(enriched);
       const legacyMatch = candidateKeys.some((key) => legacy.candidateKeys.has(key));
+      const familyKey = familyIdentityKey(enriched);
+      const existingKey = candidateKeys.map((key) => identityToFamilyKey.get(key)).find(Boolean);
+      const key = existingKey || resolveFamilyDedupeKey(rawFamilyIndex, familyKey);
+      const mergeInput = {
+        ...enriched,
+        _legacy_match: legacyMatch,
+        _intel_match: intelMatches.length > 0 || sourceTypesFromRefs(enriched.source_refs).includes('product_intel_kb'),
+      };
+      const previous = rawByFamily.get(key);
+      const merged = mergeDuplicateCandidate(previous, mergeInput);
+      rawByFamily.set(key, {
+        ...merged,
+        _legacy_match: Boolean(previous?._legacy_match || mergeInput._legacy_match || merged._legacy_match),
+        _intel_match: Boolean(previous?._intel_match || mergeInput._intel_match || merged._intel_match),
+      });
+      rememberFamilyDedupeKey(rawFamilyIndex, key, familyKey);
+      for (const identityKey of candidateKeys) identityToFamilyKey.set(identityKey, key);
+    }
+
+    const byFamily = new Map();
+    const scoredFamilyIndex = createFamilyDedupeIndex();
+    for (const enriched of rawByFamily.values()) {
+      const candidateKeys = productIdentityKeys(enriched);
+      const legacyMatch = Boolean(enriched._legacy_match) || candidateKeys.some((key) => legacy.candidateKeys.has(key));
       const score = scoreCandidateForAnchor(anchor, enriched, {
         legacyMatch,
-        intelMatch: intelMatches.length > 0 || sourceTypesFromRefs(enriched.source_refs).includes('product_intel_kb'),
+        intelMatch: Boolean(enriched._intel_match) || sourceTypesFromRefs(enriched.source_refs).includes('product_intel_kb'),
       });
       if (!shouldKeepScoredCandidate(enriched, score, legacyMatch)) continue;
       const scored = {
@@ -1261,11 +1588,7 @@ function buildCandidatesByAnchorFromSources({
           ],
         },
       };
-      const identityKeys = productIdentityKeys(scored);
-      const existingKey = identityKeys.map((key) => identityToFamilyKey.get(key)).find(Boolean);
-      const key = existingKey || familyIdentityKey(scored);
-      byFamily.set(key, mergeDuplicateCandidate(byFamily.get(key), scored));
-      for (const identityKey of identityKeys) identityToFamilyKey.set(identityKey, key);
+      mergeFamilyDedupeCandidate(byFamily, scoredFamilyIndex, scored);
     }
     out[anchor.product_ref] = Array.from(byFamily.values())
       .sort(compareScoredCandidates)
@@ -1274,7 +1597,7 @@ function buildCandidatesByAnchorFromSources({
 
   if (!includeTransitiveRecall) return out;
   return augmentCandidatesWithTransitiveRecall({
-    anchors: normalizedAnchors,
+    anchors: familyDedupedAnchors,
     candidatesByAnchor: out,
     maxPerAnchor,
     maxBridgePerAnchor,
@@ -1415,23 +1738,31 @@ function augmentCandidatesWithTransitiveRecall({
     }
 
     const anchorIdentity = new Set(productIdentityKeys(anchor));
+    const anchorFamilyKey = familyIdentityKey(anchor);
     const directIdentity = new Set(directList.flatMap((candidate) => productIdentityKeys(candidate)));
+    const directFamilyKeys = directList.map((candidate) => familyIdentityKey(candidate)).filter(Boolean);
     const transitiveByFamily = new Map();
+    const transitiveFamilyIndex = createFamilyDedupeIndex();
     const bridges = directList
       .filter((bridge) => normalizeProductRef(bridge.product_ref) !== anchorRef)
+      .filter((bridge) => !familyIdentityKeysCompatible(anchorFamilyKey, familyIdentityKey(bridge)))
       .slice(0, Math.max(1, Number(maxBridgePerAnchor) || 8));
 
     for (const bridge of bridges) {
+      const bridgeFamilyKey = familyIdentityKey(bridge);
       const bridgeList = candidateMapList(out, bridge.product_ref)
         .filter((candidate) => !hasIntersectingIdentity(bridge, candidate))
+        .filter((candidate) => !familyIdentityKeysCompatible(bridgeFamilyKey, familyIdentityKey(candidate)))
         .slice(0, Math.max(1, Number(maxBridgeCandidates) || 8));
       for (const secondHop of bridgeList) {
         const secondHopKeys = productIdentityKeys(secondHop);
         if (secondHopKeys.some((key) => anchorIdentity.has(key) || directIdentity.has(key))) continue;
+        const secondHopFamilyKey = familyIdentityKey(secondHop);
+        if (familyIdentityKeysCompatible(anchorFamilyKey, secondHopFamilyKey)) continue;
+        if (directFamilyKeys.some((key) => familyIdentityKeysCompatible(key, secondHopFamilyKey))) continue;
         const transitive = buildTransitiveRecallCandidate({ anchor, bridge, candidate: secondHop });
         if (!transitive) continue;
-        const familyKey = familyIdentityKey(transitive);
-        transitiveByFamily.set(familyKey, mergeDuplicateCandidate(transitiveByFamily.get(familyKey), transitive));
+        mergeFamilyDedupeCandidate(transitiveByFamily, transitiveFamilyIndex, transitive);
       }
     }
 
@@ -1439,11 +1770,12 @@ function augmentCandidatesWithTransitiveRecall({
       .sort(compareScoredCandidates)
       .slice(0, Math.max(0, Number(maxTransitivePerAnchor) || 0));
     const combinedByFamily = new Map();
+    const combinedFamilyIndex = createFamilyDedupeIndex();
     for (const row of directList) {
-      combinedByFamily.set(familyIdentityKey(row), mergeDuplicateCandidate(combinedByFamily.get(familyIdentityKey(row)), row));
+      mergeFamilyDedupeCandidate(combinedByFamily, combinedFamilyIndex, row);
     }
     for (const row of transitiveRows) {
-      combinedByFamily.set(familyIdentityKey(row), mergeDuplicateCandidate(combinedByFamily.get(familyIdentityKey(row)), row));
+      mergeFamilyDedupeCandidate(combinedByFamily, combinedFamilyIndex, row);
     }
     out[anchorRef] = Array.from(combinedByFamily.values())
       .sort(compareScoredCandidates)
@@ -1503,6 +1835,8 @@ module.exports = {
   normalizeLegacyDupeKbRow,
   augmentCandidatesWithTransitiveRecall,
   dedupeNormalizedProducts,
+  familyIdentityKey,
+  familyIdentityKeysCompatible,
   buildCandidatesByAnchorFromSources,
   loadProductsCacheCandidates,
   loadExternalProductSeedCandidates,
@@ -1516,7 +1850,12 @@ module.exports = {
     SOURCE_PRIORITY,
     clamp01,
     compareScoredCandidates,
+    createFamilyDedupeIndex,
     familyIdentityKey,
+    familyIdentityKeyParts,
+    familyIdentityKeysCompatible,
+    rememberFamilyDedupeKey,
+    resolveFamilyDedupeKey,
     buildTransitiveRecallCandidate,
     inferBrandFromOfficialUrl,
     mergeSourceRefs,
