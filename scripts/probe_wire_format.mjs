@@ -312,6 +312,30 @@ function selectProduct(products, config) {
   };
 }
 
+function productToSelection(product, config) {
+  const productId = config.productId || getFirst(product, ["product_id", "productId", "id", "sku_id"]);
+  const merchantId = config.merchantId || getFirst(product, ["merchant_id", "merchantId", "seller_id", "merchant"]);
+  return {
+    product,
+    productId,
+    merchantId,
+    productTitle: getFirst(product, ["title", "name", "product_title", "productTitle"]) || "probe",
+    currency: getCurrency(product),
+    price: extractMajorPriceFromProduct(product),
+  };
+}
+
+// Ordered candidate products to attempt preview_quote on. A pinned PROBE_PRODUCT_ID yields exactly one;
+// otherwise up to `max` from the search, so a stale/unpurchasable item doesn't fail the whole probe.
+function buildCandidates(products, config, max = 12) {
+  if (config.productId) {
+    const found = products.find((p) => String(getFirst(p, ["product_id", "productId", "id", "sku_id"])) === config.productId);
+    const sel = productToSelection(found || {}, config);
+    return sel.productId && sel.merchantId ? [sel] : [];
+  }
+  return products.slice(0, max).map((p) => productToSelection(p, config)).filter((s) => s.productId && s.merchantId);
+}
+
 function getFirst(object, keys) {
   if (!object || typeof object !== "object") {
     return undefined;
@@ -989,29 +1013,51 @@ async function main() {
     responses.step1 = findResponse;
 
     const products = safeProducts(findResponse);
-    const selection = selectProduct(products, config);
-    if (!selection.productId || !selection.merchantId) {
+    const candidates = buildCandidates(products, config);
+    if (candidates.length === 0) {
       throw new ProbeError("Unable to determine product_id and merchant_id from find_products response or env overrides", {
         operation: "find_products",
         products_seen: products.length,
-        product_id_present: Boolean(selection.productId),
-        merchant_id_present: Boolean(selection.merchantId),
       });
     }
 
-    results.step1 = {
-      products_seen: products.length,
-      selected_product_id_present: Boolean(selection.productId),
-      selected_merchant_id_present: Boolean(selection.merchantId),
-      selected_from_response: selection.selectedFromResponse,
-      product_price: selection.price,
-      product_price_type: jsType(selection.price),
-      currency: selection.currency,
-    };
+    results.step1 = { products_seen: products.length, candidates_available: candidates.length };
 
-    console.log("Step2 preview_quote: sending read-only quote preview.");
-    const previewBody = buildPreviewQuoteBody(selection);
-    const quoteResponse = await invoke(previewBody, config);
+    // Step2: a live catalog can contain stale products whose variant no longer prices (e.g. Shopify
+    // SHOPIFY_PRICING_UNAVAILABLE / "variant not found"). Try candidates in order until one returns a real
+    // quote, instead of failing on the first stale item. A pinned PROBE_PRODUCT_ID yields a single candidate.
+    console.log(`Step2 preview_quote: trying up to ${candidates.length} candidate(s) until one prices.`);
+    let selection;
+    let quoteResponse;
+    const quoteFailures = [];
+    for (const cand of candidates) {
+      try {
+        const resp = await invoke(buildPreviewQuoteBody(cand), config);
+        const qi = quoteInfo(resp);
+        if (!qi.quoteId && qi.pricingTotal === undefined) {
+          quoteFailures.push({ product_id: cand.productId, reason: "no_quote_id_or_pricing" });
+          continue;
+        }
+        selection = cand;
+        quoteResponse = resp;
+        break;
+      } catch (err) {
+        if (err instanceof ProbeError) {
+          quoteFailures.push({ product_id: cand.productId, status: err.details?.status, code: err.details?.body?.error?.code || err.details?.body?.error?.message });
+          continue;
+        }
+        throw err;
+      }
+    }
+    if (!quoteResponse) {
+      throw new ProbeError("All candidate products failed to preview_quote — the live catalog is likely stale (variants not purchasable). The gateway + auth WORK (find_products succeeded), so this is a catalog/data issue, NOT a probe or money-units issue.", {
+        operation: "preview_quote",
+        candidates_tried: candidates.length,
+        failures: quoteFailures,
+        hint: "Pin a known-purchasable PROBE_PRODUCT_ID + PROBE_MERCHANT_ID, or resync the store's products, then re-run.",
+      });
+    }
+    results.step1.quote_candidate_failures = quoteFailures.length;
     responses.step2 = quoteResponse;
 
     const qInfo = quoteInfo(quoteResponse);
