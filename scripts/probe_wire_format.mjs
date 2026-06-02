@@ -199,6 +199,10 @@ function extractVariantId(detail) {
   return undefined;
 }
 
+// The order's shipping geo MUST match the quote's, or create_order fails with QUOTE_MISMATCH
+// (drift_fields: ["shipping_geo"]). Keep these two in lockstep.
+const PROBE_SHIP_GEO = { country: "US", postal_code: "94102", city: "SF" };
+
 function buildPreviewQuoteBody(selection, variantId) {
   return requestBody("preview_quote", {
     quote: {
@@ -210,6 +214,7 @@ function buildPreviewQuoteBody(selection, variantId) {
           quantity: 1,
         },
       ],
+      shipping_address: { ...PROBE_SHIP_GEO },
     },
   });
 }
@@ -229,13 +234,7 @@ function buildCreateOrderBody(selection, quoteId, majorPrice, variantId) {
           unit_price: majorPrice,
         },
       ],
-      shipping_address: {
-        name: "Probe",
-        address_line1: "1 Test St",
-        city: "SF",
-        country: "US",
-        postal_code: "94102",
-      },
+      shipping_address: { name: "Probe", address_line1: "1 Test St", ...PROBE_SHIP_GEO },
     },
   });
 }
