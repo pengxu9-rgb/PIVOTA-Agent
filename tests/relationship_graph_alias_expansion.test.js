@@ -1,6 +1,11 @@
 const {
   expandAnchorRefsWithGroupSiblings,
+  listApprovedRelationshipEdgesForAnchor,
 } = require('../src/auroraBff/productRelationshipGraph');
+
+const NOW = Date.parse('2026-05-25T00:00:00.000Z');
+const NOW_ISO = new Date(NOW).toISOString();
+const FUTURE_ISO = new Date(NOW + 30 * 24 * 60 * 60 * 1000).toISOString();
 
 function makeQueryFn(siblingsByExt = {}) {
   // Responds to the sibling-expansion query: given anchor ext keys, returns all
@@ -16,6 +21,38 @@ function makeQueryFn(siblingsByExt = {}) {
     }
     return { rows: [] };
   });
+}
+
+function approvedEdgeRow(overrides = {}) {
+  return {
+    id: 'prel_alias_1',
+    anchor_type: 'product',
+    anchor_ref: 'product:ext_a',
+    anchor_snapshot: {},
+    candidate_product_ref: 'product:ext_candidate',
+    candidate_snapshot: { product_id: 'ext_candidate', name: 'Candidate' },
+    relation_type: 'competitive_alternative',
+    display_label: 'alternative',
+    market: 'US',
+    vertical: 'beauty',
+    category_taxonomy: [],
+    use_case: null,
+    score_total: 0.9,
+    score_breakdown: {},
+    price_evidence: null,
+    source_refs: [],
+    evidence_grade: 'B',
+    review_status: 'approved',
+    why_candidate: null,
+    tradeoffs: null,
+    watchouts: null,
+    provenance: null,
+    last_verified_at: NOW_ISO,
+    expires_at: FUTURE_ISO,
+    created_at: NOW_ISO,
+    updated_at: NOW_ISO,
+    ...overrides,
+  };
 }
 
 describe('expandAnchorRefsWithGroupSiblings', () => {
@@ -66,5 +103,37 @@ describe('expandAnchorRefsWithGroupSiblings', () => {
   test('non-recoverable DB error propagates', async () => {
     const qFn = jest.fn(async () => { const e = new Error('boom'); e.code = '57014'; throw e; });
     await expect(expandAnchorRefsWithGroupSiblings(['product:ext_a'], { queryFn: qFn })).rejects.toThrow();
+  });
+
+  test('scopes anchor group lookup to the external_seed namespace', async () => {
+    const qFn = jest.fn(async (sql, params) => {
+      expect(sql).toMatch(/pgm\.merchant_id = \$2/);
+      expect(sql).toMatch(/pgm\.platform = \$3/);
+      expect(params).toEqual([['ext_a'], 'external_seed', 'external_seed']);
+      return { rows: [] };
+    });
+
+    await expandAnchorRefsWithGroupSiblings(['product:EXT_A'], { queryFn: qFn });
+    expect(qFn).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('listApprovedRelationshipEdgesForAnchor alias expansion interactions', () => {
+  test('dedupes equivalent candidate edges returned from sibling anchors', async () => {
+    const queryFn = jest.fn(async () => ({
+      rows: [
+        approvedEdgeRow({ id: 'prel_primary', anchor_ref: 'product:ext_a' }),
+        approvedEdgeRow({ id: 'prel_sibling', anchor_ref: 'product:ext_b', score_total: 0.88 }),
+      ],
+    }));
+
+    const edges = await listApprovedRelationshipEdgesForAnchor({
+      anchorRefs: ['product:ext_a', 'product:ext_b'],
+      market: 'US',
+      queryFn,
+    });
+
+    expect(edges).toHaveLength(1);
+    expect(edges[0].id).toBe('prel_primary');
   });
 });
