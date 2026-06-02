@@ -5,10 +5,13 @@ const {
   relationshipEdgeToSimilarItem,
   buildAnchorRefsFromProduct,
   listApprovedRelationshipEdgesForAnchor,
+  listApprovedRelationshipEdgesForAnchorUncollapsed,
+  collapseApprovedRelationshipEdgesToFamilies,
   upsertRelationshipEdge,
   upsertRelationshipCandidateLabel,
   extractReasonFlags,
   extractFailureReasonFlags,
+  __internal,
 } = require('../src/auroraBff/productRelationshipGraph');
 
 const NOW = Date.parse('2026-05-25T00:00:00.000Z');
@@ -279,6 +282,49 @@ describe('product relationship graph store helpers', () => {
     expect(item.relationship_edge_id).toBeTruthy();
   });
 
+  test('relationshipEdgeToSimilarItem keeps original url/product_id precedence for flag-off raw edges', () => {
+    // Regression: relationshipEdgeToSimilarItem is shared by flag-off and flag-on serving. A raw
+    // edge (no candidate_* collapse fields) MUST keep the original precedence — snap.url first (not
+    // canonical_url/pivota_canonical_url) and snap.product_id (not product_family_id/canonical_entity_id).
+    const rawEdge = approvedDupe({
+      candidate_snapshot: {
+        product_id: 'candidate_1',
+        product_family_id: 'pg_family_should_not_win',
+        canonical_entity_id: 'pg_family_should_not_win',
+        brand: 'Value Brand',
+        name: 'Barrier Serum Alternative',
+        url: 'https://example.test/candidate',
+        canonical_url: 'https://example.test/CANONICAL',
+        pivota_canonical_url: 'https://example.test/PIVOTA',
+        price: 80,
+      },
+    });
+    const item = relationshipEdgeToSimilarItem(rawEdge);
+    expect(item.product_id).toBe('candidate_1');
+    expect(item.external_product_id).toBe('candidate_1');
+    expect(item.url).toBe('https://example.test/candidate');
+    expect(item.canonical_url).toBe('https://example.test/candidate');
+  });
+
+  test('relationshipEdgeToSimilarItem hydrates family display only for collapsed edges', () => {
+    // A collapsed edge carries candidate_* fields; only THEN do canonical id/url take precedence.
+    const collapsedEdge = approvedDupe({
+      candidate_family_key: 'family:v1:value brand::barrier serum alternative::',
+      candidate_canonical_entity_id: 'pg_canonical_family',
+      candidate_canonical_url: 'https://example.test/FAMILY',
+      candidate_snapshot: {
+        product_id: 'candidate_1',
+        brand: 'Value Brand',
+        name: 'Barrier Serum Alternative',
+        url: 'https://example.test/candidate',
+        price: 80,
+      },
+    });
+    const item = relationshipEdgeToSimilarItem(collapsedEdge);
+    expect(item.product_id).toBe('pg_canonical_family');
+    expect(item.url).toBe('https://example.test/FAMILY');
+  });
+
   test('relationshipEdgeToSimilarItem strips the ref prefix when snapshot lacks a product id', () => {
     // Production edges store the candidate id only on candidate_product_ref
     // (`product:ext_<hash>`); the served product_id must be the bare ext_ key.
@@ -319,6 +365,404 @@ describe('product relationship graph store helpers', () => {
     expect(edges).toHaveLength(1);
     expect(edges[0].id).toBe('prel_test');
     expect(edges[0].source_refs).toEqual([{ type: 'products_cache', authoritative: true }]);
+  });
+
+  test('flag-off listApprovedRelationshipEdgesForAnchor is byte-identical to uncollapsed fetcher', async () => {
+    const prevFamilyFlag = process.env.AURORA_BFF_RELATIONSHIP_GRAPH_FAMILY_COLLAPSE_ENABLED;
+    const prevPgFlag = process.env.AURORA_BFF_RELATIONSHIP_GRAPH_PG_COLLAPSE_ENABLED;
+    delete process.env.AURORA_BFF_RELATIONSHIP_GRAPH_FAMILY_COLLAPSE_ENABLED;
+    delete process.env.AURORA_BFF_RELATIONSHIP_GRAPH_PG_COLLAPSE_ENABLED;
+    const rows = [
+      {
+        ...approvedDupe({ id: 'prel_a', score_total: 0.91 }),
+        vertical: 'beauty',
+        created_at: NOW_ISO,
+        updated_at: NOW_ISO,
+      },
+      {
+        ...approvedDupe({
+          id: 'prel_b',
+          candidate_product_ref: 'product:candidate_2',
+          candidate_snapshot: { product_id: 'candidate_2', brand: 'Value Brand', name: 'Second', price: 70 },
+          score_total: 0.87,
+        }),
+        vertical: 'beauty',
+        created_at: NOW_ISO,
+        updated_at: NOW_ISO,
+      },
+    ];
+    const makeQueryFn = () => jest.fn(async () => ({ rows }));
+    const args = {
+      anchorType: 'product',
+      anchorRefs: ['product:anchor_1'],
+      market: 'US',
+      relationTypes: ['dupe'],
+      limit: 7,
+    };
+    try {
+      const rawQueryFn = makeQueryFn();
+      const publicQueryFn = makeQueryFn();
+      const raw = await listApprovedRelationshipEdgesForAnchorUncollapsed({ ...args, queryFn: rawQueryFn });
+      const publicRows = await listApprovedRelationshipEdgesForAnchor({ ...args, queryFn: publicQueryFn });
+
+      expect(publicRows).toEqual(raw);
+      expect(publicQueryFn.mock.calls[0][0]).toBe(rawQueryFn.mock.calls[0][0]);
+      expect(publicQueryFn.mock.calls[0][1]).toEqual(rawQueryFn.mock.calls[0][1]);
+      expect(__internal.isRelationshipGraphFamilyCollapseEnabled()).toBe(false);
+    } finally {
+      if (prevFamilyFlag === undefined) delete process.env.AURORA_BFF_RELATIONSHIP_GRAPH_FAMILY_COLLAPSE_ENABLED;
+      else process.env.AURORA_BFF_RELATIONSHIP_GRAPH_FAMILY_COLLAPSE_ENABLED = prevFamilyFlag;
+      if (prevPgFlag === undefined) delete process.env.AURORA_BFF_RELATIONSHIP_GRAPH_PG_COLLAPSE_ENABLED;
+      else process.env.AURORA_BFF_RELATIONSHIP_GRAPH_PG_COLLAPSE_ENABLED = prevPgFlag;
+    }
+  });
+
+  test('flag-on overfetches raw rows before collapsing shade families', async () => {
+    const logger = require('../src/logger');
+    jest.spyOn(logger, 'info').mockImplementation(() => {});
+    const prevFamilyFlag = process.env.AURORA_BFF_RELATIONSHIP_GRAPH_FAMILY_COLLAPSE_ENABLED;
+    process.env.AURORA_BFF_RELATIONSHIP_GRAPH_FAMILY_COLLAPSE_ENABLED = 'true';
+    const rawRows = [
+      ...Array.from({ length: 10 }, (_, index) => approvedDupe({
+        id: `prel_shade_${index}`,
+        anchor_ref: 'product:ext_anchor',
+        anchor_snapshot: { product_id: 'ext_anchor', brand: 'Anchor Brand', name: 'Anchor Serum' },
+        candidate_product_ref: `product:ext_concealer_${index}`,
+        candidate_snapshot: {
+          product_id: `ext_concealer_${index}`,
+          brand: 'Value Brand',
+          name: `Soft Matte Concealer - #${150 + index}`,
+          price: 20 + index,
+        },
+        relation_type: 'competitive_alternative',
+        score_total: 0.95 - index * 0.01,
+      })),
+      approvedDupe({
+        id: 'prel_distinct_family',
+        anchor_ref: 'product:ext_anchor',
+        anchor_snapshot: { product_id: 'ext_anchor', brand: 'Anchor Brand', name: 'Anchor Serum' },
+        candidate_product_ref: 'product:ext_powder',
+        candidate_snapshot: {
+          product_id: 'ext_powder',
+          brand: 'Value Brand',
+          name: 'Soft Focus Powder',
+          price: 18,
+        },
+        relation_type: 'competitive_alternative',
+        score_total: 0.7,
+      }),
+    ].map((row) => ({
+      ...row,
+      vertical: 'beauty',
+      created_at: NOW_ISO,
+      updated_at: NOW_ISO,
+    }));
+    const catalogRowForRef = (ref) => {
+      const normalized = String(ref || '').toLowerCase();
+      const bare = normalized.replace(/^product:/, '');
+      if (bare === 'ext_anchor') {
+        return {
+          input_ref: ref,
+          normalized_ref: normalized,
+          source_product_id: bare,
+          title: 'Anchor Serum',
+          brand: 'Anchor Brand',
+          category: 'serum',
+          product_type: 'serum',
+          product_payload: {},
+          pivota_signature_id: 'sig_anchor',
+          product_group_id: 'pg_anchor',
+          is_primary: true,
+          pdp_lifecycle_stage: 'published',
+        };
+      }
+      if (bare === 'ext_powder') {
+        return {
+          input_ref: ref,
+          normalized_ref: normalized,
+          source_product_id: bare,
+          title: 'Soft Focus Powder',
+          brand: 'Value Brand',
+          category: 'powder',
+          product_type: 'powder',
+          product_payload: {},
+          pivota_signature_id: 'sig_powder',
+          product_group_id: 'pg_powder',
+          is_primary: true,
+          pdp_lifecycle_stage: 'published',
+        };
+      }
+      return {
+        input_ref: ref,
+        normalized_ref: normalized,
+        source_product_id: bare,
+        title: 'Soft Matte Concealer - #150',
+        brand: 'Value Brand',
+        category: 'concealer',
+        product_type: 'concealer',
+        product_payload: {},
+        pivota_signature_id: `sig_${bare}`,
+        product_group_id: `pg_${bare}`,
+        is_primary: bare.endsWith('_0'),
+        pdp_lifecycle_stage: 'published',
+      };
+    };
+    const queryFn = jest.fn(async (sql, params) => {
+      if (/FROM product_relationship_edges/.test(sql)) return { rows: rawRows };
+      if (/catalog_products/.test(sql)) {
+        return { rows: (params[0] || []).map(catalogRowForRef) };
+      }
+      return { rows: [] };
+    });
+
+    try {
+      const edges = await listApprovedRelationshipEdgesForAnchor({
+        anchorRefs: ['product:ext_anchor'],
+        market: 'US',
+        limit: 2,
+        queryFn,
+      });
+      const rawCall = queryFn.mock.calls.find(([sql]) => /FROM product_relationship_edges/.test(sql));
+      expect(rawCall[1][3]).toBe(500);
+      expect(edges).toHaveLength(2);
+      expect(edges.map((edge) => edge.provenance.relationship_family_collapse.collapsed_edge_count).sort((a, b) => b - a)).toEqual([10, 1]);
+      expect(edges[0].candidate_family_key).toMatch(/^family:v1:/);
+    } finally {
+      if (prevFamilyFlag === undefined) delete process.env.AURORA_BFF_RELATIONSHIP_GRAPH_FAMILY_COLLAPSE_ENABLED;
+      else process.env.AURORA_BFF_RELATIONSHIP_GRAPH_FAMILY_COLLAPSE_ENABLED = prevFamilyFlag;
+      logger.info.mockRestore();
+    }
+  });
+
+  test('family collapse drops same-family product self-edges', () => {
+    const edge = approvedDupe({
+      id: 'prel_self',
+      anchor_ref: 'product:ext_a_145',
+      anchor_snapshot: { product_id: 'ext_a_145', brand: 'Fenty Beauty', name: "Pro Filt'r Concealer - #145" },
+      candidate_product_ref: 'product:ext_a_150',
+      candidate_snapshot: { product_id: 'ext_a_150', brand: 'Fenty Beauty', name: "Pro Filt'r Concealer - #150" },
+      relation_type: 'related_product',
+    });
+    const collapsed = collapseApprovedRelationshipEdgesToFamilies([edge], { resolutionMap: new Map(), limit: 10 });
+    expect(collapsed).toHaveLength(0);
+    expect(collapsed.__collapse_stats.dropped_self_edge_count).toBe(1);
+  });
+
+  test('flag-on serving drops sibling-expanded anchor edges back to queried family', async () => {
+    const logger = require('../src/logger');
+    jest.spyOn(logger, 'info').mockImplementation(() => {});
+    const prevFamilyFlag = process.env.AURORA_BFF_RELATIONSHIP_GRAPH_FAMILY_COLLAPSE_ENABLED;
+    process.env.AURORA_BFF_RELATIONSHIP_GRAPH_FAMILY_COLLAPSE_ENABLED = 'true';
+    const rawRows = [
+      {
+        ...approvedDupe({
+          id: 'prel_sibling_self',
+          anchor_ref: 'product:ext_primary',
+          anchor_snapshot: { product_id: 'ext_primary', brand: 'Fenty Beauty', name: "Pro Filt'r Concealer - #145" },
+          candidate_product_ref: 'product:ext_viewed',
+          candidate_snapshot: { product_id: 'ext_viewed', brand: 'Fenty Beauty', name: "Pro Filt'r Concealer - #150" },
+          relation_type: 'related_product',
+        }),
+        vertical: 'beauty',
+        created_at: NOW_ISO,
+        updated_at: NOW_ISO,
+      },
+    ];
+    const queryFn = jest.fn(async (sql, params) => {
+      if (/FROM product_relationship_edges/.test(sql)) return { rows: rawRows };
+      if (/catalog_products/.test(sql)) {
+        return {
+          rows: (params[0] || []).map((ref) => {
+            const normalized = String(ref).toLowerCase();
+            const bare = normalized.replace(/^product:/, '');
+            return {
+              input_ref: ref,
+              normalized_ref: normalized,
+              source_product_id: bare,
+              title: bare === 'ext_primary' ? "Pro Filt'r Concealer - #145" : "Pro Filt'r Concealer - #150",
+              brand: 'Fenty Beauty',
+              category: 'concealer',
+              product_type: 'concealer',
+              product_payload: {},
+              pivota_signature_id: `sig_${bare}`,
+              product_group_id: `pg_${bare}`,
+              is_primary: bare === 'ext_primary',
+              pdp_lifecycle_stage: 'published',
+            };
+          }),
+        };
+      }
+      return { rows: [{ sibling: 'ext_primary' }, { sibling: 'ext_viewed' }] };
+    });
+
+    try {
+      const edges = await listApprovedRelationshipEdgesForAnchor({
+        anchorRefs: ['product:ext_viewed'],
+        market: 'US',
+        limit: 4,
+        queryFn,
+      });
+      expect(edges).toEqual([]);
+      const rawCall = queryFn.mock.calls.find(([sql]) => /FROM product_relationship_edges/.test(sql));
+      expect(rawCall[1][1]).toEqual(expect.arrayContaining(['product:ext_primary']));
+    } finally {
+      if (prevFamilyFlag === undefined) delete process.env.AURORA_BFF_RELATIONSHIP_GRAPH_FAMILY_COLLAPSE_ENABLED;
+      else process.env.AURORA_BFF_RELATIONSHIP_GRAPH_FAMILY_COLLAPSE_ENABLED = prevFamilyFlag;
+      logger.info.mockRestore();
+    }
+  });
+
+  test('family aggregation uses winning tier max score, best grade, latest dates, and capped refs', () => {
+    const resolutionMap = new Map([
+      ['product:anchor', {
+        normalized_ref: 'product:anchor',
+        family_key: 'family:v1:anchor::serum::',
+        family_key_source: 'derived_family_key',
+        resolved: true,
+      }],
+      ['product:candidate', {
+        normalized_ref: 'product:candidate',
+        family_key: 'family:v1:value::concealer::',
+        family_key_source: 'derived_family_key',
+        product_group_id: 'pg_candidate',
+        display_snapshot: { product_id: 'pg_candidate', brand: 'Value', name: 'Value Concealer' },
+        display_snapshot_source: 'product_group_primary',
+        resolved: true,
+      }],
+    ]);
+    const refs = Array.from({ length: 20 }, (_, index) => ({ type: `source_${index}` }));
+    const edges = [
+      approvedDupe({
+        id: 'prel_ai',
+        anchor_ref: 'product:anchor',
+        candidate_product_ref: 'product:candidate',
+        label_state: 'ai_approved',
+        score_total: 0.99,
+        evidence_grade: 'A',
+        source_refs: refs.slice(0, 2),
+        why_candidate: { summary: 'ai row' },
+        expires_at: new Date(NOW + 5 * 24 * 60 * 60 * 1000).toISOString(),
+      }),
+      approvedDupe({
+        id: 'prel_human_rep',
+        anchor_ref: 'product:anchor',
+        candidate_product_ref: 'product:candidate',
+        label_state: 'human_approved',
+        score_total: 0.7,
+        evidence_grade: 'B',
+        source_refs: refs,
+        why_candidate: { summary: 'human representative' },
+        expires_at: new Date(NOW + 20 * 24 * 60 * 60 * 1000).toISOString(),
+        updated_at: new Date(NOW + 2_000).toISOString(),
+      }),
+      approvedDupe({
+        id: 'prel_human_score',
+        anchor_ref: 'product:anchor',
+        candidate_product_ref: 'product:candidate',
+        label_state: 'human_approved',
+        score_total: 0.91,
+        evidence_grade: 'C',
+        source_refs: refs.slice(3, 8),
+        why_candidate: { summary: 'higher score row' },
+        expires_at: new Date(NOW + 30 * 24 * 60 * 60 * 1000).toISOString(),
+        last_verified_at: new Date(NOW + 3_000).toISOString(),
+      }),
+    ];
+
+    const [collapsed] = collapseApprovedRelationshipEdgesToFamilies(edges, { resolutionMap, limit: 10 });
+    expect(collapsed.id).toBe('prel_human_rep');
+    expect(collapsed.score_total).toBe(0.91);
+    expect(collapsed.evidence_grade).toBe('B');
+    expect(collapsed.expires_at).toBe(new Date(NOW + 30 * 24 * 60 * 60 * 1000).toISOString());
+    expect(collapsed.last_verified_at).toBe(new Date(NOW + 3_000).toISOString());
+    expect(collapsed.source_refs).toHaveLength(16);
+    expect(collapsed.why_candidate.summary).toBe('human representative');
+    expect(collapsed.provenance.relationship_family_collapse).toMatchObject({
+      collapsed_edge_count: 3,
+      representative_edge_id: 'prel_human_rep',
+      score_total_max: 0.91,
+      evidence_grade_best: 'B',
+    });
+  });
+
+  test('collapsed candidate display uses family representative instead of arbitrary shade title', () => {
+    const resolutionMap = new Map([
+      ['product:anchor', {
+        normalized_ref: 'product:anchor',
+        family_key: 'family:v1:anchor::serum::',
+        family_key_source: 'derived_family_key',
+        resolved: true,
+      }],
+      ['product:shade_150', {
+        normalized_ref: 'product:shade_150',
+        family_key: 'family:v1:value::soft matte concealer::concealer',
+        family_key_source: 'derived_family_key',
+        product_group_id: 'pg_shade_150',
+        display_snapshot: { product_id: 'pg_shade_150', brand: 'Value', name: 'Soft Matte Concealer - #150' },
+        display_snapshot_source: 'catalog_published',
+        resolved: true,
+      }],
+      ['product:family_rep', {
+        normalized_ref: 'product:family_rep',
+        family_key: 'family:v1:value::soft matte concealer::concealer',
+        family_key_source: 'derived_family_key',
+        product_group_id: 'pg_family_rep',
+        canonical_entity_id: 'pg_family_rep',
+        display_snapshot: { product_id: 'pg_family_rep', brand: 'Value', name: 'Soft Matte Concealer' },
+        display_snapshot_source: 'product_group_primary',
+        resolved: true,
+      }],
+    ]);
+    const edges = [
+      approvedDupe({
+        id: 'prel_high_score_shade',
+        anchor_ref: 'product:anchor',
+        candidate_product_ref: 'product:shade_150',
+        candidate_snapshot: { product_id: 'shade_150', brand: 'Value', name: 'Soft Matte Concealer - #150' },
+        score_total: 0.95,
+        evidence_grade: 'A',
+      }),
+      approvedDupe({
+        id: 'prel_primary_rep',
+        anchor_ref: 'product:anchor',
+        candidate_product_ref: 'product:family_rep',
+        candidate_snapshot: { product_id: 'family_rep', brand: 'Value', name: 'Soft Matte Concealer' },
+        score_total: 0.8,
+        evidence_grade: 'B',
+      }),
+    ];
+
+    const [collapsed] = collapseApprovedRelationshipEdgesToFamilies(edges, { resolutionMap, limit: 10 });
+    expect(collapsed.id).toBe('prel_high_score_shade');
+    expect(collapsed.candidate_display_snapshot.name).toBe('Soft Matte Concealer');
+    expect(relationshipEdgeToSimilarItem(collapsed).title).toBe('Soft Matte Concealer');
+    expect(relationshipEdgeToSimilarItem(collapsed).product_id).toBe('pg_family_rep');
+  });
+
+  test('relationshipEdgeToSimilarItem prefers collapsed family display snapshot', () => {
+    const item = relationshipEdgeToSimilarItem({
+      ...approvedDupe({
+        candidate_product_ref: 'product:ext_shade_150',
+        candidate_snapshot: {
+          product_id: 'ext_shade_150',
+          brand: 'Value Brand',
+          name: 'Soft Matte Concealer - #150',
+          url: 'https://merchant.example/shade-150',
+        },
+      }),
+      candidate_canonical_entity_id: 'pg_value_concealer',
+      candidate_canonical_url: 'https://agent.pivota.cc/products/pg_value_concealer',
+      candidate_display_snapshot: {
+        product_id: 'pg_value_concealer',
+        brand: 'Value Brand',
+        name: 'Soft Matte Concealer',
+        canonical_url: 'https://agent.pivota.cc/products/pg_value_concealer',
+      },
+    });
+
+    expect(item.product_id).toBe('pg_value_concealer');
+    expect(item.title).toBe('Soft Matte Concealer');
+    expect(item.url).toBe('https://agent.pivota.cc/products/pg_value_concealer');
   });
 
   test('upsertRelationshipEdge writes only validated reviewed edges', async () => {

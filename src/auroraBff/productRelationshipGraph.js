@@ -1,5 +1,20 @@
 const crypto = require('node:crypto');
 const { query } = require('../db');
+const logger = require('../logger');
+const {
+  resolveRelationshipGraphRefsToCanonicalEntities,
+} = require('../services/catalogEntityResolution');
+const productRelationshipGraphSources = require('./productRelationshipGraphSources');
+
+const relationshipGraphSourcesInternal = productRelationshipGraphSources.__internal || {};
+const familyIdentityKey =
+  relationshipGraphSourcesInternal.familyIdentityKey ||
+  productRelationshipGraphSources.familyIdentityKey ||
+  (() => '');
+const familyIdentityKeysCompatible =
+  relationshipGraphSourcesInternal.familyIdentityKeysCompatible ||
+  productRelationshipGraphSources.familyIdentityKeysCompatible ||
+  ((left, right) => Boolean(left && right && left === right));
 
 const RELATION_TYPES = new Set(['dupe', 'competitive_alternative', 'niche_specialist', 'related_product']);
 const REVIEW_STATUSES = new Set(['pending', 'approved', 'rejected', 'expired']);
@@ -8,6 +23,8 @@ const PRICE_FRESHNESS_MS = 14 * 24 * 60 * 60 * 1000;
 const DEFAULT_MARKET = 'US';
 const DEFAULT_VERTICAL = 'beauty';
 const EXTERNAL_SEED_MERCHANT_ID = 'external_seed';
+const RELATIONSHIP_GRAPH_FAMILY_COLLAPSE_FLAG = 'AURORA_BFF_RELATIONSHIP_GRAPH_FAMILY_COLLAPSE_ENABLED';
+const RELATIONSHIP_GRAPH_PG_COLLAPSE_ALIAS_FLAG = 'AURORA_BFF_RELATIONSHIP_GRAPH_PG_COLLAPSE_ENABLED';
 
 const AUTHORITATIVE_SOURCE_TYPES = new Set([
   'official_pdp',
@@ -35,6 +52,18 @@ const SCORING_FIELDS = [
 
 function isPlainObject(value) {
   return Boolean(value) && typeof value === 'object' && !Array.isArray(value);
+}
+
+function isRelationshipGraphFamilyCollapseEnabled(env = process.env) {
+  return (
+    String(env?.[RELATIONSHIP_GRAPH_FAMILY_COLLAPSE_FLAG] || '') === 'true' ||
+    String(env?.[RELATIONSHIP_GRAPH_PG_COLLAPSE_ALIAS_FLAG] || '') === 'true'
+  );
+}
+
+function buildPublicProductUrl(entityId) {
+  const normalizedEntityId = normalizeString(entityId, 260);
+  return normalizedEntityId ? `https://agent.pivota.cc/products/${normalizedEntityId}` : '';
 }
 
 function normalizeString(value, max = 512) {
@@ -501,6 +530,361 @@ function dedupeApprovedRelationshipEdges(edges = []) {
   return out;
 }
 
+function getRelationshipGraphResolution(resolutionMap, ref) {
+  if (!resolutionMap || !ref) return null;
+  const normalized = normalizeLower(ref, 512);
+  const stripped = stripRelationshipRefPrefix(normalized);
+  if (typeof resolutionMap.get === 'function') {
+    return (
+      resolutionMap.get(normalized) ||
+      resolutionMap.get(stripped) ||
+      resolutionMap.get(`product:${stripped}`) ||
+      null
+    );
+  }
+  if (isPlainObject(resolutionMap)) {
+    return (
+      resolutionMap[normalized] ||
+      resolutionMap[stripped] ||
+      resolutionMap[`product:${stripped}`] ||
+      null
+    );
+  }
+  return null;
+}
+
+function familyKeyFromRelationshipSnapshot(snapshot = {}, ref = '') {
+  const snap = isPlainObject(snapshot) ? snapshot : {};
+  const shaped = {
+    ...snap,
+    product_ref: normalizeLower(ref, 512),
+    name: extractProductName(snap) || snap.title || snap.name,
+    title: snap.title || extractProductName(snap),
+    brand: pickFirstString(
+      typeof snap.brand === 'string' ? snap.brand : isPlainObject(snap.brand) ? snap.brand.name : '',
+      snap.brand_name,
+      snap.brandName,
+      snap.vendor,
+    ),
+    category: pickFirstString(snap.category, snap.category_name, snap.categoryName),
+    product_type: pickFirstString(snap.product_type, snap.productType),
+  };
+  const explicitFamily = pickFirstString(
+    shaped.product_family_id,
+    shaped.productFamilyId,
+    shaped.product_line_id,
+    shaped.productLineId,
+    shaped.variant_of,
+    shaped.variantOf,
+  );
+  const key = familyIdentityKey(shaped);
+  if (key && String(key).startsWith('family:')) {
+    return {
+      family_key: key,
+      family_key_source: explicitFamily ? 'product_family_id' : 'derived_family_key',
+    };
+  }
+  return {
+    family_key: '',
+    family_key_source: '',
+  };
+}
+
+function buildFallbackRelationshipResolution(ref = '', snapshot = {}) {
+  const normalizedRef = normalizeLower(ref, 512);
+  const snap = isPlainObject(snapshot) ? snapshot : {};
+  const family = familyKeyFromRelationshipSnapshot(snap, normalizedRef);
+  return {
+    input_ref: normalizeString(ref, 512),
+    normalized_ref: normalizedRef,
+    family_key: family.family_key || `ref:${normalizedRef}`,
+    family_key_source: family.family_key_source || 'fallback_ref',
+    product_group_id: null,
+    pivota_signature_id: null,
+    canonical_entity_id: null,
+    canonical_url: null,
+    pivota_canonical_url: null,
+    display_snapshot: Object.keys(snap).length ? { ...snap } : null,
+    display_snapshot_source: Object.keys(snap).length ? 'edge_snapshot' : 'fallback_ref',
+    resolved: false,
+  };
+}
+
+function resolveRelationshipEdgeRefContext(ref, snapshot, resolutionMap) {
+  const resolved = getRelationshipGraphResolution(resolutionMap, ref);
+  const fallback = buildFallbackRelationshipResolution(ref, snapshot);
+  if (!resolved) return fallback;
+  if (resolved.family_key && resolved.family_key_source !== 'fallback_ref') {
+    return {
+      ...fallback,
+      ...resolved,
+      display_snapshot: resolved.display_snapshot || fallback.display_snapshot,
+      display_snapshot_source: resolved.display_snapshot_source || fallback.display_snapshot_source,
+    };
+  }
+  if (fallback.family_key_source !== 'fallback_ref') {
+    return {
+      ...resolved,
+      ...fallback,
+      product_group_id: resolved.product_group_id || fallback.product_group_id,
+      pivota_signature_id: resolved.pivota_signature_id || fallback.pivota_signature_id,
+      canonical_entity_id: resolved.canonical_entity_id || fallback.canonical_entity_id,
+      canonical_url: resolved.canonical_url || fallback.canonical_url,
+      pivota_canonical_url: resolved.pivota_canonical_url || fallback.pivota_canonical_url,
+      display_snapshot: resolved.display_snapshot || fallback.display_snapshot,
+      display_snapshot_source: resolved.display_snapshot_source || fallback.display_snapshot_source,
+    };
+  }
+  return {
+    ...fallback,
+    ...resolved,
+    display_snapshot: resolved.display_snapshot || fallback.display_snapshot,
+    display_snapshot_source: resolved.display_snapshot_source || fallback.display_snapshot_source,
+  };
+}
+
+function relationshipLabelTierRank(edgeInput = {}, edge = {}) {
+  const state = normalizeLower(
+    edgeInput.label_state ||
+      edgeInput.labelState ||
+      edgeInput.provenance?.label_state ||
+      edgeInput.provenance?.labelState,
+    80,
+  );
+  if (state === 'human_approved') return 2;
+  if (state === 'ai_approved') return 1;
+  if (normalizeLower(edge.review_status, 32) === 'approved') return 2;
+  return 0;
+}
+
+function timeRank(value) {
+  const ms = value ? new Date(value).getTime() : NaN;
+  return Number.isFinite(ms) ? ms : 0;
+}
+
+function latestIso(values = []) {
+  let best = 0;
+  for (const value of values) {
+    best = Math.max(best, timeRank(value));
+  }
+  return best > 0 ? new Date(best).toISOString() : null;
+}
+
+function compareRelationshipFamilyRepresentatives(left, right) {
+  if (left.labelTier !== right.labelTier) return right.labelTier - left.labelTier;
+  const gradeDelta = evidenceGradeRank(right.edge.evidence_grade) - evidenceGradeRank(left.edge.evidence_grade);
+  if (gradeDelta) return gradeDelta;
+  const scoreDelta = (Number(right.edge.score_total) || 0) - (Number(left.edge.score_total) || 0);
+  if (scoreDelta) return scoreDelta;
+  const verifiedDelta = timeRank(right.edge.last_verified_at) - timeRank(left.edge.last_verified_at);
+  if (verifiedDelta) return verifiedDelta;
+  const updatedDelta = timeRank(right.edge.updated_at) - timeRank(left.edge.updated_at);
+  if (updatedDelta) return updatedDelta;
+  return normalizeString(left.edge.id, 160).localeCompare(normalizeString(right.edge.id, 160));
+}
+
+function assignRelationshipFamilyBucket(buckets, entry) {
+  for (const bucket of buckets) {
+    if (bucket.market !== entry.edge.market) continue;
+    if (bucket.anchor_type !== entry.edge.anchor_type) continue;
+    if (bucket.relation_type !== entry.edge.relation_type) continue;
+    if (!familyIdentityKeysCompatible(bucket.anchor_family_key, entry.anchorContext.family_key)) continue;
+    if (!familyIdentityKeysCompatible(bucket.candidate_family_key, entry.candidateContext.family_key)) continue;
+    return bucket;
+  }
+  const bucket = {
+    market: entry.edge.market,
+    anchor_type: entry.edge.anchor_type,
+    relation_type: entry.edge.relation_type,
+    anchor_family_key: entry.anchorContext.family_key,
+    candidate_family_key: entry.candidateContext.family_key,
+    anchorContext: entry.anchorContext,
+    candidateContext: entry.candidateContext,
+    entries: [],
+  };
+  buckets.push(bucket);
+  return bucket;
+}
+
+function relationshipDisplayContextRank(context = {}) {
+  if (context.family_key_source === 'product_family_id') return 0;
+  const source = normalizeLower(context.display_snapshot_source, 80);
+  if (source === 'product_family_id') return 0;
+  if (source === 'product_group_primary') return 1;
+  if (source === 'catalog_published') return 2;
+  if (source === 'catalog_validated') return 3;
+  if (source === 'catalog_candidate') return 4;
+  if (source === 'catalog_draft') return 5;
+  if (source === 'canonical_catalog') return 6;
+  if (source === 'edge_snapshot') return 7;
+  return 8;
+}
+
+function pickRelationshipFamilyDisplayContext(entries = [], representative = null) {
+  const ranked = entries
+    .map((entry) => ({
+      entry,
+      rank: relationshipDisplayContextRank(entry.candidateContext),
+      representative: representative && entry.edge.id === representative.edge.id ? 0 : 1,
+    }))
+    .sort((left, right) => {
+      if (left.rank !== right.rank) return left.rank - right.rank;
+      if (left.representative !== right.representative) return left.representative - right.representative;
+      return normalizeString(left.entry.candidateContext.normalized_ref, 512).localeCompare(
+        normalizeString(right.entry.candidateContext.normalized_ref, 512),
+      );
+    });
+  return ranked[0]?.entry?.candidateContext || representative?.candidateContext || {};
+}
+
+function buildCollapsedRelationshipFamilyEdge(bucket) {
+  const entries = bucket.entries.slice().sort(compareRelationshipFamilyRepresentatives);
+  const representative = entries[0];
+  const winningTierEntries = entries.filter((entry) => entry.labelTier === representative.labelTier);
+  const scoreTotal = Math.max(...winningTierEntries.map((entry) => Number(entry.edge.score_total) || 0));
+  const bestEvidence = winningTierEntries
+    .slice()
+    .sort((left, right) => evidenceGradeRank(right.edge.evidence_grade) - evidenceGradeRank(left.edge.evidence_grade))[0];
+  const mergedSourceRefs = normalizeSourceRefs(
+    winningTierEntries.flatMap((entry) => normalizeSourceRefs(entry.edge.source_refs)),
+  );
+  const candidateContext = pickRelationshipFamilyDisplayContext(entries, representative);
+  const candidateSnapshot =
+    candidateContext.display_snapshot ||
+    representative.edge.candidate_snapshot ||
+    {};
+  const candidateCanonicalEntityId = pickFirstString(
+    candidateContext.canonical_entity_id,
+    candidateSnapshot.canonical_entity_id,
+    candidateSnapshot.product_id,
+    candidateSnapshot.id,
+  );
+  const candidateCanonicalUrl = pickFirstString(
+    candidateContext.pivota_canonical_url,
+    candidateContext.canonical_url,
+    candidateSnapshot.pivota_canonical_url,
+    candidateSnapshot.canonical_url,
+    candidateSnapshot.url,
+    candidateCanonicalEntityId ? buildPublicProductUrl(candidateCanonicalEntityId) : '',
+  );
+  const collapsed = {
+    ...representative.edge,
+    score_total: Number(scoreTotal.toFixed(4)),
+    evidence_grade: bestEvidence?.edge.evidence_grade || representative.edge.evidence_grade,
+    source_refs: mergedSourceRefs,
+    expires_at: latestIso(winningTierEntries.map((entry) => entry.edge.expires_at)),
+    last_verified_at: latestIso(winningTierEntries.map((entry) => entry.edge.last_verified_at)),
+    updated_at: latestIso(winningTierEntries.map((entry) => entry.edge.updated_at)),
+    candidate_family_key: bucket.candidate_family_key,
+    anchor_family_key: bucket.anchor_family_key,
+    candidate_offer_group_id: candidateContext.product_group_id || null,
+    anchor_offer_group_id: bucket.anchorContext.product_group_id || null,
+    candidate_display_snapshot: candidateSnapshot,
+    candidate_display_snapshot_source: candidateContext.display_snapshot_source || null,
+    candidate_product_group_id: candidateContext.product_group_id || null,
+    candidate_pivota_signature_id: candidateContext.pivota_signature_id || null,
+    candidate_canonical_entity_id: candidateCanonicalEntityId || null,
+    candidate_canonical_url: candidateCanonicalUrl || null,
+    provenance: {
+      ...(isPlainObject(representative.edge.provenance) ? representative.edge.provenance : {}),
+      relationship_family_collapse: {
+        version: 1,
+        anchor_family_key: bucket.anchor_family_key,
+        candidate_family_key: bucket.candidate_family_key,
+        anchor_offer_group_id: bucket.anchorContext.product_group_id || null,
+        candidate_offer_group_id: candidateContext.product_group_id || null,
+        collapsed_edge_count: entries.length,
+        representative_edge_id: representative.edge.id,
+        score_total_max: Number(scoreTotal.toFixed(4)),
+        evidence_grade_best: bestEvidence?.edge.evidence_grade || representative.edge.evidence_grade || null,
+      },
+    },
+  };
+  return collapsed;
+}
+
+function collapseApprovedRelationshipEdgesToFamilies(edges = [], { resolutionMap, limit = 120 } = {}) {
+  const buckets = [];
+  const stats = {
+    raw_edge_count: Array.isArray(edges) ? edges.length : 0,
+    collapsed_edge_count: 0,
+    dropped_self_edge_count: 0,
+    unresolved_ref_count: 0,
+    derived_family_count: 0,
+    fallback_ref_count: 0,
+  };
+  const unresolvedRefs = new Set();
+  const derivedFamilies = new Set();
+  const fallbackRefs = new Set();
+
+  for (const rawEdge of Array.isArray(edges) ? edges : []) {
+    const edge = coerceRelationshipEdge(rawEdge);
+    const anchorContext = edge.anchor_type === 'product'
+      ? resolveRelationshipEdgeRefContext(edge.anchor_ref, edge.anchor_snapshot, resolutionMap)
+      : {
+          input_ref: edge.anchor_ref,
+          normalized_ref: normalizeLower(edge.anchor_ref, 512),
+          family_key: `${edge.anchor_type}:${normalizeLower(edge.anchor_ref, 512)}`,
+          family_key_source: 'anchor_ref',
+          product_group_id: null,
+          resolved: true,
+        };
+    const candidateContext = resolveRelationshipEdgeRefContext(
+      edge.candidate_product_ref,
+      edge.candidate_snapshot,
+      resolutionMap,
+    );
+
+    for (const context of [anchorContext, candidateContext]) {
+      if (context.resolved === false && context.normalized_ref) unresolvedRefs.add(context.normalized_ref);
+      if (context.family_key_source === 'derived_family_key' && context.family_key) derivedFamilies.add(context.family_key);
+      if (context.family_key_source === 'fallback_ref' && context.normalized_ref) fallbackRefs.add(context.normalized_ref);
+    }
+
+    if (
+      edge.anchor_type === 'product' &&
+      anchorContext.family_key &&
+      candidateContext.family_key &&
+      familyIdentityKeysCompatible(anchorContext.family_key, candidateContext.family_key)
+    ) {
+      stats.dropped_self_edge_count += 1;
+      continue;
+    }
+
+    const entry = {
+      edge,
+      rawEdge,
+      anchorContext,
+      candidateContext,
+      labelTier: relationshipLabelTierRank(rawEdge, edge),
+    };
+    const bucket = assignRelationshipFamilyBucket(buckets, entry);
+    bucket.entries.push(entry);
+  }
+
+  const collapsed = buckets
+    .map(buildCollapsedRelationshipFamilyEdge)
+    .sort((left, right) => {
+      const scoreDelta = (Number(right.score_total) || 0) - (Number(left.score_total) || 0);
+      if (scoreDelta) return scoreDelta;
+      const updatedDelta = timeRank(right.updated_at) - timeRank(left.updated_at);
+      if (updatedDelta) return updatedDelta;
+      return normalizeString(left.id, 160).localeCompare(normalizeString(right.id, 160));
+    });
+  const cappedLimit = Math.max(1, Math.min(500, Number(limit) || collapsed.length || 120));
+  const out = collapsed.slice(0, cappedLimit);
+  stats.collapsed_edge_count = out.length;
+  stats.unresolved_ref_count = unresolvedRefs.size;
+  stats.derived_family_count = derivedFamilies.size;
+  stats.fallback_ref_count = fallbackRefs.size;
+  Object.defineProperty(out, '__collapse_stats', {
+    value: stats,
+    enumerable: false,
+    configurable: true,
+  });
+  return out;
+}
+
 function edgeToRecoCandidate(edgeInput) {
   const edge = coerceRelationshipEdge(edgeInput);
   const snapshot = edge.candidate_snapshot || {};
@@ -570,14 +954,57 @@ function stripRelationshipRefPrefix(ref) {
 // seed is the only catalog the curated graph spans, so candidate ids map to the
 // `external_seed` merchant. Returns null when the candidate has no usable id.
 function relationshipEdgeToSimilarItem(edgeInput = {}) {
+  const src = isPlainObject(edgeInput) ? edgeInput : {};
   const edge = coerceRelationshipEdge(edgeInput);
-  const snap = isPlainObject(edge.candidate_snapshot) ? edge.candidate_snapshot : {};
-  const productId = pickFirstString(
-    snap.product_id,
-    snap.productId,
-    snap.id,
-    stripRelationshipRefPrefix(edge.candidate_product_ref),
+  const displaySnap = isPlainObject(src.candidate_display_snapshot || src.candidateDisplaySnapshot)
+    ? { ...(src.candidate_display_snapshot || src.candidateDisplaySnapshot) }
+    : {};
+  const fallbackSnap = isPlainObject(edge.candidate_snapshot) ? edge.candidate_snapshot : {};
+  const snap = Object.keys(displaySnap).length ? displaySnap : fallbackSnap;
+  // Display hydration applies ONLY to flag-on collapsed edges (they carry candidate_family_key /
+  // candidate_* display fields). Flag-off raw edges must keep the original product_id/url/price
+  // precedence byte-for-byte, since relationshipEdgeToSimilarItem is shared by both flag states.
+  const isCollapsedEdge = Boolean(
+    src.candidate_family_key ||
+      src.candidateFamilyKey ||
+      src.candidate_display_snapshot ||
+      src.candidateDisplaySnapshot ||
+      src.candidate_canonical_entity_id ||
+      src.candidateCanonicalEntityId ||
+      src.candidate_canonical_url ||
+      src.candidateCanonicalUrl ||
+      src.candidate_product_family_id ||
+      src.candidateProductFamilyId,
   );
+  const canonicalEntityId = isCollapsedEdge
+    ? pickFirstString(
+        src.candidate_canonical_entity_id,
+        src.candidateCanonicalEntityId,
+        src.candidate_product_family_id,
+        src.candidateProductFamilyId,
+        snap.canonical_entity_id,
+        snap.canonicalEntityId,
+        snap.product_family_id,
+        snap.productFamilyId,
+        snap.product_id,
+        snap.productId,
+        snap.id,
+      )
+    : '';
+  const productId = isCollapsedEdge
+    ? pickFirstString(
+        canonicalEntityId,
+        snap.product_id,
+        snap.productId,
+        snap.id,
+        stripRelationshipRefPrefix(edge.candidate_product_ref),
+      )
+    : pickFirstString(
+        snap.product_id,
+        snap.productId,
+        snap.id,
+        stripRelationshipRefPrefix(edge.candidate_product_ref),
+      );
   if (!productId) return null;
   const brand = pickFirstString(
     typeof snap.brand === 'string' ? snap.brand : isPlainObject(snap.brand) ? snap.brand.name : '',
@@ -585,11 +1012,26 @@ function relationshipEdgeToSimilarItem(edgeInput = {}) {
     snap.brandName,
     snap.vendor,
   );
-  const url = pickFirstString(snap.url, snap.canonical_url, snap.canonicalUrl, snap.pdp_url, snap.pdpUrl);
+  const url = isCollapsedEdge
+    ? pickFirstString(
+        src.candidate_canonical_url,
+        src.candidateCanonicalUrl,
+        snap.pivota_canonical_url,
+        snap.pivotaCanonicalUrl,
+        snap.canonical_url,
+        snap.canonicalUrl,
+        snap.url,
+        snap.pdp_url,
+        snap.pdpUrl,
+        canonicalEntityId ? buildPublicProductUrl(canonicalEntityId) : '',
+      )
+    : pickFirstString(snap.url, snap.canonical_url, snap.canonicalUrl, snap.pdp_url, snap.pdpUrl);
   const imageUrl = pickFirstString(snap.image_url, snap.image, Array.isArray(snap.images) ? snap.images[0] : '');
   const name = extractProductName(snap);
   const reason = pickFirstString(edge.display_label, edge.relation_type);
-  const price = getCandidatePrice(edge);
+  const price = isCollapsedEdge
+    ? getCandidatePrice(edge) ?? toNumberOrNull(snap.price ?? snap.price_amount ?? snap.priceAmount)
+    : getCandidatePrice(edge);
   return {
     product_id: productId,
     external_product_id: productId,
@@ -610,7 +1052,7 @@ function relationshipEdgeToSimilarItem(edgeInput = {}) {
   };
 }
 
-async function listApprovedRelationshipEdgesForAnchor({
+async function listApprovedRelationshipEdgesForAnchorUncollapsed({
   anchorType = 'product',
   anchorRefs,
   market = DEFAULT_MARKET,
@@ -666,6 +1108,83 @@ async function listApprovedRelationshipEdgesForAnchor({
     if (code === 'NO_DATABASE' || code === '42P01') return [];
     throw err;
   }
+}
+
+async function listApprovedRelationshipEdgesForAnchor(options = {}) {
+  const {
+    anchor,
+    anchorType = 'product',
+    anchorRefs,
+    market = DEFAULT_MARKET,
+    relationTypes,
+    limit = 120,
+    queryFn = query,
+  } = isPlainObject(options) ? options : {};
+
+  if (!isRelationshipGraphFamilyCollapseEnabled()) {
+    return listApprovedRelationshipEdgesForAnchorUncollapsed({
+      anchorType,
+      anchorRefs,
+      market,
+      relationTypes,
+      limit,
+      queryFn,
+    });
+  }
+
+  const normalizedAnchorType = normalizeLower(anchorType, 24) || 'product';
+  const requestedLimit = Math.max(1, Math.min(500, Number(limit) || 120));
+  const baseRefs =
+    normalizedAnchorType === 'product' && isPlainObject(anchor)
+      ? buildAnchorRefsFromProduct(anchor)
+      : (Array.isArray(anchorRefs) ? anchorRefs : [anchorRefs]).filter(Boolean);
+  if (!baseRefs.length) return [];
+
+  const expandedRefs =
+    normalizedAnchorType === 'product'
+      ? await expandAnchorRefsWithGroupSiblings(baseRefs, { queryFn })
+      : baseRefs;
+  const rawEdges = await listApprovedRelationshipEdgesForAnchorUncollapsed({
+    anchorType: normalizedAnchorType,
+    anchorRefs: expandedRefs,
+    market,
+    relationTypes,
+    limit: 500,
+    queryFn,
+  });
+
+  const refsToResolve = [];
+  const pushRef = (ref, snapshot) => {
+    const normalizedRef = normalizeString(ref, 512);
+    if (!normalizedRef) return;
+    refsToResolve.push({ ref: normalizedRef, snapshot: isPlainObject(snapshot) ? snapshot : null });
+  };
+  for (const edge of rawEdges) {
+    pushRef(edge.anchor_ref, edge.anchor_snapshot);
+    pushRef(edge.candidate_product_ref, edge.candidate_snapshot);
+  }
+  const resolutionMap = await resolveRelationshipGraphRefsToCanonicalEntities(refsToResolve, { queryFn });
+  const collapsed = collapseApprovedRelationshipEdgesToFamilies(rawEdges, {
+    resolutionMap,
+    anchorRefs: expandedRefs,
+    limit: requestedLimit,
+  });
+  const stats = collapsed.__collapse_stats || {};
+  logger.info?.(
+    {
+      kind: 'metric',
+      name: 'aurora_bff_relationship_graph_family_collapse',
+      raw_edge_count: rawEdges.length,
+      collapsed_edge_count: collapsed.length,
+      dropped_self_edge_count: stats.dropped_self_edge_count || 0,
+      unresolved_ref_count: stats.unresolved_ref_count || 0,
+      derived_family_count: stats.derived_family_count || 0,
+      fallback_ref_count: stats.fallback_ref_count || 0,
+      collapse_enabled: true,
+    },
+    'aurora bff: relationship graph family collapse',
+  );
+  return collapsed;
 }
 
 // Read-time alias expansion (per docs/SIG_EXT_FRONT_FACING_FIX.md). A queried
@@ -1050,6 +1569,8 @@ module.exports = {
   buildAnchorRefsFromProduct,
   expandAnchorRefsWithGroupSiblings,
   listApprovedRelationshipEdgesForAnchor,
+  listApprovedRelationshipEdgesForAnchorUncollapsed,
+  collapseApprovedRelationshipEdgesToFamilies,
   getRelationshipGraphCandidatesForAnchor,
   upsertRelationshipEdge,
   upsertRelationshipCandidateLabel,
@@ -1063,5 +1584,10 @@ module.exports = {
     normalizeSourceRefs,
     countAuthoritativeSources,
     buildEdgeId,
+    isRelationshipGraphFamilyCollapseEnabled,
+    RELATIONSHIP_GRAPH_FAMILY_COLLAPSE_FLAG,
+    RELATIONSHIP_GRAPH_PG_COLLAPSE_ALIAS_FLAG,
+    buildFallbackRelationshipResolution,
+    resolveRelationshipEdgeRefContext,
   },
 };
