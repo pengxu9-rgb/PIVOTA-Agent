@@ -25428,6 +25428,10 @@ function collectExternalSeedIdCandidatesForVisibleCatalogHydration(product = {})
         product.platformProductId,
       ]
         .map((value) => firstNonEmptyString(value))
+        // Only ext_* are valid external-seed source ids. A sig_*/pg_* product_id
+        // must never be treated as an external-seed id (asserted by
+        // similar_visible_sig_ids.test.js — this also makes that pre-existing
+        // test pass). Required for canonical-entity emit where product_id can be pg_*.
         .filter((value) => isExternalSeedProductId(value)),
     ),
   );
