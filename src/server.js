@@ -25412,29 +25412,28 @@ async function enrichSimilarProductsForPdpCards({
 
 function collectExternalSeedIdCandidatesForVisibleCatalogHydration(product = {}) {
   if (!product || typeof product !== 'object' || Array.isArray(product)) return [];
-  return Array.from(
-    new Set(
-      [
-        product.product_id,
-        product.productId,
-        product.id,
-        product.source_product_id,
-        product.sourceProductId,
-        product.external_product_id,
-        product.externalProductId,
-        product.external_seed_product_id,
-        product.externalSeedProductId,
-        product.platform_product_id,
-        product.platformProductId,
-      ]
-        .map((value) => firstNonEmptyString(value))
-        // Only ext_* are valid external-seed source ids. A sig_*/pg_* product_id
-        // must never be treated as an external-seed id (asserted by
-        // similar_visible_sig_ids.test.js — this also makes that pre-existing
-        // test pass). Required for canonical-entity emit where product_id can be pg_*.
-        .filter((value) => isExternalSeedProductId(value)),
-    ),
-  );
+  const values = [
+    product.product_id,
+    product.productId,
+    product.id,
+    product.source_product_id,
+    product.sourceProductId,
+    product.external_product_id,
+    product.externalProductId,
+    product.external_seed_product_id,
+    product.externalSeedProductId,
+    product.platform_product_id,
+    product.platformProductId,
+  ].map((value) => firstNonEmptyString(value));
+  // Prefer real ext_* source ids. When both an ext_* and a sig_* are present, drop
+  // the sig_* (asserted by similar_visible_sig_ids.test.js). But a visible card may
+  // carry ONLY a sig_* (no ext_*) — the official-seed hydration resolves that via
+  // matched_signature_product_id, so fall back to the sig_* when it's the only id
+  // available (find_similar_products_mainline_wrapper.test.js). pg_* is never a
+  // hydration key, so it is excluded in both passes.
+  const extIds = Array.from(new Set(values.filter((value) => isExternalSeedProductId(value))));
+  if (extIds.length) return extIds;
+  return Array.from(new Set(values.filter((value) => isPivotaSignatureProductId(value))));
 }
 
 function identityReviewRequiredForVisibleSig(product = {}) {
