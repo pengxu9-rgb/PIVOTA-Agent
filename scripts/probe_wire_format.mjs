@@ -20,8 +20,8 @@
  * - PROBE_QUERY       Optional. Product search query. Defaults to a generic cheap query.
  * - PROBE_CURRENCY    Optional. Payment currency. Defaults to USD.
  * - PROBE_ALLOW_CHARGE Required as "1" when using --charge.
- * - PROBE_PAYMENT_HANDLER_TYPE Optional PSP selector for --charge, e.g. stripe or adyen.
- * - PROBE_PAYMENT_HANDLER_ID   Optional PSP handler id for --charge.
+ * - PROBE_PAYMENT_HANDLER_TYPE Optional PSP preference for create_order, e.g. stripe or adyen.
+ * - PROBE_PAYMENT_HANDLER_ID   Optional PSP handler id for create_order metadata/debugging only.
  * - PROBE_REPEAT_SUBMIT Optional. Set "1" with --charge to repeat the same submit body once (TEST MODE ONLY).
  *
  * Example invocations:
@@ -228,7 +228,7 @@ function buildPreviewQuoteBody(selection, variantId) {
   });
 }
 
-function buildCreateOrderBody(selection, quoteId, majorPrice, variantId) {
+function buildCreateOrderBody(selection, quoteId, majorPrice, variantId, handler = {}) {
   return requestBody("create_order", {
     order: {
       quote_id: quoteId,
@@ -244,11 +244,13 @@ function buildCreateOrderBody(selection, quoteId, majorPrice, variantId) {
         },
       ],
       shipping_address: { name: "Probe", address_line1: "1 Test St", ...PROBE_SHIP_GEO },
+      ...(handler.type ? { preferred_psp: handler.type } : {}),
+      ...(handler.id ? { metadata: { preferred_psp_id: handler.id } } : {}),
     },
   });
 }
 
-function buildSubmitPaymentBody(orderId, quoteId, expectedMinor, currency, handler = {}) {
+function buildSubmitPaymentBody(orderId, quoteId, expectedMinor, currency) {
   const payment = {
     order_id: orderId,
     quote_id: quoteId,
@@ -256,8 +258,6 @@ function buildSubmitPaymentBody(orderId, quoteId, expectedMinor, currency, handl
     currency,
     payment_method_hint: "card",
   };
-  if (handler.type) payment.payment_handler_type = handler.type;
-  if (handler.id) payment.payment_handler_id = handler.id;
   return requestBody("submit_payment", { payment });
 }
 
@@ -854,11 +854,11 @@ function buildDryRunBodies(config, flags) {
   ];
 
   if (flags.createOrder) {
-    bodies.push(buildCreateOrderBody(selection, quoteId, majorPrice));
+    bodies.push(buildCreateOrderBody(selection, quoteId, majorPrice, undefined, { type: config.paymentHandlerType, id: config.paymentHandlerId }));
   }
 
   if (flags.charge) {
-    bodies.push(buildSubmitPaymentBody(orderId, quoteId, expectedMinor, config.currency, { type: config.paymentHandlerType, id: config.paymentHandlerId }));
+    bodies.push(buildSubmitPaymentBody(orderId, quoteId, expectedMinor, config.currency));
   }
 
   return bodies;
@@ -1181,7 +1181,7 @@ async function main() {
       }
 
       console.log("Step3 create_order: sending backend write with no charge.");
-      const createBody = buildCreateOrderBody(selection, qInfo.quoteId, unitPriceForBody, selectedVariantId);
+      const createBody = buildCreateOrderBody(selection, qInfo.quoteId, unitPriceForBody, selectedVariantId, { type: config.paymentHandlerType, id: config.paymentHandlerId });
       const orderResponse = await invoke(createBody, config);
       responses.step3 = orderResponse;
 
@@ -1216,7 +1216,7 @@ async function main() {
         await confirmCharge(config);
 
         console.log("Step4 submit_payment: sending charge request.");
-        const submitBody = buildSubmitPaymentBody(orderId, qInfo.quoteId, expectedMinor, orderCurrency || config.currency, { type: config.paymentHandlerType, id: config.paymentHandlerId });
+        const submitBody = buildSubmitPaymentBody(orderId, qInfo.quoteId, expectedMinor, orderCurrency || config.currency);
         const paymentResponse = await invoke(submitBody, config);
         responses.step4 = paymentResponse;
 
