@@ -691,6 +691,52 @@ describe('agentCenterLlmProbe — buildGeminiProbe with mocked client + groundin
     expect(observedConfig.responseMimeType).toBeUndefined();
   });
 
+  test('visibility and merchant attribution prompts require web search and cited sources', async () => {
+    const observedPrompts = {};
+    const fake = async (args) => {
+      const text = args.contents?.[0]?.parts?.[0]?.text || '';
+      if (text.includes('Merchant store URL:')) {
+        observedPrompts.merchant = text;
+      } else {
+        observedPrompts.visibility = text;
+      }
+      return {
+        text: '{}',
+        candidates: [{ content: { parts: [{ text: '{}' }] } }],
+      };
+    };
+    const probe = installFakeClient(fake);
+
+    await probe._internals.buildGeminiProbe({
+      scan_mode: 'open_product_visibility_test',
+      max_runs: 1,
+      context: {
+        queries: ['where can I buy Product X'],
+        product: { title: 'Product X' },
+      },
+    });
+    await probe._internals.buildGeminiProbe({
+      scan_mode: 'merchant_store_attribution_test',
+      max_runs: 1,
+      context: {
+        queries: ['where can I buy Product X'],
+        merchant_pdp_url: 'https://merchant.com/p/123',
+        product: { title: 'Product X', vendor: 'Merchant' },
+      },
+    });
+
+    expect(observedPrompts.visibility).toContain('live web search');
+    expect(observedPrompts.visibility).toContain('cited sources');
+    expect(observedPrompts.visibility).toContain(
+      'Search the web for this query, then Reply JSON: {"product_visible": true|false, "competitors_listed": [...], "evidence_excerpt": "..."}',
+    );
+    expect(observedPrompts.merchant).toContain('live web search');
+    expect(observedPrompts.merchant).toContain('cited sources');
+    expect(observedPrompts.merchant).toContain(
+      'Search the web for this query, then Reply JSON: {"merchant_url_found": true|false, "evidence_excerpt": "..."}',
+    );
+  });
+
   test('pivota_pdp_attribution scores from grounding URL match, not LLM self-report', async () => {
     // Critical fix: the LLM hallucinates `pivota_url_found: false` (lying),
     // but the grounding chunks PROVE the URL was cited. Score must reflect
@@ -1112,14 +1158,15 @@ describe('agentCenterLlmProbe — ChatGPT and Claude providers', () => {
   }
 
   function installFakeAnthropic(createImpl) {
+    jest.resetModules();
     process.env.ANTHROPIC_API_KEY = 'fake-anthropic-key-for-tests';
     const Anthropic = jest.fn(function Anthropic() {
       return {
         messages: { create: createImpl },
       };
     });
-    jest.doMock('@anthropic-ai/sdk', () => Anthropic, { virtual: true });
-    return { probe: loadModule(), Anthropic };
+    jest.doMock('@anthropic-ai/sdk', () => Anthropic);
+    return { probe: require('../src/internal/agentCenterLlmProbe'), Anthropic };
   }
 
   afterEach(() => {
