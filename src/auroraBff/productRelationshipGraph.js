@@ -1602,6 +1602,8 @@ module.exports = {
     normalizeSourceRefs,
     countAuthoritativeSources,
     buildEdgeId,
+    familyIdentityKey,
+    familyIdentityKeysCompatible,
     isRelationshipGraphFamilyCollapseEnabled,
     RELATIONSHIP_GRAPH_FAMILY_COLLAPSE_FLAG,
     RELATIONSHIP_GRAPH_PG_COLLAPSE_ALIAS_FLAG,

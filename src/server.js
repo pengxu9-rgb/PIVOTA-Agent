@@ -369,11 +369,21 @@ const {
   getCacheStats: getPdpRecsCacheStats,
   hydrateRecommendationItemsWithReviewedProductIntel,
 } = require('./services/RecommendationEngine');
+const productRelationshipGraph = require('./auroraBff/productRelationshipGraph');
 const {
   buildAnchorRefsFromProduct: buildRelationshipGraphAnchorRefs,
   listApprovedRelationshipEdgesForAnchor: listApprovedRelationshipEdges,
   relationshipEdgeToSimilarItem,
-} = require('./auroraBff/productRelationshipGraph');
+} = productRelationshipGraph;
+const productRelationshipGraphInternal = productRelationshipGraph.__internal || {};
+const familyIdentityKey =
+  typeof productRelationshipGraphInternal.familyIdentityKey === 'function'
+    ? productRelationshipGraphInternal.familyIdentityKey
+    : (() => '');
+const familyIdentityKeysCompatible =
+  typeof productRelationshipGraphInternal.familyIdentityKeysCompatible === 'function'
+    ? productRelationshipGraphInternal.familyIdentityKeysCompatible
+    : ((left, right) => Boolean(left && right && left === right));
 const { getGeminiGlobalGate } = require('./lib/geminiGlobalGate');
 const {
   resolveProductRef,
@@ -24193,6 +24203,8 @@ async function fetchReviewSummaryCached(args = {}) {
 // recall engine. Default OFF — flip the flag only after staging verification.
 const RELATIONSHIP_GRAPH_SERVING_ENABLED =
   String(process.env.AURORA_BFF_RELATIONSHIP_GRAPH_ENABLED || '').trim().toLowerCase() === 'true';
+const SIMILAR_FAMILY_DEDUPE_ENABLED =
+  String(process.env.AURORA_BFF_SIMILAR_FAMILY_DEDUPE_ENABLED || '').trim().toLowerCase() === 'true';
 
 async function fetchRelationshipGraphSimilarItems(anchorProduct, { market = 'US', limit = 24 } = {}) {
   if (!RELATIONSHIP_GRAPH_SERVING_ENABLED) return [];
@@ -24218,7 +24230,12 @@ async function fetchSimilarProductsDeduped(args = {}) {
   const runOnce = async () => {
     const rec = await recommendPdpProducts(args);
     const items = Array.isArray(rec?.items) ? rec.items : [];
-    let mergedItems = items;
+    const anchorFamilyKey = SIMILAR_FAMILY_DEDUPE_ENABLED
+      ? familyIdentityKey(shapeItemForFamilyKey(args?.pdp_product || {}))
+      : '';
+    let mergedItems = SIMILAR_FAMILY_DEDUPE_ENABLED
+      ? dedupeSimilarCandidatesByFamily(items, { anchorFamilyKey })
+      : items;
     let relationshipGraphMeta;
     if (RELATIONSHIP_GRAPH_SERVING_ENABLED) {
       const curated = await fetchRelationshipGraphSimilarItems(args?.pdp_product, {
@@ -24228,7 +24245,9 @@ async function fetchSimilarProductsDeduped(args = {}) {
       if (curated.length) {
         // Curated (human-approved) edges rank ahead of dynamic recall; dedupe
         // keeps the first occurrence, so curated wins on collisions.
-        mergedItems = dedupeSimilarCandidatesByMerchantProductId([...curated, ...items]);
+        mergedItems = SIMILAR_FAMILY_DEDUPE_ENABLED
+          ? dedupeSimilarCandidatesByFamily([...curated, ...items], { anchorFamilyKey })
+          : dedupeSimilarCandidatesByMerchantProductId([...curated, ...items]);
         const k = Number(args?.k);
         if (Number.isFinite(k) && k > 0) mergedItems = mergedItems.slice(0, k);
         relationshipGraphMeta = {
@@ -25922,6 +25941,71 @@ function dedupeSimilarCandidatesByMerchantProductId(products) {
     );
     if (!productId) continue;
     const key = `${merchantId}::${productId}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push(item);
+  }
+  return out;
+}
+
+function shapeItemForFamilyKey(item = {}) {
+  const title = item?.title || item?.name;
+  return {
+    name: title,
+    title,
+    brand: item?.brand || item?.vendor,
+    category: item?.category,
+    product_type: item?.product_type,
+    product_family_id: item?.product_family_id,
+    variant_title: item?.variant_title,
+    variant_detail_label: item?.variant_detail_label,
+    product_ref: item?.product_id || item?.external_product_id,
+  };
+}
+
+function resolveSimilarFamilyBucketKey(familyBuckets, familyKey) {
+  for (const bucket of familyBuckets) {
+    const keys = Array.isArray(bucket?.keys) ? bucket.keys : [];
+    if (
+      keys.some((bucketKey) => familyIdentityKeysCompatible(bucketKey, familyKey)) &&
+      keys.every((bucketKey) => familyIdentityKeysCompatible(bucketKey, familyKey))
+    ) {
+      keys.push(familyKey);
+      return bucket.key;
+    }
+  }
+  familyBuckets.push({ key: familyKey, keys: [familyKey] });
+  return familyKey;
+}
+
+function dedupeSimilarCandidatesByFamily(products, { anchorFamilyKey = '' } = {}) {
+  const out = [];
+  const seen = new Set();
+  const familyBuckets = [];
+  for (const item of Array.isArray(products) ? products : []) {
+    if (!item || typeof item !== 'object' || Array.isArray(item)) continue;
+    const familyKey = familyIdentityKey(shapeItemForFamilyKey(item));
+    const isDerivedFamily = String(familyKey || '').startsWith('family:');
+    let key = '';
+
+    if (isDerivedFamily) {
+      if (anchorFamilyKey && familyIdentityKeysCompatible(familyKey, anchorFamilyKey)) continue;
+      key = `family::${resolveSimilarFamilyBucketKey(familyBuckets, familyKey)}`;
+    } else {
+      // Phase 1 intentionally stays title-based. Recall rows do not carry
+      // variant_title parity yet; catalog_products resolution belongs in Phase 2.
+      const merchantId = firstNonEmptyString(item.merchant_id, item.merchantId) || EXTERNAL_SEED_MERCHANT_ID;
+      const productId = firstNonEmptyString(
+        item.product_id,
+        item.productId,
+        item.id,
+        item.external_product_id,
+        item.externalProductId,
+      );
+      if (!productId) continue;
+      key = `merchant_product::${merchantId}::${productId}`;
+    }
+
     if (seen.has(key)) continue;
     seen.add(key);
     out.push(item);
@@ -45525,6 +45609,9 @@ module.exports._debug = {
   hydrateVisibleSimilarProductSigIdsFromCatalog,
   filterPublicVisibleSimilarProducts,
   dedupeSimilarCandidatesByMerchantProductId,
+  dedupeSimilarCandidatesByFamily,
+  shapeItemForFamilyKey,
+  isSimilarFamilyDedupeEnabled: () => SIMILAR_FAMILY_DEDUPE_ENABLED,
   isBundleOrSetPdpForComponentScopedSimilar,
   collectPdpComponentExternalSeedIds,
   excludeBundleComponentProductsFromSimilar,

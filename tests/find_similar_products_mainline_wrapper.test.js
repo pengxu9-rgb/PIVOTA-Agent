@@ -13,10 +13,12 @@ describe('find_similar_products mainline wrapper', () => {
     process.env.PIVOTA_API_KEY = 'test-token';
     delete process.env.DATABASE_URL;
     delete process.env.PDP_SIMILAR_CARD_DETAIL_ENRICH_ENABLED;
+    delete process.env.AURORA_BFF_SIMILAR_FAMILY_DEDUPE_ENABLED;
   });
 
   afterEach(() => {
     nock.cleanAll();
+    delete process.env.AURORA_BFF_SIMILAR_FAMILY_DEDUPE_ENABLED;
   });
 
   it('returns RecommendationEngine results and does not fall back upstream', async () => {
@@ -95,6 +97,120 @@ describe('find_similar_products mainline wrapper', () => {
       }),
     );
     expect(upstreamScope.isDone()).toBe(false);
+  });
+
+  it('keeps recall shade variants on the non-curated path when family dedupe flag is off', async () => {
+    const recommendMock = jest.fn().mockResolvedValue({
+      items: [
+        {
+          product_id: 'sig_concealer_185',
+          merchant_id: 'external_seed',
+          source: 'external',
+          brand: 'Fenty Beauty',
+          title: "Pro Filt'r Instant Retouch Concealer - 185",
+          category: 'Concealer',
+          product_type: 'Concealer',
+          image_url: 'https://cdn.example.test/concealer-185.jpg',
+          card_highlight: 'Same product family, shade 185.',
+        },
+        {
+          product_id: 'sig_concealer_255',
+          merchant_id: 'external_seed',
+          source: 'external',
+          brand: 'Fenty Beauty',
+          title: "Pro Filt'r Instant Retouch Concealer - 255",
+          category: 'Concealer',
+          product_type: 'Concealer',
+          image_url: 'https://cdn.example.test/concealer-255.jpg',
+          card_highlight: 'Same product family, shade 255.',
+        },
+      ],
+      metadata: {
+        low_confidence: false,
+        retrieval_mix: { internal: 0, external: 2 },
+      },
+    });
+
+    jest.doMock('../src/services/RecommendationEngine', () => ({
+      ...jest.requireActual('../src/services/RecommendationEngine'),
+      recommend: recommendMock,
+      getCacheStats: jest.fn(() => ({})),
+    }));
+
+    const app = require('../src/server');
+
+    const res = await request(app)
+      .post('/agent/shop/v1/invoke')
+      .send({
+        operation: 'find_similar_products',
+        payload: {
+          product_id: 'ext_anchor',
+          merchant_id: 'external_seed',
+          limit: 4,
+        },
+      })
+      .expect(200);
+
+    expect(res.body.products.map((product) => product.product_id)).toEqual([
+      'sig_concealer_185',
+      'sig_concealer_255',
+    ]);
+  });
+
+  it('collapses recall shade variants on the non-curated path when family dedupe flag is on', async () => {
+    process.env.AURORA_BFF_SIMILAR_FAMILY_DEDUPE_ENABLED = 'true';
+    const recommendMock = jest.fn().mockResolvedValue({
+      items: [
+        {
+          product_id: 'sig_concealer_185',
+          merchant_id: 'external_seed',
+          source: 'external',
+          brand: 'Fenty Beauty',
+          title: "Pro Filt'r Instant Retouch Concealer - 185",
+          category: 'Concealer',
+          product_type: 'Concealer',
+          image_url: 'https://cdn.example.test/concealer-185.jpg',
+          card_highlight: 'Same product family, shade 185.',
+        },
+        {
+          product_id: 'sig_concealer_255',
+          merchant_id: 'external_seed',
+          source: 'external',
+          brand: 'Fenty Beauty',
+          title: "Pro Filt'r Instant Retouch Concealer - 255",
+          category: 'Concealer',
+          product_type: 'Concealer',
+          image_url: 'https://cdn.example.test/concealer-255.jpg',
+          card_highlight: 'Same product family, shade 255.',
+        },
+      ],
+      metadata: {
+        low_confidence: false,
+        retrieval_mix: { internal: 0, external: 2 },
+      },
+    });
+
+    jest.doMock('../src/services/RecommendationEngine', () => ({
+      ...jest.requireActual('../src/services/RecommendationEngine'),
+      recommend: recommendMock,
+      getCacheStats: jest.fn(() => ({})),
+    }));
+
+    const app = require('../src/server');
+
+    const res = await request(app)
+      .post('/agent/shop/v1/invoke')
+      .send({
+        operation: 'find_similar_products',
+        payload: {
+          product_id: 'ext_anchor',
+          merchant_id: 'external_seed',
+          limit: 4,
+        },
+      })
+      .expect(200);
+
+    expect(res.body.products.map((product) => product.product_id)).toEqual(['sig_concealer_185']);
   });
 
   it('resolves sig external-seed bases before mainline similar recall', async () => {
