@@ -390,6 +390,11 @@ describe('agentCenterLlmProbe — buildAutoQueries', () => {
   test('builds buyer-style queries from title alone', () => {
     const qs = buildAutoQueries({ title: 'Vitamin C Tonic 50ml' });
     expect(qs.length).toBeGreaterThanOrEqual(8);
+    expect(qs.slice(0, 3)).toEqual([
+      'where can I buy Vitamin C Tonic 50ml',
+      'shop Vitamin C Tonic 50ml online',
+      'Vitamin C Tonic 50ml for sale',
+    ]);
     // Must include the title (real signal) — this is the whole point.
     expect(qs.every((q) => q.includes('Vitamin C Tonic 50ml'))).toBe(true);
     // Must include direct buying intent.
@@ -400,7 +405,12 @@ describe('agentCenterLlmProbe — buildAutoQueries', () => {
 
   test('adds vendor-anchored variants when vendor is present', () => {
     const qs = buildAutoQueries({ title: 'Vitamin C Tonic', vendor: 'Acme' });
+    expect(qs[0]).toBe('where can I buy Acme Vitamin C Tonic');
+    expect(qs[1]).toBe('shop Acme Vitamin C Tonic online');
+    expect(qs[0]).toContain('Acme');
     expect(qs.some((q) => q.includes('Acme Vitamin C Tonic'))).toBe(true);
+    expect(qs).not.toContain('Acme Vitamin C Tonic');
+    expect(new Set(qs).size).toBe(qs.length);
   });
 
   test('adds category-anchored "best X" when product_type is present', () => {
@@ -689,6 +699,52 @@ describe('agentCenterLlmProbe — buildGeminiProbe with mocked client + groundin
     expect(observedConfig.tools).toEqual([{ googleSearch: {} }]);
     // Strict JSON mode must be OFF — incompatible with grounding.
     expect(observedConfig.responseMimeType).toBeUndefined();
+  });
+
+  test('visibility and merchant attribution prompts require web search and cited sources', async () => {
+    const observedPrompts = {};
+    const fake = async (args) => {
+      const text = args.contents?.[0]?.parts?.[0]?.text || '';
+      if (text.includes('Merchant store URL:')) {
+        observedPrompts.merchant = text;
+      } else {
+        observedPrompts.visibility = text;
+      }
+      return {
+        text: '{}',
+        candidates: [{ content: { parts: [{ text: '{}' }] } }],
+      };
+    };
+    const probe = installFakeClient(fake);
+
+    await probe._internals.buildGeminiProbe({
+      scan_mode: 'open_product_visibility_test',
+      max_runs: 1,
+      context: {
+        queries: ['where can I buy Product X'],
+        product: { title: 'Product X' },
+      },
+    });
+    await probe._internals.buildGeminiProbe({
+      scan_mode: 'merchant_store_attribution_test',
+      max_runs: 1,
+      context: {
+        queries: ['where can I buy Product X'],
+        merchant_pdp_url: 'https://merchant.com/p/123',
+        product: { title: 'Product X', vendor: 'Merchant' },
+      },
+    });
+
+    expect(observedPrompts.visibility).toContain('live web search');
+    expect(observedPrompts.visibility).toContain('cited sources');
+    expect(observedPrompts.visibility).toContain(
+      'Search the web for this query, then Reply JSON: {"product_visible": true|false, "competitors_listed": [...], "evidence_excerpt": "..."}',
+    );
+    expect(observedPrompts.merchant).toContain('live web search');
+    expect(observedPrompts.merchant).toContain('cited sources');
+    expect(observedPrompts.merchant).toContain(
+      'Search the web for this query, then Reply JSON: {"merchant_url_found": true|false, "evidence_excerpt": "..."}',
+    );
   });
 
   test('pivota_pdp_attribution scores from grounding URL match, not LLM self-report', async () => {
@@ -1112,14 +1168,15 @@ describe('agentCenterLlmProbe — ChatGPT and Claude providers', () => {
   }
 
   function installFakeAnthropic(createImpl) {
+    jest.resetModules();
     process.env.ANTHROPIC_API_KEY = 'fake-anthropic-key-for-tests';
     const Anthropic = jest.fn(function Anthropic() {
       return {
         messages: { create: createImpl },
       };
     });
-    jest.doMock('@anthropic-ai/sdk', () => Anthropic, { virtual: true });
-    return { probe: loadModule(), Anthropic };
+    jest.doMock('@anthropic-ai/sdk', () => Anthropic);
+    return { probe: require('../src/internal/agentCenterLlmProbe'), Anthropic };
   }
 
   afterEach(() => {

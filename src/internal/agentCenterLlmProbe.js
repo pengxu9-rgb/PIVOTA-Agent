@@ -362,19 +362,19 @@ function buildPromptForScanMode(input) {
   if (scan_mode === 'open_product_visibility_test') {
     return {
       system:
-        'You are a shopping-research analyst. For each query a user might ask, decide whether the named product is one of the answers. Reply with strict JSON.',
+        'You are a shopping-research analyst with live web search. For each buyer query, search the web and decide whether the named product actually appears as a real buying path in your grounded answer. The canonical signal is the cited sources, not your own assertion — if you retrieved no source, product_visible must be false. Reply with strict JSON.',
       userPerQuery: (q) =>
         `Query: ${JSON.stringify(q)}\nProduct: ${JSON.stringify(product)}\n` +
-        'Reply JSON: {"product_visible": true|false, "competitors_listed": [...], "evidence_excerpt": "..."}',
+        'Search the web for this query, then Reply JSON: {"product_visible": true|false, "competitors_listed": [...], "evidence_excerpt": "..."}',
     };
   }
   if (scan_mode === 'merchant_store_attribution_test') {
     return {
       system:
-        "You are a shopping-research analyst. Given a query, return whether the merchant's own store URL is mentioned as a buying path.",
+        "You are a shopping-research analyst with live web search. Given a buyer query, search the web and return whether the merchant's own store URL is cited as a buying path in your grounded answer. The canonical signal is the cited sources, not your own assertion. Reply with strict JSON.",
       userPerQuery: (q) =>
         `Query: ${JSON.stringify(q)}\nMerchant store URL: ${JSON.stringify(context.merchant_pdp_url || '')}\n` +
-        'Reply JSON: {"merchant_url_found": true|false, "evidence_excerpt": "..."}',
+        'Search the web for this query, then Reply JSON: {"merchant_url_found": true|false, "evidence_excerpt": "..."}',
     };
   }
   if (scan_mode === 'pivota_pdp_attribution_test') {
@@ -665,27 +665,33 @@ function buildAutoQueries(product) {
   const productType = _isNonEmptyString(product.product_type) ? product.product_type.trim() : null;
 
   const queries = [];
+  const add = (q) => {
+    if (!queries.includes(q)) queries.push(q);
+  };
   // Direct buying intent — what an LLM-using shopper actually asks.
-  queries.push(`where can I buy ${title}`);
-  queries.push(`shop ${title} online`);
-  queries.push(`${title} for sale`);
+  if (vendor) {
+    add(`where can I buy ${vendor} ${title}`);
+    add(`shop ${vendor} ${title} online`);
+  }
+  add(`where can I buy ${title}`);
+  add(`shop ${title} online`);
+  add(`${title} for sale`);
   // Reviews / comparison — surfaces when LLMs cite review pages, which
   // often leads them to merchant PDPs.
-  queries.push(`${title} reviews`);
-  queries.push(`is ${title} worth it`);
-  queries.push(`${title} alternatives`);
+  add(`${title} reviews`);
+  add(`is ${title} worth it`);
+  add(`${title} alternatives`);
   // Pricing — common comparison pattern for shoppers.
-  queries.push(`best price for ${title}`);
-  queries.push(`${title} discount`);
+  add(`best price for ${title}`);
+  add(`${title} discount`);
   // Vendor-anchored — improves recall when the vendor brand is searchable
   // even if the exact product title isn't a household name.
   if (vendor) {
-    queries.push(`${vendor} ${title}`);
-    queries.push(`buy ${vendor} ${productType || title} online`);
+    add(`buy ${vendor} ${productType || title} online`);
   }
   // Category-anchored — picks up "best X" listicles the LLM might cite.
   if (productType) {
-    queries.push(`best ${productType}${vendor ? ` from ${vendor}` : ''}`);
+    add(`best ${productType}${vendor ? ` from ${vendor}` : ''}`);
   }
   return queries;
 }
