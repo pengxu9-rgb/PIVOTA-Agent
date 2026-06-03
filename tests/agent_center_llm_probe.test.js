@@ -390,6 +390,11 @@ describe('agentCenterLlmProbe — buildAutoQueries', () => {
   test('builds buyer-style queries from title alone', () => {
     const qs = buildAutoQueries({ title: 'Vitamin C Tonic 50ml' });
     expect(qs.length).toBeGreaterThanOrEqual(8);
+    expect(qs.slice(0, 3)).toEqual([
+      'where can I buy Vitamin C Tonic 50ml',
+      'shop Vitamin C Tonic 50ml online',
+      'Vitamin C Tonic 50ml for sale',
+    ]);
     // Must include the title (real signal) — this is the whole point.
     expect(qs.every((q) => q.includes('Vitamin C Tonic 50ml'))).toBe(true);
     // Must include direct buying intent.
@@ -400,7 +405,12 @@ describe('agentCenterLlmProbe — buildAutoQueries', () => {
 
   test('adds vendor-anchored variants when vendor is present', () => {
     const qs = buildAutoQueries({ title: 'Vitamin C Tonic', vendor: 'Acme' });
+    expect(qs[0]).toBe('where can I buy Acme Vitamin C Tonic');
+    expect(qs[1]).toBe('shop Acme Vitamin C Tonic online');
+    expect(qs[0]).toContain('Acme');
     expect(qs.some((q) => q.includes('Acme Vitamin C Tonic'))).toBe(true);
+    expect(qs).not.toContain('Acme Vitamin C Tonic');
+    expect(new Set(qs).size).toBe(qs.length);
   });
 
   test('adds category-anchored "best X" when product_type is present', () => {
