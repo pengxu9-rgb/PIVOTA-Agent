@@ -95,14 +95,44 @@ describe('expandAnchorRefsWithGroupSiblings', () => {
   });
 
   test('missing product_group_members table → graceful no-op (serves base refs)', async () => {
+    const logger = require('../src/logger');
+    jest.spyOn(logger, 'warn').mockImplementation(() => {});
     const qFn = jest.fn(async () => { const e = new Error('relation does not exist'); e.code = '42P01'; throw e; });
-    const out = await expandAnchorRefsWithGroupSiblings(['product:ext_a'], { queryFn: qFn });
-    expect(out).toEqual(['product:ext_a']);
+    try {
+      const out = await expandAnchorRefsWithGroupSiblings(['product:ext_a'], { queryFn: qFn });
+      expect(out).toEqual(['product:ext_a']);
+      expect(logger.warn).toHaveBeenCalledWith(
+        expect.objectContaining({
+          kind: 'metric',
+          name: 'aurora_bff_relationship_graph_sibling_expansion_failed',
+          error: 'relation does not exist',
+          code: '42P01',
+        }),
+        expect.any(String),
+      );
+    } finally {
+      logger.warn.mockRestore();
+    }
   });
 
-  test('non-recoverable DB error propagates', async () => {
-    const qFn = jest.fn(async () => { const e = new Error('boom'); e.code = '57014'; throw e; });
-    await expect(expandAnchorRefsWithGroupSiblings(['product:ext_a'], { queryFn: qFn })).rejects.toThrow();
+  test('transient DB error degrades to base refs', async () => {
+    const logger = require('../src/logger');
+    jest.spyOn(logger, 'warn').mockImplementation(() => {});
+    const qFn = jest.fn(async () => { const e = new Error('terminating connection due to administrator command'); e.code = '57P01'; throw e; });
+    try {
+      await expect(expandAnchorRefsWithGroupSiblings(['product:ext_a'], { queryFn: qFn })).resolves.toEqual(['product:ext_a']);
+      expect(logger.warn).toHaveBeenCalledWith(
+        expect.objectContaining({
+          kind: 'metric',
+          name: 'aurora_bff_relationship_graph_sibling_expansion_failed',
+          error: 'terminating connection due to administrator command',
+          code: '57P01',
+        }),
+        expect.any(String),
+      );
+    } finally {
+      logger.warn.mockRestore();
+    }
   });
 
   test('scopes anchor group lookup to the external_seed namespace', async () => {
@@ -119,6 +149,80 @@ describe('expandAnchorRefsWithGroupSiblings', () => {
 });
 
 describe('listApprovedRelationshipEdgesForAnchor alias expansion interactions', () => {
+  test('flag-on transient sibling-expansion error still serves base-ref edges', async () => {
+    const logger = require('../src/logger');
+    jest.spyOn(logger, 'info').mockImplementation(() => {});
+    jest.spyOn(logger, 'warn').mockImplementation(() => {});
+    const prevFamilyFlag = process.env.AURORA_BFF_RELATIONSHIP_GRAPH_FAMILY_COLLAPSE_ENABLED;
+    process.env.AURORA_BFF_RELATIONSHIP_GRAPH_FAMILY_COLLAPSE_ENABLED = 'true';
+    const queryFn = jest.fn(async (sql, params) => {
+      if (/product_group_members/.test(sql) && !/catalog_products/.test(sql)) {
+        const err = new Error('terminating connection due to administrator command');
+        err.code = '57P01';
+        throw err;
+      }
+      if (/FROM product_relationship_edges/.test(sql)) {
+        return {
+          rows: [
+            approvedEdgeRow({
+              id: 'prel_base_after_sibling_error',
+              anchor_ref: 'product:ext_a',
+              candidate_product_ref: 'product:ext_candidate',
+              candidate_snapshot: { product_id: 'ext_candidate', brand: 'Value Brand', name: 'Candidate Serum' },
+            }),
+          ],
+        };
+      }
+      if (/catalog_products/.test(sql)) {
+        return {
+          rows: (params[0] || []).map((ref) => {
+            const normalized = String(ref || '').toLowerCase();
+            const bare = normalized.replace(/^product:/, '');
+            return {
+              input_ref: ref,
+              normalized_ref: normalized,
+              source_product_id: bare,
+              title: bare === 'ext_a' ? 'Anchor Serum' : 'Candidate Serum',
+              brand: bare === 'ext_a' ? 'Anchor Brand' : 'Value Brand',
+              category: 'serum',
+              product_type: 'serum',
+              product_payload: {},
+              pivota_signature_id: `sig_${bare}`,
+              product_group_id: `pg_${bare}`,
+              is_primary: true,
+              pdp_lifecycle_stage: 'published',
+            };
+          }),
+        };
+      }
+      return { rows: [] };
+    });
+
+    try {
+      const edges = await listApprovedRelationshipEdgesForAnchor({
+        anchorRefs: ['product:ext_a'],
+        market: 'US',
+        queryFn,
+      });
+      const rawCall = queryFn.mock.calls.find(([sql]) => /FROM product_relationship_edges/.test(sql));
+      expect(rawCall[1][1]).toEqual(['product:ext_a']);
+      expect(edges).toHaveLength(1);
+      expect(edges[0].id).toBe('prel_base_after_sibling_error');
+      expect(logger.warn).toHaveBeenCalledWith(
+        expect.objectContaining({
+          name: 'aurora_bff_relationship_graph_sibling_expansion_failed',
+          code: '57P01',
+        }),
+        expect.any(String),
+      );
+    } finally {
+      if (prevFamilyFlag === undefined) delete process.env.AURORA_BFF_RELATIONSHIP_GRAPH_FAMILY_COLLAPSE_ENABLED;
+      else process.env.AURORA_BFF_RELATIONSHIP_GRAPH_FAMILY_COLLAPSE_ENABLED = prevFamilyFlag;
+      logger.info.mockRestore();
+      logger.warn.mockRestore();
+    }
+  });
+
   test('dedupes equivalent candidate edges returned from sibling anchors', async () => {
     const queryFn = jest.fn(async () => ({
       rows: [

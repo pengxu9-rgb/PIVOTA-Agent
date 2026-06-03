@@ -334,6 +334,14 @@ function coerceRelationshipEdge(input = {}, options = {}) {
     created_at: toIsoOrNull(src.created_at || src.createdAt) || null,
     updated_at: toIsoOrNull(src.updated_at || src.updatedAt) || null,
   };
+  const labelState = normalizeLower(
+    src.label_state ||
+      src.labelState ||
+      src.provenance?.label_state ||
+      src.provenance?.labelState,
+    80,
+  );
+  if (labelState) edge.label_state = labelState;
   if (!edge.id && options.generateId !== false) edge.id = buildEdgeId(edge);
   return edge;
 }
@@ -455,6 +463,7 @@ function mapRowToEdge(row) {
     expires_at: row.expires_at,
     created_at: row.created_at,
     updated_at: row.updated_at,
+    label_state: row.label_state,
   });
 }
 
@@ -1088,7 +1097,7 @@ async function listApprovedRelationshipEdgesForAnchorUncollapsed({
           relation_type, display_label, market, vertical, category_taxonomy, use_case,
           score_total, score_breakdown, price_evidence, source_refs, evidence_grade,
           review_status, why_candidate, tradeoffs, watchouts, provenance,
-          last_verified_at, expires_at, created_at, updated_at
+          last_verified_at, expires_at, created_at, updated_at, label_state
         FROM product_relationship_edges
         WHERE anchor_type = $1
           AND lower(anchor_ref) = ANY($2::text[])
@@ -1256,8 +1265,16 @@ async function expandAnchorRefsWithGroupSiblings(baseRefs = [], { queryFn = quer
     }
   } catch (err) {
     const code = normalizeString(err && err.code, 20);
-    // Missing table / no DB → no expansion (graph still serves base refs).
-    if (code !== 'NO_DATABASE' && code !== '42P01') throw err;
+    logger.warn?.(
+      {
+        kind: 'metric',
+        name: 'aurora_bff_relationship_graph_sibling_expansion_failed',
+        error: err?.message,
+        message: err?.message,
+        code,
+      },
+      'aurora bff: relationship graph sibling expansion failed; serving base refs',
+    );
   }
   return refs;
 }
@@ -1375,6 +1392,7 @@ const LABEL_STATES = new Set([
   'prefilter_rejected',
   'review_ready',
   'human_approved',
+  'ai_approved',
   'human_rejected',
   'needs_evidence',
 ]);
