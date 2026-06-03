@@ -390,6 +390,14 @@ const {
   _internals: productGroundingResolverInternals = {},
 } = require('./services/productGroundingResolver');
 const {
+  resolveRelationshipGraphRefsToCanonicalEntities,
+  _internals: catalogEntityResolutionInternals = {},
+} = require('./services/catalogEntityResolution');
+const normalizeRelationshipGraphRefForResolution =
+  typeof catalogEntityResolutionInternals.normalizeRelationshipGraphRefForResolution === 'function'
+    ? catalogEntityResolutionInternals.normalizeRelationshipGraphRefForResolution
+    : null;
+const {
   upsertMissingCatalogProduct,
   listMissingCatalogProducts,
   toCsv: missingCatalogProductsToCsv,
@@ -24206,6 +24214,102 @@ const RELATIONSHIP_GRAPH_SERVING_ENABLED =
 const SIMILAR_FAMILY_DEDUPE_ENABLED =
   String(process.env.AURORA_BFF_SIMILAR_FAMILY_DEDUPE_ENABLED || '').trim().toLowerCase() === 'true';
 
+function normalizeSimilarFamilyResolutionRef(value) {
+  const ref = firstNonEmptyString(value);
+  if (!ref) return '';
+  if (typeof normalizeRelationshipGraphRefForResolution === 'function') {
+    const normalized = normalizeRelationshipGraphRefForResolution(ref);
+    return firstNonEmptyString(normalized?.normalized_ref);
+  }
+  return String(ref).trim().toLowerCase();
+}
+
+function getSimilarFamilyAnchorResolutionRef(product = {}) {
+  return normalizeSimilarFamilyResolutionRef(
+    firstNonEmptyString(
+      product?.external_product_id,
+      product?.source_product_id,
+      product?.product_id,
+    ),
+  );
+}
+
+function getSimilarFamilyItemResolutionRef(item = {}) {
+  return normalizeSimilarFamilyResolutionRef(
+    firstNonEmptyString(
+      item?.source_product_id,
+      item?.external_product_id,
+      item?.product_id,
+      item?.id,
+    ),
+  );
+}
+
+function collectSimilarFamilyResolutionRefs(anchorProduct = {}, products = []) {
+  const refs = [];
+  const seen = new Set();
+  const push = (value) => {
+    const ref = normalizeSimilarFamilyResolutionRef(value);
+    if (!ref || seen.has(ref)) return;
+    seen.add(ref);
+    refs.push(ref);
+  };
+  push(getSimilarFamilyAnchorResolutionRef(anchorProduct));
+  for (const item of Array.isArray(products) ? products : []) {
+    push(getSimilarFamilyItemResolutionRef(item));
+  }
+  return refs;
+}
+
+function resolvedSimilarFamilyKey(resolved = {}) {
+  const key = String(resolved?.family_key || '').trim();
+  return key.startsWith('family:') ? key : '';
+}
+
+async function resolveSimilarFamilyDedupeContext({
+  anchorProduct = {},
+  items = [],
+  queryFn = query,
+} = {}) {
+  const safeAnchorProduct =
+    anchorProduct && typeof anchorProduct === 'object' && !Array.isArray(anchorProduct)
+      ? anchorProduct
+      : {};
+  const anchorRef = getSimilarFamilyAnchorResolutionRef(safeAnchorProduct);
+  const refs = collectSimilarFamilyResolutionRefs(safeAnchorProduct, items);
+  let resolutionMap = null;
+  if (
+    refs.length &&
+    typeof resolveRelationshipGraphRefsToCanonicalEntities === 'function' &&
+    typeof queryFn === 'function'
+  ) {
+    try {
+      const resolved = await resolveRelationshipGraphRefsToCanonicalEntities(refs, { queryFn });
+      if (resolved && typeof resolved.get === 'function' && resolved.size > 0) {
+        resolutionMap = resolved;
+      }
+    } catch (err) {
+      logger.warn?.(
+        {
+          kind: 'metric',
+          name: 'aurora_bff_similar_family_resolution_failed',
+          error: err?.message || String(err),
+          ref_count: refs.length,
+        },
+        'aurora bff: similar family catalog resolution failed; using title-based dedupe',
+      );
+    }
+  }
+
+  const resolvedAnchor = resolutionMap && anchorRef ? resolutionMap.get(anchorRef) : null;
+  return {
+    anchorFamilyKey:
+      resolvedSimilarFamilyKey(resolvedAnchor) ||
+      familyIdentityKey(shapeItemForFamilyKey(safeAnchorProduct)),
+    resolutionMap,
+  };
+}
+
 async function fetchRelationshipGraphSimilarItems(anchorProduct, { market = 'US', limit = 24 } = {}) {
   if (!RELATIONSHIP_GRAPH_SERVING_ENABLED) return [];
   try {
@@ -24230,33 +24334,40 @@ async function fetchSimilarProductsDeduped(args = {}) {
   const runOnce = async () => {
     const rec = await recommendPdpProducts(args);
     const items = Array.isArray(rec?.items) ? rec.items : [];
-    const anchorFamilyKey = SIMILAR_FAMILY_DEDUPE_ENABLED
-      ? familyIdentityKey(shapeItemForFamilyKey(args?.pdp_product || {}))
-      : '';
-    let mergedItems = SIMILAR_FAMILY_DEDUPE_ENABLED
-      ? dedupeSimilarCandidatesByFamily(items, { anchorFamilyKey })
-      : items;
+    let curated = [];
     let relationshipGraphMeta;
     if (RELATIONSHIP_GRAPH_SERVING_ENABLED) {
-      const curated = await fetchRelationshipGraphSimilarItems(args?.pdp_product, {
+      curated = await fetchRelationshipGraphSimilarItems(args?.pdp_product, {
         market: args?.pdp_product?.market || 'US',
         limit: Number(args?.k) || 24,
       });
-      if (curated.length) {
-        // Curated (human-approved) edges rank ahead of dynamic recall; dedupe
-        // keeps the first occurrence, so curated wins on collisions.
-        mergedItems = SIMILAR_FAMILY_DEDUPE_ENABLED
-          ? dedupeSimilarCandidatesByFamily([...curated, ...items], { anchorFamilyKey })
-          : dedupeSimilarCandidatesByMerchantProductId([...curated, ...items]);
-        const k = Number(args?.k);
-        if (Number.isFinite(k) && k > 0) mergedItems = mergedItems.slice(0, k);
-        relationshipGraphMeta = {
-          relationship_graph_curated_count: curated.length,
-          relationship_graph_served_count: mergedItems.filter(
-            (item) => item && item.source === 'relationship_graph',
-          ).length,
-        };
-      }
+    }
+
+    const combinedItems = curated.length ? [...curated, ...items] : items;
+    const familyDedupeContext = SIMILAR_FAMILY_DEDUPE_ENABLED
+      ? await resolveSimilarFamilyDedupeContext({
+          anchorProduct: args?.pdp_product || {},
+          items: combinedItems,
+          queryFn: query,
+        })
+      : { anchorFamilyKey: '', resolutionMap: null };
+    let mergedItems = SIMILAR_FAMILY_DEDUPE_ENABLED
+      ? dedupeSimilarCandidatesByFamily(combinedItems, familyDedupeContext)
+      : curated.length
+        ? dedupeSimilarCandidatesByMerchantProductId(combinedItems)
+        : items;
+
+    if (curated.length) {
+      // Curated (human-approved) edges rank ahead of dynamic recall; dedupe
+      // keeps the first occurrence, so curated wins on collisions.
+      const k = Number(args?.k);
+      if (Number.isFinite(k) && k > 0) mergedItems = mergedItems.slice(0, k);
+      relationshipGraphMeta = {
+        relationship_graph_curated_count: curated.length,
+        relationship_graph_served_count: mergedItems.filter(
+          (item) => item && item.source === 'relationship_graph',
+        ).length,
+      };
     }
     return {
       status: mergedItems.length > 0 ? 'success' : rec?.status || 'empty',
@@ -25978,13 +26089,20 @@ function resolveSimilarFamilyBucketKey(familyBuckets, familyKey) {
   return familyKey;
 }
 
-function dedupeSimilarCandidatesByFamily(products, { anchorFamilyKey = '' } = {}) {
+function dedupeSimilarCandidatesByFamily(products, { anchorFamilyKey = '', resolutionMap = null } = {}) {
   const out = [];
   const seen = new Set();
   const familyBuckets = [];
   for (const item of Array.isArray(products) ? products : []) {
     if (!item || typeof item !== 'object' || Array.isArray(item)) continue;
-    const familyKey = familyIdentityKey(shapeItemForFamilyKey(item));
+    const resolutionRef = getSimilarFamilyItemResolutionRef(item);
+    const resolved =
+      resolutionMap && resolutionRef && typeof resolutionMap.get === 'function'
+        ? resolutionMap.get(resolutionRef)
+        : null;
+    const resolvedKey = resolvedSimilarFamilyKey(resolved);
+    const titleKey = familyIdentityKey(shapeItemForFamilyKey(item));
+    const familyKey = resolvedKey || titleKey;
     const isDerivedFamily = String(familyKey || '').startsWith('family:');
     let key = '';
 
@@ -25992,8 +26110,6 @@ function dedupeSimilarCandidatesByFamily(products, { anchorFamilyKey = '' } = {}
       if (anchorFamilyKey && familyIdentityKeysCompatible(familyKey, anchorFamilyKey)) continue;
       key = `family::${resolveSimilarFamilyBucketKey(familyBuckets, familyKey)}`;
     } else {
-      // Phase 1 intentionally stays title-based. Recall rows do not carry
-      // variant_title parity yet; catalog_products resolution belongs in Phase 2.
       const merchantId = firstNonEmptyString(item.merchant_id, item.merchantId) || EXTERNAL_SEED_MERCHANT_ID;
       const productId = firstNonEmptyString(
         item.product_id,
@@ -45611,6 +45727,10 @@ module.exports._debug = {
   dedupeSimilarCandidatesByMerchantProductId,
   dedupeSimilarCandidatesByFamily,
   shapeItemForFamilyKey,
+  normalizeSimilarFamilyResolutionRef,
+  getSimilarFamilyItemResolutionRef,
+  collectSimilarFamilyResolutionRefs,
+  resolveSimilarFamilyDedupeContext,
   isSimilarFamilyDedupeEnabled: () => SIMILAR_FAMILY_DEDUPE_ENABLED,
   isBundleOrSetPdpForComponentScopedSimilar,
   collectPdpComponentExternalSeedIds,
