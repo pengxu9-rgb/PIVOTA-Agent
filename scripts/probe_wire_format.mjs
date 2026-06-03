@@ -20,6 +20,9 @@
  * - PROBE_QUERY       Optional. Product search query. Defaults to a generic cheap query.
  * - PROBE_CURRENCY    Optional. Payment currency. Defaults to USD.
  * - PROBE_ALLOW_CHARGE Required as "1" when using --charge.
+ * - PROBE_PAYMENT_HANDLER_TYPE Optional PSP selector for --charge, e.g. stripe or adyen.
+ * - PROBE_PAYMENT_HANDLER_ID   Optional PSP handler id for --charge.
+ * - PROBE_REPEAT_SUBMIT Optional. Set "1" with --charge to repeat the same submit body once (TEST MODE ONLY).
  *
  * Example invocations:
  * - Read-only:
@@ -118,6 +121,9 @@ function loadConfig() {
     currency: (optionalEnv("PROBE_CURRENCY") || DEFAULT_CURRENCY).toUpperCase(),
     allowCharge: process.env.PROBE_ALLOW_CHARGE === "1",
     chargeConfirm: optionalEnv("PROBE_CHARGE_CONFIRM"),
+    paymentHandlerType: optionalEnv("PROBE_PAYMENT_HANDLER_TYPE"),
+    paymentHandlerId: optionalEnv("PROBE_PAYMENT_HANDLER_ID"),
+    repeatSubmit: process.env.PROBE_REPEAT_SUBMIT === "1",
   };
 }
 
@@ -242,16 +248,17 @@ function buildCreateOrderBody(selection, quoteId, majorPrice, variantId) {
   });
 }
 
-function buildSubmitPaymentBody(orderId, quoteId, expectedMinor, currency) {
-  return requestBody("submit_payment", {
-    payment: {
-      order_id: orderId,
-      quote_id: quoteId,
-      expected_amount: expectedMinor,
-      currency,
-      payment_method_hint: "card",
-    },
-  });
+function buildSubmitPaymentBody(orderId, quoteId, expectedMinor, currency, handler = {}) {
+  const payment = {
+    order_id: orderId,
+    quote_id: quoteId,
+    expected_amount: expectedMinor,
+    currency,
+    payment_method_hint: "card",
+  };
+  if (handler.type) payment.payment_handler_type = handler.type;
+  if (handler.id) payment.payment_handler_id = handler.id;
+  return requestBody("submit_payment", { payment });
 }
 
 async function invoke(operationBody, config) {
@@ -544,16 +551,25 @@ function paymentInfo(response) {
   return {
     status: getFirst(response, ["status"]) || getFirst(payment, ["status"]),
     paymentStatus: getFirst(response, ["payment_status", "paymentStatus"]) || getFirst(payment, ["payment_status", "paymentStatus", "status"]),
+    psp: getFirst(response, ["psp", "provider", "payment_provider", "paymentProvider", "routed_psp", "routedPsp"]) || getFirst(payment, ["psp", "provider", "payment_provider", "paymentProvider", "routed_psp", "routedPsp", "payment_handler_type", "paymentHandlerType"]),
     confirmationOwner: getFirst(response, ["confirmation_owner", "confirmationOwner"]) || getFirst(payment, ["confirmation_owner", "confirmationOwner"]),
     requiresClientConfirmation: getFirst(response, ["requires_client_confirmation", "requiresClientConfirmation"]) ?? getFirst(payment, ["requires_client_confirmation", "requiresClientConfirmation"]),
+    paymentId: findByKey(response, ["payment_id", "paymentId"]),
     paymentIntentId: findByKey(response, ["payment_intent_id", "paymentIntentId", "id"], (key, value, path) => {
       return /payment[_-]?intent/i.test(path.join(".")) || /^pi_(test|live)?_?/.test(String(value));
     }),
     checkoutSessionId: findByKey(response, ["checkout_session_id", "checkoutSessionId", "id"], (key, value, path) => {
       return /checkout[_-]?session/i.test(path.join(".")) || /^cs_(test|live)_/.test(String(value));
     }),
+    pspReference: findByKey(response, ["pspReference", "psp_reference", "psp_ref", "pspRef"], (key, value, path) => {
+      return /psp/i.test(path.join(".")) || /psp/i.test(key);
+    }),
     echoedAmount: findPaymentAmount(response),
   };
+}
+
+function paymentIdentity(info) {
+  return info?.paymentIntentId || info?.checkoutSessionId || info?.pspReference || info?.paymentId || null;
 }
 
 function normalizeCurrency(value) {
@@ -842,7 +858,7 @@ function buildDryRunBodies(config, flags) {
   }
 
   if (flags.charge) {
-    bodies.push(buildSubmitPaymentBody(orderId, quoteId, expectedMinor, config.currency));
+    bodies.push(buildSubmitPaymentBody(orderId, quoteId, expectedMinor, config.currency, { type: config.paymentHandlerType, id: config.paymentHandlerId }));
   }
 
   return bodies;
@@ -894,7 +910,9 @@ function printResults(results) {
   console.log(`Step3  amounts.total      = ${results.step3.not_attempted ? "not attempted" : `${describeWithType(results.step3.amounts_total)}   (${results.step3.amounts_total_classification})`}`);
   console.log(`Step3  amounts.currency   = ${results.step3.not_attempted ? "not attempted" : `${describeValue(results.step3.amounts_currency)}   (${currencyPresence(results.step3.amounts_currency)})`}`);
   console.log(`Step4  payment_status     = ${results.step4.not_attempted ? "not attempted" : describeValue(results.step4.payment_status)}   confirmation_owner = ${results.step4.not_attempted ? "not attempted" : describeValue(results.step4.confirmation_owner)}  requires_client_confirmation = ${results.step4.not_attempted ? "not attempted" : describeValue(results.step4.requires_client_confirmation)}`);
+  console.log(`Step4  psp/provider       = ${results.step4.not_attempted ? "not attempted" : describeValue(results.step4.psp)}   payment_id = ${results.step4.not_attempted ? "not attempted" : describeValue(results.step4.payment_id)}   pspReference = ${results.step4.not_attempted ? "not attempted" : describeValue(results.step4.psp_reference)}`);
   console.log(`Step4  payment_intent_id  = ${results.step4.not_attempted ? "not attempted" : describeValue(results.step4.payment_intent_id)}   checkout_session_id = ${results.step4.not_attempted ? "not attempted" : describeValue(results.step4.checkout_session_id)}`);
+  console.log(`Step4  repeat_submit      = ${results.step4.not_attempted ? "not attempted" : describeValue(results.step4.repeat_submit)}`);
   console.log(`Step4  the wire field carrying the amount to the PSP, and its unit = ${results.step4.not_attempted ? "not attempted" : results.step4.payment_wire_amount_summary}`);
   console.log(`Step5  Stripe charged     = ${results.step5.stripe_charged}   currency = ${results.step5.currency}   (== intended amount ? ${results.step5.equals_intended})`);
   console.log(`Refunded/voided?           = ${results.step5.refunded_or_voided}`);
@@ -1198,7 +1216,7 @@ async function main() {
         await confirmCharge(config);
 
         console.log("Step4 submit_payment: sending charge request.");
-        const submitBody = buildSubmitPaymentBody(orderId, qInfo.quoteId, expectedMinor, orderCurrency || config.currency);
+        const submitBody = buildSubmitPaymentBody(orderId, qInfo.quoteId, expectedMinor, orderCurrency || config.currency, { type: config.paymentHandlerType, id: config.paymentHandlerId });
         const paymentResponse = await invoke(submitBody, config);
         responses.step4 = paymentResponse;
 
@@ -1212,6 +1230,9 @@ async function main() {
         results.step4 = {
           status: pInfo.status,
           payment_status: pInfo.paymentStatus,
+          psp: pInfo.psp,
+          payment_id: pInfo.paymentId,
+          psp_reference: pInfo.pspReference,
           confirmation_owner: pInfo.confirmationOwner,
           requires_client_confirmation: pInfo.requiresClientConfirmation,
           payment_intent_id: pInfo.paymentIntentId,
@@ -1221,8 +1242,31 @@ async function main() {
           payment_wire_amount_type: jsType(wireValue),
           payment_wire_amount_classification: wireClass,
           payment_wire_amount_summary: wireSummary,
+          repeat_submit: { attempted: false },
           stripe_dashboard_instruction: "Verify the returned payment_intent_id/checkout_session_id amount in the Stripe dashboard; this script does not call Stripe.",
         };
+
+        if (config.repeatSubmit) {
+          console.log("Step4 repeat_submit: re-sending the same submit_payment body once for B3 idempotency observation.");
+          const repeatResponse = await invoke(submitBody, config);
+          responses.step4_repeat = repeatResponse;
+          const repeatInfo = paymentInfo(repeatResponse);
+          const firstIdentity = paymentIdentity(pInfo);
+          const repeatIdentity = paymentIdentity(repeatInfo);
+          results.step4.repeat_submit = {
+            attempted: true,
+            status: repeatInfo.status,
+            payment_status: repeatInfo.paymentStatus,
+            psp: repeatInfo.psp,
+            payment_id: repeatInfo.paymentId,
+            payment_intent_id: repeatInfo.paymentIntentId,
+            checkout_session_id: repeatInfo.checkoutSessionId,
+            psp_reference: repeatInfo.pspReference,
+            first_identity: firstIdentity,
+            repeat_identity: repeatIdentity,
+            same_payment_identity: Boolean(firstIdentity && repeatIdentity && firstIdentity === repeatIdentity),
+          };
+        }
 
         console.log("");
         console.log("Stripe dashboard verification required:");

@@ -52,6 +52,18 @@ on:
         description: "Auth header NAME (not a secret). Default Authorization (Bearer); set e.g. X-API-Key if needed."
         type: string
         default: "Authorization"
+      payment_handler_type:
+        description: "Optional PSP selector forwarded as PROBE_PAYMENT_HANDLER_TYPE, e.g. stripe or adyen"
+        type: string
+        default: ""
+      payment_handler_id:
+        description: "Optional PSP handler id forwarded as PROBE_PAYMENT_HANDLER_ID"
+        type: string
+        default: ""
+      repeat_submit:
+        description: "B3: after a Phase 3 submit_payment, repeat the same submit body once to observe PSP idempotency. TEST MODE ONLY."
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -93,6 +105,9 @@ jobs:
           PROBE_MERCHANT_ID: ${{ inputs.merchant_id }}
           PROBE_QUERY: ${{ inputs.query }}
           PROBE_CURRENCY: ${{ inputs.currency }}
+          PROBE_PAYMENT_HANDLER_TYPE: ${{ inputs.payment_handler_type }}
+          PROBE_PAYMENT_HANDLER_ID: ${{ inputs.payment_handler_id }}
+          PROBE_REPEAT_SUBMIT: ${{ inputs.repeat_submit && '1' || '' }}
           # Charge is OFF unless the `charge` input is explicitly true (and the backend is in test mode).
           PROBE_ALLOW_CHARGE: ${{ inputs.charge && '1' || '' }}
           PROBE_CHARGE_CONFIRM: ${{ inputs.charge && 'yes' || '' }}
