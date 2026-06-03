@@ -577,6 +577,93 @@ describe('product relationship graph store helpers', () => {
     }
   });
 
+  test('flag-on served collapse prefers human_approved over ai_approved in the same family', async () => {
+    const logger = require('../src/logger');
+    jest.spyOn(logger, 'info').mockImplementation(() => {});
+    const prevFamilyFlag = process.env.AURORA_BFF_RELATIONSHIP_GRAPH_FAMILY_COLLAPSE_ENABLED;
+    process.env.AURORA_BFF_RELATIONSHIP_GRAPH_FAMILY_COLLAPSE_ENABLED = 'true';
+    const rawRows = [
+      {
+        ...approvedDupe({
+          id: 'prel_served_ai',
+          anchor_ref: 'product:label_state_anchor',
+          anchor_snapshot: { product_id: 'label_state_anchor', brand: 'Anchor Brand', name: 'Anchor Serum' },
+          candidate_product_ref: 'product:label_state_candidate_ai',
+          candidate_snapshot: { product_id: 'label_state_candidate_ai', brand: 'Value Brand', name: 'Value Serum - Shade A' },
+          label_state: 'ai_approved',
+          score_total: 0.99,
+          evidence_grade: 'A',
+          updated_at: new Date(NOW + 5_000).toISOString(),
+        }),
+        vertical: 'beauty',
+        created_at: NOW_ISO,
+      },
+      {
+        ...approvedDupe({
+          id: 'prel_served_human',
+          anchor_ref: 'product:label_state_anchor',
+          anchor_snapshot: { product_id: 'label_state_anchor', brand: 'Anchor Brand', name: 'Anchor Serum' },
+          candidate_product_ref: 'product:label_state_candidate_human',
+          candidate_snapshot: { product_id: 'label_state_candidate_human', brand: 'Value Brand', name: 'Value Serum - Shade B' },
+          label_state: 'human_approved',
+          score_total: 0.7,
+          evidence_grade: 'B',
+          updated_at: new Date(NOW + 1_000).toISOString(),
+        }),
+        vertical: 'beauty',
+        created_at: NOW_ISO,
+      },
+    ];
+    const queryFn = jest.fn(async (sql, params) => {
+      if (/FROM product_relationship_edges/.test(sql)) return { rows: rawRows };
+      if (/catalog_products/.test(sql)) {
+        return {
+          rows: (params[0] || []).map((ref) => {
+            const normalized = String(ref || '').toLowerCase();
+            const bare = normalized.replace(/^product:/, '');
+            const isAnchor = bare === 'label_state_anchor';
+            return {
+              input_ref: ref,
+              normalized_ref: normalized,
+              source_product_id: bare,
+              title: isAnchor ? 'Anchor Serum' : 'Value Serum',
+              brand: isAnchor ? 'Anchor Brand' : 'Value Brand',
+              category: 'serum',
+              product_type: 'serum',
+              product_payload: {},
+              product_family_id: isAnchor ? 'pf_label_state_anchor' : 'pf_label_state_candidate',
+              pivota_signature_id: `sig_${bare}`,
+              product_group_id: isAnchor ? 'pg_label_state_anchor' : 'pg_label_state_candidate',
+              is_primary: bare === 'label_state_candidate_human',
+              pdp_lifecycle_stage: 'published',
+            };
+          }),
+        };
+      }
+      return { rows: [] };
+    });
+
+    try {
+      const edges = await listApprovedRelationshipEdgesForAnchor({
+        anchorRefs: ['product:label_state_anchor'],
+        market: 'US',
+        limit: 10,
+        queryFn,
+      });
+      expect(edges).toHaveLength(1);
+      expect(edges[0].id).toBe('prel_served_human');
+      expect(edges[0].label_state).toBe('human_approved');
+      expect(edges[0].provenance.relationship_family_collapse).toMatchObject({
+        collapsed_edge_count: 2,
+        representative_edge_id: 'prel_served_human',
+      });
+    } finally {
+      if (prevFamilyFlag === undefined) delete process.env.AURORA_BFF_RELATIONSHIP_GRAPH_FAMILY_COLLAPSE_ENABLED;
+      else process.env.AURORA_BFF_RELATIONSHIP_GRAPH_FAMILY_COLLAPSE_ENABLED = prevFamilyFlag;
+      logger.info.mockRestore();
+    }
+  });
+
   test('family collapse drops same-family product self-edges', () => {
     const edge = approvedDupe({
       id: 'prel_self',
