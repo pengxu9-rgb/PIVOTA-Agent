@@ -37,6 +37,8 @@ test('reconciles a genuine drift: own row servable + different content_key', asy
   assert.equal(res.from_content_key, 'ck_drifted');
   assert.equal(res.to_content_key, 'ck_own');
   assert.deepEqual(res.refPatch, {
+    merchant_id: 'external_seed',
+    product_id: 'ext_db970',
     content_key: 'ck_own',
     contentKey: 'ck_own',
     product_key: 'pk_own',

@@ -69,7 +69,13 @@ async function reconcileToOwnServingRow({
 
   return {
     eligibility: { ...ownRow, eligibility_override_reason: 'identity_reconciled_to_own_row' },
+    // Re-anchor the FULL identity back to the originally-requested product: the
+    // drift remaps it to a different (merchant) identity, so we must restore
+    // merchant_id/product_id (not just content_key) or downstream content would
+    // build for the drifted product.
     refPatch: {
+      merchant_id: merchantId,
+      product_id: productId,
       content_key: ownRow.content_key,
       contentKey: ownRow.content_key,
       ...(ownRow.product_key ? { product_key: ownRow.product_key } : {}),

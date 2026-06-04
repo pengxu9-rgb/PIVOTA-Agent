@@ -36119,8 +36119,10 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
               try {
                 const reconciledIdentity = await reconcileToOwnServingRow({
                   servingEligibility,
-                  merchantId: canonicalProductRef?.merchant_id,
-                  productId: canonicalProductRef?.product_id,
+                  // Use the ORIGINALLY-REQUESTED identity, not canonicalProductRef
+                  // (which the drift has already remapped to a different product).
+                  merchantId: requestedMerchantIdForDiagnostics,
+                  productId: requestedProductIdForDiagnostics,
                   fetchOwnRowEligibility: ({ merchantId, productId: ownProductId }) =>
                     fetchPdpServingEligibilityFromDb({ merchantId, productId: ownProductId }),
                 });
