@@ -2,6 +2,9 @@ const {
   CURATED_NEED_NODES,
   buildProductRelationshipGraphDryRun,
 } = require('../src/auroraBff/productRelationshipGraphBuilder');
+const {
+  buildCandidatesByAnchorFromSources,
+} = require('../src/auroraBff/productRelationshipGraphSources');
 
 const NOW = '2026-05-25T00:00:00.000Z';
 
@@ -735,5 +738,53 @@ describe('product relationship graph dry-run builder', () => {
       'product:body_barrier',
       'product:peptide_serum_no_price',
     ]);
+  });
+});
+
+describe('product relationship graph source candidate fan-out', () => {
+  function familyAnchor(productId) {
+    return {
+      product_id: productId,
+      brand: 'Anchor Brand',
+      name: 'Hydrating Barrier Serum',
+      category: 'serum',
+      category_taxonomy: ['skincare', 'serum'],
+      product_family_id: 'fam_anchor_serum',
+      price: 42,
+    };
+  }
+
+  test('can fan representative family candidates out to sibling anchors behind a flag', () => {
+    const anchors = [familyAnchor('anchor_serum_30ml'), familyAnchor('anchor_serum_50ml')];
+    const products = [
+      ...anchors,
+      {
+        product_id: 'value_serum',
+        brand: 'Value Brand',
+        name: 'Hydrating Barrier Serum Alternative',
+        category: 'serum',
+        category_taxonomy: ['skincare', 'serum'],
+        price: 18,
+        source_refs: [{ type: 'product_intel_kb', authoritative: true }],
+      },
+    ];
+
+    const defaults = buildCandidatesByAnchorFromSources({
+      anchors,
+      products,
+      includeTransitiveRecall: false,
+    });
+    const withFanout = buildCandidatesByAnchorFromSources({
+      anchors,
+      products,
+      includeTransitiveRecall: false,
+      fanOutFamilyCandidatesToSiblingAnchors: true,
+    });
+
+    const defaultCoveredAnchors = ['product:anchor_serum_30ml', 'product:anchor_serum_50ml']
+      .filter((ref) => Array.isArray(defaults[ref]) && defaults[ref].length > 0);
+    expect(defaultCoveredAnchors).toHaveLength(1);
+    expect(withFanout['product:anchor_serum_30ml'].map((item) => item.product_id)).toContain('value_serum');
+    expect(withFanout['product:anchor_serum_50ml'].map((item) => item.product_id)).toContain('value_serum');
   });
 });

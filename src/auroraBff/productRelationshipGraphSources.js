@@ -1566,6 +1566,38 @@ function dedupeNormalizedProducts(products = []) {
   return Array.from(byKey.values()).sort((a, b) => normalizeLower(a.product_ref).localeCompare(normalizeLower(b.product_ref)));
 }
 
+function fanOutCandidatesToSiblingAnchors(candidatesByAnchor, allAnchors = [], representativeAnchors = []) {
+  const out = { ...(isPlainObject(candidatesByAnchor) ? candidatesByAnchor : {}) };
+  const representatives = (Array.isArray(representativeAnchors) ? representativeAnchors : [])
+    .map((anchor) => normalizeProductCandidateSnapshot(anchor))
+    .filter(Boolean);
+  const anchors = (Array.isArray(allAnchors) ? allAnchors : [])
+    .map((anchor) => normalizeProductCandidateSnapshot(anchor))
+    .filter(Boolean);
+  if (!anchors.length || !representatives.length) return out;
+
+  const repEntries = representatives
+    .map((rep) => ({
+      ref: normalizeProductRef(rep.product_ref),
+      familyKey: familyIdentityKey(rep),
+      candidates: out[normalizeProductRef(rep.product_ref)] || out[normalizeLower(normalizeProductRef(rep.product_ref))] || [],
+    }))
+    .filter((entry) => entry.ref && entry.familyKey && Array.isArray(entry.candidates) && entry.candidates.length > 0);
+
+  for (const anchor of anchors) {
+    const anchorRef = normalizeProductRef(anchor.product_ref);
+    if (!anchorRef || Array.isArray(out[anchorRef])) continue;
+    const anchorFamilyKey = familyIdentityKey(anchor);
+    if (!anchorFamilyKey) continue;
+    const rep = repEntries.find((entry) =>
+      entry.ref !== anchorRef && familyIdentityKeysCompatible(anchorFamilyKey, entry.familyKey)
+    );
+    if (!rep) continue;
+    out[anchorRef] = rep.candidates;
+  }
+  return out;
+}
+
 function buildCandidatesByAnchorFromSources({
   anchors = [],
   products = [],
@@ -1576,6 +1608,7 @@ function buildCandidatesByAnchorFromSources({
   maxBridgePerAnchor = 8,
   maxBridgeCandidates = 8,
   maxTransitivePerAnchor = 8,
+  fanOutFamilyCandidatesToSiblingAnchors = false,
 } = {}) {
   const normalizedAnchors = (Array.isArray(anchors) ? anchors : [])
     .map((anchor) => normalizeProductCandidateSnapshot(anchor))
@@ -1663,10 +1696,14 @@ function buildCandidatesByAnchorFromSources({
       .slice(0, Math.max(1, Number(maxPerAnchor) || 24));
   }
 
-  if (!includeTransitiveRecall) return out;
+  const withSiblingFanout = fanOutFamilyCandidatesToSiblingAnchors
+    ? fanOutCandidatesToSiblingAnchors(out, normalizedAnchors, familyDedupedAnchors)
+    : out;
+
+  if (!includeTransitiveRecall) return withSiblingFanout;
   return augmentCandidatesWithTransitiveRecall({
     anchors: familyDedupedAnchors,
-    candidatesByAnchor: out,
+    candidatesByAnchor: withSiblingFanout,
     maxPerAnchor,
     maxBridgePerAnchor,
     maxBridgeCandidates,
@@ -1926,6 +1963,7 @@ module.exports = {
     rememberFamilyDedupeKey,
     resolveFamilyDedupeKey,
     buildTransitiveRecallCandidate,
+    fanOutCandidatesToSiblingAnchors,
     inferBrandFromOfficialUrl,
     mergeSourceRefs,
     overlapScore,
