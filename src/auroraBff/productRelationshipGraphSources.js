@@ -14,6 +14,7 @@ const SOURCE_MISSING_CODES = new Set([
 
 const SOURCE_PRIORITY = {
   relationship_graph_transitive_recall: 0.09,
+  approved_live_external_seed: 0.09,
   aurora_dupe_kb: 0.18,
   ingredient_kb: 0.12,
   product_intel_kb: 0.11,
@@ -642,6 +643,103 @@ function normalizeExternalProductSeedRow(row = {}) {
   });
 }
 
+function normalizeApprovedLiveExternalSeedRow(row = {}) {
+  const seedData = firstObject(row.seed_data, row.seedData);
+  const catalogPayload = firstObject(row.catalog_product_payload, row.product_payload, row.productPayload);
+  const productId = pickFirstString(row.external_product_id, row.externalProductId, row.id);
+  const brand = pickFirstString(row.catalog_brand, row.brand, seedData.brand, catalogPayload.brand);
+  const title = pickFirstString(row.catalog_title, row.title, seedData.title, catalogPayload.title, catalogPayload.name);
+  const category = pickFirstString(
+    row.catalog_category,
+    row.catalog_product_type,
+    row.catalog_category_path,
+    row.category,
+    seedData.category,
+    seedData.product_type,
+    catalogPayload.category,
+    catalogPayload.product_type,
+  );
+  const canonicalUrl = pickFirstString(
+    row.catalog_canonical_url,
+    row.canonical_url,
+    row.destination_url,
+    seedData.canonical_url,
+    catalogPayload.canonical_url,
+    catalogPayload.url,
+  );
+  const description = pickFirstString(
+    row.catalog_description,
+    row.description,
+    seedData.pdp_description_raw,
+    seedData.description,
+    catalogPayload.description,
+    catalogPayload.body_html,
+  );
+  const productFamilyId = pickFirstString(
+    row.product_family_id,
+    row.sellable_item_group_id,
+    row.product_line_id,
+    row.review_family_id,
+    catalogPayload.product_family_id,
+    catalogPayload.product_line_id,
+  );
+
+  return normalizeProductCandidateSnapshot(
+    {
+      ...row,
+      product_ref: productId ? `product:${productId}` : row.product_ref,
+      external_product_id: productId,
+      title,
+      brand,
+      category,
+      canonical_url: canonicalUrl,
+      description,
+      product_family_id: productFamilyId,
+      seed_data: {
+        ...seedData,
+        product_id: productId || seedData.product_id,
+        title: title || seedData.title,
+        brand: brand || seedData.brand,
+        category: category || seedData.category,
+        canonical_url: canonicalUrl || seedData.canonical_url,
+        description: description || seedData.description,
+        product_family_id: productFamilyId || seedData.product_family_id,
+      },
+      product_data: {
+        ...catalogPayload,
+        product_id: productId || catalogPayload.product_id,
+        title: title || catalogPayload.title,
+        brand: brand || catalogPayload.brand,
+        category: category || catalogPayload.category,
+        product_type: pickFirstString(row.catalog_product_type, catalogPayload.product_type),
+        category_taxonomy: normalizeCategoryTaxonomy(
+          row.catalog_category_path,
+          row.catalog_category,
+          row.catalog_product_type,
+          catalogPayload.category_taxonomy,
+          catalogPayload.category_path,
+        ),
+        canonical_url: canonicalUrl || catalogPayload.canonical_url,
+        description: description || catalogPayload.description,
+        product_family_id: productFamilyId || catalogPayload.product_family_id,
+      },
+      source_refs: mergeSourceRefs(
+        row.source_refs,
+        { type: 'approved_live_external_seed', name: productId || row.id || 'external_product_seeds', authoritative: true, url: canonicalUrl },
+        { type: 'external_product_seed', name: productId || row.id || 'external_product_seeds', authoritative: true, url: row.canonical_url || row.destination_url },
+        row.catalog_product_key ? { type: 'catalog_products', name: row.catalog_product_key, authoritative: true, url: canonicalUrl } : null,
+      ),
+    },
+    {
+      sourceType: 'approved_live_external_seed',
+      sourceName: productId || row.id || 'external_product_seeds',
+      observedAt: row.catalog_updated_at || row.updated_at || row.created_at,
+      authoritative: true,
+      evidenceGrade: row.evidence_grade || 'B',
+    },
+  );
+}
+
 function normalizeProductIntelKbRow(row = {}) {
   const analysis = firstObject(row.analysis);
   const bundle = extractProductIntelBundle(analysis);
@@ -821,6 +919,84 @@ async function loadExternalProductSeedCandidates({ queryFn, limit = DEFAULT_SOUR
     [normalizeLimit(limit), normalizedMarket, BEAUTY_TEXT_PATTERNS],
   );
   return rows.map(normalizeExternalProductSeedRow).filter(Boolean);
+}
+
+async function loadApprovedLiveExternalSeedAnchors({
+  queryFn,
+  limit = DEFAULT_SOURCE_LIMIT,
+  market = DEFAULT_MARKET,
+  missingCandidateLabelsOnly = false,
+} = {}) {
+  const normalizedMarket = normalizeMarket(market);
+  const canFilterMissingLabels =
+    missingCandidateLabelsOnly === true &&
+    (await tableExists(queryFn, 'public.relationship_candidate_labels'));
+  const missingLabelsCte = canFilterMissingLabels
+    ? `
+      WITH existing_labels AS MATERIALIZED (
+        SELECT DISTINCT lower(anchor_ref) AS anchor_ref
+        FROM relationship_candidate_labels rcl
+        WHERE rcl.anchor_type = 'product'
+          AND upper(COALESCE(rcl.market, $2)) = $2
+      )
+    `
+    : '';
+  const missingLabelsJoin = canFilterMissingLabels
+    ? `
+      LEFT JOIN existing_labels
+        ON existing_labels.anchor_ref = lower('product:' || eps.external_product_id)
+      `
+    : '';
+  const missingLabelsPredicate = canFilterMissingLabels
+    ? 'AND existing_labels.anchor_ref IS NULL'
+    : '';
+  const rows = await guardedRows(
+    queryFn,
+    `
+      ${missingLabelsCte}
+      SELECT
+        eps.id,
+        eps.external_product_id,
+        eps.attached_product_key,
+        eps.title,
+        eps.price_amount,
+        eps.price_currency,
+        eps.market,
+        eps.canonical_url,
+        eps.destination_url,
+        eps.seed_data,
+        eps.updated_at,
+        eps.created_at,
+        cp.product_key AS catalog_product_key,
+        cp.title AS catalog_title,
+        cp.brand AS catalog_brand,
+        cp.category AS catalog_category,
+        cp.product_type AS catalog_product_type,
+        cp.category_path AS catalog_category_path,
+        cp.description AS catalog_description,
+        cp.canonical_url AS catalog_canonical_url,
+        cp.image_url AS catalog_image_url,
+        cp.pivota_signature_id,
+        cp.updated_at AS catalog_updated_at
+      FROM external_product_seeds eps
+      JOIN catalog_products cp
+        ON cp.product_key = eps.attached_product_key
+       AND cp.sync_status = 'live'
+      JOIN catalog_row_trust crt
+        ON crt.subject_type = 'product'
+       AND crt.subject_key = cp.product_key
+       AND crt.serving_decision = 'public'
+      ${missingLabelsJoin}
+      WHERE COALESCE(eps.status, 'active') = 'active'
+        AND eps.attached_product_key IS NOT NULL
+        AND upper(COALESCE(eps.market, $2)) = $2
+        ${missingLabelsPredicate}
+      ORDER BY eps.updated_at DESC NULLS LAST, eps.created_at DESC NULLS LAST, eps.id ASC
+      LIMIT $1
+    `,
+    [normalizeLimit(limit, DEFAULT_SOURCE_LIMIT), normalizedMarket],
+  );
+  return rows.map(normalizeApprovedLiveExternalSeedRow).filter(Boolean);
 }
 
 async function loadProductIntelKbRows({ queryFn, limit = DEFAULT_SOURCE_LIMIT } = {}) {
@@ -1895,8 +2071,19 @@ async function loadProductRelationshipGraphSourceInputs({
   limit = DEFAULT_SOURCE_LIMIT,
   market = DEFAULT_MARKET,
   queryVector,
+  includeApprovedLiveExternalSeedAnchors = false,
+  approvedLiveExternalSeedAnchorLimit = limit,
+  missingCandidateLabelsOnly = false,
 } = {}) {
   const sourceLimit = normalizeLimit(limit);
+  const approvedLiveExternalSeedAnchors = includeApprovedLiveExternalSeedAnchors
+    ? await loadApprovedLiveExternalSeedAnchors({
+      queryFn,
+      limit: approvedLiveExternalSeedAnchorLimit,
+      market,
+      missingCandidateLabelsOnly,
+    })
+    : [];
   const productsCache = await loadProductsCacheCandidates({ queryFn, limit: sourceLimit * 4 });
   const externalSeeds = await loadExternalProductSeedCandidates({ queryFn, limit: sourceLimit * 3, market });
   const ingredientRows = await loadIngredientKbCandidates({ queryFn, limit: sourceLimit * 2 });
@@ -1909,9 +2096,11 @@ async function loadProductRelationshipGraphSourceInputs({
     ...ingredientRows,
     ...vectorRows,
     ...intelRows,
+    ...approvedLiveExternalSeedAnchors,
   ]);
   return {
     products,
+    approvedLiveExternalSeedAnchors,
     productsCache,
     externalSeeds,
     ingredientRows,
@@ -1925,6 +2114,7 @@ async function loadProductRelationshipGraphSourceInputs({
       product_intel_kb: intelRows.length,
       aurora_dupe_kb: legacyDupes.length,
       vector_recall: vectorRows.length,
+      approved_live_external_seed_anchors: approvedLiveExternalSeedAnchors.length,
       products: products.length,
     },
   };
@@ -1935,6 +2125,7 @@ module.exports = {
   normalizeProductCandidateSnapshot,
   normalizeProductsCacheRow,
   normalizeExternalProductSeedRow,
+  normalizeApprovedLiveExternalSeedRow,
   normalizeProductIntelKbRow,
   normalizeIngredientKbRow,
   normalizeLegacyDupeKbRow,
@@ -1943,6 +2134,7 @@ module.exports = {
   familyIdentityKey,
   familyIdentityKeysCompatible,
   buildCandidatesByAnchorFromSources,
+  loadApprovedLiveExternalSeedAnchors,
   loadProductsCacheCandidates,
   loadExternalProductSeedCandidates,
   loadProductIntelKbRows,

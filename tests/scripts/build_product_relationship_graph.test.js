@@ -1,14 +1,18 @@
 const {
   numberArg,
+  boolEnv,
+  hasFlagOrEnv,
   classifyEdgeForPrefilter,
   resolveDefaultLabelState,
 } = require('../../scripts/build-product-relationship-graph');
 
 describe('build product relationship graph CLI helpers', () => {
   const originalArgv = process.argv;
+  const originalEnv = { ...process.env };
 
   afterEach(() => {
     process.argv = originalArgv;
+    process.env = originalEnv;
   });
 
   test('uses fallback when optional numeric flag is omitted', () => {
@@ -35,6 +39,35 @@ describe('build product relationship graph CLI helpers', () => {
 
     expect(numberArg('source-limit', 200, { min: 200, max: 5000 })).toBe(1600);
     expect(numberArg('anchor-offset', 0, { min: 0, max: 5000 })).toBe(1200);
+  });
+
+  test('supports boolean env flags for approved-live anchor generation', () => {
+    process.argv = ['node', 'scripts/build-product-relationship-graph.js'];
+    process.env = {
+      ...originalEnv,
+      RELATIONSHIP_GRAPH_APPROVED_LIVE_EXTERNAL_SEED_ANCHORS: 'true',
+    };
+
+    expect(boolEnv('RELATIONSHIP_GRAPH_APPROVED_LIVE_EXTERNAL_SEED_ANCHORS')).toBe(true);
+    expect(hasFlagOrEnv(
+      'approved-live-external-seed-anchors',
+      'RELATIONSHIP_GRAPH_APPROVED_LIVE_EXTERNAL_SEED_ANCHORS',
+    )).toBe(true);
+  });
+
+  test('CLI flag enables approved-live anchor generation without env', () => {
+    process.argv = [
+      'node',
+      'scripts/build-product-relationship-graph.js',
+      '--approved-live-external-seed-anchors',
+    ];
+    process.env = { ...originalEnv };
+    delete process.env.RELATIONSHIP_GRAPH_APPROVED_LIVE_EXTERNAL_SEED_ANCHORS;
+
+    expect(hasFlagOrEnv(
+      'approved-live-external-seed-anchors',
+      'RELATIONSHIP_GRAPH_APPROVED_LIVE_EXTERNAL_SEED_ANCHORS',
+    )).toBe(true);
   });
 });
 

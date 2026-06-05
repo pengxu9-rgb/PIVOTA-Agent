@@ -72,6 +72,15 @@ function envFlag(name) {
   return /^(1|true|yes|on)$/i.test(String(process.env[name] || '').trim());
 }
 
+function boolEnv(name) {
+  const raw = normalizeLower(process.env[name], 16);
+  return raw === '1' || raw === 'true' || raw === 'yes' || raw === 'on';
+}
+
+function hasFlagOrEnv(flagName, envName) {
+  return hasFlag(flagName) || boolEnv(envName);
+}
+
 // Pure helper: derive the default label_state from the --review-status arg.
 //
 //   - reviewStatusArg null/missing  → 'generated' (fresh builder output,
@@ -347,15 +356,24 @@ async function buildInputsFromDb({
   maxBridgeCandidates = 8,
   maxTransitivePerAnchor = 8,
   fanOutFamilyCandidatesToSiblingAnchors = false,
+  includeApprovedLiveExternalSeedAnchors = false,
+  approvedLiveExternalSeedAnchorLimit = sourceLimit,
+  missingCandidateLabelsOnly = false,
 } = {}) {
   const sourceInputs = await loadProductRelationshipGraphSourceInputs({
     queryFn: query,
     limit: sourceLimit,
     market,
+    includeApprovedLiveExternalSeedAnchors,
+    approvedLiveExternalSeedAnchorLimit,
+    missingCandidateLabelsOnly,
   });
   const products = sourceInputs.products || [];
+  const anchorUniverse = includeApprovedLiveExternalSeedAnchors && sourceInputs.approvedLiveExternalSeedAnchors?.length
+    ? sourceInputs.approvedLiveExternalSeedAnchors
+    : products;
   const offset = Math.max(0, Number(anchorOffset) || 0);
-  const anchors = products.slice(offset, offset + limit);
+  const anchors = anchorUniverse.slice(offset, offset + limit);
   return {
     anchors,
     candidatesByAnchor: buildCandidatesByAnchorFromSources({
@@ -380,6 +398,9 @@ async function buildInputsFromDb({
         source_limit: sourceLimit,
         anchor_offset: offset,
         max_per_anchor: maxPerAnchor,
+        include_approved_live_external_seed_anchors: includeApprovedLiveExternalSeedAnchors,
+        approved_live_external_seed_anchor_limit: approvedLiveExternalSeedAnchorLimit,
+        missing_candidate_labels_only: missingCandidateLabelsOnly,
         include_transitive_recall: includeTransitiveRecall,
         max_bridge_per_anchor: maxBridgePerAnchor,
         max_bridge_candidates: maxBridgeCandidates,
@@ -409,6 +430,19 @@ async function main() {
   const fanOutFamilyCandidatesToSiblingAnchors =
     hasFlag('fan-out-family-candidates') ||
     envFlag('RELATIONSHIP_GRAPH_FAN_OUT_FAMILY_CANDIDATES');
+  const includeApprovedLiveExternalSeedAnchors = hasFlagOrEnv(
+    'approved-live-external-seed-anchors',
+    'RELATIONSHIP_GRAPH_APPROVED_LIVE_EXTERNAL_SEED_ANCHORS',
+  );
+  const missingCandidateLabelsOnly = hasFlagOrEnv(
+    'missing-label-anchors-only',
+    'RELATIONSHIP_GRAPH_MISSING_LABEL_ANCHORS_ONLY',
+  );
+  const approvedLiveExternalSeedAnchorLimit = numberArg(
+    'approved-live-anchor-limit',
+    includeApprovedLiveExternalSeedAnchors ? 10000 : sourceLimit,
+    { min: limit, max: 20000 },
+  );
   const payload = input || await buildInputsFromDb({
     limit,
     sourceLimit,
@@ -420,6 +454,9 @@ async function main() {
     maxBridgeCandidates,
     maxTransitivePerAnchor,
     fanOutFamilyCandidatesToSiblingAnchors,
+    includeApprovedLiveExternalSeedAnchors,
+    approvedLiveExternalSeedAnchorLimit,
+    missingCandidateLabelsOnly,
   });
   const report = buildProductRelationshipGraphDryRun({
     anchors: payload.anchors || [],
@@ -540,6 +577,8 @@ module.exports = {
   attachCandidateSignals,
   envFlag,
   numberArg,
+  boolEnv,
+  hasFlagOrEnv,
   classifyEdgeForPrefilter,
   resolveDefaultLabelState,
   orderEdgesByReviewPriority,

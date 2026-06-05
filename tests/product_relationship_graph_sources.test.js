@@ -1,11 +1,14 @@
 const {
   augmentCandidatesWithTransitiveRecall,
   buildCandidatesByAnchorFromSources,
+  loadApprovedLiveExternalSeedAnchors,
   loadExternalProductSeedCandidates,
   loadIngredientKbCandidates,
   loadLegacyDupeKbRows,
   loadProductIntelKbRows,
+  loadProductRelationshipGraphSourceInputs,
   loadProductsCacheCandidates,
+  normalizeApprovedLiveExternalSeedRow,
   normalizeExternalProductSeedRow,
   normalizeProductIntelKbRow,
   __internal,
@@ -358,6 +361,138 @@ describe('product relationship graph source loaders', () => {
     );
     expect(directSeed.product_ref).toBe(seedCandidate.product_ref);
     expect(directIntel.product_ref).toBe(intelCandidate.product_ref);
+  });
+
+  test('normalizes approved-live external seed anchors from catalog serving fields', () => {
+    const row = {
+      id: 'seed_approved_1',
+      external_product_id: 'ext_public_serum',
+      title: 'Seed title should not win',
+      canonical_url: 'https://merchant.example/seed',
+      seed_data: {
+        brand: 'Seed Brand',
+        pdp_description_raw: 'Seed description.',
+      },
+      price_amount: '22.00',
+      catalog_product_key: 'cp_public_serum',
+      catalog_title: 'Catalog Barrier Serum',
+      catalog_brand: 'Catalog Brand',
+      catalog_category: 'serum',
+      catalog_category_path: 'Beauty > Skincare > Serum',
+      catalog_description: 'Catalog description for a barrier serum.',
+      catalog_canonical_url: 'https://merchant.example/catalog',
+      catalog_updated_at: NOW,
+      product_line_id: 'line_barrier_serum',
+    };
+
+    const normalized = normalizeApprovedLiveExternalSeedRow(row);
+
+    expect(normalized).toEqual(
+      expect.objectContaining({
+        product_ref: 'product:ext_public_serum',
+        product_id: 'ext_public_serum',
+        brand: 'Catalog Brand',
+        name: 'Catalog Barrier Serum',
+        category: 'serum',
+        price: 22,
+        product_family_id: 'line_barrier_serum',
+        observed_at: NOW,
+      }),
+    );
+    expect(normalized.source_refs).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ type: 'approved_live_external_seed', authoritative: true }),
+        expect.objectContaining({ type: 'external_product_seed', authoritative: true }),
+        expect.objectContaining({ type: 'catalog_products', name: 'cp_public_serum' }),
+      ]),
+    );
+  });
+
+  test('loads approved-live external seed anchors with optional missing-label filter', async () => {
+    const sqlSeen = [];
+    const queryFn = jest.fn(async (sql) => {
+      const text = String(sql);
+      sqlSeen.push(text);
+      if (text.includes('to_regclass')) return { rows: [{ table_name: 'relationship_candidate_labels' }] };
+      if (text.includes('FROM external_product_seeds eps')) {
+        return {
+          rows: [
+            {
+              id: 'seed_approved_1',
+              external_product_id: 'ext_public_serum',
+              title: 'Seed Serum',
+              seed_data: { brand: 'Seed Brand' },
+              market: 'US',
+              catalog_product_key: 'cp_public_serum',
+              catalog_title: 'Catalog Barrier Serum',
+              catalog_brand: 'Catalog Brand',
+              catalog_category: 'serum',
+              product_line_id: 'line_barrier_serum',
+              catalog_updated_at: NOW,
+            },
+          ],
+        };
+      }
+      return { rows: [] };
+    });
+
+    const rows = await loadApprovedLiveExternalSeedAnchors({
+      queryFn,
+      market: 'us',
+      limit: 5,
+      missingCandidateLabelsOnly: true,
+    });
+
+    expect(rows).toHaveLength(1);
+    expect(rows[0]).toEqual(
+      expect.objectContaining({
+        product_ref: 'product:ext_public_serum',
+        brand: 'Catalog Brand',
+        category: 'serum',
+      }),
+    );
+    expect(sqlSeen.join('\n')).toContain('relationship_candidate_labels rcl');
+    expect(queryFn).toHaveBeenCalledWith(expect.stringContaining('to_regclass'), ['public.relationship_candidate_labels']);
+    expect(queryFn).toHaveBeenCalledWith(expect.stringContaining('LIMIT $1'), [5, 'US']);
+  });
+
+  test('wires approved-live anchors into source inputs only when enabled', async () => {
+    const queryFn = jest.fn(async (sql) => {
+      const text = String(sql);
+      if (text.includes('to_regclass')) return { rows: [] };
+      if (text.includes('JOIN catalog_row_trust')) {
+        return {
+          rows: [
+            {
+              id: 'seed_approved_1',
+              external_product_id: 'ext_public_serum',
+              title: 'Seed Serum',
+              market: 'US',
+              catalog_product_key: 'cp_public_serum',
+              catalog_title: 'Catalog Barrier Serum',
+              catalog_brand: 'Catalog Brand',
+              catalog_category: 'serum',
+              catalog_updated_at: NOW,
+            },
+          ],
+        };
+      }
+      return { rows: [] };
+    });
+
+    const inputs = await loadProductRelationshipGraphSourceInputs({
+      queryFn,
+      limit: 5,
+      market: 'US',
+      includeApprovedLiveExternalSeedAnchors: true,
+      approvedLiveExternalSeedAnchorLimit: 20,
+      missingCandidateLabelsOnly: true,
+    });
+
+    expect(inputs.approvedLiveExternalSeedAnchors).toHaveLength(1);
+    expect(inputs.products.map((row) => row.product_ref)).toContain('product:ext_public_serum');
+    expect(inputs.source_counts.approved_live_external_seed_anchors).toBe(1);
+    expect(inputs.source_counts.products).toBe(1);
   });
 
   test('infers brand and concrete title from official product-intel source when row fields are sparse', async () => {
