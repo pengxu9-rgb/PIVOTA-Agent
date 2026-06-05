@@ -149,6 +149,20 @@ describe('external seed product detail hydration', () => {
     expect(informationalHealth.severity).toBe('info');
   });
 
+  test('get_pdp_v2 include parser maps public ingredients and reviews aliases', () => {
+    const { debug } = loadServerWithDb();
+
+    expect(debug.parsePdpV2IncludeList(['ingredients', 'reviews', 'reviews_preview'])).toEqual([
+      'ingredients_inci',
+      'reviews_preview',
+    ]);
+    expect(debug.parsePdpV2IncludeList('full-ingredients, review, product details')).toEqual([
+      'ingredients_inci',
+      'reviews_preview',
+      'product_details',
+    ]);
+  });
+
   test('get_pdp_v2 response keeps optional product_intel gap out of global degrade', async () => {
     const { app, db } = loadServerWithDb({
       PIVOTA_API_BASE: 'https://backend.test',
