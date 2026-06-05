@@ -29,6 +29,10 @@ const {
   normalizeCatalogImageCacheKey,
 } = require('./services/catalogImageCacheStorage');
 const {
+  isPdpIdentityReconcileEnabled,
+  reconcileToOwnServingRow,
+} = require('./services/pdpIdentityReconcile');
+const {
   parseBooleanEnv,
   parseSecretList,
   resolveInvokeEmergencyAuthFallback,
@@ -36628,7 +36632,7 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
 
           if (servingEligibleOnly) {
             const servingEligibilityStartedAt = Date.now();
-            const servingEligibility =
+            let servingEligibility =
               signaturePrefetchedServingEligibility &&
               canonicalProductRef?.merchant_id === EXTERNAL_SEED_MERCHANT_ID &&
               String(canonicalProductRef?.product_id || '').trim() ===
@@ -36641,6 +36645,42 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
                     productId: canonicalProductRef?.product_id,
                   });
             markPdpV2Phase('serving_eligibility_gate', servingEligibilityStartedAt);
+            // Fix A — read-time identity reconciliation (flag-gated, default off).
+            // When the resolved (drifted) sellable_item_group_id group is not
+            // servable but the product's OWN live row IS, prefer the own row so a
+            // servable product is not falsely blocked (and does not leak into
+            // reco/chat as a broken card). Fail-closed; the canonical ref is
+            // re-anchored to the originally-requested identity + own row
+            // (downstream content keys on product_id/merchant_id).
+            if (isPdpIdentityReconcileEnabled()) {
+              try {
+                const reconciledIdentity = await reconcileToOwnServingRow({
+                  servingEligibility,
+                  // Use the ORIGINALLY-REQUESTED identity, not canonicalProductRef
+                  // (which the drift has already remapped to a different product).
+                  merchantId: requestedMerchantIdForDiagnostics,
+                  productId: requestedProductIdForDiagnostics,
+                  fetchOwnRowEligibility: ({ merchantId, productId: ownProductId }) =>
+                    fetchPdpServingEligibilityFromDb({ merchantId, productId: ownProductId }),
+                });
+                if (reconciledIdentity) {
+                  servingEligibility = reconciledIdentity.eligibility;
+                  canonicalProductRef = { ...canonicalProductRef, ...reconciledIdentity.refPatch };
+                  logger.info(
+                    {
+                      gateway_request_id: gatewayRequestId,
+                      operation: 'get_pdp_v2',
+                      product_id: canonicalProductRef?.product_id || null,
+                      from_content_key: reconciledIdentity.from_content_key,
+                      to_content_key: reconciledIdentity.to_content_key,
+                    },
+                    'get_pdp_v2 identity reconciled to own serving row',
+                  );
+                }
+              } catch (_) {
+                // fail-closed: keep the original (blocked) decision.
+              }
+            }
             pdpServingEligibility = servingEligibility;
             pdpServingEligibilityChecked = true;
             const failClosedForMissingEligibility = shouldFailClosedForMissingPdpServingEligibility({
