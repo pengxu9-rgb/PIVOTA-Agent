@@ -151,14 +151,14 @@ describe('checkout timing headers', () => {
 
   it('emits retry span for submit_payment temporary unavailability recovery', async () => {
     nock(process.env.PIVOTA_API_BASE)
-      .post('/agent/v2/payments/checkout-sessions', (body) => body && body.order_id === 'ORD_PAY_TIMING')
+      .post('/agent/v1/payments', (body) => body && body.order_id === 'ORD_PAY_TIMING')
       .reply(503, {
         detail: {
           error: 'TEMPORARY_UNAVAILABLE',
           message: 'checkout session store warming up',
         },
       })
-      .post('/agent/v2/payments/checkout-sessions', (body) => body && body.order_id === 'ORD_PAY_TIMING')
+      .post('/agent/v1/payments', (body) => body && body.order_id === 'ORD_PAY_TIMING')
       .reply(200, {
         status: 'requires_action',
         payment_id: 'pay_timing_123',

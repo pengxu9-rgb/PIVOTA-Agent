@@ -870,6 +870,60 @@ const TERMINAL_FAILURE_PAYMENT_STATUSES = new Set([
   'refunded',
   'partially_refunded',
 ]);
+const PROTOTYPE_POLLUTION_KEYS = new Set(['__proto__', 'prototype', 'constructor']);
+const DIRECT_MERCHANT_PSP_PAYMENT_METHOD_TYPES = new Set([
+  'card',
+  'credit_card',
+  'debit_card',
+]);
+const SUBMIT_PAYMENT_CARD_METHOD_SAFE_FIELDS = [
+  'type',
+  'payment_method_type',
+  'paymentMethodType',
+  'payment_method_id',
+  'paymentMethodId',
+  'payment_method_token',
+  'paymentMethodToken',
+  'card_token',
+  'cardToken',
+  'card_id',
+  'cardId',
+  'token',
+  'nonce',
+  'source',
+  'source_id',
+  'sourceId',
+  'brand',
+  'network',
+  'last4',
+  'exp_month',
+  'expMonth',
+  'exp_year',
+  'expYear',
+  'expiry_month',
+  'expiryMonth',
+  'expiry_year',
+  'expiryYear',
+  'cardholder_name',
+  'cardholderName',
+  'name',
+  'billing_details',
+  'billingDetails',
+  'billing_address',
+  'billingAddress',
+];
+const ADYEN_RESULT_CODE_PAYMENT_STATUSES = Object.freeze({
+  authorised: 'paid',
+  refused: 'payment_failed',
+  error: 'payment_failed',
+  cancelled: 'payment_failed',
+  received: 'processing',
+  pending: 'processing',
+  identifyshopper: 'requires_action',
+  challengeshopper: 'requires_action',
+  redirectshopper: 'requires_action',
+  presenttoshopper: 'requires_action',
+});
 
 function normalizeSubmitOwner(rawValue) {
   const token =
@@ -965,7 +1019,7 @@ function normalizeSubmitPaymentStatus(rawStatus) {
   };
 }
 
-function resolveSubmitPaymentContract(upstreamPayload = {}, paymentAction = null) {
+function resolveSubmitPaymentStatusCandidate(upstreamPayload = {}) {
   const topLevelStatus =
     upstreamPayload.payment_status != null
       ? upstreamPayload.payment_status
@@ -974,7 +1028,133 @@ function resolveSubmitPaymentContract(upstreamPayload = {}, paymentAction = null
     upstreamPayload?.payment?.payment_status != null
       ? upstreamPayload.payment.payment_status
       : upstreamPayload?.payment?.status;
-  const statusCandidate = topLevelStatus != null ? topLevelStatus : nestedStatus;
+  return topLevelStatus != null ? topLevelStatus : nestedStatus;
+}
+
+function normalizeAdyenResultCodePaymentStatus(resultCode) {
+  const token =
+    typeof resultCode === 'string'
+      ? resultCode.trim().toLowerCase()
+      : resultCode != null
+      ? String(resultCode).trim().toLowerCase()
+      : '';
+  if (!token) return null;
+  return ADYEN_RESULT_CODE_PAYMENT_STATUSES[token] || 'requires_action';
+}
+
+function applyAuthoritativeAdyenPaymentStatus(upstreamPayload = {}, resultCode = null) {
+  const adyenPaymentStatus = normalizeAdyenResultCodePaymentStatus(resultCode);
+  if (!adyenPaymentStatus) return upstreamPayload;
+
+  const existingStatus = normalizeSubmitPaymentStatus(
+    resolveSubmitPaymentStatusCandidate(upstreamPayload),
+  );
+  const paymentStatus =
+    adyenPaymentStatus === 'paid' &&
+    TERMINAL_FAILURE_PAYMENT_STATUSES.has(existingStatus.payment_status)
+      ? existingStatus.payment_status
+      : adyenPaymentStatus;
+  const nestedPayment = isPlainObject(upstreamPayload?.payment)
+    ? {
+        ...upstreamPayload.payment,
+        status: paymentStatus,
+        payment_status: paymentStatus,
+      }
+    : upstreamPayload?.payment;
+
+  return {
+    ...upstreamPayload,
+    status: paymentStatus,
+    payment_status: paymentStatus,
+    ...(nestedPayment ? { payment: nestedPayment } : {}),
+  };
+}
+
+function pickOwnFields(source = {}, fields = []) {
+  const output = {};
+  if (!isPlainObject(source)) return output;
+  for (const field of fields) {
+    if (Object.prototype.hasOwnProperty.call(source, field)) {
+      output[field] = source[field];
+    }
+  }
+  return pruneEmptyFields(output);
+}
+
+function buildSafeAdyenRawForClient({
+  raw = {},
+  pspReference = null,
+  resultCode = null,
+  action = null,
+  sessionData = null,
+} = {}) {
+  const safeRaw = pickOwnFields(raw, [
+    'pspReference',
+    'psp_reference',
+    'resultCode',
+    'result_code',
+    'action',
+    'sessionData',
+    'session_data',
+  ]);
+  return pruneEmptyFields({
+    ...safeRaw,
+    ...(pspReference ? { pspReference } : {}),
+    ...(resultCode ? { resultCode } : {}),
+    ...(action ? { action } : {}),
+    ...(sessionData ? { sessionData } : {}),
+  });
+}
+
+function sanitizeAdyenPaymentActionForClient(paymentAction, extracted = {}) {
+  if (!isPlainObject(paymentAction)) return paymentAction || null;
+  const sessionData = firstNonEmptyString(
+    paymentAction.session_data,
+    paymentAction.sessionData,
+    extracted.sessionData,
+  );
+  const pspReference = firstNonEmptyString(
+    paymentAction.pspReference,
+    paymentAction.psp_reference,
+    extracted.pspReference,
+  );
+  const resultCode = firstNonEmptyString(
+    paymentAction.resultCode,
+    paymentAction.result_code,
+    extracted.resultCode,
+  );
+  const action = isPlainObject(paymentAction.action)
+    ? paymentAction.action
+    : isPlainObject(extracted.action)
+    ? extracted.action
+    : null;
+  const raw = buildSafeAdyenRawForClient({
+    raw: paymentAction.raw,
+    pspReference,
+    resultCode,
+    action,
+    sessionData,
+  });
+
+  return pruneEmptyFields({
+    type: firstNonEmptyString(paymentAction.type, 'adyen_session'),
+    ...(sessionData ? { session_data: sessionData } : {}),
+    ...(pspReference ? { pspReference } : {}),
+    action: action || undefined,
+    ...(resultCode ? { resultCode } : {}),
+    url: firstNonEmptyString(paymentAction.url),
+    submit_owner: paymentAction.submit_owner,
+    component_kind: paymentAction.component_kind,
+    supported_in_shopping_ui:
+      typeof paymentAction.supported_in_shopping_ui === 'boolean'
+        ? paymentAction.supported_in_shopping_ui
+        : undefined,
+    raw,
+  });
+}
+
+function resolveSubmitPaymentContract(upstreamPayload = {}, paymentAction = null) {
+  const statusCandidate = resolveSubmitPaymentStatusCandidate(upstreamPayload);
   const normalizedStatus = normalizeSubmitPaymentStatus(statusCandidate);
   const explicitRequires =
     typeof upstreamPayload.requires_client_confirmation === 'boolean'
@@ -1578,6 +1758,7 @@ async function fetchMerchantDisplayNameById(merchantId) {
 function pruneEmptyFields(input = {}) {
   const output = {};
   for (const [key, value] of Object.entries(input || {})) {
+    if (PROTOTYPE_POLLUTION_KEYS.has(key)) continue;
     if (value == null) continue;
     if (typeof value === 'string' && !value.trim()) continue;
     if (Array.isArray(value) && value.length === 0) continue;
@@ -1880,6 +2061,18 @@ function buildCheckoutSessionV2Body({
       payload?.payment_method_hint,
       payload?.paymentMethodHint,
     ),
+    payment_handler_id: firstNonEmptyString(
+      payment?.payment_handler_id,
+      payment?.paymentHandlerId,
+      payload?.payment_handler_id,
+      payload?.paymentHandlerId,
+    ),
+    payment_handler_type: firstNonEmptyString(
+      payment?.payment_handler_type,
+      payment?.paymentHandlerType,
+      payload?.payment_handler_type,
+      payload?.paymentHandlerType,
+    ),
     return_url: firstNonEmptyString(
       payment?.return_url,
       payment?.returnUrl,
@@ -1905,6 +2098,89 @@ function buildCheckoutSessionV2Body({
       fallbackCurrency: currency,
     }),
   });
+}
+
+function resolveSubmitPaymentExplicitPaymentMethod(payment = {}) {
+  if (isPlainObject(payment?.payment_method)) return payment.payment_method;
+  if (isPlainObject(payment?.paymentMethod)) return payment.paymentMethod;
+  return {};
+}
+
+function resolveSubmitPaymentMethodType({
+  payload = {},
+  payment = {},
+  fallback = null,
+} = {}) {
+  const explicitPaymentMethod = resolveSubmitPaymentExplicitPaymentMethod(payment);
+  return firstNonEmptyString(
+    explicitPaymentMethod.type,
+    explicitPaymentMethod.payment_method_type,
+    explicitPaymentMethod.paymentMethodType,
+    payment?.payment_method_hint,
+    payment?.paymentMethodHint,
+    payload?.payment_method_hint,
+    payload?.paymentMethodHint,
+    fallback,
+  );
+}
+
+function buildSafeSubmitPaymentMethodForV1(explicitPaymentMethod = {}, paymentMethodType = 'card') {
+  const safePaymentMethod = {};
+  if (isPlainObject(explicitPaymentMethod)) {
+    for (const field of SUBMIT_PAYMENT_CARD_METHOD_SAFE_FIELDS) {
+      if (Object.prototype.hasOwnProperty.call(explicitPaymentMethod, field)) {
+        safePaymentMethod[field] = explicitPaymentMethod[field];
+      }
+    }
+  }
+  safePaymentMethod.type = paymentMethodType;
+  return pruneEmptyFields(safePaymentMethod);
+}
+
+function buildSubmitPaymentV1Body({
+  payload = {},
+  payment = {},
+  checkoutSessionBody = {},
+} = {}) {
+  const explicitPaymentMethod = resolveSubmitPaymentExplicitPaymentMethod(payment);
+  const paymentMethodType =
+    resolveSubmitPaymentMethodType({ payload, payment, fallback: 'card' }) || 'card';
+
+  return pruneEmptyFields({
+    order_id: firstNonEmptyString(
+      checkoutSessionBody?.order_id,
+      payment?.order_id,
+      payment?.orderId,
+      payload?.order_id,
+      payload?.orderId,
+    ),
+    payment_method: buildSafeSubmitPaymentMethodForV1(explicitPaymentMethod, paymentMethodType),
+    idempotency_key: firstNonEmptyString(
+      payment?.idempotency_key,
+      payment?.idempotencyKey,
+      payload?.idempotency_key,
+      payload?.idempotencyKey,
+    ),
+    save_payment_method:
+      payment?.save_payment_method === true || payment?.savePaymentMethod === true ? true : undefined,
+  });
+}
+
+function shouldSubmitPaymentUseExistingOrderMerchantPspSurface({
+  payload = {},
+  payment = {},
+  checkoutSessionBody = {},
+} = {}) {
+  const paymentMethodType = resolveSubmitPaymentMethodType({ payload, payment });
+  const normalizedPaymentMethodType = paymentMethodType
+    ? String(paymentMethodType).trim().toLowerCase()
+    : '';
+  return (
+    !firstNonEmptyString(checkoutSessionBody?.payment_handler_id) &&
+    !firstNonEmptyString(checkoutSessionBody?.payment_handler_type) &&
+    (!normalizedPaymentMethodType ||
+      DIRECT_MERCHANT_PSP_PAYMENT_METHOD_TYPES.has(normalizedPaymentMethodType))
+  );
 }
 
 function buildSearchProductsV2Body({
@@ -42388,20 +42664,45 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
       
       case 'submit_payment': {
         const payment = payload.payment || {};
-        requestBody = buildCheckoutSessionV2Body({
+        const checkoutSessionBody = buildCheckoutSessionV2Body({
           payload,
           payment,
           metadata,
           clientChannel,
           gatewayRequestId,
         });
-        if (!requestBody.quote_id || requestBody.expected_amount == null) {
+        if (!checkoutSessionBody.quote_id || checkoutSessionBody.expected_amount == null) {
           return res.status(400).json({
             status: 'failure',
             code: 'expected_amount_required',
             reason: 'expected_amount_required',
             message: 'submit_payment requires quote_id and expected_amount from a locked quote',
           });
+        }
+        if (
+          shouldSubmitPaymentUseExistingOrderMerchantPspSurface({
+            payload,
+            payment,
+            checkoutSessionBody,
+          })
+        ) {
+          url = `${PIVOTA_API_BASE}/agent/v1/payments`;
+          upstreamMethod = 'POST';
+          requestBody = buildSubmitPaymentV1Body({
+            payload,
+            payment,
+            checkoutSessionBody,
+          });
+          if (!requestBody.order_id) {
+            return res.status(400).json({
+              status: 'failure',
+              code: 'order_id_required',
+              reason: 'order_id_required',
+              message: 'submit_payment requires order_id from create_order',
+            });
+          }
+        } else {
+          requestBody = checkoutSessionBody;
         }
         break;
       }
@@ -44554,7 +44855,68 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
           paymentObj.psp_used ||
           checkoutSession?.provider ||
           null;
-        if (String(psp || '').trim().toLowerCase() === 'pivota_hosted_checkout') {
+        const pspNormalized = String(psp || '').trim().toLowerCase();
+        const adyenRaw =
+          isPlainObject(p.raw)
+            ? p.raw
+            : isPlainObject(paymentObj.raw)
+              ? paymentObj.raw
+              : isPlainObject(p.payment_action?.raw)
+                ? p.payment_action.raw
+                : isPlainObject(paymentObj.payment_action?.raw)
+                  ? paymentObj.payment_action.raw
+                  : {};
+        let adyenAction = null;
+        if (isPlainObject(p.action)) {
+          adyenAction = p.action;
+        } else if (isPlainObject(paymentObj.action)) {
+          adyenAction = paymentObj.action;
+        } else if (isPlainObject(p.payment_action?.action)) {
+          adyenAction = p.payment_action.action;
+        } else if (isPlainObject(paymentObj.payment_action?.action)) {
+          adyenAction = paymentObj.payment_action.action;
+        } else if (isPlainObject(p.next_action?.action)) {
+          adyenAction = p.next_action.action;
+        } else if (isPlainObject(adyenRaw.action)) {
+          adyenAction = adyenRaw.action;
+        }
+        const adyenSessionData = firstNonEmptyString(
+          p.sessionData,
+          p.session_data,
+          paymentObj.sessionData,
+          paymentObj.session_data,
+          p.payment_action?.sessionData,
+          p.payment_action?.session_data,
+          paymentObj.payment_action?.sessionData,
+          paymentObj.payment_action?.session_data,
+          adyenRaw.sessionData,
+          adyenRaw.session_data,
+        );
+        const adyenPspReference = firstNonEmptyString(
+          p.pspReference,
+          p.psp_reference,
+          paymentObj.pspReference,
+          paymentObj.psp_reference,
+          p.payment_action?.pspReference,
+          p.payment_action?.psp_reference,
+          paymentObj.payment_action?.pspReference,
+          paymentObj.payment_action?.psp_reference,
+          adyenRaw.pspReference,
+          adyenRaw.psp_reference,
+        );
+        const adyenResultCode = firstNonEmptyString(
+          p.resultCode,
+          p.result_code,
+          paymentObj.resultCode,
+          paymentObj.result_code,
+          p.payment_action?.resultCode,
+          p.payment_action?.result_code,
+          paymentObj.payment_action?.resultCode,
+          paymentObj.payment_action?.result_code,
+          adyenRaw.resultCode,
+          adyenRaw.result_code,
+        );
+        if (pspNormalized === 'pivota_hosted_checkout') {
           unsupportedPaymentSurface = {
             error: 'UNSUPPORTED_PAYMENT_SURFACE',
             message:
@@ -44574,14 +44936,23 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
 
         // Derive payment_action when backend only returns flat fields
         if (!paymentAction) {
-          if (psp === 'adyen' && p.client_secret) {
+          if (pspNormalized === 'adyen' && (adyenSessionData || adyenPspReference || adyenAction)) {
             paymentAction = {
               type: 'adyen_session',
-              client_secret: p.client_secret,
+              session_data: adyenSessionData || null,
+              pspReference: adyenPspReference || null,
+              action: adyenAction || null,
+              resultCode: adyenResultCode || null,
               url: null,
-              raw: null,
+              raw: buildSafeAdyenRawForClient({
+                raw: adyenRaw,
+                pspReference: adyenPspReference,
+                resultCode: adyenResultCode,
+                action: adyenAction,
+                sessionData: adyenSessionData,
+              }),
             };
-          } else if (psp === 'stripe' && p.client_secret) {
+          } else if (pspNormalized === 'stripe' && p.client_secret) {
             paymentAction = {
               type: 'stripe_client_secret',
               client_secret: p.client_secret,
@@ -44605,19 +44976,82 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
           }
         }
         paymentAction = normalizeSubmitPaymentAction(paymentAction);
+        if (pspNormalized === 'adyen') {
+          paymentAction = sanitizeAdyenPaymentActionForClient(paymentAction, {
+            sessionData: adyenSessionData,
+            pspReference: adyenPspReference,
+            resultCode: adyenResultCode,
+            action: adyenAction,
+          });
+        }
 
-        const paymentStatusSource =
+        const basePaymentStatusSource =
           checkoutSession && !p.payment_status && !p?.payment?.payment_status
             ? { ...p, payment_status: 'requires_action' }
             : p;
+        const paymentStatusSource =
+          pspNormalized === 'adyen' && adyenResultCode
+            ? applyAuthoritativeAdyenPaymentStatus(basePaymentStatusSource, adyenResultCode)
+            : basePaymentStatusSource;
         const paymentContract = resolveSubmitPaymentContract(paymentStatusSource, paymentAction);
         checkoutRuntime.checkoutTraceId = gatewayRequestId;
         checkoutRuntime.paymentStatus = paymentContract.payment_status;
         checkoutRuntime.confirmationOwner = paymentContract.confirmation_owner;
         checkoutRuntime.requiresClientConfirmation = paymentContract.requires_client_confirmation;
-
+        const clientSafeTopLevel =
+          pspNormalized === 'adyen'
+            ? pickOwnFields(p, [
+                'status',
+                'payment_status',
+                'payment_status_raw',
+                'payment_id',
+                'payment_intent_id',
+                'psp',
+                'psp_used',
+                'pspReference',
+                'psp_reference',
+                'resultCode',
+                'result_code',
+                'action',
+                'next_action',
+                'confirmation_owner',
+                'requires_client_confirmation',
+                'submit_owner',
+                'component_kind',
+                'supported_in_shopping_ui',
+                'checkout_session',
+                'checkout_session_id',
+                'checkout_url',
+              ])
+            : p;
+        const clientSafePaymentObj =
+          pspNormalized === 'adyen'
+            ? pickOwnFields(paymentObj, [
+                'status',
+                'payment_status',
+                'payment_status_raw',
+                'payment_id',
+                'payment_intent_id',
+                'psp',
+                'psp_used',
+                'pspReference',
+                'psp_reference',
+                'resultCode',
+                'result_code',
+                'action',
+                'next_action',
+                'confirmation_owner',
+                'requires_client_confirmation',
+                'submit_owner',
+                'component_kind',
+                'supported_in_shopping_ui',
+                'checkout_session_id',
+                'checkout_token',
+                'hosted_url',
+              ])
+            : paymentObj;
         const wrappedResponse = {
-          ...p,
+          ...clientSafeTopLevel,
           ...(checkoutSession && p.status === 'success'
             ? { upstream_status: p.status, status: paymentContract.payment_status }
             : {}),
@@ -44631,15 +45065,22 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
             ? { payment_status_raw: paymentContract.payment_status_raw }
             : {}),
           psp: psp || null,
+          ...(adyenPspReference ? { pspReference: adyenPspReference } : {}),
           payment_action: paymentAction || null,
           checkout_session: checkoutSession || null,
           checkout_session_id: checkoutSession?.checkout_session_id || null,
           checkout_url: checkoutSession?.hosted_url || null,
           payment: {
-            ...paymentObj,
+            ...clientSafePaymentObj,
             psp: psp || null,
-            client_secret: p.client_secret || paymentObj.client_secret || null,
-            payment_intent_id: p.payment_intent_id || paymentObj.payment_intent_id || null,
+            ...(pspNormalized === 'adyen'
+              ? {}
+              : { client_secret: p.client_secret || paymentObj.client_secret || null }),
+            payment_intent_id: p.payment_intent_id || paymentObj.payment_intent_id || adyenPspReference || null,
+            ...(adyenSessionData ? { session_data: adyenSessionData } : {}),
+            ...(adyenPspReference ? { pspReference: adyenPspReference } : {}),
+            ...(adyenAction ? { action: adyenAction } : {}),
+            ...(adyenResultCode ? { resultCode: adyenResultCode } : {}),
             checkout_session_id:
               checkoutSession?.checkout_session_id || paymentObj.checkout_session_id || null,
             checkout_token: checkoutSession?.checkout_token || paymentObj.checkout_token || null,

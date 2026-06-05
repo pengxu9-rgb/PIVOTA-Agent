@@ -97,13 +97,13 @@ describe('checkout rollout suite via /agent/shop/v1/invoke', () => {
       })
       .matchHeader('X-Agent-User-JWT', 'jwt_rollout')
       .matchHeader('X-Buyer-Ref', 'buyer_rollout')
-      .post('/agent/v2/payments/checkout-sessions', (body) => {
+      .post('/agent/v1/payments', (body) => {
         return (
           body &&
           body.order_id === 'ORD_ROLLOUT_123' &&
-          body.quote_id === 'q_rollout_123' &&
-          body.expected_amount === 2900 &&
-          body.payment_method_hint === 'card'
+          body.payment_method?.type === 'card' &&
+          body.quote_id === undefined &&
+          body.expected_amount === undefined
         );
       })
       .reply(200, {
@@ -319,13 +319,13 @@ describe('checkout rollout suite via /agent/shop/v1/invoke', () => {
       })
       .matchHeader('X-Agent-User-JWT', 'jwt_rollout_retry')
       .matchHeader('X-Buyer-Ref', 'buyer_rollout_retry')
-      .post('/agent/v2/payments/checkout-sessions', (body) => {
+      .post('/agent/v1/payments', (body) => {
         return (
           body &&
           body.order_id === 'ORD_ROLLOUT_RETRY' &&
-          body.quote_id === 'q_rollout_retry' &&
-          body.expected_amount === 2900 &&
-          body.payment_method_hint === 'card'
+          body.payment_method?.type === 'card' &&
+          body.quote_id === undefined &&
+          body.expected_amount === undefined
         );
       })
       .reply(503, {
@@ -336,13 +336,13 @@ describe('checkout rollout suite via /agent/shop/v1/invoke', () => {
       })
       .matchHeader('X-Agent-User-JWT', 'jwt_rollout_retry')
       .matchHeader('X-Buyer-Ref', 'buyer_rollout_retry')
-      .post('/agent/v2/payments/checkout-sessions', (body) => {
+      .post('/agent/v1/payments', (body) => {
         return (
           body &&
           body.order_id === 'ORD_ROLLOUT_RETRY' &&
-          body.quote_id === 'q_rollout_retry' &&
-          body.expected_amount === 2900 &&
-          body.payment_method_hint === 'card'
+          body.payment_method?.type === 'card' &&
+          body.quote_id === undefined &&
+          body.expected_amount === undefined
         );
       })
       .reply(200, {
@@ -505,12 +505,11 @@ describe('checkout rollout suite via /agent/shop/v1/invoke', () => {
     nock(process.env.PIVOTA_API_BASE)
       .matchHeader('X-Agent-User-JWT', 'jwt_rollout_governance')
       .matchHeader('X-Buyer-Ref', 'buyer_rollout_governance')
-      .post('/agent/v2/payments/checkout-sessions', (body) => {
+      .post('/agent/v1/payments', (body) => {
         return (
           body &&
           body.order_id === 'ORD_ROLLOUT_GOVERNANCE' &&
-          body.quote_id === 'q_rollout_governance' &&
-          body.expected_amount === 2900
+          body.payment_method?.type === 'card'
         );
       })
       .reply(503, {
