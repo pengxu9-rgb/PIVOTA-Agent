@@ -68,6 +68,10 @@ function hasFlag(name) {
   return process.argv.includes(`--${name}`);
 }
 
+function envFlag(name) {
+  return /^(1|true|yes|on)$/i.test(String(process.env[name] || '').trim());
+}
+
 // Pure helper: derive the default label_state from the --review-status arg.
 //
 //   - reviewStatusArg null/missing  → 'generated' (fresh builder output,
@@ -342,6 +346,7 @@ async function buildInputsFromDb({
   maxBridgePerAnchor = 8,
   maxBridgeCandidates = 8,
   maxTransitivePerAnchor = 8,
+  fanOutFamilyCandidatesToSiblingAnchors = false,
 } = {}) {
   const sourceInputs = await loadProductRelationshipGraphSourceInputs({
     queryFn: query,
@@ -363,6 +368,7 @@ async function buildInputsFromDb({
       maxBridgePerAnchor,
       maxBridgeCandidates,
       maxTransitivePerAnchor,
+      fanOutFamilyCandidatesToSiblingAnchors,
     }),
     needCandidatesById: buildNeedCandidateMap(products),
     sourceCounts: sourceInputs.source_counts,
@@ -378,6 +384,7 @@ async function buildInputsFromDb({
         max_bridge_per_anchor: maxBridgePerAnchor,
         max_bridge_candidates: maxBridgeCandidates,
         max_transitive_per_anchor: maxTransitivePerAnchor,
+        fan_out_family_candidates_to_sibling_anchors: fanOutFamilyCandidatesToSiblingAnchors,
       },
     },
   };
@@ -399,6 +406,9 @@ async function main() {
   const maxBridgePerAnchor = numberArg('max-bridge-per-anchor', 8, { min: 1, max: 24 });
   const maxBridgeCandidates = numberArg('max-bridge-candidates', 8, { min: 1, max: 24 });
   const maxTransitivePerAnchor = numberArg('max-transitive-per-anchor', 8, { min: 0, max: 24 });
+  const fanOutFamilyCandidatesToSiblingAnchors =
+    hasFlag('fan-out-family-candidates') ||
+    envFlag('RELATIONSHIP_GRAPH_FAN_OUT_FAMILY_CANDIDATES');
   const payload = input || await buildInputsFromDb({
     limit,
     sourceLimit,
@@ -409,6 +419,7 @@ async function main() {
     maxBridgePerAnchor,
     maxBridgeCandidates,
     maxTransitivePerAnchor,
+    fanOutFamilyCandidatesToSiblingAnchors,
   });
   const report = buildProductRelationshipGraphDryRun({
     anchors: payload.anchors || [],
@@ -527,6 +538,7 @@ module.exports = {
   buildCandidateMap,
   buildNeedCandidateMap,
   attachCandidateSignals,
+  envFlag,
   numberArg,
   classifyEdgeForPrefilter,
   resolveDefaultLabelState,

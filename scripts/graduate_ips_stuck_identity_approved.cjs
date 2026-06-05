@@ -53,6 +53,7 @@ const CONFIRM_TOKEN = 'APPLY_IPS_STUCK_IDENTITY_GRADUATION_V1';
 const RULES_VERSION = 'external_seed_deterministic_v1';
 const CONSOLIDATION_VERSION = 'ips_stuck_identity_graduation_v1';
 const REPAIR_SOURCE = 'graduate_ips_stuck_identity_approved';
+const OPTIONAL_COMPONENTS_FLAG = 'PDP_QUALITY_SCORE_SOURCE_BACKED_OPTIONAL_COMPONENTS';
 
 const DEFAULT_LIMIT = 0; // 0 = no limit (full cohort)
 const CHUNK_SIZE = 50;
@@ -126,10 +127,115 @@ function imageCount(row) {
   return new Set(urls).size;
 }
 
+function flagEnabled(value) {
+  return /^(1|true|yes|on)$/i.test(String(value || '').trim());
+}
+
+function qualityOptionalComponentsEnabled() {
+  return flagEnabled(process.env[OPTIONAL_COMPONENTS_FLAG]) || hasFlag('score-source-backed-components');
+}
+
+function objectKeyCount(value) {
+  const obj = asObject(value);
+  return Object.keys(obj).filter((key) => text(obj[key])).length;
+}
+
+function readWhatItIs(productIntel) {
+  const intel = asObject(productIntel);
+  const core = asObject(intel.product_intel_core);
+  const legacyCore = asObject(intel.core);
+  return firstString(
+    asObject(core.what_it_is).body,
+    asObject(core.whatItIs).body,
+    asObject(legacyCore.what_it_is).body,
+    asObject(legacyCore.whatItIs).body,
+  );
+}
+
+function sourceBackedSummaryText(row) {
+  const payload = asObject(row.product_payload);
+  const seedData = asObject(row.seed_data);
+  const snapshot = asObject(seedData.snapshot);
+  return firstString(
+    seedData.summary,
+    seedData.pdp_summary,
+    seedData.short_description,
+    seedData.product_summary,
+    snapshot.summary,
+    snapshot.pdp_summary,
+    snapshot.short_description,
+    readWhatItIs(seedData.product_intel),
+    readWhatItIs(snapshot.product_intel),
+    payload.summary,
+    payload.short_description,
+    payload.product_summary,
+    readWhatItIs(payload.product_intel),
+  );
+}
+
+function sourceBackedAttributeSignalCount(row) {
+  const payload = asObject(row.product_payload);
+  const seedData = asObject(row.seed_data);
+  const snapshot = asObject(seedData.snapshot);
+  const ingredientIntel = asObject(seedData.ingredient_intel);
+  const snapshotIngredientIntel = asObject(snapshot.ingredient_intel);
+  const detailSections = [
+    ...asArray(seedData.pdp_details_sections),
+    ...asArray(snapshot.pdp_details_sections),
+    ...asArray(payload.pdp_details_sections),
+    ...asArray(asObject(payload.seed_data).pdp_details_sections),
+  ].length;
+  const structuredIngredients = [
+    ...asArray(seedData.active_ingredients),
+    ...asArray(seedData.ingredients_inci),
+    ...asArray(seedData.inci_list),
+    ...asArray(ingredientIntel.inci_list),
+    ...asArray(snapshot.active_ingredients),
+    ...asArray(snapshot.ingredients_inci),
+    ...asArray(snapshot.inci_list),
+    ...asArray(snapshotIngredientIntel.inci_list),
+  ].length;
+  const sourceBackedTextFields = [
+    seedData.pdp_how_to_use_raw,
+    seedData.pdp_ingredients_raw,
+    seedData.raw_ingredient_text_clean,
+    snapshot.pdp_how_to_use_raw,
+    snapshot.pdp_ingredients_raw,
+    snapshot.raw_ingredient_text_clean,
+  ].map(text).filter(Boolean).length;
+  const explicitAttributes =
+    objectKeyCount(seedData.attributes) +
+    objectKeyCount(snapshot.attributes) +
+    objectKeyCount(payload.attributes);
+  return detailSections + structuredIngredients + sourceBackedTextFields + explicitAttributes;
+}
+
+function scoreSourceBackedSummary(row, enabled) {
+  if (!enabled) return { score: 0, text: '' };
+  const summary = sourceBackedSummaryText(row);
+  return {
+    score: summary.length >= 80 ? 100 : summary.length >= 30 ? 70 : 0,
+    text: summary,
+  };
+}
+
+function scoreSourceBackedAttributes(row, enabled) {
+  if (!enabled) return { score: 0, signalCount: 0 };
+  const signalCount = sourceBackedAttributeSignalCount(row);
+  return {
+    score: signalCount >= 3 ? 100 : signalCount >= 1 ? 70 : 0,
+    signalCount,
+  };
+}
+
 // Deterministic scoring — same shape as wave12 to keep this defensible.
-// 7 components averaged; summary/attributes are placeholders (0) by design
-// so the cohort can't accidentally graduate past gates that require those.
-function qualityForRow(row) {
+// 7 components averaged; summary/attributes default to historical placeholders
+// (0). Source-backed optional scoring is flag-gated because the authoritative
+// Python classifier must be updated in lockstep before production writes.
+function qualityForRow(row, options = {}) {
+  const scoreOptionalComponents = Object.prototype.hasOwnProperty.call(options, 'scoreOptionalComponents')
+    ? Boolean(options.scoreOptionalComponents)
+    : qualityOptionalComponentsEnabled();
   const title = firstString(row.catalog_title, row.seed_title);
   const seedData = asObject(row.seed_data);
   const snapshot = asObject(seedData.snapshot);
@@ -152,6 +258,8 @@ function qualityForRow(row) {
   );
   const images = imageCount(row);
   const price = priceAmount(row);
+  const summary = scoreSourceBackedSummary(row, scoreOptionalComponents);
+  const attributes = scoreSourceBackedAttributes(row, scoreOptionalComponents);
 
   const components = [
     { name: 'title', score: title ? 100 : 0 },
@@ -159,8 +267,8 @@ function qualityForRow(row) {
       name: 'description',
       score: description.length >= 140 ? 100 : description.length >= 60 ? 70 : 0,
     },
-    { name: 'summary', score: 0 },
-    { name: 'attributes', score: 0 },
+    { name: 'summary', score: summary.score },
+    { name: 'attributes', score: attributes.score },
     { name: 'images', score: images > 0 ? 100 : 0 },
     {
       name: 'brand_category',
@@ -204,6 +312,9 @@ function qualityForRow(row) {
       source_backed_fields: {
         title: Boolean(title),
         description_length: description.length,
+        optional_components_enabled: scoreOptionalComponents,
+        summary_length: summary.text.length,
+        attribute_signal_count: attributes.signalCount,
         image_count: images,
         price_amount: price,
         brand: Boolean(brand),
@@ -466,6 +577,8 @@ function planForRow(row) {
       has_price: quality.has_price,
       description_length: quality.description_length,
       problems: quality.details.problems,
+      components: quality.details.components,
+      source_backed_fields: quality.details.source_backed_fields,
     },
     verdict,
     pre_image: {
@@ -493,6 +606,8 @@ async function writeOneRow(client, row, plan) {
       model_readiness_score: 0,
       conversion_potential_score: null,
       problems: plan.quality.problems,
+      components: plan.quality.components,
+      source_backed_fields: plan.quality.source_backed_fields,
       repair_source: REPAIR_SOURCE,
     }),
   ]);
@@ -674,6 +789,7 @@ async function main() {
       abort_reason: abortReason,
       rules_version: RULES_VERSION,
       consolidation_version: CONSOLIDATION_VERSION,
+      optional_components_scored: qualityOptionalComponentsEnabled(),
       cohort_filter: {
         merchant_id: 'external_seed',
         platform: 'external_seed',
@@ -708,7 +824,21 @@ async function main() {
   }
 }
 
-main().catch((error) => {
-  process.stderr.write(`${error?.stack || error?.message || String(error)}\n`);
-  process.exitCode = 1;
-});
+if (require.main === module) {
+  main().catch((error) => {
+    process.stderr.write(`${error?.stack || error?.message || String(error)}\n`);
+    process.exitCode = 1;
+  });
+}
+
+module.exports = {
+  OPTIONAL_COMPONENTS_FLAG,
+  classifyPostGraduation,
+  planForRow,
+  qualityForRow,
+  qualityOptionalComponentsEnabled,
+  scoreSourceBackedAttributes,
+  scoreSourceBackedSummary,
+  sourceBackedAttributeSignalCount,
+  sourceBackedSummaryText,
+};
