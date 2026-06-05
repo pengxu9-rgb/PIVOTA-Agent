@@ -261,6 +261,66 @@ describe('submit_payment response contract normalization', () => {
     },
   );
 
+  it.each(['shop_pay', 'paypal'])(
+    'routes payment_method.type-only %s submit_payment through delegated checkout sessions',
+    async (paymentMethodType) => {
+      nock(API_BASE)
+        .post('/agent/v2/payments/checkout-sessions', (body) => {
+          return (
+            body?.order_id === 'ord_001' &&
+            body?.quote_id === 'quote_001' &&
+            body?.expected_amount === 2900 &&
+            body?.currency === 'EUR' &&
+            body?.payment_method_hint === undefined &&
+            body?.payment_handler_id === undefined &&
+            body?.payment_handler_type === undefined
+          );
+        })
+        .reply(200, {
+          payment_status: 'requires_action',
+          confirmation_owner: 'client',
+          requires_client_confirmation: true,
+          psp: paymentMethodType,
+          payment_action: {
+            type: 'redirect_url',
+            url: `https://merchant.example/checkouts/${paymentMethodType}-typed`,
+            submit_owner: 'redirect',
+            component_kind: `${paymentMethodType}_checkout`,
+            supported_in_shopping_ui: true,
+          },
+          checkout_session: {
+            checkout_session_id: `${paymentMethodType}_sess_type_only`,
+            provider: paymentMethodType,
+            hosted_url: `https://merchant.example/checkouts/${paymentMethodType}-typed`,
+          },
+        });
+
+      const res = await invokeSubmitPayment({
+        payment_method_hint: undefined,
+        payment_method: {
+          type: paymentMethodType,
+        },
+      });
+
+      expect(res.status).toBe(200);
+      expect(res.body).toMatchObject({
+        payment_status: 'requires_action',
+        confirmation_owner: 'client',
+        requires_client_confirmation: true,
+        psp: paymentMethodType,
+        submit_owner: 'redirect',
+        checkout_session_id: `${paymentMethodType}_sess_type_only`,
+        checkout_url: `https://merchant.example/checkouts/${paymentMethodType}-typed`,
+        payment_action: {
+          type: 'redirect_url',
+          submit_owner: 'redirect',
+          supported_in_shopping_ui: true,
+        },
+      });
+      expect(nock.isDone()).toBe(true);
+    },
+  );
+
   it('fails closed when upstream sends only a partial explicit contract', async () => {
     nock(API_BASE)
       .post('/agent/v1/payments')
