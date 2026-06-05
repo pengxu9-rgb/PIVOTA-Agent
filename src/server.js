@@ -4191,6 +4191,46 @@ const PDP_CORE_BLOCKING_INCLUDE_SET = new Set([
   'all',
 ]);
 
+const PDP_V2_INCLUDE_ALIASES = Object.freeze({
+  review: 'reviews_preview',
+  reviews: 'reviews_preview',
+  ingredients: 'ingredients_inci',
+  ingredient: 'ingredients_inci',
+  inci: 'ingredients_inci',
+  full_ingredients: 'ingredients_inci',
+});
+
+function normalizePdpV2IncludeToken(value) {
+  const token = String(value || '')
+    .trim()
+    .toLowerCase()
+    .replace(/[-\s]+/g, '_');
+  if (!token) return '';
+  return PDP_V2_INCLUDE_ALIASES[token] || token;
+}
+
+function normalizePdpV2IncludeList(values) {
+  const rawValues = Array.isArray(values) ? values : [];
+  const out = [];
+  const seen = new Set();
+  for (const value of rawValues) {
+    const token = normalizePdpV2IncludeToken(value);
+    if (!token || seen.has(token)) continue;
+    seen.add(token);
+    out.push(token);
+  }
+  return out;
+}
+
+function parsePdpV2IncludeList(includeRaw) {
+  const rawValues = Array.isArray(includeRaw)
+    ? includeRaw
+    : typeof includeRaw === 'string'
+      ? includeRaw.split(',')
+      : [];
+  return normalizePdpV2IncludeList(rawValues);
+}
+
 function resolvePdpSimilarRequestMode({ payload = {}, options = {}, includeList = [] } = {}) {
   const rawMode = String(
     options.similar_mode ||
@@ -4213,9 +4253,7 @@ function resolvePdpSimilarRequestMode({ payload = {}, options = {}, includeList 
     return 'first_paint';
   }
 
-  const normalizedInclude = Array.isArray(includeList)
-    ? includeList.map((value) => String(value || '').trim().toLowerCase()).filter(Boolean)
-    : [];
+  const normalizedInclude = normalizePdpV2IncludeList(includeList);
   const asksForSimilar = normalizedInclude.some((value) => value === 'similar' || value === 'recommendations');
   const asksForBlockingCore = normalizedInclude.some((value) => PDP_CORE_BLOCKING_INCLUDE_SET.has(value));
   if (asksForSimilar && !asksForBlockingCore) {
@@ -35857,15 +35895,8 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
 		          .toLowerCase() === 'true';
           const servingEligibleOnly = shouldRequirePdpServingEligible(payload, options);
 
-		      const includeRaw = payload.include;
-		      const includeList = Array.isArray(includeRaw)
-		        ? includeRaw.map((v) => String(v || '').trim().toLowerCase()).filter(Boolean)
-		        : typeof includeRaw === 'string'
-		          ? includeRaw
-		              .split(',')
-		              .map((v) => String(v || '').trim().toLowerCase())
-		              .filter(Boolean)
-		          : [];
+			      const includeRaw = payload.include;
+			      const includeList = parsePdpV2IncludeList(includeRaw);
 		      const includeAll = includeList.includes('all');
 		      const wantsOffers = includeAll || includeList.includes('offers');
 		      const wantsVariantSelector =
@@ -45817,6 +45848,8 @@ module.exports._debug = {
   resolvePdpSimilarCacheBypass,
   buildPdpSimilarFetchArgs,
   resolvePdpSimilarCatalogFetchLimit,
+  parsePdpV2IncludeList,
+  normalizePdpV2IncludeList,
   resolvePdpSimilarRequestMode,
   hasSimilarCardImage,
   resolvePdpSimilarWithBudget,
