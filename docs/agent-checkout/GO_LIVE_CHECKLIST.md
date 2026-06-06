@@ -4,11 +4,11 @@
 production safely. Supersedes the scattered status in `PROGRAM_SUMMARY.md` / `readiness-to-green.md` for
 the GO-LIVE view (those remain for architecture + scorecard-dimension detail).
 
-**One-line status (2026-06-06):** the Commerce Safety Kernel, strict gateway mount, raw webhook route,
-schema promotion, and platform/merchant adapter tests are code-complete locally. Everything left before
-production money traffic is **staging environment validation, backend wire-format confirmation,
-observability export proof, and manual paid-charge approval**. The whole feature is gated by one env flag,
-`AGENT_CHECKOUT_STRICT`; with it OFF, production behavior remains on the legacy path.
+**One-line status (2026-06-06):** strict checkout is enabled in staging and production, production
+`submit_payment` is still disabled, and the non-charge rollout gates are green. Evidence is recorded in
+`STRICT_PROD_ROLLOUT_EVIDENCE_20260606.md`. Everything left before production pay traffic is
+**credential hygiene, manual Stripe test-mode paid canary, refund/status/webhook validation, and final
+observability export proof**.
 
 **Legend:** ✅ done · 🟡 ready, waiting on an external party · ⛔ blocked by a dependency
 
@@ -28,16 +28,18 @@ observability export proof, and manual paid-charge approval**. The whole feature
 
 ---
 
-## B. Confirmation gates — 🟡 BACKEND TEAM (run the probe)
-**This is the long pole. It gates everything below.** Run the executable probe `scripts/probe_wire_format.mjs`
-(reviewed — `FINAL_REVIEW_ProbeScript.md`; manual curl version + decision rules in `PROBE_wire_format_confirmation.md`).
+## B. Confirmation gates — 🟡 PARTIAL GREEN; PAID CANARY STILL MANUAL
+The no-charge executable probe `scripts/probe_wire_format.mjs` has run in GitHub Actions against
+production (`27059885995`). It confirmed the live v2 backend and `create_order` totals as major-unit
+decimal strings with currency present. `submit_payment` remains disabled, so terminal PSP behavior still
+requires the manual Phase-3 canary in `PROBE_RUNBOOK.md`.
 | # | Confirm | Why it blocks | Our default assumption |
 |---|---|---|---|
-| B1 | `submit_payment` wire amount is **minor units** | the charge amount | minor (repo's own `submit_payment_contract.test.js` already sends `2900` for €29) |
-| B2 | `create_order.amounts.total` is **minor** AND carries a **currency** | our units cross-check; missing currency fails closed | minor (repo mock `1000` for a $10 item) |
-| B3 | charge to PSP carries a **per-ORDER idempotency key** | closes the residual double-charge-on-retry + `no_payment_id` crash-window risk we CANNOT close in the gateway | assumed absent → must be added |
-| B4 | Webhook **PSP + signing secret/header + order/payment-id correlation field** | needed to wire the completion webhook + reconcile | Stripe-like, `x-pivota-webhook-signature`, `payment_intent_id` |
-| B5 | **Which backend version is live** (v2 Node `/agent/v2/*` minor, vs v1 Python `/agent/v1/*` major+ignored) | changes B1/B2 answers | v2 |
+| B1 | `submit_payment` remains structurally disabled until a manual canary proves PSP amount forwarding | the charge amount | pending manual test-mode canary |
+| B2 | `create_order.amounts.total` unit and currency | kernel order cross-check | confirmed as major-unit decimal string with currency present |
+| B3 | charge to PSP carries a per-order idempotency key | closes the residual double-charge-on-retry + `no_payment_id` crash-window risk | pending manual paid replay/dashboard proof |
+| B4 | Webhook PSP + signing secret/header + order/payment-id correlation field | needed to wire completion webhook + reconcile | pending live webhook observation |
+| B5 | Which backend version is live | changes B1/B2 answers | confirmed v2 |
 | B6 | `CHARGE_LOCK_TTL_MS` (2 min) exceeds the real charge-call worst-case timeout | a too-short TTL could let a slow charge's lock expire | 2 min |
 
 ---
@@ -55,22 +57,24 @@ Reference details: `src/server.js`, `src/serverWireIn.example.js`, and
 
 ---
 
-## D. Ops / secrets — ⛔ OPS (blocked on staging credentials and deployment)
+## D. Ops / secrets — 🟡 PARTIAL GREEN
 | # | Step |
 |---|---|
-| D1 | Run `node src/db/cli.js migrate` against staging, then `DATABASE_URL=<staging postgres> node safety-kernel/scripts/validate-commerce-kv-staging.mjs` |
-| D2 | Set `CONFIRMATION_SECRET`, `PAYMENT_WEBHOOK_SECRET`; register the prod KMS-wrapped DEK with `KmsKeyProvider` |
+| D1 | Staging and production have durable gateway DB config; keep validating `commerce_kv` before each pay enablement. |
+| D2 | `CONFIRMATION_SECRET` is set in production. `PAYMENT_WEBHOOK_SECRET` and KMS/PSP rotation evidence remain pay-gate prerequisites. |
 | D3 | Export the audit sink → the `gateway-governance` raw-log path (the hook exists; point it) |
+| D4 | Rotate Stripe test and Shopify credentials if the pre-redaction readiness artifact bundle was shared outside the local workspace. |
 
 ---
 
-## E. Rollout — ⛔ YOU / OPS (blocked on D)
+## E. Rollout — 🟡 STRICT ON; PAY DISABLED
 | # | Step |
 |---|---|
-| E1 | Flip `AGENT_CHECKOUT_STRICT=1` in **staging**; run `staging-validation-runbook.md` |
-| E2 | Canary in prod: enable **read-only + preview_quote + create_order FIRST** (these are real-contract-ready) |
-| E3 | Confirm `ROLLOUT_OBSERVABILITY_GATES.md` is green: split CI, backend checkout-payment-safety, no-charge probe, raw-log export, rollback lever |
-| E4 | Enable `submit_payment` **LAST**, only after B1 + B2 + B3 are confirmed green |
+| E1 | `AGENT_CHECKOUT_STRICT=1` is enabled in staging and production. |
+| E2 | Production `submit_payment` kill switch is green: fake pay probe returns HTTP `405 OPERATION_NOT_ALLOWED`. |
+| E3 | Strict identity gate is green in GitHub Actions run `27060426512`. |
+| E4 | No-charge wire-format probe is green in GitHub Actions run `27059885995`. |
+| E5 | Enable `submit_payment` **LAST**, only after manual paid canary, refund cap, webhook/status sync, replay, and observability export are green. |
 
 ---
 
@@ -80,16 +84,17 @@ B (backend probe)  ──►  D (ops/secrets)  ──►  E (staged rollout)
    confirms units/idempotency/webhook facts       secrets + DB + raw logs       pay enabled only
                                                   after B1+B2+B3
 ```
-Gateway wire-in is no longer the long pole. Action now: run read-only staging probe with
-`PROBE_BASE`/`PROBE_KEY`, validate staging `commerce_kv`, and keep `submit_payment` disabled until
-B1/B2/B3 are confirmed.
+Gateway wire-in is no longer the long pole. Action now: keep `submit_payment` disabled, rotate any exposed
+test credentials, complete the manual Stripe test-mode paid canary, then validate refund/status/webhook
+behavior before enabling production pay.
 
 ## Safe-flip order (when B is green)
-1. Ship the wire-in with `AGENT_CHECKOUT_STRICT=0` → no behavior change; verify the code path is dormant.
-2. Staging: flip to `1`, run the validation runbook (E1).
-3. Prod: flip to `1` but keep `submit_payment` on the legacy path until B1+B2+B3 confirmed; quote/order go first.
-4. Confirm rollout/observability gates are green.
-5. Enable `submit_payment` through the kernel last.
+1. Keep production and staging `AGENT_CHECKOUT_STRICT=1`.
+2. Keep `AGENT_CHECKOUT_STRICT_SUBMIT_PAYMENT_ENABLED` unset/off.
+3. Confirm rollout/observability gates are green for each canary window.
+4. Run the paid canary manually in Stripe test mode and record dashboard evidence.
+5. Validate replay, refund cap, payment status sync, webhook observation, cancellation, and return/RMA fencing.
+6. Enable `submit_payment` through the kernel last.
 
 ## Rollback (instant, no deploy)
 Set `AGENT_CHECKOUT_STRICT=0`. The kernel is purely additive (zero edits to the legacy path), so the flag
@@ -97,9 +102,9 @@ reverts every money op to existing behavior immediately. No data migration to un
 namespaces are kernel-only).
 
 ## Residual risks carried into prod (must be accepted or closed)
-- **R1 (closed by B3):** retry-after-a-wrong-`failed` could double-charge without a per-order PSP idempotency key.
+- **R1 (closed by paid replay proof):** retry-after-a-wrong-`failed` could double-charge without a per-order PSP idempotency key.
 - **R2 (closed by C4):** a units/currency cross-check failure leaves an orphaned upstream order (safe/unpayable via kernel, but cruft) until a compensating cancel is wired. Currently surfaced via `order_units_mismatch_orphan` warn logs.
-- **R3:** `submit_payment` against the real backend MUST stay off until B1+B2+B3 — enforced by E3, not by code.
+- **R3:** `submit_payment` against the real backend MUST stay off until the manual paid canary, replay, refund, status/webhook, and observability gates are green.
 
 ## Detail docs
-Contract `safety-kernel-contract.md` · tools `tool-schema.v2.json` · wire-in `server-mount-and-durable-store.md` + `src/serverWireIn.example.js` · payments `payment-flow-remodel.md` · probe `PROBE_wire_format_confirmation.md` · rollout/observability `ROLLOUT_OBSERVABILITY_GATES.md` · money `FINAL_REVIEW_MoneyUnits.md` + `_Round2.md` · staging `staging-validation-runbook.md`.
+Contract `safety-kernel-contract.md` · tools `tool-schema.v2.json` · wire-in `server-mount-and-durable-store.md` + `src/serverWireIn.example.js` · payments `payment-flow-remodel.md` · probe `PROBE_RUNBOOK.md` + `PROBE_wire_format_confirmation.md` · rollout evidence `STRICT_PROD_ROLLOUT_EVIDENCE_20260606.md` · rollout/observability `ROLLOUT_OBSERVABILITY_GATES.md` · money `FINAL_REVIEW_MoneyUnits.md` + `_Round2.md` · staging `staging-validation-runbook.md`.

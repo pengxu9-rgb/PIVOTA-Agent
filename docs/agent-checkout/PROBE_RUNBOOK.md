@@ -94,8 +94,10 @@ This phase leaves an **unpaid order** on the backend (normal abandoned-cart cruf
 
 ## 4. Phase 3 — add the charge (PREFER STRIPE TEST MODE)
 
-> Only do this once Phase 2's verdict is `MINOR confirmed` (or you specifically want the live wire/Stripe
-> ground truth). It moves **real money** unless the backend/PSP is in test mode.
+> Only do this once Phase 2 has a trustworthy verdict and the kernel parsing matches that verdict. As of
+> the 2026-06-06 production no-charge probe, live `create_order` was `MAJOR confirmed for create_order`,
+> so `submit_payment` must stay disabled until the manual canary below proves PSP forwarding and replay
+> behavior. This phase moves **real money** unless the backend/PSP is in test mode.
 
 ```bash
 export PROBE_ALLOW_CHARGE=1
@@ -119,6 +121,17 @@ Open Stripe → Payments → find that `payment_intent_id`. **Record:**
 ### 4c. Clean up
 - **Test mode:** nothing to do.
 - **Live mode:** **refund** that PaymentIntent immediately from the dashboard.
+
+### 4d. Credential and artifact hygiene
+- Before sharing any probe artifact, run a redaction scan for PSP session ids, checkout URLs, API keys,
+  bearer tokens, Shopify access tokens, admin order URLs, `client_secret`, card data, emails, and
+  addresses.
+- If any raw smoke bundle, dashboard screenshot, or JSON artifact containing Stripe test secrets or
+  Shopify credentials was shared outside the local/operator workspace, rotate those credentials before
+  treating the evidence packet as green.
+- Shared evidence may include deployment ids, order ids, redacted PSP ids, statuses, amount, currency,
+  and verdicts. It must not include raw keys, payment action URLs, `client_secret`, or bearer/API-key
+  values.
 
 ---
 
@@ -146,6 +159,11 @@ Stripe charged             = ____   currency = ____   (== intended? yes/no)
 Refunded (if live)         = ____
 Per-order PSP idempotency? = yes / no / unsure
 Webhook: event + header + correlation field = ____
+Replay created extra charge? = no / yes
+Refund cap enforced?       = yes / no / n/a
+Canonical status synced?   = yes / no
+Redaction scan passed?     = yes / no
+Credential rotation needed? = no / yes, completed / yes, pending
 ```
 
 ---
@@ -154,6 +172,8 @@ Webhook: event + header + correlation field = ____
 - Any step returns a non-2xx → the script prints a redacted error and **stops**; send me that error.
 - `trusted = false` or verdict `UNRELIABLE` → re-run pinned to a cents-priced item before concluding.
 - Never paste raw API keys, card numbers, or `client_secret` values back (the script already redacts its own output).
+- Never paste raw checkout-session JSON or merchant connector credentials. Redact first, then rotate if
+  anything sensitive escaped the local/operator workspace.
 - If you're unsure whether the backend is in Stripe test mode, **stop before Phase 3** and confirm — Phases 1–2 already answer the core units question with zero money risk.
 
 ## Run it from CI instead (no token pasted anywhere)
@@ -171,7 +191,8 @@ credentials from repo secrets — so nobody pastes a token into a chat or a term
    in this workflow.
 
 The CI job **never** charges (it never passes `--charge` / sets `PROBE_ALLOW_CHARGE`). **Phase 3 (the
-charge) + the Stripe dashboard check stay manual** — run them per Phase 3 above when Phase 2 = `MINOR confirmed`.
+charge) + the Stripe dashboard check stay manual** — run them per Phase 3 above only when Phase 2 has a
+trusted verdict and the deployed kernel parsing matches that verdict.
 
 ## Manual fallback
 If you'd rather run by hand (or the script can't auth in your env), `PROBE_wire_format_confirmation.md` has
