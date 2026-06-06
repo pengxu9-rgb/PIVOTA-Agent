@@ -341,6 +341,106 @@ describe('strict checkout canary script', () => {
     }
   });
 
+  test('tries alternate product variants before create_order', async () => {
+    const requests = [];
+    const { server, baseUrl } = await listen(async (req, res) => {
+      try {
+        const body = await readJson(req);
+        requests.push(body);
+        res.setHeader('Content-Type', 'application/json');
+
+        if (body.operation === 'get_product_detail') {
+          res.end(JSON.stringify({
+            product: {
+              attributes: {
+                variants: [
+                  { variant_id: 'variant_bad' },
+                  { variant_id: 'variant_good' },
+                ],
+              },
+            },
+          }));
+          return;
+        }
+
+        if (body.operation === 'preview_quote') {
+          const variantId = body.payload.quote.items[0].variant_id;
+          if (variantId === 'variant_bad') {
+            res.statusCode = 503;
+            res.end(JSON.stringify({
+              error: {
+                code: 'MERCHANT_UNAVAILABLE',
+                message: 'The merchant is temporarily unreachable. Please try again shortly.',
+              },
+            }));
+            return;
+          }
+          res.end(JSON.stringify({
+            quote_id: 'quote_variant_good',
+            locked_totals: { total: 299 },
+            currency: 'USD',
+            merchant_of_record: 'merchant',
+          }));
+          return;
+        }
+
+        if (body.operation === 'create_order') {
+          res.end(JSON.stringify({
+            order_id: 'order_variant_good',
+            amount_total: 299,
+            currency: 'USD',
+          }));
+          return;
+        }
+
+        res.statusCode = 500;
+        res.end(JSON.stringify({ error: { code: 'UNEXPECTED_OPERATION' } }));
+      } catch (error) {
+        res.statusCode = 500;
+        res.end(JSON.stringify({ error: { message: error.message } }));
+      }
+    });
+
+    try {
+      const { stdout } = await execFileAsync(
+        'node',
+        [scriptPath, '--create-order', '--json'],
+        {
+          cwd: repoRoot,
+          env: baseEnv({
+            PROBE_BASE: baseUrl,
+            PROBE_PRODUCT_ID: 'prod_variant',
+            PROBE_MERCHANT_ID: 'merch_variant',
+            PROBE_VARIANT_ID: '',
+            STRICT_CANARY_ALLOW_CREATE_ORDER: '1',
+            STRICT_CANARY_SEND_TEST_IDENTITY: '1',
+            STRICT_CANARY_RUN_ID: 'run_variant_retry',
+          }),
+          encoding: 'utf8',
+        },
+      );
+
+      const summary = JSON.parse(stdout);
+      expect(summary.selection).toEqual(expect.objectContaining({
+        selected_variant_id: 'variant_good',
+        quote_failures: 1,
+        quote_attempts: 2,
+      }));
+      expect(summary.steps.preview_quote.quote_id).toBe('quote_variant_good');
+      expect(summary.steps.create_order.order_id).toBe('order_variant_good');
+      expect(requests.map((body) => body.operation)).toEqual([
+        'get_product_detail',
+        'preview_quote',
+        'preview_quote',
+        'create_order',
+      ]);
+      expect(requests[1].payload.quote.items[0].variant_id).toBe('variant_bad');
+      expect(requests[2].payload.quote.items[0].variant_id).toBe('variant_good');
+    } finally {
+      server.close();
+    }
+  });
+
   test('prints resolved variant, shipping, and upstream details when preview_quote fails', async () => {
     const requests = [];
     const { server, baseUrl } = await listen(async (req, res) => {

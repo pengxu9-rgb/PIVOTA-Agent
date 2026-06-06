@@ -392,7 +392,9 @@ function stringValue(value) {
   return out ? out : undefined;
 }
 
-function extractVariantId(detail) {
+function extractVariantIds(detail) {
+  const out = [];
+  const seen = new Set();
   const queue = [detail];
   while (queue.length) {
     const value = queue.shift();
@@ -405,13 +407,16 @@ function extractVariantId(detail) {
       if (key === 'variants' && Array.isArray(child)) {
         for (const variant of child) {
           const id = stringValue(variant?.variant_id || variant?.variantId || variant?.id);
-          if (id) return id;
+          if (id && !seen.has(id)) {
+            seen.add(id);
+            out.push(id);
+          }
         }
       }
       queue.push(child);
     }
   }
-  return undefined;
+  return out;
 }
 
 function errorCode(error) {
@@ -472,17 +477,17 @@ async function resolvePreviewQuote(config) {
   }
 
   const quoteFailures = [];
+  let quoteAttempts = 0;
   for (const candidate of candidates) {
-    let variantId = config.variantId;
-    if (!variantId) {
+    let variantIds = config.variantId ? [config.variantId] : [];
+    if (variantIds.length === 0) {
       try {
-        variantId = extractVariantId(await invoke(productDetailRequest(candidate), config));
+        variantIds = extractVariantIds(await invoke(productDetailRequest(candidate), config));
       } catch (error) {
         quoteFailures.push({
           operation: 'get_product_detail',
           product_id: candidate.productId,
           merchant_id: candidate.merchantId,
-          variant_id: variantId,
           status: error?.details?.status,
           code: errorCode(error),
           message: errorMessage(error),
@@ -490,51 +495,56 @@ async function resolvePreviewQuote(config) {
         });
       }
     }
+    if (variantIds.length === 0) variantIds = [undefined];
 
-    const selection = { ...candidate, ...(variantId ? { variantId } : {}) };
-    try {
-      const preview = await invoke(quoteRequest(config, selection), config);
-      const quote = quoteInfo(preview);
-      if (!quote.quote_id) {
+    for (const variantId of variantIds) {
+      quoteAttempts += 1;
+      const selection = { ...candidate, ...(variantId ? { variantId } : {}) };
+      try {
+        const preview = await invoke(quoteRequest(config, selection), config);
+        const quote = quoteInfo(preview);
+        if (!quote.quote_id) {
+          quoteFailures.push({
+            operation: 'preview_quote',
+            product_id: selection.productId,
+            merchant_id: selection.merchantId,
+            variant_id: variantId,
+            variant_id_present: Boolean(variantId),
+            reason: 'missing_quote_id',
+          });
+          continue;
+        }
+        return {
+          preview,
+          selection,
+          discovery: {
+            source,
+            products_seen: productsSeen,
+            candidates_available: candidates.length,
+            quote_failures: quoteFailures.filter((failure) => failure.operation === 'preview_quote').length,
+            quote_attempts: quoteAttempts,
+            detail_failures: quoteFailures.filter((failure) => failure.operation === 'get_product_detail').length,
+            selected_product_id: selection.productId,
+            selected_merchant_id: selection.merchantId,
+            selected_variant_id: variantId,
+            variant_id_present: Boolean(variantId),
+            shipping_address: shipForQuote(config.shipping),
+          },
+        };
+      } catch (error) {
+        if (!(error instanceof CanaryError)) throw error;
         quoteFailures.push({
           operation: 'preview_quote',
           product_id: selection.productId,
           merchant_id: selection.merchantId,
           variant_id: variantId,
           variant_id_present: Boolean(variantId),
-          reason: 'missing_quote_id',
+          status: error?.details?.status,
+          code: errorCode(error),
+          message: errorMessage(error),
+          details: errorDetails(error),
         });
-        continue;
       }
-      return {
-        preview,
-        selection,
-        discovery: {
-          source,
-          products_seen: productsSeen,
-          candidates_available: candidates.length,
-          quote_failures: quoteFailures.filter((failure) => failure.operation === 'preview_quote').length,
-          detail_failures: quoteFailures.filter((failure) => failure.operation === 'get_product_detail').length,
-          selected_product_id: selection.productId,
-          selected_merchant_id: selection.merchantId,
-          selected_variant_id: variantId,
-          variant_id_present: Boolean(variantId),
-          shipping_address: shipForQuote(config.shipping),
-        },
-      };
-    } catch (error) {
-      if (!(error instanceof CanaryError)) throw error;
-      quoteFailures.push({
-        operation: 'preview_quote',
-        product_id: selection.productId,
-        merchant_id: selection.merchantId,
-        variant_id: variantId,
-        variant_id_present: Boolean(variantId),
-        status: error?.details?.status,
-        code: errorCode(error),
-        message: errorMessage(error),
-        details: errorDetails(error),
-      });
     }
   }
 
@@ -545,6 +555,7 @@ async function resolvePreviewQuote(config) {
       code: 'USER_AUTH_REQUIRED',
       query: shouldDiscoverProduct(config) ? config.query : undefined,
       candidates_tried: candidates.length,
+      quote_attempts: quoteAttempts,
       hint: 'Open a short AGENT_CHECKOUT_ALLOW_TEST_IDENTITY=1 window on the target gateway, rerun the no-charge strict canary, then close the window. No create_order was attempted.',
     });
   }
@@ -553,6 +564,7 @@ async function resolvePreviewQuote(config) {
     operation: 'preview_quote',
     query: shouldDiscoverProduct(config) ? config.query : undefined,
     candidates_tried: candidates.length,
+    quote_attempts: quoteAttempts,
     failures: quoteFailures,
     shipping_address: shipForQuote(config.shipping),
     hint: 'Pin a known-purchasable PROBE_PRODUCT_ID + PROBE_MERCHANT_ID, or use PROBE_QUERY for a cheap in-stock item.',
