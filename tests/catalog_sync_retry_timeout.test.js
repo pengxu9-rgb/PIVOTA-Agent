@@ -138,4 +138,34 @@ describe('creator catalog auto-sync retry on long timeout', () => {
     expect(app._debug.catalogSyncState.target_suppressed_count).toBe(1);
     expect(app._debug.catalogSyncState.target_eligible_count).toBe(1);
   });
+
+  test('does not retry canonical ingest failures and cools down the target', async () => {
+    process.env.CATALOG_SYNC_MERCHANT_IDS = 'merch_ingest_bug';
+
+    const axiosPost = jest.fn().mockRejectedValue({
+      response: {
+        status: 502,
+        data: {
+          detail: 'Synced 20 products from Wix, but canonical catalog ingest failed',
+        },
+      },
+      message: 'Request failed with status code 502',
+    });
+    jest.doMock('axios', () => ({ defaults: {}, post: axiosPost }));
+
+    const app = require('../src/server');
+    await app._debug.runCreatorCatalogAutoSync();
+    await app._debug.runCreatorCatalogAutoSync();
+
+    expect(axiosPost).toHaveBeenCalledTimes(1);
+    expect(app._debug.catalogSyncState.per_merchant.merch_ingest_bug).toEqual(
+      expect.objectContaining({
+        ok: false,
+        skipped: true,
+        status: 502,
+        invalid_merchant: false,
+      }),
+    );
+    expect(app._debug.catalogSyncState.target_suppressed_count).toBe(1);
+  });
 });

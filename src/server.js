@@ -10611,9 +10611,45 @@ function isCatalogSyncRetryableError(err) {
   return message.includes('timeout') || message.includes('timed out');
 }
 
+function getCatalogSyncErrorText(err) {
+  const data = err?.response?.data;
+  const candidates = [
+    data?.detail?.message,
+    data?.detail?.error,
+    data?.detail,
+    data?.error?.message,
+    data?.error,
+    err?.message,
+  ];
+  if (data && typeof data === 'object') {
+    try {
+      candidates.push(JSON.stringify(data));
+    } catch (_) {
+      // Best-effort diagnostics only.
+    }
+  }
+  return candidates
+    .filter((value) => value !== undefined && value !== null)
+    .map((value) => (typeof value === 'string' ? value : JSON.stringify(value)))
+    .filter(Boolean)
+    .join(' ')
+    .trim()
+    .toLowerCase();
+}
+
+function isCatalogSyncCanonicalIngestFailure(err) {
+  const message = getCatalogSyncErrorText(err);
+  if (!message) return false;
+  if (message.includes('canonical catalog ingest failed')) return true;
+  if (message.includes('textclause')) return true;
+  if (message.includes('object has no attribute') && message.includes('values')) return true;
+  return false;
+}
+
 function isCatalogSyncNonRetryableError(err) {
   const status = Number(err?.response?.status || 0);
   if (status === 400 || status === 401 || status === 403 || status === 404) return true;
+  if (isCatalogSyncCanonicalIngestFailure(err)) return true;
 
   const detailStatus = Number(
     err?.response?.data?.status ||
@@ -10628,15 +10664,7 @@ function isCatalogSyncNonRetryableError(err) {
   const code = String(err?.code || '').trim().toUpperCase();
   if (code === 'ENOTFOUND') return true;
 
-  const message = String(
-    err?.response?.data?.detail?.message ||
-      err?.response?.data?.detail ||
-      err?.response?.data?.error?.message ||
-      err?.message ||
-      '',
-  )
-    .trim()
-    .toLowerCase();
+  const message = getCatalogSyncErrorText(err);
   if (!message) return false;
   if (message.includes('shopify api error: 404')) return true;
   if (message.includes('\"errors\":\"not found\"')) return true;
