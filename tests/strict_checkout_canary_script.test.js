@@ -266,4 +266,78 @@ describe('strict checkout canary script', () => {
       server.close();
     }
   });
+
+  test('classifies closed test-identity window before any create_order write', async () => {
+    const requests = [];
+    const { server, baseUrl } = await listen(async (req, res) => {
+      try {
+        const body = await readJson(req);
+        requests.push(body);
+        res.setHeader('Content-Type', 'application/json');
+
+        if (body.operation === 'find_products') {
+          res.end(JSON.stringify({
+            products: [
+              { product_id: 'prod_auth', merchant_id: 'merch_auth', title: 'Auth Probe' },
+            ],
+          }));
+          return;
+        }
+
+        if (body.operation === 'get_product_detail') {
+          res.end(JSON.stringify({
+            product: { variants: [{ variant_id: 'variant_auth' }] },
+          }));
+          return;
+        }
+
+        if (body.operation === 'preview_quote') {
+          res.statusCode = 401;
+          res.end(JSON.stringify({ code: 'USER_AUTH_REQUIRED', message: 'User authentication required' }));
+          return;
+        }
+
+        res.statusCode = 500;
+        res.end(JSON.stringify({ error: { code: 'UNEXPECTED_WRITE' } }));
+      } catch (error) {
+        res.statusCode = 500;
+        res.end(JSON.stringify({ error: { message: error.message } }));
+      }
+    });
+
+    try {
+      let failure;
+      try {
+        await execFileAsync(
+          'node',
+          [scriptPath, '--create-order', '--json'],
+          {
+            cwd: repoRoot,
+            env: baseEnvWithoutPins({
+              PROBE_BASE: baseUrl,
+              STRICT_CANARY_ALLOW_CREATE_ORDER: '1',
+              STRICT_CANARY_SEND_TEST_IDENTITY: '1',
+              STRICT_CANARY_RUN_ID: 'run_auth_required',
+            }),
+            encoding: 'utf8',
+          },
+        );
+      } catch (error) {
+        failure = error;
+      }
+
+      expect(failure).toMatchObject({
+        code: 1,
+        stderr: expect.stringContaining('Strict test identity was not accepted by the target gateway'),
+      });
+      expect(failure.stderr).toContain('AGENT_CHECKOUT_ALLOW_TEST_IDENTITY=1');
+      expect(requests.map((body) => body.operation)).toEqual([
+        'find_products',
+        'get_product_detail',
+        'preview_quote',
+      ]);
+    } finally {
+      server.close();
+    }
+  });
 });

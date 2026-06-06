@@ -418,6 +418,13 @@ function errorCode(error) {
   return first(body?.code, body?.error?.code, body?.error?.message, body?.message);
 }
 
+function previewFailuresRequireUserAuth(failures) {
+  const previewFailures = failures.filter((failure) => failure.operation === 'preview_quote');
+  return previewFailures.length > 0 && previewFailures.every((failure) => {
+    return failure.status === 401 && failure.code === 'USER_AUTH_REQUIRED';
+  });
+}
+
 async function resolvePreviewQuote(config) {
   let candidates;
   let productsSeen = 0;
@@ -498,6 +505,17 @@ async function resolvePreviewQuote(config) {
         code: errorCode(error),
       });
     }
+  }
+
+  if (previewFailuresRequireUserAuth(quoteFailures)) {
+    throw new CanaryError('Strict test identity was not accepted by the target gateway', {
+      operation: 'preview_quote',
+      status: 401,
+      code: 'USER_AUTH_REQUIRED',
+      query: shouldDiscoverProduct(config) ? config.query : undefined,
+      candidates_tried: candidates.length,
+      hint: 'Open a short AGENT_CHECKOUT_ALLOW_TEST_IDENTITY=1 window on the target gateway, rerun the no-charge strict canary, then close the window. No create_order was attempted.',
+    });
   }
 
   throw new CanaryError('All candidate products failed to preview_quote', {
