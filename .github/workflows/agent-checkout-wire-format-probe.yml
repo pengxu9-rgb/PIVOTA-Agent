@@ -143,7 +143,7 @@ jobs:
     steps:
       - name: Assert strict money op fails without verified user/session
         env:
-          PROBE_BASE: ${{ inputs.base_url || vars.PROBE_BASE || secrets.PROBE_BASE || 'https://pivota-agent-production.up.railway.app' }}
+          PROBE_BASE: ${{ inputs.base_url || vars.PROBE_IDENTITY_BASE || vars.PIVOTA_AGENT_STAGING_BASE_URL || 'https://pivota-agent-staging.up.railway.app' }}
           PROBE_KEY: ${{ secrets.PROBE_KEY || secrets.COMMERCE_CORE_PROD_AUTH_TOKEN }}
           PROBE_AUTH_HEADER: ${{ inputs.auth_header }}
         run: |
