@@ -40,7 +40,7 @@ const IdempotencyKeySchema = z.string().min(8);
 const ShippingAddressSchema = z.object({
   country: z.string().min(1),
   city: z.string().min(1),
-  postal_code: z.string().optional(),
+  postal_code: z.string().min(1),
   address_line1: z.string().min(1),
   address_line2: z.string().optional(),
   recipient_name: z.string().min(1),
@@ -57,6 +57,7 @@ const CreateOrderPayloadSchema = z.object({
   acp_state: OpaqueStateSchema.optional(),
   order: z.object({
     quote_id: z.string().min(1),
+    customer_email: z.string().min(3),
     shipping_address: ShippingAddressSchema,
     delivery_preferences: DeliveryPreferencesSchema.optional(),
     notes: z.string().optional(),

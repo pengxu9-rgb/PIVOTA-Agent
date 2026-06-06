@@ -188,6 +188,7 @@
             "description": "Used when operation = create_order. Create from a locked quote only; caller-supplied items, prices, and amounts are not accepted.",
             "properties": {
               "quote_id": { "type": "string", "description": "Required. Must reference a live, unexpired quote bound to this user/session. Source of all pricing." },
+              "customer_email": { "type": "string", "description": "Required buyer email for receipt/order creation. Treat as PII; never use it as identity authority." },
               "shipping_address": {
                 "type": "object",
                 "properties": {
@@ -199,7 +200,7 @@
                   "recipient_name": { "type": "string" },
                   "phone": { "type": "string" }
                 },
-                "required": ["country", "city", "address_line1", "recipient_name"],
+                "required": ["country", "city", "postal_code", "address_line1", "recipient_name"],
                 "additionalProperties": false
               },
               "delivery_preferences": {
@@ -215,7 +216,7 @@
               },
               "notes": { "type": "string" }
             },
-            "required": ["quote_id", "shipping_address"],
+            "required": ["quote_id", "customer_email", "shipping_address"],
             "additionalProperties": false
           },
           "quote": {

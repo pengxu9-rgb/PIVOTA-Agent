@@ -37,6 +37,7 @@ function createOrderInvoke(overrides = {}) {
       idempotency_key: 'idem-create-001',
       order: {
         quote_id: 'quote_001',
+        customer_email: 'test-buyer@example.com',
         shipping_address: {
           country: 'US',
           city: 'San Francisco',
@@ -101,9 +102,10 @@ describe('agent checkout v2 contract drift guards', () => {
     expect(payloadProps.idempotency_key.minLength).toBeGreaterThanOrEqual(8);
     expect(payloadProps).toHaveProperty('confirmation_token');
 
-    expectRequired(order, ['quote_id', 'shipping_address']);
+    expectRequired(order, ['quote_id', 'customer_email', 'shipping_address']);
     expectClosed(order);
     expectClosed(order.properties.shipping_address);
+    expectRequired(order.properties.shipping_address, ['postal_code']);
     expectClosed(order.properties.delivery_preferences);
     expectNoProperties(order, ['items', 'amount', 'total_amount', 'unit_price']);
 
@@ -132,8 +134,9 @@ describe('agent checkout v2 contract drift guards', () => {
     const createOrderPayload = v2Tool(schema, 'pivota_create_order').properties.payload;
     expectRequired(createOrderPayload, ['idempotency_key', 'order']);
     expectClosed(createOrderPayload);
-    expectRequired(createOrderPayload.properties.order, ['quote_id', 'shipping_address']);
+    expectRequired(createOrderPayload.properties.order, ['quote_id', 'customer_email', 'shipping_address']);
     expectClosed(createOrderPayload.properties.order);
+    expectRequired(createOrderPayload.properties.order.properties.shipping_address, ['postal_code']);
     expectNoProperties(createOrderPayload.properties.order, ['items', 'amount', 'total_amount']);
 
     const payPayload = v2Tool(schema, 'pivota_pay').properties.payload;
@@ -153,9 +156,10 @@ describe('agent checkout v2 contract drift guards', () => {
     expect(payload.properties.idempotency_key.minLength).toBeGreaterThanOrEqual(8);
     expect(payload.properties).toHaveProperty('confirmation_token');
 
-    expectRequired(order, ['quote_id', 'shipping_address']);
+    expectRequired(order, ['quote_id', 'customer_email', 'shipping_address']);
     expectClosed(order);
     expectClosed(order.properties.shipping_address);
+    expectRequired(order.properties.shipping_address, ['postal_code']);
     expectNoProperties(order, ['items', 'amount', 'total_amount', 'unit_price']);
 
     expectRequired(payment, ['order_id', 'expected_amount', 'currency']);
@@ -183,6 +187,8 @@ describe('agent checkout v2 contract drift guards', () => {
     expect(StrictInvokeRequestSchema.safeParse(createOrderInvoke()).success).toBe(true);
     expect(StrictInvokeRequestSchema.safeParse(createOrderInvoke({ payload: { idempotency_key: undefined } })).success).toBe(false);
     expect(StrictInvokeRequestSchema.safeParse(createOrderInvoke({ payload: { order: { quote_id: undefined } } })).success).toBe(false);
+    expect(StrictInvokeRequestSchema.safeParse(createOrderInvoke({ payload: { order: { customer_email: undefined } } })).success).toBe(false);
+    expect(StrictInvokeRequestSchema.safeParse(createOrderInvoke({ payload: { order: { shipping_address: { postal_code: undefined } } } })).success).toBe(false);
     expect(StrictInvokeRequestSchema.safeParse(createOrderInvoke({ payload: { order: { amount: 2900 } } })).success).toBe(false);
     expect(StrictInvokeRequestSchema.safeParse(createOrderInvoke({ payload: { order: { items: [] } } })).success).toBe(false);
 

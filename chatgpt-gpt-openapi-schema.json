@@ -147,16 +147,20 @@
               "order": {
                 "type": "object",
                 "description": "Order creation parameters. create_order must be called with payload.idempotency_key and a locked quote_id. Caller-supplied items, prices, and amounts are not accepted.",
-                "required": ["quote_id", "shipping_address"],
+                "required": ["quote_id", "customer_email", "shipping_address"],
                 "additionalProperties": false,
                 "properties": {
                   "quote_id": {
                     "type": "string",
                     "description": "Required. Server-issued quote id from preview_quote; all pricing is copied from the locked quote."
                   },
+                  "customer_email": {
+                    "type": "string",
+                    "description": "Required buyer email for receipt/order creation. Treat as PII; never use it as identity authority."
+                  },
                   "shipping_address": {
                     "type": "object",
-                    "required": ["country", "city", "address_line1", "recipient_name"],
+                    "required": ["country", "city", "postal_code", "address_line1", "recipient_name"],
                     "additionalProperties": false,
                     "properties": {
                       "recipient_name": {

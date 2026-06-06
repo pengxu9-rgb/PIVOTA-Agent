@@ -125,6 +125,7 @@ describe('strict Safety Kernel mount on /agent/shop/v1/invoke', () => {
           idempotency_key: 'idem_create_strict',
           order: {
             quote_id: quote.body.quote_id,
+            customer_email: 'strict-buyer@example.com',
             shipping_address: {
               recipient_name: 'Strict Buyer',
               address_line1: '1 Kernel Way',

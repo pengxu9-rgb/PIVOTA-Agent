@@ -189,13 +189,14 @@
               "acp_state": { "type": "object", "additionalProperties": true },
               "order": {
                 "type": "object",
-                "required": ["quote_id", "shipping_address"],
+                "required": ["quote_id", "customer_email", "shipping_address"],
                 "additionalProperties": false,
                 "properties": {
                   "quote_id": { "type": "string", "description": "REQUIRED. Must reference a live, unexpired quote bound to this user_ref/acp session. Source of all pricing." },
+                  "customer_email": { "type": "string", "description": "Required buyer email for receipt/order creation. Treat as PII; never use it as identity authority." },
                   "shipping_address": {
                     "type": "object",
-                    "required": ["country", "city", "address_line1", "recipient_name"],
+                    "required": ["country", "city", "postal_code", "address_line1", "recipient_name"],
                     "additionalProperties": false,
                     "properties": {
                       "country": { "type": "string" },
