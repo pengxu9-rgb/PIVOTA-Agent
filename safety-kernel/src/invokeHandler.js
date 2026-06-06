@@ -113,15 +113,24 @@ export function createInvokeHandler({ kernel, upstream, log = console, afterSale
       }
     } catch (err) {
       if (err instanceof PivotaCommerceError) {
-        log.warn?.('commerce_error', redact({ operation, code: err.code }));
+        log.warn?.(redact({ operation, code: err.code, detail: err.detail || undefined }), 'commerce_error');
         // C6: blocked money-path attempts are first-class observability signals.
         const obs = ERROR_OBSERVABILITY[err.code];
         if (obs) {
           count(obs.metric);
-          emit(obs.event, { user_ref: ctx.user_ref, order_id: payload?.payment?.order_id, operation, detail: { code: err.code } });
+          emit(obs.event, {
+            user_ref: ctx.user_ref,
+            order_id: payload?.payment?.order_id,
+            operation,
+            detail: redact({ code: err.code, ...(err.detail || {}) }),
+          });
         }
         if (err.code === 'IDEMPOTENCY_CONFLICT') count('idempotency_conflict');
-        return err.toResult();
+        const result = err.toResult();
+        if (ctx?.diagnostics === true) {
+          result.error.details = redact(err.detail || {});
+        }
+        return result;
       }
       // Never leak internals or sensitive payload to the caller/logs.
       log.error?.('invoke_unexpected_error', redact({ operation, message: err?.message }));

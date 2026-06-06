@@ -86,6 +86,43 @@ test('auditSink receives money-path events', async () => {
   assert.ok(events.includes('quote_issued'));
 });
 
+test('diagnostic ctx includes redacted upstream error detail only when requested', async () => {
+  const diagnosticUpstream = async () => {
+    const { PivotaCommerceError } = await import('../src/errors.js');
+    throw new PivotaCommerceError('MERCHANT_UNAVAILABLE', {
+      upstream_code: 'SHOPIFY_PRICING_UNAVAILABLE',
+      message: 'Storefront cartCreate failed',
+      token: 'secret-token',
+      expected_amount: 1234,
+    });
+  };
+  const auditEvents = [];
+  const m = createCommerceMount({
+    upstream: diagnosticUpstream,
+    secret: SECRET,
+    strict: true,
+    log: quiet,
+    auditSink: (e) => auditEvents.push(e),
+  });
+
+  const payload = { quote: { merchant_id: 'merch_A', items: [{ product_id: 'p1', quantity: 1 }] } };
+  const normal = await m.handle('preview_quote', payload, CTX);
+  assert.equal(normal.ok, false);
+  assert.equal(normal.error.code, 'MERCHANT_UNAVAILABLE');
+  assert.equal(normal.error.details, undefined);
+
+  const diagnostic = await m.handle('preview_quote', payload, { ...CTX, diagnostics: true });
+  assert.equal(diagnostic.ok, false);
+  assert.equal(diagnostic.error.details.upstream_code, 'SHOPIFY_PRICING_UNAVAILABLE');
+  assert.equal(diagnostic.error.details.token, '[REDACTED]');
+  assert.equal(diagnostic.error.details.expected_amount, '[REDACTED_AMOUNT]');
+
+  const blob = JSON.stringify(auditEvents);
+  assert.ok(blob.includes('SHOPIFY_PRICING_UNAVAILABLE'));
+  assert.ok(!blob.includes('secret-token'));
+  assert.ok(!blob.includes('1234'));
+});
+
 test('INTEGRATION: mount({db}) wires Postgres THROUGH to the kernel registries (not just the flag)', async () => {
   // This closes the "green tests != actually wired" gap: prove a db passed to createCommerceMount
   // actually backs the kernel's quote/order/idempotency stores, by running the full flow and then

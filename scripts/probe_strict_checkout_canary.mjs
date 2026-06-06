@@ -181,6 +181,7 @@ function identityHeaders(config) {
   return {
     'X-Test-User-Ref': config.userRef,
     'X-Test-Acp-Session-Id': config.acpSessionId,
+    'X-Test-Diagnostics': '1',
   };
 }
 
@@ -418,6 +419,27 @@ function errorCode(error) {
   return first(body?.code, body?.error?.code, body?.error?.message, body?.message);
 }
 
+function errorMessage(error) {
+  const body = error?.details?.body;
+  return first(
+    body?.message,
+    body?.error?.message,
+    body?.error?.details?.message,
+    body?.detail?.message,
+    body?.detail,
+  );
+}
+
+function errorDetails(error) {
+  const body = error?.details?.body;
+  return first(
+    body?.details,
+    body?.error?.details,
+    body?.detail?.details,
+    body?.detail,
+  );
+}
+
 function previewFailuresRequireUserAuth(failures) {
   const previewFailures = failures.filter((failure) => failure.operation === 'preview_quote');
   return previewFailures.length > 0 && previewFailures.every((failure) => {
@@ -460,8 +482,11 @@ async function resolvePreviewQuote(config) {
           operation: 'get_product_detail',
           product_id: candidate.productId,
           merchant_id: candidate.merchantId,
+          variant_id: variantId,
           status: error?.details?.status,
           code: errorCode(error),
+          message: errorMessage(error),
+          details: errorDetails(error),
         });
       }
     }
@@ -475,6 +500,7 @@ async function resolvePreviewQuote(config) {
           operation: 'preview_quote',
           product_id: selection.productId,
           merchant_id: selection.merchantId,
+          variant_id: variantId,
           variant_id_present: Boolean(variantId),
           reason: 'missing_quote_id',
         });
@@ -491,7 +517,9 @@ async function resolvePreviewQuote(config) {
           detail_failures: quoteFailures.filter((failure) => failure.operation === 'get_product_detail').length,
           selected_product_id: selection.productId,
           selected_merchant_id: selection.merchantId,
+          selected_variant_id: variantId,
           variant_id_present: Boolean(variantId),
+          shipping_address: shipForQuote(config.shipping),
         },
       };
     } catch (error) {
@@ -500,9 +528,12 @@ async function resolvePreviewQuote(config) {
         operation: 'preview_quote',
         product_id: selection.productId,
         merchant_id: selection.merchantId,
+        variant_id: variantId,
         variant_id_present: Boolean(variantId),
         status: error?.details?.status,
         code: errorCode(error),
+        message: errorMessage(error),
+        details: errorDetails(error),
       });
     }
   }
@@ -523,6 +554,7 @@ async function resolvePreviewQuote(config) {
     query: shouldDiscoverProduct(config) ? config.query : undefined,
     candidates_tried: candidates.length,
     failures: quoteFailures,
+    shipping_address: shipForQuote(config.shipping),
     hint: 'Pin a known-purchasable PROBE_PRODUCT_ID + PROBE_MERCHANT_ID, or use PROBE_QUERY for a cheap in-stock item.',
   });
 }

@@ -69,6 +69,26 @@ on:
         description: "Currency code"
         type: string
         default: "USD"
+      ship_country:
+        description: "Optional strict canary shipping country override"
+        type: string
+        default: ""
+      ship_state:
+        description: "Optional strict canary shipping state/province override"
+        type: string
+        default: ""
+      ship_city:
+        description: "Optional strict canary shipping city override"
+        type: string
+        default: ""
+      ship_postal:
+        description: "Optional strict canary shipping postal code override"
+        type: string
+        default: ""
+      ship_address1:
+        description: "Optional strict canary shipping address line 1 override"
+        type: string
+        default: ""
       auth_header:
         description: "Auth header NAME (not a secret). Default Authorization (Bearer); set e.g. X-API-Key if needed."
         type: string
@@ -269,6 +289,11 @@ jobs:
           PROBE_VARIANT_ID: ${{ inputs.variant_id || vars.PROBE_VARIANT_ID }}
           PROBE_QUERY: ${{ inputs.query }}
           PROBE_CURRENCY: ${{ inputs.currency }}
+          PROBE_SHIP_COUNTRY: ${{ inputs.ship_country }}
+          PROBE_SHIP_STATE: ${{ inputs.ship_state }}
+          PROBE_SHIP_CITY: ${{ inputs.ship_city }}
+          PROBE_SHIP_POSTAL: ${{ inputs.ship_postal }}
+          PROBE_SHIP_ADDRESS1: ${{ inputs.ship_address1 }}
           STRICT_CANARY_SEND_TEST_IDENTITY: "1"
           STRICT_CANARY_USER_REF: ${{ inputs.strict_user_ref || format('usr_gh_strict_{0}', github.run_id) }}
           STRICT_CANARY_ACP_SESSION_ID: ${{ inputs.strict_acp_session_id || format('acp_gh_strict_{0}_{1}', github.run_id, github.run_attempt) }}

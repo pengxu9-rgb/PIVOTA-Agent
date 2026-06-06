@@ -27433,7 +27433,7 @@ let commerceKernelErrorsPromise = null;
 
 async function throwCommerceKernelUpstreamError(operation, err) {
   const { PivotaCommerceError } = await (commerceKernelErrorsPromise ||= import('../safety-kernel/src/errors.js'));
-  const { code: upstreamCode, message: upstreamMessage } = extractUpstreamErrorCode(err);
+  const { code: upstreamCode, message: upstreamMessage, detail: upstreamDetail } = extractUpstreamErrorCode(err);
   const status = err?.response?.status || null;
   const normalizedCode = String(upstreamCode || '').trim().toUpperCase();
   const kernelCode =
@@ -27449,6 +27449,7 @@ async function throwCommerceKernelUpstreamError(operation, err) {
     upstream_status: status,
     upstream_code: upstreamCode || null,
     message: upstreamMessage || undefined,
+    upstream_detail: upstreamDetail || undefined,
   });
 }
 
@@ -27488,6 +27489,9 @@ function deriveStrictCommerceCtx(req) {
   const testSessionId = allowStrictCheckoutTestIdentity()
     ? firstNonEmptyString(req?.header('X-Test-Acp-Session-Id'), process.env.AGENT_CHECKOUT_TEST_ACP_SESSION_ID)
     : null;
+  const testDiagnostics =
+    Boolean(testUserRef && testSessionId) &&
+    String(req?.header('X-Test-Diagnostics') || '').trim() === '1';
 
   const userRef = firstNonEmptyString(
     auth.user_ref,
@@ -27515,6 +27519,7 @@ function deriveStrictCommerceCtx(req) {
     acp_session_id: acpSessionId,
     agent_id: agentId,
     claims: auth.claims,
+    diagnostics: testDiagnostics || undefined,
   });
 }
 

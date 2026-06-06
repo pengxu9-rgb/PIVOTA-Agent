@@ -340,4 +340,91 @@ describe('strict checkout canary script', () => {
       server.close();
     }
   });
+
+  test('prints resolved variant, shipping, and upstream details when preview_quote fails', async () => {
+    const requests = [];
+    const { server, baseUrl } = await listen(async (req, res) => {
+      try {
+        const body = await readJson(req);
+        requests.push(body);
+        res.setHeader('Content-Type', 'application/json');
+
+        if (body.operation === 'get_product_detail') {
+          res.end(JSON.stringify({
+            product: { attributes: { variants: [{ variant_id: 'variant_diag' }] } },
+          }));
+          return;
+        }
+
+        if (body.operation === 'preview_quote') {
+          res.statusCode = 503;
+          res.end(JSON.stringify({
+            error: {
+              code: 'MERCHANT_UNAVAILABLE',
+              message: 'The merchant is temporarily unreachable. Please try again shortly.',
+              details: {
+                upstream_code: 'SHOPIFY_PRICING_UNAVAILABLE',
+                attempts: [
+                  {
+                    engine: 'shopify_storefront_cart',
+                    message: 'Variant exists in Shopify Admin but is not available to Storefront API.',
+                  },
+                ],
+              },
+            },
+          }));
+          return;
+        }
+
+        res.statusCode = 500;
+        res.end(JSON.stringify({ error: { code: 'UNEXPECTED_OPERATION' } }));
+      } catch (error) {
+        res.statusCode = 500;
+        res.end(JSON.stringify({ error: { message: error.message } }));
+      }
+    });
+
+    try {
+      let failure;
+      try {
+        await execFileAsync(
+          'node',
+          [scriptPath, '--create-order', '--json'],
+          {
+            cwd: repoRoot,
+            env: baseEnv({
+              PROBE_BASE: baseUrl,
+              PROBE_PRODUCT_ID: 'prod_diag',
+              PROBE_MERCHANT_ID: 'merch_diag',
+              PROBE_VARIANT_ID: '',
+              PROBE_SHIP_CITY: 'SF',
+              PROBE_SHIP_POSTAL: '94102',
+              PROBE_SHIP_ADDRESS1: '',
+              STRICT_CANARY_ALLOW_CREATE_ORDER: '1',
+              STRICT_CANARY_SEND_TEST_IDENTITY: '1',
+              STRICT_CANARY_RUN_ID: 'run_diag',
+            }),
+            encoding: 'utf8',
+          },
+        );
+      } catch (error) {
+        failure = error;
+      }
+
+      expect(failure).toMatchObject({
+        code: 1,
+        stderr: expect.stringContaining('All candidate products failed to preview_quote'),
+      });
+      expect(failure.stderr).toContain('"variant_id": "variant_diag"');
+      expect(failure.stderr).toContain('"postal_code": "94102"');
+      expect(failure.stderr).toContain('"upstream_code": "SHOPIFY_PRICING_UNAVAILABLE"');
+      expect(failure.stderr).toContain('not available to Storefront API');
+      expect(requests.map((body) => body.operation)).toEqual([
+        'get_product_detail',
+        'preview_quote',
+      ]);
+    } finally {
+      server.close();
+    }
+  });
 });
