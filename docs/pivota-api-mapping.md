@@ -10,9 +10,9 @@ Real production routing (gateway -> upstream):
 - `operation = "find_products"` → `GET {PIVOTA_API_BASE}/agent/v1/products/search`
 - `operation = "get_discovery_feed"` → gateway-owned discovery contract; internally recalls one or more `GET {PIVOTA_BACKEND_BASE_URL | PIVOTA_API_BASE}/agent/v1/products/search` browse/search pools and applies server-side discovery scoring
 - `operation = "get_product_detail"` → `GET {PIVOTA_API_BASE}/agent/v1/products/{merchant_id}/{product_id}`
-- `operation = "preview_quote"` → `POST {PIVOTA_API_BASE}/agent/v1/quotes/preview`
-- `operation = "create_order"` → `POST {PIVOTA_API_BASE}/agent/v1/orders/create`
-- `operation = "submit_payment"` → `POST {PIVOTA_API_BASE}/agent/v1/payments`
+- `operation = "preview_quote"` → `POST {PIVOTA_API_BASE}/agent/v2/quotes/preview`
+- `operation = "create_order"` → `POST {PIVOTA_API_BASE}/agent/v2/orders`
+- `operation = "submit_payment"` → `POST {PIVOTA_API_BASE}/agent/v1/payments` for direct merchant PSP reuse; delegated handlers may route to `POST {PIVOTA_API_BASE}/agent/v2/payments/checkout-sessions`
 - `operation = "get_order_status"` → `GET {PIVOTA_API_BASE}/agent/v1/orders/{order_id}/track`
 - `operation = "request_after_sales"` → `POST {PIVOTA_API_BASE}/agent/v1/orders/{order_id}/refund`
 
@@ -64,19 +64,23 @@ For each operation, align required/optional fields and note any differences.
   - Response includes all SKUs/variants for the product
 
 ### 2.3 create_order
-- Gateway receives: `payload.order` (JSON body)
+- Gateway receives: `payload.idempotency_key` and `payload.order` (JSON body)
 - Upstream expects: Request body (POST)
-- Parameter mapping (direct pass-through with structure adjustment):
-  - `payload.order.items` → `items` array
-    - Each item needs: `merchant_id`, `product_id`, `quantity`, `price`
-  - `payload.order.shipping_address` → `shipping_address`
+- Parameter mapping (safe checkout v2):
+  - `payload.idempotency_key` → idempotency context/header for write dedupe (required)
+  - `payload.order.quote_id` → `quote_id` (required; server-issued quote from `preview_quote`)
+  - `payload.order.shipping_address` → buyer/shipping context
     - Required: `recipient_name`, `address_line1`, `city`, `country`, `postal_code`
     - Optional: `address_line2`, `phone`
+  - `payload.order.delivery_preferences` → delivery preference fields when supported
   - `payload.order.notes` → `customer_notes`
   - `payload.acp_state` → Pass through as-is
 - Additional fields added by gateway:
   - `agent_id` (from auth context)
-  - `currency` (from items or default)
+- Safe-checkout constraints:
+  - The caller must not send order items, prices, or amount fields for `create_order`
+  - Pricing, currency, merchant-of-record, tax, shipping, and line items are copied from the locked quote snapshot
+  - Replays with the same `idempotency_key` must not duplicate an order
 
 ### 2.3.1 preview_quote (quote-first)
 - Gateway receives: `payload.quote` (JSON body)
@@ -89,18 +93,27 @@ For each operation, align required/optional fields and note any differences.
   - `payload.quote.shipping_address` → `shipping_address` (recommended for authoritative shipping/tax)
 - Notes:
   - quote-first flow expects: preview quote → create order with `quote_id`
-  - `create_order` should forward `quote_id` when provided (gateway supports `payload.order.quote_id`)
+  - `quote_id` is required for `create_order`, not optional or upstream-conditional
+  - The quote is the authoritative source of the later order/payment amount
 
 ### 2.4 submit_payment
-- Gateway receives: `payload.payment` (JSON body)
+- Gateway receives: `payload.idempotency_key`, `payload.confirmation_token`, and `payload.payment` (JSON body)
 - Upstream expects: Request body (POST)
 - Parameter mapping:
+  - `payload.idempotency_key` → idempotency context/header for write dedupe (required)
+  - `payload.confirmation_token` → checkout safety proof that the user explicitly confirmed the quote UI (required)
   - `payload.payment.order_id` → `order_id` (required)
-  - `payload.payment.expected_amount` → `total_amount` (required) ⚠️ Note: Pivota uses 'total_amount' not 'amount'
-  - `payload.payment.currency` → `currency` (required)
+  - `payload.payment.expected_amount` → verification echo only (required locally for cross-check; not authoritative)
+  - `payload.payment.currency` → verification echo currency (required locally for cross-check)
   - `payload.payment.payment_method_hint` → `payment_method` (object format: `{type: "card"}`)
+  - `payload.payment.payment_handler_id` → `payment_handler_id` (optional selected handler, e.g. `shop_pay`)
+  - `payload.payment.payment_handler_type` → `payment_handler_type` (optional selected handler type, e.g. `dev.shopify.shop_pay`)
   - `payload.payment.return_url` → `redirect_url` (for 3DS/redirects)
   - `payload.ap2_state` → Pass through as-is
+- Safe-checkout constraints:
+  - The charged amount is read server-side from the order/quote snapshot
+  - `expected_amount` is retained as an echo of what the user saw; mismatches hard-fail before charge
+  - The caller must not send alternate amount fields such as `amount`, `total_amount`, or `quote_id` in `payload.payment`
 - Response handling:
   - `payment_id` returned on success
   - `payment_status`: "succeeded", "failed", "requires_action"

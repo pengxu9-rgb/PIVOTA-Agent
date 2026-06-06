@@ -11,12 +11,17 @@ AP2 (Agent Payments Protocol) manages payment authorization, processing, and set
 ### 1. Payment Initiation
 - **Operation**: `submit_payment`
 - **Required Input**:
-  - `order_id` - From previous `create_order` response
-  - `expected_amount` - Amount to charge
-  - `currency` - Payment currency (e.g., "USD", "CNY")
+  - `idempotency_key` - Stable client-generated key for write dedupe
+  - `confirmation_token` - Server-minted token proving the user confirmed the quote UI
+  - `payment.order_id` - From previous `create_order` response
+  - `payment.expected_amount` - Verification echo of the amount the user confirmed; not the authoritative charge source
+  - `payment.currency` - Verification echo currency (e.g., "USD", "CNY")
   - `payment_method_hint` - Optional hint ("card", "bank_transfer", etc.)
+  - `payment_handler_id` - Optional selected payment handler from quote preview (for example, `shop_pay`)
+  - `payment_handler_type` - Optional selected payment handler type (for example, `dev.shopify.shop_pay`)
   - `return_url` - For redirects/3DS flows
 - **AP2 State**: May contain mandate/session from previous transactions
+- **Amount authority**: The server reads the charge amount from the locked order/quote snapshot. A mismatched `expected_amount` hard-fails before charge.
 
 ### 2. Payment Status Response
 
@@ -46,7 +51,9 @@ The gateway recognizes three primary payment statuses:
 const paymentResponse = await invoke({
   operation: "submit_payment",
   payload: {
-    payment: { order_id, amount, currency },
+    idempotency_key,
+    confirmation_token,
+    payment: { order_id, expected_amount, currency },
     ap2_state: previousAp2State // From prior payments
   }
 });

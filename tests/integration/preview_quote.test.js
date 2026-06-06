@@ -10,9 +10,9 @@ describe('preview_quote via /agent/shop/v1/invoke', () => {
     nock.cleanAll();
   });
 
-  it('forwards preview_quote to backend /agent/v1/quotes/preview', async () => {
+  it('forwards preview_quote to backend /agent/v2/quotes/preview', async () => {
     nock(process.env.PIVOTA_API_BASE)
-      .post('/agent/v1/quotes/preview')
+      .post('/agent/v2/quotes/preview')
       .reply(200, {
         quote_id: 'q_test',
         expires_at: '2025-12-22T00:00:00Z',
@@ -36,6 +36,14 @@ describe('preview_quote via /agent/shop/v1/invoke', () => {
             code: 'SAVE10',
             amount: '-10.00',
             allocations: [],
+          },
+        ],
+        payment_handlers: [
+          {
+            id: 'shop_pay',
+            type: 'dev.shopify.shop_pay',
+            payment_method_hint: 'shop_pay',
+            requires_action: true,
           },
         ],
         line_items: [
@@ -68,6 +76,13 @@ describe('preview_quote via /agent/shop/v1/invoke', () => {
     expect(res.body.quote_id).toBe('q_test');
     expect(res.body.pricing).toBeTruthy();
     expect(Array.isArray(res.body.promotion_lines)).toBe(true);
+    expect(res.body.payment_handlers).toEqual([
+      {
+        id: 'shop_pay',
+        type: 'dev.shopify.shop_pay',
+        payment_method_hint: 'shop_pay',
+        requires_action: true,
+      },
+    ]);
   });
 });
-

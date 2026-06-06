@@ -1,0 +1,223 @@
+name: Agent Checkout Money-Path Gate
+
+# Merge gate for the INV-1..INV-5 money path: quote-first, amount/currency-from-quote,
+# host-minted confirmation, idempotency, single-use, charge-once, no sensitive logging,
+# and durable-store / multi-instance guarantees.
+#
+# The core money-path suites run in parallel. The dependent floor guard reads their test
+# summaries and fails if a suite silently drops below its known test floor.
+#
+# NOTE: the v3 MERCHANT-AUDIT e2e gate (test_audit_v3_end_to_end.py) is a DIFFERENT
+# concern in a DIFFERENT repo (pivota-backend-discovery-feed) and is gated there.
+
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - "safety-kernel/**"
+      - "mcp-server/**"
+      - "connectors/**"
+      - "src/api/gateway/**"
+      - "src/findProductsSearchContracts.js"
+      - "src/findProductsSearchRouteEntry.js"
+      - "src/modules/decisioning/shopping_agent/**"
+      - "src/server.js"
+      - "tests/find_products_search_route_entry.node.test.cjs"
+      - "tests/shopping_agent_strict_find_products_multi.test.js"
+      - "tests/integration/invoke.find_products_multi_strict_surface.test.js"
+      - "tests/integration/submit_payment_contract.test.js"
+      - "tests/integration/checkout_rollout_canary.test.js"
+      - "tests/celestial_commerce_gateway_boundary.test.js"
+      - "tests/celestial_commerce_gateway_ingress_invocation.test.js"
+      - "tests/celestial_commerce_gateway_invocation_contracts.test.js"
+      - "docs/agent-checkout/**"
+      - ".github/workflows/agent-checkout-money-path-gate.yml"
+      - ".github/workflows/agent-checkout-wire-format-probe.yml"
+      - ".github/scripts/assert-money-path-test-floors.mjs"
+      - ".github/scripts/check-agent-checkout-rollout-gates.mjs"
+      - "package.json"
+      - "package-lock.json"
+  push:
+    branches:
+      - main
+    paths:
+      - "safety-kernel/**"
+      - "mcp-server/**"
+      - "connectors/**"
+      - "src/api/gateway/**"
+      - "src/findProductsSearchContracts.js"
+      - "src/findProductsSearchRouteEntry.js"
+      - "src/modules/decisioning/shopping_agent/**"
+      - "src/server.js"
+      - "tests/find_products_search_route_entry.node.test.cjs"
+      - "tests/shopping_agent_strict_find_products_multi.test.js"
+      - "tests/integration/invoke.find_products_multi_strict_surface.test.js"
+      - "tests/integration/submit_payment_contract.test.js"
+      - "tests/integration/checkout_rollout_canary.test.js"
+      - "tests/celestial_commerce_gateway_boundary.test.js"
+      - "tests/celestial_commerce_gateway_ingress_invocation.test.js"
+      - "tests/celestial_commerce_gateway_invocation_contracts.test.js"
+      - "docs/agent-checkout/**"
+      - ".github/workflows/agent-checkout-money-path-gate.yml"
+      - ".github/workflows/agent-checkout-wire-format-probe.yml"
+      - ".github/scripts/assert-money-path-test-floors.mjs"
+      - ".github/scripts/check-agent-checkout-rollout-gates.mjs"
+      - "package.json"
+      - "package-lock.json"
+
+permissions:
+  contents: read
+
+jobs:
+  safety-kernel:
+    name: Safety Kernel
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: safety-kernel/package-lock.json
+
+      - name: Install safety-kernel deps
+        run: npm ci
+        working-directory: safety-kernel
+
+      - name: Safety Kernel suite
+        shell: bash
+        run: |
+          set -o pipefail
+          mkdir -p artifacts/money-path
+          (cd safety-kernel && node --test) 2>&1 | tee artifacts/money-path/safety-kernel.tap
+
+      - name: Upload Safety Kernel summary
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: money-path-test-output-safety-kernel
+          path: artifacts/money-path/safety-kernel.tap
+          if-no-files-found: error
+
+  mcp-adapters:
+    name: MCP + Adapters
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: MCP + adapters suite
+        shell: bash
+        run: |
+          set -o pipefail
+          mkdir -p artifacts/money-path
+          (cd mcp-server && node --test) 2>&1 | tee artifacts/money-path/mcp-server.tap
+
+      - name: Upload MCP + adapters summary
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: money-path-test-output-mcp-server
+          path: artifacts/money-path/mcp-server.tap
+          if-no-files-found: error
+
+  merchant-connectors:
+    name: Merchant Connectors
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Merchant connectors suite
+        shell: bash
+        run: |
+          set -o pipefail
+          mkdir -p artifacts/money-path
+          (cd connectors && node --test test/connector.test.js) 2>&1 | tee artifacts/money-path/connectors.tap
+
+      - name: Upload Merchant Connectors summary
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: money-path-test-output-connectors
+          path: artifacts/money-path/connectors.tap
+          if-no-files-found: error
+
+  gateway-strict-route:
+    name: Gateway Strict-Route
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      AURORA_BFF_USE_MOCK: "true"
+      API_MODE: REAL
+      PIVOTA_API_BASE: http://pivota.test
+      PIVOTA_API_KEY: test-token
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install root deps
+        run: npm ci
+
+      - name: Route-entry node:test checks
+        run: node --test tests/find_products_search_route_entry.node.test.cjs
+
+      - name: Strict-route Jest checks
+        run: |
+          npx jest --watchman=false --runInBand --runTestsByPath \
+            tests/shopping_agent_strict_find_products_multi.test.js \
+            tests/integration/invoke.find_products_multi_strict_surface.test.js \
+            tests/celestial_commerce_gateway_invocation_contracts.test.js \
+            tests/celestial_commerce_gateway_ingress_invocation.test.js \
+            tests/celestial_commerce_gateway_boundary.test.js
+
+  test-count-floor:
+    name: Test-Count Floor Guard
+    runs-on: ubuntu-latest
+    needs: [safety-kernel, mcp-adapters, merchant-connectors]
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Download money-path test summaries
+        uses: actions/download-artifact@v4
+        with:
+          pattern: money-path-test-output-*
+          path: artifacts/money-path
+          merge-multiple: true
+
+      - name: Assert test-count floors
+        run: node .github/scripts/assert-money-path-test-floors.mjs --report-dir artifacts/money-path
+
+  rollout-observability-gates:
+    name: Rollout + Observability Gates
+    runs-on: ubuntu-latest
+    needs: [test-count-floor, gateway-strict-route]
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Check rollout/observability gate artifacts
+        run: node .github/scripts/check-agent-checkout-rollout-gates.mjs

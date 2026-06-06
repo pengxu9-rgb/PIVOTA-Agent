@@ -2,8 +2,8 @@
   "openapi": "3.0.0",
   "info": {
     "title": "Pivota Shopping Assistant API",
-    "version": "1.0.0",
-    "description": "API for shopping operations including product search, order creation, payment processing, and order management"
+    "version": "2.0.0",
+    "description": "API for shopping operations including product search, quote-first safe checkout, payment processing, and order management. Checkout v2 requires quote_id for create_order, idempotency_key for money writes, confirmation_token for submit_payment, and treats expected_amount as a verification echo only."
   },
   "servers": [
     {
@@ -59,6 +59,7 @@
               "find_products",
               "find_products_multi",
               "get_product_detail",
+              "preview_quote",
               "create_order",
               "submit_payment",
               "get_order_status",
@@ -77,6 +78,15 @@
               "ap2_state": {
                 "type": "object",
                 "description": "Opaque AP2 payment state"
+              },
+              "idempotency_key": {
+                "type": "string",
+                "minLength": 8,
+                "description": "Required for create_order and submit_payment. Client-generated stable key for write dedupe."
+              },
+              "confirmation_token": {
+                "type": "string",
+                "description": "Required for submit_payment. Server-minted proof that the user confirmed the quote UI."
               },
               "search": {
                 "type": "object",
@@ -121,6 +131,8 @@
               "product": {
                 "type": "object",
                 "description": "Product detail parameters",
+                "required": ["merchant_id", "product_id"],
+                "additionalProperties": true,
                 "properties": {
                   "merchant_id": {
                     "type": "string",
@@ -134,38 +146,22 @@
               },
               "order": {
                 "type": "object",
-                "description": "Order creation parameters",
+                "description": "Order creation parameters. create_order must be called with payload.idempotency_key and a locked quote_id. Caller-supplied items, prices, and amounts are not accepted.",
+                "required": ["quote_id", "customer_email", "shipping_address"],
+                "additionalProperties": false,
                 "properties": {
+                  "quote_id": {
+                    "type": "string",
+                    "description": "Required. Server-issued quote id from preview_quote; all pricing is copied from the locked quote."
+                  },
                   "customer_email": {
                     "type": "string",
-                    "description": "Customer email address"
-                  },
-                  "items": {
-                    "type": "array",
-                    "items": {
-                      "type": "object",
-                      "properties": {
-                        "merchant_id": {
-                          "type": "string"
-                        },
-                        "product_id": {
-                          "type": "string"
-                        },
-                        "product_title": {
-                          "type": "string"
-                        },
-                        "quantity": {
-                          "type": "integer",
-                          "minimum": 1
-                        },
-                        "unit_price": {
-                          "type": "number"
-                        }
-                      }
-                    }
+                    "description": "Required buyer email for receipt/order creation. Treat as PII; never use it as identity authority."
                   },
                   "shipping_address": {
                     "type": "object",
+                    "required": ["country", "city", "postal_code", "address_line1", "recipient_name"],
+                    "additionalProperties": false,
                     "properties": {
                       "recipient_name": {
                         "type": "string"
@@ -190,6 +186,22 @@
                       }
                     }
                   },
+                  "delivery_preferences": {
+                    "type": "object",
+                    "additionalProperties": false,
+                    "properties": {
+                      "max_eta_days": {
+                        "type": "integer",
+                        "minimum": 1
+                      },
+                      "preferred_carriers": {
+                        "type": "array",
+                        "items": {
+                          "type": "string"
+                        }
+                      }
+                    }
+                  },
                   "notes": {
                     "type": "string"
                   }
@@ -197,20 +209,32 @@
               },
               "payment": {
                 "type": "object",
-                "description": "Payment submission parameters",
+                "description": "Payment submission parameters. submit_payment requires payload.idempotency_key and payload.confirmation_token. expected_amount is a verification echo; the charged amount is read server-side from the order/quote snapshot.",
+                "required": ["order_id", "expected_amount", "currency"],
+                "additionalProperties": false,
                 "properties": {
                   "order_id": {
                     "type": "string"
                   },
                   "expected_amount": {
-                    "type": "number"
+                    "type": "number",
+                    "description": "Echo of the amount the user confirmed, for verification only. A mismatch with the server-side order/quote snapshot hard-fails."
                   },
                   "currency": {
                     "type": "string"
                   },
                   "payment_method_hint": {
                     "type": "string",
-                    "enum": ["card", "wallet", "bank_transfer", "pay_later"]
+                    "enum": ["card", "wallet", "bank_transfer", "pay_later", "shop_pay"]
+                  },
+                  "payment_handler_id": {
+                    "type": "string"
+                  },
+                  "payment_handler_type": {
+                    "type": "string"
+                  },
+                  "return_url": {
+                    "type": "string"
                   }
                 }
               },

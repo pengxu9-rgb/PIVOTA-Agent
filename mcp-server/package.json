@@ -1,0 +1,17 @@
+{
+  "name": "pivota-mcp-server",
+  "version": "0.1.0",
+  "description": "Stdio MCP adapter for Pivota Shopping Agent tools.",
+  "type": "module",
+  "private": true,
+  "engines": {
+    "node": ">=18"
+  },
+  "scripts": {
+    "start": "node src/server.js",
+    "test": "node --test"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.12.0"
+  }
+}

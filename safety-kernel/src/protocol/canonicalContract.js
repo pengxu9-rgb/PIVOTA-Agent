@@ -1,0 +1,112 @@
+// THE canonical merchant-side agentic-commerce contract — the single source of truth that every protocol
+// adapter (UCP, OpenAI ACP REST, MCP) normalizes INTO. Each canonical operation binds to the kernel, so the
+// safety invariants (quote-first, amount-from-quote, host-minted confirmation, idempotency, single-use,
+// charge-once, ownership/T7) are enforced ONCE and never forked per ecosystem.
+//
+// Design references (Claude×Codex synthesis, MERCHANT_SIDE_READINESS_SYNTHESIS.md):
+//  - UCP capabilities map 1:1 to MCP tools; UCP discovery is a /.well-known/ucp profile.
+//  - ACP exposes 5 checkout-session REST endpoints + a product feed + delegated payment.
+//  - The kernel's quote→order→confirm→pay maps onto the protocols' "checkout session" lifecycle:
+//    create/update = previewQuote (re-quote), complete = (verify payment authorization) → createOrder →
+//    mintConfirmation → submitPayment, cancel/get = session lifecycle.
+
+/**
+ * Canonical capabilities. `ucp` is the UCP capability identifier (for /.well-known/ucp); capabilities ↔ MCP
+ * tools 1:1. ACP has no capability ids (it's REST endpoints + a feed), noted per-operation instead.
+ */
+export const CANONICAL_CAPABILITIES = Object.freeze({
+  discovery: { ucp: 'dev.ucp.shopping.discovery', title: 'Product discovery / catalog' },
+  checkout: { ucp: 'dev.ucp.shopping.checkout', title: 'Checkout session lifecycle' },
+  order: { ucp: 'dev.ucp.shopping.order', title: 'Order lifecycle + after-sales' },
+  identity: { ucp: 'dev.ucp.common.identity_linking', title: 'OAuth identity linking' },
+  payment: { ucp: 'dev.ucp.shopping.ap2_mandate', title: 'Payment authorization (delegated token / AP2 mandate)' },
+});
+
+/**
+ * Canonical operations. Each declares:
+ *  - capability        : which CANONICAL_CAPABILITIES key
+ *  - kernel            : how it binds to the kernel (a single op, a composition, or 'external' for non-kernel)
+ *  - mutating          : writes state (needs an idempotency key)
+ *  - requiresUserRef   : needs a verified buyer (the kernel's ownership key)
+ *  - requiresPaymentAuthz : needs verified payment authorization (delegated token / AP2 Checkout Mandate)
+ *  - acp / ucp / mcp   : the per-protocol surface name
+ */
+export const CANONICAL_OPERATIONS = Object.freeze([
+  {
+    id: 'search_catalog', capability: 'discovery', kernel: 'find_products',
+    mutating: false, requiresUserRef: false, requiresPaymentAuthz: false,
+    acp: 'product_feed', ucp: 'catalog.search', mcp: 'search_catalog',
+  },
+  {
+    id: 'get_product', capability: 'discovery', kernel: 'get_product_detail',
+    mutating: false, requiresUserRef: false, requiresPaymentAuthz: false,
+    acp: 'product_feed', ucp: 'catalog.get', mcp: 'get_product',
+  },
+  {
+    id: 'create_checkout_session', capability: 'checkout', kernel: 'preview_quote',
+    mutating: true, requiresUserRef: true, requiresPaymentAuthz: false,
+    acp: 'POST /checkout_sessions', ucp: 'checkout.create', mcp: 'create_checkout_session',
+  },
+  {
+    id: 'update_checkout_session', capability: 'checkout', kernel: 'preview_quote', // re-quote on change
+    mutating: true, requiresUserRef: true, requiresPaymentAuthz: false,
+    acp: 'POST /checkout_sessions/{id}', ucp: 'checkout.update', mcp: 'update_checkout_session',
+  },
+  {
+    id: 'get_checkout_session', capability: 'checkout', kernel: 'get_quote_snapshot',
+    mutating: false, requiresUserRef: true, requiresPaymentAuthz: false,
+    acp: 'GET /checkout_sessions/{id}', ucp: 'checkout.get', mcp: 'get_checkout_session',
+  },
+  {
+    // complete = verify payment authorization → createOrder → mintConfirmation → submitPayment.
+    id: 'complete_checkout_session', capability: 'checkout',
+    kernel: 'create_order+mint_confirmation+submit_payment',
+    mutating: true, requiresUserRef: true, requiresPaymentAuthz: true,
+    acp: 'POST /checkout_sessions/{id}/complete', ucp: 'checkout.complete', mcp: 'complete_checkout_session',
+  },
+  {
+    id: 'cancel_checkout_session', capability: 'checkout', kernel: 'cancel_order',
+    mutating: true, requiresUserRef: true, requiresPaymentAuthz: false,
+    acp: 'POST /checkout_sessions/{id}/cancel', ucp: 'checkout.cancel', mcp: 'cancel_checkout_session',
+  },
+  {
+    id: 'get_order', capability: 'order', kernel: 'get_order_status',
+    mutating: false, requiresUserRef: true, requiresPaymentAuthz: false,
+    acp: 'order_webhook', ucp: 'order.get', mcp: 'get_order',
+  },
+  {
+    id: 'request_after_sales', capability: 'order', kernel: 'request_after_sales',
+    mutating: true, requiresUserRef: true, requiresPaymentAuthz: false,
+    acp: 'order_webhook', ucp: 'order.after_sales', mcp: 'request_after_sales',
+  },
+  {
+    id: 'start_identity_linking', capability: 'identity', kernel: 'external', // OAuth at the edge → user_ref
+    mutating: false, requiresUserRef: false, requiresPaymentAuthz: false,
+    acp: null, ucp: 'identity_linking.start', mcp: 'start_identity_linking',
+  },
+  {
+    // payment authorization handoff: ACP delegate_payment token / UCP payment handler / AP2 mandate envelope.
+    id: 'exchange_payment_token', capability: 'payment', kernel: 'external', // verified, then used by complete
+    mutating: false, requiresUserRef: true, requiresPaymentAuthz: false,
+    acp: 'POST /agentic_commerce/delegate_payment', ucp: 'payment.token_exchange', mcp: 'exchange_payment_token',
+  },
+]);
+
+const OPS_BY_ID = Object.freeze(Object.fromEntries(CANONICAL_OPERATIONS.map((o) => [o.id, o])));
+
+/** Look up a canonical operation by id (throws on unknown so adapters can't silently route an unknown op). */
+export function canonicalOp(id) {
+  const op = OPS_BY_ID[id];
+  if (!op) throw new Error(`unknown canonical operation: ${id}`);
+  return op;
+}
+
+/** All canonical operation ids for a capability. */
+export function operationsForCapability(capability) {
+  return CANONICAL_OPERATIONS.filter((o) => o.capability === capability).map((o) => o.id);
+}
+
+/** Operations that mutate state (must carry an idempotency key) / need a verified buyer / need payment authz. */
+export const MUTATING_OPERATIONS = Object.freeze(CANONICAL_OPERATIONS.filter((o) => o.mutating).map((o) => o.id));
+export const USER_SCOPED_OPERATIONS = Object.freeze(CANONICAL_OPERATIONS.filter((o) => o.requiresUserRef).map((o) => o.id));
+export const PAYMENT_AUTHZ_OPERATIONS = Object.freeze(CANONICAL_OPERATIONS.filter((o) => o.requiresPaymentAuthz).map((o) => o.id));
