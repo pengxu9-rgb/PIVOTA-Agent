@@ -156,7 +156,32 @@ describe('strict Safety Kernel mount on /agent/shop/v1/invoke', () => {
     return { quote: quote.body, order: order.body };
   }
 
-  it('routes quote/order/pay through the Safety Kernel and finalizes via signed raw webhook', async () => {
+  it('rejects submit_payment in strict mode until the dedicated flag is enabled', async () => {
+    const res = await strictHeaders(
+      request(app).post('/agent/shop/v1/invoke'),
+    )
+      .send({
+        operation: 'submit_payment',
+        payload: {
+          idempotency_key: 'idem_pay_strict_disabled',
+          confirmation_token: 'confirm_disabled',
+          payment: {
+            order_id: 'ORD_STRICT',
+            expected_amount: 2900,
+            currency: 'USD',
+            payment_method_hint: 'card',
+          },
+        },
+      });
+
+    assert.equal(res.status, 405);
+    assert.equal(res.body.code, 'OPERATION_NOT_ALLOWED');
+    assert.match(res.body.message, /submit_payment is disabled/);
+    assert.equal(nock.isDone(), true);
+  });
+
+  it('routes quote/order/pay through the Safety Kernel when submit_payment is enabled and finalizes via signed raw webhook', async () => {
+    process.env.AGENT_CHECKOUT_STRICT_SUBMIT_PAYMENT_ENABLED = '1';
     await previewAndCreateOrder();
     const commerce = await app._debug.__agentCheckoutStrict.getCommerceMount();
     const confirmationToken = await commerce.mintConfirmation(
@@ -258,6 +283,7 @@ describe('strict Safety Kernel mount on /agent/shop/v1/invoke', () => {
   });
 
   it('fails before upstream when confirmation_token is missing', async () => {
+    process.env.AGENT_CHECKOUT_STRICT_SUBMIT_PAYMENT_ENABLED = '1';
     await previewAndCreateOrder();
 
     const res = await strictHeaders(
@@ -277,6 +303,44 @@ describe('strict Safety Kernel mount on /agent/shop/v1/invoke', () => {
 
     assert.equal(res.status, 403);
     assert.equal(res.body.code, 'CONFIRMATION_REQUIRED');
+    assert.equal(nock.isDone(), true);
+  });
+
+  it('preserves strict-off legacy submit_payment behavior without the dedicated flag', async () => {
+    process.env.AGENT_CHECKOUT_STRICT = '0';
+
+    nock(API_BASE)
+      .post('/agent/v1/payments', (body) => {
+        return (
+          body?.order_id === 'ord_legacy' &&
+          body?.payment_method?.type === 'card' &&
+          body?.expected_amount === undefined &&
+          body?.currency === undefined
+        );
+      })
+      .reply(200, {
+        payment_status: 'processing',
+        payment_intent_id: 'pi_legacy',
+      });
+
+    const res = await request(app)
+      .post('/agent/shop/v1/invoke')
+      .send({
+        operation: 'submit_payment',
+        payload: {
+          payment: {
+            order_id: 'ord_legacy',
+            quote_id: 'quote_legacy',
+            expected_amount: 2900,
+            currency: 'USD',
+            payment_method_hint: 'card',
+          },
+        },
+      });
+
+    assert.equal(res.status, 200);
+    assert.equal(res.body.payment_status, 'processing');
+    assert.equal(res.body.payment.payment_intent_id, 'pi_legacy');
     assert.equal(nock.isDone(), true);
   });
 
