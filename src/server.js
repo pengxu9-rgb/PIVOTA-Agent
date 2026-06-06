@@ -46913,10 +46913,14 @@ if (require.main === module) {
       }
       const autoSyncIntervalConfig = getCreatorCatalogAutoSyncIntervalConfig();
       const intervalMin = autoSyncIntervalConfig.intervalMinutes;
-      const initialDelayMs = Math.max(
-        Number(process.env.CREATOR_CATALOG_AUTO_SYNC_INITIAL_DELAY_MS || 15000) || 15000,
-        0,
-      );
+      const intervalMs = intervalMin * 60 * 1000;
+      const configuredInitialDelayRaw = String(
+        process.env.CREATOR_CATALOG_AUTO_SYNC_INITIAL_DELAY_MS || '',
+      ).trim();
+      const configuredInitialDelayMs = Number(configuredInitialDelayRaw);
+      const initialDelayMs = configuredInitialDelayRaw
+        ? Math.max(Number.isFinite(configuredInitialDelayMs) ? configuredInitialDelayMs : intervalMs, 0)
+        : intervalMs;
       if (CREATOR_CATALOG_AUTO_SYNC_ENABLED) {
         if (autoSyncIntervalConfig.clamped) {
           logger.warn(
@@ -46931,7 +46935,7 @@ if (require.main === module) {
         }
         setTimeout(() => {
           runCreatorCatalogAutoSync();
-          setInterval(runCreatorCatalogAutoSync, intervalMin * 60 * 1000);
+          setInterval(runCreatorCatalogAutoSync, intervalMs);
         }, initialDelayMs);
       }
 
