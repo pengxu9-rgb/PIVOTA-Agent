@@ -15,6 +15,7 @@ const REQUIRED_MONEY_PATH_JOBS = [
 const REQUIRED_DOC_MARKERS = [
   '## Required Gates',
   'No automated paid charge',
+  'Strict create-order canary',
   'Observability export',
   'Rollback',
   'checkout-payment-safety',
@@ -41,7 +42,12 @@ function assertNoAutomatedChargeProbe(probeWorkflowText) {
     /\$\{\{\s*inputs\.charge\b/,
     /PROBE_ALLOW_CHARGE:/,
     /PROBE_CHARGE_CONFIRM:/,
+    /STRICT_CANARY_ALLOW_CHARGE:/,
+    /STRICT_CANARY_CHARGE_CONFIRM:/,
+    /STRICT_CANARY_REMOTE_PAY_ENABLED_ACK:/,
+    /STRICT_CANARY_PSP_MODE:/,
     /FLAGS="--charge \$FLAGS"/,
+    /probe_strict_checkout_canary\.mjs --create-order --charge/,
   ];
   for (const pattern of forbidden) {
     assert(!pattern.test(probeWorkflowText), `Wire-format probe still has automated charge hook: ${pattern}`);
@@ -67,6 +73,11 @@ function main() {
     'rollout doc must mention the backend checkout-payment-safety lane');
 
   assertNoAutomatedChargeProbe(probeWorkflow);
+  assertJobExists(probeWorkflow, 'strict-create-order-canary');
+  assert(/run_strict_create_order_canary:/.test(probeWorkflow),
+    'Wire-format probe workflow must expose the strict create-order canary input');
+  assert(/probe_strict_checkout_canary\.mjs --create-order --json/.test(probeWorkflow),
+    'Strict create-order canary job must run the strict canary script without --charge');
 
   for (const marker of REQUIRED_DOC_MARKERS) {
     assert(rolloutDoc.includes(marker), `Missing rollout doc marker: ${marker}`);
