@@ -18,7 +18,7 @@ operator checks; it does not require runtime-code changes.
 
 | Gate | Evidence |
 |---|---|
-| Production strict mode | `AGENT_CHECKOUT_STRICT=1`; gateway production deployment `515dd022-0d39-49cc-88ba-cb98b1e34e46`, commit `a9559910968d772d0d8e88a2b27034a431bd04e4`. |
+| Production strict mode | `AGENT_CHECKOUT_STRICT=1`; strict/pay-disabled posture has been verified on production after docs-only deployments. Re-check `/version` before every pay promotion because docs-only merges can advance Railway deployment ids. |
 | Production pay disabled | `AGENT_CHECKOUT_STRICT_SUBMIT_PAYMENT_ENABLED` unset/off; fake `submit_payment` returned HTTP `405 OPERATION_NOT_ALLOWED`. |
 | Staging pay disabled | Fake `submit_payment` returned HTTP `405 OPERATION_NOT_ALLOWED`. |
 | Strict identity | GitHub Actions run `27060426512`, job `Strict Identity Gate`, passed. |
