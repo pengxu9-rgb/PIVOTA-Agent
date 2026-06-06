@@ -82,7 +82,8 @@ describe('strict Safety Kernel mount on /agent/shop/v1/invoke', () => {
         return (
           body?.idempotency_key === 'idem_create_strict' &&
           body?.quote_id === 'q_strict' &&
-          body?.buyer_context?.shipping_address?.address_line1 === '1 Kernel Way'
+          body?.buyer_context?.shipping_address?.address_line1 === '1 Kernel Way' &&
+          body?.buyer_context?.shipping_address?.name === 'Strict Buyer'
         );
       })
       .reply(200, {

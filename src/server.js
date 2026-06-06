@@ -1840,6 +1840,16 @@ function buildInvokeBuyerContext({ source = {}, payload = {} } = {}) {
     : isPlainObject(payload?.shipping_address)
       ? payload.shipping_address
       : undefined;
+  const normalizedShippingAddress = shippingAddress
+    ? pruneEmptyFields({
+        ...shippingAddress,
+        name: firstNonEmptyString(
+          shippingAddress.name,
+          shippingAddress.recipient_name,
+          shippingAddress.recipientName,
+        ),
+      })
+    : undefined;
   return pruneEmptyFields({
     customer_email: firstNonEmptyString(
       source?.customer_email,
@@ -1850,10 +1860,10 @@ function buildInvokeBuyerContext({ source = {}, payload = {} } = {}) {
     customer_name: firstNonEmptyString(
       source?.customer_name,
       source?.customerName,
-      shippingAddress?.recipient_name,
-      shippingAddress?.name,
+      normalizedShippingAddress?.recipient_name,
+      normalizedShippingAddress?.name,
     ),
-    shipping_address: shippingAddress,
+    shipping_address: normalizedShippingAddress,
     buyer_ref: getInvokeScopedBuyerRef(payload),
   });
 }
