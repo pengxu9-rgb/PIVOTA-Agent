@@ -25,7 +25,7 @@ operator checks; it does not require runtime-code changes.
 | Staging pay disabled | Fake `submit_payment` returned HTTP `405 OPERATION_NOT_ALLOWED`. |
 | Strict identity | GitHub Actions run `27060426512`, job `Strict Identity Gate`, passed. |
 | No-charge wire-format | GitHub Actions run `27059885995`, job `probe`, passed for read-only plus `create_order`; workflow has no paid charge input. |
-| Strict create-order canary | Pending. Run only after opening a short target-gateway `AGENT_CHECKOUT_ALLOW_TEST_IDENTITY=1` window; close it immediately after the job. Product pins are preferred, but the job can auto-select from `query` / `PROBE_QUERY` when repo product variables are absent. |
+| Strict create-order canary | Pending on the target-gateway test-identity window. GitHub Actions run `27066147463` proved product auto-selection reaches strict `preview_quote`, then fails with `401 USER_AUTH_REQUIRED`; no `create_order` was attempted. Open a short `AGENT_CHECKOUT_ALLOW_TEST_IDENTITY=1` window, rerun, then close it immediately after the job. |
 | Backend health | Production backend `17e0a1db428bc1c7c602f7136f8bcb896b86a5d4`, `db_ok=true`, no missing columns. |
 | Artifact redaction | Local readiness bundle `/private/tmp/pivota-readiness-test-psp-probe-20260606T104229Z` passed a value scan after redaction. |
 

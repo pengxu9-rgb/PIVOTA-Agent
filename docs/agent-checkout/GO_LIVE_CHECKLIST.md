@@ -74,7 +74,7 @@ Reference details: `src/server.js`, `src/serverWireIn.example.js`, and
 | E2 | Production `submit_payment` kill switch is green: fake pay probe returns HTTP `405 OPERATION_NOT_ALLOWED`. |
 | E3 | Strict identity gate is green in GitHub Actions run `27060426512`. |
 | E4 | No-charge wire-format probe is green in GitHub Actions run `27059885995`. |
-| E5 | Strict create-order canary is pending: run `agent-checkout-wire-format-probe.yml` with `run_strict_create_order_canary=true` during a short `AGENT_CHECKOUT_ALLOW_TEST_IDENTITY=1` window. Product pins are preferred; if absent, the job auto-selects from `query` / `PROBE_QUERY`. |
+| E5 | Strict create-order canary is pending on the target-gateway test-identity window. Run `agent-checkout-wire-format-probe.yml` with `run_strict_create_order_canary=true` during a short `AGENT_CHECKOUT_ALLOW_TEST_IDENTITY=1` window, then close the window. Latest run `27066147463` auto-selected products and failed at `preview_quote` with `401 USER_AUTH_REQUIRED`; no `create_order` was attempted. |
 | E6 | Enable `submit_payment` **LAST**, only after manual paid canary, refund cap, webhook/status sync, replay, and observability export are green. |
 
 ---
