@@ -819,8 +819,8 @@ function computeVerdict(results) {
 
   if (orderClass === "MAJOR") {
     return {
-      verdict: "MAJOR - kernel cross-check must flip",
-      codeMeaning: "Parse backend order.amounts.total as major units before comparing to the kernel's intended minor-unit amount.",
+      verdict: "MAJOR confirmed for create_order",
+      codeMeaning: "Keep parsing backend order.amounts.total as major units before comparing to the kernel's intended minor-unit amount.",
     };
   }
 
@@ -833,7 +833,7 @@ function computeVerdict(results) {
 
   if (paymentClass && paymentClass !== "MINOR") {
     return {
-      verdict: paymentClass === "MAJOR" ? "MAJOR - kernel cross-check must flip" : "INCONSISTENT - investigate",
+      verdict: paymentClass === "MAJOR" ? "MAJOR payment wire - investigate" : "INCONSISTENT - investigate",
       codeMeaning: "Do not enable submit_payment forwarding until the payment wire amount unit matches the kernel expectation.",
     };
   }
