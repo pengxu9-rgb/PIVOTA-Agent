@@ -170,7 +170,7 @@ jobs:
             -X POST "$PROBE_BASE/agent/shop/v1/invoke" \
             -H "$PROBE_AUTH_HEADER: $AUTH_VALUE" \
             -H "Content-Type: application/json" \
-            --data '{"operation":"create_order","payload":{"order":{"quote_id":"probe-no-user-identity","customer_email":"probe@pivota.test","items":[]}}}')"
+            --data '{"operation":"preview_quote","payload":{"quote":{"merchant_id":"probe-merchant","items":[{"product_id":"probe-product","quantity":1}],"shipping_address":{"country":"US","postal_code":"94102","city":"SF"}}}}')"
 
           echo "HTTP status: $STATUS"
           node - "$STATUS" <<'NODE'
@@ -198,7 +198,7 @@ jobs:
             [
               "## Strict identity gate",
               "",
-              "Passed: strict money operation with only the platform probe key failed before checkout execution.",
+              "Passed: strict quote operation with only the platform probe key failed before checkout execution.",
               "",
               `- HTTP status: ${status}`,
               `- Code: ${code}`,
