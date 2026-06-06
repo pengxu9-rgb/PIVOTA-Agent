@@ -11,6 +11,7 @@ name: Agent Checkout Money-Path Gate
 # concern in a DIFFERENT repo (pivota-backend-discovery-feed) and is gated there.
 
 on:
+  workflow_dispatch:
   pull_request:
     paths:
       - "safety-kernel/**"

@@ -11,9 +11,10 @@ name: Agent Checkout Wire-Format Probe
 # (Phase 3) + the Stripe-dashboard ground-truth check MUST be run by a human per
 # docs/agent-checkout/PROBE_RUNBOOK.md — it moves real money and needs test-mode + dashboard verification.
 #
-# CREDENTIALS: by default this reuses the SAME secret the existing prod smoke gate uses
-# (COMMERCE_CORE_PROD_AUTH_TOKEN, sent as Authorization: Bearer — see scripts/verify_deployed_commit_matches.sh
-# AUTH_MODE=bearer), against https://pivota-agent-production.up.railway.app. No new secrets required.
+# CREDENTIALS: by default this uses PROBE_BASE from repo variables/secrets, then falls back to the
+# production gateway origin. Auth reuses PROBE_KEY, or the same secret the existing prod smoke gate
+# uses (COMMERCE_CORE_PROD_AUTH_TOKEN, sent as Authorization: Bearer — see
+# scripts/verify_deployed_commit_matches.sh AUTH_MODE=bearer). No new secrets required.
 # Override with the base_url input, or set a PROBE_KEY secret to use a different token.
 # Output (redacted by the script) goes to the job summary + an uploaded artifact.
 
@@ -21,13 +22,17 @@ on:
   workflow_dispatch:
     inputs:
       base_url:
-        description: "Gateway origin serving /agent/shop/v1/invoke"
+        description: "Gateway origin serving /agent/shop/v1/invoke. Leave blank to use PROBE_BASE repo var/secret."
         type: string
-        default: "https://pivota-agent-production.up.railway.app"
+        default: ""
       run_create_order:
         description: "Run Phase 2 create_order (a backend WRITE; creates an unpaid order draft; no charge)"
         type: boolean
         default: true
+      run_strict_identity_gate:
+        description: "Run no-charge strict-mode identity gate: money op with only PROBE_KEY must fail USER_AUTH_REQUIRED"
+        type: boolean
+        default: false
       product_id:
         description: "Optional: pin PROBE_PRODUCT_ID (prefer a cents-priced item, e.g. $0.99)"
         type: string
@@ -67,7 +72,7 @@ jobs:
 
       - name: Preflight — credentials present
         env:
-          PROBE_BASE: ${{ inputs.base_url }}
+          PROBE_BASE: ${{ inputs.base_url || vars.PROBE_BASE || secrets.PROBE_BASE || 'https://pivota-agent-production.up.railway.app' }}
           PROBE_KEY: ${{ secrets.PROBE_KEY || secrets.COMMERCE_CORE_PROD_AUTH_TOKEN }}
         run: |
           if [ -z "$PROBE_BASE" ]; then
@@ -80,16 +85,15 @@ jobs:
           fi
           echo "Credentials present. Backend will be probed (host/token hidden)."
 
-      - name: Run probe (read-only${{ inputs.run_create_order && ' + create_order' || '' }}; NEVER charges)
+      - name: "Run probe${{ inputs.run_create_order && ' (read-only + create_order)' || ' (read-only)' }}"
         env:
-          PROBE_BASE: ${{ inputs.base_url }}
+          PROBE_BASE: ${{ inputs.base_url || vars.PROBE_BASE || secrets.PROBE_BASE || 'https://pivota-agent-production.up.railway.app' }}
           PROBE_KEY: ${{ secrets.PROBE_KEY || secrets.COMMERCE_CORE_PROD_AUTH_TOKEN }}
           PROBE_AUTH_HEADER: ${{ inputs.auth_header }}
           PROBE_PRODUCT_ID: ${{ inputs.product_id }}
           PROBE_MERCHANT_ID: ${{ inputs.merchant_id }}
           PROBE_QUERY: ${{ inputs.query }}
           PROBE_CURRENCY: ${{ inputs.currency }}
-          # Intentionally NOT set: PROBE_ALLOW_CHARGE. The --charge flag is never passed below.
         run: |
           set -o pipefail
           FLAGS="--json"
@@ -126,3 +130,75 @@ jobs:
           name: wire-format-probe-output
           path: probe-output.txt
           if-no-files-found: warn
+
+  strict-identity-gate:
+    name: Strict Identity Gate
+    if: ${{ inputs.run_strict_identity_gate }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Assert strict money op fails without verified user/session
+        env:
+          PROBE_BASE: ${{ inputs.base_url || vars.PROBE_BASE || secrets.PROBE_BASE || 'https://pivota-agent-production.up.railway.app' }}
+          PROBE_KEY: ${{ secrets.PROBE_KEY || secrets.COMMERCE_CORE_PROD_AUTH_TOKEN }}
+          PROBE_AUTH_HEADER: ${{ inputs.auth_header }}
+        run: |
+          set -euo pipefail
+
+          if [ -z "$PROBE_BASE" ]; then
+            echo "::error::No gateway origin available. Set the base_url input or PROBE_BASE repo variable/secret."
+            exit 1
+          fi
+          if [ -z "$PROBE_KEY" ]; then
+            echo "::error::No token available. Set a PROBE_KEY secret, or ensure COMMERCE_CORE_PROD_AUTH_TOKEN exists."
+            exit 1
+          fi
+
+          AUTH_VALUE="$PROBE_KEY"
+          if [ "$(printf '%s' "$PROBE_AUTH_HEADER" | tr '[:upper:]' '[:lower:]')" = "authorization" ]; then
+            case "$AUTH_VALUE" in
+              Bearer\ *|ApiKey\ *|Basic\ *) ;;
+              *) AUTH_VALUE="Bearer $AUTH_VALUE" ;;
+            esac
+          fi
+
+          STATUS="$(curl -sS -o identity-response.json -w '%{http_code}' \
+            -X POST "$PROBE_BASE/agent/shop/v1/invoke" \
+            -H "$PROBE_AUTH_HEADER: $AUTH_VALUE" \
+            -H "Content-Type: application/json" \
+            --data '{"operation":"create_order","payload":{"order":{"quote_id":"probe-no-user-identity","customer_email":"probe@pivota.test","items":[]}}}')"
+
+          echo "HTTP status: $STATUS"
+          node - "$STATUS" <<'NODE'
+          const fs = require("fs");
+          const status = process.argv[2];
+          const raw = fs.readFileSync("identity-response.json", "utf8");
+          let body = {};
+          try {
+            body = raw ? JSON.parse(raw) : {};
+          } catch (err) {
+            console.error("Response was not JSON:", raw.slice(0, 500));
+            process.exit(1);
+          }
+
+          const code = body.code || body.error?.code || "";
+          const message = body.message || body.error?.message || "";
+          if (status !== "401" || code !== "USER_AUTH_REQUIRED") {
+            console.error("Strict identity gate failed.");
+            console.error(JSON.stringify({ status, code, message }, null, 2));
+            process.exit(1);
+          }
+
+          fs.appendFileSync(
+            process.env.GITHUB_STEP_SUMMARY,
+            [
+              "## Strict identity gate",
+              "",
+              "Passed: strict money operation with only the platform probe key failed before checkout execution.",
+              "",
+              `- HTTP status: ${status}`,
+              `- Code: ${code}`,
+              ""
+            ].join("\n")
+          );
+          console.log(JSON.stringify({ status, code }, null, 2));
+          NODE
