@@ -1,7 +1,7 @@
 {
   "name": "pivota_shopping_tool",
-  "version": "1.0",
-  "description": "Unified shopping tool backed by Pivota, ACP, and AP2. Use it for product search, order creation, payments, order tracking, and after-sales. Version 1.0 - Reference implementation for LLM integrations.",
+  "version": "2.0",
+  "description": "Unified shopping tool backed by Pivota, ACP, and AP2. Public source of truth for the safe checkout v2 contract: quote before order, create_order requires a server-issued quote_id plus idempotency_key, submit_payment requires idempotency_key plus a server-minted confirmation_token, and expected_amount is only a verification echo.",
   "parameters": {
     "type": "object",
     "properties": {
@@ -35,6 +35,15 @@
             "type": "object",
             "description": "Opaque AP2 state / payment mandate context. Always pass through unchanged.",
             "additionalProperties": true
+          },
+          "idempotency_key": {
+            "type": "string",
+            "minLength": 8,
+            "description": "Required for create_order and submit_payment. Client-generated stable key; retries with the same key return the same result instead of duplicating a write."
+          },
+          "confirmation_token": {
+            "type": "string",
+            "description": "Required for submit_payment. Server-minted by the checkout safety layer after the user explicitly confirms the quote UI; the model must not synthesize it."
           },
           "search": {
             "type": "object",
@@ -176,24 +185,9 @@
           },
           "order": {
             "type": "object",
-            "description": "Used when operation = create_order",
+            "description": "Used when operation = create_order. Create from a locked quote only; caller-supplied items, prices, and amounts are not accepted.",
             "properties": {
-              "quote_id": { "type": "string", "description": "Required when quote-first is enabled upstream." },
-              "discount_codes": { "type": "array", "items": { "type": "string" } },
-              "items": {
-                "type": "array",
-                "items": {
-                  "type": "object",
-                  "properties": {
-                    "product_id": { "type": "string" },
-                    "sku_id": { "type": "string" },
-                    "variant_id": { "type": "string" },
-                    "quantity": { "type": "integer", "minimum": 1 }
-                  },
-                  "required": ["sku_id", "quantity"],
-                  "additionalProperties": true
-                }
-              },
+              "quote_id": { "type": "string", "description": "Required. Must reference a live, unexpired quote bound to this user/session. Source of all pricing." },
               "shipping_address": {
                 "type": "object",
                 "properties": {
@@ -206,7 +200,7 @@
                   "phone": { "type": "string" }
                 },
                 "required": ["country", "city", "address_line1", "recipient_name"],
-                "additionalProperties": true
+                "additionalProperties": false
               },
               "delivery_preferences": {
                 "type": "object",
@@ -217,11 +211,12 @@
                     "items": { "type": "string" }
                   }
                 },
-                "additionalProperties": true
+                "additionalProperties": false
               },
               "notes": { "type": "string" }
             },
-            "additionalProperties": true
+            "required": ["quote_id", "shipping_address"],
+            "additionalProperties": false
           },
           "quote": {
             "type": "object",
@@ -260,14 +255,25 @@
           },
           "payment": {
             "type": "object",
-            "description": "Used when operation = submit_payment",
+            "description": "Used when operation = submit_payment. Requires payload.idempotency_key and payload.confirmation_token. The amount is read server-side from the locked order/quote; expected_amount is a verification echo only.",
             "properties": {
               "order_id": { "type": "string" },
-              "expected_amount": { "type": "number" },
+              "expected_amount": {
+                "type": "number",
+                "description": "Echo of the amount the user confirmed, for verification only. Authoritative amount comes from the server-side order/quote snapshot; mismatch hard-fails."
+              },
               "currency": { "type": "string" },
               "payment_method_hint": {
                 "type": "string",
-                "description": "Optional hint like 'card', 'wallet', 'bank_transfer', 'pay_later'."
+                "description": "Optional broad hint like 'card', 'wallet', 'bank_transfer', 'pay_later', or 'shop_pay'."
+              },
+              "payment_handler_id": {
+                "type": "string",
+                "description": "Optional selected payment handler from the quote response, e.g. 'shop_pay'."
+              },
+              "payment_handler_type": {
+                "type": "string",
+                "description": "Optional selected payment handler type, e.g. 'dev.shopify.shop_pay'."
               },
               "return_url": {
                 "type": "string",
@@ -275,7 +281,7 @@
               }
             },
             "required": ["order_id", "expected_amount", "currency"],
-            "additionalProperties": true
+            "additionalProperties": false
           },
           "status": {
             "type": "object",
@@ -295,7 +301,31 @@
       }
     },
     "required": ["operation", "payload"],
-    "additionalProperties": false
+    "additionalProperties": false,
+    "allOf": [
+      {
+        "if": {
+          "properties": { "operation": { "const": "create_order" } },
+          "required": ["operation"]
+        },
+        "then": {
+          "properties": {
+            "payload": { "required": ["idempotency_key", "order"] }
+          }
+        }
+      },
+      {
+        "if": {
+          "properties": { "operation": { "const": "submit_payment" } },
+          "required": ["operation"]
+        },
+        "then": {
+          "properties": {
+            "payload": { "required": ["idempotency_key", "confirmation_token", "payment"] }
+          }
+        }
+      }
+    ]
   },
   "x_response_extensions": {
     "type": "object",

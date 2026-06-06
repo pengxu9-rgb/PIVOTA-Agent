@@ -19,6 +19,9 @@
  * - PROBE_PRODUCT_ID  Optional. Product to use for the quote/order.
  * - PROBE_QUERY       Optional. Product search query. Defaults to a generic cheap query.
  * - PROBE_CURRENCY    Optional. Payment currency. Defaults to USD.
+ * - PROBE_PSP         Optional. create_order order.preferred_psp, for example "stripe" or "adyen".
+ * - PROBE_ALLOW_TEST_PSP Optional. Truthy (1/true/yes/on) sets
+ *                     order.metadata.allow_test_psp_surfaces=true on create_order.
  * - PROBE_ALLOW_CHARGE Required as "1" when using --charge.
  *
  * Example invocations:
@@ -26,6 +29,8 @@
  *     PROBE_BASE=https://gateway.example PROBE_KEY=... node scripts/probe_wire_format.mjs
  * - With create_order:
  *     PROBE_BASE=https://gateway.example PROBE_KEY=... node scripts/probe_wire_format.mjs --create-order
+ * - With create_order routed to the backend TEST-PSP bypass:
+ *     PROBE_BASE=https://gateway.example PROBE_KEY=... PROBE_PSP=stripe PROBE_ALLOW_TEST_PSP=1 node scripts/probe_wire_format.mjs --create-order
  * - With submit_payment:
  *     PROBE_BASE=https://gateway.example PROBE_KEY=... PROBE_ALLOW_CHARGE=1 node scripts/probe_wire_format.mjs --create-order --charge
  *
@@ -98,6 +103,10 @@ function usageText() {
     "--charge: also run submit_payment, a real charge unless the backend/PSP is in test mode.",
     "--dry-run: print enabled request bodies and exit without network.",
     "--json: also emit a machine-readable results object.",
+    "",
+    "Optional create_order envs:",
+    "PROBE_PSP=<stripe|adyen>: include order.preferred_psp.",
+    "PROBE_ALLOW_TEST_PSP=1: include order.metadata.allow_test_psp_surfaces=true.",
   ].join("\n");
 }
 
@@ -116,7 +125,13 @@ function loadConfig() {
     variantId: optionalEnv("PROBE_VARIANT_ID"),
     query: optionalEnv("PROBE_QUERY") || DEFAULT_QUERY,
     currency: (optionalEnv("PROBE_CURRENCY") || DEFAULT_CURRENCY).toUpperCase(),
+    psp: optionalEnv("PROBE_PSP"),
+    allowTestPsp: truthyEnv("PROBE_ALLOW_TEST_PSP"),
     allowCharge: process.env.PROBE_ALLOW_CHARGE === "1",
+    chargeConfirm: optionalEnv("PROBE_CHARGE_CONFIRM"),
+    // optional PSP selector for --charge (test Stripe vs Adyen on the same merchant)
+    paymentHandlerType: optionalEnv("PROBE_PAYMENT_HANDLER_TYPE"),
+    paymentHandlerId: optionalEnv("PROBE_PAYMENT_HANDLER_ID"),
   };
 }
 
@@ -133,6 +148,11 @@ function optionalEnv(name) {
   return value && value.trim() ? value.trim() : undefined;
 }
 
+function truthyEnv(name) {
+  const value = optionalEnv(name);
+  return value ? /^(1|true|yes|on)$/i.test(value) : false;
+}
+
 function validateSafety(flags, config) {
   if (flags.charge && !flags.createOrder) {
     throw new UsageError("Refusing --charge without --create-order. create_order only runs when --create-order is explicit.");
@@ -142,8 +162,10 @@ function validateSafety(flags, config) {
     throw new UsageError("Refusing --charge unless PROBE_ALLOW_CHARGE=1 is set.");
   }
 
-  if (flags.charge && !flags.dryRun && !process.stdin.isTTY) {
-    throw new UsageError("Refusing --charge without an interactive TTY for typed confirmation.");
+  // Confirmation: interactively a typed "yes" (TTY); non-interactively (CI) an explicit
+  // PROBE_CHARGE_CONFIRM=yes. Without one of those, refuse — so a charge can never fire by accident.
+  if (flags.charge && !flags.dryRun && !process.stdin.isTTY && config.chargeConfirm !== "yes") {
+    throw new UsageError("Refusing --charge non-interactively without PROBE_CHARGE_CONFIRM=yes (use this ONLY when the backend/PSP is in test mode).");
   }
 }
 
@@ -219,36 +241,47 @@ function buildPreviewQuoteBody(selection, variantId) {
   });
 }
 
-function buildCreateOrderBody(selection, quoteId, majorPrice, variantId) {
-  return requestBody("create_order", {
-    order: {
-      quote_id: quoteId,
-      customer_email: "probe@pivota.test",
-      items: [
-        {
-          merchant_id: selection.merchantId,
-          product_id: selection.productId,
-          ...(variantId ? { variant_id: variantId } : {}),
-          product_title: selection.productTitle || "probe",
-          quantity: 1,
-          unit_price: majorPrice,
-        },
-      ],
-      shipping_address: { name: "Probe", address_line1: "1 Test St", ...PROBE_SHIP_GEO },
-    },
-  });
+function buildCreateOrderBody(selection, quoteId, majorPrice, variantId, config = {}) {
+  const order = {
+    quote_id: quoteId,
+    customer_email: "probe@pivota.test",
+    items: [
+      {
+        merchant_id: selection.merchantId,
+        product_id: selection.productId,
+        ...(variantId ? { variant_id: variantId } : {}),
+        product_title: selection.productTitle || "probe",
+        quantity: 1,
+        unit_price: majorPrice,
+      },
+    ],
+    shipping_address: { name: "Probe", address_line1: "1 Test St", ...PROBE_SHIP_GEO },
+  };
+
+  if (config.psp) {
+    order.preferred_psp = config.psp;
+  }
+  if (config.allowTestPsp) {
+    order.metadata = { ...(order.metadata || {}), allow_test_psp_surfaces: true };
+  }
+
+  return requestBody("create_order", { order });
 }
 
-function buildSubmitPaymentBody(orderId, quoteId, expectedMinor, currency) {
-  return requestBody("submit_payment", {
-    payment: {
-      order_id: orderId,
-      quote_id: quoteId,
-      expected_amount: expectedMinor,
-      currency,
-      payment_method_hint: "card",
-    },
-  });
+function buildSubmitPaymentBody(orderId, quoteId, expectedMinor, currency, handler = {}) {
+  const payment = {
+    order_id: orderId,
+    quote_id: quoteId,
+    expected_amount: expectedMinor,
+    currency,
+    payment_method_hint: "card",
+  };
+  // Optional PSP selection — to test a specific PSP (e.g. Stripe vs Adyen test account on the same merchant),
+  // pass the handler the backend expects via PROBE_PAYMENT_HANDLER_TYPE / PROBE_PAYMENT_HANDLER_ID. Omitted →
+  // the backend's default PSP for the merchant.
+  if (handler.type) payment.payment_handler_type = handler.type;
+  if (handler.id) payment.payment_handler_id = handler.id;
+  return requestBody("submit_payment", { payment });
 }
 
 async function invoke(operationBody, config) {
@@ -835,11 +868,11 @@ function buildDryRunBodies(config, flags) {
   ];
 
   if (flags.createOrder) {
-    bodies.push(buildCreateOrderBody(selection, quoteId, majorPrice));
+    bodies.push(buildCreateOrderBody(selection, quoteId, majorPrice, undefined, config));
   }
 
   if (flags.charge) {
-    bodies.push(buildSubmitPaymentBody(orderId, quoteId, expectedMinor, config.currency));
+    bodies.push(buildSubmitPaymentBody(orderId, quoteId, expectedMinor, config.currency, { type: config.paymentHandlerType, id: config.paymentHandlerId }));
   }
 
   return bodies;
@@ -859,12 +892,18 @@ function printDryRun(config, flags) {
   return bodies;
 }
 
-async function confirmCharge() {
+async function confirmCharge(config) {
   console.error("");
   console.error("!!! WARNING: --charge can move REAL money unless the backend and PSP are in test mode.");
   console.error("!!! This script does not call Stripe. After submit_payment, verify the returned PSP ID and amount in the Stripe dashboard.");
-  console.error("!!! Type exactly \"yes\" to send submit_payment.");
 
+  // Non-interactive (CI): validateSafety already required PROBE_CHARGE_CONFIRM=yes. Log loudly and proceed.
+  if (!process.stdin.isTTY) {
+    console.error("!!! Non-interactive run: proceeding because PROBE_CHARGE_CONFIRM=yes (intended for TEST mode).");
+    return;
+  }
+
+  console.error("!!! Type exactly \"yes\" to send submit_payment.");
   const rl = createInterface({ input, output });
   try {
     const answer = await rl.question("Send submit_payment now? ");
@@ -1154,7 +1193,7 @@ async function main() {
       }
 
       console.log("Step3 create_order: sending backend write with no charge.");
-      const createBody = buildCreateOrderBody(selection, qInfo.quoteId, unitPriceForBody, selectedVariantId);
+      const createBody = buildCreateOrderBody(selection, qInfo.quoteId, unitPriceForBody, selectedVariantId, config);
       const orderResponse = await invoke(createBody, config);
       responses.step3 = orderResponse;
 
@@ -1186,10 +1225,10 @@ async function main() {
           });
         }
 
-        await confirmCharge();
+        await confirmCharge(config);
 
         console.log("Step4 submit_payment: sending charge request.");
-        const submitBody = buildSubmitPaymentBody(orderId, qInfo.quoteId, expectedMinor, orderCurrency || config.currency);
+        const submitBody = buildSubmitPaymentBody(orderId, qInfo.quoteId, expectedMinor, orderCurrency || config.currency, { type: config.paymentHandlerType, id: config.paymentHandlerId });
         const paymentResponse = await invoke(submitBody, config);
         responses.step4 = paymentResponse;
 

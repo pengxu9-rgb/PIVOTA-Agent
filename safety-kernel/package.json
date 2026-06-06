@@ -1,0 +1,21 @@
+{
+  "name": "pivota-safety-kernel",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Pivota Commerce Safety Kernel (track C) — enforces INV-1..INV-5 of docs/agent-checkout/safety-kernel-contract.md on the agent-commerce money path.",
+  "exports": {
+    ".": "./src/kernel.js",
+    "./errors": "./src/errors.js",
+    "./redact": "./src/redact.js"
+  },
+  "scripts": {
+    "test": "node --test"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "dependencies": {
+    "jose": "^6.2.3"
+  }
+}

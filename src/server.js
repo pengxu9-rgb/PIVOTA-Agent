@@ -1087,6 +1087,7 @@ function buildSafeAdyenRawForClient({
   resultCode = null,
   action = null,
   sessionData = null,
+  clientKey = null,
 } = {}) {
   const safeRaw = pickOwnFields(raw, [
     'pspReference',
@@ -1096,6 +1097,8 @@ function buildSafeAdyenRawForClient({
     'action',
     'sessionData',
     'session_data',
+    'clientKey',
+    'client_key',
   ]);
   return pruneEmptyFields({
     ...safeRaw,
@@ -1103,6 +1106,7 @@ function buildSafeAdyenRawForClient({
     ...(resultCode ? { resultCode } : {}),
     ...(action ? { action } : {}),
     ...(sessionData ? { sessionData } : {}),
+    ...(clientKey ? { clientKey } : {}),
   });
 }
 
@@ -1112,6 +1116,11 @@ function sanitizeAdyenPaymentActionForClient(paymentAction, extracted = {}) {
     paymentAction.session_data,
     paymentAction.sessionData,
     extracted.sessionData,
+  );
+  const clientKey = firstNonEmptyString(
+    paymentAction.client_key,
+    paymentAction.clientKey,
+    extracted.clientKey,
   );
   const pspReference = firstNonEmptyString(
     paymentAction.pspReference,
@@ -1134,11 +1143,13 @@ function sanitizeAdyenPaymentActionForClient(paymentAction, extracted = {}) {
     resultCode,
     action,
     sessionData,
+    clientKey,
   });
 
   return pruneEmptyFields({
     type: firstNonEmptyString(paymentAction.type, 'adyen_session'),
     ...(sessionData ? { session_data: sessionData } : {}),
+    ...(clientKey ? { client_key: clientKey } : {}),
     ...(pspReference ? { pspReference } : {}),
     action: action || undefined,
     ...(resultCode ? { resultCode } : {}),
@@ -1769,18 +1780,10 @@ function pruneEmptyFields(input = {}) {
 }
 
 function getInvokeScopedBuyerRef(payload = {}) {
+  // SECURITY: buyer identity must not be derived from model-controlled tool payload.
+  // The legacy upstream X-Buyer-Ref forwarder can only use the request-scoped auth context.
   const store = getInvokeAuthContext();
-  return firstNonEmptyString(
-    store?.buyer_ref,
-    payload?.payment?.buyer_ref,
-    payload?.payment?.buyerRef,
-    payload?.order?.buyer_ref,
-    payload?.order?.buyerRef,
-    payload?.quote?.buyer_ref,
-    payload?.quote?.buyerRef,
-    payload?.buyer_ref,
-    payload?.buyerRef,
-  );
+  return firstNonEmptyString(store?.buyer_ref);
 }
 
 function buildInvokeRequestContext({
@@ -26790,7 +26793,6 @@ const AGENT_AUTH_SERVICE_FALLBACK_KEYS = parseSecretList(
   process.env.CREATOR_INVOKE_API_KEY,
   process.env.PIVOTA_BACKEND_AGENT_API_KEY,
   process.env.PIVOTA_AGENT_API_KEY,
-  process.env.NEXT_PUBLIC_AGENT_API_KEY,
 );
 const AGENT_AUTH_EMERGENCY_FALLBACK_KEYS = parseSecretList(
   process.env.AGENT_AUTH_EMERGENCY_API_KEY,
@@ -27190,6 +27192,273 @@ function buildInvokeUpstreamAuthHeaders({
     };
   }
   return forwardedHeaders;
+}
+
+const AGENT_CHECKOUT_STRICT_MONEY_OPS = new Set([
+  'preview_quote',
+  'create_order',
+  'submit_payment',
+  'request_after_sales',
+  'confirm_payment',
+]);
+
+let commerceMountPromise = null;
+let paymentWebhookHandlerPromise = null;
+
+function isAgentCheckoutStrictEnabled() {
+  return String(process.env.AGENT_CHECKOUT_STRICT || '').trim() === '1';
+}
+
+function allowInMemoryStrictCheckoutForTest() {
+  const explicit = String(process.env.AGENT_CHECKOUT_ALLOW_IN_MEMORY_STRICT || '').trim().toLowerCase();
+  if (['1', 'true', 'on', 'yes'].includes(explicit)) return true;
+  return (
+    String(process.env.NODE_ENV || '').trim().toLowerCase() === 'test' ||
+    Boolean(process.env.JEST_WORKER_ID)
+  );
+}
+
+function allowStrictCheckoutTestIdentity() {
+  if (
+    String(process.env.NODE_ENV || '').trim().toLowerCase() === 'test' ||
+    Boolean(process.env.JEST_WORKER_ID)
+  ) {
+    return true;
+  }
+  return String(process.env.AGENT_CHECKOUT_ALLOW_TEST_IDENTITY || '').trim() === '1';
+}
+
+function buildCommerceKernelDb() {
+  if (process.env.DATABASE_URL) return { query };
+  if (isAgentCheckoutStrictEnabled() && !allowInMemoryStrictCheckoutForTest()) {
+    throw new Error('AGENT_CHECKOUT_STRICT requires DATABASE_URL for durable commerce state');
+  }
+  return null;
+}
+
+async function invokeCommerceKernelRawUpstream(operation, payload, headers = {}) {
+  const upstreamHeaders = {
+    'Content-Type': 'application/json',
+    ...buildInvokeUpstreamAuthHeaders({ allowInternalFallback: true }),
+    ...headers,
+  };
+  const resp = await axios({
+    method: 'POST',
+    url: `${PIVOTA_API_BASE}/agent/shop/v1/invoke`,
+    headers: upstreamHeaders,
+    data: { operation, payload },
+    timeout: Number(process.env.AGENT_CHECKOUT_UPSTREAM_TIMEOUT_MS || 30000),
+  });
+  const body = resp?.data;
+  if (body && body.ok === true && body.data && typeof body.data === 'object') return body.data;
+  return body;
+}
+
+function recordCommerceKernelAudit(entry) {
+  logger.info(
+    {
+      event: 'agent_checkout_audit',
+      audit: entry && typeof entry === 'object' ? entry : {},
+    },
+    'agent checkout audit event',
+  );
+}
+
+async function getCommerceMount() {
+  if (!commerceMountPromise) {
+    commerceMountPromise = (async () => {
+      const { createCommerceMount } = await import('../safety-kernel/src/mount.js');
+      return createCommerceMount({
+        upstream: invokeCommerceKernelRawUpstream,
+        db: buildCommerceKernelDb(),
+        secret: process.env.CONFIRMATION_SECRET,
+        strict: isAgentCheckoutStrictEnabled(),
+        normalizeRealUpstream: true,
+        auditSink: recordCommerceKernelAudit,
+        log: logger,
+      });
+    })();
+  }
+  return commerceMountPromise;
+}
+
+function deriveStrictCommerceCtx(req) {
+  const auth = req?.auth ?? req?.authInfo ?? req?.session ?? {};
+  const testUserRef = allowStrictCheckoutTestIdentity()
+    ? firstNonEmptyString(req?.header('X-Test-User-Ref'), process.env.AGENT_CHECKOUT_TEST_USER_REF)
+    : null;
+  const testSessionId = allowStrictCheckoutTestIdentity()
+    ? firstNonEmptyString(req?.header('X-Test-Acp-Session-Id'), process.env.AGENT_CHECKOUT_TEST_ACP_SESSION_ID)
+    : null;
+
+  const userRef = firstNonEmptyString(
+    auth.user_ref,
+    auth.userRef,
+    req?.invokeAuth?.user_ref,
+    req?.invokeAuth?.userRef,
+    testUserRef,
+  );
+  const acpSessionId = firstNonEmptyString(
+    auth.acp_session_id,
+    auth.acpSessionId,
+    auth.session_id,
+    req?.invokeAuth?.acp_session_id,
+    req?.invokeAuth?.acpSessionId,
+    testSessionId,
+  );
+  const agentId = firstNonEmptyString(
+    auth.agent_id,
+    auth.agentId,
+    req?.invokeAuth?.agent_id,
+  );
+
+  return pruneEmptyFields({
+    user_ref: userRef,
+    acp_session_id: acpSessionId,
+    agent_id: agentId,
+    claims: auth.claims,
+  });
+}
+
+function statusForCommerceKernelError(code) {
+  switch (code) {
+    case 'USER_AUTH_REQUIRED':
+      return 401;
+    case 'CONFIRMATION_REQUIRED':
+    case 'CONFIRMATION_INVALID':
+      return 403;
+    case 'QUOTE_NOT_FOUND':
+    case 'STATE_LINKAGE_MISMATCH':
+      return 404;
+    case 'IDEMPOTENCY_CONFLICT':
+    case 'PRICE_CHANGED':
+      return 409;
+    case 'MERCHANT_UNAVAILABLE':
+      return 503;
+    case 'OPERATION_NOT_ALLOWED':
+      return 405;
+    default:
+      return 422;
+  }
+}
+
+function commerceKernelErrorBody(error = {}) {
+  return {
+    status: 'failure',
+    error: error.code || 'COMMERCE_ERROR',
+    code: error.code || 'COMMERCE_ERROR',
+    message: error.message || 'Checkout could not continue.',
+    recovery: error.recovery || undefined,
+    retriable: error.retriable === true,
+  };
+}
+
+function registerCommerceStrictInvokeRoute(path, clientChannel) {
+  app.post(path, async (req, res, next) => {
+    const operation = String(req?.body?.operation || '').trim();
+    if (!isAgentCheckoutStrictEnabled() || !AGENT_CHECKOUT_STRICT_MONEY_OPS.has(operation)) {
+      return next();
+    }
+
+    return requireExternalInvokeAuth(req, res, async () => {
+      const invokeContext = {
+        api_key: req?.invokeAuth?.raw_token || null,
+        agent_id: req?.invokeAuth?.agent_id || null,
+        auth_mode: req?.invokeAuth?.auth_mode || null,
+        auth_source: req?.invokeAuth?.auth_source || null,
+        auth_degraded: req?.invokeAuth?.auth_degraded === true,
+        auth_degraded_reason: req?.invokeAuth?.auth_degraded_reason || null,
+        introspect_auth_source: req?.invokeAuth?.introspect_auth_source || null,
+        agent_user_jwt: firstNonEmptyString(
+          req?.header('X-Agent-User-JWT'),
+          req?.header('x-agent-user-jwt'),
+        ),
+        buyer_ref: firstNonEmptyString(
+          req?.header('X-Buyer-Ref'),
+          req?.header('x-buyer-ref'),
+        ),
+      };
+
+      return INVOKE_AUTH_CONTEXT.run(invokeContext, async () => {
+        try {
+          if (operation === 'confirm_payment') {
+            return res.status(405).json(commerceKernelErrorBody({
+              code: 'OPERATION_NOT_ALLOWED',
+              message: 'confirm_payment is disabled in strict checkout mode.',
+              recovery: 'use submit_payment with confirmation_token',
+              retriable: false,
+            }));
+          }
+
+          const ctx = deriveStrictCommerceCtx(req);
+          if (!ctx.user_ref || !ctx.acp_session_id) {
+            return res.status(401).json(commerceKernelErrorBody({
+              code: 'USER_AUTH_REQUIRED',
+              message: 'Verified user and session identity are required for checkout.',
+              retriable: false,
+              recovery: 'trigger OAuth',
+            }));
+          }
+
+          const commerce = await getCommerceMount();
+          if (!commerce.handles(operation)) return next();
+
+          const out = await commerce.handle(operation, req?.body?.payload || {}, ctx);
+          if (out?.ok === true) return res.status(200).json(out.data || {});
+
+          const error = out?.error || { code: 'COMMERCE_ERROR' };
+          return res.status(statusForCommerceKernelError(error.code)).json(commerceKernelErrorBody(error));
+        } catch (err) {
+          logger.error(
+            {
+              err: err?.message || String(err),
+              operation,
+              client_channel: clientChannel,
+            },
+            'Strict checkout kernel route failed',
+          );
+          return res.status(503).json({
+            status: 'failure',
+            error: 'COMMERCE_KERNEL_UNAVAILABLE',
+            code: 'COMMERCE_KERNEL_UNAVAILABLE',
+            message: 'Checkout is temporarily unavailable.',
+          });
+        }
+      });
+    });
+  });
+}
+
+async function getPaymentWebhookHandler() {
+  if (!paymentWebhookHandlerPromise) {
+    paymentWebhookHandlerPromise = (async () => {
+      const commerce = await getCommerceMount();
+      const { createPaymentWebhookHandler } = await import('../safety-kernel/src/webhookHandler.js');
+      return createPaymentWebhookHandler({
+        kernel: commerce.kernel,
+        secret: process.env.PAYMENT_WEBHOOK_SECRET || process.env.AGENT_CHECKOUT_WEBHOOK_SECRET,
+        log: logger,
+      });
+    })();
+  }
+  return paymentWebhookHandlerPromise;
+}
+
+function registerCommercePaymentWebhookRoute() {
+  app.post('/agent/shop/v1/payment-webhook', express.raw({ type: '*/*', limit: '1mb' }), async (req, res) => {
+    if (!isAgentCheckoutStrictEnabled()) {
+      return res.status(404).json({ error: 'not_found' });
+    }
+    try {
+      const handler = await getPaymentWebhookHandler();
+      const rawBody = Buffer.isBuffer(req.body) ? req.body : Buffer.from('');
+      const out = await handler({ headers: req.headers, rawBody });
+      return res.status(out.status).json(out.body);
+    } catch (err) {
+      logger.error({ err: err?.message || String(err) }, 'Strict checkout payment webhook failed');
+      return res.status(503).json({ error: 'payment_webhook_unavailable' });
+    }
+  });
 }
 
 function isPromoActive(promo, nowTs) {
@@ -30327,6 +30596,8 @@ app.use((req, res, next) => {
 
   next();
 });
+
+registerCommercePaymentWebhookRoute();
 
 // Body parser with error handling
 app.use(express.json({
@@ -44889,6 +45160,10 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
           p.payment_action?.session_data,
           paymentObj.payment_action?.sessionData,
           paymentObj.payment_action?.session_data,
+          p.payment_action?.client_secret,
+          paymentObj.payment_action?.client_secret,
+          p.client_secret,
+          paymentObj.client_secret,
           adyenRaw.sessionData,
           adyenRaw.session_data,
         );
@@ -44916,6 +45191,18 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
           adyenRaw.resultCode,
           adyenRaw.result_code,
         );
+        const adyenClientKey = firstNonEmptyString(
+          p.clientKey,
+          p.client_key,
+          paymentObj.clientKey,
+          paymentObj.client_key,
+          p.payment_action?.clientKey,
+          p.payment_action?.client_key,
+          paymentObj.payment_action?.clientKey,
+          paymentObj.payment_action?.client_key,
+          adyenRaw.clientKey,
+          adyenRaw.client_key,
+        );
         if (pspNormalized === 'pivota_hosted_checkout') {
           unsupportedPaymentSurface = {
             error: 'UNSUPPORTED_PAYMENT_SURFACE',
@@ -44939,7 +45226,9 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
           if (pspNormalized === 'adyen' && (adyenSessionData || adyenPspReference || adyenAction)) {
             paymentAction = {
               type: 'adyen_session',
+              client_secret: adyenSessionData || null,
               session_data: adyenSessionData || null,
+              client_key: adyenClientKey || null,
               pspReference: adyenPspReference || null,
               action: adyenAction || null,
               resultCode: adyenResultCode || null,
@@ -44950,6 +45239,7 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
                 resultCode: adyenResultCode,
                 action: adyenAction,
                 sessionData: adyenSessionData,
+                clientKey: adyenClientKey,
               }),
             };
           } else if (pspNormalized === 'stripe' && p.client_secret) {
@@ -44982,6 +45272,7 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
             pspReference: adyenPspReference,
             resultCode: adyenResultCode,
             action: adyenAction,
+            clientKey: adyenClientKey,
           });
         }
 
@@ -45081,6 +45372,7 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
             ...(adyenPspReference ? { pspReference: adyenPspReference } : {}),
             ...(adyenAction ? { action: adyenAction } : {}),
             ...(adyenResultCode ? { resultCode: adyenResultCode } : {}),
+            ...(adyenClientKey ? { clientKey: adyenClientKey } : {}),
             checkout_session_id:
               checkoutSession?.checkout_session_id || paymentObj.checkout_session_id || null,
             checkout_token: checkoutSession?.checkout_token || paymentObj.checkout_token || null,
@@ -46105,6 +46397,7 @@ function registerExternalInvokeRoute(path, clientChannel) {
   });
 }
 
+registerCommerceStrictInvokeRoute('/agent/shop/v1/invoke', 'shop');
 registerExternalInvokeRoute('/agent/shop/v1/invoke', 'shop');
 // Backward-compatible alias: creator invoke shares the same standardized shop pipeline.
 registerExternalInvokeRoute('/agent/creator/v1/invoke', 'creator');
@@ -46350,6 +46643,11 @@ module.exports._debug = {
   compactBeautyMainlineProductForResponse,
   snapshotProductDetailCacheStats,
   resolveProductDetailCacheTtlMs,
+  __agentCheckoutStrict: {
+    getCommerceMount,
+    deriveStrictCommerceCtx,
+    isAgentCheckoutStrictEnabled,
+  },
 };
 
 if (require.main === module) {
