@@ -27219,6 +27219,13 @@ function isAgentCheckoutStrictEnabled() {
   return String(process.env.AGENT_CHECKOUT_STRICT || '').trim() === '1';
 }
 
+function isAgentCheckoutStrictSubmitPaymentEnabled() {
+  const normalized = String(process.env.AGENT_CHECKOUT_STRICT_SUBMIT_PAYMENT_ENABLED || '')
+    .trim()
+    .toLowerCase();
+  return ['1', 'true', 'on', 'yes'].includes(normalized);
+}
+
 function allowInMemoryStrictCheckoutForTest() {
   const explicit = String(process.env.AGENT_CHECKOUT_ALLOW_IN_MEMORY_STRICT || '').trim().toLowerCase();
   if (['1', 'true', 'on', 'yes'].includes(explicit)) return true;
@@ -27520,6 +27527,15 @@ function registerCommerceStrictInvokeRoute(path, clientChannel) {
     const operation = String(req?.body?.operation || '').trim();
     if (!isAgentCheckoutStrictEnabled() || !AGENT_CHECKOUT_STRICT_MONEY_OPS.has(operation)) {
       return next();
+    }
+
+    if (operation === 'submit_payment' && !isAgentCheckoutStrictSubmitPaymentEnabled()) {
+      return res.status(405).json(commerceKernelErrorBody({
+        code: 'OPERATION_NOT_ALLOWED',
+        message: 'submit_payment is disabled in strict checkout mode.',
+        recovery: 'enable AGENT_CHECKOUT_STRICT_SUBMIT_PAYMENT_ENABLED after quote/order canary',
+        retriable: false,
+      }));
     }
 
     return requireExternalInvokeAuth(req, res, async () => {
