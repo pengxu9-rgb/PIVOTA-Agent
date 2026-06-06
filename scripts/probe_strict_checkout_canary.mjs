@@ -10,7 +10,9 @@
  *   remote submit_payment has been enabled for the canary window.
  *
  * Required for real runs:
- *   PROBE_BASE, PROBE_KEY, PROBE_MERCHANT_ID, PROBE_PRODUCT_ID
+ *   PROBE_BASE, PROBE_KEY
+ *   Optional but preferred: PROBE_MERCHANT_ID, PROBE_PRODUCT_ID, PROBE_VARIANT_ID
+ *   If product/merchant are not pinned, the script runs find_products with PROBE_QUERY.
  *   STRICT_CANARY_USER_REF, STRICT_CANARY_ACP_SESSION_ID
  *   STRICT_CANARY_ALLOW_CREATE_ORDER=1 for --create-order
  *   STRICT_CANARY_ALLOW_CHARGE=1 STRICT_CANARY_PSP_MODE=test
@@ -26,6 +28,7 @@ import { randomUUID } from 'node:crypto';
 const require = createRequire(import.meta.url);
 const INVOKE_PATH = '/agent/shop/v1/invoke';
 const REDACTED = '[REDACTED]';
+const DEFAULT_QUERY = 'cheap test item';
 
 class UsageError extends Error {
   constructor(message) {
@@ -96,14 +99,19 @@ function must(name, { dryRunFallback } = {}) {
 function loadConfig(flags) {
   const dry = flags.dryRun;
   const runId = env('STRICT_CANARY_RUN_ID') || `strict_canary_${Date.now()}_${randomUUID().slice(0, 8)}`;
+  const merchantId = env('PROBE_MERCHANT_ID');
+  const productId = env('PROBE_PRODUCT_ID');
   return {
     runId,
     base: must('PROBE_BASE', { dryRunFallback: 'https://gateway.example' }),
     key: must('PROBE_KEY', { dryRunFallback: 'ak_live_redacted' }),
     authHeader: env('PROBE_AUTH_HEADER') || 'Authorization',
-    merchantId: must('PROBE_MERCHANT_ID', { dryRunFallback: 'merch_probe' }),
-    productId: must('PROBE_PRODUCT_ID', { dryRunFallback: 'prod_probe' }),
+    merchantId: merchantId || (dry ? 'merch_probe' : undefined),
+    productId: productId || (dry ? 'prod_probe' : undefined),
+    merchantPinned: Boolean(merchantId),
+    productPinned: Boolean(productId),
     variantId: env('PROBE_VARIANT_ID') || (dry ? 'variant_probe' : undefined),
+    query: env('PROBE_QUERY') || DEFAULT_QUERY,
     currency: (env('PROBE_CURRENCY') || 'USD').toUpperCase(),
     quantity: Math.max(1, Number(env('PROBE_QUANTITY') || 1) || 1),
     userRef: must('STRICT_CANARY_USER_REF', { dryRunFallback: 'usr_strict_canary' }),
@@ -180,13 +188,33 @@ function requestBody(operation, payload) {
   return { operation, payload };
 }
 
-function quoteRequest(config) {
+function findProductsRequest(config) {
+  return requestBody('find_products', {
+    search: { query: config.query },
+    metadata: { source: 'strict_checkout_canary', run_id: config.runId },
+    context: { channel: 'strict_checkout_canary', request_id: `${config.runId}:find` },
+  });
+}
+
+function productDetailRequest(selection) {
+  return requestBody('get_product_detail', {
+    product: {
+      merchant_id: selection.merchantId,
+      product_id: selection.productId,
+    },
+  });
+}
+
+function quoteRequest(config, selection = {}) {
+  const merchantId = selection.merchantId || config.merchantId;
+  const productId = selection.productId || config.productId;
+  const variantId = selection.variantId || config.variantId;
   return requestBody('preview_quote', {
     quote: {
-      merchant_id: config.merchantId,
+      merchant_id: merchantId,
       items: [{
-        product_id: config.productId,
-        ...(config.variantId ? { variant_id: config.variantId } : {}),
+        product_id: productId,
+        ...(variantId ? { variant_id: variantId } : {}),
         quantity: config.quantity,
       }],
       currency: config.currency,
@@ -297,6 +325,190 @@ async function invoke(body, config) {
   return parsed;
 }
 
+function shouldDiscoverProduct(config) {
+  return !(config.productPinned && config.merchantPinned);
+}
+
+function safeProducts(data) {
+  const candidates = [
+    data?.products,
+    data?.results,
+    data?.items,
+    data?.data?.products,
+    data?.data?.results,
+    data?.data?.items,
+    data?.payload?.products,
+    data?.payload?.items,
+  ];
+
+  for (const candidate of candidates) {
+    if (Array.isArray(candidate)) return candidate;
+  }
+  return [];
+}
+
+function buildCandidates(products, config, max = 12) {
+  if (!Array.isArray(products)) return [];
+
+  const filtered = [];
+  for (const product of products) {
+    const productId = stringValue(getFirst(product, ['product_id', 'productId', 'id', 'sku_id']));
+    const merchantId = stringValue(getFirst(product, ['merchant_id', 'merchantId', 'seller_id', 'merchant']));
+
+    if (config.productId && productId !== config.productId) continue;
+    if (config.merchantId && merchantId && merchantId !== config.merchantId) continue;
+    if (config.merchantId && !merchantId && !config.productId) continue;
+
+    const selection = productToSelection(product, config);
+    if (selection.productId && selection.merchantId) filtered.push(selection);
+    if (filtered.length >= max) break;
+  }
+
+  return filtered;
+}
+
+function productToSelection(product, config) {
+  return {
+    productId: config.productId || stringValue(getFirst(product, ['product_id', 'productId', 'id', 'sku_id'])),
+    merchantId: config.merchantId || stringValue(getFirst(product, ['merchant_id', 'merchantId', 'seller_id', 'merchant'])),
+    productTitle: stringValue(getFirst(product, ['title', 'name', 'product_title', 'productTitle'])) || 'probe',
+  };
+}
+
+function getFirst(object, keys) {
+  if (!object || typeof object !== 'object') return undefined;
+  for (const key of keys) {
+    if (object[key] !== undefined && object[key] !== null && String(object[key]).trim() !== '') {
+      return object[key];
+    }
+  }
+  return undefined;
+}
+
+function stringValue(value) {
+  if (value === undefined || value === null) return undefined;
+  const out = String(value).trim();
+  return out ? out : undefined;
+}
+
+function extractVariantId(detail) {
+  const queue = [detail];
+  while (queue.length) {
+    const value = queue.shift();
+    if (!value || typeof value !== 'object') continue;
+    if (Array.isArray(value)) {
+      for (const item of value) queue.push(item);
+      continue;
+    }
+    for (const [key, child] of Object.entries(value)) {
+      if (key === 'variants' && Array.isArray(child)) {
+        for (const variant of child) {
+          const id = stringValue(variant?.variant_id || variant?.variantId || variant?.id);
+          if (id) return id;
+        }
+      }
+      queue.push(child);
+    }
+  }
+  return undefined;
+}
+
+function errorCode(error) {
+  const body = error?.details?.body;
+  return first(body?.code, body?.error?.code, body?.error?.message, body?.message);
+}
+
+async function resolvePreviewQuote(config) {
+  let candidates;
+  let productsSeen = 0;
+  let source = 'pinned_env';
+
+  if (shouldDiscoverProduct(config)) {
+    source = 'find_products';
+    const findResponse = await invoke(findProductsRequest(config), config);
+    const products = safeProducts(findResponse);
+    productsSeen = products.length;
+    candidates = buildCandidates(products, config);
+    if (candidates.length === 0) {
+      throw new CanaryError('Unable to determine product_id and merchant_id from find_products response or env overrides', {
+        operation: 'find_products',
+        products_seen: productsSeen,
+        query: config.query,
+        product_pinned: config.productPinned,
+        merchant_pinned: config.merchantPinned,
+      });
+    }
+  } else {
+    candidates = [productToSelection({}, config)];
+  }
+
+  const quoteFailures = [];
+  for (const candidate of candidates) {
+    let variantId = config.variantId;
+    if (!variantId) {
+      try {
+        variantId = extractVariantId(await invoke(productDetailRequest(candidate), config));
+      } catch (error) {
+        quoteFailures.push({
+          operation: 'get_product_detail',
+          product_id: candidate.productId,
+          merchant_id: candidate.merchantId,
+          status: error?.details?.status,
+          code: errorCode(error),
+        });
+      }
+    }
+
+    const selection = { ...candidate, ...(variantId ? { variantId } : {}) };
+    try {
+      const preview = await invoke(quoteRequest(config, selection), config);
+      const quote = quoteInfo(preview);
+      if (!quote.quote_id) {
+        quoteFailures.push({
+          operation: 'preview_quote',
+          product_id: selection.productId,
+          merchant_id: selection.merchantId,
+          variant_id_present: Boolean(variantId),
+          reason: 'missing_quote_id',
+        });
+        continue;
+      }
+      return {
+        preview,
+        selection,
+        discovery: {
+          source,
+          products_seen: productsSeen,
+          candidates_available: candidates.length,
+          quote_failures: quoteFailures.filter((failure) => failure.operation === 'preview_quote').length,
+          detail_failures: quoteFailures.filter((failure) => failure.operation === 'get_product_detail').length,
+          selected_product_id: selection.productId,
+          selected_merchant_id: selection.merchantId,
+          variant_id_present: Boolean(variantId),
+        },
+      };
+    } catch (error) {
+      if (!(error instanceof CanaryError)) throw error;
+      quoteFailures.push({
+        operation: 'preview_quote',
+        product_id: selection.productId,
+        merchant_id: selection.merchantId,
+        variant_id_present: Boolean(variantId),
+        status: error?.details?.status,
+        code: errorCode(error),
+      });
+    }
+  }
+
+  throw new CanaryError('All candidate products failed to preview_quote', {
+    operation: 'preview_quote',
+    query: shouldDiscoverProduct(config) ? config.query : undefined,
+    candidates_tried: candidates.length,
+    failures: quoteFailures,
+    hint: 'Pin a known-purchasable PROBE_PRODUCT_ID + PROBE_MERCHANT_ID, or use PROBE_QUERY for a cheap in-stock item.',
+  });
+}
+
 async function mintConfirmationToken(config, orderId) {
   const app = require('../src/server');
   const mountGetter = app?._debug?.__agentCheckoutStrict?.getCommerceMount;
@@ -405,6 +617,7 @@ async function main() {
 
   const createKey = env('STRICT_CANARY_CREATE_IDEMPOTENCY_KEY') || `idem_create_${config.runId}`;
   const payKey = env('STRICT_CANARY_PAY_IDEMPOTENCY_KEY') || `idem_pay_${config.runId}`;
+  const discoversProduct = shouldDiscoverProduct(config);
   const previewBody = quoteRequest(config);
   const createBody = createOrderRequest(config, '__QUOTE_ID__', createKey);
   const payBody = submitPaymentRequest(config, '__ORDER_ID__', 1, config.currency, '__HOST_MINTED_CONFIRMATION_TOKEN__', payKey);
@@ -413,12 +626,14 @@ async function main() {
     printJson({
       mode: 'dry_run',
       attempted: {
+        ...(discoversProduct ? { find_products: true } : {}),
         preview_quote: true,
         create_order: flags.createOrder,
         submit_payment: flags.charge,
         submit_payment_replay: flags.charge && !flags.noReplay,
       },
       requests: {
+        ...(discoversProduct ? { find_products: findProductsRequest(config) } : {}),
         preview_quote: previewBody,
         ...(flags.createOrder ? { create_order: createBody } : {}),
         ...(flags.charge ? { submit_payment: payBody } : {}),
@@ -434,6 +649,7 @@ async function main() {
     run_id: config.runId,
     base: config.base,
     attempted: {
+      ...(discoversProduct ? { find_products: true } : {}),
       preview_quote: true,
       create_order: flags.createOrder,
       submit_payment: flags.charge,
@@ -442,7 +658,8 @@ async function main() {
     steps: {},
   };
 
-  const preview = await invoke(previewBody, config);
+  const { preview, discovery } = await resolvePreviewQuote(config);
+  summary.selection = discovery;
   const q = quoteInfo(preview);
   summary.steps.preview_quote = q;
 
