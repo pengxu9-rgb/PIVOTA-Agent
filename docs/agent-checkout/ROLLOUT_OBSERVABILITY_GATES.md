@@ -25,7 +25,7 @@ operator checks; it does not require runtime-code changes.
 | Staging pay disabled | Fake `submit_payment` returned HTTP `405 OPERATION_NOT_ALLOWED`. |
 | Strict identity | GitHub Actions run `27060426512`, job `Strict Identity Gate`, passed. |
 | No-charge wire-format | GitHub Actions run `27059885995`, job `probe`, passed for read-only plus `create_order`; workflow has no paid charge input. |
-| Strict create-order canary | Pending. Run only after opening a short target-gateway `AGENT_CHECKOUT_ALLOW_TEST_IDENTITY=1` window; close it immediately after the job. |
+| Strict create-order canary | Pending. Run only after opening a short target-gateway `AGENT_CHECKOUT_ALLOW_TEST_IDENTITY=1` window; close it immediately after the job. Product pins are preferred, but the job can auto-select from `query` / `PROBE_QUERY` when repo product variables are absent. |
 | Backend health | Production backend `17e0a1db428bc1c7c602f7136f8bcb896b86a5d4`, `db_ok=true`, no missing columns. |
 | Artifact redaction | Local readiness bundle `/private/tmp/pivota-readiness-test-psp-probe-20260606T104229Z` passed a value scan after redaction. |
 
@@ -74,7 +74,7 @@ wire-format probe cannot run a paid charge from GitHub Actions.
 1. Keep `AGENT_CHECKOUT_STRICT=1` in staging and production for the current strict quote/order posture.
 2. Keep `AGENT_CHECKOUT_STRICT_SUBMIT_PAYMENT_ENABLED` unset/off.
 3. Re-run the no-charge wire-format probe against the target environment before each promotion window.
-4. Run the strict create-order canary in a controlled test-identity window; then close the window.
+4. Run the strict create-order canary in a controlled test-identity window, pinned when possible or auto-selected from `PROBE_QUERY`; then close the window.
 5. Confirm observability export captures quote/order/audit events from that environment.
 6. Run the paid charge probe manually in Stripe test mode only after no-charge probes and backend
    checkout-payment-safety are green.

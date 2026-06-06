@@ -14,7 +14,7 @@ two backend facts (per-order PSP idempotency, webhook details) needed to finish 
 | **`PROBE_BASE`** | The deployed gateway base URL that serves `POST /agent/shop/v1/invoke` (the same origin your web/agent clients call). No trailing `/agent/...` — just the origin, e.g. `https://agent.pivota.cc`. |
 | **`PROBE_KEY`** | A credential the gateway accepts for an agent/shopping request — the same token a real client sends. |
 | **Auth header** | Default is `Authorization: Bearer <PROBE_KEY>`. If the gateway authenticates with `X-API-Key` (or another header), set `PROBE_AUTH_HEADER` accordingly (see 1b). |
-| **A test item** | Prefer one priced with **cents** (e.g. **$0.99**, not a round $10) so minor/major is unambiguous. If you know it, set `PROBE_PRODUCT_ID` + `PROBE_MERCHANT_ID`. |
+| **A test item** | Prefer one priced with **cents** (e.g. **$0.99**, not a round $10) so minor/major is unambiguous. If you know it, set `PROBE_PRODUCT_ID` + `PROBE_MERCHANT_ID`; otherwise the no-charge probes auto-select from `PROBE_QUERY`. |
 | **Stripe access** | Dashboard access to read the charge. **Strongly prefer the backend in Stripe TEST mode** (test keys + card `4242 4242 4242 4242`). Live mode = real money + ~$0.50 minimum + you must refund. |
 
 > If you have a **staging/test deployment** with Stripe test keys, point `PROBE_BASE` at it and do the full
@@ -215,7 +215,9 @@ GitHub Actions:
 2. Set `run_wire_format_probe=false`.
 3. Set `run_strict_create_order_canary=true`.
 4. Provide `product_id` and `merchant_id` inputs, or configure `PROBE_PRODUCT_ID` and
-   `PROBE_MERCHANT_ID` repo variables.
+   `PROBE_MERCHANT_ID` repo variables. If you leave them blank, the strict canary runs
+   `find_products` with `query` / `PROBE_QUERY` and retries bounded candidates until one returns a
+   usable strict quote.
 5. Leave paid-charge controls absent. This job has no charge input and does not set any
    `STRICT_CANARY_ALLOW_CHARGE` variables.
 

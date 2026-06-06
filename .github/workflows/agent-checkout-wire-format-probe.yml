@@ -241,6 +241,7 @@ jobs:
           PROBE_KEY: ${{ secrets.PROBE_KEY || secrets.COMMERCE_CORE_PROD_AUTH_TOKEN }}
           PROBE_PRODUCT_ID: ${{ inputs.product_id || vars.PROBE_PRODUCT_ID }}
           PROBE_MERCHANT_ID: ${{ inputs.merchant_id || vars.PROBE_MERCHANT_ID }}
+          PROBE_QUERY: ${{ inputs.query }}
         run: |
           set -euo pipefail
           if [ -z "$PROBE_BASE" ]; then
@@ -252,8 +253,9 @@ jobs:
             exit 1
           fi
           if [ -z "$PROBE_PRODUCT_ID" ] || [ -z "$PROBE_MERCHANT_ID" ]; then
-            echo "::error::Strict create-order canary requires product_id and merchant_id inputs, or PROBE_PRODUCT_ID/PROBE_MERCHANT_ID repo variables."
-            exit 1
+            echo "No strict canary product pins supplied; the script will auto-select from find_products using PROBE_QUERY='${PROBE_QUERY:-cheap test item}'."
+          else
+            echo "Strict canary will use pinned product/merchant inputs."
           fi
           echo "Strict create-order canary preflight passed. Target/token/product values are hidden."
 
@@ -265,6 +267,7 @@ jobs:
           PROBE_PRODUCT_ID: ${{ inputs.product_id || vars.PROBE_PRODUCT_ID }}
           PROBE_MERCHANT_ID: ${{ inputs.merchant_id || vars.PROBE_MERCHANT_ID }}
           PROBE_VARIANT_ID: ${{ inputs.variant_id || vars.PROBE_VARIANT_ID }}
+          PROBE_QUERY: ${{ inputs.query }}
           PROBE_CURRENCY: ${{ inputs.currency }}
           STRICT_CANARY_SEND_TEST_IDENTITY: "1"
           STRICT_CANARY_USER_REF: ${{ inputs.strict_user_ref || format('usr_gh_strict_{0}', github.run_id) }}

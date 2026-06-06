@@ -78,6 +78,12 @@ function main() {
     'Wire-format probe workflow must expose the strict create-order canary input');
   assert(/probe_strict_checkout_canary\.mjs --create-order --json/.test(probeWorkflow),
     'Strict create-order canary job must run the strict canary script without --charge');
+  assert(/PROBE_QUERY:\s*\$\{\{\s*inputs\.query\s*\}\}/.test(probeWorkflow),
+    'Strict create-order canary job must pass PROBE_QUERY so it can auto-select when pins are absent');
+  assert(/auto-select from find_products/.test(probeWorkflow),
+    'Strict create-order canary workflow must document product auto-selection in preflight');
+  assert(!/requires product_id and merchant_id inputs/.test(probeWorkflow),
+    'Strict create-order canary workflow must not fail closed solely because product pins are absent');
 
   for (const marker of REQUIRED_DOC_MARKERS) {
     assert(rolloutDoc.includes(marker), `Missing rollout doc marker: ${marker}`);
