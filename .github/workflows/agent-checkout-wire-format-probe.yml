@@ -25,6 +25,10 @@ on:
         description: "Gateway origin serving /agent/shop/v1/invoke. Leave blank to use PROBE_BASE repo var/secret."
         type: string
         default: ""
+      run_wire_format_probe:
+        description: "Run the normal wire-format probe. Disable when probing strict fail-closed identity without a verified user token."
+        type: boolean
+        default: true
       run_create_order:
         description: "Run Phase 2 create_order (a backend WRITE; creates an unpaid order draft; no charge)"
         type: boolean
@@ -63,6 +67,7 @@ concurrency:
 
 jobs:
   probe:
+    if: ${{ inputs.run_wire_format_probe }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
