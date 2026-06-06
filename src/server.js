@@ -27237,21 +27237,173 @@ function buildCommerceKernelDb() {
 }
 
 async function invokeCommerceKernelRawUpstream(operation, payload, headers = {}) {
-  const upstreamHeaders = {
-    'Content-Type': 'application/json',
-    ...buildInvokeUpstreamAuthHeaders({ allowInternalFallback: true }),
-    ...headers,
-  };
-  const resp = await axios({
+  const op = String(operation || '').trim();
+  const metadata = isPlainObject(payload?.metadata) ? payload.metadata : {};
+  const clientChannel = firstNonEmptyString(payload?.context?.channel, metadata?.source, 'shop');
+  const gatewayRequestId = firstNonEmptyString(payload?.context?.request_id, payload?.request_id, randomUUID());
+  const timeout = Number(process.env.AGENT_CHECKOUT_UPSTREAM_TIMEOUT_MS || getUpstreamTimeoutMs(op) || 30000);
+  const checkoutToken = firstNonEmptyString(getInvokeAuthContext()?.checkout_token);
+  let url = `${PIVOTA_API_BASE}/agent/shop/v1/invoke`;
+  let requestBody = { operation: op, payload };
+
+  switch (op) {
+    case 'preview_quote': {
+      const quote = isPlainObject(payload?.quote) ? payload.quote : {};
+      const offerIdRaw = quote.offer_id || quote.offerId || payload?.offer_id || payload?.offerId || null;
+      const offerId = String(offerIdRaw || '').trim() || null;
+      const merchantFromOffer = offerId ? extractMerchantIdFromOfferId(offerId) : null;
+      const merchantId = firstNonEmptyString(merchantFromOffer, quote.merchant_id, quote.merchantId);
+      const normalizedQuote = { ...quote, merchant_id: merchantId };
+      delete normalizedQuote.offer_id;
+      delete normalizedQuote.offerId;
+
+      if (offerId && Array.isArray(normalizedQuote.items) && normalizedQuote.items.length > 0) {
+        const rewritten = await rewriteCheckoutItemsForOfferSelection({
+          offerId,
+          merchantId,
+          items: normalizedQuote.items,
+          checkoutToken,
+        });
+        if (Array.isArray(rewritten?.items) && rewritten.items.length > 0) {
+          normalizedQuote.items = rewritten.items;
+        }
+      }
+
+      url = `${PIVOTA_API_BASE}/agent/v2/quotes/preview`;
+      requestBody = buildQuotePreviewV2Body({
+        payload,
+        quote: normalizedQuote,
+        merchantId,
+        offerId,
+        metadata,
+        clientChannel,
+        gatewayRequestId,
+      });
+      break;
+    }
+    case 'create_order': {
+      url = `${PIVOTA_API_BASE}/agent/v2/orders`;
+      requestBody = buildCreateOrderV2Body({
+        payload,
+        order: payload?.order || {},
+        metadata,
+        clientChannel,
+        gatewayRequestId,
+      });
+      break;
+    }
+    case 'submit_payment': {
+      const payment = isPlainObject(payload?.payment) ? payload.payment : {};
+      const checkoutSessionBody = buildCheckoutSessionV2Body({
+        payload,
+        payment,
+        metadata,
+        clientChannel,
+        gatewayRequestId,
+      });
+      if (shouldSubmitPaymentUseExistingOrderMerchantPspSurface(checkoutSessionBody)) {
+        url = `${PIVOTA_API_BASE}/agent/v1/payments`;
+        requestBody = buildSubmitPaymentV1Body({
+          payload,
+          payment,
+          checkoutSessionBody,
+        });
+      } else {
+        url = `${PIVOTA_API_BASE}/agent/v2/payments/checkout-sessions`;
+        requestBody = checkoutSessionBody;
+      }
+      break;
+    }
+    case 'request_after_sales': {
+      const status = isPlainObject(payload?.status) ? payload.status : {};
+      const orderId = firstNonEmptyString(status.order_id, status.orderId);
+      url = `${PIVOTA_API_BASE}/agent/v2/orders/${encodeURIComponent(orderId)}/refunds`;
+      requestBody = pruneEmptyFields({
+        reason: firstNonEmptyString(status.reason),
+        restore_inventory: true,
+        idempotency_key: firstNonEmptyString(payload?.idempotency_key, payload?.idempotencyKey),
+      });
+      break;
+    }
+    default:
+      break;
+  }
+
+  const axiosConfig = {
     method: 'POST',
-    url: `${PIVOTA_API_BASE}/agent/shop/v1/invoke`,
-    headers: upstreamHeaders,
-    data: { operation, payload },
-    timeout: Number(process.env.AGENT_CHECKOUT_UPSTREAM_TIMEOUT_MS || 30000),
-  });
+    url,
+    headers: {
+      'Content-Type': 'application/json',
+      ...buildInvokeUpstreamAuthHeaders({ allowInternalFallback: true, checkoutToken }),
+      ...headers,
+    },
+    data: requestBody,
+    timeout,
+  };
+
+  let resp;
+  try {
+    resp = await callUpstreamWithOptionalRetry(op, axiosConfig, {
+      disableBusyRetry: op === 'create_order' || op === 'submit_payment' || op === 'request_after_sales',
+    });
+  } catch (err) {
+    if (
+      op === 'create_order' &&
+      requestBody &&
+      Object.keys(requestBody).length > 0 &&
+      isPydanticMissingBodyField(err, 'order_request')
+    ) {
+      try {
+        axiosConfig.data = { order_request: requestBody };
+        resp = await callUpstreamWithOptionalRetry(op, axiosConfig, { disableBusyRetry: true });
+      } catch (wrappedErr) {
+        err = wrappedErr;
+      }
+    }
+    if (!resp) {
+      await throwCommerceKernelUpstreamError(op, err);
+    }
+  }
+
   const body = resp?.data;
-  if (body && body.ok === true && body.data && typeof body.data === 'object') return body.data;
-  return body;
+  const normalizedBody =
+    op === 'preview_quote'
+      ? normalizePreviewQuoteCompat(body)
+      : op === 'create_order'
+        ? normalizeCreateOrderCompat(body)
+        : body;
+  if (
+    normalizedBody &&
+    normalizedBody.ok === true &&
+    normalizedBody.data &&
+    typeof normalizedBody.data === 'object'
+  ) {
+    return normalizedBody.data;
+  }
+  return normalizedBody;
+}
+
+let commerceKernelErrorsPromise = null;
+
+async function throwCommerceKernelUpstreamError(operation, err) {
+  const { PivotaCommerceError } = await (commerceKernelErrorsPromise ||= import('../safety-kernel/src/errors.js'));
+  const { code: upstreamCode, message: upstreamMessage } = extractUpstreamErrorCode(err);
+  const status = err?.response?.status || null;
+  const normalizedCode = String(upstreamCode || '').trim().toUpperCase();
+  const kernelCode =
+    normalizedCode === 'QUOTE_EXPIRED'
+      ? 'QUOTE_EXPIRED'
+      : normalizedCode === 'PRICE_CHANGED' || normalizedCode === 'QUOTE_MISMATCH'
+        ? 'PRICE_CHANGED'
+        : normalizedCode === 'OUT_OF_STOCK'
+          ? 'OUT_OF_STOCK'
+          : 'MERCHANT_UNAVAILABLE';
+  throw new PivotaCommerceError(kernelCode, {
+    operation,
+    upstream_status: status,
+    upstream_code: upstreamCode || null,
+    message: upstreamMessage || undefined,
+  });
 }
 
 function recordCommerceKernelAudit(entry) {

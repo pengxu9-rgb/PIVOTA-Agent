@@ -45,30 +45,45 @@ describe('strict Safety Kernel mount on /agent/shop/v1/invoke', () => {
 
   async function previewAndCreateOrder() {
     nock(API_BASE)
-      .post('/agent/shop/v1/invoke', (body) => {
-        return body?.operation === 'preview_quote' && body?.payload?.quote?.merchant_id === 'm_strict';
+      .post('/agent/v2/quotes/preview', (body) => {
+        return (
+          body?.merchant_id === 'm_strict' &&
+          Array.isArray(body?.offer_refs) &&
+          body.offer_refs[0]?.product_id === 'p_strict' &&
+          body.offer_refs[0]?.variant_id === 'v_strict'
+        );
       })
       .reply(200, {
-        quote_id: 'q_strict',
-        expires_at: '2026-12-31T00:00:00Z',
-        engine: 'shopify_rest_checkout',
-        engine_ref: 'tok_strict',
-        currency: 'USD',
-        pricing: {
-          subtotal: '29.00',
-          shipping_fee: '0.00',
-          tax: '0.00',
-          total: '29.00',
+        quote: {
+          quote_id: 'q_strict',
+          expires_at: '2026-12-31T00:00:00Z',
+          currency: 'USD',
+          price_breakdown: {
+            subtotal: '29.00',
+            discount_total: '0.00',
+            total: '29.00',
+            currency: 'USD',
+          },
+          shipping_breakdown: {
+            shipping_fee: '0.00',
+            delivery_options: [],
+          },
+          tax_breakdown: {
+            tax: '0.00',
+          },
+          provenance: {
+            engine: 'shopify_rest_checkout',
+            engine_ref: 'tok_strict',
+          },
+          line_items: [{ product_id: 'p_strict', variant_id: 'v_strict', quantity: 1 }],
         },
-        line_items: [{ product_id: 'p_strict', variant_id: 'v_strict', quantity: 1 }],
       })
-      .post('/agent/shop/v1/invoke', (body) => {
+      .post('/agent/v2/orders', (body) => {
         return (
-          body?.operation === 'create_order' &&
-          body?.payload?.idempotency_key === 'idem_create_strict' &&
-          typeof body?.payload?.order?.quote_id === 'string' &&
-          body.payload.order.quote_id.startsWith('q_') &&
-          body?.payload?.order?._locked_totals?.total === 2900
+          body?.idempotency_key === 'idem_create_strict' &&
+          typeof body?.quote_id === 'string' &&
+          body.quote_id.startsWith('q_') &&
+          body?.buyer_context?.shipping_address?.address_line1 === '1 Kernel Way'
         );
       })
       .reply(200, {
@@ -147,13 +162,13 @@ describe('strict Safety Kernel mount on /agent/shop/v1/invoke', () => {
     );
 
     nock(API_BASE)
-      .post('/agent/shop/v1/invoke', (body) => {
+      .post('/agent/v1/payments', (body) => {
         return (
-          body?.operation === 'submit_payment' &&
-          body?.payload?.idempotency_key === 'idem_pay_strict' &&
-          body?.payload?.payment?.order_id === 'ORD_STRICT' &&
-          body?.payload?.payment?.expected_amount === 2900 &&
-          body?.payload?.payment?.currency === 'USD'
+          body?.idempotency_key === 'idem_pay_strict' &&
+          body?.order_id === 'ORD_STRICT' &&
+          body?.payment_method?.type === 'card' &&
+          body?.expected_amount === undefined &&
+          body?.currency === undefined
         );
       })
       .reply(200, {
