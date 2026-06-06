@@ -14,6 +14,21 @@ operator checks; it does not require runtime-code changes.
 | Observability export | Money-path audit events are exported to the gateway-governance raw-log path before production pay is enabled. | Ops |
 | Rollback | `AGENT_CHECKOUT_STRICT=0` must be the documented rollback, and `submit_payment` must be enabled last. | Ops |
 
+## Current Non-Charge Evidence, 2026-06-06
+
+| Gate | Evidence |
+|---|---|
+| Production strict mode | `AGENT_CHECKOUT_STRICT=1`; gateway production deployment `037d3bf3-0d58-4de4-8a19-10a4af8ebb6d`. |
+| Production pay disabled | `AGENT_CHECKOUT_STRICT_SUBMIT_PAYMENT_ENABLED` unset/off; fake `submit_payment` returned HTTP `405 OPERATION_NOT_ALLOWED`. |
+| Staging pay disabled | Fake `submit_payment` returned HTTP `405 OPERATION_NOT_ALLOWED`. |
+| Strict identity | GitHub Actions run `27060426512`, job `Strict Identity Gate`, passed. |
+| No-charge wire-format | GitHub Actions run `27059885995`, job `probe`, passed for read-only plus `create_order`; workflow has no paid charge input. |
+| Backend health | Production backend `17e0a1db428bc1c7c602f7136f8bcb896b86a5d4`, `db_ok=true`, no missing columns. |
+| Artifact redaction | Local readiness bundle `/private/tmp/pivota-readiness-test-psp-probe-20260606T104229Z` passed a value scan after redaction. |
+
+These gates do not authorize production pay. They authorize the current posture only: strict quote/order
+enforcement on, `submit_payment` off.
+
 ## Observability Export
 
 Before enabling production `submit_payment`, confirm the raw-log export path can answer these checks from
@@ -29,20 +44,37 @@ the deployed environment:
 | route fallback | `GOVERNANCE_UNAVAILABLE` is visible when governance blocks a money operation; there is no silent fallback. |
 | orphan cleanup | Any order-unit mismatch emits an orphan/cancel follow-up event or an explicit accepted-risk entry. |
 
+## Manual Paid-Canary Evidence
+
+Before enabling `AGENT_CHECKOUT_STRICT_SUBMIT_PAYMENT_ENABLED`, record one signed-off packet with:
+
+| Field | Required value |
+|---|---|
+| Approver | Named operator who ran the canary. |
+| Environment | Stripe test mode preferred; live mode requires immediate refund evidence. |
+| Gateway deployment | `/version.full_sha` and deployment id. |
+| Backend deployment | `/version.full_sha` and deployment id. |
+| Order | Internal order id and quote id, redacted for public sharing. |
+| PSP dashboard | Amount, currency, status, and PaymentIntent/Checkout Session reference redacted in shared logs. |
+| Replay | Same idempotency key returns the original result; zero additional PSP charge. |
+| Refund | Refund cap enforced and replay idempotent. |
+| Webhook/status | Signed webhook observed and canonical order status updated. |
+| Artifact hygiene | Redaction scan passed before any evidence is shared. |
+| Credential hygiene | Rotate PSP/merchant credentials if any raw artifact or secret-bearing dashboard data left the local/operator environment. |
+
 The CI guard for this document is `.github/scripts/check-agent-checkout-rollout-gates.mjs`. It verifies
 that the rollout gates remain documented, the money-path workflow has the expected split jobs, and the
 wire-format probe cannot run a paid charge from GitHub Actions.
 
 ## Rollout Order
 
-1. Keep `AGENT_CHECKOUT_STRICT=0`; verify CI and docs gates are green.
-2. Run the no-charge wire-format probe against the target environment: read-only first, then
-   `create_order`.
-3. Confirm observability export captures quote/order/audit events from that environment.
-4. Enable strict checkout in staging and run `staging-validation-runbook.md`.
-5. Enable production quote/order canary.
-6. Run the paid charge probe manually only after the no-charge probe confirms minor-unit semantics and
-   the backend checkout-payment-safety lane is green.
+1. Keep `AGENT_CHECKOUT_STRICT=1` in staging and production for the current strict quote/order posture.
+2. Keep `AGENT_CHECKOUT_STRICT_SUBMIT_PAYMENT_ENABLED` unset/off.
+3. Re-run the no-charge wire-format probe against the target environment before each promotion window.
+4. Confirm observability export captures quote/order/audit events from that environment.
+5. Run the paid charge probe manually in Stripe test mode only after no-charge probes and backend
+   checkout-payment-safety are green.
+6. Validate replay, refund, webhook/status sync, cancellation, and return/RMA fencing.
 7. Enable production `submit_payment` last.
 
 ## Rollback

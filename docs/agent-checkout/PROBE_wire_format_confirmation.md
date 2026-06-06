@@ -1,29 +1,28 @@
 # Wire-format confirmation probe — money units (for the backend team)
 
 **Goal:** empirically confirm, against the LIVE backend, the money-unit conventions the Safety Kernel
-depends on before we enable kernel-mediated `submit_payment`. This is a ~5-minute, near-zero-money probe:
-run one real quote → order → pay flow and record three numbers.
+depends on before we enable kernel-mediated `submit_payment`. This is a staged probe: first run quote and
+order with no charge, then run payment only as a manual Stripe test-mode canary.
 
-**TL;DR of what we need confirmed:** (1) the `submit_payment` payment wire is **minor units** (integer
-cents), (2) `create_order`'s response `amounts.total` is **minor units**, (3) the actual Stripe charge
-equals the intended amount. Our kernel assumes all three. If any differs, tell us — it's a one-line fix on
-our side, but it MUST be right before real charges.
+**Current live evidence, 2026-06-06:** GitHub Actions run `27059885995` confirmed production v2 and
+`create_order` as **major-unit decimal strings** with currency present. Keep production `submit_payment`
+disabled until Phase 3 proves PSP forwarding, replay, refund, webhook/status sync, and redaction.
 
 ---
 
 ## What the repo already tells us (so this is a confirmation, not a discovery)
 
-The Node gateway's own integration tests already encode this contract — we just need the LIVE backend to
-match them:
+The Node gateway's own integration tests encode the historical mock contract. The live backend must still
+be probed because its deployed wire shape can differ from mocks:
 
 | Field | Endpoint | Unit per repo contract tests | Evidence |
 |---|---|---|---|
 | `preview_quote` → `pricing.total` | `/agent/v2/quotes/preview` | **major-unit string** `"95.00"` | `tests/integration/preview_quote.test.js:22-27` |
-| `create_order` → `order.amounts.total` | `/agent/v2/orders` | **minor-unit int** `1000` (for a $10 item) | `tests/integration/create_order_quote_id_passthrough.test.js:34,74` |
+| `create_order` → `order.amounts.total` | `/agent/v2/orders` | Live 2026-06-06: **major-unit decimal string**; older mocks used minor-unit int `1000` | `27059885995`; historical mock `tests/integration/create_order_quote_id_passthrough.test.js:34,74` |
 | `submit_payment` → `expected_amount` on the wire | `/agent/v2/payments/checkout-sessions` | **minor-unit int** `2900` (for €29.00), required + quote-bound | `tests/integration/submit_payment_contract.test.js:35,68` |
 
-So the gateway already converts the major-unit quote string → a **minor-unit** integer for the payment
-wire. Our kernel does the same. This probe confirms the LIVE backend behaves like these mocks.
+The gateway must parse the live `create_order` total according to the probe verdict, then separately verify
+the payment wire and PSP dashboard ground truth before pay is enabled.
 
 > Note: there is also an older Python path (`routes/agent_shop_gateway.py`, `/agent/v1/payments`) where
 > `expected_amount` is a major-unit float and **explicitly ignored by the charge layer** ("仅用于前端自检 …
@@ -74,8 +73,9 @@ curl -s -X POST "<<BASE>>/agent/shop/v1/invoke" \
 ```
 **Record `O1`:** `order.order_id`, `order.amounts.total`, `order.amounts.currency`.
 **THE KEY CHECK — for a $0.50 order:**
-- `amounts.total == 50` → **MINOR units** ✅ (matches our kernel's assumption; cross-check will pass)
-- `amounts.total == 0.5` or `0.50` → **MAJOR units** ⚠️ (our cross-check would block every order — tell us)
+- `amounts.total == 50` → **MINOR units**.
+- `amounts.total == 0.5` or `"0.50"` → **MAJOR units**. This is the current production evidence from
+  2026-06-06.
 - `amounts.currency` present and uppercase `"USD"`? (we require currency to be present; lowercase is fine)
 
 ### Step 4 — submit_payment  →  observe the wire amount + the async contract
@@ -103,7 +103,7 @@ Step 4.
 ```
 Which backend serves prod?   v2 (/agent/v2/*, Node)  |  v1 (/agent/v1/*, Python)  |  other: ______
 Step2  pricing.total      = __________   (string "0.50" / int 50 / other)
-Step3  amounts.total      = __________   (50 = minor ✅ / 0.50 = major ⚠️ / other)
+Step3  amounts.total      = __________   (50 = minor / 0.50 or "0.50" = major / other)
 Step3  amounts.currency   = __________   (present? case?)
 Step4  payment_status     = __________   confirmation_owner = ________  requires_client_confirmation = ____
 Step4  the wire field carrying the amount to the PSP, and its unit = __________
@@ -112,9 +112,9 @@ Refunded/voided?           = yes / n/a (test mode)
 ```
 
 ## What each outcome means for us
-- **All minor (Step3 = 50, Stripe = $0.50):** our kernel is correct as-is; we can proceed to wire-in. ✅
-- **`amounts.total` is major (0.50):** our `create_order` units cross-check will fail-close every order —
-  we'll flip the cross-check to parse the backend amount as major. One-line change; we just need to know.
+- **All minor (Step3 = 50, Stripe = $0.50):** keep minor-unit order cross-checking.
+- **`amounts.total` is major (0.50 or "0.50"):** parse backend order amount as major before comparing
+  against the quote-derived charge amount. This is the current 2026-06-06 live result.
 - **`expected_amount` is required & used as the charge basis (v2):** good — matches our minor forwarding.
 - **`expected_amount` is ignored / charge is purely order-derived (v1):** also fine for safety (charge can't
   be steered by the agent), but confirms we should treat our echo as advisory only.
