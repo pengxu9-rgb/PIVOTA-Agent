@@ -32,6 +32,7 @@ export class QuoteRegistry {
       acp_session_id: input.acp_session_id,
       merchant_of_record: input.merchant_of_record,
       currency: input.currency,
+      upstream_quote_id: input.upstream_quote_id,
       locked_totals: { ...input.locked_totals },
       line_items: (input.line_items || []).map((i) => ({ ...i })),
       issued_at,

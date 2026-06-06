@@ -81,8 +81,7 @@ describe('strict Safety Kernel mount on /agent/shop/v1/invoke', () => {
       .post('/agent/v2/orders', (body) => {
         return (
           body?.idempotency_key === 'idem_create_strict' &&
-          typeof body?.quote_id === 'string' &&
-          body.quote_id.startsWith('q_') &&
+          body?.quote_id === 'q_strict' &&
           body?.buyer_context?.shipping_address?.address_line1 === '1 Kernel Way'
         );
       })
@@ -113,6 +112,8 @@ describe('strict Safety Kernel mount on /agent/shop/v1/invoke', () => {
         },
       })
       .expect(200);
+
+    assert.notEqual(quote.body.quote_id, 'q_strict');
 
     const order = await strictHeaders(
       request(app).post('/agent/shop/v1/invoke'),

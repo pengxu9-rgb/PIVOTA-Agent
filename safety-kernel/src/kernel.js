@@ -115,6 +115,7 @@ export class SafetyKernel {
     const snapshot = await this.quotes.issue({
       user_ref: ctx.user_ref,
       acp_session_id: ctx.acp_session_id,
+      upstream_quote_id: upstreamResult.quote_id,
       merchant_of_record: upstreamResult.merchant_of_record,
       currency, // canonical UPPERCASE
       locked_totals: upstreamResult.locked_totals,
@@ -155,6 +156,8 @@ export class SafetyKernel {
           ...payload,
           order: {
             ...payload.order,
+            quote_id: quote.upstream_quote_id || quote.quote_id,
+            _kernel_quote_id: quote.quote_id,
             _locked_totals: quote.locked_totals,
             _currency: quote.currency,
             _merchant_of_record: quote.merchant_of_record,
