@@ -10650,6 +10650,7 @@ function isCatalogSyncNonRetryableError(err) {
   const status = Number(err?.response?.status || 0);
   if (status === 400 || status === 401 || status === 403 || status === 404) return true;
   if (isCatalogSyncCanonicalIngestFailure(err)) return true;
+  if (isCatalogSyncTimeoutError(err)) return true;
 
   const detailStatus = Number(
     err?.response?.data?.status ||

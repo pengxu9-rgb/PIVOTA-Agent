@@ -66,36 +66,31 @@ describe('creator catalog auto-sync retry on long timeout', () => {
     restore('AURORA_BFF_PDP_HOTSET_PREWARM_ENABLED');
   });
 
-  test('retries once for timeout and succeeds on second attempt', async () => {
+  test('does not immediately retry timeouts and cools down the target', async () => {
     const axiosPost = jest
       .fn()
-      .mockRejectedValueOnce({ code: 'ECONNABORTED', message: 'timeout of 120000ms exceeded' })
-      .mockResolvedValueOnce({ data: { summary: { synced: 10 } } });
+      .mockRejectedValueOnce({ code: 'ECONNABORTED', message: 'timeout of 120000ms exceeded' });
     jest.doMock('axios', () => ({ defaults: {}, post: axiosPost }));
 
     const app = require('../src/server');
     await app._debug.runCreatorCatalogAutoSync();
 
-    expect(axiosPost).toHaveBeenCalledTimes(2);
+    expect(axiosPost).toHaveBeenCalledTimes(1);
     expect(axiosPost.mock.calls[0][2]).toEqual(
       expect.objectContaining({
         timeout: 120000,
         headers: { 'X-ADMIN-KEY': 'admin_sync_key' },
       }),
     );
-    expect(axiosPost.mock.calls[1][2]).toEqual(
-      expect.objectContaining({
-        timeout: 240000,
-        headers: { 'X-ADMIN-KEY': 'admin_sync_key' },
-      }),
-    );
     expect(app._debug.catalogSyncState.per_merchant.merch_timeout_case).toEqual(
       expect.objectContaining({
-        ok: true,
-        attempts: 2,
-        timeout_streak: 0,
+        ok: false,
+        attempts: 1,
+        timeout_streak: 1,
+        status: null,
       }),
     );
+    expect(app._debug.catalogSyncState.per_merchant.merch_timeout_case.blocked_until).toBeTruthy();
   });
 
   test('skips non-retryable merchants during cooldown window', async () => {
