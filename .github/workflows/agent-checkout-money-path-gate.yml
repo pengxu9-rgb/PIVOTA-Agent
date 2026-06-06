@@ -27,6 +27,8 @@ on:
       - "tests/integration/invoke.find_products_multi_strict_surface.test.js"
       - "tests/integration/submit_payment_contract.test.js"
       - "tests/integration/checkout_rollout_canary.test.js"
+      - "tests/strict_checkout_canary_script.test.js"
+      - "scripts/probe_strict_checkout_canary.mjs"
       - "tests/celestial_commerce_gateway_boundary.test.js"
       - "tests/celestial_commerce_gateway_ingress_invocation.test.js"
       - "tests/celestial_commerce_gateway_invocation_contracts.test.js"
@@ -54,6 +56,8 @@ on:
       - "tests/integration/invoke.find_products_multi_strict_surface.test.js"
       - "tests/integration/submit_payment_contract.test.js"
       - "tests/integration/checkout_rollout_canary.test.js"
+      - "tests/strict_checkout_canary_script.test.js"
+      - "scripts/probe_strict_checkout_canary.mjs"
       - "tests/celestial_commerce_gateway_boundary.test.js"
       - "tests/celestial_commerce_gateway_ingress_invocation.test.js"
       - "tests/celestial_commerce_gateway_invocation_contracts.test.js"
@@ -183,7 +187,8 @@ jobs:
             tests/integration/invoke.find_products_multi_strict_surface.test.js \
             tests/celestial_commerce_gateway_invocation_contracts.test.js \
             tests/celestial_commerce_gateway_ingress_invocation.test.js \
-            tests/celestial_commerce_gateway_boundary.test.js
+            tests/celestial_commerce_gateway_boundary.test.js \
+            tests/strict_checkout_canary_script.test.js
 
   test-count-floor:
     name: Test-Count Floor Guard

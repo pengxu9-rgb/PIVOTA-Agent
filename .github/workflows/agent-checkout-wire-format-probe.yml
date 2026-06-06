@@ -37,12 +37,28 @@ on:
         description: "Run no-charge strict-mode identity gate: money op with only PROBE_KEY must fail USER_AUTH_REQUIRED"
         type: boolean
         default: false
+      run_strict_create_order_canary:
+        description: "Run no-charge strict Safety Kernel preview_quote + create_order canary. Requires target AGENT_CHECKOUT_ALLOW_TEST_IDENTITY=1."
+        type: boolean
+        default: false
+      strict_user_ref:
+        description: "Optional strict canary user_ref. Defaults to a GitHub run-scoped synthetic test identity."
+        type: string
+        default: ""
+      strict_acp_session_id:
+        description: "Optional strict canary acp_session_id. Defaults to a GitHub run-scoped synthetic test session."
+        type: string
+        default: ""
       product_id:
         description: "Optional: pin PROBE_PRODUCT_ID (prefer a cents-priced item, e.g. $0.99)"
         type: string
         default: ""
       merchant_id:
         description: "Optional: pin PROBE_MERCHANT_ID"
+        type: string
+        default: ""
+      variant_id:
+        description: "Optional: pin PROBE_VARIANT_ID"
         type: string
         default: ""
       query:
@@ -97,6 +113,7 @@ jobs:
           PROBE_AUTH_HEADER: ${{ inputs.auth_header }}
           PROBE_PRODUCT_ID: ${{ inputs.product_id }}
           PROBE_MERCHANT_ID: ${{ inputs.merchant_id }}
+          PROBE_VARIANT_ID: ${{ inputs.variant_id }}
           PROBE_QUERY: ${{ inputs.query }}
           PROBE_CURRENCY: ${{ inputs.currency }}
         run: |
@@ -207,3 +224,79 @@ jobs:
           );
           console.log(JSON.stringify({ status, code }, null, 2));
           NODE
+
+  strict-create-order-canary:
+    name: Strict Create-Order Canary
+    if: ${{ inputs.run_strict_create_order_canary }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Preflight strict create-order canary
+        env:
+          PROBE_BASE: ${{ inputs.base_url || vars.PROBE_BASE || secrets.PROBE_BASE || 'https://pivota-agent-production.up.railway.app' }}
+          PROBE_KEY: ${{ secrets.PROBE_KEY || secrets.COMMERCE_CORE_PROD_AUTH_TOKEN }}
+          PROBE_PRODUCT_ID: ${{ inputs.product_id || vars.PROBE_PRODUCT_ID }}
+          PROBE_MERCHANT_ID: ${{ inputs.merchant_id || vars.PROBE_MERCHANT_ID }}
+        run: |
+          set -euo pipefail
+          if [ -z "$PROBE_BASE" ]; then
+            echo "::error::No gateway origin available. Set base_url or PROBE_BASE."
+            exit 1
+          fi
+          if [ -z "$PROBE_KEY" ]; then
+            echo "::error::No token available. Set PROBE_KEY or COMMERCE_CORE_PROD_AUTH_TOKEN."
+            exit 1
+          fi
+          if [ -z "$PROBE_PRODUCT_ID" ] || [ -z "$PROBE_MERCHANT_ID" ]; then
+            echo "::error::Strict create-order canary requires product_id and merchant_id inputs, or PROBE_PRODUCT_ID/PROBE_MERCHANT_ID repo variables."
+            exit 1
+          fi
+          echo "Strict create-order canary preflight passed. Target/token/product values are hidden."
+
+      - name: Run strict create-order canary
+        env:
+          PROBE_BASE: ${{ inputs.base_url || vars.PROBE_BASE || secrets.PROBE_BASE || 'https://pivota-agent-production.up.railway.app' }}
+          PROBE_KEY: ${{ secrets.PROBE_KEY || secrets.COMMERCE_CORE_PROD_AUTH_TOKEN }}
+          PROBE_AUTH_HEADER: ${{ inputs.auth_header }}
+          PROBE_PRODUCT_ID: ${{ inputs.product_id || vars.PROBE_PRODUCT_ID }}
+          PROBE_MERCHANT_ID: ${{ inputs.merchant_id || vars.PROBE_MERCHANT_ID }}
+          PROBE_VARIANT_ID: ${{ inputs.variant_id || vars.PROBE_VARIANT_ID }}
+          PROBE_CURRENCY: ${{ inputs.currency }}
+          STRICT_CANARY_SEND_TEST_IDENTITY: "1"
+          STRICT_CANARY_USER_REF: ${{ inputs.strict_user_ref || format('usr_gh_strict_{0}', github.run_id) }}
+          STRICT_CANARY_ACP_SESSION_ID: ${{ inputs.strict_acp_session_id || format('acp_gh_strict_{0}_{1}', github.run_id, github.run_attempt) }}
+          STRICT_CANARY_ALLOW_CREATE_ORDER: "1"
+        run: |
+          set -o pipefail
+          echo "Running strict no-charge canary: node scripts/probe_strict_checkout_canary.mjs --create-order --json"
+          node scripts/probe_strict_checkout_canary.mjs --create-order --json 2>&1 | tee strict-canary-output.txt
+
+      - name: Publish strict canary verdict to job summary
+        if: always()
+        run: |
+          {
+            echo "## Strict create-order canary results";
+            echo "";
+            echo '```json';
+            if [ -s strict-canary-output.txt ]; then
+              cat strict-canary-output.txt;
+            else
+              echo '{"status":"no_output"}';
+            fi
+            echo '```';
+            echo "";
+            echo "_No charge was attempted: this job never passes --charge and never sets charge acknowledgment env vars._";
+            echo "_Target gateway must have AGENT_CHECKOUT_ALLOW_TEST_IDENTITY=1 only for the controlled canary window._";
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload strict canary output (redacted)
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: strict-create-order-canary-output
+          path: strict-canary-output.txt
+          if-no-files-found: warn

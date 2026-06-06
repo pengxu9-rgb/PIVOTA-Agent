@@ -5,10 +5,10 @@ production safely. Supersedes the scattered status in `PROGRAM_SUMMARY.md` / `re
 the GO-LIVE view (those remain for architecture + scorecard-dimension detail).
 
 **One-line status (2026-06-06):** strict checkout is enabled in staging and production, production
-`submit_payment` is still disabled, and the non-charge rollout gates are green. Evidence is recorded in
-`STRICT_PROD_ROLLOUT_EVIDENCE_20260606.md`. Everything left before production pay traffic is
-**credential hygiene, manual Stripe test-mode paid canary, refund/status/webhook validation, and final
-observability export proof**.
+`submit_payment` is still disabled, and the baseline non-charge rollout gates are green. Evidence is
+recorded in `STRICT_PROD_ROLLOUT_EVIDENCE_20260606.md`. Everything left before production pay traffic is
+**strict create-order canary, credential hygiene, manual Stripe test-mode paid canary,
+refund/status/webhook validation, and final observability export proof**.
 
 **Legend:** ✅ done · 🟡 ready, waiting on an external party · ⛔ blocked by a dependency
 
@@ -74,7 +74,8 @@ Reference details: `src/server.js`, `src/serverWireIn.example.js`, and
 | E2 | Production `submit_payment` kill switch is green: fake pay probe returns HTTP `405 OPERATION_NOT_ALLOWED`. |
 | E3 | Strict identity gate is green in GitHub Actions run `27060426512`. |
 | E4 | No-charge wire-format probe is green in GitHub Actions run `27059885995`. |
-| E5 | Enable `submit_payment` **LAST**, only after manual paid canary, refund cap, webhook/status sync, replay, and observability export are green. |
+| E5 | Strict create-order canary is pending: run `agent-checkout-wire-format-probe.yml` with `run_strict_create_order_canary=true` during a short `AGENT_CHECKOUT_ALLOW_TEST_IDENTITY=1` window. |
+| E6 | Enable `submit_payment` **LAST**, only after manual paid canary, refund cap, webhook/status sync, replay, and observability export are green. |
 
 ---
 
@@ -84,17 +85,18 @@ B (backend probe)  ──►  D (ops/secrets)  ──►  E (staged rollout)
    confirms units/idempotency/webhook facts       secrets + DB + raw logs       pay enabled only
                                                   after B1+B2+B3
 ```
-Gateway wire-in is no longer the long pole. Action now: keep `submit_payment` disabled, rotate any exposed
-test credentials, complete the manual Stripe test-mode paid canary, then validate refund/status/webhook
-behavior before enabling production pay.
+Gateway wire-in is no longer the long pole. Action now: keep `submit_payment` disabled, run the strict
+create-order canary, rotate any exposed test credentials, complete the manual Stripe test-mode paid
+canary, then validate refund/status/webhook behavior before enabling production pay.
 
 ## Safe-flip order (when B is green)
 1. Keep production and staging `AGENT_CHECKOUT_STRICT=1`.
 2. Keep `AGENT_CHECKOUT_STRICT_SUBMIT_PAYMENT_ENABLED` unset/off.
 3. Confirm rollout/observability gates are green for each canary window.
-4. Run the paid canary manually in Stripe test mode and record dashboard evidence.
-5. Validate replay, refund cap, payment status sync, webhook observation, cancellation, and return/RMA fencing.
-6. Enable `submit_payment` through the kernel last.
+4. Run the strict create-order canary with target-gateway `AGENT_CHECKOUT_ALLOW_TEST_IDENTITY=1`, then close that flag.
+5. Run the paid canary manually in Stripe test mode and record dashboard evidence.
+6. Validate replay, refund cap, payment status sync, webhook observation, cancellation, and return/RMA fencing.
+7. Enable `submit_payment` through the kernel last.
 
 ## Rollback (instant, no deploy)
 Set `AGENT_CHECKOUT_STRICT=0`. The kernel is purely additive (zero edits to the legacy path), so the flag

@@ -10,6 +10,8 @@ operator checks; it does not require runtime-code changes.
 | Money-path CI | `agent-checkout-money-path-gate.yml` green: `safety-kernel`, `mcp-adapters`, `merchant-connectors`, `gateway-strict-route`, dependent `test-count-floor`, and `rollout-observability-gates`. | Gateway / CI |
 | Backend checkout-payment-safety | `pivota-backend/.github/workflows/agent-reliability-suite.yml` green on the `checkout-payment-safety` pytest lane. | Backend |
 | Wire-format no-charge probe | `agent-checkout-wire-format-probe.yml` green for read-only + optional `create_order` only. It must not pass `--charge` or set `PROBE_ALLOW_CHARGE`. | Gateway / Ops |
+| Strict identity fail-closed | `agent-checkout-wire-format-probe.yml` strict identity gate green: strict money op with only the platform probe key returns `USER_AUTH_REQUIRED`. | Gateway / Ops |
+| Strict create-order canary | `agent-checkout-wire-format-probe.yml` strict create-order canary green in a controlled `AGENT_CHECKOUT_ALLOW_TEST_IDENTITY=1` window. It must create only an unpaid order and must not pass `--charge`. | Gateway / Ops |
 | No automated paid charge | Paid `submit_payment` probes stay manual per `PROBE_RUNBOOK.md` Phase 3, with Stripe dashboard verification and immediate refund if live mode is used. | Ops |
 | Observability export | Money-path audit events are exported to the gateway-governance raw-log path before production pay is enabled. | Ops |
 | Rollback | `AGENT_CHECKOUT_STRICT=0` must be the documented rollback, and `submit_payment` must be enabled last. | Ops |
@@ -23,6 +25,7 @@ operator checks; it does not require runtime-code changes.
 | Staging pay disabled | Fake `submit_payment` returned HTTP `405 OPERATION_NOT_ALLOWED`. |
 | Strict identity | GitHub Actions run `27060426512`, job `Strict Identity Gate`, passed. |
 | No-charge wire-format | GitHub Actions run `27059885995`, job `probe`, passed for read-only plus `create_order`; workflow has no paid charge input. |
+| Strict create-order canary | Pending. Run only after opening a short target-gateway `AGENT_CHECKOUT_ALLOW_TEST_IDENTITY=1` window; close it immediately after the job. |
 | Backend health | Production backend `17e0a1db428bc1c7c602f7136f8bcb896b86a5d4`, `db_ok=true`, no missing columns. |
 | Artifact redaction | Local readiness bundle `/private/tmp/pivota-readiness-test-psp-probe-20260606T104229Z` passed a value scan after redaction. |
 
@@ -71,11 +74,12 @@ wire-format probe cannot run a paid charge from GitHub Actions.
 1. Keep `AGENT_CHECKOUT_STRICT=1` in staging and production for the current strict quote/order posture.
 2. Keep `AGENT_CHECKOUT_STRICT_SUBMIT_PAYMENT_ENABLED` unset/off.
 3. Re-run the no-charge wire-format probe against the target environment before each promotion window.
-4. Confirm observability export captures quote/order/audit events from that environment.
-5. Run the paid charge probe manually in Stripe test mode only after no-charge probes and backend
+4. Run the strict create-order canary in a controlled test-identity window; then close the window.
+5. Confirm observability export captures quote/order/audit events from that environment.
+6. Run the paid charge probe manually in Stripe test mode only after no-charge probes and backend
    checkout-payment-safety are green.
-6. Validate replay, refund, webhook/status sync, cancellation, and return/RMA fencing.
-7. Enable production `submit_payment` last.
+7. Validate replay, refund, webhook/status sync, cancellation, and return/RMA fencing.
+8. Enable production `submit_payment` last.
 
 ## Rollback
 

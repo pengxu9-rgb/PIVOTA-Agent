@@ -194,6 +194,42 @@ The CI job **never** charges (it never passes `--charge` / sets `PROBE_ALLOW_CHA
 charge) + the Stripe dashboard check stay manual** — run them per Phase 3 above only when Phase 2 has a
 trusted verdict and the deployed kernel parsing matches that verdict.
 
+## Strict checkout canary from CI (no charge)
+
+Once `AGENT_CHECKOUT_STRICT=1` is enabled, use the strict canary job to prove the Safety Kernel path can
+issue a quote and create an unpaid quote-bound order. This is separate from the legacy wire-format probe:
+it uses `scripts/probe_strict_checkout_canary.mjs --create-order --json`, sends no caller item prices, and
+never passes `--charge`.
+
+Operator setup for the short canary window:
+```bash
+# Target gateway env for the window only:
+#   AGENT_CHECKOUT_ALLOW_TEST_IDENTITY=1
+#
+# Keep this off:
+#   AGENT_CHECKOUT_STRICT_SUBMIT_PAYMENT_ENABLED
+```
+
+GitHub Actions:
+1. Open **Agent Checkout Wire-Format Probe**.
+2. Set `run_wire_format_probe=false`.
+3. Set `run_strict_create_order_canary=true`.
+4. Provide `product_id` and `merchant_id` inputs, or configure `PROBE_PRODUCT_ID` and
+   `PROBE_MERCHANT_ID` repo variables.
+5. Leave paid-charge controls absent. This job has no charge input and does not set any
+   `STRICT_CANARY_ALLOW_CHARGE` variables.
+
+Expected result:
+- `preview_quote` returns a strict kernel `quote_id`.
+- `create_order` returns an unpaid `order_id`, amount, and currency.
+- The job summary states that no charge was attempted.
+
+After the job, close the window:
+```bash
+# Target gateway env:
+#   AGENT_CHECKOUT_ALLOW_TEST_IDENTITY=0
+```
+
 ## Manual fallback
 If you'd rather run by hand (or the script can't auth in your env), `PROBE_wire_format_confirmation.md` has
 the equivalent `curl` for each step + the same decision rules.
