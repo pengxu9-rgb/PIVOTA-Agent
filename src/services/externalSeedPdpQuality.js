@@ -1197,7 +1197,12 @@ function buildLivePdpGate({
   if (offersStatus.missing_price) {
     failureReasons.push('offer_price_missing');
   }
-  if (reviewsStatus.module_present && reviewsStatus.review_count > 0 && !reviewsStatus.chart_present) {
+  if (
+    reviewsStatus.module_present &&
+    reviewsStatus.review_count > 0 &&
+    reviewsStatus.distribution_bucket_count > 0 &&
+    !reviewsStatus.chart_present
+  ) {
     failureReasons.push('reviews_distribution_incomplete');
   }
   if (reviewsStatus.estimated_public_social_proof) {

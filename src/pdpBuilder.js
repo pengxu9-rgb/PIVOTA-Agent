@@ -4359,43 +4359,6 @@ function normalizeReviewDistributionRows(distributionRaw, reviewCount) {
   return hasAny ? rows : undefined;
 }
 
-function estimateReviewDistributionRows(rating, reviewCount) {
-  const normalizedRating = Number(rating);
-  const normalizedCount = Number(reviewCount);
-  if (!Number.isFinite(normalizedRating) || normalizedRating <= 0) return undefined;
-  if (!Number.isFinite(normalizedCount) || normalizedCount <= 0) return undefined;
-
-  const clampedRating = Math.max(1, Math.min(5, normalizedRating));
-  const totalReviews = Math.max(1, Math.round(normalizedCount));
-  const lowerStars = Math.max(1, Math.min(5, Math.floor(clampedRating)));
-  const upperStars = Math.max(1, Math.min(5, Math.ceil(clampedRating)));
-  const counts = new Map();
-
-  if (lowerStars === upperStars) {
-    counts.set(lowerStars, totalReviews);
-  } else {
-    const upperWeight = clampedRating - lowerStars;
-    const upperCount = Math.max(0, Math.min(totalReviews, Math.round(totalReviews * upperWeight)));
-    const lowerCount = Math.max(0, totalReviews - upperCount);
-    counts.set(lowerStars, lowerCount);
-    counts.set(upperStars, upperCount);
-  }
-
-  const rows = [];
-  for (let stars = 5; stars >= 1; stars -= 1) {
-    const count = Number(counts.get(stars) || 0);
-    rows.push({
-      stars,
-      count,
-      percent: totalReviews > 0 ? count / totalReviews : 0,
-      estimated: true,
-    });
-  }
-
-  const hasAny = rows.some((row) => row.count > 0);
-  return hasAny ? rows : undefined;
-}
-
 function buildReviewsPreview(product, options = {}) {
   const merchantFaqQuestions = normalizeFaqItemsForQuestions(product);
   const summary =
@@ -4442,13 +4405,7 @@ function buildReviewsPreview(product, options = {}) {
         summary?.distribution ||
         null;
 
-  const normalizedRatingDistribution = normalizeReviewDistributionRows(distributionRaw, reviewCount);
-  const estimatedRatingDistribution =
-    !normalizedRatingDistribution && reviewCount > 0 && rating > 0
-      ? estimateReviewDistributionRows(rating, reviewCount)
-      : undefined;
-  const ratingDistribution = normalizedRatingDistribution || estimatedRatingDistribution;
-  const distributionEstimated = !normalizedRatingDistribution && Array.isArray(estimatedRatingDistribution);
+  const ratingDistribution = normalizeReviewDistributionRows(distributionRaw, reviewCount);
 
   const normalizeScopedSummary = (rawSummary) => {
     if (!rawSummary || typeof rawSummary !== 'object') return null;
@@ -4474,17 +4431,10 @@ function buildReviewsPreview(product, options = {}) {
           rawSummary.starDistribution ||
           rawSummary.distribution ||
           null;
-    const normalizedNestedDistribution = normalizeReviewDistributionRows(
+    const nestedRatingDistribution = normalizeReviewDistributionRows(
       nestedDistributionRaw,
       nestedReviewCount,
     );
-    const estimatedNestedDistribution =
-      !normalizedNestedDistribution && nestedReviewCount > 0 && nestedRating > 0
-        ? estimateReviewDistributionRows(nestedRating, nestedReviewCount)
-        : undefined;
-    const nestedRatingDistribution = normalizedNestedDistribution || estimatedNestedDistribution;
-    const nestedDistributionEstimated =
-      !normalizedNestedDistribution && Array.isArray(estimatedNestedDistribution);
 
     return {
       scale: nestedScale,
@@ -4497,12 +4447,6 @@ function buildReviewsPreview(product, options = {}) {
         ? {
             star_distribution: nestedRatingDistribution,
             rating_distribution: nestedRatingDistribution,
-          }
-        : {}),
-      ...(nestedDistributionEstimated
-        ? {
-            distribution_estimated: true,
-            distribution_estimation_method: 'average_rating_linear_interpolation',
           }
         : {}),
       preview_items: (nestedIsSynthetic ? [] : nestedPreviewItems)
@@ -4574,12 +4518,6 @@ function buildReviewsPreview(product, options = {}) {
       : {}),
     ...(ratingDistribution
       ? { star_distribution: ratingDistribution, rating_distribution: ratingDistribution }
-      : {}),
-    ...(distributionEstimated
-      ? {
-          distribution_estimated: true,
-          distribution_estimation_method: 'average_rating_linear_interpolation',
-        }
       : {}),
     preview_items: previewItems.slice(0, 6).map((item, idx) => ({
       review_id: String(item.review_id || item.id || idx),

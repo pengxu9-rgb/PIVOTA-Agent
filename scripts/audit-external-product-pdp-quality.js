@@ -259,11 +259,11 @@ async function fetchRows({
   const where = focusedLookup
     ? [
         `status = 'active'`,
-        `market = $1`,
+        `upper(market) = upper($1)`,
       ]
     : [
         `status = 'active'`,
-        `market = $1`,
+        `upper(market) = upper($1)`,
       ];
   if (!focusedLookup && !includeAttached) where.splice(1, 0, `attached_product_key IS NULL`);
   if (!focusedLookup && !includeAllTools) where.push(`(tool = '*' OR tool = 'creator_agents')`);

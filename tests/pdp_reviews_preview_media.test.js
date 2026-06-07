@@ -246,7 +246,7 @@ describe('pdpBuilder reviews preview media', () => {
     );
   });
 
-  test('builds estimated star distribution when only rating aggregate is present', () => {
+  test('does not fabricate star distribution when only rating aggregate is present', () => {
     const payload = buildPdpPayload({
       product: {
         product_id: 'p_estimated_reviews',
@@ -264,17 +264,12 @@ describe('pdpBuilder reviews preview media', () => {
     });
 
     const reviewsModule = payload.modules.find((m) => m?.type === 'reviews_preview');
-    expect(reviewsModule?.data?.distribution_estimated).toBe(true);
-    expect(reviewsModule?.data?.distribution_estimation_method).toBe(
-      'average_rating_linear_interpolation',
-    );
-    expect(reviewsModule?.data?.star_distribution).toEqual([
-      { stars: 5, count: 2, percent: 0.2, estimated: true },
-      { stars: 4, count: 8, percent: 0.8, estimated: true },
-      { stars: 3, count: 0, percent: 0, estimated: true },
-      { stars: 2, count: 0, percent: 0, estimated: true },
-      { stars: 1, count: 0, percent: 0, estimated: true },
-    ]);
+    expect(reviewsModule?.data?.rating).toBe(4.2);
+    expect(reviewsModule?.data?.review_count).toBe(10);
+    expect(reviewsModule?.data?.distribution_estimated).toBeUndefined();
+    expect(reviewsModule?.data?.distribution_estimation_method).toBeUndefined();
+    expect(reviewsModule?.data?.star_distribution).toBeUndefined();
+    expect(reviewsModule?.data?.rating_distribution).toBeUndefined();
   });
 
   test('keeps real star distribution when source supplies one', () => {

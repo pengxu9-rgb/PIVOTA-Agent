@@ -129,6 +129,36 @@ describe('externalSeedPdpQuality', () => {
     expect(livePdpGate.reviews_status.estimated_public_social_proof).toBe(true);
   });
 
+  test('allows source-backed aggregate reviews without a captured star distribution', () => {
+    const livePdpGate = buildLivePdpGate({
+      livePayload: {
+        modules: [
+          {
+            type: 'reviews_preview',
+            data: {
+              rating: 4,
+              review_count: 797,
+              source_origin: 'official_product_page',
+              source_kind: 'merchant_public_reviews',
+            },
+          },
+        ],
+      },
+      seedData: {
+        external_seed_snapshot_contract: {
+          authoritative: true,
+          legacy_fields_quarantined: true,
+        },
+      },
+    });
+
+    expect(livePdpGate.reviews_status.review_count).toBe(797);
+    expect(livePdpGate.reviews_status.chart_present).toBe(false);
+    expect(livePdpGate.reviews_status.estimated_public_social_proof).toBe(false);
+    expect(livePdpGate.failure_reasons).not.toContain('reviews_distribution_incomplete');
+    expect(livePdpGate.failure_reasons).not.toContain('force_filled_reviews_public_social_proof');
+  });
+
   test('marks quality result passed when all gates have no failure reasons', () => {
     const result = buildExternalSeedQualityResult({
       seedId: 'eps_ok',
