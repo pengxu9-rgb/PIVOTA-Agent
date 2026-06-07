@@ -15,6 +15,10 @@
  * - PROBE_KEY         Required. Auth bearer/API key. Read only, never printed.
  * - PROBE_AUTH_HEADER Optional. Auth header name. Default "Authorization" (Bearer). Set to e.g.
  *                     "X-API-Key" if the gateway uses an API-key header instead of a Bearer token.
+ * - PROBE_TEST_IDENTITY Optional. Truthy (1/true/yes/on) opts into strict-checkout test
+ *                     identity headers for controlled environments.
+ * - PROBE_TEST_USER_REF Optional. Test user_ref header value; sent only with PROBE_TEST_ACP_SESSION_ID.
+ * - PROBE_TEST_ACP_SESSION_ID Optional. Test acp_session_id header value; sent only with PROBE_TEST_USER_REF.
  * - PROBE_MERCHANT_ID Optional. Merchant to use for the quote/order.
  * - PROBE_PRODUCT_ID  Optional. Product to use for the quote/order.
  * - PROBE_QUERY       Optional. Product search query. Defaults to a generic cheap query.
@@ -107,6 +111,10 @@ function usageText() {
     "Optional create_order envs:",
     "PROBE_PSP=<stripe|adyen>: include order.preferred_psp.",
     "PROBE_ALLOW_TEST_PSP=1: include order.metadata.allow_test_psp_surfaces=true.",
+    "",
+    "Optional strict-checkout test identity envs:",
+    "PROBE_TEST_IDENTITY=1: require and send PROBE_TEST_USER_REF + PROBE_TEST_ACP_SESSION_ID.",
+    "PROBE_TEST_USER_REF + PROBE_TEST_ACP_SESSION_ID: sent together to strict money operations.",
   ].join("\n");
 }
 
@@ -127,12 +135,30 @@ function loadConfig() {
     currency: (optionalEnv("PROBE_CURRENCY") || DEFAULT_CURRENCY).toUpperCase(),
     psp: optionalEnv("PROBE_PSP"),
     allowTestPsp: truthyEnv("PROBE_ALLOW_TEST_PSP"),
+    testIdentity: loadTestIdentityConfig(),
     allowCharge: process.env.PROBE_ALLOW_CHARGE === "1",
     chargeConfirm: optionalEnv("PROBE_CHARGE_CONFIRM"),
     // optional PSP selector for --charge (test Stripe vs Adyen on the same merchant)
     paymentHandlerType: optionalEnv("PROBE_PAYMENT_HANDLER_TYPE"),
     paymentHandlerId: optionalEnv("PROBE_PAYMENT_HANDLER_ID"),
   };
+}
+
+function loadTestIdentityConfig() {
+  const userRef = optionalEnv("PROBE_TEST_USER_REF");
+  const acpSessionId = optionalEnv("PROBE_TEST_ACP_SESSION_ID");
+  const explicit = truthyEnv("PROBE_TEST_IDENTITY");
+  const enabled = explicit || Boolean(userRef || acpSessionId);
+
+  if (!enabled) {
+    return { enabled: false };
+  }
+
+  if (!userRef || !acpSessionId) {
+    throw new UsageError("Strict checkout test identity requires both PROBE_TEST_USER_REF and PROBE_TEST_ACP_SESSION_ID.");
+  }
+
+  return { enabled: true, userRef, acpSessionId };
 }
 
 function mustEnv(name) {
@@ -181,6 +207,21 @@ function buildAuthHeaders(config) {
     return { Authorization: value };
   }
   return { [config.authHeader]: config.key };
+}
+
+function buildTestIdentityHeaders(config, operation) {
+  if (!config.testIdentity?.enabled || !usesStrictCheckoutIdentity(operation)) {
+    return {};
+  }
+
+  return {
+    "X-Test-User-Ref": config.testIdentity.userRef,
+    "X-Test-Acp-Session-Id": config.testIdentity.acpSessionId,
+  };
+}
+
+function usesStrictCheckoutIdentity(operation) {
+  return new Set(["preview_quote", "create_order", "submit_payment", "request_after_sales"]).has(operation);
 }
 
 function requestBody(operation, payload) {
@@ -293,6 +334,7 @@ async function invoke(operationBody, config) {
       method: "POST",
       headers: {
         ...buildAuthHeaders(config),
+        ...buildTestIdentityHeaders(config, operationBody.operation),
         "Content-Type": "application/json",
       },
       body: JSON.stringify(operationBody),

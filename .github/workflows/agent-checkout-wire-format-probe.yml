@@ -93,6 +93,18 @@ on:
         description: "Auth header NAME (not a secret). Default Authorization (Bearer); set e.g. X-API-Key if needed."
         type: string
         default: "Authorization"
+      use_test_identity:
+        description: "Opt into strict-checkout test identity headers. Requires test_user_ref + test_acp_session_id and a controlled environment that allows them."
+        type: boolean
+        default: false
+      test_user_ref:
+        description: "Optional strict-checkout test user_ref header value; sent with test_acp_session_id when test identity is enabled."
+        type: string
+        default: ""
+      test_acp_session_id:
+        description: "Optional strict-checkout test acp_session_id header value; sent with test_user_ref when test identity is enabled."
+        type: string
+        default: ""
 
 permissions:
   contents: read
@@ -115,6 +127,9 @@ jobs:
         env:
           PROBE_BASE: ${{ inputs.base_url || vars.PROBE_BASE || secrets.PROBE_BASE || 'https://pivota-agent-production.up.railway.app' }}
           PROBE_KEY: ${{ secrets.PROBE_KEY || secrets.COMMERCE_CORE_PROD_AUTH_TOKEN }}
+          PROBE_TEST_IDENTITY: ${{ inputs.use_test_identity }}
+          PROBE_TEST_USER_REF: ${{ inputs.test_user_ref }}
+          PROBE_TEST_ACP_SESSION_ID: ${{ inputs.test_acp_session_id }}
         run: |
           if [ -z "$PROBE_BASE" ]; then
             echo "::error::base_url input is empty."
@@ -123,6 +138,15 @@ jobs:
           if [ -z "$PROBE_KEY" ]; then
             echo "::error::No token available. Set a PROBE_KEY secret, or ensure COMMERCE_CORE_PROD_AUTH_TOKEN exists."
             exit 1
+          fi
+          if [ "$PROBE_TEST_IDENTITY" = "true" ] || [ -n "$PROBE_TEST_USER_REF" ] || [ -n "$PROBE_TEST_ACP_SESSION_ID" ]; then
+            if [ -z "$PROBE_TEST_USER_REF" ] || [ -z "$PROBE_TEST_ACP_SESSION_ID" ]; then
+              echo "::error::Strict checkout test identity requires both test_user_ref and test_acp_session_id."
+              exit 1
+            fi
+            echo "Strict checkout test identity is enabled for this controlled probe."
+          else
+            echo "Strict checkout test identity is disabled."
           fi
           echo "Credentials present. Backend will be probed (host/token hidden)."
 
@@ -136,6 +160,9 @@ jobs:
           PROBE_VARIANT_ID: ${{ inputs.variant_id }}
           PROBE_QUERY: ${{ inputs.query }}
           PROBE_CURRENCY: ${{ inputs.currency }}
+          PROBE_TEST_IDENTITY: ${{ inputs.use_test_identity }}
+          PROBE_TEST_USER_REF: ${{ inputs.test_user_ref }}
+          PROBE_TEST_ACP_SESSION_ID: ${{ inputs.test_acp_session_id }}
         run: |
           set -o pipefail
           FLAGS="--json"
