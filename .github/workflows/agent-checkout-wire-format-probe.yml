@@ -38,7 +38,7 @@ on:
         type: boolean
         default: false
       run_strict_create_order_canary:
-        description: "Run no-charge strict Safety Kernel preview_quote + create_order canary. Requires target AGENT_CHECKOUT_ALLOW_TEST_IDENTITY=1."
+        description: "Run no-charge strict Safety Kernel preview_quote + create_order canary. Requires target AGENT_CHECKOUT_ALLOW_TEST_IDENTITY=1 and AGENT_CHECKOUT_TEST_IDENTITY_WINDOW=1."
         type: boolean
         default: false
       strict_user_ref:
@@ -345,7 +345,7 @@ jobs:
             echo '```';
             echo "";
             echo "_No charge was attempted: this job never passes --charge and never sets charge acknowledgment env vars._";
-            echo "_Target gateway must have AGENT_CHECKOUT_ALLOW_TEST_IDENTITY=1 only for the controlled canary window._";
+            echo "_Target gateway must have AGENT_CHECKOUT_ALLOW_TEST_IDENTITY=1 and AGENT_CHECKOUT_TEST_IDENTITY_WINDOW=1 only for the controlled canary window._";
           } >> "$GITHUB_STEP_SUMMARY"
 
       - name: Upload strict canary output (redacted)

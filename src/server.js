@@ -27419,7 +27419,10 @@ function allowStrictCheckoutTestIdentity() {
   ) {
     return true;
   }
-  return String(process.env.AGENT_CHECKOUT_ALLOW_TEST_IDENTITY || '').trim() === '1';
+  return (
+    String(process.env.AGENT_CHECKOUT_ALLOW_TEST_IDENTITY || '').trim() === '1' &&
+    String(process.env.AGENT_CHECKOUT_TEST_IDENTITY_WINDOW || '').trim() === '1'
+  );
 }
 
 function buildCommerceKernelDb() {

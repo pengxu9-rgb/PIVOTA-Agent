@@ -19,7 +19,8 @@
  *   STRICT_CANARY_CHARGE_CONFIRM=yes STRICT_CANARY_REMOTE_PAY_ENABLED_ACK=1 for --charge
  *
  * For controlled test-identity windows, set STRICT_CANARY_SEND_TEST_IDENTITY=1 and enable
- * AGENT_CHECKOUT_ALLOW_TEST_IDENTITY=1 on the target gateway only for the window.
+ * AGENT_CHECKOUT_ALLOW_TEST_IDENTITY=1 and AGENT_CHECKOUT_TEST_IDENTITY_WINDOW=1
+ * on the target gateway only for the window.
  */
 
 import { createRequire } from 'node:module';
@@ -556,7 +557,7 @@ async function resolvePreviewQuote(config) {
       query: shouldDiscoverProduct(config) ? config.query : undefined,
       candidates_tried: candidates.length,
       quote_attempts: quoteAttempts,
-      hint: 'Open a short AGENT_CHECKOUT_ALLOW_TEST_IDENTITY=1 window on the target gateway, rerun the no-charge strict canary, then close the window. No create_order was attempted.',
+      hint: 'Open a short AGENT_CHECKOUT_ALLOW_TEST_IDENTITY=1 + AGENT_CHECKOUT_TEST_IDENTITY_WINDOW=1 window on the target gateway, rerun the no-charge strict canary, then close the window. No create_order was attempted.',
     });
   }
 
