@@ -74,6 +74,8 @@ describe('strict checkout canary script', () => {
       submit_payment_replay: true,
     });
 
+    expect(body.requests.preview_quote.payload.quote.customer_email).toBe('probe@example.com');
+
     const createPayload = body.requests.create_order.payload;
     expect(createPayload.idempotency_key).toMatch(/^idem_create_/);
     expect(createPayload.order.quote_id).toBe('__QUOTE_ID__');

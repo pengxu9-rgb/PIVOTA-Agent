@@ -118,7 +118,7 @@ function loadConfig(flags) {
     acpSessionId: must('STRICT_CANARY_ACP_SESSION_ID', { dryRunFallback: 'acp_strict_canary' }),
     agentId: env('STRICT_CANARY_AGENT_ID'),
     sendTestIdentity: boolEnv('STRICT_CANARY_SEND_TEST_IDENTITY'),
-    customerEmail: env('STRICT_CANARY_CUSTOMER_EMAIL') || 'probe@pivota.test',
+    customerEmail: env('STRICT_CANARY_CUSTOMER_EMAIL') || 'probe@example.com',
     customerName: env('STRICT_CANARY_CUSTOMER_NAME') || 'Strict Canary',
     preferredPsp: env('PROBE_PSP'),
     allowTestPsp: boolEnv('PROBE_ALLOW_TEST_PSP'),
