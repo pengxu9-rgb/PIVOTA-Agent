@@ -51,6 +51,8 @@ describe('Gateway governance daily summary script', () => {
       'celestial_commerce_gateway_governance_raw_log_sample.ndjson',
     );
     const railwayStubPath = path.join(binDir, 'railway');
+    const argsPath = path.join(outDir, 'railway_logs_args.txt');
+    const deploymentId = '25bdb590-8265-4eb6-8917-18c9c5898946';
 
     fs.writeFileSync(
       railwayStubPath,
@@ -63,6 +65,7 @@ case "\${cmd}" in
     exit 0
     ;;
   logs)
+    printf '%s\\n' "$*" > "${argsPath}"
     cat "${rawLogPath}"
     ;;
   *)
@@ -82,6 +85,7 @@ esac
         OUT_DIR: outDir,
         GATEWAY_GOVERNANCE_AUTO_FETCH: '1',
         GATEWAY_GOVERNANCE_FETCH_LINES: '4',
+        GATEWAY_GOVERNANCE_RAILWAY_DEPLOYMENT: deploymentId,
       },
       encoding: 'utf8',
     });
@@ -90,12 +94,20 @@ esac
     expect(match).toBeTruthy();
     const reportPath = String(match[1]).trim();
     const summaryPath = path.join(path.dirname(reportPath), 'summary.json');
+    const metadataPath = path.join(
+      path.dirname(reportPath),
+      'gateway_governance_raw_log_export.json',
+    );
     const summary = JSON.parse(fs.readFileSync(summaryPath, 'utf8'));
+    const metadata = JSON.parse(fs.readFileSync(metadataPath, 'utf8'));
+    const logsArgs = fs.readFileSync(argsPath, 'utf8').trim().split(/\s+/);
     const report = fs.readFileSync(reportPath, 'utf8');
 
     expect(summary.fetch_status).toBe('pass');
     expect(summary.extract_status).toBe('pass');
     expect(summary.shadow_summary.readiness_status).toBe('green');
+    expect(logsArgs.at(-1)).toBe(deploymentId);
+    expect(metadata.railway_deployment).toBe(deploymentId);
     expect(report).toContain('Raw export step: pass');
   });
 });

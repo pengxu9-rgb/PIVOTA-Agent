@@ -10,7 +10,7 @@ const https = require('https');
 const fs = require('fs');
 const path = require('path');
 const OpenAI = require('openai');
-const { createHash, randomUUID } = require('crypto');
+const { createHash, createHmac, randomUUID, timingSafeEqual } = require('crypto');
 const { AsyncLocalStorage } = require('async_hooks');
 const { InvokeRequestSchema, OperationEnum } = require('./schema');
 const logger = require('./logger');
@@ -27381,6 +27381,8 @@ const AGENT_CHECKOUT_STRICT_MONEY_OPS = new Set([
 
 let commerceMountPromise = null;
 let paymentWebhookHandlerPromise = null;
+let commerceRemoteMcpAdapterPromise = null;
+let commerceConfirmationActionHandlerPromise = null;
 
 function isAgentCheckoutStrictEnabled() {
   return String(process.env.AGENT_CHECKOUT_STRICT || '').trim() === '1';
@@ -27694,6 +27696,225 @@ function commerceKernelErrorBody(error = {}) {
   };
 }
 
+function getCheckoutConfirmationActionSecret() {
+  return firstNonEmptyString(
+    process.env.CHECKOUT_CONFIRMATION_ACTION_SECRET,
+    process.env.CONFIRMATION_ACTION_SECRET,
+    process.env.CONFIRMATION_SECRET,
+  );
+}
+
+function getCheckoutConfirmationActionMaxAgeMs() {
+  return parsePositiveInt(
+    process.env.CHECKOUT_CONFIRMATION_ACTION_MAX_AGE_MS,
+    5 * 60 * 1000,
+    { min: 1_000, max: 30 * 60 * 1000 },
+  );
+}
+
+function normalizeHeaderValue(headers = {}, name) {
+  const lower = String(name || '').toLowerCase();
+  return firstNonEmptyString(headers[lower], headers[name], headers[String(name || '').toUpperCase()]);
+}
+
+function parseConfirmationActionBody(req = {}) {
+  const body = req?.body;
+  if (isPlainObject(body)) return body;
+  const raw = req?.rawBody;
+  if (Buffer.isBuffer(raw)) {
+    try {
+      const parsed = JSON.parse(raw.toString('utf8'));
+      return isPlainObject(parsed) ? parsed : {};
+    } catch (_) {
+      return {};
+    }
+  }
+  if (typeof raw === 'string') {
+    try {
+      const parsed = JSON.parse(raw);
+      return isPlainObject(parsed) ? parsed : {};
+    } catch (_) {
+      return {};
+    }
+  }
+  return {};
+}
+
+function buildCheckoutConfirmationActionSignature({ timestamp, user_ref, acp_session_id, order_id, secret }) {
+  return createHmac('sha256', secret)
+    .update(`${timestamp}.${user_ref}.${acp_session_id}.${order_id}`)
+    .digest('hex');
+}
+
+function timingSafeHexEqual(actual, expected) {
+  if (typeof actual !== 'string' || typeof expected !== 'string') return false;
+  if (!/^[a-f0-9]+$/i.test(actual) || !/^[a-f0-9]+$/i.test(expected)) return false;
+  const a = Buffer.from(actual, 'hex');
+  const b = Buffer.from(expected, 'hex');
+  return a.length === b.length && timingSafeEqual(a, b);
+}
+
+function verifyCheckoutConfirmationUserAction(req = {}, authResult = {}) {
+  const secret = getCheckoutConfirmationActionSecret();
+  if (!secret || secret.length < 16) return false;
+
+  const ctx = authResult?.sessionContext || {};
+  const userRef = firstNonEmptyString(ctx.user_ref);
+  const acpSessionId = firstNonEmptyString(ctx.acp_session_id);
+  if (!userRef || !acpSessionId) return false;
+
+  const body = parseConfirmationActionBody(req);
+  const orderId = firstNonEmptyString(body.order_id);
+  if (!orderId) return false;
+
+  const timestampRaw = normalizeHeaderValue(req.headers, 'x-pivota-confirm-timestamp');
+  const signature = normalizeHeaderValue(req.headers, 'x-pivota-confirm-signature');
+  const timestamp = Number(timestampRaw);
+  if (!Number.isFinite(timestamp) || timestamp <= 0 || !signature) return false;
+
+  const ageMs = Math.abs(Date.now() - timestamp);
+  if (ageMs > getCheckoutConfirmationActionMaxAgeMs()) return false;
+
+  const expected = buildCheckoutConfirmationActionSignature({
+    timestamp: timestampRaw,
+    user_ref: userRef,
+    acp_session_id: acpSessionId,
+    order_id: orderId,
+    secret,
+  });
+  return timingSafeHexEqual(signature, expected);
+}
+
+function buildStrictSessionAuthInfo(req) {
+  return pruneEmptyFields({
+    invoke_authenticated: true,
+    invokeAuth: req?.invokeAuth,
+    sessionContext: deriveStrictCommerceCtx(req),
+  });
+}
+
+function buildExternalInvokeContext(req) {
+  return {
+    api_key: req?.invokeAuth?.raw_token || null,
+    agent_id: req?.invokeAuth?.agent_id || null,
+    auth_mode: req?.invokeAuth?.auth_mode || null,
+    auth_source: req?.invokeAuth?.auth_source || null,
+    auth_degraded: req?.invokeAuth?.auth_degraded === true,
+    auth_degraded_reason: req?.invokeAuth?.auth_degraded_reason || null,
+    introspect_auth_source: req?.invokeAuth?.introspect_auth_source || null,
+    agent_user_jwt: firstNonEmptyString(
+      req?.header('X-Agent-User-JWT'),
+      req?.header('x-agent-user-jwt'),
+    ),
+    buyer_ref: firstNonEmptyString(
+      req?.header('X-Buyer-Ref'),
+      req?.header('x-buyer-ref'),
+    ),
+  };
+}
+
+async function getCommerceRemoteMcpAdapter() {
+  if (!commerceRemoteMcpAdapterPromise) {
+    commerceRemoteMcpAdapterPromise = (async () => {
+      const commerce = await getCommerceMount();
+      const { createCanonicalExecutor } = await import('../safety-kernel/src/protocol/canonicalExecutor.js');
+      const { createCommerceToolSurface } = await import('../mcp-server/src/commerceToolSurface.js');
+      const { createRemoteMcpAdapter } = await import('../mcp-server/src/remoteMcpAdapter.js');
+      const executor = createCanonicalExecutor({
+        kernel: commerce.kernel,
+        upstream: invokeCommerceKernelRawUpstream,
+      });
+      const surface = createCommerceToolSurface(executor, { log: logger });
+      return createRemoteMcpAdapter(surface, {
+        serverInfo: { name: 'pivota-commerce-mcp', version: '0.1.0' },
+        authenticate: async (req) => {
+          if (req?.authInfo?.invoke_authenticated !== true) {
+            throw new Error('MCP channel authentication is required.');
+          }
+          return { sessionContext: req.authInfo.sessionContext || {} };
+        },
+        resolveSessionContext: (req, authResult) =>
+          authResult?.sessionContext || req?.authInfo?.sessionContext || {},
+      });
+    })();
+  }
+  return commerceRemoteMcpAdapterPromise;
+}
+
+async function getCommerceConfirmationActionHandler() {
+  if (!commerceConfirmationActionHandlerPromise) {
+    commerceConfirmationActionHandlerPromise = (async () => {
+      const commerce = await getCommerceMount();
+      const { createConfirmationActionHandler } = await import('../mcp-server/src/confirmationAction.js');
+      return createConfirmationActionHandler({
+        commerce,
+        authenticate: async (req) => ({ sessionContext: req?.authInfo?.sessionContext || {} }),
+        resolveSessionContext: (req, authResult) =>
+          authResult?.sessionContext || req?.authInfo?.sessionContext || {},
+        verifyUserAction: verifyCheckoutConfirmationUserAction,
+      });
+    })();
+  }
+  return commerceConfirmationActionHandlerPromise;
+}
+
+function registerCommerceRemoteMcpRoute() {
+  app.post('/mcp', async (req, res) => {
+    if (!isAgentCheckoutStrictEnabled()) {
+      return res.status(404).json({ error: 'not_found' });
+    }
+    return requireExternalInvokeAuth(req, res, async () => {
+      return INVOKE_AUTH_CONTEXT.run(buildExternalInvokeContext(req), async () => {
+        try {
+          const adapter = await getCommerceRemoteMcpAdapter();
+          const out = await adapter.handleJsonRpc({
+            headers: req.headers || {},
+            body: req.body,
+            authInfo: buildStrictSessionAuthInfo(req),
+            sessionContext: deriveStrictCommerceCtx(req),
+          });
+          for (const [key, value] of Object.entries(out.headers || {})) {
+            res.setHeader(key, value);
+          }
+          if (out.body == null) return res.status(out.status).end();
+          return res.status(out.status).json(out.body);
+        } catch (err) {
+          logger.error({ err: err?.message || String(err) }, 'Strict checkout remote MCP route failed');
+          return res.status(503).json({ error: 'mcp_unavailable' });
+        }
+      });
+    });
+  });
+}
+
+function registerCommerceConfirmationActionRoute() {
+  app.post('/checkout/confirm', async (req, res) => {
+    if (!isAgentCheckoutStrictEnabled()) {
+      return res.status(404).json({ error: 'not_found' });
+    }
+    return requireExternalInvokeAuth(req, res, async () => {
+      return INVOKE_AUTH_CONTEXT.run(buildExternalInvokeContext(req), async () => {
+        try {
+          const handler = await getCommerceConfirmationActionHandler();
+          const out = await handler.handle({
+            headers: req.headers || {},
+            body: req.body,
+            authInfo: buildStrictSessionAuthInfo(req),
+            sessionContext: deriveStrictCommerceCtx(req),
+          });
+          for (const [key, value] of Object.entries(out.headers || {})) {
+            res.setHeader(key, value);
+          }
+          return res.status(out.status).json(out.body);
+        } catch (err) {
+          logger.error({ err: err?.message || String(err) }, 'Strict checkout confirmation action failed');
+          return res.status(503).json({ error: 'confirmation_action_unavailable' });
+        }
+      });
+    });
+  });
+}
+
 function registerCommerceStrictInvokeRoute(path, clientChannel) {
   app.post(path, async (req, res, next) => {
     const operation = String(req?.body?.operation || '').trim();
@@ -27711,25 +27932,7 @@ function registerCommerceStrictInvokeRoute(path, clientChannel) {
     }
 
     return requireExternalInvokeAuth(req, res, async () => {
-      const invokeContext = {
-        api_key: req?.invokeAuth?.raw_token || null,
-        agent_id: req?.invokeAuth?.agent_id || null,
-        auth_mode: req?.invokeAuth?.auth_mode || null,
-        auth_source: req?.invokeAuth?.auth_source || null,
-        auth_degraded: req?.invokeAuth?.auth_degraded === true,
-        auth_degraded_reason: req?.invokeAuth?.auth_degraded_reason || null,
-        introspect_auth_source: req?.invokeAuth?.introspect_auth_source || null,
-        agent_user_jwt: firstNonEmptyString(
-          req?.header('X-Agent-User-JWT'),
-          req?.header('x-agent-user-jwt'),
-        ),
-        buyer_ref: firstNonEmptyString(
-          req?.header('X-Buyer-Ref'),
-          req?.header('x-buyer-ref'),
-        ),
-      };
-
-      return INVOKE_AUTH_CONTEXT.run(invokeContext, async () => {
+      return INVOKE_AUTH_CONTEXT.run(buildExternalInvokeContext(req), async () => {
         try {
           if (operation === 'confirm_payment') {
             return res.status(405).json(commerceKernelErrorBody({
@@ -46785,6 +46988,8 @@ function registerExternalInvokeRoute(path, clientChannel) {
   });
 }
 
+registerCommerceRemoteMcpRoute();
+registerCommerceConfirmationActionRoute();
 registerCommerceStrictInvokeRoute('/agent/shop/v1/invoke', 'shop');
 registerExternalInvokeRoute('/agent/shop/v1/invoke', 'shop');
 // Backward-compatible alias: creator invoke shares the same standardized shop pipeline.
@@ -47039,6 +47244,7 @@ module.exports._debug = {
     getCommerceMount,
     deriveStrictCommerceCtx,
     isAgentCheckoutStrictEnabled,
+    buildCheckoutConfirmationActionSignature,
   },
 };
 

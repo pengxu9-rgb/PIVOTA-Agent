@@ -40,7 +40,19 @@ Offline guard tests:
 npm test
 ```
 
-The tests only import `src/safety.js` and `src/operationMap.js`; they do not require the MCP SDK or network access.
+The tests import only local adapter modules; they do not require network access.
+
+## Remote MCP Host
+
+The production HTTP surface is mounted by the gateway, not the stdio entrypoint. In strict mode,
+`POST /mcp` loads `src/remoteMcpAdapter.js` over `src/commerceToolSurface.js` and the Safety Kernel
+canonical executor. The host must authenticate the request and pass verified session identity as
+`sessionContext.user_ref` and `sessionContext.acp_session_id`; model-supplied identity fields are ignored.
+
+The quote confirmation button is a separate host-only action at `POST /checkout/confirm`. It uses
+`src/confirmationAction.js` and must be called only after a verified UI user action. It mints a
+`confirmation_token` through the kernel for the verified buyer/session and order. Do not expose this as a
+generic model-callable MCP tool.
 
 ## Claude Desktop
 

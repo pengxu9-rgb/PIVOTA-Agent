@@ -28,6 +28,7 @@ GATEWAY_GOVERNANCE_RAILWAY_PROJECT="${GATEWAY_GOVERNANCE_RAILWAY_PROJECT:-Pivota
 GATEWAY_GOVERNANCE_RAILWAY_ENVIRONMENT="${GATEWAY_GOVERNANCE_RAILWAY_ENVIRONMENT:-production}"
 GATEWAY_GOVERNANCE_RAILWAY_SERVICE="${GATEWAY_GOVERNANCE_RAILWAY_SERVICE:-PIVOTA-Agent}"
 GATEWAY_GOVERNANCE_RAILWAY_WORKSPACE="${GATEWAY_GOVERNANCE_RAILWAY_WORKSPACE:-}"
+GATEWAY_GOVERNANCE_RAILWAY_DEPLOYMENT="${GATEWAY_GOVERNANCE_RAILWAY_DEPLOYMENT:-}"
 GATEWAY_GOVERNANCE_FETCH_LINES="${GATEWAY_GOVERNANCE_FETCH_LINES:-500}"
 OUT_DIR="${OUT_DIR:-${AGENT_CLEAN_REPO}/reports/celestial-commerce-core-readiness}"
 
@@ -429,9 +430,13 @@ if [[ -z "${gateway_governance_log_input_path}" && -z "${GATEWAY_GOVERNANCE_SHAD
   if [[ -n "${GATEWAY_GOVERNANCE_RAILWAY_WORKSPACE}" ]]; then
     gateway_fetch_workspace_args="--workspace '${GATEWAY_GOVERNANCE_RAILWAY_WORKSPACE}'"
   fi
+  gateway_fetch_deployment_args=""
+  if [[ -n "${GATEWAY_GOVERNANCE_RAILWAY_DEPLOYMENT}" ]]; then
+    gateway_fetch_deployment_args="--deployment '${GATEWAY_GOVERNANCE_RAILWAY_DEPLOYMENT}'"
+  fi
   run_step \
     "gateway_governance_raw_export" \
-    bash -lc "cd '${AGENT_CLEAN_REPO}' && '${node_bin}' scripts/fetch_celestial_commerce_gateway_governance_logs.js --out '${GATEWAY_GOVERNANCE_RAW_EXPORT}' --metadata-out '${GATEWAY_GOVERNANCE_RAW_EXPORT_METADATA}' --project '${GATEWAY_GOVERNANCE_RAILWAY_PROJECT}' --environment '${GATEWAY_GOVERNANCE_RAILWAY_ENVIRONMENT}' --service '${GATEWAY_GOVERNANCE_RAILWAY_SERVICE}' --lines '${GATEWAY_GOVERNANCE_FETCH_LINES}' ${gateway_fetch_workspace_args}"
+    bash -lc "cd '${AGENT_CLEAN_REPO}' && '${node_bin}' scripts/fetch_celestial_commerce_gateway_governance_logs.js --out '${GATEWAY_GOVERNANCE_RAW_EXPORT}' --metadata-out '${GATEWAY_GOVERNANCE_RAW_EXPORT_METADATA}' --project '${GATEWAY_GOVERNANCE_RAILWAY_PROJECT}' --environment '${GATEWAY_GOVERNANCE_RAILWAY_ENVIRONMENT}' --service '${GATEWAY_GOVERNANCE_RAILWAY_SERVICE}' --lines '${GATEWAY_GOVERNANCE_FETCH_LINES}' ${gateway_fetch_workspace_args} ${gateway_fetch_deployment_args}"
   gateway_governance_raw_export_last_status="${STEP_STATUSES[$((${#STEP_STATUSES[@]} - 1))]}"
   if [[ "${gateway_governance_raw_export_last_status}" == "pass" ]]; then
     gateway_governance_log_input_path="${GATEWAY_GOVERNANCE_RAW_EXPORT}"

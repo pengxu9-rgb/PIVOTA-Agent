@@ -68,6 +68,7 @@ Supported override envs:
 - `GATEWAY_GOVERNANCE_RAILWAY_ENVIRONMENT` default: `production`
 - `GATEWAY_GOVERNANCE_RAILWAY_SERVICE` default: `PIVOTA-Agent`
 - `GATEWAY_GOVERNANCE_RAILWAY_WORKSPACE` optional workspace selector
+- `GATEWAY_GOVERNANCE_RAILWAY_DEPLOYMENT` optional deployment id selector, useful when a canary ran on the previous deployment
 - `GATEWAY_GOVERNANCE_FETCH_LINES` default: `500`
 
 The staging matrix uses the supported live commerce entrypoint `POST /agent/shop/v1/invoke`. Public `POST /api/gateway` should not be treated as the primary commerce acceptance rail for this workflow. If a case requires auth and the matching staging profile is not configured, the case is marked `review_required` instead of failing.
