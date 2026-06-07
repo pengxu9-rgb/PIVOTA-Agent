@@ -491,6 +491,13 @@ function buildAnchorRefsFromProduct(anchor = {}) {
     src.sourceProductId;
   push(externalId, 'product');
   push(externalId);
+  const requestedProductId =
+    src.requested_product_id ||
+    src.requestedProductId ||
+    src.original_product_id ||
+    src.originalProductId;
+  push(requestedProductId, 'product');
+  push(requestedProductId);
   push(src.url || src.canonical_url || src.canonicalUrl || src.pdp_url || src.pdpUrl, 'url');
   const brand = pickFirstString(src.brand, src.brand_name, src.brandName, src.vendor);
   const name = extractProductName(src);

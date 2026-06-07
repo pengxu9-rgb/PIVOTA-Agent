@@ -265,6 +265,22 @@ describe('product relationship graph store helpers', () => {
     );
   });
 
+  test('anchor refs include requested external seed aliases after canonicalization', () => {
+    expect(
+      buildAnchorRefsFromProduct({
+        product_id: 'sig_canonical',
+        source_product_id: 'sig_canonical',
+        requested_product_id: 'ext_requested_anchor',
+      }),
+    ).toEqual(
+      expect.arrayContaining([
+        'product:sig_canonical',
+        'product:ext_requested_anchor',
+        'ext_requested_anchor',
+      ]),
+    );
+  });
+
   test('relationshipEdgeToSimilarItem maps a snapshot-backed edge to a similar item', () => {
     const item = relationshipEdgeToSimilarItem(approvedDupe());
     expect(item).toMatchObject({
