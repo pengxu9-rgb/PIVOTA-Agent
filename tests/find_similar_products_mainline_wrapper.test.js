@@ -656,6 +656,69 @@ describe('find_similar_products mainline wrapper', () => {
     );
   });
 
+  it('calibrates relationship graph served metadata against final visible similar products', async () => {
+    const app = require('../src/server');
+
+    const metadata = app._debug.calibrateSimilarMetadataForVisibleProducts({
+      requestedLimit: 6,
+      products: [
+        {
+          product_id: 'sig_graph_visible',
+          source: 'catalog_products',
+          recommendation_source: 'relationship_graph',
+          relationship_edge_id: 'edge_visible',
+        },
+        { product_id: 'sig_dynamic', source: 'external' },
+      ],
+      metadata: {
+        similar_status: 'ready',
+        relationship_graph_enabled: true,
+        relationship_graph_edge_count: 3,
+        relationship_graph_curated_count: 3,
+        relationship_graph_served_count: 3,
+      },
+    });
+
+    expect(metadata).toEqual(
+      expect.objectContaining({
+        relationship_graph_enabled: true,
+        relationship_graph_edge_count: 3,
+        relationship_graph_curated_count: 3,
+        relationship_graph_raw_served_count: 3,
+        relationship_graph_served_count: 1,
+        relationship_graph_filtered_count: 2,
+      }),
+    );
+  });
+
+  it('does not report graph cards served when final direct similar products are empty', async () => {
+    const app = require('../src/server');
+
+    const metadata = app._debug.calibrateSimilarMetadataForVisibleProducts({
+      requestedLimit: 6,
+      products: [],
+      metadata: {
+        similar_status: 'empty',
+        relationship_graph_enabled: true,
+        relationship_graph_edge_count: 2,
+        relationship_graph_curated_count: 2,
+        relationship_graph_served_count: 2,
+      },
+    });
+
+    expect(metadata).toEqual(
+      expect.objectContaining({
+        relationship_graph_enabled: true,
+        relationship_graph_edge_count: 2,
+        relationship_graph_curated_count: 2,
+        relationship_graph_raw_served_count: 2,
+        relationship_graph_served_count: 0,
+        relationship_graph_filtered_count: 2,
+        similar_status: 'empty',
+      }),
+    );
+  });
+
   it('keeps viable mainline recommendation sets ready while preserving underfill diagnostics', async () => {
     const app = require('../src/server');
 

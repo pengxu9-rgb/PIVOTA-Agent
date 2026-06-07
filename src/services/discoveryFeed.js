@@ -67,6 +67,9 @@ const {
   isRelationshipGraphSurfaceEnabled,
   mapRelationshipGraphItemToDiscoveryProduct,
 } = require('./relationshipGraphRecall');
+const {
+  recordRelationshipGraphPostFilter,
+} = require('../observability/relationshipGraphMetrics');
 let productIntelKbStore = null;
 
 const SCORING_VERSION = 'discovery_v2';
@@ -11227,11 +11230,22 @@ async function getDiscoveryFeed(payload = {}, options = {}) {
       identityGraphDeduped: identityGraphDedupeStats?.duplicate_candidates_dropped,
     });
     if (relationshipGraphDiscoveryStats?.enabled || relationshipGraphDiscoveryStats?.attempted) {
+      const selectedRelationshipGraphCount = selectedEntries.filter(
+        (entry) => String(entry?.candidate?.provider || '').trim() === 'relationship_graph',
+      ).length;
       relationshipGraphDiscoveryStats = buildRelationshipGraphDiscoveryStats({
         ...relationshipGraphDiscoveryStats,
-        selected_count: selectedEntries.filter(
-          (entry) => String(entry?.candidate?.provider || '').trim() === 'relationship_graph',
-        ).length,
+        selected_count: selectedRelationshipGraphCount,
+      });
+      recordRelationshipGraphPostFilter({
+        surface: 'discovery_feed',
+        status: selectedRelationshipGraphCount > 0 ? 'selected' : 'not_selected',
+        rawServedCount: relationshipGraphDiscoveryStats.candidate_count,
+        servedCount: selectedRelationshipGraphCount,
+        filteredCount: Math.max(
+          0,
+          Number(relationshipGraphDiscoveryStats.candidate_count || 0) - selectedRelationshipGraphCount,
+        ),
       });
     }
 

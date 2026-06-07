@@ -5,6 +5,9 @@ const {
   listApprovedRelationshipEdgesForAnchor,
   relationshipEdgeToSimilarItem,
 } = require('../auroraBff/productRelationshipGraph');
+const {
+  recordRelationshipGraphRecall,
+} = require('../observability/relationshipGraphMetrics');
 
 const SURFACE_FLAGS = Object.freeze({
   pdp_similar: 'AURORA_BFF_RELATIONSHIP_GRAPH_PDP_ENABLED',
@@ -89,10 +92,16 @@ async function fetchRelationshipGraphRecallForAnchor({
   enabled,
   logger,
 } = {}) {
+  const startedAt = Date.now();
   const normalizedSurface = normalizeSurface(surface);
   const surfaceEnabled =
     enabled == null ? isRelationshipGraphSurfaceEnabled(normalizedSurface) : enabled === true;
   if (!surfaceEnabled) {
+    recordRelationshipGraphRecall({
+      surface: normalizedSurface,
+      status: 'disabled',
+      latencyMs: Date.now() - startedAt,
+    });
     return {
       edges: [],
       items: [],
@@ -105,6 +114,12 @@ async function fetchRelationshipGraphRecallForAnchor({
 
   const anchorRefs = buildAnchorRefsFromProduct(anchorProduct || {});
   if (!anchorRefs.length) {
+    recordRelationshipGraphRecall({
+      surface: normalizedSurface,
+      status: 'no_anchor_refs',
+      latencyMs: Date.now() - startedAt,
+      anchorRefCount: 0,
+    });
     return {
       edges: [],
       items: [],
@@ -126,6 +141,14 @@ async function fetchRelationshipGraphRecallForAnchor({
       ...(typeof queryFn === 'function' ? { queryFn } : {}),
     });
     const items = (Array.isArray(edges) ? edges : []).map(relationshipEdgeToSimilarItem).filter(Boolean);
+    recordRelationshipGraphRecall({
+      surface: normalizedSurface,
+      status: 'success',
+      latencyMs: Date.now() - startedAt,
+      anchorRefCount: anchorRefs.length,
+      edgeCount: Array.isArray(edges) ? edges.length : 0,
+      itemCount: items.length,
+    });
     return {
       edges: Array.isArray(edges) ? edges : [],
       items,
@@ -145,6 +168,13 @@ async function fetchRelationshipGraphRecallForAnchor({
       },
       'relationship graph recall fetch failed',
     );
+    recordRelationshipGraphRecall({
+      surface: normalizedSurface,
+      status: 'error',
+      latencyMs: Date.now() - startedAt,
+      anchorRefCount: anchorRefs.length,
+      error: err?.code || err?.message || 'fetch_failed',
+    });
     return {
       edges: [],
       items: [],
@@ -168,10 +198,16 @@ async function fetchRelationshipGraphRecallForAnchors({
   enabled,
   logger,
 } = {}) {
+  const startedAt = Date.now();
   const normalizedSurface = normalizeSurface(surface);
   const surfaceEnabled =
     enabled == null ? isRelationshipGraphSurfaceEnabled(normalizedSurface) : enabled === true;
   if (!surfaceEnabled) {
+    recordRelationshipGraphRecall({
+      surface: normalizedSurface,
+      status: 'disabled',
+      latencyMs: Date.now() - startedAt,
+    });
     return {
       edges: [],
       items: [],
@@ -188,6 +224,12 @@ async function fetchRelationshipGraphRecallForAnchors({
     240,
   );
   if (!anchorRefs.length) {
+    recordRelationshipGraphRecall({
+      surface: normalizedSurface,
+      status: 'no_anchor_refs',
+      latencyMs: Date.now() - startedAt,
+      anchorRefCount: 0,
+    });
     return {
       edges: [],
       items: [],
@@ -209,6 +251,14 @@ async function fetchRelationshipGraphRecallForAnchors({
       ...(typeof queryFn === 'function' ? { queryFn } : {}),
     });
     const items = (Array.isArray(edges) ? edges : []).map(relationshipEdgeToSimilarItem).filter(Boolean);
+    recordRelationshipGraphRecall({
+      surface: normalizedSurface,
+      status: 'success',
+      latencyMs: Date.now() - startedAt,
+      anchorRefCount: anchorRefs.length,
+      edgeCount: Array.isArray(edges) ? edges.length : 0,
+      itemCount: items.length,
+    });
     return {
       edges: Array.isArray(edges) ? edges : [],
       items,
@@ -228,6 +278,13 @@ async function fetchRelationshipGraphRecallForAnchors({
       },
       'relationship graph recall fetch failed',
     );
+    recordRelationshipGraphRecall({
+      surface: normalizedSurface,
+      status: 'error',
+      latencyMs: Date.now() - startedAt,
+      anchorRefCount: anchorRefs.length,
+      error: err?.code || err?.message || 'fetch_failed',
+    });
     return {
       edges: [],
       items: [],

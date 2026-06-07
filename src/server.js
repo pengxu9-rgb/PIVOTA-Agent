@@ -378,6 +378,9 @@ const {
   fetchRelationshipGraphRecallForAnchor,
   isRelationshipGraphSurfaceEnabled,
 } = require('./services/relationshipGraphRecall');
+const {
+  recordRelationshipGraphPostFilter,
+} = require('./observability/relationshipGraphMetrics');
 const productRelationshipGraphInternal = productRelationshipGraph.__internal || {};
 const familyIdentityKey =
   typeof productRelationshipGraphInternal.familyIdentityKey === 'function'
@@ -24725,9 +24728,7 @@ async function fetchSimilarProductsDeduped(args = {}) {
       relationshipGraphMeta = {
         ...(relationshipGraphMeta || {}),
         relationship_graph_curated_count: curated.length,
-        relationship_graph_served_count: mergedItems.filter(
-          (item) => item && item.source === 'relationship_graph',
-        ).length,
+        relationship_graph_served_count: countRelationshipGraphSimilarProducts(mergedItems),
       };
     }
     return {
@@ -25510,6 +25511,56 @@ function countVisibleSimilarSources(items = []) {
   );
 }
 
+function isRelationshipGraphSimilarProduct(item = {}) {
+  if (!item || typeof item !== 'object' || Array.isArray(item)) return false;
+  const source = normalizeSearchTextForMatch(
+    firstNonEmptyString(item.source, item.recommendation_source, item.recommendationSource),
+  );
+  if (source === 'relationship_graph') return true;
+  return Boolean(firstNonEmptyString(item.relationship_edge_id, item.relationshipEdgeId));
+}
+
+function countRelationshipGraphSimilarProducts(items = []) {
+  return (Array.isArray(items) ? items : []).filter((item) => isRelationshipGraphSimilarProduct(item)).length;
+}
+
+function toNonNegativeInteger(value) {
+  const numeric = Number(value);
+  if (!Number.isFinite(numeric)) return 0;
+  return Math.max(0, Math.floor(numeric));
+}
+
+function hasRelationshipGraphMetadata(metadata = {}) {
+  if (!metadata || typeof metadata !== 'object' || Array.isArray(metadata)) return false;
+  return (
+    metadata.relationship_graph_enabled === true ||
+    toNonNegativeInteger(metadata.relationship_graph_edge_count) > 0 ||
+    toNonNegativeInteger(metadata.relationship_graph_curated_count) > 0 ||
+    toNonNegativeInteger(metadata.relationship_graph_served_count) > 0
+  );
+}
+
+function calibrateRelationshipGraphMetadataForVisibleProducts({
+  metadata = {},
+  products = [],
+} = {}) {
+  if (!hasRelationshipGraphMetadata(metadata)) return {};
+  const visibleProducts = Array.isArray(products) ? products : [];
+  const rawServedCount = toNonNegativeInteger(metadata.relationship_graph_served_count);
+  const visibleServedCount = countRelationshipGraphSimilarProducts(visibleProducts);
+  const filteredCount = Math.max(0, rawServedCount - visibleServedCount);
+  return {
+    relationship_graph_enabled: metadata.relationship_graph_enabled === true,
+    relationship_graph_edge_count: toNonNegativeInteger(metadata.relationship_graph_edge_count),
+    relationship_graph_curated_count: toNonNegativeInteger(metadata.relationship_graph_curated_count),
+    ...(rawServedCount !== visibleServedCount
+      ? { relationship_graph_raw_served_count: rawServedCount }
+      : {}),
+    relationship_graph_served_count: visibleServedCount,
+    ...(filteredCount > 0 ? { relationship_graph_filtered_count: filteredCount } : {}),
+  };
+}
+
 function withoutReasonCode(values = [], reasonCode) {
   return (Array.isArray(values) ? values : [])
     .map((value) => String(value || '').trim())
@@ -25536,6 +25587,10 @@ function calibrateSimilarMetadataForVisibleProducts({
     metadata?.retrieval_mix && typeof metadata.retrieval_mix === 'object' && !Array.isArray(metadata.retrieval_mix)
       ? metadata.retrieval_mix
       : null;
+  const relationshipGraphVisibleMetadata = calibrateRelationshipGraphMetadataForVisibleProducts({
+    metadata,
+    products: visibleProducts,
+  });
   const visibleRetrievalMix = countVisibleSimilarSources(visibleProducts);
   const readyMinVisibleCount = Math.min(safeRequestedLimit, PDP_SIMILAR_READY_MIN_VISIBLE_COUNT);
   const severeUnderfill = visibleProducts.length > 0 && visibleProducts.length < readyMinVisibleCount;
@@ -25563,6 +25618,7 @@ function calibrateSimilarMetadataForVisibleProducts({
 
   return {
     ...metadata,
+    ...relationshipGraphVisibleMetadata,
     ...(rawUnderfill != null && rawUnderfill !== visibleUnderfill ? { raw_underfill: rawUnderfill } : {}),
     ...(rawRetrievalMix ? { raw_retrieval_mix: rawRetrievalMix } : {}),
     requested_count: safeRequestedLimit,
@@ -42848,6 +42904,35 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
             const cardImageMissingCount = enrichedProducts.filter(
               (item) => String(item?.card_image_status || '').trim() === 'image_missing',
             ).length;
+            const rawSimilarMetadata =
+              rec?.metadata && typeof rec.metadata === 'object' && !Array.isArray(rec.metadata)
+                ? rec.metadata
+                : {};
+            const finalSimilarMetadata = calibrateSimilarMetadataForVisibleProducts({
+              metadata: rawSimilarMetadata,
+              products,
+              requestedLimit: limit,
+            });
+            if (hasRelationshipGraphMetadata(rawSimilarMetadata)) {
+              recordRelationshipGraphPostFilter({
+                surface: 'find_similar_products',
+                status: products.length > 0 ? 'ready' : 'empty',
+                rawServedCount: toNonNegativeInteger(rawSimilarMetadata.relationship_graph_served_count),
+                servedCount: toNonNegativeInteger(finalSimilarMetadata.relationship_graph_served_count),
+                filteredCount: toNonNegativeInteger(finalSimilarMetadata.relationship_graph_filtered_count),
+              });
+              logger.info(
+                {
+                  surface: 'find_similar_products',
+                  edge_count: toNonNegativeInteger(rawSimilarMetadata.relationship_graph_edge_count),
+                  curated_count: toNonNegativeInteger(rawSimilarMetadata.relationship_graph_curated_count),
+                  raw_served_count: toNonNegativeInteger(rawSimilarMetadata.relationship_graph_served_count),
+                  final_served_count: toNonNegativeInteger(finalSimilarMetadata.relationship_graph_served_count),
+                  filtered_count: toNonNegativeInteger(finalSimilarMetadata.relationship_graph_filtered_count),
+                },
+                'relationship graph direct similar post-filter summary',
+              );
+            }
 
             // Keep response structure stable for existing clients.
             const baseResponse = {
@@ -42856,11 +42941,7 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
               products,
               metadata: {
                 route: 'find_similar_products_mainline_wrapper',
-                ...calibrateSimilarMetadataForVisibleProducts({
-                  metadata: rec?.metadata && typeof rec.metadata === 'object' ? rec.metadata : {},
-                  products,
-                  requestedLimit: limit,
-                }),
+                ...finalSimilarMetadata,
                 direct_base_detail_mode: isExternalSeedDirectBase ? 'external_seed_minimal' : 'bounded_detail',
                 ...(resolvedSignatureRef
                   ? {
@@ -46750,6 +46831,9 @@ module.exports._debug = {
   collectSimilarFamilyResolutionRefs,
   resolveSimilarFamilyDedupeContext,
   isSimilarFamilyDedupeEnabled: () => SIMILAR_FAMILY_DEDUPE_ENABLED,
+  isRelationshipGraphSimilarProduct,
+  countRelationshipGraphSimilarProducts,
+  calibrateRelationshipGraphMetadataForVisibleProducts,
   isBundleOrSetPdpForComponentScopedSimilar,
   collectPdpComponentExternalSeedIds,
   excludeBundleComponentProductsFromSimilar,
