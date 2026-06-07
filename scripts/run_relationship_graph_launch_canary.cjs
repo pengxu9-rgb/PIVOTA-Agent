@@ -94,6 +94,7 @@ Case shape:
     "expect": {
       "graph_edges_min": 1,
       "pdp_served_min": 1,
+      "pdp_required": true,
       "discovery_selected_min": 1
     }
   }
@@ -144,6 +145,9 @@ function normalizeCase(raw, index) {
     expect: {
       graph_edges_min: Number(source.expect?.graph_edges_min ?? source.graph_edges_min ?? 0) || 0,
       pdp_served_min: Number(source.expect?.pdp_served_min ?? source.pdp_served_min ?? 0) || 0,
+      pdp_required: source.expect?.pdp_required === false || source.pdp_required === false ? false : true,
+      allow_pdp_not_servable:
+        source.expect?.allow_pdp_not_servable === true || source.allow_pdp_not_servable === true,
       discovery_selected_min:
         Number(source.expect?.discovery_selected_min ?? source.discovery_selected_min ?? 0) || 0,
     },
@@ -275,6 +279,9 @@ async function runPdpCase({ baseUrl, apiKey, testCase, limit, timeoutMs }) {
     surface: 'pdp_similar',
     http_status: result.http_status,
     ok: result.ok,
+    error: result.data?.error || null,
+    reason_code: result.data?.reason_code || result.data?.reasonCode || null,
+    details: result.data?.details || null,
     status: similarModule?.data?.status || similarModule?.status || null,
     product_count: Array.isArray(items) ? items.length : 0,
     relationship_graph: graphMetadataFromSimilarModule(similarModule),
@@ -386,15 +393,20 @@ async function runMetricsCheck({ baseUrl, timeoutMs }) {
 
 function evaluateCase(testCase, result) {
   const failures = [];
-  if (!result.pdp.ok) failures.push('pdp_http_failed');
+  const allowPdpNotServable =
+    testCase.expect?.pdp_required === false || testCase.expect?.allow_pdp_not_servable === true;
+  const pdpNotServableAllowed = allowPdpNotServable && isPdpNotServableResult(result.pdp);
+  if (!result.pdp.ok && !pdpNotServableAllowed) failures.push('pdp_http_failed');
   if (!result.discovery.ok) failures.push('discovery_http_failed');
   if (!result.direct.ok) failures.push('direct_http_failed');
 
-  if (toCount(result.pdp.relationship_graph?.edge_count) < testCase.expect.graph_edges_min) {
-    failures.push('pdp_graph_edges_below_min');
-  }
-  if (toCount(result.pdp.relationship_graph?.served_count) < testCase.expect.pdp_served_min) {
-    failures.push('pdp_graph_served_below_min');
+  if (!pdpNotServableAllowed) {
+    if (toCount(result.pdp.relationship_graph?.edge_count) < testCase.expect.graph_edges_min) {
+      failures.push('pdp_graph_edges_below_min');
+    }
+    if (toCount(result.pdp.relationship_graph?.served_count) < testCase.expect.pdp_served_min) {
+      failures.push('pdp_graph_served_below_min');
+    }
   }
   if (toCount(result.discovery.relationship_graph?.selected_count) < testCase.expect.discovery_selected_min) {
     failures.push('discovery_graph_selected_below_min');
@@ -409,6 +421,13 @@ function evaluateCase(testCase, result) {
   }
 
   return failures;
+}
+
+function isPdpNotServableResult(pdp = {}) {
+  if (!pdp || typeof pdp !== 'object') return false;
+  const error = String(pdp.error || '').trim();
+  const reasonCode = String(pdp.reason_code || pdp.reasonCode || '').trim();
+  return Number(pdp.http_status) === 404 && (error === 'PRODUCT_NOT_SERVABLE' || reasonCode === 'PRODUCT_NOT_SERVABLE');
 }
 
 async function main() {
@@ -443,12 +462,16 @@ async function main() {
       runDirectSimilarCase({ ...args, apiKey, testCase }),
     );
     const failures = evaluateCase(testCase, { pdp, discovery, direct });
+    const pdpNotServableAllowed =
+      (testCase.expect?.pdp_required === false || testCase.expect?.allow_pdp_not_servable === true) &&
+      isPdpNotServableResult(pdp);
     const caseResult = {
       name: testCase.name,
       product: testCase.product,
       expect: testCase.expect,
       pass: failures.length === 0,
       failures,
+      pdp_not_servable_allowed: pdpNotServableAllowed,
       pdp,
       discovery,
       direct,
@@ -477,6 +500,7 @@ async function main() {
     case_count: results.length,
     passed_count: results.filter((result) => result.pass).length,
     failed_count: results.filter((result) => !result.pass).length,
+    pdp_not_servable_allowed_count: results.filter((result) => result.pdp_not_servable_allowed).length,
     metrics,
     results,
     generated_at: new Date().toISOString(),
@@ -495,6 +519,7 @@ async function main() {
       case_count: summary.case_count,
       passed_count: summary.passed_count,
       failed_count: summary.failed_count,
+      pdp_not_servable_allowed_count: summary.pdp_not_servable_allowed_count,
       metrics: summary.metrics,
       failures: summary.results
         .filter((result) => !result.pass)
@@ -505,6 +530,7 @@ async function main() {
           pdp: {
             http_status: result.pdp?.http_status,
             error: result.pdp?.error,
+            reason_code: result.pdp?.reason_code,
             graph: result.pdp?.relationship_graph || null,
           },
           discovery: {
@@ -527,7 +553,15 @@ async function main() {
   if (!summary.ok) process.exitCode = 1;
 }
 
-main().catch((err) => {
-  console.error(JSON.stringify({ ok: false, error: err?.message || String(err) }, null, 2));
-  process.exit(1);
-});
+if (require.main === module) {
+  main().catch((err) => {
+    console.error(JSON.stringify({ ok: false, error: err?.message || String(err) }, null, 2));
+    process.exit(1);
+  });
+}
+
+module.exports = {
+  evaluateCase,
+  isPdpNotServableResult,
+  normalizeCase,
+};
