@@ -27685,8 +27685,32 @@ function statusForCommerceKernelError(code) {
   }
 }
 
+function sanitizeCommerceKernelErrorDetails(value, depth = 0) {
+  if (value == null) return value;
+  if (depth > 6) return '[REDACTED]';
+  if (Array.isArray(value)) {
+    return value.slice(0, 25).map((item) => sanitizeCommerceKernelErrorDetails(item, depth + 1));
+  }
+  if (typeof value === 'string') return value.length > 600 ? `${value.slice(0, 600)}...` : value;
+  if (typeof value !== 'object') return value;
+
+  const out = {};
+  for (const [key, raw] of Object.entries(value).slice(0, 50)) {
+    if (/amount|price|total/i.test(key)) {
+      out[key] = '[REDACTED_AMOUNT]';
+      continue;
+    }
+    if (/token|secret|password|authorization|api[_-]?key|access[_-]?token|pan|card|cvc|cvv|email|address|phone|ap2|payment/i.test(key)) {
+      out[key] = '[REDACTED]';
+      continue;
+    }
+    out[key] = sanitizeCommerceKernelErrorDetails(raw, depth + 1);
+  }
+  return out;
+}
+
 function commerceKernelErrorBody(error = {}) {
-  return {
+  const body = {
     status: 'failure',
     error: error.code || 'COMMERCE_ERROR',
     code: error.code || 'COMMERCE_ERROR',
@@ -27694,6 +27718,10 @@ function commerceKernelErrorBody(error = {}) {
     recovery: error.recovery || undefined,
     retriable: error.retriable === true,
   };
+  if (error.details && typeof error.details === 'object' && !Array.isArray(error.details)) {
+    body.details = sanitizeCommerceKernelErrorDetails(error.details);
+  }
+  return body;
 }
 
 function getCheckoutConfirmationActionSecret() {
@@ -47114,6 +47142,8 @@ module.exports._debug = {
   mergePublicBeautyUnifiedSearchProducts,
   resolvePublicBeautyCompoundIntent,
   shouldBridgePublicBeautySearchToDiscovery,
+  commerceKernelErrorBody,
+  sanitizeCommerceKernelErrorDetails,
   filterSimilarProductsWithCardHighlights,
   collectExternalSeedIdCandidatesForVisibleCatalogHydration,
   resolveVisibleSimilarProductSigId,
