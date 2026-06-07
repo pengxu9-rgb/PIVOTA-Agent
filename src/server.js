@@ -4318,20 +4318,26 @@ function resolvePdpSimilarCacheBypass(payload = {}) {
 
 function buildPdpSimilarBaseProduct({
   payload = {},
+  entryProductRef = null,
   canonicalProductForPdp = {},
   canonicalProductRef = {},
   canonicalProduct = {},
 } = {}) {
   const canonicalRefMerchantId = String(canonicalProductRef?.merchant_id || '').trim();
   const canonicalRefProductId = String(canonicalProductRef?.product_id || '').trim();
+  const entryRequestedProduct =
+    entryProductRef && typeof entryProductRef === 'object' && !Array.isArray(entryProductRef)
+      ? entryProductRef
+      : null;
   const requestedProduct =
-    payload?.product_ref && typeof payload.product_ref === 'object'
+    entryRequestedProduct ||
+    (payload?.product_ref && typeof payload.product_ref === 'object'
       ? payload.product_ref
       : payload?.productRef && typeof payload.productRef === 'object'
         ? payload.productRef
         : payload?.product && typeof payload.product === 'object'
           ? payload.product
-          : {};
+          : {});
   const requestedProductId = firstNonEmptyString(
     requestedProduct.product_id,
     requestedProduct.productId,
@@ -4374,6 +4380,9 @@ function buildPdpSimilarBaseProduct({
         : {}),
       ...(baseProductId !== canonicalRefProductId
         ? { requested_product_id: canonicalRefProductId }
+        : {}),
+      ...(requestedExternalProductId && requestedExternalProductId !== baseProductId
+        ? { requested_product_id: requestedExternalProductId }
         : {}),
       ...(sourceProduct.currency ? { currency: sourceProduct.currency } : {}),
       ...(sourceProduct.market ? { market: sourceProduct.market } : {}),
@@ -4442,6 +4451,7 @@ function buildPdpSimilarBaseProductHintsFromSignatureRef(resolvedSignatureRef = 
 
 function buildPdpSimilarFetchArgs({
   payload = {},
+  entryProductRef = null,
   canonicalProductForPdp = {},
   canonicalProductRef = {},
   canonicalProduct = {},
@@ -4457,6 +4467,7 @@ function buildPdpSimilarFetchArgs({
     candidateLimit == null ? resolvePdpSimilarCandidateLimit(limit) : Number(candidateLimit) || limit;
   const similarBaseProduct = buildPdpSimilarBaseProduct({
     payload,
+    entryProductRef,
     canonicalProductForPdp,
     canonicalProductRef,
     canonicalProduct,
@@ -38007,6 +38018,7 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
             try {
               const { fetchArgs } = buildPdpSimilarFetchArgs({
                 payload,
+                entryProductRef,
                 canonicalProductForPdp,
                 canonicalProductRef,
                 canonicalProduct,

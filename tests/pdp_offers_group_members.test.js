@@ -930,6 +930,39 @@ describe('PDP grouped offers', () => {
     );
   });
 
+  test('preserves entry external seed ids when PDP content canonicalizes to a sibling seed', () => {
+    const app = require('../src/server');
+
+    const args = app._debug.buildPdpSimilarFetchArgs({
+      payload: { similar: { limit: 6 } },
+      entryProductRef: {
+        merchant_id: 'external_seed',
+        product_id: 'ext_requested_sibling_anchor',
+      },
+      canonicalProductForPdp: {
+        merchant_id: 'external_seed',
+        product_id: 'ext_canonical_sibling_content',
+        source_product_id: 'ext_canonical_sibling_content',
+        title: 'Canonical sibling content',
+        brand: 'Example Beauty',
+        currency: 'USD',
+      },
+      canonicalProductRef: {
+        merchant_id: 'external_seed',
+        product_id: 'ext_canonical_sibling_content',
+      },
+    });
+
+    expect(args.fetchArgs.pdp_product).toEqual(
+      expect.objectContaining({
+        merchant_id: 'external_seed',
+        product_id: 'ext_canonical_sibling_content',
+        external_product_id: 'ext_canonical_sibling_content',
+        requested_product_id: 'ext_requested_sibling_anchor',
+      }),
+    );
+  });
+
   test('excludes reviewed set component refs from PDP similar recommendations', () => {
     const app = require('../src/server');
     const baseProduct = {
