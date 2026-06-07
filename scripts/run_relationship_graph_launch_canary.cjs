@@ -37,6 +37,7 @@ function parseArgs(argv = []) {
     limit: Number(process.env.RELGRAPH_CANARY_LIMIT || 6) || 6,
     discoveryLimit: Number(process.env.RELGRAPH_CANARY_DISCOVERY_LIMIT || 8) || 8,
     metrics: process.env.RELGRAPH_CANARY_SKIP_METRICS !== 'true',
+    summaryOnly: process.env.RELGRAPH_CANARY_SUMMARY_ONLY === 'true',
   };
 
   for (let i = 0; i < argv.length; i += 1) {
@@ -49,6 +50,7 @@ function parseArgs(argv = []) {
     else if (arg === '--limit') args.limit = Number(next()) || args.limit;
     else if (arg === '--discovery-limit') args.discoveryLimit = Number(next()) || args.discoveryLimit;
     else if (arg === '--skip-metrics') args.metrics = false;
+    else if (arg === '--summary-only') args.summaryOnly = true;
     else if (arg === '--help' || arg === '-h') {
       args.help = true;
     } else {
@@ -76,6 +78,7 @@ Options:
   --limit <n>               PDP/direct similar display limit. Default: 6
   --discovery-limit <n>     Discovery feed limit. Default: 8
   --skip-metrics            Skip /metrics validation.
+  --summary-only            Print compact stdout summary while preserving --out artifact.
 
 Case shape:
   {
@@ -224,6 +227,26 @@ function graphMetadataFromSimilarModule(module) {
   };
 }
 
+function surfaceErrorResult(surface, err) {
+  return {
+    surface,
+    http_status: 0,
+    ok: false,
+    error: err?.name === 'AbortError' ? 'request_timeout' : err?.message || String(err),
+    product_count: 0,
+    relationship_graph: null,
+    products: [],
+  };
+}
+
+async function runSurfaceSafely(surface, fn) {
+  try {
+    return await fn();
+  } catch (err) {
+    return surfaceErrorResult(surface, err);
+  }
+}
+
 async function runPdpCase({ baseUrl, apiKey, testCase, limit, timeoutMs }) {
   const result = await invoke({
     baseUrl,
@@ -367,17 +390,17 @@ function evaluateCase(testCase, result) {
   if (!result.discovery.ok) failures.push('discovery_http_failed');
   if (!result.direct.ok) failures.push('direct_http_failed');
 
-  if (toCount(result.pdp.relationship_graph.edge_count) < testCase.expect.graph_edges_min) {
+  if (toCount(result.pdp.relationship_graph?.edge_count) < testCase.expect.graph_edges_min) {
     failures.push('pdp_graph_edges_below_min');
   }
-  if (toCount(result.pdp.relationship_graph.served_count) < testCase.expect.pdp_served_min) {
+  if (toCount(result.pdp.relationship_graph?.served_count) < testCase.expect.pdp_served_min) {
     failures.push('pdp_graph_served_below_min');
   }
   if (toCount(result.discovery.relationship_graph?.selected_count) < testCase.expect.discovery_selected_min) {
     failures.push('discovery_graph_selected_below_min');
   }
 
-  const directServed = toCount(result.direct.relationship_graph.served_count);
+  const directServed = toCount(result.direct.relationship_graph?.served_count);
   if (directServed > result.direct.product_count) {
     failures.push('direct_graph_served_exceeds_visible_products');
   }
@@ -401,12 +424,26 @@ async function main() {
 
   const cases = loadCases(args.caseFile).map(normalizeCase);
   const results = [];
-  for (const testCase of cases) {
-    const pdp = await runPdpCase({ ...args, apiKey, testCase });
-    const discovery = await runDiscoveryCase({ ...args, apiKey, testCase });
-    const direct = await runDirectSimilarCase({ ...args, apiKey, testCase });
+  for (let index = 0; index < cases.length; index += 1) {
+    const testCase = cases[index];
+    console.error(JSON.stringify({
+      event: 'relationship_graph_canary_case_start',
+      index: index + 1,
+      total: cases.length,
+      name: testCase.name,
+      product_id: testCase.product.product_id,
+    }));
+    const pdp = await runSurfaceSafely('pdp_similar', () =>
+      runPdpCase({ ...args, apiKey, testCase }),
+    );
+    const discovery = await runSurfaceSafely('discovery_feed', () =>
+      runDiscoveryCase({ ...args, apiKey, testCase }),
+    );
+    const direct = await runSurfaceSafely('find_similar_products', () =>
+      runDirectSimilarCase({ ...args, apiKey, testCase }),
+    );
     const failures = evaluateCase(testCase, { pdp, discovery, direct });
-    results.push({
+    const caseResult = {
       name: testCase.name,
       product: testCase.product,
       expect: testCase.expect,
@@ -415,10 +452,24 @@ async function main() {
       pdp,
       discovery,
       direct,
-    });
+    };
+    results.push(caseResult);
+    console.error(JSON.stringify({
+      event: 'relationship_graph_canary_case_end',
+      index: index + 1,
+      total: cases.length,
+      name: testCase.name,
+      pass: caseResult.pass,
+      failures,
+      pdp_status: pdp.http_status,
+      discovery_status: discovery.http_status,
+      direct_status: direct.http_status,
+    }));
   }
 
-  const metrics = args.metrics ? await runMetricsCheck(args) : null;
+  const metrics = args.metrics
+    ? await runSurfaceSafely('metrics', () => runMetricsCheck(args))
+    : null;
   const summary = {
     ok: results.every((result) => result.pass) &&
       (!metrics || (metrics.ok && metrics.has_relationship_graph_recall_metric && metrics.has_relationship_graph_post_filter_metric)),
@@ -437,7 +488,42 @@ async function main() {
     fs.writeFileSync(outPath, `${JSON.stringify(summary, null, 2)}\n`);
   }
 
-  console.log(JSON.stringify(summary, null, 2));
+  if (args.summaryOnly) {
+    console.log(JSON.stringify({
+      ok: summary.ok,
+      base_url: summary.base_url,
+      case_count: summary.case_count,
+      passed_count: summary.passed_count,
+      failed_count: summary.failed_count,
+      metrics: summary.metrics,
+      failures: summary.results
+        .filter((result) => !result.pass)
+        .map((result) => ({
+          name: result.name,
+          product_id: result.product?.product_id,
+          failures: result.failures,
+          pdp: {
+            http_status: result.pdp?.http_status,
+            error: result.pdp?.error,
+            graph: result.pdp?.relationship_graph || null,
+          },
+          discovery: {
+            http_status: result.discovery?.http_status,
+            error: result.discovery?.error,
+            graph: result.discovery?.relationship_graph || null,
+          },
+          direct: {
+            http_status: result.direct?.http_status,
+            error: result.direct?.error,
+            graph: result.direct?.relationship_graph || null,
+            graph_product_count: result.direct?.graph_product_count,
+          },
+        })),
+      generated_at: summary.generated_at,
+    }, null, 2));
+  } else {
+    console.log(JSON.stringify(summary, null, 2));
+  }
   if (!summary.ok) process.exitCode = 1;
 }
 

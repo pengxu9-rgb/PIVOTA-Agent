@@ -894,6 +894,42 @@ describe('PDP grouped offers', () => {
     expect(args.fetchArgs.k).toBe(args.candidateLimit);
   });
 
+  test('preserves requested external seed ids for canonicalized PDP graph recall', () => {
+    const app = require('../src/server');
+
+    const args = app._debug.buildPdpSimilarFetchArgs({
+      payload: {
+        product: {
+          merchant_id: 'external_seed',
+          product_id: 'ext_requested_graph_anchor',
+        },
+        similar: { limit: 6 },
+      },
+      canonicalProductForPdp: {
+        merchant_id: 'catalog_products',
+        product_id: 'sig_canonical_public_id',
+        title: 'Canonicalized PDP title',
+        brand: 'Example Beauty',
+        category: 'Cleanser',
+        currency: 'USD',
+      },
+      canonicalProductRef: {
+        merchant_id: 'catalog_products',
+        product_id: 'sig_canonical_public_id',
+      },
+    });
+
+    expect(args.fetchArgs.pdp_product).toEqual(
+      expect.objectContaining({
+        merchant_id: 'catalog_products',
+        product_id: 'sig_canonical_public_id',
+        external_product_id: 'ext_requested_graph_anchor',
+        source_product_id: 'ext_requested_graph_anchor',
+        requested_product_id: 'ext_requested_graph_anchor',
+      }),
+    );
+  });
+
   test('excludes reviewed set component refs from PDP similar recommendations', () => {
     const app = require('../src/server');
     const baseProduct = {

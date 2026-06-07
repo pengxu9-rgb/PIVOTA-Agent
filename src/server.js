@@ -4317,12 +4317,30 @@ function resolvePdpSimilarCacheBypass(payload = {}) {
 }
 
 function buildPdpSimilarBaseProduct({
+  payload = {},
   canonicalProductForPdp = {},
   canonicalProductRef = {},
   canonicalProduct = {},
 } = {}) {
   const canonicalRefMerchantId = String(canonicalProductRef?.merchant_id || '').trim();
   const canonicalRefProductId = String(canonicalProductRef?.product_id || '').trim();
+  const requestedProduct =
+    payload?.product_ref && typeof payload.product_ref === 'object'
+      ? payload.product_ref
+      : payload?.productRef && typeof payload.productRef === 'object'
+        ? payload.productRef
+        : payload?.product && typeof payload.product === 'object'
+          ? payload.product
+          : {};
+  const requestedProductId = firstNonEmptyString(
+    requestedProduct.product_id,
+    requestedProduct.productId,
+    payload?.product_id,
+    payload?.productId,
+  );
+  const requestedExternalProductId = isExternalSeedProductId(requestedProductId)
+    ? requestedProductId
+    : '';
   const sourceProduct =
     canonicalProductForPdp && typeof canonicalProductForPdp === 'object'
       ? canonicalProductForPdp
@@ -4334,6 +4352,7 @@ function buildPdpSimilarBaseProduct({
     sourceProduct.platform_product_id,
     canonicalProduct?.external_product_id,
     canonicalProduct?.source_product_id,
+    requestedExternalProductId,
   );
   if (canonicalRefMerchantId === EXTERNAL_SEED_MERCHANT_ID && canonicalRefProductId) {
     const baseProductId =
@@ -4360,7 +4379,7 @@ function buildPdpSimilarBaseProduct({
       ...(sourceProduct.market ? { market: sourceProduct.market } : {}),
     };
   }
-  return {
+  const baseProduct = {
     ...sourceProduct,
     merchant_id:
       sourceProduct.merchant_id ||
@@ -4373,6 +4392,26 @@ function buildPdpSimilarBaseProduct({
       canonicalProduct?.product_id ||
       canonicalProduct?.id,
   };
+  if (requestedExternalProductId) {
+    const existingExternalId = firstNonEmptyString(
+      baseProduct.external_product_id,
+      baseProduct.externalProductId,
+      baseProduct.external_seed_product_id,
+      baseProduct.externalSeedProductId,
+      baseProduct.source_product_id,
+      baseProduct.sourceProductId,
+      baseProduct.platform_product_id,
+      baseProduct.platformProductId,
+    );
+    if (!existingExternalId) {
+      baseProduct.external_product_id = requestedExternalProductId;
+      baseProduct.source_product_id = requestedExternalProductId;
+    }
+    if (requestedExternalProductId !== firstNonEmptyString(baseProduct.product_id, baseProduct.productId, baseProduct.id)) {
+      baseProduct.requested_product_id = requestedExternalProductId;
+    }
+  }
+  return baseProduct;
 }
 
 function buildPdpSimilarBaseProductHintsFromSignatureRef(resolvedSignatureRef = {}) {
@@ -4417,6 +4456,7 @@ function buildPdpSimilarFetchArgs({
   const resolvedCandidateLimit =
     candidateLimit == null ? resolvePdpSimilarCandidateLimit(limit) : Number(candidateLimit) || limit;
   const similarBaseProduct = buildPdpSimilarBaseProduct({
+    payload,
     canonicalProductForPdp,
     canonicalProductRef,
     canonicalProduct,
