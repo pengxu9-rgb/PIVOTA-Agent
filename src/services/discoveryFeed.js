@@ -62,12 +62,25 @@ const {
   _internals: productGroundingResolverInternals = {},
 } = require('./productGroundingResolver');
 const { activeProductsCacheSourceWhere } = require('./activeCatalogSourceSql');
+const {
+  fetchRelationshipGraphRecallForAnchors,
+  isRelationshipGraphSurfaceEnabled,
+  mapRelationshipGraphItemToDiscoveryProduct,
+} = require('./relationshipGraphRecall');
 let productIntelKbStore = null;
 
 const SCORING_VERSION = 'discovery_v2';
 const MAX_RECENT_VIEWS = 50;
 const MAX_RECENT_QUERIES = 8;
 const MAX_ANCHORS = 5;
+const DISCOVERY_RELATIONSHIP_GRAPH_MAX_ANCHORS = Math.max(
+  1,
+  Math.min(5, Number(process.env.DISCOVERY_RELATIONSHIP_GRAPH_MAX_ANCHORS || 2) || 2),
+);
+const DISCOVERY_RELATIONSHIP_GRAPH_LIMIT = Math.max(
+  1,
+  Math.min(60, Number(process.env.DISCOVERY_RELATIONSHIP_GRAPH_LIMIT || 24) || 24),
+);
 const MAX_CANDIDATE_FETCH = 120;
 const DEFAULT_MAX_BROWSE_CANDIDATE_FETCH = 720;
 const DEFAULT_DEBUG_TOP_CANDIDATES = 10;
@@ -2558,6 +2571,8 @@ function normalizeRecentView(raw, idx) {
   if (!raw || typeof raw !== 'object') return null;
   const merchantId = String(raw.merchant_id || raw.merchantId || '').trim();
   const productId = String(raw.product_id || raw.productId || raw.id || '').trim();
+  const externalProductId = String(raw.external_product_id || raw.externalProductId || '').trim();
+  const sourceProductId = String(raw.source_product_id || raw.sourceProductId || externalProductId).trim();
   const title = String(raw.title || raw.name || '').trim();
   const description = String(raw.description || '').trim();
   const brand = String(raw.brand || raw.vendor || '').trim();
@@ -2569,6 +2584,8 @@ function normalizeRecentView(raw, idx) {
   return {
     merchant_id: merchantId || null,
     product_id: productId || null,
+    external_product_id: externalProductId || null,
+    source_product_id: sourceProductId || null,
     title,
     description,
     brand,
@@ -3163,6 +3180,194 @@ function buildDiscoveryProfile(context = {}) {
     personalizationSource,
     queryTokens,
     hasInterestSignals,
+  };
+}
+
+function buildRelationshipGraphDiscoveryAnchorFromView(view = {}) {
+  if (!view || typeof view !== 'object') return null;
+  const productId = String(view.product_id || view.productId || view.id || '').trim();
+  const externalProductId = String(view.external_product_id || view.externalProductId || '').trim();
+  const sourceProductId = String(view.source_product_id || view.sourceProductId || externalProductId).trim();
+  const anchorProductId = productId || sourceProductId || externalProductId;
+  if (!anchorProductId && !view.title && !view.brand && !view.category && !view.product_type) return null;
+  return {
+    product_id: anchorProductId || null,
+    ...(externalProductId ? { external_product_id: externalProductId } : {}),
+    ...(sourceProductId ? { source_product_id: sourceProductId } : {}),
+    merchant_id: String(view.merchant_id || view.merchantId || '').trim() || null,
+    title: String(view.title || view.name || '').trim(),
+    name: String(view.title || view.name || '').trim(),
+    brand: String(view.brand || view.vendor || '').trim(),
+    category: String(view.category || '').trim(),
+    product_type: String(view.product_type || view.productType || '').trim(),
+  };
+}
+
+function buildRelationshipGraphDiscoveryAnchors(request = {}) {
+  const out = [];
+  const seen = new Set();
+  const push = (anchor) => {
+    if (!anchor || typeof anchor !== 'object') return;
+    const key = [
+      anchor.merchant_id || '',
+      anchor.product_id || '',
+      anchor.external_product_id || '',
+      anchor.source_product_id || '',
+      anchor.brand || '',
+      anchor.title || anchor.name || '',
+    ]
+      .map((value) => String(value || '').trim().toLowerCase())
+      .filter(Boolean)
+      .join('|');
+    if (!key || seen.has(key)) return;
+    seen.add(key);
+    out.push(anchor);
+  };
+
+  for (const view of Array.isArray(request?.context?.recent_views) ? request.context.recent_views : []) {
+    push(buildRelationshipGraphDiscoveryAnchorFromView(view));
+    if (out.length >= DISCOVERY_RELATIONSHIP_GRAPH_MAX_ANCHORS) return out;
+  }
+
+  const sourceProductRef = request?.source_product_ref && typeof request.source_product_ref === 'object'
+    ? request.source_product_ref
+    : null;
+  if (sourceProductRef?.product_id) {
+    push({
+      product_id: String(sourceProductRef.product_id || '').trim(),
+      merchant_id: String(sourceProductRef.merchant_id || '').trim() || null,
+    });
+  }
+
+  return out.slice(0, DISCOVERY_RELATIONSHIP_GRAPH_MAX_ANCHORS);
+}
+
+function buildRelationshipGraphDiscoveryStats(overrides = {}) {
+  return {
+    enabled: Boolean(overrides.enabled),
+    attempted: Boolean(overrides.attempted),
+    anchor_count: Number(overrides.anchor_count || 0),
+    anchor_ref_count: Number(overrides.anchor_ref_count || 0),
+    edge_count: Number(overrides.edge_count || 0),
+    candidate_count: Number(overrides.candidate_count || 0),
+    selected_count: Number(overrides.selected_count || 0),
+    ...(overrides.error ? { error: String(overrides.error) } : {}),
+  };
+}
+
+async function loadRelationshipGraphDiscoveryCandidates({
+  request,
+  limit,
+  enabled,
+  recallFn = fetchRelationshipGraphRecallForAnchors,
+  logger: log = logger,
+} = {}) {
+  const surfaceEnabled = enabled == null
+    ? isRelationshipGraphSurfaceEnabled('discovery_feed')
+    : enabled === true;
+  if (!surfaceEnabled) {
+    return {
+      products: [],
+      recallSummary: [],
+      stats: buildRelationshipGraphDiscoveryStats({ enabled: false }),
+    };
+  }
+
+  const anchors = buildRelationshipGraphDiscoveryAnchors(request);
+  if (!anchors.length) {
+    return {
+      products: [],
+      recallSummary: [],
+      stats: buildRelationshipGraphDiscoveryStats({ enabled: true, attempted: false }),
+    };
+  }
+
+  const startedAt = Date.now();
+  const recallLimit = Math.max(
+    1,
+    Math.min(
+      DISCOVERY_RELATIONSHIP_GRAPH_LIMIT,
+      Number(limit) || DISCOVERY_RELATIONSHIP_GRAPH_LIMIT,
+    ),
+  );
+  let result;
+  try {
+    result = await recallFn({
+      anchorProducts: anchors,
+      surface: 'discovery_feed',
+      market: DEFAULT_DISCOVERY_EXTERNAL_SEED_MARKET,
+      limit: recallLimit,
+      enabled: true,
+      logger: log,
+    });
+  } catch (err) {
+    log?.warn?.(
+      {
+        err: err?.message || String(err),
+      },
+      'discovery relationship graph recall failed',
+    );
+    return {
+      products: [],
+      recallSummary: [
+        {
+          provider: 'relationship_graph',
+          label: 'relationship_graph_recent_view',
+          query: anchors
+            .map((anchor) => anchor.product_id || anchor.external_product_id || anchor.title || anchor.brand)
+            .filter(Boolean)
+            .join(' | '),
+          offset: 0,
+          limit: recallLimit,
+          status: null,
+          returned: 0,
+          latency_ms: Date.now() - startedAt,
+          cache_hit: false,
+          failure_reason: err?.code || err?.message || 'fetch_failed',
+        },
+      ],
+      stats: buildRelationshipGraphDiscoveryStats({
+        enabled: true,
+        attempted: true,
+        anchor_count: anchors.length,
+        error: err?.code || err?.message || 'fetch_failed',
+      }),
+    };
+  }
+  const products = (Array.isArray(result?.items) ? result.items : [])
+    .map((item, index) => mapRelationshipGraphItemToDiscoveryProduct(item, { rank: index }))
+    .filter(Boolean);
+  const metadata = result?.metadata && typeof result.metadata === 'object' ? result.metadata : {};
+  const stats = buildRelationshipGraphDiscoveryStats({
+    enabled: true,
+    attempted: true,
+    anchor_count: anchors.length,
+    anchor_ref_count: metadata.anchor_ref_count,
+    edge_count: metadata.edge_count,
+    candidate_count: products.length,
+    error: metadata.error,
+  });
+
+  return {
+    products,
+    recallSummary: [
+      {
+        provider: 'relationship_graph',
+        label: 'relationship_graph_recent_view',
+        query: anchors
+          .map((anchor) => anchor.product_id || anchor.external_product_id || anchor.title || anchor.brand)
+          .filter(Boolean)
+          .join(' | '),
+        offset: 0,
+        limit: recallLimit,
+        status: metadata.error ? null : 200,
+        returned: products.length,
+        latency_ms: Date.now() - startedAt,
+        cache_hit: false,
+        ...(metadata.error ? { failure_reason: metadata.error } : {}),
+      },
+    ],
+    stats,
   };
 }
 
@@ -10656,6 +10861,7 @@ async function getDiscoveryFeed(payload = {}, options = {}) {
   let candidateCounts = buildCandidateCounts();
   let recallSummary = [];
   let providerBreakdown = [];
+  let relationshipGraphDiscoveryStats = buildRelationshipGraphDiscoveryStats({ enabled: false });
 
   try {
     request = normalizeDiscoveryRequest(payload);
@@ -10749,7 +10955,31 @@ async function getDiscoveryFeed(payload = {}, options = {}) {
       candidateLoadResult?.catalogUnavailableError instanceof DiscoveryCatalogUnavailableError
         ? candidateLoadResult.catalogUnavailableError
         : null;
-    let effectiveRawCandidates = rawCandidates;
+    const relationshipGraphDiscovery =
+      Array.isArray(options.candidateProducts)
+        ? {
+            products: [],
+            recallSummary: [],
+            stats: buildRelationshipGraphDiscoveryStats({ enabled: false }),
+          }
+        : await loadRelationshipGraphDiscoveryCandidates({
+            request,
+            limit: Math.min(candidateLimit, DISCOVERY_RELATIONSHIP_GRAPH_LIMIT),
+            enabled: options.relationshipGraphEnabled,
+            recallFn: options.relationshipGraphRecallFn,
+            logger,
+          });
+    relationshipGraphDiscoveryStats = relationshipGraphDiscovery.stats || relationshipGraphDiscoveryStats;
+    let effectiveRawCandidates =
+      Array.isArray(relationshipGraphDiscovery.products) && relationshipGraphDiscovery.products.length > 0
+        ? relationshipGraphDiscovery.products.concat(rawCandidates)
+        : rawCandidates;
+    if (Array.isArray(relationshipGraphDiscovery.products) && relationshipGraphDiscovery.products.length > 0) {
+      effectiveCandidateSource = `${effectiveCandidateSource}+relationship_graph`;
+    }
+    if (Array.isArray(relationshipGraphDiscovery.recallSummary) && relationshipGraphDiscovery.recallSummary.length > 0) {
+      recallSummary = recallSummary.concat(relationshipGraphDiscovery.recallSummary);
+    }
     observeDiscoveryCandidateCount({
       surface: request.surface,
       stage: 'raw',
@@ -10996,6 +11226,14 @@ async function getDiscoveryFeed(payload = {}, options = {}) {
       semanticDeduped,
       identityGraphDeduped: identityGraphDedupeStats?.duplicate_candidates_dropped,
     });
+    if (relationshipGraphDiscoveryStats?.enabled || relationshipGraphDiscoveryStats?.attempted) {
+      relationshipGraphDiscoveryStats = buildRelationshipGraphDiscoveryStats({
+        ...relationshipGraphDiscoveryStats,
+        selected_count: selectedEntries.filter(
+          (entry) => String(entry?.candidate?.provider || '').trim() === 'relationship_graph',
+        ).length,
+      });
+    }
 
     observeDiscoveryCandidateCount({
       surface: request.surface,
@@ -11123,6 +11361,11 @@ async function getDiscoveryFeed(payload = {}, options = {}) {
       ...(identityGraphDedupeStats?.applied
         ? {
             identity_graph: identityGraphDedupeStats,
+          }
+        : {}),
+      ...(relationshipGraphDiscoveryStats?.enabled || relationshipGraphDiscoveryStats?.attempted
+        ? {
+            relationship_graph: relationshipGraphDiscoveryStats,
           }
         : {}),
     };
@@ -11313,6 +11556,8 @@ module.exports = {
     normalizeDiscoveryRequest,
     normalizeDiscoveryCursor,
     normalizeCandidateProduct,
+    buildRelationshipGraphDiscoveryAnchors,
+    loadRelationshipGraphDiscoveryCandidates,
     applyIdentityGraphDiscoveryDedupe,
     resolveDiscoveryCandidateLimit,
     buildStableBrowseCatalogCountQuery,

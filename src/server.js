@@ -375,10 +375,9 @@ const {
 } = require('./services/RecommendationEngine');
 const productRelationshipGraph = require('./auroraBff/productRelationshipGraph');
 const {
-  buildAnchorRefsFromProduct: buildRelationshipGraphAnchorRefs,
-  listApprovedRelationshipEdgesForAnchor: listApprovedRelationshipEdges,
-  relationshipEdgeToSimilarItem,
-} = productRelationshipGraph;
+  fetchRelationshipGraphRecallForAnchor,
+  isRelationshipGraphSurfaceEnabled,
+} = require('./services/relationshipGraphRecall');
 const productRelationshipGraphInternal = productRelationshipGraph.__internal || {};
 const familyIdentityKey =
   typeof productRelationshipGraphInternal.familyIdentityKey === 'function'
@@ -24569,8 +24568,9 @@ async function fetchReviewSummaryCached(args = {}) {
 // Curated product-relationship graph (human-approved edges in
 // `product_relationship_edges`) is the high-trust complement to the dynamic
 // recall engine. Default OFF — flip the flag only after staging verification.
-const RELATIONSHIP_GRAPH_SERVING_ENABLED =
-  String(process.env.AURORA_BFF_RELATIONSHIP_GRAPH_ENABLED || '').trim().toLowerCase() === 'true';
+function isPdpRelationshipGraphServingEnabled() {
+  return isRelationshipGraphSurfaceEnabled('pdp_similar');
+}
 const SIMILAR_FAMILY_DEDUPE_ENABLED =
   String(process.env.AURORA_BFF_SIMILAR_FAMILY_DEDUPE_ENABLED || '').trim().toLowerCase() === 'true';
 
@@ -24671,22 +24671,13 @@ async function resolveSimilarFamilyDedupeContext({
 }
 
 async function fetchRelationshipGraphSimilarItems(anchorProduct, { market = 'US', limit = 24 } = {}) {
-  if (!RELATIONSHIP_GRAPH_SERVING_ENABLED) return [];
-  try {
-    const anchorRefs = buildRelationshipGraphAnchorRefs(anchorProduct || {});
-    if (!anchorRefs.length) return [];
-    const edges = await listApprovedRelationshipEdges({
-      anchorType: 'product',
-      anchorRefs,
-      market: firstNonEmptyString(market, anchorProduct?.market, 'US'),
-      limit: Math.max(1, Math.min(120, Number(limit) || 24)),
-    });
-    return (Array.isArray(edges) ? edges : []).map(relationshipEdgeToSimilarItem).filter(Boolean);
-  } catch (err) {
-    // The curated graph is additive — never let a reader failure break the PDP.
-    logger.warn?.({ err: err?.message }, 'relationship_graph_similar_fetch_failed');
-    return [];
-  }
+  return fetchRelationshipGraphRecallForAnchor({
+    anchorProduct,
+    surface: 'pdp_similar',
+    market: firstNonEmptyString(market, anchorProduct?.market, 'US'),
+    limit,
+    logger,
+  });
 }
 
 async function fetchSimilarProductsDeduped(args = {}) {
@@ -24696,11 +24687,20 @@ async function fetchSimilarProductsDeduped(args = {}) {
     const items = Array.isArray(rec?.items) ? rec.items : [];
     let curated = [];
     let relationshipGraphMeta;
-    if (RELATIONSHIP_GRAPH_SERVING_ENABLED) {
-      curated = await fetchRelationshipGraphSimilarItems(args?.pdp_product, {
+    if (isPdpRelationshipGraphServingEnabled()) {
+      const graphRecall = await fetchRelationshipGraphSimilarItems(args?.pdp_product, {
         market: args?.pdp_product?.market || 'US',
         limit: Number(args?.k) || 24,
       });
+      curated = Array.isArray(graphRecall?.items) ? graphRecall.items : [];
+      if (graphRecall?.metadata?.enabled) {
+        relationshipGraphMeta = {
+          relationship_graph_enabled: true,
+          relationship_graph_edge_count: Number(graphRecall?.metadata?.edge_count || 0),
+          relationship_graph_curated_count: curated.length,
+          relationship_graph_served_count: 0,
+        };
+      }
     }
 
     const combinedItems = curated.length ? [...curated, ...items] : items;
@@ -24723,6 +24723,7 @@ async function fetchSimilarProductsDeduped(args = {}) {
       const k = Number(args?.k);
       if (Number.isFinite(k) && k > 0) mergedItems = mergedItems.slice(0, k);
       relationshipGraphMeta = {
+        ...(relationshipGraphMeta || {}),
         relationship_graph_curated_count: curated.length,
         relationship_graph_served_count: mergedItems.filter(
           (item) => item && item.source === 'relationship_graph',
