@@ -719,6 +719,55 @@ describe('find_similar_products mainline wrapper', () => {
     );
   });
 
+  it('builds graph-only similar metadata for skipped accessory PDPs', async () => {
+    const app = require('../src/server');
+
+    const envelope = app._debug.buildRelationshipGraphOnlySimilarEnvelopeForSkippedAccessory({
+      limit: 2,
+      graphRecall: {
+        metadata: { edge_count: 3 },
+        items: [
+          {
+            product_id: 'sig_graph_1',
+            source: 'catalog_products',
+            recommendation_source: 'relationship_graph',
+            relationship_edge_id: 'edge_1',
+          },
+          {
+            product_id: 'sig_graph_2',
+            source: 'relationship_graph',
+            relationship_edge_id: 'edge_2',
+          },
+          {
+            product_id: 'sig_graph_3',
+            source: 'relationship_graph',
+            relationship_edge_id: 'edge_3',
+          },
+        ],
+      },
+    });
+
+    expect(envelope).toEqual(
+      expect.objectContaining({
+        status: 'success',
+        strategy: 'relationship_graph',
+        items: expect.arrayContaining([
+          expect.objectContaining({ product_id: 'sig_graph_1' }),
+          expect.objectContaining({ product_id: 'sig_graph_2' }),
+        ]),
+        metadata: expect.objectContaining({
+          similar_status: 'ready',
+          dynamic_recall_skipped: true,
+          dynamic_recall_skipped_reason: 'no_verified_accessory_matches',
+          relationship_graph_enabled: true,
+          relationship_graph_edge_count: 3,
+          relationship_graph_curated_count: 3,
+          relationship_graph_served_count: 2,
+        }),
+      }),
+    );
+  });
+
   it('keeps viable mainline recommendation sets ready while preserving underfill diagnostics', async () => {
     const app = require('../src/server');
 

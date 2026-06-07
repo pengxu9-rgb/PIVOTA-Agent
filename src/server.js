@@ -24723,6 +24723,36 @@ async function fetchRelationshipGraphSimilarItems(anchorProduct, { market = 'US'
   });
 }
 
+function buildRelationshipGraphOnlySimilarEnvelopeForSkippedAccessory({
+  graphRecall = null,
+  limit = 24,
+  skippedReason = 'no_verified_accessory_matches',
+} = {}) {
+  const graphItems = Array.isArray(graphRecall?.items) ? graphRecall.items : [];
+  if (!graphItems.length) return null;
+  const safeLimit = Number(limit);
+  const items = Number.isFinite(safeLimit) && safeLimit > 0
+    ? graphItems.slice(0, safeLimit)
+    : graphItems;
+  return {
+    status: 'success',
+    strategy: 'relationship_graph',
+    items,
+    metadata: {
+      similar_status: 'ready',
+      dynamic_recall_skipped: true,
+      dynamic_recall_skipped_reason: skippedReason,
+      low_confidence: false,
+      low_confidence_reason_codes: [],
+      underfill: 0,
+      relationship_graph_enabled: true,
+      relationship_graph_edge_count: Number(graphRecall?.metadata?.edge_count || 0),
+      relationship_graph_curated_count: graphItems.length,
+      relationship_graph_served_count: countRelationshipGraphSimilarProducts(items),
+    },
+  };
+}
+
 async function fetchSimilarProductsDeduped(args = {}) {
   const inflightKey = buildPdpSimilarInflightKey(args);
   const runOnce = async () => {
@@ -37975,7 +38005,29 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
         ? (async () => {
             const moduleStartedAt = Date.now();
             try {
+              const { fetchArgs } = buildPdpSimilarFetchArgs({
+                payload,
+                canonicalProductForPdp,
+                canonicalProductRef,
+                canonicalProduct,
+                bypassCache: similarCacheBypass,
+                debug,
+                excludeItems: preSimilarComponentCandidates,
+                requestMode: similarRequestMode,
+              });
               if (skipSimilarFetchForAccessory) {
+                if (isPdpRelationshipGraphServingEnabled()) {
+                  const graphRecall = await fetchRelationshipGraphSimilarItems(fetchArgs.pdp_product, {
+                    market: fetchArgs.pdp_product?.market || 'US',
+                    limit: Number(fetchArgs.k) || 24,
+                  });
+                  const graphOnlyEnvelope = buildRelationshipGraphOnlySimilarEnvelopeForSkippedAccessory({
+                    graphRecall,
+                    limit: Number(fetchArgs.k) || 24,
+                    skippedReason: 'no_verified_accessory_matches',
+                  });
+                  if (graphOnlyEnvelope) return graphOnlyEnvelope;
+                }
                 return {
                   status: 'empty',
                   strategy: 'related_products',
@@ -38020,16 +38072,6 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
                   directDeferred: true,
                 });
               }
-              const { fetchArgs } = buildPdpSimilarFetchArgs({
-                payload,
-                canonicalProductForPdp,
-                canonicalProductRef,
-                canonicalProduct,
-                bypassCache: similarCacheBypass,
-                debug,
-                excludeItems: preSimilarComponentCandidates,
-                requestMode: similarRequestMode,
-              });
               return await resolvePdpSimilarWithBudget(
                 fetchSimilarProductsDeduped(fetchArgs),
                 similarSyncBudgetMs,
@@ -46874,6 +46916,7 @@ module.exports._debug = {
   isRelationshipGraphSimilarProduct,
   countRelationshipGraphSimilarProducts,
   calibrateRelationshipGraphMetadataForVisibleProducts,
+  buildRelationshipGraphOnlySimilarEnvelopeForSkippedAccessory,
   isBundleOrSetPdpForComponentScopedSimilar,
   collectPdpComponentExternalSeedIds,
   excludeBundleComponentProductsFromSimilar,
