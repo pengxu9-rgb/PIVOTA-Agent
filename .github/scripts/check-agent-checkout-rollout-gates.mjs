@@ -16,6 +16,7 @@ const REQUIRED_DOC_MARKERS = [
   '## Required Gates',
   'No automated paid charge',
   'Strict create-order canary',
+  'Remote MCP and confirmation UI smoke',
   'Observability export',
   'Rollback',
   'checkout-payment-safety',
@@ -71,6 +72,8 @@ function main() {
     'test-count-floor must read reports from prior jobs');
   assert(/checkout-payment-safety/.test(rolloutDoc),
     'rollout doc must mention the backend checkout-payment-safety lane');
+  assert(/tests\/integration\/safety_kernel_mount\.node\.test\.cjs/.test(moneyPathWorkflow),
+    'Gateway strict-route workflow must run the strict Safety Kernel mount test');
 
   assertNoAutomatedChargeProbe(probeWorkflow);
   assertJobExists(probeWorkflow, 'strict-create-order-canary');

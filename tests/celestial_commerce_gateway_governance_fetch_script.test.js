@@ -90,4 +90,84 @@ esac
     expect(exportedLines).toHaveLength(4);
     expect(metadata.governance_candidate_records).toBe(3);
   });
+
+  test('passes an optional deployment id to Railway logs and reports it in metadata', () => {
+    const repoRoot = path.join(__dirname, '..');
+    const outDir = fs.mkdtempSync(path.join(os.tmpdir(), 'gateway-governance-fetch-'));
+    const binDir = fs.mkdtempSync(path.join(os.tmpdir(), 'gateway-governance-fetch-bin-'));
+    const scriptPath = path.join(
+      repoRoot,
+      'scripts',
+      'fetch_celestial_commerce_gateway_governance_logs.js',
+    );
+    const fixturePath = path.join(
+      repoRoot,
+      'scripts',
+      'fixtures',
+      'celestial_commerce_gateway_governance_raw_log_sample.ndjson',
+    );
+    const outputPath = path.join(outDir, 'gateway_governance_raw_log_export.ndjson');
+    const metadataPath = path.join(outDir, 'gateway_governance_raw_log_export.json');
+    const argsPath = path.join(outDir, 'railway_logs_args.txt');
+    const railwayStubPath = path.join(binDir, 'railway');
+    const deploymentId = '25bdb590-8265-4eb6-8917-18c9c5898946';
+
+    fs.writeFileSync(
+      railwayStubPath,
+      `#!/usr/bin/env bash
+set -euo pipefail
+cmd="\${1:-}"
+shift || true
+case "\${cmd}" in
+  link)
+    exit 0
+    ;;
+  logs)
+    printf '%s\\n' "$*" > "${argsPath}"
+    cat "${fixturePath}"
+    ;;
+  *)
+    echo "unexpected railway command: \${cmd}" >&2
+    exit 1
+    ;;
+esac
+`,
+      { mode: 0o755 },
+    );
+
+    execFileSync(
+      process.execPath,
+      [
+        scriptPath,
+        '--out',
+        outputPath,
+        '--metadata-out',
+        metadataPath,
+        '--project',
+        'Pivota Agent',
+        '--environment',
+        'production',
+        '--service',
+        'PIVOTA-Agent',
+        '--lines',
+        '4',
+        '--deployment',
+        deploymentId,
+      ],
+      {
+        cwd: repoRoot,
+        env: {
+          ...process.env,
+          PATH: `${binDir}:${process.env.PATH}`,
+        },
+        encoding: 'utf8',
+      },
+    );
+
+    const metadata = JSON.parse(fs.readFileSync(metadataPath, 'utf8'));
+    const logsArgs = fs.readFileSync(argsPath, 'utf8').trim().split(/\s+/);
+
+    expect(logsArgs.at(-1)).toBe(deploymentId);
+    expect(metadata.railway_deployment).toBe(deploymentId);
+  });
 });

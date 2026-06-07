@@ -43,6 +43,25 @@ describe('strict Safety Kernel mount on /agent/shop/v1/invoke', () => {
       .set('X-Test-Acp-Session-Id', 'acp_strict');
   }
 
+  function signedConfirmationHeaders({ order_id, user_ref = 'usr_strict', acp_session_id = 'acp_strict' }) {
+    const timestamp = String(Date.now());
+    const signature = app._debug.__agentCheckoutStrict.buildCheckoutConfirmationActionSignature({
+      timestamp,
+      user_ref,
+      acp_session_id,
+      order_id,
+      secret: CONFIRMATION_SECRET,
+    });
+    return {
+      'X-Pivota-Confirm-Timestamp': timestamp,
+      'X-Pivota-Confirm-Signature': signature,
+    };
+  }
+
+  function parseMcpToolResult(res) {
+    return JSON.parse(res.body.result.content[0].text);
+  }
+
   async function previewAndCreateOrder() {
     nock(API_BASE)
       .post('/agent/v2/quotes/preview', (body) => {
@@ -260,6 +279,117 @@ describe('strict Safety Kernel mount on /agent/shop/v1/invoke', () => {
       .expect(200);
 
     assert.deepEqual(webhook.body, { transitioned: 'paid' });
+    assert.equal(nock.isDone(), true);
+  });
+
+  it('mounts remote MCP create_checkout_session on the canonical strict kernel path', async () => {
+    nock(API_BASE)
+      .post('/agent/v2/quotes/preview', (body) => {
+        return (
+          body?.merchant_id === 'm_strict' &&
+          Array.isArray(body?.offer_refs) &&
+          body.offer_refs[0]?.product_id === 'p_strict' &&
+          body.offer_refs[0]?.variant_id === 'v_strict'
+        );
+      })
+      .reply(200, {
+        quote: {
+          quote_id: 'q_strict',
+          expires_at: '2026-12-31T00:00:00Z',
+          currency: 'USD',
+          price_breakdown: {
+            subtotal: '29.00',
+            discount_total: '0.00',
+            total: '29.00',
+            currency: 'USD',
+          },
+          shipping_breakdown: {
+            shipping_fee: '0.00',
+            delivery_options: [],
+          },
+          tax_breakdown: {
+            tax: '0.00',
+          },
+          provenance: {
+            engine: 'shopify_rest_checkout',
+            engine_ref: 'tok_strict',
+          },
+          line_items: [{ product_id: 'p_strict', variant_id: 'v_strict', quantity: 1 }],
+        },
+      });
+
+    const res = await strictHeaders(request(app).post('/mcp'))
+      .send({
+        jsonrpc: '2.0',
+        id: 'mcp-create-session-1',
+        method: 'tools/call',
+        params: {
+          name: 'create_checkout_session',
+          arguments: {
+            idempotency_key: 'idem_mcp_create_session',
+            user_ref: 'usr_body_attacker',
+            acp_session_id: 'acp_body_attacker',
+            quote: {
+              merchant_id: 'm_strict',
+              items: [
+                {
+                  product_id: 'p_strict',
+                  variant_id: 'v_strict',
+                  quantity: 1,
+                  amount: 999999,
+                },
+              ],
+              shipping_address: {
+                country: 'US',
+                postal_code: '94105',
+                city: 'San Francisco',
+                state: 'CA',
+              },
+            },
+          },
+        },
+      })
+      .expect(200);
+
+    const result = parseMcpToolResult(res);
+    assert.equal(result.status, 'ready_for_payment');
+    assert.match(result.session_id, /^q_/);
+    assert.equal(result.totals.total, 2900);
+    assert.equal(result.currency, 'USD');
+    assert.equal(nock.isDone(), true);
+  });
+
+  it('mounts host-only confirmation action with signed user-action verification', async () => {
+    const { order } = await previewAndCreateOrder();
+
+    const unsigned = await strictHeaders(request(app).post('/checkout/confirm'))
+      .send({
+        order_id: order.order_id,
+        user_ref: 'usr_body_attacker',
+        acp_session_id: 'acp_body_attacker',
+      });
+    assert.equal(unsigned.status, 403);
+    assert.equal(unsigned.body.error.code, 'CONFIRMATION_ACTION_REQUIRED');
+
+    const signed = await strictHeaders(request(app).post('/checkout/confirm'))
+      .set(signedConfirmationHeaders({ order_id: order.order_id }))
+      .send({
+        order_id: order.order_id,
+        user_ref: 'usr_body_attacker',
+        acp_session_id: 'acp_body_attacker',
+      })
+      .expect(200);
+    assert.equal(typeof signed.body.confirmation_token, 'string');
+    assert.ok(signed.body.confirmation_token.length > 20);
+
+    const commerce = await app._debug.__agentCheckoutStrict.getCommerceMount();
+    await assert.rejects(
+      commerce.mintConfirmation(
+        { order_id: order.order_id },
+        { user_ref: 'usr_attacker', acp_session_id: 'acp_strict' },
+      ),
+      (error) => error?.code === 'STATE_LINKAGE_MISMATCH',
+    );
     assert.equal(nock.isDone(), true);
   });
 

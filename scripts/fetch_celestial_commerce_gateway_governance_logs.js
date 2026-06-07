@@ -92,6 +92,13 @@ function main() {
   const filter = String(
     args.filter || process.env.GATEWAY_GOVERNANCE_FETCH_FILTER || '',
   ).trim();
+  const deployment = String(
+    args.deployment ||
+      args['deployment-id'] ||
+      process.env.GATEWAY_GOVERNANCE_RAILWAY_DEPLOYMENT ||
+      process.env.GATEWAY_GOVERNANCE_RAILWAY_DEPLOYMENT_ID ||
+      '',
+  ).trim();
 
   if (!project) throw new Error('project is required');
   if (!environment) throw new Error('environment is required');
@@ -110,6 +117,7 @@ function main() {
 
   const logsArgs = ['logs', '--json', '--lines', String(lines), '--service', service, '--environment', environment];
   if (filter) logsArgs.push('--filter', filter);
+  if (deployment) logsArgs.push(deployment);
   const stdout = execFileSync(railwayBin, logsArgs, {
     cwd: linkDir,
     env: cliEnv,
@@ -157,6 +165,7 @@ function main() {
     railway_environment: environment,
     railway_service: service,
     railway_workspace: workspace,
+    railway_deployment: deployment,
     lines_requested: lines,
     filter,
     out_path: outPath,

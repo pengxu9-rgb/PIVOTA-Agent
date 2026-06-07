@@ -106,6 +106,7 @@ Supported override envs:
 - `GATEWAY_GOVERNANCE_RAILWAY_ENVIRONMENT` default: `production`
 - `GATEWAY_GOVERNANCE_RAILWAY_SERVICE` default: `PIVOTA-Agent`
 - `GATEWAY_GOVERNANCE_RAILWAY_WORKSPACE` optional workspace selector
+- `GATEWAY_GOVERNANCE_RAILWAY_DEPLOYMENT` optional deployment id selector, useful when a canary ran on the previous deployment
 - `GATEWAY_GOVERNANCE_FETCH_LINES` default: `500`
 
 `Observability/Provenance Readiness` should only be treated as `green` when the report has both deploy truth and an automated raw-log export path. A manually supplied `GATEWAY_GOVERNANCE_LOG_INPUT_PATH` is still supported for diagnosis, but should not be used to claim the dimension is fully green.
