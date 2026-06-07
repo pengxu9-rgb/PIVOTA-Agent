@@ -32,6 +32,22 @@ Before enabling `submit_payment`, re-check `/version` and repeat the no-charge k
 | Readiness smoke | `/private/tmp/pivota-readiness-test-psp-probe-20260606T104229Z` showed checkout/order sync ready and PSP session created in `requires_action`; no terminal payment was completed. |
 | Artifact hygiene | Local readiness bundle value-scan passed after redaction; no Stripe session IDs, checkout URLs, secret keys, Shopify tokens, or admin order URLs remained. |
 
+## Latest Strict Create-Order Canary, 2026-06-07
+
+This gate is still open. It remains a no-charge gate and does not authorize production pay.
+
+| Check | Result |
+|---|---|
+| Gateway version under test | PIVOTA-Agent `91fc7d4499783afdebc9665c0ed81a56e1875259`, Railway deployment `67f6e143-e489-4b20-98ef-70538cadf9e5` during the open test-identity window. |
+| Backend version under test | `aded801cecfccad5b9f5280d71e74158971fe428`. |
+| Canary run | GitHub Actions run `27068467461`, job `Strict Create-Order Canary`, no `--charge` and no paid-charge env acknowledgements. |
+| Pinned merchant/product | Shopify merchant `merch_efbc46b4619cfbdf`, product `10064562258217`, shop `92sfrj-bi.myshopify.com`. |
+| Strict canary result | Failed before `create_order`: `preview_quote` tried 15 variants and every attempt returned HTTP `503 MERCHANT_UNAVAILABLE`. No unpaid order was created and no payment path was reached. |
+| Public Shopify visibility cross-check | `/products.json` pages 1-3 returned HTTP `200`; page 3 contained product `10064562258217` and all 15 variants. Fourteen variants were `available:true`; variant `53012665041193` was `available:false`. |
+| Public Shopify cartability cross-check | `POST /cart/add.js` for available variant `53012664942889` returned HTTP `200` with product `10064562258217`, variant title `Army Green / S`, and quantity `1`. This was an anonymous cart add only, not checkout or payment. |
+| Current interpretation | Strict identity and rail enforcement are working. The open blocker is the merchant Storefront API pricing path/token/channel used by the backend quote service, because public Online Store carting succeeds while Storefront pricing returns unavailable. |
+| Window close proof | GitHub Actions run `27068539620`, job `Strict Identity Gate`, passed after `AGENT_CHECKOUT_ALLOW_TEST_IDENTITY=0`; the strict money op returned HTTP `401 USER_AUTH_REQUIRED`. |
+
 ## Evidence Artifacts
 
 Use these local artifacts as private operator evidence only. Do not paste raw JSON into shared channels
@@ -54,6 +70,7 @@ These gates are not green and must remain manual. Keep
 
 | Gate | Required proof |
 |---|---|
+| Strict create-order canary | Remediate the Shopify Storefront pricing path/token/channel for the pinned canary product, then rerun the same no-charge canary in a short `AGENT_CHECKOUT_ALLOW_TEST_IDENTITY=1` window and close it immediately after. Expected proof is `preview_quote -> unpaid create_order`; `submit_payment` remains disabled. |
 | Credential rotation | Rotate Stripe test and Shopify credentials if the pre-redaction artifact bundle was shared or copied outside the local workspace. |
 | Paid terminal completion | A single Stripe test-mode canary reaches paid/authorized state, verified in the PSP dashboard. |
 | Payment status sync | Backend and gateway state bridge from `requires_action`/`awaiting_payment` to paid/authorized. |

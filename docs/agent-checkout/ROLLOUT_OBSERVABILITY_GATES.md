@@ -16,17 +16,17 @@ operator checks; it does not require runtime-code changes.
 | Observability export | Money-path audit events are exported to the gateway-governance raw-log path before production pay is enabled. | Ops |
 | Rollback | `AGENT_CHECKOUT_STRICT=0` must be the documented rollback, and `submit_payment` must be enabled last. | Ops |
 
-## Current Non-Charge Evidence, 2026-06-06
+## Current Non-Charge Evidence, 2026-06-07
 
 | Gate | Evidence |
 |---|---|
-| Production strict mode | `AGENT_CHECKOUT_STRICT=1`; strict/pay-disabled posture has been verified on production after docs-only deployments. Re-check `/version` before every pay promotion because docs-only merges can advance Railway deployment ids. |
+| Production strict mode | `AGENT_CHECKOUT_STRICT=1`; strict/pay-disabled posture has been verified on production after docs-only deployments. Latest checked gateway deployment was `91fc7d4499783afdebc9665c0ed81a56e1875259` / Railway deployment `9cf086ea-fe75-48d9-bfe9-0c9239a16d7b`. Re-check `/version` before every pay promotion because docs-only merges can advance Railway deployment ids. |
 | Production pay disabled | `AGENT_CHECKOUT_STRICT_SUBMIT_PAYMENT_ENABLED` unset/off; fake `submit_payment` returned HTTP `405 OPERATION_NOT_ALLOWED`. |
 | Staging pay disabled | Fake `submit_payment` returned HTTP `405 OPERATION_NOT_ALLOWED`. |
-| Strict identity | GitHub Actions run `27060426512`, job `Strict Identity Gate`, passed. |
+| Strict identity | GitHub Actions run `27068539620`, job `Strict Identity Gate`, passed after the controlled test-identity window was closed. A strict money op with only the platform probe key returned HTTP `401 USER_AUTH_REQUIRED`. |
 | No-charge wire-format | GitHub Actions run `27059885995`, job `probe`, passed for read-only plus `create_order`; workflow has no paid charge input. |
-| Strict create-order canary | Pending on the target-gateway test-identity window. GitHub Actions run `27066147463` proved product auto-selection reaches strict `preview_quote`, then fails with `401 USER_AUTH_REQUIRED`; no `create_order` was attempted. Open a short `AGENT_CHECKOUT_ALLOW_TEST_IDENTITY=1` window, rerun, then close it immediately after the job. |
-| Backend health | Production backend `17e0a1db428bc1c7c602f7136f8bcb896b86a5d4`, `db_ok=true`, no missing columns. |
+| Strict create-order canary | Not green. GitHub Actions run `27068467461` used the approved short `AGENT_CHECKOUT_ALLOW_TEST_IDENTITY=1` window and pinned Shopify merchant/product `merch_efbc46b4619cfbdf` / `10064562258217`; it reached strict `preview_quote`, tried 15 variants, and every attempt returned HTTP `503 MERCHANT_UNAVAILABLE`. No `create_order` was attempted. Public Shopify checks on `92sfrj-bi.myshopify.com` found the product and variants in `/products.json`; variant `53012664942889` accepted `/cart/add.js` with HTTP `200`, so the remaining blocker is the merchant Storefront API pricing path/token/channel, not strict identity or paid checkout. |
+| Backend health | Production backend `aded801cecfccad5b9f5280d71e74158971fe428`, `db_ok=true`, no missing columns. |
 | Artifact redaction | Local readiness bundle `/private/tmp/pivota-readiness-test-psp-probe-20260606T104229Z` passed a value scan after redaction. |
 
 These gates do not authorize production pay. They authorize the current posture only: strict quote/order
