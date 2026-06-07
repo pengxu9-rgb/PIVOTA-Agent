@@ -523,6 +523,7 @@ describe('product relationship graph store helpers', () => {
         queryFn,
       });
       const rawCall = queryFn.mock.calls.find(([sql]) => /FROM product_relationship_edges/.test(sql));
+      expect(rawCall[0]).not.toMatch(/\blabel_state\b/);
       expect(rawCall[1][3]).toBe(500);
       expect(edges).toHaveLength(2);
       expect(edges.map((edge) => edge.provenance.relationship_family_collapse.collapsed_edge_count).sort((a, b) => b - a)).toEqual([10, 1]);

@@ -1097,7 +1097,7 @@ async function listApprovedRelationshipEdgesForAnchorUncollapsed({
           relation_type, display_label, market, vertical, category_taxonomy, use_case,
           score_total, score_breakdown, price_evidence, source_refs, evidence_grade,
           review_status, why_candidate, tradeoffs, watchouts, provenance,
-          last_verified_at, expires_at, created_at, updated_at, label_state
+          last_verified_at, expires_at, created_at, updated_at
         FROM product_relationship_edges
         WHERE anchor_type = $1
           AND lower(anchor_ref) = ANY($2::text[])
