@@ -27333,6 +27333,7 @@ function buildInvokeUpstreamAuthHeaders({
   checkoutToken,
   allowInternalFallback = true,
   preferInternalFallback = false,
+  forceInternalFallback = false,
 } = {}) {
   const forwardedHeaders = pruneEmptyFields({
     'X-Agent-User-JWT': firstNonEmptyString(getInvokeAuthContext()?.agent_user_jwt),
@@ -27350,6 +27351,13 @@ function buildInvokeUpstreamAuthHeaders({
   const shouldUseInternalFallback = shouldPreferInternalInvokeUpstreamAuth(
     preferInternalFallback,
   );
+  if (forceInternalFallback && allowInternalFallback && PIVOTA_API_KEY) {
+    return {
+      'X-API-Key': PIVOTA_API_KEY,
+      Authorization: `Bearer ${PIVOTA_API_KEY}`,
+      ...forwardedHeaders,
+    };
+  }
   if (
     callerApiKey &&
     !(shouldUseInternalFallback && allowInternalFallback && PIVOTA_API_KEY)
@@ -27520,7 +27528,11 @@ async function invokeCommerceKernelRawUpstream(operation, payload, headers = {})
     url,
     headers: {
       'Content-Type': 'application/json',
-      ...buildInvokeUpstreamAuthHeaders({ allowInternalFallback: true, checkoutToken }),
+      ...buildInvokeUpstreamAuthHeaders({
+        allowInternalFallback: true,
+        checkoutToken,
+        forceInternalFallback: true,
+      }),
       ...headers,
     },
     data: requestBody,
@@ -47142,6 +47154,7 @@ module.exports._debug = {
   mergePublicBeautyUnifiedSearchProducts,
   resolvePublicBeautyCompoundIntent,
   shouldBridgePublicBeautySearchToDiscovery,
+  buildInvokeUpstreamAuthHeaders,
   commerceKernelErrorBody,
   sanitizeCommerceKernelErrorDetails,
   filterSimilarProductsWithCardHighlights,

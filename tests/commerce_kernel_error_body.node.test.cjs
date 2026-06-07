@@ -2,6 +2,7 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 
 process.env.NODE_ENV = process.env.NODE_ENV || 'test';
+process.env.PIVOTA_API_KEY = process.env.PIVOTA_API_KEY || 'backend_test_key';
 
 const app = require('../src/server');
 
@@ -37,4 +38,14 @@ test('commerce kernel error body preserves redacted diagnostics', () => {
   assert.equal(attempt.access_token, '[REDACTED]');
   assert.equal(attempt.total_amount, '[REDACTED_AMOUNT]');
   assert.match(attempt.message, /Storefront API/);
+});
+
+test('strict commerce upstream auth can force the configured backend key', () => {
+  const headers = app._debug.buildInvokeUpstreamAuthHeaders({
+    allowInternalFallback: true,
+    forceInternalFallback: true,
+  });
+
+  assert.equal(headers['X-API-Key'], 'backend_test_key');
+  assert.equal(headers.Authorization, 'Bearer backend_test_key');
 });
