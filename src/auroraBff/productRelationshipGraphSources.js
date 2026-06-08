@@ -1005,7 +1005,15 @@ async function loadAffectedProductAnchorCandidates({
           eps.external_product_id,
           eps.attached_product_key,
           eps.title,
-          eps.category,
+          COALESCE(
+            NULLIF(eps.seed_data->>'category', ''),
+            NULLIF(eps.seed_data->>'product_type', ''),
+            NULLIF(eps.seed_data->'snapshot'->>'category', ''),
+            NULLIF(eps.seed_data->'snapshot'->>'product_type', ''),
+            NULLIF(cp.category, ''),
+            NULLIF(cp.product_type, ''),
+            NULLIF(cp.category_path, '')
+          ) AS category,
           eps.price_amount,
           eps.price_currency,
           eps.market,
@@ -1057,7 +1065,6 @@ async function loadAffectedProductAnchorCandidates({
           ) AS product_ref,
           pc.product_data,
           pc.cached_at,
-          pc.updated_at,
           cp.product_key,
           cp.source_product_id,
           cp.pivota_signature_id,
@@ -1081,7 +1088,7 @@ async function loadAffectedProductAnchorCandidates({
           OR ('product:' || cp.pivota_signature_id) = ANY($1::text[])
           OR cp.content_key = ANY($1::text[])
         )
-        ORDER BY pc.cached_at DESC NULLS LAST, pc.updated_at DESC NULLS LAST, pc.id DESC
+        ORDER BY pc.cached_at DESC NULLS LAST, pc.id DESC
         LIMIT $2
       `,
       [terms, rowLimit],

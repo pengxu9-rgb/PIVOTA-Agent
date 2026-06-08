@@ -689,7 +689,9 @@ async function runReview({
   });
   const supplements = await fetchSupplementsForRows(rows, queryFn);
   const verdictReplay = readVerdictsFile(verdictsFile);
-  const llmProvider = verdictReplay ? null : (provider || createProviderFromEnv('relationship_graph_ai_review'));
+  const llmProvider = verdictReplay || rows.length === 0
+    ? null
+    : (provider || createProviderFromEnv('relationship_graph_ai_review'));
 
   const decisions = [];
   let appliedCount = 0;

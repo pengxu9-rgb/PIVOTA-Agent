@@ -4,6 +4,7 @@ const {
   buildAiReview,
   fetchCandidates,
   parseArgs,
+  runReview,
 } = require('../../scripts/review-relationship-candidate-labels');
 
 describe('review-relationship-candidate-labels', () => {
@@ -128,5 +129,45 @@ describe('review-relationship-candidate-labels', () => {
       new_label_state: 'ai_approved',
     });
     expect(queryFn).toHaveBeenCalledTimes(1);
+  });
+
+  test('empty dry-run does not require an LLM provider env var', async () => {
+    const savedEnv = {
+      GEMINI_API_KEY: process.env.GEMINI_API_KEY,
+      PIVOTA_GEMINI_API_KEY: process.env.PIVOTA_GEMINI_API_KEY,
+      GOOGLE_API_KEY: process.env.GOOGLE_API_KEY,
+      OPENAI_API_KEY: process.env.OPENAI_API_KEY,
+      LLM_API_KEY: process.env.LLM_API_KEY,
+    };
+    delete process.env.GEMINI_API_KEY;
+    delete process.env.PIVOTA_GEMINI_API_KEY;
+    delete process.env.GOOGLE_API_KEY;
+    delete process.env.OPENAI_API_KEY;
+    delete process.env.LLM_API_KEY;
+
+    try {
+      const queryFn = jest.fn(async () => ({ rows: [] }));
+
+      const result = await runReview({
+        cutoff: '2026-06-01T00:00:00Z',
+        minScore: 0,
+        limit: 25,
+        queryFn,
+      });
+
+      expect(result.summary).toEqual(expect.objectContaining({
+        dry_run: true,
+        reviewed_count: 0,
+        approved_count: 0,
+        rejected_count: 0,
+        applied_count: 0,
+      }));
+      expect(result.decisions).toEqual([]);
+    } finally {
+      for (const [key, value] of Object.entries(savedEnv)) {
+        if (value === undefined) delete process.env[key];
+        else process.env[key] = value;
+      }
+    }
   });
 });
