@@ -1393,6 +1393,9 @@ async function expandAnchorRefsWithGroupSiblings(baseRefs = [], { queryFn = quer
         error: err?.message,
         message: err?.message,
         code,
+        base_ref_count: refs.length,
+        ext_key_count: extKeys.length,
+        degraded_to_base_refs: true,
       },
       'aurora bff: relationship graph sibling expansion failed; serving base refs',
     );
