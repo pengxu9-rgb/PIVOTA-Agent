@@ -75,6 +75,14 @@ function resolveOutPath(filePath) {
   return target ? (path.isAbsolute(target) ? target : path.join(process.cwd(), target)) : '';
 }
 
+function writeJsonFile(filePath, payload) {
+  const resolved = resolveOutPath(filePath);
+  if (!resolved) return '';
+  fs.mkdirSync(path.dirname(resolved), { recursive: true });
+  fs.writeFileSync(resolved, `${JSON.stringify(payload, null, 2)}\n`, 'utf8');
+  return resolved;
+}
+
 function normalizeBatchSize(value) {
   const numeric = Number(value || 0);
   if (!Number.isFinite(numeric) || numeric <= 0) return 0;
@@ -483,7 +491,7 @@ function seedLooksSetOrBundle(row) {
   if (componentCount > 0) return true;
 
   const haystack = titleCategoryText(row);
-  return /\b(?:set|sets|kit|kits|bundle|bundles|duo|trio|routine|regimen|discovery|collection|pair|gift\s+set|bauble)\b/.test(haystack);
+  return /\b(?:sets?|kits?|bundles?|duo|trio|routine|regimen|discovery|collection|pair|gift\s+set|bauble)\b/.test(haystack);
 }
 
 function inferSetOrBundleCategoryShape(row) {
@@ -521,12 +529,21 @@ function inferSetOrBundleCategoryShape(row) {
 }
 
 function inferCatalogMirrorCategory(row) {
-  const setOrBundleShape = inferSetOrBundleCategoryShape(row);
-  if (setOrBundleShape) return setOrBundleShape;
-
   const explicitShape = explicitCategoryShape(row);
   const seedData = pickSeedData(row);
   const snapshot = pickSnapshot(row);
+  const reviewedCategoryPatch = asObject(seedData.reviewed_category_patch_v1 || snapshot.reviewed_category_patch_v1);
+  if (
+    explicitShape &&
+    asString(reviewedCategoryPatch.contract_version) === 'external_seed.reviewed_category_patch.v1' &&
+    asString(reviewedCategoryPatch.review_state)
+  ) {
+    return explicitShape;
+  }
+
+  const setOrBundleShape = inferSetOrBundleCategoryShape(row);
+  if (setOrBundleShape) return setOrBundleShape;
+
   const explicitCategory = normalizeCategoryToken(
     seedData.leaf_category ||
       seedData.product_type ||
@@ -765,6 +782,38 @@ function isReviewedBrandIdentityForLiveBootstrap(identity) {
   );
 }
 
+function pickBundleComponentRefs(row) {
+  const seedData = pickSeedData(row);
+  const snapshot = pickSnapshot(row);
+  const rootRefs = asArray(seedData.bundle_component_refs);
+  if (rootRefs.length > 0) return rootRefs;
+  return asArray(snapshot.bundle_component_refs);
+}
+
+function reviewedBundleComponentExternalProductIds(row) {
+  return Array.from(
+    new Set(
+      pickBundleComponentRefs(row)
+        .filter((ref) => asString(ref?.review_state).toLowerCase() === 'reviewed')
+        .map((ref) => asString(ref?.external_product_id || ref?.product_id))
+        .filter(Boolean),
+    ),
+  );
+}
+
+function normalizeComponentPriceEvidence(value) {
+  const evidence = asObject(value);
+  const reviewedCount = Number(evidence.reviewed_component_ref_count || 0);
+  const pricedCount = Number(evidence.priced_component_count || 0);
+  return {
+    reviewed_component_ref_count: Number.isFinite(reviewedCount) ? reviewedCount : 0,
+    priced_component_count: Number.isFinite(pricedCount) ? pricedCount : 0,
+    all_reviewed_components_priced: evidence.all_reviewed_components_priced === true,
+    priced_component_ids: asArray(evidence.priced_component_ids).map(asString).filter(Boolean),
+    missing_price_component_ids: asArray(evidence.missing_price_component_ids).map(asString).filter(Boolean),
+  };
+}
+
 function scoreMirrorServingQuality(mirror, options = {}) {
   const product = mirror?.product || {};
   const skus = Array.isArray(mirror?.skus) ? mirror.skus : [];
@@ -773,7 +822,12 @@ function scoreMirrorServingQuality(mirror, options = {}) {
   const canonicalUrl = normalizeUrl(product.canonical_url);
   const imageUrl = normalizeUrl(product.image_url);
   const description = asString(product.description);
-  const hasPrice = skus.some((item) => Number(item?.offer?.list_price) > 0 && asString(item?.offer?.currency));
+  const hasParentPrice = skus.some((item) => Number(item?.offer?.list_price) > 0 && asString(item?.offer?.currency));
+  const componentPriceEvidence = normalizeComponentPriceEvidence(options.componentPriceEvidence);
+  const componentPriceResolved =
+    componentPriceEvidence.reviewed_component_ref_count > 0 &&
+    componentPriceEvidence.all_reviewed_components_priced === true;
+  const hasPrice = hasParentPrice || componentPriceResolved;
   const identity = asObject(mirror?.row?.identity_listing);
   const identityLiveReadResolved =
     asString(identity.identity_status).toLowerCase() === 'approved' &&
@@ -811,6 +865,9 @@ function scoreMirrorServingQuality(mirror, options = {}) {
     identityBootstrapEligible,
     hasImage: Boolean(imageUrl),
     hasPrice,
+    hasParentPrice,
+    componentPriceResolved,
+    componentPriceEvidence,
     descriptionLength: description.length,
   };
 }
@@ -1277,6 +1334,80 @@ async function existingCounts(mirrors) {
   };
 }
 
+async function loadReviewedComponentPriceEvidence(mirrors) {
+  const requests = [];
+  const componentIds = new Set();
+  for (const mirror of mirrors || []) {
+    const parentId = asString(mirror?.row?.external_product_id);
+    const ids = reviewedBundleComponentExternalProductIds(mirror?.row);
+    if (!parentId || !ids.length) continue;
+    requests.push({ parentId, ids });
+    ids.forEach((id) => componentIds.add(id));
+  }
+  if (!componentIds.size) return new Map();
+
+  const res = await query(
+    `
+      WITH ids AS (
+        SELECT unnest($1::text[]) AS external_product_id
+      ),
+      offer_stats AS (
+        SELECT
+          cp.source_product_id AS external_product_id,
+          count(*) FILTER (WHERE co.list_price > 0)::int AS priced_offer_count
+        FROM catalog_products cp
+        LEFT JOIN catalog_offers co
+          ON co.product_key = cp.product_key
+        WHERE cp.merchant_id = $2
+          AND cp.platform = $3
+          AND cp.source_product_id = ANY($1::text[])
+        GROUP BY cp.source_product_id
+      )
+      SELECT
+        ids.external_product_id,
+        e.status AS seed_status,
+        e.price_amount AS seed_price_amount,
+        COALESCE(offer_stats.priced_offer_count, 0)::int AS priced_offer_count
+      FROM ids
+      LEFT JOIN external_product_seeds e
+        ON e.external_product_id = ids.external_product_id
+      LEFT JOIN offer_stats
+        ON offer_stats.external_product_id = ids.external_product_id
+    `,
+    [Array.from(componentIds), MERCHANT_ID, PLATFORM],
+  );
+
+  const componentPriceById = new Map();
+  for (const row of res.rows || []) {
+    const id = asString(row.external_product_id);
+    const seedPrice = normalizeAmount(row.seed_price_amount);
+    const pricedOfferCount = Number(row.priced_offer_count || 0);
+    componentPriceById.set(id, {
+      has_price: (seedPrice != null && seedPrice > 0) || pricedOfferCount > 0,
+      seed_status: asString(row.seed_status),
+      priced_offer_count: pricedOfferCount,
+    });
+  }
+
+  const byParent = new Map();
+  for (const request of requests) {
+    const priced = [];
+    const missing = [];
+    for (const id of request.ids) {
+      if (componentPriceById.get(id)?.has_price === true) priced.push(id);
+      else missing.push(id);
+    }
+    byParent.set(request.parentId, {
+      reviewed_component_ref_count: request.ids.length,
+      priced_component_count: priced.length,
+      all_reviewed_components_priced: request.ids.length > 0 && missing.length === 0,
+      priced_component_ids: priced.slice(0, 20),
+      missing_price_component_ids: missing.slice(0, 20),
+    });
+  }
+  return byParent;
+}
+
 function buildStaleDeletePlan(mirrors) {
   return mirrors.map((mirror) => ({
     product_key: mirror.productKey,
@@ -1375,7 +1506,12 @@ async function staleDeletePreview(mirrors, sampleLimit = 50) {
 async function applyMirrors(
   mirrors,
   dryRun,
-  { upsertServingState = false, batchSize = 0, bootstrapReviewedIdentityLiveRead = false } = {},
+  {
+    upsertServingState = false,
+    batchSize = 0,
+    bootstrapReviewedIdentityLiveRead = false,
+    componentPriceEvidenceById = new Map(),
+  } = {},
 ) {
   const existingBefore = await existingCounts(mirrors);
   const stalePreview = await staleDeletePreview(mirrors);
@@ -1538,6 +1674,7 @@ async function applyMirrors(
         if (upsertServingState) {
           const readiness = scoreMirrorServingQuality(mirror, {
             allowIdentityBootstrap: bootstrapReviewedIdentityLiveRead,
+            componentPriceEvidence: componentPriceEvidenceById.get(mirror.row.external_product_id),
           });
           const indexRes = await client.query(
             `
@@ -1855,6 +1992,72 @@ function findDuplicateCanonicals(rows) {
   return duplicates;
 }
 
+function dedupeStrings(values) {
+  const out = [];
+  const seen = new Set();
+  for (const value of Array.isArray(values) ? values : []) {
+    const text = asString(value);
+    const key = text.toLowerCase();
+    if (!text || seen.has(key)) continue;
+    seen.add(key);
+    out.push(text);
+  }
+  return out;
+}
+
+function buildAffectedProductsManifest({
+  mirrors = [],
+  skipped = [],
+  missingIds = [],
+  market = 'US',
+  mode = 'dry_run',
+  generatedAt = new Date().toISOString(),
+} = {}) {
+  const rows = (Array.isArray(mirrors) ? mirrors : []).map((mirror) => {
+    const externalProductId = asString(mirror.row?.external_product_id);
+    const sigId = asString(mirror.product?.pivota_signature_id);
+    const contentKey = asString(mirror.product?.content_key);
+    const productRefs = dedupeStrings([
+      externalProductId,
+      externalProductId ? `product:${externalProductId}` : '',
+      sigId,
+      sigId ? `product:${sigId}` : '',
+      contentKey,
+      mirror.productKey,
+    ]);
+    return {
+      external_product_id: externalProductId,
+      product_ref: externalProductId ? `product:${externalProductId}` : '',
+      product_refs: productRefs,
+      product_key: mirror.productKey,
+      product_group_id: mirror.productGroupId,
+      pivota_signature_id: sigId,
+      sig_id: sigId,
+      content_key: contentKey,
+      market: asString(mirror.row?.market || market).toUpperCase(),
+      brand: asString(mirror.product?.brand),
+      title: asString(mirror.product?.title),
+      canonical_url: asString(mirror.product?.canonical_url),
+      domain: asString(mirror.product?.source_domain || mirror.row?.domain),
+    };
+  });
+
+  return {
+    generated_at: generatedAt,
+    source: 'sync-external-seeds-to-catalog',
+    mode,
+    market: asString(market).toUpperCase(),
+    affected_count: rows.length,
+    external_product_ids: dedupeStrings(rows.map((row) => row.external_product_id)),
+    sig_ids: dedupeStrings(rows.map((row) => row.pivota_signature_id)),
+    content_keys: dedupeStrings(rows.map((row) => row.content_key)),
+    affected_refs: dedupeStrings(rows.flatMap((row) => row.product_refs)),
+    rows,
+    skipped,
+    missing_ids: missingIds,
+  };
+}
+
 async function run() {
   const dryRun = hasFlag('dry-run') || hasFlag('dryRun') || !hasFlag('apply');
   const write = !dryRun;
@@ -1870,11 +2073,14 @@ async function run() {
   );
   const market = asString(argValue('market', 'US')).toUpperCase();
   const out = resolveOutPath(argValue('out'));
+  const affectedProductsOut = resolveOutPath(argValue('affected-products-out') || argValue('affectedProductsOut'));
   const allowRandom = hasFlag('allow-random');
   const allowDuplicateCanonical = hasFlag('allow-duplicate-canonical');
   const upsertServingState = hasFlag('upsert-serving-state') || hasFlag('upsertServingState');
   const bootstrapReviewedIdentityLiveRead =
     hasFlag('bootstrap-reviewed-identity-live-read') || hasFlag('bootstrapReviewedIdentityLiveRead');
+  const allowReviewRequiredCatalogMirror =
+    hasFlag('allow-review-required-catalog-mirror') || hasFlag('allowReviewRequiredCatalogMirror');
   const batchSize = normalizeBatchSize(argValue('batch-size') || argValue('batchSize'));
   if (!ids.length) throw new Error('missing_external_product_ids');
   const rows = await fetchRows(ids, market);
@@ -1906,7 +2112,10 @@ async function run() {
       continue;
     }
     const identity = asObject(row.identity_listing);
-    if (identity.review_required === true || asString(identity.identity_status) === 'review_required') {
+    if (
+      !allowReviewRequiredCatalogMirror &&
+      (identity.review_required === true || asString(identity.identity_status) === 'review_required')
+    ) {
       skipped.push({ external_product_id: id, reason: 'identity_review_required' });
       continue;
     }
@@ -1923,16 +2132,19 @@ async function run() {
     }
     mirrors.push(mirror);
   }
+  const componentPriceEvidenceById = await loadReviewedComponentPriceEvidence(mirrors);
   const applied = await applyMirrors(mirrors, dryRun, {
     upsertServingState,
     batchSize,
     bootstrapReviewedIdentityLiveRead,
+    componentPriceEvidenceById,
   });
   const report = {
     generated_at: new Date().toISOString(),
     mode: dryRun ? 'dry_run' : 'apply',
     batch_size: batchSize || null,
     bootstrap_reviewed_identity_live_read: bootstrapReviewedIdentityLiveRead,
+    allow_review_required_catalog_mirror: allowReviewRequiredCatalogMirror,
     requested_ids: ids.length,
     fetched_rows: rows.length,
     mirror_rows: mirrors.length,
@@ -1958,14 +2170,27 @@ async function run() {
       first_offer: mirror.skus[0]?.offer,
       serving_readiness: scoreMirrorServingQuality(mirror, {
         allowIdentityBootstrap: bootstrapReviewedIdentityLiveRead,
+        componentPriceEvidence: componentPriceEvidenceById.get(mirror.row.external_product_id),
       }),
     })),
   };
+  const affectedProductsManifest = buildAffectedProductsManifest({
+    mirrors,
+    skipped,
+    missingIds,
+    market,
+    mode: report.mode,
+    generatedAt: report.generated_at,
+  });
+  if (affectedProductsOut) {
+    writeJsonFile(affectedProductsOut, affectedProductsManifest);
+    report.affected_products_out = affectedProductsOut;
+    report.affected_product_count = affectedProductsManifest.affected_count;
+  }
   const serialized = `${JSON.stringify(report, null, 2)}\n`;
   process.stdout.write(serialized);
   if (out) {
-    fs.mkdirSync(path.dirname(out), { recursive: true });
-    fs.writeFileSync(out, serialized, 'utf8');
+    writeJsonFile(out, report);
   }
 }
 
@@ -1984,6 +2209,7 @@ module.exports = {
     normalizeCategoryToken,
     titleCategoryText,
     buildMirror,
+    buildAffectedProductsManifest,
     scoreMirrorServingQuality,
   },
 };

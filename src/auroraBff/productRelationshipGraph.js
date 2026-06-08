@@ -7,6 +7,7 @@ const ANCHOR_TYPES = new Set(['product', 'need']);
 const PRICE_FRESHNESS_MS = 14 * 24 * 60 * 60 * 1000;
 const DEFAULT_MARKET = 'US';
 const DEFAULT_VERTICAL = 'beauty';
+const EXTERNAL_SEED_MERCHANT_ID = 'external_seed';
 
 const AUTHORITATIVE_SOURCE_TYPES = new Set([
   'official_pdp',
@@ -184,6 +185,53 @@ function extractProductName(snapshot) {
   return pickFirstString(obj.name, obj.display_name, obj.displayName, obj.title, obj.product_name, obj.productName);
 }
 
+function extractProductTitle(snapshot) {
+  const obj = isPlainObject(snapshot) ? snapshot : {};
+  return pickFirstString(obj.title, obj.name, obj.display_name, obj.displayName, obj.product_name, obj.productName);
+}
+
+function extractShadeSkuMarker(title) {
+  const match = String(title || '').match(/#[0-9]{2,3}\b|(?:\u2014|-)\s*[0-9]{2,3}\b|\b(?:LN|DN|DP)[0-9]{3}\b/i);
+  return match ? match[0].replace(/^(?:\u2014|-)\s*/, '#').toUpperCase() : '';
+}
+
+function hasVariantSuffix(title) {
+  return /\s(?:\u2014|-)\s/.test(String(title || ''));
+}
+
+function relationshipBaseTitle(title) {
+  return normalizeLower(title, 300)
+    .replace(/\s+(?:\u2014|-)\s+.*$/, '')
+    .replace(/\s+\[[^\]]+\]\s*/g, ' ')
+    .replace(/\s+\([^)]*\)\s*/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function relationshipFamilyTitle(title) {
+  return normalizeLower(title, 300)
+    .replace(/#[0-9]{2,3}\b/g, ' ')
+    .replace(/(?:\u2014|-)\s*[0-9]{2,3}\b/g, ' ')
+    .replace(/\b(?:ln|dn|dp)[0-9]{3}\b/g, ' ')
+    .replace(/\s+(?:\u2014|-)\s+.*$/, '')
+    .replace(/\s+\[[^\]]+\]\s*/g, ' ')
+    .replace(/\s+\([^)]*\)\s*/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function isComplexionSkuTitle(title) {
+  return /\b(foundation|concealer|bright fix|match stix|skin stick|skinstick|tinted fluid|tinted moisturizer|hydra vizor)\b/i.test(
+    String(title || ''),
+  );
+}
+
+function isNestedProductRef(ref) {
+  const text = normalizeString(ref, 260);
+  if (!/^product:/i.test(text)) return false;
+  return text.replace(/^product:/i, '').includes(':');
+}
+
 function buildDefaultDisplayLabel(relationType, priceRatio) {
   if (relationType === 'dupe') {
     return priceRatio != null && priceRatio <= 0.85 ? 'budget_alternative' : 'alternative';
@@ -293,6 +341,7 @@ function coerceRelationshipEdge(input = {}, options = {}) {
     source_refs: normalizeSourceRefs(src.source_refs || src.sourceRefs),
     evidence_grade: normalizeUpperEvidenceGrade(src.evidence_grade || src.evidenceGrade),
     review_status: normalizeLower(src.review_status || src.reviewStatus || 'pending', 32),
+    label_state: normalizeLower(src.label_state || src.labelState, 80),
     why_candidate: isPlainObject(src.why_candidate || src.whyCandidate)
       ? { ...(src.why_candidate || src.whyCandidate) }
       : {},
@@ -396,6 +445,73 @@ function isApprovedFreshEdge(edge, nowMs = Date.now()) {
   return new Date(normalized.expires_at).getTime() > nowMs;
 }
 
+function getRelationshipEdgeServingSuppressionReasons(edgeInput = {}) {
+  const edge = coerceRelationshipEdge(edgeInput);
+  const reasons = [];
+  if (isNestedProductRef(edge.anchor_ref) && edge.anchor_type === 'product') {
+    reasons.push('anchor_ref_unresolvable_nested_product_prefix');
+  }
+  if (isNestedProductRef(edge.candidate_product_ref)) {
+    reasons.push('candidate_ref_unresolvable_nested_product_prefix');
+  }
+
+  if (edge.label_state === 'ai_approved' && edge.relation_type === 'dupe') {
+    reasons.push('ai_approved_dupe_quarantined');
+  }
+
+  if (edge.label_state === 'ai_approved' && edge.relation_type === 'related_product') {
+    const anchorTitle = extractProductTitle(edge.anchor_snapshot);
+    const candidateTitle = extractProductTitle(edge.candidate_snapshot);
+    const anchorMarker = extractShadeSkuMarker(anchorTitle);
+    const candidateMarker = extractShadeSkuMarker(candidateTitle);
+    const anchorBase = relationshipBaseTitle(anchorTitle);
+    const candidateBase = relationshipBaseTitle(candidateTitle);
+    const anchorFamily = relationshipFamilyTitle(anchorTitle);
+    const candidateFamily = relationshipFamilyTitle(candidateTitle);
+    const sameBrand = Boolean(
+      extractBrand(edge.anchor_snapshot) &&
+        extractBrand(edge.anchor_snapshot) === extractBrand(edge.candidate_snapshot),
+    );
+    const bothComplexionSku = isComplexionSkuTitle(anchorTitle) && isComplexionSkuTitle(candidateTitle);
+    if (
+      anchorMarker &&
+      candidateMarker &&
+      anchorMarker !== candidateMarker &&
+      (
+        (anchorFamily && anchorFamily === candidateFamily) ||
+        (sameBrand && bothComplexionSku)
+      )
+    ) {
+      reasons.push('related_product_mismatched_shade_sku');
+    }
+
+    if (
+      anchorBase &&
+      candidateBase &&
+      anchorBase === candidateBase &&
+      normalizeLower(anchorTitle, 300) !== normalizeLower(candidateTitle, 300) &&
+      (hasVariantSuffix(anchorTitle) || hasVariantSuffix(candidateTitle) || anchorMarker || candidateMarker)
+    ) {
+      reasons.push('related_product_same_family_variant');
+    }
+
+    const brandText = `${extractBrand(edge.anchor_snapshot)} ${extractBrand(edge.candidate_snapshot)}`;
+    if (
+      /\bfenty\b/i.test(brandText) &&
+      (isComplexionSkuTitle(anchorTitle) || isComplexionSkuTitle(candidateTitle)) &&
+      (hasVariantSuffix(anchorTitle) || hasVariantSuffix(candidateTitle) || anchorMarker || candidateMarker)
+    ) {
+      reasons.push('related_product_fenty_complexion_sku_flood');
+    }
+  }
+
+  return Array.from(new Set(reasons));
+}
+
+function isRelationshipEdgeServingSafe(edgeInput = {}) {
+  return getRelationshipEdgeServingSuppressionReasons(edgeInput).length === 0;
+}
+
 function mapRowToEdge(row) {
   if (!row) return null;
   return coerceRelationshipEdge({
@@ -417,6 +533,7 @@ function mapRowToEdge(row) {
     source_refs: row.source_refs,
     evidence_grade: row.evidence_grade,
     review_status: row.review_status,
+    label_state: row.label_state,
     why_candidate: row.why_candidate,
     tradeoffs: row.tradeoffs,
     watchouts: row.watchouts,
@@ -439,6 +556,23 @@ function buildAnchorRefsFromProduct(anchor = {}) {
   };
   push(src.product_id || src.productId || src.sku_id || src.skuId || src.id, 'product');
   push(src.product_id || src.productId || src.sku_id || src.skuId || src.id);
+  // sig_* is the canonical product identity. Edges rekeyed to sig_* (migration 052+)
+  // are served via these refs when the upstream resolver returns a pivota_signature_id.
+  const sigId = src.pivota_signature_id || src.pivotaSignatureId;
+  push(sigId, 'product');
+  push(sigId);
+  // Backwards-compat: external-seed anchors stored as `product:ext_<hash>` before
+  // rekeying. Retained so existing ext_*-keyed human_approved edges continue to serve
+  // during the transition window (Phase 6b rekey). Remove after rekey is complete.
+  const externalId =
+    src.external_product_id ||
+    src.externalProductId ||
+    src.external_seed_product_id ||
+    src.externalSeedProductId ||
+    src.source_product_id ||
+    src.sourceProductId;
+  push(externalId, 'product');
+  push(externalId);
   push(src.url || src.canonical_url || src.canonicalUrl || src.pdp_url || src.pdpUrl, 'url');
   const brand = pickFirstString(src.brand, src.brand_name, src.brandName, src.vendor);
   const name = extractProductName(src);
@@ -494,6 +628,7 @@ function splitEdgesForRecoBlocks(edges = []) {
   };
   for (const edge of Array.isArray(edges) ? edges : []) {
     if (!isApprovedFreshEdge(edge)) continue;
+    if (!isRelationshipEdgeServingSafe(edge)) continue;
     const candidate = edgeToRecoCandidate(edge);
     if (edge.relation_type === 'dupe') {
       out.dupes.push(candidate);
@@ -504,6 +639,56 @@ function splitEdgesForRecoBlocks(edges = []) {
     }
   }
   return out;
+}
+
+function stripRelationshipRefPrefix(ref) {
+  return normalizeString(ref, 260).replace(/^[a-z][a-z0-9_+-]*:/i, '').trim();
+}
+
+// Adapts an approved edge into the PDP "similar products" item shape consumed by
+// the recall pipeline + buildRecommendations (server.js / pdpBuilder.js). External
+// seed is the only catalog the curated graph spans, so candidate ids map to the
+// `external_seed` merchant. Returns null when the candidate has no usable id.
+function relationshipEdgeToSimilarItem(edgeInput = {}) {
+  const edge = coerceRelationshipEdge(edgeInput);
+  if (!isRelationshipEdgeServingSafe(edge)) return null;
+  const snap = isPlainObject(edge.candidate_snapshot) ? edge.candidate_snapshot : {};
+  const productId = pickFirstString(
+    snap.product_id,
+    snap.productId,
+    snap.id,
+    stripRelationshipRefPrefix(edge.candidate_product_ref),
+  );
+  if (!productId) return null;
+  const brand = pickFirstString(
+    typeof snap.brand === 'string' ? snap.brand : isPlainObject(snap.brand) ? snap.brand.name : '',
+    snap.brand_name,
+    snap.brandName,
+    snap.vendor,
+  );
+  const url = pickFirstString(snap.url, snap.canonical_url, snap.canonicalUrl, snap.pdp_url, snap.pdpUrl);
+  const imageUrl = pickFirstString(snap.image_url, snap.image, Array.isArray(snap.images) ? snap.images[0] : '');
+  const name = extractProductName(snap);
+  const reason = pickFirstString(edge.display_label, edge.relation_type);
+  const price = getCandidatePrice(edge);
+  return {
+    product_id: productId,
+    external_product_id: productId,
+    merchant_id: EXTERNAL_SEED_MERCHANT_ID,
+    ...(name ? { title: name } : {}),
+    ...(brand ? { brand } : {}),
+    ...(snap.category ? { category: normalizeString(snap.category, 240) } : {}),
+    ...(url ? { url, canonical_url: url } : {}),
+    ...(imageUrl ? { image_url: imageUrl } : {}),
+    ...(price != null ? { price } : {}),
+    source: 'relationship_graph',
+    recommendation_source: 'relationship_graph',
+    ...(reason ? { reason, recommendation_reason: reason } : {}),
+    ...(Number.isFinite(edge.score_total) ? { x_score: edge.score_total } : {}),
+    relationship_edge_id: edge.id,
+    relationship_type: edge.relation_type,
+    ...(edge.display_label ? { display_label: edge.display_label } : {}),
+  };
 }
 
 async function listApprovedRelationshipEdgesForAnchor({
@@ -539,23 +724,27 @@ async function listApprovedRelationshipEdgesForAnchor({
           id, anchor_type, anchor_ref, anchor_snapshot, candidate_product_ref, candidate_snapshot,
           relation_type, display_label, market, vertical, category_taxonomy, use_case,
           score_total, score_breakdown, price_evidence, source_refs, evidence_grade,
-          review_status, why_candidate, tradeoffs, watchouts, provenance,
+          'approved'::text AS review_status, label_state,
+          why_candidate, tradeoffs, watchouts, provenance,
           last_verified_at, expires_at, created_at, updated_at
-        FROM product_relationship_edges
+        FROM relationship_candidate_labels
         WHERE anchor_type = $1
           AND lower(anchor_ref) = ANY($2::text[])
           AND lower(market) = $3
           AND vertical = 'beauty'
-          AND review_status = 'approved'
+          AND label_state IN ('human_approved','ai_approved')
           AND last_verified_at IS NOT NULL
           AND expires_at > now()
+          AND NOT (label_state = 'ai_approved' AND relation_type = 'dupe')
           ${relationSql}
         ORDER BY score_total DESC, updated_at DESC
         LIMIT $4
       `,
       params,
     );
-    return (Array.isArray(res?.rows) ? res.rows : []).map(mapRowToEdge).filter(Boolean);
+    return (Array.isArray(res?.rows) ? res.rows : [])
+      .map((row) => mapRowToEdge({ ...row, review_status: row.review_status || 'approved' }))
+      .filter((edge) => edge && isRelationshipEdgeServingSafe(edge));
   } catch (err) {
     const code = normalizeString(err && err.code, 20);
     if (code === 'NO_DATABASE' || code === '42P01') return [];
@@ -583,7 +772,7 @@ async function getRelationshipGraphCandidatesForAnchor({
     meta: {
       query_attempted: anchorRefs.length ? 1 : 0,
       relationship_graph_edge_count: edges.length,
-      attempted_sources: ['product_relationship_edges'],
+      attempted_sources: ['relationship_candidate_labels'],
       reason_counts: edges.length ? { relationship_graph_hit: edges.length } : { relationship_graph_miss: 1 },
     },
   };
@@ -598,23 +787,31 @@ async function upsertRelationshipEdge(input = {}, { queryFn = query, nowMs = Dat
     throw err;
   }
   const edge = validation.value;
+  const labelState = resolveRelationshipEdgeLabelState(edge);
+  const reviewedAt = labelState.endsWith('_approved') || labelState.endsWith('_rejected')
+    ? edge.last_verified_at
+    : null;
   await queryFn(
     `
-      INSERT INTO product_relationship_edges (
-        id, anchor_type, anchor_ref, anchor_snapshot, candidate_product_ref, candidate_snapshot,
+      INSERT INTO relationship_candidate_labels (
+        id, edge_id, anchor_type, anchor_ref, anchor_snapshot, candidate_product_ref, candidate_snapshot,
         relation_type, display_label, market, vertical, category_taxonomy, use_case,
         score_total, score_breakdown, price_evidence, source_refs, evidence_grade,
-        review_status, why_candidate, tradeoffs, watchouts, provenance,
-        last_verified_at, expires_at, updated_at
+        label_state, why_candidate, tradeoffs, watchouts,
+        human_review, reason_flags, prefilter_reasons, source_report, provenance,
+        reviewed_at, last_verified_at, expires_at, updated_at
       )
       VALUES (
-        $1, $2, $3, $4::jsonb, $5, $6::jsonb,
-        $7, $8, $9, $10, $11::jsonb, $12,
-        $13, $14::jsonb, $15::jsonb, $16::jsonb, $17,
-        $18, $19::jsonb, $20::jsonb, $21::jsonb, $22::jsonb,
-        $23::timestamptz, $24::timestamptz, now()
+        $1, $2, $3, $4, $5::jsonb, $6, $7::jsonb,
+        $8, $9, $10, $11, $12::jsonb, $13,
+        $14, $15::jsonb, $16::jsonb, $17::jsonb, $18,
+        $19, $20::jsonb, $21::jsonb, $22::jsonb,
+        $23::jsonb, $24, $25, $26, $27::jsonb,
+        $28::timestamptz, $29::timestamptz, $30::timestamptz, now()
       )
-      ON CONFLICT (id) DO UPDATE SET
+      ON CONFLICT (market, anchor_type, lower(anchor_ref), lower(candidate_product_ref), relation_type)
+      DO UPDATE SET
+        edge_id = EXCLUDED.edge_id,
         anchor_type = EXCLUDED.anchor_type,
         anchor_ref = EXCLUDED.anchor_ref,
         anchor_snapshot = EXCLUDED.anchor_snapshot,
@@ -631,16 +828,22 @@ async function upsertRelationshipEdge(input = {}, { queryFn = query, nowMs = Dat
         price_evidence = EXCLUDED.price_evidence,
         source_refs = EXCLUDED.source_refs,
         evidence_grade = EXCLUDED.evidence_grade,
-        review_status = EXCLUDED.review_status,
+        label_state = EXCLUDED.label_state,
         why_candidate = EXCLUDED.why_candidate,
         tradeoffs = EXCLUDED.tradeoffs,
         watchouts = EXCLUDED.watchouts,
+        human_review = EXCLUDED.human_review,
+        reason_flags = EXCLUDED.reason_flags,
+        prefilter_reasons = EXCLUDED.prefilter_reasons,
+        source_report = EXCLUDED.source_report,
         provenance = EXCLUDED.provenance,
+        reviewed_at = EXCLUDED.reviewed_at,
         last_verified_at = EXCLUDED.last_verified_at,
         expires_at = EXCLUDED.expires_at,
         updated_at = now()
     `,
     [
+      edge.id,
       edge.id,
       edge.anchor_type,
       edge.anchor_ref,
@@ -658,11 +861,16 @@ async function upsertRelationshipEdge(input = {}, { queryFn = query, nowMs = Dat
       normalizeJsonbParam(edge.price_evidence, {}),
       normalizeJsonbParam(edge.source_refs, []),
       edge.evidence_grade || null,
-      edge.review_status,
+      labelState,
       normalizeJsonbParam(edge.why_candidate, {}),
       normalizeJsonbParam(edge.tradeoffs, []),
       normalizeJsonbParam(edge.watchouts, []),
+      null,
+      [],
+      null,
+      null,
       normalizeJsonbParam(edge.provenance, {}),
+      reviewedAt,
       edge.last_verified_at,
       edge.expires_at,
     ],
@@ -675,6 +883,7 @@ const LABEL_STATES = new Set([
   'prefilter_rejected',
   'review_ready',
   'human_approved',
+  'ai_approved',
   'human_rejected',
   'needs_evidence',
 ]);
@@ -683,10 +892,44 @@ const REVIEW_STATUS_TO_LABEL_STATE = {
   approved: 'human_approved',
   rejected: 'human_rejected',
   pending: 'needs_evidence',
+  expired: 'needs_evidence',
+};
+
+const REVIEW_STATUS_COMPATIBLE_LABEL_STATES = {
+  approved: new Set(['human_approved', 'ai_approved']),
+  rejected: new Set(['human_rejected']),
+  pending: new Set(['needs_evidence']),
+  expired: new Set(['needs_evidence']),
 };
 
 function reviewStatusToLabelState(status) {
   return REVIEW_STATUS_TO_LABEL_STATE[normalizeLower(status, 80)] || '';
+}
+
+function resolveRelationshipEdgeLabelState(edge = {}) {
+  const reviewStatus = normalizeLower(edge.review_status || edge.reviewStatus, 80);
+  const fallbackLabelState = reviewStatusToLabelState(reviewStatus);
+  if (!fallbackLabelState) {
+    const err = new Error(`invalid_review_status_label_state:${reviewStatus || 'missing'}`);
+    err.code = 'INVALID_REVIEW_STATUS_LABEL_STATE';
+    throw err;
+  }
+
+  const explicitLabelState = normalizeLower(edge.label_state || edge.labelState, 80);
+  if (!explicitLabelState) return fallbackLabelState;
+  if (!LABEL_STATES.has(explicitLabelState)) {
+    const err = new Error(`invalid_label_state:${explicitLabelState}`);
+    err.code = 'INVALID_LABEL_STATE';
+    throw err;
+  }
+
+  const compatible = REVIEW_STATUS_COMPATIBLE_LABEL_STATES[reviewStatus] || new Set([fallbackLabelState]);
+  if (!compatible.has(explicitLabelState)) {
+    const err = new Error(`incompatible_review_status_label_state:${reviewStatus}:${explicitLabelState}`);
+    err.code = 'INCOMPATIBLE_REVIEW_STATUS_LABEL_STATE';
+    throw err;
+  }
+  return explicitLabelState;
 }
 
 function extractReasonFlags(humanReview) {
@@ -880,8 +1123,12 @@ module.exports = {
   coerceRelationshipEdge,
   validateRelationshipEdge,
   isApprovedFreshEdge,
+  isRelationshipEdgeServingSafe,
+  getRelationshipEdgeServingSuppressionReasons,
   edgeToRecoCandidate,
   splitEdgesForRecoBlocks,
+  relationshipEdgeToSimilarItem,
+  stripRelationshipRefPrefix,
   buildAnchorRefsFromProduct,
   listApprovedRelationshipEdgesForAnchor,
   getRelationshipGraphCandidatesForAnchor,
@@ -897,5 +1144,8 @@ module.exports = {
     normalizeSourceRefs,
     countAuthoritativeSources,
     buildEdgeId,
+    extractShadeSkuMarker,
+    relationshipBaseTitle,
+    relationshipFamilyTitle,
   },
 };

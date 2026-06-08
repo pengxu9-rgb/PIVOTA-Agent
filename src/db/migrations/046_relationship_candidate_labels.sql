@@ -28,6 +28,7 @@ CREATE TABLE IF NOT EXISTS relationship_candidate_labels (
                     'prefilter_rejected',
                     'review_ready',
                     'human_approved',
+                    'ai_approved',
                     'human_rejected',
                     'needs_evidence'
                   )),
@@ -78,5 +79,6 @@ SELECT
   why_candidate, tradeoffs, watchouts, provenance,
   last_verified_at, expires_at, created_at, updated_at
 FROM relationship_candidate_labels
-WHERE label_state = 'human_approved'
-  AND (expires_at IS NULL OR expires_at > now());
+WHERE label_state IN ('human_approved','ai_approved')
+  AND last_verified_at IS NOT NULL
+  AND expires_at > now();

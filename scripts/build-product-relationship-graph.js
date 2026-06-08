@@ -16,9 +16,12 @@ const {
 const {
   buildCandidatesByAnchorFromSources,
   loadProductRelationshipGraphSourceInputs,
+  normalizeProductCandidateSnapshot,
+  __internal: sourceInternals,
 } = require('../src/auroraBff/productRelationshipGraphSources');
 const {
   applyAllGates,
+  isIncoherentBeautyEdge,
 } = require('../src/auroraBff/productRelationshipGraphPreflight');
 const {
   lookupBeautyAttributesBatch,
@@ -60,6 +63,14 @@ function classifyEdgeForPrefilter({ edge, defaultLabelState, anchorAttrs, candid
   if (defaultLabelState !== 'generated') {
     return { label_state: defaultLabelState, prefilter_reasons: null, bucket: null };
   }
+  const incoherentReason = isIncoherentBeautyEdge(edge.anchor_snapshot, edge.candidate_snapshot, edge.relation_type);
+  if (incoherentReason) {
+    return {
+      label_state: 'prefilter_rejected',
+      prefilter_reasons: [incoherentReason],
+      bucket: 'rejected',
+    };
+  }
   const gateResult = applyAllGates(anchorAttrs, candidateAttrs, edge.relation_type);
   if (!gateResult.passes) {
     return {
@@ -98,6 +109,99 @@ function readInputFile(inputPath) {
   return { anchors: rows };
 }
 
+function parseDelimitedList(value) {
+  return String(value == null ? '' : value)
+    .split(/[\n,;\t ]+/g)
+    .map((item) => normalizeString(item, 512))
+    .filter(Boolean);
+}
+
+function readRefsFile(filePath) {
+  const resolved = resolvePathMaybeRelative(filePath);
+  if (!resolved) return [];
+  const body = fs.readFileSync(resolved, 'utf8').trim();
+  if (!body) return [];
+  if (body.startsWith('{') || body.startsWith('[')) {
+    return collectRefsFromManifest(JSON.parse(body));
+  }
+  return parseDelimitedList(body);
+}
+
+function collectRefsFromManifest(payload) {
+  const refs = [];
+  const push = (value) => {
+    if (Array.isArray(value)) {
+      for (const item of value) push(item);
+      return;
+    }
+    if (value && typeof value === 'object') {
+      for (const key of [
+        'product_ref',
+        'productRef',
+        'product_refs',
+        'productRefs',
+        'anchor_ref',
+        'anchorRef',
+        'external_product_id',
+        'externalProductId',
+        'source_product_id',
+        'sourceProductId',
+        'pivota_signature_id',
+        'pivotaSignatureId',
+        'sig_id',
+        'sigId',
+        'content_key',
+        'contentKey',
+        'id',
+      ]) {
+        push(value[key]);
+      }
+      return;
+    }
+    refs.push(...parseDelimitedList(value));
+  };
+
+  if (Array.isArray(payload)) push(payload);
+  else if (payload && typeof payload === 'object') {
+    for (const key of [
+      'affected_refs',
+      'affectedRefs',
+      'affected_product_refs',
+      'affectedProductRefs',
+      'product_refs',
+      'productRefs',
+      'external_product_ids',
+      'externalProductIds',
+      'sig_ids',
+      'sigIds',
+      'content_keys',
+      'contentKeys',
+      'rows',
+      'products',
+      'affected_products',
+      'affectedProducts',
+    ]) {
+      push(payload[key]);
+    }
+  }
+  return Array.from(new Set(refs.map((item) => normalizeString(item, 512)).filter(Boolean)));
+}
+
+function collectAffectedRefsFromArgs() {
+  const refs = [
+    ...parseDelimitedList(argValue('affected-refs')),
+    ...parseDelimitedList(argValue('external-product-ids')),
+    ...parseDelimitedList(argValue('sig-ids')),
+    ...parseDelimitedList(argValue('content-keys')),
+    ...readRefsFile(argValue('affected-refs-file')),
+    ...readRefsFile(argValue('affected-products-file')),
+    ...readRefsFile(argValue('external-product-ids-file')),
+    ...readRefsFile(argValue('sig-ids-file')),
+    ...readRefsFile(argValue('content-keys-file')),
+  ];
+  return Array.from(new Set(refs.map((item) => normalizeString(item, 512)).filter(Boolean)));
+}
+
 function normalizeString(value, max = 512) {
   const text = String(value == null ? '' : value).trim();
   if (!text) return '';
@@ -106,6 +210,69 @@ function normalizeString(value, max = 512) {
 
 function normalizeLower(value, max = 512) {
   return normalizeString(value, max).toLowerCase();
+}
+
+function stripRelationshipPrefix(value) {
+  return normalizeString(value, 512).replace(/^[a-z][a-z0-9_+-]*:/i, '');
+}
+
+function affectedRefKeys(refs = []) {
+  const keys = new Set();
+  for (const raw of Array.isArray(refs) ? refs : []) {
+    const text = normalizeLower(raw, 512);
+    if (!text) continue;
+    const bare = stripRelationshipPrefix(text).toLowerCase();
+    keys.add(text);
+    keys.add(`ref:${text}`);
+    keys.add(`id:${bare || text}`);
+    if (!/^[a-z][a-z0-9_+-]*:/i.test(text)) {
+      keys.add(`product:${text}`);
+      keys.add(`ref:product:${text}`);
+    }
+    if (bare && bare !== text) {
+      keys.add(bare);
+      keys.add(`product:${bare}`);
+      keys.add(`ref:product:${bare}`);
+      keys.add(`id:${bare}`);
+    }
+  }
+  return keys;
+}
+
+function productMatchesAffectedRefs(product, refs = []) {
+  const keys = affectedRefKeys(refs);
+  if (!keys.size) return true;
+  const normalized = normalizeProductCandidateSnapshot(product) || product || {};
+  const identityKeys = typeof sourceInternals.productIdentityKeys === 'function'
+    ? sourceInternals.productIdentityKeys(normalized)
+    : [];
+  const directKeys = [
+    normalized.product_ref,
+    normalized.product_id,
+    normalized.id,
+    normalized.external_product_id,
+    normalized.externalProductId,
+    normalized.pivota_signature_id,
+    normalized.pivotaSignatureId,
+    normalized.sig_id,
+    normalized.sigId,
+    normalized.url,
+    normalized.canonical_url,
+    normalized.canonicalUrl,
+  ];
+  for (const key of [...identityKeys, ...directKeys]) {
+    const text = normalizeLower(key, 512);
+    if (!text) continue;
+    if (keys.has(text) || keys.has(`ref:${text}`) || keys.has(`id:${stripRelationshipPrefix(text).toLowerCase()}`)) {
+      return true;
+    }
+  }
+  return false;
+}
+
+function filterAffectedAnchors(products = [], affectedRefs = []) {
+  if (!Array.isArray(affectedRefs) || !affectedRefs.length) return Array.isArray(products) ? products : [];
+  return (Array.isArray(products) ? products : []).filter((product) => productMatchesAffectedRefs(product, affectedRefs));
 }
 
 function toNumberOrNull(value) {
@@ -157,25 +324,34 @@ async function fetchProductsCacheBeautyRows(limit) {
     const res = await query(
       `
         SELECT
-          COALESCE(NULLIF(platform_product_id, ''), NULLIF(product_data->>'id', ''), id::text) AS product_ref,
-          product_data,
-          cached_at,
-          updated_at
-        FROM products_cache
+          COALESCE(NULLIF(pc.platform_product_id, ''), NULLIF(pc.product_data->>'id', ''), pc.id::text) AS product_ref,
+          pc.product_data,
+          pc.cached_at,
+          pc.updated_at,
+          cp.pivota_signature_id
+        FROM products_cache pc
+        LEFT JOIN catalog_products cp ON cp.source_product_id =
+          COALESCE(NULLIF(pc.platform_product_id, ''), NULLIF(pc.product_data->>'id', ''))
         WHERE (
-          lower(to_jsonb(product_data)::text) LIKE '%beauty%'
-          OR lower(to_jsonb(product_data)::text) LIKE '%skincare%'
-          OR lower(to_jsonb(product_data)::text) LIKE '%serum%'
-          OR lower(to_jsonb(product_data)::text) LIKE '%moisturizer%'
-          OR lower(to_jsonb(product_data)::text) LIKE '%cleanser%'
-          OR lower(to_jsonb(product_data)::text) LIKE '%sunscreen%'
+          lower(to_jsonb(pc.product_data)::text) LIKE '%beauty%'
+          OR lower(to_jsonb(pc.product_data)::text) LIKE '%skincare%'
+          OR lower(to_jsonb(pc.product_data)::text) LIKE '%serum%'
+          OR lower(to_jsonb(pc.product_data)::text) LIKE '%moisturizer%'
+          OR lower(to_jsonb(pc.product_data)::text) LIKE '%cleanser%'
+          OR lower(to_jsonb(pc.product_data)::text) LIKE '%sunscreen%'
         )
-        ORDER BY cached_at DESC NULLS LAST, id DESC
+        ORDER BY pc.cached_at DESC NULLS LAST, pc.id DESC
         LIMIT $1
       `,
       [Math.max(20, Math.min(Number(limit) || 1000, 5000))],
     );
-    return (Array.isArray(res?.rows) ? res.rows : []).map((row) => normalizeProductDataRow(row, 'products_cache'));
+    return (Array.isArray(res?.rows) ? res.rows : []).map((row) => {
+      const product = normalizeProductDataRow(row, 'products_cache');
+      return {
+        ...product,
+        ...(row.pivota_signature_id ? { product_ref: `product:${row.pivota_signature_id}` } : {}),
+      };
+    });
   } catch (err) {
     if (['NO_DATABASE', '42P01'].includes(String(err?.code || ''))) return [];
     throw err;
@@ -187,27 +363,29 @@ async function fetchExternalSeedBeautyRows(limit) {
     const res = await query(
       `
         SELECT
-          id,
-          external_product_id,
-          title,
-          price_amount,
-          market,
-          seed_data,
-          canonical_url,
-          updated_at,
-          created_at
-        FROM external_product_seeds
-        WHERE COALESCE(status, 'active') = 'active'
-          AND upper(COALESCE(market, 'US')) = 'US'
+          eps.id,
+          eps.external_product_id,
+          eps.title,
+          eps.price_amount,
+          eps.market,
+          eps.seed_data,
+          eps.canonical_url,
+          eps.updated_at,
+          eps.created_at,
+          cp.pivota_signature_id
+        FROM external_product_seeds eps
+        LEFT JOIN catalog_products cp ON cp.source_product_id = eps.external_product_id
+        WHERE COALESCE(eps.status, 'active') = 'active'
+          AND upper(COALESCE(eps.market, 'US')) = 'US'
           AND (
-            lower(to_jsonb(seed_data)::text) LIKE '%beauty%'
-            OR lower(to_jsonb(seed_data)::text) LIKE '%skincare%'
-            OR lower(to_jsonb(seed_data)::text) LIKE '%serum%'
-            OR lower(to_jsonb(seed_data)::text) LIKE '%moisturizer%'
-            OR lower(to_jsonb(seed_data)::text) LIKE '%cleanser%'
-            OR lower(to_jsonb(seed_data)::text) LIKE '%sunscreen%'
+            lower(to_jsonb(eps.seed_data)::text) LIKE '%beauty%'
+            OR lower(to_jsonb(eps.seed_data)::text) LIKE '%skincare%'
+            OR lower(to_jsonb(eps.seed_data)::text) LIKE '%serum%'
+            OR lower(to_jsonb(eps.seed_data)::text) LIKE '%moisturizer%'
+            OR lower(to_jsonb(eps.seed_data)::text) LIKE '%cleanser%'
+            OR lower(to_jsonb(eps.seed_data)::text) LIKE '%sunscreen%'
           )
-        ORDER BY updated_at DESC NULLS LAST, created_at DESC NULLS LAST
+        ORDER BY eps.updated_at DESC NULLS LAST, eps.created_at DESC NULLS LAST
         LIMIT $1
       `,
       [Math.max(20, Math.min(Number(limit) || 1000, 5000))],
@@ -216,7 +394,11 @@ async function fetchExternalSeedBeautyRows(limit) {
       const product = normalizeProductDataRow(row, 'external_product_seed');
       return {
         ...product,
-        product_ref: product.product_ref || `external:${normalizeString(row.external_product_id || row.id)}`,
+        // Use canonical sig_* ref when available so all platform listings of the
+        // same product generate edges under one shared identity.
+        product_ref: row.pivota_signature_id
+          ? `product:${row.pivota_signature_id}`
+          : (product.product_ref || `external:${normalizeString(row.external_product_id || row.id)}`),
         name: product.name || normalizeString(row.title),
         url: normalizeString(row.canonical_url || product.url),
         price: toNumberOrNull(product.price ?? row.price_amount),
@@ -306,6 +488,7 @@ async function buildInputsFromDb({
   sourceLimit = limit,
   anchorOffset = 0,
   market = 'US',
+  affectedRefs = [],
   maxPerAnchor = 24,
   includeTransitiveRecall = true,
   maxBridgePerAnchor = 8,
@@ -316,10 +499,12 @@ async function buildInputsFromDb({
     queryFn: query,
     limit: sourceLimit,
     market,
+    affectedRefs,
   });
   const products = sourceInputs.products || [];
   const offset = Math.max(0, Number(anchorOffset) || 0);
-  const anchors = products.slice(offset, offset + limit);
+  const scopedProducts = filterAffectedAnchors(products, affectedRefs);
+  const anchors = scopedProducts.slice(offset, offset + limit);
   return {
     anchors,
     candidatesByAnchor: buildCandidatesByAnchorFromSources({
@@ -338,10 +523,13 @@ async function buildInputsFromDb({
     sourceDiagnostics: {
       database_configured: Boolean(process.env.DATABASE_URL),
       products_available: products.length,
+      affected_ref_count: Array.isArray(affectedRefs) ? affectedRefs.length : 0,
+      affected_anchor_count: scopedProducts.length,
       source_counts: sourceInputs.source_counts,
       builder_options: {
         source_limit: sourceLimit,
         anchor_offset: offset,
+        affected_refs_scoped: Boolean(Array.isArray(affectedRefs) && affectedRefs.length),
         max_per_anchor: maxPerAnchor,
         include_transitive_recall: includeTransitiveRecall,
         max_bridge_per_anchor: maxBridgePerAnchor,
@@ -368,11 +556,13 @@ async function main() {
   const maxBridgePerAnchor = numberArg('max-bridge-per-anchor', 8, { min: 1, max: 24 });
   const maxBridgeCandidates = numberArg('max-bridge-candidates', 8, { min: 1, max: 24 });
   const maxTransitivePerAnchor = numberArg('max-transitive-per-anchor', 8, { min: 0, max: 24 });
+  const affectedRefs = collectAffectedRefsFromArgs();
   const payload = input || await buildInputsFromDb({
     limit,
     sourceLimit,
     anchorOffset,
     market,
+    affectedRefs,
     maxPerAnchor,
     includeTransitiveRecall,
     maxBridgePerAnchor,
@@ -448,6 +638,7 @@ async function main() {
       ...report.summary,
       source_counts: payload.sourceCounts || payload.source_counts || payload.sourceDiagnostics?.source_counts || null,
       source_diagnostics: payload.sourceDiagnostics || payload.source_diagnostics || null,
+      affected_ref_count: affectedRefs.length || payload.sourceDiagnostics?.affected_ref_count || 0,
       dry_run: !hasFlag('apply'),
       applied_count: applied,
       prefilter_applied: hasFlag('apply') && defaultLabelState === 'generated',
@@ -487,6 +678,10 @@ module.exports = {
   buildNeedCandidateMap,
   attachCandidateSignals,
   numberArg,
+  collectRefsFromManifest,
+  parseDelimitedList,
+  filterAffectedAnchors,
+  productMatchesAffectedRefs,
   classifyEdgeForPrefilter,
   resolveDefaultLabelState,
 };

@@ -1,5 +1,9 @@
 const {
   numberArg,
+  collectRefsFromManifest,
+  filterAffectedAnchors,
+  parseDelimitedList,
+  productMatchesAffectedRefs,
   classifyEdgeForPrefilter,
   resolveDefaultLabelState,
 } = require('../../scripts/build-product-relationship-graph');
@@ -35,6 +39,55 @@ describe('build product relationship graph CLI helpers', () => {
 
     expect(numberArg('source-limit', 200, { min: 200, max: 5000 })).toBe(1600);
     expect(numberArg('anchor-offset', 0, { min: 0, max: 5000 })).toBe(1200);
+  });
+
+  test('parses affected refs from delimited text and manifests', () => {
+    expect(parseDelimitedList('product:ext_a, ext_b\nsig_c')).toEqual(['product:ext_a', 'ext_b', 'sig_c']);
+
+    expect(
+      collectRefsFromManifest({
+        affected_products: [
+          {
+            external_product_id: 'ext_a',
+            pivota_signature_id: 'sig_a',
+          },
+        ],
+        externalProductIds: ['ext_b'],
+        sigIds: ['sig_b'],
+        contentKeys: ['content_c'],
+      }),
+    ).toEqual(expect.arrayContaining(['ext_a', 'sig_a', 'ext_b', 'sig_b', 'content_c']));
+  });
+
+  test('matches affected refs against product refs, bare ids, and sig ids', () => {
+    const products = [
+      {
+        product_ref: 'product:ext_a',
+        product_id: 'ext_a',
+        name: 'A Serum',
+        brand: 'Brand A',
+      },
+      {
+        product_ref: 'product:sig_b',
+        product_id: 'sig_b',
+        name: 'B Cream',
+        brand: 'Brand B',
+      },
+      {
+        product_ref: 'product:ext_c',
+        product_id: 'ext_c',
+        name: 'C Cleanser',
+        brand: 'Brand C',
+      },
+    ];
+
+    expect(productMatchesAffectedRefs(products[0], ['ext_a'])).toBe(true);
+    expect(productMatchesAffectedRefs(products[1], ['product:sig_b'])).toBe(true);
+    expect(productMatchesAffectedRefs(products[2], ['sig_b'])).toBe(false);
+    expect(filterAffectedAnchors(products, ['ext_a', 'sig_b']).map((row) => row.product_ref)).toEqual([
+      'product:ext_a',
+      'product:sig_b',
+    ]);
   });
 });
 
@@ -85,6 +138,29 @@ describe('classifyEdgeForPrefilter — Phase B gate routing', () => {
     expect(r.prefilter_reasons).toEqual(
       expect.arrayContaining(['category_leaf_mismatch:lip_balm_vs_eye_cream']),
     );
+  });
+
+  test('snapshot junk filter routes generated non-beauty pairs to prefilter_rejected', () => {
+    const r = classifyEdgeForPrefilter({
+      edge: edge({
+        anchor_snapshot: {
+          name: 'Amethyst Crystal Charm Necklace',
+          category: 'Beauty Product',
+        },
+        candidate_snapshot: {
+          name: 'Powder Blush',
+          category: 'Makeup > Blush',
+        },
+      }),
+      defaultLabelState: 'generated',
+      anchorAttrs: attrs(),
+      candidateAttrs: attrs(),
+    });
+    expect(r).toEqual({
+      label_state: 'prefilter_rejected',
+      prefilter_reasons: ['anchor_non_beauty:jewelry_crystal_or_charm'],
+      bucket: 'rejected',
+    });
   });
 
   test('missing anchor attrs: skipped (passed-through, no gate applied)', () => {

@@ -1,7 +1,10 @@
 const {
   validateRelationshipEdge,
+  isRelationshipEdgeServingSafe,
+  getRelationshipEdgeServingSuppressionReasons,
   edgeToRecoCandidate,
   splitEdgesForRecoBlocks,
+  relationshipEdgeToSimilarItem,
   buildAnchorRefsFromProduct,
   listApprovedRelationshipEdgesForAnchor,
   upsertRelationshipEdge,
@@ -222,6 +225,117 @@ describe('product relationship graph edge validation', () => {
     const out = splitEdgesForRecoBlocks([valid, pending, expired]);
     expect(out.dupes.map((candidate) => candidate.product_id)).toEqual(['candidate_1']);
   });
+
+  test('runtime serving guard suppresses AI-approved dupes but leaves human-approved dupes servable', () => {
+    const aiApprovedDupe = approvedDupe({
+      label_state: 'ai_approved',
+      candidate_product_ref: 'product:candidate_ai_dupe',
+      candidate_snapshot: {
+        product_id: 'candidate_ai_dupe',
+        brand: 'Value Brand',
+        name: 'Generic Barrier Serum Alternative',
+        category_taxonomy: ['skincare', 'serum'],
+        price: 80,
+      },
+    });
+    const humanApprovedDupe = approvedDupe({ label_state: 'human_approved' });
+
+    expect(isRelationshipEdgeServingSafe(aiApprovedDupe)).toBe(false);
+    expect(getRelationshipEdgeServingSuppressionReasons(aiApprovedDupe)).toContain('ai_approved_dupe_quarantined');
+    expect(isRelationshipEdgeServingSafe(humanApprovedDupe)).toBe(true);
+
+    const out = splitEdgesForRecoBlocks([aiApprovedDupe, humanApprovedDupe]);
+    expect(out.dupes.map((candidate) => candidate.product_id)).toEqual(['candidate_1']);
+  });
+
+  test('runtime serving guard suppresses audited shade/SKU related-product floods', () => {
+    const shadeMismatch = approvedDupe({
+      label_state: 'ai_approved',
+      relation_type: 'related_product',
+      display_label: 'related_product',
+      score_total: 1,
+      anchor_snapshot: {
+        product_id: 'fenty_concealer_130',
+        brand: 'Fenty Beauty',
+        name: "Pro Filt'r Instant Retouch Concealer - #130",
+      },
+      candidate_product_ref: 'product:fenty_foundation_315',
+      candidate_snapshot: {
+        product_id: 'fenty_foundation_315',
+        brand: 'Fenty Beauty',
+        name: "Soft'lit Naturally Luminous Longwear Foundation - 315",
+      },
+    });
+    const sameFamilyVariant = approvedDupe({
+      label_state: 'ai_approved',
+      relation_type: 'related_product',
+      display_label: 'related_product',
+      anchor_snapshot: {
+        product_id: 'boj_ln110',
+        brand: 'Beauty of Joseon',
+        name: 'Daily Tinted Fluid Sunscreen LN110',
+      },
+      candidate_product_ref: 'product:boj_dp320',
+      candidate_snapshot: {
+        product_id: 'boj_dp320',
+        brand: 'Beauty of Joseon',
+        name: 'Daily Tinted Fluid Sunscreen DP320',
+      },
+    });
+    const trailingVariant = approvedDupe({
+      label_state: 'ai_approved',
+      relation_type: 'related_product',
+      display_label: 'related_product',
+      anchor_snapshot: {
+        product_id: 'apricot_glow',
+        brand: 'Embryolisse',
+        name: 'Radiant Complexion Cream - Apricot Glow',
+      },
+      candidate_product_ref: 'product:pink_glow',
+      candidate_snapshot: {
+        product_id: 'pink_glow',
+        brand: 'Embryolisse',
+        name: 'Radiant Complexion Cream - Pink Glow',
+      },
+    });
+    const sizeLikePair = approvedDupe({
+      label_state: 'ai_approved',
+      relation_type: 'related_product',
+      display_label: 'related_product',
+      anchor_snapshot: {
+        product_id: 'serum_30',
+        brand: 'Fixture Beauty',
+        name: 'Barrier Serum - 30',
+      },
+      candidate_product_ref: 'product:cream_50',
+      candidate_snapshot: {
+        product_id: 'cream_50',
+        brand: 'Fixture Beauty',
+        name: 'Barrier Cream - 50',
+      },
+    });
+
+    expect(getRelationshipEdgeServingSuppressionReasons(shadeMismatch)).toEqual(
+      expect.arrayContaining([
+        'related_product_mismatched_shade_sku',
+        'related_product_fenty_complexion_sku_flood',
+      ]),
+    );
+    expect(isRelationshipEdgeServingSafe(shadeMismatch)).toBe(false);
+    expect(getRelationshipEdgeServingSuppressionReasons(sameFamilyVariant)).toContain(
+      'related_product_mismatched_shade_sku',
+    );
+    expect(getRelationshipEdgeServingSuppressionReasons(trailingVariant)).toContain(
+      'related_product_same_family_variant',
+    );
+
+    const out = splitEdgesForRecoBlocks([shadeMismatch, sameFamilyVariant, trailingVariant]);
+    expect(out.related_products).toEqual([]);
+    expect(getRelationshipEdgeServingSuppressionReasons(sizeLikePair)).not.toContain(
+      'related_product_mismatched_shade_sku',
+    );
+    expect(isRelationshipEdgeServingSafe(sizeLikePair)).toBe(true);
+  });
 });
 
 describe('product relationship graph store helpers', () => {
@@ -241,6 +355,74 @@ describe('product relationship graph store helpers', () => {
         'text:Top Brand:Luxury Serum',
       ]),
     );
+  });
+
+  test('anchor refs derive an ext_ product identity from external_product_id', () => {
+    // External-seed PDPs sometimes carry a pivota signature as product_id while
+    // the ext_ key (which the curated edges are anchored on) lives on
+    // external_product_id. Matching must still resolve.
+    expect(
+      buildAnchorRefsFromProduct({
+        product_id: 'sig_abc123',
+        external_product_id: 'ext_066c4dfce36363f1dfd2c450',
+      }),
+    ).toEqual(
+      expect.arrayContaining([
+        'product:sig_abc123',
+        'product:ext_066c4dfce36363f1dfd2c450',
+        'ext_066c4dfce36363f1dfd2c450',
+      ]),
+    );
+  });
+
+  test('relationshipEdgeToSimilarItem maps a snapshot-backed edge to a similar item', () => {
+    const item = relationshipEdgeToSimilarItem(approvedDupe());
+    expect(item).toMatchObject({
+      product_id: 'candidate_1',
+      external_product_id: 'candidate_1',
+      merchant_id: 'external_seed',
+      title: 'Barrier Serum Alternative',
+      brand: 'Value Brand',
+      url: 'https://example.test/candidate',
+      price: 80,
+      source: 'relationship_graph',
+      recommendation_source: 'relationship_graph',
+      relationship_type: 'dupe',
+    });
+    expect(item.relationship_edge_id).toBeTruthy();
+  });
+
+  test('relationshipEdgeToSimilarItem strips the ref prefix when snapshot lacks a product id', () => {
+    // Production edges store the candidate id only on candidate_product_ref
+    // (`product:ext_<hash>`); the served product_id must be the bare ext_ key.
+    const edge = approvedDupe({
+      candidate_product_ref: 'product:ext_6f1c7d03a6e0dd364d151ebd',
+      candidate_snapshot: {
+        brand: 'Tomford Beauty',
+        name: 'Traceless Soft Matte Concealer',
+        url: 'https://www.tomfordbeauty.com/products/traceless-soft-matte-concealer',
+      },
+    });
+    const item = relationshipEdgeToSimilarItem(edge);
+    expect(item.product_id).toBe('ext_6f1c7d03a6e0dd364d151ebd');
+    expect(item.merchant_id).toBe('external_seed');
+    expect(item.title).toBe('Traceless Soft Matte Concealer');
+  });
+
+  test('relationshipEdgeToSimilarItem suppresses nested product refs that cannot resolve to catalog ids', () => {
+    const edge = approvedDupe({
+      candidate_product_ref: 'product:ulta:c43a0e805e8b643c',
+      candidate_snapshot: {
+        brand: 'Naturium',
+        name: 'Multi-Peptide Moisturizer',
+        url: 'https://example.test/naturium',
+      },
+    });
+
+    expect(getRelationshipEdgeServingSuppressionReasons(edge)).toContain(
+      'candidate_ref_unresolvable_nested_product_prefix',
+    );
+    expect(relationshipEdgeToSimilarItem(edge)).toBe(null);
   });
 
   test('listApprovedRelationshipEdgesForAnchor preserves source provenance from rows', async () => {
@@ -263,6 +445,9 @@ describe('product relationship graph store helpers', () => {
     });
 
     expect(queryFn).toHaveBeenCalledTimes(1);
+    expect(queryFn.mock.calls[0][0]).toMatch(/FROM relationship_candidate_labels/);
+    expect(queryFn.mock.calls[0][0]).toMatch(/label_state IN \('human_approved','ai_approved'\)/);
+    expect(queryFn.mock.calls[0][0]).toMatch(/NOT \(label_state = 'ai_approved' AND relation_type = 'dupe'\)/);
     expect(edges).toHaveLength(1);
     expect(edges[0].id).toBe('prel_test');
     expect(edges[0].source_refs).toEqual([{ type: 'products_cache', authoritative: true }]);
@@ -274,6 +459,8 @@ describe('product relationship graph store helpers', () => {
     const edge = await upsertRelationshipEdge(approvedDupe(), { queryFn, nowMs: NOW });
     expect(edge.review_status).toBe('approved');
     expect(queryFn).toHaveBeenCalledTimes(1);
+    expect(queryFn.mock.calls[0][0]).toMatch(/INSERT INTO relationship_candidate_labels/);
+    expect(queryFn.mock.calls[0][0]).toMatch(/ON CONFLICT \(market, anchor_type, lower\(anchor_ref\), lower\(candidate_product_ref\), relation_type\)/);
     expect(queryFn.mock.calls[0][1]).toEqual(
       expect.arrayContaining([
         edge.id,
@@ -286,7 +473,7 @@ describe('product relationship graph store helpers', () => {
         'beauty',
         0.86,
         'A',
-        'approved',
+        'human_approved',
       ]),
     );
 
@@ -306,6 +493,23 @@ describe('product relationship graph store helpers', () => {
     ).rejects.toMatchObject({
       code: 'INVALID_PRODUCT_RELATIONSHIP_EDGE',
       errors: expect.arrayContaining(['dupe_same_brand_blocked']),
+    });
+    expect(queryFn).toHaveBeenCalledTimes(1);
+  });
+
+  test('upsertRelationshipEdge preserves explicit compatible ai approval labels', async () => {
+    const queryFn = jest.fn(async () => ({ rowCount: 1, rows: [] }));
+
+    await upsertRelationshipEdge(approvedDupe({ label_state: 'ai_approved' }), { queryFn, nowMs: NOW });
+
+    const params = queryFn.mock.calls[0][1];
+    expect(params[18]).toBe('ai_approved');
+    expect(params[27]).toBe(NOW_ISO);
+
+    await expect(
+      upsertRelationshipEdge(approvedDupe({ label_state: 'human_rejected' }), { queryFn, nowMs: NOW }),
+    ).rejects.toMatchObject({
+      code: 'INCOMPATIBLE_REVIEW_STATUS_LABEL_STATE',
     });
     expect(queryFn).toHaveBeenCalledTimes(1);
   });

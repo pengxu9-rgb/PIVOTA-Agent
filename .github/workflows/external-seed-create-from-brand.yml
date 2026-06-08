@@ -41,6 +41,16 @@ on:
         required: true
         default: false
         type: boolean
+      run_relgraph_routine:
+        description: "After apply, sync catalog and run guarded relationship graph dry-run"
+        required: true
+        default: false
+        type: boolean
+      relgraph_cutoff:
+        description: "Relationship graph AI review cutoff, required when run_relgraph_routine=true"
+        required: false
+        default: ""
+        type: string
 
 jobs:
   create-from-brand:
@@ -126,6 +136,34 @@ jobs:
 
           node -e "const fs=require('fs'); const p=process.argv[1]; const j=JSON.parse(fs.readFileSync(p,'utf8')); if (!j.database_available) { console.error('database_available=false'); process.exit(1); } console.log(JSON.stringify({database_available:j.database_available, mode:j.mode, summary:j.apply_result&&j.apply_result.summary}, null, 2));" "${mode_result}" \
             | tee "${out_dir}/database-gate.json"
+
+          if [[ "${{ inputs.run_relgraph_routine }}" == "true" ]]; then
+            if [[ "${{ inputs.dry_run }}" == "true" ]]; then
+              echo "run_relgraph_routine requires dry_run=false so catalog sync can apply" >&2
+              exit 1
+            fi
+            if [[ -z "${{ inputs.relgraph_cutoff }}" ]]; then
+              echo "relgraph_cutoff is required when run_relgraph_routine=true" >&2
+              exit 1
+            fi
+
+            ids_file="${out_dir}/relgraph_external_product_ids.txt"
+            node -e "const fs=require('fs'); const p=process.argv[1]; const j=JSON.parse(fs.readFileSync(p,'utf8')); const rows=(j.apply_result&&j.apply_result.items)||[]; const ids=[...new Set(rows.filter(r=>['inserted','skipped_existing'].includes(String(r.status||''))).map(r=>String(r.external_product_id||'').trim()).filter(Boolean))]; fs.writeFileSync(process.argv[2], ids.join('\\n')+(ids.length?'\\n':'')); console.log(JSON.stringify({external_product_ids:ids.length}, null, 2));" "${mode_result}" "${ids_file}" \
+              | tee "${out_dir}/relgraph-id-extract.json"
+            if [[ ! -s "${ids_file}" ]]; then
+              echo "No applied external_product_ids for relationship graph routine" >&2
+              exit 1
+            fi
+
+            npm run relgraph:sync-routine -- \
+              --cutoff "${{ inputs.relgraph_cutoff }}" \
+              --market "${{ inputs.market }}" \
+              --external-product-ids-file "${ids_file}" \
+              --apply-sync \
+              --confirm APPLY_RELGRAPH_SYNC_ROUTINE \
+              --out-dir "${out_dir}/relationship-graph" \
+              | tee "${out_dir}/relationship-graph-summary.json"
+          fi
 
       - name: Upload artifact
         if: always()

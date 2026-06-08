@@ -41,9 +41,12 @@ const { LlmError, createProviderFromEnv, z } = require('../src/llm/provider');
 const REVIEWER_ID = 'codex-gpt-5.5-xhigh';
 const RUBRIC_VERSION = 'v2';
 const PRIMARY_REASON = 'valid_relationship';
+const AI_APPROVAL_FRESHNESS_INTERVAL = '45 days';
 const DEFAULT_LIMIT = 250;
 const MAX_LIMIT = 5000;
 const TEXT_LIMIT = 900;
+const RELATION_TYPES = new Set(['dupe', 'competitive_alternative', 'niche_specialist', 'related_product']);
+const DEFAULT_EXCLUDED_RELATION_TYPES = ['dupe'];
 
 const VerdictSchema = z.object({
   verdict: z.enum(['approve', 'reject']),
@@ -65,9 +68,10 @@ function hasFlag(argv, name) {
 function usage() {
   return [
     'Usage:',
-    '  node scripts/review-relationship-candidate-labels.js --cutoff <timestamp> [--min-score <n>] [--limit <n>] [--ids-file <path>] [--verdicts-file <path>] [--out <path>] [--apply]',
+    '  node scripts/review-relationship-candidate-labels.js --cutoff <timestamp> [--min-score <n>] [--limit <n>] [--relation-types a,b] [--exclude-relation-types a,b] [--ids-file <path>] [--verdicts-file <path>] [--out <path>] [--apply]',
     '',
     'Dry-run is the default. --apply is fail-closed unless RELGRAPH_AI_REVIEW_APPLY=1 is set.',
+    'AI approval excludes dupe by default. Use --allow-dupe-ai-approval only for a manual, audited run.',
   ].join('\n');
 }
 
@@ -76,6 +80,24 @@ function parseNumber(value, fallback, { min = -Infinity, max = Infinity } = {}) 
   const n = Number(value);
   if (!Number.isFinite(n)) return fallback;
   return Math.max(min, Math.min(max, n));
+}
+
+function parseRelationTypes(value, { optionName = 'relation-types' } = {}) {
+  const raw = normalizeString(value, 2000);
+  if (!raw) return [];
+  const out = [];
+  const seen = new Set();
+  for (const token of raw.split(/[,\s]+/)) {
+    const relationType = normalizeString(token, 80).toLowerCase();
+    if (!relationType) continue;
+    if (!RELATION_TYPES.has(relationType)) {
+      throw new Error(`invalid --${optionName} relation_type: ${relationType}`);
+    }
+    if (seen.has(relationType)) continue;
+    seen.add(relationType);
+    out.push(relationType);
+  }
+  return out;
 }
 
 function parseArgs(argv = process.argv.slice(2)) {
@@ -90,6 +112,14 @@ function parseArgs(argv = process.argv.slice(2)) {
   const verdictsFile = String(argValue(argv, 'verdicts-file') || '').trim();
   const out = String(argValue(argv, 'out') || '').trim();
   const apply = hasFlag(argv, 'apply');
+  const allowDupeAiApproval = hasFlag(argv, 'allow-dupe-ai-approval');
+  const relationTypes = parseRelationTypes(argValue(argv, 'relation-types'), { optionName: 'relation-types' });
+  const explicitExcludedRelationTypes = parseRelationTypes(argValue(argv, 'exclude-relation-types'), {
+    optionName: 'exclude-relation-types',
+  });
+  const excludeRelationTypes = allowDupeAiApproval
+    ? explicitExcludedRelationTypes
+    : Array.from(new Set([...DEFAULT_EXCLUDED_RELATION_TYPES, ...explicitExcludedRelationTypes]));
 
   if (!cutoff) throw new Error('--cutoff is required');
   const cutoffDate = new Date(cutoff);
@@ -103,6 +133,9 @@ function parseArgs(argv = process.argv.slice(2)) {
     verdictsFile,
     out,
     apply,
+    relationTypes,
+    excludeRelationTypes,
+    allowDupeAiApproval,
   };
 }
 
@@ -379,12 +412,44 @@ function buildEvidence(row, supplements) {
   };
 }
 
-async function fetchCandidates({ cutoff, minScore, limit, ids = [], queryFn = query }) {
+function normalizeRelationTypeList(value) {
+  const out = [];
+  const seen = new Set();
+  for (const item of Array.isArray(value) ? value : []) {
+    const relationType = normalizeString(item, 80).toLowerCase();
+    if (!relationType || !RELATION_TYPES.has(relationType) || seen.has(relationType)) continue;
+    seen.add(relationType);
+    out.push(relationType);
+  }
+  return out;
+}
+
+async function fetchCandidates({
+  cutoff,
+  minScore,
+  limit,
+  ids = [],
+  relationTypes = [],
+  excludeRelationTypes = [],
+  queryFn = query,
+}) {
   const params = [cutoff, minScore, limit];
   let idsSql = '';
   if (ids.length) {
     params.push(ids);
     idsSql = `AND id = ANY($${params.length}::text[])`;
+  }
+  const includedRelationTypes = normalizeRelationTypeList(relationTypes);
+  const excludedRelationTypes = normalizeRelationTypeList(excludeRelationTypes);
+  let relationTypesSql = '';
+  if (includedRelationTypes.length) {
+    params.push(includedRelationTypes);
+    relationTypesSql = `AND relation_type = ANY($${params.length}::text[])`;
+  }
+  let excludeRelationTypesSql = '';
+  if (excludedRelationTypes.length) {
+    params.push(excludedRelationTypes);
+    excludeRelationTypesSql = `AND NOT (relation_type = ANY($${params.length}::text[]))`;
   }
 
   const res = await queryFn(
@@ -401,6 +466,8 @@ async function fetchCandidates({ cutoff, minScore, limit, ids = [], queryFn = qu
         AND created_at >= $1::timestamptz
         AND COALESCE(score_total, 0) >= $2::double precision
         ${idsSql}
+        ${relationTypesSql}
+        ${excludeRelationTypesSql}
       ORDER BY score_total DESC NULLS LAST, created_at ASC, id ASC
       LIMIT $3::int
     `,
@@ -545,7 +612,12 @@ function buildAiReview(decision) {
   };
 }
 
-async function applyApproval(row, decision, queryFn = query) {
+async function applyApproval(row, decision, queryFn = query, { allowDupeAiApproval = false } = {}) {
+  if (normalizeString(row && row.relation_type, 80).toLowerCase() === 'dupe' && !allowDupeAiApproval) {
+    const err = new Error('dupe_ai_approval_requires_explicit_allow_dupe_ai_approval');
+    err.code = 'DUPE_AI_APPROVAL_BLOCKED';
+    throw err;
+  }
   const aiReview = buildAiReview(decision);
   const res = await queryFn(
     `
@@ -553,12 +625,14 @@ async function applyApproval(row, decision, queryFn = query) {
       SET
         label_state = 'ai_approved',
         provenance = jsonb_set(COALESCE(provenance, '{}'::jsonb), '{ai_review}', $2::jsonb, true),
+        last_verified_at = now(),
+        expires_at = now() + $3::interval,
         updated_at = now()
       WHERE id = $1
         AND label_state = 'generated'
       RETURNING id, 'generated'::text AS old_label_state, label_state AS new_label_state
     `,
-    [row.id, JSON.stringify(aiReview)],
+    [row.id, JSON.stringify(aiReview), AI_APPROVAL_FRESHNESS_INTERVAL],
   );
   return Array.isArray(res && res.rows) && res.rows[0] ? res.rows[0] : null;
 }
@@ -591,6 +665,9 @@ async function runReview({
   verdictsFile = '',
   out = '',
   apply = false,
+  relationTypes = [],
+  excludeRelationTypes = DEFAULT_EXCLUDED_RELATION_TYPES,
+  allowDupeAiApproval = false,
   queryFn = query,
   provider = null,
 } = {}) {
@@ -599,7 +676,17 @@ async function runReview({
   }
 
   const ids = readIdsFile(idsFile);
-  const rows = await fetchCandidates({ cutoff, minScore, limit, ids, queryFn });
+  const includedRelationTypes = normalizeRelationTypeList(relationTypes);
+  const excludedRelationTypes = normalizeRelationTypeList(excludeRelationTypes);
+  const rows = await fetchCandidates({
+    cutoff,
+    minScore,
+    limit,
+    ids,
+    relationTypes: includedRelationTypes,
+    excludeRelationTypes: excludedRelationTypes,
+    queryFn,
+  });
   const supplements = await fetchSupplementsForRows(rows, queryFn);
   const verdictReplay = readVerdictsFile(verdictsFile);
   const llmProvider = verdictReplay ? null : (provider || createProviderFromEnv('relationship_graph_ai_review'));
@@ -618,7 +705,7 @@ async function runReview({
     let appliedRow = null;
     if (apply && decision.verdict === 'approve') {
       // eslint-disable-next-line no-await-in-loop
-      appliedRow = await applyApproval(row, decision, queryFn);
+      appliedRow = await applyApproval(row, decision, queryFn, { allowDupeAiApproval });
       if (appliedRow) appliedCount += 1;
     }
     const outputRow = {
@@ -647,6 +734,9 @@ async function runReview({
     min_score: minScore,
     limit,
     ids_filter_count: ids.length,
+    relation_types_filter: includedRelationTypes,
+    excluded_relation_types: excludedRelationTypes,
+    dupe_ai_approval_allowed: allowDupeAiApproval,
     reviewed_count: decisions.length,
     verdicts_file: verdictReplay ? verdictReplay.path : null,
     verdicts_file_count: verdictReplay ? verdictReplay.count : 0,
@@ -705,7 +795,9 @@ module.exports = {
   REVIEWER_ID,
   RUBRIC_VERSION,
   PRIMARY_REASON,
+  AI_APPROVAL_FRESHNESS_INTERVAL,
   VerdictSchema,
+  applyApproval,
   buildEvidence,
   buildReviewPrompt,
   buildAiReview,

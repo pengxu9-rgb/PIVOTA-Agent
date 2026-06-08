@@ -1,11 +1,14 @@
 const {
   augmentCandidatesWithTransitiveRecall,
   buildCandidatesByAnchorFromSources,
+  loadAffectedProductAnchorCandidates,
   loadExternalProductSeedCandidates,
   loadIngredientKbCandidates,
   loadLegacyDupeKbRows,
+  loadProductRelationshipGraphSourceInputs,
   loadProductIntelKbRows,
   loadProductsCacheCandidates,
+  normalizeCatalogProductRow,
   normalizeExternalProductSeedRow,
   normalizeProductIntelKbRow,
 } = require('../src/auroraBff/productRelationshipGraphSources');
@@ -25,6 +28,7 @@ describe('product relationship graph source loaders', () => {
     await expect(loadProductIntelKbRows({ queryFn })).resolves.toEqual([]);
     await expect(loadIngredientKbCandidates({ queryFn })).resolves.toEqual([]);
     await expect(loadLegacyDupeKbRows({ queryFn })).resolves.toEqual([]);
+    await expect(loadAffectedProductAnchorCandidates({ queryFn, refs: ['ext_missing'] })).resolves.toEqual([]);
     expect(queryFn).toHaveBeenCalled();
   });
 
@@ -100,6 +104,124 @@ describe('product relationship graph source loaders', () => {
     );
     expect(directSeed.product_ref).toBe(seedCandidate.product_ref);
     expect(directIntel.product_ref).toBe(intelCandidate.product_ref);
+  });
+
+  test('loads affected anchors by ext, sig, and content refs outside the broad source window', async () => {
+    const externalRow = {
+      id: 'seed_old',
+      external_product_id: 'ext_old_serum',
+      product_ref: 'product:sig_old_serum',
+      product_key: 'prod::external_seed::external_seed::ext_old_serum',
+      source_product_id: 'ext_old_serum',
+      pivota_signature_id: 'sig_old_serum',
+      content_key: 'ck_old_serum',
+      title: 'Older Barrier Serum',
+      category: 'serum',
+      price_amount: '42.00',
+      market: 'US',
+      canonical_url: 'https://example.test/old-serum',
+      seed_data: {
+        brand: 'Archive Lab',
+        description: 'A source-backed serum that changed outside the broad recency window.',
+      },
+      updated_at: NOW,
+    };
+    const queryFn = jest.fn(async (sql) => {
+      const text = String(sql);
+      if (text.includes('FROM external_product_seeds eps')) return { rows: [externalRow] };
+      if (text.includes('FROM products_cache pc')) return { rows: [] };
+      if (text.includes('FROM catalog_products cp')) return { rows: [] };
+      return { rows: [] };
+    });
+
+    const affected = await loadAffectedProductAnchorCandidates({
+      queryFn,
+      refs: ['ext_old_serum', 'product:sig_old_serum', 'ck_old_serum'],
+      market: 'US',
+      limit: 5,
+    });
+
+    expect(affected).toHaveLength(1);
+    expect(affected[0]).toEqual(
+      expect.objectContaining({
+        product_ref: 'product:sig_old_serum',
+        product_id: 'ext_old_serum',
+        pivota_signature_id: 'sig_old_serum',
+        content_key: 'ck_old_serum',
+        brand: 'Archive Lab',
+      }),
+    );
+    expect(queryFn.mock.calls[0][1]).toEqual([
+      expect.arrayContaining(['ext_old_serum', 'product:sig_old_serum', 'sig_old_serum', 'ck_old_serum']),
+      'US',
+      5,
+    ]);
+  });
+
+  test('source input loader merges affected anchors into the product pool', async () => {
+    const queryFn = jest.fn(async (sql) => {
+      const text = String(sql);
+      if (text.includes('FROM external_product_seeds eps')) {
+        return {
+          rows: [
+            {
+              id: 'seed_old',
+              external_product_id: 'ext_old_serum',
+              product_ref: 'product:sig_old_serum',
+              pivota_signature_id: 'sig_old_serum',
+              content_key: 'ck_old_serum',
+              title: 'Older Barrier Serum',
+              category: 'serum',
+              price_amount: '42.00',
+              market: 'US',
+              seed_data: { brand: 'Archive Lab' },
+              updated_at: NOW,
+            },
+          ],
+        };
+      }
+      if (text.includes('FROM external_product_seeds')) return { rows: [] };
+      return { rows: [] };
+    });
+
+    const inputs = await loadProductRelationshipGraphSourceInputs({
+      queryFn,
+      limit: 2,
+      market: 'US',
+      affectedRefs: ['sig_old_serum'],
+    });
+
+    expect(inputs.affectedProducts).toHaveLength(1);
+    expect(inputs.products.map((row) => row.product_ref)).toContain('product:sig_old_serum');
+    expect(inputs.source_counts.affected_products).toBe(1);
+  });
+
+  test('normalizes catalog rows into graph product snapshots', () => {
+    expect(
+      normalizeCatalogProductRow({
+        product_key: 'prod::external_seed::external_seed::ext_catalog_serum',
+        source_product_id: 'ext_catalog_serum',
+        pivota_signature_id: 'sig_catalog_serum',
+        content_key: 'ck_catalog_serum',
+        title: 'Catalog Barrier Serum',
+        brand: 'Catalog Lab',
+        product_type: 'Serum',
+        category: 'Serum',
+        category_path: 'beauty/skincare/serum',
+        canonical_url: 'https://example.test/catalog-serum',
+        updated_at: NOW,
+      }),
+    ).toEqual(
+      expect.objectContaining({
+        product_ref: 'product:sig_catalog_serum',
+        product_id: 'ext_catalog_serum',
+        source_product_id: 'ext_catalog_serum',
+        pivota_signature_id: 'sig_catalog_serum',
+        content_key: 'ck_catalog_serum',
+        brand: 'Catalog Lab',
+        name: 'Catalog Barrier Serum',
+      }),
+    );
   });
 
   test('infers brand and concrete title from official product-intel source when row fields are sparse', async () => {

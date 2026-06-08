@@ -1,5 +1,10 @@
 const {
-  _internals: { buildMirror, inferCatalogMirrorCategory, scoreMirrorServingQuality },
+  _internals: {
+    buildAffectedProductsManifest,
+    buildMirror,
+    inferCatalogMirrorCategory,
+    scoreMirrorServingQuality,
+  },
 } = require('../../scripts/sync-external-seeds-to-catalog.cjs');
 
 describe('sync-external-seeds-to-catalog category inference', () => {
@@ -230,6 +235,72 @@ describe('sync-external-seeds-to-catalog signature preservation', () => {
     );
     expect(mirror.product.content_key).toBe('ck_existing_content_key');
     expect(mirror.productGroupId).toBe('sig_bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb');
+  });
+});
+
+describe('sync-external-seeds-to-catalog affected-products manifest', () => {
+  test('emits graph-builder refs for mirrored products', () => {
+    const mirror = buildMirror({
+      id: 'eps_manifest',
+      external_product_id: 'ext_manifest_serum',
+      market: 'US',
+      domain: 'seresilk.com',
+      title: 'Barrier Repair Serum',
+      image_url: 'https://cdn.example.com/serum.jpg',
+      price_amount: 48,
+      price_currency: 'USD',
+      availability: 'in_stock',
+      canonical_url: 'https://seresilk.com/products/barrier-repair-serum',
+      status: 'active',
+      existing_pivota_signature_id: 'sig_cccccccccccccccccccccccccccccccc',
+      existing_content_key: 'ck_manifest_content_key',
+      identity_listing: {
+        identity_status: 'approved',
+        live_read_enabled: true,
+        review_required: false,
+        source_tier: 'brand',
+      },
+      seed_data: {
+        brand: 'Seresilk',
+        description: 'A lightweight daily serum with complete commerce details.',
+      },
+    });
+
+    const manifest = buildAffectedProductsManifest({
+      mirrors: [mirror],
+      skipped: [{ external_product_id: 'ext_skipped', reason: 'inactive_seed' }],
+      missingIds: ['ext_missing'],
+      market: 'US',
+      mode: 'apply',
+      generatedAt: '2026-06-08T00:00:00.000Z',
+    });
+
+    expect(manifest).toMatchObject({
+      source: 'sync-external-seeds-to-catalog',
+      mode: 'apply',
+      market: 'US',
+      affected_count: 1,
+      external_product_ids: ['ext_manifest_serum'],
+      sig_ids: ['sig_cccccccccccccccccccccccccccccccc'],
+      content_keys: ['ck_manifest_content_key'],
+      missing_ids: ['ext_missing'],
+    });
+    expect(manifest.affected_refs).toEqual(
+      expect.arrayContaining([
+        'ext_manifest_serum',
+        'product:ext_manifest_serum',
+        'sig_cccccccccccccccccccccccccccccccc',
+        'product:sig_cccccccccccccccccccccccccccccccc',
+        'ck_manifest_content_key',
+      ]),
+    );
+    expect(manifest.rows[0]).toEqual(
+      expect.objectContaining({
+        external_product_id: 'ext_manifest_serum',
+        product_ref: 'product:ext_manifest_serum',
+        pivota_signature_id: 'sig_cccccccccccccccccccccccccccccccc',
+      }),
+    );
   });
 });
 
@@ -686,6 +757,79 @@ describe('sync-external-seeds-to-catalog serving bootstrap', () => {
       blockerCode: 'identity_not_live_approved',
       identityResolved: false,
       identityBootstrapEligible: false,
+    });
+  });
+
+  test('uses reviewed component price evidence for set parents without parent price', () => {
+    const mirror = buildMirror({
+      id: 'eps_component_priced_set',
+      external_product_id: 'ext_component_priced_set',
+      market: 'US',
+      domain: 'sigmabeauty.com',
+      title: 'The Modern Muse Set',
+      image_url: 'https://cdn.example.com/set.jpg',
+      price_amount: null,
+      price_currency: null,
+      availability: 'out_of_stock',
+      canonical_url: 'https://sigmabeauty.com/products/the-modern-muse-set',
+      status: 'active',
+      identity_listing: {
+        identity_status: 'approved',
+        live_read_enabled: true,
+        review_required: false,
+        sellable_item_group_id: 'sig_eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee',
+        source_tier: 'brand',
+      },
+      seed_data: {
+        brand: 'Sigma Beauty',
+        description:
+          'An official makeup set with reviewed component references and source-backed component pricing.',
+        bundle_component_refs: [
+          {
+            external_product_id: 'ext_component_palette',
+            title: 'New Mod Eyeshadow Palette',
+            review_state: 'reviewed',
+          },
+          {
+            external_product_id: 'ext_component_lip_oil',
+            title: 'Renew Lip Oil',
+            review_state: 'reviewed',
+          },
+        ],
+        variants: [
+          {
+            variant_id: 'default',
+            sku: 'SET-01',
+            title: 'Default Title',
+            price: '',
+            currency: 'USD',
+            image_url: 'https://cdn.example.com/set.jpg',
+          },
+        ],
+      },
+    });
+
+    expect(scoreMirrorServingQuality(mirror)).toMatchObject({
+      servingEligible: false,
+      blockerCode: 'missing_price',
+      hasParentPrice: false,
+      componentPriceResolved: false,
+    });
+
+    expect(
+      scoreMirrorServingQuality(mirror, {
+        componentPriceEvidence: {
+          reviewed_component_ref_count: 2,
+          priced_component_count: 2,
+          all_reviewed_components_priced: true,
+        },
+      }),
+    ).toMatchObject({
+      servingEligible: true,
+      blockerCode: 'none',
+      hasParentPrice: false,
+      hasPrice: true,
+      componentPriceResolved: true,
     });
   });
 });
