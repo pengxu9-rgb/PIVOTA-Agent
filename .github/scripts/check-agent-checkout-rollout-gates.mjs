@@ -18,6 +18,8 @@ const REQUIRED_DOC_MARKERS = [
   'Strict create-order canary',
   'Remote MCP and confirmation UI smoke',
   'Observability export',
+  'Manual Paid-Canary Evidence',
+  'B4 status verifier',
   'Rollback',
   'checkout-payment-safety',
 ];
@@ -47,6 +49,8 @@ function assertNoAutomatedChargeProbe(probeWorkflowText) {
     /STRICT_CANARY_CHARGE_CONFIRM:/,
     /STRICT_CANARY_REMOTE_PAY_ENABLED_ACK:/,
     /STRICT_CANARY_PSP_MODE:/,
+    /STRIPE_SECRET_KEY/,
+    /b4_complete_charge\.mjs/,
     /FLAGS="--charge \$FLAGS"/,
     /probe_strict_checkout_canary\.mjs --create-order --charge/,
   ];
@@ -55,6 +59,27 @@ function assertNoAutomatedChargeProbe(probeWorkflowText) {
   }
   assert(/workflow_dispatch:/.test(probeWorkflowText), 'Wire-format probe must stay workflow_dispatch-only');
   assert(!/pull_request:|push:|schedule:/.test(probeWorkflowText), 'Wire-format probe must not run on pull_request, push, or schedule');
+}
+
+function assertNoAutomatedChargeWiring(...workflowTexts) {
+  const joined = workflowTexts
+    .join('\n---workflow---\n')
+    .split('\n')
+    .filter((line) => !/^\s*#/.test(line))
+    .join('\n');
+  const forbidden = [
+    /STRIPE_SECRET_KEY/,
+    /b4_complete_charge\.mjs/,
+    /PROBE_ALLOW_CHARGE:/,
+    /STRICT_CANARY_ALLOW_CHARGE:/,
+    /STRICT_CANARY_CHARGE_CONFIRM:/,
+    /STRICT_CANARY_REMOTE_PAY_ENABLED_ACK:/,
+    /node\s+scripts\/(?:probe_wire_format|probe_strict_checkout_canary)\.mjs[^\n]*--charge\b/,
+    /FLAGS=.*--charge\b/,
+  ];
+  for (const pattern of forbidden) {
+    assert(!pattern.test(joined), `Workflow must not contain automated charge wiring: ${pattern}`);
+  }
 }
 
 function main() {
@@ -72,10 +97,25 @@ function main() {
     'test-count-floor must read reports from prior jobs');
   assert(/checkout-payment-safety/.test(rolloutDoc),
     'rollout doc must mention the backend checkout-payment-safety lane');
+  assert(/validate_paid_canary_evidence\.mjs/.test(rolloutDoc),
+    'rollout doc must point manual paid evidence at the validator script');
+  assert(/validate_platform_smoke_evidence\.mjs/.test(rolloutDoc),
+    'rollout doc must point platform smoke evidence at the validator script');
+  assert(/smoke_protocol_edge_remote_mcp\.mjs/.test(rolloutDoc),
+    'rollout doc must point platform smoke evidence at the remote MCP smoke script');
+  assert(/tests\/paid_canary_evidence_script\.test\.js/.test(moneyPathWorkflow),
+    'Gateway strict-route workflow must run the paid-canary evidence validator test');
+  assert(/tests\/b4_verify_script\.test\.js/.test(moneyPathWorkflow),
+    'Gateway strict-route workflow must run the status-only B4 verifier test');
+  assert(/tests\/platform_smoke_evidence_script\.test\.js/.test(moneyPathWorkflow),
+    'Gateway strict-route workflow must run the platform smoke evidence validator test');
+  assert(/tests\/remote_mcp_smoke_script\.test\.js/.test(moneyPathWorkflow),
+    'Gateway strict-route workflow must run the remote MCP smoke script test');
   assert(/tests\/integration\/safety_kernel_mount\.node\.test\.cjs/.test(moneyPathWorkflow),
     'Gateway strict-route workflow must run the strict Safety Kernel mount test');
 
   assertNoAutomatedChargeProbe(probeWorkflow);
+  assertNoAutomatedChargeWiring(moneyPathWorkflow, probeWorkflow);
   assertJobExists(probeWorkflow, 'strict-create-order-canary');
   assert(/run_strict_create_order_canary:/.test(probeWorkflow),
     'Wire-format probe workflow must expose the strict create-order canary input');

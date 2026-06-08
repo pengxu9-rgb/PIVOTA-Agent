@@ -12,8 +12,10 @@ operator checks; it does not require runtime-code changes.
 | Wire-format no-charge probe | `agent-checkout-wire-format-probe.yml` green for read-only + optional `create_order` only. It must not pass `--charge` or set `PROBE_ALLOW_CHARGE`. | Gateway / Ops |
 | Strict identity fail-closed | `agent-checkout-wire-format-probe.yml` strict identity gate green: strict money op with only the platform probe key returns `USER_AUTH_REQUIRED`. | Gateway / Ops |
 | Strict create-order canary | `agent-checkout-wire-format-probe.yml` strict create-order canary green in a controlled `AGENT_CHECKOUT_ALLOW_TEST_IDENTITY=1` window. It must create only an unpaid order and must not pass `--charge`. | Gateway / Ops |
-| Remote MCP and confirmation UI smoke | Deployed strict `/mcp` can create a checkout session through the canonical executor, and deployed `/checkout/confirm` mints a token only after a verified signed user action. Do not call `complete_checkout_session` or `submit_payment` in this smoke. | Gateway / Platform |
+| Remote MCP and confirmation UI smoke | Deployed strict `/mcp` can create a checkout session through the canonical executor, and deployed `/checkout/confirm` mints a token only after a verified signed user action. Do not call `complete_checkout_session` or `submit_payment` in this smoke. Evidence must pass `node scripts/validate_platform_smoke_evidence.mjs --input platform-smoke-evidence.json --json`. | Gateway / Platform |
 | No automated paid charge | Paid `submit_payment` probes stay manual per `PROBE_RUNBOOK.md` Phase 3, with Stripe dashboard verification and immediate refund if live mode is used. | Ops |
+| B4 status verifier | After a manual Stripe TEST-mode completion, `node scripts/b4_verify.mjs` confirms the order reaches paid status through `get_order_status` only. It must remain status-only and must not call Stripe, `submit_payment`, or payment completion. | Ops |
+| Manual paid evidence validator | The signed-off paid canary packet passes `node scripts/validate_paid_canary_evidence.mjs --input paid-canary-evidence.json --json`. | Ops |
 | Observability export | Money-path audit events are exported to the gateway-governance raw-log path before production pay is enabled. | Ops |
 | Rollback | `AGENT_CHECKOUT_STRICT=0` must be the documented rollback, and `submit_payment` must be enabled last. | Ops |
 
@@ -49,6 +51,39 @@ the deployed environment:
 | route fallback | `GOVERNANCE_UNAVAILABLE` is visible when governance blocks a money operation; there is no silent fallback. |
 | orphan cleanup | Any order-unit mismatch emits an orphan/cancel follow-up event or an explicit accepted-risk entry. |
 
+## Platform Smoke Evidence
+
+Before enabling platform traffic from ChatGPT, Claude, Gemini, or another agent host, record a deployed
+no-charge smoke packet and validate it:
+
+```bash
+PROBE_BASE=https://pivota-agent-production.up.railway.app \
+PROBE_KEY=... \
+MCP_SMOKE_ALLOW_VERIFIED_SESSION=1 \
+MCP_SMOKE_MERCHANT_ID=merch_... \
+MCP_SMOKE_PRODUCT_ID=... \
+MCP_SMOKE_ORDER_ID=ORD_... \
+CONFIRMATION_SECRET=... \
+node scripts/smoke_protocol_edge_remote_mcp.mjs --full --json > platform-smoke-evidence.json
+
+node scripts/validate_platform_smoke_evidence.mjs --input platform-smoke-evidence.json --json
+```
+
+`MCP_SMOKE_ORDER_ID` must be an unpaid order id from the strict create-order canary. The smoke script
+intentionally never calls `complete_checkout_session`, `submit_payment`, or a paid operation.
+
+The packet must prove:
+
+| Field | Required value |
+|---|---|
+| Remote MCP | HTTPS `/mcp` initializes, lists required commerce tools, and routes through the canonical surface. |
+| Identity fail-closed | A write tool without verified user/session returns `USER_AUTH_REQUIRED`. |
+| Verified session | A verified OAuth/session context can create a checkout session. |
+| Confused-deputy defense | Model/body-supplied identity is ignored or rejected. |
+| Confirmation action | Unsigned action is rejected; signed user action mints the token. |
+| No money ops | `complete_checkout_session`, `submit_payment`, and paid charge attempts are all false. |
+| Hygiene | Redaction scan passed, and credential rotation is either not needed or completed. |
+
 ## Manual Paid-Canary Evidence
 
 Before enabling `AGENT_CHECKOUT_STRICT_SUBMIT_PAYMENT_ENABLED`, record one signed-off packet with:
@@ -64,18 +99,36 @@ Before enabling `AGENT_CHECKOUT_STRICT_SUBMIT_PAYMENT_ENABLED`, record one signe
 | Replay | Same idempotency key returns the original result; zero additional PSP charge. |
 | Refund | Refund cap enforced and replay idempotent. |
 | Webhook/status | Signed webhook observed and canonical order status updated. |
+| B4 status verifier | `scripts/b4_verify.mjs` confirms the order is paid through `get_order_status` only. |
 | Artifact hygiene | Redaction scan passed before any evidence is shared. |
 | Credential hygiene | Rotate PSP/merchant credentials if any raw artifact or secret-bearing dashboard data left the local/operator environment. |
 
+The evidence packet must pass the repository validator:
+
+```bash
+node scripts/validate_paid_canary_evidence.mjs --input paid-canary-evidence.json --json
+```
+
+Use `scripts/b4_verify.mjs` as the status-only post-charge verifier before filling the
+`webhook_status.canonical_payment_status` field. It is intentionally covered by
+`tests/b4_verify_script.test.js` and must never grow a Stripe or payment-completion call.
+
+The validator is deliberately stricter than prose: it refuses live-mode evidence unless an explicit
+live-refund override is used, compares PSP dashboard amount/currency against the locked order amount,
+requires same-key replay proof, requires signed webhook plus paid canonical status, requires refund-cap
+and refund-replay proof, and scans the evidence file for raw PSP/API/token/card-looking secrets.
+
 The CI guard for this document is `.github/scripts/check-agent-checkout-rollout-gates.mjs`. It verifies
 that the rollout gates remain documented, the money-path workflow has the expected split jobs, and the
-wire-format probe cannot run a paid charge from GitHub Actions.
+wire-format probe cannot run a paid charge from GitHub Actions. The validator/status scripts are covered
+by `tests/b4_verify_script.test.js`, `tests/paid_canary_evidence_script.test.js`, and
+`tests/platform_smoke_evidence_script.test.js` in the money-path gate.
 
 ## Rollout Order
 
 1. Keep `AGENT_CHECKOUT_STRICT=1` in staging and production for the current strict quote/order posture.
 2. Keep `AGENT_CHECKOUT_STRICT_SUBMIT_PAYMENT_ENABLED` unset/off.
-3. Smoke the deployed remote MCP `/mcp` create-session path and the host-only `/checkout/confirm` signed user-action path without calling `complete_checkout_session` or `submit_payment`.
+3. Smoke the deployed remote MCP `/mcp` create-session path and the host-only `/checkout/confirm` signed user-action path without calling `complete_checkout_session` or `submit_payment`; validate the evidence packet with `scripts/validate_platform_smoke_evidence.mjs`.
 4. Re-run the no-charge wire-format probe against the target environment before each promotion window.
 5. Run the strict create-order canary in a controlled test-identity window, pinned when possible or auto-selected from `PROBE_QUERY`; then close the window.
 6. Confirm observability export captures quote/order/audit events from that environment, using `GATEWAY_GOVERNANCE_RAILWAY_DEPLOYMENT` when the canary ran on a prior deployment.
