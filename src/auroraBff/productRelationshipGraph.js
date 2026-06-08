@@ -1677,6 +1677,12 @@ async function upsertRelationshipCandidateLabel(input = {}, { queryFn = query } 
         last_verified_at = EXCLUDED.last_verified_at,
         expires_at = EXCLUDED.expires_at,
         updated_at = now()
+      WHERE NOT (
+        relationship_candidate_labels.label_state = ANY (
+          ARRAY['human_approved', 'ai_approved', 'human_rejected', 'needs_evidence']::text[]
+        )
+        AND EXCLUDED.label_state = ANY (ARRAY['generated', 'review_ready']::text[])
+      )
     `,
     [
       id,

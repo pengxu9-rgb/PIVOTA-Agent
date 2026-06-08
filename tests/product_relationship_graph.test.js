@@ -1170,6 +1170,19 @@ describe('upsertRelationshipCandidateLabel — prefilter_reasons persistence', (
     expect(params).toEqual(expect.arrayContaining([null]));
   });
 
+  test('generated reruns do not demote existing reviewed labels on conflict', async () => {
+    const queryFn = jest.fn(async () => ({ rowCount: 1, rows: [] }));
+    await upsertRelationshipCandidateLabel(
+      { ...generatedEdge(), label_state: 'generated' },
+      { queryFn },
+    );
+    const sql = queryFn.mock.calls[0][0];
+    expect(sql).toContain("relationship_candidate_labels.label_state = ANY");
+    expect(sql).toContain("'human_approved', 'ai_approved', 'human_rejected', 'needs_evidence'");
+    expect(sql).toContain("'generated', 'review_ready'");
+    expect(sql).not.toContain("'generated', 'prefilter_rejected', 'review_ready'");
+  });
+
   test('normalizes prefilter_reasons (lowercase, length-limited, drops empties)', async () => {
     const queryFn = jest.fn(async () => ({ rowCount: 1, rows: [] }));
     await upsertRelationshipCandidateLabel(
