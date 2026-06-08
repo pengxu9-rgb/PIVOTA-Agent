@@ -4,6 +4,7 @@ const {
   splitEdgesForRecoBlocks,
   relationshipEdgeToSimilarItem,
   buildAnchorRefsFromProduct,
+  expandAnchorRefsWithGroupSiblings,
   listApprovedRelationshipEdgesForAnchor,
   listApprovedRelationshipEdgesForAnchorUncollapsed,
   collapseApprovedRelationshipEdgesToFamilies,
@@ -783,6 +784,115 @@ describe('product relationship graph store helpers', () => {
       if (prevFamilyFlag === undefined) delete process.env.AURORA_BFF_RELATIONSHIP_GRAPH_FAMILY_COLLAPSE_ENABLED;
       else process.env.AURORA_BFF_RELATIONSHIP_GRAPH_FAMILY_COLLAPSE_ENABLED = prevFamilyFlag;
       logger.info.mockRestore();
+    }
+  });
+
+  test('sibling expansion degrades to base refs when product_group_members lookup fails', async () => {
+    const logger = require('../src/logger');
+    jest.spyOn(logger, 'warn').mockImplementation(() => {});
+    const queryFn = jest.fn(async () => {
+      const err = new Error('Connection terminated unexpectedly');
+      err.code = 'ECONNRESET';
+      throw err;
+    });
+
+    try {
+      const refs = await expandAnchorRefsWithGroupSiblings(['product:ext_viewed', 'ext_viewed'], { queryFn });
+
+      expect(refs).toEqual(['product:ext_viewed', 'ext_viewed']);
+      expect(logger.warn).toHaveBeenCalledWith(
+        expect.objectContaining({
+          kind: 'metric',
+          name: 'aurora_bff_relationship_graph_sibling_expansion_failed',
+          code: 'ECONNRESET',
+          base_ref_count: 2,
+          ext_key_count: 1,
+          degraded_to_base_refs: true,
+        }),
+        expect.stringContaining('serving base refs'),
+      );
+    } finally {
+      logger.warn.mockRestore();
+    }
+  });
+
+  test('flag-on serving uses base anchor refs when sibling expansion has a transient DB error', async () => {
+    const logger = require('../src/logger');
+    jest.spyOn(logger, 'info').mockImplementation(() => {});
+    jest.spyOn(logger, 'warn').mockImplementation(() => {});
+    const prevFamilyFlag = process.env.AURORA_BFF_RELATIONSHIP_GRAPH_FAMILY_COLLAPSE_ENABLED;
+    process.env.AURORA_BFF_RELATIONSHIP_GRAPH_FAMILY_COLLAPSE_ENABLED = 'true';
+    const rawRows = [
+      {
+        ...approvedDupe({
+          id: 'prel_base_ref_after_sibling_error',
+          anchor_ref: 'product:ext_viewed',
+          anchor_snapshot: { product_id: 'ext_viewed', brand: 'Anchor Brand', name: 'Anchor Serum' },
+          candidate_product_ref: 'product:ext_candidate',
+          candidate_snapshot: { product_id: 'ext_candidate', brand: 'Value Brand', name: 'Value Serum' },
+          relation_type: 'competitive_alternative',
+        }),
+        vertical: 'beauty',
+        created_at: NOW_ISO,
+        updated_at: NOW_ISO,
+      },
+    ];
+    const queryFn = jest.fn(async (sql, params) => {
+      if (/FROM product_group_members/.test(sql)) {
+        const err = new Error('Connection terminated unexpectedly');
+        err.code = 'ECONNRESET';
+        throw err;
+      }
+      if (/FROM product_relationship_edges/.test(sql)) return { rows: rawRows };
+      if (/catalog_products/.test(sql)) {
+        return {
+          rows: (params[0] || []).map((ref) => {
+            const normalized = String(ref).toLowerCase();
+            const bare = normalized.replace(/^product:/, '');
+            return {
+              input_ref: ref,
+              normalized_ref: normalized,
+              source_product_id: bare,
+              title: bare === 'ext_viewed' ? 'Anchor Serum' : 'Value Serum',
+              brand: bare === 'ext_viewed' ? 'Anchor Brand' : 'Value Brand',
+              category: 'serum',
+              product_type: 'serum',
+              product_payload: {},
+              pivota_signature_id: `sig_${bare}`,
+              product_group_id: `pg_${bare}`,
+              is_primary: true,
+              pdp_lifecycle_stage: 'published',
+            };
+          }),
+        };
+      }
+      return { rows: [] };
+    });
+
+    try {
+      const edges = await listApprovedRelationshipEdgesForAnchor({
+        anchorRefs: ['product:ext_viewed'],
+        market: 'US',
+        limit: 4,
+        queryFn,
+      });
+
+      expect(edges).toHaveLength(1);
+      expect(edges[0].id).toBe('prel_base_ref_after_sibling_error');
+      const rawCall = queryFn.mock.calls.find(([sql]) => /FROM product_relationship_edges/.test(sql));
+      expect(rawCall[1][1]).toEqual(['product:ext_viewed']);
+      expect(logger.warn).toHaveBeenCalledWith(
+        expect.objectContaining({
+          name: 'aurora_bff_relationship_graph_sibling_expansion_failed',
+          degraded_to_base_refs: true,
+        }),
+        expect.any(String),
+      );
+    } finally {
+      if (prevFamilyFlag === undefined) delete process.env.AURORA_BFF_RELATIONSHIP_GRAPH_FAMILY_COLLAPSE_ENABLED;
+      else process.env.AURORA_BFF_RELATIONSHIP_GRAPH_FAMILY_COLLAPSE_ENABLED = prevFamilyFlag;
+      logger.info.mockRestore();
+      logger.warn.mockRestore();
     }
   });
 
