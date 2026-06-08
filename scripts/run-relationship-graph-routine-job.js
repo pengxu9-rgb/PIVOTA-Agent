@@ -13,6 +13,7 @@ const DEFAULT_REVIEW_LIMIT = 250;
 const DEFAULT_REVIEW_MIN_SCORE = 0;
 const DEFAULT_SERVING_AUDIT_EXAMPLES = 8;
 const DEFAULT_STEP_TIMEOUT_MINUTES = 20;
+const DEFAULT_SERVING_AUDIT_TIMEOUT_MINUTES = 10;
 const DEFAULT_DB_LOCK_HEARTBEAT_MS = 30000;
 const OUTPUT_TAIL_CHARS = 12000;
 const ROUTINE_LOCK_DIRNAME = 'relationship_graph_routine.lock';
@@ -72,6 +73,22 @@ function parseStepTimeoutMs(argv = []) {
   return Math.trunc(minutes * 60 * 1000);
 }
 
+function parseServingAuditTimeoutMs(argv = [], stepTimeoutMs = 0) {
+  const explicitMs = parseNumber(argValue(argv, 'serving-audit-timeout-ms'), null, {
+    min: 0,
+    max: 12 * 60 * 60 * 1000,
+  });
+  if (explicitMs != null) return Math.trunc(explicitMs);
+  const minutesRaw = argValue(argv, 'serving-audit-timeout-minutes');
+  const fallbackMs = Math.max(
+    Math.trunc(Number(stepTimeoutMs) || 0),
+    DEFAULT_SERVING_AUDIT_TIMEOUT_MINUTES * 60 * 1000,
+  );
+  if (minutesRaw == null || minutesRaw === '') return fallbackMs;
+  const minutes = parseNumber(minutesRaw, DEFAULT_SERVING_AUDIT_TIMEOUT_MINUTES, { min: 0, max: 12 * 60 });
+  return Math.trunc(minutes * 60 * 1000);
+}
+
 function parseDelimitedList(value, max = 5000) {
   return Array.from(new Set(
     normalizeString(value, max)
@@ -103,6 +120,7 @@ function usage() {
     'Use --db-lock for a Postgres advisory lock when running from distributed cron or CI.',
     'Use --lock-stale-after-minutes N only when a killed prior run may have left a local lock behind.',
     'Use --step-timeout-minutes N to fail closed when a child step hangs.',
+    'Use --serving-audit-timeout-minutes N to override the serving-audit child timeout separately.',
     'Use --db-lock-heartbeat-ms N to keep the advisory-lock connection active during long child steps.',
     'Use --skip-need-nodes for a product-anchor-only canary that does not generate curated need-node candidates.',
   ].join('\n');
@@ -130,6 +148,7 @@ function parseArgs(argv = process.argv.slice(2), { now = new Date() } = {}) {
   const allowDupeAiApproval = hasFlag(argv, 'allow-dupe-ai-approval');
   const reviewExcludeRelationTypes = normalizeString(argValue(argv, 'review-exclude-relation-types'), 1000)
     || (allowDupeAiApproval ? '' : 'dupe');
+  const stepTimeoutMs = parseStepTimeoutMs(argv);
 
   return {
     cutoff,
@@ -166,7 +185,8 @@ function parseArgs(argv = process.argv.slice(2), { now = new Date() } = {}) {
     allowDupeAiApproval,
     lockDir: normalizeString(argValue(argv, 'lock-dir'), 2000),
     lockStaleAfterMs: parseLockStaleAfterMs(argv),
-    stepTimeoutMs: parseStepTimeoutMs(argv),
+    stepTimeoutMs,
+    servingAuditTimeoutMs: parseServingAuditTimeoutMs(argv, stepTimeoutMs),
     dbLock: hasFlag(argv, 'db-lock'),
     dbLockKey: normalizeString(argValue(argv, 'db-lock-key', DEFAULT_DB_LOCK_KEY), 500) || DEFAULT_DB_LOCK_KEY,
     dbLockHeartbeatMs: parseNumber(argValue(argv, 'db-lock-heartbeat-ms'), DEFAULT_DB_LOCK_HEARTBEAT_MS, {
@@ -298,7 +318,13 @@ function buildRoutineSteps(options) {
       artifacts.serving_audit,
     ];
     if (options.servingAuditLimit) pushArg(args, 'limit', options.servingAuditLimit);
-    steps.push({ id: 'serving_guard_audit', command: node, args, artifact: artifacts.serving_audit });
+    steps.push({
+      id: 'serving_guard_audit',
+      command: node,
+      args,
+      artifact: artifacts.serving_audit,
+      timeoutMs: options.servingAuditTimeoutMs,
+    });
   }
 
   return { artifacts, steps };
@@ -638,6 +664,7 @@ function serializableOptions(options) {
     apply_build: options.applyBuild,
     apply_review: options.applyReview,
     step_timeout_ms: options.stepTimeoutMs || null,
+    serving_audit_timeout_ms: options.servingAuditTimeoutMs || null,
     skip_need_nodes: Boolean(options.skipNeedNodes),
     allow_dupe_ai_approval: options.allowDupeAiApproval,
     lock_dir: options.lockDir || null,
@@ -697,10 +724,11 @@ async function runRoutineJob(
     for (const step of steps) {
       const startedAt = new Date().toISOString();
       // eslint-disable-next-line no-await-in-loop
+      const timeoutMs = step.timeoutMs != null ? step.timeoutMs : options.stepTimeoutMs || 0;
       const result = await runner(step.command, step.args, {
         cwd,
         env: step.env || {},
-        timeoutMs: options.stepTimeoutMs || 0,
+        timeoutMs,
       });
       const record = {
         id: step.id,
@@ -713,7 +741,7 @@ async function runRoutineJob(
         exit_code: result.exitCode,
         signal: result.signal || null,
         timed_out: Boolean(result.timedOut),
-        timeout_ms: options.stepTimeoutMs || null,
+        timeout_ms: timeoutMs || null,
         stdout_tail: tailOutput(result.stdout),
         stderr_tail: tailOutput(result.stderr),
       };

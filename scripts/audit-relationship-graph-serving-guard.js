@@ -13,6 +13,8 @@ const {
 const DEFAULT_MARKET = 'US';
 const DEFAULT_LIMIT = 0;
 const DEFAULT_EXAMPLES_PER_REASON = 8;
+const DEFAULT_QUERY_RETRIES = 2;
+const DEFAULT_QUERY_RETRY_BACKOFF_MS = 1000;
 const MAX_LIMIT = 250000;
 
 function normalizeString(value, max = 512) {
@@ -30,6 +32,39 @@ function parseInteger(value, fallback, { min = 0, max = Number.MAX_SAFE_INTEGER 
   const n = Number(value);
   if (!Number.isFinite(n)) return fallback;
   return Math.max(min, Math.min(max, Math.trunc(n)));
+}
+
+function sleep(ms) {
+  if (!(ms > 0)) return Promise.resolve();
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function isTransientDbError(err) {
+  const code = String(err?.code || '').trim().toUpperCase();
+  const message = String(err?.message || err || '').toLowerCase();
+  if (code.startsWith('08')) return true;
+  return [
+    'ECONNRESET',
+    'ECONNABORTED',
+    'ETIMEDOUT',
+    'EPIPE',
+    'EAI_AGAIN',
+    '57P01',
+    '57P02',
+    '57P03',
+  ].includes(code) ||
+    message.includes('connection reset') ||
+    message.includes('connection terminated unexpectedly') ||
+    message.includes('server closed the connection unexpectedly') ||
+    message.includes('client has encountered a connection error') ||
+    message.includes('connection terminated');
+}
+
+function summarizeError(err) {
+  return {
+    code: err?.code || null,
+    message: normalizeString(err?.message || err, 500),
+  };
 }
 
 function argValue(argv, name, fallback = '') {
@@ -59,7 +94,7 @@ function writeJsonFile(filePath, payload) {
 function usage() {
   return [
     'Usage:',
-    '  DATABASE_URL=... node scripts/audit-relationship-graph-serving-guard.js [--market US|--all-markets] [--limit N] [--examples-per-reason N] [--out path]',
+    '  DATABASE_URL=... node scripts/audit-relationship-graph-serving-guard.js [--market US|--all-markets] [--limit N] [--examples-per-reason N] [--query-retries N] [--out path]',
     '',
     'Read-only audit. Loads active human_approved/ai_approved relationship_candidate_labels rows and applies the runtime serving guard.',
   ].join('\n');
@@ -75,6 +110,11 @@ function parseArgs(argv = process.argv.slice(2)) {
     examplesPerReason: parseInteger(argValue(argv, 'examples-per-reason'), DEFAULT_EXAMPLES_PER_REASON, {
       min: 0,
       max: 100,
+    }),
+    queryRetries: parseInteger(argValue(argv, 'query-retries'), DEFAULT_QUERY_RETRIES, { min: 0, max: 5 }),
+    queryRetryBackoffMs: parseInteger(argValue(argv, 'query-retry-backoff-ms'), DEFAULT_QUERY_RETRY_BACKOFF_MS, {
+      min: 0,
+      max: 30000,
     }),
     out: normalizeString(argValue(argv, 'out')),
   };
@@ -121,6 +161,47 @@ async function loadServedRelationshipRows({ queryFn = query, market = DEFAULT_MA
   const { sql, params } = buildServedRowsSql({ market, limit });
   const res = await queryFn(sql, params);
   return Array.isArray(res && res.rows) ? res.rows : [];
+}
+
+async function loadServedRelationshipRowsWithRetry({
+  queryFn = query,
+  closePoolFn = closePool,
+  market = DEFAULT_MARKET,
+  limit = DEFAULT_LIMIT,
+  queryRetries = DEFAULT_QUERY_RETRIES,
+  queryRetryBackoffMs = DEFAULT_QUERY_RETRY_BACKOFF_MS,
+} = {}) {
+  const maxRetries = parseInteger(queryRetries, DEFAULT_QUERY_RETRIES, { min: 0, max: 5 });
+  const backoffMs = parseInteger(queryRetryBackoffMs, DEFAULT_QUERY_RETRY_BACKOFF_MS, { min: 0, max: 30000 });
+  const errors = [];
+  for (let attempt = 0; attempt <= maxRetries; attempt += 1) {
+    try {
+      const rows = await loadServedRelationshipRows({ queryFn, market, limit });
+      return {
+        rows,
+        retry: {
+          attempts: attempt,
+          max_retries: maxRetries,
+          errors,
+        },
+      };
+    } catch (err) {
+      if (!isTransientDbError(err) || attempt >= maxRetries) throw err;
+      errors.push({
+        attempt: attempt + 1,
+        ...summarizeError(err),
+      });
+      if (typeof closePoolFn === 'function') {
+        try {
+          await closePoolFn();
+        } catch (_closeErr) {
+          // Best effort: the next retry will create a fresh pool if possible.
+        }
+      }
+      await sleep(backoffMs * (attempt + 1));
+    }
+  }
+  throw new Error('unreachable');
 }
 
 function pct(part, total) {
@@ -236,12 +317,22 @@ function summarizeSuppressionRows(rows = [], { examplesPerReason = DEFAULT_EXAMP
 
 async function runServingGuardAudit({
   queryFn = query,
+  closePoolFn = closePool,
   market = DEFAULT_MARKET,
   limit = DEFAULT_LIMIT,
   examplesPerReason = DEFAULT_EXAMPLES_PER_REASON,
+  queryRetries = DEFAULT_QUERY_RETRIES,
+  queryRetryBackoffMs = DEFAULT_QUERY_RETRY_BACKOFF_MS,
   generatedAt = new Date().toISOString(),
 } = {}) {
-  const rows = await loadServedRelationshipRows({ queryFn, market, limit });
+  const { rows, retry } = await loadServedRelationshipRowsWithRetry({
+    queryFn,
+    closePoolFn,
+    market,
+    limit,
+    queryRetries,
+    queryRetryBackoffMs,
+  });
   const summary = summarizeSuppressionRows(rows, { examplesPerReason, generatedAt });
   return {
     ...summary,
@@ -250,6 +341,7 @@ async function runServingGuardAudit({
       market: normalizeString(market, 24).toUpperCase() || 'all',
       limit: parseInteger(limit, DEFAULT_LIMIT, { min: 0, max: MAX_LIMIT }),
       examples_per_reason: examplesPerReason,
+      retry,
       predicate:
         "vertical = 'beauty' AND label_state IN ('human_approved','ai_approved') AND last_verified_at IS NOT NULL AND expires_at > now()",
     },
@@ -280,7 +372,9 @@ if (require.main === module) {
 module.exports = {
   buildServedRowsSql,
   loadServedRelationshipRows,
+  loadServedRelationshipRowsWithRetry,
   summarizeSuppressionRows,
   runServingGuardAudit,
+  isTransientDbError,
   parseArgs,
 };

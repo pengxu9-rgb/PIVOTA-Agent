@@ -1,5 +1,7 @@
 const {
   buildServedRowsSql,
+  loadServedRelationshipRowsWithRetry,
+  parseArgs,
   runServingGuardAudit,
   summarizeSuppressionRows,
 } = require('../../scripts/audit-relationship-graph-serving-guard');
@@ -46,6 +48,20 @@ function row(overrides = {}) {
 }
 
 describe('audit-relationship-graph-serving-guard', () => {
+  test('parseArgs accepts audit query retry controls', () => {
+    const options = parseArgs([
+      '--market',
+      'US',
+      '--query-retries',
+      '4',
+      '--query-retry-backoff-ms',
+      '250',
+    ]);
+
+    expect(options.queryRetries).toBe(4);
+    expect(options.queryRetryBackoffMs).toBe(250);
+  });
+
   test('builds a read-only label-store query without pre-filtering audited suppressions', () => {
     const { sql, params } = buildServedRowsSql({ market: 'US', limit: 25 });
 
@@ -150,6 +166,56 @@ describe('audit-relationship-graph-serving-guard', () => {
     expect(queryFn.mock.calls[0][1]).toEqual(['US', 10]);
     expect(audit.suppressed_rows).toBe(1);
     expect(audit.query.source_table).toBe('relationship_candidate_labels');
+    expect(audit.query.retry).toEqual({ attempts: 0, max_retries: 2, errors: [] });
     expect(audit.query.predicate).toContain("label_state IN ('human_approved','ai_approved')");
+  });
+
+  test('retries transient read failures and records retry metadata', async () => {
+    const transient = new Error('connection terminated unexpectedly');
+    transient.code = '57P01';
+    const queryFn = jest
+      .fn()
+      .mockRejectedValueOnce(transient)
+      .mockResolvedValueOnce({ rows: [row({ id: 'safe_row' })] });
+    const closePoolFn = jest.fn(async () => {});
+
+    const audit = await runServingGuardAudit({
+      queryFn,
+      closePoolFn,
+      market: 'US',
+      queryRetries: 2,
+      queryRetryBackoffMs: 0,
+      generatedAt: NOW,
+    });
+
+    expect(queryFn).toHaveBeenCalledTimes(2);
+    expect(closePoolFn).toHaveBeenCalledTimes(1);
+    expect(audit.safe_rows).toBe(1);
+    expect(audit.query.retry).toEqual({
+      attempts: 1,
+      max_retries: 2,
+      errors: [
+        expect.objectContaining({
+          attempt: 1,
+          code: '57P01',
+          message: 'connection terminated unexpectedly',
+        }),
+      ],
+    });
+  });
+
+  test('does not retry non-transient read failures', async () => {
+    const err = new Error('relation does not exist');
+    err.code = '42P01';
+    const queryFn = jest.fn(async () => {
+      throw err;
+    });
+
+    await expect(loadServedRelationshipRowsWithRetry({
+      queryFn,
+      queryRetries: 2,
+      queryRetryBackoffMs: 0,
+    })).rejects.toMatchObject({ code: '42P01' });
+    expect(queryFn).toHaveBeenCalledTimes(1);
   });
 });

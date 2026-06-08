@@ -34,6 +34,8 @@ describe('run-relationship-graph-routine-job', () => {
       '180',
       '--step-timeout-minutes',
       '7',
+      '--serving-audit-timeout-minutes',
+      '12',
       '--db-lock-heartbeat-ms',
       '15000',
       '--skip-need-nodes',
@@ -50,6 +52,7 @@ describe('run-relationship-graph-routine-job', () => {
     expect(args.dbLockKey).toBe('relgraph:test');
     expect(args.lockStaleAfterMs).toBe(180 * 60 * 1000);
     expect(args.stepTimeoutMs).toBe(7 * 60 * 1000);
+    expect(args.servingAuditTimeoutMs).toBe(12 * 60 * 1000);
     expect(args.dbLockHeartbeatMs).toBe(15000);
     expect(args.skipNeedNodes).toBe(true);
     expect(args.failOnServingSuppressionReasons).toEqual([
@@ -163,6 +166,29 @@ describe('run-relationship-graph-routine-job', () => {
     const buildArgs = steps[0].args.join(' ');
     expect(buildArgs).toContain('--affected-refs product:seed_123,content_key:brand:sku');
     expect(buildArgs).toContain('--content-keys-file /tmp/content-keys.txt');
+  });
+
+  test('serving audit gets a separate timeout floor from short child-step canaries', () => {
+    const options = parseArgs([
+      '--skip-review',
+      '--skip-build',
+      '--skip-validation',
+      '--step-timeout-minutes',
+      '5',
+      '--out-dir',
+      '/tmp/relgraph-routine-test',
+    ], { now: NOW });
+
+    const { steps } = buildRoutineSteps(options);
+
+    expect(options.stepTimeoutMs).toBe(5 * 60 * 1000);
+    expect(options.servingAuditTimeoutMs).toBe(10 * 60 * 1000);
+    expect(steps).toEqual([
+      expect.objectContaining({
+        id: 'serving_guard_audit',
+        timeoutMs: 10 * 60 * 1000,
+      }),
+    ]);
   });
 
   test('buildRoutineSteps can suppress need nodes for scoped canaries', () => {
@@ -426,6 +452,43 @@ describe('run-relationship-graph-routine-job', () => {
     expect(summary.steps[0]).toEqual(expect.objectContaining({
       timed_out: false,
       timeout_ms: 1234,
+    }));
+  });
+
+  test('runRoutineJob passes the serving audit timeout override to that child step', async () => {
+    const outDir = fs.mkdtempSync(path.join(os.tmpdir(), 'relgraph-routine-'));
+    const options = parseArgs([
+      '--skip-review',
+      '--skip-build',
+      '--skip-validation',
+      '--out-dir',
+      outDir,
+      '--step-timeout-ms',
+      '1234',
+      '--serving-audit-timeout-ms',
+      '5678',
+    ], { now: NOW });
+    const runner = jest.fn(async (_command, args) => {
+      const outIdx = args.indexOf('--out');
+      const artifact = args[outIdx + 1];
+      fs.mkdirSync(path.dirname(artifact), { recursive: true });
+      fs.writeFileSync(artifact, `${JSON.stringify({ total_rows: 0, suppressed_rows: 0, suppressed_pct: 0 })}\n`);
+      return { exitCode: 0, stdout: '{"ok":true}', stderr: '' };
+    });
+
+    await runRoutineJob(options, { runner, now: NOW });
+
+    expect(runner).toHaveBeenCalledWith(
+      expect.any(String),
+      expect.any(Array),
+      expect.objectContaining({ timeoutMs: 5678 }),
+    );
+    const summary = JSON.parse(fs.readFileSync(path.join(outDir, 'routine_summary.json'), 'utf8'));
+    expect(summary.options.step_timeout_ms).toBe(1234);
+    expect(summary.options.serving_audit_timeout_ms).toBe(5678);
+    expect(summary.steps[0]).toEqual(expect.objectContaining({
+      id: 'serving_guard_audit',
+      timeout_ms: 5678,
     }));
   });
 
