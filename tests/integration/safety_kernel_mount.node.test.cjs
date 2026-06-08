@@ -488,7 +488,9 @@ describe('strict Safety Kernel mount on /agent/shop/v1/invoke', () => {
           body?.buyer_context?.customer_email === 'strict-buyer@example.com' &&
           body?.buyer_context?.customer_name === 'Strict Buyer' &&
           body?.buyer_context?.shipping_address?.name === 'Strict Buyer' &&
-          body?.buyer_context?.shipping_address?.address_line1 === '1 Kernel Way'
+          body?.buyer_context?.shipping_address?.address_line1 === '1 Kernel Way' &&
+          body?.metadata?.agent_v2?.checkout_provider === 'pivota_hosted_checkout' &&
+          body?.metadata?.agent_v2?.hosted_checkout === true
         );
       })
       .reply(200, {

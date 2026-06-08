@@ -27637,6 +27637,24 @@ function maybeApplyStrictMcpHostedPaymentDefaults(payment, invokeContext = {}) {
   });
 }
 
+function maybeApplyStrictMcpHostedOrderMetadata(order, invokeContext = {}) {
+  if (!isPlainObject(order)) return order;
+  if (invokeContext?.surface !== 'mcp') return order;
+  const existingMetadata = isPlainObject(order.metadata) ? order.metadata : {};
+  const existingAgentV2 = isPlainObject(existingMetadata.agent_v2) ? existingMetadata.agent_v2 : {};
+  return {
+    ...order,
+    metadata: pruneEmptyFields({
+      ...existingMetadata,
+      agent_v2: pruneEmptyFields({
+        ...existingAgentV2,
+        checkout_provider: 'pivota_hosted_checkout',
+        hosted_checkout: true,
+      }),
+    }),
+  };
+}
+
 function buildCommerceKernelDb() {
   if (process.env.DATABASE_URL) return { query };
   if (isAgentCheckoutStrictEnabled() && !allowInMemoryStrictCheckoutForTest()) {
@@ -27693,9 +27711,13 @@ async function invokeCommerceKernelRawUpstream(operation, payload, headers = {})
     }
     case 'create_order': {
       url = `${PIVOTA_API_BASE}/agent/v2/orders`;
+      const order = maybeApplyStrictMcpHostedOrderMetadata(
+        isPlainObject(payload?.order) ? payload.order : {},
+        invokeContext,
+      );
       requestBody = buildCreateOrderV2Body({
         payload,
-        order: payload?.order || {},
+        order,
         metadata,
         clientChannel,
         gatewayRequestId,
