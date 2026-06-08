@@ -231,6 +231,164 @@ describe('product relationship graph dry-run builder', () => {
     );
   });
 
+  test('rejects eye-area products for face need nodes', () => {
+    const hyaluronicNeed = CURATED_NEED_NODES.find((item) => item.need_id === 'need:hydrating-hyaluronic-serum');
+    const peptideNeed = CURATED_NEED_NODES.find((item) => item.need_id === 'need:budget-peptide-serum');
+    const barrierNeed = CURATED_NEED_NODES.find((item) => item.need_id === 'need:fragrance-free-barrier-repair');
+    const ceramideNeed = CURATED_NEED_NODES.find((item) => item.need_id === 'need:ceramide-rich-moisturizer');
+    const out = buildProductRelationshipGraphDryRun({
+      anchors: [],
+      needs: [hyaluronicNeed, peptideNeed, barrierNeed, ceramideNeed],
+      needCandidatesById: {
+        [hyaluronicNeed.need_id]: [
+          candidate({
+            product_id: 'beautifeye_serum',
+            brand: 'Eye Brand',
+            name: 'Roll-On BeautifEYE Serum',
+            description: 'Under-eye hyaluronic acid serum for tired-looking eyes.',
+            category_taxonomy: ['skincare', 'eye serum'],
+            price: 18,
+            score_total: 0.94,
+          }),
+        ],
+        [peptideNeed.need_id]: [
+          candidate({
+            product_id: 'multi_peptide_eye',
+            brand: 'Eye Brand',
+            name: 'Multi-Peptide Eye Serum',
+            description: 'Peptide serum for the delicate eye area.',
+            category_taxonomy: ['skincare', 'eye serum', 'peptide'],
+            price: 16,
+            score_total: 0.94,
+          }),
+        ],
+        [barrierNeed.need_id]: [
+          candidate({
+            product_id: 'barrier_repair_eye_cream',
+            brand: 'Eye Brand',
+            name: 'Barrier Repair Eye Cream',
+            description: 'Fragrance-free barrier repair cream for dry under eyes.',
+            category_taxonomy: ['skincare', 'eye cream', 'barrier repair'],
+            price: 22,
+            score_total: 0.94,
+          }),
+        ],
+        [ceramideNeed.need_id]: [
+          candidate({
+            product_id: 'ceramide_eye_cream',
+            brand: 'Eye Brand',
+            name: 'Ceramide Barrier Eye Cream',
+            description: 'Ceramide-rich barrier repair cream for the eye area.',
+            category_taxonomy: ['skincare', 'eye cream', 'ceramide'],
+            price: 24,
+            score_total: 0.94,
+          }),
+        ],
+      },
+      now: new Date(NOW),
+      reviewStatus: 'pending',
+    });
+
+    expect(out.summary.niche_specialist_count).toBe(0);
+    expect(out.rejected_edges.map((row) => row.candidate_ref).sort()).toEqual([
+      'product:barrier_repair_eye_cream',
+      'product:beautifeye_serum',
+      'product:ceramide_eye_cream',
+      'product:multi_peptide_eye',
+    ]);
+    expect(out.rejected_edges.every((row) => row.errors.includes('candidate_below_relationship_threshold'))).toBe(true);
+  });
+
+  test('requires explicit hyaluronic evidence for hyaluronic serum need nodes', () => {
+    const need = CURATED_NEED_NODES.find((item) => item.need_id === 'need:hydrating-hyaluronic-serum');
+    const out = buildProductRelationshipGraphDryRun({
+      anchors: [],
+      needs: [need],
+      needCandidatesById: {
+        [need.need_id]: [
+          candidate({
+            product_id: 'generic_hydrating_serum',
+            brand: 'Hydration Brand',
+            name: 'Hydrating Water Serum',
+            description: 'Lightweight hydration serum for daily moisture.',
+            category_taxonomy: ['skincare', 'serum', 'hydration'],
+            price: 19,
+            score_total: 0.94,
+          }),
+        ],
+      },
+      now: new Date(NOW),
+      reviewStatus: 'pending',
+    });
+
+    expect(out.summary.niche_specialist_count).toBe(0);
+    expect(out.rejected_edges[0]).toEqual(
+      expect.objectContaining({
+        anchor_ref: need.need_id,
+        candidate_ref: 'product:generic_hydrating_serum',
+        errors: ['candidate_below_relationship_threshold'],
+      }),
+    );
+  });
+
+  test('rejects set-like and spot-treatment candidates for gel moisturizer need nodes', () => {
+    const need = CURATED_NEED_NODES.find((item) => item.need_id === 'need:non-comedogenic-gel-moisturizer');
+    const out = buildProductRelationshipGraphDryRun({
+      anchors: [],
+      needs: [need],
+      needCandidatesById: {
+        [need.need_id]: [
+          candidate({
+            product_id: 'oil_free_gel_moisturizer',
+            brand: 'Clear Skin',
+            name: 'Oil-Free Gel Moisturizer',
+            description: 'Non-comedogenic lightweight gel cream moisturizer for acne-prone skin.',
+            category_taxonomy: ['skincare', 'gel moisturizer'],
+            price: 20,
+            score_total: 0.94,
+          }),
+          candidate({
+            product_id: 'acne_spot_gel',
+            brand: 'Clear Skin',
+            name: 'Rapid Clear Stubborn Acne Spot Gel',
+            description: 'Benzoyl peroxide acne spot treatment gel.',
+            category_taxonomy: ['skincare', 'spot treatment', 'gel'],
+            price: 12,
+            score_total: 0.94,
+          }),
+          candidate({
+            product_id: 'acne_bundle',
+            brand: 'Clear Skin',
+            name: 'Acne-Prone Skincare Bundle',
+            description: 'Bundle includes cleanser, toner, and face moisturizer for acne-prone skin.',
+            category_taxonomy: ['skincare', 'bundle', 'moisturizer'],
+            price: 42,
+            score_total: 0.94,
+          }),
+          candidate({
+            product_id: 'sensitive_skin_collection',
+            brand: 'Clear Skin',
+            name: 'The Sensitive Skin Collection',
+            description: 'Collection includes a cleanser, serum, and face moisturizer for sensitive acne-prone skin.',
+            category_taxonomy: ['skincare', 'collection', 'moisturizer'],
+            price: 48,
+            score_total: 0.94,
+          }),
+        ],
+      },
+      now: new Date(NOW),
+      reviewStatus: 'pending',
+    });
+
+    expect(out.summary.niche_specialist_count).toBe(1);
+    expect(out.edges[0].candidate_product_ref).toBe('product:oil_free_gel_moisturizer');
+    expect(out.rejected_edges.map((row) => row.candidate_ref).sort()).toEqual([
+      'product:acne_bundle',
+      'product:acne_spot_gel',
+      'product:sensitive_skin_collection',
+    ]);
+  });
+
   test('rejects broad category-only competitive alternatives without specific use-case overlap', () => {
     const out = buildProductRelationshipGraphDryRun({
       anchors: [

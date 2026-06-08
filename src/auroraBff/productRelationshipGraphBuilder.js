@@ -321,6 +321,7 @@ const FACE_BODY_AREA_TOKENS = new Set([
 const SET_MARKER_TOKENS = new Set([
   'bundle',
   'combo',
+  'collection',
   'duo',
   'essentials',
   'faves',
@@ -370,6 +371,21 @@ const COMPLEXION_JOB_TOKENS = {
 
 const LIP_CARE_TOKENS = ['balm', 'butter', 'care', 'hydrating', 'hydration', 'mask', 'oil', 'strengthening', 'treatz'];
 const LIP_COLOR_TOKENS = ['color', 'gloss', 'glossy', 'liner', 'lipstick', 'luminizer', 'matte', 'pout', 'shine', 'shiny', 'stain', 'tint'];
+const EYE_OR_LASH_AREA_TOKENS = [
+  'eye',
+  'eyes',
+  'eyelash',
+  'eyelashes',
+  'eyeliner',
+  'eyeshadow',
+  'lash',
+  'lashes',
+  'brow',
+  'brows',
+  'undereye',
+  'under eye',
+  'mascara',
+];
 
 const SKINCARE_JOB_TOKENS = {
   eye: ['eye', 'undereye'],
@@ -479,6 +495,43 @@ function tokenSetHasAny(tokens, values) {
   return false;
 }
 
+function eyeAreaSignalValues(snapshot = {}) {
+  return [
+    snapshot.category,
+    snapshot.use_case,
+    snapshot.useCase,
+    snapshot.name,
+    snapshot.title,
+    snapshot.display_name,
+    snapshot.displayName,
+    snapshot.product_name,
+    snapshot.short_description,
+    snapshot.shortDescription,
+    ...(Array.isArray(snapshot.category_taxonomy) ? snapshot.category_taxonomy : []),
+    ...(Array.isArray(snapshot.tags) ? snapshot.tags : []),
+  ].filter(Boolean);
+}
+
+function hasEyeOrLashArea(snapshot = {}) {
+  const signalValues = eyeAreaSignalValues(snapshot);
+  const signalTokens = new Set(normalizeTokens(signalValues).filter((token) => token.length > 1));
+  if (tokenSetHasAny(signalTokens, EYE_OR_LASH_AREA_TOKENS)) return true;
+
+  const signalText = normalizeLower(signalValues.join(' '), 2048);
+  if (/\b(?:under[-\s]?eye|eye|eyes|eyelash(?:es)?|eyeliner|eyeshadow|lash(?:es)?|brow(?:s)?|mascara)\b/.test(signalText) ||
+    /\b(?:antioxifeye|beautifeye)\b/.test(signalText)) {
+    return true;
+  }
+
+  const descriptionText = normalizeLower([
+    snapshot.description,
+    snapshot.short_description,
+    snapshot.shortDescription,
+  ].filter(Boolean).join(' '), 2048);
+
+  return /\b(?:under[-\s]?eye|eye[-\s]?(?:area|serum|cream|treatment|gel|mask|balm)|lash(?:es)?[-\s]?(?:serum|growth|treatment|gel)|brow(?:s)?[-\s]?(?:serum|growth|treatment|gel)|mascara)\b/.test(descriptionText);
+}
+
 function tokenGroups(tokens, groupMap) {
   const groups = new Set();
   for (const [group, values] of Object.entries(groupMap)) {
@@ -520,6 +573,13 @@ function isSetLikeProduct(snapshot = {}) {
   const category = normalizeCategoryValue(snapshot.category);
   if (category === 'set' || category === 'makeup set') return true;
   return tokenSetHasAny(rawProductTokens(snapshot), SET_MARKER_TOKENS);
+}
+
+function isHighSignalSetLikeProduct(snapshot = {}) {
+  const category = normalizeCategoryValue(snapshot.category);
+  if (category === 'set' || category === 'makeup set') return true;
+  const tokens = new Set(normalizeTokens(eyeAreaSignalValues(snapshot)).filter((token) => token.length > 1));
+  return tokenSetHasAny(tokens, SET_MARKER_TOKENS);
 }
 
 function setCompositionGroups(snapshot = {}) {
@@ -949,16 +1009,23 @@ function needCandidateCompatibility(need = {}, candidateSnapshot = {}, candidate
   const candidateTokens = rawProductTokens(candidateSnapshot);
   const candidateCategory = normalizeCategoryValue(candidateSnapshot.category);
   const candidatePrice = toNumberOrNull(candidateSnapshot.price ?? candidateSnapshot.price_amount ?? candidate.price);
+  const candidateEyeOrLashArea = hasEyeOrLashArea(candidateSnapshot);
   const isBodyOrHair = candidateTokens.has('body') || candidateTokens.has('hair') || candidateTokens.has('scalp') ||
     candidateCategory.startsWith('body') || candidateCategory.startsWith('hair') || candidateCategory === 'scalp care';
 
+  if (isHighSignalSetLikeProduct(candidateSnapshot)) {
+    return { compatible: false, reason: 'need_candidate_set_like_mismatch' };
+  }
+
   if (needId.includes('budget-peptide-serum')) {
     if (candidatePrice == null) return { compatible: false, reason: 'budget_need_missing_price' };
+    if (candidateEyeOrLashArea) return { compatible: false, reason: 'budget_peptide_need_eye_area_mismatch' };
     if (!tokenSetHasAny(candidateTokens, ['peptide', 'peptides'])) return { compatible: false, reason: 'budget_peptide_need_missing_peptide' };
     if (!tokenSetHasAny(candidateTokens, ['serum', 'drops'])) return { compatible: false, reason: 'budget_peptide_need_missing_serum_form' };
   }
 
   if (needId.includes('fragrance-free-barrier-repair')) {
+    if (candidateEyeOrLashArea) return { compatible: false, reason: 'barrier_need_eye_area_mismatch' };
     if (isBodyOrHair) return { compatible: false, reason: 'barrier_need_body_or_hair_mismatch' };
     if (!tokenSetHasAny(candidateTokens, ['barrier', 'ceramide', 'repair'])) return { compatible: false, reason: 'barrier_need_missing_barrier_evidence' };
     if (!tokenSetHasAny(candidateTokens, ['fragrance free', 'fragrance-free', 'unscented', 'sensitive'])) {
@@ -1000,11 +1067,12 @@ function needCandidateCompatibility(need = {}, candidateSnapshot = {}, candidate
 
   if (needId.includes('hydrating-hyaluronic-serum')) {
     if (isBodyOrHair) return { compatible: false, reason: 'hyaluronic_serum_need_body_or_hair_mismatch' };
+    if (candidateEyeOrLashArea) return { compatible: false, reason: 'hyaluronic_serum_need_eye_area_mismatch' };
     if (!tokenSetHasAny(candidateTokens, ['serum', 'drops'])) {
       return { compatible: false, reason: 'hyaluronic_serum_need_missing_serum_form' };
     }
-    if (!tokenSetHasAny(candidateTokens, ['hyaluronic', 'hyaluronic acid', 'ha', 'hydrating', 'hydration'])) {
-      return { compatible: false, reason: 'hyaluronic_serum_need_missing_hydration_evidence' };
+    if (!tokenSetHasAny(candidateTokens, ['hyaluronic', 'hyaluronic acid', 'sodium hyaluronate', 'ha'])) {
+      return { compatible: false, reason: 'hyaluronic_serum_need_missing_hyaluronic_evidence' };
     }
   }
 
@@ -1029,6 +1097,7 @@ function needCandidateCompatibility(need = {}, candidateSnapshot = {}, candidate
   }
 
   if (needId.includes('ceramide-rich-moisturizer')) {
+    if (candidateEyeOrLashArea) return { compatible: false, reason: 'ceramide_moisturizer_need_eye_area_mismatch' };
     if (candidateTokens.has('hair') || candidateTokens.has('scalp') || candidateCategory.startsWith('hair')) {
       return { compatible: false, reason: 'ceramide_moisturizer_need_hair_mismatch' };
     }
@@ -1073,7 +1142,9 @@ function needCandidateCompatibility(need = {}, candidateSnapshot = {}, candidate
 
   if (needId.includes('non-comedogenic-gel-moisturizer')) {
     if (isBodyOrHair) return { compatible: false, reason: 'noncomedogenic_gel_need_body_or_hair_mismatch' };
-    if (!tokenSetHasAny(candidateTokens, ['gel', 'water cream', 'moisturizer', 'moisturiser'])) {
+    const hasMoisturizerForm = tokenSetHasAny(candidateTokens, ['moisturizer', 'moisturiser', 'cream', 'water cream', 'gel cream', 'gel-cream']);
+    const hasGelOrLightweightModifier = tokenSetHasAny(candidateTokens, ['gel', 'water cream', 'gel cream', 'gel-cream', 'lightweight', 'oil control', 'oil-control', 'mattifying']);
+    if (!hasMoisturizerForm || !hasGelOrLightweightModifier) {
       return { compatible: false, reason: 'noncomedogenic_gel_need_missing_gel_moisturizer_form' };
     }
     if (!tokenSetHasAny(candidateTokens, ['non comedogenic', 'non-comedogenic', 'oil free', 'oil-free', 'acne', 'oily'])) {
