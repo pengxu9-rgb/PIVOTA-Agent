@@ -502,7 +502,7 @@ describe('strict Safety Kernel mount on /agent/shop/v1/invoke', () => {
         return (
           body?.order_id === 'ORD_STRICT' &&
           body?.payment_method?.type === 'stripe_checkout' &&
-          body?.return_url === 'https://agent.test.pivota.local/checkout/return?order_id=ORD_STRICT' &&
+          body?.return_url === 'https://agent.test.pivota.local/order/success?orderId=ORD_STRICT&finalizing=1' &&
           body?.expected_amount === undefined &&
           body?.currency === undefined
         );

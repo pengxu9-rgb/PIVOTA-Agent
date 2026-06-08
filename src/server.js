@@ -27570,12 +27570,31 @@ function resolveStrictMcpPaymentMethodHint() {
 }
 
 function resolveStrictMcpPaymentReturnUrl(orderId) {
+  const oid = firstNonEmptyString(orderId);
   const configured = firstNonEmptyString(
     process.env.AGENT_CHECKOUT_MCP_PAYMENT_RETURN_URL,
     process.env.AGENT_CHECKOUT_PAYMENT_RETURN_URL,
     process.env.PIVOTA_PAYMENT_RETURN_URL,
   );
-  if (configured) return configured;
+  if (configured) {
+    try {
+      const replaced = oid
+        ? configured
+            .replace(/\{order_id\}/g, encodeURIComponent(oid))
+            .replace(/\{orderId\}/g, encodeURIComponent(oid))
+        : configured;
+      const url = new URL(replaced);
+      if (oid && !url.searchParams.has('orderId') && !url.searchParams.has('order_id')) {
+        url.searchParams.set('orderId', oid);
+      }
+      if (!url.searchParams.has('finalizing')) {
+        url.searchParams.set('finalizing', '1');
+      }
+      return url.toString();
+    } catch (_) {
+      return configured;
+    }
+  }
   const base = firstNonEmptyString(
     process.env.PIVOTA_AGENT_PUBLIC_BASE_URL,
     process.env.PIVOTA_PUBLIC_AGENT_BASE_URL,
@@ -27585,9 +27604,9 @@ function resolveStrictMcpPaymentReturnUrl(orderId) {
   );
   if (!base) return undefined;
   try {
-    const url = new URL('/checkout/return', `${base.replace(/\/+$/, '')}/`);
-    const oid = firstNonEmptyString(orderId);
-    if (oid) url.searchParams.set('order_id', oid);
+    const url = new URL('/order/success', `${base.replace(/\/+$/, '')}/`);
+    if (oid) url.searchParams.set('orderId', oid);
+    url.searchParams.set('finalizing', '1');
     return url.toString();
   } catch (_) {
     return undefined;
