@@ -94,6 +94,63 @@ describe('Celestial gateway invoke ingress modeling', () => {
     expect(audit.would_enforce).toBe(true);
   });
 
+  test('maps checkout_handoff to execution-facing and requires explicit handoff scope', () => {
+    const buildInput = (metadata = {}) => buildInvokeIngressGatewayInput({
+      req: {
+        path: '/agent/shop/v1/invoke',
+        method: 'POST',
+        headers: {},
+        invokeAuth: {
+          agent_id: 'agent_checkout_1',
+          auth_mode: 'api_key',
+          auth_source: 'x-agent-api-key',
+          key_fingerprint: 'fp_checkout_1',
+        },
+      },
+      routeContext: {
+        client_channel: 'shop',
+        orchestrator_path: 'external_invoke_route',
+        invocation_surface: 'direct_api',
+      },
+      operation: 'checkout_handoff',
+      payload: {
+        handoff_descriptor: {
+          status: 'eligible',
+          kind: 'pivota_agent_checkout_handoff',
+          merchant_id: 'merch_1',
+          product_key: 'prod::merch_1::shopify::p1',
+          sku_key: 'sku_1',
+          pivota_signature_id: 'sig_1',
+          commerce_path: 'pivota_direct_quote_first',
+          source_deliverability_status: 'transactable',
+        },
+      },
+      metadata: {
+        source: 'shopping_agent',
+        ...metadata,
+      },
+      request_id: 'req_checkout_1',
+    });
+
+    const blockedInput = buildInput();
+    expect(blockedInput.requested_layer).toBe('execution_facing');
+    expect(blockedInput.task_type).toBe('exact_product');
+    expect(blockedInput.governance_hints.request_checkout_handoff).toBe(true);
+
+    const blockedEnvelope = prepareGatewayGovernanceEnvelope(blockedInput);
+    expect(blockedEnvelope.access_scope.allow_checkout_handoff).toBe(false);
+    expect(blockedEnvelope.query_governance_decision.allowed).toBe(false);
+    expect(blockedEnvelope.query_governance_decision.reason_codes).toContain(
+      'checkout_handoff_not_allowed',
+    );
+
+    const allowedEnvelope = prepareGatewayGovernanceEnvelope(
+      buildInput({ allow_checkout_handoff: true, partner_tier: 'flagship' }),
+    );
+    expect(allowedEnvelope.access_scope.allow_checkout_handoff).toBe(true);
+    expect(allowedEnvelope.query_governance_decision.allowed).toBe(true);
+  });
+
   test('routes shopping-agent beauty discovery through orchestration when auto-delegate is allowed', () => {
     const input = buildInvokeIngressGatewayInput({
       req: {

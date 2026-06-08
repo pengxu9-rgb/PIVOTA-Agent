@@ -13,6 +13,7 @@ const EXACT_RESOLUTION_OPERATIONS = new Set([
   'get_product_detail',
   'get_pdp',
   'get_pdp_v2',
+  'checkout_handoff',
   'get_product_intel_v1',
   'get_product_feedback_v1',
   'get_product_recommendation_intents_v1',
@@ -408,6 +409,11 @@ function buildInvokeIngressGatewayInput({
     ),
     transport: 'http',
     auth_scheme: resolveAuthScheme(req, routeContext),
+    allow_checkout_handoff:
+      parseBoolean(metadata.allow_checkout_handoff, false) ||
+      parseBoolean(metadata.allowCheckoutHandoff, false) ||
+      parseBoolean(routeContext.allow_checkout_handoff, false) ||
+      parseBoolean(routeContext.allowCheckoutHandoff, false),
     continuation_mode: continuationMode,
     response_mode: responseMode,
     supports_callbacks: Boolean(callback),
@@ -459,6 +465,7 @@ function buildInvokeIngressGatewayInput({
       ),
       request_checkout_handoff:
         FULL_PURCHASE_OPERATIONS.has(String(operation || '').trim().toLowerCase()) ||
+        String(operation || '').trim().toLowerCase() === 'checkout_handoff' ||
         parseBoolean(metadata.request_checkout_handoff, false),
       near_exact_resolution:
         String(metadata.query_class || metadata.queryClass || '').trim().toLowerCase() ===

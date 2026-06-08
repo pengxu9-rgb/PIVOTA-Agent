@@ -21,6 +21,7 @@ const OperationEnum = z.enum([
   'get_product_detail',
   'get_pdp',
   'get_pdp_v2',
+  'checkout_handoff',
   'get_product_intel_v1',
   'get_product_feedback_v1',
   'get_product_recommendation_intents_v1',
@@ -125,6 +126,11 @@ const BaseInvokeRequestSchema = z.object({
     
     // get_order_status / request_after_sales: { order_id, requested_action?, reason? }
     status: z.any().optional(),
+
+    // checkout_handoff: advisory audit descriptor; resolver revalidates live before quote readiness.
+    handoff: z.any().optional(),
+    handoff_descriptor: z.any().optional(),
+    checkout_handoff: z.any().optional(),
   }).passthrough(),
 });
 
