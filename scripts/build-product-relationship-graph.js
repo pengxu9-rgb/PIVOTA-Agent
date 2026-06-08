@@ -126,6 +126,7 @@ function classifyEdgeForPrefilter({ edge, defaultLabelState, anchorAttrs, candid
   const deterministicReasons = [
     ...sameProductPrefilterReasons(edge),
     ...candidateAvailabilityPrefilterReasons(edge),
+    ...structuralEvidenceMismatchPrefilterReasons(edge),
     ...placeholderEvidencePrefilterReasons(edge),
   ];
   if (deterministicReasons.length) {
@@ -477,6 +478,75 @@ function hasUnavailableEvidence(value) {
 function candidateAvailabilityPrefilterReasons(edge = {}) {
   if (!UNAVAILABLE_CANDIDATE_RELATION_TYPES.has(normalizeLower(edge.relation_type, 80))) return [];
   return hasUnavailableEvidence(candidateAvailabilityText(edge)) ? ['candidate_unavailable'] : [];
+}
+
+function snapshotStructuralText(snapshot = {}) {
+  if (!snapshot || typeof snapshot !== 'object' || Array.isArray(snapshot)) return '';
+  return normalizeIdentityText([
+    snapshot.name,
+    snapshot.title,
+    snapshot.display_name,
+    snapshot.displayName,
+    snapshot.product_name,
+    snapshot.productName,
+    snapshot.category,
+    snapshot.product_type,
+    snapshot.productType,
+    snapshot.use_case,
+    snapshot.useCase,
+    snapshot.description,
+    snapshot.short_description,
+    snapshot.shortDescription,
+  ].map((value) => normalizeScalarString(value, 1000)).filter(Boolean).join(' '), 3000);
+}
+
+function snapshotStructuralTitleText(snapshot = {}) {
+  if (!snapshot || typeof snapshot !== 'object' || Array.isArray(snapshot)) return '';
+  return normalizeIdentityText([
+    snapshot.name,
+    snapshot.title,
+    snapshot.display_name,
+    snapshot.displayName,
+    snapshot.product_name,
+    snapshot.productName,
+  ].map((value) => normalizeScalarString(value, 1000)).filter(Boolean).join(' '), 1000);
+}
+
+function hasStructuralPhrase(text, patterns = []) {
+  return patterns.some((pattern) => pattern.test(text));
+}
+
+function structuralSignals(snapshot = {}) {
+  const text = snapshotStructuralText(snapshot);
+  const titleText = snapshotStructuralTitleText(snapshot);
+  return {
+    eye: hasStructuralPhrase(text, [/\beye\b/, /\bunder eye\b/, /\bunder eyes\b/, /\bundereye\b/]),
+    sunscreen: hasStructuralPhrase(text, [/\bsunscreen\b/, /\bsun screen\b/, /\bsun serum\b/, /\bspf\b/, /\buv\b/]),
+    lipLiner: hasStructuralPhrase(text, [/\blip liner\b/]),
+    primaryLipLiner: hasStructuralPhrase(titleText, [/\blip liner\b/]),
+    lipColor: hasStructuralPhrase(text, [/\blipstick\b/, /\bliquid lipstick\b/, /\blip color\b/, /\blip paint\b/, /\blip tint\b/, /\blip stain\b/]),
+    primaryLipColor: hasStructuralPhrase(titleText, [/\blipstick\b/, /\bliquid lipstick\b/, /\blip color\b/, /\blip paint\b/, /\blip tint\b/, /\blip stain\b/]),
+  };
+}
+
+function structuralEvidenceMismatchPrefilterReasons(edge = {}) {
+  if (!UNAVAILABLE_CANDIDATE_RELATION_TYPES.has(normalizeLower(edge.relation_type, 80))) return [];
+  const anchor = structuralSignals(edge.anchor_snapshot);
+  const candidate = structuralSignals(edge.candidate_snapshot);
+  const reasons = [];
+  if (anchor.eye !== candidate.eye && (anchor.eye || candidate.eye)) {
+    reasons.push('target_area_evidence_mismatch:eye');
+  }
+  if (anchor.sunscreen !== candidate.sunscreen && (anchor.sunscreen || candidate.sunscreen)) {
+    reasons.push('sunscreen_evidence_mismatch');
+  }
+  if (
+    (anchor.lipColor && candidate.primaryLipLiner) ||
+    (anchor.primaryLipLiner && candidate.lipColor)
+  ) {
+    reasons.push('product_form_evidence_mismatch:lip_color_vs_lip_liner');
+  }
+  return reasons;
 }
 
 function affectedRefKeys(refs = []) {

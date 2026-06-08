@@ -317,6 +317,98 @@ describe('classifyEdgeForPrefilter — Phase B gate routing', () => {
     expect(r).toEqual({ label_state: 'generated', prefilter_reasons: null, bucket: 'passed' });
   });
 
+  test('eye-target mismatch rejects structural generated alternatives before review', () => {
+    const r = classifyEdgeForPrefilter({
+      edge: edge({
+        relation_type: 'competitive_alternative',
+        anchor_snapshot: {
+          name: 'Niacinamide 10% + Zinc 1%',
+          category: 'Face Serum',
+        },
+        candidate_snapshot: {
+          name: 'Revive Eye Serum : Ginseng + Retinal',
+          category: 'Eye Serum',
+        },
+      }),
+      defaultLabelState: 'generated',
+      anchorAttrs: attrs(),
+      candidateAttrs: attrs(),
+    });
+    expect(r).toEqual({
+      label_state: 'prefilter_rejected',
+      prefilter_reasons: ['target_area_evidence_mismatch:eye'],
+      bucket: 'rejected',
+    });
+  });
+
+  test('sunscreen mismatch rejects structural generated alternatives before review', () => {
+    const r = classifyEdgeForPrefilter({
+      edge: edge({
+        relation_type: 'competitive_alternative',
+        anchor_snapshot: {
+          name: 'Niacinamide 10% + Zinc 1%',
+          category: 'Treatment Serum',
+        },
+        candidate_snapshot: {
+          name: 'Hyalu-Cica Water-Fit Sun Serum UV',
+          category: 'Sunscreen',
+        },
+      }),
+      defaultLabelState: 'generated',
+      anchorAttrs: attrs(),
+      candidateAttrs: attrs(),
+    });
+    expect(r).toEqual({
+      label_state: 'prefilter_rejected',
+      prefilter_reasons: ['sunscreen_evidence_mismatch'],
+      bucket: 'rejected',
+    });
+  });
+
+  test('lip liner vs lip color rejects structural generated alternatives before review', () => {
+    const r = classifyEdgeForPrefilter({
+      edge: edge({
+        relation_type: 'competitive_alternative',
+        anchor_snapshot: {
+          name: 'Stunna Lip Paint Longwear Fluid Lip Color',
+          category: 'Liquid Lipstick',
+        },
+        candidate_snapshot: {
+          name: 'Lip Liner',
+          category: 'Lip Liner',
+        },
+      }),
+      defaultLabelState: 'generated',
+      anchorAttrs: attrs(),
+      candidateAttrs: attrs(),
+    });
+    expect(r).toEqual({
+      label_state: 'prefilter_rejected',
+      prefilter_reasons: ['product_form_evidence_mismatch:lip_color_vs_lip_liner'],
+      bucket: 'rejected',
+    });
+  });
+
+  test('structural evidence mismatch gate does not reject loose related-product links', () => {
+    const r = classifyEdgeForPrefilter({
+      edge: edge({
+        relation_type: 'related_product',
+        anchor_snapshot: {
+          name: 'Stunna Lip Paint Longwear Fluid Lip Color',
+          category: 'Liquid Lipstick',
+        },
+        candidate_snapshot: {
+          name: 'Lip Liner',
+          category: 'Lip Liner',
+        },
+      }),
+      defaultLabelState: 'generated',
+      anchorAttrs: attrs(),
+      candidateAttrs: attrs(),
+    });
+    expect(r).toEqual({ label_state: 'generated', prefilter_reasons: null, bucket: 'passed' });
+  });
+
   test('missing anchor attrs: skipped (passed-through, no gate applied)', () => {
     const r = classifyEdgeForPrefilter({
       edge: edge(),
