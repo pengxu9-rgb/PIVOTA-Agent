@@ -5,6 +5,7 @@ const { spawn } = require('node:child_process');
 const fs = require('node:fs');
 const path = require('node:path');
 
+const { recordRelationshipGraphRun } = require('../src/services/relationshipGraphRunLedger');
 const { APPLY_CONFIRM_TOKEN: ROUTINE_CONFIRM_TOKEN } = require('./run-relationship-graph-routine-job');
 
 const WRAPPER_CONFIRM_TOKEN = 'APPLY_RELGRAPH_SYNC_ROUTINE';
@@ -94,6 +95,7 @@ function usage() {
     'When --select-updated-since or --select-hours is supplied, a read-only affected-products manifest is generated first.',
     'Graph writes require --apply-build and/or --apply-review; routine confirmation is passed through internally.',
     'Production gates are on by default: --db-lock, stale lock recovery, serving suppression thresholds, and critical reason gating.',
+    'Use --record-run-ledger to persist run status and counters to relationship_graph_routine_runs.',
   ].join('\n');
 }
 
@@ -219,6 +221,9 @@ function parseArgs(argv = process.argv.slice(2), { now = new Date(), cwd = proce
     skipServingAudit: hasFlag(argv, 'skip-serving-audit'),
     skipPbaSigRefresh: hasFlag(argv, 'skip-pba-sig-refresh'),
     allowEmptyBuild: hasFlag(argv, 'allow-empty-build'),
+    recordRunLedger: hasFlag(argv, 'record-run-ledger'),
+    runTrigger: normalizeString(argValue(argv, 'run-trigger') || argValue(argv, 'ledger-trigger'), 120),
+    runLedgerFailClosed: hasFlag(argv, 'run-ledger-fail-closed') || hasFlag(argv, 'ledger-fail-closed'),
   };
 }
 
@@ -247,6 +252,9 @@ function serializableOptions(options = {}) {
     max_serving_suppressed_pct: options.maxServingSuppressedPct,
     max_serving_suppressed_rows: options.maxServingSuppressedRows,
     fail_on_serving_suppression_reasons: options.failOnServingSuppressionReasons || [],
+    record_run_ledger: Boolean(options.recordRunLedger),
+    run_trigger: options.runTrigger || null,
+    run_ledger_fail_closed: Boolean(options.runLedgerFailClosed),
   };
 }
 
@@ -406,7 +414,50 @@ function writeSummary(filePath, summary) {
   return resolved;
 }
 
-async function runSyncRoutine(options, { runner = runCommand, cwd = process.cwd(), now = new Date() } = {}) {
+async function recordRunLedgerSafe(summary, options, { ledgerRecorder = recordRelationshipGraphRun } = {}) {
+  if (!options.recordRunLedger) return { skipped: true };
+
+  const requestedAt = new Date().toISOString();
+  summary.ledger = {
+    requested: true,
+    recorded: false,
+    trigger: options.runTrigger || '',
+    requested_at: requestedAt,
+  };
+
+  try {
+    const record = await ledgerRecorder(summary, {
+      runKind: 'sync_routine',
+      trigger: options.runTrigger || '',
+    });
+    summary.ledger = {
+      ...summary.ledger,
+      recorded: true,
+      recorded_at: new Date().toISOString(),
+      run_id: record?.run_id || summary.run_id,
+      status: record?.status || null,
+    };
+    return { record };
+  } catch (err) {
+    summary.ledger = {
+      ...summary.ledger,
+      recorded: false,
+      error_code: err && err.code ? String(err.code) : null,
+      error_message: err && err.message ? String(err.message) : String(err),
+    };
+    return { error: err };
+  }
+}
+
+async function runSyncRoutine(
+  options,
+  {
+    runner = runCommand,
+    cwd = process.cwd(),
+    now = new Date(),
+    ledgerRecorder = recordRelationshipGraphRun,
+  } = {},
+) {
   fs.mkdirSync(options.outDir, { recursive: true });
   fs.mkdirSync(options.routineOutDir, { recursive: true });
   const { artifacts, steps } = buildSyncRoutineSteps(options);
@@ -444,6 +495,11 @@ async function runSyncRoutine(options, { runner = runCommand, cwd = process.cwd(
       summary.failed_step = step.id;
       summary.summary_path = writeSummary(options.summaryOut, summary);
       const err = new Error(`relationship graph sync routine failed at step: ${step.id}`);
+      const ledgerResult = await recordRunLedgerSafe(summary, options, { ledgerRecorder });
+      summary.summary_path = writeSummary(options.summaryOut, summary);
+      if (ledgerResult.error) {
+        err.ledger_error = ledgerResult.error;
+      }
       err.summary = summary;
       throw err;
     }
@@ -451,6 +507,15 @@ async function runSyncRoutine(options, { runner = runCommand, cwd = process.cwd(
   }
 
   summary.summary_path = writeSummary(options.summaryOut, summary);
+  const ledgerResult = await recordRunLedgerSafe(summary, options, { ledgerRecorder });
+  summary.summary_path = writeSummary(options.summaryOut, summary);
+  if (ledgerResult.error && options.runLedgerFailClosed) {
+    const err = new Error(`relationship graph sync routine ledger recording failed: ${ledgerResult.error.message}`);
+    err.code = 'RELGRAPH_RUN_LEDGER_FAILED';
+    err.ledger_error = ledgerResult.error;
+    err.summary = summary;
+    throw err;
+  }
   return summary;
 }
 
@@ -483,5 +548,6 @@ module.exports = {
   WRAPPER_CONFIRM_TOKEN,
   buildSyncRoutineSteps,
   parseArgs,
+  recordRunLedgerSafe,
   runSyncRoutine,
 };

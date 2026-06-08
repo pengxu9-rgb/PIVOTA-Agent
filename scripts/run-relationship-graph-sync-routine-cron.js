@@ -15,6 +15,7 @@ const DEFAULT_SELECT_LIMIT = 250;
 const DEFAULT_LIMIT = 200;
 const DEFAULT_REVIEW_LIMIT = 250;
 const DEFAULT_SELECT_SOURCES = 'catalog_products,external_product_seeds';
+const DEFAULT_RUN_TRIGGER = 'railway_cron';
 
 function normalizeString(value, max = 512) {
   const text = String(value == null ? '' : value).trim();
@@ -101,6 +102,9 @@ function buildCronArgs(env = process.env, { now = new Date() } = {}) {
   const outDir = normalizeString(env.RELGRAPH_SYNC_OUT_DIR, 2000)
     || path.join('/tmp', 'relationship-graph-sync-routine', `relgraph_sync_cron_${dateStamp(now)}`);
   const allowEmpty = parseBooleanEnv(env.RELGRAPH_SYNC_ALLOW_EMPTY, true);
+  const recordRunLedger = parseBooleanEnv(env.RELGRAPH_SYNC_RUN_LEDGER_ENABLED, true);
+  const runTrigger = normalizeString(env.RELGRAPH_SYNC_RUN_TRIGGER, 120) || DEFAULT_RUN_TRIGGER;
+  const runLedgerFailClosed = parseBooleanEnv(env.RELGRAPH_SYNC_RUN_LEDGER_FAIL_CLOSED, false);
   const args = [
     '--market',
     normalizeString(env.RELGRAPH_SYNC_MARKET, 24).toUpperCase() || DEFAULT_MARKET,
@@ -156,6 +160,11 @@ function buildCronArgs(env = process.env, { now = new Date() } = {}) {
   pushFlag(args, 'skip-pba-sig-refresh', parseBooleanEnv(env.RELGRAPH_SYNC_SKIP_PBA_SIG_REFRESH, false));
   pushFlag(args, 'apply-build', applyBuild);
   pushFlag(args, 'apply-review', applyReview);
+  pushFlag(args, 'record-run-ledger', recordRunLedger);
+  if (recordRunLedger) {
+    pushArg(args, 'run-trigger', runTrigger);
+    pushFlag(args, 'run-ledger-fail-closed', runLedgerFailClosed);
+  }
   if (!dryRun) {
     args.push('--confirm', WRAPPER_CONFIRM_TOKEN);
   }
@@ -167,6 +176,9 @@ function buildCronArgs(env = process.env, { now = new Date() } = {}) {
     selectUpdatedSince,
     outDir,
     dryRun,
+    recordRunLedger,
+    runTrigger: recordRunLedger ? runTrigger : '',
+    runLedgerFailClosed: recordRunLedger && runLedgerFailClosed,
   };
 }
 
@@ -175,6 +187,7 @@ async function runCron({
   now = new Date(),
   cwd = process.cwd(),
   runner,
+  ledgerRecorder,
   parseArgsImpl = parseArgs,
   runSyncRoutineImpl = runSyncRoutine,
 } = {}) {
@@ -196,7 +209,7 @@ async function runCron({
   }
 
   const options = parseArgsImpl(config.args, { now, cwd });
-  const summary = await runSyncRoutineImpl(options, { runner, now, cwd });
+  const summary = await runSyncRoutineImpl(options, { runner, ledgerRecorder, now, cwd });
   report.ok = Boolean(summary && summary.ok);
   report.summary = summary;
   return report;

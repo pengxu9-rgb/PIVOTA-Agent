@@ -41,6 +41,8 @@ describe('run-relationship-graph-sync-routine-cron', () => {
     ));
     expect(config.args).toContain('--allow-empty-selection');
     expect(config.args).toContain('--allow-empty-build');
+    expect(config.args).toContain('--record-run-ledger');
+    expect(argValue(config.args, 'run-trigger')).toBe('railway_cron');
     expect(config.args).not.toContain('--apply-build');
     expect(config.args).not.toContain('--apply-review');
   });
@@ -70,6 +72,30 @@ describe('run-relationship-graph-sync-routine-cron', () => {
     expect(config.args).toContain('--skip-serving-audit');
     expect(argValue(config.args, 'max-serving-suppressed-pct')).toBe('0.5');
     expect(argValue(config.args, 'fail-on-serving-suppression-reasons')).toBe('ai_approved_dupe_quarantined');
+  });
+
+  test('buildCronArgs can disable persistent run ledger recording', () => {
+    const config = buildCronArgs({
+      RELGRAPH_SYNC_RUN_LEDGER_ENABLED: 'false',
+    }, { now: NOW });
+
+    expect(config.recordRunLedger).toBe(false);
+    expect(config.args).not.toContain('--record-run-ledger');
+    expect(argValue(config.args, 'run-trigger')).toBe('');
+  });
+
+  test('buildCronArgs accepts run ledger env tuning', () => {
+    const config = buildCronArgs({
+      RELGRAPH_SYNC_RUN_TRIGGER: 'manual_cron_probe',
+      RELGRAPH_SYNC_RUN_LEDGER_FAIL_CLOSED: 'true',
+    }, { now: NOW });
+
+    expect(config.recordRunLedger).toBe(true);
+    expect(config.runTrigger).toBe('manual_cron_probe');
+    expect(config.runLedgerFailClosed).toBe(true);
+    expect(config.args).toContain('--record-run-ledger');
+    expect(argValue(config.args, 'run-trigger')).toBe('manual_cron_probe');
+    expect(config.args).toContain('--run-ledger-fail-closed');
   });
 
   test('buildCronArgs fails closed for write-mode env without explicit confirmation', () => {
@@ -118,6 +144,10 @@ describe('run-relationship-graph-sync-routine-cron', () => {
 
   test('runCron delegates to the guarded sync routine in selector mode', async () => {
     const runner = jest.fn(async () => ({ exitCode: 0, stdout: '{"ok":true}', stderr: '' }));
+    const ledgerRecorder = jest.fn(async (summary) => ({
+      run_id: summary.run_id,
+      status: 'passed',
+    }));
     const report = await runCron({
       env: {
         RELGRAPH_SYNC_SELECT_LIMIT: '2',
@@ -128,6 +158,7 @@ describe('run-relationship-graph-sync-routine-cron', () => {
       now: NOW,
       cwd: '/tmp/pivota',
       runner,
+      ledgerRecorder,
     });
 
     expect(report.ok).toBe(true);
@@ -141,5 +172,10 @@ describe('run-relationship-graph-sync-routine-cron', () => {
     const routineArgs = runner.mock.calls[1][1].join(' ');
     expect(routineArgs).toContain('--db-lock');
     expect(routineArgs).toContain('--allow-empty-build');
+    expect(ledgerRecorder).toHaveBeenCalledTimes(1);
+    expect(report.summary.ledger).toEqual(expect.objectContaining({
+      recorded: true,
+      trigger: 'railway_cron',
+    }));
   });
 });
