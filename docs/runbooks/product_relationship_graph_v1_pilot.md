@@ -104,4 +104,23 @@ Enable only for dogfood/internal traffic first:
 AURORA_BFF_RELATIONSHIP_GRAPH_ENABLED=true
 ```
 
+Before widening traffic, check live serving coverage and the runtime guard:
+
+```bash
+npm run relgraph:serving-status -- \
+  --all-markets \
+  --fail-on-readiness \
+  --json
+
+npm run relgraph:serving-audit -- \
+  --all-markets \
+  --examples-per-reason 8
+```
+
+`relgraph:serving-status` is read-only and reports live active/fresh rows from
+`relationship_candidate_labels`, including anchor coverage, approved alternative
+anchor percentage, niche-specialist coverage, AI/human label mix, and expiry
+windows. By default it uses the pilot acceptance thresholds above and only exits
+nonzero when `--fail-on-readiness` is set.
+
 Keep current Aurora router hard gates active. Graph candidates must still pass same-brand, category, source, and price rules before appearing in competitor or dupe blocks.

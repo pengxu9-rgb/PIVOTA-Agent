@@ -172,6 +172,7 @@
     "relgraph:sync-routine": "node scripts/run-relationship-graph-sync-routine.js",
     "relgraph:sync-routine:cron": "node scripts/run-relationship-graph-sync-routine-cron.js",
     "relgraph:run-ledger": "node scripts/report-relationship-graph-run-ledger.js",
+    "relgraph:serving-status": "node scripts/report-relationship-graph-serving-status.js",
     "relgraph:serving-audit": "node scripts/audit-relationship-graph-serving-guard.js",
     "relgraph:pba-sig-refresh": "node scripts/refresh-product-beauty-attribute-sig-ids.js",
     "relgraph:quarantine-serving-unsafe": "node scripts/quarantine-relationship-graph-serving-unsafe.js",
