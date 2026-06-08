@@ -214,6 +214,53 @@ function extractProductName(snapshot) {
   return pickFirstString(obj.name, obj.display_name, obj.displayName, obj.title, obj.product_name, obj.productName);
 }
 
+function extractProductTitle(snapshot) {
+  const obj = isPlainObject(snapshot) ? snapshot : {};
+  return pickFirstString(obj.title, obj.name, obj.display_name, obj.displayName, obj.product_name, obj.productName);
+}
+
+function extractShadeSkuMarker(title) {
+  const match = String(title || '').match(/#[0-9]{2,3}\b|(?:\u2014|-)\s*[0-9]{2,3}\b|\b(?:LN|DN|DP)[0-9]{3}\b/i);
+  return match ? match[0].replace(/^(?:\u2014|-)\s*/, '#').toUpperCase() : '';
+}
+
+function hasVariantSuffix(title) {
+  return /\s(?:\u2014|-)\s/.test(String(title || ''));
+}
+
+function relationshipBaseTitle(title) {
+  return normalizeLower(title, 300)
+    .replace(/\s+(?:\u2014|-)\s+.*$/, '')
+    .replace(/\s+\[[^\]]+\]\s*/g, ' ')
+    .replace(/\s+\([^)]*\)\s*/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function relationshipFamilyTitle(title) {
+  return normalizeLower(title, 300)
+    .replace(/#[0-9]{2,3}\b/g, ' ')
+    .replace(/(?:\u2014|-)\s*[0-9]{2,3}\b/g, ' ')
+    .replace(/\b(?:ln|dn|dp)[0-9]{3}\b/g, ' ')
+    .replace(/\s+(?:\u2014|-)\s+.*$/, '')
+    .replace(/\s+\[[^\]]+\]\s*/g, ' ')
+    .replace(/\s+\([^)]*\)\s*/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function isComplexionSkuTitle(title) {
+  return /\b(foundation|concealer|bright fix|match stix|skin stick|skinstick|tinted fluid|tinted moisturizer|hydra vizor)\b/i.test(
+    String(title || ''),
+  );
+}
+
+function isNestedProductRef(ref) {
+  const text = normalizeString(ref, 260);
+  if (!/^product:/i.test(text)) return false;
+  return text.replace(/^product:/i, '').includes(':');
+}
+
 function buildDefaultDisplayLabel(relationType, priceRatio) {
   if (relationType === 'dupe') {
     return priceRatio != null && priceRatio <= 0.85 ? 'budget_alternative' : 'alternative';
@@ -432,6 +479,73 @@ function isApprovedFreshEdge(edge, nowMs = Date.now()) {
   if (normalized.review_status !== 'approved') return false;
   if (!normalized.last_verified_at || !normalized.expires_at) return false;
   return new Date(normalized.expires_at).getTime() > nowMs;
+}
+
+function getRelationshipEdgeServingSuppressionReasons(edgeInput = {}) {
+  const edge = coerceRelationshipEdge(edgeInput);
+  const reasons = [];
+  if (isNestedProductRef(edge.anchor_ref) && edge.anchor_type === 'product') {
+    reasons.push('anchor_ref_unresolvable_nested_product_prefix');
+  }
+  if (isNestedProductRef(edge.candidate_product_ref)) {
+    reasons.push('candidate_ref_unresolvable_nested_product_prefix');
+  }
+
+  if (edge.label_state === 'ai_approved' && edge.relation_type === 'dupe') {
+    reasons.push('ai_approved_dupe_quarantined');
+  }
+
+  if (edge.label_state === 'ai_approved' && edge.relation_type === 'related_product') {
+    const anchorTitle = extractProductTitle(edge.anchor_snapshot);
+    const candidateTitle = extractProductTitle(edge.candidate_snapshot);
+    const anchorMarker = extractShadeSkuMarker(anchorTitle);
+    const candidateMarker = extractShadeSkuMarker(candidateTitle);
+    const anchorBase = relationshipBaseTitle(anchorTitle);
+    const candidateBase = relationshipBaseTitle(candidateTitle);
+    const anchorFamily = relationshipFamilyTitle(anchorTitle);
+    const candidateFamily = relationshipFamilyTitle(candidateTitle);
+    const sameBrand = Boolean(
+      extractBrand(edge.anchor_snapshot) &&
+        extractBrand(edge.anchor_snapshot) === extractBrand(edge.candidate_snapshot),
+    );
+    const bothComplexionSku = isComplexionSkuTitle(anchorTitle) && isComplexionSkuTitle(candidateTitle);
+    if (
+      anchorMarker &&
+      candidateMarker &&
+      anchorMarker !== candidateMarker &&
+      (
+        (anchorFamily && anchorFamily === candidateFamily) ||
+        (sameBrand && bothComplexionSku)
+      )
+    ) {
+      reasons.push('related_product_mismatched_shade_sku');
+    }
+
+    if (
+      anchorBase &&
+      candidateBase &&
+      anchorBase === candidateBase &&
+      normalizeLower(anchorTitle, 300) !== normalizeLower(candidateTitle, 300) &&
+      (hasVariantSuffix(anchorTitle) || hasVariantSuffix(candidateTitle) || anchorMarker || candidateMarker)
+    ) {
+      reasons.push('related_product_same_family_variant');
+    }
+
+    const brandText = `${extractBrand(edge.anchor_snapshot)} ${extractBrand(edge.candidate_snapshot)}`;
+    if (
+      /\bfenty\b/i.test(brandText) &&
+      (isComplexionSkuTitle(anchorTitle) || isComplexionSkuTitle(candidateTitle)) &&
+      (hasVariantSuffix(anchorTitle) || hasVariantSuffix(candidateTitle) || anchorMarker || candidateMarker)
+    ) {
+      reasons.push('related_product_fenty_complexion_sku_flood');
+    }
+  }
+
+  return Array.from(new Set(reasons));
+}
+
+function isRelationshipEdgeServingSafe(edgeInput = {}) {
+  return getRelationshipEdgeServingSuppressionReasons(edgeInput).length === 0;
 }
 
 function mapRowToEdge(row) {
@@ -1605,6 +1719,8 @@ module.exports = {
   coerceRelationshipEdge,
   validateRelationshipEdge,
   isApprovedFreshEdge,
+  getRelationshipEdgeServingSuppressionReasons,
+  isRelationshipEdgeServingSafe,
   edgeToRecoCandidate,
   splitEdgesForRecoBlocks,
   relationshipEdgeToSimilarItem,

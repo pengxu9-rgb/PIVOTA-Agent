@@ -76,6 +76,14 @@ function resolveOutPath(filePath) {
   return target ? (path.isAbsolute(target) ? target : path.join(process.cwd(), target)) : '';
 }
 
+function writeJsonFile(filePath, payload) {
+  const resolved = resolveOutPath(filePath);
+  if (!resolved) return '';
+  fs.mkdirSync(path.dirname(resolved), { recursive: true });
+  fs.writeFileSync(resolved, `${JSON.stringify(payload, null, 2)}\n`, 'utf8');
+  return resolved;
+}
+
 function normalizeBatchSize(value) {
   const numeric = Number(value || 0);
   if (!Number.isFinite(numeric) || numeric <= 0) return 0;
@@ -2051,6 +2059,72 @@ function findDuplicateCanonicals(rows) {
   return duplicates;
 }
 
+function dedupeStrings(values) {
+  const out = [];
+  const seen = new Set();
+  for (const value of Array.isArray(values) ? values : []) {
+    const text = asString(value);
+    const key = text.toLowerCase();
+    if (!text || seen.has(key)) continue;
+    seen.add(key);
+    out.push(text);
+  }
+  return out;
+}
+
+function buildAffectedProductsManifest({
+  mirrors = [],
+  skipped = [],
+  missingIds = [],
+  market = 'US',
+  mode = 'dry_run',
+  generatedAt = new Date().toISOString(),
+} = {}) {
+  const rows = (Array.isArray(mirrors) ? mirrors : []).map((mirror) => {
+    const externalProductId = asString(mirror.row?.external_product_id);
+    const sigId = asString(mirror.product?.pivota_signature_id);
+    const contentKey = asString(mirror.product?.content_key);
+    const productRefs = dedupeStrings([
+      externalProductId,
+      externalProductId ? `product:${externalProductId}` : '',
+      sigId,
+      sigId ? `product:${sigId}` : '',
+      contentKey,
+      mirror.productKey,
+    ]);
+    return {
+      external_product_id: externalProductId,
+      product_ref: externalProductId ? `product:${externalProductId}` : '',
+      product_refs: productRefs,
+      product_key: mirror.productKey,
+      product_group_id: mirror.productGroupId,
+      pivota_signature_id: sigId,
+      sig_id: sigId,
+      content_key: contentKey,
+      market: asString(mirror.row?.market || market).toUpperCase(),
+      brand: asString(mirror.product?.brand),
+      title: asString(mirror.product?.title),
+      canonical_url: asString(mirror.product?.canonical_url),
+      domain: asString(mirror.product?.source_domain || mirror.row?.domain),
+    };
+  });
+
+  return {
+    generated_at: generatedAt,
+    source: 'sync-external-seeds-to-catalog',
+    mode,
+    market: asString(market).toUpperCase(),
+    affected_count: rows.length,
+    external_product_ids: dedupeStrings(rows.map((row) => row.external_product_id)),
+    sig_ids: dedupeStrings(rows.map((row) => row.pivota_signature_id)),
+    content_keys: dedupeStrings(rows.map((row) => row.content_key)),
+    affected_refs: dedupeStrings(rows.flatMap((row) => row.product_refs)),
+    rows,
+    skipped,
+    missing_ids: missingIds,
+  };
+}
+
 async function run() {
   const dryRun = hasFlag('dry-run') || hasFlag('dryRun') || !hasFlag('apply');
   const write = !dryRun;
@@ -2066,6 +2140,7 @@ async function run() {
   );
   const market = asString(argValue('market', 'US')).toUpperCase();
   const out = resolveOutPath(argValue('out'));
+  const affectedProductsOut = resolveOutPath(argValue('affected-products-out') || argValue('affectedProductsOut'));
   const allowRandom = hasFlag('allow-random');
   const allowDuplicateCanonical = hasFlag('allow-duplicate-canonical');
   const upsertServingState = hasFlag('upsert-serving-state') || hasFlag('upsertServingState');
@@ -2159,11 +2234,23 @@ async function run() {
       }),
     })),
   };
+  const affectedProductsManifest = buildAffectedProductsManifest({
+    mirrors,
+    skipped,
+    missingIds,
+    market,
+    mode: report.mode,
+    generatedAt: report.generated_at,
+  });
+  if (affectedProductsOut) {
+    writeJsonFile(affectedProductsOut, affectedProductsManifest);
+    report.affected_products_out = affectedProductsOut;
+    report.affected_product_count = affectedProductsManifest.affected_count;
+  }
   const serialized = `${JSON.stringify(report, null, 2)}\n`;
   process.stdout.write(serialized);
   if (out) {
-    fs.mkdirSync(path.dirname(out), { recursive: true });
-    fs.writeFileSync(out, serialized, 'utf8');
+    writeJsonFile(out, report);
   }
 }
 
@@ -2182,6 +2269,7 @@ module.exports = {
     normalizeCategoryToken,
     titleCategoryText,
     buildMirror,
+    buildAffectedProductsManifest,
     filterMirrorsWithSignatureConflicts,
     scoreMirrorServingQuality,
   },

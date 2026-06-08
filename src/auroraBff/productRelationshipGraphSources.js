@@ -150,6 +150,10 @@ function normalizeProductRef(value, fallbackPrefix = 'product') {
   return `${prefix}:${text}`;
 }
 
+function stripRefPrefix(value) {
+  return normalizeString(value, 512).replace(/^[a-z][a-z0-9_+-]*:/i, '');
+}
+
 const RETAILER_OR_MARKETPLACE_HOST_TOKENS = new Set([
   'amazon',
   'boots',
@@ -586,6 +590,19 @@ function normalizeProductCandidateSnapshot(input = {}, options = {}) {
   return {
     product_ref: ref,
     product_id: productId || ref.replace(/^[a-z][a-z0-9_+-]*:/i, ''),
+    source_product_id: pickFirstString(row.source_product_id, row.sourceProductId, product.source_product_id, product.sourceProductId),
+    pivota_signature_id: pickFirstString(
+      row.pivota_signature_id,
+      row.pivotaSignatureId,
+      row.sig_id,
+      row.sigId,
+      product.pivota_signature_id,
+      product.pivotaSignatureId,
+      canonicalProductRef.pivota_signature_id,
+      canonicalProductRef.pivotaSignatureId,
+    ),
+    content_key: pickFirstString(row.content_key, row.contentKey, product.content_key, product.contentKey),
+    product_key: pickFirstString(row.product_key, row.productKey, product.product_key, product.productKey),
     brand,
     name,
     category,
@@ -641,6 +658,34 @@ function normalizeExternalProductSeedRow(row = {}) {
     authoritative: true,
     evidenceGrade: row.evidence_grade || 'B',
   });
+}
+
+function normalizeCatalogProductRow(row = {}) {
+  const productPayload = firstObject(row.product_payload, row.productData, row.product_data);
+  const productRef = pickFirstString(
+    row.product_ref,
+    row.pivota_signature_id ? `product:${row.pivota_signature_id}` : '',
+    row.source_product_id ? `product:${row.source_product_id}` : '',
+    row.product_key,
+  );
+  return normalizeProductCandidateSnapshot(
+    {
+      ...productPayload,
+      ...row,
+      product_ref: productRef,
+      product_id: row.source_product_id || row.pivota_signature_id || row.product_key,
+      name: row.title || productPayload.title || productPayload.name,
+      source_refs: row.source_refs,
+    },
+    {
+      productRef,
+      sourceType: 'catalog_products',
+      sourceName: row.product_key || row.source_product_id || 'catalog_products',
+      observedAt: row.updated_at || row.created_at,
+      authoritative: true,
+      evidenceGrade: 'B',
+    },
+  );
 }
 
 function normalizeApprovedLiveExternalSeedRow(row = {}) {
@@ -919,6 +964,172 @@ async function loadExternalProductSeedCandidates({ queryFn, limit = DEFAULT_SOUR
     [normalizeLimit(limit), normalizedMarket, BEAUTY_TEXT_PATTERNS],
   );
   return rows.map(normalizeExternalProductSeedRow).filter(Boolean);
+}
+
+function normalizeAffectedRefTerms(refs = []) {
+  const out = [];
+  const seen = new Set();
+  const push = (value) => {
+    const text = normalizeString(value, 512);
+    if (!text) return;
+    const candidates = [text, stripRefPrefix(text)];
+    if (!/^[a-z][a-z0-9_+-]*:/i.test(text)) candidates.push(`product:${text}`);
+    for (const candidate of candidates) {
+      const normalized = normalizeString(candidate, 512);
+      const key = normalized.toLowerCase();
+      if (!normalized || seen.has(key)) continue;
+      seen.add(key);
+      out.push(normalized);
+    }
+  };
+  for (const ref of Array.isArray(refs) ? refs : []) push(ref);
+  return out;
+}
+
+async function loadAffectedProductAnchorCandidates({
+  queryFn,
+  refs = [],
+  market = DEFAULT_MARKET,
+  limit = DEFAULT_SOURCE_LIMIT,
+} = {}) {
+  const terms = normalizeAffectedRefTerms(refs);
+  if (!terms.length) return [];
+  const normalizedMarket = normalizeMarket(market);
+  const rowLimit = normalizeLimit(limit);
+  const [externalSeedRows, productsCacheRows, catalogRows] = await Promise.all([
+    guardedRows(
+      queryFn,
+      `
+        SELECT
+          eps.id,
+          eps.external_product_id,
+          eps.attached_product_key,
+          eps.title,
+          eps.category,
+          eps.price_amount,
+          eps.price_currency,
+          eps.market,
+          eps.canonical_url,
+          eps.destination_url,
+          eps.seed_data,
+          eps.updated_at,
+          eps.created_at,
+          cp.product_key,
+          cp.source_product_id,
+          cp.pivota_signature_id,
+          cp.content_key,
+          COALESCE(
+            'product:' || NULLIF(cp.pivota_signature_id, ''),
+            'product:' || NULLIF(eps.external_product_id, ''),
+            eps.id
+          ) AS product_ref
+        FROM external_product_seeds eps
+        LEFT JOIN catalog_products cp
+          ON cp.source_product_id = eps.external_product_id
+        WHERE COALESCE(eps.status, 'active') = 'active'
+          AND upper(COALESCE(eps.market, $2)) = $2
+          AND (
+            eps.id = ANY($1::text[])
+            OR eps.external_product_id = ANY($1::text[])
+            OR eps.attached_product_key = ANY($1::text[])
+            OR ('product:' || eps.external_product_id) = ANY($1::text[])
+            OR cp.product_key = ANY($1::text[])
+            OR cp.source_product_id = ANY($1::text[])
+            OR cp.pivota_signature_id = ANY($1::text[])
+            OR ('product:' || cp.pivota_signature_id) = ANY($1::text[])
+            OR cp.content_key = ANY($1::text[])
+          )
+        ORDER BY eps.updated_at DESC NULLS LAST, eps.created_at DESC NULLS LAST, eps.id ASC
+        LIMIT $3
+      `,
+      [terms, normalizedMarket, rowLimit],
+    ),
+    guardedRows(
+      queryFn,
+      `
+        SELECT
+          COALESCE(
+            'product:' || NULLIF(cp.pivota_signature_id, ''),
+            NULLIF(pc.platform_product_id, ''),
+            NULLIF(pc.product_data->>'product_id', ''),
+            NULLIF(pc.product_data->>'id', ''),
+            pc.id::text
+          ) AS product_ref,
+          pc.product_data,
+          pc.cached_at,
+          pc.updated_at,
+          cp.product_key,
+          cp.source_product_id,
+          cp.pivota_signature_id,
+          cp.content_key
+        FROM products_cache pc
+        LEFT JOIN catalog_products cp
+          ON cp.source_product_id = COALESCE(
+            NULLIF(pc.platform_product_id, ''),
+            NULLIF(pc.product_data->>'product_id', ''),
+            NULLIF(pc.product_data->>'id', '')
+          )
+        WHERE (
+          pc.platform_product_id = ANY($1::text[])
+          OR pc.product_data->>'product_id' = ANY($1::text[])
+          OR pc.product_data->>'id' = ANY($1::text[])
+          OR ('product:' || pc.platform_product_id) = ANY($1::text[])
+          OR ('product:' || (pc.product_data->>'product_id')) = ANY($1::text[])
+          OR cp.product_key = ANY($1::text[])
+          OR cp.source_product_id = ANY($1::text[])
+          OR cp.pivota_signature_id = ANY($1::text[])
+          OR ('product:' || cp.pivota_signature_id) = ANY($1::text[])
+          OR cp.content_key = ANY($1::text[])
+        )
+        ORDER BY pc.cached_at DESC NULLS LAST, pc.updated_at DESC NULLS LAST, pc.id DESC
+        LIMIT $2
+      `,
+      [terms, rowLimit],
+    ),
+    guardedRows(
+      queryFn,
+      `
+        SELECT
+          cp.product_key,
+          cp.source_product_id,
+          cp.pivota_signature_id,
+          cp.content_key,
+          cp.title,
+          cp.description,
+          cp.brand,
+          cp.product_type,
+          cp.category,
+          cp.category_path,
+          cp.category_label,
+          cp.canonical_url,
+          cp.pivota_canonical_url,
+          cp.product_payload,
+          cp.updated_at,
+          cp.created_at,
+          COALESCE(
+            'product:' || NULLIF(cp.pivota_signature_id, ''),
+            'product:' || NULLIF(cp.source_product_id, ''),
+            cp.product_key
+          ) AS product_ref
+        FROM catalog_products cp
+        WHERE cp.product_key = ANY($1::text[])
+           OR cp.source_product_id = ANY($1::text[])
+           OR cp.pivota_signature_id = ANY($1::text[])
+           OR ('product:' || cp.pivota_signature_id) = ANY($1::text[])
+           OR ('product:' || cp.source_product_id) = ANY($1::text[])
+           OR cp.content_key = ANY($1::text[])
+        ORDER BY cp.updated_at DESC NULLS LAST, cp.product_key ASC
+        LIMIT $2
+      `,
+      [terms, rowLimit],
+    ),
+  ]);
+
+  return dedupeNormalizedProducts([
+    ...externalSeedRows.map(normalizeExternalProductSeedRow),
+    ...productsCacheRows.map(normalizeProductsCacheRow),
+    ...catalogRows.map(normalizeCatalogProductRow),
+  ].filter(Boolean));
 }
 
 async function loadApprovedLiveExternalSeedAnchors({
@@ -2071,6 +2282,7 @@ async function loadProductRelationshipGraphSourceInputs({
   limit = DEFAULT_SOURCE_LIMIT,
   market = DEFAULT_MARKET,
   queryVector,
+  affectedRefs = [],
   includeApprovedLiveExternalSeedAnchors = false,
   approvedLiveExternalSeedAnchorLimit = limit,
   missingCandidateLabelsOnly = false,
@@ -2090,7 +2302,14 @@ async function loadProductRelationshipGraphSourceInputs({
   const intelRows = await loadProductIntelKbRows({ queryFn, limit: sourceLimit * 2 });
   const legacyDupes = await loadLegacyDupeKbRows({ queryFn, limit: sourceLimit * 2 });
   const vectorRows = await loadProductsCacheVectorRecallCandidates({ queryFn, queryVector, limit: sourceLimit });
+  const affectedProducts = await loadAffectedProductAnchorCandidates({
+    queryFn,
+    refs: affectedRefs,
+    market,
+    limit: Math.max(sourceLimit, Array.isArray(affectedRefs) ? affectedRefs.length * 3 : sourceLimit),
+  });
   const products = dedupeNormalizedProducts([
+    ...affectedProducts,
     ...productsCache,
     ...externalSeeds,
     ...ingredientRows,
@@ -2107,7 +2326,9 @@ async function loadProductRelationshipGraphSourceInputs({
     intelRows,
     legacyDupes,
     vectorRows,
+    affectedProducts,
     source_counts: {
+      affected_products: affectedProducts.length,
       products_cache: productsCache.length,
       external_product_seeds: externalSeeds.length,
       ingredient_kb: ingredientRows.length,
@@ -2125,6 +2346,7 @@ module.exports = {
   normalizeProductCandidateSnapshot,
   normalizeProductsCacheRow,
   normalizeExternalProductSeedRow,
+  normalizeCatalogProductRow,
   normalizeApprovedLiveExternalSeedRow,
   normalizeProductIntelKbRow,
   normalizeIngredientKbRow,
@@ -2136,6 +2358,7 @@ module.exports = {
   buildCandidatesByAnchorFromSources,
   loadApprovedLiveExternalSeedAnchors,
   loadProductsCacheCandidates,
+  loadAffectedProductAnchorCandidates,
   loadExternalProductSeedCandidates,
   loadProductIntelKbRows,
   loadIngredientKbCandidates,
@@ -2160,6 +2383,7 @@ module.exports = {
     mergeSourceRefs,
     overlapScore,
     productIdentityKeys,
+    normalizeAffectedRefTerms,
     scoreCandidateForAnchor,
     sourceStrength,
     tableExists,

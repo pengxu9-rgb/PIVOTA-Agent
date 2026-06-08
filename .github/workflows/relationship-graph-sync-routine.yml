@@ -1,0 +1,166 @@
+name: Relationship Graph Sync Routine
+
+on:
+  workflow_dispatch:
+    inputs:
+      cutoff:
+        description: "Review cutoff timestamp, e.g. 2026-06-08T00:00:00Z"
+        required: true
+        type: string
+      market:
+        description: "Market code"
+        required: true
+        default: "US"
+        type: string
+      external_product_ids:
+        description: "Comma/space-separated external_product_ids to sync before routine"
+        required: false
+        default: ""
+        type: string
+      affected_products_file:
+        description: "Existing affected-products manifest path, if sync already ran"
+        required: false
+        default: ""
+        type: string
+      apply_sync:
+        description: "Apply catalog sync before routine"
+        required: true
+        default: false
+        type: boolean
+      apply_build:
+        description: "Apply generated relationship labels"
+        required: true
+        default: false
+        type: boolean
+      apply_review:
+        description: "Apply AI approvals"
+        required: true
+        default: false
+        type: boolean
+      limit:
+        description: "Relationship graph anchor limit"
+        required: true
+        default: "200"
+        type: string
+      review_limit:
+        description: "AI review row limit"
+        required: true
+        default: "250"
+        type: string
+  workflow_call:
+    inputs:
+      cutoff:
+        required: true
+        type: string
+      market:
+        required: false
+        default: "US"
+        type: string
+      external_product_ids:
+        required: false
+        default: ""
+        type: string
+      affected_products_file:
+        required: false
+        default: ""
+        type: string
+      apply_sync:
+        required: false
+        default: false
+        type: boolean
+      apply_build:
+        required: false
+        default: false
+        type: boolean
+      apply_review:
+        required: false
+        default: false
+        type: boolean
+      limit:
+        required: false
+        default: "200"
+        type: string
+      review_limit:
+        required: false
+        default: "250"
+        type: string
+    secrets:
+      DATABASE_URL:
+        required: true
+
+jobs:
+  relationship-graph-sync-routine:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    environment:
+      name: Pivota Agent / production
+    env:
+      DATABASE_URL: ${{ secrets.DATABASE_URL }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run guarded relationship graph routine
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ -z "${DATABASE_URL:-}" ]]; then
+            echo "DATABASE_URL secret is required" >&2
+            exit 1
+          fi
+          if [[ -z "${{ inputs.external_product_ids }}" && -z "${{ inputs.affected_products_file }}" ]]; then
+            echo "external_product_ids or affected_products_file is required" >&2
+            exit 1
+          fi
+          if [[ -n "${{ inputs.external_product_ids }}" && -n "${{ inputs.affected_products_file }}" ]]; then
+            echo "external_product_ids and affected_products_file are mutually exclusive" >&2
+            exit 1
+          fi
+
+          out_dir="reports/workflow_ops/relationship-graph-sync-routine/${{ github.run_id }}"
+          mkdir -p "${out_dir}"
+
+          args=(
+            --cutoff "${{ inputs.cutoff }}"
+            --market "${{ inputs.market }}"
+            --out-dir "${out_dir}"
+            --limit "${{ inputs.limit }}"
+            --review-limit "${{ inputs.review_limit }}"
+          )
+          if [[ -n "${{ inputs.external_product_ids }}" ]]; then
+            args+=(--external-product-ids "${{ inputs.external_product_ids }}")
+          fi
+          if [[ -n "${{ inputs.affected_products_file }}" ]]; then
+            args+=(--affected-products-file "${{ inputs.affected_products_file }}")
+          fi
+          if [[ "${{ inputs.apply_sync }}" == "true" ]]; then
+            args+=(--apply-sync)
+          fi
+          if [[ "${{ inputs.apply_build }}" == "true" ]]; then
+            args+=(--apply-build)
+          fi
+          if [[ "${{ inputs.apply_review }}" == "true" ]]; then
+            args+=(--apply-review)
+          fi
+          if [[ "${{ inputs.apply_sync }}" == "true" || "${{ inputs.apply_build }}" == "true" || "${{ inputs.apply_review }}" == "true" ]]; then
+            args+=(--confirm APPLY_RELGRAPH_SYNC_ROUTINE)
+          fi
+
+          npm run relgraph:sync-routine -- "${args[@]}" | tee "${out_dir}/stdout.json"
+
+      - name: Upload artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: relationship-graph-sync-routine-${{ github.run_id }}
+          path: reports/workflow_ops/relationship-graph-sync-routine/${{ github.run_id }}
+          retention-days: 14
