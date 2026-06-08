@@ -171,4 +171,88 @@ describe('review-relationship-candidate-labels', () => {
       }
     }
   });
+
+  test('retries retryable LLM review errors before recording a verdict', async () => {
+    const schemaErr = new Error('Model JSON did not match expected schema');
+    schemaErr.code = 'LLM_SCHEMA_INVALID';
+    const provider = {
+      analyzeTextToJson: jest.fn()
+        .mockRejectedValueOnce(schemaErr)
+        .mockResolvedValueOnce({
+          verdict: 'approve',
+          confidence: 0.84,
+          rationale: 'Both products have concrete category and routine evidence supporting a complementary relationship.',
+        }),
+    };
+    const queryFn = jest.fn(async (sql) => {
+      if (/FROM relationship_candidate_labels/i.test(sql)) {
+        return {
+          rows: [
+            {
+              id: 'rcl_retry_fixture',
+              edge_id: 'rcl_retry_fixture',
+              anchor_type: 'product',
+              anchor_ref: 'product:anchor_retry',
+              anchor_snapshot: {
+                product_id: 'anchor_retry',
+                name: 'Anchor Serum',
+                brand: 'Brand A',
+                category: 'Serum',
+              },
+              candidate_product_ref: 'product:candidate_retry',
+              candidate_snapshot: {
+                product_id: 'candidate_retry',
+                name: 'Candidate Serum',
+                brand: 'Brand B',
+                category: 'Serum',
+              },
+              relation_type: 'related_product',
+              display_label: 'related_product',
+              market: 'US',
+              vertical: 'beauty',
+              category_taxonomy: ['Serum'],
+              use_case: 'Serum',
+              label_state: 'generated',
+              score_total: 0.9,
+              score_breakdown: {},
+              price_evidence: {},
+              source_refs: [],
+              evidence_grade: 'B',
+              why_candidate: { summary: 'Category evidence is aligned.' },
+              tradeoffs: [],
+              watchouts: [],
+              provenance: {},
+              created_at: '2026-06-01T00:00:00.000Z',
+              updated_at: '2026-06-01T00:00:00.000Z',
+            },
+          ],
+        };
+      }
+      return { rows: [] };
+    });
+
+    const result = await runReview({
+      cutoff: '2026-06-01T00:00:00Z',
+      minScore: 0,
+      limit: 1,
+      llmAttempts: 2,
+      queryFn,
+      provider,
+    });
+
+    expect(provider.analyzeTextToJson).toHaveBeenCalledTimes(2);
+    expect(result.summary).toEqual(expect.objectContaining({
+      reviewed_count: 1,
+      approved_count: 1,
+      rejected_count: 0,
+      applied_count: 0,
+      llm_attempts: 2,
+    }));
+    expect(result.decisions[0]).toEqual(expect.objectContaining({
+      id: 'rcl_retry_fixture',
+      verdict: 'approve',
+      confidence: 0.84,
+      applied: false,
+    }));
+  });
 });

@@ -45,8 +45,11 @@ const AI_APPROVAL_FRESHNESS_INTERVAL = '45 days';
 const DEFAULT_LIMIT = 250;
 const MAX_LIMIT = 5000;
 const TEXT_LIMIT = 900;
+const DEFAULT_LLM_ATTEMPTS = 2;
+const MAX_LLM_ATTEMPTS = 5;
 const RELATION_TYPES = new Set(['dupe', 'competitive_alternative', 'niche_specialist', 'related_product']);
 const DEFAULT_EXCLUDED_RELATION_TYPES = ['dupe'];
+const RETRYABLE_REVIEW_ERROR_CODES = new Set(['LLM_SCHEMA_INVALID', 'LLM_TIMEOUT', 'LLM_REQUEST_FAILED']);
 
 const VerdictSchema = z.object({
   verdict: z.enum(['approve', 'reject']),
@@ -68,7 +71,7 @@ function hasFlag(argv, name) {
 function usage() {
   return [
     'Usage:',
-    '  node scripts/review-relationship-candidate-labels.js --cutoff <timestamp> [--min-score <n>] [--limit <n>] [--relation-types a,b] [--exclude-relation-types a,b] [--ids-file <path>] [--verdicts-file <path>] [--out <path>] [--apply]',
+    '  node scripts/review-relationship-candidate-labels.js --cutoff <timestamp> [--min-score <n>] [--limit <n>] [--llm-attempts <n>] [--relation-types a,b] [--exclude-relation-types a,b] [--ids-file <path>] [--verdicts-file <path>] [--out <path>] [--apply]',
     '',
     'Dry-run is the default. --apply is fail-closed unless RELGRAPH_AI_REVIEW_APPLY=1 is set.',
     'AI approval excludes dupe by default. Use --allow-dupe-ai-approval only for a manual, audited run.',
@@ -112,6 +115,10 @@ function parseArgs(argv = process.argv.slice(2)) {
   const verdictsFile = String(argValue(argv, 'verdicts-file') || '').trim();
   const out = String(argValue(argv, 'out') || '').trim();
   const apply = hasFlag(argv, 'apply');
+  const llmAttempts = Math.trunc(parseNumber(argValue(argv, 'llm-attempts'), DEFAULT_LLM_ATTEMPTS, {
+    min: 1,
+    max: MAX_LLM_ATTEMPTS,
+  }));
   const allowDupeAiApproval = hasFlag(argv, 'allow-dupe-ai-approval');
   const relationTypes = parseRelationTypes(argValue(argv, 'relation-types'), { optionName: 'relation-types' });
   const explicitExcludedRelationTypes = parseRelationTypes(argValue(argv, 'exclude-relation-types'), {
@@ -133,6 +140,7 @@ function parseArgs(argv = process.argv.slice(2)) {
     verdictsFile,
     out,
     apply,
+    llmAttempts,
     relationTypes,
     excludeRelationTypes,
     allowDupeAiApproval,
@@ -590,15 +598,34 @@ function buildReviewPrompt(evidence) {
   ].join('\n');
 }
 
-async function reviewEvidenceWithLlm(provider, evidence) {
+function reviewErrorCode(err) {
+  return normalizeString(err && err.code, 80);
+}
+
+function isRetryableReviewError(err) {
+  return RETRYABLE_REVIEW_ERROR_CODES.has(reviewErrorCode(err));
+}
+
+async function reviewEvidenceWithLlm(provider, evidence, { attempts = DEFAULT_LLM_ATTEMPTS } = {}) {
   const prompt = buildReviewPrompt(evidence);
-  const result = await provider.analyzeTextToJson({ prompt, schema: VerdictSchema });
-  const confidence = Math.max(0, Math.min(1, Number(result.confidence)));
-  return {
-    verdict: result.verdict,
-    confidence: Number(confidence.toFixed(4)),
-    rationale: normalizeString(result.rationale, 700),
-  };
+  const maxAttempts = Math.max(1, Math.min(MAX_LLM_ATTEMPTS, Math.trunc(Number(attempts) || DEFAULT_LLM_ATTEMPTS)));
+  let lastErr = null;
+  for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
+    try {
+      const result = await provider.analyzeTextToJson({ prompt, schema: VerdictSchema });
+      const confidence = Math.max(0, Math.min(1, Number(result.confidence)));
+      return {
+        verdict: result.verdict,
+        confidence: Number(confidence.toFixed(4)),
+        rationale: normalizeString(result.rationale, 700),
+      };
+    } catch (err) {
+      lastErr = err;
+      if (attempt < maxAttempts && isRetryableReviewError(err)) continue;
+      throw err;
+    }
+  }
+  throw lastErr instanceof Error ? lastErr : new Error('relationship graph AI review failed');
 }
 
 function buildAiReview(decision) {
@@ -665,6 +692,7 @@ async function runReview({
   verdictsFile = '',
   out = '',
   apply = false,
+  llmAttempts = DEFAULT_LLM_ATTEMPTS,
   relationTypes = [],
   excludeRelationTypes = DEFAULT_EXCLUDED_RELATION_TYPES,
   allowDupeAiApproval = false,
@@ -700,7 +728,7 @@ async function runReview({
     // eslint-disable-next-line no-await-in-loop
     const decision = verdictReplay
       ? verdictReplay.byId.get(row.id)
-      : await reviewEvidenceWithLlm(llmProvider, evidence);
+      : await reviewEvidenceWithLlm(llmProvider, evidence, { attempts: llmAttempts });
     if (!decision) {
       throw new Error(`missing verdict replay row for candidate ${row.id}`);
     }
@@ -742,6 +770,7 @@ async function runReview({
     reviewed_count: decisions.length,
     verdicts_file: verdictReplay ? verdictReplay.path : null,
     verdicts_file_count: verdictReplay ? verdictReplay.count : 0,
+    llm_attempts: verdictReplay ? 0 : llmAttempts,
     approved_count: approvedCount,
     rejected_count: rejectedCount,
     applied_count: appliedCount,
