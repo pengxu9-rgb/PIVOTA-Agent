@@ -7,8 +7,8 @@ operator checks; it does not require runtime-code changes.
 
 | Gate | Required evidence | Owner |
 |---|---|---|
-| Money-path CI | `agent-checkout-money-path-gate.yml` green: `safety-kernel`, `mcp-adapters`, `merchant-connectors`, `gateway-strict-route`, dependent `test-count-floor`, and `rollout-observability-gates`. | Gateway / CI |
-| Backend checkout-payment-safety | `pivota-backend/.github/workflows/agent-reliability-suite.yml` green on the `checkout-payment-safety` pytest lane. | Backend |
+| Gateway money-path gate | No-cost local operator run of the same suites defined by `agent-checkout-money-path-gate.yml`: `safety-kernel`, `mcp-adapters`, `merchant-connectors`, `gateway-strict-route`, and `rollout-observability-gates`. Record the pass in the operator release evidence packet. | Gateway / Ops |
+| Backend checkout-payment-safety | No-cost operator release evidence validates the exact backend `checkout-payment-safety` pytest lane and payment aftercare gate from a clean SHA-pinned backend worktree. Evidence must pass `node scripts/validate_operator_release_evidence.mjs --input operator-release-evidence.json --json`. | Backend / Ops |
 | Wire-format no-charge probe | `agent-checkout-wire-format-probe.yml` green for read-only + optional `create_order` only. It must not pass `--charge` or set `PROBE_ALLOW_CHARGE`. | Gateway / Ops |
 | Strict identity fail-closed | `agent-checkout-wire-format-probe.yml` strict identity gate green: strict money op with only the platform probe key returns `USER_AUTH_REQUIRED`. | Gateway / Ops |
 | Strict create-order canary | `agent-checkout-wire-format-probe.yml` strict create-order canary green in a controlled `AGENT_CHECKOUT_ALLOW_TEST_IDENTITY=1` window. It must create only an unpaid order and must not pass `--charge`. | Gateway / Ops |
@@ -23,19 +23,25 @@ operator checks; it does not require runtime-code changes.
 
 | Gate | Evidence |
 |---|---|
+| Current production deployment re-check | PIVOTA-Agent Railway production deployment `d893f24a-5041-4c14-a96e-a305352f8a7f` is live on `2bea62395fff745514c4effa8e4faf998179f327`; `/version.full_sha` matches, and the non-secret checkout flags remain closed: `AGENT_CHECKOUT_STRICT_SUBMIT_PAYMENT_ENABLED=0`, `AGENT_CHECKOUT_ALLOW_TEST_IDENTITY=0`, `AGENT_CHECKOUT_TEST_IDENTITY_WINDOW=0`. |
 | Production strict mode | `AGENT_CHECKOUT_STRICT=1`; the post-smoke closed deployment evidence point was PIVOTA-Agent `8d7ffaefe110ccc8bf831f4ad6881447577c3686`, Railway deployment `1427b4a4-1291-4ddd-be29-2c6cba3aa936`, with `AGENT_CHECKOUT_ALLOW_TEST_IDENTITY=0` and `AGENT_CHECKOUT_TEST_IDENTITY_WINDOW=0`. Re-check `/version` before every pay promotion because later deploys can advance Railway deployment ids. |
 | Production pay disabled | `AGENT_CHECKOUT_STRICT_SUBMIT_PAYMENT_ENABLED=0`; final non-secret flag check showed `strict_submit_payment_enabled=0`, `allow_test_identity=0`, `test_identity_window=0`. |
 | Staging pay disabled | Fake `submit_payment` returned HTTP `405 OPERATION_NOT_ALLOWED`. |
+| Gateway money-path local evidence | Clean local PIVOTA-Agent gate passed without GitHub Actions: safety-kernel `324 passed`; MCP server `91 passed`; merchant connectors `18 passed`; route/mount node tests `17 passed`; gateway strict-route Jest `72 passed`. |
 | Strict identity | GitHub Actions run `27121136725`, job `Strict Identity Gate`, passed after the controlled test-identity window was closed. A strict money op with only the platform probe key returned HTTP `401 USER_AUTH_REQUIRED`. |
 | No-charge wire-format | GitHub Actions run `27059885995`, job `probe`, passed for read-only plus `create_order`; workflow has no paid charge input. |
 | Strict create-order canary | Green. GitHub Actions run `27121007998` used the approved short `AGENT_CHECKOUT_ALLOW_TEST_IDENTITY=1` window and pinned Shopify merchant/product `merch_efbc46b4619cfbdf` / `10064562258217` / variant `53012664942889`. It created unpaid order `ORD_918269F734DA457B` from quote `q_c6fe0377-0813-4689-a016-b122d5d7e2c8` for `2824 USD`; no `submit_payment` was called. |
 | Remote MCP / confirmation route | Green. GitHub Actions run `27121055177` passed the deployed no-charge platform smoke: `/mcp` initialized and listed tools, write without verified identity failed closed, verified checkout-session creation worked, unsigned `/checkout/confirm` was rejected, signed `/checkout/confirm` minted a token, and `complete_checkout_session_called=false`, `submit_payment_called=false`, `paid_charge_attempted=false`. |
 | Backend health | Production backend `3bdf59d861d6026771209156684aaf86db2fa37a`, `db_ok=true`, no missing columns. |
+| Backend payment-safety local evidence | Clean worktree on `pivota-backend` `694e883c50b523502b6cb0f36c353bd5b17a0bda` passed the workflow pytest list locally: `147 passed`; `scripts/run_payment_aftercare_gate.sh` passed locally: `76 passed`. Because paid GitHub Actions is not part of the release process, record this with `NO_COST_OPERATOR_RELEASE_GATE.md` and validate the packet with `scripts/validate_operator_release_evidence.mjs`. |
 | Artifact redaction | Local readiness bundle `/private/tmp/pivota-readiness-test-psp-probe-20260606T104229Z` passed a value scan after redaction. |
 | Confirmation signing secret hygiene | `CONFIRMATION_SECRET` was rotated in Railway production and matched to GitHub environment `Production` secret `AGENT_CHECKOUT_CONFIRMATION_SECRET`; no secret value was printed. The first platform smoke failed with `403 CONFIRMATION_ACTION_REQUIRED`, then passed after rotation. |
 
 These gates do not authorize production pay. They authorize the current posture only: strict quote/order
-enforcement on, `submit_payment` off.
+enforcement on, `submit_payment` off. Backend code-level no-charge payment safety has local release-source
+evidence, but the accepted no-cost gate is a validated operator packet, not a paid GitHub Actions run.
+Production pay still requires the manual Stripe test-mode paid canary, replay, webhook/status, refund,
+and observability gates.
 
 ## Observability Export
 
@@ -133,24 +139,26 @@ live-refund override is used, compares PSP dashboard amount/currency against the
 requires same-key replay proof, requires signed webhook plus paid canonical status, requires refund-cap
 and refund-replay proof, and scans the evidence file for raw PSP/API/token/card-looking secrets.
 
-The CI guard for this document is `.github/scripts/check-agent-checkout-rollout-gates.mjs`. It verifies
-that the rollout gates remain documented, the money-path workflow has the expected split jobs, and the
-wire-format probe cannot run a paid charge from GitHub Actions. The validator/status scripts are covered
-by `tests/b4_verify_script.test.js`, `tests/paid_canary_evidence_script.test.js`, and
+The local guard for this document is `.github/scripts/check-agent-checkout-rollout-gates.mjs`. It verifies
+that the rollout gates remain documented, the manual money-path workflow has the expected split jobs, and
+the wire-format probe cannot run a paid charge from GitHub Actions. The validator/status scripts are covered
+by `tests/b4_verify_script.test.js`, `tests/operator_release_evidence_script.test.js`,
+`tests/paid_canary_evidence_script.test.js`, and
 `tests/platform_smoke_evidence_script.test.js` in the money-path gate.
 
 ## Rollout Order
 
 1. Keep `AGENT_CHECKOUT_STRICT=1` in staging and production for the current strict quote/order posture.
 2. Keep `AGENT_CHECKOUT_STRICT_SUBMIT_PAYMENT_ENABLED` unset/off.
-3. Smoke the deployed remote MCP `/mcp` create-session path and the host-only `/checkout/confirm` signed user-action path without calling `complete_checkout_session` or `submit_payment`; validate the evidence packet with `scripts/validate_platform_smoke_evidence.mjs`.
-4. Re-run the no-charge wire-format probe against the target environment before each promotion window.
-5. Run the strict create-order canary in a controlled test-identity window, pinned when possible or auto-selected from `PROBE_QUERY`; then close the window.
-6. Confirm observability export captures quote/order/audit events from that environment, using `GATEWAY_GOVERNANCE_RAILWAY_DEPLOYMENT` when the canary ran on a prior deployment.
-7. Run the paid charge probe manually in Stripe test mode only after no-charge probes and backend
-   checkout-payment-safety are green.
-8. Validate replay, refund, webhook/status sync, cancellation, and return/RMA fencing.
-9. Enable production `submit_payment` last.
+3. Create no-cost backend operator release evidence from a clean SHA-pinned backend worktree and validate it with `scripts/validate_operator_release_evidence.mjs`.
+4. Smoke the deployed remote MCP `/mcp` create-session path and the host-only `/checkout/confirm` signed user-action path without calling `complete_checkout_session` or `submit_payment`; validate the evidence packet with `scripts/validate_platform_smoke_evidence.mjs`.
+5. Re-run the no-charge wire-format probe against the target environment before each promotion window.
+6. Run the strict create-order canary in a controlled test-identity window, pinned when possible or auto-selected from `PROBE_QUERY`; then close the window.
+7. Confirm observability export captures quote/order/audit events from that environment, using `GATEWAY_GOVERNANCE_RAILWAY_DEPLOYMENT` when the canary ran on a prior deployment.
+8. Run the paid charge probe manually in Stripe test mode only after no-charge probes and backend
+   operator release evidence are green.
+9. Validate replay, refund, webhook/status sync, cancellation, and return/RMA fencing.
+10. Enable production `submit_payment` last.
 
 ## Rollback
 

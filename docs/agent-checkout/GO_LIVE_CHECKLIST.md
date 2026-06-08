@@ -8,9 +8,12 @@ the GO-LIVE view (those remain for architecture + scorecard-dimension detail).
 `submit_payment` is still disabled, and identity/pay-disabled rails are green. The strict Shopify
 no-charge create-order canary and deployed remote MCP + host-only confirmation smoke are green for
 merchant `merch_efbc46b4619cfbdf`; they created only unpaid order artifacts and did not call
-`submit_payment`. Everything left before production pay traffic is **backend checkout-payment-safety,
-manual Stripe test-mode paid canary with `b4_verify.mjs` and `validate_paid_canary_evidence.mjs` green,
-refund/status/webhook validation, replay proof, credential hygiene, and final observability export proof**.
+`submit_payment`. Backend checkout-payment-safety passed locally on the current backend release source;
+because paid GitHub Actions is not part of the release process, the replacement gate is the no-cost
+operator evidence packet in `NO_COST_OPERATOR_RELEASE_GATE.md`. Everything left before production pay
+traffic is **operator release evidence, manual Stripe test-mode paid canary with `b4_verify.mjs` and
+`validate_paid_canary_evidence.mjs` green, refund/status/webhook validation, replay proof, credential
+hygiene, and final observability export proof**.
 
 **Legend:** ✅ done · 🟡 ready, waiting on an external party · ⛔ blocked by a dependency
 
@@ -26,7 +29,7 @@ refund/status/webhook validation, replay proof, credential hygiene, and final ob
 | A5 | PCI SAQ-A token vault on KMS (envelope encryption, rotation, PAN guard) | `vault/`, `keyProvider.js`, `keyProvider.test.js` |
 | A6 | Money = canonical **minor-unit integers**; cross-check on amount + currency + precision + divisibility; fail-closed | `money.js`, `upstreamAdapter.js`, FINAL_REVIEW_MoneyUnits(+_Round2) |
 | A7 | Real-backend normalization adapter (pricing strings→minor, nested order_id, payment_action) | `upstreamAdapter.js`, `assembled.integration.test.js` |
-| A8 | Money-path CI gate (3 suites + test-count floor, no silent deletion) | `.github/workflows/agent-checkout-money-path-gate.yml` |
+| A8 | Money-path local/CI gate definitions (3 suites + test-count floor, no silent deletion) | `.github/workflows/agent-checkout-money-path-gate.yml`; no-cost local run in `NO_COST_OPERATOR_RELEASE_GATE.md` |
 
 ---
 
@@ -80,7 +83,9 @@ Reference details: `src/server.js`, `src/serverWireIn.example.js`, and
 | E4 | No-charge wire-format probe is green in GitHub Actions run `27059885995`. |
 | E5 | Strict create-order canary is green in GitHub Actions run `27121007998`. Pinned Shopify merchant/product/variant `merch_efbc46b4619cfbdf` / `10064562258217` / `53012664942889` produced quote `q_c6fe0377-0813-4689-a016-b122d5d7e2c8` and unpaid order `ORD_918269F734DA457B` for `2824 USD`; no `submit_payment` was attempted. |
 | E6 | Remote MCP `/mcp` and host-only `/checkout/confirm` deployed smoke is green in GitHub Actions run `27121055177`; `complete_checkout_session_called=false`, `submit_payment_called=false`, and `paid_charge_attempted=false`. |
-| E7 | Enable `submit_payment` **LAST**, only after manual paid canary, refund cap, webhook/status sync, replay, and observability export are green. |
+| E7 | Gateway local money-path gate is green without GitHub Actions: safety-kernel `324 passed`; MCP server `91 passed`; merchant connectors `18 passed`; route/mount node tests `17 passed`; gateway strict-route Jest `72 passed`. |
+| E8 | Backend release-source local safety check is green on `pivota-backend` `694e883c50b523502b6cb0f36c353bd5b17a0bda`: checkout-payment-safety pytest lane `147 passed`; payment aftercare gate `76 passed`. Validate the full no-cost evidence packet with `scripts/validate_operator_release_evidence.mjs` against the backend SHA that is actually deployed or being promoted. |
+| E9 | Enable `submit_payment` **LAST**, only after operator release evidence, manual paid canary, refund cap, webhook/status sync, replay, and observability export are green. |
 
 ---
 
@@ -91,14 +96,15 @@ B (backend probe)  ──►  D (ops/secrets)  ──►  E (staged rollout)
                                                   after B1+B2+B3
 ```
 Gateway strict quote/order wire-in and deployed no-charge platform smoke are no longer the long pole.
-Action now: keep `submit_payment` disabled, complete backend checkout-payment-safety, rotate any exposed
-test credentials, complete the manual Stripe test-mode paid canary, then validate replay/refund/status/
-webhook behavior and observability export before enabling production pay.
+Action now: keep `submit_payment` disabled, create and validate the no-cost operator release evidence
+packet, rotate any exposed test credentials, complete the manual Stripe test-mode paid canary, then
+validate replay/refund/status/webhook behavior and observability export before enabling production pay.
 
 ## Safe-flip order (when B is green)
 1. Keep production and staging `AGENT_CHECKOUT_STRICT=1`.
 2. Keep `AGENT_CHECKOUT_STRICT_SUBMIT_PAYMENT_ENABLED` unset/off.
-3. Confirm rollout/observability gates are green for each canary window.
+3. Confirm rollout/observability gates are green for each canary window, using
+   `NO_COST_OPERATOR_RELEASE_GATE.md` instead of paid GitHub Actions for backend release evidence.
 4. Smoke deployed `/mcp` create-session and signed `/checkout/confirm` with
    `scripts/smoke_protocol_edge_remote_mcp.mjs --full --json`, without calling
    `complete_checkout_session` or `submit_payment`; pass
@@ -121,4 +127,4 @@ namespaces are kernel-only).
 - **R3:** `submit_payment` against the real backend MUST stay off until the manual paid canary, replay, refund, status/webhook, and observability gates are green.
 
 ## Detail docs
-Contract `safety-kernel-contract.md` · tools `tool-schema.v2.json` · wire-in `server-mount-and-durable-store.md` + `src/serverWireIn.example.js` · payments `payment-flow-remodel.md` · probe `PROBE_RUNBOOK.md` + `PROBE_wire_format_confirmation.md` · rollout evidence `STRICT_PROD_ROLLOUT_EVIDENCE_20260606.md` + `STRICT_PROD_PLATFORM_SMOKE_EVIDENCE_20260608.md` · rollout/observability `ROLLOUT_OBSERVABILITY_GATES.md` · money `FINAL_REVIEW_MoneyUnits.md` + `_Round2.md` · staging `staging-validation-runbook.md`.
+Contract `safety-kernel-contract.md` · tools `tool-schema.v2.json` · wire-in `server-mount-and-durable-store.md` + `src/serverWireIn.example.js` · payments `payment-flow-remodel.md` · probe `PROBE_RUNBOOK.md` + `PROBE_wire_format_confirmation.md` · no-cost gate `NO_COST_OPERATOR_RELEASE_GATE.md` · rollout evidence `STRICT_PROD_ROLLOUT_EVIDENCE_20260606.md` + `STRICT_PROD_PLATFORM_SMOKE_EVIDENCE_20260608.md` · rollout/observability `ROLLOUT_OBSERVABILITY_GATES.md` · money `FINAL_REVIEW_MoneyUnits.md` + `_Round2.md` · staging `staging-validation-runbook.md`.

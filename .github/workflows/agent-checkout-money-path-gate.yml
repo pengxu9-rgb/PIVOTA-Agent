@@ -1,8 +1,12 @@
 name: Agent Checkout Money-Path Gate
 
-# Merge gate for the INV-1..INV-5 money path: quote-first, amount/currency-from-quote,
+# Manual reference gate for the INV-1..INV-5 money path: quote-first, amount/currency-from-quote,
 # host-minted confirmation, idempotency, single-use, charge-once, no sensitive logging,
 # and durable-store / multi-instance guarantees.
+#
+# This workflow is workflow_dispatch-only because the no-cost release process uses
+# docs/agent-checkout/NO_COST_OPERATOR_RELEASE_GATE.md instead of paid GitHub-hosted
+# Actions runners.
 #
 # The core money-path suites run in parallel. The dependent floor guard reads their test
 # summaries and fails if a suite silently drops below its known test floor.
@@ -12,86 +16,6 @@ name: Agent Checkout Money-Path Gate
 
 on:
   workflow_dispatch:
-  pull_request:
-    paths:
-      - "safety-kernel/**"
-      - "mcp-server/**"
-      - "connectors/**"
-      - "src/api/gateway/**"
-      - "src/findProductsSearchContracts.js"
-      - "src/findProductsSearchRouteEntry.js"
-      - "src/modules/decisioning/shopping_agent/**"
-      - "src/server.js"
-      - "tests/find_products_search_route_entry.node.test.cjs"
-      - "tests/shopping_agent_strict_find_products_multi.test.js"
-      - "tests/integration/invoke.find_products_multi_strict_surface.test.js"
-      - "tests/integration/safety_kernel_mount.node.test.cjs"
-      - "tests/integration/submit_payment_contract.test.js"
-      - "tests/integration/checkout_rollout_canary.test.js"
-      - "tests/agent_checkout_audit_export_assert_script.test.js"
-      - "tests/b4_verify_script.test.js"
-      - "tests/paid_canary_evidence_script.test.js"
-      - "tests/platform_smoke_evidence_script.test.js"
-      - "tests/remote_mcp_smoke_script.test.js"
-      - "tests/strict_checkout_canary_script.test.js"
-      - "scripts/assert_agent_checkout_audit_export.js"
-      - "scripts/b4_verify.mjs"
-      - "scripts/validate_paid_canary_evidence.mjs"
-      - "scripts/validate_platform_smoke_evidence.mjs"
-      - "scripts/smoke_protocol_edge_remote_mcp.mjs"
-      - "scripts/probe_strict_checkout_canary.mjs"
-      - "tests/celestial_commerce_gateway_boundary.test.js"
-      - "tests/celestial_commerce_gateway_ingress_invocation.test.js"
-      - "tests/celestial_commerce_gateway_invocation_contracts.test.js"
-      - "docs/agent-checkout/**"
-      - ".github/workflows/agent-checkout-money-path-gate.yml"
-      - ".github/workflows/agent-checkout-wire-format-probe.yml"
-      - ".github/workflows/agent-checkout-platform-smoke.yml"
-      - ".github/scripts/assert-money-path-test-floors.mjs"
-      - ".github/scripts/check-agent-checkout-rollout-gates.mjs"
-      - "package.json"
-      - "package-lock.json"
-  push:
-    branches:
-      - main
-    paths:
-      - "safety-kernel/**"
-      - "mcp-server/**"
-      - "connectors/**"
-      - "src/api/gateway/**"
-      - "src/findProductsSearchContracts.js"
-      - "src/findProductsSearchRouteEntry.js"
-      - "src/modules/decisioning/shopping_agent/**"
-      - "src/server.js"
-      - "tests/find_products_search_route_entry.node.test.cjs"
-      - "tests/shopping_agent_strict_find_products_multi.test.js"
-      - "tests/integration/invoke.find_products_multi_strict_surface.test.js"
-      - "tests/integration/safety_kernel_mount.node.test.cjs"
-      - "tests/integration/submit_payment_contract.test.js"
-      - "tests/integration/checkout_rollout_canary.test.js"
-      - "tests/agent_checkout_audit_export_assert_script.test.js"
-      - "tests/b4_verify_script.test.js"
-      - "tests/paid_canary_evidence_script.test.js"
-      - "tests/platform_smoke_evidence_script.test.js"
-      - "tests/remote_mcp_smoke_script.test.js"
-      - "tests/strict_checkout_canary_script.test.js"
-      - "scripts/assert_agent_checkout_audit_export.js"
-      - "scripts/b4_verify.mjs"
-      - "scripts/validate_paid_canary_evidence.mjs"
-      - "scripts/validate_platform_smoke_evidence.mjs"
-      - "scripts/smoke_protocol_edge_remote_mcp.mjs"
-      - "scripts/probe_strict_checkout_canary.mjs"
-      - "tests/celestial_commerce_gateway_boundary.test.js"
-      - "tests/celestial_commerce_gateway_ingress_invocation.test.js"
-      - "tests/celestial_commerce_gateway_invocation_contracts.test.js"
-      - "docs/agent-checkout/**"
-      - ".github/workflows/agent-checkout-money-path-gate.yml"
-      - ".github/workflows/agent-checkout-wire-format-probe.yml"
-      - ".github/workflows/agent-checkout-platform-smoke.yml"
-      - ".github/scripts/assert-money-path-test-floors.mjs"
-      - ".github/scripts/check-agent-checkout-rollout-gates.mjs"
-      - "package.json"
-      - "package-lock.json"
 
 permissions:
   contents: read
@@ -217,6 +141,7 @@ jobs:
             tests/celestial_commerce_gateway_boundary.test.js \
             tests/agent_checkout_audit_export_assert_script.test.js \
             tests/b4_verify_script.test.js \
+            tests/operator_release_evidence_script.test.js \
             tests/paid_canary_evidence_script.test.js \
             tests/platform_smoke_evidence_script.test.js \
             tests/remote_mcp_smoke_script.test.js \

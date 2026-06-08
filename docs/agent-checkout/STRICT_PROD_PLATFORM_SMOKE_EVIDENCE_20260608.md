@@ -13,6 +13,7 @@ checkout runtime code. Re-check `/version` and the non-secret checkout flags bef
 | Surface | Evidence |
 |---|---|
 | Gateway production commit | PIVOTA-Agent `8d7ffaefe110ccc8bf831f4ad6881447577c3686` |
+| Current post-evidence deployment re-check | Railway deployment `d893f24a-5041-4c14-a96e-a305352f8a7f` is live on `2bea62395fff745514c4effa8e4faf998179f327`; `/version.full_sha` matches, and `AGENT_CHECKOUT_STRICT_SUBMIT_PAYMENT_ENABLED=0`, `AGENT_CHECKOUT_ALLOW_TEST_IDENTITY=0`, `AGENT_CHECKOUT_TEST_IDENTITY_WINDOW=0` remain closed |
 | Confirmation-secret rotation deploy | Railway deployment `05d9b3fb-22bb-4407-b4c5-70eff83e4e78`, started `2026-06-08T06:51:25.220Z` |
 | Open test-identity window deploy | Railway deployment `9f56173d-c47c-491d-8ae5-74e65af4f4b0`, started `2026-06-08T06:52:42.696Z` |
 | Closed test-identity window deploy | Railway deployment `1427b4a4-1291-4ddd-be29-2c6cba3aa936`, started `2026-06-08T06:56:02.120Z` |
@@ -23,6 +24,7 @@ checkout runtime code. Re-check `/version` and the non-secret checkout flags bef
 
 | Gate | Result |
 |---|---|
+| Gateway local money-path gate | Passed without GitHub Actions: safety-kernel `324 passed`; MCP server `91 passed`; merchant connectors `18 passed`; route/mount node tests `17 passed`; gateway strict-route Jest `72 passed`. |
 | Strict create-order canary | GitHub Actions run `27121007998`, job `Strict Create-Order Canary`, passed. It used pinned Shopify merchant/product/variant `merch_efbc46b4619cfbdf` / `10064562258217` / `53012664942889`. It created quote `q_c6fe0377-0813-4689-a016-b122d5d7e2c8` and unpaid order `ORD_918269F734DA457B` for `2824 USD`; `submit_payment=false`. |
 | Remote MCP + confirmation smoke | GitHub Actions run `27121055177`, job `Platform Smoke`, passed. `/mcp` initialized and listed required commerce tools, write without verified identity failed closed, verified checkout-session creation worked, unsigned `/checkout/confirm` was rejected, signed `/checkout/confirm` minted a token, and `validate_platform_smoke_evidence.mjs` passed. |
 | No paid operations | Platform smoke evidence showed `complete_checkout_session_called=false`, `submit_payment_called=false`, and `paid_charge_attempted=false`. |
@@ -34,7 +36,7 @@ Keep `AGENT_CHECKOUT_STRICT_SUBMIT_PAYMENT_ENABLED=0` until all of these are gre
 
 | Gate | Required proof |
 |---|---|
-| Backend checkout-payment-safety | Backend CI lane `checkout-payment-safety` green on the deployed backend commit. |
+| Backend checkout-payment-safety | No-cost operator evidence green on the deployed backend commit or newer promoted SHA. Local release-source evidence is green on `pivota-backend` `694e883c50b523502b6cb0f36c353bd5b17a0bda` (`147 passed` plus payment aftercare `76 passed`). Because paid GitHub Actions is not part of the release process, record the clean-worktree/SHA-pinned evidence with `NO_COST_OPERATOR_RELEASE_GATE.md` and validate it with `scripts/validate_operator_release_evidence.mjs`. |
 | Paid terminal completion | One manual Stripe test-mode canary reaches paid/authorized state, verified in the PSP dashboard. |
 | Payment replay | Same idempotency key returns the original result and creates zero additional PSP charges. |
 | Webhook/status | Signed webhook is observed and canonical order status reaches paid through the status-only verifier `scripts/b4_verify.mjs`. |
