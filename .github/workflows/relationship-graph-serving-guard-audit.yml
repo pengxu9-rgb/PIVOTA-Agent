@@ -1,0 +1,109 @@
+name: Relationship Graph Serving Guard Audit
+
+on:
+  schedule:
+    - cron: "0 10 * * *"
+  workflow_dispatch:
+    inputs:
+      market:
+        description: "Market code"
+        required: true
+        default: "US"
+        type: string
+      max_suppressed_rows:
+        description: "Fail when suppressed approved rows exceed this count"
+        required: true
+        default: "0"
+        type: string
+      max_suppressed_pct:
+        description: "Fail when suppressed approved row percentage exceeds this value"
+        required: true
+        default: "0"
+        type: string
+
+jobs:
+  serving-guard-audit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    environment:
+      name: Pivota Agent / production
+    env:
+      DATABASE_URL: ${{ secrets.DATABASE_URL }}
+      MARKET_INPUT: ${{ github.event.inputs.market }}
+      MAX_SUPPRESSED_ROWS_INPUT: ${{ github.event.inputs.max_suppressed_rows }}
+      MAX_SUPPRESSED_PCT_INPUT: ${{ github.event.inputs.max_suppressed_pct }}
+      CRITICAL_REASONS: ai_approved_dupe_quarantined,candidate_ref_unresolvable_nested_product_prefix,anchor_ref_unresolvable_nested_product_prefix
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run serving guard audit
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ -z "${DATABASE_URL:-}" ]]; then
+            echo "DATABASE_URL secret is required" >&2
+            exit 1
+          fi
+
+          out_dir="reports/workflow_ops/relationship-graph-serving-guard-audit/${{ github.run_id }}"
+          mkdir -p "${out_dir}"
+          report="${out_dir}/serving_guard_audit.json"
+          market="${MARKET_INPUT:-US}"
+          max_suppressed_rows="${MAX_SUPPRESSED_ROWS_INPUT:-0}"
+          max_suppressed_pct="${MAX_SUPPRESSED_PCT_INPUT:-0}"
+
+          npm run relgraph:serving-audit -- \
+            --market "${market}" \
+            --out "${report}" \
+            | tee "${out_dir}/stdout.json"
+
+          node -e "
+            const fs = require('fs');
+            const report = JSON.parse(fs.readFileSync(process.argv[1], 'utf8'));
+            const maxRows = Number(process.argv[2]);
+            const maxPct = Number(process.argv[3]);
+            const critical = String(process.argv[4] || '').split(',').map((s) => s.trim()).filter(Boolean);
+            const suppressedRows = Number(report.suppressed_rows || 0);
+            const suppressedPct = Number(report.suppressed_pct || 0);
+            const byReason = report.by_reason || {};
+            const violations = [];
+            if (Number.isFinite(maxRows) && suppressedRows > maxRows) {
+              violations.push({ metric: 'suppressed_rows', observed: suppressedRows, max: maxRows });
+            }
+            if (Number.isFinite(maxPct) && suppressedPct > maxPct) {
+              violations.push({ metric: 'suppressed_pct', observed: suppressedPct, max: maxPct });
+            }
+            for (const reason of critical) {
+              const count = Number(byReason[reason] || 0);
+              if (count > 0) violations.push({ metric: 'critical_reason', reason, observed: count, max: 0 });
+            }
+            const gate = {
+              ok: violations.length === 0,
+              total_rows: report.total_rows,
+              safe_rows: report.safe_rows,
+              suppressed_rows: suppressedRows,
+              suppressed_pct: suppressedPct,
+              violations,
+            };
+            fs.writeFileSync(process.argv[5], JSON.stringify(gate, null, 2) + '\\n');
+            console.log(JSON.stringify(gate, null, 2));
+            if (!gate.ok) process.exit(1);
+          " "${report}" "${max_suppressed_rows}" "${max_suppressed_pct}" "${CRITICAL_REASONS}" "${out_dir}/serving_guard_gate.json"
+
+      - name: Upload artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: relationship-graph-serving-guard-audit-${{ github.run_id }}
+          path: reports/workflow_ops/relationship-graph-serving-guard-audit/${{ github.run_id }}
+          retention-days: 14

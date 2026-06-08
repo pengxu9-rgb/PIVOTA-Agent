@@ -29,6 +29,16 @@ function normalizeKey(value) {
   return text.replace(/^product:/, '');
 }
 
+function normalizeIdList(values) {
+  return Array.from(
+    new Set(
+      (Array.isArray(values) ? values : [])
+        .map((value) => normalizeKey(value))
+        .filter(Boolean),
+    ),
+  );
+}
+
 function isPlainObject(value) {
   return Boolean(value) && typeof value === 'object' && !Array.isArray(value);
 }
@@ -36,6 +46,7 @@ function isPlainObject(value) {
 function rowToAttributes(row) {
   if (!row) return null;
   const out = { product_key: row.product_key };
+  if (row.sig_id) out.sig_id = row.sig_id;
   for (const field of BEAUTY_ATTRIBUTE_FIELDS) {
     out[field] = row[field];
     out[`${field}_source`] = row[`${field}_source`];
@@ -66,17 +77,35 @@ async function lookupBeautyAttributes(productKey, { queryFn = query } = {}) {
 
 async function lookupBeautyAttributesBatch(productKeys, { queryFn = query } = {}) {
   if (!Array.isArray(productKeys) || !productKeys.length) return new Map();
-  const keys = Array.from(new Set(
-    productKeys.map(normalizeKey).filter(Boolean),
-  ));
-  if (!keys.length) return new Map();
-  const res = await queryFn(
-    'SELECT * FROM product_beauty_attributes WHERE product_key = ANY($1::text[])',
-    [keys],
-  );
-  const rows = Array.isArray(res?.rows) ? res.rows : [];
+  const normalized = Array.from(new Set(productKeys.map(normalizeKey).filter(Boolean)));
+  if (!normalized.length) return new Map();
+
+  const sigKeys = normalized.filter((key) => key.startsWith('sig_'));
+  const productKeysOnly = normalized.filter((key) => !key.startsWith('sig_'));
   const out = new Map();
-  for (const row of rows) out.set(row.product_key, rowToAttributes(row));
+
+  if (productKeysOnly.length) {
+    const res = await queryFn(
+      'SELECT * FROM product_beauty_attributes WHERE product_key = ANY($1::text[])',
+      [productKeysOnly],
+    );
+    const rows = Array.isArray(res?.rows) ? res.rows : [];
+    for (const row of rows) out.set(row.product_key, rowToAttributes(row));
+  }
+
+  if (sigKeys.length) {
+    const res = await queryFn(
+      'SELECT * FROM product_beauty_attributes WHERE sig_id = ANY($1::text[])',
+      [sigKeys],
+    );
+    const rows = Array.isArray(res?.rows) ? res.rows : [];
+    for (const row of rows) {
+      const attrs = rowToAttributes(row);
+      if (row.sig_id) out.set(row.sig_id, attrs);
+      out.set(row.product_key, attrs);
+    }
+  }
+
   return out;
 }
 
@@ -189,6 +218,88 @@ async function upsertBeautyAttributes(input = {}, { queryFn = query } = {}) {
   return { product_key: key };
 }
 
+async function refreshBeautyAttributeSigIds({
+  externalProductIds = [],
+  sigIds = [],
+  apply = false,
+  queryFn = query,
+} = {}) {
+  const externalIds = normalizeIdList(externalProductIds).filter((id) => !id.startsWith('sig_'));
+  const signatures = normalizeIdList(sigIds).filter((id) => id.startsWith('sig_'));
+  if (!externalIds.length && !signatures.length) {
+    const err = new Error('missing_pba_sig_refresh_filter');
+    err.code = 'MISSING_PBA_SIG_REFRESH_FILTER';
+    throw err;
+  }
+
+  const params = [];
+  const filters = [];
+  if (externalIds.length) {
+    params.push(externalIds);
+    filters.push(`cp.source_product_id = ANY($${params.length}::text[])`);
+  }
+  if (signatures.length) {
+    params.push(signatures);
+    filters.push(`cp.pivota_signature_id = ANY($${params.length}::text[])`);
+  }
+
+  const candidatesSql = `
+    SELECT
+      pba.product_key,
+      pba.sig_id AS old_sig_id,
+      cp.pivota_signature_id AS new_sig_id
+    FROM product_beauty_attributes pba
+    JOIN catalog_products cp
+      ON cp.source_product_id = pba.product_key
+    WHERE cp.pivota_signature_id IS NOT NULL
+      AND pba.sig_id IS DISTINCT FROM cp.pivota_signature_id
+      AND (${filters.join(' OR ')})
+  `;
+
+  if (!apply) {
+    const res = await queryFn(
+      `
+        ${candidatesSql}
+        ORDER BY product_key ASC
+      `,
+      params,
+    );
+    const rows = Array.isArray(res?.rows) ? res.rows : [];
+    return {
+      dry_run: true,
+      matched_count: rows.length,
+      updated_count: 0,
+      rows,
+    };
+  }
+
+  const res = await queryFn(
+    `
+      WITH candidates AS (
+        ${candidatesSql}
+      )
+      UPDATE product_beauty_attributes pba
+      SET
+        sig_id = candidates.new_sig_id,
+        updated_at = now()
+      FROM candidates
+      WHERE pba.product_key = candidates.product_key
+      RETURNING
+        pba.product_key,
+        candidates.old_sig_id,
+        pba.sig_id AS new_sig_id
+    `,
+    params,
+  );
+  const rows = Array.isArray(res?.rows) ? res.rows : [];
+  return {
+    dry_run: false,
+    matched_count: rows.length,
+    updated_count: Number(res?.rowCount || rows.length || 0),
+    rows,
+  };
+}
+
 module.exports = {
   BEAUTY_ATTRIBUTE_FIELDS,
   AUDIT_STATUSES,
@@ -198,6 +309,7 @@ module.exports = {
   normalizeKey,
   lookupBeautyAttributes,
   lookupBeautyAttributesBatch,
+  refreshBeautyAttributeSigIds,
   upsertBeautyAttributes,
   validateExtractionPayload,
   hasGateableAttributes,
