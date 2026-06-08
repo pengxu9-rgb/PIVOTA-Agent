@@ -1,6 +1,18 @@
 const DEFAULT_MARKET = 'US';
 const DEFAULT_SOURCE_LIMIT = 1000;
 
+const EXTERNAL_SEED_RECALL_SQL_FIELDS = Object.freeze({
+  brandDisplay:
+    "coalesce(seed_data->'derived'->'recall'->>'brand', seed_data->>'brand', seed_data->>'brand_name', seed_data->>'vendor', seed_data->>'vendor_name', seed_data->'snapshot'->>'brand', seed_data->'snapshot'->>'brand_name', seed_data->'snapshot'->>'vendor', seed_data->'snapshot'->>'vendor_name', '')",
+  categoryDisplay:
+    "coalesce(seed_data->'derived'->'recall'->>'category', seed_data->>'category', seed_data->'product'->>'category', seed_data->'snapshot'->>'category', seed_data->>'product_type', seed_data->'product'->>'product_type', seed_data->'snapshot'->>'product_type', '')",
+  retrievalTitleDisplay: "coalesce(seed_data->'derived'->'recall'->>'retrieval_title', seed_data->>'title', seed_data->'snapshot'->>'title', '')",
+  retrievalSummaryDisplay: "coalesce(seed_data->'derived'->'recall'->>'retrieval_summary', seed_data->>'description', seed_data->'snapshot'->>'description', '')",
+  ingredientTokensDisplay: "coalesce(seed_data#>>'{derived,recall,ingredient_tokens}', seed_data#>>'{ingredient_tokens}', seed_data#>>'{snapshot,ingredient_tokens}', '')",
+  aliasTokensDisplay: "coalesce(seed_data#>>'{derived,recall,alias_tokens}', seed_data#>>'{search_aliases}', seed_data#>>'{aliases}', seed_data#>>'{snapshot,search_aliases}', seed_data#>>'{snapshot,aliases}', '')",
+  vertical: "lower(coalesce(seed_data->'derived'->'recall'->>'vertical', ''))",
+});
+
 // Codes that mean "this source isn't deployed in this env" — safe to skip.
 // Deliberately EXCLUDES 42703 (undefined_column) and 42883 (undefined_function):
 // those signal code-vs-schema drift (e.g., a column rename that left a SELECT stale)
@@ -44,6 +56,24 @@ const BEAUTY_TEXT_PATTERNS = [
   '%cosmetic%',
   '%fragrance%',
   '%hair%',
+];
+
+const BEAUTY_VERTICAL_TERMS = [
+  'beauty',
+  'skincare',
+  'skin care',
+  'makeup',
+  'cosmetic',
+  'cosmetics',
+  'fragrance',
+  'hair',
+  'haircare',
+  'hair care',
+  'serum',
+  'moisturizer',
+  'cleanser',
+  'sunscreen',
+  'spf',
 ];
 
 function isPlainObject(value) {
@@ -935,6 +965,7 @@ async function loadProductsCacheCandidates({ queryFn, limit = DEFAULT_SOURCE_LIM
 
 async function loadExternalProductSeedCandidates({ queryFn, limit = DEFAULT_SOURCE_LIMIT, market = DEFAULT_MARKET } = {}) {
   const normalizedMarket = normalizeMarket(market);
+  const rowLimit = normalizeLimit(limit);
   const rows = await guardedRows(
     queryFn,
     `
@@ -948,20 +979,33 @@ async function loadExternalProductSeedCandidates({ queryFn, limit = DEFAULT_SOUR
         market,
         canonical_url,
         destination_url,
-        seed_data,
+        jsonb_strip_nulls(jsonb_build_object(
+          'brand', NULLIF(${EXTERNAL_SEED_RECALL_SQL_FIELDS.brandDisplay}, ''),
+          'brand_name', NULLIF(${EXTERNAL_SEED_RECALL_SQL_FIELDS.brandDisplay}, ''),
+          'category', NULLIF(${EXTERNAL_SEED_RECALL_SQL_FIELDS.categoryDisplay}, ''),
+          'product_type', NULLIF(${EXTERNAL_SEED_RECALL_SQL_FIELDS.vertical}, ''),
+          'pdp_description_raw', NULLIF(${EXTERNAL_SEED_RECALL_SQL_FIELDS.retrievalSummaryDisplay}, ''),
+          'description', NULLIF(${EXTERNAL_SEED_RECALL_SQL_FIELDS.retrievalSummaryDisplay}, ''),
+          'ingredient_tokens', NULLIF(${EXTERNAL_SEED_RECALL_SQL_FIELDS.ingredientTokensDisplay}, ''),
+          'search_aliases', NULLIF(${EXTERNAL_SEED_RECALL_SQL_FIELDS.aliasTokensDisplay}, ''),
+          'snapshot', jsonb_strip_nulls(jsonb_build_object(
+            'title', NULLIF(coalesce(seed_data->'snapshot'->>'title', seed_data->>'title', title, ${EXTERNAL_SEED_RECALL_SQL_FIELDS.retrievalTitleDisplay}), ''),
+            'brand', NULLIF(${EXTERNAL_SEED_RECALL_SQL_FIELDS.brandDisplay}, ''),
+            'category', NULLIF(${EXTERNAL_SEED_RECALL_SQL_FIELDS.categoryDisplay}, ''),
+            'product_type', NULLIF(${EXTERNAL_SEED_RECALL_SQL_FIELDS.vertical}, ''),
+            'description', NULLIF(${EXTERNAL_SEED_RECALL_SQL_FIELDS.retrievalSummaryDisplay}, '')
+          ))
+        )) AS seed_data,
         updated_at,
         created_at
       FROM external_product_seeds
       WHERE COALESCE(status, 'active') = 'active'
         AND upper(COALESCE(market, $2)) = $2
-        AND (
-          lower(COALESCE(title, '')) LIKE ANY($3::text[])
-          OR lower(to_jsonb(seed_data)::text) LIKE ANY($3::text[])
-        )
+        AND ${EXTERNAL_SEED_RECALL_SQL_FIELDS.vertical} = ANY($3::text[])
       ORDER BY updated_at DESC NULLS LAST, created_at DESC NULLS LAST, id ASC
       LIMIT $1
     `,
-    [normalizeLimit(limit), normalizedMarket, BEAUTY_TEXT_PATTERNS],
+    [rowLimit, normalizedMarket, BEAUTY_VERTICAL_TERMS],
   );
   return rows.map(normalizeExternalProductSeedRow).filter(Boolean);
 }
@@ -1223,7 +1267,27 @@ async function loadProductIntelKbRows({ queryFn, limit = DEFAULT_SOURCE_LIMIT } 
     `
       SELECT
         kb_key,
-        analysis,
+        jsonb_strip_nulls(jsonb_build_object(
+          'product_intel_v1', jsonb_strip_nulls(jsonb_build_object(
+            'canonical_product_ref', COALESCE(
+              analysis#>'{product_intel_v1,canonical_product_ref}',
+              analysis#>'{canonical_product_ref}'
+            ),
+            'product_intel_core', COALESCE(
+              analysis#>'{product_intel_v1,product_intel_core}',
+              analysis#>'{product_intel_core}',
+              analysis#>'{core}'
+            ),
+            'search_card', COALESCE(
+              analysis#>'{product_intel_v1,search_card}',
+              analysis#>'{search_card}'
+            ),
+            'shopping_card', COALESCE(
+              analysis#>'{product_intel_v1,shopping_card}',
+              analysis#>'{shopping_card}'
+            )
+          ))
+        )) AS analysis,
         source,
         source_meta,
         last_success_at,

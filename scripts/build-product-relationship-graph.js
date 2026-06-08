@@ -3,7 +3,7 @@
 const fs = require('node:fs');
 const path = require('node:path');
 
-const { query } = require('../src/db');
+const { closePool, query } = require('../src/db');
 const {
   buildProductRelationshipGraphDryRun,
   CURATED_NEED_NODES,
@@ -743,11 +743,24 @@ async function main() {
   process.stdout.write(`${JSON.stringify(finalReport.summary, null, 2)}\n`);
 }
 
-if (require.main === module) {
-  main().catch((err) => {
+async function runCli({ runMain = main, closeDbPool = closePool } = {}) {
+  try {
+    await runMain();
+  } catch (err) {
     process.stderr.write(`${err && err.stack ? err.stack : String(err)}\n`);
     process.exitCode = 1;
-  });
+  } finally {
+    try {
+      await closeDbPool();
+    } catch (err) {
+      process.stderr.write(`${err && err.stack ? err.stack : String(err)}\n`);
+      process.exitCode = 1;
+    }
+  }
+}
+
+if (require.main === module) {
+  runCli();
 }
 
 module.exports = {
@@ -767,4 +780,5 @@ module.exports = {
   classifyEdgeForPrefilter,
   resolveDefaultLabelState,
   orderEdgesByReviewPriority,
+  runCli,
 };

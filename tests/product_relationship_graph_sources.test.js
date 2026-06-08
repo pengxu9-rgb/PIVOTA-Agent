@@ -287,11 +287,51 @@ describe('product relationship graph source loaders', () => {
     const cacheSql = sqlSeen.find((s) => s.includes('FROM products_cache')) || '';
 
     // external_product_seeds has no `category` column — must use seed_data JSONB instead.
-    expect(seedSql).not.toMatch(/\bcategory\b/);
+    expect(seedSql).not.toMatch(/\n\s*category\s*,/);
+    expect(seedSql).not.toMatch(/\bexternal_product_seeds\.category\b/);
     expect(affectedSeedSql).not.toMatch(/\beps\.category\b/);
     expect(affectedSeedSql).toContain("eps.seed_data->>'category'");
     // products_cache has no `updated_at` column — must use cached_at / last_accessed_at instead.
     expect(cacheSql).not.toMatch(/\bupdated_at\b/);
+  });
+
+  test('external seed loader uses structured recall fields instead of raw JSON beauty scan', async () => {
+    const calls = [];
+    const queryFn = jest.fn(async (sql, params) => {
+      calls.push({ sql: String(sql), params });
+      return { rows: [] };
+    });
+
+    await loadExternalProductSeedCandidates({ queryFn, market: 'US', limit: 5 });
+
+    expect(calls).toHaveLength(1);
+    const whereSql = calls[0].sql.slice(calls[0].sql.indexOf('WHERE'));
+    expect(calls[0].sql).toContain('jsonb_build_object');
+    expect(calls[0].sql).toContain("seed_data->'derived'->'recall'->>'vertical'");
+    expect(calls[0].sql).toContain('= ANY($3::text[])');
+    expect(whereSql).not.toContain("seed_data->'derived'->'recall'->>'category'");
+    expect(calls[0].sql).not.toContain('LIKE ANY($3::text[])');
+    expect(calls[0].sql).not.toContain('to_jsonb(seed_data)::text');
+    expect(calls[0].params[0]).toBe(5);
+    expect(calls[0].params[2]).toEqual(expect.arrayContaining(['skincare', 'makeup', 'fragrance']));
+  });
+
+  test('product intel loader projects only graph-relevant analysis fields', async () => {
+    const calls = [];
+    const queryFn = jest.fn(async (sql, params) => {
+      calls.push({ sql: String(sql), params });
+      return { rows: [] };
+    });
+
+    await loadProductIntelKbRows({ queryFn, limit: 5 });
+
+    expect(calls).toHaveLength(1);
+    expect(calls[0].sql).toContain('jsonb_build_object');
+    expect(calls[0].sql).toContain("analysis#>'{product_intel_v1,canonical_product_ref}'");
+    expect(calls[0].sql).toContain("analysis#>'{product_intel_v1,product_intel_core}'");
+    expect(calls[0].sql).toContain("analysis#>'{product_intel_v1,search_card}'");
+    expect(calls[0].sql).toContain("analysis#>'{product_intel_v1,shopping_card}'");
+    expect(calls[0].params[0]).toBe(5);
   });
 
   test('normalizes external seed and product-intel rows from fake query results', async () => {

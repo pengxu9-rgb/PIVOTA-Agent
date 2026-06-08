@@ -6,6 +6,7 @@ const {
   needMatchThreshold,
   classifyEdgeForPrefilter,
   resolveDefaultLabelState,
+  runCli,
 } = require('../../scripts/build-product-relationship-graph');
 const {
   CURATED_NEED_NODES,
@@ -14,10 +15,13 @@ const {
 describe('build product relationship graph CLI helpers', () => {
   const originalArgv = process.argv;
   const originalEnv = { ...process.env };
+  const originalExitCode = process.exitCode;
 
   afterEach(() => {
     process.argv = originalArgv;
     process.env = originalEnv;
+    if (originalExitCode == null) delete process.exitCode;
+    else process.exitCode = originalExitCode;
   });
 
   test('uses fallback when optional numeric flag is omitted', () => {
@@ -100,6 +104,17 @@ describe('build product relationship graph CLI helpers', () => {
 
     expect(candidates[need.need_id].map((item) => item.product_ref)).toContain('product:hydrating_serum');
     expect(candidates[need.need_id].map((item) => item.product_ref)).not.toContain('product:matte_lipstick');
+  });
+
+  test('CLI runner closes the database pool after successful build output', async () => {
+    const runMain = jest.fn(async () => {});
+    const closeDbPool = jest.fn(async () => {});
+
+    await runCli({ runMain, closeDbPool });
+
+    expect(runMain).toHaveBeenCalledTimes(1);
+    expect(closeDbPool).toHaveBeenCalledTimes(1);
+    expect(process.exitCode).toBeUndefined();
   });
 });
 
