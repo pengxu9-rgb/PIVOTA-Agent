@@ -16,6 +16,7 @@ const DEFAULT_REVIEW_LIMIT = 250;
 const DEFAULT_LOCK_STALE_AFTER_MINUTES = 180;
 const DEFAULT_MAX_SERVING_SUPPRESSED_PCT = 1;
 const DEFAULT_MAX_SERVING_SUPPRESSED_ROWS = 25;
+const DEFAULT_STEP_TIMEOUT_MINUTES = 20;
 const DEFAULT_SELECT_LIMIT = 250;
 const DEFAULT_SELECT_SOURCES = ['catalog_products', 'external_product_seeds'];
 const DEFAULT_FAIL_REASONS = [
@@ -211,6 +212,12 @@ function parseArgs(argv = process.argv.slice(2), { now = new Date(), cwd = proce
       DEFAULT_LOCK_STALE_AFTER_MINUTES,
       { min: 0, max: 30 * 24 * 60 },
     ),
+    stepTimeoutMinutes: parseNumber(
+      argValue(argv, 'step-timeout-minutes'),
+      DEFAULT_STEP_TIMEOUT_MINUTES,
+      { min: 0, max: 12 * 60 },
+    ),
+    stepTimeoutMs: parseNumber(argValue(argv, 'step-timeout-ms'), 0, { min: 0, max: 12 * 60 * 60 * 1000 }),
     syncBatchSize: parseNumber(argValue(argv, 'sync-batch-size'), 0, { min: 0, max: 500 }),
     upsertServingState: hasFlag(argv, 'upsert-serving-state'),
     bootstrapReviewedIdentityLiveRead: hasFlag(argv, 'bootstrap-reviewed-identity-live-read'),
@@ -249,6 +256,8 @@ function serializableOptions(options = {}) {
     apply_review: Boolean(options.applyReview),
     db_lock: Boolean(options.dbLock),
     lock_stale_after_minutes: options.lockStaleAfterMinutes,
+    step_timeout_minutes: options.stepTimeoutMinutes,
+    step_timeout_ms: options.stepTimeoutMs || null,
     max_serving_suppressed_pct: options.maxServingSuppressedPct,
     max_serving_suppressed_rows: options.maxServingSuppressedRows,
     fail_on_serving_suppression_reasons: options.failOnServingSuppressionReasons || [],
@@ -337,6 +346,11 @@ function buildSyncRoutineSteps(options = {}) {
     '--lock-stale-after-minutes',
     String(options.lockStaleAfterMinutes),
   ];
+  if (options.stepTimeoutMs) {
+    routineArgs.push('--step-timeout-ms', String(options.stepTimeoutMs));
+  } else {
+    routineArgs.push('--step-timeout-minutes', String(options.stepTimeoutMinutes));
+  }
   if (options.skipReview) {
     routineArgs.push('--skip-review');
   } else {

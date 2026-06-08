@@ -29,6 +29,8 @@ describe('run-relationship-graph-sync-routine', () => {
     expect(options.applyReview).toBe(false);
     expect(options.dbLock).toBe(true);
     expect(options.lockStaleAfterMinutes).toBe(180);
+    expect(options.stepTimeoutMinutes).toBe(20);
+    expect(options.stepTimeoutMs).toBe(0);
     expect(options.maxServingSuppressedPct).toBe(1);
     expect(options.maxServingSuppressedRows).toBe(25);
     expect(options.failOnServingSuppressionReasons).toEqual(DEFAULT_FAIL_REASONS);
@@ -137,6 +139,8 @@ describe('run-relationship-graph-sync-routine', () => {
       'seed_1,seed_2',
       '--out-dir',
       '/tmp/relgraph-sync-routine',
+      '--step-timeout-minutes',
+      '9',
     ], { now: NOW });
 
     const { steps, artifacts } = buildSyncRoutineSteps(options);
@@ -156,6 +160,7 @@ describe('run-relationship-graph-sync-routine', () => {
     expect(routineArgs).toContain('--affected-products-file /tmp/relgraph-sync-routine/affected-products.json');
     expect(routineArgs).toContain('--db-lock');
     expect(routineArgs).toContain('--lock-stale-after-minutes 180');
+    expect(routineArgs).toContain('--step-timeout-minutes 9');
     expect(routineArgs).toContain('--max-serving-suppressed-pct 1');
     expect(routineArgs).toContain('--max-serving-suppressed-rows 25');
     expect(routineArgs).toContain(`--fail-on-serving-suppression-reasons ${DEFAULT_FAIL_REASONS.join(',')}`);
@@ -178,6 +183,8 @@ describe('run-relationship-graph-sync-routine', () => {
       '--allow-empty-build',
       '--out-dir',
       '/tmp/relgraph-sync-routine',
+      '--step-timeout-ms',
+      '2500',
     ], { now: NOW });
 
     const { steps, artifacts } = buildSyncRoutineSteps(options);
@@ -195,6 +202,7 @@ describe('run-relationship-graph-sync-routine', () => {
 
     const routineArgs = steps[1].args.join(' ');
     expect(routineArgs).toContain('--affected-products-file /tmp/relgraph-sync-routine/affected-products.json');
+    expect(routineArgs).toContain('--step-timeout-ms 2500');
     expect(routineArgs).toContain('--allow-empty-build');
     expect(routineArgs).toContain('--db-lock');
   });

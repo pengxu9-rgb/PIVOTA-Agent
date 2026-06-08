@@ -10,6 +10,7 @@ const {
   evaluateServingAuditThresholds,
   parseArgs,
   postgresAdvisoryLockParts,
+  runCommand,
   runRoutineJob,
 } = require('../../scripts/run-relationship-graph-routine-job');
 
@@ -30,6 +31,8 @@ describe('run-relationship-graph-routine-job', () => {
       'relgraph:test',
       '--lock-stale-after-minutes',
       '180',
+      '--step-timeout-minutes',
+      '7',
       '--fail-on-serving-suppression-reasons',
       'ai_approved_dupe_quarantined,candidate_ref_unresolvable_nested_product_prefix',
     ], { now: NOW });
@@ -42,6 +45,7 @@ describe('run-relationship-graph-routine-job', () => {
     expect(args.dbLock).toBe(true);
     expect(args.dbLockKey).toBe('relgraph:test');
     expect(args.lockStaleAfterMs).toBe(180 * 60 * 1000);
+    expect(args.stepTimeoutMs).toBe(7 * 60 * 1000);
     expect(args.failOnServingSuppressionReasons).toEqual([
       'ai_approved_dupe_quarantined',
       'candidate_ref_unresolvable_nested_product_prefix',
@@ -351,6 +355,47 @@ describe('run-relationship-graph-routine-job', () => {
     expect(client.query.mock.calls[0][0]).toContain('pg_try_advisory_lock');
     expect(client.query.mock.calls.at(-1)[0]).toContain('pg_advisory_unlock');
     expect(runner).toHaveBeenCalled();
+  });
+
+  test('runRoutineJob passes the child step timeout to the runner', async () => {
+    const outDir = fs.mkdtempSync(path.join(os.tmpdir(), 'relgraph-routine-'));
+    const options = parseArgs([
+      '--cutoff',
+      CUTOFF,
+      '--out-dir',
+      outDir,
+      '--skip-validation',
+      '--skip-serving-audit',
+      '--step-timeout-ms',
+      '1234',
+    ], { now: NOW });
+    const runner = jest.fn(async () => ({ exitCode: 0, stdout: '{"ok":true}', stderr: '' }));
+
+    await runRoutineJob(options, { runner, now: NOW });
+
+    expect(runner).toHaveBeenCalledWith(
+      expect.any(String),
+      expect.any(Array),
+      expect.objectContaining({ timeoutMs: 1234 }),
+    );
+    const summary = JSON.parse(fs.readFileSync(path.join(outDir, 'routine_summary.json'), 'utf8'));
+    expect(summary.options.step_timeout_ms).toBe(1234);
+    expect(summary.steps[0]).toEqual(expect.objectContaining({
+      timed_out: false,
+      timeout_ms: 1234,
+    }));
+  });
+
+  test('runCommand terminates a timed-out child step', async () => {
+    const result = await runCommand(
+      process.execPath,
+      ['-e', 'setTimeout(() => {}, 1000)'],
+      { timeoutMs: 50 },
+    );
+
+    expect(result.exitCode).toBe(124);
+    expect(result.timedOut).toBe(true);
+    expect(result.stderr).toContain('step timed out after 50ms');
   });
 
   test('runRoutineJob fails before steps when Postgres advisory lock is held', async () => {

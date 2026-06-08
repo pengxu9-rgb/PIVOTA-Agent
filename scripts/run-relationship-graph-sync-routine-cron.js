@@ -138,6 +138,8 @@ function buildCronArgs(env = process.env, { now = new Date() } = {}) {
   pushArg(args, 'max-serving-suppressed-rows', env.RELGRAPH_SYNC_MAX_SERVING_SUPPRESSED_ROWS);
   pushArg(args, 'fail-on-serving-suppression-reasons', env.RELGRAPH_SYNC_FAIL_ON_SERVING_SUPPRESSION_REASONS);
   pushArg(args, 'lock-stale-after-minutes', env.RELGRAPH_SYNC_LOCK_STALE_AFTER_MINUTES);
+  pushArg(args, 'step-timeout-minutes', env.RELGRAPH_SYNC_STEP_TIMEOUT_MINUTES);
+  pushArg(args, 'step-timeout-ms', env.RELGRAPH_SYNC_STEP_TIMEOUT_MS);
   pushArg(args, 'db-lock-key', env.RELGRAPH_SYNC_DB_LOCK_KEY);
 
   pushFlag(args, 'allow-empty-selection', allowEmpty);

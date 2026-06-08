@@ -12,6 +12,7 @@ const DEFAULT_LIMIT = 200;
 const DEFAULT_REVIEW_LIMIT = 250;
 const DEFAULT_REVIEW_MIN_SCORE = 0;
 const DEFAULT_SERVING_AUDIT_EXAMPLES = 8;
+const DEFAULT_STEP_TIMEOUT_MINUTES = 20;
 const OUTPUT_TAIL_CHARS = 12000;
 const ROUTINE_LOCK_DIRNAME = 'relationship_graph_routine.lock';
 const DEFAULT_DB_LOCK_KEY = 'pivota.relationship_graph.routine';
@@ -57,6 +58,19 @@ function parseLockStaleAfterMs(argv = []) {
   return Math.trunc(minutes * 60 * 1000);
 }
 
+function parseStepTimeoutMs(argv = []) {
+  const explicitMs = parseNumber(argValue(argv, 'step-timeout-ms'), null, {
+    min: 0,
+    max: 12 * 60 * 60 * 1000,
+  });
+  if (explicitMs != null) return Math.trunc(explicitMs);
+  const minutes = parseNumber(argValue(argv, 'step-timeout-minutes'), DEFAULT_STEP_TIMEOUT_MINUTES, {
+    min: 0,
+    max: 12 * 60,
+  });
+  return Math.trunc(minutes * 60 * 1000);
+}
+
 function parseDelimitedList(value, max = 5000) {
   return Array.from(new Set(
     normalizeString(value, max)
@@ -87,6 +101,7 @@ function usage() {
     'Use --fail-on-serving-suppression-reasons reason_a,reason_b to fail when any listed suppression reason appears.',
     'Use --db-lock for a Postgres advisory lock when running from distributed cron or CI.',
     'Use --lock-stale-after-minutes N only when a killed prior run may have left a local lock behind.',
+    'Use --step-timeout-minutes N to fail closed when a child step hangs.',
   ].join('\n');
 }
 
@@ -148,6 +163,7 @@ function parseArgs(argv = process.argv.slice(2), { now = new Date() } = {}) {
     allowDupeAiApproval,
     lockDir: normalizeString(argValue(argv, 'lock-dir'), 2000),
     lockStaleAfterMs: parseLockStaleAfterMs(argv),
+    stepTimeoutMs: parseStepTimeoutMs(argv),
     dbLock: hasFlag(argv, 'db-lock'),
     dbLockKey: normalizeString(argValue(argv, 'db-lock-key', DEFAULT_DB_LOCK_KEY), 500) || DEFAULT_DB_LOCK_KEY,
     requireAnchors: !hasFlag(argv, 'allow-empty-build'),
@@ -491,8 +507,19 @@ function evaluateServingAuditThresholds(audit = {}, options = {}) {
   return violations;
 }
 
-function runCommand(command, args, { cwd = process.cwd(), env = {} } = {}) {
+function runCommand(command, args, { cwd = process.cwd(), env = {}, timeoutMs = 0 } = {}) {
   return new Promise((resolve) => {
+    let settled = false;
+    let timedOut = false;
+    let timeoutTimer = null;
+    let killTimer = null;
+    const finish = (result) => {
+      if (settled) return;
+      settled = true;
+      if (timeoutTimer) clearTimeout(timeoutTimer);
+      if (killTimer) clearTimeout(killTimer);
+      resolve(result);
+    };
     const child = spawn(command, args, {
       cwd,
       env: { ...process.env, ...env },
@@ -506,11 +533,28 @@ function runCommand(command, args, { cwd = process.cwd(), env = {} } = {}) {
     child.stderr.on('data', (chunk) => {
       stderr = tailOutput(stderr + chunk.toString());
     });
+    if (timeoutMs > 0) {
+      timeoutTimer = setTimeout(() => {
+        timedOut = true;
+        stderr = tailOutput(`${stderr}\nstep timed out after ${timeoutMs}ms; sent SIGTERM`.trim());
+        if (!child.killed) child.kill('SIGTERM');
+        killTimer = setTimeout(() => {
+          stderr = tailOutput(`${stderr}\nstep did not exit after SIGTERM; sent SIGKILL`.trim());
+          if (!child.killed) child.kill('SIGKILL');
+        }, 5000);
+      }, timeoutMs);
+    }
     child.on('error', (err) => {
-      resolve({ exitCode: 1, stdout, stderr: `${stderr}\n${err.message}`.trim() });
+      finish({ exitCode: 1, stdout, stderr: `${stderr}\n${err.message}`.trim(), timedOut });
     });
-    child.on('close', (code) => {
-      resolve({ exitCode: code == null ? 1 : code, stdout, stderr });
+    child.on('close', (code, signal) => {
+      finish({
+        exitCode: timedOut ? 124 : (code == null ? 1 : code),
+        stdout,
+        stderr,
+        signal: signal || null,
+        timedOut,
+      });
     });
   });
 }
@@ -539,6 +583,7 @@ function serializableOptions(options) {
     dry_run: !(options.applyBuild || options.applyReview),
     apply_build: options.applyBuild,
     apply_review: options.applyReview,
+    step_timeout_ms: options.stepTimeoutMs || null,
     allow_dupe_ai_approval: options.allowDupeAiApproval,
     lock_dir: options.lockDir || null,
     lock_stale_after_ms: options.lockStaleAfterMs || null,
@@ -596,7 +641,11 @@ async function runRoutineJob(
     for (const step of steps) {
       const startedAt = new Date().toISOString();
       // eslint-disable-next-line no-await-in-loop
-      const result = await runner(step.command, step.args, { cwd, env: step.env || {} });
+      const result = await runner(step.command, step.args, {
+        cwd,
+        env: step.env || {},
+        timeoutMs: options.stepTimeoutMs || 0,
+      });
       const record = {
         id: step.id,
         status: result.exitCode === 0 ? 'passed' : 'failed',
@@ -606,6 +655,9 @@ async function runRoutineJob(
         started_at: startedAt,
         completed_at: new Date().toISOString(),
         exit_code: result.exitCode,
+        signal: result.signal || null,
+        timed_out: Boolean(result.timedOut),
+        timeout_ms: options.stepTimeoutMs || null,
         stdout_tail: tailOutput(result.stdout),
         stderr_tail: tailOutput(result.stderr),
       };
