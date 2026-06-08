@@ -27736,7 +27736,15 @@ async function invokeCommerceKernelRawUpstream(operation, payload, headers = {})
         clientChannel,
         gatewayRequestId,
       });
-      if (shouldSubmitPaymentUseExistingOrderMerchantPspSurface(checkoutSessionBody)) {
+      const forceHostedCheckoutSession = invokeContext?.surface === 'mcp';
+      if (
+        !forceHostedCheckoutSession &&
+        shouldSubmitPaymentUseExistingOrderMerchantPspSurface({
+          payload,
+          payment,
+          checkoutSessionBody,
+        })
+      ) {
         url = `${PIVOTA_API_BASE}/agent/v1/payments`;
         requestBody = buildSubmitPaymentV1Body({
           payload,
@@ -46329,19 +46337,6 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
           adyenRaw.clientKey,
           adyenRaw.client_key,
         );
-        if (pspNormalized === 'pivota_hosted_checkout') {
-          unsupportedPaymentSurface = {
-            error: 'UNSUPPORTED_PAYMENT_SURFACE',
-            message:
-              'Merchant checkout must return the merchant PSP payment surface. pivota_hosted_checkout is disabled.',
-            detail: {
-              psp: 'pivota_hosted_checkout',
-              checkout_session_id: checkoutSession?.checkout_session_id || null,
-            },
-          };
-          return null;
-        }
-
         let paymentAction =
           p.payment_action ||
           paymentObj.payment_action ||

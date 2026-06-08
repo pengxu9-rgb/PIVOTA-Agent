@@ -505,25 +505,25 @@ describe('strict Safety Kernel mount on /agent/shop/v1/invoke', () => {
         },
         tracking: { order_id: 'ORD_STRICT' },
       })
-      .post('/agent/v1/payments', (body) => {
+      .post('/agent/v2/payments/checkout-sessions', (body) => {
         return (
           body?.order_id === 'ORD_STRICT' &&
-          body?.payment_method?.type === 'stripe_checkout' &&
+          body?.expected_amount === 2900 &&
+          body?.currency === 'USD' &&
+          body?.payment_method_hint === 'stripe_checkout' &&
           body?.return_url === 'https://agent.test.pivota.local/order/success?orderId=ORD_STRICT&finalizing=1' &&
-          body?.expected_amount === undefined &&
-          body?.currency === undefined
+          body?.payment_method === undefined
         );
       })
       .reply(200, {
-        payment_status: 'requires_action',
-        payment_intent_id: 'cs_strict_checkout',
-        psp: 'stripe',
-        payment_action: {
-          type: 'redirect_url',
-          url: 'https://checkout.stripe.test/cs_strict_checkout',
-          submit_owner: 'redirect',
-          component_kind: 'stripe_checkout',
-          supported_in_shopping_ui: true,
+        status: 'success',
+        checkout_session: {
+          checkout_session_id: 'cs_strict_checkout',
+          order_id: 'ORD_STRICT',
+          state: 'created',
+          hosted_url: 'https://checkout.stripe.test/cs_strict_checkout',
+          provider: 'pivota_hosted_checkout',
+          checkout_token: 'tok_strict_checkout',
         },
       });
 
