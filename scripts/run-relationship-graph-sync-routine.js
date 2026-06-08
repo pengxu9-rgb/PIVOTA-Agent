@@ -15,6 +15,8 @@ const DEFAULT_REVIEW_LIMIT = 250;
 const DEFAULT_LOCK_STALE_AFTER_MINUTES = 180;
 const DEFAULT_MAX_SERVING_SUPPRESSED_PCT = 1;
 const DEFAULT_MAX_SERVING_SUPPRESSED_ROWS = 25;
+const DEFAULT_SELECT_LIMIT = 250;
+const DEFAULT_SELECT_SOURCES = ['catalog_products', 'external_product_seeds'];
 const DEFAULT_FAIL_REASONS = [
   'ai_approved_dupe_quarantined',
   'candidate_ref_unresolvable_nested_product_prefix',
@@ -85,10 +87,11 @@ function pushFlag(args, name, enabled) {
 function usage() {
   return [
     'Usage:',
-    '  node scripts/run-relationship-graph-sync-routine.js --cutoff <timestamp> (--affected-products-file path | --external-product-ids a,b | --external-product-ids-file path) [--out-dir path]',
+    '  node scripts/run-relationship-graph-sync-routine.js --cutoff <timestamp> (--affected-products-file path | --external-product-ids a,b | --external-product-ids-file path | --select-updated-since timestamp) [--out-dir path]',
     '',
     'Dry-run by default. Writes require --confirm APPLY_RELGRAPH_SYNC_ROUTINE.',
     'When external product IDs are supplied, catalog sync is dry-run unless --apply-sync is passed.',
+    'When --select-updated-since or --select-hours is supplied, a read-only affected-products manifest is generated first.',
     'Graph writes require --apply-build and/or --apply-review; routine confirmation is passed through internally.',
     'Production gates are on by default: --db-lock, stale lock recovery, serving suppression thresholds, and critical reason gating.',
   ].join('\n');
@@ -109,11 +112,30 @@ function parseArgs(argv = process.argv.slice(2), { now = new Date(), cwd = proce
   const affectedProductsFileInput = normalizeString(argValue(argv, 'affected-products-file'), 2000);
   const externalProductIds = normalizeString(argValue(argv, 'external-product-ids'), 8000);
   const externalProductIdsFile = normalizeString(argValue(argv, 'external-product-ids-file'), 2000);
-  if (!affectedProductsFileInput && !externalProductIds && !externalProductIdsFile) {
-    throw new Error('--affected-products-file, --external-product-ids, or --external-product-ids-file is required');
+  const selectHours = parseNumber(argValue(argv, 'select-hours'), 0, { min: 0, max: 24 * 365 });
+  const selectUpdatedSinceInput = normalizeString(
+    argValue(argv, 'select-updated-since') || argValue(argv, 'updated-since') || argValue(argv, 'since'),
+    100,
+  );
+  const selectUpdatedSince = selectUpdatedSinceInput || (
+    selectHours ? new Date(now.getTime() - selectHours * 60 * 60 * 1000).toISOString() : ''
+  );
+  if (selectUpdatedSince && Number.isNaN(new Date(selectUpdatedSince).getTime())) {
+    throw new Error(`invalid --select-updated-since timestamp: ${selectUpdatedSince}`);
   }
-  if (affectedProductsFileInput && (externalProductIds || externalProductIdsFile)) {
-    throw new Error('--affected-products-file cannot be combined with external product ID inputs');
+  const usesSelector = Boolean(selectUpdatedSince);
+  const inputModes = [
+    Boolean(affectedProductsFileInput),
+    Boolean(externalProductIds || externalProductIdsFile),
+    usesSelector,
+  ].filter(Boolean).length;
+  if (!inputModes) {
+    throw new Error(
+      '--affected-products-file, --external-product-ids, --external-product-ids-file, or --select-updated-since/--select-hours is required',
+    );
+  }
+  if (inputModes > 1) {
+    throw new Error('affected-products, external product ID, and selector inputs are mutually exclusive');
   }
 
   const applySync = hasFlag(argv, 'apply-sync');
@@ -123,7 +145,10 @@ function parseArgs(argv = process.argv.slice(2), { now = new Date(), cwd = proce
   if ((applySync || applyBuild || applyReview) && confirm !== WRAPPER_CONFIRM_TOKEN) {
     throw new Error(`write-mode sync routine jobs require --confirm ${WRAPPER_CONFIRM_TOKEN}`);
   }
-  if (!affectedProductsFileInput && !applySync && (applyBuild || applyReview)) {
+  if (usesSelector && applySync) {
+    throw new Error('--apply-sync requires explicit external product ID inputs; selector mode is read-only');
+  }
+  if (!affectedProductsFileInput && !usesSelector && !applySync && (applyBuild || applyReview)) {
     throw new Error('graph apply mode cannot follow a dry-run catalog sync; pass --apply-sync or provide --affected-products-file');
   }
 
@@ -148,6 +173,11 @@ function parseArgs(argv = process.argv.slice(2), { now = new Date(), cwd = proce
     routineOutDir,
     externalProductIds,
     externalProductIdsFile: externalProductIdsFile ? resolvePathMaybeRelative(externalProductIdsFile, cwd) : '',
+    usesSelector,
+    selectUpdatedSince,
+    selectSources: parseDelimitedList(argValue(argv, 'select-sources'), DEFAULT_SELECT_SOURCES),
+    selectLimit: parseNumber(argValue(argv, 'select-limit'), DEFAULT_SELECT_LIMIT, { min: 1, max: 5000 }),
+    allowEmptySelection: hasFlag(argv, 'allow-empty-selection') || hasFlag(argv, 'allow-empty'),
     applySync,
     applyBuild,
     applyReview,
@@ -200,6 +230,14 @@ function serializableOptions(options = {}) {
     uses_existing_affected_products_file: Boolean(options.usesExistingAffectedProductsFile),
     external_product_ids: options.externalProductIds || null,
     external_product_ids_file: options.externalProductIdsFile || null,
+    selector: options.usesSelector
+      ? {
+        updated_since: options.selectUpdatedSince,
+        sources: options.selectSources || [],
+        limit: options.selectLimit,
+        allow_empty_selection: Boolean(options.allowEmptySelection),
+      }
+      : null,
     dry_run: !(options.applySync || options.applyBuild || options.applyReview),
     apply_sync: Boolean(options.applySync),
     apply_build: Boolean(options.applyBuild),
@@ -216,7 +254,28 @@ function buildSyncRoutineSteps(options = {}) {
   const node = process.execPath;
   const steps = [];
 
-  if (!options.usesExistingAffectedProductsFile) {
+  if (options.usesSelector) {
+    const args = [
+      scriptPath('select-relationship-graph-affected-products.js'),
+      '--market',
+      options.market,
+      '--updated-since',
+      options.selectUpdatedSince,
+      '--sources',
+      (options.selectSources || DEFAULT_SELECT_SOURCES).join(','),
+      '--limit',
+      String(options.selectLimit || DEFAULT_SELECT_LIMIT),
+      '--out',
+      options.affectedProductsFile,
+    ];
+    pushFlag(args, 'allow-empty-selection', options.allowEmptySelection);
+    steps.push({
+      id: 'affected_product_selector',
+      command: node,
+      args,
+      artifact: options.affectedProductsFile,
+    });
+  } else if (!options.usesExistingAffectedProductsFile) {
     const args = [
       scriptPath('sync-external-seeds-to-catalog.cjs'),
       '--market',
@@ -302,7 +361,8 @@ function buildSyncRoutineSteps(options = {}) {
   return {
     artifacts: {
       affected_products: options.affectedProductsFile,
-      catalog_sync: options.usesExistingAffectedProductsFile ? null : options.syncOut,
+      affected_product_selector: options.usesSelector ? options.affectedProductsFile : null,
+      catalog_sync: options.usesExistingAffectedProductsFile || options.usesSelector ? null : options.syncOut,
       routine_summary: path.join(options.routineOutDir, 'routine_summary.json'),
       summary: options.summaryOut,
     },

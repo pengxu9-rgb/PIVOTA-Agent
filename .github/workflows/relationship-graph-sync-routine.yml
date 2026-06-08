@@ -1,11 +1,14 @@
 name: Relationship Graph Sync Routine
 
 on:
+  schedule:
+    - cron: "37 10 * * *"
   workflow_dispatch:
     inputs:
       cutoff:
-        description: "Review cutoff timestamp, e.g. 2026-06-08T00:00:00Z"
-        required: true
+        description: "Review cutoff timestamp, e.g. 2026-06-08T00:00:00Z. Defaults to select_hours ago."
+        required: false
+        default: ""
         type: string
       market:
         description: "Market code"
@@ -22,6 +25,31 @@ on:
         required: false
         default: ""
         type: string
+      select_updated_since:
+        description: "Read-only selector cutoff for changed catalog/seeds. Defaults to cutoff/select_hours ago when no explicit IDs or manifest are supplied."
+        required: false
+        default: ""
+        type: string
+      select_hours:
+        description: "Default selector/review lookback window in hours"
+        required: true
+        default: "24"
+        type: string
+      select_sources:
+        description: "Selector sources"
+        required: true
+        default: "catalog_products,external_product_seeds"
+        type: string
+      select_limit:
+        description: "Selector row limit per source"
+        required: true
+        default: "250"
+        type: string
+      allow_empty:
+        description: "Allow scheduled/manual selector windows with no changed products"
+        required: true
+        default: true
+        type: boolean
       apply_sync:
         description: "Apply catalog sync before routine"
         required: true
@@ -50,7 +78,8 @@ on:
   workflow_call:
     inputs:
       cutoff:
-        required: true
+        required: false
+        default: ""
         type: string
       market:
         required: false
@@ -64,6 +93,26 @@ on:
         required: false
         default: ""
         type: string
+      select_updated_since:
+        required: false
+        default: ""
+        type: string
+      select_hours:
+        required: false
+        default: "24"
+        type: string
+      select_sources:
+        required: false
+        default: "catalog_products,external_product_seeds"
+        type: string
+      select_limit:
+        required: false
+        default: "250"
+        type: string
+      allow_empty:
+        required: false
+        default: true
+        type: boolean
       apply_sync:
         required: false
         default: false
@@ -88,6 +137,10 @@ on:
       DATABASE_URL:
         required: true
 
+concurrency:
+  group: relationship-graph-sync-routine-${{ github.ref }}
+  cancel-in-progress: false
+
 jobs:
   relationship-graph-sync-routine:
     runs-on: ubuntu-latest
@@ -96,6 +149,20 @@ jobs:
       name: Pivota Agent / production
     env:
       DATABASE_URL: ${{ secrets.DATABASE_URL }}
+      INPUT_CUTOFF: ${{ inputs.cutoff || '' }}
+      INPUT_MARKET: ${{ inputs.market || 'US' }}
+      INPUT_EXTERNAL_PRODUCT_IDS: ${{ inputs.external_product_ids || '' }}
+      INPUT_AFFECTED_PRODUCTS_FILE: ${{ inputs.affected_products_file || '' }}
+      INPUT_SELECT_UPDATED_SINCE: ${{ inputs.select_updated_since || '' }}
+      INPUT_SELECT_HOURS: ${{ inputs.select_hours || '24' }}
+      INPUT_SELECT_SOURCES: ${{ inputs.select_sources || 'catalog_products,external_product_seeds' }}
+      INPUT_SELECT_LIMIT: ${{ inputs.select_limit || '250' }}
+      INPUT_ALLOW_EMPTY: ${{ github.event_name == 'schedule' || inputs.allow_empty }}
+      INPUT_APPLY_SYNC: ${{ inputs.apply_sync || false }}
+      INPUT_APPLY_BUILD: ${{ inputs.apply_build || false }}
+      INPUT_APPLY_REVIEW: ${{ inputs.apply_review || false }}
+      INPUT_LIMIT: ${{ inputs.limit || '200' }}
+      INPUT_REVIEW_LIMIT: ${{ inputs.review_limit || '250' }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -117,12 +184,23 @@ jobs:
             echo "DATABASE_URL secret is required" >&2
             exit 1
           fi
-          if [[ -z "${{ inputs.external_product_ids }}" && -z "${{ inputs.affected_products_file }}" ]]; then
-            echo "external_product_ids or affected_products_file is required" >&2
+
+          select_hours="${INPUT_SELECT_HOURS:-24}"
+          cutoff="${INPUT_CUTOFF:-}"
+          if [[ -z "${cutoff}" ]]; then
+            cutoff="$(date -u -d "${select_hours} hours ago" +"%Y-%m-%dT%H:%M:%SZ")"
+          fi
+          select_updated_since="${INPUT_SELECT_UPDATED_SINCE:-}"
+          if [[ -z "${select_updated_since}" ]]; then
+            select_updated_since="${cutoff}"
+          fi
+
+          if [[ -n "${INPUT_EXTERNAL_PRODUCT_IDS}" && -n "${INPUT_AFFECTED_PRODUCTS_FILE}" ]]; then
+            echo "external_product_ids and affected_products_file are mutually exclusive" >&2
             exit 1
           fi
-          if [[ -n "${{ inputs.external_product_ids }}" && -n "${{ inputs.affected_products_file }}" ]]; then
-            echo "external_product_ids and affected_products_file are mutually exclusive" >&2
+          if [[ "${INPUT_APPLY_SYNC}" == "true" && -z "${INPUT_EXTERNAL_PRODUCT_IDS}" ]]; then
+            echo "apply_sync requires explicit external_product_ids" >&2
             exit 1
           fi
 
@@ -130,28 +208,36 @@ jobs:
           mkdir -p "${out_dir}"
 
           args=(
-            --cutoff "${{ inputs.cutoff }}"
-            --market "${{ inputs.market }}"
+            --cutoff "${cutoff}"
+            --market "${INPUT_MARKET}"
             --out-dir "${out_dir}"
-            --limit "${{ inputs.limit }}"
-            --review-limit "${{ inputs.review_limit }}"
+            --limit "${INPUT_LIMIT}"
+            --review-limit "${INPUT_REVIEW_LIMIT}"
           )
-          if [[ -n "${{ inputs.external_product_ids }}" ]]; then
-            args+=(--external-product-ids "${{ inputs.external_product_ids }}")
+          if [[ -n "${INPUT_EXTERNAL_PRODUCT_IDS}" ]]; then
+            args+=(--external-product-ids "${INPUT_EXTERNAL_PRODUCT_IDS}")
+          elif [[ -n "${INPUT_AFFECTED_PRODUCTS_FILE}" ]]; then
+            args+=(--affected-products-file "${INPUT_AFFECTED_PRODUCTS_FILE}")
+          else
+            args+=(
+              --select-updated-since "${select_updated_since}"
+              --select-sources "${INPUT_SELECT_SOURCES}"
+              --select-limit "${INPUT_SELECT_LIMIT}"
+            )
+            if [[ "${INPUT_ALLOW_EMPTY}" == "true" ]]; then
+              args+=(--allow-empty-selection --allow-empty-build)
+            fi
           fi
-          if [[ -n "${{ inputs.affected_products_file }}" ]]; then
-            args+=(--affected-products-file "${{ inputs.affected_products_file }}")
-          fi
-          if [[ "${{ inputs.apply_sync }}" == "true" ]]; then
+          if [[ "${INPUT_APPLY_SYNC}" == "true" ]]; then
             args+=(--apply-sync)
           fi
-          if [[ "${{ inputs.apply_build }}" == "true" ]]; then
+          if [[ "${INPUT_APPLY_BUILD}" == "true" ]]; then
             args+=(--apply-build)
           fi
-          if [[ "${{ inputs.apply_review }}" == "true" ]]; then
+          if [[ "${INPUT_APPLY_REVIEW}" == "true" ]]; then
             args+=(--apply-review)
           fi
-          if [[ "${{ inputs.apply_sync }}" == "true" || "${{ inputs.apply_build }}" == "true" || "${{ inputs.apply_review }}" == "true" ]]; then
+          if [[ "${INPUT_APPLY_SYNC}" == "true" || "${INPUT_APPLY_BUILD}" == "true" || "${INPUT_APPLY_REVIEW}" == "true" ]]; then
             args+=(--confirm APPLY_RELGRAPH_SYNC_ROUTINE)
           fi
 

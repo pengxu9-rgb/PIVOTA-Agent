@@ -1,0 +1,7 @@
+[build]
+builder = "DOCKERFILE"
+dockerfilePath = "Dockerfile"
+
+[deploy]
+startCommand = "npm run relgraph:sync-routine:cron"
+cronSchedule = "37 10 * * *"
