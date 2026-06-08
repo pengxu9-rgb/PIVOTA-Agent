@@ -463,7 +463,7 @@ async function fetchCandidates({
         provenance, created_at, updated_at
       FROM relationship_candidate_labels
       WHERE label_state = 'generated'
-        AND created_at >= $1::timestamptz
+        AND COALESCE(updated_at, created_at) >= $1::timestamptz
         AND COALESCE(score_total, 0) >= $2::double precision
         ${idsSql}
         ${relationTypesSql}

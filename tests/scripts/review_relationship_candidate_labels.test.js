@@ -81,6 +81,7 @@ describe('review-relationship-candidate-labels', () => {
     });
 
     const [sql, params] = queryFn.mock.calls[0];
+    expect(sql).toMatch(/COALESCE\(updated_at, created_at\) >= \$1::timestamptz/);
     expect(sql).toMatch(/id = ANY\(\$4::text\[\]\)/);
     expect(sql).toMatch(/relation_type = ANY\(\$5::text\[\]\)/);
     expect(sql).toMatch(/NOT \(relation_type = ANY\(\$6::text\[\]\)\)/);
