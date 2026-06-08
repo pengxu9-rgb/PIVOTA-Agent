@@ -9,11 +9,14 @@ function parseArgs(argv) {
     if (!token.startsWith('--')) continue;
     const key = token.slice(2);
     const next = argv[index + 1];
-    if (next && !String(next).startsWith('--')) {
-      args[key] = next;
-      index += 1;
+    const value = next && !String(next).startsWith('--') ? next : 'true';
+    if (args[key] !== undefined) {
+      args[key] = Array.isArray(args[key]) ? [...args[key], value] : [args[key], value];
     } else {
-      args[key] = 'true';
+      args[key] = value;
+    }
+    if (next && !String(next).startsWith('--')) {
+      index += 1;
     }
   }
   return args;
@@ -77,6 +80,15 @@ function requireValue(args, key) {
   return value;
 }
 
+function listValues(args, key) {
+  const raw = args[key];
+  const values = Array.isArray(raw) ? raw : raw === undefined ? [] : [raw];
+  return values
+    .flatMap((value) => String(value || '').split(','))
+    .map((value) => value.trim())
+    .filter(Boolean);
+}
+
 function main() {
   const args = parseArgs(process.argv.slice(2));
   const inputPath = path.resolve(requireValue(args, 'input'));
@@ -84,6 +96,7 @@ function main() {
   const orderId = requireValue(args, 'order-id');
   const userRef = requireValue(args, 'user-ref');
   const idempotencyKey = String(args['idempotency-key'] || '').trim();
+  const requiredEvents = listValues(args, 'require-event');
 
   const audits = collectAuditEvents(inputPath);
   const quoteEvent = audits.find(
@@ -102,11 +115,15 @@ function main() {
       (!idempotencyKey || audit.idempotency_key === idempotencyKey),
   );
   const sensitive_hits = assertNoSensitiveAuditFields(audits);
+  const required_event_matches = Object.fromEntries(
+    requiredEvents.map((event) => [event, audits.some((audit) => audit.event === event)]),
+  );
   const payload = {
     input_path: inputPath,
     audit_events: audits.length,
     quote_issued_found: Boolean(quoteEvent),
     order_created_found: Boolean(orderEvent),
+    required_event_matches,
     sensitive_hits,
   };
 
@@ -114,6 +131,10 @@ function main() {
 
   if (!quoteEvent) throw new Error('missing expected quote_issued audit event');
   if (!orderEvent) throw new Error('missing expected order_created audit event');
+  const missingRequiredEvents = requiredEvents.filter((event) => !required_event_matches[event]);
+  if (missingRequiredEvents.length > 0) {
+    throw new Error(`missing required audit event(s): ${missingRequiredEvents.join(', ')}`);
+  }
   if (sensitive_hits.length > 0) {
     throw new Error(`sensitive audit fields found: ${sensitive_hits.join(', ')}`);
   }
@@ -128,4 +149,5 @@ module.exports = {
   unwrapRailwayRecord,
   collectAuditEvents,
   assertNoSensitiveAuditFields,
+  listValues,
 };

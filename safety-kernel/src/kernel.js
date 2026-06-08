@@ -20,6 +20,18 @@ const AMOUNT_TOLERANCE = 0; // zero tolerance — INV-2
 // completion happens later via webhook, NOT under this lock). 2 min comfortably exceeds an upstream
 // charge-call timeout while bounding a crashed holder.
 const CHARGE_LOCK_TTL_MS = 2 * 60 * 1000;
+export const IDEMPOTENT_REPLAY_MARKER = Symbol.for('pivota.safety_kernel.idempotent_replay');
+
+function markIdempotentReplay(result, replayed) {
+  if (replayed && result && typeof result === 'object' && Object.isExtensible(result)) {
+    Object.defineProperty(result, IDEMPOTENT_REPLAY_MARKER, {
+      value: true,
+      enumerable: false,
+      configurable: true,
+    });
+  }
+  return result;
+}
 
 // Map a backend payment_status to a coarse class for the order state machine.
 // success → terminal paid; failure → terminal failed (retry allowed); in_flight → charge_pending
@@ -228,7 +240,7 @@ export class SafetyKernel {
       },
     );
     if (replayed) this._log.info?.('idempotent_replay', redact({ op: 'create_order', key }));
-    return result;
+    return markIdempotentReplay(result, replayed);
   }
 
   /** Look up an order's authoritative record, enforcing ownership. */
@@ -391,7 +403,7 @@ export class SafetyKernel {
       },
     );
     if (replayed) this._log.info?.('idempotent_replay', redact({ op: 'submit_payment', key }));
-    return result;
+    return markIdempotentReplay(result, replayed);
   }
 
   /**
@@ -499,7 +511,7 @@ export class SafetyKernel {
       },
     );
     if (replayed) this._log.info?.('idempotent_replay', redact({ op: 'request_after_sales', key }));
-    return result;
+    return markIdempotentReplay(result, replayed);
   }
 }
 

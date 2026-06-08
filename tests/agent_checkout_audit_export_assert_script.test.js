@@ -63,6 +63,138 @@ describe('agent checkout audit export assertion script', () => {
     expect(payload.sensitive_hits).toEqual([]);
   });
 
+  test('passes when required audit events are present', () => {
+    const repoRoot = path.join(__dirname, '..');
+    const outDir = fs.mkdtempSync(path.join(os.tmpdir(), 'agent-checkout-audit-'));
+    const inputPath = path.join(outDir, 'raw.ndjson');
+    const scriptPath = path.join(repoRoot, 'scripts', 'assert_agent_checkout_audit_export.js');
+
+    fs.writeFileSync(
+      inputPath,
+      [
+        JSON.stringify({
+          event: 'agent_checkout_audit',
+          audit: {
+            event: 'quote_issued',
+            operation: 'preview_quote',
+            quote_id: 'q_test',
+            user_ref: 'usr_test',
+            currency: 'USD',
+          },
+        }),
+        JSON.stringify({
+          event: 'agent_checkout_audit',
+          audit: {
+            event: 'order_created',
+            operation: 'create_order',
+            order_id: 'ORD_TEST',
+            user_ref: 'usr_test',
+            idempotency_key: 'idem_test',
+            currency: 'USD',
+          },
+        }),
+        JSON.stringify({
+          event: 'agent_checkout_audit',
+          audit: {
+            event: 'idempotent_replay',
+            operation: 'create_order',
+            order_id: 'ORD_TEST',
+            user_ref: 'usr_test',
+            idempotency_key: 'idem_test',
+            currency: 'USD',
+          },
+        }),
+        JSON.stringify({
+          event: 'agent_checkout_audit',
+          audit: {
+            event: 'user_auth_blocked',
+            operation: 'create_order',
+          },
+        }),
+      ].join('\n'),
+    );
+
+    const stdout = execFileSync(
+      process.execPath,
+      [
+        scriptPath,
+        '--input',
+        inputPath,
+        '--quote-id',
+        'q_test',
+        '--order-id',
+        'ORD_TEST',
+        '--user-ref',
+        'usr_test',
+        '--idempotency-key',
+        'idem_test',
+        '--require-event',
+        'idempotent_replay,user_auth_blocked',
+      ],
+      { cwd: repoRoot, encoding: 'utf8' },
+    );
+
+    const payload = JSON.parse(stdout);
+    expect(payload.required_event_matches).toEqual({
+      idempotent_replay: true,
+      user_auth_blocked: true,
+    });
+  });
+
+  test('fails when a required audit event is missing', () => {
+    const repoRoot = path.join(__dirname, '..');
+    const outDir = fs.mkdtempSync(path.join(os.tmpdir(), 'agent-checkout-audit-'));
+    const inputPath = path.join(outDir, 'raw.ndjson');
+    const scriptPath = path.join(repoRoot, 'scripts', 'assert_agent_checkout_audit_export.js');
+
+    fs.writeFileSync(
+      inputPath,
+      [
+        JSON.stringify({
+          event: 'agent_checkout_audit',
+          audit: {
+            event: 'quote_issued',
+            operation: 'preview_quote',
+            quote_id: 'q_test',
+            user_ref: 'usr_test',
+          },
+        }),
+        JSON.stringify({
+          event: 'agent_checkout_audit',
+          audit: {
+            event: 'order_created',
+            operation: 'create_order',
+            order_id: 'ORD_TEST',
+            user_ref: 'usr_test',
+            idempotency_key: 'idem_test',
+          },
+        }),
+      ].join('\n'),
+    );
+
+    expect(() =>
+      execFileSync(
+        process.execPath,
+        [
+          scriptPath,
+          '--input',
+          inputPath,
+          '--quote-id',
+          'q_test',
+          '--order-id',
+          'ORD_TEST',
+          '--user-ref',
+          'usr_test',
+          '--idempotency-key',
+          'idem_test',
+          '--require-event',
+          'idempotent_replay',
+        ],
+        { cwd: repoRoot, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] },
+      ),
+    ).toThrow(/missing required audit event/);
+  });
+
   test('fails when a sensitive audit field is present', () => {
     const repoRoot = path.join(__dirname, '..');
     const outDir = fs.mkdtempSync(path.join(os.tmpdir(), 'agent-checkout-audit-'));

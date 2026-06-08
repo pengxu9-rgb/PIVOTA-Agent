@@ -13,7 +13,7 @@
 //     res.status(out.ok ? 200 : 422).json(out);
 //   });
 
-import { SafetyKernel, PivotaCommerceError, classifyPaymentStatus } from './kernel.js';
+import { SafetyKernel, PivotaCommerceError, classifyPaymentStatus, IDEMPOTENT_REPLAY_MARKER } from './kernel.js';
 import { validateCanonical, WRITE_OPERATIONS } from './contractValidation.js';
 import { redact } from './redact.js';
 
@@ -32,7 +32,7 @@ const PASSTHROUGH_READ_OPS = new Set([
 
 // C6 + Codex P2-5: map every blocked money-path error code to (audit event, metric) so NO blocked
 // attempt disappears from the audit trail.
-const ERROR_OBSERVABILITY = Object.freeze({
+export const ERROR_OBSERVABILITY = Object.freeze({
   PRICE_CHANGED: { event: 'price_changed_blocked', metric: 'price_lock_violation' },
   CONFIRMATION_REQUIRED: { event: 'confirmation_blocked', metric: 'confirmation_bypass' },
   CONFIRMATION_INVALID: { event: 'confirmation_blocked', metric: 'confirmation_bypass' },
@@ -57,6 +57,19 @@ export function createInvokeHandler({ kernel, upstream, log = console, afterSale
 
   const emit = (event, ctx) => { try { audit?.record(event, ctx); } catch { /* audit must never break the flow */ } };
   const count = (name, by = 1) => { try { metrics?.inc(name, by); } catch { /* metrics non-fatal */ } };
+  const emitReplay = (operation, payload, result, ctx) => {
+    if (!result?.[IDEMPOTENT_REPLAY_MARKER]) return false;
+    count('idempotent_replay');
+    emit('idempotent_replay', {
+      user_ref: ctx.user_ref,
+      order_id: result.order_id || payload?.payment?.order_id || payload?.status?.order_id,
+      quote_id: result.quote_id || payload?.order?.quote_id,
+      idempotency_key: payload?.idempotency_key,
+      currency: result.currency,
+      operation,
+    });
+    return true;
+  };
 
   /**
    * @param {string} operation
@@ -80,12 +93,14 @@ export function createInvokeHandler({ kernel, upstream, log = console, afterSale
         }
         case 'create_order': {
           const o = await kernel.createOrder(payload, ctx);
+          if (emitReplay(operation, payload, o, ctx)) return ok(o);
           count('order_created');
           emit('order_created', { user_ref: ctx.user_ref, order_id: o.order_id, currency: o.currency, idempotency_key: payload?.idempotency_key, operation });
           return ok(o);
         }
         case 'submit_payment': {
           const pr = await kernel.submitPayment(payload, ctx);
+          if (emitReplay(operation, payload, pr, ctx)) return ok(pr);
           const order_id = payload?.payment?.order_id;
           // Codex P2: audit by the SAME classification the kernel state machine uses (not exact-string),
           // so 'processing'/'pending' aren't mis-audited as failed and 'paid'/'captured' aren't missed.
@@ -98,6 +113,7 @@ export function createInvokeHandler({ kernel, upstream, log = console, afterSale
         case 'request_after_sales': {
           // Kernel-side now (Codex P1-4 closed): idempotent, ownership-enforced, action-gated.
           const r = await kernel.requestAfterSales(payload, ctx, afterSalesSupported ? { supportedActions: afterSalesSupported } : {});
+          if (emitReplay(operation, payload, r, ctx)) return ok(r);
           count('after_sales_requested');
           emit('after_sales_requested', { user_ref: ctx.user_ref, order_id: payload?.status?.order_id, operation });
           return ok(r);

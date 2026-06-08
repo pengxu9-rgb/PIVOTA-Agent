@@ -19,6 +19,12 @@ export const AUDIT_EVENTS = Object.freeze([
   'idempotent_replay',
   'price_changed_blocked',
   'confirmation_blocked',
+  'quote_violation_blocked',
+  'linkage_blocked',
+  'user_auth_blocked',
+  'operation_blocked',
+  'merchant_unavailable',
+  'idempotency_conflict_blocked',
   'after_sales_requested',
 ]);
 
