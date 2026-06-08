@@ -201,6 +201,11 @@ function isPaidStatus(value) {
   return PAID_STATUS_VALUES.has(String(value || "").trim().toLowerCase());
 }
 
+function orderIdMatches(summary, expectedOrderId) {
+  if (!summary.orderId) return true;
+  return String(summary.orderId).trim() === String(expectedOrderId).trim();
+}
+
 function describeStatus(summary) {
   const statusParts = [];
   if (summary.paymentStatus) statusParts.push(`payment_status=${summary.paymentStatus}`);
@@ -270,6 +275,13 @@ async function pollUntilPaid(config) {
     const response = await invokeOrderStatus(config);
     lastSummary = extractStatusSummary(response);
     console.log(formatPollLine(lastSummary, config));
+
+    if (!orderIdMatches(lastSummary, config.orderId)) {
+      throw new B4Error("Order status response order_id mismatch", {
+        expected_order_id: config.orderId,
+        actual_order_id: lastSummary.orderId,
+      });
+    }
 
     if (isPaidStatus(lastSummary.paidCandidate)) {
       return { paid: true, summary: lastSummary };

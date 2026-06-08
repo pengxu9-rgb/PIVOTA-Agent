@@ -113,6 +113,25 @@ If `payment_status` is `requires_action` / `requires_client_confirmation`, compl
 returned redirect/checkout surface using the **test card `4242 4242 4242 4242`** (any future expiry, any
 CVC) to drive the charge to completion.
 
+For a Stripe TEST-mode PaymentIntent, you can complete the PaymentIntent without exposing a browser session:
+
+```bash
+STRIPE_SECRET_KEY=sk_test_... \
+PAYMENT_INTENT_ID=pi_... \
+node scripts/b4_complete_charge.mjs
+```
+
+`b4_complete_charge.mjs` refuses non-test Stripe keys. After completion, verify that the signed webhook
+or reconcile path finalized the order to paid through the gateway status operation only:
+
+```bash
+ORDER_ID=ORD_... \
+node scripts/b4_verify.mjs
+```
+
+`b4_verify.mjs` is status-only. It calls only `get_order_status`, never Stripe, never
+`submit_payment`, and never a payment-completion endpoint.
+
 ### 4b. Stripe dashboard — the ground truth
 Open Stripe → Payments → find that `payment_intent_id`. **Record:**
 - **Amount charged** and **currency**.
@@ -165,6 +184,74 @@ Canonical status synced?   = yes / no
 Redaction scan passed?     = yes / no
 Credential rotation needed? = no / yes, completed / yes, pending
 ```
+
+Then convert those facts into a paid-canary evidence packet and validate it locally before any
+`submit_payment` production enablement decision:
+
+```bash
+node scripts/validate_paid_canary_evidence.mjs --input paid-canary-evidence.json --json
+```
+
+Minimum packet shape:
+
+```json
+{
+  "operator": { "approver": "ops@example.com" },
+  "environment": {
+    "psp_mode": "test",
+    "gateway_full_sha": "429079c206866a5be3ab6d8d9462b24a9ae581e9",
+    "gateway_deployment_id": "4c539441-62f3-433c-9ab9-cf92669a8057",
+    "backend_full_sha": "3bdf59d861d6026771209156684aaf86db2fa37a",
+    "backend_deployment_id": "backend-deploy-id"
+  },
+  "strict_canary": {
+    "preview_quote": { "quote_id": "q_redacted" },
+    "create_order": {
+      "order_id": "ord_redacted",
+      "amount_minor": 2824,
+      "currency": "USD"
+    },
+    "submit_payment": {
+      "payment_reference": "pi_redacted",
+      "idempotency_key": "idem_pay_redacted"
+    },
+    "submit_payment_replay": {
+      "payment_reference": "pi_redacted"
+    }
+  },
+  "psp_dashboard": {
+    "provider": "stripe",
+    "livemode": false,
+    "payment_reference": "pi_redacted",
+    "amount_minor": 2824,
+    "currency": "USD",
+    "status": "succeeded"
+  },
+  "replay": {
+    "same_idempotency_key": true,
+    "returned_original_result": true,
+    "extra_charge_created": false
+  },
+  "webhook_status": {
+    "signed_webhook_observed": true,
+    "event": "payment_intent.succeeded",
+    "signature_header": "Stripe-Signature",
+    "correlation_field": "metadata.order_id",
+    "canonical_payment_status": "paid"
+  },
+  "refund": {
+    "refund_cap_enforced": true,
+    "refund_replay_idempotent": true
+  },
+  "redaction": { "scan_passed": true },
+  "credential_hygiene": { "rotation_needed": false }
+}
+```
+
+The validator refuses raw Stripe secret keys, bearer tokens, JWTs, `client_secret`-style values, and
+PAN-like card numbers. It also fails if the PSP dashboard amount/currency differs from the locked order
+amount, if same-key replay could have created another charge, if webhook/status proof is missing, or if
+refund/credential hygiene is incomplete.
 
 ---
 

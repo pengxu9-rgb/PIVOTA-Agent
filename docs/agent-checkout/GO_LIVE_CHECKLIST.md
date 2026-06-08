@@ -8,9 +8,9 @@ the GO-LIVE view (those remain for architecture + scorecard-dimension detail).
 `submit_payment` is still disabled, and identity/pay-disabled rails are green. The strict Shopify
 no-charge create-order canary is green for merchant `merch_efbc46b4619cfbdf`; it created only an unpaid
 order and did not call `submit_payment`. Everything left before production pay traffic is **deployed
-remote MCP/OAuth confirmation smoke, backend PSP idempotency deploy/CI, manual Stripe test-mode paid
-canary, refund/status/webhook validation, replay proof, credential hygiene, and final observability export
-proof**.
+remote MCP/OAuth confirmation smoke with `validate_platform_smoke_evidence.mjs` green, backend PSP idempotency deploy/CI, manual Stripe test-mode paid
+canary with `b4_verify.mjs` and `validate_paid_canary_evidence.mjs` green, refund/status/webhook
+validation, replay proof, credential hygiene, and final observability export proof**.
 
 **Legend:** ✅ done · 🟡 ready, waiting on an external party · ⛔ blocked by a dependency
 
@@ -99,9 +99,14 @@ canary, then validate replay/refund/status/webhook behavior before enabling prod
 1. Keep production and staging `AGENT_CHECKOUT_STRICT=1`.
 2. Keep `AGENT_CHECKOUT_STRICT_SUBMIT_PAYMENT_ENABLED` unset/off.
 3. Confirm rollout/observability gates are green for each canary window.
-4. Smoke deployed `/mcp` create-session and signed `/checkout/confirm` without calling `complete_checkout_session` or `submit_payment`.
+4. Smoke deployed `/mcp` create-session and signed `/checkout/confirm` with
+   `scripts/smoke_protocol_edge_remote_mcp.mjs --full --json`, without calling
+   `complete_checkout_session` or `submit_payment`; pass
+   `node scripts/validate_platform_smoke_evidence.mjs --input platform-smoke-evidence.json --json`.
 5. Run the strict create-order canary with target-gateway `AGENT_CHECKOUT_ALLOW_TEST_IDENTITY=1`, using pinned product IDs when available or auto-selection from `PROBE_QUERY`, then close that flag.
-6. Run the paid canary manually in Stripe test mode and record dashboard evidence.
+6. Run the paid canary manually in Stripe test mode, run status-only `scripts/b4_verify.mjs`, record
+   dashboard evidence, and pass
+   `node scripts/validate_paid_canary_evidence.mjs --input paid-canary-evidence.json --json`.
 7. Validate replay, refund cap, payment status sync, webhook observation, cancellation, and return/RMA fencing.
 8. Enable `submit_payment` through the kernel last.
 
