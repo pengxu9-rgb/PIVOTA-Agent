@@ -4,17 +4,13 @@ const path = require('node:path');
 const { pathToFileURL } = require('node:url');
 
 async function loadJose() {
-  const josePath = path.join(
-    __dirname,
-    '..',
-    'safety-kernel',
-    'node_modules',
-    'jose',
-    'dist',
-    'webapi',
-    'index.js',
-  );
-  return import(pathToFileURL(josePath).href);
+  const resolved = require.resolve('jose', {
+    paths: [
+      path.join(__dirname, '..'),
+      path.join(__dirname, '..', 'safety-kernel'),
+    ],
+  });
+  return import(pathToFileURL(resolved).href);
 }
 
 function mockReq(headers = {}, extra = {}) {
