@@ -1,0 +1,169 @@
+name: Agent Checkout Platform Smoke
+
+# MANUAL no-charge smoke for deployed platform-facing surfaces:
+# - POST /mcp initialize + tools/list
+# - write tool fail-closed without verified identity
+# - verified test-identity create_checkout_session
+# - POST /checkout/confirm unsigned reject + signed user-action token mint
+#
+# This workflow never calls complete_checkout_session, submit_payment, Stripe, or
+# any paid operation. Full mode requires a controlled target window with:
+#   AGENT_CHECKOUT_ALLOW_TEST_IDENTITY=1
+#   AGENT_CHECKOUT_TEST_IDENTITY_WINDOW=1
+# and an unpaid order id from the strict create-order canary.
+
+on:
+  workflow_dispatch:
+    inputs:
+      base_url:
+        description: "Gateway origin. Leave blank to use PROBE_BASE repo var/secret or production."
+        type: string
+        default: ""
+      run_full_smoke:
+        description: "Run verified-session + confirmation-action smoke and validate evidence. Requires test-identity window."
+        type: boolean
+        default: true
+      merchant_id:
+        description: "Merchant id for create_checkout_session."
+        type: string
+        default: ""
+      product_id:
+        description: "Product id for create_checkout_session."
+        type: string
+        default: ""
+      variant_id:
+        description: "Optional variant id for create_checkout_session."
+        type: string
+        default: ""
+      order_id:
+        description: "Unpaid order id from the strict create-order canary; used only for /checkout/confirm smoke."
+        type: string
+        default: ""
+      currency:
+        description: "Currency code."
+        type: string
+        default: "USD"
+      strict_user_ref:
+        description: "Optional smoke user_ref. Defaults to a GitHub run-scoped synthetic test identity."
+        type: string
+        default: ""
+      strict_acp_session_id:
+        description: "Optional smoke acp_session_id. Defaults to a GitHub run-scoped synthetic test session."
+        type: string
+        default: ""
+      auth_header:
+        description: "Auth header NAME. Default Authorization (Bearer); set X-API-Key if needed."
+        type: string
+        default: "Authorization"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: agent-checkout-platform-smoke
+  cancel-in-progress: false
+
+jobs:
+  platform-smoke:
+    name: Platform Smoke
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Preflight no-charge platform smoke
+        env:
+          PROBE_BASE: ${{ inputs.base_url || vars.PROBE_BASE || secrets.PROBE_BASE || 'https://pivota-agent-production.up.railway.app' }}
+          PROBE_KEY: ${{ secrets.PROBE_KEY || secrets.COMMERCE_CORE_PROD_AUTH_TOKEN }}
+          RUN_FULL_SMOKE: ${{ inputs.run_full_smoke }}
+          MCP_SMOKE_MERCHANT_ID: ${{ inputs.merchant_id || vars.PROBE_MERCHANT_ID }}
+          MCP_SMOKE_PRODUCT_ID: ${{ inputs.product_id || vars.PROBE_PRODUCT_ID }}
+          MCP_SMOKE_ORDER_ID: ${{ inputs.order_id }}
+          CONFIRMATION_SECRET: ${{ secrets.CONFIRMATION_SECRET || secrets.AGENT_CHECKOUT_CONFIRMATION_SECRET }}
+        run: |
+          set -euo pipefail
+          if [ -z "$PROBE_BASE" ]; then
+            echo "::error::No gateway origin available. Set base_url, PROBE_BASE variable, or PROBE_BASE secret."
+            exit 1
+          fi
+          if [ -z "$PROBE_KEY" ]; then
+            echo "::error::No token available. Set PROBE_KEY or COMMERCE_CORE_PROD_AUTH_TOKEN."
+            exit 1
+          fi
+          if [ "$RUN_FULL_SMOKE" = "true" ]; then
+            if [ -z "$MCP_SMOKE_MERCHANT_ID" ] || [ -z "$MCP_SMOKE_PRODUCT_ID" ]; then
+              echo "::error::Full platform smoke requires merchant_id/product_id inputs or PROBE_MERCHANT_ID/PROBE_PRODUCT_ID repo variables."
+              exit 1
+            fi
+            if [ -z "$MCP_SMOKE_ORDER_ID" ]; then
+              echo "::error::Full platform smoke requires order_id from a prior strict create-order canary."
+              exit 1
+            fi
+            if [ -z "$CONFIRMATION_SECRET" ]; then
+              echo "::error::Full platform smoke requires CONFIRMATION_SECRET or AGENT_CHECKOUT_CONFIRMATION_SECRET secret."
+              exit 1
+            fi
+          fi
+          echo "Preflight passed. Target, token, and confirmation secret are hidden."
+
+      - name: Run no-charge platform smoke
+        env:
+          PROBE_BASE: ${{ inputs.base_url || vars.PROBE_BASE || secrets.PROBE_BASE || 'https://pivota-agent-production.up.railway.app' }}
+          PROBE_KEY: ${{ secrets.PROBE_KEY || secrets.COMMERCE_CORE_PROD_AUTH_TOKEN }}
+          PROBE_AUTH_HEADER: ${{ inputs.auth_header }}
+          MCP_SMOKE_ALLOW_VERIFIED_SESSION: ${{ inputs.run_full_smoke && '1' || '0' }}
+          MCP_SMOKE_MERCHANT_ID: ${{ inputs.merchant_id || vars.PROBE_MERCHANT_ID }}
+          MCP_SMOKE_PRODUCT_ID: ${{ inputs.product_id || vars.PROBE_PRODUCT_ID }}
+          MCP_SMOKE_VARIANT_ID: ${{ inputs.variant_id || vars.PROBE_VARIANT_ID }}
+          MCP_SMOKE_CURRENCY: ${{ inputs.currency }}
+          MCP_SMOKE_ORDER_ID: ${{ inputs.order_id }}
+          MCP_SMOKE_USER_REF: ${{ inputs.strict_user_ref || format('usr_gh_platform_{0}', github.run_id) }}
+          MCP_SMOKE_ACP_SESSION_ID: ${{ inputs.strict_acp_session_id || format('acp_gh_platform_{0}_{1}', github.run_id, github.run_attempt) }}
+          MCP_SMOKE_APPROVER: github-actions
+          CONFIRMATION_SECRET: ${{ secrets.CONFIRMATION_SECRET || secrets.AGENT_CHECKOUT_CONFIRMATION_SECRET }}
+        run: |
+          set -o pipefail
+          FLAGS="--json"
+          if [ "${{ inputs.run_full_smoke }}" = "true" ]; then
+            FLAGS="--full $FLAGS"
+          fi
+          echo "Running no-charge platform smoke: node scripts/smoke_protocol_edge_remote_mcp.mjs $FLAGS"
+          node scripts/smoke_protocol_edge_remote_mcp.mjs $FLAGS 2>&1 | tee platform-smoke-evidence.json
+
+      - name: Validate full platform smoke evidence
+        if: ${{ inputs.run_full_smoke }}
+        run: |
+          set -o pipefail
+          node scripts/validate_platform_smoke_evidence.mjs --input platform-smoke-evidence.json --json \
+            | tee platform-smoke-validation.json
+
+      - name: Publish platform smoke summary
+        if: always()
+        run: |
+          {
+            echo "## Agent checkout platform smoke";
+            echo "";
+            echo '```json';
+            if [ -s platform-smoke-validation.json ]; then
+              cat platform-smoke-validation.json;
+            elif [ -s platform-smoke-evidence.json ]; then
+              cat platform-smoke-evidence.json;
+            else
+              echo '{"status":"no_output"}';
+            fi
+            echo '```';
+            echo "";
+            echo "_No paid operation was attempted: this workflow never calls complete_checkout_session, submit_payment, Stripe, or a payment-completion endpoint._";
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload platform smoke evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: platform-smoke-evidence
+          path: |
+            platform-smoke-evidence.json
+            platform-smoke-validation.json
+          if-no-files-found: warn

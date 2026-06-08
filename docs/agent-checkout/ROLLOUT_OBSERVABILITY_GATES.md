@@ -56,6 +56,17 @@ the deployed environment:
 Before enabling platform traffic from ChatGPT, Claude, Gemini, or another agent host, record a deployed
 no-charge smoke packet and validate it:
 
+GitHub Actions path (preferred, no token pasted locally):
+
+1. Open **Agent Checkout Platform Smoke**.
+2. Keep `run_full_smoke=true`.
+3. Provide `merchant_id`, `product_id`, optional `variant_id`, and `order_id` from the strict create-order
+   canary.
+4. Run it only during a controlled target window with `AGENT_CHECKOUT_ALLOW_TEST_IDENTITY=1` and
+   `AGENT_CHECKOUT_TEST_IDENTITY_WINDOW=1`; close the window immediately after.
+
+Manual fallback:
+
 ```bash
 PROBE_BASE=https://pivota-agent-production.up.railway.app \
 PROBE_KEY=... \
