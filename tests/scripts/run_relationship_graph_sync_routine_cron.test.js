@@ -59,6 +59,7 @@ describe('run-relationship-graph-sync-routine-cron', () => {
       RELGRAPH_SYNC_SKIP_SERVING_AUDIT: '1',
       RELGRAPH_SYNC_MAX_SERVING_SUPPRESSED_PCT: '0.5',
       RELGRAPH_SYNC_FAIL_ON_SERVING_SUPPRESSION_REASONS: 'ai_approved_dupe_quarantined',
+      RELGRAPH_SYNC_STEP_TIMEOUT_MINUTES: '11',
     }, { now: NOW });
 
     expect(argValue(config.args, 'market')).toBe('JP');
@@ -72,6 +73,7 @@ describe('run-relationship-graph-sync-routine-cron', () => {
     expect(config.args).toContain('--skip-serving-audit');
     expect(argValue(config.args, 'max-serving-suppressed-pct')).toBe('0.5');
     expect(argValue(config.args, 'fail-on-serving-suppression-reasons')).toBe('ai_approved_dupe_quarantined');
+    expect(argValue(config.args, 'step-timeout-minutes')).toBe('11');
   });
 
   test('buildCronArgs can disable persistent run ledger recording', () => {
