@@ -7,6 +7,10 @@ npm-debug.log
 README.md
 .DS_Store
 *.log
+*.tar
+*.tar.gz
+*.tgz
+*.zip
 coverage
 .nyc_output
 .idea
