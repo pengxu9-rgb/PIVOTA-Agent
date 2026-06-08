@@ -17,6 +17,7 @@ const DEFAULT_LOCK_STALE_AFTER_MINUTES = 180;
 const DEFAULT_MAX_SERVING_SUPPRESSED_PCT = 1;
 const DEFAULT_MAX_SERVING_SUPPRESSED_ROWS = 25;
 const DEFAULT_STEP_TIMEOUT_MINUTES = 20;
+const DEFAULT_DB_LOCK_HEARTBEAT_MS = 30000;
 const DEFAULT_SELECT_LIMIT = 250;
 const DEFAULT_SELECT_SOURCES = ['catalog_products', 'external_product_seeds'];
 const DEFAULT_FAIL_REASONS = [
@@ -96,6 +97,7 @@ function usage() {
     'When --select-updated-since or --select-hours is supplied, a read-only affected-products manifest is generated first.',
     'Graph writes require --apply-build and/or --apply-review; routine confirmation is passed through internally.',
     'Production gates are on by default: --db-lock, stale lock recovery, serving suppression thresholds, and critical reason gating.',
+    'Use --skip-need-nodes for a product-anchor-only graph canary.',
     'Use --record-run-ledger to persist run status and counters to relationship_graph_routine_runs.',
   ].join('\n');
 }
@@ -212,6 +214,10 @@ function parseArgs(argv = process.argv.slice(2), { now = new Date(), cwd = proce
       DEFAULT_LOCK_STALE_AFTER_MINUTES,
       { min: 0, max: 30 * 24 * 60 },
     ),
+    dbLockHeartbeatMs: parseNumber(argValue(argv, 'db-lock-heartbeat-ms'), DEFAULT_DB_LOCK_HEARTBEAT_MS, {
+      min: 0,
+      max: 60 * 60 * 1000,
+    }),
     stepTimeoutMinutes: parseNumber(
       argValue(argv, 'step-timeout-minutes'),
       DEFAULT_STEP_TIMEOUT_MINUTES,
@@ -223,6 +229,7 @@ function parseArgs(argv = process.argv.slice(2), { now = new Date(), cwd = proce
     bootstrapReviewedIdentityLiveRead: hasFlag(argv, 'bootstrap-reviewed-identity-live-read'),
     allowReviewRequiredCatalogMirror: hasFlag(argv, 'allow-review-required-catalog-mirror'),
     skipBuild: hasFlag(argv, 'skip-build'),
+    skipNeedNodes: hasFlag(argv, 'skip-need-nodes'),
     skipReview,
     skipValidation: hasFlag(argv, 'skip-validation'),
     skipServingAudit: hasFlag(argv, 'skip-serving-audit'),
@@ -255,12 +262,14 @@ function serializableOptions(options = {}) {
     apply_build: Boolean(options.applyBuild),
     apply_review: Boolean(options.applyReview),
     db_lock: Boolean(options.dbLock),
+    db_lock_heartbeat_ms: options.dbLockHeartbeatMs || null,
     lock_stale_after_minutes: options.lockStaleAfterMinutes,
     step_timeout_minutes: options.stepTimeoutMinutes,
     step_timeout_ms: options.stepTimeoutMs || null,
     max_serving_suppressed_pct: options.maxServingSuppressedPct,
     max_serving_suppressed_rows: options.maxServingSuppressedRows,
     fail_on_serving_suppression_reasons: options.failOnServingSuppressionReasons || [],
+    skip_need_nodes: Boolean(options.skipNeedNodes),
     record_run_ledger: Boolean(options.recordRunLedger),
     run_trigger: options.runTrigger || null,
     run_ledger_fail_closed: Boolean(options.runLedgerFailClosed),
@@ -345,6 +354,8 @@ function buildSyncRoutineSteps(options = {}) {
     (options.failOnServingSuppressionReasons || []).join(','),
     '--lock-stale-after-minutes',
     String(options.lockStaleAfterMinutes),
+    '--db-lock-heartbeat-ms',
+    String(options.dbLockHeartbeatMs),
   ];
   if (options.stepTimeoutMs) {
     routineArgs.push('--step-timeout-ms', String(options.stepTimeoutMs));
@@ -369,6 +380,7 @@ function buildSyncRoutineSteps(options = {}) {
     routineArgs.push('--confirm', ROUTINE_CONFIRM_TOKEN);
   }
   pushFlag(routineArgs, 'skip-build', options.skipBuild);
+  pushFlag(routineArgs, 'skip-need-nodes', options.skipNeedNodes);
   pushFlag(routineArgs, 'skip-validation', options.skipValidation);
   pushFlag(routineArgs, 'skip-serving-audit', options.skipServingAudit);
   pushFlag(routineArgs, 'skip-pba-sig-refresh', options.skipPbaSigRefresh);

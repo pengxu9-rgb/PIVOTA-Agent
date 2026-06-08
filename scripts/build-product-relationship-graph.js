@@ -514,6 +514,19 @@ function buildNeedCandidateMap(products, maxPerNeed = 40) {
   return out;
 }
 
+function resolveNeedInputs(payload = {}, includeNeedNodes = true) {
+  if (!includeNeedNodes) {
+    return {
+      needCandidatesById: {},
+      needs: [],
+    };
+  }
+  return {
+    needCandidatesById: payload.needCandidatesById || payload.need_candidates_by_id || {},
+    needs: payload.needs || CURATED_NEED_NODES,
+  };
+}
+
 async function buildInputsFromDb({
   limit,
   sourceLimit = limit,
@@ -526,6 +539,7 @@ async function buildInputsFromDb({
   maxBridgeCandidates = 8,
   maxTransitivePerAnchor = 8,
   fanOutFamilyCandidatesToSiblingAnchors = false,
+  includeNeedNodes = true,
   includeApprovedLiveExternalSeedAnchors = false,
   approvedLiveExternalSeedAnchorLimit = sourceLimit,
   missingCandidateLabelsOnly = false,
@@ -562,7 +576,8 @@ async function buildInputsFromDb({
       maxTransitivePerAnchor,
       fanOutFamilyCandidatesToSiblingAnchors,
     }),
-    needCandidatesById: buildNeedCandidateMap(products),
+    needCandidatesById: includeNeedNodes ? buildNeedCandidateMap(products) : {},
+    needs: includeNeedNodes ? CURATED_NEED_NODES : [],
     sourceCounts: sourceInputs.source_counts,
     sourceDiagnostics: {
       database_configured: Boolean(process.env.DATABASE_URL),
@@ -583,6 +598,7 @@ async function buildInputsFromDb({
         max_bridge_candidates: maxBridgeCandidates,
         max_transitive_per_anchor: maxTransitivePerAnchor,
         fan_out_family_candidates_to_sibling_anchors: fanOutFamilyCandidatesToSiblingAnchors,
+        include_need_nodes: includeNeedNodes,
       },
     },
   };
@@ -607,6 +623,7 @@ async function main() {
   const fanOutFamilyCandidatesToSiblingAnchors =
     hasFlag('fan-out-family-candidates') ||
     envFlag('RELATIONSHIP_GRAPH_FAN_OUT_FAMILY_CANDIDATES');
+  const includeNeedNodes = !hasFlag('skip-need-nodes');
   const includeApprovedLiveExternalSeedAnchors = hasFlagOrEnv(
     'approved-live-external-seed-anchors',
     'RELATIONSHIP_GRAPH_APPROVED_LIVE_EXTERNAL_SEED_ANCHORS',
@@ -633,15 +650,17 @@ async function main() {
     maxBridgeCandidates,
     maxTransitivePerAnchor,
     fanOutFamilyCandidatesToSiblingAnchors,
+    includeNeedNodes,
     includeApprovedLiveExternalSeedAnchors,
     approvedLiveExternalSeedAnchorLimit,
     missingCandidateLabelsOnly,
   });
+  const needInputs = resolveNeedInputs(payload, includeNeedNodes);
   const report = buildProductRelationshipGraphDryRun({
     anchors: payload.anchors || [],
     candidatesByAnchor: payload.candidatesByAnchor || payload.candidates_by_anchor || {},
-    needCandidatesById: payload.needCandidatesById || payload.need_candidates_by_id || {},
-    needs: payload.needs || CURATED_NEED_NODES,
+    needCandidatesById: needInputs.needCandidatesById,
+    needs: needInputs.needs,
     market,
     reviewStatus,
     limit,
@@ -716,6 +735,8 @@ async function main() {
       source_counts: payload.sourceCounts || payload.source_counts || payload.sourceDiagnostics?.source_counts || null,
       source_diagnostics: payload.sourceDiagnostics || payload.source_diagnostics || null,
       affected_ref_count: affectedRefs.length || payload.sourceDiagnostics?.affected_ref_count || 0,
+      include_need_nodes: includeNeedNodes,
+      skip_need_nodes: !includeNeedNodes,
       dry_run: !hasFlag('apply'),
       applied_count: applied,
       prefilter_applied: hasFlag('apply') && defaultLabelState === 'generated',
@@ -767,8 +788,10 @@ module.exports = {
   buildInputsFromDb,
   buildCandidateMap,
   buildNeedCandidateMap,
+  resolveNeedInputs,
   needMatchThreshold,
   attachCandidateSignals,
+  hasFlag,
   envFlag,
   numberArg,
   boolEnv,

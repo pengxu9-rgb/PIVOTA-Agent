@@ -1,8 +1,10 @@
 const {
   numberArg,
   boolEnv,
+  hasFlag,
   hasFlagOrEnv,
   buildNeedCandidateMap,
+  resolveNeedInputs,
   needMatchThreshold,
   classifyEdgeForPrefilter,
   resolveDefaultLabelState,
@@ -77,6 +79,32 @@ describe('build product relationship graph CLI helpers', () => {
       'approved-live-external-seed-anchors',
       'RELATIONSHIP_GRAPH_APPROVED_LIVE_EXTERNAL_SEED_ANCHORS',
     )).toBe(true);
+  });
+
+  test('CLI flag can suppress curated need-node generation for canaries', () => {
+    process.argv = [
+      'node',
+      'scripts/build-product-relationship-graph.js',
+      '--skip-need-nodes',
+    ];
+
+    expect(hasFlag('skip-need-nodes')).toBe(true);
+    expect(resolveNeedInputs({
+      needCandidatesById: {
+        'need:hydrating-hyaluronic-serum': [{ product_ref: 'product:hydrating_serum' }],
+      },
+      needs: CURATED_NEED_NODES,
+    }, false)).toEqual({
+      needCandidatesById: {},
+      needs: [],
+    });
+  });
+
+  test('curated need-node generation remains enabled by default', () => {
+    const resolved = resolveNeedInputs({}, true);
+
+    expect(resolved.needCandidatesById).toEqual({});
+    expect(resolved.needs).toBe(CURATED_NEED_NODES);
   });
 
   test('expanded curated needs can use lower match thresholds before compatibility review', () => {

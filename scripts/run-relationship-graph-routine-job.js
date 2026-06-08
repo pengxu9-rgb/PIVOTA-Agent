@@ -13,6 +13,7 @@ const DEFAULT_REVIEW_LIMIT = 250;
 const DEFAULT_REVIEW_MIN_SCORE = 0;
 const DEFAULT_SERVING_AUDIT_EXAMPLES = 8;
 const DEFAULT_STEP_TIMEOUT_MINUTES = 20;
+const DEFAULT_DB_LOCK_HEARTBEAT_MS = 30000;
 const OUTPUT_TAIL_CHARS = 12000;
 const ROUTINE_LOCK_DIRNAME = 'relationship_graph_routine.lock';
 const DEFAULT_DB_LOCK_KEY = 'pivota.relationship_graph.routine';
@@ -102,6 +103,8 @@ function usage() {
     'Use --db-lock for a Postgres advisory lock when running from distributed cron or CI.',
     'Use --lock-stale-after-minutes N only when a killed prior run may have left a local lock behind.',
     'Use --step-timeout-minutes N to fail closed when a child step hangs.',
+    'Use --db-lock-heartbeat-ms N to keep the advisory-lock connection active during long child steps.',
+    'Use --skip-need-nodes for a product-anchor-only canary that does not generate curated need-node candidates.',
   ].join('\n');
 }
 
@@ -166,8 +169,13 @@ function parseArgs(argv = process.argv.slice(2), { now = new Date() } = {}) {
     stepTimeoutMs: parseStepTimeoutMs(argv),
     dbLock: hasFlag(argv, 'db-lock'),
     dbLockKey: normalizeString(argValue(argv, 'db-lock-key', DEFAULT_DB_LOCK_KEY), 500) || DEFAULT_DB_LOCK_KEY,
+    dbLockHeartbeatMs: parseNumber(argValue(argv, 'db-lock-heartbeat-ms'), DEFAULT_DB_LOCK_HEARTBEAT_MS, {
+      min: 0,
+      max: 60 * 60 * 1000,
+    }),
     requireAnchors: !hasFlag(argv, 'allow-empty-build'),
     skipBuild: hasFlag(argv, 'skip-build'),
+    skipNeedNodes: hasFlag(argv, 'skip-need-nodes'),
     skipLock: hasFlag(argv, 'skip-lock'),
     skipPbaSigRefresh: hasFlag(argv, 'skip-pba-sig-refresh'),
     skipValidation: hasFlag(argv, 'skip-validation'),
@@ -239,6 +247,7 @@ function buildRoutineSteps(options) {
     pushArg(args, 'sig-ids-file', options.sigIdsFile);
     pushArg(args, 'content-keys-file', options.contentKeysFile);
     if (options.requireAnchors) args.push('--require-anchors');
+    if (options.skipNeedNodes) args.push('--skip-need-nodes');
     if (options.applyBuild) args.push('--apply');
     steps.push({ id: 'build', command: node, args, artifact: artifacts.build });
   }
@@ -427,11 +436,55 @@ async function acquirePostgresAdvisoryLock(client, lockKey = DEFAULT_DB_LOCK_KEY
   };
 }
 
+function startPostgresAdvisoryLockHeartbeat(client, { intervalMs = DEFAULT_DB_LOCK_HEARTBEAT_MS } = {}) {
+  const resolvedIntervalMs = Math.trunc(Number(intervalMs) || 0);
+  if (!(resolvedIntervalMs > 0)) {
+    return {
+      getError: () => null,
+      stop: async () => null,
+    };
+  }
+
+  let stopped = false;
+  let firstError = null;
+  let inFlight = Promise.resolve();
+  const beat = () => {
+    if (stopped || firstError) return;
+    inFlight = inFlight.then(async () => {
+      if (stopped || firstError) return;
+      try {
+        await client.query('SELECT 1 AS relationship_graph_routine_db_lock_keepalive');
+      } catch (err) {
+        firstError = err;
+      }
+    });
+  };
+  const timer = setInterval(beat, resolvedIntervalMs);
+  if (typeof timer.unref === 'function') timer.unref();
+
+  return {
+    getError: () => firstError,
+    stop: async () => {
+      stopped = true;
+      clearInterval(timer);
+      try {
+        await inFlight;
+      } catch (err) {
+        if (!firstError) firstError = err;
+      }
+      return firstError;
+    },
+  };
+}
+
 async function withPostgresAdvisoryLock(options = {}, metadata = {}, fn, { withDbClient } = {}) {
   if (!options.dbLock) return fn(null);
   const db = withDbClient ? { withClient: withDbClient } : require('../src/db');
   return db.withClient(async (client) => {
     const { lock, release } = await acquirePostgresAdvisoryLock(client, options.dbLockKey);
+    const heartbeat = startPostgresAdvisoryLockHeartbeat(client, {
+      intervalMs: options.dbLockHeartbeatMs,
+    });
     const lockInfo = {
       ...lock,
       owner: metadata,
@@ -439,6 +492,7 @@ async function withPostgresAdvisoryLock(options = {}, metadata = {}, fn, { withD
     try {
       return await fn(lockInfo, client);
     } finally {
+      await heartbeat.stop();
       await release();
     }
   });
@@ -584,12 +638,14 @@ function serializableOptions(options) {
     apply_build: options.applyBuild,
     apply_review: options.applyReview,
     step_timeout_ms: options.stepTimeoutMs || null,
+    skip_need_nodes: Boolean(options.skipNeedNodes),
     allow_dupe_ai_approval: options.allowDupeAiApproval,
     lock_dir: options.lockDir || null,
     lock_stale_after_ms: options.lockStaleAfterMs || null,
     skip_lock: Boolean(options.skipLock),
     db_lock: Boolean(options.dbLock),
     db_lock_key: options.dbLockKey || null,
+    db_lock_heartbeat_ms: options.dbLockHeartbeatMs || null,
   };
 }
 
@@ -794,5 +850,6 @@ module.exports = {
   parseArgs,
   runCommand,
   runRoutineJob,
+  startPostgresAdvisoryLockHeartbeat,
   withPostgresAdvisoryLock,
 };

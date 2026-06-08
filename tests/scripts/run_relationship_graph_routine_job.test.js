@@ -12,6 +12,7 @@ const {
   postgresAdvisoryLockParts,
   runCommand,
   runRoutineJob,
+  startPostgresAdvisoryLockHeartbeat,
 } = require('../../scripts/run-relationship-graph-routine-job');
 
 const NOW = new Date('2026-06-08T00:00:00.000Z');
@@ -33,6 +34,9 @@ describe('run-relationship-graph-routine-job', () => {
       '180',
       '--step-timeout-minutes',
       '7',
+      '--db-lock-heartbeat-ms',
+      '15000',
+      '--skip-need-nodes',
       '--fail-on-serving-suppression-reasons',
       'ai_approved_dupe_quarantined,candidate_ref_unresolvable_nested_product_prefix',
     ], { now: NOW });
@@ -46,6 +50,8 @@ describe('run-relationship-graph-routine-job', () => {
     expect(args.dbLockKey).toBe('relgraph:test');
     expect(args.lockStaleAfterMs).toBe(180 * 60 * 1000);
     expect(args.stepTimeoutMs).toBe(7 * 60 * 1000);
+    expect(args.dbLockHeartbeatMs).toBe(15000);
+    expect(args.skipNeedNodes).toBe(true);
     expect(args.failOnServingSuppressionReasons).toEqual([
       'ai_approved_dupe_quarantined',
       'candidate_ref_unresolvable_nested_product_prefix',
@@ -105,6 +111,7 @@ describe('run-relationship-graph-routine-job', () => {
     expect(buildArgs).toContain('build-product-relationship-graph.js');
     expect(buildArgs).toContain('--require-anchors');
     expect(buildArgs).toContain('--affected-products-file /tmp/affected-products.json');
+    expect(buildArgs).not.toContain('--skip-need-nodes');
     expect(buildArgs).not.toContain('--apply');
 
     const reviewArgs = steps[3].args.join(' ');
@@ -156,6 +163,28 @@ describe('run-relationship-graph-routine-job', () => {
     const buildArgs = steps[0].args.join(' ');
     expect(buildArgs).toContain('--affected-refs product:seed_123,content_key:brand:sku');
     expect(buildArgs).toContain('--content-keys-file /tmp/content-keys.txt');
+  });
+
+  test('buildRoutineSteps can suppress need nodes for scoped canaries', () => {
+    const options = parseArgs([
+      '--skip-review',
+      '--market',
+      'US',
+      '--limit',
+      '1',
+      '--affected-refs',
+      'product:10064558194985',
+      '--skip-need-nodes',
+      '--out-dir',
+      '/tmp/relgraph-canary',
+    ], { now: NOW });
+
+    const { steps } = buildRoutineSteps(options);
+    const buildArgs = steps[0].args.join(' ');
+
+    expect(options.skipNeedNodes).toBe(true);
+    expect(buildArgs).toContain('--affected-refs product:10064558194985');
+    expect(buildArgs).toContain('--skip-need-nodes');
   });
 
   test('runRoutineJob records command results and writes a summary manifest', async () => {
@@ -318,6 +347,20 @@ describe('run-relationship-graph-routine-job', () => {
       expect.objectContaining({ sql: expect.stringContaining('pg_advisory_unlock') }),
     ]);
     expect(queries[1].params).toEqual(queries[0].params);
+  });
+
+  test('startPostgresAdvisoryLockHeartbeat keeps the advisory-lock client active', async () => {
+    const client = {
+      query: jest.fn(async () => ({ rows: [{ ok: true }] })),
+    };
+
+    const heartbeat = startPostgresAdvisoryLockHeartbeat(client, { intervalMs: 5 });
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    await heartbeat.stop();
+
+    expect(client.query).toHaveBeenCalledWith(
+      'SELECT 1 AS relationship_graph_routine_db_lock_keepalive',
+    );
   });
 
   test('runRoutineJob executes under a Postgres advisory lock when requested', async () => {

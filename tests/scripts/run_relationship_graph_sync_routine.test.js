@@ -29,8 +29,10 @@ describe('run-relationship-graph-sync-routine', () => {
     expect(options.applyReview).toBe(false);
     expect(options.dbLock).toBe(true);
     expect(options.lockStaleAfterMinutes).toBe(180);
+    expect(options.dbLockHeartbeatMs).toBe(30000);
     expect(options.stepTimeoutMinutes).toBe(20);
     expect(options.stepTimeoutMs).toBe(0);
+    expect(options.skipNeedNodes).toBe(false);
     expect(options.maxServingSuppressedPct).toBe(1);
     expect(options.maxServingSuppressedRows).toBe(25);
     expect(options.failOnServingSuppressionReasons).toEqual(DEFAULT_FAIL_REASONS);
@@ -141,6 +143,8 @@ describe('run-relationship-graph-sync-routine', () => {
       '/tmp/relgraph-sync-routine',
       '--step-timeout-minutes',
       '9',
+      '--db-lock-heartbeat-ms',
+      '15000',
     ], { now: NOW });
 
     const { steps, artifacts } = buildSyncRoutineSteps(options);
@@ -159,6 +163,7 @@ describe('run-relationship-graph-sync-routine', () => {
     expect(routineArgs).toContain('run-relationship-graph-routine-job.js');
     expect(routineArgs).toContain('--affected-products-file /tmp/relgraph-sync-routine/affected-products.json');
     expect(routineArgs).toContain('--db-lock');
+    expect(routineArgs).toContain('--db-lock-heartbeat-ms 15000');
     expect(routineArgs).toContain('--lock-stale-after-minutes 180');
     expect(routineArgs).toContain('--step-timeout-minutes 9');
     expect(routineArgs).toContain('--max-serving-suppressed-pct 1');
@@ -166,7 +171,24 @@ describe('run-relationship-graph-sync-routine', () => {
     expect(routineArgs).toContain(`--fail-on-serving-suppression-reasons ${DEFAULT_FAIL_REASONS.join(',')}`);
     expect(routineArgs).toContain('--cutoff 2026-06-08T00:00:00Z');
     expect(routineArgs).not.toContain('--apply-build');
+    expect(routineArgs).not.toContain('--skip-need-nodes');
     expect(routineArgs).not.toContain('--confirm');
+  });
+
+  test('buildSyncRoutineSteps passes skip-need-nodes into the guarded routine', () => {
+    const options = parseArgs([
+      '--cutoff',
+      CUTOFF,
+      '--affected-products-file',
+      '/tmp/affected-products.json',
+      '--skip-need-nodes',
+    ], { now: NOW });
+
+    const { steps } = buildSyncRoutineSteps(options);
+    const routineArgs = steps[0].args.join(' ');
+
+    expect(options.skipNeedNodes).toBe(true);
+    expect(routineArgs).toContain('--skip-need-nodes');
   });
 
   test('buildSyncRoutineSteps wires selector before the guarded routine', () => {
