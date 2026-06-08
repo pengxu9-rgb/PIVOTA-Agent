@@ -37,17 +37,24 @@ function buildSummaryFixture() {
   });
   writeJson(buildPath, {
     schema_version: 'product_relationship_graph_build.v1',
-    anchor_count: 6,
-    edge_count: 19,
-    rejected_count: 8,
-    applied_count: 0,
+    summary: {
+      anchor_count: 6,
+      edge_count: 19,
+      rejected_count: 8,
+      applied_count: 0,
+    },
+    edges: [],
+    rejected_edges: [],
   });
   writeJson(reviewPath, {
     schema_version: 'product_relationship_graph_review.v1',
-    reviewed_count: 4,
-    approved_count: 2,
-    rejected_count: 1,
-    applied_count: 0,
+    summary: {
+      reviewed_count: 4,
+      approved_count: 2,
+      rejected_count: 1,
+      applied_count: 0,
+    },
+    decisions: [],
   });
   writeJson(servingAuditPath, {
     schema_version: 'relationship_graph_serving_guard_audit.v1',

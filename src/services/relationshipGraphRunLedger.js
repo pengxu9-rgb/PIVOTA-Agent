@@ -103,6 +103,15 @@ function readRoutineArtifactsFromSummary(summary = {}) {
   return { routine, build, review, servingAudit };
 }
 
+function artifactSummary(value) {
+  if (value && typeof value === 'object' && !Array.isArray(value)) {
+    if (value.summary && typeof value.summary === 'object' && !Array.isArray(value.summary)) {
+      return value.summary;
+    }
+  }
+  return value || {};
+}
+
 function extractRelationshipGraphRunRecord(summary = {}, {
   runKind = 'sync_routine',
   trigger = '',
@@ -114,6 +123,8 @@ function extractRelationshipGraphRunRecord(summary = {}, {
     summary?.artifacts?.affected_product_selector || summary?.artifacts?.affected_products,
   ) || {};
   const { routine, build, review, servingAudit } = readRoutineArtifactsFromSummary(summary);
+  const buildSummary = artifactSummary(build);
+  const reviewSummary = artifactSummary(review);
   const options = summary.options || {};
   const routineOptions = routine.options || {};
   const selectorOptions = options.selector || {};
@@ -140,14 +151,14 @@ function extractRelationshipGraphRunRecord(summary = {}, {
     selector_sources: selectorSources.map((source) => normalizeString(source, 120)).filter(Boolean),
     selector_limit: parseNumber(selectorOptions.limit != null ? selectorOptions.limit : selector?.selection?.limit),
     affected_count: parseNumber(selector.affected_count),
-    anchor_count: parseNumber(build?.anchor_count),
-    edge_count: parseNumber(build?.edge_count),
-    rejected_count: parseNumber(build?.rejected_count),
-    reviewed_count: parseNumber(review?.reviewed_count),
-    approved_count: parseNumber(review?.approved_count),
-    review_rejected_count: parseNumber(review?.rejected_count),
+    anchor_count: parseNumber(buildSummary?.anchor_count),
+    edge_count: parseNumber(buildSummary?.edge_count),
+    rejected_count: parseNumber(buildSummary?.rejected_count),
+    reviewed_count: parseNumber(reviewSummary?.reviewed_count),
+    approved_count: parseNumber(reviewSummary?.approved_count),
+    review_rejected_count: parseNumber(reviewSummary?.rejected_count),
     applied_count: parseNumber(
-      (parseNumber(build?.applied_count, 0) || 0) + (parseNumber(review?.applied_count, 0) || 0),
+      (parseNumber(buildSummary?.applied_count, 0) || 0) + (parseNumber(reviewSummary?.applied_count, 0) || 0),
     ),
     serving_total_rows: parseNumber(servingAudit?.total_rows),
     serving_safe_rows: parseNumber(servingAudit?.safe_rows),
