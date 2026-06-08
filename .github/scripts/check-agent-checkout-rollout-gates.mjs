@@ -85,6 +85,7 @@ function assertNoAutomatedChargeWiring(...workflowTexts) {
 function main() {
   const moneyPathWorkflow = read('.github/workflows/agent-checkout-money-path-gate.yml');
   const probeWorkflow = read('.github/workflows/agent-checkout-wire-format-probe.yml');
+  const platformSmokeWorkflow = read('.github/workflows/agent-checkout-platform-smoke.yml');
   const rolloutDoc = read('docs/agent-checkout/ROLLOUT_OBSERVABILITY_GATES.md');
 
   for (const jobName of REQUIRED_MONEY_PATH_JOBS) {
@@ -113,9 +114,13 @@ function main() {
     'Gateway strict-route workflow must run the remote MCP smoke script test');
   assert(/tests\/integration\/safety_kernel_mount\.node\.test\.cjs/.test(moneyPathWorkflow),
     'Gateway strict-route workflow must run the strict Safety Kernel mount test');
+  assert(/smoke_protocol_edge_remote_mcp\.mjs/.test(platformSmokeWorkflow),
+    'Platform smoke workflow must run the remote MCP smoke script');
+  assert(/validate_platform_smoke_evidence\.mjs/.test(platformSmokeWorkflow),
+    'Platform smoke workflow must validate the platform smoke evidence packet');
 
   assertNoAutomatedChargeProbe(probeWorkflow);
-  assertNoAutomatedChargeWiring(moneyPathWorkflow, probeWorkflow);
+  assertNoAutomatedChargeWiring(moneyPathWorkflow, probeWorkflow, platformSmokeWorkflow);
   assertJobExists(probeWorkflow, 'strict-create-order-canary');
   assert(/run_strict_create_order_canary:/.test(probeWorkflow),
     'Wire-format probe workflow must expose the strict create-order canary input');
