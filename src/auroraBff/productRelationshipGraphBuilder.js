@@ -41,6 +41,86 @@ const CURATED_NEED_NODES = [
     evidence_grade_min: 'B',
     tags: ['retinoid alternative', 'bakuchiol', 'pregnancy cautious'],
   },
+  {
+    need_id: 'need:mineral-sensitive-sunscreen',
+    label: 'mineral sunscreen for sensitive skin',
+    category_taxonomy: ['skincare', 'sunscreen', 'sensitive skin'],
+    evidence_grade_min: 'B',
+    match_threshold: 0.18,
+    tags: ['mineral sunscreen', 'zinc oxide', 'titanium dioxide', 'spf', 'sensitive skin'],
+  },
+  {
+    need_id: 'need:hydrating-hyaluronic-serum',
+    label: 'hydrating hyaluronic serum',
+    category_taxonomy: ['skincare', 'serum', 'hydration'],
+    evidence_grade_min: 'B',
+    match_threshold: 0.18,
+    tags: ['hyaluronic acid', 'hydrating', 'hydration', 'serum'],
+  },
+  {
+    need_id: 'need:azelaic-acid-calming',
+    label: 'azelaic acid calming treatment',
+    category_taxonomy: ['skincare', 'calming', 'sensitive skin'],
+    evidence_grade_min: 'B',
+    match_threshold: 0.18,
+    tags: ['azelaic acid', 'redness', 'calming', 'sensitive skin'],
+  },
+  {
+    need_id: 'need:gentle-cream-cleanser',
+    label: 'gentle cream cleanser',
+    category_taxonomy: ['skincare', 'cleanser', 'sensitive skin'],
+    evidence_grade_min: 'B',
+    match_threshold: 0.18,
+    tags: ['gentle cleanser', 'cream cleanser', 'sensitive skin'],
+  },
+  {
+    need_id: 'need:ceramide-rich-moisturizer',
+    label: 'ceramide-rich moisturizer',
+    category_taxonomy: ['skincare', 'moisturizer', 'barrier repair'],
+    evidence_grade_min: 'B',
+    match_threshold: 0.18,
+    tags: ['ceramide', 'barrier', 'repair', 'moisturizer'],
+  },
+  {
+    need_id: 'need:sensitive-bha-exfoliant',
+    label: 'sensitive-skin BHA exfoliant',
+    category_taxonomy: ['skincare', 'exfoliant', 'acne-prone'],
+    evidence_grade_min: 'B',
+    match_threshold: 0.18,
+    tags: ['bha', 'salicylic acid', 'exfoliant', 'sensitive skin'],
+  },
+  {
+    need_id: 'need:lip-barrier-balm',
+    label: 'lip barrier balm',
+    category_taxonomy: ['lip care', 'barrier repair', 'balm'],
+    evidence_grade_min: 'B',
+    match_threshold: 0.18,
+    tags: ['lip balm', 'barrier', 'repair', 'ceramide', 'hydrating'],
+  },
+  {
+    need_id: 'need:tubing-mascara-sensitive-eyes',
+    label: 'tubing mascara for sensitive eyes',
+    category_taxonomy: ['makeup', 'mascara', 'sensitive eyes'],
+    evidence_grade_min: 'B',
+    match_threshold: 0.18,
+    tags: ['tubing mascara', 'sensitive eyes', 'lash'],
+  },
+  {
+    need_id: 'need:non-comedogenic-gel-moisturizer',
+    label: 'non-comedogenic gel moisturizer',
+    category_taxonomy: ['skincare', 'moisturizer', 'acne-prone'],
+    evidence_grade_min: 'B',
+    match_threshold: 0.18,
+    tags: ['non-comedogenic', 'oil-free', 'gel moisturizer', 'acne-prone'],
+  },
+  {
+    need_id: 'need:fragrance-free-body-lotion',
+    label: 'fragrance-free body lotion',
+    category_taxonomy: ['body care', 'body lotion', 'sensitive skin'],
+    evidence_grade_min: 'B',
+    match_threshold: 0.18,
+    tags: ['fragrance-free', 'unscented', 'body lotion', 'sensitive skin'],
+  },
 ];
 
 function isPlainObject(value) {
@@ -900,6 +980,116 @@ function needCandidateCompatibility(need = {}, candidateSnapshot = {}, candidate
     }
     if (!tokenSetHasAny(candidateTokens, ['pregnancy', 'pregnancy cautious', 'pregnancy safe'])) {
       return { compatible: false, reason: 'retinoid_alt_need_missing_pregnancy_evidence' };
+    }
+  }
+
+  if (needId.includes('mineral-sensitive-sunscreen')) {
+    if (candidateTokens.has('hair') || candidateTokens.has('scalp') || candidateCategory.startsWith('hair')) {
+      return { compatible: false, reason: 'mineral_sunscreen_need_hair_mismatch' };
+    }
+    if (!tokenSetHasAny(candidateTokens, ['spf', 'sunscreen'])) {
+      return { compatible: false, reason: 'mineral_sunscreen_need_missing_spf' };
+    }
+    if (!tokenSetHasAny(candidateTokens, ['mineral', 'zinc oxide', 'titanium dioxide'])) {
+      return { compatible: false, reason: 'mineral_sunscreen_need_missing_mineral_evidence' };
+    }
+    if (!tokenSetHasAny(candidateTokens, ['sensitive', 'gentle', 'fragrance free', 'fragrance-free', 'unscented'])) {
+      return { compatible: false, reason: 'mineral_sunscreen_need_missing_sensitive_evidence' };
+    }
+  }
+
+  if (needId.includes('hydrating-hyaluronic-serum')) {
+    if (isBodyOrHair) return { compatible: false, reason: 'hyaluronic_serum_need_body_or_hair_mismatch' };
+    if (!tokenSetHasAny(candidateTokens, ['serum', 'drops'])) {
+      return { compatible: false, reason: 'hyaluronic_serum_need_missing_serum_form' };
+    }
+    if (!tokenSetHasAny(candidateTokens, ['hyaluronic', 'hyaluronic acid', 'ha', 'hydrating', 'hydration'])) {
+      return { compatible: false, reason: 'hyaluronic_serum_need_missing_hydration_evidence' };
+    }
+  }
+
+  if (needId.includes('azelaic-acid-calming')) {
+    if (isBodyOrHair) return { compatible: false, reason: 'azelaic_calming_need_body_or_hair_mismatch' };
+    if (!tokenSetHasAny(candidateTokens, ['azelaic', 'azelaic acid'])) {
+      return { compatible: false, reason: 'azelaic_calming_need_missing_azelaic_evidence' };
+    }
+    if (!tokenSetHasAny(candidateTokens, ['calm', 'calming', 'redness', 'sensitive', 'soothing'])) {
+      return { compatible: false, reason: 'azelaic_calming_need_missing_calming_evidence' };
+    }
+  }
+
+  if (needId.includes('gentle-cream-cleanser')) {
+    if (isBodyOrHair) return { compatible: false, reason: 'gentle_cleanser_need_body_or_hair_mismatch' };
+    if (!tokenSetHasAny(candidateTokens, ['cleanser', 'cleansing', 'wash'])) {
+      return { compatible: false, reason: 'gentle_cleanser_need_missing_cleanser_form' };
+    }
+    if (!tokenSetHasAny(candidateTokens, ['gentle', 'sensitive', 'cream', 'milky', 'milk'])) {
+      return { compatible: false, reason: 'gentle_cleanser_need_missing_gentle_evidence' };
+    }
+  }
+
+  if (needId.includes('ceramide-rich-moisturizer')) {
+    if (candidateTokens.has('hair') || candidateTokens.has('scalp') || candidateCategory.startsWith('hair')) {
+      return { compatible: false, reason: 'ceramide_moisturizer_need_hair_mismatch' };
+    }
+    if (!tokenSetHasAny(candidateTokens, ['moisturizer', 'moisturiser', 'cream', 'lotion'])) {
+      return { compatible: false, reason: 'ceramide_moisturizer_need_missing_moisturizer_form' };
+    }
+    if (!tokenSetHasAny(candidateTokens, ['ceramide', 'barrier', 'repair'])) {
+      return { compatible: false, reason: 'ceramide_moisturizer_need_missing_ceramide_evidence' };
+    }
+  }
+
+  if (needId.includes('sensitive-bha-exfoliant')) {
+    if (isBodyOrHair) return { compatible: false, reason: 'sensitive_bha_need_body_or_hair_mismatch' };
+    if (!tokenSetHasAny(candidateTokens, ['bha', 'salicylic', 'salicylic acid', 'exfoliant', 'exfoliating'])) {
+      return { compatible: false, reason: 'sensitive_bha_need_missing_bha_evidence' };
+    }
+    if (!tokenSetHasAny(candidateTokens, ['sensitive', 'gentle', 'acne', 'blemish'])) {
+      return { compatible: false, reason: 'sensitive_bha_need_missing_sensitive_evidence' };
+    }
+  }
+
+  if (needId.includes('lip-barrier-balm')) {
+    if (!tokenSetHasAny(candidateTokens, ['lip', 'lips'])) {
+      return { compatible: false, reason: 'lip_barrier_need_missing_lip_area' };
+    }
+    if (!tokenSetHasAny(candidateTokens, ['balm', 'butter', 'mask', 'oil'])) {
+      return { compatible: false, reason: 'lip_barrier_need_missing_balm_form' };
+    }
+    if (!tokenSetHasAny(candidateTokens, ['barrier', 'repair', 'ceramide', 'hydrating', 'hydration'])) {
+      return { compatible: false, reason: 'lip_barrier_need_missing_barrier_evidence' };
+    }
+  }
+
+  if (needId.includes('tubing-mascara-sensitive-eyes')) {
+    if (!tokenSetHasAny(candidateTokens, ['mascara', 'lash'])) {
+      return { compatible: false, reason: 'tubing_mascara_need_missing_mascara_form' };
+    }
+    if (!tokenSetHasAny(candidateTokens, ['tubing', 'sensitive', 'gentle'])) {
+      return { compatible: false, reason: 'tubing_mascara_need_missing_tubing_or_sensitive_evidence' };
+    }
+  }
+
+  if (needId.includes('non-comedogenic-gel-moisturizer')) {
+    if (isBodyOrHair) return { compatible: false, reason: 'noncomedogenic_gel_need_body_or_hair_mismatch' };
+    if (!tokenSetHasAny(candidateTokens, ['gel', 'water cream', 'moisturizer', 'moisturiser'])) {
+      return { compatible: false, reason: 'noncomedogenic_gel_need_missing_gel_moisturizer_form' };
+    }
+    if (!tokenSetHasAny(candidateTokens, ['non comedogenic', 'non-comedogenic', 'oil free', 'oil-free', 'acne', 'oily'])) {
+      return { compatible: false, reason: 'noncomedogenic_gel_need_missing_noncomedogenic_evidence' };
+    }
+  }
+
+  if (needId.includes('fragrance-free-body-lotion')) {
+    if (!candidateTokens.has('body') && !candidateCategory.startsWith('body')) {
+      return { compatible: false, reason: 'body_lotion_need_missing_body_area' };
+    }
+    if (!tokenSetHasAny(candidateTokens, ['lotion', 'cream', 'butter', 'milk'])) {
+      return { compatible: false, reason: 'body_lotion_need_missing_lotion_form' };
+    }
+    if (!tokenSetHasAny(candidateTokens, ['fragrance free', 'fragrance-free', 'unscented', 'sensitive'])) {
+      return { compatible: false, reason: 'body_lotion_need_missing_fragrance_free_evidence' };
     }
   }
 
