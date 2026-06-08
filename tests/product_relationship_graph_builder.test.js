@@ -163,6 +163,74 @@ describe('product relationship graph dry-run builder', () => {
     );
   });
 
+  test('adds expanded curated need-node niche specialists without auto-serving them', () => {
+    const need = CURATED_NEED_NODES.find((item) => item.need_id === 'need:hydrating-hyaluronic-serum');
+    const out = buildProductRelationshipGraphDryRun({
+      anchors: [],
+      needs: [need],
+      needCandidatesById: {
+        [need.need_id]: [
+          candidate({
+            product_id: 'ha_serum',
+            brand: 'Hydration Lab',
+            name: 'Hyaluronic Acid Hydrating Serum',
+            description: 'Lightweight hyaluronic serum for hydration.',
+            category_taxonomy: ['skincare', 'serum'],
+            price: 22,
+            score_total: 0.72,
+            source_refs: [{ type: 'catalog_products', authoritative: true }],
+            evidence_grade: 'B',
+          }),
+        ],
+      },
+      now: new Date(NOW),
+      reviewStatus: 'pending',
+    });
+
+    expect(CURATED_NEED_NODES.length).toBeGreaterThan(10);
+    expect(out.summary.niche_specialist_count).toBe(1);
+    expect(out.edges[0]).toEqual(
+      expect.objectContaining({
+        anchor_type: 'need',
+        anchor_ref: need.need_id,
+        relation_type: 'niche_specialist',
+        review_status: 'pending',
+      }),
+    );
+  });
+
+  test('rejects expanded need candidates missing need-specific evidence', () => {
+    const need = CURATED_NEED_NODES.find((item) => item.need_id === 'need:mineral-sensitive-sunscreen');
+    const out = buildProductRelationshipGraphDryRun({
+      anchors: [],
+      needs: [need],
+      needCandidatesById: {
+        [need.need_id]: [
+          candidate({
+            product_id: 'chemical_spf',
+            brand: 'SPF Lab',
+            name: 'Daily Invisible Sunscreen SPF 50',
+            description: 'Clear chemical sunscreen for daily wear.',
+            category_taxonomy: ['skincare', 'sunscreen'],
+            price: 28,
+            score_total: 0.9,
+          }),
+        ],
+      },
+      now: new Date(NOW),
+      reviewStatus: 'pending',
+    });
+
+    expect(out.summary.niche_specialist_count).toBe(0);
+    expect(out.rejected_edges[0]).toEqual(
+      expect.objectContaining({
+        anchor_ref: need.need_id,
+        candidate_ref: 'product:chemical_spf',
+        errors: ['candidate_below_relationship_threshold'],
+      }),
+    );
+  });
+
   test('rejects broad category-only competitive alternatives without specific use-case overlap', () => {
     const out = buildProductRelationshipGraphDryRun({
       anchors: [

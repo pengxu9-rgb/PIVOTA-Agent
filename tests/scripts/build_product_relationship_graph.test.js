@@ -2,9 +2,14 @@ const {
   numberArg,
   boolEnv,
   hasFlagOrEnv,
+  buildNeedCandidateMap,
+  needMatchThreshold,
   classifyEdgeForPrefilter,
   resolveDefaultLabelState,
 } = require('../../scripts/build-product-relationship-graph');
+const {
+  CURATED_NEED_NODES,
+} = require('../../src/auroraBff/productRelationshipGraphBuilder');
 
 describe('build product relationship graph CLI helpers', () => {
   const originalArgv = process.argv;
@@ -68,6 +73,33 @@ describe('build product relationship graph CLI helpers', () => {
       'approved-live-external-seed-anchors',
       'RELATIONSHIP_GRAPH_APPROVED_LIVE_EXTERNAL_SEED_ANCHORS',
     )).toBe(true);
+  });
+
+  test('expanded curated needs can use lower match thresholds before compatibility review', () => {
+    const need = CURATED_NEED_NODES.find((item) => item.need_id === 'need:hydrating-hyaluronic-serum');
+    expect(needMatchThreshold(need)).toBe(0.18);
+
+    const candidates = buildNeedCandidateMap([
+      {
+        product_ref: 'product:hydrating_serum',
+        name: 'Hydrating Serum',
+        description: 'Hyaluronic acid serum for hydration.',
+        category: 'serum',
+        tags: ['hyaluronic acid', 'hydrating'],
+        price: 19,
+      },
+      {
+        product_ref: 'product:matte_lipstick',
+        name: 'Matte Lipstick',
+        description: 'Velvet lip color.',
+        category: 'lipstick',
+        tags: ['lipstick'],
+        price: 14,
+      },
+    ], 10);
+
+    expect(candidates[need.need_id].map((item) => item.product_ref)).toContain('product:hydrating_serum');
+    expect(candidates[need.need_id].map((item) => item.product_ref)).not.toContain('product:matte_lipstick');
   });
 });
 

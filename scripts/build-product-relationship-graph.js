@@ -447,6 +447,12 @@ function overlapScore(left, right) {
   return hit / Math.max(a.size, b.size);
 }
 
+function needMatchThreshold(need = {}) {
+  const n = Number(need.match_threshold ?? need.matchThreshold);
+  if (!Number.isFinite(n)) return 0.25;
+  return Math.max(0, Math.min(1, n));
+}
+
 function attachCandidateSignals(anchor, candidate) {
   const categoryScore = Math.max(
     overlapScore(anchor.category, candidate.category),
@@ -488,6 +494,7 @@ function buildNeedCandidateMap(products, maxPerNeed = 40) {
   const out = {};
   for (const need of CURATED_NEED_NODES) {
     const needText = [need.label, ...(Array.isArray(need.tags) ? need.tags : [])].join(' ');
+    const threshold = needMatchThreshold(need);
     out[need.need_id] = products
       .map((product) => ({
         ...product,
@@ -500,7 +507,7 @@ function buildNeedCandidateMap(products, maxPerNeed = 40) {
         category_use_case_match: Math.max(0.65, overlapScore(needText, product.category)),
         ingredient_functional_similarity: Math.max(0.6, overlapScore(needText, product.description || product.tags)),
       }))
-      .filter((product) => Number(product.score_total || 0) >= 0.25)
+      .filter((product) => Number(product.score_total || 0) >= threshold)
       .sort((a, b) => Number(b.score_total || 0) - Number(a.score_total || 0))
       .slice(0, maxPerNeed);
   }
@@ -747,6 +754,7 @@ module.exports = {
   buildInputsFromDb,
   buildCandidateMap,
   buildNeedCandidateMap,
+  needMatchThreshold,
   attachCandidateSignals,
   envFlag,
   numberArg,
