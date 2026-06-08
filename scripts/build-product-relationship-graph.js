@@ -28,6 +28,14 @@ const {
 } = require('../src/auroraBff/productBeautyAttributes');
 const { computeReviewPriority } = require('../src/auroraBff/relationshipReviewPriority');
 
+const PLACEHOLDER_EVIDENCE_PATTERNS = [
+  /\btest fixture\b/i,
+  /\breplace with your own description\b/i,
+  /\blorem ipsum\b/i,
+  /\bplaceholder\b/i,
+];
+const PLACEHOLDER_EVIDENCE_RELATION_TYPES = new Set(['dupe', 'competitive_alternative', 'niche_specialist']);
+
 // Lever-2: order the review-pending report highest-predicted-approval first so
 // reviewers work the highest-yield candidates first. Pure: attaches
 // edge.review_priority and returns a stably-sorted copy (priority DESC, unscored
@@ -105,6 +113,14 @@ function resolveDefaultLabelState(reviewStatusArg) {
 function classifyEdgeForPrefilter({ edge, defaultLabelState, anchorAttrs, candidateAttrs }) {
   if (defaultLabelState !== 'generated') {
     return { label_state: defaultLabelState, prefilter_reasons: null, bucket: null };
+  }
+  const evidenceReasons = placeholderEvidencePrefilterReasons(edge);
+  if (evidenceReasons.length) {
+    return {
+      label_state: 'prefilter_rejected',
+      prefilter_reasons: evidenceReasons,
+      bucket: 'rejected',
+    };
   }
   const gateResult = applyAllGates(anchorAttrs, candidateAttrs, edge.relation_type);
   if (!gateResult.passes) {
@@ -245,6 +261,30 @@ function normalizeString(value, max = 512) {
 
 function normalizeLower(value, max = 512) {
   return normalizeString(value, max).toLowerCase();
+}
+
+function snapshotEvidenceText(snapshot = {}) {
+  if (!snapshot || typeof snapshot !== 'object' || Array.isArray(snapshot)) return '';
+  return [
+    snapshot.description,
+    snapshot.short_description,
+    snapshot.shortDescription,
+    snapshot.intel_text,
+    snapshot.body,
+  ].map((value) => normalizeString(value, 2000)).filter(Boolean).join(' ');
+}
+
+function hasPlaceholderEvidence(snapshot = {}) {
+  const text = snapshotEvidenceText(snapshot);
+  return Boolean(text) && PLACEHOLDER_EVIDENCE_PATTERNS.some((pattern) => pattern.test(text));
+}
+
+function placeholderEvidencePrefilterReasons(edge = {}) {
+  if (!PLACEHOLDER_EVIDENCE_RELATION_TYPES.has(normalizeLower(edge.relation_type, 80))) return [];
+  const reasons = [];
+  if (hasPlaceholderEvidence(edge.anchor_snapshot)) reasons.push('anchor_placeholder_evidence');
+  if (hasPlaceholderEvidence(edge.candidate_snapshot)) reasons.push('candidate_placeholder_evidence');
+  return reasons;
 }
 
 function stripRelationshipPrefix(value) {

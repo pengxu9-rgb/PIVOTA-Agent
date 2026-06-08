@@ -195,6 +195,46 @@ describe('classifyEdgeForPrefilter — Phase B gate routing', () => {
     );
   });
 
+  test('placeholder anchor evidence rejects structural generated edges before review', () => {
+    const r = classifyEdgeForPrefilter({
+      edge: edge({
+        relation_type: 'competitive_alternative',
+        anchor_snapshot: {
+          description: 'Test fixture for PDP. Replace with your own description if needed.',
+        },
+        candidate_snapshot: {
+          description: 'Barrier support serum for sensitive skin.',
+        },
+      }),
+      defaultLabelState: 'generated',
+      anchorAttrs: attrs(),
+      candidateAttrs: attrs(),
+    });
+    expect(r).toEqual({
+      label_state: 'prefilter_rejected',
+      prefilter_reasons: ['anchor_placeholder_evidence'],
+      bucket: 'rejected',
+    });
+  });
+
+  test('placeholder evidence gate does not reject related-product links', () => {
+    const r = classifyEdgeForPrefilter({
+      edge: edge({
+        relation_type: 'related_product',
+        anchor_snapshot: {
+          description: 'Test fixture for PDP. Replace with your own description if needed.',
+        },
+        candidate_snapshot: {
+          description: 'Eyeliner brush for detailed makeup application.',
+        },
+      }),
+      defaultLabelState: 'generated',
+      anchorAttrs: attrs(),
+      candidateAttrs: attrs(),
+    });
+    expect(r).toEqual({ label_state: 'generated', prefilter_reasons: null, bucket: 'passed' });
+  });
+
   test('missing anchor attrs: skipped (passed-through, no gate applied)', () => {
     const r = classifyEdgeForPrefilter({
       edge: edge(),
