@@ -201,6 +201,9 @@ const {
   buildInvokeIngressGatewayInput,
 } = require('./api/gateway/invocation/buildInvokeIngressGatewayInput');
 const {
+  resolveCheckoutHandoff,
+} = require('./services/checkoutHandoffResolver');
+const {
   applyGovernanceShadowRuntimeMetadata,
 } = require('./modules/policy/governanceShadowRuntime');
 const {
@@ -23847,6 +23850,122 @@ const ROUTE_MAP = {
   }
 };
 
+function buildCheckoutHandoffGovernanceEnvelope({
+  req,
+  routeContext = {},
+  payload = {},
+  metadata = {},
+  gatewayRequestId = null,
+} = {}) {
+  return prepareGatewayGovernanceEnvelope(
+    buildInvokeIngressGatewayInput({
+      req,
+      routeContext,
+      operation: 'checkout_handoff',
+      payload,
+      metadata,
+      request_id: gatewayRequestId,
+    }),
+  );
+}
+
+function buildCheckoutHandoffGovernanceMetadata(envelope = {}) {
+  return {
+    action: envelope.query_governance_decision?.action || 'allow',
+    allowed: envelope.query_governance_decision?.allowed !== false,
+    reason_codes: Array.isArray(envelope.query_governance_decision?.reason_codes)
+      ? envelope.query_governance_decision.reason_codes
+      : [],
+    access: {
+      allow_checkout_handoff: envelope.access_scope?.allow_checkout_handoff === true,
+      partner_tier: envelope.agent_identity?.partner_tier || null,
+      principal_type: envelope.agent_identity?.principal_type || null,
+    },
+  };
+}
+
+async function resolveCheckoutHandoffInvoke({
+  req,
+  routeContext = {},
+  payload = {},
+  metadata = {},
+  gatewayRequestId = null,
+  checkoutToken = null,
+} = {}) {
+  const envelope = buildCheckoutHandoffGovernanceEnvelope({
+    req,
+    routeContext,
+    payload,
+    metadata,
+    gatewayRequestId,
+  });
+  const result = await resolveCheckoutHandoff(
+    {
+      payload,
+      metadata,
+      context: {
+        raw_user_goal: 'checkout_handoff',
+      },
+      access_scope: envelope.access_scope,
+    },
+    {
+      resolvePdp: async ({ product_ref: productRef, include = ['offers'], options = {} } = {}) => {
+        const requestBody = {
+          operation: 'get_pdp_v2',
+          payload: {
+            include,
+            options: {
+              ...(options && typeof options === 'object' && !Array.isArray(options) ? options : {}),
+              serving_eligible_only: true,
+            },
+            product_ref: productRef,
+          },
+        };
+        const response = await axios.post(
+          `${PIVOTA_API_BASE}/agent/shop/v1/invoke`,
+          requestBody,
+          {
+            timeout: getUpstreamTimeoutMs('get_pdp_v2'),
+            headers: {
+              'Content-Type': 'application/json',
+              ...buildInvokeUpstreamAuthHeaders({
+                checkoutToken,
+                allowInternalFallback: true,
+                preferInternalFallback: true,
+              }),
+            },
+            validateStatus: () => true,
+          },
+        );
+        if (response.status < 200 || response.status >= 300) {
+          return {
+            body: {
+              status: 'blocked',
+              error: response.data?.error || 'PDP_REVALIDATION_FAILED',
+              message: response.data?.message || null,
+            },
+            serving_eligible_only: true,
+          };
+        }
+        return {
+          body: response.data,
+          serving_eligible_only: true,
+        };
+      },
+    },
+  );
+  return {
+    statusCode: result?.blockers?.includes('checkout_handoff_not_allowed') ? 403 : 200,
+    body: {
+      ...result,
+      metadata: {
+        gateway_request_id: gatewayRequestId,
+        gateway_governance: buildCheckoutHandoffGovernanceMetadata(envelope),
+      },
+    },
+  };
+}
+
 let uiChatLlmClient;
 let uiChatLlmModel;
 let uiChatLlmProvider;
@@ -36617,6 +36736,18 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
 	    }
 	    return res.status(guardrails.blocked.status).json(guardrails.blocked.body);
 	  }
+
+    if (operation === 'checkout_handoff') {
+      const handled = await resolveCheckoutHandoffInvoke({
+        req,
+        routeContext,
+        payload: effectivePayload,
+        metadata,
+        gatewayRequestId,
+        checkoutToken,
+      });
+      return res.status(handled.statusCode).json(handled.body);
+    }
 	  
 	  // HYBRID mode: Use real API for product search, mock for payments
 	  if (USE_HYBRID) {
