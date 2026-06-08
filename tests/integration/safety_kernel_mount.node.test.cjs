@@ -161,7 +161,9 @@ describe('strict Safety Kernel mount on /agent/shop/v1/invoke', () => {
           body?.idempotency_key === 'idem_create_strict' &&
           body?.quote_id === 'q_strict' &&
           body?.buyer_context?.shipping_address?.address_line1 === '1 Kernel Way' &&
-          body?.buyer_context?.shipping_address?.name === 'Strict Buyer'
+          body?.buyer_context?.shipping_address?.name === 'Strict Buyer' &&
+          body?.metadata?.agent_v2?.checkout_provider === 'pivota_hosted_checkout' &&
+          body?.metadata?.agent_v2?.hosted_checkout === true
         );
       })
       .reply(200, {
@@ -273,23 +275,23 @@ describe('strict Safety Kernel mount on /agent/shop/v1/invoke', () => {
     );
 
     nock(API_BASE)
-      .post('/agent/v1/payments', (body) => {
+      .post('/agent/v2/payments/checkout-sessions', (body) => {
         return (
-          body?.idempotency_key === 'idem_pay_strict' &&
           body?.order_id === 'ORD_STRICT' &&
-          body?.payment_method?.type === 'card' &&
-          body?.expected_amount === undefined &&
-          body?.currency === undefined
+          body?.expected_amount === 2900 &&
+          body?.currency === 'USD' &&
+          body?.payment_method_hint === 'card' &&
+          body?.payment_method === undefined
         );
       })
       .reply(200, {
-        payment_status: 'requires_action',
-        payment_intent_id: 'pi_strict',
-        confirmation_owner: 'client',
-        requires_client_confirmation: true,
-        payment_action: {
-          type: 'redirect_url',
-          url: 'https://pay.example/strict',
+        status: 'success',
+        checkout_session: {
+          checkout_session_id: 'cs_strict',
+          order_id: 'ORD_STRICT',
+          state: 'created',
+          hosted_url: 'https://pay.example/strict',
+          provider: 'pivota_hosted_checkout',
         },
       });
 
@@ -319,14 +321,14 @@ describe('strict Safety Kernel mount on /agent/shop/v1/invoke', () => {
         redirect_url: payment.body.redirect_url,
       },
       {
-        payment_id: 'pi_strict',
+        payment_id: 'cs_strict',
         payment_status: 'requires_action',
         order_status: 'charge_pending',
         redirect_url: 'https://pay.example/strict',
       },
     );
 
-    const webhookBody = { order_id: 'ORD_STRICT', status: 'succeeded', payment_id: 'pi_strict' };
+    const webhookBody = { order_id: 'ORD_STRICT', status: 'succeeded', payment_id: 'cs_strict' };
     const forged = await request(app)
       .post('/agent/shop/v1/payment-webhook')
       .set('X-Pivota-Webhook-Signature', 'forged')

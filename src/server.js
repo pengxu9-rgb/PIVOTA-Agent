@@ -27637,9 +27637,8 @@ function maybeApplyStrictMcpHostedPaymentDefaults(payment, invokeContext = {}) {
   });
 }
 
-function maybeApplyStrictMcpHostedOrderMetadata(order, invokeContext = {}) {
+function applyStrictHostedOrderMetadata(order) {
   if (!isPlainObject(order)) return order;
-  if (invokeContext?.surface !== 'mcp') return order;
   const existingMetadata = isPlainObject(order.metadata) ? order.metadata : {};
   const existingAgentV2 = isPlainObject(existingMetadata.agent_v2) ? existingMetadata.agent_v2 : {};
   return {
@@ -27711,10 +27710,7 @@ async function invokeCommerceKernelRawUpstream(operation, payload, headers = {})
     }
     case 'create_order': {
       url = `${PIVOTA_API_BASE}/agent/v2/orders`;
-      const order = maybeApplyStrictMcpHostedOrderMetadata(
-        isPlainObject(payload?.order) ? payload.order : {},
-        invokeContext,
-      );
+      const order = applyStrictHostedOrderMetadata(isPlainObject(payload?.order) ? payload.order : {});
       requestBody = buildCreateOrderV2Body({
         payload,
         order,
@@ -27736,7 +27732,7 @@ async function invokeCommerceKernelRawUpstream(operation, payload, headers = {})
         clientChannel,
         gatewayRequestId,
       });
-      const forceHostedCheckoutSession = invokeContext?.surface === 'mcp';
+      const forceHostedCheckoutSession = true;
       if (
         !forceHostedCheckoutSession &&
         shouldSubmitPaymentUseExistingOrderMerchantPspSurface({
