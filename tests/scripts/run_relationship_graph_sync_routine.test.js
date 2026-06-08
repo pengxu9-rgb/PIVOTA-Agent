@@ -32,6 +32,7 @@ describe('run-relationship-graph-sync-routine', () => {
     expect(options.maxServingSuppressedPct).toBe(1);
     expect(options.maxServingSuppressedRows).toBe(25);
     expect(options.failOnServingSuppressionReasons).toEqual(DEFAULT_FAIL_REASONS);
+    expect(options.recordRunLedger).toBe(false);
     expect(options.affectedProductsFile).toBe('/tmp/pivota/reports/product_relationship_graph/sync_routine_20260608T000000/affected-products.json');
   });
 
@@ -77,6 +78,23 @@ describe('run-relationship-graph-sync-routine', () => {
     expect(options.selectLimit).toBe(25);
     expect(options.allowEmptySelection).toBe(true);
     expect(options.allowEmptyBuild).toBe(true);
+  });
+
+  test('parseArgs accepts run ledger recording flags', () => {
+    const options = parseArgs([
+      '--cutoff',
+      CUTOFF,
+      '--select-updated-since',
+      '2026-06-07T00:00:00Z',
+      '--record-run-ledger',
+      '--run-trigger',
+      'railway_cron',
+      '--run-ledger-fail-closed',
+    ], { now: NOW, cwd: '/tmp/pivota' });
+
+    expect(options.recordRunLedger).toBe(true);
+    expect(options.runTrigger).toBe('railway_cron');
+    expect(options.runLedgerFailClosed).toBe(true);
   });
 
   test('parseArgs rejects selector mode combined with catalog sync apply', () => {
@@ -244,6 +262,45 @@ describe('run-relationship-graph-sync-routine', () => {
     expect(fs.existsSync(path.join(outDir, 'sync_routine_summary.json'))).toBe(true);
   });
 
+  test('runSyncRoutine records the run ledger when enabled', async () => {
+    const outDir = fs.mkdtempSync(path.join(os.tmpdir(), 'relgraph-sync-routine-'));
+    const options = parseArgs([
+      '--cutoff',
+      CUTOFF,
+      '--external-product-ids',
+      'seed_1',
+      '--out-dir',
+      outDir,
+      '--record-run-ledger',
+      '--run-trigger',
+      'unit_test',
+    ], { now: NOW });
+    const runner = jest.fn(async () => ({ exitCode: 0, stdout: '{"ok":true}', stderr: '' }));
+    const ledgerRecorder = jest.fn(async (summary) => ({
+      run_id: summary.run_id,
+      status: 'passed',
+    }));
+
+    const summary = await runSyncRoutine(options, { runner, ledgerRecorder, now: NOW });
+
+    expect(summary.ok).toBe(true);
+    expect(ledgerRecorder).toHaveBeenCalledTimes(1);
+    expect(ledgerRecorder.mock.calls[0][0]).toEqual(expect.objectContaining({
+      ok: true,
+      summary_path: path.join(outDir, 'sync_routine_summary.json'),
+    }));
+    expect(ledgerRecorder.mock.calls[0][1]).toEqual({
+      runKind: 'sync_routine',
+      trigger: 'unit_test',
+    });
+    expect(summary.ledger).toEqual(expect.objectContaining({
+      requested: true,
+      recorded: true,
+      trigger: 'unit_test',
+      status: 'passed',
+    }));
+  });
+
   test('runSyncRoutine fails closed when a child step fails', async () => {
     const outDir = fs.mkdtempSync(path.join(os.tmpdir(), 'relgraph-sync-routine-'));
     const options = parseArgs([
@@ -269,5 +326,71 @@ describe('run-relationship-graph-sync-routine', () => {
       id: 'catalog_sync',
       status: 'failed',
     }));
+  });
+
+  test('runSyncRoutine records failed run ledger before throwing child step errors', async () => {
+    const outDir = fs.mkdtempSync(path.join(os.tmpdir(), 'relgraph-sync-routine-'));
+    const options = parseArgs([
+      '--cutoff',
+      CUTOFF,
+      '--external-product-ids',
+      'seed_1',
+      '--out-dir',
+      outDir,
+      '--record-run-ledger',
+      '--run-trigger',
+      'unit_test',
+    ], { now: NOW });
+    const runner = jest.fn(async () => ({ exitCode: 1, stdout: '', stderr: 'failed' }));
+    const ledgerRecorder = jest.fn(async (summary) => ({
+      run_id: summary.run_id,
+      status: 'failed',
+    }));
+
+    await expect(runSyncRoutine(options, { runner, ledgerRecorder, now: NOW })).rejects.toMatchObject({
+      summary: expect.objectContaining({
+        ok: false,
+        failed_step: 'catalog_sync',
+        ledger: expect.objectContaining({
+          recorded: true,
+          status: 'failed',
+        }),
+      }),
+    });
+
+    expect(ledgerRecorder).toHaveBeenCalledTimes(1);
+    expect(ledgerRecorder.mock.calls[0][0]).toEqual(expect.objectContaining({
+      ok: false,
+      failed_step: 'catalog_sync',
+    }));
+  });
+
+  test('runSyncRoutine can fail closed on successful runs when ledger recording fails', async () => {
+    const outDir = fs.mkdtempSync(path.join(os.tmpdir(), 'relgraph-sync-routine-'));
+    const options = parseArgs([
+      '--cutoff',
+      CUTOFF,
+      '--external-product-ids',
+      'seed_1',
+      '--out-dir',
+      outDir,
+      '--record-run-ledger',
+      '--run-ledger-fail-closed',
+    ], { now: NOW });
+    const runner = jest.fn(async () => ({ exitCode: 0, stdout: '{"ok":true}', stderr: '' }));
+    const ledgerRecorder = jest.fn(async () => {
+      throw new Error('ledger unavailable');
+    });
+
+    await expect(runSyncRoutine(options, { runner, ledgerRecorder, now: NOW })).rejects.toMatchObject({
+      code: 'RELGRAPH_RUN_LEDGER_FAILED',
+      summary: expect.objectContaining({
+        ok: true,
+        ledger: expect.objectContaining({
+          recorded: false,
+          error_message: 'ledger unavailable',
+        }),
+      }),
+    });
   });
 });
