@@ -19,19 +19,20 @@ operator checks; it does not require runtime-code changes.
 | Observability export | Money-path audit events are exported to the gateway-governance raw-log path before production pay is enabled. | Ops |
 | Rollback | `AGENT_CHECKOUT_STRICT=0` must be the documented rollback, and `submit_payment` must be enabled last. | Ops |
 
-## Current Non-Charge Evidence, 2026-06-07
+## Current Non-Charge Evidence, 2026-06-08
 
 | Gate | Evidence |
 |---|---|
-| Production strict mode | `AGENT_CHECKOUT_STRICT=1`; latest checked gateway `/version` was `b49d355b15428a43475bcacf9dfcb0f9ba17b3b2`, Railway deployment `ec56b486-63b9-4379-8a28-17625428d898`, with `AGENT_CHECKOUT_ALLOW_TEST_IDENTITY=0`. Re-check `/version` before every pay promotion because docs-only merges can advance Railway deployment ids. |
-| Production pay disabled | `AGENT_CHECKOUT_STRICT_SUBMIT_PAYMENT_ENABLED` unset/off; fake `submit_payment` returned HTTP `405 OPERATION_NOT_ALLOWED`. |
+| Production strict mode | `AGENT_CHECKOUT_STRICT=1`; the post-smoke closed deployment evidence point was PIVOTA-Agent `8d7ffaefe110ccc8bf831f4ad6881447577c3686`, Railway deployment `1427b4a4-1291-4ddd-be29-2c6cba3aa936`, with `AGENT_CHECKOUT_ALLOW_TEST_IDENTITY=0` and `AGENT_CHECKOUT_TEST_IDENTITY_WINDOW=0`. Re-check `/version` before every pay promotion because later deploys can advance Railway deployment ids. |
+| Production pay disabled | `AGENT_CHECKOUT_STRICT_SUBMIT_PAYMENT_ENABLED=0`; final non-secret flag check showed `strict_submit_payment_enabled=0`, `allow_test_identity=0`, `test_identity_window=0`. |
 | Staging pay disabled | Fake `submit_payment` returned HTTP `405 OPERATION_NOT_ALLOWED`. |
-| Strict identity | GitHub Actions run `27085273000`, job `Strict Identity Gate`, passed after the controlled test-identity window was closed. A strict money op with only the platform probe key returned HTTP `401 USER_AUTH_REQUIRED`. |
+| Strict identity | GitHub Actions run `27121136725`, job `Strict Identity Gate`, passed after the controlled test-identity window was closed. A strict money op with only the platform probe key returned HTTP `401 USER_AUTH_REQUIRED`. |
 | No-charge wire-format | GitHub Actions run `27059885995`, job `probe`, passed for read-only plus `create_order`; workflow has no paid charge input. |
-| Strict create-order canary | Green. GitHub Actions run `27085202032` used the approved short `AGENT_CHECKOUT_ALLOW_TEST_IDENTITY=1` window and pinned Shopify merchant/product `merch_efbc46b4619cfbdf` / `10064562258217` / variant `53012664942889`. It created unpaid order `ORD_926ACE78D3E014D2` from quote `q_36e210a4-507a-47af-8055-c332d357bd19` for `2824 USD`; no `submit_payment` was called. |
-| Remote MCP / confirmation route | Code-complete locally and covered by `tests/integration/safety_kernel_mount.node.test.cjs`; deployed OAuth/session UI smoke is still required before platform traffic. |
+| Strict create-order canary | Green. GitHub Actions run `27121007998` used the approved short `AGENT_CHECKOUT_ALLOW_TEST_IDENTITY=1` window and pinned Shopify merchant/product `merch_efbc46b4619cfbdf` / `10064562258217` / variant `53012664942889`. It created unpaid order `ORD_918269F734DA457B` from quote `q_c6fe0377-0813-4689-a016-b122d5d7e2c8` for `2824 USD`; no `submit_payment` was called. |
+| Remote MCP / confirmation route | Green. GitHub Actions run `27121055177` passed the deployed no-charge platform smoke: `/mcp` initialized and listed tools, write without verified identity failed closed, verified checkout-session creation worked, unsigned `/checkout/confirm` was rejected, signed `/checkout/confirm` minted a token, and `complete_checkout_session_called=false`, `submit_payment_called=false`, `paid_charge_attempted=false`. |
 | Backend health | Production backend `3bdf59d861d6026771209156684aaf86db2fa37a`, `db_ok=true`, no missing columns. |
 | Artifact redaction | Local readiness bundle `/private/tmp/pivota-readiness-test-psp-probe-20260606T104229Z` passed a value scan after redaction. |
+| Confirmation signing secret hygiene | `CONFIRMATION_SECRET` was rotated in Railway production and matched to GitHub environment `Production` secret `AGENT_CHECKOUT_CONFIRMATION_SECRET`; no secret value was printed. The first platform smoke failed with `403 CONFIRMATION_ACTION_REQUIRED`, then passed after rotation. |
 
 These gates do not authorize production pay. They authorize the current posture only: strict quote/order
 enforcement on, `submit_payment` off.
@@ -94,6 +95,9 @@ The packet must prove:
 | Confirmation action | Unsigned action is rejected; signed user action mints the token. |
 | No money ops | `complete_checkout_session`, `submit_payment`, and paid charge attempts are all false. |
 | Hygiene | Redaction scan passed, and credential rotation is either not needed or completed. |
+
+Current accepted packet: GitHub Actions run `27121055177`, artifact `platform-smoke-evidence`, with
+validation green and no paid operation attempted.
 
 ## Manual Paid-Canary Evidence
 

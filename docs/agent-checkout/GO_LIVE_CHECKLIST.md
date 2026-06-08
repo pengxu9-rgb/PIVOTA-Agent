@@ -4,13 +4,13 @@
 production safely. Supersedes the scattered status in `PROGRAM_SUMMARY.md` / `readiness-to-green.md` for
 the GO-LIVE view (those remain for architecture + scorecard-dimension detail).
 
-**One-line status (2026-06-07):** strict checkout is enabled in staging and production, production
+**One-line status (2026-06-08):** strict checkout is enabled in production, production
 `submit_payment` is still disabled, and identity/pay-disabled rails are green. The strict Shopify
-no-charge create-order canary is green for merchant `merch_efbc46b4619cfbdf`; it created only an unpaid
-order and did not call `submit_payment`. Everything left before production pay traffic is **deployed
-remote MCP/OAuth confirmation smoke with `validate_platform_smoke_evidence.mjs` green, backend PSP idempotency deploy/CI, manual Stripe test-mode paid
-canary with `b4_verify.mjs` and `validate_paid_canary_evidence.mjs` green, refund/status/webhook
-validation, replay proof, credential hygiene, and final observability export proof**.
+no-charge create-order canary and deployed remote MCP + host-only confirmation smoke are green for
+merchant `merch_efbc46b4619cfbdf`; they created only unpaid order artifacts and did not call
+`submit_payment`. Everything left before production pay traffic is **backend checkout-payment-safety,
+manual Stripe test-mode paid canary with `b4_verify.mjs` and `validate_paid_canary_evidence.mjs` green,
+refund/status/webhook validation, replay proof, credential hygiene, and final observability export proof**.
 
 **Legend:** ✅ done · 🟡 ready, waiting on an external party · ⛔ blocked by a dependency
 
@@ -56,8 +56,8 @@ Reference details: `src/server.js`, `src/serverWireIn.example.js`, and
 | C3 | Schedule the reconcile cron + provide the PSP `queryStatus` client (authoritative, null-on-unknown) | B4 |
 | C4 | Wire a compensating upstream **cancel/void** for post-create cross-check failures (orphan cleanup) | backend cancel API |
 | C5 | Derive `ctx` (`user_ref`, `acp_session_id`) from **verified auth only**, never the request body | ✅ done in strict route |
-| C6 | Mount remote MCP `/mcp` on the canonical executor with verified session identity only | ✅ code-complete locally; deployed smoke pending |
-| C7 | Mount host-only `/checkout/confirm` so confirmation tokens mint only from signed user actions | ✅ code-complete locally; deployed UI/OAuth smoke pending |
+| C6 | Mount remote MCP `/mcp` on the canonical executor with verified session identity only | ✅ deployed no-charge smoke green in GitHub Actions run `27121055177` |
+| C7 | Mount host-only `/checkout/confirm` so confirmation tokens mint only from signed user actions | ✅ deployed no-charge smoke green in GitHub Actions run `27121055177`; unsigned action rejected and signed action minted a token |
 
 ---
 
@@ -65,7 +65,7 @@ Reference details: `src/server.js`, `src/serverWireIn.example.js`, and
 | # | Step |
 |---|---|
 | D1 | Staging and production have durable gateway DB config; keep validating `commerce_kv` before each pay enablement. |
-| D2 | `CONFIRMATION_SECRET` is set in production. `PAYMENT_WEBHOOK_SECRET` and KMS/PSP rotation evidence remain pay-gate prerequisites. |
+| D2 | `CONFIRMATION_SECRET` was rotated and matched with GitHub environment `Production` secret `AGENT_CHECKOUT_CONFIRMATION_SECRET` on 2026-06-08. `PAYMENT_WEBHOOK_SECRET` and KMS/PSP rotation evidence remain pay-gate prerequisites. |
 | D3 | Export the audit sink → the `gateway-governance` raw-log path; use `GATEWAY_GOVERNANCE_RAILWAY_DEPLOYMENT` when the canary ran on the prior Railway deployment |
 | D4 | Rotate Stripe test and Shopify credentials if the pre-redaction readiness artifact bundle was shared outside the local workspace. |
 
@@ -76,10 +76,10 @@ Reference details: `src/server.js`, `src/serverWireIn.example.js`, and
 |---|---|
 | E1 | `AGENT_CHECKOUT_STRICT=1` is enabled in staging and production. |
 | E2 | Production `submit_payment` kill switch is green: fake pay probe returns HTTP `405 OPERATION_NOT_ALLOWED`. |
-| E3 | Strict identity gate is green in GitHub Actions run `27085273000`; after the controlled test-identity window closed, strict money returned `401 USER_AUTH_REQUIRED`. |
+| E3 | Strict identity gate is green in GitHub Actions run `27121136725`; after the controlled test-identity window closed, strict money returned `401 USER_AUTH_REQUIRED`. |
 | E4 | No-charge wire-format probe is green in GitHub Actions run `27059885995`. |
-| E5 | Strict create-order canary is green in GitHub Actions run `27085202032`. Pinned Shopify merchant/product/variant `merch_efbc46b4619cfbdf` / `10064562258217` / `53012664942889` produced quote `q_36e210a4-507a-47af-8055-c332d357bd19` and unpaid order `ORD_926ACE78D3E014D2` for `2824 USD`; no `submit_payment` was attempted. |
-| E6 | Remote MCP `/mcp` and host-only `/checkout/confirm` are locally covered, but still need deployed OAuth/session UI smoke before platform traffic. |
+| E5 | Strict create-order canary is green in GitHub Actions run `27121007998`. Pinned Shopify merchant/product/variant `merch_efbc46b4619cfbdf` / `10064562258217` / `53012664942889` produced quote `q_c6fe0377-0813-4689-a016-b122d5d7e2c8` and unpaid order `ORD_918269F734DA457B` for `2824 USD`; no `submit_payment` was attempted. |
+| E6 | Remote MCP `/mcp` and host-only `/checkout/confirm` deployed smoke is green in GitHub Actions run `27121055177`; `complete_checkout_session_called=false`, `submit_payment_called=false`, and `paid_charge_attempted=false`. |
 | E7 | Enable `submit_payment` **LAST**, only after manual paid canary, refund cap, webhook/status sync, replay, and observability export are green. |
 
 ---
@@ -90,10 +90,10 @@ B (backend probe)  ──►  D (ops/secrets)  ──►  E (staged rollout)
    confirms units/idempotency/webhook facts       secrets + DB + raw logs       pay enabled only
                                                   after B1+B2+B3
 ```
-Gateway strict quote/order wire-in is no longer the long pole. Action now: keep `submit_payment` disabled,
-deploy and smoke the trusted remote MCP + confirmation UI/OAuth identity path, merge/deploy backend PSP
-idempotency hardening, rotate any exposed test credentials, complete the manual Stripe test-mode paid
-canary, then validate replay/refund/status/webhook behavior before enabling production pay.
+Gateway strict quote/order wire-in and deployed no-charge platform smoke are no longer the long pole.
+Action now: keep `submit_payment` disabled, complete backend checkout-payment-safety, rotate any exposed
+test credentials, complete the manual Stripe test-mode paid canary, then validate replay/refund/status/
+webhook behavior and observability export before enabling production pay.
 
 ## Safe-flip order (when B is green)
 1. Keep production and staging `AGENT_CHECKOUT_STRICT=1`.
@@ -121,4 +121,4 @@ namespaces are kernel-only).
 - **R3:** `submit_payment` against the real backend MUST stay off until the manual paid canary, replay, refund, status/webhook, and observability gates are green.
 
 ## Detail docs
-Contract `safety-kernel-contract.md` · tools `tool-schema.v2.json` · wire-in `server-mount-and-durable-store.md` + `src/serverWireIn.example.js` · payments `payment-flow-remodel.md` · probe `PROBE_RUNBOOK.md` + `PROBE_wire_format_confirmation.md` · rollout evidence `STRICT_PROD_ROLLOUT_EVIDENCE_20260606.md` · rollout/observability `ROLLOUT_OBSERVABILITY_GATES.md` · money `FINAL_REVIEW_MoneyUnits.md` + `_Round2.md` · staging `staging-validation-runbook.md`.
+Contract `safety-kernel-contract.md` · tools `tool-schema.v2.json` · wire-in `server-mount-and-durable-store.md` + `src/serverWireIn.example.js` · payments `payment-flow-remodel.md` · probe `PROBE_RUNBOOK.md` + `PROBE_wire_format_confirmation.md` · rollout evidence `STRICT_PROD_ROLLOUT_EVIDENCE_20260606.md` + `STRICT_PROD_PLATFORM_SMOKE_EVIDENCE_20260608.md` · rollout/observability `ROLLOUT_OBSERVABILITY_GATES.md` · money `FINAL_REVIEW_MoneyUnits.md` + `_Round2.md` · staging `staging-validation-runbook.md`.
