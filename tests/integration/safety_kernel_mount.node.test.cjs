@@ -62,6 +62,19 @@ describe('strict Safety Kernel mount on /agent/shop/v1/invoke', () => {
     return JSON.parse(res.body.result.content[0].text);
   }
 
+  async function captureAuditRecords(fn) {
+    const audits = [];
+    const originalSink = globalThis.__PIVOTA_AGENT_CHECKOUT_AUDIT_TEST_SINK;
+    globalThis.__PIVOTA_AGENT_CHECKOUT_AUDIT_TEST_SINK = (entry) => audits.push(entry);
+    try {
+      const result = await fn();
+      return { result, audits };
+    } finally {
+      if (originalSink) globalThis.__PIVOTA_AGENT_CHECKOUT_AUDIT_TEST_SINK = originalSink;
+      else delete globalThis.__PIVOTA_AGENT_CHECKOUT_AUDIT_TEST_SINK;
+    }
+  }
+
   async function previewAndCreateOrder() {
     nock(API_BASE)
       .post('/agent/v2/quotes/preview', (body) => {
@@ -176,26 +189,31 @@ describe('strict Safety Kernel mount on /agent/shop/v1/invoke', () => {
   }
 
   it('rejects submit_payment in strict mode until the dedicated flag is enabled', async () => {
-    const res = await strictHeaders(
-      request(app).post('/agent/shop/v1/invoke'),
-    )
-      .send({
-        operation: 'submit_payment',
-        payload: {
-          idempotency_key: 'idem_pay_strict_disabled',
-          confirmation_token: 'confirm_disabled',
-          payment: {
-            order_id: 'ORD_STRICT',
-            expected_amount: 2900,
-            currency: 'USD',
-            payment_method_hint: 'card',
+    const { result: res, audits } = await captureAuditRecords(async () => {
+      return strictHeaders(
+        request(app).post('/agent/shop/v1/invoke'),
+      )
+        .send({
+          operation: 'submit_payment',
+          payload: {
+            idempotency_key: 'idem_pay_strict_disabled',
+            confirmation_token: 'confirm_disabled',
+            payment: {
+              order_id: 'ORD_STRICT',
+              expected_amount: 2900,
+              currency: 'USD',
+              payment_method_hint: 'card',
+            },
           },
-        },
-      });
+        });
+    });
 
     assert.equal(res.status, 405);
     assert.equal(res.body.code, 'OPERATION_NOT_ALLOWED');
     assert.match(res.body.message, /submit_payment is disabled/);
+    assert.ok(
+      audits.some((entry) => entry.event === 'operation_blocked' && entry.operation === 'submit_payment'),
+    );
     assert.equal(nock.isDone(), true);
   });
 
@@ -394,21 +412,26 @@ describe('strict Safety Kernel mount on /agent/shop/v1/invoke', () => {
   });
 
   it('rejects strict money operations without trusted user/session identity from auth context', async () => {
-    const res = await request(app)
-      .post('/agent/shop/v1/invoke')
-      .send({
-        operation: 'preview_quote',
-        payload: {
-          acp_state: { acp_session_id: 'body_controlled_session' },
-          quote: {
-            merchant_id: 'm_strict',
-            items: [{ product_id: 'p_strict', quantity: 1 }],
+    const { result: res, audits } = await captureAuditRecords(async () => {
+      return request(app)
+        .post('/agent/shop/v1/invoke')
+        .send({
+          operation: 'preview_quote',
+          payload: {
+            acp_state: { acp_session_id: 'body_controlled_session' },
+            quote: {
+              merchant_id: 'm_strict',
+              items: [{ product_id: 'p_strict', quantity: 1 }],
+            },
           },
-        },
-      });
+        });
+    });
 
     assert.equal(res.status, 401);
     assert.equal(res.body.code, 'USER_AUTH_REQUIRED');
+    assert.ok(
+      audits.some((entry) => entry.event === 'user_auth_blocked' && entry.operation === 'preview_quote'),
+    );
     assert.equal(nock.isDone(), true);
   });
 
@@ -475,16 +498,21 @@ describe('strict Safety Kernel mount on /agent/shop/v1/invoke', () => {
   });
 
   it('blocks legacy confirm_payment in strict mode', async () => {
-    const res = await strictHeaders(
-      request(app).post('/agent/shop/v1/invoke'),
-    )
-      .send({
-        operation: 'confirm_payment',
-        payload: { payment: { order_id: 'ORD_STRICT' } },
-      });
+    const { result: res, audits } = await captureAuditRecords(async () => {
+      return strictHeaders(
+        request(app).post('/agent/shop/v1/invoke'),
+      )
+        .send({
+          operation: 'confirm_payment',
+          payload: { payment: { order_id: 'ORD_STRICT' } },
+        });
+    });
 
     assert.equal(res.status, 405);
     assert.equal(res.body.code, 'OPERATION_NOT_ALLOWED');
+    assert.ok(
+      audits.some((entry) => entry.event === 'operation_blocked' && entry.operation === 'confirm_payment'),
+    );
     assert.equal(nock.isDone(), true);
   });
 });

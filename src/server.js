@@ -27609,6 +27609,13 @@ async function throwCommerceKernelUpstreamError(operation, err) {
 }
 
 function recordCommerceKernelAudit(entry) {
+  try {
+    if (typeof globalThis.__PIVOTA_AGENT_CHECKOUT_AUDIT_TEST_SINK === 'function') {
+      globalThis.__PIVOTA_AGENT_CHECKOUT_AUDIT_TEST_SINK(entry);
+    }
+  } catch (_) {
+    // Test-only sink failures must never affect checkout flow or production logging.
+  }
   logger.info(
     {
       event: 'agent_checkout_audit',
@@ -27966,6 +27973,14 @@ function registerCommerceStrictInvokeRoute(path, clientChannel) {
     }
 
     if (operation === 'submit_payment' && !isAgentCheckoutStrictSubmitPaymentEnabled()) {
+      recordCommerceKernelAudit({
+        event: 'operation_blocked',
+        operation,
+        detail: {
+          code: 'OPERATION_NOT_ALLOWED',
+          reason: 'strict_submit_payment_disabled',
+        },
+      });
       return res.status(405).json(commerceKernelErrorBody({
         code: 'OPERATION_NOT_ALLOWED',
         message: 'submit_payment is disabled in strict checkout mode.',
@@ -27978,6 +27993,14 @@ function registerCommerceStrictInvokeRoute(path, clientChannel) {
       return INVOKE_AUTH_CONTEXT.run(buildExternalInvokeContext(req), async () => {
         try {
           if (operation === 'confirm_payment') {
+            recordCommerceKernelAudit({
+              event: 'operation_blocked',
+              operation,
+              detail: {
+                code: 'OPERATION_NOT_ALLOWED',
+                reason: 'legacy_confirm_payment_disabled',
+              },
+            });
             return res.status(405).json(commerceKernelErrorBody({
               code: 'OPERATION_NOT_ALLOWED',
               message: 'confirm_payment is disabled in strict checkout mode.',
@@ -27988,6 +28011,15 @@ function registerCommerceStrictInvokeRoute(path, clientChannel) {
 
           const ctx = deriveStrictCommerceCtx(req);
           if (!ctx.user_ref || !ctx.acp_session_id) {
+            recordCommerceKernelAudit({
+              event: 'user_auth_blocked',
+              operation,
+              user_ref: ctx.user_ref,
+              detail: {
+                code: 'USER_AUTH_REQUIRED',
+                reason: !ctx.user_ref ? 'missing_verified_user' : 'missing_verified_session',
+              },
+            });
             return res.status(401).json(commerceKernelErrorBody({
               code: 'USER_AUTH_REQUIRED',
               message: 'Verified user and session identity are required for checkout.',
