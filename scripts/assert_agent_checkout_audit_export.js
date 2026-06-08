@@ -92,28 +92,36 @@ function listValues(args, key) {
 function main() {
   const args = parseArgs(process.argv.slice(2));
   const inputPath = path.resolve(requireValue(args, 'input'));
-  const quoteId = requireValue(args, 'quote-id');
-  const orderId = requireValue(args, 'order-id');
-  const userRef = requireValue(args, 'user-ref');
   const idempotencyKey = String(args['idempotency-key'] || '').trim();
   const requiredEvents = listValues(args, 'require-event');
+  const hasQuoteOrderAssertion = Boolean(args['quote-id'] || args['order-id'] || args['user-ref']);
+  if (!hasQuoteOrderAssertion && requiredEvents.length === 0) {
+    throw new Error('--quote-id/--order-id/--user-ref or --require-event is required');
+  }
+  const quoteId = hasQuoteOrderAssertion ? requireValue(args, 'quote-id') : '';
+  const orderId = hasQuoteOrderAssertion ? requireValue(args, 'order-id') : '';
+  const userRef = hasQuoteOrderAssertion ? requireValue(args, 'user-ref') : '';
 
   const audits = collectAuditEvents(inputPath);
-  const quoteEvent = audits.find(
-    (audit) =>
-      audit.event === 'quote_issued' &&
-      audit.operation === 'preview_quote' &&
-      audit.quote_id === quoteId &&
-      audit.user_ref === userRef,
-  );
-  const orderEvent = audits.find(
-    (audit) =>
-      audit.event === 'order_created' &&
-      audit.operation === 'create_order' &&
-      audit.order_id === orderId &&
-      audit.user_ref === userRef &&
-      (!idempotencyKey || audit.idempotency_key === idempotencyKey),
-  );
+  const quoteEvent = hasQuoteOrderAssertion
+    ? audits.find(
+      (audit) =>
+        audit.event === 'quote_issued' &&
+        audit.operation === 'preview_quote' &&
+        audit.quote_id === quoteId &&
+        audit.user_ref === userRef,
+    )
+    : null;
+  const orderEvent = hasQuoteOrderAssertion
+    ? audits.find(
+      (audit) =>
+        audit.event === 'order_created' &&
+        audit.operation === 'create_order' &&
+        audit.order_id === orderId &&
+        audit.user_ref === userRef &&
+        (!idempotencyKey || audit.idempotency_key === idempotencyKey),
+    )
+    : null;
   const sensitive_hits = assertNoSensitiveAuditFields(audits);
   const required_event_matches = Object.fromEntries(
     requiredEvents.map((event) => [event, audits.some((audit) => audit.event === event)]),
@@ -129,8 +137,8 @@ function main() {
 
   process.stdout.write(`${JSON.stringify(payload, null, 2)}\n`);
 
-  if (!quoteEvent) throw new Error('missing expected quote_issued audit event');
-  if (!orderEvent) throw new Error('missing expected order_created audit event');
+  if (hasQuoteOrderAssertion && !quoteEvent) throw new Error('missing expected quote_issued audit event');
+  if (hasQuoteOrderAssertion && !orderEvent) throw new Error('missing expected order_created audit event');
   const missingRequiredEvents = requiredEvents.filter((event) => !required_event_matches[event]);
   if (missingRequiredEvents.length > 0) {
     throw new Error(`missing required audit event(s): ${missingRequiredEvents.join(', ')}`);

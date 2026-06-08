@@ -141,6 +141,46 @@ describe('agent checkout audit export assertion script', () => {
     });
   });
 
+  test('passes for blocked-event exports without quote/order identifiers', () => {
+    const repoRoot = path.join(__dirname, '..');
+    const outDir = fs.mkdtempSync(path.join(os.tmpdir(), 'agent-checkout-audit-'));
+    const inputPath = path.join(outDir, 'raw.ndjson');
+    const scriptPath = path.join(repoRoot, 'scripts', 'assert_agent_checkout_audit_export.js');
+
+    fs.writeFileSync(
+      inputPath,
+      JSON.stringify({
+        event: 'agent_checkout_audit',
+        audit: {
+          event: 'user_auth_blocked',
+          operation: 'preview_quote',
+          detail: {
+            code: 'USER_AUTH_REQUIRED',
+            reason: 'missing_verified_user',
+          },
+        },
+      }),
+    );
+
+    const stdout = execFileSync(
+      process.execPath,
+      [
+        scriptPath,
+        '--input',
+        inputPath,
+        '--require-event',
+        'user_auth_blocked',
+      ],
+      { cwd: repoRoot, encoding: 'utf8' },
+    );
+
+    const payload = JSON.parse(stdout);
+    expect(payload.quote_issued_found).toBe(false);
+    expect(payload.order_created_found).toBe(false);
+    expect(payload.required_event_matches).toEqual({ user_auth_blocked: true });
+    expect(payload.sensitive_hits).toEqual([]);
+  });
+
   test('fails when a required audit event is missing', () => {
     const repoRoot = path.join(__dirname, '..');
     const outDir = fs.mkdtempSync(path.join(os.tmpdir(), 'agent-checkout-audit-'));
