@@ -24,6 +24,7 @@ Default behavior:
 - Keeps the production gates from `scripts/run-relationship-graph-sync-routine.js`:
   DB lock, stale lock recovery, serving suppression thresholds, and critical
   reason gating.
+- Records each cron run in `relationship_graph_routine_runs` by default.
 - Allows empty selection/build by default so no-op days do not fail the cron.
 
 ## Required Variables
@@ -37,6 +38,9 @@ Useful tuning variables:
 - `RELGRAPH_SYNC_LIMIT=200`
 - `RELGRAPH_SYNC_REVIEW_LIMIT=250`
 - `RELGRAPH_SYNC_ALLOW_EMPTY=true`
+- `RELGRAPH_SYNC_RUN_LEDGER_ENABLED=true`
+- `RELGRAPH_SYNC_RUN_TRIGGER=railway_cron`
+- `RELGRAPH_SYNC_RUN_LEDGER_FAIL_CLOSED=false`
 
 Write mode stays disabled unless all of these are set deliberately:
 
@@ -46,6 +50,22 @@ Write mode stays disabled unless all of these are set deliberately:
 
 `RELGRAPH_SYNC_APPLY_SYNC=true` is intentionally rejected for the cron runner;
 selector mode is read-only and does not mutate catalog rows.
+
+## Status Checks
+
+Use the ledger report for read-only operator checks after manual probes and
+scheduled cron runs:
+
+```bash
+npm run relgraph:run-ledger -- --all-markets --limit 5
+npm run relgraph:run-ledger -- --trigger railway_cron --max-age-minutes 180 --fail-on-empty --fail-on-latest-failed --json
+```
+
+The second command exits non-zero if no matching run exists, the latest run did
+not pass, or the latest matching run is older than the configured freshness
+window. For local checks against Railway production, run it through the linked
+service env and point `DATABASE_URL` at the public Postgres URL inside the
+process environment.
 
 ## Upstream Assumptions
 
