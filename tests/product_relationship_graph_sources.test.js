@@ -2,6 +2,7 @@ const {
   augmentCandidatesWithTransitiveRecall,
   buildCandidatesByAnchorFromSources,
   loadApprovedLiveExternalSeedAnchors,
+  loadAffectedProductAnchorCandidates,
   loadExternalProductSeedCandidates,
   loadIngredientKbCandidates,
   loadLegacyDupeKbRows,
@@ -278,13 +279,17 @@ describe('product relationship graph source loaders', () => {
     const captureFn = jest.fn(async (sql) => { sqlSeen.push(String(sql)); return { rows: [] }; });
 
     await loadExternalProductSeedCandidates({ queryFn: captureFn, market: 'US', limit: 5 });
+    await loadAffectedProductAnchorCandidates({ queryFn: captureFn, refs: ['ext_barrier_serum'], market: 'US', limit: 5 });
     await loadProductsCacheCandidates({ queryFn: captureFn, limit: 5 });
 
-    const seedSql = sqlSeen.find((s) => s.includes('FROM external_product_seeds')) || '';
+    const seedSql = sqlSeen.find((s) => s.includes('FROM external_product_seeds') && !s.includes('FROM external_product_seeds eps')) || '';
+    const affectedSeedSql = sqlSeen.find((s) => s.includes('FROM external_product_seeds eps')) || '';
     const cacheSql = sqlSeen.find((s) => s.includes('FROM products_cache')) || '';
 
     // external_product_seeds has no `category` column — must use seed_data JSONB instead.
     expect(seedSql).not.toMatch(/\bcategory\b/);
+    expect(affectedSeedSql).not.toMatch(/\beps\.category\b/);
+    expect(affectedSeedSql).toContain("eps.seed_data->>'category'");
     // products_cache has no `updated_at` column — must use cached_at / last_accessed_at instead.
     expect(cacheSql).not.toMatch(/\bupdated_at\b/);
   });
