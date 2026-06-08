@@ -56,7 +56,39 @@ describe('run-relationship-graph-sync-routine', () => {
       '/tmp/affected-products.json',
       '--external-product-ids',
       'seed_1',
-    ], { now: NOW })).toThrow(/cannot be combined/);
+    ], { now: NOW })).toThrow(/mutually exclusive/);
+  });
+
+  test('parseArgs accepts read-only selector mode for scheduled routines', () => {
+    const options = parseArgs([
+      '--cutoff',
+      CUTOFF,
+      '--select-hours',
+      '24',
+      '--select-limit',
+      '25',
+      '--allow-empty-selection',
+      '--allow-empty-build',
+    ], { now: NOW, cwd: '/tmp/pivota' });
+
+    expect(options.usesSelector).toBe(true);
+    expect(options.selectUpdatedSince).toBe('2026-06-07T00:00:00.000Z');
+    expect(options.selectSources).toEqual(['catalog_products', 'external_product_seeds']);
+    expect(options.selectLimit).toBe(25);
+    expect(options.allowEmptySelection).toBe(true);
+    expect(options.allowEmptyBuild).toBe(true);
+  });
+
+  test('parseArgs rejects selector mode combined with catalog sync apply', () => {
+    expect(() => parseArgs([
+      '--cutoff',
+      CUTOFF,
+      '--select-updated-since',
+      '2026-06-07T00:00:00Z',
+      '--apply-sync',
+      '--confirm',
+      WRAPPER_CONFIRM_TOKEN,
+    ], { now: NOW })).toThrow(/apply-sync requires explicit external product ID inputs/);
   });
 
   test('write modes require wrapper confirmation and block graph writes after dry-run sync', () => {
@@ -112,6 +144,41 @@ describe('run-relationship-graph-sync-routine', () => {
     expect(routineArgs).toContain('--cutoff 2026-06-08T00:00:00Z');
     expect(routineArgs).not.toContain('--apply-build');
     expect(routineArgs).not.toContain('--confirm');
+  });
+
+  test('buildSyncRoutineSteps wires selector before the guarded routine', () => {
+    const options = parseArgs([
+      '--cutoff',
+      CUTOFF,
+      '--select-updated-since',
+      '2026-06-07T00:00:00Z',
+      '--select-sources',
+      'catalog_products',
+      '--select-limit',
+      '50',
+      '--allow-empty-selection',
+      '--allow-empty-build',
+      '--out-dir',
+      '/tmp/relgraph-sync-routine',
+    ], { now: NOW });
+
+    const { steps, artifacts } = buildSyncRoutineSteps(options);
+
+    expect(steps.map((step) => step.id)).toEqual(['affected_product_selector', 'relationship_graph_routine']);
+    expect(artifacts.affected_product_selector).toBe('/tmp/relgraph-sync-routine/affected-products.json');
+    expect(artifacts.catalog_sync).toBeNull();
+
+    const selectorArgs = steps[0].args.join(' ');
+    expect(selectorArgs).toContain('select-relationship-graph-affected-products.js');
+    expect(selectorArgs).toContain('--updated-since 2026-06-07T00:00:00Z');
+    expect(selectorArgs).toContain('--sources catalog_products');
+    expect(selectorArgs).toContain('--limit 50');
+    expect(selectorArgs).toContain('--allow-empty-selection');
+
+    const routineArgs = steps[1].args.join(' ');
+    expect(routineArgs).toContain('--affected-products-file /tmp/relgraph-sync-routine/affected-products.json');
+    expect(routineArgs).toContain('--allow-empty-build');
+    expect(routineArgs).toContain('--db-lock');
   });
 
   test('existing affected manifest skips sync and passes routine apply confirmation', () => {
