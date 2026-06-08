@@ -17,6 +17,7 @@ const REQUIRED_DOC_MARKERS = [
   'No automated paid charge',
   'Strict create-order canary',
   'Remote MCP and confirmation UI smoke',
+  'No-cost operator release evidence',
   'Observability export',
   'Manual Paid-Canary Evidence',
   'B4 status verifier',
@@ -87,10 +88,15 @@ function main() {
   const probeWorkflow = read('.github/workflows/agent-checkout-wire-format-probe.yml');
   const platformSmokeWorkflow = read('.github/workflows/agent-checkout-platform-smoke.yml');
   const rolloutDoc = read('docs/agent-checkout/ROLLOUT_OBSERVABILITY_GATES.md');
+  const noCostGateDoc = read('docs/agent-checkout/NO_COST_OPERATOR_RELEASE_GATE.md');
 
   for (const jobName of REQUIRED_MONEY_PATH_JOBS) {
     assertJobExists(moneyPathWorkflow, jobName);
   }
+  assert(/workflow_dispatch:/.test(moneyPathWorkflow),
+    'money-path workflow must remain manually dispatchable');
+  assert(!/pull_request:|push:|schedule:/.test(moneyPathWorkflow),
+    'money-path workflow must not auto-run on pull_request, push, or schedule in the no-cost release process');
 
   assert(/needs:\s*\[[^\]]*safety-kernel[^\]]*mcp-adapters[^\]]*merchant-connectors[^\]]*\]/m.test(moneyPathWorkflow),
     'test-count-floor must depend on the split money-path suite jobs');
@@ -98,6 +104,12 @@ function main() {
     'test-count-floor must read reports from prior jobs');
   assert(/checkout-payment-safety/.test(rolloutDoc),
     'rollout doc must mention the backend checkout-payment-safety lane');
+  assert(/validate_operator_release_evidence\.mjs/.test(rolloutDoc),
+    'rollout doc must point no-cost backend release evidence at the operator validator script');
+  assert(/validate_operator_release_evidence\.mjs/.test(noCostGateDoc),
+    'no-cost operator release gate doc must point to the operator validator script');
+  assert(/production_pay_authorized["']?\s*:\s*false/.test(noCostGateDoc),
+    'no-cost operator release gate doc must require production_pay_authorized=false');
   assert(/validate_paid_canary_evidence\.mjs/.test(rolloutDoc),
     'rollout doc must point manual paid evidence at the validator script');
   assert(/validate_platform_smoke_evidence\.mjs/.test(rolloutDoc),
@@ -108,6 +120,8 @@ function main() {
     'Gateway strict-route workflow must run the paid-canary evidence validator test');
   assert(/tests\/b4_verify_script\.test\.js/.test(moneyPathWorkflow),
     'Gateway strict-route workflow must run the status-only B4 verifier test');
+  assert(/tests\/operator_release_evidence_script\.test\.js/.test(moneyPathWorkflow),
+    'Gateway strict-route workflow must run the no-cost operator release evidence validator test');
   assert(/tests\/platform_smoke_evidence_script\.test\.js/.test(moneyPathWorkflow),
     'Gateway strict-route workflow must run the platform smoke evidence validator test');
   assert(/tests\/remote_mcp_smoke_script\.test\.js/.test(moneyPathWorkflow),
@@ -137,7 +151,7 @@ function main() {
     assert(rolloutDoc.includes(marker), `Missing rollout doc marker: ${marker}`);
   }
 
-  console.log('ok agent-checkout rollout/observability gates are documented and CI-addressable');
+  console.log('ok agent-checkout rollout/observability gates are documented and operator-addressable');
 }
 
 try {
