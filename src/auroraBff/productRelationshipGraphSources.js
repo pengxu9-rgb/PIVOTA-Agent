@@ -516,6 +516,23 @@ function normalizeProductCandidateSnapshot(input = {}, options = {}) {
       firstVariant.price ??
       firstVariant.price_amount,
   );
+  const availability = pickFirstString(
+    row.availability,
+    row.availability_status,
+    row.availabilityStatus,
+    product.availability,
+    product.availability_status,
+    product.availabilityStatus,
+    seedData.availability,
+    seedData.availability_status,
+    seedData.availabilityStatus,
+    snapshot.availability,
+    snapshot.availability_status,
+    snapshot.availabilityStatus,
+    firstVariant.availability,
+    firstVariant.availability_status,
+    firstVariant.availabilityStatus,
+  );
   const url = pickFirstString(
     row.canonical_url,
     row.destination_url,
@@ -638,6 +655,7 @@ function normalizeProductCandidateSnapshot(input = {}, options = {}) {
     category,
     category_taxonomy: categoryTaxonomy,
     price,
+    ...(availability ? { availability } : {}),
     ...(url ? { url } : {}),
     ...(description ? { description } : {}),
     ...(ingredientText ? { ingredient_text: ingredientText } : {}),
@@ -974,6 +992,7 @@ async function loadExternalProductSeedCandidates({ queryFn, limit = DEFAULT_SOUR
         external_product_id,
         attached_product_key,
         title,
+        availability,
         price_amount,
         price_currency,
         market,

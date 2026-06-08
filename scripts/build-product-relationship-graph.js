@@ -35,6 +35,15 @@ const PLACEHOLDER_EVIDENCE_PATTERNS = [
   /\bplaceholder\b/i,
 ];
 const PLACEHOLDER_EVIDENCE_RELATION_TYPES = new Set(['dupe', 'competitive_alternative', 'niche_specialist']);
+const UNAVAILABLE_CANDIDATE_RELATION_TYPES = new Set(['dupe', 'competitive_alternative', 'niche_specialist']);
+const UNAVAILABLE_EVIDENCE_PATTERNS = [
+  /\bout\s+of\s+stock\b/i,
+  /\bsold\s+out\b/i,
+  /\bunavailable\b/i,
+  /\bnot\s+available\b/i,
+  /\bno\s+longer\s+available\b/i,
+  /\bdiscontinued\b/i,
+];
 
 // Lever-2: order the review-pending report highest-predicted-approval first so
 // reviewers work the highest-yield candidates first. Pure: attaches
@@ -114,11 +123,15 @@ function classifyEdgeForPrefilter({ edge, defaultLabelState, anchorAttrs, candid
   if (defaultLabelState !== 'generated') {
     return { label_state: defaultLabelState, prefilter_reasons: null, bucket: null };
   }
-  const evidenceReasons = placeholderEvidencePrefilterReasons(edge);
-  if (evidenceReasons.length) {
+  const deterministicReasons = [
+    ...sameProductPrefilterReasons(edge),
+    ...candidateAvailabilityPrefilterReasons(edge),
+    ...placeholderEvidencePrefilterReasons(edge),
+  ];
+  if (deterministicReasons.length) {
     return {
       label_state: 'prefilter_rejected',
-      prefilter_reasons: evidenceReasons,
+      prefilter_reasons: deterministicReasons,
       bucket: 'rejected',
     };
   }
@@ -263,6 +276,19 @@ function normalizeLower(value, max = 512) {
   return normalizeString(value, max).toLowerCase();
 }
 
+function normalizeScalarString(value, max = 512) {
+  if (value == null || (typeof value === 'object' && !Array.isArray(value))) return '';
+  return normalizeString(value, max);
+}
+
+function pickFirstScalarString(...values) {
+  for (const value of values) {
+    const text = normalizeScalarString(value);
+    if (text) return text;
+  }
+  return '';
+}
+
 function snapshotEvidenceText(snapshot = {}) {
   if (!snapshot || typeof snapshot !== 'object' || Array.isArray(snapshot)) return '';
   return [
@@ -289,6 +315,168 @@ function placeholderEvidencePrefilterReasons(edge = {}) {
 
 function stripRelationshipPrefix(value) {
   return normalizeString(value, 512).replace(/^[a-z][a-z0-9_+-]*:/i, '');
+}
+
+function normalizeIdentityText(value, max = 512) {
+  return normalizeScalarString(value, max)
+    .normalize('NFKD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
+    .replace(/&/g, ' and ')
+    .replace(/[^a-z0-9]+/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function normalizeIdentityToken(value, minLength = 6) {
+  const raw = normalizeScalarString(value, 512);
+  const text = raw ? normalizeIdentityText(stripRelationshipPrefix(raw), 512) : '';
+  if (!text || text.length < minLength) return '';
+  return text;
+}
+
+function normalizeRefIdentityToken(value) {
+  return normalizeIdentityToken(value, 4);
+}
+
+function snapshotIdentityTokens(snapshot = {}, ref = '') {
+  if (!snapshot || typeof snapshot !== 'object' || Array.isArray(snapshot)) return new Set();
+  return new Set([
+    ref,
+    snapshot.product_ref,
+    snapshot.productRef,
+    snapshot.product_id,
+    snapshot.productId,
+    snapshot.external_product_id,
+    snapshot.externalProductId,
+    snapshot.source_product_id,
+    snapshot.sourceProductId,
+    snapshot.pivota_signature_id,
+    snapshot.pivotaSignatureId,
+    snapshot.sig_id,
+    snapshot.sigId,
+    snapshot.sku_id,
+    snapshot.skuId,
+    snapshot.content_key,
+    snapshot.contentKey,
+    snapshot.product_key,
+    snapshot.productKey,
+    snapshot.id,
+    snapshot.url,
+    snapshot.canonical_url,
+    snapshot.canonicalUrl,
+    snapshot.destination_url,
+    snapshot.destinationUrl,
+    snapshot.pdp_url,
+    snapshot.pdpUrl,
+  ].map((value) => normalizeIdentityToken(value)).filter(Boolean));
+}
+
+function hasSharedIdentityToken(left, right) {
+  if (!left.size || !right.size) return false;
+  for (const token of left) {
+    if (right.has(token)) return true;
+  }
+  return false;
+}
+
+function normalizedSnapshotBrand(snapshot = {}) {
+  return normalizeIdentityText(pickFirstScalarString(
+    snapshot.brand,
+    snapshot.brand_name,
+    snapshot.brandName,
+    snapshot.vendor,
+    snapshot.brand_id,
+    snapshot.brandId,
+  ), 160);
+}
+
+function normalizedSnapshotTitle(snapshot = {}) {
+  return normalizeIdentityText(pickFirstScalarString(
+    snapshot.name,
+    snapshot.title,
+    snapshot.display_name,
+    snapshot.displayName,
+    snapshot.product_name,
+    snapshot.productName,
+  ), 512);
+}
+
+function normalizedSnapshotVariant(snapshot = {}) {
+  return normalizeIdentityText(pickFirstScalarString(
+    snapshot.variant_title,
+    snapshot.variantTitle,
+    snapshot.variant_detail_label,
+    snapshot.variantDetailLabel,
+    snapshot.sku_title,
+    snapshot.skuTitle,
+  ), 256);
+}
+
+function sameProductPrefilterReasons(edge = {}) {
+  const anchorRef = normalizeLower(edge.anchor_ref, 512);
+  const candidateRef = normalizeLower(edge.candidate_product_ref, 512);
+  if (anchorRef && candidateRef && anchorRef === candidateRef) return ['same_product_identity'];
+
+  const anchorBareRef = normalizeRefIdentityToken(edge.anchor_ref);
+  const candidateBareRef = normalizeRefIdentityToken(edge.candidate_product_ref);
+  if (anchorBareRef && candidateBareRef && anchorBareRef === candidateBareRef) {
+    return ['same_product_identity'];
+  }
+
+  const anchorSnapshot = edge.anchor_snapshot || {};
+  const candidateSnapshot = edge.candidate_snapshot || {};
+  if (hasSharedIdentityToken(
+    snapshotIdentityTokens(anchorSnapshot, edge.anchor_ref),
+    snapshotIdentityTokens(candidateSnapshot, edge.candidate_product_ref),
+  )) {
+    return ['same_product_identity'];
+  }
+
+  const anchorBrand = normalizedSnapshotBrand(anchorSnapshot);
+  const candidateBrand = normalizedSnapshotBrand(candidateSnapshot);
+  const anchorTitle = normalizedSnapshotTitle(anchorSnapshot);
+  const candidateTitle = normalizedSnapshotTitle(candidateSnapshot);
+  const anchorVariant = normalizedSnapshotVariant(anchorSnapshot);
+  const candidateVariant = normalizedSnapshotVariant(candidateSnapshot);
+  const variantsConflict = Boolean(anchorVariant && candidateVariant && anchorVariant !== candidateVariant);
+  if (
+    anchorBrand &&
+    candidateBrand &&
+    anchorBrand === candidateBrand &&
+    anchorTitle &&
+    candidateTitle &&
+    anchorTitle === candidateTitle &&
+    anchorTitle.length >= 8 &&
+    !variantsConflict
+  ) {
+    return ['same_product_identity'];
+  }
+  return [];
+}
+
+function candidateAvailabilityText(edge = {}) {
+  const snapshot = edge.candidate_snapshot || {};
+  if (!snapshot || typeof snapshot !== 'object' || Array.isArray(snapshot)) return '';
+  return [
+    snapshot.availability,
+    snapshot.availability_status,
+    snapshot.availabilityStatus,
+    snapshot.stock_status,
+    snapshot.stockStatus,
+    snapshot.inventory_status,
+    snapshot.inventoryStatus,
+  ].map((value) => normalizeScalarString(value, 512)).filter(Boolean).join(' ');
+}
+
+function hasUnavailableEvidence(value) {
+  const text = normalizeLower(value, 512).replace(/[_-]+/g, ' ').replace(/\s+/g, ' ').trim();
+  return Boolean(text) && UNAVAILABLE_EVIDENCE_PATTERNS.some((pattern) => pattern.test(text));
+}
+
+function candidateAvailabilityPrefilterReasons(edge = {}) {
+  if (!UNAVAILABLE_CANDIDATE_RELATION_TYPES.has(normalizeLower(edge.relation_type, 80))) return [];
+  return hasUnavailableEvidence(candidateAvailabilityText(edge)) ? ['candidate_unavailable'] : [];
 }
 
 function affectedRefKeys(refs = []) {

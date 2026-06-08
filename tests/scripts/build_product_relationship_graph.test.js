@@ -235,6 +235,88 @@ describe('classifyEdgeForPrefilter — Phase B gate routing', () => {
     expect(r).toEqual({ label_state: 'generated', prefilter_reasons: null, bucket: 'passed' });
   });
 
+  test('same product identity rejects generated links before review', () => {
+    const r = classifyEdgeForPrefilter({
+      edge: edge({
+        relation_type: 'related_product',
+        anchor_ref: 'product:ordinary-niacinamide',
+        candidate_product_ref: 'external:ordinary-niacinamide-canonical',
+        anchor_snapshot: {
+          brand: 'The Ordinary',
+          name: 'Niacinamide 10% + Zinc 1%',
+        },
+        candidate_snapshot: {
+          brand: 'The Ordinary',
+          title: 'Niacinamide 10% + Zinc 1%',
+        },
+      }),
+      defaultLabelState: 'generated',
+      anchorAttrs: undefined,
+      candidateAttrs: undefined,
+    });
+    expect(r).toEqual({
+      label_state: 'prefilter_rejected',
+      prefilter_reasons: ['same_product_identity'],
+      bucket: 'rejected',
+    });
+  });
+
+  test('variant mismatch prevents brand-title identity rejection', () => {
+    const r = classifyEdgeForPrefilter({
+      edge: edge({
+        relation_type: 'related_product',
+        anchor_snapshot: {
+          brand: 'Example Beauty',
+          name: 'Hydrating Tint',
+          variant_title: 'Shade: Fair',
+        },
+        candidate_snapshot: {
+          brand: 'Example Beauty',
+          title: 'Hydrating Tint',
+          variant_title: 'Shade: Deep',
+        },
+      }),
+      defaultLabelState: 'generated',
+      anchorAttrs: attrs(),
+      candidateAttrs: attrs(),
+    });
+    expect(r).toEqual({ label_state: 'generated', prefilter_reasons: null, bucket: 'passed' });
+  });
+
+  test('unavailable candidate rejects structural generated alternatives before review', () => {
+    const r = classifyEdgeForPrefilter({
+      edge: edge({
+        relation_type: 'competitive_alternative',
+        candidate_snapshot: {
+          availability: 'out_of_stock',
+        },
+      }),
+      defaultLabelState: 'generated',
+      anchorAttrs: attrs(),
+      candidateAttrs: attrs(),
+    });
+    expect(r).toEqual({
+      label_state: 'prefilter_rejected',
+      prefilter_reasons: ['candidate_unavailable'],
+      bucket: 'rejected',
+    });
+  });
+
+  test('unavailable candidate does not reject loose related-product links', () => {
+    const r = classifyEdgeForPrefilter({
+      edge: edge({
+        relation_type: 'related_product',
+        candidate_snapshot: {
+          availability_status: 'sold_out',
+        },
+      }),
+      defaultLabelState: 'generated',
+      anchorAttrs: attrs(),
+      candidateAttrs: attrs(),
+    });
+    expect(r).toEqual({ label_state: 'generated', prefilter_reasons: null, bucket: 'passed' });
+  });
+
   test('missing anchor attrs: skipped (passed-through, no gate applied)', () => {
     const r = classifyEdgeForPrefilter({
       edge: edge(),

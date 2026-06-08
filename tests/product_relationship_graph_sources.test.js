@@ -340,6 +340,7 @@ describe('product relationship graph source loaders', () => {
       external_product_id: 'ext_barrier_serum',
       title: 'Barrier Peptide Serum',
       category: 'serum',
+      availability: 'out_of_stock',
       price_amount: '18.50',
       canonical_url: 'https://example.test/products/barrier-serum',
       seed_data: {
@@ -384,6 +385,7 @@ describe('product relationship graph source loaders', () => {
         brand: 'Value Lab',
         name: 'Barrier Peptide Serum',
         category: 'serum',
+        availability: 'out_of_stock',
         price: 18.5,
         evidence_grade: 'B',
         observed_at: NOW,
