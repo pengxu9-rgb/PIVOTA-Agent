@@ -102,16 +102,24 @@ export function normalizeCreateOrder(raw) {
  */
 export function normalizeSubmitPayment(raw) {
   const pa = raw?.payment_action || {};
+  const checkoutSession =
+    raw?.checkout_session && typeof raw.checkout_session === 'object' && !Array.isArray(raw.checkout_session)
+      ? raw.checkout_session
+      : null;
+  const checkoutSessionId =
+    checkoutSession?.checkout_session_id ?? checkoutSession?.id ?? checkoutSession?.checkout_token;
+  const checkoutRedirectUrl =
+    checkoutSession?.hosted_url ?? checkoutSession?.checkout_url ?? checkoutSession?.url;
   return {
     ...raw,
-    payment_status: raw?.payment_status ?? raw?.status,
-    payment_id: raw?.payment_id ?? raw?.payment_intent_id ?? raw?.checkout_session_id,
+    payment_status: raw?.payment_status ?? (checkoutSession ? 'requires_action' : raw?.status),
+    payment_id: raw?.payment_id ?? raw?.payment_intent_id ?? raw?.checkout_session_id ?? checkoutSessionId,
     // A redirect comes back under payment_action; surface it as the flat redirect_url the kernel returns.
-    redirect_url: raw?.redirect_url ?? (pa.type === 'redirect_url' ? pa.url : undefined),
+    redirect_url: raw?.redirect_url ?? (pa.type === 'redirect_url' ? pa.url : undefined) ?? checkoutRedirectUrl,
     // client_secret is for client-side confirmation; pass through but it is SENSITIVE (never log).
     client_secret: raw?.client_secret ?? pa.client_secret,
-    confirmation_owner: raw?.confirmation_owner,
-    requires_client_confirmation: raw?.requires_client_confirmation,
+    confirmation_owner: raw?.confirmation_owner ?? (checkoutSession ? 'client' : undefined),
+    requires_client_confirmation: raw?.requires_client_confirmation ?? (checkoutSession ? true : undefined),
   };
 }
 

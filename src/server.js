@@ -880,6 +880,11 @@ const DIRECT_MERCHANT_PSP_PAYMENT_METHOD_TYPES = new Set([
   'card',
   'credit_card',
   'debit_card',
+  // Despite the name of this set, this route goes to the backend's PSP-initiation
+  // endpoint. `stripe_checkout` must stay here so pure MCP can request a hosted
+  // Stripe Checkout redirect instead of the Pivota-hosted checkout-intent route.
+  'stripe_checkout',
+  'stripe_checkout_session',
 ]);
 const SUBMIT_PAYMENT_CARD_METHOD_SAFE_FIELDS = [
   'type',
@@ -2181,6 +2186,13 @@ function buildSubmitPaymentV1Body({
     ),
     save_payment_method:
       payment?.save_payment_method === true || payment?.savePaymentMethod === true ? true : undefined,
+    return_url: firstNonEmptyString(
+      payment?.return_url,
+      payment?.returnUrl,
+      payment?.redirect_url,
+      payment?.redirectUrl,
+      checkoutSessionBody?.return_url,
+    ),
   });
 }
 
@@ -27549,6 +27561,99 @@ function allowStrictCheckoutTestIdentity() {
   );
 }
 
+function resolveStrictMcpPaymentMethodHint() {
+  const configured = firstNonEmptyString(
+    process.env.AGENT_CHECKOUT_MCP_PAYMENT_METHOD_HINT,
+    process.env.AGENT_CHECKOUT_DEFAULT_PAYMENT_METHOD_HINT,
+  );
+  return configured || 'stripe_checkout';
+}
+
+function resolveStrictMcpPaymentReturnUrl(orderId) {
+  const oid = firstNonEmptyString(orderId);
+  const configured = firstNonEmptyString(
+    process.env.AGENT_CHECKOUT_MCP_PAYMENT_RETURN_URL,
+    process.env.AGENT_CHECKOUT_PAYMENT_RETURN_URL,
+    process.env.PIVOTA_PAYMENT_RETURN_URL,
+  );
+  if (configured) {
+    try {
+      const replaced = oid
+        ? configured
+            .replace(/\{order_id\}/g, encodeURIComponent(oid))
+            .replace(/\{orderId\}/g, encodeURIComponent(oid))
+        : configured;
+      const url = new URL(replaced);
+      if (oid && !url.searchParams.has('orderId') && !url.searchParams.has('order_id')) {
+        url.searchParams.set('orderId', oid);
+      }
+      if (!url.searchParams.has('finalizing')) {
+        url.searchParams.set('finalizing', '1');
+      }
+      return url.toString();
+    } catch (_) {
+      return configured;
+    }
+  }
+  const base = firstNonEmptyString(
+    process.env.PIVOTA_AGENT_PUBLIC_BASE_URL,
+    process.env.PIVOTA_PUBLIC_AGENT_BASE_URL,
+    process.env.PUBLIC_BASE_URL,
+    process.env.PIVOTA_AGENT_BASE_URL,
+    process.env.PIVOTA_BASE_URL,
+  );
+  if (!base) return undefined;
+  try {
+    const url = new URL('/order/success', `${base.replace(/\/+$/, '')}/`);
+    if (oid) url.searchParams.set('orderId', oid);
+    url.searchParams.set('finalizing', '1');
+    return url.toString();
+  } catch (_) {
+    return undefined;
+  }
+}
+
+function maybeApplyStrictMcpHostedPaymentDefaults(payment, invokeContext = {}) {
+  if (!isPlainObject(payment)) return payment;
+  if (invokeContext?.surface !== 'mcp') return payment;
+  const paymentMethodHint = firstNonEmptyString(
+    payment.payment_method_hint,
+    payment.paymentMethodHint,
+    payment.payment_method?.type,
+    payment.paymentMethod?.type,
+    resolveStrictMcpPaymentMethodHint(),
+  );
+  const returnUrl = firstNonEmptyString(
+    payment.return_url,
+    payment.returnUrl,
+    payment.redirect_url,
+    payment.redirectUrl,
+    resolveStrictMcpPaymentReturnUrl(payment.order_id || payment.orderId),
+  );
+  return pruneEmptyFields({
+    ...payment,
+    payment_method_hint: paymentMethodHint,
+    return_url: returnUrl,
+  });
+}
+
+function applyStrictHostedOrderMetadata(order) {
+  if (!isPlainObject(order)) return order;
+  const existingMetadata = isPlainObject(order.metadata) ? order.metadata : {};
+  const existingAgentV2 = isPlainObject(existingMetadata.agent_v2) ? existingMetadata.agent_v2 : {};
+  return {
+    ...order,
+    metadata: pruneEmptyFields({
+      ...existingMetadata,
+      agent_v2: pruneEmptyFields({
+        ...existingAgentV2,
+        checkout_provider: 'pivota_hosted_checkout',
+        hosted_checkout: true,
+      }),
+    }),
+  };
+}
+
 function buildCommerceKernelDb() {
   if (process.env.DATABASE_URL) return { query };
   if (isAgentCheckoutStrictEnabled() && !allowInMemoryStrictCheckoutForTest()) {
@@ -27560,10 +27665,11 @@ function buildCommerceKernelDb() {
 async function invokeCommerceKernelRawUpstream(operation, payload, headers = {}) {
   const op = String(operation || '').trim();
   const metadata = isPlainObject(payload?.metadata) ? payload.metadata : {};
+  const invokeContext = getInvokeAuthContext() || {};
   const clientChannel = firstNonEmptyString(payload?.context?.channel, metadata?.source, 'shop');
   const gatewayRequestId = firstNonEmptyString(payload?.context?.request_id, payload?.request_id, randomUUID());
   const timeout = Number(process.env.AGENT_CHECKOUT_UPSTREAM_TIMEOUT_MS || getUpstreamTimeoutMs(op) || 30000);
-  const checkoutToken = firstNonEmptyString(getInvokeAuthContext()?.checkout_token);
+  const checkoutToken = firstNonEmptyString(invokeContext?.checkout_token);
   let url = `${PIVOTA_API_BASE}/agent/shop/v1/invoke`;
   let requestBody = { operation: op, payload };
 
@@ -27604,9 +27710,10 @@ async function invokeCommerceKernelRawUpstream(operation, payload, headers = {})
     }
     case 'create_order': {
       url = `${PIVOTA_API_BASE}/agent/v2/orders`;
+      const order = applyStrictHostedOrderMetadata(isPlainObject(payload?.order) ? payload.order : {});
       requestBody = buildCreateOrderV2Body({
         payload,
-        order: payload?.order || {},
+        order,
         metadata,
         clientChannel,
         gatewayRequestId,
@@ -27614,7 +27721,10 @@ async function invokeCommerceKernelRawUpstream(operation, payload, headers = {})
       break;
     }
     case 'submit_payment': {
-      const payment = isPlainObject(payload?.payment) ? payload.payment : {};
+      const payment = maybeApplyStrictMcpHostedPaymentDefaults(
+        isPlainObject(payload?.payment) ? payload.payment : {},
+        invokeContext,
+      );
       const checkoutSessionBody = buildCheckoutSessionV2Body({
         payload,
         payment,
@@ -27622,7 +27732,15 @@ async function invokeCommerceKernelRawUpstream(operation, payload, headers = {})
         clientChannel,
         gatewayRequestId,
       });
-      if (shouldSubmitPaymentUseExistingOrderMerchantPspSurface(checkoutSessionBody)) {
+      const forceHostedCheckoutSession = true;
+      if (
+        !forceHostedCheckoutSession &&
+        shouldSubmitPaymentUseExistingOrderMerchantPspSurface({
+          payload,
+          payment,
+          checkoutSessionBody,
+        })
+      ) {
         url = `${PIVOTA_API_BASE}/agent/v1/payments`;
         requestBody = buildSubmitPaymentV1Body({
           payload,
@@ -27994,6 +28112,8 @@ function buildStrictSessionAuthInfo(req, sessionContext = deriveStrictCommerceCt
 
 function buildExternalInvokeContext(req) {
   return {
+    path: req?.path || null,
+    surface: req?.path === '/mcp' ? 'mcp' : null,
     api_key: req?.invokeAuth?.raw_token || null,
     agent_id: req?.invokeAuth?.agent_id || null,
     auth_mode: req?.invokeAuth?.auth_mode || null,
@@ -46213,19 +46333,6 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
           adyenRaw.clientKey,
           adyenRaw.client_key,
         );
-        if (pspNormalized === 'pivota_hosted_checkout') {
-          unsupportedPaymentSurface = {
-            error: 'UNSUPPORTED_PAYMENT_SURFACE',
-            message:
-              'Merchant checkout must return the merchant PSP payment surface. pivota_hosted_checkout is disabled.',
-            detail: {
-              psp: 'pivota_hosted_checkout',
-              checkout_session_id: checkoutSession?.checkout_session_id || null,
-            },
-          };
-          return null;
-        }
-
         let paymentAction =
           p.payment_action ||
           paymentObj.payment_action ||

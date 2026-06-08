@@ -1,6 +1,8 @@
 const { describe, it, beforeEach, afterEach } = require('node:test');
 const assert = require('node:assert/strict');
 const crypto = require('node:crypto');
+const path = require('node:path');
+const { pathToFileURL } = require('node:url');
 const nock = require('nock');
 const request = require('supertest');
 
@@ -62,6 +64,50 @@ describe('strict Safety Kernel mount on /agent/shop/v1/invoke', () => {
     return JSON.parse(res.body.result.content[0].text);
   }
 
+  async function loadJose() {
+    const resolved = require.resolve('jose', {
+      paths: [
+        path.join(__dirname, '..', '..'),
+        path.join(__dirname, '..', '..', 'safety-kernel'),
+      ],
+    });
+    return import(pathToFileURL(resolved).href);
+  }
+
+  async function installPaymentGrantIssuer() {
+    const { SignJWT, generateKeyPair, exportJWK } = await loadJose();
+    const { privateKey, publicKey } = await generateKeyPair('ES256');
+    const jwk = await exportJWK(publicKey);
+    jwk.alg = 'ES256';
+    jwk.use = 'sig';
+    jwk.kid = 'mcp-pay-test-k1';
+    const iss = 'https://payments.test.pivota.local';
+    const aud = 'pivota-agent-payments';
+    process.env.PAYMENT_ISSUERS_JSON = JSON.stringify([
+      { iss, aud, jwks: { keys: [jwk] }, algs: ['ES256'] },
+    ]);
+    return {
+      async mintGrant({ session_id, amount = 2900, currency = 'USD', merchant_id = 'm_strict', user_ref = 'usr_strict' }) {
+        return new SignJWT({
+          allowance: {
+            max_amount: amount,
+            currency,
+            merchant_id,
+            checkout_session_id: session_id,
+            user_ref,
+          },
+        })
+          .setProtectedHeader({ alg: 'ES256', kid: 'mcp-pay-test-k1' })
+          .setIssuer(iss)
+          .setAudience(aud)
+          .setIssuedAt()
+          .setExpirationTime('10m')
+          .setJti(`grant_${session_id}`)
+          .sign(privateKey);
+      },
+    };
+  }
+
   async function captureAuditRecords(fn) {
     const audits = [];
     const originalSink = globalThis.__PIVOTA_AGENT_CHECKOUT_AUDIT_TEST_SINK;
@@ -115,7 +161,9 @@ describe('strict Safety Kernel mount on /agent/shop/v1/invoke', () => {
           body?.idempotency_key === 'idem_create_strict' &&
           body?.quote_id === 'q_strict' &&
           body?.buyer_context?.shipping_address?.address_line1 === '1 Kernel Way' &&
-          body?.buyer_context?.shipping_address?.name === 'Strict Buyer'
+          body?.buyer_context?.shipping_address?.name === 'Strict Buyer' &&
+          body?.metadata?.agent_v2?.checkout_provider === 'pivota_hosted_checkout' &&
+          body?.metadata?.agent_v2?.hosted_checkout === true
         );
       })
       .reply(200, {
@@ -227,23 +275,23 @@ describe('strict Safety Kernel mount on /agent/shop/v1/invoke', () => {
     );
 
     nock(API_BASE)
-      .post('/agent/v1/payments', (body) => {
+      .post('/agent/v2/payments/checkout-sessions', (body) => {
         return (
-          body?.idempotency_key === 'idem_pay_strict' &&
           body?.order_id === 'ORD_STRICT' &&
-          body?.payment_method?.type === 'card' &&
-          body?.expected_amount === undefined &&
-          body?.currency === undefined
+          body?.expected_amount === 2900 &&
+          body?.currency === 'USD' &&
+          body?.payment_method_hint === 'card' &&
+          body?.payment_method === undefined
         );
       })
       .reply(200, {
-        payment_status: 'requires_action',
-        payment_intent_id: 'pi_strict',
-        confirmation_owner: 'client',
-        requires_client_confirmation: true,
-        payment_action: {
-          type: 'redirect_url',
-          url: 'https://pay.example/strict',
+        status: 'success',
+        checkout_session: {
+          checkout_session_id: 'cs_strict',
+          order_id: 'ORD_STRICT',
+          state: 'created',
+          hosted_url: 'https://pay.example/strict',
+          provider: 'pivota_hosted_checkout',
         },
       });
 
@@ -273,14 +321,14 @@ describe('strict Safety Kernel mount on /agent/shop/v1/invoke', () => {
         redirect_url: payment.body.redirect_url,
       },
       {
-        payment_id: 'pi_strict',
+        payment_id: 'cs_strict',
         payment_status: 'requires_action',
         order_status: 'charge_pending',
         redirect_url: 'https://pay.example/strict',
       },
     );
 
-    const webhookBody = { order_id: 'ORD_STRICT', status: 'succeeded', payment_id: 'pi_strict' };
+    const webhookBody = { order_id: 'ORD_STRICT', status: 'succeeded', payment_id: 'cs_strict' };
     const forged = await request(app)
       .post('/agent/shop/v1/payment-webhook')
       .set('X-Pivota-Webhook-Signature', 'forged')
@@ -374,6 +422,146 @@ describe('strict Safety Kernel mount on /agent/shop/v1/invoke', () => {
     assert.match(result.session_id, /^q_/);
     assert.equal(result.totals.total, 2900);
     assert.equal(result.currency, 'USD');
+    assert.equal(nock.isDone(), true);
+  });
+
+  it('remote MCP complete_checkout_session defaults to a hosted Stripe Checkout redirect surface', async () => {
+    process.env.AGENT_CHECKOUT_STRICT_SUBMIT_PAYMENT_ENABLED = '1';
+    process.env.PIVOTA_AGENT_PUBLIC_BASE_URL = 'https://agent.test.pivota.local';
+    const issuer = await installPaymentGrantIssuer();
+
+    nock(API_BASE)
+      .post('/agent/v2/quotes/preview', (body) => {
+        return (
+          body?.merchant_id === 'm_strict' &&
+          Array.isArray(body?.offer_refs) &&
+          body.offer_refs[0]?.product_id === 'p_strict' &&
+          body.offer_refs[0]?.variant_id === 'v_strict'
+        );
+      })
+      .reply(200, {
+        quote: {
+          quote_id: 'q_strict',
+          expires_at: '2026-12-31T00:00:00Z',
+          currency: 'USD',
+          price_breakdown: {
+            subtotal: '29.00',
+            discount_total: '0.00',
+            total: '29.00',
+            currency: 'USD',
+          },
+          shipping_breakdown: {
+            shipping_fee: '0.00',
+            delivery_options: [],
+          },
+          tax_breakdown: {
+            tax: '0.00',
+          },
+          line_items: [{ product_id: 'p_strict', variant_id: 'v_strict', quantity: 1 }],
+        },
+      });
+
+    const created = await strictHeaders(request(app).post('/mcp'))
+      .send({
+        jsonrpc: '2.0',
+        id: 'mcp-create-session-for-pay-1',
+        method: 'tools/call',
+        params: {
+          name: 'create_checkout_session',
+          arguments: {
+            idempotency_key: 'idem_mcp_create_for_pay',
+            quote: {
+              merchant_id: 'm_strict',
+              customer_email: 'strict-buyer@example.com',
+              customer_name: 'Strict Buyer',
+              items: [{ product_id: 'p_strict', variant_id: 'v_strict', quantity: 1 }],
+              shipping_address: { country: 'US', postal_code: '94105', city: 'San Francisco', state: 'CA' },
+            },
+          },
+        },
+      })
+      .expect(200);
+    const session = parseMcpToolResult(created);
+
+    nock(API_BASE)
+      .post('/agent/v2/orders', (body) => {
+        return (
+          body?.quote_id === 'q_strict' &&
+          body?.buyer_context?.customer_email === 'strict-buyer@example.com' &&
+          body?.buyer_context?.customer_name === 'Strict Buyer' &&
+          body?.buyer_context?.shipping_address?.name === 'Strict Buyer' &&
+          body?.buyer_context?.shipping_address?.address_line1 === '1 Kernel Way' &&
+          body?.metadata?.agent_v2?.checkout_provider === 'pivota_hosted_checkout' &&
+          body?.metadata?.agent_v2?.hosted_checkout === true
+        );
+      })
+      .reply(200, {
+        status: 'success',
+        order: {
+          order_id: 'ORD_STRICT',
+          quote_id: 'q_strict',
+          amounts: {
+            total: '29.00',
+            currency: 'USD',
+          },
+        },
+        tracking: { order_id: 'ORD_STRICT' },
+      })
+      .post('/agent/v2/payments/checkout-sessions', (body) => {
+        return (
+          body?.order_id === 'ORD_STRICT' &&
+          body?.expected_amount === 2900 &&
+          body?.currency === 'USD' &&
+          body?.payment_method_hint === 'stripe_checkout' &&
+          body?.return_url === 'https://agent.test.pivota.local/order/success?orderId=ORD_STRICT&finalizing=1' &&
+          body?.payment_method === undefined
+        );
+      })
+      .reply(200, {
+        status: 'success',
+        checkout_session: {
+          checkout_session_id: 'cs_strict_checkout',
+          order_id: 'ORD_STRICT',
+          state: 'created',
+          hosted_url: 'https://checkout.stripe.test/cs_strict_checkout',
+          provider: 'pivota_hosted_checkout',
+          checkout_token: 'tok_strict_checkout',
+        },
+      });
+
+    const grant = await issuer.mintGrant({ session_id: session.session_id });
+    const paid = await strictHeaders(request(app).post('/mcp'))
+      .send({
+        jsonrpc: '2.0',
+        id: 'mcp-complete-hosted-redirect-1',
+        method: 'tools/call',
+        params: {
+          name: 'complete_checkout_session',
+          arguments: {
+            idempotency_key: 'idem_mcp_complete_hosted_redirect',
+            session_id: session.session_id,
+            payment_authorization: {
+              method: 'acp_delegated_token',
+              token: grant,
+            },
+            shipping_address: {
+              name: 'Strict Buyer',
+              address_line1: '1 Kernel Way',
+              city: 'San Francisco',
+              state: 'CA',
+              postal_code: '94105',
+              country: 'US',
+            },
+          },
+        },
+      })
+      .expect(200);
+
+    const result = parseMcpToolResult(paid);
+    assert.equal(result.order.order_id, 'ORD_STRICT');
+    assert.equal(result.payment.payment_status, 'requires_action');
+    assert.equal(result.payment.order_status, 'charge_pending');
+    assert.equal(result.payment.redirect_url, 'https://checkout.stripe.test/cs_strict_checkout');
     assert.equal(nock.isDone(), true);
   });
 
