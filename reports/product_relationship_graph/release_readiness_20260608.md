@@ -19,6 +19,16 @@
   - preflight: passed
   - AI review: passed, 0 reviewed for cutoff
   - serving guard audit: passed thresholds
+- Tiny affected-products production dry-run stand-in for GitHub workflow dispatch:
+  - run id: `relgraph_sync_routine_20260608T042939`
+  - products: `ext_26307f21022853e886a7f210`, `ext_7f3fcd8b1ea9a9c48026e3ff`
+  - catalog sync dry-run: passed, affected product count 2
+  - DB advisory lock: acquired by routine
+  - PBA signature refresh: passed dry-run
+  - build: passed, 2 anchors, 0 edges, 0 applied
+  - preflight: passed
+  - AI review: passed, 0 reviewed for cutoff
+  - serving guard audit: passed thresholds, 8,404 safe rows, 0 suppressed
 
 ## Release Scope
 
@@ -67,6 +77,8 @@ New relgraph files:
 
 ## Validation
 
+- Commit pushed to `origin/feat/relgraph-production-readiness-20260608`:
+  - `52eb41b1 Add relationship graph production routine gates`
 - Workflow YAML parse passed for:
   - `relationship-graph-serving-guard-audit.yml`
   - `relationship-graph-sync-routine.yml`
@@ -74,16 +86,16 @@ New relgraph files:
   - `external-seed-create-reviewed-retailer-offer.yml`
 - Syntax checks passed for relgraph scripts.
 - Broader relationship graph Jest set passed:
-  - 15 suites
-  - 154 tests
+  - 16 suites
+  - 165 tests
 - Focused workflow/PDP-loop set also passed earlier:
   - 5 suites
   - 48 tests
 
 ## Remaining Before Rollout
 
-- Run one manual GitHub workflow dispatch with a tiny affected product set.
-- Confirm production GitHub `DATABASE_URL` resolves from GitHub Actions.
+- Manual GitHub workflow dispatch is still pending because local `gh` auth is invalid and no `GITHUB_TOKEN`, `GH_TOKEN`, or `GITHUB_PAT` is available in the environment.
+- Confirm production GitHub `DATABASE_URL` resolves from GitHub Actions once workflow dispatch is available.
 - Review the first affected-products routine artifact before enabling `--apply-build`.
 - Keep `--apply-review` gated behind human artifact review; `dupe` remains excluded by default.
 - Wire failure notifications for the nightly serving guard audit.
