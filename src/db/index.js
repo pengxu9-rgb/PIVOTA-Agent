@@ -259,9 +259,44 @@ async function connectWithRetry() {
   throw new Error('unreachable');
 }
 
+function captureCheckedOutClientErrors(client) {
+  if (!client || typeof client.on !== 'function') {
+    return {
+      getError: () => null,
+      detach: () => {},
+    };
+  }
+
+  let capturedError = null;
+  const onError = (err) => {
+    capturedError = err || new Error('Postgres checked-out client emitted an unknown error');
+    logger.warn(
+      {
+        err: capturedError?.message || String(capturedError),
+        code: capturedError?.code || null,
+      },
+      'Postgres checked-out client emitted error; marking client broken',
+    );
+  };
+
+  client.on('error', onError);
+  return {
+    getError: () => capturedError,
+    detach: () => {
+      if (typeof client.off === 'function') {
+        client.off('error', onError);
+      } else if (typeof client.removeListener === 'function') {
+        client.removeListener('error', onError);
+      }
+    },
+  };
+}
+
 async function withClient(fn) {
   const { client, pool: sourcePool } = await connectWithRetry();
   let released = false;
+  let poolResetAfterError = false;
+  const clientErrorCapture = captureCheckedOutClientErrors(client);
   try {
     return await fn(client);
   } catch (err) {
@@ -273,11 +308,21 @@ async function withClient(fn) {
         // ignore release failures on broken clients
       }
       await resetPool(sourcePool, 'with_client_error', err);
+      poolResetAfterError = true;
     }
     throw err;
   } finally {
-    if (!released) {
-      client.release();
+    const checkedOutClientError = clientErrorCapture.getError();
+    try {
+      if (!released) {
+        client.release(Boolean(checkedOutClientError));
+        released = true;
+      }
+    } finally {
+      clientErrorCapture.detach();
+    }
+    if (checkedOutClientError && !poolResetAfterError) {
+      await resetPool(sourcePool, 'with_client_error_event', checkedOutClientError);
     }
   }
 }

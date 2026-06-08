@@ -1,5 +1,7 @@
 'use strict';
 
+const { EventEmitter } = require('node:events');
+
 describe('db pool resilience', () => {
   let previousEnv;
 
@@ -144,6 +146,42 @@ describe('db pool resilience', () => {
         max_retries: 1,
       }),
       'Transient DB connect failed; resetting pool and retrying',
+    );
+  });
+
+  test('withClient handles checked-out client error events without crashing', async () => {
+    const client = new EventEmitter();
+    client.query = jest.fn(async () => ({ rows: [{ ok: true }] }));
+    client.release = jest.fn();
+    const pool = {
+      connect: jest.fn(async () => client),
+      end: jest.fn(async () => {}),
+      on: jest.fn(),
+    };
+    const Pool = jest.fn(() => pool);
+    const logger = { warn: jest.fn(), info: jest.fn(), error: jest.fn() };
+
+    jest.doMock('pg', () => ({ Pool }));
+    jest.doMock('../src/logger', () => logger);
+
+    const db = require('../src/db');
+    const result = await db.withClient(async (activeClient) => {
+      activeClient.emit('error', Object.assign(new Error('Connection terminated unexpectedly'), { code: '57P01' }));
+      await activeClient.query('SELECT 1');
+      return 'ok';
+    });
+
+    expect(result).toBe('ok');
+    expect(client.query).toHaveBeenCalledWith('SELECT 1');
+    expect(client.release).toHaveBeenCalledWith(true);
+    expect(pool.end).toHaveBeenCalledTimes(1);
+    expect(client.listenerCount('error')).toBe(0);
+    expect(logger.warn).toHaveBeenCalledWith(
+      expect.objectContaining({
+        code: '57P01',
+        err: 'Connection terminated unexpectedly',
+      }),
+      'Postgres checked-out client emitted error; marking client broken',
     );
   });
 });
