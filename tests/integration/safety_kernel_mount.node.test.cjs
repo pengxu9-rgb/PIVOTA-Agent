@@ -470,6 +470,8 @@ describe('strict Safety Kernel mount on /agent/shop/v1/invoke', () => {
             idempotency_key: 'idem_mcp_create_for_pay',
             quote: {
               merchant_id: 'm_strict',
+              customer_email: 'strict-buyer@example.com',
+              customer_name: 'Strict Buyer',
               items: [{ product_id: 'p_strict', variant_id: 'v_strict', quantity: 1 }],
               shipping_address: { country: 'US', postal_code: '94105', city: 'San Francisco', state: 'CA' },
             },
@@ -483,6 +485,9 @@ describe('strict Safety Kernel mount on /agent/shop/v1/invoke', () => {
       .post('/agent/v2/orders', (body) => {
         return (
           body?.quote_id === 'q_strict' &&
+          body?.buyer_context?.customer_email === 'strict-buyer@example.com' &&
+          body?.buyer_context?.customer_name === 'Strict Buyer' &&
+          body?.buyer_context?.shipping_address?.name === 'Strict Buyer' &&
           body?.buyer_context?.shipping_address?.address_line1 === '1 Kernel Way'
         );
       })
@@ -536,7 +541,7 @@ describe('strict Safety Kernel mount on /agent/shop/v1/invoke', () => {
               token: grant,
             },
             shipping_address: {
-              recipient_name: 'Strict Buyer',
+              name: 'Strict Buyer',
               address_line1: '1 Kernel Way',
               city: 'San Francisco',
               state: 'CA',

@@ -141,9 +141,9 @@ function buildContext(sessionContext = {}) {
 // polluting keys (__proto__/constructor) all simply never get copied. Each field is read by OWN-property
 // lookup, so a JSON `__proto__` entry cannot inject anything.
 
-const QUOTE_KEYS = ["merchant_id", "discount_codes", "customer_email"];
+const QUOTE_KEYS = ["merchant_id", "discount_codes", "customer_email", "customer_name"];
 const ITEM_KEYS = ["product_id", "sku_id", "variant_id", "quantity"];
-const ADDR_KEYS = ["country", "city", "postal_code", "state", "address_line1", "address_line2", "recipient_name", "phone"];
+const ADDR_KEYS = ["country", "city", "postal_code", "state", "address_line1", "address_line2", "name", "recipient_name", "phone"];
 
 function toParams(op, toolArgs) {
   const a = asObj(toolArgs);
@@ -250,7 +250,7 @@ const ADDRESS = {
   properties: {
     country: { type: "string" }, city: { type: "string" }, postal_code: { type: "string" },
     state: { type: "string" }, address_line1: { type: "string" }, address_line2: { type: "string" },
-    recipient_name: { type: "string" }, phone: { type: "string" },
+    name: { type: "string" }, recipient_name: { type: "string" }, phone: { type: "string" },
   },
   additionalProperties: false,
 };
@@ -291,6 +291,7 @@ const INPUT_SCHEMAS = Object.freeze({
           },
           discount_codes: { type: "array", items: { type: "string" } },
           customer_email: { type: "string" },
+          customer_name: { type: "string" },
           shipping_address: ADDRESS,
         },
       },
