@@ -531,15 +531,20 @@ async function main(argv = process.argv.slice(2)) {
 }
 
 if (require.main === module) {
-  main().catch((err) => {
-    const summary = err && err.summary;
-    if (summary) {
-      process.stderr.write(`${err.message}\nsummary: ${summary.summary_path || summary.out_dir}\n`);
-    } else {
-      process.stderr.write(`${err && err.stack ? err.stack : String(err)}\n`);
-    }
-    process.exitCode = 1;
-  });
+  main()
+    .catch((err) => {
+      const summary = err && err.summary;
+      if (summary) {
+        process.stderr.write(`${err.message}\nsummary: ${summary.summary_path || summary.out_dir}\n`);
+      } else {
+        process.stderr.write(`${err && err.stack ? err.stack : String(err)}\n`);
+      }
+      process.exitCode = 1;
+    })
+    .finally(() => {
+      const { closePool } = require('../src/db');
+      return closePool().catch(() => {});
+    });
 }
 
 module.exports = {
