@@ -185,6 +185,7 @@ function readVerdictsFile(filePath) {
     const id = normalizeString(row.id, 160);
     if (!id) continue;
     const verdict = normalizeString(row.verdict, 20).toLowerCase();
+    if (verdict === 'error') continue;
     if (!['approve', 'reject'].includes(verdict)) {
       throw new Error(`invalid verdict for ${id}: ${row.verdict}`);
     }
@@ -599,7 +600,12 @@ function buildReviewPrompt(evidence) {
 }
 
 function reviewErrorCode(err) {
-  return normalizeString(err && err.code, 80);
+  const code = normalizeString(err && err.code, 80);
+  if (code) return code;
+  const message = normalizeString(err && err.message, 500).toLowerCase();
+  if (message.includes('model json did not match expected schema')) return 'LLM_SCHEMA_INVALID';
+  if (message.includes('timed out') || message.includes('timeout')) return 'LLM_TIMEOUT';
+  return '';
 }
 
 function isRetryableReviewError(err) {
@@ -636,6 +642,20 @@ function buildAiReview(decision) {
     primary_reason: PRIMARY_REASON,
     confidence: decision.confidence,
     rationale: decision.rationale,
+  };
+}
+
+function buildReviewErrorDecision(err) {
+  const code = reviewErrorCode(err) || 'LLM_REVIEW_FAILED';
+  const message = normalizeString(err && err.message ? err.message : String(err || ''), 500);
+  return {
+    verdict: 'error',
+    confidence: 0,
+    rationale: `LLM review failed (${code}); candidate left generated.`,
+    review_error: {
+      code,
+      message,
+    },
   };
 }
 
@@ -726,9 +746,17 @@ async function runReview({
   for (const row of rows) {
     const evidence = buildEvidence(row, supplements);
     // eslint-disable-next-line no-await-in-loop
-    const decision = verdictReplay
-      ? verdictReplay.byId.get(row.id)
-      : await reviewEvidenceWithLlm(llmProvider, evidence, { attempts: llmAttempts });
+    let decision = null;
+    if (verdictReplay) {
+      decision = verdictReplay.byId.get(row.id);
+    } else {
+      try {
+        // eslint-disable-next-line no-await-in-loop
+        decision = await reviewEvidenceWithLlm(llmProvider, evidence, { attempts: llmAttempts });
+      } catch (err) {
+        decision = buildReviewErrorDecision(err);
+      }
+    }
     if (!decision) {
       throw new Error(`missing verdict replay row for candidate ${row.id}`);
     }
@@ -750,6 +778,7 @@ async function runReview({
       old_label_state: 'generated',
       new_label_state: decision.verdict === 'approve' ? 'ai_approved' : 'generated',
       applied: Boolean(appliedRow),
+      ...(decision.review_error ? { review_error: decision.review_error } : {}),
     };
     decisions.push(outputRow);
     process.stdout.write(`${verdictToLine(row, decision, appliedRow, { apply })}\n`);
@@ -757,6 +786,7 @@ async function runReview({
 
   const approvedCount = decisions.filter((row) => row.verdict === 'approve').length;
   const rejectedCount = decisions.filter((row) => row.verdict === 'reject').length;
+  const reviewErrorCount = decisions.filter((row) => row.verdict === 'error').length;
   const approvalRate = decisions.length ? approvedCount / decisions.length : 0;
   const summary = {
     dry_run: !apply,
@@ -773,6 +803,7 @@ async function runReview({
     llm_attempts: verdictReplay ? 0 : llmAttempts,
     approved_count: approvedCount,
     rejected_count: rejectedCount,
+    review_error_count: reviewErrorCount,
     applied_count: appliedCount,
     approval_rate: Number(approvalRate.toFixed(4)),
     reviewer: REVIEWER_ID,

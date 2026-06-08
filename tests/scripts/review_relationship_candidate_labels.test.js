@@ -255,4 +255,84 @@ describe('review-relationship-candidate-labels', () => {
       applied: false,
     }));
   });
+
+  test('records exhausted LLM review errors fail-closed instead of aborting the batch', async () => {
+    const schemaErr = new Error('Model JSON did not match expected schema');
+    schemaErr.code = 'LLM_SCHEMA_INVALID';
+    const provider = {
+      analyzeTextToJson: jest.fn().mockRejectedValue(schemaErr),
+    };
+    const queryFn = jest.fn(async (sql) => {
+      if (/FROM relationship_candidate_labels/i.test(sql)) {
+        return {
+          rows: [
+            {
+              id: 'rcl_error_fixture',
+              edge_id: 'rcl_error_fixture',
+              anchor_type: 'product',
+              anchor_ref: 'product:anchor_error',
+              anchor_snapshot: {
+                product_id: 'anchor_error',
+                name: 'Anchor Serum',
+                brand: 'Brand A',
+                category: 'Serum',
+              },
+              candidate_product_ref: 'product:candidate_error',
+              candidate_snapshot: {
+                product_id: 'candidate_error',
+                name: 'Candidate Serum',
+                brand: 'Brand B',
+                category: 'Serum',
+              },
+              relation_type: 'competitive_alternative',
+              display_label: 'competitive_alternative',
+              market: 'US',
+              vertical: 'beauty',
+              category_taxonomy: ['Serum'],
+              use_case: 'Serum',
+              label_state: 'generated',
+              score_total: 0.9,
+              score_breakdown: {},
+              price_evidence: {},
+              source_refs: [],
+              evidence_grade: 'B',
+              why_candidate: { summary: 'Category evidence is aligned.' },
+              tradeoffs: [],
+              watchouts: [],
+              provenance: {},
+              created_at: '2026-06-01T00:00:00.000Z',
+              updated_at: '2026-06-01T00:00:00.000Z',
+            },
+          ],
+        };
+      }
+      return { rows: [] };
+    });
+
+    const result = await runReview({
+      cutoff: '2026-06-01T00:00:00Z',
+      minScore: 0,
+      limit: 1,
+      llmAttempts: 2,
+      queryFn,
+      provider,
+    });
+
+    expect(provider.analyzeTextToJson).toHaveBeenCalledTimes(2);
+    expect(result.summary).toEqual(expect.objectContaining({
+      reviewed_count: 1,
+      approved_count: 0,
+      rejected_count: 0,
+      review_error_count: 1,
+      applied_count: 0,
+    }));
+    expect(result.decisions[0]).toEqual(expect.objectContaining({
+      id: 'rcl_error_fixture',
+      verdict: 'error',
+      confidence: 0,
+      new_label_state: 'generated',
+      applied: false,
+      review_error: expect.objectContaining({ code: 'LLM_SCHEMA_INVALID' }),
+    }));
+  });
 });
