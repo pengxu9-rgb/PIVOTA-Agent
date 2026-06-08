@@ -111,6 +111,8 @@ test("happy path: create → complete charges once; verifier sees the bound tota
   assert.equal(charges(), 1);
   assert.equal(seen.amount, 113);
   assert.equal(seen.user_ref, "user_1");
+  assert.equal(seen.merchant_id, "merch_A");
+  assert.equal(seen.checkout_session_id, session_id);
 });
 
 test("complete passes payment_authorization to the verifier but a FAILED verify never charges", async () => {

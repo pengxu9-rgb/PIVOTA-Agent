@@ -49,3 +49,15 @@ test('strict commerce upstream auth can force the configured backend key', () =>
   assert.equal(headers['X-API-Key'], 'backend_test_key');
   assert.equal(headers.Authorization, 'Bearer backend_test_key');
 });
+
+test('strict commerce upstream auth can suppress backend-facing user JWT forwarding', () => {
+  const headers = app._debug.buildInvokeUpstreamAuthHeaders({
+    allowInternalFallback: true,
+    forceInternalFallback: true,
+    forwardAgentUserJwt: false,
+  });
+
+  assert.equal(headers['X-API-Key'], 'backend_test_key');
+  assert.equal(headers.Authorization, 'Bearer backend_test_key');
+  assert.equal(headers['X-Agent-User-JWT'], undefined);
+});

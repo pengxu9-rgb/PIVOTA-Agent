@@ -90,7 +90,7 @@ async function harness() {
 async function mcpFlow({ mcp, mintGrant }, { idem = 'idem-mcp-1', sessionId = 'sess_mcp', maxAmount } = {}) {
   const sess = { user_ref: 'usr_buyer', acp_session_id: sessionId };
   const created = await mcp.callTool('create_checkout_session', { idempotency_key: `${idem}-c`, quote: { merchant_id: MERCHANT, items: [{ product_id: 'p1', quantity: 1 }] } }, sess);
-  const grant = await mintGrant(sessionId, { maxAmount });
+  const grant = await mintGrant(created.session_id, { maxAmount });
   const out = await mcp.callTool('complete_checkout_session', { idempotency_key: idem, session_id: created.session_id, payment_authorization: { method: 'acp_delegated_token', token: grant } }, sess);
   return { order_id: out.order.order_id, amount: out.order.amount_total, status: out.payment.order_status };
 }
@@ -141,7 +141,7 @@ test('CONFORMANCE: replay is charge-once in BOTH ecosystems (same idempotency ke
   // MCP: complete twice with the same key
   const sess = { user_ref: 'usr_buyer', acp_session_id: 'sess_mcp' };
   const created = await h.mcp.callTool('create_checkout_session', { idempotency_key: 'k-c', quote: { merchant_id: MERCHANT, items: [{ product_id: 'p1', quantity: 1 }] } }, sess);
-  const grant = await h.mintGrant('sess_mcp');
+  const grant = await h.mintGrant(created.session_id);
   const args = { idempotency_key: 'k-pay', session_id: created.session_id, payment_authorization: { method: 'acp_delegated_token', token: grant } };
   const first = await h.mcp.callTool('complete_checkout_session', args, sess);
   const second = await h.mcp.callTool('complete_checkout_session', args, sess); // replay
@@ -189,7 +189,7 @@ test('CONFORMANCE isolation: the SAME raw idempotency key across protocols does 
   // MCP complete with KEY
   const sess = { user_ref: 'usr_buyer', acp_session_id: 'sess_mcp' };
   const mc = await h.mcp.callTool('create_checkout_session', { idempotency_key: `${KEY}-mc`, quote: { merchant_id: MERCHANT, items: [{ product_id: 'p1', quantity: 1 }] } }, sess);
-  const mOut = await h.mcp.callTool('complete_checkout_session', { idempotency_key: KEY, session_id: mc.session_id, payment_authorization: { method: 'acp_delegated_token', token: await h.mintGrant('sess_mcp') } }, sess);
+  const mOut = await h.mcp.callTool('complete_checkout_session', { idempotency_key: KEY, session_id: mc.session_id, payment_authorization: { method: 'acp_delegated_token', token: await h.mintGrant(mc.session_id) } }, sess);
   // ACP complete with the SAME raw KEY — must run its OWN flow, not replay MCP's cached result
   const ac = await h.acp.createCheckoutSession(acpReq({ body: { merchant_id: MERCHANT, items: [{ product_id: 'p1', quantity: 1 }] }, idem: `${KEY}-ac` }));
   const aOut = await h.acp.completeCheckoutSession(acpReq({ id: ac.body.id, body: { payment_data: { method: 'acp_delegated_token', token: await h.mintGrant(ac.body.id) } }, idem: KEY }));
@@ -231,7 +231,7 @@ test('CONFORMANCE binding parity: wrong currency AND wrong merchant are rejected
   const mcpReject = async (tag, grantOpts) => {
     const c = await h.mcp.callTool('create_checkout_session', { idempotency_key: `b-mc-${tag}`, quote: { merchant_id: MERCHANT, items: [{ product_id: 'p1', quantity: 1 }] } }, sess);
     await assert.rejects(
-      h.mcp.callTool('complete_checkout_session', { idempotency_key: `b-mp-${tag}`, session_id: c.session_id, payment_authorization: { method: 'acp_delegated_token', token: await h.mintGrant('sess_mcp', grantOpts) } }, sess),
+      h.mcp.callTool('complete_checkout_session', { idempotency_key: `b-mp-${tag}`, session_id: c.session_id, payment_authorization: { method: 'acp_delegated_token', token: await h.mintGrant(c.session_id, grantOpts) } }, sess),
       (e) => e.code === 'CONFIRMATION_INVALID',
     );
   };
@@ -269,7 +269,7 @@ test('CONFORMANCE surface parity: get returns the owned session; cancel works un
   // a PAID order refuses cancellation — in BOTH
   // MCP: complete then cancel the resulting order → refused
   const mp = await h.mcp.callTool('create_checkout_session', { idempotency_key: 'sp-mp', quote: { merchant_id: MERCHANT, items: [{ product_id: 'p1', quantity: 1 }] } }, sess);
-  const mPaid = await h.mcp.callTool('complete_checkout_session', { idempotency_key: 'sp-mpay', session_id: mp.session_id, payment_authorization: { method: 'acp_delegated_token', token: await h.mintGrant('sess_mcp') } }, sess);
+  const mPaid = await h.mcp.callTool('complete_checkout_session', { idempotency_key: 'sp-mpay', session_id: mp.session_id, payment_authorization: { method: 'acp_delegated_token', token: await h.mintGrant(mp.session_id) } }, sess);
   await assert.rejects(
     h.mcp.callTool('cancel_checkout_session', { idempotency_key: 'sp-mcxl2', order_id: mPaid.order.order_id }, sess),
     (e) => e.code === 'OPERATION_NOT_ALLOWED',
@@ -288,7 +288,7 @@ test('CONFORMANCE: an under-covering credential is rejected by BOTH (amount bind
   // MCP: grant allowance below the 113 total
   const sess = { user_ref: 'usr_buyer', acp_session_id: 'sess_mcp' };
   const created = await h.mcp.callTool('create_checkout_session', { idempotency_key: 'u-c', quote: { merchant_id: MERCHANT, items: [{ product_id: 'p1', quantity: 1 }] } }, sess);
-  const smallGrant = await h.mintGrant('sess_mcp', { maxAmount: 100 });
+  const smallGrant = await h.mintGrant(created.session_id, { maxAmount: 100 });
   await assert.rejects(
     h.mcp.callTool('complete_checkout_session', { idempotency_key: 'u-pay', session_id: created.session_id, payment_authorization: { method: 'acp_delegated_token', token: smallGrant } }, sess),
     (e) => e.code === 'CONFIRMATION_INVALID',
@@ -325,7 +325,7 @@ test('CONFORMANCE: amount-from-quote — a caller-injected amount is STRIPPED by
   // MCP: the surface schema has no amount field; a stuffed one is dropped by the allowlist
   const sess = { user_ref: 'usr_buyer', acp_session_id: 'sess_mcp' };
   const created = await h.mcp.callTool('create_checkout_session', { idempotency_key: 'q-c', amount_total: 1, quote: { merchant_id: MERCHANT, total: 1, items: [{ product_id: 'p1', quantity: 1, price: 1 }] } }, sess);
-  const grant = await h.mintGrant('sess_mcp');
+  const grant = await h.mintGrant(created.session_id);
   const out = await h.mcp.callTool('complete_checkout_session', { idempotency_key: 'q-pay', session_id: created.session_id, payment_authorization: { method: 'acp_delegated_token', token: grant } }, sess);
   assert.equal(out.order.amount_total, 113); // the adversarial stub would have priced this 1 if total/price leaked
   // ACP: stuffed amount in the (signed) body is dropped by the allowlist

@@ -25,16 +25,15 @@ const sameCurrency = (a, b) => typeof a === 'string' && typeof b === 'string' &&
 
 /**
  * @param {{
- *   merchantId: string,                       // the merchant-of-record this verifier serves (grant MUST match)
+ *   merchantId?: string,                      // optional fixed merchant-of-record; otherwise bound.merchant_id is used
  *   methods: Record<string, (authorization:any, bound:any) => Promise<object>>,  // method -> crypto verifier
  *   now?: () => number,
  *   clockToleranceMs?: number,
  * }} config
- * @returns {(authorization:any, bound:{order_id,user_ref,amount,currency,ctx}) => Promise<object>}
+ * @returns {(authorization:any, bound:{order_id,user_ref,amount,currency,merchant_id,checkout_session_id,ctx}) => Promise<object>}
  */
 export function createPaymentAuthorizationVerifier(config = {}) {
   const { merchantId, methods, now = () => Date.now(), clockToleranceMs = DEFAULT_CLOCK_TOLERANCE_MS } = config;
-  if (!nonEmpty(merchantId)) throw new Error('createPaymentAuthorizationVerifier requires merchantId');
   if (!methods || typeof methods !== 'object') throw new Error('createPaymentAuthorizationVerifier requires a methods map');
   // Copy into a NULL-PROTO map so a polluted Object.prototype can't inject a verifier for a method the config
   // never configured (Codex P2): an absent method must always fail closed, never resolve via inheritance.
@@ -70,7 +69,11 @@ export function createPaymentAuthorizationVerifier(config = {}) {
     }
 
     // 2. BINDING: against the VERIFIED claims (not the raw envelope).
-    assertPaymentBinding(method, verified, bound, { merchantId, now, clockToleranceMs });
+    const expectedMerchantId = nonEmpty(merchantId) ? merchantId : bound?.merchant_id;
+    if (!nonEmpty(expectedMerchantId)) {
+      throw new PivotaCommerceError('CONFIRMATION_INVALID', { reason: 'merchant_binding_missing', method });
+    }
+    assertPaymentBinding(method, verified, bound, { merchantId: expectedMerchantId, now, clockToleranceMs });
 
     // 3. ATTESTATION the executor requires (it re-checks these against the authoritative order).
     return {
@@ -113,10 +116,11 @@ export function assertPaymentBinding(method, verified, bound, { merchantId, now 
     if (!Number.isSafeInteger(verified.max_amount) || bound.amount > verified.max_amount) fail('amount_exceeds_allowance', { max: verified.max_amount });
   }
 
-  // session: the authorization must be bound to THIS checkout session (prevents replaying an authorization
-  // issued for another session). Required whenever the order context carries a session id (it always does for
-  // a checkout completion).
-  const boundSession = bound?.ctx?.acp_session_id;
+  // session: the authorization must be bound to THIS checkout session/quote, not merely the broader ACP/MCP
+  // connection. This prevents a valid grant for checkout A being replayed to complete checkout B under the same
+  // user/session. Older direct unit calls may omit checkout_session_id; fall back to ctx.acp_session_id only for
+  // that non-executor path.
+  const boundSession = nonEmpty(bound?.checkout_session_id) ? bound.checkout_session_id : bound?.ctx?.acp_session_id;
   if (nonEmpty(boundSession)) {
     if (!nonEmpty(verified.checkout_session_id)) fail('authorization_not_session_bound');
     if (verified.checkout_session_id !== boundSession) fail('session_mismatch');

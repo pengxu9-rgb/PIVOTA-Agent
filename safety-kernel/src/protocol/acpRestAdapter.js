@@ -200,6 +200,7 @@ export function createAcpRestAdapter(deps = {}) {
       const out = await executor.execute('complete_checkout_session', {
         idempotency_key,
         session_id: stored.quote_id,
+        authorization_checkout_session_id: acp_session_id,
         payment_authorization: paymentAuthorization(body), // ACP `payment_data` — verified by the executor
         shipping_address: mapAddress(body),
       }, ctx);

@@ -6,7 +6,7 @@ import assert from 'node:assert/strict';
 import { createPaymentAuthorizationVerifier, assertPaymentBinding } from '../src/protocol/paymentAuthorizationVerifier.js';
 
 const NOW = 1_900_000_000_000;
-const BOUND = { order_id: 'o1', user_ref: 'usr_1', amount: 113, currency: 'USD', ctx: { acp_session_id: 'sess_1' } };
+const BOUND = { order_id: 'o1', user_ref: 'usr_1', amount: 113, currency: 'USD', merchant_id: 'merch_A', ctx: { acp_session_id: 'sess_1' } };
 // a fully-valid allowance grant for BOUND
 const GOOD = { max_amount: 200, currency: 'USD', merchant_id: 'merch_A', checkout_session_id: 'sess_1', user_ref: 'usr_1', expires_at: NOW + 60_000, id: 'g1' };
 
@@ -17,9 +17,18 @@ function verifierWith(claims, { method = 'acp_delegated_token' } = {}) {
   });
 }
 
-test('construction requires merchantId + methods', () => {
-  assert.throws(() => createPaymentAuthorizationVerifier({ methods: {} }), /merchantId/);
+test('construction requires methods; merchant can be supplied dynamically by the bound order', async () => {
   assert.throws(() => createPaymentAuthorizationVerifier({ merchantId: 'm' }), /methods/);
+  const v = createPaymentAuthorizationVerifier({
+    now: () => NOW,
+    methods: { acp_delegated_token: async () => GOOD },
+  });
+  const att = await v({ method: 'acp_delegated_token', token: 't' }, BOUND);
+  assert.equal(att.ok, true);
+  await assert.rejects(
+    v({ method: 'acp_delegated_token', token: 't' }, { ...BOUND, merchant_id: undefined }),
+    (e) => e.detail?.reason === 'merchant_binding_missing',
+  );
 });
 
 test('happy: a signed allowance covering the order yields the bound attestation', async () => {

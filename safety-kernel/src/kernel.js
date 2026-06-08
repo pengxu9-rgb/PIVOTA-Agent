@@ -33,6 +33,52 @@ function markIdempotentReplay(result, replayed) {
   return result;
 }
 
+function isPlainObject(value) {
+  return value != null && typeof value === 'object' && !Array.isArray(value);
+}
+
+function firstNonEmpty(...values) {
+  for (const value of values) {
+    if (typeof value === 'string' && value.trim()) return value.trim();
+  }
+  return undefined;
+}
+
+function normalizeBuyerAddress(value) {
+  if (!isPlainObject(value)) return undefined;
+  const out = {
+    ...value,
+    name: firstNonEmpty(value.name, value.recipient_name, value.recipientName),
+    recipient_name: firstNonEmpty(value.recipient_name, value.recipientName, value.name),
+  };
+  for (const key of Object.keys(out)) {
+    if (out[key] === undefined || out[key] === null || out[key] === '') delete out[key];
+  }
+  return Object.keys(out).length ? out : undefined;
+}
+
+function normalizeBuyerContext(value) {
+  if (!isPlainObject(value)) return undefined;
+  const out = {
+    customer_email: firstNonEmpty(value.customer_email, value.customerEmail),
+    customer_name: firstNonEmpty(value.customer_name, value.customerName),
+    shipping_address: normalizeBuyerAddress(value.shipping_address),
+  };
+  for (const key of Object.keys(out)) {
+    if (out[key] === undefined || out[key] === null) delete out[key];
+  }
+  return Object.keys(out).length ? out : undefined;
+}
+
+function buyerContextFromQuotePayload(payload) {
+  const quote = isPlainObject(payload?.quote) ? payload.quote : {};
+  return normalizeBuyerContext({
+    customer_email: quote.customer_email ?? payload?.customer_email,
+    customer_name: quote.customer_name ?? payload?.customer_name,
+    shipping_address: quote.shipping_address ?? payload?.shipping_address,
+  });
+}
+
 // Map a backend payment_status to a coarse class for the order state machine.
 // success → terminal paid; failure → terminal failed (retry allowed); in_flight → charge_pending
 // (completes via webhook). Unknown/missing is treated as in_flight (fail SAFE: keep the order locked
@@ -132,6 +178,7 @@ export class SafetyKernel {
       currency, // canonical UPPERCASE
       locked_totals: upstreamResult.locked_totals,
       line_items: upstreamResult.line_items,
+      buyer_context: buyerContextFromQuotePayload(payload),
     });
     return {
       quote_id: snapshot.quote_id,
@@ -163,11 +210,25 @@ export class SafetyKernel {
         // this quote into an order — refuse, so one locked quote can never become two orders (double charge).
         const claimedQuote = await this._quoteClaims.putIfAbsent(quote.quote_id, { idempotency_key: key });
         if (!claimedQuote) throw new PivotaCommerceError('QUOTE_ALREADY_USED', { quote_id: quote.quote_id });
+        const lockedBuyerContext = normalizeBuyerContext(quote.buyer_context);
+        const requestedBuyerContext = normalizeBuyerContext(payload.order);
+        const lockedShipping = lockedBuyerContext && lockedBuyerContext.shipping_address;
+        const requestedShipping = requestedBuyerContext && requestedBuyerContext.shipping_address;
+        const buyerContext = {
+          ...(requestedBuyerContext || {}),
+          ...(lockedBuyerContext || {}),
+          shipping_address: lockedShipping || requestedShipping
+            ? { ...(requestedShipping || {}), ...(lockedShipping || {}) }
+            : payload.order?.shipping_address,
+        };
         // Pricing is forced from the snapshot; model-supplied amounts are ignored.
         const upstreamPayload = {
           ...payload,
           order: {
             ...payload.order,
+            customer_email: buyerContext.customer_email ?? payload.order?.customer_email,
+            customer_name: buyerContext.customer_name ?? payload.order?.customer_name,
+            shipping_address: buyerContext.shipping_address ?? payload.order?.shipping_address,
             quote_id: quote.upstream_quote_id || quote.quote_id,
             _kernel_quote_id: quote.quote_id,
             _locked_totals: quote.locked_totals,

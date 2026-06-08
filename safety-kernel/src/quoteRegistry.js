@@ -35,6 +35,14 @@ export class QuoteRegistry {
       upstream_quote_id: input.upstream_quote_id,
       locked_totals: { ...input.locked_totals },
       line_items: (input.line_items || []).map((i) => ({ ...i })),
+      buyer_context: input.buyer_context && typeof input.buyer_context === 'object'
+        ? {
+            ...input.buyer_context,
+            shipping_address: input.buyer_context.shipping_address && typeof input.buyer_context.shipping_address === 'object'
+              ? { ...input.buyer_context.shipping_address }
+              : undefined,
+          }
+        : undefined,
       issued_at,
       expires_at: issued_at + this._ttlMs,
     };

@@ -31,7 +31,7 @@ const scopedBaseKey = (rawKey, ctx) => JSON.stringify(['cs', ctx.user_ref ?? nul
  * @param {{
  *   kernel: object,                      // SafetyKernel
  *   upstream?: (op:string, payload:object, headers?:object) => Promise<any>,  // for reads
- *   verifyPaymentAuthorization?: (authorization:any, bound:{order_id,user_ref,amount,currency,ctx}) => Promise<void>,
+ *   verifyPaymentAuthorization?: (authorization:any, bound:{order_id,user_ref,amount,currency,merchant_id,checkout_session_id,ctx}) => Promise<void>,
  * }} deps
  */
 export function createCanonicalExecutor({ kernel, upstream, verifyPaymentAuthorization } = {}) {
@@ -151,6 +151,7 @@ async function completeCheckout({ kernel, verifyPaymentAuthorization }, params, 
       user_ref: ctx.user_ref,
       acp_session_id: ctx.acp_session_id ?? null,
       session_id: params.session_id,
+      authorization_checkout_session_id: params.authorization_checkout_session_id ?? null,
       payment_authorization: params.payment_authorization,
       shipping_address: params.shipping_address ?? null,
     },
@@ -171,7 +172,15 @@ async function completeCheckout({ kernel, verifyPaymentAuthorization }, params, 
       //    that silently returns (undefined / {ok:false}) for malformed auth must FAIL CLOSED — and the
       //    attestation must MATCH the authoritative order amount/currency/buyer.
       const attestation = await verifyPaymentAuthorization(params.payment_authorization, {
-        order_id: order.order_id, user_ref: ctx.user_ref, amount: order.amount_total, currency: order.currency, ctx,
+        order_id: order.order_id,
+        user_ref: ctx.user_ref,
+        amount: order.amount_total,
+        currency: order.currency,
+        merchant_id: order.merchant_of_record,
+        checkout_session_id: nonEmpty(params.authorization_checkout_session_id)
+          ? params.authorization_checkout_session_id
+          : params.session_id,
+        ctx,
       });
       assertAttestation(attestation, order, ctx);
 

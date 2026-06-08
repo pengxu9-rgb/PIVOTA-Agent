@@ -63,6 +63,40 @@ test('signed grant: a valid allowance JWT verifies to its claims', async () => {
   assert.ok(claims.expires_at > Date.now());
 });
 
+test('signed grant: explicit signed user_ref supports separate identity and payment issuers', async () => {
+  const { privateKey, jwks } = await keys();
+  const verify = createPaymentAuthorizationVerifier({
+    merchantId: 'merch_A',
+    methods: { acp_delegated_token: createSignedGrantVerifier({ issuers: issuers(jwks) }) },
+  });
+  const token = await signGrant(privateKey, {
+    allowance: {
+      max_amount: 200,
+      currency: 'USD',
+      merchant_id: 'merch_A',
+      checkout_session_id: 'sess_1',
+      user_ref: 'usr_x',
+    },
+  });
+  const att = await verify({ method: 'acp_delegated_token', token }, BOUND);
+  assert.equal(att.user_ref, 'usr_x');
+
+  const direct = createSignedGrantVerifier({ issuers: issuers(jwks) });
+  const conflicting = await signGrant(privateKey, {
+    allowance: {
+      max_amount: 200,
+      currency: 'USD',
+      merchant_id: 'merch_A',
+      checkout_session_id: 'sess_1',
+      user_ref: 'usr_x',
+    },
+  }, { sub: 'different-buyer' });
+  await assert.rejects(
+    direct({ method: 'acp_delegated_token', token: conflicting }),
+    (e) => e.detail?.reason === 'grant_user_ref_mismatch',
+  );
+});
+
 test('signed grant: tampered token / untrusted issuer / missing token fail closed', async () => {
   const { privateKey, jwks } = await keys();
   const other = await keys();

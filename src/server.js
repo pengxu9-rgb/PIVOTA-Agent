@@ -27453,9 +27453,12 @@ function buildInvokeUpstreamAuthHeaders({
   allowInternalFallback = true,
   preferInternalFallback = false,
   forceInternalFallback = false,
+  forwardAgentUserJwt = true,
 } = {}) {
   const forwardedHeaders = pruneEmptyFields({
-    'X-Agent-User-JWT': firstNonEmptyString(getInvokeAuthContext()?.agent_user_jwt),
+    ...(forwardAgentUserJwt
+      ? { 'X-Agent-User-JWT': firstNonEmptyString(getInvokeAuthContext()?.agent_user_jwt) }
+      : {}),
     'X-Buyer-Ref': firstNonEmptyString(getInvokeAuthContext()?.buyer_ref),
   });
   const normalizedCheckoutToken = String(checkoutToken || '').trim();
@@ -27510,6 +27513,8 @@ let commerceMountPromise = null;
 let paymentWebhookHandlerPromise = null;
 let commerceRemoteMcpAdapterPromise = null;
 let commerceConfirmationActionHandlerPromise = null;
+let commercePaymentAuthorizationVerifierPromise = null;
+let commerceUserTokenVerifierPromise = null;
 
 function isAgentCheckoutStrictEnabled() {
   return String(process.env.AGENT_CHECKOUT_STRICT || '').trim() === '1';
@@ -27654,6 +27659,10 @@ async function invokeCommerceKernelRawUpstream(operation, payload, headers = {})
         allowInternalFallback: true,
         checkoutToken,
         forceInternalFallback: true,
+        // The strict gateway has already verified X-Agent-User-JWT and derived ctx.user_ref. The current
+        // backend /agent/v2/orders verifier is not configured for this canary issuer and rejects the raw
+        // forwarded header before optional agent_user handling, blocking safe checkout before payment.
+        forwardAgentUserJwt: false,
       }),
       ...headers,
     },
@@ -27865,6 +27874,27 @@ function commerceKernelErrorBody(error = {}) {
   return body;
 }
 
+function mcpToolErrorBody({ id = null, code, message }) {
+  return {
+    jsonrpc: '2.0',
+    id,
+    result: {
+      isError: true,
+      content: [
+        {
+          type: 'text',
+          text: JSON.stringify({
+            error: {
+              code,
+              message,
+            },
+          }, null, 2),
+        },
+      ],
+    },
+  };
+}
+
 function getCheckoutConfirmationActionSecret() {
   return firstNonEmptyString(
     process.env.CHECKOUT_CONFIRMATION_ACTION_SECRET,
@@ -27954,11 +27984,11 @@ function verifyCheckoutConfirmationUserAction(req = {}, authResult = {}) {
   return timingSafeHexEqual(signature, expected);
 }
 
-function buildStrictSessionAuthInfo(req) {
+function buildStrictSessionAuthInfo(req, sessionContext = deriveStrictCommerceCtx(req)) {
   return pruneEmptyFields({
     invoke_authenticated: true,
     invokeAuth: req?.invokeAuth,
-    sessionContext: deriveStrictCommerceCtx(req),
+    sessionContext,
   });
 }
 
@@ -27982,6 +28012,163 @@ function buildExternalInvokeContext(req) {
   };
 }
 
+function parseJsonArrayEnv(raw, label) {
+  if (!firstNonEmptyString(raw)) return null;
+  let parsed;
+  try {
+    parsed = JSON.parse(raw);
+  } catch (_) {
+    throw new Error(`${label} must be valid JSON`);
+  }
+  if (!Array.isArray(parsed) || parsed.length === 0) {
+    throw new Error(`${label} must be a non-empty JSON array`);
+  }
+  return parsed;
+}
+
+async function getCommercePaymentAuthorizationVerifier() {
+  if (!commercePaymentAuthorizationVerifierPromise) {
+    commercePaymentAuthorizationVerifierPromise = (async () => {
+      const paymentIssuers = parseJsonArrayEnv(
+        firstNonEmptyString(
+          process.env.PAYMENT_ISSUERS_JSON,
+          process.env.AGENT_CHECKOUT_PAYMENT_ISSUERS_JSON,
+          process.env.PIVOTA_PAYMENT_ISSUERS_JSON,
+        ),
+        'PAYMENT_ISSUERS_JSON',
+      );
+      if (!paymentIssuers) return undefined;
+
+      if (parseBooleanEnv(process.env.AGENT_CHECKOUT_MCP_ENABLE_AP2_MANDATE, false)) {
+        throw new Error('AP2 mandate verification requires a reviewed checkout-hash verifier and is not wired on this MCP route');
+      }
+
+      const { createPaymentAuthorizationVerifier } = await import('../safety-kernel/src/protocol/paymentAuthorizationVerifier.js');
+      const { createSignedGrantVerifier } = await import('../safety-kernel/src/protocol/protocolPaymentVerifiers.js');
+      const signedGrantVerifier = createSignedGrantVerifier({ issuers: paymentIssuers });
+      return createPaymentAuthorizationVerifier({
+        methods: {
+          acp_delegated_token: signedGrantVerifier,
+          ucp_handler: signedGrantVerifier,
+        },
+      });
+    })();
+  }
+  return commercePaymentAuthorizationVerifierPromise;
+}
+
+async function getCommerceUserTokenVerifier() {
+  if (!commerceUserTokenVerifierPromise) {
+    commerceUserTokenVerifierPromise = (async () => {
+      const identityIssuers = parseJsonArrayEnv(
+        firstNonEmptyString(
+          process.env.IDENTITY_ISSUERS_JSON,
+          process.env.AGENT_CHECKOUT_IDENTITY_ISSUERS_JSON,
+          process.env.PIVOTA_IDENTITY_ISSUERS_JSON,
+        ),
+        'IDENTITY_ISSUERS_JSON',
+      );
+      if (!identityIssuers) return undefined;
+
+      const { createUserTokenVerifier } = await import('../safety-kernel/src/identity/userTokenVerifier.js');
+      return createUserTokenVerifier({
+        issuers: identityIssuers,
+        maxTokenAge: firstNonEmptyString(
+          process.env.AGENT_CHECKOUT_IDENTITY_MAX_TOKEN_AGE,
+          process.env.IDENTITY_MAX_TOKEN_AGE,
+        ) || undefined,
+      });
+    })();
+  }
+  return commerceUserTokenVerifierPromise;
+}
+
+function extractAgentUserJwt(req = {}) {
+  return firstNonEmptyString(
+    req?.header?.('X-Agent-User-JWT'),
+    req?.header?.('x-agent-user-jwt'),
+  );
+}
+
+function resolveVerifiedCommerceSessionId(claims = {}) {
+  if (!claims || typeof claims !== 'object') return null;
+  return firstNonEmptyString(
+    claims.acp_session_id,
+    claims.acpSessionId,
+    claims.pivota_session_id,
+    claims.pivotaSessionId,
+    claims.session_id,
+    claims.sessionId,
+    claims.sid,
+  );
+}
+
+function stripStrictUserContext(ctx = {}, identityDiagnostics = undefined) {
+  return pruneEmptyFields({
+    agent_id: ctx.agent_id,
+    diagnostics: ctx.diagnostics,
+    identity_diagnostics: identityDiagnostics,
+  });
+}
+
+async function deriveStrictCommerceCtxAsync(req) {
+  const base = deriveStrictCommerceCtx(req);
+  const rawUserJwt = extractAgentUserJwt(req);
+  if (!rawUserJwt) {
+    return pruneEmptyFields({
+      ...base,
+      identity_diagnostics: { agent_user_jwt_present: false },
+    });
+  }
+
+  const verifier = await getCommerceUserTokenVerifier();
+  if (typeof verifier !== 'function') {
+    logger.warn(
+      {
+        path: req?.path || null,
+        code: 'NO_IDENTITY_ISSUER_CONFIG',
+      },
+      'agent checkout user JWT verification unavailable',
+    );
+    return stripStrictUserContext(base, {
+      agent_user_jwt_present: true,
+      verifier_configured: false,
+      failure_code: 'NO_IDENTITY_ISSUER_CONFIG',
+    });
+  }
+
+  try {
+    const verified = await verifier(parseBearerToken(rawUserJwt) || rawUserJwt);
+    const verifiedSessionId = resolveVerifiedCommerceSessionId(verified?.claims);
+    return pruneEmptyFields({
+      ...base,
+      user_ref: verified.user_ref,
+      acp_session_id: verifiedSessionId || base.acp_session_id,
+      claims: verified.claims,
+      identity_source: 'x_agent_user_jwt',
+      identity_diagnostics: {
+        agent_user_jwt_present: true,
+        verifier_configured: true,
+        verified: true,
+      },
+    });
+  } catch (err) {
+    logger.warn(
+      {
+        path: req?.path || null,
+        code: err?.code || null,
+      },
+      'agent checkout user JWT verification failed',
+    );
+    return stripStrictUserContext(base, {
+      agent_user_jwt_present: true,
+      verifier_configured: true,
+      verified: false,
+      failure_code: err?.code || 'USER_TOKEN_INVALID',
+    });
+  }
+}
+
 async function getCommerceRemoteMcpAdapter() {
   if (!commerceRemoteMcpAdapterPromise) {
     commerceRemoteMcpAdapterPromise = (async () => {
@@ -27989,9 +28176,11 @@ async function getCommerceRemoteMcpAdapter() {
       const { createCanonicalExecutor } = await import('../safety-kernel/src/protocol/canonicalExecutor.js');
       const { createCommerceToolSurface } = await import('../mcp-server/src/commerceToolSurface.js');
       const { createRemoteMcpAdapter } = await import('../mcp-server/src/remoteMcpAdapter.js');
+      const verifyPaymentAuthorization = await getCommercePaymentAuthorizationVerifier();
       const executor = createCanonicalExecutor({
         kernel: commerce.kernel,
         upstream: invokeCommerceKernelRawUpstream,
+        verifyPaymentAuthorization,
       });
       const surface = createCommerceToolSurface(executor, { log: logger });
       return createRemoteMcpAdapter(surface, {
@@ -28036,11 +28225,33 @@ function registerCommerceRemoteMcpRoute() {
       return INVOKE_AUTH_CONTEXT.run(buildExternalInvokeContext(req), async () => {
         try {
           const adapter = await getCommerceRemoteMcpAdapter();
+          const sessionContext = await deriveStrictCommerceCtxAsync(req);
+          const rpcBody = req?.body && typeof req.body === 'object' ? req.body : {};
+          if (
+            rpcBody.method === 'tools/call' &&
+            rpcBody.params &&
+            rpcBody.params.name === 'complete_checkout_session' &&
+            !isAgentCheckoutStrictSubmitPaymentEnabled()
+          ) {
+            recordCommerceKernelAudit({
+              event: 'operation_blocked',
+              operation: 'complete_checkout_session',
+              detail: {
+                code: 'OPERATION_NOT_ALLOWED',
+                reason: 'strict_submit_payment_disabled',
+              },
+            });
+            return res.status(200).json(mcpToolErrorBody({
+              id: Object.prototype.hasOwnProperty.call(rpcBody, 'id') ? rpcBody.id : null,
+              code: 'OPERATION_NOT_ALLOWED',
+              message: 'submit_payment is disabled in strict checkout mode.',
+            }));
+          }
           const out = await adapter.handleJsonRpc({
             headers: req.headers || {},
             body: req.body,
-            authInfo: buildStrictSessionAuthInfo(req),
-            sessionContext: deriveStrictCommerceCtx(req),
+            authInfo: buildStrictSessionAuthInfo(req, sessionContext),
+            sessionContext,
           });
           for (const [key, value] of Object.entries(out.headers || {})) {
             res.setHeader(key, value);
@@ -28065,11 +28276,12 @@ function registerCommerceConfirmationActionRoute() {
       return INVOKE_AUTH_CONTEXT.run(buildExternalInvokeContext(req), async () => {
         try {
           const handler = await getCommerceConfirmationActionHandler();
+          const sessionContext = await deriveStrictCommerceCtxAsync(req);
           const out = await handler.handle({
             headers: req.headers || {},
             body: req.body,
-            authInfo: buildStrictSessionAuthInfo(req),
-            sessionContext: deriveStrictCommerceCtx(req),
+            authInfo: buildStrictSessionAuthInfo(req, sessionContext),
+            sessionContext,
           });
           for (const [key, value] of Object.entries(out.headers || {})) {
             res.setHeader(key, value);
@@ -28128,7 +28340,7 @@ function registerCommerceStrictInvokeRoute(path, clientChannel) {
             }));
           }
 
-          const ctx = deriveStrictCommerceCtx(req);
+          const ctx = await deriveStrictCommerceCtxAsync(req);
           if (!ctx.user_ref || !ctx.acp_session_id) {
             recordCommerceKernelAudit({
               event: 'user_auth_blocked',
@@ -28137,6 +28349,7 @@ function registerCommerceStrictInvokeRoute(path, clientChannel) {
               detail: {
                 code: 'USER_AUTH_REQUIRED',
                 reason: !ctx.user_ref ? 'missing_verified_user' : 'missing_verified_session',
+                identity_diagnostics: ctx.identity_diagnostics || null,
               },
             });
             return res.status(401).json(commerceKernelErrorBody({
@@ -47452,6 +47665,7 @@ module.exports._debug = {
   __agentCheckoutStrict: {
     getCommerceMount,
     deriveStrictCommerceCtx,
+    deriveStrictCommerceCtxAsync,
     isAgentCheckoutStrictEnabled,
     buildCheckoutConfirmationActionSignature,
   },

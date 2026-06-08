@@ -377,6 +377,63 @@ describe('strict Safety Kernel mount on /agent/shop/v1/invoke', () => {
     assert.equal(nock.isDone(), true);
   });
 
+  it('remote MCP invalid user JWT strips fallback identity and fails closed', async () => {
+    const res = await strictHeaders(request(app).post('/mcp'))
+      .set('X-Agent-User-JWT', 'not-a-jwt')
+      .send({
+        jsonrpc: '2.0',
+        id: 'mcp-invalid-jwt-1',
+        method: 'tools/call',
+        params: {
+          name: 'create_checkout_session',
+          arguments: {
+            idempotency_key: 'idem_mcp_invalid_jwt',
+            quote: {
+              merchant_id: 'm_strict',
+              items: [{ product_id: 'p_strict', variant_id: 'v_strict', quantity: 1 }],
+            },
+          },
+        },
+      })
+      .expect(200);
+
+    assert.equal(res.body.result.isError, true);
+    const text = res.body.result.content[0].text;
+    assert.match(text, /USER_AUTH_REQUIRED/);
+    assert.equal(nock.isDone(), true);
+  });
+
+  it('remote MCP blocks complete_checkout_session while submit_payment gate is closed', async () => {
+    const { result: res, audits } = await captureAuditRecords(async () => {
+      return strictHeaders(request(app).post('/mcp'))
+        .send({
+          jsonrpc: '2.0',
+          id: 'mcp-complete-disabled-1',
+          method: 'tools/call',
+          params: {
+            name: 'complete_checkout_session',
+            arguments: {
+              idempotency_key: 'idem_mcp_complete_disabled',
+              session_id: 'q_disabled',
+              payment_authorization: {
+                method: 'acp_delegated_token',
+                token: 'grant_disabled',
+              },
+            },
+          },
+        })
+        .expect(200);
+    });
+
+    assert.equal(res.body.result.isError, true);
+    assert.match(res.body.result.content[0].text, /OPERATION_NOT_ALLOWED/);
+    assert.match(res.body.result.content[0].text, /submit_payment is disabled/);
+    assert.ok(
+      audits.some((entry) => entry.event === 'operation_blocked' && entry.operation === 'complete_checkout_session'),
+    );
+    assert.equal(nock.isDone(), true);
+  });
+
   it('mounts host-only confirmation action with signed user-action verification', async () => {
     const { order } = await previewAndCreateOrder();
 

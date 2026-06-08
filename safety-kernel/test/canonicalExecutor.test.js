@@ -5,6 +5,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { SafetyKernel } from '../src/kernel.js';
 import { createCanonicalExecutor } from '../src/protocol/canonicalExecutor.js';
+import { createPaymentAuthorizationVerifier } from '../src/protocol/paymentAuthorizationVerifier.js';
 
 const SECRET = 'exec-secret-0123456789abcdef';
 const CTX = { user_ref: 'user_1', acp_session_id: 'acp_1' };
@@ -96,6 +97,77 @@ test('complete: verify payment authz → order + charge once; verifier sees the 
   assert.equal(seen[0].bound.amount, 113);
   assert.equal(seen[0].bound.currency, 'USD');
   assert.equal(seen[0].bound.user_ref, 'user_1');
+  assert.equal(seen[0].bound.merchant_id, 'merch_A');
+  assert.equal(seen[0].bound.checkout_session_id, session_id);
+});
+
+test('complete carries locked quote buyer context into create_order without payment-time identity fields', async () => {
+  let createOrderPayload;
+  let charges = 0;
+  const kernelUpstream = async (op, payload) => {
+    if (op === 'preview_quote') return QUOTE;
+    if (op === 'create_order') {
+      createOrderPayload = payload;
+      return { order_id: 'o_buyer_ctx', acp_state: {} };
+    }
+    if (op === 'submit_payment') {
+      charges++;
+      return { order_id: 'o_buyer_ctx', payment_id: 'pay_buyer_ctx', payment_status: 'succeeded' };
+    }
+    return {};
+  };
+  const kernel = new SafetyKernel({ upstream: kernelUpstream, secret: SECRET, log: quiet });
+  const executor = createCanonicalExecutor({ kernel, verifyPaymentAuthorization: okVerify });
+  const lockedShipping = {
+    country: 'US',
+    city: 'San Francisco',
+    state: 'CA',
+    postal_code: '94105',
+    address_line1: '1 Kernel Way',
+    recipient_name: 'Strict Buyer',
+  };
+  const session = await executor.execute('create_checkout_session', {
+    idempotency_key: 'idem-buyer-context-create',
+    quote: {
+      merchant_id: 'merch_A',
+      customer_email: 'strict-buyer@example.com',
+      shipping_address: lockedShipping,
+      items: [{ product_id: 'p1', quantity: 1 }],
+    },
+  }, CTX);
+
+  await executor.execute('complete_checkout_session', {
+    idempotency_key: 'idem-buyer-context-complete',
+    session_id: session.session_id,
+    payment_authorization: { token: 'tok_buyer_context' },
+  }, CTX);
+
+  assert.equal(charges, 1);
+  assert.equal(createOrderPayload.order.customer_email, 'strict-buyer@example.com');
+  assert.equal(createOrderPayload.order.shipping_address.address_line1, '1 Kernel Way');
+  assert.equal(createOrderPayload.order.shipping_address.name, 'Strict Buyer');
+});
+
+test('complete: a payment grant must bind to the checkout session, not only the ACP connection', async () => {
+  const verify = createPaymentAuthorizationVerifier({
+    methods: {
+      acp_delegated_token: async () => ({
+        max_amount: 200,
+        currency: 'USD',
+        merchant_id: 'merch_A',
+        checkout_session_id: CTX.acp_session_id,
+        user_ref: CTX.user_ref,
+        expires_at: Date.now() + 60_000,
+      }),
+    },
+  });
+  const { exec, charges } = setup({ verify });
+  const session_id = await newSession(exec);
+  await assert.rejects(
+    exec('complete_checkout_session', { idempotency_key: 'idem-connection-grant-1', session_id, payment_authorization: { method: 'acp_delegated_token', token: 'grant-for-connection-not-checkout' } }, CTX),
+    (e) => e.code === 'CONFIRMATION_INVALID' && e.detail?.reason === 'session_mismatch',
+  );
+  assert.equal(charges(), 0);
 });
 
 test('complete FAILS CLOSED when payment authorization does not verify — NO charge', async () => {

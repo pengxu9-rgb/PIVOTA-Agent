@@ -119,7 +119,7 @@ export function createSignedGrantVerifier(config = {}) {
       currency: firstString(a.currency),
       merchant_id: firstString(a.merchant_id, a.merchant),
       checkout_session_id: firstString(a.checkout_session_id, a.session_id, a.checkout_session),
-      user_ref: nonEmpty(payload.sub) ? safeDeriveUserRef(payload.iss, payload.sub) : undefined,
+      user_ref: resolveSignedUserRef({ payload, claims: a }),
       expires_at: typeof payload.exp === 'number' ? payload.exp * 1000 : undefined,
       id: firstString(payload.jti, a.id, a.authorization_id),
     };
@@ -245,6 +245,12 @@ const hasOwn = (o, k) => o != null && Object.prototype.hasOwnProperty.call(o, k)
 function toIntOrUndef(v) { return Number.isSafeInteger(v) ? v : undefined; }
 function safeDeriveUserRef(iss, sub) {
   try { return deriveUserRefFromClaims(iss, sub); } catch { return undefined; }
+}
+function resolveSignedUserRef({ payload, claims }) {
+  const explicit = firstString(claims?.user_ref, claims?.userRef, payload?.user_ref, payload?.userRef);
+  const derived = nonEmpty(payload?.sub) ? safeDeriveUserRef(payload.iss, payload.sub) : undefined;
+  if (explicit && derived && explicit !== derived) fail('grant_user_ref_mismatch');
+  return explicit || derived;
 }
 function isPlainObject(v) {
   if (typeof v !== 'object' || v === null || Array.isArray(v)) return false;
