@@ -28322,7 +28322,7 @@ async function getCommerceRemoteMcpAdapter() {
       const verifyPaymentAuthorization = await getCommercePaymentAuthorizationVerifier();
       // Read-only intelligence reads (get_alternatives/get_offers) injected as localReads — the relationship
       // graph + offers live in the app DB, so the handlers are wired here (not in the safety kernel).
-      const { makeGetAlternatives, makeGetOffers } = require('./agentSignals/intelligenceReads');
+      const { makeGetAlternatives, makeGetOffers, mapOffersResolveResponse } = require('./agentSignals/intelligenceReads');
       const {
         listApprovedRelationshipEdgesForAnchor,
         buildAnchorRefsFromProduct,
@@ -28336,9 +28336,21 @@ async function getCommerceRemoteMcpAdapter() {
           buildAnchorRefsFromProduct,
           isEnabled: agentRelationshipGraphEnabled,
         }),
-        // fetchOffers is the backend cross-merchant offers source (agent_pdp_view.offers). Not wired yet —
-        // get_offers fails closed with `offers_source_unavailable` until the backend offers op is exposed.
-        get_offers: makeGetOffers({ fetchOffers: null }),
+        // Cross-merchant offers via the live backend `offers.resolve` op (resolves to a canonical product
+        // group and aggregates offers across all member merchants — verified in agent_shop_gateway.py). Its
+        // `offers[]` is already in offerToSignal shape; mapOffersResolveResponse normalizes the envelope.
+        // Single-offer products yield best_offer + an empty competition set (no fabricated competition).
+        get_offers: makeGetOffers({
+          fetchOffers: async ({ merchant_id, product_id, product_group_id, limit }) =>
+            mapOffersResolveResponse(
+              await invokeCommerceKernelRawUpstream('offers.resolve', {
+                product: { product_id, merchant_id },
+                limit: Math.min(Math.max(Number(limit) || 10, 1), 30),
+                commerceSurface: 'agent_api',
+              }),
+              product_group_id || null,
+            ),
+        }),
       };
       const executor = createCanonicalExecutor({
         kernel: commerce.kernel,
