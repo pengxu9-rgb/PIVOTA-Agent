@@ -34,7 +34,7 @@ const scopedBaseKey = (rawKey, ctx) => JSON.stringify(['cs', ctx.user_ref ?? nul
  *   verifyPaymentAuthorization?: (authorization:any, bound:{order_id,user_ref,amount,currency,merchant_id,checkout_session_id,ctx}) => Promise<void>,
  * }} deps
  */
-export function createCanonicalExecutor({ kernel, upstream, verifyPaymentAuthorization } = {}) {
+export function createCanonicalExecutor({ kernel, upstream, verifyPaymentAuthorization, hostedLinkEnabled = false } = {}) {
   if (!kernel || typeof kernel.previewQuote !== 'function') {
     throw new Error('createCanonicalExecutor requires a kernel');
   }
@@ -87,6 +87,16 @@ export function createCanonicalExecutor({ kernel, upstream, verifyPaymentAuthori
 
       case 'complete_checkout_session':
         return completeCheckout({ kernel, verifyPaymentAuthorization }, params, ctx);
+
+      case 'create_payment_link':
+        // GUEST hosted checkout: lock the quote into an order, then mint a hosted Stripe URL the buyer
+        // pays on. NON-charging — never calls submitPayment, so no payment authorization is required.
+        // Defense-in-depth: enforce the enable flag HERE (not only in the /mcp route) so every adapter
+        // — MCP today, ACP/UCP tomorrow — inherits the gate and can't reach it with the flag off.
+        if (!hostedLinkEnabled) {
+          throw new PivotaCommerceError('OPERATION_NOT_ALLOWED', { op: opId, reason: 'hosted_link_disabled' });
+        }
+        return createPaymentLink({ kernel, upstream }, params, ctx);
 
       case 'get_order': {
         if (!nonEmpty(params.order_id)) throw new PivotaCommerceError('QUOTE_NOT_FOUND', { reason: 'missing_order_id' });
@@ -200,6 +210,75 @@ async function completeCheckout({ kernel, verifyPaymentAuthorization }, params, 
       );
 
       return { order, payment };
+    },
+  );
+  return result;
+}
+
+// GUEST hosted checkout (grant-free). Locks the quote into an order (server-side amount) and asks the
+// backend to mint a HOSTED checkout surface (Stripe Checkout page) the buyer pays on. This path MUST NEVER
+// call kernel.submitPayment / charge: the agent only ever hands the buyer a page; the buyer authorizes
+// payment by paying on it, and the PSP webhook finalizes the order. So no delegated payment grant is needed.
+async function createPaymentLink({ kernel, upstream }, params, ctx) {
+  if (!nonEmpty(params.session_id)) throw new PivotaCommerceError('QUOTE_NOT_FOUND', { reason: 'missing_session_id' });
+  if (typeof upstream !== 'function') {
+    throw new PivotaCommerceError('MERCHANT_UNAVAILABLE', { reason: 'no_upstream_for_hosted_checkout' });
+  }
+  // User-scoped, single-use-quote, replay-safe — same base-key discipline as complete (so a retry returns
+  // the SAME order + checkout link, never a second order or a second hosted session).
+  const base = scopedBaseKey(params.idempotency_key, ctx);
+  const { result } = await kernel.idempotency.run(
+    base,
+    {
+      op: 'create_payment_link',
+      user_ref: ctx.user_ref,
+      acp_session_id: ctx.acp_session_id ?? null,
+      session_id: params.session_id,
+      customer_email: params.customer_email ?? null,
+      shipping_address: params.shipping_address ?? null,
+      return_url: params.return_url ?? null,
+    },
+    async (runCtx) => {
+      const orderKey = `${base}:order`;
+      // 1. INV-1/5: order from the session's locked quote; amount is the server-side snapshot, not the caller's.
+      const order = await kernel.createOrder(
+        { idempotency_key: orderKey, order: { quote_id: params.session_id, shipping_address: params.shipping_address ?? {} } },
+        ctx,
+      );
+      // 2. Mint the HOSTED checkout surface. Creating a backend session is a side effect; mark it so a
+      //    base-key retry replays the cached link rather than minting a second session. NO CHARGE happens
+      //    here — the buyer pays on the returned page.
+      runCtx.sideEffectDone = true;
+      const hosted = await upstream('create_payment_link', {
+        order_id: order.order_id,
+        customer_email: params.customer_email ?? null,
+        shipping_address: params.shipping_address ?? null,
+        return_url: params.return_url ?? null,
+        user_ref: ctx.user_ref,
+      });
+      // accept either a flat shape ({checkout_url,...}) or the backend's nested {checkout_session:{hosted_url,...}}.
+      const cs = (hosted && typeof hosted.checkout_session === 'object' && hosted.checkout_session) || hosted || {};
+      const checkout_url = cs.hosted_url ?? cs.checkout_url ?? cs.url ?? cs.redirect_url ?? null;
+      if (!nonEmpty(checkout_url)) {
+        // fail closed: a hosted-checkout op that didn't return a payable URL must not look successful.
+        throw new PivotaCommerceError('MERCHANT_UNAVAILABLE', { reason: 'hosted_checkout_no_url', order_id: order.order_id });
+      }
+      // The URL is surfaced verbatim to the buyer; require https so a malformed/typo'd upstream field can't
+      // relay a non-secure or javascript:/data: link. (Host allowlisting is a further hardening option.)
+      let parsedUrl;
+      try { parsedUrl = new URL(checkout_url); } catch { parsedUrl = null; }
+      if (!parsedUrl || parsedUrl.protocol !== 'https:') {
+        throw new PivotaCommerceError('MERCHANT_UNAVAILABLE', { reason: 'hosted_checkout_bad_url', order_id: order.order_id });
+      }
+      return {
+        order_id: order.order_id,
+        status: 'awaiting_payment',
+        checkout_url,
+        checkout_session_id: cs.checkout_session_id ?? cs.session_id ?? null,
+        expires_at: cs.expires_at ?? null,
+        currency: order.currency,
+        amount_total: order.amount_total,
+      };
     },
   );
   return result;

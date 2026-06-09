@@ -43,7 +43,7 @@ test('safety flags are correct: complete needs user_ref + payment authz + is mut
   // only complete requires payment authorization (the delegated-token / AP2-mandate gate)
   assert.deepEqual(PAYMENT_AUTHZ_OPERATIONS, ['complete_checkout_session']);
   // mutating ops are exactly the writes
-  assert.deepEqual([...MUTATING_OPERATIONS].sort(), ['cancel_checkout_session', 'complete_checkout_session', 'create_checkout_session', 'request_after_sales', 'update_checkout_session'].sort());
+  assert.deepEqual([...MUTATING_OPERATIONS].sort(), ['cancel_checkout_session', 'complete_checkout_session', 'create_checkout_session', 'create_payment_link', 'request_after_sales', 'update_checkout_session'].sort());
   // get_order is user-scoped (closes the L3 leak at the contract level)
   assert.ok(USER_SCOPED_OPERATIONS.includes('get_order'));
 });
@@ -51,7 +51,7 @@ test('safety flags are correct: complete needs user_ref + payment authz + is mut
 test('operationsForCapability groups the checkout lifecycle', () => {
   assert.deepEqual(operationsForCapability('checkout').sort(), [
     'cancel_checkout_session', 'complete_checkout_session', 'create_checkout_session',
-    'get_checkout_session', 'update_checkout_session',
+    'create_payment_link', 'get_checkout_session', 'update_checkout_session',
   ].sort());
 });
 
