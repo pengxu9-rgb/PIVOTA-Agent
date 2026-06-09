@@ -93,6 +93,53 @@ test('LIVE CONTRACT (prod probe run 26879631671, 2026-06-03): $1.69 MAJOR → 16
   assert.equal(o.currency, 'USD');
 });
 
+// The REAL `/agent/v1/orders/create` response — the shape the kernel's create_order upstream actually
+// receives via the shop gateway (`POST /agent/shop/v1/invoke` → proxied to `/agent/v1/orders/create`).
+// It is FLAT: top-level `total` (string) + `total_amount` (float) + `currency` + best-effort `pricing`.
+// There is NO `order` wrapper and NO `amounts` object. (Source: routes/agent_api.py:8762 response.)
+const REAL_V1_CREATE_ORDER_FLAT = {
+  status: 'success',
+  order_id: 'ORD_FLAT_169',
+  merchant_id: 'm',
+  total: '1.69',          // deprecated string, ALWAYS present
+  total_amount: 1.69,     // "new standard" float field
+  currency: 'USD',
+  presentment_currency: 'USD',
+  charge_currency: 'USD',
+  payment: { psp: 'stripe', client_secret: 'cs_test', payment_intent_id: null, payment_action: null },
+  tracking: { agent_session_id: 's', created_at: '2026-06-09T00:00:00Z' },
+  pricing: { subtotal: '1.69', tax: '0.00', shipping_fee: '0.00', total: '1.69' },
+};
+
+test('LIVE CONTRACT (real /agent/v1/orders/create, FLAT shape): top-level total → backend_amount_present + minor', () => {
+  // REGRESSION GUARD for the 2026-06-09 PRICE_CHANGED bug: the adapter previously only read the nested
+  // `order.amounts.total`, which is ABSENT here → backend_amount_present=false → backend_amount_missing →
+  // PRICE_CHANGED on every real order. The flat top-level `total`/`total_amount` must be read as MAJOR→minor.
+  const out = normalizeCreateOrder(REAL_V1_CREATE_ORDER_FLAT);
+  assert.equal(out.order_id, 'ORD_FLAT_169', 'top-level order_id lifted');
+  assert.equal(out.backend_amount_present, true, 'flat top-level total is a present amount');
+  assert.equal(out.backend_amount_minor, 169, '"1.69" major → 169 minor');
+  assert.equal(out.backend_currency, 'USD');
+});
+
+test('END-TO-END (real FLAT v1 create): quote→order cross-check is GREEN — reproduces+fixes the prod PRICE_CHANGED', async () => {
+  // This is the test that would have CAUGHT the prod bug: it feeds the REAL flat create_order wire (no
+  // nested order.amounts) with requireBackendAmount on (as prod wires it). On the OLD adapter this throws
+  // PRICE_CHANGED{reason:'backend_amount_missing'}; the fix makes the cross-check compare 169==169.
+  const raw = async (op) => (
+    op === 'preview_quote' ? { merchant_of_record: 'm', currency: 'USD', pricing: { subtotal: '1.69', tax: '0.00', shipping_fee: '0.00', total: '1.69' }, line_items: [{ product_id: 'p', quantity: 1 }], acp_state: {} }
+    : op === 'create_order' ? REAL_V1_CREATE_ORDER_FLAT
+    : {}
+  );
+  const kernel = new SafetyKernel({ upstream: wrapUpstream(raw), secret: 'adapter-secret-0123456789ab', log: { info() {}, warn() {}, error() {} }, requireBackendAmount: true });
+  const q = await kernel.previewQuote({ quote: { merchant_id: 'm', items: [{ product_id: 'p', quantity: 1 }] } }, CTX);
+  assert.equal(q.locked_totals.total, 169);
+  const o = await kernel.createOrder({ idempotency_key: 'idem-flat-169', order: { quote_id: q.quote_id, shipping_address: {} } }, CTX);
+  assert.equal(o.order_id, 'ORD_FLAT_169');
+  assert.equal(o.amount_total, 169, 'charge from quote snapshot (INV-5); flat backend total cross-checked green');
+  assert.equal(o.currency, 'USD');
+});
+
 test('MONEY-UNITS cross-check: create_order FAILS CLOSED when the backend amount disagrees with the quote', async () => {
   // The $95.00 quote → 9500 minor, but the backend order says 1000 minor ($10): a major/minor or
   // pricing inconsistency. The kernel must reject BEFORE any charge can be authorized.
