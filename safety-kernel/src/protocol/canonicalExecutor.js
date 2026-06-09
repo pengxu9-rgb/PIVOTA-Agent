@@ -34,7 +34,7 @@ const scopedBaseKey = (rawKey, ctx) => JSON.stringify(['cs', ctx.user_ref ?? nul
  *   verifyPaymentAuthorization?: (authorization:any, bound:{order_id,user_ref,amount,currency,merchant_id,checkout_session_id,ctx}) => Promise<void>,
  * }} deps
  */
-export function createCanonicalExecutor({ kernel, upstream, verifyPaymentAuthorization } = {}) {
+export function createCanonicalExecutor({ kernel, upstream, verifyPaymentAuthorization, hostedLinkEnabled = false } = {}) {
   if (!kernel || typeof kernel.previewQuote !== 'function') {
     throw new Error('createCanonicalExecutor requires a kernel');
   }
@@ -91,6 +91,11 @@ export function createCanonicalExecutor({ kernel, upstream, verifyPaymentAuthori
       case 'create_payment_link':
         // GUEST hosted checkout: lock the quote into an order, then mint a hosted Stripe URL the buyer
         // pays on. NON-charging — never calls submitPayment, so no payment authorization is required.
+        // Defense-in-depth: enforce the enable flag HERE (not only in the /mcp route) so every adapter
+        // — MCP today, ACP/UCP tomorrow — inherits the gate and can't reach it with the flag off.
+        if (!hostedLinkEnabled) {
+          throw new PivotaCommerceError('OPERATION_NOT_ALLOWED', { op: opId, reason: 'hosted_link_disabled' });
+        }
         return createPaymentLink({ kernel, upstream }, params, ctx);
 
       case 'get_order': {
@@ -257,6 +262,13 @@ async function createPaymentLink({ kernel, upstream }, params, ctx) {
       if (!nonEmpty(checkout_url)) {
         // fail closed: a hosted-checkout op that didn't return a payable URL must not look successful.
         throw new PivotaCommerceError('MERCHANT_UNAVAILABLE', { reason: 'hosted_checkout_no_url', order_id: order.order_id });
+      }
+      // The URL is surfaced verbatim to the buyer; require https so a malformed/typo'd upstream field can't
+      // relay a non-secure or javascript:/data: link. (Host allowlisting is a further hardening option.)
+      let parsedUrl;
+      try { parsedUrl = new URL(checkout_url); } catch { parsedUrl = null; }
+      if (!parsedUrl || parsedUrl.protocol !== 'https:') {
+        throw new PivotaCommerceError('MERCHANT_UNAVAILABLE', { reason: 'hosted_checkout_bad_url', order_id: order.order_id });
       }
       return {
         order_id: order.order_id,

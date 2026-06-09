@@ -63,6 +63,23 @@ returns its URL. It calls the backend's existing hosted endpoint, never `submitP
 - e2e (test mode): keyless OAuth → create_checkout_session → create_payment_link → cs_test URL →
   buyer pays (4242) → webhook → paid; replay → no duplicate.
 
+## Adversarial review outcome (2026-06-09)
+
+Reviewer verdict: **agent-side no-charge invariant is guaranteed** — `create_payment_link` structurally
+never reaches `submitPayment`/`mintConfirmation`/the grant path; amount is server-locked; identity is from
+verified context; replay + cross-user are defended. Two findings fixed in this branch:
+- **#6 (fixed):** enable-flag enforced in the **executor** (`hostedLinkEnabled`), not only the `/mcp` route,
+  so any future ACP/UCP adapter inherits the gate (defense-in-depth). Test: "disabled by default at the executor".
+- **#7 (fixed):** returned `checkout_url` must be **https** or the op fails closed. Test: "rejects a non-https url".
+
+Remaining items to confirm in the controlled test-mode canary (not blockers to merge, blockers to *trust at scale*):
+- **#1:** the op POSTs to the same backend endpoint (`/agent/v2/payments/checkout-sessions`) as `submit_payment`
+  (which currently `forceHostedCheckoutSession=true`). Confirm the endpoint only mints a hosted page for the
+  link body (no `payment_method`/confirm fields) and never confirms a PaymentIntent. Ideal hardening: an explicit
+  server-side `mode: hosted_link` / `confirm:false` discriminator instead of relying on field absence.
+- **#8:** confirm `kernel.createOrder` → `/agent/v2/orders` leaves the order in `awaiting_checkout`/`draft` so the
+  hosted call is accepted (else it fails closed with MERCHANT_UNAVAILABLE — safe but broken). Prove via the e2e.
+
 ## Rollout
-Behind `AGENT_CHECKOUT_HOSTED_LINK_ENABLED`. Adversarial review (per the money-path loop) BEFORE enabling.
-Run the test-mode canary in a controlled window. submit_payment stays gated separately.
+Behind `AGENT_CHECKOUT_HOSTED_LINK_ENABLED` (default off; enforced in BOTH the executor and the /mcp route).
+Run the test-mode canary in a controlled window. `complete_checkout_session`/submit_payment stay gated separately.

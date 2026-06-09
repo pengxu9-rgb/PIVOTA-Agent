@@ -14,7 +14,7 @@ const QUOTE = {
 };
 const quiet = { info() {}, warn() {}, error() {} };
 
-function setup({ hosted } = {}) {
+function setup({ hosted, enabled = true } = {}) {
   let charges = 0;
   const kernelUpstream = async (op) => (
     op === 'preview_quote' ? QUOTE
@@ -35,7 +35,7 @@ function setup({ hosted } = {}) {
     }
     return { ok: true, op };
   };
-  const exec = createCanonicalExecutor({ kernel, upstream: readUpstream, verifyPaymentAuthorization: async () => ({ ok: true }) });
+  const exec = createCanonicalExecutor({ kernel, upstream: readUpstream, verifyPaymentAuthorization: async () => ({ ok: true }), hostedLinkEnabled: enabled });
   return { exec: exec.execute, calls, charges: () => charges };
 }
 
@@ -93,6 +93,24 @@ test('fail-closed when the hosted op returns no URL', async () => {
   const sid = await newSession(exec);
   await assert.rejects(
     exec('create_payment_link', { idempotency_key: 'idem-link-4', session_id: sid }, CTX),
+    (e) => e.code === 'MERCHANT_UNAVAILABLE',
+  );
+});
+
+test('disabled by default at the executor (defense-in-depth, all adapters)', async () => {
+  const { exec } = setup({ enabled: false });
+  const sid = await newSession(exec);
+  await assert.rejects(
+    exec('create_payment_link', { idempotency_key: 'idem-off', session_id: sid, customer_email: 'g@x.com' }, CTX),
+    (e) => e.code === 'OPERATION_NOT_ALLOWED' && e.detail?.reason === 'hosted_link_disabled',
+  );
+});
+
+test('rejects a non-https checkout url (fail closed)', async () => {
+  const { exec } = setup({ hosted: { checkout_url: 'http://evil.example/pay' } });
+  const sid = await newSession(exec);
+  await assert.rejects(
+    exec('create_payment_link', { idempotency_key: 'idem-bad-url', session_id: sid }, CTX),
     (e) => e.code === 'MERCHANT_UNAVAILABLE',
   );
 });

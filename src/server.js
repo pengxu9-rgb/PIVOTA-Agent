@@ -28323,6 +28323,7 @@ async function getCommerceRemoteMcpAdapter() {
         kernel: commerce.kernel,
         upstream: invokeCommerceKernelRawUpstream,
         verifyPaymentAuthorization,
+        hostedLinkEnabled: isAgentCheckoutHostedLinkEnabled(),
       });
       const surface = createCommerceToolSurface(executor, { log: logger });
       return createRemoteMcpAdapter(surface, {
