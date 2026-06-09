@@ -122,4 +122,18 @@ function makeGetOffers(deps = {}) {
   };
 }
 
-module.exports = { makeGetAlternatives, makeGetOffers, DEFAULT_RELATIONS };
+// Map a backend `offers.resolve` response → makeGetOffers' fetchOffers result shape ({offers, product_group_id}).
+// Pure. offers.resolve already returns offers in normalize_offer shape (1:1 with offerToSignal), and is
+// cross-merchant by construction (it resolves to a canonical product_group and aggregates offers across ALL
+// member merchants). `mapping.canonical_product_group_id` carries the resolved group.
+function mapOffersResolveResponse(res, fallbackGroupId = null) {
+  const offers = res && Array.isArray(res.offers) ? res.offers : [];
+  const groupId =
+    (res && res.mapping && res.mapping.canonical_product_group_id) ||
+    (res && res.product_group_id) ||
+    fallbackGroupId ||
+    null;
+  return { offers, product_group_id: groupId };
+}
+
+module.exports = { makeGetAlternatives, makeGetOffers, mapOffersResolveResponse, DEFAULT_RELATIONS };

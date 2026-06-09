@@ -8,7 +8,7 @@ const assert = require('node:assert/strict');
 
 const { relationshipEdgeToSignal, relationshipEdgesToSignals } = require('../src/agentSignals/relationshipEdgeToSignal');
 const { offerToSignal, offersToSignals } = require('../src/agentSignals/offerToSignal');
-const { makeGetAlternatives, makeGetOffers } = require('../src/agentSignals/intelligenceReads');
+const { makeGetAlternatives, makeGetOffers, mapOffersResolveResponse } = require('../src/agentSignals/intelligenceReads');
 
 function sampleEdge(over = {}) {
   return {
@@ -208,4 +208,30 @@ test('makeGetOffers: maps fetched offers', async () => {
   assert.equal(res.signals.length, 1);
   assert.equal(res.best_offer.value.price, 12);
   assert.equal(res.metadata.product_group_id, 'g1');
+});
+
+test('mapOffersResolveResponse: maps offers[] + canonical_product_group_id', () => {
+  const res = { offers: [sampleOffer({ merchant_id: 'm1' }), sampleOffer({ merchant_id: 'm2' })], mapping: { canonical_product_group_id: 'grp1' } };
+  const out = mapOffersResolveResponse(res, 'fallback');
+  assert.equal(out.offers.length, 2);
+  assert.equal(out.product_group_id, 'grp1'); // mapping wins over fallback
+});
+
+test('mapOffersResolveResponse: missing offers → [] and fallback group id', () => {
+  const out = mapOffersResolveResponse({}, 'fallback_grp');
+  assert.deepEqual(out.offers, []);
+  assert.equal(out.product_group_id, 'fallback_grp');
+});
+
+test('get_offers over a CROSS-MERCHANT offers.resolve response → best = lowest price', async () => {
+  // Simulates the wired fetchOffers: offers.resolve returns offers across 2 merchants → mapOffersResolveResponse.
+  const offersResolveResponse = {
+    offers: [sampleOffer({ merchant_id: 'm1', price: 30 }), sampleOffer({ merchant_id: 'm2', price: 20 })],
+    mapping: { canonical_product_group_id: 'grp1' },
+  };
+  const handler = makeGetOffers({ fetchOffers: async () => mapOffersResolveResponse(offersResolveResponse) });
+  const res = await handler({ payload: { product_id: 'p1', merchant_id: 'm1' } });
+  assert.equal(res.signals.length, 2); // cross-merchant
+  assert.equal(res.best_offer.value.merchant_id, 'm2'); // lowest price
+  assert.equal(res.metadata.product_group_id, 'grp1');
 });
