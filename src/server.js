@@ -13,6 +13,7 @@ const OpenAI = require('openai');
 const { createHash, createHmac, randomUUID, timingSafeEqual } = require('crypto');
 const { AsyncLocalStorage } = require('async_hooks');
 const { InvokeRequestSchema, OperationEnum } = require('./schema');
+const commerceMcpOAuth = require('./commerceMcpOAuth');
 const logger = require('./logger');
 const { runMigrations } = require('./db/migrate');
 const { query, withClient } = require('./db');
@@ -28341,11 +28342,33 @@ function registerCommerceRemoteMcpRoute() {
     if (!isAgentCheckoutStrictEnabled()) {
       return res.status(404).json({ error: 'not_found' });
     }
-    return requireExternalInvokeAuth(req, res, async () => {
+
+    // MCP OAuth front door (additive, gated by MCP_OAUTH_ENABLED). Lets a native frontier MCP
+    // client (Claude/ChatGPT/Gemini) connect with an OAuth access token instead of a commerce
+    // API key: the verified token is BOTH the channel credential and the user identity. Inert
+    // when the flag is off — the existing api-key channel below is unchanged.
+    let mcpOAuthOutcome = { mode: 'disabled' };
+    try {
+      mcpOAuthOutcome = await commerceMcpOAuth.resolveMcpOAuthIdentity(req);
+    } catch (err) {
+      logger.warn({ err: err?.message || String(err) }, 'mcp oauth resolution failed');
+    }
+    if (mcpOAuthOutcome.mode === 'challenge') {
+      if (mcpOAuthOutcome.wwwAuthenticate) {
+        res.setHeader('WWW-Authenticate', mcpOAuthOutcome.wwwAuthenticate);
+      }
+      return res.status(mcpOAuthOutcome.status || 401).json(
+        mcpOAuthOutcome.body || { error: 'UNAUTHORIZED', message: 'Missing or invalid token' },
+      );
+    }
+
+    const runMcp = async () => {
       return INVOKE_AUTH_CONTEXT.run(buildExternalInvokeContext(req), async () => {
         try {
           const adapter = await getCommerceRemoteMcpAdapter();
-          const sessionContext = await deriveStrictCommerceCtxAsync(req);
+          const sessionContext = mcpOAuthOutcome.mode === 'oauth'
+            ? buildOAuthCommerceCtx(req, mcpOAuthOutcome)
+            : await deriveStrictCommerceCtxAsync(req);
           const rpcBody = req?.body && typeof req.body === 'object' ? req.body : {};
           if (
             rpcBody.method === 'tools/call' &&
@@ -28383,7 +28406,44 @@ function registerCommerceRemoteMcpRoute() {
           return res.status(503).json({ error: 'mcp_unavailable' });
         }
       });
-    });
+    };
+
+    if (mcpOAuthOutcome.mode === 'oauth') {
+      // OAuth access token authenticated the channel AND the user; skip the api-key channel.
+      req.invokeAuth = {
+        key_fingerprint: null,
+        auth_source: 'mcp_oauth_bearer',
+        auth_mode: 'mcp_oauth',
+        agent_id: null,
+        raw_token: null,
+        cache_hit: false,
+        introspect_auth_source: null,
+      };
+      return runMcp();
+    }
+    return requireExternalInvokeAuth(req, res, runMcp);
+  });
+}
+
+function buildOAuthCommerceCtx(req, outcome) {
+  // Identity for a native OAuth MCP client: user_ref comes from the verified access token, never
+  // from the request body or a model-supplied value. acp_session_id binds the logical checkout
+  // session — from a token session claim if present, else the MCP transport session id. If neither
+  // is present it stays empty and the downstream USER_AUTH_REQUIRED check fails closed.
+  const base = deriveStrictCommerceCtx(req);
+  const claims = (outcome && outcome.claims) || {};
+  const sessionId = resolveVerifiedCommerceSessionId(claims)
+    || firstNonEmptyString(
+      req?.header?.('mcp-session-id'),
+      req?.header?.('Mcp-Session-Id'),
+    );
+  return pruneEmptyFields({
+    ...base,
+    user_ref: outcome.user_ref,
+    acp_session_id: sessionId || base.acp_session_id,
+    claims,
+    identity_source: 'mcp_oauth',
+    identity_diagnostics: { mcp_oauth: true, verified: true },
   });
 }
 
@@ -47515,6 +47575,7 @@ function registerExternalInvokeRoute(path, clientChannel) {
 }
 
 registerCommerceRemoteMcpRoute();
+commerceMcpOAuth.registerMcpOAuthDiscoveryRoutes(app, { logger });
 registerCommerceConfirmationActionRoute();
 registerCommerceStrictInvokeRoute('/agent/shop/v1/invoke', 'shop');
 registerExternalInvokeRoute('/agent/shop/v1/invoke', 'shop');
