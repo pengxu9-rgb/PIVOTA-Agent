@@ -30676,7 +30676,7 @@ async function searchCrossMerchantFromCache(queryText, page = 1, limit = 20, opt
     !beautyQueryProfile?.isBeautyQuery || lookupLikeQuery || brandLikeQuery;
   const skipLexicalCountForPublicBeauty =
     publicBeautyUnifiedSearch && beautyQueryProfile?.isBeautyQuery === true;
-  const buildQueryFilter = (fieldPrefix = 'pc.') => {
+  const buildQueryFilter = (fieldPrefix = 'pc.', { joinTerms = 'OR' } = {}) => {
     const matchFields = [
       `lower(coalesce(${fieldPrefix}product_data->>'title',''))`,
       `lower(coalesce(${fieldPrefix}product_data->>'description',''))`,
@@ -30697,12 +30697,25 @@ async function searchCrossMerchantFromCache(queryText, page = 1, limit = 20, opt
       whereParts.push(`(${termParts.join(' OR ')})`);
       idx += 1;
     }
+    // Default OR-over-terms is correct for keyword recall, but it lets a single
+    // generic token satisfy a multi-word query (e.g. "paula choice" matching dog
+    // harnesses on the word "choice"). Callers can require ALL terms to be
+    // present instead, so the full phrase must match. See GH #1659.
+    const joiner = joinTerms === 'AND' ? ' AND ' : ' OR ';
     return {
       params,
       idx,
-      queryWhere: whereParts.length ? `(${whereParts.join(' OR ')})` : 'TRUE',
+      queryWhere: whereParts.length ? `(${whereParts.join(joiner)})` : 'TRUE',
     };
   };
+  // The relaxed fallback drops the onboarding join, widening recall across the
+  // whole cache (incl. off-domain merchants). That widening is exactly where a
+  // generic token leaks noise — "paula choice" returning dog harnesses on
+  // "choice". For any multi-word, non-SKU query we therefore require all terms
+  // to match in this widened path so a single common word can't carry it.
+  // SKU-like queries keep OR (the raw-blob match is intentionally permissive).
+  // See GH #1659.
+  const relaxedJoinTerms = !skuLike && terms.length >= 2 ? 'AND' : 'OR';
   const toRankedUniqueProducts = (rows = []) => {
     const rawProducts = (rows || [])
       .map((row) => {
@@ -30944,7 +30957,7 @@ async function searchCrossMerchantFromCache(queryText, page = 1, limit = 20, opt
   }
 
   try {
-    const relaxedFilter = buildQueryFilter('');
+    const relaxedFilter = buildQueryFilter('', { joinTerms: relaxedJoinTerms });
     const relaxedBaseWhere = `
       (expires_at IS NULL OR expires_at > now())
       AND ${activeProductsCacheSourceWhere('products_cache')}
