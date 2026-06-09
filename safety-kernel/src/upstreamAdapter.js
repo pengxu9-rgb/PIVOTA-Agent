@@ -64,22 +64,41 @@ export function normalizePreviewQuote(raw, requestPayload) {
  */
 export function normalizeCreateOrder(raw) {
   const order = raw?.order || {};
-  // LIVE-CONTRACT FIX (confirmed by the prod wire-format probe, 2026-06-02): the real backend returns
-  // `order.amounts.total` as a MAJOR-unit decimal STRING ("28.24"), exactly like `preview_quote.pricing.total`
-  // — NOT a minor-unit integer (the repo's old integration mock used 1000, which does not match prod). So
-  // parse it as a major-unit value → minor with the order's currency, the SAME way the quote is parsed, so
-  // the cross-check compares like-for-like. (A genuinely malformed value → undefined → fail closed.)
-  // Presence is "a key was provided" (value !== undefined) so an explicit `null` counts as PRESENT →
-  // unparseable → fail closed, not silently skipped.
-  const amountCandidates = [order.amounts?.total, order.amount, raw?.amount];
+  // LIVE-CONTRACT FIX (2026-06-09): the kernel's create_order upstream is the shop gateway
+  // (`POST /agent/shop/v1/invoke`), which PROXIES create_order to `/agent/v1/orders/create`. That v1
+  // response is FLAT — there is NO `order` wrapper and NO `amounts` object. It carries the order total at
+  // the TOP LEVEL as MAJOR-unit values: `total` (decimal STRING "1.69", always present) + `total_amount`
+  // (float, same value) + best-effort `pricing.total` (quote-snapshot echo, present only on the quote-first
+  // path). The earlier `order.amounts.total` contract (allegedly confirmed 2026-06-02) does NOT match this
+  // wire — it was the idealized / v2-REST shape, never what the live gateway returns. Reading only the
+  // nested paths made `backend_amount_present` FALSE on every real order → with `requireBackendAmount` on in
+  // prod, the kernel fail-closed with `backend_amount_missing` → PRICE_CHANGED on EVERY create_order (gating
+  // both create_payment_link and complete_checkout_session). Fix: also read the real flat paths, parsing
+  // them as MAJOR units → minor exactly like the quote, so the cross-check compares like-for-like.
+  //
+  // Candidate ORDER matters: `find(!== undefined)` picks the FIRST PROVIDED value (even if null) so a
+  // present-but-null primary fails closed rather than silently falling through to a valid fallback. Prefer
+  // the order's OWN total (`order.amounts?.total` for any future v2 shape, then the flat `total`/
+  // `total_amount`) over `pricing.total` — the latter only echoes the quote, which would make the
+  // cross-check tautological.
+  const amountCandidates = [
+    order.amounts?.total,   // idealized / future v2-nested shape (absent on the live v1 wire)
+    raw?.total,             // v1 create: MAJOR-unit decimal STRING, authoritative + always present
+    raw?.total_amount,      // v1 create: same value as a float (fallback)
+    order.amount,           // legacy nested
+    raw?.amount,            // legacy flat
+    raw?.pricing?.total,    // last resort: quote-snapshot echo (quote-first only)
+  ];
   const backend_amount_present = amountCandidates.some((a) => a !== undefined);
   // Codex: select the FIRST PROVIDED candidate (even if null) — do NOT `??`-fall-through a present-but-null
-  // primary to a valid fallback, or a `{ amounts: { total: null }, amount: "28.24" }` would slip past the
+  // primary to a valid fallback, or a `{ amounts: { total: null }, total: "28.24" }` would slip past the
   // present-but-unparseable fail-closed path.
   const rawAmount = amountCandidates.find((a) => a !== undefined);
   // Round-2 P2: canonicalize currency to UPPERCASE — Stripe's API commonly returns lowercase ("usd"),
-  // and ISO codes are case-insensitive; a raw compare would falsely reject "usd" vs "USD".
-  const rawCurrency = order.amounts?.currency ?? order.currency ?? raw?.currency;
+  // and ISO codes are case-insensitive; a raw compare would falsely reject "usd" vs "USD". The live v1
+  // create response carries currency at the TOP LEVEL (`raw.currency`); keep the nested reads for compat.
+  const rawCurrency = order.amounts?.currency ?? order.currency ?? raw?.currency
+    ?? raw?.charge_currency ?? raw?.presentment_currency;
   const backend_currency = typeof rawCurrency === 'string' ? rawCurrency.toUpperCase() : rawCurrency;
   // Parse the backend total as a MAJOR-unit amount → minor (the confirmed live contract), the same way
   // the quote's pricing.total is parsed. A non-numeric value yields undefined → fail closed.
