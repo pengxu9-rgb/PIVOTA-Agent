@@ -27860,14 +27860,51 @@ async function throwCommerceKernelUpstreamError(operation, err) {
   const { code: upstreamCode, message: upstreamMessage, detail: upstreamDetail } = extractUpstreamErrorCode(err);
   const status = err?.response?.status || null;
   const normalizedCode = String(upstreamCode || '').trim().toUpperCase();
+
+  // Map the REAL upstream failure to a kernel code that tells the truth about retriability. Previously every
+  // non-quote/stock error collapsed to MERCHANT_UNAVAILABLE (retriable:true, "try again shortly") — which
+  // actively mislabels a permanent client error (e.g. a missing shipping_address → 400 INVALID_BUYER_CONTEXT)
+  // as a transient merchant outage, AND hides the cause. Now:
+  //  - known business codes pass through to their kernel equivalents;
+  //  - a genuine outage signal (no HTTP response = network/timeout, or 5xx, or 408/429) → MERCHANT_UNAVAILABLE
+  //    (retriable — the same request may succeed later);
+  //  - any other 4xx → UPSTREAM_REJECTED (NOT retriable as-sent — a blind retry fails identically).
+  // The specific upstream reason is LOGGED here (the debugging win), never surfaced verbatim to the caller.
+  const knownCodeMap = {
+    QUOTE_EXPIRED: 'QUOTE_EXPIRED',
+    PRICE_CHANGED: 'PRICE_CHANGED',
+    QUOTE_MISMATCH: 'PRICE_CHANGED',
+    OUT_OF_STOCK: 'OUT_OF_STOCK',
+    QUOTE_NOT_FOUND: 'QUOTE_NOT_FOUND',
+    INVALID_QUOTE: 'QUOTE_NOT_FOUND',
+    QUOTE_ALREADY_USED: 'QUOTE_ALREADY_USED',
+    USER_AUTH_REQUIRED: 'USER_AUTH_REQUIRED',
+    OPERATION_NOT_ALLOWED: 'OPERATION_NOT_ALLOWED',
+    UNSUPPORTED_OPERATION: 'OPERATION_NOT_ALLOWED',
+  };
+  const isRetriableStatus = status == null || status >= 500 || status === 408 || status === 429;
   const kernelCode =
-    normalizedCode === 'QUOTE_EXPIRED'
-      ? 'QUOTE_EXPIRED'
-      : normalizedCode === 'PRICE_CHANGED' || normalizedCode === 'QUOTE_MISMATCH'
-        ? 'PRICE_CHANGED'
-        : normalizedCode === 'OUT_OF_STOCK'
-          ? 'OUT_OF_STOCK'
-          : 'MERCHANT_UNAVAILABLE';
+    knownCodeMap[normalizedCode] ||
+    (isRetriableStatus ? 'MERCHANT_UNAVAILABLE' : 'UPSTREAM_REJECTED');
+
+  // Structured, non-sensitive diagnostic so a masked failure is never blind again. The message is truncated
+  // and may carry upstream validation text (no payment secrets — those never reach this error envelope).
+  try {
+    logger.warn(
+      {
+        event: 'commerce_kernel_upstream_error',
+        operation,
+        kernel_code: kernelCode,
+        upstream_status: status,
+        upstream_code: upstreamCode || null,
+        upstream_message: typeof upstreamMessage === 'string' ? upstreamMessage.slice(0, 300) : undefined,
+      },
+      'commerce kernel upstream error mapped',
+    );
+  } catch (_) {
+    // logging must never break the error path
+  }
+
   throw new PivotaCommerceError(kernelCode, {
     operation,
     upstream_status: status,
@@ -47746,6 +47783,8 @@ module.exports._debug = {
   shouldBridgePublicBeautySearchToDiscovery,
   buildInvokeUpstreamAuthHeaders,
   commerceKernelErrorBody,
+  throwCommerceKernelUpstreamError,
+  extractUpstreamErrorCode,
   sanitizeCommerceKernelErrorDetails,
   filterSimilarProductsWithCardHighlights,
   collectExternalSeedIdCandidatesForVisibleCatalogHydration,
