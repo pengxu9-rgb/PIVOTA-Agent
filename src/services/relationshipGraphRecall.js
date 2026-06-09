@@ -14,6 +14,10 @@ const SURFACE_FLAGS = Object.freeze({
   find_similar_products: 'AURORA_BFF_RELATIONSHIP_GRAPH_PDP_ENABLED',
   discovery_feed: 'AURORA_BFF_RELATIONSHIP_GRAPH_DISCOVERY_ENABLED',
   chat_alternatives: 'AURORA_BFF_RELATIONSHIP_GRAPH_CHAT_ALTERNATIVES_ENABLED',
+  // Agent-facing surface (MCP get_alternatives). Gated independently from the consumer pilot so enabling
+  // it for external agents is a deliberate, separate flip. Checked strictly (no ALL_FEEDS fallback) at the
+  // wiring site in server.js so the agent surface never rides on a consumer flag.
+  agent_alternatives: 'AURORA_BFF_RELATIONSHIP_GRAPH_AGENT_ENABLED',
 });
 
 function normalizeSurface(value) {

@@ -28320,11 +28320,32 @@ async function getCommerceRemoteMcpAdapter() {
       const { createCommerceToolSurface } = await import('../mcp-server/src/commerceToolSurface.js');
       const { createRemoteMcpAdapter } = await import('../mcp-server/src/remoteMcpAdapter.js');
       const verifyPaymentAuthorization = await getCommercePaymentAuthorizationVerifier();
+      // Read-only intelligence reads (get_alternatives/get_offers) injected as localReads — the relationship
+      // graph + offers live in the app DB, so the handlers are wired here (not in the safety kernel).
+      const { makeGetAlternatives, makeGetOffers } = require('./agentSignals/intelligenceReads');
+      const {
+        listApprovedRelationshipEdgesForAnchor,
+        buildAnchorRefsFromProduct,
+      } = require('./auroraBff/productRelationshipGraph');
+      // Strict, independent gate for the agent surface (no consumer-flag fallback): off unless explicitly set.
+      const agentRelationshipGraphEnabled = () =>
+        /^(1|true|yes|on|enabled)$/i.test(String(process.env.AURORA_BFF_RELATIONSHIP_GRAPH_AGENT_ENABLED || '').trim());
+      const localReads = {
+        get_alternatives: makeGetAlternatives({
+          listApprovedRelationshipEdgesForAnchor,
+          buildAnchorRefsFromProduct,
+          isEnabled: agentRelationshipGraphEnabled,
+        }),
+        // fetchOffers is the backend cross-merchant offers source (agent_pdp_view.offers). Not wired yet —
+        // get_offers fails closed with `offers_source_unavailable` until the backend offers op is exposed.
+        get_offers: makeGetOffers({ fetchOffers: null }),
+      };
       const executor = createCanonicalExecutor({
         kernel: commerce.kernel,
         upstream: invokeCommerceKernelRawUpstream,
         verifyPaymentAuthorization,
         hostedLinkEnabled: isAgentCheckoutHostedLinkEnabled(),
+        localReads,
       });
       const surface = createCommerceToolSurface(executor, { log: logger });
       return createRemoteMcpAdapter(surface, {

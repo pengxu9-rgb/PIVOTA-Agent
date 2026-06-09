@@ -43,6 +43,18 @@ export const CANONICAL_OPERATIONS = Object.freeze([
     acp: 'product_feed', ucp: 'catalog.get', mcp: 'get_product',
   },
   {
+    // Read-only intelligence projections (decision substrate, not catalog). kernel:'local' routes them to
+    // the executor's injected localReads handlers — they never touch the money kernel or upstream checkout.
+    id: 'get_alternatives', capability: 'discovery', kernel: 'local',
+    mutating: false, requiresUserRef: false, requiresPaymentAuthz: false,
+    acp: null, ucp: 'catalog.alternatives', mcp: 'get_alternatives',
+  },
+  {
+    id: 'get_offers', capability: 'discovery', kernel: 'local',
+    mutating: false, requiresUserRef: false, requiresPaymentAuthz: false,
+    acp: null, ucp: 'catalog.offers', mcp: 'get_offers',
+  },
+  {
     id: 'create_checkout_session', capability: 'checkout', kernel: 'preview_quote',
     mutating: true, requiresUserRef: true, requiresPaymentAuthz: false,
     acp: 'POST /checkout_sessions', ucp: 'checkout.create', mcp: 'create_checkout_session',
