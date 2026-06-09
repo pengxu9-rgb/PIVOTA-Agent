@@ -30734,6 +30734,13 @@ async function searchCrossMerchantFromCache(queryText, page = 1, limit = 20, opt
       `lower(coalesce(${fieldPrefix}product_data->>'product_type',''))`,
       `lower(coalesce(${fieldPrefix}product_data->>'sku',''))`,
       `lower(coalesce(${fieldPrefix}product_data->>'vendor',''))`,
+      // Brand often lives in a dedicated `brand` field (external seeds mirror it
+      // into `vendor`, but reseller/Shopify rows may set `vendor` to the store
+      // name with the brand only here), and `tags` carries brand/ingredient
+      // facets. Without these a brand query like "cerave" can miss a product
+      // that is genuinely in cache. See GH #1659.
+      `lower(coalesce(${fieldPrefix}product_data->>'brand',''))`,
+      `lower(coalesce(${fieldPrefix}product_data->>'tags',''))`,
     ];
     const whereParts = [];
     const params = [];
@@ -30789,12 +30796,14 @@ async function searchCrossMerchantFromCache(queryText, page = 1, limit = 20, opt
         const desc = String(product.description || '').toLowerCase();
         const ptype = String(product.product_type || product.productType || '').toLowerCase();
         const sku = String(product.sku || '').toLowerCase();
+        const brand = String(product.brand || product.vendor || '').toLowerCase();
         const tags = Array.isArray(product.tags) ? product.tags.join(' ').toLowerCase() : String(product.tags || '').toLowerCase();
-        const blob = `${title} ${ptype} ${sku} ${tags} ${desc}`;
+        const blob = `${title} ${ptype} ${sku} ${brand} ${tags} ${desc}`;
 
         let score = 0;
         for (const t of terms) {
           if (title.includes(t)) score += 3;
+          else if (brand.includes(t)) score += 3;
           else if (ptype.includes(t)) score += 2;
           else if (blob.includes(t)) score += 1;
         }

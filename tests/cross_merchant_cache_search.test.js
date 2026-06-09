@@ -534,4 +534,71 @@ describe('cross-merchant cache lexical search', () => {
     expect(capture.sql).not.toContain(')) AND ((');
     expect(capture.sql).not.toContain(')) OR ((');
   });
+
+  // GH #1659: brand queries (e.g. "cerave") missed products whose brand lived
+  // in a dedicated `brand` field, because the lexical recall only matched
+  // title/description/product_type/sku/vendor. Recall must also search `brand`
+  // and `tags`.
+  test('lexical recall SQL matches the brand and tags fields', async () => {
+    const capture = { sqls: [] };
+    jest.doMock('../src/db', () => ({
+      query: async (sql) => {
+        const text = String(sql || '');
+        capture.sqls.push(text);
+        if (text.includes('COUNT(*)::int AS total')) return { rows: [{ total: 0 }] };
+        return { rows: [] };
+      },
+    }));
+
+    const app = require('../src/server');
+    const { searchCrossMerchantFromCache } = app._debug;
+
+    await searchCrossMerchantFromCache('cerave', 1, 10, { inStockOnly: true });
+
+    const lexicalSql = capture.sqls.filter((s) => s.includes('FROM products_cache'));
+    expect(lexicalSql.length).toBeGreaterThan(0);
+    expect(lexicalSql.some((s) => s.includes("product_data->>'brand'"))).toBe(true);
+    expect(lexicalSql.some((s) => s.includes("product_data->>'tags'"))).toBe(true);
+  });
+
+  test('brand-only match (brand field, not title/vendor) is recalled and ranked', async () => {
+    jest.doMock('../src/db', () => ({
+      query: async (sql) => {
+        const text = String(sql || '');
+        const isStrictJoin = text.includes('JOIN merchant_onboarding mo');
+        const isCount = text.includes('COUNT(*)::int AS total');
+        // Mock ignores WHERE; the real DB would now match on the brand field.
+        if (isStrictJoin && isCount) return { rows: [{ total: 1 }] };
+        if (isStrictJoin) {
+          return {
+            rows: [
+              {
+                merchant_id: 'merch_brand_1',
+                merchant_name: 'Stocklist Store',
+                product_data: {
+                  id: 'prod_cerave_pm',
+                  product_id: 'prod_cerave_pm',
+                  merchant_id: 'merch_brand_1',
+                  title: 'PM Facial Moisturizing Lotion',
+                  description: 'Oil-free night moisturizer with niacinamide',
+                  vendor: 'Stocklist Store',
+                  brand: 'CeraVe',
+                  status: 'active',
+                  inventory_quantity: 8,
+                },
+              },
+            ],
+          };
+        }
+        return { rows: [] };
+      },
+    }));
+
+    const app = require('../src/server');
+    const { searchCrossMerchantFromCache } = app._debug;
+
+    const result = await searchCrossMerchantFromCache('cerave', 1, 10, { inStockOnly: true });
+    const ids = (result.products || []).map((p) => String(p.product_id || p.id || ''));
+    expect(ids).toContain('prod_cerave_pm');
+  });
 });
