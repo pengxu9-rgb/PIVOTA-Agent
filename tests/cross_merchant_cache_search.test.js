@@ -461,4 +461,77 @@ describe('cross-merchant cache lexical search', () => {
     expect(Array.isArray(merged[0]?.offers)).toBe(true);
     expect(merged[0].offers).toHaveLength(2);
   });
+
+  // GH #1659: "paula choice" returned dog harnesses because the relaxed
+  // no-onboarding fallback OR-matched the generic token "choice" against
+  // off-domain product copy. A multi-word query must require ALL terms in the
+  // widened relaxed path so a single common word cannot carry an off-domain
+  // result. We assert on the generated SQL because the mocked DB ignores WHERE.
+  const captureRelaxedRowsSql = (capture) => ({
+    query: async (sql) => {
+      const text = String(sql || '');
+      const isStrictJoin = text.includes('JOIN merchant_onboarding mo');
+      const isCount = text.includes('COUNT(*)::int AS total');
+      const isRelaxedRows =
+        !isStrictJoin && !isCount && text.includes('FROM products_cache') && text.includes('OFFSET');
+      if (isRelaxedRows) capture.sql = text;
+
+      if (isStrictJoin) return { rows: isCount ? [{ total: 0 }] : [] };
+      if (!isStrictJoin && isCount && text.includes('FROM products_cache')) {
+        return { rows: [{ total: 1 }] };
+      }
+      if (isRelaxedRows) {
+        // Mock ignores WHERE, so this row comes back regardless; the real DB
+        // would exclude it under AND because it lacks "paula".
+        return {
+          rows: [
+            {
+              merchant_id: 'merch_pet_1',
+              merchant_name: null,
+              product_data: {
+                id: 'prod_dog_harness_1',
+                product_id: 'prod_dog_harness_1',
+                merchant_id: 'merch_pet_1',
+                title: 'Escape-Proof Dog Harness for Small to Medium Dogs',
+                description: 'The comfortable choice for your dog',
+                status: 'active',
+                inventory_quantity: 5,
+              },
+            },
+          ],
+        };
+      }
+      return { rows: [] };
+    },
+  });
+
+  test('relaxed fallback requires ALL terms for a multi-word query (no generic-token leak)', async () => {
+    const capture = {};
+    jest.doMock('../src/db', () => captureRelaxedRowsSql(capture));
+
+    const app = require('../src/server');
+    const { searchCrossMerchantFromCache } = app._debug;
+
+    await searchCrossMerchantFromCache('paula choice', 1, 10, { inStockOnly: true });
+
+    expect(capture.sql).toBeTruthy();
+    // Two term-groups joined with AND (each group is double-parenthesised).
+    expect(capture.sql).toContain(')) AND ((');
+    expect(capture.sql).not.toContain(')) OR ((');
+  });
+
+  test('relaxed fallback keeps OR semantics for a single-term query', async () => {
+    const capture = {};
+    jest.doMock('../src/db', () => captureRelaxedRowsSql(capture));
+
+    const app = require('../src/server');
+    const { searchCrossMerchantFromCache } = app._debug;
+
+    await searchCrossMerchantFromCache('cerave', 1, 10, { inStockOnly: true });
+
+    expect(capture.sql).toBeTruthy();
+    // Single term => no cross-term joiner of either kind.
+    expect(capture.sql).not.toContain(')) AND ((');
+    expect(capture.sql).not.toContain(')) OR ((');
+  });
 });
