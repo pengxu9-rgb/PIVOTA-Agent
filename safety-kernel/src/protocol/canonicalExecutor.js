@@ -32,9 +32,10 @@ const scopedBaseKey = (rawKey, ctx) => JSON.stringify(['cs', ctx.user_ref ?? nul
  *   kernel: object,                      // SafetyKernel
  *   upstream?: (op:string, payload:object, headers?:object) => Promise<any>,  // for reads
  *   verifyPaymentAuthorization?: (authorization:any, bound:{order_id,user_ref,amount,currency,merchant_id,checkout_session_id,ctx}) => Promise<void>,
+ *   localReads?: Record<string, (params:object, ctx:object) => Promise<any>>,  // read-only intelligence ops (get_alternatives/get_offers)
  * }} deps
  */
-export function createCanonicalExecutor({ kernel, upstream, verifyPaymentAuthorization, hostedLinkEnabled = false } = {}) {
+export function createCanonicalExecutor({ kernel, upstream, verifyPaymentAuthorization, hostedLinkEnabled = false, localReads } = {}) {
   if (!kernel || typeof kernel.previewQuote !== 'function') {
     throw new Error('createCanonicalExecutor requires a kernel');
   }
@@ -69,6 +70,17 @@ export function createCanonicalExecutor({ kernel, upstream, verifyPaymentAuthori
         return read('find_products', params.payload ?? params);
       case 'get_product':
         return read('get_product_detail', params.payload ?? params);
+
+      case 'get_alternatives':
+      case 'get_offers': {
+        // Read-only intelligence projections (relationships, cross-merchant offers) → Signal envelope.
+        // Handled by an app-layer handler injected as localReads[opId] (the relationship graph + offers
+        // live in the app DB, not the kernel). No money, no state; the contract gates above already passed
+        // (requiresUserRef:false, mutating:false). Fail closed if no handler is wired.
+        const handler = localReads && typeof localReads[opId] === 'function' ? localReads[opId] : null;
+        if (!handler) throw new PivotaCommerceError('MERCHANT_UNAVAILABLE', { reason: 'no_local_read_handler', op: opId });
+        return handler(params, ctx);
+      }
 
       case 'create_checkout_session':
       case 'update_checkout_session': {

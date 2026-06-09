@@ -152,6 +152,10 @@ function toParams(op, toolArgs) {
       return { payload: { search: pick(a, ["query", "merchant_id", "category", "price_min", "price_max", "currency", "in_stock_only", "page", "page_size"]) } };
     case "get_product":
       return { payload: { product: pick(a, ["merchant_id", "product_id", "sku_id"]) } };
+    case "get_alternatives":
+      return { payload: pick(a, ["merchant_id", "product_id", "product_ref", "relation", "include_dupes", "market", "max_price_ratio", "limit"]) };
+    case "get_offers":
+      return { payload: pick(a, ["merchant_id", "product_id", "product_group_id", "currency", "limit"]) };
     case "create_checkout_session":
       return { idempotency_key: str(a.idempotency_key), quote: pickQuote(a.quote) };
     case "update_checkout_session":
@@ -237,6 +241,10 @@ function describe(op) {
   const base = {
     search_catalog: "Search the merchant catalog. Read-only; no money, no state change.",
     get_product: "Get full detail for one product (merchant_id + product_id). Read-only.",
+    get_alternatives:
+      "Find alternatives, related items, and (on request) dupes — cheaper similar products — for a product. Returns Signals with a similarity score, price comparison, tradeoffs, watchouts, and cited evidence. Read-only. Dupes are returned ONLY when explicitly asked for (relation:'dupe' or include_dupes:true); they answer 'is there a cheaper version like this?'.",
+    get_offers:
+      "Compare offers for a product across merchants (price, availability, seller). Returns offer Signals plus the best offer. Read-only; surfaces real cross-merchant competition only when it exists.",
     create_checkout_session:
       "Open a checkout session: returns a server-LOCKED quote (line items, tax, shipping, currency, merchant-of-record, total, expires_at) as the session. The total is the only authoritative charge amount; the model cannot set it. Requires sign-in + an idempotency_key.",
     update_checkout_session:
@@ -280,6 +288,26 @@ const INPUT_SCHEMAS = Object.freeze({
   get_product: {
     type: "object", required: ["merchant_id", "product_id"], additionalProperties: false,
     properties: { merchant_id: { type: "string" }, product_id: { type: "string" }, sku_id: { type: "string" } },
+  },
+  get_alternatives: {
+    type: "object", additionalProperties: false,
+    properties: {
+      merchant_id: { type: "string" }, product_id: { type: "string" },
+      product_ref: { type: "string", description: "Optional canonical ref (sig_… / url) if the agent already has it." },
+      relation: { type: "string", enum: ["competitive_alternative", "niche_specialist", "related_product", "dupe"] },
+      include_dupes: { type: "boolean", description: "Include cheaper similar products (dupes). Off by default." },
+      market: { type: "string" },
+      max_price_ratio: { type: "number", description: "Cap candidate/anchor price ratio, e.g. 1.0 → only equal-or-cheaper." },
+      limit: { type: "integer", minimum: 1, maximum: 20 },
+    },
+  },
+  get_offers: {
+    type: "object", additionalProperties: false,
+    properties: {
+      merchant_id: { type: "string" }, product_id: { type: "string" },
+      product_group_id: { type: "string" }, currency: { type: "string" },
+      limit: { type: "integer", minimum: 1, maximum: 10 },
+    },
   },
   create_checkout_session: {
     type: "object", required: ["idempotency_key", "quote"], additionalProperties: false,
