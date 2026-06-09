@@ -27549,6 +27549,20 @@ function isAgentCheckoutHostedLinkEnabled() {
   return ['1', 'true', 'on', 'yes'].includes(normalized);
 }
 
+function isAgentCheckoutAllowTestPspEnabled() {
+  // TEST-MODE PROBE LEVER (default OFF). When on, hosted-checkout orders carry
+  // metadata.allow_test_psp_surfaces=true so the backend can route the order to a TEST processor
+  // (cs_test_…) for a controlled, no-real-money test-pay. This is ONLY a request: the backend
+  // honors it solely when ITS OWN gate is open (ALLOW_TEST_PSP_PROBE on + merchant in
+  // TEST_PSP_PROBE_MERCHANTS — see pivota-backend order_routes._resolve_order_live_readiness_requirement),
+  // so flipping this flag alone can never route a live order to a test processor. Ship OFF; flip only for
+  // a supervised test-pay and revert after.
+  const normalized = String(process.env.AGENT_CHECKOUT_ALLOW_TEST_PSP || '')
+    .trim()
+    .toLowerCase();
+  return ['1', 'true', 'on', 'yes'].includes(normalized);
+}
+
 function allowInMemoryStrictCheckoutForTest() {
   const explicit = String(process.env.AGENT_CHECKOUT_ALLOW_IN_MEMORY_STRICT || '').trim().toLowerCase();
   if (['1', 'true', 'on', 'yes'].includes(explicit)) return true;
@@ -27655,6 +27669,10 @@ function applyStrictHostedOrderMetadata(order) {
     ...order,
     metadata: pruneEmptyFields({
       ...existingMetadata,
+      // TEST-PSP probe lever (default OFF): set at the TOP LEVEL of order.metadata because the backend's
+      // live-readiness gate reads metadata.allow_test_psp_surfaces there (not nested). Only emitted when the
+      // agent flag is on; still inert unless the backend's own probe gate + merchant allowlist are also open.
+      ...(isAgentCheckoutAllowTestPspEnabled() ? { allow_test_psp_surfaces: true } : {}),
       agent_v2: pruneEmptyFields({
         ...existingAgentV2,
         checkout_provider: 'pivota_hosted_checkout',
@@ -47745,6 +47763,8 @@ module.exports._debug = {
   resolvePublicBeautyCompoundIntent,
   shouldBridgePublicBeautySearchToDiscovery,
   buildInvokeUpstreamAuthHeaders,
+  applyStrictHostedOrderMetadata,
+  isAgentCheckoutAllowTestPspEnabled,
   commerceKernelErrorBody,
   sanitizeCommerceKernelErrorDetails,
   filterSimilarProductsWithCardHighlights,
