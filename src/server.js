@@ -27539,6 +27539,15 @@ function isAgentCheckoutStrictSubmitPaymentEnabled() {
   return ['1', 'true', 'on', 'yes'].includes(normalized);
 }
 
+function isAgentCheckoutHostedLinkEnabled() {
+  // Guest hosted-checkout (create_payment_link). Independent of the autonomous-charge flag above:
+  // this path never charges, but it does mint a real payment surface, so it ships OFF by default.
+  const normalized = String(process.env.AGENT_CHECKOUT_HOSTED_LINK_ENABLED || '')
+    .trim()
+    .toLowerCase();
+  return ['1', 'true', 'on', 'yes'].includes(normalized);
+}
+
 function allowInMemoryStrictCheckoutForTest() {
   const explicit = String(process.env.AGENT_CHECKOUT_ALLOW_IN_MEMORY_STRICT || '').trim().toLowerCase();
   if (['1', 'true', 'on', 'yes'].includes(explicit)) return true;
@@ -27751,6 +27760,19 @@ async function invokeCommerceKernelRawUpstream(operation, payload, headers = {})
         url = `${PIVOTA_API_BASE}/agent/v2/payments/checkout-sessions`;
         requestBody = checkoutSessionBody;
       }
+      break;
+    }
+    case 'create_payment_link': {
+      // GUEST hosted checkout: mint a hosted Stripe checkout page for an already-created order. This is the
+      // SAME backend surface submit_payment routes to, but invoked WITHOUT a charge/grant — the buyer pays
+      // on the returned hosted_url. No PaymentIntent is confirmed here.
+      url = `${PIVOTA_API_BASE}/agent/v2/payments/checkout-sessions`;
+      requestBody = pruneEmptyFields({
+        order_id: firstNonEmptyString(payload?.order_id),
+        customer_email: firstNonEmptyString(payload?.customer_email),
+        shipping_address: isPlainObject(payload?.shipping_address) ? payload.shipping_address : undefined,
+        return_url: firstNonEmptyString(payload?.return_url),
+      });
       break;
     }
     case 'request_after_sales': {
@@ -28365,6 +28387,26 @@ function registerCommerceRemoteMcpRoute() {
               id: Object.prototype.hasOwnProperty.call(rpcBody, 'id') ? rpcBody.id : null,
               code: 'OPERATION_NOT_ALLOWED',
               message: 'submit_payment is disabled in strict checkout mode.',
+            }));
+          }
+          if (
+            rpcBody.method === 'tools/call' &&
+            rpcBody.params &&
+            rpcBody.params.name === 'create_payment_link' &&
+            !isAgentCheckoutHostedLinkEnabled()
+          ) {
+            recordCommerceKernelAudit({
+              event: 'operation_blocked',
+              operation: 'create_payment_link',
+              detail: {
+                code: 'OPERATION_NOT_ALLOWED',
+                reason: 'hosted_link_disabled',
+              },
+            });
+            return res.status(200).json(mcpToolErrorBody({
+              id: Object.prototype.hasOwnProperty.call(rpcBody, 'id') ? rpcBody.id : null,
+              code: 'OPERATION_NOT_ALLOWED',
+              message: 'create_payment_link is disabled (AGENT_CHECKOUT_HOSTED_LINK_ENABLED=0).',
             }));
           }
           const out = await adapter.handleJsonRpc({

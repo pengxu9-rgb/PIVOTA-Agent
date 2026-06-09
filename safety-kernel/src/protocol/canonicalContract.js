@@ -65,6 +65,14 @@ export const CANONICAL_OPERATIONS = Object.freeze([
     acp: 'POST /checkout_sessions/{id}/complete', ucp: 'checkout.complete', mcp: 'complete_checkout_session',
   },
   {
+    // GUEST hosted checkout: createOrder (locked quote) -> mint a HOSTED Stripe checkout URL the buyer
+    // pays on. NON-charging: never calls submitPayment, so it needs NO delegated payment authorization
+    // (the buyer authorizes by paying on Stripe). Gated separately by AGENT_CHECKOUT_HOSTED_LINK_ENABLED.
+    id: 'create_payment_link', capability: 'checkout', kernel: 'create_order+create_hosted_checkout',
+    mutating: true, requiresUserRef: true, requiresPaymentAuthz: false,
+    acp: null, ucp: 'checkout.payment_link', mcp: 'create_payment_link',
+  },
+  {
     id: 'cancel_checkout_session', capability: 'checkout', kernel: 'cancel_order',
     mutating: true, requiresUserRef: true, requiresPaymentAuthz: false,
     acp: 'POST /checkout_sessions/{id}/cancel', ucp: 'checkout.cancel', mcp: 'cancel_checkout_session',

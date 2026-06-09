@@ -67,6 +67,7 @@ test("GEMINI_FUNCTION_DECLARATIONS exposes canonical safe-checkout tools, not le
       "update_checkout_session",
       "get_checkout_session",
       "complete_checkout_session",
+      "create_payment_link",
       "cancel_checkout_session",
       "get_order",
       "request_after_sales"

@@ -167,6 +167,14 @@ function toParams(op, toolArgs) {
         payment_authorization: a.payment_authorization === undefined ? undefined : safeClone(a.payment_authorization),
         shipping_address: pickAddress(a.shipping_address),
       };
+    case "create_payment_link":
+      return {
+        idempotency_key: str(a.idempotency_key),
+        session_id: str(a.session_id),
+        customer_email: str(a.customer_email),
+        shipping_address: pickAddress(a.shipping_address),
+        return_url: str(a.return_url),
+      };
     case "cancel_checkout_session":
       return { idempotency_key: str(a.idempotency_key), session_id: str(a.session_id), order_id: str(a.order_id) };
     case "get_order":
@@ -236,6 +244,8 @@ function describe(op) {
     get_checkout_session: "Read a checkout session (the locked quote) you own. Read-only.",
     complete_checkout_session:
       "Complete the checkout: verifies the buyer's payment authorization (delegated token / AP2 mandate) bound to the session total, then places the order and charges ONCE. Requires sign-in, an idempotency_key, and payment_authorization. Surface any requires_action (redirect_url/qr/instructions) verbatim; never fabricate payment URLs or statuses.",
+    create_payment_link:
+      "Turn a checkout session into a HOSTED payment page (Stripe Checkout) and return its URL for the buyer to pay on — guest checkout with just an email, no sign-in. Does NOT charge and does NOT need a payment_authorization; the buyer authorizes by paying on the page. Surface the returned checkout_url verbatim; never fabricate it. Requires an idempotency_key.",
     cancel_checkout_session: "Cancel a checkout session / unpaid order you own. Requires sign-in + an idempotency_key.",
     get_order: "Track an order you own. Read-only.",
     request_after_sales:
@@ -319,6 +329,16 @@ const INPUT_SCHEMAS = Object.freeze({
         description: "The delegated payment token / AP2 mandate the agent obtained. Verified server-side against the session total; never trusted blindly.",
       },
       shipping_address: ADDRESS,
+    },
+  },
+  create_payment_link: {
+    type: "object", required: ["idempotency_key", "session_id", "customer_email"], additionalProperties: false,
+    properties: {
+      idempotency_key: IDEMPOTENCY,
+      session_id: { type: "string", description: "The checkout session (locked quote) id to turn into a hosted payment page." },
+      customer_email: { type: "string", description: "Buyer's email for the receipt/checkout. Contact only — NOT identity or payment authority." },
+      shipping_address: ADDRESS,
+      return_url: { type: "string", description: "Optional URL to return the buyer to after they pay." },
     },
   },
   cancel_checkout_session: {
