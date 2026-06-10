@@ -11340,9 +11340,8 @@ function projectSearchTransportProduct(product, stats = null) {
     'canonical_product_ref',
     'selected_commerce_ref',
     'commerce_ref',
-    'score',
-    'confidence',
-    'ranking_features_summary',
+    // ranking mechanics (score/confidence/ranking_features_summary) are internal-only and intentionally NOT
+    // projected to the agent surface — see resultSanitizer RANKING_INTERNAL. Keep the "why" prose below.
     'recommendation_reason',
     'match_reason',
     'why_this_one',
