@@ -160,6 +160,14 @@ test("read-path sanitization: aggressive — no payment handoff in a catalog res
     // …but UNAMBIGUOUS secrets hidden under *_id keys are STILL killed (Codex round-4 #2)
     access_key_id: "AKIAABCDEFGHIJKLMNOP", secret_id: "sk_live_SECRETID123",
     item: { name: "A", card_token: "tok_x", price: 999 },
+    // internal ranking/debug noise — must NOT reach the agent
+    ranking_features: { source: "rerank_llm", vec: [0.1, 0.2] }, ranking_score: 0.87,
+    ranking_features_summary: "matched on ingredient overlap", candidate_source: "vector_recall",
+    score_breakdown: { price: 0.3, fit: 0.5 }, x_score: 0.42, score: 0.91, confidence: 0.77,
+    // the "why" prose — the differentiator, must SURVIVE
+    recommendation_reason: "Great for oily skin", match_reason: "matches your need", why_this_one: "best value",
+    // a nested non-product object whose innocuous score must SURVIVE (product-node-scoped strip only)
+    review: { author: "Jane", score: 4.5, body: "love it" },
   };
   const { surface } = setup({ readResult });
   const out = await surface.callTool("get_product", { merchant_id: "m", product_id: "p" }, {});
@@ -184,6 +192,18 @@ test("read-path sanitization: aggressive — no payment handoff in a catalog res
   // …but a real AWS/Stripe secret hidden under a *_id key is killed
   assert.equal(out.access_key_id, "[REDACTED_SECRET]");
   assert.equal(out.secret_id, "[REDACTED_SECRET]");
+  // internal ranking/debug noise is DROPPED (key gone, not redacted)
+  for (const k of ["ranking_features", "ranking_score", "ranking_features_summary", "candidate_source",
+    "score_breakdown", "x_score", "score", "confidence"]) {
+    assert.ok(!(k in out), `ranking-internal "${k}" must be stripped from the agent payload`);
+  }
+  // the "why" prose — the differentiator — SURVIVES
+  assert.equal(out.recommendation_reason, "Great for oily skin");
+  assert.equal(out.match_reason, "matches your need");
+  assert.equal(out.why_this_one, "best value");
+  // product-node-scoped strip: a nested non-product review.score is preserved
+  assert.equal(out.review.score, 4.5);
+  assert.equal(out.review.author, "Jane");
 });
 
 test("checkout handoff: a payment redirect (PayPal token= / OAuth code= / 3DS) is preserved VERBATIM for the buyer", async () => {
