@@ -1076,19 +1076,17 @@ function extractOpenAIOutputText(resp) {
   return parts.join('');
 }
 
+// CITED sources only: the `url_citation` annotations the model attached to its
+// answer. Deliberately EXCLUDES `web_search_call.action.sources`, which is the
+// RETRIEVED candidate pool (every result the search returned), NOT what the
+// answer cited. Conflating the two let non-cited results (e.g. a tangential
+// sephora.com page surfaced for "where to buy <product>" but never cited) be
+// counted as citations and promoted to buyer-path controllers. The downstream
+// audit assumes `grounding_sources` == cited (true for Gemini's groundingChunks);
+// this keeps OpenAI consistent. Retrieved pool -> extractOpenAIRetrievedSources.
 function extractOpenAIGroundingChunks(resp) {
   const sources = [];
   for (const item of Array.isArray(resp?.output) ? resp.output : []) {
-    if (item?.type === 'web_search_call') {
-      const actionSources = item?.action?.sources;
-      if (Array.isArray(actionSources)) sources.push(...actionSources);
-      if (item?.action?.url || item?.action?.uri) {
-        sources.push({
-          uri: item.action.uri || item.action.url,
-          title: item.action.title || '',
-        });
-      }
-    }
     if (item?.type !== 'message') continue;
     for (const content of Array.isArray(item.content) ? item.content : []) {
       for (const annotation of Array.isArray(content?.annotations) ? content.annotations : []) {
@@ -1099,6 +1097,24 @@ function extractOpenAIGroundingChunks(resp) {
           });
         }
       }
+    }
+  }
+  return normalizeGroundingSourcesFromItems(sources);
+}
+
+// RETRIEVED candidate pool: `web_search_call.action.sources` (+ the action URL).
+// For observability/debugging only — must never be counted as a citation.
+function extractOpenAIRetrievedSources(resp) {
+  const sources = [];
+  for (const item of Array.isArray(resp?.output) ? resp.output : []) {
+    if (item?.type !== 'web_search_call') continue;
+    const actionSources = item?.action?.sources;
+    if (Array.isArray(actionSources)) sources.push(...actionSources);
+    if (item?.action?.url || item?.action?.uri) {
+      sources.push({
+        uri: item.action.uri || item.action.url,
+        title: item.action.title || '',
+      });
     }
   }
   return normalizeGroundingSourcesFromItems(sources);
@@ -1120,28 +1136,38 @@ function extractAnthropicOutputText(resp) {
   return parts.join('');
 }
 
+// CITED sources only: the `citations` Anthropic attaches to text blocks (what
+// the answer actually referenced). EXCLUDES `web_search_tool_result`, which is
+// the RETRIEVED candidate pool. Same retrieved-vs-cited invariant as OpenAI/Gemini.
+// Retrieved pool -> extractAnthropicRetrievedSources.
 function extractAnthropicGroundingChunks(resp) {
   const sources = [];
   for (const block of Array.isArray(resp?.content) ? resp.content : []) {
-    if (block?.type === 'web_search_tool_result') {
-      const content = Array.isArray(block.content) ? block.content : [block.content];
-      for (const result of content) {
-        if (result?.type === 'web_search_result' || result?.url || result?.uri) {
-          sources.push({
-            uri: result.uri || result.url,
-            title: result.title || '',
-          });
-        }
+    if (block?.type !== 'text') continue;
+    for (const citation of Array.isArray(block.citations) ? block.citations : []) {
+      if (citation?.url || citation?.uri) {
+        sources.push({
+          uri: citation.uri || citation.url,
+          title: citation.title || '',
+        });
       }
     }
-    if (block?.type === 'text') {
-      for (const citation of Array.isArray(block.citations) ? block.citations : []) {
-        if (citation?.url || citation?.uri) {
-          sources.push({
-            uri: citation.uri || citation.url,
-            title: citation.title || '',
-          });
-        }
+  }
+  return normalizeGroundingSourcesFromItems(sources);
+}
+
+// RETRIEVED candidate pool: `web_search_tool_result` blocks. Observability only.
+function extractAnthropicRetrievedSources(resp) {
+  const sources = [];
+  for (const block of Array.isArray(resp?.content) ? resp.content : []) {
+    if (block?.type !== 'web_search_tool_result') continue;
+    const content = Array.isArray(block.content) ? block.content : [block.content];
+    for (const result of content) {
+      if (result?.type === 'web_search_result' || result?.url || result?.uri) {
+        sources.push({
+          uri: result.uri || result.url,
+          title: result.title || '',
+        });
       }
     }
   }
@@ -1208,12 +1234,14 @@ async function buildGroundedProviderProbe(input, providerSpec) {
     let parsed = null;
     let rawText = '';
     let chunks = [];
+    let retrievedSources = [];
     let groundingMetadata = null;
     try {
       const providerResult = await providerSpec.invoke({ client, input, prompt, userText, query: q });
       rawText = providerResult.rawText || '';
       parsed = unwrapJson(rawText);
       chunks = Array.isArray(providerResult.chunks) ? providerResult.chunks : [];
+      retrievedSources = Array.isArray(providerResult.retrievedSources) ? providerResult.retrievedSources : [];
       groundingMetadata =
         providerResult.groundingMetadata ||
         groundingMetadataFromNormalizedChunks(chunks);
@@ -1248,6 +1276,9 @@ async function buildGroundedProviderProbe(input, providerSpec) {
       evidence_excerpt: scored.normalizedFields.evidence_excerpt,
       grounding_chunks: chunks.map((c) => c.uri).filter(Boolean),
       grounding_sources: chunks.map((c) => ({ uri: c.uri, title: c.title })),
+      // RETRIEVED candidate pool (what the search returned) — kept for
+      // observability ONLY. Never fed into citation/controller scoring.
+      retrieved_sources: retrievedSources.map((c) => ({ uri: c.uri, title: c.title })),
       url_match: scored.urlMatch,
     });
   }
@@ -1646,6 +1677,7 @@ async function buildChatGptProbe(input) {
       return {
         rawText: extractOpenAIOutputText(resp),
         chunks,
+        retrievedSources: extractOpenAIRetrievedSources(resp),
         groundingMetadata: groundingMetadataFromNormalizedChunks(chunks),
         inputTokens: Number(resp?.usage?.input_tokens || 0),
         outputTokens: Number(resp?.usage?.output_tokens || 0),
@@ -1687,6 +1719,7 @@ async function buildClaudeProbe(input) {
       return {
         rawText: extractAnthropicOutputText(resp),
         chunks,
+        retrievedSources: extractAnthropicRetrievedSources(resp),
         groundingMetadata: groundingMetadataFromNormalizedChunks(chunks),
         inputTokens: Number(resp?.usage?.input_tokens || 0),
         outputTokens: Number(resp?.usage?.output_tokens || 0),
@@ -1773,6 +1806,10 @@ module.exports = {
     groundingContainsUrl,
     normalizeGroundingChunks,
     normalizeGroundingSourcesFromItems,
+    extractOpenAIGroundingChunks,
+    extractOpenAIRetrievedSources,
+    extractAnthropicGroundingChunks,
+    extractAnthropicRetrievedSources,
     textMentionsHostOnly,
     unwrapJson,
     buildAutoQueries,
