@@ -168,4 +168,68 @@ describe('relationship-graph anchor-identity hydration', () => {
       ).resolves.toBeNull();
     });
   });
+
+  describe('build-side canonical anchoring (applyCanonicalAnchorRefs)', () => {
+    function mockGroup(cid) {
+      // minimal rows that resolveCanonicalCatalogEntityGroup turns into canonical_entity_id = cid
+      return { rows: [
+        { content_key: 'ck', product_key: 'prod::external_seed::external_seed::ext_w', merchant_id: 'external_seed',
+          platform: 'external_seed', source_product_id: 'ext_w', product_title: 'X', brand: 'B',
+          pivota_signature_id: 'sig_p', internal_product_group_id: cid, is_primary: true, offer_count: 1,
+          pdp_lifecycle_stage: 'published', canonical_url: 'https://x' },
+      ] };
+    }
+
+    test('flag helper only true when === "true"', () => {
+      const { isRelationshipGraphCanonicalAnchorEnabled } = require('../../src/services/catalogEntityResolution');
+      expect(isRelationshipGraphCanonicalAnchorEnabled({})).toBe(false);
+      expect(isRelationshipGraphCanonicalAnchorEnabled({ AURORA_BFF_RELATIONSHIP_GRAPH_CANONICAL_ANCHOR_ENABLED: 'true' })).toBe(true);
+    });
+
+    test('re-keys product_ref to product:<canonical_entity_id> and preserves sig/source/url', async () => {
+      process.env = { ...ORIGINAL_ENV, DATABASE_URL: 'postgres://test' };
+      const { applyCanonicalAnchorRefs } = require('../../src/services/catalogEntityResolution');
+      const queryFn = jest.fn(async () => mockGroup('pg_catalog_xyz'));
+      const product = { source_product_id: 'ulta:abc', merchant_id: 'external_seed', content_key: 'ck',
+        product_ref: 'product:sig_member', pivota_signature_id: 'sig_member', canonical_url: 'https://u' };
+      const stats = await applyCanonicalAnchorRefs([product], { queryFn });
+      expect(stats).toEqual({ rekeyed: 1, total: 1 });
+      expect(product.product_ref).toBe('product:pg_catalog_xyz'); // edge will key on this
+      expect(product.canonical_entity_id).toBe('pg_catalog_xyz');
+      expect(product.pivota_signature_id).toBe('sig_member'); // sig preserved for alias/dedupe
+      expect(product.canonical_url).toBe('https://u'); // url preserved for render/dedupe
+    });
+
+    test('memoizes by content_key (one resolver call for co-clustered listings)', async () => {
+      process.env = { ...ORIGINAL_ENV, DATABASE_URL: 'postgres://test' };
+      const { applyCanonicalAnchorRefs } = require('../../src/services/catalogEntityResolution');
+      const queryFn = jest.fn(async () => mockGroup('pg_shared'));
+      const a = { source_product_id: 'ulta:a', merchant_id: 'external_seed', content_key: 'ck1' };
+      const b = { source_product_id: 'ext_b', merchant_id: 'external_seed', content_key: 'ck1' };
+      await applyCanonicalAnchorRefs([a, b], { queryFn });
+      expect(queryFn).toHaveBeenCalledTimes(1); // same content_key => resolved once
+      expect(a.product_ref).toBe('product:pg_shared');
+      expect(b.product_ref).toBe('product:pg_shared');
+    });
+
+    test('malformed cid (pg:auto:) keeps the legacy ref (no re-key)', async () => {
+      process.env = { ...ORIGINAL_ENV, DATABASE_URL: 'postgres://test' };
+      const { applyCanonicalAnchorRefs } = require('../../src/services/catalogEntityResolution');
+      const queryFn = jest.fn(async () => mockGroup('pg:auto:title:v1:b::x'));
+      const product = { source_product_id: 'ulta:abc', merchant_id: 'external_seed', content_key: 'ck', product_ref: 'product:sig_member' };
+      const stats = await applyCanonicalAnchorRefs([product], { queryFn });
+      expect(stats.rekeyed).toBe(0);
+      expect(product.product_ref).toBe('product:sig_member'); // unchanged
+      expect(product.canonical_entity_id).toBeUndefined();
+    });
+
+    test('fail-open: resolver throws => legacy ref kept', async () => {
+      process.env = { ...ORIGINAL_ENV, DATABASE_URL: 'postgres://test' };
+      const { applyCanonicalAnchorRefs } = require('../../src/services/catalogEntityResolution');
+      const queryFn = jest.fn(async () => { throw new Error('connection terminated unexpectedly'); });
+      const product = { source_product_id: 'ulta:abc', merchant_id: 'external_seed', content_key: 'ck', product_ref: 'product:sig_member' };
+      await expect(applyCanonicalAnchorRefs([product], { queryFn })).resolves.toEqual({ rekeyed: 0, total: 1 });
+      expect(product.product_ref).toBe('product:sig_member');
+    });
+  });
 });

@@ -27,6 +27,10 @@ const {
   normalizeKey,
 } = require('../src/auroraBff/productBeautyAttributes');
 const { computeReviewPriority } = require('../src/auroraBff/relationshipReviewPriority');
+const {
+  isRelationshipGraphCanonicalAnchorEnabled,
+  applyCanonicalAnchorRefs,
+} = require('../src/services/catalogEntityResolution');
 
 const PLACEHOLDER_EVIDENCE_PATTERNS = [
   /\btest fixture\b/i,
@@ -851,6 +855,20 @@ async function buildInputsFromDb({
     approvedLiveExternalSeedAnchorLimit,
     missingCandidateLabelsOnly,
   });
+  // Re-key pooled products onto the STABLE canonical id (resolver-derived) BEFORE building, so edges
+  // anchor on product:<canonical_entity_id> and survive primary-listing flips. Mutates product objects
+  // in place (anchors are slices of these), covering anchors AND candidates. Flag-off = no-op (legacy
+  // per-listing refs unchanged); fail-open per product.
+  if (isRelationshipGraphCanonicalAnchorEnabled()) {
+    const canonicalPool = [
+      ...(Array.isArray(sourceInputs.products) ? sourceInputs.products : []),
+      ...(Array.isArray(sourceInputs.approvedLiveExternalSeedAnchors) ? sourceInputs.approvedLiveExternalSeedAnchors : []),
+    ];
+    const canonicalStats = await applyCanonicalAnchorRefs(canonicalPool, { queryFn: query });
+    console.error(
+      `[canonical-anchor] re-keyed ${canonicalStats.rekeyed}/${canonicalStats.total} pooled products onto canonical_entity_id`,
+    );
+  }
   const products = sourceInputs.products || [];
   const affectedScopedProducts = filterAffectedAnchors(products, affectedRefs);
   const anchorUniverse = Array.isArray(affectedRefs) && affectedRefs.length
