@@ -112,6 +112,10 @@ function parseArgs(argv = process.argv.slice(2)) {
   const minScore = parseNumber(argValue(argv, 'min-score'), 0, { min: 0, max: 1 });
   const limit = Math.trunc(parseNumber(argValue(argv, 'limit'), DEFAULT_LIMIT, { min: 1, max: MAX_LIMIT }));
   const idsFile = String(argValue(argv, 'ids-file') || '').trim();
+  // Scope the review to the anchors a build produced: an explicit newline file of anchor_refs, and/or a
+  // build report JSON (relationship_graph_build.json) whose edges' anchor_refs define the scope.
+  const anchorRefsFile = String(argValue(argv, 'anchor-refs-file') || '').trim();
+  const anchorRefsFromBuild = String(argValue(argv, 'anchor-refs-from-build') || '').trim();
   const verdictsFile = String(argValue(argv, 'verdicts-file') || '').trim();
   const out = String(argValue(argv, 'out') || '').trim();
   const apply = hasFlag(argv, 'apply');
@@ -137,6 +141,8 @@ function parseArgs(argv = process.argv.slice(2)) {
     minScore,
     limit,
     idsFile,
+    anchorRefsFile,
+    anchorRefsFromBuild,
     verdictsFile,
     out,
     apply,
@@ -165,6 +171,21 @@ function readIdsFile(filePath) {
         .filter(Boolean)
         .filter((line) => !line.startsWith('#')),
     ),
+  );
+}
+
+function readAnchorRefsFromBuild(buildReportPath) {
+  const resolved = resolvePathMaybeRelative(buildReportPath);
+  if (!resolved) return [];
+  let report;
+  try {
+    report = JSON.parse(fs.readFileSync(resolved, 'utf8'));
+  } catch {
+    return []; // missing/unreadable build report => contribute no scope (the other scopes still apply)
+  }
+  const edges = Array.isArray(report && report.edges) ? report.edges : [];
+  return Array.from(
+    new Set(edges.map((e) => String((e && e.anchor_ref) || '').trim()).filter(Boolean)),
   );
 }
 
@@ -438,6 +459,7 @@ async function fetchCandidates({
   minScore,
   limit,
   ids = [],
+  anchorRefs = [],
   relationTypes = [],
   excludeRelationTypes = [],
   queryFn = query,
@@ -447,6 +469,13 @@ async function fetchCandidates({
   if (ids.length) {
     params.push(ids);
     idsSql = `AND id = ANY($${params.length}::text[])`;
+  }
+  // Scope the review to a specific anchor set (the anchors the build just produced) so a targeted
+  // build is reviewed in the SAME pass, instead of the global top-N-by-score backlog.
+  let anchorRefsSql = '';
+  if (anchorRefs.length) {
+    params.push(anchorRefs);
+    anchorRefsSql = `AND lower(anchor_ref) = ANY($${params.length}::text[])`;
   }
   const includedRelationTypes = normalizeRelationTypeList(relationTypes);
   const excludedRelationTypes = normalizeRelationTypeList(excludeRelationTypes);
@@ -475,6 +504,7 @@ async function fetchCandidates({
         AND COALESCE(updated_at, created_at) >= $1::timestamptz
         AND COALESCE(score_total, 0) >= $2::double precision
         ${idsSql}
+        ${anchorRefsSql}
         ${relationTypesSql}
         ${excludeRelationTypesSql}
       ORDER BY score_total DESC NULLS LAST, created_at ASC, id ASC
@@ -709,6 +739,8 @@ async function runReview({
   minScore,
   limit,
   idsFile = '',
+  anchorRefsFile = '',
+  anchorRefsFromBuild = '',
   verdictsFile = '',
   out = '',
   apply = false,
@@ -724,17 +756,33 @@ async function runReview({
   }
 
   const ids = readIdsFile(idsFile);
+  // An anchor scope was REQUESTED if either source was passed (even if it resolves to empty — e.g. a
+  // build that produced 0 edges, or a missing/unreadable report).
+  const anchorScopeRequested = Boolean(String(anchorRefsFile || '').trim() || String(anchorRefsFromBuild || '').trim());
+  const anchorRefs = Array.from(
+    new Set(
+      [...readIdsFile(anchorRefsFile), ...readAnchorRefsFromBuild(anchorRefsFromBuild)]
+        .map((r) => String(r).toLowerCase())
+        .filter(Boolean),
+    ),
+  );
   const includedRelationTypes = normalizeRelationTypeList(relationTypes);
   const excludedRelationTypes = normalizeRelationTypeList(excludeRelationTypes);
-  const rows = await fetchCandidates({
-    cutoff,
-    minScore,
-    limit,
-    ids,
-    relationTypes: includedRelationTypes,
-    excludeRelationTypes: excludedRelationTypes,
-    queryFn,
-  });
+  // FAIL CLOSED: if a scope was requested but resolved to empty, review NOTHING — never silently fall
+  // back to the global top-N backlog (which, in --apply mode, would approve unrelated candidates).
+  const rows =
+    anchorScopeRequested && anchorRefs.length === 0
+      ? []
+      : await fetchCandidates({
+          cutoff,
+          minScore,
+          limit,
+          ids,
+          anchorRefs,
+          relationTypes: includedRelationTypes,
+          excludeRelationTypes: excludedRelationTypes,
+          queryFn,
+        });
   const supplements = await fetchSupplementsForRows(rows, queryFn);
   const verdictReplay = readVerdictsFile(verdictsFile);
   const llmProvider = verdictReplay || rows.length === 0
@@ -794,6 +842,8 @@ async function runReview({
     min_score: minScore,
     limit,
     ids_filter_count: ids.length,
+    anchor_refs_scope_requested: anchorScopeRequested,
+    anchor_refs_scope_count: anchorRefs.length,
     relation_types_filter: includedRelationTypes,
     excluded_relation_types: excludedRelationTypes,
     dupe_ai_approval_allowed: allowDupeAiApproval,

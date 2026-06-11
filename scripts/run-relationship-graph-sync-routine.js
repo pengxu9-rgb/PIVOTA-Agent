@@ -228,6 +228,7 @@ function parseArgs(argv = process.argv.slice(2), { now = new Date(), cwd = proce
     upsertServingState: hasFlag(argv, 'upsert-serving-state'),
     bootstrapReviewedIdentityLiveRead: hasFlag(argv, 'bootstrap-reviewed-identity-live-read'),
     allowReviewRequiredCatalogMirror: hasFlag(argv, 'allow-review-required-catalog-mirror'),
+    scopeReviewToBuildAnchors: hasFlag(argv, 'scope-review-to-build-anchors'),
     skipBuild: hasFlag(argv, 'skip-build'),
     skipNeedNodes: hasFlag(argv, 'skip-need-nodes'),
     skipReview,
@@ -372,6 +373,7 @@ function buildSyncRoutineSteps(options = {}) {
   pushArg(routineArgs, 'review-exclude-relation-types', options.reviewExcludeRelationTypes);
   pushArg(routineArgs, 'serving-audit-limit', options.servingAuditLimit || '');
   pushFlag(routineArgs, 'allow-dupe-ai-approval', options.allowDupeAiApproval);
+  pushFlag(routineArgs, 'scope-review-to-build-anchors', options.scopeReviewToBuildAnchors);
   pushFlag(routineArgs, 'db-lock', options.dbLock);
   pushArg(routineArgs, 'db-lock-key', options.dbLockKey);
   pushFlag(routineArgs, 'apply-build', options.applyBuild);
