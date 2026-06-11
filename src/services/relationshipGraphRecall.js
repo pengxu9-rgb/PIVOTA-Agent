@@ -8,6 +8,10 @@ const {
 const {
   recordRelationshipGraphRecall,
 } = require('../observability/relationshipGraphMetrics');
+const {
+  resolveAnchorIdentityForRelationshipGraph,
+  applyAnchorIdentity,
+} = require('./catalogEntityResolution');
 
 const SURFACE_FLAGS = Object.freeze({
   pdp_similar: 'AURORA_BFF_RELATIONSHIP_GRAPH_PDP_ENABLED',
@@ -116,7 +120,19 @@ async function fetchRelationshipGraphRecallForAnchor({
     };
   }
 
-  const anchorRefs = buildAnchorRefsFromProduct(anchorProduct || {});
+  // Hydrate the anchor with its full identity set (sig + grouped source ids) so the read path matches
+  // both sig-keyed and source-keyed edges. Flag-gated + fail-open: on null/throw we keep the thin refs.
+  let hydratedAnchor = anchorProduct || {};
+  try {
+    const identity = await resolveAnchorIdentityForRelationshipGraph({
+      product_id: hydratedAnchor.product_id || hydratedAnchor.productId,
+      merchant_id: hydratedAnchor.merchant_id || hydratedAnchor.merchantId,
+    });
+    if (identity) hydratedAnchor = applyAnchorIdentity(hydratedAnchor, identity);
+  } catch {
+    /* fail-open */
+  }
+  const anchorRefs = buildAnchorRefsFromProduct(hydratedAnchor);
   if (!anchorRefs.length) {
     recordRelationshipGraphRecall({
       surface: normalizedSurface,
