@@ -39,6 +39,21 @@ describe('relationship-graph anchor-identity hydration', () => {
       expect(lower).toContain('product:ext_a');
       expect(lower).toContain('ext_a');
       expect(lower.some((r) => r.includes('sig_'))).toBe(false);
+      expect(lower.some((r) => r.startsWith('product:pg_'))).toBe(false);
+    });
+
+    test('emits product:<canonical_entity_id> (pg_*) when present — the stable canonical anchor', () => {
+      const refs = buildAnchorRefsFromProduct({ product_id: 'ulta:abc', canonical_entity_id: 'pg_catalog_123' });
+      const lower = refs.map((r) => r.toLowerCase());
+      expect(lower).toContain('product:pg_catalog_123');
+      expect(lower).toContain('pg_catalog_123');
+      // value already prefixed (pg_) — pushed raw, not double-prefixed
+      expect(lower).not.toContain('product:pg_pg_catalog_123');
+    });
+
+    test('NO REGRESSION: no canonical_entity_id => no pg_ ref', () => {
+      const refs = buildAnchorRefsFromProduct({ product_id: 'ext_a' });
+      expect(refs.map((r) => r.toLowerCase()).some((r) => r.startsWith('product:pg_'))).toBe(false);
     });
   });
 
@@ -59,6 +74,7 @@ describe('relationship-graph anchor-identity hydration', () => {
         pivota_signature_id: 'sig_xyz',
         member_sig_ids: ['sig_xyz'],
         member_source_ids: ['ext_w'],
+        canonical_entity_id: 'pg_catalog_123',
         brand: 'Naturium',
         title: 'Glycolic Acid',
         canonical_url: 'https://x',
@@ -68,6 +84,7 @@ describe('relationship-graph anchor-identity hydration', () => {
       expect(out.pivota_signature_id).toBe('sig_xyz');
       expect(out.member_sig_ids).toEqual(['sig_xyz']);
       expect(out.member_source_ids).toEqual(['ext_w']);
+      expect(out.canonical_entity_id).toBe('pg_catalog_123');
     });
 
     test('null identity is a no-op (returns input)', () => {
@@ -112,6 +129,28 @@ describe('relationship-graph anchor-identity hydration', () => {
       // full member set (drift-safe: non-primary listing still gets the canonical + its own sig)
       expect(out.member_sig_ids).toEqual(expect.arrayContaining(['sig_primary', 'sig_member']));
       expect(out.member_source_ids).toEqual(expect.arrayContaining(['ext_w', 'ulta:abc']));
+      // stable canonical id = the content-derived product group id (survives primary flips)
+      expect(out.canonical_entity_id).toBe('pg_a');
+    });
+
+    test('flag-on: malformed canonical_entity_id (pg:auto:...) is filtered to null', async () => {
+      process.env = {
+        ...ORIGINAL_ENV,
+        DATABASE_URL: 'postgres://test',
+        AURORA_BFF_RELATIONSHIP_GRAPH_ANCHOR_IDENTITY_HYDRATION_ENABLED: 'true',
+      };
+      const { resolveAnchorIdentityForRelationshipGraph } = require('../../src/services/catalogEntityResolution');
+      const queryFn = jest.fn(async () => ({
+        rows: [
+          { content_key: 'ck', product_key: 'prod::external_seed::external_seed::ext_w', merchant_id: 'external_seed',
+            platform: 'external_seed', source_product_id: 'ext_w', product_title: 'X', brand: 'B',
+            pivota_signature_id: 'sig_primary', internal_product_group_id: 'pg:auto:title:v1:b::x', is_primary: true,
+            offer_count: 1, pdp_lifecycle_stage: 'published' },
+        ],
+      }));
+      const out = await resolveAnchorIdentityForRelationshipGraph({ product_id: 'ext_w', queryFn });
+      // canonical_entity_id falls back to a malformed pg:auto family => must NOT be emitted as a ref
+      expect(out.canonical_entity_id).toBeNull();
     });
 
     test('fail-open: returns null when the resolver throws (no throw to caller)', async () => {

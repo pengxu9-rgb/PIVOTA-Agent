@@ -623,6 +623,11 @@ function buildAnchorRefsFromProduct(anchor = {}) {
     push(sid, 'product');
     push(sid);
   }
+  // Stable canonical product id (pg_* group id, sig_* for standalone) supplied by anchor-identity
+  // hydration. The builder anchors future edges on this so they survive primary-listing flips; emitting
+  // it here makes those `product:pg_*` edges reachable. Additive: absent on un-hydrated anchors (no-op).
+  push(src.canonical_entity_id || src.canonicalEntityId, 'product');
+  push(src.canonical_entity_id || src.canonicalEntityId);
   const requestedProductId =
     src.requested_product_id ||
     src.requestedProductId ||

@@ -895,6 +895,10 @@ async function resolveAnchorIdentityForRelationshipGraph({ product_id, merchant_
     (Array.isArray(group.members) ? group.members : [])[0] ||
     {};
   const payload = (canonicalMember && canonicalMember.source_payload) || {};
+  // The STABLE canonical product id (pg_* group id, or sig_* for standalone groups). This is the key the
+  // builder will anchor edges on (it survives primary-listing flips). Only emit valid pg_/sig_ forms — a
+  // malformed legacy family (e.g. `pg:auto:title:v1:...`) does not resolve and must not be a ref.
+  const canonicalEntityId = asString(group.canonical_entity_id);
   const identity = {
     pivota_signature_id:
       asString(group.canonical_sig_id) ||
@@ -902,6 +906,7 @@ async function resolveAnchorIdentityForRelationshipGraph({ product_id, merchant_
       null,
     member_sig_ids: memberSigIds,
     member_source_ids: memberSourceIds,
+    canonical_entity_id: /^(pg_|sig_)/i.test(canonicalEntityId) ? canonicalEntityId : null,
     canonical_url: asString(payload.canonical_url) || null,
     brand: asString(payload.brand) || null,
     title: asString(payload.title) || null,
@@ -922,6 +927,7 @@ function applyAnchorIdentity(anchorProduct = {}, identity = null) {
     pivota_signature_id: identity.pivota_signature_id || base.pivota_signature_id,
     member_sig_ids: identity.member_sig_ids,
     member_source_ids: identity.member_source_ids,
+    canonical_entity_id: identity.canonical_entity_id || base.canonical_entity_id,
     canonical_url: base.canonical_url || identity.canonical_url,
     brand: base.brand || identity.brand,
     title: base.title || identity.title,
