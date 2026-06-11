@@ -53,4 +53,35 @@ describe('review scope-to-build-anchors', () => {
     expect(scopeParam).toEqual(expect.arrayContaining(['product:pg_aaa', 'product:pg_ddd']));
     expect(scopeParam).toHaveLength(2); // pg_AAA deduped
   });
+
+  test('FAIL CLOSED: a requested scope that resolves empty reviews NOTHING (not the global backlog)', async () => {
+    const fs = require('fs');
+    const os = require('os');
+    const path = require('path');
+    const buildReport = path.join(os.tmpdir(), `rev_scope_empty_${process.pid}.json`);
+    fs.writeFileSync(buildReport, JSON.stringify({ edges: [] })); // a build that produced 0 edges
+    let candidateQueryIssued = false;
+    const queryFn = async (sql) => {
+      if (/label_state = 'generated'/.test(sql)) candidateQueryIssued = true;
+      return { rows: [] };
+    };
+    const r = await mod.runReview({ cutoff: '2026-01-01', minScore: 0, limit: 50, anchorRefsFromBuild: buildReport, queryFn });
+    fs.unlinkSync(buildReport);
+    // never queried the global backlog; scope was requested; reviewed nothing
+    expect(candidateQueryIssued).toBe(false);
+    expect(r.summary.anchor_refs_scope_requested).toBe(true);
+    expect(r.summary.anchor_refs_scope_count).toBe(0);
+    expect(r.summary.reviewed_count).toBe(0);
+  });
+
+  test('NO requested scope => not fail-closed (queries global as before)', async () => {
+    let candidateQueryIssued = false;
+    const queryFn = async (sql) => {
+      if (/label_state = 'generated'/.test(sql)) candidateQueryIssued = true;
+      return { rows: [] };
+    };
+    const r = await mod.runReview({ cutoff: '2026-01-01', minScore: 0, limit: 50, queryFn });
+    expect(candidateQueryIssued).toBe(true); // no scope requested => global selection (unchanged)
+    expect(r.summary.anchor_refs_scope_requested).toBe(false);
+  });
 });

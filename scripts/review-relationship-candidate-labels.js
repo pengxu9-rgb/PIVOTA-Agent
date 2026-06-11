@@ -756,6 +756,9 @@ async function runReview({
   }
 
   const ids = readIdsFile(idsFile);
+  // An anchor scope was REQUESTED if either source was passed (even if it resolves to empty — e.g. a
+  // build that produced 0 edges, or a missing/unreadable report).
+  const anchorScopeRequested = Boolean(String(anchorRefsFile || '').trim() || String(anchorRefsFromBuild || '').trim());
   const anchorRefs = Array.from(
     new Set(
       [...readIdsFile(anchorRefsFile), ...readAnchorRefsFromBuild(anchorRefsFromBuild)]
@@ -765,16 +768,21 @@ async function runReview({
   );
   const includedRelationTypes = normalizeRelationTypeList(relationTypes);
   const excludedRelationTypes = normalizeRelationTypeList(excludeRelationTypes);
-  const rows = await fetchCandidates({
-    cutoff,
-    minScore,
-    limit,
-    ids,
-    anchorRefs,
-    relationTypes: includedRelationTypes,
-    excludeRelationTypes: excludedRelationTypes,
-    queryFn,
-  });
+  // FAIL CLOSED: if a scope was requested but resolved to empty, review NOTHING — never silently fall
+  // back to the global top-N backlog (which, in --apply mode, would approve unrelated candidates).
+  const rows =
+    anchorScopeRequested && anchorRefs.length === 0
+      ? []
+      : await fetchCandidates({
+          cutoff,
+          minScore,
+          limit,
+          ids,
+          anchorRefs,
+          relationTypes: includedRelationTypes,
+          excludeRelationTypes: excludedRelationTypes,
+          queryFn,
+        });
   const supplements = await fetchSupplementsForRows(rows, queryFn);
   const verdictReplay = readVerdictsFile(verdictsFile);
   const llmProvider = verdictReplay || rows.length === 0
@@ -834,6 +842,7 @@ async function runReview({
     min_score: minScore,
     limit,
     ids_filter_count: ids.length,
+    anchor_refs_scope_requested: anchorScopeRequested,
     anchor_refs_scope_count: anchorRefs.length,
     relation_types_filter: includedRelationTypes,
     excluded_relation_types: excludedRelationTypes,
