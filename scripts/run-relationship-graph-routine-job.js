@@ -194,6 +194,9 @@ function parseArgs(argv = process.argv.slice(2), { now = new Date() } = {}) {
       max: 60 * 60 * 1000,
     }),
     requireAnchors: !hasFlag(argv, 'allow-empty-build'),
+    // Scope the review to the anchors the build produced (single-pass targeted review), instead of the
+    // global top-N-by-score backlog — required for manifest/affected-scoped runs to review what they built.
+    scopeReviewToBuildAnchors: hasFlag(argv, 'scope-review-to-build-anchors'),
     skipBuild: hasFlag(argv, 'skip-build'),
     skipNeedNodes: hasFlag(argv, 'skip-need-nodes'),
     skipLock: hasFlag(argv, 'skip-lock'),
@@ -296,6 +299,11 @@ function buildRoutineSteps(options) {
     ];
     pushArg(args, 'relation-types', options.reviewRelationTypes);
     pushArg(args, 'exclude-relation-types', options.reviewExcludeRelationTypes);
+    // Single-pass scoping: review only the anchors this run's build produced (its build report).
+    // The review step runs AFTER the build, so artifacts.build exists by then.
+    if (options.scopeReviewToBuildAnchors && !options.skipBuild) {
+      pushArg(args, 'anchor-refs-from-build', artifacts.build);
+    }
     if (options.allowDupeAiApproval) args.push('--allow-dupe-ai-approval');
     if (options.applyReview) args.push('--apply');
     steps.push({

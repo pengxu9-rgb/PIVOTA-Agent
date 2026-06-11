@@ -145,6 +145,9 @@ function buildCronArgs(env = process.env, { now = new Date() } = {}) {
   pushFlag(args, 'allow-empty-selection', allowEmpty);
   pushFlag(args, 'allow-empty-build', allowEmpty);
   pushFlag(args, 'allow-dupe-ai-approval', parseBooleanEnv(env.RELGRAPH_SYNC_ALLOW_DUPE_AI_APPROVAL, false));
+  // Single-pass scoping: review only the anchors this run's build produced (vs the global score-ordered
+  // backlog). Default ON so a manifest/selector run reviews what it built; opt out with =false.
+  pushFlag(args, 'scope-review-to-build-anchors', parseBooleanEnv(env.RELGRAPH_SYNC_SCOPE_REVIEW_TO_BUILD, true));
   pushFlag(args, 'upsert-serving-state', parseBooleanEnv(env.RELGRAPH_SYNC_UPSERT_SERVING_STATE, false));
   pushFlag(
     args,
