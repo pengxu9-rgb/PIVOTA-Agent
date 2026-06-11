@@ -817,9 +817,123 @@ async function resolveCanonicalCatalogEntityGroup(args = {}) {
   }
 }
 
+// ---------------------------------------------------------------------------------------------------
+// Anchor-identity hydration for the relationship-graph READ path.
+//
+// The served graph keys edges on EITHER the source id (`product:ext_<hash>` / `product:ulta:<hash>`)
+// OR the canonical signature (`product:sig_<hash>` — what the builder emits for catalog-sourced
+// products). The agent queries get_alternatives with whatever id search returned (a source id), so a
+// product whose edges are sig-keyed silently misses. This resolves a queried product to its FULL
+// identity set (canonical + every grouped member sig, plus every member source id) so the read path
+// can query by all forms. Fail-open: returns null on any miss/error → callers keep today's thin refs.
+const ANCHOR_IDENTITY_CACHE = new Map();
+const ANCHOR_IDENTITY_CACHE_TTL_MS = parseTimeoutMs(
+  process.env.AURORA_BFF_RELATIONSHIP_GRAPH_ANCHOR_IDENTITY_CACHE_TTL_MS,
+  10 * 60 * 1000,
+);
+
+function isAnchorIdentityHydrationEnabled(env = process.env) {
+  return String(env?.AURORA_BFF_RELATIONSHIP_GRAPH_ANCHOR_IDENTITY_HYDRATION_ENABLED || '')
+    .trim()
+    .toLowerCase() === 'true';
+}
+
+function getCachedAnchorIdentity(key) {
+  if (process.env.AURORA_BFF_RELATIONSHIP_GRAPH_ANCHOR_IDENTITY_CACHE_ENABLED === 'false') return undefined;
+  const entry = ANCHOR_IDENTITY_CACHE.get(key);
+  if (!entry) return undefined;
+  if (entry.expiresAt <= Date.now()) {
+    ANCHOR_IDENTITY_CACHE.delete(key);
+    return undefined;
+  }
+  return entry.value; // may be null (negative cache)
+}
+
+function setCachedAnchorIdentity(key, value) {
+  if (process.env.AURORA_BFF_RELATIONSHIP_GRAPH_ANCHOR_IDENTITY_CACHE_ENABLED === 'false') return;
+  ANCHOR_IDENTITY_CACHE.set(key, { value, expiresAt: Date.now() + ANCHOR_IDENTITY_CACHE_TTL_MS });
+}
+
+/**
+ * Resolve a queried product to its relationship-graph anchor-identity set.
+ * @returns {Promise<null | { pivota_signature_id: string|null, member_sig_ids: string[],
+ *   member_source_ids: string[], canonical_url: string|null, brand: string|null, title: string|null }>}
+ *   null when hydration is disabled, the product does not resolve, or any error occurs (fail-open).
+ */
+async function resolveAnchorIdentityForRelationshipGraph({ product_id, merchant_id, queryFn } = {}) {
+  if (!isAnchorIdentityHydrationEnabled()) return null; // flag-off: zero DB work
+  const productId = asString(product_id);
+  if (!productId) return null;
+  const merchantId = asString(merchant_id);
+  const cacheKey = `${merchantId.toLowerCase()}::${productId.toLowerCase()}`;
+  const cached = getCachedAnchorIdentity(cacheKey);
+  if (cached !== undefined) return cached;
+
+  let group = null;
+  try {
+    group = await resolveCanonicalCatalogEntityGroup({ productId, merchantId, queryFn });
+  } catch {
+    return null; // fail-open, do not cache transient errors
+  }
+  if (!group) {
+    setCachedAnchorIdentity(cacheKey, null);
+    return null;
+  }
+
+  const memberSigIds = Array.from(
+    new Set((Array.isArray(group.member_sig_ids) ? group.member_sig_ids : []).map(asString).filter(Boolean)),
+  );
+  const memberSourceIds = Array.from(
+    new Set(
+      (Array.isArray(group.members) ? group.members : [])
+        .map((member) => asString(member && member.product_id))
+        .filter(Boolean),
+    ),
+  );
+  const canonicalMember =
+    (Array.isArray(group.members) ? group.members : []).find((member) => member && member.is_primary) ||
+    (Array.isArray(group.members) ? group.members : [])[0] ||
+    {};
+  const payload = (canonicalMember && canonicalMember.source_payload) || {};
+  const identity = {
+    pivota_signature_id:
+      asString(group.canonical_sig_id) ||
+      asString(group.canonical_product_ref && group.canonical_product_ref.pivota_signature_id) ||
+      null,
+    member_sig_ids: memberSigIds,
+    member_source_ids: memberSourceIds,
+    canonical_url: asString(payload.canonical_url) || null,
+    brand: asString(payload.brand) || null,
+    title: asString(payload.title) || null,
+  };
+  setCachedAnchorIdentity(cacheKey, identity);
+  return identity;
+}
+
+/**
+ * Merge a resolved anchor identity onto a product object (shallow copy — never mutates the input)
+ * so the sync `buildAnchorRefsFromProduct` emits the sig/source refs. No-op when identity is null.
+ */
+function applyAnchorIdentity(anchorProduct = {}, identity = null) {
+  if (!identity || typeof identity !== 'object') return anchorProduct;
+  const base = anchorProduct && typeof anchorProduct === 'object' ? anchorProduct : {};
+  return {
+    ...base,
+    pivota_signature_id: identity.pivota_signature_id || base.pivota_signature_id,
+    member_sig_ids: identity.member_sig_ids,
+    member_source_ids: identity.member_source_ids,
+    canonical_url: base.canonical_url || identity.canonical_url,
+    brand: base.brand || identity.brand,
+    title: base.title || identity.title,
+  };
+}
+
 module.exports = {
   resolveCanonicalCatalogEntityGroup,
   resolveRelationshipGraphRefsToCanonicalEntities,
+  resolveAnchorIdentityForRelationshipGraph,
+  applyAnchorIdentity,
+  isAnchorIdentityHydrationEnabled,
   _internals: {
     asString,
     buildCanonicalCatalogGroup,

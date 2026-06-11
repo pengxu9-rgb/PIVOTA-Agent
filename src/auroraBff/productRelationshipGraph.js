@@ -605,6 +605,24 @@ function buildAnchorRefsFromProduct(anchor = {}) {
     src.sourceProductId;
   push(externalId, 'product');
   push(externalId);
+  // Pivota signature(s): edges generated from catalog_products are keyed `product:sig_<hash>` where the
+  // value IS `pivota_signature_id` (which already carries the `sig_` prefix) — so push the RAW value
+  // through `push(v,'product')` (NEVER hand-concat `sig_`). Includes every grouped member sig + source
+  // id supplied by anchor-identity hydration, so a non-primary listing still matches its group's edges.
+  const sigValues = [src.pivota_signature_id, src.pivotaSignatureId, src.signature_id, src.signatureId]
+    .concat(Array.isArray(src.member_sig_ids) ? src.member_sig_ids : [])
+    .concat(Array.isArray(src.memberSigIds) ? src.memberSigIds : []);
+  for (const sigVal of sigValues) {
+    push(sigVal, 'product');
+    push(sigVal);
+  }
+  const memberSourceIds = []
+    .concat(Array.isArray(src.member_source_ids) ? src.member_source_ids : [])
+    .concat(Array.isArray(src.memberSourceIds) ? src.memberSourceIds : []);
+  for (const sid of memberSourceIds) {
+    push(sid, 'product');
+    push(sid);
+  }
   const requestedProductId =
     src.requested_product_id ||
     src.requestedProductId ||

@@ -245,6 +245,8 @@ const {
 } = require('./services/canonicalCatalogSearch');
 const {
   resolveCanonicalCatalogEntityGroup,
+  resolveAnchorIdentityForRelationshipGraph,
+  applyAnchorIdentity,
 } = require('./services/catalogEntityResolution');
 const {
   resolveExternalSeedLocalityFacts,
@@ -28352,6 +28354,16 @@ async function getCommerceRemoteMcpAdapter() {
           listApprovedRelationshipEdgesForAnchor,
           buildAnchorRefsFromProduct,
           isEnabled: agentRelationshipGraphEnabled,
+          // Resolve the queried product to its full identity set (sig + grouped source ids) so the
+          // agent's source-id query matches both sig-keyed and ext_/ulta:-keyed edges. Flag-gated
+          // (AURORA_BFF_RELATIONSHIP_GRAPH_ANCHOR_IDENTITY_HYDRATION_ENABLED) + fail-open in the resolver.
+          hydrateAnchorProduct: async (anchorProduct) => {
+            const identity = await resolveAnchorIdentityForRelationshipGraph({
+              product_id: anchorProduct && anchorProduct.product_id,
+              merchant_id: anchorProduct && anchorProduct.merchant_id,
+            });
+            return identity ? applyAnchorIdentity(anchorProduct, identity) : anchorProduct;
+          },
         }),
         // Cross-merchant offers via the live backend `offers.resolve` op (resolves to a canonical product
         // group and aggregates offers across all member merchants — verified in agent_shop_gateway.py). Its

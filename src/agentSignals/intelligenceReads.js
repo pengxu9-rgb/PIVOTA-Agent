@@ -30,6 +30,10 @@ function makeGetAlternatives(deps = {}) {
     buildAnchorRefsFromProduct,
     isEnabled,
     defaultMarket = 'US',
+    // Optional async (anchorProduct) => hydratedAnchorProduct. Resolves the queried product to its full
+    // identity set (sig + grouped source ids) so the graph's sig-keyed AND source-keyed edges both match.
+    // Flag-gated + fail-open in the injected impl; absence/throw => today's thin refs (no regression).
+    hydrateAnchorProduct,
   } = deps;
   if (typeof listApprovedRelationshipEdgesForAnchor !== 'function') {
     throw new Error('makeGetAlternatives requires listApprovedRelationshipEdgesForAnchor');
@@ -49,7 +53,15 @@ function makeGetAlternatives(deps = {}) {
     if (nonEmpty(p.product_ref)) {
       anchorRefs = [p.product_ref];
     } else if (typeof buildAnchorRefsFromProduct === 'function') {
-      anchorRefs = buildAnchorRefsFromProduct({ product_id: p.product_id, merchant_id: p.merchant_id });
+      let anchorProduct = { product_id: p.product_id, merchant_id: p.merchant_id };
+      if (typeof hydrateAnchorProduct === 'function') {
+        try {
+          anchorProduct = (await hydrateAnchorProduct(anchorProduct)) || anchorProduct;
+        } catch {
+          /* fail-open: keep thin refs so source-keyed (ext_) edges still match */
+        }
+      }
+      anchorRefs = buildAnchorRefsFromProduct(anchorProduct);
     } else {
       anchorRefs = nonEmpty(p.product_id) ? [p.product_id] : [];
     }
