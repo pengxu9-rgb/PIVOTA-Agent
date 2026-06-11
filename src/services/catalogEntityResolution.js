@@ -934,12 +934,69 @@ function applyAnchorIdentity(anchorProduct = {}, identity = null) {
   };
 }
 
+// ---------------------------------------------------------------------------------------------------
+// BUILD-side canonical anchoring.
+//
+// The relationship-graph builder historically keys edges on a PER-LISTING ref (product:sig_<sig> /
+// product:ext_<id>), which churns when a group's primary listing flips. This pass re-keys pooled
+// products onto the STABLE canonical id (canonical_entity_id = content-derived pg_* group id, sig_*
+// for standalone) BEFORE edges are built — so anchor_ref/candidate_product_ref survive flips/merges
+// and match the read-path's `product:<canonical_entity_id>` ref (PR #1665). The cid MUST come from the
+// resolver (not a pgm batch-join, which diverges for ungrouped content-clustered products). Memoized
+// by content_key (the resolver groups by content_key, so co-clustered listings get one cid). Fail-open:
+// a product that doesn't resolve to a valid pg_/sig_ cid keeps its legacy per-listing ref.
+function isRelationshipGraphCanonicalAnchorEnabled(env = process.env) {
+  return String(env?.AURORA_BFF_RELATIONSHIP_GRAPH_CANONICAL_ANCHOR_ENABLED || '')
+    .trim()
+    .toLowerCase() === 'true';
+}
+
+async function applyCanonicalAnchorRefs(products, { queryFn } = {}) {
+  if (!Array.isArray(products) || !products.length) return { rekeyed: 0, total: 0 };
+  const memo = new Map(); // content_key | productKey -> cid|null
+  let rekeyed = 0;
+  let total = 0;
+  for (const p of products) {
+    if (!p || typeof p !== 'object') continue;
+    total += 1;
+    const productId = asString(p.source_product_id || p.sourceProductId || p.product_id || p.productId);
+    if (!productId) continue;
+    const merchantId = asString(p.merchant_id || p.merchantId);
+    const contentKey = asString(p.content_key || p.contentKey);
+    const memoKey = contentKey
+      ? `ck:${contentKey.toLowerCase()}`
+      : `pid:${merchantId.toLowerCase()}::${productId.toLowerCase()}`;
+    let cid;
+    if (memo.has(memoKey)) {
+      cid = memo.get(memoKey);
+    } else {
+      cid = null;
+      try {
+        const group = await resolveCanonicalCatalogEntityGroup({ productId, merchantId, queryFn });
+        const c = asString(group && group.canonical_entity_id);
+        if (/^(pg_|sig_)/i.test(c)) cid = c; // valid forms only — never key on a malformed pg:auto family
+      } catch {
+        cid = null; // fail-open: keep the legacy per-listing ref
+      }
+      memo.set(memoKey, cid);
+    }
+    if (cid) {
+      p.canonical_entity_id = cid;
+      p.product_ref = `product:${cid}`; // edges read product_ref; the snapshot ({...product}) keeps sig/source/url
+      rekeyed += 1;
+    }
+  }
+  return { rekeyed, total };
+}
+
 module.exports = {
   resolveCanonicalCatalogEntityGroup,
   resolveRelationshipGraphRefsToCanonicalEntities,
   resolveAnchorIdentityForRelationshipGraph,
   applyAnchorIdentity,
   isAnchorIdentityHydrationEnabled,
+  isRelationshipGraphCanonicalAnchorEnabled,
+  applyCanonicalAnchorRefs,
   _internals: {
     asString,
     buildCanonicalCatalogGroup,
