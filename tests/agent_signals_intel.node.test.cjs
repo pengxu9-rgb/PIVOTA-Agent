@@ -80,6 +80,32 @@ test('intelToSignal: accepts contract-at-root and product_intel nesting', () => 
   assert.equal(s.value.why_it_stands_out[0].headline, 'Hydrating');
 });
 
+test('intelToSignal: require-reviewed gate drops unreviewed/pilot content', async () => {
+  // The thin pilot entry the live prod probe surfaced: no review provenance → must be dropped when an
+  // isReviewed predicate is supplied.
+  const pilot = sampleEntry();
+  pilot.analysis.product_intel_v1.provenance = {};
+  assert.equal(intelToSignal(pilot, { productId: 'p1', isReviewed: () => false }), null);
+  // A reviewed bundle passes the gate.
+  assert.ok(intelToSignal(sampleEntry(), { productId: 'p1', isReviewed: () => true }));
+  // A throwing predicate fails closed (treated as not-reviewed).
+  assert.equal(intelToSignal(sampleEntry(), { productId: 'p1', isReviewed: () => { throw new Error('x'); } }), null);
+  // No predicate → unchanged behavior (gate only applies when injected).
+  assert.ok(intelToSignal(pilot, { productId: 'p1' }));
+});
+
+test('makeGetIntel: passes isReviewed through, reports no_reviewed_signal when gated out', async () => {
+  const getIntel = makeGetIntel({
+    getProductIntelKbEntry: async () => sampleEntry({ kb_key: 'product:p1' }),
+    isEnabled: () => true,
+    isReviewed: () => false,
+    resolveKbKeys: async () => ['product:p1'],
+  });
+  const res = await getIntel({ payload: { product_id: 'p1' } });
+  assert.deepEqual(res.signals, []);
+  assert.equal(res.metadata.reason, 'no_reviewed_signal');
+});
+
 test('makeGetIntel: fail-closed when disabled', async () => {
   const getIntel = makeGetIntel({
     getProductIntelKbEntry: async () => {

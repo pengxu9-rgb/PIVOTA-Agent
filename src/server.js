@@ -111,6 +111,7 @@ const {
   buildNormalizedPdpMetadata,
   buildProductFeedbackResponse,
   buildProductRecommendationIntentsResponse,
+  isHumanReviewedProductIntelBundle,
 } = require('./pdpProductIntel');
 const { inferMerchantIdFromProductId } = require('./productIntelResolve');
 const { buildStructuredPdpIngredientModules } = require('./services/pdpIngredientAuthority');
@@ -28368,6 +28369,35 @@ async function getCommerceRemoteMcpAdapter() {
             });
             return identity ? applyAnchorIdentity(anchorProduct, identity) : anchorProduct;
           },
+          // Resolve candidate titles at read-time (the stored candidate_snapshot has none on the
+          // uncollapsed path) so alternatives carry a product NAME, not just a brand. Reuses the same
+          // resolver the family-collapse serving path uses. Fail-open: a miss leaves the snapshot as-is.
+          hydrateCandidates: async (edges) => {
+            if (typeof resolveRelationshipGraphRefsToCanonicalEntities !== 'function') return;
+            const refs = [];
+            for (const e of edges) {
+              const snap = (e && e.candidate_snapshot) || {};
+              if (e && e.candidate_product_ref && !snap.title) {
+                refs.push({ ref: e.candidate_product_ref, snapshot: snap });
+              }
+            }
+            if (!refs.length) return;
+            const resMap = await resolveRelationshipGraphRefsToCanonicalEntities(refs, {});
+            if (!resMap || typeof resMap.get !== 'function') return;
+            const keyOf = (ref) =>
+              typeof normalizeRelationshipGraphRefForResolution === 'function'
+                ? (normalizeRelationshipGraphRefForResolution(ref) || {}).normalized_ref
+                : ref;
+            for (const e of edges) {
+              const snap = (e && e.candidate_snapshot) || {};
+              if (snap.title || !e || !e.candidate_product_ref) continue;
+              const ent = resMap.get(keyOf(e.candidate_product_ref));
+              const title = ent && (ent.title || ent.name);
+              if (title) {
+                e.candidate_snapshot = { ...snap, title, brand: snap.brand || (ent && ent.brand) || null };
+              }
+            }
+          },
         }),
         // Cross-merchant offers via the live backend `offers.resolve` op (resolves to a canonical product
         // group and aggregates offers across all member merchants — verified in agent_shop_gateway.py). Its
@@ -28391,6 +28421,10 @@ async function getCommerceRemoteMcpAdapter() {
           getProductIntelKbEntry,
           getProductIntelKbEntries,
           isEnabled: agentProductIntelEnabled,
+          // Require-reviewed gate: only human/assistant-reviewed intel reaches a buyer-facing agent
+          // (drops thin/pilot/unreviewed pilot entries). Same predicate the consumer PDP uses for
+          // public display, so the agent surface and PDP apply one consistent quality bar.
+          isReviewed: isHumanReviewedProductIntelBundle,
           resolveKbKeys: async (p) => {
             const keys = [];
             const pushUrl = (v) => {
