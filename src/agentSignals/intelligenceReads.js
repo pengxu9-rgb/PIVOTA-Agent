@@ -35,6 +35,10 @@ function makeGetAlternatives(deps = {}) {
     // identity set (sig + grouped source ids) so the graph's sig-keyed AND source-keyed edges both match.
     // Flag-gated + fail-open in the injected impl; absence/throw => today's thin refs (no regression).
     hydrateAnchorProduct,
+    // Optional async (edges) => void. Fills candidate_snapshot.title/brand for edges that lack them — the
+    // stored candidate_snapshot has NO title in prod (titles are resolved at read-time), so without this
+    // get_alternatives returns brand-only, title-less candidates. Fail-open in the injected impl.
+    hydrateCandidates,
   } = deps;
   if (typeof listApprovedRelationshipEdgesForAnchor !== 'function') {
     throw new Error('makeGetAlternatives requires listApprovedRelationshipEdgesForAnchor');
@@ -87,6 +91,16 @@ function makeGetAlternatives(deps = {}) {
       relationTypes,
       limit: Math.max(limit * 3, 60), // overfetch so post-filters (grade/price-ratio) still fill `limit`
     });
+
+    // Fill candidate titles when the stored snapshot lacks them (uncollapsed serving path) so agents get a
+    // named alternative, not a bare brand. Fail-open: any resolver hiccup keeps the edges as-is.
+    if (typeof hydrateCandidates === 'function' && Array.isArray(edges) && edges.length) {
+      try {
+        await hydrateCandidates(edges);
+      } catch {
+        /* keep raw edges — never fail the read over a title hydration miss */
+      }
+    }
 
     const signals = relationshipEdgesToSignals(edges, {
       anchorId,
@@ -148,7 +162,7 @@ function makeGetOffers(deps = {}) {
  * }} deps
  */
 function makeGetIntel(deps = {}) {
-  const { getProductIntelKbEntry, getProductIntelKbEntries, resolveKbKeys, isEnabled } = deps;
+  const { getProductIntelKbEntry, getProductIntelKbEntries, resolveKbKeys, isEnabled, isReviewed } = deps;
   if (typeof getProductIntelKbEntry !== 'function' && typeof getProductIntelKbEntries !== 'function') {
     throw new Error('makeGetIntel requires getProductIntelKbEntry or getProductIntelKbEntries');
   }
@@ -212,11 +226,15 @@ function makeGetIntel(deps = {}) {
       return { subject, signals: [], metadata: { reason: 'not_found', kb_key_count: kbKeys.length } };
     }
 
-    const signal = intelToSignal(entry, { productId });
+    const signal = intelToSignal(entry, { productId, isReviewed });
     return {
       subject,
       signals: signal ? [signal] : [],
-      metadata: { kb_key: entry.kb_key || null, source: entry.source || null },
+      metadata: {
+        kb_key: entry.kb_key || null,
+        source: entry.source || null,
+        ...(signal ? {} : { reason: 'no_reviewed_signal' }),
+      },
     };
   };
 }

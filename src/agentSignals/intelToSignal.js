@@ -34,19 +34,33 @@ function unwrapIntelBundle(analysis) {
     (String(a.contract_version || '') === PRODUCT_INTEL_CONTRACT_VERSION ? a : null);
   if (!bundle) return null;
   return {
+    bundle,
     core: asPlainObject(bundle.product_intel_core),
     provenance: asPlainObject(bundle.provenance) || {},
   };
 }
 
-function intelToSignal(entry, { productId = null } = {}) {
+function intelToSignal(entry, { productId = null, isReviewed = null } = {}) {
   if (!entry || typeof entry !== 'object') return null;
-  const bundle = unwrapIntelBundle(entry.analysis);
-  if (!bundle || !bundle.core) return null;
-  const { core, provenance } = bundle;
+  const unwrapped = unwrapIntelBundle(entry.analysis);
+  if (!unwrapped || !unwrapped.core) return null;
+  const { bundle, core, provenance } = unwrapped;
 
   const reviewDecision = nonEmptyString(provenance.review_decision) ? provenance.review_decision.trim() : null;
   if (reviewDecision && REJECTED_REVIEW_DECISIONS.has(reviewDecision.toLowerCase())) return null;
+
+  // Require-reviewed gate: when a predicate is injected, only a bundle that PASSES review reaches a
+  // buyer-facing agent. This drops thin/pilot/unreviewed entries (review_state null) that would
+  // otherwise surface as low-quality "decision" content. Fail-closed: a throw is treated as not-reviewed.
+  if (typeof isReviewed === 'function') {
+    let reviewed = false;
+    try {
+      reviewed = isReviewed(bundle) === true;
+    } catch {
+      reviewed = false;
+    }
+    if (!reviewed) return null;
+  }
 
   const why = asArray(core.why_it_stands_out)
     .map((item) => {

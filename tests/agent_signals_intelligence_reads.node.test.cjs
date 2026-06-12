@@ -160,6 +160,38 @@ test('makeGetAlternatives: default relations exclude dupe; anchor refs passed', 
   assert.equal(res.signals.length, 1);
 });
 
+test('makeGetAlternatives: hydrateCandidates fills title-less candidate snapshots', async () => {
+  // Real prod edges have brand but NO title in candidate_snapshot (titles are read-time resolved).
+  const titleless = sampleEdge({ candidate_snapshot: { brand: '786 Cosmetics', price: 19.99, currency: 'USD' } });
+  let hydrateRanWith = null;
+  const handler = makeGetAlternatives({
+    listApprovedRelationshipEdgesForAnchor: async () => [titleless],
+    buildAnchorRefsFromProduct: ({ product_id }) => [product_id],
+    isEnabled: () => true,
+    hydrateCandidates: async (edges) => {
+      hydrateRanWith = edges.length;
+      for (const e of edges) {
+        if (!e.candidate_snapshot.title) e.candidate_snapshot.title = 'Resolved Lip Gloss';
+      }
+    },
+  });
+  const res = await handler({ payload: { product_id: 'p1' } });
+  assert.equal(hydrateRanWith, 1);
+  assert.equal(res.signals[0].value.related.title, 'Resolved Lip Gloss');
+  assert.equal(res.signals[0].value.related.brand, '786 Cosmetics');
+});
+
+test('makeGetAlternatives: a hydrateCandidates throw is fail-open (edges still served)', async () => {
+  const handler = makeGetAlternatives({
+    listApprovedRelationshipEdgesForAnchor: async () => [sampleEdge()],
+    buildAnchorRefsFromProduct: ({ product_id }) => [product_id],
+    isEnabled: () => true,
+    hydrateCandidates: async () => { throw new Error('resolver down'); },
+  });
+  const res = await handler({ payload: { product_id: 'p1' } });
+  assert.equal(res.signals.length, 1); // not dropped on hydration failure
+});
+
 test('makeGetAlternatives: relation:dupe requests dupes only', async () => {
   let captured;
   const handler = makeGetAlternatives({
