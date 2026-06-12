@@ -28341,14 +28341,18 @@ async function getCommerceRemoteMcpAdapter() {
       const verifyPaymentAuthorization = await getCommercePaymentAuthorizationVerifier();
       // Read-only intelligence reads (get_alternatives/get_offers) injected as localReads — the relationship
       // graph + offers live in the app DB, so the handlers are wired here (not in the safety kernel).
-      const { makeGetAlternatives, makeGetOffers, mapOffersResolveResponse } = require('./agentSignals/intelligenceReads');
+      const { makeGetAlternatives, makeGetOffers, makeGetIntel, mapOffersResolveResponse } = require('./agentSignals/intelligenceReads');
       const {
         listApprovedRelationshipEdgesForAnchor,
         buildAnchorRefsFromProduct,
       } = require('./auroraBff/productRelationshipGraph');
+      const { getProductIntelKbEntry, getProductIntelKbEntries } = require('./auroraBff/productIntelKbStore');
       // Strict, independent gate for the agent surface (no consumer-flag fallback): off unless explicitly set.
       const agentRelationshipGraphEnabled = () =>
         /^(1|true|yes|on|enabled)$/i.test(String(process.env.AURORA_BFF_RELATIONSHIP_GRAPH_AGENT_ENABLED || '').trim());
+      // Independent gate for the why/fit/evidence intel surface — off unless explicitly enabled.
+      const agentProductIntelEnabled = () =>
+        /^(1|true|yes|on|enabled)$/i.test(String(process.env.AURORA_BFF_PRODUCT_INTEL_AGENT_ENABLED || '').trim());
       const localReads = {
         get_alternatives: makeGetAlternatives({
           listApprovedRelationshipEdgesForAnchor,
@@ -28379,6 +28383,27 @@ async function getCommerceRemoteMcpAdapter() {
               }),
               product_group_id || null,
             ),
+        }),
+        // Why/fit/evidence from the product-intelligence KB (chat-only until now) → decision Signal.
+        // resolveKbKeys builds the candidate `product:<identity>` keys from the request identity so the
+        // agent's product_id matches however the KB was keyed; the mapper drops rejected/empty intel.
+        get_intel: makeGetIntel({
+          getProductIntelKbEntry,
+          getProductIntelKbEntries,
+          isEnabled: agentProductIntelEnabled,
+          resolveKbKeys: async (p) => {
+            const keys = [];
+            const push = (v) => {
+              const s = (v == null ? '' : String(v)).trim();
+              if (!s) return;
+              const k = `product:${s}`;
+              if (!keys.includes(k)) keys.push(k);
+            };
+            push(p.pivota_signature_id);
+            push(p.product_id);
+            push(p.product_ref);
+            return keys;
+          },
         }),
       };
       const executor = createCanonicalExecutor({

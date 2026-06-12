@@ -156,6 +156,8 @@ function toParams(op, toolArgs) {
       return { payload: pick(a, ["merchant_id", "product_id", "product_ref", "relation", "include_dupes", "market", "max_price_ratio", "limit"]) };
     case "get_offers":
       return { payload: pick(a, ["merchant_id", "product_id", "product_group_id", "currency", "limit"]) };
+    case "get_intel":
+      return { payload: pick(a, ["merchant_id", "product_id", "product_ref", "pivota_signature_id"]) };
     case "create_checkout_session":
       return { idempotency_key: str(a.idempotency_key), quote: pickQuote(a.quote) };
     case "update_checkout_session":
@@ -245,6 +247,8 @@ function describe(op) {
       "Find alternatives, related items, and (on request) dupes — cheaper similar products — for a product. Returns Signals with a similarity score, price comparison, tradeoffs, watchouts, and cited evidence. Read-only. Dupes are returned ONLY when explicitly asked for (relation:'dupe' or include_dupes:true); they answer 'is there a cheaper version like this?'.",
     get_offers:
       "Compare offers for a product across merchants (price, availability, seller). Returns offer Signals plus the best offer. Read-only; surfaces real cross-merchant competition only when it exists.",
+    get_intel:
+      "Get the decision substrate for a product — why it stands out, who it's best for, and its evidence profile — as a reviewed 'decision' Signal with cited provenance. Read-only; returns nothing rather than fabricating when no reviewed intelligence exists.",
     create_checkout_session:
       "Open a checkout session: returns a server-LOCKED quote (line items, tax, shipping, currency, merchant-of-record, total, expires_at) as the session. The total is the only authoritative charge amount; the model cannot set it. Requires sign-in + an idempotency_key.",
     update_checkout_session:
@@ -307,6 +311,14 @@ const INPUT_SCHEMAS = Object.freeze({
       merchant_id: { type: "string" }, product_id: { type: "string" },
       product_group_id: { type: "string" }, currency: { type: "string" },
       limit: { type: "integer", minimum: 1, maximum: 10 },
+    },
+  },
+  get_intel: {
+    type: "object", additionalProperties: false,
+    properties: {
+      merchant_id: { type: "string" }, product_id: { type: "string" },
+      product_ref: { type: "string", description: "Optional canonical ref (sig_… / url) if the agent already has it." },
+      pivota_signature_id: { type: "string", description: "Optional Pivota signature, if known, to improve the intel match." },
     },
   },
   create_checkout_session: {

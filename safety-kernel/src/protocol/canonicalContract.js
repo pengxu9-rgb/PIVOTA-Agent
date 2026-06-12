@@ -55,6 +55,11 @@ export const CANONICAL_OPERATIONS = Object.freeze([
     acp: null, ucp: 'catalog.offers', mcp: 'get_offers',
   },
   {
+    id: 'get_intel', capability: 'discovery', kernel: 'local',
+    mutating: false, requiresUserRef: false, requiresPaymentAuthz: false,
+    acp: null, ucp: 'catalog.intel', mcp: 'get_intel',
+  },
+  {
     id: 'create_checkout_session', capability: 'checkout', kernel: 'preview_quote',
     mutating: true, requiresUserRef: true, requiresPaymentAuthz: false,
     acp: 'POST /checkout_sessions', ucp: 'checkout.create', mcp: 'create_checkout_session',
