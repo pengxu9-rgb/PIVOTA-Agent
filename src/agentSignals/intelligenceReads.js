@@ -8,6 +8,7 @@
 
 const { relationshipEdgesToSignals } = require('./relationshipEdgeToSignal');
 const { offersToSignals } = require('./offerToSignal');
+const { intelToSignal } = require('./intelToSignal');
 
 const DEFAULT_RELATIONS = Object.freeze(['competitive_alternative', 'niche_specialist', 'related_product']);
 
@@ -134,6 +135,92 @@ function makeGetOffers(deps = {}) {
   };
 }
 
+/**
+ * get_intel — project the product-intelligence KB (why / fit / evidence) → a decision Signal.
+ * The KB is keyed by `product:<identity>` keys; the agent's product identity may be any of several
+ * (sig / canonical product_id / source id), so `resolveKbKeys` is INJECTED to build the candidate keys
+ * (and may hydrate identity). Reads are batch-first with a per-key fallback. Fail-closed when disabled.
+ * @param {{
+ *   getProductIntelKbEntry?: (kbKey:string) => Promise<object|null>,
+ *   getProductIntelKbEntries?: (kbKeys:string[]) => Promise<Map<string,object>>,
+ *   resolveKbKeys?: (params:object) => Promise<string[]>,   // params → candidate kb keys
+ *   isEnabled?: () => boolean,                              // agent-surface flag gate (fail-closed if absent)
+ * }} deps
+ */
+function makeGetIntel(deps = {}) {
+  const { getProductIntelKbEntry, getProductIntelKbEntries, resolveKbKeys, isEnabled } = deps;
+  if (typeof getProductIntelKbEntry !== 'function' && typeof getProductIntelKbEntries !== 'function') {
+    throw new Error('makeGetIntel requires getProductIntelKbEntry or getProductIntelKbEntries');
+  }
+  return async function getIntel(params = {}) {
+    const p = (params && params.payload) || params || {};
+    const productId = nonEmpty(p.product_id) ? p.product_id : nonEmpty(p.product_ref) ? p.product_ref : null;
+    const subject = { kind: 'product', id: productId };
+
+    // Fail closed unless the agent surface is explicitly enabled.
+    if (typeof isEnabled === 'function' && !isEnabled()) {
+      return { subject, signals: [], metadata: { reason: 'disabled' } };
+    }
+
+    let kbKeys = [];
+    if (typeof resolveKbKeys === 'function') {
+      try {
+        kbKeys = (await resolveKbKeys(p)) || [];
+      } catch {
+        kbKeys = [];
+      }
+    }
+    if ((!Array.isArray(kbKeys) || kbKeys.length === 0) && nonEmpty(productId)) {
+      kbKeys = [`product:${productId}`];
+    }
+    kbKeys = (Array.isArray(kbKeys) ? kbKeys : []).filter((k) => nonEmpty(k));
+    if (kbKeys.length === 0) {
+      return { subject, signals: [], metadata: { reason: 'no_kb_keys' } };
+    }
+
+    let entry = null;
+    if (typeof getProductIntelKbEntries === 'function' && kbKeys.length > 1) {
+      try {
+        const map = await getProductIntelKbEntries(kbKeys);
+        if (map && typeof map.get === 'function') {
+          for (const k of kbKeys) {
+            if (map.get(k)) {
+              entry = map.get(k);
+              break;
+            }
+          }
+        }
+      } catch {
+        entry = null;
+      }
+    }
+    if (!entry && typeof getProductIntelKbEntry === 'function') {
+      for (const k of kbKeys) {
+        try {
+          // eslint-disable-next-line no-await-in-loop
+          const e = await getProductIntelKbEntry(k);
+          if (e) {
+            entry = e;
+            break;
+          }
+        } catch {
+          /* try next key */
+        }
+      }
+    }
+    if (!entry) {
+      return { subject, signals: [], metadata: { reason: 'not_found', kb_key_count: kbKeys.length } };
+    }
+
+    const signal = intelToSignal(entry, { productId });
+    return {
+      subject,
+      signals: signal ? [signal] : [],
+      metadata: { kb_key: entry.kb_key || null, source: entry.source || null },
+    };
+  };
+}
+
 // Map a backend `offers.resolve` response → makeGetOffers' fetchOffers result shape ({offers, product_group_id}).
 // Pure. offers.resolve already returns offers in normalize_offer shape (1:1 with offerToSignal), and is
 // cross-merchant by construction (it resolves to a canonical product_group and aggregates offers across ALL
@@ -148,4 +235,4 @@ function mapOffersResolveResponse(res, fallbackGroupId = null) {
   return { offers, product_group_id: groupId };
 }
 
-module.exports = { makeGetAlternatives, makeGetOffers, mapOffersResolveResponse, DEFAULT_RELATIONS };
+module.exports = { makeGetAlternatives, makeGetOffers, makeGetIntel, mapOffersResolveResponse, DEFAULT_RELATIONS };

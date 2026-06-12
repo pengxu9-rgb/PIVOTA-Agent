@@ -72,8 +72,9 @@ export function createCanonicalExecutor({ kernel, upstream, verifyPaymentAuthori
         return read('get_product_detail', params.payload ?? params);
 
       case 'get_alternatives':
-      case 'get_offers': {
-        // Read-only intelligence projections (relationships, cross-merchant offers) → Signal envelope.
+      case 'get_offers':
+      case 'get_intel': {
+        // Read-only intelligence projections (relationships, cross-merchant offers, why/fit/evidence) → Signal envelope.
         // Handled by an app-layer handler injected as localReads[opId] (the relationship graph + offers
         // live in the app DB, not the kernel). No money, no state; the contract gates above already passed
         // (requiresUserRef:false, mutating:false). Fail closed if no handler is wired.
