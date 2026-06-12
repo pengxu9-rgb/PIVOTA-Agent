@@ -68,8 +68,43 @@ export function createCanonicalExecutor({ kernel, upstream, verifyPaymentAuthori
     switch (opId) {
       case 'search_catalog':
         return read('find_products', params.payload ?? params);
-      case 'get_product':
-        return read('get_product_detail', params.payload ?? params);
+      case 'get_product': {
+        const result = await read('get_product_detail', params.payload ?? params);
+        // Optional inline decision substrate (why/fit/evidence) attached when the caller asks for it via
+        // include:['decision']. Double-gated: the get_intel localRead is itself flag-gated (returns no
+        // signal when the intel surface is off), and the caller must opt in. Read-only + best-effort — a
+        // failure here NEVER affects the product result.
+        try {
+          const reqPayload = (params && params.payload) || params || {};
+          const include = Array.isArray(reqPayload.include)
+            ? reqPayload.include
+            : Array.isArray(params?.include) ? params.include : [];
+          const getIntel = localReads && typeof localReads.get_intel === 'function' ? localReads.get_intel : null;
+          if (getIntel && include.includes('decision') && result && typeof result === 'object') {
+            const target = result.product && typeof result.product === 'object' ? result.product : result;
+            const reqProduct = (reqPayload.product && typeof reqPayload.product === 'object') ? reqPayload.product : reqPayload;
+            const intel = await getIntel({
+              payload: {
+                product_id: target.product_id ?? reqProduct.product_id,
+                merchant_id: target.merchant_id ?? reqProduct.merchant_id,
+                pivota_signature_id: target.pivota_signature_id ?? reqProduct.pivota_signature_id,
+              },
+            }, ctx);
+            const sig = intel && Array.isArray(intel.signals) ? intel.signals[0] : null;
+            if (sig && sig.value) {
+              target.decision = {
+                ...sig.value,
+                evidence: sig.evidence,
+                freshness: sig.freshness,
+                review_state: sig.review_state,
+              };
+            }
+          }
+        } catch {
+          /* decision block is best-effort; the base product result is unaffected */
+        }
+        return result;
+      }
 
       case 'get_alternatives':
       case 'get_offers':

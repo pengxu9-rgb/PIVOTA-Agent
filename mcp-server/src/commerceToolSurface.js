@@ -151,7 +151,12 @@ function toParams(op, toolArgs) {
     case "search_catalog":
       return { payload: { search: pick(a, ["query", "merchant_id", "category", "price_min", "price_max", "currency", "in_stock_only", "page", "page_size"]) } };
     case "get_product":
-      return { payload: { product: pick(a, ["merchant_id", "product_id", "sku_id"]) } };
+      return {
+        payload: {
+          product: pick(a, ["merchant_id", "product_id", "sku_id"]),
+          ...(Array.isArray(a.include) ? { include: a.include } : {}),
+        },
+      };
     case "get_alternatives":
       return { payload: pick(a, ["merchant_id", "product_id", "product_ref", "relation", "include_dupes", "market", "max_price_ratio", "limit"]) };
     case "get_offers":
@@ -242,7 +247,7 @@ function str(v) { return typeof v === "string" ? v : undefined; }
 function describe(op) {
   const base = {
     search_catalog: "Search the merchant catalog. Read-only; no money, no state change.",
-    get_product: "Get full detail for one product (merchant_id + product_id). Read-only.",
+    get_product: "Get full detail for one product (merchant_id + product_id). Read-only. Pass include:['decision'] to also attach the decision substrate (why it stands out / who it's best for / evidence profile) inline when reviewed intelligence exists.",
     get_alternatives:
       "Find alternatives, related items, and (on request) dupes — cheaper similar products — for a product. Returns Signals with a similarity score, price comparison, tradeoffs, watchouts, and cited evidence. Read-only. Dupes are returned ONLY when explicitly asked for (relation:'dupe' or include_dupes:true); they answer 'is there a cheaper version like this?'.",
     get_offers:
@@ -291,7 +296,14 @@ const INPUT_SCHEMAS = Object.freeze({
   },
   get_product: {
     type: "object", required: ["merchant_id", "product_id"], additionalProperties: false,
-    properties: { merchant_id: { type: "string" }, product_id: { type: "string" }, sku_id: { type: "string" } },
+    properties: {
+      merchant_id: { type: "string" }, product_id: { type: "string" }, sku_id: { type: "string" },
+      include: {
+        type: "array",
+        items: { type: "string", enum: ["decision"] },
+        description: "Optional add-ons. 'decision' attaches the inline why/fit/evidence decision block when reviewed intelligence exists.",
+      },
+    },
   },
   get_alternatives: {
     type: "object", additionalProperties: false,

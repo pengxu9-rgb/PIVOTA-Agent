@@ -51,3 +51,65 @@ test('localReads: FAILS CLOSED when the handler for the called op is missing', a
     (err) => err && err.code === 'MERCHANT_UNAVAILABLE',
   );
 });
+
+const decisionSignal = {
+  signals: [{
+    value: { why_it_stands_out: [{ headline: 'Clinically backed', body: '2 studies' }], best_for: [{ label: 'Dry skin' }], evidence_profile: 'seller_plus_formula' },
+    evidence: { method: 'published_intel', sources: [{ type: 'product_intel_kb', ref: 'product:p1' }] },
+    freshness: { observed_at: '2026-06-01T00:00:00Z', fresh_until: null },
+    review_state: 'pass',
+  }],
+};
+
+test('get_product: attaches inline decision block when include:[decision] and intel exists', async () => {
+  let intelCalled = false;
+  const executor = createCanonicalExecutor({
+    kernel: stubKernel,
+    upstream: async (op) => {
+      assert.equal(op, 'get_product_detail');
+      return { product: { product_id: 'p1', merchant_id: 'm1', title: 'Serum' } };
+    },
+    localReads: {
+      get_intel: async () => { intelCalled = true; return decisionSignal; },
+    },
+  });
+  const out = await executor.execute('get_product', { payload: { product: { product_id: 'p1', merchant_id: 'm1' }, include: ['decision'] } }, {});
+  assert.equal(intelCalled, true);
+  assert.equal(out.product.title, 'Serum'); // base product preserved
+  assert.equal(out.product.decision.evidence_profile, 'seller_plus_formula');
+  assert.equal(out.product.decision.why_it_stands_out[0].headline, 'Clinically backed');
+  assert.equal(out.product.decision.review_state, 'pass');
+});
+
+test('get_product: NO decision block without include:[decision] (intel not called)', async () => {
+  let intelCalled = false;
+  const executor = createCanonicalExecutor({
+    kernel: stubKernel,
+    upstream: async () => ({ product: { product_id: 'p1', title: 'Serum' } }),
+    localReads: { get_intel: async () => { intelCalled = true; return decisionSignal; } },
+  });
+  const out = await executor.execute('get_product', { payload: { product: { product_id: 'p1' } } }, {});
+  assert.equal(intelCalled, false);
+  assert.equal(out.product.decision, undefined);
+});
+
+test('get_product: decision block is best-effort — intel throw never breaks the product', async () => {
+  const executor = createCanonicalExecutor({
+    kernel: stubKernel,
+    upstream: async () => ({ product: { product_id: 'p1', title: 'Serum' } }),
+    localReads: { get_intel: async () => { throw new Error('intel down'); } },
+  });
+  const out = await executor.execute('get_product', { payload: { product: { product_id: 'p1' }, include: ['decision'] } }, {});
+  assert.equal(out.product.title, 'Serum');
+  assert.equal(out.product.decision, undefined);
+});
+
+test('get_product: no decision block when intel returns no signal (flag-off / not found)', async () => {
+  const executor = createCanonicalExecutor({
+    kernel: stubKernel,
+    upstream: async () => ({ product: { product_id: 'p1', title: 'Serum' } }),
+    localReads: { get_intel: async () => ({ signals: [] }) },
+  });
+  const out = await executor.execute('get_product', { payload: { product: { product_id: 'p1' }, include: ['decision'] } }, {});
+  assert.equal(out.product.decision, undefined);
+});
