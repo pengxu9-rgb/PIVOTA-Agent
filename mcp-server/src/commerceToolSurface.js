@@ -151,7 +151,10 @@ function toParams(op, toolArgs) {
     case "search_catalog":
       return { payload: { search: pick(a, ["query", "merchant_id", "category", "price_min", "price_max", "currency", "in_stock_only", "page", "page_size"]) } };
     case "get_product":
-      return { payload: { product: pick(a, ["merchant_id", "product_id", "sku_id"]) } };
+      // Always request Pivota Insights (the product_intel module: why-it-stands-out,
+      // graded evidence, real-review signals, fit) so an agent calling get_product
+      // actually receives Pivota's decision intelligence, not just bare specs.
+      return { payload: { product: pick(a, ["merchant_id", "product_id", "sku_id"]), include: ["product_intel"] } };
     case "get_alternatives":
       return { payload: pick(a, ["merchant_id", "product_id", "product_ref", "relation", "include_dupes", "market", "max_price_ratio", "limit"]) };
     case "get_offers":
@@ -240,7 +243,7 @@ function str(v) { return typeof v === "string" ? v : undefined; }
 function describe(op) {
   const base = {
     search_catalog: "Search the merchant catalog. Read-only; no money, no state change.",
-    get_product: "Get full detail for one product (merchant_id + product_id). Read-only.",
+    get_product: "Get full detail for one product (merchant_id + product_id), including Pivota Insights — verified decision intelligence (why it stands out, evidence-graded claims, real-review signals, who it's for) you can cite, not just specs. Read-only.",
     get_alternatives:
       "Find alternatives, related items, and (on request) dupes — cheaper similar products — for a product. Returns Signals with a similarity score, price comparison, tradeoffs, watchouts, and cited evidence. Read-only. Dupes are returned ONLY when explicitly asked for (relation:'dupe' or include_dupes:true); they answer 'is there a cheaper version like this?'.",
     get_offers:

@@ -47,8 +47,8 @@ test("tools: exposes the canonical commerce lifecycle and EXCLUDES edge (externa
   const names = surface.tools.map((t) => t.name).sort();
   assert.deepEqual(names, [
     "cancel_checkout_session", "complete_checkout_session", "create_checkout_session",
-    "create_payment_link", "get_checkout_session", "get_order", "get_product", "request_after_sales",
-    "search_catalog", "update_checkout_session",
+    "create_payment_link", "get_alternatives", "get_checkout_session", "get_offers", "get_order",
+    "get_product", "request_after_sales", "search_catalog", "update_checkout_session",
   ]);
   // edge OAuth / token-exchange ops are NOT executor-backed tools
   assert.ok(!names.includes("start_identity_linking"));
@@ -72,7 +72,8 @@ test("reads require no identity (search_catalog / get_product run without a buye
   assert.deepEqual(reads.map((r) => r.op), ["find_products", "get_product_detail"]);
   // args are wrapped into the discovery payload shape
   assert.deepEqual(reads[0].payload, { search: { query: "socks" } });
-  assert.deepEqual(reads[1].payload, { product: { merchant_id: "m", product_id: "p" } });
+  // get_product requests Pivota Insights so the agent receives the product_intel module.
+  assert.deepEqual(reads[1].payload, { product: { merchant_id: "m", product_id: "p" }, include: ["product_intel"] });
 });
 
 test("a user-scoped tool with NO verified buyer is refused (USER_AUTH_REQUIRED) before the executor", async () => {

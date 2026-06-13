@@ -63,6 +63,8 @@ test("GEMINI_FUNCTION_DECLARATIONS exposes canonical safe-checkout tools, not le
     [
       "search_catalog",
       "get_product",
+      "get_alternatives",
+      "get_offers",
       "create_checkout_session",
       "update_checkout_session",
       "get_checkout_session",
