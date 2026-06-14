@@ -46,16 +46,58 @@ Additive (kept, ignored by strict consumers): `drivers[]`, `mechanism`,
 To produce a strict `EvidenceProfile`: take `evidence_claims`, project to the 5
 canonical fields, wrap as `{ claims, review_state: evidence_review_state }`.
 
-## Open — item 9 must decide jointly (NOT unilateral)
+## Decided — item 9 joint decisions (resolved 2026-06-14)
 
-1. **Container unification.** The agent bundle carries `product_intel_core.evidence_claims[]`;
-   the PDP product carries `evidence_profile.claims`. Note the **`evidence_profile`
-   overload**: a *string* enum in `product_intel_core` vs the *object*
-   `EvidenceProfile` at product level. Decide one container name to avoid confusion.
-2. **Merge/precedence** when a product has BOTH supplier-intake claims
-   (`beauty_product_profiles`) AND KB-grounded claims. Likely: supplier brand-official
-   first, KB-grounded fills gaps; dedup by claim concern.
-3. **New `source_type: marketing_vs_reality`** — confirm the backend claim vocab
-   accepts it (honest myth-correction is a distinct, valuable claim kind).
-4. **Gate (item 9 proper):** extend `isHumanReviewedProductIntelBundle` to accept
-   `provenance.review_tier='grounded'` + `buildProductIntelBundleInternal` grounded fallback.
+The four open questions were decided jointly and item 9 was built on them.
+
+1. **Container unification → no rename; disambiguate by level + type.** Renaming
+   either shipped field is pure churn, so they stay — distinguished by *where* and
+   *what type* they are:
+   - `product_intel_core.evidence_profile` = a **string** quality-tier enum
+     (`grounded_verified` | `seller_only` | `pivota_reviewed` | …). The gate reads this.
+   - product-level `evidence_profile` = the **object** canonical
+     `EvidenceProfile { claims, review_state }` the read side attaches from
+     `beauty_product_profiles`.
+   - The bundle's claims live at `product_intel_core.evidence_claims[]` and
+     **project** into the product-level `EvidenceProfile` (5 canonical fields +
+     `review_state = evidence_review_state`).
+
+   They never collide (different paths). Rule of thumb: *string `evidence_profile`
+   = quality tier; object `evidence_profile` = claims container.*
+
+2. **Merge/precedence → human > supplier-brand-official > supplier > KB-grounded;
+   dedup by claim `concern`.** Enforced by the existing *fill-only-when-absent*
+   guards, not a new merge engine: the read side attaches supplier claims only
+   when the product has none (`hasEvidenceClaims`); the grounded fallback runs
+   **only when no servable published bundle exists** and **never overrides** one
+   (`isServableProductIntelBundle` check inside `hydrateProductWithGroundedIntel`).
+   Within suppliers, the content_key selection already orders `external_seed`
+   (brand-official) first.
+
+3. **`source_type: marketing_vs_reality` → accepted; no backend change.** The
+   backend `ProductClaim` coercer (`services/claim_safety.py::_coerce_claim`)
+   treats `source_type` as a **free string** — only `substantiation_status` is a
+   closed set — so the honesty-claim kind passes through unchanged. (Verified.)
+
+4. **Gate (item 9 proper) → built.** `isHumanReviewedProductIntelBundle` is now
+   one branch of a tier resolver:
+   - `isGroundedProductIntelBundle` accepts a bundle only when
+     `provenance.{review_tier|tier}='grounded'` ∧ `reviewer_kind='automated_grounded'`
+     ∧ `review_status='completed'` ∧ `review_decision='grounded_pass'` ∧
+     `grounding.{inci_verified ∧ citations_present ∧ claim_safety='cosmetic_screened'}`
+     ∧ non-empty `evidence_claims`. Fail any → Tier-L (reject), blocked.
+   - `resolveProductIntelTier` → `human | grounded | reject`;
+     `isServableProductIntelBundle` = human ∨ grounded.
+   - The public serving gate (`normalizePublishedProductIntelBundle`), the
+     generic-reject short-circuit, and the agent `get_intel` gate cut over to
+     *servable*. The human-only predicate is preserved for callers that need it.
+   - **Produce → serve:** `hydrateProductWithGroundedIntel` (flag
+     `PDP_GROUNDED_PRODUCT_INTEL_ENABLED`, default **off**) calls
+     `buildGroundedProductIntelBundle` and stamps a *passing* grounded bundle onto
+     `product.product_intel`, so the existing sync builder + gate serve it. With
+     the flag off the whole path is a no-op, keeping the gate change inert in
+     production until deliberately enabled.
+
+   Implementation: `src/pdpProductIntel.js` (resolver + hydrator),
+   `src/server.js` (agent gate + serving-path wiring). Tests:
+   `tests/pdp_product_intel_tier_gate.test.js`.
