@@ -1354,6 +1354,128 @@ describe('agentCenterLlmProbe — ChatGPT and Claude providers', () => {
     }));
   });
 
+  test('ChatGPT probe surfaces failed_runs/error_reasons when every call errors (un-metered COGS guard)', async () => {
+    // Regression for prod audit 04358b64: an OpenAI key out of quota makes
+    // every grounded call throw (429). The per-run catch swallowed it, so the
+    // probe returned provider=chatgpt with 0 tokens / $0 and was recorded as a
+    // successful free run. The result must now declare the failure explicitly.
+    const create = jest.fn(async () => {
+      const err = new Error('429 You exceeded your current quota');
+      err.status = 429;
+      throw err;
+    });
+    const { probe } = installFakeOpenAI(create);
+
+    const out = await probe._internals.buildChatGptProbe({
+      scan_mode: 'open_product_visibility_test',
+      merchant_id: 'm1',
+      store_id: 's1',
+      max_runs: 3,
+      context: {
+        queries: ['where can I buy X', 'shop X online', 'X reviews'],
+        product: { title: 'X' },
+      },
+    });
+
+    expect(out.provider).toBe('chatgpt');
+    expect(out.runs_count).toBe(3);
+    expect(out.failed_runs).toBe(3);
+    expect(out.succeeded_runs).toBe(0);
+    expect(out.error_reasons).toEqual(['429 You exceeded your current quota']);
+    // Usage carries the same health signal so the cost-accounting layer can
+    // distinguish "$0 because free" from "$0 because every call failed".
+    expect(out.usage.failed_runs).toBe(3);
+    expect(out.usage.succeeded_runs).toBe(0);
+    expect(out.usage.input_tokens).toBe(0);
+    expect(out.usage.output_tokens).toBe(0);
+    expect(out.usage.cost_usd_estimate).toBe(0);
+    // Per-run evidence still records the error for debugging.
+    expect(out.raw_runs[0].raw).toMatch(/^__error__:429/);
+  });
+
+  test('ChatGPT probe reports partial success: some runs bill, some fail', async () => {
+    let call = 0;
+    const create = jest.fn(async () => {
+      call += 1;
+      if (call === 2) throw new Error('LLM_PROBE_TIMEOUT');
+      return {
+        output_text: '{"product_visible": true}',
+        output: [
+          {
+            type: 'message',
+            content: [
+              {
+                type: 'output_text',
+                text: '{"product_visible": true}',
+                annotations: [{ type: 'url_citation', url: 'https://merchant.com/p/1', title: 'M' }],
+              },
+            ],
+          },
+        ],
+        usage: { input_tokens: 100, output_tokens: 10 },
+      };
+    });
+    const { probe } = installFakeOpenAI(create);
+
+    const out = await probe._internals.buildChatGptProbe({
+      scan_mode: 'open_product_visibility_test',
+      merchant_id: 'm1',
+      store_id: 's1',
+      max_runs: 3,
+      context: { queries: ['q1', 'q2', 'q3'], product: { title: 'X' } },
+    });
+
+    expect(out.runs_count).toBe(3);
+    expect(out.failed_runs).toBe(1);
+    expect(out.succeeded_runs).toBe(2);
+    expect(out.error_reasons).toEqual(['LLM_PROBE_TIMEOUT']);
+    expect(out.usage.failed_runs).toBe(1);
+    expect(out.usage.succeeded_runs).toBe(2);
+    // Two successful calls billed: 200 input / 20 output → non-zero cost.
+    expect(out.usage.input_tokens).toBe(200);
+    expect(out.usage.output_tokens).toBe(20);
+    expect(out.usage.cost_usd_estimate).toBeGreaterThan(0);
+  });
+
+  test('summarizeProbeErrorReasons dedupes, trims, and caps at 5', () => {
+    const { _internals } = loadModule();
+    const { summarizeProbeErrorReasons } = _internals;
+    expect(summarizeProbeErrorReasons(['a', 'a', 'b'])).toEqual(['a', 'b']);
+    expect(summarizeProbeErrorReasons(['  x  ', 'x'])).toEqual(['x']);
+    expect(summarizeProbeErrorReasons(['e1', 'e2', 'e3', 'e4', 'e5', 'e6', 'e7']))
+      .toEqual(['e1', 'e2', 'e3', 'e4', 'e5']);
+    expect(summarizeProbeErrorReasons(['', null, undefined])).toEqual([]);
+    expect(summarizeProbeErrorReasons('not-an-array')).toEqual([]);
+    expect(summarizeProbeErrorReasons([{}])[0].length).toBeLessThanOrEqual(200);
+  });
+
+  test('Gemini probe also surfaces failed_runs/succeeded_runs uniformly', async () => {
+    process.env.GEMINI_API_KEY = 'fake-gemini-key-for-tests';
+    const generateContent = jest.fn(async () => {
+      throw new Error('gemini upstream 503');
+    });
+    const GoogleGenAI = jest.fn(function GoogleGenAI() {
+      return { models: { generateContent } };
+    });
+    jest.doMock('@google/genai', () => ({ GoogleGenAI }));
+    const probe = loadModule();
+
+    const out = await probe._internals.buildGeminiProbe({
+      scan_mode: 'open_product_visibility_test',
+      merchant_id: 'm1',
+      store_id: 's1',
+      max_runs: 2,
+      context: { queries: ['q1', 'q2'], product: { title: 'X' } },
+    });
+
+    expect(out.provider).toBe('gemini');
+    expect(out.failed_runs).toBe(2);
+    expect(out.succeeded_runs).toBe(0);
+    expect(out.usage.failed_runs).toBe(2);
+    expect(out.usage.succeeded_runs).toBe(0);
+    expect(out.error_reasons).toEqual(['gemini upstream 503']);
+  });
+
   test('Claude probe uses web_search tool result and normalizes grounding output', async () => {
     let observedArgs = null;
     const create = jest.fn(async (args) => {

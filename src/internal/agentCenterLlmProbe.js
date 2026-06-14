@@ -1044,7 +1044,15 @@ function buildFindingsForScores(scan_mode, visibilityScore, echoRate, positives,
   return findings;
 }
 
-function buildProviderUsage({ inputTokens, outputTokens, latencyMs, pricing, webSearchRequests = 0 }) {
+function buildProviderUsage({
+  inputTokens,
+  outputTokens,
+  latencyMs,
+  pricing,
+  webSearchRequests = 0,
+  failedRuns = 0,
+  succeededRuns = 0,
+}) {
   const tokensIn = Math.max(0, Number(inputTokens) || 0);
   const tokensOut = Math.max(0, Number(outputTokens) || 0);
   const searchRequests = Math.max(0, Number(webSearchRequests) || 0);
@@ -1059,7 +1067,31 @@ function buildProviderUsage({ inputTokens, outputTokens, latencyMs, pricing, web
     tokens_out: tokensOut,
     latency_ms: Math.max(0, Number(latencyMs) || 0),
     cost_usd_estimate: Number(estimatedCost.toFixed(6)),
+    // Per-run health so the cost-accounting layer can tell "$0 because the
+    // calls are genuinely free" from "$0 because every upstream call errored
+    // and the per-run catch swallowed it". Without this signal a fully-failed
+    // probe (e.g. OpenAI 429 quota-exceeded) records 0 tokens / $0 and is
+    // indistinguishable from a successful free run, which is how ChatGPT COGS
+    // ended up silently un-metered in prod audits.
+    failed_runs: Math.max(0, Number(failedRuns) || 0),
+    succeeded_runs: Math.max(0, Number(succeededRuns) || 0),
   };
+}
+
+// Dedupe + cap upstream error strings for the probe result. Per-run errors
+// already live in raw_runs[].raw (`__error__:<msg>`); this gives the consumer
+// a compact, bounded summary to surface as an error_message / alert.
+function summarizeProbeErrorReasons(reasons) {
+  const seen = new Set();
+  const out = [];
+  for (const reason of Array.isArray(reasons) ? reasons : []) {
+    const s = String(reason == null ? '' : reason).trim().slice(0, 200);
+    if (!s || seen.has(s)) continue;
+    seen.add(s);
+    out.push(s);
+    if (out.length >= 5) break;
+  }
+  return out;
 }
 
 function extractOpenAIOutputText(resp) {
@@ -1228,6 +1260,8 @@ async function buildGroundedProviderProbe(input, providerSpec) {
   let webSearchRequests = 0;
   let positives = 0;
   let echoes = 0;
+  let failedRuns = 0;
+  const errorReasons = [];
 
   for (const q of queries) {
     const userText = prompt.userPerQuery(q);
@@ -1250,7 +1284,14 @@ async function buildGroundedProviderProbe(input, providerSpec) {
       outputTokens += Number(providerResult.outputTokens || 0);
       webSearchRequests += Number(providerResult.webSearchRequests || 0);
     } catch (err) {
-      rawText = `__error__:${err && err.message ? err.message : String(err)}`;
+      // A swallowed per-run error here is the bug behind un-metered COGS: the
+      // call never billed us tokens, but the probe still returns provider=X
+      // with 0 tokens and looks like a successful free run. Count it so the
+      // result can report failed_runs and the caller can record status=failed.
+      const reason = err && err.message ? err.message : String(err);
+      rawText = `__error__:${reason}`;
+      failedRuns += 1;
+      errorReasons.push(reason);
     }
 
     const scoringGroundingMetadata =
@@ -1284,6 +1325,7 @@ async function buildGroundedProviderProbe(input, providerSpec) {
   }
 
   const runsCount = queries.length;
+  const succeededRuns = Math.max(0, runsCount - failedRuns);
   const visibilityScore = runsCount > 0 ? Math.round((positives / runsCount) * 100) : 0;
   const echoRate = runsCount > 0 ? Math.round((echoes / runsCount) * 100) : 0;
   const findings = buildFindingsForScores(scan_mode, visibilityScore, echoRate, positives, rawRuns);
@@ -1292,12 +1334,17 @@ async function buildGroundedProviderProbe(input, providerSpec) {
     scan_mode,
     provider: providerSpec.provider,
     runs_count: runsCount,
+    failed_runs: failedRuns,
+    succeeded_runs: succeededRuns,
+    error_reasons: summarizeProbeErrorReasons(errorReasons),
     scores: { visibility_score: visibilityScore, attribution_echo_rate: echoRate },
     findings,
     usage: buildProviderUsage({
       inputTokens,
       outputTokens,
       webSearchRequests,
+      failedRuns,
+      succeededRuns,
       latencyMs: Date.now() - startedAt,
       pricing: providerSpec.pricing,
     }),
@@ -1387,6 +1434,8 @@ async function buildGeminiProbe(input) {
   let outputTokens = 0;
   let positives = 0;
   let echoes = 0;
+  let failedRuns = 0;
+  const errorReasons = [];
 
   // Google Search grounding: lets Gemini retrieve live web pages instead of
   // answering from training data — turns the visibility test from "did
@@ -1443,7 +1492,13 @@ async function buildGeminiProbe(input) {
         outputTokens += Number(resp.usageMetadata.candidatesTokenCount || 0);
       }
     } catch (err) {
-      rawText = `__error__:${err && err.message ? err.message : String(err)}`;
+      // Same swallowed-failure class as the grounded ChatGPT/Claude path —
+      // count it so a fully-failed Gemini probe doesn't masquerade as a
+      // successful $0 run in per-provider cost accounting.
+      const reason = err && err.message ? err.message : String(err);
+      rawText = `__error__:${reason}`;
+      failedRuns += 1;
+      errorReasons.push(reason);
     }
     // Pre-parse the chunks once per run — used by scoring + raw_runs.
     const chunks = normalizeGroundingChunks(groundingMetadata);
@@ -1576,6 +1631,7 @@ async function buildGeminiProbe(input) {
   }
 
   const runsCount = queries.length;
+  const succeededRuns = Math.max(0, runsCount - failedRuns);
   const visibilityScore = runsCount > 0 ? Math.round((positives / runsCount) * 100) : 0;
   const echoRate = runsCount > 0 ? Math.round((echoes / runsCount) * 100) : 0;
 
@@ -1636,11 +1692,16 @@ async function buildGeminiProbe(input) {
     scan_mode,
     provider: 'gemini',
     runs_count: runsCount,
+    failed_runs: failedRuns,
+    succeeded_runs: succeededRuns,
+    error_reasons: summarizeProbeErrorReasons(errorReasons),
     scores: { visibility_score: visibilityScore, attribution_echo_rate: echoRate },
     findings,
     usage: buildProviderUsage({
       inputTokens,
       outputTokens,
+      failedRuns,
+      succeededRuns,
       latencyMs: Date.now() - startedAt,
       pricing: GEMINI_PRICE_PER_1K_TOKENS,
     }),
@@ -1808,6 +1869,8 @@ module.exports = {
     normalizeGroundingSourcesFromItems,
     extractOpenAIGroundingChunks,
     extractOpenAIRetrievedSources,
+    buildProviderUsage,
+    summarizeProbeErrorReasons,
     extractAnthropicGroundingChunks,
     extractAnthropicRetrievedSources,
     textMentionsHostOnly,
