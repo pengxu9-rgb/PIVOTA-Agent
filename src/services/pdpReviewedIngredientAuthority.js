@@ -329,6 +329,58 @@ async function fetchPciSkuIngredientAuthority({ keys, queryFn = query } = {}) {
   return null;
 }
 
+function buildContentKeyCandidate(product = {}, canonicalProductRef = null) {
+  return asString(
+    canonicalProductRef?.content_key ||
+      canonicalProductRef?.contentKey ||
+      product.content_key ||
+      product.contentKey ||
+      product.canonical_content_key,
+  ) || null;
+}
+
+function hasEvidenceClaims(product = {}) {
+  const ep = asPlainObject(product.evidence_profile);
+  return !!(ep && Array.isArray(ep.claims) && ep.claims.length);
+}
+
+// Graded, provenance-backed claims (ProductClaim) the supplier-evidence intake
+// writes to beauty_product_profiles.evidence_profile (per product_key). The
+// canonical record is shared across the content_key cluster, so select the
+// HIGHEST-PRECEDENCE one (brand-official / external_seed > supplier, per
+// ADR-001), resolved by content_key — mirrors the backend agent_pdp_view
+// assembler. Best-effort: returns null on any miss so the PDP never breaks.
+async function fetchEvidenceProfileForContentKey({ contentKey, queryFn = query } = {}) {
+  if (!contentKey) return null;
+  if (!(await isTableAvailable('public.beauty_product_profiles', queryFn))) return null;
+  try {
+    const res = await queryFn(
+      `
+        SELECT bpp.evidence_profile, bpp.required_disclaimers
+        FROM public.beauty_product_profiles bpp
+        JOIN public.catalog_products cp ON cp.product_key = bpp.product_key
+        WHERE cp.content_key = $1
+          AND bpp.evidence_profile IS NOT NULL
+        ORDER BY (bpp.merchant_id = 'external_seed') DESC, bpp.updated_at DESC NULLS LAST
+        LIMIT 1
+      `,
+      [contentKey],
+    );
+    const row = Array.isArray(res?.rows) ? res.rows[0] : null;
+    if (!row) return null;
+    const evidenceProfile = coerceJson(row.evidence_profile);
+    if (!evidenceProfile || !Array.isArray(evidenceProfile.claims) || !evidenceProfile.claims.length) {
+      return null;
+    }
+    return {
+      evidence_profile: evidenceProfile,
+      required_disclaimers: coerceJson(row.required_disclaimers) || null,
+    };
+  } catch {
+    return null;
+  }
+}
+
 async function fetchReviewedIngredientAuthority({ product, canonicalProductRef = null, queryFn = query } = {}) {
   const { keys, merchantId } = buildReviewedIngredientKeyCandidates(product, canonicalProductRef);
   if (!keys.length) return null;
@@ -348,18 +400,42 @@ async function hydrateProductWithReviewedIngredientAuthority({
   canonicalProductRef = null,
   queryFn = query,
 } = {}) {
-  const sourceProduct = asPlainObject(product) || {};
-  if (hasUsableAuthoritativeIngredientSource(sourceProduct)) return sourceProduct;
-  const authority = await fetchReviewedIngredientAuthority({
-    product: sourceProduct,
-    canonicalProductRef,
-    queryFn,
-  });
-  if (!authority) return sourceProduct;
-  return {
-    ...sourceProduct,
-    ingredient_intel: mergeIngredientIntelWithAuthority(sourceProduct.ingredient_intel, authority),
-  };
+  let result = asPlainObject(product) || {};
+
+  // Reviewed ingredient authority (actives / INCI) — gated: skip when the
+  // product already carries a usable authoritative source.
+  if (!hasUsableAuthoritativeIngredientSource(result)) {
+    const authority = await fetchReviewedIngredientAuthority({
+      product: result,
+      canonicalProductRef,
+      queryFn,
+    });
+    if (authority) {
+      result = {
+        ...result,
+        ingredient_intel: mergeIngredientIntelWithAuthority(result.ingredient_intel, authority),
+      };
+    }
+  }
+
+  // Graded, claim-safe CLAIMS (evidence_profile) — the justify block. Attached
+  // independently of the ingredient gate (a product can have ingredient
+  // authority but not yet authored claims), fill-only-when-absent, best-effort.
+  if (!hasEvidenceClaims(result)) {
+    const contentKey = buildContentKeyCandidate(result, canonicalProductRef);
+    const evidence = await fetchEvidenceProfileForContentKey({ contentKey, queryFn });
+    if (evidence) {
+      result = {
+        ...result,
+        evidence_profile: evidence.evidence_profile,
+        ...(evidence.required_disclaimers
+          ? { required_disclaimers: evidence.required_disclaimers }
+          : {}),
+      };
+    }
+  }
+
+  return result;
 }
 
 module.exports = {
@@ -369,6 +445,9 @@ module.exports = {
     buildAuthorityFromReviewedRow,
     buildAuthorityCacheKey,
     buildReviewedIngredientKeyCandidates,
+    buildContentKeyCandidate,
+    hasEvidenceClaims,
+    fetchEvidenceProfileForContentKey,
     flattenIngredientValue,
     hasUsableAuthoritativeIngredientSource,
     isTableAvailable,
