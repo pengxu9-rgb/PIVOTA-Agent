@@ -464,3 +464,161 @@ describe('hardening: concentration gate, single-active provenance, hygiene', () 
     }
   });
 });
+
+// ADR-002 — low-dose actives (retinoids, adenosine, peptides, soy isoflavones)
+// are efficacious far below the generic 0.1% / top-third hero bar, so INCI
+// position under-features them. A curated efficacy floor (ingredient_profile_json
+// .efficacy.low_dose_active / .min_efficacious_ppm) lowers the hero bar for the
+// FLAGGED active only — non-flagged trace dustings stay excluded.
+describe('low-dose-active efficacy floor (hero despite low INCI position)', () => {
+  function entry(slug, grade, o) {
+    return {
+      status: 'ready',
+      source_meta: { tier: 'grounded', seed_slug: slug },
+      ingredient_profile_json: {
+        status: 'ready',
+        ingredient: { display_name: o.name, inci: o.name, marketing_vs_reality: o.mvr || [] },
+        benefits: o.benefits || [{ concern: 'firmness / elasticity', strength: 2, what_it_means: 'helps skin look firmer over weeks', mechanism: 'up-regulates procollagen' }],
+        safety: { watchouts: [] },
+        usage: { routine_step: 'treatment', pair_well: [] },
+        evidence: { grade, citations: [{ url: 'https://pubmed.ncbi.nlm.nih.gov/0/' }] },
+        ...(o.efficacy !== undefined ? { efficacy: o.efficacy } : {}),
+      },
+    };
+  }
+  const kb = (KB) => async (t) => KB[t] || null;
+  // Aruen "Tofu Collagen"-shaped INCI: soy isoflavones (Glycine Soja Seed Extract)
+  // sits at #11 of 14 → trace by generic position, but the real firming driver.
+  const ARUEN_INCI =
+    'Water, Niacinamide, Glycerin, Butylene Glycol, Dimethicone, Caprylic/Capric Triglyceride, Cetearyl Alcohol, Panthenol, Carbomer, Phenoxyethanol, Glycine Soja (Soybean) Seed Extract, Tocopherol, Disodium EDTA, Fragrance';
+  // KB keyed under the DISCRIMINATING candidate ("glycine soja seed extract") — the
+  // shipped alias set excludes bare "glycine soja" so soybean OIL can't borrow it.
+  const soyKB = (efficacy) => ({ 'glycine soja seed extract': entry('genistein_soy_isoflavones', 'B', { name: 'Soy isoflavones (genistein / daidzein)', efficacy }) });
+
+  test('a flagged low-dose active low in the INCI now heroes (was trace)', async () => {
+    const bundle = await buildGroundedProductIntelBundle(
+      { title: 'Tofu Collagen Dual-Firming Jelly Cream', inci: ARUEN_INCI },
+      { kbLookup: kb(soyKB({ low_dose_active: true })), now: '2026-06-14' },
+    );
+    expect(bundle).not.toBeNull();
+    expect(isGroundedProductIntelBundle(bundle)).toBe(true);
+    const featured = bundle.product_intel_core.why_it_stands_out.map((w) => w.headline.toLowerCase());
+    expect(featured.some((h) => /soy|genistein|isoflav/.test(h))).toBe(true);
+  });
+
+  test('the SAME active WITHOUT the flag stays trace → not served (control)', async () => {
+    // Identical product + KB but no efficacy block → soy is trace → no hero.
+    const bundle = await buildGroundedProductIntelBundle(
+      { title: 'Tofu Collagen Dual-Firming Jelly Cream', inci: ARUEN_INCI },
+      { kbLookup: kb(soyKB(undefined)), now: '2026-06-14' },
+    );
+    expect(bundle).toBeNull();
+  });
+
+  test('a non-low-dose trace active stays excluded even when the bundle IS served', async () => {
+    // Niacinamide (#2) is a real hero; soy (#11, NOT flagged) must NOT be featured.
+    const KB = {
+      niacinamide: entry('niacinamide', 'A', { name: 'Niacinamide', benefits: [{ concern: 'uneven tone', strength: 3, what_it_means: 'evens the look of tone', mechanism: 'limits melanosome transfer' }] }),
+      'glycine soja seed extract': entry('genistein_soy_isoflavones', 'B', { name: 'Soy isoflavones (genistein / daidzein)' }), // no efficacy flag
+    };
+    const bundle = await buildGroundedProductIntelBundle({ title: 'Brightening Cream', inci: ARUEN_INCI }, { kbLookup: kb(KB), now: '2026-06-14' });
+    expect(bundle).not.toBeNull();
+    const featured = bundle.product_intel_core.why_it_stands_out.map((w) => w.headline.toLowerCase());
+    expect(featured.some((h) => /niacinamide/.test(h))).toBe(true);
+    expect(featured.some((h) => /soy|genistein|isoflav/.test(h))).toBe(false); // trace, not flagged → dropped
+  });
+
+  test('a flagged low-dose active that is BOTH declared and INCI-positioned still heroes (declaration must not demote the position)', async () => {
+    // Regression: candidate-presence keeps every signal so the hero-worthy INCI
+    // position is chosen under the efficacy lens — a brand declaration (which alone
+    // maxes at supportive) must never hide it.
+    const KB = soyKB({ low_dose_active: true });
+    const bundle = await buildGroundedProductIntelBundle(
+      { title: 'Tofu Collagen', key_ingredients: ['Glycine Soja Seed Extract'], inci: ARUEN_INCI },
+      { kbLookup: kb(KB), now: '2026-06-14' },
+    );
+    expect(bundle).not.toBeNull();
+    const featured = bundle.product_intel_core.why_it_stands_out.map((w) => w.headline.toLowerCase());
+    expect(featured.some((h) => /soy|genistein|isoflav/.test(h))).toBe(true);
+  });
+
+  test('soybean OIL does not borrow the isoflavone entry (discriminating alias prevents mis-attribution)', async () => {
+    // Glycine Soja Oil is a bland emollient with negligible isoflavones. The KB is
+    // keyed only under the seed-extract form, so the oil's form-word-stripped
+    // candidate ("glycine soja") must NOT match → no firming claim attached to oil.
+    const KB = soyKB({ low_dose_active: true });
+    const bundle = await buildGroundedProductIntelBundle(
+      { title: 'Soybean Oil Balm', inci: 'Water, Glycerin, Butylene Glycol, Glycine Soja Oil, Phenoxyethanol, Tocopherol' },
+      { kbLookup: kb(KB), now: '2026-06-14' },
+    );
+    expect(bundle).toBeNull();
+  });
+
+  test('declared / active_items do not bypass even WITH the flag (needs a real INCI position or ppm)', async () => {
+    // Soy is declared as a key ingredient + auto-detected active, but is NOT in
+    // the ordered INCI → only a position-less supportive signal. The flag relaxes
+    // POSITION/ppm; it does not promote a bare declaration to hero.
+    const bundle = await buildGroundedProductIntelBundle(
+      {
+        key_ingredients: ['Soy isoflavones'],
+        ingredient_intel: { active_items: [{ display_name: 'Soy isoflavones' }] },
+        inci: 'Water, Glycerin, Butylene Glycol, Dimethicone, Phenoxyethanol, Tocopherol',
+      },
+      { kbLookup: kb({ 'soy isoflavones': entry('genistein_soy_isoflavones', 'B', { name: 'Soy isoflavones', efficacy: { low_dose_active: true } }) }), now: '2026-06-14' },
+    );
+    expect(bundle).toBeNull(); // supportive only → no hero → not served
+  });
+
+  test('disclosed ppm: low-dose active heroes at >= min_efficacious_ppm, below the floor → not served', async () => {
+    const adKB = { adenosine: entry('adenosine', 'B', { name: 'Adenosine', efficacy: { low_dose_active: true, min_efficacious_ppm: 400 } }) };
+    const tailInci = (ppm) => `Water, Glycerin, Butylene Glycol, Dimethicone, Phenoxyethanol, Carbomer, Xanthan Gum, Disodium EDTA, Fragrance, Adenosine(${ppm}ppm)`;
+    // 0.05% (500ppm) >= 400ppm floor → hero even dead-last by position
+    const hero = await buildGroundedProductIntelBundle({ inci: tailInci(500) }, { kbLookup: kb(adKB), now: '2026-06-14' });
+    expect(hero).not.toBeNull();
+    expect(hero.product_intel_core.why_it_stands_out.map((w) => w.headline.toLowerCase()).some((h) => /adenosine/.test(h))).toBe(true);
+    // 0.015% (150ppm) is below the 400ppm floor → sub-efficacious dusting → not served
+    const sub = await buildGroundedProductIntelBundle({ inci: tailInci(150) }, { kbLookup: kb(adKB), now: '2026-06-14' });
+    expect(sub).toBeNull();
+  });
+});
+
+describe('presenceTier / readEfficacy unit (efficacy floor)', () => {
+  const { presenceTier, readEfficacy } = require('../src/groundedProductIntel')._internal;
+  const lowDose = { lowDoseActive: true };
+
+  test('position: a late active is trace by default but heroes when flagged low-dose', () => {
+    expect(presenceTier({ index: 10, total: 14 })).toBe('trace'); // frac .714 — generic bar
+    expect(presenceTier({ index: 10, total: 14 }, lowDose)).toBe('hero');
+  });
+
+  test('low-dose still excludes the deep INCI tail (below the bottom quartile)', () => {
+    expect(presenceTier({ index: 13, total: 14 }, lowDose)).toBe('trace'); // frac .93 > .75
+  });
+
+  test('ppm: normal active needs 0.1%; min_efficacious_ppm lowers the hero bar', () => {
+    expect(presenceTier({ ppm: 500 })).toBe('supportive'); // <1000ppm generic
+    expect(presenceTier({ ppm: 500 }, { lowDoseActive: true, minEfficaciousPpm: 400 })).toBe('hero');
+    expect(presenceTier({ ppm: 250 }, { lowDoseActive: true, minEfficaciousPpm: 400 })).toBe('supportive'); // [200,400)
+    expect(presenceTier({ ppm: 150 }, { lowDoseActive: true, minEfficaciousPpm: 400 })).toBe('trace'); // <200
+  });
+
+  test('ppm bar and position bar are decoupled: min_efficacious_ppm alone does NOT relax position', () => {
+    const ppmOnly = { lowDoseActive: false, minEfficaciousPpm: 400 };
+    expect(presenceTier({ ppm: 500 }, ppmOnly)).toBe('hero'); // ppm bar relaxed
+    expect(presenceTier({ index: 7, total: 14 }, ppmOnly)).toBe('supportive'); // position bar NOT relaxed (generic)
+    expect(presenceTier({ index: 7, total: 14 }, { lowDoseActive: true })).toBe('hero'); // flag relaxes position
+  });
+
+  test('readEfficacy: decoupled levers + sanity-floored ppm', () => {
+    expect(readEfficacy({ efficacy: { low_dose_active: true } })).toEqual({ lowDoseActive: true, minEfficaciousPpm: null });
+    // min_efficacious_ppm alone marks the ppm bar but NOT low_dose_active (decoupled)
+    expect(readEfficacy({ efficacy: { min_efficacious_ppm: 400 } })).toEqual({ lowDoseActive: false, minEfficaciousPpm: 400 });
+    expect(readEfficacy({ efficacy: { low_dose_active: true, min_efficacious_ppm: 400 } })).toEqual({ lowDoseActive: true, minEfficaciousPpm: 400 });
+    expect(readEfficacy({ efficacy: { min_efficacious_ppm: '400' } })).toEqual({ lowDoseActive: false, minEfficaciousPpm: 400 }); // numeric string coerced
+    expect(readEfficacy({ efficacy: { min_efficacious_ppm: 5 } })).toBeNull(); // below sanity floor (typo guard)
+    expect(readEfficacy({ efficacy: { min_efficacious_ppm: 0 } })).toBeNull();
+    expect(readEfficacy({ efficacy: { min_efficacious_ppm: -1 } })).toBeNull();
+    expect(readEfficacy({})).toBeNull();
+    expect(readEfficacy(null)).toBeNull();
+  });
+});

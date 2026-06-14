@@ -128,48 +128,129 @@ function declaredHeroNames(product) {
   return out
 }
 
-// Concentration tier for a matched active. ppm (when disclosed) wins; otherwise
+// Generic concentration bars. A normal active needs real concentration evidence
+// to hero: top-third INCI position OR >= 0.1% (1000ppm) disclosed.
+const HERO_PPM = 1000 // 0.1%
+const SUPPORTIVE_PPM = 100 // 0.01%
+const HERO_FRAC = 1 / 3 // top third (inclusive) — e.g. #3 of 6 sits above glycerin/preservatives
+const SUPPORTIVE_FRAC = 2 / 3
+
+// --- Low-dose-active efficacy floor (ADR-002) ---------------------------------
+// Some actives are efficacious FAR below the generic hero bar — retinoids
+// (0.01–0.3%), adenosine (~0.04%), peptides, soy isoflavones — so INCI position
+// and the 0.1% ppm bar systematically UNDER-feature them (the Aruen "Tofu
+// Collagen" soy-isoflavone case: Glycine Soja Seed Extract is the real firming
+// driver, yet the generic gate calls it trace). The curated KB flags these
+// per-active via ingredient_profile_json.efficacy; for a FLAGGED active only,
+// presenceTier lowers the hero bar. This is a curated, per-ingredient decision —
+// NOT a blanket loosening — so non-flagged trace dustings still never carry a
+// product-level claim (FTC substantiation risk; PRs #1680–#1683).
+//
+// The two efficacy levers are DECOUPLED (one curated semantic each):
+//   • efficacy.low_dose_active: true  → relax the INCI-POSITION bar (the active
+//     is efficacious where it naturally sits, low in the list).
+//   • efficacy.min_efficacious_ppm: n → relax the DISCLOSED-ppm hero bar to n.
+// An entry may set either or both (adenosine sets both; soy sets position only).
+const LOW_DOSE_DEFAULT_HERO_PPM = 100 // 0.01% — disclosed-ppm hero bar for a low_dose_active with no curated ppm
+// A low_dose_active is EXPECTED to sit low in the INCI, so position is a weak
+// signal — but not no signal: we still require it above the bottom quartile so a
+// genuine deep-tail dusting (formulation noise) is not featured. Curation is the
+// primary gate; this is the backstop.
+const LOW_DOSE_HERO_FRAC = 0.75
+// Reject an implausibly small curated min_efficacious_ppm (a unit slip / typo,
+// e.g. 1 → "anything disclosed is hero"). Below this we ignore the curated value
+// and fall back to the default bar — never weaker than the conservative gate.
+const MIN_SANE_EFFICACIOUS_PPM = 10 // 0.001%
+
+// Per-active efficacy metadata from the matched KB entry
+// (ingredient_profile_json.efficacy). Returns null when the entry carries no
+// usable efficacy floor (→ the conservative default applies).
+function readEfficacy(profile) {
+  const e = asObj(profile && profile.efficacy)
+  if (!e) return null
+  const lowDoseActive = e.low_dose_active === true || e.lowDoseActive === true
+  const rawPpm = e.min_efficacious_ppm != null ? e.min_efficacious_ppm : e.minEfficaciousPpm
+  const n = Number(rawPpm)
+  // Sanity-floored: a finite, plausible ppm only. A non-number / 0 / negative /
+  // implausibly-small value is ignored (→ null), keeping the conservative bar.
+  const minEfficaciousPpm = Number.isFinite(n) && n >= MIN_SANE_EFFICACIOUS_PPM ? n : null
+  if (!lowDoseActive && minEfficaciousPpm == null) return null
+  return { lowDoseActive, minEfficaciousPpm }
+}
+
+// Concentration tier for a single signal. ppm (when disclosed) wins; otherwise
 // position in the descending-concentration INCI. A brand-declared "key
 // ingredient" only FLOORS at supportive — HERO status still requires real
-// concentration evidence (top-third position or >=0.1% ppm). Brands routinely
-// market a trace dusting (e.g. Ceramide NP at #34/34) as a key ingredient, so
-// declared alone must NOT bypass the concentration gate.
-function presenceTier(sig) {
+// concentration evidence. Brands routinely market a trace dusting (e.g. Ceramide
+// NP at #34/34) as a key ingredient, so declared alone must NOT bypass the gate.
+//
+// `efficacy` (optional, from the matched KB entry) independently relaxes the ppm
+// bar (min_efficacious_ppm) and/or the position bar (low_dose_active); absent it,
+// the conservative default applies.
+function presenceTier(sig, efficacy) {
   if (!sig) return 'supportive'
+  const minPpm = efficacy && efficacy.minEfficaciousPpm != null ? efficacy.minEfficaciousPpm : null
+  const lowDosePos = !!(efficacy && efficacy.lowDoseActive)
   if (sig.ppm != null) {
-    if (sig.ppm >= 1000) return 'hero' // >= 0.1%
-    if (sig.ppm >= 100) return 'supportive'
+    // Disclosed concentration wins. A curated min_efficacious_ppm lowers the hero
+    // bar to that ppm (adenosine 400ppm = 0.04%); a low_dose_active with no curated
+    // ppm uses the generic low-dose floor. Below the supportive band → trace.
+    const heroPpm = minPpm != null ? minPpm : (lowDosePos ? LOW_DOSE_DEFAULT_HERO_PPM : HERO_PPM)
+    const relaxed = minPpm != null || lowDosePos
+    const supPpm = relaxed ? Math.max(1, Math.round(heroPpm / 2)) : SUPPORTIVE_PPM
+    if (sig.ppm >= heroPpm) return 'hero'
+    if (sig.ppm >= supPpm) return 'supportive'
     return 'trace'
   }
   if (sig.index == null || !sig.total) return 'supportive'
   const frac = sig.index / sig.total
-  if (frac <= 1 / 3) return 'hero' // top third (inclusive) — e.g. #3 of 6 is above glycerin/preservatives
-  if (frac <= 2 / 3) return 'supportive'
+  // A low_dose_active earns hero where it naturally sits (low in the INCI, above
+  // the bottom quartile); everything else keeps the conservative top-third bar.
+  if (frac <= (lowDosePos ? LOW_DOSE_HERO_FRAC : HERO_FRAC)) return 'hero'
+  if (frac <= SUPPORTIVE_FRAC) return 'supportive'
   return 'trace'
 }
 const TIER_RANK = { hero: 3, supportive: 2, trace: 1 }
 
-// Map every KB-lookup CANDIDATE term -> the strongest concentration signal from
-// the source ingredient it came from (declared hero, or ordered-INCI position +
-// ppm). Lets collectActives attach a presence tier to each matched active.
+// Strongest tier across ALL signals observed for one candidate term, under the
+// (optional) efficacy floor. buildCandidatePresence keeps EVERY signal (declared,
+// positional, ppm) per term precisely because the efficacy-aware ranking can
+// differ from the raw one — e.g. a low-dose active's late INCI position outranks a
+// bare brand declaration, but only once we know (post-lookup) that it's flagged.
+function bestPresenceTier(sigs, efficacy) {
+  const list = asArr(sigs)
+  if (!list.length) return presenceTier(null, efficacy) // neutral 'supportive'
+  let best = 'trace'
+  for (const sig of list) {
+    const t = presenceTier(sig, efficacy)
+    if (TIER_RANK[t] > TIER_RANK[best]) best = t
+  }
+  return best
+}
+
+// Map every KB-lookup CANDIDATE term -> ALL concentration signals from the source
+// ingredients it came from (declared, ordered-INCI position + ppm, auto-detected).
+// Keeping every signal (not just the raw-strongest) lets collectActives pick the
+// max tier UNDER the matched active's efficacy floor — a bare declaration must not
+// hide a hero-worthy INCI position once we know the active is low_dose flagged.
 function buildCandidatePresence(product) {
-  const byCandidate = new Map() // candidate term -> { declared, index, total, ppm }
+  const byCandidate = new Map() // candidate term -> sig[]  ({ declared } | { index, total, ppm } | {})
   const add = (name, sig) => {
     const cands = []
     addTermVariants(name, cands)
     for (const c of cands) {
-      const prev = byCandidate.get(c)
-      if (!prev || (TIER_RANK[presenceTier(sig)] > TIER_RANK[presenceTier(prev)])) byCandidate.set(c, sig)
+      const arr = byCandidate.get(c)
+      if (arr) arr.push(sig)
+      else byCandidate.set(c, [sig])
     }
   }
   for (const name of declaredHeroNames(product)) add(name, { declared: true })
   const ordered = readOrderedInci(product).filter((tok) => isCleanIngredientToken(tok.replace(/\([^)]*\)/g, '').trim()))
   const total = ordered.length
   ordered.forEach((tok, index) => add(tok.replace(/\([^)]*\)/g, ' '), { index, total, ppm: parsePpm(tok) }))
-  // Auto-detected actives (ingredient_intel.active_items) as SUPPORTIVE-tier
-  // candidates: they get looked up, but don't bypass the concentration gate. If
-  // the same active also sits in the ordered INCI, that position wins (strongest
-  // tier), so a real hero is still a hero and a trace dusting stays trace.
+  // Auto-detected actives (ingredient_intel.active_items) as no-position
+  // candidates: they get looked up, but don't bypass the concentration gate — a
+  // bare {} signal maxes out at supportive, so it never heroes on its own.
   const ii = asObj(product.ingredient_intel) || asObj(product.ingredientIntel) || {}
   const autos = new Set()
   const collectNames = (v) => {
@@ -228,7 +309,11 @@ async function collectActives(product, kbLookupBatch, lang) {
     const sm = asObj(entry.source_meta) || asObj(profile.source_meta) || {}
     if (str(sm.tier) !== 'grounded') continue // only grounded KB entries feed a grounded bundle
     const key = str(sm.seed_slug) || slug(ing.display_name || ing.inci || term)
-    const tier = presenceTier(presence.get(term))
+    // Strongest tier across ALL signals for this term, under the matched active's
+    // efficacy floor (lowers the bar for curated low-dose actives; conservative
+    // default otherwise). Considering every signal — not a pre-collapsed one —
+    // keeps a brand declaration from hiding a hero-worthy INCI position.
+    const tier = bestPresenceTier(presence.get(term), readEfficacy(profile))
     const existing = bySlug.get(key)
     if (existing) { // keep the strongest presence across this active's candidate terms
       if (TIER_RANK[tier] > TIER_RANK[existing.presence]) existing.presence = tier
@@ -433,10 +518,12 @@ async function buildGroundedProductIntelBundle(product, opts = {}) {
   if (orderedClean.length < MIN_INCI_TO_SERVE) return null
 
   const actives = await collectActives(p, kbLookupBatch, lang)
-  // Only HERO actives (declared, or top-third / >=0.1% ppm) drive featured intel
-  // and claims — a trace/supportive match never earns a product-level claim, and
-  // a product whose ONLY grounded matches are trace is not served (no false
-  // "[active] forward" off a dusting). This is the core adversarial-review fix.
+  // Only HERO actives drive featured intel and claims — a trace/supportive match
+  // never earns a product-level claim, and a product whose ONLY grounded matches
+  // are trace is not served (no false "[active] forward" off a dusting). HERO =
+  // top-third / >=0.1% ppm for a normal active, OR — for a curated low_dose_active
+  // — present above the trailing tail / >= its min_efficacious_ppm. A trace
+  // dusting of a NON-flagged active stays excluded (the core adversarial-review fix).
   const heroes = actives.filter((a) => a.presence === 'hero')
   if (!heroes.length) return null
   const ranked = rankActives(heroes)
@@ -501,5 +588,5 @@ async function buildGroundedProductIntelBundle(product, opts = {}) {
 module.exports = {
   buildGroundedProductIntelBundle,
   extractActiveTerms,
-  _internal: { collectActives, buildEvidenceClaims, normalizeTerm, claimSafe, rankActives },
+  _internal: { collectActives, buildEvidenceClaims, normalizeTerm, claimSafe, rankActives, presenceTier, bestPresenceTier, readEfficacy },
 }
