@@ -6,7 +6,7 @@ const {
   normalizePublishedProductIntelBundle,
   hydrateProductWithGroundedIntel,
 } = require('../src/pdpProductIntel');
-const { buildGroundedProductIntelBundle } = require('../src/groundedProductIntel');
+const { buildGroundedProductIntelBundle, extractActiveTerms } = require('../src/groundedProductIntel');
 
 // ADR-002 item 9 — the tiered serving gate: human | grounded | reject.
 // See docs/tier-g-evidence-claims-reconciliation.md (joint decision 4).
@@ -269,5 +269,64 @@ describe('batched KB lookup (load fix: one query, not N serial reads)', () => {
     const bundle = await buildGroundedProductIntelBundle({ inci: 'Niacinamide, Water, Sodium Hyaluronate' }, { kbLookup, now: '2026-06-14' });
     expect(kbLookup).toHaveBeenCalled();
     expect(isGroundedProductIntelBundle(bundle)).toBe(true);
+  });
+});
+
+describe('ingredient_intel shape (real PDP) feeds the generator', () => {
+  test('extractActiveTerms reads ingredient_intel.items + strips parens + adds botanical core/extract', () => {
+    const terms = extractActiveTerms({
+      ingredient_intel: { items: ['Water', 'Centella Asiatica Leaf Water(389,929ppm)', 'Niacinamide', 'Sodium Hyaluronate'] },
+    });
+    expect(terms).toContain('niacinamide');
+    expect(terms).toContain('sodium hyaluronate');
+    // botanical suffix -> core + "<core> extract" so it matches curated KB keys
+    expect(terms).toContain('centella asiatica');
+    expect(terms).toContain('centella asiatica extract');
+    // parenthetical ppm noise is stripped, never queried
+    expect(terms.some((t) => /ppm|929/.test(t))).toBe(false);
+  });
+
+  test('extractActiveTerms reads ingredient_intel.active_items objects + raw_text', () => {
+    const terms = extractActiveTerms({
+      ingredient_intel: { active_items: [{ display_name: 'Adenosine' }], raw_text: 'Glycine Soja (Soybean) Seed Extract, Panthenol' },
+    });
+    expect(terms).toContain('adenosine');
+    expect(terms).toContain('panthenol');
+    expect(terms).toContain('glycine soja'); // soybean parenthetical dropped, core extracted
+  });
+
+  test('a product carrying actives ONLY in ingredient_intel (no top-level inci) now produces grounded intel', async () => {
+    // Mirrors a real external_seed PDP: ingredients live in ingredient_intel, and
+    // the curated KB is keyed by the active core (e.g. "centella asiatica extract").
+    function groundedEntry(slug, name) {
+      return {
+        status: 'ready',
+        source_meta: { tier: 'grounded', seed_slug: slug },
+        ingredient_profile_json: {
+          status: 'ready',
+          ingredient: { display_name: name, inci: name, marketing_vs_reality: [] },
+          benefits: [{ concern: 'barrier support', strength: 2, what_it_means: 'supports the barrier', mechanism: 'mechanism' }],
+          safety: { watchouts: [] },
+          usage: { routine_step: 'treatment', pair_well: [] },
+          evidence: { grade: 'A', citations: [{ url: 'https://pubmed.ncbi.nlm.nih.gov/0/' }] },
+        },
+      };
+    }
+    const KB = {
+      'centella asiatica extract': groundedEntry('centella', 'Centella Asiatica'),
+      niacinamide: groundedEntry('niacinamide', 'Niacinamide'),
+      'sodium hyaluronate': groundedEntry('ha', 'Sodium Hyaluronate'),
+    };
+    const kbLookup = jest.fn(async (t) => KB[t] || null);
+    const product = {
+      title: 'Hyalu-Cica Blue Serum',
+      ingredient_intel: { items: ['Water', 'Centella Asiatica Leaf Water(389,929ppm)', 'Niacinamide', 'Sodium Hyaluronate', 'Butylene Glycol'] },
+      // deliberately NO top-level inci / key_ingredients
+    };
+    const bundle = await buildGroundedProductIntelBundle(product, { kbLookup, now: '2026-06-14' });
+    expect(bundle).not.toBeNull();
+    expect(isGroundedProductIntelBundle(bundle)).toBe(true);
+    // the botanical-core candidate ("centella asiatica extract") was queried
+    expect(kbLookup.mock.calls.map((c) => c[0])).toContain('centella asiatica extract');
   });
 });
