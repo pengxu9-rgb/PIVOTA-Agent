@@ -747,4 +747,32 @@ describe('form-aware candidate guard (inert forms cannot borrow active-bearing K
     // and it is NOT carrying the isoflavone firming claim (different entry entirely)
     expect(featured.some((h) => /genistein|isoflav|firm/.test(h))).toBe(false);
   });
+
+  test('an inert form-word anywhere in the trailing run suppresses the core (not just terminal)', () => {
+    // Locks the right-to-left sticky-flag behavior: stripping walks "extract" (active)
+    // then "oil" (inert) — once an inert word is touched, the whole token is treated as
+    // the lipid fraction. A refactor that only checked the LAST form-word would reopen
+    // the hole, so assert the genus core is suppressed even when an active word trails.
+    const terms = extractActiveTerms({ ingredient_intel: { items: ['Water', 'Glycine Soja Oil Extract', 'Glycerin'] } });
+    expect(terms).toContain('glycine soja oil extract'); // full token kept
+    expect(terms).not.toContain('glycine soja'); // sticky inert flag suppresses the core
+    expect(terms).not.toContain('glycine soja extract');
+  });
+
+  test('a brand-declared seed-extract name cannot rescue an oil-only formula (cross-source)', async () => {
+    // The brand declares "Glycine Soja Seed Extract" (active-bearing → generates the
+    // "glycine soja" candidate), but the formula's ONLY soy token is the OIL. The genus
+    // candidate therefore carries just the declared signal (caps at supportive), and the
+    // oil contributes no genus candidate at all → no hero → not served. Declaration of
+    // the active form must not borrow a firming claim onto a formula that only has oil.
+    const bundle = await buildGroundedProductIntelBundle(
+      {
+        title: 'Soybean Oil Balm',
+        key_ingredients: ['Glycine Soja Seed Extract'],
+        inci: SOYBEAN_OIL_INCI,
+      },
+      { kbLookup: kb(BARE_GENUS_KB), now: '2026-06-14' },
+    );
+    expect(bundle).toBeNull();
+  });
 });
