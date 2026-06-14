@@ -1,0 +1,1170 @@
+{
+  "base": "https://pivota-agent-production.up.railway.app",
+  "n": 50,
+  "dossierPct": 4,
+  "tierDist": {
+    "positioning_blurb": 46,
+    "none": 2,
+    "grounded": 2
+  },
+  "dimCov": {
+    "structured_why": 24,
+    "graded_claims": 2,
+    "honesty": 45,
+    "review_synthesis": 0,
+    "commerce_trust": 49,
+    "specificity": 42
+  },
+  "rows": [
+    {
+      "ref": {
+        "product_id": "sig_93552b7bf994e66d2f52537cfbb9e348",
+        "merchant_id": "external_seed"
+      },
+      "tier": "assistant_reviewed",
+      "score": 35,
+      "isDossier": false,
+      "dims": {
+        "structured_why": false,
+        "graded_claims": false,
+        "honesty": true,
+        "review_synthesis": false,
+        "commerce_trust": true,
+        "specificity": true
+      },
+      "klass": "positioning_blurb",
+      "why": 1,
+      "graded": 0,
+      "mvr": 0,
+      "reviewSynthesis": false,
+      "offers": 1
+    },
+    {
+      "ref": {
+        "product_id": "ext_97a7cac23f8f5947a8b5f208",
+        "merchant_id": "external_seed"
+      },
+      "tier": "assistant_reviewed",
+      "score": 35,
+      "isDossier": false,
+      "dims": {
+        "structured_why": false,
+        "graded_claims": false,
+        "honesty": true,
+        "review_synthesis": false,
+        "commerce_trust": true,
+        "specificity": true
+      },
+      "klass": "positioning_blurb",
+      "why": 1,
+      "graded": 0,
+      "mvr": 0,
+      "reviewSynthesis": false,
+      "offers": 1
+    },
+    {
+      "ref": {
+        "product_id": "sig_ce6644f319a9a01d61c89d2f8f2ada41",
+        "merchant_id": "external_seed"
+      },
+      "tier": "assistant_reviewed",
+      "score": 35,
+      "isDossier": false,
+      "dims": {
+        "structured_why": false,
+        "graded_claims": false,
+        "honesty": true,
+        "review_synthesis": false,
+        "commerce_trust": true,
+        "specificity": true
+      },
+      "klass": "positioning_blurb",
+      "why": 1,
+      "graded": 0,
+      "mvr": 0,
+      "reviewSynthesis": false,
+      "offers": 1
+    },
+    {
+      "ref": {
+        "product_id": "ext_572faba591a8712e6c37fbe3",
+        "merchant_id": "external_seed"
+      },
+      "tier": "assistant_reviewed",
+      "score": 35,
+      "isDossier": false,
+      "dims": {
+        "structured_why": false,
+        "graded_claims": false,
+        "honesty": true,
+        "review_synthesis": false,
+        "commerce_trust": true,
+        "specificity": true
+      },
+      "klass": "positioning_blurb",
+      "why": 1,
+      "graded": 0,
+      "mvr": 0,
+      "reviewSynthesis": false,
+      "offers": 1
+    },
+    {
+      "ref": {
+        "product_id": "sig_8c53ced4d83927738f13752a63ab25cb",
+        "merchant_id": "external_seed"
+      },
+      "tier": "assistant_reviewed",
+      "score": 55,
+      "isDossier": false,
+      "dims": {
+        "structured_why": true,
+        "graded_claims": false,
+        "honesty": true,
+        "review_synthesis": false,
+        "commerce_trust": true,
+        "specificity": true
+      },
+      "klass": "positioning_blurb",
+      "why": 2,
+      "graded": 0,
+      "mvr": 0,
+      "reviewSynthesis": false,
+      "offers": 1
+    },
+    {
+      "ref": {
+        "product_id": "ext_61fd2d096b614e518670aefc",
+        "merchant_id": "external_seed"
+      },
+      "tier": "assistant_reviewed",
+      "score": 55,
+      "isDossier": false,
+      "dims": {
+        "structured_why": true,
+        "graded_claims": false,
+        "honesty": true,
+        "review_synthesis": false,
+        "commerce_trust": true,
+        "specificity": true
+      },
+      "klass": "positioning_blurb",
+      "why": 2,
+      "graded": 0,
+      "mvr": 0,
+      "reviewSynthesis": false,
+      "offers": 1
+    },
+    {
+      "ref": {
+        "product_id": "sig_161fb637f3eabd6f6d298fef0d1e30d5",
+        "merchant_id": "external_seed"
+      },
+      "tier": "assistant_reviewed",
+      "score": 55,
+      "isDossier": false,
+      "dims": {
+        "structured_why": true,
+        "graded_claims": false,
+        "honesty": true,
+        "review_synthesis": false,
+        "commerce_trust": true,
+        "specificity": true
+      },
+      "klass": "positioning_blurb",
+      "why": 2,
+      "graded": 0,
+      "mvr": 0,
+      "reviewSynthesis": false,
+      "offers": 1
+    },
+    {
+      "ref": {
+        "product_id": "ext_cc8415d36b5d9f01745341b1",
+        "merchant_id": "external_seed"
+      },
+      "tier": "assistant_reviewed",
+      "score": 55,
+      "isDossier": false,
+      "dims": {
+        "structured_why": true,
+        "graded_claims": false,
+        "honesty": true,
+        "review_synthesis": false,
+        "commerce_trust": true,
+        "specificity": true
+      },
+      "klass": "positioning_blurb",
+      "why": 2,
+      "graded": 0,
+      "mvr": 0,
+      "reviewSynthesis": false,
+      "offers": 1
+    },
+    {
+      "ref": {
+        "product_id": "sig_695642c7414f27e1636c2346b6536f9b",
+        "merchant_id": "external_seed"
+      },
+      "tier": "assistant_reviewed",
+      "score": 55,
+      "isDossier": false,
+      "dims": {
+        "structured_why": true,
+        "graded_claims": false,
+        "honesty": true,
+        "review_synthesis": false,
+        "commerce_trust": true,
+        "specificity": true
+      },
+      "klass": "positioning_blurb",
+      "why": 2,
+      "graded": 0,
+      "mvr": 0,
+      "reviewSynthesis": false,
+      "offers": 2
+    },
+    {
+      "ref": {
+        "product_id": "ext_74e14bd64686117a6145542a",
+        "merchant_id": "external_seed"
+      },
+      "tier": "assistant_reviewed",
+      "score": 55,
+      "isDossier": false,
+      "dims": {
+        "structured_why": true,
+        "graded_claims": false,
+        "honesty": true,
+        "review_synthesis": false,
+        "commerce_trust": true,
+        "specificity": true
+      },
+      "klass": "positioning_blurb",
+      "why": 2,
+      "graded": 0,
+      "mvr": 0,
+      "reviewSynthesis": false,
+      "offers": 2
+    },
+    {
+      "ref": {
+        "product_id": "sig_05c142569112835a8ebfa5805157ba8c",
+        "merchant_id": "external_seed"
+      },
+      "tier": "assistant_reviewed",
+      "score": 55,
+      "isDossier": false,
+      "dims": {
+        "structured_why": true,
+        "graded_claims": false,
+        "honesty": true,
+        "review_synthesis": false,
+        "commerce_trust": true,
+        "specificity": true
+      },
+      "klass": "positioning_blurb",
+      "why": 2,
+      "graded": 0,
+      "mvr": 0,
+      "reviewSynthesis": false,
+      "offers": 2
+    },
+    {
+      "ref": {
+        "product_id": "ext_af891294e2afdede7a601424",
+        "merchant_id": "external_seed"
+      },
+      "tier": "assistant_reviewed",
+      "score": 55,
+      "isDossier": false,
+      "dims": {
+        "structured_why": true,
+        "graded_claims": false,
+        "honesty": true,
+        "review_synthesis": false,
+        "commerce_trust": true,
+        "specificity": true
+      },
+      "klass": "positioning_blurb",
+      "why": 2,
+      "graded": 0,
+      "mvr": 0,
+      "reviewSynthesis": false,
+      "offers": 2
+    },
+    {
+      "ref": {
+        "product_id": "sig_7f13d7ed708f4585f93f8935168ac9b8",
+        "merchant_id": "external_seed"
+      },
+      "tier": "assistant_reviewed",
+      "score": 45,
+      "isDossier": false,
+      "dims": {
+        "structured_why": true,
+        "graded_claims": false,
+        "honesty": true,
+        "review_synthesis": false,
+        "commerce_trust": true,
+        "specificity": false
+      },
+      "klass": "positioning_blurb",
+      "why": 2,
+      "graded": 0,
+      "mvr": 0,
+      "reviewSynthesis": false,
+      "offers": 1
+    },
+    {
+      "ref": {
+        "product_id": "ext_684249c7a94a1a6f43fdbd77",
+        "merchant_id": "external_seed"
+      },
+      "tier": "assistant_reviewed",
+      "score": 45,
+      "isDossier": false,
+      "dims": {
+        "structured_why": true,
+        "graded_claims": false,
+        "honesty": true,
+        "review_synthesis": false,
+        "commerce_trust": true,
+        "specificity": false
+      },
+      "klass": "positioning_blurb",
+      "why": 2,
+      "graded": 0,
+      "mvr": 0,
+      "reviewSynthesis": false,
+      "offers": 1
+    },
+    {
+      "ref": {
+        "product_id": "sig_f99d01d67ceebb692db3ffb57656230e",
+        "merchant_id": "external_seed"
+      },
+      "tier": "assistant_reviewed",
+      "score": 45,
+      "isDossier": false,
+      "dims": {
+        "structured_why": true,
+        "graded_claims": false,
+        "honesty": true,
+        "review_synthesis": false,
+        "commerce_trust": false,
+        "specificity": true
+      },
+      "klass": "positioning_blurb",
+      "why": 2,
+      "graded": 0,
+      "mvr": 0,
+      "reviewSynthesis": false,
+      "offers": 0
+    },
+    {
+      "ref": {
+        "product_id": "ext_df4d56308c3375c430514d29",
+        "merchant_id": "external_seed"
+      },
+      "tier": "assistant_reviewed",
+      "score": 55,
+      "isDossier": false,
+      "dims": {
+        "structured_why": true,
+        "graded_claims": false,
+        "honesty": true,
+        "review_synthesis": false,
+        "commerce_trust": true,
+        "specificity": true
+      },
+      "klass": "positioning_blurb",
+      "why": 2,
+      "graded": 0,
+      "mvr": 0,
+      "reviewSynthesis": false,
+      "offers": 1
+    },
+    {
+      "ref": {
+        "product_id": "sig_174dca24d4ffc297db0c3865d54b712b",
+        "merchant_id": "merch_efbc46b4619cfbdf"
+      },
+      "tier": "n/a",
+      "score": 10,
+      "isDossier": false,
+      "dims": {
+        "structured_why": false,
+        "graded_claims": false,
+        "honesty": false,
+        "review_synthesis": false,
+        "commerce_trust": true,
+        "specificity": false
+      },
+      "klass": "none",
+      "why": 0,
+      "graded": 0,
+      "mvr": 0,
+      "reviewSynthesis": false,
+      "offers": 1
+    },
+    {
+      "ref": {
+        "product_id": "10064558129449",
+        "merchant_id": "merch_efbc46b4619cfbdf"
+      },
+      "tier": "n/a",
+      "score": 10,
+      "isDossier": false,
+      "dims": {
+        "structured_why": false,
+        "graded_claims": false,
+        "honesty": false,
+        "review_synthesis": false,
+        "commerce_trust": true,
+        "specificity": false
+      },
+      "klass": "none",
+      "why": 0,
+      "graded": 0,
+      "mvr": 0,
+      "reviewSynthesis": false,
+      "offers": 1
+    },
+    {
+      "ref": {
+        "product_id": "sig_1c7611cfd2520d64ad08f3c36b2ef016",
+        "merchant_id": "merch_efbc46b4619cfbdf"
+      },
+      "tier": "strict_human",
+      "score": 20,
+      "isDossier": false,
+      "dims": {
+        "structured_why": false,
+        "graded_claims": false,
+        "honesty": false,
+        "review_synthesis": false,
+        "commerce_trust": true,
+        "specificity": true
+      },
+      "klass": "positioning_blurb",
+      "why": 1,
+      "graded": 0,
+      "mvr": 0,
+      "reviewSynthesis": false,
+      "offers": 2
+    },
+    {
+      "ref": {
+        "product_id": "10064558194985",
+        "merchant_id": "merch_efbc46b4619cfbdf"
+      },
+      "tier": "assistant_reviewed",
+      "score": 35,
+      "isDossier": false,
+      "dims": {
+        "structured_why": false,
+        "graded_claims": false,
+        "honesty": true,
+        "review_synthesis": false,
+        "commerce_trust": true,
+        "specificity": true
+      },
+      "klass": "positioning_blurb",
+      "why": 1,
+      "graded": 0,
+      "mvr": 0,
+      "reviewSynthesis": false,
+      "offers": 3
+    },
+    {
+      "ref": {
+        "product_id": "sig_0d1797239aa475b713118e555cdce991",
+        "merchant_id": "external_seed"
+      },
+      "tier": "assistant_reviewed",
+      "score": 25,
+      "isDossier": false,
+      "dims": {
+        "structured_why": false,
+        "graded_claims": false,
+        "honesty": true,
+        "review_synthesis": false,
+        "commerce_trust": true,
+        "specificity": false
+      },
+      "klass": "positioning_blurb",
+      "why": 2,
+      "graded": 0,
+      "mvr": 0,
+      "reviewSynthesis": false,
+      "offers": 3
+    },
+    {
+      "ref": {
+        "product_id": "beauty-of-joseon-glow-deep-serum",
+        "merchant_id": "external_seed"
+      },
+      "tier": "assistant_reviewed",
+      "score": 25,
+      "isDossier": false,
+      "dims": {
+        "structured_why": false,
+        "graded_claims": false,
+        "honesty": true,
+        "review_synthesis": false,
+        "commerce_trust": true,
+        "specificity": false
+      },
+      "klass": "positioning_blurb",
+      "why": 2,
+      "graded": 0,
+      "mvr": 0,
+      "reviewSynthesis": false,
+      "offers": 1
+    },
+    {
+      "ref": {
+        "product_id": "sig_a1894da0fe9c17cbb691bbc8af01c4a4",
+        "merchant_id": "external_seed"
+      },
+      "tier": "assistant_reviewed",
+      "score": 35,
+      "isDossier": false,
+      "dims": {
+        "structured_why": false,
+        "graded_claims": false,
+        "honesty": true,
+        "review_synthesis": false,
+        "commerce_trust": true,
+        "specificity": true
+      },
+      "klass": "positioning_blurb",
+      "why": 1,
+      "graded": 0,
+      "mvr": 0,
+      "reviewSynthesis": false,
+      "offers": 2
+    },
+    {
+      "ref": {
+        "product_id": "ext_3ca6d4d3d00fa977653ccba0",
+        "merchant_id": "external_seed"
+      },
+      "tier": "assistant_reviewed",
+      "score": 35,
+      "isDossier": false,
+      "dims": {
+        "structured_why": false,
+        "graded_claims": false,
+        "honesty": true,
+        "review_synthesis": false,
+        "commerce_trust": true,
+        "specificity": true
+      },
+      "klass": "positioning_blurb",
+      "why": 1,
+      "graded": 0,
+      "mvr": 0,
+      "reviewSynthesis": false,
+      "offers": 2
+    },
+    {
+      "ref": {
+        "product_id": "sig_ed5c9194ffabfbb9ee252c89ac95252e",
+        "merchant_id": "external_seed"
+      },
+      "tier": "assistant_reviewed",
+      "score": 35,
+      "isDossier": false,
+      "dims": {
+        "structured_why": false,
+        "graded_claims": false,
+        "honesty": true,
+        "review_synthesis": false,
+        "commerce_trust": true,
+        "specificity": true
+      },
+      "klass": "positioning_blurb",
+      "why": 1,
+      "graded": 0,
+      "mvr": 0,
+      "reviewSynthesis": false,
+      "offers": 1
+    },
+    {
+      "ref": {
+        "product_id": "ext_9951a2c16aaab7af0cbec541",
+        "merchant_id": "external_seed"
+      },
+      "tier": "assistant_reviewed",
+      "score": 35,
+      "isDossier": false,
+      "dims": {
+        "structured_why": false,
+        "graded_claims": false,
+        "honesty": true,
+        "review_synthesis": false,
+        "commerce_trust": true,
+        "specificity": true
+      },
+      "klass": "positioning_blurb",
+      "why": 1,
+      "graded": 0,
+      "mvr": 0,
+      "reviewSynthesis": false,
+      "offers": 1
+    },
+    {
+      "ref": {
+        "product_id": "sig_73b1a87e1403d5f93395e99365893a78",
+        "merchant_id": "external_seed"
+      },
+      "tier": "assistant_reviewed",
+      "score": 55,
+      "isDossier": false,
+      "dims": {
+        "structured_why": true,
+        "graded_claims": false,
+        "honesty": true,
+        "review_synthesis": false,
+        "commerce_trust": true,
+        "specificity": true
+      },
+      "klass": "positioning_blurb",
+      "why": 2,
+      "graded": 0,
+      "mvr": 0,
+      "reviewSynthesis": false,
+      "offers": 1
+    },
+    {
+      "ref": {
+        "product_id": "ext_165050d194f3c456a7b9c32c",
+        "merchant_id": "external_seed"
+      },
+      "tier": "assistant_reviewed",
+      "score": 55,
+      "isDossier": false,
+      "dims": {
+        "structured_why": true,
+        "graded_claims": false,
+        "honesty": true,
+        "review_synthesis": false,
+        "commerce_trust": true,
+        "specificity": true
+      },
+      "klass": "positioning_blurb",
+      "why": 2,
+      "graded": 0,
+      "mvr": 0,
+      "reviewSynthesis": false,
+      "offers": 1
+    },
+    {
+      "ref": {
+        "product_id": "sig_cbb3429c59f1042351fbf1881df1dd2a",
+        "merchant_id": "external_seed"
+      },
+      "tier": "assistant_reviewed",
+      "score": 55,
+      "isDossier": false,
+      "dims": {
+        "structured_why": true,
+        "graded_claims": false,
+        "honesty": true,
+        "review_synthesis": false,
+        "commerce_trust": true,
+        "specificity": true
+      },
+      "klass": "positioning_blurb",
+      "why": 2,
+      "graded": 0,
+      "mvr": 0,
+      "reviewSynthesis": false,
+      "offers": 1
+    },
+    {
+      "ref": {
+        "product_id": "ext_60573d10fee5489ecd90bbf1",
+        "merchant_id": "external_seed"
+      },
+      "tier": "assistant_reviewed",
+      "score": 55,
+      "isDossier": false,
+      "dims": {
+        "structured_why": true,
+        "graded_claims": false,
+        "honesty": true,
+        "review_synthesis": false,
+        "commerce_trust": true,
+        "specificity": true
+      },
+      "klass": "positioning_blurb",
+      "why": 2,
+      "graded": 0,
+      "mvr": 0,
+      "reviewSynthesis": false,
+      "offers": 1
+    },
+    {
+      "ref": {
+        "product_id": "sig_d34323ca5dac8441e8ee9fe1e00f55b2",
+        "merchant_id": "external_seed"
+      },
+      "tier": "assistant_reviewed",
+      "score": 20,
+      "isDossier": false,
+      "dims": {
+        "structured_why": false,
+        "graded_claims": false,
+        "honesty": false,
+        "review_synthesis": false,
+        "commerce_trust": true,
+        "specificity": true
+      },
+      "klass": "positioning_blurb",
+      "why": 1,
+      "graded": 0,
+      "mvr": 0,
+      "reviewSynthesis": false,
+      "offers": 1
+    },
+    {
+      "ref": {
+        "product_id": "ext_6949911b5eb800644680b51d",
+        "merchant_id": "external_seed"
+      },
+      "tier": "assistant_reviewed",
+      "score": 20,
+      "isDossier": false,
+      "dims": {
+        "structured_why": false,
+        "graded_claims": false,
+        "honesty": false,
+        "review_synthesis": false,
+        "commerce_trust": true,
+        "specificity": true
+      },
+      "klass": "positioning_blurb",
+      "why": 1,
+      "graded": 0,
+      "mvr": 0,
+      "reviewSynthesis": false,
+      "offers": 1
+    },
+    {
+      "ref": {
+        "product_id": "sig_6b29b8808fc0ae304a1b987ae72b30d8",
+        "merchant_id": "external_seed"
+      },
+      "tier": "assistant_reviewed",
+      "score": 45,
+      "isDossier": false,
+      "dims": {
+        "structured_why": true,
+        "graded_claims": false,
+        "honesty": true,
+        "review_synthesis": false,
+        "commerce_trust": true,
+        "specificity": false
+      },
+      "klass": "positioning_blurb",
+      "why": 2,
+      "graded": 0,
+      "mvr": 0,
+      "reviewSynthesis": false,
+      "offers": 1
+    },
+    {
+      "ref": {
+        "product_id": "ext_792e1933d4f08d1e1131533b",
+        "merchant_id": "external_seed"
+      },
+      "tier": "assistant_reviewed",
+      "score": 45,
+      "isDossier": false,
+      "dims": {
+        "structured_why": true,
+        "graded_claims": false,
+        "honesty": true,
+        "review_synthesis": false,
+        "commerce_trust": true,
+        "specificity": false
+      },
+      "klass": "positioning_blurb",
+      "why": 2,
+      "graded": 0,
+      "mvr": 0,
+      "reviewSynthesis": false,
+      "offers": 1
+    },
+    {
+      "ref": {
+        "product_id": "sig_029ff3aa8ba4ff5e2347f897b840b5ba",
+        "merchant_id": "external_seed"
+      },
+      "tier": "assistant_reviewed",
+      "score": 55,
+      "isDossier": false,
+      "dims": {
+        "structured_why": true,
+        "graded_claims": false,
+        "honesty": true,
+        "review_synthesis": false,
+        "commerce_trust": true,
+        "specificity": true
+      },
+      "klass": "positioning_blurb",
+      "why": 2,
+      "graded": 0,
+      "mvr": 0,
+      "reviewSynthesis": false,
+      "offers": 1
+    },
+    {
+      "ref": {
+        "product_id": "ext_640db7fbdfee3422d5503117",
+        "merchant_id": "external_seed"
+      },
+      "tier": "assistant_reviewed",
+      "score": 55,
+      "isDossier": false,
+      "dims": {
+        "structured_why": true,
+        "graded_claims": false,
+        "honesty": true,
+        "review_synthesis": false,
+        "commerce_trust": true,
+        "specificity": true
+      },
+      "klass": "positioning_blurb",
+      "why": 2,
+      "graded": 0,
+      "mvr": 0,
+      "reviewSynthesis": false,
+      "offers": 1
+    },
+    {
+      "ref": {
+        "product_id": "sig_840b6f4e1e00b5659b8ce8c6af1dc910",
+        "merchant_id": "external_seed"
+      },
+      "tier": "assistant_reviewed",
+      "score": 55,
+      "isDossier": false,
+      "dims": {
+        "structured_why": true,
+        "graded_claims": false,
+        "honesty": true,
+        "review_synthesis": false,
+        "commerce_trust": true,
+        "specificity": true
+      },
+      "klass": "positioning_blurb",
+      "why": 2,
+      "graded": 0,
+      "mvr": 0,
+      "reviewSynthesis": false,
+      "offers": 1
+    },
+    {
+      "ref": {
+        "product_id": "ext_12276e4930f337912a5fd639",
+        "merchant_id": "external_seed"
+      },
+      "tier": "assistant_reviewed",
+      "score": 55,
+      "isDossier": false,
+      "dims": {
+        "structured_why": true,
+        "graded_claims": false,
+        "honesty": true,
+        "review_synthesis": false,
+        "commerce_trust": true,
+        "specificity": true
+      },
+      "klass": "positioning_blurb",
+      "why": 2,
+      "graded": 0,
+      "mvr": 0,
+      "reviewSynthesis": false,
+      "offers": 1
+    },
+    {
+      "ref": {
+        "product_id": "sig_4c9ed7dd5d414c47c7ca8c37832a09c8",
+        "merchant_id": "external_seed"
+      },
+      "tier": "assistant_reviewed",
+      "score": 55,
+      "isDossier": false,
+      "dims": {
+        "structured_why": true,
+        "graded_claims": false,
+        "honesty": true,
+        "review_synthesis": false,
+        "commerce_trust": true,
+        "specificity": true
+      },
+      "klass": "positioning_blurb",
+      "why": 2,
+      "graded": 0,
+      "mvr": 0,
+      "reviewSynthesis": false,
+      "offers": 1
+    },
+    {
+      "ref": {
+        "product_id": "ext_9165bb79ae5cf649654fc68d",
+        "merchant_id": "external_seed"
+      },
+      "tier": "assistant_reviewed",
+      "score": 55,
+      "isDossier": false,
+      "dims": {
+        "structured_why": true,
+        "graded_claims": false,
+        "honesty": true,
+        "review_synthesis": false,
+        "commerce_trust": true,
+        "specificity": true
+      },
+      "klass": "positioning_blurb",
+      "why": 2,
+      "graded": 0,
+      "mvr": 0,
+      "reviewSynthesis": false,
+      "offers": 1
+    },
+    {
+      "ref": {
+        "product_id": "sig_25ceb58b0725a4f0f62619f7022deacd",
+        "merchant_id": "external_seed"
+      },
+      "tier": "assistant_reviewed",
+      "score": 35,
+      "isDossier": false,
+      "dims": {
+        "structured_why": false,
+        "graded_claims": false,
+        "honesty": true,
+        "review_synthesis": false,
+        "commerce_trust": true,
+        "specificity": true
+      },
+      "klass": "positioning_blurb",
+      "why": 1,
+      "graded": 0,
+      "mvr": 0,
+      "reviewSynthesis": false,
+      "offers": 2
+    },
+    {
+      "ref": {
+        "product_id": "ext_bc1c2c9e836128a08a68f9dd",
+        "merchant_id": "external_seed"
+      },
+      "tier": "assistant_reviewed",
+      "score": 35,
+      "isDossier": false,
+      "dims": {
+        "structured_why": false,
+        "graded_claims": false,
+        "honesty": true,
+        "review_synthesis": false,
+        "commerce_trust": true,
+        "specificity": true
+      },
+      "klass": "positioning_blurb",
+      "why": 1,
+      "graded": 0,
+      "mvr": 0,
+      "reviewSynthesis": false,
+      "offers": 2
+    },
+    {
+      "ref": {
+        "product_id": "sig_42edfffb0998c8e528926e26e82a7945",
+        "merchant_id": "external_seed"
+      },
+      "tier": "grounded",
+      "score": 60,
+      "isDossier": true,
+      "dims": {
+        "structured_why": false,
+        "graded_claims": true,
+        "honesty": true,
+        "review_synthesis": false,
+        "commerce_trust": true,
+        "specificity": true
+      },
+      "klass": "grounded",
+      "why": 1,
+      "graded": 5,
+      "mvr": 2,
+      "reviewSynthesis": false,
+      "offers": 1
+    },
+    {
+      "ref": {
+        "product_id": "aruen-tofu-collagen-dual-firming-jelly-cream",
+        "merchant_id": "external_seed"
+      },
+      "tier": "grounded",
+      "score": 60,
+      "isDossier": true,
+      "dims": {
+        "structured_why": false,
+        "graded_claims": true,
+        "honesty": true,
+        "review_synthesis": false,
+        "commerce_trust": true,
+        "specificity": true
+      },
+      "klass": "grounded",
+      "why": 1,
+      "graded": 5,
+      "mvr": 2,
+      "reviewSynthesis": false,
+      "offers": 1
+    },
+    {
+      "ref": {
+        "product_id": "sig_2ba0cc4ab951124eebba879637f8c1d3",
+        "merchant_id": "external_seed"
+      },
+      "tier": "assistant_reviewed",
+      "score": 35,
+      "isDossier": false,
+      "dims": {
+        "structured_why": false,
+        "graded_claims": false,
+        "honesty": true,
+        "review_synthesis": false,
+        "commerce_trust": true,
+        "specificity": true
+      },
+      "klass": "positioning_blurb",
+      "why": 1,
+      "graded": 0,
+      "mvr": 0,
+      "reviewSynthesis": false,
+      "offers": 1
+    },
+    {
+      "ref": {
+        "product_id": "ext_72d2ff53d8fa33edf9e90e24",
+        "merchant_id": "external_seed"
+      },
+      "tier": "assistant_reviewed",
+      "score": 35,
+      "isDossier": false,
+      "dims": {
+        "structured_why": false,
+        "graded_claims": false,
+        "honesty": true,
+        "review_synthesis": false,
+        "commerce_trust": true,
+        "specificity": true
+      },
+      "klass": "positioning_blurb",
+      "why": 1,
+      "graded": 0,
+      "mvr": 0,
+      "reviewSynthesis": false,
+      "offers": 1
+    },
+    {
+      "ref": {
+        "product_id": "sig_a98f91f955ff815463cfa1e1f5b6237d",
+        "merchant_id": "external_seed"
+      },
+      "tier": "assistant_reviewed",
+      "score": 35,
+      "isDossier": false,
+      "dims": {
+        "structured_why": false,
+        "graded_claims": false,
+        "honesty": true,
+        "review_synthesis": false,
+        "commerce_trust": true,
+        "specificity": true
+      },
+      "klass": "positioning_blurb",
+      "why": 1,
+      "graded": 0,
+      "mvr": 0,
+      "reviewSynthesis": false,
+      "offers": 2
+    },
+    {
+      "ref": {
+        "product_id": "ext_0c0b60135d1adb8132ecc62a",
+        "merchant_id": "external_seed"
+      },
+      "tier": "assistant_reviewed",
+      "score": 35,
+      "isDossier": false,
+      "dims": {
+        "structured_why": false,
+        "graded_claims": false,
+        "honesty": true,
+        "review_synthesis": false,
+        "commerce_trust": true,
+        "specificity": true
+      },
+      "klass": "positioning_blurb",
+      "why": 1,
+      "graded": 0,
+      "mvr": 0,
+      "reviewSynthesis": false,
+      "offers": 2
+    },
+    {
+      "ref": {
+        "product_id": "sig_4e3a8416f98b4792932bf5997e3b4e78",
+        "merchant_id": "external_seed"
+      },
+      "tier": "assistant_reviewed",
+      "score": 35,
+      "isDossier": false,
+      "dims": {
+        "structured_why": false,
+        "graded_claims": false,
+        "honesty": true,
+        "review_synthesis": false,
+        "commerce_trust": true,
+        "specificity": true
+      },
+      "klass": "positioning_blurb",
+      "why": 1,
+      "graded": 0,
+      "mvr": 0,
+      "reviewSynthesis": false,
+      "offers": 1
+    },
+    {
+      "ref": {
+        "product_id": "ext_a79d441fe9884a554f2948c9",
+        "merchant_id": "external_seed"
+      },
+      "tier": "assistant_reviewed",
+      "score": 35,
+      "isDossier": false,
+      "dims": {
+        "structured_why": false,
+        "graded_claims": false,
+        "honesty": true,
+        "review_synthesis": false,
+        "commerce_trust": true,
+        "specificity": true
+      },
+      "klass": "positioning_blurb",
+      "why": 1,
+      "graded": 0,
+      "mvr": 0,
+      "reviewSynthesis": false,
+      "offers": 1
+    }
+  ]
+}
