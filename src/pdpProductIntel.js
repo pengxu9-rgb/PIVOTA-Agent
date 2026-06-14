@@ -1006,9 +1006,33 @@ async function hydrateProductWithGroundedIntel({
   }
   if (typeof generator !== 'function') return sourceProduct;
 
+  // Resolve ingredients via the SAME authoritative view the PDP ingredient
+  // module uses, so external-seed/seed/snapshot INCI (which is NOT on
+  // product.ingredient_intel) reaches the generator. Only feed AUTHORITATIVE
+  // ingredients — keeps the grounded bundle's inci_verified honest. Best-effort.
+  let productForGen = sourceProduct;
+  try {
+    const view = buildAuthoritativeIngredientView(sourceProduct) || {};
+    const items = asArray(view.items);
+    const activeItems = asArray(view.active_items);
+    if (asString(view.purity_status).toLowerCase() === 'authoritative' && (items.length >= 3 || activeItems.length > 0)) {
+      productForGen = {
+        ...sourceProduct,
+        ingredient_intel: {
+          ...(asPlainObject(sourceProduct.ingredient_intel) || {}),
+          items,
+          active_items: activeItems,
+          raw_text: asString(view.raw_text) || asString(asPlainObject(sourceProduct.ingredient_intel)?.raw_text) || '',
+        },
+      };
+    }
+  } catch {
+    productForGen = sourceProduct;
+  }
+
   let bundle = null;
   try {
-    bundle = await generator(sourceProduct, { canonicalProductRef, productGroupId });
+    bundle = await generator(productForGen, { canonicalProductRef, productGroupId });
   } catch {
     return sourceProduct;
   }
