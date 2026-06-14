@@ -34,25 +34,59 @@ function normalizeTerm(v) {
 const DRUG_RE = /\b(treats?|cures?|cured|heals?|healing|anti-?inflammator\w*|antibacterial|antimicrobial|antifungal|wound[- ]?heal\w*)\b/i
 function claimSafe(text) { return !DRUG_RE.test(str(text)) }
 
-// Trailing INCI form-words. Botanical INCI names ("Centella Asiatica Leaf
-// Water", "Glycine Soja Seed Extract") carry these as suffixes; the curated KB
-// is keyed by the active core ("centella asiatica extract"), so we generate a
-// stripped core + a "<core> extract" variant as extra lookup candidates.
-const INCI_FORM_WORDS = new Set([
-  'water', 'extract', 'leaf', 'seed', 'root', 'flower', 'fruit', 'bark', 'peel', 'stem', 'oil',
-  'powder', 'ferment', 'filtrate', 'juice', 'sap', 'callus', 'culture', 'cell', 'meristem', 'butter', 'wax',
+// Trailing INCI form-words, split by whether the physical FORM carries the
+// botanical's signaling actives. Botanical INCI names ("Centella Asiatica Leaf
+// Water", "Glycine Soja Seed Extract") carry these as suffixes; the curated KB is
+// keyed by the active core ("centella asiatica extract"), so for an ACTIVE-BEARING
+// form we strip it to a botanical core + a "<core> extract" variant as extra
+// lookup candidates.
+//
+// ACTIVE_BEARING forms (extract, ferment, leaf/seed/root, water/juice/filtrate,
+// callus/cell culture…) concentrate the water/alcohol-soluble actives, so reducing
+// them to the bare genus is correct — that is how "Glycine Soja Seed Extract"
+// resolves to the curated soy-isoflavone entry.
+//
+// INERT forms (oil, butter, wax, sterols, protein, lecithin) are the lipid / bulk
+// fraction and carry NEGLIGIBLE of those actives — genistein/daidzein are not in
+// soybean OIL. Reducing an inert form to the same bare genus is the FORM-BLIND bug:
+// "Glycine Soja Oil" would emit the same "glycine soja" / "glycine soja extract"
+// candidates as the seed extract and could borrow the isoflavone firming claim —
+// an FTC substantiation / mis-attribution risk. So an inert form is NEVER reduced
+// to the genus core (see addTermVariants); it keeps only its full-token candidate
+// and matches a KB entry ONLY when one is deliberately keyed under that exact inert
+// form (e.g. "glycine soja oil"). This is runtime defense-in-depth: the safety no
+// longer lives only in KB curation discipline (the "don't key isoflavones under
+// bare 'glycine soja'" alias note in pivota-backend ingredient_kb seeds).
+const ACTIVE_BEARING_FORM_WORDS = new Set([
+  'water', 'extract', 'leaf', 'seed', 'root', 'flower', 'fruit', 'bark', 'peel', 'stem',
+  'powder', 'ferment', 'filtrate', 'juice', 'sap', 'callus', 'culture', 'cell', 'meristem',
 ])
+const INERT_FORM_WORDS = new Set([
+  'oil', 'butter', 'wax', 'sterols', 'sterol', 'protein', 'lecithin',
+])
+const INCI_FORM_WORDS = new Set([...ACTIVE_BEARING_FORM_WORDS, ...INERT_FORM_WORDS])
 
 // One ingredient token (already paren-stripped + split out) -> normalized
 // KB-query candidates. Adds a form-word-stripped botanical core and its
-// "<core> extract" form so suffixed INCI names still resolve to curated KB keys.
+// "<core> extract" form so suffixed INCI names still resolve to curated KB keys —
+// but ONLY for active-bearing forms. If ANY stripped trailing form-word is inert
+// (oil/butter/wax/…), the token is the lipid/bulk fraction: we suppress the
+// genus-core candidates so the inert form cannot borrow an active-bearing entry,
+// and keep only its full-token candidate (form-aware mis-attribution guard).
 function addTermVariants(token, out) {
   const t = normalizeTerm(token)
   if (!t || t.length < 3) return
   out.push(t)
   const words = t.split(' ').filter(Boolean)
   let end = words.length
-  while (end > 1 && INCI_FORM_WORDS.has(words[end - 1])) end--
+  let sawInertForm = false
+  while (end > 1 && INCI_FORM_WORDS.has(words[end - 1])) {
+    if (INERT_FORM_WORDS.has(words[end - 1])) sawInertForm = true
+    end--
+  }
+  // An inert botanical form keeps ONLY its full token — never the bare genus or a
+  // synthesized "<core> extract" — so it can't conflate with the active-bearing form.
+  if (sawInertForm) return
   if (end >= 1 && end < words.length) {
     const core = words.slice(0, end).join(' ')
     if (core.length >= 3) { out.push(core); out.push(`${core} extract`) }
