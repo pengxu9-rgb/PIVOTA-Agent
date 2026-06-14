@@ -223,3 +223,51 @@ describe('hydrateProductWithGroundedIntel (flag-gated fallback)', () => {
     expect(out.product_intel).toBeUndefined();
   });
 });
+
+describe('batched KB lookup (load fix: one query, not N serial reads)', () => {
+  function groundedEntry(slug, name) {
+    return {
+      status: 'ready',
+      source_meta: { tier: 'grounded', seed_slug: slug },
+      ingredient_profile_json: {
+        status: 'ready',
+        ingredient: { display_name: name, inci: name, marketing_vs_reality: [] },
+        benefits: [{ concern: 'hydration', strength: 3, what_it_means: 'hydrates', mechanism: 'humectant' }],
+        safety: { watchouts: [] },
+        usage: { routine_step: 'treatment', pair_well: [] },
+        evidence: { grade: 'A', citations: [{ url: 'https://pubmed.ncbi.nlm.nih.gov/0/' }] },
+      },
+    };
+  }
+  const KB = { niacinamide: groundedEntry('niacinamide', 'Niacinamide'), 'sodium hyaluronate': groundedEntry('ha', 'Sodium Hyaluronate') };
+
+  test('a long INCI triggers exactly ONE batch lookup (no per-token fan-out)', async () => {
+    const longInci = 'Water, Niacinamide, Glycerin, Butylene Glycol, Dimethicone, Phenoxyethanol, Sodium Hyaluronate, Fragrance, Tocopherol, Allantoin, Panthenol, Carbomer, Xanthan Gum, Disodium EDTA, Citric Acid';
+    const kbLookupBatch = jest.fn(async (terms) => {
+      const m = new Map();
+      for (const t of terms) m.set(t, KB[t] || null);
+      return m;
+    });
+    const bundle = await buildGroundedProductIntelBundle({ role_label: 'Serum', inci: longInci }, { kbLookupBatch, now: '2026-06-14' });
+    expect(kbLookupBatch).toHaveBeenCalledTimes(1); // ONE round-trip, not ~15
+    const terms = kbLookupBatch.mock.calls[0][0];
+    expect(Array.isArray(terms)).toBe(true);
+    expect(terms.length).toBeGreaterThan(5); // all terms resolved in the single call
+    expect(isGroundedProductIntelBundle(bundle)).toBe(true); // still builds correctly
+  });
+
+  test('caps the term list (MAX_LOOKUP_TERMS) for pathological INCI', async () => {
+    const hugeInci = Array.from({ length: 200 }, (_, i) => `Ingredient ${i}`).join(', ');
+    const kbLookupBatch = jest.fn(async () => new Map());
+    await buildGroundedProductIntelBundle({ inci: hugeInci }, { kbLookupBatch });
+    expect(kbLookupBatch).toHaveBeenCalledTimes(1);
+    expect(kbLookupBatch.mock.calls[0][0].length).toBeLessThanOrEqual(64);
+  });
+
+  test('back-compat: a single-term opts.kbLookup is still honored', async () => {
+    const kbLookup = jest.fn(async (t) => KB[t] || null);
+    const bundle = await buildGroundedProductIntelBundle({ inci: 'Niacinamide, Water, Sodium Hyaluronate' }, { kbLookup, now: '2026-06-14' });
+    expect(kbLookup).toHaveBeenCalled();
+    expect(isGroundedProductIntelBundle(bundle)).toBe(true);
+  });
+});
