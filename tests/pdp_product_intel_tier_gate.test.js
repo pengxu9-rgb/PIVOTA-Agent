@@ -622,3 +622,129 @@ describe('presenceTier / readEfficacy unit (efficacy floor)', () => {
     expect(readEfficacy(null)).toBeNull();
   });
 });
+
+// ADR-002 — FORM-AWARE candidate guard (FTC mis-attribution, defense-in-depth).
+// addTermVariants strips INCI form-words to a botanical core so suffixed names
+// resolve to curated KB keys. That strip is FORM-AWARE: an INERT form (oil / butter
+// / wax / sterols / protein / lecithin) is the lipid/bulk fraction and carries
+// negligible of the genus's signaling actives, so it must NOT reduce to the bare
+// genus and borrow an active-bearing KB entry. "Glycine Soja Oil" (a bland
+// emollient) must never inherit the soy-isoflavone FIRMING claim that "Glycine Soja
+// Seed Extract" legitimately earns.
+//
+// The pre-existing DATA-LAYER guard (KB keyed under the discriminating seed-extract
+// alias, never bare "glycine soja" — see the _alias_note in pivota-backend
+// ingredient_kb seeds) still holds. These tests add a RUNTIME guard so the safety
+// no longer lives ONLY in curation discipline: they key the isoflavone entry under
+// the BARE genus (the future-backfill trap the alias note warns against) and prove
+// the oil still cannot borrow it.
+describe('form-aware candidate guard (inert forms cannot borrow active-bearing KB entries)', () => {
+  const { extractActiveTerms } = require('../src/groundedProductIntel');
+  function entry(slug, grade, o) {
+    return {
+      status: 'ready',
+      source_meta: { tier: 'grounded', seed_slug: slug },
+      ingredient_profile_json: {
+        status: 'ready',
+        ingredient: { display_name: o.name, inci: o.name, marketing_vs_reality: o.mvr || [] },
+        benefits: o.benefits || [{ concern: 'firmness / elasticity', strength: 2, what_it_means: 'helps skin look firmer over weeks', mechanism: 'up-regulates procollagen' }],
+        safety: { watchouts: [] },
+        usage: { routine_step: 'treatment', pair_well: [] },
+        evidence: { grade, citations: [{ url: 'https://pubmed.ncbi.nlm.nih.gov/0/' }] },
+        ...(o.efficacy !== undefined ? { efficacy: o.efficacy } : {}),
+      },
+    };
+  }
+  const kb = (KB) => async (t) => KB[t] || null;
+  // Aruen "Tofu Collagen"-shaped INCI: soy isoflavones (seed extract) at #11 of 14.
+  const ARUEN_INCI =
+    'Water, Niacinamide, Glycerin, Butylene Glycol, Dimethicone, Caprylic/Capric Triglyceride, Cetearyl Alcohol, Panthenol, Carbomer, Phenoxyethanol, Glycine Soja (Soybean) Seed Extract, Tocopherol, Disodium EDTA, Fragrance';
+  const SOYBEAN_OIL_INCI = 'Water, Glycerin, Butylene Glycol, Glycine Soja Oil, Phenoxyethanol, Tocopherol';
+
+  // --- candidate-generation unit (the core of the fix) ---
+  test('active-bearing form (seed extract) still reduces to the genus core', () => {
+    const terms = extractActiveTerms({ ingredient_intel: { items: ['Water', 'Glycine Soja (Soybean) Seed Extract', 'Glycerin'] } });
+    expect(terms).toContain('glycine soja seed extract'); // full form
+    expect(terms).toContain('glycine soja'); // bare genus — resolves the curated soy entry
+    expect(terms).toContain('glycine soja extract');
+  });
+
+  test('inert form (oil) keeps ONLY its full token — no bare genus, no synthesized extract', () => {
+    const terms = extractActiveTerms({ ingredient_intel: { items: ['Water', 'Glycine Soja Oil', 'Glycerin'] } });
+    expect(terms).toContain('glycine soja oil'); // a deliberately oil-keyed entry can still match
+    expect(terms).not.toContain('glycine soja'); // <-- the guard: oil never reduces to the genus
+    expect(terms).not.toContain('glycine soja extract');
+  });
+
+  test('inert form wins even when a botanical source word precedes it (seed OIL is still oil)', () => {
+    const terms = extractActiveTerms({ ingredient_intel: { items: ['Water', 'Helianthus Annuus Seed Oil', 'Glycerin'] } });
+    expect(terms).toContain('helianthus annuus seed oil');
+    expect(terms).not.toContain('helianthus annuus');
+    expect(terms).not.toContain('helianthus annuus extract');
+  });
+
+  test('butter (another inert form) gets the same treatment', () => {
+    const terms = extractActiveTerms({ ingredient_intel: { items: ['Water', 'Butyrospermum Parkii (Shea) Butter', 'Glycerin'] } });
+    expect(terms).toContain('butyrospermum parkii butter');
+    expect(terms).not.toContain('butyrospermum parkii');
+    expect(terms).not.toContain('butyrospermum parkii extract');
+  });
+
+  // --- end-to-end: the FUTURE-BACKFILL TRAP (entry mis-keyed under bare genus) ---
+  const BARE_GENUS_KB = { 'glycine soja': entry('genistein_soy_isoflavones', 'B', { name: 'Soy isoflavones (genistein / daidzein)', efficacy: { low_dose_active: true } }) };
+
+  test('seed extract STILL heroes when the entry is keyed under bare genus (legitimate match preserved)', async () => {
+    const bundle = await buildGroundedProductIntelBundle(
+      { title: 'Tofu Collagen Dual-Firming Jelly Cream', inci: ARUEN_INCI },
+      { kbLookup: kb(BARE_GENUS_KB), now: '2026-06-14' },
+    );
+    expect(bundle).not.toBeNull();
+    const featured = bundle.product_intel_core.why_it_stands_out.map((w) => w.headline.toLowerCase());
+    expect(featured.some((h) => /soy|genistein|isoflav/.test(h))).toBe(true);
+  });
+
+  test('soybean OIL does NOT borrow the bare-genus isoflavone entry (runtime defense-in-depth)', async () => {
+    // Even with the entry mis-keyed under bare "glycine soja" (the curation trap the
+    // data-layer alias note warns against), the oil's form-aware candidates never
+    // include "glycine soja" → no match → not served. The safety holds at runtime
+    // regardless of how the KB is keyed.
+    const bundle = await buildGroundedProductIntelBundle(
+      { title: 'Soybean Oil Balm', inci: SOYBEAN_OIL_INCI },
+      { kbLookup: kb(BARE_GENUS_KB), now: '2026-06-14' },
+    );
+    expect(bundle).toBeNull();
+  });
+
+  test('oil also cannot borrow an entry mis-keyed under the synthesized "<genus> extract" form', async () => {
+    // addTermVariants used to synthesize a "glycine soja extract" candidate for the
+    // oil too; form-awareness drops it, so a generic-extract-keyed entry is unreachable.
+    const EXTRACT_KEYED_KB = { 'glycine soja extract': entry('genistein_soy_isoflavones', 'B', { name: 'Soy isoflavones (genistein / daidzein)', efficacy: { low_dose_active: true } }) };
+    const bundle = await buildGroundedProductIntelBundle(
+      { title: 'Soybean Oil Balm', inci: SOYBEAN_OIL_INCI },
+      { kbLookup: kb(EXTRACT_KEYED_KB), now: '2026-06-14' },
+    );
+    expect(bundle).toBeNull();
+  });
+
+  test('form-aware ≠ blanket block: an entry deliberately keyed under the exact inert form still matches the oil', async () => {
+    // Glycine Soja Oil sits at #4 of 6 (top half). An emollient entry KEYED under the
+    // exact inert form ("glycine soja oil") is reachable via the full-token candidate,
+    // so legitimate oil intel is not lost — only the genus-core borrow is suppressed.
+    const OIL_KEYED_KB = {
+      'glycine soja oil': entry('glycine_soja_oil', 'B', {
+        name: 'Soybean Oil',
+        efficacy: { low_dose_active: true }, // relax position so #4/6 heroes
+        benefits: [{ concern: 'dryness', strength: 2, what_it_means: 'softens and conditions the skin surface', mechanism: 'occlusive emollient lipids reduce water loss' }],
+      }),
+    };
+    const bundle = await buildGroundedProductIntelBundle(
+      { title: 'Soybean Oil Balm', inci: SOYBEAN_OIL_INCI },
+      { kbLookup: kb(OIL_KEYED_KB), now: '2026-06-14' },
+    );
+    expect(bundle).not.toBeNull();
+    const featured = bundle.product_intel_core.why_it_stands_out.map((w) => w.headline.toLowerCase());
+    expect(featured.some((h) => /soy|oil/.test(h))).toBe(true);
+    // and it is NOT carrying the isoflavone firming claim (different entry entirely)
+    expect(featured.some((h) => /genistein|isoflav|firm/.test(h))).toBe(false);
+  });
+});
