@@ -60,21 +60,26 @@ test('builds a Tier-G bundle from KB-grounded actives', async () => {
   const core = bundle.product_intel_core
   assert.ok(core.why_it_stands_out.length >= 1, 'why_it_stands_out present')
   const claims = core.evidence_claims
-  const mvr = claims.filter((c) => c.evidence_type === 'marketing_vs_reality')
-  const graded = claims.filter((c) => c.evidence_type !== 'marketing_vs_reality')
+  const mvr = claims.filter((c) => c.source_type === 'marketing_vs_reality')
+  const graded = claims.filter((c) => c.source_type !== 'marketing_vs_reality')
   assert.ok(mvr.length >= 1, 'marketing_vs_reality honesty present')
   assert.ok(graded.length >= 1, 'graded claims present')
-  assert.ok(graded.every((c) => !!c.evidence_type && !!c.confidence), 'graded claims carry type + confidence')
+  // canonical ProductClaim atom shape (models/catalog.py) — matches the read side
+  assert.ok(claims.every((c) => !!c.claim_text && !!c.source_type), 'claims carry claim_text + source_type')
+  assert.ok(graded.every((c) => /^[ABC]$/.test(String(c.evidence_grade))), 'graded claims carry evidence_grade A/B/C')
+  assert.ok(claims.every((c) => ['unverified', 'substantiated', 'flagged', 'rejected'].includes(c.substantiation_status)), 'substantiation_status valid')
+  assert.ok(['observed', 'reviewed', 'flagged'].includes(core.evidence_review_state), 'review_state valid')
+  assert.equal(mvr[0].substantiation_status, 'flagged', 'marketing-vs-reality myth is flagged')
 
-  const barrier = graded.find((c) => /barrier/i.test(c.claim))
+  const barrier = graded.find((c) => /barrier/i.test(c.concern))
   assert.ok(barrier && barrier.drivers.length >= 2, 'shared concern merges drivers (convergent support)')
-  assert.ok(!graded.some((c) => /hydration/i.test(c.claim)), 'non-grounded KB entry (glycerin) ignored')
+  assert.ok(!graded.some((c) => /hydration/i.test(c.concern)), 'non-grounded KB entry (glycerin) ignored')
   assert.ok(graded.some((c) => Array.isArray(c.source_refs) && c.source_refs.length >= 1), 'graded claims carry citations')
   assert.equal(bundle.provenance.grounding.citations_present, true)
   assert.ok(core.not_fit.some((n) => /allergy/i.test(n.label)), 'allergy watchout → not_fit')
 
   const DRUG = /\b(treats?|cures?|heals?|healing|anti-?inflammator\w*|antibacterial|antimicrobial)\b/i
-  const assertive = [core.what_it_is.headline, core.what_it_is.body, ...core.why_it_stands_out.flatMap((w) => [w.headline, w.body]), ...graded.flatMap((c) => [c.claim, c.mechanism])].filter(Boolean)
+  const assertive = [core.what_it_is.headline, core.what_it_is.body, ...core.why_it_stands_out.flatMap((w) => [w.headline, w.body]), ...graded.flatMap((c) => [c.claim_text, c.mechanism])].filter(Boolean)
   assert.ok(!assertive.some((t) => DRUG.test(t)), 'no drug verbs in assertive fields')
 })
 

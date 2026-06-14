@@ -111,42 +111,68 @@ function buildWhy(ranked) {
   return out
 }
 
+// Emits canonical ProductClaim atoms (models/catalog.py) so the produce side
+// matches the read side (pdpReviewedIngredientAuthority.evidence_profile.claims):
+//   { claim_text, source_ref, source_type, evidence_grade, substantiation_status }
+// Pivota grounded extras (drivers, mechanism, confidence, source_refs, concern,
+// finding) are ADDITIVE — strict ProductClaim consumers ignore them.
+const GRADE_RANK = { A: 3, B: 2, C: 1, D: 0 }
 function buildEvidenceClaims(ranked) {
-  // graded claims merged by concern (convergent support → one claim, many drivers)
-  const graded = new Map()
+  const graded = new Map() // merged by concern (convergent support → one claim, many drivers)
   const mvr = []
   for (const a of ranked) {
     const grade = gradeOf(a)
-    const etype = GRADE_TO_EVIDENCE[grade] || 'ingredient_function'
     const cites = asArr(a.profile.evidence && a.profile.evidence.citations).map((c) => str(c.url)).filter(Boolean)
     const driver = str(a.ing.display_name || a.term)
     for (const b of asArr(a.profile.benefits)) {
       const concern = str(b.concern)
+      const claimText = str(b.what_it_means) || concern
       if (!concern || !claimSafe(`${b.what_it_means} ${b.mechanism}`)) continue
       let conf = CONF_BY_STRENGTH[b.strength == null ? 1 : b.strength] || 'low'
       if (grade === 'C' && conf === 'high') conf = 'moderate'
+      const substantiated = cites.length > 0 || grade === 'A' || grade === 'B'
       const tag = slug(concern)
       const prev = graded.get(tag)
       if (!prev) {
-        graded.set(tag, { claim: concern, drivers: [driver], mechanism: str(b.mechanism).slice(0, 240), evidence_type: etype, confidence: conf, source_refs: cites.slice(0, 3) })
+        graded.set(tag, {
+          claim_text: claimText,
+          source_ref: driver,
+          source_type: 'ingredient_mechanism',
+          evidence_grade: grade,
+          substantiation_status: substantiated ? 'substantiated' : 'unverified',
+          concern,
+          drivers: [driver],
+          mechanism: str(b.mechanism).slice(0, 240) || undefined,
+          confidence: conf,
+          source_refs: cites.slice(0, 3),
+        })
       } else {
-        if (!prev.drivers.includes(driver)) prev.drivers.push(driver)
-        if ((CONF_RANK[conf] || 0) > (CONF_RANK[prev.confidence] || 0)) prev.confidence = conf
-        if ((EVIDENCE_RANK[etype] || 0) > (EVIDENCE_RANK[prev.evidence_type] || 0)) {
-          prev.evidence_type = etype
-          if (str(b.mechanism)) prev.mechanism = str(b.mechanism).slice(0, 240)
-        }
+        if (!prev.drivers.includes(driver)) { prev.drivers.push(driver); prev.source_ref = prev.drivers.join(', ') }
+        if ((CONF_RANK[conf] || 0) > (CONF_RANK[prev.confidence] || 0)) { prev.confidence = conf; if (str(b.what_it_means)) prev.claim_text = claimText }
+        if ((GRADE_RANK[grade] || 0) > (GRADE_RANK[prev.evidence_grade] || 0)) { prev.evidence_grade = grade; if (str(b.mechanism)) prev.mechanism = str(b.mechanism).slice(0, 240) }
+        if (substantiated) prev.substantiation_status = 'substantiated'
         for (const u of cites) if (prev.source_refs.length < 4 && !prev.source_refs.includes(u)) prev.source_refs.push(u)
       }
     }
     for (const m of asArr(a.ing.marketing_vs_reality)) {
-      const finding = str(m.reality || m.finding)
-      const claim = str(m.claim_in_market || m.claim)
-      if (!finding || !claim) continue
-      mvr.push({ claim, drivers: [driver], evidence_type: 'marketing_vs_reality', confidence: 'high', finding: finding.slice(0, 260) })
+      const reality = str(m.reality || m.finding)
+      const myth = str(m.claim_in_market || m.claim)
+      if (!reality || !myth) continue
+      mvr.push({
+        claim_text: myth,
+        source_ref: driver,
+        source_type: 'marketing_vs_reality',
+        evidence_grade: null,
+        substantiation_status: 'flagged',
+        drivers: [driver],
+        finding: reality.slice(0, 260),
+        confidence: 'high',
+      })
     }
   }
-  const gradedArr = [...graded.values()].sort((x, y) => (CONF_RANK[y.confidence] || 0) - (CONF_RANK[x.confidence] || 0)).slice(0, 10)
+  const gradedArr = [...graded.values()].sort((x, y) =>
+    ((CONF_RANK[y.confidence] || 0) - (CONF_RANK[x.confidence] || 0)) || ((GRADE_RANK[y.evidence_grade] || 0) - (GRADE_RANK[x.evidence_grade] || 0)),
+  ).slice(0, 10)
   return [...gradedArr, ...mvr.slice(0, 5)]
 }
 
@@ -229,7 +255,8 @@ async function buildGroundedProductIntelBundle(product, opts = {}) {
     confidence: buildConfidence(ranked),
     freshness,
     quality_state: 'eligible',
-    evidence_profile: 'grounded_verified',
+    evidence_profile: 'grounded_verified', // string enum (existing product_intel.v1 field)
+    evidence_review_state: 'observed', // EvidenceProfile.review_state — automated grounded (not human 'reviewed')
   }
 
   const provenance = {
