@@ -112,6 +112,8 @@ const {
   buildProductFeedbackResponse,
   buildProductRecommendationIntentsResponse,
   isHumanReviewedProductIntelBundle,
+  isServableProductIntelBundle,
+  hydrateProductWithGroundedIntel,
 } = require('./pdpProductIntel');
 const { inferMerchantIdFromProductId } = require('./productIntelResolve');
 const { buildStructuredPdpIngredientModules } = require('./services/pdpIngredientAuthority');
@@ -28421,10 +28423,10 @@ async function getCommerceRemoteMcpAdapter() {
           getProductIntelKbEntry,
           getProductIntelKbEntries,
           isEnabled: agentProductIntelEnabled,
-          // Require-reviewed gate: only human/assistant-reviewed intel reaches a buyer-facing agent
-          // (drops thin/pilot/unreviewed pilot entries). Same predicate the consumer PDP uses for
-          // public display, so the agent surface and PDP apply one consistent quality bar.
-          isReviewed: isHumanReviewedProductIntelBundle,
+          // Servable gate: human (Tier-H) OR grounded (Tier-G) intel reaches a buyer-facing agent
+          // (drops thin/pilot/unreviewed Tier-L entries). Same predicate the consumer PDP uses for
+          // public display, so the agent surface and PDP apply one consistent quality bar. (ADR-002 item 9)
+          isReviewed: isServableProductIntelBundle,
           resolveKbKeys: async (p) => {
             const keys = [];
             const pushUrl = (v) => {
@@ -34247,8 +34249,16 @@ async function buildProductIntelTopLevelModuleData({
     requireReviewedBundle,
     allowLegacyAnalysisFallback: !requireReviewedBundle && productSource !== 'external_seed',
   });
-  return buildProductIntelBundle({
+  // Tier-G fallback (ADR-002 item 9): if no servable published intel was found,
+  // synthesize a grounded bundle from the reviewed Ingredient KB. Flag-gated OFF
+  // by default — a no-op (returns productWithIntel unchanged) until enabled.
+  const productForBundle = await hydrateProductWithGroundedIntel({
     product: productWithIntel,
+    canonicalProductRef,
+    productGroupId,
+  });
+  return buildProductIntelBundle({
+    product: productForBundle,
     relatedProducts,
     offersData,
     canonicalProductRef,

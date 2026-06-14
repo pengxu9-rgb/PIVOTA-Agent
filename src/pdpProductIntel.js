@@ -272,6 +272,46 @@ function isHumanReviewedProductIntelBundle(bundle) {
   );
 }
 
+// ADR-002 item 9 — Tier-G "grounded" acceptance. A bundle is trustworthy BY
+// CONSTRUCTION (verified INCI × reviewed Ingredient KB × per-claim grading ×
+// claim-safety × agent-review pass) and so serves WITHOUT per-SKU human review —
+// but ONLY when every grounding predicate holds. Failing any one drops it to
+// Tier-L (ungrounded LLM), which never reaches an agent. See
+// docs/tier-g-evidence-claims-reconciliation.md (joint decision 4).
+function isGroundedProductIntelBundle(bundle) {
+  const source = asPlainObject(bundle);
+  const provenance = asPlainObject(source?.provenance);
+  if (!provenance) return false;
+  const tier = asString(provenance.review_tier || provenance.tier).toLowerCase();
+  if (tier !== 'grounded') return false;
+  if (asString(provenance.reviewer_kind).toLowerCase() !== 'automated_grounded') return false;
+  if (asString(provenance.review_status).toLowerCase() !== 'completed') return false;
+  if (asString(provenance.review_decision).toLowerCase() !== 'grounded_pass') return false;
+  const grounding = asPlainObject(provenance.grounding);
+  if (!grounding) return false;
+  if (grounding.inci_verified !== true) return false;
+  if (grounding.citations_present !== true) return false;
+  if (asString(grounding.claim_safety).toLowerCase() !== 'cosmetic_screened') return false;
+  const core = asPlainObject(source.product_intel_core);
+  if (!asArray(core?.evidence_claims).length) return false; // per-claim graded
+  return true;
+}
+
+// Trust-tier resolver (ADR-002): human | grounded | reject. `reject` is Tier-L
+// (ungrounded) and anything meeting no accept predicate. Additive — the human
+// branch above is unchanged, so nothing that served before stops serving.
+function resolveProductIntelTier(bundle) {
+  if (isHumanReviewedProductIntelBundle(bundle)) return 'human';
+  if (isGroundedProductIntelBundle(bundle)) return 'grounded';
+  return 'reject';
+}
+
+// Servable = human OR grounded — the single predicate the public serving and
+// agent surfaces gate on (Tier-L stays blocked).
+function isServableProductIntelBundle(bundle) {
+  return resolveProductIntelTier(bundle) !== 'reject';
+}
+
 function shouldRejectGenericProductIntelBundle(bundle) {
   const source = asPlainObject(bundle);
   const core = asPlainObject(source?.product_intel_core);
@@ -300,7 +340,7 @@ function shouldRejectGenericProductIntelBundle(bundle) {
     .join(' ');
   const combined = [primaryText, whyText].filter(Boolean).join(' ');
   if (!combined) return true;
-  if (isHumanReviewedProductIntelBundle(source)) return false;
+  if (isServableProductIntelBundle(source)) return false; // human OR grounded — both are non-generic
   if (isGenericSellerHighlightText(primaryText) && !hasProductSpecificIntelText(combined)) return true;
   return false;
 }
@@ -529,7 +569,8 @@ function normalizePublishedProductIntelBundle(bundle, {
     rawEvidenceProfile,
   ].map((value) => value.toLowerCase()).filter(Boolean);
   const publicReviewDecision = asString(source.provenance?.review_decision).toLowerCase();
-  const reviewedForPublicDisplay = isHumanReviewedProductIntelBundle(source);
+  // Servable = human (Tier-H) OR grounded (Tier-G); Tier-L stays blocked. (ADR-002 item 9)
+  const reviewedForPublicDisplay = isServableProductIntelBundle(source);
   if (requireReviewed && !reviewedForPublicDisplay) return null;
   if (
     requireReviewed &&
@@ -924,6 +965,65 @@ async function hydrateProductWithPublishedIntel({
   if (firstUnavailableProduct) return firstUnavailableProduct;
   if (embeddedBundle) return sourceProduct;
   return sourceProduct;
+}
+
+function isGroundedProductIntelEnabled() {
+  return asString(process.env.PDP_GROUNDED_PRODUCT_INTEL_ENABLED).toLowerCase() === 'true';
+}
+
+// ADR-002 item 9 (produce → serve). When a product has no servable published
+// intel, synthesize a Tier-G grounded bundle from the reviewed Ingredient KB and
+// stamp it onto the product, so the existing sync builder + tiered gate serve it.
+// Flag-gated OFF by default (PDP_GROUNDED_PRODUCT_INTEL_ENABLED) — a no-op until
+// flipped, which keeps the item-9 gate change inert in production. The grounded
+// bundle only takes hold if it passes isGroundedProductIntelBundle (Tier-L
+// synthesis is dropped). Never overrides an already-servable bundle — human /
+// published precedence (joint decision 2). `buildGrounded` is injectable for
+// tests and bypasses the flag. Best-effort: any failure returns the product
+// unchanged so the PDP is never broken.
+async function hydrateProductWithGroundedIntel({
+  product,
+  canonicalProductRef = null,
+  productGroupId = null,
+  buildGrounded = null,
+} = {}) {
+  const sourceProduct = asPlainObject(product) || {};
+  if (typeof buildGrounded !== 'function' && !isGroundedProductIntelEnabled()) {
+    return sourceProduct;
+  }
+
+  // Precedence: never replace an already-servable (human/published) bundle.
+  const existing = readPublishedProductIntelBundle(sourceProduct, { canonicalProductRef });
+  if (existing && isServableProductIntelBundle(existing)) return sourceProduct;
+
+  let generator = buildGrounded;
+  if (typeof generator !== 'function') {
+    try {
+      ({ buildGroundedProductIntelBundle: generator } = require('./groundedProductIntel'));
+    } catch {
+      return sourceProduct;
+    }
+  }
+  if (typeof generator !== 'function') return sourceProduct;
+
+  let bundle = null;
+  try {
+    bundle = await generator(sourceProduct, { canonicalProductRef, productGroupId });
+  } catch {
+    return sourceProduct;
+  }
+  if (!bundle || !isGroundedProductIntelBundle(bundle)) return sourceProduct;
+
+  return {
+    ...sourceProduct,
+    product_intel: bundle,
+    provenance: bundle.provenance,
+    product_intel_generated_at:
+      asString(asPlainObject(bundle.freshness)?.generated_at) ||
+      sourceProduct.product_intel_generated_at ||
+      sourceProduct.productIntelGeneratedAt ||
+      null,
+  };
 }
 
 function isRolloutAllowed(product, canonicalProductRef) {
@@ -1897,6 +1997,10 @@ module.exports = {
   buildProductFeedbackResponse,
   buildProductRecommendationIntentsResponse,
   isHumanReviewedProductIntelBundle,
+  isGroundedProductIntelBundle,
+  resolveProductIntelTier,
+  isServableProductIntelBundle,
+  hydrateProductWithGroundedIntel,
   normalizePublishedProductIntelBundle,
   readPublishedProductIntelBundle,
 };
