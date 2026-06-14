@@ -79,7 +79,12 @@ const ANTHROPIC_WEB_SEARCH_TOOL_VERSION =
 // Cost estimates are placeholders for staging telemetry only. Verify against
 // each provider pricing page before flipping ChatGPT/Claude default-on.
 const GEMINI_PRICE_PER_1K_TOKENS = { input: 0.0003, output: 0.0025 };
-const OPENAI_PRICE_PER_1K_TOKENS = { input: 0.005, output: 0.02 };
+// `web_search_request` is the per-call OpenAI web_search_preview tool fee.
+// Omitting it silently meters every grounded ChatGPT probe at $0 for the
+// search portion — the bulk of real ChatGPT audit cost. 0.015 matches the
+// authoritative chatgpt `grounding_cost_usd_per_call` in pivota-backend's
+// config/provider_credit_rates.json. Verify against OpenAI's pricing page.
+const OPENAI_PRICE_PER_1K_TOKENS = { input: 0.005, output: 0.02, web_search_request: 0.015 };
 const ANTHROPIC_PRICE_PER_1K_TOKENS = {
   input: 0.003,
   output: 0.015,

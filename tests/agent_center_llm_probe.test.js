@@ -1320,6 +1320,44 @@ describe('agentCenterLlmProbe — ChatGPT and Claude providers', () => {
     expect(observedArgs.model).toBe('gpt-5.5-mini');
   });
 
+  test('ChatGPT probe meters the web_search_preview tool fee, not just tokens', async () => {
+    // Regression for un-metered ChatGPT COGS: the per-call web_search fee is
+    // the bulk of real audit cost. Two web_search_calls must add 2 * 0.015.
+    const create = jest.fn(async () => ({
+      output_text: '{"product_visible": true}',
+      output: [
+        { type: 'web_search_call', action: { type: 'search', sources: [] } },
+        { type: 'web_search_call', action: { type: 'search', sources: [] } },
+        {
+          type: 'message',
+          content: [
+            {
+              type: 'output_text',
+              text: '{"product_visible": true}',
+              annotations: [{ type: 'url_citation', url: 'https://merchant.com/p/123', title: 'M' }],
+            },
+          ],
+        },
+      ],
+      usage: { input_tokens: 1000, output_tokens: 100 },
+    }));
+    const { probe } = installFakeOpenAI(create);
+
+    const out = await probe._internals.buildChatGptProbe({
+      scan_mode: 'open_product_visibility_test',
+      merchant_id: 'm1',
+      store_id: 's1',
+      max_runs: 1,
+      context: { queries: ['where can I buy Product X'], product: { title: 'Product X' } },
+    });
+
+    // tokens: 1000/1000*0.005 + 100/1000*0.02 = 0.005 + 0.002 = 0.007
+    // web search: 2 calls * 0.015 = 0.030  ->  total 0.037
+    expect(out.usage.cost_usd_estimate).toBeCloseTo(0.037, 6);
+    // The search fee dominates token cost here — the whole point of metering it.
+    expect(out.usage.cost_usd_estimate).toBeGreaterThan(0.007 * 2);
+  });
+
   test('ChatGPT probe with empty output_text returns Gemini-compatible fallback run shape', async () => {
     const create = jest.fn(async () => ({
       output_text: '',
