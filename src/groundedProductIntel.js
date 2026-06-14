@@ -108,9 +108,13 @@ function readOrderedInci(product) {
   return []
 }
 
-// Names a brand explicitly calls out as actives/heroes (key_ingredients, the
-// authoritative active_items) — treated as declared heroes regardless of INCI
-// position (the brand is asserting prominence).
+// Names the BRAND explicitly markets as key ingredients (key_ingredients /
+// hero_ingredients) — treated as heroes regardless of INCI position (the brand
+// is asserting prominence). NOTE: ingredient_intel.active_items is deliberately
+// EXCLUDED — it is auto-detected "actives present" (position-agnostic), so using
+// it here would let a trace dusting (e.g. Ceramide NP at #33/34) bypass the
+// concentration gate. Auto-detected actives go through the position/ppm gate via
+// the ordered INCI like everything else.
 function declaredHeroNames(product) {
   const out = new Set()
   const push = (v) => {
@@ -121,8 +125,6 @@ function declaredHeroNames(product) {
   }
   push(product.key_ingredients); push(product.keyIngredients)
   push(product.hero_ingredients); push(product.heroIngredients)
-  const ii = asObj(product.ingredient_intel) || asObj(product.ingredientIntel) || {}
-  push(ii.active_items)
   return out
 }
 
@@ -161,6 +163,20 @@ function buildCandidatePresence(product) {
   const ordered = readOrderedInci(product).filter((tok) => isCleanIngredientToken(tok.replace(/\([^)]*\)/g, '').trim()))
   const total = ordered.length
   ordered.forEach((tok, index) => add(tok.replace(/\([^)]*\)/g, ' '), { index, total, ppm: parsePpm(tok) }))
+  // Auto-detected actives (ingredient_intel.active_items) as SUPPORTIVE-tier
+  // candidates: they get looked up, but don't bypass the concentration gate. If
+  // the same active also sits in the ordered INCI, that position wins (strongest
+  // tier), so a real hero is still a hero and a trace dusting stays trace.
+  const ii = asObj(product.ingredient_intel) || asObj(product.ingredientIntel) || {}
+  const autos = new Set()
+  const collectNames = (v) => {
+    if (v == null) return
+    if (Array.isArray(v)) { v.forEach(collectNames); return }
+    if (typeof v === 'object') { collectNames(v.name || v.inci || v.display_name || v.label); return }
+    const t = str(v); if (t) autos.add(t)
+  }
+  collectNames(ii.active_items)
+  for (const name of autos) add(name, {}) // {} -> supportive tier (no position signal)
   return byCandidate
 }
 
