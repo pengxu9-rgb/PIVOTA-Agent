@@ -222,6 +222,22 @@ describe('hydrateProductWithGroundedIntel (flag-gated fallback)', () => {
     const out = await hydrateProductWithGroundedIntel({ product, buildGrounded });
     expect(out.product_intel).toBeUndefined();
   });
+
+  test('resolves authoritative ingredients into the product handed to the generator', async () => {
+    // Real external_seed PDPs carry INCI in ingredients_inci (object), NOT on
+    // product.ingredient_intel. hydrate must resolve it via the authoritative
+    // view so the generator can see the actives.
+    let received = null;
+    const buildGrounded = async (p) => { received = p; return groundedBundle(); };
+    const src = { product_id: 'p9', title: 'Centella serum', ingredients_inci: { raw_text: 'Water, Niacinamide, Centella Asiatica Extract' } };
+    await hydrateProductWithGroundedIntel({ product: src, buildGrounded });
+    expect(received).toBeTruthy();
+    const items = received.ingredient_intel && received.ingredient_intel.items;
+    expect(Array.isArray(items)).toBe(true);
+    const joined = items.join(' | ').toLowerCase();
+    expect(joined).toContain('niacinamide');
+    expect(joined).toContain('centella');
+  });
 });
 
 describe('batched KB lookup (load fix: one query, not N serial reads)', () => {
