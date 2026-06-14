@@ -59,51 +59,115 @@ function addTermVariants(token, out) {
   }
 }
 
-// INCI-name container fields, in priority order (cleanest actives first so the
-// MAX_LOOKUP_TERMS cap keeps the real ones). Used to descend into objects like
-// ingredient_intel / ingredients_inci that wrap the list under varying keys.
-const INGREDIENT_CONTAINER_FIELDS = ['active_items', 'items', 'list', 'ingredients', 'inci_list', 'inciList', 'raw_text', 'rawText', 'inci']
-
-// Pull normalized active candidates from any ingredient value, whatever its
-// shape: a raw INCI string, an array, a leaf record ({name|inci|display_name}),
-// or a container object (ingredient_intel / ingredients_inci = {raw_text,items}).
-// Strips parenthetical noise ("(389,929ppm)") BEFORE splitting so the comma
-// inside it doesn't shatter the name.
-function pushIngredientValue(v, out, depth = 0) {
-  if (v == null || depth > 5) return
-  if (typeof v === 'string') {
-    v.replace(/\([^)]*\)/g, ' ').split(/[,;\n]/).forEach((tok) => addTermVariants(tok, out))
-    return
-  }
-  if (Array.isArray(v)) { for (const x of v) pushIngredientValue(x, out, depth + 1); return }
-  if (typeof v === 'object') {
-    let descended = false
-    for (const f of INGREDIENT_CONTAINER_FIELDS) {
-      if (v[f] != null) { pushIngredientValue(v[f], out, depth + 1); descended = true }
-    }
-    if (descended) return
-    const name = v.name || v.inci_name || v.inciName || v.display_name || v.displayName ||
-      v.ingredient || v.value || v.text || v.label
-    if (name) pushIngredientValue(name, out, depth + 1)
-  }
+// --- Concentration / hygiene helpers -------------------------------------
+// Parse an explicit concentration like "Sodium Hyaluronate(5,293ppm)" → 5293.
+function parsePpm(raw) {
+  const m = str(raw).match(/([\d][\d,]*)\s*ppm/i)
+  if (!m) return null
+  const n = Number(m[1].replace(/,/g, ''))
+  return Number.isFinite(n) ? n : null
+}
+// Truncate at a word boundary so bodies never end mid-word.
+function clip(text, n) {
+  const s = str(text).trim()
+  if (s.length <= n) return s
+  const cut = s.slice(0, n)
+  const sp = cut.lastIndexOf(' ')
+  return `${(sp > n * 0.6 ? cut.slice(0, sp) : cut).replace(/[\s,;:.\-]+$/, '')}…`
+}
+// Reject scraped page text masquerading as an ingredient ("Arginine How to use
+// After cleansing", URLs, over-long phrases) so the ordered INCI stays clean.
+const INCI_NOISE_RE = /\b(how to use|after cleansing|directions?|step\s*\d|remove the film|matching up|massage|rinse|warning|caution|apply\b|patch test|net wt|made in)\b/i
+function isCleanIngredientToken(name) {
+  const t = str(name).trim()
+  if (t.length < 2 || t.length > 60) return false
+  if (/^https?:\/\//i.test(t)) return false
+  if (INCI_NOISE_RE.test(t)) return false
+  if (t.split(/\s+/).length > 7) return false // INCI names are short
+  return true
 }
 
-// Pull active candidates from however the PDP carries ingredients: explicit
-// key/hero lists, the authoritative ingredient_intel view (active_items / items
-// / raw_text — what hydrateProductWithReviewedIngredientAuthority populates),
-// and any raw INCI string/array/object.
+// Read the product's ordered INCI (descending concentration) as raw tokens,
+// from the best available full-list source. Arrays keep ppm intact per element;
+// strings are split on commas OUTSIDE parens (so "(5,293ppm)" stays whole).
+function readOrderedInci(product) {
+  const ii = asObj(product.ingredient_intel) || asObj(product.ingredientIntel) || {}
+  const inciObj = asObj(product.ingredients_inci) || asObj(product.ingredientsInci) || {}
+  const toList = (src) => {
+    if (Array.isArray(src)) {
+      return src.map((x) => (typeof x === 'string' ? x : str(x && (x.name || x.inci || x.display_name || x.label)))).filter(Boolean)
+    }
+    if (typeof src === 'string' && src.trim()) return src.split(/,(?![^()]*\))|[;\n]/).map((s) => s.trim()).filter(Boolean)
+    return null
+  }
+  for (const src of [ii.items, inciObj.items, product.inci, product.ingredients_inci, product.ingredientsInci,
+    product.ingredient_list, product.ingredients, ii.raw_text, ii.rawText, inciObj.raw_text]) {
+    const list = toList(src)
+    if (list && list.length >= 2) return list
+  }
+  return []
+}
+
+// Names a brand explicitly calls out as actives/heroes (key_ingredients, the
+// authoritative active_items) — treated as declared heroes regardless of INCI
+// position (the brand is asserting prominence).
+function declaredHeroNames(product) {
+  const out = new Set()
+  const push = (v) => {
+    if (v == null) return
+    if (Array.isArray(v)) { v.forEach(push); return }
+    if (typeof v === 'object') { push(v.name || v.inci || v.display_name || v.label); return }
+    const t = normalizeTerm(v); if (t) out.add(t)
+  }
+  push(product.key_ingredients); push(product.keyIngredients)
+  push(product.hero_ingredients); push(product.heroIngredients)
+  const ii = asObj(product.ingredient_intel) || asObj(product.ingredientIntel) || {}
+  push(ii.active_items)
+  return out
+}
+
+// Concentration tier for a matched active. ppm (when disclosed) wins; otherwise
+// position in the descending-concentration INCI. Declared heroes are always hero.
+function presenceTier(sig) {
+  if (!sig) return 'supportive'
+  if (sig.declared) return 'hero'
+  if (sig.ppm != null) {
+    if (sig.ppm >= 1000) return 'hero' // >= 0.1%
+    if (sig.ppm >= 100) return 'supportive'
+    return 'trace'
+  }
+  if (sig.index == null || !sig.total) return 'supportive'
+  const frac = sig.index / sig.total
+  if (frac < 1 / 3) return 'hero'
+  if (frac < 2 / 3) return 'supportive'
+  return 'trace'
+}
+const TIER_RANK = { hero: 3, supportive: 2, trace: 1 }
+
+// Map every KB-lookup CANDIDATE term -> the strongest concentration signal from
+// the source ingredient it came from (declared hero, or ordered-INCI position +
+// ppm). Lets collectActives attach a presence tier to each matched active.
+function buildCandidatePresence(product) {
+  const byCandidate = new Map() // candidate term -> { declared, index, total, ppm }
+  const add = (name, sig) => {
+    const cands = []
+    addTermVariants(name, cands)
+    for (const c of cands) {
+      const prev = byCandidate.get(c)
+      if (!prev || (TIER_RANK[presenceTier(sig)] > TIER_RANK[presenceTier(prev)])) byCandidate.set(c, sig)
+    }
+  }
+  for (const name of declaredHeroNames(product)) add(name, { declared: true })
+  const ordered = readOrderedInci(product).filter((tok) => isCleanIngredientToken(tok.replace(/\([^)]*\)/g, '').trim()))
+  const total = ordered.length
+  ordered.forEach((tok, index) => add(tok.replace(/\([^)]*\)/g, ' '), { index, total, ppm: parsePpm(tok) }))
+  return byCandidate
+}
+
+// Back-compat: flat list of KB-lookup candidate terms (used by tests + the
+// load-check harness). Now derived from the concentration-aware candidate map.
 function extractActiveTerms(product) {
-  const out = []
-  pushIngredientValue(product.key_ingredients, out)
-  pushIngredientValue(product.keyIngredients, out)
-  pushIngredientValue(product.hero_ingredients, out)
-  pushIngredientValue(product.heroIngredients, out)
-  pushIngredientValue(asObj(product.ingredient_intel) || asObj(product.ingredientIntel), out)
-  pushIngredientValue(product.inci, out)
-  pushIngredientValue(product.ingredients_inci || product.ingredientsInci, out)
-  pushIngredientValue(product.ingredient_list, out)
-  pushIngredientValue(product.ingredients, out)
-  return [...new Set(out)]
+  return [...buildCandidatePresence(product).keys()]
 }
 
 // Bound the term list so the batched IN-list stays sane for pathological INCI.
@@ -122,8 +186,12 @@ function readBatchResult(resultMap, term) {
   return resultMap[term] || null
 }
 
+// Collect grounded KB actives WITH a concentration tier (hero/supportive/trace).
+// The tier gates featuring + claims downstream so a trace dusting never carries
+// a product-level efficacy claim (the adversarial-review finding).
 async function collectActives(product, kbLookupBatch, lang) {
-  const terms = extractActiveTerms(product).slice(0, MAX_LOOKUP_TERMS)
+  const presence = buildCandidatePresence(product)
+  const terms = [...presence.keys()].slice(0, MAX_LOOKUP_TERMS)
   if (!terms.length) return []
   let resultMap = null
   try { resultMap = await kbLookupBatch(terms, lang) } catch { resultMap = null }
@@ -138,8 +206,13 @@ async function collectActives(product, kbLookupBatch, lang) {
     const sm = asObj(entry.source_meta) || asObj(profile.source_meta) || {}
     if (str(sm.tier) !== 'grounded') continue // only grounded KB entries feed a grounded bundle
     const key = str(sm.seed_slug) || slug(ing.display_name || ing.inci || term)
-    if (bySlug.has(key)) continue // first term wins per active
-    bySlug.set(key, { term, profile, ing, slug: key })
+    const tier = presenceTier(presence.get(term))
+    const existing = bySlug.get(key)
+    if (existing) { // keep the strongest presence across this active's candidate terms
+      if (TIER_RANK[tier] > TIER_RANK[existing.presence]) existing.presence = tier
+      continue
+    }
+    bySlug.set(key, { term, profile, ing, slug: key, presence: tier })
   }
   return [...bySlug.values()]
 }
@@ -165,11 +238,18 @@ function rankActives(actives) {
 function buildWhatItIs(product, ranked) {
   const names = ranked.map((a) => str(a.ing.display_name || a.term)).filter(Boolean)
   const roleLabel = str(product.role_label || product.category || 'Skincare formula')
+  const subject = str(product.title || product.name || product.product_name) || roleLabel
   const hero = ranked[0]
   const heroMvr = hero && asArr(hero.ing.marketing_vs_reality)[0]
-  let body = `Grounded analysis of the verified formula. Active drivers: ${names.slice(0, 4).join(', ')}.`
-  if (heroMvr && claimSafe(heroMvr.reality)) body += ` ${str(heroMvr.reality).slice(0, 200)}`
-  return { headline: names.length ? `${roleLabel} — ${names[0]} forward` : roleLabel, body: body.slice(0, 320) }
+  // Neutral framing: name the GRADED actives that are genuinely present (heroes),
+  // never an unverifiable "[X] forward" superiority claim (which mis-fired when a
+  // trace KB active outranked the formula's true lead).
+  let body = names.length
+    ? `Grounded analysis of the verified formula. Graded actives present: ${names.slice(0, 4).join(', ')}.`
+    : 'Grounded analysis of the verified formula.'
+  if (heroMvr && claimSafe(heroMvr.reality)) body += ` ${clip(heroMvr.reality, 180)}`
+  const headline = names.length ? `${subject} — key actives: ${names.slice(0, 3).join(', ')}` : subject
+  return { headline: clip(headline, 140), body: clip(body, 320) }
 }
 
 function buildWhy(ranked) {
@@ -180,7 +260,7 @@ function buildWhy(ranked) {
     const headline = str(a.ing.display_name || a.term)
     const body = [str(top.what_it_means), str(top.mechanism)].filter(Boolean).join(' ')
     if (!body || !claimSafe(`${headline} ${body}`)) continue
-    out.push({ headline, body: body.slice(0, 300), evidence_strength: evidenceOf(a) })
+    out.push({ headline, body: clip(body, 300), evidence_strength: evidenceOf(a) })
   }
   return out
 }
@@ -192,7 +272,11 @@ function buildWhy(ranked) {
 // finding) are ADDITIVE — strict ProductClaim consumers ignore them.
 const GRADE_RANK = { A: 3, B: 2, C: 1, D: 0 }
 function buildEvidenceClaims(ranked) {
-  const graded = new Map() // merged by concern (convergent support → one claim, many drivers)
+  // One claim per (active, concern). NO cross-active merge — each claim is bound
+  // to the SINGLE active that drives it, so an active's trial/mechanism is never
+  // spliced onto another active's source_ref (the fabricated-provenance finding).
+  const graded = []
+  const seen = new Set()
   const mvr = []
   for (const a of ranked) {
     const grade = gradeOf(a)
@@ -202,52 +286,45 @@ function buildEvidenceClaims(ranked) {
       const concern = str(b.concern)
       const claimText = str(b.what_it_means) || concern
       if (!concern || !claimSafe(`${b.what_it_means} ${b.mechanism}`)) continue
+      const key = `${a.slug}::${slug(concern)}`
+      if (seen.has(key)) continue
+      seen.add(key)
       let conf = CONF_BY_STRENGTH[b.strength == null ? 1 : b.strength] || 'low'
       if (grade === 'C' && conf === 'high') conf = 'moderate'
       const substantiated = cites.length > 0 || grade === 'A' || grade === 'B'
-      const tag = slug(concern)
-      const prev = graded.get(tag)
-      if (!prev) {
-        graded.set(tag, {
-          claim_text: claimText,
-          source_ref: driver,
-          source_type: 'ingredient_mechanism',
-          evidence_grade: grade,
-          substantiation_status: substantiated ? 'substantiated' : 'unverified',
-          concern,
-          drivers: [driver],
-          mechanism: str(b.mechanism).slice(0, 240) || undefined,
-          confidence: conf,
-          source_refs: cites.slice(0, 3),
-        })
-      } else {
-        if (!prev.drivers.includes(driver)) { prev.drivers.push(driver); prev.source_ref = prev.drivers.join(', ') }
-        if ((CONF_RANK[conf] || 0) > (CONF_RANK[prev.confidence] || 0)) { prev.confidence = conf; if (str(b.what_it_means)) prev.claim_text = claimText }
-        if ((GRADE_RANK[grade] || 0) > (GRADE_RANK[prev.evidence_grade] || 0)) { prev.evidence_grade = grade; if (str(b.mechanism)) prev.mechanism = str(b.mechanism).slice(0, 240) }
-        if (substantiated) prev.substantiation_status = 'substantiated'
-        for (const u of cites) if (prev.source_refs.length < 4 && !prev.source_refs.includes(u)) prev.source_refs.push(u)
-      }
+      graded.push({
+        claim_text: clip(claimText, 200),
+        source_ref: driver, // single driving active
+        source_type: 'ingredient_mechanism',
+        evidence_grade: grade,
+        substantiation_status: substantiated ? 'substantiated' : 'unverified',
+        concern,
+        drivers: [driver],
+        mechanism: clip(b.mechanism, 240) || undefined,
+        confidence: conf,
+        source_refs: cites.slice(0, 3),
+      })
     }
     for (const m of asArr(a.ing.marketing_vs_reality)) {
       const reality = str(m.reality || m.finding)
       const myth = str(m.claim_in_market || m.claim)
       if (!reality || !myth) continue
       mvr.push({
-        claim_text: myth,
+        claim_text: clip(myth, 200),
         source_ref: driver,
         source_type: 'marketing_vs_reality',
         evidence_grade: null,
         substantiation_status: 'flagged',
         drivers: [driver],
-        finding: reality.slice(0, 260),
+        finding: clip(reality, 260),
         confidence: 'high',
       })
     }
   }
-  const gradedArr = [...graded.values()].sort((x, y) =>
+  graded.sort((x, y) =>
     ((CONF_RANK[y.confidence] || 0) - (CONF_RANK[x.confidence] || 0)) || ((GRADE_RANK[y.evidence_grade] || 0) - (GRADE_RANK[x.evidence_grade] || 0)),
-  ).slice(0, 10)
-  return [...gradedArr, ...mvr.slice(0, 5)]
+  )
+  return [...graded.slice(0, 10), ...mvr.slice(0, 5)]
 }
 
 function buildBestFor(ranked) {
@@ -322,9 +399,19 @@ async function buildGroundedProductIntelBundle(product, opts = {}) {
     }
   }
   const p = asObj(product) || {}
+  // Hygiene gate: don't build a dossier from a too-short / likely-partial INCI
+  // unless the brand explicitly declared actives (avoids 3-line/garbage records).
+  const orderedClean = readOrderedInci(p).filter((t) => isCleanIngredientToken(t.replace(/\([^)]*\)/g, '').trim()))
+  if (orderedClean.length < 5 && !declaredHeroNames(p).size) return null
+
   const actives = await collectActives(p, kbLookupBatch, lang)
-  if (!actives.length) return null
-  const ranked = rankActives(actives)
+  // Only HERO actives (declared, or top-third / >=0.1% ppm) drive featured intel
+  // and claims — a trace/supportive match never earns a product-level claim, and
+  // a product whose ONLY grounded matches are trace is not served (no false
+  // "[active] forward" off a dusting). This is the core adversarial-review fix.
+  const heroes = actives.filter((a) => a.presence === 'hero')
+  if (!heroes.length) return null
+  const ranked = rankActives(heroes)
   const why = buildWhy(ranked)
   if (!why.length) return null
 

@@ -282,7 +282,8 @@ describe('batched KB lookup (load fix: one query, not N serial reads)', () => {
 
   test('back-compat: a single-term opts.kbLookup is still honored', async () => {
     const kbLookup = jest.fn(async (t) => KB[t] || null);
-    const bundle = await buildGroundedProductIntelBundle({ inci: 'Niacinamide, Water, Sodium Hyaluronate' }, { kbLookup, now: '2026-06-14' });
+    // >=5 INCI tokens (clears the hygiene gate) with niacinamide as a top-third hero.
+    const bundle = await buildGroundedProductIntelBundle({ inci: 'Water, Niacinamide, Glycerin, Sodium Hyaluronate, Butylene Glycol, Phenoxyethanol' }, { kbLookup, now: '2026-06-14' });
     expect(kbLookup).toHaveBeenCalled();
     expect(isGroundedProductIntelBundle(bundle)).toBe(true);
   });
@@ -344,5 +345,101 @@ describe('ingredient_intel shape (real PDP) feeds the generator', () => {
     expect(isGroundedProductIntelBundle(bundle)).toBe(true);
     // the botanical-core candidate ("centella asiatica extract") was queried
     expect(kbLookup.mock.calls.map((c) => c[0])).toContain('centella asiatica extract');
+  });
+});
+
+describe('hardening: concentration gate, single-active provenance, hygiene', () => {
+  function entry(slug, grade, o) {
+    return {
+      status: 'ready',
+      source_meta: { tier: 'grounded', seed_slug: slug },
+      ingredient_profile_json: {
+        status: 'ready',
+        ingredient: { display_name: o.name, inci: o.name, marketing_vs_reality: o.mvr || [] },
+        benefits: o.benefits || [{ concern: 'barrier support', strength: 2, what_it_means: 'supports the barrier', mechanism: 'mechanism' }],
+        safety: { watchouts: [] },
+        usage: { routine_step: 'treatment', pair_well: [] },
+        evidence: { grade, citations: [{ url: 'https://pubmed.ncbi.nlm.nih.gov/0/' }] },
+      },
+    };
+  }
+  const KB = {
+    niacinamide: entry('niacinamide', 'A', { name: 'Niacinamide', benefits: [{ concern: 'barrier support', strength: 3, what_it_means: 'supports the barrier', mechanism: 'boosts ceramide synthesis' }] }),
+    panthenol: entry('panthenol', 'B', { name: 'Panthenol', benefits: [{ concern: 'barrier support', strength: 2, what_it_means: 'soothes and supports the barrier', mechanism: 'provitamin b5 humectant' }] }),
+    'sodium hyaluronate': entry('ha', 'A', { name: 'Sodium Hyaluronate', benefits: [{ concern: 'hydration', strength: 3, what_it_means: 'hydrates', mechanism: 'humectant' }] }),
+  };
+  const kb = (KBoverride) => async (t) => (KBoverride || KB)[t] || null;
+
+  test('trace-only grounded match (bottom of INCI) is NOT served', async () => {
+    // HA appears only at the very end of a 10-ingredient INCI → trace → no hero.
+    const bundle = await buildGroundedProductIntelBundle(
+      { inci: 'Water, Glycerin, Butylene Glycol, Dimethicone, Fragrance, Phenoxyethanol, Carbomer, Xanthan Gum, Disodium EDTA, Sodium Hyaluronate' },
+      { kbLookup: kb(), now: '2026-06-14' },
+    );
+    expect(bundle).toBeNull();
+  });
+
+  test('high ppm overrides late position (active served as hero via concentration)', async () => {
+    const bundle = await buildGroundedProductIntelBundle(
+      { ingredient_intel: { items: ['Water', 'Glycerin', 'Butylene Glycol', 'Dimethicone', 'Fragrance', 'Phenoxyethanol', 'Carbomer', 'Xanthan Gum', 'Disodium EDTA', 'Sodium Hyaluronate(8000ppm)'] } },
+      { kbLookup: kb(), now: '2026-06-14' },
+    );
+    expect(bundle).not.toBeNull();
+    expect(isGroundedProductIntelBundle(bundle)).toBe(true);
+  });
+
+  test('each evidence_claim binds to a SINGLE active — no cross-active splicing', async () => {
+    // Both declared as actives → both heroes; both claim "barrier support".
+    const bundle = await buildGroundedProductIntelBundle(
+      { key_ingredients: ['Niacinamide', 'Panthenol'], inci: 'Water, Niacinamide, Panthenol, Glycerin, Phenoxyethanol, Butylene Glycol' },
+      { kbLookup: kb(), now: '2026-06-14' },
+    );
+    expect(bundle).not.toBeNull();
+    const claims = bundle.product_intel_core.evidence_claims;
+    // no source_ref lists multiple actives (the "Panthenol, Adenosine" splice bug)
+    for (const c of claims) {
+      expect(String(c.source_ref || '')).not.toMatch(/,/);
+      if (Array.isArray(c.drivers)) expect(c.drivers.length).toBeLessThanOrEqual(1);
+    }
+    // both actives' barrier-support claims survive as separate, single-attributed claims
+    const barrier = claims.filter((c) => /barrier/i.test(c.claim_text || c.concern || ''));
+    const refs = new Set(barrier.map((c) => c.source_ref));
+    expect(refs.has('Niacinamide')).toBe(true);
+    expect(refs.has('Panthenol')).toBe(true);
+  });
+
+  test('headline is neutral — no unverifiable "[active] forward" claim', async () => {
+    const bundle = await buildGroundedProductIntelBundle(
+      { title: 'Glow Serum', inci: 'Water, Niacinamide, Glycerin, Panthenol, Phenoxyethanol' },
+      { kbLookup: kb(), now: '2026-06-14' },
+    );
+    expect(bundle).not.toBeNull();
+    const headline = bundle.product_intel_core.what_it_is.headline;
+    expect(headline).not.toMatch(/forward/i);
+    expect(headline).toContain('Glow Serum'); // uses the real product name
+  });
+
+  test('short/partial INCI without declared actives is not served; declared actives rescue it', async () => {
+    const short = await buildGroundedProductIntelBundle({ inci: 'Niacinamide, Mineral Salts, Aloe' }, { kbLookup: kb(), now: '2026-06-14' });
+    expect(short).toBeNull();
+    const declared = await buildGroundedProductIntelBundle({ key_ingredients: ['Niacinamide'], inci: 'Niacinamide, Mineral Salts, Aloe' }, { kbLookup: kb(), now: '2026-06-14' });
+    expect(declared).not.toBeNull();
+    expect(isGroundedProductIntelBundle(declared)).toBe(true);
+  });
+
+  test('long bodies are clipped at a word boundary (never mid-word)', async () => {
+    const longMech = 'this is a deliberately long mechanism description that keeps going and going well past the truncation limit so that the clip helper must cut it and it should end cleanly at a word boundary with an ellipsis rather than slicing a word in half abruptly midway through some token here'.repeat(2);
+    const localKB = { niacinamide: entry('niacinamide', 'A', { name: 'Niacinamide', benefits: [{ concern: 'uneven tone', strength: 3, what_it_means: longMech, mechanism: longMech }] }) };
+    const bundle = await buildGroundedProductIntelBundle({ inci: 'Water, Niacinamide, Glycerin, Panthenol, Phenoxyethanol' }, { kbLookup: kb(localKB), now: '2026-06-14' });
+    expect(bundle).not.toBeNull();
+    const bodies = bundle.product_intel_core.why_it_stands_out.map((w) => w.body).filter((b) => b && b.length >= 50);
+    expect(bodies.length).toBeGreaterThan(0);
+    for (const b of bodies) {
+      // clipped bodies carry a trailing ellipsis (old code did a bare mid-word slice with none)
+      expect(b.endsWith('…')).toBe(true);
+      expect(b.length).toBeLessThanOrEqual(305);
+      // the word-boundary clip leaves a complete word before the ellipsis, not a dangling fragment+space
+      expect(b).not.toMatch(/\s…$/);
+    }
   });
 });
