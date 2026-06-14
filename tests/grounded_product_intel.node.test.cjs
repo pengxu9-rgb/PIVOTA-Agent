@@ -72,7 +72,11 @@ test('builds a Tier-G bundle from KB-grounded actives', async () => {
   assert.equal(mvr[0].substantiation_status, 'flagged', 'marketing-vs-reality myth is flagged')
 
   const barrier = graded.find((c) => /barrier/i.test(c.concern))
-  assert.ok(barrier && barrier.drivers.length >= 2, 'shared concern merges drivers (convergent support)')
+  // Single-active provenance: each claim binds to ONE driving active (no cross-active
+  // splice). Convergent-merge was removed to keep source_ref honest.
+  assert.ok(barrier, 'barrier-support claim present')
+  assert.ok(!String(barrier.source_ref || '').includes(','), 'claim bound to a single active (no splice)')
+  assert.ok(!barrier.drivers || barrier.drivers.length <= 1, 'single driver per claim')
   assert.ok(!graded.some((c) => /hydration/i.test(c.concern)), 'non-grounded KB entry (glycerin) ignored')
   assert.ok(graded.some((c) => Array.isArray(c.source_refs) && c.source_refs.length >= 1), 'graded claims carry citations')
   assert.equal(bundle.provenance.grounding.citations_present, true)
