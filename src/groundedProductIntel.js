@@ -34,16 +34,76 @@ function normalizeTerm(v) {
 const DRUG_RE = /\b(treats?|cures?|cured|heals?|healing|anti-?inflammator\w*|antibacterial|antimicrobial|antifungal|wound[- ]?heal\w*)\b/i
 function claimSafe(text) { return !DRUG_RE.test(str(text)) }
 
-function extractActiveTerms(product) {
-  const terms = []
-  const push = (v) => { const t = normalizeTerm(v); if (t && t.length >= 3) terms.push(t) }
-  for (const l of [product.key_ingredients, product.keyIngredients, product.hero_ingredients, product.heroIngredients]) {
-    asArr(l).forEach(push)
+// Trailing INCI form-words. Botanical INCI names ("Centella Asiatica Leaf
+// Water", "Glycine Soja Seed Extract") carry these as suffixes; the curated KB
+// is keyed by the active core ("centella asiatica extract"), so we generate a
+// stripped core + a "<core> extract" variant as extra lookup candidates.
+const INCI_FORM_WORDS = new Set([
+  'water', 'extract', 'leaf', 'seed', 'root', 'flower', 'fruit', 'bark', 'peel', 'stem', 'oil',
+  'powder', 'ferment', 'filtrate', 'juice', 'sap', 'callus', 'culture', 'cell', 'meristem', 'butter', 'wax',
+])
+
+// One ingredient token (already paren-stripped + split out) -> normalized
+// KB-query candidates. Adds a form-word-stripped botanical core and its
+// "<core> extract" form so suffixed INCI names still resolve to curated KB keys.
+function addTermVariants(token, out) {
+  const t = normalizeTerm(token)
+  if (!t || t.length < 3) return
+  out.push(t)
+  const words = t.split(' ').filter(Boolean)
+  let end = words.length
+  while (end > 1 && INCI_FORM_WORDS.has(words[end - 1])) end--
+  if (end >= 1 && end < words.length) {
+    const core = words.slice(0, end).join(' ')
+    if (core.length >= 3) { out.push(core); out.push(`${core} extract`) }
   }
-  const inci = product.inci || product.ingredients_inci || product.ingredientsInci || product.ingredient_list || product.ingredients
-  if (typeof inci === 'string') inci.split(/[,;\n]/).forEach(push)
-  else if (Array.isArray(inci)) inci.forEach(push)
-  return [...new Set(terms)]
+}
+
+// INCI-name container fields, in priority order (cleanest actives first so the
+// MAX_LOOKUP_TERMS cap keeps the real ones). Used to descend into objects like
+// ingredient_intel / ingredients_inci that wrap the list under varying keys.
+const INGREDIENT_CONTAINER_FIELDS = ['active_items', 'items', 'list', 'ingredients', 'inci_list', 'inciList', 'raw_text', 'rawText', 'inci']
+
+// Pull normalized active candidates from any ingredient value, whatever its
+// shape: a raw INCI string, an array, a leaf record ({name|inci|display_name}),
+// or a container object (ingredient_intel / ingredients_inci = {raw_text,items}).
+// Strips parenthetical noise ("(389,929ppm)") BEFORE splitting so the comma
+// inside it doesn't shatter the name.
+function pushIngredientValue(v, out, depth = 0) {
+  if (v == null || depth > 5) return
+  if (typeof v === 'string') {
+    v.replace(/\([^)]*\)/g, ' ').split(/[,;\n]/).forEach((tok) => addTermVariants(tok, out))
+    return
+  }
+  if (Array.isArray(v)) { for (const x of v) pushIngredientValue(x, out, depth + 1); return }
+  if (typeof v === 'object') {
+    let descended = false
+    for (const f of INGREDIENT_CONTAINER_FIELDS) {
+      if (v[f] != null) { pushIngredientValue(v[f], out, depth + 1); descended = true }
+    }
+    if (descended) return
+    const name = v.name || v.inci_name || v.inciName || v.display_name || v.displayName ||
+      v.ingredient || v.value || v.text || v.label
+    if (name) pushIngredientValue(name, out, depth + 1)
+  }
+}
+
+// Pull active candidates from however the PDP carries ingredients: explicit
+// key/hero lists, the authoritative ingredient_intel view (active_items / items
+// / raw_text — what hydrateProductWithReviewedIngredientAuthority populates),
+// and any raw INCI string/array/object.
+function extractActiveTerms(product) {
+  const out = []
+  pushIngredientValue(product.key_ingredients, out)
+  pushIngredientValue(product.keyIngredients, out)
+  pushIngredientValue(product.hero_ingredients, out)
+  pushIngredientValue(product.heroIngredients, out)
+  pushIngredientValue(asObj(product.ingredient_intel) || asObj(product.ingredientIntel), out)
+  pushIngredientValue(product.inci, out)
+  pushIngredientValue(product.ingredients_inci || product.ingredientsInci, out)
+  pushIngredientValue(product.ingredient_list, out)
+  pushIngredientValue(product.ingredients, out)
+  return [...new Set(out)]
 }
 
 // Bound the term list so the batched IN-list stays sane for pathological INCI.
