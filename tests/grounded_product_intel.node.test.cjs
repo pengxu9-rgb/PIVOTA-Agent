@@ -47,7 +47,7 @@ const kbLookup = async (term) => FAKE[term] || null
 
 test('builds a Tier-G bundle from KB-grounded actives', async () => {
   const bundle = await buildGroundedProductIntelBundle(
-    { role_label: 'Test serum', key_ingredients: ['Niacinamide'], inci: 'Niacinamide, Centella Asiatica Extract, Glycerin' },
+    { role_label: 'Test serum', key_ingredients: ['Niacinamide'], inci: 'Niacinamide, Centella Asiatica Extract, Glycerin, Butylene Glycol, Water' },
     { kbLookup, now: '2026-06-14' },
   )
   assert.ok(bundle, 'bundle produced')

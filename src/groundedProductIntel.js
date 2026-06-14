@@ -191,6 +191,9 @@ function extractActiveTerms(product) {
 
 // Bound the term list so the batched IN-list stays sane for pathological INCI.
 const MAX_LOOKUP_TERMS = 64
+// A real cosmetic formula lists >= this many ingredients; fewer = a truncated /
+// partial extraction we won't build a graded dossier from.
+const MIN_INCI_TO_SERVE = 5
 
 // BATCHED default lookup: one `WHERE kb_key = ANY($1)` round-trip for all terms,
 // not N serial point-reads (the load-check finding). Returns Map<term, entry>.
@@ -267,7 +270,10 @@ function buildWhatItIs(product, ranked) {
     ? `Grounded analysis of the verified formula. Graded actives present: ${names.slice(0, 4).join(', ')}.`
     : 'Grounded analysis of the verified formula.'
   if (heroMvr && claimSafe(heroMvr.reality)) body += ` ${clip(heroMvr.reality, 180)}`
-  const headline = names.length ? `${subject} — key actives: ${names.slice(0, 3).join(', ')}` : subject
+  // Short active names in the headline (strip parenthetical aliases like
+  // "(Galactomyces, Bifida, …)") so it never clips mid-name.
+  const shortNames = names.map((n) => n.replace(/\s*\([^)]*\)/g, '').trim()).filter(Boolean)
+  const headline = shortNames.length ? `${subject} — key actives: ${shortNames.slice(0, 3).join(', ')}` : subject
   return { headline: clip(headline, 140), body: clip(body, 320) }
 }
 
@@ -418,10 +424,13 @@ async function buildGroundedProductIntelBundle(product, opts = {}) {
     }
   }
   const p = asObj(product) || {}
-  // Hygiene gate: don't build a dossier from a too-short / likely-partial INCI
-  // unless the brand explicitly declared actives (avoids 3-line/garbage records).
+  // Hygiene gate: a real formula has >= MIN_INCI_TO_SERVE clean ingredients. A
+  // shorter list is a truncated/partial extraction that can't establish the
+  // concentration context a product-level efficacy claim needs — so we DON'T
+  // serve it, even if the brand "declared" an active (declared can't bypass the
+  // gate; that loophole let a 3-token record carry a clinical claim).
   const orderedClean = readOrderedInci(p).filter((t) => isCleanIngredientToken(t.replace(/\([^)]*\)/g, '').trim()))
-  if (orderedClean.length < 5 && !declaredHeroNames(p).size) return null
+  if (orderedClean.length < MIN_INCI_TO_SERVE) return null
 
   const actives = await collectActives(p, kbLookupBatch, lang)
   // Only HERO actives (declared, or top-third / >=0.1% ppm) drive featured intel

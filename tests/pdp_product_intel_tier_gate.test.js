@@ -156,7 +156,7 @@ describe('produce → gate (real generator output is servable)', () => {
 
   test('generator output passes isGrounded + the serving gate; emits canonical claim atoms', async () => {
     const bundle = await buildGroundedProductIntelBundle(
-      { role_label: 'Test serum', key_ingredients: ['Niacinamide'], inci: 'Niacinamide, Centella Asiatica Extract, Water' },
+      { role_label: 'Test serum', key_ingredients: ['Niacinamide'], inci: 'Niacinamide, Centella Asiatica Extract, Glycerin, Water, Butylene Glycol, Phenoxyethanol' },
       { kbLookup, now: '2026-06-14' },
     );
     expect(bundle).not.toBeNull();
@@ -435,12 +435,17 @@ describe('hardening: concentration gate, single-active provenance, hygiene', () 
     expect(headline).toContain('Glow Serum'); // uses the real product name
   });
 
-  test('short/partial INCI without declared actives is not served; declared actives rescue it', async () => {
+  test('too-short / truncated INCI is NOT served — even with brand-declared actives (no declared bypass)', async () => {
     const short = await buildGroundedProductIntelBundle({ inci: 'Niacinamide, Mineral Salts, Aloe' }, { kbLookup: kb(), now: '2026-06-14' });
     expect(short).toBeNull();
+    // brand declaring the active no longer rescues a 3-token extraction (the
+    // loophole that let a truncated record carry a clinical claim is closed)
     const declared = await buildGroundedProductIntelBundle({ key_ingredients: ['Niacinamide'], inci: 'Niacinamide, Mineral Salts, Aloe' }, { kbLookup: kb(), now: '2026-06-14' });
-    expect(declared).not.toBeNull();
-    expect(isGroundedProductIntelBundle(declared)).toBe(true);
+    expect(declared).toBeNull();
+    // a real-length INCI with the same active IS served
+    const full = await buildGroundedProductIntelBundle({ inci: 'Water, Niacinamide, Glycerin, Butylene Glycol, Panthenol, Phenoxyethanol' }, { kbLookup: kb(), now: '2026-06-14' });
+    expect(full).not.toBeNull();
+    expect(isGroundedProductIntelBundle(full)).toBe(true);
   });
 
   test('long bodies are clipped at a word boundary (never mid-word)', async () => {
