@@ -46,16 +46,30 @@ function extractActiveTerms(product) {
   return [...new Set(terms)]
 }
 
-async function defaultKbLookup(term, lang) {
-  const { getIngredientResearchKbEntry } = require('./auroraBff/ingredientResearchKbStore')
-  return getIngredientResearchKbEntry({ query: term, lang: lang || 'EN', layer: 'generic' })
+// Bound the term list so the batched IN-list stays sane for pathological INCI.
+const MAX_LOOKUP_TERMS = 64
+
+// BATCHED default lookup: one `WHERE kb_key = ANY($1)` round-trip for all terms,
+// not N serial point-reads (the load-check finding). Returns Map<term, entry>.
+async function defaultKbLookupBatch(terms, lang) {
+  const { getIngredientResearchKbEntries } = require('./auroraBff/ingredientResearchKbStore')
+  return getIngredientResearchKbEntries({ queries: terms, lang: lang || 'EN', layer: 'generic' })
 }
 
-async function collectActives(product, kbLookup, lang) {
+function readBatchResult(resultMap, term) {
+  if (!resultMap) return null
+  if (typeof resultMap.get === 'function') return resultMap.get(term) || null
+  return resultMap[term] || null
+}
+
+async function collectActives(product, kbLookupBatch, lang) {
+  const terms = extractActiveTerms(product).slice(0, MAX_LOOKUP_TERMS)
+  if (!terms.length) return []
+  let resultMap = null
+  try { resultMap = await kbLookupBatch(terms, lang) } catch { resultMap = null }
   const bySlug = new Map()
-  for (const term of extractActiveTerms(product)) {
-    let entry = null
-    try { entry = await kbLookup(term, lang) } catch { entry = null }
+  for (const term of terms) {
+    const entry = readBatchResult(resultMap, term)
     if (!entry) continue
     const profile = asObj(entry.ingredient_profile_json) || asObj(entry)
     if (!profile) continue
@@ -230,9 +244,25 @@ function buildConfidence(ranked) {
 
 async function buildGroundedProductIntelBundle(product, opts = {}) {
   const lang = opts.lang || 'EN'
-  const kbLookup = opts.kbLookup || ((t, l) => defaultKbLookup(t, l))
+  // Lookups are BATCHED (one query for all terms). Back-compat: a single-term
+  // opts.kbLookup is wrapped into a batch shim so existing callers/tests keep
+  // working; the real/default path uses the batched store getter.
+  let kbLookupBatch = opts.kbLookupBatch
+  if (typeof kbLookupBatch !== 'function') {
+    if (typeof opts.kbLookup === 'function') {
+      kbLookupBatch = async (terms, l) => {
+        const m = new Map()
+        for (const t of terms) {
+          try { m.set(t, await opts.kbLookup(t, l)) } catch { m.set(t, null) }
+        }
+        return m
+      }
+    } else {
+      kbLookupBatch = (terms, l) => defaultKbLookupBatch(terms, l)
+    }
+  }
   const p = asObj(product) || {}
-  const actives = await collectActives(p, kbLookup, lang)
+  const actives = await collectActives(p, kbLookupBatch, lang)
   if (!actives.length) return null
   const ranked = rankActives(actives)
   const why = buildWhy(ranked)

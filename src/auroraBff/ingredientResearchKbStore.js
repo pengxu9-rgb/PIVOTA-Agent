@@ -186,6 +186,42 @@ async function readFromDb(kbKey) {
   }
 }
 
+async function readManyFromDb(kbKeys) {
+  if (state.dbUnavailable || !Array.isArray(kbKeys) || !kbKeys.length) return [];
+  try {
+    const res = await query(
+      `
+        SELECT
+          kb_key,
+          query_norm,
+          lang,
+          kb_layer,
+          variant_key,
+          revision,
+          status,
+          provider,
+          error_code,
+          ingredient_profile_json,
+          source_meta,
+          updated_at,
+          expires_at
+        FROM aurora_ingredient_research_kb
+        WHERE kb_key = ANY($1::text[])
+          AND expires_at > now()
+      `,
+      [kbKeys],
+    );
+    return res && Array.isArray(res.rows) ? res.rows : [];
+  } catch (err) {
+    const code = err && err.code ? String(err.code) : '';
+    if (code === 'NO_DATABASE' || code === '42P01') {
+      state.dbUnavailable = true;
+      return [];
+    }
+    return [];
+  }
+}
+
 async function upsertToDb(entry) {
   if (state.dbUnavailable) {
     const err = new Error('NO_DATABASE')
@@ -283,6 +319,57 @@ async function getIngredientResearchKbEntry({ query, lang = 'EN', layer = 'gener
   return dbHit
 }
 
+// Batch sibling of getIngredientResearchKbEntry: resolves MANY query terms in a
+// single `WHERE kb_key = ANY($1)` round-trip (LRU-first, DB for the misses) so
+// callers don't fan out N serial point-reads. Returns Map<term, entry|null>
+// keyed by the original input term.
+async function getIngredientResearchKbEntries({
+  queries,
+  lang = 'EN',
+  layer = 'generic',
+  goal = '',
+  sensitivity = '',
+  variantKey = '',
+} = {}) {
+  const out = new Map();
+  const list = Array.isArray(queries) ? queries : [];
+  if (!list.length) return out;
+
+  const termToKey = new Map();
+  const keysNeeded = new Set();
+  for (const term of list) {
+    if (out.has(term)) continue;
+    const kbKey = buildIngredientResearchKbKey({ query: term, lang, layer, goal, sensitivity, variantKey });
+    if (!kbKey) {
+      out.set(term, null);
+      continue;
+    }
+    termToKey.set(term, kbKey);
+    keysNeeded.add(kbKey);
+  }
+
+  const keyToEntry = new Map();
+  const missKeys = [];
+  for (const kbKey of keysNeeded) {
+    const memHit = state.memIndex.get(kbKey);
+    if (memHit) keyToEntry.set(kbKey, memHit);
+    else missKeys.push(kbKey);
+  }
+  if (missKeys.length) {
+    for (const row of await readManyFromDb(missKeys)) {
+      const entry = mapRowToEntry(row);
+      if (!entry) continue;
+      touchLru(state.memIndex, entry.kb_key, entry);
+      keyToEntry.set(entry.kb_key, entry);
+    }
+  }
+
+  for (const [term, kbKey] of termToKey.entries()) {
+    out.set(term, keyToEntry.get(kbKey) || null);
+  }
+  return out;
+}
+
 async function upsertIngredientResearchKbEntry(entry) {
   const kbKey = String(entry && entry.kb_key ? entry.kb_key : '').trim()
   const queryNorm = normalizeQueryText(entry && entry.query_norm)
@@ -321,5 +408,6 @@ async function upsertIngredientResearchKbEntry(entry) {
 module.exports = {
   buildIngredientResearchKbKey,
   getIngredientResearchKbEntry,
+  getIngredientResearchKbEntries,
   upsertIngredientResearchKbEntry,
 }
