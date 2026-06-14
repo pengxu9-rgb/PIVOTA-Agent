@@ -109,12 +109,12 @@ function readOrderedInci(product) {
 }
 
 // Names the BRAND explicitly markets as key ingredients (key_ingredients /
-// hero_ingredients) — treated as heroes regardless of INCI position (the brand
-// is asserting prominence). NOTE: ingredient_intel.active_items is deliberately
-// EXCLUDED — it is auto-detected "actives present" (position-agnostic), so using
-// it here would let a trace dusting (e.g. Ceramide NP at #33/34) bypass the
-// concentration gate. Auto-detected actives go through the position/ppm gate via
-// the ordered INCI like everything else.
+// hero_ingredients). These are looked up and floored at supportive, but are NOT
+// auto-promoted to hero — HERO still requires concentration evidence (the brand
+// asserting "key ingredient" on a trace dusting must not bypass the gate). Used
+// both to seed candidates and to keep otherwise-too-short records (the brand
+// vouches the record is a real formula). ingredient_intel.active_items is
+// handled the same way (supportive-tier candidates).
 function declaredHeroNames(product) {
   const out = new Set()
   const push = (v) => {
@@ -129,10 +129,13 @@ function declaredHeroNames(product) {
 }
 
 // Concentration tier for a matched active. ppm (when disclosed) wins; otherwise
-// position in the descending-concentration INCI. Declared heroes are always hero.
+// position in the descending-concentration INCI. A brand-declared "key
+// ingredient" only FLOORS at supportive — HERO status still requires real
+// concentration evidence (top-third position or >=0.1% ppm). Brands routinely
+// market a trace dusting (e.g. Ceramide NP at #34/34) as a key ingredient, so
+// declared alone must NOT bypass the concentration gate.
 function presenceTier(sig) {
   if (!sig) return 'supportive'
-  if (sig.declared) return 'hero'
   if (sig.ppm != null) {
     if (sig.ppm >= 1000) return 'hero' // >= 0.1%
     if (sig.ppm >= 100) return 'supportive'
@@ -140,8 +143,8 @@ function presenceTier(sig) {
   }
   if (sig.index == null || !sig.total) return 'supportive'
   const frac = sig.index / sig.total
-  if (frac < 1 / 3) return 'hero'
-  if (frac < 2 / 3) return 'supportive'
+  if (frac <= 1 / 3) return 'hero' // top third (inclusive) — e.g. #3 of 6 is above glycerin/preservatives
+  if (frac <= 2 / 3) return 'supportive'
   return 'trace'
 }
 const TIER_RANK = { hero: 3, supportive: 2, trace: 1 }

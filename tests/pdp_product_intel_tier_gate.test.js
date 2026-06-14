@@ -379,6 +379,22 @@ describe('hardening: concentration gate, single-active provenance, hygiene', () 
     expect(bundle).toBeNull();
   });
 
+  test('brand-declared key ingredient that is TRACE in the INCI is NOT featured (declared does not bypass the gate)', async () => {
+    // Brand markets HA as a "key ingredient", but it sits dead last in a
+    // 10-item INCI → trace. Niacinamide is #2 (real hero). HA must be excluded.
+    const bundle = await buildGroundedProductIntelBundle(
+      {
+        key_ingredients: ['Hyaluronic Acid', 'Niacinamide'],
+        inci: 'Water, Niacinamide, Glycerin, Butylene Glycol, Dimethicone, Fragrance, Phenoxyethanol, Carbomer, Xanthan Gum, Sodium Hyaluronate',
+      },
+      { kbLookup: kb(), now: '2026-06-14' },
+    );
+    expect(bundle).not.toBeNull(); // niacinamide #2 is a legit hero
+    const featured = bundle.product_intel_core.why_it_stands_out.map((w) => w.headline.toLowerCase());
+    expect(featured.some((h) => /niacinamide/.test(h))).toBe(true);
+    expect(featured.some((h) => /hyaluron/.test(h))).toBe(false); // declared but trace → dropped
+  });
+
   test('high ppm overrides late position (active served as hero via concentration)', async () => {
     const bundle = await buildGroundedProductIntelBundle(
       { ingredient_intel: { items: ['Water', 'Glycerin', 'Butylene Glycol', 'Dimethicone', 'Fragrance', 'Phenoxyethanol', 'Carbomer', 'Xanthan Gum', 'Disodium EDTA', 'Sodium Hyaluronate(8000ppm)'] } },
