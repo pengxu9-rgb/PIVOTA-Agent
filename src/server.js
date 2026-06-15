@@ -36450,9 +36450,18 @@ app.get('/api/admin/recall-actives-preview', requireAdmin, async (req, res) => {
       // surfaces seed_data.
       const rawDiag = await query(
         `SELECT cp.content_key, cp.product_key, cp.source_system,
-                (cp.product_payload ? 'seed_data') AS has_seed_data,
+                jsonb_typeof(cp.product_payload->'seed_data')                  AS cp_seed_data_type,
+                jsonb_typeof(cp.product_payload#>'{seed_data,derived}')        AS cp_derived_type,
+                jsonb_typeof(cp.product_payload#>'{seed_data,derived,recall}') AS cp_recall_type,
+                left(cp.product_payload->>'seed_data', 500)                    AS cp_seed_data_head,
                 cp.product_payload #>> '{seed_data,derived,recall,ingredient_tokens}' AS raw_recall_ingredient_tokens,
-                cp.product_payload #>> '{seed_data,derived,recall,authored_by}' AS raw_recall_authored_by,
+                cp.product_payload #>> '{seed_data,derived,recall,authored_by}'       AS raw_recall_authored_by,
+                (SELECT jsonb_typeof(eps.seed_data) FROM external_product_seeds eps
+                   WHERE eps.external_product_id = cp.source_product_id LIMIT 1)       AS eps_seed_data_type,
+                (SELECT eps.seed_data #>> '{derived,recall,ingredient_tokens}' FROM external_product_seeds eps
+                   WHERE eps.external_product_id = cp.source_product_id LIMIT 1)       AS eps_recall_ing,
+                (SELECT left(eps.seed_data->>'raw_ingredient_text_clean', 180) FROM external_product_seeds eps
+                   WHERE eps.external_product_id = cp.source_product_id LIMIT 1)       AS eps_raw_ing_head,
                 (SELECT count(*) FROM catalog_products c2
                   WHERE c2.pivota_signature_id = $1 OR c2.content_key = $1 OR c2.source_product_id = $1) AS catalog_rows_for_id
            FROM catalog_products cp
