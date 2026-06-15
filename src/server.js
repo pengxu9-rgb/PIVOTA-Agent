@@ -20008,11 +20008,39 @@ function scoreBeautyExternalSeedProduct({
   return { product, relevant: true, score };
 }
 
+// WS3a operator prompt-test (docs/find_products_multi_phase2_scope.md). These two
+// helpers power GET /api/admin/find-products-prompt-test and the no-op-by-default
+// `inspectProductId` hook inside searchBeautyExternalSeedProductsMainline below;
+// they never run for normal find_products_multi traffic.
+function mainlineProductMatchesId(product, wantedId) {
+  if (!product || typeof product !== 'object' || wantedId == null) return false;
+  const id = String(wantedId).trim();
+  if (!id) return false;
+  const candidates = [
+    product.pivota_signature_id, product.signature_id, product.id, product.product_id,
+    product.content_key, product.source_product_id, product.external_product_id,
+    product.external_seed_product_id, product.platform_product_id,
+    product.catalog_product_key, product.product_key,
+  ];
+  return candidates.some((v) => v != null && String(v).trim() === id);
+}
+
+// Operator-friendly one-word verdict derived from a prompt_inspect payload.
+function diagnosePromptInspect(inspect) {
+  if (!inspect || typeof inspect !== 'object') return 'unknown';
+  if (inspect.display_rank && inspect.in_visible_page) return 'ranked_visible';
+  if (inspect.display_rank) return 'ranked_below_page';
+  if (inspect.relevant === false) return 'recalled_but_rejected';
+  if (!inspect.in_recall_pool) return 'not_recalled';
+  return 'recalled_not_served';
+}
+
 async function searchBeautyExternalSeedProductsMainline({
   search = {},
   metadata = {},
   intent = null,
   creatorScoped = false,
+  inspectProductId = null,
 } = {}) {
   if (!PIVOT_BEAUTY_DIRECT_INDEXED_RECALL_ENABLED) return null;
   if (!process.env.DATABASE_URL) return null;
@@ -20375,6 +20403,42 @@ async function searchBeautyExternalSeedProductsMainline({
     ? 'agent_products_creator_beauty_external_seed_mainline'
     : 'agent_products_beauty_external_seed_mainline';
 
+  // WS3a operator prompt-test: when an inspectProductId is supplied (only the
+  // /api/admin/find-products-prompt-test diagnostic does this), attach an
+  // authoritative read of where that product landed in THIS recall+rank pass.
+  // No-op for all normal traffic (inspectProductId is null).
+  let promptInspect = null;
+  if (typeof inspectProductId === 'string' && inspectProductId.trim()) {
+    const wantedId = inspectProductId.trim();
+    const idMatch = (p) => mainlineProductMatchesId(p, wantedId);
+    const recallHit = (Array.isArray(recallProducts) ? recallProducts : []).find(idMatch) || null;
+    const scoredIdx = scored.findIndex((row) => idMatch(row && row.product));
+    const scoredRow = scoredIdx >= 0 ? scored[scoredIdx] : null;
+    const balancedIdx = balancedProducts.findIndex(idMatch);
+    const rejected = scoreRejected.find((r) => String((r && r.product_id) || '').trim() === wantedId) || null;
+    promptInspect = {
+      product_id: wantedId,
+      query: queryText,
+      query_active_concepts: extractBeautyQueryActiveConcepts(queryText).map((c) => c.key),
+      in_recall_pool: Boolean(recallHit),
+      recall_source: recallHit
+        ? firstNonEmptyString(recallHit.source, recallHit.search_recall_source, recallHit.catalog_source) || null
+        : null,
+      relevant: scoredRow ? true : rejected ? false : null,
+      rejection_reasons: rejected ? rejected.reasons : null,
+      score: scoredRow ? scoredRow.score : null,
+      // What the scorer actually credited (flag-dependent) vs what the product
+      // matches regardless of flag — lets an operator see "you match soy+firming
+      // but the active-aware rank flag isn't crediting it".
+      active_bonus_applied: scoredRow && scoredRow.active_match ? scoredRow.active_match : null,
+      concept_match: recallHit ? countBeautyActiveConceptMatches(queryText, recallHit) : null,
+      display_rank: balancedIdx >= 0 ? balancedIdx + 1 : null,
+      total_ranked: balancedProducts.length,
+      in_visible_page: balancedIdx >= 0 && balancedIdx >= safeOffset && balancedIdx < safeOffset + safeLimit,
+      page_size: safeLimit,
+    };
+  }
+
   return {
     status: 'success',
     success: true,
@@ -20385,6 +20449,7 @@ async function searchBeautyExternalSeedProductsMainline({
     reply: pagedProducts.length > 0 ? null : 'No matching beauty products found on the mainline catalog path.',
     metadata: {
       query_source: querySource,
+      ...(promptInspect ? { prompt_inspect: promptInspect } : {}),
       fetched_at: new Date().toISOString(),
       external_seed_only_requested: true,
       external_seed_rows_fetched: Array.isArray(selectedRows?.rawProducts) ? selectedRows.rawProducts.length : 0,
@@ -36223,6 +36288,64 @@ app.post('/api/admin/catalog-serving/backfill', requireAdmin, async (req, res) =
   }
 });
 
+// WS3a operator prompt-test (docs/find_products_multi_phase2_scope.md): given a
+// prompt + a product id, run the live beauty mainline recall+rank and report where
+// that product landed and WHY (recall pool / rank / score / concept match /
+// rejection). Operator-only (admin key), read-only. The merchant-scoped OAuth +
+// portal surface is a follow-up (WS3a.2).
+app.get('/api/admin/find-products-prompt-test', requireAdmin, async (req, res) => {
+  try {
+    const q = String(req.query.q || req.query.query || '').trim();
+    const productId = String(req.query.product_id || req.query.productId || req.query.id || '').trim();
+    if (!q || !productId) {
+      return res.status(400).json({ ok: false, error: 'both q and product_id are required' });
+    }
+    const market = String(req.query.market || 'US').trim().toUpperCase() || 'US';
+    const limit = Math.max(1, Math.min(60, Math.floor(Number(req.query.limit) || 20)));
+    const resp = await searchBeautyExternalSeedProductsMainline({
+      search: { query: q, market, limit },
+      metadata: {},
+      intent: inferBeautyMainlineIntent(q),
+      inspectProductId: productId,
+    });
+    if (!resp) {
+      return res.status(503).json({
+        ok: false,
+        error: 'beauty mainline unavailable (PIVOT_BEAUTY_DIRECT_INDEXED_RECALL_ENABLED off or no DATABASE_URL)',
+      });
+    }
+    const inspect = (resp.metadata && resp.metadata.prompt_inspect) || null;
+    const products = Array.isArray(resp.products) ? resp.products : [];
+    const top = products.slice(0, Math.min(limit, 20)).map((p, i) => ({
+      rank: i + 1,
+      title: firstNonEmptyString(p && p.title, p && p.name) || null,
+      product_id: firstNonEmptyString(p && p.pivota_signature_id, p && p.id, p && p.product_id) || null,
+      source: firstNonEmptyString(p && p.source, p && p.search_recall_source, p && p.catalog_source) || null,
+    }));
+    return res.json({
+      ok: true,
+      mode: 'mainline_direct',
+      note: 'Beauty mainline recall+rank view for this prompt. Rank order uses the production scorer; it does not reconstruct the full search-quality-contract limits the public rail may apply.',
+      query: q,
+      product_id: productId,
+      market,
+      diagnosis: diagnosePromptInspect(inspect),
+      inspect,
+      telemetry: {
+        query_source: (resp.metadata && resp.metadata.query_source) || null,
+        canonical_category_path_prefix: (resp.metadata && resp.metadata.canonical_category_path_prefix) || null,
+        total: resp.total == null ? null : resp.total,
+        canonical_returned_count: (resp.metadata && resp.metadata.canonical_returned_count) ?? null,
+        external_seed_returned_count: (resp.metadata && resp.metadata.external_seed_returned_count) ?? null,
+      },
+      top,
+    });
+  } catch (err) {
+    logger.error({ err: err && err.message ? err.message : String(err) }, 'find-products-prompt-test failed');
+    return res.status(500).json({ ok: false, error: String((err && err.message) || err) });
+  }
+});
+
 app.post('/api/admin/catalog-serving/search', requireAdmin, async (req, res) => {
   const body = req.body && typeof req.body === 'object' && !Array.isArray(req.body) ? req.body : {};
   try {
@@ -48201,6 +48324,8 @@ module.exports._debug = {
   extractBeautyQueryActiveConcepts,
   countBeautyActiveConceptMatches,
   buildBeautyActivesText,
+  mainlineProductMatchesId,
+  diagnosePromptInspect,
   compactBeautyMainlineProductForResponse,
   snapshotProductDetailCacheStats,
   resolveProductDetailCacheTtlMs,
