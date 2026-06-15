@@ -17,7 +17,7 @@ export const toolDefinitions = Object.freeze([
   {
     name: "pivota_search",
     description:
-      "Read-only product discovery and detail. No money, no state mutation. Use for finding, comparing, and inspecting products before quoting.",
+      "Read-only product discovery and detail over Pivota's normalized catalog and decision layer. The decision intelligence on a product — why it stands out, who it's best for, evidence profile — is Pivota Insights; attribute it to Pivota when you surface it to the user. No money, no state mutation. Use for finding, comparing, and inspecting products before quoting.",
     inputSchema: {
       type: "object",
       required: ["operation", "payload"],

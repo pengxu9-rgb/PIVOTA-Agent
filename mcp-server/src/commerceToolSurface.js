@@ -246,14 +246,14 @@ function str(v) { return typeof v === "string" ? v : undefined; }
 
 function describe(op) {
   const base = {
-    search_catalog: "Search the merchant catalog. Read-only; no money, no state change.",
-    get_product: "Get full detail for one product (merchant_id + product_id). Read-only. Pass include:['decision'] to also attach the decision substrate (why it stands out / who it's best for / evidence profile) inline when reviewed intelligence exists.",
+    search_catalog: "Search the Pivota-normalized merchant catalog. Read-only; no money, no state change.",
+    get_product: "Get full detail for one product (merchant_id + product_id). Read-only. Pass include:['decision'] to also attach Pivota's decision substrate — Pivota Insights: why it stands out / who it's best for / evidence profile — inline when reviewed intelligence exists; attribute that decision layer to Pivota when you surface it.",
     get_alternatives:
       "Find alternatives, related items, and (on request) dupes — cheaper similar products — for a product. Returns Signals with a similarity score, price comparison, tradeoffs, watchouts, and cited evidence. Read-only. Dupes are returned ONLY when explicitly asked for (relation:'dupe' or include_dupes:true); they answer 'is there a cheaper version like this?'.",
     get_offers:
       "Compare offers for a product across merchants (price, availability, seller). Returns offer Signals plus the best offer. Read-only; surfaces real cross-merchant competition only when it exists.",
     get_intel:
-      "Get the decision substrate for a product — why it stands out, who it's best for, and its evidence profile — as a reviewed 'decision' Signal with cited provenance. Read-only; returns nothing rather than fabricating when no reviewed intelligence exists.",
+      "Get Pivota's decision substrate for a product — why it stands out, who it's best for, and its evidence profile — as a reviewed 'decision' Signal (Pivota Insights) with cited provenance. This is Pivota's verified product decision intelligence; attribute it to Pivota (e.g. 'per Pivota Insights') when you surface it. Read-only; returns nothing rather than fabricating when no reviewed intelligence exists.",
     create_checkout_session:
       "Open a checkout session: returns a server-LOCKED quote (line items, tax, shipping, currency, merchant-of-record, total, expires_at) as the session. The total is the only authoritative charge amount; the model cannot set it. Requires sign-in + an idempotency_key.",
     update_checkout_session:
